@@ -77,7 +77,30 @@ KELLY_FRACTION = 0.25
 # No single station-day may take more than this share of the book, however
 # large its Kelly number: 45 stations trading daily means a full-Kelly
 # outlier would otherwise dominate the curve.
+#
+# The scope is the station-day, not the station-day-stage.  One book means
+# one position per station-day, so the cap binds the whole chain: whatever
+# P0 spent is spent, and a top-up at P0-M or P1 draws on what is left of the
+# same 2%.
 MAX_STAKE_FRACTION_PER_SCOPE = 0.02
+# One book for the whole network and one position per station-day (user
+# ruling, 2026-08-18).  P0 opens it, P0-M and P1 top it up, and it settles
+# once.
+#
+# Read as three books -- a bankroll each, a settlement each -- the ledger
+# answered "which moment's evidence would have entered best", which is a
+# real question and not this one.  It also charged the same event two and
+# three times: of 152 settled station-days, 40 were scored more than once
+# against a single truth, and the three books together staked 2220 USDC out
+# of a nominal 1000.
+#
+# Top-ups only add (user ruling, 2026-08-18).  A later stage may widen the
+# ladder or deepen a rung it already holds; it may not sell one back.  What
+# that costs is honesty in the other direction: when P1's ladder converges
+# from four rungs to two, the book keeps carrying the rungs the hard bound
+# has since ruled out, all the way to settlement.  What it buys is that no
+# fill is ever priced against a bid this lane cannot measure.
+BOOK_MODEL = "one_book_per_station_day_top_up_only"
 MAXIMUM_SUPPORT_BUCKETS = 4
 # The ladder floor (charter 50).  The ledger exists to reproduce what
 # production seats, so it must carry production's structural rules; left at
@@ -187,6 +210,7 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     None
     if EXECUTION_MODE != "maker_resting"
     else f"阶梯{MAKER_RESTING_LADDER_STEPS}档·逐步建仓",
+    "一本账·只加不减",
 )))
 SELECTION_RULE_SHA256 = content_sha256({
     "schema": "paper_trade_selection_rule_v4",
@@ -231,6 +255,11 @@ SELECTION_RULE_SHA256 = content_sha256({
     "minimum_support_buckets": MINIMUM_SUPPORT_BUCKETS,
     "p1_minimum_support_buckets": P1_MINIMUM_SUPPORT_BUCKETS,
     "stage_floor": "per_stage",
+    # One book, one position per station-day, settled once.  This changes
+    # what every recorded row *is* -- a stage row is now a top-up of a
+    # standing position rather than a bet of its own -- so rows written
+    # under the three-book reading describe a strategy that no longer runs.
+    "book_model": BOOK_MODEL,
 })
 # Why a station-day has no seat, in the ledger's own words.  The page used to
 # infer this from the absence of a row and could only ever say "the objective
@@ -252,6 +281,14 @@ REFUSAL_REASONS = (
     "resting_unfilled",
     "no_positive_kelly",
     "no_depth",
+    # A later stage that wanted nothing this position does not already hold.
+    # Under one book a stage is a top-up, so "the ladder it chose is inside
+    # what P0 already bought" is not a refusal to trade -- it is the chain
+    # standing pat, and it has to read as that rather than as no seat.
+    "no_top_up_needed",
+    # A later stage whose station-day never opened.  Only P0 opens a
+    # position; a top-up with nothing to top up is not a position of its own.
+    "chain_never_opened",
 )
 
 _POSITION_DDL = """
@@ -283,6 +320,9 @@ CREATE TABLE IF NOT EXISTS paper_trade_position (
   posted_buckets_json TEXT NOT NULL DEFAULT '',
   intended_legs_json TEXT NOT NULL DEFAULT '',
   intended_stake_usdc REAL,
+  held_before_json TEXT NOT NULL DEFAULT '',
+  chain_shares_json TEXT NOT NULL DEFAULT '',
+  chain_stake_usdc REAL,
   UNIQUE(station_id, event_date, stage)
 )
 """
@@ -329,6 +369,16 @@ CREATE TABLE IF NOT EXISTS paper_trade_settlement (
   -- without joining back to the truth table.
   truth_revision_no INTEGER,
   truth_content_sha256 TEXT NOT NULL DEFAULT '',
+  -- What the whole position cost per unit of payout, across every stage that
+  -- topped it up.  The dust floor is a statement about the basket that
+  -- settled, and no stage row carries that number: each holds the cost of
+  -- its own top-up.
+  basket_all_in_cost REAL,
+  -- Kept keyed by stage rather than migrated to the station-day: one chain
+  -- writes one settlement now, and the stage it carries is whichever one
+  -- last topped it up, so the wider key never binds.  Deletes key on the
+  -- station-day alone so a chain whose last stage moved still replaces its
+  -- own row.
   UNIQUE(station_id, event_date, stage)
 )
 """
@@ -404,6 +454,26 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             "ALTER TABLE paper_trade_position"
             " ADD COLUMN intended_stake_usdc REAL"
         )
+    if "held_before_json" not in columns:
+        # What the chain already held when this stage looked.  A top-up buys
+        # the difference, so without this a one-leg P1 row is unreadable:
+        # it looks like a one-rung basket rather than the two rungs the
+        # position already had plus the one it added.
+        conn.execute(
+            "ALTER TABLE paper_trade_position"
+            " ADD COLUMN held_before_json TEXT NOT NULL DEFAULT ''"
+        )
+    if "chain_shares_json" not in columns:
+        # The whole position after this stage acted, which is what settles.
+        conn.execute(
+            "ALTER TABLE paper_trade_position"
+            " ADD COLUMN chain_shares_json TEXT NOT NULL DEFAULT ''"
+        )
+    if "chain_stake_usdc" not in columns:
+        conn.execute(
+            "ALTER TABLE paper_trade_position"
+            " ADD COLUMN chain_stake_usdc REAL"
+        )
     if "selection_rule_label" not in columns:
         conn.execute(
             "ALTER TABLE paper_trade_position"
@@ -446,6 +516,11 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     # every one of them up once.  It re-binds rather than re-scores the ones
     # whose recorded value still matches, so the migration costs an UPDATE of
     # two columns per row and leaves the numbers on the page untouched.
+    if "basket_all_in_cost" not in settlement_columns:
+        conn.execute(
+            "ALTER TABLE paper_trade_settlement"
+            " ADD COLUMN basket_all_in_cost REAL"
+        )
     if "truth_revision_no" not in settlement_columns:
         conn.execute(
             "ALTER TABLE paper_trade_settlement"
@@ -478,9 +553,7 @@ def _window_floor(
     return str((floor or [""])[0] or "")
 
 
-def _opening_equity(
-    conn: sqlite3.Connection, *, earliest: str
-) -> dict[str, float]:
+def _opening_equity(conn: sqlite3.Connection, *, earliest: str) -> float:
     """The book an incremental window opens with, not the book it started life
     with.
 
@@ -498,24 +571,23 @@ def _opening_equity(
     bankrolls nothing.  Rule fingerprints are deliberately *not* filtered
     here -- rows outside the window are never re-derived, so excluding them
     would open the window on a book the page does not show.
+
+    One number, not one per stage: the three stages are one position and
+    draw on one bankroll (see ``BOOK_MODEL``).
     """
 
-    equity = {stage: INITIAL_CAPITAL_USDC for stage in STAGES}
     if not earliest:
-        return equity
-    for stage, pnl in conn.execute(
-        "SELECT s.stage, SUM(s.pnl_usdc)"
+        return INITIAL_CAPITAL_USDC
+    realised = conn.execute(
+        "SELECT SUM(s.pnl_usdc)"
         " FROM paper_trade_settlement s"
         " JOIN paper_trade_position p USING(position_id)"
-        " WHERE s.event_date < ? AND p.all_in_cost>=?"
-        " GROUP BY s.stage",
+        " WHERE s.event_date < ? AND p.all_in_cost>=?",
         (earliest, DUST_COST_FLOOR),
-    ):
-        if str(stage) in equity:
-            equity[str(stage)] = max(
-                0.0, equity[str(stage)] + float(pnl or 0.0)
-            )
-    return equity
+    ).fetchone()
+    return max(
+        0.0, INITIAL_CAPITAL_USDC + float((realised or [0.0])[0] or 0.0)
+    )
 
 
 def _drop_superseded_positions(
@@ -1589,12 +1661,23 @@ def _rescore_settlements(
     """
 
     counts: dict[str, int] = defaultdict(int)
+    # One row per chain, not per stage: the stages of a station-day are one
+    # position and settle once, so this re-scores the position as the last
+    # stage left it.  Reading every stage row here would write a settlement
+    # per stage and rebuild the three-book account this ledger no longer
+    # keeps -- against a single truth, which is how the same event came to
+    # be charged three times.
     rows = conn.execute(
         "SELECT p.position_id, p.station_id, p.event_date, p.stage,"
-        " p.decision_at_utc, p.window_buckets_json, p.win_probability,"
-        " p.stake_usdc, p.shares, p.leg_shares_json, p.center_c,"
+        " p.decision_at_utc, p.chain_shares_json, p.leg_shares_json,"
+        " p.chain_stake_usdc, p.stake_usdc, p.shares, p.probabilities_json,"
+        " p.win_probability, p.center_c,"
         " s.settlement_id, s.truth_content_sha256, s.settled_tmax_c"
         " FROM paper_trade_position p"
+        " JOIN (SELECT station_id, event_date, MAX(decision_at_utc) AS last"
+        "       FROM paper_trade_position GROUP BY station_id, event_date) t"
+        "   ON t.station_id = p.station_id AND t.event_date = p.event_date"
+        "  AND t.last = p.decision_at_utc"
         " LEFT JOIN paper_trade_settlement s"
         "   ON s.position_id = p.position_id"
     ).fetchall()
@@ -1604,7 +1687,8 @@ def _rescore_settlements(
     for row in rows:
         (
             position_id, station_id, event_date, stage, decision_at_utc,
-            window_json, win_probability, stake, shares, leg_shares_json,
+            chain_shares_json, leg_shares_json, chain_stake, stage_stake,
+            stage_shares, probabilities_json, stage_win_probability,
             center_c, settlement_id, bound_sha, settled_tmax_c,
         ) = row
         standing = truth.get((str(station_id), str(event_date)))
@@ -1640,18 +1724,41 @@ def _rescore_settlements(
         if not ladder:
             counts["settlement_ladder_missing"] += 1
             continue
-        window = list(json.loads(window_json or "[]"))
+        # The accumulated position, falling back to this stage's own legs for
+        # a row written before the chain columns existed -- a one-stage chain
+        # is the same thing either way.
         per_leg = {
             str(bucket): float(value)
             for bucket, value in (
-                json.loads(leg_shares_json or "{}") or {}
+                json.loads(chain_shares_json or leg_shares_json or "{}") or {}
             ).items()
         }
+        if not per_leg:
+            counts["settlement_position_empty"] += 1
+            continue
+        stake = float(
+            chain_stake if chain_stake is not None else stage_stake
+        )
+        ordinals = {str(b): int(o) for b, o, _l, _u, _p in ladder}
+        window = sorted(per_leg, key=lambda b: ordinals.get(b, 0))
+        probabilities = json.loads(probabilities_json or "{}") or {}
+        win_probability = sum(
+            float(probabilities.get(bucket, 0.0)) for bucket in per_leg
+        ) or float(stage_win_probability)
+        expected_payout = sum(
+            float(probabilities.get(bucket, 0.0)) * quantity
+            for bucket, quantity in per_leg.items()
+        )
+        shares = (
+            expected_payout / max(win_probability, 1e-9)
+            if expected_payout > 0
+            else float(stage_shares)
+        )
         scored = _score_settlement(
             ladder=ladder,
             window=window,
-            stake=float(stake),
-            shares=float(shares),
+            stake=stake,
+            shares=shares,
             per_leg=per_leg,
             center_c=center_c,
             truth_c=standing.tmax_c,
@@ -1663,7 +1770,7 @@ def _rescore_settlements(
             # that is no longer the truth must not survive as if it were.
             counts["truth_outside_book"] += 1
             if settlement_id is not None:
-                drop.append((station_id, event_date, stage))
+                drop.append((station_id, event_date))
                 counts["settlement_dropped"] += 1
             continue
         identity = {
@@ -1685,6 +1792,7 @@ def _rescore_settlements(
             scored.bucket_distance,
             datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             standing.revision_no, standing.content_sha256,
+            stake / shares if shares > 0 else None,
         ))
         counts[
             "settlement_rescored" if settlement_id is not None
@@ -1706,14 +1814,14 @@ def _rescore_settlements(
     # ``settlement_id`` whenever the value moved (the id hashes the truth), so
     # the incoming row can collide on the primary key or on the station-day
     # uniqueness, and only one of those can be an upsert target.  Keyed on the
-    # station-day rather than the position, because that is the uniqueness the
-    # insert has to satisfy -- a settlement left behind by a position that is
-    # no longer there would be invisible to the scan above and would collide.
+    # station-day alone -- one chain settles once, and the stage it carries is
+    # whichever one last topped the position up, which can move between passes
+    # without the day's account changing hands.
     if drop or write:
         conn.executemany(
             "DELETE FROM paper_trade_settlement"
-            " WHERE station_id=? AND event_date=? AND stage=?",
-            drop + [(row[2], row[3], row[4]) for row in write],
+            " WHERE station_id=? AND event_date=?",
+            drop + [(row[2], row[3]) for row in write],
         )
     if write:
         conn.executemany(
@@ -1722,8 +1830,9 @@ def _rescore_settlements(
             " settled_tmax_c, settled_bucket, hit, stake_usdc,"
             " payout_usdc, pnl_usdc, claimed_win_probability,"
             " center_error_c, bucket_distance, settled_at_utc,"
-            " truth_revision_no, truth_content_sha256"
-            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " truth_revision_no, truth_content_sha256,"
+            " basket_all_in_cost"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             write,
         )
     conn.commit()
@@ -1796,12 +1905,12 @@ def backfill(
     pending_positions: list[tuple] = []
     pending_settlements: list[tuple] = []
     pending_refusals: list[tuple] = []
+    pending_chain_resets: list[tuple[str, str]] = []
     by_day: dict[str, list[str]] = defaultdict(list)
     for station_id, event_date in scopes:
         by_day[str(event_date)].append(str(station_id))
     for event_date in sorted(by_day):
-        day_pnl: dict[str, float] = defaultdict(float)
-        day_staked: dict[str, float] = defaultdict(float)
+        day_pnl = 0.0
         for station_id in sorted(by_day[event_date]):
             # Ask the cheap question first.  Resolving a stage's opening
             # distribution walks its whole history looking for the earliest
@@ -1831,9 +1940,41 @@ def backfill(
             if present and present <= seated:
                 counts["already_recorded"] += len(present)
                 continue
+            # A chain is walked whole or not at all.  A top-up is priced
+            # against what the position already holds, so replaying P1 on
+            # its own -- with P0's rows left in place and its shares unknown
+            # to this pass -- would size the top-up as if the chain were
+            # empty.  Rows for the day are dropped in the write burst and
+            # rewritten from P0 forward.
+            if seated:
+                pending_chain_resets.append((station_id, event_date))
+                counts["chain_replayed"] += 1
+            # The position this station-day holds, built up stage by stage.
+            # Shares per bucket, what they cost, and the ladder the last
+            # stage to act was working from -- settlement reads all three.
+            held: dict[str, float] = {}
+            chain_stake = 0.0
+            chain_probabilities: dict[str, float] = {}
+            chain_ladder: list = []
+            chain_center_c: float | None = None
+            chain_win_probability = 0.0
+            chain_credible = False
+            chain_opened_at = ""
+            chain_position_id = ""
+            chain_last_stage = ""
             for stage in (s for s in STAGES if s in present):
-                if stage in seated:
-                    counts["already_recorded"] += 1
+                # Only P0 opens.  A later stage on a day the position was
+                # never opened is not a bet this strategy would have held --
+                # under three books it was, and that is where a third of the
+                # recorded P1 rows came from.
+                if stage != "P0" and not held:
+                    counts["chain_never_opened"] += 1
+                    pending_refusals.append((
+                        station_id, event_date, stage, "chain_never_opened",
+                        "P0 未建仓，本阶段无仓可加", 0, "",
+                        datetime.now(timezone.utc)
+                        .isoformat().replace("+00:00", "Z"),
+                    ))
                     continue
                 # Why this stage has no seat, kept as the walk goes so the
                 # last cycle's answer is the one the page gets told.  It starts
@@ -1980,22 +2121,33 @@ def backfill(
                         continue
                     seat = priced_windows[0]
                     # Sized off the book as it stood when the day opened, and
-                    # never beyond the equity this day has left to deploy.
-                    equity_at_open = equity[stage]
+                    # never beyond what the per-scope cap leaves this chain.
+                    # The cap is the station-day's, so a top-up spends what
+                    # the opening left rather than a fresh allowance of its
+                    # own -- three stages each taking 2% is a 6% position in
+                    # one outcome, which is the three-book reading wearing
+                    # the cap's clothes.
+                    equity_at_open = equity
                     fraction, stake = _kelly_stake(
                         win_probability=float(seat["win_probability"]),
                         cost=float(seat["all_in_price"]),
                         equity=equity_at_open,
                     )
                     stake = min(
-                        stake, max(0.0, equity_at_open - day_staked[stage])
+                        stake,
+                        max(
+                            0.0,
+                            equity_at_open * MAX_STAKE_FRACTION_PER_SCOPE
+                            - chain_stake,
+                        ),
                     )
                     if stake <= 0.0:
                         refusal = (
                             "no_positive_kelly",
-                            "概率 %.3f · 成本 %.3f" % (
+                            "概率 %.3f · 成本 %.3f%s" % (
                                 float(seat["win_probability"]),
                                 float(seat["all_in_price"]),
+                                "" if not held else " · 本链额度已用尽",
                             ),
                             cycles, payload["decision_at_utc"],
                         )
@@ -2191,6 +2343,42 @@ def backfill(
                     # selection, so it has to stay auditable even though the
                     # recorded window is now whatever actually filled.
                     posted_buckets = list(seat["buckets"])
+                    # Top-ups only add.  The stage chose a target position;
+                    # what it may buy is the part of that target the chain
+                    # does not already hold, and a rung it wants less of
+                    # than it has is simply left alone (user ruling,
+                    # 2026-08-18).  P0 opens with an empty book, so this is
+                    # the identity there and binds only on the later stages.
+                    held_before = {
+                        bucket: held[bucket]
+                        for bucket in seat["buckets"] if bucket in held
+                    }
+                    if held:
+                        topped: list[float] = []
+                        spend = 0.0
+                        for leg, bucket, want in zip(
+                            legs, seat["buckets"], leg_shares
+                        ):
+                            delta = max(
+                                0.0, float(want) - held.get(bucket, 0.0)
+                            )
+                            if delta <= 0.0:
+                                topped.append(0.0)
+                                continue
+                            got, paid = _walk_ask_shares(leg, delta)
+                            topped.append(got)
+                            spend += paid
+                        if sum(topped) <= 0.0:
+                            refusal = (
+                                "no_top_up_needed",
+                                "本阶段目标 %s 已在仓内" % "+".join(
+                                    seat["buckets"]
+                                ),
+                                cycles, payload["decision_at_utc"],
+                            )
+                            continue
+                        leg_shares = topped
+                        stake = spend * (1.0 + FEE_RATE)
                     # The order as posted, leg by leg, kept beside the one
                     # that came back.  Progressive entry overwrites
                     # ``leg_shares`` and ``stake`` with the filled part a
@@ -2290,10 +2478,21 @@ def backfill(
                     # against a bankroll its own wins are barred from feeding
                     # would let the phantom side crowd out the real one.
                     credible = all_in_cost >= DUST_COST_FLOOR
-                    if credible:
-                        day_staked[stage] += stake
-                    else:
+                    if not credible:
                         counts["dust_fill_excluded_from_equity"] += 1
+                    # The position this station-day now holds.  A stage adds
+                    # to it; nothing here ever takes away.  Everything the
+                    # chain settles on is read off these, not off the stage
+                    # that happened to act last.
+                    for bucket, quantity in per_leg.items():
+                        held[bucket] = held.get(bucket, 0.0) + float(quantity)
+                    chain_stake += stake
+                    chain_probabilities = probabilities
+                    chain_ladder = payload["buckets"]
+                    chain_center_c = payload.get("center_c")
+                    chain_last_stage = stage
+                    if not chain_opened_at:
+                        chain_opened_at = payload["decision_at_utc"]
                     identity = {
                         "station_id": station_id,
                         "event_date": event_date,
@@ -2303,6 +2502,7 @@ def backfill(
                         "stake_usdc": round(stake, 6),
                     }
                     position_id = "paper-pos-" + content_sha256(identity)[:24]
+                    chain_position_id = position_id
                     pending_positions.append(
                         (
                             position_id, station_id, event_date, stage,
@@ -2329,51 +2529,15 @@ def backfill(
                             json.dumps(posted_buckets, ensure_ascii=False),
                             json.dumps(intended_legs, sort_keys=True),
                             intended_stake,
+                            json.dumps(held_before, sort_keys=True),
+                            json.dumps(held, sort_keys=True),
+                            chain_stake,
                         )
                     )
                     counts["positions"] += 1
                     counts["entry_cycle_%s" % (
                         "first" if cycles == 1 else "later"
                     )] += 1
-                    standing = truth.get((station_id, event_date))
-                    if standing is None:
-                        counts["open_unsettled"] += 1
-                        break
-                    scored = _score_settlement(
-                        ladder=payload["buckets"],
-                        window=seat["buckets"],
-                        stake=stake,
-                        shares=shares,
-                        per_leg=per_leg,
-                        center_c=payload.get("center_c"),
-                        truth_c=standing.tmax_c,
-                    )
-                    if scored is None:
-                        counts["truth_outside_book"] += 1
-                        break
-                    pending_settlements.append(
-                        (
-                            "paper-set-" + content_sha256(
-                                {**identity, "truth": standing.tmax_c}
-                            )[:24],
-                            position_id, station_id, event_date, stage,
-                            standing.tmax_c, scored.settled_bucket,
-                            scored.hit, stake, scored.payout_usdc,
-                            scored.pnl_usdc,
-                            float(seat["win_probability"]),
-                            scored.center_error_c, scored.bucket_distance,
-                            datetime.now(timezone.utc)
-                            .isoformat().replace("+00:00", "Z"),
-                            # The revision this score was struck against.
-                            # Without it the next sweep cannot tell a seat it
-                            # scored correctly from one whose truth has since
-                            # been corrected under it.
-                            standing.revision_no, standing.content_sha256,
-                        )
-                    )
-                    counts["settlements"] += 1
-                    if credible:
-                        day_pnl[stage] += scored.pnl_usdc
                     break
                 if not opened:
                     counts[refusal[0]] += 1
@@ -2385,6 +2549,82 @@ def backfill(
                             .isoformat().replace("+00:00", "Z"),
                         )
                     )
+            # The chain is done adding.  One position, one settlement: the
+            # truth lands once, and scoring each stage against it separately
+            # is what charged 40 of 152 settled station-days two and three
+            # times over.  What settles is the accumulated position, not the
+            # window the last stage happened to choose.
+            if not held:
+                continue
+            chain_win_probability = sum(
+                float(chain_probabilities.get(bucket, 0.0)) for bucket in held
+            )
+            chain_expected_payout = sum(
+                float(chain_probabilities.get(bucket, 0.0)) * quantity
+                for bucket, quantity in held.items()
+            )
+            chain_shares = chain_expected_payout / max(
+                chain_win_probability, 1e-9
+            )
+            chain_cost = (
+                chain_stake / chain_shares if chain_shares > 0 else 0.0
+            )
+            chain_credible = chain_cost >= DUST_COST_FLOOR
+            standing = truth.get((station_id, event_date))
+            if standing is None:
+                counts["open_unsettled"] += 1
+                continue
+            chain_ordinals = {
+                str(row[0]): int(row[1]) for row in chain_ladder
+            }
+            chain_window = sorted(
+                held, key=lambda bucket: chain_ordinals.get(bucket, 0)
+            )
+            scored = _score_settlement(
+                ladder=chain_ladder,
+                window=chain_window,
+                stake=chain_stake,
+                shares=chain_shares,
+                per_leg=held,
+                center_c=chain_center_c,
+                truth_c=standing.tmax_c,
+            )
+            if scored is None:
+                counts["truth_outside_book"] += 1
+                continue
+            pending_settlements.append(
+                (
+                    "paper-set-" + content_sha256({
+                        "station_id": station_id,
+                        "event_date": event_date,
+                        "chain_opened_at": chain_opened_at,
+                        "window": chain_window,
+                        "stake_usdc": round(chain_stake, 6),
+                        "truth": standing.tmax_c,
+                    })[:24],
+                    chain_position_id, station_id, event_date,
+                    # The stage that last added to the position.  A chain is
+                    # one bet, so this says how far it had been adjusted when
+                    # the day resolved, not which of three books it belonged
+                    # to.
+                    chain_last_stage or "P0",
+                    standing.tmax_c, scored.settled_bucket,
+                    scored.hit, chain_stake, scored.payout_usdc,
+                    scored.pnl_usdc,
+                    chain_win_probability,
+                    scored.center_error_c, scored.bucket_distance,
+                    datetime.now(timezone.utc)
+                    .isoformat().replace("+00:00", "Z"),
+                    # The revision this score was struck against.  Without it
+                    # the next sweep cannot tell a seat it scored correctly
+                    # from one whose truth has since been corrected under it.
+                    standing.revision_no, standing.content_sha256,
+                    chain_cost,
+                )
+            )
+            counts["settlements"] += 1
+            if chain_credible:
+                day_pnl += scored.pnl_usdc
         # The day is over: realise it, then let the next day size off the
         # book it actually leaves behind.
         #
@@ -2397,27 +2637,33 @@ def backfill(
         # seat came to be staked at exactly 20.00 (2% of 1000) on a day the
         # book had drawn down to 726.  Same filter as the report: only fills
         # at or above the dust floor compound.
-        realised = {
-            str(row[0]): float(row[1] or 0.0)
-            for row in conn.execute(
-                "SELECT s.stage, SUM(s.pnl_usdc)"
-                " FROM paper_trade_settlement s"
-                " JOIN paper_trade_position p USING(position_id)"
-                " WHERE s.event_date=? AND p.all_in_cost>=?"
-                " GROUP BY s.stage",
-                (event_date, DUST_COST_FLOOR),
-            )
+        #
+        # Chains this pass replayed are the one case where the two sets are
+        # not disjoint: their old settlement is still in the table and their
+        # new one is in ``day_pnl``.  Counting the recorded side of a chain
+        # that has just been rewritten would compound a P&L this pass has
+        # already superseded, so those stations are read out of the query
+        # and taken from ``day_pnl`` alone.
+        replayed_today = {
+            station for station, day in pending_chain_resets
+            if day == event_date
         }
+        realised = 0.0
+        for station, pnl in conn.execute(
+            "SELECT s.station_id, SUM(s.pnl_usdc)"
+            " FROM paper_trade_settlement s"
+            " JOIN paper_trade_position p USING(position_id)"
+            " WHERE s.event_date=? AND p.all_in_cost>=?"
+            " GROUP BY s.station_id",
+            (event_date, DUST_COST_FLOOR),
+        ):
+            if str(station) in replayed_today:
+                continue
+            realised += float(pnl or 0.0)
         # Settlements this pass created are still buffered for the final
         # write burst, so they are absent from the query above and are added
-        # on top rather than replacing it.  The two sets are disjoint by
-        # construction: a scope is either already recorded (in the table) or
-        # newly seated (in ``day_pnl``), never both.
-        for stage in STAGES:
-            equity[stage] = max(
-                0.0,
-                equity[stage] + realised.get(stage, 0.0) + day_pnl[stage],
-            )
+        # on top rather than replacing it.
+        equity = max(0.0, equity + realised + day_pnl)
     # Every write in one short burst at the end.  The scan above reads most of
     # a ten-gigabyte database and takes about half a minute; holding the write
     # lock across it is what cost the resident whole cycles to
@@ -2425,6 +2671,22 @@ def backfill(
     # "a concurrent maintenance writer must not consume a whole production
     # cadence" is its own stated rule.  Reads do not block it, so the only
     # thing that has to be brief is this, and a few dozen inserts are.
+    # Replayed chains first: their rows were written stage by stage under a
+    # reading where each stage was its own bet, and the rewrite below is one
+    # position built up across them.  ``INSERT OR IGNORE`` would keep the old
+    # rows and silently drop the new ones.
+    if pending_chain_resets:
+        conn.executemany(
+            "DELETE FROM paper_trade_settlement WHERE position_id IN ("
+            "  SELECT position_id FROM paper_trade_position"
+            "  WHERE station_id=? AND event_date=?)",
+            pending_chain_resets,
+        )
+        conn.executemany(
+            "DELETE FROM paper_trade_position"
+            " WHERE station_id=? AND event_date=?",
+            pending_chain_resets,
+        )
     if pending_positions:
         conn.executemany(
             "INSERT OR IGNORE INTO paper_trade_position ("
@@ -2436,9 +2698,10 @@ def backfill(
             " probabilities_json, prices_json, center_c,"
             " refused_window_count, content_sha256, selection_rule_sha256,"
             " selection_rule_label, leg_shares_json, resting_fill_json,"
-            " posted_buckets_json, intended_legs_json, intended_stake_usdc"
+            " posted_buckets_json, intended_legs_json, intended_stake_usdc,"
+            " held_before_json, chain_shares_json, chain_stake_usdc"
             ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
-            "?,?)",
+            "?,?,?,?,?)",
             pending_positions,
         )
     if pending_settlements:
@@ -2448,8 +2711,9 @@ def backfill(
             " settled_tmax_c, settled_bucket, hit, stake_usdc,"
             " payout_usdc, pnl_usdc, claimed_win_probability,"
             " center_error_c, bucket_distance, settled_at_utc,"
-            " truth_revision_no, truth_content_sha256"
-            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " truth_revision_no, truth_content_sha256,"
+            " basket_all_in_cost"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             pending_settlements,
         )
     # A refusal is the current answer for a scope, not an event log: the next
@@ -2506,20 +2770,37 @@ def _fill_slice(rows: list) -> dict[str, Any]:
 def report(conn: sqlite3.Connection) -> dict[str, Any]:
     ensure_schema(conn)
     stages: dict[str, Any] = {}
+    # Grouped by the stage that last topped the position up, which is not the
+    # same question the three-book ledger answered.  These slices partition
+    # one book: a chain appears in exactly one of them, and they sum to the
+    # book below.  "How far had this position been adjusted when the day
+    # resolved" is what a stage means now.
     for stage in STAGES:
         rows = conn.execute(
             "SELECT s.hit, s.stake_usdc, s.payout_usdc, s.pnl_usdc,"
             " s.claimed_win_probability, s.center_error_c,"
-            " s.bucket_distance, p.all_in_cost"
+            " s.bucket_distance,"
+            " COALESCE(s.basket_all_in_cost, p.all_in_cost)"
             " FROM paper_trade_settlement s"
             " JOIN paper_trade_position p ON p.position_id=s.position_id"
             " WHERE s.stage=? ORDER BY s.event_date",
             (stage,),
         ).fetchall()
+        # A chain is open when its station-day has no settlement at all, and
+        # it belongs to the slice of the stage that last topped it up -- the
+        # same partition the settled counts use, so the three slices sum to
+        # the book's open count instead of counting one position three times.
         open_positions = conn.execute(
-            "SELECT COUNT(*) FROM paper_trade_position p WHERE p.stage=?"
-            " AND NOT EXISTS (SELECT 1 FROM paper_trade_settlement s"
-            "  WHERE s.position_id=p.position_id)",
+            "SELECT COUNT(*) FROM paper_trade_position p"
+            " JOIN (SELECT station_id, event_date,"
+            "         MAX(decision_at_utc) AS last"
+            "       FROM paper_trade_position GROUP BY 1, 2) t"
+            "   ON t.station_id=p.station_id AND t.event_date=p.event_date"
+            "  AND t.last=p.decision_at_utc"
+            " WHERE p.stage=? AND NOT EXISTS ("
+            "   SELECT 1 FROM paper_trade_settlement s"
+            "   WHERE s.station_id=p.station_id"
+            "     AND s.event_date=p.event_date)",
             (stage,),
         ).fetchone()[0]
         if not rows:
@@ -2533,7 +2814,6 @@ def report(conn: sqlite3.Connection) -> dict[str, Any]:
         claimed = sum(float(r[4]) for r in rows) / len(rows)
         errors = [float(r[5]) for r in rows if r[5] is not None]
         distances = [int(r[6]) for r in rows if r[6] is not None]
-        equity = INITIAL_CAPITAL_USDC + pnl
         stages[stage] = {
             "settled_count": len(rows),
             "open_positions": open_positions,
@@ -2546,8 +2826,9 @@ def report(conn: sqlite3.Connection) -> dict[str, Any]:
             "staked_usdc": staked,
             "pnl_usdc": pnl,
             "return_on_stake": pnl / staked if staked > 0 else None,
-            "equity_usdc": equity,
-            "return_on_capital": pnl / INITIAL_CAPITAL_USDC,
+            # No equity of its own.  A slice is part of one book, and giving
+            # each an initial capital is exactly the three-book reading this
+            # ledger was corrected out of.
             "center_bias_c": (
                 sum(errors) / len(errors) if errors else None
             ),
@@ -2571,13 +2852,52 @@ def report(conn: sqlite3.Connection) -> dict[str, Any]:
                 [r for r in rows if float(r[7]) < DUST_COST_FLOOR]
             ),
         }
+    # The book itself: one bankroll, one row per station-day.
+    book_rows = conn.execute(
+        "SELECT s.hit, s.stake_usdc, s.pnl_usdc, s.claimed_win_probability,"
+        " COALESCE(s.basket_all_in_cost, p.all_in_cost)"
+        " FROM paper_trade_settlement s"
+        " JOIN paper_trade_position p ON p.position_id=s.position_id"
+        " ORDER BY s.event_date"
+    ).fetchall()
+    credible_rows = [
+        row for row in book_rows
+        if row[4] is not None and float(row[4]) >= DUST_COST_FLOOR
+    ]
+    book_pnl = sum(float(r[2]) for r in credible_rows)
+    book_staked = sum(float(r[1]) for r in credible_rows)
+    book_hits = sum(int(r[0]) for r in credible_rows)
+    open_chains = conn.execute(
+        "SELECT COUNT(*) FROM ("
+        "  SELECT station_id, event_date FROM paper_trade_position p"
+        "  WHERE NOT EXISTS (SELECT 1 FROM paper_trade_settlement s"
+        "    WHERE s.station_id=p.station_id AND s.event_date=p.event_date)"
+        "  GROUP BY station_id, event_date)"
+    ).fetchone()[0]
     return {
         "schema": "paper_trading_report_v1",
         "initial_capital_usdc": INITIAL_CAPITAL_USDC,
         "kelly_fraction": KELLY_FRACTION,
         "max_stake_fraction_per_scope": MAX_STAKE_FRACTION_PER_SCOPE,
+        "book_model": BOOK_MODEL,
         "generated_at_utc": datetime.now(timezone.utc)
         .isoformat().replace("+00:00", "Z"),
+        "book": {
+            "settled_chains": len(credible_rows),
+            "open_chains": open_chains,
+            "hit_count": book_hits,
+            "hit_rate": (
+                book_hits / len(credible_rows) if credible_rows else None
+            ),
+            "staked_usdc": book_staked,
+            "pnl_usdc": book_pnl,
+            "return_on_stake": (
+                book_pnl / book_staked if book_staked > 0 else None
+            ),
+            "equity_usdc": INITIAL_CAPITAL_USDC + book_pnl,
+            "return_on_capital": book_pnl / INITIAL_CAPITAL_USDC,
+            "dust_chains_excluded": len(book_rows) - len(credible_rows),
+        },
         "stages": stages,
     }
 

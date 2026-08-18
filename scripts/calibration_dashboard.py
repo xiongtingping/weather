@@ -2733,16 +2733,21 @@ function roster(){
   // three-rung floor is a rule about what was posted, so a cell that shows
   // only the fill cannot be read against it -- which is how one filled rung
   // came to look like a one-rung basket that should never have been chosen.
-  const entryCell=(e)=>{
+  // Charter 50a gives P1 a floor of two rungs, not three: the ladder
+  // converges as the day resolves and the tail rung is still carrying the
+  // insurance.  A flat three-rung test marks every legitimate P1 seat as a
+  // violation.
+  const FLOOR={"P0":3,"P0-M":3,"P1":2};
+  const entryCell=(e,stage)=>{
     if(!e||!e.posted_leg_count) return "";
     const legs=e.legs.map(l=>l.empty
       ? `<span class="muted" style="text-decoration:line-through">${short(l.bucket)}</span>`
       : `<span>${short(l.bucket)}</span>`).join("+");
-    const floorBad=e.posted_leg_count<3;
+    const floorBad=e.posted_leg_count<(FLOOR[stage]||3);
     const full=e.filled_leg_count===e.posted_leg_count;
     const legLine=`<div class="mono" style="font-size:11px">${legs}
       <span class="muted">${e.posted_leg_count}腿→${e.filled_leg_count}腿</span>
-      ${floorBad?`<span class="pill red" title="宪章 50/50a：挂单必须≥3桶">挂单不足三桶</span>`:""}
+      ${floorBad?`<span class="pill red" title="宪章 50/50a：${stage} 的挂单下界是 ${FLOOR[stage]||3} 桶">挂单不足${FLOOR[stage]||3}桶</span>`:""}
       ${e.gapped?`<span class="pill amber" title="选桶层强制连续，出洞必是成交造成的">缺腿</span>`:""}</div>`;
     // Share completion and stake completion disagree whenever the legs that
     // missed were not the ones carrying the money, so both are shown; the
@@ -2764,10 +2769,16 @@ function roster(){
         <th>腿</th><th>目标份</th><th>成交份</th><th>档</th><th>均价</th>
       </tr></thead><tbody>${rows}</tbody></table></details>`;
   };
-  const cell=(s,extra,refusal)=>{
+  const cell=(s,extra,refusal,stage)=>{
     if(!s) return `<td class="muted">—${why(refusal)}${extra||""}</td>`;
     const w=s.window.map(short).join("+");
-    const res=s.hit==null?"":(s.hit?` <span class="up">中</span>`:` <span class="down">未中</span>`);
+    // The chain settles once, and the stage that last topped the position
+    // up is the one that carries the result.  Marking every stage of a
+    // chain with the same hit reads as three bets that all won.
+    const res=s.hit==null?""
+      :(s.chain_tail
+        ?(s.hit?` <span class="up">中</span>`:` <span class="down">未中</span>`)
+        :` <span class="muted" title="本阶段是加仓，结算记在本链最后一次加仓上">并入本链</span>`);
     // "Dust offer" is trading jargon and reads as nothing in Chinese; the
     // thing itself is a price that exists on the book but cannot be filled.
     const dust=s.dust_offer?` <span class="pill red">虚价</span>`:"";
@@ -2785,7 +2796,7 @@ function roster(){
     return `<td><div class="mono">${w}</div>${rung}${tag}
       <div class="muted">${(s.win_probability*100).toFixed(0)}%
       @ ${s.all_in_cost.toFixed(3)} · ${s.odds==null?"—":s.odds.toFixed(1)+"x"}${res}${dust}</div>
-      ${entryCell(s.entry)}${extra||""}</td>`;
+      ${entryCell(s.entry,stage)}${extra||""}</td>`;
   };
   const row=(e)=>{
     const any=e.stages.P0||e.stages["P0-M"]||e.stages.P1;
@@ -2805,8 +2816,12 @@ function roster(){
        ${path.length<2
          ? `横梁未动 <span class="mono">${path.length?short(path[0]):"—"}</span>`
          : `横梁 <span class="mono">${path.map(short).join(" → ")}</span>`}</div>`;
+    // One number for the station-day, because it held one position.  The
+    // stake beside it is everything the chain spent, opening and top-ups.
     const pnl=e.realized_usdc==null?'<span class="muted">—</span>':
-      `<span class="${e.realized_usdc>=0?"up":"down"}">${e.realized_usdc>=0?"+":""}${e.realized_usdc.toFixed(2)}</span>`;
+      `<span class="${e.realized_usdc>=0?"up":"down"}">${e.realized_usdc>=0?"+":""}${e.realized_usdc.toFixed(2)}</span>`
+      +(e.chain_stake_usdc==null?"":
+        `<div class="muted" style="font-size:11px">投入 ${e.chain_stake_usdc.toFixed(2)}</div>`);
     // Only what happened at this station on this day.  The averages that
     // used to sit here -- coverage, ask total, odds, EV, hit rate,
     // calibration -- are computed over the station's whole window, so the
@@ -2816,9 +2831,9 @@ function roster(){
     return `<tr>
       <td><div class="mono">${h(e.station_id)}</div>
         <div class="muted">${h(e.station_label)}</div></td>
-      ${cell(e.stages.P0,"",(e.refusals||{}).P0)}
-      ${cell(e.stages["P0-M"],taf,(e.refusals||{})["P0-M"])}
-      ${cell(e.stages.P1,drift,(e.refusals||{}).P1)}
+      ${cell(e.stages.P0,"",(e.refusals||{}).P0,"P0")}
+      ${cell(e.stages["P0-M"],taf,(e.refusals||{})["P0-M"],"P0-M")}
+      ${cell(e.stages.P1,drift,(e.refusals||{}).P1,"P1")}
       <td>${side}${note}</td>
       <td class="mono">${e.settled_tmax_c==null?"—":e.settled_tmax_c.toFixed(1)+"°"}</td>
       <td class="mono">${pnl}</td></tr>`;
@@ -2849,14 +2864,16 @@ function roster(){
     // is the day's own number -- not a per-station curiosity.
     const seats=rows.flatMap(e=>["P0","P0-M","P1"]
       .map(k=>e.stages[k]).filter(v=>v&&v.entry&&v.entry.posted_leg_count));
-    const short3=seats.filter(v=>v.entry.posted_leg_count<3).length;
+    const short3=rows.flatMap(e=>["P0","P0-M","P1"].map(k=>[k,e.stages[k]]))
+      .filter(([k,v])=>v&&v.entry&&v.entry.posted_leg_count
+        &&v.entry.posted_leg_count<(FLOOR[k]||3)).length;
     const partial=seats.filter(v=>
       v.entry.filled_leg_count<v.entry.posted_leg_count).length;
     const want=seats.reduce((s,v)=>s+(v.entry.intended_stake_usdc||0),0);
     const got=seats.reduce((s,v)=>s+v.stake_usdc,0);
     const fill=seats.length?` · 部分成交 ${partial}/${seats.length} ·
       计划 ${usd2(want)}→实投 ${usd2(got)}（${pctS(want>0?got/want:null)}）${
-        short3?`<span class="pill red">挂单不足三桶 ${short3}</span>`:""}`:"";
+        short3?`<span class="pill red">挂单低于本阶段下界 ${short3}</span>`:""}`:"";
     return `<details class="card" ${open?"open":""}>
       <summary><b class="mono">${h(day)}</b>
         <span class="muted">${rows.length} 站 · P0 建仓 ${p0} · 任一阶段有座位 ${seated}${ruleNote}${fill}</span></summary>
@@ -2882,6 +2899,12 @@ function roster(){
   展开「逐腿」是每条腿的目标份数 / 成交份数 / 成交档位 / 均价。
   空格里写的是账本自己给出的拒绝理由，不再统一算作「未入座」。
   每行只讲这一天：跨日均值在上一节。最新一天默认展开，更早的日期折叠在下方。</p>
+  <div class="why"><b>三个阶段是一个仓位、一本账。</b>P0 建仓，P0-M 与 P1 在同一个仓位上
+  <b>加仓</b>（只加不减：可以加宽梯子、也可以把已有的一级买厚，但不卖回），
+  一个站日只结算一次，命中按<b>最终持仓</b>判。所以「实得」是整条链的一个数，
+  「投入」是开仓加历次加仓的总和；后面两个阶段的格子里写「并入本链」，
+  不是没结算，是结算记在本链最后一次加仓那一格。
+  同一个 2% 单站上限也管整条链——三个阶段各拿 2% 就是同一件事上押了 6%。</div>
   <div class="why"><b>桶数下界管的是挂单那一栏。</b>宪章 50/50a 要求席位≥3 桶，
   那是选桶层的规则——划掉的桶照样算数，所以「挂 3 腿成 1 腿」不违宪，标黄；
   只有<b>挂单</b>本身低于 3 桶才标红。建仓是渐进的：每条腿在买卖价之间挂 5 档，

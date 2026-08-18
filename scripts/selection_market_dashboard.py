@@ -228,10 +228,17 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         " s.hit, s.settled_tmax_c, s.settled_bucket, s.pnl_usdc,"
         " s.bucket_distance, s.center_error_c,"
         " p.posted_buckets_json, p.intended_legs_json, p.leg_shares_json,"
-        " p.resting_fill_json, p.intended_stake_usdc"
+        " p.resting_fill_json, p.intended_stake_usdc,"
+        " p.chain_shares_json, p.chain_stake_usdc, s.stage,"
+        " s.basket_all_in_cost"
         " FROM paper_trade_position p"
+        # Joined on the station-day, not the position: the three stages are
+        # one position and settle once, so every top-up in a chain reads the
+        # outcome the chain got.  Joined by position id, only the stage that
+        # happened to act last would show a settlement and the other rows
+        # would read as open forever.
         " LEFT JOIN paper_trade_settlement s"
-        " ON s.position_id = p.position_id"
+        " ON s.station_id = p.station_id AND s.event_date = p.event_date"
         " ORDER BY p.event_date DESC, p.station_id, p.stage"
     )
     for r in query:
@@ -309,6 +316,26 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             "lean_buckets": lean,
             "side": side,
             "dust_offer": cost < DUST_COST_FLOOR,
+            # The chain's outcome belongs to the chain, and it is carried by
+            # the stage that last topped the position up.  Every stage row
+            # can see it -- the join is on the station-day -- but only the
+            # tail row *is* it, so an average over stage rows does not count
+            # one settled position two or three times.  That double count is
+            # the three-book reading this ledger was corrected out of, and it
+            # would come straight back through a page that sums stage rows.
+            "chain_tail": bool(r[27]) and str(r[27]) == str(r[2]),
+            "chain_stake_usdc": (
+                float(r[26]) if r[26] is not None else stake
+            ),
+            "chain_all_in_cost": (
+                float(r[28]) if r[28] is not None else cost
+            ),
+            "chain_shares": {
+                str(bucket): float(value)
+                for bucket, value in (
+                    json.loads(r[25] or "{}") or {}
+                ).items()
+            },
             "settled": r[14] is not None,
             "hit": None if r[14] is None else int(r[14]),
             "settled_tmax_c": r[15],
@@ -656,11 +683,13 @@ def build_payload(db: Path) -> dict[str, Any]:
         by_side[row["side"]] += 1
 
     def _slice(subset: list[dict[str, Any]]) -> dict[str, Any]:
-        settled = [r for r in subset if r["settled"]]
+        # One row per chain: a settled position is counted where it
+        # settled, not once per stage that topped it up.
+        settled = [r for r in subset if r["settled"] and r["chain_tail"]]
         if not settled:
             return {"settled_count": 0, "position_count": len(subset)}
         hits = sum(int(r["hit"]) for r in settled)
-        staked = sum(r["stake_usdc"] for r in settled)
+        staked = sum(r["chain_stake_usdc"] for r in settled)
         pnl = sum(float(r["pnl_usdc"] or 0.0) for r in settled)
         claimed = sum(r["win_probability"] for r in settled) / len(settled)
         odds = [r["odds"] for r in settled if r["odds"] is not None]
@@ -835,6 +864,13 @@ def build_payload(db: Path) -> dict[str, Any]:
                     "pnl_usdc": row["pnl_usdc"],
                     "dust_offer": row["dust_offer"],
                     "settled_tmax_c": row["settled_tmax_c"],
+                    # The chain's own numbers, carried on every stage of it
+                    # so a cell can say what the whole position cost, and
+                    # flagged on the one stage that settled it so nothing
+                    # sums the same outcome twice.
+                    "chain_tail": row["chain_tail"],
+                    "chain_stake_usdc": row["chain_stake_usdc"],
+                    "chain_all_in_cost": row["chain_all_in_cost"],
                     # The order as posted beside the position that came
                     # back.  It belongs in the cell the seat is drawn in:
                     # read apart from the window it fills, "posted three,
@@ -853,9 +889,15 @@ def build_payload(db: Path) -> dict[str, Any]:
         entry["settled_tmax_c"] = next(
             (v["settled_tmax_c"] for v in settled), None
         )
+        # The station-day realised one number, whatever the chain did on the
+        # way there.  Summing the stage cells would report a day that opened
+        # at P0 and was topped up twice as three separate results.
+        tail = next((v for v in settled if v.get("chain_tail")), None)
         entry["realized_usdc"] = (
-            sum(float(v["pnl_usdc"] or 0.0) for v in settled)
-            if settled else None
+            None if tail is None else float(tail["pnl_usdc"] or 0.0)
+        )
+        entry["chain_stake_usdc"] = (
+            None if tail is None else float(tail["chain_stake_usdc"] or 0.0)
         )
         if entry["seated_stage_count"] == 0:
             recorded = entry["refusals"].get("P0") or next(
@@ -890,7 +932,9 @@ def build_payload(db: Path) -> dict[str, Any]:
         clean = [v for v in values if v is not None]
         return sum(clean) / len(clean) if clean else None
 
-    settled_credible = [r for r in credible_rows if r["settled"]]
+    settled_credible = [
+        r for r in credible_rows if r["settled"] and r["chain_tail"]
+    ]
     expected_usdc = sum(
         float(r["ev_usdc"] or 0.0) for r in settled_credible
     )
@@ -911,7 +955,9 @@ def build_payload(db: Path) -> dict[str, Any]:
             [r["seat_ask_total"] for r in credible_rows]
         ),
         "ev_per_usdc_mean": _mean([r["ev_per_usdc"] for r in credible_rows]),
-        "staked_usdc": sum(r["stake_usdc"] for r in settled_credible),
+        "staked_usdc": sum(
+            r["chain_stake_usdc"] for r in settled_credible
+        ),
         "expected_usdc": expected_usdc,
         "realized_usdc": realized_usdc,
         # The gap between what the model said the book was worth and what it
@@ -934,7 +980,9 @@ def build_payload(db: Path) -> dict[str, Any]:
     station_stats = []
     for station in sorted(per_station):
         subset = per_station[station]
-        settled = [r for r in subset if r["settled"]]
+        settled = [
+            r for r in subset if r["settled"] and r["chain_tail"]
+        ]
         hits = sum(int(r["hit"]) for r in settled)
         claimed = _mean([r["win_probability"] for r in settled])
         expected = sum(float(r["ev_usdc"] or 0.0) for r in settled)
@@ -966,7 +1014,9 @@ def build_payload(db: Path) -> dict[str, Any]:
                 (hits / len(settled)) / claimed
                 if settled and claimed else None
             ),
-            "staked_usdc": sum(r["stake_usdc"] for r in settled),
+            "staked_usdc": sum(
+                r["chain_stake_usdc"] for r in settled
+            ),
             "expected_usdc": expected,
             "realized_usdc": realized,
             "realization_ratio": (

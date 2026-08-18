@@ -90,7 +90,7 @@ def test_recorded_seats_obey_the_ladder_bounds() -> None:
 
 
 def test_only_credible_fills_bankroll_the_book() -> None:
-    """Phantom wins must not size real seats.
+    """Phantom wins must not size real seats, and one book must stay one.
 
     A basket bought under ``DUST_COST_FLOOR`` is a one-sided tail quote, and
     the report has always split the book on that line.  Sizing did not: the
@@ -101,8 +101,13 @@ def test_only_credible_fills_bankroll_the_book() -> None:
     was a real fill losing real money at nearly four times its right size.
 
     The invariant that catches it without re-running the sweep: replay the
-    compounding on credible settlements alone and no recorded stake may
-    exceed the per-scope cap against the equity its day opened with.
+    compounding on credible settlements alone and no station-day may exceed
+    the per-scope cap against the equity its day opened with.
+
+    Replayed on the chain, not the stage row (user ruling, 2026-08-18).  The
+    three stages are one position drawing on one bankroll, so what the cap
+    binds is everything the station-day spent -- three stages each taking 2%
+    is a 6% position in one outcome.
     """
 
     import sqlite3
@@ -113,18 +118,15 @@ def test_only_credible_fills_bankroll_the_book() -> None:
     source = (root / "scripts" / "paper_trading_ledger.py").read_text(
         encoding="utf-8"
     )
-    # The two places the split has to bite: what compounds, and what the day
-    # is allowed to deploy.
+    # The three places the model has to bite: what compounds, what a chain is
+    # allowed to deploy, and that a chain settles once.
     assert "credible = all_in_cost >= DUST_COST_FLOOR" in source
-    assert "if credible:\n                        day_staked[stage] += stake" in source
-    # The P&L now arrives from ``_score_settlement``, which the entry walk and
-    # the truth-revision re-score share so the two cannot value the same seat
-    # differently.  What this line guards is unchanged: only a credible fill
-    # compounds.
+    assert "chain_credible = chain_cost >= DUST_COST_FLOOR" in source
     assert (
-        "if credible:\n                        day_pnl[stage]"
-        " += scored.pnl_usdc" in source
+        "equity_at_open * MAX_STAKE_FRACTION_PER_SCOPE\n"
+        "                            - chain_stake," in source
     )
+    assert "if chain_credible:\n                day_pnl += scored.pnl_usdc" in source
 
     db = root / "data" / "bayes_basket_target_ssot.db"
     if not db.is_file():
@@ -132,13 +134,16 @@ def test_only_credible_fills_bankroll_the_book() -> None:
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
     try:
         rows = conn.execute(
-            "SELECT p.event_date, p.stage, p.stake_usdc, p.all_in_cost,"
-            " s.pnl_usdc"
+            "SELECT p.event_date, p.station_id, SUM(p.stake_usdc),"
+            " MAX(s.pnl_usdc), MAX(COALESCE(s.basket_all_in_cost,"
+            "  p.all_in_cost))"
             " FROM paper_trade_position p"
-            " LEFT JOIN paper_trade_settlement s USING(position_id)"
+            " LEFT JOIN paper_trade_settlement s"
+            "  ON s.station_id=p.station_id AND s.event_date=p.event_date"
             " WHERE p.selection_rule_sha256 = ("
             "  SELECT selection_rule_sha256 FROM paper_trade_position"
             "  ORDER BY decision_at_utc DESC LIMIT 1)"
+            " GROUP BY p.event_date, p.station_id"
             " ORDER BY p.event_date"
         ).fetchall()
     except sqlite3.DatabaseError:
@@ -149,24 +154,64 @@ def test_only_credible_fills_bankroll_the_book() -> None:
         return
 
     initial, cap, floor = 1000.0, 0.02, 0.01
-    equity: dict[str, float] = defaultdict(lambda: initial)
+    equity = initial
     by_day: dict[str, list] = defaultdict(list)
-    for event_date, stage, stake, cost, pnl in rows:
-        by_day[str(event_date)].append((str(stage), stake, cost, pnl))
+    for event_date, station_id, stake, pnl, cost in rows:
+        by_day[str(event_date)].append((str(station_id), stake, pnl, cost))
     for event_date in sorted(by_day):
-        realised: dict[str, float] = defaultdict(float)
-        for stage, stake, cost, pnl in by_day[event_date]:
-            opening = equity[stage]
-            assert float(stake) <= opening * cap + 1e-6, (
-                f"{stage} {event_date} staked {float(stake):.2f} against an "
-                f"opening equity of {opening:.2f} -- over the "
-                f"{cap:.0%} per-scope cap, which means the compounding fed "
-                f"on something the report calls a dust offer"
+        realised = 0.0
+        for station_id, stake, pnl, cost in by_day[event_date]:
+            assert float(stake) <= equity * cap + 1e-6, (
+                f"{station_id} {event_date} staked {float(stake):.2f} across "
+                f"its chain against an opening equity of {equity:.2f} -- over "
+                f"the {cap:.0%} per-scope cap, which means either the "
+                "compounding fed on a dust offer or a stage took an "
+                "allowance of its own"
             )
-            if pnl is not None and float(cost) >= floor:
-                realised[stage] += float(pnl)
-        for stage, amount in realised.items():
-            equity[stage] = max(0.0, equity[stage] + amount)
+            if pnl is not None and cost is not None and float(cost) >= floor:
+                realised += float(pnl)
+        equity = max(0.0, equity + realised)
+
+
+def test_a_station_day_settles_once() -> None:
+    """One position per station-day means one settlement against one truth.
+
+    Read as three books the ledger scored each stage separately: of 152
+    settled station-days, 40 were charged two and three times over for a
+    single event, and the three bankrolls together staked 2220 USDC out of a
+    nominal 1000.  The stage rows remain -- they are the top-ups -- but only
+    the chain settles.
+    """
+
+    import sqlite3
+    from pathlib import Path
+
+    db = (
+        Path(__file__).resolve().parents[1]
+        / "data"
+        / "bayes_basket_target_ssot.db"
+    )
+    if not db.is_file():
+        return
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
+    try:
+        doubled = conn.execute(
+            "SELECT station_id, event_date, COUNT(*) FROM ("
+            "  SELECT s.station_id, s.event_date FROM paper_trade_settlement s"
+            "  JOIN paper_trade_position p USING(position_id)"
+            "  WHERE p.selection_rule_sha256 = ("
+            "   SELECT selection_rule_sha256 FROM paper_trade_position"
+            "   ORDER BY decision_at_utc DESC LIMIT 1))"
+            " GROUP BY station_id, event_date HAVING COUNT(*) > 1"
+        ).fetchall()
+    except sqlite3.DatabaseError:
+        return
+    finally:
+        conn.close()
+    assert not doubled, (
+        "a station-day settled more than once: "
+        + ", ".join(f"{s} {d} x{n}" for s, d, n in doubled[:5])
+    )
 
 
 def test_an_incremental_window_opens_on_the_book_it_inherited() -> None:
@@ -226,16 +271,10 @@ def test_an_incremental_window_opens_on_the_book_it_inherited() -> None:
     )
 
     opened = _opening_equity(conn, earliest="2026-08-16")
-    assert opened["P1"] == INITIAL_CAPITAL_USDC - 275.0, (
+    assert opened == INITIAL_CAPITAL_USDC - 275.0, (
         "an incremental window must open on the realised book before it, "
-        f"got {opened['P1']}"
-    )
-    assert opened["P0"] == INITIAL_CAPITAL_USDC, (
-        "a stage with no history before the window opens at the initial "
-        "capital"
+        f"got {opened}"
     )
     # A rebuild has no floor and walks every day itself, so it starts where
     # the book started.
-    assert _opening_equity(conn, earliest="") == {
-        stage: INITIAL_CAPITAL_USDC for stage in ("P0", "P0-M", "P1")
-    }
+    assert _opening_equity(conn, earliest="") == INITIAL_CAPITAL_USDC
