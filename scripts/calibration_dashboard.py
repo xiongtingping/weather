@@ -2598,7 +2598,7 @@ function daily(){
   挂单，名义上有价、实际买不到，混进来会让当天的盈亏读不出意思。</p>
   <div class="why"><b>列的意思：</b>「位置」是相对市场偏上/一致/偏下的笔数；
   「均桶数」是当天座位平均几桶；「实现/声称」是命中率÷声称胜率，1.00× 表示概率说得准；
-  「赔率」是 (1−成本)/成本；「中心偏差」是模型中心减实测，正数表示我们偏热。</p>
+  「赔率」是 (1−成本)/成本；「中心偏差」是模型中心减实测，正数表示我们偏热。</div>
   <div class="card"><table><thead><tr>
     <th>事件日</th><th>站数</th><th>仓位</th><th>位置<br><span class="muted">上/平/下</span></th>
     <th>均桶数</th><th>已结算</th><th>命中率</th><th>声称</th><th>实现/声称</th>
@@ -3491,6 +3491,14 @@ document.querySelectorAll("table").forEach(makeSortable);
 // Consecutive blocks share a fold: three separate "说明" toggles in a row
 // is the same clutter in a smaller font.
 document.querySelectorAll(".why,.sub").forEach(node=>{
+  // Only fold prose.  A block holding a table or a card is not an
+  // explanation that ran long -- it is a mis-closed tag that swallowed the
+  // section, and folding it hides the numbers instead of the words.  Section
+  // six closed a `div.why` with `</p>`, so its whole daily table lived
+  // inside the explanation and disappeared behind the toggle.  The tag is
+  // fixed; this makes the next one cost a stray blue box rather than a
+  // section.
+  if(node.querySelector("table,.card")) return;
   const prev=node.previousElementSibling;
   if(prev&&prev.classList.contains("note")){prev.appendChild(node);return;}
   const box=document.createElement("details");
