@@ -36,6 +36,7 @@ from .cross_consensus import (
     apply_band_reliability,
     apply_conditional_tail_skew,
     apply_neighbour_direction_tilt,
+    RADIATION_SHIFT_SIGMA,
     forecast_radiation_shift_sigma,
     synoptic_cooling_index,
     bridged_cross_probability,
@@ -1187,7 +1188,11 @@ def _holdout_conditioning_signals(
         if sigma > 0.0 and key in taf_by_day:
             taf_gap = (taf_by_day[key] - center) / sigma
         cooling = cooling_by_day.get(key)
+        # Explicit rather than defaulted: this is the coefficient the
+        # artifact will pin and serving will read back, and a default here
+        # would let the two drift the moment the constant moves.
         shift_sigma, _radiation_receipt = forecast_radiation_shift_sigma(
+            shift_sigma_per_unit=RADIATION_SHIFT_SIGMA,
             radiation_sum=radiation_by_day.get(key),
             station_history=[
                 value
@@ -5076,6 +5081,11 @@ def persist_native_ensemble_oos(
                     # the serving transform on this tag.
                     + "::" + NEIGHBOUR_DIRECTION_METHOD_TAG
                     + "::" + SYNOPTIC_COOLING_METHOD_TAG
+                    # Pin the coefficient the holdout above was scored under.
+                    # Absent on artifacts built before this existed, which are
+                    # served the legacy value and so keep their own math.
+                    + "::radiation_shift_sigma="
+                    + f"{RADIATION_SHIFT_SIGMA:g}"
                     + "::" + CONDITIONAL_SKEW_METHOD_TAG
                     + "::" + BAND_RELIABILITY_METHOD_TAG
                     # Pin the DB table version the holdout above was scored

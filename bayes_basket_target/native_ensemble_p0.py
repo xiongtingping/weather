@@ -31,6 +31,7 @@ from .cross_consensus import (
     CONDITIONAL_SKEW_METHOD_TAG,
     NEIGHBOUR_DIRECTION_METHOD_TAG,
     RADIATION_SHIFT_METHOD_TAG,
+    pinned_radiation_shift_sigma,
     SYNOPTIC_COOLING_METHOD_TAG,
     SYNOPTIC_COOLING_SHIFT_SIGMA,
     apply_band_reliability,
@@ -2386,6 +2387,9 @@ def compile_native_ensemble_p0(
         # capture is missing or whose station history is still too thin.
         shift_sigma, synoptic_cooling_receipt = (
             forecast_radiation_shift_sigma(
+                shift_sigma_per_unit=pinned_radiation_shift_sigma(
+                    artifact_combination_method
+                ),
                 radiation_sum=_forecast_radiation_sum(
                     conn, station_id=station_id, event_date=event_date
                 ),

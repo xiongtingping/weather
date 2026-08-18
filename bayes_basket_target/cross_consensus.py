@@ -138,14 +138,48 @@ SYNOPTIC_COOLING_SHIFT_SIGMA = 0.15
 # missed.  Radiation also covers every station-day, where a TX exists for
 # seventeen stations only.
 RADIATION_SHIFT_METHOD_TAG = "forecast_radiation_shift_v1"
+# Sigmas of centre shift per standardised unit of forecast radiation.  This
+# is pinned into the artifact's combination method, not read as a bare
+# constant: a served distribution has to be shifted by the coefficient its own
+# holdout was scored under, and an artifact built before the pin existed
+# carries none and is served the legacy value below.
+# Raising it to 0.35 was tried and withdrawn.  A probe over served envelopes
+# said +0.142 bits, and the gate's own holdout said +0.005 with an interval
+# spanning zero over 354 paired days.  The probe was wrong twice, both mine:
+# it standardised radiation within its own sample rather than against the
+# station history serving uses, and it located the settled bucket by nearest
+# centre rather than by interval, which differs exactly on the edge buckets a
+# large shift pushes hardest into.  The 1.5C shift clamp binds at 0.35 too,
+# so part of that optimum was the clamp and not the coefficient.
 RADIATION_SHIFT_SIGMA = 0.15
+# What artifacts built before the coefficient was pinned were scored with.
+# Equal to the current value today; kept separate because the point of the
+# pin is that the two are free to differ.
+LEGACY_RADIATION_SHIFT_SIGMA = 0.15
 RADIATION_MIN_HISTORY_SAMPLES = 30
+
+
+def pinned_radiation_shift_sigma(combination_method: str) -> float:
+    """The coefficient an artifact says its holdout was scored under.
+
+    Artifacts built before the pin existed name none and get the legacy
+    value, so they keep serving the arithmetic that admitted them.
+    """
+
+    for part in str(combination_method).split("::"):
+        if part.startswith("radiation_shift_sigma="):
+            try:
+                return float(part.split("=", 1)[1])
+            except ValueError:
+                break
+    return LEGACY_RADIATION_SHIFT_SIGMA
 
 
 def forecast_radiation_shift_sigma(
     *,
     radiation_sum: float | None,
     station_history: "Sequence[float]",
+    shift_sigma_per_unit: float = RADIATION_SHIFT_SIGMA,
 ) -> tuple[float | None, dict[str, Any]]:
     """Standardise the day's forecast radiation against the station's own.
 
@@ -180,14 +214,15 @@ def forecast_radiation_shift_sigma(
             "state": "HISTORY_DEGENERATE",
         }
     standardised = (float(radiation_sum) - mean) / deviation
-    return RADIATION_SHIFT_SIGMA * standardised, {
+    return float(shift_sigma_per_unit) * standardised, {
         "schema": "forecast_radiation_receipt_v1",
         "method_tag": RADIATION_SHIFT_METHOD_TAG,
         "state": "RESOLVED",
         "radiation_sum": float(radiation_sum),
         "standardised": standardised,
         "sample_count": len(values),
-        "shift_sigma": RADIATION_SHIFT_SIGMA * standardised,
+        "shift_sigma": float(shift_sigma_per_unit) * standardised,
+        "shift_sigma_per_unit": float(shift_sigma_per_unit),
     }
 SYNOPTIC_COOLING_NORMALISATION = {
     # field: (fleet mean, fleet standard deviation) over 2,121 TAF captures

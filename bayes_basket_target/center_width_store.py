@@ -50,16 +50,18 @@ CENTER_WIDTH_METHOD_TAG = "center_width_scalars_v1"
 # finer grid would only be fitting the sampling noise of a two-week window.
 SHIFT_GRID_C = tuple(round(-0.8 + 0.05 * step, 2) for step in range(33))
 LAMBDA_GRID = tuple(round(0.55 + 0.025 * step, 3) for step in range(19))
-# A width that varies with the day's brightness, searched but never served.
-# The served width is one scalar per stage, so a day the models find hard and
-# a day they find easy get the same one; measured over 375 settled station-
-# days the dull third ran sd(z) 0.85 and the bright third 0.96, which one
-# scalar centres and cannot separate.  Fitted here as a shadow so the
-# evidence accumulates under the real serving arithmetic rather than in a
-# notebook -- promotion, if it comes, is a separate decision.
-RADIATION_SLOPE_GRID = tuple(
-    round(-0.20 + 0.01 * step, 3) for step in range(41)
-)
+# A width that leans on the day's brightness was fitted here as a shadow and
+# has been withdrawn: radiation moves the centre, not the width, and four
+# independent measurements agree.  Signed residual correlates +0.237 with the
+# radiation level and absolute residual +0.027; the quadratic term a "both
+# extremes are easy" story needs is +0.018; splitting the scope by radiation
+# tercile costs 0.163 bits; and the ensemble's own *disagreement* about
+# radiation -- the second moment, pulled per member from GRIB to answer
+# exactly this -- correlates -0.087 with the size of the residual.  The
+# mechanism explains it: the models forecast radiation well and mistranslate
+# it to screen temperature through a coupling they all share, so members
+# disagreeing about radiation says nothing about how wrong that shared
+# coupling will be.  Do not re-add it without a different covariate.
 # Below this a stage has not seen enough settled days to distinguish a real
 # correction from a fortnight's weather, and fits to identity instead.
 MIN_QUALIFYING_DAYS = 8
@@ -261,7 +263,6 @@ def serving_cells_by_day(
     """
 
     stage_id = _check_stage(stage)
-    radiation = _radiation_z(conn)
     query = (
         "SELECT station_id, event_date, decision_at_utc,"
         " envelope_json, settlement_timezone"
@@ -337,7 +338,6 @@ def serving_cells_by_day(
             "key_centers_c": centers,
             "settled_bucket": landed,
             "excluded_buckets": excluded,
-            "radiation_z": radiation.get((str(station), str(day))),
         }
         grouped.setdefault((str(station), str(day), block), []).append(
             (hours, cell)
@@ -349,76 +349,9 @@ def serving_cells_by_day(
     return by_day
 
 
-def _effective_lambda(
-    cell: Mapping[str, Any], *, width_lambda: float, radiation_slope: float
-) -> float:
-    """Width for this cell, optionally leaning on the day's radiation.
-
-    A cell with no radiation on record gets the flat width rather than a
-    guess: the covariate is a refinement where the covariate exists, never a
-    reason to treat an unlabelled day as average.
-    """
-
-    if not radiation_slope:
-        return width_lambda
-    z = cell.get("radiation_z")
-    if z is None:
-        return width_lambda
-    return min(
-        MAX_WIDTH_LAMBDA,
-        max(MIN_WIDTH_LAMBDA, width_lambda * (1.0 + radiation_slope * z)),
-    )
-
-
-def _radiation_z(
-    conn: sqlite3.Connection,
-) -> dict[tuple[str, str], float]:
-    """Station-local standardised forecast radiation, by station-day.
-
-    Station-local because the absolute figure is mostly latitude and season;
-    what a width covariate needs is whether this day is bright *for here*.
-    It is a forecast, so it is knowable when the distribution is served --
-    a covariate only measurable afterwards could never be applied.
-    """
-
-    series: dict[str, list[tuple[str, float]]] = {}
-    try:
-        rows = conn.execute(
-            "SELECT station_id, local_date, shortwave_radiation_sum"
-            " FROM calibration_station_forecast_physics"
-            " WHERE shortwave_radiation_sum IS NOT NULL"
-        )
-    except sqlite3.Error:
-        return {}
-    for station, day, radiation in rows:
-        series.setdefault(str(station), []).append(
-            (str(day), float(radiation))
-        )
-    out: dict[tuple[str, str], float] = {}
-    for station, points in series.items():
-        if len(points) < MIN_QUALIFYING_DAYS:
-            continue
-        values = [value for _day, value in points]
-        mean = sum(values) / len(values)
-        variance = sum((v - mean) ** 2 for v in values) / len(values)
-        spread = math.sqrt(variance)
-        if spread <= 1e-6:
-            continue
-        for day, value in points:
-            out[(station, day)] = (value - mean) / spread
-    return out
-
-
 def _cell_nll(
-    cell: Mapping[str, Any],
-    *,
-    delta_c: float,
-    width_lambda: float,
-    radiation_slope: float = 0.0,
+    cell: Mapping[str, Any], *, delta_c: float, width_lambda: float
 ) -> float:
-    width_lambda = _effective_lambda(
-        cell, width_lambda=width_lambda, radiation_slope=radiation_slope
-    )
     if delta_c == 0.0 and width_lambda == 1.0:
         adjusted = cell["probabilities"]
     else:
@@ -437,46 +370,14 @@ def _cell_nll(
 
 
 def _mean_nll(
-    cells: Sequence[Mapping[str, Any]],
-    *,
-    delta_c: float,
-    width_lambda: float,
-    radiation_slope: float = 0.0,
+    cells: Sequence[Mapping[str, Any]], *, delta_c: float, width_lambda: float
 ) -> float:
     if not cells:
         return 0.0
     return sum(
-        _cell_nll(
-            cell,
-            delta_c=delta_c,
-            width_lambda=width_lambda,
-            radiation_slope=radiation_slope,
-        )
+        _cell_nll(cell, delta_c=delta_c, width_lambda=width_lambda)
         for cell in cells
     ) / len(cells)
-
-
-def _search_radiation_slope(
-    cells: Sequence[Mapping[str, Any]], *, delta_c: float, width_lambda: float
-) -> tuple[float, float]:
-    """Best slope holding the fitted centre and width fixed.
-
-    Deliberately conditional rather than a joint search: the question the
-    shadow answers is what a per-day width buys *on top of* the pair actually
-    served, and a joint optimum would fold the two together and overstate it.
-    """
-
-    best: tuple[float, float] | None = None
-    for slope in RADIATION_SLOPE_GRID:
-        value = _mean_nll(
-            cells,
-            delta_c=delta_c,
-            width_lambda=width_lambda,
-            radiation_slope=slope,
-        )
-        if best is None or value < best[1]:
-            best = (slope, value)
-    return best or (0.0, 0.0)
 
 
 def _search(cells: Sequence[Mapping[str, Any]]) -> tuple[float, float, float]:
@@ -572,30 +473,6 @@ def fit_center_width(
         "identity_nll_all": _mean_nll(cells, delta_c=0.0, width_lambda=1.0),
         "candidate_nll_all": _mean_nll(cells, delta_c=delta, width_lambda=lam),
     })
-    # Shadow: what a per-day width would add on top of the pair above,
-    # fitted on the same train days and scored on the same forward days.
-    # Recorded only -- the served table stays two scalars, and a covariate
-    # that has to be promoted gets its own decision on this evidence.
-    slope, _train_nll_slope = _search_radiation_slope(
-        train, delta_c=delta, width_lambda=lam
-    )
-    forward_with_slope = _mean_nll(
-        forward, delta_c=delta, width_lambda=lam, radiation_slope=slope
-    )
-    labelled = sum(
-        1 for cell in cells if cell.get("radiation_z") is not None
-    )
-    evidence["radiation_width_covariate"] = {
-        "served": False,
-        "slope": slope,
-        "forward_nll_without_slope": forward_candidate,
-        "forward_nll_with_slope": forward_with_slope,
-        "forward_nll_gain": forward_candidate - forward_with_slope,
-        "labelled_cell_count": labelled,
-        "labelled_cell_share": labelled / len(cells) if cells else 0.0,
-        "slope_grid_min": RADIATION_SLOPE_GRID[0],
-        "slope_grid_max": RADIATION_SLOPE_GRID[-1],
-    }
     admitted = gain > MIN_FORWARD_NLL_GAIN
     return {
         "stage": stage_id,
@@ -735,9 +612,6 @@ def refit_all_center_width(
             "serving_day_count": fitted["serving_day_count"],
             "serving_cell_count": fitted["serving_cell_count"],
             "min_event_date": min_event_date,
-            "radiation_width_covariate": (
-                fitted["evidence"].get("radiation_width_covariate")
-            ),
         }
         if commit:
             if stage not in CENTER_WIDTH_SERVED_STAGES:
