@@ -244,7 +244,7 @@ def serving_cells_by_day(
     truth: Mapping[tuple[str, str], float],
     *,
     stage: str,
-    min_event_date: str | None = None,
+    min_decision_at_utc: str | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """One scoreable cell per station-day-stage-hourblock.
 
@@ -253,13 +253,20 @@ def serving_cells_by_day(
     counting each as an observation would let the busiest scopes set the
     scalars for everyone.
 
-    ``min_event_date`` bounds the evidence below.  These scalars measure how
-    wrong the *served* distribution is, so every day before a change to the
-    serving arithmetic is evidence about a distribution nobody serves any
-    more.  Pooling across such a change makes the layer re-derive whatever it
-    was compensating for: after the width fix of 2026-08-18 an unbounded fit
-    reproduced the old 0.825 exactly, because weeks of pre-fix days outvoted
-    the handful of post-fix ones.
+    ``min_decision_at_utc`` bounds the evidence below.  These scalars measure
+    how wrong the *served* distribution is, so every decision taken before a
+    change to the serving arithmetic is evidence about a distribution nobody
+    serves any more.  Pooling across such a change makes the layer re-derive
+    whatever it was compensating for: after the width fix of 2026-08-18 an
+    unbounded fit reproduced the old 0.825 exactly, because weeks of pre-fix
+    decisions outvoted the handful of post-fix ones.
+
+    The bound is on the decision, not the event date, and that distinction is
+    not academic: a P0 decision for an event two days out is taken two days
+    early, so event_date >= X still admits decisions from well before X.
+    Measured on this table, event date 2026-08-19 carries decisions reaching
+    back to 2026-08-17 -- an event-date bound would have let two days of
+    retired arithmetic vote on the very fit meant to exclude it.
     """
 
     stage_id = _check_stage(stage)
@@ -270,9 +277,9 @@ def serving_cells_by_day(
         " WHERE stage=?"
     )
     parameters: list[Any] = [stage_id]
-    if min_event_date:
-        query += " AND event_date>=?"
-        parameters.append(str(min_event_date))
+    if min_decision_at_utc:
+        query += " AND decision_at_utc>=?"
+        parameters.append(str(min_decision_at_utc))
     grouped: dict[tuple[str, str, int], list[tuple[float, dict[str, Any]]]] = {}
     for station, day, decided, envelope_json, tz_name in conn.execute(
         query, parameters
@@ -400,7 +407,7 @@ def fit_center_width(
     conn: sqlite3.Connection,
     *,
     stage: str,
-    min_event_date: str | None = None,
+    min_decision_at_utc: str | None = None,
 ) -> dict[str, Any]:
     """Fit one stage's scalars, admitted on a held-out forward window.
 
@@ -414,7 +421,8 @@ def fit_center_width(
     ensure_center_width_schema(conn)
     truth = _truth(conn)
     by_day = serving_cells_by_day(
-        conn, truth, stage=stage_id, min_event_date=min_event_date
+        conn, truth, stage=stage_id,
+        min_decision_at_utc=min_decision_at_utc,
     )
     days = sorted(by_day)
     cells = [cell for day in days for cell in by_day[day]]
@@ -433,7 +441,7 @@ def fit_center_width(
         "edge_width_c": EDGE_WIDTH_C,
         "min_qualifying_days": MIN_QUALIFYING_DAYS,
         "min_qualifying_cells": MIN_QUALIFYING_CELLS,
-        "min_event_date": min_event_date,
+        "min_decision_at_utc": min_decision_at_utc,
     }
     if accumulating:
         evidence["basis"] = "ACCUMULATING"
@@ -588,14 +596,15 @@ def refit_all_center_width(
     conn: sqlite3.Connection,
     *,
     commit: bool = False,
-    min_event_date: str | None = None,
+    min_decision_at_utc: str | None = None,
 ) -> dict[str, Any]:
     """Fit every stage, journal every fit, activate the admitted ones."""
 
     results: dict[str, Any] = {}
     for stage in CENTER_WIDTH_STAGES:
         fitted = fit_center_width(
-            conn, stage=stage, min_event_date=min_event_date
+            conn, stage=stage,
+            min_decision_at_utc=min_decision_at_utc,
         )
         active = load_center_width(conn, stage=stage)
         entry: dict[str, Any] = {
@@ -611,7 +620,7 @@ def refit_all_center_width(
             "active_sha256": None if active is None else active[2],
             "serving_day_count": fitted["serving_day_count"],
             "serving_cell_count": fitted["serving_cell_count"],
-            "min_event_date": min_event_date,
+            "min_decision_at_utc": min_decision_at_utc,
         }
         if commit:
             if stage not in CENTER_WIDTH_SERVED_STAGES:

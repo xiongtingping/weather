@@ -8,12 +8,17 @@ all: the scalars in production were a single hand fit from 2026-08-16 that
 could never refresh itself, so a serving change could not be answered by the
 layer whose whole job is to answer serving changes.
 
-``--lookback-days`` is not tuning.  These scalars measure how wrong the
-*served* distribution is, so days before a change to the serving arithmetic
+``--since`` is not tuning.  These scalars measure how wrong the *served*
+distribution is, so decisions taken before a change to the serving arithmetic
 describe a distribution nobody serves any more.  Left unbounded the fit pools
 across such changes and re-derives whatever it had been compensating for --
 measured: after the 2026-08-18 width fix an unbounded fit reproduced the old
-0.825 exactly, because weeks of pre-fix days outvoted the post-fix ones.
+0.825 exactly, because weeks of pre-fix decisions outvoted the post-fix ones.
+
+The bound is on the decision timestamp, not the event date.  A P0 decision
+for an event two days out is taken two days early, so an event-date bound
+still admits decisions from before it -- event date 2026-08-19 carries
+decisions reaching back to 2026-08-17.
 
 Without ``--commit`` this reports only.
 """
@@ -50,9 +55,10 @@ def main() -> int:
     parser.add_argument(
         "--since",
         help=(
-            "Earliest event date to score, YYYY-MM-DD.  Use after a change "
-            "to the serving arithmetic so the fit cannot be outvoted by days "
-            "served under the old one."
+            "Earliest decision timestamp to score, ISO-8601.  A bare date is "
+            "read as its midnight UTC.  Use the moment a serving change "
+            "landed, so the fit cannot be outvoted by decisions taken under "
+            "the arithmetic it replaced."
         ),
     )
     parser.add_argument(
@@ -60,8 +66,8 @@ def main() -> int:
         type=int,
         default=0,
         help=(
-            "Rolling alternative to --since: score only the last N event "
-            "dates.  0 means every day on record."
+            "Rolling alternative to --since: score only decisions from the "
+            "last N days.  0 means every decision on record."
         ),
     )
     parser.add_argument(
@@ -72,11 +78,13 @@ def main() -> int:
     args = parser.parse_args()
     if args.since and args.lookback_days:
         parser.error("--since and --lookback-days are alternatives")
-    min_event_date = args.since
+    min_decision = args.since
+    if min_decision and len(min_decision) == 10:
+        min_decision = f"{min_decision}T00:00:00Z"
     if args.lookback_days:
-        min_event_date = (
+        min_decision = (
             date.today() - timedelta(days=int(args.lookback_days))
-        ).isoformat()
+        ).isoformat() + "T00:00:00Z"
 
     database = args.db.expanduser().resolve(strict=True)
     if args.commit:
@@ -88,7 +96,7 @@ def main() -> int:
     conn.execute("PRAGMA busy_timeout=60000")
     try:
         stages = refit_all_center_width(
-            conn, commit=args.commit, min_event_date=min_event_date
+            conn, commit=args.commit, min_decision_at_utc=min_decision
         )
         if args.commit:
             conn.commit()
@@ -104,7 +112,7 @@ def main() -> int:
         "schema": "center_width_refit_report_v1",
         "stages": stages,
         "activated_stages": activated,
-        "min_event_date": min_event_date,
+        "min_decision_at_utc": min_decision,
         "committed": bool(args.commit),
         "calls_order_gateway": False,
         "orders_submitted": 0,

@@ -90,10 +90,44 @@ class EvidenceWindowTest(unittest.TestCase):
         }
         unbounded = serving_cells_by_day(conn, truth, stage="P1")
         bounded = serving_cells_by_day(
-            conn, truth, stage="P1", min_event_date="2026-08-17"
+            conn, truth, stage="P1", min_decision_at_utc="2026-08-17T00:00:00Z"
         )
         self.assertEqual(len(unbounded), 3)
         self.assertEqual(sorted(bounded), ["2026-08-17"])
+
+    def test_the_bound_is_on_the_decision_not_the_event_date(self) -> None:
+        """A P0 decision for an event two days out is taken two days early.
+
+        Bounding on event_date would admit exactly the decisions the bound
+        exists to exclude: on the live table, event date 2026-08-19 carries
+        decisions reaching back to 2026-08-17.
+        """
+
+        conn = _connection()
+        conn.execute(
+            "INSERT INTO basket_probability_bridge_history VALUES"
+            " (?,?,?,?,?,?)",
+            (
+                "P1", "KLGA", "2026-08-19", "2026-08-17T06:00:00Z",
+                _envelope(), "America/New_York",
+            ),
+        )
+        truth = {("KLGA", "2026-08-19"): 20.0}
+        # Late event date, early decision: the decision bound must exclude it.
+        self.assertEqual(
+            serving_cells_by_day(
+                conn, truth, stage="P1",
+                min_decision_at_utc="2026-08-18T00:00:00Z",
+            ),
+            {},
+        )
+        self.assertEqual(
+            sorted(serving_cells_by_day(
+                conn, truth, stage="P1",
+                min_decision_at_utc="2026-08-17T00:00:00Z",
+            )),
+            ["2026-08-19"],
+        )
 
     def test_the_bound_is_absent_by_default(self) -> None:
         """Existing callers keep scoring every day on record."""
@@ -115,10 +149,11 @@ class EvidenceWindowTest(unittest.TestCase):
     def test_the_bound_reaches_the_fit_and_its_evidence(self) -> None:
         conn = _connection()
         fitted = fit_center_width(
-            conn, stage="P1", min_event_date="2026-08-18"
+            conn, stage="P1", min_decision_at_utc="2026-08-18T00:00:00Z"
         )
         self.assertEqual(
-            fitted["evidence"]["min_event_date"], "2026-08-18"
+            fitted["evidence"]["min_decision_at_utc"],
+            "2026-08-18T00:00:00Z",
         )
         # No days at all is the accumulating case, not an error: the layer
         # says it has nothing to go on rather than inventing a scalar.
