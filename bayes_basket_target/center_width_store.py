@@ -216,6 +216,7 @@ def serving_cells_by_day(
     truth: Mapping[tuple[str, str], float],
     *,
     stage: str,
+    min_event_date: str | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """One scoreable cell per station-day-stage-hourblock.
 
@@ -223,16 +224,30 @@ def serving_cells_by_day(
     a station-day emits dozens of re-decisions off the same evidence, and
     counting each as an observation would let the busiest scopes set the
     scalars for everyone.
+
+    ``min_event_date`` bounds the evidence below.  These scalars measure how
+    wrong the *served* distribution is, so every day before a change to the
+    serving arithmetic is evidence about a distribution nobody serves any
+    more.  Pooling across such a change makes the layer re-derive whatever it
+    was compensating for: after the width fix of 2026-08-18 an unbounded fit
+    reproduced the old 0.825 exactly, because weeks of pre-fix days outvoted
+    the handful of post-fix ones.
     """
 
     stage_id = _check_stage(stage)
-    grouped: dict[tuple[str, str, int], list[tuple[float, dict[str, Any]]]] = {}
-    for station, day, decided, envelope_json, tz_name in conn.execute(
+    query = (
         "SELECT station_id, event_date, decision_at_utc,"
         " envelope_json, settlement_timezone"
         " FROM basket_probability_bridge_history"
-        " WHERE stage=?",
-        (stage_id,),
+        " WHERE stage=?"
+    )
+    parameters: list[Any] = [stage_id]
+    if min_event_date:
+        query += " AND event_date>=?"
+        parameters.append(str(min_event_date))
+    grouped: dict[tuple[str, str, int], list[tuple[float, dict[str, Any]]]] = {}
+    for station, day, decided, envelope_json, tz_name in conn.execute(
+        query, parameters
     ):
         actual = truth.get((str(station), str(day)))
         if actual is None or not tz_name:
@@ -354,7 +369,10 @@ def _search(cells: Sequence[Mapping[str, Any]]) -> tuple[float, float, float]:
 
 
 def fit_center_width(
-    conn: sqlite3.Connection, *, stage: str
+    conn: sqlite3.Connection,
+    *,
+    stage: str,
+    min_event_date: str | None = None,
 ) -> dict[str, Any]:
     """Fit one stage's scalars, admitted on a held-out forward window.
 
@@ -367,7 +385,9 @@ def fit_center_width(
     stage_id = _check_stage(stage)
     ensure_center_width_schema(conn)
     truth = _truth(conn)
-    by_day = serving_cells_by_day(conn, truth, stage=stage_id)
+    by_day = serving_cells_by_day(
+        conn, truth, stage=stage_id, min_event_date=min_event_date
+    )
     days = sorted(by_day)
     cells = [cell for day in days for cell in by_day[day]]
     active = load_center_width(conn, stage=stage_id)
@@ -385,6 +405,7 @@ def fit_center_width(
         "edge_width_c": EDGE_WIDTH_C,
         "min_qualifying_days": MIN_QUALIFYING_DAYS,
         "min_qualifying_cells": MIN_QUALIFYING_CELLS,
+        "min_event_date": min_event_date,
     }
     if accumulating:
         evidence["basis"] = "ACCUMULATING"
@@ -536,13 +557,18 @@ def journal_center_width_fit(
 
 
 def refit_all_center_width(
-    conn: sqlite3.Connection, *, commit: bool = False
+    conn: sqlite3.Connection,
+    *,
+    commit: bool = False,
+    min_event_date: str | None = None,
 ) -> dict[str, Any]:
     """Fit every stage, journal every fit, activate the admitted ones."""
 
     results: dict[str, Any] = {}
     for stage in CENTER_WIDTH_STAGES:
-        fitted = fit_center_width(conn, stage=stage)
+        fitted = fit_center_width(
+            conn, stage=stage, min_event_date=min_event_date
+        )
         active = load_center_width(conn, stage=stage)
         entry: dict[str, Any] = {
             "stage": stage,
@@ -557,6 +583,7 @@ def refit_all_center_width(
             "active_sha256": None if active is None else active[2],
             "serving_day_count": fitted["serving_day_count"],
             "serving_cell_count": fitted["serving_cell_count"],
+            "min_event_date": min_event_date,
         }
         if commit:
             if stage not in CENTER_WIDTH_SERVED_STAGES:

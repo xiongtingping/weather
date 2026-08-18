@@ -85,6 +85,28 @@ else
   echo "[$(date +%H:%M:%S)] ✗ 分档校准重拟合失败，详见 calibration_training_$TIMESTAMP.log" | tee -a "$LOG_DIR/calibration_training.log"
 fi
 
+# 4. 分布中心/宽度两标量自动换代（拟合+激活；准入是留出前向窗，
+#    规则在 bayes_basket_target/center_width_store.py）。
+#
+#    CW_SINCE 是服务算术最后一次改变的日期，**改服务算术时必须同步前移**。
+#    这两个标量度量的是"服务出去的分布有多错"，所以那一天之前的日子描述的
+#    是没人再服务的分布。不设下界时旧日子会压倒新日子，让这一层把它本来在
+#    补偿的东西原样重新拟合出来：2026-08-18 把宽度改成按扣偏差后的 σ 定标
+#    之后，无界拟合与 21 天滚动窗都原样复现了旧的 λ=0.825，也就是那个缺陷
+#    的补偿值。滚动窗解决不了这个问题——它要等窗口自然走过变更日才干净。
+#    锚定到变更日则当天就干净：证据不足时这一层自己回落到恒等并攒够再上。
+CW_SINCE="2026-08-18"
+echo "" | tee -a "$LOG_DIR/calibration_training.log"
+echo "[$(date +%H:%M:%S)] 中心/宽度 (center_width) 自动重拟合 (证据自 $CW_SINCE 起)..." | tee -a "$LOG_DIR/calibration_training.log"
+CW_REPORT="$("$PY" scripts/refit_center_width.py --commit --summary --since "$CW_SINCE" 2>&1)" || true
+echo "$CW_REPORT" >> "$LOG_DIR/calibration_training_$TIMESTAMP.log"
+if echo "$CW_REPORT" | grep -q '^SUMMARY '; then
+  echo "$CW_REPORT" | grep '^SUMMARY ' | sed 's/^SUMMARY /    /' | tee -a "$LOG_DIR/calibration_training.log"
+  echo "[$(date +%H:%M:%S)] ✓ 三阶段中心/宽度已按最新证据重拟合" | tee -a "$LOG_DIR/calibration_training.log"
+else
+  echo "[$(date +%H:%M:%S)] ✗ 中心/宽度重拟合失败，详见 calibration_training_$TIMESTAMP.log" | tee -a "$LOG_DIR/calibration_training.log"
+fi
+
 echo "" | tee -a "$LOG_DIR/calibration_training.log"
 echo "========================================" | tee -a "$LOG_DIR/calibration_training.log"
 echo "每日校准模型训练完成: $(date +%Y%m%d_%H%M%S)" | tee -a "$LOG_DIR/calibration_training.log"
