@@ -58,6 +58,9 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     probability_core,
 )
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
+from bayes_basket_target.settlement_time import (  # noqa: E402
+    settlement_day_window,
+)
 from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     CENTRE_ANCHOR_DISTANCE_DECAY,
     CENTRE_ANCHOR_EDGE_TILT,
@@ -156,8 +159,28 @@ EXECUTION_MODES = (
 # on it.  The probe's four horizons top out at an hour because it is
 # measuring how fill rate grows; a basket entering at listing has until the
 # day resolves, and the ruling is to let it wait (user ruling, 2026-08-17).
+# 0 means "until the day resolves", which is the standing ruling (user
+# ruling, 2026-08-17, restated 2026-08-18) and is now what the code does.
+# Six hours was a leftover from the probe's measurement horizons, and it is
+# not a horizon a basket entering at listing has any reason to accept: it
+# gives up in the middle of the night before the event and books the miss.
 MAKER_RESTING_HORIZON_MINUTES = float(
-    os.environ.get("PAPER_LEDGER_MAKER_HORIZON_MIN", "360") or 360.0
+    os.environ.get("PAPER_LEDGER_MAKER_HORIZON_MIN", "0") or 0.0
+)
+# How often an unfilled leg is re-posted at the prices then on the book.
+#
+# A resting order that never moves is not what a maker does and not what
+# this lane can honestly claim: the band is derived from the spread, and a
+# spread from twenty hours ago is not a price anyone was offering.  Left
+# static, a ladder posted at listing spends the day a long way from a market
+# that has since moved, and the leg records a miss that says more about the
+# staleness of the quote than about the book's willingness to sell.
+#
+# Each round re-derives the band for the legs still open, from the book at
+# that moment, and leaves the rungs already bought alone.  0 disables
+# re-pricing and reproduces the single-shot behaviour.
+MAKER_RESTING_REPRICE_MINUTES = float(
+    os.environ.get("PAPER_LEDGER_MAKER_REPRICE_MIN", "60") or 0.0
 )
 # A resting leg posts across a band, not at a point (user ruling,
 # 2026-08-17).  The probe measured the two ends 14x apart on fill rate --
@@ -210,6 +233,15 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     None
     if EXECUTION_MODE != "maker_resting"
     else f"阶梯{MAKER_RESTING_LADDER_STEPS}档·逐步建仓",
+    None
+    if EXECUTION_MODE != "maker_resting"
+    else (
+        "挂到结算" if MAKER_RESTING_HORIZON_MINUTES <= 0
+        else f"挂{MAKER_RESTING_HORIZON_MINUTES:g}分钟"
+    ),
+    None
+    if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_REPRICE_MINUTES <= 0
+    else f"每{MAKER_RESTING_REPRICE_MINUTES:g}分钟重挂",
     "一本账·只加不减",
 )))
 SELECTION_RULE_SHA256 = content_sha256({
@@ -243,6 +275,11 @@ SELECTION_RULE_SHA256 = content_sha256({
     "window_strategy": WINDOW_STRATEGY,
     "execution_mode": EXECUTION_MODE,
     "maker_ladder_steps": MAKER_RESTING_LADDER_STEPS,
+    # How long the order rests and how often it is re-posted.  Both change
+    # which fills a recorded row is built on, so rows written under the old
+    # values describe a different execution.
+    "maker_horizon_minutes": MAKER_RESTING_HORIZON_MINUTES,
+    "maker_reprice_minutes": MAKER_RESTING_REPRICE_MINUTES,
     # Whether a partly-filled resting basket is a position or a refusal.
     # It changes what every resting row *is*, not merely its price.
     "resting_entry": "progressive_per_leg",
@@ -1182,6 +1219,77 @@ def _strategy_windows(
 
 
 
+def _ladder_from_quote(
+    quote: Mapping[str, Any], steps: int = MAKER_RESTING_LADDER_STEPS
+) -> list[float]:
+    """The same band as ``_resting_ladder``, from a raw snapshot quote.
+
+    Re-pricing happens against the book as it stood mid-day, where there is
+    no compiled snapshot row to read -- only the quote the socket recorded.
+    The arithmetic is deliberately the same one, so a re-posted ladder is
+    the ladder the opening would have posted at that moment.
+    """
+
+    levels = [
+        level for level in (quote.get("ask_levels") or [])
+        if level.get("price") is not None
+    ]
+    ask = quote.get("best_ask")
+    if ask is None and levels:
+        ask = levels[0].get("price")
+    bid = quote.get("bid_price", quote.get("best_bid"))
+    if ask is None or bid is None:
+        return []
+    ask, bid = float(ask), float(bid)
+    tick = float(quote.get("price_tick_size") or 0.001)
+    if bid <= 0.0 or ask <= 0.0:
+        return []
+    high = ask - tick
+    low = min(bid + MAKER_RESTING_IMPROVE_TICKS * tick, high)
+    if high < bid - 1e-9:
+        return []
+    if high <= low + tick / 2 or steps <= 1:
+        return [round(low, 6)]
+    span = high - low
+    out: list[float] = []
+    for index in range(steps):
+        price = round(low + span * index / (steps - 1), 6)
+        if not out or price > out[-1] + tick / 2:
+            out.append(price)
+    return out
+
+
+def _resting_deadline(
+    *, placed_at_utc: str, settlement_timezone: str, event_date: str
+) -> str:
+    """When the order gives up.
+
+    The day itself, unless a horizon is configured.  A basket posted at
+    listing has until its market resolves and no reason to withdraw before
+    then; the fixed six hours this used to carry came from the fill probe's
+    measurement horizons, and it booked a miss in the middle of the night
+    before the event.
+    """
+
+    placed = datetime.fromisoformat(str(placed_at_utc).replace("Z", "+00:00"))
+    ends = placed
+    if MAKER_RESTING_HORIZON_MINUTES > 0:
+        ends = placed + timedelta(minutes=MAKER_RESTING_HORIZON_MINUTES)
+    try:
+        day_end = settlement_day_window(
+            event_date, settlement_timezone
+        )["target_day_end_utc"]
+    except Exception:
+        day_end = ""
+    if MAKER_RESTING_HORIZON_MINUTES <= 0:
+        return day_end or (
+            placed + timedelta(days=1)
+        ).isoformat().replace("+00:00", "Z")
+    # A configured horizon still cannot outlive the market it is posted in.
+    horizon = ends.isoformat().replace("+00:00", "Z")
+    return min(horizon, day_end) if day_end else horizon
+
+
 def _resting_ladder_fill(
     conn: sqlite3.Connection,
     *,
@@ -1190,24 +1298,44 @@ def _resting_ladder_fill(
     buckets: Sequence[str],
     ladders: Sequence[Sequence[float]],
     placed_at_utc: str,
+    settlement_timezone: str = "UTC",
 ) -> tuple[dict[str, list[float]], str | None]:
     """Which rungs of each leg's ladder the book traded through.
 
-    A leg counts as filled when any rung fills; a basket needs every leg,
-    because a complete basket is atomic.  Returns the filled prices per
-    bucket so the cost is the ladder's own average rather than an assumed
-    one.
+    A leg counts as filled when any rung fills.  Returns the filled prices
+    per bucket so the cost is the ladder's own average rather than an
+    assumed one.
+
+    Two things the order does while it waits.  It waits until the day
+    resolves rather than for a fixed six hours, and every
+    ``MAKER_RESTING_REPRICE_MINUTES`` it re-posts whatever is still open at
+    the prices then on the book.  A band derived from a spread twenty hours
+    stale is not a price anyone was offering, and a leg that misses against
+    it has recorded the staleness of its own quote rather than the book's
+    unwillingness to sell.  Rungs already bought are never re-posted.
     """
 
-    deadline = (
-        datetime.fromisoformat(str(placed_at_utc).replace("Z", "+00:00"))
-        + timedelta(minutes=MAKER_RESTING_HORIZON_MINUTES)
-    ).isoformat().replace("+00:00", "Z")
+    deadline = _resting_deadline(
+        placed_at_utc=placed_at_utc,
+        settlement_timezone=settlement_timezone,
+        event_date=event_date,
+    )
     pending = {
         str(bucket): sorted(prices, reverse=True)
         for bucket, prices in zip(buckets, ladders)
     }
+    # How many rungs each leg posted, so a re-post keeps the ladder the same
+    # depth rather than growing it every round.
+    posted_depth = {
+        bucket: len(prices) for bucket, prices in pending.items()
+    }
     filled: dict[str, list[float]] = {b: [] for b in pending}
+    next_reprice = (
+        None if MAKER_RESTING_REPRICE_MINUTES <= 0
+        else datetime.fromisoformat(
+            str(placed_at_utc).replace("Z", "+00:00")
+        ) + timedelta(minutes=MAKER_RESTING_REPRICE_MINUTES)
+    )
     for observed, payload in conn.execute(
         "SELECT observed_at, buckets_json FROM basket_official_ws_snapshot"
         " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
@@ -1218,6 +1346,34 @@ def _resting_ladder_fill(
         if not any(pending.values()):
             break
         quotes = _decode_quotes(payload)
+        # Re-post first, then see what the same tick trades through: an
+        # order moved to a new price is live at that price from the moment
+        # it is moved, and checking the old band one last time would credit
+        # a fill to a price that had already been cancelled.
+        if next_reprice is not None:
+            at = datetime.fromisoformat(str(observed).replace("Z", "+00:00"))
+            while at >= next_reprice:
+                for bucket, rungs in pending.items():
+                    if not rungs:
+                        # Nothing open on this leg -- either fully bought or
+                        # the book stopped quoting it.  Re-posting the rungs
+                        # it already owns would buy them twice.
+                        continue
+                    item = quotes.get(bucket)
+                    if not isinstance(item, Mapping):
+                        continue
+                    fresh = _ladder_from_quote(
+                        item,
+                        max(
+                            1,
+                            posted_depth.get(bucket, 0) - len(filled[bucket]),
+                        ),
+                    )
+                    if fresh:
+                        pending[bucket] = sorted(fresh, reverse=True)
+                next_reprice = next_reprice + timedelta(
+                    minutes=MAKER_RESTING_REPRICE_MINUTES
+                )
         for bucket, rungs in pending.items():
             if not rungs:
                 continue
@@ -1848,6 +2004,16 @@ def backfill(
     ensure_schema(conn)
     superseded = _drop_superseded_positions(conn, recent_days=recent_days)
     truth = _truth(conn)
+    # The market day a resting order lives inside.  Charter 44 binds the
+    # settlement timezone per station in its own table rather than the
+    # registry, whose raw column is wrong for 33 of 45 stations.
+    timezones = {
+        str(station): str(zone)
+        for station, zone in conn.execute(
+            "SELECT station_id, settlement_timezone"
+            " FROM calibration_station_market_timezone_binding"
+        )
+    }
     # Before the walk, not after.  The equity curve below reads each day's
     # realised P&L back out of the committed settlements, so a correction that
     # landed after this pass would size the following days off numbers it had
@@ -2226,6 +2392,9 @@ def backfill(
                         ]
                         got, missing = _resting_ladder_fill(
                             conn,
+                            settlement_timezone=timezones.get(
+                                station_id, "UTC"
+                            ),
                             station_id=station_id,
                             event_date=event_date,
                             buckets=seat["buckets"],
@@ -2235,9 +2404,12 @@ def backfill(
                         if not any(got.values()):
                             refusal = (
                                 "resting_unfilled",
-                                "挂 %d 腿 · 一腿未成交（%.0f 分钟内）" % (
+                                "挂 %d 腿 · 全程一档未成交（%s）" % (
                                     len(seat["buckets"]),
-                                    MAKER_RESTING_HORIZON_MINUTES,
+                                    "挂到结算"
+                                    if MAKER_RESTING_HORIZON_MINUTES <= 0
+                                    else "%.0f 分钟"
+                                    % MAKER_RESTING_HORIZON_MINUTES,
                                 ),
                                 cycles, payload["decision_at_utc"],
                             )
