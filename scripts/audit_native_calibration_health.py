@@ -78,11 +78,23 @@ def check_spread_bound(live: dict) -> list[dict]:
             continue
         spread = json.loads(str(row[6]))
         served = float(spread.get("spread_factor") or 0.0)
-        rmse = float(spread.get("train_rmse_c") or 0.0)
+        # The scale the fit actually sizes width by: the residual sigma about
+        # the corrected centre, not the RMSE about zero.  Reading the RMSE
+        # here after the fit moved to sigma made this check demand the width
+        # the bias correction already removed -- 127 of 510 live scopes
+        # reported as too narrow on the day the fit changed, every one of
+        # them a false alarm.  Artifacts fitted before the change carry no
+        # sigma and were genuinely sized by RMSE, so they fall back to it and
+        # are still judged by the rule they were built under.
+        scale = float(
+            spread.get("train_residual_sigma_c")
+            or spread.get("train_rmse_c")
+            or 0.0
+        )
         mean_spread = float(spread.get("train_mean_spread_c") or 0.0)
         if mean_spread <= 0.0:
             continue
-        wanted = min(SPREAD_BOUND, max(0.5, rmse / mean_spread))
+        wanted = min(SPREAD_BOUND, max(0.5, scale / mean_spread))
         if wanted - served > 0.05:
             findings.append({
                 "check": "spread_below_evidence",
