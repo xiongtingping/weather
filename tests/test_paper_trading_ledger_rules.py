@@ -117,7 +117,14 @@ def test_only_credible_fills_bankroll_the_book() -> None:
     # is allowed to deploy.
     assert "credible = all_in_cost >= DUST_COST_FLOOR" in source
     assert "if credible:\n                        day_staked[stage] += stake" in source
-    assert "if credible:\n                        day_pnl[stage] += pnl" in source
+    # The P&L now arrives from ``_score_settlement``, which the entry walk and
+    # the truth-revision re-score share so the two cannot value the same seat
+    # differently.  What this line guards is unchanged: only a credible fill
+    # compounds.
+    assert (
+        "if credible:\n                        day_pnl[stage]"
+        " += scored.pnl_usdc" in source
+    )
 
     db = root / "data" / "bayes_basket_target_ssot.db"
     if not db.is_file():

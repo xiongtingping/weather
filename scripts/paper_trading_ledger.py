@@ -45,7 +45,7 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -314,6 +314,19 @@ CREATE TABLE IF NOT EXISTS paper_trade_settlement (
   center_error_c REAL,
   bucket_distance INTEGER,
   settled_at_utc TEXT NOT NULL,
+  -- Which truth this score was struck against.  Settled truth is revisable
+  -- by design: the table is append-only under ``revision_no``, guarded by
+  -- the ``calibration_truth_no_update``/``calibration_truth_no_delete``
+  -- triggers, so a correction can only ever arrive as a *new* revision.  A
+  -- settlement that does not say which one it read cannot know it has gone
+  -- stale, and this one could not: on 2026-08-18 192 revisions landed at
+  -- once -- 156 changing the value, 35 moving the winning bucket -- and the
+  -- incremental sweep kept scoring the superseded ones because a recorded
+  -- row is a recorded row.  The sha is the staleness key; the revision
+  -- number rides along so a reader can see how far the row has moved
+  -- without joining back to the truth table.
+  truth_revision_no INTEGER,
+  truth_content_sha256 TEXT NOT NULL DEFAULT '',
   UNIQUE(station_id, event_date, stage)
 )
 """
@@ -379,6 +392,20 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             "ALTER TABLE paper_trade_position"
             " ADD COLUMN selection_rule_label TEXT NOT NULL DEFAULT ''"
         )
+    if "selection_rule_sha256" not in columns:
+        # Rows written before the stamp existed were written under a rule set
+        # nothing records, so they carry the empty string and the sweep below
+        # re-derives them.
+        #
+        # Added before the label backfill below, which reads this column.  The
+        # other order only works on a database that already has it: on a fresh
+        # one ``_POSITION_DDL`` creates ``selection_rule_label`` but not this,
+        # so the backfill ran first and ``ensure_schema`` could not initialise
+        # an empty database at all.
+        conn.execute(
+            "ALTER TABLE paper_trade_position"
+            " ADD COLUMN selection_rule_sha256 TEXT NOT NULL DEFAULT ''"
+        )
     # The label is derived from the same constants the fingerprint hashes,
     # so a row already stamped with the current fingerprint was chosen under
     # the current label by definition -- backfill it rather than forcing a
@@ -393,13 +420,24 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             (SELECTION_RULE_LABEL, SELECTION_RULE_SHA256),
         )
         conn.commit()
-    if "selection_rule_sha256" not in columns:
-        # Rows written before the stamp existed were written under a rule set
-        # nothing records, so they carry the empty string and the sweep below
-        # re-derives them.
+    settlement_columns = {
+        str(row[1])
+        for row in conn.execute("PRAGMA table_info(paper_trade_settlement)")
+    }
+    # Settlements written before the binding existed carry the empty sha,
+    # which no standing truth can equal, so ``_rescore_settlements`` picks
+    # every one of them up once.  It re-binds rather than re-scores the ones
+    # whose recorded value still matches, so the migration costs an UPDATE of
+    # two columns per row and leaves the numbers on the page untouched.
+    if "truth_revision_no" not in settlement_columns:
         conn.execute(
-            "ALTER TABLE paper_trade_position"
-            " ADD COLUMN selection_rule_sha256 TEXT NOT NULL DEFAULT ''"
+            "ALTER TABLE paper_trade_settlement"
+            " ADD COLUMN truth_revision_no INTEGER"
+        )
+    if "truth_content_sha256" not in settlement_columns:
+        conn.execute(
+            "ALTER TABLE paper_trade_settlement"
+            " ADD COLUMN truth_content_sha256 TEXT NOT NULL DEFAULT ''"
         )
 
 
@@ -438,19 +476,35 @@ def _drop_superseded_positions(
     return dropped
 
 
-def _truth(conn: sqlite3.Connection) -> dict[tuple[str, str], float]:
-    """Latest revision per station-day (charter 44)."""
+class _Truth(NamedTuple):
+    """The settled value that stands, and which revision said so."""
 
-    out: dict[tuple[str, str], float] = {}
-    for station, day, value in conn.execute(
-        "SELECT station_id, local_date, official_tmax_c"
+    tmax_c: float
+    revision_no: int
+    content_sha256: str
+
+
+def _truth(conn: sqlite3.Connection) -> dict[tuple[str, str], _Truth]:
+    """Latest revision per station-day (charter 44).
+
+    The revision's identity travels with its value.  A settlement scored
+    against a number alone cannot tell a corrected day from an unchanged one,
+    which is the whole of why an incremental pass used to need a rebuild.
+    """
+
+    out: dict[tuple[str, str], _Truth] = {}
+    for station, day, value, revision, sha in conn.execute(
+        "SELECT station_id, local_date, official_tmax_c, revision_no,"
+        " content_sha256"
         " FROM calibration_station_daily_high_truth t"
         " WHERE revision_no = ("
         "   SELECT MAX(revision_no)"
         "   FROM calibration_station_daily_high_truth x"
         "   WHERE x.station_id=t.station_id AND x.local_date=t.local_date)"
     ):
-        out[(str(station), str(day))] = float(value)
+        out[(str(station), str(day))] = _Truth(
+            float(value), int(revision), str(sha)
+        )
     return out
 
 
@@ -1332,6 +1386,280 @@ def _settled_bucket(
     return None
 
 
+class _Score(NamedTuple):
+    """What a settled value does to a seat, once the value is known."""
+
+    settled_bucket: str
+    hit: int
+    payout_usdc: float
+    pnl_usdc: float
+    center_error_c: float | None
+    bucket_distance: int
+
+
+def _score_settlement(
+    *,
+    ladder: Sequence[tuple],
+    window: Sequence[str],
+    stake: float,
+    shares: float,
+    per_leg: Mapping[str, float],
+    center_c: float | None,
+    truth_c: float,
+) -> _Score | None:
+    """Score one seat against one settled value.
+
+    Two callers reach this: the entry walk, which knows the seat because it
+    just chose it, and ``_rescore_settlements``, which reads the seat back off
+    the recorded row.  They have to agree exactly -- a settlement re-derived
+    under a corrected truth that also silently re-derived its *payout* rule
+    would move numbers the correction never touched -- so the arithmetic lives
+    in one place rather than twice.
+
+    ``None`` means the settled value fell outside the ladder the seat was
+    priced against: nothing to score, not a loss.
+    """
+
+    landed = _settled_bucket(list(ladder), truth_c)
+    if landed is None:
+        return None
+    settled_bucket, settled_ordinal = landed
+    seated = {str(bucket) for bucket in window}
+    hit = 1 if settled_bucket in seated else 0
+    # The rung that landed is the one that pays.  With one share count for
+    # the whole basket these are the same number; with a weighted basket they
+    # are not, and using the basket-level count credits a payout no outcome
+    # produced.
+    payout = (
+        float(per_leg.get(settled_bucket, 0.0))
+        if (hit and per_leg)
+        else (shares if hit else 0.0)
+    )
+    ordinals = {str(b): int(o) for b, o, _l, _u, _p in ladder}
+    distance = min(abs(ordinals[b] - settled_ordinal) for b in seated)
+    return _Score(
+        settled_bucket=settled_bucket,
+        hit=hit,
+        payout_usdc=payout,
+        pnl_usdc=payout - stake,
+        center_error_c=(
+            None if center_c is None else float(center_c) - truth_c
+        ),
+        bucket_distance=distance,
+    )
+
+
+def _settlement_ladder(
+    conn: sqlite3.Connection,
+    station_id: str,
+    event_date: str,
+    stage: str,
+    decision_at_utc: str,
+) -> list[tuple]:
+    """The bucket ladder the recorded seat was priced against.
+
+    One indexed lookup: ``decision_at_utc`` is unique within a stage scope, so
+    this recovers exactly the ``buckets`` the entry walk held when it opened
+    the seat -- edges included, which ``probabilities_json`` does not carry.
+    That is why re-scoring needs no history walk and no quote replay.
+    """
+
+    return conn.execute(
+        "SELECT b.bucket, b.ordinal, b.lower_c, b.upper_c, b.probability"
+        " FROM basket_probability_bridge_history h"
+        " JOIN basket_probability_bridge_bucket_probability b"
+        "   ON b.history_id = h.history_id"
+        " WHERE h.station_id=? AND h.event_date=? AND h.stage=?"
+        "   AND h.decision_at_utc=?"
+        " ORDER BY b.ordinal",
+        (station_id, event_date, stage, decision_at_utc),
+    ).fetchall()
+
+
+def _rescore_settlements(
+    conn: sqlite3.Connection, truth: dict[tuple[str, str], _Truth]
+) -> dict[str, int]:
+    """Score every recorded seat against the truth that stands *now*.
+
+    A seat is chosen before the day resolves, so settled truth is no part of
+    it -- but the settlement is nothing else, and both were written by the
+    same branch of the entry walk.  That walk skips a stage it has already
+    seated, so once the position row existed its settlement was frozen in two
+    ways.  A seat opened before its truth landed never got one at all: the
+    next sweep saw the stage as recorded and walked past it, and on 2026-08-18
+    that left 86 of 262 positions open with only a rebuild able to close any
+    of them -- two already had their truth in hand.  And a settlement whose
+    truth was later *revised* kept scoring the superseded value, because the
+    write is ``INSERT OR IGNORE`` on ``UNIQUE(station_id,event_date,stage)``
+    and the only thing that deletes a settlement keys on the selection rule,
+    which a truth correction does not touch.
+
+    Truth is revisable by design -- append-only under ``revision_no``, guarded
+    by the ``calibration_truth_no_update``/``calibration_truth_no_delete``
+    triggers, so a correction can only arrive as a new revision -- and on
+    2026-08-18 the sub-degree Fahrenheit re-derivation appended 192 of them at
+    once, 156 changing the value and 35 moving the winning bucket.  The
+    quarter-hourly ``--backfill`` would have scored the old buckets
+    indefinitely; a full ``--rebuild``, which discards the whole derived book,
+    was the only way to move them.
+
+    So each settlement records the truth it read, and is re-derived here when
+    that binding is no longer the standing one.  Three answers per seat:
+    nothing to do when the binding still stands; a two-column re-bind when the
+    revision moved but the value did not, which leaves the page's numbers and
+    ``settled_at_utc`` untouched; and a full re-score otherwise.
+
+    Deliberately *not* bounded by ``recent_days`` the way
+    ``_drop_superseded_positions`` is.  That bound exists because re-deriving
+    a seat means walking a day's whole decision history and quote book, which
+    is most of the pass; re-scoring means one indexed ladder lookup, and only
+    for the rows whose truth actually moved.  A correction that reaches back a
+    month has to reach that month's rows, and on the days where nothing moved
+    this costs a single scan of a table with a few hundred rows in it.
+    """
+
+    counts: dict[str, int] = defaultdict(int)
+    rows = conn.execute(
+        "SELECT p.position_id, p.station_id, p.event_date, p.stage,"
+        " p.decision_at_utc, p.window_buckets_json, p.win_probability,"
+        " p.stake_usdc, p.shares, p.leg_shares_json, p.center_c,"
+        " s.settlement_id, s.truth_content_sha256, s.settled_tmax_c"
+        " FROM paper_trade_position p"
+        " LEFT JOIN paper_trade_settlement s"
+        "   ON s.position_id = p.position_id"
+    ).fetchall()
+    rebind: list[tuple] = []
+    drop: list[tuple] = []
+    write: list[tuple] = []
+    for row in rows:
+        (
+            position_id, station_id, event_date, stage, decision_at_utc,
+            window_json, win_probability, stake, shares, leg_shares_json,
+            center_c, settlement_id, bound_sha, settled_tmax_c,
+        ) = row
+        standing = truth.get((str(station_id), str(event_date)))
+        if standing is None:
+            # No settled value yet.  An open seat, not a stale one -- and
+            # truth is never deleted, so a settled row cannot lose its truth.
+            counts["open_unsettled"] += 1
+            continue
+        if settlement_id is not None:
+            if str(bound_sha or "") == standing.content_sha256:
+                counts["settlement_current"] += 1
+                continue
+            if settled_tmax_c is not None and (
+                float(settled_tmax_c) == standing.tmax_c
+            ):
+                # The revision moved but the value did not, so every number
+                # derived from it is unchanged by construction.  Re-binding
+                # rather than re-writing is what keeps a revision that only
+                # restates the day from touching the page -- and it is how
+                # the rows written before this column existed, which carry
+                # the empty sha, settle down after one pass instead of
+                # looking stale forever.
+                rebind.append(
+                    (standing.revision_no, standing.content_sha256,
+                     position_id)
+                )
+                counts["settlement_rebound"] += 1
+                continue
+        ladder = _settlement_ladder(
+            conn, str(station_id), str(event_date), str(stage),
+            str(decision_at_utc),
+        )
+        if not ladder:
+            counts["settlement_ladder_missing"] += 1
+            continue
+        window = list(json.loads(window_json or "[]"))
+        per_leg = {
+            str(bucket): float(value)
+            for bucket, value in (
+                json.loads(leg_shares_json or "{}") or {}
+            ).items()
+        }
+        scored = _score_settlement(
+            ladder=ladder,
+            window=window,
+            stake=float(stake),
+            shares=float(shares),
+            per_leg=per_leg,
+            center_c=center_c,
+            truth_c=standing.tmax_c,
+        )
+        if scored is None:
+            # The corrected value left the ladder the seat was priced
+            # against.  The entry walk records no settlement in that case, so
+            # neither does a re-score -- and a row scored against a value
+            # that is no longer the truth must not survive as if it were.
+            counts["truth_outside_book"] += 1
+            if settlement_id is not None:
+                drop.append((station_id, event_date, stage))
+                counts["settlement_dropped"] += 1
+            continue
+        identity = {
+            "station_id": str(station_id),
+            "event_date": str(event_date),
+            "stage": str(stage),
+            "decision_at_utc": str(decision_at_utc),
+            "window": window,
+            "stake_usdc": round(float(stake), 6),
+        }
+        write.append((
+            "paper-set-" + content_sha256(
+                {**identity, "truth": standing.tmax_c}
+            )[:24],
+            position_id, station_id, event_date, stage,
+            standing.tmax_c, scored.settled_bucket, scored.hit,
+            float(stake), scored.payout_usdc, scored.pnl_usdc,
+            float(win_probability), scored.center_error_c,
+            scored.bucket_distance,
+            datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            standing.revision_no, standing.content_sha256,
+        ))
+        counts[
+            "settlement_rescored" if settlement_id is not None
+            else "settlement_settled_late"
+        ] += 1
+    if not (rebind or drop or write):
+        return dict(counts)
+    # Same short write burst as the entry walk, and for the same reason: the
+    # scan above is all reads, and the resident gives up on a busy database
+    # after five seconds.
+    if rebind:
+        conn.executemany(
+            "UPDATE paper_trade_settlement"
+            " SET truth_revision_no=?, truth_content_sha256=?"
+            " WHERE position_id=?",
+            rebind,
+        )
+    # Delete before insert rather than upsert: a re-scored row gets a new
+    # ``settlement_id`` whenever the value moved (the id hashes the truth), so
+    # the incoming row can collide on the primary key or on the station-day
+    # uniqueness, and only one of those can be an upsert target.  Keyed on the
+    # station-day rather than the position, because that is the uniqueness the
+    # insert has to satisfy -- a settlement left behind by a position that is
+    # no longer there would be invisible to the scan above and would collide.
+    if drop or write:
+        conn.executemany(
+            "DELETE FROM paper_trade_settlement"
+            " WHERE station_id=? AND event_date=? AND stage=?",
+            drop + [(row[2], row[3], row[4]) for row in write],
+        )
+    if write:
+        conn.executemany(
+            "INSERT INTO paper_trade_settlement ("
+            " settlement_id, position_id, station_id, event_date, stage,"
+            " settled_tmax_c, settled_bucket, hit, stake_usdc,"
+            " payout_usdc, pnl_usdc, claimed_win_probability,"
+            " center_error_c, bucket_distance, settled_at_utc,"
+            " truth_revision_no, truth_content_sha256"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            write,
+        )
+    conn.commit()
+    return dict(counts)
+
+
 def backfill(
     conn: sqlite3.Connection,
     *,
@@ -1341,6 +1669,12 @@ def backfill(
     ensure_schema(conn)
     superseded = _drop_superseded_positions(conn, recent_days=recent_days)
     truth = _truth(conn)
+    # Before the walk, not after.  The equity curve below reads each day's
+    # realised P&L back out of the committed settlements, so a correction that
+    # landed after this pass would size the following days off numbers it had
+    # already superseded.  The walk itself only ever adds seats this pass
+    # created, which this cannot have touched -- they do not exist yet.
+    rescored = _rescore_settlements(conn, truth)
     # A day whose history and book are both closed cannot grow a new seat, and
     # re-deriving its refusals is what made the pass expensive: roughly two
     # hundred scopes that will answer "no positive kelly" or "no book" forever
@@ -1361,6 +1695,9 @@ def backfill(
     counts: dict[str, int] = defaultdict(int)
     if superseded:
         counts["superseded_rule_dropped"] = superseded
+    for key, value in rescored.items():
+        if value:
+            counts[key] += value
     # Equity advances a day at a time, and every position opened on a day is
     # sized off the equity the book held when that day opened.  Compounding
     # within the day would let a station-day that settles first bankroll the
@@ -1898,54 +2235,45 @@ def backfill(
                     counts["entry_cycle_%s" % (
                         "first" if cycles == 1 else "later"
                     )] += 1
-                    actual = truth.get((station_id, event_date))
-                    if actual is None:
+                    standing = truth.get((station_id, event_date))
+                    if standing is None:
                         counts["open_unsettled"] += 1
                         break
-                    landed = _settled_bucket(payload["buckets"], actual)
-                    if landed is None:
+                    scored = _score_settlement(
+                        ladder=payload["buckets"],
+                        window=seat["buckets"],
+                        stake=stake,
+                        shares=shares,
+                        per_leg=per_leg,
+                        center_c=payload.get("center_c"),
+                        truth_c=standing.tmax_c,
+                    )
+                    if scored is None:
                         counts["truth_outside_book"] += 1
                         break
-                    settled_bucket, settled_ordinal = landed
-                    hit = 1 if settled_bucket in set(seat["buckets"]) else 0
-                    # The rung that landed is the one that pays.  With one
-                    # share count for the whole basket these are the same
-                    # number; with a weighted basket they are not, and using
-                    # the basket-level count credits a payout no outcome
-                    # produced.
-                    payout = (
-                        per_leg.get(str(settled_bucket), 0.0)
-                        if (hit and per_leg)
-                        else (shares if hit else 0.0)
-                    )
-                    pnl = payout - stake
-                    settled_ordinals = {
-                        str(b): int(o)
-                        for b, o, _l, _u, _p in payload["buckets"]
-                    }
-                    distance = min(
-                        abs(settled_ordinals[b] - settled_ordinal)
-                        for b in seat["buckets"]
-                    )
-                    center_error = None
-                    if payload.get("center_c") is not None:
-                        center_error = float(payload["center_c"]) - actual
                     pending_settlements.append(
                         (
                             "paper-set-" + content_sha256(
-                                {**identity, "truth": actual}
+                                {**identity, "truth": standing.tmax_c}
                             )[:24],
                             position_id, station_id, event_date, stage,
-                            actual, settled_bucket, hit, stake, payout, pnl,
-                            float(seat["win_probability"]), center_error,
-                            distance,
+                            standing.tmax_c, scored.settled_bucket,
+                            scored.hit, stake, scored.payout_usdc,
+                            scored.pnl_usdc,
+                            float(seat["win_probability"]),
+                            scored.center_error_c, scored.bucket_distance,
                             datetime.now(timezone.utc)
                             .isoformat().replace("+00:00", "Z"),
+                            # The revision this score was struck against.
+                            # Without it the next sweep cannot tell a seat it
+                            # scored correctly from one whose truth has since
+                            # been corrected under it.
+                            standing.revision_no, standing.content_sha256,
                         )
                     )
                     counts["settlements"] += 1
                     if credible:
-                        day_pnl[stage] += pnl
+                        day_pnl[stage] += scored.pnl_usdc
                     break
                 if not opened:
                     counts[refusal[0]] += 1
@@ -2018,8 +2346,9 @@ def backfill(
             " settlement_id, position_id, station_id, event_date, stage,"
             " settled_tmax_c, settled_bucket, hit, stake_usdc,"
             " payout_usdc, pnl_usdc, claimed_win_probability,"
-            " center_error_c, bucket_distance, settled_at_utc"
-            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " center_error_c, bucket_distance, settled_at_utc,"
+            " truth_revision_no, truth_content_sha256"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             pending_settlements,
         )
     # A refusal is the current answer for a scope, not an event log: the next
