@@ -134,6 +134,14 @@ def main() -> int:
                 )
             state = entry.get("outcome", "REPORT_ONLY")
             print(f"SUMMARY {stage}: {state} — {detail}")
+            shadow = entry.get("radiation_width_covariate")
+            if shadow:
+                print(
+                    f"SHADOW  {stage}: 辐射宽度协变量 斜率 "
+                    f"{shadow['slope']:+.3f}，前向增益 "
+                    f"{shadow['forward_nll_gain']:+.4f}，覆盖 "
+                    f"{shadow['labelled_cell_share']:.0%}（不服务）"
+                )
     return 0
 
 
