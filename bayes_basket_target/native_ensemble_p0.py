@@ -19,6 +19,12 @@ from .band_reliability_store import (
     load_band_table,
     pinned_band_table_sha,
 )
+from .center_width_calibration import apply_center_width_calibration
+from .center_width_store import (
+    CENTER_WIDTH_METHOD_TAG,
+    load_center_width,
+    pinned_center_width_sha,
+)
 from .cross_consensus import (
     BAND_RELIABILITY_METHOD_TAG,
     CONSENSUS_BRIDGE_METHOD_TAG,
@@ -2491,6 +2497,35 @@ def compile_native_ensemble_p0(
         )
         if pinned_sha is not None:
             band_reliability_receipt["band_table_sha256"] = pinned_sha
+    # After the band layer, exactly where the gate put it.  Only ever applied
+    # against the version the artifact names: an artifact built before this
+    # existed carries no tag and is served the math it was gated on, and a
+    # pinned-but-missing version fails closed inside the loader rather than
+    # serving an approximation of it.
+    center_width_receipt = None
+    if CENTER_WIDTH_METHOD_TAG in artifact_combination_method:
+        pinned_center_width = pinned_center_width_sha(
+            artifact_combination_method
+        )
+        if pinned_center_width is not None:
+            scalars = load_center_width(
+                conn, stage="P0", table_sha256=pinned_center_width
+            )
+            if scalars is not None:
+                probability, center_width_receipt = (
+                    apply_center_width_calibration(
+                        probability,
+                        delta_c=scalars[0],
+                        width_lambda=scalars[1],
+                        ordered_keys=ordered,
+                        key_centers_c=_bucket_centers(
+                            intervals_raw, ordered
+                        ),
+                    )
+                )
+                center_width_receipt["center_width_sha256"] = (
+                    pinned_center_width
+                )
     model_envelope_lower_bucket = _bucket_for_value(
         envelope_lower_c,
         intervals_raw,

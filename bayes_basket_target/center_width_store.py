@@ -37,7 +37,14 @@ CENTER_WIDTH_STAGES = ("P0", "P0-M", "P1")
 # journalled anyway -- the measurement is worth having, and the day the
 # pinning is built the evidence is already there -- but it is not activated,
 # because an active row is a claim that something is being served.
-CENTER_WIDTH_SERVED_STAGES = ("P0-M", "P1")
+CENTER_WIDTH_SERVED_STAGES = ("P0", "P0-M", "P1")
+# P0 joined once the pin existed.  Its distribution is compiled against an
+# OOS-gated artifact, so the correction had to become part of the gated math
+# rather than something hung after it: the holdout below scores it, the
+# artifact records the table version scored, and serving reproduces that
+# exact version or fails closed.  Built while the P0 table was still empty,
+# so the plumbing landed at identity and changed no served number.
+CENTER_WIDTH_METHOD_TAG = "center_width_scalars_v1"
 # The grids the fit searches.  Deliberately coarse: the measured optimum sits
 # on a broad, flat basin (lambda 0.80-0.85 across every slice tried), and a
 # finer grid would only be fitting the sampling noise of a two-week window.
@@ -157,6 +164,15 @@ def center_width_sha256(
         "delta_c": round(float(delta_c), 6),
         "width_lambda": round(float(width_lambda), 6),
     })
+
+
+def pinned_center_width_sha(combination_method: str) -> str | None:
+    """The scalars version an artifact says its holdout was scored against."""
+
+    for part in str(combination_method).split("::"):
+        if part.startswith("center_width_sha256="):
+            return part.split("=", 1)[1]
+    return None
 
 
 def load_center_width(

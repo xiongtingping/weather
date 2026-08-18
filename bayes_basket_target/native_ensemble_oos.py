@@ -19,6 +19,11 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .band_reliability_store import load_band_table
+from .center_width_calibration import apply_center_width_calibration
+from .center_width_store import (
+    CENTER_WIDTH_METHOD_TAG,
+    load_center_width,
+)
 from .contracts import ContractError, content_sha256
 from .station_registry import station_coordinates
 from .cross_consensus import (
@@ -3026,6 +3031,20 @@ def build_native_ensemble_oos(
         if active_band_table is not None
         else (None, None)
     )
+    # Same contract for the stage scalars: whatever is active now is what
+    # this build's holdout scores, and its sha rides into every candidate so
+    # serving reproduces that exact pair or fails closed.  None until the
+    # layer's own forward window admits a fit, which is the identity case
+    # and changes nothing.
+    active_center_width = load_center_width(conn, stage="P0")
+    center_width = (
+        (active_center_width[0], active_center_width[1])
+        if active_center_width is not None
+        else None
+    )
+    center_width_sha = (
+        active_center_width[2] if active_center_width is not None else None
+    )
     if min_train_days < 2 or min_holdout_days < 1:
         raise ContractError("native_ensemble_oos_window_invalid")
     as_of = datetime.fromisoformat(as_of_utc.replace("Z", "+00:00"))
@@ -3595,6 +3614,21 @@ def build_native_ensemble_oos(
                     shaped, _band_receipt = apply_band_reliability(
                         shaped, factors=band_factors
                     )
+                # Last of all, and only because the pin now exists: the
+                # stage scalars are part of the gated math, so the holdout
+                # scores them and the artifact records which version it
+                # scored.  ``None`` is the ordinary case until the layer has
+                # fitted something its own forward window admits.
+                if center_width is not None and skip != "center_width":
+                    shaped, _cw_receipt = apply_center_width_calibration(
+                        shaped,
+                        delta_c=center_width[0],
+                        width_lambda=center_width[1],
+                        ordered_keys=grid,
+                        key_centers_c=[
+                            float(int(key)) for key in grid
+                        ],
+                    )
                 return shaped
 
             def _weighted_blend(
@@ -3909,6 +3943,7 @@ def build_native_ensemble_oos(
             },
             "run_cycle_by_system_sha256": cycle_mapping_sha,
             "band_table_sha256": band_table_sha,
+            "center_width_sha256": center_width_sha,
             "p0_exact_match_ready": True,
             "p0_exact_match_blocker": None,
             "settlement_definition": next(
@@ -5050,6 +5085,16 @@ def persist_native_ensemble_oos(
                         "::band_table_sha256="
                         + str(candidate["band_table_sha256"])
                         if candidate.get("band_table_sha256")
+                        else ""
+                    )
+                    # Absent while the layer has fitted nothing, so artifacts
+                    # built before it stay byte-identical and keep serving
+                    # exactly the math they were gated on.
+                    + (
+                        "::" + CENTER_WIDTH_METHOD_TAG
+                        + "::center_width_sha256="
+                        + str(candidate["center_width_sha256"])
+                        if candidate.get("center_width_sha256")
                         else ""
                     )
                 ),

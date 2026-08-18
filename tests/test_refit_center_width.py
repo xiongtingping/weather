@@ -128,20 +128,23 @@ class EvidenceWindowTest(unittest.TestCase):
 
 
 class RefitAllStagesTest(unittest.TestCase):
-    def test_every_stage_is_fitted_including_the_unserved_one(self) -> None:
-        """P0 is fitted for evidence though nothing serves it.
+    def test_every_stage_is_fitted_and_every_stage_is_served(self) -> None:
+        """P0 joined once its correction became part of the gated math.
 
-        Its distribution is produced against a pinned artifact, so attaching
-        a scalar the serving gate never saw is exactly the unbound-pointer
-        failure; the fit still runs so the evidence exists when pinning does.
+        Before the pin it was fitted for evidence only: hanging a scalar
+        after an OOS-gated artifact would serve math the gate never scored.
+        Now the holdout scores it and the artifact records which version,
+        so the stage is served like the other two.
         """
 
         conn = _connection()
         stages = refit_all_center_width(conn, commit=False)
         self.assertEqual(sorted(stages), sorted(CENTER_WIDTH_STAGES))
-        self.assertFalse(stages["P0"]["served_stage"])
-        for stage in CENTER_WIDTH_SERVED_STAGES:
+        for stage in CENTER_WIDTH_STAGES:
             self.assertTrue(stages[stage]["served_stage"])
+        self.assertEqual(
+            sorted(CENTER_WIDTH_SERVED_STAGES), sorted(CENTER_WIDTH_STAGES)
+        )
 
     def test_report_only_activates_nothing(self) -> None:
         conn = _connection()
@@ -149,10 +152,12 @@ class RefitAllStagesTest(unittest.TestCase):
         for stage in CENTER_WIDTH_STAGES:
             self.assertIsNone(load_center_width(conn, stage=stage))
 
-    def test_an_unserved_stage_is_journalled_as_not_wired(self) -> None:
+    def test_a_starved_p0_accumulates_rather_than_activating(self) -> None:
+        """The pin makes P0 servable; evidence still decides whether it is."""
+
         conn = _connection()
         stages = refit_all_center_width(conn, commit=True)
-        self.assertEqual(stages["P0"]["outcome"], "NOT_WIRED")
+        self.assertEqual(stages["P0"]["outcome"], "ACCUMULATING")
         self.assertIsNone(load_center_width(conn, stage="P0"))
 
     def test_a_starved_served_stage_stays_identity(self) -> None:
@@ -228,6 +233,74 @@ class RadiationWidthCovariateShadowTest(unittest.TestCase):
             )
         }
         self.assertNotIn("radiation_slope", columns)
+
+
+class P0PinContractTest(unittest.TestCase):
+    """What the gate scored is what serving reproduces, or nothing is served.
+
+    P0's distribution is compiled against an OOS-gated artifact.  The stage
+    scalars could only join it by becoming part of the gated math: the
+    holdout scores them, the artifact records the version scored, and serving
+    applies that version or fails closed.  These pin the three halves of that
+    contract against each other.
+    """
+
+    def test_the_tag_and_the_pin_are_read_back_from_one_string(self) -> None:
+        from bayes_basket_target.center_width_store import (
+            CENTER_WIDTH_METHOD_TAG,
+            pinned_center_width_sha,
+        )
+
+        method = (
+            "train_rmse_inverse_family_capped_v1::PRODUCTION_NO_LIVE"
+            "::band_reliability_v1::band_table_sha256=" + "a" * 64
+            + "::" + CENTER_WIDTH_METHOD_TAG
+            + "::center_width_sha256=" + "b" * 64
+        )
+        self.assertIn(CENTER_WIDTH_METHOD_TAG, method)
+        self.assertEqual(pinned_center_width_sha(method), "b" * 64)
+
+    def test_an_untagged_artifact_names_no_version(self) -> None:
+        """Artifacts built before this existed keep serving their own math."""
+
+        from bayes_basket_target.center_width_store import (
+            CENTER_WIDTH_METHOD_TAG,
+            pinned_center_width_sha,
+        )
+
+        legacy = (
+            "train_rmse_inverse_family_capped_v1::PRODUCTION_NO_LIVE"
+            "::band_reliability_v1"
+        )
+        self.assertNotIn(CENTER_WIDTH_METHOD_TAG, legacy)
+        self.assertIsNone(pinned_center_width_sha(legacy))
+
+    def test_a_pinned_version_that_is_gone_fails_closed(self) -> None:
+        """Serving an approximation of gated math is what the pin forbids."""
+
+        from bayes_basket_target.contracts import ContractError
+
+        conn = _connection()
+        with self.assertRaises(ContractError):
+            load_center_width(conn, stage="P0", table_sha256="c" * 64)
+
+    def test_the_serving_path_reads_the_tag_and_the_pin(self) -> None:
+        """Both halves must be present in the compiler, not just the tag."""
+
+        source = (
+            ROOT / "bayes_basket_target" / "native_ensemble_p0.py"
+        ).read_text()
+        self.assertIn("CENTER_WIDTH_METHOD_TAG", source)
+        self.assertIn("pinned_center_width_sha", source)
+        self.assertIn("apply_center_width_calibration", source)
+
+    def test_the_gate_pins_what_it_scored(self) -> None:
+        source = (
+            ROOT / "bayes_basket_target" / "native_ensemble_oos.py"
+        ).read_text()
+        self.assertIn("center_width_sha256", source)
+        self.assertIn("CENTER_WIDTH_METHOD_TAG", source)
+        self.assertIn("apply_center_width_calibration", source)
 
 if __name__ == "__main__":
     unittest.main()
