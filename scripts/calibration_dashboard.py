@@ -3221,13 +3221,21 @@ function centerWidth(){
 // odds all read as numbers; anything else falls back to text, and an em dash
 // always sinks so empty cells never crowd the top of either direction.
 function makeSortable(table){
-  const heads=[...table.querySelectorAll("thead th")];
+  // Direct children only.  A stage cell now carries its own per-leg table,
+  // so a descendant selector reaches into it: the outer table's header
+  // collected the inner table's `th`, and sorting collected the inner
+  // table's rows and re-appended them into the outer `tbody`.  The page
+  // showed bucket names under the station column and rung counts under the
+  // stage columns -- the inner table's rows, wearing the outer table's
+  // header.
+  const heads=[...table.querySelectorAll(":scope > thead > tr > th")];
   heads.forEach((th,index)=>{
     th.style.cursor="pointer";
     th.title="点击排序";
     th.addEventListener("click",()=>{
-      const body=table.querySelector("tbody");
-      const rows=[...body.querySelectorAll("tr")];
+      const body=table.querySelector(":scope > tbody");
+      if(!body) return;
+      const rows=[...body.querySelectorAll(":scope > tr")];
       const asc=th.dataset.sortDir!=="asc";
       heads.forEach(o=>{o.dataset.sortDir="";o.dataset.sorted="";});
       th.dataset.sortDir=asc?"asc":"desc";
@@ -3235,7 +3243,13 @@ function makeSortable(table){
       const value=(row)=>{
         const cell=row.cells[index];
         if(!cell) return {n:null,s:""};
-        const text=cell.textContent.trim();
+        // Sort on what the cell shows, not on what it hides.  ``textContent``
+        // is recursive, so a folded-away per-leg table contributes its share
+        // counts and rung prices to the sort key -- and the first number in
+        // the cell is then whichever one the DOM happens to reach first.
+        const shown=cell.cloneNode(true);
+        shown.querySelectorAll("details,table").forEach(n=>n.remove());
+        const text=shown.textContent.trim();
         if(!text||text==="—") return {n:null,s:""};
         const m=text.replace(/[,\s]/g,"").match(/-?\d+(\.\d+)?/);
         return {n:m?parseFloat(m[0]):null,s:text};
