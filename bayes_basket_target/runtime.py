@@ -69,7 +69,7 @@ _DEFAULT_POLICY = {
     "peripheral_min_coverage_value": 0.01,
     "max_disagreement_expansion_layers": 2,
     "maximum_support_buckets": 4,
-    "dispersion_c_per_expansion_layer": 1.0,
+    "dispersion_rungs_per_expansion_layer": 1.0,
     "clip_min_notional_usdc": 1.0,
     "price_tick_size": 0.01,
     "maximum_limit_price": 0.99,
@@ -145,6 +145,58 @@ def evaluate_no_live_cadence(
     )
 
 
+def _bucket_rung_width_c(envelope: ProbabilityEnvelope) -> float | None:
+    """Celsius width of one rung, read off this station's own ladder.
+
+    Charter clause 53 forbids hard-coding the rung by unit: the only lawful
+    source is the registry's ``lower/upper``, which every producer already
+    carries into lineage as ``bucket_intervals_c_json``.  Taking the median gap
+    between consecutive finite bucket centres gives 1.0 on a Celsius book and
+    10/9 on a Fahrenheit one, and stays correct for any ladder either book
+    grows later -- the same derivation the calibration dashboard uses.
+
+    ``None`` means the envelope did not publish enough geometry to answer:
+    fewer than two finite buckets, or no intervals at all.  The two unbounded
+    end buckets have no defined width and are excluded.
+    """
+
+    raw = envelope.lineage.get("bucket_intervals_c_json")
+    if not raw:
+        return None
+    try:
+        intervals = json.loads(str(raw))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ContractError("probability_bucket_intervals_invalid") from exc
+    if not isinstance(intervals, Mapping):
+        raise ContractError("probability_bucket_intervals_invalid")
+    centers: list[float] = []
+    for bucket, bounds in intervals.items():
+        if str(bucket) not in envelope.bucket_ordinals:
+            continue
+        try:
+            lower, upper = bounds[0], bounds[1]
+        except (TypeError, IndexError, KeyError) as exc:
+            raise ContractError("probability_bucket_intervals_invalid") from exc
+        if lower is None or upper is None:
+            continue
+        try:
+            center = (float(lower) + float(upper)) / 2.0
+        except (TypeError, ValueError) as exc:
+            raise ContractError("probability_bucket_intervals_invalid") from exc
+        if not math.isfinite(center):
+            raise ContractError("probability_bucket_intervals_invalid")
+        centers.append(center)
+    if len(centers) < 2:
+        return None
+    centers.sort()
+    steps = sorted(
+        centers[index + 1] - centers[index]
+        for index in range(len(centers) - 1)
+    )
+    rung = steps[len(steps) // 2]
+    return rung if rung > 0.0 else None
+
+
 def snapshot_from_probability_envelope(
     envelope: ProbabilityEnvelope,
     market_snapshot: Mapping[str, Any],
@@ -171,6 +223,12 @@ def snapshot_from_probability_envelope(
         raise ContractError("probability_model_envelope_span_invalid") from exc
     if not math.isfinite(model_envelope_span_c) or model_envelope_span_c < 0.0:
         raise ContractError("probability_model_envelope_span_invalid")
+    bucket_rung_width_c = _bucket_rung_width_c(envelope)
+    if model_envelope_span_c > 0.0 and bucket_rung_width_c is None:
+        # Only demanded when there is a Celsius span to convert.  A stage that
+        # publishes no dispersion needs no exchange rate, and refusing it would
+        # take down a scope over a number nothing was going to read.
+        raise ContractError("probability_bucket_rung_width_missing")
     raw_lower_ordinal = envelope.lineage.get("model_envelope_lower_ordinal")
     raw_upper_ordinal = envelope.lineage.get("model_envelope_upper_ordinal")
     if (raw_lower_ordinal is None) != (raw_upper_ordinal is None):
@@ -429,6 +487,7 @@ def snapshot_from_probability_envelope(
             "posterior_version": envelope.posterior_version,
             "posterior_sha256": envelope.posterior_sha256,
             "forecast_dispersion_c": model_envelope_span_c,
+            "bucket_rung_width_c": bucket_rung_width_c,
             "model_envelope_lower_ordinal": model_envelope_lower_ordinal,
             "model_envelope_upper_ordinal": model_envelope_upper_ordinal,
             "model_center_ordinal": model_center_ordinal,

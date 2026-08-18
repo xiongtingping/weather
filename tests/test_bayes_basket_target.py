@@ -336,6 +336,19 @@ def _envelope() -> ProbabilityEnvelope:
             "model_envelope_lower_ordinal": "38",
             "model_envelope_upper_ordinal": "38",
             "model_envelope_span_c": "0",
+            # ZUUU settles in Celsius, so its ladder steps 1C.  Every produced
+            # envelope carries this (89,031 rows since 2026-08-01, no gaps);
+            # it is what tells the kernel how many rungs a Celsius dispersion
+            # is worth, and a fixture without it is not a market.
+            "bucket_intervals_c_json": json.dumps(
+                {
+                    "37": [36.5, 37.5],
+                    "38": [37.5, 38.5],
+                    "39": [38.5, 39.5],
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
             "formal_model_members_json": json.dumps(
                 [
                     {

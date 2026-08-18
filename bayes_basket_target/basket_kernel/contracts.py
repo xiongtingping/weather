@@ -200,6 +200,12 @@ class MaterializedEvidence:
     posterior_version: str
     posterior_sha256: str
     forecast_dispersion_c: float = 0.0
+    # Celsius width of one market rung on this station's own ladder, read off
+    # the registry-backed bucket intervals rather than from the unit column:
+    # 1.0 on a Celsius book, 10/9 on a Fahrenheit one (charter clause 53).
+    # Every conversion between a Celsius quantity and a rung count must go
+    # through this, because the exchange rate is a station property.
+    bucket_rung_width_c: float | None = None
     model_envelope_lower_ordinal: int | None = None
     model_envelope_upper_ordinal: int | None = None
     # Where this stage's data actually points, as a bucket ordinal.  P0 derives
@@ -223,6 +229,7 @@ class MaterializedEvidence:
             "posterior_version",
             "posterior_sha256",
             "forecast_dispersion_c",
+            "bucket_rung_width_c",
             "model_envelope_lower_ordinal",
             "model_envelope_upper_ordinal",
             "model_center_ordinal",
@@ -237,6 +244,12 @@ class MaterializedEvidence:
         }
         if set(raw) - allowed_fields:
             raise ContractError("materialized_evidence_unknown_fields")
+        raw_rung_width = raw.get("bucket_rung_width_c")
+        rung_width = (
+            None
+            if raw_rung_width is None
+            else _positive("bucket_rung_width_c", raw_rung_width)
+        )
         raw_lower = raw.get("model_envelope_lower_ordinal")
         raw_upper = raw.get("model_envelope_upper_ordinal")
         if (raw_lower is None) != (raw_upper is None):
@@ -306,6 +319,7 @@ class MaterializedEvidence:
             posterior_version=_required_text("posterior_version", raw.get("posterior_version")),
             posterior_sha256=_sha256_text("posterior_sha256", raw.get("posterior_sha256")),
             forecast_dispersion_c=_nonnegative("forecast_dispersion_c", raw.get("forecast_dispersion_c", 0.0)),
+            bucket_rung_width_c=rung_width,
             model_envelope_lower_ordinal=lower,
             model_envelope_upper_ordinal=upper,
             model_center_ordinal=model_center,
@@ -540,7 +554,15 @@ class TargetBasketPolicy:
     # not narrowed into legality -- it is simply not seated, and the scope
     # holds.
     minimum_support_buckets: int = 3
-    dispersion_c_per_expansion_layer: float = 1.0
+    # How much model disagreement buys one expansion layer, counted in rungs
+    # of the station's own ladder rather than in degrees.  The evidence side
+    # of that comparison (``forecast_dispersion_c``) is a Celsius quantity, so
+    # the conversion runs through ``MaterializedEvidence.bucket_rung_width_c``:
+    # a knob denominated in Celsius cannot be right on both books at once,
+    # because one rung is 1.0C on a Celsius market and 10/9 C on a Fahrenheit
+    # one.  Named ``dispersion_c_per_expansion_layer`` until 2026-08-18, when
+    # it was measured to be spending the Celsius rung width on both.
+    dispersion_rungs_per_expansion_layer: float = 1.0
     clip_min_notional_usdc: float = 1.0
     # There is deliberately no legacy source-wallet clip fallback.  The
     # target compiler must bind this cap from its explicit self-owned
@@ -594,6 +616,16 @@ class TargetBasketPolicy:
         if "dispersion_coverage_gain_per_c" in raw:
             raise ContractError(
                 "legacy_dispersion_core_coverage_gain_forbidden"
+            )
+        # Refused rather than aliased: the two names denominate the knob in
+        # different units, and silently carrying a Celsius value into a rung
+        # count is the exact confusion charter clause 53 exists to stop.  No
+        # persisted policy or learned theta ever carried the old key (2026-08-18:
+        # 8 global priors, 135 station policy artifacts, zero hits), so this
+        # closes a door nothing was standing in.
+        if "dispersion_c_per_expansion_layer" in raw:
+            raise ContractError(
+                "legacy_dispersion_celsius_per_expansion_layer_forbidden"
             )
         clip_max_raw = raw.get("clip_max_notional_usdc", cls.clip_max_notional_usdc)
         if clip_max_raw is None:
@@ -655,11 +687,11 @@ class TargetBasketPolicy:
                     cls.minimum_support_buckets,
                 )
             ),
-            dispersion_c_per_expansion_layer=_positive(
-                "dispersion_c_per_expansion_layer",
+            dispersion_rungs_per_expansion_layer=_positive(
+                "dispersion_rungs_per_expansion_layer",
                 raw.get(
-                    "dispersion_c_per_expansion_layer",
-                    cls.dispersion_c_per_expansion_layer,
+                    "dispersion_rungs_per_expansion_layer",
+                    cls.dispersion_rungs_per_expansion_layer,
                 ),
             ),
             clip_min_notional_usdc=_positive(
