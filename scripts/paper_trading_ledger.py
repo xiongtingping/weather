@@ -458,6 +458,66 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         )
 
 
+def _window_floor(
+    conn: sqlite3.Connection, *, recent_days: int | None
+) -> str:
+    """The earliest event day an incremental pass re-derives.
+
+    Empty string for a rebuild, which has no floor.  One definition, used by
+    everything that has to agree on where the window starts -- the walk, the
+    superseded-row sweep and the opening equity.
+    """
+
+    if recent_days is None:
+        return ""
+    floor = conn.execute(
+        "SELECT date((SELECT max(event_date)"
+        " FROM basket_probability_bridge_history), '-' || ?1 || ' days')",
+        (recent_days,),
+    ).fetchone()
+    return str((floor or [""])[0] or "")
+
+
+def _opening_equity(
+    conn: sqlite3.Connection, *, earliest: str
+) -> dict[str, float]:
+    """The book an incremental window opens with, not the book it started life
+    with.
+
+    An incremental pass walks only the last few days, and the equity it
+    compounds used to start at the initial capital on every run.  So a seat
+    created by a sweep was sized against a thousand USDC whatever the book had
+    actually done -- 2026-08-16 through 08-18 seated 24 positions over the 2%
+    per-scope cap that way, sized off 1000 while the P1 book stood at 724.
+    The rebuild that walks everything got this right and hid it: only the
+    incremental path was wrong, and the incremental path is the one that runs
+    every fifteen minutes.
+
+    Same filter as the day-by-day advance below, for the same reason: a
+    basket bought under the dust floor is a one-sided quote, and its win
+    bankrolls nothing.  Rule fingerprints are deliberately *not* filtered
+    here -- rows outside the window are never re-derived, so excluding them
+    would open the window on a book the page does not show.
+    """
+
+    equity = {stage: INITIAL_CAPITAL_USDC for stage in STAGES}
+    if not earliest:
+        return equity
+    for stage, pnl in conn.execute(
+        "SELECT s.stage, SUM(s.pnl_usdc)"
+        " FROM paper_trade_settlement s"
+        " JOIN paper_trade_position p USING(position_id)"
+        " WHERE s.event_date < ? AND p.all_in_cost>=?"
+        " GROUP BY s.stage",
+        (earliest, DUST_COST_FLOOR),
+    ):
+        if str(stage) in equity:
+            equity[str(stage)] = max(
+                0.0, equity[str(stage)] + float(pnl or 0.0)
+            )
+    return equity
+
+
 def _drop_superseded_positions(
     conn: sqlite3.Connection, *, recent_days: int | None
 ) -> int:
@@ -468,14 +528,7 @@ def _drop_superseded_positions(
     the stamp is for.
     """
 
-    earliest = ""
-    if recent_days is not None:
-        floor = conn.execute(
-            "SELECT date((SELECT max(event_date)"
-            " FROM basket_probability_bridge_history), '-' || ?1 || ' days')",
-            (recent_days,),
-        ).fetchone()
-        earliest = str((floor or [""])[0] or "")
+    earliest = _window_floor(conn, recent_days=recent_days)
     conn.execute(
         "DELETE FROM paper_trade_settlement WHERE position_id IN ("
         "  SELECT position_id FROM paper_trade_position"
@@ -1732,7 +1785,14 @@ def backfill(
     # still recorded and still reported -- charter 35 buys the negative-EV leg
     # and refusing one-sided quotes outright leaves a single tradable basket
     # -- they just no longer set the size of anything.
-    equity = {stage: INITIAL_CAPITAL_USDC for stage in STAGES}
+    #
+    # An incremental pass inherits the book the days before its window left
+    # behind; a rebuild walks from the first day and starts at the initial
+    # capital.  Both read the same settlements through the same dust filter,
+    # so the two paths size a seat identically.
+    equity = _opening_equity(
+        conn, earliest=_window_floor(conn, recent_days=recent_days)
+    )
     pending_positions: list[tuple] = []
     pending_settlements: list[tuple] = []
     pending_refusals: list[tuple] = []

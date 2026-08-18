@@ -167,3 +167,75 @@ def test_only_credible_fills_bankroll_the_book() -> None:
                 realised[stage] += float(pnl)
         for stage, amount in realised.items():
             equity[stage] = max(0.0, equity[stage] + amount)
+
+
+def test_an_incremental_window_opens_on_the_book_it_inherited() -> None:
+    """A sweep sizes against the book that exists, not the one it started with.
+
+    The equity curve compounds day by day across the days a pass walks, and
+    an incremental pass walks only the last few.  Started at the initial
+    capital every run, that made every seat a sweep created sized against a
+    thousand USDC however the book had actually done -- and the sweep is the
+    path that runs every fifteen minutes, so it is the path almost every
+    recorded seat came through.  Measured before the fix: 24 positions over
+    the 2% per-scope cap on 2026-08-16 through 08-18, sized off 1000 while
+    the P1 book stood at 724.  The rebuild that walks everything was right
+    all along, which is exactly why this went unseen.
+
+    The dust filter has to travel with it.  A basket bought under a cent is
+    a one-sided quote whose win returns a thousand times its stake; letting
+    those into the opening equity is the same phantom bankroll by a
+    different door.
+    """
+
+    import sqlite3
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    from paper_trading_ledger import (  # noqa: PLC0415
+        INITIAL_CAPITAL_USDC,
+        _opening_equity,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(
+        "CREATE TABLE paper_trade_position ("
+        " position_id TEXT PRIMARY KEY, all_in_cost REAL);"
+        "CREATE TABLE paper_trade_settlement ("
+        " position_id TEXT, stage TEXT, event_date TEXT, pnl_usdc REAL);"
+    )
+    conn.executemany(
+        "INSERT INTO paper_trade_position VALUES (?,?)",
+        [("credible", 0.30), ("dust", 0.001), ("inside", 0.30)],
+    )
+    conn.executemany(
+        "INSERT INTO paper_trade_settlement VALUES (?,?,?,?)",
+        [
+            # Before the window: this is the book the sweep inherits.
+            ("credible", "P1", "2026-08-10", -275.0),
+            # Before the window but bought for a tenth of a cent -- a win
+            # here is not money the next day can deploy.
+            ("dust", "P1", "2026-08-11", 900.0),
+            # Inside the window, so the day-by-day walk will add it; adding
+            # it here as well would count it twice.
+            ("inside", "P1", "2026-08-17", 50.0),
+        ],
+    )
+
+    opened = _opening_equity(conn, earliest="2026-08-16")
+    assert opened["P1"] == INITIAL_CAPITAL_USDC - 275.0, (
+        "an incremental window must open on the realised book before it, "
+        f"got {opened['P1']}"
+    )
+    assert opened["P0"] == INITIAL_CAPITAL_USDC, (
+        "a stage with no history before the window opens at the initial "
+        "capital"
+    )
+    # A rebuild has no floor and walks every day itself, so it starts where
+    # the book started.
+    assert _opening_equity(conn, earliest="") == {
+        stage: INITIAL_CAPITAL_USDC for stage in ("P0", "P0-M", "P1")
+    }
