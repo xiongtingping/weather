@@ -1008,6 +1008,22 @@ def build_payload(db: Path) -> dict[str, Any]:
             "window_size_mean": _mean(
                 [float(r["window_size"]) for r in subset]
             ),
+            # Rungs posted against rungs bought.  The window mean above is
+            # the filled figure alone, and read on its own it says a station
+            # chose narrow baskets when what happened is the book only sold
+            # it part of a wide one.
+            "posted_leg_total": sum(
+                int(r["entry"]["posted_leg_count"]) for r in subset
+            ),
+            "filled_leg_total": sum(
+                int(r["entry"]["filled_leg_count"]) for r in subset
+            ),
+            "posted_leg_mean": _mean(
+                [float(r["entry"]["posted_leg_count"]) for r in subset]
+            ),
+            "filled_leg_mean": _mean(
+                [float(r["entry"]["filled_leg_count"]) for r in subset]
+            ),
             "model_coverage_mean": _mean(
                 [r["win_probability"] for r in subset]
             ),

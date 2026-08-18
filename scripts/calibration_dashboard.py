@@ -2040,6 +2040,25 @@ def _daily_table(selection: dict[str, Any]) -> list[dict[str, Any]]:
                 sum(int(r["window_size"]) for r in rows) / len(rows)
                 if rows else None
             ),
+            # What the day posted against what it bought, in rungs.  The
+            # window mean above counts filled rungs only, so a day that
+            # posted three-rung ladders and was sold one of each reads as a
+            # day of one-rung baskets -- which is a statement about the book,
+            # not about what was chosen.
+            "posted_leg_total": sum(
+                int(r["entry"]["posted_leg_count"]) for r in rows
+            ),
+            "filled_leg_total": sum(
+                int(r["entry"]["filled_leg_count"]) for r in rows
+            ),
+            "posted_leg_mean": (
+                sum(int(r["entry"]["posted_leg_count"]) for r in rows)
+                / len(rows) if rows else None
+            ),
+            "filled_leg_mean": (
+                sum(int(r["entry"]["filled_leg_count"]) for r in rows)
+                / len(rows) if rows else None
+            ),
             "hit_rate": hits / len(settled) if settled else None,
             "claimed_win_probability_mean": claimed,
             "calibration_ratio": (
@@ -2582,7 +2601,14 @@ function daily(){
       <td>${r.station_count}</td>
       <td>${r.position_count}</td>
       <td class="muted">${s.above||0}/${s.aligned||0}/${s.below||0}</td>
-      <td>${r.mean_window_size==null?"—":r.mean_window_size.toFixed(1)}</td>
+      <td class="mono">${r.posted_leg_total}
+        <span class="muted">均 ${r.posted_leg_mean==null?"—"
+          :r.posted_leg_mean.toFixed(1)}</span></td>
+      <td class="mono">${r.filled_leg_total}
+        <span class="muted">均 ${r.filled_leg_mean==null?"—"
+          :r.filled_leg_mean.toFixed(1)}</span>
+        ${r.posted_leg_total?`<span class="muted"> · ${
+          (100*r.filled_leg_total/r.posted_leg_total).toFixed(0)}%</span>`:""}</td>
       <td>${r.settled_count}</td>
       <td>${r.hit_rate==null?"—":(r.hit_rate*100).toFixed(0)+"%"}</td>
       <td>${r.claimed_win_probability_mean==null?"—":(r.claimed_win_probability_mean*100).toFixed(0)+"%"}</td>
@@ -2597,11 +2623,15 @@ function daily(){
   <p class="sub">按事件日汇总，只算可成交的（整篮成本 ≥1 分）——不足一分的多是无人出价那侧的
   挂单，名义上有价、实际买不到，混进来会让当天的盈亏读不出意思。</p>
   <div class="why"><b>列的意思：</b>「位置」是相对市场偏上/一致/偏下的笔数；
-  「均桶数」是当天座位平均几桶；「实现/声称」是命中率÷声称胜率，1.00× 表示概率说得准；
+  「预计建仓桶」是当天所有座位挂出去的腿数合计（括号里是每座位平均几腿），
+  「实际建仓桶」是其中真正买到的腿数与占比——两者的差是市场没卖，不是选桶变窄；
+  「实现/声称」是命中率÷声称胜率，1.00× 表示概率说得准；
   「赔率」是 (1−成本)/成本；「中心偏差」是模型中心减实测，正数表示我们偏热。</div>
   <div class="card"><table><thead><tr>
     <th>事件日</th><th>站数</th><th>仓位</th><th>位置<br><span class="muted">上/平/下</span></th>
-    <th>均桶数</th><th>已结算</th><th>命中率</th><th>声称</th><th>实现/声称</th>
+    <th>预计建仓桶<br><span class="muted">挂单腿数</span></th>
+    <th>实际建仓桶<br><span class="muted">成交腿数</span></th>
+    <th>已结算</th><th>命中率</th><th>声称</th><th>实现/声称</th>
     <th>赔率</th><th>投入</th><th>盈亏</th><th>中心偏差</th>
   </tr></thead><tbody>${rows}</tbody></table></div>`;
 }
@@ -2673,7 +2703,14 @@ function stationSummary(){
         <span class="muted">${h(s.station_label)}</span></td>
       <td>${s.position_count}</td>
       <td>${s.settled_count}</td>
-      <td>${s.window_size_mean==null?"—":s.window_size_mean.toFixed(1)}</td>
+      <td class="mono">${s.posted_leg_total}
+        <span class="muted">均 ${s.posted_leg_mean==null?"—"
+          :s.posted_leg_mean.toFixed(1)}</span></td>
+      <td class="mono">${s.filled_leg_total}
+        <span class="muted">均 ${s.filled_leg_mean==null?"—"
+          :s.filled_leg_mean.toFixed(1)}</span>
+        ${s.posted_leg_total?`<span class="muted"> · ${
+          (100*s.filled_leg_total/s.posted_leg_total).toFixed(0)}%</span>`:""}</td>
       <td class="muted">${sd.above||0}/${sd.aligned||0}/${sd.below||0}</td>
       <td>${p2(s.model_coverage_mean)}</td>
       <td class="mono">${n2(s.seat_ask_total_mean)}</td>
@@ -2694,11 +2731,16 @@ function stationSummary(){
   （整篮 ≥1 分，排除虚价）平均到一起。<b>这些数不属于任何一天</b>——它们回答的是
   「这个站长期表现如何」，逐日的账在下一节。</p>
   <div class="why"><b>列的意思：</b>「仓位」是参与平均的笔数，样本少于三笔时右侧的
-  命中率与实现/声称基本读不出信号；「位置」是相对市场偏上/一致/偏下的笔数；
+  命中率与实现/声称基本读不出信号；
+  「预计建仓桶」是该站这段窗口里挂出去的腿数合计（括号里是每座位平均几腿），
+  「实际建仓桶」是真正买到的腿数与占比——占比低说明这个站的盘口不肯按我们的价成交，
+  与选桶宽窄无关；「位置」是相对市场偏上/一致/偏下的笔数；
   「概率和/卖价和/赔率/EV」同第七节，只是范围缩到这一个站；
   「实现/声称」是命中率÷声称胜率；「兑现比」是实得÷期望。</div>
   <div class="card"><div class="scroll"><table><thead><tr>
-    <th>站点</th><th>仓位</th><th>已结算</th><th>均桶数</th>
+    <th>站点</th><th>仓位</th><th>已结算</th>
+    <th>预计建仓桶<br><span class="muted">挂单腿数</span></th>
+    <th>实际建仓桶<br><span class="muted">成交腿数</span></th>
     <th>位置<br><span class="muted">上/平/下</span></th>
     <th>概率和</th><th>卖价和</th><th>赔率</th><th>EV/U</th>
     <th>命中率</th><th>声称</th><th>实现/声称</th>
