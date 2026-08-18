@@ -2551,7 +2551,56 @@ function makerProbe(){
     <b>挂单价格是区间不是单点：</b>每条腿在<b>买价上一跳 ~ 卖价下一跳</b>
     之间均分挂 5 档。上界是硬的——挂到卖价就是吃单，等于把价差付出去。
     价差只有一跳时区间退化成买价一档。</div>`:"";
-  return `<h2>十二、挂单影子探针</h2>${reBlock}
+  // The pooled cards above say whether resting works; they cannot say
+  // whether it is getting better or worse, and that is the question after
+  // every change to how long an order rests or how often it is re-posted.
+  const trend=S.resting_entry_trend||[];
+  const STAGES=["P0","P0-M","P1"];
+  const cell=(s)=>{
+    if(!s) return `<td class="muted">—</td>`;
+    const rc=s.rung_completion_rate;
+    return `<td class="mono ${rc==null?"":(rc>=0.8?"up":rc<0.5?"down":"")}">
+      ${pct(rc)}
+      <span class="muted">腿 ${pct(s.leg_fill_rate)} ·
+      ${s.baskets}篮/${s.legs}腿 · 均价 ${
+        s.mean_filled_price==null?"—":s.mean_filled_price.toFixed(3)}</span></td>`;
+  };
+  // A day that has not resolved is still filling.  Without saying so the
+  // last two rows read as a collapse in fill rate when they are simply the
+  // rows whose orders are still on the book.
+  const today=(D.generated_at_utc||"").slice(0,10);
+  const trendRows=trend.map(d=>`<tr>
+    <td class="mono">${h(d.event_date)}${d.event_date>=today
+      ? ` <span class="pill amber" title="事件日未结束，挂单还在成交，这一行会继续往上走">进行中</span>`
+      : ""}</td>
+    ${STAGES.map(k=>cell(d.stages[k])).join("")}
+  </tr>`).join("");
+  // Totals across the window, computed from the same rows rather than
+  // restated: a footer that disagrees with its own column is worse than no
+  // footer.
+  const totals=STAGES.map(k=>{
+    const acc=trend.reduce((a,d)=>{const s=d.stages[k];if(!s)return a;
+      a.baskets+=s.baskets;a.legs+=s.legs;
+      if(s.rung_completion_rate!=null)a.rc+=s.rung_completion_rate*s.legs;
+      if(s.leg_fill_rate!=null)a.lf+=s.leg_fill_rate*s.legs;
+      a.days++;return a;},{baskets:0,legs:0,rc:0,lf:0,days:0});
+    return acc.legs?`<td class="mono"><b>${pct(acc.rc/acc.legs)}</b>
+      <span class="muted">腿 ${pct(acc.lf/acc.legs)} ·
+      ${acc.baskets}篮/${acc.legs}腿 · ${acc.days}天</span></td>`
+      :`<td class="muted">—</td>`;
+  }).join("");
+  const trendBlock=trendRows?`
+    <h2 style="margin-top:26px">按事件日看三阶段的成交趋势</h2>
+    <p class="sub">每格上行是<b>档位成交率</b>（挂出去的阶梯买到几档），
+    下行是整腿成交率、篮子数/腿数与实际成交均价。挂单时长或重挂周期一改，
+    先看这里有没有动。标「进行中」的事件日还没结束，单子还挂在书上，
+    那一行只会继续往上走——不要拿它和已经走完的日子直接比。</p>
+    <div class="card"><div class="scroll"><table><thead><tr>
+      <th>事件日</th>${STAGES.map(k=>`<th>${k}</th>`).join("")}
+    </tr></thead><tbody>${trendRows}
+      <tr><td><b>合计</b></td>${totals}</tr>
+    </tbody></table></div></div>`:"";
+  return `<h2>十二、挂单影子探针</h2>${reBlock}${trendBlock}
   <p class="sub">在真实时间轴上记录"此刻会挂什么单"，<b>不下真单</b>，
   再用后到的实时盘口判定它会不会成交。${m.open_count||0} 个意图未到期。</p>
   <div class="why"><b>为什么只有成交率没有成交量比例：</b>

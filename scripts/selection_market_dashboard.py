@@ -392,6 +392,81 @@ def _basket_hit_by_size(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return out
 
 
+def _resting_entry_trend(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """The same fill account as ``_resting_entry_stats``, one row per day.
+
+    The pooled figure answers "does resting work"; it cannot answer "is it
+    getting better or worse", and that is the question after every change to
+    how long an order rests or how often it is re-posted.  A window-wide
+    average absorbs the change instead of showing it.
+
+    Still per stage, for the same reason the pooled figure is: P0 rests
+    overnight on a book that barely trades, P1 rests inside the session on
+    the busiest book of the day, and an average over the two describes
+    neither.
+    """
+
+    try:
+        rows = conn.execute(
+            "SELECT event_date, stage, resting_fill_json"
+            " FROM paper_trade_position"
+            " WHERE resting_fill_json NOT IN ('', '{}')"
+            " ORDER BY event_date DESC",
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    by_day: dict[str, dict[str, dict[str, float]]] = {}
+    for event_date, stage, payload in rows:
+        try:
+            record = json.loads(payload)
+        except (TypeError, ValueError):
+            continue
+        slot = by_day.setdefault(str(event_date), {}).setdefault(
+            str(stage),
+            {
+                "baskets": 0, "legs": 0, "empty_legs": 0,
+                "posted_rungs": 0, "filled_rungs": 0,
+                "price_sum": 0.0, "price_legs": 0,
+            },
+        )
+        slot["baskets"] += 1
+        for value in record.values():
+            try:
+                fraction, price = str(value).split("@")
+                got, posted = (int(part) for part in fraction.split("/"))
+            except ValueError:
+                continue
+            slot["legs"] += 1
+            slot["posted_rungs"] += posted
+            slot["filled_rungs"] += got
+            slot["empty_legs"] += int(got == 0)
+            if got:
+                slot["price_sum"] += float(price)
+                slot["price_legs"] += 1
+    out: list[dict[str, Any]] = []
+    for event_date in sorted(by_day, reverse=True):
+        stages: dict[str, Any] = {}
+        for stage, slot in by_day[event_date].items():
+            legs = slot["legs"]
+            stages[stage] = {
+                "baskets": int(slot["baskets"]),
+                "legs": int(legs),
+                "rung_completion_rate": (
+                    slot["filled_rungs"] / slot["posted_rungs"]
+                    if slot["posted_rungs"] else None
+                ),
+                "leg_fill_rate": (
+                    (legs - slot["empty_legs"]) / legs if legs else None
+                ),
+                "mean_filled_price": (
+                    slot["price_sum"] / slot["price_legs"]
+                    if slot["price_legs"] else None
+                ),
+            }
+        out.append({"event_date": event_date, "stages": stages})
+    return out
+
+
 def _resting_entry_stats(conn: sqlite3.Connection) -> dict[str, Any]:
     """Per stage, how much of what was posted actually got bought.
 
@@ -1066,6 +1141,7 @@ def build_payload(db: Path) -> dict[str, Any]:
         "basket_hit_by_size": _basket_hit_by_size(conn),
         "maker_probe": _maker_probe(conn),
         "resting_entry": _resting_entry_stats(conn),
+        "resting_entry_trend": _resting_entry_trend(conn),
         "refusal_stats": _refusal_stats(conn),
         "generated_at_utc": datetime.now(timezone.utc)
         .isoformat().replace("+00:00", "Z"),
