@@ -85,6 +85,24 @@ MAX_TARGET_PROCESS_RSS_BYTES = 4096 * MIB
 MAX_INPUT_FILES_PER_BATCH = 4096
 MAX_WS_EVIDENCE_CACHE_SCOPES = 512
 MAX_WS_EVIDENCE_CACHE_ROW_BYTES = 512 * 1024
+# How many days of scopes the evidence cache keeps.
+#
+# The cache is a working set, not an archive: one row per live scope, upserted
+# in place, and the market history it summarises lives in
+# ``basket_official_ws_snapshot``.  Nothing ever aged out of it, so it filled
+# with 20 event days of scopes -- 2026-07-27 onward -- and hit the 512 ceiling.
+# At that point every new scope is refused, which fails the whole ingress
+# closed: on 2026-08-19 the resident wrote no quote at all, and the only
+# station-days with a book were the ones still early enough to be served by
+# the forward pre-selection path.  The Asia-Pacific stations, whose event day
+# had already begun, had none -- so P1 could not price a single one of them.
+#
+# The window is the subscription's own, plus a day either side: the WS
+# catalogue carries yesterday through two days ahead, and a scope outside that
+# has no reader.  Forty-five stations across five days is 225 rows against a
+# 512 ceiling, which leaves the ceiling doing what it is for -- catching a
+# runaway -- rather than throttling the steady state.
+WS_EVIDENCE_CACHE_RETAIN_DAYS = 3
 
 
 def _process_rss_bytes() -> int:

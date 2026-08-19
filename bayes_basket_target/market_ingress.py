@@ -14,7 +14,7 @@ import hashlib
 import json
 import math
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -26,6 +26,7 @@ from .resource_bounds import (
     MAX_INPUT_FILES_PER_BATCH,
     MAX_WS_EVIDENCE_CACHE_ROW_BYTES,
     MAX_WS_EVIDENCE_CACHE_SCOPES,
+    WS_EVIDENCE_CACHE_RETAIN_DAYS,
     assert_connection_target_capacity,
     assert_target_db_capacity,
     load_bounded_json,
@@ -840,6 +841,21 @@ def materialize_official_ws_evidence_cache(
         encoded = json.dumps(row["buckets_json"], ensure_ascii=False, sort_keys=True).encode("utf-8")
         if len(encoded) > MAX_WS_EVIDENCE_CACHE_ROW_BYTES:
             raise ContractError("official_ws_evidence_cache_row_bytes_exceeded")
+    # Age the working set out before measuring it.  Without this the cache
+    # only ever grows: it reached the 512-scope ceiling holding 20 event days,
+    # and a ceiling reached is an ingress that writes nothing at all rather
+    # than one that writes a little less.  A scope outside the subscription
+    # window has no reader -- the scope sweep reads this table to find live
+    # station-days, and the market history itself is in
+    # ``basket_official_ws_snapshot``.
+    floor_day = (
+        datetime.now(timezone.utc)
+        - timedelta(days=WS_EVIDENCE_CACHE_RETAIN_DAYS)
+    ).date().isoformat()
+    conn.execute(
+        "DELETE FROM basket_official_ws_evidence_cache WHERE event_date < ?",
+        (floor_day,),
+    )
     existing_count = int(conn.execute(
         "SELECT COUNT(*) FROM basket_official_ws_evidence_cache"
     ).fetchone()[0])
