@@ -104,6 +104,21 @@ MAX_STAKE_FRACTION_PER_SCOPE = 0.02
 # has since ruled out, all the way to settlement.  What it buys is that no
 # fill is ever priced against a bid this lane cannot measure.
 BOOK_MODEL = "one_book_per_station_day_top_up_only"
+# How much of the station-day's cap each stage may have spent by the time it
+# is done (user ruling, 2026-08-19).
+#
+# One cap for the chain is right -- three stages each taking 2% is a 6%
+# position in one outcome -- but a single running total lets the opening
+# spend all of it, and it does: ZUUU 2026-08-19 opened at 10.63 against a
+# 10.6 cap and P1 was refused for having no room left, before its own
+# numbers were reached at all.  That is the opening deciding there will be
+# no adjustment, which is not a decision it is entitled to make.
+#
+# So the cap is staged.  P0 may commit most of it and no more; each later
+# stage unlocks the rest, and the chain total is unchanged -- what changes
+# is that a later stage cannot be starved by the earlier one.  Room a stage
+# does not use is left for the next.
+STAGE_BUDGET_SHARE = {"P0": 0.6, "P0-M": 0.8, "P1": 1.0}
 MAXIMUM_SUPPORT_BUCKETS = 4
 # The ladder floor (charter 50).  The ledger exists to reproduce what
 # production seats, so it must carry production's structural rules; left at
@@ -288,6 +303,9 @@ SELECTION_RULE_SHA256 = content_sha256({
     "kelly_fraction": KELLY_FRACTION,
     "max_quote_staleness_minutes": MAX_QUOTE_STALENESS_MINUTES,
     "max_stake_fraction_per_scope": MAX_STAKE_FRACTION_PER_SCOPE,
+    # Which share of that cap each stage may have committed by its
+    # end.  It changes what every seat after the first may be.
+    "stage_budget_share": STAGE_BUDGET_SHARE,
     "maximum_support_buckets": MAXIMUM_SUPPORT_BUCKETS,
     "minimum_support_buckets": MINIMUM_SUPPORT_BUCKETS,
     "p1_minimum_support_buckets": P1_MINIMUM_SUPPORT_BUCKETS,
@@ -2299,21 +2317,23 @@ def backfill(
                         cost=float(seat["all_in_price"]),
                         equity=equity_at_open,
                     )
-                    stake = min(
-                        stake,
-                        max(
-                            0.0,
-                            equity_at_open * MAX_STAKE_FRACTION_PER_SCOPE
-                            - chain_stake,
-                        ),
+                    stage_room = (
+                        equity_at_open
+                        * MAX_STAKE_FRACTION_PER_SCOPE
+                        * STAGE_BUDGET_SHARE.get(stage, 1.0)
+                        - chain_stake
                     )
+                    stake = min(stake, max(0.0, stage_room))
                     if stake <= 0.0:
                         refusal = (
                             "no_positive_kelly",
                             "概率 %.3f · 成本 %.3f%s" % (
                                 float(seat["win_probability"]),
                                 float(seat["all_in_price"]),
-                                "" if not held else " · 本链额度已用尽",
+                                ""
+                                if not held
+                                else " · %s 段额度已用尽（本链已投 %.2f）"
+                                % (stage, chain_stake),
                             ),
                             cycles, payload["decision_at_utc"],
                         )

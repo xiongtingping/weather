@@ -123,8 +123,8 @@ def test_only_credible_fills_bankroll_the_book() -> None:
     assert "credible = all_in_cost >= DUST_COST_FLOOR" in source
     assert "chain_credible = chain_cost >= DUST_COST_FLOOR" in source
     assert (
-        "equity_at_open * MAX_STAKE_FRACTION_PER_SCOPE\n"
-        "                            - chain_stake," in source
+        "* STAGE_BUDGET_SHARE.get(stage, 1.0)\n"
+        "                        - chain_stake" in source
     )
     assert "if chain_credible:\n                day_pnl += scored.pnl_usdc" in source
 
@@ -171,6 +171,41 @@ def test_only_credible_fills_bankroll_the_book() -> None:
             if pnl is not None and cost is not None and float(cost) >= floor:
                 realised += float(pnl)
         equity = max(0.0, equity + realised)
+
+
+def test_the_opening_cannot_spend_the_whole_chain_cap() -> None:
+    """P0 may commit most of the station-day's cap; it may not commit all.
+
+    One running total against one cap let the opening starve every later
+    stage: ZUUU 2026-08-19 opened at 10.63 against a 10.6 cap and P1 was
+    refused for having no room left, before its own numbers were reached
+    (user ruling, 2026-08-19).  The chain total is unchanged -- the shares
+    are cumulative and end at 1.0 -- so this redistributes room rather than
+    granting more of it.
+    """
+
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    from paper_trading_ledger import (  # noqa: PLC0415
+        MAX_STAKE_FRACTION_PER_SCOPE,
+        STAGE_BUDGET_SHARE,
+    )
+
+    assert set(STAGE_BUDGET_SHARE) == {"P0", "P0-M", "P1"}
+    assert STAGE_BUDGET_SHARE["P0"] < 1.0, (
+        "the opening must leave room for the adjustments"
+    )
+    shares = [STAGE_BUDGET_SHARE[s] for s in ("P0", "P0-M", "P1")]
+    assert shares == sorted(shares), "a later stage may never have less room"
+    assert shares[-1] == 1.0, (
+        "the last stage reaches the whole cap, so the chain total is "
+        "unchanged"
+    )
+    assert 0 < MAX_STAKE_FRACTION_PER_SCOPE <= 0.05
 
 
 def test_a_station_day_settles_once() -> None:
