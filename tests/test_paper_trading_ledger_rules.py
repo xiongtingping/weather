@@ -751,3 +751,47 @@ def test_the_order_deadline_names_the_bound_that_bound_it() -> None:
     detail = block[:block.index("continue", first)]
     assert "_resting_deadline_reason(" in detail
     assert "挂到结算" not in detail
+
+
+def test_the_budget_line_only_appears_when_the_budget_bound() -> None:
+    """It claimed the allowance ran out on every chain that held anything.
+
+    stake = min(kelly, max(0, stage_room)), and the refusal text appended
+    "段额度已用尽" whenever ``held`` was non-empty -- a condition about the
+    chain having a position, not about the allowance being spent.  So a
+    stage refused because its Kelly was negative, or because the basket cost
+    more than its own payout, was told the budget stopped it, which points
+    at sizing when the cause was price or belief.
+
+    Measured 2026-08-20 across all 78 refusals carrying the line: 63 were
+    EV<=0, 15 were cost>=1.00, and none had run out of room -- the smallest
+    remaining allowance was 5.45 against a chain that had spent 1.08.
+    """
+
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    from paper_trading_ledger import (  # noqa: PLC0415
+        MAX_STAKE_FRACTION_PER_SCOPE,
+        STAGE_BUDGET_SHARE,
+    )
+
+    source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    # The Kelly stake is kept under its own name so the two causes stay
+    # distinguishable after the clamp.
+    assert "fraction, wanted_stake = _kelly_stake(" in source
+    assert "stake = min(wanted_stake, max(0.0, stage_room))" in source
+    # And the line is gated on the budget actually binding.
+    assert "if wanted_stake > 0.0 and stage_room <= 0.0" in source
+    assert "if not held\n" not in source
+
+    # The staging still exists and still totals the per-scope cap at P1 --
+    # this test is about the copy, not a licence to widen the cap.
+    assert STAGE_BUDGET_SHARE["P1"] == 1.0
+    assert STAGE_BUDGET_SHARE["P0"] < STAGE_BUDGET_SHARE["P0-M"] < 1.0
+    assert MAX_STAKE_FRACTION_PER_SCOPE == 0.02

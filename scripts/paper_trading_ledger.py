@@ -2974,7 +2974,7 @@ def backfill(
                     # one outcome, which is the three-book reading wearing
                     # the cap's clothes.
                     equity_at_open = equity
-                    fraction, stake = _kelly_stake(
+                    fraction, wanted_stake = _kelly_stake(
                         win_probability=float(seat["win_probability"]),
                         cost=float(seat["all_in_price"]),
                         equity=equity_at_open,
@@ -2985,14 +2985,23 @@ def backfill(
                         * STAGE_BUDGET_SHARE.get(stage, 1.0)
                         - chain_stake
                     )
-                    stake = min(stake, max(0.0, stage_room))
+                    stake = min(wanted_stake, max(0.0, stage_room))
                     if stake <= 0.0:
                         cost = float(seat["all_in_price"])
+                        # Only say the budget stopped it when the budget
+                        # stopped it.  This used to fire on any chain that
+                        # already held something, so a stage refused on a
+                        # negative Kelly -- or on a basket dearer than its
+                        # own payout -- was told its allowance had run out.
+                        # Measured 2026-08-20: all 78 refusals carrying the
+                        # line were one of those two, none had run out of
+                        # room, and the smallest remaining allowance among
+                        # them was 5.45 against a chain that had spent 1.08.
                         exhausted = (
-                            ""
-                            if not held
-                            else " · %s 段额度已用尽（本链已投 %.2f）"
+                            " · %s 段额度已用尽（本链已投 %.2f）"
                             % (stage, chain_stake)
+                            if wanted_stake > 0.0 and stage_room <= 0.0
+                            else ""
                         )
                         # A bucket nobody is offering arrives here priced at
                         # the unfillable ceiling (``_build_snapshot`` must
