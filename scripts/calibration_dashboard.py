@@ -108,8 +108,74 @@ def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
     ).fetchone() is not None
 
 
-def collect_members(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    """Per family: is it still arriving, how deep is its training history."""
+def _median(values: list[float]) -> float | None:
+    return median(values) if values else None
+
+
+# How many days of runs the cadence read looks back over.  Long enough that a
+# family publishing twice a day still yields a handful of intervals, short
+# enough that a schedule change from last month does not set the expectation
+# for today.
+RUN_CADENCE_WINDOW_DAYS = 6
+
+
+def collect_run_cadence(
+    conn: sqlite3.Connection,
+) -> dict[str, list[dict[str, Any]]]:
+    """Recent runs per family: when each was issued and when it landed.
+
+    One scan of the member table serves all four families.  The table has no
+    index on the run column, so a per-family query would cost a full scan
+    each -- four scans of nearly a million rows to answer one question.
+    """
+
+    since = (
+        _now() - timedelta(days=RUN_CADENCE_WINDOW_DAYS)
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    pairs = " OR ".join(
+        "(ensemble_system_id=? AND transport_provider_id=?)"
+        for _s, _l, _t, _b in MEMBER_FAMILIES
+    )
+    params: list[str] = []
+    for system_id, _label, transport, _backfillable in MEMBER_FAMILIES:
+        params.extend((system_id, transport))
+    runs: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in conn.execute(
+        "SELECT ensemble_system_id, native_run_init_utc,"
+        " COUNT(DISTINCT station_id), MIN(archive_query_at_utc),"
+        " MAX(archive_query_at_utc)"
+        " FROM calibration_native_ensemble_historical_member_run"
+        f" WHERE native_run_init_utc >= ? AND ({pairs})"
+        " GROUP BY ensemble_system_id, native_run_init_utc"
+        " ORDER BY ensemble_system_id, native_run_init_utc DESC",
+        (since, *params),
+    ):
+        # First capture, not last: the first is when the run arrived, which
+        # is what the publication delay is measured against.  The last only
+        # says when the newest station of that run was topped up.
+        runs[row[0]].append({
+            "run_utc": row[1],
+            "stations": row[2],
+            "capture_utc": row[3],
+            "last_capture_utc": row[4],
+            "run_age_hours": _age_hours(row[1]),
+            "capture_age_hours": _age_hours(row[3]),
+        })
+    return runs
+
+
+def collect_members(
+    conn: sqlite3.Connection,
+    cadence: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """Per family: is it still arriving, how deep is its training history.
+
+    "Still arriving" is judged against the family's own observed rhythm, not
+    a shared hour count.  The families publish on different schedules and
+    land with different delays -- a fixed threshold either lets a six-hourly
+    family sleep through a missed cycle or paints a twice-daily one amber
+    every afternoon.
+    """
 
     rows = []
     for system_id, label, transport, backfillable in MEMBER_FAMILIES:
@@ -128,20 +194,58 @@ def collect_members(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             (f"%{system_id}%",),
         ).fetchone()[0]
         run_age = _age_hours(record[3])
-        # A family that has not produced a run in 36h has missed at least
-        # one full publication cycle of every schedule we capture.
+        recent = cadence.get(system_id, [])
+        latest = recent[0] if recent else None
+        # The gap between issue times is the family's publication rhythm; the
+        # gap between issue and capture is how long its archive takes to
+        # publish and us to pull.  The next run is only late once both have
+        # elapsed.
+        gaps = [
+            a["run_age_hours"] - b["run_age_hours"]
+            for a, b in zip(recent[1:], recent[:-1])
+            if a["run_age_hours"] is not None and b["run_age_hours"] is not None
+        ][:8]
+        lags = [
+            r["run_age_hours"] - r["capture_age_hours"]
+            for r in recent[:8]
+            if r["run_age_hours"] is not None
+            and r["capture_age_hours"] is not None
+        ]
+        cycle_hours = _median([g for g in gaps if g > 0])
+        lag_hours = _median([lag for lag in lags if lag >= 0])
+        due_in_hours = None
+        overdue_hours = None
+        if run_age is not None and cycle_hours and lag_hours is not None:
+            due_in_hours = cycle_hours + lag_hours - run_age
+            overdue_hours = -due_in_hours
         if run_age is None:
             health = "red"
             note = "从未入库"
-        elif run_age > 36:
+        elif overdue_hours is None:
+            # Not enough history to know the rhythm -- fall back to the hour
+            # count, which is all we can say without it.
+            health = ("red" if run_age > 36
+                      else "amber" if run_age > 18 else "green")
+            note = (f"最新 run {run_age:.0f} 小时前"
+                    + ("，慢于常态" if run_age > 18 else ""))
+        # A run that is late by less than one whole cycle has not cost us a
+        # cycle yet -- publication times wander by hours and a light that
+        # comes on for that is on most of the day.  Amber is one missed
+        # cycle, red is more than two.
+        elif overdue_hours > 2.5 * cycle_hours:
             health = "red"
-            note = f"最新 run 已 {run_age / 24:.1f} 天前"
-        elif run_age > 18:
+            note = (f"已漏掉 {overdue_hours / cycle_hours:.0f} 轮，"
+                    f"最新 run 是 {run_age:.0f} 小时前的")
+        elif overdue_hours > cycle_hours:
             health = "amber"
-            note = f"最新 run {run_age:.0f} 小时前，慢于常态"
+            note = (f"漏了一轮：按 {cycle_hours:.0f} 小时一轮，"
+                    f"下一轮已晚 {overdue_hours:.1f} 小时")
         else:
             health = "green"
-            note = f"最新 run {run_age:.0f} 小时前"
+            note = (f"按 {cycle_hours:.0f} 小时一轮在更新"
+                    if overdue_hours <= 0 else
+                    f"按 {cycle_hours:.0f} 小时一轮在更新，"
+                    f"下一轮晚了 {overdue_hours:.1f} 小时，仍在正常抖动内")
         rows.append({
             "label": label,
             "system_id": system_id,
@@ -151,6 +255,18 @@ def collect_members(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             "latest_run_utc": record[3],
             "latest_capture_utc": record[4],
             "run_age_hours": run_age,
+            "latest_capture_age_hours": (
+                latest["capture_age_hours"] if latest
+                else _age_hours(record[4])
+            ),
+            "latest_run_stations": latest["stations"] if latest else None,
+            "previous_run_utc": recent[1]["run_utc"] if len(recent) > 1 else None,
+            "cycle_hours": cycle_hours,
+            "publish_lag_hours": lag_hours,
+            "due_in_hours": due_in_hours,
+            "overdue_hours": overdue_hours,
+            "runs_recent": recent[:6],
+            "runs_window_days": RUN_CADENCE_WINDOW_DAYS,
             "seats_won": seats,
             "backfillable": backfillable,
             "health": health,
@@ -2077,7 +2193,7 @@ def _daily_table(selection: dict[str, Any]) -> list[dict[str, Any]]:
 
 def build_payload(db: Path) -> dict[str, Any]:
     conn = _connect(db)
-    members = collect_members(conn)
+    members = collect_members(conn, collect_run_cadence(conn))
     tables = collect_correction_and_weights(conn)
     stages = collect_band_stages(conn)
     chain = collect_chain(conn)
@@ -2325,9 +2441,16 @@ function overview(){
   // 1. Are the four model families still arriving.
   const fresh=(D.members||[]).filter(m=>m.health==="green").length;
   const total=(D.members||[]).length;
+  // Which family is furthest from its last run.  The count alone says how
+  // many are fine; the reader's next question is always how stale the
+  // stalest one is, and that is one number.
+  const laggard=(D.members||[]).slice().sort((a,b)=>
+    (b.run_age_hours==null?1e9:b.run_age_hours)
+    -(a.run_age_hours==null?1e9:a.run_age_hours))[0];
   push(fresh>=total?"green":fresh>=total-1?"amber":"red",
     "模型在进来", `${fresh}/${total}`,
-    fresh>=total?"四家都新鲜":"有家没在更新",
+    laggard?`最旧一家 ${h(laggard.label)} · ${
+      hours(laggard.run_age_hours)}的 run`:"没有成员族",
     "第一节：四家集合预报的到货情况");
 
   // 2. Is anything blocking the chain right now.
@@ -2358,13 +2481,18 @@ function overview(){
     `${h(day||"")} · ${pct0(rate)} 的站建了仓`,
     "第九节：没建仓的站，格子里写着原因");
 
-  // 5. Of what was posted, how much the book actually sold us.
+  // 5. Of what was posted, how much the book actually sold us.  The
+  // target is 90% on every stage; the card shows the worst one, because
+  // the strip is for finding the number that needs attention.
   const p0=(S.resting_entry||{}).stages||[];
-  const post=p0.find(s=>s.stage==="P0")||p0[0];
-  const fill=post?post.rung_completion_rate:null;
-  push(band(fill,0.8,0.5), "挂单成交率", pct0(fill),
-    post?`P0 · 挂出的阶梯买到几档`:"—",
-    "第十二节：三阶段各自的成交率与趋势");
+  const worstFill=p0.reduce((worst,s)=>{
+    const v=s.closed_share_fill_rate!=null?s.closed_share_fill_rate
+      :s.share_fill_rate!=null?s.share_fill_rate:s.rung_completion_rate;
+    return v!=null&&(worst.v==null||v<worst.v)?{v,stage:s.stage}:worst;
+  },{v:null,stage:null});
+  push(band(worstFill.v,0.9,0.75), "挂单成交率", pct0(worstFill.v),
+    worstFill.stage?`最低的阶段 ${h(worstFill.stage)} · 目标每段 ≥90%`:"—",
+    "第十二节：三阶段成交率总体评估");
 
   // 6. Does the model's stated probability survive contact with the truth.
   const cs=S.coverage_stats||{};
@@ -2398,13 +2526,43 @@ function overview(){
 }
 
 
+// A run stamp is the one timestamp on this page read as an identity rather
+// than as a moment: 06Z says which cycle of the day the model ran, and two
+// families are comparable only cycle against cycle.
+const runLabel = (s) => {
+  const m = String(s == null ? "" : s).match(/^\d{4}-(\d{2})-(\d{2})T(\d{2})/);
+  return m ? `${m[1]}-${m[2]} ${m[3]}Z` : "—";
+};
+const cycleLabel = (s) => {
+  const m = String(s == null ? "" : s).match(/T(\d{2})/);
+  return m ? `${m[1]}Z` : "—";
+};
+
 function members(){
-  // Four across, two lines each.  A table was tried and is taller: four
-  // rows stack where four cards sit side by side, and the row that carries
-  // a model's name, note and four numbers wraps.  The note and the
-  // no-archive warning move into tooltips, which is where a sentence read
-  // once belongs.
-  const rows = D.members.map(m => `<div class="card" title="${h(m.note)}">
+  // The question asked of this section is always the same one: is each model
+  // still running, and when did its last run land.  So the newest run is the
+  // headline and the archive depth is the footnote -- the depth moves by one
+  // a day and is read once a week, the run moves every few hours and is read
+  // every time the page is opened.
+  const rows = D.members.map(m => {
+    // Same threshold the health dot uses: late by a whole cycle is late
+    // enough to say out loud, and publication times wander by hours below
+    // that.
+    const late = m.overdue_hours != null && m.overdue_hours > m.cycle_hours;
+    const span = (v) => hours(v).replace("前", "");
+    const due = m.due_in_hours == null ? ""
+      : late ? `<span class="down">下一轮已晚 ${span(m.overdue_hours)}</span>`
+      : m.due_in_hours >= 0 ? `下一轮约 ${span(m.due_in_hours)}后到`
+      : "下一轮随时到";
+    // Four runs, two per line: enough to see a dropped cycle, short enough
+    // that every card spends the same number of lines on it and the last
+    // line of all four cards sits on one baseline.
+    const seq = (m.runs_recent || []).slice(0, 4).map(r =>
+      `<span style="white-space:nowrap">${cycleLabel(r.run_utc)}·${
+        r.stations}站</span>`).join("&nbsp; ");
+    return `<div class="card" title="${h(m.note)}${m.cycle_hours ?
+      ` · 观察到 ${m.cycle_hours.toFixed(0)} 小时一轮，发布后约 ${
+        m.publish_lag_hours.toFixed(0)} 小时落库` : ""}">
     <div style="display:flex;align-items:center;gap:7px">
       <span class="dot ${m.health}"></span><b>${h(m.label)}</b>
       <span style="flex:1"></span>
@@ -2412,13 +2570,28 @@ function members(){
         `<span class="pill amber" title="此来源不留历史档案，当天没抓到就永久缺失">不可回填</span>`}
       <span class="pill ${m.health}">${m.seats_won} 次入选</span>
     </div>
-    <div class="muted" style="margin-top:5px">${m.training_days} 天 ·
+    <div style="display:flex;align-items:baseline;gap:7px;margin-top:6px">
+      <span class="big">${runLabel(m.latest_run_utc)}</span>
+      <span class="muted">${hours(m.run_age_hours)}发布</span>
+    </div>
+    <div class="muted" style="margin-top:2px">${
+      hours(m.latest_capture_age_hours)}落库${
+      m.latest_run_stations == null ? "" :
+        ` · 这轮 ${m.latest_run_stations} 站`}</div>
+    <div class="muted" style="margin-top:2px">${due || "&nbsp;"}</div>
+    <div class="mono muted" style="margin-top:5px;min-height:2.6em"
+      title="最近 ${m.runs_window_days} 天入库的 run：轮次与该轮覆盖的站数">${
+      seq || "近日无 run 入库"}</div>
+    <div class="muted" style="margin-top:4px">存档 ${m.training_days} 天 ·
       ${m.stations} 站 · ${(m.member_rows/1000).toFixed(0)}k 条成员预报</div>
-  </div>`).join("");
+  </div>`;
+  }).join("");
   return `<h2>一、四家模型的数据在不在进来</h2>
-  <p class="sub">我们同时听四家气象机构的集合预报。"入选次数"是这个模型在
-  历史比赛里被选进最终融合的次数——没入选不代表坏，只代表那天它不是最优组合的一员。
-  悬停卡片看这家机构是谁。</p>
+  <p class="sub">大字是这家机构最新一次 run 的轮次（UTC），后面是它多久前发布、
+  多久前落到我们库里、这一轮覆盖了几个站，以及按它自己观察到的节奏下一轮该什么时候到。
+  灰色那行是最近几轮的轮次与站数，中间断一档就是漏了一轮。
+  "入选次数"是这个模型被选进最终融合的次数——没入选不代表坏，
+  只代表那天它不是最优组合的一员。悬停卡片看这家的发布节奏与到货延迟。</p>
   <div class="grid g4">${rows}</div>`;
 }
 
@@ -2656,6 +2829,59 @@ function makerProbe(){
       ${depth?`<div class="muted" style="margin-top:8px">${depth}</div>`:""}
     </div>`;
   }).join("");
+  // The three-stage assessment against the standing target: every stage
+  // fills at least 90% of the shares it posts, and the fills still cost
+  // less than crossing at entry would have.  One verdict line, then one
+  // card per stage -- the cards below it carry the mechanics.
+  const TARGET=0.9;
+  const reStages=re.stages||[];
+  // Judged on resolved days: an unresolved day's orders are still on the
+  // book, not missed, and counting them fails every morning.
+  const judged=(r)=>r.closed_share_fill_rate!=null
+    ?r.closed_share_fill_rate:r.share_fill_rate;
+  const failing=reStages.filter(r=>
+    judged(r)==null||judged(r)<TARGET).map(r=>r.stage);
+  const evbad=reStages.filter(r=>
+    r.maker_saving_vs_taker!=null&&r.maker_saving_vs_taker<=0)
+    .map(r=>r.stage);
+  const verdict=!reStages.length?"":
+    (failing.length===0&&evbad.length===0
+      ?`<span class="pill green">三阶段全部达标：成交率 ≥90%，挂单仍优于吃单</span>`
+      :[failing.length?`<span class="pill red">成交率未达标：${
+          failing.map(h).join("、")}</span>`:"",
+        evbad.length?`<span class="pill red">价差收益转负：${
+          evbad.map(h).join("、")}</span>`:""].join(" "));
+  const assessCards=reStages.map(r=>{
+    const sf=judged(r);
+    const sav=r.maker_saving_vs_taker;
+    const ok=sf!=null&&sf>=TARGET;
+    return `<div class="card">
+      <div class="muted">${h(r.stage)} · 份额成交率（目标 ≥90%，按已收盘的事件日）</div>
+      <div class="big ${sf==null?"":(ok?"up":"down")}">${pct(sf)}</div>
+      <div class="muted">${sf==null?"还没有挂单记录"
+        :ok?"达标 · 挂出的份额买到了九成以上"
+        :"未达标 · 挂出的份额没买够九成"}</div>
+      <table style="margin-top:10px"><tbody>
+        <tr><td>含进行中事件日（单还在书上）</td>
+            <td class="mono">${pct(r.share_fill_rate)}</td></tr>
+        <tr><td>省价 vs 吃单（正 = 还在赚价差）</td>
+            <td class="mono ${sav==null?"":(sav>0?"up":"down")}">${
+              sav==null?"—":((sav>=0?"+":"")+(sav*100).toFixed(1)+"%")}</td></tr>
+        <tr><td>金额成交率（实付 ÷ 全成交应付）</td>
+            <td class="mono">${pct(r.stake_fill_rate)}</td></tr>
+        <tr><td>全篮落空（一档都没成交）</td>
+            <td class="mono">${r.nothing_filled_count}</td></tr>
+      </tbody></table>
+    </div>`;
+  }).join("");
+  const assessBlock=assessCards?`
+    <h2 style="margin-top:0">十二、挂单成交率 · 三阶段总体评估 ${verdict}</h2>
+    <p class="sub">份额成交率 = 实际买到的份数 ÷ 挂出去的份数（没成交的腿计零）。
+    目标是每个阶段 ≥90%，同时省价保持为正——成交率靠把没成交的档随时间
+    向<b>当时卖价的下一跳</b>收拢来抬，始终是挂单不是吃单；
+    一旦省价转负，说明收拢过头，挂单已经名存实亡。
+    进行中的事件日单子还挂在书上，会把这里的读数暂时压低。</p>
+    <div class="grid g3">${assessCards}</div>`:"";
   const reBlock=reCards?`<div class="grid g3">${reCards}</div>
     <div class="why" style="margin-top:12px"><b>三个阶段分开看，不合并：</b>
     P0 在赛前十几小时挂，盘口几乎不动；P1 在盘中挂，是当天最活跃的书；
@@ -2667,7 +2893,12 @@ function makerProbe(){
     只有一条腿都没成交才放弃。<br>
     <b>挂单价格是区间不是单点：</b>每条腿在<b>买价上一跳 ~ 卖价下一跳</b>
     之间均分挂 5 档。上界是硬的——挂到卖价就是吃单，等于把价差付出去。
-    价差只有一跳时区间退化成买价一档。</div>`:"";
+    价差只有一跳时区间退化成买价一档。<br>
+    <b>没成交的档不会一直原地等：</b>每 60 分钟按当时盘口重挂一次，
+    且区间下沿在挂单窗前半程内逐步向上沿收拢——前几个小时要价差，
+    后几个小时要成交。收拢后区间放不下的档挂在同一价位（同价多档 =
+    同一价位一张更大的单），上沿永远是当时卖价的下一跳，所以每一笔成交
+    仍然比当刻吃单便宜至少一跳。</div>`:"";
   // The pooled cards above say whether resting works; they cannot say
   // whether it is getting better or worse, and that is the question after
   // every change to how long an order rests or how often it is re-posted.
@@ -2717,7 +2948,7 @@ function makerProbe(){
     </tr></thead><tbody>${trendRows}
       <tr><td><b>合计</b></td>${totals}</tr>
     </tbody></table></div></div>`:"";
-  return `<h2>十二、挂单影子探针</h2>${reBlock}${trendBlock}
+  return `${assessBlock}<h2>挂单影子探针与逐阶段明细</h2>${reBlock}${trendBlock}
   <p class="sub">在真实时间轴上记录"此刻会挂什么单"，<b>不下真单</b>，
   再用后到的实时盘口判定它会不会成交。${m.open_count||0} 个意图未到期。</p>
   <div class="why"><b>为什么只有成交率没有成交量比例：</b>
