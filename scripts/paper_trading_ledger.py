@@ -1091,47 +1091,43 @@ def _build_snapshot(
         priceable = (
             ask is not None and bool(quote.get("ask_available", True))
         )
-        # An unpriceable bucket still needs a representable book: the kernel
-        # rejects an empty level list outright, so it carries a zero-size
-        # level at the far end of the range, sized below any clip the sizer
-        # can take -- nothing fills against it, and ask_available says so.
         tick_size = float(quote.get("price_tick_size") or 0.001)
-        # Highest price still on this bucket's tick grid: unfillable in
-        # practice, and the kernel requires both a positive depth and a
-        # grid-aligned price, so it cannot simply be left empty.
-        unfillable_ask = max(tick_size, 1.0 - tick_size)
-        ask = float(ask) if priceable else unfillable_ask
-        # No offer means nothing to buy, so the bid side is dropped with it:
-        # the ledger only ever buys, and a standing bid beside a synthetic
-        # ceiling ask would violate the kernel's bid<ask invariant.
-        if not priceable:
-            bid = 0.0
-
-        bid = float(bid or 0.0)
-        probabilities[str(bucket)] = float(probability)
-        # Recorded for every bucket so downstream lookups are total; an
-        # unpriceable one carries the ceiling, which no window can afford.
-        prices[str(bucket)] = ask
-        # Real depth, not an assumed slab.  A penny bucket whose whole book
-        # is twelve shares must not be fillable for hundreds: that fiction
-        # is precisely what turns a thin tail into an infinite-return
-        # lottery on paper.
-        ask_levels = levels or [
-            {"price": unfillable_ask, "shares": tick_size}
-        ]
+        # A bucket with no offer used to be dressed as one: the kernel
+        # rejected an empty book outright, so this carried a ceiling ask of
+        # max(tick, 1-tick) on a tick-sized level -- unfillable, which was
+        # the intent, but summed into basket costs it produced 2.997 and
+        # 3.996 on the page for markets that never quoted.  The kernel now
+        # admits the honest shape (unmaterialized_book when both sides are
+        # empty, plain ask_available=False when a bid stands), so what the
+        # market said is what the kernel sees.
         bid_levels = [
             {"price": float(l["price"]), "shares": float(l["shares"])}
             for l in (quote.get("bid_levels") or [])
             if l.get("price") is not None and l.get("shares") is not None
-        ] if priceable else []
-        depth[str(bucket)] = ask_levels
+        ]
+        empty_book = not levels and not bid_levels
+        # A bare bid_price on an otherwise empty book has no size behind it;
+        # zeroing it is what lets the empty book name itself.  A priced or
+        # bid-carrying bucket keeps whatever the quote said.
+        bid = 0.0 if empty_book else float(bid or 0.0)
+        probabilities[str(bucket)] = float(probability)
+        if priceable:
+            # Only a real offer earns a price; downstream lookups use
+            # ``.get`` and treat an absent key as unfillable, which it is.
+            prices[str(bucket)] = float(ask)
+        # Real depth, not an assumed slab.  A penny bucket whose whole book
+        # is twelve shares must not be fillable for hundreds: that fiction
+        # is precisely what turns a thin tail into an infinite-return
+        # lottery on paper.
+        depth[str(bucket)] = levels
         rows.append({
             "bucket": str(bucket),
             "ordinal": int(ordinal),
             "probability": float(probability),
             "bid_price": bid,
             "bid_levels": bid_levels,
-            "ask_levels": ask_levels,
+            "ask_levels": levels,
+            "unmaterialized_book": empty_book,
             "price_tick_size": tick_size,
             "maker_queue_ahead_shares": 2.0,
             "maker_queue_known": True,

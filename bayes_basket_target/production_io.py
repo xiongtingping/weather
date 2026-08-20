@@ -1701,7 +1701,12 @@ def load_production_market_snapshot(
         if bid_available != bool(bid_levels):
             raise ContractError("production_ws_bid_availability_mismatch")
         if not ask_available and not bid_available:
-            raise ContractError("production_ws_book_empty")
+            # Same admission the materializer makes (charter 48): a
+            # listing-day bucket nobody has quoted yet is a legal market
+            # state when it names itself; an unnamed empty book is still a
+            # defect.
+            if not bool(raw.get("unmaterialized_book")):
+                raise ContractError("production_ws_book_empty")
         bid_price = raw.get("bid_price")
         if bid_price is None and bid_levels:
             bid_price = bid_levels[0].get("price") if isinstance(bid_levels[0], Mapping) else None

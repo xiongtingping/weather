@@ -407,6 +407,15 @@ class BucketObservation:
     pending_shares: float = 0.0
     pending_notional_usdc: float = 0.0
     active_before: bool = False
+    # A listing-day bucket nobody has quoted on either side yet.  The
+    # publisher subscribes at listing (charter 48) and names such tokens
+    # explicitly; a named bookless bucket is a legal market state --
+    # unbuyable this cycle, never a scope blocker.  The materializer and
+    # the production reader have admitted this shape since charter 48; the
+    # kernel did not, so every producer that had to hand it a bookless
+    # bucket invented a ceiling ask on a tick-sized level instead, and one
+    # of those placeholders reached a report as a basket "costing" 2.997.
+    unmaterialized_book: bool = False
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "BucketObservation":
@@ -437,6 +446,21 @@ class BucketObservation:
             ordinal = int(raw.get("ordinal"))
         except (TypeError, ValueError) as exc:
             raise ContractError("bucket_ordinal_invalid") from exc
+        unmaterialized = _boolean(
+            "bucket_unmaterialized_book", raw.get("unmaterialized_book", False)
+        )
+        tick_raw = raw.get("price_tick_size", 0.01)
+        if unmaterialized:
+            # An unquoted market has no observed grid, and its producers say
+            # so with a zero tick (tick_size_source UNMATERIALIZED_BOOK).
+            # Nothing can price against this bucket while both sides are
+            # empty, so the absent-key default stands in for the unknown
+            # grid rather than failing the whole snapshot on it.
+            try:
+                if float(tick_raw) == 0.0:
+                    tick_raw = 0.01
+            except (TypeError, ValueError):
+                pass
         value = cls(
             bucket=_required_text("bucket", raw.get("bucket")),
             ordinal=ordinal,
@@ -450,7 +474,7 @@ class BucketObservation:
             bid_levels=bids,
             price_tick_size=_unit_interval(
                 "bucket_price_tick_size",
-                raw.get("price_tick_size", 0.01),
+                tick_raw,
                 closed=False,
             ),
             maker_queue_ahead_shares=_nonnegative(
@@ -468,6 +492,7 @@ class BucketObservation:
                 "bucket_pending_notional_usdc", raw.get("pending_notional_usdc", 0.0)
             ),
             active_before=_boolean("bucket_active_before", raw.get("active_before", False)),
+            unmaterialized_book=unmaterialized,
         )
         prices = [level.price for level in value.ask_levels]
         if any(current <= previous + EPS for previous, current in zip(prices, prices[1:])):
@@ -486,7 +511,20 @@ class BucketObservation:
             raise ContractError("bucket_best_bid_depth_mismatch")
         if value.ask_available != bool(value.ask_levels):
             raise ContractError("bucket_ask_availability_mismatch")
-        if not value.ask_available and not value.bid_levels:
+        if value.unmaterialized_book and (
+            value.ask_levels or value.bid_levels or value.bid_price > EPS
+        ):
+            # The flag is the producer's statement that nobody has quoted;
+            # a book carrying any quote must not wear it, or "unbuyable"
+            # becomes a label a priced bucket can hide behind.
+            raise ContractError("bucket_unmaterialized_book_quoted")
+        if (
+            not value.ask_available
+            and not value.bid_levels
+            and not value.unmaterialized_book
+        ):
+            # An unnamed empty book is still a defect: the scope claimed a
+            # bucket the stream is not carrying.
             raise ContractError("bucket_book_empty")
         quoted_prices = [
             *(level.price for level in value.ask_levels),
