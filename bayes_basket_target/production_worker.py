@@ -8370,8 +8370,32 @@ class TargetProductionWorker:
             ordered.append(scope)
             if len(ordered) >= MAX_FORWARD_P0_STATION_DAYS:
                 break
+        # Re-read the books at ingest time, keeping the ordering above.
+        # The catalog is captured early in the cycle to decide *which*
+        # scopes to serve, and the stages between that capture and this
+        # sweep cost minutes (the forward-P0 loop alone ran 90s on
+        # 2026-08-20) while a quote's lease is sixty seconds.  Ingesting the
+        # catalog's copies therefore wrote books that were already expired:
+        # every one of that cycle's 172 evidence rows carried one shared
+        # observation stamp 161s behind the compile clock, and 24 of 26
+        # candidates died on ``production_quote_expired``.  The publisher
+        # rewrites the manifest every couple of seconds, so a fresh read
+        # costs one bounded file read and re-validates on the same path.
+        # A scope that vanished or failed re-validation keeps the copy the
+        # ordering was decided on rather than dropping out of the sweep.
+        fresh_manifests: dict[str, Mapping[str, Any]] = {}
+        try:
+            for scope in self._resident_ws_scope_catalog():
+                scope_key = str(scope.get("scope_key") or "")
+                manifest = scope.get("manifest")
+                if scope_key and isinstance(manifest, Mapping):
+                    fresh_manifests[scope_key] = manifest
+        except ContractError:
+            fresh_manifests = {}
         return [
-            item["manifest"]
+            fresh_manifests.get(
+                str(item.get("scope_key") or ""), item["manifest"]
+            )
             for item in ordered
             if isinstance(item.get("manifest"), Mapping)
         ]
