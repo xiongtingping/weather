@@ -240,3 +240,117 @@ def test_an_inherited_support_gets_no_exemption_from_the_leg_floor() -> None:
     assert incumbent[0]["all_in_price"] is None, (
         "an incumbent resting on a penny leg must not be offered a price"
     )
+
+
+# Every gate that can refuse an enumerated window keeps a counter, and the
+# counters close against the enumeration.  This is the invariant that stops a
+# fourth occurrence of a bug that has now happened three times: the ledger
+# explains a refusal to the page purely in terms of these numbers, so a gate
+# without one gets its refusals blamed on whichever gate is listed.  The leg
+# floor was unlisted on 2026-08-17 (112 P0 refusals attributed to a
+# centre-bucket count that could not explain them) and the edge/friction gate
+# was unlisted until 2026-08-20 (308 station-days filed under "the market
+# priced us out" when the structural floors had taken the whole enumeration).
+
+
+def test_the_refusal_counters_close_against_the_enumeration() -> None:
+    """Refusals plus shortlist equals every window enumerated.
+
+    Checked across shapes that exercise different gates, because a counter
+    that closes on one shape and not another is the same defect with a
+    narrower blast radius.
+    """
+
+    from bayes_basket_target.delta_v2_runtime import _window_audit_closes
+
+    shapes = (
+        # A day the structural floors take whole.
+        (
+            (("30C", 0.20, 0.250), ("31C", 0.50, 0.550), ("32C", 0.30, 0.330)),
+            {"31C"}, "31C", 3, 4,
+        ),
+        # A day with a penny leg inside the only legal window.
+        (
+            (("30C", 0.20, 0.250), ("31C", 0.50, 0.550), ("32C", 0.30, 0.001)),
+            {"31C"}, "31C", 3, 4,
+        ),
+        # A wide day where several windows reach the price test.
+        (
+            (
+                ("30C", 0.06, 0.070), ("31C", 0.15, 0.150),
+                ("32C", 0.25, 0.250), ("33C", 0.34, 0.300),
+                ("34C", 0.11, 0.020), ("35C", 0.06, 0.011),
+                ("36C", 0.03, 0.011),
+            ),
+            {"33C"}, "33C", 3, 4,
+        ),
+    )
+    for rows, desired, center, minimum, maximum in shapes:
+        _, audit = _windows(
+            rows, desired=desired, center=center,
+            minimum=minimum, maximum=maximum,
+        )
+        assert _window_audit_closes(audit), (
+            "counters do not account for the enumeration on %s: %r"
+            % (center, audit)
+        )
+
+
+def test_the_edge_friction_gate_is_counted() -> None:
+    """A window refused on price alone must say so.
+
+    Every leg here carries a real quote well above the floor, the window
+    holds the centre and clears the length floor -- and the model's edge over
+    the all-in price does not clear tick-rounding across the legs.  Before
+    this counter existed the branch refused silently, and the ledger printed
+    three structural counts as the explanation of a refusal none of them had
+    caused.
+    """
+
+    rows = (
+        ("30C", 0.32, 0.330),
+        ("31C", 0.36, 0.370),
+        ("32C", 0.32, 0.330),
+    )
+    windows, audit = _windows(
+        rows, desired={"31C"}, center="31C", minimum=3, maximum=3
+    )
+    assert not [
+        row for row in windows if row.get("all_in_price") is not None
+    ], "the fixture must leave nothing priced on the shortlist"
+    assert audit["edge_refused_window_count"] > 0, (
+        "the price gate refused the only legal window and did not count it"
+    )
+    assert audit["last_refusing_gate"] == "edge"
+
+
+def test_the_last_gate_names_the_refusal_not_the_loudest_counter() -> None:
+    """The leg floor kills the last window while being outvoted.
+
+    This is the shape the old ``leg_floor > centre + short`` test could never
+    win.  The centre rung and the length floor refuse the windows that were
+    never candidates -- there are always more of those -- and the one window
+    that could still have been seated dies on the leg floor.  Counting votes
+    hands the verdict to whichever gate sits earliest in the funnel, every
+    time.
+    """
+
+    # The penny leg has to arrive through the inherited support: a bucket
+    # quoted under the floor is dropped from the domain outright, so the
+    # in-loop floor only ever sees one the resolver put back.
+    rows = (
+        ("30C", 0.20, 0.250),
+        ("31C", 0.50, 0.550),
+        ("32C", 0.30, 0.001),
+    )
+    _, audit = _windows(
+        rows, desired={"31C", "32C"}, center="31C", minimum=3, maximum=3
+    )
+    centre_out = audit["center_refused_window_count"]
+    short_out = audit["short_refused_window_count"]
+    leg_out = audit["leg_floor_refused_window_count"]
+    assert leg_out > 0
+    assert leg_out <= centre_out + short_out, (
+        "fixture no longer reproduces the outvoted-leg-floor shape"
+    )
+    assert audit["last_refusing_gate"] == "leg_floor"

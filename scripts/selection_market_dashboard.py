@@ -663,9 +663,26 @@ REFUSAL_LABELS = {
         "选桶本身没跑出来",
         "内核没给出可用的支持窗口，跟市场无关。",
     ),
+    # These four are what "枚举完没坐上" splits into, and they are four
+    # different problems with four different owners.  Until 2026-08-20 the
+    # first three were pooled into ``no_priced_window`` under a note that
+    # said the market had outpriced us; measured on that day's P0 book, all
+    # 316 rows carried a structural refusal and none was a scope the market
+    # ever got to price.
+    "no_legal_window": (
+        "没有合法窗口",
+        "结构闸拿走了整批枚举：断桶、不含中心桶、或长度不够。"
+        "跟价格无关——这些窗口没走到看报价那一步。",
+    ),
     "no_priced_window": (
-        "没有可定价的窗口",
-        "枚举出的每个窗口都被市场定价定死了——市场比模型贵。",
+        "窗口定不出价",
+        "有窗口过了全部结构闸，但里面有腿根本没有卖价，篮子的成本算不出来。"
+        "缺的是盘口，不是便宜。",
+    ),
+    "negative_edge_window": (
+        "边际不敌摩擦",
+        "窗口过了全部闸也报得出价，模型胜率减去全包成本仍盖不住逐腿的最小跳动。"
+        "这一条才是“市场比模型贵”。",
     ),
     "leg_below_floor": (
         "有腿报价低于下限",
@@ -697,7 +714,7 @@ def _refusal_stats(conn: sqlite3.Connection) -> dict[str, Any]:
     -- so the two together are a funnel rather than two unrelated tallies.
     An absent row used to be the only signal here, and it could say nothing
     beyond "no seat", which is true of one of these reasons and wrong about
-    the seven others.
+    every other one.
     """
 
     try:

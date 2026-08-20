@@ -313,3 +313,109 @@ def test_an_incremental_window_opens_on_the_book_it_inherited() -> None:
     # A rebuild has no floor and walks every day itself, so it starts where
     # the book started.
     assert _opening_equity(conn, earliest="") == INITIAL_CAPITAL_USDC
+
+
+def _ledger():
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    path = root / "scripts" / "paper_trading_ledger.py"
+    spec = importlib.util.spec_from_file_location(
+        "paper_trading_ledger", path
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules.setdefault("paper_trading_ledger", module)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_every_enumeration_gate_has_a_refusal_to_be_reported_as() -> None:
+    """A gate the ledger cannot name is a refusal it will misattribute.
+
+    Twice now the page has been handed counters that could not add up to the
+    refusal they were offered as the explanation of: the leg floor on
+    2026-08-17, and the edge/friction gate until 2026-08-20.  Both times the
+    missing gate's refusals were silently absorbed by whichever gate was
+    listed.  The mapping is keyed by the funnel the runtime publishes so a
+    new gate fails here rather than there.
+    """
+
+    from bayes_basket_target.delta_v2_runtime import WINDOW_REFUSAL_FUNNEL
+
+    ledger = _ledger()
+    assert set(ledger.GATE_REFUSAL_REASON) == set(WINDOW_REFUSAL_FUNNEL)
+    assert set(ledger.GATE_LABEL) == set(WINDOW_REFUSAL_FUNNEL)
+    for reason in ledger.GATE_REFUSAL_REASON.values():
+        assert reason in ledger.REFUSAL_REASONS
+
+
+def test_the_refusal_names_the_gate_that_took_the_last_window() -> None:
+    """Not the gate with the biggest count, and not price by default.
+
+    The (2,3,1) shape below was the second commonest P0 refusal on the
+    2026-08-20 book, 44 station-days of it.  The old test asked whether the
+    leg floor outnumbered the two structural gates -- 1 > 2 + 3 is false --
+    so the day was filed as "the market priced us out" when the market had
+    quoted every rung and our own floor is what refused the last window.
+    """
+
+    ledger = _ledger()
+    audit = {
+        "enumerated_window_count": 6,
+        "gapped_window_refused_count": 0,
+        "center_refused_window_count": 2,
+        "short_refused_window_count": 3,
+        "leg_floor_refused_window_count": 1,
+        "unpriced_refused_window_count": 0,
+        "edge_refused_window_count": 0,
+        "shortlisted_window_count": 0,
+        "last_refusing_gate": "leg_floor",
+    }
+    assert ledger._refusal_reason_for_gate(audit) == "leg_below_floor"
+    detail = ledger._window_refusal_detail(audit)
+    # The line is an equation, and it balances.
+    assert "枚举 6 =" in detail
+    assert "计数不闭合" not in detail
+    # Every gate appears, including the ones that did not fire, so a reader
+    # can check the arithmetic rather than take the verdict on trust.
+    for label in ledger.GATE_LABEL.values():
+        assert label in detail
+
+    # And the genuinely price-driven refusal keeps its own name.
+    priced_out = dict(audit, **{
+        "leg_floor_refused_window_count": 0,
+        "edge_refused_window_count": 1,
+        "last_refusing_gate": "edge",
+    })
+    assert (
+        ledger._refusal_reason_for_gate(priced_out) == "negative_edge_window"
+    )
+    # A structural sweep is neither of those.
+    structural = dict(audit, **{
+        "enumerated_window_count": 5,
+        "leg_floor_refused_window_count": 0,
+        "last_refusing_gate": "short",
+    })
+    assert ledger._refusal_reason_for_gate(structural) == "no_legal_window"
+
+
+def test_a_detail_line_that_does_not_balance_says_so() -> None:
+    """The failure mode this whole shape exists to catch, made visible.
+
+    If a future gate goes uncounted the numbers stop summing, and the page
+    has to say that rather than present a short sum as a full explanation.
+    """
+
+    ledger = _ledger()
+    detail = ledger._window_refusal_detail({
+        "enumerated_window_count": 10,
+        "center_refused_window_count": 2,
+        "short_refused_window_count": 3,
+        "shortlisted_window_count": 0,
+        "last_refusing_gate": "short",
+    })
+    assert "计数不闭合" in detail

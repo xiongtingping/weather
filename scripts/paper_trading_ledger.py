@@ -68,6 +68,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     CENTRE_ANCHOR_MIN_RUNG_SHARE,
     MINIMUM_LEG_ALL_IN_ASK,
     P1_MINIMUM_SUPPORT_BUCKETS,
+    WINDOW_REFUSAL_FUNNEL,
     _support_windows,
 )
 
@@ -443,7 +444,25 @@ REFUSAL_REASONS = (
     "no_book_at_decision",
     "incomplete_book",
     "selection_failed",
+    # No window survived long enough to be shown a price: the structural
+    # floors -- contiguity, the charter-49 centre rung, the length floor --
+    # took the whole enumeration.  Split out of ``no_priced_window`` on
+    # 2026-08-20, which had been carrying it under a note that said the
+    # market had outbid us.  Measured over the P0 book at that date, 316 of
+    # 316 rows under that reason had at least one structural counter above
+    # zero and none had all of them at zero: not one of them was a scope the
+    # market ever got to price.
+    "no_legal_window",
+    # A window cleared every structural floor and still could not be priced:
+    # some rung has no ask at all.  That is the literal reading of the name
+    # and now its only one.
     "no_priced_window",
+    # Priced end to end, and the model's edge over the all-in cost did not
+    # clear tick-rounding across the legs.  This -- not ``no_priced_window``
+    # -- is the refusal that means "the market is dearer than the model" at
+    # window level, and it needs its own name because it is the only one of
+    # the four whose fix is a better model rather than a wider book.
+    "negative_edge_window",
     # Our own floor, not the market's doing.  Folding it into
     # ``no_priced_window`` said "the market is dearer than the model" about
     # scopes where the market never got a say -- every window held a leg
@@ -464,6 +483,95 @@ REFUSAL_REASONS = (
     # position; a top-up with nothing to top up is not a position of its own.
     "chain_never_opened",
 )
+# Which refusal each gate of the enumeration funnel is.  Keyed by the gate
+# names ``_support_windows`` publishes, so adding a gate there without a
+# reason here fails loudly at import rather than quietly reattributing the
+# refusal to whichever neighbour happens to be listed -- which is exactly how
+# the leg floor (2026-08-17) and then the edge gate (2026-08-20) came to be
+# explained by a centre-bucket count that had nothing to do with them.
+GATE_REFUSAL_REASON = {
+    "gapped": "no_legal_window",
+    "center": "no_legal_window",
+    "short": "no_legal_window",
+    "leg_floor": "leg_below_floor",
+    "unpriced": "no_priced_window",
+    "edge": "negative_edge_window",
+}
+# What to call each gate on the page.  Same keys, same reason.
+GATE_LABEL = {
+    "gapped": "断桶",
+    "center": "中心桶",
+    "short": "桶数不足",
+    "leg_floor": "单腿低于下限",
+    "unpriced": "无卖价",
+    "edge": "边际不敌摩擦",
+}
+assert set(GATE_REFUSAL_REASON) == set(WINDOW_REFUSAL_FUNNEL)
+assert set(GATE_LABEL) == set(WINDOW_REFUSAL_FUNNEL)
+assert set(GATE_REFUSAL_REASON.values()) <= set(REFUSAL_REASONS)
+
+
+def _gate_count(audit: Mapping[str, Any], gate: str) -> int:
+    """One gate's refusal count, under whichever key the audit files it."""
+
+    key = (
+        "gapped_window_refused_count"
+        if gate == "gapped"
+        else "%s_refused_window_count" % gate
+    )
+    return int(audit.get(key) or 0)
+
+
+def _refusal_reason_for_gate(audit: Mapping[str, Any]) -> str:
+    """The refusal named after the gate that took the last window standing.
+
+    Not the gate with the biggest count.  The gates form a funnel, so the
+    shallow ones refuse the many windows that were never candidates -- on a
+    three-bucket day the centre rung alone refuses two of six before length
+    is even asked about -- and ranking by count hands every verdict to
+    whichever gate sits earliest.  The old test here was
+    ``leg_floor > centre + short``, which the leg floor can essentially never
+    win: in the three commonest P0 shapes, (2,3,1), (1,1,1) and (3,2,1), it
+    is the leg floor that kills the one window still standing and 1 > 2+3 is
+    false in all of them.
+    """
+
+    gate = str(audit.get("last_refusing_gate") or "")
+    if gate in GATE_REFUSAL_REASON:
+        return GATE_REFUSAL_REASON[gate]
+    # No gate fired at all.  Either the day admitted nothing to enumerate, or
+    # the only thing on the shortlist is an unpriced incumbent carried
+    # through by the "keep what we hold" exemption.
+    if int(audit.get("shortlisted_window_count") or 0) > 0:
+        return "no_priced_window"
+    return "no_legal_window"
+
+
+def _window_refusal_detail(audit: Mapping[str, Any]) -> str:
+    """The refusal written as an equation the reader can check.
+
+    Every gate appears, including the ones that did not fire, and the two
+    sides balance: a line whose parts do not sum to the enumeration is a
+    stated cause that cannot produce the effect, which is the failure this
+    whole shape exists to make visible.
+    """
+
+    parts = [_gate_count(audit, gate) for gate in WINDOW_REFUSAL_FUNNEL]
+    shortlisted = int(audit.get("shortlisted_window_count") or 0)
+    enumerated = int(audit.get("enumerated_window_count") or 0)
+    body = " + ".join(
+        "%s %d" % (GATE_LABEL[gate], count)
+        for gate, count in zip(WINDOW_REFUSAL_FUNNEL, parts)
+    )
+    gate = str(audit.get("last_refusing_gate") or "")
+    return "枚举 %d = %s + 入围 %d · 最后出局：%s%s" % (
+        enumerated, body, shortlisted,
+        # No gate fired and still no seat: what is on the shortlist is an
+        # inherited support carried past the floors with no ask to price it.
+        GATE_LABEL.get(gate, "无闸拒绝"),
+        "" if enumerated == sum(parts) + shortlisted else " · 计数不闭合",
+    )
+
 
 _POSITION_DDL = """
 CREATE TABLE IF NOT EXISTS paper_trade_position (
@@ -2763,29 +2871,21 @@ def backfill(
                             ordinals=ordinals,
                         )
                     if not priced_windows:
-                        # Name every floor that turned windows away, or the
+                        # Name every gate that turned windows away, or the
                         # page reports a refusal whose stated causes do not
                         # add up to it.  The leg floor landed on 2026-08-17
                         # and was not listed here, so 112 P0 refusals were
                         # attributed to a centre-bucket count that could not
-                        # explain them.
-                        centre_out = int(audit.get(
-                            "center_refused_window_count") or 0)
-                        short_out = int(audit.get(
-                            "short_refused_window_count") or 0)
-                        leg_out = int(audit.get(
-                            "leg_floor_refused_window_count") or 0)
+                        # explain them.  The edge/friction gate was still
+                        # unlisted on 2026-08-20 -- the same disease, half
+                        # treated -- and 308 station-days carried counters
+                        # that summed to less than the enumeration they were
+                        # offered as the explanation of.  The line below is
+                        # therefore written as an equation the reader can
+                        # check: enumerated = every gate + shortlisted.
                         refusal = (
-                            (
-                                "leg_below_floor"
-                                if leg_out > centre_out + short_out
-                                else "no_priced_window"
-                            ),
-                            "中心桶拒绝 %d · 桶数不足拒绝 %d"
-                            " · 单腿低于 %.2f 拒绝 %d" % (
-                                centre_out, short_out,
-                                MINIMUM_LEG_ALL_IN_ASK, leg_out,
-                            ),
+                            _refusal_reason_for_gate(audit),
+                            _window_refusal_detail(audit),
                             cycles, payload["decision_at_utc"],
                         )
                         continue

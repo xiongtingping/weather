@@ -3156,11 +3156,14 @@ function roster(){
   const S=D.selection||{};const rs=S.station_roster||[];
   if(!rs.length) return "";
   // The ledger now records why it did not seat, so these are its own words
-  // rather than the page's guess.  The last three are what "未入座" used to
-  // cover indiscriminately, and they are three different problems: an empty
-  // shortlist is the market pricing above the model, a refused Kelly is the
-  // basket costing more than it can pay, and no depth is a book too thin to
-  // fill at any size.
+  // rather than the page's guess.  What "未入座" used to cover
+  // indiscriminately splits by which gate of the enumeration funnel took the
+  // last window still standing: the structural floors never reach a price at
+  // all, a missing ask cannot be priced, a sub-floor leg is our own refusal
+  // to treat a tail offer as a price, and only a cleared window whose edge
+  // misses friction is the market pricing above the model.  A refused Kelly
+  // is the basket costing more than it can pay, and no depth is a book too
+  // thin to fill at any size.
   // The rule set the ledger currently compiles under.  Everything stamped
   // with it is directly comparable; anything else is a leftover from before
   // a rule change and is flagged per basket.
@@ -3170,7 +3173,9 @@ function roster(){
     no_book_at_decision:["盘口未落库","每次决策时刻都没有半小时内的盘口快照"],
     incomplete_book:["盘口缺桶","有盘口但缺了模型认得的桶，整站不可定价"],
     selection_failed:["选桶报错","枚举窗口时抛错，该轮跳过"],
-    no_priced_window:["无合格窗口","含中心桶且够长的窗口全是负边际——市场比模型贵"],
+    no_legal_window:["无合法窗口","结构闸拿走了整批枚举：断桶、不含中心桶、或长度不够。这些窗口没走到看报价那一步，跟贵不贵无关"],
+    no_priced_window:["窗口定不出价","窗口过了全部结构闸，但里面有腿根本没有卖价，成本算不出来。缺的是盘口"],
+    negative_edge_window:["边际不敌摩擦","窗口过闸也报得出价，胜率减全包成本仍盖不住逐腿最小跳动——这一条才是市场比模型贵"],
     leg_below_floor:["单腿报价过低","窗口里有腿的报价低于一分——那是无人出价那侧的挂牌，不是价格。这是我们自己设的闸，不是市场没给价"],
     no_positive_kelly:["赔率不划算","有窗口，但成本高于胜率，Kelly 给出零仓位"],
     no_depth:["盘口太薄","价格划算但挂单量填不满最小整篮"],
