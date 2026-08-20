@@ -143,6 +143,36 @@ DUST_COST_FLOOR = 0.01
 # only bounds the read for a scope that will refuse all day, and the next sweep
 # starts the walk again from the top.
 MAX_ENTRY_CYCLES_PER_STAGE = 240
+# How far down the funnel each refusal got.  The walk keeps the DEEPEST answer
+# it reached, not the last one, because the last cycle is almost always the
+# converged end-of-day book and says nothing about the day.
+#
+# Measured on 2026-08-20 over the 316 P0 station-days recorded as
+# ``no_priced_window``: at the last cycle the market quoted a median of 2
+# buckets at or above the leg floor and 55% of the books had a bucket at
+# 0.90 or better -- a finished race.  At the first cycle the same days had a
+# median of 5 quotable buckets and only 16% had converged, and 85% of them
+# held a legal-width book at some point.  Replaying every cycle, 136 of the
+# 316 did produce a priceable window earlier in the day and were refused on
+# the objective (median best edge -0.353); the page attributed all 316 to
+# "no window could be priced", which was true of 180 of them.
+#
+# Equal depths keep the FIRST arrival: once the walk reaches a depth, the
+# earliest book that got there is the widest one that did, and therefore the
+# most informative about why the day was declined.
+REFUSAL_DEPTH = {
+    "no_book_at_decision": 0,
+    "incomplete_book": 1,
+    "selection_failed": 2,
+    # One layer: both mean the enumeration produced no basket to price.
+    "no_priced_window": 3,
+    "leg_below_floor": 3,
+    "no_positive_kelly": 4,
+    "no_depth": 5,
+    "no_top_up_needed": 5,
+    "resting_unfilled": 6,
+    "chain_never_opened": 7,
+}
 # Which bucket-selection rule this sweep runs.  ``live`` is production's own
 # ``_support_windows`` ordering; the rest exist so a strategy question can be
 # answered against real ask depth and the kernel's own fill bound instead of
@@ -833,6 +863,25 @@ def _truth(conn: sqlite3.Connection) -> dict[tuple[str, str], _Truth]:
             float(value), int(revision), str(sha)
         )
     return out
+
+
+def _deeper_refusal(current: tuple, candidate: tuple) -> tuple:
+    """Keep whichever refusal got further down the funnel.
+
+    The walk used to overwrite unconditionally, so a station-day that was
+    priced and declined on the objective at noon was reported as "no window
+    could be priced" because its 23:59 book had resolved to one bucket at
+    0.999 and the rest at 0.001.  Depth, not recency, is what carries the
+    information: reaching ``no_positive_kelly`` means a legal basket existed
+    and was judged, which a later ``no_priced_window`` cannot unsay.
+
+    Ties keep the incumbent, so the earliest -- widest -- book at that depth
+    is the one reported.
+    """
+
+    if REFUSAL_DEPTH.get(candidate[0], 0) > REFUSAL_DEPTH.get(current[0], 0):
+        return candidate
+    return current
 
 
 def _stage_entry_candidates(
@@ -2692,17 +2741,25 @@ def backfill(
                         .isoformat().replace("+00:00", "Z"),
                     ))
                     continue
-                # Why this stage has no seat, kept as the walk goes so the
-                # last cycle's answer is the one the page gets told.  It starts
+                # Why this stage has no seat, kept as the walk goes.  The
+                # deepest answer the walk reached is the one the page gets
+                # told, not the last one -- see ``_deeper_refusal``.  It starts
                 # at "no book" because a stage with no priced decision yields
                 # nothing below and would otherwise be reported as nothing at
                 # all.
+                #
+                # The cycle counter is separate now.  It used to be carried in
+                # the refusal tuple and re-read as ``refusal[2] + 1``, which
+                # only worked while every cycle overwrote the tuple; under
+                # depth-keeping a shallower cycle leaves it alone and the count
+                # would have frozen.
                 refusal = ("no_book_at_decision", "", 0, "")
+                cycles = 0
                 opened = False
                 for payload in _stage_entry_candidates(
                     conn, station_id, event_date, stage
                 ):
-                    cycles = refusal[2] + 1
+                    cycles += 1
                     quotes = payload["quotes"]
                     observed_at = payload["observed_at"]
                     built = _build_snapshot(
@@ -2717,10 +2774,10 @@ def backfill(
                             str(row[0]) for row in payload["buckets"]
                             if str(row[0]) not in quotes
                         ]
-                        refusal = (
+                        refusal = _deeper_refusal(refusal, (
                             "incomplete_book", ",".join(missing[:4]),
                             cycles, payload["decision_at_utc"],
-                        )
+                        ))
                         continue
                     snapshot, probabilities, prices, depth = built
                     center = payload["center_bucket"] or max(
@@ -2790,10 +2847,10 @@ def backfill(
                             probability_stage=stage,
                         )
                     except Exception as exc:  # noqa: BLE001 -- scope skipped
-                        refusal = (
+                        refusal = _deeper_refusal(refusal, (
                             "selection_failed", f"{type(exc).__name__}",
                             cycles, payload["decision_at_utc"],
-                        )
+                        ))
                         continue
                     priced_windows = [
                         row for row in windows
@@ -2821,7 +2878,7 @@ def backfill(
                             "short_refused_window_count") or 0)
                         leg_out = int(audit.get(
                             "leg_floor_refused_window_count") or 0)
-                        refusal = (
+                        refusal = _deeper_refusal(refusal, (
                             (
                                 "leg_below_floor"
                                 if leg_out > centre_out + short_out
@@ -2833,7 +2890,7 @@ def backfill(
                                 MINIMUM_LEG_ALL_IN_ASK, leg_out,
                             ),
                             cycles, payload["decision_at_utc"],
-                        )
+                        ))
                         continue
                     seat = priced_windows[0]
                     # Sized off the book as it stood when the day opened, and
@@ -2857,7 +2914,7 @@ def backfill(
                     )
                     stake = min(stake, max(0.0, stage_room))
                     if stake <= 0.0:
-                        refusal = (
+                        refusal = _deeper_refusal(refusal, (
                             "no_positive_kelly",
                             "概率 %.3f · 成本 %.3f%s" % (
                                 float(seat["win_probability"]),
@@ -2868,7 +2925,7 @@ def backfill(
                                 % (stage, chain_stake),
                             ),
                             cycles, payload["decision_at_utc"],
-                        )
+                        ))
                         continue
                     # A complete basket buys the same share count on every leg
                     # (atomicity), so the size is set by the thinnest ladder --
@@ -2980,7 +3037,7 @@ def backfill(
                             centre_bucket=seat_centre,
                         )
                         if not any(got.values()):
-                            refusal = (
+                            refusal = _deeper_refusal(refusal, (
                                 "resting_unfilled",
                                 "挂 %d 腿 · 全程一档未成交（%s）" % (
                                     len(seat["buckets"]),
@@ -2990,7 +3047,7 @@ def backfill(
                                     % MAKER_RESTING_HORIZON_MINUTES,
                                 ),
                                 cycles, payload["decision_at_utc"],
-                            )
+                            ))
                             continue
                         # Each leg pays the average of the rungs it got.
                         # That average is the point of resting across a band
@@ -3066,10 +3123,10 @@ def backfill(
                             capacity=capacity,
                         )
                         if filled is None:
-                            refusal = (
+                            refusal = _deeper_refusal(refusal, (
                                 "no_depth", "最薄一档 %.0f 份" % capacity,
                                 cycles, payload["decision_at_utc"],
-                            )
+                            ))
                             continue
                         shares, stake = filled
                         leg_shares = [shares] * len(seat["buckets"])
@@ -3085,12 +3142,12 @@ def backfill(
                             fee_rate=FEE_RATE,
                         )
                         if weighted is None:
-                            refusal = (
+                            refusal = _deeper_refusal(refusal, (
                                 "no_depth",
                                 "加权分配无可行规模 · 最薄一档 %.0f 份"
                                 % capacity,
                                 cycles, payload["decision_at_utc"],
-                            )
+                            ))
                             continue
                         leg_shares, stake = weighted
                     # What was chosen and posted, before the book had a say.
@@ -3124,13 +3181,13 @@ def backfill(
                             topped.append(got)
                             spend += paid
                         if sum(topped) <= 0.0:
-                            refusal = (
+                            refusal = _deeper_refusal(refusal, (
                                 "no_top_up_needed",
                                 "本阶段目标 %s 已在仓内" % "+".join(
                                     seat["buckets"]
                                 ),
                                 cycles, payload["decision_at_utc"],
-                            )
+                            ))
                             continue
                         leg_shares = topped
                         stake = spend * (1.0 + FEE_RATE)
@@ -3166,11 +3223,11 @@ def backfill(
                             probabilities=probabilities,
                         )
                         if entered is None:
-                            refusal = (
+                            refusal = _deeper_refusal(refusal, (
                                 "resting_unfilled",
                                 "挂 %d 腿 · 成交量为零" % len(seat["buckets"]),
                                 cycles, payload["decision_at_utc"],
-                            )
+                            ))
                             continue
                         kept, leg_shares, stake, win_probability = entered
                         if len(kept) < len(seat["buckets"]):
@@ -3296,10 +3353,16 @@ def backfill(
                     break
                 if not opened:
                     counts[refusal[0]] += 1
+                    # ``cycles_examined`` stays the whole walk, not the cycle
+                    # the kept refusal came from -- it used to be read off the
+                    # tuple, which was the same number only while every cycle
+                    # overwrote it.  The stamp beside it is the decision the
+                    # reported reason was measured at, so the detail string and
+                    # the timestamp describe the same book.
                     pending_refusals.append(
                         (
                             station_id, event_date, stage, refusal[0],
-                            refusal[1], refusal[2], refusal[3],
+                            refusal[1], cycles, refusal[3],
                             datetime.now(timezone.utc)
                             .isoformat().replace("+00:00", "Z"),
                         )

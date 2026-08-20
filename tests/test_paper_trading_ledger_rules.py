@@ -313,3 +313,74 @@ def test_an_incremental_window_opens_on_the_book_it_inherited() -> None:
     # A rebuild has no floor and walks every day itself, so it starts where
     # the book started.
     assert _opening_equity(conn, earliest="") == INITIAL_CAPITAL_USDC
+
+
+def test_the_walk_reports_the_deepest_refusal_not_the_last_one() -> None:
+    """The last cycle is the converged book and says nothing about the day.
+
+    The sweep walks every cycle a stage was offered and used to overwrite
+    the refusal each time, so what the page got told was whatever the 23:59
+    book happened to be.  By then a resolved market quotes one bucket at
+    0.999 and the rest at 0.001, no basket can be assembled from that, and
+    the day was reported as "no window could be priced" -- including days
+    that had been priced and declined on the objective hours earlier.
+
+    Measured on 2026-08-20 across the 316 P0 station-days carrying
+    ``no_priced_window``: median 2 quotable buckets at the last cycle
+    against 5 at the first, 55% of last-cycle books already converged
+    against 16% of first-cycle ones, and 136 of the 316 did produce a
+    priceable window earlier in the day.  Depth is what carries the
+    information, so depth is what the walk keeps.
+    """
+
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    from paper_trading_ledger import (  # noqa: PLC0415
+        REFUSAL_DEPTH,
+        _deeper_refusal,
+    )
+
+    early = ("no_positive_kelly", "概率 0.707 · 成本 1.060", 3, "T09:00Z")
+    late = ("no_priced_window", "中心桶拒绝 2 · 桶数不足拒绝 3", 91, "T23:59Z")
+
+    # The regression itself: a converged end-of-day book must not erase a
+    # basket that was assembled and judged that morning.
+    assert _deeper_refusal(early, late) == early
+
+    # A genuinely deeper answer still replaces a shallower one, in either
+    # arrival order -- otherwise the walk would freeze on "no book".
+    start = ("no_book_at_decision", "", 0, "")
+    assert _deeper_refusal(start, late) == late
+    assert _deeper_refusal(late, early) == early
+
+    # Ties keep the incumbent, which is the earliest book to reach that
+    # depth and therefore the widest one that did.
+    other = ("no_positive_kelly", "概率 0.500 · 成本 0.900", 40, "T15:00Z")
+    assert _deeper_refusal(early, other) == early
+
+    # Both "nothing could be assembled" codes sit on one rung: which of the
+    # two is reported is decided by the floors that bit, not by depth.
+    assert REFUSAL_DEPTH["leg_below_floor"] == REFUSAL_DEPTH["no_priced_window"]
+
+    # Every reason the schema admits must be rankable, or an unlisted one
+    # would silently sort as the shallowest and be unable to hold the slot.
+    source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    for reason in (
+        "no_book_at_decision", "incomplete_book", "selection_failed",
+        "no_priced_window", "leg_below_floor", "resting_unfilled",
+        "no_positive_kelly", "no_depth", "no_top_up_needed",
+        "chain_never_opened",
+    ):
+        assert reason in REFUSAL_DEPTH, reason
+
+    # The cycle count is the whole walk, not the cycle the kept refusal came
+    # from; it used to be carried in the tuple and re-read, which only held
+    # while every cycle overwrote it.
+    assert "cycles = refusal[2] + 1" not in source
+    assert "refusal[1], cycles, refusal[3]," in source
