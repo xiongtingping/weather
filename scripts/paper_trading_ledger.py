@@ -38,7 +38,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
 import sqlite3
 import sys
@@ -2056,38 +2055,6 @@ def _kelly_stake(
     return fraction, max(0.0, fraction * equity)
 
 
-def _log_wealth_score(*, win_probability: float, cost: float) -> float:
-    """What seating this window at its own stake does to log wealth.
-
-    This is the curve score the page names, computed on the ledger's own
-    stake rule rather than on raw edge: a window is worth seating only to the
-    extent it can actually be bet.  Zero when the stake rule declines it, so
-    an unbettable window never outranks a bettable one and the refusal
-    downstream keeps its meaning.
-
-    Not a divergence.  KL and raw edge are both maximised where model and
-    market disagree most and neither knows which side of the disagreement it
-    is on, so both rank a basket the market prices far above us as
-    attractive; this is signed by construction.
-    """
-
-    fraction, _ = _kelly_stake(
-        win_probability=win_probability, cost=cost, equity=1.0
-    )
-    if fraction <= 0.0:
-        return 0.0
-    # The basket pays 1 per set when the truth lands inside, so a stake of
-    # ``fraction`` of wealth buys ``fraction / cost`` sets.
-    won = 1.0 - fraction + fraction / cost
-    lost = 1.0 - fraction
-    if won <= 0.0 or lost <= 0.0:
-        return 0.0
-    return (
-        win_probability * math.log(won)
-        + (1.0 - win_probability) * math.log(lost)
-    )
-
-
 def _walk_ask(
     levels: list[dict[str, float]], shares: float
 ) -> float | None:
@@ -2925,47 +2892,7 @@ def backfill(
                             cycles, payload["decision_at_utc"],
                         ))
                         continue
-                    # Production runs the objective on every shortlisted
-                    # window and seats the best curve
-                    # (``_solve_over_support_windows``).  Taking the head of
-                    # the list instead measured something else: the list is
-                    # ranked by probability mass, and the incumbent is waved
-                    # past the edge gate, so the mass-heaviest window -- which
-                    # is the incumbent -- took the seat however it was priced.
-                    #
-                    # Measured on 2026-08-20 over the 253 P0 station-days
-                    # recorded as no_positive_kelly: every one of the 171 that
-                    # had a priced basket seated the incumbent, and 22 of them
-                    # had a positive-edge window sitting further down the same
-                    # shortlist, never looked at.  ZBAA on 2026-08-01 seated
-                    # 33-36C at 0.880 against a 0.610 claim (-0.270) while
-                    # 32-34C sat there at 0.280 against 0.427 (+0.147).
-                    #
-                    # A named strategy still yields its own single candidate,
-                    # so only the live lane ranks.
-                    if WINDOW_STRATEGY != "live":
-                        seat = priced_windows[0]
-                    else:
-                        # Ties -- including the all-zero case where nothing on
-                        # the list can be bet -- fall back to list order, so a
-                        # day that still refuses names exactly the window it
-                        # named before and only the seated days move.
-                        seat = max(
-                            (
-                                (
-                                    _log_wealth_score(
-                                        win_probability=float(
-                                            row["win_probability"]
-                                        ),
-                                        cost=float(row["all_in_price"]),
-                                    ),
-                                    -position,
-                                    row,
-                                )
-                                for position, row in enumerate(priced_windows)
-                            ),
-                            key=lambda scored: scored[:2],
-                        )[2]
+                    seat = priced_windows[0]
                     # Sized off the book as it stood when the day opened, and
                     # never beyond what the per-scope cap leaves this chain.
                     # The cap is the station-day's, so a top-up spends what
