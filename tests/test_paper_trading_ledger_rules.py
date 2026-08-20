@@ -795,3 +795,68 @@ def test_the_budget_line_only_appears_when_the_budget_bound() -> None:
     assert STAGE_BUDGET_SHARE["P1"] == 1.0
     assert STAGE_BUDGET_SHARE["P0"] < STAGE_BUDGET_SHARE["P0-M"] < 1.0
     assert MAX_STAKE_FRACTION_PER_SCOPE == 0.02
+
+
+def test_posted_basket_hit_is_grouped_on_what_was_chosen() -> None:
+    """window_size is the width that survived the market, not the choice.
+
+    A three-rung basket the book cut to one is stored with window_size 1, so
+    grouping hit rate on it files that day under one rung and empties the
+    three-rung row of exactly its hardest cases.  The question "is a
+    three-rung basket any good" is about the width we posted.
+
+    Both readings are carried: measured 2026-08-20 over 137 settlements the
+    posted basket covered the truth 37.2% of the time and the filled basket
+    17.5%.  That gap is the market declining to sell the legs that went on
+    to win, and it is the largest single term in the page's low hit rate --
+    so showing only one of the two would hide it.
+    """
+
+    import sqlite3
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from scripts.selection_market_dashboard import (  # noqa: PLC0415
+        _posted_basket_hit_trend,
+    )
+
+    db = root / "data" / "bayes_basket_target_ssot.db"
+    if not db.is_file():
+        return
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
+    try:
+        payload = _posted_basket_hit_trend(conn)
+    except sqlite3.DatabaseError:
+        return
+    finally:
+        conn.close()
+
+    for row in payload["sizes"]:
+        assert row["posted_size"] in (3, 4)
+        # Every posted basket is at least as likely to cover as the part of
+        # it we managed to buy -- the filled set is a subset of the posted.
+        assert row["filled_hit_rate"] <= row["hit_rate"] + 1e-9, row
+        for key in ("hit_rate", "filled_hit_rate", "claimed_mean"):
+            assert 0.0 <= row[key] <= 1.0, (key, row)
+        if row["delta"] is None:
+            continue
+        # A direction is only readable when it clears two combined standard
+        # errors; the flag and the numbers must not disagree.
+        assert row["delta_stderr"] is not None
+        assert row["delta_is_readable"] == (
+            abs(row["delta"]) >= 2.0 * row["delta_stderr"]
+        ), row
+        # The split is on settlements, not the middle date: neither half may
+        # be starved.
+        assert row["earlier"]["settled_count"] >= 8
+        assert row["later"]["settled_count"] >= 8
+
+    page = (root / "scripts" / "calibration_dashboard.py").read_text(
+        encoding="utf-8"
+    )
+    # The strip must not print a direction it cannot support.
+    assert "delta_is_readable" in page
+    assert "与噪音不可分" in page

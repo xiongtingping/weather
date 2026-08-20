@@ -29,9 +29,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sqlite3
 import sys
 from collections import defaultdict
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -388,6 +390,151 @@ def _basket_hit_by_size(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             "claimed_win_probability_mean": float(claimed or 0.0),
             "staked_usdc": float(staked or 0.0),
             "pnl_usdc": float(pnl or 0.0),
+        })
+    return out
+
+
+def _posted_basket_hit_trend(
+    conn: sqlite3.Connection, sizes: Sequence[int] = (3, 4)
+) -> dict[str, Any]:
+    """Hit rate of the basket we *chose*, per posted width, and its trend.
+
+    ``_basket_hit_by_size`` groups on ``window_size``, which is the width
+    that came back after the market sold us part of the ladder -- so a
+    three-rung choice the book cut to one is counted as a one-rung basket
+    and the three-rung row silently loses its hardest cases.  The question
+    "is a three-rung basket any good" is about the width we picked, so this
+    groups on the posted ladder instead.
+
+    Both readings are kept per row: ``hit_rate`` is whether the truth landed
+    in what we posted, ``filled_hit_rate`` whether it landed in what we
+    actually bought.  Measured 2026-08-20 the two were 37.2% and 17.5% over
+    the same 137 settlements -- the gap is the market declining to sell the
+    legs that went on to win, and it is the single largest term in why the
+    page's hit rate looks low.
+
+    Trend splits the settled days in half by date rather than fitting
+    anything: with samples this size a slope is noise wearing a number, and
+    "the last half against the first" is the comparison a reader makes
+    anyway.  ``None`` when either half is too thin to say.
+    """
+
+    rows = conn.execute(
+        "SELECT p.event_date, p.posted_buckets_json, p.window_buckets_json,"
+        " p.probabilities_json, s.settled_bucket, s.claimed_win_probability"
+        " FROM paper_trade_settlement s"
+        " JOIN paper_trade_position p USING(position_id)"
+        " WHERE p.all_in_cost>=? AND s.settled_bucket IS NOT NULL"
+        " ORDER BY p.event_date",
+        (DUST_COST_FLOOR,),
+    ).fetchall()
+
+    wanted = {int(size) for size in sizes}
+    by_size: dict[int, list[dict[str, Any]]] = {size: [] for size in wanted}
+    for event_date, posted_js, filled_js, probs_js, landed, claimed in rows:
+        try:
+            posted = json.loads(posted_js) if posted_js else json.loads(
+                filled_js or "[]"
+            )
+            filled = json.loads(filled_js or "[]")
+            probs = json.loads(probs_js) if probs_js else {}
+        except (TypeError, ValueError):
+            continue
+        size = len(posted)
+        if size not in wanted:
+            continue
+        by_size[size].append({
+            "event_date": str(event_date),
+            "hit": int(str(landed) in {str(b) for b in posted}),
+            "filled_hit": int(str(landed) in {str(b) for b in filled}),
+            # The claim belongs to the posted ladder, not the filled one, or
+            # the ratio compares a hit over three rungs to a claim over one.
+            "claimed": sum(float(probs.get(str(b), 0.0)) for b in posted)
+            or float(claimed or 0.0),
+        })
+
+    def account(items: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+        if not items:
+            return None
+        n = len(items)
+        hit = sum(int(item["hit"]) for item in items)
+        claim = sum(float(item["claimed"]) for item in items) / n
+        return {
+            "settled_count": n,
+            "hit_rate": hit / n,
+            "filled_hit_rate": (
+                sum(int(item["filled_hit"]) for item in items) / n
+            ),
+            "claimed_mean": claim,
+            "realised_over_claimed": (hit / n) / claim if claim else None,
+        }
+
+    out: dict[str, Any] = {"sizes": []}
+    for size in sorted(wanted):
+        items = by_size[size]
+        overall = account(items)
+        if overall is None:
+            continue
+        # Split on the day, not the row: a station-day's stages must not
+        # land on opposite sides of the cut.  Cut where the *settlements*
+        # are even rather than at the middle date -- early days carry far
+        # fewer seats, so a calendar midpoint put 14 rows against 66 and
+        # called the noisier side "before".
+        counts: dict[str, int] = defaultdict(int)
+        for item in items:
+            counts[item["event_date"]] += 1
+        days = sorted(counts)
+        target = len(items) / 2.0
+        running = 0
+        half = 0
+        for index, day in enumerate(days):
+            if running >= target:
+                break
+            running += counts[day]
+            half = index + 1
+        early_days = set(days[:half])
+        earlier = account(
+            [item for item in items if item["event_date"] in early_days]
+        )
+        later = account(
+            [item for item in items if item["event_date"] not in early_days]
+        )
+        MIN_HALF = 8
+        movable = (
+            earlier is not None
+            and later is not None
+            and earlier["settled_count"] >= MIN_HALF
+            and later["settled_count"] >= MIN_HALF
+        )
+        # Whether the move is even distinguishable from noise.  A hit rate
+        # is a proportion, so the two halves' standard errors combine; under
+        # two of those the difference is a coin landing differently, and
+        # printing it as a direction would manufacture a signal.  Measured
+        # 2026-08-20 both widths sat at |delta|/SE ~ 0.4.
+        delta = later["hit_rate"] - earlier["hit_rate"] if movable else None
+        stderr = None
+        if movable:
+            stderr = math.sqrt(
+                earlier["hit_rate"] * (1.0 - earlier["hit_rate"])
+                / earlier["settled_count"]
+                + later["hit_rate"] * (1.0 - later["hit_rate"])
+                / later["settled_count"]
+            )
+        out["sizes"].append({
+            "posted_size": size,
+            **overall,
+            "earlier": earlier if movable else None,
+            "later": later if movable else None,
+            "delta": delta,
+            "delta_stderr": stderr,
+            "delta_is_readable": (
+                bool(stderr) and delta is not None
+                and abs(delta) >= 2.0 * stderr
+            ),
+            "trend_window": (
+                {"earlier_days": days[:half], "later_days": days[half:]}
+                if movable else None
+            ),
         })
     return out
 
@@ -1307,6 +1454,7 @@ def build_payload(db: Path) -> dict[str, Any]:
         # different rule instead of repeating the same string on every cell.
         "current_selection_rule_label": SELECTION_RULE_LABEL,
         "basket_hit_by_size": _basket_hit_by_size(conn),
+        "posted_basket_hit": _posted_basket_hit_trend(conn),
         "maker_probe": _maker_probe(conn),
         "resting_entry": _resting_entry_stats(conn),
         "resting_entry_trend": _resting_entry_trend(conn),

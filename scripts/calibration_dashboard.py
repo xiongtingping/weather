@@ -2509,6 +2509,39 @@ function overview(){
     "命中率 ÷ 声称胜率，1.00× 是说得准",
     "第四节与第七节：概率分档校准");
 
+  // 6b. Does the basket we CHOSE cover the truth, at the widths the
+  // charter actually seats -- and is that moving.  Grouped on the posted
+  // ladder, not the filled one: the market sells us part of a three-rung
+  // choice and the filled width would file that day under one rung,
+  // emptying the three-rung row of exactly its hardest cases.
+  //
+  // The trend is the later half of settlements against the earlier, split
+  // where the counts are even rather than at the middle date.  A direction
+  // is only printed when it clears two combined standard errors; under
+  // that it is a coin landing differently and saying "worse" would invent
+  // a signal the sample cannot carry.
+  ((S.posted_basket_hit||{}).sizes||[]).forEach(row=>{
+    const hitv=row.hit_rate;
+    const arrow=row.delta==null?""
+      :!row.delta_is_readable?"→"
+      :row.delta>0?"↑":"↓";
+    const move=row.delta==null?`${row.settled_count} 笔 · 趋势样本不足`
+      :!row.delta_is_readable
+        ?`${row.settled_count} 笔 · 与噪音不可分（Δ${
+          (row.delta*100>=0?"+":"")+(row.delta*100).toFixed(0)}，需 ±${
+          (2*row.delta_stderr*100).toFixed(0)}）`
+      :`${row.settled_count} 笔 · 后半 ${
+        (row.delta*100>=0?"+":"")+(row.delta*100).toFixed(0)} 点`;
+    push(hitv==null?"muted":band(hitv,0.5,0.33),
+      `${row.posted_size} 桶命中 ${arrow}`,
+      pct0(hitv), move,
+      `按挂出的篮子算。买到的篮子只中 ${pct0(row.filled_hit_rate)}` +
+      `，差额是市场没把会赢的那条腿卖给我们。声称 ${
+      pct0(row.claimed_mean)}，实现/声称 ${
+      row.realised_over_claimed==null?"—"
+        :row.realised_over_claimed.toFixed(2)}×`);
+  });
+
   // 7. What the one book is worth now.
   const capital=S.initial_capital_usdc||1000;
   const equity=capital+(cs.realized_usdc||0);
