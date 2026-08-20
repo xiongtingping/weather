@@ -917,13 +917,35 @@ def canonicalize_metar_trajectory_observations(
             item.event.observation_id,
         ),
     ))
-    seen_slots: set[tuple[str, str]] = set()
+    # One slot, one report.  Publishers do re-transmit the same bulletin
+    # with byte-level differences -- a COR chain re-stating the same
+    # observation (EDDM 2026-08-20 01:20Z, three variants) or a spacing typo
+    # fixed in place (OPKC ``23 017G27KT``) -- and ingest deduplicates by raw
+    # hash, so every such re-issue reaches this sequence.  When the
+    # temperature agrees, the later transmission is the same measurement
+    # said again: the last-received one speaks for the slot.  A temperature
+    # that changed is a real correction and stays fail-closed for review.
+    by_slot: dict[tuple[str, str], MetarTrajectoryObservation] = {}
     for item in ordered:
         slot = (item.event.observed_at_utc, item.event.report_type)
-        if slot in seen_slots:
+        held = by_slot.get(slot)
+        if held is None:
+            by_slot[slot] = item
+            continue
+        if held.temperature_c != item.temperature_c:
             raise ContractError("metar_trajectory_observation_slot_conflict")
-        seen_slots.add(slot)
-    return ordered
+        if _parsed(item.event.received_at_utc) >= _parsed(
+            held.event.received_at_utc
+        ):
+            by_slot[slot] = item
+    return tuple(sorted(
+        by_slot.values(),
+        key=lambda item: (
+            _parsed(item.event.observed_at_utc),
+            item.event.sequence,
+            item.event.observation_id,
+        ),
+    ))
 
 
 def canonical_observation_sequence_sha256(

@@ -20,7 +20,10 @@ from .taf_oos_contract import HISTORICAL_OOS_TEMPORAL_SCOPE
 
 
 TAF_INBOX_SCHEMA = "bayes_basket_target_taf_revision_inbox_v1"
-MAX_TAF_CAPTURES = 256
+# Must admit the full capture-side inbox (whole-scope retention, 2048 slots);
+# a smaller ingest cap here would fail-close the very window that keeps every
+# revision chain's root resident.
+MAX_TAF_CAPTURES = 2048
 MAX_FORWARD_TAF_CORRECTIONS_PER_DAY = 16
 FORMAL_STATION_LANE_TRUTH = "FORMAL_STATION_LANE_TRUTH"
 

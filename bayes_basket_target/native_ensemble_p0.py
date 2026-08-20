@@ -45,6 +45,7 @@ from .cross_consensus import (
     bridged_cross_probability,
 )
 from .future_temperature_curve import (
+    MIN_SAME_DAY_CURVE_POINTS,
     build_native_family_temperature_curve,
     build_root_future_temperature_curve,
 )
@@ -1698,9 +1699,30 @@ def compile_native_ensemble_p0(
             "FAIL_CLOSED_NO_P0:"
             "native_cross_ensemble_activation_not_exact"
         )
-    selected_activation, system_ids, activation_cycle_riders = (
+    selected_activation, activation_member_ids, activation_cycle_riders = (
         activations[0]
     )
+    # Clause 42 (2026-08-15): point forecasts are never P0 members.  Legacy
+    # activations fitted before the ruling still name them in the membership
+    # set, and a packet that does not carry the point-forecast lane (a stale
+    # TAF is ordinary) died on a raw KeyError right below, before the weight
+    # demotion further down could speak.  Two vocabularies from here on:
+    # ``activation_member_ids`` is the membership the artifact, evaluation
+    # and selection evidence were fitted under and is what every identity
+    # check must keep holding them to; ``system_ids`` is the numerical-model
+    # set that actually serves, and is what every packet index, calibration
+    # loop and served lineage uses.  The demoted weight is still named by
+    # the demotion block below.
+    system_ids = [
+        system_id
+        for system_id in activation_member_ids
+        if system_id not in POINT_FORECAST_SYSTEMS
+    ]
+    if len(system_ids) < 2:
+        raise ContractError(
+            "FAIL_CLOSED_NO_P0:"
+            "p0_membership_below_two_after_point_forecast_demotion"
+        )
     systems = {
         system_id: observed_systems[system_id]
         for system_id in system_ids
@@ -1769,7 +1791,7 @@ def compile_native_ensemble_p0(
     excluded_observed_system_ids = sorted(
         observed_set - set(system_ids)
     )
-    available_set_hash = content_sha256(system_ids)
+    available_set_hash = content_sha256(activation_member_ids)
     activation_id = str(selected_activation[0])
     artifact_id = str(selected_activation[1])
     activation_sha = str(selected_activation[2])
@@ -1811,8 +1833,8 @@ def compile_native_ensemble_p0(
     expected_cycle_mapping_json = str(selected_activation[11] or "")
     expected_cycle_mapping_sha = str(selected_activation[12] or "")
     if (
-        selected_system_ids != system_ids
-        or int(artifact[1]) != len(system_ids)
+        selected_system_ids != activation_member_ids
+        or int(artifact[1]) != len(activation_member_ids)
         or int(artifact[2]) < 2
         or str(artifact[6] or "") != expected_cycle_mapping_json
         or str(artifact[7] or "") != expected_cycle_mapping_sha
@@ -1839,7 +1861,7 @@ def compile_native_ensemble_p0(
             expected_cycle_mapping_json,
             expected_cycle_mapping_sha,
             settlement_definition,
-            _json(system_ids),
+            _json(activation_member_ids),
             available_set_hash,
             decision_at_utc,
         ),
@@ -1899,10 +1921,15 @@ def compile_native_ensemble_p0(
     # candidacy, so this path decays to a no-op as rows regenerate.
     p0_membership_demotions: dict[str, float] = {}
     for demoted_id in sorted(POINT_FORECAST_SYSTEMS):
-        weight = float(system_weights.get(demoted_id) or 0.0)
+        if demoted_id not in system_weights:
+            continue
+        # Popped, not zeroed: membership was already stripped from
+        # ``system_ids`` at activation unpack, so a lingering key here would
+        # fail the selection-mask subset check below for exactly the rows
+        # this demotion exists to serve.
+        weight = float(system_weights.pop(demoted_id) or 0.0)
         if weight > EPS:
             p0_membership_demotions[demoted_id] = weight
-            system_weights[demoted_id] = 0.0
     if p0_membership_demotions:
         remaining = sum(system_weights.values())
         if remaining <= EPS:
@@ -2796,7 +2823,14 @@ def compile_native_ensemble_p0(
         family_curves: dict[str, dict[str, Any]] = {}
         for system_id in system_ids:
             raw_curve = dict(systems[system_id]["family_temperature_curve"])
-            sealed_curve = build_native_family_temperature_curve(raw_curve)
+            # Re-sealing accepts the same-day floor: only the collector knew
+            # the lead it captured at, and a same-day run at an easternmost
+            # station legitimately seals three 3-hourly points (RKPK, UTC+9,
+            # 06Z rung).  Holding the reseal to the pre-day floor of four
+            # rejected at compile what capture was allowed to keep.
+            sealed_curve = build_native_family_temperature_curve(
+                raw_curve, min_points=MIN_SAME_DAY_CURVE_POINTS
+            )
             if (
                 raw_curve.get("content_sha256")
                 != sealed_curve["content_sha256"]

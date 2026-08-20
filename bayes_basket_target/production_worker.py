@@ -2974,7 +2974,15 @@ class TargetProductionWorker:
             )
         except ValueError:
             return True, timezone_name, latest_day
-        return covered_at < closes_at, timezone_name, latest_day
+        # Content-window artifacts stamp trained_through one second inside
+        # the newest fold day's close (see the training packet builder), so
+        # coverage is judged against the same instant; comparing against the
+        # exact close would find every fresh artifact forever due.
+        return (
+            covered_at < closes_at - timedelta(seconds=1),
+            timezone_name,
+            latest_day,
+        )
 
     def _run_metar_trajectory_training(
         self, *, as_of_utc: str
@@ -9153,7 +9161,7 @@ class TargetProductionWorker:
                 "orders_submitted": 0,
             }
         raw_captures = inbox.get("captures")
-        if not isinstance(raw_captures, list) or len(raw_captures) > 256:
+        if not isinstance(raw_captures, list) or len(raw_captures) > 2048:
             raise ContractError("resident_taf_inbox_capture_count_invalid")
         captures_by_scope: dict[tuple[str, str], list[Mapping[str, Any]]] = {}
         for raw_capture in raw_captures:

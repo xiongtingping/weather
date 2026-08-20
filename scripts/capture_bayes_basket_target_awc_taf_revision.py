@@ -30,6 +30,10 @@ from scripts.capture_bayes_basket_target_awc_taf_calibration import (  # noqa: E
 SCHEMA = "bayes_basket_awc_taf_revision_capture_v1"
 FORWARD_SCHEMA = "bayes_basket_target_forward_taf_capture_v1"
 INBOX_SCHEMA = "bayes_basket_target_taf_revision_inbox_v1"
+# 45 stations x ~3 active event dates x ~6 TAF revisions each fits with slack;
+# the old 256-slot global window held roughly 17 hours across 86 scopes, so
+# every chain root scrolled out within its own event day.
+MAX_INBOX_CAPTURES = 2048
 
 
 def capture_forward_awc_taf(
@@ -175,17 +179,26 @@ def refresh_forward_taf_inbox(
         ).append(item)
     repaired: dict[int, dict[str, object]] = {}
     for scope, group in by_scope.items():
+        # Received order is the only ordering the chain contract can honour:
+        # sequence numbers assigned before an eviction may repeat after one,
+        # and sorting by them interleaves arrivals (FACT 2026-08-20 held
+        # 1,2,3,3,3,3,4 with the newest arrival numbered 3).
         group.sort(
-            key=lambda item: int(
-                (item.get("forecast_revision") or {}).get("sequence")
-                or 0
-            )
+            key=lambda item: str(item.get("local_received_at_utc") or "")
         )
+        sequences = [
+            int((item.get("forecast_revision") or {}).get("sequence") or 0)
+            for item in group
+        ]
         first_revision = group[0].get("forecast_revision")
+        # Re-key whenever the retained group is not already the valid chain
+        # the validator demands: contiguous 1..N in received order with a TAF
+        # root.  The previous guard skipped exactly the scrolled-root case
+        # (first retained sequence != 1) its own comment said it repaired.
         if (
-            not isinstance(first_revision, dict)
-            or int(first_revision.get("sequence") or 0) != 1
-            or str(first_revision.get("revision_kind") or "") == "TAF"
+            isinstance(first_revision, dict)
+            and sequences == list(range(1, len(group) + 1))
+            and str(first_revision.get("revision_kind") or "") == "TAF"
         ):
             continue
         previous_id = None
@@ -302,10 +315,39 @@ def refresh_forward_taf_inbox(
             "content_sha256": content_sha256(normalized_identity),
         })
         source_keys.add((*scope, source_sha))
+    # Eviction granularity is the whole (station, event_date) scope, never a
+    # single capture.  Trimming captures individually let a chain's root
+    # scroll out mid-day, after which ``len(predecessors)+1`` renumbered new
+    # arrivals backwards into already-persisted sequences.  A chain is either
+    # fully present or fully absent; under pressure the scopes with the
+    # oldest newest-arrival leave first.
     retained = sorted(
         retained,
         key=lambda item: str(item.get("local_received_at_utc") or ""),
-    )[-256:]
+    )
+    if len(retained) > MAX_INBOX_CAPTURES:
+        newest_by_scope: dict[tuple[str, str], str] = {}
+        for item in retained:
+            item_scope = (
+                str(item.get("station_id") or ""),
+                str(item.get("event_date") or ""),
+            )
+            received = str(item.get("local_received_at_utc") or "")
+            if received > newest_by_scope.get(item_scope, ""):
+                newest_by_scope[item_scope] = received
+        for evict_scope, _newest in sorted(
+            newest_by_scope.items(), key=lambda entry: entry[1]
+        ):
+            if len(retained) <= MAX_INBOX_CAPTURES:
+                break
+            retained = [
+                item
+                for item in retained
+                if (
+                    str(item.get("station_id") or ""),
+                    str(item.get("event_date") or ""),
+                ) != evict_scope
+            ]
     identity = {
         "schema": INBOX_SCHEMA,
         "capture_count": len(retained),
@@ -313,7 +355,7 @@ def refresh_forward_taf_inbox(
         "evidence_role": "observational_candidate_not_oos",
         "boundary": {
             "forward_only": True,
-            "max_captures": 256,
+            "max_captures": MAX_INBOX_CAPTURES,
             "calls_order_gateway": False,
             "places_orders": False,
         },

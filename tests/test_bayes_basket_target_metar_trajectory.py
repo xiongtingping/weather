@@ -763,12 +763,23 @@ def test_conflicting_duplicate_and_same_slot_are_rejected() -> None:
     with pytest.raises(ContractError, match="duplicate_id_conflict"):
         _compile([row, conflict])
 
+    # A same-slot re-transmission that restates the same temperature is the
+    # same measurement said again (publisher COR chains and spacing typos);
+    # the last-received transmission speaks for the slot.
     same_slot = _observation(
         "other", sequence=2, observed="2026-07-29T06:00:00Z",
-        temperature_c=34.0,
+        received="2026-07-29T06:02:00Z", temperature_c=34.0,
+    )
+    proof = _compile([row, same_slot])
+    assert proof.canonical_observation_ids == ("obs-other",)
+
+    # A same-slot temperature change is a real correction and stays closed.
+    warmer_slot = _observation(
+        "warmer", sequence=3, observed="2026-07-29T06:00:00Z",
+        received="2026-07-29T06:03:00Z", temperature_c=35.0,
     )
     with pytest.raises(ContractError, match="observation_slot_conflict"):
-        _compile([row, same_slot])
+        _compile([row, warmer_slot])
 
 
 def test_future_unavailable_conflict_cannot_contaminate_asof_prefix() -> None:

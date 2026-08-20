@@ -1017,11 +1017,26 @@ def build_training_packet(
                 fold.update(historical)
         folds.append(fold)
     support = {str(value): 1.0 / 13.0 for value in range(13)}
+    # ``trained_through`` is a claim about training *content*, not about when
+    # the truth rows were materialized.  The serve-side leakage gate compares
+    # it against the served day's first observation, and stamping the truth
+    # rows' canonical-commit wall clock here locked every station whose event
+    # day had already begun by the time the nightly truth sweep ran (14
+    # stations for the whole of 2026-08-20).  The last instant the folds can
+    # have seen is the close of the newest settled fold day; one second
+    # inside it keeps the strict-less-than gate open for stations whose first
+    # report of the next day is stamped exactly on the day boundary (hourly
+    # :00 METARs at whole-hour timezones).
     trained_through = max(
         (
             _parsed_utc(
-                str(row["canonical_committed_at_utc"])
+                str(
+                    settlement_day_window(
+                        str(row["local_date"]), settlement_timezone
+                    )["target_day_end_utc"]
+                )
             )
+            - timedelta(seconds=1)
             for row in ordered_truth
             if any(
                 fold["evaluation_truth_id"] == row["truth_id"]
