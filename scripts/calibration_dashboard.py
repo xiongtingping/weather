@@ -2130,9 +2130,14 @@ def _daily_table(selection: dict[str, Any]) -> list[dict[str, Any]]:
     table = []
     for day in sorted(by_day, reverse=True):
         rows = by_day[day]
-        settled = [r for r in rows if r.get("settled")]
+        # One row per chain: the settlement is joined onto every stage row
+        # of its station-day, so summing settled stage rows counts one
+        # chain's P&L two or three times.  Only the tail row is the chain.
+        settled = [
+            r for r in rows if r.get("settled") and r.get("chain_tail")
+        ]
         hits = sum(int(r["hit"]) for r in settled)
-        staked = sum(float(r["stake_usdc"]) for r in settled)
+        staked = sum(float(r["chain_stake_usdc"]) for r in settled)
         pnl = sum(float(r["pnl_usdc"] or 0.0) for r in settled)
         odds = [r["odds"] for r in settled if r.get("odds") is not None]
         claimed = (
