@@ -543,3 +543,48 @@ def test_both_copies_of_the_reason_table_cover_every_code() -> None:
     short = re.search(r"no_priced_window:\[(.*?)\],\n", page, re.S)
     assert short, "the roster's no_priced_window entry moved"
     assert "太窄" in short.group(1) and "高过" in short.group(1), short.group(1)
+
+
+def test_a_leg_nobody_offers_is_unbuyable_not_expensive() -> None:
+    """The unfillable ceiling is a placeholder, not a price.
+
+    _build_snapshot has to hand the kernel a representable book, and the
+    snapshot schema requires ask_available to agree with a non-empty level
+    list, so a bucket with no offer arrives carrying max(tick, 1-tick) on a
+    single tick-sized level. Nothing fills against it -- which is the point --
+    but summing it into a basket cost and reporting the result as "dearer
+    than its own payout" describes a market that never quoted.
+
+    That is where 2.997 and 3.996 came from: KLAX 2026-08-18 had nine of
+    eleven buckets with ask_levels=[] and ask_available=False in the raw
+    quote. Measured 2026-08-20, 13 of the 102 cost_exceeds_payout refusals
+    carried such a leg, and every extreme value was one of them.
+    """
+
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+
+    source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    # Judged from the raw book, before the placeholder is substituted.
+    assert 'if not (quotes.get(str(bucket)) or {}).get(' in source
+    assert '"ask_levels"' in source
+    # And it has to be decided before the cost test, or the placeholder wins.
+    assert source.index("unoffered = [") < source.index("if cost >= 1.0:")
+    assert "条腿无人挂卖" in source
+
+    from scripts.selection_market_dashboard import (  # noqa: PLC0415
+        REFUSAL_LABELS,
+    )
+
+    # The over-payout note must now claim only real quotes, and say where
+    # the other kind went.
+    over = REFUSAL_LABELS["cost_exceeds_payout"][1]
+    assert "实价" in over and "没有一篮可买" in over
+    # And the receiving row must admit the third case.
+    assert "没人挂卖" in REFUSAL_LABELS["no_priced_window"][1]

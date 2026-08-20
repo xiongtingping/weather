@@ -2933,6 +2933,34 @@ def backfill(
                             else " · %s 段额度已用尽（本链已投 %.2f）"
                             % (stage, chain_stake)
                         )
+                        # A bucket nobody is offering arrives here priced at
+                        # the unfillable ceiling (``_build_snapshot`` must
+                        # hand the kernel a representable book, and the
+                        # snapshot schema requires ask_available to agree with
+                        # a non-empty level list).  That ceiling is a
+                        # placeholder, not a price, so a basket carrying one
+                        # is unbuyable rather than expensive -- reporting it
+                        # as "dearer than its payout" produced baskets
+                        # "costing" 2.997 and 3.996, which no book asked for.
+                        # Measured 2026-08-20: 13 of the 102, and every
+                        # extreme value among them.
+                        unoffered = [
+                            str(bucket) for bucket in seat["buckets"]
+                            if not (quotes.get(str(bucket)) or {}).get(
+                                "ask_levels"
+                            )
+                        ]
+                        if unoffered:
+                            refusal = _deeper_refusal(refusal, (
+                                "no_priced_window",
+                                "%d 条腿无人挂卖（%s）%s" % (
+                                    len(unoffered),
+                                    "、".join(unoffered[:3]),
+                                    exhausted,
+                                ),
+                                cycles, payload["decision_at_utc"],
+                            ))
+                            continue
                         # A basket that asks more than the 1.00 it can pay is
                         # refused by arithmetic, not by the objective -- the
                         # model's probability never enters it.  Reporting that
