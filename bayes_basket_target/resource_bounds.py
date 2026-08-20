@@ -69,7 +69,21 @@ MAX_JSON_NODES = 500_000
 # raised each time it is met.  The daemon now publishes remaining headroom as
 # ``target_ssot_capacity`` and warns a gigabyte out, so the next approach is
 # visible while there is still room to prune.
-MAX_TARGET_DB_BYTES = 16384 * MIB
+#
+# Raised again to 18 GiB on 2026-08-20, and this time explicitly as a
+# stopgap against this comment's own doctrine: the store crossed 16 GiB at
+# 17.19 GB and every writer fail-closed mid-session.  The burn measured
+# roughly 1.7 GiB/day since the last raise -- bridge history ~0.4, forward
+# preselection plans ~0.13, envelopes and member lineage the rest -- so two
+# gigabytes is about a day and a half, bought only to keep production alive
+# while the retention decision this ceiling exists to force is actually
+# taken.  The candidates are the two append-only JSON tables measured at
+# 2.31 GB (basket_probability_bridge_history) and 2.75 GB
+# (basket_p0_preselection_plan); retiring their cold rows needs a governance
+# ruling because the append-only triggers are the constitution saying so,
+# and a VACUUM to realise the space needs more free disk than the machine
+# currently has.
+MAX_TARGET_DB_BYTES = 18432 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.
