@@ -3170,11 +3170,13 @@ function roster(){
   // The ledger now records why it did not seat, so these are its own words
   // rather than the page's guess.  These are what "未入座" used to cover
   // indiscriminately, and they are separate problems with separate owners:
-  // an empty shortlist is the market quoting too few buckets to build a
-  // legal basket, a refused Kelly is a basket that was priced and judged not
-  // worth its price, a basket over its own payout is a loss by arithmetic
-  // the model never got asked about, and no depth is a book too thin to fill
-  // at any size.
+  // an empty shortlist is two problems wearing one code -- 44% of those days
+  // could not reach three contiguous quoted buckets through the centre, and
+  // the other 56% assembled one and found it dearer than the model's claim
+  // (best-basket edge, median -0.25) -- a refused Kelly is a basket that was
+  // priced and judged not worth its price, a basket over its own payout is a
+  // loss by arithmetic the model never got asked about, and no depth is a
+  // book too thin to fill at any size.
   //
   // Short labels here, long ones in section 13; both come from the same
   // reason codes, so a code added to the ledger needs an entry in both.
@@ -3187,7 +3189,7 @@ function roster(){
     no_book_at_decision:["盘口未落库","每次决策时刻都没有半小时内的盘口快照"],
     incomplete_book:["盘口缺桶","有盘口但缺了模型认得的桶，整站不可定价"],
     selection_failed:["选桶报错","枚举窗口时抛错，该轮跳过"],
-    no_priced_window:["凑不出篮子","一个合法篮子要 3 根梯级，市场整天都没同时开出那么多可交易的桶——不是嫌贵，是太窄"],
+    no_priced_window:["没有一篮可买","两种各占一半：四成是太窄——要从中心桶起连续取满 3 格，中心桶或紧邻没有像样报价；六成是凑得出但整篮要价高过赢面，最好的一篮边际中位数 −0.25"],
     leg_below_floor:["单腿报价过低","窗口里有腿的报价低于一分——那是无人出价那侧的挂牌，不是价格。这是我们自己设的闸，不是市场没给价"],
     no_positive_kelly:["赔率不划算","篮子凑出来也定了价，但赢面低于要价，Kelly 给出零仓位"],
     cost_exceeds_payout:["比满赔还贵","整篮成本超过它赢了能赔的 1.00，多高的概率都是亏——模型没被问到，是书的问题"],

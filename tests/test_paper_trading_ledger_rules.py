@@ -495,9 +495,14 @@ def test_every_refusal_reason_has_page_copy_and_p0m_counts_taf_only() -> None:
 
     assert STAGE_REQUIRING_TAF == "P0-M"
 
-    # The old copy said the market was dearer than the model; measurement
-    # said the opposite -- those days never assembled a basket at all.
-    assert "市场比模型贵" not in REFUSAL_LABELS["no_priced_window"][1]
+    # no_priced_window is two problems under one code and the copy has been
+    # wrong in both directions: first it blamed price alone, then it blamed
+    # width alone.  Measured on the recorded cycle of all 180 P0 days, 44%
+    # could not reach three contiguous quoted buckets through the centre and
+    # 56% assembled a legal basket whose best edge was negative (median
+    # -0.247, 98% at or below zero).  The note has to carry both.
+    note = REFUSAL_LABELS["no_priced_window"][1]
+    assert "太窄" in note and "高过" in note, note
 
 
 def test_both_copies_of_the_reason_table_cover_every_code() -> None:
@@ -532,5 +537,9 @@ def test_both_copies_of_the_reason_table_cover_every_code() -> None:
     ]
     assert not missing, missing
 
-    # The reversed reading, in either copy.
-    assert "市场比模型贵" not in page
+    # Both single-cause readings of no_priced_window are wrong: it is 44%
+    # width and 56% price.  The roster's short note has to name both, the
+    # way section 13's does.
+    short = re.search(r"no_priced_window:\[(.*?)\],\n", page, re.S)
+    assert short, "the roster's no_priced_window entry moved"
+    assert "太窄" in short.group(1) and "高过" in short.group(1), short.group(1)
