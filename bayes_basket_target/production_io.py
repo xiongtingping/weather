@@ -453,6 +453,7 @@ def load_materialized_probability_envelopes(
     expected_source_lane: str | None = None,
     canonical_current_pointer: Path | str | None = None,
     canonical_release_root: Path | str | None = None,
+    include_future_decisions: bool = False,
 ) -> list[ProbabilityEnvelope]:
     """Read and validate every committed checkpoint before as-of routing.
 
@@ -462,6 +463,14 @@ def load_materialized_probability_envelopes(
     comparison and expose a lower-stage P0 fallback.  Valid future
     checkpoints are validated but remain invisible until their decision
     instant.
+
+    ``include_future_decisions`` lifts only that visibility rule, for the
+    one caller class whose output is a pure function of the committed row
+    rather than an as-of routing decision: companion materializers (regime)
+    that must cover every envelope any later evaluation could see.  Decision
+    stamps carry deterministic +1s/+1us bumps past the wall clock, so a
+    companion pass anchored to a cycle-start clock structurally trails the
+    envelopes its own cycle just committed.
     """
 
     status = production_ssot_schema_status(conn)
@@ -512,7 +521,9 @@ def load_materialized_probability_envelopes(
                 expected_release_root=canonical_release_root,
                 envelope=envelope.to_dict(),
             )
-        if timestamp_lte(envelope.decision_at_utc, evaluation_at_utc):
+        if include_future_decisions or timestamp_lte(
+            envelope.decision_at_utc, evaluation_at_utc
+        ):
             validated.append(envelope)
     expected_lane = (
         str(expected_source_lane or "").strip().lower()

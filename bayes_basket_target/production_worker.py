@@ -2978,9 +2978,17 @@ class TargetProductionWorker:
         # Content-window artifacts stamp trained_through one second inside
         # the newest fold day's close (see the training packet builder), so
         # coverage is judged against the same instant; comparing against the
-        # exact close would find every fresh artifact forever due.
+        # exact close would find every fresh artifact forever due.  A stamp
+        # strictly past the close can only be the retired wall-clock
+        # semantics -- a content window ends inside its own day -- and such
+        # an artifact trips the serve-side leakage gate for every event day
+        # that began before the sweep ran, so it is due one refit now rather
+        # than after the next day settles (12 stations spent 2026-08-20
+        # locked out of P1 rebase waiting exactly that long).  A stamp
+        # exactly at the close remains covered, as it always was.
         return (
-            covered_at < closes_at - timedelta(seconds=1),
+            covered_at < closes_at - timedelta(seconds=1)
+            or covered_at > closes_at,
             timezone_name,
             latest_day,
         )
@@ -10262,12 +10270,20 @@ class TargetProductionWorker:
                 "calls_order_gateway": False,
                 "orders_submitted": 0,
             }
+        # No decision-time filter: companions are pure functions of the
+        # committed row, and the chain step this cycle just ran commits
+        # envelopes whose decision stamps sit past the cycle-start clock
+        # (deterministic +1s/+1us bumps).  Anchoring coverage to that clock
+        # left every such envelope companion-less for exactly one cycle,
+        # and the basket compile -- evaluating moments later with a fresher
+        # clock -- died on ``regime_ssot_not_unique`` for whichever station
+        # had just minted one (20 stations in one 2026-08-20 snapshot).
         scopes = self.conn.execute(
             "SELECT DISTINCT station_id,event_date "
             "FROM basket_probability_envelope "
-            "WHERE state='COMMITTED' AND decision_at_utc<=? "
+            "WHERE state='COMMITTED' "
             "AND fresh_until_utc>? ORDER BY station_id,event_date",
-            (as_of_utc, as_of_utc),
+            (as_of_utc,),
         ).fetchall()
         envelopes: list[ProbabilityEnvelope] = []
         blockers: list[dict[str, str]] = []
@@ -10284,6 +10300,7 @@ class TargetProductionWorker:
                     event_date=str(event_date),
                     evaluation_at_utc=as_of_utc,
                     expected_source_lane=expected_source_lane,
+                    include_future_decisions=True,
                 ))
             except Exception as exc:
                 blockers.append({
