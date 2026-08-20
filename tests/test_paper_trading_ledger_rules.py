@@ -860,3 +860,169 @@ def test_posted_basket_hit_is_grouped_on_what_was_chosen() -> None:
     # The strip must not print a direction it cannot support.
     assert "delta_is_readable" in page
     assert "与噪音不可分" in page
+
+
+def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
+    """The execution layer must seat what the D rule chooses, every time.
+
+    Replays each recorded position's entry cycle through the ledger's own
+    reader and the production window enumeration, then holds every seat to
+    the rule it claims in its own fingerprint:
+
+      - the posted window is priced_windows[0] of that cycle (D-质量),
+      - it contains the ladder centre (中心底仓, charter 49),
+      - width within the stage's charter bounds (50/50a),
+      - every quoted posted leg >= 0.02 (腿>=0.02),
+      - EV>0 at entry for fully-filled rows (整篮EV) -- partially filled
+        rows carry the post-fill pair, which can legitimately be negative:
+        the gate ran on the posted basket, the market then sold only the
+        legs that priced worse than they claimed.
+
+    First run (2026-08-20): 279/280 seats matched exactly; the static
+    invariants held on all 280.  The one exception is allowlisted by name
+    below: KSEA 2026-08-13 P1 posted 80-85F where the replay computes
+    74-81F at EV -0.49 at every cycle of the day -- a seat the current
+    gate could never take.  Its rule stamp matches current, but the stamp
+    has not changed across several behaviour-affecting rebuilds, so a
+    stale row cannot be told apart by fingerprint.  If this test ever
+    fails on a NEW station-day, that is a live divergence between the
+    sweep and the rule, not history.
+    """
+
+    import json
+    import sqlite3
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+
+    db = root / "data" / "bayes_basket_target_ssot.db"
+    if not db.is_file():
+        return
+
+    from bayes_basket_target.delta_v2_runtime import (  # noqa: PLC0415
+        MINIMUM_LEG_ALL_IN_ASK,
+        _support_windows,
+        probability_core,
+    )
+    from paper_trading_ledger import (  # noqa: PLC0415
+        FEE_RATE,
+        MAXIMUM_SUPPORT_BUCKETS,
+        MINIMUM_SUPPORT_BUCKETS,
+        SELECTION_RULE_SHA256,
+        _build_snapshot,
+        _stage_entry_candidates,
+    )
+
+    KNOWN_STALE = {("KSEA", "2026-08-13", "P1")}
+
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
+    try:
+        try:
+            positions = conn.execute(
+                "SELECT station_id, event_date, stage, decision_at_utc,"
+                " posted_buckets_json, window_buckets_json,"
+                " ladder_center_bucket, win_probability, all_in_cost,"
+                " prices_json FROM paper_trade_position"
+                " WHERE selection_rule_sha256=?",
+                (SELECTION_RULE_SHA256,),
+            ).fetchall()
+        except sqlite3.DatabaseError:
+            # A stub database (a worktree checkout) has the file and none
+            # of the tables; the sibling tests skip the same way.
+            return
+
+        for (st, day, stage, at, posted_js, filled_js, centre, win, cost,
+             prices_js) in positions:
+            posted = json.loads(posted_js) if posted_js else json.loads(
+                filled_js
+            )
+            filled = json.loads(filled_js)
+            prices = json.loads(prices_js) if prices_js else {}
+            scope = f"{st} {day} {stage}"
+
+            assert str(centre) in {str(b) for b in posted}, (
+                f"{scope}: centre {centre} not in posted window {posted}"
+            )
+            low = 2 if str(stage) == "P1" else 3
+            assert low <= len(posted) <= 4, (
+                f"{scope}: posted width {len(posted)} outside [{low}, 4]"
+            )
+            for bucket in posted:
+                quote = prices.get(str(bucket))
+                if quote is not None:
+                    assert float(quote) >= MINIMUM_LEG_ALL_IN_ASK - 1e-9, (
+                        f"{scope}: leg {bucket} quoted {quote} under floor"
+                    )
+            if len(filled) == len(posted):
+                assert float(win) > float(cost), (
+                    f"{scope}: fully-filled seat with EV<=0 "
+                    f"({win} vs {cost}) -- the entry gate cannot have run"
+                )
+
+            if (str(st), str(day), str(stage)) in KNOWN_STALE:
+                continue
+            replayed = None
+            for payload in _stage_entry_candidates(
+                conn, str(st), str(day), str(stage)
+            ):
+                if payload["decision_at_utc"] != str(at):
+                    continue
+                built = _build_snapshot(
+                    station_id=str(st), event_date=str(day),
+                    observed_at=payload["observed_at"],
+                    buckets=payload["buckets"], quotes=payload["quotes"],
+                )
+                if built is None:
+                    break
+                snapshot, probabilities, _p, _d = built
+                center = payload["center_bucket"] or max(
+                    probabilities, key=lambda b: probabilities[b]
+                )
+                if center not in probabilities:
+                    center = max(
+                        probabilities, key=lambda b: probabilities[b]
+                    )
+                ordinals = {
+                    r.bucket: int(r.ordinal) for r in snapshot.buckets
+                }
+                core = probability_core(
+                    probabilities, ordinals=ordinals, center_bucket=center
+                )
+                if len(core) > MAXIMUM_SUPPORT_BUCKETS:
+                    co = ordinals.get(center) or ordinals[
+                        max(probabilities, key=lambda b: probabilities[b])
+                    ]
+                    core = frozenset(sorted(
+                        core,
+                        key=lambda b: (
+                            abs(ordinals[b] - co),
+                            -probabilities.get(b, 0.0),
+                        ),
+                    )[:MAXIMUM_SUPPORT_BUCKETS])
+                windows, _audit = _support_windows(
+                    snapshot=snapshot, desired=set(core) or {center},
+                    probabilities=probabilities, fee_rate=FEE_RATE,
+                    maximum_support_buckets=MAXIMUM_SUPPORT_BUCKETS,
+                    minimum_support_buckets=MINIMUM_SUPPORT_BUCKETS,
+                    center_bucket=center, probability_stage=str(stage),
+                )
+                pw = [
+                    r for r in windows
+                    if r.get("all_in_price") is not None
+                    and r.get("edge") is not None
+                ]
+                if pw:
+                    replayed = {str(b) for b in pw[0]["buckets"]}
+                break
+            if replayed is not None:
+                assert replayed == {str(b) for b in posted}, (
+                    f"{scope}: posted {sorted(posted)} but the D rule "
+                    f"chooses {sorted(replayed)} at that cycle"
+                )
+    finally:
+        conn.close()
