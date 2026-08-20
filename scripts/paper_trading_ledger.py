@@ -227,8 +227,11 @@ MAKER_RESTING_LADDER_STEPS = int(
 # stack owed rungs at one price, lifts the closed-day share fill rate to
 # 91.7% / 90.8% / 91.9% across P0 / P0-M / P1 from 76.7% / 84.2% / 69.3%
 # flat, with the saving against crossing still positive on every stage.
+# Under the value clamp the schedule matters less -- the clamp, not the
+# clock, decides the ceiling -- and 0.35 measured a point of ROI better
+# than 0.5 with identical fill, so the faster schedule is the default.
 MAKER_RESTING_ESCALATE_SHARE = float(
-    os.environ.get("PAPER_LEDGER_MAKER_ESCALATE_SHARE", "0.5") or 0.0
+    os.environ.get("PAPER_LEDGER_MAKER_ESCALATE_SHARE", "0.35") or 0.0
 )
 # The model's part in the price (user ruling, 2026-08-20: the book gives
 # the skeleton, the model gives the value, and market moves never trigger
@@ -241,19 +244,24 @@ MAKER_RESTING_ESCALATE_SHARE = float(
 # a discount, and the order stays.
 #
 # ``lambda`` discounts the claimed probability before it caps anything.
-# 1.0 takes the model at its word; the measured calibration ratio (~0.53)
-# is the honest alternative.  Measured on the full ledger (2026-08-20):
-# the clamp is where the ROI comes from and where the fill rate goes --
-# lambda=1 buys +7.5 points of ROI for fill rates of 83.5/55.4/80.2
-# across the stages, lambda=0.53 buys +17 points for 75.2/56.4/78.4.
-# Roughly a tenth of the posted shares only trade above our claimed
-# value, so "never bid above value" and "fill 90% of every stage" cannot
-# both hold while the claim is what it is.  The standing acceptance rule
-# (fill >= 90% per stage, saving positive, ROI no worse than baseline)
-# admits only the time gate, so the clamp defaults off until the user
-# re-weighs the two.
+# 1.0 takes the model at its word; 0.53 is the measured calibration ratio
+# (realised hits over claimed win probability), i.e. what the claim is
+# actually worth.  Measured on the full ledger (2026-08-20): the clamp is
+# where the ROI comes from and where the raw fill rate goes -- lambda=1
+# bought +7.5 points of ROI, lambda=0.53 bought +17 (-17.6% vs -34.6%
+# total).  The objective was re-weighed on those numbers (user ruling,
+# 2026-08-20): ROI/EV is the goal, fill rate is a diagnostic with an 80%
+# floor, so the honest lambda is the default.  The constant is a
+# snapshot of a moving measurement; re-read the board's calibration
+# section before trusting it to a new regime.
+#
+# The centre bucket is exempt (user ruling, 2026-08-20): it is the
+# basket's base holding -- the one leg the position cannot be built
+# without -- and a clamp that prices it away turns every basket into a
+# shoulders-only bet the charter forbids.  Its rungs stand on the book
+# skeleton alone; the whole-basket belief gate still covers it.
 MAKER_RESTING_VALUE_LAMBDA = float(
-    os.environ.get("PAPER_LEDGER_MAKER_VALUE_LAMBDA", "0") or 0.0
+    os.environ.get("PAPER_LEDGER_MAKER_VALUE_LAMBDA", "0.53") or 0.0
 )
 # The whole-basket belief gate: at each re-pricing round, if the order's
 # claimed expectation under p(t) -- rungs already bought plus rungs still
@@ -261,12 +269,14 @@ MAKER_RESTING_VALUE_LAMBDA = float(
 # withdrawn for good.  Continuing to buy a basket our own evidence has
 # turned against is the one thing this lane must never do.  1 enables.
 # Measured alone on the full ledger (2026-08-20): it withdraws 6-20
-# points of fill (75.7/70.3/86.4) and earns +2.3 points of ROI -- the
-# orders it kills are nearly break-even, because the belief that turns
-# against a basket usually turns after the cheap fills already happened.
-# Off by default under the same acceptance rule as the value clamp.
+# points of fill and earns +2.3 points of ROI on its own -- modest,
+# because the belief that turns against a basket usually turns after the
+# cheap fills already happened.  On by default under the ROI-first
+# objective (user ruling, 2026-08-20): it is the rule that stops buying
+# a basket our own evidence has abandoned, which the value clamp alone
+# does not do for the exempt centre bucket.
 MAKER_RESTING_BELIEF_GATE = int(
-    os.environ.get("PAPER_LEDGER_MAKER_BELIEF_GATE", "0") or 0
+    os.environ.get("PAPER_LEDGER_MAKER_BELIEF_GATE", "1") or 0
 )
 # When the order stops trying: past the hours in which this station's
 # daily maximum actually lands, not at settlement (user ruling,
@@ -350,7 +360,7 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     else f"未成交档{MAKER_RESTING_ESCALATE_SHARE:g}窗程收拢",
     None
     if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_VALUE_LAMBDA <= 0
-    else f"价值钳λ{MAKER_RESTING_VALUE_LAMBDA:g}",
+    else f"价值钳λ{MAKER_RESTING_VALUE_LAMBDA:g}·中心桶豁免",
     None
     if EXECUTION_MODE != "maker_resting" or not MAKER_RESTING_BELIEF_GATE
     else "信念EV闸",
@@ -407,6 +417,7 @@ SELECTION_RULE_SHA256 = content_sha256({
     # *values* deliberately do not ride here (they drift as observation
     # days accrue); the parameters that derive them do.
     "maker_value_lambda": MAKER_RESTING_VALUE_LAMBDA,
+    "maker_value_centre_exempt": True,
     "maker_belief_gate": MAKER_RESTING_BELIEF_GATE,
     "maker_belief_source": "bridge_history_latest_at_reprice",
     "maker_edge_escalation": "value_headroom_over_band",
@@ -1183,6 +1194,25 @@ def _value_cap(probability: float | None) -> float | None:
     return MAKER_RESTING_VALUE_LAMBDA * float(probability)
 
 
+def _leg_value_cap(
+    bucket: str,
+    *,
+    probabilities: Mapping[str, float] | None,
+    centre_bucket: str | None,
+) -> float | None:
+    """The value cap for one leg, with the centre bucket exempt.
+
+    The centre is the basket's base holding (user ruling, 2026-08-20): a
+    clamp that prices it away turns every basket into a shoulders-only
+    bet, and the charter's whole shape argument starts from the centre
+    being held.  Its rungs stand on the book skeleton alone.
+    """
+
+    if centre_bucket is not None and str(bucket) == str(centre_bucket):
+        return None
+    return _value_cap((probabilities or {}).get(str(bucket)))
+
+
 def _execution_price(row: Any, *, value_cap: float | None = None) -> float | None:
     """The per-share price this run assumes for one leg."""
 
@@ -1221,6 +1251,7 @@ def _maker_leg_prices(
     snapshot: Any,
     buckets: Sequence[str],
     probabilities: Mapping[str, float] | None = None,
+    centre_bucket: str | None = None,
 ) -> list[float]:
     """The assumed resting price for each leg, in the seat's own order.
 
@@ -1234,8 +1265,10 @@ def _maker_leg_prices(
         row = by_bucket.get(str(bucket))
         price = None if row is None else _execution_price(
             row,
-            value_cap=_value_cap(
-                (probabilities or {}).get(str(bucket))
+            value_cap=_leg_value_cap(
+                str(bucket),
+                probabilities=probabilities,
+                centre_bucket=centre_bucket,
             ),
         )
         # A leg with no price here cannot have been seated: the strategy
@@ -1254,6 +1287,7 @@ def _window_row(
     *,
     snapshot: Any,
     probabilities: Mapping[str, float],
+    centre_bucket: str | None = None,
 ) -> dict[str, Any] | None:
     """Price a chosen bucket set the way ``_support_windows`` prices one."""
 
@@ -1265,7 +1299,11 @@ def _window_row(
     for bucket in ordered:
         quote = _execution_price(
             by_bucket[bucket],
-            value_cap=_value_cap(probabilities.get(bucket)),
+            value_cap=_leg_value_cap(
+                str(bucket),
+                probabilities=probabilities,
+                centre_bucket=centre_bucket,
+            ),
         )
         if quote is None or quote < MINIMUM_LEG_ALL_IN_ASK:
             return None
@@ -1385,7 +1423,10 @@ def _strategy_windows(
     if not chosen:
         return []
     row = _window_row(
-        chosen, snapshot=snapshot, probabilities=probabilities
+        chosen,
+        snapshot=snapshot,
+        probabilities=probabilities,
+        centre_bucket=center,
     )
     return [] if row is None else [row]
 
@@ -1676,6 +1717,7 @@ def _resting_ladder_fill(
     settlement_timezone: str = "UTC",
     probabilities: Mapping[str, float] | None = None,
     cutoff_local_minutes: int | None = None,
+    centre_bucket: str | None = None,
 ) -> tuple[dict[str, list[float]], str | None]:
     """Which rungs of each leg's ladder the book traded through.
 
@@ -1808,7 +1850,11 @@ def _resting_ladder_fill(
                         # Fully bought.  Re-posting the rungs it already
                         # owns would buy them twice.
                         continue
-                    cap = _value_cap(current_p.get(bucket))
+                    cap = _leg_value_cap(
+                        bucket,
+                        probabilities=current_p,
+                        centre_bucket=centre_bucket,
+                    )
                     item = quotes.get(bucket)
                     if not isinstance(item, Mapping):
                         # No readable book this round.  The standing rungs
@@ -2855,7 +2901,13 @@ def backfill(
                             for bucket, price in zip(
                                 seat["buckets"],
                                 _maker_leg_prices(
-                                    snapshot, seat["buckets"], probabilities
+                                    snapshot,
+                                    seat["buckets"],
+                                    probabilities,
+                                    centre_bucket=str(
+                                        audit.get("ladder_center_bucket")
+                                        or center
+                                    ),
                                 ),
                             )
                         ]
@@ -2893,11 +2945,16 @@ def backfill(
                     resting_fills: dict[str, str] = {}
                     if EXECUTION_MODE == "maker_resting":
                         by_row = {r.bucket: r for r in snapshot.buckets}
+                        seat_centre = str(
+                            audit.get("ladder_center_bucket") or center
+                        )
                         ladders = [
                             _resting_ladder(
                                 by_row[str(b)],
-                                value_cap=_value_cap(
-                                    probabilities.get(str(b))
+                                value_cap=_leg_value_cap(
+                                    str(b),
+                                    probabilities=probabilities,
+                                    centre_bucket=seat_centre,
                                 ),
                             )
                             if str(b) in by_row else []
@@ -2920,6 +2977,7 @@ def backfill(
                             cutoff_local_minutes=peak_cutoffs.get(
                                 station_id
                             ),
+                            centre_bucket=seat_centre,
                         )
                         if not any(got.values()):
                             refusal = (
@@ -2973,7 +3031,10 @@ def backfill(
                         # realised price only replaces it for the legs that
                         # bought something, and the rest drop out below.
                         posted = _maker_leg_prices(
-                            snapshot, seat["buckets"], probabilities
+                            snapshot,
+                            seat["buckets"],
+                            probabilities,
+                            centre_bucket=seat_centre,
                         )
                         legs = [
                             [{

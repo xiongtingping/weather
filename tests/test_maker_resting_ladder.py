@@ -205,7 +205,9 @@ def test_escalation_lifts_the_floor_and_the_ceiling_caps_the_chase() -> None:
     assert capped == [0.26, 0.26, 0.26]
 
 
-def test_a_bought_out_band_is_replenished_up_to_its_posted_depth() -> None:
+def test_a_bought_out_band_is_replenished_up_to_its_posted_depth(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """One rung bought out of a collapsed band is not a finished leg.
 
     Mid-day the spread pinches, the re-derived band collapses to a single
@@ -214,6 +216,10 @@ def test_a_bought_out_band_is_replenished_up_to_its_posted_depth() -> None:
     must post that rung again rather than reading the empty list as
     completion; under the old rule this leg stalled at two fills of three.
     """
+
+    import scripts.paper_trading_ledger as ledger
+
+    monkeypatch.setattr(ledger, "MAKER_RESTING_VALUE_LAMBDA", 1.0)
 
     import json as _json
 
@@ -424,3 +430,24 @@ def test_value_headroom_escalates_without_waiting_for_the_clock(
     )
     assert missing is None
     assert got["32C"] == [0.29, 0.29, 0.29]
+
+
+def test_the_centre_bucket_is_exempt_from_the_value_clamp() -> None:
+    """The basket's base holding stands on the book, whatever its claim.
+
+    A shoulder leg with the same low claim is clamped to nothing above
+    its value; the centre leg posts the full book band regardless -- a
+    basket without its centre is a shape the charter does not allow.
+    """
+
+    from scripts.paper_trading_ledger import _leg_value_cap
+
+    probabilities = {"32C": 0.10, "33C": 0.10}
+    shoulder = _leg_value_cap(
+        "32C", probabilities=probabilities, centre_bucket="33C"
+    )
+    centre = _leg_value_cap(
+        "33C", probabilities=probabilities, centre_bucket="33C"
+    )
+    assert shoulder is not None and shoulder <= 0.10
+    assert centre is None

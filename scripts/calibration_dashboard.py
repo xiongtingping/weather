@@ -2495,9 +2495,9 @@ function overview(){
       :s.share_fill_rate!=null?s.share_fill_rate:s.rung_completion_rate;
     return v!=null&&(worst.v==null||v<worst.v)?{v,stage:s.stage}:worst;
   },{v:null,stage:null});
-  push(band(worstFill.v,0.9,0.75), "挂单成交率", pct0(worstFill.v),
-    worstFill.stage?`最低的阶段 ${h(worstFill.stage)} · 目标每段 ≥90%`:"—",
-    "第十二节：三阶段成交率总体评估");
+  push(band(worstFill.v,0.8,0.7), "挂单成交率", pct0(worstFill.v),
+    worstFill.stage?`最低的阶段 ${h(worstFill.stage)} · 底线每段 ≥80%`:"—",
+    "第十二节：EV 优先，成交率是守底线的诊断指标");
 
   // 6. Does the model's stated probability survive contact with the truth.
   const cs=S.coverage_stats||{};
@@ -2834,11 +2834,12 @@ function makerProbe(){
       ${depth?`<div class="muted" style="margin-top:8px">${depth}</div>`:""}
     </div>`;
   }).join("");
-  // The three-stage assessment against the standing target: every stage
-  // fills at least 90% of the shares it posts, and the fills still cost
-  // less than crossing at entry would have.  One verdict line, then one
-  // card per stage -- the cards below it carry the mechanics.
-  const TARGET=0.9;
+  // The three-stage assessment under the ROI-first objective (user
+  // ruling, 2026-08-20): EV is the goal, fill rate is a diagnostic with
+  // an 80% floor -- it exists to catch the failure mode where resting
+  // orders quietly stop buying anything, not to be maximised.  One
+  // verdict line, then one card per stage.
+  const TARGET=0.8;
   const reStages=re.stages||[];
   // Judged on resolved days: an unresolved day's orders are still on the
   // book, not missed, and counting them fails every morning.
@@ -2851,8 +2852,8 @@ function makerProbe(){
     .map(r=>r.stage);
   const verdict=!reStages.length?"":
     (failing.length===0&&evbad.length===0
-      ?`<span class="pill green">三阶段全部达标：成交率 ≥90%，挂单仍优于吃单</span>`
-      :[failing.length?`<span class="pill red">成交率未达标：${
+      ?`<span class="pill green">底线全守住：三阶段成交率 ≥80%，挂单仍优于吃单</span>`
+      :[failing.length?`<span class="pill red">成交率破 80% 底线：${
           failing.map(h).join("、")}</span>`:"",
         evbad.length?`<span class="pill red">价差收益转负：${
           evbad.map(h).join("、")}</span>`:""].join(" "));
@@ -2861,11 +2862,11 @@ function makerProbe(){
     const sav=r.maker_saving_vs_taker;
     const ok=sf!=null&&sf>=TARGET;
     return `<div class="card">
-      <div class="muted">${h(r.stage)} · 份额成交率（目标 ≥90%，按已收盘的事件日）</div>
+      <div class="muted">${h(r.stage)} · 份额成交率（底线 ≥80%，按已收盘的事件日）</div>
       <div class="big ${sf==null?"":(ok?"up":"down")}">${pct(sf)}</div>
       <div class="muted">${sf==null?"还没有挂单记录"
-        :ok?"达标 · 挂出的份额买到了九成以上"
-        :"未达标 · 挂出的份额没买够九成"}</div>
+        :ok?"底线之上 · 挂单没有空转"
+        :"破底线 · 挂单在空转，先查执行不查模型"}</div>
       <table style="margin-top:10px"><tbody>
         <tr><td>含进行中事件日（单还在书上）</td>
             <td class="mono">${pct(r.share_fill_rate)}</td></tr>
@@ -2880,12 +2881,12 @@ function makerProbe(){
     </div>`;
   }).join("");
   const assessBlock=assessCards?`
-    <h2 style="margin-top:0">十二、挂单成交率 · 三阶段总体评估 ${verdict}</h2>
-    <p class="sub">份额成交率 = 实际买到的份数 ÷ 挂出去的份数（没成交的腿计零）。
-    目标是每个阶段 ≥90%，同时省价保持为正——成交率靠把没成交的档随时间
-    向<b>当时卖价的下一跳</b>收拢来抬，始终是挂单不是吃单；
-    一旦省价转负，说明收拢过头，挂单已经名存实亡。
-    进行中的事件日单子还挂在书上，会把这里的读数暂时压低。</p>
+    <h2 style="margin-top:0">十二、挂单执行 · 三阶段总体评估 ${verdict}</h2>
+    <p class="sub"><b>主目标是 EV/ROI，成交率只是守底线的诊断指标（每段 ≥80%，
+    防挂单空转）。</b>份额成交率 = 实际买到的份数 ÷ 挂出去的份数（没成交的腿计零）。
+    价格由价值钳住：每档挂价不超过 λ·p(t)（λ 取实测校准比），<b>中心桶豁免</b>——
+    底仓永远按盘口骨架挂；整篮声称 EV 转负即全撤；有效期到该站达峰时刻分位为止。
+    省价为正说明挂单还在赚价差；进行中的事件日单子还挂在书上，读数会暂时偏低。</p>
     <div class="grid g3">${assessCards}</div>`:"";
   const reBlock=reCards?`<div class="grid g3">${reCards}</div>
     <div class="why" style="margin-top:12px"><b>三个阶段分开看，不合并：</b>
