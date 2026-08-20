@@ -651,7 +651,8 @@ def _resting_entry_stats(conn: sqlite3.Connection) -> dict[str, Any]:
         ladders = conn.execute(
             "SELECT stage, window_size, resting_fill_json,"
             "       leg_shares_json, intended_legs_json, prices_json,"
-            "       stake_usdc, intended_stake_usdc, event_date"
+            "       stake_usdc, intended_stake_usdc, event_date,"
+            "       ladder_center_bucket"
             " FROM paper_trade_position"
             " WHERE resting_fill_json NOT IN ('', '{}')"
         ).fetchall()
@@ -663,7 +664,8 @@ def _resting_entry_stats(conn: sqlite3.Connection) -> dict[str, Any]:
     # itself by night.
     today = datetime.now(timezone.utc).date().isoformat()
     for (stage, entered_legs, payload, legs_payload, intended_payload,
-         prices_payload, stake, intended_stake, event_date) in ladders:
+         prices_payload, stake, intended_stake, event_date,
+         centre_bucket) in ladders:
         try:
             record = json.loads(payload)
         except (TypeError, ValueError):
@@ -677,6 +679,8 @@ def _resting_entry_stats(conn: sqlite3.Connection) -> dict[str, Any]:
             "by_posted_rungs": {},
             "intended_shares": 0.0, "filled_shares": 0.0,
             "closed_intended_shares": 0.0, "closed_filled_shares": 0.0,
+            "core_want": 0.0, "core_got": 0.0,
+            "hedge_want": 0.0, "hedge_got": 0.0,
             "stake": 0.0, "intended_stake": 0.0,
             "taker_equivalent": 0.0,
         })
@@ -704,6 +708,16 @@ def _resting_entry_stats(conn: sqlite3.Connection) -> dict[str, Any]:
             if closed:
                 detail["closed_intended_shares"] += float(want)
                 detail["closed_filled_shares"] += got
+                # Core is the centre leg, the exposure the basket exists
+                # to hold; everything else is the hedge.  The two run
+                # different execution rules, so one pooled rate hides
+                # which rule is failing (user redesign, 2026-08-21).
+                if str(bucket) == str(centre_bucket or ""):
+                    detail["core_want"] += float(want)
+                    detail["core_got"] += got
+                else:
+                    detail["hedge_want"] += float(want)
+                    detail["hedge_got"] += got
             detail["taker_equivalent"] += got * float(
                 entry_asks.get(bucket) or 0.0
             )
@@ -775,6 +789,20 @@ def _resting_entry_stats(conn: sqlite3.Connection) -> dict[str, Any]:
                 detail.get("closed_filled_shares", 0.0)
                 / detail["closed_intended_shares"]
                 if detail.get("closed_intended_shares") else None
+            ),
+            # The one pooled rate splits by role (user redesign,
+            # 2026-08-21): the core leg is the exposure the basket exists
+            # to hold and answers to a hard floor; the hedge legs answer
+            # to the value red line first, so their rate is a reading,
+            # not a target -- a clamped hedge leg the market never came
+            # down to is the rule working.
+            "core_fill_rate": (
+                detail.get("core_got", 0.0) / detail["core_want"]
+                if detail.get("core_want") else None
+            ),
+            "hedge_fill_rate": (
+                detail.get("hedge_got", 0.0) / detail["hedge_want"]
+                if detail.get("hedge_want") else None
             ),
             "stake_fill_rate": (
                 detail.get("stake", 0.0) / detail["intended_stake"]

@@ -451,3 +451,66 @@ def test_the_centre_bucket_is_exempt_from_the_value_clamp() -> None:
     )
     assert shoulder is not None and shoulder <= 0.10
     assert centre is None
+
+
+def test_late_phase_crosses_the_spread_inside_the_value_ceiling() -> None:
+    """Completion beats the spread once the window is two thirds gone.
+
+    The measured reason: legs that never filled realised 115% of their
+    claimed probability against 36% for the ones that did, so an open rung
+    late in the window is, in expectation, the expensive part of the day.
+    A core leg still open past GAP_LATE takes the ask -- the remaining
+    saving is exactly the sacrifice the redesign budgets for.
+    """
+
+    conn = _book((
+        ("2026-08-17T01:00:00Z", "32C", 0.40),   # never touches the rung
+        ("2026-08-17T17:00:00Z", "32C", 0.40),   # past 2/3 of the window
+    ))
+    got, missing, withdrew = _resting_ladder_fill(
+        conn,
+        station_id="ZUUU",
+        event_date="2026-08-17",
+        buckets=("32C",),
+        ladders=([0.25],),
+        placed_at_utc="2026-08-17T00:00:00Z",
+        probabilities={"32C": 0.5},
+        centre_bucket="32C",
+    )
+    assert withdrew is False
+    # Crossed at the ask, not at the resting rung -- the price says taker.
+    assert got["32C"] == [0.40]
+    assert missing is None
+
+
+def test_the_value_red_line_holds_at_any_completion_gap() -> None:
+    """Gate 1 is the one thing execution pressure can never move.
+
+    A hedge leg's ceiling is its clamp: lambda times its claim.  A market
+    asking three times that number stays unbought to the very end of the
+    window -- completion priority operates inside the value band, and a
+    leg whose band the market never enters is incomplete by design.
+    """
+
+    conn = _book((
+        ("2026-08-17T01:00:00Z", "32C", 0.25),   # core fills normally
+        ("2026-08-17T01:00:00Z", "33C", 0.30),
+        ("2026-08-17T17:00:00Z", "32C", 0.25),
+        ("2026-08-17T17:00:00Z", "33C", 0.30),   # still triple the clamp
+        ("2026-08-17T23:00:00Z", "33C", 0.30),
+    ))
+    got, missing, withdrew = _resting_ladder_fill(
+        conn,
+        station_id="ZUUU",
+        event_date="2026-08-17",
+        buckets=("32C", "33C"),
+        ladders=([0.25], [0.05]),
+        placed_at_utc="2026-08-17T00:00:00Z",
+        # 33C claims 0.2 -> clamp 0.53 x 0.2 = 0.106, far under the 0.30 ask.
+        probabilities={"32C": 0.5, "33C": 0.2},
+        centre_bucket="32C",
+    )
+    assert withdrew is False
+    assert got["32C"] == [0.25]
+    assert got["33C"] == []
+    assert missing == "33C"

@@ -2907,14 +2907,24 @@ function makerProbe(){
   const assessCards=reStages.map(r=>{
     const sf=judged(r);
     const sav=r.maker_saving_vs_taker;
-    const ok=sf!=null&&sf>=TARGET;
+    const core=r.core_fill_rate, hedge=r.hedge_fill_rate;
+    // Three gates, not one: the core leg answers to a hard floor (its job
+    // is the exposure), the portfolio to the old 80% line, and the hedge
+    // to the value red line first -- its rate is a reading, not a target.
+    const coreOk=core==null||core>=0.9;
+    const ok=sf!=null&&sf>=TARGET&&coreOk;
     return `<div class="card">
-      <div class="muted">${h(r.stage)} · 份额成交率（底线 ≥80%，按已收盘的事件日）</div>
+      <div class="muted">${h(r.stage)} · 建仓完整度（核心 ≥90% · 组合 ≥80%，按已收盘）</div>
       <div class="big ${sf==null?"":(ok?"up":"down")}">${pct(sf)}</div>
       <div class="muted">${sf==null?"还没有挂单记录"
-        :ok?"底线之上 · 挂单没有空转"
-        :"破底线 · 挂单在空转，先查执行不查模型"}</div>
+        :ok?"两道门之上 · 目标仓位基本建成"
+        :!coreOk?"核心腿破线 · 底仓没建起来，先查执行"
+        :"组合破线 · 挂单在空转，先查执行不查模型"}</div>
       <table style="margin-top:10px"><tbody>
+        <tr><td>核心腿成交率（中心桶，门 ≥90%）</td>
+            <td class="mono ${core==null?"":(core>=0.9?"up":"down")}">${pct(core)}</td></tr>
+        <tr><td>对冲腿成交率（受价值红线约束，只读不设门）</td>
+            <td class="mono">${pct(hedge)}</td></tr>
         <tr><td>含进行中事件日（单还在书上）</td>
             <td class="mono">${pct(r.share_fill_rate)}</td></tr>
         <tr><td>省价 vs 吃单（正 = 还在赚价差）</td>
@@ -2929,10 +2939,13 @@ function makerProbe(){
   }).join("");
   const assessBlock=assessCards?`
     <h2 style="margin-top:0">十二、挂单执行 · 三阶段总体评估 ${verdict}</h2>
-    <p class="sub"><b>主目标是 EV/ROI，成交率只是守底线的诊断指标（每段 ≥80%，
-    防挂单空转）。</b>份额成交率 = 实际买到的份数 ÷ 挂出去的份数（没成交的腿计零）。
-    价格由价值钳住：每档挂价不超过 λ·p(t)（λ 取实测校准比），<b>中心桶豁免</b>——
-    底仓永远按盘口骨架挂；整篮声称 EV 转负即全撤；有效期到该站达峰时刻分位为止。
+    <p class="sub"><b>目标是在不突破模型价值的前提下，用剩余时间最大化目标仓位的
+    实际建成度（2026-08-21 重设计）。</b>三层闸：<b>闸1 价值红线</b>——对冲腿不超过
+    λ·p(t)，核心腿不超过它自己的 p(t)，永不突破；<b>闸2 组合EV</b>——整篮声称 EV
+    转负即全撤，只管"还买不买"；<b>闸3 执行压力</b>——只管"剩下的单挂在哪"：
+    前 1/3 窗程挂带底要价差，中段起加价随<b>本腿未成交缺口</b>上浮（买满的腿无压力），
+    后 1/3 窗程仍未成交的腿直接吃单——但只在价值红线之内，市场要价高过模型估值的腿
+    宁可不买。有效期到该站达峰时刻分位为止。成交结果不改变价值，只改变剩余订单的挂法。
     省价为正说明挂单还在赚价差；进行中的事件日单子还挂在书上，读数会暂时偏低。</p>
     <div class="grid g3">${assessCards}</div>`:"";
   const reBlock=reCards?`<div class="grid g3">${reCards}</div>

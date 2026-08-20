@@ -330,6 +330,22 @@ MAKER_RESTING_BELIEF_GATE = int(
 MAKER_RESTING_TAIL_LAMBDA = str(
     os.environ.get("PAPER_LEDGER_MAKER_TAIL_LAMBDA", "") or ""
 ).strip().lower()
+# Completion-first execution (user redesign, 2026-08-21).  The order's job
+# is to build the target position inside the value ceiling, not to win the
+# spread: measured at leg level the legs that never filled realised 115%
+# of their claimed probability against 36% for the ones that did, so every
+# unfilled rung is, in expectation, the expensive part of the day.
+#
+# Three phases over the order's own window: before GAP_MID the rungs fish
+# the band bottom (price priority); from GAP_MID the escalation floor also
+# rises with the leg's own unfilled fraction (a filled leg feels no
+# pressure); from GAP_LATE a still-open leg may cross the spread and take
+# the ask -- but only inside its value ceiling.  The ceiling is the red
+# line the pressure can never move: a hedge leg's clamp (lambda p) and the
+# core leg's own claimed probability.  A market asking more than the model
+# says the leg is worth stays unbought, at any completion gap, by design.
+MAKER_RESTING_GAP_MID = 1.0 / 3.0
+MAKER_RESTING_GAP_LATE = 2.0 / 3.0
 # When the order stops trying: past the hours in which this station's
 # daily maximum actually lands, not at settlement (user ruling,
 # 2026-08-20, revised from a fixed local hour).  Per station: the P-th
@@ -410,6 +426,9 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     None
     if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_ESCALATE_SHARE <= 0
     else f"未成交档{MAKER_RESTING_ESCALATE_SHARE:g}窗程收拢",
+    None
+    if EXECUTION_MODE != "maker_resting"
+    else "缺口驱压三段·晚段值内吃单·核芯对冲分账",
     None
     if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_VALUE_LAMBDA <= 0
     else f"价值钳λ{MAKER_RESTING_VALUE_LAMBDA:g}·中心桶豁免",
@@ -1994,17 +2013,19 @@ def _resting_ladder_fill(
         cutoff_local_minutes=cutoff_local_minutes,
     )
     placed = datetime.fromisoformat(str(placed_at_utc).replace("Z", "+00:00"))
+    try:
+        deadline_at = datetime.fromisoformat(
+            str(deadline).replace("Z", "+00:00")
+        )
+    except ValueError:
+        deadline_at = placed + timedelta(days=1)
     escalate_minutes = 0.0
     if MAKER_RESTING_ESCALATE_SHARE > 0:
-        try:
-            ends = datetime.fromisoformat(str(deadline).replace("Z", "+00:00"))
-            escalate_minutes = max(
-                0.0,
-                (ends - placed).total_seconds() / 60.0
-                * MAKER_RESTING_ESCALATE_SHARE,
-            )
-        except ValueError:
-            escalate_minutes = 0.0
+        escalate_minutes = max(
+            0.0,
+            (deadline_at - placed).total_seconds() / 60.0
+            * MAKER_RESTING_ESCALATE_SHARE,
+        )
     entry_p = {
         str(bucket): float(p)
         for bucket, p in (probabilities or {}).items()
@@ -2084,6 +2105,19 @@ def _resting_ladder_fill(
                         next_reprice - placed
                     ).total_seconds() / 60.0
                     floor_time = min(1.0, elapsed / escalate_minutes)
+                # Where the order stands in its own window, 0..1.  The
+                # completion pressure is phased on this rather than on the
+                # escalate schedule: the schedule answers "how fast do
+                # rungs drift up anyway", the phase answers "when does the
+                # unfilled fraction start to matter, and when may it cross".
+                window_minutes = max(
+                    (deadline_at - placed).total_seconds() / 60.0, 1e-9
+                )
+                progress = min(
+                    1.0,
+                    (next_reprice - placed).total_seconds()
+                    / 60.0 / window_minutes,
+                )
                 for bucket in pending:
                     open_rungs = posted_depth.get(bucket, 0) - len(
                         filled[bucket]
@@ -2098,6 +2132,15 @@ def _resting_ladder_fill(
                         centre_bucket=centre_bucket,
                         window=buckets,
                     )
+                    # Gate 1, the red line: what this leg is worth.  The
+                    # clamp for a hedge leg, the fresh claim itself for the
+                    # exempt core -- pressure below chooses where to stand
+                    # inside it and may take the ask at it, never above it.
+                    ceiling = (
+                        cap
+                        if cap is not None
+                        else current_p.get(str(bucket))
+                    )
                     item = quotes.get(bucket)
                     if not isinstance(item, Mapping):
                         # No readable book this round.  The standing rungs
@@ -2109,6 +2152,29 @@ def _resting_ladder_fill(
                                 if rung <= cap + 1e-9
                             ]
                         continue
+                    # Gate 3, late phase: completion beats the spread.  A
+                    # leg still open past GAP_LATE takes the ask -- the
+                    # whole remaining saving is the sacrifice the redesign
+                    # budgets for -- but only when the ask sits inside the
+                    # leg's value ceiling.  Above the ceiling the red line
+                    # holds and the leg stays a resting order.
+                    if (
+                        progress >= MAKER_RESTING_GAP_LATE
+                        and ceiling is not None
+                    ):
+                        cross_ask = item.get("best_ask")
+                        cross_levels = item.get("ask_levels") or []
+                        if cross_ask is None and cross_levels:
+                            cross_ask = cross_levels[0].get("price")
+                        if (
+                            cross_ask is not None
+                            and float(cross_ask) <= float(ceiling) + 1e-9
+                        ):
+                            filled[bucket].extend(
+                                [float(cross_ask)] * open_rungs
+                            )
+                            pending[bucket] = []
+                            continue
                     # Value headroom as an escalation floor of its own: a
                     # leg worth more than the band's top has no reason to
                     # fish the bottom (the model calls the whole band
@@ -2135,10 +2201,25 @@ def _resting_ladder_fill(
                                     0.0,
                                     min(1.0, (cap - mean) / (high - mean)),
                                 )
+                    # Gate 3, mid phase on: the escalation floor also rises
+                    # with this leg's own unfilled fraction.  A filled leg
+                    # feels no pressure; a wholly-open leg past GAP_MID is
+                    # pushed toward the band top as its window runs out --
+                    # the fill result does not change the value, it changes
+                    # how the remaining order executes.
+                    floor_gap = 0.0
+                    if progress >= MAKER_RESTING_GAP_MID:
+                        leg_gap = open_rungs / max(
+                            posted_depth.get(bucket, open_rungs), 1
+                        )
+                        ramp = min(1.0, (progress - MAKER_RESTING_GAP_MID) / (
+                            MAKER_RESTING_GAP_LATE - MAKER_RESTING_GAP_MID
+                        ))
+                        floor_gap = leg_gap * ramp
                     fresh = _ladder_from_quote(
                         item,
                         open_rungs,
-                        floor_fraction=max(floor_time, floor_edge),
+                        floor_fraction=max(floor_time, floor_edge, floor_gap),
                         ceiling=cap,
                     )
                     if fresh:
