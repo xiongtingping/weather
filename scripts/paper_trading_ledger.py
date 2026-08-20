@@ -2166,9 +2166,18 @@ def _resting_ladder_fill(
                         cross_levels = item.get("ask_levels") or []
                         if cross_ask is None and cross_levels:
                             cross_ask = cross_levels[0].get("price")
+                        # The same floor selection applies to every quote:
+                        # an ask under two cents is the one-sided tail
+                        # offer this book repeatedly ruled is not a price.
+                        # Crossing it "inside value" is how the first run
+                        # of this redesign manufactured +260% ROI out of
+                        # tenth-of-a-cent lottery tickets on collapsed
+                        # buckets; a resting rung may still be traded
+                        # through down there, but we do not reach for it.
                         if (
                             cross_ask is not None
                             and float(cross_ask) <= float(ceiling) + 1e-9
+                            and float(cross_ask) >= MINIMUM_LEG_ALL_IN_ASK
                         ):
                             filled[bucket].extend(
                                 [float(cross_ask)] * open_rungs

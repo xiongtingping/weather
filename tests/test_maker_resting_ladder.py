@@ -514,3 +514,33 @@ def test_the_value_red_line_holds_at_any_completion_gap() -> None:
     assert got["32C"] == [0.25]
     assert got["33C"] == []
     assert missing == "33C"
+
+
+def test_crossing_never_reaches_for_a_collapsed_ask() -> None:
+    """A sub-two-cent ask is a tail offer, not a price -- even late.
+
+    The first run of the completion redesign crossed "inside value" into
+    0.001 asks on collapsed buckets and manufactured +260% ROI out of
+    lottery tickets.  The selection layer's leg floor applies to every
+    quote this book acts on: below it we neither seat nor reach.
+    """
+
+    conn = _book((
+        ("2026-08-17T01:00:00Z", "32C", 0.40),
+        ("2026-08-17T17:00:00Z", "32C", 0.001),   # collapse, late phase
+    ))
+    got, missing, withdrew = _resting_ladder_fill(
+        conn,
+        station_id="ZUUU",
+        event_date="2026-08-17",
+        buckets=("32C",),
+        ladders=([0.25],),
+        placed_at_utc="2026-08-17T00:00:00Z",
+        probabilities={"32C": 0.5},
+        centre_bucket="32C",
+    )
+    assert withdrew is False
+    # The resting rung at 0.25 IS traded through by the collapse -- a
+    # standing order fills where it stands -- but no crossing tops it up
+    # at the phantom price.
+    assert got["32C"] == [0.25]
