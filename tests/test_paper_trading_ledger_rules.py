@@ -498,3 +498,39 @@ def test_every_refusal_reason_has_page_copy_and_p0m_counts_taf_only() -> None:
     # The old copy said the market was dearer than the model; measurement
     # said the opposite -- those days never assembled a basket at all.
     assert "市场比模型贵" not in REFUSAL_LABELS["no_priced_window"][1]
+
+
+def test_both_copies_of_the_reason_table_cover_every_code() -> None:
+    """Section 13 and the roster carry separate copies of the same codes.
+
+    One is long-form, one is a short cell label with a tooltip, so they are
+    not duplicates -- but a reason added to the ledger has to reach both or
+    the page shows a raw identifier in one of them.  It had already drifted:
+    the roster still explained no_priced_window as the market pricing above
+    the model, which measurement reversed, and knew nothing about
+    cost_exceeds_payout, chain_never_opened, no_top_up_needed or
+    resting_unfilled.
+    """
+
+    import re
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    from paper_trading_ledger import REFUSAL_REASONS  # noqa: PLC0415
+
+    page = (root / "scripts" / "calibration_dashboard.py").read_text(
+        encoding="utf-8"
+    )
+    block = re.search(r"const REASON=\{.*?\};", page, re.S)
+    assert block, "the roster reason table moved or was renamed"
+    roster = block.group(0)
+    missing = [
+        name for name in REFUSAL_REASONS if f"{name}:[" not in roster
+    ]
+    assert not missing, missing
+
+    # The reversed reading, in either copy.
+    assert "市场比模型贵" not in page

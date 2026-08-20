@@ -3168,11 +3168,16 @@ function roster(){
   const S=D.selection||{};const rs=S.station_roster||[];
   if(!rs.length) return "";
   // The ledger now records why it did not seat, so these are its own words
-  // rather than the page's guess.  The last three are what "未入座" used to
-  // cover indiscriminately, and they are three different problems: an empty
-  // shortlist is the market pricing above the model, a refused Kelly is the
-  // basket costing more than it can pay, and no depth is a book too thin to
-  // fill at any size.
+  // rather than the page's guess.  These are what "未入座" used to cover
+  // indiscriminately, and they are separate problems with separate owners:
+  // an empty shortlist is the market quoting too few buckets to build a
+  // legal basket, a refused Kelly is a basket that was priced and judged not
+  // worth its price, a basket over its own payout is a loss by arithmetic
+  // the model never got asked about, and no depth is a book too thin to fill
+  // at any size.
+  //
+  // Short labels here, long ones in section 13; both come from the same
+  // reason codes, so a code added to the ledger needs an entry in both.
   // The rule set the ledger currently compiles under.  Everything stamped
   // with it is directly comparable; anything else is a leftover from before
   // a rule change and is flagged per basket.
@@ -3182,9 +3187,13 @@ function roster(){
     no_book_at_decision:["盘口未落库","每次决策时刻都没有半小时内的盘口快照"],
     incomplete_book:["盘口缺桶","有盘口但缺了模型认得的桶，整站不可定价"],
     selection_failed:["选桶报错","枚举窗口时抛错，该轮跳过"],
-    no_priced_window:["无合格窗口","含中心桶且够长的窗口全是负边际——市场比模型贵"],
+    no_priced_window:["凑不出篮子","一个合法篮子要 3 根梯级，市场整天都没同时开出那么多可交易的桶——不是嫌贵，是太窄"],
     leg_below_floor:["单腿报价过低","窗口里有腿的报价低于一分——那是无人出价那侧的挂牌，不是价格。这是我们自己设的闸，不是市场没给价"],
-    no_positive_kelly:["赔率不划算","有窗口，但成本高于胜率，Kelly 给出零仓位"],
+    no_positive_kelly:["赔率不划算","篮子凑出来也定了价，但赢面低于要价，Kelly 给出零仓位"],
+    cost_exceeds_payout:["比满赔还贵","整篮成本超过它赢了能赔的 1.00，多高的概率都是亏——模型没被问到，是书的问题"],
+    resting_unfilled:["挂单没成交","价格没等到；规模是够的，市场没走到我们这里来"],
+    no_top_up_needed:["无需加仓","这一阶段想要的梯级已经在仓里了，按兵不动"],
+    chain_never_opened:["P0 未开仓","只有 P0 开仓，后面两阶段是加仓；P0 没坐下这里就没仓可加，真正的原因看 P0"],
     no_depth:["盘口太薄","价格划算但挂单量填不满最小整篮"],
     no_seat_taken:["未入座","有概率也有盘口，目标函数看过后选择不坐"]};
   const short=x=>String(x).replace("°C","").replace("°F","");
