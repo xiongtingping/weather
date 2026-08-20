@@ -46,6 +46,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, NamedTuple
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -229,20 +230,70 @@ MAKER_RESTING_LADDER_STEPS = int(
 MAKER_RESTING_ESCALATE_SHARE = float(
     os.environ.get("PAPER_LEDGER_MAKER_ESCALATE_SHARE", "0.5") or 0.0
 )
-# The dearest price a re-posted rung may ever ask for.  ``entry_ask`` caps
-# the chase at the ask the leg had when the seat was taken; ``none`` lets a
-# re-post follow the book wherever it goes.  Measured on the full ledger
-# (2026-08-20): the cap holds ~5 points of ROI (-28.3% vs -33.1% total) by
-# refusing the legs whose book ran away and never came back -- and for the
-# same reason it caps the share fill rate at ~87%, structurally below the
-# 90% the three stages are required to reach (user ruling, 2026-08-20).
-# Fill wins; the cap stays available for the day the priority flips.  What
-# keeps the uncapped chase honest is the escalation band itself: a re-post
-# never stands above a tick under the *then-current* ask, so every fill
-# still beats crossing at the moment it happens.
-MAKER_RESTING_CEILING = (
-    os.environ.get("PAPER_LEDGER_MAKER_CEILING", "none").strip()
-    or "none"
+# The model's part in the price (user ruling, 2026-08-20: the book gives
+# the skeleton, the model gives the value, and market moves never trigger
+# a withdrawal).  A rung never asks for more than the leg is worth to us:
+# every posted price is capped at ``lambda * p_i(t) - one tick``, where
+# ``p_i(t)`` is our own freshest in-force probability -- entry's at first,
+# re-read from the bridge history at every re-pricing round.  A belief
+# that collapses pulls the cap down and the rungs above it are withdrawn;
+# a market that collapses while the belief holds is, by our own valuation,
+# a discount, and the order stays.
+#
+# ``lambda`` discounts the claimed probability before it caps anything.
+# 1.0 takes the model at its word; the measured calibration ratio (~0.53)
+# is the honest alternative.  Measured on the full ledger (2026-08-20):
+# the clamp is where the ROI comes from and where the fill rate goes --
+# lambda=1 buys +7.5 points of ROI for fill rates of 83.5/55.4/80.2
+# across the stages, lambda=0.53 buys +17 points for 75.2/56.4/78.4.
+# Roughly a tenth of the posted shares only trade above our claimed
+# value, so "never bid above value" and "fill 90% of every stage" cannot
+# both hold while the claim is what it is.  The standing acceptance rule
+# (fill >= 90% per stage, saving positive, ROI no worse than baseline)
+# admits only the time gate, so the clamp defaults off until the user
+# re-weighs the two.
+MAKER_RESTING_VALUE_LAMBDA = float(
+    os.environ.get("PAPER_LEDGER_MAKER_VALUE_LAMBDA", "0") or 0.0
+)
+# The whole-basket belief gate: at each re-pricing round, if the order's
+# claimed expectation under p(t) -- rungs already bought plus rungs still
+# posted, at their own prices -- has gone negative, every open rung is
+# withdrawn for good.  Continuing to buy a basket our own evidence has
+# turned against is the one thing this lane must never do.  1 enables.
+# Measured alone on the full ledger (2026-08-20): it withdraws 6-20
+# points of fill (75.7/70.3/86.4) and earns +2.3 points of ROI -- the
+# orders it kills are nearly break-even, because the belief that turns
+# against a basket usually turns after the cheap fills already happened.
+# Off by default under the same acceptance rule as the value clamp.
+MAKER_RESTING_BELIEF_GATE = int(
+    os.environ.get("PAPER_LEDGER_MAKER_BELIEF_GATE", "0") or 0
+)
+# When the order stops trying: past the hours in which this station's
+# daily maximum actually lands, not at settlement (user ruling,
+# 2026-08-20, revised from a fixed local hour).  Per station: the P-th
+# percentile of the local time-of-day at which the running maximum was
+# last touched, over the trajectory lane's observed days, plus a buffer.
+# Stations with too few observed days fall back to the pooled percentile
+# across all stations.  0 disables the gate and restores "until the day
+# resolves".  The derived cutoffs move as observation days accrue; the
+# parameters travel in the fingerprint, the values deliberately do not --
+# same looseness the band refits already accept.
+MAKER_RESTING_CUTOFF_PERCENTILE = float(
+    os.environ.get("PAPER_LEDGER_MAKER_CUTOFF_PERCENTILE", "95") or 0.0
+)
+MAKER_RESTING_CUTOFF_BUFFER_MINUTES = float(
+    os.environ.get("PAPER_LEDGER_MAKER_CUTOFF_BUFFER_MIN", "60") or 0.0
+)
+MAKER_RESTING_CUTOFF_MIN_DAYS = int(
+    os.environ.get("PAPER_LEDGER_MAKER_CUTOFF_MIN_DAYS", "15") or 0
+)
+# Control cell only, not a candidate default: withdraw a leg whose ask has
+# gapped *through* its lowest rung by at least this many ticks -- a
+# market-triggered rule the standing ruling forbids.  It exists to price
+# that ruling: one sweep cell with it on measures what "the market has no
+# say" costs in ROI, and the number goes to the user.  0 keeps it off.
+MAKER_RESTING_CRASH_TICKS = float(
+    os.environ.get("PAPER_LEDGER_MAKER_CRASH_TICKS", "0") or 0.0
 )
 # How the stake is split across the basket's rungs.  ``equal_shares`` is
 # what the ledger has always done -- one share count for the whole basket,
@@ -282,8 +333,14 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     None
     if EXECUTION_MODE != "maker_resting"
     else (
-        "挂到结算" if MAKER_RESTING_HORIZON_MINUTES <= 0
-        else f"挂{MAKER_RESTING_HORIZON_MINUTES:g}分钟"
+        f"挂{MAKER_RESTING_HORIZON_MINUTES:g}分钟"
+        if MAKER_RESTING_HORIZON_MINUTES > 0
+        else "挂至达峰P%g+%g分" % (
+            MAKER_RESTING_CUTOFF_PERCENTILE,
+            MAKER_RESTING_CUTOFF_BUFFER_MINUTES,
+        )
+        if MAKER_RESTING_CUTOFF_PERCENTILE > 0
+        else "挂到结算"
     ),
     None
     if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_REPRICE_MINUTES <= 0
@@ -292,8 +349,14 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_ESCALATE_SHARE <= 0
     else f"未成交档{MAKER_RESTING_ESCALATE_SHARE:g}窗程收拢",
     None
-    if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_CEILING == "none"
-    else "封顶入场卖价",
+    if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_VALUE_LAMBDA <= 0
+    else f"价值钳λ{MAKER_RESTING_VALUE_LAMBDA:g}",
+    None
+    if EXECUTION_MODE != "maker_resting" or not MAKER_RESTING_BELIEF_GATE
+    else "信念EV闸",
+    None
+    if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_CRASH_TICKS <= 0
+    else f"砸穿{MAKER_RESTING_CRASH_TICKS:g}跳撤腿(对照)",
     "一本账·只加不减",
 )))
 SELECTION_RULE_SHA256 = content_sha256({
@@ -337,8 +400,20 @@ SELECTION_RULE_SHA256 = content_sha256({
     # replenished up to its posted depth all change which rungs fill, and
     # therefore what every resting row records.
     "maker_escalate_share": MAKER_RESTING_ESCALATE_SHARE,
-    "maker_reprice_ceiling": MAKER_RESTING_CEILING,
     "maker_reprice_replenish": "to_posted_depth_same_price_rungs",
+    # The model's part in the price and in the withdrawal.  All of these
+    # change which rungs stand where, so rows written under other values
+    # describe an execution that no longer runs.  The per-station cutoff
+    # *values* deliberately do not ride here (they drift as observation
+    # days accrue); the parameters that derive them do.
+    "maker_value_lambda": MAKER_RESTING_VALUE_LAMBDA,
+    "maker_belief_gate": MAKER_RESTING_BELIEF_GATE,
+    "maker_belief_source": "bridge_history_latest_at_reprice",
+    "maker_edge_escalation": "value_headroom_over_band",
+    "maker_cutoff_percentile": MAKER_RESTING_CUTOFF_PERCENTILE,
+    "maker_cutoff_buffer_minutes": MAKER_RESTING_CUTOFF_BUFFER_MINUTES,
+    "maker_cutoff_min_days": MAKER_RESTING_CUTOFF_MIN_DAYS,
+    "maker_crash_ticks": MAKER_RESTING_CRASH_TICKS,
     # Whether a partly-filled resting basket is a position or a refusal.
     # It changes what every resting row *is*, not merely its price.
     "resting_entry": "progressive_per_leg",
@@ -1050,12 +1125,22 @@ WINDOW_STRATEGIES = (
 
 
 def _resting_ladder(
-    row: Any, steps: int = MAKER_RESTING_LADDER_STEPS
+    row: Any,
+    steps: int = MAKER_RESTING_LADDER_STEPS,
+    *,
+    value_cap: float | None = None,
 ) -> list[float]:
     """The price band one leg rests across, cheapest first.
 
     Collapses to a single price when the spread has no room for a ladder --
     one tick of spread leaves nowhere to stand between the two sides.
+
+    ``value_cap`` is the model's part of the price: no rung ever asks for
+    more than the leg is worth to us (lambda times its probability), so a
+    hedge leg the market prices above our valuation posts only below it
+    and buys nothing unless the book actually comes down.  A cap under the
+    bid is a legal deep resting bid, not a refusal; a cap at or under one
+    tick leaves nothing postable and the leg sits out.
     """
 
     if not row.ask_available:
@@ -1067,20 +1152,22 @@ def _resting_ladder(
         return []
     # A tick under the ask is the top of the band and also its hard ceiling:
     # at the ask the order is not resting, it is crossing, and the whole
-    # point of this mode is to be paid the spread rather than pay it.  A
-    # one-tick spread therefore collapses the band onto the bid.
-    high = ask - tick
-    low = min(bid + MAKER_RESTING_IMPROVE_TICKS * tick, high)
-    if high < bid - 1e-9:
+    # point of this mode is to be paid the spread rather than pay it.  The
+    # value cap can only ever lower that top, never raise it.
+    capped = ask if value_cap is None else min(ask, float(value_cap))
+    high = capped - tick
+    if high < tick / 2:
         return []
+    low = min(bid + MAKER_RESTING_IMPROVE_TICKS * tick, high)
     if high <= low + tick / 2 or steps <= 1:
         return [round(low, 6)]
     span = high - low
     prices = [
         round(low + span * index / (steps - 1), 6) for index in range(steps)
     ]
-    # Distinct rungs only: a band narrower than the tick grid collapses to
-    # its own endpoints, and duplicated prices would double-count a fill.
+    # Distinct rungs only at the open: each opening rung is a separate
+    # order the sizing splits across.  Re-posts stack (see
+    # ``_ladder_from_quote``); the opening keeps the original semantics.
     out: list[float] = []
     for price in prices:
         if not out or price > out[-1] + tick / 2:
@@ -1088,7 +1175,15 @@ def _resting_ladder(
     return out
 
 
-def _execution_price(row: Any) -> float | None:
+def _value_cap(probability: float | None) -> float | None:
+    """The dearest price the model lets a rung ask for one leg."""
+
+    if probability is None or MAKER_RESTING_VALUE_LAMBDA <= 0:
+        return None
+    return MAKER_RESTING_VALUE_LAMBDA * float(probability)
+
+
+def _execution_price(row: Any, *, value_cap: float | None = None) -> float | None:
     """The per-share price this run assumes for one leg."""
 
     if not row.ask_available:
@@ -1107,7 +1202,7 @@ def _execution_price(row: Any) -> float | None:
         # The band's own mean: what the leg pays if the whole ladder fills.
         # The realised price replaces this once the book has been walked --
         # this is the number the gate and the Kelly sizing see beforehand.
-        rungs = _resting_ladder(row)
+        rungs = _resting_ladder(row, value_cap=value_cap)
         if not rungs:
             return None
         price = sum(rungs) / len(rungs)
@@ -1122,14 +1217,27 @@ def _execution_price(row: Any) -> float | None:
     return price * (1.0 + FEE_RATE)
 
 
-def _maker_leg_prices(snapshot: Any, buckets: Sequence[str]) -> list[float]:
-    """The assumed resting price for each leg, in the seat's own order."""
+def _maker_leg_prices(
+    snapshot: Any,
+    buckets: Sequence[str],
+    probabilities: Mapping[str, float] | None = None,
+) -> list[float]:
+    """The assumed resting price for each leg, in the seat's own order.
+
+    With probabilities the band mean is value-capped, so the sizing prices
+    the order the way it will actually be posted.
+    """
 
     by_bucket = {row.bucket: row for row in snapshot.buckets}
     prices = []
     for bucket in buckets:
         row = by_bucket.get(str(bucket))
-        price = None if row is None else _execution_price(row)
+        price = None if row is None else _execution_price(
+            row,
+            value_cap=_value_cap(
+                (probabilities or {}).get(str(bucket))
+            ),
+        )
         # A leg with no price here cannot have been seated: the strategy
         # builder refuses those.  Falling back to the ask keeps the walk
         # well-formed if a caller ever gets here another way.
@@ -1155,7 +1263,10 @@ def _window_row(
         return None
     quotes = []
     for bucket in ordered:
-        quote = _execution_price(by_bucket[bucket])
+        quote = _execution_price(
+            by_bucket[bucket],
+            value_cap=_value_cap(probabilities.get(bucket)),
+        )
         if quote is None or quote < MINIMUM_LEG_ALL_IN_ASK:
             return None
         quotes.append(quote)
@@ -1302,11 +1413,12 @@ def _ladder_from_quote(
     the rungs that only fill if the market collapses, and an order that has
     already waited most of its window has run out of time to hope for that.
 
-    ``ceiling`` is the dearest price any rung may ask for -- the entry-time
-    ask, so a book trending against the position is never chased past what
-    crossing at entry would have paid.  A band pushed entirely under the
-    current bid by that cap still posts there: a deep resting bid is a
-    valid order, it just waits in a longer queue.
+    ``ceiling`` is the dearest price any rung may ask for -- the model's
+    value cap, lambda times the leg's freshest probability, so a book
+    trending against the position is never chased past what the leg is
+    worth to us.  A band pushed entirely under the current bid by that cap
+    still posts there: a deep resting bid is a valid order, it just waits
+    in a longer queue.
     """
 
     levels = [
@@ -1350,34 +1462,207 @@ def _ladder_from_quote(
 
 
 def _resting_deadline(
-    *, placed_at_utc: str, settlement_timezone: str, event_date: str
+    *,
+    placed_at_utc: str,
+    settlement_timezone: str,
+    event_date: str,
+    cutoff_local_minutes: int | None = None,
 ) -> str:
     """When the order gives up.
 
-    The day itself, unless a horizon is configured.  A basket posted at
-    listing has until its market resolves and no reason to withdraw before
-    then; the fixed six hours this used to carry came from the fill probe's
-    measurement horizons, and it booked a miss in the middle of the night
-    before the event.
+    Past the hours in which this station's daily maximum actually lands
+    (``cutoff_local_minutes``, station-local wall clock on the event day),
+    or the day itself when no cutoff is known, or a configured horizon.  A
+    temperature market is informationally dead once the afternoon peak has
+    passed: what trades after that is the outcome being priced in, and a
+    resting ladder is on the wrong side of all of it -- the losing
+    buckets' asks collapse down through the escalated rungs, and the
+    winner is only available as a chase toward 1.00.
     """
 
     placed = datetime.fromisoformat(str(placed_at_utc).replace("Z", "+00:00"))
-    ends = placed
-    if MAKER_RESTING_HORIZON_MINUTES > 0:
-        ends = placed + timedelta(minutes=MAKER_RESTING_HORIZON_MINUTES)
     try:
         day_end = settlement_day_window(
             event_date, settlement_timezone
         )["target_day_end_utc"]
     except Exception:
         day_end = ""
-    if MAKER_RESTING_HORIZON_MINUTES <= 0:
-        return day_end or (
-            placed + timedelta(days=1)
-        ).isoformat().replace("+00:00", "Z")
-    # A configured horizon still cannot outlive the market it is posted in.
-    horizon = ends.isoformat().replace("+00:00", "Z")
-    return min(horizon, day_end) if day_end else horizon
+    cutoff = ""
+    if cutoff_local_minutes is not None and cutoff_local_minutes > 0:
+        try:
+            local = datetime.fromisoformat(str(event_date)).replace(
+                hour=int(cutoff_local_minutes) // 60,
+                minute=int(cutoff_local_minutes) % 60,
+                tzinfo=ZoneInfo(str(settlement_timezone or "UTC")),
+            )
+            cutoff = local.astimezone(timezone.utc).isoformat().replace(
+                "+00:00", "Z"
+            )
+        except Exception:
+            cutoff = ""
+    bounds = [bound for bound in (day_end, cutoff) if bound]
+    if MAKER_RESTING_HORIZON_MINUTES > 0:
+        bounds.append(
+            (
+                placed + timedelta(minutes=MAKER_RESTING_HORIZON_MINUTES)
+            ).isoformat().replace("+00:00", "Z")
+        )
+    if not bounds:
+        return (placed + timedelta(days=1)).isoformat().replace("+00:00", "Z")
+    return min(bounds)
+
+
+# Where the peak-hour statistics read intraday temperatures from.  The
+# trajectory lane's METAR store covers all 45 stations at minute grain;
+# the ledger only reads it, once per pass.
+OBSERVATION_DB = Path(
+    os.environ.get("PAPER_LEDGER_OBSERVATION_DB", "")
+    or (ROOT / "data" / "archive.db")
+)
+
+
+def _station_peak_cutoffs(
+    timezones: Mapping[str, str]
+) -> dict[str, int]:
+    """Per station, the local minute-of-day the resting orders die at.
+
+    The P-th percentile of the local time at which the running daily
+    maximum was *last* touched, over the trajectory lane's observed days,
+    plus the configured buffer.  Last touched, not first: a plateau that
+    holds the maximum into the evening keeps the market honest that long.
+    Days whose observations do not span the daytime are skipped -- a
+    truncated day reports the peak of what happened to be recorded, not
+    of the day.  Stations with too few days take the pooled percentile.
+    """
+
+    if MAKER_RESTING_CUTOFF_PERCENTILE <= 0:
+        return {}
+    try:
+        observations = sqlite3.connect(
+            f"file:{OBSERVATION_DB}?mode=ro", uri=True, timeout=30.0
+        )
+        rows = observations.execute(
+            "SELECT station_id, valid_at, reported_temperature_c"
+            " FROM reported_trajectory_observations"
+            " WHERE reported_temperature_c IS NOT NULL"
+        ).fetchall()
+        observations.close()
+    except sqlite3.Error:
+        return {}
+    zones: dict[str, ZoneInfo] = {}
+    by_day: dict[tuple[str, str], list[tuple[int, float]]] = {}
+    for station, valid_at, temperature in rows:
+        station = str(station)
+        zone = zones.get(station)
+        if zone is None:
+            try:
+                zone = ZoneInfo(str(timezones.get(station) or "UTC"))
+            except Exception:
+                zone = ZoneInfo("UTC")
+            zones[station] = zone
+        try:
+            local = datetime.fromisoformat(
+                str(valid_at).replace("Z", "+00:00")
+            ).astimezone(zone)
+        except ValueError:
+            continue
+        by_day.setdefault(
+            (station, local.date().isoformat()), []
+        ).append((local.hour * 60 + local.minute, float(temperature)))
+    peaks: dict[str, list[int]] = {}
+    pooled: list[int] = []
+    for (station, _day), samples in by_day.items():
+        first = min(minute for minute, _t in samples)
+        last = max(minute for minute, _t in samples)
+        if first > 9 * 60 or last < 19 * 60:
+            continue
+        top = max(t for _m, t in samples)
+        peak = max(minute for minute, t in samples if t >= top - 0.05)
+        peaks.setdefault(station, []).append(peak)
+        pooled.append(peak)
+
+    def percentile(values: list[int]) -> int:
+        ordered = sorted(values)
+        index = int(
+            (MAKER_RESTING_CUTOFF_PERCENTILE / 100.0) * len(ordered) + 0.999
+        ) - 1
+        return ordered[max(0, min(len(ordered) - 1, index))]
+
+    fallback = percentile(pooled) if pooled else None
+    out: dict[str, int] = {}
+    for station in timezones:
+        values = peaks.get(str(station), [])
+        base = (
+            percentile(values)
+            if len(values) >= MAKER_RESTING_CUTOFF_MIN_DAYS
+            else fallback
+        )
+        if base is None:
+            continue
+        out[str(station)] = int(min(
+            base + MAKER_RESTING_CUTOFF_BUFFER_MINUTES, 24 * 60 - 1
+        ))
+    return out
+
+
+class _BeliefTimeline:
+    """Our own freshest probabilities for one station-day, as of a moment.
+
+    The withdrawal rules are anchored to what *we* believe, not to what
+    the market does (user ruling, 2026-08-20): the bridge history holds
+    every stage's compiled distribution with its decision time, so the
+    walk can re-read the belief that was in force at each re-pricing round
+    without a shred of hindsight.  Buckets absent from the freshest
+    distribution keep their last known probability -- a narrower P1 ladder
+    is a re-focus, not a verdict of zero on the shoulders it dropped.
+    """
+
+    def __init__(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        station_id: str,
+        event_date: str,
+        placed_at_utc: str,
+        entry_probabilities: Mapping[str, float],
+    ) -> None:
+        self._conn = conn
+        try:
+            self._rows = conn.execute(
+                "SELECT decision_at_utc, history_id"
+                " FROM basket_probability_bridge_history"
+                " WHERE station_id=? AND event_date=? AND decision_at_utc>?"
+                " ORDER BY decision_at_utc ASC",
+                (station_id, event_date, str(placed_at_utc)),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            # A database without the bridge (tests, foreign replays) keeps
+            # the entry belief for the whole window.
+            self._rows = []
+        self._index = 0
+        self._current = {
+            str(bucket): float(p)
+            for bucket, p in entry_probabilities.items()
+        }
+
+    def at(self, moment: datetime) -> dict[str, float]:
+        stamp = moment.isoformat().replace("+00:00", "Z")
+        newest = None
+        while self._index < len(self._rows) and (
+            str(self._rows[self._index][0]) <= stamp
+        ):
+            newest = self._rows[self._index][1]
+            self._index += 1
+        if newest is not None:
+            rows = self._conn.execute(
+                "SELECT bucket, probability"
+                " FROM basket_probability_bridge_bucket_probability"
+                " WHERE history_id=?",
+                (newest,),
+            ).fetchall()
+            for bucket, probability in rows:
+                self._current[str(bucket)] = float(probability)
+        return self._current
 
 
 def _resting_ladder_fill(
@@ -1389,7 +1674,8 @@ def _resting_ladder_fill(
     ladders: Sequence[Sequence[float]],
     placed_at_utc: str,
     settlement_timezone: str = "UTC",
-    entry_asks: Mapping[str, float] | None = None,
+    probabilities: Mapping[str, float] | None = None,
+    cutoff_local_minutes: int | None = None,
 ) -> tuple[dict[str, list[float]], str | None]:
     """Which rungs of each leg's ladder the book traded through.
 
@@ -1397,26 +1683,31 @@ def _resting_ladder_fill(
     per bucket so the cost is the ladder's own average rather than an
     assumed one.
 
-    Three things the order does while it waits.  It waits until the day
-    resolves rather than for a fixed six hours; every
-    ``MAKER_RESTING_REPRICE_MINUTES`` it re-posts whatever is still open at
-    the prices then on the book; and each re-post lifts the floor of the
-    band toward its top over ``MAKER_RESTING_ESCALATE_SHARE`` of the
-    window, so the rungs still open late in the day stand where the book
-    actually trades rather than where it would have to collapse to.  A
-    band derived from a spread twenty hours stale is not a price anyone
-    was offering, and a leg that misses against it has recorded the
-    staleness of its own quote rather than the book's unwillingness to
-    sell.  Rungs already bought are never re-posted, and a re-post
-    replenishes the ladder back up to the depth that was posted -- a band
-    that collapsed to one rung mid-day and bought it has not finished the
-    leg, it has bought one fifth of it.
+    What the order does while it waits, in the order the rules bind:
+
+    - It lives until the station's own peak-heat cutoff
+      (``cutoff_local_minutes``), not until settlement -- past the peak
+      the market is pricing an answer, not a question.
+    - Every ``MAKER_RESTING_REPRICE_MINUTES`` it re-reads our freshest
+      probabilities and re-posts whatever is still open.  A belief that
+      collapsed pulls the value cap down and the rungs above it are
+      withdrawn; if the whole order's claimed expectation under the fresh
+      belief has gone negative, every open rung is withdrawn for good.
+      Market moves trigger nothing (user ruling, 2026-08-20).
+    - A re-post stands on the current book, floor lifted by the *larger*
+      of elapsed time and value headroom: a leg whose value exceeds the
+      band top has no reason to fish the bottom and posts at the top from
+      its first round.
+    - Rungs already bought are never re-posted, and a re-post replenishes
+      the ladder back to its posted depth -- a band that collapsed to one
+      rung mid-day and bought it has not finished the leg.
     """
 
     deadline = _resting_deadline(
         placed_at_utc=placed_at_utc,
         settlement_timezone=settlement_timezone,
         event_date=event_date,
+        cutoff_local_minutes=cutoff_local_minutes,
     )
     placed = datetime.fromisoformat(str(placed_at_utc).replace("Z", "+00:00"))
     escalate_minutes = 0.0
@@ -1430,10 +1721,18 @@ def _resting_ladder_fill(
             )
         except ValueError:
             escalate_minutes = 0.0
-    ceilings = (
-        dict(entry_asks or {})
-        if MAKER_RESTING_CEILING == "entry_ask" else {}
-    )
+    entry_p = {
+        str(bucket): float(p)
+        for bucket, p in (probabilities or {}).items()
+    }
+    belief = _BeliefTimeline(
+        conn,
+        station_id=station_id,
+        event_date=event_date,
+        placed_at_utc=placed_at_utc,
+        entry_probabilities=entry_p,
+    ) if entry_p else None
+    current_p = dict(entry_p)
     pending = {
         str(bucket): sorted(prices, reverse=True)
         for bucket, prices in zip(buckets, ladders)
@@ -1444,6 +1743,7 @@ def _resting_ladder_fill(
         bucket: len(prices) for bucket, prices in pending.items()
     }
     filled: dict[str, list[float]] = {b: [] for b in pending}
+    withdrawn = False
     next_reprice = (
         None if MAKER_RESTING_REPRICE_MINUTES <= 0
         else placed + timedelta(minutes=MAKER_RESTING_REPRICE_MINUTES)
@@ -1455,7 +1755,7 @@ def _resting_ladder_fill(
         " ORDER BY observed_at",
         (station_id, event_date, placed_at_utc, deadline),
     ):
-        if all(
+        if withdrawn or all(
             len(filled[bucket]) >= posted_depth.get(bucket, 0)
             for bucket in filled
         ):
@@ -1467,13 +1767,39 @@ def _resting_ladder_fill(
         # a fill to a price that had already been cancelled.
         if next_reprice is not None:
             at = datetime.fromisoformat(str(observed).replace("Z", "+00:00"))
-            while at >= next_reprice:
-                floor_fraction = 0.0
+            while at >= next_reprice and not withdrawn:
+                if belief is not None:
+                    current_p = belief.at(next_reprice)
+                # The whole-order belief gate: rungs bought plus rungs
+                # still posted, at their own prices, against the fresh
+                # claim.  Negative means our own evidence has turned
+                # against this basket, and the one thing this lane must
+                # never do is keep buying it.  Withdrawal is final for
+                # this order -- production re-decides at the next stage.
+                if MAKER_RESTING_BELIEF_GATE and belief is not None:
+                    expectation = 0.0
+                    for bucket, ladder in zip(buckets, ladders):
+                        depth_n = len(ladder)
+                        if not depth_n:
+                            continue
+                        bought = filled.get(str(bucket)) or []
+                        open_rungs = pending.get(str(bucket)) or []
+                        claim = current_p.get(str(bucket), 0.0)
+                        expectation += (
+                            claim * (len(bought) + len(open_rungs))
+                            - sum(bought) - sum(open_rungs)
+                        ) / depth_n
+                    if expectation < 0.0:
+                        for bucket in pending:
+                            pending[bucket] = []
+                        withdrawn = True
+                        break
+                floor_time = 0.0
                 if escalate_minutes > 0:
                     elapsed = (
                         next_reprice - placed
                     ).total_seconds() / 60.0
-                    floor_fraction = min(1.0, elapsed / escalate_minutes)
+                    floor_time = min(1.0, elapsed / escalate_minutes)
                 for bucket in pending:
                     open_rungs = posted_depth.get(bucket, 0) - len(
                         filled[bucket]
@@ -1482,20 +1808,62 @@ def _resting_ladder_fill(
                         # Fully bought.  Re-posting the rungs it already
                         # owns would buy them twice.
                         continue
+                    cap = _value_cap(current_p.get(bucket))
                     item = quotes.get(bucket)
                     if not isinstance(item, Mapping):
+                        # No readable book this round.  The standing rungs
+                        # still answer to the fresh belief: the ones above
+                        # the value cap are withdrawn, the rest wait.
+                        if cap is not None:
+                            pending[bucket] = [
+                                rung for rung in pending[bucket]
+                                if rung <= cap + 1e-9
+                            ]
                         continue
+                    # Value headroom as an escalation floor of its own: a
+                    # leg worth more than the band's top has no reason to
+                    # fish the bottom (the model calls the whole band
+                    # cheap), while a leg worth less than the band's mean
+                    # keeps the time schedule only up to its cap.
+                    floor_edge = 0.0
+                    if cap is not None:
+                        ask = item.get("best_ask")
+                        levels = item.get("ask_levels") or []
+                        if ask is None and levels:
+                            ask = levels[0].get("price")
+                        bid = item.get("bid_price", item.get("best_bid"))
+                        tick = float(item.get("price_tick_size") or 0.001)
+                        if ask is not None and bid is not None:
+                            high = min(float(ask), cap) - tick
+                            low = min(
+                                float(bid)
+                                + MAKER_RESTING_IMPROVE_TICKS * tick,
+                                high,
+                            )
+                            mean = (low + high) / 2.0
+                            if high > mean + 1e-9:
+                                floor_edge = max(
+                                    0.0,
+                                    min(1.0, (cap - mean) / (high - mean)),
+                                )
                     fresh = _ladder_from_quote(
                         item,
                         open_rungs,
-                        floor_fraction=floor_fraction,
-                        ceiling=ceilings.get(bucket),
+                        floor_fraction=max(floor_time, floor_edge),
+                        ceiling=cap,
                     )
                     if fresh:
                         pending[bucket] = sorted(fresh, reverse=True)
+                    elif cap is not None:
+                        pending[bucket] = [
+                            rung for rung in pending[bucket]
+                            if rung <= cap + 1e-9
+                        ]
                 next_reprice = next_reprice + timedelta(
                     minutes=MAKER_RESTING_REPRICE_MINUTES
                 )
+        if withdrawn:
+            break
         for bucket, rungs in pending.items():
             if not rungs:
                 continue
@@ -1509,6 +1877,16 @@ def _resting_ladder_fill(
             if ask is None:
                 continue
             price = float(ask)
+            # Control cell only (see MAKER_RESTING_CRASH_TICKS): an ask
+            # that has gapped *through* the leg's cheapest rung is a
+            # collapse, not a trade at our price.  Off by default -- the
+            # standing ruling gives the market no say -- and kept solely
+            # to measure what that ruling costs.
+            if MAKER_RESTING_CRASH_TICKS > 0 and rungs:
+                tick = float(item.get("price_tick_size") or 0.001)
+                if price <= rungs[-1] - MAKER_RESTING_CRASH_TICKS * tick:
+                    pending[bucket] = []
+                    continue
             # Every rung at or above where the book traded is filled.
             while rungs and price <= rungs[0] + 1e-9:
                 filled[bucket].append(rungs.pop(0))
@@ -2136,6 +2514,10 @@ def backfill(
             " FROM calibration_station_market_timezone_binding"
         )
     }
+    # Each station's own peak-heat cutoff, derived once per pass from the
+    # trajectory lane's intraday temperatures.  Resting orders die there,
+    # not at settlement.
+    peak_cutoffs = _station_peak_cutoffs(timezones)
     # Before the walk, not after.  The equity curve below reads each day's
     # realised P&L back out of the committed settlements, so a correction that
     # landed after this pass would size the following days off numbers it had
@@ -2472,7 +2854,9 @@ def backfill(
                             }]
                             for bucket, price in zip(
                                 seat["buckets"],
-                                _maker_leg_prices(snapshot, seat["buckets"]),
+                                _maker_leg_prices(
+                                    snapshot, seat["buckets"], probabilities
+                                ),
                             )
                         ]
                     capacity = min(
@@ -2510,7 +2894,12 @@ def backfill(
                     if EXECUTION_MODE == "maker_resting":
                         by_row = {r.bucket: r for r in snapshot.buckets}
                         ladders = [
-                            _resting_ladder(by_row[str(b)])
+                            _resting_ladder(
+                                by_row[str(b)],
+                                value_cap=_value_cap(
+                                    probabilities.get(str(b))
+                                ),
+                            )
                             if str(b) in by_row else []
                             for b in seat["buckets"]
                         ]
@@ -2524,15 +2913,13 @@ def backfill(
                             buckets=seat["buckets"],
                             ladders=ladders,
                             placed_at_utc=payload["decision_at_utc"],
-                            # The ask each leg had when the seat was taken:
-                            # the price the entry gate was struck against,
-                            # and therefore the most a re-post may chase to.
-                            entry_asks={
-                                str(b): float(by_row[str(b)].ask_price)
-                                for b in seat["buckets"]
-                                if str(b) in by_row
-                                and by_row[str(b)].ask_available
-                            },
+                            # The entry claim seeds the belief timeline;
+                            # the walk re-reads the freshest one at every
+                            # re-pricing round.
+                            probabilities=probabilities,
+                            cutoff_local_minutes=peak_cutoffs.get(
+                                station_id
+                            ),
                         )
                         if not any(got.values()):
                             refusal = (
@@ -2585,7 +2972,9 @@ def backfill(
                         # ladder's mean here -- what it would have paid.  The
                         # realised price only replaces it for the legs that
                         # bought something, and the rest drop out below.
-                        posted = _maker_leg_prices(snapshot, seat["buckets"])
+                        posted = _maker_leg_prices(
+                            snapshot, seat["buckets"], probabilities
+                        )
                         legs = [
                             [{
                                 "price": resting_prices.get(

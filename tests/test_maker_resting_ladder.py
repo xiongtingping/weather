@@ -246,7 +246,181 @@ def test_a_bought_out_band_is_replenished_up_to_its_posted_depth() -> None:
         buckets=("32C",),
         ladders=([0.24, 0.25, 0.26],),
         placed_at_utc="2026-08-17T00:00:00Z",
-        entry_asks={"32C": 0.27},
+        probabilities={"32C": 0.27},
     )
     assert missing is None
     assert len(got["32C"]) == 3
+
+
+def _bridge_book():
+    """A book plus the probability bridge the belief timeline reads.
+
+    Returns ``(conn, snap, believe)``: the connection cannot carry helper
+    attributes, so the two writers ride beside it.
+    """
+
+    import json as _json
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE basket_official_ws_snapshot ("
+        " station_id TEXT, event_date TEXT, state TEXT,"
+        " observed_at TEXT, buckets_json TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE basket_probability_bridge_history ("
+        " history_id TEXT, station_id TEXT, event_date TEXT,"
+        " stage TEXT, decision_at_utc TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE basket_probability_bridge_bucket_probability ("
+        " history_id TEXT, bucket TEXT, probability REAL)"
+    )
+
+    def snap(observed: str, quotes: dict[str, tuple[float, float]]) -> None:
+        conn.execute(
+            "INSERT INTO basket_official_ws_snapshot VALUES (?,?,?,?,?)",
+            ("ZUUU", "2026-08-17", "COMMITTED", observed, _json.dumps([
+                {"bucket": bucket, "best_ask": ask, "bid_price": bid,
+                 "price_tick_size": 0.01}
+                for bucket, (ask, bid) in quotes.items()
+            ])),
+        )
+
+    def believe(decided: str, probabilities: dict[str, float]) -> None:
+        hid = "h-" + decided
+        conn.execute(
+            "INSERT INTO basket_probability_bridge_history VALUES"
+            " (?,?,?,?,?)", (hid, "ZUUU", "2026-08-17", "P1", decided),
+        )
+        for bucket, p in probabilities.items():
+            conn.execute(
+                "INSERT INTO basket_probability_bridge_bucket_probability"
+                " VALUES (?,?,?)", (hid, bucket, p),
+            )
+
+    return conn, snap, believe
+
+
+def test_a_collapsed_belief_withdraws_the_rungs_above_its_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Our own probability, not the market, pulls the cap down.
+
+    The belief falls from 0.30 to 0.12 mid-window; at the next re-pricing
+    round every rung above the new value is withdrawn, and the later ask
+    collapse through those prices buys nothing.  The market alone never
+    triggers anything: its own slide is, by our valuation, a discount --
+    but only the rungs at or under the value may take it.
+    """
+
+    import scripts.paper_trading_ledger as ledger
+
+    monkeypatch.setattr(ledger, "MAKER_RESTING_VALUE_LAMBDA", 1.0)
+
+    conn, snap, believe = _bridge_book()
+    snap("2026-08-17T00:30:00Z", {"32C": (0.30, 0.24)})
+    believe("2026-08-17T00:45:00Z", {"32C": 0.12})
+    snap("2026-08-17T01:30:00Z", {"32C": (0.30, 0.24)})  # reprice round
+    snap("2026-08-17T02:00:00Z", {"32C": (0.20, 0.15)})  # slide begins
+    got, missing = _resting_ladder_fill(
+        conn,
+        station_id="ZUUU",
+        event_date="2026-08-17",
+        buckets=("32C",),
+        ladders=([0.25, 0.27, 0.29],),
+        placed_at_utc="2026-08-17T00:00:00Z",
+        probabilities={"32C": 0.30},
+    )
+    # 0.27 and 0.29 stood above the collapsed value (0.12) and were
+    # withdrawn at the 01:00 round; the 02:00 slide to ask 0.20 would have
+    # filled both had they stayed.  Nothing filled at all: the re-posted
+    # band tops out a tick under the value, and the ask never came down
+    # that far.
+    assert got["32C"] == []
+    assert missing == "32C"
+
+
+def test_a_negative_basket_expectation_withdraws_everything(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The whole-order gate: our claim can no longer pay for the order."""
+
+    import scripts.paper_trading_ledger as ledger
+
+    monkeypatch.setattr(ledger, "MAKER_RESTING_BELIEF_GATE", 1)
+
+    conn, snap, believe = _bridge_book()
+    snap("2026-08-17T00:30:00Z", {"32C": (0.30, 0.24), "33C": (0.30, 0.24)})
+    # The claim collapses on both legs: expectation of the posted order
+    # goes negative and every open rung is withdrawn for good.
+    believe(
+        "2026-08-17T00:45:00Z", {"32C": 0.05, "33C": 0.05}
+    )
+    snap("2026-08-17T01:30:00Z", {"32C": (0.30, 0.24), "33C": (0.30, 0.24)})
+    # Both books later trade through the whole original band; a live order
+    # would have filled everything.
+    snap("2026-08-17T02:00:00Z", {"32C": (0.05, 0.03), "33C": (0.05, 0.03)})
+    got, missing = _resting_ladder_fill(
+        conn,
+        station_id="ZUUU",
+        event_date="2026-08-17",
+        buckets=("32C", "33C"),
+        ladders=([0.25, 0.27, 0.29], [0.25, 0.27, 0.29]),
+        placed_at_utc="2026-08-17T00:00:00Z",
+        probabilities={"32C": 0.30, "33C": 0.30},
+    )
+    assert got["32C"] == [] and got["33C"] == []
+    assert missing is not None
+
+
+def test_the_peak_cutoff_ends_the_order_before_settlement() -> None:
+    """Past the station's peak-heat hours nothing fills, however cheap."""
+
+    conn, snap, believe = _bridge_book()
+    snap("2026-08-17T10:00:00Z", {"32C": (0.40, 0.30)})   # inside window
+    snap("2026-08-17T15:00:00Z", {"32C": (0.20, 0.10)})   # past cutoff
+    got, missing = _resting_ladder_fill(
+        conn,
+        station_id="ZUUU",
+        event_date="2026-08-17",
+        buckets=("32C",),
+        ladders=([0.25, 0.27, 0.29],),
+        placed_at_utc="2026-08-17T00:00:00Z",
+        probabilities={"32C": 0.60},
+        # 14:00 UTC wall clock on the event day (settlement tz is UTC).
+        cutoff_local_minutes=14 * 60,
+    )
+    # The 15:00 collapse to ask 0.20 would have filled the whole ladder;
+    # the order was already dead.
+    assert got["32C"] == []
+    assert missing == "32C"
+
+
+def test_value_headroom_escalates_without_waiting_for_the_clock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A leg worth more than the band top posts at the top immediately."""
+
+    import scripts.paper_trading_ledger as ledger
+
+    monkeypatch.setattr(ledger, "MAKER_RESTING_VALUE_LAMBDA", 1.0)
+
+    conn, snap, believe = _bridge_book()
+    # First reprice round: value 0.60 far above the band; the re-post
+    # should stand a tick under the ask rather than fish the bottom.
+    snap("2026-08-17T01:30:00Z", {"32C": (0.30, 0.20)})
+    # One tick down fills the entire remainder in one stroke -- before the
+    # next re-pricing round, which would move the band under the new ask.
+    snap("2026-08-17T01:45:00Z", {"32C": (0.29, 0.20)})
+    got, missing = _resting_ladder_fill(
+        conn,
+        station_id="ZUUU",
+        event_date="2026-08-17",
+        buckets=("32C",),
+        ladders=([0.21, 0.25, 0.29],),
+        placed_at_utc="2026-08-17T00:00:00Z",
+        probabilities={"32C": 0.60},
+    )
+    assert missing is None
+    assert got["32C"] == [0.29, 0.29, 0.29]
