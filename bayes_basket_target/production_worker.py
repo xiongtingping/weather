@@ -9242,6 +9242,39 @@ class TargetProductionWorker:
                 # evidence on the model that was current when the evidence
                 # arrived.  Freshness is re-established by P0-M's own
                 # decision time, not inherited from the root.
+                # Per capture, not batch-min.  The inbox carries every
+                # forward capture for the scope on every cycle, so one
+                # revision received before the scope's first P0 root dragged
+                # the anchor in front of every root forever and the whole
+                # batch was discarded each cycle -- including revisions that
+                # individually satisfy the contract.  Measured 2026-08-20:
+                # ZGGG event 2026-08-21 had a TX-less 15:06Z TAF received
+                # 16:23Z, first P0 root 17:31Z, and the TX-carrying 21:04Z
+                # revision behind it; seven stations sat in
+                # IGNORED_NO_P0_BEFORE_FORECAST with no way out, because the
+                # blocking capture never leaves the inbox.  A capture with
+                # no root before it cannot seat *itself* under the contract
+                # -- "no P0 before forecast" is true of it alone -- so it is
+                # dropped alone, counted, and its siblings proceed.
+                first_root_at = min(
+                    (
+                        item.decision_at_utc
+                        for item in envelopes
+                        if item.stage == "P0"
+                    ),
+                    default="",
+                )
+                seatable = [
+                    capture for capture in captures
+                    if first_root_at
+                    and str(
+                        (capture.get("forecast_revision") or {}).get(
+                            "received_at_utc"
+                        ) or ""
+                    ) >= first_root_at
+                ]
+                dropped_pre_root = len(captures) - len(seatable)
+                captures = seatable
                 earliest_taf = min(
                     str(
                         (capture.get("forecast_revision") or {}).get(
@@ -9249,7 +9282,7 @@ class TargetProductionWorker:
                         ) or ""
                     )
                     for capture in captures
-                ) or as_of_utc
+                ) if captures else ""
                 roots = [
                     item for item in envelopes
                     if item.stage == "P0"
@@ -9261,6 +9294,7 @@ class TargetProductionWorker:
                         "station_id": station,
                         "event_date": day,
                         "state": "IGNORED_NO_P0_BEFORE_FORECAST",
+                        "dropped_pre_root_captures": dropped_pre_root,
                         "write_count": 0,
                         "writes": [],
                     })

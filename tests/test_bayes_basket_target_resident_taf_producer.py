@@ -610,3 +610,39 @@ def test_cli_writes_explicit_not_configured_evidence(tmp_path: Path) -> None:
     )
     assert evidence.stat().st_size < 1024 * 1024
     assert not (tmp_path / "resident-inbox.json").exists()
+
+
+def test_one_pre_root_capture_cannot_discard_its_siblings() -> None:
+    """The root gate is per capture, not batch-min.
+
+    The inbox carries every forward capture for a scope on every cycle, so a
+    single revision received before the scope's first P0 root -- measured
+    2026-08-20: ZGGG event 2026-08-21, a TX-less 15:06Z TAF received 16:23Z
+    against a first root at 17:31Z -- dragged ``earliest_taf`` in front of
+    every root forever, and the whole batch was discarded each cycle,
+    including the TX-carrying 21:04Z revision that satisfied the contract on
+    its own.  Seven stations sat in IGNORED_NO_P0_BEFORE_FORECAST with no
+    way out, because the blocking capture never leaves the inbox.
+
+    A capture with no root before it cannot seat itself -- dropping it alone
+    is the per-capture application of the same rule.
+    """
+
+    from pathlib import Path as _Path
+
+    source = (
+        _Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "production_worker.py"
+    ).read_text(encoding="utf-8")
+    # The anchor is computed over the captures that survive the root gate.
+    assert "first_root_at" in source
+    assert "dropped_pre_root = len(captures) - len(seatable)" in source
+    # And the receipt says how many were dropped, so a scope losing captures
+    # is visible rather than silent.
+    assert '"dropped_pre_root_captures": dropped_pre_root,' in source
+    # The old arithmetic -- batch-min over every capture straight into the
+    # root filter with no per-capture gate -- must not come back: the state
+    # is emitted from exactly one receipt site.
+    assert source.count('"state": "IGNORED_NO_P0_BEFORE_FORECAST"') == 1
+
