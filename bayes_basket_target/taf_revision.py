@@ -951,6 +951,32 @@ def _validate_live_nwp_compatibility_binding(
     return fingerprint
 
 
+def taf_artifact_bridge_stale_reason(
+    *,
+    root: ProbabilityEnvelope,
+    artifact: TafRevisionArtifact,
+) -> str | None:
+    """Why this artifact's live-P0 bridge cannot govern this root, or None.
+
+    The artifact pins the exact live-combination fingerprint its holdout was
+    scored against, while P0 roots keep evolving with every OOS rotation --
+    so a pinned fingerprint goes stale with nobody at fault.  Callers use
+    this to route a stale scope onto the observation-only seat (the same
+    road as having no artifact at all) instead of fail-closing the stage;
+    the fingerprint contract itself is unchanged and still enforced inside
+    the proof compiler.
+    """
+
+    try:
+        _validate_live_nwp_compatibility_binding(
+            root=root,
+            artifact=artifact,
+        )
+    except ContractError as exc:
+        return str(exc)
+    return None
+
+
 def compile_taf_revision_proof(
     predecessor: ProbabilityEnvelope | Mapping[str, Any],
     *,

@@ -385,6 +385,24 @@ def compile_station_p1_packets(
             last_decision = floor
     trajectory_prefix: list[MetarTrajectoryObservation] = []
     truth_revision_sha_by_observation: dict[str, str] = {}
+    # Parsed once for the exhaustion test below.  A malformed curve stays
+    # None here so the proof compiler keeps naming the corruption itself;
+    # only a well-formed curve may argue it still has something to say.
+    curve_point_times_utc: list[datetime] | None = None
+    _curve_raw = root.lineage.get("conditional_future_temperature_curve_json")
+    if _curve_raw:
+        try:
+            curve_point_times_utc = sorted(
+                datetime.fromisoformat(
+                    str(point.get("valid_time_utc")).replace("Z", "+00:00")
+                )
+                for point in (
+                    json.loads(str(_curve_raw)).get("points") or []
+                )
+                if isinstance(point, Mapping)
+            )
+        except (TypeError, ValueError, json.JSONDecodeError):
+            curve_point_times_utc = None
     for sequence, observation in enumerate(ordered, start=1):
         if (
             str(observation.get("qc_status") or "").upper() != "ACCEPTED"
@@ -503,12 +521,31 @@ def compile_station_p1_packets(
         # ``metar_trajectory_root_future_curve_missing`` rather than
         # degrading.  Same rule as the bucket: the promoted artifact governs
         # only where it can actually be evaluated.
+        # Same rule extended to the evening: the feature compiler demands at
+        # least two strictly-future curve points, and on the event day the
+        # frozen root's curve simply runs out of them as local midnight
+        # approaches -- ``future_temperature_curve_future_points_insufficient``
+        # took three UTC+8 stations' whole P1 down at 20:49 local on
+        # 2026-08-20.  An exhausted curve leaves the promoted artifact
+        # nothing to evaluate, which is exactly the identity-fallback
+        # situation; the hard bound keeps killing buckets either way.
         artifact_governs_root = explicit_artifact is not None and (
             explicit_artifact.method_version
             != METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION
-            or bool(
-                root.lineage.get(
-                    "conditional_future_temperature_curve_json"
+            or (
+                bool(
+                    root.lineage.get(
+                        "conditional_future_temperature_curve_json"
+                    )
+                )
+                and (
+                    curve_point_times_utc is None
+                    or sum(
+                        1
+                        for point_time in curve_point_times_utc
+                        if point_time > decision
+                    )
+                    >= 2
                 )
             )
         )

@@ -5080,6 +5080,52 @@ def persist_native_ensemble_oos(
                 primary_key="selection_evidence_id",
                 row=selection_row,
             )
+            # Which rule divided this winner's weight (minimum variance, or
+            # the inverse-RMSE fallback when the shared train window was too
+            # short for a covariance).  The selection identity bytes cannot
+            # carry this -- touching them would unbind every active pointer
+            # -- and the artifact's combination_method keeps its legacy tag
+            # for hash compatibility, so until now the rule lived only in an
+            # in-memory receipt and no served scope could say which rule
+            # weighted it.  Append-only sidecar, keyed by the selection sha.
+            subset_receipt = candidate.get("subset_selection") or {}
+            seat_weight_rule = str(subset_receipt.get("weight_rule") or "")
+            if seat_weight_rule:
+                conn.execute(
+                    "CREATE TABLE IF NOT EXISTS "
+                    "calibration_seat_weight_rule_journal ("
+                    " selection_content_sha256 TEXT PRIMARY KEY"
+                    "  CHECK(length(selection_content_sha256)=64),"
+                    " station_id TEXT NOT NULL,"
+                    " season_bin TEXT NOT NULL,"
+                    " lead_bucket TEXT NOT NULL,"
+                    " run_cycle TEXT NOT NULL,"
+                    " weight_rule TEXT NOT NULL,"
+                    " evaluated_subset_count INTEGER NOT NULL,"
+                    " decided_at_utc TEXT NOT NULL"
+                    ")"
+                )
+                conn.execute(
+                    "INSERT OR IGNORE INTO "
+                    "calibration_seat_weight_rule_journal("
+                    "selection_content_sha256,station_id,season_bin,"
+                    "lead_bucket,run_cycle,weight_rule,"
+                    "evaluated_subset_count,decided_at_utc"
+                    ") VALUES(?,?,?,?,?,?,?,?)",
+                    (
+                        selection_sha,
+                        str(candidate["station_id"]),
+                        str(candidate["season_bin"]),
+                        str(candidate["lead_bucket"]),
+                        str(candidate_run_cycle),
+                        seat_weight_rule,
+                        int(
+                            subset_receipt.get("evaluated_subset_count")
+                            or 0
+                        ),
+                        activated_at_utc,
+                    ),
+                )
             cross_identity = {
                 "station_id": candidate["station_id"],
                 "season_bin": candidate["season_bin"],

@@ -208,6 +208,7 @@ from .taf_artifact_registry import (
 from .taf_revision import (
     TafRevisionArtifact,
     compile_taf_revision_proof,
+    taf_artifact_bridge_stale_reason,
     taf_scope_lead_bucket,
 )
 from .delta_v2_training import FACT_SCHEMA, delta_v2_decision_scope_key
@@ -9345,6 +9346,27 @@ class TargetProductionWorker:
                         == item.run_cycle
                     )
                 ]
+                # An artifact whose pinned live-P0 fingerprint no longer
+                # matches this root cannot lawfully correct it; that is the
+                # same situation as having no artifact and takes the same
+                # observation-only road.  Failing the scope instead held the
+                # entire probability chain at blocked on one stale pin (FACT
+                # 2026-08-20, sole P0-M blocker), and stale is the steady
+                # state: roots re-fingerprint on every OOS rotation while
+                # the TAF lane refits only when its evidence gate opens.
+                artifact_bridge_stale: str | None = None
+                if exact_artifacts:
+                    governing_artifacts = []
+                    for item in exact_artifacts:
+                        stale_reason = taf_artifact_bridge_stale_reason(
+                            root=root,
+                            artifact=item,
+                        )
+                        if stale_reason is None:
+                            governing_artifacts.append(item)
+                        else:
+                            artifact_bridge_stale = stale_reason
+                    exact_artifacts = governing_artifacts
                 if not exact_artifacts:
                     # Seat the stage on the forecast alone.  The likelihood is
                     # identity -- nothing calibrated exists to revise with, and
@@ -9508,6 +9530,10 @@ class TargetProductionWorker:
                         **(
                             {"observed_reason": observed_error}
                             if observed_error else {}
+                        ),
+                        **(
+                            {"artifact_bridge_stale": artifact_bridge_stale}
+                            if artifact_bridge_stale else {}
                         ),
                         "write_count": observed_count,
                         "writes": observed_writes,
