@@ -588,3 +588,57 @@ def test_a_leg_nobody_offers_is_unbuyable_not_expensive() -> None:
     assert "实价" in over and "没有一篮可买" in over
     # And the receiving row must admit the third case.
     assert "没人挂卖" in REFUSAL_LABELS["no_priced_window"][1]
+
+
+def test_seated_and_wholly_unfilled_are_disjoint_tallies() -> None:
+    """They come from different tables and must not read as nested.
+
+    ``seated_count`` counts paper_trade_position; ``nothing_filled_count``
+    counts paper_trade_refusal rows carrying resting_unfilled -- a basket
+    where no rung filled anywhere never becomes a position at all.  Printed
+    one under the other in the same card, P0-M read "建仓 19" above "全篮落空
+    20", which looks like 20 of 19.  It is 39 station-days: 19 seated, 20
+    wholly unfilled.
+
+    The fill-rate denominator is the seated side alone -- a day with nothing
+    filled has no fill price to average -- so the two tallies cannot be
+    folded together there either.
+    """
+
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+
+    import re
+
+    board = (root / "scripts" / "selection_market_dashboard.py").read_text(
+        encoding="utf-8"
+    )
+    # Different sources, and that is the whole point.  Read the SQL blocks
+    # themselves rather than guessing at character distances.
+    assert (
+        "SELECT COUNT(*), stage FROM paper_trade_position GROUP BY stage"
+        in board
+    ), "seated_count no longer counts positions"
+    assert "SELECT COUNT(*), stage FROM paper_trade_refusal" in board
+    assert "WHERE reason='resting_unfilled' GROUP BY stage" in board
+    queries = re.findall(r"conn\.execute\(\s*(.*?)\)\s*(?:\.fetchall\(\))?",
+                         board, re.S)
+    ladder_q = [q for q in queries if "intended_legs_json" in q]
+    # The share account is built off positions only: a wholly unfilled day
+    # has no fill price to average, so it cannot enter the denominator.
+    assert ladder_q and "paper_trade_position" in ladder_q[0]
+    assert "paper_trade_refusal" not in ladder_q[0]
+
+    page = (root / "scripts" / "calibration_dashboard.py").read_text(
+        encoding="utf-8"
+    )
+    # The card states the total the two make up, and marks the nesting.
+    assert "r.seated_count+r.nothing_filled_count" in page
+    assert "├ 建仓篮子" in page
+    assert "└ 全篮落空" in page
+    # And the note names the case that misread.
+    assert "并列的两堆，不是包含关系" in page

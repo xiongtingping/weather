@@ -2830,10 +2830,13 @@ function makerProbe(){
         （挂 100 买到 ${r.rung_completion_rate==null?"—":
           Math.round(r.rung_completion_rate*100)}）</div>
       <table style="margin-top:10px"><tbody>
-        <tr><td>建仓篮子</td><td class="mono">${r.seated_count}</td></tr>
-        <tr><td>缺腿建仓（有腿一档没成交，照样建）</td>
+        <tr><td><b>挂过单的站日</b>（下面两项之和）</td>
+            <td class="mono"><b>${r.seated_count+r.nothing_filled_count}</b></td></tr>
+        <tr><td>├ 建仓篮子（至少一腿成交）</td>
+            <td class="mono">${r.seated_count}</td></tr>
+        <tr><td>│&nbsp;&nbsp;└ 其中缺腿建仓（有腿没成交，照样建）</td>
             <td class="mono">${r.partial_basket_count}</td></tr>
-        <tr><td>全篮落空（一腿都没成交，放弃）</td>
+        <tr><td>└ 全篮落空（一腿都没成交，没建仓）</td>
             <td class="mono">${r.nothing_filled_count}</td></tr>
         <tr><td>空桶率（该腿一档都没买到）</td>
             <td class="mono">${pct(r.empty_leg_rate)}</td></tr>
@@ -2886,7 +2889,7 @@ function makerProbe(){
               sav==null?"—":((sav>=0?"+":"")+(sav*100).toFixed(1)+"%")}</td></tr>
         <tr><td>金额成交率（实付 ÷ 全成交应付）</td>
             <td class="mono">${pct(r.stake_fill_rate)}</td></tr>
-        <tr><td>全篮落空（一档都没成交）</td>
+        <tr><td>全篮落空（一档都没成交，没建仓，另计）</td>
             <td class="mono">${r.nothing_filled_count}</td></tr>
       </tbody></table>
     </div>`;
@@ -2908,6 +2911,14 @@ function makerProbe(){
     各自成交。一条腿只成交四档就是四档，一条腿一档没成交就是缺这条腿——
     篮子照样建，中奖概率按<b>实际买到的桶</b>重算，缺的桶不算数。
     只有一条腿都没成交才放弃。<br>
+    <b>「建仓篮子」和「全篮落空」是并列的两堆，不是包含关系：</b>
+    落空的站日一张单都没成交，压根没建仓，所以它不在建仓数里面——
+    两者相加才是这一阶段挂过单的站日总数。P0-M 上曾出现「建仓 19、
+    落空 20」并排，看着像 19 里有 20 个，其实是 39 个站日里 19 个建成、
+    20 个落空。<br>
+    <b>成交率的分母只含建了仓的那些：</b>落空的站日没有成交价可算，
+    计入会把「一张没成交」和「买到八成」压进同一个平均数。要看落空有多少，
+    读上面那一行。<br>
     <b>挂单价格是区间不是单点：</b>每条腿在<b>买价上一跳 ~ 卖价下一跳</b>
     之间均分挂 5 档。上界是硬的——挂到卖价就是吃单，等于把价差付出去。
     价差只有一跳时区间退化成买价一档。<br>
