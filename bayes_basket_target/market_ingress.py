@@ -836,7 +836,20 @@ def materialize_official_ws_evidence_cache(
         except ContractError as exc:
             skipped[key] = [str(exc)]
     if not rows:
-        raise ContractError("official_ws_evidence_complete_scope_missing")
+        # Every scope was skipped, and the per-scope reasons are the only
+        # thing that says why -- the success path has always reported them
+        # in ``skipped_scopes`` while this branch dropped them, leaving the
+        # top-level production blocker with no station, no scope and no
+        # remedy in it.  Bounded to a handful so one bad manifest cannot
+        # inflate the status payload.
+        detail = "; ".join(
+            f"{key}:{reasons[0]}"
+            for key, reasons in sorted(skipped.items())[:5]
+        )
+        raise ContractError(
+            "official_ws_evidence_complete_scope_missing"
+            + (f":{len(skipped)} skipped:{detail}" if skipped else ":no_registry_scope")
+        )
     for row in rows:
         encoded = json.dumps(row["buckets_json"], ensure_ascii=False, sort_keys=True).encode("utf-8")
         if len(encoded) > MAX_WS_EVIDENCE_CACHE_ROW_BYTES:
