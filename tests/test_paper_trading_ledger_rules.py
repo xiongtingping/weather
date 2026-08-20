@@ -384,3 +384,72 @@ def test_the_walk_reports_the_deepest_refusal_not_the_last_one() -> None:
     # while every cycle overwrote it.
     assert "cycles = refusal[2] + 1" not in source
     assert "refusal[1], cycles, refusal[3]," in source
+
+
+def test_the_seat_is_the_best_curve_on_the_shortlist_not_its_head() -> None:
+    """Production runs the objective on every shortlisted window.
+
+    ``_solve_over_support_windows`` seats the best curve.  The ledger took
+    ``priced_windows[0]`` instead, and that list is ranked by probability
+    mass -- while the incumbent is waved past the edge gate entirely.  The
+    mass-heaviest window is the incumbent, so it took the seat at whatever
+    price it carried and was then refused on Kelly.
+
+    Measured on 2026-08-20 over the 253 P0 station-days recorded as
+    no_positive_kelly: all 171 that had a priced basket had seated the
+    incumbent, and 22 of them had a positive-edge window further down the
+    same shortlist that was never considered.  ZBAA on 2026-08-01 seated
+    33-36C at 0.880 against a 0.610 claim while 32-34C sat on the same list
+    at 0.280 against 0.427.
+    """
+
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    from paper_trading_ledger import (  # noqa: PLC0415
+        _kelly_stake,
+        _log_wealth_score,
+    )
+
+    # The real ZBAA book, in the order the mass ranking produced it.
+    incumbent = {"win_probability": 0.610, "all_in_price": 0.880}
+    cheaper = {"win_probability": 0.427, "all_in_price": 0.280}
+
+    def score(row):
+        return _log_wealth_score(
+            win_probability=float(row["win_probability"]),
+            cost=float(row["all_in_price"]),
+        )
+
+    # The head of the list cannot be bet at all; the window below it can.
+    assert score(incumbent) == 0.0
+    assert score(cheaper) > 0.0
+    assert _kelly_stake(
+        win_probability=0.610, cost=0.880, equity=1000.0
+    ) == (0.0, 0.0)
+
+    # A basket dearer than its own maximum payout scores zero however
+    # confident the model is -- it is a loss by arithmetic, not a judgement.
+    assert _log_wealth_score(win_probability=0.707, cost=1.060) == 0.0
+    assert _log_wealth_score(win_probability=0.999, cost=1.001) == 0.0
+
+    # Zero edge is not worth a stake either, so it must not outrank one.
+    assert _log_wealth_score(win_probability=0.5, cost=0.5) == 0.0
+
+    # Among bettable windows the score has to be monotone in the edge, or
+    # ranking by it would not be ranking by growth.
+    assert (
+        _log_wealth_score(win_probability=0.8, cost=0.3)
+        > _log_wealth_score(win_probability=0.508, cost=0.320)
+        > _log_wealth_score(win_probability=0.427, cost=0.280)
+    )
+
+    source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    # The live lane ranks; a named strategy still yields its own candidate.
+    assert 'if WINDOW_STRATEGY != "live":\n                        seat = priced_windows[0]' in source
+    assert "seat = priced_windows[0]\n                    # Sized off" not in source
