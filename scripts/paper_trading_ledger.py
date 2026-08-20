@@ -174,7 +174,10 @@ REFUSAL_DEPTH = {
     "cost_exceeds_payout": 4,
     "no_depth": 5,
     "no_top_up_needed": 5,
+    # One layer: the order was posted and bought nothing.  Which of the two
+    # is reported turns on whether we cancelled it or the book never came.
     "resting_unfilled": 6,
+    "belief_withdrew_order": 6,
     "chain_never_opened": 7,
 }
 # Which bucket-selection rule this sweep runs.  ``live`` is production's own
@@ -498,6 +501,12 @@ REFUSAL_REASONS = (
     # A resting basket that never filled whole.  Distinct from "no depth":
     # the size was there, the price simply never came to us.
     "resting_unfilled",
+    # We cancelled it ourselves.  The belief gate re-reads our own
+    # probabilities at every re-pricing round and withdraws the whole order
+    # once its claimed expectation goes negative -- the market never got a
+    # say.  Folded into ``resting_unfilled`` it read as the market failing
+    # to reach us, which points at execution when the cause was evidence.
+    "belief_withdrew_order",
     "no_positive_kelly",
     # The basket asks more than the 1.00 it can ever pay.  Folded into
     # ``no_positive_kelly`` this read as "the objective looked and declined",
@@ -1598,16 +1607,70 @@ def _resting_deadline(
             )
         except Exception:
             cutoff = ""
-    bounds = [bound for bound in (day_end, cutoff) if bound]
-    if MAKER_RESTING_HORIZON_MINUTES > 0:
-        bounds.append(
-            (
-                placed + timedelta(minutes=MAKER_RESTING_HORIZON_MINUTES)
-            ).isoformat().replace("+00:00", "Z")
+    horizon = (
+        (placed + timedelta(minutes=MAKER_RESTING_HORIZON_MINUTES))
+        .isoformat().replace("+00:00", "Z")
+        if MAKER_RESTING_HORIZON_MINUTES > 0
+        else ""
+    )
+    named = [
+        (bound, name)
+        for bound, name in (
+            (cutoff, "达峰截止"),
+            (day_end, "当日结束"),
+            (horizon, "挂单时长"),
         )
-    if not bounds:
+        if bound
+    ]
+    if not named:
         return (placed + timedelta(days=1)).isoformat().replace("+00:00", "Z")
-    return min(bounds)
+    # Ties resolve toward the earliest name in the list above, which is the
+    # order the rules bind in: the peak cutoff is the real reason an order
+    # stops, and reporting "day end" when both land together would send a
+    # reader looking at the wrong rule.
+    return min(named, key=lambda item: item[0])[0]
+
+
+def _resting_deadline_reason(
+    *,
+    placed_at_utc: str,
+    settlement_timezone: str,
+    event_date: str,
+    cutoff_local_minutes: int | None = None,
+) -> str:
+    """Which bound actually stopped the order, in the page's words.
+
+    The refusal text used to read "挂到结算" whenever the configured horizon
+    was unset, which is only one of three bounds -- and never the binding
+    one while a peak cutoff exists.  Stations stop a little after their own
+    peak (median 19:20 local, earliest 16:53), so an order the page called
+    "rested until settlement" had in fact stopped mid-afternoon.
+    """
+
+    deadline = _resting_deadline(
+        placed_at_utc=placed_at_utc,
+        settlement_timezone=settlement_timezone,
+        event_date=event_date,
+        cutoff_local_minutes=cutoff_local_minutes,
+    )
+    if cutoff_local_minutes is not None:
+        try:
+            local = datetime.fromisoformat(
+                deadline.replace("Z", "+00:00")
+            ).astimezone(ZoneInfo(settlement_timezone))
+            if (
+                local.hour * 60 + local.minute
+                == int(cutoff_local_minutes) % (24 * 60)
+            ):
+                return "挂到达峰截止 %02d:%02d 本地" % (
+                    int(cutoff_local_minutes) // 60,
+                    int(cutoff_local_minutes) % 60,
+                )
+        except Exception:
+            pass
+    if MAKER_RESTING_HORIZON_MINUTES > 0:
+        return "%.0f 分钟" % MAKER_RESTING_HORIZON_MINUTES
+    return "挂到当日结束"
 
 
 # Where the peak-hour statistics read intraday temperatures from.  The
@@ -1775,12 +1838,14 @@ def _resting_ladder_fill(
     probabilities: Mapping[str, float] | None = None,
     cutoff_local_minutes: int | None = None,
     centre_bucket: str | None = None,
-) -> tuple[dict[str, list[float]], str | None]:
+) -> tuple[dict[str, list[float]], str | None, bool]:
     """Which rungs of each leg's ladder the book traded through.
 
     A leg counts as filled when any rung fills.  Returns the filled prices
     per bucket so the cost is the ladder's own average rather than an
-    assumed one.
+    assumed one, and whether the belief gate cancelled the order -- an
+    order we withdrew and one the market never came down to both end with
+    nothing bought, and they mean opposite things.
 
     What the order does while it waits, in the order the rules bind:
 
@@ -1996,7 +2061,7 @@ def _resting_ladder_fill(
     missing = next(
         (bucket for bucket, prices in filled.items() if not prices), None
     )
-    return filled, missing
+    return filled, missing, withdrawn
 
 
 def _progressive_entry(
@@ -3071,7 +3136,7 @@ def backfill(
                             if str(b) in by_row else []
                             for b in seat["buckets"]
                         ]
-                        got, missing = _resting_ladder_fill(
+                        got, missing, withdrawn = _resting_ladder_fill(
                             conn,
                             settlement_timezone=timezones.get(
                                 station_id, "UTC"
@@ -3091,14 +3156,35 @@ def backfill(
                             centre_bucket=seat_centre,
                         )
                         if not any(got.values()):
+                            # Withdrawing and never being reached both end
+                            # with nothing bought and used to read the same,
+                            # but they call for opposite actions: one is our
+                            # own evidence turning against the basket, the
+                            # other is the market never coming down to us.
+                            if withdrawn:
+                                refusal = _deeper_refusal(refusal, (
+                                    "belief_withdrew_order",
+                                    "挂 %d 腿 · 信念转负后全撤，一档未成交"
+                                    % len(seat["buckets"]),
+                                    cycles, payload["decision_at_utc"],
+                                ))
+                                continue
                             refusal = _deeper_refusal(refusal, (
                                 "resting_unfilled",
                                 "挂 %d 腿 · 全程一档未成交（%s）" % (
                                     len(seat["buckets"]),
-                                    "挂到结算"
-                                    if MAKER_RESTING_HORIZON_MINUTES <= 0
-                                    else "%.0f 分钟"
-                                    % MAKER_RESTING_HORIZON_MINUTES,
+                                    _resting_deadline_reason(
+                                        placed_at_utc=payload[
+                                            "decision_at_utc"
+                                        ],
+                                        settlement_timezone=timezones.get(
+                                            station_id, "UTC"
+                                        ),
+                                        event_date=event_date,
+                                        cutoff_local_minutes=(
+                                            peak_cutoffs.get(station_id)
+                                        ),
+                                    ),
                                 ),
                                 cycles, payload["decision_at_utc"],
                             ))

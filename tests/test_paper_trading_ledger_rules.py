@@ -624,7 +624,10 @@ def test_seated_and_wholly_unfilled_are_disjoint_tallies() -> None:
         in board
     ), "seated_count no longer counts positions"
     assert "SELECT COUNT(*), stage FROM paper_trade_refusal" in board
-    assert "WHERE reason='resting_unfilled' GROUP BY stage" in board
+    # Both posted-and-bought-nothing codes feed this tally.
+    assert (
+        "WHERE reason IN ('resting_unfilled','belief_withdrew_order')" in board
+    )
     queries = re.findall(r"conn\.execute\(\s*(.*?)\)\s*(?:\.fetchall\(\))?",
                          board, re.S)
     ladder_q = [q for q in queries if "intended_legs_json" in q]
@@ -642,3 +645,109 @@ def test_seated_and_wholly_unfilled_are_disjoint_tallies() -> None:
     assert "└ 全篮落空" in page
     # And the note names the case that misread.
     assert "并列的两堆，不是包含关系" in page
+
+
+def test_withdrawing_and_never_being_reached_are_told_apart() -> None:
+    """Both end with nothing bought and call for opposite actions.
+
+    The belief gate re-reads our own probabilities every re-pricing round
+    and cancels the whole order once its claimed expectation goes negative
+    -- the market never got a say.  Reported as resting_unfilled that reads
+    as the book failing to reach us, sending a reader to check execution
+    when the cause was evidence.  The gate is measured to cost 6-20 points
+    of fill for +2.3 points of ROI, so it is not a rare corner.
+    """
+
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    from paper_trading_ledger import (  # noqa: PLC0415
+        REFUSAL_DEPTH,
+        REFUSAL_REASONS,
+        _REFUSAL_DDL,
+    )
+
+    assert "belief_withdrew_order" in REFUSAL_REASONS
+    assert "'belief_withdrew_order'" in _REFUSAL_DDL
+    # Same rung: a posted order that bought nothing, either way.
+    assert (
+        REFUSAL_DEPTH["belief_withdrew_order"]
+        == REFUSAL_DEPTH["resting_unfilled"]
+    )
+
+    source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    # The flag has to come out of the walk, or the caller cannot tell.
+    assert "return filled, missing, withdrawn" in source
+    assert "got, missing, withdrawn = _resting_ladder_fill(" in source
+    # And be tested before the market-never-came branch.  Anchor inside the
+    # nothing-bought block: both codes also appear in REFUSAL_REASONS far
+    # above, which is not the ordering under test.
+    block = source[source.index("if not any(got.values()):"):]
+    assert block.index("if withdrawn:") < block.index('"resting_unfilled",')
+
+    from scripts.selection_market_dashboard import (  # noqa: PLC0415
+        REFUSAL_LABELS,
+    )
+
+    assert "belief_withdrew_order" in REFUSAL_LABELS
+    assert "自己撤" in REFUSAL_LABELS["belief_withdrew_order"][0]
+
+
+def test_the_order_deadline_names_the_bound_that_bound_it() -> None:
+    """"挂到结算" was wrong whenever a peak cutoff existed -- which is always.
+
+    The copy keyed off MAKER_RESTING_HORIZON_MINUTES alone, one of three
+    bounds and never the binding one while a station has a peak cutoff.
+    Stations stop a little after their own peak: median 19:20 local,
+    earliest 16:53.  So orders the page described as resting until
+    settlement had in fact stopped mid-afternoon.
+    """
+
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    from paper_trading_ledger import (  # noqa: PLC0415
+        _resting_deadline,
+        _resting_deadline_reason,
+    )
+
+    common = {
+        "placed_at_utc": "2026-08-19T22:00:00Z",
+        "settlement_timezone": "Asia/Shanghai",
+        "event_date": "2026-08-20",
+    }
+    # A station with a peak cutoff stops there, and says so with the hour.
+    assert _resting_deadline_reason(
+        cutoff_local_minutes=19 * 60, **common
+    ) == "挂到达峰截止 19:00 本地"
+    # The cutoff really is the earlier bound, not just the label.
+    with_cut = _resting_deadline(cutoff_local_minutes=19 * 60, **common)
+    without = _resting_deadline(cutoff_local_minutes=None, **common)
+    assert with_cut < without, (with_cut, without)
+    # No cutoff known: the day itself, and it must not claim settlement.
+    assert _resting_deadline_reason(
+        cutoff_local_minutes=None, **common
+    ) == "挂到当日结束"
+
+    source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    # The refusal text asks which bound bound it rather than hard-coding
+    # one.  ("挂到结算" survives as the rule label's fallback for a build
+    # with the cutoff disabled entirely, which is not this build.)
+    block = source[source.index("if not any(got.values()):"):]
+    # Two branches end in `continue`; the market-never-came one is second.
+    first = block.index("continue") + len("continue")
+    detail = block[:block.index("continue", first)]
+    assert "_resting_deadline_reason(" in detail
+    assert "挂到结算" not in detail

@@ -489,8 +489,12 @@ def _resting_entry_stats(conn: sqlite3.Connection) -> dict[str, Any]:
         stages.setdefault(str(stage), {})["seated_count"] = int(count)
     try:
         rows = conn.execute(
+            # Both codes mean a posted order that bought nothing, which is
+            # what this tally counts; the split between them is read from
+            # the refusal table in section 13.
             "SELECT COUNT(*), stage FROM paper_trade_refusal"
-            " WHERE reason='resting_unfilled' GROUP BY stage"
+            " WHERE reason IN ('resting_unfilled','belief_withdrew_order')"
+            " GROUP BY stage"
         ).fetchall()
     except sqlite3.OperationalError:
         rows = []
@@ -679,7 +683,15 @@ REFUSAL_LABELS = {
     ),
     "resting_unfilled": (
         "挂单一档都没成交",
-        "价格没等到。规模是够的，市场没走到我们这里来。",
+        "价格没等到。规模是够的，市场没走到我们这里来。单子不是挂到结算——"
+        "每 60 分钟按当时盘口重挂，但过了本站达峰时刻就收摊（中位 19:20 本地，"
+        "最早 16:53），detail 里写明这一单实际挂到几点。",
+    ),
+    "belief_withdrew_order": (
+        "信念转负，自己撤单",
+        "不是市场没来，是我们自己走的：每轮重挂会拿最新概率重算整篮期望，"
+        "转负就把还挂着的档全撤且不再挂。这是策略在保护自己，"
+        "该查的是模型为什么改主意，不是执行。",
     ),
     "no_positive_kelly": (
         "目标函数看过，不下注",

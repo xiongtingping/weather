@@ -88,7 +88,7 @@ def test_only_the_rungs_the_book_traded_through_are_filled() -> None:
         ("2026-08-17T02:00:00Z", "32C", 0.25),   # all three
         ("2026-08-17T01:00:00Z", "33C", 0.29),
     ))
-    got, missing = _resting_ladder_fill(
+    got, missing, _withdrew = _resting_ladder_fill(
         conn,
         station_id="ZUUU",
         event_date="2026-08-17",
@@ -108,7 +108,7 @@ def test_a_leg_with_no_rung_filled_is_reported_as_such() -> None:
         ("2026-08-17T01:00:00Z", "32C", 0.25),
         ("2026-08-17T01:00:00Z", "33C", 0.40),
     ))
-    got, missing = _resting_ladder_fill(
+    got, missing, _withdrew = _resting_ladder_fill(
         conn,
         station_id="ZUUU",
         event_date="2026-08-17",
@@ -128,7 +128,7 @@ def test_the_ladder_average_beats_the_dearest_rung_it_needed() -> None:
     """
 
     conn = _book((("2026-08-17T01:00:00Z", "32C", 0.25),))
-    got, _ = _resting_ladder_fill(
+    got, _, _withdrew = _resting_ladder_fill(
         conn,
         station_id="ZUUU",
         event_date="2026-08-17",
@@ -245,7 +245,7 @@ def test_a_bought_out_band_is_replenished_up_to_its_posted_depth(
     snap("2026-08-17T02:30:00Z", 0.26, 0.22)  # reprice: one rung still owed
     snap("2026-08-17T02:50:00Z", 0.22, 0.20)  # and it fills
 
-    got, missing = _resting_ladder_fill(
+    got, missing, _withdrew = _resting_ladder_fill(
         conn,
         station_id="ZUUU",
         event_date="2026-08-17",
@@ -329,7 +329,7 @@ def test_a_collapsed_belief_withdraws_the_rungs_above_its_value(
     believe("2026-08-17T00:45:00Z", {"32C": 0.12})
     snap("2026-08-17T01:30:00Z", {"32C": (0.30, 0.24)})  # reprice round
     snap("2026-08-17T02:00:00Z", {"32C": (0.20, 0.15)})  # slide begins
-    got, missing = _resting_ladder_fill(
+    got, missing, _withdrew = _resting_ladder_fill(
         conn,
         station_id="ZUUU",
         event_date="2026-08-17",
@@ -367,7 +367,7 @@ def test_a_negative_basket_expectation_withdraws_everything(
     # Both books later trade through the whole original band; a live order
     # would have filled everything.
     snap("2026-08-17T02:00:00Z", {"32C": (0.05, 0.03), "33C": (0.05, 0.03)})
-    got, missing = _resting_ladder_fill(
+    got, missing, _withdrew = _resting_ladder_fill(
         conn,
         station_id="ZUUU",
         event_date="2026-08-17",
@@ -386,7 +386,7 @@ def test_the_peak_cutoff_ends_the_order_before_settlement() -> None:
     conn, snap, believe = _bridge_book()
     snap("2026-08-17T10:00:00Z", {"32C": (0.40, 0.30)})   # inside window
     snap("2026-08-17T15:00:00Z", {"32C": (0.20, 0.10)})   # past cutoff
-    got, missing = _resting_ladder_fill(
+    got, missing, _withdrew = _resting_ladder_fill(
         conn,
         station_id="ZUUU",
         event_date="2026-08-17",
@@ -419,7 +419,7 @@ def test_value_headroom_escalates_without_waiting_for_the_clock(
     # One tick down fills the entire remainder in one stroke -- before the
     # next re-pricing round, which would move the band under the new ask.
     snap("2026-08-17T01:45:00Z", {"32C": (0.29, 0.20)})
-    got, missing = _resting_ladder_fill(
+    got, missing, _withdrew = _resting_ladder_fill(
         conn,
         station_id="ZUUU",
         event_date="2026-08-17",
