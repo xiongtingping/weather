@@ -306,6 +306,7 @@ def compile_station_p1_packets(
         Sequence[tuple[tuple[float, float], float]], str
     ] | None = None,
     center_width: tuple[float, float, str] | None = None,
+    station_width: tuple[Mapping[str, float], str] | None = None,
 ) -> list[dict[str, Any]]:
     """Compile every canonical P1 prefix; flag only running-high advances.
 
@@ -587,6 +588,7 @@ def compile_station_p1_packets(
             ),
             band_table=band_table,
             center_width=center_width,
+            station_width=station_width,
         )
         packets.append({
             "observation_id": observation_id,

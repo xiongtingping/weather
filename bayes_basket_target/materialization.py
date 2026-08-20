@@ -627,6 +627,7 @@ def _posterior(
         Sequence[tuple[tuple[float, float], float]], str
     ] | None = None,
     center_width: tuple[float, float, str] | None = None,
+    station_width: tuple[Mapping[str, float], str] | None = None,
 ) -> ProbabilityEnvelope:
     if predecessor.stage not in {"P0", "P0-M", "P1"}:
         raise ContractError("probability_predecessor_stage_invalid")
@@ -661,8 +662,24 @@ def _posterior(
     # so it has to see the final one.  Applying them the other way round
     # would band the pre-shift claim and then move it out from under the
     # band that was chosen for it.
-    if center_width is not None:
-        shift_c, width_lambda, center_width_sha = center_width
+    # The station's own width scale composes with the stage scalars; either
+    # may be present without the other, and identity for this station leaves
+    # the posterior byte-identical.
+    station_scale = 1.0
+    station_width_sha: str | None = None
+    if station_width is not None:
+        station_scale = float(
+            station_width[0].get(predecessor.station_id, 1.0)
+        )
+        station_width_sha = (
+            str(station_width[1]) if station_scale != 1.0 else None
+        )
+    if center_width is not None or station_scale != 1.0:
+        shift_c, width_lambda, center_width_sha = (
+            center_width
+            if center_width is not None
+            else (0.0, 1.0, "")
+        )
         centers = _bucket_centers_c(
             lineage, bucket_ordinals=predecessor.bucket_ordinals
         )
@@ -684,11 +701,14 @@ def _posterior(
                 probabilities,
                 delta_c=shift_c,
                 width_lambda=width_lambda,
+                station_width_scale=station_scale,
                 ordered_keys=ordered_keys,
                 key_centers_c=key_centers_c,
                 excluded_buckets=sorted(excluded),
             )
             center_receipt["center_width_sha256"] = str(center_width_sha)
+            if station_width_sha is not None:
+                center_receipt["station_width_sha256"] = station_width_sha
             lineage["center_width_json"] = json.dumps(
                 center_receipt, sort_keys=True
             )
@@ -754,6 +774,7 @@ def materialize_p0m_observed(
         Sequence[tuple[tuple[float, float], float]], str
     ] | None = None,
     center_width: tuple[float, float, str] | None = None,
+    station_width: tuple[Mapping[str, float], str] | None = None,
 ) -> ProbabilityEnvelope:
     """Seat P0-M on a TAF that arrived without a calibrated correction.
 
@@ -830,6 +851,7 @@ def materialize_p0m_observed(
         bridge_sha256=bridge_sha256,
         band_table=band_table,
         center_width=center_width,
+        station_width=station_width,
     )
 
 
@@ -849,6 +871,7 @@ def materialize_p0m(
         Sequence[tuple[tuple[float, float], float]], str
     ] | None = None,
     center_width: tuple[float, float, str] | None = None,
+    station_width: tuple[Mapping[str, float], str] | None = None,
 ) -> ProbabilityEnvelope:
     """Materialize TAF confirmation/correction as the P0-M checkpoint.
 
@@ -959,6 +982,7 @@ def materialize_p0m(
         bridge_sha256=bridge_sha256,
         band_table=band_table,
         center_width=center_width,
+        station_width=station_width,
     )
 
 
@@ -1009,6 +1033,7 @@ def materialize_p1(
         Sequence[tuple[tuple[float, float], float]], str
     ] | None = None,
     center_width: tuple[float, float, str] | None = None,
+    station_width: tuple[Mapping[str, float], str] | None = None,
 ) -> ProbabilityEnvelope:
     """Recompute P1 from one immutable P0/P0-M root and full METAR prefix.
 
@@ -1276,6 +1301,7 @@ def materialize_p1(
         bridge_sha256=bridge_sha256,
         band_table=band_table,
         center_width=center_width,
+        station_width=station_width,
     )
 
 

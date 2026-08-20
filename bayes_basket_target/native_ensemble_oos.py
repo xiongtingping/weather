@@ -22,7 +22,9 @@ from .band_reliability_store import load_band_table
 from .center_width_calibration import apply_center_width_calibration
 from .center_width_store import (
     CENTER_WIDTH_METHOD_TAG,
+    STATION_WIDTH_METHOD_TAG,
     load_center_width,
+    load_station_width,
 )
 from .contracts import ContractError, content_sha256
 from .station_registry import station_coordinates
@@ -3057,6 +3059,21 @@ def build_native_ensemble_oos(
     center_width_sha = (
         active_center_width[2] if active_center_width is not None else None
     )
+    # The per-station width scale, under the same contract as the stage
+    # scalars: whatever is active now is what this build's holdout scores,
+    # and its sha rides into every candidate.  This build is one station's,
+    # so only that station's scale matters here.
+    active_station_width = load_station_width(conn, stage="P0")
+    station_width_scale = (
+        float(active_station_width[0].get(station_id, 1.0))
+        if active_station_width is not None
+        else 1.0
+    )
+    station_width_sha = (
+        active_station_width[1]
+        if active_station_width is not None and station_width_scale != 1.0
+        else None
+    )
     if min_train_days < 2 or min_holdout_days < 1:
         raise ContractError("native_ensemble_oos_window_invalid")
     as_of = datetime.fromisoformat(as_of_utc.replace("Z", "+00:00"))
@@ -3638,11 +3655,18 @@ def build_native_ensemble_oos(
                 # scores them and the artifact records which version it
                 # scored.  ``None`` is the ordinary case until the layer has
                 # fitted something its own forward window admits.
-                if center_width is not None and skip != "center_width":
+                if skip != "center_width" and (
+                    center_width is not None or station_width_scale != 1.0
+                ):
                     shaped, _cw_receipt = apply_center_width_calibration(
                         shaped,
-                        delta_c=center_width[0],
-                        width_lambda=center_width[1],
+                        delta_c=(
+                            center_width[0] if center_width else 0.0
+                        ),
+                        width_lambda=(
+                            center_width[1] if center_width else 1.0
+                        ),
+                        station_width_scale=station_width_scale,
                         ordered_keys=grid,
                         key_centers_c=[
                             float(int(key)) for key in grid
@@ -3963,6 +3987,7 @@ def build_native_ensemble_oos(
             "run_cycle_by_system_sha256": cycle_mapping_sha,
             "band_table_sha256": band_table_sha,
             "center_width_sha256": center_width_sha,
+            "station_width_sha256": station_width_sha,
             "radiation_shift_sigma": scope_radiation_sigma,
             "p0_exact_match_ready": True,
             "p0_exact_match_blocker": None,
@@ -5119,6 +5144,16 @@ def persist_native_ensemble_oos(
                         + "::center_width_sha256="
                         + str(candidate["center_width_sha256"])
                         if candidate.get("center_width_sha256")
+                        else ""
+                    )
+                    # Absent while no station scale differs from one, so
+                    # artifacts built before the layer fitted anything stay
+                    # byte-identical and keep the math they were gated on.
+                    + (
+                        "::" + STATION_WIDTH_METHOD_TAG
+                        + "::station_width_sha256="
+                        + str(candidate["station_width_sha256"])
+                        if candidate.get("station_width_sha256")
                         else ""
                     )
                 ),

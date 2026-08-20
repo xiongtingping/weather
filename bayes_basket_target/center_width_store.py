@@ -112,11 +112,51 @@ _JOURNAL_INDEX = (
     "CREATE INDEX IF NOT EXISTS idx_center_width_journal_stage_time"
     " ON calibration_center_width_fit_journal(stage, fitted_at_utc)"
 )
+# The per-station width layer.  The stage lambda centres the fleet's width
+# error; measured 2026-08-19 over 522 settled station-days the per-station z
+# standard deviation still runs 0.26 to 1.21 around it, and a leave-one-day-
+# out replay of a per-station contraction gained 0.10 nats forward
+# (1.815 -> 1.718 at shrink n0=5, a clean single minimum).  One row per
+# station under a whole-table sha, so the P0 artifact can pin the exact set
+# its holdout was scored with, the same way it pins the stage scalars.
+_STATION_TABLE_DDL = (
+    "CREATE TABLE IF NOT EXISTS calibration_center_width_station ("
+    " station_width_sha256 TEXT NOT NULL"
+    "  CHECK(length(station_width_sha256)=64),"
+    " stage TEXT NOT NULL CHECK(stage IN ('P0','P0-M','P1')),"
+    " station_id TEXT NOT NULL,"
+    " width_scale REAL NOT NULL,"
+    " raw_z_sd REAL,"
+    " sample_n INTEGER NOT NULL,"
+    " fitted_at_utc TEXT NOT NULL,"
+    " activated INTEGER NOT NULL CHECK(activated IN (0,1)),"
+    " activated_at_utc TEXT,"
+    " PRIMARY KEY(station_width_sha256, station_id)"
+    ")"
+)
+_STATION_JOURNAL_DDL = (
+    "CREATE TABLE IF NOT EXISTS calibration_center_width_station_journal ("
+    " fit_id TEXT PRIMARY KEY,"
+    " stage TEXT NOT NULL CHECK(stage IN ('P0','P0-M','P1')),"
+    " fitted_at_utc TEXT NOT NULL,"
+    " station_width_sha256 TEXT NOT NULL"
+    "  CHECK(length(station_width_sha256)=64),"
+    " station_count INTEGER NOT NULL,"
+    " serving_day_count INTEGER NOT NULL,"
+    " serving_cell_count INTEGER NOT NULL,"
+    " forward_nll_gain REAL NOT NULL,"
+    " outcome TEXT NOT NULL CHECK(outcome IN"
+    "  ('ACTIVATED','UNCHANGED','ACCUMULATING','REFUSED_FORWARD','NOT_WIRED')),"
+    " evidence_json TEXT NOT NULL"
+    ")"
+)
 
 
 def ensure_center_width_schema(conn: sqlite3.Connection) -> None:
     conn.execute(_TABLE_DDL)
     conn.execute(_JOURNAL_DDL)
+    conn.execute(_STATION_TABLE_DDL)
+    conn.execute(_STATION_JOURNAL_DDL)
     # ``CREATE TABLE IF NOT EXISTS`` will not widen the CHECK constraint on a
     # journal that already exists, so a new outcome value fails at insert with
     # a constraint error rather than being recorded.  Rebuild in place when
@@ -223,6 +263,332 @@ def load_center_width(
             raise ContractError("center_width_pinned_table_missing")
         return None
     return float(row[0]), float(row[1]), str(row[2])
+
+
+STATION_WIDTH_METHOD_TAG = "station_width_scale_v1"
+# The shrinkage prior on the per-station z standard deviation, in
+# pseudo-samples of 1.0.  Swept leave-one-day-out over 522 station-days:
+# forward NLL has a clean single minimum at 5 (1.718, four falls to it and
+# three rises after), degrading below 3 where an eleven-sample raw z-sd
+# starts fitting its own noise.  The correction self-strengthens: at eleven
+# samples a station serves about two thirds of its measured contraction, at
+# thirty about six sevenths.
+STATION_WIDTH_SHRINK_N0 = 5.0
+STATION_WIDTH_MIN_SAMPLES = 3
+MIN_STATION_WIDTH_SCALE = 0.5
+MAX_STATION_WIDTH_SCALE = 1.5
+
+
+def station_width_sha256(
+    *, stage: str, scales: Mapping[str, float]
+) -> str:
+    return content_sha256({
+        "schema": "station_width_table_v1",
+        "stage": _check_stage(stage),
+        "scales": {
+            str(station): round(float(scale), 6)
+            for station, scale in sorted(scales.items())
+        },
+    })
+
+
+def pinned_station_width_sha(combination_method: str) -> str | None:
+    """The station-width version an artifact says its holdout was scored
+    against."""
+
+    for part in str(combination_method).split("::"):
+        if part.startswith("station_width_sha256="):
+            return part.split("=", 1)[1]
+    return None
+
+
+def load_station_width(
+    conn: sqlite3.Connection,
+    *,
+    stage: str,
+    table_sha256: str | None = None,
+) -> tuple[dict[str, float], str] | None:
+    """The stage's active per-station width scales, or a pinned version.
+
+    Same contract as ``load_center_width``: a pinned sha that is missing
+    fails closed, an unpinned read of a layer that has fitted nothing is the
+    ordinary None case, and nothing is created on the read path.
+    """
+
+    stage_id = _check_stage(stage)
+    try:
+        if table_sha256 is None:
+            rows = conn.execute(
+                "SELECT station_id, width_scale, station_width_sha256"
+                " FROM calibration_center_width_station"
+                " WHERE activated=1 AND stage=?",
+                (stage_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT station_id, width_scale, station_width_sha256"
+                " FROM calibration_center_width_station"
+                " WHERE station_width_sha256=?",
+                (str(table_sha256),),
+            ).fetchall()
+    except sqlite3.OperationalError:
+        if table_sha256 is not None:
+            raise ContractError(
+                "station_width_pinned_table_missing"
+            ) from None
+        return None
+    if not rows:
+        if table_sha256 is not None:
+            raise ContractError("station_width_pinned_table_missing")
+        return None
+    return (
+        {str(row[0]): float(row[1]) for row in rows},
+        str(rows[0][2]),
+    )
+
+
+def _station_cell_z(
+    cell: Mapping[str, Any], truth_c: float
+) -> float | None:
+    """The cell's standardised error against its own served distribution."""
+
+    probabilities = cell["probabilities"]
+    centers = dict(zip(cell["ordered_keys"], cell["key_centers_c"]))
+    mean = sum(
+        float(value) * centers[str(key)]
+        for key, value in probabilities.items()
+    )
+    variance = sum(
+        float(value) * (centers[str(key)] - mean) ** 2
+        for key, value in probabilities.items()
+    )
+    if variance <= 0.0025:  # sd <= 0.05C is a degenerate distribution
+        return None
+    return (float(truth_c) - mean) / math.sqrt(variance)
+
+
+def fit_station_width(
+    conn: sqlite3.Connection,
+    *,
+    stage: str,
+    min_decision_at_utc: str | None = None,
+) -> dict[str, Any]:
+    """Fit one stage's per-station width scales, gated on a forward window.
+
+    The cells are served envelopes, so a measured residual is *relative to
+    whatever was active while they were served*.  The candidate therefore
+    composes onto the incumbent rather than replacing it: once serving is
+    calibrated the residual fits to one, the composition is a fixed point,
+    and the gate refuses the no-op.  Replacement semantics would instead
+    fit the incumbent's own correction as a new residual and un-apply it.
+    """
+
+    stage_id = _check_stage(stage)
+    ensure_center_width_schema(conn)
+    truth = _truth(conn)
+    by_day = serving_cells_by_day(
+        conn, truth, stage=stage_id,
+        min_decision_at_utc=min_decision_at_utc,
+    )
+    days = sorted(by_day)
+    cells = [cell for day in days for cell in by_day[day]]
+    incumbent = load_station_width(conn, stage=stage_id)
+    incumbent_scales = {} if incumbent is None else dict(incumbent[0])
+    evidence: dict[str, Any] = {
+        "schema": "station_width_evidence_v1",
+        "stage": stage_id,
+        "serving_day_count": len(days),
+        "serving_cell_count": len(cells),
+        "shrink_n0": STATION_WIDTH_SHRINK_N0,
+        "incumbent_sha256": None if incumbent is None else incumbent[1],
+        "min_decision_at_utc": min_decision_at_utc,
+    }
+    accumulating = (
+        len(days) < MIN_QUALIFYING_DAYS or len(cells) < MIN_QUALIFYING_CELLS
+    )
+    if accumulating:
+        evidence["basis"] = "ACCUMULATING"
+        return {
+            "stage": stage_id,
+            "scales": incumbent_scales,
+            "station_count": len(incumbent_scales),
+            "forward_nll_gain": 0.0,
+            "accumulating": True,
+            "serving_day_count": len(days),
+            "serving_cell_count": len(cells),
+            "evidence": evidence,
+        }
+    cut = max(1, int(len(days) * (1.0 - FORWARD_WINDOW_FRACTION)))
+    train_days, forward_days = days[:cut], days[cut:] or days[-1:]
+    z_by_station: dict[str, list[float]] = {}
+    for day in train_days:
+        for cell in by_day[day]:
+            actual = truth.get((cell["station_id"], cell["event_date"]))
+            if actual is None:
+                continue
+            z = _station_cell_z(cell, actual)
+            if z is not None:
+                z_by_station.setdefault(cell["station_id"], []).append(z)
+    residual: dict[str, float] = {}
+    raw_by_station: dict[str, Any] = {}
+    for station, zs in z_by_station.items():
+        if len(zs) < STATION_WIDTH_MIN_SAMPLES:
+            continue
+        mean = sum(zs) / len(zs)
+        raw = math.sqrt(sum((z - mean) ** 2 for z in zs) / len(zs))
+        shrunk = (len(zs) * raw + STATION_WIDTH_SHRINK_N0) / (
+            len(zs) + STATION_WIDTH_SHRINK_N0
+        )
+        residual[station] = min(
+            MAX_STATION_WIDTH_SCALE,
+            max(MIN_STATION_WIDTH_SCALE, shrunk),
+        )
+        raw_by_station[station] = {"raw_z_sd": raw, "sample_n": len(zs)}
+    forward = [cell for day in forward_days for cell in by_day[day]]
+
+    def _forward_nll(scales: Mapping[str, float]) -> float:
+        if not forward:
+            return 0.0
+        total = 0.0
+        for cell in forward:
+            scale = float(scales.get(cell["station_id"], 1.0))
+            if scale == 1.0:
+                total += _cell_nll(cell, delta_c=0.0, width_lambda=1.0)
+                continue
+            adjusted, _ = apply_center_width_calibration(
+                cell["probabilities"],
+                delta_c=0.0,
+                width_lambda=1.0,
+                ordered_keys=cell["ordered_keys"],
+                key_centers_c=cell["key_centers_c"],
+                excluded_buckets=cell["excluded_buckets"],
+                station_width_scale=scale,
+            )
+            value = float(adjusted.get(cell["settled_bucket"], 0.0))
+            total += -math.log(max(value, 1e-9))
+        return total / len(forward)
+
+    forward_base = _forward_nll({})
+    forward_candidate = _forward_nll(residual)
+    gain = forward_base - forward_candidate
+    composed = {
+        station: min(
+            MAX_STATION_WIDTH_SCALE,
+            max(
+                MIN_STATION_WIDTH_SCALE,
+                incumbent_scales.get(station, 1.0) * scale,
+            ),
+        )
+        for station, scale in residual.items()
+    }
+    # Stations the incumbent corrects but this window could not measure keep
+    # their correction: absence of evidence is not evidence of identity.
+    for station, scale in incumbent_scales.items():
+        composed.setdefault(station, scale)
+    evidence.update({
+        "basis": "FORWARD_WINDOW",
+        "train_day_count": len(train_days),
+        "forward_day_count": len(forward_days),
+        "forward_cell_count": len(forward),
+        "forward_nll_identity": forward_base,
+        "forward_nll_residual": forward_candidate,
+        "forward_nll_gain": gain,
+        "min_forward_nll_gain": MIN_FORWARD_NLL_GAIN,
+        "residual_station_count": len(residual),
+        "per_station": raw_by_station,
+    })
+    admitted = gain > MIN_FORWARD_NLL_GAIN
+    return {
+        "stage": stage_id,
+        "scales": composed if admitted else incumbent_scales,
+        "candidate_scales": composed,
+        "residual_scales": residual,
+        "station_count": len(composed if admitted else incumbent_scales),
+        "forward_nll_gain": gain,
+        "admitted": admitted,
+        "accumulating": False,
+        "serving_day_count": len(days),
+        "serving_cell_count": len(cells),
+        "evidence": evidence,
+    }
+
+
+def persist_and_activate_station_width(
+    conn: sqlite3.Connection,
+    *,
+    stage: str,
+    scales: Mapping[str, float],
+    per_station: Mapping[str, Mapping[str, Any]],
+    fitted_at_utc: str | None = None,
+) -> dict[str, Any]:
+    stage_id = _check_stage(stage)
+    ensure_center_width_schema(conn)
+    digest = station_width_sha256(stage=stage_id, scales=scales)
+    active = load_station_width(conn, stage=stage_id)
+    if active is not None and active[1] == digest:
+        return {"state": "UNCHANGED", "station_width_sha256": digest}
+    now = fitted_at_utc or datetime.now(timezone.utc).isoformat().replace(
+        "+00:00", "Z"
+    )
+    conn.execute(
+        "UPDATE calibration_center_width_station SET activated=0"
+        " WHERE stage=? AND activated=1",
+        (stage_id,),
+    )
+    for station, scale in sorted(scales.items()):
+        detail = per_station.get(station, {})
+        conn.execute(
+            "INSERT OR REPLACE INTO calibration_center_width_station ("
+            " station_width_sha256, stage, station_id, width_scale,"
+            " raw_z_sd, sample_n, fitted_at_utc, activated, activated_at_utc"
+            ") VALUES (?,?,?,?,?,?,?,1,?)",
+            (
+                digest, stage_id, str(station), float(scale),
+                detail.get("raw_z_sd"), int(detail.get("sample_n") or 0),
+                now, now,
+            ),
+        )
+    conn.commit()
+    return {"state": "ACTIVATED", "station_width_sha256": digest}
+
+
+def journal_station_width_fit(
+    conn: sqlite3.Connection,
+    *,
+    stage: str,
+    fitted: Mapping[str, Any],
+    outcome: str,
+) -> str:
+    stage_id = _check_stage(stage)
+    ensure_center_width_schema(conn)
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    digest = station_width_sha256(
+        stage=stage_id, scales=fitted["scales"]
+    )
+    fit_id = "swfit-" + content_sha256({
+        "stage": stage_id,
+        "fitted_at_utc": now,
+        "station_width_sha256": digest,
+    })[:24]
+    conn.execute(
+        "INSERT OR REPLACE INTO calibration_center_width_station_journal ("
+        " fit_id, stage, fitted_at_utc, station_width_sha256,"
+        " station_count, serving_day_count, serving_cell_count,"
+        " forward_nll_gain, outcome, evidence_json"
+        ") VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (
+            fit_id, stage_id, now, digest,
+            int(fitted["station_count"]),
+            int(fitted["serving_day_count"]),
+            int(fitted["serving_cell_count"]),
+            float(fitted["forward_nll_gain"]), str(outcome),
+            json.dumps(
+                dict(fitted["evidence"]), ensure_ascii=False, sort_keys=True
+            ),
+        ),
+    )
+    conn.commit()
+    return fit_id
 
 
 def _truth(conn: sqlite3.Connection) -> dict[tuple[str, str], float]:
@@ -644,5 +1010,46 @@ def refit_all_center_width(
             entry["fit_id"] = journal_center_width_fit(
                 conn, stage=stage, fitted=fitted, outcome=outcome
             )
+        # The per-station width scales ride the same entry point, the same
+        # evidence anchor and the same admission discipline as the stage
+        # scalars they compose with.
+        station_fitted = fit_station_width(
+            conn, stage=stage,
+            min_decision_at_utc=min_decision_at_utc,
+        )
+        station_active = load_station_width(conn, stage=stage)
+        station_entry: dict[str, Any] = {
+            "station_count": station_fitted["station_count"],
+            "forward_nll_gain": station_fitted["forward_nll_gain"],
+            "accumulating": station_fitted["accumulating"],
+            "admitted": station_fitted.get("admitted", False),
+            "active_sha256": (
+                None if station_active is None else station_active[1]
+            ),
+        }
+        if commit:
+            if stage not in CENTER_WIDTH_SERVED_STAGES:
+                station_outcome = "NOT_WIRED"
+            elif station_fitted["accumulating"]:
+                station_outcome = "ACCUMULATING"
+            elif not station_fitted.get("admitted", False):
+                station_outcome = "REFUSED_FORWARD"
+            else:
+                station_committed = persist_and_activate_station_width(
+                    conn,
+                    stage=stage,
+                    scales=station_fitted["scales"],
+                    per_station=(
+                        station_fitted["evidence"].get("per_station") or {}
+                    ),
+                )
+                station_entry["commit"] = station_committed
+                station_outcome = str(station_committed["state"])
+            station_entry["outcome"] = station_outcome
+            station_entry["fit_id"] = journal_station_width_fit(
+                conn, stage=stage, fitted=station_fitted,
+                outcome=station_outcome,
+            )
+        entry["station_width"] = station_entry
         results[stage] = entry
     return results

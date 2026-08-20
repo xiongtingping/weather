@@ -270,7 +270,11 @@ def test_serving_layer_is_wired_ahead_of_the_band_table() -> None:
         / "bayes_basket_target"
         / "materialization.py"
     ).read_text(encoding="utf-8")
-    centre_at = source.index("if center_width is not None:")
+    # The condition widened when the per-station width scale joined the
+    # layer: either piece may be present without the other.
+    centre_at = source.index(
+        "if center_width is not None or station_scale != 1.0:"
+    )
     band_at = source.index("if band_table is not None:", centre_at)
     assert centre_at < band_at
     # And the hard bound is handed to it, not left for the caller to forget.

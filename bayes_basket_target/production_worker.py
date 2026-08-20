@@ -45,7 +45,7 @@ from .atomic_ledger import (
     writer_lock_profile,
 )
 from .band_reliability_store import load_band_table
-from .center_width_store import load_center_width
+from .center_width_store import load_center_width, load_station_width
 from .contracts import (
     ContractError,
     ProbabilityEnvelope,
@@ -8736,6 +8736,9 @@ class TargetProductionWorker:
                     center_width=load_center_width(
                         self.commit_conn, stage="P1"
                     ),
+                    station_width=load_station_width(
+                        self.commit_conn, stage="P1"
+                    ),
                     observations=observations,
                     registry_rows=registry_rows,
                     compilation_at_utc=as_of_utc,
@@ -9405,6 +9408,9 @@ class TargetProductionWorker:
                                 center_width=load_center_width(
                                     self.commit_conn, stage="P0-M"
                                 ),
+                                station_width=load_station_width(
+                                    self.commit_conn, stage="P0-M"
+                                ),
                             )
                         except Exception as exc:  # noqa: BLE001
                             # This path is additive: it seats a stage that had
@@ -9698,6 +9704,9 @@ class TargetProductionWorker:
                             self.commit_conn, stage="P0-M"
                         ),
                         center_width=load_center_width(
+                            self.commit_conn, stage="P0-M"
+                        ),
+                        station_width=load_station_width(
                             self.commit_conn, stage="P0-M"
                         ),
                     )

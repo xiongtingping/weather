@@ -22,8 +22,11 @@ from .band_reliability_store import (
 from .center_width_calibration import apply_center_width_calibration
 from .center_width_store import (
     CENTER_WIDTH_METHOD_TAG,
+    STATION_WIDTH_METHOD_TAG,
     load_center_width,
+    load_station_width,
     pinned_center_width_sha,
+    pinned_station_width_sha,
 )
 from .cross_consensus import (
     BAND_RELIABILITY_METHOD_TAG,
@@ -2507,6 +2510,8 @@ def compile_native_ensemble_p0(
     # pinned-but-missing version fails closed inside the loader rather than
     # serving an approximation of it.
     center_width_receipt = None
+    scalars = None
+    pinned_center_width = None
     if CENTER_WIDTH_METHOD_TAG in artifact_combination_method:
         pinned_center_width = pinned_center_width_sha(
             artifact_combination_method
@@ -2515,21 +2520,44 @@ def compile_native_ensemble_p0(
             scalars = load_center_width(
                 conn, stage="P0", table_sha256=pinned_center_width
             )
-            if scalars is not None:
-                probability, center_width_receipt = (
-                    apply_center_width_calibration(
-                        probability,
-                        delta_c=scalars[0],
-                        width_lambda=scalars[1],
-                        ordered_keys=ordered,
-                        key_centers_c=_bucket_centers(
-                            intervals_raw, ordered
-                        ),
-                    )
+    # The per-station width scale, exactly the version the artifact's
+    # holdout was scored with.  Same fail-closed contract: the loader raises
+    # on a pinned-but-missing table rather than serving an approximation.
+    station_scale = 1.0
+    pinned_station_width = None
+    if STATION_WIDTH_METHOD_TAG in artifact_combination_method:
+        pinned_station_width = pinned_station_width_sha(
+            artifact_combination_method
+        )
+        if pinned_station_width is not None:
+            station_table = load_station_width(
+                conn, stage="P0", table_sha256=pinned_station_width
+            )
+            if station_table is not None:
+                station_scale = float(
+                    station_table[0].get(station_id, 1.0)
                 )
-                center_width_receipt["center_width_sha256"] = (
-                    pinned_center_width
-                )
+    if scalars is not None or station_scale != 1.0:
+        probability, center_width_receipt = (
+            apply_center_width_calibration(
+                probability,
+                delta_c=scalars[0] if scalars else 0.0,
+                width_lambda=scalars[1] if scalars else 1.0,
+                station_width_scale=station_scale,
+                ordered_keys=ordered,
+                key_centers_c=_bucket_centers(
+                    intervals_raw, ordered
+                ),
+            )
+        )
+        if pinned_center_width is not None:
+            center_width_receipt["center_width_sha256"] = (
+                pinned_center_width
+            )
+        if pinned_station_width is not None:
+            center_width_receipt["station_width_sha256"] = (
+                pinned_station_width
+            )
     model_envelope_lower_bucket = _bucket_for_value(
         envelope_lower_c,
         intervals_raw,

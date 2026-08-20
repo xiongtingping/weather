@@ -43,6 +43,17 @@ CENTER_WIDTH_METHOD_TAG = "center_width_shift_scale_v1"
 MAX_ABS_SHIFT_C = 1.5
 MIN_WIDTH_LAMBDA = 0.5
 MAX_WIDTH_LAMBDA = 1.5
+# The per-station width scale composes with the stage lambda -- two scalings
+# about the same mean multiply -- and carries its own entitlement bounds.
+# Measured 2026-08-19 over 522 settled station-days on served envelopes, the
+# per-station z standard deviation runs 0.26 (LTAC) to 1.21 (LIMC) around a
+# 0.744 pool: the stage lambda can centre that dispersion but cannot flatten
+# it, which is the same shape that moved the spread factor from a global
+# constant to a per-scope fit.  Each factor is validated separately so each
+# layer stays inside its own bounds; their product may legitimately reach
+# 0.25, which no single layer would be entitled to claim alone.
+MIN_STATION_WIDTH_SCALE = 0.5
+MAX_STATION_WIDTH_SCALE = 1.5
 
 
 def _axis(
@@ -67,6 +78,7 @@ def apply_center_width_calibration(
     ordered_keys: Sequence[str],
     key_centers_c: Sequence[float],
     excluded_buckets: Sequence[str] = (),
+    station_width_scale: float = 1.0,
 ) -> tuple[dict[str, float], dict[str, Any]]:
     """Shift by ``delta_c`` and scale about the mean by ``width_lambda``.
 
@@ -99,12 +111,20 @@ def apply_center_width_calibration(
         raise ValueError("center_width_bucket_mismatch")
     shift = float(delta_c)
     lam = float(width_lambda)
+    scale = float(station_width_scale)
     if not math.isfinite(shift) or abs(shift) > MAX_ABS_SHIFT_C:
         raise ValueError("center_width_shift_out_of_range")
     if not math.isfinite(lam) or not (
         MIN_WIDTH_LAMBDA <= lam <= MAX_WIDTH_LAMBDA
     ):
         raise ValueError("center_width_lambda_out_of_range")
+    if not math.isfinite(scale) or not (
+        MIN_STATION_WIDTH_SCALE <= scale <= MAX_STATION_WIDTH_SCALE
+    ):
+        raise ValueError("center_width_station_scale_out_of_range")
+    # Composed after each factor passed its own bounds: the product is what a
+    # point's deviation from the mean is multiplied by.
+    lam = lam * scale
 
     index = {key: position for position, key in enumerate(keys)}
     total_in = sum(float(value) for value in probability.values())
@@ -167,6 +187,7 @@ def apply_center_width_calibration(
             if shift == 0.0 and lam == 1.0
             else "APPLIED"
         ),
+        "station_width_scale": scale,
         "delta_c": shift,
         "width_lambda": lam,
         "distribution_mean_c": mean_c,

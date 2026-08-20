@@ -47,7 +47,7 @@ from .awc_observation_contract import (
     CanonicalAWCObservationRevisionFact,
 )
 from .band_reliability_store import load_band_table
-from .center_width_store import load_center_width
+from .center_width_store import load_center_width, load_station_width
 from .contracts import ContractError, ProbabilityEnvelope, content_sha256
 from .materialization import insert_probability_envelope, materialize_p1
 from .market_bucket_bridge import (
@@ -346,6 +346,7 @@ def materialize_p1_from_canonical_observation(
         # None until its own forward window admits one, which leaves the
         # posterior byte-identical.
         center_width=load_center_width(conn, stage="P1"),
+        station_width=load_station_width(conn, stage="P1"),
         prediction_root=prediction_root,
         trajectory_artifact=trajectory_artifact,
         trajectory_proof=trajectory_proof,

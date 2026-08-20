@@ -1,0 +1,248 @@
+"""The per-station width layer: fit, gate, composition and pinning.
+
+The stage lambda centres the fleet's width error; measured 2026-08-19 over
+522 settled station-days the per-station z standard deviation still ran 0.26
+(LTAC) to 1.21 (LIMC) around a 0.744 pool -- a dispersion a single scalar can
+centre but not flatten.  A leave-one-day-out replay of a per-station
+contraction gained 0.10 nats forward with a clean single minimum at shrink
+n0=5, which is what earned the layer; these tests pin the arithmetic that
+replay measured.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+import sqlite3
+
+import pytest
+
+from bayes_basket_target.center_width_calibration import (
+    apply_center_width_calibration,
+)
+from bayes_basket_target.center_width_store import (
+    MIN_QUALIFYING_CELLS,
+    MIN_QUALIFYING_DAYS,
+    STATION_WIDTH_METHOD_TAG,
+    STATION_WIDTH_SHRINK_N0,
+    ensure_center_width_schema,
+    fit_station_width,
+    load_station_width,
+    persist_and_activate_station_width,
+    pinned_station_width_sha,
+    station_width_sha256,
+)
+from bayes_basket_target.contracts import ContractError
+
+KEYS = ["23°C or below", "24°C", "25°C", "26°C", "27°C", "28°C or higher"]
+CENTERS = [22.5, 24.0, 25.0, 26.0, 27.0, 28.5]
+
+
+def test_station_scale_composes_with_the_stage_lambda() -> None:
+    """Two scalings about the same mean multiply, and each keeps its bounds.
+
+    The composed product may reach 0.25, which neither layer may claim
+    alone -- that is why the scale is a separate argument with its own
+    validation rather than being folded into ``width_lambda`` by the caller,
+    where the lambda bounds would spuriously reject it.
+    """
+
+    probability = {k: p for k, p in zip(KEYS, [0.05, 0.15, 0.3, 0.3, 0.15, 0.05])}
+
+    def sd(dist: dict[str, float]) -> float:
+        mean = sum(v * c for v, c in zip(dist.values(), CENTERS))
+        return math.sqrt(sum(
+            v * (c - mean) ** 2 for v, c in zip(dist.values(), CENTERS)
+        ))
+
+    composed, receipt = apply_center_width_calibration(
+        probability, delta_c=0.0, width_lambda=0.8,
+        station_width_scale=0.7, ordered_keys=KEYS, key_centers_c=CENTERS,
+    )
+    product, _ = apply_center_width_calibration(
+        probability, delta_c=0.0, width_lambda=0.56,
+        ordered_keys=KEYS, key_centers_c=CENTERS,
+    )
+    assert composed == product
+    assert receipt["station_width_scale"] == 0.7
+    assert sd(composed) < sd(probability)
+    # Each factor is validated on its own range.
+    with pytest.raises(ValueError):
+        apply_center_width_calibration(
+            probability, delta_c=0.0, width_lambda=1.0,
+            station_width_scale=0.4, ordered_keys=KEYS,
+            key_centers_c=CENTERS,
+        )
+    # Identity scale changes nothing, byte for byte.
+    same, _ = apply_center_width_calibration(
+        probability, delta_c=0.0, width_lambda=0.8,
+        station_width_scale=1.0, ordered_keys=KEYS, key_centers_c=CENTERS,
+    )
+    lone, _ = apply_center_width_calibration(
+        probability, delta_c=0.0, width_lambda=0.8,
+        ordered_keys=KEYS, key_centers_c=CENTERS,
+    )
+    assert same == lone
+
+
+def test_pin_parser_round_trips() -> None:
+    sha = station_width_sha256(stage="P0", scales={"ZUUU": 0.8})
+    method = (
+        "train_rmse_inverse_family_capped_v1::band_reliability_v1"
+        f"::{STATION_WIDTH_METHOD_TAG}::station_width_sha256={sha}"
+    )
+    assert pinned_station_width_sha(method) == sha
+    assert pinned_station_width_sha("no_tag_here") is None
+
+
+def test_pinned_but_missing_table_fails_closed() -> None:
+    conn = sqlite3.connect(":memory:")
+    ensure_center_width_schema(conn)
+    with pytest.raises(ContractError):
+        load_station_width(conn, stage="P0", table_sha256="0" * 64)
+    # The unpinned read of an unfitted layer is the ordinary None case.
+    assert load_station_width(conn, stage="P0") is None
+
+
+def _seed_history(
+    conn: sqlite3.Connection,
+    *,
+    stations: dict[str, float],
+    day_count: int,
+) -> None:
+    """Serve ``day_count`` days of N(centre, 2) distributions per station and
+    settle each day's truth at centre + noise*2*z_sd -- a station whose
+    ``z_sd`` is below one is served too wide."""
+
+    conn.executescript(
+        "CREATE TABLE basket_probability_bridge_history ("
+        " station_id TEXT, event_date TEXT, decision_at_utc TEXT,"
+        " envelope_json TEXT, settlement_timezone TEXT, stage TEXT);"
+        "CREATE TABLE calibration_station_daily_high_truth ("
+        " station_id TEXT, local_date TEXT, official_tmax_c REAL,"
+        " revision_no INTEGER, qc_status TEXT);"
+    )
+    centre = 27.0
+    sd = 2.0
+    intervals = {
+        "23°C or below": [None, 23.5],
+        **{f"{v}°C": [v - 0.5, v + 0.5] for v in range(24, 31)},
+        "31°C or higher": [30.5, None],
+    }
+    keys = list(intervals)
+    ordinals = {k: i for i, k in enumerate(keys)}
+
+    def cdf(x: float) -> float:
+        return 0.5 * (1 + math.erf((x - centre) / (sd * math.sqrt(2))))
+
+    probabilities = {}
+    for key, (lo, hi) in intervals.items():
+        a = cdf(lo) if lo is not None else 0.0
+        b = cdf(hi) if hi is not None else 1.0
+        probabilities[key] = b - a
+    total = sum(probabilities.values())
+    probabilities = {k: v / total for k, v in probabilities.items()}
+    noise = [0.9, -1.1, 0.4, -0.5, 1.2, -0.8, 0.2, -1.3, 0.7, -0.3,
+             1.0, -0.6, 0.5, -1.0, 0.8, -0.2]
+    for day_index in range(day_count):
+        day = f"2026-07-{day_index + 1:02d}"
+        for station, z_sd in stations.items():
+            envelope = {
+                "probabilities": probabilities,
+                "bucket_ordinals": ordinals,
+                "lineage": {
+                    "bucket_intervals_c_json": json.dumps(intervals),
+                    "hard_excluded_buckets": "NONE",
+                },
+            }
+            conn.execute(
+                "INSERT INTO basket_probability_bridge_history"
+                " VALUES (?,?,?,?,?,?)",
+                (
+                    station, day, f"{day}T06:00:00Z",
+                    json.dumps(envelope), "UTC", "P0",
+                ),
+            )
+            truth = centre + noise[day_index % len(noise)] * sd * z_sd
+            conn.execute(
+                "INSERT INTO calibration_station_daily_high_truth"
+                " VALUES (?,?,?,1,'ACCEPTED')",
+                (station, day, truth),
+            )
+    conn.commit()
+
+
+def test_fit_measures_shrinks_and_gates() -> None:
+    """A station served twice too wide fits a contraction near its measured
+    z-sd shrunk toward one; a calibrated station stays near identity; and
+    the whole table is admitted only on forward NLL gain."""
+
+    conn = sqlite3.connect(":memory:")
+    ensure_center_width_schema(conn)
+    # Enough stations that the cell floor (one sampled decision per
+    # station-day) clears MIN_QUALIFYING_CELLS on sixteen days.
+    stations = {f"AAA{i}": 0.5 for i in range(4)}
+    stations |= {f"BBB{i}": 1.0 for i in range(4)}
+    _seed_history(conn, stations=stations, day_count=16)
+    fitted = fit_station_width(conn, stage="P0")
+    assert not fitted["accumulating"]
+    assert fitted["admitted"], fitted["evidence"]
+    scales = fitted["scales"]
+    n = fitted["evidence"]["per_station"]["AAA0"]["sample_n"]
+    raw = fitted["evidence"]["per_station"]["AAA0"]["raw_z_sd"]
+    expected = (n * raw + STATION_WIDTH_SHRINK_N0) / (
+        n + STATION_WIDTH_SHRINK_N0
+    )
+    assert scales["AAA0"] == pytest.approx(expected)
+    assert scales["AAA0"] < 0.85
+    assert scales["BBB0"] == pytest.approx(1.0, abs=0.15)
+
+    committed = persist_and_activate_station_width(
+        conn, stage="P0", scales=scales,
+        per_station=fitted["evidence"]["per_station"],
+    )
+    assert committed["state"] == "ACTIVATED"
+    active = load_station_width(conn, stage="P0")
+    assert active is not None
+    assert active[0]["AAA0"] == pytest.approx(scales["AAA0"])
+    assert active[1] == station_width_sha256(stage="P0", scales=scales)
+    # Re-activating the same table is UNCHANGED, not a new version.
+    again = persist_and_activate_station_width(
+        conn, stage="P0", scales=scales,
+        per_station=fitted["evidence"]["per_station"],
+    )
+    assert again["state"] == "UNCHANGED"
+
+
+def test_fit_composes_onto_the_incumbent_rather_than_replacing_it() -> None:
+    """Cells are served envelopes, so a measured residual is relative to the
+    incumbent.  Replacement semantics would fit the incumbent's own
+    correction as a fresh residual and un-apply it; composition makes a
+    calibrated serving a fixed point."""
+
+    conn = sqlite3.connect(":memory:")
+    ensure_center_width_schema(conn)
+    _seed_history(
+        conn, stations={f"AAA{i}": 1.0 for i in range(8)}, day_count=16
+    )
+    persist_and_activate_station_width(
+        conn, stage="P0", scales={"AAA0": 0.7},
+        per_station={"AAA0": {"raw_z_sd": 0.7, "sample_n": 11}},
+    )
+    fitted = fit_station_width(conn, stage="P0")
+    # The residual on a calibrated serving is ~1, so the candidate composes
+    # to ~the incumbent -- not to ~identity.
+    assert fitted["candidate_scales"]["AAA0"] == pytest.approx(0.7, abs=0.12)
+
+
+def test_too_little_evidence_accumulates_instead_of_fitting() -> None:
+    conn = sqlite3.connect(":memory:")
+    ensure_center_width_schema(conn)
+    _seed_history(
+        conn, stations={f"AAA{i}": 0.5 for i in range(20)},
+        day_count=MIN_QUALIFYING_DAYS - 1,
+    )
+    fitted = fit_station_width(conn, stage="P0")
+    assert fitted["accumulating"]
+    assert fitted["scales"] == {}
+    assert MIN_QUALIFYING_CELLS > 0
