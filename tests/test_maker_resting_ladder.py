@@ -179,3 +179,74 @@ def test_nothing_filled_anywhere_is_still_the_one_refusal() -> None:
         prices={},
         probabilities={"31C": 0.3, "32C": 0.25},
     ) is None
+
+
+def test_escalation_lifts_the_floor_and_the_ceiling_caps_the_chase() -> None:
+    """Late in the window the band stands where the book trades.
+
+    Halfway through escalation the floor has climbed halfway; at 1.0 every
+    remaining rung sits a tick under the ask.  And a book that has trended
+    past the entry ask is not followed: the cap holds the band at the price
+    the entry gate was struck against.
+    """
+
+    from scripts.paper_trading_ledger import _ladder_from_quote
+
+    quote = {"best_ask": 0.30, "bid_price": 0.24, "price_tick_size": 0.01}
+    flat = _ladder_from_quote(quote, 3)
+    assert flat[0] == 0.25 and flat[-1] == 0.29
+    lifted = _ladder_from_quote(quote, 3, floor_fraction=0.5)
+    assert lifted[0] == 0.27 and lifted[-1] == 0.29
+    # Fully escalated, the whole remaining size stands a tick under the
+    # ask: three rungs at one price are one order for the combined size.
+    top = _ladder_from_quote(quote, 3, floor_fraction=1.0)
+    assert top == [0.29, 0.29, 0.29]
+    capped = _ladder_from_quote(quote, 3, floor_fraction=1.0, ceiling=0.27)
+    assert capped == [0.26, 0.26, 0.26]
+
+
+def test_a_bought_out_band_is_replenished_up_to_its_posted_depth() -> None:
+    """One rung bought out of a collapsed band is not a finished leg.
+
+    Mid-day the spread pinches, the re-derived band collapses to a single
+    rung, and that rung fills -- the pending list is empty while the leg
+    still owes one rung of its posted depth.  The next re-pricing round
+    must post that rung again rather than reading the empty list as
+    completion; under the old rule this leg stalled at two fills of three.
+    """
+
+    import json as _json
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE basket_official_ws_snapshot ("
+        " station_id TEXT, event_date TEXT, state TEXT,"
+        " observed_at TEXT, buckets_json TEXT)"
+    )
+
+    def snap(observed: str, ask: float, bid: float) -> None:
+        conn.execute(
+            "INSERT INTO basket_official_ws_snapshot VALUES (?,?,?,?,?)",
+            ("ZUUU", "2026-08-17", "COMMITTED", observed, _json.dumps([
+                {"bucket": "32C", "best_ask": ask, "bid_price": bid,
+                 "price_tick_size": 0.01},
+            ])),
+        )
+
+    snap("2026-08-17T00:30:00Z", 0.26, 0.25)  # dearest opening rung fills
+    snap("2026-08-17T01:30:00Z", 0.27, 0.26)  # reprice: band pinches to one
+    snap("2026-08-17T01:45:00Z", 0.26, 0.25)  # that one rung fills too
+    snap("2026-08-17T02:30:00Z", 0.26, 0.22)  # reprice: one rung still owed
+    snap("2026-08-17T02:50:00Z", 0.22, 0.20)  # and it fills
+
+    got, missing = _resting_ladder_fill(
+        conn,
+        station_id="ZUUU",
+        event_date="2026-08-17",
+        buckets=("32C",),
+        ladders=([0.24, 0.25, 0.26],),
+        placed_at_utc="2026-08-17T00:00:00Z",
+        entry_asks={"32C": 0.27},
+    )
+    assert missing is None
+    assert len(got["32C"]) == 3

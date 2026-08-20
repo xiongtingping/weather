@@ -213,6 +213,37 @@ MAKER_RESTING_IMPROVE_TICKS = 1
 MAKER_RESTING_LADDER_STEPS = int(
     os.environ.get("PAPER_LEDGER_MAKER_LADDER_STEPS", "5") or 5
 )
+# How fast an unfilled rung converges on the top of the band.  The misses
+# concentrate at the cheap end -- the rungs that only fill when the market
+# comes all the way down -- and a band that never narrows keeps betting on
+# that collapse until the day ends.  Each re-pricing round lifts the floor
+# of the band toward its top, linearly over this share of the resting
+# window, so an order placed at listing spends its first hours asking for
+# the spread and its last hours asking only for a fill.  1.0 reaches the
+# top exactly at the deadline (when there is no time left to be hit there),
+# 0.5 reaches it halfway through; 0 disables and reproduces the flat band.
+# Measured on the full ledger (2026-08-20): 0.5, with re-posts allowed to
+# stack owed rungs at one price, lifts the closed-day share fill rate to
+# 91.7% / 90.8% / 91.9% across P0 / P0-M / P1 from 76.7% / 84.2% / 69.3%
+# flat, with the saving against crossing still positive on every stage.
+MAKER_RESTING_ESCALATE_SHARE = float(
+    os.environ.get("PAPER_LEDGER_MAKER_ESCALATE_SHARE", "0.5") or 0.0
+)
+# The dearest price a re-posted rung may ever ask for.  ``entry_ask`` caps
+# the chase at the ask the leg had when the seat was taken; ``none`` lets a
+# re-post follow the book wherever it goes.  Measured on the full ledger
+# (2026-08-20): the cap holds ~5 points of ROI (-28.3% vs -33.1% total) by
+# refusing the legs whose book ran away and never came back -- and for the
+# same reason it caps the share fill rate at ~87%, structurally below the
+# 90% the three stages are required to reach (user ruling, 2026-08-20).
+# Fill wins; the cap stays available for the day the priority flips.  What
+# keeps the uncapped chase honest is the escalation band itself: a re-post
+# never stands above a tick under the *then-current* ask, so every fill
+# still beats crossing at the moment it happens.
+MAKER_RESTING_CEILING = (
+    os.environ.get("PAPER_LEDGER_MAKER_CEILING", "none").strip()
+    or "none"
+)
 # How the stake is split across the basket's rungs.  ``equal_shares`` is
 # what the ledger has always done -- one share count for the whole basket,
 # which is what atomicity means for a complete basket and is why allocation
@@ -257,6 +288,12 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     None
     if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_REPRICE_MINUTES <= 0
     else f"每{MAKER_RESTING_REPRICE_MINUTES:g}分钟重挂",
+    None
+    if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_ESCALATE_SHARE <= 0
+    else f"未成交档{MAKER_RESTING_ESCALATE_SHARE:g}窗程收拢",
+    None
+    if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_CEILING == "none"
+    else "封顶入场卖价",
     "一本账·只加不减",
 )))
 SELECTION_RULE_SHA256 = content_sha256({
@@ -295,6 +332,13 @@ SELECTION_RULE_SHA256 = content_sha256({
     # values describe a different execution.
     "maker_horizon_minutes": MAKER_RESTING_HORIZON_MINUTES,
     "maker_reprice_minutes": MAKER_RESTING_REPRICE_MINUTES,
+    # How the band moves while the order rests.  The floor's climb, the
+    # price cap on a re-post, and the fact that a bought-out ladder is
+    # replenished up to its posted depth all change which rungs fill, and
+    # therefore what every resting row records.
+    "maker_escalate_share": MAKER_RESTING_ESCALATE_SHARE,
+    "maker_reprice_ceiling": MAKER_RESTING_CEILING,
+    "maker_reprice_replenish": "to_posted_depth_same_price_rungs",
     # Whether a partly-filled resting basket is a position or a refusal.
     # It changes what every resting row *is*, not merely its price.
     "resting_entry": "progressive_per_leg",
@@ -1238,14 +1282,31 @@ def _strategy_windows(
 
 
 def _ladder_from_quote(
-    quote: Mapping[str, Any], steps: int = MAKER_RESTING_LADDER_STEPS
+    quote: Mapping[str, Any],
+    steps: int = MAKER_RESTING_LADDER_STEPS,
+    *,
+    floor_fraction: float = 0.0,
+    ceiling: float | None = None,
 ) -> list[float]:
     """The same band as ``_resting_ladder``, from a raw snapshot quote.
 
     Re-pricing happens against the book as it stood mid-day, where there is
     no compiled snapshot row to read -- only the quote the socket recorded.
     The arithmetic is deliberately the same one, so a re-posted ladder is
-    the ladder the opening would have posted at that moment.
+    the ladder the opening would have posted at that moment -- with two
+    adjustments only a re-post has a reason to make.
+
+    ``floor_fraction`` lifts the cheap end of the band toward the dear end:
+    at 0 the band spans the whole spread as it does at the open, at 1 every
+    remaining rung sits a tick under the ask.  The misses concentrate on
+    the rungs that only fill if the market collapses, and an order that has
+    already waited most of its window has run out of time to hope for that.
+
+    ``ceiling`` is the dearest price any rung may ask for -- the entry-time
+    ask, so a book trending against the position is never chased past what
+    crossing at entry would have paid.  A band pushed entirely under the
+    current bid by that cap still posts there: a deep resting bid is a
+    valid order, it just waits in a longer queue.
     """
 
     levels = [
@@ -1262,19 +1323,30 @@ def _ladder_from_quote(
     tick = float(quote.get("price_tick_size") or 0.001)
     if bid <= 0.0 or ask <= 0.0:
         return []
-    high = ask - tick
-    low = min(bid + MAKER_RESTING_IMPROVE_TICKS * tick, high)
-    if high < bid - 1e-9:
+    capped = ask if ceiling is None else min(ask, float(ceiling))
+    high = capped - tick
+    if high < tick / 2:
         return []
-    if high <= low + tick / 2 or steps <= 1:
+    low = min(bid + MAKER_RESTING_IMPROVE_TICKS * tick, high)
+    if floor_fraction > 0.0:
+        low = low + (high - low) * min(1.0, float(floor_fraction))
+    if steps <= 1:
         return [round(low, 6)]
+    # Every owed rung is re-posted, at the same price when the band has no
+    # room to spread them.  The opening ladder collapses duplicates because
+    # each of its rungs is a *distinct* order the sizing splits across; a
+    # re-post is the remainder of one leg, and shrinking its rung count to
+    # the band's width quietly shrank the order -- a leg owed three rungs
+    # into a one-tick spread re-posted one, filled it, and then waited a
+    # whole re-pricing round to post the next.  Measured: escalation
+    # *lowered* the share fill rate (P1 69.3% -> 51.4%) because the narrowed
+    # band throttled every leg to one rung per round.  Same-price rungs are
+    # one order at that price for the combined size, which is exactly how
+    # the fill test treats them.
     span = high - low
-    out: list[float] = []
-    for index in range(steps):
-        price = round(low + span * index / (steps - 1), 6)
-        if not out or price > out[-1] + tick / 2:
-            out.append(price)
-    return out
+    return [
+        round(low + span * index / (steps - 1), 6) for index in range(steps)
+    ]
 
 
 def _resting_deadline(
@@ -1317,6 +1389,7 @@ def _resting_ladder_fill(
     ladders: Sequence[Sequence[float]],
     placed_at_utc: str,
     settlement_timezone: str = "UTC",
+    entry_asks: Mapping[str, float] | None = None,
 ) -> tuple[dict[str, list[float]], str | None]:
     """Which rungs of each leg's ladder the book traded through.
 
@@ -1324,19 +1397,42 @@ def _resting_ladder_fill(
     per bucket so the cost is the ladder's own average rather than an
     assumed one.
 
-    Two things the order does while it waits.  It waits until the day
-    resolves rather than for a fixed six hours, and every
+    Three things the order does while it waits.  It waits until the day
+    resolves rather than for a fixed six hours; every
     ``MAKER_RESTING_REPRICE_MINUTES`` it re-posts whatever is still open at
-    the prices then on the book.  A band derived from a spread twenty hours
-    stale is not a price anyone was offering, and a leg that misses against
-    it has recorded the staleness of its own quote rather than the book's
-    unwillingness to sell.  Rungs already bought are never re-posted.
+    the prices then on the book; and each re-post lifts the floor of the
+    band toward its top over ``MAKER_RESTING_ESCALATE_SHARE`` of the
+    window, so the rungs still open late in the day stand where the book
+    actually trades rather than where it would have to collapse to.  A
+    band derived from a spread twenty hours stale is not a price anyone
+    was offering, and a leg that misses against it has recorded the
+    staleness of its own quote rather than the book's unwillingness to
+    sell.  Rungs already bought are never re-posted, and a re-post
+    replenishes the ladder back up to the depth that was posted -- a band
+    that collapsed to one rung mid-day and bought it has not finished the
+    leg, it has bought one fifth of it.
     """
 
     deadline = _resting_deadline(
         placed_at_utc=placed_at_utc,
         settlement_timezone=settlement_timezone,
         event_date=event_date,
+    )
+    placed = datetime.fromisoformat(str(placed_at_utc).replace("Z", "+00:00"))
+    escalate_minutes = 0.0
+    if MAKER_RESTING_ESCALATE_SHARE > 0:
+        try:
+            ends = datetime.fromisoformat(str(deadline).replace("Z", "+00:00"))
+            escalate_minutes = max(
+                0.0,
+                (ends - placed).total_seconds() / 60.0
+                * MAKER_RESTING_ESCALATE_SHARE,
+            )
+        except ValueError:
+            escalate_minutes = 0.0
+    ceilings = (
+        dict(entry_asks or {})
+        if MAKER_RESTING_CEILING == "entry_ask" else {}
     )
     pending = {
         str(bucket): sorted(prices, reverse=True)
@@ -1350,9 +1446,7 @@ def _resting_ladder_fill(
     filled: dict[str, list[float]] = {b: [] for b in pending}
     next_reprice = (
         None if MAKER_RESTING_REPRICE_MINUTES <= 0
-        else datetime.fromisoformat(
-            str(placed_at_utc).replace("Z", "+00:00")
-        ) + timedelta(minutes=MAKER_RESTING_REPRICE_MINUTES)
+        else placed + timedelta(minutes=MAKER_RESTING_REPRICE_MINUTES)
     )
     for observed, payload in conn.execute(
         "SELECT observed_at, buckets_json FROM basket_official_ws_snapshot"
@@ -1361,7 +1455,10 @@ def _resting_ladder_fill(
         " ORDER BY observed_at",
         (station_id, event_date, placed_at_utc, deadline),
     ):
-        if not any(pending.values()):
+        if all(
+            len(filled[bucket]) >= posted_depth.get(bucket, 0)
+            for bucket in filled
+        ):
             break
         quotes = _decode_quotes(payload)
         # Re-post first, then see what the same tick trades through: an
@@ -1371,21 +1468,28 @@ def _resting_ladder_fill(
         if next_reprice is not None:
             at = datetime.fromisoformat(str(observed).replace("Z", "+00:00"))
             while at >= next_reprice:
-                for bucket, rungs in pending.items():
-                    if not rungs:
-                        # Nothing open on this leg -- either fully bought or
-                        # the book stopped quoting it.  Re-posting the rungs
-                        # it already owns would buy them twice.
+                floor_fraction = 0.0
+                if escalate_minutes > 0:
+                    elapsed = (
+                        next_reprice - placed
+                    ).total_seconds() / 60.0
+                    floor_fraction = min(1.0, elapsed / escalate_minutes)
+                for bucket in pending:
+                    open_rungs = posted_depth.get(bucket, 0) - len(
+                        filled[bucket]
+                    )
+                    if open_rungs <= 0:
+                        # Fully bought.  Re-posting the rungs it already
+                        # owns would buy them twice.
                         continue
                     item = quotes.get(bucket)
                     if not isinstance(item, Mapping):
                         continue
                     fresh = _ladder_from_quote(
                         item,
-                        max(
-                            1,
-                            posted_depth.get(bucket, 0) - len(filled[bucket]),
-                        ),
+                        open_rungs,
+                        floor_fraction=floor_fraction,
+                        ceiling=ceilings.get(bucket),
                     )
                     if fresh:
                         pending[bucket] = sorted(fresh, reverse=True)
@@ -2420,6 +2524,15 @@ def backfill(
                             buckets=seat["buckets"],
                             ladders=ladders,
                             placed_at_utc=payload["decision_at_utc"],
+                            # The ask each leg had when the seat was taken:
+                            # the price the entry gate was struck against,
+                            # and therefore the most a re-post may chase to.
+                            entry_asks={
+                                str(b): float(by_row[str(b)].ask_price)
+                                for b in seat["buckets"]
+                                if str(b) in by_row
+                                and by_row[str(b)].ask_available
+                            },
                         )
                         if not any(got.values()):
                             refusal = (

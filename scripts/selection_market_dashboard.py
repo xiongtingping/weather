@@ -498,13 +498,21 @@ def _resting_entry_stats(conn: sqlite3.Connection) -> dict[str, Any]:
         stages.setdefault(str(stage), {})["nothing_filled_count"] = int(count)
     try:
         ladders = conn.execute(
-            "SELECT stage, window_size, resting_fill_json"
+            "SELECT stage, window_size, resting_fill_json,"
+            "       leg_shares_json, intended_legs_json, prices_json,"
+            "       stake_usdc, intended_stake_usdc, event_date"
             " FROM paper_trade_position"
             " WHERE resting_fill_json NOT IN ('', '{}')"
         ).fetchall()
     except sqlite3.OperationalError:
         ladders = []
-    for stage, entered_legs, payload in ladders:
+    # A day that has not resolved is still filling: its orders are on the
+    # book, not missed.  The 90% target is judged on the days whose books
+    # have closed, or the verdict would flap red every morning and clear
+    # itself by night.
+    today = datetime.now(timezone.utc).date().isoformat()
+    for (stage, entered_legs, payload, legs_payload, intended_payload,
+         prices_payload, stake, intended_stake, event_date) in ladders:
         try:
             record = json.loads(payload)
         except (TypeError, ValueError):
@@ -516,9 +524,38 @@ def _resting_entry_stats(conn: sqlite3.Connection) -> dict[str, Any]:
             "price_sum": 0.0, "price_legs": 0,
             "partial_baskets": 0, "baskets": 0,
             "by_posted_rungs": {},
+            "intended_shares": 0.0, "filled_shares": 0.0,
+            "closed_intended_shares": 0.0, "closed_filled_shares": 0.0,
+            "stake": 0.0, "intended_stake": 0.0,
+            "taker_equivalent": 0.0,
         })
         detail["baskets"] += 1
         detail["partial_baskets"] += int(len(record) > int(entered_legs))
+        # The share account: of the size that was posted, how much was
+        # bought -- and what the bought part would have cost crossing at
+        # the entry ask instead.  These three are what the 90% target and
+        # the "does resting still save money" verdict are read from.
+        detail["stake"] += float(stake or 0.0)
+        detail["intended_stake"] += float(intended_stake or 0.0)
+        try:
+            filled_legs = json.loads(legs_payload) if legs_payload else {}
+            intended_legs = (
+                json.loads(intended_payload) if intended_payload else {}
+            )
+            entry_asks = json.loads(prices_payload) if prices_payload else {}
+        except (TypeError, ValueError):
+            filled_legs, intended_legs, entry_asks = {}, {}, {}
+        closed = str(event_date) < today
+        for bucket, want in intended_legs.items():
+            got = float(filled_legs.get(bucket, 0.0))
+            detail["intended_shares"] += float(want)
+            detail["filled_shares"] += got
+            if closed:
+                detail["closed_intended_shares"] += float(want)
+                detail["closed_filled_shares"] += got
+            detail["taker_equivalent"] += got * float(
+                entry_asks.get(bucket) or 0.0
+            )
         for value in record.values():
             try:
                 fraction, price = str(value).split("@")
@@ -569,6 +606,35 @@ def _resting_entry_stats(conn: sqlite3.Connection) -> dict[str, Any]:
             "mean_filled_price": (
                 detail.get("price_sum", 0.0) / price_legs
                 if price_legs else None
+            ),
+            # Of the shares posted, how many were bought.  This is the
+            # figure the 90% fill target is judged on: rung counts weight a
+            # one-share leg the same as a hundred-share leg, and stake
+            # ratios move when the price moves, not only when the fill does.
+            "share_fill_rate": (
+                detail.get("filled_shares", 0.0)
+                / detail["intended_shares"]
+                if detail.get("intended_shares") else None
+            ),
+            # The same rate over resolved days only -- what the 90% target
+            # is judged on.  An unresolved day's orders are still on the
+            # book; counting them as misses fails the morning and passes
+            # the evening.
+            "closed_share_fill_rate": (
+                detail.get("closed_filled_shares", 0.0)
+                / detail["closed_intended_shares"]
+                if detail.get("closed_intended_shares") else None
+            ),
+            "stake_fill_rate": (
+                detail.get("stake", 0.0) / detail["intended_stake"]
+                if detail.get("intended_stake") else None
+            ),
+            # Positive means the filled shares cost less than crossing at
+            # the entry ask would have -- resting is still being paid the
+            # spread rather than paying it.
+            "maker_saving_vs_taker": (
+                1.0 - detail.get("stake", 0.0) / detail["taker_equivalent"]
+                if detail.get("taker_equivalent") else None
             ),
             "by_posted_rungs": [
                 {
