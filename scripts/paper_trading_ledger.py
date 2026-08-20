@@ -315,6 +315,21 @@ MAKER_RESTING_VALUE_LAMBDA = float(
 MAKER_RESTING_BELIEF_GATE = int(
     os.environ.get("PAPER_LEDGER_MAKER_BELIEF_GATE", "1") or 0
 )
+# Experiment knob: a separate value clamp for the basket's tail insurance
+# leg -- the end of the posted window farther from the centre.  Unset means
+# the tail is a shoulder like any other (current rule).  "exempt" prices it
+# off the book skeleton like the centre; a number is its own lambda.
+#
+# Why it exists: measured 2026-08-20 at leg level, the legs the clamp kept
+# from filling went on to realise 115% of their claimed probability while
+# the filled legs realised 36% -- the clamp was refusing to pay for
+# insurance that was worth more than lambda times its claim.  The sweep
+# that chose lambda 0.53 measured whole-book ROI, which nets that loss
+# against the overpriced legs the clamp correctly refused; this knob asks
+# whether the tail rung specifically should be spared.
+MAKER_RESTING_TAIL_LAMBDA = str(
+    os.environ.get("PAPER_LEDGER_MAKER_TAIL_LAMBDA", "") or ""
+).strip().lower()
 # When the order stops trying: past the hours in which this station's
 # daily maximum actually lands, not at settlement (user ruling,
 # 2026-08-20, revised from a fixed local hour).  Per station: the P-th
@@ -398,6 +413,13 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     None
     if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_VALUE_LAMBDA <= 0
     else f"价值钳λ{MAKER_RESTING_VALUE_LAMBDA:g}·中心桶豁免",
+    None
+    if EXECUTION_MODE != "maker_resting" or not MAKER_RESTING_TAIL_LAMBDA
+    else (
+        "尾腿豁免"
+        if MAKER_RESTING_TAIL_LAMBDA == "exempt"
+        else f"尾腿λ{MAKER_RESTING_TAIL_LAMBDA}"
+    ),
     None
     if EXECUTION_MODE != "maker_resting" or not MAKER_RESTING_BELIEF_GATE
     else "信念EV闸",
@@ -1308,11 +1330,43 @@ def _value_cap(probability: float | None) -> float | None:
     return MAKER_RESTING_VALUE_LAMBDA * float(probability)
 
 
+def _tail_bucket(
+    window: Sequence[str],
+    centre_bucket: str | None,
+    probabilities: Mapping[str, float] | None,
+) -> str | None:
+    """The insurance rung: the end of the window farther from the centre.
+
+    The window arrives ordinal-ordered, so distance is list distance.  A
+    centre sitting exactly mid-window leaves two equally far ends; the
+    lighter one is the insurance (the heavier end is a second favourite,
+    not a hedge).
+    """
+
+    ordered = [str(b) for b in window]
+    if centre_bucket is None or str(centre_bucket) not in ordered:
+        return None
+    if len(ordered) < 2:
+        return None
+    at = ordered.index(str(centre_bucket))
+    low_d, high_d = at, len(ordered) - 1 - at
+    if low_d > high_d:
+        return ordered[0]
+    if high_d > low_d:
+        return ordered[-1]
+    probs = probabilities or {}
+    return min(
+        (ordered[0], ordered[-1]),
+        key=lambda b: float(probs.get(b, 0.0)),
+    )
+
+
 def _leg_value_cap(
     bucket: str,
     *,
     probabilities: Mapping[str, float] | None,
     centre_bucket: str | None,
+    window: Sequence[str] | None = None,
 ) -> float | None:
     """The value cap for one leg, with the centre bucket exempt.
 
@@ -1320,10 +1374,26 @@ def _leg_value_cap(
     clamp that prices it away turns every basket into a shoulders-only
     bet, and the charter's whole shape argument starts from the centre
     being held.  Its rungs stand on the book skeleton alone.
+
+    Under the tail experiment the window's insurance rung gets its own
+    treatment; with the knob unset (production default) the window is
+    ignored and behaviour is unchanged.
     """
 
     if centre_bucket is not None and str(bucket) == str(centre_bucket):
         return None
+    if MAKER_RESTING_TAIL_LAMBDA and window is not None:
+        tail = _tail_bucket(window, centre_bucket, probabilities)
+        if tail is not None and str(bucket) == tail:
+            if MAKER_RESTING_TAIL_LAMBDA == "exempt":
+                return None
+            try:
+                lam = float(MAKER_RESTING_TAIL_LAMBDA)
+            except ValueError:
+                lam = None
+            if lam is not None:
+                p = (probabilities or {}).get(str(bucket))
+                return None if p is None else lam * float(p)
     return _value_cap((probabilities or {}).get(str(bucket)))
 
 
@@ -1383,6 +1453,7 @@ def _maker_leg_prices(
                 str(bucket),
                 probabilities=probabilities,
                 centre_bucket=centre_bucket,
+                window=buckets,
             ),
         )
         # A leg with no price here cannot have been seated: the strategy
@@ -1417,6 +1488,7 @@ def _window_row(
                 str(bucket),
                 probabilities=probabilities,
                 centre_bucket=centre_bucket,
+                window=ordered,
             ),
         )
         if quote is None or quote < MINIMUM_LEG_ALL_IN_ASK:
@@ -2024,6 +2096,7 @@ def _resting_ladder_fill(
                         bucket,
                         probabilities=current_p,
                         centre_bucket=centre_bucket,
+                        window=buckets,
                     )
                     item = quotes.get(bucket)
                     if not isinstance(item, Mapping):
@@ -3163,6 +3236,7 @@ def backfill(
                                     str(b),
                                     probabilities=probabilities,
                                     centre_bucket=seat_centre,
+                                    window=seat["buckets"],
                                 ),
                             )
                             if str(b) in by_row else []
