@@ -167,7 +167,11 @@ REFUSAL_DEPTH = {
     # One layer: both mean the enumeration produced no basket to price.
     "no_priced_window": 3,
     "leg_below_floor": 3,
+    # One layer: a basket was assembled and priced, and no stake followed.
+    # Which of the two is reported depends on whether the price left the
+    # objective anything to judge.
     "no_positive_kelly": 4,
+    "cost_exceeds_payout": 4,
     "no_depth": 5,
     "no_top_up_needed": 5,
     "resting_unfilled": 6,
@@ -495,6 +499,14 @@ REFUSAL_REASONS = (
     # the size was there, the price simply never came to us.
     "resting_unfilled",
     "no_positive_kelly",
+    # The basket asks more than the 1.00 it can ever pay.  Folded into
+    # ``no_positive_kelly`` this read as "the objective looked and declined",
+    # which credits a judgement to what is a loss by arithmetic: at a cost of
+    # 1.04 no probability makes the bet win, so the model never got a say.
+    # Measured on 2026-08-20 it was 82 of the 253 P0 refusals carrying that
+    # code -- a third of them -- at a median cost of 1.040 and a maximum of
+    # 2.997.  Same owner as ``no_priced_window``: the book, not us.
+    "cost_exceeds_payout",
     "no_depth",
     # A later stage that wanted nothing this position does not already hold.
     # Under one book a stage is a top-up, so "the ladder it chose is inside
@@ -2914,15 +2926,33 @@ def backfill(
                     )
                     stake = min(stake, max(0.0, stage_room))
                     if stake <= 0.0:
+                        cost = float(seat["all_in_price"])
+                        exhausted = (
+                            ""
+                            if not held
+                            else " · %s 段额度已用尽（本链已投 %.2f）"
+                            % (stage, chain_stake)
+                        )
+                        # A basket that asks more than the 1.00 it can pay is
+                        # refused by arithmetic, not by the objective -- the
+                        # model's probability never enters it.  Reporting that
+                        # as "the objective declined" credits us with a
+                        # judgement the price did not leave room for.
+                        if cost >= 1.0:
+                            refusal = _deeper_refusal(refusal, (
+                                "cost_exceeds_payout",
+                                "整篮成本 %.3f · 满额赔付 1.000"
+                                "（超出 %.1f%%）%s" % (
+                                    cost, (cost - 1.0) * 100.0, exhausted,
+                                ),
+                                cycles, payload["decision_at_utc"],
+                            ))
+                            continue
                         refusal = _deeper_refusal(refusal, (
                             "no_positive_kelly",
                             "概率 %.3f · 成本 %.3f%s" % (
                                 float(seat["win_probability"]),
-                                float(seat["all_in_price"]),
-                                ""
-                                if not held
-                                else " · %s 段额度已用尽（本链已投 %.2f）"
-                                % (stage, chain_stake),
+                                cost, exhausted,
                             ),
                             cycles, payload["decision_at_utc"],
                         ))

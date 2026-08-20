@@ -384,3 +384,74 @@ def test_the_walk_reports_the_deepest_refusal_not_the_last_one() -> None:
     # while every cycle overwrote it.
     assert "cycles = refusal[2] + 1" not in source
     assert "refusal[1], cycles, refusal[3]," in source
+
+
+def test_a_basket_dearer_than_its_payout_is_its_own_refusal() -> None:
+    """Arithmetic and judgement are different owners.
+
+    A basket asking more than the 1.00 it can ever pay loses at every
+    probability, so the objective never gets a say -- but it was reported as
+    ``no_positive_kelly``, which says the curve was scored and came out
+    negative.  Measured on 2026-08-20 that was 82 of the 253 P0 refusals
+    carrying the code, a third of them, at a median cost of 1.040 and a
+    maximum of 2.997.  The fix for those is the book, not the model.
+    """
+
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    from paper_trading_ledger import (  # noqa: PLC0415
+        REFUSAL_DEPTH,
+        REFUSAL_REASONS,
+        _REFUSAL_DDL,
+        _kelly_stake,
+    )
+
+    assert "cost_exceeds_payout" in REFUSAL_REASONS
+    # The CHECK is generated from the tuple, and ensure_schema rebuilds the
+    # table when the live constraint is missing a name -- so the reason is
+    # writable the first sweep after this lands.
+    assert "'cost_exceeds_payout'" in _REFUSAL_DDL
+
+    # Same rung as the code it splits from: both mean a basket was assembled
+    # and priced and no stake followed.
+    assert (
+        REFUSAL_DEPTH["cost_exceeds_payout"]
+        == REFUSAL_DEPTH["no_positive_kelly"]
+    )
+    # And deeper than "nothing could be assembled", or a converged late book
+    # would bury it.
+    assert (
+        REFUSAL_DEPTH["cost_exceeds_payout"]
+        > REFUSAL_DEPTH["no_priced_window"]
+    )
+
+    # The split is exactly where the stake rule stops consulting the model.
+    for cost in (1.0, 1.04, 2.997):
+        assert _kelly_stake(
+            win_probability=0.999, cost=cost, equity=1000.0
+        ) == (0.0, 0.0), cost
+    # Just under it the probability still decides, so those stay where they
+    # were: same 0.95 claim, one seatable and one not, on either side of the
+    # payout line.
+    assert _kelly_stake(
+        win_probability=0.95, cost=0.90, equity=1000.0
+    )[1] > 0.0
+    assert _kelly_stake(
+        win_probability=0.95, cost=1.00, equity=1000.0
+    ) == (0.0, 0.0)
+
+    source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'if cost >= 1.0:' in source
+    assert '"cost_exceeds_payout",' in source
+
+    # The page must be able to name it, or the split only moves the confusion.
+    dashboard = (root / "scripts" / "selection_market_dashboard.py").read_text(
+        encoding="utf-8"
+    )
+    assert '"cost_exceeds_payout": (' in dashboard
