@@ -514,26 +514,29 @@ def materialize_settled_station_truth(
         }
         idempotent_source = False
 
-    published_at = _canonical_stamp(
-        max(
-            _utc(
-                "settlement_truth_published_at",
-                item["valid_at_utc"],
-            )
-            for item in hourly
+    published_dt = max(
+        _utc(
+            "settlement_truth_published_at",
+            item["valid_at_utc"],
         )
+        for item in hourly
     )
-    received_at = _canonical_stamp(
-        max(
-            _utc(
-                "settlement_truth_received_at",
-                item["canonical_committed_at_utc"],
-            )
-            for item in hourly
+    received_dt = max(
+        _utc(
+            "settlement_truth_received_at",
+            item["canonical_committed_at_utc"],
         )
+        for item in hourly
     )
-    if published_at > received_at:
+    # The per-report gate above already admits a nominal minute that leads
+    # its commit by transmission jitter, and the day-level pair has to admit
+    # the same lead or it contradicts its own admissions: SBGR stamps on the
+    # hour and goes on the wire seconds early, so whenever its local day's
+    # final report was one of those, this refused the whole day.
+    if published_dt - received_dt > _MAX_TRANSMISSION_LEAD:
         raise ContractError("settlement_truth_source_timestamp_order_invalid")
+    published_at = _canonical_stamp(published_dt)
+    received_at = _canonical_stamp(received_dt)
     legacy_identity = {
         "truth_id": canonical_truth["truth_id"],
         "station_id": canonical_truth["station_id"],

@@ -48,7 +48,12 @@ from .awc_observation_contract import (
 )
 from .band_reliability_store import load_band_table
 from .center_width_store import load_center_width, load_station_width
-from .contracts import ContractError, ProbabilityEnvelope, content_sha256
+from .contracts import (
+    MAX_REPORT_TRANSMISSION_LEAD_SECONDS,
+    ContractError,
+    ProbabilityEnvelope,
+    content_sha256,
+)
 from .materialization import insert_probability_envelope, materialize_p1
 from .market_bucket_bridge import (
     CONTRACT_SCHEMA as MARKET_BUCKET_BRIDGE_CONTRACT_SCHEMA,
@@ -2528,7 +2533,14 @@ def _project_awc_daily_truths(
         received_at = _projection_timestamp(
             raw["received_at_utc"], field="received_at_utc"
         )
-        if published_at > received_at:
+        # The materializer admits a nominal minute that leads its commit by
+        # transmission jitter (the two checks are one contract's two ends),
+        # so the projection admits exactly the same lead.
+        if (
+            datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+            - datetime.fromisoformat(received_at.replace("Z", "+00:00"))
+            > timedelta(seconds=MAX_REPORT_TRANSMISSION_LEAD_SECONDS)
+        ):
             raise ContractError("canonical_awc_truth_projection_timestamp_order_invalid")
         if not isinstance(raw["observation_ids_json"], str) or not raw[
             "observation_ids_json"
