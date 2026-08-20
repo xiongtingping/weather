@@ -455,3 +455,46 @@ def test_a_basket_dearer_than_its_payout_is_its_own_refusal() -> None:
         encoding="utf-8"
     )
     assert '"cost_exceeds_payout": (' in dashboard
+
+
+def test_every_refusal_reason_has_page_copy_and_p0m_counts_taf_only() -> None:
+    """The page must be able to name every code the ledger can write.
+
+    Two reasons had no entry and rendered as raw identifiers, and they were
+    not obscure: ``chain_never_opened`` is the largest single row at P1
+    (67%) and ``no_top_up_needed`` sits in the P0-M table.  A reader saw an
+    English constant where the explanation should be.
+
+    P0-M is also counted only over stations whose TAF states a temperature.
+    The stage confirms a TAF, so the 28 stations that never get one were
+    sitting in its denominator as days it had no way to serve -- removing
+    them moves the seat rate from 8.4% to 12.5% over the same seats.
+    """
+
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    from paper_trading_ledger import REFUSAL_REASONS  # noqa: PLC0415
+    from scripts.selection_market_dashboard import (  # noqa: PLC0415
+        REFUSAL_LABELS,
+        STAGE_REQUIRING_TAF,
+    )
+
+    missing = [name for name in REFUSAL_REASONS if name not in REFUSAL_LABELS]
+    assert not missing, missing
+    for name, (label, note) in REFUSAL_LABELS.items():
+        assert label.strip(), name
+        assert note.strip(), name
+        # A label that is just the identifier is the bug this pins.
+        assert label != name, name
+
+    assert STAGE_REQUIRING_TAF == "P0-M"
+
+    # The old copy said the market was dearer than the model; measurement
+    # said the opposite -- those days never assembled a basket at all.
+    assert "市场比模型贵" not in REFUSAL_LABELS["no_priced_window"][1]

@@ -664,8 +664,10 @@ REFUSAL_LABELS = {
         "内核没给出可用的支持窗口，跟市场无关。",
     ),
     "no_priced_window": (
-        "没有可定价的窗口",
-        "枚举出的每个窗口都被市场定价定死了——市场比模型贵。",
+        "整天没凑出过一篮子",
+        "不是嫌贵，是市场太窄：一个合法篮子要 3 根梯级，而这些站日"
+        "整天都没同时开出那么多可交易的桶——多数桶的报价低于 2 分，"
+        "够不上单腿门，进不了候选。",
     ),
     "leg_below_floor": (
         "有腿报价低于下限",
@@ -677,7 +679,8 @@ REFUSAL_LABELS = {
     ),
     "no_positive_kelly": (
         "目标函数看过，不下注",
-        "曲线分为负：按这个价买这个篮子会亏对数财富。这是策略在工作，不是故障。",
+        "篮子凑出来了、价也定了，赢面还是低于要价，买下去会亏对数财富。"
+        "这是策略在工作，不是故障。",
     ),
     "cost_exceeds_payout": (
         "整篮报价高过满额赔付",
@@ -688,7 +691,53 @@ REFUSAL_LABELS = {
         "盘口深度不够",
         "价格可以，但那一档挂的量撑不起要买的规模。",
     ),
+    "chain_never_opened": (
+        "P0 没建仓，本阶段无仓可加",
+        "一个站日只由 P0 开仓，后面两阶段都是往这一仓上加。P0 没坐下，"
+        "这里就没有仓可加——不是这一阶段拒绝了什么，是它根本没被叫到。"
+        "要看真正的原因，去上面 P0 那张表。",
+    ),
+    "no_top_up_needed": (
+        "想加的已经在仓里",
+        "这一阶段选中的梯级，P0 早就买下了。一本账下后续阶段是加仓，"
+        "目标已在仓内就是按兵不动，不是拒绝交易。",
+    ),
 }
+
+
+STAGE_REQUIRING_TAF = "P0-M"
+
+
+def _taf_temperature_stations(conn: sqlite3.Connection) -> set[str]:
+    """Stations whose TAF actually states a maximum temperature.
+
+    P0-M is the TAF confirmation stage, so a station whose TAF carries no
+    temperature group can never reach it.  Counting those station-days in the
+    denominator scores the stage against work it was never able to do: 17 of
+    the 45 carry a TX group and the US stations carry none, so the other 28
+    were dragging the seat rate down with days that had no TAF to confirm.
+
+    An empty set means the capture tables are not there to ask, in which case
+    the filter is skipped rather than silently emptying the section.
+    """
+
+    stations: set[str] = set()
+    for table, predicate in (
+        ("calibration_forward_taf_capture", " WHERE tx_available=1"),
+        ("calibration_historical_taf_capture", ""),
+    ):
+        try:
+            rows = conn.execute(
+                "SELECT DISTINCT station_id FROM %s%s" % (table, predicate)
+            ).fetchall()
+        except sqlite3.OperationalError:
+            continue
+        stations |= {
+            str(row[0]).strip().upper()
+            for row in rows
+            if str(row[0] or "").strip()
+        }
+    return stations
 
 
 def _refusal_stats(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -702,27 +751,52 @@ def _refusal_stats(conn: sqlite3.Connection) -> dict[str, Any]:
     -- so the two together are a funnel rather than two unrelated tallies.
     An absent row used to be the only signal here, and it could say nothing
     beyond "no seat", which is true of one of these reasons and wrong about
-    the seven others.
+    every other.
+
+    P0-M is counted only over stations whose TAF states a temperature.  The
+    stage confirms a TAF, so a station that never gets one cannot reach it,
+    and 28 of the 45 were sitting in its denominator as days it had no way to
+    serve.
+
+    What each row reports is the deepest refusal that station-day reached,
+    not its last -- the ledger keeps depth rather than recency, because the
+    final cycle is the converged end-of-day book.
     """
+
+    taf_stations = _taf_temperature_stations(conn)
+
+    def in_scope(stage: str, station_id: str) -> bool:
+        if stage != STAGE_REQUIRING_TAF or not taf_stations:
+            return True
+        return station_id in taf_stations
 
     try:
         rows = conn.execute(
-            "SELECT stage, reason, COUNT(*), MAX(detail)"
-            " FROM paper_trade_refusal GROUP BY stage, reason"
+            "SELECT stage, reason, station_id, detail FROM paper_trade_refusal"
         ).fetchall()
     except sqlite3.OperationalError:
         return {"stages": []}
+    tally: dict[tuple[str, str], list[Any]] = {}
+    for stage, reason, station_id, detail in rows:
+        if not in_scope(str(stage), str(station_id or "").strip().upper()):
+            continue
+        slot = tally.setdefault((str(stage), str(reason)), [0, ""])
+        slot[0] += 1
+        # Same example the grouped ``MAX(detail)`` used to pick.
+        slot[1] = max(slot[1], str(detail or ""))
     seated: dict[str, int] = {}
-    for count, stage in conn.execute(
-        "SELECT COUNT(*), stage FROM paper_trade_position GROUP BY stage"
+    for stage, station_id in conn.execute(
+        "SELECT stage, station_id FROM paper_trade_position"
     ):
-        seated[str(stage)] = int(count)
+        if not in_scope(str(stage), str(station_id or "").strip().upper()):
+            continue
+        seated[str(stage)] = seated.get(str(stage), 0) + 1
     by_stage: dict[str, list[dict[str, Any]]] = {}
-    for stage, reason, count, detail in rows:
-        by_stage.setdefault(str(stage), []).append({
-            "reason": str(reason),
-            "label": REFUSAL_LABELS.get(str(reason), (str(reason), ""))[0],
-            "note": REFUSAL_LABELS.get(str(reason), ("", ""))[1],
+    for (stage, reason), (count, detail) in tally.items():
+        by_stage.setdefault(stage, []).append({
+            "reason": reason,
+            "label": REFUSAL_LABELS.get(reason, (reason, ""))[0],
+            "note": REFUSAL_LABELS.get(reason, ("", ""))[1],
             "count": int(count),
             "example": str(detail or ""),
         })
@@ -744,6 +818,11 @@ def _refusal_stats(conn: sqlite3.Connection) -> dict[str, Any]:
             "scope_count": scopes,
             "seat_rate": seated.get(stage, 0) / scopes,
             "reasons": reasons,
+            "scope_restricted_to": (
+                "有 TAF 温度组的 %d 站" % len(taf_stations)
+                if stage == STAGE_REQUIRING_TAF and taf_stations
+                else ""
+            ),
         })
     return {"stages": out}
 
