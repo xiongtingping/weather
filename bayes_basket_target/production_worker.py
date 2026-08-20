@@ -9392,8 +9392,19 @@ class TargetProductionWorker:
                             item.received_at_utc, item.revision_id
                         ),
                     )
+                    # Seen means "this TAF text already has a seat", keyed by
+                    # the source object hash: revision ids are re-keyed when
+                    # the inbox chain repair renumbers a scope, and matching
+                    # on them re-seated every committed revision at its exact
+                    # original received instant -- a guaranteed
+                    # decision-time conflict (43 stations, 2026-08-20).
                     seen_revisions = {
-                        str(item.lineage.get("forecast_revision_id") or "")
+                        str(
+                            item.lineage.get(
+                                "forecast_source_object_sha256"
+                            )
+                            or ""
+                        )
                         for item in envelopes
                         if item.stage == "P0-M"
                     }
@@ -9403,7 +9414,7 @@ class TargetProductionWorker:
                     observed_error: str | None = None
                     observed_predecessor = root
                     for revision in revisions:
-                        if revision.revision_id in seen_revisions:
+                        if revision.source_object_sha256 in seen_revisions:
                             continue
                         # The forecast's own arrival is the moment, and it
                         # has to be strictly later than what it follows --
@@ -9593,35 +9604,48 @@ class TargetProductionWorker:
                         item.lineage.get("p0_root_checkpoint_id") or ""
                     ) == root.checkpoint_id
                 ]
+                # Applied means "this TAF text already spoke under this
+                # root".  The identity is the source object hash, not the
+                # revision id: revision ids are re-keyed whenever the inbox
+                # chain repair renumbers a scope, and matching on them made
+                # every committed envelope look unapplied after one repair --
+                # the re-application then collided with its own committed
+                # decision instant across all 43 stations on 2026-08-20.
                 applied = {
-                    str(item.lineage.get("forecast_revision_id") or "")
+                    str(
+                        item.lineage.get("forecast_source_object_sha256")
+                        or ""
+                    )
                     for item in taf_confirmed
                 }
-                applied_by_revision: dict[str, ProbabilityEnvelope] = {}
+                applied_by_source: dict[str, ProbabilityEnvelope] = {}
                 for item in taf_confirmed:
-                    revision_id = str(
-                        item.lineage.get("forecast_revision_id") or ""
+                    source_sha = str(
+                        item.lineage.get("forecast_source_object_sha256")
+                        or ""
                     )
-                    if not revision_id:
+                    if not source_sha:
                         raise ContractError(
                             "resident_taf_revision_lineage_missing"
                         )
-                    previous_item = applied_by_revision.get(revision_id)
+                    previous_item = applied_by_source.get(source_sha)
                     if previous_item is not None and (
                         previous_item.content_sha256 != item.content_sha256
                     ):
                         raise ContractError(
                             "resident_taf_revision_content_conflict"
                         )
-                    applied_by_revision[revision_id] = item
+                    applied_by_source[source_sha] = item
                 predecessor = taf_confirmed[-1] if taf_confirmed else root
                 pending_envelopes: list[
                     tuple[ProbabilityEnvelope, str]
                 ] = []
                 for revision in revisions:
                     capture = capture_by_id[revision.revision_id]
-                    if revision.revision_id in applied:
-                        existing_item = applied_by_revision[revision.revision_id]
+                    if revision.source_object_sha256 in applied:
+                        existing_item = applied_by_source[
+                            revision.source_object_sha256
+                        ]
                         fields = capture.get("taf_fields")
                         if not isinstance(fields, Mapping):
                             raise ContractError("resident_taf_fields_invalid")

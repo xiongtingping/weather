@@ -104,13 +104,28 @@ for label in "${LABELS[@]}"; do
 done
 
 /usr/bin/python3 - "$RECEIPT" "$DOMAIN" "${LABELS[@]}" <<'PY'
+import importlib.util
 import json
 import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from bayes_basket_target.contracts import content_sha256
+# Loaded by file, not through the package: ``bayes_basket_target/__init__``
+# pulls the whole production tree, whose capture lanes import third-party
+# modules the system python3 does not have.  The receipt needs only the
+# stdlib-only contracts module; importing the package made this step fail
+# after every install since 2026-08-08.  The installer already cd'd to ROOT.
+_spec = importlib.util.spec_from_file_location(
+    "_receipt_contracts",
+    Path.cwd() / "bayes_basket_target" / "contracts.py",
+)
+_module = importlib.util.module_from_spec(_spec)
+# Registered before exec: the module defines dataclasses, and dataclass
+# field resolution looks its defining module up in ``sys.modules``.
+sys.modules[_spec.name] = _module
+_spec.loader.exec_module(_module)
+content_sha256 = _module.content_sha256
 
 output = Path(sys.argv[1]).resolve()
 domain = sys.argv[2]
