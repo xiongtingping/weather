@@ -11,27 +11,74 @@ def test_the_ledger_carries_productions_structural_rules() -> None:
 
     A raw probability core can also be wider than the cap, and an over-wide
     incumbent is exempt from that too, which is how a five-bucket basket
-    reached the book.
+    reached the book.  That trim is exercised directly rather than grepped
+    for, because the property that matters is which bucket it keeps: trimmed
+    toward the wrong anchor it drops the centre, and a core without its
+    centre enumerates windows the gate would never see.
     """
 
+    import sys
     from pathlib import Path
 
-    source = (
-        Path(__file__).resolve().parents[1]
-        / "scripts"
-        / "paper_trading_ledger.py"
-    ).read_text(encoding="utf-8")
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+
+    from paper_trading_ledger import (  # noqa: PLC0415
+        MAXIMUM_SUPPORT_BUCKETS,
+        _entry_support_core,
+    )
+
+    source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
     assert "MINIMUM_SUPPORT_BUCKETS = 3" in source
     assert "minimum_support_buckets=MINIMUM_SUPPORT_BUCKETS" in source
     # The evidence support is the mass-selected run, not a bare centre.
     assert "desired=set(core) or {center}" in source
     assert "desired={center}," not in source
     # And it is trimmed to the cap before it can act as an incumbent.
-    assert "if len(core) > MAXIMUM_SUPPORT_BUCKETS:" in source
+    assert "core = _entry_support_core(" in source
     # The floor is per stage: charter 50a gives P1 two rungs while the
     # opening stages keep three.  Held to the opening floor, the ledger
     # reported P1 refusing seats production takes.
     assert "probability_stage=stage," in source
+
+    # An over-wide core is capped, and the centre survives the cap even when
+    # it sits at ordinal 0 -- the lowest rung of every ladder, and the case
+    # that reads as false.  KSEA 2026-08-13 P1 is centred there.
+    # Mass rising away from the centre, so the core grows to five and the
+    # argmax lands well above it -- trimmed toward the argmax the centre is
+    # the first bucket dropped.
+    buckets = [
+        "73°F or below", "74-75°F", "76-77°F", "78-79°F", "80-81°F",
+        "82-83°F", "84-85°F",
+    ]
+    ordinals = {bucket: i for i, bucket in enumerate(buckets)}
+    probabilities = {
+        "73°F or below": 0.04, "74-75°F": 0.06, "76-77°F": 0.10,
+        "78-79°F": 0.14, "80-81°F": 0.20, "82-83°F": 0.26, "84-85°F": 0.20,
+    }
+    from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: PLC0415
+        probability_core,
+    )
+
+    assert len(
+        probability_core(
+            probabilities, ordinals=ordinals, center_bucket="73°F or below"
+        )
+    ) > MAXIMUM_SUPPORT_BUCKETS, "fixture no longer exercises the trim"
+    core = _entry_support_core(
+        probabilities=probabilities,
+        ordinals=ordinals,
+        center="73°F or below",
+    )
+    assert len(core) <= MAXIMUM_SUPPORT_BUCKETS, (
+        f"core {sorted(core)} wider than the cap"
+    )
+    assert "73°F or below" in core, (
+        f"core {sorted(core)} trimmed its own centre away"
+    )
 
 
 def test_recorded_seats_obey_the_ladder_bounds() -> None:
@@ -878,15 +925,17 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
         the gate ran on the posted basket, the market then sold only the
         legs that priced worse than they claimed.
 
-    First run (2026-08-20): 279/280 seats matched exactly; the static
-    invariants held on all 280.  The one exception is allowlisted by name
-    below: KSEA 2026-08-13 P1 posted 80-85F where the replay computes
-    74-81F at EV -0.49 at every cycle of the day -- a seat the current
-    gate could never take.  Its rule stamp matches current, but the stamp
-    has not changed across several behaviour-affecting rebuilds, so a
-    stale row cannot be told apart by fingerprint.  If this test ever
-    fails on a NEW station-day, that is a live divergence between the
-    sweep and the rule, not history.
+    The support trim comes from the ledger itself
+    (``_entry_support_core``).  Re-implemented here it read a correct row as
+    a stale one: the copy fell back to the argmax bucket whenever the
+    centre's ordinal was falsy, and ordinal 0 is the lowest bucket on every
+    ladder.  KSEA 2026-08-13 P1 is centred on ``73°F or below`` at ordinal
+    0, so the copy trimmed the core toward 80-81°F, dropped the centre, and
+    enumerated a 74-81°F window costing 0.95 against a 0.46 claim -- which
+    outranks the recorded seat on probability mass.  The row was never
+    stale; it replays exactly on the ledger's own trim, and the allowlist
+    that carried it is gone.  A failure here is a live divergence between
+    the sweep and the rule, so it takes a fix, not a name on a list.
     """
 
     import json
@@ -907,7 +956,6 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
     from bayes_basket_target.delta_v2_runtime import (  # noqa: PLC0415
         MINIMUM_LEG_ALL_IN_ASK,
         _support_windows,
-        probability_core,
     )
     from paper_trading_ledger import (  # noqa: PLC0415
         FEE_RATE,
@@ -915,10 +963,9 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
         MINIMUM_SUPPORT_BUCKETS,
         SELECTION_RULE_SHA256,
         _build_snapshot,
+        _entry_support_core,
         _stage_entry_candidates,
     )
-
-    KNOWN_STALE = {("KSEA", "2026-08-13", "P1")}
 
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
     try:
@@ -964,8 +1011,6 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
                     f"({win} vs {cost}) -- the entry gate cannot have run"
                 )
 
-            if (str(st), str(day), str(stage)) in KNOWN_STALE:
-                continue
             replayed = None
             for payload in _stage_entry_candidates(
                 conn, str(st), str(day), str(stage)
@@ -990,20 +1035,11 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
                 ordinals = {
                     r.bucket: int(r.ordinal) for r in snapshot.buckets
                 }
-                core = probability_core(
-                    probabilities, ordinals=ordinals, center_bucket=center
+                core = _entry_support_core(
+                    probabilities=probabilities,
+                    ordinals=ordinals,
+                    center=center,
                 )
-                if len(core) > MAXIMUM_SUPPORT_BUCKETS:
-                    co = ordinals.get(center) or ordinals[
-                        max(probabilities, key=lambda b: probabilities[b])
-                    ]
-                    core = frozenset(sorted(
-                        core,
-                        key=lambda b: (
-                            abs(ordinals[b] - co),
-                            -probabilities.get(b, 0.0),
-                        ),
-                    )[:MAXIMUM_SUPPORT_BUCKETS])
                 windows, _audit = _support_windows(
                     snapshot=snapshot, desired=set(core) or {center},
                     probabilities=probabilities, fee_rate=FEE_RATE,

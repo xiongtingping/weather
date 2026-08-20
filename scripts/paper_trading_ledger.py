@@ -1054,6 +1054,54 @@ def _quotes_at(
     return (quotes, str(row[0])) if quotes else None
 
 
+def _entry_support_core(
+    *,
+    probabilities: Mapping[str, float],
+    ordinals: Mapping[str, int],
+    center: str,
+) -> frozenset[str]:
+    """The evidence support an entry cycle offers the enumeration.
+
+    The production resolver converges its support to the cap before anything
+    downstream sees it; the raw core has no such trim, and an over-wide one
+    entered here as an incumbent -- which is exempt from the cap -- and seated
+    a five-bucket basket the live rule forbids.  Trim from the far end of the
+    centre, which is the order the resolver drops buckets in.
+
+    It is a function rather than a paragraph inside ``backfill`` because the
+    audit that holds recorded seats to this rule has to trim identically to
+    be reading the same rule at all.  Copied out by hand it did not: the copy
+    fell back to the argmax whenever the centre's ordinal was *falsy*, and
+    ordinal 0 is the lowest bucket on every ladder.  KSEA 2026-08-13 P1 is
+    centred on ``73°F or below`` at ordinal 0, so the copy trimmed toward
+    80-81°F instead, dropped the centre from the core, and enumerated a
+    74-81°F window costing 0.95 against a 0.46 claim.  That window outranks
+    the seat on probability mass, so the audit read a correctly recorded row
+    as a seat the gate could never have taken and allowlisted it as stale.
+    One definition, one caller-visible name, and the two cannot drift again.
+    """
+
+    core = probability_core(
+        probabilities, ordinals=ordinals, center_bucket=center
+    )
+    if len(core) <= MAXIMUM_SUPPORT_BUCKETS:
+        return frozenset(core)
+    centre_ordinal = ordinals.get(center)
+    if centre_ordinal is None:
+        centre_ordinal = ordinals[
+            max(probabilities, key=lambda b: probabilities[b])
+        ]
+    return frozenset(
+        sorted(
+            core,
+            key=lambda b: (
+                abs(ordinals[b] - centre_ordinal),
+                -probabilities.get(b, 0.0),
+            ),
+        )[:MAXIMUM_SUPPORT_BUCKETS]
+    )
+
+
 def _build_snapshot(
     *,
     station_id: str,
@@ -2864,36 +2912,11 @@ def backfill(
                         row.bucket: int(row.ordinal)
                         for row in snapshot.buckets
                     }
-                    core = probability_core(
-                        probabilities,
+                    core = _entry_support_core(
+                        probabilities=probabilities,
                         ordinals=ordinals,
-                        center_bucket=center,
+                        center=center,
                     )
-                    # The production resolver converges its support to the cap
-                    # before anything downstream sees it; the raw core has no
-                    # such trim, and an over-wide one entered here as an
-                    # incumbent -- which is exempt from the cap -- and seated a
-                    # five-bucket basket the live rule forbids.  Trim from the
-                    # far end of the centre, which is the order the resolver
-                    # drops buckets in.
-                    if len(core) > MAXIMUM_SUPPORT_BUCKETS:
-                        centre_ordinal = ordinals.get(center)
-                        if centre_ordinal is None:
-                            centre_ordinal = ordinals[
-                                max(
-                                    probabilities,
-                                    key=lambda b: probabilities[b],
-                                )
-                            ]
-                        core = frozenset(
-                            sorted(
-                                core,
-                                key=lambda b: (
-                                    abs(ordinals[b] - centre_ordinal),
-                                    -probabilities.get(b, 0.0),
-                                ),
-                            )[:MAXIMUM_SUPPORT_BUCKETS]
-                        )
                     try:
                         windows, audit = _support_windows(
                             snapshot=snapshot,
