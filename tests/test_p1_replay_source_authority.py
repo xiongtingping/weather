@@ -145,7 +145,7 @@ def test_fallback_is_forbidden_even_when_the_authority_hash_is_valid(
         ),
         (
             _binding(
-                published_at_utc="2026-07-27T10:06:00Z",
+                published_at_utc="2026-07-27T10:06:01Z",
                 received_at_utc="2026-07-27T10:05:00Z",
             ),
             "p1_replay_authority_publication_after_receipt",
@@ -158,6 +158,20 @@ def test_publication_receipt_decision_order_is_strict(
 ) -> None:
     with pytest.raises(ContractError, match=reason):
         _resolve(_canonical(authority=_authority(bindings=[binding])))
+
+
+def test_nominal_minute_may_lead_receipt_by_transmission_jitter() -> None:
+    # SBGR stamps on the hour and goes on the wire ~20s early, so its
+    # published minute really does sit after the poll that carried it.
+    binding = _binding(
+        published_at_utc="2026-07-27T10:00:00Z",
+        received_at_utc="2026-07-27T09:59:40.124Z",
+    )
+    resolved = _resolve(_canonical(authority=_authority(bindings=[binding])))
+
+    assert resolved["observation_bindings"][0]["published_at_utc"] == (
+        "2026-07-27T10:00:00Z"
+    )
 
 
 def test_cor_or_amd_is_quarantined_until_manually_accepted() -> None:

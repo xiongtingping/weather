@@ -13,12 +13,19 @@ request, and performs no mutation.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping, Sequence
 
-from .contracts import ContractError, content_sha256
+from .contracts import (
+    MAX_REPORT_TRANSMISSION_LEAD_SECONDS,
+    ContractError,
+    content_sha256,
+)
 
 
+_MAX_TRANSMISSION_LEAD = timedelta(
+    seconds=MAX_REPORT_TRANSMISSION_LEAD_SECONDS
+)
 SCHEMA = "bayes_basket_target_p1_replay_awc_source_authority_v1"
 AUTHORITY_STATE = "FORMAL_AWC_HISTORICAL_REPLAY"
 SOURCE_LANE = "AWC"
@@ -136,7 +143,13 @@ def _binding_identity(
         raise ContractError("p1_replay_authority_binding_report_type_invalid")
     published_at = _utc("published_at_utc", binding.get("published_at_utc"))
     received_at = _utc("received_at_utc", binding.get("received_at_utc"))
-    if published_at > received_at:
+    # A routine METAR goes on the wire slightly before the minute it is
+    # stamped for, so its nominal minute may lead the receipt by transmission
+    # jitter.  Settlement and the live P1 reader already admit exactly that
+    # lead; refusing it here fail-closed the whole replayed station-day for
+    # the stations that stamp on the hour (SBGR, MPMG).  Past the lead the
+    # stamp is genuinely in the future and still fails.
+    if published_at - received_at > _MAX_TRANSMISSION_LEAD:
         raise ContractError("p1_replay_authority_publication_after_receipt")
     if received_at > decision_at:
         raise ContractError("p1_replay_authority_received_after_decision")

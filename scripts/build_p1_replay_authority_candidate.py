@@ -28,7 +28,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
+from bayes_basket_target.contracts import (  # noqa: E402
+    MAX_REPORT_TRANSMISSION_LEAD_SECONDS,
+    ContractError,
+    content_sha256,
+)
 from bayes_basket_target.p1_replay_source_authority import (  # noqa: E402
     build_awc_official_p1_replay_authority,
     resolve_awc_official_p1_replay_authority,
@@ -49,6 +53,7 @@ AWC = "AWC"
 MAX_OBSERVATIONS = 512
 MAX_MATCHES = 16
 UTC = timezone.utc
+_MAX_TRANSMISSION_LEAD = timedelta(seconds=MAX_REPORT_TRANSMISSION_LEAD_SECONDS)
 
 
 def _text(name: str, value: Any) -> str:
@@ -345,7 +350,11 @@ def _archive_matches(
                 blockers.append("source_poll_error_present")
             if published is None:
                 blockers.append("source_report_issue_time_unverified")
-            if published is not None and published > receipt:
+            # Same admission the authority binding makes: a report's nominal
+            # minute may lead its receipt by transmission jitter, so blocking
+            # a sub-minute lead here would keep the candidate fail-closed at
+            # the very rows the authority is willing to bind.
+            if published is not None and published - receipt > _MAX_TRANSMISSION_LEAD:
                 blockers.append("source_publication_after_receipt")
             if receipt > decision_at:
                 blockers.append("source_receipt_after_root_decision")
