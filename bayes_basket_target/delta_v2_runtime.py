@@ -655,9 +655,11 @@ def _support_windows(
         # over the all-in price did not clear tick-rounding across the legs.
         "edge_refused_window_count": edge_refused,
         "unpriced_refused_window_count": unpriced_refused,
-        "support_edge_friction_ticks_per_leg": (
-            SUPPORT_EDGE_FRICTION_TICKS_PER_LEG
-        ),
+        # The friction the edge gate measured against is not repeated here:
+        # ``_solve_over_support_windows`` already publishes it into the same
+        # receipt as ``edge_friction_ticks_per_leg``, and two names for one
+        # number in one dict is how a reader ends up comparing a value with
+        # itself.
         "enumerated_window_count": enumerated,
         "shortlisted_window_count": shortlisted,
         # Which gate refused the last window still standing.  The gates form
