@@ -343,7 +343,8 @@ def collect_band_stages(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         if _table_exists(conn, "calibration_band_reliability_fit_journal"):
             journal_rows = conn.execute(
                 "SELECT fitted_at_utc, outcome, serving_day_count,"
-                " qualifying_cell_count, band_table_sha256"
+                " qualifying_cell_count, band_table_sha256,"
+                " serving_station_day_count, evidence_json"
                 " FROM calibration_band_reliability_fit_journal"
                 " WHERE stage=? ORDER BY fitted_at_utc DESC LIMIT 8",
                 (stage,),
@@ -360,6 +361,24 @@ def collect_band_stages(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             continue
         factors = json.loads(row[1])
         evidence = json.loads(row[2])
+        fitted_at = row[3]
+        days = int(row[4])
+        station_days = evidence.get("serving_station_day_count")
+        # The active row is content-addressed by its factors and is only
+        # rewritten when they change, so a stage that keeps re-fitting to
+        # the same table -- an accumulating stage always does -- freezes
+        # its fit time and day counts at whatever the last *change* saw.
+        # The journal is the record of what each fit knew, so the evidence
+        # side of this panel reads its newest entry for this exact table.
+        if journal_rows and str(journal_rows[0][4]) == str(row[0]):
+            latest = journal_rows[0]
+            fitted_at = latest[0]
+            days = int(latest[2])
+            station_days = int(latest[5])
+            try:
+                evidence = json.loads(latest[6])
+            except (ValueError, TypeError):
+                pass
         reports = evidence.get("serving_report") or {}
         basis = evidence.get("basis") or {}
         bands = []
@@ -377,7 +396,6 @@ def collect_band_stages(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 "basis": reason,
                 "blocked_by": detail.get("blocked_by"),
             })
-        days = int(row[4])
         accumulating = bool(evidence.get("accumulating"))
         active_cells = sum(1 for _c, f in factors if float(f) != 1.0)
         if accumulating:
@@ -395,11 +413,11 @@ def collect_band_stages(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             "state": state,
             "health": health,
             "table_sha": str(row[0])[:12],
-            "fitted_at_utc": row[3],
-            "fit_age_hours": _age_hours(row[3]),
+            "fitted_at_utc": fitted_at,
+            "fit_age_hours": _age_hours(fitted_at),
             "serving_days": days,
             "min_days": MIN_QUALIFYING_DAYS,
-            "station_days": evidence.get("serving_station_day_count"),
+            "station_days": station_days,
             "accumulating": accumulating,
             "bands": bands,
             "journal": [
@@ -1318,17 +1336,24 @@ def collect_center_width(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             "health": health,
             "delta_c": active[0] if active else None,
             "width_lambda": active[1] if active else None,
-            "fitted_at_utc": active[2] if active else (
-                str(last[0]) if last else None
+            # Served scalars come from the active row; the evidence behind
+            # them comes from the newest journal entry, because the active
+            # row is only rewritten when the scalars change and would
+            # otherwise report a fit age of however long they have held.
+            "fitted_at_utc": str(last[0]) if last else (
+                active[2] if active else None
             ),
             "fit_age_hours": _age_hours(
-                active[2] if active else (str(last[0]) if last else None)
+                str(last[0]) if last else (active[2] if active else None)
             ),
             "serving_days": (
-                int(active[3]) if active
-                else (int(last[4]) if last else 0)
+                int(last[4]) if last
+                else (int(active[3]) if active else 0)
             ),
-            "serving_cells": evidence.get("serving_cell_count"),
+            "serving_cells": (
+                int(last[5]) if last
+                else evidence.get("serving_cell_count")
+            ),
             "forward_nll_gain": (
                 float(last[6]) if last else evidence.get("forward_nll_gain")
             ),
@@ -3614,11 +3639,35 @@ function roster(){
     const hist=e.p1_history||[];
     const rungs=hist.map(x=>x.centre_bucket).filter(Boolean);
     const path=rungs.filter((x,i)=>i===0||x!==rungs[i-1]);
-    const drift=!hist.length?"":
+    // The last recompute's point estimate is P1's own predicted maximum for
+    // the day, shown in the market's unit.  The tag says which conditioner
+    // produced it: a physical-path prediction, the retired curve method, or
+    // -- at zero strength -- the bare hard bound, which is not a prediction
+    // and must not read as one.
+    const MODE_LABEL={
+      PHYSICAL_ABSOLUTE_TMAX_SOFT_LR_PLUS_HARD_EXCLUSION_V5:"物理路径",
+      CONDITIONAL_HOURLY_FUTURE_PATH_SOFT_LR_PLUS_HARD_EXCLUSION_V4:"曲线法",
+      CONDITIONAL_FUTURE_PATH_SOFT_LR_PLUS_HARD_EXCLUSION_V3:"路径法(旧)",
+      FULL_PREFIX_ROOT_RECOMPUTE_SOFT_LR_PLUS_HARD_EXCLUSION_V2:"重算法(旧)",
+    };
+    const last=hist.length?hist[hist.length-1]:null;
+    const lastC=last==null?null:Number(last.centre_c);
+    const predUnit=e.settlement_unit||"C";
+    const strength=last&&last.trajectory_strength!=null
+      ?Number(last.trajectory_strength):null;
+    const modeTag=last==null?"":
+      (strength!=null&&strength<=0
+        ?`<span class="muted">仅硬下界</span>`
+        :`<span class="muted">${MODE_LABEL[last.likelihood_mode]||"—"}${
+            strength==null?"":" · 强度"+strength.toFixed(2)}</span>`);
+    const pred=(last==null||lastC==null||!isFinite(lastC))?"":
+      `<div class="muted">预测最高 <span class="mono" style="color:var(--up)">${
+        asUnit(lastC,predUnit).toFixed(1)}°${h(predUnit)}</span> ${modeTag}</div>`;
+    const drift=(!hist.length?"":
       `<div class="muted">${hist.length} 次重算 ·
        ${path.length<2
          ? `横梁未动 <span class="mono">${path.length?short(path[0]):"—"}</span>`
-         : `横梁 <span class="mono">${path.map(short).join(" → ")}</span>`}</div>`;
+         : `横梁 <span class="mono">${path.map(short).join(" → ")}</span>`}</div>`)+pred;
     // One number for the station-day, because it held one position.  The
     // stake beside it is everything the chain spent, opening and top-ups.
     const pnl=e.realized_usdc==null?'<span class="muted">—</span>':
@@ -3702,6 +3751,9 @@ function roster(){
   <b>挂单账</b>：挂出去的每一桶都在，一档没买到的划掉，后面跟腿数、金额与三个完成率，
   展开「逐腿」是每条腿的目标份数 / 成交份数 / 成交档位 / 均价。
   空格里写的是账本自己给出的拒绝理由，不再统一算作「未入座」。
+  P1 格里的「预测最高」是当天<b>最后一次重算</b>的点预测（后验加权中心，随盘口单位显示），
+  旁边注明它出自哪个条件化器：<b>物理路径</b>是只看观测的 v5 预测器（带生效强度），
+  「仅硬下界」表示该次重算没有任何软证据参与——那不是预测，只是排除。
   每行只讲这一天：跨日均值在上一节。最新一天默认展开，更早的日期折叠在下方。</p>
   <div class="why"><b>站点格的底色＝这个站日最后怎么了：</b>
   <span class="pill green">命中</span>真值落在最终持仓里 ·
