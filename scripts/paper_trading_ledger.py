@@ -346,6 +346,19 @@ MAKER_RESTING_TAIL_LAMBDA = str(
 # says the leg is worth stays unbought, at any completion gap, by design.
 MAKER_RESTING_GAP_MID = 1.0 / 3.0
 MAKER_RESTING_GAP_LATE = 2.0 / 3.0
+# Consolidation annotation (research lane, 2026-08-21): three signs that
+# the market has already done its pricing work by the time we enter --
+# the mass centre unchanged over the prior K P0 decisions, the top-two
+# mass at or above the sharpness line, and the ideal centre+-1 window
+# fully quoted at or above the leg floor.  Measured on 159 settled
+# chains, the 45 with NONE of the three returned +77% (+42% with the
+# best win removed) while every stratum with at least one returned -35%
+# to -44%: certainty is what the market charges for.  ANNOTATION ONLY --
+# recorded on the row, never consulted by entry, sizing or execution;
+# the forward sample decides whether it ever becomes a gate.
+CONSOLIDATION_STABLE_LOOKBACK = 3
+CONSOLIDATION_SHARP_TOP2 = 0.60
+CONSOLIDATION_QUOTED_FRACTION = 0.80
 # When the order stops trying: past the hours in which this station's
 # daily maximum actually lands, not at settlement (user ruling,
 # 2026-08-20, revised from a fixed local hour).  Per station: the P-th
@@ -750,6 +763,13 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE paper_trade_position"
             " ADD COLUMN chain_stake_usdc REAL"
+        )
+    if "consolidation_json" not in columns:
+        # Research annotation only (2026-08-21): how consolidated the
+        # market already was at entry.  Never read by any decision.
+        conn.execute(
+            "ALTER TABLE paper_trade_position"
+            " ADD COLUMN consolidation_json TEXT NOT NULL DEFAULT ''"
         )
     if "selection_rule_label" not in columns:
         conn.execute(
@@ -1347,6 +1367,87 @@ def _value_cap(probability: float | None) -> float | None:
     if probability is None or MAKER_RESTING_VALUE_LAMBDA <= 0:
         return None
     return MAKER_RESTING_VALUE_LAMBDA * float(probability)
+
+
+def _consolidation_signals(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    entry_decision_at_utc: str,
+    probabilities: Mapping[str, float],
+    ordinals: Mapping[str, int],
+    quotes: Mapping[str, Any],
+) -> dict[str, Any]:
+    """How much pricing work the market had already done at entry.
+
+    Three booleans and their count, recorded on the position row and never
+    consulted by any decision.  ``stable``: the mass centre unchanged over
+    the prior CONSOLIDATION_STABLE_LOOKBACK P0 decisions.  ``sharp``: the
+    entry distribution's top-two mass at or above the sharpness line.
+    ``quoted``: the ideal centre+-1 window carries at least
+    CONSOLIDATION_QUOTED_FRACTION of its mass on buckets asked at or above
+    the leg floor.  The measured inversion that motivates recording them:
+    the settled book's entire positive tail sits in the stratum where all
+    three are off.
+    """
+
+    centres: list[str] = []
+    if probabilities:
+        centres.append(max(probabilities, key=lambda b: probabilities[b]))
+    for (hid,) in conn.execute(
+        "SELECT history_id FROM basket_probability_bridge_history"
+        " WHERE station_id=? AND event_date=? AND stage='P0'"
+        "   AND decision_at_utc<?"
+        " ORDER BY decision_at_utc DESC LIMIT ?",
+        (station_id, event_date, entry_decision_at_utc,
+         CONSOLIDATION_STABLE_LOOKBACK),
+    ):
+        row = conn.execute(
+            "SELECT bucket FROM basket_probability_bridge_bucket_probability"
+            " WHERE history_id=? ORDER BY probability DESC LIMIT 1",
+            (hid,),
+        ).fetchone()
+        if row:
+            centres.append(str(row[0]))
+    stable = (
+        len(centres) >= CONSOLIDATION_STABLE_LOOKBACK + 1
+        and len(set(centres)) == 1
+    )
+
+    top2 = sum(sorted(probabilities.values(), reverse=True)[:2])
+    sharp = top2 >= CONSOLIDATION_SHARP_TOP2
+
+    quoted = False
+    if probabilities:
+        order = sorted(probabilities, key=lambda b: ordinals.get(b, 0))
+        ci = max(
+            range(len(order)), key=lambda i: probabilities[order[i]]
+        )
+        ideal = order[max(0, ci - 1):ci + 2]
+        ideal_mass = sum(probabilities[b] for b in ideal)
+        ok_mass = 0.0
+        for bucket in ideal:
+            quote = quotes.get(str(bucket))
+            if not isinstance(quote, Mapping):
+                continue
+            asks = quote.get("ask_levels") or []
+            best = quote.get("best_ask")
+            if best is None and asks:
+                best = (asks[0] or {}).get("price")
+            if best is not None and float(best) >= MINIMUM_LEG_ALL_IN_ASK:
+                ok_mass += probabilities[bucket]
+        quoted = (
+            ideal_mass > 0
+            and ok_mass / ideal_mass >= CONSOLIDATION_QUOTED_FRACTION
+        )
+
+    return {
+        "stable": bool(stable),
+        "sharp": bool(sharp),
+        "quoted": bool(quoted),
+        "count": int(stable) + int(sharp) + int(quoted),
+    }
 
 
 def _tail_bucket(
@@ -3680,6 +3781,17 @@ def backfill(
                             json.dumps(held_before, sort_keys=True),
                             json.dumps(held, sort_keys=True),
                             chain_stake,
+                            json.dumps(_consolidation_signals(
+                                conn,
+                                station_id=station_id,
+                                event_date=event_date,
+                                entry_decision_at_utc=payload[
+                                    "decision_at_utc"
+                                ],
+                                probabilities=probabilities,
+                                ordinals=ordinals,
+                                quotes=quotes,
+                            ), sort_keys=True),
                         )
                     )
                     counts["positions"] += 1
@@ -3853,9 +3965,10 @@ def backfill(
             " refused_window_count, content_sha256, selection_rule_sha256,"
             " selection_rule_label, leg_shares_json, resting_fill_json,"
             " posted_buckets_json, intended_legs_json, intended_stake_usdc,"
-            " held_before_json, chain_shares_json, chain_stake_usdc"
+            " held_before_json, chain_shares_json, chain_stake_usdc,"
+            " consolidation_json"
             ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
-            "?,?,?,?,?)",
+            "?,?,?,?,?,?)",
             pending_positions,
         )
     if pending_settlements:

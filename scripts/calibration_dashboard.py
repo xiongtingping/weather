@@ -2937,6 +2937,26 @@ function makerProbe(){
       </tbody></table>
     </div>`;
   }).join("");
+    const cons=(S.consolidation_split||{});
+  const consRows=(cons.strata||[]).map(r=>`<tr>
+      <td class="mono">${r.signal_count} 个</td>
+      <td class="mono">${r.settled}</td>
+      <td class="mono">${r.hit_rate==null?"—":(100*r.hit_rate).toFixed(0)+"%"}</td>
+      <td class="mono">${r.staked.toFixed(0)}</td>
+      <td class="mono ${r.roi>=0?"up":"down"}">${r.roi==null?"—":((r.roi>=0?"+":"")+(100*r.roi).toFixed(1)+"%")}</td>
+      <td class="mono ${r.roi_ex_best>=0?"up":"down"}">${r.roi_ex_best==null?"—":((r.roi_ex_best>=0?"+":"")+(100*r.roi_ex_best).toFixed(1)+"%")}</td>
+    </tr>`).join("");
+  const consBlock=cons.available?`<div class="card" style="margin-top:12px">
+    <div class="muted">确定性溢价 · 前向验证中（只读，不参与任何决策）</div>
+    <div class="why" style="margin-top:8px">入场那一刻数三个"市场已完成定价"的信号：
+    中心桶连续 3 次未变、top2 质量 ≥60%、理想窗全数有 ≥2 分报价。
+    样本内测得：<b>0 信号组独占全部正收益（+77%，去最大赢 +42%），
+    任一信号亮起后 −35%~−44%</b>——确定性是市场收费的东西。
+    此表按结算前向积累；等 0 信号组在前向样本里也过"去最大赢"检验，
+    才谈要不要变成门。</div>
+    <table style="margin-top:8px"><thead><tr>
+      <th>信号数</th><th>结算</th><th>命中</th><th>投入</th><th>ROI</th><th>去最大赢</th>
+    </tr></thead><tbody>${consRows}</tbody></table></div>`:"";
   const assessBlock=assessCards?`
     <h2 style="margin-top:0">十二、挂单执行 · 三阶段总体评估 ${verdict}</h2>
     <p class="sub"><b>目标是在不突破模型价值的前提下，用剩余时间最大化目标仓位的
@@ -2947,7 +2967,7 @@ function makerProbe(){
     后 1/3 窗程仍未成交的腿直接吃单——但只在价值红线之内，市场要价高过模型估值的腿
     宁可不买。有效期到该站达峰时刻分位为止。成交结果不改变价值，只改变剩余订单的挂法。
     省价为正说明挂单还在赚价差；进行中的事件日单子还挂在书上，读数会暂时偏低。</p>
-    <div class="grid g3">${assessCards}</div>`:"";
+    <div class="grid g3">${assessCards}</div>${consBlock}`:"";
   const reBlock=reCards?`<div class="grid g3">${reCards}</div>
     <div class="why" style="margin-top:12px"><b>三个阶段分开看，不合并：</b>
     P0 在赛前十几小时挂，盘口几乎不动；P1 在盘中挂，是当天最活跃的书；

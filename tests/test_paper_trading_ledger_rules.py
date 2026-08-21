@@ -1062,3 +1062,108 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
                 )
     finally:
         conn.close()
+
+
+def test_consolidation_is_an_annotation_and_measures_what_it_says() -> None:
+    """Three signs the market already priced the day, recorded, never used.
+
+    Measured on 159 settled chains: the 45 entered with none of the three
+    returned +77% (+42% with the best win removed) while every stratum
+    with at least one returned -35% to -44%.  An inversion that strong,
+    found in-sample, earns a forward validation lane -- not a gate.  So
+    the count is written on the row and consulted by nothing.
+    """
+
+    import sqlite3
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    from paper_trading_ledger import (  # noqa: PLC0415
+        CONSOLIDATION_SHARP_TOP2,
+        CONSOLIDATION_STABLE_LOOKBACK,
+        _consolidation_signals,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(
+        "CREATE TABLE basket_probability_bridge_history ("
+        " history_id TEXT, station_id TEXT, event_date TEXT,"
+        " stage TEXT, decision_at_utc TEXT);"
+        "CREATE TABLE basket_probability_bridge_bucket_probability ("
+        " history_id TEXT, bucket TEXT, ordinal INT, probability REAL);"
+    )
+    for i, centre_p in enumerate((0.5, 0.5, 0.5)):
+        hid = f"h{i}"
+        conn.execute(
+            "INSERT INTO basket_probability_bridge_history VALUES"
+            " (?,?,?,?,?)",
+            (hid, "ZUUU", "2026-08-20", "P0", f"2026-08-19T0{i}:00:00Z"),
+        )
+        conn.executemany(
+            "INSERT INTO basket_probability_bridge_bucket_probability"
+            " VALUES (?,?,?,?)",
+            [(hid, "32C", 0, centre_p), (hid, "33C", 1, 1 - centre_p)],
+        )
+
+    probabilities = {"31C": 0.15, "32C": 0.5, "33C": 0.35}
+    ordinals = {"31C": 0, "32C": 1, "33C": 2}
+    quotes = {
+        "31C": {"best_ask": 0.10},
+        "32C": {"best_ask": 0.45},
+        "33C": {"ask_levels": [{"price": 0.30, "shares": 5}]},
+    }
+    got = _consolidation_signals(
+        conn,
+        station_id="ZUUU",
+        event_date="2026-08-20",
+        entry_decision_at_utc="2026-08-19T09:00:00Z",
+        probabilities=probabilities,
+        ordinals=ordinals,
+        quotes=quotes,
+    )
+    # Centre 32C held over the three prior decisions and at entry: stable.
+    # top2 = 0.85 >= 0.60: sharp.  All three ideal buckets quoted >= 0.02.
+    assert got == {
+        "stable": True, "sharp": True, "quoted": True, "count": 3
+    }
+    assert sum(
+        (got["stable"], got["sharp"], got["quoted"])
+    ) == got["count"]
+
+    # Knock each signal out independently.
+    conn.execute(
+        "UPDATE basket_probability_bridge_bucket_probability"
+        " SET probability=CASE bucket WHEN '32C' THEN 0.2 ELSE 0.8 END"
+        " WHERE history_id='h1'"
+    )
+    assert _consolidation_signals(
+        conn, station_id="ZUUU", event_date="2026-08-20",
+        entry_decision_at_utc="2026-08-19T09:00:00Z",
+        probabilities=probabilities, ordinals=ordinals, quotes=quotes,
+    )["stable"] is False
+    blunt = {"31C": 0.3, "32C": 0.25, "33C": 0.25, "34C": 0.2}
+    assert _consolidation_signals(
+        conn, station_id="ZUUU", event_date="2026-08-20",
+        entry_decision_at_utc="2026-08-19T09:00:00Z",
+        probabilities=blunt, ordinals={**ordinals, "34C": 3}, quotes=quotes,
+    )["sharp"] is False
+    assert _consolidation_signals(
+        conn, station_id="ZUUU", event_date="2026-08-20",
+        entry_decision_at_utc="2026-08-19T09:00:00Z",
+        probabilities=probabilities, ordinals=ordinals,
+        quotes={**quotes, "32C": {"best_ask": 0.001}},
+    )["quoted"] is False
+
+    assert CONSOLIDATION_STABLE_LOOKBACK == 3
+    assert CONSOLIDATION_SHARP_TOP2 == 0.60
+
+    # Annotation only: written at insert, absent from every decision path.
+    source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    calls = source.count("_consolidation_signals(")
+    assert calls == 2, calls  # the definition and the single insert-side call
+    assert "consolidation_json" in source

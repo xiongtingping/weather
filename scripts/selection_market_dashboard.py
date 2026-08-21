@@ -394,6 +394,67 @@ def _basket_hit_by_size(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return out
 
 
+def _consolidation_split(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Settled outcomes by how consolidated the market was at entry.
+
+    The ledger annotates every position with three signs the pricing work
+    was already done -- stable centre, sharp distribution, fully-quoted
+    ideal window -- and this is the forward validation of the measured
+    inversion: in-sample, the zero-signal stratum held the book's whole
+    positive tail (+77%, +42% with the best win removed) while every
+    other stratum sat between -35% and -44%.  The split stays a reading
+    until the forward sample is big enough to survive the same ex-best
+    test out-of-sample; nothing gates on it.
+    """
+
+    try:
+        rows = conn.execute(
+            "SELECT p.consolidation_json, s.hit, s.stake_usdc, s.pnl_usdc"
+            " FROM paper_trade_settlement s"
+            " JOIN paper_trade_position p"
+            "  ON p.station_id=s.station_id AND p.event_date=s.event_date"
+            " WHERE p.stage='P0' AND p.consolidation_json<>''"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return {"available": False}
+    strata: dict[int, dict[str, Any]] = {}
+    for payload, hit, stake, pnl in rows:
+        try:
+            count = int((json.loads(payload) or {}).get("count", -1))
+        except (TypeError, ValueError):
+            continue
+        if count < 0:
+            continue
+        slot = strata.setdefault(count, {
+            "settled": 0, "hits": 0, "staked": 0.0, "pnls": [],
+        })
+        slot["settled"] += 1
+        slot["hits"] += int(hit or 0)
+        slot["staked"] += float(stake or 0.0)
+        slot["pnls"].append(float(pnl or 0.0))
+    out = []
+    for count in sorted(strata):
+        slot = strata[count]
+        pnl = sum(slot["pnls"])
+        best = max(slot["pnls"]) if slot["pnls"] else 0.0
+        out.append({
+            "signal_count": count,
+            "settled": slot["settled"],
+            "hit_rate": (
+                slot["hits"] / slot["settled"] if slot["settled"] else None
+            ),
+            "staked": slot["staked"],
+            "pnl": pnl,
+            "roi": pnl / slot["staked"] if slot["staked"] else None,
+            # The honesty check every long-odds stratum must pass: does
+            # the sign survive its single best day.
+            "roi_ex_best": (
+                (pnl - best) / slot["staked"] if slot["staked"] else None
+            ),
+        })
+    return {"available": bool(out), "strata": out}
+
+
 def _posted_basket_hit_trend(
     conn: sqlite3.Connection, sizes: Sequence[int] = (3, 4)
 ) -> dict[str, Any]:
@@ -1483,6 +1544,7 @@ def build_payload(db: Path) -> dict[str, Any]:
         "current_selection_rule_label": SELECTION_RULE_LABEL,
         "basket_hit_by_size": _basket_hit_by_size(conn),
         "posted_basket_hit": _posted_basket_hit_trend(conn),
+        "consolidation_split": _consolidation_split(conn),
         "maker_probe": _maker_probe(conn),
         "resting_entry": _resting_entry_stats(conn),
         "resting_entry_trend": _resting_entry_trend(conn),
