@@ -411,6 +411,18 @@ def _assert_plan_observation_bound_lineage(
             raise AtomicLedgerError(
                 f"plan_lineage_{field}_missing"
             )
+        if field.endswith("committed_at"):
+            # Compare the instant, not the spelling.  The plan carries the
+            # observation's commit at microsecond precision while the fact
+            # states the same instant in milliseconds, so a raw string test
+            # reports a mismatch about trailing zeroes -- RKPK 2026-08-21,
+            # ``...744000Z`` against ``...744Z``.
+            try:
+                actual = _timestamp(f"plan_lineage_{field}", actual)
+            except AtomicLedgerError:
+                raise AtomicLedgerError(
+                    f"plan_lineage_{field}_mismatch"
+                ) from None
         if actual != expected_value:
             raise AtomicLedgerError(
                 f"plan_lineage_{field}_mismatch"
