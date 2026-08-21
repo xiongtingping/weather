@@ -180,7 +180,7 @@ def _db() -> tuple[sqlite3.Connection, dict[str, str], str]:
                 "settlement_timezone": "America/New_York",
                 "canonical_observation_event_id": "observation-0",
                 "truth_observation_revision_content_sha256": revision_sha,
-                "canonical_observation_committed_at_utc": "2026-07-23T05:00:00.000Z",
+                "canonical_observation_committed_at": "2026-07-23T05:00:00.000Z",
                 "hard_bound_id": "bound-0",
                 "source_lane": "AWC",
                 "report_type": "METAR",

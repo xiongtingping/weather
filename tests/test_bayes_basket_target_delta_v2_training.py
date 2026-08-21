@@ -111,7 +111,7 @@ def _seed() -> tuple[sqlite3.Connection, ProbabilityEnvelope]:
                     event_date=EVENT_DATE, settlement_timezone=TZ,
                     observed_at_utc=NOW, raw_object_sha256=SHA_A,
                 )[1],
-                "canonical_observation_committed_at_utc": "2026-07-23T05:00:00.000Z",
+                "canonical_observation_committed_at": "2026-07-23T05:00:00.000Z",
                 "hard_bound_id": "bound-1",
                 "source_lane": "AWC",
                 "report_type": "METAR",

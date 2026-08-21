@@ -116,7 +116,7 @@ def _bundle(index: int = 0, *, amount: float = 4.0) -> dict[str, object]:
                 "settlement_timezone": SETTLEMENT_TIMEZONE,
                 "canonical_observation_event_id": f"fault-obs-{index}",
                 "truth_observation_revision_content_sha256": revision_sha,
-                "canonical_observation_committed_at_utc": "2026-07-23T05:00:00.000Z",
+                "canonical_observation_committed_at": "2026-07-23T05:00:00.000Z",
                 "hard_bound_id": f"fault-bound-{index}",
                 "source_lane": "AWC",
                 "report_type": "METAR",

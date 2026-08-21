@@ -73,7 +73,7 @@ def _inputs() -> tuple[list[ProbabilityEnvelope], dict, dict, list, dict, object
             **raw["lineage"],
             "canonical_observation_event_id": "obs-e2e-1",
             "truth_observation_revision_content_sha256": revision_sha,
-            "canonical_observation_committed_at_utc": (
+            "canonical_observation_committed_at": (
                 awc_contract(
                     station_id="ZUUU", observation_id="obs-e2e-1",
                     event_date="2026-07-23", settlement_timezone="Asia/Shanghai",
@@ -751,7 +751,7 @@ def test_p0_opening_commits_stage_rooted_intents_and_evidence() -> None:
     observation_only = {
         "canonical_observation_event_id",
         "truth_observation_revision_content_sha256",
-        "canonical_observation_committed_at_utc",
+        "canonical_observation_committed_at",
         "hard_bound_id",
         "reported_high_c",
         "reported_hard_lower_bound",

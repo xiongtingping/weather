@@ -387,7 +387,14 @@ def _assert_plan_observation_bound_lineage(
             "truth_observation_revision_content_sha256": str(
                 observation.get("truth_observation_revision_content_sha256") or ""
             ).lower(),
-            "canonical_observation_committed_at_utc": str(
+            # The bare name, not ``..._utc``.  Materialization publishes
+            # ``canonical_observation_committed_at`` and nothing has ever
+            # written the suffixed spelling, so demanding it here could only
+            # ever report the field missing -- the same swap that moved this
+            # root onto evidence the live stage could not produce (2026-08-06)
+            # renamed it, and production_io's own copy of this check was
+            # corrected earlier while this one was not.
+            "canonical_observation_committed_at": str(
                 observation.get("canonical_committed_at") or ""
             ),
             "hard_bound_id": str(bound.get("bound_id") or ""),
