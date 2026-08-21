@@ -19,6 +19,11 @@ from datetime import datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
+# One write-lock acquisition, one budget: the store shares its database --
+# and therefore its single write lock -- with the band reliability store,
+# whose module holds the measured numbers (resident holds bursts of 3.6-9.1s,
+# up to 45s) and the bounded retry that answers them.
+from .band_reliability_store import _begin_immediate
 from .center_width_calibration import (
     MAX_ABS_SHIFT_C,
     MAX_WIDTH_LAMBDA,
@@ -530,25 +535,32 @@ def persist_and_activate_station_width(
     now = fitted_at_utc or datetime.now(timezone.utc).isoformat().replace(
         "+00:00", "Z"
     )
-    conn.execute(
-        "UPDATE calibration_center_width_station SET activated=0"
-        " WHERE stage=? AND activated=1",
-        (stage_id,),
-    )
-    for station, scale in sorted(scales.items()):
-        detail = per_station.get(station, {})
+    _begin_immediate(conn)
+    try:
         conn.execute(
-            "INSERT OR REPLACE INTO calibration_center_width_station ("
-            " station_width_sha256, stage, station_id, width_scale,"
-            " raw_z_sd, sample_n, fitted_at_utc, activated, activated_at_utc"
-            ") VALUES (?,?,?,?,?,?,?,1,?)",
-            (
-                digest, stage_id, str(station), float(scale),
-                detail.get("raw_z_sd"), int(detail.get("sample_n") or 0),
-                now, now,
-            ),
+            "UPDATE calibration_center_width_station SET activated=0"
+            " WHERE stage=? AND activated=1",
+            (stage_id,),
         )
-    conn.commit()
+        for station, scale in sorted(scales.items()):
+            detail = per_station.get(station, {})
+            conn.execute(
+                "INSERT OR REPLACE INTO calibration_center_width_station ("
+                " station_width_sha256, stage, station_id, width_scale,"
+                " raw_z_sd, sample_n, fitted_at_utc, activated,"
+                " activated_at_utc"
+                ") VALUES (?,?,?,?,?,?,?,1,?)",
+                (
+                    digest, stage_id, str(station), float(scale),
+                    detail.get("raw_z_sd"),
+                    int(detail.get("sample_n") or 0),
+                    now, now,
+                ),
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     return {"state": "ACTIVATED", "station_width_sha256": digest}
 
 
@@ -570,24 +582,31 @@ def journal_station_width_fit(
         "fitted_at_utc": now,
         "station_width_sha256": digest,
     })[:24]
-    conn.execute(
-        "INSERT OR REPLACE INTO calibration_center_width_station_journal ("
-        " fit_id, stage, fitted_at_utc, station_width_sha256,"
-        " station_count, serving_day_count, serving_cell_count,"
-        " forward_nll_gain, outcome, evidence_json"
-        ") VALUES (?,?,?,?,?,?,?,?,?,?)",
-        (
-            fit_id, stage_id, now, digest,
-            int(fitted["station_count"]),
-            int(fitted["serving_day_count"]),
-            int(fitted["serving_cell_count"]),
-            float(fitted["forward_nll_gain"]), str(outcome),
-            json.dumps(
-                dict(fitted["evidence"]), ensure_ascii=False, sort_keys=True
+    _begin_immediate(conn)
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO"
+            " calibration_center_width_station_journal ("
+            " fit_id, stage, fitted_at_utc, station_width_sha256,"
+            " station_count, serving_day_count, serving_cell_count,"
+            " forward_nll_gain, outcome, evidence_json"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (
+                fit_id, stage_id, now, digest,
+                int(fitted["station_count"]),
+                int(fitted["serving_day_count"]),
+                int(fitted["serving_cell_count"]),
+                float(fitted["forward_nll_gain"]), str(outcome),
+                json.dumps(
+                    dict(fitted["evidence"]),
+                    ensure_ascii=False, sort_keys=True,
+                ),
             ),
-        ),
-    )
-    conn.commit()
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     return fit_id
 
 
@@ -884,32 +903,42 @@ def persist_and_activate_center_width(
     now = fitted_at_utc or datetime.now(timezone.utc).isoformat().replace(
         "+00:00", "Z"
     )
-    conn.execute(
-        "INSERT INTO calibration_center_width_table ("
-        " center_width_sha256, stage, delta_c, width_lambda, evidence_json,"
-        " fitted_at_utc, serving_day_count, activated, activated_at_utc"
-        ") VALUES (?,?,?,?,?,?,?,0,NULL)"
-        " ON CONFLICT(center_width_sha256) DO UPDATE SET"
-        "  evidence_json=excluded.evidence_json,"
-        "  fitted_at_utc=excluded.fitted_at_utc,"
-        "  serving_day_count=excluded.serving_day_count",
-        (
-            digest, stage_id, float(delta_c), float(width_lambda),
-            json.dumps(dict(evidence), ensure_ascii=False, sort_keys=True),
-            now, int(serving_day_count),
-        ),
-    )
-    conn.execute(
-        "UPDATE calibration_center_width_table SET activated=0,"
-        " activated_at_utc=NULL WHERE stage=? AND activated=1",
-        (stage_id,),
-    )
-    conn.execute(
-        "UPDATE calibration_center_width_table SET activated=1,"
-        " activated_at_utc=? WHERE center_width_sha256=?",
-        (now, digest),
-    )
-    conn.commit()
+    # Explicit acquisition rather than the implicit transaction the first
+    # INSERT would open: the retry budget is the point, not the isolation.
+    _begin_immediate(conn)
+    try:
+        conn.execute(
+            "INSERT INTO calibration_center_width_table ("
+            " center_width_sha256, stage, delta_c, width_lambda,"
+            " evidence_json,"
+            " fitted_at_utc, serving_day_count, activated, activated_at_utc"
+            ") VALUES (?,?,?,?,?,?,?,0,NULL)"
+            " ON CONFLICT(center_width_sha256) DO UPDATE SET"
+            "  evidence_json=excluded.evidence_json,"
+            "  fitted_at_utc=excluded.fitted_at_utc,"
+            "  serving_day_count=excluded.serving_day_count",
+            (
+                digest, stage_id, float(delta_c), float(width_lambda),
+                json.dumps(
+                    dict(evidence), ensure_ascii=False, sort_keys=True
+                ),
+                now, int(serving_day_count),
+            ),
+        )
+        conn.execute(
+            "UPDATE calibration_center_width_table SET activated=0,"
+            " activated_at_utc=NULL WHERE stage=? AND activated=1",
+            (stage_id,),
+        )
+        conn.execute(
+            "UPDATE calibration_center_width_table SET activated=1,"
+            " activated_at_utc=? WHERE center_width_sha256=?",
+            (now, digest),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     return {
         "state": "ACTIVATED",
         "center_width_sha256": digest,
@@ -937,24 +966,30 @@ def journal_center_width_fit(
         "fitted_at_utc": now,
         "center_width_sha256": digest,
     })[:24]
-    conn.execute(
-        "INSERT OR REPLACE INTO calibration_center_width_fit_journal ("
-        " fit_id, stage, fitted_at_utc, center_width_sha256, delta_c,"
-        " width_lambda, serving_day_count, serving_cell_count,"
-        " forward_nll_gain, outcome, evidence_json"
-        ") VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-        (
-            fit_id, stage_id, now, digest,
-            float(fitted["delta_c"]), float(fitted["width_lambda"]),
-            int(fitted["serving_day_count"]),
-            int(fitted["serving_cell_count"]),
-            float(fitted["forward_nll_gain"]), str(outcome),
-            json.dumps(
-                dict(fitted["evidence"]), ensure_ascii=False, sort_keys=True
+    _begin_immediate(conn)
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO calibration_center_width_fit_journal ("
+            " fit_id, stage, fitted_at_utc, center_width_sha256, delta_c,"
+            " width_lambda, serving_day_count, serving_cell_count,"
+            " forward_nll_gain, outcome, evidence_json"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                fit_id, stage_id, now, digest,
+                float(fitted["delta_c"]), float(fitted["width_lambda"]),
+                int(fitted["serving_day_count"]),
+                int(fitted["serving_cell_count"]),
+                float(fitted["forward_nll_gain"]), str(outcome),
+                json.dumps(
+                    dict(fitted["evidence"]),
+                    ensure_ascii=False, sort_keys=True,
+                ),
             ),
-        ),
-    )
-    conn.commit()
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     return fit_id
 
 
@@ -964,92 +999,127 @@ def refit_all_center_width(
     commit: bool = False,
     min_decision_at_utc: str | None = None,
 ) -> dict[str, Any]:
-    """Fit every stage, journal every fit, activate the admitted ones."""
+    """Fit every stage, journal every fit, activate the admitted ones.
+
+    Isolation matches the band store's (2026-08-20 lesson: one stage
+    losing the write-lock race to the resident took all three stages'
+    fits and journal rows with it, though their evidence had nothing to
+    do with the lock).  Two grains of it here, because a stage does two
+    units of work: a stage that throws records ``error`` in its own entry
+    and the loop continues, and within a stage the scalar lane and the
+    per-station lane are isolated from each other -- they are two fits on
+    two tables that merely share an anchor, so the scalar lane failing
+    must not cost the station lane its fit, nor the reverse.  After any
+    failure the connection is rolled back so a transaction left open
+    cannot fail the next unit's lock take for an unrelated reason.
+
+    A partial refit is still a failed refit; the CLI exits non-zero when
+    any entry carries ``error``, so the cron reports ✗ without discarding
+    the lanes that did land.
+    """
 
     results: dict[str, Any] = {}
     for stage in CENTER_WIDTH_STAGES:
-        fitted = fit_center_width(
-            conn, stage=stage,
-            min_decision_at_utc=min_decision_at_utc,
-        )
-        active = load_center_width(conn, stage=stage)
-        entry: dict[str, Any] = {
-            "stage": stage,
-            "delta_c": fitted["delta_c"],
-            "width_lambda": fitted["width_lambda"],
-            "candidate_delta_c": fitted.get("candidate_delta_c"),
-            "candidate_width_lambda": fitted.get("candidate_width_lambda"),
-            "forward_nll_gain": fitted["forward_nll_gain"],
-            "accumulating": fitted["accumulating"],
-            "admitted": fitted.get("admitted", False),
-            "served_stage": stage in CENTER_WIDTH_SERVED_STAGES,
-            "active_sha256": None if active is None else active[2],
-            "serving_day_count": fitted["serving_day_count"],
-            "serving_cell_count": fitted["serving_cell_count"],
-            "min_decision_at_utc": min_decision_at_utc,
-        }
-        if commit:
-            if stage not in CENTER_WIDTH_SERVED_STAGES:
-                outcome = "NOT_WIRED"
-            elif fitted["accumulating"]:
-                outcome = "ACCUMULATING"
-            elif not fitted.get("admitted", False):
-                outcome = "REFUSED_FORWARD"
-            else:
-                committed = persist_and_activate_center_width(
-                    conn,
-                    stage=stage,
-                    delta_c=fitted["delta_c"],
-                    width_lambda=fitted["width_lambda"],
-                    evidence=fitted["evidence"],
-                    serving_day_count=fitted["serving_day_count"],
-                )
-                entry["commit"] = committed
-                outcome = str(committed["state"])
-            entry["outcome"] = outcome
-            entry["fit_id"] = journal_center_width_fit(
-                conn, stage=stage, fitted=fitted, outcome=outcome
+        entry: dict[str, Any] = {"stage": stage}
+        results[stage] = entry
+        try:
+            fitted = fit_center_width(
+                conn, stage=stage,
+                min_decision_at_utc=min_decision_at_utc,
             )
+            active = load_center_width(conn, stage=stage)
+            entry.update({
+                "delta_c": fitted["delta_c"],
+                "width_lambda": fitted["width_lambda"],
+                "candidate_delta_c": fitted.get("candidate_delta_c"),
+                "candidate_width_lambda": fitted.get(
+                    "candidate_width_lambda"
+                ),
+                "forward_nll_gain": fitted["forward_nll_gain"],
+                "accumulating": fitted["accumulating"],
+                "admitted": fitted.get("admitted", False),
+                "served_stage": stage in CENTER_WIDTH_SERVED_STAGES,
+                "active_sha256": None if active is None else active[2],
+                "serving_day_count": fitted["serving_day_count"],
+                "serving_cell_count": fitted["serving_cell_count"],
+                "min_decision_at_utc": min_decision_at_utc,
+            })
+            if commit:
+                if stage not in CENTER_WIDTH_SERVED_STAGES:
+                    outcome = "NOT_WIRED"
+                elif fitted["accumulating"]:
+                    outcome = "ACCUMULATING"
+                elif not fitted.get("admitted", False):
+                    outcome = "REFUSED_FORWARD"
+                else:
+                    committed = persist_and_activate_center_width(
+                        conn,
+                        stage=stage,
+                        delta_c=fitted["delta_c"],
+                        width_lambda=fitted["width_lambda"],
+                        evidence=fitted["evidence"],
+                        serving_day_count=fitted["serving_day_count"],
+                    )
+                    entry["commit"] = committed
+                    outcome = str(committed["state"])
+                entry["outcome"] = outcome
+                entry["fit_id"] = journal_center_width_fit(
+                    conn, stage=stage, fitted=fitted, outcome=outcome
+                )
+        except Exception as exc:  # noqa: BLE001 -- isolation is the point
+            try:
+                conn.rollback()
+            except sqlite3.Error:
+                pass
+            entry["error"] = f"{type(exc).__name__}: {exc}"
         # The per-station width scales ride the same entry point, the same
         # evidence anchor and the same admission discipline as the stage
         # scalars they compose with.
-        station_fitted = fit_station_width(
-            conn, stage=stage,
-            min_decision_at_utc=min_decision_at_utc,
-        )
-        station_active = load_station_width(conn, stage=stage)
-        station_entry: dict[str, Any] = {
-            "station_count": station_fitted["station_count"],
-            "forward_nll_gain": station_fitted["forward_nll_gain"],
-            "accumulating": station_fitted["accumulating"],
-            "admitted": station_fitted.get("admitted", False),
-            "active_sha256": (
-                None if station_active is None else station_active[1]
-            ),
-        }
-        if commit:
-            if stage not in CENTER_WIDTH_SERVED_STAGES:
-                station_outcome = "NOT_WIRED"
-            elif station_fitted["accumulating"]:
-                station_outcome = "ACCUMULATING"
-            elif not station_fitted.get("admitted", False):
-                station_outcome = "REFUSED_FORWARD"
-            else:
-                station_committed = persist_and_activate_station_width(
-                    conn,
-                    stage=stage,
-                    scales=station_fitted["scales"],
-                    per_station=(
-                        station_fitted["evidence"].get("per_station") or {}
-                    ),
-                )
-                station_entry["commit"] = station_committed
-                station_outcome = str(station_committed["state"])
-            station_entry["outcome"] = station_outcome
-            station_entry["fit_id"] = journal_station_width_fit(
-                conn, stage=stage, fitted=station_fitted,
-                outcome=station_outcome,
-            )
+        station_entry: dict[str, Any] = {}
         entry["station_width"] = station_entry
-        results[stage] = entry
+        try:
+            station_fitted = fit_station_width(
+                conn, stage=stage,
+                min_decision_at_utc=min_decision_at_utc,
+            )
+            station_active = load_station_width(conn, stage=stage)
+            station_entry.update({
+                "station_count": station_fitted["station_count"],
+                "forward_nll_gain": station_fitted["forward_nll_gain"],
+                "accumulating": station_fitted["accumulating"],
+                "admitted": station_fitted.get("admitted", False),
+                "active_sha256": (
+                    None if station_active is None else station_active[1]
+                ),
+            })
+            if commit:
+                if stage not in CENTER_WIDTH_SERVED_STAGES:
+                    station_outcome = "NOT_WIRED"
+                elif station_fitted["accumulating"]:
+                    station_outcome = "ACCUMULATING"
+                elif not station_fitted.get("admitted", False):
+                    station_outcome = "REFUSED_FORWARD"
+                else:
+                    station_committed = persist_and_activate_station_width(
+                        conn,
+                        stage=stage,
+                        scales=station_fitted["scales"],
+                        per_station=(
+                            station_fitted["evidence"].get("per_station")
+                            or {}
+                        ),
+                    )
+                    station_entry["commit"] = station_committed
+                    station_outcome = str(station_committed["state"])
+                station_entry["outcome"] = station_outcome
+                station_entry["fit_id"] = journal_station_width_fit(
+                    conn, stage=stage, fitted=station_fitted,
+                    outcome=station_outcome,
+                )
+        except Exception as exc:  # noqa: BLE001 -- isolation is the point
+            try:
+                conn.rollback()
+            except sqlite3.Error:
+                pass
+            station_entry["error"] = f"{type(exc).__name__}: {exc}"
     return results

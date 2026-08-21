@@ -107,13 +107,18 @@ fi
 CW_SINCE="2026-08-18T09:20:00Z"
 echo "" | tee -a "$LOG_DIR/calibration_training.log"
 echo "[$(date +%H:%M:%S)] 中心/宽度 (center_width) 自动重拟合 (证据自 $CW_SINCE 起)..." | tee -a "$LOG_DIR/calibration_training.log"
-CW_REPORT="$("$PY" scripts/refit_center_width.py --commit --summary --since "$CW_SINCE" 2>&1)" || true
+#    与第 3 节同款：各 stage（含每站宽度 lane）独立拟合，成败看退出码，
+#    不看有没有 SUMMARY 行——部分失败时失败的 lane 也会打自己那行。
+CW_RC=0
+CW_REPORT="$("$PY" scripts/refit_center_width.py --commit --summary --since "$CW_SINCE" 2>&1)" || CW_RC=$?
 echo "$CW_REPORT" >> "$LOG_DIR/calibration_training_$TIMESTAMP.log"
 if echo "$CW_REPORT" | grep -q '^SUMMARY '; then
   echo "$CW_REPORT" | grep '^SUMMARY ' | sed 's/^SUMMARY /    /' | tee -a "$LOG_DIR/calibration_training.log"
+fi
+if [ "$CW_RC" -eq 0 ]; then
   echo "[$(date +%H:%M:%S)] ✓ 三阶段中心/宽度已按最新证据重拟合" | tee -a "$LOG_DIR/calibration_training.log"
 else
-  echo "[$(date +%H:%M:%S)] ✗ 中心/宽度重拟合失败，详见 calibration_training_$TIMESTAMP.log" | tee -a "$LOG_DIR/calibration_training.log"
+  echo "[$(date +%H:%M:%S)] ✗ 中心/宽度重拟合失败 (退出码 $CW_RC)，详见 calibration_training_$TIMESTAMP.log" | tee -a "$LOG_DIR/calibration_training.log"
 fi
 
 echo "" | tee -a "$LOG_DIR/calibration_training.log"

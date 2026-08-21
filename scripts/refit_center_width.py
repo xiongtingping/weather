@@ -108,10 +108,21 @@ def main() -> int:
         for stage, entry in stages.items()
         if str(entry.get("outcome") or "") == "ACTIVATED"
     ]
+    # Stages -- and the two lanes inside a stage -- are fitted in
+    # isolation, so a run can be part success.  It is still a failed run
+    # (the exit code says so), but the lanes that landed are reported
+    # rather than thrown away with the one that did not.
+    failed = sorted(
+        stage
+        for stage, entry in stages.items()
+        if entry.get("error")
+        or (entry.get("station_width") or {}).get("error")
+    )
     print(json.dumps({
-        "schema": "center_width_refit_report_v1",
+        "schema": "center_width_refit_report_v2",
         "stages": stages,
         "activated_stages": activated,
+        "failed_stages": failed,
         "min_decision_at_utc": min_decision,
         "committed": bool(args.commit),
         "calls_order_gateway": False,
@@ -119,6 +130,17 @@ def main() -> int:
     }, ensure_ascii=False, sort_keys=True))
     if args.summary:
         for stage, entry in sorted(stages.items()):
+            if entry.get("error"):
+                error = entry["error"]
+                print(f"SUMMARY {stage}: FAILED — 本次未拟合 {error}")
+                continue
+            station_error = (entry.get("station_width") or {}).get("error")
+            if station_error:
+                print(
+                    f"SUMMARY {stage}: FAILED — 标量已拟合，"
+                    f"每站宽度失败 {station_error}"
+                )
+                continue
             days = entry["serving_day_count"]
             if not entry["served_stage"]:
                 detail = (
@@ -142,7 +164,7 @@ def main() -> int:
                 )
             state = entry.get("outcome", "REPORT_ONLY")
             print(f"SUMMARY {stage}: {state} — {detail}")
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

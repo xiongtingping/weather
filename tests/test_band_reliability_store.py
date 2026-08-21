@@ -221,7 +221,6 @@ def test_one_failing_stage_does_not_cost_the_other_stages(monkeypatch) -> None:
 
     assert set(report) == set(BAND_STAGES)
     assert "database is locked" in report["P0"]["error"]
-    assert "fit_id" not in report["P0"]
     assert load_band_table(conn, stage="P0") is None
     for stage in ("P0-M", "P1"):
         entry = report[stage]
@@ -231,6 +230,11 @@ def test_one_failing_stage_does_not_cost_the_other_stages(monkeypatch) -> None:
         assert load_band_table(conn, stage=stage)[1] == (
             entry["fitted_table_sha256"]
         )
+    # P0's fit was made even though its activation was not: the journal
+    # records it as such rather than losing the day.  The rollback inside
+    # the isolation frees the lock the fake persist left held, so the
+    # journal attempt goes through here; when it cannot, the entry carries
+    # journal_error instead.
     journalled = {
         (row[0], row[1])
         for row in conn.execute(
@@ -238,7 +242,13 @@ def test_one_failing_stage_does_not_cost_the_other_stages(monkeypatch) -> None:
             " FROM calibration_band_reliability_fit_journal"
         )
     }
-    assert journalled == {("P0-M", "ACCUMULATING"), ("P1", "ACCUMULATING")}
+    assert journalled == {
+        ("P0", "FIT_NOT_ACTIVATED"),
+        ("P0-M", "ACCUMULATING"),
+        ("P1", "ACCUMULATING"),
+    }
+    assert "fit_id" in report["P0"]
+    assert "journal_error" not in report["P0"]
 
 
 def test_write_lock_is_retried_for_contention_only(monkeypatch) -> None:
@@ -274,3 +284,67 @@ def test_write_lock_is_retried_for_contention_only(monkeypatch) -> None:
     with pytest.raises(sqlite3.OperationalError):
         _begin_immediate(broken)
     assert broken.attempts == 1
+
+
+def test_an_old_journal_migrates_to_the_widened_outcome_check() -> None:
+    """Widening the outcome vocabulary must not cost the journal its rows.
+
+    SQLite cannot ALTER a CHECK, so the rebuild is a migration: every row
+    crosses, because this table IS the record and dropping it would be the
+    exact loss it exists to prevent.  A read-only reader skips the rebuild
+    -- it cannot write the new outcome either -- and the next writer
+    migrates for everyone.
+    """
+
+    import re
+
+    from bayes_basket_target.band_reliability_store import (
+        _JOURNAL_DDL,
+        ensure_band_table_schema,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    narrowed = re.sub(
+        r"CHECK\(outcome IN\s*\([^)]*\)\)",
+        "CHECK(outcome IN ('ACTIVATED','UNCHANGED','ACCUMULATING'))",
+        _JOURNAL_DDL,
+    )
+    assert "FIT_NOT_ACTIVATED" not in narrowed
+    conn.execute(narrowed)
+    conn.execute(
+        "INSERT INTO calibration_band_reliability_fit_journal VALUES"
+        " ('band-fit-old', 'P0', '2026-08-16T02:00:00Z', ?, 5, 60, 0,"
+        "  'ACCUMULATING', '[]', '{}')",
+        ("a" * 64,),
+    )
+    conn.commit()
+
+    ensure_band_table_schema(conn)
+    rows = conn.execute(
+        "SELECT fit_id, stage, outcome"
+        " FROM calibration_band_reliability_fit_journal"
+    ).fetchall()
+    assert rows == [("band-fit-old", "P0", "ACCUMULATING")]
+    live = str(conn.execute(
+        "SELECT sql FROM sqlite_master"
+        " WHERE name='calibration_band_reliability_fit_journal'"
+    ).fetchone()[0])
+    assert "'FIT_NOT_ACTIVATED'" in live
+    # The widened CHECK accepts the new outcome, and the migration left no
+    # half-renamed table behind.
+    conn.execute(
+        "INSERT INTO calibration_band_reliability_fit_journal VALUES"
+        " ('band-fit-new', 'P1', '2026-08-22T02:00:00Z', ?, 6, 70, 0,"
+        "  'FIT_NOT_ACTIVATED', '[]', '{}')",
+        ("b" * 64,),
+    )
+    assert conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master"
+        " WHERE name='calibration_band_reliability_fit_journal_old'"
+    ).fetchone()[0] == 0
+    # The stage/time index survived the rebuild with the new table.
+    assert conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='index'"
+        " AND name='idx_band_fit_journal_stage_time'"
+        " AND tbl_name='calibration_band_reliability_fit_journal'"
+    ).fetchone()[0] == 1

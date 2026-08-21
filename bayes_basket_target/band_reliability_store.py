@@ -140,8 +140,12 @@ _JOURNAL_DDL = (
     " serving_day_count INTEGER NOT NULL,"
     " serving_station_day_count INTEGER NOT NULL,"
     " qualifying_cell_count INTEGER NOT NULL,"
+    # FIT_NOT_ACTIVATED: the fit itself succeeded and only the activation
+    # failed (in practice: lost the write-lock race to the resident).  The
+    # journal's whole purpose is recording what was known on the day it was
+    # chosen, and a fit that was made is known whether or not it served.
     " outcome TEXT NOT NULL CHECK(outcome IN"
-    "  ('ACTIVATED','UNCHANGED','ACCUMULATING')),"
+    "  ('ACTIVATED','UNCHANGED','ACCUMULATING','FIT_NOT_ACTIVATED')),"
     " factors_json TEXT NOT NULL,"
     " evidence_json TEXT NOT NULL"
     ")"
@@ -150,6 +154,11 @@ _JOURNAL_STAGE_INDEX = (
     "CREATE INDEX IF NOT EXISTS"
     " idx_band_fit_journal_stage_time"
     " ON calibration_band_reliability_fit_journal(stage, fitted_at_utc)"
+)
+
+
+_JOURNAL_OUTCOMES = (
+    "ACTIVATED", "UNCHANGED", "ACCUMULATING", "FIT_NOT_ACTIVATED",
 )
 
 
@@ -169,6 +178,46 @@ def ensure_band_table_schema(conn: sqlite3.Connection) -> None:
             "ALTER TABLE calibration_band_reliability_table"
             " ADD COLUMN stage TEXT NOT NULL DEFAULT 'P0'"
         )
+    # SQLite cannot ALTER a CHECK, so a journal built before an outcome
+    # existed is rebuilt in place around the widened one -- by migration,
+    # every row crossing, because this table IS the record and dropping it
+    # would be the exact loss it exists to prevent.  Read-only connections
+    # skip it: they cannot write the new outcome either, and the next
+    # writer migrates for everyone.
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table'"
+        " AND name='calibration_band_reliability_fit_journal'"
+    ).fetchone()
+    live = str((row or [""])[0] or "")
+    if live and any(f"'{name}'" not in live for name in _JOURNAL_OUTCOMES):
+        try:
+            _begin_immediate(conn)
+        except sqlite3.OperationalError as exc:
+            if "readonly" in str(exc).lower():
+                return
+            raise
+        try:
+            conn.execute(
+                "ALTER TABLE calibration_band_reliability_fit_journal"
+                " RENAME TO calibration_band_reliability_fit_journal_old"
+            )
+            conn.execute(_JOURNAL_DDL)
+            conn.execute(
+                "INSERT INTO calibration_band_reliability_fit_journal"
+                " SELECT fit_id, stage, fitted_at_utc, band_table_sha256,"
+                "  serving_day_count, serving_station_day_count,"
+                "  qualifying_cell_count, outcome, factors_json,"
+                "  evidence_json"
+                " FROM calibration_band_reliability_fit_journal_old"
+            )
+            conn.execute(
+                "DROP TABLE calibration_band_reliability_fit_journal_old"
+            )
+            conn.execute(_JOURNAL_STAGE_INDEX)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
 
 def _check_stage(stage: str) -> str:
@@ -839,13 +888,43 @@ def refit_all_stages(
                 "basis": fitted["evidence"]["basis"],
             })
             if commit:
-                outcome = persist_and_activate_band_table(
-                    conn,
-                    stage=stage,
-                    factors=fitted["factors"],
-                    evidence=fitted["evidence"],
-                    serving_day_count=fitted["serving_day_count"],
-                )
+                try:
+                    outcome = persist_and_activate_band_table(
+                        conn,
+                        stage=stage,
+                        factors=fitted["factors"],
+                        evidence=fitted["evidence"],
+                        serving_day_count=fitted["serving_day_count"],
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    # The fit itself succeeded; only the activation did
+                    # not.  Journal that fact -- what was known on the day
+                    # must survive the day's accidents -- knowing the
+                    # journal needs the same lock that may just have
+                    # refused: the attempt spends its own retry budget,
+                    # and if it also fails the error lands in the entry
+                    # rather than taking the remaining stages down.
+                    entry["error"] = f"{type(exc).__name__}: {exc}"
+                    try:
+                        conn.rollback()
+                    except sqlite3.Error:
+                        pass
+                    try:
+                        entry["fit_id"] = journal_band_fit(
+                            conn,
+                            stage=stage,
+                            fitted=fitted,
+                            outcome="FIT_NOT_ACTIVATED",
+                        )
+                    except Exception as journal_exc:  # noqa: BLE001
+                        try:
+                            conn.rollback()
+                        except sqlite3.Error:
+                            pass
+                        entry["journal_error"] = (
+                            f"{type(journal_exc).__name__}: {journal_exc}"
+                        )
+                    continue
                 entry["commit"] = outcome
                 entry["fit_id"] = journal_band_fit(
                     conn,

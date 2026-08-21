@@ -270,5 +270,123 @@ class P0PinContractTest(unittest.TestCase):
         self.assertIn("CENTER_WIDTH_METHOD_TAG", source)
         self.assertIn("apply_center_width_calibration", source)
 
+
+
+class StageIsolationTest(unittest.TestCase):
+    """One lane's lock loss must not cost the other lanes their fits.
+
+    Mirrors the band store's 2026-08-20 lesson: P0 losing the write-lock
+    race to the resident unwound the whole loop and P0-M and P1 lost even
+    their journal rows.  This store does two units per stage -- the stage
+    scalars and the per-station widths -- so the isolation is finer: the
+    two lanes of one stage must also fail independently.
+    """
+
+    def test_one_failing_lane_does_not_cost_the_others(self) -> None:
+        from unittest import mock
+
+        import bayes_basket_target.center_width_store as store
+
+        conn = _connection()
+        real_scalar = store.fit_center_width
+        real_station = store.fit_station_width
+
+        def scalar_boom(inner, *, stage, **kwargs):
+            if stage == "P0":
+                # Die with a transaction open, as a mid-write failure
+                # would: an un-rolled-back connection would fail the next
+                # lane's lock take for an unrelated reason.
+                inner.execute("BEGIN IMMEDIATE")
+                raise sqlite3.OperationalError("database is locked")
+            return real_scalar(inner, stage=stage, **kwargs)
+
+        def station_boom(inner, *, stage, **kwargs):
+            if stage == "P0-M":
+                raise sqlite3.OperationalError("database is locked")
+            return real_station(inner, stage=stage, **kwargs)
+
+        with mock.patch.object(store, "fit_center_width", scalar_boom), \
+                mock.patch.object(store, "fit_station_width", station_boom):
+            report = store.refit_all_center_width(conn, commit=True)
+
+        self.assertEqual(sorted(report), sorted(CENTER_WIDTH_STAGES))
+        # P0: scalar lane lost the lock; its station lane still fitted.
+        self.assertIn("database is locked", report["P0"]["error"])
+        self.assertNotIn("error", report["P0"]["station_width"])
+        self.assertEqual(
+            report["P0"]["station_width"]["outcome"], "ACCUMULATING"
+        )
+        # P0-M: the station lane died alone; the scalar lane landed.
+        self.assertEqual(report["P0-M"]["outcome"], "ACCUMULATING")
+        self.assertIn(
+            "database is locked", report["P0-M"]["station_width"]["error"]
+        )
+        # P1: untouched by either failure, fitted and journalled.
+        self.assertEqual(report["P1"]["outcome"], "ACCUMULATING")
+        self.assertIn("fit_id", report["P1"])
+        journalled = {
+            row[0]
+            for row in conn.execute(
+                "SELECT stage FROM calibration_center_width_fit_journal"
+            )
+        }
+        self.assertEqual(journalled, {"P0-M", "P1"})
+
+    def test_the_cli_reports_part_success_as_failure(self) -> None:
+        """Exit code carries the verdict; the landed lanes stay reported."""
+
+        import io
+        import tempfile
+        from contextlib import redirect_stdout
+        from unittest import mock
+
+        if str(ROOT / "scripts") not in sys.path:
+            sys.path.insert(0, str(ROOT / "scripts"))
+        import refit_center_width as cli
+
+        with tempfile.NamedTemporaryFile(suffix=".db") as handle:
+            seed = sqlite3.connect(handle.name)
+            ensure_center_width_schema(seed)
+            seed.commit()
+            seed.close()
+
+            def broken(conn, *, commit, min_decision_at_utc=None):
+                return {
+                    "P0": {
+                        "stage": "P0",
+                        "error": "OperationalError: database is locked",
+                        "station_width": {},
+                    },
+                    "P1": {
+                        "stage": "P1",
+                        "outcome": "ACCUMULATING",
+                        "served_stage": True,
+                        "accumulating": True,
+                        "admitted": False,
+                        "delta_c": 0.0,
+                        "width_lambda": 1.0,
+                        "forward_nll_gain": 0.0,
+                        "serving_day_count": 0,
+                        "station_width": {},
+                    },
+                }
+
+            out = io.StringIO()
+            with mock.patch.object(
+                cli, "refit_all_center_width", broken
+            ), mock.patch.object(
+                sys, "argv",
+                ["refit_center_width.py", "--db", handle.name,
+                 "--commit", "--summary"],
+            ), redirect_stdout(out):
+                code = cli.main()
+
+        self.assertEqual(code, 1)
+        text = out.getvalue()
+        self.assertIn('"failed_stages": ["P0"]', text)
+        self.assertIn("SUMMARY P0: FAILED", text)
+        self.assertIn("SUMMARY P1: ACCUMULATING", text)
+
+
 if __name__ == "__main__":
     unittest.main()
