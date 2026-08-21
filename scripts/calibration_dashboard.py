@@ -2739,11 +2739,50 @@ function stages(){
   <div class="why"><b>怎么看这张表：</b>「实际兑现」是实测兑现率除以声称概率——
   1.00× 表示说得准，0.69× 表示说大话（只兑现了 69%），1.23× 表示说小话。
   「修正系数」是实际乘上去的那个数，只有证据足够扎实的档才会不等于 1.000，
-  而且取的是保守值——宁可少改，不可改过头。<br>
-  <b>和第十九节「说了多少 vs 真发生了多少」的关系：</b>这里是旋钮，那里是体检——
-  那张表量的是这些系数生效<b>之后</b>剩下的残差，口径也不同（这里按阶段分账、
-  按修正档位分箱；那里三阶段合并、按十分位分箱）。两张不重复，读数应互相印证。</div>
-  <div class="grid g3" style="margin-top:8px">${cards}</div>`;
+  而且取的是保守值——宁可少改，不可改过头。</div>
+  <div class="why" style="margin-top:8px"><b>这一节是一条闭环，分三步：</b><br>
+  ① <b>记账</b>——三张卡各自记录本阶段"凡是说过 X% 的地方，后来兑现了多少"；<br>
+  ② <b>拧旋钮</b>——证据过门的档拟出修正系数，乘进下一次服务的概率。
+  这是全链<b>唯一改变数字</b>的一步；<br>
+  ③ <b>体检</b>——下面「说了多少 vs 真发生了多少」量的是系数生效<b>之后</b>、
+  三阶段合并的剩余偏差。它只诊断、不回写：故意用不同的分箱（十分位，
+  而非上面的修正档位），这样体检没法机械地照抄旋钮，才配当监督。
+  若某档残差持续变大，说明对应旋钮方向或粒度不对——回到 ②。</div>
+  <div class="grid g3" style="margin-top:8px">${cards}</div>
+  ${reliabilityAudit()}`;
+}
+
+// Step ③ of section 4: the post-correction residual, pooled and re-binned.
+// Lives beside the knob it audits; reads the scorecard payload so the two
+// sections cannot drift apart on data.
+function reliabilityAudit(){
+  const S = D.scorecard || {};
+  const rows = (S.reliability_bins||[])
+    .filter(b => b.n >= 100)
+    .map(b => {
+      const gap = b.happened - b.promised;
+      const tone = Math.abs(gap) <= 0.05 ? "green"
+                 : (Math.abs(gap) <= 0.10 ? "amber" : "red");
+      return `<tr>
+        <td class="mono">${h(b.bin)}</td>
+        <td class="mono muted">${b.n.toLocaleString()}</td>
+        <td class="mono">${(b.promised*100).toFixed(1)}%</td>
+        <td class="mono">${(b.happened*100).toFixed(1)}%</td>
+        <td class="mono ${gap>0?"up":"down"}">
+          <span class="dot ${tone}"></span>
+          ${gap>0?"+":""}${(gap*100).toFixed(1)} 点</td>
+      </tr>`;
+    }).join("");
+  if(!rows) return "";
+  return `<div class="card" style="margin-top:12px">
+  <div class="muted"><b>③ 体检：说了多少 vs 真发生了多少</b>（修正系数生效后的残差 ·
+  近 45 天全部已结算站日 · 只诊断，无下游消费）</div>
+  <table style="margin-top:8px"><thead><tr>
+    <th>承诺区间</th><th>样本</th><th>平均承诺</th><th>实际发生</th><th>差</th>
+  </tr></thead><tbody>${rows}</tbody></table>
+  <div class="muted" style="margin-top:6px">
+    「差」为正＝实际比承诺更常发生，即修完还偏保守；为负＝修完仍吹头。
+    只显示样本 ≥100 的区间。</div></div>`;
 }
 
 function basketHit(){
@@ -3918,25 +3957,6 @@ function scorecard(){
       ${r.spread_skill == null ? "—" : r.spread_skill.toFixed(2)}×</td>
   </tr>`).join("");
 
-  // Reliability curve: promised against what actually happened.  A bin that
-  // sits above the diagonal was under-promised, below it was over-promised.
-  const relRows = (S.reliability_bins||[])
-    .filter(b => b.n >= 100)
-    .map(b => {
-      const gap = b.happened - b.promised;
-      const tone = Math.abs(gap) <= 0.05 ? "green"
-                 : (Math.abs(gap) <= 0.10 ? "amber" : "red");
-      return `<tr>
-        <td class="mono">${h(b.bin)}</td>
-        <td class="mono muted">${b.n.toLocaleString()}</td>
-        <td class="mono">${(b.promised*100).toFixed(1)}%</td>
-        <td class="mono">${(b.happened*100).toFixed(1)}%</td>
-        <td class="mono ${gap>0?"up":"down"}">
-          <span class="dot ${tone}"></span>
-          ${gap>0?"+":""}${(gap*100).toFixed(1)} 点</td>
-      </tr>`;
-    }).join("");
-
   const pit = (S.pit_bins||[]);
   const pitMax = Math.max(0.1, ...pit);
   const pitBars = pit.map((v,i) => `<div style="flex:1;text-align:center">
@@ -3988,17 +4008,9 @@ function scorecard(){
     <th>CRPS 胜气候</th><th>Brier 胜气候</th><th>宽度/误差</th>
   </tr></thead><tbody>${leadRows}</tbody></table>
 
-  <h2 style="margin-top:26px">说了多少 vs 真发生了多少</h2>
-  <p class="sub">这是校准的原始证据：把所有「给某个档位打了 X% 概率」的情况归堆，
-  看那一堆里实际发生了百分之几。两个数越接近越好。
-  <b>此表只诊断、无下游消费</b>；实际生效的修正系数在第四节——这里量的是
-  那些系数拧完之后剩下的残差，所以两张表不是重复。</p>
-  <table><thead><tr>
-    <th>承诺区间</th><th>样本</th><th>平均承诺</th><th>实际发生</th><th>差</th>
-  </tr></thead><tbody>${relRows}</tbody></table>
-  <div class="muted" style="margin-top:6px">
-    「差」为正＝实际比承诺更常发生，即概率说保守了；为负＝吹过头了。
-    只显示样本 ≥100 的区间。</div>
+  <p class="sub" style="margin-top:26px">「说了多少 vs 真发生了多少」残差表
+  已并入第四节，与产生它的修正系数放在同一条闭环里；本节的校准灯仍由同一份
+  数据打分。</p>
 
   <h2 style="margin-top:26px">PIT：分布形状正不正</h2>
   <p class="sub">如果分布形状是对的，真值落在分布各个位置的次数应该一样多，
