@@ -22,7 +22,7 @@ import shutil
 import sqlite3
 import ssl
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -295,13 +295,23 @@ def _scope(
     # indefinitely pin the target WAL.  ``closing`` makes the ownership
     # boundary explicit.
     with closing(_open_target_read_only(db_path)) as conn:
+        # Closed event days are discarded below, so reading them costs a
+        # scan and buys nothing.  Two days back clears every settlement
+        # offset in the fleet (UTC-8 to UTC+13) with a full day to spare,
+        # and the table keeps ~24 days of append-only history: measured
+        # 2026-08-21, the bound drops 80% of the 148,578 committed rows.
+        oldest_open_event_date = (
+            _parse_utc(as_of_utc).date() - timedelta(days=2)
+        ).isoformat()
         probability_rows = conn.execute(
             "SELECT envelope_id,stage,checkpoint_id,station_id,event_date,"
             "settlement_timezone,decision_at_utc,fresh_until_utc "
             "FROM basket_probability_envelope "
             "WHERE state='COMMITTED' "
+            "AND event_date>=? "
             "AND stage IN ('P0','P0-M','P1') "
-            "ORDER BY station_id,event_date,decision_at_utc,stage,envelope_id"
+            "ORDER BY station_id,event_date,decision_at_utc,stage,envelope_id",
+            (oldest_open_event_date,),
         ).fetchall()
         # Match ``select_current_stage`` exactly without loading the full
         # probability vectors: first select the latest submitted checkpoint

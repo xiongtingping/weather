@@ -1314,6 +1314,20 @@ ON basket_probability_envelope(checkpoint_id);
 -- then the sweep's own ORDER BY also retires the temp b-tree.
 CREATE INDEX IF NOT EXISTS basket_probability_envelope_committed_scope_idx
 ON basket_probability_envelope(state,event_date,station_id,settlement_timezone);
+-- The resident WS publisher's scope query selects five more columns than the
+-- index above carries, so it kept paying a table lookup per entry onto rows
+-- whose probabilities/lineage JSON sits in overflow pages.  Measured
+-- 2026-08-21 at 148,578 committed rows: 36-40s per call -- and that call sits
+-- in the publisher's socket event loop on a 5s probe, so the loop was blocked
+-- for longer than the venue's patience.  The books went 75-250s between
+-- observations against a 60s lease and the venue twice closed us with
+-- "1013 slow consumer: send buffer full".  Carrying every column the query
+-- reads keeps the plan inside the index.
+CREATE INDEX IF NOT EXISTS basket_probability_envelope_publisher_scope_idx
+ON basket_probability_envelope(
+  state,event_date,station_id,decision_at_utc,stage,envelope_id,
+  settlement_timezone,checkpoint_id,fresh_until_utc
+);
 """ + PROBABILITY_BRIDGE_DDL + REGIME_ARTIFACT_DDL + """
 CREATE TABLE IF NOT EXISTS basket_official_ws_snapshot (
   snapshot_id TEXT PRIMARY KEY,
