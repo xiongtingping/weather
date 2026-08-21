@@ -152,6 +152,46 @@ def _parse_utc(value: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def _subscription_sha256(scopes: list[Mapping[str, Any]]) -> str:
+    """Identity of what we must be subscribed to, and nothing else.
+
+    A websocket subscription is defined by its token set.  ``catalog_sha256``
+    additionally covers the probability metadata the manifest publishes for
+    consumers -- envelope id, stage, freshness -- and comparing *that* to
+    decide whether to reconnect tore the whole socket generation down every
+    time any station produced a new checkpoint.  Across 45 stations that is
+    continuous: P0 recompiles dozens of times a station-day and P1 follows
+    every observation, so the books were being resubscribed for reasons that
+    had nothing to do with which books we need.  Measured 2026-08-21: the
+    effective re-observation period ran 75-190s against a 60s lease, with 328
+    self-inflicted connection teardowns in one log.
+
+    Probability metadata changing is a manifest rewrite, not a reconnect.
+    """
+
+    core = [
+        {
+            "scope_key": str(scope["scope_key"]),
+            "station_id": str(scope["station_id"]),
+            "event_date": str(scope["event_date"]),
+            "target_timezone": str(scope["target_timezone"]),
+            "tokens": list(scope["tokens"]),
+            "registry_snapshot_sha256": str(
+                scope["registry_scope"]["registry_snapshot_sha256"]
+            ),
+        }
+        for scope in scopes
+    ]
+    return hashlib.sha256(
+        json.dumps(
+            core,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+
 def _catalog_sha256(scopes: list[Mapping[str, Any]]) -> str:
     core = [
         {
@@ -533,6 +573,7 @@ def _scope(
         "tokens": tokens,
         "connection_shards": _connection_shards(tokens),
         "catalog_sha256": _catalog_sha256(scopes),
+        "subscription_sha256": _subscription_sha256(scopes),
     }
 
 
@@ -1056,8 +1097,20 @@ async def _publish_connection(
                 )
             if time.monotonic() >= next_scope_probe:
                 refreshed = _scope(db_path=db_path, as_of_utc=observed_at)
-                if refreshed["catalog_sha256"] != catalog["catalog_sha256"]:
+                if (
+                    refreshed["subscription_sha256"]
+                    != catalog["subscription_sha256"]
+                ):
+                    # The token set moved: this socket is subscribed to the
+                    # wrong thing and has to be rebuilt.
                     raise ScopeCatalogChanged("resident_target_ws_catalog_changed")
+                if refreshed["catalog_sha256"] != catalog["catalog_sha256"]:
+                    # Same tokens, newer probability metadata.  Adopt it and
+                    # republish; tearing the sockets down here is what made
+                    # every checkpoint anywhere in the network cost the whole
+                    # book cadence.
+                    catalog = refreshed
+                    economic_dirty = True
                 next_scope_probe = time.monotonic() + SCOPE_REFRESH_SECONDS
             if raw is None or len(quotes) != len(tokens):
                 continue
@@ -1125,10 +1178,23 @@ async def run_resident_target_ws_publisher(
             backoff = 1.0
         except asyncio.CancelledError:
             raise
-        except ConnectionRefreshRequired:
+        # Both teardowns used to `continue` in silence, so the only trace a
+        # rebuilt subscription left was a stack of transport EOFs that read
+        # like network trouble.  Name the reason: these are the two knobs
+        # that decide the book cadence, and neither is diagnosable without
+        # knowing which one fired.
+        except ConnectionRefreshRequired as exc:
+            print(
+                f"[market_ws][target_exact] planned_refresh:{str(exc)[:120]}",
+                flush=True,
+            )
             backoff = 1.0
             continue
-        except ScopeCatalogChanged:
+        except ScopeCatalogChanged as exc:
+            print(
+                f"[market_ws][target_exact] catalog_changed:{str(exc)[:120]}",
+                flush=True,
+            )
             backoff = 1.0
             continue
         except Exception as exc:
@@ -1157,6 +1223,7 @@ __all__ = [
     "_future_probability_expired",
     "_merge_book_quote",
     "_quote_economic_state",
+    "_subscription_sha256",
     "_receive_connection_shard",
     "_scope",
     "run_resident_target_ws_publisher",
