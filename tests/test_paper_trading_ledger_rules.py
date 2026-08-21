@@ -171,6 +171,7 @@ def test_only_credible_fills_bankroll_the_book() -> None:
     assert "chain_credible = chain_cost >= DUST_COST_FLOOR" in source
     assert (
         "* STAGE_BUDGET_SHARE.get(stage, 1.0)\n"
+        "                        * tilt\n"
         "                        - chain_stake" in source
     )
     assert "if chain_credible:\n                day_pnl += scored.pnl_usdc" in source
@@ -1160,12 +1161,16 @@ def test_consolidation_is_an_annotation_and_measures_what_it_says() -> None:
     assert CONSOLIDATION_STABLE_LOOKBACK == 3
     assert CONSOLIDATION_SHARP_TOP2 == 0.60
 
-    # Annotation only: written at insert, absent from every decision path.
+    # Promoted from annotation to stake scale (user ruling, 2026-08-21)
+    # after the split survived every robustness cut -- but scale is the
+    # whole licence.  The count may shrink a chain's allowance; it must
+    # never pick which days trade, because a gate on the same split
+    # changes the population the split was measured on.
     source = (root / "scripts" / "paper_trading_ledger.py").read_text(
         encoding="utf-8"
     )
     calls = source.count("_consolidation_signals(")
-    assert calls == 2, calls  # the definition and the single insert-side call
+    assert calls == 3, calls  # definition, opener-side scale, insert fallback
     assert "consolidation_json" in source
 
 
@@ -1212,3 +1217,52 @@ def test_the_selection_discount_shades_the_gate_and_only_the_gate() -> None:
     assert "win_probability=gate_win," in source
     # ...and nowhere else: the recorded row keeps the raw claim.
     assert source.count("gate_win") == 3  # define, kelly, refusal detail
+
+
+def test_the_consolidation_tilt_scales_stakes_and_never_selects() -> None:
+    """Less money where the certainty premium eats the edge; same trades.
+
+    Chains opened with two or more consolidation signs on returned -41.6%
+    (ex-best -46.0%, ex-top-two -50.1%, both temporal halves negative)
+    while the 0-1 stratum held +24.0% after removing its best win.  A gate
+    on that split would change the population it was measured on -- the
+    shading replay demonstrated exactly that failure at -54% -- so the
+    ruling is a stake scale: the opener's entry signals set the chain's
+    allowance factor, the whole chain inherits it, and it can only shrink.
+    """
+
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    from paper_trading_ledger import (  # noqa: PLC0415
+        CONSOLIDATION_TILT_FACTOR,
+        CONSOLIDATION_TILT_MIN_SIGNALS,
+        SELECTION_RULE_LABEL,
+    )
+
+    # On by default, reduce-only, at the measured boundary.
+    assert CONSOLIDATION_TILT_MIN_SIGNALS == 2
+    assert 0.0 < CONSOLIDATION_TILT_FACTOR < 1.0
+    assert CONSOLIDATION_TILT_FACTOR == 0.25
+    # It reshapes the book, so it must reshape the fingerprint.
+    assert "固化≥2减仓0.25" in SELECTION_RULE_LABEL
+
+    source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    # The factor can only ever shrink an allowance: clamped at parse...
+    assert "CONSOLIDATION_TILT_FACTOR = min(1.0, float(" in source
+    # ...applied inside the stage allowance...
+    assert (
+        "* STAGE_BUDGET_SHARE.get(stage, 1.0)\n"
+        "                        * tilt" in source
+    )
+    # ...frozen for the chain by its opener, inherited by later stages.
+    assert "chain_tilt = tilt" in source
+    assert "tilt = chain_tilt" in source
+    # And it never appears in a refusal decision: the only reads of the
+    # signal count are the tilt choice and the recorded row.
+    assert source.count('seat_consolidation["count"]') == 1

@@ -384,6 +384,21 @@ CONSOLIDATION_QUOTED_FRACTION = 0.80
 SELECTION_DISCOUNT = float(
     os.environ.get("PAPER_LEDGER_SELECTION_DISCOUNT", "0") or 0.0
 )
+# Consolidation stake tilt (user ruling, 2026-08-21): the one discriminator
+# that survived every robustness cut.  Chains entered with two or more of
+# the three consolidation signs on returned -41.6% (ex-best -46.0%,
+# ex-top-two -50.1%, and -46.5%/-35.9% in a temporal split-half) while the
+# 0-1 stratum held +24.0% after removing its best win.  A GATE on the same
+# split would change the selected population and invalidate the numbers --
+# that failure mode is measured twice above -- so this is a stake scale
+# only: same entries, same baskets, same prices, less money where the
+# certainty premium was measured to eat the edge.  The factor is decided
+# by the P0 opener's own entry signals and inherited by the whole chain,
+# which is the basis the strata were measured on.  Never above 1.
+CONSOLIDATION_TILT_MIN_SIGNALS = 2
+CONSOLIDATION_TILT_FACTOR = min(1.0, float(
+    os.environ.get("PAPER_LEDGER_CONSOLIDATION_TILT", "0.25") or 1.0
+))
 # When the order stops trying: past the hours in which this station's
 # daily maximum actually lands, not at settlement (user ruling,
 # 2026-08-20, revised from a fixed local hour).  Per station: the P-th
@@ -470,6 +485,11 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     None
     if SELECTION_DISCOUNT <= 0
     else f"选择折扣λs{SELECTION_DISCOUNT:g}",
+    None
+    if CONSOLIDATION_TILT_FACTOR >= 1.0
+    else "固化≥%d减仓%g" % (
+        CONSOLIDATION_TILT_MIN_SIGNALS, CONSOLIDATION_TILT_FACTOR
+    ),
     None
     if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_VALUE_LAMBDA <= 0
     else f"价值钳λ{MAKER_RESTING_VALUE_LAMBDA:g}·中心桶豁免",
@@ -3132,6 +3152,9 @@ def backfill(
             # stage to act was working from -- settlement reads all three.
             held: dict[str, float] = {}
             chain_stake = 0.0
+            # The whole chain spends under the tilt its opener earned.
+            chain_tilt = 1.0
+            chain_consolidation: dict | None = None
             chain_probabilities: dict[str, float] = {}
             chain_ladder: list = []
             chain_center_c: float | None = None
@@ -3293,6 +3316,28 @@ def backfill(
                     # it realises 0.60 of itself conditional on trading, so
                     # the gate and the sizing may judge the shaded number
                     # while the row records the raw one.
+                    # The opener's own entry signals decide the chain's
+                    # stake scale; later stages inherit rather than
+                    # re-earn -- the strata were measured on the P0 count.
+                    seat_consolidation = None
+                    if stage == "P0":
+                        seat_consolidation = _consolidation_signals(
+                            conn,
+                            station_id=station_id,
+                            event_date=event_date,
+                            entry_decision_at_utc=payload["decision_at_utc"],
+                            probabilities=probabilities,
+                            ordinals=ordinals,
+                            quotes=quotes,
+                        )
+                        tilt = (
+                            CONSOLIDATION_TILT_FACTOR
+                            if seat_consolidation["count"]
+                            >= CONSOLIDATION_TILT_MIN_SIGNALS
+                            else 1.0
+                        )
+                    else:
+                        tilt = chain_tilt
                     gate_win = float(seat["win_probability"]) * (
                         SELECTION_DISCOUNT if SELECTION_DISCOUNT > 0 else 1.0
                     )
@@ -3305,6 +3350,7 @@ def backfill(
                         equity_at_open
                         * MAX_STAKE_FRACTION_PER_SCOPE
                         * STAGE_BUDGET_SHARE.get(stage, 1.0)
+                        * tilt
                         - chain_stake
                     )
                     stake = min(wanted_stake, max(0.0, stage_room))
@@ -3816,19 +3862,29 @@ def backfill(
                             json.dumps(held_before, sort_keys=True),
                             json.dumps(held, sort_keys=True),
                             chain_stake,
-                            json.dumps(_consolidation_signals(
-                                conn,
-                                station_id=station_id,
-                                event_date=event_date,
-                                entry_decision_at_utc=payload[
-                                    "decision_at_utc"
-                                ],
-                                probabilities=probabilities,
-                                ordinals=ordinals,
-                                quotes=quotes,
-                            ), sort_keys=True),
+                            json.dumps(
+                                seat_consolidation
+                                if seat_consolidation is not None
+                                else _consolidation_signals(
+                                    conn,
+                                    station_id=station_id,
+                                    event_date=event_date,
+                                    entry_decision_at_utc=payload[
+                                        "decision_at_utc"
+                                    ],
+                                    probabilities=probabilities,
+                                    ordinals=ordinals,
+                                    quotes=quotes,
+                                ),
+                                sort_keys=True,
+                            ),
                         )
                     )
+                    # The chain spends the rest of its day under the tilt
+                    # its opener earned.
+                    chain_tilt = tilt
+                    if seat_consolidation is not None:
+                        chain_consolidation = seat_consolidation
                     counts["positions"] += 1
                     counts["entry_cycle_%s" % (
                         "first" if cycles == 1 else "later"
