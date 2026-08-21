@@ -61,6 +61,7 @@ from __future__ import annotations
 import json
 import random
 import sqlite3
+import time
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
@@ -98,6 +99,20 @@ FORWARD_WINDOW_FRACTION = 0.4
 # days is where the by-day bootstrap stops being a re-description of two
 # or three weather regimes.  A stage under it is accumulating, not broken.
 MIN_QUALIFYING_DAYS = 10
+# The store has one write lock and the resident basket worker owns it for
+# about half of every production cycle, in bursts: probed against the live
+# store on 2026-08-21, ``BEGIN IMMEDIATE`` waited 3.6-9.1s (six samples)
+# to get in, while 19 of 20 attempts capped at 3s never got in at all.
+# The cron already waits a minute per attempt (``PRAGMA busy_timeout``),
+# which is 6-17x the measured wait and normally ample -- it has lost the
+# race once, on 2026-08-20.  Retrying is the same lever as a longer
+# busy_timeout, with two differences worth having: the budget is bounded
+# and countable (the attempt count lands in the report, so a run that
+# nearly missed reads differently from one that walked in), and each
+# retry re-enters SQLite's race from a fresh handler rather than sitting
+# out the whole wait in one poll loop that has no fairness guarantee.
+WRITE_LOCK_ATTEMPTS = 4
+WRITE_LOCK_BACKOFF_SECONDS = 5.0
 
 _TABLE_DDL = (
     "CREATE TABLE IF NOT EXISTS calibration_band_reliability_table ("
@@ -161,6 +176,30 @@ def _check_stage(stage: str) -> str:
     if value not in BAND_STAGES:
         raise ContractError("band_reliability_stage_invalid")
     return value
+
+
+def _begin_immediate(conn: sqlite3.Connection) -> int:
+    """Take the write lock from the resident, returning attempts spent.
+
+    Each attempt already waits out the connection's own ``busy_timeout``;
+    this only decides how many such waits we are willing to spend before
+    giving up on a writer that is not letting go.  Contention is the only
+    thing retried -- any other operational error is a real fault and is
+    raised on the first try rather than being sat on for minutes.
+    """
+
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            return attempt
+        except sqlite3.OperationalError as exc:
+            message = str(exc).lower()
+            contended = "locked" in message or "busy" in message
+            if not contended or attempt >= WRITE_LOCK_ATTEMPTS:
+                raise
+        time.sleep(WRITE_LOCK_BACKOFF_SECONDS)
 
 
 def _canonical_factors(
@@ -261,7 +300,7 @@ def persist_and_activate_band_table(
             "band_table_sha256": sha,
             "state": "UNCHANGED",
         }
-    conn.execute("BEGIN IMMEDIATE")
+    attempts = _begin_immediate(conn)
     try:
         conn.execute(
             "UPDATE calibration_band_reliability_table SET activated=0"
@@ -297,6 +336,7 @@ def persist_and_activate_band_table(
         "band_table_sha256": sha,
         "state": "ACTIVATED",
         "previous": None if active is None else str(active[0]),
+        "write_lock_attempts": attempts,
     }
 
 
@@ -323,28 +363,38 @@ def journal_band_fit(
         "fitted_at_utc": now,
         "band_table_sha256": sha,
     })[:24]
-    conn.execute(
-        "INSERT OR REPLACE INTO calibration_band_reliability_fit_journal"
-        " (fit_id, stage, fitted_at_utc, band_table_sha256,"
-        "  serving_day_count, serving_station_day_count,"
-        "  qualifying_cell_count, outcome, factors_json, evidence_json)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?)",
-        (
-            fit_id,
-            stage_id,
-            now,
-            sha,
-            int(fitted["serving_day_count"]),
-            int(evidence.get("serving_station_day_count") or 0),
-            sum(
-                1 for _band, factor in factors if float(factor) != 1.0
+    # The insert would take the write lock itself, but only with the one
+    # busy_timeout wait the connection was opened with; going through the
+    # explicit acquisition spends the same budget on the journal as on the
+    # activation.  A fit that was made and then lost its trail is the one
+    # outcome this table exists to prevent.
+    _begin_immediate(conn)
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO calibration_band_reliability_fit_journal"
+            " (fit_id, stage, fitted_at_utc, band_table_sha256,"
+            "  serving_day_count, serving_station_day_count,"
+            "  qualifying_cell_count, outcome, factors_json, evidence_json)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (
+                fit_id,
+                stage_id,
+                now,
+                sha,
+                int(fitted["serving_day_count"]),
+                int(evidence.get("serving_station_day_count") or 0),
+                sum(
+                    1 for _band, factor in factors if float(factor) != 1.0
+                ),
+                str(outcome),
+                json.dumps(_canonical_factors(factors), sort_keys=True),
+                json.dumps(evidence, sort_keys=True),
             ),
-            str(outcome),
-            json.dumps(_canonical_factors(factors), sort_keys=True),
-            json.dumps(evidence, sort_keys=True),
-        ),
-    )
-    conn.commit()
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     return fit_id
 
 
@@ -744,48 +794,77 @@ def refit_all_stages(
     bootstrap_samples: int = 1000,
     commit: bool = False,
 ) -> dict[str, Any]:
-    """Fit every stage, journal every fit, activate when committing."""
+    """Fit every stage, journal every fit, activate when committing.
+
+    The stages are isolated from one another.  They share nothing but the
+    connection: three distributions, three tables, three journal rows, and
+    the fit of one says nothing about the fit of another.  So a stage that
+    throws -- losing the write-lock race to the resident is the way this
+    actually happens (2026-08-20) -- records ``error`` in its own entry and
+    the rest are still fitted, activated and journalled.  P0 failing used
+    to cost P0-M and P1 even their journal rows, which is the opposite of
+    what a journal is for: the trail of what was known on a given day has
+    to survive the day's accidents.
+
+    A partial refit is still a failed refit; what a caller does about it is
+    the caller's call.  The CLI exits non-zero on any ``error``, so the
+    cron reports ✗ without discarding the stages that did land.
+    """
 
     results: dict[str, Any] = {}
     for stage in BAND_STAGES:
-        fitted = fit_band_reliability_table(
-            conn, stage=stage, bootstrap_samples=bootstrap_samples
-        )
-        active = load_band_table(conn, stage=stage)
-        entry: dict[str, Any] = {
-            "stage": stage,
-            "fitted_factors": [
-                [list(band), factor] for band, factor in fitted["factors"]
-            ],
-            "fitted_table_sha256": band_table_sha256(
-                fitted["factors"], stage=stage
-            ),
-            "active_table_sha256": None if active is None else active[1],
-            "serving_day_count": fitted["serving_day_count"],
-            "serving_station_day_count": fitted[
-                "serving_station_day_count"
-            ],
-            "accumulating": fitted["accumulating"],
-            "basis": fitted["evidence"]["basis"],
-        }
-        if commit:
-            outcome = persist_and_activate_band_table(
-                conn,
-                stage=stage,
-                factors=fitted["factors"],
-                evidence=fitted["evidence"],
-                serving_day_count=fitted["serving_day_count"],
-            )
-            entry["commit"] = outcome
-            entry["fit_id"] = journal_band_fit(
-                conn,
-                stage=stage,
-                fitted=fitted,
-                outcome=(
-                    "ACCUMULATING"
-                    if fitted["accumulating"]
-                    else str(outcome["state"])
-                ),
-            )
+        entry: dict[str, Any] = {"stage": stage}
         results[stage] = entry
+        try:
+            fitted = fit_band_reliability_table(
+                conn, stage=stage, bootstrap_samples=bootstrap_samples
+            )
+            active = load_band_table(conn, stage=stage)
+            entry.update({
+                "fitted_factors": [
+                    [list(band), factor]
+                    for band, factor in fitted["factors"]
+                ],
+                "fitted_table_sha256": band_table_sha256(
+                    fitted["factors"], stage=stage
+                ),
+                "active_table_sha256": (
+                    None if active is None else active[1]
+                ),
+                "serving_day_count": fitted["serving_day_count"],
+                "serving_station_day_count": fitted[
+                    "serving_station_day_count"
+                ],
+                "accumulating": fitted["accumulating"],
+                "basis": fitted["evidence"]["basis"],
+            })
+            if commit:
+                outcome = persist_and_activate_band_table(
+                    conn,
+                    stage=stage,
+                    factors=fitted["factors"],
+                    evidence=fitted["evidence"],
+                    serving_day_count=fitted["serving_day_count"],
+                )
+                entry["commit"] = outcome
+                entry["fit_id"] = journal_band_fit(
+                    conn,
+                    stage=stage,
+                    fitted=fitted,
+                    outcome=(
+                        "ACCUMULATING"
+                        if fitted["accumulating"]
+                        else str(outcome["state"])
+                    ),
+                )
+        except Exception as exc:  # noqa: BLE001 -- isolation is the point
+            # Whatever the stage was in the middle of, the next stage must
+            # start from a clean connection: a transaction left open here
+            # would fail the next ``BEGIN IMMEDIATE`` for an unrelated
+            # reason and turn one lost stage into three.
+            try:
+                conn.rollback()
+            except sqlite3.Error:
+                pass
+            entry["error"] = f"{type(exc).__name__}: {exc}"
     return results

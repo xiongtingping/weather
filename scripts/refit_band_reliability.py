@@ -70,14 +70,27 @@ def main() -> int:
         for stage, entry in stages.items()
         if (entry.get("commit") or {}).get("state") == "ACTIVATED"
     ]
+    # Stages are fitted in isolation, so a run can be part success.  It is
+    # still a failed run -- the exit code says so -- but the stages that
+    # landed are reported rather than thrown away with the one that did not.
+    failed = sorted(
+        stage for stage, entry in stages.items() if entry.get("error")
+    )
     print(json.dumps({
-        "schema": "band_reliability_refit_report_v3",
+        "schema": "band_reliability_refit_report_v4",
         "stages": stages,
         "activated_stages": activated,
+        "failed_stages": failed,
         "committed": bool(args.commit),
     }, ensure_ascii=False, sort_keys=True))
     if args.summary:
         for stage, entry in sorted(stages.items()):
+            if entry.get("error"):
+                # Named in the same digest the good stages land in, so the
+                # cron log shows which stage was lost, not just that one was.
+                error = entry["error"]
+                print(f"SUMMARY {stage}: 本次未拟合 [FAILED] {error}")
+                continue
             served = " ".join(
                 f"{band[0]:.2f}-{band[1]:.2f}x{factor:.3f}"
                 for band, factor in entry["fitted_factors"]
@@ -94,7 +107,7 @@ def main() -> int:
                 detail = f"{days} 天证据，尚无档位够格，全档恒等"
             state = (entry.get("commit") or {}).get("state", "REPORT_ONLY")
             print(f"SUMMARY {stage}: {detail} [{state}]")
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
