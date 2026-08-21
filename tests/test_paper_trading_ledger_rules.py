@@ -543,14 +543,18 @@ def test_every_refusal_reason_has_page_copy_and_p0m_counts_taf_only() -> None:
 
     assert STAGE_REQUIRING_TAF == "P0-M"
 
-    # no_priced_window is two problems under one code and the copy has been
-    # wrong in both directions: first it blamed price alone, then it blamed
-    # width alone.  Measured on the recorded cycle of all 180 P0 days, 44%
-    # could not reach three contiguous quoted buckets through the centre and
-    # 56% assembled a legal basket whose best edge was negative (median
-    # -0.247, 98% at or below zero).  The note has to carry both.
-    note = REFUSAL_LABELS["no_priced_window"][1]
-    assert "太窄" in note and "高过" in note, note
+    # no_priced_window used to be two problems under one code and the copy
+    # had been wrong in both directions: first it blamed price alone, then it
+    # blamed width alone.  Measured on the recorded cycle of all 180 P0 days,
+    # 44% could not reach three contiguous quoted buckets through the centre
+    # and 56% assembled a legal basket whose best edge was negative (median
+    # -0.247, 98% at or below zero).  The code was split on 2026-08-20, so
+    # what the one note had to carry both of is now one measured share each
+    # -- and both still have to be on the page, or the split has merely
+    # hidden the half it stopped naming.
+    assert "四成" in REFUSAL_LABELS["no_legal_window"][1]
+    priced_out = REFUSAL_LABELS["negative_edge_window"][1]
+    assert "六成" in priced_out and "−0.25" in priced_out, priced_out
 
 
 def test_both_copies_of_the_reason_table_cover_every_code() -> None:
@@ -585,12 +589,15 @@ def test_both_copies_of_the_reason_table_cover_every_code() -> None:
     ]
     assert not missing, missing
 
-    # Both single-cause readings of no_priced_window are wrong: it is 44%
-    # width and 56% price.  The roster's short note has to name both, the
-    # way section 13's does.
-    short = re.search(r"no_priced_window:\[(.*?)\],\n", page, re.S)
-    assert short, "the roster's no_priced_window entry moved"
-    assert "太窄" in short.group(1) and "高过" in short.group(1), short.group(1)
+    # Both single-cause readings of the old pooled code were wrong: it was
+    # 44% width and 56% price.  Each share now sits on the code that owns it,
+    # and the roster's short notes have to carry them the way section 13's
+    # do -- a split that drops the number is a split that hid a half.
+    for name, share in (("no_legal_window", "四成"),
+                        ("negative_edge_window", "六成")):
+        short = re.search(r"%s:\[(.*?)\],\n" % name, page, re.S)
+        assert short, "the roster's %s entry moved" % name
+        assert share in short.group(1), short.group(1)
 
 
 def test_a_leg_nobody_offers_is_unbuyable_not_expensive() -> None:
@@ -633,7 +640,7 @@ def test_a_leg_nobody_offers_is_unbuyable_not_expensive() -> None:
     # The over-payout note must now claim only real quotes, and say where
     # the other kind went.
     over = REFUSAL_LABELS["cost_exceeds_payout"][1]
-    assert "实价" in over and "没有一篮可买" in over
+    assert "实价" in over and "窗口定不出价" in over
     # And the receiving row must admit the third case.
     assert "没人挂卖" in REFUSAL_LABELS["no_priced_window"][1]
 
@@ -1298,3 +1305,160 @@ def test_new_artifacts_name_the_seat_rule_that_actually_ran() -> None:
     repair = (root / "scripts" / "plan_native_ensemble_activation_repair.py"
               ).read_text(encoding="utf-8")
     assert '"train_rmse_inverse_family_capped_v1::"' in repair
+
+
+def _ledger_path() -> None:
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+
+
+def test_every_enumeration_gate_has_a_refusal_to_be_reported_as() -> None:
+    """A gate the ledger cannot name is a refusal it will misattribute.
+
+    Twice now the page has been handed counters that could not add up to the
+    refusal they were offered as the explanation of: the leg floor on
+    2026-08-17, and the edge/friction gate until 2026-08-20.  Both times the
+    missing gate's refusals were silently absorbed by whichever gate was
+    listed.  The mapping is keyed by the funnel the runtime publishes so a
+    new gate fails here rather than there.
+    """
+
+    from bayes_basket_target.delta_v2_runtime import (  # noqa: PLC0415
+        WINDOW_REFUSAL_FUNNEL,
+    )
+
+    _ledger_path()
+    from paper_trading_ledger import (  # noqa: PLC0415
+        GATE_LABEL,
+        GATE_REFUSAL_REASON,
+        REFUSAL_DEPTH,
+        REFUSAL_REASONS,
+    )
+
+    assert set(GATE_REFUSAL_REASON) == set(WINDOW_REFUSAL_FUNNEL)
+    assert set(GATE_LABEL) == set(WINDOW_REFUSAL_FUNNEL)
+    for reason in GATE_REFUSAL_REASON.values():
+        assert reason in REFUSAL_REASONS
+        assert reason in REFUSAL_DEPTH
+
+
+def test_the_refusal_names_the_gate_that_took_the_last_window() -> None:
+    """Not the gate with the biggest count, and not price by default.
+
+    The (2,3,1) shape below was the second commonest P0 refusal on the
+    2026-08-20 book, 44 station-days of it.  The old test asked whether the
+    leg floor outnumbered the two structural gates -- 1 > 2 + 3 is false --
+    so the day was filed as "the market priced us out" when the market had
+    quoted every rung and our own floor is what refused the last window.
+    """
+
+    _ledger_path()
+    from paper_trading_ledger import (  # noqa: PLC0415
+        GATE_LABEL,
+        _refusal_reason_for_gate,
+        _window_refusal_detail,
+    )
+
+    audit = {
+        "enumerated_window_count": 6,
+        "gapped_window_refused_count": 0,
+        "center_refused_window_count": 2,
+        "short_refused_window_count": 3,
+        "leg_floor_refused_window_count": 1,
+        "unpriced_refused_window_count": 0,
+        "edge_refused_window_count": 0,
+        "shortlisted_window_count": 0,
+        "last_refusing_gate": "leg_floor",
+    }
+    assert _refusal_reason_for_gate(audit) == "leg_below_floor"
+    detail = _window_refusal_detail(audit)
+    # The line is an equation, and it balances.
+    assert "枚举 6 =" in detail
+    assert "计数不闭合" not in detail
+    # Every gate appears, including the ones that did not fire, so a reader
+    # can check the arithmetic rather than take the verdict on trust.
+    for label in GATE_LABEL.values():
+        assert label in detail
+
+    # And the genuinely price-driven refusal keeps its own name.
+    priced_out = dict(audit, **{
+        "leg_floor_refused_window_count": 0,
+        "edge_refused_window_count": 1,
+        "last_refusing_gate": "edge",
+    })
+    assert _refusal_reason_for_gate(priced_out) == "negative_edge_window"
+    # A structural sweep is neither of those.
+    structural = dict(audit, **{
+        "enumerated_window_count": 5,
+        "leg_floor_refused_window_count": 0,
+        "last_refusing_gate": "short",
+    })
+    assert _refusal_reason_for_gate(structural) == "no_legal_window"
+
+
+def test_a_detail_line_that_does_not_balance_says_so() -> None:
+    """The failure mode this whole shape exists to catch, made visible.
+
+    If a future gate goes uncounted the numbers stop summing, and the page
+    has to say that rather than present a short sum as a full explanation.
+    """
+
+    _ledger_path()
+    from paper_trading_ledger import _window_refusal_detail  # noqa: PLC0415
+
+    detail = _window_refusal_detail({
+        "enumerated_window_count": 10,
+        "center_refused_window_count": 2,
+        "short_refused_window_count": 3,
+        "shortlisted_window_count": 0,
+        "last_refusing_gate": "short",
+    })
+    assert "计数不闭合" in detail
+
+
+def test_which_gate_and_which_cycle_are_decided_separately() -> None:
+    """The funnel picks the gate; depth picks the cycle.  Never one for both.
+
+    Both halves of this were misattributions in their own right -- the gate
+    by vote count (2026-08-17, 2026-08-20) and the cycle by recency (fixed
+    2026-08-20 by ``_deeper_refusal``) -- and folding either into the other
+    brings the corresponding bug back.  A window that was priced and lost on
+    the number is further down the funnel than one that never reached a
+    price, and further still is the objective actually judging it.
+    """
+
+    _ledger_path()
+    from paper_trading_ledger import (  # noqa: PLC0415
+        REFUSAL_DEPTH,
+        _deeper_refusal,
+    )
+
+    # Structural, priced-but-thin and our own floor all sit on one rung:
+    # none of them got a price the objective could be asked about.
+    assert (
+        REFUSAL_DEPTH["no_legal_window"]
+        == REFUSAL_DEPTH["no_priced_window"]
+        == REFUSAL_DEPTH["leg_below_floor"]
+    )
+    # Priced end to end and refused on the number is strictly deeper, and
+    # the objective getting to judge is deeper still.
+    assert (
+        REFUSAL_DEPTH["negative_edge_window"]
+        > REFUSAL_DEPTH["no_priced_window"]
+    )
+    assert (
+        REFUSAL_DEPTH["no_positive_kelly"]
+        > REFUSAL_DEPTH["negative_edge_window"]
+    )
+
+    # The walk keeps the deeper cycle regardless of arrival order: a morning
+    # book that was priced and lost on edge is not unsaid by an evening book
+    # whose structural floors took everything.
+    morning = ("negative_edge_window", "枚举 6 = ...", 3, "T09:00Z")
+    evening = ("no_legal_window", "枚举 6 = ...", 91, "T23:59Z")
+    assert _deeper_refusal(morning, evening) == morning
+    assert _deeper_refusal(evening, morning) == morning
