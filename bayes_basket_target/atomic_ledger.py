@@ -645,8 +645,18 @@ def build_target_atomic_bundle(
                 "observation_awc_source_receipt_sha256",
                 revision.get("awc_source_receipt_sha256"),
             ),
+            # The observation's own canonical commit, which is what the plan
+            # consumed and carries.  The fact's ``canonical_committed_at_utc``
+            # is a derived ``max`` of that and the origin record's commit, so
+            # it runs a few milliseconds later whenever the origin landed
+            # second -- measured on LFPB 2026-08-21: plan 08:02:49.295Z
+            # against a derived 08:02:49.299Z, which is a mismatch about
+            # nothing.  Older facts predate the explicit field and carry only
+            # the derived value.
             "canonical_committed_at": _timestamp(
-                "observation_canonical_committed_at", revision.get("canonical_committed_at_utc")
+                "observation_canonical_committed_at",
+                revision.get("source_observation_committed_at_utc")
+                or revision.get("canonical_committed_at_utc"),
             ),
             "truth_observation_revision_content_sha256": revision_sha,
         }
