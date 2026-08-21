@@ -25,7 +25,10 @@ from datetime import datetime, timezone
 from typing import Any, Iterator, Mapping, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .awc_observation_contract import CanonicalAWCObservationContract
+from .awc_observation_contract import (
+    CanonicalAWCObservationContract,
+    CanonicalAWCObservationRevisionFact,
+)
 from .contracts import ContractError, canonical_json, content_sha256
 from .basket_kernel.state_machine import basket_lifecycle_projection
 from .et_history import assert_event_day_started, event_day_window
@@ -434,6 +437,7 @@ def _assert_plan_lane_contract(
 def build_target_atomic_bundle(
     *,
     awc_observation_contract: Mapping[str, Any] | None = None,
+    observed_revision_fact: Mapping[str, Any] | None = None,
     truth_observation_revision_content_sha256: str = "",
     stage_evidence_root: Mapping[str, Any] | None = None,
     stage_soft_bound: Mapping[str, Any] | None = None,
@@ -458,11 +462,30 @@ def build_target_atomic_bundle(
     # TAF revision proof for P0-M.  Everything downstream derives scope and
     # identity from whichever root applies, so only the head of the chain
     # differs and the P1 path below is untouched.
-    if stage_evidence_root is not None and awc_observation_contract is not None:
+    # Three ways to name the head of the chain, exactly one of them at a time.
+    # ``stage_evidence_root`` is P0/P0-M's, below.  The two observed forms
+    # differ only in who created the fact they root on: a contract carries the
+    # revision so the commit can stage it, while ``observed_revision_fact``
+    # points at one already staged by the observation-identity lane and the
+    # commit only verifies it.  The second exists because the first made the
+    # facts a by-product of the trading they gate -- and because carrying a
+    # whole contract per candidate means embedding its authority projection,
+    # which is 30 KB of document to re-state something already in the store.
+    roots_supplied = sum(
+        1
+        for value in (
+            stage_evidence_root,
+            awc_observation_contract,
+            observed_revision_fact,
+        )
+        if value is not None
+    )
+    if roots_supplied > 1:
         raise AtomicLedgerError("target_atomic_root_ambiguous")
-    if stage_evidence_root is None and awc_observation_contract is None:
+    if roots_supplied == 0:
         raise AtomicLedgerError("target_atomic_root_missing")
     stage_rooted = stage_evidence_root is not None
+    fact_rooted = observed_revision_fact is not None
     if stage_rooted:
         # P0 and P0-M exist before the event day has produced an observation,
         # so they root the chain on the evidence they do have: the ensemble
@@ -541,22 +564,37 @@ def build_target_atomic_bundle(
     else:
         if bound is None:
             raise AtomicLedgerError("target_atomic_bound_missing")
-        canonical_contract = CanonicalAWCObservationContract.from_mapping(
-            awc_observation_contract
-        )
         revision_sha = _sha(
             "truth_observation_revision_content_sha256",
             truth_observation_revision_content_sha256,
         )
-        matching_revisions = [
-            fact for fact in canonical_contract.revision_facts
-            if fact.content_sha256 == revision_sha
-        ]
-        if len(matching_revisions) != 1:
-            raise AtomicLedgerError(
-                "truth_observation_revision_reference_not_exact"
+        if fact_rooted:
+            # One fact, validated by its own canonical class, and it has to be
+            # the one named.  Nothing weaker: the sha is what the commit
+            # boundary looks the row up by, so a fact whose content hashes to
+            # something else would root the chain on a report the store never
+            # agreed to.
+            named_fact = CanonicalAWCObservationRevisionFact.from_mapping(
+                observed_revision_fact
             )
-        revision = matching_revisions[0].raw
+            if named_fact.content_sha256 != revision_sha:
+                raise AtomicLedgerError(
+                    "truth_observation_revision_reference_not_exact"
+                )
+            revision = named_fact.raw
+        else:
+            canonical_contract = CanonicalAWCObservationContract.from_mapping(
+                awc_observation_contract
+            )
+            matching_revisions = [
+                fact for fact in canonical_contract.revision_facts
+                if fact.content_sha256 == revision_sha
+            ]
+            if len(matching_revisions) != 1:
+                raise AtomicLedgerError(
+                    "truth_observation_revision_reference_not_exact"
+                )
+            revision = matching_revisions[0].raw
         obs = {
             "observation_id": _text("observation_id", revision.get("observation_id")),
             "station_id": _text("observation_station_id", revision.get("station_id")),
@@ -843,7 +881,12 @@ def build_target_atomic_bundle(
         "schema": SCHEMA,
         "created_at": created_at,
         "awc_observation_contract": (
-            None if stage_rooted else dict(awc_observation_contract)
+            None
+            if stage_rooted or fact_rooted
+            else dict(awc_observation_contract)
+        ),
+        "observed_revision_fact": (
+            dict(observed_revision_fact) if fact_rooted else None
         ),
         "stage_evidence_root": (
             dict(stage_evidence_root) if stage_rooted else None
@@ -1987,25 +2030,44 @@ def commit_target_atomic_bundle(
             "observation_source_lane", obs.get("source_lane")
         )
     bound = dict(bundle["bound"])
+    fact_rooted = bundle.get("observed_revision_fact") is not None
     if stage_rooted:
         revision_sha = ""
     else:
-        try:
-            awc_contract = CanonicalAWCObservationContract.from_mapping(
-                bundle["awc_observation_contract"]
-            )
-        except ContractError as exc:
-            raise AtomicLedgerError("atomic_awc_observation_contract_invalid") from exc
         revision_sha = _sha(
             "truth_observation_revision_content_sha256",
             obs.get("truth_observation_revision_content_sha256"),
         )
-        revisions = [
-            fact for fact in awc_contract.revision_facts
-            if fact.content_sha256 == revision_sha
-        ]
-        if len(revisions) != 1:
-            raise AtomicLedgerError("atomic_awc_revision_reference_not_exact")
+        if fact_rooted:
+            # The fact is already in the store, so there is nothing here to
+            # stage -- only to agree with.  The named fact must hash to the
+            # sha the chain cites, and the row lookup below is what proves
+            # the store holds it; a report the lane has not yet identified
+            # simply fails closed here rather than being written on the way
+            # past.
+            try:
+                named_fact = CanonicalAWCObservationRevisionFact.from_mapping(
+                    bundle["observed_revision_fact"]
+                )
+            except ContractError as exc:
+                raise AtomicLedgerError(
+                    "atomic_awc_observation_revision_fact_invalid"
+                ) from exc
+            if named_fact.content_sha256 != revision_sha:
+                raise AtomicLedgerError("atomic_awc_revision_reference_not_exact")
+        else:
+            try:
+                awc_contract = CanonicalAWCObservationContract.from_mapping(
+                    bundle["awc_observation_contract"]
+                )
+            except ContractError as exc:
+                raise AtomicLedgerError("atomic_awc_observation_contract_invalid") from exc
+            revisions = [
+                fact for fact in awc_contract.revision_facts
+                if fact.content_sha256 == revision_sha
+            ]
+            if len(revisions) != 1:
+                raise AtomicLedgerError("atomic_awc_revision_reference_not_exact")
         if bound.get("truth_observation_revision_content_sha256") != revision_sha:
             raise AtomicLedgerError("atomic_bound_revision_reference_mismatch")
     cycle = dict(bundle["cycle"])
@@ -2183,14 +2245,21 @@ def commit_target_atomic_bundle(
         row["training_fact_id"] = training_fact_id
     with _atomic_transaction(conn, operation="commit_target_atomic_bundle"):
         if not stage_rooted:
-            try:
-                from .canonical_ingress import stage_awc_observation_contract
+            if fact_rooted:
+                # Nothing to stage: the observation-identity lane put this
+                # fact in the store before the trade existed.  The binding
+                # check below is unchanged and is now the whole of it.
+                expected_revision = named_fact.raw
+            else:
+                try:
+                    from .canonical_ingress import stage_awc_observation_contract
 
-                stage_awc_observation_contract(
-                    conn, awc_contract, ingested_at_utc=created_at
-                )
-            except ContractError as exc:
-                raise AtomicLedgerError("atomic_awc_canonical_stage_rejected") from exc
+                    stage_awc_observation_contract(
+                        conn, awc_contract, ingested_at_utc=created_at
+                    )
+                except ContractError as exc:
+                    raise AtomicLedgerError("atomic_awc_canonical_stage_rejected") from exc
+                expected_revision = revisions[0].raw
             _fault(fault_after, "canonical_stage")
             canonical_rows = conn.execute(
                 "SELECT fact_json,content_sha256 FROM canonical_ssot_fact "
@@ -2201,7 +2270,7 @@ def commit_target_atomic_bundle(
             if (
                 len(canonical_rows) != 1
                 or str(canonical_rows[0][1]) != revision_sha
-                or json.loads(str(canonical_rows[0][0])) != revisions[0].raw
+                or json.loads(str(canonical_rows[0][0])) != expected_revision
             ):
                 raise AtomicLedgerError("atomic_awc_canonical_revision_binding_invalid")
         existing_cycle = conn.execute(

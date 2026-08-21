@@ -1156,8 +1156,15 @@ def target_atomic_facts_from_cycle(compiled_cycle: Mapping[str, Any]) -> dict[st
     settlement_timezone = str(lineage["settlement_timezone"]).strip()
     if settlement_timezone != str(envelope.get("settlement_timezone") or "").strip():
         raise ContractError("target_atomic_lineage_settlement_timezone_mismatch")
+    # A contract is accepted when a caller carries one, but is no longer
+    # required: the observation-identity lane stages the revision facts on its
+    # own timer, so the chain can name the one it roots on and let the ledger
+    # verify the store holds it.  Requiring the document meant a live P1
+    # candidate had to re-state a fact that already existed, carrying its 30 KB
+    # authority projection along with it -- and nothing in the compile path
+    # ever built one, which is why P1 stopped reaching a commit.
     awc_contract = compiled_cycle.get("awc_observation_contract")
-    if not isinstance(awc_contract, Mapping):
+    if awc_contract is not None and not isinstance(awc_contract, Mapping):
         raise ContractError("target_atomic_awc_observation_contract_missing")
     bound = {
         "bound_id": str(lineage["hard_bound_id"]).strip(),
@@ -1173,7 +1180,9 @@ def target_atomic_facts_from_cycle(compiled_cycle: Mapping[str, Any]) -> dict[st
         },
     }
     return {
-        "awc_observation_contract": dict(awc_contract),
+        "awc_observation_contract": (
+            dict(awc_contract) if isinstance(awc_contract, Mapping) else None
+        ),
         "truth_observation_revision_content_sha256": str(
             lineage["truth_observation_revision_content_sha256"]
         ).strip().lower(),

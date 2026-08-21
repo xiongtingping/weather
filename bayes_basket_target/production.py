@@ -363,6 +363,30 @@ def compile_production_plan(
     return plan
 
 
+def _load_staged_revision_fact(
+    conn: Any, *, revision_sha256: str
+) -> dict[str, Any]:
+    """Read the canonical revision fact this chain roots on, by its hash.
+
+    Fails closed rather than inventing one.  A report the observation-identity
+    lane has not identified yet has no fact, and a trade that rooted on a
+    fabricated one would be citing evidence the store never agreed to.
+    """
+
+    sha = str(revision_sha256 or "").strip().lower()
+    if len(sha) != 64 or any(char not in "0123456789abcdef" for char in sha):
+        raise ContractError("target_atomic_revision_sha256_invalid")
+    rows = conn.execute(
+        "SELECT fact_json FROM canonical_ssot_fact "
+        "WHERE fact_type='truth_observation_revision' AND content_sha256=? "
+        "ORDER BY fact_id",
+        (sha,),
+    ).fetchall()
+    if len(rows) != 1:
+        raise ContractError("target_atomic_revision_fact_not_staged")
+    return json.loads(str(rows[0][0]))
+
+
 def commit_production_candidate_atomic(
     conn: Any,
     *,
@@ -810,10 +834,22 @@ def commit_production_candidate_atomic(
             "forward_observation_status": forward_observation_status,
         },
     }
+    # Root the chain on the fact already in the store when no caller carried a
+    # contract.  The observation-identity lane stages these on its own timer,
+    # so the trade names the revision it roots on and the ledger verifies the
+    # store agrees; a report the lane has not reached yet fails closed here
+    # rather than being written on the way past.
+    observed_revision_fact = None
+    if stage_root is None and awc_observation_contract is None:
+        observed_revision_fact = _load_staged_revision_fact(
+            conn,
+            revision_sha256=truth_observation_revision_content_sha256,
+        )
     bundle = build_target_atomic_bundle(
         awc_observation_contract=(
             None if stage_root is not None else awc_observation_contract
         ),
+        observed_revision_fact=observed_revision_fact,
         truth_observation_revision_content_sha256=(
             "" if stage_root is not None
             else truth_observation_revision_content_sha256
