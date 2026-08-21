@@ -2,12 +2,16 @@ import sqlite3
 
 import pytest
 
+from bayes_basket_target import band_reliability_store
 from bayes_basket_target.band_reliability_store import (
+    BAND_STAGES,
     band_table_sha256,
     journal_band_fit,
     load_band_table,
     persist_and_activate_band_table,
     pinned_band_table_sha,
+    refit_all_stages,
+    _begin_immediate,
     _invert_band_receipt,
 )
 from bayes_basket_target.contracts import ContractError
@@ -159,3 +163,114 @@ def test_journal_records_every_fit_including_non_promoting_ones() -> None:
         (fit_id,),
     ).fetchone()
     assert row == ("P1", "ACCUMULATING", 4, 52, 0)
+
+
+def _evidence_lanes(conn: sqlite3.Connection) -> None:
+    """The tables the fit reads.
+
+    Empty is a legitimate state, not a broken one: a stage with no settled
+    history fits to identity and journals itself as accumulating, which is
+    exactly the path a refit takes for a stage that has just arrived.
+    """
+
+    conn.executescript(
+        "CREATE TABLE calibration_station_daily_high_truth ("
+        " station_id TEXT, local_date TEXT, official_tmax_c REAL);"
+        "CREATE TABLE basket_probability_bridge_history ("
+        " station_id TEXT, event_date TEXT, history_id TEXT,"
+        " envelope_json TEXT, decision_at_utc TEXT, stage TEXT);"
+        "CREATE TABLE basket_probability_bridge_bucket_probability ("
+        " history_id TEXT, bucket TEXT, lower_c REAL, upper_c REAL,"
+        " probability REAL);"
+        "CREATE TABLE calibration_cross_native_ensemble_oos_prediction ("
+        " station_id TEXT, event_date TEXT, probabilities_json TEXT,"
+        " bucket_centers_c_json TEXT, cross_ensemble_artifact_id TEXT,"
+        " trained_through_event_date TEXT, decision_at_utc TEXT,"
+        " lead_bucket TEXT);"
+        "CREATE TABLE calibration_cross_native_ensemble_artifact ("
+        " cross_ensemble_artifact_id TEXT, combination_method TEXT);"
+    )
+
+
+def test_one_failing_stage_does_not_cost_the_other_stages(monkeypatch) -> None:
+    """A stage that cannot persist loses itself and nothing else.
+
+    Reproduces 2026-08-20: P0's ``BEGIN IMMEDIATE`` lost the race to the
+    resident, the exception unwound the whole loop, and P0-M and P1 were
+    never fitted -- not even journalled.  Their evidence had nothing to do
+    with P0's lock.
+    """
+
+    conn = sqlite3.connect(":memory:")
+    _evidence_lanes(conn)
+    persist = band_reliability_store.persist_and_activate_band_table
+
+    def contended(inner, *, stage, **kwargs):
+        if stage != "P0":
+            return persist(inner, stage=stage, **kwargs)
+        # Die with a transaction open, as a failure inside the write would:
+        # a poisoned connection would fail the next stage's BEGIN for an
+        # unrelated reason and turn one lost stage back into three.
+        inner.execute("BEGIN IMMEDIATE")
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(
+        band_reliability_store, "persist_and_activate_band_table", contended
+    )
+    report = refit_all_stages(conn, bootstrap_samples=8, commit=True)
+
+    assert set(report) == set(BAND_STAGES)
+    assert "database is locked" in report["P0"]["error"]
+    assert "fit_id" not in report["P0"]
+    assert load_band_table(conn, stage="P0") is None
+    for stage in ("P0-M", "P1"):
+        entry = report[stage]
+        assert "error" not in entry, entry["error"]
+        assert entry["commit"]["state"] == "ACTIVATED"
+        assert entry["accumulating"] is True
+        assert load_band_table(conn, stage=stage)[1] == (
+            entry["fitted_table_sha256"]
+        )
+    journalled = {
+        (row[0], row[1])
+        for row in conn.execute(
+            "SELECT stage, outcome"
+            " FROM calibration_band_reliability_fit_journal"
+        )
+    }
+    assert journalled == {("P0-M", "ACCUMULATING"), ("P1", "ACCUMULATING")}
+
+
+def test_write_lock_is_retried_for_contention_only(monkeypatch) -> None:
+    """Wait out the resident; surface anything else on the first try."""
+
+    slept: list[float] = []
+    monkeypatch.setattr(band_reliability_store.time, "sleep", slept.append)
+
+    class _Writer:
+        def __init__(self, failures: int, message: str) -> None:
+            self.remaining = failures
+            self.message = message
+            self.attempts = 0
+
+        def execute(self, _sql: str) -> None:
+            self.attempts += 1
+            if self.remaining > 0:
+                self.remaining -= 1
+                raise sqlite3.OperationalError(self.message)
+
+    busy = _Writer(2, "database is locked")
+    assert _begin_immediate(busy) == 3
+    assert len(slept) == 2
+
+    wedged = _Writer(99, "database is locked")
+    with pytest.raises(sqlite3.OperationalError):
+        _begin_immediate(wedged)
+    assert wedged.attempts == band_reliability_store.WRITE_LOCK_ATTEMPTS
+
+    # A missing table is a fault, not contention: retrying it would spend
+    # four busy_timeouts to learn what the first attempt already said.
+    broken = _Writer(99, "no such table: calibration_band_reliability_table")
+    with pytest.raises(sqlite3.OperationalError):
+        _begin_immediate(broken)
+    assert broken.attempts == 1

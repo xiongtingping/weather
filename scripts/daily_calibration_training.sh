@@ -76,13 +76,19 @@ fi
 #    已服务的工件钉住各自评审时的表版本，换表不改历史工件的数学）
 echo "" | tee -a "$LOG_DIR/calibration_training.log"
 echo "[$(date +%H:%M:%S)] 分档校准 (band_reliability) 自动重拟合..." | tee -a "$LOG_DIR/calibration_training.log"
-BAND_REPORT="$("$PY" scripts/refit_band_reliability.py --commit --summary 2>&1)" || true
+#    各 stage 独立拟合，一个失败不带走其余；成败以退出码为准而不是
+#    以有没有 SUMMARY 行为准——部分失败时失败的 stage 也会打自己那行
+#    SUMMARY（标 FAILED），照旧按有无 SUMMARY 判就会把部分失败读成成功。
+BAND_RC=0
+BAND_REPORT="$("$PY" scripts/refit_band_reliability.py --commit --summary 2>&1)" || BAND_RC=$?
 echo "$BAND_REPORT" >> "$LOG_DIR/calibration_training_$TIMESTAMP.log"
 if echo "$BAND_REPORT" | grep -q '^SUMMARY '; then
   echo "$BAND_REPORT" | grep '^SUMMARY ' | sed 's/^SUMMARY /    /' | tee -a "$LOG_DIR/calibration_training.log"
+fi
+if [ "$BAND_RC" -eq 0 ]; then
   echo "[$(date +%H:%M:%S)] ✓ 三阶段分档校准已按最新证据重拟合" | tee -a "$LOG_DIR/calibration_training.log"
 else
-  echo "[$(date +%H:%M:%S)] ✗ 分档校准重拟合失败，详见 calibration_training_$TIMESTAMP.log" | tee -a "$LOG_DIR/calibration_training.log"
+  echo "[$(date +%H:%M:%S)] ✗ 分档校准重拟合失败 (退出码 $BAND_RC)，详见 calibration_training_$TIMESTAMP.log" | tee -a "$LOG_DIR/calibration_training.log"
 fi
 
 # 4. 分布中心/宽度两标量自动换代（拟合+激活；准入是留出前向窗，
