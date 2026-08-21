@@ -1357,36 +1357,53 @@ def append_forward_settlement_labels(
                         # row on a later pass when its observation arrives.
                         replayed += 1
                         continue
-                    if not _source_table_exists(
-                        source, "auto_trade_decisions"
-                    ):
-                        raise ForwardObservationStoreError(
-                            "forward_store_label_decision_authority_missing"
-                        )
-                    decision_rows = source.execute(
-                        "SELECT details_json FROM auto_trade_decisions "
-                        "WHERE decision_id=? LIMIT 2",
+                    quarantined = connection.execute(
+                        "SELECT error_code FROM forward_ingest_state "
+                        "WHERE decision_id=? AND state='QUARANTINED'",
                         (item["decision_id"],),
-                    ).fetchall()
-                    if len(decision_rows) != 1:
-                        raise ForwardObservationStoreError(
-                            "forward_store_label_decision_authority_not_unique"
+                    ).fetchone()
+                    if quarantined is not None:
+                        # The store's own ingest verdict is a valid reason for
+                        # a missing observation even when the source decision
+                        # claims ELIGIBLE: a quarantined decision never
+                        # materializes through the normal lane.  Record the
+                        # skip so the label cursor can advance; the retry lane
+                        # promotes the label if the quarantine is repaired.
+                        skip_reason = "FORWARD_OBSERVATION_QUARANTINED:" + str(
+                            quarantined[0] or ""
                         )
-                    try:
-                        details = json.loads(str(decision_rows[0][0] or "{}"))
-                    except (TypeError, ValueError, json.JSONDecodeError) as exc:
-                        raise ForwardObservationStoreError(
-                            "forward_store_label_decision_details_invalid"
-                        ) from exc
-                    status = (
-                        str(details.get("forward_observation_status") or "")
-                        if isinstance(details, Mapping)
-                        else ""
-                    )
-                    if not status.startswith("INELIGIBLE_"):
-                        raise ForwardObservationStoreError(
-                            "forward_store_label_exact_decision_join_missing_or_ambiguous"
+                    else:
+                        if not _source_table_exists(
+                            source, "auto_trade_decisions"
+                        ):
+                            raise ForwardObservationStoreError(
+                                "forward_store_label_decision_authority_missing"
+                            )
+                        decision_rows = source.execute(
+                            "SELECT details_json FROM auto_trade_decisions "
+                            "WHERE decision_id=? LIMIT 2",
+                            (item["decision_id"],),
+                        ).fetchall()
+                        if len(decision_rows) != 1:
+                            raise ForwardObservationStoreError(
+                                "forward_store_label_decision_authority_not_unique"
+                            )
+                        try:
+                            details = json.loads(str(decision_rows[0][0] or "{}"))
+                        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                            raise ForwardObservationStoreError(
+                                "forward_store_label_decision_details_invalid"
+                            ) from exc
+                        status = (
+                            str(details.get("forward_observation_status") or "")
+                            if isinstance(details, Mapping)
+                            else ""
                         )
+                        if not status.startswith("INELIGIBLE_"):
+                            raise ForwardObservationStoreError(
+                                "forward_store_label_exact_decision_join_missing_or_ambiguous"
+                            )
+                        skip_reason = status
                     connection.execute(
                         "INSERT INTO forward_label_ingest_state("
                         "source_label_rowid,source_label_id,"
@@ -1398,7 +1415,7 @@ def append_forward_settlement_labels(
                             item["label_id"],
                             item["content_sha256"],
                             "SKIPPED_INELIGIBLE",
-                            status,
+                            skip_reason,
                             materialized_at,
                         ),
                     )
