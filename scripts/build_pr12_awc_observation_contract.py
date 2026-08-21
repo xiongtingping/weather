@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import date, datetime, timedelta, timezone
 import json
 from pathlib import Path
 import sqlite3
@@ -46,6 +47,25 @@ def _station_registry(target_db: Path) -> dict[str, dict[str, object]]:
     if len(result) != 45:
         raise ContractError(f"pr12_station_registry_not_45:{len(result)}")
     return result
+
+
+def _parse_as_of_date(as_of_utc: str) -> date:
+    return datetime.fromisoformat(
+        str(as_of_utc).replace("Z", "+00:00")
+    ).astimezone(timezone.utc).date()
+
+
+def _materialized_event_dates(target_db: Path) -> list[str]:
+    """Event dates already closed out by a committed day-bounds fact."""
+
+    with sqlite3.connect(f"file:{target_db}?mode=ro", uri=True) as conn:
+        conn.execute("PRAGMA query_only=ON")
+        rows = conn.execute(
+            "SELECT DISTINCT json_extract(fact_json,'$.event_date') "
+            "FROM canonical_ssot_fact "
+            "WHERE fact_type='truth_observation_day_bounds'"
+        ).fetchall()
+    return sorted({str(value) for (value,) in rows if value})
 
 
 def _exclude_materialized_day_scopes(
@@ -109,17 +129,40 @@ def main() -> int:
     parser.add_argument("--contract-output", type=Path, required=True)
     parser.add_argument("--receipt-output", type=Path, required=True)
     parser.add_argument("--authority-projection", type=Path, required=True)
+    parser.add_argument(
+        "--window-days",
+        type=int,
+        default=2,
+        help="read reports from this many days back; 0 reads the whole archive",
+    )
     args = parser.parse_args()
     target = args.target_database.expanduser().resolve(strict=True)
     registry = _station_registry(target)
     projection = validate_pr12_authority_scope_projection(
         json.loads(args.authority_projection.expanduser().resolve(strict=True).read_text())
     )
+    # Read a recency window, not the whole backlog.  The pass re-derives every
+    # station-day it can see and the archive is append-only, so an unbounded
+    # read grows until it trips the builder's row cap and fails the lane
+    # closed (measured 2026-08-21: 44,710 rows against a 20,000 cap).
+    #
+    # Anchoring instead to the oldest un-materialised day drags three weeks of
+    # backlog into a single pass and trips the same cap, and it answers a
+    # question nobody asked here: the live stage needs today's reports
+    # identified, while filling historical gaps is an offline concern with its
+    # own window.  Days resolve in local time, so the default leaves two days
+    # of margin for the settlement offsets in the fleet.
+    since_valid_at = ""
+    if args.window_days > 0:
+        since_valid_at = (
+            _parse_as_of_date(args.as_of_utc) - timedelta(days=args.window_days)
+        ).isoformat() + "T00:00:00.000Z"
     evidence = export_awc_ingress_evidence_v4(
         args.archive_database,
         station_registry=registry,
         authority_scope_projection=projection,
         as_of_utc=args.as_of_utc,
+        since_valid_at_utc=since_valid_at,
     )
     evidence = _exclude_materialized_day_scopes(target, evidence)
     contract, receipt = build_awc_observation_contract(evidence)

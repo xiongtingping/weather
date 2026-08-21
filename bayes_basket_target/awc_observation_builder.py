@@ -161,8 +161,21 @@ def export_awc_ingress_evidence_v4(
     authority_scope_projection: Mapping[str, Any],
     station_ids: Sequence[str] = (),
     as_of_utc: str,
+    since_valid_at_utc: str = "",
 ) -> dict[str, Any]:
-    """Freeze exact AWC observation, poll, origin, halt and review evidence."""
+    """Freeze exact AWC observation, poll, origin, halt and review evidence.
+
+    ``since_valid_at_utc`` bounds the read to reports at or after an instant.
+    The pass is a full rebuild by construction -- it re-derives every
+    station-day it can see -- and the archive is append-only, so the read
+    grows without limit and eventually trips ``MAX_ROWS``: measured
+    2026-08-21 at 44,710 AWC rows against a 20,000 cap, which fails the
+    whole lane closed rather than the days it cannot fit.  Callers that have
+    already materialised the older station-days pass their watermark here so
+    the pass reads only what is still open.  Days are resolved in local time,
+    so a caller must leave a margin of at least one day for the settlement
+    offsets in its fleet.
+    """
 
     source = Path(source_db).expanduser().resolve(strict=True)
     as_of = _utc(as_of_utc, "as_of_utc")
@@ -215,6 +228,7 @@ def export_awc_ingress_evidence_v4(
            AND g.station_id=o.station_id
          WHERE o.source_lane='awc' AND o.station_id IN ({placeholders})
            AND o.canonical_committed_at<=?
+           AND o.valid_at>=?
          ORDER BY o.station_id,o.valid_at,o.report_type,o.observation_id
          LIMIT ?
     """
@@ -229,7 +243,17 @@ def export_awc_ingress_evidence_v4(
             "reported_trajectory_station_halt_reviews",
         ):
             _table_required(conn, table)
-        rows = [dict(row) for row in conn.execute(sql, (*selected, _stamp(as_of), MAX_ROWS + 1))]
+        since_bound = (
+            _stamp(_utc(since_valid_at_utc, "since_valid_at_utc"))
+            if str(since_valid_at_utc or "").strip()
+            else ""
+        )
+        rows = [
+            dict(row)
+            for row in conn.execute(
+                sql, (*selected, _stamp(as_of), since_bound, MAX_ROWS + 1)
+            )
+        ]
         if len(rows) > MAX_ROWS:
             raise ContractError("pr12_source_row_limit_exceeded")
         halts = [
@@ -599,6 +623,23 @@ def build_awc_observation_contract(
             reasons.add("TRUTH_NOT_CLOSED")
         if missing_slots or extra_slots:
             reasons.add("DATA_MISSING")
+        # Two different facts, two different preconditions.  A day-bounds fact
+        # states the day's maximum, so it genuinely cannot exist before the
+        # day closes with complete hourly coverage.  A revision fact states
+        # only "this report, canonically identified" -- immutable the moment
+        # the report is committed, and true of an open day's reports exactly
+        # as of a closed day's.  Gating both on closure meant the live P1
+        # stage could never carry the revision hash its own atomic root
+        # requires (2026-08-06 made that hash mandatory; P1 has not reached a
+        # commit since 2026-08-01), while the offline lane that does produce
+        # them only ever covers yesterday.
+        #
+        # A review hold is different in kind and still stops everything: a
+        # correction or an active halt means these reports are disputed, and
+        # the charter says such a station-day halts for manual review rather
+        # than producing facts.
+        review_blocked = "REVISION_REVIEW_REQUIRED" in reasons
+        day_bounds_blocked = bool(reasons)
         if reasons:
             terminal_gaps.append(
                 {
@@ -609,8 +650,10 @@ def build_awc_observation_contract(
                     "observed_hourly_metar_count": len(observed_slots),
                     "missing_hourly_slots": missing_slots,
                     "extra_hourly_slots": extra_slots,
+                    "revision_facts_emitted": not review_blocked,
                 }
             )
+        if review_blocked:
             continue
 
         usable = sorted(
@@ -666,6 +709,15 @@ def build_awc_observation_contract(
                 }
             )
             day_revisions.append(fact)
+        if day_bounds_blocked:
+            # The reports are identified; the day's maximum is not yet a fact.
+            # Emitting the revisions alone is valid by the contract's own
+            # cross-check, which requires every day-bounds fact to resolve its
+            # revisions but never the converse.
+            revision_facts.extend(day_revisions)
+            continue
+        if not day_revisions:
+            continue
         maximum = min(
             (
                 fact
