@@ -213,6 +213,56 @@ def test_superseded_extraction_version_is_refused() -> None:
     )
 
 
+def test_hour_vocabulary_capture_is_admitted_by_extraction_identity() -> None:
+    """An hour-bucket label admits on the run's registered identity.
+
+    Captures stamp the per-station lead-hour bucket since 2026-08-14, while
+    the contract registry keys its variants by the collector's calendar lead.
+    Comparing the two vocabularies directly dropped every official row
+    captured after the cutover: per-system holdout windows froze at
+    2026-08-14 and the fleet re-served week-old selections.  The hour label
+    is a property of the station's timezone, not of which run-relative day
+    the collector fetched, so for hour-era rows the extraction version is
+    the lead statement -- each registered variant's extraction names its own
+    (lead, cycle) convention -- and the admission stays exactly as narrow as
+    the calendar-era one.
+    """
+
+    for system_id in (
+        "NOAA_GEFS_05",
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "ECCC_GEM_GLOBAL_ENS",
+        "DWD_ICON_GLOBAL_EPS",
+    ):
+        for contract in _scope_contracts(system_id):
+            for hour_bucket in ("h00_12", "h12_24", "h24_48", "h48_plus"):
+                assert _historical_transport_scope_allowed(
+                    system_id=system_id,
+                    transport_provider_id=contract["transport_provider_id"],
+                    lead_bucket=hour_bucket,
+                    run_cycle=contract["run_cycle"],
+                    extraction_version=contract["extraction_version"],
+                )
+            # The other dimensions stay load-bearing under the new label:
+            # a cycle nobody registers, and a superseded extraction, are
+            # refused exactly as they were for calendar labels.
+            assert not _historical_transport_scope_allowed(
+                system_id=system_id,
+                transport_provider_id=contract["transport_provider_id"],
+                lead_bucket="h24_48",
+                run_cycle="06Z",
+                extraction_version=contract["extraction_version"],
+            )
+    icon = _scope_contract("DWD_ICON_GLOBAL_EPS")
+    assert not _historical_transport_scope_allowed(
+        system_id="DWD_ICON_GLOBAL_EPS",
+        transport_provider_id=icon["transport_provider_id"],
+        lead_bucket="h24_48",
+        run_cycle=icon["run_cycle"],
+        extraction_version="dwd_icon_global_eps_18z_d2_station_tmax_v1",
+    )
+
+
 def test_registered_official_transports_cover_every_scope_contract() -> None:
     """The SQL prefilter must not fall behind the contract table.
 

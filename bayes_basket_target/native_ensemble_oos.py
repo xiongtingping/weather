@@ -59,7 +59,11 @@ from .ecmwf_ifs_archive import (
     SUPPORTED_LEAD_DAYS as _IFS_LEADS,
     extraction_version_for_lead as _ifs_extraction_version,
 )
-from .native_archive_lead import lead_hour_bucket_for_run
+from .native_archive_lead import (
+    LEAD_HOUR_BUCKETS,
+    LONGEST_LEAD_HOUR_BUCKET,
+    lead_hour_bucket_for_run,
+)
 from .native_ensemble_contract import (
     P0_PROBABILITY_PATHWAY,
     native_ensemble_family_set_hash,
@@ -1941,6 +1945,20 @@ def _historical_transport_scope_allowed(
         # Admitting more leads does not blur them: each lead keeps a separate
         # contract, and OOS trains per (season_bin, lead_bucket), so weights are
         # never shared across leads.
+        #
+        # Captures stamp the per-station hour bucket since 2026-08-14, while
+        # the contract registry keys its variants by the collector's calendar
+        # lead.  An hour label cannot be compared to a calendar key -- it is a
+        # property of the station's timezone, not of which run-relative day
+        # the collector fetched -- so for hour-era rows the extraction version
+        # is the lead statement: every registered variant's extraction names
+        # its own (lead, cycle) convention, and matching it pins the contract
+        # exactly as the calendar label used to.  Comparing the vocabularies
+        # directly is what silently dropped every capture after the cutover
+        # and froze the fleet's selection windows at 2026-08-14.
+        hour_era = lead_bucket in {
+            name for name, _upper in LEAD_HOUR_BUCKETS
+        } | {LONGEST_LEAD_HOUR_BUCKET}
         for contract in _scope_contract_variants(official):
             expected_extraction = str(
                 contract.get("extraction_version") or ""
@@ -1948,7 +1966,7 @@ def _historical_transport_scope_allowed(
             if (
                 transport_provider_id
                 == contract["transport_provider_id"]
-                and lead_bucket == contract["lead_bucket"]
+                and (hour_era or lead_bucket == contract["lead_bucket"])
                 and run_cycle == contract["run_cycle"]
                 and (
                     not expected_extraction
