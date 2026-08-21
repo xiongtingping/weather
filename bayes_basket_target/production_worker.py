@@ -3102,6 +3102,15 @@ class TargetProductionWorker:
                         # (5 reports/day before 2026-08-01) fails the
                         # bucket-start prefix requirement outright.
                         "--anchor-to-first-report",
+                        # Physical conditioning only (user ruling,
+                        # 2026-08-21): the layer predicts the day's maximum
+                        # from observed METAR state, it does not redistribute
+                        # around the model's own curve.  Newly fitted
+                        # artifacts carry the physical method; incumbent
+                        # hourly-curve activations keep serving their scopes
+                        # until a physical fit outranks them by generation,
+                        # which is the codebase's standing cutover rule.
+                        "--method", "physical",
                         "--output", str(packet_path),
                     ],
                     cwd=str(ROOT),

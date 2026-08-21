@@ -28,6 +28,7 @@ from bayes_basket_target.metar_path_state import (
 )
 from bayes_basket_target.metar_trajectory import (
     METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
+    METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION,
     MINIMUM_EFFECTIVE_SAMPLE_N,
 )
 from bayes_basket_target.resource_bounds import write_bounded_json
@@ -495,7 +496,10 @@ def build_training_packet(
     generation: int,
     anchor_to_first_report: bool = False,
     require_source_poll_receipt: bool = False,
+    method: str = "hourly_curve",
 ) -> dict[str, Any]:
+    if method not in {"hourly_curve", "physical"}:
+        raise ContractError("metar_trajectory_fold_method_invalid")
     station = station_id.strip().upper()
     bucket = local_time_bucket.strip().upper()
     if bucket not in BUCKET_START_HOUR:
@@ -1103,9 +1107,13 @@ def build_training_packet(
             # scope that ever activated could never be re-fitted.  The
             # evidence date makes it unique per training run and keeps it
             # readable.
+            # The physical lane carries its own tag: both methods share the
+            # scope key, and a same-day refit of each would otherwise collide
+            # on this id in the activation store and roll the commit back.
             "activation_id": (
                 f"metar-trajectory-{station}-{bucket.lower()}"
-                f"-{_iso_utc(trained_through)[:10].replace('-', '')}"
+                + ("-physical" if method == "physical" else "")
+                + f"-{_iso_utc(trained_through)[:10].replace('-', '')}"
             ),
             "station_id": station,
             "source_lane": "awc",
@@ -1114,24 +1122,41 @@ def build_training_packet(
             "maturity_bin": "D0",
             "settlement_definition": "official_daily_tmax_c",
             "settlement_timezone": settlement_timezone,
-            "feature_definitions": {
-                "running_high_c": (
-                    "max canonical AWC METAR/SPECI temperature available "
-                    "at local bucket start"
-                ),
-                "remaining_warming_c": (
-                    "final official tmax minus running high, nearest 1C"
-                ),
-                "conditional_path_state": (
-                    "strict-as-of remaining time, full-prefix temperature "
-                    "momentum and acceleration, METAR physical state, and "
-                    "model-root expected remaining warming"
-                ),
-                "conditional_future_temperature_curve": (
-                    "same-capture, content-addressed hourly curve combined "
-                    "from at least two activated independent model families"
-                ),
-            },
+            "feature_definitions": (
+                {
+                    "running_high_c": (
+                        "max canonical AWC METAR/SPECI temperature available "
+                        "at local bucket start"
+                    ),
+                    "remaining_warming_c": (
+                        "final official tmax minus running high, nearest 1C"
+                    ),
+                    "conditional_path_state": (
+                        "strict-as-of remaining time, full-prefix "
+                        "temperature momentum and acceleration, and METAR "
+                        "physical state; model-derived terms excluded"
+                    ),
+                }
+                if method == "physical"
+                else {
+                    "running_high_c": (
+                        "max canonical AWC METAR/SPECI temperature available "
+                        "at local bucket start"
+                    ),
+                    "remaining_warming_c": (
+                        "final official tmax minus running high, nearest 1C"
+                    ),
+                    "conditional_path_state": (
+                        "strict-as-of remaining time, full-prefix temperature "
+                        "momentum and acceleration, METAR physical state, and "
+                        "model-root expected remaining warming"
+                    ),
+                    "conditional_future_temperature_curve": (
+                        "same-capture, content-addressed hourly curve combined "
+                        "from at least two activated independent model families"
+                    ),
+                }
+            ),
             "missing_observation_policy": "DEGRADE_STRENGTH",
             "expected_interval_minutes": 60,
             "long_interval_minutes": 90,
@@ -1139,22 +1164,36 @@ def build_training_packet(
             "missing_interval_strength_factor": 0.8,
             "long_interval_strength_factor": 0.5,
             "path_feature_schema": PATH_STATE_SCHEMA,
-            "path_model_coefficients": {
-                "base_distribution_mean": 0.3,
-                "root_expected_remaining_warming": 0.5,
-                "momentum_c_per_hour": 0.35,
-                "acceleration_c_per_hour2": 0.1,
-                "drawdown_from_high_c": -0.5,
-                "dewpoint_depression_c": 0.01,
-                "cloud_cover_fraction": -0.8,
-                "precipitation_present": -1.0,
-                "wind_speed_mps": -0.02,
-                "remaining_hours": 0.02,
-                "predicted_peak_remaining_warming_c": 0.35,
-                "minutes_to_predicted_peak": 0.02,
-                "next_curve_delta_from_high_c": 0.15,
-                "future_curve_slope_c_per_hour": 0.10,
-            },
+            "path_model_coefficients": (
+                {
+                    "base_distribution_mean": 0.3,
+                    "momentum_c_per_hour": 0.35,
+                    "acceleration_c_per_hour2": 0.1,
+                    "drawdown_from_high_c": -0.5,
+                    "dewpoint_depression_c": 0.01,
+                    "cloud_cover_fraction": -0.8,
+                    "precipitation_present": -1.0,
+                    "wind_speed_mps": -0.02,
+                    "remaining_hours": 0.02,
+                }
+                if method == "physical"
+                else {
+                    "base_distribution_mean": 0.3,
+                    "root_expected_remaining_warming": 0.5,
+                    "momentum_c_per_hour": 0.35,
+                    "acceleration_c_per_hour2": 0.1,
+                    "drawdown_from_high_c": -0.5,
+                    "dewpoint_depression_c": 0.01,
+                    "cloud_cover_fraction": -0.8,
+                    "precipitation_present": -1.0,
+                    "wind_speed_mps": -0.02,
+                    "remaining_hours": 0.02,
+                    "predicted_peak_remaining_warming_c": 0.35,
+                    "minutes_to_predicted_peak": 0.02,
+                    "next_curve_delta_from_high_c": 0.15,
+                    "future_curve_slope_c_per_hour": 0.10,
+                }
+            ),
             "path_model_sigma_c": 0.8,
             "hard_exclusion_baseline_distribution": support,
             "base_strength": 0.8,
@@ -1162,7 +1201,9 @@ def build_training_packet(
             "likelihood_ratio_floor": 0.25,
             "likelihood_ratio_ceiling": 4.0,
             "method_version": (
-                METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION
+                METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION
+                if method == "physical"
+                else METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION
             ),
             "trained_through_utc": _iso_utc(trained_through),
             "valid_from_utc": valid_from_utc,
@@ -1230,6 +1271,17 @@ def main() -> int:
             "report-time binding for every fold observation."
         ),
     )
+    parser.add_argument(
+        "--method",
+        choices=("hourly_curve", "physical"),
+        default="hourly_curve",
+        help=(
+            "Which conditioner the fitted artifact will serve under. "
+            "'physical' conditions on observed METAR state alone -- no root "
+            "curve, no model-derived features -- so its folds need no curve "
+            "and its gate scores the physical conditioner."
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     packet = build_training_packet(
@@ -1256,6 +1308,7 @@ def main() -> int:
         generation=args.generation,
         anchor_to_first_report=bool(args.anchor_to_first_report),
         require_source_poll_receipt=bool(args.require_source_poll_receipt),
+        method=args.method,
     )
     write_bounded_json(
         args.output.expanduser().resolve(),

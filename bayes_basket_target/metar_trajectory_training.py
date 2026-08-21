@@ -12,6 +12,7 @@ from .metar_trajectory import (
     METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
     METAR_TRAJECTORY_AUTHORITY_SCOPE,
     METAR_TRAJECTORY_METHOD_VERSION,
+    METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION,
     build_metar_trajectory_likelihood_artifact,
     maturity_strength_for_sample_n,
 )
@@ -19,6 +20,7 @@ from .metar_path_state import (
     ConditionalMetarPathState,
     condition_remaining_warming_distribution,
 )
+from .metar_physical_tmax import condition_on_physical_state
 
 
 SCHEMA = "bayes_basket_metar_trajectory_walk_forward_training_v1"
@@ -345,10 +347,15 @@ def train_metar_trajectory_artifact(
     conditional_path_model = method_version in {
         METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
         METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
+        METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION,
     }
     hourly_curve_model = (
         method_version
         == METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION
+    )
+    physical_tmax_model = (
+        method_version
+        == METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION
     )
     parsed: list[dict[str, Any]] = []
     seen_dates: set[str] = set()
@@ -710,7 +717,23 @@ def train_metar_trajectory_artifact(
             ],
         )
         probability_predictions = predictions
-        if conditional_path_model:
+        if physical_tmax_model:
+            # The gate must score the conditioner production will run: the
+            # physical one, which reads no model-coupled feature.  Scoring the
+            # curve conditioner here would promote a model nobody serves.
+            probability_predictions = [
+                condition_on_physical_state(
+                    prediction,
+                    row["conditional_path_state"],
+                    coefficients=(
+                        artifact_parameters.get("path_model_coefficients")
+                        or {}
+                    ),
+                    sigma_c=artifact_parameters.get("path_model_sigma_c"),
+                )
+                for row, prediction in zip(parsed, predictions)
+            ]
+        elif conditional_path_model:
             probability_predictions = [
                 condition_remaining_warming_distribution(
                     prediction,

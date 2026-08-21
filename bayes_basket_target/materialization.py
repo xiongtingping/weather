@@ -35,6 +35,7 @@ from .resource_bounds import assert_connection_target_capacity
 from .metar_trajectory import (
     METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
     METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
+    METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION,
     MetarTrajectoryLikelihoodArtifact,
     MetarTrajectoryObservation,
     MetarTrajectoryUpdateProof,
@@ -1125,11 +1126,16 @@ def materialize_p1(
         governed_trajectory_artifact.method_version in {
             METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
             METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
+            METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION,
         }
     )
     conditional_hourly_curve = (
         governed_trajectory_artifact.method_version
         == METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION
+    )
+    physical_absolute_tmax = (
+        governed_trajectory_artifact.method_version
+        == METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION
     )
     if conditional_path and proof.conditional_path_state_sha256 is None:
         raise ContractError("p1_conditional_path_state_proof_missing")
@@ -1254,7 +1260,9 @@ def materialize_p1(
                 "DIAGNOSTIC_POSITIVE_PROBABILITY_SUPPORT_NOT_BASKET_CORE"
             ),
             "observation_likelihood_mode": (
-                "CONDITIONAL_HOURLY_FUTURE_PATH_SOFT_LR_PLUS_HARD_EXCLUSION_V4"
+                "PHYSICAL_ABSOLUTE_TMAX_SOFT_LR_PLUS_HARD_EXCLUSION_V5"
+                if physical_absolute_tmax
+                else "CONDITIONAL_HOURLY_FUTURE_PATH_SOFT_LR_PLUS_HARD_EXCLUSION_V4"
                 if conditional_hourly_curve
                 else "CONDITIONAL_FUTURE_PATH_SOFT_LR_PLUS_HARD_EXCLUSION_V3"
                 if conditional_path

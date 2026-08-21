@@ -11,6 +11,7 @@ from bayes_basket_target.metar_trajectory import (
     METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
     METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
     METAR_TRAJECTORY_METHOD_VERSION,
+    METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION,
     MAX_METAR_TRAJECTORY_BUCKETS,
     MAX_METAR_TRAJECTORY_OBSERVATIONS,
     MetarTrajectoryLikelihoodArtifact,
@@ -375,6 +376,68 @@ def test_hourly_curve_artifact_fails_closed_without_same_cutoff_curve(
             artifact=_hourly_curve_artifact(),
             root=root,
         )
+
+
+def _physical_tmax_artifact() -> MetarTrajectoryLikelihoodArtifact:
+    payload = _conditional_artifact().to_dict()
+    payload.pop("artifact_id")
+    payload.pop("content_sha256")
+    payload["path_model_coefficients"].pop("root_expected_remaining_warming")
+    payload["method_version"] = (
+        METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION
+    )
+    return build_metar_trajectory_likelihood_artifact(payload)
+
+
+def test_physical_tmax_artifact_runs_on_a_curveless_root() -> None:
+    # The root here carries no hourly curve at all -- the exact situation
+    # where the curve method fails closed and P1 fell to identity fallback.
+    proof = _compile(
+        _hourly_curve_observations(), artifact=_physical_tmax_artifact()
+    )
+    assert proof.applied_strength > 0.0
+    assert proof.conditional_path_state_sha256 is not None
+    ratios = set(proof.likelihood_ratio_by_bucket.values())
+    assert len(ratios) > 1
+
+
+def test_physical_tmax_artifact_ignores_model_evidence_bitwise() -> None:
+    # Independence as an executable assertion: shifting the root's own
+    # probabilities (its expected tmax) must not move one bit of the
+    # physical likelihood ratios.
+    base = _root().to_dict()
+    shifted = deepcopy(base)
+    shifted["probabilities"] = {
+        "33C": 0.90, "34C": 0.04, "35C": 0.03, "36C": 0.02, "37C": 0.01,
+    }
+    left = _compile(
+        _hourly_curve_observations(),
+        artifact=_physical_tmax_artifact(),
+        root=ProbabilityEnvelope.from_mapping(base),
+    )
+    right = _compile(
+        _hourly_curve_observations(),
+        artifact=_physical_tmax_artifact(),
+        root=ProbabilityEnvelope.from_mapping(shifted),
+    )
+    assert (
+        left.likelihood_ratio_by_bucket == right.likelihood_ratio_by_bucket
+    )
+    assert left.applied_strength == right.applied_strength
+
+
+def test_physical_tmax_artifact_rejects_model_coupled_coefficients() -> None:
+    payload = _conditional_artifact().to_dict()
+    payload.pop("artifact_id")
+    payload.pop("content_sha256")
+    payload["method_version"] = (
+        METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION
+    )
+    # Full conditional coefficient set still carries the model-coupled term.
+    with pytest.raises(
+        ContractError, match="metar_trajectory_physical_tmax_model_incomplete"
+    ):
+        build_metar_trajectory_likelihood_artifact(payload)
 
 
 def test_artifact_sealing_is_stable_for_numeric_distribution_keys() -> None:

@@ -33,6 +33,10 @@ from .metar_path_state import (
     compile_conditional_metar_path_state,
     condition_remaining_warming_distribution,
 )
+from .metar_physical_tmax import (
+    PHYSICAL_COEFFICIENT_KEYS,
+    condition_on_physical_state,
+)
 
 
 METAR_TRAJECTORY_ARTIFACT_SCHEMA = (
@@ -50,6 +54,19 @@ METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION = (
 )
 METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION = (
     "canonical_conditional_hourly_future_path_v3"
+)
+# Physical-evidence conditioning only (user ruling, 2026-08-21): the layer's
+# job is to *predict* the day's maximum from what the airport has reported,
+# not to redistribute mass around the model's own hourly curve.  Measured on
+# 501 paired station-days the two error streams are nearly orthogonal
+# (residual correlation 0.060), which is exactly what makes the product
+# posterior worth having -- and exactly what the curve-coupled conditioner
+# could never supply, since evidence correlated with the prior multiplies to
+# nothing.  This method reads no model output: not the root curve, not the
+# root's expected warming.  It therefore also runs on roots that carry no
+# curve and keeps running after the curve's future points are exhausted.
+METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION = (
+    "canonical_physical_absolute_tmax_v5"
 )
 METAR_TRAJECTORY_AUTHORITY_SCOPE = "PRODUCTION_NO_LIVE_ONLY"
 MAX_METAR_TRAJECTORY_OBSERVATIONS = 512
@@ -423,6 +440,21 @@ class MetarTrajectoryLikelihoodArtifact:
             ):
                 raise ContractError(
                     "metar_trajectory_conditional_hourly_curve_model_incomplete"
+                )
+        elif (
+            method_version
+            == METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION
+        ):
+            # Exactly the physical subset, no model-coupled terms.  A stray
+            # ``root_expected_remaining_warming`` here would silently rebuild
+            # the coupling this method exists to exclude.
+            if (
+                path_feature_schema != PATH_STATE_SCHEMA
+                or set(path_coefficients) != set(PHYSICAL_COEFFICIENT_KEYS)
+                or path_sigma is None
+            ):
+                raise ContractError(
+                    "metar_trajectory_physical_tmax_model_incomplete"
                 )
         elif method_version == METAR_TRAJECTORY_METHOD_VERSION:
             if path_feature_schema or path_coefficients or path_sigma is not None:
@@ -1432,6 +1464,7 @@ def compile_metar_trajectory_update_proof(
         governed.method_version in {
             METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
             METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
+            METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION,
         }
     ):
         future_curve = None
@@ -1534,14 +1567,31 @@ def compile_metar_trajectory_update_proof(
             station_id=root.station_id,
             event_date=root.event_date,
         )
-        governed_remaining_distribution = (
-            condition_remaining_warming_distribution(
+        if (
+            governed.method_version
+            == METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION
+        ):
+            # The physical conditioner leaves the completeness check to its
+            # caller; the curve conditioner raises this itself.  Keeping the
+            # same error on the same input keeps the two methods' failure
+            # surfaces identical for everything upstream.
+            if not conditional_path_state.complete:
+                raise ContractError("metar_path_state_incomplete")
+            governed_remaining_distribution = condition_on_physical_state(
                 governed.remaining_warming_distribution,
                 conditional_path_state,
                 coefficients=governed.path_model_coefficients,
                 sigma_c=float(governed.path_model_sigma_c),
             )
-        )
+        else:
+            governed_remaining_distribution = (
+                condition_remaining_warming_distribution(
+                    governed.remaining_warming_distribution,
+                    conditional_path_state,
+                    coefficients=governed.path_model_coefficients,
+                    sigma_c=float(governed.path_model_sigma_c),
+                )
+            )
     # A bucket is dead exactly when the running high has reached its upper
     # bound: for half-open interval uppers ``[lo, hi)`` the settled max being
     # ``>= hi`` puts it outside the bucket, and for first-killing-value
@@ -1799,6 +1849,7 @@ __all__ = [
     "METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION",
     "METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION",
     "METAR_TRAJECTORY_METHOD_VERSION",
+    "METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION",
     "METAR_TRAJECTORY_OBSERVATION_SCHEMA",
     "METAR_TRAJECTORY_PROOF_SCHEMA",
     "MAX_METAR_TRAJECTORY_BUCKETS",

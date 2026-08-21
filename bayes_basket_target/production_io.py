@@ -1285,12 +1285,20 @@ def target_stage_zero_execution_anchor_from_cycle(
             trajectory_lineage.get("metar_future_temperature_curve_sha256")
             or ""
         ).strip().lower()
+        # The physical method reads no root curve by construction, so the
+        # curve sha it must carry is exactly "none".  Demanding a 64-hex
+        # digest there would readmit the coupling the method exists to
+        # exclude; demanding "NONE" from the curve method would admit a P1
+        # whose evidence lineage lost its curve.
         if (
             not activation_id
             or activation_id.upper() == "NONE"
             or not artifact_id
             or likelihood_mode
-            != "CONDITIONAL_HOURLY_FUTURE_PATH_SOFT_LR_PLUS_HARD_EXCLUSION_V4"
+            not in {
+                "CONDITIONAL_HOURLY_FUTURE_PATH_SOFT_LR_PLUS_HARD_EXCLUSION_V4",
+                "PHYSICAL_ABSOLUTE_TMAX_SOFT_LR_PLUS_HARD_EXCLUSION_V5",
+            }
             or not 0.0 < applied_strength <= 1.0
             or len(proof_sha) != 64
             or any(character not in "0123456789abcdef" for character in proof_sha)
@@ -1299,10 +1307,21 @@ def target_stage_zero_execution_anchor_from_cycle(
                 character not in "0123456789abcdef"
                 for character in path_state_sha
             )
-            or len(future_curve_sha) != 64
-            or any(
-                character not in "0123456789abcdef"
-                for character in future_curve_sha
+            or (
+                likelihood_mode
+                == "PHYSICAL_ABSOLUTE_TMAX_SOFT_LR_PLUS_HARD_EXCLUSION_V5"
+                and future_curve_sha != "none"
+            )
+            or (
+                likelihood_mode
+                == "CONDITIONAL_HOURLY_FUTURE_PATH_SOFT_LR_PLUS_HARD_EXCLUSION_V4"
+                and (
+                    len(future_curve_sha) != 64
+                    or any(
+                        character not in "0123456789abcdef"
+                        for character in future_curve_sha
+                    )
+                )
             )
         ):
             raise ContractError(

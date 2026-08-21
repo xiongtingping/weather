@@ -20,6 +20,7 @@ from .metar_trajectory import (
     METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
     METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
     METAR_TRAJECTORY_METHOD_VERSION,
+    METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION,
     MetarTrajectoryLikelihoodArtifact,
     MetarTrajectoryObservation,
     build_metar_trajectory_likelihood_artifact,
@@ -285,6 +286,11 @@ def p1_trajectory_mode(
         return "HARD_BOUND_ONLY_FALLBACK"
     if trajectory_artifact.method_version == hourly_curve_method_version:
         return "PROMOTED_HOURLY_CURVE"
+    if (
+        trajectory_artifact.method_version
+        == METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION
+    ):
+        return "PROMOTED_PHYSICAL_TMAX"
     return "PROMOTED_PRE_CURVE"
 
 
@@ -565,6 +571,7 @@ def compile_station_p1_packets(
             in {
                 METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
                 METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
+                METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION,
             }
             and len(trajectory_prefix) < 3
         ):
