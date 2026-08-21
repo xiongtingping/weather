@@ -1024,6 +1024,24 @@ def apply_target_ledger_schema(conn: sqlite3.Connection, *, commit: bool = True)
                 "truth_observation_revision_content_sha256 TEXT "
                 "CHECK(length(truth_observation_revision_content_sha256)=64)"
             )
+        # The observed root grew three columns together; only the revision
+        # hash above was ever migrated, so a store built before them accepted
+        # the insert's column list right up to the write and then refused it
+        # ("table basket_target_observation_facts has no column named
+        # observed_at_utc").  Nothing reached that write between 2026-08-01
+        # and today, which is why it went unseen.
+        if table == "basket_target_observation_facts":
+            for column, ddl in (
+                ("observed_at_utc", "observed_at_utc TEXT"),
+                (
+                    "awc_source_receipt_sha256",
+                    "awc_source_receipt_sha256 TEXT "
+                    "CHECK(awc_source_receipt_sha256 IS NULL "
+                    "OR length(awc_source_receipt_sha256)=64)",
+                ),
+            ):
+                if column not in columns:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
         if table == "basket_target_execution_cycles" and "settlement_timezone" not in columns:
             conn.execute(
                 f"ALTER TABLE {table} ADD COLUMN settlement_timezone TEXT"
