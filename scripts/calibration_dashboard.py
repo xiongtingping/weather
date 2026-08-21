@@ -2599,7 +2599,7 @@ function overview(){
   push(outstanding==null?"muted":outstanding===0?"green"
       :outstanding<=5?"amber":"red",
     "真值待物化", outstanding==null?"—":String(outstanding),
-    "结算真值还没落库的站日", "第二十节：真值物化健康度");
+    "结算真值还没落库的站日", "第十九节：真值物化健康度");
 
   // 4. How much of the fleet actually opened a position on the newest day.
   const day=S.latest_day||(S.roster_event_dates||[])[0];
@@ -3283,6 +3283,12 @@ function gaps(){
   </tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
 
+// The one table that lives above the tabs, with the health light and the
+// strip (user ruling, 2026-08-21).  It is the page's core: one row per
+// event day, every stage's account of it on the same line, and it answers
+// "what happened yesterday" without choosing a group first.  Unnumbered for
+// that reason -- the numbered sections are what the three groups hold, and
+// a number here would imply it sits in one of them.
 function daily(){
   if(!D.daily || !D.daily.length) return "";
   const SIDE={above:"偏上",aligned:"一致",below:"偏下"};
@@ -3313,7 +3319,7 @@ function daily(){
       <td>${r.center_bias_c==null?"—":(r.center_bias_c>=0?"+":"")+r.center_bias_c.toFixed(2)}</td>
     </tr>`;
   }).join("");
-  return `<h2>十九、每日统计</h2>
+  return `<h2>每日统计</h2>
   <p class="sub">按事件日汇总，只算可成交的（整篮成本 ≥1 分）——不足一分的多是无人出价那侧的
   挂单，名义上有价、实际买不到，混进来会让当天的盈亏读不出意思。</p>
   <div class="why"><b>列的意思：</b>「位置」是相对市场偏上/一致/偏下的笔数；
@@ -3907,7 +3913,7 @@ function materialization(){
       "证据不全" : "证据矛盾"}</span></td>
     <td class="mono muted">${h(r.example)}</td>
   </tr>`).join("");
-  return `<h2>二十、真值物化健康度</h2>
+  return `<h2>十九、真值物化健康度</h2>
   <p class="sub">观测进来只是第一步：还要把一整天的报文收敛成"这个站这天的最高温"
   一行，才有东西给预报打分。这一节看的是这一步有没有落下。</p>
   <div class="why"><b>为什么单独看它：</b>缺一行真值几乎从来不是缺观测——
@@ -4300,9 +4306,8 @@ const GROUPS = [
    sections:[[coverage,"覆盖"],[stationSummary,"站汇总"],[roster,"站名册"],
      [anomalies,"异常"],[basketHit,"篮子命中率"],
      [makerProbe,"挂单影子探针"],[refusalStats,"未建仓原因"]]},
-  {id:"data", label:"数据与链路", note:"十七～二十节：链路每一环、数据缺口、每日统计、真值物化",
-   sections:[[chain,"链路"],[gaps,"数据缺口"],[daily,"逐日"],
-     [materialization,"真值物化"]]},
+  {id:"data", label:"数据与链路", note:"十七～十九节：链路每一环、数据缺口、真值物化",
+   sections:[[chain,"链路"],[gaps,"数据缺口"],[materialization,"真值物化"]]},
 ];
 
 const tabs = `<nav class="tabs" id="tabs">${
@@ -4315,7 +4320,8 @@ const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}">
   ${g.sections.map(([fn, name]) => safe(fn, name)).join("")}</section>`).join("");
 
 document.getElementById("app").innerHTML =
-  [[head, "页头"], [overview, "总览"]].map(([fn, name]) => safe(fn, name)).join("") +
+  [[head, "页头"], [overview, "总览"], [daily, "每日统计"]]
+    .map(([fn, name]) => safe(fn, name)).join("") +
   tabs + groupHtml +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
 
