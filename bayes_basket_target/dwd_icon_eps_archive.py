@@ -37,6 +37,11 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from .contracts import ContractError, content_sha256
+from .future_temperature_curve import (
+    MIN_CURVE_POINTS,
+    MIN_SAME_DAY_CURVE_POINTS,
+    build_native_family_temperature_curve,
+)
 from .native_archive_lead import (
     capture_lead_and_run,
     capture_lead_bucket,
@@ -542,6 +547,44 @@ def capture_icon_eps_station_days(
             ]
             for bucket, (lower, upper) in intervals.items()
         }
+        # The same field decode the members came from, sealed as the family
+        # mean curve the P0 root needs before its conditional future-path
+        # evidence can run.  ICON was the only family omitting this, and the
+        # root-curve builder is all-or-nothing across seated systems, so every
+        # station-day ICON sat on served P1 without a soft likelihood layer.
+        family_curve = build_native_family_temperature_curve(
+            # A same-day run cannot describe hours that have already
+            # happened, so its curve is legitimately shorter than a run that
+            # precedes the day.
+            min_points=(
+                MIN_SAME_DAY_CURVE_POINTS
+                if (
+                    target - run_init.astimezone(timezone.utc).date()
+                ).days == 0
+                else MIN_CURVE_POINTS
+            ),
+            payload={
+                "station_id": station_id,
+                "event_date": event_date,
+                "settlement_timezone": scope["settlement_timezone"],
+                "ensemble_system_id": SYSTEM_ID,
+                "independence_family_id": INDEPENDENCE_FAMILY_ID,
+                "available_at_utc": archive_query_at_utc,
+                "source_field_receipt_set_sha256": object_receipt_sha,
+                "points": [
+                    {
+                        "valid_time_utc": (
+                            run_init + timedelta(hours=forecast_hour)
+                        ).isoformat().replace("+00:00", "Z"),
+                        "temperature_c": sum(
+                            by_member[member_id][forecast_hour]
+                            for member_id in by_member
+                        ) / len(by_member),
+                    }
+                    for forecast_hour in scope["hours"]
+                ],
+            },
+        )
         identity = {
             "schema": SCHEMA,
             "station_id": station_id,
@@ -574,6 +617,7 @@ def capture_icon_eps_station_days(
                 }
                 for row in members
             ]),
+            "family_temperature_curve": family_curve,
             # The ingest path stores a member run *and* the bucket projection
             # it implies, so the capture has to freeze the market's bucket
             # geometry alongside the raw members.  Deriving it later from a
