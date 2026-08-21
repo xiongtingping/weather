@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.weather.pr12_awc_observation_sweep</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/xiong/weather/scripts/pr12_awc_observation_sweep.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/xiong/weather</string>
+  <!-- Every ten minutes.  A report can only be traded on once it has been
+       canonically identified, so this interval is the delay between a METAR
+       landing and P1 being able to root on it; the pass reads a two-day
+       window and writes only the facts that are new.  The lane was never
+       scheduled at all before this: it ran by hand, last on 2026-08-05, and
+       the facts it produces stopped on 2026-07-31 while P1 stopped reaching
+       a commit on 2026-08-01. -->
+  <key>StartInterval</key>
+  <integer>600</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/xiong/weather/data/logs/pr12_awc_observation_sweep.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/xiong/weather/data/logs/pr12_awc_observation_sweep.err.log</string>
+</dict>
+</plist>
