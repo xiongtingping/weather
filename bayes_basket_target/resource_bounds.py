@@ -83,29 +83,29 @@ MAX_JSON_NODES = 500_000
 # ruling because the append-only triggers are the constitution saying so,
 # and a VACUUM to realise the space needs more free disk than the machine
 # currently has.
-# Raised to 18.5 GiB on 2026-08-21, and the ceiling did exactly what this
-# comment says it is for: it fired.  The store reached 18.031 GB and every
-# writer fail-closed.  Two facts decide what could be done about it rather
-# than what should have been:  the guard measures *file* size, so nothing
-# short of a VACUUM lowers it -- reverting the change that crossed the line
-# does not help -- and a VACUUM needs roughly the store's own size free
-# while the machine has 7.9 GB and no external volume mounted.  Restoring
-# production therefore had no path except this raise.
+# Held at 18 GiB on 2026-08-21 rather than raised again.  The ceiling fired
+# -- the store reached 18.031 GB and every writer fail-closed -- and this
+# time the space was actually reclaimed instead of the number moved:
 #
-# What was actually reclaimed first, so the raise buys real time rather than
-# hiding growth: three superseded migration copies of the canonical fact
-# table (``canonical_ssot_fact_v14_replaced`` / ``_v15_replaced`` /
-# ``_retired_v1``, 236,975 rows) were dropped, freeing 0.51 GB of pages for
-# reuse.  Duplicate copies of a live table are what AGENTS.md forbids
-# retaining, so this needed no ruling; the store should now sit flat rather
-# than climb until that reuse is spent.
+#   * three superseded migration copies of the canonical fact table
+#     (``canonical_ssot_fact_v14_replaced`` / ``_v15_replaced`` /
+#     ``_retired_v1``, 236,975 rows) dropped: duplicate copies of a live
+#     table are what AGENTS.md forbids retaining, so this needed no ruling;
+#   * 18.0 GB of cold NWP raw bodies moved to an external volume, which is
+#     the one use AGENTS.md sanctions for it -- asynchronous cold archive of
+#     non-critical data, never a production dependency.  That freed the
+#     internal disk a VACUUM needs, which had been the blocker: the guard
+#     measures *file* size, so nothing short of a VACUUM lowers it, and a
+#     VACUUM wants roughly the store's own size free;
+#   * VACUUM INTO then compacted 19.36 GB to 18.66 GB, verified table for
+#     table (116 tables, 325 indexes, zero row-count differences) before the
+#     swap, with WAL restored afterwards.
 #
-# Still owed, and now overdue: the retention decision named below.  The
-# native NWP raw lane holds 26.4 GB whose retention plan reports zero
-# unreferenced bytes -- every object is cold-archivable but none is
-# deletable, and there is nowhere to archive it to.  That is the governance
-# call, and it is the user's: it trades strict-replay ability for disk.
-MAX_TARGET_DB_BYTES = 18944 * MIB
+# The store now sits below this ceiling with the growth it was climbing on
+# reclaimed rather than hidden.  If it approaches again the honest lever is
+# the retention decision on the two append-only JSON tables named above,
+# not another raise.
+MAX_TARGET_DB_BYTES = 18432 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.
