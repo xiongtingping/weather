@@ -1155,6 +1155,113 @@ def collect_oos_scores(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def collect_serving_weights(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Every active P0 blend, spelled out: which models, at what weight.
+
+    Section three counts the weight tables; this reads the weights
+    themselves off the serving path -- newest activation pointer per scope,
+    the artifact it binds, the selection evidence whose contest produced the
+    weights -- so the page shows what P0 actually blends, not a census of
+    the tables it is stored in.  The holdout end rides along because the
+    fleet rebinds gradually after a re-selection: a scope still serving an
+    old contest is visible here as an old window, not as a mystery.
+    """
+
+    labels = {system: label for system, label, _t, _b in MEMBER_FAMILIES}
+    rows: list[dict[str, Any]] = []
+    for (
+        station, season, lead, cycle, weights_json,
+        candidates_json, selected_json, holdout_end, train_end,
+    ) in conn.execute(
+        "SELECT p.station_id, p.season_bin, p.lead_bucket, p.run_cycle,"
+        " se.selected_weights_json, se.candidate_system_ids_json,"
+        " se.selected_system_ids_json, se.holdout_end_date,"
+        " se.train_end_date"
+        " FROM (SELECT station_id, season_bin, lead_bucket, run_cycle,"
+        "   artifact_id, MAX(generation)"
+        "  FROM calibration_native_ensemble_activation"
+        "  WHERE artifact_kind='CROSS_NATIVE_ENSEMBLE'"
+        "  GROUP BY station_id, season_bin, lead_bucket, run_cycle) p"
+        " JOIN calibration_cross_native_ensemble_artifact ar"
+        "  ON ar.cross_ensemble_artifact_id = p.artifact_id"
+        " JOIN calibration_cross_native_ensemble_selection_evidence se"
+        "  ON se.content_sha256 = ar.selection_evidence_sha256"
+    ):
+        try:
+            weights = json.loads(weights_json)
+            candidates = json.loads(candidates_json)
+            selected = json.loads(selected_json)
+        except (ValueError, TypeError):
+            continue
+        rows.append({
+            "station": str(station),
+            "season": str(season),
+            "lead_bucket": str(lead),
+            "lead_label": dict(LEAD_LABELS).get(str(lead), str(lead)),
+            "run_cycle": str(cycle),
+            "weights": {
+                labels.get(str(system), str(system)): float(value)
+                for system, value in weights.items()
+            },
+            "candidates": [
+                labels.get(str(system), str(system))
+                for system in candidates
+            ],
+            "candidate_count": len(candidates),
+            "selected_count": len(selected),
+            "holdout_end": str(holdout_end),
+            "train_end": str(train_end),
+        })
+    lead_order = {name: i for i, (name, _l) in enumerate(LEAD_LABELS)}
+    rows.sort(key=lambda r: (
+        r["station"], lead_order.get(r["lead_bucket"], 9), r["run_cycle"]
+    ))
+    newest_holdout = max((r["holdout_end"] for r in rows), default="")
+    stale_cut = ""
+    if newest_holdout:
+        stale_cut = str(
+            (datetime.fromisoformat(newest_holdout) - timedelta(days=2))
+            .date()
+        )
+    summary = []
+    for _system, label, _transport, _backfillable in MEMBER_FAMILIES:
+        seated = [r for r in rows if label in r["weights"]]
+        candidacies = sum(label in r["candidates"] for r in rows)
+        by_lead = {}
+        for lead, _lead_label in LEAD_LABELS:
+            lead_weights = [
+                r["weights"][label] for r in seated
+                if r["lead_bucket"] == lead
+            ]
+            by_lead[lead] = {
+                "seats": len(lead_weights),
+                "median_weight": (
+                    median(lead_weights) if lead_weights else None
+                ),
+            }
+        summary.append({
+            "label": label,
+            "seats": len(seated),
+            "candidacies": candidacies,
+            "eliminated": candidacies - len(seated),
+            "median_weight": (
+                median(r["weights"][label] for r in seated)
+                if seated else None
+            ),
+            "by_lead": by_lead,
+        })
+    return {
+        "rows": rows,
+        "summary": summary,
+        "scope_count": len(rows),
+        "newest_holdout_end": newest_holdout or None,
+        "stale_cut": stale_cut or None,
+        "stale_count": sum(
+            1 for r in rows if stale_cut and r["holdout_end"] < stale_cut
+        ),
+    }
+
+
 def collect_center_width(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     """The two scalars that move the served distribution, per stage.
 
@@ -2207,6 +2314,7 @@ def build_payload(db: Path) -> dict[str, Any]:
     skill = collect_model_skill(conn)
     truth = collect_truth_materialization(conn)
     scores = collect_oos_scores(conn)
+    serving_weights = collect_serving_weights(conn)
     center_width = collect_center_width(conn)
     scorecard = collect_calibration_scorecard(conn)
     worker = {}
@@ -2251,6 +2359,7 @@ def build_payload(db: Path) -> dict[str, Any]:
         "skill": skill,
         "truth": truth,
         "scores": scores,
+        "serving_weights": serving_weights,
         "center_width": center_width,
         "scorecard": scorecard,
         "worker": worker,
@@ -4034,6 +4143,75 @@ function scorecard(){
     只列偏离最大的几个。相关高但偏离小＝模型重复但权重已经知道，不亏。</div>` : ""}`;
 }
 
+function servingWeights(){
+  const W = D.serving_weights || {}; const rows = W.rows || [];
+  if(!rows.length) return "";
+  const summary = W.summary || [];
+  const pct = w => w == null ? "—" : (w * 100).toFixed(0) + "%";
+  const cards = summary.map(s => `<div class="card">
+    <div class="muted">${h(s.label)}</div>
+    <div class="big">${s.seats} <span class="muted"
+      style="font-size:14px">/ ${W.scope_count} 个格子在场</span></div>
+    <div class="muted">上场时权重中位数 ${pct(s.median_weight)} ·
+      参赛 ${s.candidacies} 次，落选 ${s.eliminated} 次</div></div>`).join("");
+  const leadLabels = {};
+  rows.forEach(r => { leadLabels[r.lead_bucket] = r.lead_label; });
+  const leadOrder = Object.keys((summary[0] || {}).by_lead || {})
+    .filter(bucket => bucket in leadLabels);
+  const matrixHead = leadOrder.map(bucket =>
+    `<th>${h(leadLabels[bucket])}</th>`).join("");
+  const matrixBody = summary.map(s => `<tr><td><b>${h(s.label)}</b></td>${
+    leadOrder.map(bucket => {
+      const cell = (s.by_lead || {})[bucket];
+      if(!cell || !cell.seats) return `<td class="muted">—</td>`;
+      return `<td class="mono">${pct(cell.median_weight)}
+        <span class="muted">×${cell.seats}</span></td>`;
+    }).join("")}</tr>`).join("");
+  const modelCols = summary.map(s => s.label);
+  const detailBody = rows.map(r => {
+    const stale = W.stale_cut && r.holdout_end < W.stale_cut;
+    const cells = modelCols.map(label => {
+      if(label in r.weights)
+        return `<td class="mono"><b>${pct(r.weights[label])}</b></td>`;
+      if(r.candidates.includes(label))
+        return `<td class="muted">落选</td>`;
+      return `<td class="muted">—</td>`;
+    }).join("");
+    return `<tr><td><b>${h(r.station)}</b></td>
+      <td>${h(r.lead_label)}</td><td class="mono">${h(r.run_cycle)}</td>
+      ${cells}
+      <td class="mono">${r.candidate_count}→${r.selected_count}</td>
+      <td class="mono ${stale ? "down" : ""}">${h(r.holdout_end)}</td></tr>`;
+  }).join("");
+  return `<h2>二十、四大模型的权重：谁在场、占多少</h2>
+  <p class="sub">这里读的是服务路径本身——每个「站×提前量×cycle」格子当前激活的
+  组合指针，连到它绑定的选拔证据，把里面的权重原样摊开。不是权重表的行数统计，
+  就是 P0 此刻在用的那份配比。</p>
+  <div class="why"><b>怎么看：</b>每个格子的席位都是在完全相同的检验窗上赛出来的：
+  参赛的模型一起在最近几天的共同 holdout 上打分，CRPS 最低的子集当选，权重随之而来。
+  「落选」＝参赛了但没打赢（权重 0），「—」＝这个格子没凑齐它的参赛条件。
+  权重每天随新证据重赛，所以同一格子的配比会换代；
+  「窗至」是该格子当前配比所依据的检验窗最后一天，
+  日期旧说明这个格子还在服旧一轮的赛果——换代受快照新鲜度限速，逐格推进，属正常。</div>
+  <div class="grid g4" style="margin-top:12px">${cards}</div>
+  <table style="margin-top:12px"><thead><tr>
+    <th>模型</th>${matrixHead}
+  </tr></thead><tbody>${matrixBody}</tbody></table>
+  <div class="muted" style="margin-top:6px">格子里是「上场时权重中位数 × 席位数」，
+  按提前量分列。${W.stale_count ? `目前 <b>${W.stale_count}</b> 个格子仍在服
+    ${h(W.stale_cut)} 之前的赛果（最新窗至 ${h(W.newest_holdout_end)}），
+    重绑进行中。` : `全部格子的检验窗都在 ${h(W.newest_holdout_end)} 附近，无积压。`}</div>
+  <details style="margin-top:10px">
+    <summary class="muted" style="cursor:pointer">
+      逐格明细：${W.scope_count} 个格子的完整权重（可排序）</summary>
+    <table style="margin-top:8px"><thead><tr>
+      <th>站</th><th>提前量</th><th>cycle</th>
+      ${modelCols.map(label => `<th>${h(label)}</th>`).join("")}
+      <th>候选→当选</th><th>窗至</th>
+    </tr></thead><tbody>${detailBody}</tbody></table>
+  </details>`;
+}
+
 document.getElementById("app").innerHTML = [
   [head, "页头"], [overview, "总览"], [members, "成员"], [chain, "链路"], [tables, "表"],
   [stages, "阶段"], [gaps, "数据缺口"], [daily, "逐日"],
@@ -4043,6 +4221,7 @@ document.getElementById("app").innerHTML = [
   [dispersion, "模型离散度"], [hitRate, "模型命中率"],
   [materialization, "真值物化"], [oosScores, "OOS 打分"],
   [centerWidth, "中心/宽度"], [scorecard, "模型校准总检"],
+  [servingWeights, "四大模型权重"],
 ].map(([fn, name]) => safe(fn, name)).join("") +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
 
