@@ -99,7 +99,15 @@ MANIFEST_LIVENESS_WRITE_INTERVAL_SECONDS = 5.0
 # official subscription before the 60s economic quote lease can expire, so a
 # fresh initial book is obtained for every leg without treating transport
 # liveness as a new economic observation.
-CONNECTION_REFRESH_SECONDS = 45.0
+# Sets the worst-case age of a quiet book, which the consumer's 60s lease
+# has to absorb along with the pipeline behind it.  Measured 2026-08-21: the
+# evidence cache is written ~22s before the compile evaluates it, so a book
+# sampled late in a 45s cycle arrived already 48-61s old and 41 of 45 scopes
+# expired together -- they share one manifest read, so they share its phase.
+# Thirty leaves the margin that arithmetic needs.  Affordable now in a way it
+# was not before: the scope probe each refresh performs used to cost 36-40s
+# and now costs 0.24-1.4s.
+CONNECTION_REFRESH_SECONDS = 30.0
 RETRY_MAX_SECONDS = 10.0
 _STAGE_PRIORITY = {"P0": 0, "P0-M": 1, "P1": 2}
 
