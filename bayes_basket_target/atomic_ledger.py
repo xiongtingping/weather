@@ -595,13 +595,36 @@ def build_target_atomic_bundle(
                     "truth_observation_revision_reference_not_exact"
                 )
             revision = matching_revisions[0].raw
+        # Identity from the fact, day scope from the trade.  The canonical
+        # observation lane keys its facts on the ET operations day by explicit
+        # doctrine (``FOUR_DOCTRINE_CANONICAL_DAY_OVERRIDE_20260805_V1``),
+        # while a contract settles on the station's own day -- Asia/Seoul for
+        # RKPK, Asia/Manila for RPLL, per the market registry that resolves
+        # it.  Charter clause 23 keeps those two days apart on purpose and
+        # forbids substituting one for the other.  Importing the fact's day
+        # scope into the chain therefore compared ET against the station's
+        # timezone and could never agree; before 2026-08-06 this root took its
+        # scope from the observation the plan carried and cited the fact only
+        # for identity, which is what it does again here.  Station identity is
+        # not day-scoped, so the fact must still agree about which station it
+        # describes.
+        fact_station = _text("observation_station_id", revision.get("station_id"))
+        scope_station = _text(
+            "observation_station_id", bound.get("station_id", fact_station)
+        )
+        if fact_station != scope_station:
+            raise AtomicLedgerError("observation_station_scope_mismatch")
         obs = {
             "observation_id": _text("observation_id", revision.get("observation_id")),
-            "station_id": _text("observation_station_id", revision.get("station_id")),
-            "event_date": _date("observation_event_date", revision.get("event_date")),
+            "station_id": scope_station,
+            "event_date": _date(
+                "observation_event_date",
+                bound.get("event_date", revision.get("event_date")),
+            ),
             "settlement_timezone": _settlement_timezone(
                 "observation_settlement_timezone",
-                revision.get("settlement_timezone"),
+                _mapping("plan", plan).get("settlement_timezone")
+                or revision.get("settlement_timezone"),
             ),
             "source_lane": _awc_source_lane(
                 "observation_source_lane", revision.get("source_lane")
