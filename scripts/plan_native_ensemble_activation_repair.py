@@ -1063,6 +1063,10 @@ def _expected_pointer(candidate: Mapping[str, Any], *, manifest_sha: str, report
         "supported_exact_masks_json": _json([selected]),
         "selection_evidence_sha256": content_sha256(_selection_identity(candidate)),
         "combination_method": (
+            # Historical identity reproduction: this repair lane rebuilds
+            # pre-bridge-era artifacts, and their content sha covers this
+            # exact string.  The literal is the OLD rule's name on purpose;
+            # the live builder writes the actual seat rule since 2026-08-21.
             "train_rmse_inverse_family_capped_v1::"
             + str(candidate["threshold_profile"])
             + "::cycle_scope=" + str(candidate.get("run_cycle_scope") or scope["run_cycle_scope"])

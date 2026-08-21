@@ -5150,7 +5150,25 @@ def persist_native_ensemble_oos(
                 ]),
                 "selection_evidence_sha256": selection_sha,
                 "combination_method": (
-                    "train_rmse_inverse_family_capped_v1::"
+                    # The prefix names the rule that actually divided this
+                    # winner's weight.  It carried the legacy literal
+                    # "train_rmse_inverse_family_capped_v1" long after
+                    # e1c05256 promoted the covariance seat, and since the
+                    # tag string is the only human-readable statement of the
+                    # serving rule on the artifact itself, the stale name
+                    # kept getting read as the live rule (removed by user
+                    # order, 2026-08-21).  Old artifacts keep their bytes --
+                    # rewriting them would unbind every active pointer --
+                    # and serving keys only on contained tags, never on this
+                    # prefix, so the truthful name rolls out with normal
+                    # artifact regeneration.
+                    str(
+                        (candidate.get("subset_selection") or {}).get(
+                            "weight_rule"
+                        )
+                        or "seat_weight_rule_unrecorded"
+                    ).lower()
+                    + "::"
                     + candidate["threshold_profile"]
                     + "::cycle_scope="
                     + str(candidate["run_cycle_scope"])
