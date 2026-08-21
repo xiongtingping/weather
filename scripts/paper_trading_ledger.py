@@ -741,23 +741,60 @@ def _connect(db: Path, *, writable: bool) -> sqlite3.Connection:
     return conn
 
 
-def ensure_schema(conn: sqlite3.Connection) -> None:
+def ensure_schema(conn: sqlite3.Connection) -> bool:
+    """Create or widen the ledger's tables.
+
+    Returns True when the refusal table had to be rebuilt for a widened
+    reason CHECK -- the caller is expected to re-derive refusals over the
+    *whole* history that pass, not just the recent window, so the table
+    comes back uniformly coded rather than half-translated.
+    """
+
     conn.execute(_POSITION_DDL)
     conn.execute(_SETTLEMENT_DDL)
     conn.execute(_REFUSAL_DDL)
     # A new reason cannot be recorded through an existing CHECK, and
     # ``CREATE TABLE IF NOT EXISTS`` will not widen one.  Rebuild in place
-    # when the live constraint is missing a reason this code can emit;
-    # refusals are re-derived every sweep, so nothing is lost.
+    # when the live constraint is missing a reason this code can emit.
+    #
+    # Rebuild by migration, not by DROP.  The old shape dropped the table
+    # and trusted the sweep to repopulate it, but the scheduled sweep only
+    # walks the recent window (four days) -- every reason added since
+    # 2026-08-16 silently erased whatever closed history lay beyond it,
+    # which is why this table has never accumulated more than a few days
+    # and why the dashboards' whole-table funnel has always been a
+    # few-day funnel wearing an all-time label.  Rows whose reason left
+    # the vocabulary are the one thing still dropped: they cannot pass
+    # the new CHECK and re-deriving them is the caller's job.
     row = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type='table'"
         " AND name='paper_trade_refusal'"
     ).fetchone()
     live = str((row or [""])[0] or "")
+    refusal_rebuilt = False
     if live and any(f"'{name}'" not in live for name in REFUSAL_REASONS):
-        conn.execute("DROP TABLE paper_trade_refusal")
-        conn.execute(_REFUSAL_DDL)
-        conn.commit()
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            conn.execute(
+                "ALTER TABLE paper_trade_refusal"
+                " RENAME TO paper_trade_refusal_old"
+            )
+            conn.execute(_REFUSAL_DDL)
+            conn.execute(
+                "INSERT INTO paper_trade_refusal ("
+                " station_id, event_date, stage, reason, detail,"
+                " cycles_examined, last_decision_at_utc, recorded_at_utc)"
+                " SELECT station_id, event_date, stage, reason, detail,"
+                " cycles_examined, last_decision_at_utc, recorded_at_utc"
+                " FROM paper_trade_refusal_old WHERE reason IN (%s)"
+                % ",".join("'%s'" % reason for reason in REFUSAL_REASONS)
+            )
+            conn.execute("DROP TABLE paper_trade_refusal_old")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        refusal_rebuilt = True
     columns = {
         str(row[1])
         for row in conn.execute("PRAGMA table_info(paper_trade_position)")
@@ -876,6 +913,7 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             "ALTER TABLE paper_trade_settlement"
             " ADD COLUMN truth_content_sha256 TEXT NOT NULL DEFAULT ''"
         )
+    return refusal_rebuilt
 
 
 def _window_floor(
@@ -3029,7 +3067,17 @@ def backfill(
     verbose: bool = False,
     recent_days: int | None = None,
 ) -> dict:
-    ensure_schema(conn)
+    refusal_rebuilt = ensure_schema(conn)
+    if refusal_rebuilt:
+        # The reason vocabulary just changed and the table was rebuilt
+        # around it.  An incremental pass would re-answer only the recent
+        # window and leave every older row speaking the previous
+        # vocabulary under the new labels -- so this one pass walks
+        # everything and the table comes back uniformly coded.  Self-
+        # healing, deliberately: the operator step this replaces was
+        # "remember to run --recent-days 0 after touching
+        # REFUSAL_REASONS", and nobody remembered.
+        recent_days = None
     superseded = _drop_superseded_positions(conn, recent_days=recent_days)
     truth = _truth(conn)
     # The market day a resting order lives inside.  Charter 44 binds the
@@ -3070,6 +3118,8 @@ def backfill(
         (recent_days,),
     ).fetchall()
     counts: dict[str, int] = defaultdict(int)
+    if refusal_rebuilt:
+        counts["refusal_schema_rebuilt_full_walk"] = 1
     if superseded:
         counts["superseded_rule_dropped"] = superseded
     for key, value in rescored.items():

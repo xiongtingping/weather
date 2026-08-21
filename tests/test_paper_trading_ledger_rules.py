@@ -1298,3 +1298,81 @@ def test_new_artifacts_name_the_seat_rule_that_actually_ran() -> None:
     repair = (root / "scripts" / "plan_native_ensemble_activation_repair.py"
               ).read_text(encoding="utf-8")
     assert '"train_rmse_inverse_family_capped_v1::"' in repair
+
+
+def test_widening_the_reason_check_keeps_the_closed_history() -> None:
+    """A vocabulary change must not erase the rows written under the old one.
+
+    The old rebuild dropped the table and trusted the sweep to repopulate
+    it, but the scheduled sweep walks only the recent window -- so every
+    reason added since 2026-08-16 silently erased whatever closed history
+    lay beyond four days, and the table never accumulated more than a few.
+    The rebuild now migrates: surviving reasons cross intact, a reason
+    that left the vocabulary is the only thing dropped (it cannot pass the
+    new CHECK), and the caller is told so it can re-derive everything.
+    """
+
+    import re
+    import sqlite3
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    import paper_trading_ledger as ledger  # noqa: PLC0415
+
+    conn = sqlite3.connect(":memory:")
+    # Yesterday's vocabulary: everything current, minus one reason this
+    # code can emit, plus one it no longer knows.
+    narrowed = tuple(
+        r for r in ledger.REFUSAL_REASONS if r != "chain_never_opened"
+    ) + ("retired_reason",)
+    old_ddl = re.sub(
+        r"CHECK\(reason IN \([^)]*\)\)",
+        "CHECK(reason IN (%s))"
+        % ",".join("'%s'" % r for r in narrowed),
+        ledger._REFUSAL_DDL,
+    )
+    assert "'retired_reason'" in old_ddl
+    conn.execute(old_ddl)
+    rows = [
+        ("KMIA", "2026-08-01", "P0", "no_positive_kelly", "old and closed",
+         3, "2026-08-01T12:00:00Z", "2026-08-01T23:00:00Z"),
+        ("KLGA", "2026-08-02", "P1", "retired_reason", "vocabulary left it",
+         2, "2026-08-02T12:00:00Z", "2026-08-02T23:00:00Z"),
+    ]
+    conn.executemany(
+        "INSERT INTO paper_trade_refusal VALUES (?,?,?,?,?,?,?,?)", rows
+    )
+    conn.commit()
+
+    assert ledger.ensure_schema(conn) is True
+    kept = conn.execute(
+        "SELECT station_id, reason FROM paper_trade_refusal ORDER BY 1"
+    ).fetchall()
+    # The closed-history row crossed; the retired-code row could not.
+    assert kept == [("KMIA", "no_positive_kelly")]
+    # No half-migrated leftovers.
+    assert conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master"
+        " WHERE name='paper_trade_refusal_old'"
+    ).fetchone()[0] == 0
+    # The new CHECK accepts the full current vocabulary.
+    live = str(conn.execute(
+        "SELECT sql FROM sqlite_master WHERE name='paper_trade_refusal'"
+    ).fetchone()[0])
+    for reason in ledger.REFUSAL_REASONS:
+        assert "'%s'" % reason in live
+    # A second call is quiet: nothing to widen, nothing rebuilt.
+    assert ledger.ensure_schema(conn) is False
+
+    # And the backfill turns that signal into a full walk, or the migrated
+    # rows would keep yesterday's vocabulary under today's labels.
+    source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    assert "refusal_rebuilt = ensure_schema(conn)" in source
+    assert source.index("if refusal_rebuilt:") < source.index(
+        "superseded = _drop_superseded_positions"
+    )
