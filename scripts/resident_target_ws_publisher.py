@@ -708,8 +708,28 @@ def _merge_book_quote(
     quotes: dict[str, dict[str, Any]],
     token_id: str,
     incoming: Mapping[str, Any],
+    *,
+    observed_at: str = "",
 ) -> bool:
-    """Keep the original economic observation clock for duplicate books."""
+    """Take a full venue book as a real re-observation of this token.
+
+    A ``book`` frame is the venue answering "here is this token's book right
+    now".  When the answer matches what we hold, that is an unchanged
+    observation, not a missing one, and its clock must advance: this is the
+    whole point of ``CONNECTION_REFRESH_SECONDS`` recycling the subscription
+    before the economic lease expires.  Preserving the old clock here defeated
+    that -- a genuinely quiet leg kept its first stamp forever and aged out of
+    the 60s lease permanently, no matter how many times the venue re-sent its
+    book (2026-08-21: every consumer scope shared one stamp ~161s behind the
+    compile clock and 24 of 26 candidates died on ``production_quote_expired``).
+
+    This is not the ``_stream_confirmed_at`` shortcut and must never become
+    it.  A PING proves the socket is alive and says nothing about this book;
+    a ``book`` frame carries the book.  ``created_at`` therefore stays put --
+    it marks when this economic state first appeared, which an unchanged
+    re-observation does not move.  The return value still reports economic
+    change only, so callers keep their existing dirty/publish semantics.
+    """
 
     current = quotes.get(token_id)
     if (
@@ -717,8 +737,18 @@ def _merge_book_quote(
         and _quote_economic_state(current)
         == _quote_economic_state(incoming)
     ):
+        if observed_at:
+            current["book_observed_at"] = observed_at
         return False
-    quotes[token_id] = dict(incoming)
+    merged = dict(incoming)
+    if (
+        observed_at
+        and current is not None
+        and str(current.get("created_at") or "")
+        and not str(merged.get("created_at") or "")
+    ):
+        merged["created_at"] = observed_at
+    quotes[token_id] = merged
     return True
 
 
@@ -980,7 +1010,12 @@ async def _publish_connection(
                             raise ContractError(
                                 "resident_target_ws_shard_token_escape"
                             )
-                        _merge_book_quote(quotes, token_id, incoming)
+                        _merge_book_quote(
+                            quotes,
+                            token_id,
+                            incoming,
+                            observed_at=observed_at,
+                        )
                         quotes[token_id]["_stream_confirmed_at"] = observed_at
                     confirmed = _apply_price_changes(
                         quotes, message, observed_at=observed_at
