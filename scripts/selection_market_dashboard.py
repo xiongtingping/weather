@@ -903,15 +903,28 @@ REFUSAL_LABELS = {
         "选桶本身没跑出来",
         "内核没给出可用的支持窗口，跟市场无关。",
     ),
+    # 这四条是「枚举完没坐上」拆出来的，四个不同的问题、四个不同的责任人。
+    # 2026-08-20 之前前三种全被并进 no_priced_window，配的说明还写着"市场比
+    # 模型贵"；那天的 P0 账本实测，316 行里 316 行都带着结构性拒绝计数，没有
+    # 一行是市场真的开过价的。原来那段合并说明里的比例，现在各归各位。
+    # 每一行记的都是当天走到最深的那一轮问价，不是收盘。
+    "no_legal_window": (
+        "没有合法窗口",
+        "结构闸拿走了整批枚举：断桶、不含中心桶、或长度不够。"
+        "跟价格无关——这些窗口没走到看报价那一步。"
+        "约四成的「没坐上」是这一类：篮子要从中心桶起连续取满 3 格，"
+        "而中心桶或它的紧邻没有像样的报价（中心桶自己低于 2 分的占 34%）。",
+    ),
     "no_priced_window": (
-        "没有一篮可买",
-        "清单上没有一个能下单的篮子，三种情形："
-        "约四成是市场太窄——篮子要从中心桶起连续取满 3 格，"
-        "而中心桶或它的紧邻没有像样的报价（中心桶自己低于 2 分的占 34%）；"
-        "约六成凑得出合法篮子，但整篮要价高过模型的赢面，"
-        "最好的一篮边际中位数也有 −0.25，扣掉手续费更不值；"
-        "少数是篮子里有腿根本没人挂卖，压根买不到（detail 会点名是哪几条腿）。"
-        "记的是当天最早的那次问价，不是收盘。",
+        "窗口定不出价",
+        "有窗口过了全部结构闸，但里面有腿根本没人挂卖，篮子的成本算不出来。"
+        "缺的是盘口，不是便宜（detail 会点名是哪几条腿）。",
+    ),
+    "negative_edge_window": (
+        "边际不敌摩擦",
+        "窗口过了全部闸也报得出价，模型胜率减去全包成本仍盖不住逐腿的最小跳动。"
+        "这一条才是「市场比模型贵」：约六成的「没坐上」凑得出合法篮子，"
+        "但最好的一篮边际中位数也有 −0.25，扣掉手续费更不值。",
     ),
     "leg_below_floor": (
         "有腿报价低于下限",
@@ -939,7 +952,7 @@ REFUSAL_LABELS = {
         "这一篮买下来比它赢了能赔的 1.00 还贵，多高的概率都救不回来，"
         "所以模型压根没被问到。每条腿都是真有人挂卖的实价，"
         "只是几条腿加起来的抽水超过了满额赔付——是书的问题，不是策略在挑。"
-        "（腿上没人挂卖的那种不进这一行，算在「没有一篮可买」里。）",
+        "（腿上没人挂卖的那种不进这一行，算在「窗口定不出价」里。）",
     ),
     "no_depth": (
         "盘口深度不够",
@@ -1288,10 +1301,21 @@ def build_payload(db: Path) -> dict[str, Any]:
         (STATS_START_EVENT_DATE,),
     ):
         lineage = (json.loads(envelope_json) or {}).get("lineage") or {}
+        try:
+            trajectory_strength = float(
+                lineage.get("metar_trajectory_applied_strength")
+            )
+        except (TypeError, ValueError):
+            trajectory_strength = None
         p1_history[(str(station), str(day))].append({
             "decision_at_utc": str(decided),
             "centre_bucket": lineage.get("model_center_bucket"),
             "centre_c": lineage.get("model_center_c"),
+            # Which conditioner produced this recompute, and at what applied
+            # strength -- the page labels a physical-path prediction as such
+            # rather than presenting every P1 centre as the same authority.
+            "likelihood_mode": lineage.get("observation_likelihood_mode"),
+            "trajectory_strength": trajectory_strength,
         })
     # An event day is any day the fleet has evidence for; on such a day every
     # registered station gets a row, whether or not it has evidence of its

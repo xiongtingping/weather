@@ -151,6 +151,63 @@ CENTRE_ANCHOR_EDGE_TILT = 0.6
 CENTRE_ANCHOR_DISTANCE_DECAY = 0.8
 CENTRE_ANCHOR_MIN_RUNG_SHARE = 0.15
 
+# The gates an enumerated support window has to clear, shallowest first.  A
+# window refused by one of these has already cleared every gate before it, so
+# the deepest gate that fired is the one that refused the last window still
+# standing.  The order is the order of the checks in ``_support_windows``;
+# the two names in the last pair sit at the same depth and are ordered so the
+# fully-priced refusal wins, because a window that was priced and lost on the
+# number is a stronger statement than one that could not be priced at all.
+WINDOW_REFUSAL_FUNNEL = (
+    "gapped",
+    "center",
+    "short",
+    "leg_floor",
+    "unpriced",
+    "edge",
+)
+
+
+def _last_refusing_gate(**counts: int) -> str | None:
+    """The deepest gate in the funnel that turned a window away.
+
+    ``None`` when nothing was refused.  This is deliberately not "the gate
+    with the largest count": a shallow gate refuses the many windows that
+    were never candidates -- on a three-bucket day the centre rung alone
+    refuses two of the six enumerable windows before length is even
+    considered -- so counting votes hands the verdict to whichever gate sits
+    earliest, every time.  Measured on the 2026-08-20 book, the three most
+    common P0 shapes (2,3,1), (1,1,1) and (3,2,1) are each a whole domain
+    enumerated away, and in all three it is the leg floor that kills the one
+    window that could still have been seated.
+    """
+
+    for gate in reversed(WINDOW_REFUSAL_FUNNEL):
+        if int(counts.get(gate) or 0) > 0:
+            return gate
+    return None
+
+
+def _window_audit_closes(audit: Mapping[str, Any]) -> bool:
+    """Whether the audit's counters account for every window enumerated.
+
+    The refusal the ledger prints is explained by these counters and nothing
+    else, so if they do not sum to the enumeration the page is stating causes
+    that cannot produce the effect.  Kept as a predicate rather than an
+    assertion inside the hot path so tests can hold the invariant without the
+    runtime paying for it on every scope.
+    """
+
+    refused = sum(
+        int(audit.get("%s_refused_window_count" % gate) or 0)
+        if gate != "gapped"
+        else int(audit.get("gapped_window_refused_count") or 0)
+        for gate in WINDOW_REFUSAL_FUNNEL
+    )
+    return int(audit.get("enumerated_window_count") or 0) == (
+        refused + int(audit.get("shortlisted_window_count") or 0)
+    )
+
 
 def _support_windows(
     *,
@@ -292,10 +349,26 @@ def _support_windows(
         # the middle is and a window can hold the rung while missing the core.
         center_bucket=ladder_center,
     )
+    # Every gate that can turn an enumerated window away keeps a counter, and
+    # exactly one of them fires per refused window.  This is not bookkeeping
+    # for its own sake: the ledger reports the refusal to the page in terms of
+    # these numbers, so a gate without a counter is a refusal the page has to
+    # blame on some other gate.  It has already happened twice -- the leg
+    # floor was unlisted on 2026-08-17 and 112 P0 refusals were attributed to
+    # a centre-bucket count that could not explain them, and the edge/friction
+    # gate below was unlisted until 2026-08-20, which put 308 station-days
+    # under "the market priced us out" when the structural floors were what
+    # refused them.  The invariant that stops the third occurrence is
+    # closure: ``enumerated`` equals the sum of the refusal counters plus
+    # ``shortlisted``, and ``_window_audit_closes`` asserts it.
     center_refused = 0
     short_refused = 0
     leg_floor_refused = 0
     gapped_refused = 0
+    unpriced_refused = 0
+    edge_refused = 0
+    enumerated = 0
+    shortlisted = 0
 
     windows: list[dict[str, Any]] = []
     seen: set[tuple[str, ...]] = set()
@@ -353,6 +426,7 @@ def _support_windows(
             if window in seen:
                 continue
             seen.add(window)
+            enumerated += 1
             # Contiguous in ordinals, not merely adjacent in the admitted
             # list.  Once the leg floor can remove a bucket from the domain,
             # the two stop being the same thing: with 34C excluded, the slice
@@ -437,10 +511,11 @@ def _support_windows(
             # from the resolver, not from this enumeration -- and is
             # de-priced rather than dropped, because dropping it would take
             # "keep what we hold" off the menu for a scope that holds one.
+            leg_floor_hit = False
             if priced and any(
                 quote < MINIMUM_LEG_ALL_IN_ASK for quote in quotes
             ):
-                leg_floor_refused += 1
+                leg_floor_hit = True
                 priced = False
                 edge = None
             # Second, friction: the all-in price already carries the fee, so an
@@ -454,7 +529,26 @@ def _support_windows(
                 priced and edge is not None and edge > friction + EPS
             )
             if not admissible:
+                # Name which of the three ways this branch can refuse actually
+                # refused.  Until 2026-08-20 it had no counter at all, so the
+                # only gate that is genuinely about price -- the edge one --
+                # was invisible, and the ledger printed three structural
+                # counts that could not add up to the refusal they were
+                # offered as the explanation of.
+                if leg_floor_hit:
+                    # The quote was the refusal; the edge test never got a
+                    # number to look at.  Counted here rather than at the
+                    # floor above so that the floor's own counter stays a
+                    # count of *refusals*: an incumbent resting on a penny leg
+                    # is de-priced but still seated, and calling that a
+                    # refusal is the same misattribution one level down.
+                    leg_floor_refused += 1
+                elif not priced:
+                    unpriced_refused += 1
+                else:
+                    edge_refused += 1
                 continue
+            shortlisted += 1
             kl = None
             if priced:
                 # Clipping implements the 0*log(0)=0 limits: a full-partition
@@ -556,6 +650,34 @@ def _support_windows(
         "leg_floor_refused_window_count": leg_floor_refused,
         "leg_floor_excluded_buckets": leg_floor_excluded,
         "gapped_window_refused_count": gapped_refused,
+        # The one gate here that is actually the market's doing: the window
+        # was whole, every leg carried a real quote, and the model's own edge
+        # over the all-in price did not clear tick-rounding across the legs.
+        "edge_refused_window_count": edge_refused,
+        "unpriced_refused_window_count": unpriced_refused,
+        # The friction the edge gate measured against is not repeated here:
+        # ``_solve_over_support_windows`` already publishes it into the same
+        # receipt as ``edge_friction_ticks_per_leg``, and two names for one
+        # number in one dict is how a reader ends up comparing a value with
+        # itself.
+        "enumerated_window_count": enumerated,
+        "shortlisted_window_count": shortlisted,
+        # Which gate refused the last window still standing.  The gates form
+        # a strict funnel -- gapped, then centre, then length, then the leg
+        # floor, then price -- so a window refused by a later gate had
+        # already cleared every earlier one, and the deepest gate that fired
+        # is the one that took the final candidate off the table.  Derived
+        # here because the funnel order is this function's own structure; a
+        # consumer that re-derives it is guessing, and guessing is what put
+        # 308 station-days under the wrong heading.
+        "last_refusing_gate": _last_refusing_gate(
+            gapped=gapped_refused,
+            center=center_refused,
+            short=short_refused,
+            leg_floor=leg_floor_refused,
+            unpriced=unpriced_refused,
+            edge=edge_refused,
+        ),
         "minimum_leg_all_in_ask": MINIMUM_LEG_ALL_IN_ASK,
         # Retained name from the touch-the-core era so existing readers keep
         # working; it now counts refusals under the stronger rung.
