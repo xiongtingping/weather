@@ -2482,6 +2482,22 @@ var(--soft);align-items:flex-start}
 .factor{font-weight:650}
 .up{color:var(--up)}.down{color:var(--down)}.flat{color:var(--muted)}
 footer{margin-top:34px;color:var(--muted);font-size:12.5px;text-align:center}
+/* The group switcher.  Sticky, because it is the only way back to the
+   other two thirds of the page once a long section has been scrolled
+   into. */
+.tabs{position:sticky;top:0;z-index:8;display:flex;gap:6px;flex-wrap:wrap;
+align-items:center;margin:14px 0 0;padding:9px 0 8px;background:var(--bg);
+border-bottom:1px solid var(--line)}
+.tabs button{cursor:pointer;background:var(--card);color:var(--muted);
+border:1px solid var(--line);border-radius:99px;padding:5px 13px;
+font:13px/1.35 inherit;display:flex;align-items:center;gap:6px}
+.tabs button:hover{color:var(--text);border-color:var(--accent)}
+.tabs button[data-active="1"]{color:var(--text);border-color:var(--accent);
+background:var(--why-bg)}
+.tabs .muted{font-size:11.5px}
+.grouptitle{display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;
+margin:18px 0 0;font-weight:650}
+.grouptitle .muted{font-weight:400}
 #theme{position:fixed;top:14px;right:16px;z-index:9;cursor:pointer;
 background:var(--card);color:var(--muted);border:1px solid var(--line);
 border-radius:99px;padding:6px 13px;font:13px/1 inherit;
@@ -2576,14 +2592,14 @@ function overview(){
   push(blocking?"red":"green",
     "要处理的缺口", String(blocking),
     waiting?`另有 ${waiting} 条在正常等待`:"没有待处理项",
-    "第五节：数据缺口与健康检查");
+    "第十八节：数据缺口与健康检查");
 
   // 3. Did the truth for settled days actually land.
   const outstanding=(D.truth||{}).outstanding;
   push(outstanding==null?"muted":outstanding===0?"green"
       :outstanding<=5?"amber":"red",
     "真值待物化", outstanding==null?"—":String(outstanding),
-    "结算真值还没落库的站日", "第十六节：真值物化健康度");
+    "结算真值还没落库的站日", "第二十节：真值物化健康度");
 
   // 4. How much of the fleet actually opened a position on the newest day.
   const day=S.latest_day||(S.roster_event_dates||[])[0];
@@ -2593,7 +2609,7 @@ function overview(){
   push(band(rate,0.5,0.25), "建仓率",
     `${opened}/${roster.length||"—"}`,
     `${h(day||"")} · ${pct0(rate)} 的站建了仓`,
-    "第九节：没建仓的站，格子里写着原因");
+    "第十二节：没建仓的站，格子里写着原因");
 
   // 5. Of what was posted, how much the book actually sold us.  The
   // target is 90% on every stage; the card shows the worst one, because
@@ -2606,7 +2622,7 @@ function overview(){
   },{v:null,stage:null});
   push(band(worstFill.v,0.8,0.7), "挂单成交率", pct0(worstFill.v),
     worstFill.stage?`最低的阶段 ${h(worstFill.stage)} · 底线每段 ≥80%`:"—",
-    "第十二节：EV 优先，成交率是守底线的诊断指标");
+    "第十五节：EV 优先，成交率是守底线的诊断指标");
 
   // 6. Does the model's stated probability survive contact with the truth.
   const cs=S.coverage_stats||{};
@@ -2616,7 +2632,7 @@ function overview(){
       :(cal>=0.6&&cal<=1.4)?"amber":"red",
     "说得准不准", cal==null?"—":cal.toFixed(2)+"×",
     "命中率 ÷ 声称胜率，1.00× 是说得准",
-    "第四节与第七节：概率分档校准");
+    "第六节与第十节：概率分档校准");
 
   // 6b. Does the basket we CHOSE cover the truth, at the widths the
   // charter actually seats -- and is that moving.  Grouped on the posted
@@ -2667,7 +2683,7 @@ function overview(){
     `${h(S.stats_start_event_date||"")} 起 · 投入 ${
       (cs.staked_usdc||0).toFixed(0)} · 实得 ${
       (cs.realized_usdc||0).toFixed(0)}`,
-    "第七节：覆盖 · 价格 · EV");
+    "第十节：覆盖 · 价格 · EV");
 
   return `<div class="kpi" style="margin:10px 0 4px">${cards.join("")}</div>`;
 }
@@ -2752,7 +2768,7 @@ function chain(){
     <td class="mono">${h(c.volume)}</td>
     <td class="muted">${h(c.note)}</td>
   </tr>`).join("");
-  return `<h2>二、整条链路每一环是否在动</h2>
+  return `<h2>十七、整条链路每一环是否在动</h2>
   <p class="sub">数据从上到下流：模型下载 → 真值结算 → 算校正 → 算概率修正 →
   出概率 → 盘中更新。任何一环停了，它下面的环节迟早会跟着停。</p>
   <div class="card"><div class="scroll"><table><thead><tr>
@@ -2762,7 +2778,7 @@ function chain(){
 
 function tables(){
   const t = D.tables;
-  return `<h2>三、每站的偏差订正与融合权重</h2>
+  return `<h2>二、每站的偏差订正与融合权重</h2>
   <p class="sub">这两张表是"每个模型在每个站偏多少度"和"融合时各模型占多大比重"，
   每天自动重算、自动换代。</p>
   <div class="grid g3">
@@ -2842,7 +2858,7 @@ function stages(){
       <tbody>${journal}</tbody></table></details>` : ""}
     </div>`;
   }).join("");
-  return `<h2>四、概率分档校准：三个阶段各自的账</h2>
+  return `<h2>六、概率分档校准：三个阶段各自的账</h2>
   <p class="sub">系统会记录"凡是说过 X% 的地方，后来实际发生了多少次"。
   如果长期说 6% 只发生 4%，就把这一档的数字乘一个小于 1 的系数压回去。</p>
   <div class="why"><b>怎么看这张表：</b>「实际兑现」是实测兑现率除以声称概率——
@@ -2913,7 +2929,7 @@ function basketHit(){
       <td class="mono ${roi==null?"":(roi>=0?"up":"down")}">${
         roi==null?"—":((roi>=0?"+":"")+(roi*100).toFixed(1)+"%")}</td></tr>`;
   }).join("");
-  return `<h2>十一、篮子命中率（按桶数）</h2>
+  return `<h2>十四、篮子命中率（按桶数）</h2>
   <p class="sub">结算真值落在篮子里就算命中。只算可成交的（整篮 ≥1 分）。</p>
   <div class="why"><b>这张表回答一件事：</b>多买一个桶买到的命中率，
   值不值它多花的钱。命中率一定随桶数上升——问题是成本也上升，
@@ -2927,27 +2943,48 @@ function refusalStats(){
   const S=D.selection||{};
   const stages=(S.refusal_stats||{}).stages||[];
   if(!stages.length) return "";
-  const cards=stages.map(st=>{
-    const rows=(st.reasons||[]).map(r=>`<tr>
+  // Top three per stage, the rest folded (user ruling, 2026-08-21).  The
+  // reasons arrive sorted by count and the tail is a long list of one- and
+  // two-count rows: nine rows per stage is most of this section's height
+  // and only the first few ever change what anyone does.  Folded rather
+  // than dropped, because the funnel only balances with all of them -- and
+  // the fold's own summary carries the remainder's total so the arithmetic
+  // still closes with the fold shut.
+  const line=r=>`<tr>
       <td>${h(r.label)}</td>
       <td class="mono">${r.count}</td>
       <td class="mono">${(r.share*100).toFixed(1)}%</td>
       <td class="muted">${h(r.note)}${r.example?
         ` <span class="mono">（例：${h(r.example)}）</span>`:""}</td>
-    </tr>`).join("");
+    </tr>`;
+  const head3=`<thead><tr>
+        <th>原因</th><th>站日数</th><th>占扫到的</th><th>这是什么意思</th>
+      </tr></thead>`;
+  const cards=stages.map(st=>{
+    const all=st.reasons||[];
+    const top=all.slice(0,3);
+    const rest=all.slice(3);
+    const restCount=rest.reduce((a,r)=>a+(r.count||0),0);
+    const restShare=rest.reduce((a,r)=>a+(r.share||0),0);
+    const restBlock=rest.length?`<details style="margin-top:8px">
+      <summary class="muted" style="cursor:pointer">其余 ${rest.length} 项
+        合计 ${restCount} 个站日（${(restShare*100).toFixed(1)}%）</summary>
+      <table style="margin-top:8px">${head3}
+        <tbody>${rest.map(line).join("")}</tbody></table></details>`:"";
     return `<div class="card" style="margin-top:12px">
       <div class="muted">${h(st.stage)} · 扫到 ${st.scope_count} 个站日，
         建仓 ${st.seated_count}${st.scope_restricted_to?
           ` <span class="mono">（只计 ${h(st.scope_restricted_to)}）</span>`:""}</div>
       <div class="big ${st.seat_rate>=0.3?"up":"down"}">${
         (st.seat_rate*100).toFixed(1)}%</div>
-      <div class="muted">其余 ${st.refused_count} 个没建仓，原因如下</div>
-      <table style="margin-top:10px"><thead><tr>
-        <th>原因</th><th>站日数</th><th>占扫到的</th><th>这是什么意思</th>
-      </tr></thead><tbody>${rows}</tbody></table>
+      <div class="muted">其余 ${st.refused_count} 个没建仓，
+        占大头的三条如下${rest.length?"，长尾折在表下":""}</div>
+      <table style="margin-top:10px">${head3}
+        <tbody>${top.map(line).join("")}</tbody></table>
+      ${restBlock}
     </div>`;
   }).join("");
-  return `<h2>十三、没建仓是因为什么（逐阶段）</h2>
+  return `<h2>十六、没建仓是因为什么（逐阶段）</h2>
   <p class="sub">分母是这一阶段扫到的全部站日，建仓数 + 各项原因 = 分母，
   所以这是一条漏斗而不是两份互不相干的清单。
   <b>P0-M 只统计 TAF 带温度组的那 17 个站</b>——这一阶段是拿 TAF 做确认，
@@ -2975,7 +3012,7 @@ function makerProbe(){
   const S=D.selection||{};const m=S.maker_probe||{};
   if(!m.available) return "";
   const cells=m.cells||[];
-  if(!cells.length) return `<h2>十二、挂单影子探针</h2>
+  if(!cells.length) return `<h2>十五、挂单影子探针</h2>
     <div class="card"><span class="dot amber"></span>
       已写入 ${m.open_count||0} 个未到期意图，还没有到期可判定的。</div>`;
   const p=v=>v==null?"—":(v*100).toFixed(1)+"%";
@@ -3109,7 +3146,7 @@ function makerProbe(){
       <th>信号数</th><th>结算</th><th>命中</th><th>投入</th><th>ROI</th><th>去最大赢</th>
     </tr></thead><tbody>${consRows}</tbody></table></div>`:"";
   const assessBlock=assessCards?`
-    <h2 style="margin-top:0">十二、挂单执行 · 三阶段总体评估 ${verdict}</h2>
+    <h2 style="margin-top:0">十五、挂单执行 · 三阶段总体评估 ${verdict}</h2>
     <p class="sub"><b>目标是在不突破模型价值的前提下，用剩余时间最大化目标仓位的
     实际建成度（2026-08-21 重设计）。</b>三层闸：<b>闸1 价值红线</b>——对冲腿不超过
     λ·p(t)，核心腿不超过它自己的 p(t)，永不突破；<b>闸2 组合EV</b>——整篮声称 EV
@@ -3147,7 +3184,18 @@ function makerProbe(){
   // The pooled cards above say whether resting works; they cannot say
   // whether it is getting better or worse, and that is the question after
   // every change to how long an order rests or how often it is re-posted.
-  const trend=S.resting_entry_trend||[];
+  //
+  // Only from 2026-08-15 (user ruling, 2026-08-21).  The rows before that
+  // date were filled under a different resting rule -- other rung ladders,
+  // other re-post cadence, another book -- so putting them in the same
+  // column invites reading a rule change as a trend.  The older days are
+  // dropped from the table rather than folded: this table exists to be
+  // compared row against row, and a row that is not comparable is not
+  // evidence at any depth.
+  const TREND_FROM="2026-08-15";
+  const trendAll=S.resting_entry_trend||[];
+  const trend=trendAll.filter(d=>String(d.event_date)>=TREND_FROM);
+  const trendDropped=trendAll.length-trend.length;
   const STAGES=["P0","P0-M","P1"];
   const cell=(s)=>{
     if(!s) return `<td class="muted">—</td>`;
@@ -3187,7 +3235,10 @@ function makerProbe(){
     <p class="sub">每格上行是<b>档位成交率</b>（挂出去的阶梯买到几档），
     下行是整腿成交率、篮子数/腿数与实际成交均价。挂单时长或重挂周期一改，
     先看这里有没有动。标「进行中」的事件日还没结束，单子还挂在书上，
-    那一行只会继续往上走——不要拿它和已经走完的日子直接比。</p>
+    那一行只会继续往上走——不要拿它和已经走完的日子直接比。<br>
+    <b>只列 ${TREND_FROM} 起的事件日</b>，合计行也只合计这几行：
+    更早的日子挂在另一套挂法下${trendDropped?`（${trendDropped} 天）`:""}，
+    与现在的成交率不是同一件事的两次测量。</p>
     <div class="card"><div class="scroll"><table><thead><tr>
       <th>事件日</th>${STAGES.map(k=>`<th>${k}</th>`).join("")}
     </tr></thead><tbody>${trendRows}
@@ -3212,7 +3263,7 @@ function makerProbe(){
 
 
 function gaps(){
-  if(!D.gaps.length) return `<h2>五、数据缺口</h2>
+  if(!D.gaps.length) return `<h2>十八、数据缺口</h2>
     <div class="card"><span class="dot green"></span> 当前没有发现缺口。</div>`;
   const sev = {high:["red","要处理"],medium:["amber","留意"],low:["amber","正常等待"]};
   const rows = D.gaps.map(g => {
@@ -3224,7 +3275,7 @@ function gaps(){
       <td class="muted">${g.self_heals ? "会自行恢复" : "需要人工介入"}</td>
     </tr>`;
   }).join("");
-  return `<h2>五、数据缺口与健康检查</h2>
+  return `<h2>十八、数据缺口与健康检查</h2>
   <p class="sub">每一条都写清楚"缺了什么、会造成什么、会不会自己好"。
   标"正常等待"的不是故障，是样本还在积累。</p>
   <div class="card"><div class="scroll"><table><thead><tr>
@@ -3262,7 +3313,7 @@ function daily(){
       <td>${r.center_bias_c==null?"—":(r.center_bias_c>=0?"+":"")+r.center_bias_c.toFixed(2)}</td>
     </tr>`;
   }).join("");
-  return `<h2>六、每日统计</h2>
+  return `<h2>十九、每日统计</h2>
   <p class="sub">按事件日汇总，只算可成交的（整篮成本 ≥1 分）——不足一分的多是无人出价那侧的
   挂单，名义上有价、实际买不到，混进来会让当天的盈亏读不出意思。</p>
   <div class="why"><b>列的意思：</b>「位置」是相对市场偏上/一致/偏下的笔数；
@@ -3289,7 +3340,7 @@ function coverage(){
   const rr=c.realization_ratio;
   const sd=S.sides||{};const tot=S.position_count||1;
   const seg=(k,col)=>`<i style="display:block;height:9px;width:${100*(sd[k]||0)/tot}%;background:${col}"></i>`;
-  return `<h2>七、覆盖 · 价格 · EV</h2>
+  return `<h2>十、覆盖 · 价格 · EV</h2>
   <p class="sub">只算可成交的（整篮 ≥1 分，排除虚价）。三组数回答同一个问题的三面：
   座位罩住了多少概率、为此付了多少、这笔交换值不值。</p>
   <div class="card"><div class="muted">相对市场的位置（模型质量中心减市场质量中心，单位是桶）</div>
@@ -3338,10 +3389,15 @@ function stationSummary(){
   const seated=new Set(ss.map(s=>s.station_id));
   const silent=[...new Set((S.station_roster||[]).map(e=>e.station_id))]
     .filter(id=>!seated.has(id)).sort();
-  const rows=ss.map(s=>{
+  const rows=ss.map((s,i)=>{
     const sd=s.sides||{};const cal=s.calibration_ratio;
     const rr=s.realization_ratio;const ev=s.ev_per_usdc_mean;
+    // A number per station (user ruling, 2026-08-21).  Assigned in the
+    // table's natural order -- station id, ascending -- and printed in the
+    // row rather than derived from the row's position, so it stays with the
+    // station when a column is sorted instead of renumbering under it.
     return `<tr>
+      <td class="mono muted">${i+1}</td>
       <td><span class="mono">${h(s.station_id)}</span>
         <span class="muted">${h(s.station_label)}</span></td>
       <td>${s.position_count}</td>
@@ -3368,20 +3424,23 @@ function stationSummary(){
   }).join("");
   const note=silent.length?`<div class="muted" style="margin-top:8px">
     另有 ${silent.length} 个站在这段窗口里一笔可成交仓位都没有，因此没有可平均的数，
-    只出现在下一节的逐日明细里：<span class="mono">${silent.map(h).join(" ")}</span></div>`:"";
-  return `<h2>八、逐站汇总（跨日）</h2>
+    只出现在下一节的逐日明细里：<span class="mono">${
+      silent.map((id,i)=>`${i+1}.${h(id)}`).join("　")}</span></div>`:"";
+  return `<h2>十一、逐站汇总（跨日）</h2>
   <p class="sub">一站一行，把该站 ${h(S.stats_start_event_date)} 起的全部可成交仓位
   （整篮 ≥1 分，排除虚价）平均到一起。<b>这些数不属于任何一天</b>——它们回答的是
   「这个站长期表现如何」，逐日的账在下一节。</p>
-  <div class="why"><b>列的意思：</b>「仓位」是参与平均的笔数，样本少于三笔时右侧的
+  <div class="why"><b>列的意思：</b>「#」是站的编号，按站号字母序编，
+  排序时跟着这一站走，所以可以直接拿它点名某一行；
+  「仓位」是参与平均的笔数，样本少于三笔时右侧的
   命中率与实现/声称基本读不出信号；
   「预计建仓桶」是该站这段窗口里挂出去的腿数合计（括号里是每座位平均几腿），
   「实际建仓桶」是真正买到的腿数与占比——占比低说明这个站的盘口不肯按我们的价成交，
   与选桶宽窄无关；「位置」是相对市场偏上/一致/偏下的笔数；
-  「概率和/卖价和/赔率/EV」同第七节，只是范围缩到这一个站；
+  「概率和/卖价和/赔率/EV」同第十节，只是范围缩到这一个站；
   「实现/声称」是命中率÷声称胜率；「兑现比」是实得÷期望。</div>
   <div class="card"><div class="scroll"><table><thead><tr>
-    <th>站点</th><th>仓位</th><th>已结算</th>
+    <th>#</th><th>站点</th><th>仓位</th><th>已结算</th>
     <th>预计建仓桶<br><span class="muted">挂单腿数</span></th>
     <th>实际建仓桶<br><span class="muted">成交腿数</span></th>
     <th>位置<br><span class="muted">上/平/下</span></th>
@@ -3630,7 +3689,7 @@ function roster(){
   const legend=Object.entries(REASON).map(([k,v])=>
     `<div class="muted">· <b>${v[0]}</b>：${v[1]}</div>`).join("");
   // Newest day open, everything older folded away beneath it.
-  return `<h2>九、逐站逐日明细：选了什么、挂了什么、买到了什么</h2>
+  return `<h2>十二、逐站逐日明细：选了什么、挂了什么、买到了什么</h2>
   <p class="sub">每个事件日一组，注册表里的每个站都在，包括没有座位、甚至当天没算出概率的
   ——没坐比坐了更值得看清原因。
   每格上行是<b>成交后</b>的桶，下方是横梁与胜率 @ 成本 · 赔率；再下一行是这一笔的
@@ -3666,7 +3725,7 @@ function roster(){
 
 function anomalies(){
   const S=D.selection||{};const an=S.anomalies||[];
-  if(!an.length) return `<h2>十、异常盘口</h2>
+  if(!an.length) return `<h2>十三、异常盘口</h2>
     <div class="card"><span class="dot green"></span> 未发现异常。</div>`;
   const rows=an.map(a=>`<tr>
     <td class="mono">${h(a.station_id)}</td><td class="mono">${h(a.event_date)}</td>
@@ -3676,7 +3735,7 @@ function anomalies(){
     <td>${(a.win_probability*100).toFixed(1)}%</td>
     <td><span class="pill red">${a.kind==="basket_under_one_cent"?"虚价（整篮不足1分）":"声称超市场10倍"}</span></td>
   </tr>`).join("");
-  return `<h2>十、异常盘口</h2>
+  return `<h2>十三、异常盘口</h2>
   <p class="sub">这些不是机会，是信号：整篮报价不足一分（虚价）、或声称概率超市场定价十倍，
   几乎总是无人出价那侧的挂单，真下单填不满。</p>
   <div class="card scroll"><table><thead><tr>
@@ -3708,7 +3767,7 @@ function dispersion(){
       r.width_ratio == null ? "—" : r.width_ratio.toFixed(2) + "×"}</td>
   </tr>`).join("");
   const bare = [...new Set(rows.filter(r => !r.paired).map(r => r.label))];
-  return `<h2>十四、四大模型的离散度</h2>
+  return `<h2>四、四大模型的离散度</h2>
   <p class="sub">离散度是一个集合预报里几十个成员之间的分歧，也是模型对自己唯一的
   不确定性表态：成员挤在一起就是"我很有把握"，散开就是"这天不好说"。
   统计窗口 ${h(S.summary.window_start)} 至 ${h(S.summary.window_end)}
@@ -3793,7 +3852,7 @@ function hitRate(){
     <td colspan="4" class="muted">这一格的 ${r.uncorrected.toLocaleString()}
       个 run 都没有事件日之前就已拟合好的校正表，不参与对比</td>
   </tr>`).join("");
-  return `<h2>十五、四大模型的命中率：原始 vs 校正后</h2>
+  return `<h2>五、四大模型的命中率：原始 vs 校正后</h2>
   <p class="sub">把一个模型的成员均值当成它的答案，看它落在市场的哪个桶里，
   再和当天结算真值所在的桶比。桶按各站自己的市场刻度数——美国站 2°F 一档，
   其余 1°C 一档——所以"差一个桶"在各站是同一件事。</p>
@@ -3825,14 +3884,20 @@ function materialization(){
   const T = D.truth || {}; const cov = T.coverage || [];
   if(!cov.length) return "";
   const s = T.sweep || {};
-  const rows = cov.map(c => `<tr>
+  // Only the days with a hole (user ruling, 2026-08-21).  Three weeks of
+  // "45/45 齐了" is twenty rows of nothing happening, and the one row that
+  // matters is found by scanning past them.  The complete days are counted
+  // in a line under the table rather than dropped silently: a table that
+  // shows only exceptions has to say how many non-exceptions it hid, or an
+  // empty table reads as a broken query instead of a clean fleet.
+  const gapDays = cov.filter(c => c.missing > 0);
+  const cleanDays = cov.length - gapDays.length;
+  const rows = gapDays.map(c => `<tr>
     <td class="mono">${h(c.event_date)}</td>
     <td class="mono">${c.eligible}</td>
     <td class="mono">${c.materialized}</td>
-    <td class="mono ${c.missing === 0 ? "up" : (c.settling ? "" : "down")}">${
-      c.missing === 0 ? "—" : c.missing}</td>
-    <td class="muted">${c.settling ? "当天还在结算中" :
-      (c.missing === 0 ? "齐了" : "缺口")}</td>
+    <td class="mono ${c.settling ? "" : "down"}">${c.missing}</td>
+    <td class="muted">${c.settling ? "当天还在结算中" : "缺口"}</td>
   </tr>`).join("");
   const why = (T.refusals || []).map(r => `<tr>
     <td>${h(r.label || r.reason)}</td>
@@ -3842,7 +3907,7 @@ function materialization(){
       "证据不全" : "证据矛盾"}</span></td>
     <td class="mono muted">${h(r.example)}</td>
   </tr>`).join("");
-  return `<h2>十六、真值物化健康度</h2>
+  return `<h2>二十、真值物化健康度</h2>
   <p class="sub">观测进来只是第一步：还要把一整天的报文收敛成"这个站这天的最高温"
   一行，才有东西给预报打分。这一节看的是这一步有没有落下。</p>
   <div class="why"><b>为什么单独看它：</b>缺一行真值几乎从来不是缺观测——
@@ -3874,9 +3939,12 @@ function materialization(){
     <div class="muted" style="margin-top:8px">「证据不全」会随补采自愈；
       「证据矛盾」要人看一眼，不会自己好。</div>
   </div>` : ""}
-  <table style="margin-top:12px"><thead><tr>
+  ${rows ? `<table style="margin-top:12px"><thead><tr>
     <th>事件日</th><th>在册站数</th><th>已物化</th><th>缺口</th><th>状态</th>
-  </tr></thead><tbody>${rows}</tbody></table>`;
+  </tr></thead><tbody>${rows}</tbody></table>` : ""}
+  <div class="muted" style="margin-top:8px">${rows
+    ? `只列有缺口的事件日；近 ${cov.length} 天里另有 ${cleanDays} 天在册站全部物化，不列。`
+    : `近 ${cov.length} 天每一天的在册站都有真值行，没有可列的缺口。`}</div>`;
 }
 
 function oosScores(){
@@ -3899,7 +3967,7 @@ function oosScores(){
     <td class="mono">${n3(r.nll)}</td>
     <td class="mono muted">${n3(r.nll_base)}</td>
   </tr>`).join("");
-  return `<h2>十七、OOS 打分：CRPS / Brier / NLL</h2>
+  return `<h2>七、OOS 打分：CRPS / Brier / NLL</h2>
   <p class="sub">这是门自己用的分数，全部在样本外的 holdout 上算。
   近 7 天共 ${S.scope_count.toLocaleString()} 个站×提前量×cycle 被评过，
   最近一次 ${hours(S.latest_age_hours)}。</p>
@@ -3953,7 +4021,7 @@ function centerWidth(){
       r.min_forward_nll_gain == null ? "" :
       "，门槛 " + r.min_forward_nll_gain}</div>`}
   </div>`).join("");
-  return `<h2>十八、中心/宽度两标量</h2>
+  return `<h2>八、中心/宽度两标量</h2>
   <p class="sub">最后一层修正只有两个数：把整条分布左右平移多少（中心 δ），
   再横向拉宽或收窄多少倍（宽度 λ）。δ=0、λ=1 就是原样不动。</p>
   <div class="why"><b>为什么必须按阶段分开拟合：</b>P0 面对的是一堆模型融出来的
@@ -4037,7 +4105,7 @@ const VERDICT_WORD = {green:"良好", amber:"注意", red:"有问题", muted:"�
 
 function scorecard(){
   const S = D.scorecard || {};
-  if(!S.available) return `<h2>十九、模型校准总检</h2>
+  if(!S.available) return `<h2>九、模型校准总检</h2>
     <p class="sub">还没有已结算的预测可以评分。</p>`;
   const cards = (S.layers||[]).map(L => `<div class="card">
     <div style="display:flex;align-items:center;gap:8px">
@@ -4094,7 +4162,7 @@ function scorecard(){
       </tr>`;
     }).join("");
 
-  return `<h2>十九、模型校准总检：六层各自及格没有</h2>
+  return `<h2>九、模型校准总检：六层各自及格没有</h2>
   <p class="sub">近 45 天 ${S.sample_days.toLocaleString()} 个已结算站日、
   ${S.station_count} 个站，全部在样本外。总体
   <span class="pill ${S.overall}">${VERDICT_WORD[S.overall]||""}</span>，
@@ -4118,7 +4186,7 @@ function scorecard(){
   </tr></thead><tbody>${leadRows}</tbody></table>
 
   <p class="sub" style="margin-top:26px">「说了多少 vs 真发生了多少」残差表
-  已并入第四节，与产生它的修正系数放在同一条闭环里；本节的校准灯仍由同一份
+  已并入第六节，与产生它的修正系数放在同一条闭环里；本节的校准灯仍由同一份
   数据打分。</p>
 
   <h2 style="margin-top:26px">PIT：分布形状正不正</h2>
@@ -4183,7 +4251,7 @@ function servingWeights(){
       <td class="mono">${r.candidate_count}→${r.selected_count}</td>
       <td class="mono ${stale ? "down" : ""}">${h(r.holdout_end)}</td></tr>`;
   }).join("");
-  return `<h2>二十、四大模型的权重：谁在场、占多少</h2>
+  return `<h2>三、四大模型的权重：谁在场、占多少</h2>
   <p class="sub">这里读的是服务路径本身——每个「站×提前量×cycle」格子当前激活的
   组合指针，连到它绑定的选拔证据，把里面的权重原样摊开。不是权重表的行数统计，
   就是 P0 此刻在用的那份配比。</p>
@@ -4212,18 +4280,76 @@ function servingWeights(){
   </details>`;
 }
 
-document.getElementById("app").innerHTML = [
-  [head, "页头"], [overview, "总览"], [members, "成员"], [chain, "链路"], [tables, "表"],
-  [stages, "阶段"], [gaps, "数据缺口"], [daily, "逐日"],
-  [coverage, "覆盖"], [stationSummary, "站汇总"], [roster, "站名册"],
-  [anomalies, "异常"], [basketHit, "篮子命中率"],
-  [makerProbe, "挂单影子探针"], [refusalStats, "未建仓原因"],
-  [dispersion, "模型离散度"], [hitRate, "模型命中率"],
-  [materialization, "真值物化"], [oosScores, "OOS 打分"],
-  [centerWidth, "中心/宽度"], [scorecard, "模型校准总检"],
-  [servingWeights, "四大模型权重"],
-].map(([fn, name]) => safe(fn, name)).join("") +
+// Sections of one kind stand together, and only one kind is on screen at a
+// time (user ruling, 2026-08-21).  Twenty sections in a single column is a
+// page nobody scrolls to the end of, and the order they were written in
+// interleaved the three questions being asked of them: the model's skill,
+// the market's account of it, and whether the data feeding both arrived.
+// Reading any one of those meant scrolling past the other two.
+//
+// The section numbers follow this grouping rather than the old order.  A
+// number that no longer matches its neighbours is a worse handle than a
+// renumbered one, because it only reads as an accident.
+const GROUPS = [
+  {id:"model", label:"模型与校准", note:"一～九节：数据到货、订正与权重、离散度与命中率、各层校准打分",
+   sections:[[members,"成员"],[tables,"偏差订正与权重"],
+     [servingWeights,"四大模型权重"],[dispersion,"模型离散度"],
+     [hitRate,"模型命中率"],[stages,"概率分档校准"],[oosScores,"OOS 打分"],
+     [centerWidth,"中心/宽度"],[scorecard,"模型校准总检"]]},
+  {id:"market", label:"市场与执行", note:"十～十六节：覆盖与 EV、逐站与逐日的账、挂单执行、没建仓的原因",
+   sections:[[coverage,"覆盖"],[stationSummary,"站汇总"],[roster,"站名册"],
+     [anomalies,"异常"],[basketHit,"篮子命中率"],
+     [makerProbe,"挂单影子探针"],[refusalStats,"未建仓原因"]]},
+  {id:"data", label:"数据与链路", note:"十七～二十节：链路每一环、数据缺口、每日统计、真值物化",
+   sections:[[chain,"链路"],[gaps,"数据缺口"],[daily,"逐日"],
+     [materialization,"真值物化"]]},
+];
+
+const tabs = `<nav class="tabs" id="tabs">${
+  GROUPS.map(g => `<button type="button" data-tab="${g.id}">${g.label}
+    <span class="muted">${g.sections.length}</span></button>`).join("")
+}<button type="button" data-tab="all">全部</button></nav>`;
+
+const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}">
+  <div class="grouptitle">${g.label}<span class="muted">${g.note}</span></div>
+  ${g.sections.map(([fn, name]) => safe(fn, name)).join("")}</section>`).join("");
+
+document.getElementById("app").innerHTML =
+  [[head, "页头"], [overview, "总览"]].map(([fn, name]) => safe(fn, name)).join("") +
+  tabs + groupHtml +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
+
+// Which group is showing survives a reload, because the page is reloaded
+// far more often than the question being asked of it changes.  "全部" is
+// the old single-column page, one click away, for anyone reading it top to
+// bottom or searching it with the browser's own find.
+(function(){
+  const nav = document.getElementById("tabs");
+  if(!nav) return;
+  let current = GROUPS[0].id;
+  try{
+    const saved = localStorage.getItem("board-tab");
+    if(saved) current = saved;
+  }catch(e){}
+  const known = new Set(GROUPS.map(g=>g.id).concat(["all"]));
+  if(!known.has(current)) current = GROUPS[0].id;
+  const paint = () => {
+    document.querySelectorAll(".group").forEach(sec => {
+      sec.hidden = current !== "all" && sec.dataset.group !== current;
+    });
+    nav.querySelectorAll("button").forEach(b => {
+      b.dataset.active = b.dataset.tab === current ? "1" : "";
+    });
+  };
+  nav.addEventListener("click", (ev) => {
+    const button = ev.target.closest("button[data-tab]");
+    if(!button) return;
+    current = button.dataset.tab;
+    try{ localStorage.setItem("board-tab", current); }catch(e){}
+    paint();
+  });
+  paint();
+})();
 
 document.querySelectorAll("table").forEach(makeSortable);
 
