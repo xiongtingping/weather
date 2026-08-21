@@ -83,9 +83,26 @@ MAX_JSON_NODES = 500_000
 # ruling because the append-only triggers are the constitution saying so,
 # and a VACUUM to realise the space needs more free disk than the machine
 # currently has.
-# Held at 18 GiB on 2026-08-21 rather than raised again.  The ceiling fired
-# -- the store reached 18.031 GB and every writer fail-closed -- and this
-# time the space was actually reclaimed instead of the number moved:
+# Raised to 20.5 GiB on 2026-08-21 by explicit user ruling, after the
+# reclamation below had already been done and the store crossed 18 GiB a
+# second time the same day.  Sized by the one constraint that is not a
+# preference: a VACUUM needs roughly the store's own size free, so a ceiling
+# above about 22 GB against 24.7 GB of free disk would make compaction
+# permanently impossible -- and compaction is how a retention deletion turns
+# into actual space.  This number keeps that door open and nothing more.
+#
+# It buys hours, not a fix, and the burn is structural rather than waste:
+# every committed envelope also writes one bridge-history row and eleven
+# bucket-probability rows, so basket_probability_bridge_bucket_probability
+# stands at 1.70M rows against 154,745 envelopes and grows in lockstep.
+# Measured 2026-08-21 across a 1.6-hour window while the probability chain
+# was running unblocked: ~0.42 GB/hour.  At that rate this raise is worth
+# roughly six hours.  The lever that actually works is a retention window on
+# those two append-only tables, which needs the ruling their triggers exist
+# to demand.
+#
+# What was reclaimed first, earlier the same day, so this is a raise on top
+# of real recovery rather than instead of it:
 #
 #   * three superseded migration copies of the canonical fact table
 #     (``canonical_ssot_fact_v14_replaced`` / ``_v15_replaced`` /
@@ -101,11 +118,12 @@ MAX_JSON_NODES = 500_000
 #     table (116 tables, 325 indexes, zero row-count differences) before the
 #     swap, with WAL restored afterwards.
 #
-# The store now sits below this ceiling with the growth it was climbing on
-# reclaimed rather than hidden.  If it approaches again the honest lever is
-# the retention decision on the two append-only JSON tables named above,
-# not another raise.
-MAX_TARGET_DB_BYTES = 18432 * MIB
+# That recovery bought about ninety minutes at the measured burn, which is
+# why the raise above followed it rather than replaced it.  The next
+# approach has no free space left to reclaim: the migration copies are gone,
+# the cold NWP lane is archived, and a VACUUM only returns freed pages, of
+# which a freshly compacted store has none.  The lever left is retention.
+MAX_TARGET_DB_BYTES = 20992 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.
