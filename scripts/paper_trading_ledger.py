@@ -373,8 +373,14 @@ CONSOLIDATION_QUOTED_FRACTION = 0.80
 # 0.38 / 0.64 / 0.56 / 0.70 -- non-monotone, and the stratum that
 # motivated stratification holds five chains.  The strata separate on
 # PRICE, not on claim honesty; a factor the data cannot rank has no
-# business being a table.  0 disables (production default until the
-# consolidation forward lane clears its promotion bar).
+# business being a table.  0 disables, and the replay verdict is in: at
+# 0.60 the book shrank to 77 seats realising 0.19 of their claims at
+# -54% ROI.  Demanding claim/price above 1/0.60 turns the gate into a
+# maximum-disagreement selector -- the organ the reverted curve-score
+# seat grew -- and the discount is endogenous to selection intensity, so
+# the fixed point runs away: tighten, the survivors worsen, and the
+# factor you measured no longer holds.  Measurement lane only; this knob
+# must not become a gate.
 SELECTION_DISCOUNT = float(
     os.environ.get("PAPER_LEDGER_SELECTION_DISCOUNT", "0") or 0.0
 )
