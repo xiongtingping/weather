@@ -1167,3 +1167,48 @@ def test_consolidation_is_an_annotation_and_measures_what_it_says() -> None:
     calls = source.count("_consolidation_signals(")
     assert calls == 2, calls  # the definition and the single insert-side call
     assert "consolidation_json" in source
+
+
+def test_the_selection_discount_shades_the_gate_and_only_the_gate() -> None:
+    """E[realised | claimed, traded] belongs to the decision, not the record.
+
+    The promise is honest unconditionally (1.03-1.22 at every decision age)
+    and realises 0.60 of itself conditional on trading, so the gate judges
+    the shaded claim while the row keeps the raw one -- shading the record
+    would double-count the correction the next time the factor is measured.
+
+    Flat deliberately: per consolidation stratum the factor runs
+    0.38/0.64/0.56/0.70, non-monotone with five chains in the stratum that
+    motivated stratifying, so a table has nothing to stand on yet.
+    """
+
+    import importlib
+    import os
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    import paper_trading_ledger as ledger  # noqa: PLC0415
+
+    # Off by default: the consolidation forward lane owns the promotion bar.
+    assert ledger.SELECTION_DISCOUNT == 0.0
+    assert "选择折扣" not in ledger.SELECTION_RULE_LABEL
+
+    os.environ["PAPER_LEDGER_SELECTION_DISCOUNT"] = "0.6"
+    try:
+        importlib.reload(ledger)
+        assert ledger.SELECTION_DISCOUNT == 0.6
+        assert "选择折扣λs0.6" in ledger.SELECTION_RULE_LABEL
+    finally:
+        del os.environ["PAPER_LEDGER_SELECTION_DISCOUNT"]
+        importlib.reload(ledger)
+
+    source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    # The shaded number feeds the Kelly stake and the refusal detail...
+    assert "win_probability=gate_win," in source
+    # ...and nowhere else: the recorded row keeps the raw claim.
+    assert source.count("gate_win") == 3  # define, kelly, refusal detail

@@ -359,6 +359,25 @@ MAKER_RESTING_GAP_LATE = 2.0 / 3.0
 CONSOLIDATION_STABLE_LOOKBACK = 3
 CONSOLIDATION_SHARP_TOP2 = 0.60
 CONSOLIDATION_QUOTED_FRACTION = 0.80
+# Selection-aware claim discount (research knob, 2026-08-21).  Betting only
+# when the claim clears the price harvests our own claim errors -- the
+# promise is honest unconditionally (realised/claimed 1.03-1.22 at every
+# decision age) and under-delivers only conditional on trading.  Measured
+# on the posted basket, the basis the entry gate actually judges: traded
+# seats realise 0.60 of their claim (159 settled).  The gate and the
+# sizing multiply the claim by this factor; the recorded row keeps the raw
+# claim so the calibration accounts stay honest.
+#
+# Deliberately FLAT, not stratified by consolidation count, although the
+# stratified form was the design ask: measured per stratum the factor runs
+# 0.38 / 0.64 / 0.56 / 0.70 -- non-monotone, and the stratum that
+# motivated stratification holds five chains.  The strata separate on
+# PRICE, not on claim honesty; a factor the data cannot rank has no
+# business being a table.  0 disables (production default until the
+# consolidation forward lane clears its promotion bar).
+SELECTION_DISCOUNT = float(
+    os.environ.get("PAPER_LEDGER_SELECTION_DISCOUNT", "0") or 0.0
+)
 # When the order stops trying: past the hours in which this station's
 # daily maximum actually lands, not at settlement (user ruling,
 # 2026-08-20, revised from a fixed local hour).  Per station: the P-th
@@ -442,6 +461,9 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     None
     if EXECUTION_MODE != "maker_resting"
     else "缺口驱压三段·晚段值内吃单·核芯对冲分账",
+    None
+    if SELECTION_DISCOUNT <= 0
+    else f"选择折扣λs{SELECTION_DISCOUNT:g}",
     None
     if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_VALUE_LAMBDA <= 0
     else f"价值钳λ{MAKER_RESTING_VALUE_LAMBDA:g}·中心桶豁免",
@@ -3261,8 +3283,15 @@ def backfill(
                     # one outcome, which is the three-book reading wearing
                     # the cap's clothes.
                     equity_at_open = equity
+                    # The claim the gate judges.  Honest unconditionally,
+                    # it realises 0.60 of itself conditional on trading, so
+                    # the gate and the sizing may judge the shaded number
+                    # while the row records the raw one.
+                    gate_win = float(seat["win_probability"]) * (
+                        SELECTION_DISCOUNT if SELECTION_DISCOUNT > 0 else 1.0
+                    )
                     fraction, wanted_stake = _kelly_stake(
-                        win_probability=float(seat["win_probability"]),
+                        win_probability=gate_win,
                         cost=float(seat["all_in_price"]),
                         equity=equity_at_open,
                     )
@@ -3336,7 +3365,7 @@ def backfill(
                         refusal = _deeper_refusal(refusal, (
                             "no_positive_kelly",
                             "概率 %.3f · 成本 %.3f%s" % (
-                                float(seat["win_probability"]),
+                                gate_win,
                                 cost, exhausted,
                             ),
                             cycles, payload["decision_at_utc"],
