@@ -712,6 +712,94 @@ def test_settlement_label_projection_skips_explicitly_ineligible_fact(
     source.close()
 
 
+def test_settlement_label_skips_quarantined_decision_and_promotes_after_repair(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "target" / "forward-observations.sqlite3"
+    path.parent.mkdir()
+    row = _packet()["observations"][0]
+    reason = "cash_phase_forward_binding_scope_or_clock_mismatch"
+    quarantine_forward_observation(
+        path,
+        decision_id=row["decision_id"],
+        source_decision_sha256="d" * 64,
+        source_rowid=1,
+        error_code=reason,
+        expected_generation=0,
+        quarantined_at_utc="2026-07-28T00:00:00Z",
+        allowed_root=path.parent,
+    )
+    source, label_id, _ = _source_with_label(row)
+    # The source decision still claims ELIGIBLE; only the store's own ingest
+    # verdict explains the missing observation.
+    source.executescript(
+        """
+        CREATE TABLE auto_trade_decisions(
+          decision_id TEXT PRIMARY KEY,
+          details_json TEXT NOT NULL
+        );
+        """
+    )
+    source.execute(
+        "INSERT INTO auto_trade_decisions VALUES(?,?)",
+        (row["decision_id"], '{"forward_observation_status":"ELIGIBLE"}'),
+    )
+    source.commit()
+
+    skipped = append_forward_settlement_labels(
+        path,
+        source,
+        expected_generation=1,
+        materialized_at_utc="2026-07-28T02:00:00Z",
+        allowed_root=path.parent,
+    )
+    assert skipped["inserted"] == 0
+    assert skipped["skipped_ineligible"] == 1
+    with sqlite3.connect(path) as stored:
+        assert stored.execute(
+            "SELECT state,skip_reason FROM forward_label_ingest_state "
+            "WHERE source_label_id=?",
+            (label_id,),
+        ).fetchone() == (
+            "SKIPPED_INELIGIBLE",
+            "FORWARD_OBSERVATION_QUARANTINED:" + reason,
+        )
+
+    repaired = repair_false_quarantine_batch(
+        path,
+        records=[
+            {
+                "observation": row,
+                "decision_id": row["decision_id"],
+                "decision_sha256": "d" * 64,
+                "source_rowid": 1,
+                "prior_error_code": reason,
+            }
+        ],
+        expected_generation=2,
+        repaired_at_utc="2026-07-28T02:30:00Z",
+        allowed_root=path.parent,
+    )
+    assert repaired["state"] == "repaired"
+    promoted = append_forward_settlement_labels(
+        path,
+        source,
+        expected_generation=3,
+        materialized_at_utc="2026-07-28T02:31:00Z",
+        allowed_root=path.parent,
+    )
+    assert promoted["inserted"] == 1
+    state = read_forward_store_state(path, allowed_root=path.parent)
+    assert state["label_count"] == 1
+    with sqlite3.connect(path) as stored:
+        assert stored.execute(
+            "SELECT prior_state,state FROM forward_label_ingest_transition "
+            "WHERE source_label_id=?",
+            (label_id,),
+        ).fetchone() == ("SKIPPED_INELIGIBLE", "MATERIALIZED")
+    source.close()
+
+
 def test_settlement_label_keyset_pages_more_than_one_batch_without_stall(
     tmp_path: Path,
 ) -> None:
