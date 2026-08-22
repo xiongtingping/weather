@@ -471,6 +471,37 @@ def _begin_writer_lock(
 ) -> None:
     """Take the file's write lock, retrying only the fault retrying can fix."""
 
+    # Retrying must not extend the wait, only split it.  The connection's
+    # busy_timeout is the budget the caller already chose; three attempts at
+    # the full budget would turn one lock event into three times the stall,
+    # and a cycle is under three minutes.  So the budget is divided by the
+    # attempts and each attempt gets its share.  Total wait is unchanged and
+    # the lock is contested three times instead of once, which is strictly
+    # better: a holder that commits mid-wait is caught at the next attempt
+    # instead of only at the one deadline.
+    try:
+        inherited_timeout_ms = int(
+            conn.execute("PRAGMA busy_timeout").fetchone()[0] or 0
+        )
+    except sqlite3.Error:
+        inherited_timeout_ms = 0
+    attempt_timeout_ms = max(
+        1, inherited_timeout_ms // WRITER_LOCK_RETRY_ATTEMPTS
+    ) if inherited_timeout_ms > 0 else 0
+    if attempt_timeout_ms:
+        try:
+            conn.execute(f"PRAGMA busy_timeout={attempt_timeout_ms}")
+        except sqlite3.Error:
+            attempt_timeout_ms = 0
+
+    def _restore_timeout() -> None:
+        if not attempt_timeout_ms:
+            return
+        try:
+            conn.execute(f"PRAGMA busy_timeout={inherited_timeout_ms}")
+        except sqlite3.Error:
+            pass
+
     last: sqlite3.OperationalError | None = None
     for attempt in range(1, WRITER_LOCK_RETRY_ATTEMPTS + 1):
         try:
@@ -479,21 +510,25 @@ def _begin_writer_lock(
             # the lock from before the first attempt, so ``wait_ms`` in the
             # writer-lock profile already reports the full busy_timeout the
             # earlier attempts burned.
+            _restore_timeout()
             return
         except sqlite3.OperationalError as exc:
             kind = _sqlite_busy_kind(exc)
             if kind is None:
+                _restore_timeout()
                 raise
             name, code = kind
             if name == "target_writer_stale_read_snapshot":
                 # Deterministic until the caller's read ends; retrying would
                 # only burn the cycle.  Name it and let the scope block.
+                _restore_timeout()
                 raise ContractError(
                     f"{name}:{savepoint}:sqlite_errorcode={code}"
                 ) from exc
             last = exc
             if attempt < WRITER_LOCK_RETRY_ATTEMPTS:
                 continue
+            _restore_timeout()
             raise ContractError(
                 f"{name}:{savepoint}:sqlite_errorcode={code}"
                 f":attempts={attempt}"
