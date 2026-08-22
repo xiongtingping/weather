@@ -757,6 +757,99 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+# When a cycle overruns, the stack says only that SQLite is reading btree
+# pages -- true of every slow query and useful for none of them.  Twice now
+# production has stalled for tens of minutes with nothing in the record to
+# name the statement, and the second time the diagnosis was three rounds of
+# ``sample`` plus timing candidate queries by hand.
+#
+# The heartbeat thread keeps writing status.json while the cycle thread is
+# parked inside ``sqlite3_step``, so the probe only has to record what each
+# thread started and when, and clear it on return.
+#
+# It does that in Python, around ``execute``, and NOT with sqlite3's own
+# trace or progress callbacks.  Those were tried first and deadlocked the
+# resident within 34 seconds: a native callback has to take the GIL while
+# SQLite holds the connection mutex, every connection here is opened
+# ``check_same_thread=False`` and shared across the cycle, forecast and
+# heartbeat threads, and a second thread holding the GIL and entering the
+# same connection needs that mutex.  Six threads were parked in ``take_gil``
+# with two more in ``__psynch_mutexwait`` and nothing running.  A Python
+# wrapper takes no lock SQLite knows about and cannot invert that order.
+#
+# The cost is one dict store before the call and one after, on a path that
+# is about to enter SQLite anyway.
+_STATEMENT_PROBE: dict[int, dict[str, Any]] = {}
+_STATEMENT_PROBE_SQL_CHARS = 400
+
+
+def _probe_slot() -> dict[str, Any]:
+    ident = threading.get_ident()
+    slot = _STATEMENT_PROBE.get(ident)
+    if slot is None:
+        slot = {"statement_count": 0, "sql": None, "started_ns": None}
+        _STATEMENT_PROBE[ident] = slot
+    return slot
+
+
+class _ProbedCursor(sqlite3.Cursor):
+    """A cursor that says which statement it is inside while it is inside."""
+
+    def execute(self, sql, parameters=(), /):  # type: ignore[override]
+        slot = _probe_slot()
+        slot["sql"] = sql[:_STATEMENT_PROBE_SQL_CHARS]
+        slot["started_ns"] = time.perf_counter_ns()
+        slot["statement_count"] += 1
+        try:
+            return super().execute(sql, parameters)
+        finally:
+            # Cleared on return, so an idle thread never reads as a stalled
+            # one.  Rows fetched later from the returned cursor are not
+            # covered, which is the honest boundary: this names the statement
+            # that is executing, not one being drained.
+            slot["sql"] = None
+            slot["started_ns"] = None
+
+
+class _ProbedConnection(sqlite3.Connection):
+    """Route ``Connection.execute`` through the probing cursor."""
+
+    def cursor(self, factory=_ProbedCursor):  # type: ignore[override]
+        return super().cursor(factory)
+
+    def execute(self, sql, parameters=(), /):  # type: ignore[override]
+        return self.cursor().execute(sql, parameters)
+
+
+def statement_probe_snapshot(*, min_elapsed_ms: float = 1000.0) -> dict[str, Any]:
+    """Name the longest statement now executing, or say none is."""
+
+    now_ns = time.perf_counter_ns()
+    running: list[dict[str, Any]] = []
+    total = 0
+    for thread_ident, slot in list(_STATEMENT_PROBE.items()):
+        total += int(slot.get("statement_count") or 0)
+        started = slot.get("started_ns")
+        if started is None:
+            continue
+        elapsed_ms = (now_ns - int(started)) / 1_000_000.0
+        if elapsed_ms < min_elapsed_ms:
+            continue
+        running.append({
+            "thread_ident": thread_ident,
+            "elapsed_ms": round(elapsed_ms, 1),
+            "sql": slot.get("sql"),
+        })
+    running.sort(key=lambda item: -float(item["elapsed_ms"]))
+    return {
+        "schema": "basket_target_statement_probe_v2",
+        "statement_count": total,
+        "threads_traced": len(_STATEMENT_PROBE),
+        "min_elapsed_ms": min_elapsed_ms,
+        "in_flight": running[:4],
+    }
+
+
 def open_target_read_only(path: Path) -> sqlite3.Connection:
     """Open target SSOT in SQLite read-only mode; never create a database."""
 
@@ -767,6 +860,7 @@ def open_target_read_only(path: Path) -> sqlite3.Connection:
         timeout=60.0,
         isolation_level=None,
         check_same_thread=False,
+        factory=_ProbedConnection,
     )
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=60000")
@@ -809,6 +903,7 @@ def open_target_writer_if_enabled(path: Path, *, activation_path: Path) -> sqlit
         timeout=60.0,
         isolation_level=None,
         check_same_thread=False,
+        factory=_ProbedConnection,
     )
     try:
         conn.row_factory = sqlite3.Row

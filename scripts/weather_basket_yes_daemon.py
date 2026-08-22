@@ -113,6 +113,7 @@ from bayes_basket_target.production_worker import (
     DEFAULT_TARGET_TAF_INBOX,
     TargetProductionWorker,
     open_target_writer_if_enabled,
+    statement_probe_snapshot,
 )
 from bayes_basket_target.resource_bounds import (
     MAX_TARGET_DB_BYTES,
@@ -2665,16 +2666,33 @@ def main() -> int:
             # "production" key at all, and no way to tell a slow cycle from a
             # stuck one.  Publish the wait itself.
             if production_future is not None and not production_future.done():
+                production_overdue = (
+                    time.monotonic() - production_submitted_mono
+                ) > PRODUCTION_CYCLE_OVERDUE_SEC
                 state["production_inflight"] = {
                     "submitted_at_utc": production_submitted_at,
                     "elapsed_sec": round(
                         time.monotonic() - production_submitted_mono, 1
                     ),
-                    "overdue": (
-                        time.monotonic() - production_submitted_mono
-                    ) > PRODUCTION_CYCLE_OVERDUE_SEC,
+                    "overdue": production_overdue,
                     "overdue_after_sec": PRODUCTION_CYCLE_OVERDUE_SEC,
                 }
+                # Publishing the wait told us a cycle was wedged but never on
+                # what.  Twice the answer took rounds of ``sample`` plus
+                # hand-timed candidate queries, because a native stack says
+                # only that SQLite is reading pages.  The cycle thread is
+                # inside one statement while this thread keeps writing, so
+                # ask the probe which one.  Only once the cycle is already
+                # overdue: a healthy cycle has nothing to name.
+                if production_overdue:
+                    try:
+                        state["production_inflight"]["statement_probe"] = (
+                            statement_probe_snapshot()
+                        )
+                    except Exception as exc:  # diagnosis must not stop a cycle
+                        state["production_inflight"]["statement_probe"] = {
+                            "error": f"{type(exc).__name__}:{exc}",
+                        }
             elif production_future is None:
                 state.pop("production_inflight", None)
             # The P0-M training lane's verdict, which is the only thing that
