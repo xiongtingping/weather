@@ -10,6 +10,8 @@ set -euo pipefail
 
 ROOT="/Users/xiong/weather"
 cd "$ROOT"
+. "$ROOT/scripts/lib/single_instance.sh"
+single_instance official_nwp_raw_retention_daily
 . "$ROOT/scripts/lib/resolve_project_python.sh"
 PY="$(resolve_project_python "$ROOT")" || {
   echo "missing project python runtime"

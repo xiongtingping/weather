@@ -24,6 +24,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 . "$PROJECT_DIR/scripts/lib/resolve_project_python.sh"
+. "$PROJECT_DIR/scripts/lib/single_instance.sh"
+single_instance paper_trading_ledger_sweep
 PY="$(resolve_project_python "$PROJECT_DIR")" || {
   echo "missing project python runtime" >&2
   exit 1

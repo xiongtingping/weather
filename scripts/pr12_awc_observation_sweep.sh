@@ -13,6 +13,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+. "$ROOT/scripts/lib/single_instance.sh"
+single_instance pr12_awc_observation_sweep
 PY="$ROOT/.venv/bin/python"
 PROJECTION="$ROOT/output/audits/pr12_authority_scope_projection_current_20260805T120000Z.json"
 WORK="$ROOT/data/runtime/pr12_awc_observation"
