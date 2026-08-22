@@ -757,111 +757,6 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
-# When a cycle overruns, the stack says only that SQLite is reading btree
-# pages -- true of every slow query and useful for none of them.  Twice now
-# production has stalled for tens of minutes with nothing in the record to
-# name the statement, and the second time the diagnosis was three rounds of
-# ``sample`` plus timing candidate queries by hand.
-#
-# The heartbeat thread keeps writing status.json while the cycle thread is
-# parked inside ``sqlite3_step``, so the probe only has to record what each
-# thread last started and when.  ``set_trace_callback`` fires as a statement
-# begins, which is exactly the moment to stamp; a statement still running is
-# then the one whose stamp has not been replaced.
-#
-# Cost is one Python call of two stores per statement, measured at 20 us
-# against a scratch store.  ``statement_count`` is reported alongside so the
-# total that buys is visible rather than assumed: at the 174s cycle this
-# instrument was written for, it is a second only if the cycle runs 50,000
-# statements.
-_STATEMENT_PROBE: dict[int, dict[str, Any]] = {}
-_STATEMENT_PROBE_SQL_CHARS = 400
-# Every this many VM instructions, a running statement says so.  The trace
-# hook alone cannot: it fires when a statement begins and never when one
-# ends, so a thread that has gone idle keeps the stamp of its last statement
-# and reads as a long-running one.  A progress handler is the end signal,
-# and a cheap one -- 50,000 instructions is far more than any short query
-# executes, so short queries never call it at all, while a scan of a large
-# table calls it every fifty thousand rows.
-_STATEMENT_PROBE_PROGRESS_OPS = 50_000
-# How stale the progress stamp may be before a statement counts as finished
-# rather than running.  Generous against a slow page read between two VM
-# instructions, still far under the overrun this instrument exists to name.
-_STATEMENT_PROBE_LIVENESS_MS = 3000.0
-
-
-def install_statement_probe(conn: sqlite3.Connection) -> None:
-    """Record, per thread, the statement now running and when it started."""
-
-    def _slot() -> dict[str, Any]:
-        ident = threading.get_ident()
-        slot = _STATEMENT_PROBE.get(ident)
-        if slot is None:
-            slot = {"statement_count": 0}
-            _STATEMENT_PROBE[ident] = slot
-        return slot
-
-    def _trace(statement: str) -> None:
-        slot = _slot()
-        slot["sql"] = statement[:_STATEMENT_PROBE_SQL_CHARS]
-        slot["started_ns"] = time.perf_counter_ns()
-        slot["progress_ns"] = slot["started_ns"]
-        slot["statement_count"] += 1
-
-    def _progress() -> int:
-        _slot()["progress_ns"] = time.perf_counter_ns()
-        return 0
-
-    try:
-        conn.set_trace_callback(_trace)
-    except Exception:
-        # An interpreter without the hook loses the diagnosis, not the cycle.
-        pass
-    try:
-        conn.set_progress_handler(_progress, _STATEMENT_PROBE_PROGRESS_OPS)
-    except Exception:
-        pass
-
-
-def statement_probe_snapshot(*, min_elapsed_ms: float = 1000.0) -> dict[str, Any]:
-    """Name the longest statement now in flight, or say none is."""
-
-    now_ns = time.perf_counter_ns()
-    running: list[dict[str, Any]] = []
-    total = 0
-    for thread_ident, slot in list(_STATEMENT_PROBE.items()):
-        total += int(slot.get("statement_count") or 0)
-        started = slot.get("started_ns")
-        if started is None:
-            continue
-        elapsed_ms = (now_ns - int(started)) / 1_000_000.0
-        if elapsed_ms < min_elapsed_ms:
-            continue
-        # Still running only if it has reported progress recently.  Without
-        # this the last statement of an idle thread ages forever and reads
-        # as the stall.
-        progress_ms = (
-            now_ns - int(slot.get("progress_ns") or started)
-        ) / 1_000_000.0
-        if progress_ms > _STATEMENT_PROBE_LIVENESS_MS:
-            continue
-        running.append({
-            "thread_ident": thread_ident,
-            "elapsed_ms": round(elapsed_ms, 1),
-            "since_progress_ms": round(progress_ms, 1),
-            "sql": slot.get("sql"),
-        })
-    running.sort(key=lambda item: -float(item["elapsed_ms"]))
-    return {
-        "schema": "basket_target_statement_probe_v1",
-        "statement_count": total,
-        "threads_traced": len(_STATEMENT_PROBE),
-        "min_elapsed_ms": min_elapsed_ms,
-        "liveness_ms": _STATEMENT_PROBE_LIVENESS_MS,
-        "in_flight": running[:4],
-    }
-
-
 def open_target_read_only(path: Path) -> sqlite3.Connection:
     """Open target SSOT in SQLite read-only mode; never create a database."""
 
@@ -877,7 +772,6 @@ def open_target_read_only(path: Path) -> sqlite3.Connection:
     conn.execute("PRAGMA busy_timeout=60000")
     conn.execute("PRAGMA query_only=ON")
     conn.execute("PRAGMA synchronous=FULL")
-    install_statement_probe(conn)
     return conn
 
 
@@ -920,7 +814,6 @@ def open_target_writer_if_enabled(path: Path, *, activation_path: Path) -> sqlit
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA busy_timeout=60000")
         conn.execute("PRAGMA synchronous=FULL")
-        install_statement_probe(conn)
         if resolved == DEFAULT_TARGET_DB.resolve():
             journal_mode = str(
                 conn.execute("PRAGMA journal_mode").fetchone()[0] or ""
