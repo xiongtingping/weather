@@ -842,20 +842,43 @@ def _solve_over_support_windows(
         })
     if not scored:
         raise ContractError("delta_v2_no_solvable_support_window")
-    best = max(
-        scored,
-        key=lambda item: (
-            item["score"],
-            # Ties go to the cheaper basket, then to the incumbent, then by
-            # bucket order: three deterministic keys so an equal-scoring pair
-            # never resolves on dict ordering.
-            -sum(item["solution"]["target_cost_by_bucket"].values()),
-            item["window"]["is_incumbent"],
-            item["window"]["buckets"],
-        ),
-    )
+    # Seat the head of the shortlist, not the best score on it.
+    #
+    # The shortlist is ordered by probability mass on purpose -- the ladder
+    # extends toward what the model believes, and price is left to the leg
+    # floor and the whole-basket positive-EV requirement.  Ranking the
+    # shortlist a second time by any score that rises with the edge undoes
+    # that ruling, because it seeks the window where model and market
+    # disagree most, and that is measured to be where this model is least
+    # reliable: over 158 settled seats the flank the divergence chose was
+    # cheaper than its mirror 96% of the time and the truth landed on the
+    # mirror 83%.
+    #
+    # Measured twice, independently, by rebuilding the paper ledger on each
+    # rule over the same station-days.  2026-08-20 with a hand-rolled log
+    # wealth score: seats 249 -> 318, ROI -10.4% -> -20.2%.  2026-08-22
+    # calling this function itself with the promoted policy artifact -- the
+    # version the first measurement named as the only one worth attempting:
+    # seats 386 -> 504, ROI +9.7% -> -20.5%.  Stratified by edge the settled
+    # book is an inverted U (<0: -91.2%, 0-0.10: +16.1%, 0.10-0.25: +25.2%,
+    # >=0.25: -68.7%), and a monotone score walks straight into the right
+    # hand band.  ``curve_score`` is monotone in the edge over the bettable
+    # range, so being the correct Kelly form for *quantities* -- which it
+    # still is, and still supplies below -- does not make it a selector.
+    #
+    # The ledger was moved to the shortlist head on 2026-08-20; production
+    # was not, so the rule measured at -20% kept running live while the one
+    # measured at +9.7% existed only in the replay.  This closes that gap.
+    best = scored[0]
     selection = {
-        "rule": "MAX_CURVE_SCORE_OVER_CONTIGUOUS_SUPPORT_WINDOWS_V2",
+        "rule": "PROBABILITY_MASS_SHORTLIST_HEAD_CURVE_SOLVED_QUANTITIES_V3",
+        "seat_rule_superseded": (
+            "MAX_CURVE_SCORE_OVER_CONTIGUOUS_SUPPORT_WINDOWS_V2"
+        ),
+        "shortlist_head_curve_score": float(scored[0]["score"]),
+        "best_curve_score_on_shortlist": float(
+            max(item["score"] for item in scored)
+        ),
         "edge_friction_ticks_per_leg": SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
         "admissible_window_count": len(windows),
         "solved_window_count": len(scored),
