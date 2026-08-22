@@ -1304,6 +1304,18 @@ ON basket_probability_envelope(station_id,event_date,state,decision_at_utc,fresh
 CREATE INDEX IF NOT EXISTS basket_probability_envelope_checkpoint_idx
 ON basket_probability_envelope(checkpoint_id);
 
+-- "The newest committed envelope for this station at this stage" is asked
+-- once per station per cycle, and the asof index above cannot serve it: its
+-- second column is event_date, which this query does not constrain, so the
+-- planner fell back to the station-only autoindex, read every row that
+-- station has -- each carrying a lineage blob -- and sorted them all in a
+-- TEMP B-TREE to take one.  Measured 2026-08-22: 900ms uncontended and 15
+-- to 42 seconds behind a competing writer, times forty-five stations.  With
+-- decision_at_utc in the index and in the right order, the LIMIT 1 is the
+-- first entry of a seek and nothing is sorted: 900ms -> 1.8ms.
+CREATE INDEX IF NOT EXISTS basket_probability_envelope_station_stage_recency_idx
+ON basket_probability_envelope(station_id,stage,state,decision_at_utc DESC);
+
 -- The decision sweep lists every committed scope once per cycle and needs
 -- settlement_timezone to decide whether the day is still open.  That one
 -- column is the only thing the as-of index above does not carry, so the plan
@@ -1399,6 +1411,18 @@ CREATE INDEX IF NOT EXISTS
   calibration_republisher_ensemble_historical_member_run_scope_idx
 ON calibration_republisher_ensemble_historical_member_run(
   station_id,target_local_date,ensemble_system_id
+);
+
+-- The d2 coverage check counts distinct systems for one target day, and the
+-- scope index above leads with station_id, which that question does not
+-- constrain.  So it fell back to a UNIQUE autoindex and swept 1.3M rows to
+-- return the number 3: 2.3 seconds uncontended, measured at 142 seconds
+-- behind a competing writer on 2026-08-22.  Leading with the day makes it a
+-- covering seek: 2300ms -> 0.6ms.
+CREATE INDEX IF NOT EXISTS
+  calibration_republisher_historical_d2_coverage_idx
+ON calibration_republisher_ensemble_historical_member_run(
+  target_local_date,archive_lead_bucket,extraction_version,ensemble_system_id
 );
 
 CREATE INDEX IF NOT EXISTS
