@@ -612,13 +612,37 @@ def materialize_probability_bridge(
             )
         fault("latest")
         if history_wrote:
-            for index, row in enumerate(projection["probability_by_bucket"]):
-                bucket_identity = {"schema": SCHEMA, "history_id": history_id, **row}
-                conn.execute(
+            # One statement for the whole projection, not one per bucket.
+            # This runs inside the resident's write lock, and a P0 arrival
+            # burst carries thousands of envelopes at roughly ten buckets
+            # each: measured 2026-08-22, 4115 envelopes landed in ten
+            # minutes and ``resident_p0_inbox`` held the writer for 20.9s of
+            # a 33.8s cycle, which is longer than the five seconds the other
+            # lanes wait before failing closed -- so market_ingress, P0, P1,
+            # regime and the probability chain all reported "database is
+            # locked" against a lock this loop was holding.
+            #
+            # The fault points are unchanged.  They fire after the rows are
+            # staged rather than between individual inserts, which is the
+            # same observable contract: every one of them is inside the
+            # savepoint, and the savepoint rolls back whole.
+            bucket_rows = [
+                (
+                    history_id, row["bucket"], row["ordinal"], row["lower_c"],
+                    row["upper_c"], row["probability"],
+                    content_sha256(
+                        {"schema": SCHEMA, "history_id": history_id, **row}
+                    ),
+                )
+                for row in projection["probability_by_bucket"]
+            ]
+            if bucket_rows:
+                conn.executemany(
                     "INSERT INTO basket_probability_bridge_bucket_probability("
                     "history_id,bucket,ordinal,lower_c,upper_c,probability,content_sha256) VALUES(?,?,?,?,?,?,?)",
-                    (history_id, row["bucket"], row["ordinal"], row["lower_c"], row["upper_c"], row["probability"], content_sha256(bucket_identity)),
+                    bucket_rows,
                 )
+            for index in range(len(bucket_rows)):
                 fault(f"p_b:{index}")
         fault("p_b")
         # Validate before releasing the savepoint so a malformed projection can
