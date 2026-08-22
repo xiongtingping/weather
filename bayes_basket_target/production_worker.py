@@ -9524,13 +9524,14 @@ class TargetProductionWorker:
                 # covers two stations while the inbox carried 256 captures
                 # across 44, and 82 scopes a cycle were discarded whole.
                 # Fall through to the observation-only path below.
-                scope_exists = self.commit_conn.execute(
-                    "SELECT 1 FROM basket_probability_envelope "
-                    "WHERE station_id=? AND event_date=? "
-                    "AND state='COMMITTED' AND stage='P0' "
-                    "AND decision_at_utc<=? LIMIT 1",
-                    (station, day, as_of_utc),
-                ).fetchone()
+                with self._span("p0m_scope_exists", label=station):
+                    scope_exists = self.commit_conn.execute(
+                        "SELECT 1 FROM basket_probability_envelope "
+                        "WHERE station_id=? AND event_date=? "
+                        "AND state='COMMITTED' AND stage='P0' "
+                        "AND decision_at_utc<=? LIMIT 1",
+                        (station, day, as_of_utc),
+                    ).fetchone()
                 if scope_exists is None:
                     ignored_inactive_scope_count += 1
                     receipts.append({
@@ -9541,12 +9542,21 @@ class TargetProductionWorker:
                         "writes": [],
                     })
                     continue
-                envelopes = load_materialized_probability_envelopes(
-                    self.commit_conn,
-                    station_id=station,
-                    event_date=day,
-                    evaluation_at_utc=as_of_utc,
-                )
+                # Read the station-day once.  The lane gate below is a pure
+                # function of this list, so the second call reuses it rather
+                # than paying for the whole read again -- 24 to 27 MB with
+                # lineage_json on the largest days, twice per scope, per
+                # cycle.  Reusing it also means both gates judge one snapshot
+                # instead of two taken moments apart.
+                scope_validated: list[ProbabilityEnvelope] = []
+                with self._span("p0m_scope_load", label=f"{station}|{day}"):
+                    envelopes = load_materialized_probability_envelopes(
+                        self.commit_conn,
+                        station_id=station,
+                        event_date=day,
+                        evaluation_at_utc=as_of_utc,
+                        validated_out=scope_validated,
+                    )
                 # As-of the forecast, not as-of now.  The three stages run
                 # at wildly different cadences -- P0 recompiles on every
                 # model update (78-106 times a station-day), the TAF is
@@ -9623,18 +9633,21 @@ class TargetProductionWorker:
                 # current market registry shard.  Once a fresh P0 can feed a
                 # P0-M write, resolve the authoritative lane and re-read the
                 # complete chain through the P1 gate before using it.
-                expected_source_lane = target_registry_source_lane(
-                    self.commit_conn,
-                    station_id=station,
-                    event_date=day,
-                )
-                envelopes = load_materialized_probability_envelopes(
-                    self.commit_conn,
-                    station_id=station,
-                    event_date=day,
-                    evaluation_at_utc=as_of_utc,
-                    expected_source_lane=expected_source_lane,
-                )
+                with self._span("p0m_source_lane", label=station):
+                    expected_source_lane = target_registry_source_lane(
+                        self.commit_conn,
+                        station_id=station,
+                        event_date=day,
+                    )
+                with self._span("p0m_lane_gate", label=f"{station}|{day}"):
+                    envelopes = load_materialized_probability_envelopes(
+                        self.commit_conn,
+                        station_id=station,
+                        event_date=day,
+                        evaluation_at_utc=as_of_utc,
+                        expected_source_lane=expected_source_lane,
+                        preloaded_validated=scope_validated,
+                    )
                 roots = [
                     item for item in envelopes
                     if item.stage == "P0"

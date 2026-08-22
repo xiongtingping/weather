@@ -454,6 +454,8 @@ def load_materialized_probability_envelopes(
     canonical_current_pointer: Path | str | None = None,
     canonical_release_root: Path | str | None = None,
     include_future_decisions: bool = False,
+    preloaded_validated: Sequence[ProbabilityEnvelope] | None = None,
+    validated_out: list[ProbabilityEnvelope] | None = None,
 ) -> list[ProbabilityEnvelope]:
     """Read and validate every committed checkpoint before as-of routing.
 
@@ -489,42 +491,60 @@ def load_materialized_probability_envelopes(
         current_pointer = load_bounded_json(canonical_current_pointer)
         if not isinstance(current_pointer, Mapping):
             raise ContractError("probability_release_current_pointer_invalid")
-    validated: list[ProbabilityEnvelope] = []
-    for row in conn.execute(
-        "SELECT " + ",".join(columns) +
-        " FROM basket_probability_envelope"
-        " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-        " ORDER BY created_at,envelope_id",
-        (station_id, event_date),
-    ).fetchall():
-        raw = _row_mapping(row, columns)
-        envelope_id = str(raw.pop("envelope_id") or "")
-        supplied_sha = str(raw.pop("content_sha256") or "")
-        raw["bucket_ordinals"] = _json("bucket_ordinals", raw.pop("bucket_ordinals_json"), mapping=True)
-        raw["probabilities"] = _json("probabilities", raw.pop("probabilities_json"), mapping=True)
-        raw["lineage"] = _json("lineage", raw.pop("lineage_json"), mapping=True)
-        lineage_timezone = str(raw["lineage"].get("settlement_timezone") or "").strip()
-        storage_timezone = str(raw.get("settlement_timezone") or "").strip()
-        if not lineage_timezone or lineage_timezone != storage_timezone:
-            raise ContractError("probability_settlement_timezone_lineage_mismatch")
-        raw["settlement_timezone"] = storage_timezone
-        envelope = ProbabilityEnvelope.from_mapping(raw)
-        if envelope_id != envelope.checkpoint_id:
-            raise ContractError("probability_envelope_storage_identity_mismatch")
-        if supplied_sha != envelope.content_sha256:
-            raise ContractError("probability_envelope_content_sha_mismatch")
-        if envelope.lineage.get("release_state") == "MATERIALIZED_UNPUBLISHED":
-            if current_pointer is None or canonical_release_root is None:
-                continue
-            verify_released_p0_envelope_authority(
-                current_pointer,
-                expected_release_root=canonical_release_root,
-                envelope=envelope.to_dict(),
-            )
-        if include_future_decisions or timestamp_lte(
-            envelope.decision_at_utc, evaluation_at_utc
-        ):
-            validated.append(envelope)
+    # The lane and pathway gates below are pure functions of the validated
+    # list, applied in Python after every row is read and parsed.  A caller
+    # that needs the same station-day under two gate settings was therefore
+    # paying for the read twice -- and the read is the whole station-day
+    # including lineage_json, measured at 24 to 27 MB and 375 to 647ms on
+    # the largest days.  ``preloaded_validated`` lets such a caller read
+    # once and gate twice, against one snapshot rather than two.
+    if preloaded_validated is not None:
+        validated = list(preloaded_validated)
+        validated_snapshot = validated
+    else:
+        validated: list[ProbabilityEnvelope] = []
+        for row in conn.execute(
+            "SELECT " + ",".join(columns) +
+            " FROM basket_probability_envelope"
+            " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+            " ORDER BY created_at,envelope_id",
+            (station_id, event_date),
+        ).fetchall():
+            raw = _row_mapping(row, columns)
+            envelope_id = str(raw.pop("envelope_id") or "")
+            supplied_sha = str(raw.pop("content_sha256") or "")
+            raw["bucket_ordinals"] = _json("bucket_ordinals", raw.pop("bucket_ordinals_json"), mapping=True)
+            raw["probabilities"] = _json("probabilities", raw.pop("probabilities_json"), mapping=True)
+            raw["lineage"] = _json("lineage", raw.pop("lineage_json"), mapping=True)
+            lineage_timezone = str(raw["lineage"].get("settlement_timezone") or "").strip()
+            storage_timezone = str(raw.get("settlement_timezone") or "").strip()
+            if not lineage_timezone or lineage_timezone != storage_timezone:
+                raise ContractError("probability_settlement_timezone_lineage_mismatch")
+            raw["settlement_timezone"] = storage_timezone
+            envelope = ProbabilityEnvelope.from_mapping(raw)
+            if envelope_id != envelope.checkpoint_id:
+                raise ContractError("probability_envelope_storage_identity_mismatch")
+            if supplied_sha != envelope.content_sha256:
+                raise ContractError("probability_envelope_content_sha_mismatch")
+            if envelope.lineage.get("release_state") == "MATERIALIZED_UNPUBLISHED":
+                if current_pointer is None or canonical_release_root is None:
+                    continue
+                verify_released_p0_envelope_authority(
+                    current_pointer,
+                    expected_release_root=canonical_release_root,
+                    envelope=envelope.to_dict(),
+                )
+            if include_future_decisions or timestamp_lte(
+                envelope.decision_at_utc, evaluation_at_utc
+            ):
+                validated.append(envelope)
+        validated_snapshot = validated
+    # The ungated list, for a caller that will gate the same snapshot again.
+    # Handing back the *return* value instead would mean the second gating ran
+    # on an already-pathway-filtered list, which happens to be idempotent
+    # today and is not a property worth depending on.
+    if validated_out is not None:
+        validated_out.extend(validated_snapshot)
     expected_lane = (
         str(expected_source_lane or "").strip().lower()
         if expected_source_lane is not None
