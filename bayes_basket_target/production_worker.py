@@ -649,6 +649,16 @@ OFFICIAL_NATIVE_CAPTURE_DEADLINE_SEC = 2400.0
 # Floor between two OOS station scans.  Deliberately far below the cycle it
 # rides inside: the cycle is the real pacing, and this only stops a very fast
 # cycle from re-scanning the same station back to back.
+# Whether the cheap P0-M scope verdict is measured, trusted, or absent.
+# "shadow" computes it beside the real path and reports where they disagree
+# without acting on it; "on" would let it skip the expensive read; "off"
+# removes it.  It starts in shadow because P0-M is the stage that goes silent
+# without saying so, and a verdict that agrees over real cycles is worth more
+# than an argument that it must.
+P0M_FAST_PATH_MODE = str(
+    os.environ.get("PM_P0M_FAST_PATH", "shadow") or "shadow"
+).strip().lower()
+
 NATIVE_ENSEMBLE_OOS_SCAN_MIN_INTERVAL_SEC = 60.0
 METAR_TRAJECTORY_TRAINING_RETRY_SEC = 6 * 3600.0
 METAR_TRAJECTORY_TRAINING_DEADLINE_SEC = 600.0
@@ -9302,6 +9312,66 @@ class TargetProductionWorker:
             "orders_submitted": 0,
         }
 
+    @staticmethod
+    def _p0m_scope_shape(
+        envelopes: Sequence[ProbabilityEnvelope],
+        captures: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        """The P0/P0-M-only shape both the real and the cheap path read.
+
+        One implementation, called twice on two lists, is what makes the
+        shadow comparison meaningful: a disagreement is then a disagreement
+        about the *rows*, which is the thing under test, and never about two
+        copies of the arithmetic drifting apart.
+        """
+
+        first_root_at = min(
+            (
+                item.decision_at_utc
+                for item in envelopes
+                if item.stage == "P0"
+            ),
+            default="",
+        )
+        seatable = [
+            capture for capture in captures
+            if first_root_at
+            and str(
+                (capture.get("forecast_revision") or {}).get(
+                    "received_at_utc"
+                ) or ""
+            ) >= first_root_at
+        ]
+        earliest_taf = min(
+            (
+                str(
+                    (capture.get("forecast_revision") or {}).get(
+                        "received_at_utc"
+                    ) or ""
+                )
+                for capture in seatable
+            ),
+            default="",
+        )
+        roots = [
+            item for item in envelopes
+            if item.stage == "P0"
+            and item.decision_at_utc <= earliest_taf
+        ]
+        seen_revisions = {
+            str(item.lineage.get("forecast_source_object_sha256") or "")
+            for item in envelopes
+            if item.stage == "P0-M"
+        }
+        return {
+            "first_root_at": first_root_at,
+            "seatable": seatable,
+            "dropped_pre_root": len(captures) - len(seatable),
+            "earliest_taf": earliest_taf,
+            "roots": roots,
+            "seen_revisions": seen_revisions,
+        }
+
     def _materialize_resident_p0m(
         self,
         *,
@@ -9509,6 +9579,24 @@ class TargetProductionWorker:
         blockers: list[dict[str, str]] = []
         ignored_inactive_scope_count = 0
         ignored_no_artifact_scope_count = 0
+        # What a cheaper path would have concluded, kept beside what the real
+        # path concludes so the two can be compared before either is trusted.
+        #
+        # The real path reads every committed envelope for the station-day to
+        # decide, and 80% of that read is per-row work -- JSON-decoding the
+        # row, hashing it back to check its stored sha, building the envelope
+        # -- while P1 is 78% of the rows and no part of this decision needs
+        # it.  Measured 2026-08-22: 168 scopes, 197 seconds, and every one of
+        # the 168 concluded NO_NEW_TAF_REVISION, having built 1,353 envelopes
+        # per scope to say so.
+        #
+        # The cheap path loads P0 and P0-M only and answers two questions:
+        # are there roots, and is every capture already materialised.  It is
+        # run in shadow first because P0-M is the stage that goes silent
+        # without saying so, and a verdict that agrees on one cycle is worth
+        # more than an argument that it must.
+        shadow_verdicts: dict[tuple[str, str], str] = {}
+        shadow_errors: list[dict[str, str]] = []
         for (station, day), captures in sorted(captures_by_scope.items()):
             try:
                 station_artifacts = [
@@ -9548,6 +9636,50 @@ class TargetProductionWorker:
                 # lineage_json on the largest days, twice per scope, per
                 # cycle.  Reusing it also means both gates judge one snapshot
                 # instead of two taken moments apart.
+                # The cheap verdict, taken before the expensive read so it is
+                # answering the same question from the same instant.  Nothing
+                # acts on it yet.
+                if P0M_FAST_PATH_MODE != "off":
+                    try:
+                        with self._span(
+                            "p0m_shadow_load", label=f"{station}|{day}"
+                        ):
+                            narrow = load_materialized_probability_envelopes(
+                                self.commit_conn,
+                                station_id=station,
+                                event_date=day,
+                                evaluation_at_utc=as_of_utc,
+                                stages=("P0", "P0-M"),
+                            )
+                        narrow_shape = self._p0m_scope_shape(narrow, captures)
+                        if not narrow_shape["roots"]:
+                            shadow_verdicts[(station, day)] = (
+                                "IGNORED_NO_P0_BEFORE_FORECAST"
+                            )
+                        elif not station_artifacts and all(
+                            str(
+                                (
+                                    capture.get("forecast_revision") or {}
+                                ).get("source_object_sha256") or ""
+                            ) in narrow_shape["seen_revisions"]
+                            for capture in narrow_shape["seatable"]
+                        ):
+                            shadow_verdicts[(station, day)] = (
+                                "NO_NEW_TAF_REVISION"
+                            )
+                        else:
+                            shadow_verdicts[(station, day)] = "FULL_PATH"
+                    except Exception as exc:  # noqa: BLE001
+                        # A shadow that cannot answer is a shadow finding, not
+                        # a cycle fault.
+                        shadow_verdicts[(station, day)] = (
+                            f"SHADOW_ERROR:{type(exc).__name__}"
+                        )
+                        shadow_errors.append({
+                            "station_id": station,
+                            "event_date": day,
+                            "reason": f"{type(exc).__name__}:{exc}"[:200],
+                        })
                 scope_validated: list[ProbabilityEnvelope] = []
                 with self._span("p0m_scope_load", label=f"{station}|{day}"):
                     envelopes = load_materialized_probability_envelopes(
@@ -9586,38 +9718,12 @@ class TargetProductionWorker:
                 # no root before it cannot seat *itself* under the contract
                 # -- "no P0 before forecast" is true of it alone -- so it is
                 # dropped alone, counted, and its siblings proceed.
-                first_root_at = min(
-                    (
-                        item.decision_at_utc
-                        for item in envelopes
-                        if item.stage == "P0"
-                    ),
-                    default="",
-                )
-                seatable = [
-                    capture for capture in captures
-                    if first_root_at
-                    and str(
-                        (capture.get("forecast_revision") or {}).get(
-                            "received_at_utc"
-                        ) or ""
-                    ) >= first_root_at
-                ]
-                dropped_pre_root = len(captures) - len(seatable)
-                captures = seatable
-                earliest_taf = min(
-                    str(
-                        (capture.get("forecast_revision") or {}).get(
-                            "received_at_utc"
-                        ) or ""
-                    )
-                    for capture in captures
-                ) if captures else ""
-                roots = [
-                    item for item in envelopes
-                    if item.stage == "P0"
-                    and item.decision_at_utc <= earliest_taf
-                ]
+                shape = self._p0m_scope_shape(envelopes, captures)
+                first_root_at = shape["first_root_at"]
+                dropped_pre_root = shape["dropped_pre_root"]
+                captures = shape["seatable"]
+                earliest_taf = shape["earliest_taf"]
+                roots = shape["roots"]
                 if not roots:
                     ignored_inactive_scope_count += 1
                     receipts.append({
@@ -9744,16 +9850,9 @@ class TargetProductionWorker:
                     # on them re-seated every committed revision at its exact
                     # original received instant -- a guaranteed
                     # decision-time conflict (43 stations, 2026-08-20).
-                    seen_revisions = {
-                        str(
-                            item.lineage.get(
-                                "forecast_source_object_sha256"
-                            )
-                            or ""
-                        )
-                        for item in envelopes
-                        if item.stage == "P0-M"
-                    }
+                    seen_revisions = self._p0m_scope_shape(
+                        envelopes, captures
+                    )["seen_revisions"]
                     observed_pending: list[
                         tuple[ProbabilityEnvelope, str]
                     ] = []
@@ -10160,8 +10259,57 @@ class TargetProductionWorker:
                     "reason": f"{type(exc).__name__}:{exc}",
                 })
             assert_process_memory_budget()
+        # Where the cheap verdict and the real receipt disagreed, and on what.
+        # Reported rather than acted on: this is the evidence the switch is
+        # waiting for.
+        shadow_report: dict[str, Any] | None = None
+        if P0M_FAST_PATH_MODE != "off":
+            actual = {
+                (str(item.get("station_id")), str(item.get("event_date"))):
+                str(item.get("state"))
+                for item in receipts
+            }
+            agreed = 0
+            disagreed: list[dict[str, str]] = []
+            for scope, verdict in shadow_verdicts.items():
+                real = actual.get(scope)
+                if real is None:
+                    # The scope raised before it produced a receipt; the
+                    # blocker already records that and the shadow has nothing
+                    # to say about it.
+                    continue
+                if verdict == "FULL_PATH" or verdict == real:
+                    agreed += 1
+                    continue
+                disagreed.append({
+                    "station_id": scope[0],
+                    "event_date": scope[1],
+                    "shadow": verdict,
+                    "actual": real,
+                })
+            shadow_report = {
+                "schema": "bayes_basket_target_p0m_fast_path_shadow_v1",
+                "mode": P0M_FAST_PATH_MODE,
+                "scopes": len(shadow_verdicts),
+                "agreed": agreed,
+                "disagreed_count": len(disagreed),
+                "shadow_would_skip": sum(
+                    1 for verdict in shadow_verdicts.values()
+                    if verdict in {
+                        "NO_NEW_TAF_REVISION",
+                        "IGNORED_NO_P0_BEFORE_FORECAST",
+                    }
+                ),
+                "shadow_error_count": len(shadow_errors),
+                "disagreed": disagreed[:8],
+                "shadow_errors": shadow_errors[:4],
+            }
         return {
             "schema": "bayes_basket_target_resident_taf_ingress_v1",
+            **(
+                {"fast_path_shadow": shadow_report}
+                if shadow_report is not None else {}
+            ),
             "state": "BLOCKED_FAIL_CLOSED" if blockers else "COMMITTED",
             "taf_fact_ingress": taf_fact_ingress,
             "receipts": receipts,

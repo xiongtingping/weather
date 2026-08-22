@@ -456,6 +456,7 @@ def load_materialized_probability_envelopes(
     include_future_decisions: bool = False,
     preloaded_validated: Sequence[ProbabilityEnvelope] | None = None,
     validated_out: list[ProbabilityEnvelope] | None = None,
+    stages: Sequence[str] | None = None,
 ) -> list[ProbabilityEnvelope]:
     """Read and validate every committed checkpoint before as-of routing.
 
@@ -498,17 +499,36 @@ def load_materialized_probability_envelopes(
     # including lineage_json, measured at 24 to 27 MB and 375 to 647ms on
     # the largest days.  ``preloaded_validated`` lets such a caller read
     # once and gate twice, against one snapshot rather than two.
+    # Restricting the stages is a restriction on which rows are *built*, not
+    # on which are trusted: 80% of a load is JSON-decoding each row, hashing
+    # it back to check the stored sha, and constructing the envelope, all per
+    # row.  P1 is 78% of the rows on a busy station-day, so a caller that
+    # only needs P0 and P0-M pays a fifth of the price.  It is the caller's
+    # job to know that -- the gates below still see everything they are
+    # given, and a caller that narrows past what its own decision needs gets
+    # a wrong answer, not a cheap one.
+    stage_filter = tuple(str(stage).strip().upper() for stage in stages or ())
+    if stages is not None and not stage_filter:
+        raise ContractError("probability_envelope_stage_filter_empty")
+    if any(stage not in {"P0", "P0-M", "P1"} for stage in stage_filter):
+        raise ContractError("probability_envelope_stage_filter_invalid")
     if preloaded_validated is not None:
         validated = list(preloaded_validated)
         validated_snapshot = validated
     else:
         validated: list[ProbabilityEnvelope] = []
+        stage_clause = (
+            " AND stage IN (" + ",".join("?" * len(stage_filter)) + ")"
+            if stage_filter
+            else ""
+        )
         for row in conn.execute(
             "SELECT " + ",".join(columns) +
             " FROM basket_probability_envelope"
             " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+            + stage_clause +
             " ORDER BY created_at,envelope_id",
-            (station_id, event_date),
+            (station_id, event_date, *stage_filter),
         ).fetchall():
             raw = _row_mapping(row, columns)
             envelope_id = str(raw.pop("envelope_id") or "")
