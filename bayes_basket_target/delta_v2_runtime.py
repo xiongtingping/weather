@@ -82,6 +82,29 @@ def _floor_to_tick(price: float, tick: float) -> float:
 MAKER_HEDGE_VALUE_LAMBDA = float(
     os.environ.get("PM_MAKER_HEDGE_VALUE_LAMBDA", "0.53") or 0.0
 )
+# The shoulder -- the rung one bucket either side of the centre -- gets its
+# own, tighter ceiling.
+#
+# The clamp had only ever had two settings, centre-exempt and
+# everything-else-at-lambda, so the shoulder was priced as insurance
+# although it is the centre's nearest neighbour and carries two thirds of
+# the clamped rungs (320 of 476 posted non-centre legs sit one bucket out).
+# Swept alone on the ledger, 2026-08-22, eight cells:
+#
+#     0.20  +15.4%    0.46  +15.7%    0.85   -1.2%
+#     0.30  +18.2%    0.53  +12.7%    exempt -17.3%
+#     0.40  +18.9%    0.70   +3.0%
+#
+# Single-peaked with both flanks monotone, so 0.40 is an interior optimum
+# rather than a boundary.  It is +6.2 points of ROI over pricing the
+# shoulder like a tail, and the direction is the opposite of the intuition
+# that motivated the sweep: the shoulder wanted a *tighter* ceiling, not a
+# looser one.  Exempting it buys nine points of hit rate (26% -> 35%) and
+# loses thirty of ROI, which is the sixth time this system has measured
+# that same trade.
+MAKER_SHOULDER_VALUE_LAMBDA = float(
+    os.environ.get("PM_MAKER_SHOULDER_VALUE_LAMBDA", "0.40") or 0.0
+)
 # Whether the continuous log-optimum shape is offered alongside the
 # centre-anchored one.  It is the correct Kelly split for a basket whose
 # quantities are free, and it is off.
@@ -114,6 +137,7 @@ def _hedge_value_cap(
     bucket: str,
     centre_bucket: str,
     probability: float | None,
+    window: Sequence[str] | None = None,
 ) -> float | None:
     """The value ceiling for one rung, or None when it is uncapped.
 
@@ -130,7 +154,16 @@ def _hedge_value_cap(
     value = float(probability)
     if not math.isfinite(value) or value <= 0.0:
         return None
-    return MAKER_HEDGE_VALUE_LAMBDA * value
+    lam = MAKER_HEDGE_VALUE_LAMBDA
+    if window and centre_bucket:
+        ordered = [str(item) for item in window]
+        if str(bucket) in ordered and str(centre_bucket) in ordered:
+            distance = abs(
+                ordered.index(str(bucket)) - ordered.index(str(centre_bucket))
+            )
+            if distance == 1 and MAKER_SHOULDER_VALUE_LAMBDA > 0.0:
+                lam = MAKER_SHOULDER_VALUE_LAMBDA
+    return lam * value
 
 
 # How many rungs a leg is offered across, and how far inside the bid the
@@ -1903,6 +1936,7 @@ def compile_delta_v2_runtime_plan(
                 support_selection.get("ladder_center_bucket") or ""
             ),
             probability=probabilities.get(bucket),
+            window=ordered_support,
         )
         maker_rungs = _maker_ladder(
             bid=row.bid_price,

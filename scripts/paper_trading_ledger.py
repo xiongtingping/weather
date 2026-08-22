@@ -68,6 +68,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     CENTRE_ANCHOR_MIN_RUNG_SHARE,
     CONTINUOUS_OPTIMUM_CANDIDATES_ENABLED,
     MAKER_HEDGE_VALUE_LAMBDA,
+    MAKER_SHOULDER_VALUE_LAMBDA,
     MINIMUM_LEG_ALL_IN_ASK,
     P1_MINIMUM_SUPPORT_BUCKETS,
     WINDOW_REFUSAL_FUNNEL,
@@ -353,6 +354,47 @@ MAKER_RESTING_BELIEF_GATE = int(
 MAKER_RESTING_TAIL_LAMBDA = str(
     os.environ.get("PAPER_LEDGER_MAKER_TAIL_LAMBDA", "") or ""
 ).strip().lower()
+# The shoulder's own clamp: the rungs one bucket either side of the centre.
+#
+# The clamp has only ever had two settings -- the centre is exempt and
+# everything else is clamped at lambda -- so the shoulder has always been
+# priced as insurance even though it is the centre's nearest neighbour and
+# carries two thirds of the clamped legs (measured 2026-08-22: 320 of 476
+# posted non-centre rungs sit one bucket out).  The 2026-08-21 sweep that
+# chose 0.53, and the tail-exemption experiment beside it, both moved the
+# tail and the shoulder together or moved the single farthest rung; neither
+# asked what the shoulder alone is worth.
+#
+# Unset means the shoulder is clamped like any other non-centre rung, which
+# is the current rule.  "exempt" prices it off the book like the centre; a
+# number is its own lambda.
+# Production owns this number (``delta_v2_runtime.MAKER_SHOULDER_VALUE_LAMBDA``,
+# 0.40 as of the 2026-08-22 sweep).  With the env var unset the two are the
+# same value by construction; a sweep can still move it here.
+MAKER_RESTING_SHOULDER_LAMBDA = str(
+    os.environ.get("PAPER_LEDGER_MAKER_SHOULDER_LAMBDA", "")
+    or (
+        f"{MAKER_SHOULDER_VALUE_LAMBDA:g}"
+        if MAKER_SHOULDER_VALUE_LAMBDA > 0.0 else ""
+    )
+).strip().lower()
+
+
+def _is_shoulder(
+    bucket: str,
+    centre_bucket: str | None,
+    window: Sequence[str] | None,
+) -> bool:
+    """One bucket either side of the centre, on the posted window."""
+
+    if not window or centre_bucket is None:
+        return False
+    ordered = [str(b) for b in window]
+    if str(centre_bucket) not in ordered or str(bucket) not in ordered:
+        return False
+    return abs(
+        ordered.index(str(bucket)) - ordered.index(str(centre_bucket))
+    ) == 1
 # Completion-first execution (user redesign, 2026-08-21).  The order's job
 # is to build the target position inside the value ceiling, not to win the
 # spread: measured at leg level the legs that never filled realised 115%
@@ -523,6 +565,13 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_VALUE_LAMBDA <= 0
     else f"价值钳λ{MAKER_RESTING_VALUE_LAMBDA:g}·中心桶豁免",
     None
+    if EXECUTION_MODE != "maker_resting" or not MAKER_RESTING_SHOULDER_LAMBDA
+    else (
+        "肩腿豁免"
+        if MAKER_RESTING_SHOULDER_LAMBDA == "exempt"
+        else f"肩腿λ{MAKER_RESTING_SHOULDER_LAMBDA}"
+    ),
+    None
     if EXECUTION_MODE != "maker_resting" or not MAKER_RESTING_TAIL_LAMBDA
     else (
         "尾腿豁免"
@@ -586,6 +635,7 @@ SELECTION_RULE_SHA256 = content_sha256({
     # days accrue); the parameters that derive them do.
     "maker_value_lambda": MAKER_RESTING_VALUE_LAMBDA,
     "maker_value_centre_exempt": True,
+    "maker_shoulder_lambda": MAKER_RESTING_SHOULDER_LAMBDA,
     "maker_belief_gate": MAKER_RESTING_BELIEF_GATE,
     "maker_belief_source": "bridge_history_latest_at_reprice",
     "maker_edge_escalation": "value_headroom_over_band",
@@ -1724,6 +1774,21 @@ def _leg_value_cap(
 
     if centre_bucket is not None and str(bucket) == str(centre_bucket):
         return None
+    if MAKER_RESTING_SHOULDER_LAMBDA and _is_shoulder(
+        bucket, centre_bucket, window
+    ):
+        if MAKER_RESTING_SHOULDER_LAMBDA == "exempt":
+            return None
+        try:
+            shoulder_lambda = float(MAKER_RESTING_SHOULDER_LAMBDA)
+        except ValueError:
+            shoulder_lambda = None
+        if shoulder_lambda is not None:
+            probability = (probabilities or {}).get(str(bucket))
+            return (
+                None if probability is None
+                else shoulder_lambda * float(probability)
+            )
     if MAKER_RESTING_TAIL_LAMBDA and window is not None:
         tail = _tail_bucket(window, centre_bucket, probabilities)
         if tail is not None and str(bucket) == tail:
