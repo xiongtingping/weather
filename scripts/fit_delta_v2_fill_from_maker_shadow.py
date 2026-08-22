@@ -45,6 +45,15 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
+from bayes_basket_target.delta_v2_artifact import (  # noqa: E402
+    ACTIVATION_SCHEMA,
+    NO_LIVE_ACTIVATION_DECISION,
+    PROMOTION_SCHEMA,
+    commit_delta_v2_authority,
+)
+from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
+    MAKER_LADDER_STEPS,
+)
 from bayes_basket_target.delta_v2_fill_artifact import (  # noqa: E402
     REQUIRED_BASELINES,
 )
@@ -390,14 +399,41 @@ POLICY_CASH_CLIP_GRID = [
 POLICY_TIMEOUT_GRID_SECONDS = [
     float(minutes * 60) for minutes in HORIZON_MINUTES
 ]
+# The candidate ceiling has to be derived from the grids above, not chosen.
+# It was 16 -- a number from when the clip grid held two entries, one timeout
+# and one rung, so a solve produced two candidates.  The grids have grown
+# since: eleven clips, four timeouts, eight ladder rungs, across a window the
+# ledger has never seen wider than four buckets.  That is 11 x 4 x 8 x 4 =
+# 1,408 MAKER candidates plus one FOK family per clip per bucket, and a
+# ceiling of 16 refuses every one of them.
+#
+# The refusal has never been seen in production because production has never
+# reached this code -- it blocks upstream first -- so a stale ceiling looked
+# like a working one.  It is not: it is a trap laid for the first cycle that
+# gets far enough to price a basket.
+#
+# Derived, so growing a grid moves it and nobody has to remember.
+POLICY_MAX_SUPPORT_BUCKETS = 4
+POLICY_LADDER_RUNGS = MAKER_LADDER_STEPS
+POLICY_MAXIMUM_CANDIDATES = POLICY_MAX_SUPPORT_BUCKETS * len(
+    POLICY_CASH_CLIP_GRID
+) * (POLICY_LADDER_RUNGS * len(POLICY_TIMEOUT_GRID_SECONDS) + 1)
 
 
 def _remint_policy(db: Path, *, now: datetime) -> int:
     """Re-mint the policy artifacts onto the measured execution grids.
 
-    Append-only: a new artifact per scope with a later ``valid_from``, which
-    is what the resolver selects on.  The old rows stay as the record of
-    what was served before.
+    Artifact, promotion and activation together.  Minting an artifact alone
+    changes nothing: the resolver reaches a policy through
+    ``basket_delta_v2_policy_activation``, which names an artifact_id, so an
+    unbound artifact is a file nobody opens.  Verified on 2026-08-22 -- the
+    grids re-minted that morning were still resolving to the old two-clip,
+    one-timeout policy hours later, because no activation had moved.
+
+    Append-only throughout, at generation + 1, which is what the resolver
+    orders on.  The previous generation stays as the record of what served
+    before, and its validity window is left alone: the newer generation wins
+    the ORDER BY, so nothing has to be retracted.
     """
 
     conn = sqlite3.connect(str(db), timeout=60.0)
@@ -411,56 +447,118 @@ def _remint_policy(db: Path, *, now: datetime) -> int:
         now + timedelta(days=30)
     ).isoformat(timespec="seconds").replace("+00:00", "Z")
     written = 0
-    seen: set[str] = set()
-    for row in conn.execute(
-        "SELECT * FROM basket_delta_v2_policy_artifact"
-        " ORDER BY valid_from_utc"
+    # One row per scope, the newest generation of it.  Iterating every
+    # activation instead meant a scope already on generation 2 produced
+    # generation 2 again and collided with itself on the uniqueness
+    # constraint over (scope, generation).
+    for activation in conn.execute(
+        "SELECT * FROM basket_delta_v2_policy_activation AS outer"
+        " WHERE generation = ("
+        "   SELECT MAX(generation) FROM basket_delta_v2_policy_activation"
+        "   WHERE station_id=outer.station_id AND stage=outer.stage"
+        "     AND season_bin=outer.season_bin"
+        "     AND maturity_bin=outer.maturity_bin"
+        "     AND liquidity_bin=outer.liquidity_bin"
+        "     AND strategy_version=outer.strategy_version"
+        "     AND authority_scope=outer.authority_scope)"
+        " ORDER BY station_id,maturity_bin,strategy_version"
     ).fetchall():
-        payload = json.loads(row["artifact_json"])
+        artifact_row = conn.execute(
+            "SELECT * FROM basket_delta_v2_policy_artifact WHERE artifact_id=?",
+            (activation["artifact_id"],),
+        ).fetchone()
+        if artifact_row is None:
+            continue
+        payload = json.loads(artifact_row["artifact_json"])
+        weights = dict(payload.get("execution_weights") or {})
         if (
             payload.get("cash_clip_grid") == POLICY_CASH_CLIP_GRID
             and payload.get("timeout_grid_seconds")
             == POLICY_TIMEOUT_GRID_SECONDS
+            and int(weights.get("maximum_candidates", 0))
+            == POLICY_MAXIMUM_CANDIDATES
         ):
             continue
-        base = row["artifact_id"].split("-shadow")[0]
-        if base in seen:
-            continue
-        seen.add(base)
         updated = dict(payload)
         updated["cash_clip_grid"] = POLICY_CASH_CLIP_GRID
         updated["timeout_grid_seconds"] = POLICY_TIMEOUT_GRID_SECONDS
-        updated["artifact_id"] = base + "-shadowexec"
+        updated["execution_weights"] = {
+            **weights,
+            "maximum_candidates": POLICY_MAXIMUM_CANDIDATES,
+        }
         updated["trained_through_utc"] = stamp
         updated["valid_from_utc"] = valid_from
         updated["valid_until_utc"] = valid_until
         updated.pop("content_sha256", None)
-        sha = content_sha256(updated)
-        updated["content_sha256"] = sha
-        columns = list(row.keys())
-        values = []
-        for column in columns:
-            if column == "artifact_id":
-                values.append(updated["artifact_id"])
-            elif column == "content_sha256":
-                values.append(sha)
-            elif column == "artifact_json":
-                values.append(json.dumps(updated, sort_keys=True))
-            elif column == "trained_through_utc":
-                values.append(stamp)
-            elif column == "valid_from_utc":
-                values.append(valid_from)
-            elif column == "valid_until_utc":
-                values.append(valid_until)
-            else:
-                values.append(row[column])
-        conn.execute(
-            "INSERT OR IGNORE INTO basket_delta_v2_policy_artifact ("
-            + ",".join(columns) + ") VALUES ("
-            + ",".join("?" * len(columns)) + ")",
-            values,
+        base = str(activation["artifact_id"]).split("-shadow")[0]
+        # The id has to move when the content does.  A fixed "-shadowexec"
+        # suffix made the second re-mint of a scope collide with the first on
+        # the primary key, where INSERT OR IGNORE dropped it silently while
+        # the counter still claimed it -- a re-mint that reported twelve
+        # artifacts and changed nothing.  Naming the id after the content
+        # makes a genuinely new policy a new row and an unchanged one a no-op.
+        identity = content_sha256({
+            key: value
+            for key, value in updated.items()
+            if key not in {
+                "artifact_id", "valid_from_utc", "trained_through_utc",
+            }
+        })
+        updated["artifact_id"] = base + "-shadowexec" + identity[:12]
+        updated["content_sha256"] = content_sha256(updated)
+        promotion_id = "delta-v2-policy-no-live-" + updated["artifact_id"]
+        promotion = {
+            "schema": PROMOTION_SCHEMA,
+            "promotion_id": promotion_id,
+            "artifact_id": updated["artifact_id"],
+            "decision_seq": 1,
+            "decision": NO_LIVE_ACTIVATION_DECISION,
+            "gate_version": updated["oos_gate_version"],
+            "decided_at_utc": stamp,
+            "receipt_sha256": content_sha256({
+                "artifact_id": updated["artifact_id"],
+                "artifact_content_sha256": updated["content_sha256"],
+                "decision": NO_LIVE_ACTIVATION_DECISION,
+                "gate_version": updated["oos_gate_version"],
+                "decided_at_utc": stamp,
+            }),
+        }
+        # Both rows carry the hash of themselves, and the validator recomputes
+        # it over exactly the fields it just parsed -- so the hash is taken
+        # after the payload is complete and before content_sha256 is added to
+        # it, which is what the validator sees.
+        promotion["content_sha256"] = content_sha256(promotion)
+        generation = int(activation["generation"]) + 1
+        activation_payload = {
+            "schema": ACTIVATION_SCHEMA,
+            "activation_id": (
+                str(activation["activation_id"]).split("-shadow")[0]
+                + "-shadowexec" + identity[:12]
+            ),
+            "artifact_id": updated["artifact_id"],
+            "station_id": activation["station_id"],
+            "stage": activation["stage"],
+            "season_bin": activation["season_bin"],
+            "maturity_bin": activation["maturity_bin"],
+            "liquidity_bin": activation["liquidity_bin"],
+            "strategy_version": activation["strategy_version"],
+            "generation": generation,
+            "valid_from_utc": valid_from,
+            "valid_until_utc": valid_until,
+            "activated_at_utc": stamp,
+            "authority_scope": activation["authority_scope"],
+        }
+        activation_payload["content_sha256"] = content_sha256(
+            activation_payload
         )
-        written += 1
+        receipt = commit_delta_v2_authority(
+            conn,
+            artifact=updated,
+            promotion=promotion,
+            activation=activation_payload,
+        )
+        if receipt.get("state") == "COMMITTED":
+            written += 1
     conn.commit()
     conn.close()
     return written
@@ -602,10 +700,18 @@ def main() -> int:
         report["committed"] = True
         report["rows_written"] = len(artifacts)
         report["promotions_written"] = len(artifacts)
-        if args.remint_policy:
-            report["policy_artifacts_reminted"] = _remint_policy(
-                args.db.expanduser().resolve(strict=True), now=now
-            )
+    # Outside --commit, deliberately.  The policy artifacts are a handful of
+    # rows and the fill artifacts are tens of thousands, so nesting the
+    # re-mint inside the fit meant changing one number in the policy cost a
+    # full re-mint of every fill artifact.  On 2026-08-22 that is exactly
+    # what happened: thirteen passes to get past the artifact contract took
+    # the table from 7,291 rows to 521,865, pushed the store past its size
+    # bound, and production wrote no decision for 6.8 hours.  The two are now
+    # independent, so --remint-policy alone re-mints only the policy.
+    if args.remint_policy:
+        report["policy_artifacts_reminted"] = _remint_policy(
+            args.db.expanduser().resolve(strict=True), now=now
+        )
     print(json.dumps(report, ensure_ascii=False, sort_keys=True))
     return 0
 
