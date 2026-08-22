@@ -1226,6 +1226,15 @@ ON basket_probability_bridge_history(
   station_id,event_date,state,decision_at_utc,stage
 );
 
+-- The pointer is chosen from stage and decision time alone, so the choice
+-- should never touch a row.  history_id on the end makes the ranking query
+-- covering: the index answers it and the 8 to 28 MB of envelope_json in
+-- those rows stays on disk.  Only the winner is then loaded.
+CREATE INDEX IF NOT EXISTS basket_probability_bridge_history_rank_idx
+ON basket_probability_bridge_history(
+  station_id,event_date,state,decision_at_utc,stage,checkpoint_id,history_id
+);
+
 CREATE TABLE IF NOT EXISTS basket_probability_bridge_latest (
   station_id TEXT NOT NULL,
   event_date TEXT NOT NULL,

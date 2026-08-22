@@ -22,6 +22,7 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
+from .atomic_ledger import ledger_span
 from .contracts import ContractError, ProbabilityEnvelope, content_sha256, timestamp_lte
 from .materialization import insert_probability_envelope
 from .resource_bounds import ResourceBoundError, assert_connection_target_capacity, assert_process_memory_budget
@@ -262,6 +263,7 @@ def _history_rows(
     station_id: str,
     event_date: str,
     as_of_utc: str | None,
+    history_id: str | None = None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     where_as_of = (
@@ -269,11 +271,14 @@ def _history_rows(
         if as_of_utc is not None
         else ""
     )
+    where_history = " AND history_id=?" if history_id is not None else ""
     parameters: tuple[str, ...] = (
         (station_id, event_date, as_of_utc)
         if as_of_utc is not None
         else (station_id, event_date)
     )
+    if history_id is not None:
+        parameters = parameters + (history_id,)
     for row in conn.execute(
         "SELECT history_id,stage,checkpoint_id,decision_at_utc,fresh_until_utc,"
         "envelope_content_sha256,bridge_sha256,bucket_map_sha256,"
@@ -282,6 +287,7 @@ def _history_rows(
         "FROM basket_probability_bridge_history "
         "WHERE station_id=? AND event_date=? AND state='COMMITTED'"
         + where_as_of
+        + where_history
         + " "
         "ORDER BY decision_at_utc,stage,checkpoint_id",
         parameters,
@@ -329,6 +335,65 @@ def _history_rows(
             raise ContractError("xsb_history_content_sha256_mismatch")
         rows.append(history)
     return rows
+
+
+def _authoritative_history(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    as_of_utc: str | None,
+) -> Mapping[str, Any]:
+    """The current pointer, without reading every envelope to find it.
+
+    ``_select_authoritative_history`` ranks on two fields, stage and decision
+    time, and the caller then uses one row.  Loading the whole station-day to
+    supply them meant reading and JSON-parsing every committed envelope on
+    every write -- and since each write appends one, the cost of writing a
+    day grew with the day.  Measured 2026-08-22: 357 rows and 8.4 MB for the
+    station-day being written, up to 1,394 rows and 27.9 MB for the worst
+    one, 220 to 440ms a call, inside the writer's transaction.  Sixty-two P0
+    envelopes in one transaction is where ``resident_p0_inbox`` spent 22 of
+    its 36 seconds holding the write lock.
+
+    So rank on three narrow columns, then load only the winner.  The rule is
+    still ``_select_authoritative_history`` -- it is handed lighter rows, not
+    a second implementation of itself -- and it runs again on the loaded row
+    so the missing and ambiguous contracts are raised from the same place.
+    """
+
+    where_as_of = " AND decision_at_utc<=?" if as_of_utc is not None else ""
+    parameters: tuple[str, ...] = (
+        (station_id, event_date, as_of_utc)
+        if as_of_utc is not None
+        else (station_id, event_date)
+    )
+    with ledger_span("bridge_history_rank"):
+        ranking = [
+            {
+                "history_id": str(row[0]),
+                "stage": str(row[1]),
+                "decision_at_utc": str(row[2]),
+            }
+            for row in conn.execute(
+                "SELECT history_id,stage,decision_at_utc "
+                "FROM basket_probability_bridge_history "
+                "WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+                + where_as_of
+                + " ORDER BY decision_at_utc,stage,checkpoint_id",
+                parameters,
+            ).fetchall()
+        ]
+    winner = _select_authoritative_history(ranking)
+    with ledger_span("bridge_history_load_winner"):
+        loaded = _history_rows(
+            conn,
+            station_id=station_id,
+            event_date=event_date,
+            as_of_utc=as_of_utc,
+            history_id=str(winner["history_id"]),
+        )
+    return _select_authoritative_history(loaded)
 
 
 def _select_authoritative_history(rows: Sequence[Mapping[str, Any]]) -> Mapping[str, Any]:
@@ -452,9 +517,12 @@ def load_current_probability_bridge(
     if not probability_bridge_schema_status(conn)["ok"]:
         raise ContractError("probability_bridge_schema_missing")
     _timestamp("xsb_as_of_utc", as_of_utc)
-    history = _select_authoritative_history(_history_rows(
-        conn, station_id=_text("xsb_station_id", station_id), event_date=_text("xsb_event_date", event_date), as_of_utc=as_of_utc,
-    ))
+    history = _authoritative_history(
+        conn,
+        station_id=_text("xsb_station_id", station_id),
+        event_date=_text("xsb_event_date", event_date),
+        as_of_utc=as_of_utc,
+    )
     _validate_latest_pointer(
         conn,
         station_id=station_id,
@@ -510,10 +578,17 @@ def materialize_probability_bridge(
     created = _timestamp("xsb_created_at_utc", created_at_utc)
     if not timestamp_lte(resolved.decision_at_utc, created):
         raise ContractError("xsb_created_before_checkpoint_decision")
-    projection = build_xsb_projection(
-        resolved,
-        bucket_intervals=bucket_intervals,
-    )
+    # Ninety-six seconds of a 383s cycle went into writing envelopes and only
+    # twelve of them had a name: the envelope insert is timed inside
+    # ``materialization``, and everything this function does around it -- the
+    # projection, the three tables -- was not.  Each phase is marked so the
+    # next "resident_p0_inbox held the writer for 36s" reads as an answer
+    # rather than a starting point.
+    with ledger_span("bridge_project"):
+        projection = build_xsb_projection(
+            resolved,
+            bucket_intervals=bucket_intervals,
+        )
     identity = _history_identity(projection, resolved, created)
     history_id = "xsb_" + content_sha256(identity)[:32]
     history_sha = content_sha256(identity)
@@ -525,9 +600,10 @@ def materialize_probability_bridge(
 
     conn.execute(f"SAVEPOINT {savepoint}")
     try:
-        checkpoint_receipt = insert_probability_envelope(
-            conn, resolved, created_at_utc=created
-        )
+        with ledger_span("bridge_checkpoint"):
+            checkpoint_receipt = insert_probability_envelope(
+                conn, resolved, created_at_utc=created
+            )
         fault("checkpoint")
         existing = conn.execute(
             "SELECT content_sha256 FROM basket_probability_bridge_history WHERE history_id=?",
@@ -538,32 +614,33 @@ def materialize_probability_bridge(
                 raise ContractError("xsb_history_id_content_conflict")
             history_wrote = False
         else:
-            conn.execute(
-                "INSERT INTO basket_probability_bridge_history("
-                "history_id,station_id,event_date,settlement_timezone,stage,checkpoint_id,decision_at_utc,fresh_until_utc,"
-                "envelope_content_sha256,bridge_sha256,bucket_map_sha256,"
-                "bucket_intervals_json,projection_sha256,envelope_json,state,"
-                "created_at_utc,content_sha256) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    history_id, resolved.station_id, resolved.event_date, resolved.settlement_timezone,
-                    resolved.stage, resolved.checkpoint_id, resolved.decision_at_utc, resolved.fresh_until_utc,
-                    resolved.content_sha256, resolved.bridge_sha256,
-                    projection["bucket_map_sha256"],
-                    json.dumps(
-                        projection["bucket_intervals"],
-                        ensure_ascii=False,
-                        sort_keys=True,
-                        separators=(",", ":"),
+            with ledger_span("bridge_history_insert"):
+                conn.execute(
+                    "INSERT INTO basket_probability_bridge_history("
+                    "history_id,station_id,event_date,settlement_timezone,stage,checkpoint_id,decision_at_utc,fresh_until_utc,"
+                    "envelope_content_sha256,bridge_sha256,bucket_map_sha256,"
+                    "bucket_intervals_json,projection_sha256,envelope_json,state,"
+                    "created_at_utc,content_sha256) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        history_id, resolved.station_id, resolved.event_date, resolved.settlement_timezone,
+                        resolved.stage, resolved.checkpoint_id, resolved.decision_at_utc, resolved.fresh_until_utc,
+                        resolved.content_sha256, resolved.bridge_sha256,
+                        projection["bucket_map_sha256"],
+                        json.dumps(
+                            projection["bucket_intervals"],
+                            ensure_ascii=False,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
+                        projection["projection_sha256"],
+                        json.dumps(resolved.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+                        "COMMITTED", created, history_sha,
                     ),
-                    projection["projection_sha256"],
-                    json.dumps(resolved.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":")),
-                    "COMMITTED", created, history_sha,
-                ),
-            )
+                )
             history_wrote = True
         fault("history")
-        candidates = _history_rows(
+        authority = _authoritative_history(
             conn,
             station_id=resolved.station_id,
             event_date=resolved.event_date,
@@ -572,7 +649,6 @@ def materialize_probability_bridge(
             # history, not from the triggering row's historical clock.
             as_of_utc=None,
         )
-        authority = _select_authoritative_history(candidates)
         latest_identity = {
             "schema": SCHEMA, "station_id": resolved.station_id, "event_date": resolved.event_date,
             "settlement_timezone": authority["envelope"].settlement_timezone,
