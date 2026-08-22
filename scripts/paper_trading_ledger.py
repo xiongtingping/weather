@@ -668,7 +668,7 @@ SELECTION_RULE_SHA256 = content_sha256({
     "maker_value_centre_exempt": True,
     "maker_shoulder_lambda": MAKER_RESTING_SHOULDER_LAMBDA,
     "maker_belief_gate": MAKER_RESTING_BELIEF_GATE,
-    "maker_belief_source": "bridge_history_latest_at_reprice",
+    "maker_belief_source": "bridge_history_observation_stage_precedence_at_reprice",
     "maker_edge_escalation": "value_headroom_over_band",
     "maker_cutoff_percentile": MAKER_RESTING_CUTOFF_PERCENTILE,
     "maker_cutoff_buffer_minutes": MAKER_RESTING_CUTOFF_BUFFER_MINUTES,
@@ -2333,9 +2333,12 @@ class _BeliefTimeline:
     the market does (user ruling, 2026-08-20): the bridge history holds
     every stage's compiled distribution with its decision time, so the
     walk can re-read the belief that was in force at each re-pricing round
-    without a shred of hindsight.  Buckets absent from the freshest
-    distribution keep their last known probability -- a narrower P1 ladder
-    is a re-focus, not a verdict of zero on the shoulders it dropped.
+    without a shred of hindsight.  "Freshest" is by observation stage
+    first and clock second: once a P1 row exists, later P0/P0-M rows are
+    forecasts that never saw the day's reported high and do not update
+    the belief.  Buckets absent from the freshest distribution keep their
+    last known probability -- a narrower P1 ladder is a re-focus, not a
+    verdict of zero on the shoulders it dropped.
     """
 
     def __init__(
@@ -2350,7 +2353,7 @@ class _BeliefTimeline:
         self._conn = conn
         try:
             self._rows = conn.execute(
-                "SELECT decision_at_utc, history_id"
+                "SELECT decision_at_utc, history_id, stage"
                 " FROM basket_probability_bridge_history"
                 " WHERE station_id=? AND event_date=? AND decision_at_utc>?"
                 " ORDER BY decision_at_utc ASC",
@@ -2361,6 +2364,7 @@ class _BeliefTimeline:
             # the entry belief for the whole window.
             self._rows = []
         self._index = 0
+        self._p1_seen = False
         self._current = {
             str(bucket): float(p)
             for bucket, p in entry_probabilities.items()
@@ -2372,7 +2376,20 @@ class _BeliefTimeline:
         while self._index < len(self._rows) and (
             str(self._rows[self._index][0]) <= stamp
         ):
-            newest = self._rows[self._index][1]
+            # Chronologically-newest is not epistemically-freshest: P0
+            # recomputes all day by charter 46 but its chain carries no
+            # observation, so a P0 row written after the first P1 row is a
+            # forecast overriding a measurement.  Measured on the settled
+            # book, 112/135 station-days ended on such a row, holding 46.9%
+            # of mass on buckets the day's reported high had already
+            # excluded (the same days' last P1 rows held 3.5%).  Once a P1
+            # row exists, later non-P1 rows no longer update the belief.
+            row_stage = str(self._rows[self._index][2] or "")
+            if row_stage == "P1":
+                newest = self._rows[self._index][1]
+                self._p1_seen = True
+            elif not self._p1_seen:
+                newest = self._rows[self._index][1]
             self._index += 1
         if newest is not None:
             rows = self._conn.execute(

@@ -179,10 +179,16 @@ def _latest_books(
 def _model_probabilities(
     conn: sqlite3.Connection, station: str, day: str
 ) -> dict[str, float]:
+    # Freshest by observation stage first, clock second.  P0 recomputes all
+    # day (charter 46) but its chain carries no observation, so after dark a
+    # P0 row is a forecast written after the day's high was already measured
+    # and would override the P1 belief that saw it.  Measured on the settled
+    # book: such rows held 46.9% of mass on buckets the reported high had
+    # excluded, against 3.5% for the same station-days' last P1 row.
     row = conn.execute(
         "SELECT envelope_json FROM basket_probability_bridge_history"
         " WHERE station_id=? AND event_date=?"
-        " ORDER BY decision_at_utc DESC LIMIT 1",
+        " ORDER BY (stage='P1') DESC, decision_at_utc DESC LIMIT 1",
         (station, day),
     ).fetchone()
     if not row:

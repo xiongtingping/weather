@@ -2379,13 +2379,22 @@ def collect_window_divergence(conn: sqlite3.Connection) -> dict[str, Any]:
         if outcome is None:
             continue
         late = None
+        # Stage precedence, not clock order: P0 recomputes all day but its
+        # chain carries no observation, so at night its rows are forecasts
+        # written after the answer was measured.  Once a P1 row exists for
+        # the station-day, later P0/P0-M rows are not the end-state belief.
+        p1_seen = False
         for row in conn.execute(
-            "SELECT decision_at_utc, envelope_json"
+            "SELECT decision_at_utc, envelope_json, stage"
             " FROM basket_probability_bridge_history"
             " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
             " AND decision_at_utc>=? ORDER BY decision_at_utc",
             (station, day, entry["opened"]),
         ):
+            if str(row[2]) == "P1":
+                p1_seen = True
+            elif p1_seen:
+                continue
             envelope = json.loads(row[1])
             probabilities = envelope["probabilities"]
             ordinals = envelope["bucket_ordinals"]
