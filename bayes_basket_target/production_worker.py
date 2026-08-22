@@ -421,6 +421,87 @@ def _p0_bridge_only_semantic_equivalent(
     )
 
 
+# ``database is locked`` is the same message for two unrelated faults, and
+# telling them apart decides whether waiting longer can ever help:
+#
+#   * ``SQLITE_BUSY`` (5) -- another connection holds the file's write lock
+#     and this one waited out its whole ``busy_timeout``.  Retrying is the
+#     right answer: the holder is making progress and will commit.
+#   * ``SQLITE_BUSY_SNAPSHOT`` (517) -- this connection already holds a read
+#     snapshot that someone else has since written past, so the read cannot
+#     be promoted to a write.  SQLite returns this *immediately* and never
+#     invokes the busy handler, because no amount of waiting fixes a stale
+#     snapshot.  Only ending the read does, and the read belongs to a caller
+#     this function cannot reach.
+#
+# Measured: with a pinned cursor and a competing committer, BEGIN IMMEDIATE
+# fails in 0.000s with 517 while busy_timeout is 60000, and neither
+# ``rollback()``, ``commit()``, nor a raw ROLLBACK releases it -- only
+# closing or draining the cursor does.  So the two need different handling
+# and, above all, different names: production blocked ten to fifteen
+# stations at a time roughly six times a day under the shared message, with
+# nothing in the record to say which fault it was.
+WRITER_LOCK_RETRY_ATTEMPTS = 3
+SQLITE_BUSY_PRIMARY = 5
+SQLITE_BUSY_SNAPSHOT = 517
+
+
+def _sqlite_busy_kind(exc: BaseException) -> tuple[str, int] | None:
+    """Name a lock failure by its extended result code, or None if unrelated."""
+
+    if not isinstance(exc, sqlite3.OperationalError):
+        return None
+    code = int(getattr(exc, "sqlite_errorcode", 0) or 0)
+    if code == SQLITE_BUSY_SNAPSHOT:
+        return ("target_writer_stale_read_snapshot", code)
+    if code == SQLITE_BUSY_PRIMARY:
+        return ("target_writer_lock_starved", code)
+    # Older interpreters do not carry the extended code.  Fall back to the
+    # message so the blocker is still named rather than opaque, and mark the
+    # code 0 so a reader knows the kind was inferred, not measured.
+    if "locked" in str(exc).lower() or "busy" in str(exc).lower():
+        return ("target_writer_lock_unavailable", 0)
+    return None
+
+
+def _begin_writer_lock(
+    conn: sqlite3.Connection,
+    *,
+    savepoint: str,
+) -> None:
+    """Take the file's write lock, retrying only the fault retrying can fix."""
+
+    last: sqlite3.OperationalError | None = None
+    for attempt in range(1, WRITER_LOCK_RETRY_ATTEMPTS + 1):
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            # A retry that wins needs no counter of its own: the caller times
+            # the lock from before the first attempt, so ``wait_ms`` in the
+            # writer-lock profile already reports the full busy_timeout the
+            # earlier attempts burned.
+            return
+        except sqlite3.OperationalError as exc:
+            kind = _sqlite_busy_kind(exc)
+            if kind is None:
+                raise
+            name, code = kind
+            if name == "target_writer_stale_read_snapshot":
+                # Deterministic until the caller's read ends; retrying would
+                # only burn the cycle.  Name it and let the scope block.
+                raise ContractError(
+                    f"{name}:{savepoint}:sqlite_errorcode={code}"
+                ) from exc
+            last = exc
+            if attempt < WRITER_LOCK_RETRY_ATTEMPTS:
+                continue
+            raise ContractError(
+                f"{name}:{savepoint}:sqlite_errorcode={code}"
+                f":attempts={attempt}"
+            ) from exc
+    if last is not None:  # pragma: no cover - loop always returns or raises
+        raise last
+
+
 @contextmanager
 def _writer_transaction(
     conn: sqlite3.Connection,
@@ -436,7 +517,7 @@ def _writer_transaction(
     # what identifies the call site.
     lock_started_ns = time.perf_counter_ns()
     if own_transaction:
-        conn.execute("BEGIN IMMEDIATE")
+        _begin_writer_lock(conn, savepoint=savepoint)
     else:
         conn.execute(f"SAVEPOINT {savepoint}")
     acquired_ns = time.perf_counter_ns()
