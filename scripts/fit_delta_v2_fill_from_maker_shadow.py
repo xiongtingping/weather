@@ -56,6 +56,17 @@ TABLE = "basket_delta_v2_fill_artifact"
 # bid, never crossing.  The other shadow rules measure other strategies and
 # would fit a curve production does not trade.
 PRODUCTION_PRICE_RULE = "bid+1t"
+# The rung bands the fit is cut on, in ticks above the bid, and the shadow
+# price rule that lands in each.  Production now offers a ladder rather than
+# one price, so each rung needs its own curve: measured at 60 minutes the
+# same leg fills 12.1% at the bid and 88.3% at the ask.
+RUNG_BANDS = (
+    ("bid", -0.5, 0.5),
+    ("bid+1t", 0.5, 1.5),
+    ("bid+2t", 1.5, 2.5),
+    ("mid", 2.5, 50.0),
+    ("ask", 50.0, 100000.0),
+)
 HORIZON_MINUTES = (5, 15, 30, 60)
 # Price bands.  The artifact grid is one row per tick, which is far finer
 # than the shadow can support; the fill curve is banded and every tick in a
@@ -108,13 +119,37 @@ HOLDOUT_FRACTION = 0.2
 INCUMBENT_FLAT_RATE = 0.10
 
 
+def _rung_band(
+    rule: Any, price: Any, bid: Any, tick: Any
+) -> tuple[str, float, float] | None:
+    """Which rung band a shadow placement sits in.
+
+    Read off the recorded book when it is usable, and off the price rule
+    when it is not -- the rule is what the probe posted at, so it names the
+    band even on rows whose reference bid or tick did not survive.
+    """
+
+    try:
+        offset = (float(price) - float(bid)) / float(tick)
+    except (TypeError, ValueError, ZeroDivisionError):
+        offset = None
+    if offset is not None and offset == offset:
+        for name, low, high in RUNG_BANDS:
+            if low <= offset < high:
+                return (name, low, high)
+    for name, low, high in RUNG_BANDS:
+        if name == str(rule):
+            return (name, low, high)
+    return None
+
+
 def fit(conn: sqlite3.Connection) -> dict:
     rows = conn.execute(
-        "SELECT limit_price, horizon_minutes, state, placed_at_utc"
+        "SELECT limit_price, horizon_minutes, state, placed_at_utc,"
+        " price_rule, reference_bid, reference_tick"
         " FROM maker_shadow_order"
-        " WHERE state IN ('FILLED','EXPIRED') AND price_rule=?"
-        " ORDER BY placed_at_utc",
-        (PRODUCTION_PRICE_RULE,),
+        " WHERE state IN ('FILLED','EXPIRED')"
+        " ORDER BY placed_at_utc"
     ).fetchall()
     if not rows:
         raise SystemExit("maker shadow book has no resolved intents")
@@ -137,12 +172,15 @@ def fit(conn: sqlite3.Connection) -> dict:
     holdout: dict[tuple, list[int]] = defaultdict(list)
     holdout_days: set[str] = set()
     train_days: set[str] = set()
-    for price, horizon, state, placed in rows:
+    for price, horizon, state, placed, rule, ref_bid, ref_tick in rows:
         band = _band(price)
         if band is None:
             continue
+        rung = _rung_band(rule, price, ref_bid, ref_tick)
+        if rung is None:
+            continue
         filled = 1 if str(state) == "FILLED" else 0
-        key = (band, int(horizon))
+        key = (band, int(horizon), rung)
         day = str(placed)[:10]
         if day < cut_at:
             train[key].append(filled)
@@ -261,7 +299,9 @@ def mint(fitobj: dict, *, now: datetime) -> list[dict]:
     artifacts: list[dict] = []
     train_days = fitobj["train_days"]
     holdout_days = fitobj["holdout_days"]
-    for (band, horizon), cell in sorted(fitobj["cells"].items()):
+    for (band, horizon, rung), cell in sorted(
+        fitobj["cells"].items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][2])
+    ):
         measured = float(cell["rate"])
         distribution = _distribution(measured)
         sample_n = int(cell["sample_n"])
@@ -271,7 +311,8 @@ def mint(fitobj: dict, *, now: datetime) -> list[dict]:
                 body = {
                     "artifact_id": "delta-v2-fill-shadowfit-" + content_sha256({
                         "price": price, "timeout": horizon * 60,
-                        "maturity": maturity, "at": trained_through,
+                        "maturity": maturity, "rung": rung[0],
+                        "at": trained_through,
                     })[:24],
                     "schema": SCHEMA,
                     "station_id": "*",
@@ -288,6 +329,8 @@ def mint(fitobj: dict, *, now: datetime) -> list[dict]:
                     "spread_max": 1.0,
                     "depth_min": 0.0,
                     "depth_max": 1e9,
+                    "rung_offset_ticks_min": rung[1],
+                    "rung_offset_ticks_max": rung[2],
                     "quote_version_scope": "*",
                     "maker_distribution": distribution,
                     "fok_distribution": FOK_DISTRIBUTION,
@@ -444,7 +487,8 @@ def main() -> int:
         timeout=60.0,
     )
     fitobj = fit(conn)
-    artifacts = mint(fitobj, now=datetime.now(timezone.utc))
+    now = datetime.now(timezone.utc)
+    artifacts = mint(fitobj, now=now)
     by_basis = defaultdict(int)
     for row in artifacts:
         by_basis[str(row["timeout_seconds"])] += 1
@@ -460,13 +504,10 @@ def main() -> int:
         "fill_probability_median": (
             round(statistics.median(rates), 4) if rates else None
         ),
-        "pooled_curve": {
-            f"band{low:g}-{high:g}|{horizon}min": round(rate, 4)
-            for (low, high), horizon in [
-                (b, h) for b in PRICE_BANDS for h in HORIZON_MINUTES
-            ]
-            for rate in [fitobj["pooled"].get(((low, high), horizon))]
-            if rate is not None
+        "rung_curve_60min": {
+            rung[0]: round(rate, 4)
+            for (band, horizon, rung), rate in fitobj["pooled"].items()
+            if horizon == 60 and band == (0.05, 0.10)
         },
         "committed": False,
     }

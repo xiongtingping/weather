@@ -30,6 +30,10 @@ MAKER = "MAKER"
 FOK = "FOK"
 ORDER_MODES = frozenset({MAKER, FOK})
 REQUIRED_BASELINES = frozenset({"v1", "EV_ONLY", "ZERO_WEIGHT", "HOLD"})
+# The band an artifact without a rung-offset field implicitly claims: every
+# rung.  Wide enough that no real offset falls outside it.
+UNRESTRICTED_RUNG_OFFSET_MIN = -1000.0
+UNRESTRICTED_RUNG_OFFSET_MAX = 1000.0
 NO_LIVE_ACTIVATION_DECISION = "NO_LIVE_ACTIVATED"
 DEFAULT_EPS = 1e-12
 EXECUTION_COST_FIELDS = (
@@ -476,6 +480,21 @@ class DeltaV2FillDistributionArtifact:
   spread_max: float
   depth_min: float
   depth_max: float
+  # How far inside the spread this rung sits, in ticks above the bid.
+  #
+  # The other conditioning fields describe the book; this one describes
+  # where the order stands in it, and it is the variable that separates a
+  # ladder's rungs.  Measured over the maker shadow book at a 60 minute
+  # horizon: resting at the bid fills 12.1% of the time, one tick inside
+  # 17.1%, two ticks 20.1%, mid 20.9% and at the ask 88.3% -- a seven-fold
+  # spread that none of price, timeout, queue, spread or depth can express.
+  # Queue-ahead cannot stand in for it: the book reports queue at the bid,
+  # so it reads 28-30 shares at every rung.
+  #
+  # An artifact written before this field existed carries the whole range,
+  # which is what it always implicitly claimed.
+  rung_offset_ticks_min: float
+  rung_offset_ticks_max: float
   quote_version_scope: str
   maker_distribution: Mapping[str, float]
   fok_distribution: Mapping[str, float]
@@ -560,6 +579,30 @@ class DeltaV2FillDistributionArtifact:
       quote_version_scope = scope_text
     else:
       raise ContractError("delta_v2_fill_distribution_fields_missing")
+
+    # Absent means unrestricted, which is exactly what every artifact
+    # written before this field existed was claiming: one fill curve for
+    # every rung.  Present means the curve was fitted for rungs in that
+    # band and may not be spent outside it.
+    raw_rung_min = raw.get("rung_offset_ticks_min")
+    raw_rung_max = raw.get("rung_offset_ticks_max")
+    if raw_rung_min is None and raw_rung_max is None:
+      rung_offset_ticks_min, rung_offset_ticks_max = (
+        UNRESTRICTED_RUNG_OFFSET_MIN,
+        UNRESTRICTED_RUNG_OFFSET_MAX,
+      )
+    elif raw_rung_min is None or raw_rung_max is None:
+      raise ContractError("delta_v2_fill_distribution_rung_offset_incomplete")
+    else:
+      rung_offset_ticks_min, rung_offset_ticks_max = _interval(
+        "rung_offset_ticks_min",
+        "rung_offset_ticks_max",
+        raw_rung_min,
+        raw_rung_max,
+        # allow_zero routes through _float, which admits the negative
+        # offsets a deep resting bid legitimately carries.
+        allow_zero=True,
+      )
 
     price = _float("price", raw.get("price"))
     if not (0.0 < price < 1.0):
@@ -663,6 +706,8 @@ class DeltaV2FillDistributionArtifact:
           spread_max=spread_max,
           depth_min=depth_min,
           depth_max=depth_max,
+          rung_offset_ticks_min=rung_offset_ticks_min,
+          rung_offset_ticks_max=rung_offset_ticks_max,
           quote_version_scope=quote_version_scope,
       maker_distribution=maker_distribution,
       fok_distribution=fok_distribution,
@@ -714,6 +759,22 @@ class DeltaV2FillDistributionArtifact:
       "spread_max": self.spread_max,
       "depth_min": self.depth_min,
       "depth_max": self.depth_max,
+      # The rung band enters the content hash only when the artifact
+      # actually declares one.  An artifact minted before this field
+      # existed carries the unrestricted band, and emitting it here would
+      # change that artifact's hash -- every stored row would fail its own
+      # content check, which is the whole table refusing to resolve.
+      **(
+        {}
+        if (
+          self.rung_offset_ticks_min == UNRESTRICTED_RUNG_OFFSET_MIN
+          and self.rung_offset_ticks_max == UNRESTRICTED_RUNG_OFFSET_MAX
+        )
+        else {
+          "rung_offset_ticks_min": self.rung_offset_ticks_min,
+          "rung_offset_ticks_max": self.rung_offset_ticks_max,
+        }
+      ),
       "quote_version_scope": self.quote_version_scope,
       "maker_distribution": dict(self.maker_distribution),
       "fok_distribution": dict(self.fok_distribution),
@@ -1052,6 +1113,7 @@ def resolve_delta_v2_fill_distribution(
   depth: float,
   quote_version: str,
   evaluation_at_utc: str,
+  rung_offset_ticks: float = 0.0,
   required_authority_scope: str = "PRODUCTION_NO_LIVE",
   policy_fill_distribution_artifact_sha256: str | None = None,
 ) -> DeltaV2FillDistributionArtifact:
@@ -1071,6 +1133,11 @@ def resolve_delta_v2_fill_distribution(
       "queue_ahead_shares", queue_ahead_shares
     ),
     "spread": _nonnegative("spread", spread),
+    # Where this order stands in the book, in ticks above the bid.  Zero --
+    # resting at the bid -- is the default so a caller that has not been
+    # taught the ladder resolves the deepest rung rather than silently
+    # resolving whichever band happens to contain zero.
+    "rung_offset_ticks": _float("rung_offset_ticks", rung_offset_ticks),
     "depth": _positive("depth", depth),
     "quote_version": _required_text("quote_version", quote_version),
   }
@@ -1150,6 +1217,27 @@ def resolve_delta_v2_fill_distribution(
       continue
     if not (depth_min <= normalized["depth"] <= depth_max):
       continue
+    # An artifact that names a rung band may only be spent on rungs inside
+    # it.  One that names none carries the unrestricted band, which is the
+    # claim every pre-2026-08-22 artifact was implicitly making, so those
+    # keep resolving for every rung exactly as before.
+    rung_min = parsed.get("rung_offset_ticks_min")
+    rung_max = parsed.get("rung_offset_ticks_max")
+    if rung_min is None or rung_max is None:
+      rung_min, rung_max = (
+        UNRESTRICTED_RUNG_OFFSET_MIN, UNRESTRICTED_RUNG_OFFSET_MAX
+      )
+    try:
+      rung_min = float(rung_min)
+      rung_max = float(rung_max)
+    except (TypeError, ValueError) as exc:
+      raise ContractError(
+        "delta_v2_fill_distribution_artifact_range_invalid"
+      ) from exc
+    if rung_max < rung_min:
+      raise ContractError("delta_v2_fill_distribution_artifact_range_invalid")
+    if not (rung_min <= normalized["rung_offset_ticks"] <= rung_max):
+      continue
     if scope != "*":
       if scope != normalized["quote_version"]:
         continue
@@ -1160,6 +1248,14 @@ def resolve_delta_v2_fill_distribution(
           str(parsed["station_id"]).upper() == normalized["station_id"],
           str(parsed["stage"]).upper() == normalized["stage"],
           str(parsed["bucket"]) == normalized["bucket"],
+          # A curve fitted for this rung band outranks one fitted for every
+          # rung.  Without this the unrestricted legacy artifact ties with
+          # the rung-specific one and the tie-break falls to valid_from,
+          # which is a date, not a statement about fit.
+          (
+            rung_min > UNRESTRICTED_RUNG_OFFSET_MIN
+            or rung_max < UNRESTRICTED_RUNG_OFFSET_MAX
+          ),
         )
       )
       active_candidates.append((specificity, dict(parsed)))

@@ -133,6 +133,68 @@ def _hedge_value_cap(
     return MAKER_HEDGE_VALUE_LAMBDA * value
 
 
+# How many rungs a leg is offered across, and how far inside the bid the
+# cheapest one sits.  Both mirror the paper ledger's ``_resting_ladder``,
+# which is the lifecycle every measured ROI figure in this system was
+# produced under.
+MAKER_LADDER_STEPS = int(
+    os.environ.get("PM_MAKER_LADDER_STEPS", "5") or 5
+)
+MAKER_LADDER_IMPROVE_TICKS = int(
+    os.environ.get("PM_MAKER_LADDER_IMPROVE_TICKS", "1") or 1
+)
+
+
+def _rung_offset_ticks(*, price: float, bid: float, tick: float) -> float:
+    """Where a limit stands in the book, in ticks above the bid.
+
+    This is the variable that separates a ladder's rungs, and the one the
+    fill artifact conditions on.  Measured over the maker shadow book at a
+    60 minute horizon: at the bid 12.1%, one tick inside 17.1%, two ticks
+    20.1%, mid 20.9%, at the ask 88.3%.
+    """
+
+    if tick <= 0.0:
+        return 0.0
+    return round((float(price) - float(bid)) / float(tick), 6)
+
+
+def _maker_ladder(
+    *,
+    bid: float,
+    ask: float,
+    tick: float,
+    value_cap: float | None = None,
+    steps: int = MAKER_LADDER_STEPS,
+) -> list[float]:
+    """The price band one leg rests across, cheapest rung first.
+
+    Production offered exactly one price -- the cheapest legal post -- so it
+    only ever bought the 17% rung and never the 88% one.  The ledger has
+    always offered the whole band and let the book decide which rung it
+    reaches, and that is the execution every ROI figure here was measured
+    under.  Same construction, same constants, so the two cannot drift.
+    """
+
+    if bid <= 0.0 or ask <= 0.0 or tick <= 0.0:
+        return []
+    ceiling = ask if value_cap is None else min(ask, float(value_cap))
+    high = _floor_to_tick(ceiling - tick, tick)
+    if high <= EPS:
+        return []
+    low = min(_floor_to_tick(bid + MAKER_LADDER_IMPROVE_TICKS * tick, tick), high)
+    if low <= EPS:
+        return []
+    if high <= low + tick / 2 or steps <= 1:
+        return [low]
+    span = high - low
+    rungs = sorted({
+        _floor_to_tick(low + span * index / (steps - 1), tick)
+        for index in range(steps)
+    })
+    return [rung for rung in rungs if rung > EPS and rung + EPS >= bid]
+
+
 def _maker_market_anchor(
     *,
     bid: float,
@@ -1842,12 +1904,13 @@ def compile_delta_v2_runtime_plan(
             ),
             probability=probabilities.get(bucket),
         )
-        maker_anchor = _maker_market_anchor(
+        maker_rungs = _maker_ladder(
             bid=row.bid_price,
             ask=row.ask_price,
             tick=row.price_tick_size,
             value_cap=hedge_cap,
         )
+        maker_anchor = maker_rungs[0] if maker_rungs else None
         if maker_anchor is None:
             maker_candidate_diagnostics[bucket] = (
                 "maker_hedge_value_cap_below_min_tick"
@@ -1868,13 +1931,14 @@ def compile_delta_v2_runtime_plan(
                 or maker_anchor is None
             ):
                 continue
-            action_clip = min(float(clip), gap * maker_anchor)
-            if action_clip <= EPS:
-                continue
-            for timeout in delta_policy.timeout_grid_seconds:
-                candidate_descriptors.append(
-                    (bucket, action_clip, maker_anchor, f"MAKER:{timeout}")
-                )
+            for rung in maker_rungs:
+                action_clip = min(float(clip), gap * rung)
+                if action_clip <= EPS:
+                    continue
+                for timeout in delta_policy.timeout_grid_seconds:
+                    candidate_descriptors.append(
+                        (bucket, action_clip, rung, f"MAKER:{timeout}")
+                    )
         # FOK is intentionally a single zero-time candidate family and is
         # admitted only in the existing urgency window with sufficient depth.
         if (
@@ -1911,6 +1975,9 @@ def compile_delta_v2_runtime_plan(
             spread=max(0.0, row.ask_price - row.bid_price),
             depth=row.executable_depth_shares,
             quote_version=snapshot.quote_version,
+            rung_offset_ticks=_rung_offset_ticks(
+                price=price, bid=row.bid_price, tick=row.price_tick_size
+            ),
         )
         distribution = initial_fill.get("fill_distribution")
         if not isinstance(distribution, Sequence):
@@ -2017,6 +2084,9 @@ def compile_delta_v2_runtime_plan(
             spread=max(0.0, row.ask_price - row.bid_price),
             depth=row.executable_depth_shares,
             quote_version=snapshot.quote_version,
+            rung_offset_ticks=_rung_offset_ticks(
+                price=price, bid=row.bid_price, tick=row.price_tick_size
+            ),
         )
         final_distribution = resolved_fill.get("fill_distribution")
         final_costs = resolved_fill.get("execution_costs")
