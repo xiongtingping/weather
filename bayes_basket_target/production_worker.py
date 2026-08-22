@@ -9313,6 +9313,33 @@ class TargetProductionWorker:
         }
 
     @staticmethod
+    def _p0m_no_op_receipt(
+        *,
+        station_id: str,
+        event_date: str,
+        state: str,
+        dropped_pre_root: int | None = None,
+    ) -> dict[str, Any]:
+        """The receipt for a scope this stage does nothing for.
+
+        One constructor for both no-op exits, and for the cheap path that
+        reaches the same conclusion without the read.  Three copies of the
+        same dict is how a fast path and a slow path stop agreeing without
+        anyone noticing.
+        """
+
+        receipt: dict[str, Any] = {
+            "station_id": station_id,
+            "event_date": event_date,
+            "state": state,
+            "write_count": 0,
+            "writes": [],
+        }
+        if dropped_pre_root is not None:
+            receipt["dropped_pre_root_captures"] = dropped_pre_root
+        return receipt
+
+    @staticmethod
     def _p0m_scope_shape(
         envelopes: Sequence[ProbabilityEnvelope],
         captures: Sequence[Mapping[str, Any]],
@@ -9595,7 +9622,7 @@ class TargetProductionWorker:
         # run in shadow first because P0-M is the stage that goes silent
         # without saying so, and a verdict that agrees on one cycle is worth
         # more than an argument that it must.
-        shadow_verdicts: dict[tuple[str, str], str] = {}
+        shadow_verdicts: dict[tuple[str, str], dict[str, Any] | None] = {}
         shadow_errors: list[dict[str, str]] = []
         for (station, day), captures in sorted(captures_by_scope.items()):
             try:
@@ -9653,8 +9680,13 @@ class TargetProductionWorker:
                             )
                         narrow_shape = self._p0m_scope_shape(narrow, captures)
                         if not narrow_shape["roots"]:
-                            shadow_verdicts[(station, day)] = (
-                                "IGNORED_NO_P0_BEFORE_FORECAST"
+                            fast_receipt = self._p0m_no_op_receipt(
+                                station_id=station,
+                                event_date=day,
+                                state="IGNORED_NO_P0_BEFORE_FORECAST",
+                                dropped_pre_root=narrow_shape[
+                                    "dropped_pre_root"
+                                ],
                             )
                         elif not station_artifacts and all(
                             str(
@@ -9664,17 +9696,30 @@ class TargetProductionWorker:
                             ) in narrow_shape["seen_revisions"]
                             for capture in narrow_shape["seatable"]
                         ):
-                            shadow_verdicts[(station, day)] = (
-                                "NO_NEW_TAF_REVISION"
+                            fast_receipt = self._p0m_no_op_receipt(
+                                station_id=station,
+                                event_date=day,
+                                state="NO_NEW_TAF_REVISION",
                             )
                         else:
-                            shadow_verdicts[(station, day)] = "FULL_PATH"
+                            fast_receipt = None
+                        shadow_verdicts[(station, day)] = fast_receipt
+                        if (
+                            P0M_FAST_PATH_MODE == "on"
+                            and fast_receipt is not None
+                        ):
+                            if fast_receipt["state"] == "NO_NEW_TAF_REVISION":
+                                ignored_no_artifact_scope_count += 1
+                            else:
+                                ignored_inactive_scope_count += 1
+                            receipts.append(fast_receipt)
+                            continue
                     except Exception as exc:  # noqa: BLE001
                         # A shadow that cannot answer is a shadow finding, not
                         # a cycle fault.
-                        shadow_verdicts[(station, day)] = (
-                            f"SHADOW_ERROR:{type(exc).__name__}"
-                        )
+                        shadow_verdicts[(station, day)] = {
+                            "state": f"SHADOW_ERROR:{type(exc).__name__}",
+                        }
                         shadow_errors.append({
                             "station_id": station,
                             "event_date": day,
@@ -9726,14 +9771,12 @@ class TargetProductionWorker:
                 roots = shape["roots"]
                 if not roots:
                     ignored_inactive_scope_count += 1
-                    receipts.append({
-                        "station_id": station,
-                        "event_date": day,
-                        "state": "IGNORED_NO_P0_BEFORE_FORECAST",
-                        "dropped_pre_root_captures": dropped_pre_root,
-                        "write_count": 0,
-                        "writes": [],
-                    })
+                    receipts.append(self._p0m_no_op_receipt(
+                        station_id=station,
+                        event_date=day,
+                        state="IGNORED_NO_P0_BEFORE_FORECAST",
+                        dropped_pre_root=dropped_pre_root,
+                    ))
                     continue
                 # A stale historical P0 scope is a no-op and must not need a
                 # current market registry shard.  Once a fresh P0 can feed a
@@ -10266,11 +10309,11 @@ class TargetProductionWorker:
         if P0M_FAST_PATH_MODE != "off":
             actual = {
                 (str(item.get("station_id")), str(item.get("event_date"))):
-                str(item.get("state"))
+                item
                 for item in receipts
             }
             agreed = 0
-            disagreed: list[dict[str, str]] = []
+            disagreed: list[dict[str, Any]] = []
             for scope, verdict in shadow_verdicts.items():
                 real = actual.get(scope)
                 if real is None:
@@ -10278,14 +10321,24 @@ class TargetProductionWorker:
                     # blocker already records that and the shadow has nothing
                     # to say about it.
                     continue
-                if verdict == "FULL_PATH" or verdict == real:
+                if verdict is None:
+                    # The cheap path declined to answer, which is never wrong.
+                    agreed += 1
+                    continue
+                # The whole receipt, not just its state: a fast path that
+                # picks the right word and the wrong dropped-capture count is
+                # still a fast path that changed the record.
+                if verdict == real:
                     agreed += 1
                     continue
                 disagreed.append({
                     "station_id": scope[0],
                     "event_date": scope[1],
                     "shadow": verdict,
-                    "actual": real,
+                    "actual": {
+                        key: value for key, value in real.items()
+                        if key != "writes"
+                    },
                 })
             shadow_report = {
                 "schema": "bayes_basket_target_p0m_fast_path_shadow_v1",
@@ -10295,10 +10348,10 @@ class TargetProductionWorker:
                 "disagreed_count": len(disagreed),
                 "shadow_would_skip": sum(
                     1 for verdict in shadow_verdicts.values()
-                    if verdict in {
-                        "NO_NEW_TAF_REVISION",
-                        "IGNORED_NO_P0_BEFORE_FORECAST",
-                    }
+                    if verdict is not None
+                    and str(verdict.get("state") or "").startswith(
+                        ("NO_NEW_TAF_REVISION", "IGNORED_NO_P0")
+                    )
                 ),
                 "shadow_error_count": len(shadow_errors),
                 "disagreed": disagreed[:8],
