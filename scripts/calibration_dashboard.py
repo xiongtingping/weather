@@ -3350,25 +3350,35 @@ function makerProbe(){
     </div>`;
   }).join("");
     const cons=(S.consolidation_split||{});
+  const SIGLABEL={stable:"中心桶连续 3 次未变",sharp:"头两桶质量 ≥60%"};
   const consRows=(cons.strata||[]).map(r=>`<tr>
-      <td class="mono">${r.signal_count} 个</td>
+      <td>${h(SIGLABEL[r.signal]||r.signal)}</td>
+      <td class="mono ${r.lit?"down":"up"}">${r.lit?"亮":"未亮"}</td>
       <td class="mono">${r.settled}</td>
       <td class="mono">${r.hit_rate==null?"—":(100*r.hit_rate).toFixed(0)+"%"}</td>
       <td class="mono">${r.staked.toFixed(0)}</td>
       <td class="mono ${r.roi>=0?"up":"down"}">${r.roi==null?"—":((r.roi>=0?"+":"")+(100*r.roi).toFixed(1)+"%")}</td>
       <td class="mono ${r.roi_ex_best>=0?"up":"down"}">${r.roi_ex_best==null?"—":((r.roi_ex_best>=0?"+":"")+(100*r.roi_ex_best).toFixed(1)+"%")}</td>
+      <td class="mono ${r.roi_ex_best2>=0?"up":"down"}">${r.roi_ex_best2==null?"—":((r.roi_ex_best2>=0?"+":"")+(100*r.roi_ex_best2).toFixed(1)+"%")}</td>
     </tr>`).join("");
   const consBlock=cons.available?`<div class="card" style="margin-top:12px">
     <div class="muted">确定性溢价 · 前向验证中（只读，不参与任何决策）</div>
-    <div class="why" style="margin-top:8px">入场那一刻数三个"市场已完成定价"的信号：
-    中心桶连续 3 次未变、top2 质量 ≥60%、理想窗全数有 ≥2 分报价。
-    样本内测得：<b>0 信号组独占全部正收益（+77%，去最大赢 +42%），
-    任一信号亮起后 −35%~−44%</b>——确定性是市场收费的东西。
-    此表按结算前向积累；等 0 信号组在前向样本里也过"去最大赢"检验，
-    才谈要不要变成门。</div>
+    <div class="why" style="margin-top:8px">入场那一刻数两个"市场已经把话说完"的信号，
+    <b>每个信号单独分层</b>，不再合成一个计数。
+    <b>合成计数已废</b>：第三个记录项「理想窗全数有报价」186 天里亮了 172 天，它说的是
+    「有没有盘口可买」而不是「市场有多确定」，把它算进计数，会让<b>没有报价</b>的怪日子
+    落进「0 信号」组——那一格只有 6 天、读数 +220%，去掉最大一笔赢就变成 −74%，
+    是彩票不是发现。<br>
+    <b>分开看，反转比合成计数强得多</b>：两个信号亮起时都由正转负（−50% / −55%），
+    未亮时不但为正，<b>连去掉最前两笔赢之后仍是正的</b>（+3.2% / +5.1%）——
+    这正是合成计数没能通过的那道检验。<br>
+    <b>但仍然只读、仍然不设门</b>：去前两赢之后只剩 3–5 个点、样本 107–117 笔，
+    这是个值得盯的方向，还不是值得执行的规则。信号取的是 <b>P0 入场那一刻</b>的读数；
+    后续阶段会在各自的决策时刻重算同样三个标志，按那个口径读，反转只有一半强。</div>
     <table style="margin-top:8px"><thead><tr>
-      <th>信号数</th><th>结算</th><th>命中</th><th>投入</th><th>ROI</th><th>去最大赢</th>
-    </tr></thead><tbody>${consRows}</tbody></table></div>`:"";
+      <th>信号</th><th>状态</th><th>结算</th><th>命中</th><th>投入</th>
+      <th>ROI</th><th>去最大赢</th><th>去前两赢</th></tr></thead>
+    <tbody>${consRows}</tbody></table></div>`:"";
   const assessBlock=assessCards?`
     <h2 style="margin-top:0">十五、挂单执行 · 三阶段总体评估 ${verdict}</h2>
     <p class="sub"><b>目标是在不突破模型价值的前提下，用剩余时间最大化目标仓位的

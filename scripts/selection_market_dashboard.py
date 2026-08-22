@@ -394,17 +394,40 @@ def _basket_hit_by_size(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return out
 
 
-def _consolidation_split(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Settled outcomes by how consolidated the market was at entry.
+# The two signs that actually say "the pricing work is done".  ``quoted``
+# is the third thing the ledger records, and it is deliberately not one of
+# them: it fires on 172 of 186 settled days, so it describes whether there
+# was a book to trade at all rather than how certain that book was.
+# Counting it as a certainty signal put the days with *no quotes* into the
+# zero-signal stratum, which is how that stratum came to hold six lottery
+# days reading +220% -- and -74% once its single best day is removed.
+CERTAINTY_SIGNALS = ("stable", "sharp")
 
-    The ledger annotates every position with three signs the pricing work
-    was already done -- stable centre, sharp distribution, fully-quoted
-    ideal window -- and this is the forward validation of the measured
-    inversion: in-sample, the zero-signal stratum held the book's whole
-    positive tail (+77%, +42% with the best win removed) while every
-    other stratum sat between -35% and -44%.  The split stays a reading
-    until the forward sample is big enough to survive the same ex-best
-    test out-of-sample; nothing gates on it.
+
+def _consolidation_split(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Settled outcomes by whether the market had finished pricing at entry.
+
+    Split one signal at a time rather than by a count.  The count pooled
+    three unlike things and its strata could not survive their own ex-best
+    test in either direction; measured per signal the inversion is there
+    and it is much sturdier than the count ever showed:
+
+        stable unlit  +39.9%  (+20.5% ex-best, +3.2% ex-best-two)
+        stable lit    -54.8%  (-60.2%,         -63.7%)
+        sharp  unlit  +43.9%  (+23.3% ex-best, +5.1% ex-best-two)
+        sharp  lit    -50.2%  (-55.0%,         -57.2%)
+
+    Both reverse sign when lit, and both keep a positive sign on the unlit
+    side after their best *two* days are removed -- the check the pooled
+    count failed.  It still gates nothing: the margin after two drops is
+    3-5 points on 107-117 settlements, which is a direction worth watching
+    rather than a rule worth enforcing.
+
+    The flags are read off the ``P0`` row on purpose.  A later stage
+    recomputes the same three signs at *its* decision time, so joining on
+    the settlement's own position row measures how consolidated the market
+    was hours after entry -- a different question, and one that reads the
+    inversion about half as strong.
     """
 
     try:
@@ -417,41 +440,56 @@ def _consolidation_split(conn: sqlite3.Connection) -> dict[str, Any]:
         ).fetchall()
     except sqlite3.OperationalError:
         return {"available": False}
-    strata: dict[int, dict[str, Any]] = {}
+    strata: dict[tuple[str, bool], dict[str, Any]] = {}
     for payload, hit, stake, pnl in rows:
         try:
-            count = int((json.loads(payload) or {}).get("count", -1))
+            flags = json.loads(payload) or {}
         except (TypeError, ValueError):
             continue
-        if count < 0:
+        if not isinstance(flags, Mapping):
             continue
-        slot = strata.setdefault(count, {
-            "settled": 0, "hits": 0, "staked": 0.0, "pnls": [],
-        })
-        slot["settled"] += 1
-        slot["hits"] += int(hit or 0)
-        slot["staked"] += float(stake or 0.0)
-        slot["pnls"].append(float(pnl or 0.0))
+        for signal in CERTAINTY_SIGNALS:
+            if signal not in flags:
+                continue
+            slot = strata.setdefault((signal, flags[signal] is True), {
+                "settled": 0, "hits": 0, "staked": 0.0, "pnls": [],
+            })
+            slot["settled"] += 1
+            slot["hits"] += int(hit or 0)
+            slot["staked"] += float(stake or 0.0)
+            slot["pnls"].append(float(pnl or 0.0))
     out = []
-    for count in sorted(strata):
-        slot = strata[count]
-        pnl = sum(slot["pnls"])
-        best = max(slot["pnls"]) if slot["pnls"] else 0.0
-        out.append({
-            "signal_count": count,
-            "settled": slot["settled"],
-            "hit_rate": (
-                slot["hits"] / slot["settled"] if slot["settled"] else None
-            ),
-            "staked": slot["staked"],
-            "pnl": pnl,
-            "roi": pnl / slot["staked"] if slot["staked"] else None,
-            # The honesty check every long-odds stratum must pass: does
-            # the sign survive its single best day.
-            "roi_ex_best": (
-                (pnl - best) / slot["staked"] if slot["staked"] else None
-            ),
-        })
+    for signal in CERTAINTY_SIGNALS:
+        for lit in (False, True):
+            slot = strata.get((signal, lit))
+            if not slot:
+                continue
+            pnl = sum(slot["pnls"])
+            wins = sorted(
+                (value for value in slot["pnls"] if value > 0), reverse=True
+            )
+            staked = slot["staked"]
+            out.append({
+                "signal": signal,
+                "lit": lit,
+                "settled": slot["settled"],
+                "hit_rate": (
+                    slot["hits"] / slot["settled"] if slot["settled"] else None
+                ),
+                "staked": staked,
+                "pnl": pnl,
+                "roi": pnl / staked if staked else None,
+                # Two honesty checks, not one.  A stratum whose sign needs
+                # its best day is a lottery; one whose sign needs its best
+                # two is thin, and thin is what both of these still are.
+                "roi_ex_best": (
+                    (pnl - (wins[0] if wins else 0.0)) / staked
+                    if staked else None
+                ),
+                "roi_ex_best2": (
+                    (pnl - sum(wins[:2])) / staked if staked else None
+                ),
+            })
     return {"available": bool(out), "strata": out}
 
 
