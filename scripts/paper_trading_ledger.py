@@ -123,13 +123,32 @@ BOOK_MODEL = "one_book_per_station_day_top_up_only"
 # stage unlocks the rest, and the chain total is unchanged -- what changes
 # is that a later stage cannot be starved by the earlier one.  Room a stage
 # does not use is left for the next.
-STAGE_BUDGET_SHARE = {"P0": 0.6, "P0-M": 0.8, "P1": 1.0}
+# P0's slice is overridable so it can be measured.  The 2026-08-22 taker A/B
+# put the question on the table: P0 loses money under both execution modes
+# (maker -68.2u, taker -145.7u) while P0-M and P1 carry the whole book, and
+# P0 spends at the moment of least information -- so how much of the bankroll
+# should the opening stage be allowed to burn for its seat?
+STAGE_BUDGET_SHARE = {
+    "P0": float(os.environ.get("PAPER_LEDGER_P0_BUDGET_SHARE", "0.6") or 0.6),
+    "P0-M": 0.8,
+    "P1": 1.0,
+}
 MAXIMUM_SUPPORT_BUCKETS = 4
 # The ladder floor (charter 50).  The ledger exists to reproduce what
 # production seats, so it must carry production's structural rules; left at
 # the function default of 1 it recorded single-bucket seats the live rule
 # forbids.
-MINIMUM_SUPPORT_BUCKETS = 3
+# Overridable so the floor itself can be measured.  The question it exists
+# to answer, 2026-08-22: per-leg attribution says the non-centre rungs lose
+# money (shoulder -49.9%, tail -100%) while the centre makes +50.5%, yet the
+# shoulder value-clamp sweep peaks at 0.40 rather than at zero -- buying
+# *no* shoulder is worse than buying it cheaply.  The floor is the obvious
+# suspect: a basket must be contiguous and at least this wide, so refusing
+# the shoulder can cost the seat entirely, taking the profitable centre rung
+# with it.  If that is the mechanism, the shoulder's loss is an entry fee.
+MINIMUM_SUPPORT_BUCKETS = int(
+    os.environ.get("PAPER_LEDGER_MIN_SUPPORT_BUCKETS", "3") or 3
+)
 FEE_RATE = 0.0  # all-in asks in the snapshot already carry the fee
 # A fill must be priced against a book that existed around the decision.
 # Without this the ledger reaches back to the hours just after listing, when
@@ -655,6 +674,7 @@ SELECTION_RULE_SHA256 = content_sha256({
     # end.  It changes what every seat after the first may be.
     "stage_budget_share": STAGE_BUDGET_SHARE,
     "maximum_support_buckets": MAXIMUM_SUPPORT_BUCKETS,
+    "minimum_support_buckets": MINIMUM_SUPPORT_BUCKETS,
     "minimum_support_buckets": MINIMUM_SUPPORT_BUCKETS,
     "p1_minimum_support_buckets": P1_MINIMUM_SUPPORT_BUCKETS,
     "stage_floor": "per_stage",
