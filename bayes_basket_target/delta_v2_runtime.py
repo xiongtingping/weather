@@ -105,6 +105,62 @@ MAKER_HEDGE_VALUE_LAMBDA = float(
 MAKER_SHOULDER_VALUE_LAMBDA = float(
     os.environ.get("PM_MAKER_SHOULDER_VALUE_LAMBDA", "0.40") or 0.0
 )
+# Do not open into a market that has finished pricing the day.
+#
+# Two signs, read at the moment of entry: the mass centre has not moved
+# over the last CERTAINTY_STABLE_LOOKBACK decisions, and the distribution's
+# top two buckets already carry CERTAINTY_SHARP_TOP2 of the mass.  Either
+# one lit means our own evidence and the market's have converged, and a
+# converged market has already collected the premium -- there is nothing
+# left in the price for us.
+#
+# Measured on the settled book by rebuilding the ledger under each gate:
+#
+#     gate off (shipped)   ROI +18.9%   hit 25%   ex-best-two  -8.7%
+#     stable only          ROI +37.0%   hit 28%   ex-best-two  +8.1%
+#     sharp only           ROI +35.0%   hit 29%   ex-best-two  +8.4%
+#     both                 ROI +47.5%   hit 33%   ex-best-two +18.5%
+#
+# Three things move the right way at once, which nothing else measured in
+# this system has done: the return, the hit rate, and the robustness --
+# the shipped rule needs its best two days to stay positive and the gated
+# one does not.  Stake is nearly unchanged (1374u -> 1314u); the seats fall
+# from 388 to 182 because the same money moves off the days it was losing
+# on.  A skipped cycle is not a skipped day: the walk goes on to the next
+# decision, so the position opens later, at a moment the market is less
+# sure of.
+CERTAINTY_GATE_SIGNALS = tuple(
+    part.strip() for part in
+    (os.environ.get("PM_CERTAINTY_GATE", "stable,sharp") or "").split(",")
+    if part.strip()
+)
+CERTAINTY_STABLE_LOOKBACK = 3
+CERTAINTY_SHARP_TOP2 = 0.60
+
+
+def certainty_signals(
+    *,
+    probabilities: Mapping[str, float],
+    prior_centre_buckets: Sequence[str] = (),
+) -> dict[str, bool]:
+    """Which certainty signs are lit for this entry.
+
+    ``prior_centre_buckets`` is the argmax bucket of each earlier decision
+    on the same station-day, newest first.  Fewer than the lookback means
+    the day has not produced enough readings to call the centre stable,
+    which is the honest answer rather than a default of True.
+    """
+
+    if not probabilities:
+        return {"stable": False, "sharp": False}
+    centre = max(probabilities, key=lambda bucket: probabilities[bucket])
+    recent = [str(centre), *(str(item) for item in prior_centre_buckets)]
+    stable = (
+        len(recent) >= CERTAINTY_STABLE_LOOKBACK + 1
+        and len(set(recent[: CERTAINTY_STABLE_LOOKBACK + 1])) == 1
+    )
+    top2 = sum(sorted(probabilities.values(), reverse=True)[:2])
+    return {"stable": stable, "sharp": top2 >= CERTAINTY_SHARP_TOP2}
 # Whether the continuous log-optimum shape is offered alongside the
 # centre-anchored one.  It is the correct Kelly split for a basket whose
 # quantities are free, and it is off.
@@ -1701,6 +1757,7 @@ def compile_delta_v2_runtime_plan(
     regime_direction_allowed: bool = True,
     confirmed_cancel_for_fok: bool = False,
     previous_probabilities: Mapping[str, float] | None = None,
+    prior_centre_buckets: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Compile the single-event q* and best no-live action under v2.
 
@@ -1799,6 +1856,20 @@ def compile_delta_v2_runtime_plan(
     # for no reason the evidence supports.  A depleted budget still compiles:
     # the feasible set collapses to the zero basket on its own, and the
     # ranking simply has nothing left to choose between.
+    # The certainty gate, before any window is solved: if the market has
+    # finished pricing this day, the cheapest thing to do is wait for the
+    # next decision rather than pay for a consensus we helped form.
+    lit_certainty = certainty_signals(
+        probabilities=probabilities,
+        prior_centre_buckets=prior_centre_buckets,
+    )
+    gated_by = [
+        name for name in CERTAINTY_GATE_SIGNALS if lit_certainty.get(name)
+    ]
+    if gated_by:
+        raise ContractError(
+            "delta_v2_certainty_gate_lit:" + ",".join(gated_by)
+        )
     bankroll_usdc = float(basket_policy.total_budget_usdc)
     objective_form = (
         CURVE_OBJECTIVE_FORM

@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from bayes_basket_target import delta_v2_runtime
+
 from bayes_basket_target.contracts import ContractError as DomainContractError
 from bayes_basket_target.basket_kernel.delta_v2 import (
     CANDIDATE_KIND_BASELINE,
@@ -36,6 +38,22 @@ CHARTER = (
     / "SYSTEM_CHARTER.md"
 )
 
+
+
+@pytest.fixture(autouse=True)
+def _certainty_gate_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These fixtures are sharp on purpose; the gate is tested separately.
+
+    The certainty gate refuses to open into a market that has finished
+    pricing the day, and a hand-built fixture distribution is almost always
+    sharp -- so leaving it on would make every test in this file assert
+    "the gate fired" instead of the property it was written for.  Its own
+    behaviour is pinned in test_certainty_gate_* below.
+    """
+
+    monkeypatch.setattr(
+        delta_v2_runtime, "CERTAINTY_GATE_SIGNALS", ()
+    )
 
 def _clause(number: int) -> str:
     text = CHARTER.read_text(encoding="utf-8")

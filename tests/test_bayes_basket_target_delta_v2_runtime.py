@@ -23,6 +23,22 @@ from bayes_basket_target.delta_v2_runtime import (
 )
 
 
+
+@pytest.fixture(autouse=True)
+def _certainty_gate_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These fixtures are sharp on purpose; the gate is tested separately.
+
+    The certainty gate refuses to open into a market that has finished
+    pricing the day, and a hand-built fixture distribution is almost always
+    sharp -- so leaving it on would make every test in this file assert
+    "the gate fired" instead of the property it was written for.  Its own
+    behaviour is pinned in test_certainty_gate_* below.
+    """
+
+    monkeypatch.setattr(
+        delta_v2_runtime, "CERTAINTY_GATE_SIGNALS", ()
+    )
+
 def _snapshot(*, pending_shares: float = 0.0) -> TargetBasketSnapshot:
     return TargetBasketSnapshot.from_mapping({
         "schema": "target_basket_snapshot_v6",
@@ -1433,3 +1449,52 @@ def test_a_station_that_holds_something_can_still_compile() -> None:
     assert plan["state"] in {"TRADE", "HOLD"}
     for target in plan["targets"]:
         assert target["delta_shares"] >= 0.0
+
+
+def test_certainty_gate_reads_the_two_signs_off_the_entry_distribution(
+    _certainty_gate_off: None,
+) -> None:
+    # Sharp is the entry distribution's own top-two mass; stable needs the
+    # centre to have held still across the lookback, and says so honestly
+    # when the day has not produced enough readings yet.
+    flat = {"33C": 0.25, "34C": 0.25, "35C": 0.25, "36C": 0.25}
+    peaked = {"33C": 0.05, "34C": 0.05, "35C": 0.45, "36C": 0.45}
+    assert delta_v2_runtime.certainty_signals(
+        probabilities=flat
+    ) == {"stable": False, "sharp": False}
+    assert delta_v2_runtime.certainty_signals(
+        probabilities=peaked
+    )["sharp"] is True
+    # Three prior readings on the same centre, plus this one, is stable.
+    assert delta_v2_runtime.certainty_signals(
+        probabilities=flat, prior_centre_buckets=["33C", "33C", "33C"]
+    )["stable"] is True
+    # One of them moved: not stable.
+    assert delta_v2_runtime.certainty_signals(
+        probabilities=flat, prior_centre_buckets=["33C", "34C", "33C"]
+    )["stable"] is False
+    # Too few readings is not stability.
+    assert delta_v2_runtime.certainty_signals(
+        probabilities=flat, prior_centre_buckets=["33C", "33C"]
+    )["stable"] is False
+
+
+def test_certainty_gate_refuses_a_finished_market_by_name(
+    _certainty_gate_off: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The refusal names which sign fired, because "wait" and "cannot" are
+    # different answers and the caller absorbs only the first.
+    monkeypatch.setattr(
+        delta_v2_runtime, "CERTAINTY_GATE_SIGNALS", ("stable", "sharp")
+    )
+    with pytest.raises(ContractError, match="delta_v2_certainty_gate_lit"):
+        compile_delta_v2_runtime_plan(
+            snapshot=_snapshot(),
+            basket_policy=_basket_policy(),
+            delta_policy=_delta_policy(),
+            fill_resolver=_fill_resolver,
+            capital_available_usdc=5.0,
+            minimum_profit_floor=-5.0,
+            resource_probe_ok=True,
+        )

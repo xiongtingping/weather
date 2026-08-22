@@ -68,6 +68,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     CENTRE_ANCHOR_MIN_RUNG_SHARE,
     CONTINUOUS_OPTIMUM_CANDIDATES_ENABLED,
     MAKER_HEDGE_VALUE_LAMBDA,
+    CERTAINTY_GATE_SIGNALS,
     MAKER_SHOULDER_VALUE_LAMBDA,
     MINIMUM_LEG_ALL_IN_ASK,
     P1_MINIMUM_SUPPORT_BUCKETS,
@@ -128,6 +129,16 @@ BOOK_MODEL = "one_book_per_station_day_top_up_only"
 # (maker -68.2u, taker -145.7u) while P0-M and P1 carry the whole book, and
 # P0 spends at the moment of least information -- so how much of the bankroll
 # should the opening stage be allowed to burn for its seat?
+# Refuse to open at a cycle where these certainty signs are lit, and walk
+# on to the next one.  Empty means off, which is the shipped behaviour.
+# Production owns this (``delta_v2_runtime.CERTAINTY_GATE_SIGNALS``,
+# ("stable","sharp") as of the 2026-08-22 sweep).  With the env unset the
+# two are the same tuple by construction; a sweep can still move it here.
+CERTAINTY_GATE = tuple(
+    part.strip() for part in
+    (os.environ.get("PAPER_LEDGER_CERTAINTY_GATE", "") or "").split(",")
+    if part.strip()
+) or CERTAINTY_GATE_SIGNALS
 STAGE_BUDGET_SHARE = {
     "P0": float(os.environ.get("PAPER_LEDGER_P0_BUDGET_SHARE", "0.6") or 0.6),
     "P0-M": 0.8,
@@ -583,6 +594,7 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     None
     if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_VALUE_LAMBDA <= 0
     else f"价值钳λ{MAKER_RESTING_VALUE_LAMBDA:g}·中心桶豁免",
+    None if not CERTAINTY_GATE else "确定性闸" + "+".join(CERTAINTY_GATE),
     None
     if EXECUTION_MODE != "maker_resting" or not MAKER_RESTING_SHOULDER_LAMBDA
     else (
@@ -672,6 +684,7 @@ SELECTION_RULE_SHA256 = content_sha256({
     "max_stake_fraction_per_scope": MAX_STAKE_FRACTION_PER_SCOPE,
     # Which share of that cap each stage may have committed by its
     # end.  It changes what every seat after the first may be.
+    "certainty_gate": list(CERTAINTY_GATE),
     "stage_budget_share": STAGE_BUDGET_SHARE,
     "maximum_support_buckets": MAXIMUM_SUPPORT_BUCKETS,
     "minimum_support_buckets": MINIMUM_SUPPORT_BUCKETS,
@@ -3618,6 +3631,26 @@ def backfill(
                             ordinals=ordinals,
                             quotes=quotes,
                         )
+                        # Wait for a less-consolidated moment rather than
+                        # seat into one the market has finished pricing.
+                        # Measured read-only on the settled book: with a
+                        # sign lit at entry the stratum returns -50% to
+                        # -55%, and unlit +40% to +44% -- this asks what
+                        # acting on that is worth, which the read-only
+                        # table cannot say.
+                        if CERTAINTY_GATE and any(
+                            seat_consolidation.get(name) is True
+                            for name in CERTAINTY_GATE
+                        ):
+                            refusal = _deeper_refusal(refusal, (
+                                "no_positive_kelly",
+                                "确定性闸：%s 已亮" % "+".join(
+                                    name for name in CERTAINTY_GATE
+                                    if seat_consolidation.get(name) is True
+                                ),
+                                cycles, payload["decision_at_utc"],
+                            ))
+                            continue
                         tilt = (
                             CONSOLIDATION_TILT_FACTOR
                             if seat_consolidation["count"]

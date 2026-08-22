@@ -1015,6 +1015,14 @@ def _compile_target_plan(
             ),
             resource_probe_ok=resource_probe_ok,
             previous_probabilities=previous_probabilities,
+            # Newest first: the certainty gate asks whether the mass centre
+            # has held still, and the answer is read off the same envelope
+            # chain the previous-probabilities comparison already walks.
+            prior_centre_buckets=[
+                max(item.probabilities, key=lambda b: item.probabilities[b])
+                for item in reversed(_earlier)
+                if item.probabilities
+            ],
         )
     except ContractError as exc:
         # No window can hold a seat is a HOLD, not a crash.  Clause 50 says
@@ -1024,7 +1032,13 @@ def _compile_target_plan(
         # path in the ordinary course of a day rather than as a contract
         # breach.  Only these two are absorbed: everything else here is still
         # a real violation and must surface.
-        if str(exc) not in {
+        # The certainty gate is a decision, not a breach: the market has
+        # finished pricing this day and the plan declines to pay for a
+        # consensus it helped form.  Waiting is the action, so it absorbs
+        # into HOLD like the two structural refusals beside it.
+        if not str(exc).startswith("delta_v2_certainty_gate_lit") and str(
+            exc
+        ) not in {
             "delta_v2_support_empty",
             "delta_v2_no_solvable_support_window",
         }:
