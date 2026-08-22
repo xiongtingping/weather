@@ -66,6 +66,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     CENTRE_ANCHOR_DISTANCE_DECAY,
     CENTRE_ANCHOR_EDGE_TILT,
     CENTRE_ANCHOR_MIN_RUNG_SHARE,
+    CONTINUOUS_OPTIMUM_CANDIDATES_ENABLED,
     MAKER_HEDGE_VALUE_LAMBDA,
     MINIMUM_LEG_ALL_IN_ASK,
     P1_MINIMUM_SUPPORT_BUCKETS,
@@ -454,11 +455,17 @@ MAKER_RESTING_CRASH_TICKS = float(
 # shape never reached these numbers.  ``centre_tilt`` reproduces
 # production's ``_centre_anchored_candidates``: a base holding on the centre
 # rung, leaned toward positive edge, with the far rungs floored as hedges.
+# ``centre_tilt`` is not a ledger approximation of production any more: as of
+# 2026-08-22 it is the only shape production offers, because the continuous
+# log optimum was measured 275 USDC behind it over 187 paired station-days
+# and switched off (``delta_v2_runtime.CONTINUOUS_OPTIMUM_CANDIDATES_ENABLED``).
+# If that switch is ever turned back on, this default has to move with it or
+# the ledger is once again scoring a shape the live engine does not trade.
 ALLOCATION_SHAPE = (
-    os.environ.get("PAPER_LEDGER_ALLOCATION", "centre_tilt").strip()
-    or "centre_tilt"
+    os.environ.get("PAPER_LEDGER_ALLOCATION", "").strip()
+    or ("curve_solved" if CONTINUOUS_OPTIMUM_CANDIDATES_ENABLED else "centre_tilt")
 )
-ALLOCATION_SHAPES = ("equal_shares", "centre_tilt")
+ALLOCATION_SHAPES = ("equal_shares", "centre_tilt", "curve_solved")
 # Every structural rule a recorded seat depends on.  Positions are derived rows,
 # so a change to any of these makes the ones already in the table describe a
 # strategy that no longer runs -- the ladder floor landed on 2026-08-15 and the

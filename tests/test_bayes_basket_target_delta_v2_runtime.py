@@ -16,6 +16,7 @@ from bayes_basket_target.delta_v2_artifact import (
     ARTIFACT_SCHEMA,
     DeltaV2PolicyArtifact,
 )
+from bayes_basket_target import delta_v2_runtime
 from bayes_basket_target.delta_v2_runtime import (
     _target_candidates,
     compile_delta_v2_runtime_plan,
@@ -1026,7 +1027,23 @@ def test_curve_objective_prefers_flat_curve_and_keeps_sound_bets() -> None:
         )
 
 
-def test_candidate_support_contract_is_enforced_at_the_boundary() -> None:
+@pytest.fixture
+def _continuous_optimum_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These three test the generator itself, not whether it is offered.
+
+    The continuous shape was switched off in production on 2026-08-22 after
+    the ledger measured it 275 USDC behind the centre-anchored tilt over 187
+    paired station-days.  Its correctness contracts still have to hold: the
+    switch is a policy about which shapes compete, and a generator nobody
+    can turn back on is a generator nobody can measure again.
+    """
+
+    monkeypatch.setattr(
+        delta_v2_runtime, "CONTINUOUS_OPTIMUM_CANDIDATES_ENABLED", True
+    )
+
+
+def test_candidate_support_contract_is_enforced_at_the_boundary(_continuous_optimum_enabled: None) -> None:
     """A new generator must fail loudly, not silently turn a trade into a hold.
 
     ``basket_target_activated`` is a literal comparison against the complete
@@ -1127,7 +1144,7 @@ def test_candidate_support_contract_is_enforced_at_the_boundary() -> None:
     assert continuous_costs - grid_costs == continuous_costs
 
 
-def test_continuous_candidate_seats_the_clip_floor_inside_the_solve() -> None:
+def test_continuous_candidate_seats_the_clip_floor_inside_the_solve(_continuous_optimum_enabled: None) -> None:
     # The minimum clip is a lower bound on the decision, so it is solved as
     # one.  Pasting it on afterwards spent money the optimum had not
     # allocated and then rescaled the whole vector to fit, which could
@@ -1159,7 +1176,7 @@ def test_continuous_candidate_seats_the_clip_floor_inside_the_solve() -> None:
         assert sum(legs) <= capital + 1e-9
 
 
-def test_continuous_candidate_reads_the_belief_the_ranking_scores() -> None:
+def test_continuous_candidate_reads_the_belief_the_ranking_scores(_continuous_optimum_enabled: None) -> None:
     # An off-centre window has its claim deflated before the objective sees
     # it.  The generator must propose against that deflated distribution, not
     # against the snapshot's, or it offers the optimum of a belief nobody

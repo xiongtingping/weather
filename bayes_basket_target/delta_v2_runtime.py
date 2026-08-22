@@ -82,6 +82,31 @@ def _floor_to_tick(price: float, tick: float) -> float:
 MAKER_HEDGE_VALUE_LAMBDA = float(
     os.environ.get("PM_MAKER_HEDGE_VALUE_LAMBDA", "0.53") or 0.0
 )
+# Whether the continuous log-optimum shape is offered alongside the
+# centre-anchored one.  It is the correct Kelly split for a basket whose
+# quantities are free, and it is off.
+#
+# Measured 2026-08-22 by rebuilding the paper ledger on each allocation with
+# the seat rule held identical on both sides, so the only variable is the
+# shape of the money inside the seated window:
+#
+#     centre-anchored tilt   ROI +12.7%   hit 26%   (the ledger's shape)
+#     continuous log optimum ROI  -9.4%   hit 28%   (production's shape)
+#
+# 275 USDC apart over 187 paired station-days, and the same trade as every
+# other measurement in this system: two points of hit rate bought with
+# twenty of ROI.  The optimum spreads money toward the cheap outer rungs
+# because that is where its own concavity says the curve flattens most per
+# dollar; the tilt keeps the money on the centre, and the centre is the
+# rung this model is actually reliable about.
+#
+# Left as a switch rather than deleted: the shape is not wrong, it is wrong
+# *at this bankroll and these fills*, and the generator is the only thing
+# that can express a split the clip grid cannot.
+CONTINUOUS_OPTIMUM_CANDIDATES_ENABLED = (
+    os.environ.get("PM_DELTA_V2_CONTINUOUS_OPTIMUM", "0").strip()
+    not in {"0", "false", "FALSE", "no", ""}
+)
 
 
 def _hedge_value_cap(
@@ -1096,18 +1121,19 @@ def _target_candidates(
             minimum_clip_notional_usdc=minimum_clip_notional_usdc,
             probabilities_by_bucket=probabilities_by_bucket,
         ))
-    candidates.extend(_continuous_optimum_candidates(
-        snapshot=snapshot,
-        ordered=ordered,
-        current_shares=current_shares,
-        current_cost=current_cost,
-        pending_shares=pending_shares,
-        pending_cost=pending_cost,
-        capital_available_usdc=capital_available_usdc,
-        minimum_clip_notional_usdc=minimum_clip_notional_usdc,
-        bankroll_usdc=bankroll_usdc,
-        probabilities_by_bucket=probabilities_by_bucket,
-    ))
+    if CONTINUOUS_OPTIMUM_CANDIDATES_ENABLED:
+        candidates.extend(_continuous_optimum_candidates(
+            snapshot=snapshot,
+            ordered=ordered,
+            current_shares=current_shares,
+            current_cost=current_cost,
+            pending_shares=pending_shares,
+            pending_cost=pending_cost,
+            capital_available_usdc=capital_available_usdc,
+            minimum_clip_notional_usdc=minimum_clip_notional_usdc,
+            bankroll_usdc=bankroll_usdc,
+            probabilities_by_bucket=probabilities_by_bucket,
+        ))
     if not candidates:
         raise ContractError("delta_v2_target_candidate_set_empty")
     return _assert_candidate_support_contract(
