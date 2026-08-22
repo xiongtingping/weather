@@ -335,10 +335,108 @@ def mint(fitobj: dict, *, now: datetime) -> list[dict]:
     return artifacts
 
 
+# The leg sizes the ledger actually posts, measured over its own recorded
+# baskets: p10 0.21, p25 0.62, median 1.68, p75 3.41, p90 7.66, p99 18.21,
+# against a production clip grid of [1, 2] -- 44% of legs were larger than
+# the biggest clip production could spend on them, so the live engine could
+# only ever creep toward a target the objective had already sized.  The grid
+# below spans that distribution and stops at the per-station 30 USDC cap.
+POLICY_CASH_CLIP_GRID = [
+    0.25, 0.5, 1.0, 2.0, 3.5, 5.0, 8.0, 12.0, 18.0, 25.0, 30.0,
+]
+POLICY_TIMEOUT_GRID_SECONDS = [
+    float(minutes * 60) for minutes in HORIZON_MINUTES
+]
+
+
+def _remint_policy(db: Path, *, now: datetime) -> int:
+    """Re-mint the policy artifacts onto the measured execution grids.
+
+    Append-only: a new artifact per scope with a later ``valid_from``, which
+    is what the resolver selects on.  The old rows stay as the record of
+    what was served before.
+    """
+
+    conn = sqlite3.connect(str(db), timeout=60.0)
+    conn.execute("PRAGMA busy_timeout=60000")
+    conn.row_factory = sqlite3.Row
+    stamp = now.isoformat(timespec="seconds").replace("+00:00", "Z")
+    valid_from = (
+        now + timedelta(minutes=1)
+    ).isoformat(timespec="seconds").replace("+00:00", "Z")
+    valid_until = (
+        now + timedelta(days=30)
+    ).isoformat(timespec="seconds").replace("+00:00", "Z")
+    written = 0
+    seen: set[str] = set()
+    for row in conn.execute(
+        "SELECT * FROM basket_delta_v2_policy_artifact"
+        " ORDER BY valid_from_utc"
+    ).fetchall():
+        payload = json.loads(row["artifact_json"])
+        if (
+            payload.get("cash_clip_grid") == POLICY_CASH_CLIP_GRID
+            and payload.get("timeout_grid_seconds")
+            == POLICY_TIMEOUT_GRID_SECONDS
+        ):
+            continue
+        base = row["artifact_id"].split("-shadow")[0]
+        if base in seen:
+            continue
+        seen.add(base)
+        updated = dict(payload)
+        updated["cash_clip_grid"] = POLICY_CASH_CLIP_GRID
+        updated["timeout_grid_seconds"] = POLICY_TIMEOUT_GRID_SECONDS
+        updated["artifact_id"] = base + "-shadowexec"
+        updated["trained_through_utc"] = stamp
+        updated["valid_from_utc"] = valid_from
+        updated["valid_until_utc"] = valid_until
+        updated.pop("content_sha256", None)
+        sha = content_sha256(updated)
+        updated["content_sha256"] = sha
+        columns = list(row.keys())
+        values = []
+        for column in columns:
+            if column == "artifact_id":
+                values.append(updated["artifact_id"])
+            elif column == "content_sha256":
+                values.append(sha)
+            elif column == "artifact_json":
+                values.append(json.dumps(updated, sort_keys=True))
+            elif column == "trained_through_utc":
+                values.append(stamp)
+            elif column == "valid_from_utc":
+                values.append(valid_from)
+            elif column == "valid_until_utc":
+                values.append(valid_until)
+            else:
+                values.append(row[column])
+        conn.execute(
+            "INSERT OR IGNORE INTO basket_delta_v2_policy_artifact ("
+            + ",".join(columns) + ") VALUES ("
+            + ",".join("?" * len(columns)) + ")",
+            values,
+        )
+        written += 1
+    conn.commit()
+    conn.close()
+    return written
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument("--commit", action="store_true")
+    parser.add_argument(
+        "--remint-policy",
+        action="store_true",
+        help=(
+            "also re-mint the delta-v2 policy artifacts so their"
+            " timeout_grid_seconds are the horizons this fit covers and"
+            " their cash_clip_grid can express the leg sizes the ledger"
+            " actually posts."
+        ),
+    )
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
     conn = sqlite3.connect(
@@ -463,6 +561,10 @@ def main() -> int:
         report["committed"] = True
         report["rows_written"] = len(artifacts)
         report["promotions_written"] = len(artifacts)
+        if args.remint_policy:
+            report["policy_artifacts_reminted"] = _remint_policy(
+                args.db.expanduser().resolve(strict=True), now=now
+            )
     print(json.dumps(report, ensure_ascii=False, sort_keys=True))
     return 0
 
