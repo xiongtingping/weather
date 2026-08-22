@@ -802,6 +802,14 @@ class _ProbedCursor(sqlite3.Cursor):
         slot["statement_count"] += 1
         try:
             return super().execute(sql, parameters)
+        except sqlite3.Error as exc:
+            # The cycle's outermost handler turns every SQLite fault into one
+            # sentence -- "OperationalError:database is locked" -- with no way
+            # back to the statement.  Keep the statement here so the handler
+            # can name it.
+            slot["failed_sql"] = sql[:_STATEMENT_PROBE_SQL_CHARS]
+            slot["failed_error"] = f"{type(exc).__name__}:{exc}"
+            raise
         finally:
             # Cleared on return, so an idle thread never reads as a stalled
             # one.  Rows fetched later from the returned cursor are not
@@ -819,6 +827,18 @@ class _ProbedConnection(sqlite3.Connection):
 
     def execute(self, sql, parameters=(), /):  # type: ignore[override]
         return self.cursor().execute(sql, parameters)
+
+
+def last_failed_statement() -> dict[str, Any] | None:
+    """The last statement that raised on this thread, if one has."""
+
+    slot = _STATEMENT_PROBE.get(threading.get_ident())
+    if not slot or not slot.get("failed_sql"):
+        return None
+    return {
+        "sql": slot.get("failed_sql"),
+        "error": slot.get("failed_error"),
+    }
 
 
 def statement_probe_snapshot(*, min_elapsed_ms: float = 1000.0) -> dict[str, Any]:
@@ -13360,6 +13380,8 @@ class TargetProductionWorker:
                     "blocked_scope_decision_version": 1,
                     "exception_type": type(exc).__name__,
                     "exception_reason": str(exc),
+                    # Which statement, not just which sentence.
+                    "failed_statement": last_failed_statement(),
                     "no_market_snapshot_written": True,
                     "no_intents_written": True,
                     "no_capital_reserved": True,
@@ -13370,6 +13392,7 @@ class TargetProductionWorker:
             )
             payload = {
                 **_blocked(reason),
+                "failed_statement": last_failed_statement(),
                 "worker_checked_at": now,
                 "scope_count": len(scopes),
                 "durable_blocked_decision_count": sum(
