@@ -7723,24 +7723,63 @@ class TargetProductionWorker:
         )
         if station_allowlist and not manifest_event_date:
             raise RuntimeError("target_market_manifest_event_date_missing")
-        evidence_cache_receipts = [
-            materialize_official_ws_evidence_cache(
-                self.commit_conn,
-                manifest_path=manifest_path,
-                station_id=station_id,
-                event_date=manifest_event_date,
-                commit=True,
-            )
-            for station_id in station_allowlist
-        ] if station_allowlist else [
-            materialize_official_ws_evidence_cache(
-                self.commit_conn,
-                manifest_path=manifest_path,
-                commit=True,
-            )
-        ]
+        # One station's missing quotes are that station's problem.  This was
+        # a list comprehension, so the first ``ContractError`` aborted the
+        # whole pass: the stations after it never had their evidence
+        # materialized at all, and the cycle-level decision written for every
+        # one of the 45 carried the failing station's reason.  Measured
+        # 2026-08-20..22: 923 of 942 ``official_ws_evidence_complete_scope_missing``
+        # blockages were a *different* station's gap, most of them CYYZ's
+        # five unsubscribed buckets.  The remedy for a station with no book
+        # is to skip that station, which is what the per-scope contract
+        # already says; hoisting it to the fleet was the defect.
+        evidence_cache_failures: list[dict[str, str]] = []
+        if station_allowlist:
+            evidence_cache_receipts = []
+            for station_id in station_allowlist:
+                try:
+                    evidence_cache_receipts.append(
+                        materialize_official_ws_evidence_cache(
+                            self.commit_conn,
+                            manifest_path=manifest_path,
+                            station_id=station_id,
+                            event_date=manifest_event_date,
+                            commit=True,
+                        )
+                    )
+                except ContractError as exc:
+                    evidence_cache_failures.append({
+                        "station_id": station_id,
+                        "reason": f"{type(exc).__name__}:{exc}",
+                    })
+            if not evidence_cache_receipts:
+                # Nothing was materialized for any station, so there is no
+                # partial pass to keep -- fail the way the single-scope
+                # contract does, naming what was skipped.
+                raise ContractError(
+                    "official_ws_evidence_complete_scope_missing:"
+                    + str(len(evidence_cache_failures))
+                    + " skipped:"
+                    + "; ".join(
+                        f"{row['station_id']}:{row['reason']}"
+                        for row in evidence_cache_failures[:5]
+                    )
+                )
+        else:
+            evidence_cache_receipts = [
+                materialize_official_ws_evidence_cache(
+                    self.commit_conn,
+                    manifest_path=manifest_path,
+                    commit=True,
+                )
+            ]
         evidence_cache = {
-            "state": "committed",
+            "state": (
+                "committed" if not evidence_cache_failures
+                else "committed_with_skipped_scopes"
+            ),
+            "skipped_scope_count": len(evidence_cache_failures),
+            "skipped_scopes": evidence_cache_failures[:10],
             "station_allowlist": list(station_allowlist),
             "receipts": evidence_cache_receipts,
         }
