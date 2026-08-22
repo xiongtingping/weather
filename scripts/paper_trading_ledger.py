@@ -66,6 +66,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     CENTRE_ANCHOR_DISTANCE_DECAY,
     CENTRE_ANCHOR_EDGE_TILT,
     CENTRE_ANCHOR_MIN_RUNG_SHARE,
+    MAKER_HEDGE_VALUE_LAMBDA,
     MINIMUM_LEG_ALL_IN_ASK,
     P1_MINIMUM_SUPPORT_BUCKETS,
     WINDOW_REFUSAL_FUNNEL,
@@ -311,8 +312,15 @@ MAKER_RESTING_ESCALATE_SHARE = float(
 # without -- and a clamp that prices it away turns every basket into a
 # shoulders-only bet the charter forbids.  Its rungs stand on the book
 # skeleton alone; the whole-basket belief gate still covers it.
+# Production owns this number now (``delta_v2_runtime.MAKER_HEDGE_VALUE_LAMBDA``).
+# It lived only here for as long as production had no ceiling at all, which
+# meant the ledger was measuring a red line the live engine did not draw --
+# the divergence closed on 2026-08-22.  The env override stays so a sweep can
+# still move it here, but with the variable unset the two are the same number
+# by construction rather than by agreement.
 MAKER_RESTING_VALUE_LAMBDA = float(
-    os.environ.get("PAPER_LEDGER_MAKER_VALUE_LAMBDA", "0.53") or 0.0
+    os.environ.get("PAPER_LEDGER_MAKER_VALUE_LAMBDA", "")
+    or MAKER_HEDGE_VALUE_LAMBDA
 )
 # The whole-basket belief gate: at each re-pricing round, if the order's
 # claimed expectation under p(t) -- rungs already bought plus rungs still

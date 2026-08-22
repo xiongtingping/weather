@@ -9,6 +9,7 @@ the caller-provided fill-distribution authority.
 
 from __future__ import annotations
 
+import os
 from itertools import product
 import math
 from typing import Any, Callable, Mapping, Sequence
@@ -66,7 +67,54 @@ def _floor_to_tick(price: float, tick: float) -> float:
     return round(steps * tick, 12)
 
 
-def _maker_market_anchor(*, bid: float, ask: float, tick: float) -> float | None:
+# The model's own ceiling on a hedge rung's price, as a fraction of what
+# the model says that rung is worth.  The centre rung is exempt: it is the
+# position, not the insurance around it, and refusing to pay the market for
+# it is refusing the trade.
+#
+# This existed only in the paper ledger, which is where every ROI number in
+# this system comes from, so production was trading the one setting the
+# ledger measured worst.  The ledger's three-cell sweep, 2026-08-21:
+# lambda 0.53 gave -6.9%, lambda 0.75 gave -10.6%, and exempting the hedge
+# rungs entirely -- which is what production was doing by having no ceiling
+# at all -- gave -15.3%, the worst of the three, even though it lifted the
+# hit rate from 25.8% to 36.1%.  Hit rate is purchasable; the odds are not.
+MAKER_HEDGE_VALUE_LAMBDA = float(
+    os.environ.get("PM_MAKER_HEDGE_VALUE_LAMBDA", "0.53") or 0.0
+)
+
+
+def _hedge_value_cap(
+    *,
+    bucket: str,
+    centre_bucket: str,
+    probability: float | None,
+) -> float | None:
+    """The value ceiling for one rung, or None when it is uncapped.
+
+    Kept as one function so the ledger's ``_leg_value_cap`` and this cannot
+    drift into two different definitions of the same red line.
+    """
+
+    if MAKER_HEDGE_VALUE_LAMBDA <= 0.0:
+        return None
+    if centre_bucket and str(bucket) == str(centre_bucket):
+        return None
+    if probability is None:
+        return None
+    value = float(probability)
+    if not math.isfinite(value) or value <= 0.0:
+        return None
+    return MAKER_HEDGE_VALUE_LAMBDA * value
+
+
+def _maker_market_anchor(
+    *,
+    bid: float,
+    ask: float,
+    tick: float,
+    value_cap: float | None = None,
+) -> float | None:
     """Return the most competitive non-crossing official-WS Maker price."""
 
     highest_post_only = _floor_to_tick(ask - tick, tick)
@@ -74,6 +122,13 @@ def _maker_market_anchor(*, bid: float, ask: float, tick: float) -> float | None
         return None
     improve_bid = _floor_to_tick(bid + tick, tick)
     anchor = min(highest_post_only, improve_bid)
+    if value_cap is not None:
+        # A ceiling the market's own prices can never lift.  Flooring to the
+        # tick keeps the post legal; a ceiling below one tick means the rung
+        # is not worth its minimum quote and nothing is posted.
+        anchor = min(anchor, _floor_to_tick(float(value_cap), tick))
+        if anchor <= EPS:
+            return None
     if anchor + EPS < bid:
         return None
     return anchor
@@ -1754,14 +1809,25 @@ def compile_delta_v2_runtime_plan(
         if gap <= EPS:
             continue
         reservation_grid = _reservation_grid(row=row, artifact=delta_policy)
+        hedge_cap = _hedge_value_cap(
+            bucket=bucket,
+            centre_bucket=str(
+                support_selection.get("ladder_center_bucket") or ""
+            ),
+            probability=probabilities.get(bucket),
+        )
         maker_anchor = _maker_market_anchor(
             bid=row.bid_price,
             ask=row.ask_price,
             tick=row.price_tick_size,
+            value_cap=hedge_cap,
         )
         if maker_anchor is None:
             maker_candidate_diagnostics[bucket] = (
-                "maker_post_only_price_unavailable_at_min_tick"
+                "maker_hedge_value_cap_below_min_tick"
+                if hedge_cap is not None
+                and _floor_to_tick(hedge_cap, row.price_tick_size) <= EPS
+                else "maker_post_only_price_unavailable_at_min_tick"
                 if row.ask_price <= row.price_tick_size + EPS
                 else "maker_post_only_market_anchor_unavailable"
             )
