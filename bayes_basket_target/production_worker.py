@@ -649,14 +649,21 @@ OFFICIAL_NATIVE_CAPTURE_DEADLINE_SEC = 2400.0
 # Floor between two OOS station scans.  Deliberately far below the cycle it
 # rides inside: the cycle is the real pacing, and this only stops a very fast
 # cycle from re-scanning the same station back to back.
-# Whether the cheap P0-M scope verdict is measured, trusted, or absent.
-# "shadow" computes it beside the real path and reports where they disagree
-# without acting on it; "on" would let it skip the expensive read; "off"
-# removes it.  It starts in shadow because P0-M is the stage that goes silent
-# without saying so, and a verdict that agrees over real cycles is worth more
-# than an argument that it must.
+# Whether the cheap P0-M scope verdict is trusted, only measured, or absent.
+# "on" lets it skip the expensive read; "shadow" computes it beside the real
+# path and reports disagreements without acting on any; "off" removes it.
+#
+# It shipped as "shadow", because P0-M is the stage that goes silent without
+# saying so and a verdict that agrees over real cycles is worth more than an
+# argument that it must.  Three consecutive cycles agreed on all 168 scopes,
+# the last two comparing whole receipts field for field rather than the state
+# word, with no scope the shadow could not answer for; 151 to 152 of the 168
+# were scopes it would have skipped.  So the default is "on" and the shadow
+# comparison keeps running underneath it: when the verdict is acted on, the
+# real path is not there to disagree with, which is the point -- what remains
+# reported is how many scopes it answered for and how many it declined.
 P0M_FAST_PATH_MODE = str(
-    os.environ.get("PM_P0M_FAST_PATH", "shadow") or "shadow"
+    os.environ.get("PM_P0M_FAST_PATH", "on") or "on"
 ).strip().lower()
 
 NATIVE_ENSEMBLE_OOS_SCAN_MIN_INTERVAL_SEC = 60.0
