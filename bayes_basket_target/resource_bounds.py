@@ -123,7 +123,33 @@ MAX_JSON_NODES = 500_000
 # approach has no free space left to reclaim: the migration copies are gone,
 # the cold NWP lane is archived, and a VACUUM only returns freed pages, of
 # which a freshly compacted store has none.  The lever left is retention.
-MAX_TARGET_DB_BYTES = 20992 * MIB
+#
+# 2026-08-22: retention is what happened, and this raise is sized to what it
+# recovered rather than to a forecast.  Fitting the maker fill model took
+# thirteen mint passes to get past the artifact contract, and each pass is
+# append-only, so ``basket_delta_v2_fill_artifact`` went from 7,291 rows to
+# 521,865 -- 0.90 GB of artifact_json, of which one 79,136-row batch is the
+# one that serves.  The twelve superseded batches (435,438 artifacts and
+# 174,256 promotions) were deleted under a temporary trigger drop, the same
+# surgery ``upgrade_fill_promotion_decision_constraint`` performs, and the
+# triggers were restored inside the transaction.
+#
+# The guard measures file size, so those deletes do not lower it: they moved
+# 1.61 GB (393,528 pages) onto the freelist instead.  A VACUUM would return
+# it but wants the store's own size free and the internal disk holds 18 GB
+# against a 22 GB store, and both NWP retention lanes audit to zero
+# reclaimable bytes -- everything there is inside its window and referenced.
+# So the ceiling rises to cover a file that already contains its own
+# headroom: the next 1.61 GB of writes reuse freed pages and the file does
+# not grow at all.  This is not the same as raising it against a store with
+# no slack, which is what the paragraph above warns against.
+#
+# 23 GiB against a 22.13 GiB file leaves 0.87 GiB of file growth on top of
+# the 1.61 GB of freed pages inside it -- about 2.4 GB of real headroom,
+# which is more than the previous ceiling ever had.  When the internal disk
+# can spare 23 GB again, a VACUUM returns the freelist and this should come
+# straight back down to 21 GiB.
+MAX_TARGET_DB_BYTES = 23552 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.
