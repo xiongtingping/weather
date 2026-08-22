@@ -2328,6 +2328,131 @@ def _daily_table(selection: dict[str, Any]) -> list[dict[str, Any]]:
     return table
 
 
+def collect_window_divergence(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Station-days where the posterior and the held window part ways.
+
+    The signal is the out-of-window posterior mass at the *last recompute
+    where the held buckets were still alive* (mass on them above 5%) -- the
+    last moment a top-up could still have acted.  A single daily maximum was
+    tried first and rewarded the early morning's naturally broad posterior;
+    the end-state is what the disagreement actually settled into.
+
+    This is a disagreement detector, not a verdict.  Either side can be the
+    wrong one, and both archetypes are real: RKPK 2026-08-21 held 29-32
+    while the posterior (rightly) piled onto 33-34 and the day settled 34;
+    KSEA 2026-08-17 held 78-79 while the model (wrongly) kept 76% at or
+    above 80 through local midnight -- the hard bound only ever cuts from
+    below, so a model stuck high is a wrongness no observation can remove.
+    The settled column is what says who was right, station-day by
+    station-day.
+    """
+
+    chains: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in conn.execute(
+        "SELECT station_id, event_date, decision_at_utc,"
+        " window_buckets_json, leg_shares_json"
+        " FROM paper_trade_position ORDER BY decision_at_utc"
+    ):
+        key = (str(row[0]), str(row[1]))
+        entry = chains.setdefault(
+            key, {"held": set(), "opened": str(row[2])}
+        )
+        legs = json.loads(row[4] or "{}")
+        held = [
+            bucket for bucket, shares in legs.items() if (shares or 0) > 0
+        ] or json.loads(row[3])
+        entry["held"].update(held)
+    settled = {
+        (str(row[0]), str(row[1])): {
+            "hit": int(row[2]),
+            "pnl": float(row[3]),
+            "truth_bucket": str(row[4]),
+        }
+        for row in conn.execute(
+            "SELECT station_id, event_date, hit, pnl_usdc, settled_bucket"
+            " FROM paper_trade_settlement"
+        )
+    }
+    rows = []
+    for (station, day), entry in chains.items():
+        outcome = settled.get((station, day))
+        if outcome is None:
+            continue
+        late = None
+        for row in conn.execute(
+            "SELECT decision_at_utc, envelope_json"
+            " FROM basket_probability_bridge_history"
+            " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+            " AND decision_at_utc>=? ORDER BY decision_at_utc",
+            (station, day, entry["opened"]),
+        ):
+            envelope = json.loads(row[1])
+            probabilities = envelope["probabilities"]
+            ordinals = envelope["bucket_ordinals"]
+            inside = sum(
+                value for bucket, value in probabilities.items()
+                if bucket in entry["held"]
+            )
+            if inside <= 0.05:
+                continue
+            held_ordinals = [
+                ordinals[bucket] for bucket in entry["held"]
+                if bucket in ordinals
+            ]
+            if not held_ordinals:
+                continue
+            low, high = min(held_ordinals), max(held_ordinals)
+            late = {
+                "at": str(row[0]),
+                "out": 1.0 - inside,
+                "out_above": sum(
+                    value for bucket, value in probabilities.items()
+                    if ordinals.get(bucket, low) > high
+                ),
+                "out_below": sum(
+                    value for bucket, value in probabilities.items()
+                    if ordinals.get(bucket, high) < low
+                ),
+            }
+        if late is None:
+            continue
+        rows.append({
+            "station_id": station,
+            "event_date": day,
+            "held_buckets": sorted(entry["held"]),
+            "late_out": late["out"],
+            "out_above": late["out_above"],
+            "out_below": late["out_below"],
+            "measured_at_utc": late["at"],
+            **outcome,
+        })
+    thresholds = []
+    for threshold in (0.3, 0.4, 0.5):
+        hot = [row for row in rows if row["late_out"] > threshold]
+        cold = [row for row in rows if row["late_out"] <= threshold]
+        if not hot or not cold:
+            continue
+        thresholds.append({
+            "threshold": threshold,
+            "hot_n": len(hot),
+            "hot_hit_rate": sum(r["hit"] for r in hot) / len(hot),
+            "hot_pnl": sum(r["pnl"] for r in hot),
+            "cold_n": len(cold),
+            "cold_hit_rate": sum(r["hit"] for r in cold) / len(cold),
+            "cold_pnl": sum(r["pnl"] for r in cold),
+        })
+    flagged = sorted(
+        (row for row in rows if row["late_out"] > 0.4),
+        key=lambda row: (row["event_date"], row["late_out"]),
+        reverse=True,
+    )
+    return {
+        "evaluated_station_days": len(rows),
+        "thresholds": thresholds,
+        "flagged": flagged[:80],
+    }
+
+
 def build_payload(db: Path) -> dict[str, Any]:
     conn = _connect(db)
     members = collect_members(conn, collect_run_cadence(conn))
@@ -2387,6 +2512,7 @@ def build_payload(db: Path) -> dict[str, Any]:
         "serving_weights": serving_weights,
         "center_width": center_width,
         "scorecard": scorecard,
+        "window_divergence": collect_window_divergence(conn),
         "worker": worker,
     }
 
@@ -3033,6 +3159,59 @@ function refusalStats(){
 }
 
 
+function windowDivergence(){
+  const W=D.window_divergence||{};
+  const rows=W.flagged||[];
+  const ths=W.thresholds||[];
+  if(!rows.length&&!ths.length)
+    return `<h2>十六A、分布与持仓分家</h2>
+    <div class="card"><span class="dot green"></span> 没有可评估的站日。</div>`;
+  const pct=v=>v==null?"—":(v*100).toFixed(0)+"%";
+  const thRows=ths.map(t=>`<tr>
+    <td class="mono">&gt;${pct(t.threshold)}</td>
+    <td>${t.hot_n}</td><td>${pct(t.hot_hit_rate)}</td>
+    <td class="${t.hot_pnl>=0?"up":"down"}">${t.hot_pnl>=0?"+":""}${t.hot_pnl.toFixed(1)}</td>
+    <td>${t.cold_n}</td><td>${pct(t.cold_hit_rate)}</td>
+    <td class="${t.cold_pnl>=0?"up":"down"}">${t.cold_pnl>=0?"+":""}${t.cold_pnl.toFixed(1)}</td></tr>`).join("");
+  const short=b=>String(b).replace(/°[CF]| or below| or higher/g,"");
+  const line=r=>{
+    // Which way the mass leaked tells the reader which archetype this is
+    // likely to be before the settled column confirms it.
+    const dir=r.out_above>=r.out_below
+      ?`上方 ${pct(r.out_above)}`
+      :`下方 ${pct(r.out_below)}`;
+    return `<tr>
+    <td class="mono">${h(r.station_id)}</td><td class="mono">${h(r.event_date)}</td>
+    <td class="mono">${r.held_buckets.map(short).join("+")}</td>
+    <td><b>${pct(r.late_out)}</b> <span class="muted">${dir}</span></td>
+    <td class="mono muted">${h((r.measured_at_utc||"").slice(5,16))}</td>
+    <td class="mono">${short(r.truth_bucket)}</td>
+    <td>${r.hit?'<span class="up">中</span>':'<span class="down">未中</span>'}</td>
+    <td class="${r.pnl>=0?"up":"down"}">${r.pnl>=0?"+":""}${r.pnl.toFixed(2)}</td></tr>`;
+  };
+  return `<h2>十六A、分布与持仓分家</h2>
+  <p class="sub">每个已结算的持仓站日，取<b>持仓桶还活着的最后一次概率重算</b>
+  （持仓桶质量仍高于 5%，即加仓还来得及的最后时刻），量它有多少后验质量落在持仓窗之外。
+  共评估 ${W.evaluated_station_days||0} 个站日，下表列出末态窗外质量超过 40% 的。</p>
+  <div class="why"><b>这是分歧探测器，不是判决书——两边谁错它都会亮。</b>
+  两种原型都真实存在：RKPK 2026-08-21 持 29-32，后验（正确地）压向 33-34，实测 34，
+  该加仓没加，是<b>选桶层</b>的均值锚拖不过右尾；KSEA 2026-08-17 持 78-79，
+  模型到当地午夜还把 76% 压在 80 以上，实测 78-79——硬下界只能从下方砍桶，
+  砍不掉模型头顶的幻觉，这次是<b>模型</b>错、持仓对（夜间无软证据层收敛，
+  物理路径 v5 的 NIGHT scope 铺开后这类应减少）。
+  「中/未中」与盈亏就是逐日的裁决记录。</div>
+  <div class="card"><div class="muted">按阈值切分：分家越狠，命中越差</div>
+  <table style="margin-top:8px"><thead><tr><th>末态窗外</th>
+    <th>站日</th><th>命中</th><th>盈亏 u</th>
+    <th>其余</th><th>命中</th><th>盈亏 u</th></tr></thead>
+  <tbody>${thRows}</tbody></table></div>
+  <div class="scroll" style="margin-top:10px"><table>
+    <thead><tr><th>站</th><th>事件日</th><th>持仓窗</th><th>末态窗外·方向</th>
+    <th>时刻(UTC)</th><th>真值</th><th>结果</th><th>盈亏 u</th></tr></thead>
+    <tbody>${rows.map(line).join("")}</tbody></table></div>`;
+}
+
+
 function makerProbe(){
   const S=D.selection||{};const m=S.maker_probe||{};
   if(!m.available) return "";
@@ -3105,16 +3284,25 @@ function makerProbe(){
   // book, not missed, and counting them fails every morning.
   const judged=(r)=>r.closed_share_fill_rate!=null
     ?r.closed_share_fill_rate:r.share_fill_rate;
+  // The 80% floor is P0's alone.  P0 opens the position, so its posted
+  // basket is the whole target and "how much of it did we get" is a fair
+  // question.  P0-M and P1 add to what P0 opened, and a large share of
+  // what they post is a rung an earlier stage already posted and the
+  // market never came down to -- measured 2026-08-22, 94% of P0-M's
+  // whole-basket misses were on days P0 had also left a leg unbought.
+  // Holding a top-up stage to the opener's floor scores it on the
+  // opener's leftovers, which is why P0-M read "挂单在空转" while its
+  // core leg was filling 93.9% and it was still saving 30.9% against
+  // crossing.  The two rates below say what it is actually doing.
   const failing=reStages.filter(r=>
-    judged(r)==null||judged(r)<TARGET).map(r=>r.stage);
+    r.stage==="P0"&&(judged(r)==null||judged(r)<TARGET)).map(r=>r.stage);
   const evbad=reStages.filter(r=>
     r.maker_saving_vs_taker!=null&&r.maker_saving_vs_taker<=0)
     .map(r=>r.stage);
   const verdict=!reStages.length?"":
     (failing.length===0&&evbad.length===0
-      ?`<span class="pill green">底线全守住：三阶段成交率 ≥80%，挂单仍优于吃单</span>`
-      :[failing.length?`<span class="pill red">成交率破 80% 底线：${
-          failing.map(h).join("、")}</span>`:"",
+      ?`<span class="pill green">底线守住：P0 成交率 ≥80%，三阶段挂单仍优于吃单</span>`
+      :[failing.length?`<span class="pill red">P0 成交率破 80% 底线</span>`:"",
         evbad.length?`<span class="pill red">价差收益转负：${
           evbad.map(h).join("、")}</span>`:""].join(" "));
   const assessCards=reStages.map(r=>{
@@ -3125,19 +3313,30 @@ function makerProbe(){
     // is the exposure), the portfolio to the old 80% line, and the hedge
     // to the value red line first -- its rate is a reading, not a target.
     const coreOk=core==null||core>=0.9;
-    const ok=sf!=null&&sf>=TARGET&&coreOk;
+    const opener=r.stage==="P0";
+    // A top-up stage answers to the core floor only; its pooled rate is
+    // reported but not judged, because its denominator is inherited.
+    const ok=coreOk&&(!opener||(sf!=null&&sf>=TARGET));
+    const carried=r.carried_fill_rate, fresh=r.fresh_fill_rate;
     return `<div class="card">
-      <div class="muted">${h(r.stage)} · 建仓完整度（核心 ≥90% · 组合 ≥80%，按已收盘）</div>
+      <div class="muted">${h(r.stage)} · ${opener
+        ?"建仓完整度（核心 ≥90% · 组合 ≥80%，按已收盘）"
+        :"加仓完整度（核心 ≥90%；组合率只读，分母是继承来的）"}</div>
       <div class="big ${sf==null?"":(ok?"up":"down")}">${pct(sf)}</div>
       <div class="muted">${sf==null?"还没有挂单记录"
-        :ok?"两道门之上 · 目标仓位基本建成"
         :!coreOk?"核心腿破线 · 底仓没建起来，先查执行"
+        :ok&&opener?"两道门之上 · 目标仓位基本建成"
+        :ok?"核心腿之上 · 在 P0 的仓位上加仓"
         :"组合破线 · 挂单在空转，先查执行不查模型"}</div>
       <table style="margin-top:10px"><tbody>
         <tr><td>核心腿成交率（中心桶，门 ≥90%）</td>
             <td class="mono ${core==null?"":(core>=0.9?"up":"down")}">${pct(core)}</td></tr>
         <tr><td>对冲腿成交率（受价值红线约束，只读不设门）</td>
             <td class="mono">${pct(hedge)}</td></tr>
+        ${opener?"":`<tr><td>继承腿成交率（P0 挂过没买到的，再挂一次）</td>
+            <td class="mono">${pct(carried)}</td></tr>
+        <tr><td>新增腿成交率（链上从未持有的桶）</td>
+            <td class="mono">${pct(fresh)}</td></tr>`}
         <tr><td>含进行中事件日（单还在书上）</td>
             <td class="mono">${pct(r.share_fill_rate)}</td></tr>
         <tr><td>省价 vs 吃单（正 = 还在赚价差）</td>
@@ -4360,10 +4559,11 @@ const GROUPS = [
      [servingWeights,"四大模型权重"],[dispersion,"模型离散度"],
      [hitRate,"模型命中率"],[stages,"概率分档校准"],[oosScores,"OOS 打分"],
      [centerWidth,"中心/宽度"],[scorecard,"模型校准总检"]]},
-  {id:"market", label:"市场与执行", note:"十～十六节：覆盖与 EV、逐站与逐日的账、挂单执行、没建仓的原因",
+  {id:"market", label:"市场与执行", note:"十～十六节：覆盖与 EV、逐站与逐日的账、挂单执行、没建仓的原因、分布与持仓分家",
    sections:[[coverage,"覆盖"],[stationSummary,"站汇总"],[roster,"站名册"],
      [anomalies,"异常"],[basketHit,"篮子命中率"],
-     [makerProbe,"挂单影子探针"],[refusalStats,"未建仓原因"]]},
+     [makerProbe,"挂单影子探针"],[refusalStats,"未建仓原因"],
+     [windowDivergence,"分布与持仓分家"]]},
   {id:"data", label:"数据与链路", note:"十七～十九节：链路每一环、数据缺口、真值物化",
    sections:[[chain,"链路"],[gaps,"数据缺口"],[materialization,"真值物化"]]},
 ];

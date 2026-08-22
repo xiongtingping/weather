@@ -713,9 +713,11 @@ def _resting_entry_stats(conn: sqlite3.Connection) -> dict[str, Any]:
             "SELECT stage, window_size, resting_fill_json,"
             "       leg_shares_json, intended_legs_json, prices_json,"
             "       stake_usdc, intended_stake_usdc, event_date,"
-            "       ladder_center_bucket"
+            "       ladder_center_bucket, station_id, decision_at_utc,"
+            "       posted_buckets_json, held_before_json"
             " FROM paper_trade_position"
             " WHERE resting_fill_json NOT IN ('', '{}')"
+            " ORDER BY station_id, event_date, decision_at_utc"
         ).fetchall()
     except sqlite3.OperationalError:
         ladders = []
@@ -724,9 +726,23 @@ def _resting_entry_stats(conn: sqlite3.Connection) -> dict[str, Any]:
     # have closed, or the verdict would flap red every morning and clear
     # itself by night.
     today = datetime.now(timezone.utc).date().isoformat()
+    # What a top-up stage was trying to buy, split two ways.  A later stage
+    # opens nothing on its own -- it adds to the position P0 opened (user
+    # correction, 2026-08-22) -- but within that chain it does two different
+    # things, and one pooled fill rate hides both.  A *carried* rung is one
+    # an earlier stage posted and the market never came down to, so the
+    # later stage is retrying a leg the value line already refused once; a
+    # *fresh* rung is a bucket the chain has never held, which the evidence
+    # has newly moved onto.  Measured 2026-08-22: of P0-M's posted legs, 41
+    # were carried and 26 fresh, and 94% of its "whole basket missed" days
+    # were days P0 had also left a leg unbought -- so judging P0-M by the
+    # pooled number is largely judging it on P0's leftovers.
+    posted_before: dict[tuple[str, str], set[str]] = {}
+    unfilled_before: dict[tuple[str, str], set[str]] = {}
     for (stage, entered_legs, payload, legs_payload, intended_payload,
          prices_payload, stake, intended_stake, event_date,
-         centre_bucket) in ladders:
+         centre_bucket, station_id, _decided, posted_payload,
+         _held_before) in ladders:
         try:
             record = json.loads(payload)
         except (TypeError, ValueError):
@@ -742,9 +758,12 @@ def _resting_entry_stats(conn: sqlite3.Connection) -> dict[str, Any]:
             "closed_intended_shares": 0.0, "closed_filled_shares": 0.0,
             "core_want": 0.0, "core_got": 0.0,
             "hedge_want": 0.0, "hedge_got": 0.0,
+            "carried_want": 0.0, "carried_got": 0.0,
+            "fresh_want": 0.0, "fresh_got": 0.0,
             "stake": 0.0, "intended_stake": 0.0,
             "taker_equivalent": 0.0,
         })
+        chain_key = (str(station_id), str(event_date))
         detail["baskets"] += 1
         detail["partial_baskets"] += int(len(record) > int(entered_legs))
         # The share account: of the size that was posted, how much was
@@ -779,9 +798,37 @@ def _resting_entry_stats(conn: sqlite3.Connection) -> dict[str, Any]:
                 else:
                     detail["hedge_want"] += float(want)
                     detail["hedge_got"] += got
+                # Carried vs fresh, for the top-up stages.  P0 has no
+                # earlier stage, so every rung of its is fresh by
+                # construction and the split says nothing about it.
+                if str(stage) != "P0":
+                    seen = unfilled_before.get(chain_key, set())
+                    if str(bucket) in seen:
+                        detail["carried_want"] += float(want)
+                        detail["carried_got"] += got
+                    elif str(bucket) not in posted_before.get(
+                        chain_key, set()
+                    ):
+                        detail["fresh_want"] += float(want)
+                        detail["fresh_got"] += got
             detail["taker_equivalent"] += got * float(
                 entry_asks.get(bucket) or 0.0
             )
+        try:
+            posted_now = set(json.loads(posted_payload or "[]"))
+        except (TypeError, ValueError):
+            posted_now = set()
+        filled_now = {
+            str(b) for b, q in (filled_legs or {}).items()
+            if float(q or 0.0) > 0.0
+        }
+        posted_before.setdefault(chain_key, set()).update(posted_now)
+        # A rung counts as carried only while it is still unbought: once a
+        # later stage fills it, it stops being the leg the value line
+        # refused.
+        carried = unfilled_before.setdefault(chain_key, set())
+        carried |= {str(b) for b in posted_now} - filled_now
+        carried -= filled_now
         for value in record.values():
             try:
                 fraction, price = str(value).split("@")
@@ -864,6 +911,16 @@ def _resting_entry_stats(conn: sqlite3.Connection) -> dict[str, Any]:
             "hedge_fill_rate": (
                 detail.get("hedge_got", 0.0) / detail["hedge_want"]
                 if detail.get("hedge_want") else None
+            ),
+            # Only meaningful for the top-up stages; None on P0, which has
+            # no earlier stage to carry anything from.
+            "carried_fill_rate": (
+                detail.get("carried_got", 0.0) / detail["carried_want"]
+                if detail.get("carried_want") else None
+            ),
+            "fresh_fill_rate": (
+                detail.get("fresh_got", 0.0) / detail["fresh_want"]
+                if detail.get("fresh_want") else None
             ),
             "stake_fill_rate": (
                 detail.get("stake", 0.0) / detail["intended_stake"]
