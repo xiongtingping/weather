@@ -152,7 +152,13 @@ def _delta_policy() -> DeltaV2PolicyArtifact:
             "adverse_selection_scale": 1.0,
             "reprice_scale": 1.0,
             "capital_lock_scale": 1.0,
-            "maximum_candidates": 16,
+            # 64, not 16.  The fixture is a policy the shipped ladder can
+            # actually run: eight rungs across a window the solver may take
+            # to four buckets is thirty-six candidates on this fixture's
+            # single clip and single timeout, and sixteen refused them.  The
+            # ceiling itself is asserted where it belongs, in
+            # test_bayes_basket_target_delta_v2.py, which sets its own.
+            "maximum_candidates": 64,
         },
         "cash_clip_grid": [0.25],
         "price_grid": [0.1],

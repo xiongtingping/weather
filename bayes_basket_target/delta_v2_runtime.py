@@ -225,9 +225,33 @@ def _hedge_value_cap(
 # How many rungs a leg is offered across, and how far inside the bid the
 # cheapest one sits.  Both mirror the paper ledger's ``_resting_ladder``,
 # which is the lifecycle every measured ROI figure in this system was
-# produced under.
+# produced under -- and the ledger now takes this number from here, so the
+# two are the same by construction rather than by agreement.
+#
+# Eight, not five.  A single-variable sweep over one 186-position book
+# (2026-08-22) measured the rung count as the only lever that raises the
+# fill rate without paying for it:
+#
+#   rungs   share fill   ROI
+#     1        73.1%    +37.0%     <- what production posted before 31a68f52
+#     3        76.2%    +39.8%
+#     5        77.6%    +40.0%
+#     8        79.0%    +40.0%
+#
+# ROI plateaus at five and the fill rate keeps climbing, so eight buys 1.4
+# points of fill for nothing.  Past that it stops being free: twelve rungs
+# with a faster convergence reaches 81.6% but gives back 5.5 points of ROI.
+#
+# Everything else that looks like a fill-rate lever is not one.  Raising the
+# value clamp from 0.53 to 1.00 moves the fill rate by -0.5 points and costs
+# 8 points of ROI -- the unfilled legs are not unfilled because the price is
+# too low.  Re-pricing more often is worse, not better (60/30/15 minutes:
+# 77.6/76.4/71.0), because a re-post loses queue position.  Releasing the
+# shoulder clamp is the worst of all: 67.0% fill and -5.3% ROI, with the hit
+# count *up*, which is the same fingerprint this system has now measured ten
+# times -- the hit rate is purchasable and the odds are not.
 MAKER_LADDER_STEPS = int(
-    os.environ.get("PM_MAKER_LADDER_STEPS", "5") or 5
+    os.environ.get("PM_MAKER_LADDER_STEPS", "8") or 8
 )
 MAKER_LADDER_IMPROVE_TICKS = int(
     os.environ.get("PM_MAKER_LADDER_IMPROVE_TICKS", "1") or 1
@@ -2064,12 +2088,36 @@ def compile_delta_v2_runtime_plan(
                     )
     if len(candidate_descriptors) > delta_policy.execution_weights.maximum_candidates:
         raise ContractError("delta_v2_action_candidate_bound_exceeded")
+    # The fill distribution does not depend on how much cash a candidate
+    # spends -- the resolver conditions on bucket, price, timeout, queue,
+    # spread, depth and rung, and every one of those is fixed before the clip
+    # is chosen.  So the eleven clips in the live grid asked the resolver the
+    # same question eleven times.  At the store's measured 0.53ms per
+    # resolution that is 1,408 lookups per station where 128 distinct ones
+    # exist, and it is what made the candidate ceiling look like a limit on
+    # ladder rungs rather than on clips.
+    #
+    # Memoised for this call only.  The resolver reads content-addressed
+    # artifacts that a cycle cannot change under itself, so two identical
+    # questions inside one solve have one answer by construction.
+    resolved_fills: dict[tuple[Any, ...], Mapping[str, Any]] = {}
+
+    def _resolve_fill(**kwargs: Any) -> Mapping[str, Any]:
+        key = tuple(sorted(
+            (name, value) for name, value in kwargs.items()
+        ))
+        cached = resolved_fills.get(key)
+        if cached is None:
+            cached = fill_resolver(**kwargs)
+            resolved_fills[key] = cached
+        return cached
+
     for bucket, clip, price, mode_timeout in candidate_descriptors:
         mode, timeout_raw = mode_timeout.split(":", 1)
         timeout = float(timeout_raw)
         row = by_bucket[bucket]
         gap = gap_by_bucket[bucket]
-        initial_fill = fill_resolver(
+        initial_fill = _resolve_fill(
             station_id=snapshot.station_id,
             stage=snapshot.evidence.probability_stage,
             bucket=bucket,
@@ -2178,7 +2226,7 @@ def compile_delta_v2_runtime_plan(
             or clip / price > gap + EPS
         ):
             continue
-        resolved_fill = fill_resolver(
+        resolved_fill = _resolve_fill(
             station_id=snapshot.station_id,
             stage=snapshot.evidence.probability_stage,
             bucket=bucket,

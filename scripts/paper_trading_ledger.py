@@ -68,6 +68,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     CENTRE_ANCHOR_MIN_RUNG_SHARE,
     CONTINUOUS_OPTIMUM_CANDIDATES_ENABLED,
     MAKER_HEDGE_VALUE_LAMBDA,
+    MAKER_LADDER_STEPS,
     CERTAINTY_GATE_SIGNALS,
     MAKER_SHOULDER_VALUE_LAMBDA,
     MINIMUM_LEG_ALL_IN_ASK,
@@ -295,8 +296,13 @@ MAKER_RESTING_REPRICE_MINUTES = float(
 # weighting it toward the cheap end reintroduces the same "hope the market
 # collapses" bet the shape work just removed.
 MAKER_RESTING_IMPROVE_TICKS = 1
+# Production owns this number (``delta_v2_runtime.MAKER_LADDER_STEPS``), which
+# carries the sweep that chose it.  The env override stays so a sweep can move
+# it here, but with the variable unset the two are the same number by
+# construction rather than by agreement.
 MAKER_RESTING_LADDER_STEPS = int(
-    os.environ.get("PAPER_LEDGER_MAKER_LADDER_STEPS", "5") or 5
+    os.environ.get("PAPER_LEDGER_MAKER_LADDER_STEPS", "")
+    or MAKER_LADDER_STEPS
 )
 # How fast an unfilled rung converges on the top of the band.  The misses
 # concentrate at the cheap end -- the rungs that only fill when the market
