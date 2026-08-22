@@ -102,6 +102,12 @@ CREATE TABLE IF NOT EXISTS {TABLE_PROMOTION} (
 CREATE INDEX IF NOT EXISTS idx_fill_artifact_scope ON {TABLE_ARTIFACT}(
   station_id, stage, season_bin, maturity_bin, liquidity_bin, bucket, authority_scope
 );
+-- The resolver's whole WHERE clause, in its order, so one resolution is an
+-- index seek rather than a scan of every price and timeout in the scope.
+CREATE INDEX IF NOT EXISTS idx_fill_artifact_resolution ON {TABLE_ARTIFACT}(
+  station_id, stage, season_bin, maturity_bin, liquidity_bin, bucket,
+  authority_scope, price, timeout_seconds
+);
 CREATE INDEX IF NOT EXISTS idx_fill_promotion_artifact ON {TABLE_PROMOTION}(
   artifact_id, artifact_content_sha256, decision, decision_seq DESC
 );
@@ -1152,11 +1158,29 @@ def resolve_delta_v2_fill_distribution(
   else:
     normalized_policy = None
 
+  # ``price`` and ``timeout_seconds`` are stored columns *and* the first two
+  # things the loop below discards a row for, so leaving them out of the
+  # WHERE clause means reading and JSON-parsing every price and timeout in
+  # the scope to keep one of them.  That was invisible while the table held
+  # 7,291 rows.  Once the rung dimension took it to 86,427, a single
+  # resolution read 20,783 rows and parsed 42.3 MB of artifact_json in
+  # 1.6 seconds -- per leg, per rung, per candidate -- and a production
+  # cycle that ran in 174s did not finish in 36 minutes.  Pushing the two
+  # equality tests down returns one row instead of 20,783.
+  #
+  # The push-down is exactly the loop's own test, not a narrower one: every
+  # one of the 86,427 stored rows has
+  # ``json_extract(artifact_json,'$.price') IS price`` and the same for
+  # timeout_seconds, verified before this was written, because both the
+  # column and the JSON are serialized from one Python float.  The loop
+  # keeps its checks regardless, so the SQL is a filter and never the
+  # authority.
   rows = conn.execute(
     f"SELECT artifact_json FROM {TABLE_ARTIFACT} "
     "WHERE station_id IN (?, '*') AND stage IN (?, '*') "
     "AND season_bin=? AND maturity_bin=? "
-    "AND liquidity_bin=? AND bucket IN (?, '*') AND authority_scope=?",
+    "AND liquidity_bin=? AND bucket IN (?, '*') AND authority_scope=? "
+    "AND price=? AND timeout_seconds=?",
     (
       normalized["station_id"],
       normalized["stage"],
@@ -1165,6 +1189,8 @@ def resolve_delta_v2_fill_distribution(
       normalized["liquidity_bin"],
       normalized["bucket"],
       required_authority_scope,
+      normalized["price"],
+      normalized["timeout_seconds"],
     ),
   ).fetchall()
 
