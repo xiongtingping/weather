@@ -303,6 +303,44 @@ def test_preliminary_decision_replay_is_zero_write() -> None:
         ).fetchone()[0] == 1
 
 
+def test_opening_plan_resolves_the_opening_stage_policy_not_the_envelope_stage() -> None:
+    """A P0-M envelope must still open against P0's execution policy.
+
+    P0-M has never had a station policy of its own under target-v2, so binding
+    the policy lookup to the envelope's stage silently cost every station whose
+    P0-M envelope landed before its preselection -- four to eight a day, and
+    twenty-one on 2026-08-23.  This guards the parameter that separates "which
+    stage produced the distribution" from "which stage's policy governs the
+    action"; they are different questions and only the second is P0 by
+    definition here.
+    """
+
+    import inspect
+
+    from bayes_basket_target import runtime as runtime_module
+    from bayes_basket_target.production import compile_production_plan
+
+    for func in (
+        compile_production_plan,
+        runtime_module.compile_target_plan,
+        runtime_module._compile_target_plan,
+        runtime_module.DeltaBasketScoreV2Optimizer.compile,
+    ):
+        parameters = inspect.signature(func).parameters
+        assert "station_policy_stage" in parameters, func.__qualname__
+        assert parameters["station_policy_stage"].default is None, func.__qualname__
+
+    # The preselection is the caller that must pin it, and it must pin it to P0.
+    from bayes_basket_target import p0_preselection as preselection_module
+    source = inspect.getsource(preselection_module.compile_p0_preselection)
+    assert 'station_policy_stage="P0"' in source
+
+    # Unpinned, the resolver still sees the envelope's own stage: every
+    # non-opening caller depends on that default.
+    resolve_call = inspect.getsource(runtime_module._compile_target_plan)
+    assert "stage=station_policy_stage or envelope.stage," in resolve_call
+
+
 def test_p0_preselection_can_never_authorize_execution() -> None:
     with sqlite3.connect(":memory:") as conn:
         apply_production_ssot_schema(conn)

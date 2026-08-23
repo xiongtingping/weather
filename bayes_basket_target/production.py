@@ -272,6 +272,7 @@ def _no_transport(path: str, payload: Mapping[str, Any]) -> Mapping[str, Any]:
 
 def compile_production_plan(
     *,
+    station_policy_stage: str | None = None,
     probability_envelopes: Sequence[ProbabilityEnvelope | Mapping[str, Any]],
     market_snapshot: Mapping[str, Any],
     policy_activations: Sequence[StationBasketPolicyActivation | Mapping[str, Any]],
@@ -307,6 +308,7 @@ def compile_production_plan(
     """
 
     result = DeltaBasketScoreV2Optimizer().compile(
+        station_policy_stage=station_policy_stage,
         probability_envelopes=probability_envelopes,
         market_snapshot=market_snapshot,
         policy_activations=policy_activations,

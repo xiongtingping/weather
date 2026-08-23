@@ -729,6 +729,17 @@ def _rescore_clamped_bundle(
 
 def _compile_target_plan(
     *,
+    # Which stage's execution policy governs the action, which is not always
+    # the stage that produced the distribution.  An opening plan is opened at
+    # P0 whatever probability it opens on; binding the two together meant a
+    # station whose P0-M envelope landed before its preselection could not
+    # resolve any policy at all, because P0-M has never had one under the
+    # current strategy version.  Measured over 2026-08-19..23: every station
+    # that got a plan had its P0-M envelope arrive after the plan, and every
+    # station that got none had a P0-M envelope arrive first -- four to eight
+    # stations a day, twenty-one on 2026-08-23.  Defaults to the envelope's
+    # own stage, which is what every non-opening caller wants.
+    station_policy_stage: str | None = None,
     probability_envelopes: Sequence[ProbabilityEnvelope | Mapping[str, Any]],
     market_snapshot: Mapping[str, Any],
     policy_activations: Sequence[StationBasketPolicyActivation | Mapping[str, Any]],
@@ -906,7 +917,7 @@ def _compile_target_plan(
         global_priors=global_priors,
         artifacts=policy_artifacts,
         station_id=envelope.station_id,
-        stage=envelope.stage,
+        stage=station_policy_stage or envelope.stage,
         season_bin=season_bin,
         maturity_bin=maturity_bin,
         liquidity_bin=liquidity_bin,
@@ -1439,6 +1450,7 @@ class DeltaBasketScoreV2Optimizer:
     def compile(
         self,
         *,
+        station_policy_stage: str | None = None,
         probability_envelopes: Sequence[ProbabilityEnvelope | Mapping[str, Any]],
         market_snapshot: Mapping[str, Any],
         policy_activations: Sequence[StationBasketPolicyActivation | Mapping[str, Any]],
@@ -1464,6 +1476,7 @@ class DeltaBasketScoreV2Optimizer:
         expected_source_lane: str | None = None,
     ) -> dict[str, Any]:
         result = _compile_target_plan(
+            station_policy_stage=station_policy_stage,
             probability_envelopes=probability_envelopes,
             market_snapshot=market_snapshot,
             policy_activations=policy_activations,
@@ -1512,6 +1525,7 @@ class DeltaBasketScoreV2Optimizer:
 
 def compile_target_plan(
     *,
+    station_policy_stage: str | None = None,
     probability_envelopes: Sequence[ProbabilityEnvelope | Mapping[str, Any]],
     market_snapshot: Mapping[str, Any],
     policy_activations: Sequence[StationBasketPolicyActivation | Mapping[str, Any]],
@@ -1539,6 +1553,7 @@ def compile_target_plan(
     """Compatibility-free public facade for the one optimizer boundary."""
 
     return DeltaBasketScoreV2Optimizer().compile(
+        station_policy_stage=station_policy_stage,
         probability_envelopes=probability_envelopes,
         market_snapshot=market_snapshot,
         policy_activations=policy_activations,

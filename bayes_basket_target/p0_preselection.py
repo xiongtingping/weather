@@ -813,6 +813,11 @@ def compile_p0_preselection(
     if delta_v2_resolution_blocker:
         raise ContractError(delta_v2_resolution_blocker)
     compiled = compile_production_plan(
+        # A preselection is the opening plan, and a position is opened at P0
+        # whichever stage's probability it opens on.  P0-M is a confirmation
+        # of an opening, not an opening of its own, and has no execution
+        # policy of its own under this strategy version.
+        station_policy_stage="P0",
         probability_envelopes=envelopes,
         market_snapshot=market,
         policy_activations=artifacts.policy_activations,
