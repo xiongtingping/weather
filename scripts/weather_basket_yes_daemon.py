@@ -250,6 +250,9 @@ TARGET_SSOT_WARN_REMAINING_BYTES = 1024 * 1024 * 1024
 # down to it beforehand.  Fourteen days is long enough that a renewal is a
 # scheduled decision rather than an incident.
 CASH_PHASE_AUTHORITY_WARN_REMAINING_SEC = 14 * 24 * 3600
+# The three stages are one chain; a station whose stages answer to different
+# policy lineages is a split book, not a degraded one.
+STAGE_POLICY_LINEAGE_STAGES = ("P0", "P0-M", "P1")
 # This archive's WAL stops growing at exactly 128MiB and every write then fails
 # with ``disk I/O error``; the fail-closed ceiling above is never reached
 # because ingest dies first.  Maintenance therefore triggers at half of the
@@ -570,6 +573,103 @@ def cash_phase_authority_window_guard(db_path: Path) -> dict[str, Any]:
             "scripts/renew_cash_phase_authority_window.py"
             " --valid-from <old valid_until> --valid-until <new end>"
         ),
+    }
+
+
+def stage_policy_lineage_guard(db_path: Path) -> dict[str, Any]:
+    """Whether a station's three stages still share one policy lineage.
+
+    The three stages are one chain and one book, so they have to be governed by
+    one strategy version and one generation of the same prior.  Nothing enforced
+    that: the activation table has no cross-stage constraint,
+    ``resolve_station_policy`` looks up one stage at a time and never glances at
+    its siblings, and the ingress does not check that a packet carried all three.
+    So the 2026-07-30 target-v2 rollout landed P0 and P1, left P0-M on target-v1,
+    and the chain ran split for the better part of a month -- silently, because a
+    station whose P0-M envelope arrived before its preselection simply produced
+    no plan at all.  Four to eight stations a day, twenty-one on 2026-08-23, and
+    the totals still read like a healthy 41 of 45.
+
+    A split is reported as a violation rather than a warning.  There is no safe
+    way to keep opening on a chain whose middle stage answers to a different
+    policy than the ends.
+    """
+
+    database = db_path.expanduser().resolve()
+    if not database.is_file():
+        return {"ok": False, "state": "stage_policy_database_missing"}
+    now_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    conn = sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=30.0)
+    try:
+        rows = conn.execute(
+            "SELECT station_id,stage,strategy_version,generation,global_prior_id"
+            " FROM basket_policy_activation"
+            " WHERE valid_from_utc <= ? AND valid_until_utc > ?",
+            (now_utc, now_utc),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    # The resolver takes the highest generation among the rows that match, so
+    # comparing anything else would report a disagreement it would never act on.
+    winner: dict[tuple[str, str], tuple[str, int, str]] = {}
+    for station_id, stage, strategy_version, generation, global_prior_id in rows:
+        key = (str(station_id), str(stage))
+        candidate = (str(strategy_version), int(generation), str(global_prior_id))
+        current = winner.get(key)
+        if current is None or candidate[1] > current[1]:
+            winner[key] = candidate
+
+    stations = sorted({key[0] for key in winner})
+    split: list[dict[str, Any]] = []
+    incomplete: list[dict[str, Any]] = []
+    for station_id in stations:
+        lineages = {}
+        missing = []
+        for stage in STAGE_POLICY_LINEAGE_STAGES:
+            found = winner.get((station_id, stage))
+            if found is None:
+                missing.append(stage)
+            else:
+                lineages[stage] = found
+        if missing:
+            incomplete.append({"station_id": station_id, "missing_stages": missing})
+            continue
+        if len(set(lineages.values())) != 1:
+            split.append(
+                {
+                    "station_id": station_id,
+                    "by_stage": {
+                        stage: {
+                            "strategy_version": value[0],
+                            "generation": value[1],
+                            "global_prior_id": value[2],
+                        }
+                        for stage, value in lineages.items()
+                    },
+                }
+            )
+
+    violations: list[str] = []
+    if not stations:
+        violations.append("stage_policy_lineage_absent")
+    if incomplete:
+        violations.append("stage_policy_lineage_incomplete")
+    if split:
+        violations.append("stage_policy_lineage_split")
+    return {
+        "ok": not violations,
+        "database": str(database),
+        "station_count": len(stations),
+        "stages": list(STAGE_POLICY_LINEAGE_STAGES),
+        "split_station_count": len(split),
+        "incomplete_station_count": len(incomplete),
+        # Bounded: the shape of a split is the same for every station that has
+        # it, and the count above is what says how wide it is.
+        "split_examples": split[:5],
+        "incomplete_examples": incomplete[:5],
+        "violations": violations,
+        "state": "blocked_fail_closed" if violations else "one_lineage",
     }
 
 
@@ -2589,6 +2689,16 @@ def main() -> int:
                     state["cash_phase_authority_window"] = {
                         "ok": False,
                         "state": "cash_phase_authority_probe_failed",
+                        "reason": f"{type(exc).__name__}:{exc}",
+                    }
+                try:
+                    state["stage_policy_lineage"] = stage_policy_lineage_guard(
+                        DEFAULT_TARGET_DB
+                    )
+                except Exception as exc:
+                    state["stage_policy_lineage"] = {
+                        "ok": False,
+                        "state": "stage_policy_lineage_probe_failed",
                         "reason": f"{type(exc).__name__}:{exc}",
                     }
                 next_storage_probe = now_mono + 5.0

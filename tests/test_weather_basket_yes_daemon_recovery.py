@@ -1,4 +1,5 @@
 import sqlite3
+import tempfile
 from pathlib import Path
 
 from bayes_basket_target.nwp_rotation_state import build_rotation_state
@@ -535,3 +536,69 @@ def test_lane_worker_reopen_replaces_connection_and_canonical_ingress(monkeypatc
     assert worker.ingress is new_ingress
     assert worker.stations == []
     assert worker.next_station_refresh == 0.0
+
+def test_stage_policy_lineage_guard_reports_a_split_chain() -> None:
+    """The three stages are one chain, so one lineage is the invariant.
+
+    The 2026-07-30 target-v2 rollout landed P0 and P1 and left P0-M on
+    target-v1.  Nothing complained: the activation table has no cross-stage
+    constraint, the resolver reads one stage at a time, and the ingress never
+    checked that a packet carried all three.  The chain ran split for most of a
+    month and the only symptom was stations quietly producing no opening plan.
+    """
+
+    import sqlite3
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from weather_basket_yes_daemon import stage_policy_lineage_guard
+
+    window = ("2026-01-01T00:00:00Z", "2027-01-01T00:00:00Z")
+
+    def build(tmp: Path, rows: list[tuple]) -> Path:
+        path = tmp / "activations.db"
+        conn = sqlite3.connect(path)
+        conn.executescript(
+            "CREATE TABLE basket_policy_activation("
+            " activation_id TEXT PRIMARY KEY, station_id TEXT, stage TEXT,"
+            " strategy_version TEXT, generation INTEGER, global_prior_id TEXT,"
+            " valid_from_utc TEXT, valid_until_utc TEXT);"
+        )
+        conn.executemany(
+            "INSERT INTO basket_policy_activation VALUES(?,?,?,?,?,?,?,?)", rows
+        )
+        conn.commit()
+        conn.close()
+        return path
+
+    def rows_for(lineage: dict[str, tuple[str, int, str]]) -> list[tuple]:
+        return [
+            (f"a{index}", "KATL", stage, *value, *window)
+            for index, (stage, value) in enumerate(lineage.items())
+        ]
+
+    healthy = {
+        "P0": ("target-v2", 5, "g5"),
+        "P0-M": ("target-v2", 5, "g5"),
+        "P1": ("target-v2", 5, "g5"),
+    }
+    with tempfile.TemporaryDirectory() as raw:
+        tmp = Path(raw)
+        assert stage_policy_lineage_guard(build(tmp, rows_for(healthy)))["state"] == (
+            "one_lineage"
+        )
+
+    split = dict(healthy, **{"P0-M": ("target-v1", 4, "design-v3")})
+    with tempfile.TemporaryDirectory() as raw:
+        result = stage_policy_lineage_guard(build(Path(raw), rows_for(split)))
+    assert result["violations"] == ["stage_policy_lineage_split"]
+    assert result["split_station_count"] == 1
+
+    # A stage that was never rolled out at all is the same fault wearing a
+    # different face, and it must not read as healthy either.
+    absent = {key: value for key, value in healthy.items() if key != "P0-M"}
+    with tempfile.TemporaryDirectory() as raw:
+        result = stage_policy_lineage_guard(build(Path(raw), rows_for(absent)))
+    assert result["violations"] == ["stage_policy_lineage_incomplete"]
+
