@@ -2510,32 +2510,13 @@ def compile_native_ensemble_p0(
                 else None
             ),
         )
-    # Outermost, after every shape layer: the band factors were measured on
-    # final served claims, so the layer must see the claim every inner layer
-    # has already finished with -- same reason it runs last in the gate.
-    # The artifact pins the table version its holdout was scored against
-    # (``band_table_sha256=`` in the combination method); a bare tag means
-    # the static bootstrap constants.  A pinned-but-missing table fails
-    # closed inside the loader: serving an approximation of gated math is
-    # exactly what the pin exists to forbid.
-    band_reliability_receipt = None
-    if BAND_RELIABILITY_METHOD_TAG in artifact_combination_method:
-        pinned_sha = pinned_band_table_sha(artifact_combination_method)
-        pinned_factors = None
-        if pinned_sha is not None:
-            pinned_factors, _sha = load_band_table(
-                conn, table_sha256=pinned_sha
-            )
-        probability, band_reliability_receipt = apply_band_reliability(
-            probability, factors=pinned_factors
-        )
-        if pinned_sha is not None:
-            band_reliability_receipt["band_table_sha256"] = pinned_sha
-    # After the band layer, exactly where the gate put it.  Only ever applied
-    # against the version the artifact names: an artifact built before this
-    # existed carries no tag and is served the math it was gated on, and a
-    # pinned-but-missing version fails closed inside the loader rather than
-    # serving an approximation of it.
+    # Before the band layer: this moves the distribution along the temperature
+    # axis, and the band factors are measured on the claim that distribution
+    # produces, so the shape has to be final before the claim is corrected.
+    # Only ever applied against the version the artifact names: an artifact
+    # built before this existed carries no tag and is served the math it was
+    # gated on, and a pinned-but-missing version fails closed inside the
+    # loader rather than serving an approximation of it.
     center_width_receipt = None
     scalars = None
     pinned_center_width = None
@@ -2585,6 +2566,32 @@ def compile_native_ensemble_p0(
             center_width_receipt["station_width_sha256"] = (
                 pinned_station_width
             )
+    # Outermost, after every shape layer, which as of 2026-08-23 finally
+    # includes the centre/width scalars above.  This layer rescales a claim,
+    # and a claim rescaled here stops being the claim the moment anything
+    # moves the distribution afterwards -- which is exactly what the shape
+    # layer had been doing to it.  P1 has always composed them this way and
+    # says why in ``materialization._posterior``: geometry before claim.
+    # The two orders are byte-identical while the centre/width scalars are
+    # inert, which they are at P0 today, so this is the moment to fix it.
+    # The artifact pins the table version its holdout was scored against
+    # (``band_table_sha256=`` in the combination method); a bare tag means
+    # the static bootstrap constants.  A pinned-but-missing table fails
+    # closed inside the loader: serving an approximation of gated math is
+    # exactly what the pin exists to forbid.
+    band_reliability_receipt = None
+    if BAND_RELIABILITY_METHOD_TAG in artifact_combination_method:
+        pinned_sha = pinned_band_table_sha(artifact_combination_method)
+        pinned_factors = None
+        if pinned_sha is not None:
+            pinned_factors, _sha = load_band_table(
+                conn, table_sha256=pinned_sha
+            )
+        probability, band_reliability_receipt = apply_band_reliability(
+            probability, factors=pinned_factors
+        )
+        if pinned_sha is not None:
+            band_reliability_receipt["band_table_sha256"] = pinned_sha
     model_envelope_lower_bucket = _bucket_for_value(
         envelope_lower_c,
         intervals_raw,

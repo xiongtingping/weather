@@ -52,6 +52,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target import metar_ceiling  # noqa: E402
+from bayes_basket_target.center_width_calibration import (  # noqa: E402
+    apply_center_width_calibration,
+    bucket_centers_from_intervals,
+)
+from bayes_basket_target.center_width_store import EDGE_WIDTH_C  # noqa: E402
 from bayes_basket_target.basket_kernel.contracts import (  # noqa: E402
     TargetBasketSnapshot,
 )
@@ -158,6 +164,30 @@ MAXIMUM_SUPPORT_BUCKETS = 4
 # suspect: a basket must be contiguous and at least this wide, so refusing
 # the shoulder can cost the seat entirely, taking the profitable centre rung
 # with it.  If that is the mechanism, the shoulder's loss is an entry fee.
+# Exempt the rung the market prices highest from the value clamp (A/B knob,
+# 2026-08-23).  Measured on 101 settled station-days: the posted window held
+# the settled bucket 44.6% of the time, but on 21.8% of all station-days that
+# rung never filled -- the clamp caps at lambda times our own claim, and a
+# bucket the market also likes is quoted above that, so the one we most wanted
+# is the one we structurally cannot buy.  Loosening lambda globally was swept
+# and loses (0.53 -> +39.9%, 0.70 -> +31.2%): it buys more losers too.  The
+# market's price ORDER is the part that carries direction -- when a shoulder
+# settles at all, the dearer side is the one 21 times out of 22 -- so this
+# lifts the clamp on that rung alone and leaves every other rung clamped.
+# The core rung's own ceiling (A/B knob, 2026-08-23).  The centre is exempt
+# from the hedge clamp by user ruling 2026-08-20 -- pricing it away turns
+# every basket into a shoulders-only bet -- but exempt has never meant
+# unbounded: the red line falls back to the leg's own claimed probability,
+# which is a lambda of 1.0.  Whether 1.0 is the right number has not been
+# measured; every other rung's lambda has been swept and none of them sits
+# at 1.0.
+MAKER_RESTING_CENTRE_LAMBDA = float(
+    os.environ.get("PAPER_LEDGER_MAKER_CENTRE_LAMBDA", "") or 1.0
+)
+MAKER_MARKET_TOP_EXEMPT = (
+    os.environ.get("PAPER_LEDGER_MARKET_TOP_EXEMPT", "0").strip()
+    not in {"0", "false", "FALSE", "no", ""}
+)
 MINIMUM_SUPPORT_BUCKETS = int(
     os.environ.get("PAPER_LEDGER_MIN_SUPPORT_BUCKETS", "3") or 3
 )
@@ -356,6 +386,56 @@ MAKER_RESTING_ESCALATE_SHARE = float(
 # the divergence closed on 2026-08-22.  The env override stays so a sweep can
 # still move it here, but with the variable unset the two are the same number
 # by construction rather than by agreement.
+# Which stages the replay applies it to.  Production gates each stage
+# independently -- one stage's forward window can admit while another's
+# refuses -- so a measurement that switches all three together cannot say
+# which one carried the result.
+# How a resting rung is judged to have filled (A/B knob, 2026-08-23).
+#
+#   touch    best_ask reaches the rung.  The pre-existing rule, and the
+#            optimistic one: an ask arriving at our price says a trade can
+#            happen there, not that ours was the bid that got it.  Everything
+#            already resting at that price is in front of us.
+#   through  best_ask goes strictly below the rung.  A seller who pushed past
+#            our level consumed everything bid at it, so the fill is implied
+#            rather than assumed.  Needs no data the book does not carry.
+#   queue    through, and the depth resting at our price when the rung was
+#            posted must also have been worked off.  Depletion is credited
+#            from the level's own shrinking depth, which counts a cancel as a
+#            fill and so still errs generous.
+#
+# This matters more than any parameter in this file: every strategy that
+# rests was measured positive and every one that crossed was measured
+# negative (2026-08-17 sweep), so the whole result rides on whether these
+# fills are real.
+# Default moved to ``through`` on 2026-08-23.  Measured on the same book:
+# touch +36.6%, through +20.2%, queue +20.1% -- so roughly 45% of the paper
+# return was the touch assumption rather than the strategy, and every
+# parameter conclusion drawn under touch was drawn against an objective
+# inflated by that much.  ``queue`` adds almost nothing on top because these
+# books are thin: only 42% of quoted buckets report a queue at all and 59%
+# of those report none, so the binding question was never queue depth, it
+# was whether an ask arriving at our price means our bid was the one filled.
+MAKER_FILL_MODEL = (
+    os.environ.get("PAPER_LEDGER_FILL_MODEL", "through").strip() or "through"
+)
+
+_CW_RAW = os.environ.get("PAPER_LEDGER_CENTER_WIDTH", "0").strip()
+PAPER_LEDGER_CENTER_WIDTH = _CW_RAW not in {"0", "false", "FALSE", "no", ""}
+PAPER_LEDGER_CENTER_WIDTH_STAGES = (
+    frozenset({"P0", "P0-M", "P1"})
+    if _CW_RAW in {"1", "true", "TRUE", "yes", "all"}
+    else frozenset(
+        part.strip() for part in _CW_RAW.split(",") if part.strip()
+    )
+)
+_CW_REPLAY: dict[str, Any] | None = None
+
+PAPER_LEDGER_CEILING = (
+    os.environ.get("PAPER_LEDGER_METAR_CEILING", "1").strip()
+    not in {"0", "false", "FALSE", "no"}
+)
+
 MAKER_RESTING_VALUE_LAMBDA = float(
     os.environ.get("PAPER_LEDGER_MAKER_VALUE_LAMBDA", "")
     or MAKER_HEDGE_VALUE_LAMBDA
@@ -665,16 +745,33 @@ SELECTION_RULE_SHA256 = content_sha256({
     # therefore what every resting row records.
     "maker_escalate_share": MAKER_RESTING_ESCALATE_SHARE,
     "maker_reprice_replenish": "to_posted_depth_same_price_rungs",
+    # What counts as a fill.  Rows recorded under a different answer to
+    # that describe a different strategy, not a differently-priced one.
+    "maker_fill_model": MAKER_FILL_MODEL,
     # The model's part in the price and in the withdrawal.  All of these
     # change which rungs stand where, so rows written under other values
     # describe an execution that no longer runs.  The per-station cutoff
     # *values* deliberately do not ride here (they drift as observation
     # days accrue); the parameters that derive them do.
     "maker_value_lambda": MAKER_RESTING_VALUE_LAMBDA,
+    "maker_centre_lambda": MAKER_RESTING_CENTRE_LAMBDA,
+    # Rows priced with the dearest rung exempt describe a different red line.
+    "maker_market_top_exempt": MAKER_MARKET_TOP_EXEMPT,
     "maker_value_centre_exempt": True,
     "maker_shoulder_lambda": MAKER_RESTING_SHOULDER_LAMBDA,
     "maker_belief_gate": MAKER_RESTING_BELIEF_GATE,
     "maker_belief_source": "bridge_history_observation_stage_precedence_at_reprice",
+    # Production applies the cooling-side ceiling inside P1 as of 2026-08-23.
+    # A row priced against the raw posterior describes a red line the live
+    # engine no longer draws, so it cannot share a fingerprint with these.
+    "metar_ceiling": (
+        "replay_table_oos_by_event_date" if PAPER_LEDGER_CEILING else "off"
+    ),
+    "center_width": (
+        "replay_table_oos_by_event_date:"
+        + ",".join(sorted(PAPER_LEDGER_CENTER_WIDTH_STAGES))
+        if PAPER_LEDGER_CENTER_WIDTH else "off"
+    ),
     "maker_edge_escalation": "value_headroom_over_band",
     "maker_cutoff_percentile": MAKER_RESTING_CUTOFF_PERCENTILE,
     "maker_cutoff_buffer_minutes": MAKER_RESTING_CUTOFF_BUFFER_MINUTES,
@@ -1315,6 +1412,9 @@ def _stage_entry_candidates(
         " ORDER BY decision_at_utc ASC",
         (station_id, event_date, stage),
     ).fetchall():
+        # The seat is chosen off this ladder, so it has to be the ladder
+        # production would have shown -- ceiling included on the P1 stage.
+        ceiling_p = None
         priced = _quotes_at(conn, station_id, event_date, str(decided))
         if priced is None:
             continue
@@ -1327,6 +1427,31 @@ def _stage_entry_candidates(
         ).fetchall()
         if not buckets:
             continue
+        if stage == "P1":
+            ceiling_p = _ceiling_corrected(
+                conn,
+                {str(row[0]): float(row[4]) for row in buckets},
+                stage=stage,
+                envelope_json=envelope_json,
+                station_id=str(station_id),
+                event_date=str(event_date),
+                as_of_utc=str(decided),
+            )
+            buckets = [
+                (row[0], row[1], row[2], row[3],
+                 ceiling_p.get(str(row[0]), row[4]))
+                for row in buckets
+            ]
+        cw_p = _center_width_corrected(
+            {str(row[0]): float(row[4]) for row in buckets},
+            stage=stage,
+            envelope_json=envelope_json,
+            event_date=str(event_date),
+        )
+        buckets = [
+            (row[0], row[1], row[2], row[3], cw_p.get(str(row[0]), row[4]))
+            for row in buckets
+        ]
         signature = (
             observed_at,
             tuple(
@@ -1761,6 +1886,30 @@ def _consolidation_signals(
     }
 
 
+
+def _market_top_bucket(
+    window: Sequence[str] | None, by_bucket: Mapping[str, Any] | None
+) -> str | None:
+    """The rung the book asks most for, among those on the window.
+
+    The market's price ORDER is the piece that carries direction: measured on
+    the pairs where exactly one shoulder settled, the dearer side was the one
+    21 times out of 22, while our own claim picked it 12 times out of 22.
+    """
+
+    if not window or not by_bucket:
+        return None
+    best, top = None, None
+    for bucket in window:
+        row = by_bucket.get(str(bucket))
+        if row is None or not getattr(row, "ask_available", False):
+            continue
+        ask = float(getattr(row, "ask_price", 0.0) or 0.0)
+        if top is None or ask > top:
+            best, top = str(bucket), ask
+    return best
+
+
 def _tail_bucket(
     window: Sequence[str],
     centre_bucket: str | None,
@@ -1798,6 +1947,7 @@ def _leg_value_cap(
     probabilities: Mapping[str, float] | None,
     centre_bucket: str | None,
     window: Sequence[str] | None = None,
+    market_top_bucket: str | None = None,
 ) -> float | None:
     """The value cap for one leg, with the centre bucket exempt.
 
@@ -1812,6 +1962,20 @@ def _leg_value_cap(
     """
 
     if centre_bucket is not None and str(bucket) == str(centre_bucket):
+        if MAKER_RESTING_CENTRE_LAMBDA == 1.0:
+            # Unchanged behaviour: the caller falls back to the claim itself,
+            # which is exactly a lambda of one.
+            return None
+        probability = (probabilities or {}).get(str(bucket))
+        return (
+            None if probability is None
+            else MAKER_RESTING_CENTRE_LAMBDA * float(probability)
+        )
+    if (
+        MAKER_MARKET_TOP_EXEMPT
+        and market_top_bucket is not None
+        and str(bucket) == str(market_top_bucket)
+    ):
         return None
     if MAKER_RESTING_SHOULDER_LAMBDA and _is_shoulder(
         bucket, centre_bucket, window
@@ -1900,6 +2064,7 @@ def _maker_leg_prices(
                 probabilities=probabilities,
                 centre_bucket=centre_bucket,
                 window=buckets,
+                market_top_bucket=_market_top_bucket(buckets, by_bucket),
             ),
         )
         # A leg with no price here cannot have been seated: the strategy
@@ -1935,6 +2100,7 @@ def _window_row(
                 probabilities=probabilities,
                 centre_bucket=centre_bucket,
                 window=ordered,
+                market_top_bucket=_market_top_bucket(ordered, by_bucket),
             ),
         )
         if quote is None or quote < MINIMUM_LEG_ALL_IN_ASK:
@@ -2332,6 +2498,170 @@ def _station_peak_cutoffs(
     return out
 
 
+
+# Production applies the cooling-side ceiling inside the P1 compile as of
+# 2026-08-23, so a replay that reads the historical posteriors raw is scoring a
+# strategy the live engine no longer runs.  The serving artifact cannot supply
+# it here -- it refuses every date at or before its own training cutoff, and a
+# replay is entirely made of those -- so the replay table is used instead: one
+# curve per event date, fitted only on strictly earlier days.
+
+
+_TZ_CACHE: dict[tuple[str, str], str] = {}
+
+
+def _settlement_timezone(conn, station_id: str, event_date: str) -> str:
+    """The zone the day settles in, as the book itself recorded it."""
+
+    key = (str(station_id), str(event_date))
+    if key not in _TZ_CACHE:
+        row = conn.execute(
+            "SELECT settlement_timezone FROM basket_official_ws_snapshot"
+            " WHERE station_id=? AND event_date=? LIMIT 1", key,
+        ).fetchone()
+        _TZ_CACHE[key] = str(row[0]) if row and row[0] else ""
+    return _TZ_CACHE[key]
+
+
+# The centre/width layer as production would apply it, for replay only
+# (A/B knob, 2026-08-23).  That layer has never once served -- its evidence
+# window resets on every serving-arithmetic change and has never reached the
+# eight days it needs -- so the question "what would it be worth" has no
+# production answer to read.  The scalars come from a per-event-date table
+# fitted only on earlier days, the same discipline the ceiling replay uses.
+
+
+def _center_width_corrected(
+    probabilities: dict[str, float],
+    *,
+    stage: str,
+    envelope_json: Any,
+    event_date: str,
+) -> dict[str, float]:
+    """The belief with this stage's shift and width scale applied."""
+
+    global _CW_REPLAY
+    if (
+        not PAPER_LEDGER_CENTER_WIDTH
+        or str(stage) not in PAPER_LEDGER_CENTER_WIDTH_STAGES
+        or not probabilities
+    ):
+        return probabilities
+    if _CW_REPLAY is None:
+        path = (
+            Path(__file__).resolve().parents[1] / "data" / "runtime"
+            / "bayes_basket_target_nwp" / "center_width_replay_table.json"
+        )
+        try:
+            _CW_REPLAY = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            _CW_REPLAY = {"stages": {}}
+    entry = (
+        (_CW_REPLAY.get("stages") or {}).get(str(stage)) or {}
+    ).get(str(event_date))
+    if not entry:
+        return probabilities
+    forced = os.environ.get("PAPER_LEDGER_CW_FORCE_LAMBDA", "").strip()
+    if forced:
+        # Test the mechanism rather than the fitted scalars: if sharpening
+        # loses because it walks the window toward the consensus price, then
+        # widening should walk it away and the sign should flip.  The shift
+        # is dropped with it so only the width is under test.
+        entry = {"delta_c": 0.0, "width_lambda": float(forced)}
+    try:
+        envelope = json.loads(envelope_json or "{}")
+        lineage = envelope.get("lineage") or {}
+        intervals = json.loads(
+            str(lineage.get("bucket_intervals_c_json") or "{}")
+        )
+        ordinals = envelope.get("bucket_ordinals") or {}
+    except (TypeError, ValueError):
+        return probabilities
+    if not intervals or not ordinals:
+        return probabilities
+    keys = sorted(probabilities, key=lambda k: ordinals.get(k, 0))
+    if set(keys) != set(intervals):
+        return probabilities
+    try:
+        centers = bucket_centers_from_intervals(
+            intervals, ordered_keys=keys, edge_width_c=EDGE_WIDTH_C
+        )
+    except (ValueError, KeyError):
+        return probabilities
+    excluded = str(lineage.get("hard_excluded_buckets") or "NONE")
+    corrected, _ = apply_center_width_calibration(
+        probabilities,
+        delta_c=float(entry["delta_c"]),
+        width_lambda=float(entry["width_lambda"]),
+        ordered_keys=keys,
+        key_centers_c=centers,
+        excluded_buckets=() if excluded == "NONE" else tuple(excluded.split(",")),
+    )
+    return corrected
+
+
+def _ceiling_corrected(
+    conn,
+    probabilities: dict[str, float],
+    *,
+    stage: str,
+    envelope_json: Any,
+    station_id: str,
+    event_date: str,
+    as_of_utc: str,
+) -> dict[str, float]:
+    """The belief production would have held, ceiling included.
+
+    Only P1 carries a running high, so only P1 can be corrected; P0 and P0-M
+    are returned untouched, which is also what production does with them.
+    """
+
+    if not PAPER_LEDGER_CEILING or stage != "P1" or not probabilities:
+        return probabilities
+    try:
+        envelope = json.loads(envelope_json or "{}")
+    except (TypeError, ValueError):
+        return probabilities
+    lineage = envelope.get("lineage") or {}
+    running = lineage.get("metar_trajectory_running_high_c")
+    ordinals = envelope.get("bucket_ordinals") or {}
+    intervals_raw = lineage.get("bucket_intervals_c_json")
+    if running in (None, "") or not ordinals or not intervals_raw:
+        return probabilities
+    try:
+        intervals = json.loads(intervals_raw)
+        running_c = float(running)
+    except (TypeError, ValueError):
+        return probabilities
+    running_bucket = None
+    for bucket, bounds in intervals.items():
+        low, high = bounds[0], bounds[1]
+        if (low is None or running_c >= float(low)) and (
+            high is None or running_c < float(high)
+        ):
+            running_bucket = bucket
+            break
+    if running_bucket is None:
+        return probabilities
+    curve = metar_ceiling.replay_curve(event_date)
+    if curve is None:
+        return probabilities
+    zone = _settlement_timezone(conn, station_id, event_date)
+    if not zone:
+        return probabilities
+    corrected, _ = metar_ceiling.apply_ceiling(
+        probabilities,
+        ordinals=ordinals,
+        running_high_bucket=running_bucket,
+        event_date=event_date,
+        settlement_timezone=zone,
+        as_of_utc=as_of_utc,
+        artifact=curve,
+        enabled=True,
+    )
+    return corrected
+
+
 class _BeliefTimeline:
     """Our own freshest probabilities for one station-day, as of a moment.
 
@@ -2357,9 +2687,11 @@ class _BeliefTimeline:
         entry_probabilities: Mapping[str, float],
     ) -> None:
         self._conn = conn
+        self._station_id = str(station_id)
+        self._event_date = str(event_date)
         try:
             self._rows = conn.execute(
-                "SELECT decision_at_utc, history_id, stage"
+                "SELECT decision_at_utc, history_id, stage, envelope_json"
                 " FROM basket_probability_bridge_history"
                 " WHERE station_id=? AND event_date=? AND decision_at_utc>?"
                 " ORDER BY decision_at_utc ASC",
@@ -2392,21 +2724,77 @@ class _BeliefTimeline:
             # row exists, later non-P1 rows no longer update the belief.
             row_stage = str(self._rows[self._index][2] or "")
             if row_stage == "P1":
-                newest = self._rows[self._index][1]
+                newest = self._rows[self._index]
                 self._p1_seen = True
             elif not self._p1_seen:
-                newest = self._rows[self._index][1]
+                newest = self._rows[self._index]
             self._index += 1
         if newest is not None:
             rows = self._conn.execute(
                 "SELECT bucket, probability"
                 " FROM basket_probability_bridge_bucket_probability"
                 " WHERE history_id=?",
-                (newest,),
+                (newest[1],),
             ).fetchall()
-            for bucket, probability in rows:
-                self._current[str(bucket)] = float(probability)
+            fresh = {str(bucket): float(p) for bucket, p in rows}
+            fresh = _ceiling_corrected(
+                self._conn,
+                fresh,
+                stage=str(newest[2] or ""),
+                envelope_json=newest[3],
+                station_id=self._station_id,
+                event_date=self._event_date,
+                as_of_utc=str(newest[0]),
+            )
+            # Geometry before claim, exactly as production composes it.
+            fresh = _center_width_corrected(
+                fresh,
+                stage=str(newest[2] or ""),
+                envelope_json=newest[3],
+                event_date=self._event_date,
+            )
+            self._current.update(fresh)
         return self._current
+
+
+
+def _queue_worked_off(
+    state: dict[str, dict[str, float]],
+    bucket: str,
+    quote: Mapping[str, Any],
+    *,
+    require_queue: bool,
+) -> bool:
+    """Has the size that stood in front of us at this price been worked off?
+
+    Under ``through`` the answer is always yes: the caller has already
+    required the book to trade past our level and nothing was claimed about
+    the queue.  Under ``queue`` the shares resting ahead when the rung was
+    posted have to be consumed first, and consumption is inferred from the
+    level's depth shrinking between snapshots -- a cancel is indistinguishable
+    from a fill in a snapshot, so this still credits us too fast rather than
+    too slow.
+    """
+
+    if not require_queue:
+        return True
+    cell = state.setdefault(str(bucket), {})
+    if "remaining" not in cell:
+        ahead = quote.get("maker_queue_ahead_shares")
+        known = bool(quote.get("maker_queue_known"))
+        # An unknown queue is treated as empty.  Inventing a number would be
+        # a worse error than the optimism it is meant to correct.
+        cell["remaining"] = float(ahead or 0.0) if known else 0.0
+    depth = 0.0
+    for level in (quote.get("ask_levels") or []):
+        shares = level.get("shares")
+        if shares is not None:
+            depth += float(shares)
+    previous = cell.get("depth")
+    cell["depth"] = depth
+    if previous is not None and depth < previous:
+        cell["remaining"] = max(0.0, cell["remaining"] - (previous - depth))
+    return cell["remaining"] <= 0.0
 
 
 def _resting_ladder_fill(
@@ -2421,6 +2809,7 @@ def _resting_ladder_fill(
     probabilities: Mapping[str, float] | None = None,
     cutoff_local_minutes: int | None = None,
     centre_bucket: str | None = None,
+    market_top_bucket: str | None = None,
 ) -> tuple[dict[str, list[float]], str | None, bool]:
     """Which rungs of each leg's ladder the book traded through.
 
@@ -2492,6 +2881,7 @@ def _resting_ladder_fill(
         bucket: len(prices) for bucket, prices in pending.items()
     }
     filled: dict[str, list[float]] = {b: [] for b in pending}
+    queue_state: dict[str, dict[str, float]] = {}
     withdrawn = False
     next_reprice = (
         None if MAKER_RESTING_REPRICE_MINUTES <= 0
@@ -2575,6 +2965,7 @@ def _resting_ladder_fill(
                         probabilities=current_p,
                         centre_bucket=centre_bucket,
                         window=buckets,
+                        market_top_bucket=market_top_bucket,
                     )
                     # Gate 1, the red line: what this leg is worth.  The
                     # clamp for a hedge leg, the fresh claim itself for the
@@ -2710,9 +3101,18 @@ def _resting_ladder_fill(
                 if price <= rungs[-1] - MAKER_RESTING_CRASH_TICKS * tick:
                     pending[bucket] = []
                     continue
-            # Every rung at or above where the book traded is filled.
-            while rungs and price <= rungs[0] + 1e-9:
-                filled[bucket].append(rungs.pop(0))
+            # Every rung the book reached -- what "reached" means is the
+            # fill model's whole question.
+            if MAKER_FILL_MODEL == "touch":
+                while rungs and price <= rungs[0] + 1e-9:
+                    filled[bucket].append(rungs.pop(0))
+            else:
+                worked = _queue_worked_off(
+                    queue_state, bucket, item,
+                    require_queue=MAKER_FILL_MODEL == "queue",
+                )
+                while rungs and worked and price < rungs[0] - 1e-9:
+                    filled[bucket].append(rungs.pop(0))
     missing = next(
         (bucket for bucket, prices in filled.items() if not prices), None
     )
@@ -3853,6 +4253,8 @@ def backfill(
                                     probabilities=probabilities,
                                     centre_bucket=seat_centre,
                                     window=seat["buckets"],
+                                    market_top_bucket=_market_top_bucket(
+                                        seat["buckets"], by_row),
                                 ),
                             )
                             if str(b) in by_row else []
@@ -3867,6 +4269,8 @@ def backfill(
                             event_date=event_date,
                             buckets=seat["buckets"],
                             ladders=ladders,
+                            market_top_bucket=_market_top_bucket(
+                                seat["buckets"], by_row),
                             placed_at_utc=payload["decision_at_utc"],
                             # The entry claim seeds the belief timeline;
                             # the walk re-reads the freshest one at every

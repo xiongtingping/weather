@@ -52,6 +52,21 @@ from .shadow_objective import solve_fractional_kelly
 
 
 SCHEMA = "delta_basket_score_runtime_plan_v2"
+
+# A margin on the whole-basket edge, above tick friction (2026-08-23).
+# The friction term only removes quantisation noise, so the floor has been
+# effectively zero -- and it could afford to be, because ``win`` under-claimed
+# and that under-claim was doing the work of a margin.  Measured on 17 forward
+# days at P0: claimed 73.2% against 83.9% realised, a hidden 10.7 points of
+# safety.  A calibration that makes ``win`` honest removes that safety without
+# replacing it, and the marginal baskets it had been excluding turn out to
+# lose: the centre/width scalars opened 37 extra chains and took the book from
+# +41.4% to +4.3%.  The margin is what makes the floor mean the same thing
+# after the claim stops under-claiming.  Zero keeps the pre-existing behaviour
+# byte-identical.
+SUPPORT_EDGE_MARGIN = float(
+    os.environ.get("PM_SUPPORT_EDGE_MARGIN", "") or 0.0
+)
 # P1 is the converging stage: the ladder is allowed to walk down 4 -> 3 -> 2
 # as the day resolves, and stops at two because the second rung is the tail
 # one still carrying the insurance (user ruling, 2026-08-16).  The opening
@@ -779,7 +794,7 @@ def _support_windows(
             friction = SUPPORT_EDGE_FRICTION_TICKS_PER_LEG * sum(
                 float(by_bucket[bucket].price_tick_size)
                 for bucket in window
-            )
+            ) + SUPPORT_EDGE_MARGIN
             admissible = is_incumbent or (
                 priced and edge is not None and edge > friction + EPS
             )

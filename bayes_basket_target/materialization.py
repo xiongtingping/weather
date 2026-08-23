@@ -713,7 +713,9 @@ def _posterior(
             lineage["center_width_json"] = json.dumps(
                 center_receipt, sort_keys=True
             )
-    # Outermost, exactly as at P0: this stage's own band table corrects the
+    # Outermost, as at P0 since 2026-08-23 -- before that P0 ran this layer
+    # ahead of its centre/width scalars, so the two stages disagreed and this
+    # comment was wrong about it.  This stage's own band table corrects the
     # claim the likelihood step actually produced.  P0's correction already
     # rode in through the root, so what is measured -- and corrected -- here
     # is only the residual this stage's own multiplication leaves.  Absent
@@ -1029,7 +1031,13 @@ def materialize_p1(
     bridge_sha256: str,
     truth_observation_revision_content_sha256: str | None = None,
     checkpoint_id: str | None = None,
-    posterior_version: str = "p1_metar_trajectory_target_v2",
+    # v3 (2026-08-23): the cooling-side ceiling now speaks inside the
+    # posterior, and the F-market hard bound cuts at the first killing report
+    # rather than half a Celsius degree past it.  Both change the served
+    # distribution, so the version has to move with them -- the calibration
+    # layer derives its evidence bound from exactly this string, and a
+    # distribution nobody serves any more must not be fitted on.
+    posterior_version: str = "p1_metar_trajectory_target_v3",
     band_table: tuple[
         Sequence[tuple[tuple[float, float], float]], str
     ] | None = None,

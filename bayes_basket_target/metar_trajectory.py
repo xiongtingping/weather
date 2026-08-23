@@ -26,6 +26,7 @@ from .contracts import (
     timestamp_lt,
 )
 from .event_contracts import CanonicalObservationEvent
+from .metar_ceiling import apply_ceiling as apply_metar_ceiling
 from .metar_path_state import (
     HOURLY_CURVE_PATH_MODEL_COEFFICIENT_KEYS,
     PATH_MODEL_COEFFICIENT_KEYS,
@@ -1689,6 +1690,41 @@ def compile_metar_trajectory_update_proof(
     if total <= 0.0:
         raise ContractError("metar_trajectory_posterior_zero_mass")
     posterior = {bucket: weighted[bucket] / total for bucket in ordered_buckets}
+    # The lower cut has run and its renormalisation has just scaled every
+    # survivor up, the far tail included.  This is where the clock gets to
+    # answer, because it is the only place both the running high and the
+    # decision time are known.  Off by default: with the layer disabled the
+    # posterior below is the same object it always was.
+    running_high_bucket = min(
+        (bucket for bucket in ordered_buckets if bucket not in excluded),
+        key=lambda bucket: (root.bucket_ordinals[bucket], bucket),
+        default=None,
+    )
+    if running_high_bucket is not None:
+        # The note the layer returns is deliberately not carried into lineage:
+        # it depends on a fitted file, and a replay against a later fit would
+        # then rebuild a different envelope than the one that was committed.
+        # Whether it spoke is recoverable without it -- the mass above the
+        # running high equals the artifact's rate for that hour when it did.
+        posterior, _ = apply_metar_ceiling(
+            posterior,
+            ordinals=root.bucket_ordinals,
+            running_high_bucket=running_high_bucket,
+            event_date=root.event_date,
+            settlement_timezone=root.settlement_timezone,
+            as_of_utc=as_of_utc,
+        )
+        # A rate must never resurrect a bucket the observation killed.
+        posterior = {
+            bucket: (0.0 if bucket in excluded else posterior[bucket])
+            for bucket in ordered_buckets
+        }
+        residual = sum(posterior.values())
+        if residual <= 0.0:
+            raise ContractError("metar_trajectory_posterior_zero_mass")
+        posterior = {
+            bucket: value / residual for bucket, value in posterior.items()
+        }
     if any(posterior[bucket] != 0.0 for bucket in excluded):
         raise ContractError("metar_trajectory_hard_exclusion_revived")
     center = min(

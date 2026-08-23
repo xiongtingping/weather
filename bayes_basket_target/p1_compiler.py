@@ -108,11 +108,22 @@ def _registry_bucket_bounds(
 
 
 def _hard_exclusion_threshold_c(value: float, unit: str) -> float:
-    """First reported Celsius value whose conservative hard lower exceeds value."""
+    """First reported Celsius value whose conservative hard lower exceeds value.
+
+    ``value`` is the bucket's upper label in market units, so the bucket dies
+    at the first report one rung above it: ``value + 1`` degrees C, or
+    ``value + 1`` degrees F expressed in Celsius.  The margin has to be taken
+    on the *reporting* grid, not in Celsius for both -- C stations report whole
+    degrees C, F stations report whole degrees F, which is 5/9 C.  Adding a
+    whole Celsius degree on an F market overshoots the next report by 0.4F and
+    leaves the bucket alive one rung too long: KSFO 2026-08-20 reached 68F
+    (20.0C) with the 66-67F bucket, dead above 67.5F, still holding 27.2% of
+    the posterior because the threshold had been placed at 20.22C.
+    """
 
     if unit == "C":
         return float(value) + 1.0
-    return (float(value) - 30.6) / 1.8
+    return (float(value) + 1.0 - 32.0) / 1.8
 
 
 def _bucket_geometry_c(
@@ -123,21 +134,57 @@ def _bucket_geometry_c(
 ) -> tuple[dict[str, float], dict[str, float]]:
     centers_lineage = envelope.lineage.get("bucket_centers_c_json")
     intervals_lineage = envelope.lineage.get("bucket_intervals_c_json")
-    if centers_lineage and intervals_lineage:
+    # The intervals alone are enough, and requiring the centres alongside them
+    # threw away the exact geometry on 99.9% of roots (88822 of 88878): they
+    # carry ``bucket_intervals_c_json`` and no ``bucket_centers_c_json``, so
+    # every one of them fell through to re-deriving bounds the root had
+    # already stated exactly.  Centres are the midpoints of those intervals,
+    # so there is nothing to recover them from that the intervals do not say.
+    if intervals_lineage:
         try:
-            centers = {
-                str(bucket): float(value)
-                for bucket, value in json.loads(centers_lineage).items()
+            intervals = {
+                str(bucket): bounds
+                for bucket, bounds in json.loads(intervals_lineage).items()
             }
-            intervals = json.loads(intervals_lineage)
-            uppers = {
-                str(bucket): (
-                    float(bounds[1])
-                    if bounds[1] is not None
-                    else float(centers[str(bucket)]) + 0.5
+            stated = (
+                {
+                    str(bucket): float(value)
+                    for bucket, value in json.loads(centers_lineage).items()
+                }
+                if centers_lineage
+                else {}
+            )
+            # An open-ended first or last bucket has no midpoint of its own;
+            # it gets the ladder's own rung, which is the narrowest closed
+            # interval on it.  A hardcoded half degree was a C-market
+            # assumption -- F markets rung in 2F = 10/9 C.
+            widths = [
+                float(bounds[1]) - float(bounds[0])
+                for bounds in intervals.values()
+                if bounds[0] is not None and bounds[1] is not None
+            ]
+            step = min(widths) if widths else (
+                1.0 if unit == "C" else 10.0 / 9.0
+            )
+            centers = {}
+            uppers = {}
+            for bucket, bounds in intervals.items():
+                low = None if bounds[0] is None else float(bounds[0])
+                high = None if bounds[1] is None else float(bounds[1])
+                if low is not None and high is not None:
+                    center = (low + high) / 2.0
+                elif high is not None:
+                    center = high - step / 2.0
+                elif low is not None:
+                    center = low + step / 2.0
+                else:
+                    raise ContractError(
+                        "p1_probability_bucket_geometry_invalid"
+                    )
+                centers[bucket] = stated.get(bucket, center)
+                uppers[bucket] = (
+                    high if high is not None else centers[bucket] + step / 2.0
                 )
-                for bucket, bounds in intervals.items()
-            }
         except (TypeError, ValueError, KeyError, json.JSONDecodeError) as exc:
             raise ContractError("p1_probability_bucket_geometry_invalid") from exc
         if set(centers) == set(envelope.probabilities) == set(uppers):

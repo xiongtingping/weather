@@ -36,6 +36,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target import serving_arithmetic
+from bayes_basket_target.center_width_store import served_arithmetic_anchor
 from bayes_basket_target.center_width_store import (  # noqa: E402
     MIN_QUALIFYING_DAYS,
     refit_all_center_width,
@@ -51,6 +53,23 @@ def main() -> int:
         "--commit",
         action="store_true",
         help="activate each admitted stage (default: report only)",
+    )
+    parser.add_argument(
+        "--since-stage",
+        action="append",
+        default=[],
+        metavar="STAGE=TIMESTAMP",
+        help=(
+            "Per-stage evidence bound, repeatable, e.g. P1=2026-08-23T00:33:00Z."
+            "  A serving change rarely touches every stage: the 2026-08-23"
+            " ceiling and F-bound fixes both live in the P1 compile path, so"
+            " P0 and P0-M serve the same arithmetic they served before and"
+            " resetting their evidence to zero throws away days they had"
+            " already earned.  Since the window needs 8 days and fixes have"
+            " been landing faster than that (2026-08-16 fit, 2026-08-18 fix,"
+            " 2026-08-23 fix), a shared bound means no stage ever qualifies."
+            "  Overrides --since for the stages named."
+        ),
     )
     parser.add_argument(
         "--since",
@@ -78,6 +97,12 @@ def main() -> int:
     args = parser.parse_args()
     if args.since and args.lookback_days:
         parser.error("--since and --lookback-days are alternatives")
+    per_stage: dict[str, str] = {}
+    for item in args.since_stage:
+        if "=" not in item:
+            parser.error(f"--since-stage wants STAGE=TIMESTAMP, got {item!r}")
+        stage, _, when = item.partition("=")
+        per_stage[stage.strip()] = when.strip()
     min_decision = args.since
     if min_decision and len(min_decision) == 10:
         min_decision = f"{min_decision}T00:00:00Z"
@@ -94,10 +119,36 @@ def main() -> int:
             f"file:{database}?mode=ro", uri=True, timeout=60.0
         )
     conn.execute("PRAGMA busy_timeout=60000")
+    if args.commit:
+        # Stamp the served arithmetic in its own transaction, before the fit
+        # opens one.  Doing it inside the store's pass cost the stage-isolation
+        # contract there its transaction semantics; this needs none of them.
+        # The first stamp for a stage falls back to when the version it serves
+        # first appeared, because an empty table means nobody had looked, not
+        # that the shape is new.
+        for stage in ("P0", "P0-M", "P1"):
+            try:
+                serving_arithmetic.record(
+                    conn, stage=stage,
+                    bootstrap_utc=served_arithmetic_anchor(conn, stage=stage),
+                )
+            except sqlite3.Error:
+                conn.rollback()
+        conn.commit()
     try:
-        stages = refit_all_center_width(
-            conn, commit=args.commit, min_decision_at_utc=min_decision
-        )
+        if per_stage:
+            stages = {}
+            for stage in ("P0", "P0-M", "P1"):
+                one = refit_all_center_width(
+                    conn, commit=args.commit,
+                    min_decision_at_utc=per_stage.get(stage, min_decision),
+                    stages=(stage,),
+                )
+                stages.update(one)
+        else:
+            stages = refit_all_center_width(
+                conn, commit=args.commit, min_decision_at_utc=min_decision
+            )
         if args.commit:
             conn.commit()
     finally:

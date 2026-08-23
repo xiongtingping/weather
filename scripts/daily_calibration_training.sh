@@ -104,13 +104,20 @@ fi
 #    之后，无界拟合与 21 天滚动窗都原样复现了旧的 λ=0.825，也就是那个缺陷
 #    的补偿值。滚动窗解决不了这个问题——它要等窗口自然走过变更日才干净。
 #    锚定到变更日则当天就干净：证据不足时这一层自己回落到恒等并攒够再上。
-CW_SINCE="2026-08-18T09:20:00Z"
+#    锚不再手工维护（2026-08-23）。bayes_basket_target/serving_arithmetic.py
+#    对"产出该 stage 服务分布的那几个函数"做 AST 指纹：AST 里没有注释、空行
+#    和格式，所以本仓库赖以为生的大段注释可以随便改而不花掉这一层的证据；
+#    真正改了算术则指纹必变。指纹首次出现时打戳，那个戳就是此后的边界。
+#    实测：改注释、改 docstring 指纹不变；改一个阈值立刻变。
+#    还留着 --since 只是为了兜住这套机制上线之前的那些变更，一旦每个 stage
+#    都在新机制下攒够 8 天，它就可以删掉。
 echo "" | tee -a "$LOG_DIR/calibration_training.log"
-echo "[$(date +%H:%M:%S)] 中心/宽度 (center_width) 自动重拟合 (证据自 $CW_SINCE 起)..." | tee -a "$LOG_DIR/calibration_training.log"
+echo "[$(date +%H:%M:%S)] 中心/宽度 (center_width) 自动重拟合 (证据边界自动导出)..." | tee -a "$LOG_DIR/calibration_training.log"
 #    与第 3 节同款：各 stage（含每站宽度 lane）独立拟合，成败看退出码，
 #    不看有没有 SUMMARY 行——部分失败时失败的 lane 也会打自己那行。
 CW_RC=0
-CW_REPORT="$("$PY" scripts/refit_center_width.py --commit --summary --since "$CW_SINCE" 2>&1)" || CW_RC=$?
+CW_REPORT="$("$PY" scripts/refit_center_width.py --commit --summary \
+  --since "2026-08-18T09:20:00Z" 2>&1)" || CW_RC=$?
 echo "$CW_REPORT" >> "$LOG_DIR/calibration_training_$TIMESTAMP.log"
 if echo "$CW_REPORT" | grep -q '^SUMMARY '; then
   echo "$CW_REPORT" | grep '^SUMMARY ' | sed 's/^SUMMARY /    /' | tee -a "$LOG_DIR/calibration_training.log"

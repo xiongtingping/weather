@@ -23,7 +23,7 @@ from zoneinfo import ZoneInfo
 # and therefore its single write lock -- with the band reliability store,
 # whose module holds the measured numbers (resident holds bursts of 3.6-9.1s,
 # up to 45s) and the bounded retry that answers them.
-from .band_reliability_store import _begin_immediate
+from .band_reliability_store import _invert_band_receipt, _begin_immediate
 from .center_width_calibration import (
     MAX_ABS_SHIFT_C,
     MAX_WIDTH_LAMBDA,
@@ -31,6 +31,7 @@ from .center_width_calibration import (
     apply_center_width_calibration,
     bucket_centers_from_intervals,
 )
+from . import serving_arithmetic
 from .contracts import ContractError, content_sha256
 
 CENTER_WIDTH_STAGES = ("P0", "P0-M", "P1")
@@ -390,6 +391,9 @@ def fit_station_width(
 
     stage_id = _check_stage(stage)
     ensure_center_width_schema(conn)
+    min_decision_at_utc = _evidence_floor(
+        conn, stage=stage_id, caller_bound=min_decision_at_utc
+    )
     truth = _truth(conn)
     by_day = serving_cells_by_day(
         conn, truth, stage=stage_id,
@@ -624,6 +628,38 @@ def _truth(conn: sqlite3.Connection) -> dict[tuple[str, str], float]:
     return out
 
 
+
+def _pre_band_claim(
+    probabilities: Mapping[str, float], lineage: Mapping[str, Any]
+) -> dict[str, float]:
+    """The claim as it stood before the band table touched it.
+
+    A row whose lineage carries no applied band receipt is already pre-band
+    and is returned unchanged, which is every row until that layer activates
+    for the stage.
+    """
+
+    raw = lineage.get("band_reliability_json")
+    if not raw:
+        return {str(k): float(v) for k, v in probabilities.items()}
+    try:
+        receipt = json.loads(str(raw))
+    except (TypeError, ValueError):
+        return {str(k): float(v) for k, v in probabilities.items()}
+    if not isinstance(receipt, Mapping) or receipt.get("state") != "APPLIED":
+        return {str(k): float(v) for k, v in probabilities.items()}
+    try:
+        inverted = _invert_band_receipt(
+            [(float(v), str(k)) for k, v in probabilities.items()], receipt
+        )
+    except (ContractError, TypeError, ValueError):
+        # An unreadable receipt means this row cannot be placed on the axis
+        # the fit needs; the served claim would be the wrong quantity, so the
+        # caller drops it by getting an empty mapping back.
+        return {}
+    return {key: value for value, key in inverted}
+
+
 def serving_cells_by_day(
     conn: sqlite3.Connection,
     truth: Mapping[tuple[str, str], float],
@@ -684,6 +720,14 @@ def serving_cells_by_day(
             continue
         if not probabilities or set(intervals) != set(probabilities):
             continue
+        # This layer runs before the band table, so the claim it will actually
+        # be handed in production is the one that exists before banding -- the
+        # served claim has the band factors on top of it.  The receipt records
+        # both the factors and the pre-normalisation mass, so the band step is
+        # undone exactly rather than estimated.  Fitting on the served claim
+        # would search the shift and width against a distribution this layer
+        # never sees.
+        probabilities = _pre_band_claim(probabilities, lineage)
         keys = sorted(probabilities, key=lambda key: ordinals.get(key, 0))
         try:
             centers = bucket_centers_from_intervals(
@@ -788,6 +832,83 @@ def _search(cells: Sequence[Mapping[str, Any]]) -> tuple[float, float, float]:
     return best
 
 
+
+def served_arithmetic_anchor(
+    conn: sqlite3.Connection, *, stage: str
+) -> str | None:
+    """When the arithmetic this stage serves today first started serving.
+
+    These scalars measure how wrong the *served* distribution is, so decisions
+    taken before the arithmetic changed describe a distribution nobody serves
+    any more -- left unbounded the fit re-derives whatever it had been
+    compensating for.  The bound used to be a date maintained by hand in the
+    daily script, which is a second place to remember and was measured to be
+    wrong the moment it was needed: it was still pointing at the 2026-08-18
+    width fix on the day the ceiling landed.
+
+    ``posterior_version`` already rides on every envelope and already moves
+    when the arithmetic moves, so the boundary can be read rather than
+    remembered: the earliest decision still carrying the version being served
+    now.  A stage with nothing committed returns None, which the caller reads
+    as "no bound", the same as before.
+    """
+
+    # A store that cannot answer the question yields no bound rather than an
+    # error: replays and fixtures carry a narrower table than production, and
+    # the caller's own bound is the pre-existing behaviour to fall back to.
+    try:
+        current = conn.execute(
+            "SELECT envelope_json FROM basket_probability_bridge_history"
+            " WHERE stage=? AND state='COMMITTED'"
+            " ORDER BY decision_at_utc DESC LIMIT 1",
+            (_check_stage(stage),),
+        ).fetchone()
+        if current is None:
+            return None
+        version = str(json.loads(current[0]).get("posterior_version") or "")
+        if not version:
+            return None
+        row = conn.execute(
+            "SELECT MIN(decision_at_utc) FROM basket_probability_bridge_history"
+            " WHERE stage=? AND state='COMMITTED'"
+            " AND json_extract(envelope_json,'$.posterior_version')=?",
+            (_check_stage(stage), version),
+        ).fetchone()
+    except (sqlite3.OperationalError, TypeError, ValueError):
+        return None
+    return str(row[0]) if row and row[0] else None
+
+
+
+def _evidence_floor(
+    conn: sqlite3.Connection, *, stage: str, caller_bound: str | None
+) -> str | None:
+    """The latest of every boundary anyone can offer, never the earliest.
+
+    Three say when the served distribution last changed shape, and they fail
+    in different directions.  The AST fingerprint needs nobody to remember
+    anything but only knows what it has been told to hash.  The version string
+    catches a bump somebody did make, and the 2026-08-18 width fix shows what
+    it misses -- P0 kept its version, so on its own that bound still reached
+    back to 2026-07-30 and pooled three weeks of a distribution nobody serves.
+    The caller's bound covers what happened before any of this existed.
+
+    Taking the maximum means a boundary can only ever be too recent, and too
+    recent merely costs days of evidence.  Too old fits the scalars on a
+    distribution that is no longer served, which is the failure this whole
+    bound exists to prevent.
+    """
+
+    floor = caller_bound
+    for candidate in (
+        served_arithmetic_anchor(conn, stage=stage),
+        serving_arithmetic.anchor(conn, stage=stage),
+    ):
+        if candidate and (floor is None or str(candidate) > str(floor)):
+            floor = candidate
+    return floor
+
+
 def fit_center_width(
     conn: sqlite3.Connection,
     *,
@@ -804,6 +925,9 @@ def fit_center_width(
 
     stage_id = _check_stage(stage)
     ensure_center_width_schema(conn)
+    min_decision_at_utc = _evidence_floor(
+        conn, stage=stage_id, caller_bound=min_decision_at_utc
+    )
     truth = _truth(conn)
     by_day = serving_cells_by_day(
         conn, truth, stage=stage_id,
@@ -998,8 +1122,15 @@ def refit_all_center_width(
     *,
     commit: bool = False,
     min_decision_at_utc: str | None = None,
+    stages: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """Fit every stage, journal every fit, activate the admitted ones.
+
+    ``stages`` narrows the pass to the ones named, so a caller holding a
+    different evidence bound per stage can run them one at a time.  A serving
+    change usually touches one compile path, and a stage whose arithmetic did
+    not move should keep the days it has already earned -- the window needs
+    eight of them and fixes have been landing faster than that.
 
     Isolation matches the band store's (2026-08-20 lesson: one stage
     losing the write-lock race to the resident took all three stages'
@@ -1019,7 +1150,10 @@ def refit_all_center_width(
     """
 
     results: dict[str, Any] = {}
-    for stage in CENTER_WIDTH_STAGES:
+    wanted = tuple(stages) if stages else CENTER_WIDTH_STAGES
+    for stage in wanted:
+        if stage not in CENTER_WIDTH_STAGES:
+            raise ContractError("center_width_stage_invalid")
         entry: dict[str, Any] = {"stage": stage}
         results[stage] = entry
         try:
