@@ -244,6 +244,12 @@ WARN_ARCHIVE_WAL_BYTES = 64 * 1024 * 1024
 # enough to prune or raise the limit deliberately rather than discovering it
 # from a pipeline that has already stopped writing.
 TARGET_SSOT_WARN_REMAINING_BYTES = 1024 * 1024 * 1024
+# The cash-phase authority window lapsed at 2026-08-23T00:00:00Z and took the
+# whole opening chain with it, silently: the resolver's own error names a
+# duplicate, the ingress reported it as a market fault, and nothing counted
+# down to it beforehand.  Fourteen days is long enough that a renewal is a
+# scheduled decision rather than an incident.
+CASH_PHASE_AUTHORITY_WARN_REMAINING_SEC = 14 * 24 * 3600
 # This archive's WAL stops growing at exactly 128MiB and every write then fails
 # with ``disk I/O error``; the fail-closed ceiling above is never reached
 # because ingest dies first.  Maintenance therefore triggers at half of the
@@ -473,6 +479,97 @@ def target_ssot_capacity_guard(db_path: Path) -> dict[str, Any]:
         "violations": violations,
         "warnings": warnings,
         "state": state,
+    }
+
+
+def cash_phase_authority_window_guard(db_path: Path) -> dict[str, Any]:
+    """Time left on the cash-phase authority window every station resolves through.
+
+    ``target_ssot_capacity_guard`` above exists because a ceiling that gates
+    ingest has to be visible while there is still room to act.  This is the
+    same lesson applied to a deadline instead of a size: the window that
+    authorises every station's cash phase expired at 2026-08-23T00:00:00Z,
+    thirty-one days after the only generation the table had ever held, and the
+    first sign of it was the entire opening chain fail-closed on
+    ``cash_phase_authority_manifest_not_unique`` -- a name that describes two
+    rows, not the zero rows that were actually there.
+
+    Reports the narrowest window across stations, because one lapsed station
+    is one station that cannot open.
+    """
+
+    database = db_path.expanduser().resolve()
+    if not database.is_file():
+        return {"ok": False, "state": "cash_phase_authority_database_missing"}
+    now = datetime.now(timezone.utc)
+    now_utc = now.isoformat().replace("+00:00", "Z")
+    conn = sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=30.0)
+    try:
+        rows = conn.execute(
+            "SELECT station_id,authority_scope,valid_until_utc"
+            " FROM basket_cash_phase_authority_manifest"
+            " WHERE valid_from_utc <= ? AND valid_until_utc > ?",
+            (now_utc, now_utc),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    by_station: dict[str, str] = {}
+    duplicated: list[str] = []
+    for station_id, _scope, valid_until_utc in rows:
+        station = str(station_id)
+        if station in by_station:
+            duplicated.append(station)
+            continue
+        by_station[station] = str(valid_until_utc)
+
+    violations: list[str] = []
+    warnings: list[str] = []
+    if not by_station:
+        violations.append("cash_phase_authority_window_lapsed")
+    if duplicated:
+        violations.append("cash_phase_authority_window_ambiguous")
+
+    remaining_sec: float | None = None
+    expires_at_utc = ""
+    expires_station = ""
+    if by_station:
+        expires_station, expires_at_utc = min(
+            by_station.items(), key=lambda item: item[1]
+        )
+        try:
+            expiry = datetime.fromisoformat(expires_at_utc.replace("Z", "+00:00"))
+        except ValueError:
+            violations.append("cash_phase_authority_window_unreadable")
+        else:
+            remaining_sec = (expiry - now).total_seconds()
+            if remaining_sec < CASH_PHASE_AUTHORITY_WARN_REMAINING_SEC:
+                warnings.append("cash_phase_authority_window_expiring")
+
+    if violations:
+        state = "blocked_fail_closed"
+    elif warnings:
+        state = "within_window_expiring"
+    else:
+        state = "within_window"
+    return {
+        "ok": not violations,
+        "database": str(database),
+        "station_count": len(by_station),
+        "earliest_expiry_station_id": expires_station,
+        "earliest_expiry_utc": expires_at_utc,
+        "remaining_seconds": remaining_sec,
+        "remaining_days": (
+            round(remaining_sec / 86400.0, 2) if remaining_sec is not None else None
+        ),
+        "warn_remaining_seconds": CASH_PHASE_AUTHORITY_WARN_REMAINING_SEC,
+        "violations": violations,
+        "warnings": warnings,
+        "state": state,
+        "renewal_command": (
+            "scripts/renew_cash_phase_authority_window.py"
+            " --valid-from <old valid_until> --valid-until <new end>"
+        ),
     }
 
 
@@ -2478,6 +2575,20 @@ def main() -> int:
                     state["target_ssot_capacity"] = {
                         "ok": False,
                         "state": "target_capacity_probe_failed",
+                        "reason": f"{type(exc).__name__}:{exc}",
+                    }
+                # A deadline gates the opening chain exactly the way the
+                # ceiling above gates its writers, so it is published on the
+                # same probe rather than left to be discovered as a market
+                # fault after it has already fired.
+                try:
+                    state["cash_phase_authority_window"] = (
+                        cash_phase_authority_window_guard(DEFAULT_TARGET_DB)
+                    )
+                except Exception as exc:
+                    state["cash_phase_authority_window"] = {
+                        "ok": False,
+                        "state": "cash_phase_authority_probe_failed",
                         "reason": f"{type(exc).__name__}:{exc}",
                     }
                 next_storage_probe = now_mono + 5.0
