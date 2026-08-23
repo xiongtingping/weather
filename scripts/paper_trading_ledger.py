@@ -431,6 +431,30 @@ PAPER_LEDGER_CENTER_WIDTH_STAGES = (
 )
 _CW_REPLAY: dict[str, Any] | None = None
 
+# Which stages may add a leg to a chain.  Defaults to all three, because all
+# three are one book.  It exists because they have not always been one book in
+# practice: production could not compile a P0-M decision between 2026-07-30 and
+# 2026-08-23 -- its station policy was left on the previous strategy version --
+# while this replay, which never resolves a station policy, went on adding P0-M
+# legs anyway.  Twenty-three of them, on chains carrying 171.2 of the book's
+# 377.9.  Excluding a stage is how you ask what the book would have been
+# without legs production could not have opened; it is a diagnostic, not a
+# setting to leave changed.
+_STAGES_RAW = os.environ.get("PAPER_LEDGER_STAGES", "").strip()
+LEDGER_STAGES = (
+    STAGES
+    if not _STAGES_RAW or _STAGES_RAW in {"all", "1", "true", "TRUE"}
+    else tuple(
+        stage
+        for stage in STAGES
+        if stage in {part.strip() for part in _STAGES_RAW.split(",") if part.strip()}
+    )
+)
+if "P0" not in LEDGER_STAGES:
+    # Only P0 opens; without it every later stage is a leg on a chain that was
+    # never opened, which is the three-book accounting this ledger left behind.
+    raise SystemExit("PAPER_LEDGER_STAGES must include P0")
+
 PAPER_LEDGER_CEILING = (
     os.environ.get("PAPER_LEDGER_METAR_CEILING", "1").strip()
     not in {"0", "false", "FALSE", "no"}
@@ -772,6 +796,10 @@ SELECTION_RULE_SHA256 = content_sha256({
         + ",".join(sorted(PAPER_LEDGER_CENTER_WIDTH_STAGES))
         if PAPER_LEDGER_CENTER_WIDTH else "off"
     ),
+    # Which stages were allowed to add a leg.  A chain built from two stages is
+    # not the same chain as one built from three, so they must not share a
+    # fingerprint and silently mix in one book.
+    "ledger_stages": ",".join(LEDGER_STAGES),
     "maker_edge_escalation": "value_headroom_over_band",
     "maker_cutoff_percentile": MAKER_RESTING_CUTOFF_PERCENTILE,
     "maker_cutoff_buffer_minutes": MAKER_RESTING_CUTOFF_BUFFER_MINUTES,
@@ -3870,7 +3898,7 @@ def backfill(
             chain_opened_at = ""
             chain_position_id = ""
             chain_last_stage = ""
-            for stage in (s for s in STAGES if s in present):
+            for stage in (s for s in LEDGER_STAGES if s in present):
                 # Only P0 opens.  A later stage on a day the position was
                 # never opened is not a bet this strategy would have held --
                 # under three books it was, and that is where a third of the
