@@ -31,6 +31,10 @@ SCHEMA_VERSION = "reported_trajectory_market_registry_v1"
 MAX_GAMMA_PAGES = 4
 SLUG_RE = re.compile(r"^highest-temperature-in-(?P<city>.+)-on-[a-z]+-\d{1,2}-\d{4}$")
 WU_STATION_RE = re.compile(r"https?://(?:www\.)?wunderground\.com/history/daily/[^\s.]+/(?P<station>[A-Z0-9]{4})(?:[.\s]|$)", re.I)
+NOAA_STATION_RE = re.compile(r"https?://(?:www\.)?weather\.gov/wrh/timeseries\?site=(?P<station>[A-Za-z0-9]{4})(?=[&.\s]|$)", re.I)
+# Polymarket moved these markets off Weather Underground onto NOAA one event date at a
+# time; both wordings are live at once, so both have to resolve to the same ICAO.
+STATION_RES = (WU_STATION_RE, NOAA_STATION_RE)
 URL_RE = re.compile(r"https?://[^\s]+")
 STATION_ID_RE = re.compile(r"^[A-Z0-9]{4}$")
 
@@ -430,7 +434,10 @@ def materialize_event_registry(
     slug = str(event.get("slug") or "").strip()
     city = city_from_slug(slug)
     description = str(event.get("description") or "")
-    station_match = WU_STATION_RE.search(description)
+    station_match = next(
+        (match for match in (pattern.search(description) for pattern in STATION_RES) if match),
+        None,
+    )
     station = station_match.group("station").upper() if station_match else ""
     origin_route = station_source_route(station) if station else {}
     resolution_url = station_match.group(0).rstrip(". ") if station_match else ""
@@ -464,7 +471,7 @@ def materialize_event_registry(
         # AMSC remains a historical/offline provider only.
         blocks.append("amsc_production_route_forbidden")
     if not station:
-        blocks.append("official_resolution_is_not_wunderground_airport_station")
+        blocks.append("official_resolution_is_not_airport_station")
     if not timezone_name:
         blocks.append("settlement_timezone_unmapped")
     if "whole degrees" not in description.lower():

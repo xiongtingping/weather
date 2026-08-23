@@ -42,7 +42,56 @@ def event(city: str, station: str = "ZBAA") -> dict:
     }
 
 
+def noaa_event(city: str, station: str = "EHAM", unit: str = "Celsius") -> dict:
+    """The wording Polymarket moved to: NOAA's timeseries page, ICAO in the query string."""
+    slug = f"highest-temperature-in-{city}-on-july-18-2026"
+    body = dict(event(city, station))
+    body["slug"] = slug
+    body["description"] = (
+        "This market will resolve to the temperature range that contains the highest "
+        f"temperature recorded by NOAA at the {city.title()} Airport Station in degrees "
+        f"{unit} on 18 Jul '26.\n\nThe resolution source for this market will be "
+        "information from NOAA, specifically the highest reading under the \"Temp\" column "
+        f"for all times on this day, available here: https://www.weather.gov/wrh/timeseries?site={station.lower()}"
+        f"\n\nThe resolution source for this market measures temperatures to whole degrees {unit} (eg, 9°{unit[0]})."
+    )
+    return body
+
+
 class ReportedTrajectoryRegistryTests(unittest.TestCase):
+    def test_noaa_resolution_source_maps_to_the_same_station_as_wunderground(self) -> None:
+        """Polymarket reworded these markets one event date at a time; both must resolve."""
+        for city, station in (("amsterdam", "EHAM"), ("miami", "KMIA"), ("toronto", "CYYZ")):
+            with self.subTest(city=city):
+                rows = materialize_event_registry(
+                    noaa_event(city, station), event_date="2026-07-18", config=load_config()
+                )
+                self.assertTrue(rows)
+                for row in rows:
+                    self.assertEqual(row["station_id"], station)
+                    self.assertEqual(
+                        row["resolution_url"],
+                        f"https://www.weather.gov/wrh/timeseries?site={station.lower()}",
+                    )
+                    self.assertNotIn(
+                        "official_resolution_is_not_airport_station",
+                        row["source_block_reasons"],
+                    )
+                    self.assertNotIn("official_source_route_unmapped", row["source_block_reasons"])
+
+    def test_unrecognised_resolution_source_still_blocks(self) -> None:
+        """The gate is the point: a market we cannot tie to a station must not go live."""
+        body = noaa_event("amsterdam", "EHAM")
+        body["description"] = body["description"].replace(
+            "https://www.weather.gov/wrh/timeseries?site=eham", "https://example.com/whatever"
+        )
+        rows = materialize_event_registry(body, event_date="2026-07-18", config=load_config())
+        self.assertTrue(rows)
+        for row in rows:
+            self.assertEqual(row["station_id"], "")
+            self.assertFalse(row["source_eligible"])
+            self.assertIn("official_resolution_is_not_airport_station", row["source_block_reasons"])
+
     def test_registry_replay_is_semantically_idempotent(self) -> None:
         conn = sqlite3.connect(":memory:")
         conn.executescript(
