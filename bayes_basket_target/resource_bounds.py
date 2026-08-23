@@ -149,7 +149,39 @@ MAX_JSON_NODES = 500_000
 # which is more than the previous ceiling ever had.  When the internal disk
 # can spare 23 GB again, a VACUUM returns the freelist and this should come
 # straight back down to 21 GiB.
-MAX_TARGET_DB_BYTES = 23552 * MIB
+#
+# Raised to 27 GiB on 2026-08-23 by explicit user ruling.  The paragraph above
+# spent its headroom exactly as forecast and then some: the 1.61 GB freelist it
+# was counting on is gone (``PRAGMA freelist_count`` is 0), the file is 22.994
+# GiB against the 23 GiB ceiling, and the store is now dense -- so the VACUUM
+# that paragraph promised would return the pages has nothing left to return.
+# Deletion is the only thing that would make a compaction worth running, and
+# that is the ruling the append-only triggers exist to demand.
+#
+# What is new, and what makes this raise urgent rather than routine, is the
+# shape of the failure.  Previous approaches showed up as writers fail-closing
+# loudly.  This one did not: the market websocket listener took SQLITE_FULL at
+# 2026-08-22T04:51:22Z, fell into a shard-topology retry loop, and stayed alive
+# and silent for twenty-eight hours while ``basket_official_ws_snapshot``,
+# ``basket_official_ws_evidence_cache``, ``basket_order_state_snapshot`` and
+# ``basket_confirmed_inventory_snapshot`` all stopped at that instant.  The
+# resident kept cycling on day-old quotes the whole time.  A ceiling that stops
+# an evidence lane without stopping the consumers of that lane is worse than
+# one that fails closed, and that is the property to fix next -- not by raising
+# this number again, but by making the capacity guard's ``blocked_fail_closed``
+# state reach the quote lane's own health check.
+#
+# Sized by free disk rather than by burn, because free disk is now the smaller
+# of the two.  Measured burn is 2.6 GiB/day (bridge history 0.70, envelopes
+# 0.68, ws snapshots 0.16, preselection 0.06, the rest extrapolated on dbstat
+# share) and that is with the quote lane dead -- it will be higher once it is
+# writing again.  The internal disk holds 10.39 GiB free against a 22.994 GiB
+# store, so +4 GiB is a day and a half and leaves 6.4 GiB of disk even if every
+# byte of it is taken.  Anything larger would spend the room that any recovery
+# needs.  Both reclamation lanes that funded the last two raises are exhausted:
+# the migration copies are gone, and the NWP raw retention job now audits
+# 36,710 bodies of which 36,710 are still referenced and deletes nothing.
+MAX_TARGET_DB_BYTES = 27648 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.
