@@ -2031,6 +2031,9 @@ async def _ping_loop(ws: Any, interval_sec: float, shard_index: Optional[int] = 
 def _aggregate_shard_results(
     results: Iterable[Any],
 ) -> Tuple[int, int, int, List[str]]:
+    # Summed across shards from each shard's own high-water mark of complete
+    # books.  Not a count of database writes: this process performs none, and
+    # reading it as one is what made a dead quote lane look healthy.
     total_materialized = 0
     total_received = 0
     total_skipped = 0
@@ -2166,7 +2169,7 @@ async def listen_once(
                 "assets": len(asset_ids),
                 "shards": len(chunks),
                 "shard_size": shard_size,
-                "quotes_materialized": total_materialized,
+                "materialized_token_high_water": total_materialized,
                 "quote_messages_received": total_received,
                 "quotes_skipped_same": total_skipped,
                 "coalesce_same_quote_sec": float(args.coalesce_same_quote_sec),
@@ -2278,7 +2281,12 @@ async def _listen_asset_batch(
     shard_count: int,
 ) -> Tuple[int, int, int]:
     ssl_context = ssl.create_default_context(cafile=certifi.where())
-    materialized = 0
+    # High-water mark of tokens this shard got to a complete book, not a count
+    # of anything materialized into a database -- this process writes none.
+    # It used to be initialised here and returned untouched, so the heartbeat
+    # published "quotes_materialized: 0" beside "ok: true" for the twenty-eight
+    # hours the target quote lane was down, which reads like proof and was not.
+    materialized_high_water = 0
     received = 0
     last_flush = time.monotonic()
     last_hb = 0.0
@@ -2379,6 +2387,9 @@ async def _listen_asset_batch(
                         materialized_count, shard_token_count = (
                             LATEST_QUOTE_SNAPSHOT.shard_materialization_counts(shard_index)
                         )
+                        materialized_high_water = max(
+                            materialized_high_water, int(materialized_count)
+                        )
                         if not shard_ready and now >= materialization_deadline:
                             # A stale subscription catalog can make a shard
                             # wait forever for tokens that have already
@@ -2444,7 +2455,9 @@ async def _listen_asset_batch(
                                     "shard_materialized_tokens": int(materialized_count),
                                     "shard_subscribed_tokens": int(shard_token_count),
                                     "active_shards": sorted(LATEST_QUOTE_SNAPSHOT.active_shards),
-                                    "quotes_materialized": materialized,
+                                    "shard_materialized_token_high_water": (
+                                        materialized_high_water
+                                    ),
                                     "quote_messages_received": received,
                                     "quotes_skipped_same": coalescer.skipped,
                                     "coalesce_same_quote_sec": float(coalescer.same_quote_sec),
@@ -2494,7 +2507,7 @@ async def _listen_asset_batch(
                     ping_task.cancel()
             if planned_reload:
                 raise SubscriptionCatalogChanged(f"shard={shard_index} token catalog changed")
-            return materialized, received, coalescer.skipped
+            return materialized_high_water, received, coalescer.skipped
         except (SubscriptionCatalogChanged, ShardTopologyChanged):
             raise
         except Exception as exc:
@@ -2695,7 +2708,10 @@ async def run_forever(args: argparse.Namespace) -> None:
         while True:
             try:
                 count = await listen_once(args, coalescer=coalescer)
-                print(f"[market_ws] cycle_ok materialized_quotes={count}", flush=True)
+                print(
+                    f"[market_ws] cycle_ok materialized_token_high_water={count}",
+                    flush=True,
+                )
                 backoff = 1.0
             except asyncio.CancelledError:
                 raise

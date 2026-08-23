@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -11,7 +12,15 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 DB = ROOT / "data" / "archive.db"
+# The archive above is the tick lane.  It is not the lane the basket trades on,
+# and watching only it is how the target quote lane stopped for twenty-eight
+# hours on 2026-08-22 with this check reporting ok the whole time: the target
+# SSOT had hit its own byte ceiling and every quote write was failing closed,
+# which nothing here could see because nothing here opened that database.
+TARGET_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 HEARTBEAT = ROOT / "data" / "market_ws_heartbeat.json"
 
 
@@ -133,6 +142,54 @@ def main() -> int:
                 blockers.append("market_ticks_no_recent_rows")
             elif ages and (details["event_tick_age_p90_sec"] or 0) > 180:
                 warnings.append("market_tick_event_p90_stale")
+
+    # The target quote lane, which is what the basket actually prices against.
+    # Two independent ways it dies, both observed: the evidence stops arriving,
+    # or the store runs out of the bytes its own guard allows.  The second one
+    # causes the first, so both are reported rather than folded together.
+    if not TARGET_DB.exists():
+        blockers.append("target_ssot_missing")
+    else:
+        quote_max_age = _env_int("PM_HEALTH_TARGET_QUOTE_MAX_AGE_SEC", 3600)
+        try:
+            with sqlite3.connect(f"file:{TARGET_DB}?mode=ro", uri=True, timeout=15) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute(
+                    "SELECT MAX(observed_at) AS ts"
+                    " FROM basket_official_ws_evidence_cache"
+                ).fetchone()
+        except sqlite3.Error as exc:
+            blockers.append("target_quote_lane_unreadable")
+            details["target_quote_lane_error"] = f"{type(exc).__name__}:{exc}"
+        else:
+            quote_ts = _parse_ts(row["ts"] if row else "")
+            quote_age = int(max(0, now - quote_ts)) if quote_ts else None
+            details["target_quote_observed_at"] = row["ts"] if row else None
+            details["target_quote_age_sec"] = quote_age
+            details["target_quote_max_age_sec"] = quote_max_age
+            if quote_age is None or quote_age > quote_max_age:
+                blockers.append("target_quote_lane_stale")
+
+        # Read the ceiling from the writers' own constant rather than repeating
+        # the number here, so raising it in one place cannot leave this check
+        # asserting a limit production no longer uses.
+        try:
+            from bayes_basket_target.resource_bounds import MAX_TARGET_DB_BYTES
+        except Exception as exc:
+            warnings.append("target_capacity_bound_unreadable")
+            details["target_capacity_error"] = f"{type(exc).__name__}:{exc}"
+        else:
+            db_bytes = int(TARGET_DB.stat().st_size)
+            remaining = MAX_TARGET_DB_BYTES - db_bytes
+            warn_remaining = _env_int(
+                "PM_HEALTH_TARGET_CAPACITY_WARN_BYTES", 1024 * 1024 * 1024
+            )
+            details["target_database_bytes"] = db_bytes
+            details["target_database_remaining_bytes"] = remaining
+            if remaining <= 0:
+                blockers.append("target_database_bytes_exceeded")
+            elif remaining < warn_remaining:
+                warnings.append("target_database_headroom_low")
 
     if heartbeat_not_ok:
         grace_sec = _env_int("PM_HEALTH_MARKET_WS_ERROR_GRACE_SEC", 60)
