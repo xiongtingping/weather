@@ -1540,3 +1540,63 @@ def test_which_gate_and_which_cycle_are_decided_separately() -> None:
     evening = ("no_legal_window", "枚举 6 = ...", 91, "T23:59Z")
     assert _deeper_refusal(morning, evening) == morning
     assert _deeper_refusal(evening, morning) == morning
+
+
+def test_coverage_tier_follows_the_live_belief_not_the_seat() -> None:
+    """The roles are live (user ruling, 2026-08-24): core is wherever the
+    belief in force now puts the most mass, and the roles walk intraday."""
+
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+
+    from paper_trading_ledger import _coverage_tier
+
+    window = ["23°C", "24°C", "25°C", "26°C"]
+    morning = {"23°C": 0.1, "24°C": 0.5, "25°C": 0.3, "26°C": 0.1}
+    assert _coverage_tier("24°C", window=window, probabilities=morning) == "core"
+    assert _coverage_tier("25°C", window=window, probabilities=morning) == "shoulder"
+    assert _coverage_tier("26°C", window=window, probabilities=morning) == "tail"
+
+    # The distribution walks a bucket to the right; every role walks with it.
+    evening = {"23°C": 0.02, "24°C": 0.18, "25°C": 0.55, "26°C": 0.25}
+    assert _coverage_tier("25°C", window=window, probabilities=evening) == "core"
+    assert _coverage_tier("24°C", window=window, probabilities=evening) == "shoulder"
+    assert _coverage_tier("26°C", window=window, probabilities=evening) == "shoulder"
+    assert _coverage_tier("23°C", window=window, probabilities=evening) == "tail"
+
+    # A bucket outside the posted window is a tail by construction.
+    assert _coverage_tier("30°C", window=window, probabilities=evening) == "tail"
+
+
+def test_coverage_premium_defaults_off_and_matches_production() -> None:
+    """Off by measurement: 14 premium chains on the 08-15..23 book summed
+    -48.0 ex-best and split 26 better / 67 worse.  The ledger must inherit
+    production's number so the two contracts cannot drift apart."""
+
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+
+    import paper_trading_ledger as ledger
+    from bayes_basket_target.delta_v2_runtime import (
+        MAKER_COVERAGE_RISK_BUDGET,
+        MAKER_COVERAGE_VALUE_LAMBDA,
+    )
+
+    assert MAKER_COVERAGE_RISK_BUDGET < 0.0
+    assert ledger.MAKER_RESTING_COVERAGE_BUDGET == MAKER_COVERAGE_RISK_BUDGET
+    assert ledger.MAKER_RESTING_COVERAGE_LAMBDA == MAKER_COVERAGE_VALUE_LAMBDA
+    # The knob must travel in the rule fingerprint, or flipping it would
+    # leave rows scored under the other contract silently comparable.
+    import inspect
+
+    source = inspect.getsource(ledger)
+    assert '"maker_completion_contract"' in source
+    assert '"maker_coverage_risk_budget": MAKER_RESTING_COVERAGE_BUDGET' in source

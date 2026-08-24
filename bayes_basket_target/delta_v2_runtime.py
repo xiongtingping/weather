@@ -120,6 +120,40 @@ MAKER_HEDGE_VALUE_LAMBDA = float(
 MAKER_SHOULDER_VALUE_LAMBDA = float(
     os.environ.get("PM_MAKER_SHOULDER_VALUE_LAMBDA", "0.40") or 0.0
 )
+# Ladder completeness re-priced as risk (user ruling, 2026-08-24; twice
+# corrected the same day).  The lifecycle itself is untouched: every leg --
+# tails included, they are the hedge legs that flatten the variance and shape
+# the odds curve -- keeps fishing, escalating and crossing inside its own value
+# ceiling, which is what "try to fill" means at prices we already judge fair.
+# What the budget governs is the premium alone.  While the basket's uncovered
+# claim mass (the claimed probability still sitting on open rungs) exceeds it,
+# a core or shoulder leg may cross above its clamp, up to COVERAGE_VALUE_LAMBDA
+# times the live claim -- at 1.0 the EV-neutral maximum, never beyond, because
+# paying more than a leg is worth converts risk into a certain loss.  A tail
+# leg never commands the premium: its clamp is the line, filled cheaply or not
+# at all.  The tiers are live, not seated: the core is wherever the belief in
+# force at the re-pricing round puts the most mass, its neighbours are the
+# shoulders, and the roles walk intraday with the distribution.
+#
+# There is deliberately no withdrawal in this contract (user ruling,
+# 2026-08-24): risk the premium cannot buy down leaves the rungs resting at
+# their ceilings, and the only trigger that ever withdraws an order remains
+# the belief gate.  Negative budget restores the legacy contract; it is the
+# control cell.
+# Default OFF (negative), by measurement rather than by preference.  Fourteen
+# chains carried a premium fill on the 2026-08-15..23 book: one won (+58.2),
+# eleven lost, and the set ex-best sums to -48.0; the affected chains split 26
+# better / 67 worse.  The premium binds exactly where the market prices a
+# covered bucket above our clamp -- its most confident ground -- and this book
+# has now measured three separate times that paying up there buys the miss,
+# not the coverage.  The contract stays wired so a forward lane can re-price
+# it under live calibration; enable with PM_MAKER_COVERAGE_RISK_BUDGET=0.10.
+MAKER_COVERAGE_RISK_BUDGET = float(
+    os.environ.get("PM_MAKER_COVERAGE_RISK_BUDGET", "-1") or 0.0
+)
+MAKER_COVERAGE_VALUE_LAMBDA = float(
+    os.environ.get("PM_MAKER_COVERAGE_LAMBDA", "0.70") or 0.0
+)
 # Do not open into a market that has finished pricing the day.
 #
 # Two signs, read at the moment of entry: the mass centre has not moved

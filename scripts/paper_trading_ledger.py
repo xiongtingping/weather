@@ -73,6 +73,8 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     CENTRE_ANCHOR_EDGE_TILT,
     CENTRE_ANCHOR_MIN_RUNG_SHARE,
     CONTINUOUS_OPTIMUM_CANDIDATES_ENABLED,
+    MAKER_COVERAGE_RISK_BUDGET,
+    MAKER_COVERAGE_VALUE_LAMBDA,
     MAKER_HEDGE_VALUE_LAMBDA,
     MAKER_LADDER_STEPS,
     CERTAINTY_GATE_SIGNALS,
@@ -563,6 +565,27 @@ def _is_shoulder(
 # says the leg is worth stays unbought, at any completion gap, by design.
 MAKER_RESTING_GAP_MID = 1.0 / 3.0
 MAKER_RESTING_GAP_LATE = 2.0 / 3.0
+# Completeness re-priced as risk (user ruling, 2026-08-24; twice corrected the
+# same day).  The lifecycle is untouched for every leg -- the tail included, it
+# is the hedge leg and fills at its clamp like everyone else.  The budget
+# governs the premium alone: while the basket's uncovered claim mass (claimed
+# probability still sitting on open rungs) exceeds it, a core or shoulder
+# leg's crossing ceiling relaxes from its clamp toward COVERAGE_LAMBDA times
+# the live claim, never above the claim; a tail's never relaxes.  The roles
+# are live, re-read from the belief in force at each re-pricing round.  There
+# is deliberately no withdrawal in this contract (user ruling, 2026-08-24):
+# unpurchasable risk leaves the rungs resting at their ceilings, and the only
+# thing that ever withdraws an order remains the belief gate.  Production owns
+# both numbers (``delta_v2_runtime``); negative budget restores the legacy
+# contract as the control cell.
+MAKER_RESTING_COVERAGE_BUDGET = float(
+    os.environ.get("PAPER_LEDGER_COVERAGE_BUDGET", "")
+    or MAKER_COVERAGE_RISK_BUDGET
+)
+MAKER_RESTING_COVERAGE_LAMBDA = float(
+    os.environ.get("PAPER_LEDGER_COVERAGE_LAMBDA", "")
+    or MAKER_COVERAGE_VALUE_LAMBDA
+)
 # Consolidation annotation (research lane, 2026-08-21): three signs that
 # the market has already done its pricing work by the time we enter --
 # the mass centre unchanged over the prior K P0 decisions, the top-two
@@ -813,6 +836,13 @@ SELECTION_RULE_SHA256 = content_sha256({
     # fingerprint and silently mix in one book.
     "ledger_stages": ",".join(LEDGER_STAGES),
     "maker_edge_escalation": "value_headroom_over_band",
+    "maker_completion_contract": (
+        "coverage_premium_over_clamp_v3"
+        if MAKER_RESTING_COVERAGE_BUDGET >= 0.0
+        else "legacy_completeness"
+    ),
+    "maker_coverage_risk_budget": MAKER_RESTING_COVERAGE_BUDGET,
+    "maker_coverage_value_lambda": MAKER_RESTING_COVERAGE_LAMBDA,
     "maker_cutoff_percentile": MAKER_RESTING_CUTOFF_PERCENTILE,
     "maker_cutoff_buffer_minutes": MAKER_RESTING_CUTOFF_BUFFER_MINUTES,
     "maker_cutoff_min_days": MAKER_RESTING_CUTOFF_MIN_DAYS,
@@ -2010,6 +2040,42 @@ def _tail_bucket(
     )
 
 
+def _coverage_tier(
+    bucket: str,
+    *,
+    window: Sequence[str] | None,
+    probabilities: Mapping[str, float] | None,
+) -> str:
+    """Which coverage tier a leg belongs to, under the belief in force now.
+
+    The roles are live, not seated (user ruling, 2026-08-24): the core is
+    wherever the current belief puts the most mass, its neighbours are the
+    shoulders, everything further is a tail.  A distribution that walks
+    intraday walks the roles with it -- the rung seated as centre can end the
+    day as a tail, and it is the day's belief, not the entry's, that decides
+    what a fill there is worth.  Tails are the hedge legs: they fill at their
+    clamp like everyone else, they just never command a premium.
+    """
+
+    labels = [str(item) for item in (window or [])]
+    if not labels:
+        return "core"
+    claims = probabilities or {}
+    core_idx = max(
+        range(len(labels)),
+        key=lambda i: float(claims.get(labels[i], 0.0) or 0.0),
+    )
+    try:
+        distance = abs(labels.index(str(bucket)) - core_idx)
+    except ValueError:
+        return "tail"
+    if distance == 0:
+        return "core"
+    if distance == 1:
+        return "shoulder"
+    return "tail"
+
+
 def _leg_value_cap(
     bucket: str,
     *,
@@ -3002,6 +3068,26 @@ def _resting_ladder_fill(
                             pending[bucket] = []
                         withdrawn = True
                         break
+                # The tier contract's one number: the claimed probability
+                # still sitting on open rungs.  This is the uncovered truth
+                # mass the basket could still buy down -- the out-of-window
+                # mass was a selection decision, not a fill decision.
+                coverage_tiering = MAKER_RESTING_COVERAGE_BUDGET >= 0.0
+                coverage_chase = False
+                if coverage_tiering:
+                    uncovered_mass = 0.0
+                    for bucket in pending:
+                        depth_posted = posted_depth.get(bucket, 0)
+                        open_n = depth_posted - len(filled[bucket])
+                        if depth_posted <= 0 or open_n <= 0:
+                            continue
+                        uncovered_mass += (
+                            float(current_p.get(str(bucket), 0.0) or 0.0)
+                            * open_n / depth_posted
+                        )
+                    coverage_chase = (
+                        uncovered_mass > MAKER_RESTING_COVERAGE_BUDGET
+                    )
                 floor_time = 0.0
                 if escalate_minutes > 0:
                     elapsed = (
@@ -3045,6 +3131,33 @@ def _resting_ladder_fill(
                         if cap is not None
                         else current_p.get(str(bucket))
                     )
+                    # Coverage premium (user ruling, 2026-08-24, corrected):
+                    # every leg keeps the full lifecycle inside its own
+                    # ceiling -- the tail is the hedge leg and fills at its
+                    # clamp like everyone else.  What the risk budget buys
+                    # is the premium alone: while the uncovered claim mass
+                    # exceeds it, a core or shoulder leg's crossing ceiling
+                    # relaxes toward COVERAGE_LAMBDA times the live claim
+                    # (never above the claim); a tail's never does.
+                    cross_ceiling = ceiling
+                    if (
+                        coverage_tiering
+                        and coverage_chase
+                        and MAKER_RESTING_COVERAGE_LAMBDA > 0.0
+                        and cross_ceiling is not None
+                    ):
+                        leg_tier = _coverage_tier(
+                            bucket,
+                            window=buckets,
+                            probabilities=current_p,
+                        )
+                        claim_now = current_p.get(str(bucket))
+                        if leg_tier != "tail" and claim_now is not None:
+                            cross_ceiling = max(
+                                float(cross_ceiling),
+                                MAKER_RESTING_COVERAGE_LAMBDA
+                                * float(claim_now),
+                            )
                     item = quotes.get(bucket)
                     if not isinstance(item, Mapping):
                         # No readable book this round.  The standing rungs
@@ -3064,7 +3177,7 @@ def _resting_ladder_fill(
                     # holds and the leg stays a resting order.
                     if (
                         progress >= MAKER_RESTING_GAP_LATE
-                        and ceiling is not None
+                        and cross_ceiling is not None
                     ):
                         cross_ask = item.get("best_ask")
                         cross_levels = item.get("ask_levels") or []
@@ -3080,7 +3193,7 @@ def _resting_ladder_fill(
                         # through down there, but we do not reach for it.
                         if (
                             cross_ask is not None
-                            and float(cross_ask) <= float(ceiling) + 1e-9
+                            and float(cross_ask) <= float(cross_ceiling) + 1e-9
                             and float(cross_ask) >= MINIMUM_LEG_ALL_IN_ASK
                         ):
                             filled[bucket].extend(
