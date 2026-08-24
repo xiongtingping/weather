@@ -446,17 +446,17 @@ def _reservation_grid(*, row: Any, artifact: DeltaV2PolicyArtifact) -> tuple[flo
 # already has the entry clock, the freshness contract and the settlement
 # vocabulary; the honest way to ask what this number is worth is to move it and
 # rebuild, not to re-derive the book beside it.
-# Raised 0.02 -> 0.05 by user ruling, 2026-08-24, on the market-adjudicated
-# truth table: buckets the market quotes under five cents settled 6 times in
-# 359 (hit rates 0.7% and 1.3% across the two bands), against 2 in 1054 under
-# two cents.  The ledger's own five-cell sweep scored this cell -29.7% -- but
-# the mechanism of that loss is seats dying, not legs losing: with shoulders
-# at 2-5 cents excluded from the candidate domain, contiguity cannot be met
-# and the book shrinks from 102 chains to 33, and a 33-chain ROI is noise.
-# The ruling weighs the truth table over the remnant's ROI.  If the thinner
-# book underperforms forward, the number to revisit is this one.
+# Raised 0.02 -> 0.03 by user ruling, 2026-08-24 (first to 0.05, revised to
+# 0.03 minutes later).  The market-adjudicated landing table -- winners taken
+# from the book's own convergence, validated 60 of 62 against the settlement
+# pipeline -- puts the sub-three-cent bands at 2 wins in 1054 and 1 in 141
+# (0.2% and 0.7%), dead ground the model cannot out-know the market on; the
+# 3-5 cent band still settles 1.3% and stays admitted.  Five cents was tried
+# first and cut the book from 102 chains to 33 by pricing sharp markets'
+# shoulders out of the contiguity requirement; three keeps most of those
+# seats while dropping the ground where cheapness is the market being right.
 MINIMUM_LEG_ALL_IN_ASK = float(
-    os.environ.get("PM_MINIMUM_LEG_ALL_IN_ASK", "0.05") or 0.05
+    os.environ.get("PM_MINIMUM_LEG_ALL_IN_ASK", "0.03") or 0.03
 )
 # The shape a basket is asked to take inside itself (user ruling,
 # 2026-08-17): a base holding on the centre rung, tilted toward legs whose
