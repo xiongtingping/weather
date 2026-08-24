@@ -229,7 +229,18 @@ def run_hosted_sweep(script_path: str, timeout_sec: float) -> dict[str, Any]:
         state_text = "ok" if completed.returncode == 0 else "failed"
     except subprocess.TimeoutExpired as exc:
         returncode = None
-        tail = ((exc.stdout or "") + (exc.stderr or ""))[-600:]
+        # TimeoutExpired carries whatever was captured at the kill, and on
+        # this path it arrives as bytes even under text=True.  The first
+        # hosted ledger sweep hit exactly this: killed at its timeout, then
+        # the receipt formatter raised on ``str + bytes`` -- inside the
+        # except clause, where the sibling handler cannot catch it -- and
+        # the receipt read future_failed instead of timeout_killed.
+        def _text(value: Any) -> str:
+            if isinstance(value, bytes):
+                return value.decode("utf-8", errors="replace")
+            return str(value or "")
+
+        tail = (_text(exc.stdout) + _text(exc.stderr))[-600:]
         state_text = "timeout_killed"
     except Exception as exc:  # noqa: BLE001 - the receipt is the contract
         returncode = None
