@@ -152,6 +152,18 @@ STAGE_BUDGET_SHARE = {
     "P1": 1.0,
 }
 MAXIMUM_SUPPORT_BUCKETS = 4
+# The earliest event day this book admits.  Charter 50's ladder floor landed on
+# 2026-08-15; every chain before it was seated under a minimum basket width the
+# live engine no longer trades, so those rows score a strategy that does not
+# exist.  They were not merely old, they were misleading: fourteen chains from
+# 2026-08-01 to 08-14 carried 82% of the book's profit on 11% of its stake, two
+# of them alone (ZGSZ 08-01 at 18.6x, RJTT 08-12) -- so every parameter sweep run
+# across the whole table was really being decided by two seats no current rule
+# would take.  The page already opens its equity at 2026-08-15; this is the
+# ledger agreeing with it rather than quietly carrying more.
+LEDGER_EVENT_DATE_FLOOR = os.environ.get(
+    "PAPER_LEDGER_EVENT_DATE_FLOOR", "2026-08-15"
+).strip()
 # The ladder floor (charter 50).  The ledger exists to reproduce what
 # production seats, so it must carry production's structural rules; left at
 # the function default of 1 it recorded single-bucket seats the live rule
@@ -1277,13 +1289,15 @@ def _window_floor(
     """
 
     if recent_days is None:
-        return ""
+        # A rebuild has no rolling window, but it still has the absolute one:
+        # the floor is a structural rule, not a performance bound.
+        return LEDGER_EVENT_DATE_FLOOR
     floor = conn.execute(
         "SELECT date((SELECT max(event_date)"
         " FROM basket_probability_bridge_history), '-' || ?1 || ' days')",
         (recent_days,),
     ).fetchone()
-    return str((floor or [""])[0] or "")
+    return max(str((floor or [""])[0] or ""), LEDGER_EVENT_DATE_FLOOR)
 
 
 def _opening_equity(conn: sqlite3.Connection, *, earliest: str) -> float:
@@ -1321,6 +1335,33 @@ def _opening_equity(conn: sqlite3.Connection, *, earliest: str) -> float:
     return max(
         0.0, INITIAL_CAPITAL_USDC + float((realised or [0.0])[0] or 0.0)
     )
+
+
+def _purge_below_floor(conn: sqlite3.Connection) -> int:
+    """Remove chains seated before the ledger's absolute event-day floor.
+
+    Separate from ``_drop_superseded_positions`` on purpose: that one drops rows
+    whose rule fingerprint moved and re-derives them, while these are never
+    re-derived at all.  Nothing else would ever delete them.
+    """
+
+    conn.execute(
+        "DELETE FROM paper_trade_settlement WHERE position_id IN ("
+        "  SELECT position_id FROM paper_trade_position WHERE event_date<?)",
+        (LEDGER_EVENT_DATE_FLOOR,),
+    )
+    cursor = conn.execute(
+        "DELETE FROM paper_trade_position WHERE event_date<?",
+        (LEDGER_EVENT_DATE_FLOOR,),
+    )
+    dropped = int(cursor.rowcount or 0)
+    conn.execute(
+        "DELETE FROM paper_trade_refusal WHERE event_date<?",
+        (LEDGER_EVENT_DATE_FLOOR,),
+    )
+    if dropped:
+        conn.commit()
+    return dropped
 
 
 def _drop_superseded_positions(
@@ -3753,6 +3794,10 @@ def backfill(
     recent_days: int | None = None,
 ) -> dict:
     refusal_rebuilt = ensure_schema(conn)
+    # Rows below the floor are not re-derived, so nothing else would ever remove
+    # them; without this an incremental pass would leave a retired strategy on
+    # the page forever while claiming the window starts later.
+    below_floor = _purge_below_floor(conn)
     if refusal_rebuilt:
         # The reason vocabulary just changed and the table was rebuilt
         # around it.  An incremental pass would re-answer only the recent
@@ -3796,17 +3841,20 @@ def backfill(
     scopes = conn.execute(
         "SELECT DISTINCT station_id, event_date"
         " FROM basket_probability_bridge_history"
-        " WHERE (?1 IS NULL OR event_date >= date("
+        " WHERE event_date >= ?2"
+        "   AND (?1 IS NULL OR event_date >= date("
         "   (SELECT max(event_date) FROM basket_probability_bridge_history),"
         "   '-' || ?1 || ' days'))"
         " ORDER BY event_date, station_id",
-        (recent_days,),
+        (recent_days, LEDGER_EVENT_DATE_FLOOR),
     ).fetchall()
     counts: dict[str, int] = defaultdict(int)
     if refusal_rebuilt:
         counts["refusal_schema_rebuilt_full_walk"] = 1
     if superseded:
         counts["superseded_rule_dropped"] = superseded
+    if below_floor:
+        counts["below_event_date_floor_dropped"] = below_floor
     for key, value in rescored.items():
         if value:
             counts[key] += value
