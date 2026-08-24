@@ -179,6 +179,71 @@ TARGET_WAL_REOPEN_REASONS = (
 )
 TARGET_TAF_POLL_INTERVAL_SEC = 60.0
 TARGET_NWP_POLL_INTERVAL_SEC = 600.0
+
+# Sweep-class SSOT writers, hosted by this daemon instead of launchd.
+#
+# SQLite has one writer at a time, and four independently-timed launchd jobs
+# plus this resident made five processes contending for it.  On 2026-08-24 an
+# ordinary ledger burst against a checkpoint-starved WAL held the lock past
+# the resident's own bound and P1 failed closed for 45 minutes -- the
+# maintenance writers were not misbehaving, they were merely uncoordinated.
+# Hosting them here serialises every routine writer through one scheduler: a
+# sweep runs only while no production cycle is in flight, one sweep at a
+# time, and a production cycle is not submitted while a sweep runs.  The
+# scripts themselves are unchanged and keep their single-instance guards, so
+# a manual run beside the resident stays safe during any transition.
+#
+# Intervals are the launchd cadences they replace.  A sweep becomes due, not
+# scheduled: with production idle-gating the realised cadence stretches by
+# the cycle length, which trades probe density for never fail-closing the
+# stage that prices the book.
+HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
+    # (name, script, interval_sec, timeout_sec)
+    ("maker_shadow_probe", "scripts/maker_shadow_probe_sweep.sh", 300.0, 900.0),
+    ("pr12_awc_observation", "scripts/pr12_awc_observation_sweep.sh", 600.0, 900.0),
+    ("paper_trading_ledger", "scripts/paper_trading_ledger_sweep.sh", 900.0, 1800.0),
+    ("settlement_truth", "scripts/settlement_truth_sweep.sh", 1800.0, 900.0),
+)
+
+
+def run_hosted_sweep(script_path: str, timeout_sec: float) -> dict[str, Any]:
+    """Run one sweep script to completion and report what it did.
+
+    The subprocess boundary is deliberate: each sweep keeps its own
+    connections, pragmas and crash domain, so a sweep that dies cannot take
+    the resident's commit connection or its process down with it.
+    """
+
+    started_at = utc_now()
+    started = time.monotonic()
+    try:
+        completed = subprocess.run(
+            ["/bin/bash", script_path],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec,
+        )
+        returncode: int | None = completed.returncode
+        tail = (completed.stdout + completed.stderr)[-600:]
+        state_text = "ok" if completed.returncode == 0 else "failed"
+    except subprocess.TimeoutExpired as exc:
+        returncode = None
+        tail = ((exc.stdout or "") + (exc.stderr or ""))[-600:]
+        state_text = "timeout_killed"
+    except Exception as exc:  # noqa: BLE001 - the receipt is the contract
+        returncode = None
+        tail = f"{type(exc).__name__}:{exc}"
+        state_text = "spawn_failed"
+    return {
+        "state": state_text,
+        "returncode": returncode,
+        "started_at_utc": started_at,
+        "duration_sec": round(time.monotonic() - started, 3),
+        "output_tail": tail.strip(),
+        "calls_order_gateway": False,
+        "places_orders": False,
+    }
 # Scopes advanced per poll.  The full sweep must finish inside the P0 freshness
 # TTL (~6h) or scopes expire faster than the rotation can refresh them; with 77
 # scopes and a 10-minute poll, three per poll brings the sweep to ~4.3h.
@@ -2656,6 +2721,19 @@ def main() -> int:
         next_forecast = now_mono
         next_storage_probe = 0.0
         next_wal_maintenance = 0.0
+        # Hosted sweeps: staggered first runs so boot does not fire all four
+        # into the first idle gap at once.
+        next_hosted_sweep = {
+            name: now_mono + 60.0 + 90.0 * index
+            for index, (name, _, _, _) in enumerate(HOSTED_SWEEPS)
+        }
+        hosted_sweep_future: Any = None
+        hosted_sweep_name = ""
+        state["hosted_sweeps"] = {
+            "schema": "resident_hosted_sweeps_v1",
+            "running": None,
+            "results": {},
+        }
         storage_guard: dict[str, Any] = {
             "ok": False,
             "state": "storage_probe_not_run_fail_closed",
@@ -3105,7 +3183,50 @@ def main() -> int:
             if storage_ok and "awc" in lane_workers and now_mono >= next_source.get("awc", now_mono) and "awc" not in lane_futures:
                 lane_futures["awc"] = executor.submit(lane_workers["awc"].poll)
                 next_source["awc"] = time.monotonic() + awc_poll_interval(config, datetime.now(timezone.utc))
-            if storage_ok and now_mono >= next_production and production_future is None:
+            # Hosted sweeps and production cycles exclude each other: that
+            # mutual gate is the whole point of hosting them -- one routine
+            # writer at a time, so a sweep burst can never again hold the
+            # lock into a production write and fail P1 closed.
+            if hosted_sweep_future is not None and hosted_sweep_future.done():
+                try:
+                    sweep_result = hosted_sweep_future.result()
+                except Exception as exc:  # noqa: BLE001
+                    sweep_result = {
+                        "state": "future_failed",
+                        "reason": f"{type(exc).__name__}:{exc}",
+                    }
+                state["hosted_sweeps"]["results"][hosted_sweep_name] = (
+                    sweep_result
+                )
+                state["hosted_sweeps"]["running"] = None
+                for name, _, interval_sec, _ in HOSTED_SWEEPS:
+                    if name == hosted_sweep_name:
+                        next_hosted_sweep[name] = (
+                            time.monotonic() + interval_sec
+                        )
+                hosted_sweep_future = None
+                hosted_sweep_name = ""
+            if (
+                storage_ok
+                and hosted_sweep_future is None
+                and production_future is None
+            ):
+                for name, script, interval_sec, timeout_sec in HOSTED_SWEEPS:
+                    if now_mono >= next_hosted_sweep[name]:
+                        hosted_sweep_name = name
+                        state["hosted_sweeps"]["running"] = name
+                        hosted_sweep_future = executor.submit(
+                            run_hosted_sweep,
+                            str(ROOT / script),
+                            timeout_sec,
+                        )
+                        break
+            if (
+                storage_ok
+                and now_mono >= next_production
+                and production_future is None
+                and hosted_sweep_future is None
+            ):
                 production_future = executor.submit(
                     run_target_production_cycle,
                     production_worker,
