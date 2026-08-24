@@ -1007,6 +1007,209 @@ def collect_model_skill(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+TRUTH_LANDING_SINCE = "2026-08-15"
+TRUTH_LANDING_PRICE_BANDS = (
+    (0.00, 0.01), (0.01, 0.02), (0.02, 0.03), (0.03, 0.05),
+    (0.05, 0.10), (0.10, 0.20), (0.20, 0.40), (0.40, 1.01),
+)
+TRUTH_LANDING_COARSE = (
+    (0.00, 0.01), (0.01, 0.03), (0.03, 0.10), (0.10, 0.30), (0.30, 1.01),
+)
+
+
+def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Where truth settles, by market price and by model claim.
+
+    Truth here is the market's own adjudication -- the bucket whose last
+    recorded bid converged to 0.80 or better -- because three hand-built
+    truth vocabularies in one evening each disagreed with the market's
+    closing prices, and the market is the party that actually pays.
+    Validated 60 of 62 against the settlement pipeline's settled_bucket the
+    day it was built (the two dissents are ZGSZ truth-revision days).
+    Station-days whose capture was truncated before convergence are
+    excluded and counted, never guessed.
+
+    Price is the entry the seat actually faced: the median best ask over
+    the four hours after the station-day's first P0 decision, at least two
+    quotes.  The claim is that same first P0 envelope's served probability.
+    A day whose local calendar has not finished is excluded -- an unfinished
+    day's "truth" is whatever the afternoon has not yet overwritten, which
+    is how the first version of this table put 45 winners under a cent.
+    """
+
+    if not _table_exists(conn, "basket_official_ws_snapshot"):
+        return {}
+    now = datetime.now(timezone.utc)
+    zones: dict[str, str] = {
+        str(station): str(zone)
+        for station, zone in conn.execute(
+            "SELECT DISTINCT station_id, settlement_timezone"
+            " FROM basket_probability_envelope"
+            " WHERE settlement_timezone IS NOT NULL"
+        )
+    }
+
+    def day_closed(station: str, event_date: str) -> bool:
+        zone = zones.get(station)
+        if not zone:
+            return False
+        try:
+            end = datetime.fromisoformat(
+                event_date + "T00:00:00"
+            ).replace(tzinfo=ZoneInfo(zone)) + timedelta(days=1)
+        except Exception:
+            return False
+        return now >= end.astimezone(timezone.utc)
+
+    first_decision: dict[tuple[str, str], str] = {}
+    claims: dict[tuple[str, str], dict[str, float]] = {}
+    for station, event, probabilities_json, decided in conn.execute(
+        "SELECT station_id, event_date, probabilities_json, decision_at_utc"
+        " FROM basket_probability_envelope"
+        " WHERE event_date >= ? AND stage='P0'"
+        " ORDER BY decision_at_utc",
+        (TRUTH_LANDING_SINCE,),
+    ):
+        key = (str(station), str(event))
+        if key in first_decision or not day_closed(*key):
+            continue
+        first_decision[key] = str(decided)
+        try:
+            claims[key] = {
+                str(bucket): float(value)
+                for bucket, value in json.loads(probabilities_json).items()
+            }
+        except (ValueError, TypeError):
+            first_decision.pop(key, None)
+
+    entry_asks: dict[tuple[str, str, str], list[float]] = defaultdict(list)
+    last_bid: dict[tuple[str, str], dict[str, float]] = defaultdict(dict)
+    for station, event, observed, buckets_json in conn.execute(
+        "SELECT station_id, event_date, observed_at, buckets_json"
+        " FROM basket_official_ws_snapshot WHERE event_date >= ?"
+        " ORDER BY observed_at",
+        (TRUTH_LANDING_SINCE,),
+    ):
+        key = (str(station), str(event))
+        decided = first_decision.get(key)
+        if decided is None:
+            continue
+        try:
+            rows = json.loads(buckets_json)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(rows, list):
+            continue
+        in_entry = False
+        if str(observed) >= decided:
+            try:
+                opened = datetime.fromisoformat(
+                    decided.replace("Z", "+00:00")
+                )
+                seen = datetime.fromisoformat(
+                    str(observed).replace("Z", "+00:00")
+                )
+                in_entry = (seen - opened).total_seconds() <= 4 * 3600
+            except ValueError:
+                in_entry = False
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            bucket = str(row.get("bucket"))
+            levels = row.get("ask_levels") or []
+            ask = levels[0].get("price") if levels else None
+            bid = row.get("bid_price") or 0
+            bid_levels = row.get("bid_levels") or []
+            if not bid and bid_levels:
+                bid = bid_levels[0].get("price") or 0
+            if in_entry and ask and float(ask) > 0:
+                entry_asks[(key[0], key[1], bucket)].append(float(ask))
+            if bid and float(bid) > 0:
+                last_bid[key][bucket] = float(bid)
+
+    winners: dict[tuple[str, str], str] = {}
+    for key, bids in last_bid.items():
+        bucket, top = max(bids.items(), key=lambda item: item[1])
+        if top >= 0.80:
+            winners[key] = bucket
+
+    def banded(
+        bands: tuple[tuple[float, float], ...],
+        rows: list[tuple[int, float]],
+    ) -> list[dict[str, Any]]:
+        cells: dict[tuple[float, float], list[float]] = {
+            band: [0.0, 0.0, 0.0] for band in bands
+        }
+        for hit, value in rows:
+            for low, high in bands:
+                if low <= value < high:
+                    cell = cells[(low, high)]
+                    cell[0] += hit
+                    cell[1] += 1
+                    cell[2] += value
+                    break
+        total_truth = sum(cell[0] for cell in cells.values()) or 1.0
+        return [
+            {
+                "band": [low, high],
+                "truth_count": int(cell[0]),
+                "bucket_count": int(cell[1]),
+                "truth_share": cell[0] / total_truth,
+                "hit_rate": (cell[0] / cell[1]) if cell[1] else None,
+                "value_mean": (cell[2] / cell[1]) if cell[1] else None,
+            }
+            for (low, high), cell in cells.items()
+        ]
+
+    price_rows: list[tuple[int, float]] = []
+    for (station, event, bucket), asks in entry_asks.items():
+        key = (station, event)
+        if key not in winners or len(asks) < 2:
+            continue
+        price_rows.append(
+            (1 if winners[key] == bucket else 0, median(asks))
+        )
+    claim_rows: list[tuple[int, float]] = []
+    for key, claimed in claims.items():
+        if key not in winners:
+            continue
+        for bucket, value in claimed.items():
+            claim_rows.append((1 if winners[key] == bucket else 0, value))
+
+    def coarse(value: float) -> str:
+        for low, high in TRUTH_LANDING_COARSE:
+            if low <= value < high:
+                return f"{low:g}-{high:g}"
+        return ""
+
+    cross: dict[tuple[str, str], list[int]] = defaultdict(lambda: [0, 0])
+    for (station, event, bucket), asks in entry_asks.items():
+        key = (station, event)
+        if key not in winners or len(asks) < 2:
+            continue
+        claim = claims.get(key, {}).get(bucket)
+        if claim is None:
+            continue
+        cell = cross[(coarse(claim), coarse(median(asks)))]
+        cell[0] += 1 if winners[key] == bucket else 0
+        cell[1] += 1
+
+    return {
+        "since": TRUTH_LANDING_SINCE,
+        "closed_station_days": len(first_decision),
+        "adjudicated_station_days": len(winners),
+        "capture_truncated_days": len(first_decision) - len(winners),
+        "by_price": banded(TRUTH_LANDING_PRICE_BANDS, price_rows),
+        "by_claim": banded(TRUTH_LANDING_PRICE_BANDS, claim_rows),
+        "coarse_labels": [f"{low:g}-{high:g}" for low, high in TRUTH_LANDING_COARSE],
+        "cross": [
+            {"claim_band": claim_band, "price_band": price_band,
+             "truth_count": cell[0], "bucket_count": cell[1]}
+            for (claim_band, price_band), cell in cross.items()
+        ],
+    }
+
+
 def collect_truth_materialization(conn: sqlite3.Connection) -> dict[str, Any]:
     """Whether every settled station-day has been turned into a truth row.
 
@@ -2490,6 +2693,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     serving_weights = collect_serving_weights(conn)
     center_width = collect_center_width(conn)
     scorecard = collect_calibration_scorecard(conn)
+    truth_landing = collect_truth_landing(conn)
     worker = {}
     if STATUS_JSON.is_file():
         try:
@@ -2525,6 +2729,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "daily": _daily_table(selection),
         "members": members,
         "tables": tables,
+        "truth_landing": truth_landing,
         "stages": stages,
         "chain": chain,
         "gaps": gaps,
@@ -3182,6 +3387,57 @@ function refusalStats(){
 }
 
 
+function truthLanding(){
+  const T=D.truth_landing||{};
+  if(!(T.by_price||[]).length) return "";
+  const p=v=>v==null?"—":(v*100).toFixed(1)+"%";
+  const bandRows=(rows,valueLabel)=>rows.filter(r=>r.bucket_count>0).map(r=>{
+    const ratio=(valueLabel&&r.value_mean>0&&r.hit_rate!=null)
+      ? r.hit_rate/r.value_mean : null;
+    return `<tr><td class="mono">${r.band[0].toFixed(2)}–${r.band[1]>=1?"1.00":r.band[1].toFixed(2)}</td>
+      <td class="mono">${r.truth_count}</td>
+      <td class="mono">${r.bucket_count}</td>
+      <td>${p(r.truth_share)}</td>
+      <td>${p(r.hit_rate)}</td>
+      <td>${p(r.value_mean)}</td>
+      <td class="${ratio==null?"":(ratio>=0.85&&ratio<=1.2?"up":"down")}">${
+        ratio==null?"—":ratio.toFixed(2)+"×"}</td></tr>`;
+  }).join("");
+  const head=label=>`<thead><tr><th>档</th><th>真值</th><th>桶数</th>
+    <th>占真值</th><th>中标率</th><th>${label}</th><th>实现/声称</th></tr></thead>`;
+  const labels=T.coarse_labels||[];
+  const cell={};
+  (T.cross||[]).forEach(c=>{cell[c.claim_band+"|"+c.price_band]=c;});
+  const crossRows=labels.map(row=>{
+    const tds=labels.map(col=>{
+      const c=cell[row+"|"+col];
+      if(!c||!c.bucket_count) return "<td class=\"muted\">—</td>";
+      const rate=c.truth_count/c.bucket_count;
+      const cls=rate>=0.25?"up":(rate<=0.02&&c.bucket_count>=20?"down":"");
+      return `<td class="mono ${cls}">${c.truth_count}/${c.bucket_count}
+        <span class="muted">(${(rate*100).toFixed(1)}%)</span></td>`;
+    }).join("");
+    return `<tr><td class="mono"><b>${row}</b></td>${tds}</tr>`;
+  }).join("");
+  return `<h2>十六B、真值落位（价格 × 概率）</h2>
+  <p class="sub">${T.since} 起 · 已闭合站日 ${T.closed_station_days}
+    · 市场裁定出赢家 ${T.adjudicated_station_days}
+    · 采集截断剔除 ${T.capture_truncated_days}。
+    真值＝市场收敛裁定（末端买价 ≥0.80 的桶）；
+    价格＝首个 P0 决策后 4 小时的中位卖一；概率＝同一时刻的服务后验。</p>
+  <div class="why"><b>这三张表回答一件事：</b>真值到底住在哪个价位、哪个声称档，
+  以及两把尺子对不齐时该信谁。交叉表按行读：同一模型档内，中标率跟着市场价爬；
+  按列读：同一价格档内，模型的梯度几乎消失——分歧格里对的是市场。</div>
+  <h3 style="margin-top:14px">按市场价格（入场后 4h 中位卖一）</h3>
+  <table>${head("均价")}<tbody>${bandRows(T.by_price,true)}</tbody></table>
+  <h3 style="margin-top:14px">按模型概率（P0 建仓时刻声称）</h3>
+  <table>${head("声称均值")}<tbody>${bandRows(T.by_claim,true)}</tbody></table>
+  <h3 style="margin-top:14px">交叉：行＝模型概率档，列＝市场价格档（中标/桶数）</h3>
+  <table><thead><tr><th>模型＼市场</th>${
+    labels.map(l=>`<th class="mono">${l}</th>`).join("")
+  }</tr></thead><tbody>${crossRows}</tbody></table>`;
+}
+
 function windowDivergence(){
   const W=D.window_divergence||{};
   const rows=W.flagged||[];
@@ -3748,6 +4004,8 @@ function roster(){
     negative_edge_window:["边际不敌摩擦","窗口过闸也报得出价，胜率减全包成本仍盖不住逐腿最小跳动——这一条才是市场比模型贵。约六成的未入座是这一类，最好的一篮边际中位数 −0.25"],
     leg_below_floor:["单腿报价过低","窗口里有腿的报价低于一分——那是无人出价那侧的挂牌，不是价格。这是我们自己设的闸，不是市场没给价"],
     no_positive_kelly:["赔率不划算","篮子凑出来也定了价，但赢面低于要价，Kelly 给出零仓位"],
+    certainty_gate_lit:["市场已定价完毕","中心桶连三次没动，或头两桶已占六成——证据收敛了，溢价市场早收过了，这一轮主动不做，等下一个决策时刻。与「赔率不划算」相反：那是算过嫌贵，这是压根没问"],
+    unquoted_ideal_window:["理想窗口没报价","中心±1 里凑不出八成质量有像样卖价的桶。市场不报价常常不是疏忽，是它判定这些桶不会发生。默认关闭，由前向验证决定是否启用"],
     cost_exceeds_payout:["比满赔还贵","整篮成本超过它赢了能赔的 1.00，多高的概率都是亏——模型没被问到，是书的问题"],
     resting_unfilled:["挂单没成交","价格没等到；规模是够的，市场没走到我们这里来。每 60 分钟重挂一次，但过了本站达峰时刻就收摊，不是挂到结算"],
     belief_withdrew_order:["信念转负撤单","不是市场没来，是我们自己撤的：重挂时用最新概率重算整篮期望，转负即全撤。该查模型，不是执行"],
@@ -4596,7 +4854,7 @@ const GROUPS = [
    sections:[[coverage,"覆盖"],[stationSummary,"站汇总"],[roster,"站名册"],
      [anomalies,"异常"],[basketHit,"篮子命中率"],
      [makerProbe,"挂单影子探针"],[refusalStats,"未建仓原因"],
-     [windowDivergence,"分布与持仓分家"]]},
+     [windowDivergence,"分布与持仓分家"],[truthLanding,"真值落位"]]},
   {id:"data", label:"数据与链路", note:"十七～十九节：链路每一环、数据缺口、真值物化",
    sections:[[chain,"链路"],[gaps,"数据缺口"],[materialization,"真值物化"]]},
 ];
