@@ -354,6 +354,11 @@ def compile_station_p1_packets(
     trajectory_artifact: (
         MetarTrajectoryLikelihoodArtifact | Mapping[str, Any] | None
     ) = None,
+    trajectory_artifact_by_local_time_bucket: (
+        Mapping[
+            str, MetarTrajectoryLikelihoodArtifact | Mapping[str, Any] | None
+        ] | None
+    ) = None,
     maturity_bin: str = "D0",
     band_table: tuple[
         Sequence[tuple[tuple[float, float], float]], str
@@ -368,6 +373,19 @@ def compile_station_p1_packets(
     envelope the worker commits verbatim.  Passing None leaves the posterior
     byte-identical, which is what every caller that has not been given a
     table gets.
+
+    ``trajectory_artifact_by_local_time_bucket`` exists because one prefix
+    spans more than one local-time bucket and an artifact is fitted for
+    exactly one of them.  A caller that resolves a single artifact off its own
+    wall clock hands the morning's steps the afternoon's artifact, which the
+    proof compiler correctly refuses -- so those steps fell to the identity
+    fallback with an activation for their own bucket sitting unused.  Measured
+    2026-08-24 over event dates from 2026-08-18: that accounted for 49% of the
+    dark station-days at local noon, 55% at 15:00 and 58% an hour before local
+    settlement.  Passing the map lets each step be governed by the artifact
+    fitted for the hour it actually happened in; ``trajectory_artifact``
+    remains the fallback for any bucket the map does not name, so a caller
+    that passes only the single artifact behaves exactly as before.
     """
 
     previous = (
@@ -568,22 +586,12 @@ def compile_station_p1_packets(
         high_advanced = old_high is None or reported_c > old_high
         if not high_advanced:
             continue
-        explicit_artifact = (
-            trajectory_artifact
-            if isinstance(trajectory_artifact, MetarTrajectoryLikelihoodArtifact)
-            else MetarTrajectoryLikelihoodArtifact.from_mapping(
-                trajectory_artifact
-            )
-            if isinstance(trajectory_artifact, Mapping)
-            else None
-        )
         decision = max(
             committed,
             last_decision + timedelta(microseconds=1),
         )
         decision_text = _stamp(decision)
-        # The caller resolves one promoted artifact from the wall clock, but
-        # this loop replays the whole station-day: every observation gets its
+        # This loop replays the whole station-day: every observation gets its
         # own decision time, and those walk backwards through the local-time
         # buckets.  A promoted artifact is fitted for exactly one bucket and
         # the proof refuses to be applied outside it, so handing the
@@ -592,7 +600,24 @@ def compile_station_p1_packets(
         # entire station-day (six stations on 2026-08-16, all of them at
         # UTC+8 with a morning already behind them).  Out of its own bucket a
         # promoted artifact has nothing fitted to say, which is the exact
-        # situation the identity fallback exists for.
+        # situation the identity fallback exists for -- so each step now asks
+        # for the artifact fitted for its own hour, and only falls back when
+        # there is none.
+        step_bucket = _local_time_bucket(
+            decision_text, root.settlement_timezone
+        )
+        step_artifact = trajectory_artifact
+        if trajectory_artifact_by_local_time_bucket is not None:
+            named = trajectory_artifact_by_local_time_bucket.get(step_bucket)
+            if named is not None:
+                step_artifact = named
+        explicit_artifact = (
+            step_artifact
+            if isinstance(step_artifact, MetarTrajectoryLikelihoodArtifact)
+            else MetarTrajectoryLikelihoodArtifact.from_mapping(step_artifact)
+            if isinstance(step_artifact, Mapping)
+            else None
+        )
         # The hourly-curve method reads a conditional future-temperature
         # curve off the root.  A root compiled before that curve existed --
         # and on the event day itself the root is frozen from the day before,
@@ -631,8 +656,7 @@ def compile_station_p1_packets(
         )
         artifact_in_bucket = (
             artifact_governs_root
-            and explicit_artifact.local_time_bucket
-            == _local_time_bucket(decision_text, root.settlement_timezone)
+            and explicit_artifact.local_time_bucket == step_bucket
         )
         # The conditional/curve methods need three observations behind them
         # before they may speak.  That minimum belongs to the promoted

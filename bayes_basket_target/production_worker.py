@@ -8958,6 +8958,52 @@ class TargetProductionWorker:
                 )
                 maturity_bin = "D0"
                 p1_trajectory_started = time.perf_counter()
+
+                def _resolve_trajectory_scope(bucket: str) -> Any:
+                    """One bucket's active artifact, promoted or candidate.
+
+                    Factored out because the compiler needs one per bucket the
+                    prefix spans, not one for the wall clock: an artifact is
+                    fitted for a single local-time bucket, so a morning step
+                    handed the afternoon's artifact falls to the identity
+                    fallback with its own bucket's activation sitting unused.
+                    """
+
+                    scope_key = metar_trajectory_scope_key(
+                        source_lane=next(iter(source_lanes)),
+                        season_bin=str(
+                            prediction_root.lineage.get("season_bin") or ""
+                        ),
+                        local_time_bucket=bucket,
+                        maturity_bin=maturity_bin,
+                        settlement_definition=str(
+                            prediction_root.lineage.get(
+                                "settlement_definition"
+                            )
+                            or ""
+                        ),
+                    )
+                    resolved = resolve_active_probability_evidence_artifact(
+                        self.commit_conn,
+                        artifact_kind="METAR_TRAJECTORY_LIKELIHOOD",
+                        station_id=station,
+                        scope_key=scope_key,
+                        as_of_utc=as_of_utc,
+                        required_authority_scope="FORMAL_PROMOTED",
+                    )
+                    if resolved is not None:
+                        return resolved
+                    return resolve_active_probability_evidence_artifact(
+                        self.commit_conn,
+                        artifact_kind="METAR_TRAJECTORY_LIKELIHOOD",
+                        station_id=station,
+                        scope_key=scope_key,
+                        as_of_utc=as_of_utc,
+                        required_authority_scope=(
+                            "PRODUCTION_NO_LIVE_CANDIDATE"
+                        ),
+                    )
+
                 trajectory_row = (
                     resolve_active_probability_evidence_artifact(
                         self.commit_conn,
@@ -9031,6 +9077,40 @@ class TargetProductionWorker:
                         trajectory_row["artifact"]
                     )
                 )
+                # One artifact per bucket the day can contain, so every step of
+                # the replayed prefix is governed by the artifact fitted for
+                # the hour it happened in.  The wall-clock bucket keeps the
+                # resolution semantics it has always had, including its
+                # errors; the other three are best-effort, because a scope the
+                # compiler may never reach must not be able to fail a
+                # station-day that works today.  Whatever they refuse is named
+                # in the receipt rather than swallowed.
+                trajectory_artifact_by_bucket: dict[
+                    str, MetarTrajectoryLikelihoodArtifact
+                ] = {}
+                trajectory_scope_blockers: dict[str, str] = {}
+                for candidate_bucket in (
+                    "NIGHT", "MORNING", "AFTERNOON", "EVENING"
+                ):
+                    if candidate_bucket == local_time_bucket:
+                        candidate_row = trajectory_row
+                    else:
+                        try:
+                            candidate_row = _resolve_trajectory_scope(
+                                candidate_bucket
+                            )
+                        except ContractError as exc:
+                            trajectory_scope_blockers[candidate_bucket] = str(
+                                exc
+                            )
+                            continue
+                    if candidate_row is None:
+                        continue
+                    trajectory_artifact_by_bucket[candidate_bucket] = (
+                        MetarTrajectoryLikelihoodArtifact.from_mapping(
+                            candidate_row["artifact"]
+                        )
+                    )
                 self._add_span(
                     "p1_trajectory_artifact",
                     (time.perf_counter() - p1_trajectory_started) * 1000.0,
@@ -9096,6 +9176,9 @@ class TargetProductionWorker:
                     ),
                     consumed_observation_ids=consumed,
                     trajectory_artifact=trajectory_artifact,
+                    trajectory_artifact_by_local_time_bucket=(
+                        trajectory_artifact_by_bucket or None
+                    ),
                     maturity_bin=maturity_bin,
                 )
                 self._add_span(
@@ -9265,6 +9348,14 @@ class TargetProductionWorker:
                     "observation_count": len(observations),
                     "p1_update_count": write_count,
                     "trajectory_mode": p1_trajectory_mode,
+                    # Which local-time buckets had an artifact to govern their
+                    # steps.  ``trajectory_mode`` is the wall-clock bucket's
+                    # answer alone and has been misread as the layer's coverage
+                    # before; this is the coverage.
+                    "trajectory_buckets_resolved": sorted(
+                        trajectory_artifact_by_bucket
+                    ),
+                    "trajectory_scope_blockers": trajectory_scope_blockers,
                     "p0_rebase": rebasing,
                     "current_consumable": current_consumable,
                     "replay_cursor_only": not current_consumable,
