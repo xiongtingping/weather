@@ -2860,6 +2860,12 @@ var(--soft);align-items:flex-start}
 .gap:last-child{border-bottom:none}
 .factor{font-weight:650}
 .up{color:var(--up)}.down{color:var(--down)}.flat{color:var(--muted)}
+.zone-trap{background:rgba(224,82,82,.16)}
+.zone-market{background:rgba(224,164,64,.14)}
+.zone-agree{background:rgba(96,150,224,.10)}
+[data-theme="light"] .zone-trap{background:rgba(200,48,48,.10)}
+[data-theme="light"] .zone-market{background:rgba(190,130,20,.10)}
+[data-theme="light"] .zone-agree{background:rgba(50,110,190,.08)}
 footer{margin-top:34px;color:var(--muted);font-size:12.5px;text-align:center}
 /* The group switcher.  Sticky, because it is the only way back to the
    other two thirds of the page once a long section has been scrolled
@@ -3408,17 +3414,29 @@ function truthLanding(){
   const labels=T.coarse_labels||[];
   const cell={};
   (T.cross||[]).forEach(c=>{cell[c.claim_band+"|"+c.price_band]=c;});
-  const crossRows=labels.map(row=>{
-    const tds=labels.map(col=>{
+  const crossRows=labels.map((row,ri)=>{
+    const tds=labels.map((col,ci)=>{
+      // Zones by who is the optimist, not by the cell's own number: below
+      // the diagonal the model claims more than the market charges -- the
+      // exact cells an edge ranking wants to buy -- above it the market
+      // keeps alive what the model has dismissed, and on it the two agree.
+      const zone=ri>ci?"zone-trap":(ri<ci?"zone-market":"zone-agree");
       const c=cell[row+"|"+col];
-      if(!c||!c.bucket_count) return "<td class=\"muted\">—</td>";
+      if(!c||!c.bucket_count) return `<td class="muted ${zone}">—</td>`;
       const rate=c.truth_count/c.bucket_count;
       const cls=rate>=0.25?"up":(rate<=0.02&&c.bucket_count>=20?"down":"");
-      return `<td class="mono ${cls}">${c.truth_count}/${c.bucket_count}
+      return `<td class="mono ${cls} ${zone}">${c.truth_count}/${c.bucket_count}
         <span class="muted">(${(rate*100).toFixed(1)}%)</span></td>`;
     }).join("");
     return `<tr><td class="mono"><b>${row}</b></td>${tds}</tr>`;
   }).join("");
+  const legend=`<p class="sub" style="margin-top:8px">
+    <span class="zone-trap" style="padding:2px 8px;border-radius:4px">红区</span>
+    模型比市场乐观（edge 门想买的格子——历史上几乎全空）&nbsp;
+    <span class="zone-market" style="padding:2px 8px;border-radius:4px">黄区</span>
+    市场比模型乐观（真值跟着市场走——别因模型嫌贵而放弃）&nbsp;
+    <span class="zone-agree" style="padding:2px 8px;border-radius:4px">蓝区</span>
+    两者一致（校准良好的对角线）</p>`;
   return `<h2>十六B、真值落位（价格 × 概率）</h2>
   <p class="sub">${T.since} 起 · 已闭合站日 ${T.closed_station_days}
     · 市场裁定出赢家 ${T.adjudicated_station_days}
@@ -3435,7 +3453,7 @@ function truthLanding(){
   <h3 style="margin-top:14px">交叉：行＝模型概率档，列＝市场价格档（中标/桶数）</h3>
   <table><thead><tr><th>模型＼市场</th>${
     labels.map(l=>`<th class="mono">${l}</th>`).join("")
-  }</tr></thead><tbody>${crossRows}</tbody></table>`;
+  }</tr></thead><tbody>${crossRows}</tbody></table>${legend}`;
 }
 
 function windowDivergence(){
