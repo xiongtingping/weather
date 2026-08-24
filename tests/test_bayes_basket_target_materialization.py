@@ -1147,6 +1147,104 @@ def test_ceiling_stays_silent_on_replayed_steps_behind_the_current_high(
     assert final["39"] == pytest.approx(0.05, abs=1e-9)
 
 
+def test_the_ceiling_reaches_the_served_envelope_not_only_the_proof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The 2026-08-24 defect: the clock only ever spoke inside the evidence.
+
+    ``apply_ceiling`` ran inside the trajectory proof, whose posterior no
+    consumer serves, while the committed envelope was rebuilt from root x
+    likelihood x hard mask and never saw it.  Measured on 2026-08-23, the
+    proof held a median of 0.000 above the running high and the envelope held
+    0.350 on 44 of 45 station-days.  Pinned here on the served distribution.
+    """
+
+    from bayes_basket_target import metar_ceiling
+
+    monkeypatch.setattr(metar_ceiling, "CEILING_ENABLED", True)
+    artifact = {
+        "schema": "bayes_basket_target_metar_ceiling_v1",
+        "trained_through": "2026-07-01",
+        "bins": {
+            "0": {"hours_from": 0.0, "hours_to": 24.0, "p_still_rose": 0.05},
+        },
+    }
+    # Inside the ten-hour window the layer is allowed to speak in: local
+    # midnight for this event date is 04:00Z the next day, so 23:30Z leaves
+    # four and a half hours of the settlement day.
+    late = "2026-07-23T23:30:00Z"
+    root = _p0m_root(_envelope())
+    without = _trajectory_packet(root, temperature_c=37.0, decision_at_utc=late)
+    packets = compile_station_p1_packets(
+        predecessor=root,
+        observations=[{
+            "observation_id": "obs-1",
+            "station_id": root.station_id,
+            "event_date_local": root.event_date,
+            "settlement_timezone": root.settlement_timezone,
+            "reported_temperature_c": 37.0,
+            "valid_at_utc": late,
+            "canonical_committed_at_utc": late,
+            "raw_sha256": "a" * 64,
+            "source_lane": "AWC",
+            "report_type": "METAR",
+            "evidence_role": "FORMAL",
+            "qc_status": "ACCEPTED",
+            "correction_suspected": False,
+        }],
+        registry_rows=[
+            {
+                "station_id": root.station_id,
+                "event_date": root.event_date,
+                "settlement_timezone": root.settlement_timezone,
+                "settlement_unit": "C",
+                "outcome": bucket,
+                "registry_json": json.dumps({"upper": upper}),
+            }
+            for bucket, upper in (("37", 37), ("38", 38), ("39", None))
+        ],
+        compilation_at_utc=late,
+        ceiling_artifact=artifact,
+    )
+    served = packets[0]["expected_envelope"]["probabilities"]
+    bare = without["expected_envelope"]["probabilities"]
+    ordinals = packets[0]["expected_envelope"]["bucket_ordinals"]
+    floor = min(
+        (b for b, v in bare.items() if v > 0.0),
+        key=lambda b: ordinals[b],
+    )
+
+    def above(dist):
+        return sum(
+            v for b, v in dist.items() if ordinals[b] > ordinals[floor]
+        )
+
+    # Without the artifact the served shape keeps whatever the model left
+    # above the day's high; with it, that share becomes the fitted rate.
+    assert above(bare) == pytest.approx(0.8)
+    assert above(served) == pytest.approx(0.05, abs=1e-9)
+    assert served[floor] == pytest.approx(0.95, abs=1e-9)
+    # The shape inside each side is untouched -- this layer moves one split.
+    assert served["38"] / served["39"] == pytest.approx(
+        bare["38"] / bare["39"]
+    )
+    receipt = json.loads(
+        packets[0]["expected_envelope"]["lineage"]["metar_ceiling_json"]
+    )
+    assert receipt["metar_ceiling_applied"] == "true"
+    assert receipt["metar_ceiling_artifact_sha256"]
+
+
+def test_without_a_ceiling_artifact_the_envelope_is_byte_identical() -> None:
+    """Passing nothing leaves every hash where it was."""
+
+    root = _p0m_root(_envelope())
+    left = _trajectory_packet(root, temperature_c=37.0)["expected_envelope"]
+    right = _trajectory_packet(root, temperature_c=37.0)["expected_envelope"]
+    assert left == right
+    assert "metar_ceiling_json" not in left["lineage"]
+
+
 def test_p1_consumes_canonical_event_once_and_applies_hard_support() -> None:
     p0 = _envelope()
     p0m = _p0m_root(p0)

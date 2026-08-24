@@ -88,6 +88,7 @@ from .market_materialization import insert_market_evidence_bundle, build_confirm
 from .market_ingress import materialize_official_ws_evidence_cache
 from .materialization import materialize_p0m, materialize_p0m_observed
 from .probability_bridge import materialize_probability_bridge
+from .metar_ceiling import load_artifact as load_metar_ceiling_artifact
 from .metar_trajectory import (
     METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
     MetarTrajectoryLikelihoodArtifact,
@@ -9179,6 +9180,10 @@ class TargetProductionWorker:
                     trajectory_artifact_by_local_time_bucket=(
                         trajectory_artifact_by_bucket or None
                     ),
+                    # Handed in like the band table so a replay rebuilds the
+                    # same envelope; the module's own env switch still decides
+                    # whether the layer speaks at all.
+                    ceiling_artifact=load_metar_ceiling_artifact(),
                     maturity_bin=maturity_bin,
                 )
                 self._add_span(

@@ -29,6 +29,7 @@ from .center_width_calibration import (
 from .center_width_store import EDGE_WIDTH_C
 from .cross_consensus import apply_band_reliability
 from .et_history import assert_event_day_started
+from .metar_ceiling import apply_ceiling as apply_metar_ceiling
 from .settlement_time import settlement_day_window
 from .ssot import production_ssot_schema_status
 from .resource_bounds import assert_connection_target_capacity
@@ -629,6 +630,7 @@ def _posterior(
     ] | None = None,
     center_width: tuple[float, float, str] | None = None,
     station_width: tuple[Mapping[str, float], str] | None = None,
+    ceiling: Mapping[str, Any] | None = None,
 ) -> ProbabilityEnvelope:
     if predecessor.stage not in {"P0", "P0-M", "P1"}:
         raise ContractError("probability_predecessor_stage_invalid")
@@ -729,6 +731,51 @@ def _posterior(
         band_receipt["band_table_sha256"] = str(band_sha)
         lineage["band_reliability_json"] = json.dumps(
             band_receipt, sort_keys=True
+        )
+    # The clock, last of all.  Every layer above rescales a claim about which
+    # bucket settles; this one answers a different question -- whether the day
+    # has any room left above the high it has already reached -- and it must
+    # be outermost because anything applied after it puts back the mass it
+    # just took.  It ran inside the trajectory proof from 2026-08-23, and the
+    # proof's posterior is an evidence record no consumer serves, so until
+    # 2026-08-24 the layer never reached a served distribution at all: on the
+    # 45 station-days of 2026-08-23 the proof held a median of 0.000 above the
+    # running high and the committed envelope held 0.350.
+    #
+    # The artifact arrives from the caller for the same reason the band table
+    # does: a replay must be able to rebuild this exact envelope, and a layer
+    # that reads its own fitted file would rebuild a different one as soon as
+    # the file was refitted.
+    if ceiling is not None:
+        ceiling_probabilities, ceiling_receipt = apply_metar_ceiling(
+            probabilities,
+            ordinals=predecessor.bucket_ordinals,
+            running_high_bucket=str(ceiling["running_high_bucket"]),
+            event_date=predecessor.event_date,
+            settlement_timezone=predecessor.settlement_timezone,
+            as_of_utc=decision_at_utc,
+            artifact=ceiling.get("artifact"),
+        )
+        # A rate may not revive what an observation killed, and it may not be
+        # the thing that empties the support either.
+        ceiling_probabilities = {
+            bucket: (0.0 if bucket in excluded else value)
+            for bucket, value in ceiling_probabilities.items()
+        }
+        residual = sum(ceiling_probabilities.values())
+        if not math.isfinite(residual) or residual <= 0.0:
+            raise ContractError("probability_posterior_empty_after_ceiling")
+        probabilities = {
+            bucket: value / residual
+            for bucket, value in ceiling_probabilities.items()
+        }
+        ceiling_receipt = dict(ceiling_receipt)
+        ceiling_receipt["schema"] = "metar_ceiling_receipt_v1"
+        ceiling_receipt["metar_ceiling_artifact_sha256"] = str(
+            ceiling.get("artifact_sha256") or ""
+        )
+        lineage["metar_ceiling_json"] = json.dumps(
+            ceiling_receipt, sort_keys=True
         )
     identity = {
         "schema": MATERIALIZATION_SCHEMA,
@@ -1042,7 +1089,12 @@ def materialize_p1(
     # step whose running high the day still holds.  A root rebase used to
     # replay morning prefixes under an evening clock, and the ceiling then
     # crushed every bucket above a high the day had already beaten.
-    posterior_version: str = "p1_metar_trajectory_target_v4",
+    # v5 (2026-08-24): the cooling-side ceiling reaches the served
+    # distribution.  It had only ever been applied inside the trajectory
+    # proof, which no consumer serves, so the shape production published
+    # still held the mass the clock had already ruled out.
+    posterior_version: str = "p1_metar_trajectory_target_v5",
+    ceiling_artifact: Mapping[str, Any] | None = None,
     band_table: tuple[
         Sequence[tuple[tuple[float, float], float]], str
     ] | None = None,
@@ -1323,6 +1375,21 @@ def materialize_p1(
         band_table=band_table,
         center_width=center_width,
         station_width=station_width,
+        # The proof already decided both of the ceiling's preconditions: which
+        # bucket the day's high sits in, and whether this step's high is the
+        # current one.  Reading them off the proof keeps the served
+        # distribution and the evidence record answering the same question.
+        ceiling=(
+            None
+            if ceiling_artifact is None
+            else {
+                "running_high_bucket": reported_high_bucket,
+                "artifact": ceiling_artifact,
+                "artifact_sha256": content_sha256(dict(ceiling_artifact)),
+            }
+            if proof.prefix_is_current
+            else None
+        ),
     )
 
 
