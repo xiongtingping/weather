@@ -673,6 +673,12 @@ def assert_connection_target_capacity(
     max_pages = max(1, MAX_TARGET_DB_BYTES // page_size)
     conn.execute(f"PRAGMA max_page_count={max_pages}")
     conn.execute("PRAGMA wal_autocheckpoint=1000")
+    # Autocheckpointing reuses WAL space but never shrinks the file, so a
+    # single starved stretch leaves its high-water mark on disk forever --
+    # the 2026-08-24 reader leak left a 417MB file that every later reader
+    # and writer kept paying to map.  With a size limit the first completed
+    # checkpoint truncates the file back under it.
+    conn.execute("PRAGMA journal_size_limit=67108864")
     return resolved
 
 

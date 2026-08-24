@@ -1263,7 +1263,18 @@ def _maker_probe(conn: sqlite3.Connection) -> dict[str, Any]:
 
 
 def build_payload(db: Path) -> dict[str, Any]:
+    # The connection lives exactly one payload and is closed on every path.
+    # Leaking it kept a read snapshot open on a WAL database and starved
+    # checkpointing -- see the sibling note in
+    # calibration_dashboard.build_payload.
     conn = _connect(db)
+    try:
+        return _build_payload(conn, db)
+    finally:
+        conn.close()
+
+
+def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     rows = _rows(conn)
     by_side: dict[str, int] = defaultdict(int)
     for row in rows:

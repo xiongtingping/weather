@@ -160,7 +160,16 @@ SQLITE_IO_RECOVERY_BACKOFF_SEC = 5.0
 # than losing the round's forward book, which no later cycle can refetch.
 # The right end state is a shorter transaction, and this bound should come
 # back down when it lands.
-TARGET_SQLITE_LOCK_TIMEOUT_MS = 30_000
+#
+# Raised to 120s on 2026-08-24.  The 30s bound was sized against a healthy
+# WAL; with checkpointing starved by a leaked dashboard reader the WAL sat
+# at 417MB, every writer slowed, and the ledger sweep's ordinary bursts held
+# the lock past 30s -- P1 then failed closed for 45 minutes across three
+# consecutive restarts.  Waiting stretches the cycle; failing closed loses
+# the round.  The reader leak is fixed alongside this, so the long waits
+# should be rare -- but a lock timeout must be sized for the bad day, not
+# the good one.
+TARGET_SQLITE_LOCK_TIMEOUT_MS = 120_000
 TARGET_SQLITE_LOCK_BACKOFF_SEC = 5.0
 TARGET_SQLITE_LOCK_MAX_BACKOFF_SEC = 60.0
 TARGET_WAL_REOPEN_REASONS = (

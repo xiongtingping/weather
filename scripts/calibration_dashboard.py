@@ -2463,7 +2463,21 @@ def collect_window_divergence(conn: sqlite3.Connection) -> dict[str, Any]:
 
 
 def build_payload(db: Path) -> dict[str, Any]:
+    # The connection lives exactly one payload and is closed on every path.
+    # It used to be leaked, one per page refresh, and a leaked read-only
+    # connection is not harmless on a WAL database: any cursor left
+    # unexhausted keeps a read transaction open, checkpointing can never
+    # advance past the oldest reader snapshot, and the WAL grew to 417MB --
+    # at which point every writer's transaction slowed enough that ordinary
+    # lock contention compounded into 45-minute P1 outages (2026-08-24).
     conn = _connect(db)
+    try:
+        return _build_payload(conn, db)
+    finally:
+        conn.close()
+
+
+def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     members = collect_members(conn, collect_run_cadence(conn))
     tables = collect_correction_and_weights(conn)
     stages = collect_band_stages(conn)
