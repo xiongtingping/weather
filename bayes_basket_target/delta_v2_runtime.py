@@ -436,7 +436,19 @@ def _reservation_grid(*, row: Any, artifact: DeltaV2PolicyArtifact) -> tuple[flo
 # windows contiguous by construction (a bucket that is not admitted cannot
 # leave a hole in a run grown from what is), and the remaining rungs are
 # enumerated normally.
-MINIMUM_LEG_ALL_IN_ASK = 0.02
+#
+# Overridable so the floor itself can be measured rather than assumed.  Three
+# hand-written attempts to price it from the snapshot tables on 2026-08-24 each
+# produced a different answer and each was wrong -- entry quotes taken before
+# the book had formed, station-days whose local day had not finished counted as
+# settled, and out-of-window days scored as "a cheap bucket won" when what they
+# actually record is a day both the market and the model missed.  The ledger
+# already has the entry clock, the freshness contract and the settlement
+# vocabulary; the honest way to ask what this number is worth is to move it and
+# rebuild, not to re-derive the book beside it.
+MINIMUM_LEG_ALL_IN_ASK = float(
+    os.environ.get("PM_MINIMUM_LEG_ALL_IN_ASK", "0.02") or 0.02
+)
 # The shape a basket is asked to take inside itself (user ruling,
 # 2026-08-17): a base holding on the centre rung, tilted toward legs whose
 # own edge is positive, with the far rungs held deliberately small.
