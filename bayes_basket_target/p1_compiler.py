@@ -456,6 +456,33 @@ def compile_station_p1_packets(
             )
         except (TypeError, ValueError, json.JSONDecodeError):
             curve_point_times_utc = None
+    # The day's running high over the whole visible prefix, so each step can
+    # say whether its own high is still the current one.  The cooling-side
+    # ceiling is fitted only on the belief a sweep actually leaves standing --
+    # the step whose high the day still holds -- and it must stay silent on
+    # the replayed steps behind it, where today's clock would cut above a
+    # high the day has already beaten.  Same eligibility filters as the walk;
+    # an unparsable temperature is left for the walk to raise on.
+    day_running_high_c: float | None = None
+    for observation in ordered:
+        if (
+            str(observation.get("qc_status") or "").upper() != "ACCEPTED"
+            or str(observation.get("evidence_role") or "").upper() != "FORMAL"
+            or bool(observation.get("correction_suspected"))
+            or str(observation.get("station_id") or "") != previous.station_id
+            or str(observation.get("event_date_local") or "")
+            != previous.event_date
+        ):
+            continue
+        try:
+            value = float(observation["reported_temperature_c"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        day_running_high_c = (
+            value
+            if day_running_high_c is None
+            else max(day_running_high_c, value)
+        )
     for sequence, observation in enumerate(ordered, start=1):
         if (
             str(observation.get("qc_status") or "").upper() != "ACCEPTED"
@@ -644,6 +671,10 @@ def compile_station_p1_packets(
             bucket_upper_bounds_c=bucket_upper_bounds_c,
             maturity_bin=maturity_bin,
             as_of_utc=decision_text,
+            prefix_is_current=(
+                day_running_high_c is not None
+                and running_high_c >= day_running_high_c - 1e-9
+            ),
         )
         excluded = list(proof.hard_excluded_buckets)
         reported_value = reported_hard_lower_in_unit(running_high_c, unit)

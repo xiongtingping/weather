@@ -12,7 +12,7 @@ import math
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -205,6 +205,12 @@ def _sha(name: str, value: Any) -> str:
     if len(result) != 64 or any(char not in "0123456789abcdef" for char in result):
         raise ContractError(f"{name}_invalid")
     return result
+
+
+def _prefix_is_current(value: Any) -> bool:
+    if not isinstance(value, bool):
+        raise ContractError("metar_trajectory_prefix_is_current_invalid")
+    return value
 
 
 def _timestamp(name: str, value: Any) -> str:
@@ -1031,6 +1037,13 @@ class MetarTrajectoryUpdateProof:
     direction: str
     positive_core_buckets: tuple[str, ...]
     conditional_path_state_sha256: str | None
+    # The caller's attestation that this prefix's running high was the day's
+    # running high as of the decision clock -- the population the ceiling is
+    # fitted on.  Part of the proof body so the byte-stable replay validator
+    # can recompile the same posterior; proofs written before the field
+    # existed were all compiled as current, which is what the parser default
+    # restores.
+    prefix_is_current: bool
     content_sha256: str
 
     @classmethod
@@ -1052,7 +1065,7 @@ class MetarTrajectoryUpdateProof:
             "center_bucket", "model_center_bucket", "model_center_c",
             "direction_skew", "direction",
             "positive_core_buckets", "content_sha256",
-            "conditional_path_state_sha256",
+            "conditional_path_state_sha256", "prefix_is_current",
         }
         _strict_fields(raw, allowed=allowed, contract="metar_trajectory_proof")
         if raw.get("schema") not in {None, METAR_TRAJECTORY_PROOF_SCHEMA}:
@@ -1235,6 +1248,9 @@ class MetarTrajectoryUpdateProof:
                     raw.get("conditional_path_state_sha256"),
                 )
             ),
+            prefix_is_current=_prefix_is_current(
+                raw.get("prefix_is_current", True)
+            ),
             content_sha256=_sha(
                 "metar_trajectory_proof_content_sha256",
                 raw.get("content_sha256"),
@@ -1312,6 +1328,11 @@ class MetarTrajectoryUpdateProof:
                 self.conditional_path_state_sha256
             ),
         }
+        # Canonical form: absent means current.  Every proof written before
+        # the field existed was compiled as current, so this keeps their
+        # content hashes byte-identical.
+        if not self.prefix_is_current:
+            result["prefix_is_current"] = False
         if include_content_sha256:
             result["content_sha256"] = self.content_sha256
         return result
@@ -1369,8 +1390,28 @@ def compile_metar_trajectory_update_proof(
     bucket_upper_bounds_c: Mapping[str, Any],
     maturity_bin: str,
     as_of_utc: str,
+    prefix_is_current: bool = True,
 ) -> MetarTrajectoryUpdateProof:
-    """Compile P1 trajectory evidence from the immutable prediction root."""
+    """Compile P1 trajectory evidence from the immutable prediction root.
+
+    ``as_of_utc`` is the decision clock: it orders the append-only chain and
+    answers every authority question (artifact validity, activation window,
+    local-time bucket).  The evidence itself is older than that on a replayed
+    prefix, so the conditioners are evaluated at the prefix's own clock -- the
+    moment its newest observation became available -- which is the anchor
+    their training folds were cut at.  Before this split a root rebase in the
+    evening handed a morning prefix an evening decision clock, the physical
+    conditioner read "no day left" off it, and the ceiling crushed everything
+    above a running high the day had already beaten (12,786 committed proofs,
+    80% of them below the settled truth).
+
+    ``prefix_is_current`` is the caller's attestation that this prefix's
+    running high is the day's running high as of the decision clock.  The
+    cooling-side ceiling is fitted on exactly those beliefs -- one per burst,
+    the step the chain walked up to -- so it only speaks when that holds;
+    an intermediate replay step keeps the ceiling silent rather than letting
+    today's clock cut above a stale high.
+    """
 
     root = (
         prediction_root
@@ -1421,6 +1462,22 @@ def compile_metar_trajectory_update_proof(
         event_date=root.event_date,
         source_lane=governed.source_lane,
         settlement_timezone=root.settlement_timezone,
+    )
+    # The prefix's own clock: when its newest observation became available.
+    # Same effective-availability rule the training folds anchor on -- the
+    # later of the report's nominal minute and its commit, with the commit
+    # capped at one transmission lead so a backfill cannot drag the evidence
+    # clock to its ingest day.
+    last_observed = _parsed(ordered[-1].event.observed_at_utc)
+    last_committed = _parsed(ordered[-1].canonical_committed_at_utc)
+    evidence_as_of = (
+        max(
+            last_observed,
+            min(last_committed, last_observed + _MAX_TRANSMISSION_LEAD),
+        )
+        .astimezone(dt_timezone.utc)
+        .isoformat(timespec="microseconds")
+        .replace("+00:00", "Z")
     )
     if not timestamp_lt(
         governed.trained_through_utc, ordered[0].event.observed_at_utc
@@ -1550,7 +1607,7 @@ def compile_metar_trajectory_update_proof(
                 }
                 for item in ordered
             ],
-            as_of_utc=as_of,
+            as_of_utc=evidence_as_of,
             settlement_timezone=root.settlement_timezone,
             root_probabilities=root.probabilities,
             bucket_centers_c=centers,
@@ -1700,12 +1757,15 @@ def compile_metar_trajectory_update_proof(
         key=lambda bucket: (root.bucket_ordinals[bucket], bucket),
         default=None,
     )
-    if running_high_bucket is not None:
+    if running_high_bucket is not None and prefix_is_current:
         # The note the layer returns is deliberately not carried into lineage:
         # it depends on a fitted file, and a replay against a later fit would
         # then rebuild a different envelope than the one that was committed.
         # Whether it spoke is recoverable without it -- the mass above the
         # running high equals the artifact's rate for that hour when it did.
+        # The ceiling stays on the decision clock: its rate pairs "the hours
+        # the day has left now" with "the high the day holds now", and
+        # ``prefix_is_current`` is what guarantees the second half.
         posterior, _ = apply_metar_ceiling(
             posterior,
             ordinals=root.bucket_ordinals,
@@ -1839,6 +1899,10 @@ def compile_metar_trajectory_update_proof(
             else conditional_path_state.content_sha256
         ),
     }
+    # Canonical form mirrors ``to_dict``: absent means current, so proofs
+    # written before the attestation existed keep their content hashes.
+    if not prefix_is_current:
+        body["prefix_is_current"] = False
     digest = content_sha256(body)
     proof_body = {"proof_id": "metar-proof-" + digest[:32], **body}
     return MetarTrajectoryUpdateProof.from_mapping({
@@ -1873,6 +1937,7 @@ def validate_metar_trajectory_update_proof(
         bucket_upper_bounds_c=bucket_upper_bounds_c,
         maturity_bin=value.maturity_bin,
         as_of_utc=value.as_of_utc,
+        prefix_is_current=value.prefix_is_current,
     )
     if value.to_dict() != expected.to_dict():
         raise ContractError("metar_trajectory_proof_replay_mismatch")

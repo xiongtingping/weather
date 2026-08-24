@@ -1037,7 +1037,12 @@ def materialize_p1(
     # distribution, so the version has to move with them -- the calibration
     # layer derives its evidence bound from exactly this string, and a
     # distribution nobody serves any more must not be fitted on.
-    posterior_version: str = "p1_metar_trajectory_target_v3",
+    # v4 (2026-08-24): the conditioners run on the prefix's own evidence
+    # clock instead of the decision stamp, and the ceiling speaks only on the
+    # step whose running high the day still holds.  A root rebase used to
+    # replay morning prefixes under an evening clock, and the ceiling then
+    # crushed every bucket above a high the day had already beaten.
+    posterior_version: str = "p1_metar_trajectory_target_v4",
     band_table: tuple[
         Sequence[tuple[tuple[float, float], float]], str
     ] | None = None,

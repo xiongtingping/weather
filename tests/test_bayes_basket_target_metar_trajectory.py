@@ -263,6 +263,7 @@ def _compile(
     artifact: MetarTrajectoryLikelihoodArtifact | None = None,
     root: ProbabilityEnvelope | None = None,
     as_of: str = "2026-07-29T06:30:00Z",
+    prefix_is_current: bool = True,
 ) -> MetarTrajectoryUpdateProof:
     return compile_metar_trajectory_update_proof(
         root or _root(),
@@ -272,6 +273,7 @@ def _compile(
         bucket_upper_bounds_c=BUCKET_UPPER_BOUNDS,
         maturity_bin="D0",
         as_of_utc=as_of,
+        prefix_is_current=prefix_is_current,
     )
 
 
@@ -424,6 +426,77 @@ def test_physical_tmax_artifact_ignores_model_evidence_bitwise() -> None:
         left.likelihood_ratio_by_bucket == right.likelihood_ratio_by_bucket
     )
     assert left.applied_strength == right.applied_strength
+
+
+def test_conditioner_runs_on_the_prefix_evidence_clock() -> None:
+    # The same prefix compiled under two decision stamps hours apart -- a
+    # live step and its replay under a rebased root.  The path state is a
+    # function of the evidence alone, so the conditioner's input and the
+    # physical likelihood must be byte-identical; before the split a root
+    # rebase in the evening told the physical method a morning prefix had
+    # no day left in it and the posterior collapsed onto the stale high.
+    # Both stamps sit in the artifact's AFTERNOON bucket, so the only thing
+    # that moves between the two compiles is the decision clock itself.
+    early = _compile(
+        _hourly_curve_observations(),
+        artifact=_physical_tmax_artifact(),
+        as_of="2026-07-29T06:30:00Z",
+    )
+    late = _compile(
+        _hourly_curve_observations(),
+        artifact=_physical_tmax_artifact(),
+        as_of="2026-07-29T08:00:00Z",
+    )
+    assert (
+        early.conditional_path_state_sha256
+        == late.conditional_path_state_sha256
+    )
+    assert (
+        early.likelihood_ratio_by_bucket == late.likelihood_ratio_by_bucket
+    )
+
+
+def _ceiling_payload() -> dict:
+    return {
+        "schema": "bayes_basket_target_metar_ceiling_v1",
+        "trained_through": "2026-07-01",
+        "bins": {
+            "0": {"hours_from": 0.0, "hours_to": 10.0, "p_still_rose": 0.05},
+        },
+    }
+
+
+def test_ceiling_speaks_only_where_the_prefix_high_is_current(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The ceiling's rate pairs "hours the day has left now" with "the high
+    # the day holds now"; it is fitted on burst-final beliefs only.  On a
+    # replayed step whose high the day has already beaten, today's clock
+    # must not cut above the stale high.
+    from bayes_basket_target import metar_ceiling
+
+    monkeypatch.setattr(metar_ceiling, "CEILING_ENABLED", True)
+    monkeypatch.setattr(
+        metar_ceiling, "load_artifact", lambda path=None: _ceiling_payload()
+    )
+    observations = _hourly_curve_observations()
+    current = _compile(
+        observations, artifact=_physical_tmax_artifact(),
+        prefix_is_current=True,
+    )
+    stale = _compile(
+        observations, artifact=_physical_tmax_artifact(),
+        prefix_is_current=False,
+    )
+
+    def mass_above_running_high(proof: MetarTrajectoryUpdateProof) -> float:
+        return (
+            proof.posterior_probabilities["36C"]
+            + proof.posterior_probabilities["37C"]
+        )
+
+    assert abs(mass_above_running_high(current) - 0.05) < 1e-9
+    assert mass_above_running_high(stale) > 0.05 * 2
 
 
 def test_physical_tmax_artifact_rejects_model_coupled_coefficients() -> None:

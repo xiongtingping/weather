@@ -1073,6 +1073,80 @@ def test_peripheral_model_reliability_lineage_survives_p0m_and_p1() -> None:
     assert json.loads(p1.lineage[key]) == reliability
 
 
+def test_ceiling_stays_silent_on_replayed_steps_behind_the_current_high(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A rebase replays the whole prefix chain in one compile.  The ceiling is
+    # fitted on burst-final beliefs -- the step whose high the day still
+    # holds -- so the walk must let it speak there and only there; on the
+    # step behind it, today's clock would cut above a high the later
+    # observation has already beaten.
+    from bayes_basket_target import metar_ceiling
+
+    monkeypatch.setattr(metar_ceiling, "CEILING_ENABLED", True)
+    monkeypatch.setattr(
+        metar_ceiling,
+        "load_artifact",
+        lambda path=None: {
+            "schema": "bayes_basket_target_metar_ceiling_v1",
+            "trained_through": "2026-07-01",
+            "bins": {
+                "0": {
+                    "hours_from": 0.0,
+                    "hours_to": 10.0,
+                    "p_still_rose": 0.05,
+                },
+            },
+        },
+    )
+    root = _p0m_root(_envelope())
+    registry = [
+        {
+            "station_id": root.station_id,
+            "event_date": root.event_date,
+            "settlement_timezone": root.settlement_timezone,
+            "settlement_unit": "C",
+            "outcome": bucket,
+            "registry_json": json.dumps({"upper": upper}),
+        }
+        for bucket, upper in (("37", 37), ("38", 38), ("39", None))
+    ]
+
+    def observation(suffix: str, at: str, temperature_c: float) -> dict:
+        return {
+            "observation_id": f"obs-{suffix}",
+            "station_id": root.station_id,
+            "event_date_local": root.event_date,
+            "settlement_timezone": root.settlement_timezone,
+            "reported_temperature_c": temperature_c,
+            "valid_at_utc": at,
+            "canonical_committed_at_utc": at,
+            "raw_sha256": suffix * 64,
+            "source_lane": "AWC",
+            "report_type": "METAR",
+            "evidence_role": "FORMAL",
+            "qc_status": "ACCEPTED",
+            "correction_suspected": False,
+        }
+
+    packets = compile_station_p1_packets(
+        predecessor=root,
+        observations=[
+            observation("a", "2026-07-23T19:00:00Z", 36.5),
+            observation("c", "2026-07-23T20:00:00Z", 37.5),
+        ],
+        registry_rows=registry,
+        compilation_at_utc="2026-07-23T20:00:00Z",
+    )
+    assert len(packets) == 2
+    stale = packets[0]["trajectory_proof"]["posterior_probabilities"]
+    final = packets[1]["trajectory_proof"]["posterior_probabilities"]
+    # Both steps sit under ten hours from local settlement, so the ceiling
+    # would speak on either -- only the attestation separates them.
+    assert stale["38"] + stale["39"] == pytest.approx(0.8)
+    assert final["39"] == pytest.approx(0.05, abs=1e-9)
+
+
 def test_p1_consumes_canonical_event_once_and_applies_hard_support() -> None:
     p0 = _envelope()
     p0m = _p0m_root(p0)
