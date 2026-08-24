@@ -348,3 +348,55 @@ def test_an_old_journal_migrates_to_the_widened_outcome_check() -> None:
         " AND name='idx_band_fit_journal_stage_time'"
         " AND tbl_name='calibration_band_reliability_fit_journal'"
     ).fetchone()[0] == 1
+
+
+def test_serving_lane_reads_the_first_decision_not_the_last() -> None:
+    """The table is fitted where the seat is priced, not where the day ends.
+
+    A station-day gets two decision bursts: an early one whose claims
+    over-state the top band, and a late one written after the answer, whose
+    claims are perfect.  Fitted on the last snapshot the lane would see the
+    perfect claims and certify identity; the money traded the early ones.
+    Within the early burst two rows share the decision clock -- the P1
+    prefix-chain shape -- and only the later row is the complete belief.
+    """
+
+    import sqlite3
+
+    from bayes_basket_target.band_reliability_store import serving_lane_by_day
+
+    conn = sqlite3.connect(":memory:")
+    _evidence_lanes(conn)
+    truth = {("ZBAA", "2026-08-20"): 30.0}
+    conn.execute(
+        "INSERT INTO calibration_station_daily_high_truth VALUES (?,?,?)",
+        ("ZBAA", "2026-08-20", 30.0),
+    )
+    rows = [
+        # Early burst, incomplete prefix row: an obviously wrong belief.
+        ("h_early_partial", "2026-08-20T02:00:00Z", [("29°C", 28.5, 29.5, 0.9), ("30°C", 29.5, 30.5, 0.1)]),
+        # Early burst, complete prefix: the belief the seat traded on.
+        ("h_early_full", "2026-08-20T02:00:00Z", [("29°C", 28.5, 29.5, 0.3), ("30°C", 29.5, 30.5, 0.7)]),
+        # Late burst, written after the peak: the answer, not a forecast.
+        ("h_late", "2026-08-20T22:00:00Z", [("29°C", 28.5, 29.5, 0.01), ("30°C", 29.5, 30.5, 0.99)]),
+    ]
+    for history_id, decided, buckets in rows:
+        conn.execute(
+            "INSERT INTO basket_probability_bridge_history"
+            " (station_id, event_date, history_id, envelope_json,"
+            "  decision_at_utc, stage)"
+            " VALUES (?,?,?,?,?,?)",
+            ("ZBAA", "2026-08-20", history_id, "{}", decided, "P0"),
+        )
+        for bucket, lower, upper, probability in buckets:
+            conn.execute(
+                "INSERT INTO basket_probability_bridge_bucket_probability"
+                " VALUES (?,?,?,?,?)",
+                (history_id, bucket, lower, upper, probability),
+            )
+    lane = serving_lane_by_day(conn, truth, stage="P0")
+    assert list(lane) == ["2026-08-20"]
+    (claims,) = lane["2026-08-20"]
+    # The complete row of the FIRST burst: 0.7 on the winner, not the late
+    # row's 0.99 and not the partial row's 0.1.
+    assert sorted(claims) == [(0.3, 0), (0.7, 1)]

@@ -494,17 +494,43 @@ def serving_lane_by_day(
     *,
     stage: str = "P0",
 ) -> dict[str, list[list[tuple[float, int]]]]:
-    """Last snapshot per station-day for one stage, as pre-band claims."""
+    """First decision per station-day for one stage, as pre-band claims.
+
+    First, not last (user ruling, 2026-08-24).  The last recompute of a
+    station-day is written at a median of 23:00 local while the daily high
+    has landed by 13.9h -- a claim made after the answer is a description,
+    not a forecast, and a table fitted on descriptions certifies them as
+    calibrated.  Measured against market-adjudicated truth on 289 closed
+    days, the claims the money actually trades on -- the stage's first
+    compile, where the seat is priced -- still over-claim 1.26x in
+    [0.20,0.35) and 2x above it AFTER this table was applied, while the
+    last-snapshot fit was serving 1.07 upward on the same ground.  The
+    same clock error is on record twice already: the "model never learns"
+    verdict that came from reading end-of-day rows, and the P1 ruling that
+    a prophet is judged before the peak, not after.
+
+    Within the first wall-clock decision burst the LAST row is taken: P1
+    writes one row per observation step of a burst, and only the final row
+    of the burst is the complete prefix (the same contract every other
+    reader of the bridge history follows).
+    """
 
     by_day: dict[str, list[list[tuple[float, int]]]] = defaultdict(list)
     rows = conn.execute(
         "SELECT h.station_id, h.event_date, h.history_id,"
-        " h.envelope_json, MAX(h.decision_at_utc)"
-        " FROM basket_probability_bridge_history h WHERE h.stage=?"
+        " h.envelope_json, MAX(h.rowid)"
+        " FROM basket_probability_bridge_history h"
+        " JOIN (SELECT station_id, event_date,"
+        "         MIN(decision_at_utc) AS first_decision_at"
+        "       FROM basket_probability_bridge_history"
+        "       WHERE stage=? GROUP BY station_id, event_date) f"
+        "   ON f.station_id = h.station_id AND f.event_date = h.event_date"
+        "  AND h.decision_at_utc = f.first_decision_at"
+        " WHERE h.stage=?"
         " GROUP BY h.station_id, h.event_date",
-        (_check_stage(stage),),
+        (_check_stage(stage), _check_stage(stage)),
     ).fetchall()
-    for station, event, history_id, envelope_json, _latest in rows:
+    for station, event, history_id, envelope_json, _last_row in rows:
         actual = truth.get((str(station), str(event)))
         if actual is None:
             continue
