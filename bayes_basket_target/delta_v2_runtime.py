@@ -192,9 +192,18 @@ MAKER_COVERAGE_VALUE_LAMBDA = float(
 # on.  A skipped cycle is not a skipped day: the walk goes on to the next
 # decision, so the position opens later, at a moment the market is less
 # sure of.
+#
+# CLOSED by user ruling 2026-08-25: both signs default off.  The numbers
+# above were read on the pre-charter-54/55/58 rule set under the touch
+# fill assumption, and every measurement from that era is due a re-read
+# on the honest book (the fill model alone halved the book's return when
+# it was corrected).  The machinery stays wired; re-light either sign
+# with PM_CERTAINTY_GATE=stable,sharp (production) -- the ledger follows
+# this default by construction and can diverge via
+# PAPER_LEDGER_CERTAINTY_GATE for a sweep.
 CERTAINTY_GATE_SIGNALS = tuple(
     part.strip() for part in
-    (os.environ.get("PM_CERTAINTY_GATE", "stable,sharp") or "").split(",")
+    (os.environ.get("PM_CERTAINTY_GATE", "") or "").split(",")
     if part.strip()
 )
 CERTAINTY_STABLE_LOOKBACK = 3
