@@ -15,6 +15,7 @@ from .contracts import ContractError, ProbabilityEnvelope, content_sha256
 # Weight-zero tolerance for provisional riders; matches the kernel's EPS.
 EPS = 1e-9
 from .station_registry import station_coordinates
+from .station_season import station_season_bin
 from .band_reliability_store import (
     load_band_table,
     pinned_band_table_sha,
@@ -118,6 +119,9 @@ def _json(value: Any) -> str:
 
 
 def _season_bin(day: str) -> str:
+    # Legacy calendar vocabulary, kept only for reading rows written before
+    # charter 62's station-local labels.  The compile path no longer calls
+    # it; do not key anything new with it.
     month = int(day[5:7])
     if month in (12, 1, 2):
         return "DJF"
@@ -596,8 +600,13 @@ def _distribution_sigma_c(
 
 
 # A median needs three points to be a median; over two peers it is their
-# midpoint and one outlier carries it.  The cap is the largest per-system
-# offset measured anywhere in this fleet (+1.94C for NOAA_AIGEFS_025).
+# midpoint and one outlier carries it.  The constant is the FLOOR of the
+# borrow cap, not the cap itself (charter 62): the working cap is the
+# largest offset this station's own certified peers have measured, never
+# below this fleet-wide floor.  It was the whole cap when +1.94C
+# (NOAA_AIGEFS_025) was the largest offset anywhere; the certified fits
+# have since measured +5.84C at RCSS, and clamping a tropical borrow to a
+# temperate constant was itself a 1.5-3.8C cold error.
 PROVISIONAL_BIAS_MIN_PEERS = 3
 PROVISIONAL_BIAS_ABS_CAP_C = 2.0
 SAME_DAY_CLIMATOLOGY_WINDOW_DAYS = 7
@@ -1287,7 +1296,12 @@ def compile_native_ensemble_p0(
                 "native_ensemble_p0_market_timezone_binding_mismatch"
             )
     settlement_definition = str(station_row[0])
-    season_bin = _season_bin(event_date)
+    # Charter 62: the station-local vocabulary, shared byte-for-byte with
+    # the trainer's emission labels.  The trainer pre-warms every label its
+    # validity window serves, so a season boundary date finds its scopes
+    # already certified -- the calendar vocabulary this replaces would have
+    # fail-closed all 45 stations at once on September 1.
+    season_bin = station_season_bin(station_id, event_date)
     if official_snapshot:
         lead_bucket = str(
             forward_packet.get("lead_bucket") or ""
@@ -2191,6 +2205,28 @@ def compile_native_ensemble_p0(
         system_activation_shas[system_id] = str(
             system_activation[0][2]
         )
+    # Peers are the CERTIFIED systems only, frozen before any borrowing
+    # happens.  Reading the live maps inside the loop let the second
+    # provisional member count the first member's borrowed values as peers
+    # -- inflating the peer count past the three-peer gate and feeding a
+    # borrowed number back into the median it was borrowed from.
+    certified_peer_biases = sorted(system_bias_c.values())
+    certified_peer_spreads = sorted(system_spread_factor.values())
+    # Charter 62 (user ruling, 2026-08-25): the borrow cap is station-local
+    # evidence, not a fleet constant.  The 2.0C constant was sized from the
+    # largest fleet-wide offset then measured (+1.94C); the certified fits
+    # have since measured +3.56C (WMKK NOAA) and +5.84C (RCSS DWD), so at
+    # exactly the stations that need correction most, a capped borrow
+    # dragged every provisional member 1.5-3.8C cold.  The station's own
+    # certified peers bound what a borrow may claim; the fleet constant
+    # stays as the floor so a station with small peers keeps the old bound.
+    provisional_bias_cap_c = max(
+        PROVISIONAL_BIAS_ABS_CAP_C,
+        max(
+            (abs(bias) for bias in certified_peer_biases),
+            default=0.0,
+        ),
+    )
     for system_id, members, system_run_cycle in deferred_provisional:
         # An uncalibrated member served with identity parameters is not
         # neutral, it is confidently wrong.  Measured 2026-08-14: ICON served
@@ -2206,8 +2242,8 @@ def compile_native_ensemble_p0(
         # named as provisional and its own fit replaces them the moment its
         # OOS window fills.
         raw_values = [float(member["raw_tmax_c"]) for member in members]
-        peer_biases = sorted(system_bias_c.values())
-        peer_spreads = sorted(system_spread_factor.values())
+        peer_biases = certified_peer_biases
+        peer_spreads = certified_peer_spreads
         # The two borrows are not symmetric and must not be governed alike.
         #
         # Borrowing spread is conservative: it widens a distribution that is
@@ -2230,8 +2266,8 @@ def compile_native_ensemble_p0(
         if len(peer_biases) >= PROVISIONAL_BIAS_MIN_PEERS:
             median_bias = peer_biases[len(peer_biases) // 2]
             provisional_bias_c = max(
-                -PROVISIONAL_BIAS_ABS_CAP_C,
-                min(PROVISIONAL_BIAS_ABS_CAP_C, median_bias),
+                -provisional_bias_cap_c,
+                min(provisional_bias_cap_c, median_bias),
             )
             if provisional_bias_c != median_bias:
                 borrow_notes.append(

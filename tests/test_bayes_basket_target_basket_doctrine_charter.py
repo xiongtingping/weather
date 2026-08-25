@@ -1219,8 +1219,11 @@ def test_borrowed_bias_needs_a_real_median_and_a_measured_ceiling() -> None:
     )
 
     assert PROVISIONAL_BIAS_MIN_PEERS >= 3
-    # The ceiling is the largest per-system offset measured anywhere in the
-    # fleet; a borrow beyond it is arithmetic, not evidence.
+    # Charter 62: the constant is the FLOOR of the borrow cap; the working
+    # cap is the largest offset this station's own certified peers have
+    # measured.  A borrow beyond the station's own evidence is arithmetic,
+    # not evidence -- and clamping a tropical borrow to a temperate fleet
+    # constant was itself a measured 1.5-3.8C cold error.
     assert 1.94 <= PROVISIONAL_BIAS_ABS_CAP_C <= 2.5
 
     source = (
@@ -1232,6 +1235,10 @@ def test_borrowed_bias_needs_a_real_median_and_a_measured_ceiling() -> None:
     # never silently at some other number, and must say so in the receipt.
     assert "bias_refused_peer_count_" in source
     assert "bias_capped_from_" in source
+    # The station-local cap and the frozen certified-peer lists (a borrowed
+    # value must never feed back into the median it was borrowed from).
+    assert "provisional_bias_cap_c = max(" in source
+    assert "certified_peer_biases" in source
 
 
 def test_clause_43_synoptic_cooling_is_a_centre_shift_inside_p_of_t() -> None:

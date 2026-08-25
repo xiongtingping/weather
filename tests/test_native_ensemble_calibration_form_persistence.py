@@ -16,6 +16,7 @@ whatever it is called.
 from __future__ import annotations
 
 import json
+from datetime import date, timedelta
 
 import pytest
 
@@ -41,10 +42,11 @@ def _cases(count: int = 40) -> list[dict[str, object]]:
     """
 
     cases = []
+    start = date(2026, 6, 1)
     for index in range(count):
         center = 20.0 + 0.25 * index
         cases.append({
-            "event_date": f"2026-06-{index + 1:02d}",
+            "event_date": (start + timedelta(days=index)).isoformat(),
             "values": [center - 1.0, center, center + 1.0],
             # Residual grows with the forecast level.
             "actual_tmax_c": center + 0.1 * index - 1.0,
@@ -66,6 +68,7 @@ PERSISTED_BY_COLUMN = {
     "reliability_parameters_json": {
         "reliability_weight",
         "climate_samples_c",
+        "train_n_effective",
     },
 }
 

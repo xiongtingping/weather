@@ -48,6 +48,7 @@ from .native_ensemble_training_facts import (
     _rebin_probabilities,
 )
 from .ssot import native_ensemble_foundation_schema_status
+from .station_season import season_bins_for_window
 
 
 SCHEMA = "native_ensemble_rolling_origin_taf_oos_v1"
@@ -72,7 +73,10 @@ MAX_BLOCKS = 4
 # single lucky window; a scope with the days for three or four is unaffected
 # and still gets them.
 MIN_BLOCKS = 2
-MAX_STATION_CANDIDATES = 24
+# Doubled from 24 for charter 62: near a station-local season boundary each
+# scope is legitimately built under two serving labels, and the old bound
+# sized for one label would refuse the boundary month outright.
+MAX_STATION_CANDIDATES = 48
 MAX_JOIN_ROWS = 366
 
 
@@ -540,6 +544,30 @@ def build_rolling_origin_native_oos(
             conn, station_id=station
         ),
     )
+    # Charter 62 boundary continuity, same move as the native lane: the P0
+    # root at a season boundary carries the next station-local label while
+    # this builder's scopes carry the fit day's, and the worker's exact
+    # scope join would starve P0-M for the days between.  Alias each scope
+    # under every label the serving horizon needs BEFORE candidates are
+    # built, so each label's series is content-addressed under its own name
+    # rather than mutated after hashing.
+    as_of_day = date.fromisoformat(str(as_of_utc)[:10])
+    serve_labels = season_bins_for_window(
+        station,
+        (as_of_day - timedelta(days=1)).isoformat(),
+        (as_of_day + timedelta(days=31)).isoformat(),
+    )
+    for scope_key in list(scoped):
+        scope_season, scope_lead = scope_key
+        # Only scopes already speaking the serving vocabulary are aliased;
+        # a legacy-labelled scope from rows written before the switch keeps
+        # its one label and ages out rather than being multiplied.
+        if scope_season not in serve_labels:
+            continue
+        for label in serve_labels:
+            aliased = (label, scope_lead)
+            if aliased not in scoped:
+                scoped[aliased] = scoped[scope_key]
     candidates: list[dict[str, Any]] = []
     accumulating: list[dict[str, Any]] = []
     waived: list[dict[str, Any]] = []

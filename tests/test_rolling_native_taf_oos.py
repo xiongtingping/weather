@@ -68,7 +68,7 @@ def _series_join(day_count: int) -> dict[str, object]:
         truth_c = 20.0 + 0.5 * (index % 5)
         samples.append({
             "sample_id": f"rolling-TEST-{day.isoformat()}",
-            "station_id": "TEST",
+            "station_id": "KLGA",
             "event_date": day.isoformat(),
             "settlement_timezone": "Etc/UTC",
             "calibration_scope": {
@@ -123,7 +123,7 @@ def _series_join(day_count: int) -> dict[str, object]:
     identity = {
         "schema": EXACT_JOIN_SCHEMA,
         "source_class": SOURCE_CLASS,
-        "station_id": "TEST",
+        "station_id": "KLGA",
         "season_bin": "JJA",
         "lead_bucket": "d2",
         "run_cycle": "18Z",
@@ -186,7 +186,7 @@ def test_artifact_fitted_on_one_half_can_be_gated_on_the_other() -> None:
 
     split = split_rolling_taf_exact_join(_series_join(56))
     artifact, _scorecard = fit_taf_revision_artifact(
-        _native_samples(split["fit"], station_id="TEST"),
+        _native_samples(split["fit"], station_id="KLGA"),
         artifact_id="taf-test-split",
         activation_id="taf-test-split-activation",
         season_bin="JJA",
@@ -238,7 +238,7 @@ def _cases(system_id: str) -> list[dict[str, object]]:
         day = date.fromisoformat(event_date)
         actual = 20.0 + float(index % 4)
         rows.append({
-            "station_id": "TEST",
+            "station_id": "KLGA",
             "event_date": event_date,
             "aggregator_snapshot_at_utc": (
                 day - timedelta(hours=6)
@@ -283,7 +283,7 @@ def test_rolling_builder_emits_four_disjoint_20x8_candidates(
 
     report = build_rolling_origin_native_oos(
         object(),
-        station_id="TEST",
+        station_id="KLGA",
         as_of_utc="2026-08-01T00:00:00Z",
     )
 
@@ -331,7 +331,7 @@ def test_rolling_exact_join_combines_all_blocks_without_promoting_awc(
     )
     report = build_rolling_origin_native_oos(
         object(),
-        station_id="TEST",
+        station_id="KLGA",
         as_of_utc="2026-08-01T00:00:00Z",
     )
     monkeypatch.setattr(
@@ -365,7 +365,7 @@ def test_rolling_exact_join_combines_all_blocks_without_promoting_awc(
             "settlement_definition", "settlement_timezone",
         )
     } == {
-        "station_id": "TEST",
+        "station_id": "KLGA",
         "season_bin": "JJA",
         "lead_bucket": "d2",
         "run_cycle": "18Z",
@@ -409,7 +409,7 @@ def test_a_series_with_no_bulletin_after_its_decision_does_not_abort_the_station
         },
     )
     report = build_rolling_origin_native_oos(
-        object(), station_id="TEST", as_of_utc="2026-08-01T00:00:00Z"
+        object(), station_id="KLGA", as_of_utc="2026-08-01T00:00:00Z"
     )
     monkeypatch.setattr(
         rolling_native_taf_oos,
@@ -468,13 +468,13 @@ def test_historical_taf_join_uses_content_tiebreak_without_forward_only_columns(
     conn.execute(
         "INSERT INTO calibration_station_daily_high_truth VALUES(?,?,?,?,?,?,?,?,?,?)",
         (
-            "TEST", "2026-06-21", "official_daily_tmax_c", "ACCEPTED",
+            "KLGA", "2026-06-21", "official_daily_tmax_c", "ACCEPTED",
             "FORMAL_NATIVE_ELIGIBLE", 1, 22.0, "2026-06-22T01:00:00Z",
             "truth-test", "AWC",
         ),
     )
     common = (
-        "TEST", "2026-06-21", "Etc/UTC", 22.5,
+        "KLGA", "2026-06-21", "Etc/UTC", 22.5,
         "CALIBRATION_TRAIN_ONLY", "FORMAL_STATION_LANE_TRUTH",
         "2026-06-20T18:00:00Z", 0.25, 0.1, 4.0,
     )
@@ -501,7 +501,7 @@ def test_historical_taf_join_uses_content_tiebreak_without_forward_only_columns(
 
     truth, taf, _day_end = rolling_native_taf_oos._taf_truth_for_prediction(
         conn,
-        station_id="TEST",
+        station_id="KLGA",
         event_date="2026-06-21",
         settlement_timezone="Etc/UTC",
         settlement_definition="official_daily_tmax_c",
@@ -534,7 +534,7 @@ def test_historical_taf_join_rejects_amsc_truth_and_temporary_awc_label() -> Non
     conn.execute(
         "INSERT INTO calibration_station_daily_high_truth VALUES(?,?,?,?,?,?,?,?,?,?)",
         (
-            "TEST", "2026-06-21", "official_daily_tmax_c", "ACCEPTED",
+            "KLGA", "2026-06-21", "official_daily_tmax_c", "ACCEPTED",
             "FORMAL_NATIVE_ELIGIBLE", 1, 22.0, "2026-06-22T01:00:00Z",
             "amsc-truth", "AMSC",
         ),
@@ -542,7 +542,7 @@ def test_historical_taf_join_rejects_amsc_truth_and_temporary_awc_label() -> Non
     conn.execute(
         "INSERT INTO calibration_historical_taf_capture VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
         (
-            "TEST", "2026-06-21", "Etc/UTC", 22.5,
+            "KLGA", "2026-06-21", "Etc/UTC", 22.5,
             "CALIBRATION_TRAIN_ONLY", "TEMPORARY_AWC_CALIBRATION_LABEL",
             "2026-06-20T18:00:00Z", 0.25, 0.1, 4.0, "a" * 64,
             "official_date_addressed_historical_replay",
@@ -552,7 +552,7 @@ def test_historical_taf_join_rejects_amsc_truth_and_temporary_awc_label() -> Non
     with pytest.raises(ContractError, match="rolling_native_taf_canonical_truth_missing"):
         rolling_native_taf_oos._taf_truth_for_prediction(
             conn,
-            station_id="TEST",
+            station_id="KLGA",
             event_date="2026-06-21",
             settlement_timezone="Etc/UTC",
             settlement_definition="official_daily_tmax_c",
@@ -563,7 +563,7 @@ def test_historical_taf_join_rejects_amsc_truth_and_temporary_awc_label() -> Non
     conn.execute(
         "INSERT INTO calibration_station_daily_high_truth VALUES(?,?,?,?,?,?,?,?,?,?)",
         (
-            "TEST", "2026-06-21", "official_daily_tmax_c", "ACCEPTED",
+            "KLGA", "2026-06-21", "official_daily_tmax_c", "ACCEPTED",
             "FORMAL_NATIVE_ELIGIBLE", 1, 22.0, "2026-06-22T01:00:00Z",
             "awc-truth", "AWC",
         ),
@@ -572,7 +572,7 @@ def test_historical_taf_join_rejects_amsc_truth_and_temporary_awc_label() -> Non
     with pytest.raises(ContractError, match="rolling_native_taf_exact_taf_missing"):
         rolling_native_taf_oos._taf_truth_for_prediction(
             conn,
-            station_id="TEST",
+            station_id="KLGA",
             event_date="2026-06-21",
             settlement_timezone="Etc/UTC",
             settlement_definition="official_daily_tmax_c",
@@ -594,7 +594,7 @@ def test_historical_bucket_join_uses_bucket_schema_without_member_run_cycle() ->
         "INSERT INTO calibration_native_ensemble_historical_member_bucket "
         "VALUES(?,?,?,?,?,?)",
         (
-            "ECMWF_TEST", "TEST", "2026-06-21", "d2",
+            "ECMWF_TEST", "KLGA", "2026-06-21", "d2",
             "2026-06-19T18:00:00Z",
             '{"19°C or below":[null,19.5],"20°C":[19.5,20.5]}',
         ),
@@ -604,7 +604,7 @@ def test_historical_bucket_join_uses_bucket_schema_without_member_run_cycle() ->
         conn,
         {
             "selected_system_ids": ["ECMWF_TEST", "NOAA_TEST"],
-            "station_id": "TEST",
+            "station_id": "KLGA",
             "lead_bucket": "d2",
             "run_cycle_by_system": {
                 "ECMWF_TEST": "18Z",

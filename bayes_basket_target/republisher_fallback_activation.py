@@ -22,6 +22,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .contracts import ContractError, content_sha256
+from .station_season import station_season_bin
 from .republisher_fallback_binding import (
     DEFAULT_BINDING_PATH,
     REPUBLISHER_MODEL_SYSTEM_IDS,
@@ -256,7 +257,10 @@ def preflight_republisher_fallback_activation(
     ).fetchall()
     if len(market_rows) != 1 or str(market_rows[0][0]) != timezone_name:
         raise ContractError("republisher_activation_market_timezone_mismatch")
-    season_bin = _season_bin(event_date)
+    # Charter 62: the activation tables this lane queries are keyed by the
+    # station-local vocabulary now; asking with the calendar trigram would
+    # match nothing and fail this fallback closed for every packet.
+    season_bin = station_season_bin(station_id, event_date)
     lead_bucket = _lead_bucket(packet)
     observed_systems = {
         str(system.get("ensemble_system_id") or "").strip()

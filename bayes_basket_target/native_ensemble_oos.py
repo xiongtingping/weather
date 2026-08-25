@@ -8,6 +8,7 @@ strict-as-of holdout, but can never create ``FORMAL_PROMOTED`` authority.
 
 from __future__ import annotations
 
+import copy
 import json
 import math
 import sqlite3
@@ -28,6 +29,7 @@ from .center_width_store import (
 )
 from .contracts import ContractError, content_sha256
 from .station_registry import station_coordinates
+from .station_season import season_bins_for_window, station_season_bin
 from .cross_consensus import (
     BAND_RELIABILITY_METHOD_TAG,
     CONSENSUS_BRIDGE_METHOD_TAG,
@@ -111,6 +113,27 @@ FORWARD_ACCUMULATION_MIN_HOLDOUT_DAYS = 3
 FORWARD_ACCUMULATION_THRESHOLD_PROFILE = (
     "FORWARD_ACCUMULATION_5_TRAIN_3_HOLDOUT"
 )
+# Charter 62 (user ruling, 2026-08-25): the fit window is a rolling tail
+# window, cross-season by construction.  The expanding window it replaces
+# averaged the whole record equally, so a regime whose residual climbs --
+# the tropical stations measured 0.4-1.3C of surviving under-correction in
+# late August 2026 -- was always chased by an estimate diluted with months
+# of quieter history, and the dilution grew with every settled day.  Sixty
+# days keeps 97% of the half-life-15 weight mass below.
+ROLLING_TRAIN_WINDOW_DAYS = 60
+# Same ruling: within the window, residual evidence decays with a 15-day
+# half-life.  Measured as-of on August 2026 (equal weight vs H in {10, 15,
+# 20, 30}): the systematic under-correction at the drifting stations fell
+# 18% at H=10 with a +0.033C MAE cost at the stable ones; H=15 keeps most
+# of the tracking gain at a third of that cost.
+BIAS_HALF_LIFE_DAYS = 15.0
+# A ready scope whose newest settled case is older than this stops being
+# emitted and re-activated.  Sized above the observed truth lag (2-4 days)
+# plus the worst routine capture stall (2-7 days, the IEM one-minute lane),
+# so a lane merely limping never trips it -- only one that has actually
+# died, like ECCC's 00Z long-lead lanes after the 2026-08-12 vocabulary
+# switch.
+SCOPE_SUPPLY_MAX_AGE_DAYS = 10
 # Point forecast systems -- today only the aerodrome TAF's TX group -- clear a
 # lower bar than an ensemble family.
 #
@@ -376,6 +399,10 @@ def _json(value: Any) -> str:
 
 
 def _season_bin(day: str) -> str:
+    # Legacy calendar vocabulary.  Charter 62 replaced it with the
+    # station-local labels in ``station_season`` for every new scope; this
+    # stays only so audit scripts can still read the rows written before
+    # the switch.  Do not key anything new with it.
     month = int(day[5:7])
     if month in (12, 1, 2):
         return "DJF"
@@ -749,6 +776,7 @@ def _fit_parameters(
     climate_samples: list[float] = []
     centers: list[float] = []
     actuals: list[float] = []
+    event_days: list[date] = []
     for case in cases:
         values = [float(value) for value in case["values"]]
         mean = sum(values) / len(values)
@@ -759,8 +787,35 @@ def _fit_parameters(
             sum((value - mean) ** 2 for value in values) / len(values)
         ))
         climate_samples.append(float(case["actual_tmax_c"]))
-    bias = sum(errors) / len(errors)
-    rmse = math.sqrt(sum(error * error for error in errors) / len(errors))
+        try:
+            event_days.append(
+                date.fromisoformat(str(case["event_date"])[:10])
+            )
+        except (KeyError, ValueError) as exc:
+            # Weighted estimation needs every case dated.  Falling back to
+            # equal weights here would fit a different form from the one the
+            # OOS gate scores -- the exact silent split the affine-form
+            # incident taught -- so an undated case refuses the whole fit.
+            raise ContractError(
+                "native_ensemble_oos_train_case_event_date_missing"
+            ) from exc
+    # Charter 62: residual evidence decays with a half-life, so the estimate
+    # tracks the current regime instead of the whole record's average.  Ages
+    # are taken from the newest training day, never the wall clock, so a
+    # replayed fit weighs its cases exactly as the original did.
+    anchor_day = max(event_days)
+    weights = [
+        0.5 ** ((anchor_day - event_day).days / BIAS_HALF_LIFE_DAYS)
+        for event_day in event_days
+    ]
+    weight_total = sum(weights)
+    bias = sum(
+        weight * error for weight, error in zip(weights, errors)
+    ) / weight_total
+    rmse = math.sqrt(sum(
+        weight * error * error
+        for weight, error in zip(weights, errors)
+    ) / weight_total)
     # The scale the served distribution actually has to cover.  ``rmse`` is
     # taken about zero and so carries the bias, but the bias is exactly what
     # the centre shift above removes: sizing a width by it charges the
@@ -768,10 +823,13 @@ def _fit_parameters(
     # Measured over 231 scopes, rmse/sigma runs 1.26 at the median and 2.43
     # at the ninetieth percentile -- a per-scope inflation that a single
     # global width factor downstream can centre but cannot flatten.
-    residual_sigma = math.sqrt(
-        sum((error - bias) ** 2 for error in errors) / len(errors)
-    )
-    mean_spread = sum(spreads) / len(spreads)
+    residual_sigma = math.sqrt(sum(
+        weight * (error - bias) ** 2
+        for weight, error in zip(weights, errors)
+    ) / weight_total)
+    mean_spread = sum(
+        weight * spread for weight, spread in zip(weights, spreads)
+    ) / weight_total
     # The cap was 3.0 and it bound: 199 of 614 fitted parameter sets sat on
     # it, and that group measured a z standard deviation of 1.66 -- still
     # 66% too narrow after the largest inflation the cap allowed -- while the
@@ -784,7 +842,15 @@ def _fit_parameters(
         5.0,
         max(0.5, residual_sigma / max(mean_spread, 0.1)),
     )
-    reliability_weight = len(cases) / (len(cases) + 10.0)
+    # Decayed cases are fractional evidence, so the day count overstates
+    # what the fit actually rests on.  Kish's effective sample size prices
+    # it honestly: equal weights give back exactly len(cases), and a full
+    # 60-day window at half-life 15 carries about 43 effective days -- close
+    # enough to the old counts that the climate blend barely moves.
+    train_n_effective = weight_total ** 2 / sum(
+        weight * weight for weight in weights
+    )
+    reliability_weight = train_n_effective / (train_n_effective + 10.0)
     # Every key returned here has to reach an artifact column, or serving
     # silently runs a different fit from the one the OOS gate scored.  That is
     # not hypothetical: the removed affine form was fitted, gated and folded
@@ -800,6 +866,7 @@ def _fit_parameters(
         "train_rmse_c": rmse,
         "train_residual_sigma_c": residual_sigma,
         "train_mean_spread_c": mean_spread,
+        "train_n_effective": train_n_effective,
     }
 
 
@@ -2231,6 +2298,14 @@ def _load_cases(
         set[str],
     ] = defaultdict(set)
     tz = ZoneInfo(timezone_name)
+    # Charter 62: training does not partition by season.  Every settled day
+    # in the rolling window trains together -- recency weighting is the
+    # season tracker -- and the whole build carries the single station-local
+    # label of the fit moment.  Serving-horizon labels beyond it are stamped
+    # at emission (``season_bins_for_window``), never fitted separately.
+    fit_season_bin = station_season_bin(
+        station, as_of.astimezone(tz).date().isoformat()
+    )
     # The live/forward republisher table is intentionally *not* a source for
     # OOS or training.  Its rows remain observational candidates forever; a
     # later station-day close must not retro-promote them.  The legacy native
@@ -2595,7 +2670,7 @@ def _load_cases(
         # grouped as it always was.
         scope_day = (
             system_id,
-            _season_bin(day),
+            fit_season_bin,
             training_lead_bucket,
             run_cycle,
             day,
@@ -2782,10 +2857,17 @@ def _evaluate_system(
         str(case["aggregator_snapshot_at_utc"])
         for case in holdout
     )
+    # Charter 62: the fit window is a rolling tail window anchored on the
+    # holdout, not an expanding one.  Anchoring on data rather than the wall
+    # clock keeps a replayed fit byte-identical to the original.
+    rolling_window_start = (
+        date.fromisoformat(holdout_start[:10])
+        - timedelta(days=ROLLING_TRAIN_WINDOW_DAYS)
+    ).isoformat()
     train = [
         case
         for case in cases
-        if str(case["event_date"]) < holdout_start
+        if rolling_window_start <= str(case["event_date"]) < holdout_start
         and (
             # Open-Meteo retrospective receipts are queried in one bounded
             # archive batch, so several closed event days legitimately share
@@ -3197,6 +3279,37 @@ def build_native_ensemble_oos(
             min_train_days=scope_min_train,
             min_holdout_days=scope_min_holdout,
         )
+        # A scope whose archive lane has stopped supplying cases is not a
+        # calibration, it is a fossil that keeps re-certifying itself from a
+        # frozen case set: ECCC's 00Z h24_48/h48_plus lanes died 2026-08-11
+        # and were still being re-activated with fresh 30-day windows -- and
+        # served (WMKK, trained_through 08-11) -- two weeks later, because
+        # nothing here ever asked when the newest case arrived.  Suppress
+        # emission at the source; the rows already written age out on their
+        # own validity windows, and the serving sort prefers living rows.
+        if result["state"] == "OOS_READY":
+            newest_case_day = max(
+                str(case["event_date"]) for case in cases
+            )
+            # A pinned historical replay measures freshness against its own
+            # cutoff, not today -- otherwise every replayed scope is "stale"
+            # and the replay certifies nothing.
+            supply_reference_day = (
+                date.fromisoformat(historical_event_date_cutoff)
+                if historical_event_date_cutoff is not None
+                else as_of.astimezone(timezone.utc).date()
+            )
+            supply_age_days = (
+                supply_reference_day
+                - date.fromisoformat(newest_case_day[:10])
+            ).days
+            if supply_age_days > SCOPE_SUPPLY_MAX_AGE_DAYS:
+                result = {
+                    **result,
+                    "state": "STALE_SUPPLY_SUPPRESSED",
+                    "newest_case_event_date": newest_case_day,
+                    "supply_age_days": supply_age_days,
+                }
         evaluations[scope] = result
         if result["state"] == "OOS_READY":
             # A system's calibration is a property of the system, not of
@@ -4135,6 +4248,43 @@ def build_native_ensemble_oos(
             "formal_p0_eligible": False,
             "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
         })
+    # Charter 62 boundary continuity: every candidate and ready system is
+    # emitted once per station-local season label its validity window will
+    # serve, so the first event date past a season boundary finds scopes
+    # already certified instead of an empty vocabulary.  This replaces the
+    # calendar cliff (all 45 stations losing P0 at once on September 1)
+    # with nothing: the fit is label-blind, so the clones are the same
+    # arithmetic under every label they serve.  The UTC day is padded one
+    # day each way so the station's local calendar can never fall outside
+    # the window.
+    serve_window_start = (
+        as_of.astimezone(timezone.utc).date() - timedelta(days=1)
+    ).isoformat()
+    serve_window_end = (
+        as_of.astimezone(timezone.utc).date()
+        + timedelta(days=DEFAULT_VALID_DAYS + 1)
+    ).isoformat()
+    serve_labels = season_bins_for_window(
+        station, serve_window_start, serve_window_end
+    )
+    primary_labels = {
+        str(row["season_bin"]) for row in ready_system_evaluations
+    } | {
+        str(candidate["season_bin"]) for candidate in cross_candidates
+    }
+    original_ready = list(ready_system_evaluations)
+    original_candidates = list(cross_candidates)
+    for extra_label in serve_labels:
+        if extra_label in primary_labels:
+            continue
+        for ready in original_ready:
+            clone = copy.deepcopy(ready)
+            clone["season_bin"] = extra_label
+            ready_system_evaluations.append(clone)
+        for candidate in original_candidates:
+            clone = copy.deepcopy(candidate)
+            clone["season_bin"] = extra_label
+            cross_candidates.append(clone)
     identity = {
         "schema": SCHEMA,
         "station_id": station,
@@ -4611,6 +4761,9 @@ def _system_artifact_identity(
             "climate_samples_c": parameters[
                 "climate_samples_c"
             ],
+            "train_n_effective": parameters[
+                "train_n_effective"
+            ],
             "train_source_counts": evaluation[
                 "train_source_counts"
             ],
@@ -4682,7 +4835,12 @@ def _system_artifact_identity(
         "rolling_origin_fold_count": int(
             evaluation["holdout_n"]
         ),
-        "effective_sample_n": float(evaluation["train_n"]),
+        # Kish effective days under the half-life weights, not the raw day
+        # count -- the number the reliability blend actually rests on.
+        "effective_sample_n": float(
+            evaluation["parameters"].get("train_n_effective")
+            or evaluation["train_n"]
+        ),
         "oos_metrics_json": _json(
             evaluation["oos_metrics"]
         ),
