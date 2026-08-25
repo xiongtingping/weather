@@ -593,6 +593,23 @@ SKEW_EXTENSION_RULE = (
     os.environ.get("DELTA_V2_SKEW_EXTENSION_RULE", "").strip().lower()
     or "on"
 ) != "off"
+# Which way the gate points (research knob, 2026-08-26 ledger A/B).
+# ``toward_tail`` is charter 55 as ruled: the window may not lean against
+# the skew, i.e. it extends with the tail, buying the cheap tail rungs.
+# ``toward_mode`` is the coverage-side challenger: flip the sign the gate
+# consumes, so the window may not lean toward the tail and extends toward
+# the heaviest bucket instead -- motivated by the 2026-08-26 projection
+# probe (46 skewed settled days: the truth's median landing sits ON the
+# mode, t=+1.00, and the mode is nearer the truth than the mean, 1.15 vs
+# 1.31 rungs).  Coverage favours it by ~12 points on the left-skew slice;
+# charter 55 won its seat on P&L, so only a default-book replay can rule.
+# The diagnostic reading of the distribution's shape (dashboards, the
+# ``_skew_extension_sign`` helper itself) is direction-agnostic and does
+# not flip with this knob; only the gate's consumed sign does.
+SKEW_EXTENSION_DIRECTION = (
+    os.environ.get("DELTA_V2_SKEW_EXTENSION_DIRECTION", "").strip().lower()
+    or "toward_tail"
+)
 # Which statistic reads the skew (research knob, 2026-08-25 ledger A/B).
 # ``mean_mode`` is the charter-55 ruling: the gap between the mass-weighted
 # mean and the heaviest bucket.  ``mean_median`` replaces the mode with the
@@ -869,6 +886,12 @@ def _support_windows(
         probabilities,
         {bucket: int(row.ordinal) for bucket, row in by_bucket.items()},
     ) if SKEW_EXTENSION_RULE else 0
+    # toward_mode flips the sign the gate consumes: "may not lean against
+    # the skew" becomes "may not lean with the tail", so the admissible
+    # lean points at the heaviest bucket.  The shape reading itself is
+    # untouched -- diagnostics stay direction-agnostic.
+    if SKEW_EXTENSION_DIRECTION == "toward_mode":
+        skew_sign = -skew_sign
     core = probability_core(
         probabilities,
         ordinals={

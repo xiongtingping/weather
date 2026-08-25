@@ -85,6 +85,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     OPENING_FALLBACK_MIN_BUCKETS,
     OPENING_WIDTH_FALLBACK_ENABLED,
     P1_MINIMUM_SUPPORT_BUCKETS,
+    SKEW_EXTENSION_DIRECTION,
     SKEW_EXTENSION_RULE,
     SKEW_GAP_THRESHOLD_BUCKETS,
     SKEW_PLACEMENT_MODE,
@@ -944,6 +945,13 @@ SELECTION_RULE_SHA256 = content_sha256({
     **(
         {"skew_gap_threshold_buckets": SKEW_GAP_THRESHOLD_BUCKETS}
         if SKEW_GAP_THRESHOLD_BUCKETS != 0.5 else {}
+    ),
+    # Research arm (2026-08-26): which way the skew gate points.  The
+    # charter-55 default extends with the tail; ``toward_mode`` extends
+    # toward the heaviest bucket.  Hashed only off-default.
+    **(
+        {"skew_extension_direction": SKEW_EXTENSION_DIRECTION}
+        if SKEW_EXTENSION_DIRECTION != "toward_tail" else {}
     ),
     # Charter 58 (2026-08-25): the window price gate is whole-basket
     # positive EV with no friction buffer.  These two were never hashed
