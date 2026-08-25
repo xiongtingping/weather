@@ -203,6 +203,14 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     ("pr12_awc_observation", "scripts/pr12_awc_observation_sweep.sh", 600.0, 900.0),
     ("paper_trading_ledger", "scripts/paper_trading_ledger_sweep.sh", 900.0, 1800.0),
     ("settlement_truth", "scripts/settlement_truth_sweep.sh", 1800.0, 900.0),
+    # The two served calibration layers (band reliability, centre/width)
+    # used to refit only from the 02:00 crontab, and macOS cron silently
+    # skips the minute when the machine sleeps through it -- 2026-08-26
+    # lost its round exactly that way, stalling both evidence clocks.
+    # Due-not-scheduled fixes that class; both refits are
+    # content-addressed and admission-gated, so an early or doubled run
+    # commits nothing new.
+    ("calibration_refit", "scripts/calibration_refit_sweep.sh", 86_400.0, 900.0),
 )
 
 

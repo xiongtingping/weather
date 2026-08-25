@@ -71,62 +71,13 @@ else
   echo "[$(date +%H:%M:%S)] ✗ Quote 校准训练失败" | tee -a "$LOG_DIR/calibration_training.log"
 fi
 
-# 3. 分档概率校准自动换表（拟合+激活；准入规则在
-#    bayes_basket_target/band_reliability_store.py，规则不变表自动变。
-#    已服务的工件钉住各自评审时的表版本，换表不改历史工件的数学）
-echo "" | tee -a "$LOG_DIR/calibration_training.log"
-echo "[$(date +%H:%M:%S)] 分档校准 (band_reliability) 自动重拟合..." | tee -a "$LOG_DIR/calibration_training.log"
-#    各 stage 独立拟合，一个失败不带走其余；成败以退出码为准而不是
-#    以有没有 SUMMARY 行为准——部分失败时失败的 stage 也会打自己那行
-#    SUMMARY（标 FAILED），照旧按有无 SUMMARY 判就会把部分失败读成成功。
-BAND_RC=0
-BAND_REPORT="$("$PY" scripts/refit_band_reliability.py --commit --summary 2>&1)" || BAND_RC=$?
-echo "$BAND_REPORT" >> "$LOG_DIR/calibration_training_$TIMESTAMP.log"
-if echo "$BAND_REPORT" | grep -q '^SUMMARY '; then
-  echo "$BAND_REPORT" | grep '^SUMMARY ' | sed 's/^SUMMARY /    /' | tee -a "$LOG_DIR/calibration_training.log"
-fi
-if [ "$BAND_RC" -eq 0 ]; then
-  echo "[$(date +%H:%M:%S)] ✓ 三阶段分档校准已按最新证据重拟合" | tee -a "$LOG_DIR/calibration_training.log"
-else
-  echo "[$(date +%H:%M:%S)] ✗ 分档校准重拟合失败 (退出码 $BAND_RC)，详见 calibration_training_$TIMESTAMP.log" | tee -a "$LOG_DIR/calibration_training.log"
-fi
-
-# 4. 分布中心/宽度两标量自动换代（拟合+激活；准入是留出前向窗，
-#    规则在 bayes_basket_target/center_width_store.py）。
-#
-#    CW_SINCE 是服务算术最后一次改变的**时刻**（ISO-8601，非日期），
-#    **改服务算术时必须同步前移**。下界必须落在 decision_at_utc 上而不是
-#    event_date 上：P0 对两天后的事件提前两天决策，所以按 event_date 卡会把
-#    本该排除的决策放进来——实测 event_date 2026-08-19 的决策最早来自 08-17。
-#    这两个标量度量的是"服务出去的分布有多错"，所以那一天之前的日子描述的
-#    是没人再服务的分布。不设下界时旧日子会压倒新日子，让这一层把它本来在
-#    补偿的东西原样重新拟合出来：2026-08-18 把宽度改成按扣偏差后的 σ 定标
-#    之后，无界拟合与 21 天滚动窗都原样复现了旧的 λ=0.825，也就是那个缺陷
-#    的补偿值。滚动窗解决不了这个问题——它要等窗口自然走过变更日才干净。
-#    锚定到变更日则当天就干净：证据不足时这一层自己回落到恒等并攒够再上。
-#    锚不再手工维护（2026-08-23）。bayes_basket_target/serving_arithmetic.py
-#    对"产出该 stage 服务分布的那几个函数"做 AST 指纹：AST 里没有注释、空行
-#    和格式，所以本仓库赖以为生的大段注释可以随便改而不花掉这一层的证据；
-#    真正改了算术则指纹必变。指纹首次出现时打戳，那个戳就是此后的边界。
-#    实测：改注释、改 docstring 指纹不变；改一个阈值立刻变。
-#    还留着 --since 只是为了兜住这套机制上线之前的那些变更，一旦每个 stage
-#    都在新机制下攒够 8 天，它就可以删掉。
-echo "" | tee -a "$LOG_DIR/calibration_training.log"
-echo "[$(date +%H:%M:%S)] 中心/宽度 (center_width) 自动重拟合 (证据边界自动导出)..." | tee -a "$LOG_DIR/calibration_training.log"
-#    与第 3 节同款：各 stage（含每站宽度 lane）独立拟合，成败看退出码，
-#    不看有没有 SUMMARY 行——部分失败时失败的 lane 也会打自己那行。
-CW_RC=0
-CW_REPORT="$("$PY" scripts/refit_center_width.py --commit --summary \
-  --since "2026-08-18T09:20:00Z" 2>&1)" || CW_RC=$?
-echo "$CW_REPORT" >> "$LOG_DIR/calibration_training_$TIMESTAMP.log"
-if echo "$CW_REPORT" | grep -q '^SUMMARY '; then
-  echo "$CW_REPORT" | grep '^SUMMARY ' | sed 's/^SUMMARY /    /' | tee -a "$LOG_DIR/calibration_training.log"
-fi
-if [ "$CW_RC" -eq 0 ]; then
-  echo "[$(date +%H:%M:%S)] ✓ 三阶段中心/宽度已按最新证据重拟合" | tee -a "$LOG_DIR/calibration_training.log"
-else
-  echo "[$(date +%H:%M:%S)] ✗ 中心/宽度重拟合失败 (退出码 $CW_RC)，详见 calibration_training_$TIMESTAMP.log" | tee -a "$LOG_DIR/calibration_training.log"
-fi
+# 3/4. 分档校准 (band_reliability) 与中心/宽度 (center_width) 的每日重拟合
+#    已于 2026-08-26 收编进常驻 worker 的托管扫描（scripts/
+#    calibration_refit_sweep.sh，HOSTED_SWEEPS 里的 calibration_refit）。
+#    动因：cron 在机器睡眠时静默跳过且不补跑，08-26 就实际丢了一轮，
+#    两层的证据时钟随之停摆；托管调度是"到期即跑"，错过的分钟会在下一个
+#    空闲缝隙补上。本脚本只保留 Platt/Quote 两段——它们没有在役消费者，
+#    且 ~25 分钟的运行时长放进托管互斥会饿死生产周期。
 
 echo "" | tee -a "$LOG_DIR/calibration_training.log"
 echo "========================================" | tee -a "$LOG_DIR/calibration_training.log"
