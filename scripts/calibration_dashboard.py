@@ -39,12 +39,6 @@ from selection_market_dashboard import (  # noqa: E402
     STATION_LABELS,
     build_payload as build_selection_payload,
 )
-# The centre-definition arithmetic is the production seat rule's own
-# (charter 54); reimplementing it here would be the audit-must-not-copy
-# trap -- a page that drifts from the rule it claims to describe.
-from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
-    _alternate_ladder_center,
-)
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 STATUS_JSON = ROOT / "data" / "weather_basket_yes_status.json"
@@ -2610,40 +2604,40 @@ def _daily_table(selection: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _center_definition_bias(conn: sqlite3.Connection) -> dict[str, Any]:
-    """The P0-entry centre under each definition, against the settled bucket.
+    """The P0 intended basket's mean centre against the settled bucket.
 
-    The daily table used to carry one averaged "centre bias" column, read
-    off whichever stage last topped the chain up and stated in continuous
-    degrees C -- an average that answered neither "which definition" nor
-    "which station".  This panel replaces it (user ruling, 2026-08-25):
-    one row per settled station-day that took a P0 seat, the served
-    distribution AT THAT ENTRY, its centre read three ways -- mean and
-    median through the production seat rule's own arithmetic
-    (``_alternate_ladder_center``, charter 54, snapped over the full
-    ladder), mode as the pre-charter-54 heaviest-bucket argmax (ties to
-    the colder ordinal, same as the runtime fallback) -- each stated as
-    signed rungs from the bucket the day settled in.  Positive means the
-    centre sat hot of the truth.
+    One row per station-day the P0 stage posted an intended basket for,
+    settled or not, part-filled or not (user ruling, 2026-08-25).  The
+    centre is the production seat's own record -- ``ladder_center_bucket``,
+    the charter-54 mean landing bucket the walk actually seated -- read
+    back verbatim, never recomputed here.  The window shown is the
+    INTENDED legs, not the filled ones: what the book sold us is
+    execution, and this panel grades the choice.  Bias is centre ordinal
+    minus settled ordinal in rungs, positive = the centre sat hot; cover
+    is whether the truth landed inside the intended window at all.
 
-    Read off the ledger tables directly rather than the selection payload:
-    the payload rows drop probabilities_json after computing their own
-    lean columns, and threading a 40-bucket distribution through every
-    row of an embedded-in-page JSON would grow the page for one panel.
-
-    P0 rows only, deliberately: a chain that first seated at P0-M or P1
-    has no P0-entry distribution to read, and borrowing a later stage's
-    would put observation-informed posteriors in a column claiming to
-    grade the opening forecast.  Dust fills stay in -- the distribution
-    is the model's regardless of what the book sold us.
+    Station-days whose resting orders never filled a single leg carry no
+    position row, and the refusal table keeps only prose for them, so
+    their centres cannot be read back; each day's summary counts them as
+    absent so the gap is on the record rather than silent.
     """
 
     if not _table_exists(conn, "paper_trade_position"):
         return {"daily": [], "rows": []}
+    unfilled: dict[str, int] = {}
+    for day, count in conn.execute(
+        "SELECT event_date, COUNT(*) FROM paper_trade_refusal"
+        " WHERE stage = 'P0'"
+        " AND reason IN ('resting_unfilled', 'belief_withdrew_order')"
+        " GROUP BY event_date"
+    ):
+        unfilled[str(day)] = int(count)
     query = conn.execute(
-        "SELECT p.event_date, p.station_id, p.probabilities_json,"
-        " s.settled_bucket, s.settled_tmax_c, s.hit"
+        "SELECT p.event_date, p.station_id, p.ladder_center_bucket,"
+        " p.probabilities_json, p.intended_legs_json,"
+        " s.settled_bucket, s.settled_tmax_c"
         " FROM paper_trade_position p"
-        " JOIN paper_trade_settlement s"
+        " LEFT JOIN paper_trade_settlement s"
         " ON s.station_id = p.station_id AND s.event_date = p.event_date"
         " WHERE p.stage = 'P0'"
     )
@@ -2655,83 +2649,74 @@ def _center_definition_bias(conn: sqlite3.Connection) -> dict[str, Any]:
             continue
         seen.add(key)
         try:
-            decoded = json.loads(record[2] or "{}") or {}
+            probabilities = json.loads(record[3] or "{}") or {}
+            intended = json.loads(record[4] or "{}") or {}
         except (TypeError, ValueError):
             continue
-        probabilities = {
-            str(bucket): float(value)
-            for bucket, value in decoded.items()
-            if value is not None
-        }
-        settled_bucket = str(record[3] or "")
-        if not probabilities or not settled_bucket:
-            continue
         # Key order is ladder order: the ledger writes probabilities_json
-        # from the ladder walk, and every reader of this payload already
-        # leans on that (the lean/skew columns upstream).
+        # from the ladder walk, and the selection payload's own lean and
+        # skew columns already lean on that.
         ordinals = {
-            bucket: index
+            str(bucket): index
             for index, bucket in enumerate(probabilities.keys())
         }
-        truth_ordinal = ordinals.get(settled_bucket)
-        if truth_ordinal is None:
+        center = str(record[2] or "")
+        center_ordinal = ordinals.get(center)
+        if center_ordinal is None:
             continue
-        buckets = list(probabilities.keys())
-        mode_bucket = max(
-            buckets,
-            key=lambda b: (probabilities[b], -ordinals[b]),
+        window = sorted(
+            (str(bucket) for bucket in intended if str(bucket) in ordinals),
+            key=lambda bucket: ordinals[bucket],
         )
-        centres: dict[str, str | None] = {"mode": mode_bucket}
-        for definition in ("mean", "median"):
-            centres[definition] = _alternate_ladder_center(
-                definition,
-                admitted=buckets,
-                probabilities=probabilities,
-                ordinals=ordinals,
-            )
-        entry = {
+        settled_bucket = str(record[5] or "")
+        truth_ordinal = (
+            ordinals.get(settled_bucket) if settled_bucket else None
+        )
+        rows.append({
             "event_date": key[0],
             "station_id": key[1],
             "station_label": STATION_LABELS.get(key[1], ""),
-            "settled_bucket": settled_bucket,
-            "settled_tmax_c": record[4],
-            "hit": None if record[5] is None else int(record[5]),
-        }
-        for definition in ("mean", "median", "mode"):
-            centre = centres[definition]
-            entry[definition + "_bucket"] = centre
-            entry[definition + "_bias"] = (
-                None if centre is None
-                else int(ordinals[centre]) - int(truth_ordinal)
-            )
-        rows.append(entry)
+            "center_bucket": center,
+            "intended_window": window,
+            "intended_leg_count": len(window),
+            "settled_bucket": settled_bucket or None,
+            "settled_tmax_c": record[6],
+            "bias": (
+                None if truth_ordinal is None
+                else int(center_ordinal) - int(truth_ordinal)
+            ),
+            "intended_cover": (
+                None if truth_ordinal is None
+                else (1 if settled_bucket in set(window) else 0)
+            ),
+        })
     daily: list[dict[str, Any]] = []
     by_day: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for entry in rows:
         by_day[entry["event_date"]].append(entry)
-    for day in sorted(by_day, reverse=True):
-        members = by_day[day]
-        summary: dict[str, Any] = {
+    for day in sorted(set(by_day) | set(unfilled), reverse=True):
+        members = by_day.get(day, ())
+        biases = [e["bias"] for e in members if e["bias"] is not None]
+        covers = [
+            e["intended_cover"] for e in members
+            if e["intended_cover"] is not None
+        ]
+        daily.append({
             "event_date": day,
             "station_count": len(members),
-        }
-        for definition in ("mean", "median", "mode"):
-            biases = [
-                entry[definition + "_bias"] for entry in members
-                if entry[definition + "_bias"] is not None
-            ]
-            summary[definition + "_signed"] = (
-                sum(biases) / len(biases) if biases else None
-            )
-            summary[definition + "_abs"] = (
+            "settled_count": len(biases),
+            "bias_signed": sum(biases) / len(biases) if biases else None,
+            "bias_abs": (
                 sum(abs(b) for b in biases) / len(biases)
                 if biases else None
-            )
-            summary[definition + "_within1"] = (
+            ),
+            "within1": (
                 sum(1 for b in biases if abs(b) <= 1) / len(biases)
                 if biases else None
-            )
-        daily.append(summary)
+            ),
+            "cover_rate": sum(covers) / len(covers) if covers else None,
+            "unfilled_intended": unfilled.get(day, 0),
+        })
     rows.sort(key=lambda entry: entry["station_id"])
     rows.sort(key=lambda entry: entry["event_date"], reverse=True)
     return {"daily": daily, "rows": rows}
@@ -4172,56 +4157,54 @@ function daily(){
 }
 
 // The centre-bias panel the daily table's averaged column grew into (user
-// ruling, 2026-08-25): P0-entry distribution only, three centre
-// definitions side by side, and the per-station rows the average was
-// hiding.  Bias is in rungs against the settled bucket, positive = hot.
+// ruling, 2026-08-25, refined the same day): the P0 INTENDED basket only,
+// one row per station-day, centre = the production mean landing bucket the
+// seat rule recorded, fills ignored -- this grades the choice, not the
+// execution.  Bias in rungs against the settled bucket, positive = hot.
 function centerBias(){
   const C=D.center_bias||{};
-  if(!C.daily || !C.daily.length) return "";
-  const sign=v=>v==null?"—":(v>0?"+":"")+v.toFixed(2);
+  if(!C.rows || !C.rows.length) return "";
   const signInt=v=>v==null?"—":(v>0?"+":"")+v;
   const sumCls=v=>v==null?"":(Math.abs(v)<=0.5?"up":(Math.abs(v)>1?"down":""));
   const rowCls=v=>v==null?"":(v===0?"up":(Math.abs(v)>=2?"down":""));
   const pct=v=>v==null?"—":(v*100).toFixed(0)+"%";
-  const dailyRows=C.daily.map(r=>`<tr>
+  const dailyRows=(C.daily||[]).map(r=>`<tr>
     <td class="mono">${h(r.event_date)}</td>
-    <td>${r.station_count}</td>
-    <td class="mono ${sumCls(r.mean_signed)}">${sign(r.mean_signed)}
-      <span class="muted">|${r.mean_abs==null?"—":r.mean_abs.toFixed(2)}| · ≤1档 ${pct(r.mean_within1)}</span></td>
-    <td class="mono ${sumCls(r.median_signed)}">${sign(r.median_signed)}
-      <span class="muted">|${r.median_abs==null?"—":r.median_abs.toFixed(2)}|</span></td>
-    <td class="mono ${sumCls(r.mode_signed)}">${sign(r.mode_signed)}
-      <span class="muted">|${r.mode_abs==null?"—":r.mode_abs.toFixed(2)}|</span></td>
+    <td>${r.station_count}${r.unfilled_intended?` <span class="muted">+${r.unfilled_intended} 缺席</span>`:""}</td>
+    <td>${r.settled_count}</td>
+    <td class="mono ${sumCls(r.bias_signed)}">${r.bias_signed==null?"—"
+      :(r.bias_signed>0?"+":"")+r.bias_signed.toFixed(2)
+      +` <span class="muted">|${r.bias_abs.toFixed(2)}| · ≤1档 ${pct(r.within1)}</span>`}</td>
+    <td>${pct(r.cover_rate)}</td>
   </tr>`).join("");
-  const detailRows=(C.rows||[]).map(r=>`<tr>
+  const detailRows=(C.rows||[]).map(r=>{
+    const win=r.intended_window||[];
+    const winTxt=!win.length?"—":(win.length===1?h(win[0])
+      :`${h(win[0])} ~ ${h(win[win.length-1])}`)
+      +` <span class="muted">· ${r.intended_leg_count} 腿</span>`;
+    return `<tr>
     <td class="mono">${h(r.event_date)}</td>
     <td>${h(r.station_id)}${r.station_label?` <span class="muted">${h(r.station_label)}</span>`:""}</td>
-    <td class="mono">${h(r.settled_bucket)}${r.settled_tmax_c==null?"":`
-      <span class="muted">${Number(r.settled_tmax_c).toFixed(1)}°C</span>`}</td>
-    <td class="mono ${rowCls(r.mean_bias)}">${h(r.mean_bucket||"—")}
-      <span class="muted">${signInt(r.mean_bias)}</span></td>
-    <td class="mono ${rowCls(r.median_bias)}">${signInt(r.median_bias)}</td>
-    <td class="mono ${rowCls(r.mode_bias)}">${signInt(r.mode_bias)}</td>
-    <td>${r.hit==null?"—":(r.hit?"✓":"✗")}</td>
-  </tr>`).join("");
-  return `<h2>中心定义偏差 · P0 建仓</h2>
-  <p class="sub">P0 建仓那一刻的服务分布，用三种定义各读一次中心，减去当日结算落进的真值桶。
-  单位是档（桶），正数＝中心比真值偏热。只算有 P0 建仓且已结算的站日——
-  从 P0-M/P1 才首次建仓的链没有 P0 时刻的分布，不借后面阶段的来充数。</p>
-  <div class="why"><b>三种定义：</b>mean 是概率加权重心落桶（宪章 54 起生产选桶用的中心），
-  median 是累积质量过半的桶，mode 是概率最重的桶（宪章 54 之前的旧中心）。
-  三列并排是为了盯住换定义的效果：mean 应当系统性更靠近真值，若哪天反过来，54 条自带复核程序。
-  汇总行里 |·| 是平均绝对偏差，≤1档 是偏差不超过一档的站占比。</div>
+    <td class="mono">${h(r.center_bucket)}</td>
+    <td class="mono">${winTxt}</td>
+    <td class="mono">${r.settled_bucket?h(r.settled_bucket):"—"}${r.settled_tmax_c==null?"":` <span class="muted">${Number(r.settled_tmax_c).toFixed(1)}°C</span>`}</td>
+    <td class="mono ${rowCls(r.bias)}">${signInt(r.bias)}</td>
+    <td>${r.intended_cover==null?"—":(r.intended_cover?'<span class="up">✓</span>':'<span class="down">✗</span>')}</td>
+  </tr>`;}).join("");
+  return `<h2>中心偏差 · P0 意向选桶</h2>
+  <p class="sub">每天每个站一行：P0 建仓决策挂出的意向篮子（intended），中心桶＝生产选桶用的
+  均值落点桶（宪章 54，直接读账本记录、不在页面重算），减真值桶得偏差，单位是档，正数＝偏热。
+  只看选桶不看成交——市场没卖给我们的腿也在窗里；未结算的站日先占行，偏差等真值落地。</p>
+  <div class="why"><b>怎么读：</b>「盖住」是真值有没有落进意向窗，评的是选桶质量，
+  与成交无关；挂单全程零成交的站日账本只留了文字（refusal 表），读不回中心桶，
+  按天在「站数」列以「缺席」点名，不静默丢掉。</div>
   <div class="card"><table><thead><tr>
-    <th>事件日</th><th>已结算站</th><th>mean 偏差</th><th>median 偏差</th><th>mode 偏差</th>
-  </tr></thead><tbody>${dailyRows}</tbody></table>
-  <details style="margin-top:8px">
-    <summary class="muted" style="cursor:pointer">逐站明细：${(C.rows||[]).length} 个站日（mean 桶＝生产选桶的中心）</summary>
-    <table style="margin-top:8px"><thead><tr>
-      <th>事件日</th><th>站</th><th>真值桶</th><th>mean 桶<br><span class="muted">偏差</span></th>
-      <th>median<br><span class="muted">偏差</span></th><th>mode<br><span class="muted">偏差</span></th><th>命中</th>
-    </tr></thead><tbody>${detailRows}</tbody></table>
-  </details></div>`;
+    <th>事件日</th><th>站数</th><th>已结算</th><th>mean 中心偏差</th><th>意向窗盖住率</th>
+  </tr></thead><tbody>${dailyRows}</tbody></table></div>
+  <div class="card"><table><thead><tr>
+    <th>事件日</th><th>站</th><th>mean 中心桶</th><th>意向窗</th><th>真值桶</th>
+    <th>偏差</th><th>盖住</th>
+  </tr></thead><tbody>${detailRows}</tbody></table></div>`;
 }
 
 
