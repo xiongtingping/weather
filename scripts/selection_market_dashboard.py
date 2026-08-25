@@ -915,7 +915,9 @@ def _resting_entry_stats(conn: sqlite3.Connection) -> dict[str, Any]:
             "       posted_buckets_json, held_before_json"
             " FROM paper_trade_position"
             " WHERE resting_fill_json NOT IN ('', '{}')"
-            " ORDER BY station_id, event_date, decision_at_utc"
+            # rowid: accumulation order, so a later-stage row with an earlier
+            # cycle's decision timestamp cannot be shadowed by wall clock.
+            " ORDER BY station_id, event_date, rowid"
         ).fetchall()
     except sqlite3.OperationalError:
         ladders = []

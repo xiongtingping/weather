@@ -3946,10 +3946,17 @@ def _rescore_settlements(
         " p.win_probability, p.center_c,"
         " s.settlement_id, s.truth_content_sha256, s.settled_tmax_c"
         " FROM paper_trade_position p"
-        " JOIN (SELECT station_id, event_date, MAX(decision_at_utc) AS last"
+        # The terminal row is the last row the chain ACCUMULATED, which is
+        # insert order, not wall-clock decision order.  A P1 entry compiled
+        # from an earlier cycle carries an earlier decision_at_utc than the
+        # P0-M row before it, and the wall-clock max then settles the chain
+        # off a row missing the later stage's fills -- ZHHH 2026-08-21 lost
+        # a 2/2-filled winning leg to exactly this (nine chains measured,
+        # the fourth site of the parallel-stage wall-clock family).
+        " JOIN (SELECT station_id, event_date, MAX(rowid) AS last_rowid"
         "       FROM paper_trade_position GROUP BY station_id, event_date) t"
         "   ON t.station_id = p.station_id AND t.event_date = p.event_date"
-        "  AND t.last = p.decision_at_utc"
+        "  AND t.last_rowid = p.rowid"
         " LEFT JOIN paper_trade_settlement s"
         "   ON s.position_id = p.position_id"
     ).fetchall()
@@ -5360,11 +5367,13 @@ def report(conn: sqlite3.Connection) -> dict[str, Any]:
         # the book's open count instead of counting one position three times.
         open_positions = conn.execute(
             "SELECT COUNT(*) FROM paper_trade_position p"
+            # Same terminal-row key as settlement: accumulation order, not
+            # wall-clock decision order.
             " JOIN (SELECT station_id, event_date,"
-            "         MAX(decision_at_utc) AS last"
+            "         MAX(rowid) AS last_rowid"
             "       FROM paper_trade_position GROUP BY 1, 2) t"
             "   ON t.station_id=p.station_id AND t.event_date=p.event_date"
-            "  AND t.last=p.decision_at_utc"
+            "  AND t.last_rowid=p.rowid"
             " WHERE p.stage=? AND NOT EXISTS ("
             "   SELECT 1 FROM paper_trade_settlement s"
             "   WHERE s.station_id=p.station_id"
