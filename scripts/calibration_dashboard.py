@@ -1412,6 +1412,13 @@ def collect_serving_weights(conn: sqlite3.Connection) -> dict[str, Any]:
         "   artifact_id, MAX(generation)"
         "  FROM calibration_native_ensemble_activation"
         "  WHERE artifact_kind='CROSS_NATIVE_ENSEMBLE'"
+        # Charter 62: only rows in the station-local vocabulary are the
+        # serving path now.  Without this filter the legacy calendar rows
+        # (which nothing queries but which stay valid for up to 30 days)
+        # render as a second column per scope and pollute the seat counts.
+        "  AND season_bin IN"
+        "   ('PEAK','DESCENT','TROUGH','ASCENT','ALLYEAR')"
+        "  AND valid_until_utc > strftime('%Y-%m-%dT%H:%M:%SZ','now')"
         "  GROUP BY station_id, season_bin, lead_bucket, run_cycle) p"
         " JOIN calibration_cross_native_ensemble_artifact ar"
         "  ON ar.cross_ensemble_artifact_id = p.artifact_id"
