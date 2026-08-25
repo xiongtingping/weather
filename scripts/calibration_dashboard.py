@@ -39,6 +39,12 @@ from selection_market_dashboard import (  # noqa: E402
     STATION_LABELS,
     build_payload as build_selection_payload,
 )
+# The charter-55 skew reading, the production gate's own arithmetic --
+# reimplementing it here would let the page drift from the rule it
+# describes (the selection page imports it the same way).
+from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
+    _skew_extension_sign,
+)
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 STATUS_JSON = ROOT / "data" / "weather_basket_yes_status.json"
@@ -2679,6 +2685,16 @@ def _center_definition_bias(conn: sqlite3.Connection) -> dict[str, Any]:
             "center_bucket": center,
             "intended_window": window,
             "intended_leg_count": len(window),
+            # The day's charter-55 shape at this entry: +1 hot-tailed
+            # (right-skew), -1 cold-tailed, 0 symmetric.
+            "skew": _skew_extension_sign(
+                {
+                    str(bucket): float(value)
+                    for bucket, value in probabilities.items()
+                    if value is not None
+                },
+                ordinals,
+            ),
             "settled_bucket": settled_bucket or None,
             "settled_tmax_c": record[6],
             "bias": (
@@ -2705,6 +2721,11 @@ def _center_definition_bias(conn: sqlite3.Connection) -> dict[str, Any]:
             "event_date": day,
             "station_count": len(members),
             "settled_count": len(biases),
+            "skew_counts": {
+                "right": sum(1 for e in members if e["skew"] > 0),
+                "sym": sum(1 for e in members if e["skew"] == 0),
+                "left": sum(1 for e in members if e["skew"] < 0),
+            },
             "bias_signed": sum(biases) / len(biases) if biases else None,
             "bias_abs": (
                 sum(abs(b) for b in biases) / len(biases)
@@ -2717,9 +2738,35 @@ def _center_definition_bias(conn: sqlite3.Connection) -> dict[str, Any]:
             "cover_rate": sum(covers) / len(covers) if covers else None,
             "unfilled_intended": unfilled.get(day, 0),
         })
+    # The same account cut by the day's shape instead of its date: does
+    # the seat land differently on hot-tailed, symmetric and cold-tailed
+    # days?  This is the forward reading charter 55 asks for.
+    by_skew: list[dict[str, Any]] = []
+    for label, sign in (("right", 1), ("sym", 0), ("left", -1)):
+        members = [e for e in rows if e["skew"] == sign]
+        biases = [e["bias"] for e in members if e["bias"] is not None]
+        covers = [
+            e["intended_cover"] for e in members
+            if e["intended_cover"] is not None
+        ]
+        by_skew.append({
+            "skew": label,
+            "station_count": len(members),
+            "settled_count": len(biases),
+            "bias_signed": sum(biases) / len(biases) if biases else None,
+            "bias_abs": (
+                sum(abs(b) for b in biases) / len(biases)
+                if biases else None
+            ),
+            "within1": (
+                sum(1 for b in biases if abs(b) <= 1) / len(biases)
+                if biases else None
+            ),
+            "cover_rate": sum(covers) / len(covers) if covers else None,
+        })
     rows.sort(key=lambda entry: entry["station_id"])
     rows.sort(key=lambda entry: entry["event_date"], reverse=True)
-    return {"daily": daily, "rows": rows}
+    return {"daily": daily, "rows": rows, "by_skew": by_skew}
 
 
 def collect_window_divergence(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -4168,13 +4215,28 @@ function centerBias(){
   const sumCls=v=>v==null?"":(Math.abs(v)<=0.5?"up":(Math.abs(v)>1?"down":""));
   const rowCls=v=>v==null?"":(v===0?"up":(Math.abs(v)>=2?"down":""));
   const pct=v=>v==null?"—":(v*100).toFixed(0)+"%";
-  const dailyRows=(C.daily||[]).map(r=>`<tr>
+  const SKEW={right:"右偏",sym:"对称",left:"左偏"};
+  const skewTxt=v=>v>0?"右偏":(v<0?"左偏":'<span class="muted">对称</span>');
+  const dailyRows=(C.daily||[]).map(r=>{
+    const k=r.skew_counts||{};
+    return `<tr>
     <td class="mono">${h(r.event_date)}</td>
     <td>${r.station_count}${r.unfilled_intended?` <span class="muted">+${r.unfilled_intended} 缺席</span>`:""}</td>
+    <td class="muted">${k.right||0}/${k.sym||0}/${k.left||0}</td>
     <td>${r.settled_count}</td>
     <td class="mono ${sumCls(r.bias_signed)}">${r.bias_signed==null?"—"
       :(r.bias_signed>0?"+":"")+r.bias_signed.toFixed(2)
       +` <span class="muted">|${r.bias_abs.toFixed(2)}| · ≤1档 ${pct(r.within1)}</span>`}</td>
+    <td>${pct(r.cover_rate)}</td>
+  </tr>`;}).join("");
+  const skewRows=(C.by_skew||[]).map(r=>`<tr>
+    <td>${SKEW[r.skew]||h(r.skew)}</td>
+    <td>${r.station_count}</td>
+    <td>${r.settled_count}</td>
+    <td class="mono ${sumCls(r.bias_signed)}">${r.bias_signed==null?"—"
+      :(r.bias_signed>0?"+":"")+r.bias_signed.toFixed(2)
+      +` <span class="muted">|${r.bias_abs.toFixed(2)}|</span>`}</td>
+    <td>${pct(r.within1)}</td>
     <td>${pct(r.cover_rate)}</td>
   </tr>`).join("");
   const detailRows=(C.rows||[]).map(r=>{
@@ -4186,6 +4248,7 @@ function centerBias(){
     <td class="mono">${h(r.event_date)}</td>
     <td>${h(r.station_id)}${r.station_label?` <span class="muted">${h(r.station_label)}</span>`:""}</td>
     <td class="mono">${h(r.center_bucket)}</td>
+    <td>${skewTxt(r.skew)}</td>
     <td class="mono">${winTxt}</td>
     <td class="mono">${r.settled_bucket?h(r.settled_bucket):"—"}${r.settled_tmax_c==null?"":` <span class="muted">${Number(r.settled_tmax_c).toFixed(1)}°C</span>`}</td>
     <td class="mono ${rowCls(r.bias)}">${signInt(r.bias)}</td>
@@ -4196,13 +4259,21 @@ function centerBias(){
   均值落点桶（宪章 54，直接读账本记录、不在页面重算），减真值桶得偏差，单位是档，正数＝偏热。
   只看选桶不看成交——市场没卖给我们的腿也在窗里；未结算的站日先占行，偏差等真值落地。</p>
   <div class="why"><b>怎么读：</b>「盖住」是真值有没有落进意向窗，评的是选桶质量，
-  与成交无关；挂单全程零成交的站日账本只留了文字（refusal 表），读不回中心桶，
+  与成交无关；「偏斜」是建仓那一刻分布的三态形状（宪章 55 的读数，生产扩边门用的同一个算子）：
+  均值高于众数半桶以上＝右偏（拖热尾），低半桶以上＝左偏（拖冷尾），半桶之内＝对称。
+  挂单全程零成交的站日账本只留了文字（refusal 表），读不回中心桶，
   按天在「站数」列以「缺席」点名，不静默丢掉。</div>
   <div class="card"><table><thead><tr>
-    <th>事件日</th><th>站数</th><th>已结算</th><th>mean 中心偏差</th><th>意向窗盖住率</th>
+    <th>事件日</th><th>站数</th><th>偏斜<br><span class="muted">右/对/左</span></th>
+    <th>已结算</th><th>mean 中心偏差</th><th>意向窗盖住率</th>
   </tr></thead><tbody>${dailyRows}</tbody></table></div>
   <div class="card"><table><thead><tr>
-    <th>事件日</th><th>站</th><th>mean 中心桶</th><th>意向窗</th><th>真值桶</th>
+    <th>按偏斜态</th><th>站日</th><th>已结算</th><th>mean 中心偏差</th><th>≤1档</th><th>意向窗盖住率</th>
+  </tr></thead><tbody>${skewRows}</tbody></table>
+  <div class="muted" style="margin-top:6px">同一本账按当日分布形状切开——宪章 55 的立论
+  （偏斜指向真值）该在这里持续兑现：偏斜日的偏差应该比对称日更靠向偏斜反侧、盖住率不应更差。</div></div>
+  <div class="card"><table><thead><tr>
+    <th>事件日</th><th>站</th><th>mean 中心桶</th><th>偏斜</th><th>意向窗</th><th>真值桶</th>
     <th>偏差</th><th>盖住</th>
   </tr></thead><tbody>${detailRows}</tbody></table></div>`;
 }
