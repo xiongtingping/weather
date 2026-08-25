@@ -649,6 +649,21 @@ MAKER_RESTING_SHOULDER_LAMBDA = str(
         if MAKER_SHOULDER_VALUE_LAMBDA > 0.0 else ""
     )
 ).strip().lower()
+# The toxic-band gate (research arm, 2026-08-26).  A non-centre leg whose
+# claimed probability stands this far above the market's ask is not a
+# bargain, it is the market ruling the leg out: measured on the settled
+# book, legs claimed >=0.30 over their price filled 94.4% and realised
+# 5.6% against 46.6% claimed, and the shadow probe reproduced it forward
+# at n=1139 (0.98% realised).  With the gate set, such a leg prices as
+# unpostable -- which, through the same mechanism as the three-cent leg
+# floor, refuses any window that needs it; the curve score seats a window
+# without the leg instead.  A standing leg that turns toxic at a reprice
+# withdraws its open rungs and re-enters when the gap closes.  The centre
+# bucket is exempt (the 2026-08-20 base-holding ruling).  '' = off, the
+# production default; the fingerprint carries the key only when set.
+MAKER_RESTING_MAX_CLAIM_EDGE = str(
+    os.environ.get("PAPER_LEDGER_MAKER_MAX_CLAIM_EDGE", "") or ""
+).strip()
 
 
 def _is_shoulder(
@@ -965,6 +980,13 @@ SELECTION_RULE_SHA256 = content_sha256({
     **(
         {"opening_fallback_min_buckets": OPENING_FALLBACK_MIN_BUCKETS}
         if OPENING_WIDTH_FALLBACK_ENABLED else {}
+    ),
+    # The toxic-band gate changes which windows can be priced at all, so a
+    # book with it on cannot share a fingerprint with the default book; the
+    # key rides only when the research arm enables it.
+    **(
+        {"maker_max_claim_edge": MAKER_RESTING_MAX_CLAIM_EDGE}
+        if MAKER_RESTING_MAX_CLAIM_EDGE else {}
     ),
     **(
         {"center_width_override": {
@@ -2294,6 +2316,7 @@ def _leg_value_cap(
     centre_bucket: str | None,
     window: Sequence[str] | None = None,
     market_top_bucket: str | None = None,
+    all_in_ask: float | None = None,
 ) -> float | None:
     """The value cap for one leg, with the centre bucket exempt.
 
@@ -2317,6 +2340,18 @@ def _leg_value_cap(
             None if probability is None
             else MAKER_RESTING_CENTRE_LAMBDA * float(probability)
         )
+    if MAKER_RESTING_MAX_CLAIM_EDGE and all_in_ask is not None:
+        probability = (probabilities or {}).get(str(bucket))
+        if (
+            probability is not None
+            and float(probability) - float(all_in_ask)
+            >= float(MAKER_RESTING_MAX_CLAIM_EDGE) - 1e-9
+        ):
+            # Toxic band: the claim stands so far above the price that the
+            # market has ruled the leg out, not underpriced it.  A zero cap
+            # leaves nothing postable, which the ladder and the withdrawal
+            # filter both already honour.
+            return 0.0
     if (
         MAKER_MARKET_TOP_EXEMPT
         and market_top_bucket is not None
@@ -2411,6 +2446,9 @@ def _maker_leg_prices(
                 centre_bucket=centre_bucket,
                 window=buckets,
                 market_top_bucket=_market_top_bucket(buckets, by_bucket),
+                all_in_ask=(
+                    float(row.ask_price) if row.ask_available else None
+                ),
             ),
         )
         # A leg with no price here cannot have been seated: the strategy
@@ -2447,6 +2485,10 @@ def _window_row(
                 centre_bucket=centre_bucket,
                 window=ordered,
                 market_top_bucket=_market_top_bucket(ordered, by_bucket),
+                all_in_ask=(
+                    float(by_bucket[bucket].ask_price)
+                    if by_bucket[bucket].ask_available else None
+                ),
             ),
         )
         if quote is None or quote < MINIMUM_LEG_ALL_IN_ASK:
@@ -3326,12 +3368,23 @@ def _resting_ladder_fill(
                         # Fully bought.  Re-posting the rungs it already
                         # owns would buy them twice.
                         continue
+                    gate_item = quotes.get(bucket)
+                    gate_ask = None
+                    if isinstance(gate_item, Mapping):
+                        gate_ask = gate_item.get("best_ask")
+                        if gate_ask is None:
+                            gate_levels = gate_item.get("ask_levels") or []
+                            if gate_levels:
+                                gate_ask = gate_levels[0].get("price")
                     cap = _leg_value_cap(
                         bucket,
                         probabilities=current_p,
                         centre_bucket=centre_bucket,
                         window=buckets,
                         market_top_bucket=market_top_bucket,
+                        all_in_ask=(
+                            float(gate_ask) if gate_ask is not None else None
+                        ),
                     )
                     # Gate 1, the red line: what this leg is worth.  The
                     # clamp for a hedge leg, the fresh claim itself for the
@@ -4733,6 +4786,11 @@ def backfill(
                                     window=seat["buckets"],
                                     market_top_bucket=_market_top_bucket(
                                         seat["buckets"], by_row),
+                                    all_in_ask=(
+                                        float(by_row[str(b)].ask_price)
+                                        if by_row[str(b)].ask_available
+                                        else None
+                                    ),
                                 ),
                             )
                             if str(b) in by_row else []
