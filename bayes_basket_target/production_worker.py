@@ -45,7 +45,11 @@ from .atomic_ledger import (
     writer_lock_profile,
 )
 from .band_reliability_store import load_band_table
-from .center_width_store import load_center_width, load_station_width
+from .center_width_store import (
+    load_center_width,
+    load_center_width_cells,
+    load_station_width,
+)
 from .contracts import (
     ContractError,
     ProbabilityEnvelope,
@@ -92,6 +96,7 @@ from .metar_ceiling import load_artifact as load_metar_ceiling_artifact
 from .metar_trajectory import (
     METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
     MetarTrajectoryLikelihoodArtifact,
+    hard_bound_excluded_buckets,
 )
 from .p1_compiler import (
     compile_station_p1_packets,
@@ -9442,6 +9447,89 @@ class TargetProductionWorker:
             receipt["dropped_pre_root_captures"] = dropped_pre_root
         return receipt
 
+    def _p0m_observed_hard_bound(
+        self,
+        *,
+        station_id: str,
+        event_date: str,
+        as_of_utc: str,
+        root: Any,
+    ) -> tuple[tuple[str, ...], float | None]:
+        """Charter 61: the observed-high fact for one P0-M decision.
+
+        Promoted from P1: the settlement rule defines truth as the day's
+        maximum, so a reported high of X makes every bucket ending at or
+        below X arithmetically dead whatever any model claims.  The read
+        goes through the same strict canonical loader P1 uses -- route
+        gates, as-of, corrections -- never a hand-written MAX(); the
+        predicate is the shared one with the boundary and unit lessons in
+        it.  Returns ((), None) whenever the day has no formal
+        observations yet (a pre-day TAF confirmation), and refuses to
+        exhaust the support from here -- the materializer would raise, and
+        a bound that deletes the whole distribution is evidence of a
+        vocabulary problem, not a fact to apply.
+        """
+
+        registry_rows = [
+            {
+                "station_id": str(row[0]),
+                "event_date": str(row[1]),
+                "settlement_timezone": str(row[2]),
+                "source_lane": str(row[3] or ""),
+            }
+            for row in self.commit_conn.execute(
+                "SELECT DISTINCT station_id,event_date,"
+                " settlement_timezone,source_lane"
+                " FROM basket_target_market_registry"
+                " WHERE station_id=? AND event_date=?",
+                (station_id, event_date),
+            ).fetchall()
+        ]
+        if not registry_rows:
+            return (), None
+        try:
+            observations = load_resident_formal_observations(
+                self.canonical_source_conn,
+                registry_rows=registry_rows,
+                station_id=station_id,
+                event_date=event_date,
+                as_of_utc=as_of_utc,
+            )
+        except ContractError:
+            return (), None
+        highs = [
+            float(item["reported_temperature_c"])
+            for item in observations
+            if item.get("reported_temperature_c") is not None
+        ]
+        if not highs:
+            return (), None
+        running_high = max(highs)
+        try:
+            intervals = json.loads(
+                str(root.lineage.get("bucket_intervals_c_json") or "{}")
+            )
+        except (TypeError, ValueError):
+            return (), running_high
+        ordered = sorted(
+            root.probabilities,
+            key=lambda bucket: root.bucket_ordinals.get(bucket, 0),
+        )
+        if not ordered or set(ordered) - set(intervals):
+            return (), running_high
+        uppers = {
+            bucket: (
+                float("inf")
+                if intervals[bucket][1] is None
+                else float(intervals[bucket][1])
+            )
+            for bucket in ordered
+        }
+        excluded = hard_bound_excluded_buckets(ordered, uppers, running_high)
+        if len(excluded) >= len(ordered):
+            return (), running_high
+        return excluded, running_high
+
     @staticmethod
     def _p0m_scope_shape(
         envelopes: Sequence[ProbabilityEnvelope],
@@ -10020,10 +10108,22 @@ class TargetProductionWorker:
                         ):
                             continue
                         fields = capture_by_id_tx.get(revision.revision_id)
+                        observed_excluded, observed_high = (
+                            self._p0m_observed_hard_bound(
+                                station_id=station,
+                                event_date=day,
+                                as_of_utc=decision_at,
+                                root=root,
+                            )
+                        )
                         try:
                             observed = materialize_p0m_observed(
                                 observed_predecessor,
                                 p0_root=root,
+                                observed_hard_excluded_buckets=(
+                                    observed_excluded
+                                ),
+                                observed_running_high_c=observed_high,
                                 forecast_revision_id=revision.revision_id,
                                 forecast_source_object_sha256=(
                                     revision.source_object_sha256
@@ -10051,6 +10151,11 @@ class TargetProductionWorker:
                                 ),
                                 center_width=load_center_width(
                                     self.commit_conn, stage="P0-M"
+                                ),
+                                center_width_taf_cells=(
+                                    load_center_width_cells(
+                                        self.commit_conn, stage="P0-M"
+                                    )
                                 ),
                                 station_width=load_station_width(
                                     self.commit_conn, stage="P0-M"
@@ -10341,6 +10446,14 @@ class TargetProductionWorker:
                         taf_fields=capture["taf_fields"],
                         decision_at_utc=decision_at,
                     )
+                    calibrated_excluded, calibrated_high = (
+                        self._p0m_observed_hard_bound(
+                            station_id=station,
+                            event_date=day,
+                            as_of_utc=decision_at,
+                            root=root,
+                        )
+                    )
                     envelope = materialize_p0m(
                         predecessor,
                         p0_root=root,
@@ -10350,7 +10463,11 @@ class TargetProductionWorker:
                         fresh_until_utc=root.fresh_until_utc,
                         bridge_sha256=root.bridge_sha256,
                         revision=predecessor.stage == "P0-M",
-                        posterior_version="p0m_taf_physical_confirmation_v3",
+                        observed_hard_excluded_buckets=calibrated_excluded,
+                        observed_running_high_c=calibrated_high,
+                        # v4: charter 61 -- the observed-high hard bound
+                        # joined this path's arithmetic.
+                        posterior_version="p0m_taf_physical_confirmation_v4",
                         # This stage's own residual table; identity until its
                         # settled history clears the hurdles, and identity
                         # leaves the posterior byte-identical.
@@ -10365,6 +10482,9 @@ class TargetProductionWorker:
                             self.commit_conn, stage="P0-M"
                         ),
                         center_width=load_center_width(
+                            self.commit_conn, stage="P0-M"
+                        ),
+                        center_width_taf_cells=load_center_width_cells(
                             self.commit_conn, stage="P0-M"
                         ),
                         station_width=load_station_width(

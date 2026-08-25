@@ -1008,13 +1008,17 @@ def collect_model_skill(conn: sqlite3.Connection) -> dict[str, Any]:
 
 
 TRUTH_LANDING_SINCE = "2026-08-15"
-TRUTH_LANDING_PRICE_BANDS = (
-    (0.00, 0.01), (0.01, 0.02), (0.02, 0.03), (0.03, 0.05),
-    (0.05, 0.10), (0.10, 0.20), (0.20, 0.40), (0.40, 1.01),
-)
-TRUTH_LANDING_COARSE = (
-    (0.00, 0.01), (0.01, 0.03), (0.03, 0.10), (0.10, 0.30), (0.30, 1.01),
-)
+# Five-percent bands capped at 50%, with the first cell split at the leg
+# floor (user rulings, 2026-08-25): 0-3% is the penny zone the 0.03 floor
+# refuses to buy, and folding it into 0-5% hid exactly the boundary the
+# floor is ruled on -- so this table alone carries the extra cut, on both
+# margins and both cross-tab axes.  Section six's band table stays on the
+# pure 5% grid (charter 60); the two rulers agree from 5% upward.
+TRUTH_LANDING_PRICE_BANDS = ((0.00, 0.03), (0.03, 0.05)) + tuple(
+    (round(step * 0.05, 2), round(step * 0.05 + 0.05, 2))
+    for step in range(1, 10)
+) + ((0.50, 1.01),)
+TRUTH_LANDING_COARSE = TRUTH_LANDING_PRICE_BANDS
 
 
 def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -1483,6 +1487,73 @@ def collect_serving_weights(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Post-correction residuals per stage, on the band table's own ruler.
+
+    Same lane, same clock, same window as the knob table above it: the
+    band store's own ``serving_lane_by_day`` -- each station-day's FIRST
+    decision (the 2026-08-24 fit-clock ruling), full history, per stage --
+    with exactly one difference, stated by the flag: the claims are kept
+    as served, factors included, where the fit inverts them back to
+    pre-band.  So the two tables are the same population read on either
+    side of the correction: the knob row says what the raw claim realised
+    and what factor that earned; this row says what remains after the
+    factor.  An earlier version of this audit read the training lane's
+    OOS predictions (different population, no stage, lead vocabulary) and
+    then a 3-hourly anchored sample (different clock and window); each
+    mismatch surfaced as a fake contradiction on the page.
+    """
+
+    from bayes_basket_target.band_reliability_store import (
+        BAND_TABLE_CELLS,
+        serving_lane_by_day,
+    )
+    from bayes_basket_target.center_width_store import _truth
+
+    truth = _truth(conn)
+    labels = [
+        "\u226550%" if low >= 0.5 else f"{low * 100:g}-{high * 100:g}%"
+        for low, high in BAND_TABLE_CELLS
+    ]
+    stages_out = []
+    for stage in ("P0", "P0-M", "P1"):
+        try:
+            by_day = serving_lane_by_day(
+                conn, truth, stage=stage, pre_band=False,
+            )
+        except Exception:  # noqa: BLE001 -- an audit must not blank the page
+            continue
+        cells = {index: [0, 0.0, 0] for index in range(len(BAND_TABLE_CELLS))}
+        for day_rows in by_day.values():
+            for pairs in day_rows:
+                for claim, hit in pairs:
+                    for index, (low, high) in enumerate(BAND_TABLE_CELLS):
+                        if low <= claim < high:
+                            slot = cells[index]
+                            slot[0] += 1
+                            slot[1] += float(claim)
+                            slot[2] += int(hit)
+                            break
+        rows = []
+        for index, label in enumerate(labels):
+            n, promised, hits = cells[index]
+            if not n:
+                continue
+            rows.append({
+                "bin": label,
+                "n": n,
+                "promised": promised / n,
+                "happened": hits / n,
+            })
+        stages_out.append({
+            "stage": stage,
+            "since": None,
+            "day_count": len(by_day),
+            "rows": rows,
+        })
+    return {"labels": labels, "stages": stages_out}
+
+
 def collect_center_width(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     """The two scalars that move the served distribution, per stage.
 
@@ -1742,9 +1813,14 @@ def _reliability_decomposition(
     if not pairs:
         return {"ece": None, "reliability": None, "resolution": None,
                 "uncertainty": None, "bins": []}
+    # Five-percent steps capped at 50% (user ruling, 2026-08-25): the band
+    # cards in section six now render on the same grid, so the knob table
+    # and this audit finally line up row for row.  Everything promised at
+    # half or more pools into one open top bin -- claims that high are rare
+    # enough that finer rows would be noise wearing labels.
     buckets: dict[int, list[tuple[float, float]]] = defaultdict(list)
     for promised, happened in pairs:
-        index = min(bins - 1, max(0, int(promised * bins)))
+        index = min(10, max(0, int(promised / 0.05)))
         buckets[index].append((promised, happened))
     base_rate = sum(happened for _p, happened in pairs) / len(pairs)
     total = len(pairs)
@@ -1759,7 +1835,10 @@ def _reliability_decomposition(
         reliability += weight * (mean_promised - mean_happened) ** 2
         resolution += weight * (mean_happened - base_rate) ** 2
         rows.append({
-            "bin": f"{index * 100 // bins}-{(index + 1) * 100 // bins}%",
+            "bin": (
+                "≥50%" if index >= 10
+                else f"{index * 5}-{index * 5 + 5}%"
+            ),
             "n": len(group),
             "promised": mean_promised,
             "happened": mean_happened,
@@ -2730,6 +2809,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "members": members,
         "tables": tables,
         "truth_landing": truth_landing,
+        "band_residual_audit": collect_band_residual_audit(conn),
         "stages": stages,
         "chain": chain,
         "gaps": gaps,
@@ -3019,37 +3099,39 @@ function overview(){
     "命中率 ÷ 声称胜率，1.00× 是说得准",
     "第六节与第十节：概率分档校准");
 
-  // 6b. Does the basket we CHOSE cover the truth, at the widths the
-  // charter actually seats -- and is that moving.  Grouped on the posted
-  // ladder, not the filled one: the market sells us part of a three-rung
-  // choice and the filled width would file that day under one rung,
-  // emptying the three-rung row of exactly its hardest cases.
+  // 6b. Does the basket the objective CHOSE cover the truth, at the widths
+  // the charter actually seats -- and is that moving.  Grouped on the
+  // chain-level union of intended legs (hedge rungs included), not the
+  // posted or filled set: the market sells us part of a three-rung choice
+  // and the narrower groupings file that day under one rung, emptying the
+  // three-rung row of exactly its hardest cases.
   //
   // The trend is the later half of settlements against the earlier, split
   // where the counts are even rather than at the middle date.  A direction
   // is only printed when it clears two combined standard errors; under
   // that it is a coin landing differently and saying "worse" would invent
   // a signal the sample cannot carry.
-  ((S.posted_basket_hit||{}).sizes||[]).forEach(row=>{
+  ((S.chosen_basket_hit||{}).sizes||[]).forEach(row=>{
     const hitv=row.hit_rate;
     const arrow=row.delta==null?""
       :!row.delta_is_readable?"→"
       :row.delta>0?"↑":"↓";
-    const move=row.delta==null?`${row.settled_count} 笔 · 趋势样本不足`
+    const move=row.delta==null?`${row.settled_count} 链 · 趋势样本不足`
       :!row.delta_is_readable
-        ?`${row.settled_count} 笔 · 与噪音不可分（Δ${
+        ?`${row.settled_count} 链 · 与噪音不可分（Δ${
           (row.delta*100>=0?"+":"")+(row.delta*100).toFixed(0)}，需 ±${
           (2*row.delta_stderr*100).toFixed(0)}）`
-      :`${row.settled_count} 笔 · 后半 ${
+      :`${row.settled_count} 链 · 后半 ${
         (row.delta*100>=0?"+":"")+(row.delta*100).toFixed(0)} 点`;
     push(hitv==null?"muted":band(hitv,0.5,0.33),
-      `${row.posted_size} 桶命中 ${arrow}`,
+      `${row.chosen_size} 桶选中命中 ${arrow}`,
       pct0(hitv), move,
-      `按挂出的篮子算。买到的篮子只中 ${pct0(row.filled_hit_rate)}` +
+      `目标函数选中的腿集合（含护栏腿，跨阶段并集）盖住结算真值的比率。` +
+      `买到的篮子只中 ${pct0(row.filled_hit_rate)}` +
       `，差额是市场没把会赢的那条腿卖给我们。声称 ${
       pct0(row.claimed_mean)}，实现/声称 ${
       row.realised_over_claimed==null?"—"
-        :row.realised_over_claimed.toFixed(2)}×`);
+        :row.realised_over_claimed.toFixed(2)}×。见第十四节的脱靶分布`);
   });
 
   // 7. What the one book is worth now.
@@ -3188,14 +3270,23 @@ function stages(){
   const cards = D.stages.map(s => {
     const pct = s.accumulating && s.min_days ?
       Math.min(100, 100 * s.serving_days / s.min_days) : 100;
-    const bands = (s.bands || []).map(b => {
+    // Five-percent display grid capped at 50% (user ruling, 2026-08-25),
+    // the same rows the audit table below uses, so knob and audit line up.
+    // A display bin belongs to the fitted cell holding its midpoint; the
+    // fitted cells are wider than 5%, so consecutive rows sharing a cell
+    // repeat its factor and say which cell owns them.
+    const GRID = [];
+    for (let i = 0; i < 10; i++) GRID.push([i*5, i*5+5]);
+    GRID.push([50, 100]);
+    const bands = GRID.map(([lo, hi]) => {
+      const mid = (lo + hi) / 2 / 100;
+      const b = (s.bands || []).find(x => mid >= x.lower && mid < x.upper);
+      if (!b) return "";
       const f = b.factor;
       const cls = f > 1.001 ? "up" : (f < 0.999 ? "down" : "flat");
       const arrow = f > 1.001 ? "调高" : (f < 0.999 ? "调低" : "不动");
       const measured = b.measured_ratio == null ? "—" :
         b.measured_ratio.toFixed(2) + "×";
-      // A live factor explains how it got in; only an identity factor
-      // explains what is holding it back.
       const basis = b.basis || "";
       const why = Math.abs(f - 1) > 1e-9
         ? (basis === "gate_transfer"
@@ -3206,10 +3297,14 @@ function stages(){
            basis.includes("accumulating") ? "样本还不够，先不动" :
            basis.includes("forward") ? "试算后反而变差，不采用" :
            basis.includes("no_sample") ? "这一档还没有样本" : "暂不修正");
-      const upper = Math.min(100, b.upper * 100);
+      const cellLabel = `${(b.lower*100).toFixed(0)}–${
+        Math.min(100, b.upper*100).toFixed(0)}%`;
+      const rowLabel = hi >= 100 ? "≥50%" : `${lo}–${hi}%`;
+      const cellNote = cellLabel === `${lo}–${hi}%` || (hi >= 100 && b.lower >= 0.5)
+        ? "" : ` <span class="muted">档 ${cellLabel}</span>`;
       return `<tr>
-        <td class="mono">${(b.lower*100).toFixed(0)}–${upper.toFixed(0)}%</td>
-        <td>${measured}</td>
+        <td class="mono">${rowLabel}</td>
+        <td>${measured}${cellNote}</td>
         <td class="factor ${cls}">${f.toFixed(3)} <span class="muted">${arrow}</span></td>
         <td class="muted">${why}</td></tr>`;
     }).join("");
@@ -3254,10 +3349,10 @@ function stages(){
   ① <b>记账</b>——三张卡各自记录本阶段"凡是说过 X% 的地方，后来兑现了多少"；<br>
   ② <b>拧旋钮</b>——证据过门的档拟出修正系数，乘进下一次服务的概率。
   这是全链<b>唯一改变数字</b>的一步；<br>
-  ③ <b>体检</b>——下面「说了多少 vs 真发生了多少」量的是系数生效<b>之后</b>、
-  三阶段合并的剩余偏差。它只诊断、不回写：故意用不同的分箱（十分位，
-  而非上面的修正档位），这样体检没法机械地照抄旋钮，才配当监督。
-  若某档残差持续变大，说明对应旋钮方向或粒度不对——回到 ②。</div>
+  ③ <b>体检</b>——下面「说了多少 vs 真发生了多少」量的是系数生效<b>之后</b>的
+  剩余偏差，<b>分 stage、与上表同一取样车道、同一证据起点、同一把 5% 尺</b>
+  （2026-08-25 起；此前它读的是训练端 OOS 预测，人群不同曾与上表互相矛盾）。
+  它只诊断、不回写。若某档残差持续变大，说明对应旋钮方向或粒度不对——回到 ②。</div>
   <div class="grid g3" style="margin-top:8px">${cards}</div>
   ${reliabilityAudit()}`;
 }
@@ -3266,33 +3361,46 @@ function stages(){
 // Lives beside the knob it audits; reads the scorecard payload so the two
 // sections cannot drift apart on data.
 function reliabilityAudit(){
-  const S = D.scorecard || {};
-  const rows = (S.reliability_bins||[])
-    .filter(b => b.n >= 100)
-    .map(b => {
-      const gap = b.happened - b.promised;
-      const tone = Math.abs(gap) <= 0.05 ? "green"
-                 : (Math.abs(gap) <= 0.10 ? "amber" : "red");
-      return `<tr>
-        <td class="mono">${h(b.bin)}</td>
-        <td class="mono muted">${b.n.toLocaleString()}</td>
-        <td class="mono">${(b.promised*100).toFixed(1)}%</td>
-        <td class="mono">${(b.happened*100).toFixed(1)}%</td>
-        <td class="mono ${gap>0?"up":"down"}">
-          <span class="dot ${tone}"></span>
-          ${gap>0?"+":""}${(gap*100).toFixed(1)} 点</td>
-      </tr>`;
-    }).join("");
-  if(!rows) return "";
+  // Same lane, same stages, same evidence anchors, same 5% cells as the
+  // knob table above -- the audit that lived here before read the training
+  // lane's OOS holdout and disagreed with the knobs on the page for
+  // population reasons, not calibration ones.
+  const A = D.band_residual_audit || {};
+  const stageBlocks = (A.stages||[]).map(s => {
+    const rows = (s.rows||[])
+      .filter(b => b.n >= 30)
+      .map(b => {
+        const gap = b.happened - b.promised;
+        const tone = Math.abs(gap) <= 0.05 ? "green"
+                   : (Math.abs(gap) <= 0.10 ? "amber" : "red");
+        return `<tr>
+          <td class="mono">${h(b.bin)}</td>
+          <td class="mono muted">${b.n.toLocaleString()}</td>
+          <td class="mono">${(b.promised*100).toFixed(1)}%</td>
+          <td class="mono">${(b.happened*100).toFixed(1)}%</td>
+          <td class="mono ${gap>0?"up":"down"}">
+            <span class="dot ${tone}"></span>
+            ${gap>0?"+":""}${(gap*100).toFixed(1)} 点</td>
+        </tr>`;
+      }).join("");
+    if(!rows) return "";
+    return `<div style="margin-top:10px">
+      <div class="muted"><b>${h(s.stage)}</b> · ${s.day_count} 天 ·
+        每站日首个决策 · 与上表同窗</div>
+      <table style="margin-top:6px"><thead><tr>
+        <th>声称档</th><th>样本</th><th>平均声称</th><th>实际发生</th><th>差</th>
+      </tr></thead><tbody>${rows}</tbody></table></div>`;
+  }).join("");
+  if(!stageBlocks) return "";
   return `<div class="card" style="margin-top:12px">
-  <div class="muted"><b>③ 体检：说了多少 vs 真发生了多少</b>（修正系数生效后的残差 ·
-  近 45 天全部已结算站日 · 只诊断，无下游消费）</div>
-  <table style="margin-top:8px"><thead><tr>
-    <th>承诺区间</th><th>样本</th><th>平均承诺</th><th>实际发生</th><th>差</th>
-  </tr></thead><tbody>${rows}</tbody></table>
+  <div class="muted"><b>③ 体检：说了多少 vs 真发生了多少</b>（band 店同一车道 ·
+  每站日首个决策 · 同窗同 stage 同一把 5% 尺 · 唯一差别：上表读系数前的原始声称，
+  本表读系数后的实际服务值 · 只诊断，无下游消费）</div>
+  ${stageBlocks}
   <div class="muted" style="margin-top:6px">
-    「差」为正＝实际比承诺更常发生，即修完还偏保守；为负＝修完仍吹头。
-    只显示样本 ≥100 的区间。</div></div>`;
+    「差」为正＝实际比声称更常发生（修完还保守）；为负＝修完仍吹头。
+    与上表逐行对照：某档上表刚给了压缩系数、本表仍显著为负，说明系数还没压够；
+    本表转正说明压过了头。只显示样本 ≥30 的档。</div></div>`;
 }
 
 function basketHit(){
@@ -3314,6 +3422,73 @@ function basketHit(){
       <td class="mono ${roi==null?"":(roi>=0?"up":"down")}">${
         roi==null?"—":((roi>=0?"+":"")+(roi*100).toFixed(1)+"%")}</td></tr>`;
   }).join("");
+  // The objective's own choice, before the market and the clamps thin it:
+  // the chain-level union of intended legs.  The table above groups on the
+  // width that was actually bought, which files a thinned three-rung
+  // choice under one rung -- these rows keep the hardest cases where the
+  // choice put them.  The same numbers head the top strip; restating them
+  // here puts the bought-width table they correct right beside them.
+  const chosen=((S.chosen_basket_hit||{}).sizes||[]);
+  const chosenRows=chosen.map(row=>{
+    const ratio=row.realised_over_claimed;
+    return `<tr><td><b>${row.chosen_size} 桶</b></td>
+      <td>${row.settled_count}</td>
+      <td class="${row.hit_rate>=0.5?"up":""}">${p(row.hit_rate)}</td>
+      <td>${p(row.filled_hit_rate)}</td>
+      <td>${p(row.claimed_mean)}</td>
+      <td class="${ratio==null?"":(ratio>=0.9&&ratio<=1.15?"up":"down")}">${
+        ratio==null?"—":ratio.toFixed(2)+"×"}</td></tr>`;
+  }).join("");
+  const chosenBlock=chosen.length?`
+  <h3 style="margin-top:18px">目标函数选桶的真值命中率（intended，跨阶段并集）</h3>
+  <div class="why"><b>选中≠买到：</b>「选中命中」是真值落进目标函数要的腿集合，
+  「买到命中」是落进真正成交的腿。两列的差不是模型错，
+  是市场没把会赢的那条腿按我们的价卖给我们。</div>
+  <table><thead><tr><th>选桶宽度</th><th>已结算链</th><th>选中命中</th>
+    <th>买到命中</th><th>声称</th><th>实现/声称</th></tr></thead>
+    <tbody>${chosenRows}</tbody></table>`:"";
+
+  // Where the truth lands when the choice misses, in the station's own
+  // bucket steps.  Distance is from the chosen set's EDGE -- the nearest
+  // chosen bucket -- never from the centre bucket.  Sign is the
+  // temperature axis: above means the day ran hotter than everything
+  // chosen, below colder.
+  const off=S.chosen_miss_offsets||null;
+  let offBlock="";
+  if(off&&off.misses){
+    const most=Math.max(1,...(off.histogram||[]).map(b=>b.count));
+    const bin=k=>((off.histogram||[]).find(b=>b.offset===k)||{}).count||0;
+    const offRows=(off.histogram||[]).map(b=>`<tr>
+      <td class="mono">${h(b.offset)}</td>
+      <td class="mono">${b.count}</td>
+      <td class="mono">${(100*b.count/off.misses).toFixed(0)}%</td>
+      <td><span class="mono">${"█".repeat(
+        Math.max(1,Math.round(12*b.count/most)))}</span></td></tr>`).join("");
+    const sided=off.above+off.below;
+    const hotOne=bin("+1"), coldOne=bin("-1");
+    offBlock=`
+  <h3 style="margin-top:18px">选桶脱靶分布（真值出选桶边界几格）</h3>
+  <p class="sub">${off.settled} 条已结算链：选中 ${off.hits}，脱靶 ${off.misses}${
+    off.unparsed?`（另 ${off.unparsed} 条标签无法解析）`:""}${
+    off.inside_gap?`（含 ${off.inside_gap} 条落在并集空隙里，无方向）`:""}。
+    距离从选桶自己的边界起算，与中心桶无关：
+    −1 = 真值停在最冷选桶再往下一格，+1 = 最热选桶再往上一格。</p>
+  <div class="why"><b>贴边还是远脱：</b>出界 1 桶的有
+  ${off.adjacent} 条（占有向脱靶的 ${sided?(
+    100*off.adjacent/sided).toFixed(0):"—"}%）——真值就停在选桶隔壁，
+  那一侧多放一格就盖住；出界 ≥2 桶的 ${off.far} 条（${sided?(
+    100*off.far/sided).toFixed(0):"—"}%）——整个方向看歪了，加一格也救不回。
+  方向上：出热边（真值在上）${off.above} 条 vs 出冷边 ${off.below} 条${
+    off.above>off.below?"，选桶整体偏冷（低估了白天的抬升）"
+    :off.below>off.above?"，选桶整体偏热":"，两侧均衡"}。
+  算术上：热侧全体加一格可多盖 ${hotOne} 条（${off.hits}→${
+    off.hits+hotOne}/${off.settled}），两侧各加一格到 ${
+    off.hits+hotOne+coldOne}/${off.settled}——代价是每篮多一到两条腿的本金，
+  且宪章上限四桶，这里只报算术不作推荐。</div>
+  <table><thead><tr><th>出界（桶）</th><th>条数</th><th>占脱靶</th><th></th>
+    </tr></thead><tbody>${offRows}</tbody></table>`;
+  }
+
   return `<h2>十四、篮子命中率（按桶数）</h2>
   <p class="sub">结算真值落在篮子里就算命中。只算可成交的（整篮 ≥1 分）。</p>
   <div class="why"><b>这张表回答一件事：</b>多买一个桶买到的命中率，
@@ -3321,7 +3496,9 @@ function basketHit(){
   最右边的每元回报才是净结果。</div>
   <table><thead><tr><th>篮子宽度</th><th>已结算</th><th>命中</th><th>命中率</th>
     <th>声称</th><th>实现/声称</th><th>均成本</th><th>每元回报</th></tr></thead>
-    <tbody>${rows}</tbody></table>`;
+    <tbody>${rows}</tbody></table>
+  ${chosenBlock}
+  ${offBlock}`;
 }
 
 function refusalStats(){
@@ -4100,7 +4277,28 @@ function roster(){
     // thing itself is a price that exists on the book but cannot be filled.
     const dust=s.dust_offer?` <span class="pill red">虚价</span>`:"";
     const rung=s.centre_bucket?
-      `<div class="muted">横梁 <span class="mono" style="color:var(--violet)">${short(s.centre_bucket)}</span></div>`:"";
+      `<div class="muted">均值桶 <span class="mono" style="color:var(--violet)" title="宪章54：概率加权重心落点，窗口必含此桶">${short(s.centre_bucket)}</span></div>`:"";
+    // Charter 55/58 read off the seat: the day's skew, which way the
+    // seated window leans around the mean centre, the whole-basket EV the
+    // price gate admitted on, and what crossing the book would have paid.
+    const skewLab=s.skew_sign==null?""
+      :s.skew_sign>0?`<span title="重心在众数热侧≥半桶：窗口不得向冷侧倾">右偏</span>`
+      :s.skew_sign<0?`<span title="重心在众数冷侧≥半桶：窗口不得向热侧倾">左偏</span>`
+      :`<span title="重心与众数差不足半桶：扩边方向不设约束">对称</span>`;
+    let leanLab="";
+    if(s.centre_bucket&&Array.isArray(s.window)){
+      const ci=s.window.indexOf(s.centre_bucket);
+      if(ci>=0){
+        const net=(s.window.length-1-ci)-ci;
+        leanLab=net>0?`窗+${net}热`:net<0?`窗${net}冷`:"窗居中";
+      }
+    }
+    const evLab=(s.edge==null)?""
+      :`<span class="${s.edge>0?"up":"down"}" title="宪章58：整篮正EV=概率和−买价和，唯一价格门">EV${s.edge>=0?"+":""}${s.edge.toFixed(3)}${s.edge>0?"✓":"✗"}</span>`;
+    const askLab=(s.ask_total==null)?""
+      :`<span title="按卖一全吃这套窗口的价格合计">买价和${s.ask_total.toFixed(3)}</span>`;
+    const seatFacts=(skewLab||leanLab||evLab||askLab)
+      ?`<div class="muted" style="font-size:11px">${[skewLab,leanLab,evLab,askLab].filter(Boolean).join(" · ")}</div>`:"";
     // Which rule chose this basket.  A day compiled under a retired rule set
     // sits beside one compiled under the current rule and is not comparable
     // to it; without this the page invites exactly that comparison.  Current
@@ -4113,7 +4311,7 @@ function roster(){
     const tag=(s.selection_rule_label && s.selection_rule_label!==CURRENT_RULE)
       ? `<div><span class="pill amber" title="按已退役规则选出，与当前规则不可直接比较：${h(s.selection_rule_label)}">旧规则</span></div>`
       : "";
-    return `<td><div class="mono">${w}</div>${rung}${tag}
+    return `<td><div class="mono">${w}</div>${rung}${seatFacts}${tag}
       <div class="muted">${(s.win_probability*100).toFixed(0)}%
       @ ${s.all_in_cost.toFixed(3)} · ${s.odds==null?"—":s.odds.toFixed(1)+"x"}${res}${dust}</div>
       ${entryCell(s.entry,stage)}${extra||""}</td>`;

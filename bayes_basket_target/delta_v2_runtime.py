@@ -72,6 +72,20 @@ SUPPORT_EDGE_MARGIN = float(
 # one still carrying the insurance (user ruling, 2026-08-16).  The opening
 # stages keep the policy's three -- see clause 50.
 P1_MINIMUM_SUPPORT_BUCKETS = 2
+# Charter 59 as refined and then vetoed the same evening (2026-08-25,
+# 59a/59b): three rungs are the TARGET opening width; the two-rung fallback
+# pass -- re-enumerating at two when the target floor seats nothing --
+# measured -71% on its own lane (18 chains, 181 staked, -128 returned) and
+# dragged the book from -2.1% to -12.3% with every drop-1/2/3 excision
+# negative.  Third repeat of the same lesson in one day: a day that cannot
+# seat the target shape is a day the market has finished pricing, and
+# buying a degraded shape there buys the wrong side of that knowledge.
+# OFF by default; the env flag keeps the arm re-measurable.
+OPENING_FALLBACK_MIN_BUCKETS = 2
+OPENING_WIDTH_FALLBACK_ENABLED = (
+    os.environ.get("DELTA_V2_OPENING_WIDTH_FALLBACK", "").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
 MAKER_EXECUTION_CONTRACT = "maker_post_only"
 FOK_EXECUTION_CONTRACT = "single_bucket_fok"
 FillResolver = Callable[..., Mapping[str, Any]]
@@ -487,6 +501,7 @@ WINDOW_REFUSAL_FUNNEL = (
     "gapped",
     "center",
     "short",
+    "skew",
     "leg_floor",
     "unpriced",
     "edge",
@@ -531,6 +546,169 @@ def _window_audit_closes(audit: Mapping[str, Any]) -> bool:
     )
     return int(audit.get("enumerated_window_count") or 0) == (
         refused + int(audit.get("shortlisted_window_count") or 0)
+    )
+
+
+# Which bucket the seat rule pins the window to.  ``mean`` -- the
+# mass-weighted centre of the full served distribution, snapped to the
+# nearest admitted bucket -- is the ruling (user, 2026-08-25, charter 54)
+# and the default.  It supersedes ``heaviest`` (the 2026-08-16 argmax
+# ruling, charter 52a) on three measurements over 74 settled chains: the
+# mode sits 1.65 buckets from the settled truth against the mean's 1.36
+# (within-one-bucket 50% vs 62%); when the two split by half a bucket or
+# more the truth lands on the mean's side 23:4; and the full-ledger A/B
+# reads mean at -25.4% ROI against heaviest's -34.9% with every drop-1/2/3
+# excision still positive.  The mechanism: argmax is only optimal when the
+# per-bucket shape is trustworthy, and the claims measurably are not --
+# the first moment is this model's most reliable output, and the mode
+# systematically sits on the cold side of a hot-tailed day.  ``heaviest``
+# and ``median`` remain as research arms; the ledger hashes the definition
+# into its rule fingerprint.
+LADDER_CENTER_DEFINITION = (
+    os.environ.get("DELTA_V2_LADDER_CENTER_DEFINITION", "").strip().lower()
+    or "mean"
+)
+# Whether the mean-mode gap biases which side a window may extend toward
+# (user ruling, 2026-08-25, charter 55).  The gap is the distribution's own
+# skew reading: mean above mode is a hot tail, below it a cold one, and
+# measured on 74 settled chains the truth lands on the mean's side of the
+# mode 23:4 whenever the two split by half a bucket.  Under the rule a
+# window whose extension leans AGAINST that side is refused at enumeration
+# (funnel gate ``skew``); balanced windows and the skew side always stay
+# admissible, and a day with no split (|gap| under half a bucket) is
+# unconstrained.  This is deliberately a shape-derived signal from p(t)
+# itself -- charter 43's ban on weather-covariate branches at the strategy
+# layer stands untouched.  ``off`` restores enumeration with no direction
+# rule for the A/B arms.
+SKEW_EXTENSION_RULE = (
+    os.environ.get("DELTA_V2_SKEW_EXTENSION_RULE", "").strip().lower()
+    or "on"
+) != "off"
+# Which statistic reads the skew (research knob, 2026-08-25 ledger A/B).
+# ``mean_mode`` is the charter-55 ruling: the gap between the mass-weighted
+# mean and the heaviest bucket.  ``mean_median`` replaces the mode with the
+# half-mass bucket -- robust to a single-bucket spike (the ZBAA bimodal
+# case, where a p=0.36 mode two buckets from the mean dominates the
+# reading), at the price of a smaller gap that flags fewer days at the
+# same half-bucket threshold.  The ledger hashes a non-default choice.
+SKEW_SIGNAL_DEFINITION = (
+    os.environ.get("DELTA_V2_SKEW_SIGNAL", "").strip().lower()
+    or "mean_mode"
+)
+# How the window may sit around the centre on a skewed day (research knob,
+# 2026-08-25 ledger A/B).  ``free`` is charter 55 as ruled: any window not
+# leaning AGAINST the skew competes on curve score.  ``anchored`` is the
+# one-sided tail window the user described on the ZUCK example -- the mean
+# bucket pinned at the window's anti-skew edge, every other rung extended
+# into the tail (left-skew: centre is the hottest rung, [34,35,36] around
+# a 36 centre) -- which forbids balanced windows too, not just opposed
+# ones.  Symmetric days are untouched under both.
+SKEW_PLACEMENT_MODE = (
+    os.environ.get("DELTA_V2_SKEW_PLACEMENT", "").strip().lower()
+    or "free"
+)
+# The gap below which a day reads as symmetric, in bucket steps.  Half a
+# bucket is the charter-55 ruling.  Zero makes the reading binary -- every
+# day leans whichever side its mean sits from its mode, however slightly
+# -- which is the user's anchored-window concept (2026-08-25): no
+# symmetric third state, the mean bucket always the anchor, the window
+# always extended toward the day's own lean.
+SKEW_GAP_THRESHOLD_BUCKETS = float(
+    os.environ.get("DELTA_V2_SKEW_GAP_THRESHOLD", "") or 0.5
+)
+
+
+def _skew_extension_sign(
+    probabilities: Mapping[str, float],
+    ordinals: Mapping[str, int],
+) -> int:
+    """The distribution's skew direction: +1 hot-tailed, -1 cold, 0 none.
+
+    Read from the full served distribution -- mass on buckets the book
+    declined to price still describes the day -- as the signed gap between
+    the weighted mean ordinal and the heaviest bucket's ordinal, gated at
+    half the vocabulary's own bucket step so a °F station is not read as
+    twice as skewed as a °C one.
+    """
+
+    weighted = [
+        (float(probabilities[bucket]), int(ordinals[bucket]))
+        for bucket in probabilities
+        if bucket in ordinals and float(probabilities[bucket]) > 0.0
+    ]
+    total = sum(mass for mass, _ in weighted)
+    if not weighted or total <= 0.0:
+        return 0
+    if SKEW_SIGNAL_DEFINITION == "mean_median":
+        running = 0.0
+        anchor_ordinal = weighted[-1][1]
+        for mass, ordinal in sorted(weighted, key=lambda row: row[1]):
+            running += mass
+            if running >= total / 2.0:
+                anchor_ordinal = ordinal
+                break
+        mode_ordinal = anchor_ordinal
+    else:
+        mode_ordinal = max(weighted, key=lambda row: row[0])[1]
+    mean_ordinal = sum(mass * o for mass, o in weighted) / total
+    steps = sorted({o for _, o in weighted})
+    diffs = [b - a for a, b in zip(steps, steps[1:]) if b > a]
+    step = min(diffs) if diffs else 1
+    gap = mean_ordinal - mode_ordinal
+    if abs(gap) < SKEW_GAP_THRESHOLD_BUCKETS * step:
+        return 0
+    return 1 if gap > 0 else -1
+
+
+def _alternate_ladder_center(
+    definition: str,
+    *,
+    admitted: Sequence[str],
+    probabilities: Mapping[str, float],
+    ordinals: Mapping[str, int],
+) -> str | None:
+    """The centre under a non-default definition, snapped to an admitted
+    bucket.
+
+    ``mean``: the probability-weighted mean ordinal of the full served
+    distribution, nearest admitted bucket (ties to the heavier one).
+    ``median``: the bucket where the cumulative mass first reaches half,
+    walked in ordinal order, then snapped the same way.  Both read the
+    whole distribution, not just the admitted slice -- the question is
+    where the model's mass sits, and a bucket the book declined to price
+    still carries mass -- but the seat itself must be admitted, so the
+    answer is snapped onto the admitted grid.  None on empty mass, which
+    lets the caller keep the heaviest-bucket centre.
+    """
+
+    weighted = [
+        (float(probabilities[bucket]), int(ordinals[bucket]), bucket)
+        for bucket in probabilities
+        if bucket in ordinals and float(probabilities[bucket]) > 0.0
+    ]
+    total = sum(mass for mass, _, _ in weighted)
+    if not weighted or total <= 0.0 or not admitted:
+        return None
+    if definition == "mean":
+        target = sum(mass * ordinal for mass, ordinal, _ in weighted) / total
+    elif definition == "median":
+        target = None
+        running = 0.0
+        for mass, ordinal, _ in sorted(weighted, key=lambda row: row[1]):
+            running += mass
+            if running >= total / 2.0:
+                target = float(ordinal)
+                break
+        if target is None:
+            return None
+    else:
+        return None
+    return min(
+        admitted,
+        key=lambda bucket: (
+            abs(int(ordinals.get(bucket, 0)) - target),
+            -float(probabilities.get(bucket, 0.0)),
+        ),
     )
 
 
@@ -649,14 +827,15 @@ def _support_windows(
     # touching the run grown from it); the measured shoulder evidence that
     # motivated that gate -- off-centre windows realize 0.77-0.83 of what
     # they claim -- now backs the stronger rung.
-    # The centre is the heaviest bucket of the combined model distribution
-    # (user ruling, 2026-08-16), open edge buckets included and competing on
-    # the same footing.  This supersedes the clause 42 seeding anchor, which
-    # used the point estimate precisely to keep an unbounded edge bucket from
-    # winning the argmax on width rather than conviction -- 8/17 measured 17
-    # of 30 stations moving their centre under the new definition and 6
-    # landing on an edge bucket, ZUUU from 30C to "33C or higher" (0.359
-    # against 0.059).  The ruling is aware of that case; the code follows it.
+    # The heaviest bucket of the combined model distribution was the ruling
+    # centre from 2026-08-16 (charter 52a, open edge buckets competing on
+    # the same footing; it had superseded the clause 42 point-estimate
+    # anchor, accepting the ZUUU 30C -> "33C or higher" edge-bucket case).
+    # Since 2026-08-25 (charter 54) it is only the fallback seed: the
+    # ruling centre is the mass-weighted mean, applied just below, and the
+    # argmax survives here for the ``heaviest`` research arm and for days
+    # the alternate definition cannot price (empty mass).  See
+    # LADDER_CENTER_DEFINITION for the measurements behind the flip.
     ladder_center = max(
         admitted,
         key=lambda bucket: (
@@ -664,6 +843,23 @@ def _support_windows(
             -int(by_bucket[bucket].ordinal),
         ),
     ) if admitted else center_bucket
+    if admitted and LADDER_CENTER_DEFINITION != "heaviest":
+        ladder_center = _alternate_ladder_center(
+            LADDER_CENTER_DEFINITION,
+            admitted=admitted,
+            probabilities=probabilities,
+            ordinals={
+                bucket: int(row.ordinal)
+                for bucket, row in by_bucket.items()
+            },
+        ) or ladder_center
+    # The day's skew reading, once, for the extension gate below.  Zero --
+    # no constraint -- when the rule is off or the split is under half a
+    # bucket.
+    skew_sign = _skew_extension_sign(
+        probabilities,
+        {bucket: int(row.ordinal) for bucket, row in by_bucket.items()},
+    ) if SKEW_EXTENSION_RULE else 0
     core = probability_core(
         probabilities,
         ordinals={
@@ -688,6 +884,7 @@ def _support_windows(
     # ``shortlisted``, and ``_window_audit_closes`` asserts it.
     center_refused = 0
     short_refused = 0
+    skew_refused = 0
     leg_floor_refused = 0
     gapped_refused = 0
     unpriced_refused = 0
@@ -819,6 +1016,59 @@ def _support_windows(
             if len(window) < min_size:
                 short_refused += 1
                 continue
+            # Charter 55: on a skewed day the window may not lean against
+            # the skew.  Balanced windows and the skew side stay admissible;
+            # "Direction is deliberately not checked" above is superseded
+            # for this one shape-derived signal, and only when the day's
+            # own distribution splits its mean from its mode.
+            if SKEW_PLACEMENT_MODE in ("hot_pair", "hot_anchor"):
+                # Research arms (2026-08-25, coverage objective): the truth
+                # lands systematically one bucket HOT of the mean whatever
+                # the day's skew reads, so these place toward heat on every
+                # day and replace the direction gate for the arm's run.
+                # ``hot_pair``: the window must hold the centre's hot
+                # neighbour too (contiguity makes any hotter rung adjacent)
+                # -- the seatable version of "widen one hot".  ``hot_anchor``
+                # pins the centre at the cold edge, the full tilt.
+                centre_ordinal = int(by_bucket[ladder_center].ordinal)
+                above = sum(
+                    1 for bucket in window
+                    if int(by_bucket[bucket].ordinal) > centre_ordinal
+                )
+                below = sum(
+                    1 for bucket in window
+                    if int(by_bucket[bucket].ordinal) < centre_ordinal
+                )
+                bad = (
+                    above < 1 if SKEW_PLACEMENT_MODE == "hot_pair"
+                    else below > 0
+                )
+                if bad:
+                    skew_refused += 1
+                    continue
+            elif skew_sign:
+                centre_ordinal = int(by_bucket[ladder_center].ordinal)
+                above = sum(
+                    1 for bucket in window
+                    if int(by_bucket[bucket].ordinal) > centre_ordinal
+                )
+                below = sum(
+                    1 for bucket in window
+                    if int(by_bucket[bucket].ordinal) < centre_ordinal
+                )
+                opposed = (skew_sign > 0 and above < below) or (
+                    skew_sign < 0 and above > below
+                )
+                # ``anchored``: the centre must BE the anti-skew edge, so a
+                # single rung on the wrong side of it refuses the window.
+                if SKEW_PLACEMENT_MODE == "anchored":
+                    opposed = opposed or (
+                        (skew_sign > 0 and below > 0)
+                        or (skew_sign < 0 and above > 0)
+                    )
+                if opposed:
+                    skew_refused += 1
+                    continue
             # Third floor: every leg must carry a price a market could
             # plausibly have made.  A leg offered at a tenth of a cent is the
             # known one-sided tail quote -- it does not state a probability,
@@ -961,7 +1211,7 @@ def _support_windows(
             row["buckets"],
         )
     )
-    return windows, {
+    audit = {
         "probability_core": sorted(
             core, key=lambda bucket: (by_bucket[bucket].ordinal, bucket)
         ),
@@ -972,6 +1222,8 @@ def _support_windows(
         "policy_minimum_support_buckets": policy_min,
         "dispersion_support_size": dispersion_receipt,
         "short_refused_window_count": short_refused,
+        "skew_refused_window_count": skew_refused,
+        "skew_extension_sign": skew_sign,
         "leg_floor_refused_window_count": leg_floor_refused,
         "leg_floor_excluded_buckets": leg_floor_excluded,
         "gapped_window_refused_count": gapped_refused,
@@ -999,6 +1251,7 @@ def _support_windows(
             gapped=gapped_refused,
             center=center_refused,
             short=short_refused,
+            skew=skew_refused,
             leg_floor=leg_floor_refused,
             unpriced=unpriced_refused,
             edge=edge_refused,
@@ -1008,6 +1261,51 @@ def _support_windows(
         # working; it now counts refusals under the stronger rung.
         "core_refused_window_count": center_refused,
     }
+    # ``hot_prefer`` (research arm, 2026-08-25 coverage objective): a
+    # preference, not a gate.  When at least one shortlisted window holds a
+    # rung hotter than the centre, the ones that hold none are dropped --
+    # the truth lands one bucket hot of the mean often enough that a
+    # hot-free window is strictly dominated whenever a hot-holding one is
+    # seatable -- and when none does, the shortlist stands untouched, so
+    # no station-day is refused that would otherwise seat.  The audit
+    # counters move with the drop to keep the funnel closed.
+    if SKEW_PLACEMENT_MODE == "hot_prefer" and windows:
+        centre_ordinal = int(by_bucket[ladder_center].ordinal)
+        def _holds_hot(row):
+            return any(
+                int(by_bucket[bucket].ordinal) > centre_ordinal
+                for bucket in row["buckets"]
+            )
+        hot_windows = [row for row in windows if _holds_hot(row)]
+        if hot_windows and len(hot_windows) < len(windows):
+            dropped = len(windows) - len(hot_windows)
+            windows = hot_windows
+            skew_refused += dropped
+            shortlisted -= dropped
+    # Charter 59 fallback: a day the target width cannot seat at all gets
+    # one more pass at two rungs, and only then.  The recursion re-runs the
+    # same gates rather than a copy of them, so the fallback pass's audit
+    # closes on its own counters; the flags say which pass is being read.
+    if (
+        OPENING_WIDTH_FALLBACK_ENABLED
+        and not windows
+        and int(min_size) > OPENING_FALLBACK_MIN_BUCKETS
+    ):
+        fallback_windows, fallback_audit = _support_windows(
+            snapshot=snapshot,
+            desired=desired,
+            probabilities=probabilities,
+            fee_rate=fee_rate,
+            maximum_support_buckets=maximum_support_buckets,
+            center_bucket=center_bucket,
+            minimum_support_buckets=OPENING_FALLBACK_MIN_BUCKETS,
+            probability_stage=probability_stage,
+        )
+        if fallback_windows:
+            fallback_audit["opening_width_fallback"] = True
+            fallback_audit["opening_width_target"] = int(min_size)
+            return fallback_windows, fallback_audit
+    return windows, audit
 
 
 # Enumerating quantities is exponential in the window's width, so the shortlist

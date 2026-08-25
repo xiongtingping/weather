@@ -1170,15 +1170,31 @@ def test_consolidation_is_an_annotation_and_measures_what_it_says() -> None:
 
     # Promoted from annotation to stake scale (user ruling, 2026-08-21)
     # after the split survived every robustness cut -- but scale is the
-    # whole licence.  The count may shrink a chain's allowance; it must
+    # whole licence.  The *count* may shrink a chain's allowance; it must
     # never pick which days trade, because a gate on the same split
     # changes the population the split was measured on.
+    #
+    # This used to be asserted by counting call sites, which stopped saying
+    # anything once the gate and the scale began sharing one call
+    # (2026-08-24).  The constraint is about which consumer reads what, so
+    # assert that instead: the tilt is still taken under ``stage == "P0"``
+    # and still keyed off ``count``, and nothing else consults ``count``.
     source = (root / "scripts" / "paper_trading_ledger.py").read_text(
         encoding="utf-8"
     )
-    calls = source.count("_consolidation_signals(")
-    assert calls == 3, calls  # definition, opener-side scale, insert fallback
+    assert 'if stage == "P0":\n                        seat_consolidation' in source
+    assert source.count('["count"]\n') == 1, "count has a second consumer"
+    assert "CONSOLIDATION_TILT_MIN_SIGNALS" in source
     assert "consolidation_json" in source
+
+    # The certainty gate is a separate rule reading the same signs, and it
+    # is deliberately NOT stage-scoped: production's gate carries no stage
+    # condition, so a ledger that gated only the opener scored a narrower
+    # strategy than the one that runs.  Aligned 2026-08-24.
+    gate_at = source.index("if CERTAINTY_GATE and any(")
+    opener_at = source.index('if stage == "P0":\n                        seat_consolidation')
+    assert gate_at < opener_at, "the gate must be judged before the P0-only tilt"
+    assert "certainty_gate_scope" in source
 
 
 def test_the_selection_discount_shades_the_gate_and_only_the_gate() -> None:

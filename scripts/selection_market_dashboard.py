@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sqlite3
 import sys
 from collections import defaultdict
@@ -48,6 +49,9 @@ if str(Path(__file__).resolve().parent) not in sys.path:
 # label rather than restating it keeps the two from drifting apart, which
 # is the whole point of naming a rule at all.
 from paper_trading_ledger import SELECTION_RULE_LABEL  # noqa: E402
+from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
+    _skew_extension_sign,
+)
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 INITIAL_CAPITAL_USDC = 1000.0
@@ -253,6 +257,11 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             for index, bucket in enumerate(probabilities.keys())
         }
         model_centre = _centre_of_mass(probabilities, ordinals)
+        # The day's skew reading, the same predicate the charter-55 gate
+        # runs: sign of (mass-weighted mean minus heaviest bucket), gated
+        # at half a bucket.  Index ordinals are uniform, so the half-step
+        # threshold is exact here too.
+        skew_sign = _skew_extension_sign(probabilities, ordinals)
         market_centre = _centre_of_mass(prices, ordinals)
         lean = (
             None
@@ -278,8 +287,19 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         # quoting it -- ZGSZ 2026-08-15 showed 0.004 here beside a P&L
         # computed on the 0.01771 it really paid, so the page reported a
         # return no price on it could produce.  One number, the paid one.
+        # The CHOSEN basket's crossing price: the intended legs summed at
+        # the entry ask map.  Summed over the bought width it silently
+        # shrank whenever the maker walk was still part-filled -- a
+        # two-of-three fill read as a cheaper basket, not an unfinished
+        # one -- and the number the page calls 买价和 must be a property
+        # of the choice, not of how much of it the market has sold us yet.
+        try:
+            _intended_for_ask = list((json.loads(r[21]) or {}).keys())
+        except (TypeError, ValueError, AttributeError):
+            _intended_for_ask = []
         seat_top_of_book_total = sum(
-            max(0.0, prices.get(b, 0.0)) for b in json.loads(r[4])
+            max(0.0, prices.get(b, 0.0))
+            for b in (_intended_for_ask or json.loads(r[4]))
         )
         seat_ask_total = cost
         # EV per USDC staked.  A basket costing C pays 1 when the truth lands
@@ -317,6 +337,7 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             "stake_usdc": float(r[9]),
             "lean_buckets": lean,
             "side": side,
+            "skew_sign": skew_sign,
             "dust_offer": cost < DUST_COST_FLOOR,
             # The chain's outcome belongs to the chain, and it is carried by
             # the stage that last topped the position up.  Every stage row
@@ -493,63 +514,104 @@ def _consolidation_split(conn: sqlite3.Connection) -> dict[str, Any]:
     return {"available": bool(out), "strata": out}
 
 
-def _posted_basket_hit_trend(
-    conn: sqlite3.Connection, sizes: Sequence[int] = (3, 4)
-) -> dict[str, Any]:
-    """Hit rate of the basket we *chose*, per posted width, and its trend.
+def _settled_chain_baskets(
+    conn: sqlite3.Connection,
+) -> list[dict[str, Any]]:
+    """One record per settled chain: what the objective chose, what was
+    bought, and where the truth landed.
 
-    ``_basket_hit_by_size`` groups on ``window_size``, which is the width
-    that came back after the market sold us part of the ladder -- so a
-    three-rung choice the book cut to one is counted as a one-rung basket
-    and the three-rung row silently loses its hardest cases.  The question
-    "is a three-rung basket any good" is about the width we picked, so this
-    groups on the posted ladder instead.
-
-    Both readings are kept per row: ``hit_rate`` is whether the truth landed
-    in what we posted, ``filled_hit_rate`` whether it landed in what we
-    actually bought.  Measured 2026-08-20 the two were 37.2% and 17.5% over
-    the same 137 settlements -- the gap is the market declining to sell the
-    legs that went on to win, and it is the single largest term in why the
-    page's hit rate looks low.
-
-    Trend splits the settled days in half by date rather than fitting
-    anything: with samples this size a slope is noise wearing a number, and
-    "the last half against the first" is the comparison a reader makes
-    anyway.  ``None`` when either half is too thin to say.
+    ``chosen`` is the union of ``intended_legs_json`` across the chain's
+    stages -- the legs the objective asked for, hedge rungs included.  A
+    chain is one book, so a leg wanted at any stage was chosen.  Rows from
+    before the intended ledger existed fall back to the posted ladder, then
+    to the bought width, which are the nearest records that survive.
+    ``bought`` is the union of ``window_buckets_json`` -- the width that
+    came back after the fill walk.
     """
 
     rows = conn.execute(
-        "SELECT p.event_date, p.posted_buckets_json, p.window_buckets_json,"
-        " p.probabilities_json, s.settled_bucket, s.claimed_win_probability"
+        "SELECT s.station_id, s.event_date, s.settled_bucket,"
+        " s.claimed_win_probability, p.intended_legs_json,"
+        " p.posted_buckets_json, p.window_buckets_json"
         " FROM paper_trade_settlement s"
-        " JOIN paper_trade_position p USING(position_id)"
-        " WHERE p.all_in_cost>=? AND s.settled_bucket IS NOT NULL"
-        " ORDER BY p.event_date",
-        (DUST_COST_FLOOR,),
+        " JOIN paper_trade_position p USING(station_id, event_date)"
+        " WHERE s.settled_bucket IS NOT NULL"
+        " ORDER BY s.event_date",
     ).fetchall()
+    chains: dict[tuple[str, str], dict[str, Any]] = {}
+    for station, event_date, landed, claimed, ij, pj, wj in rows:
+        chain = chains.setdefault((str(station), str(event_date)), {
+            "event_date": str(event_date),
+            "chosen": set(),
+            "bought": set(),
+            "landed": str(landed),
+            "claimed": float(claimed or 0.0),
+        })
+        chosen: list[str] = []
+        try:
+            payload = json.loads(ij) if ij else {}
+            chosen = [str(b) for b in payload.keys()]
+        except (TypeError, ValueError, AttributeError):
+            chosen = []
+        if not chosen:
+            for fallback in (pj, wj):
+                try:
+                    chosen = [str(b) for b in json.loads(fallback or "[]")]
+                except (TypeError, ValueError):
+                    chosen = []
+                if chosen:
+                    break
+        chain["chosen"].update(chosen)
+        try:
+            chain["bought"].update(
+                str(b) for b in json.loads(wj or "[]")
+            )
+        except (TypeError, ValueError):
+            pass
+    return list(chains.values())
+
+
+def _posted_basket_hit_trend(
+    conn: sqlite3.Connection, sizes: Sequence[int] = (3, 4)
+) -> dict[str, Any]:
+    """Hit rate of the basket the objective *chose*, per chosen width.
+
+    ``_basket_hit_by_size`` groups on ``window_size``, the width that came
+    back after the market sold us part of the ladder -- so a three-rung
+    choice the book cut to one is counted as a one-rung basket and the
+    three-rung row silently loses its hardest cases.  Grouping on the
+    posted ladder (this function until 2026-08-24) still lost the legs a
+    value clamp left unpostable.  The question "is a three-bucket choice
+    any good" is about ``intended_legs_json`` -- the objective's own pick
+    -- so the base is now the chain-level union of intended legs (see
+    ``_settled_chain_baskets``).
+
+    Both readings are kept per row: ``hit_rate`` is whether the truth
+    landed in what was chosen, ``filled_hit_rate`` whether it landed in
+    what was actually bought.  Measured 2026-08-24 over 74 settled chains
+    the two were 48.6% and 20.3% -- the gap is the market declining to
+    sell the legs that went on to win, and it is the single largest term
+    in why the page's realised hit rate looks low.  ``claimed_mean`` is
+    the settlement's recorded entry claim, so the ratio compares the claim
+    the book was sized on against the choice it described.
+
+    Trend splits the settled days in half by date rather than fitting
+    anything: with samples this size a slope is noise wearing a number,
+    and "the last half against the first" is the comparison a reader makes
+    anyway.  ``None`` when either half is too thin to say.
+    """
 
     wanted = {int(size) for size in sizes}
     by_size: dict[int, list[dict[str, Any]]] = {size: [] for size in wanted}
-    for event_date, posted_js, filled_js, probs_js, landed, claimed in rows:
-        try:
-            posted = json.loads(posted_js) if posted_js else json.loads(
-                filled_js or "[]"
-            )
-            filled = json.loads(filled_js or "[]")
-            probs = json.loads(probs_js) if probs_js else {}
-        except (TypeError, ValueError):
-            continue
-        size = len(posted)
+    for chain in _settled_chain_baskets(conn):
+        size = len(chain["chosen"])
         if size not in wanted:
             continue
         by_size[size].append({
-            "event_date": str(event_date),
-            "hit": int(str(landed) in {str(b) for b in posted}),
-            "filled_hit": int(str(landed) in {str(b) for b in filled}),
-            # The claim belongs to the posted ladder, not the filled one, or
-            # the ratio compares a hit over three rungs to a claim over one.
-            "claimed": sum(float(probs.get(str(b), 0.0)) for b in posted)
-            or float(claimed or 0.0),
+            "event_date": chain["event_date"],
+            "hit": int(chain["landed"] in chain["chosen"]),
+            "filled_hit": int(chain["landed"] in chain["bought"]),
+            "claimed": chain["claimed"],
         })
 
     def account(items: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
@@ -620,7 +682,7 @@ def _posted_basket_hit_trend(
                 / later["settled_count"]
             )
         out["sizes"].append({
-            "posted_size": size,
+            "chosen_size": size,
             **overall,
             "earlier": earlier if movable else None,
             "later": later if movable else None,
@@ -636,6 +698,104 @@ def _posted_basket_hit_trend(
             ),
         })
     return out
+
+
+_BUCKET_ORDINAL_RE = re.compile(r"^\s*(-?\d+)(?:-(-?\d+))?")
+
+
+def _bucket_ordinal(label: str) -> int | None:
+    """The low edge of a bucket label: '26°C' -> 26, '82-83°F' -> 82."""
+
+    match = _BUCKET_ORDINAL_RE.match(str(label))
+    return int(match.group(1)) if match else None
+
+
+def _bucket_step(label: str) -> int:
+    """The width one bucket spans in its own label vocabulary.
+
+    '82-83°F' spans two degrees; '26°C' spans one.  The step turns a raw
+    degree offset into "how many buckets away", which is the unit the
+    charter's windows are built in.
+    """
+
+    match = _BUCKET_ORDINAL_RE.match(str(label))
+    if match and match.group(2) is not None:
+        return max(1, int(match.group(2)) - int(match.group(1)) + 1)
+    return 1
+
+
+def _chosen_miss_offsets(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Where the truth lands when it misses the chosen basket, in buckets.
+
+    Distance is measured from the chosen set's own EDGE -- the nearest
+    chosen bucket -- never from the centre bucket: a truth one step below
+    a four-wide choice is -1 however far the centre sits.  Offsets are
+    signed on the temperature axis: negative means the truth settled
+    *below* the chosen set (the choice ran too hot), positive *above* it
+    (too cold).  Distance is in the station's own bucket steps, so one
+    bucket out on a 2°F station is one, not two.
+
+    One bucket out (``adjacent``) means the truth stopped in the very next
+    bucket past the edge -- one more bucket on that side would have covered
+    it; two or more (``far``) means the whole side was misread and one more
+    bucket buys nothing.  The two point at different fixes, which is why
+    the split is on the page.
+
+    ``inside_gap`` counts truths that landed between chosen buckets of a
+    non-contiguous cross-stage union; they are misses without a side.
+    """
+
+    hist: dict[int, int] = defaultdict(int)
+    left = right = adjacent = far = 0
+    hits = misses = unparsed = inside_gap = 0
+    for chain in _settled_chain_baskets(conn):
+        if chain["landed"] in chain["chosen"]:
+            hits += 1
+            continue
+        misses += 1
+        ordinals = sorted({
+            o for o in (_bucket_ordinal(b) for b in chain["chosen"])
+            if o is not None
+        })
+        landed_ordinal = _bucket_ordinal(chain["landed"])
+        if landed_ordinal is None or not ordinals:
+            unparsed += 1
+            continue
+        step = _bucket_step(chain["landed"])
+        if landed_ordinal < ordinals[0]:
+            offset = -max(1, round((ordinals[0] - landed_ordinal) / step))
+        elif landed_ordinal > ordinals[-1]:
+            offset = max(1, round((landed_ordinal - ordinals[-1]) / step))
+        else:
+            inside_gap += 1
+            continue
+        clamped = max(-3, min(3, offset))
+        hist[clamped] += 1
+        if offset < 0:
+            left += 1
+        else:
+            right += 1
+        if abs(offset) == 1:
+            adjacent += 1
+        else:
+            far += 1
+    labels = {-3: "≤-3", -2: "-2", -1: "-1", 1: "+1", 2: "+2", 3: "≥+3"}
+    return {
+        "settled": hits + misses,
+        "hits": hits,
+        "misses": misses,
+        "unparsed": unparsed,
+        "inside_gap": inside_gap,
+        "below": left,
+        "above": right,
+        "adjacent": adjacent,
+        "far": far,
+        "histogram": [
+            {"offset": labels[key], "count": hist[key]}
+            for key in (-3, -2, -1, 1, 2, 3)
+            if hist[key]
+        ],
+    }
 
 
 def _resting_entry_trend(conn: sqlite3.Connection) -> list[dict[str, Any]]:
@@ -1041,6 +1201,23 @@ REFUSAL_LABELS = {
         "目标函数看过，不下注",
         "篮子凑出来了、价也定了，赢面还是低于要价，买下去会亏对数财富。"
         "这是策略在工作，不是故障。",
+    ),
+    "certainty_gate_lit": (
+        "市场已定价完毕，主动等下一轮",
+        "中心桶连着三次决策没动过，或者头两个桶已经占了六成概率——"
+        "两者任一亮起，就说明我们的证据和市场的证据已经收敛，"
+        "而收敛的那份溢价市场早就收过了。这一轮什么都不做，"
+        "走到下一个决策时刻重新看。注意它跟「赔率不划算」是相反的两件事："
+        "那一条是目标函数算过嫌贵，这一条是目标函数压根没被问到。"
+        "2026-08-24 之前这两件事共用一个代号，"
+        "看板把每一次主动等待都写成了「赔率不划算」。",
+    ),
+    "unquoted_ideal_window": (
+        "理想窗口没人报价",
+        "中心桶及其左右各一档里，能凑够八成概率质量的桶都没有像样的卖价。"
+        "市场不在这几个桶上认真挂单，往往不是疏忽，是它已经判定这些桶不会发生。"
+        "这时候看着便宜的篮子，买的是别人不要的东西。默认关闭，"
+        "由前向验证攒够样本后自动启用。",
     ),
     "cost_exceeds_payout": (
         "整篮报价高过满额赔付",
@@ -1478,6 +1655,14 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
                     "centre_bucket": row["centre_bucket"],
                     "win_probability": row["win_probability"],
                     "all_in_cost": row["all_in_cost"],
+                    # Charter 54/55/58 read directly off the cell: the mean
+                    # centre is the rung, the skew sign is the gate's own
+                    # reading, the edge is the whole-basket EV the price
+                    # gate admitted on, and the ask total is what crossing
+                    # the book would have paid for the same window.
+                    "edge": row["edge"],
+                    "skew_sign": row["skew_sign"],
+                    "ask_total": row["seat_top_of_book_total"],
                     "odds": row["odds"],
                     "side": row["side"],
                     "lean_buckets": row["lean_buckets"],
@@ -1673,7 +1858,8 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         # different rule instead of repeating the same string on every cell.
         "current_selection_rule_label": SELECTION_RULE_LABEL,
         "basket_hit_by_size": _basket_hit_by_size(conn),
-        "posted_basket_hit": _posted_basket_hit_trend(conn),
+        "chosen_basket_hit": _posted_basket_hit_trend(conn),
+        "chosen_miss_offsets": _chosen_miss_offsets(conn),
         "consolidation_split": _consolidation_split(conn),
         "maker_probe": _maker_probe(conn),
         "resting_entry": _resting_entry_stats(conn),

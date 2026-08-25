@@ -76,13 +76,29 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     MAKER_COVERAGE_RISK_BUDGET,
     MAKER_COVERAGE_VALUE_LAMBDA,
     MAKER_HEDGE_VALUE_LAMBDA,
+    LADDER_CENTER_DEFINITION,
+    MAKER_LADDER_IMPROVE_TICKS,
     MAKER_LADDER_STEPS,
     CERTAINTY_GATE_SIGNALS,
     MAKER_SHOULDER_VALUE_LAMBDA,
     MINIMUM_LEG_ALL_IN_ASK,
+    OPENING_FALLBACK_MIN_BUCKETS,
+    OPENING_WIDTH_FALLBACK_ENABLED,
     P1_MINIMUM_SUPPORT_BUCKETS,
+    SKEW_EXTENSION_RULE,
+    SKEW_GAP_THRESHOLD_BUCKETS,
+    SKEW_PLACEMENT_MODE,
+    SKEW_SIGNAL_DEFINITION,
+    SUPPORT_EDGE_MARGIN,
     WINDOW_REFUSAL_FUNNEL,
     _support_windows,
+)
+from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
+    SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
+)
+from bayes_basket_target.center_width_calibration import (  # noqa: E402
+    apply_center_width_calibration,
+    bucket_centers_from_intervals,
 )
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
@@ -138,16 +154,64 @@ BOOK_MODEL = "one_book_per_station_day_top_up_only"
 # (maker -68.2u, taker -145.7u) while P0-M and P1 carry the whole book, and
 # P0 spends at the moment of least information -- so how much of the bankroll
 # should the opening stage be allowed to burn for its seat?
-# Refuse to open at a cycle where these certainty signs are lit, and walk
-# on to the next one.  Empty means off, which is the shipped behaviour.
-# Production owns this (``delta_v2_runtime.CERTAINTY_GATE_SIGNALS``,
-# ("stable","sharp") as of the 2026-08-22 sweep).  With the env unset the
-# two are the same tuple by construction; a sweep can still move it here.
+# Refuse to act at a cycle where these certainty signs are lit, and walk on
+# to the next one.  Empty means off.  Production owns this
+# (``delta_v2_runtime.CERTAINTY_GATE_SIGNALS``, ("stable","sharp") as of the
+# 2026-08-22 sweep).  With the env unset the two are the same tuple by
+# construction; a sweep can still move it here.
+#
+# "Act", not "open": the live gate carries no stage condition, so it refuses
+# an opening at P0 and a top-up at P0-M/P1 alike.  The ledger matched only
+# the opening half until 2026-08-24 -- see the gate site for what that cost
+# the measurement.
 CERTAINTY_GATE = tuple(
     part.strip() for part in
     (os.environ.get("PAPER_LEDGER_CERTAINTY_GATE", "") or "").split(",")
     if part.strip()
 ) or CERTAINTY_GATE_SIGNALS
+# Refuse where the market never made a book on the window we want (research
+# knob, 2026-08-24).  The other two certainty signs refuse where the market
+# has finished pricing; this asks the opposite question -- whether it ever
+# started -- and it is a REQUIREMENT, not a sign: the refusal fires when
+# ``quoted`` is dark, not when it is lit.
+#
+# It exists because the sign's own measurement inverted.  On 2026-08-21 a
+# fully-quoted ideal window scored -39.7% against +15.6% for an unquoted
+# one, and that reading is void: it was taken under the ``touch`` fill
+# assumption and over a book that still carried the pre-charter-50 chains.
+# Re-measured on the honest book with the gate in force, the ordering is
+# the other way and far starker -- 94 quoted chains at -8.5% and 26.6% hit
+# against 9 unquoted ones at -100.0% and no hit at all, every one of them
+# settling for a total loss.  The mechanism is in the price, not the shape:
+# the two strata seat almost identical windows (mean 2.21 vs 2.11 buckets)
+# but the unquoted baskets cost half as much (0.115 vs 0.245), so what
+# looks like a cheap seat is a seat in buckets the book declined to price.
+# Nine chains cannot carry a rule on their own (all-miss at the quoted
+# stratum's hit rate has p ~= 0.066), which is why this ships off.
+#
+# Off in code, on by evidence: the forward lane
+# (``scripts/quoted_gate_forward_probe.py``) promotes it by writing its
+# verdict to the activation file, and the env var stays as the sweep's
+# override.  Promotion is data so that the thing which turns a rule on is
+# the same artefact that records why -- and so turning it off again is an
+# edit to a file rather than a deploy.
+_QUOTED_ACTIVATION = ROOT / "data" / "quoted_gate_activation.json"
+
+
+def _quoted_gate_promoted() -> bool:
+    try:
+        record = json.loads(_QUOTED_ACTIVATION.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return bool(record.get("active")) and not bool(record.get("frozen"))
+
+
+_REQUIRE_QUOTED_ENV = os.environ.get("PAPER_LEDGER_REQUIRE_QUOTED", "").strip()
+REQUIRE_QUOTED_BOOK = (
+    _REQUIRE_QUOTED_ENV.lower() in {"1", "true", "yes", "on"}
+    if _REQUIRE_QUOTED_ENV
+    else _quoted_gate_promoted()
+)
 STAGE_BUDGET_SHARE = {
     "P0": float(os.environ.get("PAPER_LEDGER_P0_BUDGET_SHARE", "0.6") or 0.6),
     "P0-M": 0.8,
@@ -259,18 +323,28 @@ REFUSAL_DEPTH = {
     # above and shallower than the two below, which is exactly where it sat
     # in the funnel.
     "negative_edge_window": 4,
+    # One layer of our own: a basket cleared every structural floor, carried
+    # a price on every leg and beat the friction -- and a rule of ours
+    # declined to act on it anyway, before the objective was ever consulted.
+    # Deeper than the edge gate, which judged a price, and shallower than the
+    # objective, which never saw one.  These two are the only refusals in the
+    # table whose owner is neither the book nor the model but our own clock,
+    # and putting them on the objective's layer is what let 251 waits be
+    # reported as "the odds were not worth it" until 2026-08-24.
+    "unquoted_ideal_window": 5,
+    "certainty_gate_lit": 5,
     # One layer: a basket was assembled, priced and put to the objective, and
     # no stake followed.  Which of the two is reported depends on whether the
     # price left the objective anything to judge.
-    "no_positive_kelly": 5,
-    "cost_exceeds_payout": 5,
-    "no_depth": 6,
-    "no_top_up_needed": 6,
+    "no_positive_kelly": 6,
+    "cost_exceeds_payout": 6,
+    "no_depth": 7,
+    "no_top_up_needed": 7,
     # One layer: the order was posted and bought nothing.  Which of the two
     # is reported turns on whether we cancelled it or the book never came.
-    "resting_unfilled": 7,
-    "belief_withdrew_order": 7,
-    "chain_never_opened": 8,
+    "resting_unfilled": 8,
+    "belief_withdrew_order": 8,
+    "chain_never_opened": 9,
 }
 # Which bucket-selection rule this sweep runs.  ``live`` is production's own
 # ``_support_windows`` ordering; the rest exist so a strategy question can be
@@ -339,7 +413,49 @@ MAKER_RESTING_REPRICE_MINUTES = float(
 # order rather than a crossing trade).  Size is split evenly, because
 # weighting it toward the cheap end reintroduces the same "hope the market
 # collapses" bet the shape work just removed.
-MAKER_RESTING_IMPROVE_TICKS = 1
+# How far above the bid the cheapest rung sits.  Production owns this number
+# (``delta_v2_runtime.MAKER_LADDER_IMPROVE_TICKS``); it lived here as a bare
+# literal that happened to equal production's, which is agreement rather than
+# construction -- the same divergence the ladder-steps note above describes.
+#
+# It is the free side of the value line: the band's high is still
+# min(ask, value_cap) - tick, so lifting the low end never pays above what a
+# leg is worth to us.  It only decides how much of the band is spent fishing
+# the bottom, and the bottom is where a fill means the market came down onto
+# a price we had left standing -- the same free option a slow re-pricing
+# cadence hands the counterparty, measured on the time axis rather than the
+# price axis.
+MAKER_RESTING_IMPROVE_TICKS = int(
+    os.environ.get("PAPER_LEDGER_MAKER_IMPROVE_TICKS", "")
+    or MAKER_LADDER_IMPROVE_TICKS
+)
+# Where the band's dear end sits.  Unset: one tick under the ask, which is
+# the resting contract -- at the ask the order is crossing, not resting.
+# ``ask`` is the research arm for "post at the ask so the winning leg
+# cannot be missed": under the touch fill model the top rung fills the
+# moment it posts, so this arm buys completion at taker prices while the
+# lower rungs still fish the dips.  It exists to price the 21-of-36
+# settled chains (2026-08-24) whose winning leg sat posted and never
+# filled; it is not a maker economics claim.
+MAKER_RESTING_BAND_TOP = (
+    os.environ.get("PAPER_LEDGER_MAKER_BAND_TOP", "").strip().lower()
+)
+# Research arm (2026-08-25): apply the centre/width scalars the calibration
+# layer fitted but never activated, per stage, to the replayed distribution
+# before any selection reads it.  JSON of {stage: [delta_c, width_lambda]}.
+# The transform is production's own ``apply_center_width_calibration`` --
+# the audit must not reimplement the rule -- but the placement is an
+# approximation the measurement has to own: the stored bridge rows were
+# served with identity centre/width and the band factors already applied,
+# so this applies the axis correction after banding where production would
+# apply it before.  Empty means off, which is the shipped behaviour.
+_CENTER_WIDTH_ENV = os.environ.get("PAPER_LEDGER_CENTER_WIDTH_JSON", "").strip()
+CENTER_WIDTH_OVERRIDE: dict[str, tuple[float, float]] = {}
+if _CENTER_WIDTH_ENV:
+    for _stage, _pair in json.loads(_CENTER_WIDTH_ENV).items():
+        CENTER_WIDTH_OVERRIDE[str(_stage)] = (
+            float(_pair[0]), float(_pair[1]),
+        )
 # Production owns this number (``delta_v2_runtime.MAKER_LADDER_STEPS``), which
 # carries the sweep that chose it.  The env override stays so a sweep can move
 # it here, but with the variable unset the two are the same number by
@@ -798,6 +914,57 @@ SELECTION_RULE_SHA256 = content_sha256({
     # values describe a different execution.
     "maker_horizon_minutes": MAKER_RESTING_HORIZON_MINUTES,
     "maker_reprice_minutes": MAKER_RESTING_REPRICE_MINUTES,
+    "maker_improve_ticks": MAKER_RESTING_IMPROVE_TICKS,
+    # Conditional so the default book's fingerprint is untouched: the knob
+    # is a research arm, and hashing its empty default would re-derive
+    # every production row for a rule nothing runs.
+    **(
+        {"maker_band_top": MAKER_RESTING_BAND_TOP}
+        if MAKER_RESTING_BAND_TOP else {}
+    ),
+    # Unconditional since the 2026-08-25 charter 54 flip to ``mean``: the
+    # definition is now a live rule, not a research arm, and rows either
+    # side of any future change must not share a fingerprint.  The
+    # definition itself lives in ``delta_v2_runtime`` so production and
+    # this ledger move together.
+    "ladder_center_definition": LADDER_CENTER_DEFINITION,
+    # Charter 55 (2026-08-25): the mean-mode gap gates which side a window
+    # may extend toward.  A live rule, hashed unconditionally.
+    "skew_extension_rule": SKEW_EXTENSION_RULE,
+    # Research arm: which statistic reads the skew.  Hashed only when it
+    # departs the charter-55 default so the standing book keeps its sha.
+    **(
+        {"skew_signal_definition": SKEW_SIGNAL_DEFINITION}
+        if SKEW_SIGNAL_DEFINITION != "mean_mode" else {}
+    ),
+    **(
+        {"skew_placement_mode": SKEW_PLACEMENT_MODE}
+        if SKEW_PLACEMENT_MODE != "free" else {}
+    ),
+    **(
+        {"skew_gap_threshold_buckets": SKEW_GAP_THRESHOLD_BUCKETS}
+        if SKEW_GAP_THRESHOLD_BUCKETS != 0.5 else {}
+    ),
+    # Charter 58 (2026-08-25): the window price gate is whole-basket
+    # positive EV with no friction buffer.  These two were never hashed
+    # before -- a change to them would have re-derived nothing -- which the
+    # charter-58 flip is the wrong moment to leave standing.
+    "support_edge_friction_ticks_per_leg": SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
+    "support_edge_margin": SUPPORT_EDGE_MARGIN,
+    # Charter 59b: the two-rung fallback pass is off by default (vetoed at
+    # -71% lane ROI); the key is hashed only when the research arm enables
+    # it, so the no-fallback book keeps the charter-58 fingerprint.
+    **(
+        {"opening_fallback_min_buckets": OPENING_FALLBACK_MIN_BUCKETS}
+        if OPENING_WIDTH_FALLBACK_ENABLED else {}
+    ),
+    **(
+        {"center_width_override": {
+            stage: list(pair)
+            for stage, pair in sorted(CENTER_WIDTH_OVERRIDE.items())
+        }}
+        if CENTER_WIDTH_OVERRIDE else {}
+    ),
     # How the band moves while the order rests.  The floor's climb, the
     # price cap on a re-post, and the fact that a bought-out ladder is
     # replenished up to its posted depth all change which rungs fill, and
@@ -858,6 +1025,16 @@ SELECTION_RULE_SHA256 = content_sha256({
     # Which share of that cap each stage may have committed by its
     # end.  It changes what every seat after the first may be.
     "certainty_gate": list(CERTAINTY_GATE),
+    # Which decisions the gate judges.  It stopped being the opener's alone
+    # on 2026-08-24, when the ledger was aligned to the live rule, and that
+    # changes what a chain *is* -- a refused top-up leaves a held position
+    # unchanged where the old scope would have added to it.  Rows either
+    # side of the change describe different strategies and must not share a
+    # fingerprint.
+    "certainty_gate_scope": "every_stage",
+    # Whether an unpriced ideal window is a refusal.  It selects a different
+    # population, so rows either side of it are different books.
+    "require_quoted_book": REQUIRE_QUOTED_BOOK,
     "stage_budget_share": STAGE_BUDGET_SHARE,
     "maximum_support_buckets": MAXIMUM_SUPPORT_BUCKETS,
     "minimum_support_buckets": MINIMUM_SUPPORT_BUCKETS,
@@ -913,6 +1090,25 @@ REFUSAL_REASONS = (
     # to reach us, which points at execution when the cause was evidence.
     "belief_withdrew_order",
     "no_positive_kelly",
+    # We declined to act because the market had finished pricing the day --
+    # the centre had held for three decisions, or the top two buckets already
+    # carried 60% of the mass.  Folded into ``no_positive_kelly`` this read as
+    # "the objective priced it and refused", which is the opposite of what
+    # happened: the gate fires before any Kelly stake is computed, so the
+    # model was never asked.  Measured on 2026-08-24, 251 of the 400 rows
+    # carrying that code -- 63% of them -- were this, and the page was
+    # calling every one of them "赔率不划算".  Its owner is our own clock:
+    # the fix is to wait for a less-consolidated moment, not a better model
+    # and not a wider book.
+    "certainty_gate_lit",
+    # The market never made a book on the window we want: less than 80% of
+    # the mass in the ideal centre+-1 window sits on buckets asked at or
+    # above the leg floor.  Distinct from ``no_priced_window``, which is
+    # about a rung inside an already-legal window having no ask at all --
+    # this one is about the shape of the book around the centre, is measured
+    # before any window is enumerated, and ships off by default behind a
+    # forward lane.
+    "unquoted_ideal_window",
     # The basket asks more than the 1.00 it can ever pay.  Folded into
     # ``no_positive_kelly`` this read as "the objective looked and declined",
     # which credits a judgement to what is a loss by arithmetic: at a cost of
@@ -941,6 +1137,10 @@ GATE_REFUSAL_REASON = {
     "gapped": "no_legal_window",
     "center": "no_legal_window",
     "short": "no_legal_window",
+    # Charter 55: a window leaning against the day's own skew is a shape
+    # the rules refuse, the same structural family as the centre rung and
+    # the length floor.
+    "skew": "no_legal_window",
     "leg_floor": "leg_below_floor",
     "unpriced": "no_priced_window",
     "edge": "negative_edge_window",
@@ -950,9 +1150,10 @@ GATE_LABEL = {
     "gapped": "断桶",
     "center": "中心桶",
     "short": "桶数不足",
+    "skew": "逆偏斜扩边",
     "leg_floor": "单腿低于下限",
-    "unpriced": "无卖价",
-    "edge": "边际不敌摩擦",
+    "unpriced": "无法定价（视同非正EV）",
+    "edge": "整篮非正EV",
 }
 assert set(GATE_REFUSAL_REASON) == set(WINDOW_REFUSAL_FUNNEL)
 assert set(GATE_LABEL) == set(WINDOW_REFUSAL_FUNNEL)
@@ -1875,8 +2076,10 @@ def _resting_ladder(
     # at the ask the order is not resting, it is crossing, and the whole
     # point of this mode is to be paid the spread rather than pay it.  The
     # value cap can only ever lower that top, never raise it.
+    # MAKER_RESTING_BAND_TOP == "ask" lifts the top onto the ask itself --
+    # the research arm that pays the spread to guarantee the leg.
     capped = ask if value_cap is None else min(ask, float(value_cap))
-    high = capped - tick
+    high = capped if MAKER_RESTING_BAND_TOP == "ask" else capped - tick
     if high < tick / 2:
         return []
     low = min(bid + MAKER_RESTING_IMPROVE_TICKS * tick, high)
@@ -2410,7 +2613,7 @@ def _ladder_from_quote(
     if bid <= 0.0 or ask <= 0.0:
         return []
     capped = ask if ceiling is None else min(ask, float(ceiling))
-    high = capped - tick
+    high = capped if MAKER_RESTING_BAND_TOP == "ask" else capped - tick
     if high < tick / 2:
         return []
     low = min(bid + MAKER_RESTING_IMPROVE_TICKS * tick, high)
@@ -4112,6 +4315,30 @@ def backfill(
                         ))
                         continue
                     snapshot, probabilities, prices, depth = built
+                    # Research arm: the calibration layer's centre/width
+                    # scalars, applied with production's own transform
+                    # before anything -- centre included -- reads the
+                    # distribution.  See CENTER_WIDTH_OVERRIDE for why the
+                    # placement is an approximation.
+                    if CENTER_WIDTH_OVERRIDE.get(stage):
+                        delta_c, width_lambda = CENTER_WIDTH_OVERRIDE[stage]
+                        ordered = [str(r[0]) for r in payload["buckets"]]
+                        centers = bucket_centers_from_intervals(
+                            {
+                                str(r[0]): (r[2], r[3])
+                                for r in payload["buckets"]
+                            },
+                            ordered_keys=ordered,
+                        )
+                        probabilities, _cw_receipt = (
+                            apply_center_width_calibration(
+                                probabilities,
+                                delta_c=delta_c,
+                                width_lambda=width_lambda,
+                                ordered_keys=ordered,
+                                key_centers_c=centers,
+                            )
+                        )
                     center = payload["center_bucket"] or max(
                         probabilities, key=lambda b: probabilities[b]
                     )
@@ -4229,40 +4456,87 @@ def backfill(
                     # it realises 0.60 of itself conditional on trading, so
                     # the gate and the sizing may judge the shaded number
                     # while the row records the raw one.
+                    # The signs this cycle enters under.  Computed for every
+                    # stage, because two different rules read them and their
+                    # scopes are not the same.
+                    stage_consolidation = _consolidation_signals(
+                        conn,
+                        station_id=station_id,
+                        event_date=event_date,
+                        entry_decision_at_utc=payload["decision_at_utc"],
+                        probabilities=probabilities,
+                        ordinals=ordinals,
+                        quotes=quotes,
+                    )
+                    # Wait for a less-consolidated moment rather than act
+                    # into one the market has finished pricing.  Measured
+                    # read-only on the settled book: with a sign lit at
+                    # entry the stratum returns -50% to -55%, and unlit
+                    # +40% to +44% -- this asks what acting on that is
+                    # worth, which the read-only table cannot say.
+                    #
+                    # Every stage, not just the opener (2026-08-24).  This
+                    # gate lived under ``if stage == "P0"`` and so measured
+                    # a narrower rule than the one production runs: the
+                    # live gate sits in ``compile_delta_v2_runtime_plan``
+                    # with no stage condition at all, and the stage it
+                    # judges is whatever ``select_current_stage`` returns --
+                    # P0 while the day is still opening, P0-M or P1 once
+                    # that evidence lands.  So in production a lit sign
+                    # refuses an opening at P0 and refuses a *top-up* at
+                    # P0-M/P1, leaving the held position where it stands;
+                    # the ledger only ever modelled the first of those.
+                    # A ledger that scores a rule production does not run
+                    # cannot answer whether the rule is worth keeping,
+                    # which is the whole reason this book exists.
+                    #
+                    # One difference deliberately survives: the history
+                    # this reads is P0-only (``_consolidation_signals``
+                    # filters ``stage='P0'``) while production's
+                    # ``_earlier`` walks the envelope chain unfiltered, so
+                    # a P1 decision there can call the centre stable off a
+                    # run that includes P0-M/P1 centres.  Closing that too
+                    # would change the signal and the scope in one pass and
+                    # neither could be attributed; it is named here and
+                    # measured separately.
+                    # The opposite question, asked in the same breath: not
+                    # "has the market finished pricing this window" but
+                    # "did it ever price it at all".  Off by default; see
+                    # REQUIRE_QUOTED_BOOK for the measurement and why nine
+                    # chains do not yet carry a rule.
+                    if (
+                        REQUIRE_QUOTED_BOOK
+                        and stage_consolidation.get("quoted") is not True
+                    ):
+                        refusal = _deeper_refusal(refusal, (
+                            "unquoted_ideal_window",
+                            "理想窗口未被报价：中心±1 的质量不足 %.0f%% 有 ≥%g 卖价"
+                            % (100 * CONSOLIDATION_QUOTED_FRACTION,
+                               MINIMUM_LEG_ALL_IN_ASK),
+                            cycles, payload["decision_at_utc"],
+                        ))
+                        continue
+                    if CERTAINTY_GATE and any(
+                        stage_consolidation.get(name) is True
+                        for name in CERTAINTY_GATE
+                    ):
+                        refusal = _deeper_refusal(refusal, (
+                            "certainty_gate_lit",
+                            "确定性闸：%s 已亮" % "+".join(
+                                name for name in CERTAINTY_GATE
+                                if stage_consolidation.get(name) is True
+                            ),
+                            cycles, payload["decision_at_utc"],
+                        ))
+                        continue
                     # The opener's own entry signals decide the chain's
                     # stake scale; later stages inherit rather than
                     # re-earn -- the strata were measured on the P0 count.
+                    # Unlike the gate above, this stays P0-scoped: it is a
+                    # measured stake tilt, not production's rule.
                     seat_consolidation = None
                     if stage == "P0":
-                        seat_consolidation = _consolidation_signals(
-                            conn,
-                            station_id=station_id,
-                            event_date=event_date,
-                            entry_decision_at_utc=payload["decision_at_utc"],
-                            probabilities=probabilities,
-                            ordinals=ordinals,
-                            quotes=quotes,
-                        )
-                        # Wait for a less-consolidated moment rather than
-                        # seat into one the market has finished pricing.
-                        # Measured read-only on the settled book: with a
-                        # sign lit at entry the stratum returns -50% to
-                        # -55%, and unlit +40% to +44% -- this asks what
-                        # acting on that is worth, which the read-only
-                        # table cannot say.
-                        if CERTAINTY_GATE and any(
-                            seat_consolidation.get(name) is True
-                            for name in CERTAINTY_GATE
-                        ):
-                            refusal = _deeper_refusal(refusal, (
-                                "no_positive_kelly",
-                                "确定性闸：%s 已亮" % "+".join(
-                                    name for name in CERTAINTY_GATE
-                                    if seat_consolidation.get(name) is True
-                                ),
-                                cycles, payload["decision_at_utc"],
-                            ))
-                            continue
+                        seat_consolidation = stage_consolidation
                         tilt = (
                             CONSOLIDATION_TILT_FACTOR
                             if seat_consolidation["count"]
@@ -4799,21 +5073,12 @@ def backfill(
                             json.dumps(held_before, sort_keys=True),
                             json.dumps(held, sort_keys=True),
                             chain_stake,
+                            # The signs this stage entered under, already
+                            # computed for the gate.  A later stage used to
+                            # recompute them here from the same arguments;
+                            # one call now serves both.
                             json.dumps(
-                                seat_consolidation
-                                if seat_consolidation is not None
-                                else _consolidation_signals(
-                                    conn,
-                                    station_id=station_id,
-                                    event_date=event_date,
-                                    entry_decision_at_utc=payload[
-                                        "decision_at_utc"
-                                    ],
-                                    probabilities=probabilities,
-                                    ordinals=ordinals,
-                                    quotes=quotes,
-                                ),
-                                sort_keys=True,
+                                stage_consolidation, sort_keys=True,
                             ),
                         )
                     )

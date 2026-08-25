@@ -162,6 +162,27 @@ _LOCAL_TIME_BUCKETS = {
     "EVENING": range(18, 24),
 }
 _EPS = 1e-12
+
+
+def hard_bound_excluded_buckets(
+    ordered_buckets: Sequence[str],
+    upper_bounds: Mapping[str, float],
+    running_high_c: float,
+) -> tuple[str, ...]:
+    """Buckets the observed running high has already ruled out.
+
+    The one predicate for the settlement-fact bound, shared by every stage
+    since charter 61: a bucket whose upper edge the day has already reached
+    cannot hold the daily maximum, whatever any model claims.  ``<=`` at
+    the boundary and the float eps carry the measured lessons -- the LFPB
+    threshold case and the F-market conversion noise -- documented at the
+    original P1 call site.
+    """
+
+    return tuple(
+        bucket for bucket in ordered_buckets
+        if upper_bounds[bucket] <= running_high_c + _EPS
+    )
 _MAX_TRANSMISSION_LEAD = timedelta(
     seconds=MAX_REPORT_TRANSMISSION_LEAD_SECONDS
 )
@@ -1664,9 +1685,8 @@ def compile_metar_trajectory_update_proof(
     # The eps admits float noise in converted thresholds (an F-market bucket's
     # (U-30.6)/1.8 lands within 1e-15 of its exact value); at 0.5-degree
     # physical granularity it can never revive a genuinely live bucket.
-    excluded = tuple(
-        bucket for bucket in ordered_buckets
-        if upper_bounds[bucket] <= running_high + _EPS
+    excluded = hard_bound_excluded_buckets(
+        ordered_buckets, upper_bounds, running_high
     )
     survivors = [bucket for bucket in ordered_buckets if bucket not in excluded]
     if not survivors or sum(root.probabilities[bucket] for bucket in survivors) <= 0:

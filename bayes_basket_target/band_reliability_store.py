@@ -71,23 +71,21 @@ from typing import Any
 from .contracts import ContractError, content_sha256
 
 BAND_STAGES = ("P0", "P0-M", "P1")
-BAND_TABLE_CELLS = (
-    (0.00, 0.02),
-    (0.02, 0.12),
-    (0.12, 0.20),
-    (0.20, 0.35),
-    (0.35, 1.01),
-)
-FINE_BANDS = (
-    (0.00, 0.02),
-    (0.02, 0.05),
-    (0.05, 0.08),
-    (0.08, 0.12),
-    (0.02, 0.12),
-    (0.12, 0.20),
-    (0.20, 0.35),
-    (0.35, 1.01),
-)
+# Five-percent cells capped at 50% (user ruling, 2026-08-25, charter 60):
+# the fitting partition itself, not just the page that renders it, runs on
+# the same 5% grid as the section-six audit table, with everything claimed
+# at half or more pooled into one open top cell.  The admission rule per
+# cell is untouched -- thinner cells simply take longer to qualify and
+# promote themselves as evidence accumulates, which is the store's
+# standing contract.  Tables fitted under the old five-cell partition keep
+# serving the artifacts pinned to them; nothing is rewritten.
+BAND_TABLE_CELLS = tuple(
+    (round(step * 0.05, 2), round(step * 0.05 + 0.05, 2))
+    for step in range(10)
+) + ((0.50, 1.01),)
+# The diagnostics grid is the fitting grid now that the fitting grid is
+# fine enough to diagnose with.
+FINE_BANDS = BAND_TABLE_CELLS
 # A qualified cell still serves within these bounds.  The interval end
 # nearest one is modest by construction; the clamp only guards a future
 # degenerate fit (a handful of days, a wild interval) from serving an
@@ -493,6 +491,7 @@ def serving_lane_by_day(
     truth: Mapping[tuple[str, str], float],
     *,
     stage: str = "P0",
+    pre_band: bool = True,
 ) -> dict[str, list[list[tuple[float, int]]]]:
     """First decision per station-day for one stage, as pre-band claims.
 
@@ -553,7 +552,9 @@ def serving_lane_by_day(
             (float(probability), str(bucket))
             for bucket, _lower, _upper, probability in buckets
         ]
-        if receipt is not None:
+        # ``pre_band=False`` keeps the claims exactly as served, factors
+        # included -- the residual audit's view; the fit keeps inverting.
+        if receipt is not None and pre_band:
             keyed = _invert_band_receipt(keyed, receipt)
         hits = {}
         for bucket, lower, upper, _probability in buckets:

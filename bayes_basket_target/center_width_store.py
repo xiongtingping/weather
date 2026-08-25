@@ -82,6 +82,67 @@ MIN_FORWARD_NLL_GAIN = 0.005
 # them, and serving must use the same number or the correction lands
 # somewhere the measurement never looked.
 EDGE_WIDTH_C = 2.0
+# The TAF-conditional lane (user ruling, 2026-08-25, charter 57).  The
+# pooled scalar was measured to be an average over opposite regimes: the
+# P0-M residual runs +0.90C when the TAF's TX sits above the model centre,
+# -0.35C when below, +0.18C when they agree -- one number cannot serve all
+# three.  Each direction is its own cell, fitted from its own days under
+# the layer's own hurdles and admitted against the pooled candidate on its
+# own forward slice, so nothing here is a constant: a cell with too little
+# history serves the pooled scalars and promotes itself the day its
+# evidence clears.  ``none`` is the 28 stations whose TAF carries no TX --
+# a regime of its own, not a missing value.
+TAF_CELL_NAMES = ("warm", "agree", "cold", "none")
+TAF_GAP_THRESHOLD_C = 0.5
+
+
+def taf_direction_for_gap(gap_c: float | None) -> str:
+    """Which conditional cell a TAF-vs-centre gap belongs to.
+
+    One definition shared by the fit and the serve: a threshold that
+    drifted between them would train one regime and serve another.
+    """
+
+    if gap_c is None:
+        return "none"
+    if float(gap_c) > TAF_GAP_THRESHOLD_C:
+        return "warm"
+    if float(gap_c) < -TAF_GAP_THRESHOLD_C:
+        return "cold"
+    return "agree"
+
+
+def _annotate_taf_directions(
+    conn: sqlite3.Connection, cells: Sequence[Mapping[str, Any]]
+) -> None:
+    """Stamp each cell with the TAF direction its decision could have seen.
+
+    The forecast is the latest TX-carrying revision issued at or before the
+    cell's decision -- the same as-of rule the P0-M confirmation itself
+    uses, so the fit classifies days exactly the way serving will.
+    """
+
+    cache: dict[tuple[str, str, str], float | None] = {}
+    for cell in cells:
+        center = cell.get("model_center_c")
+        decided = str(cell.get("decision_at_utc") or "")
+        key = (str(cell["station_id"]), str(cell["event_date"]), decided)
+        if key not in cache:
+            row = conn.execute(
+                "SELECT tx_c FROM calibration_forward_taf_capture"
+                " WHERE station_id=? AND event_date=? AND tx_available=1"
+                " AND issued_at_utc<=?"
+                " ORDER BY issued_at_utc DESC LIMIT 1",
+                key,
+            ).fetchone()
+            cache[key] = (
+                None if row is None or row[0] is None else float(row[0])
+            )
+        tx = cache[key]
+        gap = (
+            None if tx is None or center is None else tx - float(center)
+        )
+        cell["taf_direction"] = taf_direction_for_gap(gap)  # type: ignore[index]
 
 _TABLE_DDL = (
     "CREATE TABLE IF NOT EXISTS calibration_center_width_table ("
@@ -163,6 +224,16 @@ def ensure_center_width_schema(conn: sqlite3.Connection) -> None:
     conn.execute(_JOURNAL_DDL)
     conn.execute(_STATION_TABLE_DDL)
     conn.execute(_STATION_JOURNAL_DDL)
+    # The TAF-conditional cells (charter 57) ride on the same row as the
+    # pooled scalars they refine; nullable so every pre-lane row keeps
+    # reading as pooled-only.
+    try:
+        conn.execute(
+            "ALTER TABLE calibration_center_width_table"
+            " ADD COLUMN taf_cells_json TEXT"
+        )
+    except sqlite3.OperationalError:
+        pass
     # ``CREATE TABLE IF NOT EXISTS`` will not widen the CHECK constraint on a
     # journal that already exists, so a new outcome value fails at insert with
     # a constraint error rather than being recorded.  Rebuild in place when
@@ -204,14 +275,26 @@ def _check_stage(stage: str) -> str:
 
 
 def center_width_sha256(
-    *, stage: str, delta_c: float, width_lambda: float
+    *, stage: str, delta_c: float, width_lambda: float,
+    taf_cells: Mapping[str, Sequence[float]] | None = None,
 ) -> str:
-    return content_sha256({
+    payload: dict[str, Any] = {
         "schema": "center_width_table_v1",
         "stage": _check_stage(stage),
         "delta_c": round(float(delta_c), 6),
         "width_lambda": round(float(width_lambda), 6),
-    })
+    }
+    # Conditional so a table with no cells keeps its historical digest --
+    # the pinned-version contract must keep resolving rows written before
+    # the lane existed.
+    if taf_cells:
+        payload["taf_cells"] = {
+            str(name): [
+                round(float(pair[0]), 6), round(float(pair[1]), 6),
+            ]
+            for name, pair in sorted(taf_cells.items())
+        }
+    return content_sha256(payload)
 
 
 def pinned_center_width_sha(combination_method: str) -> str | None:
@@ -269,6 +352,51 @@ def load_center_width(
             raise ContractError("center_width_pinned_table_missing")
         return None
     return float(row[0]), float(row[1]), str(row[2])
+
+
+def load_center_width_cells(
+    conn: sqlite3.Connection,
+    *,
+    stage: str,
+    table_sha256: str | None = None,
+) -> dict[str, tuple[float, float]] | None:
+    """The active (or pinned) table's TAF-conditional cells, if any.
+
+    Same resolution and fail-closed rules as ``load_center_width``; None
+    means the table serves pooled-only, which is every table written
+    before the lane existed and every fit whose cells are still
+    accumulating.
+    """
+
+    stage_id = _check_stage(stage)
+    try:
+        if table_sha256 is None:
+            row = conn.execute(
+                "SELECT taf_cells_json"
+                " FROM calibration_center_width_table"
+                " WHERE activated=1 AND stage=?",
+                (stage_id,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT taf_cells_json"
+                " FROM calibration_center_width_table"
+                " WHERE center_width_sha256=?",
+                (str(table_sha256),),
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if row is None or not row[0]:
+        return None
+    try:
+        cells = json.loads(str(row[0]))
+    except (TypeError, ValueError):
+        return None
+    return {
+        str(name): (float(pair[0]), float(pair[1]))
+        for name, pair in cells.items()
+        if isinstance(pair, Sequence) and len(pair) >= 2
+    } or None
 
 
 STATION_WIDTH_METHOD_TAG = "station_width_scale_v1"
@@ -666,6 +794,7 @@ def serving_cells_by_day(
     *,
     stage: str,
     min_decision_at_utc: str | None = None,
+    pre_band: bool = True,
 ) -> dict[str, list[dict[str, Any]]]:
     """One scoreable cell per station-day-stage-hourblock.
 
@@ -727,7 +856,11 @@ def serving_cells_by_day(
         # undone exactly rather than estimated.  Fitting on the served claim
         # would search the shift and width against a distribution this layer
         # never sees.
-        probabilities = _pre_band_claim(probabilities, lineage)
+        # ``pre_band=False`` keeps the claim exactly as it was served --
+        # band factors included -- which is what a residual audit of the
+        # correction wants to see; the fit itself keeps inverting.
+        if pre_band:
+            probabilities = _pre_band_claim(probabilities, lineage)
         keys = sorted(probabilities, key=lambda key: ordinals.get(key, 0))
         try:
             centers = bucket_centers_from_intervals(
@@ -767,6 +900,11 @@ def serving_cells_by_day(
         cell = {
             "station_id": str(station),
             "event_date": str(day),
+            # The TAF-conditional lane needs to know which forecast the
+            # decision could have seen and where the model centre stood;
+            # both are properties of this decision, not of the day.
+            "decision_at_utc": str(decided),
+            "model_center_c": lineage.get("model_center_c"),
             "probabilities": {
                 str(key): float(value) for key, value in probabilities.items()
             },
@@ -991,6 +1129,61 @@ def fit_center_width(
         "candidate_nll_all": _mean_nll(cells, delta_c=delta, width_lambda=lam),
     })
     admitted = gain > MIN_FORWARD_NLL_GAIN
+    # The TAF-conditional lane (charter 57): each direction fits its own
+    # scalars from its own slice of the same train/forward split, and is
+    # admitted only where it beats the POOLED candidate on its own forward
+    # cells -- the pooled pair is what would serve that day otherwise, so
+    # beating identity is not enough.  A cell short of the layer's own
+    # hurdles stays out and its days keep serving the pooled scalars;
+    # nothing is a constant, and the report shows each cell accumulate
+    # until it promotes itself.
+    _annotate_taf_directions(conn, cells)
+    served_delta = delta if admitted else base[0]
+    served_lambda = lam if admitted else base[1]
+    taf_cells: dict[str, list[float]] = {}
+    taf_evidence: dict[str, Any] = {}
+    for name in TAF_CELL_NAMES:
+        group_train = [
+            c for c in train if c.get("taf_direction") == name
+        ]
+        group_forward = [
+            c for c in forward if c.get("taf_direction") == name
+        ]
+        group_days = {
+            c["event_date"] for c in group_train + group_forward
+        }
+        entry: dict[str, Any] = {
+            "day_count": len(group_days),
+            "train_cell_count": len(group_train),
+            "forward_cell_count": len(group_forward),
+        }
+        taf_evidence[name] = entry
+        if (
+            len(group_days) < MIN_QUALIFYING_DAYS
+            or len(group_train) + len(group_forward) < MIN_QUALIFYING_CELLS
+            or not group_train or not group_forward
+        ):
+            entry["state"] = "ACCUMULATING"
+            continue
+        cell_delta, cell_lambda, _ = _search(group_train)
+        pooled_nll = _mean_nll(
+            group_forward, delta_c=served_delta, width_lambda=served_lambda
+        )
+        cell_nll = _mean_nll(
+            group_forward, delta_c=cell_delta, width_lambda=cell_lambda
+        )
+        cell_gain = pooled_nll - cell_nll
+        entry.update({
+            "candidate_delta_c": cell_delta,
+            "candidate_width_lambda": cell_lambda,
+            "forward_nll_gain_vs_pooled": cell_gain,
+        })
+        if cell_gain > MIN_FORWARD_NLL_GAIN:
+            entry["state"] = "ADMITTED"
+            taf_cells[name] = [cell_delta, cell_lambda]
+        else:
+            entry["state"] = "REFUSED_FORWARD"
+    evidence["taf_cells"] = taf_evidence
     return {
         "stage": stage_id,
         "delta_c": delta if admitted else base[0],
@@ -1002,6 +1195,7 @@ def fit_center_width(
         "accumulating": False,
         "serving_day_count": len(days),
         "serving_cell_count": len(cells),
+        "taf_cells": taf_cells,
         "evidence": evidence,
     }
 
@@ -1015,17 +1209,29 @@ def persist_and_activate_center_width(
     evidence: Mapping[str, Any],
     serving_day_count: int,
     fitted_at_utc: str | None = None,
+    taf_cells: Mapping[str, Sequence[float]] | None = None,
 ) -> dict[str, Any]:
     stage_id = _check_stage(stage)
     ensure_center_width_schema(conn)
     digest = center_width_sha256(
-        stage=stage_id, delta_c=delta_c, width_lambda=width_lambda
+        stage=stage_id, delta_c=delta_c, width_lambda=width_lambda,
+        taf_cells=taf_cells,
     )
     active = load_center_width(conn, stage=stage_id)
     if active is not None and active[2] == digest:
         return {"state": "UNCHANGED", "center_width_sha256": digest}
     now = fitted_at_utc or datetime.now(timezone.utc).isoformat().replace(
         "+00:00", "Z"
+    )
+    cells_json = (
+        json.dumps(
+            {
+                str(name): [float(pair[0]), float(pair[1])]
+                for name, pair in sorted(taf_cells.items())
+            },
+            ensure_ascii=False, sort_keys=True,
+        )
+        if taf_cells else None
     )
     # Explicit acquisition rather than the implicit transaction the first
     # INSERT would open: the retry budget is the point, not the isolation.
@@ -1035,18 +1241,20 @@ def persist_and_activate_center_width(
             "INSERT INTO calibration_center_width_table ("
             " center_width_sha256, stage, delta_c, width_lambda,"
             " evidence_json,"
-            " fitted_at_utc, serving_day_count, activated, activated_at_utc"
-            ") VALUES (?,?,?,?,?,?,?,0,NULL)"
+            " fitted_at_utc, serving_day_count, activated, activated_at_utc,"
+            " taf_cells_json"
+            ") VALUES (?,?,?,?,?,?,?,0,NULL,?)"
             " ON CONFLICT(center_width_sha256) DO UPDATE SET"
             "  evidence_json=excluded.evidence_json,"
             "  fitted_at_utc=excluded.fitted_at_utc,"
-            "  serving_day_count=excluded.serving_day_count",
+            "  serving_day_count=excluded.serving_day_count,"
+            "  taf_cells_json=excluded.taf_cells_json",
             (
                 digest, stage_id, float(delta_c), float(width_lambda),
                 json.dumps(
                     dict(evidence), ensure_ascii=False, sort_keys=True
                 ),
-                now, int(serving_day_count),
+                now, int(serving_day_count), cells_json,
             ),
         )
         conn.execute(
@@ -1177,6 +1385,13 @@ def refit_all_center_width(
                 "serving_day_count": fitted["serving_day_count"],
                 "serving_cell_count": fitted["serving_cell_count"],
                 "min_decision_at_utc": min_decision_at_utc,
+                "taf_cells": fitted.get("taf_cells") or {},
+                "taf_cell_states": {
+                    name: str(detail.get("state") or "")
+                    for name, detail in (
+                        fitted["evidence"].get("taf_cells") or {}
+                    ).items()
+                },
             })
             if commit:
                 if stage not in CENTER_WIDTH_SERVED_STAGES:
@@ -1193,6 +1408,7 @@ def refit_all_center_width(
                         width_lambda=fitted["width_lambda"],
                         evidence=fitted["evidence"],
                         serving_day_count=fitted["serving_day_count"],
+                        taf_cells=fitted.get("taf_cells") or None,
                     )
                     entry["commit"] = committed
                     outcome = str(committed["state"])

@@ -26,7 +26,7 @@ from .center_width_calibration import (
     apply_center_width_calibration,
     bucket_centers_from_intervals,
 )
-from .center_width_store import EDGE_WIDTH_C
+from .center_width_store import EDGE_WIDTH_C, taf_direction_for_gap
 from .cross_consensus import apply_band_reliability
 from .et_history import assert_event_day_started
 from .metar_ceiling import apply_ceiling as apply_metar_ceiling
@@ -819,11 +819,17 @@ def materialize_p0m_observed(
     fresh_until_utc: str,
     bridge_sha256: str,
     checkpoint_id: str | None = None,
-    posterior_version: str = "p0m_taf_observed_v1",
+    # v2: the settlement-fact hard bound (charter 61) joined the stage's
+    # arithmetic -- buckets the day's observed high has already ruled out
+    # are excluded before normalisation, exactly as P1 has always done.
+    posterior_version: str = "p0m_taf_observed_v2",
+    observed_hard_excluded_buckets: Sequence[str] = (),
+    observed_running_high_c: float | None = None,
     band_table: tuple[
         Sequence[tuple[tuple[float, float], float]], str
     ] | None = None,
     center_width: tuple[float, float, str] | None = None,
+    center_width_taf_cells: Mapping[str, Sequence[float]] | None = None,
     station_width: tuple[Mapping[str, float], str] | None = None,
 ) -> ProbabilityEnvelope:
     """Seat P0-M on a TAF that arrived without a calibrated correction.
@@ -881,6 +887,17 @@ def materialize_p0m_observed(
                 "NONE" if taf_tx_c is None else f"{float(taf_tx_c):.17g}"
             ),
             "taf_hard_exclusion": "FORBIDDEN",
+            # Charter 61: the exclusion below is the OBSERVED-high fact,
+            # not a TAF judgement -- the FORBIDDEN above still holds for
+            # anything TAF-derived.
+            "observed_running_high_c": (
+                "NONE" if observed_running_high_c is None
+                else f"{float(observed_running_high_c):.17g}"
+            ),
+            "observed_hard_excluded_buckets": (
+                ",".join(str(b) for b in observed_hard_excluded_buckets)
+                or "NONE"
+            ),
         },
         predecessor=previous,
         required=("forecast_revision_id", "forecast_source_object_sha256"),
@@ -889,10 +906,40 @@ def materialize_p0m_observed(
     values["p0_root_content_sha256"] = root.content_sha256
     values["p0_root_posterior_sha256"] = root.posterior_sha256
     values["revision_mode"] = "observed_without_artifact"
+    # Charter 57: the day's TAF direction picks which fitted cell of the
+    # active table serves this decision.  The gap rule is the store's own
+    # (``taf_direction_for_gap``), read against the root's centre, so the
+    # fit and the serve classify a day identically; the table sha is
+    # unchanged because the cells are part of the pinned version, and the
+    # lineage records which cell was chosen.  A direction with no admitted
+    # cell serves the pooled scalars, which is also every day until the
+    # first cell earns its way in.
+    if center_width is not None and center_width_taf_cells:
+        raw_center = root.lineage.get("model_center_c")
+        try:
+            root_center = (
+                None if raw_center in (None, "", "NONE")
+                else float(raw_center)
+            )
+        except (TypeError, ValueError):
+            root_center = None
+        gap = (
+            None
+            if taf_tx_c is None or root_center is None
+            else float(taf_tx_c) - root_center
+        )
+        cell_name = taf_direction_for_gap(gap)
+        pair = center_width_taf_cells.get(cell_name)
+        if pair is not None:
+            center_width = (
+                float(pair[0]), float(pair[1]), center_width[2],
+            )
+        values["center_width_taf_cell"] = cell_name
     return _posterior(
         root,
         stage="P0-M",
         likelihoods={bucket: 1.0 for bucket in root.probabilities},
+        hard_excluded_buckets=tuple(observed_hard_excluded_buckets),
         lineage=values,
         checkpoint_id=checkpoint_id,
         posterior_version=posterior_version,
@@ -915,13 +962,18 @@ def materialize_p0m(
     fresh_until_utc: str,
     bridge_sha256: str,
     checkpoint_id: str | None = None,
-    posterior_version: str = "p0m_taf_target_v1",
+    # v2: charter 61 -- the observed-high hard bound is part of the stage's
+    # arithmetic, same as the observed path.
+    posterior_version: str = "p0m_taf_target_v2",
     revision: bool = False,
     band_table: tuple[
         Sequence[tuple[tuple[float, float], float]], str
     ] | None = None,
     center_width: tuple[float, float, str] | None = None,
+    center_width_taf_cells: Mapping[str, Sequence[float]] | None = None,
     station_width: tuple[Mapping[str, float], str] | None = None,
+    observed_hard_excluded_buckets: Sequence[str] = (),
+    observed_running_high_c: float | None = None,
 ) -> ProbabilityEnvelope:
     """Materialize TAF confirmation/correction as the P0-M checkpoint.
 
@@ -1016,6 +1068,38 @@ def materialize_p0m(
             f"{proof.physically_confirmed_center_c:.12g}"
         )
     _sha("forecast_source_object_sha256", values["forecast_source_object_sha256"])
+    # Charter 57, same selection as the observed path: the proof's own TX
+    # against the root centre picks the fitted cell; a direction with no
+    # admitted cell serves the pooled scalars.
+    if center_width is not None and center_width_taf_cells:
+        raw_center = root.lineage.get("model_center_c")
+        try:
+            root_center = (
+                None if raw_center in (None, "", "NONE")
+                else float(raw_center)
+            )
+        except (TypeError, ValueError):
+            root_center = None
+        gap = (
+            None if root_center is None
+            else float(proof.taf_tx_c) - root_center
+        )
+        cell_name = taf_direction_for_gap(gap)
+        pair = center_width_taf_cells.get(cell_name)
+        if pair is not None:
+            center_width = (
+                float(pair[0]), float(pair[1]), center_width[2],
+            )
+        values["center_width_taf_cell"] = cell_name
+    # Charter 61: the observed-high fact, recorded and applied exactly as
+    # on the observed path.
+    values["observed_running_high_c"] = (
+        "NONE" if observed_running_high_c is None
+        else f"{float(observed_running_high_c):.17g}"
+    )
+    values["observed_hard_excluded_buckets"] = (
+        ",".join(str(b) for b in observed_hard_excluded_buckets) or "NONE"
+    )
     return _posterior(
         root,
         stage=stage,
@@ -1024,6 +1108,7 @@ def materialize_p0m(
             proof.likelihood_ratio_by_bucket,
             name="forecast_likelihood_ratio",
         ),
+        hard_excluded_buckets=tuple(observed_hard_excluded_buckets),
         lineage=values,
         checkpoint_id=checkpoint_id,
         posterior_version=posterior_version,

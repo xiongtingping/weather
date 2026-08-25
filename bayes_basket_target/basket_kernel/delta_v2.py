@@ -18,6 +18,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from itertools import combinations, product
 import math
+import os
 from typing import Any, Mapping, Sequence
 
 from .contracts import EPS, ContractError, content_sha256
@@ -680,7 +681,16 @@ def probability_core(
     return frozenset(ordered[low:high + 1])
 
 
-SUPPORT_EDGE_FRICTION_TICKS_PER_LEG = 1.0
+# Zero since 2026-08-25 (charter 58): the window price gate is whole-basket
+# positive EV and nothing else -- probability sum strictly above the all-in
+# price sum.  The one-tick-per-leg buffer this used to carry was a
+# quantisation-noise floor; the ruling removes it so the gate states the
+# criterion it always approximated, and an unpriceable window is simply the
+# trivial failure of the same test rather than a rule of its own.  The env
+# override remains for the research arm that wants the buffer back.
+SUPPORT_EDGE_FRICTION_TICKS_PER_LEG = float(
+    os.environ.get("PM_SUPPORT_EDGE_FRICTION_TICKS_PER_LEG", "") or 0.0
+)
 # ``candidate_kind`` is a load-bearing activation signal, not a label: the
 # state machine reads it to decide TRADE versus HOLD, and this kernel reads it
 # to know which candidate is the "spend nothing" option the floor exempts.
