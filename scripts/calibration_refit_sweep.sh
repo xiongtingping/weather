@@ -3,8 +3,9 @@
 # centre/width.  Hosted by the resident's sweep scheduler (2026-08-26) --
 # these two segments used to live only in the 02:00 crontab entry
 # (daily_calibration_training.sh), and macOS cron silently skips a run
-# when the machine sleeps through the minute: 2026-08-26 lost its round
-# exactly that way, which stalls the evidence clocks this repo's ETA
+# when the machine sleeps through the minute: the band fit journal shows
+# no cron round on 2026-08-16 or 2026-08-19 -- two silent losses in ten
+# days -- and a missed round stalls the evidence clocks this repo's ETA
 # math leans on.  A hosted sweep becomes due instead of scheduled, so a
 # missed minute is caught up on the next idle gap.
 #

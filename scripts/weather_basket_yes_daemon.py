@@ -205,8 +205,9 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     ("settlement_truth", "scripts/settlement_truth_sweep.sh", 1800.0, 900.0),
     # The two served calibration layers (band reliability, centre/width)
     # used to refit only from the 02:00 crontab, and macOS cron silently
-    # skips the minute when the machine sleeps through it -- 2026-08-26
-    # lost its round exactly that way, stalling both evidence clocks.
+    # skips the minute when the machine sleeps through it -- the fit
+    # journal shows no cron round on 2026-08-16 or 2026-08-19, two silent
+    # losses in ten days, each stalling both evidence clocks for a day.
     # Due-not-scheduled fixes that class; both refits are
     # content-addressed and admission-gated, so an early or doubled run
     # commits nothing new.
