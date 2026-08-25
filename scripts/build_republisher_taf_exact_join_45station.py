@@ -37,6 +37,7 @@ from bayes_basket_target.resource_bounds import (  # noqa: E402
     write_bounded_json_if_changed,
 )
 from bayes_basket_target.settlement_time import settlement_day_window  # noqa: E402
+from bayes_basket_target.station_season import station_season_bin  # noqa: E402
 from bayes_basket_target.taf_exact_join import build_taf_exact_join  # noqa: E402
 
 
@@ -274,7 +275,7 @@ def _taf_index(conn: sqlite3.Connection, stations: set[str], as_of: datetime) ->
                 "start_utc": settlement_day_window(day, timezone_name)["target_day_start_utc"],
                 "end_utc": settlement_day_window(day, timezone_name)["target_day_end_utc"],
             },
-            "season_bin": "JJA" if day[5:7] in {"06", "07", "08"} else "OTHER",
+            "season_bin": station_season_bin(station, day),
             "lead_bucket": "d0",
             "run_cycle": "REPUBLISHER_HISTORICAL_D0",
             "settlement_definition": "official_daily_tmax_c",

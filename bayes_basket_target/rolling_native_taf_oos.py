@@ -681,12 +681,28 @@ def build_rolling_origin_native_oos(
 def _bucket_intervals_for_candidate(
     conn: sqlite3.Connection,
     candidate: Mapping[str, Any],
-) -> dict[str, tuple[float | None, float | None]]:
-    """Resolve one frozen historical bucket contract, never a live fallback."""
+) -> dict[str, dict[str, tuple[float | None, float | None]]]:
+    """Each prediction day's frozen historical bucket contract, by day.
 
-    bucket_rows: list[tuple[Any, ...]] = []
+    The market ladder recentres around each event day's expected
+    temperature, so a multi-day series legitimately spans several bucket
+    contracts -- RPLL's moved eleven times in August 2026 alone.  The old
+    single-contract reading only ever held in stable-weather stretches
+    (RPLL's ladder sat still for all of July), and the moment ladders
+    started moving daily every series in the fleet failed its
+    "contract changed" guard -- which is what actually starved the
+    calibrated TAF lane from late July on.  Each day now resolves its own
+    ladder and is rebinned onto it; a day whose contract cannot be
+    resolved makes the whole series incomplete evidence, because scoring
+    that day on a neighbouring day's ladder is the wrong grid, not a
+    fallback.  Never a live fallback, same as before.
+    """
+
     system_id = str(candidate["selected_system_ids"][0])
     station_id = str(candidate["station_id"])
+    intervals_by_day: dict[
+        str, dict[str, tuple[float | None, float | None]]
+    ] = {}
     for prediction in candidate.get("predictions") or []:
         # The candidate's lead is the training group, measured in hours ahead;
         # the archive keys its buckets by the collector's calendar label.
@@ -739,10 +755,15 @@ def _bucket_intervals_for_candidate(
             # Historical bucket facts are keyed by their immutable member
             # set and archive receipt.  ``run_cycle`` exists on the related
             # member-run facts, but intentionally is not duplicated in this
-            # append-only bucket table.  A second result remains an explicit
-            # ambiguity and therefore fails closed below.
+            # append-only bucket table.  Multiple captures of one day are
+            # the norm, not an ambiguity: measured 2026-08-25, 3,296 groups
+            # carry more than one row and 2,706 of them are byte-identical
+            # re-captures.  Where the contracts genuinely differ (590
+            # groups) the market re-listed the ladder, and settlement
+            # happened on the final geometry -- so the newest capture is
+            # the contract this day actually settled under.
             "AND target_local_date=? AND archive_lead_bucket=? "
-            "ORDER BY archive_query_at_utc LIMIT 2",
+            "ORDER BY archive_query_at_utc DESC LIMIT 1",
             (
                 system_id,
                 station_id,
@@ -750,37 +771,37 @@ def _bucket_intervals_for_candidate(
                 calendar_leads[0],
             ),
         ).fetchall()
-        if len(found) > 1:
-            raise ContractError("rolling_native_taf_historical_bucket_ambiguous")
-        bucket_rows.extend(found)
-    if not bucket_rows:
-        raise ContractError("rolling_native_taf_historical_bucket_missing")
-    parsed = []
-    for (raw,) in bucket_rows:
+        if not found:
+            continue
         try:
-            value = json.loads(str(raw))
+            raw_intervals = json.loads(str(found[0][0]))
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
             raise ContractError("rolling_native_taf_historical_bucket_invalid") from exc
-        canonical = _json(value)
-        if canonical not in parsed:
-            parsed.append(canonical)
-    if len(parsed) != 1:
-        raise ContractError("rolling_native_taf_historical_bucket_changed")
-    raw_intervals = json.loads(parsed[0])
-    if not isinstance(raw_intervals, Mapping):
-        raise ContractError("rolling_native_taf_historical_bucket_invalid")
-    result: dict[str, tuple[float | None, float | None]] = {}
-    for bucket, bounds in raw_intervals.items():
-        if not isinstance(bounds, list) or len(bounds) != 2:
+        if not isinstance(raw_intervals, Mapping):
             raise ContractError("rolling_native_taf_historical_bucket_invalid")
-        lower = None if bounds[0] is None else float(bounds[0])
-        upper = None if bounds[1] is None else float(bounds[1])
-        if lower is not None and upper is not None and lower >= upper:
-            raise ContractError("rolling_native_taf_historical_bucket_invalid")
-        result[str(bucket)] = (lower, upper)
-    if not result:
-        raise ContractError("rolling_native_taf_historical_bucket_empty")
-    return result
+        result: dict[str, tuple[float | None, float | None]] = {}
+        for bucket, bounds in raw_intervals.items():
+            if not isinstance(bounds, list) or len(bounds) != 2:
+                raise ContractError("rolling_native_taf_historical_bucket_invalid")
+            lower = None if bounds[0] is None else float(bounds[0])
+            upper = None if bounds[1] is None else float(bounds[1])
+            if lower is not None and upper is not None and lower >= upper:
+                raise ContractError("rolling_native_taf_historical_bucket_invalid")
+            result[str(bucket)] = (lower, upper)
+        if not result:
+            raise ContractError("rolling_native_taf_historical_bucket_empty")
+        intervals_by_day[str(prediction["event_date"])] = result
+    prediction_days = {
+        str(prediction["event_date"])
+        for prediction in candidate.get("predictions") or []
+    }
+    # Every day must speak its own ladder.  A day whose contract is absent
+    # is missing evidence for the whole series -- the blocks are counted as
+    # independent samples, and quietly scoring one day on another day's
+    # grid is exactly the mismatch the per-day resolution exists to end.
+    if not intervals_by_day or set(intervals_by_day) != prediction_days:
+        raise ContractError("rolling_native_taf_historical_bucket_missing")
+    return intervals_by_day
 
 
 def _taf_truth_for_prediction(
@@ -855,8 +876,8 @@ def _scope_evidence_gap(
 
     first = candidates[0]
     try:
-        _bucket_intervals_for_candidate(conn, first)
         for candidate in candidates:
+            _bucket_intervals_for_candidate(conn, candidate)
             for prediction in candidate.get("predictions") or []:
                 _taf_truth_for_prediction(
                     conn,
@@ -937,7 +958,6 @@ def build_rolling_taf_exact_joins(
                     "reason": incomplete,
                 })
             continue
-        intervals = _bucket_intervals_for_candidate(conn, first)
         samples = []
         prediction_shas: list[str] = []
         taf_lineages: list[dict[str, Any]] = []
@@ -949,6 +969,7 @@ def build_rolling_taf_exact_joins(
                 or candidate["run_cycle_by_system"] != first["run_cycle_by_system"]
             ):
                 raise ContractError("rolling_native_taf_series_scope_mismatch")
+            intervals_by_day = _bucket_intervals_for_candidate(conn, candidate)
             for prediction in candidate.get("predictions") or []:
                 day = str(prediction.get("event_date") or "")
                 if not day or day in seen_days:
@@ -966,7 +987,9 @@ def build_rolling_taf_exact_joins(
                 )
                 probabilities = {str(bucket): float(value) for bucket, value in (prediction.get("probability") or {}).items()}
                 centers = {bucket: float(bucket) for bucket in probabilities}
-                rebinned, live_centers = _rebin_probabilities(probabilities, centers, intervals)
+                rebinned, live_centers = _rebin_probabilities(
+                    probabilities, centers, intervals_by_day[day]
+                )
                 label = str(taf[7] or "")
                 reference_only = False
                 prediction_sha = str(prediction["prediction_content_sha256"])

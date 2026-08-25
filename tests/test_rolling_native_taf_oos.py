@@ -337,11 +337,14 @@ def test_rolling_exact_join_combines_all_blocks_without_promoting_awc(
     monkeypatch.setattr(
         rolling_native_taf_oos,
         "_bucket_intervals_for_candidate",
-        lambda _conn, _candidate: {
-            "19°C or below": (None, 19.5),
-            "20°C": (19.5, 20.5),
-            "21°C": (20.5, 21.5),
-            "22°C or higher": (21.5, None),
+        lambda _conn, candidate: {
+            str(prediction["event_date"]): {
+                "19°C or below": (None, 19.5),
+                "20°C": (19.5, 20.5),
+                "21°C": (20.5, 21.5),
+                "22°C or higher": (21.5, None),
+            }
+            for prediction in candidate.get("predictions") or []
         },
     )
     monkeypatch.setattr(
@@ -414,7 +417,13 @@ def test_a_series_with_no_bulletin_after_its_decision_does_not_abort_the_station
     monkeypatch.setattr(
         rolling_native_taf_oos,
         "_bucket_intervals_for_candidate",
-        lambda _conn, _candidate: {"20°C": (None, 20.5), "21°C": (20.5, None)},
+        lambda _conn, candidate: {
+            str(prediction["event_date"]): {
+                "20°C": (None, 20.5),
+                "21°C": (20.5, None),
+            }
+            for prediction in candidate.get("predictions") or []
+        },
     )
 
     def _no_bulletin(_conn, **_kwargs):
@@ -614,7 +623,9 @@ def test_historical_bucket_join_uses_bucket_schema_without_member_run_cycle() ->
         },
     )
 
-    assert intervals == {"19°C or below": (None, 19.5), "20°C": (19.5, 20.5)}
+    assert intervals == {
+        "2026-06-21": {"19°C or below": (None, 19.5), "20°C": (19.5, 20.5)}
+    }
 
 
 def _tie_cases(day_count: int, prefix: str = "2026-07") -> list[dict]:

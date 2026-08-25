@@ -13,6 +13,7 @@ from bayes_basket_target.contracts import (
     content_sha256,
     model_set_hash,
 )
+from bayes_basket_target.station_season import station_season_bin
 from bayes_basket_target.taf_nwp_crossfit import build_nwp_crossfit_predictions
 
 
@@ -136,10 +137,14 @@ def test_crossfit_uses_only_prior_days_and_minimum_two_models(tmp_path: Path) ->
     } == {("d2", "00Z")}
     # Lineage vocabulary, not the policy one.  These predictions become the
     # TAF artifact's scope, and resident P0-M matches that scope by exact
-    # equality against the live P0 root's month-trigram season.  The one
-    # artifact ever fit under "summer" stopped joining the day P0 moved to
-    # "JJA", and the stage went silent for eleven days.
-    assert {row["season_bin"] for row in result["predictions"]} == {"JJA"}
+    # equality against the live P0 root's season.  The one artifact ever fit
+    # under "summer" stopped joining the day P0 moved to "JJA", and the stage
+    # went silent for eleven days; charter 62 moved the lineage again to the
+    # station-local labels, so this must be RKPK's July label (PEAK), spoken
+    # by the same function P0 compiles with.
+    assert {row["season_bin"] for row in result["predictions"]} == {
+        station_season_bin("RKPK", "2026-07-04")
+    }
     for row in result["predictions"]:
         assert sum(row["selected_weights"].values()) == pytest.approx(1.0)
         assert all(weight > 0.0 for weight in row["selected_weights"].values())
