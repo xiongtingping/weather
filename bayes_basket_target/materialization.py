@@ -50,6 +50,10 @@ from .taf_revision import (
 
 
 MATERIALIZATION_SCHEMA = "bayes_basket_probability_materialization_v1"
+# The smallest claim a served bucket may carry unless an observation has
+# structurally excluded it (2026-08-26 ruling; see the floor layer in
+# ``_posterior`` for the LFPB case and the measured miss frequency).
+PROBABILITY_MODEL_ZERO_FLOOR = 1e-3
 _LINEAGE_FORBIDDEN_KEYS = frozenset(
     {
         "temperature",
@@ -777,6 +781,45 @@ def _posterior(
         lineage["metar_ceiling_json"] = json.dumps(
             ceiling_receipt, sort_keys=True
         )
+    # Last of all, after even the ceiling: no layer above may manufacture
+    # an absolute zero.  A zero claim is a structural statement -- the
+    # settlement rules make the bucket impossible -- and only the
+    # observation hard bound has the authority to say it; everywhere else
+    # a zero is a truncated tail wearing certainty's clothes.  Ruling
+    # case: LFPB 2026-08-19 P1 served exactly 0.0 on "29°C or higher" at
+    # 01:51Z (model centre ~3°C cold, combined tail truncated) and the
+    # day settled 29.0°C -- the objective scored that scenario as
+    # nonexistent and the chain lost 14.65.  Measured on 299 settled
+    # stage rows the truth lands on a sub-1e-3 claim 2.7% of the time,
+    # far above what those claims state -- the same under-dispersion the
+    # tail calibration keeps finding.  Floor every non-excluded bucket
+    # and renormalise; sub-floor claims (RKPK 2026-08-21 served 4.3e-6)
+    # are numerical zeros and are lifted too.  A distribution already at
+    # or above the floor everywhere is returned byte-identical, so
+    # unaffected station-days keep their content hashes, and fits read
+    # served claims on both sides of this change -- no serve/train split.
+    floored = sorted(
+        bucket for bucket, value in probabilities.items()
+        if bucket not in excluded and value < PROBABILITY_MODEL_ZERO_FLOOR
+    )
+    if floored:
+        lifted = {
+            bucket: (
+                value if bucket in excluded
+                else max(value, PROBABILITY_MODEL_ZERO_FLOOR)
+            )
+            for bucket, value in probabilities.items()
+        }
+        lifted_total = sum(lifted.values())
+        probabilities = {
+            bucket: value / lifted_total
+            for bucket, value in lifted.items()
+        }
+        lineage["probability_floor_json"] = json.dumps({
+            "schema": "probability_model_zero_floor_v1",
+            "epsilon": PROBABILITY_MODEL_ZERO_FLOOR,
+            "floored_buckets": floored,
+        }, sort_keys=True)
     identity = {
         "schema": MATERIALIZATION_SCHEMA,
         "stage": stage,
