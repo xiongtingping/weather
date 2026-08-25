@@ -125,14 +125,28 @@ MAKER_HEDGE_VALUE_LAMBDA = float(
 #     0.40  +18.9%    0.70   +3.0%
 #
 # Single-peaked with both flanks monotone, so 0.40 is an interior optimum
-# rather than a boundary.  It is +6.2 points of ROI over pricing the
-# shoulder like a tail, and the direction is the opposite of the intuition
-# that motivated the sweep: the shoulder wanted a *tighter* ceiling, not a
-# looser one.  Exempting it buys nine points of hit rate (26% -> 35%) and
-# loses thirty of ROI, which is the sixth time this system has measured
-# that same trade.
-MAKER_SHOULDER_VALUE_LAMBDA = float(
-    os.environ.get("PM_MAKER_SHOULDER_VALUE_LAMBDA", "0.40") or 0.0
+# rather than a boundary.  Under the 2026-08-22 rule set the sweep chose a
+# *tighter* ceiling (0.40), and exempting the shoulder bought nine points
+# of hit rate for thirty of ROI -- the sixth measurement of that same
+# trade, all losses.  Charter 63 (2026-08-26) reversed it: under the
+# charter 54-62 rule set (mean centre, skew gate, pure-EV window, no
+# certainty gate) the exemption wins +3.5 ROI points with the excision
+# test strongly positive (+8.8/+13.0/+10.3 dropping the top divergent
+# chains) and +15 points of settled hit rate.  The mechanism was measured
+# from the fill anatomy: the 0.40 clamp capped a median winning shoulder
+# at 0.089 against a market floor of 0.270 -- shoulder winners filled 12
+# of 76 -- while intermediate lambdas (0.55, 0.70) only paid more for the
+# same misses.  Either do not reach, or reach the market: half-measures
+# lost both ways.  The verdict is rule-set dependent (it has now flipped
+# once in each direction); "exempt" is the default, a number is a lambda
+# research arm, and the forward book re-judges it like everything else.
+_MAKER_SHOULDER_VALUE_LAMBDA_RAW = str(
+    os.environ.get("PM_MAKER_SHOULDER_VALUE_LAMBDA", "exempt") or "exempt"
+).strip().lower()
+MAKER_SHOULDER_VALUE_EXEMPT = _MAKER_SHOULDER_VALUE_LAMBDA_RAW == "exempt"
+MAKER_SHOULDER_VALUE_LAMBDA = (
+    0.0 if MAKER_SHOULDER_VALUE_EXEMPT
+    else float(_MAKER_SHOULDER_VALUE_LAMBDA_RAW or 0.0)
 )
 # Ladder completeness re-priced as risk (user ruling, 2026-08-24; twice
 # corrected the same day).  The lifecycle itself is untouched: every leg --
@@ -289,8 +303,13 @@ def _hedge_value_cap(
             distance = abs(
                 ordered.index(str(bucket)) - ordered.index(str(centre_bucket))
             )
-            if distance == 1 and MAKER_SHOULDER_VALUE_LAMBDA > 0.0:
-                lam = MAKER_SHOULDER_VALUE_LAMBDA
+            if distance == 1:
+                # Charter 63: the shoulder prices off the book like the
+                # centre.  A numeric lambda is the research arm.
+                if MAKER_SHOULDER_VALUE_EXEMPT:
+                    return None
+                if MAKER_SHOULDER_VALUE_LAMBDA > 0.0:
+                    lam = MAKER_SHOULDER_VALUE_LAMBDA
     return lam * value
 
 

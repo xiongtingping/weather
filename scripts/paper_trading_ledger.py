@@ -80,6 +80,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     MAKER_LADDER_IMPROVE_TICKS,
     MAKER_LADDER_STEPS,
     CERTAINTY_GATE_SIGNALS,
+    MAKER_SHOULDER_VALUE_EXEMPT,
     MAKER_SHOULDER_VALUE_LAMBDA,
     MINIMUM_LEG_ALL_IN_ASK,
     OPENING_FALLBACK_MIN_BUCKETS,
@@ -645,8 +646,11 @@ MAKER_RESTING_TAIL_LAMBDA = str(
 MAKER_RESTING_SHOULDER_LAMBDA = str(
     os.environ.get("PAPER_LEDGER_MAKER_SHOULDER_LAMBDA", "")
     or (
-        f"{MAKER_SHOULDER_VALUE_LAMBDA:g}"
-        if MAKER_SHOULDER_VALUE_LAMBDA > 0.0 else ""
+        "exempt" if MAKER_SHOULDER_VALUE_EXEMPT
+        else (
+            f"{MAKER_SHOULDER_VALUE_LAMBDA:g}"
+            if MAKER_SHOULDER_VALUE_LAMBDA > 0.0 else ""
+        )
     )
 ).strip().lower()
 # The toxic-band gate (research arm, 2026-08-26).  A non-centre leg whose
