@@ -137,6 +137,72 @@ def test_the_leg_value_cap_is_productions_hedge_value_cap() -> None:
                     ), (window, centre, bucket, probability)
 
 
+def test_charter_63_the_centre_and_both_shoulders_are_never_clamped() -> None:
+    """The value clamp is for the hedge, not for the position.
+
+    Charter 63 (2026-08-26) took the shoulder out of the clamp along with
+    the centre: a rung one step from the centre prices off the book like the
+    centre does.  Only distance 2 and beyond is still capped at lambda times
+    the claim -- the tail exemption was measured and rejected separately.
+
+    Pinned here because the clamp is now read by three callers instead of
+    one (window enumeration, order placement and, since 2026-08-26, target
+    pricing), so a regression would reach further than it used to.
+    """
+
+    assert P.MAKER_SHOULDER_VALUE_EXEMPT is True
+
+    for window in (("a", "b", "c"), ("a", "b", "c", "d"), ("a", "b")):
+        for centre in window:
+            for bucket in window:
+                distance = abs(window.index(bucket) - window.index(centre))
+                cap = P._hedge_value_cap(
+                    bucket=bucket,
+                    centre_bucket=centre,
+                    probability=0.30,
+                    window=window,
+                )
+                if distance <= 1:
+                    assert cap is None, (window, centre, bucket, cap)
+                else:
+                    assert cap == pytest.approx(
+                        P.MAKER_HEDGE_VALUE_LAMBDA * 0.30
+                    ), (window, centre, bucket, cap)
+
+
+def test_an_unknown_centre_clamps_everything_including_the_centre() -> None:
+    """A latent trap, pinned so it stays visible rather than surprising.
+
+    ``_hedge_value_cap`` short-circuits both exemptions on a falsy centre --
+    ``if centre_bucket and ...`` -- so an empty centre reinstates exactly the
+    clamp charter 63 removed, on every leg including the position itself.
+
+    It is unreachable today: ``_support_windows`` always publishes a ladder
+    centre, falling back to its own ``center_bucket`` when nothing is
+    admitted.  It matters because since 2026-08-26 the clamp is also read by
+    target pricing, so the blast radius of ever making it reachable is
+    larger than it was.  Both callers derive the centre the same way, from
+    ``ladder_center_bucket`` with the same ``or ""`` fallback, so if this
+    ever fires it fires on both and they still agree.
+    """
+
+    for bucket in ("a", "b", "c"):
+        assert P._hedge_value_cap(
+            bucket=bucket,
+            centre_bucket="",
+            probability=0.30,
+            window=("a", "b", "c"),
+        ) == pytest.approx(P.MAKER_HEDGE_VALUE_LAMBDA * 0.30)
+
+    # The live path cannot hand it an empty one.
+    import inspect
+
+    source = inspect.getsource(P._support_windows)
+    assert '"ladder_center_bucket": ladder_center' in source
+    assert "ladder_center = max(" in source
+    assert ") if admitted else center_bucket" in source
+
+
 def test_the_scope_stake_cap_is_the_kernels_on_both_sides() -> None:
     """Production capped a station at a flat 30 USDC; this book capped it at
     2% of its own equity.  Same station-day, two sizes.  The kernel owns the
