@@ -1428,31 +1428,6 @@ ON basket_probability_envelope(station_id,stage,state,decision_at_utc DESC);
 -- equal on decision_at_utc first, and that is a semantic change, not an index.
 CREATE INDEX IF NOT EXISTS basket_probability_envelope_version_probe_idx
 ON basket_probability_envelope(envelope_id,posterior_version);
-
--- The decision sweep lists every committed scope once per cycle and needs
--- settlement_timezone to decide whether the day is still open.  That one
--- column is the only thing the as-of index above does not carry, so the plan
--- stayed an index scan but paid a table lookup per entry -- and the rows it
--- lands on carry probabilities/lineage JSON in overflow pages.  Measured
--- 2026-08-16 at 59,120 rows: 13.0-15.6s per cycle, against 0.48s for the
--- identical query with settlement_timezone dropped.  Leading with state and
--- then the sweep's own ORDER BY also retires the temp b-tree.
-CREATE INDEX IF NOT EXISTS basket_probability_envelope_committed_scope_idx
-ON basket_probability_envelope(state,event_date,station_id,settlement_timezone);
--- The resident WS publisher's scope query selects five more columns than the
--- index above carries, so it kept paying a table lookup per entry onto rows
--- whose probabilities/lineage JSON sits in overflow pages.  Measured
--- 2026-08-21 at 148,578 committed rows: 36-40s per call -- and that call sits
--- in the publisher's socket event loop on a 5s probe, so the loop was blocked
--- for longer than the venue's patience.  The books went 75-250s between
--- observations against a 60s lease and the venue twice closed us with
--- "1013 slow consumer: send buffer full".  Carrying every column the query
--- reads keeps the plan inside the index.
-CREATE INDEX IF NOT EXISTS basket_probability_envelope_publisher_scope_idx
-ON basket_probability_envelope(
-  state,event_date,station_id,decision_at_utc,stage,envelope_id,
-  settlement_timezone,checkpoint_id,fresh_until_utc
-);
 """ + PROBABILITY_BRIDGE_DDL + REGIME_ARTIFACT_DDL + """
 CREATE TABLE IF NOT EXISTS basket_official_ws_snapshot (
   snapshot_id TEXT PRIMARY KEY,
@@ -1857,6 +1832,31 @@ ON calibration_republisher_ensemble_historical_member_bucket(
 CREATE INDEX IF NOT EXISTS basket_policy_training_fact_cycle_idx
 ON basket_policy_training_fact(
   cycle_id,decision_id,fact_id,content_sha256,decision_scope_key
+);
+
+-- The decision sweep lists every committed scope once per cycle and needs
+-- settlement_timezone to decide whether the day is still open.  That one
+-- column is the only thing the as-of index above does not carry, so the plan
+-- stayed an index scan but paid a table lookup per entry -- and the rows it
+-- lands on carry probabilities/lineage JSON in overflow pages.  Measured
+-- 2026-08-16 at 59,120 rows: 13.0-15.6s per cycle, against 0.48s for the
+-- identical query with settlement_timezone dropped.  Leading with state and
+-- then the sweep's own ORDER BY also retires the temp b-tree.
+CREATE INDEX IF NOT EXISTS basket_probability_envelope_committed_scope_idx
+ON basket_probability_envelope(state,event_date,station_id,settlement_timezone);
+-- The resident WS publisher's scope query selects five more columns than the
+-- index above carries, so it kept paying a table lookup per entry onto rows
+-- whose probabilities/lineage JSON sits in overflow pages.  Measured
+-- 2026-08-21 at 148,578 committed rows: 36-40s per call -- and that call sits
+-- in the publisher's socket event loop on a 5s probe, so the loop was blocked
+-- for longer than the venue's patience.  The books went 75-250s between
+-- observations against a 60s lease and the venue twice closed us with
+-- "1013 slow consumer: send buffer full".  Carrying every column the query
+-- reads keeps the plan inside the index.
+CREATE INDEX IF NOT EXISTS basket_probability_envelope_publisher_scope_idx
+ON basket_probability_envelope(
+  state,event_date,station_id,decision_at_utc,stage,envelope_id,
+  settlement_timezone,checkpoint_id,fresh_until_utc
 );
 """
 
@@ -5025,14 +5025,6 @@ def apply_production_ssot_schema(conn: sqlite3.Connection, *, commit: bool = Tru
     )
     _upgrade_empty_policy_training_fact_schema(conn)
     _upgrade_probability_envelope_stage_constraint(conn)
-    # Second pass, now that every table is in its v4 shape.  The first call
-    # above runs before the upgrades and skips any index whose columns have
-    # not arrived yet; without this the skip would be permanent on exactly
-    # the databases that need the index most -- the ones being upgraded.
-    deferred_indexes = sorted(
-        set(deferred_indexes)
-        | set(_execute_index_script_where_table_exists(conn, DEFERRED_INDEX_DDL))
-    )
     strict_delta_candidate_upgrade = (
         _upgrade_strict_delta_candidate_decision_constraint(conn)
     )
@@ -5041,6 +5033,17 @@ def apply_production_ssot_schema(conn: sqlite3.Connection, *, commit: bool = Tru
         _upgrade_basket_target_observation_fact_settlement_timezone(conn)
     )
     quote_freshness_upgrade = _upgrade_quote_freshness_columns(conn)
+    # Second pass, after every upgrade above has put its table into the shape
+    # the DDL describes.  The first call runs before them and skips any index
+    # whose table or columns have not arrived yet; without this the skip
+    # would be permanent on exactly the databases that need the index most --
+    # the ones being upgraded.  It has to sit after the *last* upgrade, not a
+    # convenient one in the middle: settlement_timezone is restored here, and
+    # two of the envelope indexes read it.
+    deferred_indexes = sorted(
+        set(deferred_indexes)
+        | set(_execute_index_script_where_table_exists(conn, DEFERRED_INDEX_DDL))
+    )
     if commit:
         conn.commit()
     tables = tuple(
