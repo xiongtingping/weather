@@ -1888,12 +1888,13 @@ def test_maturity_bin_is_the_event_distance_not_the_run_lead() -> None:
         evaluation_at_utc="2026-08-26T02:00:00Z",
     ) == "d0"
 
-    # A calendar label is taken at its word: it passes through even when the
-    # event is two days out and the label says one.  That is the hazard -- the
-    # caller, not this function, is what guarantees the label already means
-    # maturity.
-    assert derive_policy_maturity_bin("d1", **common) == "d1"
-    assert derive_policy_maturity_bin("d2_fallback", **common) == "d2_fallback"
+    # A calendar label chooses the vocabulary and nothing else.  It is a
+    # property of the moment it was stamped, and this is a different moment:
+    # a capture that was honestly d1 yesterday is d0 for a decision taken on
+    # the event day, and it was the frozen label that used to win.
+    assert derive_policy_maturity_bin("d1", **common) == "d2"
+    assert derive_policy_maturity_bin("d0", **common) == "d2"
+    assert derive_policy_maturity_bin("d2_fallback", **common) == "d2"
 
     # And an empty lead is refused rather than defaulted.
     with pytest.raises(ContractError):

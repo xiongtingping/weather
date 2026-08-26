@@ -1912,7 +1912,7 @@ def derive_policy_maturity_bin(
     were fitted against.  Copying an artifact's hour label into a policy
     lookup makes every migrated envelope unmatchable (station policy and
     delta-v2 policy both fail closed on it, at two different call sites).
-    A calendar label passes through unchanged.
+    The label chooses a vocabulary; it never supplies the answer.
 
     That pass-through is the whole hazard, so it is written down rather than
     left to be rediscovered.  ``d0``/``d1``/``d2``/``d2_fallback`` label two
@@ -1920,9 +1920,7 @@ def derive_policy_maturity_bin(
     event's maturity, how far the event still is.  No table carries both
     columns, so nothing anywhere shows a reader that they differ, and a join
     written ``ON a.lead_bucket = b.maturity_bin`` returns rows and looks
-    right.  This function is the only place that converts between them, and on
-    the calendar branch it converts nothing: it takes the caller's word that
-    the label already means maturity.
+    right.  This function is the only place that converts between them.
 
     The pass-through has already been wrong, at scale.  4,499 committed
     envelopes carry a calendar label, and twelve of twelve sampled disagree
@@ -1933,14 +1931,14 @@ def derive_policy_maturity_bin(
     lineage key, so P0-M and P1 repeat it verbatim.  Those decisions were
     priced against a station policy one day off.
 
-    It is not happening now: every envelope since 2026-08-18 carries an hour
-    bucket, so production takes the converting branch.  Enforcing agreement
-    here was tried and reverted -- it turned 18 failures in the production_io
-    tests into 38.  All twenty come from one fixture literal
-    (``tests/test_bayes_basket_target.py`` ``"lead_bucket": "d1"`` against an
-    event that is d0), so the strict version is one constant away and is worth
-    revisiting deliberately rather than by accident.  What is enforced here
-    meanwhile is only the vocabulary.
+    So the calendar label is no longer taken at its word either: both branches
+    now compute the distance from the decision's own clock.  A label is a
+    property of the moment it was stamped, and this function is asked at a
+    different moment -- a capture that was correctly ``d1`` yesterday is
+    ``d0`` for a decision taken on the event day, and it was the frozen label
+    that got used.  Refusing a disagreeing label was tried first and cost
+    twenty tests; computing through it costs none, because those tests need
+    the lookup to succeed, not the label to survive.
     """
 
     label = str(lead_label or "").strip()
@@ -1967,7 +1965,7 @@ def derive_policy_maturity_bin(
         raise ContractError(
             "probability_policy_maturity_bin_vocabulary_invalid:" + label
         )
-    return label
+    return maturity
 
 
 def resolve_delta_v2_runtime_authority(
