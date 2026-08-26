@@ -5968,11 +5968,37 @@ class TargetProductionWorker:
         # prepared candidate when newer P1/WS authority changes the scope.
         # Legacy/minimal fixtures lack the facts required to prove this and
         # therefore retain the conservative zero-write behavior.
+        #
+        # The fact this arm needs is the retiring cycle's own, not the
+        # station-day's most recent.  Blocked decisions write training facts
+        # too -- 9,913 of 10,392 as of 2026-08-26 -- so reading the day's
+        # latest disarmed the arm permanently the first time any scope was
+        # refused after a candidate was prepared: the guard fell through to a
+        # zero-write retention and that station-day committed no further
+        # decision, while its reservation had nothing left that could ever
+        # release it.  Measured on the cycles the settled-day sweep retired,
+        # 95 of 113 had been disarmed this way; EPWA 2026-08-16 by a blocked
+        # fact written four hours before Warsaw's event day opened, so the
+        # whole day wrote nothing.
+        retiring_fact = (
+            self.commit_conn.execute(
+                "SELECT fact_id,cycle_id,decision_id,decision_scope_key "
+                "FROM basket_policy_training_fact WHERE cycle_id=? "
+                "ORDER BY decision_at_utc DESC,rowid DESC LIMIT 1",
+                (str(latest[0]),),
+            ).fetchone()
+            if has_training_facts
+            else None
+        )
         if (
             has_training_facts
-            and latest_fact is not None
+            and retiring_fact is not None
             and candidate_scope_key
-            and str(latest_fact[1] or "") == str(latest[0])
+            # Same inputs as the candidate already prepared: there is nothing
+            # to supersede, and asking the ledger to would only earn a
+            # ``prepared_supersession_scope_unchanged`` refusal that fails the
+            # whole commit.  Retain instead.
+            and str(retiring_fact[3] or "") != candidate_scope_key
         ):
             return {
                 "schema": SCHEMA,
@@ -5980,9 +6006,9 @@ class TargetProductionWorker:
                 "state": "supersede_existing_prepared_candidate",
                 "reason": "target_authority_input_superseded",
                 "cycle_id": str(latest[0]),
-                "decision_id": str(latest_fact[2] or ""),
-                "training_fact_id": str(latest_fact[0] or ""),
-                "old_decision_scope_key": str(latest_fact[3] or ""),
+                "decision_id": str(retiring_fact[2] or ""),
+                "training_fact_id": str(retiring_fact[0] or ""),
+                "old_decision_scope_key": str(retiring_fact[3] or ""),
                 "new_decision_scope_key": candidate_scope_key,
                 "writes_target_ledger": True,
                 "execution_mode": PRODUCTION_EXECUTION_MODE,

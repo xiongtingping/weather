@@ -2559,3 +2559,85 @@ def test_close_target_cycle_still_refuses_real_reserved_drift() -> None:
                 closed_at_utc=NOW,
                 reason="real_drift",
             )
+
+
+def test_close_settled_day_cycle_sees_facts_on_cancelled_intents() -> None:
+    """Inertness is asked of every intent, not just the ones still open.
+
+    Hanging the check off the still-``prepared`` list skipped it entirely for
+    a cycle whose intents had all been cancelled, so one carrying a fill
+    released its reservation without a single table being read.
+    """
+
+    day_end = "2026-07-24T04:00:00Z"
+    after_close = "2026-07-24T05:00:00Z"
+    with _db(balance=20.0) as conn:
+        bundle = _bundle(index=5, amount=4.0)
+        commit_target_atomic_bundle(conn, bundle=bundle)
+        cycle_id = bundle["cycle"]["cycle_id"]
+        intent_id = conn.execute(
+            "SELECT order_intent_id FROM basket_target_order_intents "
+            "WHERE cycle_id=? LIMIT 1",
+            (cycle_id,),
+        ).fetchone()[0]
+        conn.execute(
+            "UPDATE basket_target_order_intents SET state='cancelled' "
+            "WHERE cycle_id=?",
+            (cycle_id,),
+        )
+        conn.execute(
+            "INSERT INTO basket_target_order_events VALUES(?,?,?,?,?,?,?,?,?)",
+            (
+                "event-1", intent_id, "exch-1", "FILL", after_close,
+                1.0, 1.0, "{}", "0" * 64,
+            ),
+        )
+        conn.commit()
+
+        with pytest.raises(
+            AtomicLedgerError,
+            match="settled_day_close_execution_fact_present",
+        ):
+            close_settled_day_cycle(
+                conn,
+                cycle_id=cycle_id,
+                settlement_day_end_utc=day_end,
+                closed_at_utc=after_close,
+                reason="should_refuse",
+            )
+        assert conn.execute(
+            "SELECT reserved_usdc FROM basket_target_capital_pool"
+        ).fetchone()[0] == 4.0
+
+
+def test_close_settled_day_cycle_compares_instants_not_spellings() -> None:
+    """A far-east offset close is earlier than a Z day end, not later."""
+
+    day_end = "2026-07-24T04:00:00Z"
+    with _db(balance=20.0) as conn:
+        bundle = _bundle(index=6, amount=4.0)
+        commit_target_atomic_bundle(conn, bundle=bundle)
+        cycle_id = bundle["cycle"]["cycle_id"]
+
+        # 2026-07-24T12:00+14:00 is 2026-07-23T22:00Z -- six hours early.
+        with pytest.raises(
+            AtomicLedgerError,
+            match="settled_day_close_before_settlement_day_end",
+        ):
+            close_settled_day_cycle(
+                conn,
+                cycle_id=cycle_id,
+                settlement_day_end_utc=day_end,
+                closed_at_utc="2026-07-24T12:00:00+14:00",
+                reason="lexically_later_actually_earlier",
+            )
+
+        # Same instant as the day end, spelled with a fraction: not early.
+        result = close_settled_day_cycle(
+            conn,
+            cycle_id=cycle_id,
+            settlement_day_end_utc=day_end,
+            closed_at_utc="2026-07-24T04:00:00.000Z",
+            reason="lexically_later_same_instant",
+        )
+        assert result["state"] == "settled"

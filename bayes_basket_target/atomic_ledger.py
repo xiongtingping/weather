@@ -3708,15 +3708,26 @@ def close_settled_day_cycle(
     end; this only checks the close happens at or after it, so the timezone
     rule stays in ``settlement_time.settlement_day_state`` alone.
 
-    Refuses anything still live, and mirrors supersession's inertness checks
-    so the two terminal paths admit exactly the same class of cycle.
+    Refuses anything still live: an intent authorised to submit, an intent
+    past ``prepared``, or any execution fact against any intent the cycle
+    ever had.  It admits two cases supersession refuses -- a cycle whose
+    intents were already cancelled, and a cycle with none -- because
+    supersession runs while the day can still trade and this runs after it
+    cannot, where both are simply inert.
     """
 
     cycle = _text("cycle_id", cycle_id)
     day_end = _timestamp("settlement_day_end_utc", settlement_day_end_utc)
     closed_at = _timestamp("closed_at_utc", closed_at_utc)
     close_reason = _text("close_reason", reason)
-    if closed_at < day_end:
+    # Compare instants, not spellings.  Text ordering agrees with time only
+    # while both sides are Z-suffixed at the same precision: a ``+14:00``
+    # close sorts before an earlier ``Z`` day end and would be let through,
+    # and a ``.000Z`` close sorts after ``Z`` at the same instant and would
+    # be refused.
+    if _timestamp_instant("closed_at_utc", closed_at) < _timestamp_instant(
+        "settlement_day_end_utc", day_end
+    ):
         raise AtomicLedgerError("settled_day_close_before_settlement_day_end")
 
     with _atomic_transaction(conn, operation="close_settled_day_cycle"):
@@ -3749,11 +3760,14 @@ def close_settled_day_cycle(
         ):
             raise AtomicLedgerError("settled_day_close_intent_not_quiescent")
 
-        open_intent_ids = [
-            str(item[0]) for item in intents if str(item[1]) == "prepared"
-        ]
-        if open_intent_ids:
-            placeholders = ",".join("?" for _ in open_intent_ids)
+        # Ask about every intent the cycle ever had, not just the ones still
+        # open.  A cycle whose intents were all cancelled has an empty open
+        # list, and hanging the inertness checks off that list skipped them
+        # entirely -- a cancelled intent carrying a FILL event released its
+        # reservation without a single table being read.
+        all_intent_ids = [str(item[0]) for item in intents]
+        if all_intent_ids:
+            placeholders = ",".join("?" for _ in all_intent_ids)
             execution_tables = {
                 str(item[0])
                 for item in conn.execute(
@@ -3766,11 +3780,17 @@ def close_settled_day_cycle(
                 if conn.execute(
                     f"SELECT 1 FROM {table} WHERE {column} IN ({placeholders}) "
                     "LIMIT 1",
-                    open_intent_ids,
+                    all_intent_ids,
                 ).fetchone() is not None:
                     raise AtomicLedgerError(
                         "settled_day_close_execution_fact_present"
                     )
+
+        open_intent_ids = [
+            str(item[0]) for item in intents if str(item[1]) == "prepared"
+        ]
+        if open_intent_ids:
+            placeholders = ",".join("?" for _ in open_intent_ids)
             conn.execute(
                 f"UPDATE basket_target_order_intents SET state='cancelled' "
                 f"WHERE order_intent_id IN ({placeholders}) AND state='prepared'",

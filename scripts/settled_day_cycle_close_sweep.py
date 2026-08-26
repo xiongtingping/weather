@@ -37,7 +37,7 @@ import json
 import sqlite3
 import sys
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -63,10 +63,26 @@ SCHEMA = "settled_day_cycle_close_sweep_v1"
 # back on the first pass and nothing that matters starves behind the tail.
 DEFAULT_MAX_CYCLES = 1500
 CLOSE_REASON = "settlement_day_closed_without_successor"
+# Wait past the day's end before retiring anything.  Whether the day is over
+# is decided from the registry's settlement timezone, and that column has a
+# mislabelling history -- 33 of 45 stations once carried the wrong zone -- so
+# closing on the second the window ends bets "this day can produce no further
+# candidate" on one string.  Six hours puts the close after local dawn and
+# absorbs any DST or half-hour-offset discrepancy.  Settling a cycle that
+# could still be superseded is not a lost reservation, it is a refused
+# supersession: production calls it unguarded, so the station's whole commit
+# fails that round.
+SETTLEMENT_CLOSE_GRACE_HOURS = 6.0
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _instant(value: str) -> datetime:
+    return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(
+        timezone.utc
+    )
 
 
 def _reason_of(error: Exception) -> str:
@@ -118,6 +134,14 @@ def _candidates(
             reason = f"settlement_day_{day['state']}"
             held[reason] += 1
             held_usdc[reason] = round(held_usdc.get(reason, 0.0) + amount, 6)
+            continue
+        if _instant(as_of) < _instant(
+            day["target_day_end_utc"]
+        ) + timedelta(hours=SETTLEMENT_CLOSE_GRACE_HOURS):
+            held["settlement_day_within_grace"] += 1
+            held_usdc["settlement_day_within_grace"] = round(
+                held_usdc.get("settlement_day_within_grace", 0.0) + amount, 6
+            )
             continue
         ready.append(
             {

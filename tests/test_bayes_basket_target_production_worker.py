@@ -5688,3 +5688,115 @@ def test_forward_scope_skip_matches_the_lane_it_guards() -> None:
     assert TargetProductionWorker._forward_preselection_scope_skipped(
         None
     ) is True
+
+
+def _disarming_guard_conn() -> sqlite3.Connection:
+    """A prepared candidate whose station-day later refused a scope.
+
+    Blocked decisions write training facts too, so the day's most recent fact
+    is almost never the prepared cycle's own.
+    """
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE basket_target_execution_cycles("
+        "cycle_id TEXT,plan_id TEXT,state TEXT,station_id TEXT,"
+        "event_date TEXT,created_at TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE auto_trade_decisions(cycle_id TEXT,decided_state TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE basket_policy_training_fact("
+        "fact_id TEXT,cycle_id TEXT,decision_id TEXT,"
+        "decision_scope_key TEXT,station_id TEXT,event_date TEXT,"
+        "decision_at_utc TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO basket_target_execution_cycles VALUES(?,?,?,?,?,?)",
+        [
+            (
+                "live-cycle", "live-plan", "prepared", "ZUUU",
+                "2026-07-24", "2026-07-24T00:00:00Z",
+            ),
+            (
+                "blocked-cycle", "blocked-plan", "prepared", "ZUUU",
+                "2026-07-24", "2026-07-24T01:00:00Z",
+            ),
+        ],
+    )
+    conn.execute(
+        "INSERT INTO auto_trade_decisions VALUES(?,?)",
+        ("blocked-cycle", "blocked"),
+    )
+    conn.executemany(
+        "INSERT INTO basket_policy_training_fact VALUES(?,?,?,?,?,?,?)",
+        [
+            (
+                "fact-live", "live-cycle", "decision-live", "scope-A",
+                "ZUUU", "2026-07-24", "2026-07-24T00:00:00Z",
+            ),
+            (
+                "fact-blocked", "blocked-cycle", "decision-blocked", "scope-B",
+                "ZUUU", "2026-07-24", "2026-07-24T01:00:00Z",
+            ),
+        ],
+    )
+    return conn
+
+
+def test_later_blocked_fact_does_not_disarm_supersession(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The arm reads the retiring cycle's fact, not the station-day's latest."""
+
+    worker = _worker(tmp_path, _disarming_guard_conn())
+    try:
+        monkeypatch.setattr(
+            production_worker_module,
+            "delta_v2_decision_scope_key",
+            lambda **_: "scope-C",
+        )
+        result = worker._scope_cycle_guard(
+            station_id="ZUUU",
+            event_date="2026-07-24",
+            candidate={"production_market_snapshot": {}},
+        )
+    finally:
+        worker.close()
+
+    assert result is not None
+    assert result["state"] == "supersede_existing_prepared_candidate"
+    assert result["writes_target_ledger"] is True
+    assert result["cycle_id"] == "live-cycle"
+    assert result["decision_id"] == "decision-live"
+    assert result["training_fact_id"] == "fact-live"
+    assert result["old_decision_scope_key"] == "scope-A"
+    assert result["new_decision_scope_key"] == "scope-C"
+
+
+def test_unchanged_retiring_scope_retains_instead_of_superseding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nothing to supersede: asking the ledger would fail the whole commit."""
+
+    worker = _worker(tmp_path, _disarming_guard_conn())
+    try:
+        monkeypatch.setattr(
+            production_worker_module,
+            "delta_v2_decision_scope_key",
+            lambda **_: "scope-A",
+        )
+        result = worker._scope_cycle_guard(
+            station_id="ZUUU",
+            event_date="2026-07-24",
+            candidate={"production_market_snapshot": {}},
+        )
+    finally:
+        worker.close()
+
+    assert result is not None
+    assert result["state"] == "retained_existing_prepared_candidate"
+    assert result["writes_target_ledger"] is False
