@@ -1235,6 +1235,19 @@ ON basket_probability_bridge_history(
   station_id,event_date,state,decision_at_utc,stage,checkpoint_id,history_id
 );
 
+-- Both of the above lead with the station-day, which is right for everything
+-- that asks about one scope.  The centre/width refit asks across all stations
+-- for one stage since an evidence floor -- exactly this index's two columns --
+-- and with neither able to serve it, it read all 287k rows to keep the
+-- thousand or so that the floor admits.  That is the part of the refit whose
+-- cost tracks total history rather than the evidence window, and the table
+-- grows 8.78% a day, so it is also the part that would have put the round
+-- back over its sweep timeout in about eighteen days.
+CREATE INDEX IF NOT EXISTS basket_probability_bridge_history_stage_decided_idx
+ON basket_probability_bridge_history(
+  stage,decision_at_utc
+);
+
 CREATE TABLE IF NOT EXISTS basket_probability_bridge_latest (
   station_id TEXT NOT NULL,
   event_date TEXT NOT NULL,
@@ -1324,6 +1337,18 @@ ON basket_probability_envelope(checkpoint_id);
 -- first entry of a seek and nothing is sorted: 900ms -> 1.8ms.
 CREATE INDEX IF NOT EXISTS basket_probability_envelope_station_stage_recency_idx
 ON basket_probability_envelope(station_id,stage,state,decision_at_utc DESC);
+
+-- The centre/width evidence floor asks one thing of this table, once per
+-- history row of its stage: what posterior_version does this envelope carry.
+-- posterior_version sits behind bucket_ordinals_json and probabilities_json,
+-- so answering it from the row meant traversing overflow pages 165k times on
+-- an 8GB machine against a 29GB file.  Covering it costs one small index and
+-- took that probe from 74.1s to 30.6s.  What is left is the 165k b-tree
+-- descents themselves, which only a different query could remove -- reading
+-- the version straight off this table would need history and envelope proven
+-- equal on decision_at_utc first, and that is a semantic change, not an index.
+CREATE INDEX IF NOT EXISTS basket_probability_envelope_version_probe_idx
+ON basket_probability_envelope(envelope_id,posterior_version);
 
 -- The decision sweep lists every committed scope once per cycle and needs
 -- settlement_timezone to decide whether the day is still open.  That one
