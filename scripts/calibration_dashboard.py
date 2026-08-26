@@ -22,6 +22,7 @@ from bisect import bisect_left
 from collections import Counter, defaultdict
 import random
 import sqlite3
+import time
 import sys
 from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -3587,6 +3588,17 @@ function overview(){
     "下单授权", W.live_submit_authorized?"已授权":"未授权（纸面）",
     W.live_submit_authorized?"真实下单已开启":"全链纸面运行，网关不发单",
     "是否允许向交易网关发真实订单。纸面态是设计常态：绿灯代表没有真钱在跑");
+  // The other end of the same chain: without settled truth nothing below
+  // this strip can be scored, so a stalled sweep silently freezes every
+  // hit rate and calibration number on the page at its last good day.
+  const T=D.truth||{};
+  push(T.health||"muted",
+    "真值物化", T.outstanding==null?"—"
+      :(T.outstanding===0?"无欠账":T.outstanding+" 站日欠账"),
+    T.sweep_age_hours==null?h(T.note||"—")
+      :`上次清扫 ${hours(T.sweep_age_hours)}`+
+       (T.refused?` · ${T.refused} 站日被证据挡住`:""),
+    h(T.note||"")+"。真值是所有命中率与校准数字的分母，停了这页所有成绩都会冻在最后一个好日子上");
 
   // 1. Are the four model families still arriving.
   const fresh=(D.members||[]).filter(m=>m.health==="green").length;
@@ -6011,10 +6023,30 @@ def main() -> int:
         ))
         return 0
     if args.html_out:
-        args.html_out.write_text(
-            render_html(build_payload(database)), encoding="utf-8"
-        )
-        print(str(args.html_out))
+        # Render first, write once, and never replace a file that a newer
+        # build already wrote.  A full render takes minutes, and the hosted
+        # sweep renders on its own timer: a sweep that started before an
+        # edit finishes after it and puts pre-edit HTML back on the page,
+        # which is indistinguishable from the edit never having landed.
+        # Measured repeatedly on 2026-08-26 -- three separate sections
+        # "disappeared" from the page this way.  The started-at stamp is
+        # taken before the payload is built, so the comparison is between
+        # code vintages rather than write moments.
+        started_at = time.time()
+        rendered = render_html(build_payload(database))
+        target = args.html_out
+        try:
+            existing_mtime = target.stat().st_mtime
+        except OSError:
+            existing_mtime = None
+        if existing_mtime is not None and existing_mtime > started_at:
+            print(
+                f"{target}: skipped, a newer render landed while this one "
+                "was building"
+            )
+            return 0
+        target.write_text(rendered, encoding="utf-8")
+        print(str(target))
         return 0
     serve(database, args.port)
     return 0
