@@ -181,7 +181,29 @@ MAX_JSON_NODES = 500_000
 # needs.  Both reclamation lanes that funded the last two raises are exhausted:
 # the migration copies are gone, and the NWP raw retention job now audits
 # 36,710 bodies of which 36,710 are still referenced and deletes nothing.
-MAX_TARGET_DB_BYTES = 27648 * MIB
+#
+# 2026-08-26: the 27 GiB ceiling filled in three days and the settlement truth
+# sweep fail-closed on it at 2026-08-25T20:31Z -- 107 settled station-days with
+# no truth row and nothing retrying them, every calibration cohort downstream
+# starved.  This +2 GiB raise exists to restart that sweep, and it is the last
+# one that can be sized this way: the disk holds 6.4 GiB free against a 27.0
+# GiB store, so +2 GiB is about two days at the measured 0.8-1.4 GiB/day burn
+# and anything larger spends the room a VACUUM-less recovery needs.  The
+# freelist is 9 pages; there is nothing left to reclaim in-store, and the NWP
+# native lane audits 54,277 bodies, all referenced.
+#
+# Where the bytes actually are (dbstat, 2026-08-26): bridge history 5.92 GiB,
+# envelopes 5.72 GiB, preselection plans 3.03 GiB, ws snapshots 1.94 GiB.
+# The first two are the same payload written twice -- every envelope row's
+# JSON is copied verbatim into ``basket_probability_bridge_history
+# .envelope_json``, row for row (35,194/40,438/15,496/13,934 on 08-22..25,
+# identical in both tables) -- so the single biggest lever is to stop the
+# duplicate write and let history rows reference the envelope by the
+# ``envelope_content_sha256`` they already carry.  ``maker_shadow_order`` is
+# the fastest-accelerating writer (124k -> 374k rows/day over four days) and
+# has no retention.  Neither change belongs inside a capacity constant; both
+# need a ruling.
+MAX_TARGET_DB_BYTES = 29696 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.
