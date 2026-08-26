@@ -31,27 +31,43 @@ def _legacy_connection() -> sqlite3.Connection:
     conn.execute(
         """
         INSERT INTO calibration_station_daily_high_truth(
-          truth_id,station_id,local_date,official_tmax_c,source_lane,
+          truth_id,station_id,local_date,settlement_timezone,official_tmax_c,
+          source_lane,
           settlement_definition,revision_no,published_at_utc,received_at_utc,
           canonical_committed_at_utc,timestamps_complete,qc_status,source_role,
           source_payload_sha256,observation_ids_json,authority_scope,content_sha256
-        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
-            "truth-1", "RKPK", "2026-07-01", 31.0, "AWC", "local-day", 0,
+            "truth-1", "RKPK", "2026-07-01", "Asia/Seoul", 31.0,
+            "AWC", "local-day", 0,
             "2026-07-02T00:00:00Z", "2026-07-02T00:01:00Z",
             "2026-07-02T00:02:00Z", 1, "ACCEPTED", "official_truth",
             "b" * 64, "[]", "FORMAL_NATIVE_ELIGIBLE", "c" * 64,
         ),
     )
+    # Columns named rather than positional.  Both inserts here were written
+    # as bare VALUES tuples, so each one broke the moment the table gained a
+    # column -- ``settlement_timezone``, required since the station-local
+    # season work -- and the failure ("28 columns but 27 values") says
+    # nothing about which column is missing.
     conn.execute(
         """
-        INSERT INTO calibration_historical_asof_model_run VALUES(
-          ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+        INSERT INTO calibration_historical_asof_model_run(
+          model_run_id,model_id,station_id,target_local_date,
+          settlement_timezone,run_init_utc,published_at_utc,received_at_utc,
+          timestamps_complete,lead_bucket,maturity_key,run_cycle,raw_tmax_c,
+          settlement_definition,provider_id,provider_role,source_class,
+          aggregator_or_republisher,open_meteo,source_url,raw_object_ref,
+          asof_status,capture_modes_json,historical_replay_eligible,
+          prospective_strict_asof_eligible,authority_scope,
+          source_object_sha256,content_sha256
+        ) VALUES(
+          ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
         )
         """,
         (
-            "run-1", "ECMWF", "RKPK", "2026-07-01",
+            "run-1", "ECMWF", "RKPK", "2026-07-01", "Asia/Seoul",
             "2026-06-30T00:00:00Z", "2026-06-30T06:00:00Z",
             "2026-06-30T06:01:00Z", 1, "d1", "d1", "00Z", 30.0,
             "local-day", "ecmwf", "native", "official_native", 0, 0,

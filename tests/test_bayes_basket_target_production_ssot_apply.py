@@ -137,6 +137,17 @@ def test_timezone_upgrade_retires_populated_pre_timezone_probability_table(
         )
         conn.execute("DROP TRIGGER basket_probability_envelope_no_update")
         conn.execute("DROP TRIGGER basket_probability_envelope_no_delete")
+        # Two indexes carry settlement_timezone, and SQLite refuses to drop a
+        # column an index reads.  A pre-timezone image did not have them
+        # either, so dropping them is part of modelling that image rather
+        # than a concession to the check -- and the upgrade under test
+        # rebuilds the table from the DDL, which puts both back.
+        conn.execute(
+            "DROP INDEX basket_probability_envelope_committed_scope_idx"
+        )
+        conn.execute(
+            "DROP INDEX basket_probability_envelope_publisher_scope_idx"
+        )
         conn.execute(
             "ALTER TABLE basket_probability_envelope "
             "DROP COLUMN settlement_timezone"
