@@ -27,6 +27,7 @@ from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from statistics import median
+from collections.abc import Mapping
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -120,6 +121,82 @@ def _age_hours(stamp: str | None) -> float | None:
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=timezone.utc)
     return (_now() - moment).total_seconds() / 3600.0
+
+
+#: Lane-level failures worth waking someone for, keyed by the ingress the
+#: resident publishes them under.  Per-candidate refusals are deliberately
+#: NOT here: "no solvable support window" is the objective declining a
+#: station-day, which is ordinary business and already has its own section.
+#: What belongs here is a lane that could not run at all.
+_PRODUCTION_LANES = (
+    ("resident_probability_chain", "概率链"),
+    ("resident_p0_ingress", "P0"),
+    ("resident_p0m_ingress", "P0-M"),
+    ("resident_p1_ingress", "P1"),
+    ("market_ingress", "行情入口"),
+    ("native_ensemble_ingress", "模型入口"),
+    ("regime_ingress", "政权入口"),
+)
+
+
+def _production_health(status: Mapping[str, Any]) -> dict[str, Any]:
+    """Whether the pipeline is producing, not merely whether it is alive.
+
+    The heartbeat only says the process still runs its loop.  On
+    2026-08-26 that was true for eleven hours while every ingress reported
+    ``database is locked`` and the cycle produced nothing -- one station's
+    TAF with no temperature group had taken P0-M to BLOCKED_FAIL_CLOSED,
+    and an ungated third writer was holding the SQLite lock.  Both were
+    plainly visible in the resident's own status file; nothing read them.
+    """
+
+    production = status.get("production")
+    if not isinstance(production, Mapping):
+        return {
+            "production_health": "amber",
+            "production_note": "常驻未发布 production receipt",
+        }
+    stale_hours = _age_hours(production.get("worker_checked_at"))
+    blocked: list[str] = []
+    locked = 0
+    for key, label in _PRODUCTION_LANES:
+        lane = production.get(key)
+        if not isinstance(lane, Mapping):
+            continue
+        state = str(lane.get("state") or "").upper()
+        if "BLOCK" in state or "FAIL" in state:
+            reason = str(lane.get("reason") or "")
+            blocked.append(f"{label}{'·' + reason.split(':')[-1][:40] if reason else ''}")
+            if "locked" in reason:
+                locked += 1
+    notes: list[str] = []
+    health = "green"
+    if stale_hours is not None and stale_hours > 1.0:
+        health = "red"
+        notes.append(f"周期已 {stale_hours:.1f} 小时没有完成")
+    if locked:
+        health = "red"
+        notes.append(f"{locked} 条车道被写锁挡住（单写者门失效？）")
+    elif blocked:
+        # A blocked lane with no lock error is a genuine fault too, but the
+        # kind that usually names one station -- amber, not red.
+        health = "red" if len(blocked) >= 3 else "amber"
+        notes.append("阻断车道：" + "、".join(blocked[:4]))
+    cycle_ms = (production.get("stage_timings_ms") or {}).get("cycle_total")
+    if isinstance(cycle_ms, (int, float)) and cycle_ms > 600_000:
+        health = "amber" if health == "green" else health
+        notes.append(f"单轮 {cycle_ms / 1000:.0f} 秒（常态约 200-350）")
+    return {
+        "production_health": health,
+        "production_note": "；".join(notes) or "周期正常产出",
+        "production_state": str(production.get("state") or ""),
+        "production_checked_at": production.get("worker_checked_at"),
+        "production_cycle_seconds": (
+            round(cycle_ms / 1000.0, 1)
+            if isinstance(cycle_ms, (int, float)) else None
+        ),
+        "production_blocked_lanes": blocked,
+    }
 
 
 def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
@@ -3102,6 +3179,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
                 "live_submit_authorized": status.get(
                     "live_submit_authorized"
                 ),
+                **_production_health(status),
             }
         except (ValueError, OSError):
             worker = {}
@@ -3130,6 +3208,19 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
             [{"health": truth["health"], "label": "真值物化",
               "note": truth.get("note") or ""}]
             if truth["health"] != "green" else []
+        )
+        # The resident's own health.  It was absent from this list until
+        # 2026-08-26, when production sat BLOCKED_FAIL_CLOSED for eleven
+        # hours behind a healthy heartbeat: the page showed a live pid and
+        # a fresh timestamp while nothing was being produced, and the
+        # outage surfaced only because someone audited refusals by hand.
+        # A heartbeat says the process is alive; it does not say the
+        # pipeline is working.
+        + (
+            [{"health": worker["production_health"],
+              "label": "生产周期",
+              "note": worker.get("production_note") or ""}]
+            if worker.get("production_health") not in (None, "green") else []
         )
     )
     overall = (
@@ -3404,6 +3495,17 @@ function head(){
     <span style="flex:1"></span>
     <span class="muted">常驻进程心跳 ${hours(w.heartbeat_age_hours)}
       ${w.pid ? "· pid " + w.pid : ""}</span>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+    margin-top:9px;padding-top:9px;border-top:1px solid var(--line)">
+    <span class="dot ${h(w.production_health||"muted")}"></span>
+    <b>生产周期</b>
+    <span class="muted">${h(w.production_note||"—")}</span>
+    <span style="flex:1"></span>
+    <span class="muted">上轮 ${w.production_cycle_seconds==null?"—":
+      w.production_cycle_seconds+" 秒"} ·
+      ${hours(D.worker&&D.worker.production_checked_at?
+        (Date.now()-Date.parse(D.worker.production_checked_at))/3600000:null)}</span>
   </div>${chips ? `<div style="display:flex;gap:8px;flex-wrap:wrap;
     align-items:center;margin-top:9px">${chips}${more}</div>` : ""}</div>`;
 }
