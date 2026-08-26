@@ -3340,6 +3340,23 @@ def main() -> int:
                 and production_future is None
                 and hosted_sweep_future is None
             )
+            # And the decision cycle outranks the maintenance sweeps, which
+            # the source order had backwards.  Sweeps were listed first, so
+            # every time a sweep finished another due sweep took the writer
+            # straight back and the cycle that prices the book waited behind
+            # the whole backlog: measured 2026-08-26, twenty-one minutes from
+            # a restart with seven sweeps due and not one production cycle
+            # completed.  The second the cycle stands down for on completion
+            # is the sweeps' window -- it is checked below before production
+            # comes due again -- so this orders them without starving them.
+            production_first_refusal = (
+                storage_ok
+                and now_mono >= next_production
+                and production_future is None
+                and forecast_future is None
+                and hosted_sweep_future is None
+                and not forecast_first_refusal
+            )
             if (
                 storage_ok
                 and now_mono >= next_registry_refresh
@@ -3400,6 +3417,7 @@ def main() -> int:
                 # the exact overlap the mutual gate exists to remove.
                 and forecast_future is None
                 and not forecast_first_refusal
+                and not production_first_refusal
             ):
                 # Serve whichever sweep has been due longest, not whichever
                 # sits earliest in the tuple.  Strict list order gives the
