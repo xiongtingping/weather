@@ -47,9 +47,12 @@ STAGE_EVIDENCE_FIELDS: Mapping[str, tuple[str, ...]] = {
     ),
     # What the P1 envelope itself publishes, which is not the same list the
     # ledger's plan lineage demands: the plan additionally carries
-    # ``truth_observation_revision_content_sha256``, and no committed P1
-    # envelope has ever carried it.  Requiring it here would mislabel that
-    # separate, real gap as an evidence-root failure.
+    # ``truth_observation_revision_content_sha256``, which most committed P1
+    # envelopes still do not.  ("None ever has" was true when this was
+    # written; measured 2026-08-26 it is 11,889 of 105,828 since 08-20, one
+    # for every observation the PR12 lane has identified.)  Requiring it here
+    # would mislabel that separate, real coverage gap as an evidence-root
+    # failure.
     "P1": (
         "canonical_observation_event_id",
         "canonical_observation_committed_at",

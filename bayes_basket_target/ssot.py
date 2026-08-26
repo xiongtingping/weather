@@ -9,6 +9,7 @@ append-only, and the execution path has no order/gateway table in this schema.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 
 from .canonical_ssot_schema import (
@@ -37,6 +38,46 @@ def _execute_sql_script_transactional(conn: sqlite3.Connection, script: str) -> 
     if statement.strip():
         raise RuntimeError("sqlite_script_incomplete_statement")
 
+
+def _execute_index_script_where_table_exists(
+    conn: sqlite3.Connection, script: str
+) -> list[str]:
+    """Create each index whose table this path actually built.
+
+    The deferred block carries indexes for tables owned by more than one
+    migration path, so "the table is not here" is an ordinary outcome, not an
+    error.  Anything else -- a typo, a dropped column -- still raises.
+    """
+
+    created: list[str] = []
+    statement = ""
+    for line in script.splitlines(keepends=True):
+        statement += line
+        if not sqlite3.complete_statement(statement):
+            continue
+        sql = statement.strip()
+        statement = ""
+        if not sql:
+            continue
+        match = re.search(
+            r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+            r"([A-Za-z_0-9]+)\s+ON\s+([A-Za-z_0-9]+)",
+            sql,
+            re.IGNORECASE,
+        )
+        if match is None:
+            raise RuntimeError("deferred_index_script_non_index_statement")
+        present = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (match.group(2),),
+        ).fetchone()
+        if present is None:
+            continue
+        conn.execute(sql)
+        created.append(match.group(1))
+    if statement.strip():
+        raise RuntimeError("sqlite_script_incomplete_statement")
+    return created
 
 SCHEMA_VERSION = "bayes_basket_target_ssot_v14_canonical_p0_chain"
 
@@ -1402,19 +1443,6 @@ CREATE TABLE IF NOT EXISTS basket_official_ws_snapshot (
 CREATE INDEX IF NOT EXISTS basket_official_ws_snapshot_asof_idx
 ON basket_official_ws_snapshot(station_id,event_date,state,observed_at,sequence);
 
--- The decision and cycle ledgers are read per station-day on every
--- production cycle, and both were scanned end to end: 37k rows each, forty
--- five stations a pass, and the pass stopped returning at all.  Measured
--- 2026-08-15 the two scans cost 399ms and 119ms per scope against 1.6ms for
--- the indexed snapshot read beside them, and the cycle sat in sqlite3_step
--- for minutes writing nothing.  Both are append-only and grow every cycle,
--- so the scan gets worse on its own.
-CREATE INDEX IF NOT EXISTS auto_trade_decisions_scope_idx
-ON auto_trade_decisions(station_id,event_date,created_at);
-
-CREATE INDEX IF NOT EXISTS basket_target_execution_cycles_scope_idx
-ON basket_target_execution_cycles(station_id,event_date,created_at);
-
 -- The calibration and weight tables are read the same way on the same path,
 -- and were scanned the same way.  The member archive is the expensive one:
 -- 818k rows, read per station-day, 1,170ms a scope -- one station cost more
@@ -1436,47 +1464,6 @@ ON calibration_cross_native_ensemble_selection_evidence(
   station_id,lead_bucket,run_cycle,train_end_date
 );
 
--- The republisher archive is read on the same path and is the largest table
--- in the database: 1.08M rows, scanned per station-day at 2,899ms a scope --
--- more than twice the native archive it sits beside, and the reason the
--- cycle still would not return after the native indexes landed.  Measured
--- 2026-08-15: 2899ms -> 8.1ms and 636ms -> 0.1ms.
-CREATE INDEX IF NOT EXISTS
-  calibration_republisher_ensemble_historical_member_run_scope_idx
-ON calibration_republisher_ensemble_historical_member_run(
-  station_id,target_local_date,ensemble_system_id
-);
-
--- The d2 coverage check counts distinct systems for one target day, and the
--- scope index above leads with station_id, which that question does not
--- constrain.  So it fell back to a UNIQUE autoindex and swept 1.3M rows to
--- return the number 3: 2.3 seconds uncontended, measured at 142 seconds
--- behind a competing writer on 2026-08-22.  Leading with the day makes it a
--- covering seek: 2300ms -> 0.6ms.
-CREATE INDEX IF NOT EXISTS
-  calibration_republisher_historical_d2_coverage_idx
-ON calibration_republisher_ensemble_historical_member_run(
-  target_local_date,archive_lead_bucket,extraction_version,ensemble_system_id
-);
-
-CREATE INDEX IF NOT EXISTS
-  calibration_republisher_ensemble_member_run_scope_idx
-ON calibration_republisher_ensemble_member_run(
-  station_id,target_local_date,ensemble_system_id
-);
-
--- The OOS sweep asks both member-run lanes the same two questions every
--- cycle -- which stations are candidates, and what truth each one has -- and
--- both start from a UNION filtered on authority_scope, which no index led
--- with.  That is a scan of 467k rows twice per cycle (measured 2026-08-16:
--- 2.07s and 1.60s).  Leading with authority_scope and carrying the scope
--- pair makes both queries covering.
-CREATE INDEX IF NOT EXISTS
-  calibration_republisher_ensemble_member_run_authority_idx
-ON calibration_republisher_ensemble_member_run(
-  authority_scope,station_id,target_local_date
-);
-
 CREATE INDEX IF NOT EXISTS
   calibration_native_ensemble_member_run_authority_idx
 ON calibration_native_ensemble_member_run(
@@ -1491,12 +1478,6 @@ ON calibration_native_ensemble_member_run(
 CREATE INDEX IF NOT EXISTS calibration_native_ensemble_member_run_scope_idx
 ON calibration_native_ensemble_member_run(station_id,target_local_date);
 
-CREATE INDEX IF NOT EXISTS basket_target_observation_facts_scope_idx
-ON basket_target_observation_facts(station_id,event_date);
-
-CREATE INDEX IF NOT EXISTS basket_probability_update_proof_scope_idx
-ON basket_probability_update_proof(station_id,event_date);
-
 CREATE INDEX IF NOT EXISTS
   calibration_native_ensemble_historical_member_bucket_scope_idx
 ON calibration_native_ensemble_historical_member_bucket(
@@ -1506,26 +1487,8 @@ ON calibration_native_ensemble_historical_member_bucket(
 CREATE INDEX IF NOT EXISTS calibration_historical_asof_model_run_scope_idx
 ON calibration_historical_asof_model_run(station_id,target_local_date);
 
-CREATE INDEX IF NOT EXISTS
-  calibration_republisher_ensemble_member_bucket_scope_idx
-ON calibration_republisher_ensemble_member_bucket(
-  station_id,target_local_date
-);
-
 CREATE INDEX IF NOT EXISTS calibration_native_ensemble_member_bucket_scope_idx
 ON calibration_native_ensemble_member_bucket(station_id,target_local_date);
-
-CREATE INDEX IF NOT EXISTS
-  calibration_republisher_historical_oos_contract_scope_idx
-ON calibration_republisher_historical_oos_contract(
-  station_id,target_local_date
-);
-
-CREATE INDEX IF NOT EXISTS
-  calibration_republisher_ensemble_historical_member_bucket_scope_idx
-ON calibration_republisher_ensemble_historical_member_bucket(
-  station_id,target_local_date
-);
 
 CREATE INDEX IF NOT EXISTS
   calibration_native_ensemble_system_artifact_scope_idx
@@ -1754,6 +1717,98 @@ CREATE TRIGGER IF NOT EXISTS basket_p0_preselection_no_delete BEFORE DELETE ON b
 # ``auto_trade_decisions`` is deliberately the only table that carries an
 # execution-blocking decision; the other tables only carry immutable facts or
 # lifecycle state.
+
+# Indexes whose tables are created by a later DDL block, or by a different
+# migration path entirely.
+#
+# SQLite refuses ``CREATE INDEX`` on a table that does not exist yet, and the
+# statements are executed one at a time, so a forward reference is a hard
+# failure rather than something the ``IF NOT EXISTS`` absorbs.  Every one of
+# these lived in ``PRODUCTION_TARGET_DDL``, which runs before
+# ``PRODUCTION_LEDGER_DDL`` and ``PROBABILITY_EVIDENCE_DDL`` and does not run
+# ``REPUBLISHER_ENSEMBLE_DDL`` at all -- so a schema built from scratch died
+# on ``no such table: main.auto_trade_decisions``, and the six republisher
+# indexes below could never be created by any entry point.  Production
+# databases carry all eleven from older piecemeal migrations, which is why
+# nothing in service noticed; what it cost was every test that builds a
+# schema, and it would have cost the next fresh install its indexes -- the
+# same class of loss as ``envelope-checkpoint-index-stall``.
+#
+# Applied after every table exists, and skipping any whose table this
+# particular path does not create.  ``apply_target_ssot_schema`` builds the
+# republisher tables and ``apply_production_ssot_schema`` does not; each gets
+# the indexes for the tables it actually has.
+DEFERRED_INDEX_DDL = """
+-- The decision and cycle ledgers are read per station-day on every
+-- production cycle, and both were scanned end to end: 37k rows each, forty
+-- five stations a pass, and the pass stopped returning at all.  Measured
+-- 2026-08-15 the two scans cost 399ms and 119ms per scope against 1.6ms for
+-- the indexed snapshot read beside them, and the cycle sat in sqlite3_step
+-- for minutes writing nothing.  Both are append-only and grow every cycle,
+-- so the scan gets worse on its own.
+CREATE INDEX IF NOT EXISTS auto_trade_decisions_scope_idx
+ON auto_trade_decisions(station_id,event_date,created_at);
+CREATE INDEX IF NOT EXISTS basket_target_execution_cycles_scope_idx
+ON basket_target_execution_cycles(station_id,event_date,created_at);
+-- The republisher archive is read on the same path and is the largest table
+-- in the database: 1.08M rows, scanned per station-day at 2,899ms a scope --
+-- more than twice the native archive it sits beside, and the reason the
+-- cycle still would not return after the native indexes landed.  Measured
+-- 2026-08-15: 2899ms -> 8.1ms and 636ms -> 0.1ms.
+CREATE INDEX IF NOT EXISTS
+  calibration_republisher_ensemble_historical_member_run_scope_idx
+ON calibration_republisher_ensemble_historical_member_run(
+  station_id,target_local_date,ensemble_system_id
+);
+-- The d2 coverage check counts distinct systems for one target day, and the
+-- scope index above leads with station_id, which that question does not
+-- constrain.  So it fell back to a UNIQUE autoindex and swept 1.3M rows to
+-- return the number 3: 2.3 seconds uncontended, measured at 142 seconds
+-- behind a competing writer on 2026-08-22.  Leading with the day makes it a
+-- covering seek: 2300ms -> 0.6ms.
+CREATE INDEX IF NOT EXISTS
+  calibration_republisher_historical_d2_coverage_idx
+ON calibration_republisher_ensemble_historical_member_run(
+  target_local_date,archive_lead_bucket,extraction_version,ensemble_system_id
+);
+CREATE INDEX IF NOT EXISTS
+  calibration_republisher_ensemble_member_run_scope_idx
+ON calibration_republisher_ensemble_member_run(
+  station_id,target_local_date,ensemble_system_id
+);
+-- The OOS sweep asks both member-run lanes the same two questions every
+-- cycle -- which stations are candidates, and what truth each one has -- and
+-- both start from a UNION filtered on authority_scope, which no index led
+-- with.  That is a scan of 467k rows twice per cycle (measured 2026-08-16:
+-- 2.07s and 1.60s).  Leading with authority_scope and carrying the scope
+-- pair makes both queries covering.
+CREATE INDEX IF NOT EXISTS
+  calibration_republisher_ensemble_member_run_authority_idx
+ON calibration_republisher_ensemble_member_run(
+  authority_scope,station_id,target_local_date
+);
+CREATE INDEX IF NOT EXISTS basket_target_observation_facts_scope_idx
+ON basket_target_observation_facts(station_id,event_date);
+CREATE INDEX IF NOT EXISTS basket_probability_update_proof_scope_idx
+ON basket_probability_update_proof(station_id,event_date);
+CREATE INDEX IF NOT EXISTS
+  calibration_republisher_ensemble_member_bucket_scope_idx
+ON calibration_republisher_ensemble_member_bucket(
+  station_id,target_local_date
+);
+CREATE INDEX IF NOT EXISTS
+  calibration_republisher_historical_oos_contract_scope_idx
+ON calibration_republisher_historical_oos_contract(
+  station_id,target_local_date
+);
+CREATE INDEX IF NOT EXISTS
+  calibration_republisher_ensemble_historical_member_bucket_scope_idx
+ON calibration_republisher_ensemble_historical_member_bucket(
+  station_id,target_local_date
+);
+"""
+
+
 DELTA_V2_AUTHORITY_DDL = """
 CREATE TABLE IF NOT EXISTS basket_delta_v2_policy_artifact (
   artifact_id TEXT PRIMARY KEY,
@@ -4327,6 +4382,10 @@ def apply_target_ssot_schema(conn: sqlite3.Connection, *, commit: bool = True) -
         + MAKER_GRID_OOS_AUTHORITY_DDL
         + PROBABILITY_EVIDENCE_DDL,
     )
+    # The republisher indexes were only ever written into
+    # ``PRODUCTION_TARGET_DDL``, which this path does not run, so a target
+    # schema built here has never had them.
+    _execute_index_script_where_table_exists(conn, DEFERRED_INDEX_DDL)
     republisher_historical_oos_migration = (
         _migrate_republisher_historical_oos_contract(conn)
     )
@@ -4884,6 +4943,9 @@ def apply_production_ssot_schema(conn: sqlite3.Connection, *, commit: bool = Tru
         + PROBABILITY_EVIDENCE_DDL,
         # Keep the canonical table and its two append-only guards one schema
         # unit; REPUBLISHER_ENSEMBLE_DDL is not part of this migration path.
+    )
+    deferred_indexes = _execute_index_script_where_table_exists(
+        conn, DEFERRED_INDEX_DDL
     )
     _execute_sql_script_transactional(conn, CANONICAL_FACT_GUARD_DDL)
     historical_taf_truth_label_migration = (
