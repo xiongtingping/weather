@@ -229,43 +229,83 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
 )
 
 
+def _terminate_process_group(process: "subprocess.Popen[str]") -> None:
+    """Kill a sweep's whole process group, then confirm it is gone.
+
+    SIGTERM first so a wrapper can unwind its own lock file, SIGKILL after a
+    short grace for anything that ignores it.  Signalling the group is the
+    point: the shell is only ever a launcher.
+    """
+
+    try:
+        group = os.getpgid(process.pid)
+    except (ProcessLookupError, PermissionError, OSError):
+        process.kill()
+        return
+    for signal_number in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(group, signal_number)
+        except (ProcessLookupError, PermissionError, OSError):
+            return
+        try:
+            process.wait(timeout=5.0)
+            return
+        except subprocess.TimeoutExpired:
+            continue
+
+
 def run_hosted_sweep(script_path: str, timeout_sec: float) -> dict[str, Any]:
     """Run one sweep script to completion and report what it did.
 
     The subprocess boundary is deliberate: each sweep keeps its own
     connections, pragmas and crash domain, so a sweep that dies cannot take
     the resident's commit connection or its process down with it.
+
+    The sweep gets its own process group so a timeout can kill the whole
+    tree.  Every wrapper here is a shell that execs python, and killing only
+    the direct child leaves that python running: measured 2026-08-26, a
+    ``refit_center_width.py --commit`` outlived its sweep's timeout_killed
+    receipt by thirty-seven minutes, still holding the write lock, while the
+    resident had already moved on and the single-instance guard reported
+    reclaiming a lock from a pid nobody was tracking.  Orphans accumulate
+    one per timeout, and each one is a writer competing with the stage that
+    prices the book.
     """
+
+    def _text(value: Any) -> str:
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="replace")
+        return str(value or "")
 
     started_at = utc_now()
     started = time.monotonic()
+    process: subprocess.Popen[str] | None = None
     try:
-        completed = subprocess.run(
+        process = subprocess.Popen(
             ["/bin/bash", script_path],
             cwd=str(ROOT),
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout_sec,
+            start_new_session=True,
         )
-        returncode: int | None = completed.returncode
-        tail = (completed.stdout + completed.stderr)[-600:]
-        state_text = "ok" if completed.returncode == 0 else "failed"
-    except subprocess.TimeoutExpired as exc:
-        returncode = None
-        # TimeoutExpired carries whatever was captured at the kill, and on
-        # this path it arrives as bytes even under text=True.  The first
-        # hosted ledger sweep hit exactly this: killed at its timeout, then
-        # the receipt formatter raised on ``str + bytes`` -- inside the
-        # except clause, where the sibling handler cannot catch it -- and
-        # the receipt read future_failed instead of timeout_killed.
-        def _text(value: Any) -> str:
-            if isinstance(value, bytes):
-                return value.decode("utf-8", errors="replace")
-            return str(value or "")
-
-        tail = (_text(exc.stdout) + _text(exc.stderr))[-600:]
-        state_text = "timeout_killed"
+        try:
+            out, err = process.communicate(timeout=timeout_sec)
+            returncode: int | None = process.returncode
+            tail = (_text(out) + _text(err))[-600:]
+            state_text = "ok" if returncode == 0 else "failed"
+        except subprocess.TimeoutExpired:
+            # Signal the group, not the shell.  Every wrapper execs python,
+            # and reaping only the direct child leaves that python running
+            # against the same database.
+            _terminate_process_group(process)
+            out, err = process.communicate()
+            returncode = None
+            tail = (_text(out) + _text(err))[-600:]
+            state_text = "timeout_killed"
     except Exception as exc:  # noqa: BLE001 - the receipt is the contract
+        if process is not None:
+            _terminate_process_group(process)
         returncode = None
         tail = f"{type(exc).__name__}:{exc}"
         state_text = "spawn_failed"
