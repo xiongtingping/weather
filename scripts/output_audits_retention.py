@@ -48,6 +48,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from collections.abc import Sequence
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -66,6 +67,12 @@ PROTECTED_EXACT_NAMES = frozenset({
     "official_nwp_native_raw_retention_plan_latest.json",
     "official_nwp_native_raw_retention_apply_latest.json",
 })
+# Roots scanned for source that names an audits entry, and the bounds that
+# keep that scan a scan rather than a walk of the whole workspace.
+DEFAULT_REFERENCE_ROOTS = ("scripts", "bayes_basket_target", "config", "tests")
+REFERENCE_SUFFIXES = frozenset({".py", ".sh", ".json", ".toml", ".cfg", ".md"})
+MAX_REFERENCE_FILES = 20_000
+MAX_REFERENCE_FILE_BYTES = 4 * 1024 * 1024
 
 
 def _entry_newest_mtime(path: Path) -> float:
@@ -104,13 +111,70 @@ def _is_protected(name: str) -> bool:
     return name in PROTECTED_EXACT_NAMES
 
 
+def _referencing_sources(
+    names: Sequence[str], reference_roots: Sequence[Path]
+) -> dict[str, str]:
+    """Map each audits entry name to a source file that names it, if any.
+
+    Age is the wrong question for an entry that a script reads on every run.
+    ``pr12_awc_observation_sweep.sh`` names one such entry by literal path --
+    a sealed authority projection built once, read every ten minutes, and
+    never rewritten, so it ages like a dump and is read like a pointer.  On
+    2026-08-26 this pass deleted it and the observation-identity lane exited
+    78 on the next tick, which is a retention policy stopping production.
+
+    This is the same reference scan the native NWP lane already performs
+    before it discards a body, applied to the one thing this pass discards.
+    Matching is on the exact entry name, not a substring or a pattern: a name
+    that appears verbatim in tracked source is being addressed by something,
+    and that is the only claim being made.
+    """
+
+    wanted = {str(name) for name in names if str(name)}
+    if not wanted:
+        return {}
+    found: dict[str, str] = {}
+    scanned = 0
+    for root in reference_roots:
+        if not root.is_dir():
+            continue
+        for path in sorted(root.rglob("*")):
+            if scanned >= MAX_REFERENCE_FILES or len(found) == len(wanted):
+                break
+            if not path.is_file() or path.is_symlink():
+                continue
+            if path.suffix.lower() not in REFERENCE_SUFFIXES:
+                continue
+            try:
+                if path.stat().st_size > MAX_REFERENCE_FILE_BYTES:
+                    continue
+                text = path.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                # A reference this pass cannot read cannot prove an entry is
+                # unreferenced, so the entry stays: the native lane fails the
+                # whole pass closed on this, which is heavier than the one
+                # deletion it would prevent here.
+                continue
+            scanned += 1
+            for name in wanted - set(found):
+                if name in text:
+                    found[name] = str(path)
+    return found
+
+
 def build_retention_plan(
     *,
     audits_root: Path,
     retention_days: int,
     now: datetime | None = None,
+    reference_roots: Sequence[Path] | None = None,
 ) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
+    roots = (
+        tuple(reference_roots)
+        if reference_roots is not None
+        else tuple(ROOT / name for name in DEFAULT_REFERENCE_ROOTS)
+    )
     cutoff_epoch = now.timestamp() - max(0, int(retention_days)) * 86400.0
     stale: list[dict[str, Any]] = []
     kept_protected: list[dict[str, Any]] = []
@@ -129,14 +193,34 @@ def build_retention_plan(
             "stale_count": 0,
             "stale_bytes": 0,
             "kept_protected_entries": [],
+            "kept_referenced_entries": [],
+            "kept_referenced_count": 0,
             "kept_fresh_bytes": 0,
             "kept_fresh_count": 0,
         }
-    for entry in sorted(audits_root.iterdir()):
-        if entry.is_symlink():
-            continue
+    entries = [
+        entry for entry in sorted(audits_root.iterdir())
+        if not entry.is_symlink()
+    ]
+    # Only entries age would otherwise discard are worth scanning for.
+    aging = [
+        entry.name for entry in entries
+        if not _is_protected(entry.name)
+        and (_entry_newest_mtime(entry) or 0.0) < cutoff_epoch
+    ]
+    referenced = _referencing_sources(aging, roots)
+    kept_referenced: list[dict[str, Any]] = []
+    for entry in entries:
         newest_mtime = _entry_newest_mtime(entry)
         entry_bytes, entry_count = _entry_bytes_and_count(entry)
+        if entry.name in referenced:
+            kept_referenced.append({
+                "path": str(entry),
+                "bytes": entry_bytes,
+                "file_count": entry_count,
+                "referenced_by": referenced[entry.name],
+            })
+            continue
         if _is_protected(entry.name):
             kept_protected.append({
                 "path": str(entry),
@@ -173,6 +257,8 @@ def build_retention_plan(
         "stale_count": len(stale),
         "stale_bytes": sum(item["bytes"] for item in stale),
         "kept_protected_entries": kept_protected,
+        "kept_referenced_entries": kept_referenced,
+        "kept_referenced_count": len(kept_referenced),
         "kept_fresh_bytes": kept_fresh_bytes,
         "kept_fresh_count": kept_fresh_count,
     }
