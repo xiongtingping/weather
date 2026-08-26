@@ -100,6 +100,7 @@ from asos_argmax_window import (
 from asos_argmax_entry import materialize_argmax_entry_facts
 from asos_argmax_execution import process_pending_argmax_orders
 from asos_argmax_taf_reference import materialize_argmax_taf_references
+from bayes_basket_target import serving_arithmetic
 from bayes_basket_target.database import DEFAULT_TARGET_DB
 from bayes_basket_target.market_registry import (
     export_shared_live_registry,
@@ -252,6 +253,56 @@ def _terminate_process_group(process: "subprocess.Popen[str]") -> None:
             return
         except subprocess.TimeoutExpired:
             continue
+
+
+def _stamp_serving_arithmetic(
+    commit_conn: "sqlite3.Connection | None", *, started_at_utc: str
+) -> dict[str, Any]:
+    """Record when each stage's serving arithmetic began actually serving.
+
+    The boundary the centre/width evidence floor needs is not when the code
+    was committed and not when a refit next happened to look -- it is when a
+    process that serves probabilities started running it.  Decisions taken
+    between a commit and the restart that picked it up were produced by the
+    old arithmetic, so a commit timestamp would admit evidence from a
+    distribution nobody was serving yet, which is the one direction that
+    floor exists to prevent.
+
+    Stamping here makes this resident's own start that boundary.  It is the
+    sole long-lived compiler of P0/P0-M/P1 -- everything else that compiles
+    them is a one-shot script running whatever is on disk at the time -- so
+    the first start carrying a fingerprint is the first moment it served.
+    ``INSERT OR IGNORE`` on (stage, fingerprint) keeps that first stamp, so
+    restarts on unchanged code cost nothing.
+
+    Before this, the stamp came from whichever refit first noticed, and the
+    refit runs daily: the 2026-08-25 charter batch landed at 13:49:50Z and
+    was stamped 17:02:34Z, three hours and thirteen minutes of the eight-day
+    wait spent on nothing but when the observer woke up.
+
+    The fingerprint reads source from disk, so a deploy landing between this
+    resident's imports and this call would be mis-stamped.  That window is
+    sub-second and the standing practice is to restart after committing, but
+    it is a window, not a proof.
+    """
+
+    if commit_conn is None:
+        return {"state": "no_writer", "stages": {}}
+    stamped: dict[str, Any] = {}
+    for stage in ("P0", "P0-M", "P1"):
+        try:
+            stamped[stage] = serving_arithmetic.record(
+                commit_conn, stage=stage, now_utc=started_at_utc
+            )
+        except sqlite3.Error as exc:
+            commit_conn.rollback()
+            stamped[stage] = f"error:{type(exc).__name__}"
+    try:
+        commit_conn.commit()
+    except sqlite3.Error:
+        commit_conn.rollback()
+        return {"state": "commit_failed", "stages": stamped}
+    return {"state": "ok", "at_utc": started_at_utc, "stages": stamped}
 
 
 def run_hosted_sweep(script_path: str, timeout_sec: float) -> dict[str, Any]:
@@ -2737,6 +2788,9 @@ def main() -> int:
                     "target_writer_lock_budget_config_failed:"
                     f"{type(exc).__name__}:{exc}"
                 )
+        state["serving_arithmetic"] = _stamp_serving_arithmetic(
+            commit_conn, started_at_utc=str(state["started_at"])
+        )
         # Forecast prefetch owns network/file work only.  It receives no
         # writable SSOT handle; the production worker above is the sole
         # target database writer and ingests the atomically published

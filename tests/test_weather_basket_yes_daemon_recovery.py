@@ -602,3 +602,44 @@ def test_stage_policy_lineage_guard_reports_a_split_chain() -> None:
         result = stage_policy_lineage_guard(build(Path(raw), rows_for(absent)))
     assert result["violations"] == ["stage_policy_lineage_incomplete"]
 
+
+
+def test_serving_arithmetic_is_stamped_at_the_start_that_served_it() -> None:
+    """The floor wants the start that ran the code, not the observer's clock.
+
+    Before this the stamp came from whichever refit first noticed, which runs
+    daily: the 2026-08-25 charter batch landed at 13:49:50Z and was stamped
+    17:02:34Z, three hours of an eight-day wait spent on nothing.
+    """
+
+    conn = sqlite3.connect(":memory:")
+    try:
+        first = daemon._stamp_serving_arithmetic(
+            conn, started_at_utc="2026-08-26T10:00:00.000Z"
+        )
+        assert first["state"] == "ok"
+        assert sorted(first["stages"]) == ["P0", "P0-M", "P1"]
+        assert all(first["stages"][stage] for stage in first["stages"])
+
+        # A restart on unchanged code must not move the boundary forward.
+        later = daemon._stamp_serving_arithmetic(
+            conn, started_at_utc="2026-08-26T12:00:00.000Z"
+        )
+        assert later["state"] == "ok"
+        stamps = {
+            row[0]: row[1]
+            for row in conn.execute(
+                "SELECT stage,first_seen_utc FROM calibration_serving_arithmetic"
+            )
+        }
+        assert set(stamps.values()) == {"2026-08-26T10:00:00.000Z"}
+    finally:
+        conn.close()
+
+
+def test_serving_arithmetic_stamp_is_inert_without_a_writer() -> None:
+    """A resident that could not open the target database stamps nothing."""
+
+    assert daemon._stamp_serving_arithmetic(
+        None, started_at_utc="2026-08-26T10:00:00.000Z"
+    ) == {"state": "no_writer", "stages": {}}
