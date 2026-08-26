@@ -14,6 +14,8 @@ import json
 import sqlite3
 import sys
 import unittest
+
+import pytest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -392,3 +394,58 @@ class StageIsolationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_round_memo_asks_each_loading_question_once_per_stage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One round, one answer per distinct question.
+
+    The two lanes inside a stage pass identical arguments, so before the memo
+    a three-stage round resolved the evidence floor six times, the truth table
+    six times and the serving cells six times -- 608 of a measured 885-second
+    round went to the floor alone.
+    """
+
+    import bayes_basket_target.center_width_store as store
+
+    calls = {"anchor": 0, "truth": 0, "cells": 0}
+
+    def _anchor(_conn, *, stage):  # noqa: ANN001, ARG001
+        calls["anchor"] += 1
+        return None
+
+    def _truth(_conn):  # noqa: ANN001
+        calls["truth"] += 1
+        return {}
+
+    def _cells(_conn, _truth_map, *, stage, min_decision_at_utc=None):  # noqa: ANN001, ARG001
+        calls["cells"] += 1
+        return {}
+
+    monkeypatch.setattr(store, "served_arithmetic_anchor", _anchor)
+    monkeypatch.setattr(store, "_truth", _truth)
+    monkeypatch.setattr(store, "serving_cells_by_day", _cells)
+
+    conn = sqlite3.connect(":memory:")
+    try:
+        store.ensure_center_width_schema(conn)
+        store.refit_all_center_width(conn, commit=False)
+    finally:
+        conn.close()
+
+    assert calls == {"anchor": 3, "truth": 1, "cells": 3}
+
+
+def test_round_memo_keeps_different_caller_bounds_apart() -> None:
+    """Two lanes given different bounds are asking different questions."""
+
+    import bayes_basket_target.center_width_store as store
+
+    with store._round_memo():
+        first = store._memoised(("evidence_floor", "P0", "A"), lambda: "a")
+        second = store._memoised(("evidence_floor", "P0", "B"), lambda: "b")
+        repeat = store._memoised(("evidence_floor", "P0", "A"), lambda: "z")
+    assert (first, second, repeat) == ("a", "b", "a")
+    # Outside a round there is no memo at all, so direct callers are unchanged.
+    assert store._memoised(("evidence_floor", "P0", "A"), lambda: "fresh") == "fresh"

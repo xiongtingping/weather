@@ -16,6 +16,8 @@ import math
 import sqlite3
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -522,10 +524,13 @@ def fit_station_width(
     min_decision_at_utc = _evidence_floor(
         conn, stage=stage_id, caller_bound=min_decision_at_utc
     )
-    truth = _truth(conn)
-    by_day = serving_cells_by_day(
-        conn, truth, stage=stage_id,
-        min_decision_at_utc=min_decision_at_utc,
+    truth = _memoised(("truth",), lambda: _truth(conn))
+    by_day = _memoised(
+        ("serving_cells", stage_id, min_decision_at_utc),
+        lambda: serving_cells_by_day(
+            conn, truth, stage=stage_id,
+            min_decision_at_utc=min_decision_at_utc,
+        ),
     )
     days = sorted(by_day)
     cells = [cell for day in days for cell in by_day[day]]
@@ -1035,6 +1040,41 @@ def served_arithmetic_anchor(
 
 
 
+# One refit round asks the same three loading questions six to nine times.
+# The stage's evidence floor, the truth table and the serving cells are each
+# resolved once per lane, and the lanes pass identical arguments -- measured
+# 2026-08-26: 608s of a 885s round went to ``served_arithmetic_anchor`` alone,
+# 202s of it for a value ``record`` discards, and 252s more to re-scanning the
+# same 287k history rows.  The memo lives for exactly one
+# ``refit_all_center_width`` call because ``serving_arithmetic.record`` stamps
+# before the fit begins: within a round the floor is fixed, across rounds it
+# is not.  Direct callers of the two fit functions get no memo and behave
+# exactly as before.
+_ROUND_MEMO: dict[tuple[Any, ...], Any] | None = None
+
+
+@contextmanager
+def _round_memo() -> "Iterator[None]":
+    """Memoise one refit round's loading questions, then forget them."""
+
+    global _ROUND_MEMO
+    outer = _ROUND_MEMO
+    _ROUND_MEMO = {} if outer is None else outer
+    try:
+        yield
+    finally:
+        _ROUND_MEMO = outer
+
+
+def _memoised(key: tuple[Any, ...], produce: "Callable[[], Any]") -> Any:
+    memo = _ROUND_MEMO
+    if memo is None:
+        return produce()
+    if key not in memo:
+        memo[key] = produce()
+    return memo[key]
+
+
 def _evidence_floor(
     conn: sqlite3.Connection, *, stage: str, caller_bound: str | None
 ) -> str | None:
@@ -1054,14 +1094,19 @@ def _evidence_floor(
     bound exists to prevent.
     """
 
-    floor = caller_bound
-    for candidate in (
-        served_arithmetic_anchor(conn, stage=stage),
-        serving_arithmetic.anchor(conn, stage=stage),
-    ):
-        if candidate and (floor is None or str(candidate) > str(floor)):
-            floor = candidate
-    return floor
+    def _resolve() -> str | None:
+        floor = caller_bound
+        for candidate in (
+            served_arithmetic_anchor(conn, stage=stage),
+            serving_arithmetic.anchor(conn, stage=stage),
+        ):
+            if candidate and (floor is None or str(candidate) > str(floor)):
+                floor = candidate
+        return floor
+
+    # ``caller_bound`` is in the key: two lanes given different bounds are
+    # asking different questions and must not share an answer.
+    return _memoised(("evidence_floor", stage, caller_bound), _resolve)
 
 
 def fit_center_width(
@@ -1083,10 +1128,13 @@ def fit_center_width(
     min_decision_at_utc = _evidence_floor(
         conn, stage=stage_id, caller_bound=min_decision_at_utc
     )
-    truth = _truth(conn)
-    by_day = serving_cells_by_day(
-        conn, truth, stage=stage_id,
-        min_decision_at_utc=min_decision_at_utc,
+    truth = _memoised(("truth",), lambda: _truth(conn))
+    by_day = _memoised(
+        ("serving_cells", stage_id, min_decision_at_utc),
+        lambda: serving_cells_by_day(
+            conn, truth, stage=stage_id,
+            min_decision_at_utc=min_decision_at_utc,
+        ),
     )
     days = sorted(by_day)
     cells = [cell for day in days for cell in by_day[day]]
@@ -1376,6 +1424,18 @@ def refit_all_center_width(
 
     results: dict[str, Any] = {}
     wanted = tuple(stages) if stages else CENTER_WIDTH_STAGES
+    with _round_memo():
+        _refit_stages(conn, wanted, results, commit, min_decision_at_utc)
+    return results
+
+
+def _refit_stages(
+    conn: sqlite3.Connection,
+    wanted: "Sequence[str]",
+    results: dict[str, Any],
+    commit: bool,
+    min_decision_at_utc: str | None,
+) -> None:
     for stage in wanted:
         if stage not in CENTER_WIDTH_STAGES:
             raise ContractError("center_width_stage_invalid")
@@ -1489,4 +1549,4 @@ def refit_all_center_width(
             except sqlite3.Error:
                 pass
             station_entry["error"] = f"{type(exc).__name__}: {exc}"
-    return results
+

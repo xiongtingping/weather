@@ -26,6 +26,7 @@ Without ``--commit`` this reports only.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import sqlite3
 import sys
@@ -130,7 +131,9 @@ def main() -> int:
             try:
                 serving_arithmetic.record(
                     conn, stage=stage,
-                    bootstrap_utc=served_arithmetic_anchor(conn, stage=stage),
+                    bootstrap_utc=functools.partial(
+                        served_arithmetic_anchor, conn, stage=stage
+                    ),
                 )
             except sqlite3.Error:
                 conn.rollback()

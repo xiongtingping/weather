@@ -27,7 +27,7 @@ import importlib
 import inspect
 import sqlite3
 from datetime import datetime, timezone
-from typing import Any, Mapping, Sequence
+from typing import Callable, Any, Mapping, Sequence
 
 SCHEMA = "serving_arithmetic_fingerprint_v1"
 
@@ -119,7 +119,7 @@ def record(
     *,
     stage: str,
     now_utc: str | None = None,
-    bootstrap_utc: str | None = None,
+    bootstrap_utc: "str | Callable[[], str | None] | None" = None,
 ) -> str | None:
     """Stamp this stage's current arithmetic the first time it is seen.
 
@@ -133,6 +133,15 @@ def record(
     before -- the shape may have been serving for weeks -- so ``bootstrap_utc``
     is used instead, and stamping "now" there would throw away every day of
     evidence the stage had legitimately earned.
+
+    ``bootstrap_utc`` may be a callable, and callers whose bootstrap is
+    expensive should pass one.  It is consulted only on that first-ever
+    stamp, which is the rarest path there is -- every stage in production has
+    been stamped for weeks -- but Python evaluates an argument whether or not
+    the callee reads it.  The refit paid 202 seconds a round computing a
+    boundary that ``seen_before`` then threw away, three times, because the
+    call site could not know the predicate.  Keeping the predicate here is
+    the point: only this function knows when the value is wanted.
     """
 
     current = fingerprint(stage)
@@ -147,7 +156,9 @@ def record(
         timespec="milliseconds"
     ).replace("+00:00", "Z")
     if not seen_before and bootstrap_utc:
-        stamp = str(bootstrap_utc)
+        resolved = bootstrap_utc() if callable(bootstrap_utc) else bootstrap_utc
+        if resolved:
+            stamp = str(resolved)
     conn.execute(
         "INSERT OR IGNORE INTO calibration_serving_arithmetic"
         "(stage, fingerprint_sha256, first_seen_utc) VALUES(?,?,?)",
