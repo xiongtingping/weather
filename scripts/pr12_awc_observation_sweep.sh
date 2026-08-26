@@ -16,7 +16,11 @@ cd "$ROOT"
 . "$ROOT/scripts/lib/single_instance.sh"
 single_instance pr12_awc_observation_sweep
 PY="$ROOT/.venv/bin/python"
-PROJECTION="$ROOT/output/audits/pr12_authority_scope_projection_current_20260805T120000Z.json"
+# The sealed authority projection is an active pointer the sweep reads every
+# round, not an audit by-product: output/audits is pruned by age (14 days),
+# and on 2026-08-26 that pruning deleted this file and stopped the lane.
+# Active inputs live in config/artifacts, which no retention pass touches.
+PROJECTION="$ROOT/config/artifacts/pr12_authority_scope_projection_current_20260805T120000Z.json"
 WORK="$ROOT/data/runtime/pr12_awc_observation"
 AUDIT="$ROOT/output/audits"
 mkdir -p "$WORK" "$AUDIT" "$ROOT/data/logs"
