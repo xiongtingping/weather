@@ -582,14 +582,54 @@ OFF_CENTER_CLAIM_BANDS = (
 )
 
 
-def off_center_claim_factor(claimed_mass: float) -> float:
-    """Deflation for a window that does not contain the model centre."""
+# How many buckets of distance from the centre buys the full deflation.
+#
+# The table above was fitted as a two-value question -- does the window
+# contain the centre bucket, yes or no -- so the correction it implies is a
+# cliff: one bucket of movement in the centre flips the factor between 1.00
+# and 0.64.  The quantity underneath ("how far off centre is this window")
+# is continuous, and the discretisation is what makes the cliff bite when
+# two charters disagree about which bucket the centre is: measured
+# 2026-08-27, 86% of the disagreements between the seating centre (charter
+# 54's mass-weighted mean) and the claim centre (charter 42's point
+# estimate) are exactly one bucket, and 13 of 384 seats were deflated for
+# missing a centre they were seated on.
+#
+# 1 is the fitted rule exactly -- any gap at all takes the whole deflation --
+# and is the default so nothing moves without a measurement.  Above 1 the
+# deflation ramps: at 2 a one-bucket miss takes half of it, at 3 a third.
+# The ramp is an assumption the table cannot settle, because the table has
+# no distance axis; that is what the A/B is for.
+OFF_CENTER_CLAIM_RAMP_BUCKETS = float(
+    os.environ.get("PM_OFF_CENTER_CLAIM_RAMP_BUCKETS", "1") or 1.0
+)
+
+
+def off_center_claim_factor(
+    claimed_mass: float, *, gap_buckets: float = 1.0
+) -> float:
+    """Deflation for a window that does not contain the model centre.
+
+    ``gap_buckets`` is how far the centre sits outside the window, in
+    bucket ordinals: 0 when the window contains it.  The default of 1
+    reproduces the fitted two-value rule for every caller that does not
+    measure a distance.
+    """
 
     mass = float(claimed_mass)
+    full = OFF_CENTER_CLAIM_BANDS[-1][1]
     for bound, factor in OFF_CENTER_CLAIM_BANDS:
         if mass < bound:
-            return factor
-    return OFF_CENTER_CLAIM_BANDS[-1][1]
+            full = factor
+            break
+    gap = max(0.0, float(gap_buckets))
+    if gap <= 0.0:
+        return 1.0
+    ramp = OFF_CENTER_CLAIM_RAMP_BUCKETS
+    if not ramp > 1.0:
+        return full
+    reach = min(1.0, gap / ramp)
+    return 1.0 - (1.0 - full) * reach
 
 
 # The ladder's length is a property of the day, not a constant.  A model

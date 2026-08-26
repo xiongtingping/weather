@@ -104,6 +104,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     DEFAULT_KELLY_FRACTION,
     MAX_STAKE_FRACTION_PER_SCOPE,
+    OFF_CENTER_CLAIM_RAMP_BUCKETS,
     STAGE_BUDGET_SHARE,
     SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
     scope_stake_cap_usdc,
@@ -958,6 +959,9 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
         if SEAT_PRICING_BASIS == "lane"
         else "席位按吃单价定价(对照)"
     ),
+    None
+    if OFF_CENTER_CLAIM_RAMP_BUCKETS == 1.0
+    else f"离心折扣按距离{OFF_CENTER_CLAIM_RAMP_BUCKETS:g}桶爬坡",
     None if not CERTAINTY_GATE else "确定性闸" + "+".join(CERTAINTY_GATE),
     None
     if EXECUTION_MODE != "maker_resting" or not MAKER_RESTING_SHOULDER_LAMBDA
@@ -1051,6 +1055,13 @@ SELECTION_RULE_SHA256 = content_sha256({
     # Charter 55 (2026-08-25): the mean-mode gap gates which side a window
     # may extend toward.  A live rule, hashed unconditionally.
     "skew_extension_rule": SKEW_EXTENSION_RULE,
+    # How far off centre buys the whole claim deflation.  1 is the fitted
+    # two-value rule and the standing book's; hashed only when it departs,
+    # so the default fingerprint is untouched by the knob existing.
+    **(
+        {"off_center_claim_ramp_buckets": OFF_CENTER_CLAIM_RAMP_BUCKETS}
+        if OFF_CENTER_CLAIM_RAMP_BUCKETS != 1.0 else {}
+    ),
     # Research arm: which statistic reads the skew.  Hashed only when it
     # departs the charter-55 default so the standing book keeps its sha.
     **(

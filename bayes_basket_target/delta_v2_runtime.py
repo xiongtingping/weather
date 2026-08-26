@@ -1100,12 +1100,33 @@ def _support_windows(
             # A window that does not hold the model's own centre is
             # over-claimed by a measured amount; the objective must rank and
             # size on the corrected number, not on the raw one.
+            #
+            # How far off centre, not merely whether.  The fitted table has
+            # no distance axis -- it was measured as containment, yes or no --
+            # so under the default ramp of 1 any gap at all still takes the
+            # whole deflation and this is the same arithmetic it always was.
+            # The distance is carried so the ramp can be measured at all:
+            # the claim centre and the seating centre are different buckets
+            # in 16-34% of scopes depending on stage, 86% of those by exactly
+            # one bucket, and a one-bucket miss currently costs the same 36%
+            # as a five-bucket one.
             holds_center = center_bucket in window
-            claim_factor = (
-                1.0
+            center_gap = (
+                0
                 if holds_center
-                else off_center_claim_factor(raw_win)
+                else min(
+                    abs(
+                        by_bucket[bucket].ordinal
+                        - by_bucket[center_bucket].ordinal
+                    )
+                    for bucket in window
+                )
+                if center_bucket in by_bucket
+                # An unknown centre keeps the pre-2026-08-27 answer rather
+                # than silently reading as "on centre".
+                else 1
             )
+            claim_factor = off_center_claim_factor(raw_win, gap_buckets=center_gap)
             win = min(1.0 - EPS, raw_win * claim_factor)
             quotes = [_all_in(bucket) for bucket in window]
             priced = all(quote is not None for quote in quotes)
@@ -1273,6 +1294,7 @@ def _support_windows(
                 "win_probability": win,
                 "raw_win_probability": raw_win,
                 "off_center_claim_factor": claim_factor,
+                "center_gap_buckets": center_gap,
                 "holds_probability_core": holds_core,
                 "all_in_price": price if priced else None,
                 "edge": edge,

@@ -1405,8 +1405,13 @@ def test_off_centre_windows_are_deflated_not_forbidden() -> None:
         / "delta_v2_runtime.py"
     ).read_text(encoding="utf-8")
     # Ranking and sizing must see the same corrected belief, or the seat and
-    # the stake disagree about what is being bought.
-    assert "off_center_claim_factor(raw_win)" in source
+    # the stake disagree about what is being bought.  The call carries the
+    # centre distance since 2026-08-27; the assertion is about which mass it
+    # corrects, which is still the window's own raw claim.
+    assert "off_center_claim_factor(raw_win, gap_buckets=" in source
+    # Containment is the zero of that distance, so the two-value rule is the
+    # ramp's own default rather than a separate branch.
+    assert "center_gap = (" in source
     assert "window_probabilities" in source
     # It corrects, it does not forbid: no admission branch may key on it.
     assert "if not holds_center:\n                continue" not in source
