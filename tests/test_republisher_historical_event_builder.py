@@ -120,6 +120,21 @@ def _evidence(*, lead: int = 1, missing_model: str | None = None) -> dict:
 
 def _ready_database():
     conn = _v15_database()
+    # The lane now asks the listing what day the station settles on, so the
+    # fixture has to declare one. KATL genuinely is an Eastern station -- one
+    # of the three in the fleet -- which is why this lane still admits it.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS basket_target_market_registry ("
+        " station_id TEXT, event_date TEXT, settlement_timezone TEXT,"
+        " source_eligible INTEGER)"
+    )
+    conn.execute(
+        "INSERT INTO basket_target_market_registry VALUES (?,?,?,1)",
+        ("KATL", "2026-08-01", "America/New_York"),
+    )
+    # Left open, this transaction is the caller's, and the ingress refuses to
+    # finalize one it does not own.
+    conn.commit()
     truth_identity = {
         "truth_id": "awc-historical-truth-katl-20260801",
         "station_id": "KATL",

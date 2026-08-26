@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import json
+import sqlite3
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
@@ -154,9 +155,56 @@ def _terminal(
     })
 
 
+def _station_settlement_timezone(conn: Any, station_id: str) -> str:
+    """The zone this station's market listing settles on.
+
+    Doctrine, 2026-08-26 canonical-day 口径换代: the listing decides, per
+    station.  The binding table stands behind it for a station the current
+    registry snapshot does not cover.
+    """
+
+    zone = ""
+    for sql in (
+        "SELECT settlement_timezone,COUNT(*) AS n FROM basket_target_market_registry "
+        "WHERE station_id=? AND source_eligible=1 "
+        "GROUP BY settlement_timezone ORDER BY n DESC LIMIT 1",
+        "SELECT settlement_timezone FROM "
+        "calibration_station_market_timezone_binding WHERE station_id=?",
+    ):
+        try:
+            row = conn.execute(sql, (station_id,)).fetchone()
+        except sqlite3.Error:
+            # A store without the listing tables cannot say what day this
+            # station settles on, and guessing is the thing that produced the
+            # mislabelling.  Fall through to the fail-closed raise.
+            continue
+        if row and row[0]:
+            zone = str(row[0])
+            break
+    if not zone:
+        raise ContractError(
+            "republisher_historical_settlement_timezone_missing:" + str(station_id)
+        )
+    return zone
+
+
 def _effective_truth_index(
     conn: Any, *, station_id: str, as_of_utc: str,
 ) -> dict[str, dict[str, Any]]:
+    """Truth this station actually settles on, by its own zone.
+
+    This selected on ``settlement_timezone == "America/New_York"``, which for
+    the 42 stations that do not settle on an Eastern day selected exactly the
+    facts that were mislabelled to get past the old Eastern gate, and excluded
+    the correctly labelled ones.  Measured 2026-08-26: 84 truth facts carry a
+    zone that is not their station's, all ingested on 2026-08-05, and for
+    RJTT and RKSI -- 13 hours from Eastern -- 12 of them carry a maximum taken
+    over the wrong day, out by 1 to 4 degrees (RKSI 2026-07-17 holds 31.0C
+    where its own day gives 27.0C).  Asking for the station's own zone leaves
+    those facts unselected without touching the append-only store.
+    """
+
+    settlement_timezone = _station_settlement_timezone(conn, station_id)
     result: dict[str, dict[str, Any]] = {}
     for (raw_json,) in conn.execute(
         "SELECT fact_json FROM canonical_ssot_fact "
@@ -171,7 +219,7 @@ def _effective_truth_index(
         truth = CanonicalTruthFact.from_mapping(raw)
         if (
             truth.station_id == station_id
-            and truth.settlement_timezone == SETTLEMENT_TIMEZONE
+            and truth.settlement_timezone == settlement_timezone
             and truth.source_lane == "AWC"
             and truth.closed_day
             and _utc(
@@ -216,6 +264,18 @@ def build_republisher_historical_event_bundle(
         station = str(evidence.get("station_id") or "").upper()
         if station not in projection_stations:
             raise ContractError("republisher_historical_station_authority_missing")
+        # This lane seals SETTLEMENT_TIMEZONE into the terminal records and
+        # the model-input hash, and the contract that ingests them asserts
+        # the Eastern value, so for a station that settles elsewhere it can
+        # only produce records labelled with a day that station does not
+        # have.  That is how 84 truth facts came to carry the wrong zone on
+        # 2026-08-05.  The lane is retired -- neither entry script is
+        # scheduled or referenced -- so it refuses those stations rather
+        # than being half-migrated into a generation nothing will accept.
+        if _station_settlement_timezone(conn, station) != SETTLEMENT_TIMEZONE:
+            raise ContractError(
+                "republisher_historical_non_eastern_station_retired_lane:" + station
+            )
         lead_days = int(evidence["lead_days"])
         lead_bucket = f"d{lead_days}"
         run_cycle = f"PREVIOUS_DAY{lead_days}"
