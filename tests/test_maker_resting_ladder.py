@@ -36,13 +36,63 @@ def test_the_band_spans_the_spread_without_ever_crossing_it() -> None:
 
     At the ask the order is not resting, it is crossing -- and paying the
     spread is the one thing this mode exists to avoid.
+
+    The rung count is bounded by the band, not only by the step count: a
+    0.24/0.30 book on a one-cent tick has five legal prices between its two
+    sides and cannot carry eight distinct orders.  This used to assert
+    eight, which passed only because the ladder was rounding to six
+    decimals and posting 0.2586 -- a price the exchange does not accept.
     """
 
     rungs = _resting_ladder(_row(0.30, 0.24))
-    assert len(rungs) == MAKER_RESTING_LADDER_STEPS
+    legal = [0.25, 0.26, 0.27, 0.28, 0.29]
+    assert rungs == legal
+    assert len(rungs) <= MAKER_RESTING_LADDER_STEPS
     assert rungs == sorted(rungs)
     assert rungs[0] > 0.24
     assert rungs[-1] < 0.30
+
+
+def test_every_rung_sits_on_the_exchange_tick_grid() -> None:
+    """A price off the grid is not an order, so it must not be a fill.
+
+    Before 2026-08-26 this lane's ladder was its own copy of production's
+    arithmetic and rounded to six decimals where production floors to the
+    tick.  It priced -- and filled -- rungs like 0.2864 on a tick-0.001
+    book, so every ROI figure it produced was built on orders that could
+    not have been placed.
+    """
+
+    for ask, bid, tick in (
+        (0.30, 0.24, 0.01), (0.32, 0.28, 0.001), (0.90, 0.33, 0.005),
+        (0.18, 0.12, 0.001), (0.55, 0.45, 0.01),
+    ):
+        for rung in _resting_ladder(_row(ask, bid, tick)):
+            steps = rung / tick
+            assert abs(steps - round(steps)) < 1e-6, (ask, bid, tick, rung)
+
+
+def test_the_ledger_posts_productions_ladder_not_a_copy_of_it() -> None:
+    """One band, one implementation, or they drift and nobody notices.
+
+    Measured on 2026-08-26 across 64 (bid, ask, tick, cap) combinations,
+    the two copies disagreed on 37.  This asserts the binding rather than
+    the agreement: a future edit to production's ladder must reach this
+    lane, and an edit that forks it must fail here.
+    """
+
+    from bayes_basket_target.delta_v2_runtime import _maker_ladder
+
+    for tick in (0.001, 0.005, 0.01):
+        for ask, bid in (
+            (0.23, 0.20), (0.37, 0.36), (0.32, 0.28), (0.18, 0.12),
+            (0.05, 0.02), (0.02, 0.001), (0.55, 0.45), (0.30, 0.05),
+        ):
+            for cap in (None, 0.0795, 0.212, 0.005, 0.0106):
+                assert _resting_ladder(_row(ask, bid, tick), value_cap=cap) \
+                    == _maker_ladder(
+                        bid=bid, ask=ask, tick=tick, value_cap=cap,
+                    ), (tick, ask, bid, cap)
 
 
 def test_a_one_tick_spread_collapses_the_band_onto_the_bid() -> None:

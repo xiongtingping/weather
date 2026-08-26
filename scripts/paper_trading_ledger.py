@@ -93,9 +93,16 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     SKEW_SIGNAL_DEFINITION,
     SUPPORT_EDGE_MARGIN,
     WINDOW_REFUSAL_FUNNEL,
+    # The three pieces of arithmetic the two sides must not each own a copy
+    # of.  Every one of them used to be duplicated here, and the ladder copy
+    # had measurably drifted (see ``_resting_ladder``).
+    _floor_to_tick,
+    _hedge_value_cap,
+    _maker_ladder,
     _support_windows,
 )
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
+    DEFAULT_KELLY_FRACTION,
     SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
 )
 from bayes_basket_target.center_width_calibration import (  # noqa: E402
@@ -108,8 +115,10 @@ STAGES = ("P0", "P0-M", "P1")
 INITIAL_CAPITAL_USDC = 1000.0
 # The live objective's fractional Kelly.  A quarter of full Kelly is the
 # stake that made the curve score concave enough to price variance without
-# refusing bets that cannot hurt the book.
-KELLY_FRACTION = 0.25
+# refusing bets that cannot hurt the book.  Taken from the kernel rather
+# than written again here: it is the same quarter production's curve score
+# uses, and two copies of one number is how they stop being one number.
+KELLY_FRACTION = DEFAULT_KELLY_FRACTION
 # No single station-day may take more than this share of the book, however
 # large its Kelly number: 45 stations trading daily means a full-Kelly
 # outlier would otherwise dominate the curve.
@@ -1012,6 +1021,12 @@ SELECTION_RULE_SHA256 = content_sha256({
         {"seat_pricing_basis": SEAT_PRICING_BASIS}
         if EXECUTION_MODE != "taker" else {}
     ),
+    # The ladder's rungs are now floored to the exchange's tick, because
+    # they are now production's own ``_maker_ladder`` rather than a copy of
+    # it that rounded to six decimals.  Rows written before 2026-08-26 were
+    # filled against prices no order could have carried, so they are not
+    # comparable to rows written after.
+    "maker_ladder_price_grid": "exchange_tick",
     "maker_ladder_steps": MAKER_RESTING_LADDER_STEPS,
     # How long the order rests and how often it is re-posted.  Both change
     # which fills a recorded row is built on, so rows written under the old
@@ -2208,31 +2223,29 @@ def _resting_ladder(
     tick = float(getattr(row, "price_tick_size", 0.001) or 0.001)
     if bid <= 0.0 or ask <= 0.0:
         return []
-    # A tick under the ask is the top of the band and also its hard ceiling:
-    # at the ask the order is not resting, it is crossing, and the whole
-    # point of this mode is to be paid the spread rather than pay it.  The
-    # value cap can only ever lower that top, never raise it.
-    # MAKER_RESTING_BAND_TOP == "ask" lifts the top onto the ask itself --
-    # the research arm that pays the spread to guarantee the leg.
-    capped = ask if value_cap is None else min(ask, float(value_cap))
-    high = capped if MAKER_RESTING_BAND_TOP == "ask" else capped - tick
-    if high < tick / 2:
-        return []
-    low = min(bid + MAKER_RESTING_IMPROVE_TICKS * tick, high)
-    if high <= low + tick / 2 or steps <= 1:
-        return [round(low, 6)]
-    span = high - low
-    prices = [
-        round(low + span * index / (steps - 1), 6) for index in range(steps)
-    ]
-    # Distinct rungs only at the open: each opening rung is a separate
-    # order the sizing splits across.  Re-posts stack (see
-    # ``_ladder_from_quote``); the opening keeps the original semantics.
-    out: list[float] = []
-    for price in prices:
-        if not out or price > out[-1] + tick / 2:
-            out.append(price)
-    return out
+    # Production's own ladder, not a second copy of it.  The copy that used
+    # to live here rounded each rung to six decimals where production floors
+    # it to the tick, so this lane priced -- and "filled" -- orders at prices
+    # no exchange would accept: 0.2864 on a tick-0.001 book.  Measured over
+    # 64 (bid, ask, tick, cap) combinations on 2026-08-26, 37 produced a
+    # different ladder on the two sides.
+    #
+    # MAKER_RESTING_BAND_TOP == "ask" is the research arm that lifts the top
+    # onto the ask itself rather than a tick under it -- paying the spread to
+    # guarantee the leg.  Handing the ceiling in as ``ask + tick`` expresses
+    # that in production's own arithmetic (it subtracts a tick from whatever
+    # ceiling it is given), so the arm gets tick-legal rungs too instead of
+    # being a second place the two can diverge.
+    if MAKER_RESTING_BAND_TOP == "ask":
+        ceiling = ask if value_cap is None else min(ask, float(value_cap))
+        return _maker_ladder(
+            bid=bid, ask=ceiling + tick, tick=tick, value_cap=None,
+            steps=steps, improve_ticks=MAKER_RESTING_IMPROVE_TICKS,
+        )
+    return _maker_ladder(
+        bid=bid, ask=ask, tick=tick, value_cap=value_cap,
+        steps=steps, improve_ticks=MAKER_RESTING_IMPROVE_TICKS,
+    )
 
 
 def _value_cap(probability: float | None) -> float | None:
@@ -2491,7 +2504,25 @@ def _leg_value_cap(
             if lam is not None:
                 p = (probabilities or {}).get(str(bucket))
                 return None if p is None else lam * float(p)
-    return _value_cap((probabilities or {}).get(str(bucket)))
+    # Past the research arms, the red line is production's own -- called,
+    # not restated.  ``_hedge_value_cap``'s docstring has claimed since
+    # 2026-08-22 that it is "kept as one function so the ledger's
+    # ``_leg_value_cap`` and this cannot drift"; until 2026-08-26 that was
+    # two functions agreeing by inspection.  They agreed (150 sampled
+    # bucket/centre/window/probability combinations, zero differences), so
+    # this changes nothing today -- which is the only safe moment to bind
+    # them.  The centre exemption and the charter-63 shoulder exemption now
+    # have exactly one definition between the two sides.
+    if MAKER_RESTING_VALUE_LAMBDA != MAKER_HEDGE_VALUE_LAMBDA:
+        # Research arm: a lambda this lane does not share with production
+        # cannot be answered by production's function.
+        return _value_cap((probabilities or {}).get(str(bucket)))
+    return _hedge_value_cap(
+        bucket=str(bucket),
+        centre_bucket=str(centre_bucket or ""),
+        probability=(probabilities or {}).get(str(bucket)),
+        window=window,
+    )
 
 
 def _execution_price(row: Any, *, value_cap: float | None = None) -> float | None:
@@ -2817,14 +2848,20 @@ def _ladder_from_quote(
     if bid <= 0.0 or ask <= 0.0:
         return []
     capped = ask if ceiling is None else min(ask, float(ceiling))
-    high = capped if MAKER_RESTING_BAND_TOP == "ask" else capped - tick
+    high = _floor_to_tick(
+        capped if MAKER_RESTING_BAND_TOP == "ask" else capped - tick, tick
+    )
     if high < tick / 2:
         return []
-    low = min(bid + MAKER_RESTING_IMPROVE_TICKS * tick, high)
+    low = min(
+        _floor_to_tick(bid + MAKER_RESTING_IMPROVE_TICKS * tick, tick), high
+    )
     if floor_fraction > 0.0:
-        low = low + (high - low) * min(1.0, float(floor_fraction))
+        low = _floor_to_tick(
+            low + (high - low) * min(1.0, float(floor_fraction)), tick
+        )
     if steps <= 1:
-        return [round(low, 6)]
+        return [low]
     # Every owed rung is re-posted, at the same price when the band has no
     # room to spread them.  The opening ladder collapses duplicates because
     # each of its rungs is a *distinct* order the sizing splits across; a
@@ -2836,9 +2873,15 @@ def _ladder_from_quote(
     # band throttled every leg to one rung per round.  Same-price rungs are
     # one order at that price for the combined size, which is exactly how
     # the fill test treats them.
+    # Floored to the tick like the opening ladder and like production: a
+    # re-post is an order, and an order off the grid is not one.  Duplicates
+    # survive on purpose (see above) -- that is this function's one
+    # deliberate difference from ``_maker_ladder``, and flooring makes
+    # duplicates *more* likely, which is the intended semantics.
     span = high - low
     return [
-        round(low + span * index / (steps - 1), 6) for index in range(steps)
+        _floor_to_tick(low + span * index / (steps - 1), tick)
+        for index in range(steps)
     ]
 
 

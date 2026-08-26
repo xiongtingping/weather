@@ -370,6 +370,7 @@ def _maker_ladder(
     tick: float,
     value_cap: float | None = None,
     steps: int = MAKER_LADDER_STEPS,
+    improve_ticks: int = MAKER_LADDER_IMPROVE_TICKS,
 ) -> list[float]:
     """The price band one leg rests across, cheapest rung first.
 
@@ -378,6 +379,16 @@ def _maker_ladder(
     always offered the whole band and let the book decide which rung it
     reaches, and that is the execution every ROI figure here was measured
     under.  Same construction, same constants, so the two cannot drift.
+
+    "Cannot drift" was an aspiration until 2026-08-26: the ledger had its
+    own copy of this arithmetic that rounded to six decimals instead of
+    flooring to the tick, so it posted prices no exchange would accept --
+    0.2864 on a tick-0.001 book -- and 37 of 64 sampled (bid, ask, tick,
+    cap) combinations produced different ladders on the two sides.  The
+    ledger now calls this function, which is what the docstring above
+    always claimed.  ``improve_ticks`` is parameterised only so the
+    ledger's research arm can vary it; the default is production's own
+    constant and production never passes the argument.
     """
 
     if bid <= 0.0 or ask <= 0.0 or tick <= 0.0:
@@ -386,7 +397,7 @@ def _maker_ladder(
     high = _floor_to_tick(ceiling - tick, tick)
     if high <= EPS:
         return []
-    low = min(_floor_to_tick(bid + MAKER_LADDER_IMPROVE_TICKS * tick, tick), high)
+    low = min(_floor_to_tick(bid + int(improve_ticks) * tick, tick), high)
     if low <= EPS:
         return []
     if high <= low + tick / 2 or steps <= 1:
@@ -1818,9 +1829,40 @@ def _centre_anchored_candidates(
         budget = float(capital_available_usdc) * scale
         if budget <= EPS:
             continue
+        # The weights size the SHARE COUNT, not the cash.  Splitting the cash
+        # by weight puts the largest share count on the cheapest rung --
+        # shares are cash over price -- so a shape whose whole purpose is to
+        # hold its centre ends up holding its outer rung instead.  Settlement
+        # pays per share, so that is where the payout curve peaks.
+        #
+        # Measured on the seat this shape would build for KHOU 2026-08-27
+        # (92-93/94-95/96-97/98-99°F at 0.23/0.37/0.32/0.18, weights
+        # 0.198/0.247/0.309/0.247, 20 USDC): cash-weighted buys 27.4 shares
+        # of the 0.18 shoulder against 19.3 of the centre; share-weighted
+        # buys 22.1 of the centre against 17.6 of the shoulder.  ZGSZ
+        # 2026-08-17 is the original case -- 4.14 USDC on 30C bought 207
+        # shares while 6.51 on the centre bought 50.
+        #
+        # The ledger has sized shares since 2026-08-21 and production kept
+        # splitting cash, so the two built different baskets from the same
+        # weights.  Same arithmetic on both sides now (user ruling,
+        # 2026-08-26).  The price used to convert is top of book, which is
+        # what the ledger's ``_centre_tilt_weights`` is handed; the depth
+        # walk below still decides what the clip actually buys.
+        unit_cost = sum(
+            weights[bucket] * float(by_bucket[bucket].ask_price)
+            for bucket in ordered
+        )
+        if unit_cost <= EPS:
+            continue
+        share_scale = budget / unit_cost
         cash = []
         for bucket in ordered:
-            raw = budget * weights[bucket] / total_weight
+            raw = (
+                share_scale
+                * weights[bucket]
+                * float(by_bucket[bucket].ask_price)
+            )
             # Never below the clip floor: a rung priced under it cannot be
             # bought at all, and a basket missing a rung is not this basket.
             cash.append(max(floor, math.floor(raw * 100.0) / 100.0))

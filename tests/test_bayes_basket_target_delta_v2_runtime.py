@@ -1504,3 +1504,102 @@ def test_certainty_gate_refuses_a_finished_market_by_name(
             minimum_profit_floor=-5.0,
             resource_probe_ok=True,
         )
+
+
+def _tilt_snapshot() -> TargetBasketSnapshot:
+    """Three rungs, the outer one much the cheapest.
+
+    The point of the shape is that the centre is the position and the flanks
+    are the hedge around it.  A cheap flank is exactly where cash-weighting
+    and share-weighting disagree, so the fixture makes one flank cheap.
+    """
+
+    def _row(bucket: str, ordinal: int, probability: float, ask: float):
+        return {
+            "bucket": bucket,
+            "ordinal": ordinal,
+            "probability": probability,
+            "bid_price": max(0.01, round(ask - 0.03, 2)),
+            "bid_levels": [
+                {"price": max(0.01, round(ask - 0.03, 2)), "shares": 500.0}
+            ],
+            "ask_levels": [{"price": ask, "shares": 5000.0}],
+            "price_tick_size": 0.01,
+            "maker_queue_ahead_shares": 2.0,
+            "maker_queue_known": True,
+        }
+
+    return TargetBasketSnapshot.from_mapping({
+        "schema": "target_basket_snapshot_v6",
+        "snapshot_id": "tilt-snapshot",
+        "sequence": 1,
+        "observed_at": "2026-08-26T03:00:00Z",
+        "market_id": "tilt-market",
+        "station_id": "KHOU",
+        "event_date": "2026-08-26",
+        "quote_version": "quote-tilt",
+        "quote_observed_at": "2026-08-26T03:00:00Z",
+        "quote_source": "OFFICIAL_CLOB_WS",
+        "inventory_version": "inventory-tilt",
+        "order_state_version": "order-tilt",
+        "evidence": {
+            "probability_stage": "P0",
+            "posterior_version": "p0-v1",
+            "posterior_sha256": "a" * 64,
+        },
+        "buckets": [
+            _row("94-95", 3, 0.30, 0.37),
+            _row("96-97", 4, 0.40, 0.32),
+            _row("98-99", 5, 0.30, 0.18),
+        ],
+        "checkpoint_changed": True,
+        "quote_changed": True,
+        "fill_changed": True,
+        "time_gate_changed": True,
+        "evidence_fresh": True,
+        "contract_matches": True,
+        "order_state_known": True,
+        "risk_inputs_complete": True,
+        "time_left_minutes": 1440.0,
+    })
+
+
+def test_the_centre_anchored_shape_sizes_shares_not_cash() -> None:
+    """Settlement pays per share, so the weights must size shares.
+
+    Splitting the cash by weight puts the largest share count on the
+    cheapest rung -- shares are cash over price -- so a shape built to hold
+    its centre holds its outer rung instead and the payout curve peaks off
+    centre.  ZGSZ 2026-08-17: 4.14 USDC on 30C bought 207 shares while 6.51
+    on the centre bought 50.
+
+    The paper ledger has sized shares since 2026-08-21; production split
+    cash until 2026-08-26, so the two built different baskets out of the
+    same weight vector.
+    """
+
+    snapshot = _tilt_snapshot()
+    ordered = ("94-95", "96-97", "98-99")
+    zero = {bucket: 0.0 for bucket in ordered}
+    candidates = delta_v2_runtime._centre_anchored_candidates(
+        snapshot=snapshot,
+        ordered=ordered,
+        centre_bucket="96-97",
+        current_shares=dict(zero),
+        current_cost=dict(zero),
+        pending_shares=dict(zero),
+        pending_cost=dict(zero),
+        capital_available_usdc=20.0,
+        minimum_clip_notional_usdc=0.01,
+        probabilities_by_bucket={
+            "94-95": 0.30, "96-97": 0.40, "98-99": 0.30,
+        },
+    )
+    assert candidates, "the shape must offer at least one candidate"
+    for candidate in candidates:
+        shares = candidate["shares_by_bucket"]
+        assert shares["96-97"] > shares["98-99"], (
+            "the centre must hold more shares than the cheap flank; "
+            f"got {shares}"
+        )
+        assert shares["96-97"] > shares["94-95"], shares
