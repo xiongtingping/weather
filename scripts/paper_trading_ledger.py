@@ -1854,7 +1854,16 @@ def _stage_entry_candidates(
         "SELECT history_id, decision_at_utc, envelope_json,"
         " checkpoint_id, envelope_content_sha256"
         " FROM basket_probability_bridge_history"
-        " WHERE station_id=? AND event_date=? AND stage=?"
+        # ``state`` is pinned to COMMITTED by the table's own CHECK, so this
+        # predicate selects nothing extra -- it is here for the planner.
+        # Without it SQLite picks the (stage) index, which matches every row
+        # of that stage in the whole table, and then reads ``envelope_json``
+        # off each candidate: measured 2026-08-26, 16.4s for one
+        # station-day-stage against 288078 rows, which is 7.3 hours for a
+        # full pass and is why the sweep stopped finishing.  With it the
+        # covering (station_id,event_date,state,...) index answers directly.
+        " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+        "   AND stage=?"
         " ORDER BY decision_at_utc ASC",
         (station_id, event_date, stage),
     ).fetchall():
@@ -2285,7 +2294,8 @@ def _consolidation_signals(
         centres.append(max(probabilities, key=lambda b: probabilities[b]))
     for (hid,) in conn.execute(
         "SELECT history_id FROM basket_probability_bridge_history"
-        " WHERE station_id=? AND event_date=? AND stage='P0'"
+        " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+        "   AND stage='P0'"
         "   AND decision_at_utc<?"
         " ORDER BY decision_at_utc DESC LIMIT ?",
         (station_id, event_date, entry_decision_at_utc,
@@ -3286,7 +3296,8 @@ class _BeliefTimeline:
                 "SELECT decision_at_utc, history_id, stage, envelope_json,"
                 " checkpoint_id, envelope_content_sha256"
                 " FROM basket_probability_bridge_history"
-                " WHERE station_id=? AND event_date=? AND decision_at_utc>?"
+                " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+                "   AND decision_at_utc>?"
                 " ORDER BY decision_at_utc ASC",
                 (station_id, event_date, str(placed_at_utc)),
             ).fetchall()
@@ -4207,7 +4218,8 @@ def _settlement_ladder(
         " FROM basket_probability_bridge_history h"
         " JOIN basket_probability_bridge_bucket_probability b"
         "   ON b.history_id = h.history_id"
-        " WHERE h.station_id=? AND h.event_date=? AND h.stage=?"
+        " WHERE h.station_id=? AND h.event_date=? AND h.state='COMMITTED'"
+        "   AND h.stage=?"
         "   AND h.decision_at_utc=?"
         " ORDER BY b.ordinal",
         (station_id, event_date, stage, decision_at_utc),
@@ -4569,7 +4581,7 @@ def backfill(
                 str(row[0])
                 for row in conn.execute(
                     "SELECT DISTINCT stage FROM basket_probability_bridge_history"
-                    " WHERE station_id=? AND event_date=?",
+                    " WHERE station_id=? AND event_date=? AND state='COMMITTED'",
                     (station_id, event_date),
                 )
             }
