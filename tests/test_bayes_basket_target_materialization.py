@@ -257,6 +257,14 @@ def _trajectory_packet(
             "raw_sha256": (
                 ("a" if event_id == "obs-1" else "c") * 64
             ),
+            # The PR12 revision fact, attached to the observation row by
+            # ``attach_truth_observation_revisions`` before the compiler ever
+            # sees it.  Without it the packet compiles but can never become an
+            # atomic fact, so a fixture that omits it cannot reach anything
+            # downstream of ``target_atomic_facts_from_cycle``.
+            "truth_observation_revision_content_sha256": (
+                ("b" if event_id == "obs-1" else "d") * 64
+            ),
             "source_lane": "AWC",
             "report_type": "METAR",
             "evidence_role": "FORMAL",
@@ -1275,17 +1283,23 @@ def test_p1_consumes_canonical_event_once_and_applies_hard_support() -> None:
     facts = target_atomic_facts_from_cycle(
         {"probability_envelope": p1.to_dict()}
     )
-    assert facts["observation"] == {
-        "observation_id": "obs-1",
-            "station_id": p1.station_id,
-            "event_date": p1.event_date,
-            "settlement_timezone": p1.settlement_timezone,
-            "source_lane": "AWC",
-        "report_type": "METAR",
-        "raw_sha256": "a" * 64,
-        "canonical_committed_at": "2026-07-23T05:30:00.000000Z",
+    # The atomic root is the observation *contract*, not a reconstructed
+    # observation row: this used to assert a "observation" fact assembled from
+    # the lineage, and that key no longer exists.  What identifies the
+    # observation now is the PR12 revision hash the truth ledger is keyed on.
+    assert set(facts) == {
+        "awc_observation_contract",
+        "truth_observation_revision_content_sha256",
+        "bound",
     }
+    assert facts["truth_observation_revision_content_sha256"] == "b" * 64
+    assert (
+        facts["truth_observation_revision_content_sha256"]
+        == p1.lineage["truth_observation_revision_content_sha256"]
+    )
     assert facts["bound"]["bound_id"] == p1.lineage["hard_bound_id"]
+    assert facts["bound"]["station_id"] == p1.station_id
+    assert facts["bound"]["event_date"] == p1.event_date
 
     with sqlite3.connect(":memory:") as conn:
         conn.row_factory = sqlite3.Row
@@ -1316,6 +1330,89 @@ def test_p1_consumes_canonical_event_once_and_applies_hard_support() -> None:
         with pytest.raises(ContractError, match="already_consumed"):
             insert_probability_envelope(
                 conn, altered, created_at_utc="2026-07-23T05:06:00Z"
+            )
+
+
+def test_a_second_p0m_on_one_p0_root_starts_a_p1_branch_that_commits() -> None:
+    """A fresh P0-M ends the old P1 branch; its first P1 is not a repeat.
+
+    Consume-once was keyed on ``(canonical_observation_event_id,
+    p0_root_checkpoint_id)``, but the branch the compiler works on is the
+    prediction root.  A second P0-M on an unchanged P0 root is routine -- 365
+    station-days carried one between 2026-08-20 and 08-26 -- and it correctly
+    makes the compiler replay the day's observations against the new root and
+    emit that branch's first, non-reaffirming P1.  The old key read that as
+    the same evidence answered twice, and EGLC's P1 fail-closed every cycle
+    from 05:54Z on 2026-08-26 until the key named the branch too.
+    """
+
+    p0 = _envelope()
+    first_root = _p0m_root(p0)
+    second_root = ProbabilityEnvelope.from_mapping({
+        **first_root.to_dict(),
+        "checkpoint_id": f"{p0.checkpoint_id}-p0m-root-2",
+        "decision_at_utc": "2026-07-23T05:20:00Z",
+        "posterior_version": "p0m-test-revised",
+    })
+    # Same P0 root, different prediction root -- exactly the shape that wedged.
+    assert (
+        second_root.lineage["p0_root_checkpoint_id"]
+        == first_root.lineage["p0_root_checkpoint_id"]
+    )
+    assert second_root.checkpoint_id != first_root.checkpoint_id
+    assert second_root.content_sha256 != first_root.content_sha256
+
+    first_p1 = ProbabilityEnvelope.from_mapping(
+        _trajectory_packet(first_root, temperature_c=38.2)["expected_envelope"]
+    )
+    second_p1 = ProbabilityEnvelope.from_mapping(
+        _trajectory_packet(
+            second_root,
+            temperature_c=38.2,
+            decision_at_utc="2026-07-23T05:40:00Z",
+        )["expected_envelope"]
+    )
+    # The same observation event on both branches, which is what the guard
+    # was reading as a repeat.
+    assert (
+        second_p1.lineage["canonical_observation_event_id"]
+        == first_p1.lineage["canonical_observation_event_id"]
+    )
+    assert not second_p1.lineage.get("reaffirmation_of_checkpoint_id")
+
+    with sqlite3.connect(":memory:") as conn:
+        conn.row_factory = sqlite3.Row
+        apply_production_ssot_schema(conn)
+        for envelope, created in (
+            (p0, "2026-07-23T04:01:00Z"),
+            (first_root, "2026-07-23T05:00:00Z"),
+            (first_p1, "2026-07-23T05:31:00Z"),
+            (second_root, "2026-07-23T05:20:00Z"),
+        ):
+            assert insert_probability_envelope(
+                conn, envelope, created_at_utc=created
+            )["wrote"] is True
+
+        receipt = insert_probability_envelope(
+            conn, second_p1, created_at_utc="2026-07-23T05:41:00Z"
+        )
+        assert receipt["wrote"] is True
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_probability_envelope WHERE stage='P1'"
+        ).fetchone()[0] == 2
+
+        # And within the new branch the guard is unchanged: the same evidence
+        # still may not produce a second, different answer.
+        altered = ProbabilityEnvelope.from_mapping(
+            _trajectory_packet(
+                second_root,
+                temperature_c=39.0,
+                decision_at_utc="2026-07-23T05:45:00Z",
+            )["expected_envelope"]
+        )
+        with pytest.raises(ContractError, match="already_consumed"):
+            insert_probability_envelope(
+                conn, altered, created_at_utc="2026-07-23T05:46:00Z"
             )
 
 
@@ -1633,7 +1730,17 @@ def test_mixed_timezone_market_bundle_fails_before_any_write() -> None:
             ).fetchone()[0] == 0
 
 
-def test_p0_is_committed_pre_event_but_market_evidence_remains_gated() -> None:
+def test_p0_is_committed_pre_event_and_a_listing_day_book_is_admitted() -> None:
+    """A forward event day is a listing day, not a rejection.
+
+    This asserted ``future_event_day_not_allowed`` from the WS snapshot
+    builder until 44ab45c2 (2026-08-14) deliberately removed that gate: the
+    stage-open binds on the listing day, so a materializer that refuses a
+    not-yet-started day refuses every opening book.  The window is still
+    resolved, which is what the malformed cases below pin -- what changed is
+    that "not started" stopped being a reason to refuse.
+    """
+
     future = ProbabilityEnvelope.from_mapping({
         **_envelope().to_dict(),
         "event_date": "2026-07-25",
@@ -1672,8 +1779,27 @@ def test_p0_is_committed_pre_event_but_market_evidence_remains_gated() -> None:
         "buckets": [{"bucket": "38", "ordinal": 38, "ask_levels": [{"price": 0.3, "shares": 1.0}]}],
         "cash_phase_input": cash_input,
     }
-    with pytest.raises(ContractError, match="future_event_day_not_allowed"):
-        build_official_ws_snapshot(quote)
+    admitted = build_official_ws_snapshot(quote)
+    assert admitted["event_date"] == "2026-07-25"
+    assert admitted["station_id"] == "ZUUU"
+    assert len(admitted["content_sha256"]) == 64
+
+    # Resolving the window is still part of admitting the book, so a day or a
+    # zone that cannot be resolved at all fails exactly as it did before.
+    malformed_date = {
+        **quote,
+        "event_date": "2026-13-99",
+        "cash_phase_input": {**cash_input, "event_date_local": "2026-13-99"},
+    }
+    with pytest.raises(ContractError, match="settlement_event_date_invalid"):
+        build_official_ws_snapshot(malformed_date)
+    malformed_zone = {
+        **quote,
+        "settlement_timezone": "Not/AZone",
+        "cash_phase_input": {**cash_input, "station_timezone": "Not/AZone"},
+    }
+    with pytest.raises(ContractError, match="settlement_timezone_invalid"):
+        build_official_ws_snapshot(malformed_zone)
 
 
 def test_p1_still_rejects_pre_event_materialization() -> None:
