@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 from .contracts import ContractError, content_sha256
 from .pr12_authority_scope_projection import validate_pr12_authority_scope_projection
+from .source_policy import source_policy_reason
 
 
 CONTRACT_SCHEMA = "bayes_basket_target_canonical_awc_observation_contract_v2"
@@ -165,8 +166,18 @@ class CanonicalAWCObservationRevisionFact:
         observed = datetime.fromisoformat(value["observed_at_utc"].replace("Z", "+00:00"))
         if observed.astimezone(zone).date().isoformat() != value["event_date"]:
             raise ContractError("awc_observation_revision_event_date_mismatch")
-        if value["report_type"] == "METAR" and observed.minute != 0:
-            raise ContractError("awc_observation_revision_metar_minute_invalid")
+        # Not a minute rule of its own: the builder and this validator have to
+        # agree on what is formal, and both now ask the lane-wide policy the
+        # operator settled on 2026-08-10 -- a routine METAR is formal at its
+        # provider's own official minute, which for 18 of the 45 stations is
+        # never :00.
+        if source_policy_reason(
+            source_lane="awc",
+            report_type=value["report_type"],
+            valid_at=observed,
+            expected_lane="awc",
+        ):
+            raise ContractError("awc_observation_revision_source_policy_invalid")
         if value["correction_kind"] not in {"NONE", "COR", "AMD"}:
             raise ContractError("awc_observation_revision_correction_kind_invalid")
         if value["correction_state"] not in {"NO_CORRECTION", "REVIEW_REQUIRED", "RESOLVED"}:

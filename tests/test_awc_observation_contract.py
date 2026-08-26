@@ -153,6 +153,33 @@ def test_contract_accepts_exact_metar_and_closed_bounds() -> None:
     assert parsed.day_bounds_facts[0].raw["source_lane"] == "AWC"
 
 
+def test_routine_metar_is_formal_at_its_provider_minute() -> None:
+    """The 2026-08-10 ruling, pinned where the lane enforces it.
+
+    A routine METAR used to be admitted only at :00, and 18 of the 45
+    stations never publish there -- Europe at :20/:50 or :25/:55, the
+    ASOS-fed United States at :51-:58 -- so eight of them held no revision
+    fact at all.  The rule this replaced was never covered: the case named
+    for it supplies 12:30, which trips the timestamp-order check first and
+    never reaches the minute at all.
+    """
+
+    revision = _revision(observed="2026-08-01T11:51:00.000Z")
+    revision["received_at_utc"] = "2026-08-01T11:57:00.000Z"
+    revision["first_seen_at_utc"] = "2026-08-01T11:57:00.000Z"
+    revision["parsed_at_utc"] = "2026-08-01T11:57:00.500Z"
+    revision["fetch_started_at_utc"] = "2026-08-01T11:56:59.000Z"
+    revision["fetch_completed_at_utc"] = "2026-08-01T11:57:00.250Z"
+    revision["origin_committed_at_utc"] = "2026-08-01T11:57:00.750Z"
+    revision["source_observation_committed_at_utc"] = "2026-08-01T11:57:01.000Z"
+    revision["canonical_committed_at_utc"] = "2026-08-01T11:57:01.000Z"
+    revision = _seal({k: v for k, v in revision.items() if k != "content_sha256"})
+    parsed = CanonicalAWCObservationContract.from_mapping(_contract(revision))
+    assert parsed.revision_facts[0].raw["observed_at_utc"] == (
+        "2026-08-01T11:51:00.000Z"
+    )
+
+
 def test_speci_may_use_non_hour_minute() -> None:
     revision = _revision(report_type="SPECI", observed="2026-08-01T11:43:00.000Z")
     revision["received_at_utc"] = "2026-08-01T11:44:00.000Z"

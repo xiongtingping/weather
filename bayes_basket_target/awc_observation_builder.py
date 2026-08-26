@@ -33,6 +33,7 @@ from .canonical_observation_export import _source_poll_receipt
 from .contracts import ContractError, content_sha256
 from .metar_precision import official_temperature_c
 from .resource_bounds import assert_process_memory_budget
+from .source_policy import source_policy_reason
 from .pr12_authority_scope_projection import (
     validate_pr12_authority_scope_projection,
 )
@@ -392,7 +393,22 @@ def export_awc_ingress_evidence_v4(
                 raw_text,
                 whole_degree_c=float(raw.get("reported_temperature_c")),
             )
-            policy_excluded = report_type == "METAR" and valid_at.minute != 0
+            # The lane's own minute rule used to live here: a routine METAR
+            # was formal only at :00.  Reporting cadence is a per-station
+            # property of the network -- 18 of the 45 publish only away from
+            # the hour (Europe at :20/:50 or :25/:55, the ASOS-fed United
+            # States at :51-:58) -- so that rule identified none of their
+            # routine reports at all, and eight stations held no revision
+            # fact of any kind.  The operator settled this on 2026-08-10 for
+            # the truth lane (2b73cfdb); the ruling is the same one, so this
+            # asks the same function rather than restating it, and the two
+            # lanes admit the identical set by construction.
+            policy_excluded = bool(source_policy_reason(
+                source_lane="awc",
+                report_type=report_type,
+                valid_at=valid_at,
+                expected_lane="awc",
+            ))
             correction = _CORRECTION_TOKEN.search(raw_text)
             evidence_rows.append(
                 {
@@ -700,9 +716,21 @@ def build_awc_observation_contract(
         if reviews and reviews[-1].get("decision") == "QUARANTINE_STATION_DAY":
             reasons.add("REVISION_REVIEW_REQUIRED")
         expected_slots = _expected_hourly_slots(event_date, zone_name)
+        # A slot is an hour of the day, not an instant in it.  The expected
+        # slots are the day's clock hours, so comparing report instants
+        # against them only ever agreed for stations that publish exactly on
+        # the hour; a station on :51 produced 24 missing and 24 extra slots
+        # every day and could never close one.  Each routine report is
+        # therefore counted against the hour it falls in.  For a station that
+        # does publish at :00 this is the identity -- the hour of :00 is :00 --
+        # so no coverage receipt that already exists changes value.
         observed_slots = sorted(
             {
-                x["observed_at_utc"]
+                _stamp(
+                    _utc(x["observed_at_utc"], "observed_at_utc").replace(
+                        minute=0, second=0, microsecond=0
+                    )
+                )
                 for x in formal
                 if x["report_type"] == "METAR" and x not in correction_rows
             }

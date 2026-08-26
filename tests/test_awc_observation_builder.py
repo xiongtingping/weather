@@ -135,6 +135,41 @@ def test_clean_day_builds_revision_vector_and_bounds() -> None:
     assert receipt["terminal_gaps"] == []
 
 
+def test_a_station_that_never_publishes_on_the_hour_still_closes_its_day() -> None:
+    """An hour is covered by the report that falls in it, wherever it falls.
+
+    Coverage compared report instants against the day's clock hours, so a
+    station publishing at :51 -- which is every ASOS-fed United States
+    station, and 18 of the 45 in all -- reported 24 missing and 24 extra
+    slots every day and could never close one.  Eight stations held no
+    revision fact of any kind because of it.
+    """
+
+    evidence = _evidence()
+    rows = []
+    for row in evidence["rows"]:
+        moved = dict(row)
+        for field in (
+            "observed_at_utc", "received_at_utc", "first_seen_at_utc",
+            "parsed_at_utc", "fetch_started_at_utc", "fetch_completed_at_utc",
+            "canonical_committed_at_utc",
+        ):
+            stamp = datetime.fromisoformat(
+                str(moved[field]).replace("Z", "+00:00")
+            ) + timedelta(minutes=51)
+            moved[field] = _stamp(stamp)
+        rows.append(moved)
+    evidence["rows"] = rows
+    contract, receipt = build_awc_observation_contract(_reseal(evidence))
+
+    parsed = CanonicalAWCObservationContract.from_mapping(contract)
+    assert len(parsed.revision_facts) == 24
+    assert [x.raw["sequence"] for x in parsed.revision_facts] == list(range(1, 25))
+    assert parsed.revision_facts[0].raw["observed_at_utc"].endswith("51:00.000Z")
+    assert len(parsed.day_bounds_facts) == 1
+    assert receipt["terminal_gaps"] == []
+
+
 def test_exact_legacy_awc_origin_binding_is_explicit_and_tamper_closed() -> None:
     projection = authority_projection(primary_station="KJFK")
     authority = next(
