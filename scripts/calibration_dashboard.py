@@ -151,7 +151,42 @@ def _production_health(status: Mapping[str, Any]) -> dict[str, Any]:
     """
 
     production = status.get("production")
+    inflight = status.get("production_inflight")
     if not isinstance(production, Mapping):
+        # A cycle in flight replaces the completed receipt with an
+        # ``production_inflight`` marker, so "no receipt" is the ordinary
+        # state for most of a cycle, not a fault -- but the marker carries
+        # its own overdue flag, which is the stall signal this card exists
+        # for.  Reading only the completed receipt made the card report
+        # "未发布" on every render taken mid-cycle.
+        if isinstance(inflight, Mapping):
+            elapsed = inflight.get("elapsed_sec")
+            overdue = bool(inflight.get("overdue"))
+            seconds = (
+                float(elapsed) if isinstance(elapsed, (int, float)) else None
+            )
+            note = (
+                f"本轮进行中 {seconds:.0f} 秒"
+                if seconds is not None else "本轮进行中"
+            )
+            if overdue:
+                after = inflight.get("overdue_after_sec")
+                note += (
+                    f"，已超时（上限 {float(after):.0f} 秒）"
+                    if isinstance(after, (int, float)) else "，已超时"
+                )
+            return {
+                "production_health": (
+                    "red" if seconds is not None and seconds > 900.0
+                    else ("amber" if overdue else "green")
+                ),
+                "production_note": note,
+                "production_state": "in_flight",
+                "production_cycle_seconds": (
+                    round(seconds, 1) if seconds is not None else None
+                ),
+                "production_blocked_lanes": [],
+            }
         return {
             "production_health": "amber",
             "production_note": "常驻未发布 production receipt",
@@ -3528,6 +3563,30 @@ function overview(){
     `<div class="k ${cls}" title="${h(title||"")}">
       <div class="lab">${lab}</div><div class="val">${val}</div>
       <div class="sub2">${sub2}</div></div>`);
+
+  // 0. The resident itself, first: everything below this strip is read out
+  // of a database the resident fills, so a reader who does not know the
+  // pipeline stalled will misread every number after it as current.  A
+  // heartbeat and a pid say the process is alive; the production light says
+  // whether it is producing.  Those are different questions, and on
+  // 2026-08-26 they had different answers for eleven hours.
+  const W=D.worker||{};
+  const beat=W.heartbeat_age_hours;
+  push(beat==null?"muted":beat<0.25?"green":beat<1?"amber":"red",
+    "常驻心跳", beat==null?"—":hours(beat),
+    W.pid?`pid ${W.pid}`:"进程未发布 pid",
+    "常驻进程最后一次写状态的时刻。它只说进程活着，不说流水线在出货——看右边那张");
+  push(W.production_health||"muted",
+    "生产周期", W.production_cycle_seconds==null?"—"
+      :W.production_cycle_seconds.toFixed(0)+" 秒",
+    h(W.production_note||"—"),
+    `常驻自己的生产回执：${h(W.production_state||"未发布")}。`+
+    `绿=正常产出，黄=单条车道阻断，红=多车道断/被写锁挡住/超一小时没完成一轮。`+
+    `逐候选的日常拒绝不计入——那是目标函数在正常挑站日，见第十六节`);
+  push(W.live_submit_authorized?"amber":"green",
+    "下单授权", W.live_submit_authorized?"已授权":"未授权（纸面）",
+    W.live_submit_authorized?"真实下单已开启":"全链纸面运行，网关不发单",
+    "是否允许向交易网关发真实订单。纸面态是设计常态：绿灯代表没有真钱在跑");
 
   // 1. Are the four model families still arriving.
   const fresh=(D.members||[]).filter(m=>m.health==="green").length;
