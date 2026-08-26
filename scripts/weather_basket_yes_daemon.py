@@ -181,6 +181,22 @@ TARGET_WAL_REOPEN_REASONS = (
 TARGET_TAF_POLL_INTERVAL_SEC = 60.0
 TARGET_NWP_POLL_INTERVAL_SEC = 600.0
 
+# How long a writer lane stands down after finishing, before its own gate can
+# open again.
+#
+# ``next_production``/``next_forecast`` are armed at submission, so a cycle
+# that outlives its own interval leaves the gate already open when the future
+# clears -- and because the production gate is evaluated before the forecast
+# gate in the same pass, production reclaimed the single writer on the very
+# iteration it released it.  From 2026-08-26T06:21Z, when the forecast
+# prefetch became the third gated writer, that meant the prefetch never ran
+# once: no NWP rotation step, no rotation_state write, no model capture, and
+# all four ensemble families ageing past their publication cycle while
+# production cycled normally.  One second is enough -- the other lanes' gates
+# are evaluated before this one comes due again -- and it is taken from a
+# cycle of several hundred seconds, so the cadence cost is not measurable.
+WRITER_YIELD_SEC = 1.0
+
 # Sweep-class SSOT writers, hosted by this daemon instead of launchd.
 #
 # SQLite has one writer at a time, and four independently-timed launchd jobs
@@ -225,6 +241,18 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
         "settled_day_cycle_close",
         "scripts/settled_day_cycle_close_sweep.sh",
         3600.0,
+        900.0,
+    ),
+    # A corrected report halts its station's P1 until a review receipt exists,
+    # and the policy that writes one only ever ran by hand.  Measured
+    # 2026-08-26: an on-hour COR for RKPK at 08:00Z left P1 fail-closed on
+    # ``correction_review_required`` for the rest of the day.  Ten minutes
+    # because the halt costs a station its live stage from the moment the
+    # correction lands, and a pass with nothing pending is one indexed scan.
+    (
+        "correction_review_auto_clear",
+        "scripts/correction_review_auto_clear_sweep.sh",
+        600.0,
         900.0,
     ),
 )
@@ -3238,6 +3266,9 @@ def main() -> int:
                 production_future = None
                 production_submitted_mono = time.monotonic()
                 production_submitted_at = ""
+                next_production = max(
+                    next_production, time.monotonic() + WRITER_YIELD_SEC
+                )
             if forecast_future is not None and forecast_future.done():
                 try:
                     forecast_result = forecast_future.result()
@@ -3283,6 +3314,9 @@ def main() -> int:
                         "checked_at": utc_now(),
                     }
                 forecast_future = None
+                next_forecast = max(
+                    next_forecast, time.monotonic() + WRITER_YIELD_SEC
+                )
             storage_ok = storage_guard.get("ok") is True
             if (
                 storage_ok
@@ -3338,6 +3372,11 @@ def main() -> int:
                 storage_ok
                 and hosted_sweep_future is None
                 and production_future is None
+                # The prefetch is the third writer of the same databases, so
+                # the exclusion has to name it here too.  Gating only against
+                # production let a sweep start beside a running prefetch --
+                # the exact overlap the mutual gate exists to remove.
+                and forecast_future is None
             ):
                 # Serve whichever sweep has been due longest, not whichever
                 # sits earliest in the tuple.  Strict list order gives the

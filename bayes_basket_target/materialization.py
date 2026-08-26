@@ -1605,10 +1605,33 @@ def insert_probability_envelope(
             ).fetchall()
         for row in prior_p1_rows:
             old_lineage = json.loads(str(row[0]))
+            # Consume-once is a statement about one branch, so the key has to
+            # be the branch the compiler itself works on: prediction root as
+            # well as P0 root.  Keyed on the P0 root alone it also caught the
+            # legitimate restart -- a fresh P0-M on the same P0 root ends the
+            # old P1 branch, so the compiler correctly replays the day's
+            # observations against the new root, emits a first (non-
+            # reaffirming) P1 for that branch, and this guard read it as the
+            # same evidence answered twice.  Measured 2026-08-26: EGLC took a
+            # second P0-M at 05:54Z on an unchanged P0 root and P1 fail-closed
+            # for the station every cycle afterwards; 29 station-days since
+            # 08-20 sit on a superseded prediction root the same way.  Within
+            # one branch nothing changes -- the same evidence still may not
+            # produce two different answers.
             if (
                 old_lineage.get("canonical_observation_event_id") == event_id
                 and old_lineage.get("p0_root_checkpoint_id")
                 == envelope.lineage.get("p0_root_checkpoint_id")
+                and str(old_lineage.get("prediction_root_checkpoint_id") or "")
+                == str(
+                    envelope.lineage.get("prediction_root_checkpoint_id") or ""
+                )
+                and str(
+                    old_lineage.get("prediction_root_content_sha256") or ""
+                ).lower()
+                == str(
+                    envelope.lineage.get("prediction_root_content_sha256") or ""
+                ).lower()
             ):
                 if str(row[1]) == envelope.content_sha256:
                     return {"schema": MATERIALIZATION_SCHEMA, "state": "ALREADY_COMMITTED", "wrote": False, "envelope_id": envelope.checkpoint_id}
