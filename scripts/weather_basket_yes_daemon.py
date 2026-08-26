@@ -2913,6 +2913,14 @@ def main() -> int:
         next_status_write = now_mono
         next_production = now_mono
         next_forecast = now_mono
+        # Last time each writer lane finished, which is what decides whose
+        # turn it is when more than one is due.  All equal at boot, so the
+        # first round follows the deterministic tie order.
+        writer_last_served = {
+            "forecast": now_mono,
+            "production": now_mono,
+            "sweeps": now_mono,
+        }
         next_storage_probe = 0.0
         next_wal_maintenance = 0.0
         # Hosted sweeps: staggered first runs so boot does not fire all four
@@ -3307,6 +3315,7 @@ def main() -> int:
                 next_production = max(
                     next_production, time.monotonic() + WRITER_YIELD_SEC
                 )
+                writer_last_served["production"] = time.monotonic()
             if forecast_future is not None and forecast_future.done():
                 try:
                     forecast_result = forecast_future.result()
@@ -3355,45 +3364,52 @@ def main() -> int:
                 next_forecast = max(
                     next_forecast, time.monotonic() + WRITER_YIELD_SEC
                 )
+                writer_last_served["forecast"] = time.monotonic()
             storage_ok = storage_guard.get("ok") is True
-            # First refusal for the lane that is always last in line.
+            # Whose turn it is at the single writer.
             #
-            # The three writer gates are evaluated in source order -- sweeps,
-            # production, prefetch -- and the two above it are due again the
-            # moment they release the writer, so the prefetch reached its own
-            # gate with someone else already holding it every single pass.
-            # Measured 2026-08-26: after the third-writer gate landed the NWP
-            # rotation did not advance once, while production and the sweeps
-            # alternated normally.  Standing down for a second on completion
-            # is not enough on its own -- a sweep or a cycle claims that
-            # second -- so the prefetch is asked first instead.  It cannot
-            # hoard the writer in return: its expensive work is behind its own
-            # poll timers (60s TAF, 600s NWP), so an out-of-turn pass with
-            # nothing due returns in milliseconds, and it re-arms behind the
-            # others the same way they do.
-            forecast_first_refusal = (
+            # The three lanes are gated against each other, and their gates
+            # are evaluated in source order -- sweeps, production, prefetch.
+            # Order alone decided everything, because every lane re-arms on a
+            # timer far shorter than its own run: whoever is listed first is
+            # due again the instant it releases the writer.  So the lane at
+            # the bottom never ran at all.  Measured 2026-08-26: the day the
+            # prefetch became the third gated writer the NWP rotation stopped
+            # dead -- no capture, no rotation_state write, four ensemble
+            # families ageing past their publication cycle -- while
+            # production and the sweeps alternated normally.
+            #
+            # Ranking the lanes instead just moves the starvation: put the
+            # prefetch first and production waits behind a pass that is
+            # hundreds of seconds, not the milliseconds it is when nothing is
+            # due (its TAF poll comes due every 60s, so almost every pass has
+            # real work).  What is wanted is not a ranking but a turn: among
+            # the lanes that are due, serve the one served longest ago.  No
+            # lane can then run twice while another due lane waits, whatever
+            # the relative length of their passes.
+            sweeps_due = any(
+                now_mono >= next_hosted_sweep[name]
+                for name, _, _, _ in HOSTED_SWEEPS
+            )
+            writer_idle = (
                 storage_ok
-                and now_mono >= next_forecast
                 and forecast_future is None
                 and production_future is None
                 and hosted_sweep_future is None
             )
-            # And the decision cycle outranks the maintenance sweeps, which
-            # the source order had backwards.  Sweeps were listed first, so
-            # every time a sweep finished another due sweep took the writer
-            # straight back and the cycle that prices the book waited behind
-            # the whole backlog: measured 2026-08-26, twenty-one minutes from
-            # a restart with seven sweeps due and not one production cycle
-            # completed.  The second the cycle stands down for on completion
-            # is the sweeps' window -- it is checked below before production
-            # comes due again -- so this orders them without starving them.
-            production_first_refusal = (
-                storage_ok
-                and now_mono >= next_production
-                and production_future is None
-                and forecast_future is None
-                and hosted_sweep_future is None
-                and not forecast_first_refusal
+            writer_candidates = []
+            if writer_idle:
+                if now_mono >= next_forecast:
+                    writer_candidates.append("forecast")
+                if now_mono >= next_production:
+                    writer_candidates.append("production")
+                if sweeps_due:
+                    writer_candidates.append("sweeps")
+            # Ties keep this order, so the choice stays deterministic.
+            writer_turn = min(
+                writer_candidates,
+                key=lambda lane: writer_last_served[lane],
+                default="",
             )
             if (
                 storage_ok
@@ -3445,6 +3461,7 @@ def main() -> int:
                         )
                 hosted_sweep_future = None
                 hosted_sweep_name = ""
+                writer_last_served["sweeps"] = time.monotonic()
             if (
                 storage_ok
                 and hosted_sweep_future is None
@@ -3454,8 +3471,7 @@ def main() -> int:
                 # production let a sweep start beside a running prefetch --
                 # the exact overlap the mutual gate exists to remove.
                 and forecast_future is None
-                and not forecast_first_refusal
-                and not production_first_refusal
+                and writer_turn == "sweeps"
             ):
                 # Serve whichever sweep has been due longest, not whichever
                 # sits earliest in the tuple.  Strict list order gives the
@@ -3494,7 +3510,7 @@ def main() -> int:
                 # against a cycle that currently fails closed outright when
                 # the two overlap.
                 and forecast_future is None
-                and not forecast_first_refusal
+                and writer_turn == "production"
             ):
                 production_future = executor.submit(
                     run_target_production_cycle,
@@ -3520,6 +3536,7 @@ def main() -> int:
                 # not two of them.
                 and production_future is None
                 and hosted_sweep_future is None
+                and writer_turn == "forecast"
             ):
                 # Keep the last completed bounded TAF receipt visible while a
                 # new worker is in flight.  Replacing the whole prefetch
