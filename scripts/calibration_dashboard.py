@@ -17,12 +17,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from bisect import bisect_left
 from collections import Counter, defaultdict
 import random
 import sqlite3
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from statistics import median
@@ -2776,6 +2777,140 @@ def _center_definition_bias(conn: sqlite3.Connection) -> dict[str, Any]:
     return {"daily": daily, "rows": rows, "by_skew": by_skew}
 
 
+def collect_edge_band_health(conn: sqlite3.Connection) -> dict[str, Any]:
+    """The claims layer's thermometer: edge bands versus what they realise.
+
+    Edge = claimed probability minus the all-in ask at posting, leg by leg.
+    The 2026-08-26 execution battle measured the shape once: realisation
+    over claim collapses monotonically with edge (0.94x at <0 down to
+    0.06x at >=30%), fills rise with edge (the market sells exactly the
+    overclaims), and the unfilled side realises 1.36x its claims.  This is
+    deliberately a monitor, not a gate -- the gate version died its
+    excision test (A1) -- so what this section is FOR is watching the
+    charter 62 calibration repair land: the >=10% bands should shrink and
+    realisation ratios should climb toward 1.0 as the centre bias closes.
+    Split at each leg's own posting day, most recent seven days against
+    everything before.
+    """
+
+    number = re.compile(r"-?\d+(?:\.\d+)?")
+
+    def bucket_value(label: str) -> float | None:
+        found = number.findall(label or "")
+        return float(found[0]) if found else None
+
+    bands = ("<0", "0-2%", "2-5%", "5-10%", "10-20%", "20-30%", ">=30%")
+
+    def band_of(edge: float) -> str:
+        if edge < 0:
+            return "<0"
+        for top, name in (
+            (0.02, "0-2%"), (0.05, "2-5%"), (0.10, "5-10%"),
+            (0.20, "10-20%"), (0.30, "20-30%"),
+        ):
+            if edge < top:
+                return name
+        return ">=30%"
+
+    settled = {
+        (str(row[0]), str(row[1])): str(row[2] or "")
+        for row in conn.execute(
+            "SELECT station_id, event_date, settled_bucket"
+            " FROM paper_trade_settlement"
+        )
+    }
+    latest_day = ""
+    legs: list[dict[str, Any]] = []
+    for row in conn.execute(
+        "SELECT station_id, event_date, probabilities_json, prices_json,"
+        " resting_fill_json FROM paper_trade_position"
+    ):
+        try:
+            probs = json.loads(row[2] or "{}")
+            prices = json.loads(row[3] or "{}")
+            fills = json.loads(row[4] or "{}")
+        except ValueError:
+            continue
+        key = (str(row[0]), str(row[1]))
+        truth = settled.get(key)
+        latest_day = max(latest_day, str(row[1]))
+        for bucket, spec in fills.items():
+            claim = probs.get(bucket)
+            ask = prices.get(bucket)
+            if claim is None or ask is None:
+                continue
+            try:
+                filled = int(str(spec).split("/")[0]) > 0
+            except ValueError:
+                continue
+            legs.append({
+                "day": str(row[1]),
+                "band": band_of(float(claim) - float(ask)),
+                "claim": float(claim),
+                "filled": filled,
+                "win": (
+                    None if truth is None
+                    else (1 if str(bucket) == truth else 0)
+                ),
+            })
+    if not legs:
+        return {"bands": [], "recent_floor": "", "totals": {}}
+    recent_floor = (
+        date.fromisoformat(latest_day) - timedelta(days=6)
+    ).isoformat()
+
+    def cell(rows: list[dict[str, Any]]) -> dict[str, Any]:
+        settled_rows = [leg for leg in rows if leg["win"] is not None]
+        filled_rows = [leg for leg in settled_rows if leg["filled"]]
+        unfilled_rows = [leg for leg in settled_rows if not leg["filled"]]
+
+        def ratio(group: list[dict[str, Any]]) -> float | None:
+            if len(group) < 10:
+                return None
+            claimed = sum(leg["claim"] for leg in group) / len(group)
+            won = sum(leg["win"] for leg in group) / len(group)
+            return round(won / claimed, 2) if claimed > 0 else None
+
+        return {
+            "n": len(rows),
+            "fill_rate": (
+                round(
+                    sum(1 for leg in rows if leg["filled"]) / len(rows), 3
+                ) if rows else None
+            ),
+            "claimed_mean": (
+                round(sum(leg["claim"] for leg in rows) / len(rows), 3)
+                if rows else None
+            ),
+            "realize_filled_x": ratio(filled_rows),
+            "realize_unfilled_x": ratio(unfilled_rows),
+            "n_settled": len(settled_rows),
+        }
+
+    band_rows = []
+    for name in bands:
+        in_band = [leg for leg in legs if leg["band"] == name]
+        band_rows.append({
+            "band": name,
+            "all": cell(in_band),
+            "recent": cell(
+                [leg for leg in in_band if leg["day"] >= recent_floor]
+            ),
+        })
+    total_recent = sum(1 for leg in legs if leg["day"] >= recent_floor)
+    for entry in band_rows:
+        entry["share_all"] = round(entry["all"]["n"] / len(legs), 3)
+        entry["share_recent"] = (
+            round(entry["recent"]["n"] / total_recent, 3)
+            if total_recent else None
+        )
+    return {
+        "bands": band_rows,
+        "recent_floor": recent_floor,
+        "totals": {"legs": len(legs), "recent_legs": total_recent},
+    }
+
+
 def collect_window_divergence(conn: sqlite3.Connection) -> dict[str, Any]:
     """Station-days where the posterior and the held window part ways.
 
@@ -2955,21 +3090,43 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
             }
         except (ValueError, OSError):
             worker = {}
-    healths = (
-        [m["health"] for m in members]
-        + [c["health"] for c in chain]
-        + [s["health"] for s in stages]
-        + [truth["health"]]
+    # The banner used to say "something below is red" and leave the reader
+    # to scroll sixteen sections for the one red word.  Collect the
+    # non-green rows from exactly the four sources the light is computed
+    # from, so the banner can name them -- and derive the light from this
+    # list, so the two can never disagree.
+    alerts = (
+        [
+            {"health": m["health"], "label": f"模型 {m['label']}",
+             "note": m.get("note") or ""}
+            for m in members if m["health"] != "green"
+        ]
+        + [
+            {"health": c["health"], "label": f"链路·{c['name']}",
+             "note": c.get("note") or ""}
+            for c in chain if c["health"] != "green"
+        ]
+        + [
+            {"health": s["health"], "label": f"band 校准 {s['stage']}",
+             "note": s.get("state") or ""}
+            for s in stages if s["health"] != "green"
+        ]
+        + (
+            [{"health": truth["health"], "label": "真值物化",
+              "note": truth.get("note") or ""}]
+            if truth["health"] != "green" else []
+        )
     )
     overall = (
-        "red" if "red" in healths
-        else ("amber" if "amber" in healths else "green")
+        "red" if any(a["health"] == "red" for a in alerts)
+        else ("amber" if alerts else "green")
     )
     selection = build_selection_payload(db)
     return {
         "schema": "calibration_dashboard_v2",
         "generated_at_utc": _now().isoformat().replace("+00:00", "Z"),
         "overall_health": overall,
+        "alerts": alerts,
         "selection": selection,
         "daily": _daily_table(selection),
         "center_bias": _center_definition_bias(conn),
@@ -2988,6 +3145,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "center_width": center_width,
         "scorecard": scorecard,
         "window_divergence": collect_window_divergence(conn),
+        "edge_band_health": collect_edge_band_health(conn),
         "worker": worker,
     }
 
@@ -3167,6 +3325,18 @@ const OVERALL = {green:["运转正常","所有环节都在按预期更新"],
 function head(){
   const [t, s] = OVERALL[D.overall_health] || OVERALL.amber;
   const w = D.worker || {};
+  // Name the broken links on the banner itself.  The payload knows which
+  // rows turned the light red; making the reader scroll for them is what
+  // "black box" complaints are made of.  Red banner lists red rows, amber
+  // banner lists amber rows -- the level that set the light.
+  const named = (D.alerts || [])
+    .filter(a => a.health === D.overall_health);
+  const chips = named.slice(0, 6).map(a =>
+    `<span class="pill ${a.health}" style="font-size:13px">${h(a.label)}
+      <span style="opacity:.78">｜${h(a.note)}</span></span>`).join("");
+  const more = named.length > 6
+    ? `<span class="muted">…等 ${named.length} 处，详见下文标${
+        D.overall_health === "red" ? "红" : "黄"}的环节</span>` : "";
   return `<h1>校准与链路看板</h1>
   <p class="sub">这一页回答四件事：模型数据还在不在进来、校准有没有按时更新、
   哪些修正已经生效、哪里还缺数据。</p>
@@ -3178,7 +3348,8 @@ function head(){
     <span style="flex:1"></span>
     <span class="muted">常驻进程心跳 ${hours(w.heartbeat_age_hours)}
       ${w.pid ? "· pid " + w.pid : ""}</span>
-  </div></div>`;
+  </div>${chips ? `<div style="display:flex;gap:8px;flex-wrap:wrap;
+    align-items:center;margin-top:9px">${chips}${more}</div>` : ""}</div>`;
 }
 
 // The top strip: one number per question the page spends a section
@@ -3798,6 +3969,41 @@ function truthLanding(){
   <table><thead><tr><th>模型＼市场</th>${
     labels.map(l=>`<th class="mono">${l}</th>`).join("")
   }</tr></thead><tbody>${crossRows}</tbody></table>${legend}`;
+}
+
+function edgeBandHealth(){
+  const E=D.edge_band_health||{};
+  const rows=E.bands||[];
+  if(!rows.length)
+    return `<h2>十六C、声称边际体温计（edge 带 × 兑现）</h2>
+    <div class="card"><span class="dot green"></span> 无腿级数据。</div>`;
+  const pct=v=>v==null?"—":(v*100).toFixed(0)+"%";
+  const mult=v=>v==null?"—":"×"+v.toFixed(2);
+  const tr=r=>{
+    const a=r.all,rc=r.recent;
+    // The sick bands are the big-edge ones; paint the band label by the
+    // filled-side realisation so the eye finds the fever line.
+    const cls=(a.realize_filled_x!=null&&a.realize_filled_x<0.5)?"down":"";
+    return `<tr>
+      <td class="mono ${cls}">${r.band}</td>
+      <td>${a.n}</td><td>${pct(r.share_all)}</td><td>${pct(a.fill_rate)}</td>
+      <td>${pct(a.claimed_mean)}</td>
+      <td class="${cls}">${mult(a.realize_filled_x)}</td>
+      <td>${mult(a.realize_unfilled_x)}</td>
+      <td>${pct(r.share_recent)}</td>
+      <td>${mult(rc.realize_filled_x)}</td></tr>`;
+  };
+  return `<h2>十六C、声称边际体温计（edge 带 × 兑现）</h2>
+  <div class="card">
+  <p class="note">edge＝声称概率−挂单时刻卖价，逐腿归带。这是概率层的体温计不是门
+  （门的版本 A1 已被剔除检验否决）：宪章 62 校准修复生效的读数是
+  <b>≥10% 带占比萎缩、兑现乘数回升向 ×1.0</b>。兑现乘数＝实现率/声称均值，
+  分"市场肯卖给我们的腿"（成交）与"不肯卖的腿"（未成交）两列；样本&lt;10 的格显 —。
+  近7天窗起点 ${E.recent_floor||"—"}，腿数 ${E.totals&&E.totals.recent_legs||0}/${E.totals&&E.totals.legs||0}。</p>
+  <table><thead><tr><th>edge 带</th><th>腿数</th><th>占比</th><th>成交率</th>
+  <th>声称均值</th><th>兑现·成交</th><th>兑现·未成交</th>
+  <th>近7天占比</th><th>近7天兑现·成交</th></tr></thead>
+  <tbody>${rows.map(tr).join("")}</tbody></table></div>`;
 }
 
 function windowDivergence(){
@@ -5311,7 +5517,8 @@ const GROUPS = [
    sections:[[coverage,"覆盖"],[stationSummary,"站汇总"],[roster,"站名册"],
      [anomalies,"异常"],[basketHit,"篮子命中率"],
      [makerProbe,"挂单影子探针"],[refusalStats,"未建仓原因"],
-     [windowDivergence,"分布与持仓分家"],[truthLanding,"真值落位"]]},
+     [windowDivergence,"分布与持仓分家"],[truthLanding,"真值落位"],
+     [edgeBandHealth,"声称边际体温计"]]},
   {id:"data", label:"数据与链路", note:"十七～十九节：链路每一环、数据缺口、真值物化",
    sections:[[chain,"链路"],[gaps,"数据缺口"],[materialization,"真值物化"]]},
 ];
