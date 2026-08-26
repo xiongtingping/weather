@@ -33,20 +33,48 @@ def _execute_sql_script_transactional(conn: sqlite3.Connection, script: str) -> 
         if sqlite3.complete_statement(statement):
             sql = statement.strip()
             if sql:
-                conn.execute(sql)
+                try:
+                    conn.execute(sql)
+                except sqlite3.Error as exc:
+                    # Name the statement.  A bare "no such column: cycle_id"
+                    # against a script of several hundred statements says
+                    # nothing about which one, and the DDL constants are large
+                    # enough that finding it by hand means bisecting them.
+                    raise type(exc)(
+                        f"{exc} [statement: {' '.join(sql.split())[:200]}]"
+                    ) from exc
             statement = ""
     if statement.strip():
         raise RuntimeError("sqlite_script_incomplete_statement")
 
 
+# Words that can appear inside an index's column list without being a column.
+_INDEX_SYNTAX_WORDS = frozenset({
+    "ASC", "DESC", "COLLATE", "NOCASE", "BINARY", "RTRIM", "WHERE",
+    "AND", "OR", "NOT", "NULL", "IS", "IN",
+})
+
+
 def _execute_index_script_where_table_exists(
     conn: sqlite3.Connection, script: str
 ) -> list[str]:
-    """Create each index whose table this path actually built.
+    """Create each index whose table this path has, in the shape it needs.
 
-    The deferred block carries indexes for tables owned by more than one
-    migration path, so "the table is not here" is an ordinary outcome, not an
-    error.  Anything else -- a typo, a dropped column -- still raises.
+    Two ordinary reasons to skip, both of which mean "not yet", not "wrong":
+
+    The table belongs to a different migration path.  The deferred block
+    carries indexes for tables owned by more than one, so an absent table is
+    expected.
+
+    The table is here but still in its old shape.  ``CREATE TABLE IF NOT
+    EXISTS`` leaves a pre-existing table alone, so on an upgrade the columns
+    an index needs may not arrive until the ``_upgrade_*`` passes further
+    down run.  A v3 image died here on
+    ``no such column: cycle_id``: the v4 shape of
+    ``basket_policy_training_fact`` is installed by
+    ``_upgrade_empty_policy_training_fact_schema``, thirty-nine lines after
+    the DDL that indexes it.  Calling this again after those passes is what
+    makes the skip temporary rather than a silent loss.
     """
 
     created: list[str] = []
@@ -67,11 +95,22 @@ def _execute_index_script_where_table_exists(
         )
         if match is None:
             raise RuntimeError("deferred_index_script_non_index_statement")
+        table = match.group(2)
         present = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
-            (match.group(2),),
+            (table,),
         ).fetchone()
         if present is None:
+            continue
+        columns = {
+            str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})")
+        }
+        indexed = {
+            token
+            for token in re.findall(r"[A-Za-z_][A-Za-z_0-9]*", sql[match.end():])
+            if token.upper() not in _INDEX_SYNTAX_WORDS
+        }
+        if not indexed.issubset(columns):
             continue
         conn.execute(sql)
         created.append(match.group(1))
@@ -894,20 +933,6 @@ CREATE TABLE IF NOT EXISTS basket_policy_training_fact (
 CREATE INDEX IF NOT EXISTS basket_policy_training_fact_scope_idx
 ON basket_policy_training_fact(
   station_id,event_date,stage,decision_at_utc,partition_key
-);
-
--- Every blocked-scope decision re-reads its own cycle's fact binding, and
--- (cycle_id,decision_id) led no index -- so each of the 45 scopes in a cycle
--- scanned the whole table, whose rows carry policy_version_vector_json and
--- feature_json in overflow pages.  It runs inside ``BEGIN IMMEDIATE``, which
--- made it the single largest holder of the one writer lock in the system:
--- measured 2026-08-17, 45 calls x 2,295ms = 103s of held lock per cycle,
--- 61% of all lock time and 99.7% of the transaction it sits in.  Carrying
--- the three selected columns makes it covering, and leading fact_id after
--- the scope pair also serves the query's ORDER BY.
-CREATE INDEX IF NOT EXISTS basket_policy_training_fact_cycle_idx
-ON basket_policy_training_fact(
-  cycle_id,decision_id,fact_id,content_sha256,decision_scope_key
 );
 
 CREATE TABLE IF NOT EXISTS basket_policy_training_label (
@@ -1818,6 +1843,20 @@ CREATE INDEX IF NOT EXISTS
   calibration_republisher_ensemble_historical_member_bucket_scope_idx
 ON calibration_republisher_ensemble_historical_member_bucket(
   station_id,target_local_date
+);
+
+-- Every blocked-scope decision re-reads its own cycle's fact binding, and
+-- (cycle_id,decision_id) led no index -- so each of the 45 scopes in a cycle
+-- scanned the whole table, whose rows carry policy_version_vector_json and
+-- feature_json in overflow pages.  It runs inside ``BEGIN IMMEDIATE``, which
+-- made it the single largest holder of the one writer lock in the system:
+-- measured 2026-08-17, 45 calls x 2,295ms = 103s of held lock per cycle,
+-- 61% of all lock time and 99.7% of the transaction it sits in.  Carrying
+-- the three selected columns makes it covering, and leading fact_id after
+-- the scope pair also serves the query's ORDER BY.
+CREATE INDEX IF NOT EXISTS basket_policy_training_fact_cycle_idx
+ON basket_policy_training_fact(
+  cycle_id,decision_id,fact_id,content_sha256,decision_scope_key
 );
 """
 
@@ -4986,6 +5025,14 @@ def apply_production_ssot_schema(conn: sqlite3.Connection, *, commit: bool = Tru
     )
     _upgrade_empty_policy_training_fact_schema(conn)
     _upgrade_probability_envelope_stage_constraint(conn)
+    # Second pass, now that every table is in its v4 shape.  The first call
+    # above runs before the upgrades and skips any index whose columns have
+    # not arrived yet; without this the skip would be permanent on exactly
+    # the databases that need the index most -- the ones being upgraded.
+    deferred_indexes = sorted(
+        set(deferred_indexes)
+        | set(_execute_index_script_where_table_exists(conn, DEFERRED_INDEX_DDL))
+    )
     strict_delta_candidate_upgrade = (
         _upgrade_strict_delta_candidate_decision_constraint(conn)
     )
