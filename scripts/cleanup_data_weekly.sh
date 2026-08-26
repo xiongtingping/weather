@@ -44,9 +44,13 @@ echo ""
 
 # 2. 清理日志文件
 echo "【清理日志文件】"
-LOG_COUNT=$(find data/logs -name "*.log" -mtime +7 2>/dev/null | wc -l)
+# ``*.log.prev`` too: the service launchers keep one previous generation so a
+# crash survives the restart that follows it, and a name that ends in .prev
+# does not match "*.log" -- without this it would be the one file class no
+# governance pass ever reaches.
+LOG_COUNT=$(find data/logs \( -name "*.log" -o -name "*.log.prev" \) -mtime +7 2>/dev/null | wc -l)
 if [ "$LOG_COUNT" -gt 0 ]; then
-  find data/logs -name "*.log" -mtime +7 -delete 2>/dev/null || true
+  find data/logs \( -name "*.log" -o -name "*.log.prev" \) -mtime +7 -delete 2>/dev/null || true
   echo "✅ 删除 $LOG_COUNT 个7天前的日志文件"
 else
   echo "没有需要清理的日志文件"
@@ -61,9 +65,16 @@ while IFS= read -r -d '' log_file; do
   fi
   stamp=$(date '+%Y%m%dT%H%M%S')
   rotated_path="${log_file}.${stamp}.rotated"
+  # Copy and truncate, never rename.  These paths include logs owned by
+  # launchd services, and launchd opens StandardOutPath once when it spawns
+  # the process: its descriptor follows the inode, so renaming the live log
+  # would send the rest of that run's output into the rotated copy and leave
+  # the live file empty until the next restart.  Writing the tail back over
+  # the original keeps the inode the descriptor is already pointing at.
   tail -c "$KEEP_LOG_BYTES" "$log_file" > "${rotated_path}.tail"
-  mv "$log_file" "$rotated_path"
-  mv "${rotated_path}.tail" "$log_file"
+  cp "$log_file" "$rotated_path"
+  cat "${rotated_path}.tail" > "$log_file"
+  rm -f "${rotated_path}.tail"
   gzip -f "$rotated_path" 2>/dev/null || true
   ROTATED=$((ROTATED + 1))
   echo "rotated $(basename "$log_file"): ${size} bytes -> keep tail ${KEEP_LOG_BYTES} bytes"
