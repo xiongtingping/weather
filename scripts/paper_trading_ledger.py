@@ -867,6 +867,21 @@ ALLOCATION_SHAPE = (
     or ("curve_solved" if CONTINUOUS_OPTIMUM_CANDIDATES_ENABLED else "centre_tilt")
 )
 ALLOCATION_SHAPES = ("equal_shares", "centre_tilt", "curve_solved")
+# Which price the stake rule and the payout test are struck against.
+#
+# ``lane`` -- the standing rule since 2026-08-26 -- is what THIS execution
+# mode would actually pay: the resting band under a maker mode, the offer
+# under taker.  ``crossing`` is the pre-2026-08-26 behaviour kept as a
+# comparison arm: production's ``_support_windows`` prices at the offer, and
+# the ledger used to size and refuse on that number whatever mode it was
+# running.  It is here so the two can be rebuilt against each other rather
+# than argued about; it is not a knob anything should run on.
+SEAT_PRICING_BASIS = (
+    os.environ.get("PAPER_LEDGER_SEAT_PRICING", "lane").strip() or "lane"
+)
+SEAT_PRICING_BASES = ("lane", "crossing")
+if SEAT_PRICING_BASIS not in SEAT_PRICING_BASES:
+    raise ValueError(f"unknown seat pricing basis: {SEAT_PRICING_BASIS}")
 # Every structural rule a recorded seat depends on.  Positions are derived rows,
 # so a change to any of these makes the ones already in the table describe a
 # strategy that no longer runs -- the ladder floor landed on 2026-08-15 and the
@@ -923,6 +938,16 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     None
     if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_VALUE_LAMBDA <= 0
     else f"价值钳λ{MAKER_RESTING_VALUE_LAMBDA:g}·中心桶豁免",
+    # Which price the stake rule and the refusal copy judge on.  Taker has
+    # only one, so it says nothing; a maker run says so, because rows on
+    # either side of 2026-08-26 were sized against different numbers.
+    None
+    if EXECUTION_MODE == "taker"
+    else (
+        "席位按挂单价定价"
+        if SEAT_PRICING_BASIS == "lane"
+        else "席位按吃单价定价(对照)"
+    ),
     None if not CERTAINTY_GATE else "确定性闸" + "+".join(CERTAINTY_GATE),
     None
     if EXECUTION_MODE != "maker_resting" or not MAKER_RESTING_SHOULDER_LAMBDA
@@ -976,6 +1001,17 @@ SELECTION_RULE_SHA256 = content_sha256({
     "cost_basis": "expected_payout_equivalent_shares",
     "window_strategy": WINDOW_STRATEGY,
     "execution_mode": EXECUTION_MODE,
+    # Which price the Kelly stake and the payout test are struck against.
+    # ``_support_windows`` is production's and prices at the offer, so
+    # before 2026-08-26 every maker row was sized on a crossing total it
+    # would never pay -- and 57 refusals said the market asked more than a
+    # full payout when this lane's own price did not.  Hashed only away
+    # from taker, where the two prices are the same number and the standing
+    # taker book must keep its fingerprint.
+    **(
+        {"seat_pricing_basis": SEAT_PRICING_BASIS}
+        if EXECUTION_MODE != "taker" else {}
+    ),
     "maker_ladder_steps": MAKER_RESTING_LADDER_STEPS,
     # How long the order rests and how often it is re-posted.  Both change
     # which fills a recorded row is built on, so rows written under the old
@@ -2530,6 +2566,54 @@ def _maker_leg_prices(
             else float(row.ask_price) * (1.0 + FEE_RATE)
         )
     return prices
+
+
+def _seat_execution_price(
+    seat: Mapping[str, Any],
+    *,
+    snapshot: Any,
+    probabilities: Mapping[str, float],
+    centre_bucket: str,
+) -> float:
+    """What THIS lane pays for the seated basket, per set.
+
+    ``_support_windows`` belongs to production and production crosses the
+    spread, so the ``all_in_price`` it hands back is always the sum of the
+    seated legs' top-of-book offers.  Under a maker mode that is not a
+    price this run would ever pay: the legs rest inside the spread, and the
+    difference is the whole of the book's vig plus the spread itself.
+
+    Sizing and refusing on the crossing total while filling at the resting
+    band is how KHOU 2026-08-27 came to be refused as "dearer than its own
+    payout" at 1.100 -- a basket this lane would have posted at 0.876, on a
+    book whose eleven buckets asked 1.290 and bid 0.982.  Measured over the
+    four event days to 2026-08-26, 94 seats were refused on the crossing
+    total; 2 of them carry a positive edge at the price they would actually
+    have been posted at (ZSQD 2026-08-26 P1: 1.210 crossing, 0.906 resting,
+    against a 0.958 claim).  The other 92 are refused either way -- but
+    every one of them was told the wrong reason, and 57 of them were told
+    the market was dearer than a full payout when this lane's own price was
+    not.
+
+    Taker keeps the crossing total, because there it *is* the price.
+
+    One seam stays open by design: the edge gate inside ``_support_windows``
+    still judges on the crossing total, so a window it refused for being
+    dear is not on this shortlist to be re-priced here.  Closing that means
+    changing production's own enumeration, which is a different layer and a
+    different decision.
+    """
+
+    if EXECUTION_MODE == "taker" or SEAT_PRICING_BASIS == "crossing":
+        return float(seat["all_in_price"])
+    return sum(
+        _maker_leg_prices(
+            snapshot,
+            seat["buckets"],
+            probabilities,
+            centre_bucket=centre_bucket,
+        )
+    )
 
 
 def _window_row(
@@ -4655,6 +4739,22 @@ def backfill(
                         ))
                         continue
                     seat = priced_windows[0]
+                    # Two prices for the seated basket, and they are not the
+                    # same question.  ``seat_crossing_cost`` is what lifting
+                    # it off the offers would take -- production's number,
+                    # and the upper bound on anything a maker pays.
+                    # ``seat_cost`` is what THIS lane pays, which is the one
+                    # the stake rule and the refusal copy have to be built
+                    # on.  Under taker they are the same number.
+                    seat_crossing_cost = float(seat["all_in_price"])
+                    seat_cost = _seat_execution_price(
+                        seat,
+                        snapshot=snapshot,
+                        probabilities=probabilities,
+                        centre_bucket=str(
+                            audit.get("ladder_center_bucket") or center
+                        ),
+                    )
                     # Sized off the book as it stood when the day opened, and
                     # never beyond what the per-scope cap leaves this chain.
                     # The cap is the station-day's, so a top-up spends what
@@ -4761,7 +4861,7 @@ def backfill(
                     )
                     fraction, wanted_stake = _kelly_stake(
                         win_probability=gate_win,
-                        cost=float(seat["all_in_price"]),
+                        cost=seat_cost,
                         equity=equity_at_open,
                     )
                     stage_room = (
@@ -4773,7 +4873,20 @@ def backfill(
                     )
                     stake = min(wanted_stake, max(0.0, stage_room))
                     if stake <= 0.0:
-                        cost = float(seat["all_in_price"])
+                        # The price this lane would have paid, not the one it
+                        # would have paid crossing.  Both are printed: the
+                        # crossing total is the honest upper bound and the
+                        # number production would have judged on, so a reader
+                        # comparing this page against a live plan can still
+                        # see it -- it is just no longer the thing being
+                        # refused.
+                        cost = seat_cost
+                        crossing_note = (
+                            ""
+                            if EXECUTION_MODE == "taker"
+                            or abs(seat_crossing_cost - cost) < 5e-4
+                            else "（吃单 %.3f）" % seat_crossing_cost
+                        )
                         # Only say the budget stopped it when the budget
                         # stopped it.  This used to fire on any chain that
                         # already held something, so a stage refused on a
@@ -4826,17 +4939,18 @@ def backfill(
                             refusal = _deeper_refusal(refusal, (
                                 "cost_exceeds_payout",
                                 "整篮成本 %.3f · 满额赔付 1.000"
-                                "（超出 %.1f%%）%s" % (
-                                    cost, (cost - 1.0) * 100.0, exhausted,
+                                "（超出 %.1f%%）%s%s" % (
+                                    cost, (cost - 1.0) * 100.0,
+                                    crossing_note, exhausted,
                                 ),
                                 cycles, payload["decision_at_utc"],
                             ))
                             continue
                         refusal = _deeper_refusal(refusal, (
                             "no_positive_kelly",
-                            "概率 %.3f · 成本 %.3f%s" % (
+                            "概率 %.3f · 成本 %.3f%s%s" % (
                                 gate_win,
-                                cost, exhausted,
+                                cost, crossing_note, exhausted,
                             ),
                             cycles, payload["decision_at_utc"],
                         ))
@@ -5228,7 +5342,17 @@ def backfill(
                     # number every downstream P&L and edge reading has to be
                     # built on.
                     all_in_cost = stake / shares
-                    if all_in_cost > float(seat["all_in_price"]) + 1e-9:
+                    # Still measured against the CROSSING total, not against
+                    # what this lane posted at.  The counter asks "did the
+                    # clip have to reach past top of book", and top of book
+                    # is the offer -- a resting basket realising above its
+                    # own band mean is a different fact (the dear rungs are
+                    # the ones that filled) and would be a lie under this
+                    # name.  Charter aside, the invariant this guards is the
+                    # one written at 2026-08-19: a resting basket cannot cost
+                    # more than crossing, and if it reads that way the share
+                    # count is wrong.
+                    if all_in_cost > seat_crossing_cost + 1e-9:
                         counts["walked_book"] += 1
                     # One book, one rule: a seat that does not compound does
                     # not consume the day's budget either.  Charging dust
