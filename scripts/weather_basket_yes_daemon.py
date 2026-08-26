@@ -12,6 +12,7 @@ import signal
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 import math
 import shutil
@@ -258,6 +259,37 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
 )
 
 
+# Every hosted sweep currently running, so shutdown can end them instead of
+# leaving them behind.
+#
+# ``run_hosted_sweep`` gives each sweep its own session, which is what lets a
+# timeout kill the whole tree -- and equally what lets the tree outlive this
+# daemon.  On shutdown the executor is drained with ``wait=True``, so a
+# paper-ledger round with twenty minutes left to run holds the exit open past
+# launchd's grace, the daemon is SIGKILLed, and the sweep becomes an orphan
+# holding the single SQLite writer with nothing supervising it.  Measured
+# 2026-08-26: a restart during a ``paper_trading_ledger --backfill`` left it
+# reparented to init and the replacement resident sat blocked on the write
+# lock for eleven minutes without a heartbeat -- exactly the production stall
+# a deploy is meant to fix.
+_HOSTED_SWEEP_PROCESSES: "set[subprocess.Popen[str]]" = set()
+_HOSTED_SWEEP_PROCESS_LOCK = threading.Lock()
+
+
+def _terminate_inflight_hosted_sweeps() -> list[int]:
+    """End every running sweep so none of them outlives this process."""
+
+    with _HOSTED_SWEEP_PROCESS_LOCK:
+        running = list(_HOSTED_SWEEP_PROCESSES)
+    ended: list[int] = []
+    for process in running:
+        if process.poll() is not None:
+            continue
+        ended.append(process.pid)
+        _terminate_process_group(process)
+    return ended
+
+
 def _terminate_process_group(process: "subprocess.Popen[str]") -> None:
     """Kill a sweep's whole process group, then confirm it is gone.
 
@@ -368,6 +400,8 @@ def run_hosted_sweep(script_path: str, timeout_sec: float) -> dict[str, Any]:
             text=True,
             start_new_session=True,
         )
+        with _HOSTED_SWEEP_PROCESS_LOCK:
+            _HOSTED_SWEEP_PROCESSES.add(process)
         try:
             out, err = process.communicate(timeout=timeout_sec)
             returncode: int | None = process.returncode
@@ -388,6 +422,10 @@ def run_hosted_sweep(script_path: str, timeout_sec: float) -> dict[str, Any]:
         returncode = None
         tail = f"{type(exc).__name__}:{exc}"
         state_text = "spawn_failed"
+    finally:
+        if process is not None:
+            with _HOSTED_SWEEP_PROCESS_LOCK:
+                _HOSTED_SWEEP_PROCESSES.discard(process)
     return {
         "state": state_text,
         "returncode": returncode,
@@ -3532,6 +3570,12 @@ def main() -> int:
         # Cover normal SIGTERM and unexpected exceptions with the same bounded
         # ownership cleanup.  Objects are discovered defensively because
         # --once paths return before resident resources are constructed.
+        #
+        # Sweeps first, and before the executors are drained: their threads
+        # are blocked in ``communicate`` and ``shutdown(wait=True)`` would
+        # hold this exit open for the rest of the sweep's timeout, which is
+        # how a restart leaves one orphaned on the write lock.
+        _terminate_inflight_hosted_sweeps()
         for executor_name in (
             "executor",
             "forecast_executor",
