@@ -3285,6 +3285,18 @@ font:13px/1.35 inherit;display:flex;align-items:center;gap:6px}
 .tabs button[data-active="1"]{color:var(--text);border-color:var(--accent);
 background:var(--why-bg)}
 .tabs .muted{font-size:11.5px}
+/* Per-day tabs inside a card.  The same pill as the group switcher, one
+   size down and not sticky: this one picks which day a card shows, it is
+   not a way around the page. */
+.daytabs{display:flex;gap:6px;flex-wrap:wrap;align-items:center;
+margin:0 0 10px}
+.daytabs button{cursor:pointer;background:var(--bg);color:var(--muted);
+border:1px solid var(--line);border-radius:99px;padding:4px 10px;
+font:12.5px/1.35 inherit;display:flex;align-items:center;gap:5px}
+.daytabs button:hover{color:var(--text);border-color:var(--accent)}
+.daytabs button[data-active="1"]{color:var(--text);border-color:var(--accent);
+background:var(--why-bg)}
+.daytabs .muted{font-size:11px}
 .grouptitle{display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;
 margin:18px 0 0;font-weight:650}
 .grouptitle .muted{font-weight:400}
@@ -3983,26 +3995,35 @@ function edgeBandHealth(){
     const a=r.all,rc=r.recent;
     // The sick bands are the big-edge ones; paint the band label by the
     // filled-side realisation so the eye finds the fever line.
-    const cls=(a.realize_filled_x!=null&&a.realize_filled_x<0.5)?"down":"";
+    const x=a.realize_filled_x;
+    const state=x==null?["—",""]
+      :x>=0.9?["✅ 健康",""]
+      :x>=0.5?["😐 偏虚",""]
+      :x>=0.2?["🤒 发烧","down"]
+      :["🔥 重烧","down"];
     return `<tr>
-      <td class="mono ${cls}">${r.band}</td>
+      <td class="mono ${state[1]}">${r.band}</td>
+      <td class="${state[1]}">${state[0]}</td>
       <td>${a.n}</td><td>${pct(r.share_all)}</td><td>${pct(a.fill_rate)}</td>
       <td>${pct(a.claimed_mean)}</td>
-      <td class="${cls}">${mult(a.realize_filled_x)}</td>
+      <td class="${state[1]}">${mult(x)}</td>
       <td>${mult(a.realize_unfilled_x)}</td>
       <td>${pct(r.share_recent)}</td>
       <td>${mult(rc.realize_filled_x)}</td></tr>`;
   };
   return `<h2>十六C、声称边际体温计（edge 带 × 兑现）</h2>
   <div class="card">
-  <p class="note">edge＝声称概率−挂单时刻卖价，逐腿归带。这是概率层的体温计不是门
-  （门的版本 A1 已被剔除检验否决）：宪章 62 校准修复生效的读数是
-  <b>≥10% 带占比萎缩、兑现乘数回升向 ×1.0</b>。兑现乘数＝实现率/声称均值，
-  分"市场肯卖给我们的腿"（成交）与"不肯卖的腿"（未成交）两列；样本&lt;10 的格显 —。
+  <p class="note"><b>这张表回答一个问题：模型觉得"捡到的便宜"是真是假。</b>
+  每条腿有两个数——模型信它多少（声称）、市场卖它多少（卖价），差值＝模型自认占的便宜，
+  按大小分七档。"兑现"列＝买到后真值实际落桶的比例是声称的几成：×1.0 说得准，
+  ×0.45 自估打了四五折，×0.07 声称基本是错的。规律从上往下一眼可见：
+  <b>自认便宜越大，市场越乐意卖，兑现越崩——"太好的价格"本身是警报</b>。
+  这是体温计不是门（门的版本已被账本否决）："近7天"两列是宪章62校准修复的疗效仪表，
+  起效的样子＝发烧行（黄）占比缩小、兑现回升。样本&lt;10 显 —。
   近7天窗起点 ${E.recent_floor||"—"}，腿数 ${E.totals&&E.totals.recent_legs||0}/${E.totals&&E.totals.legs||0}。</p>
-  <table><thead><tr><th>edge 带</th><th>腿数</th><th>占比</th><th>成交率</th>
-  <th>声称均值</th><th>兑现·成交</th><th>兑现·未成交</th>
-  <th>近7天占比</th><th>近7天兑现·成交</th></tr></thead>
+  <table><thead><tr><th>自认便宜多少</th><th>状态</th><th>腿数</th><th>占比</th>
+  <th>市场肯卖率</th><th>模型声称</th><th>买到后兑现</th><th>没买到的兑现</th>
+  <th>近7天占比</th><th>近7天兑现</th></tr></thead>
   <tbody>${rows.map(tr).join("")}</tbody></table></div>`;
 }
 
@@ -4452,13 +4473,12 @@ function centerBias(){
     <td>${pct(r.within1)}</td>
     <td>${pct(r.cover_rate)}</td>
   </tr>`).join("");
-  const detailRows=(C.rows||[]).map(r=>{
+  const detailRow=r=>{
     const win=r.intended_window||[];
     const winTxt=!win.length?"—":(win.length===1?h(win[0])
       :`${h(win[0])} ~ ${h(win[win.length-1])}`)
       +` <span class="muted">· ${r.intended_leg_count} 腿</span>`;
     return `<tr>
-    <td class="mono">${h(r.event_date)}</td>
     <td>${h(r.station_id)}${r.station_label?` <span class="muted">${h(r.station_label)}</span>`:""}</td>
     <td class="mono">${h(r.center_bucket)}</td>
     <td>${skewTxt(r.skew)}</td>
@@ -4466,7 +4486,32 @@ function centerBias(){
     <td class="mono">${r.settled_bucket?h(r.settled_bucket):"—"}${r.settled_tmax_c==null?"":` <span class="muted">${Number(r.settled_tmax_c).toFixed(1)}°C</span>`}</td>
     <td class="mono ${rowCls(r.bias)}">${signInt(r.bias)}</td>
     <td>${r.intended_cover==null?"—":(r.intended_cover?'<span class="up">✓</span>':'<span class="down">✗</span>')}</td>
-  </tr>`;}).join("");
+  </tr>`;};
+  // The roster is two hundred-odd station-days, and it used to lie flat
+  // under the two summary tables -- most of the page's height for a table
+  // nobody reads across days (user ruling, 2026-08-26).  One tab per event
+  // date, newest first, so the card is one day tall; 全部 keeps the old
+  // stacked view for anyone reading it through or searching it with the
+  // browser's own find, which cannot see into a hidden pane.
+  const byDay=new Map();
+  (C.rows||[]).forEach(r=>{
+    if(!byDay.has(r.event_date)) byDay.set(r.event_date,[]);
+    byDay.get(r.event_date).push(r);
+  });
+  const days=[...byDay.keys()];
+  const dayNav=`<nav class="daytabs">${days.map((d,i)=>
+    `<button type="button" data-day="${h(d)}"${i?"":' data-active="1"'}>${h(d)}
+      <span class="muted">${byDay.get(d).length}</span></button>`).join("")
+    }<button type="button" data-day="all">全部 <span class="muted">${
+      (C.rows||[]).length}</span></button></nav>`;
+  const dayPanes=days.map((d,i)=>`<div data-daypane="${h(d)}"${i?" hidden":""}>
+    <div class="muted" style="margin:0 0 6px">${h(d)} · ${
+      byDay.get(d).length} 站</div>
+    <table><thead><tr>
+      <th>站</th><th>mean 中心桶</th><th>偏斜</th><th>意向窗</th><th>真值桶</th>
+      <th>偏差</th><th>盖住</th>
+    </tr></thead><tbody>${byDay.get(d).map(detailRow).join("")}</tbody></table>
+  </div>`).join("");
   return `<h2>中心偏差 · P0 意向选桶</h2>
   <p class="sub">每天每个站一行：P0 建仓决策挂出的意向篮子（intended），中心桶＝生产选桶用的
   均值落点桶（宪章 54，直接读账本记录、不在页面重算），减真值桶得偏差，单位是档，正数＝偏热。
@@ -4485,10 +4530,7 @@ function centerBias(){
   </tr></thead><tbody>${skewRows}</tbody></table>
   <div class="muted" style="margin-top:6px">同一本账按当日分布形状切开——宪章 55 的立论
   （偏斜指向真值）该在这里持续兑现：偏斜日的偏差应该比对称日更靠向偏斜反侧、盖住率不应更差。</div></div>
-  <div class="card"><table><thead><tr>
-    <th>事件日</th><th>站</th><th>mean 中心桶</th><th>偏斜</th><th>意向窗</th><th>真值桶</th>
-    <th>偏差</th><th>盖住</th>
-  </tr></thead><tbody>${detailRows}</tbody></table></div>`;
+  <div class="card" data-daytabs="center-bias">${dayNav}${dayPanes}</div>`;
 }
 
 
@@ -5570,6 +5612,24 @@ document.getElementById("app").innerHTML =
   });
   paint();
 })();
+
+// Per-day tab strips inside a card.  Scoped to the card that carries the
+// strip, so a second one on the page does not paint the first one's panes.
+document.querySelectorAll("[data-daytabs]").forEach(card => {
+  const nav = card.querySelector(".daytabs");
+  if(!nav) return;
+  nav.addEventListener("click", (ev) => {
+    const button = ev.target.closest("button[data-day]");
+    if(!button) return;
+    const day = button.dataset.day;
+    nav.querySelectorAll("button[data-day]").forEach(b => {
+      b.dataset.active = b.dataset.day === day ? "1" : "";
+    });
+    card.querySelectorAll("[data-daypane]").forEach(pane => {
+      pane.hidden = day !== "all" && pane.dataset.daypane !== day;
+    });
+  });
+});
 
 document.querySelectorAll("table").forEach(makeSortable);
 
