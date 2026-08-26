@@ -22,12 +22,15 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
+import sys
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 SCHEMA = "bayes_basket_target_metar_ceiling_v1"
 # Hours left until local settlement.  Fine where the curve moves (the collapse
 # runs from roughly ten hours out to zero) and coarse where it is flat.
@@ -73,15 +76,24 @@ def collect(target_db: Path, archive_db: Path) -> list[dict]:
     # One belief per prefix burst: the chain writes a row per prefix step and
     # only the one it walked up to was ever believed.
     burst: dict[tuple, tuple] = {}
+    from bayes_basket_target.probability_bridge import (  # noqa: PLC0415
+        history_envelope_payload,
+    )
     for row in target.execute(
         "SELECT station_id,event_date,decision_at_utc,bucket_intervals_json,"
-        "envelope_json FROM basket_probability_bridge_history"
+        "envelope_json,checkpoint_id,envelope_content_sha256"
+        " FROM basket_probability_bridge_history"
         " WHERE state='COMMITTED' AND stage='P1' ORDER BY decision_at_utc, rowid"
     ):
         key = (str(row[0]), str(row[1]))
         if key not in truth or key not in zones:
             continue
-        envelope = json.loads(row[4])
+        envelope = history_envelope_payload(
+            target,
+            checkpoint_id=str(row[5]),
+            envelope_content_sha256=str(row[6]),
+            stored=str(row[4]) if row[4] else None,
+        )
         running = (envelope.get("lineage") or {}).get(
             "metar_trajectory_running_high_c")
         if running in (None, ""):

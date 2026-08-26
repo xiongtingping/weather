@@ -36,7 +36,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from bayes_basket_target.contracts import content_sha256  # noqa: E402
+from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
+from bayes_basket_target.probability_bridge import (  # noqa: E402
+    history_envelope_payload,
+)
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 # The rules a resting order could follow, priced off the book as it stands
@@ -186,7 +189,8 @@ def _model_probabilities(
     # book: such rows held 46.9% of mass on buckets the reported high had
     # excluded, against 3.5% for the same station-days' last P1 row.
     row = conn.execute(
-        "SELECT envelope_json FROM basket_probability_bridge_history"
+        "SELECT envelope_json, checkpoint_id, envelope_content_sha256"
+        " FROM basket_probability_bridge_history"
         " WHERE station_id=? AND event_date=?"
         " ORDER BY (stage='P1') DESC, decision_at_utc DESC LIMIT 1",
         (station, day),
@@ -194,8 +198,13 @@ def _model_probabilities(
     if not row:
         return {}
     try:
-        payload = json.loads(row[0])
-    except (TypeError, ValueError, json.JSONDecodeError):
+        payload = history_envelope_payload(
+            conn,
+            checkpoint_id=str(row[1]),
+            envelope_content_sha256=str(row[2]),
+            stored=str(row[0]) if row[0] else None,
+        )
+    except (ContractError, TypeError, ValueError, json.JSONDecodeError):
         return {}
     return {
         str(k): float(v)
@@ -445,16 +454,23 @@ def settle(conn: sqlite3.Connection) -> dict[str, int]:
         key = (str(station), str(day))
         if key not in intervals_cache:
             row = conn.execute(
-                "SELECT envelope_json FROM basket_probability_bridge_history"
+                "SELECT envelope_json, checkpoint_id, envelope_content_sha256"
+                " FROM basket_probability_bridge_history"
                 " WHERE station_id=? AND event_date=? LIMIT 1",
                 (station, day),
             ).fetchone()
             try:
-                lineage = json.loads(row[0])["lineage"] if row else {}
+                lineage = history_envelope_payload(
+                    conn,
+                    checkpoint_id=str(row[1]),
+                    envelope_content_sha256=str(row[2]),
+                    stored=str(row[0]) if row[0] else None,
+                )["lineage"] if row else {}
                 intervals_cache[key] = json.loads(
                     str(lineage.get("bucket_intervals_c_json") or "{}")
                 )
-            except (TypeError, ValueError, json.JSONDecodeError, KeyError):
+            except (ContractError, TypeError, ValueError,
+                    json.JSONDecodeError, KeyError):
                 intervals_cache[key] = {}
         intervals = intervals_cache[key]
         landed = None

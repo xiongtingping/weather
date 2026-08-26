@@ -514,10 +514,13 @@ def serving_lane_by_day(
     reader of the bridge history follows).
     """
 
+    from .probability_bridge import history_envelope_payload
+
     by_day: dict[str, list[list[tuple[float, int]]]] = defaultdict(list)
     rows = conn.execute(
         "SELECT h.station_id, h.event_date, h.history_id,"
-        " h.envelope_json, MAX(h.rowid)"
+        " h.envelope_json, h.checkpoint_id, h.envelope_content_sha256,"
+        " MAX(h.rowid)"
         " FROM basket_probability_bridge_history h"
         " JOIN (SELECT station_id, event_date,"
         "         MIN(decision_at_utc) AS first_decision_at"
@@ -529,17 +532,22 @@ def serving_lane_by_day(
         " GROUP BY h.station_id, h.event_date",
         (_check_stage(stage), _check_stage(stage)),
     ).fetchall()
-    for station, event, history_id, envelope_json, _last_row in rows:
+    for station, event, history_id, stored, checkpoint, sha, _last_row in rows:
         actual = truth.get((str(station), str(event)))
         if actual is None:
             continue
+        envelope = history_envelope_payload(
+            conn,
+            checkpoint_id=str(checkpoint),
+            envelope_content_sha256=str(sha),
+            stored=str(stored) if stored else None,
+        )
         receipt = None
-        if "band_reliability_json" in str(envelope_json):
-            lineage = json.loads(envelope_json).get("lineage") or {}
-            raw = lineage.get("band_reliability_json")
-            parsed = json.loads(raw) if raw else None
-            if parsed and parsed.get("state") == "APPLIED":
-                receipt = parsed
+        lineage = envelope.get("lineage") or {}
+        raw = lineage.get("band_reliability_json")
+        parsed = json.loads(raw) if raw else None
+        if parsed and parsed.get("state") == "APPLIED":
+            receipt = parsed
         buckets = conn.execute(
             "SELECT bucket, lower_c, upper_c, probability"
             " FROM basket_probability_bridge_bucket_probability"

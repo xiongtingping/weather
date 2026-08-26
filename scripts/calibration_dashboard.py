@@ -51,6 +51,20 @@ DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 STATUS_JSON = ROOT / "data" / "weather_basket_yes_status.json"
 TRUTH_SWEEP_STATUS = ROOT / "data" / "settlement_truth_sweep_status.json"
 
+
+def _bridge_envelope_payload(conn, checkpoint_id, sha, stored) -> dict:
+    """History rows since 2026-08-26 carry no inline envelope body."""
+
+    from bayes_basket_target.probability_bridge import (  # noqa: PLC0415
+        history_envelope_payload,
+    )
+    return history_envelope_payload(
+        conn,
+        checkpoint_id=str(checkpoint_id),
+        envelope_content_sha256=str(sha),
+        stored=str(stored) if stored else None,
+    )
+
 # The four native families that can hold a P0 seat, with the archive each
 # one is fed from and whether a missed day can ever be recovered.
 MEMBER_FAMILIES = (
@@ -2968,17 +2982,18 @@ def collect_window_divergence(conn: sqlite3.Connection) -> dict[str, Any]:
         # the station-day, later P0/P0-M rows are not the end-state belief.
         p1_seen = False
         for row in conn.execute(
-            "SELECT decision_at_utc, envelope_json, stage"
-            " FROM basket_probability_bridge_history"
-            " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-            " AND decision_at_utc>=? ORDER BY decision_at_utc",
+            "SELECT h.decision_at_utc, h.envelope_json, h.stage,"
+            " h.checkpoint_id, h.envelope_content_sha256"
+            " FROM basket_probability_bridge_history h"
+            " WHERE h.station_id=? AND h.event_date=? AND h.state='COMMITTED'"
+            " AND h.decision_at_utc>=? ORDER BY h.decision_at_utc",
             (station, day, entry["opened"]),
         ):
             if str(row[2]) == "P1":
                 p1_seen = True
             elif p1_seen:
                 continue
-            envelope = json.loads(row[1])
+            envelope = _bridge_envelope_payload(conn, row[3], row[4], row[1])
             probabilities = envelope["probabilities"]
             ordinals = envelope["bucket_ordinals"]
             inside = sum(
@@ -3153,7 +3168,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
 HTML_TEMPLATE = r"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>校准与链路看板</title>
+<title>气温篮子全链看板</title>
 <style>
 :root{--bg:#0f1115;--card:#171a21;--line:#262b36;--soft:rgba(38,43,54,.6);
 --text:#e6e9ef;--muted:#9aa4b8;--green:#3fb950;--amber:#d29922;--red:#f85149;
@@ -3275,12 +3290,14 @@ footer{margin-top:34px;color:var(--muted);font-size:12.5px;text-align:center}
 /* The group switcher.  Sticky, because it is the only way back to the
    other two thirds of the page once a long section has been scrolled
    into. */
-.tabs{position:sticky;top:0;z-index:8;display:flex;gap:6px;flex-wrap:wrap;
-align-items:center;margin:14px 0 0;padding:9px 0 8px;background:var(--bg);
-border-bottom:1px solid var(--line)}
+.topnav{position:sticky;top:0;z-index:8;margin:14px 0 16px;padding:9px 0 0;
+background:var(--bg);border-bottom:1px solid var(--line)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;align-items:center;
+margin:0;padding:0 0 8px}
 .tabs button{cursor:pointer;background:var(--card);color:var(--muted);
 border:1px solid var(--line);border-radius:99px;padding:5px 13px;
-font:13px/1.35 inherit;display:flex;align-items:center;gap:6px}
+font-family:inherit;font-size:13px;line-height:1.35;
+display:flex;align-items:center;gap:6px}
 .tabs button:hover{color:var(--text);border-color:var(--accent)}
 .tabs button[data-active="1"]{color:var(--text);border-color:var(--accent);
 background:var(--why-bg)}
@@ -3292,7 +3309,8 @@ background:var(--why-bg)}
 margin:0 0 10px}
 .daytabs button{cursor:pointer;background:var(--bg);color:var(--muted);
 border:1px solid var(--line);border-radius:99px;padding:4px 10px;
-font:12.5px/1.35 inherit;display:flex;align-items:center;gap:5px}
+font-family:inherit;font-size:12.5px;line-height:1.35;
+display:flex;align-items:center;gap:5px}
 .daytabs button:hover{color:var(--text);border-color:var(--accent)}
 .daytabs button[data-active="1"]{color:var(--text);border-color:var(--accent);
 background:var(--why-bg)}
@@ -3307,9 +3325,29 @@ margin:18px 0 0;font-weight:650}
 .grouptitle .muted{font-weight:400}
 #theme{position:fixed;top:14px;right:16px;z-index:9;cursor:pointer;
 background:var(--card);color:var(--muted);border:1px solid var(--line);
-border-radius:99px;padding:6px 13px;font:13px/1 inherit;
-box-shadow:var(--shadow)}
+border-radius:99px;padding:6px 13px;font-family:inherit;font-size:13px;
+line-height:1;box-shadow:var(--shadow)}
 #theme:hover{color:var(--text);border-color:var(--accent)}
+/* Second row of the sticky bar: one chip per section on screen, so a
+   twenty-section page is one click deep instead of one scroll long.  It
+   wraps rather than scrolling sideways -- a jump bar whose far half is
+   off-screen is the problem it was added to solve, and the labels are cut
+   short enough that two rows is the worst case. */
+.jump{display:flex;gap:5px;flex-wrap:wrap;align-items:center;
+padding:0 0 8px}
+.jump button{cursor:pointer;white-space:nowrap;flex:none;background:none;
+color:var(--muted);border:1px solid transparent;border-radius:99px;
+padding:3px 9px;font-family:inherit;font-size:12.5px;line-height:1.35}
+.jump button:hover{color:var(--text);border-color:var(--line);
+background:var(--card)}
+.jump .sep{flex:none;width:1px;height:14px;background:var(--line);margin:0 4px}
+/* Only once there is something to come back from. */
+#totop{position:fixed;right:16px;bottom:18px;z-index:9;cursor:pointer;
+background:var(--card);color:var(--muted);border:1px solid var(--line);
+border-radius:99px;padding:7px 14px;font-family:inherit;font-size:13px;
+line-height:1;box-shadow:var(--shadow);display:none}
+#totop[data-show="1"]{display:block}
+#totop:hover{color:var(--text);border-color:var(--accent)}
 @media(max-width:820px){#theme{position:static;margin:14px 20px 0}}
 </style>
 <script>
@@ -3328,6 +3366,7 @@ box-shadow:var(--shadow)}
 </script>
 </head><body>
 <button id="theme" type="button"></button>
+<button id="totop" type="button" title="返回顶部">↑ 顶部</button>
 <div class="wrap" id="app"></div>
 <script>
 const D = __PAYLOAD__;
@@ -3354,9 +3393,9 @@ function head(){
   const more = named.length > 6
     ? `<span class="muted">…等 ${named.length} 处，详见下文标${
         D.overall_health === "red" ? "红" : "黄"}的环节</span>` : "";
-  return `<h1>校准与链路看板</h1>
-  <p class="sub">这一页回答四件事：模型数据还在不在进来、校准有没有按时更新、
-  哪些修正已经生效、哪里还缺数据。</p>
+  return `<h1>气温篮子全链看板</h1>
+  <p class="sub">从模型到下单的一整条链，回答三件事：模型准不准、这笔生意赚不赚、
+  喂它们的数据有没有断。下面第一行标签换大组，第二行按钮直接跳到板块。</p>
   <div class="card"><div style="display:flex;gap:14px;align-items:center;
     flex-wrap:wrap">
     <span class="dot ${D.overall_health}" style="width:13px;height:13px"></span>
@@ -4116,36 +4155,6 @@ function makerProbe(){
        成交已记录，但所属站日还没有结算真值，所以还没有命中率。</div>`;
   const re=S.resting_entry||{};
   const pct=(v)=>v==null?"—":(v*100).toFixed(1)+"%";
-  const reCards=(re.stages||[]).map(r=>{
-    const depth=(r.by_posted_rungs||[]).map(d=>
-      `${d.posted_rungs}档×${d.leg_count}腿 平均成交${d.mean_filled_rungs.toFixed(2)}`
-    ).join(" · ");
-    return `<div class="card">
-      <div class="muted">${h(r.stage)} · 挂单实际买到多少</div>
-      <div class="big ${(r.rung_completion_rate||0)>=0.8?"up":"down"}">${
-        pct(r.rung_completion_rate)}</div>
-      <div class="muted">挂出 ${r.leg_count} 条腿的阶梯，成交这个比例的档
-        （挂 100 买到 ${r.rung_completion_rate==null?"—":
-          Math.round(r.rung_completion_rate*100)}）</div>
-      <table style="margin-top:10px"><tbody>
-        <tr><td><b>挂过单的站日</b>（下面两项之和）</td>
-            <td class="mono"><b>${r.seated_count+r.nothing_filled_count}</b></td></tr>
-        <tr><td>├ 建仓篮子（至少一腿成交）</td>
-            <td class="mono">${r.seated_count}</td></tr>
-        <tr><td>│&nbsp;&nbsp;└ 其中缺腿建仓（有腿没成交，照样建）</td>
-            <td class="mono">${r.partial_basket_count}</td></tr>
-        <tr><td>└ 全篮落空（一腿都没成交，没建仓）</td>
-            <td class="mono">${r.nothing_filled_count}</td></tr>
-        <tr><td>空桶率（该腿一档都没买到）</td>
-            <td class="mono">${pct(r.empty_leg_rate)}</td></tr>
-        <tr><td>整条阶梯全档成交</td>
-            <td class="mono">${pct(r.full_ladder_rate)}</td></tr>
-        <tr><td>实际成交均价</td><td class="mono">${
-          r.mean_filled_price==null?"—":r.mean_filled_price.toFixed(4)}</td></tr>
-      </tbody></table>
-      ${depth?`<div class="muted" style="margin-top:8px">${depth}</div>`:""}
-    </div>`;
-  }).join("");
   // The three-stage assessment under the ROI-first objective (user
   // ruling, 2026-08-20): EV is the goal, fill rate is a diagnostic with
   // an 80% floor -- it exists to catch the failure mode where resting
@@ -4178,7 +4187,7 @@ function makerProbe(){
       :[failing.length?`<span class="pill red">P0 成交率破 80% 底线</span>`:"",
         evbad.length?`<span class="pill red">价差收益转负：${
           evbad.map(h).join("、")}</span>`:""].join(" "));
-  const assessCards=reStages.map(r=>{
+  const stageCards=reStages.map(r=>{
     const sf=judged(r);
     const sav=r.maker_saving_vs_taker;
     const core=r.core_fill_rate, hedge=r.hedge_fill_rate;
@@ -4191,6 +4200,15 @@ function makerProbe(){
     // reported but not judged, because its denominator is inherited.
     const ok=coreOk&&(!opener||(sf!=null&&sf>=TARGET));
     const carried=r.carried_fill_rate, fresh=r.fresh_fill_rate;
+    const rc=r.rung_completion_rate;
+    const depth=(r.by_posted_rungs||[]).map(d=>
+      `${d.posted_rungs}档×${d.leg_count}腿 平均成交${d.mean_filled_rungs.toFixed(2)}`
+    ).join(" · ");
+    // Spelled as arithmetic rather than as an indented tree: P0-M once read
+    // "建仓 19 / 落空 20" side by side and was taken for 20 inside 19.
+    const days=`${r.seated_count+r.nothing_filled_count} ＝ 建仓 ${
+      r.seated_count}（其中缺腿 ${r.partial_basket_count}）＋ 落空 ${
+      r.nothing_filled_count}`;
     return `<div class="card">
       <div class="muted">${h(r.stage)} · ${opener
         ?"建仓完整度（核心 ≥90% · 组合 ≥80%，按已收盘）"
@@ -4206,20 +4224,25 @@ function makerProbe(){
             <td class="mono ${core==null?"":(core>=0.9?"up":"down")}">${pct(core)}</td></tr>
         <tr><td>对冲腿成交率（受价值红线约束，只读不设门）</td>
             <td class="mono">${pct(hedge)}</td></tr>
-        ${opener?"":`<tr><td>继承腿成交率（P0 挂过没买到的，再挂一次）</td>
-            <td class="mono">${pct(carried)}</td></tr>
-        <tr><td>新增腿成交率（链上从未持有的桶）</td>
-            <td class="mono">${pct(fresh)}</td></tr>`}
-        <tr><td>含进行中事件日（单还在书上）</td>
-            <td class="mono">${pct(r.share_fill_rate)}</td></tr>
+        ${opener?"":`<tr><td>继承腿 / 新增腿成交率</td>
+            <td class="mono">${pct(carried)} / ${pct(fresh)}</td></tr>`}
         <tr><td>省价 vs 吃单（正 = 还在赚价差）</td>
             <td class="mono ${sav==null?"":(sav>0?"up":"down")}">${
               sav==null?"—":((sav>=0?"+":"")+(sav*100).toFixed(1)+"%")}</td></tr>
-        <tr><td>金额成交率（实付 ÷ 全成交应付）</td>
-            <td class="mono">${pct(r.stake_fill_rate)}</td></tr>
-        <tr><td>全篮落空（一档都没成交，没建仓，另计）</td>
-            <td class="mono">${r.nothing_filled_count}</td></tr>
+        <tr><td>档位完成率（挂出的阶梯买到几档）</td>
+            <td class="mono ${rc==null?"":(rc>=0.8?"up":"")}">${pct(rc)}
+              <span class="muted">${r.leg_count} 腿</span></td></tr>
+        <tr><td>空桶率 / 整条阶梯全档成交</td>
+            <td class="mono">${pct(r.empty_leg_rate)} / ${pct(r.full_ladder_rate)}</td></tr>
+        <tr><td>金额成交率 / 实际成交均价</td>
+            <td class="mono">${pct(r.stake_fill_rate)} / ${
+              r.mean_filled_price==null?"—":r.mean_filled_price.toFixed(4)}</td></tr>
+        <tr><td>含进行中事件日（单还在书上）</td>
+            <td class="mono">${pct(r.share_fill_rate)}</td></tr>
+        <tr><td>站日：挂过单 ＝ 建仓 ＋ 落空</td>
+            <td class="mono">${days}</td></tr>
       </tbody></table>
+      ${depth?`<div class="muted" style="margin-top:8px">${depth}</div>`:""}
     </div>`;
   }).join("");
     const cons=(S.consolidation_split||{});
@@ -4252,7 +4275,28 @@ function makerProbe(){
       <th>信号</th><th>状态</th><th>结算</th><th>命中</th><th>投入</th>
       <th>ROI</th><th>去最大赢</th><th>去前两赢</th></tr></thead>
     <tbody>${consRows}</tbody></table></div>`:"";
-  const assessBlock=assessCards?`
+  const restingWhy=!stageCards?"":`
+    <div class="why" style="margin-top:12px"><b>三个阶段分开看，不合并：</b>
+    P0 在赛前十几小时挂，盘口几乎不动；P1 在盘中挂，是当天最活跃的书；
+    P0-M 只挂一次，赶上什么行情算什么。合并成一个成交率是三个不同市场的平均数，
+    哪个都不描述。<br>
+    <b>逐步建仓，不是全腿成交才建仓：</b>每条腿的每一档都是独立的一张单，
+    各自成交。一条腿只成交四档就是四档，一条腿一档没成交就是缺这条腿——
+    篮子照样建，中奖概率按<b>实际买到的桶</b>重算，缺的桶不算数。
+    只有一条腿都没成交才放弃。<br>
+    <b>建仓与落空是并列的两堆，不是包含关系：</b>落空的站日一张单都没成交、
+    压根没建仓，所以不在建仓数里面——卡片上那行写成加法就是这个意思。
+    成交率的分母也只含建了仓的那些：落空的站日没有成交价可算，
+    计入会把「一张没成交」和「买到八成」压进同一个平均数。<br>
+    <b>挂单价格是区间不是单点：</b>每条腿在<b>买价上一跳 ~ 卖价下一跳</b>
+    之间均分挂 5 档。上界是硬的——挂到卖价就是吃单，等于把价差付出去。
+    价差只有一跳时区间退化成买价一档。<br>
+    <b>没成交的档不会一直原地等：</b>每 60 分钟按当时盘口重挂一次，
+    且区间下沿在挂单窗前半程内逐步向上沿收拢——前几个小时要价差，
+    后几个小时要成交。收拢后区间放不下的档挂在同一价位（同价多档 =
+    同一价位一张更大的单），上沿永远是当时卖价的下一跳，所以每一笔成交
+    仍然比当刻吃单便宜至少一跳。</div>`;
+  const assessBlock=stageCards?`
     <h2 style="margin-top:0">十五、挂单执行 · 三阶段总体评估 ${verdict}</h2>
     <p class="sub"><b>目标是在不突破模型价值的前提下，用剩余时间最大化目标仓位的
     实际建成度（2026-08-21 重设计）。</b>三层闸：<b>闸1 价值红线</b>——对冲腿不超过
@@ -4262,32 +4306,7 @@ function makerProbe(){
     后 1/3 窗程仍未成交的腿直接吃单——但只在价值红线之内，市场要价高过模型估值的腿
     宁可不买。有效期到该站达峰时刻分位为止。成交结果不改变价值，只改变剩余订单的挂法。
     省价为正说明挂单还在赚价差；进行中的事件日单子还挂在书上，读数会暂时偏低。</p>
-    <div class="grid g3">${assessCards}</div>${consBlock}`:"";
-  const reBlock=reCards?`<div class="grid g3">${reCards}</div>
-    <div class="why" style="margin-top:12px"><b>三个阶段分开看，不合并：</b>
-    P0 在赛前十几小时挂，盘口几乎不动；P1 在盘中挂，是当天最活跃的书；
-    P0-M 只挂一次，赶上什么行情算什么。合并成一个成交率是三个不同市场的平均数，
-    哪个都不描述。<br>
-    <b>逐步建仓，不是全腿成交才建仓：</b>每条腿的每一档都是独立的一张单，
-    各自成交。一条腿只成交四档就是四档，一条腿一档没成交就是缺这条腿——
-    篮子照样建，中奖概率按<b>实际买到的桶</b>重算，缺的桶不算数。
-    只有一条腿都没成交才放弃。<br>
-    <b>「建仓篮子」和「全篮落空」是并列的两堆，不是包含关系：</b>
-    落空的站日一张单都没成交，压根没建仓，所以它不在建仓数里面——
-    两者相加才是这一阶段挂过单的站日总数。P0-M 上曾出现「建仓 19、
-    落空 20」并排，看着像 19 里有 20 个，其实是 39 个站日里 19 个建成、
-    20 个落空。<br>
-    <b>成交率的分母只含建了仓的那些：</b>落空的站日没有成交价可算，
-    计入会把「一张没成交」和「买到八成」压进同一个平均数。要看落空有多少，
-    读上面那一行。<br>
-    <b>挂单价格是区间不是单点：</b>每条腿在<b>买价上一跳 ~ 卖价下一跳</b>
-    之间均分挂 5 档。上界是硬的——挂到卖价就是吃单，等于把价差付出去。
-    价差只有一跳时区间退化成买价一档。<br>
-    <b>没成交的档不会一直原地等：</b>每 60 分钟按当时盘口重挂一次，
-    且区间下沿在挂单窗前半程内逐步向上沿收拢——前几个小时要价差，
-    后几个小时要成交。收拢后区间放不下的档挂在同一价位（同价多档 =
-    同一价位一张更大的单），上沿永远是当时卖价的下一跳，所以每一笔成交
-    仍然比当刻吃单便宜至少一跳。</div>`:"";
+    <div class="grid g3">${stageCards}</div>${restingWhy}${consBlock}`:"";
   // The pooled cards above say whether resting works; they cannot say
   // whether it is getting better or worse, and that is the question after
   // every change to how long an order rests or how often it is re-posted.
@@ -4351,7 +4370,8 @@ function makerProbe(){
     </tr></thead><tbody>${trendRows}
       <tr><td><b>合计</b></td>${totals}</tr>
     </tbody></table></div></div>`:"";
-  return `${assessBlock}<h2>挂单影子探针与逐阶段明细</h2>${reBlock}${trendBlock}
+  return `${assessBlock}${trendBlock}
+  <h2 style="margin-top:26px">挂单影子探针（不下真单）</h2>
   <p class="sub">在真实时间轴上记录"此刻会挂什么单"，<b>不下真单</b>，
   再用后到的实时盘口判定它会不会成交。${m.open_count||0} 个意图未到期。</p>
   <div class="why"><b>为什么只有成交率没有成交量比例：</b>
@@ -4905,7 +4925,7 @@ function roster(){
   const head=`<tr><th>站点</th><th>P0 建仓</th><th>P0-M 确认</th><th>P1 盯盘</th>
     <th>位置</th><th>实测</th><th>实得</th></tr>`;
   const dates=S.roster_event_dates||[];
-  const block=(day,open)=>{
+  const block=(day,index)=>{
     const rows=rs.filter(e=>e.event_date===day);
     const seated=rows.filter(e=>e.seated_stage_count>0).length;
     // P0 counted on its own: it is the opening stage, so "how many stations
@@ -4940,13 +4960,32 @@ function roster(){
     const fill=seats.length?` · 部分成交 ${partial}/${seats.length} ·
       计划 ${usd2(want)}→实投 ${usd2(got)}（${pctS(want>0?got/want:null)}）${
         short3?`<span class="pill red">挂单低于本阶段下界 ${short3}</span>`:""}`:"";
-    return `<details class="card" ${open?"open":""}>
-      <summary><b class="mono">${h(day)}</b>
-        <span class="muted">${rows.length} 站 · P0 建仓 ${p0} · 任一阶段有座位 ${seated}${ruleNote}${fill}</span></summary>
-      <div class="scroll" style="margin-top:10px"><table>
-        <thead>${head}</thead><tbody>${rows.map(row).join("")}</tbody></table></div>
-    </details>`;
+    return {day:day, count:rows.length, p0:p0, seated:seated,
+      pane:`<div data-daypane="${h(day)}"${index?" hidden":""}>
+      <div class="card">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:baseline">
+          <b class="mono">${h(day)}</b>
+          <span class="muted">${rows.length} 站 · P0 建仓 ${p0} · 任一阶段有座位 ${seated}${ruleNote}${fill}</span></div>
+        <div class="scroll" style="margin-top:10px"><table>
+          <thead>${head}</thead><tbody>${rows.map(row).join("")}</tbody></table></div>
+      </div></div>`};
   };
+  // Forty-five stations times thirteen days.  It used to stack thirteen
+  // <details>, newest open -- which is already an admission that nobody
+  // reads this across dates, and still cost twelve summary bars of height
+  // and a click to get anywhere.  Same day tabs as the centre-bias roster
+  // (user ruling, 2026-08-26), 全部 for reading it through or searching it
+  // with the browser's own find, which cannot see into a hidden pane.
+  // The pill carries the P0 seat count, not the station count: every day
+  // has all forty-five stations by construction, so that number describes
+  // the registry rather than the day and reads as noise on thirteen pills.
+  const blocks=dates.map((day,index)=>block(day,index));
+  const dayNav=`<nav class="daytabs">${blocks.map((b,i)=>
+    `<button type="button" data-day="${h(b.day)}"${i?"":' data-active="1"'}
+      title="${b.count} 站 · P0 建仓 ${b.p0} · 任一阶段有座位 ${b.seated}">${h(b.day)}
+      <span class="muted">建仓 ${b.p0}</span></button>`).join("")
+    }<button type="button" data-day="all">全部 <span class="muted">${
+      blocks.length} 天</span></button></nav>`;
   const legend=Object.entries(REASON).map(([k,v])=>
     `<div class="muted">· <b>${v[0]}</b>：${v[1]}</div>`).join("");
   // Newest day open, everything older folded away beneath it.
@@ -4960,7 +4999,8 @@ function roster(){
   P1 格里的「预测最高」是当天<b>最后一次重算</b>的点预测（后验加权中心，随盘口单位显示），
   旁边注明它出自哪个条件化器：<b>物理路径</b>是只看观测的 v5 预测器（带生效强度），
   「仅硬下界」表示该次重算没有任何软证据参与——那不是预测，只是排除。
-  每行只讲这一天：跨日均值在上一节。最新一天默认展开，更早的日期折叠在下方。</p>
+  每行只讲这一天：跨日均值在上一节。日期在下面的页签里选，默认最新一天；
+  「全部」是原来的通栏视图，也是浏览器自带查找唯一能搜到所有日期的那一档。</p>
   <div class="why"><b>站点格的底色＝这个站日最后怎么了：</b>
   <span class="pill green">命中</span>真值落在最终持仓里 ·
   <span class="pill red">未命中</span>落在持仓外 ·
@@ -4983,7 +5023,7 @@ function roster(){
   <b>三个完成率不是一回事：</b>「档」是市场把价压下来多少档，「份」是这买到了计划仓位的
   多少份，「金额」又与份数不同——便宜的腿没成交时，金额完成率会显著高于份数完成率。</div>
   <div class="why">${legend}</div>
-  ${dates.map((day,index)=>block(day,index===0)).join("")}`;
+  <div data-daytabs="roster">${dayNav}${blocks.map(b=>b.pane).join("")}</div>`;
 }
 
 
@@ -5575,16 +5615,31 @@ const tabs = `<nav class="tabs" id="tabs">${
     <span class="muted">${g.sections.length}</span></button>`).join("")
 }<button type="button" data-tab="all">全部</button></nav>`;
 
+// Every section gets its own element and id so the jump bar has somewhere
+// to land.  The label the bar shows is read back out of the section's own
+// <h2> rather than restated here: a chip that disagrees with the heading it
+// scrolls to is worse than no chip.
+const sec = (fn, name, id) =>
+  `<section class="sec" id="${id}" data-name="${name}">${safe(fn, name)}</section>`;
+
 const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}">
   <div class="grouptitle">${g.label}<span class="muted">${g.note}</span></div>
-  ${g.sections.map(([fn, name]) => safe(fn, name)).join("")}</section>`).join("");
+  ${g.sections.map(([fn, name], i) =>
+    sec(fn, name, `sec-${g.id}-${i}`)).join("")}</section>`).join("");
+
+// The bar sits directly under the banner rather than below the four
+// ungrouped sections where the group switcher used to live.  Sticky from
+// two thousand pixels down is not a top navigation -- it only appears once
+// the reader has already scrolled past everything it could have saved them.
+const TOP = [[overview, "总览"], [daily, "每日统计"], [centerBias, "中心偏差"]];
 
 document.getElementById("app").innerHTML =
-  [[head, "页头"], [overview, "总览"], [daily, "每日统计"],
-   [centerBias, "中心偏差"]]
-    .map(([fn, name]) => safe(fn, name)).join("") +
-  tabs + groupHtml +
-  `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据</footer>`;
+  safe(head, "页头") +
+  `<div class="topnav" id="topnav">${tabs}<nav class="jump" id="jump"></nav></div>` +
+  TOP.map(([fn, name], i) => sec(fn, name, `sec-top-${i}`)).join("") +
+  groupHtml +
+  `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据 ·
+    <a href="#" id="footer-top">返回顶部</a></footer>`;
 
 // Which group is showing survives a reload, because the page is reloaded
 // far more often than the question being asked of it changes.  "全部" is
@@ -5600,6 +5655,37 @@ document.getElementById("app").innerHTML =
   }catch(e){}
   const known = new Set(GROUPS.map(g=>g.id).concat(["all"]));
   if(!known.has(current)) current = GROUPS[0].id;
+  const jump = document.getElementById("jump");
+  const bar = document.getElementById("topnav");
+  const esc = (t) => String(t).replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  const chip = (node) => {
+    if(!node.firstElementChild) return "";
+    const head2 = node.querySelector("h2");
+    const full = head2
+      ? head2.textContent.trim().replace(/\s+/g, " ")
+      : (node.dataset.name || "");
+    if(!full) return "";
+    const short2 = full.split(/[：（(·]/)[0].trim() || full;
+    return `<button type="button" data-goto="${node.id}" title="${esc(full)}"
+      >${esc(short2)}</button>`;
+  };
+  const paintJump = () => {
+    if(!jump) return;
+    const top = [...document.querySelectorAll("#app > .sec")].map(chip);
+    const inGroup = [...document.querySelectorAll(".group:not([hidden]) .sec")]
+      .map(chip);
+    jump.innerHTML = top.filter(Boolean).join("")
+      + (inGroup.filter(Boolean).length ? `<span class="sep"></span>` : "")
+      + inGroup.filter(Boolean).join("");
+  };
+  // Land the heading below the sticky bar instead of underneath it.
+  const goTo = (node) => {
+    if(!node) return;
+    const offset = (bar ? bar.offsetHeight : 0) + 10;
+    const y = node.getBoundingClientRect().top + window.scrollY - offset;
+    window.scrollTo(0, Math.max(0, y));
+  };
   const paint = () => {
     document.querySelectorAll(".group").forEach(sec => {
       sec.hidden = current !== "all" && sec.dataset.group !== current;
@@ -5607,13 +5693,23 @@ document.getElementById("app").innerHTML =
     nav.querySelectorAll("button").forEach(b => {
       b.dataset.active = b.dataset.tab === current ? "1" : "";
     });
+    paintJump();
   };
+  if(jump) jump.addEventListener("click", (ev) => {
+    const button = ev.target.closest("button[data-goto]");
+    if(!button) return;
+    goTo(document.getElementById(button.dataset.goto));
+  });
   nav.addEventListener("click", (ev) => {
     const button = ev.target.closest("button[data-tab]");
     if(!button) return;
     current = button.dataset.tab;
     try{ localStorage.setItem("board-tab", current); }catch(e){}
     paint();
+    // Switching groups from the top of the page used to change something
+    // two thousand pixels below the fold and look like it did nothing.
+    if(current !== "all") goTo(document.querySelector(
+      `.group[data-group="${current}"]`));
   });
   paint();
 })();
@@ -5636,6 +5732,22 @@ document.querySelectorAll("[data-daytabs]").forEach(card => {
     card.dataset.dayall = day === "all" ? "1" : "";
   });
 });
+
+// Back to the top, from wherever the reader got to.  The floating button
+// only exists once there is a scroll to undo; the footer link is there for
+// anyone who reached the end.
+(function(){
+  const button = document.getElementById("totop");
+  const link = document.getElementById("footer-top");
+  const up = () => window.scrollTo(0, 0);
+  if(button){
+    const show = () => { button.dataset.show = window.scrollY > 600 ? "1" : ""; };
+    window.addEventListener("scroll", show, {passive: true});
+    button.addEventListener("click", up);
+    show();
+  }
+  if(link) link.addEventListener("click", (ev) => { ev.preventDefault(); up(); });
+})();
 
 document.querySelectorAll("table").forEach(makeSortable);
 
@@ -5715,7 +5827,7 @@ def serve(db: Path, port: int) -> None:
             return
 
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"校准看板: http://127.0.0.1:{port}/  (Ctrl-C 停止)")
+    print(f"气温篮子全链看板: http://127.0.0.1:{port}/  (Ctrl-C 停止)")
     server.serve_forever()
 
 

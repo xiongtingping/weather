@@ -1576,16 +1576,26 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         # The table arrives with the ledger's next sweep; until then the page
         # falls back to the existence checks below.
         refusals = {}
+    from bayes_basket_target.probability_bridge import (  # noqa: PLC0415
+        history_envelope_payload,
+    )
+
     # P1 re-solves as observations arrive, so its rung moves during the day.
     p1_history: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
-    for station, day, decided, envelope_json in conn.execute(
-        "SELECT station_id, event_date, decision_at_utc, envelope_json"
+    for station, day, decided, stored, checkpoint, sha in conn.execute(
+        "SELECT station_id, event_date, decision_at_utc, envelope_json,"
+        " checkpoint_id, envelope_content_sha256"
         " FROM basket_probability_bridge_history"
         " WHERE stage='P1' AND event_date >= ?"
         " ORDER BY station_id, event_date, decision_at_utc",
         (STATS_START_EVENT_DATE,),
     ):
-        lineage = (json.loads(envelope_json) or {}).get("lineage") or {}
+        lineage = history_envelope_payload(
+            conn,
+            checkpoint_id=str(checkpoint),
+            envelope_content_sha256=str(sha),
+            stored=str(stored) if stored else None,
+        ).get("lineage") or {}
         try:
             trajectory_strength = float(
                 lineage.get("metar_trajectory_applied_strength")

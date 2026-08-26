@@ -117,7 +117,9 @@ def _seed_history(
     conn.executescript(
         "CREATE TABLE basket_probability_bridge_history ("
         " station_id TEXT, event_date TEXT, decision_at_utc TEXT,"
-        " envelope_json TEXT, settlement_timezone TEXT, stage TEXT);"
+        " envelope_json TEXT, settlement_timezone TEXT, stage TEXT,"
+        " checkpoint_id TEXT DEFAULT '',"
+        " envelope_content_sha256 TEXT DEFAULT '');"
         "CREATE TABLE calibration_station_daily_high_truth ("
         " station_id TEXT, local_date TEXT, official_tmax_c REAL,"
         " revision_no INTEGER, qc_status TEXT);"
@@ -157,7 +159,7 @@ def _seed_history(
             }
             conn.execute(
                 "INSERT INTO basket_probability_bridge_history"
-                " VALUES (?,?,?,?,?,?)",
+                " VALUES (?,?,?,?,?,?,'','')",
                 (
                     station, day, f"{day}T06:00:00Z",
                     json.dumps(envelope), "UTC", "P0",

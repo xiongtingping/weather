@@ -819,10 +819,13 @@ def serving_cells_by_day(
     retired arithmetic vote on the very fit meant to exclude it.
     """
 
+    from .probability_bridge import history_envelope_payload
+
     stage_id = _check_stage(stage)
     query = (
         "SELECT station_id, event_date, decision_at_utc,"
-        " envelope_json, settlement_timezone"
+        " envelope_json, settlement_timezone,"
+        " checkpoint_id, envelope_content_sha256"
         " FROM basket_probability_bridge_history"
         " WHERE stage=?"
     )
@@ -831,14 +834,19 @@ def serving_cells_by_day(
         query += " AND decision_at_utc>=?"
         parameters.append(str(min_decision_at_utc))
     grouped: dict[tuple[str, str, int], list[tuple[float, dict[str, Any]]]] = {}
-    for station, day, decided, envelope_json, tz_name in conn.execute(
+    for station, day, decided, envelope_json, tz_name, checkpoint, sha in conn.execute(
         query, parameters
     ):
         actual = truth.get((str(station), str(day)))
         if actual is None or not tz_name:
             continue
         try:
-            envelope = json.loads(envelope_json)
+            envelope = history_envelope_payload(
+                conn,
+                checkpoint_id=str(checkpoint),
+                envelope_content_sha256=str(sha),
+                stored=str(envelope_json) if envelope_json else None,
+            )
             lineage = envelope.get("lineage") or {}
             probabilities = envelope.get("probabilities") or {}
             ordinals = envelope.get("bucket_ordinals") or {}
@@ -994,22 +1002,31 @@ def served_arithmetic_anchor(
     # A store that cannot answer the question yields no bound rather than an
     # error: replays and fixtures carry a narrower table than production, and
     # the caller's own bound is the pre-existing behaviour to fall back to.
+    # posterior_version rides on the envelope row itself, keyed by the
+    # checkpoint the history row names; history rows no longer carry a
+    # body of their own to json_extract from.
     try:
         current = conn.execute(
-            "SELECT envelope_json FROM basket_probability_bridge_history"
-            " WHERE stage=? AND state='COMMITTED'"
-            " ORDER BY decision_at_utc DESC LIMIT 1",
+            "SELECT e.posterior_version"
+            " FROM basket_probability_bridge_history h"
+            " JOIN basket_probability_envelope e"
+            "   ON e.envelope_id = h.checkpoint_id"
+            " WHERE h.stage=? AND h.state='COMMITTED'"
+            " ORDER BY h.decision_at_utc DESC LIMIT 1",
             (_check_stage(stage),),
         ).fetchone()
         if current is None:
             return None
-        version = str(json.loads(current[0]).get("posterior_version") or "")
+        version = str(current[0] or "")
         if not version:
             return None
         row = conn.execute(
-            "SELECT MIN(decision_at_utc) FROM basket_probability_bridge_history"
-            " WHERE stage=? AND state='COMMITTED'"
-            " AND json_extract(envelope_json,'$.posterior_version')=?",
+            "SELECT MIN(h.decision_at_utc)"
+            " FROM basket_probability_bridge_history h"
+            " JOIN basket_probability_envelope e"
+            "   ON e.envelope_id = h.checkpoint_id"
+            " WHERE h.stage=? AND h.state='COMMITTED'"
+            " AND e.posterior_version=?",
             (_check_stage(stage), version),
         ).fetchone()
     except (sqlite3.OperationalError, TypeError, ValueError):

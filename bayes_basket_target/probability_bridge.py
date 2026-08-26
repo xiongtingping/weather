@@ -23,7 +23,7 @@ from datetime import datetime
 from typing import Any
 
 from .atomic_ledger import ledger_span
-from .contracts import ContractError, ProbabilityEnvelope, content_sha256, timestamp_lte
+from .contracts import ContractError, ProbabilityEnvelope, canonical_json, content_sha256, timestamp_lte
 from .materialization import insert_probability_envelope
 from .resource_bounds import ResourceBoundError, assert_connection_target_capacity, assert_process_memory_budget
 from .ssot import PROBABILITY_BRIDGE_DDL
@@ -257,6 +257,85 @@ def _history_identity(projection: Mapping[str, Any], envelope: ProbabilityEnvelo
     return core
 
 
+def history_envelope_payload(
+    conn: sqlite3.Connection,
+    *,
+    checkpoint_id: str,
+    envelope_content_sha256: str,
+    stored: str | None = None,
+) -> dict[str, Any]:
+    """The envelope body for one bridge-history row, as a mapping.
+
+    History rows written before 2026-08-26 carry the body inline in
+    ``envelope_json``; pass that column as ``stored`` and it is parsed
+    as-is.  Newer rows leave the column empty -- the body was already
+    written to ``basket_probability_envelope`` by the same savepoint, keyed
+    by this checkpoint, and copying it doubled the store (5.9 GB of the 27
+    that hit the 2026-08-26 ceiling).  A rebuilt payload is hashed and must
+    equal the sha the history row has always carried, so a divergence fails
+    loudly instead of serving a body the projection was not computed from.
+    """
+
+    if stored:
+        try:
+            parsed = json.loads(str(stored))
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ContractError("xsb_history_envelope_body_invalid") from exc
+        if not isinstance(parsed, dict):
+            raise ContractError("xsb_history_envelope_body_invalid")
+        return parsed
+    row = conn.execute(
+        "SELECT stage,checkpoint_id,station_id,event_date,"
+        "settlement_timezone,decision_at_utc,fresh_until_utc,"
+        "bucket_ordinals_json,probabilities_json,posterior_version,"
+        "posterior_sha256,bridge_sha256,lineage_json "
+        "FROM basket_probability_envelope WHERE envelope_id=?",
+        (str(checkpoint_id),),
+    ).fetchone()
+    if row is None:
+        raise ContractError("xsb_history_envelope_body_missing")
+    try:
+        payload = {
+            "schema": "bayes_basket_probability_envelope_v1",
+            "stage": str(row[0]),
+            "checkpoint_id": str(row[1]),
+            "station_id": str(row[2]),
+            "event_date": str(row[3]),
+            "settlement_timezone": str(row[4]),
+            "decision_at_utc": str(row[5]),
+            "fresh_until_utc": str(row[6]),
+            "bucket_ordinals": json.loads(str(row[7])),
+            "probabilities": json.loads(str(row[8])),
+            "posterior_version": str(row[9]),
+            "posterior_sha256": str(row[10]),
+            "bridge_sha256": str(row[11]),
+            "lineage": json.loads(str(row[12])),
+        }
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ContractError("xsb_history_envelope_body_invalid") from exc
+    if content_sha256(payload) != str(envelope_content_sha256):
+        raise ContractError("xsb_history_envelope_body_sha_mismatch")
+    return payload
+
+
+def history_envelope_json(
+    conn: sqlite3.Connection,
+    *,
+    checkpoint_id: str,
+    envelope_content_sha256: str,
+    stored: str | None = None,
+) -> str:
+    """The canonical envelope JSON string; see history_envelope_payload."""
+
+    if stored:
+        return str(stored)
+    return canonical_json(history_envelope_payload(
+        conn,
+        checkpoint_id=checkpoint_id,
+        envelope_content_sha256=envelope_content_sha256,
+    ))
+
+
 def _history_rows(
     conn: sqlite3.Connection,
     *,
@@ -294,7 +373,12 @@ def _history_rows(
     ).fetchall():
         try:
             intervals_payload = json.loads(str(row[8]))
-            envelope_payload = json.loads(str(row[10]))
+            envelope_payload = history_envelope_payload(
+                conn,
+                checkpoint_id=str(row[2]),
+                envelope_content_sha256=str(row[5]),
+                stored=str(row[10]) if row[10] else None,
+            )
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
             raise ContractError("xsb_history_envelope_json_invalid") from exc
         if not isinstance(intervals_payload, Mapping):
@@ -634,7 +718,12 @@ def materialize_probability_bridge(
                             separators=(",", ":"),
                         ),
                         projection["projection_sha256"],
-                        json.dumps(resolved.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+                        # The body already lives in basket_probability_envelope,
+                        # written by this same savepoint and keyed by this
+                        # checkpoint; readers rebuild it through
+                        # history_envelope_json.  Copying it here doubled the
+                        # store (5.9 GB of the 27 that hit the 08-26 ceiling).
+                        "",
                         "COMMITTED", created, history_sha,
                     ),
                 )

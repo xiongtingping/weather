@@ -38,7 +38,9 @@ def _connection() -> sqlite3.Connection:
         "CREATE TABLE basket_probability_bridge_history ("
         " stage TEXT, station_id TEXT, event_date TEXT,"
         " decision_at_utc TEXT, envelope_json TEXT,"
-        " settlement_timezone TEXT)"
+        " settlement_timezone TEXT,"
+        " checkpoint_id TEXT DEFAULT '',"
+        " envelope_content_sha256 TEXT DEFAULT '')"
     )
     conn.execute(
         "CREATE TABLE calibration_station_daily_high_truth ("
@@ -80,7 +82,7 @@ class EvidenceWindowTest(unittest.TestCase):
         ]
         conn.executemany(
             "INSERT INTO basket_probability_bridge_history VALUES"
-            " (?,?,?,?,?,?)",
+            " (?,?,?,?,?,?,'','')",
             rows,
         )
         truth = {
@@ -106,7 +108,7 @@ class EvidenceWindowTest(unittest.TestCase):
         conn = _connection()
         conn.execute(
             "INSERT INTO basket_probability_bridge_history VALUES"
-            " (?,?,?,?,?,?)",
+            " (?,?,?,?,?,?,'','')",
             (
                 "P1", "KLGA", "2026-08-19", "2026-08-17T06:00:00Z",
                 _envelope(), "America/New_York",
@@ -135,7 +137,7 @@ class EvidenceWindowTest(unittest.TestCase):
         conn = _connection()
         conn.execute(
             "INSERT INTO basket_probability_bridge_history VALUES"
-            " (?,?,?,?,?,?)",
+            " (?,?,?,?,?,?,'','')",
             (
                 "P1", "KLGA", "2026-08-01", "2026-08-01T12:00:00Z",
                 _envelope(), "America/New_York",

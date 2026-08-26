@@ -1793,14 +1793,25 @@ def _stage_entry_candidates(
     distribution cannot answer differently, so they are yielded once.
     """
 
+    from bayes_basket_target.probability_bridge import (  # noqa: PLC0415
+        history_envelope_payload,
+    )
+
     seen: set[tuple] = set()
-    for history_id, decided, envelope_json in conn.execute(
-        "SELECT history_id, decision_at_utc, envelope_json"
+    for history_id, decided, stored, checkpoint, sha in conn.execute(
+        "SELECT history_id, decision_at_utc, envelope_json,"
+        " checkpoint_id, envelope_content_sha256"
         " FROM basket_probability_bridge_history"
         " WHERE station_id=? AND event_date=? AND stage=?"
         " ORDER BY decision_at_utc ASC",
         (station_id, event_date, stage),
     ).fetchall():
+        envelope_json = history_envelope_payload(
+            conn,
+            checkpoint_id=str(checkpoint),
+            envelope_content_sha256=str(sha),
+            stored=str(stored) if stored else None,
+        )
         # The seat is chosen off this ladder, so it has to be the ladder
         # production would have shown -- ceiling included on the P1 stage.
         ceiling_p = None
@@ -1850,7 +1861,7 @@ def _stage_entry_candidates(
         if signature in seen:
             continue
         seen.add(signature)
-        lineage = (json.loads(envelope_json) or {}).get("lineage") or {}
+        lineage = envelope_json.get("lineage") or {}
         yield {
             "decision_at_utc": str(decided),
             "quotes": quotes,
@@ -3016,7 +3027,10 @@ def _center_width_corrected(
         # is dropped with it so only the width is under test.
         entry = {"delta_c": 0.0, "width_lambda": float(forced)}
     try:
-        envelope = json.loads(envelope_json or "{}")
+        envelope = (
+            envelope_json if isinstance(envelope_json, dict)
+            else json.loads(envelope_json or "{}")
+        )
         lineage = envelope.get("lineage") or {}
         intervals = json.loads(
             str(lineage.get("bucket_intervals_c_json") or "{}")
@@ -3066,7 +3080,10 @@ def _ceiling_corrected(
     if not PAPER_LEDGER_CEILING or stage != "P1" or not probabilities:
         return probabilities
     try:
-        envelope = json.loads(envelope_json or "{}")
+        envelope = (
+            envelope_json if isinstance(envelope_json, dict)
+            else json.loads(envelope_json or "{}")
+        )
     except (TypeError, ValueError):
         return probabilities
     lineage = envelope.get("lineage") or {}
@@ -3138,7 +3155,8 @@ class _BeliefTimeline:
         self._event_date = str(event_date)
         try:
             self._rows = conn.execute(
-                "SELECT decision_at_utc, history_id, stage, envelope_json"
+                "SELECT decision_at_utc, history_id, stage, envelope_json,"
+                " checkpoint_id, envelope_content_sha256"
                 " FROM basket_probability_bridge_history"
                 " WHERE station_id=? AND event_date=? AND decision_at_utc>?"
                 " ORDER BY decision_at_utc ASC",
@@ -3177,18 +3195,27 @@ class _BeliefTimeline:
                 newest = self._rows[self._index]
             self._index += 1
         if newest is not None:
+            from bayes_basket_target.probability_bridge import (  # noqa: PLC0415
+                history_envelope_payload,
+            )
             rows = self._conn.execute(
                 "SELECT bucket, probability"
                 " FROM basket_probability_bridge_bucket_probability"
                 " WHERE history_id=?",
                 (newest[1],),
             ).fetchall()
+            envelope = history_envelope_payload(
+                self._conn,
+                checkpoint_id=str(newest[4]),
+                envelope_content_sha256=str(newest[5]),
+                stored=str(newest[3]) if newest[3] else None,
+            )
             fresh = {str(bucket): float(p) for bucket, p in rows}
             fresh = _ceiling_corrected(
                 self._conn,
                 fresh,
                 stage=str(newest[2] or ""),
-                envelope_json=newest[3],
+                envelope_json=envelope,
                 station_id=self._station_id,
                 event_date=self._event_date,
                 as_of_utc=str(newest[0]),
@@ -3197,7 +3224,7 @@ class _BeliefTimeline:
             fresh = _center_width_corrected(
                 fresh,
                 stage=str(newest[2] or ""),
-                envelope_json=newest[3],
+                envelope_json=envelope,
                 event_date=self._event_date,
             )
             self._current.update(fresh)
