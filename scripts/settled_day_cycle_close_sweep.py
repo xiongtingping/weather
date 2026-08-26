@@ -64,12 +64,10 @@ SCHEMA = "settled_day_cycle_close_sweep_v1"
 DEFAULT_MAX_CYCLES = 1500
 CLOSE_REASON = "settlement_day_closed_without_successor"
 # Wait past the day's end before retiring anything.  Whether the day is over
-# is decided from the registry's settlement timezone, and that column has a
-# mislabelling history -- 33 of 45 stations once carried the wrong zone -- so
-# closing on the second the window ends bets "this day can produce no further
-# candidate" on one string.  Six hours puts the close after local dawn and
-# absorbs any DST or half-hour-offset discrepancy.  Settling a cycle that
-# could still be superseded is not a lost reservation, it is a refused
+# still rests on one timezone string per station, so closing on the second
+# the window ends leaves no room for a DST or half-hour-offset discrepancy.
+# Six hours puts the close after local dawn.  Settling a cycle that could
+# still be superseded is not a lost reservation, it is a refused
 # supersession: production calls it unguarded, so the station's whole commit
 # fails that round.
 SETTLEMENT_CLOSE_GRACE_HOURS = 6.0
@@ -89,9 +87,52 @@ def _reason_of(error: Exception) -> str:
     return str(error).split(":", 1)[0].strip() or "unknown"
 
 
+def _station_market_timezones(conn: sqlite3.Connection) -> dict[str, str]:
+    """Settlement timezone per station, taken from the market.
+
+    Not from the cycle row, which is a copy made when the cycle was written,
+    and never from ``calibration_station_registry.timezone_name``, which is
+    seed-package text that mislabels 33 of 45 stations as America/New_York.
+    The binding table is the authority; the market registry backs it where
+    a station has exactly one zone.  A station neither can answer for is held
+    back rather than guessed at -- what this decides is whether a day can
+    still produce a candidate, and closing a day that can is a refused
+    supersession, not a lost reservation.
+    """
+
+    zones: dict[str, str] = {}
+    # Registry rows carrying a blank station id are its aggregate face and
+    # hold every zone at once; they answer for no station.
+    for station, distinct_count, zone in conn.execute(
+        "SELECT station_id,COUNT(DISTINCT settlement_timezone),"
+        "MIN(settlement_timezone) FROM basket_target_market_registry "
+        "WHERE TRIM(COALESCE(station_id,''))<>'' "
+        "AND TRIM(COALESCE(settlement_timezone,''))<>'' "
+        "GROUP BY station_id"
+    ):
+        if int(distinct_count) == 1:
+            zones[str(station)] = str(zone)
+
+    present = {
+        str(row[0])
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name='calibration_station_market_timezone_binding'"
+        )
+    }
+    if present:
+        for station, zone in conn.execute(
+            "SELECT station_id,settlement_timezone "
+            "FROM calibration_station_market_timezone_binding "
+            "WHERE TRIM(COALESCE(settlement_timezone,''))<>''"
+        ):
+            zones[str(station)] = str(zone)
+    return zones
+
+
 def _candidates(
     conn: sqlite3.Connection, *, as_of: str, limit: int
-) -> tuple[list[dict[str, Any]], Counter, dict[str, float]]:
+) -> tuple[list[dict[str, Any]], Counter, dict[str, float], int]:
     """Cycles whose day is over, richest first, plus why the rest were held.
 
     The predicate deliberately stops at "the day is over and the cycle is
@@ -109,18 +150,25 @@ def _candidates(
         "AND r.state='active'"
     ).fetchall()
 
+    zones = _station_market_timezones(conn)
     held: Counter = Counter()
     held_usdc: dict[str, float] = {}
     ready: list[dict[str, Any]] = []
+    stale_cycle_timezones = 0
 
-    for cycle_id, station, event_date, timezone_name, amount in rows:
+    for cycle_id, station, event_date, cycle_timezone, amount in rows:
         amount = float(amount or 0.0)
+        timezone_name = zones.get(str(station), "")
         if not timezone_name:
-            held["settlement_timezone_missing"] += 1
-            held_usdc["settlement_timezone_missing"] = round(
-                held_usdc.get("settlement_timezone_missing", 0.0) + amount, 6
+            held["station_market_timezone_unresolved"] += 1
+            held_usdc["station_market_timezone_unresolved"] = round(
+                held_usdc.get("station_market_timezone_unresolved", 0.0)
+                + amount,
+                6,
             )
             continue
+        if str(cycle_timezone or "") != timezone_name:
+            stale_cycle_timezones += 1
         try:
             day = settlement_day_state(
                 event_date, as_of_utc=as_of, settlement_timezone=timezone_name
@@ -154,7 +202,7 @@ def _candidates(
         )
 
     ready.sort(key=lambda item: (-item["amount_usdc"], item["cycle_id"]))
-    return ready[:limit], held, held_usdc
+    return ready[:limit], held, held_usdc, stale_cycle_timezones
 
 
 def main() -> int:
@@ -172,7 +220,7 @@ def main() -> int:
             "SELECT balance_usdc,reserved_usdc FROM "
             "basket_target_capital_pool WHERE pool_id=1"
         ).fetchone()
-        ready, held, held_usdc = _candidates(
+        ready, held, held_usdc, stale_timezones = _candidates(
             conn, as_of=as_of, limit=max(0, args.max_cycles)
         )
 
@@ -223,6 +271,7 @@ def main() -> int:
         "released_usdc": released,
         "cancelled_intent_count": cancelled_intents,
         "refused_counts": dict(refused),
+        "stale_cycle_timezone_count": stale_timezones,
         "held_back_counts": dict(held),
         "held_back_usdc": held_usdc,
         "pool_reserved_before_usdc": pool_before[1] if pool_before else None,
