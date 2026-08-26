@@ -21,6 +21,7 @@ from .basket_kernel.contracts import (
 from .basket_kernel.delta_v2 import (
     BUNDLE_RESCORE_SCHEMA,
     rescore_maker_bundle_v2,
+    scope_stake_cap_usdc,
 )
 from .cash_phase import (
     BasketCashPhaseInput,
@@ -991,8 +992,25 @@ def _compile_target_plan(
         row.filled_cost_usdc + row.pending_notional_usdc
         for row in snapshot.buckets
     )
-    station_capital_usdc = _station_capital_usdc(
-        station_bankroll_usdc=float(policy.total_budget_usdc),
+    # A share of the book, not a flat number (user ruling, 2026-08-26).  The
+    # flat 30 could not shrink when the book lost or grow when it won, and
+    # the paper ledger -- which is where every measured ROI figure in this
+    # system comes from -- has capped at 2% of its own equity since it was
+    # built.  Same station-day, two sizes, depending on which side you asked.
+    # ``scope_stake_cap_usdc`` is the kernel's, so there is one definition.
+    #
+    # The equity is the pool's, and ``remaining_budget_usdc`` is the pool's
+    # remaining balance -- the same number while nothing is reserved, which
+    # is the case for as long as this lane holds no inventory.  Once it does,
+    # the producer must put the pool's own ``balance_usdc`` on the snapshot
+    # as ``book_equity_usdc``: remaining cash is not equity, and sizing off
+    # it would shrink the allowance every time the book committed.
+    book_equity_usdc = float(
+        market_snapshot.get("book_equity_usdc") or remaining_budget
+    )
+    station_capital_usdc = scope_stake_cap_usdc(
+        book_equity_usdc=book_equity_usdc,
+        stage=str(snapshot.evidence.probability_stage or ""),
         committed_usdc=station_committed_usdc,
     )
     pool_remaining_usdc = remaining_budget

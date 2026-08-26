@@ -466,6 +466,54 @@ VALUE_OBJECTIVE_FORM = "value_v2"
 CURVE_OBJECTIVE_FORM = "fractional_log_wealth_curve_v1"
 OBJECTIVE_FORMS = frozenset({VALUE_OBJECTIVE_FORM, CURVE_OBJECTIVE_FORM})
 DEFAULT_KELLY_FRACTION = 0.25
+# How much of the whole book one station-day may put at risk, and how much of
+# that allowance each stage of its chain may reach.
+#
+# This lives here, in the kernel, because it is one rule and there must not be
+# a second copy of it.  Production capped a station at a flat 30 USDC while
+# the paper ledger capped it at 2% of a book that moves with its own P&L, so
+# the same station-day was sized two different ways depending on which side
+# you asked -- and the ledger is the side every measured ROI figure comes
+# from.  User ruling, 2026-08-26: the floating fraction is the rule, and both
+# sides read it from here.
+#
+# The scope is the station-day, not the station-day-stage.  One book means one
+# position per station-day, so the cap binds the whole chain: whatever P0
+# spent is spent, and a top-up at P0-M or P1 draws on what is left of the same
+# 2%.  Forty-five stations trading daily means an unbounded Kelly outlier
+# would otherwise dominate the curve.
+MAX_STAKE_FRACTION_PER_SCOPE = 0.02
+# Each stage's reach into that one allowance.  P0 opens with part of it held
+# back, because the two later stages exist to add on evidence P0 did not have;
+# P1 may reach the whole of it.
+STAGE_BUDGET_SHARE = {"P0": 0.6, "P0-M": 0.8, "P1": 1.0}
+
+
+def scope_stake_cap_usdc(
+    *,
+    book_equity_usdc: float,
+    stage: str = "",
+    committed_usdc: float = 0.0,
+    scope_fraction: float = MAX_STAKE_FRACTION_PER_SCOPE,
+) -> float:
+    """What this station-day may still spend, in USDC.
+
+    ``book_equity_usdc`` is the whole book, not the station's allotment: the
+    cap is a share of what we have, so it grows with a winning book and
+    shrinks with a losing one.  A flat per-station number cannot do that, and
+    a flat number is what production carried until 2026-08-26.
+
+    ``committed_usdc`` is what this station-day has already spent -- filled
+    and confirmed-pending alike, because both have used part of the
+    allowance whether or not they have settled.
+    """
+
+    equity = float(book_equity_usdc)
+    if not equity > 0.0:
+        return 0.0
+    share = float(STAGE_BUDGET_SHARE.get(str(stage), 1.0))
+    room = equity * float(scope_fraction) * share - float(committed_usdc)
+    return max(0.0, room)
 # The basket promise, made enforceable (user ruling, 2026-08-13): a settlement
 # inside the support may cost at most this fraction of the basket's premium.
 # Measured over the 21 most recent plans, the unconstrained optimizer was a

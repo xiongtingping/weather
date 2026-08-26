@@ -103,7 +103,10 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
 )
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     DEFAULT_KELLY_FRACTION,
+    MAX_STAKE_FRACTION_PER_SCOPE,
+    STAGE_BUDGET_SHARE,
     SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
+    scope_stake_cap_usdc,
 )
 from bayes_basket_target.center_width_calibration import (  # noqa: E402
     apply_center_width_calibration,
@@ -119,15 +122,10 @@ INITIAL_CAPITAL_USDC = 1000.0
 # than written again here: it is the same quarter production's curve score
 # uses, and two copies of one number is how they stop being one number.
 KELLY_FRACTION = DEFAULT_KELLY_FRACTION
-# No single station-day may take more than this share of the book, however
-# large its Kelly number: 45 stations trading daily means a full-Kelly
-# outlier would otherwise dominate the curve.
-#
-# The scope is the station-day, not the station-day-stage.  One book means
-# one position per station-day, so the cap binds the whole chain: whatever
-# P0 spent is spent, and a top-up at P0-M or P1 draws on what is left of the
-# same 2%.
-MAX_STAKE_FRACTION_PER_SCOPE = 0.02
+# The per-scope cap and the per-stage shares both live in the kernel now
+# (user ruling, 2026-08-26): production read a flat 30 USDC per station while
+# this book read 2% of its own equity, so the same station-day was sized two
+# different ways.  Imported above, defined in exactly one place.
 # One book for the whole network and one position per station-day (user
 # ruling, 2026-08-18).  P0 opens it, P0-M and P1 top it up, and it settles
 # once.
@@ -223,11 +221,14 @@ REQUIRE_QUOTED_BOOK = (
     if _REQUIRE_QUOTED_ENV
     else _quoted_gate_promoted()
 )
-STAGE_BUDGET_SHARE = {
-    "P0": float(os.environ.get("PAPER_LEDGER_P0_BUDGET_SHARE", "0.6") or 0.6),
-    "P0-M": 0.8,
-    "P1": 1.0,
-}
+# Kernel-owned (see the import).  The research arm may still move P0's share;
+# anything else is a rule change and belongs in the kernel where production
+# reads it too.
+_P0_SHARE_ENV = os.environ.get("PAPER_LEDGER_P0_BUDGET_SHARE", "").strip()
+if _P0_SHARE_ENV:
+    STAGE_BUDGET_SHARE = {
+        **STAGE_BUDGET_SHARE, "P0": float(_P0_SHARE_ENV),
+    }
 MAXIMUM_SUPPORT_BUCKETS = 4
 # The earliest event day this book admits.  Charter 50's ladder floor landed on
 # 2026-08-15; every chain before it was seated under a minimum basket width the
