@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Mapping
 from datetime import date, datetime, timedelta, timezone
 import json
 from pathlib import Path
@@ -17,6 +18,9 @@ if str(ROOT) not in sys.path:
 from bayes_basket_target.awc_observation_builder import (  # noqa: E402
     build_awc_observation_contract,
     export_awc_ingress_evidence_v4,
+)
+from bayes_basket_target.awc_observation_contract import (  # noqa: E402
+    CanonicalAWCObservationContract,
 )
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.resource_bounds import (  # noqa: E402
@@ -120,6 +124,102 @@ def _exclude_materialized_day_scopes(
     return {**identity, "receipt_sha256": content_sha256(identity)}
 
 
+def _conflicting_day_scopes(
+    target_db: Path, contract: Mapping[str, object]
+) -> dict[tuple[str, str], dict[str, str]]:
+    """Station-days whose reports canonical SSOT already identifies differently.
+
+    Ingest refuses a scope that arrives with new content, and the refusal
+    takes the whole savepoint: on 2026-08-26 one such day refused all 1,135
+    facts of the round, which is why the lane produced nothing for a day.
+    That is the correct instinct at the wrong grain -- the store is right to
+    refuse the day, and wrong to lose the rest of the fleet with it, exactly
+    the per-scope isolation the settlement-truth sweep already applies.
+
+    Such a day is not repaired here.  Its stored ordinals were sealed by an
+    earlier partly-visible build (measured: CYYZ 2026-08-21 holds sequences
+    1..20 for the reports before 2026-08-22T00:00Z and *restarts* at 1..4 for
+    the four that follow, because the day was built twice with the bound
+    inside it), and rewriting a committed canonical fact is a supersession
+    that wants a review, not a side effect of a build.  So the day is
+    quarantined and named, and everything else in the round proceeds.
+    """
+
+    parsed = CanonicalAWCObservationContract.from_mapping(dict(contract))
+    scopes: dict[str, tuple[str, str, str, str]] = {}
+    for fact_type, facts in (
+        ("truth_observation_revision", parsed.revision_facts),
+        ("truth_observation_day_bounds", parsed.day_bounds_facts),
+    ):
+        for fact in facts:
+            scopes[fact.scope_key] = (
+                fact_type,
+                str(fact.raw["station_id"]),
+                str(fact.raw["event_date"]),
+                fact.content_sha256,
+            )
+    if not scopes:
+        return {}
+    conflicted: dict[tuple[str, str], dict[str, str]] = {}
+    with sqlite3.connect(f"file:{target_db}?mode=ro", uri=True) as conn:
+        conn.execute("PRAGMA query_only=ON")
+        for scope_key, (fact_type, station, event_date, sha) in scopes.items():
+            row = conn.execute(
+                "SELECT content_sha256 FROM canonical_ssot_fact "
+                "WHERE fact_type=? AND scope_key=?",
+                (fact_type, scope_key),
+            ).fetchone()
+            if row is None or str(row[0]) == sha:
+                continue
+            conflicted.setdefault(
+                (station, event_date),
+                {
+                    "station_id": station,
+                    "event_date": event_date,
+                    "fact_type": fact_type,
+                    "scope_key": scope_key,
+                    "stored_content_sha256": str(row[0]),
+                    "rebuilt_content_sha256": sha,
+                    "failure_code": "PR12_DAY_ALREADY_IDENTIFIED_DIFFERENTLY",
+                },
+            )
+    return conflicted
+
+
+def _exclude_day_scopes(
+    evidence: Mapping[str, object],
+    scopes: Mapping[tuple[str, str], Mapping[str, str]],
+) -> dict[str, object]:
+    """Drop every trace of the quarantined station-days and re-seal the packet.
+
+    Always annotates, including with nothing quarantined, so the packet says
+    the check ran rather than leaving its absence to be read as either.
+    """
+
+    value = dict(evidence)
+    excluded = 0
+    for field in ("rows", "station_day_halts", "station_day_reviews"):
+        kept = []
+        for raw in value.get(field, []):
+            key = (
+                str(raw.get("station_id") or "").upper(),
+                str(raw.get("event_date") or ""),
+            )
+            if key in scopes:
+                excluded += 1
+                continue
+            kept.append(raw)
+        value[field] = kept
+    value["conflicting_day_scope_quarantine"] = {
+        "quarantined_day_count": len(scopes),
+        "excluded_evidence_row_count": excluded,
+        "scopes": [dict(scopes[key]) for key in sorted(scopes)],
+        "rewrites_committed_fact": False,
+    }
+    identity = {key: item for key, item in value.items() if key != "receipt_sha256"}
+    return {**identity, "receipt_sha256": content_sha256(identity)}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive-database", type=Path, required=True)
@@ -150,8 +250,15 @@ def main() -> int:
     # backlog into a single pass and trips the same cap, and it answers a
     # question nobody asked here: the live stage needs today's reports
     # identified, while filling historical gaps is an offline concern with its
-    # own window.  Days resolve in local time, so the default leaves two days
-    # of margin for the settlement offsets in the fleet.
+    # own window.
+    #
+    # The bound is a UTC instant and a day is local, so the day it lands inside
+    # is only partly visible; the exporter refuses such a day rather than
+    # renumbering it (see export_awc_ingress_evidence_v4).  That costs one day
+    # of reach at the far edge, so the caller spends one more: three days back
+    # leaves every timezone in the fleet -- UTC-12 through UTC+14 -- at least
+    # two whole local days inside the window, which is the coverage the two-day
+    # bound was reaching for before it started cutting days in half.
     since_valid_at = ""
     if args.window_days > 0:
         since_valid_at = (
@@ -165,6 +272,16 @@ def main() -> int:
         since_valid_at_utc=since_valid_at,
     )
     evidence = _exclude_materialized_day_scopes(target, evidence)
+    # Build once to learn which days the store already identifies differently,
+    # then drop those and build the contract that actually ships.  Quarantining
+    # before staging rather than during is what keeps the artifact on disk one
+    # the apply step can accept: a conflicting day refuses the whole savepoint
+    # at ingest, so a contract carrying one is a contract nothing can ever
+    # apply.  The probe build is the same 3k rows and costs nothing worth
+    # avoiding.
+    probe, _probe_receipt = build_awc_observation_contract(evidence)
+    quarantined = _conflicting_day_scopes(target, probe)
+    evidence = _exclude_day_scopes(evidence, quarantined)
     contract, receipt = build_awc_observation_contract(evidence)
     for destination, payload in (
         (args.evidence_output, evidence),
@@ -184,6 +301,12 @@ def main() -> int:
         "revision_facts": len(contract["revision_facts"]),
         "day_bounds_facts": len(contract["day_bounds_facts"]),
         "terminal_gaps": len(receipt["terminal_gaps"]),
+        "truncated_day_scopes": len(evidence.get("truncated_day_scopes") or ()),
+        "quarantined_day_scopes": int(
+            (evidence.get("conflicting_day_scope_quarantine") or {}).get(
+                "quarantined_day_count", 0
+            )
+        ),
         "evidence_receipt_sha256": evidence["receipt_sha256"],
         "contract_content_sha256": contract["content_sha256"],
         "builder_receipt_sha256": receipt["receipt_sha256"],

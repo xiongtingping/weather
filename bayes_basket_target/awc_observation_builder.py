@@ -429,6 +429,55 @@ def export_awc_ingress_evidence_v4(
             )
         assert_process_memory_budget()
 
+    # A local day the read can only see part of must not be exported at all.
+    #
+    # ``event_date`` is a local day, but the read is bounded by a UTC instant,
+    # so the bound lands inside whichever local day straddles it.  The builder
+    # numbers a day's usable reports from one in observed order and seals that
+    # ordinal into the fact, while the fact's scope key does not carry it -- so
+    # a day rebuilt from its tail hands the same scope different content, and
+    # canonical ingress refuses that (``canonical_scope_content_conflict``) for
+    # the whole savepoint rather than for the day.  On 2026-08-26 CYYZ
+    # 2026-08-23 did exactly that: 48 usable reports of which 44 fell before
+    # the bound, so its 45th report came back renumbered as its 1st, and one
+    # renumbered day refused all 1,135 facts of the round.
+    #
+    # Cutting the FRONT of a day renumbers it; extending its BACK does not,
+    # because the ordinal counts forward from the day's first report -- which
+    # is what lets an open day be exported now and re-exported later, once
+    # more of it has arrived, with its earlier facts byte-identical.  Refusing
+    # partly-visible days is therefore what makes a rebuild idempotent.  It is
+    # a refusal and not a repair: how far back to read is the caller's
+    # decision, and days older than that belong to the historical lane.
+    truncated_day_scopes: list[dict[str, str]] = []
+    if since_bound:
+        since_instant = _utc(since_valid_at_utc, "since_valid_at_utc")
+        whole_day_rows = []
+        dropped: dict[tuple[str, str], datetime] = {}
+        for row in evidence_rows:
+            local_day_start = datetime.combine(
+                date.fromisoformat(str(row["event_date"])),
+                datetime.min.time(),
+                ZoneInfo(str(row["settlement_timezone"])),
+            )
+            if local_day_start < since_instant:
+                dropped[(str(row["station_id"]), str(row["event_date"]))] = (
+                    local_day_start
+                )
+                continue
+            whole_day_rows.append(row)
+        evidence_rows = whole_day_rows
+        truncated_day_scopes = [
+            {
+                "station_id": station,
+                "event_date": event_date,
+                "local_day_start_utc": _stamp(start),
+                "since_valid_at_utc": _stamp(since_instant),
+                "failure_code": "PR12_LOCAL_DAY_PARTLY_BEFORE_READ_BOUND",
+            }
+            for (station, event_date), start in sorted(dropped.items())
+        ]
+
     observed_stations = {str(row["station_id"]) for row in evidence_rows}
     for station in selected:
         if station not in observed_stations:
@@ -456,6 +505,8 @@ def export_awc_ingress_evidence_v4(
         "station_day_halts": halt_rows,
         "station_day_reviews": review_rows,
         "extraction_gaps": extraction_gaps,
+        "since_valid_at_utc": since_bound,
+        "truncated_day_scopes": truncated_day_scopes,
         "source_read_only": True,
         "source_query_only": True,
     }

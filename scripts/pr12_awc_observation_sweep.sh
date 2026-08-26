@@ -41,7 +41,7 @@ NOW="$("$PY" -c "from datetime import datetime,timezone;print(datetime.now(timez
   --target-database "$ROOT/data/bayes_basket_target_ssot.db" \
   --as-of-utc "$NOW" \
   --authority-projection "$PROJECTION" \
-  --window-days 2 \
+  --window-days 3 \
   --evidence-output "$WORK/evidence_latest.json" \
   --contract-output "$WORK/contract_latest.json" \
   --receipt-output "$WORK/builder_receipt_latest.json"
