@@ -9797,6 +9797,7 @@ class TargetProductionWorker:
         blockers: list[dict[str, str]] = []
         ignored_inactive_scope_count = 0
         ignored_no_artifact_scope_count = 0
+        skipped_no_tx_revision_count = 0
         # What a cheaper path would have concluded, kept beside what the real
         # path concludes so the two can be compared before either is trusted.
         #
@@ -10342,6 +10343,32 @@ class TargetProductionWorker:
                 ] = []
                 for revision in revisions:
                     capture = capture_by_id[revision.revision_id]
+                    # A bulletin with no TX group cannot be applied through
+                    # a TX-conditioned likelihood: the artifact's whole
+                    # correction is a function of the forecaster's number,
+                    # and there is no number.  Twenty-eight of the fleet's
+                    # forty-five stations issue TAFs like that routinely
+                    # (LEMD 2026-08-27 is the specimen), so this is the
+                    # ordinary case, not a contract breach -- but it
+                    # reached ``compile_taf_revision_proof``, whose
+                    # ``taf_tx_c`` guard raised, and one station took the
+                    # whole P0-M stage to BLOCKED_FAIL_CLOSED for eleven
+                    # hours.  That is the same lesson the no-artifact path
+                    # above already carries in its own comment; this is its
+                    # second site.  Skip the revision and let the scope keep
+                    # whatever seats its other bulletins earned.
+                    tx_fields = capture.get("taf_fields")
+                    tx_value = (
+                        tx_fields.get("tx_c")
+                        if isinstance(tx_fields, Mapping) else None
+                    )
+                    try:
+                        tx_usable = math.isfinite(float(tx_value))
+                    except (TypeError, ValueError):
+                        tx_usable = False
+                    if not tx_usable:
+                        skipped_no_tx_revision_count += 1
+                        continue
                     if revision.source_object_sha256 in applied:
                         existing_item = applied_by_source[
                             revision.source_object_sha256
@@ -10593,6 +10620,7 @@ class TargetProductionWorker:
             "ignored_inactive_scope_count": ignored_inactive_scope_count,
             "ignored_no_artifact_scope_count":
                 ignored_no_artifact_scope_count,
+            "skipped_no_tx_revision_count": skipped_no_tx_revision_count,
             "writes_target_ssot": any(
                 item["write_count"] > 0 for item in receipts
             ),
