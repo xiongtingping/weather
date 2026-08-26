@@ -1097,17 +1097,23 @@ def test_consolidation_is_an_annotation_and_measures_what_it_says() -> None:
 
     conn = sqlite3.connect(":memory:")
     conn.executescript(
+        # ``state`` mirrors the real table, which pins it to COMMITTED by
+        # CHECK.  The ledger's reads carry the predicate so SQLite may use
+        # the covering index -- a stub without the column made those reads
+        # fail here while working against the database they are written for.
         "CREATE TABLE basket_probability_bridge_history ("
         " history_id TEXT, station_id TEXT, event_date TEXT,"
-        " stage TEXT, decision_at_utc TEXT);"
+        " stage TEXT, decision_at_utc TEXT,"
+        " state TEXT NOT NULL DEFAULT 'COMMITTED');"
         "CREATE TABLE basket_probability_bridge_bucket_probability ("
         " history_id TEXT, bucket TEXT, ordinal INT, probability REAL);"
     )
     for i, centre_p in enumerate((0.5, 0.5, 0.5)):
         hid = f"h{i}"
         conn.execute(
-            "INSERT INTO basket_probability_bridge_history VALUES"
-            " (?,?,?,?,?)",
+            "INSERT INTO basket_probability_bridge_history"
+            " (history_id, station_id, event_date, stage, decision_at_utc)"
+            " VALUES (?,?,?,?,?)",
             (hid, "ZUUU", "2026-08-20", "P0", f"2026-08-19T0{i}:00:00Z"),
         )
         conn.executemany(
