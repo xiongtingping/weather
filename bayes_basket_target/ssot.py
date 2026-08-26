@@ -406,9 +406,19 @@ CREATE TABLE IF NOT EXISTS calibration_native_ensemble_historical_member_run (
     REFERENCES calibration_native_ensemble_system(ensemble_system_id),
   station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
   target_local_date TEXT NOT NULL,
-  -- Hours ahead of the station's own local day.  The calendar labels stay
-  -- admissible so rows ingested before the vocabulary switch remain valid;
-  -- nothing writes them any more.
+  -- Hours ahead of the station's own local day (charter 47).  The calendar
+  -- labels stay admissible, and the claim that used to stand here -- that
+  -- nothing writes them any more -- was false for this table.  Measured
+  -- 2026-08-26: METAR_PHYSICAL_PATH_TMAX appended d0 at 11:21:15Z and
+  -- OFFICIAL_AIRPORT_TAF_TX appended d1 at 05:09:34Z, minutes before the
+  -- check.  Only d2 is genuinely frozen (last written 2026-08-13).
+  --
+  -- For those two systems the token is not a lead at all: they are bucket-vote
+  -- bystanders carrying an issue time rather than a run time, so their d0
+  -- means "no lead applies" -- a third meaning stacked on the day offset and
+  -- the hour bucket this one column already holds.  Read the column, never the
+  -- name: filtering d1 returns rows that span three hour buckets, and
+  -- filtering an hour bucket omits these two systems entirely.
   archive_lead_bucket TEXT NOT NULL CHECK(
     archive_lead_bucket IN (
       'h00_12','h12_24','h24_48','h48_plus','d0','d1','d2'
@@ -467,9 +477,12 @@ CREATE TABLE IF NOT EXISTS calibration_native_ensemble_historical_member_bucket 
     REFERENCES calibration_native_ensemble_system(ensemble_system_id),
   station_id TEXT NOT NULL REFERENCES calibration_station_registry(station_id),
   target_local_date TEXT NOT NULL,
-  -- Hours ahead of the station's own local day.  The calendar labels stay
-  -- admissible so rows ingested before the vocabulary switch remain valid;
-  -- nothing writes them any more.
+  -- Hours ahead of the station's own local day (charter 47).  The calendar
+  -- labels stay admissible so rows ingested before the vocabulary switch
+  -- remain valid; nothing writes them to THIS table any more -- verified
+  -- 2026-08-26, every d0/d1/d2 row here was last touched 2026-08-13.  The
+  -- sibling member_run table is different: two systems still append calendar
+  -- labels there daily, so do not carry this claim across.
   archive_lead_bucket TEXT NOT NULL CHECK(
     archive_lead_bucket IN (
       'h00_12','h12_24','h24_48','h48_plus','d0','d1','d2'

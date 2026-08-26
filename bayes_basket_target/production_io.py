@@ -1912,13 +1912,29 @@ def derive_policy_maturity_bin(
     lookup makes every migrated envelope unmatchable (station policy and
     delta-v2 policy both fail closed on it, at two different call sites).
     A calendar label passes through unchanged.
+
+    That pass-through is the whole hazard, so it is written down rather than
+    left to be rediscovered.  ``d0``/``d1``/``d2``/``d2_fallback`` label two
+    different measurements: a run's lead -- how old the forecast is -- and an
+    event's maturity, how far the event still is.  No table carries both
+    columns, so nothing anywhere shows a reader that they differ, and a join
+    written ``ON a.lead_bucket = b.maturity_bin`` returns rows and looks
+    right.  This function is the only place that converts between them, and on
+    the calendar branch it converts nothing: it takes the caller's word that
+    the label already means maturity.
+
+    Measured 2026-08-26: all 20,000 most recent envelopes carry an hour
+    bucket, so production always takes the converting branch.  Making the
+    pass-through verify itself against the computed distance was tried and
+    reverted -- twenty tests depend on supplying a calendar label with dates
+    that do not agree, so the pass-through is load-bearing in replay and
+    fixture paths that were never characterised.  The distinction is pinned in
+    tests instead of enforced here.
     """
 
     label = str(lead_label or "").strip()
     if not label:
         raise ContractError("probability_policy_maturity_bin_missing")
-    if not label.startswith("h"):
-        return label
     event_day = date.fromisoformat(str(event_date))
     decision_local_day = (
         datetime.fromisoformat(evaluation_at_utc.replace("Z", "+00:00"))
@@ -1927,12 +1943,16 @@ def derive_policy_maturity_bin(
     )
     days_out = (event_day - decision_local_day).days
     if days_out <= 0:
-        return "d0"
-    if days_out == 1:
-        return "d1"
-    if days_out == 2:
-        return "d2"
-    return "d2_fallback"
+        maturity = "d0"
+    elif days_out == 1:
+        maturity = "d1"
+    elif days_out == 2:
+        maturity = "d2"
+    else:
+        maturity = "d2_fallback"
+    if label.startswith("h"):
+        return maturity
+    return label
 
 
 def resolve_delta_v2_runtime_authority(

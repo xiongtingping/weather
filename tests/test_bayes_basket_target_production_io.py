@@ -1852,3 +1852,49 @@ def test_native_root_keeps_legacy_p1_without_copied_pathway_visible() -> None:
             envelopes,
             at_utc="2026-07-23T05:00:02Z",
         ).checkpoint_id == "p1-before-pathway-inheritance"
+
+
+def test_maturity_bin_is_the_event_distance_not_the_run_lead() -> None:
+    """Two measurements, one vocabulary, and no table that shows both.
+
+    ``d0``/``d1``/``d2``/``d2_fallback`` label a run's lead in one place and an
+    event's maturity in another, so a join written
+    ``ON a.lead_bucket = b.maturity_bin`` returns rows and looks right. This
+    pins what the conversion actually promises, which is the only place the
+    difference is visible at all.
+    """
+
+    from bayes_basket_target.production_io import derive_policy_maturity_bin
+
+    common = {
+        "event_date": "2026-08-28",
+        "settlement_timezone": "Asia/Shanghai",
+        "evaluation_at_utc": "2026-08-26T02:00:00Z",
+    }
+
+    # An hour bucket is converted, and what it converts to is the distance to
+    # the event -- never the age of the run that produced it.  Every hour
+    # bucket on the same station-day gives the same maturity.
+    assert derive_policy_maturity_bin("h00_12", **common) == "d2"
+    assert derive_policy_maturity_bin("h12_24", **common) == "d2"
+    assert derive_policy_maturity_bin("h24_48", **common) == "d2"
+    assert derive_policy_maturity_bin("h48_plus", **common) == "d2"
+
+    # The distance is a local-day count, so the timezone decides it.
+    assert derive_policy_maturity_bin(
+        "h24_48",
+        event_date="2026-08-26",
+        settlement_timezone="Asia/Shanghai",
+        evaluation_at_utc="2026-08-26T02:00:00Z",
+    ) == "d0"
+
+    # A calendar label is taken at its word: it passes through even when the
+    # event is two days out and the label says one.  That is the hazard -- the
+    # caller, not this function, is what guarantees the label already means
+    # maturity.
+    assert derive_policy_maturity_bin("d1", **common) == "d1"
+    assert derive_policy_maturity_bin("d2_fallback", **common) == "d2_fallback"
+
+    # And an empty lead is refused rather than defaulted.
+    with pytest.raises(ContractError):
+        derive_policy_maturity_bin("", **common)

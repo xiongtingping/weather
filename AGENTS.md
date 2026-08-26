@@ -39,6 +39,16 @@
 - 盘口只允许官方 CLOB WebSocket；目标 YES token 独立原子快照，不写 `event_market_ticks`。
 - 下单只允许本机唯一 gateway；写锁外取盘口，篮子优先使用内容寻址的 post-only GTC Maker，紧迫收口只允许在确认撤销 Maker 后使用有价格上限的单桶 FOK；每次成交后重算目标库存与利润曲线，不经 outbox 秒级轮询。
 
+## 读 SSOT 前必查（命名口径，2026-08-26 全仓排查）
+- **列名不承诺量纲，先 `select distinct` 再写 where。** 117 张表共用 625 个列名，同名不同义是常态而非例外。以下六条已实测确认，按名字直觉写出的查询会静默给出错误答案。
+- `station_id` 不总是站：真 ICAO / 通配 `*` / 空串三义并存。`basket_delta_v2_fill_artifact` 83,132 of 86,427 行是 `*`，`basket_target_market_registry` 34,738 of 357,302 行是空串。把 delta-v2 系表按 `station_id` 内联到 `calibration_station_registry` 会静默丢掉 96% 的行；`GROUP BY station_id` 会多出一个叫 `*` 的"站"。
+- `stage` 在三张 delta-v2 表里恒为 `*`（`basket_delta_v2_policy_artifact` 57/57、`basket_delta_v2_policy_activation` 21/21、`basket_delta_v2_fill_artifact` 86,427/86,427），**零行**是 `P0/P0-M/P1`。按具体 stage 过滤这三张表恒得空集，而覆盖该 stage 的行就在 `*` 里。解析走 `production_io.resolve_delta_v2_*`，不要自己写 where。
+- `season_bin` 三套互不相交的词汇同时在用：`summer/winter`、`JJA`、以及宪章 62 的站点本地相位 `PEAK/DESCENT/TROUGH/ASCENT/ALLYEAR`。同一批南半球站（FACT/NZWN/SAEZ/SBGR）在三张表里分别被标 `winter`、`JJA`、`TROUGH`——`JJA` 是日历断言，恰是它们处于 `TROUGH` 时携带的标签，名字说反话。跨表 `GROUP BY season_bin` 会把同一批站日切成三个互不重叠、各自样本不足的分区。
+- `lead_bucket` 两套词汇同列共存（`d0/d1/d2/d2_fallback` 与 `h00_12/h12_24/h24_48/h48_plus`，宪章 47 只认后者），且 `d0` 在 `METAR_PHYSICAL_PATH_TMAX` 与 `OFFICIAL_AIRPORT_TAF_TX` 上是第三义"无提前量可言"。`d1` 一个标签横跨三个小时桶。
+- `run_cycle` 混了两个坐标轴：真模型 run（`00Z/06Z/12Z/18Z`）与日偏移（`PREVIOUS_DAY1/PREVIOUS_DAY2`），外加 `MIXED_NATIVE_CYCLES`/`AGGREGATOR_UNKNOWN_NATIVE_CYCLE` 两个哨兵。判例：`WHERE run_cycle='18Z' AND lead_bucket='d2'` 在 `calibration_historical_asof_model_run` 上返回 **0 行**，而两天外样本实际 7,762 条，全在 `(PREVIOUS_DAY2,d2)` 与 `(00Z,d2)` 里。
+- `maturity_bin` 与 `lead_bucket` 取值域逐字相同但量不同（事件还有多远 vs 这个 run 有多旧），**没有任何一张表同时含这两列**，所以错误 join 会正常返回行、不报空。唯一换算点是 `production_io.derive_policy_maturity_bin`；不要在 SQL 里让两者相等。
+- 时区只从 `calibration_station_market_timezone_binding` 或 `basket_target_market_registry` 逐站取；`calibration_station_registry.timezone_name` 是种子包原文，45 站中 33 站错标 `America/New_York`。
+
 ## 纯 YES Basket（当前唯一生产策略）
 - `com.weather.weather_basket_yes` 是canonical ASOS优先/AWC后备正式观测层的纯YES篮子唯一驻留服务名；旧`com.weather.reported_trajectory_no` label与`reported_trajectory_no_v1` hard-NO策略均已退役，不得加载、决策或下单，不得作为服务别名，不得启动第四个生产服务。
 - 篮子按已物化后验、方向侧覆盖价值、全情景利润曲线、集中度、预算和真实 WS 深度求唯一目标库存，不设固定桶数、4→3→2或阶段内等份。未成交 Maker 不计入已实现地板但必须计入 confirmed pending；每次成交后重算目标库存、净成本和利润曲线。默认只增不减；显式角色调仓时，仅允许卖出 S/B/L/C 桶中恢复 `M>S>A>B>F` 所需的超额份额，M/A/F 桶不得卖出、不得用卖出控制预算。卖出必须使用官方 YES bid 逐档深度并在成交后重算净成本和地板，未知成交立即 reconcile_required。边缘桶允许作为中心。
