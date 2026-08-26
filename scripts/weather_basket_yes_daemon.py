@@ -3318,6 +3318,28 @@ def main() -> int:
                     next_forecast, time.monotonic() + WRITER_YIELD_SEC
                 )
             storage_ok = storage_guard.get("ok") is True
+            # First refusal for the lane that is always last in line.
+            #
+            # The three writer gates are evaluated in source order -- sweeps,
+            # production, prefetch -- and the two above it are due again the
+            # moment they release the writer, so the prefetch reached its own
+            # gate with someone else already holding it every single pass.
+            # Measured 2026-08-26: after the third-writer gate landed the NWP
+            # rotation did not advance once, while production and the sweeps
+            # alternated normally.  Standing down for a second on completion
+            # is not enough on its own -- a sweep or a cycle claims that
+            # second -- so the prefetch is asked first instead.  It cannot
+            # hoard the writer in return: its expensive work is behind its own
+            # poll timers (60s TAF, 600s NWP), so an out-of-turn pass with
+            # nothing due returns in milliseconds, and it re-arms behind the
+            # others the same way they do.
+            forecast_first_refusal = (
+                storage_ok
+                and now_mono >= next_forecast
+                and forecast_future is None
+                and production_future is None
+                and hosted_sweep_future is None
+            )
             if (
                 storage_ok
                 and now_mono >= next_registry_refresh
@@ -3377,6 +3399,7 @@ def main() -> int:
                 # production let a sweep start beside a running prefetch --
                 # the exact overlap the mutual gate exists to remove.
                 and forecast_future is None
+                and not forecast_first_refusal
             ):
                 # Serve whichever sweep has been due longest, not whichever
                 # sits earliest in the tuple.  Strict list order gives the
@@ -3415,6 +3438,7 @@ def main() -> int:
                 # against a cycle that currently fails closed outright when
                 # the two overlap.
                 and forecast_future is None
+                and not forecast_first_refusal
             ):
                 production_future = executor.submit(
                     run_target_production_cycle,
