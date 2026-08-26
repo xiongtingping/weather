@@ -436,6 +436,75 @@ def _maker_market_anchor(
     return anchor
 
 
+# Which price the TARGET INVENTORY is chosen against -- not which price the
+# orders are placed at, which has been the maker ladder since 31a68f52.
+#
+# ``lane`` prices the target at what this lane would actually pay: the band
+# its resting orders sit in.  ``ask_depth`` is the pre-2026-08-26 behaviour,
+# kept as a comparison arm: the solver was handed the cost of *crossing* the
+# spread and then the execution layer went and posted inside it, so the
+# objective sized -- and refused -- on a price the engine never pays.
+#
+# KHOU 2026-08-27 is the case: four legs offered at 0.23/0.37/0.32/0.18 sum
+# to 1.100 against a payout of 1.00, so the objective sees a basket that
+# cannot win and holds; the same four legs rest at 0.061/0.365/0.300/0.150
+# = 0.876, which is a normal bet.  The paper ledger had the identical defect
+# one layer down and was corrected the same day; this is the other half.
+TARGET_PRICING_BASIS = (
+    os.environ.get("PM_TARGET_PRICING_BASIS", "lane").strip() or "lane"
+)
+if TARGET_PRICING_BASIS not in {"lane", "ask_depth"}:
+    raise ValueError(f"unknown target pricing basis: {TARGET_PRICING_BASIS}")
+
+
+class _Level:
+    """A price with a size behind it, shaped like an official WS level."""
+
+    __slots__ = ("price", "shares")
+
+    def __init__(self, price: float, shares: float) -> None:
+        self.price = float(price)
+        self.shares = float(shares)
+
+
+def _lane_purchase_levels(
+    row: Any,
+    *,
+    value_cap: float | None,
+) -> tuple[Sequence[Any], float | None, str]:
+    """The ladder the target inventory is priced against, and at what price.
+
+    Under ``lane`` this is one synthetic level at the resting band's mean --
+    what the leg pays if the whole ladder fills, which is the number the
+    ledger's sizing has used since it started posting bands.  Its size is
+    the visible offer depth: not because a maker consumes it, but because it
+    is the only measure of how much trades in this bucket at all, and
+    letting the clip run past it reproduces the fiction where thirty shares
+    at one tick fill a basket of thousands.
+
+    Falls back to the real offer ladder, and says so, whenever the band does
+    not exist -- no bid to join, or a value cap under one tick.  Crossing is
+    then genuinely the only way to acquire the leg, so the crossing price is
+    the honest one.
+    """
+
+    if TARGET_PRICING_BASIS == "ask_depth" or not row.ask_available:
+        return row.ask_levels, None, "official_ws_ask_depth"
+    rungs = _maker_ladder(
+        bid=float(row.bid_price),
+        ask=float(row.ask_price),
+        tick=float(row.price_tick_size),
+        value_cap=value_cap,
+    )
+    if not rungs:
+        return row.ask_levels, None, "official_ws_ask_depth"
+    price = sum(rungs) / len(rungs)
+    depth = sum(float(level.shares) for level in row.ask_levels)
+    if price <= EPS or depth <= EPS:
+        return row.ask_levels, None, "official_ws_ask_depth"
+    return (_Level(price, depth),), price, "maker_resting_band"
+
+
 def _ask_depth_purchase(
     *,
     levels: Sequence[Any],
@@ -1622,6 +1691,38 @@ def _target_candidates(
         row.bucket: row.pending_notional_usdc for row in snapshot.buckets
     }
     ordered = tuple(sorted(desired, key=lambda bucket: (by_bucket[bucket].ordinal, bucket)))
+    # The ladder this lane would actually buy against, decided once and used
+    # by all three generators below -- the clip grid, the centre-anchored
+    # shape and the continuous optimum.  Three copies of "what does a share
+    # cost" is how the target and the order stopped agreeing in the first
+    # place.
+    lane_levels: dict[str, Sequence[Any]] = {}
+    lane_prices: dict[str, float] = {}
+    bases: set[str] = set()
+    for bucket in ordered:
+        row = by_bucket[bucket]
+        levels, price, basis = _lane_purchase_levels(
+            row,
+            value_cap=_hedge_value_cap(
+                bucket=bucket,
+                centre_bucket=str(centre_bucket or ""),
+                probability=probabilities_by_bucket.get(bucket),
+                window=ordered,
+            ),
+        )
+        lane_levels[bucket] = levels
+        lane_prices[bucket] = (
+            float(price) if price is not None
+            else (float(row.ask_price) if row.ask_available else 0.0)
+        )
+        bases.add(basis)
+    # One string for the basket, and it must not claim a basis no leg used.
+    # A basket priced part at the band and part at the offer is neither, and
+    # saying so is cheaper than a reader assuming the wrong one.
+    pricing_basis = (
+        bases.pop() if len(bases) == 1
+        else "mixed_maker_band_and_ask_depth"
+    )
     per_bucket_levels: list[tuple[float, ...]] = []
     quote_levels: dict[str, dict[float, tuple[float, float]]] = {}
     for bucket in ordered:
@@ -1639,7 +1740,7 @@ def _target_candidates(
             # reason code that explains it.  ``cash_phase`` owns this refusal
             # and says so per bucket; leave the candidate visible to it.
             shares, spent = _ask_depth_purchase(
-                levels=row.ask_levels,
+                levels=lane_levels[bucket],
                 cash_limit=float(clip),
             )
             if (
@@ -1706,7 +1807,7 @@ def _target_candidates(
             })[:24],
             "shares_by_bucket": shares,
             "cost_by_bucket": costs,
-            "pricing_basis": "official_ws_ask_depth",
+            "pricing_basis": pricing_basis,
             "candidate_kind": (
                 CANDIDATE_KIND_BASELINE
                 if is_baseline
@@ -1719,6 +1820,9 @@ def _target_candidates(
             snapshot=snapshot,
             ordered=ordered,
             centre_bucket=centre_bucket,
+            purchase_levels=lane_levels,
+            prices_by_bucket=lane_prices,
+            pricing_basis=pricing_basis,
             current_shares=current_shares,
             current_cost=current_cost,
             pending_shares=pending_shares,
@@ -1731,6 +1835,9 @@ def _target_candidates(
         candidates.extend(_continuous_optimum_candidates(
             snapshot=snapshot,
             ordered=ordered,
+            purchase_levels=lane_levels,
+            prices_by_bucket=lane_prices,
+            pricing_basis=pricing_basis,
             current_shares=current_shares,
             current_cost=current_cost,
             pending_shares=pending_shares,
@@ -1753,6 +1860,9 @@ def _centre_anchored_candidates(
     snapshot: TargetBasketSnapshot,
     ordered: Sequence[str],
     centre_bucket: str,
+    purchase_levels: Mapping[str, Sequence[Any]] | None = None,
+    prices_by_bucket: Mapping[str, float] | None = None,
+    pricing_basis: str = "official_ws_ask_depth",
     current_shares: Mapping[str, float],
     current_cost: Mapping[str, float],
     pending_shares: Mapping[str, float],
@@ -1779,6 +1889,20 @@ def _centre_anchored_candidates(
     by_bucket = {row.bucket: row for row in snapshot.buckets}
     if centre_bucket not in by_bucket or centre_bucket not in ordered:
         return []
+    # What a share costs THIS lane -- the price the edge lean and the share
+    # split are both computed against.  Absent (a direct caller, an older
+    # test) it is the offer, which is the pre-2026-08-26 basis.
+    def levels_for(bucket: str) -> Sequence[Any]:
+        return (purchase_levels or {}).get(bucket) or (
+            by_bucket[bucket].ask_levels
+        )
+
+    def price_for(bucket: str) -> float:
+        return float(
+            (prices_by_bucket or {}).get(bucket)
+            or by_bucket[bucket].ask_price
+        )
+
     ordinals = {
         bucket: int(by_bucket[bucket].ordinal) for bucket in ordered
     }
@@ -1790,14 +1914,14 @@ def _centre_anchored_candidates(
             best_edge = max(
                 best_edge,
                 float(probabilities_by_bucket.get(bucket, 0.0))
-                - float(row.ask_price),
+                - price_for(bucket),
             )
     weights: dict[str, float] = {}
     for bucket in ordered:
         row = by_bucket[bucket]
         if not row.ask_available:
             return []
-        price = float(row.ask_price)
+        price = price_for(bucket)
         if price <= 0.0:
             return []
         edge = float(probabilities_by_bucket.get(bucket, 0.0)) - price
@@ -1850,19 +1974,14 @@ def _centre_anchored_candidates(
         # what the ledger's ``_centre_tilt_weights`` is handed; the depth
         # walk below still decides what the clip actually buys.
         unit_cost = sum(
-            weights[bucket] * float(by_bucket[bucket].ask_price)
-            for bucket in ordered
+            weights[bucket] * price_for(bucket) for bucket in ordered
         )
         if unit_cost <= EPS:
             continue
         share_scale = budget / unit_cost
         cash = []
         for bucket in ordered:
-            raw = (
-                share_scale
-                * weights[bucket]
-                * float(by_bucket[bucket].ask_price)
-            )
+            raw = share_scale * weights[bucket] * price_for(bucket)
             # Never below the clip floor: a rung priced under it cannot be
             # bought at all, and a basket missing a rung is not this basket.
             cash.append(max(floor, math.floor(raw * 100.0) / 100.0))
@@ -1883,7 +2002,7 @@ def _centre_anchored_candidates(
         usable = True
         for bucket, clip in zip(ordered, cash):
             acquired, spent = _ask_depth_purchase(
-                levels=by_bucket[bucket].ask_levels,
+                levels=levels_for(bucket),
                 cash_limit=float(clip),
             )
             if acquired <= EPS or spent + EPS < float(clip):
@@ -1907,6 +2026,7 @@ def _centre_anchored_candidates(
             "candidate_origin": "CENTRE_ANCHORED_EDGE_TILT",
             "shares_by_bucket": shares,
             "cost_by_bucket": costs,
+            "pricing_basis": pricing_basis,
         })
     return results
 
@@ -1914,6 +2034,9 @@ def _continuous_optimum_candidates(
     *,
     snapshot: TargetBasketSnapshot,
     ordered: Sequence[str],
+    purchase_levels: Mapping[str, Sequence[Any]] | None = None,
+    prices_by_bucket: Mapping[str, float] | None = None,
+    pricing_basis: str = "official_ws_ask_depth",
     current_shares: Mapping[str, float],
     current_cost: Mapping[str, float],
     pending_shares: Mapping[str, float],
@@ -2063,7 +2186,10 @@ def _continuous_optimum_candidates(
         usable = True
         for bucket, clip in zip(ordered, cash):
             acquired_shares, spent = _ask_depth_purchase(
-                levels=by_bucket[bucket].ask_levels,
+                levels=(
+                    (purchase_levels or {}).get(bucket)
+                    or by_bucket[bucket].ask_levels
+                ),
                 cash_limit=float(clip),
             )
             if acquired_shares <= EPS or spent + EPS < float(clip):
@@ -2081,7 +2207,7 @@ def _continuous_optimum_candidates(
             })[:24],
             "shares_by_bucket": shares,
             "cost_by_bucket": costs,
-            "pricing_basis": "official_ws_ask_depth",
+            "pricing_basis": pricing_basis,
             "candidate_kind": CANDIDATE_KIND_COMPLETE,
             "candidate_origin": "CONTINUOUS_LOG_OPTIMUM",
         })

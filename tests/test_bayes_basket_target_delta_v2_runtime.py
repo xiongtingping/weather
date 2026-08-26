@@ -499,12 +499,21 @@ def test_bid_only_selected_bucket_is_retained_without_buy_candidate() -> None:
 
 
 def test_profitable_single_bucket_cannot_bypass_incomplete_basket() -> None:
+    # Tight books on purpose.  The target is priced at the band this lane
+    # would rest in, not at the offer (2026-08-26), so a wide spread would
+    # make the basket affordable and this fixture would stop describing the
+    # case it is named for.  One tick of spread leaves the band on a single
+    # rung, which is where "the market is dear" survives the change.
     raw = _snapshot().to_dict()
     raw["buckets"][0]["probability"] = 0.5
     raw["buckets"][1]["probability"] = 0.5
+    raw["buckets"][0]["bid_price"] = 0.98
+    raw["buckets"][0]["bid_levels"] = [{"price": 0.98, "shares": 100.0}]
     raw["buckets"][0]["ask_levels"] = [
         {"price": 0.99, "shares": 100.0}
     ]
+    raw["buckets"][1]["bid_price"] = 0.48
+    raw["buckets"][1]["bid_levels"] = [{"price": 0.48, "shares": 100.0}]
     raw["buckets"][1]["ask_levels"] = [
         {"price": 0.49, "shares": 100.0}
     ]
@@ -534,10 +543,15 @@ def test_profitable_single_bucket_cannot_bypass_incomplete_basket() -> None:
 
 
 def test_no_positive_joint_target_holds_with_empty_final_support() -> None:
+    # Same reason as above: one tick of spread, so the band the target is
+    # priced at is as dear as the offer and the basket still cannot pay for
+    # itself.
     raw = _snapshot().to_dict()
     raw["buckets"][0]["probability"] = 0.5
     raw["buckets"][1]["probability"] = 0.5
     for bucket in raw["buckets"]:
+        bucket["bid_price"] = 0.89
+        bucket["bid_levels"] = [{"price": 0.89, "shares": 100.0}]
         bucket["ask_levels"] = [{"price": 0.9, "shares": 100.0}]
     policy = TargetBasketPolicy.from_mapping({
         **_basket_policy().to_dict(),
@@ -566,6 +580,54 @@ def test_no_positive_joint_target_holds_with_empty_final_support() -> None:
 
 
 def test_target_grid_uses_each_bucket_official_ask_depth_not_static_price_grid() -> None:
+    raw = _snapshot().to_dict()
+    raw["buckets"][0]["ask_levels"] = [{"price": 0.10, "shares": 100.0}]
+    raw["buckets"][1]["ask_levels"] = [{"price": 0.25, "shares": 100.0}]
+    snapshot = TargetBasketSnapshot.from_mapping(raw)
+
+    candidates = _target_candidates(
+        snapshot=snapshot,
+        desired=("35", "36"),
+        artifact=_delta_policy(),
+        capital_available_usdc=5.0,
+        minimum_clip_notional_usdc=0.01,
+        bankroll_usdc=_basket_policy().total_budget_usdc,
+        probabilities_by_bucket={
+            row.bucket: row.probability for row in snapshot.buckets
+        },
+    )
+    both = next(
+        row
+        for row in candidates
+        if row["shares_by_bucket"]["35"] > 0.0
+        and row["shares_by_bucket"]["36"] > 0.0
+    )
+
+    # Priced at the band this lane rests in, not at the offer it never
+    # crosses (2026-08-26).  Bucket 35's band is 0.05-0.09 (mean 0.07) and
+    # 36's is 0.06-0.24 (mean 0.14625), so the same 0.25 clip buys more
+    # shares than crossing would -- which is the whole point: the objective
+    # used to size, and refuse, against a price the engine never pays.
+    assert both["pricing_basis"] == "maker_resting_band"
+    assert both["cost_by_bucket"]["35"] == pytest.approx(0.25)
+    assert both["cost_by_bucket"]["36"] == pytest.approx(0.25)
+    assert both["shares_by_bucket"]["35"] == pytest.approx(0.25 / 0.07)
+    assert both["shares_by_bucket"]["36"] == pytest.approx(0.25 / 0.14625)
+
+
+def test_target_grid_can_still_be_priced_at_the_crossing_arm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The pre-2026-08-26 basis, pinned so the two can be replayed apart.
+
+    Per-bucket depth from the book either way -- that is what this pair of
+    tests has always been about -- but the crossing arm pays the offer, so
+    the same clip buys fewer shares.
+    """
+
+    monkeypatch.setattr(
+        delta_v2_runtime, "TARGET_PRICING_BASIS", "ask_depth"
+    )
     raw = _snapshot().to_dict()
     raw["buckets"][0]["ask_levels"] = [{"price": 0.10, "shares": 100.0}]
     raw["buckets"][1]["ask_levels"] = [{"price": 0.25, "shares": 100.0}]
