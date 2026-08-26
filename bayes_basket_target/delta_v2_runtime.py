@@ -776,8 +776,9 @@ def _support_windows(
     a second opinion on any of that.  Windows are drawn from the same admitted
     set, so nothing here can seat a bucket the core refused.
 
-    Ranking is by the window's probability mass.  It only orders the
-    shortlist; the seat is decided by the objective itself on the full curve.
+    Ranking is by the window's probability mass, and the seat is the head
+    of that order -- the curve score sizes the seated window, it does not
+    choose it (charter 64).
     Price enters as two floors rather than as the ranking -- the per-leg
     minimum below, and the whole-basket edge requirement -- because any
     ranking on belief-minus-price is maximised where model and market
@@ -1054,8 +1055,8 @@ def _support_windows(
             # letting the curve score buy the narrower ladder it prefers.
             # Those three now seat the three-rung window instead of the two.
             #
-            # There are exactly two hard admission floors, and everything else
-            # is ranking -- the seat belongs to the curve score alone.  First,
+            # There are exactly two hard admission floors, and everything
+            # else is ranking; the seat is the head of that ranking.  First,
             # the ladder rung: the window must contain the centre bucket.
             # Direction is deliberately not checked anywhere -- among the
             # windows holding the rung, the flanks compete on curve score
@@ -1252,8 +1253,8 @@ def _support_windows(
     # toward what the model believes, and leaves price to the two things
     # that are properly price's job: the leg floor above, and the whole-basket
     # positive-EV requirement below.  An unpriced window still sorts last --
-    # it has no basket to admit -- and the curve score still decides the seat
-    # among those shortlisted.
+    # it has no basket to admit -- and the head of this order is the seat
+    # (charter 64); the curve score sizes it.
     windows.sort(
         key=lambda row: (
             row["all_in_price"] is None,
@@ -1389,7 +1390,7 @@ def _solve_over_support_windows(
     objective_form: str,
     bankroll_usdc: float,
 ) -> tuple[tuple[str, ...], dict[str, Any], dict[str, Any]]:
-    """Run the objective on each shortlisted window; the best curve is seated.
+    """Run the objective on each shortlisted window; the head one is seated.
 
     Scores are comparable across windows because every candidate's scenario
     curve spans the whole bucket space -- an unheld bucket settles at minus the
@@ -2319,20 +2320,21 @@ def compile_delta_v2_runtime_plan(
         if bankroll_usdc > 0.0
         else VALUE_OBJECTIVE_FORM
     )
-    # One argmax over (support, quantities), not two stages.
+    # The objective sees every window; it seats none of them.
     #
-    # The support used to be fixed by probability mass alone and handed to the
-    # optimizer already chosen, which threw the book away before the objective
-    # ever saw it.  Measured over 37 station-days with live asks, that support
-    # carried our probability 0.688 against a market price of 0.883 -- an
-    # expected value of -0.195, because the buckets we rate highest are the
-    # ones the market prices richest.  The objective never needed a new term
-    # to fix this: at its optimal stake the log-wealth score *is* the
-    # divergence between our belief and the price (measured correlation 0.833
-    # against KL), so simply letting it see more than one window makes it
-    # choose on edge.  Given the choice it agreed with the mispricing-maximal
-    # window on 31 of 37 days and with the incumbent probability-maximal one
-    # on 3.
+    # Support used to be handed over already chosen, and widening the domain
+    # so the objective could see more than one window was worth it: over 37
+    # station-days the single window it had been given carried our
+    # probability 0.688 against a market price of 0.883, an expected value of
+    # -0.195, because the buckets we rate highest are the ones the market
+    # prices richest.  Letting it choose among them then went the other way.
+    # At its optimal stake the log-wealth score *is* the divergence between
+    # belief and price (correlation 0.833 against KL), so choosing on it
+    # means choosing where model and market disagree most -- and the settled
+    # book is an inverted U in edge, worst exactly at the top.  Two ledger
+    # replays put that at ROI +9.7% -> -20.5%.  So: the domain stays wide,
+    # the shortlist is ordered by probability mass, its head is the seat, and
+    # the objective decides quantities inside it (charter 64).
     support_windows, support_window_audit = _support_windows(
         snapshot=snapshot,
         desired=desired,

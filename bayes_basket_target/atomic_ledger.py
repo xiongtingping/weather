@@ -82,6 +82,16 @@ TARGET_LEDGER_TABLES = (
 
 CYCLE_STATES = frozenset({"prepared", "submitting", "submitted", "reconcile_required", "settled"})
 INTENT_STATES = frozenset({"prepared", "submitting", "submitted", "reconcile_required", "filled", "cancelled", "failed"})
+# ``expired`` is accepted by the table's CHECK and written by nothing, here or
+# anywhere else in the repository -- no row has ever held it.  It was carried
+# in with a bulk landing, not by an expiry path: the basket lane has no reaper
+# and should not grow one on ``target_execution_hard_deadline_at``, which is a
+# three-second submission-freshness bound checked against the intent's own
+# creation instant, not a lifetime.  A day that is genuinely over is retired
+# by ``close_settled_day_cycle`` instead.  The value stays in the CHECK
+# because SQLite cannot alter one in place, and rebuilding a content-addressed
+# table to drop an unused enum member would fork every existing database from
+# a fresh one.
 RESERVATION_STATES = frozenset({"active", "released", "consumed", "expired"})
 # A cycle that produced any of these reached the exchange, so neither
 # terminal path may retire it.  Shared so the two paths admit exactly the
@@ -3625,20 +3635,6 @@ def close_target_cycle(
             if reservation is None:
                 raise AtomicLedgerError("settled_cycle_outcome_drift")
             settled_state = str(reservation[2])
-            # ``expired`` is a terminal state this function never writes, so it
-            # is not comparable to the requested outcome.  It also moved no
-            # capital, which is what a replay has to be told; comparing it as
-            # if it were an outcome made an expired close permanently
-            # unreplayable.  ``released``/``consumed`` remain mutually
-            # exclusive and still fail closed against each other.
-            if settled_state == "expired":
-                return {
-                    "schema": SCHEMA,
-                    "state": "already_settled",
-                    "cycle_id": cycle,
-                    "outcome": settled_state,
-                    "released_or_consumed_usdc": 0.0,
-                }
             if settled_state != outcome_value:
                 raise AtomicLedgerError("settled_cycle_outcome_drift")
             return {"schema": SCHEMA, "state": "already_settled", "cycle_id": cycle, "outcome": outcome_value}
@@ -3668,12 +3664,6 @@ def close_target_cycle(
                 conn.execute("UPDATE basket_target_capital_pool SET reserved_usdc=MAX(0.0,reserved_usdc-?),version=version+1,updated_at=? WHERE pool_id=1", (amount, closed_at))
             conn.execute("UPDATE basket_target_capital_reservations SET state=?,release_reason=?,updated_at=? WHERE reservation_id=? AND state='active'", (outcome_value, close_reason, closed_at, reservation_id))
             settled_amount = amount
-        elif reservation_state == "expired":
-            # Capital already left the reservation by expiry, so this close
-            # only settles the cycle.  Reporting the reservation's original
-            # amount here would let a caller reconciling pool movement from
-            # this receipt count the same capital twice.
-            settled_amount = 0.0
         elif reservation_state in {"released", "consumed"}:
             if reservation_state != outcome_value:
                 raise AtomicLedgerError("settled_cycle_outcome_drift")

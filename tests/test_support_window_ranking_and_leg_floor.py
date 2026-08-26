@@ -105,7 +105,10 @@ def test_the_ladder_extends_toward_belief_not_toward_the_cheap_side() -> None:
         ("31C", 0.15, 0.150),
         ("32C", 0.25, 0.250),
         ("33C", 0.34, 0.300),
-        ("34C", 0.11, 0.020),
+        # Priced just above MINIMUM_LEG_ALL_IN_ASK on purpose: this test is
+        # about ranking, and a flank under the leg floor would be excluded
+        # before the ranking ever saw it, testing the floor instead.
+        ("34C", 0.11, 0.040),
         ("35C", 0.06, 0.011),
         ("36C", 0.03, 0.011),
     )
@@ -122,7 +125,8 @@ def test_the_ladder_extends_toward_belief_not_toward_the_cheap_side() -> None:
         "the ranking must follow probability mass"
     )
     # And the cheap-flank window is still *present* -- this is a ranking
-    # change, not an exclusion.  The curve score still gets to see it.
+    # change, not an exclusion.  The objective still gets to see it, and
+    # scores it, even though the seat goes to the head of the order.
     assert any(
         "34C" in window["buckets"] for window in windows
     ), "the cheap flank must remain a candidate, only ranked below"
@@ -172,7 +176,7 @@ def test_a_penny_leg_is_excluded_not_the_window() -> None:
         ("35C", 0.10, 0.150),
     )
     windows, audit = _windows(rows, desired={"33C"}, center="33C")
-    assert MINIMUM_LEG_ALL_IN_ASK == 0.02
+    assert MINIMUM_LEG_ALL_IN_ASK == 0.03
     assert "34C" in audit["leg_floor_excluded_buckets"]
     for window in windows:
         assert "34C" not in window["buckets"], (
