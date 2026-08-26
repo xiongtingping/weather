@@ -1,0 +1,411 @@
+{
+  "schema": "station_model_calibration_ssot_v1",
+  "version": "1.4.12",
+  "effective_date": "2026-08-02",
+  "status": "TARGET_PRODUCTION_NO_LIVE",
+  "live_order_authorized": false,
+  "production_mutation": false,
+  "title": "统一站点模型校准 SSOT 数据合同",
+  "stage_contract": {
+    "nwp_output": "P0",
+    "taf_atomic_revision_output": "P0-M",
+    "metar_speci_output": "P1",
+    "legacy_stage_branches_allowed": false,
+    "minimum_positive_weight_models_for_p0": 2,
+    "single_model_role": "BENCHMARK_ABLATION_OR_CANDIDATE_ONLY",
+    "production_no_live_authority": "PRODUCTION_NO_LIVE_ONLY requires model-combination strict offline OOS and exact activation",
+    "formal_authority": "FORMAL_PROMOTED additionally required for live/parameter promotion",
+    "delta_forward_oos_independent": true,
+    "oos_temporal_policy": "HISTORICAL_CLOSED_DAY_STRICT_AS_OF_ONLY",
+    "future_observation_role": "OBSERVATIONAL_CANDIDATE_NOT_OOS",
+    "future_data_counts_as_oos": false,
+    "future_data_blocks_production_no_live": false,
+    "future_data_blocks_formal_or_live": false,
+    "formal_or_live_requires_historical_oos": true,
+    "native_precedence": "OFFICIAL_NATIVE_FIRST_REUSE_RETAINED_RAW",
+    "open_meteo_fallback": {
+      "source_role": "aggregator_republisher",
+      "allowed_when": ["native_missing", "native_invalid", "native_stale_or_late"],
+      "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+      "native_arrival_index_eligible": false,
+      "p1_eligible": false,
+      "formal_live_eligible": false,
+      "requires_independent_historical_strict_oos_activation": true
+    }
+  },
+  "decision": {
+    "logical_database": "ONE_UNIFIED_CALIBRATION_SSOT",
+    "per_station_database": false,
+    "partitioning": "可按station_id/model_id/target_year做物理分区，但不得形成站点级独立权威或独立版本线",
+    "training_primary_key": "station_id",
+    "city_role": "仅展示、报告与运营筛选维度，不参与真值配对、模型校准或结算主键",
+    "online_rule": "当前模型运行只查decision_at时点已晋级并已激活的不可变artifact；禁止在线训练、写回原始模型或查询含糊latest"
+  },
+  "residual_convention": {
+    "definition": "e=y-f_raw",
+    "calibration": "f_cal=f_raw+b_hat",
+    "forbidden": [
+      "在e=y-f_raw定义下使用f_raw-b_hat",
+      "覆盖或修改原始模型值",
+      "把站点长期误差解释成站点仪器误差",
+      "把历史最高温本身当成需要校正的预测"
+    ]
+  },
+  "separation_contract": {
+    "immutable_facts": [
+      "StationRegistry",
+      "StationDailyHighTruth",
+      "HistoricalAsOfModelRun"
+    ],
+    "derived_training_facts": [
+      "ModelStationResidual"
+    ],
+    "immutable_model_artifacts": [
+      "ModelCalibrationArtifact",
+      "ModelEnsembleArtifact"
+    ],
+    "governance_events": [
+      "ArtifactPromotionDecision",
+      "CalibrationActivation"
+    ],
+    "rule": "原始事实、配对残差、单模型校准artifact、模型组合artifact和激活指针分层解耦，只通过内容哈希和外键lineage连接"
+  },
+  "entities": [
+    {
+      "name": "StationRegistry",
+      "table": "calibration_station_registry",
+      "primary_key": ["station_id"],
+      "natural_key": ["icao_code"],
+      "immutable": true,
+      "ttl": "NONE",
+      "required_fields": {
+        "station_id": "TEXT canonical official station id",
+        "icao_code": "TEXT",
+        "city_label": "TEXT display only",
+        "timezone_name": "TEXT IANA timezone",
+        "source_lane": "TEXT AWC",
+        "settlement_definition": "TEXT content-addressed definition",
+        "registry_version": "TEXT",
+        "content_sha256": "TEXT[64]"
+      }
+    },
+    {
+      "name": "StationDailyHighTruth",
+      "table": "calibration_station_daily_high_truth",
+      "primary_key": ["truth_id"],
+      "natural_key": ["station_id", "local_date", "settlement_definition", "revision_no"],
+      "immutable": true,
+      "ttl": "NONE",
+      "required_fields": {
+        "truth_id": "TEXT content address",
+        "station_id": "TEXT FK StationRegistry",
+        "local_date": "DATE station local date",
+        "official_tmax_c": "REAL Celsius",
+        "source_lane": "TEXT AWC",
+        "settlement_definition": "TEXT",
+        "revision_no": "INTEGER >=0",
+        "published_at_utc": "TIMESTAMP",
+        "received_at_utc": "TIMESTAMP",
+        "qc_status": "TEXT ACCEPTED|QUARANTINED",
+        "content_sha256": "TEXT[64]"
+      },
+      "lineage": ["station registry version", "official source payload SHA", "settlement definition SHA"]
+    },
+    {
+      "name": "HistoricalAsOfModelRun",
+      "table": "calibration_historical_asof_model_run",
+      "primary_key": ["model_run_id"],
+      "natural_key": ["model_id", "station_id", "target_local_date", "run_init_utc", "member_id", "extraction_version"],
+      "immutable": true,
+      "ttl": "NONE",
+      "required_fields": {
+        "model_run_id": "TEXT content address",
+        "model_id": "TEXT ECMWF|GFS|ICON",
+        "station_id": "TEXT FK StationRegistry",
+        "target_local_date": "DATE",
+        "run_init_utc": "TIMESTAMP",
+        "published_at_utc": "TIMESTAMP",
+        "received_at_utc": "TIMESTAMP",
+        "lead_hours": "INTEGER",
+        "lead_bucket": "TEXT",
+        "run_cycle": "TEXT",
+        "member_id": "TEXT",
+        "raw_tmax_c": "REAL unmodified forecast",
+        "interpolation_method": "TEXT",
+        "extraction_version": "TEXT",
+        "source_object_sha256": "TEXT[64]",
+        "content_sha256": "TEXT[64]",
+        "qc_status": "TEXT ACCEPTED|QUARANTINED"
+      },
+      "asof_rule": "published_at_utc<=decision_at_utc AND received_at_utc<=decision_at_utc"
+    },
+    {
+      "name": "ModelStationResidual",
+      "table": "calibration_model_station_residual",
+      "primary_key": ["residual_id"],
+      "natural_key": ["truth_id", "model_run_id"],
+      "immutable": true,
+      "ttl": "NONE",
+      "required_fields": {
+        "residual_id": "TEXT content address",
+        "truth_id": "TEXT FK StationDailyHighTruth",
+        "model_run_id": "TEXT FK HistoricalAsOfModelRun",
+        "station_id": "TEXT",
+        "model_id": "TEXT ECMWF|GFS|ICON",
+        "season_bin": "TEXT",
+        "lead_bucket": "TEXT",
+        "run_cycle": "TEXT",
+        "e_y_minus_f_raw_c": "REAL exactly y-f_raw",
+        "paired_asof_utc": "TIMESTAMP",
+        "qc_status": "TEXT ACCEPTED|QUARANTINED",
+        "pair_sha256": "TEXT[64]"
+      },
+      "revision_rule": "真值修订产生新的truth_id和residual_id；旧配对不覆盖，只由后续训练窗口排除"
+    },
+    {
+      "name": "ModelCalibrationArtifact",
+      "table": "calibration_model_artifact",
+      "primary_key": ["calibration_artifact_id"],
+      "scope_key": ["station_id", "model_id", "season_bin", "lead_bucket", "run_cycle", "settlement_definition"],
+      "immutable": true,
+      "ttl": "ARTIFACT_VALIDITY_WINDOW",
+      "required_fields": {
+        "calibration_artifact_id": "TEXT content address",
+        "station_id": "TEXT",
+        "model_id": "TEXT ECMWF|GFS|ICON",
+        "season_bin": "TEXT",
+        "lead_bucket": "TEXT",
+        "run_cycle": "TEXT",
+        "settlement_definition": "TEXT",
+        "train_start_date": "DATE",
+        "train_end_date": "DATE",
+        "trained_through_utc": "TIMESTAMP",
+        "sample_n": "INTEGER",
+        "effective_sample_n": "REAL",
+        "bias_c": "REAL",
+        "residual_scale_c": "REAL >0",
+        "tail_parameters_json": "JSON",
+        "shrinkage_parent_key": "TEXT nullable",
+        "fit_config_sha256": "TEXT[64]",
+        "training_lineage_root_sha256": "TEXT[64]",
+        "oos_metrics_json": "JSON",
+        "valid_from_utc": "TIMESTAMP",
+        "valid_until_utc": "TIMESTAMP",
+        "content_sha256": "TEXT[64]"
+      },
+      "application": "f_cal=f_raw+bias_c，并使用residual_scale_c与tail_parameters生成单模型概率分布"
+    },
+    {
+      "name": "ModelEnsembleSelectionEvidence",
+      "table": "calibration_ensemble_selection_evidence",
+      "primary_key": ["selection_evidence_id"],
+      "scope_key": ["station_id", "season_bin", "lead_bucket", "run_cycle", "settlement_definition"],
+      "immutable": true,
+      "ttl": "NONE",
+      "required_fields": {
+        "selection_evidence_id": "TEXT content address",
+        "method_version": "TEXT",
+        "train_start_date": "DATE",
+        "train_end_date": "DATE",
+        "recent_start_date": "DATE",
+        "recent_end_date": "DATE",
+        "holdout_start_date": "DATE",
+        "holdout_end_date": "DATE",
+        "candidate_scores_json": "JSON all exact masks with Brier/NLL/CRPS",
+        "selected_models_json": "JSON",
+        "selected_weights_json": "JSON",
+        "oos_metrics_json": "JSON Brier/NLL/CRPS",
+        "residual_covariance_json": "JSON",
+        "residual_correlation_json": "JSON",
+        "effective_sample_n": "REAL >0",
+        "previous_ensemble_artifact_sha256": "TEXT[64] nullable",
+        "max_weight_delta": "REAL >=0",
+        "actual_max_weight_delta": "REAL between 0 and max_weight_delta",
+        "content_sha256": "TEXT[64]"
+      },
+      "forbidden": "在线追随最近一次命中的模型、在线拟合权重、训练窗与holdout重叠"
+    },
+    {
+      "name": "ModelEnsembleArtifact",
+      "table": "calibration_ensemble_artifact",
+      "primary_key": ["ensemble_artifact_id"],
+      "scope_key": ["station_id", "season_bin", "lead_bucket", "run_cycle", "settlement_definition"],
+      "immutable": true,
+      "ttl": "ARTIFACT_VALIDITY_WINDOW",
+      "required_fields": {
+        "ensemble_artifact_id": "TEXT content address",
+        "station_id": "TEXT",
+        "season_bin": "TEXT",
+        "lead_bucket": "TEXT",
+        "run_cycle": "TEXT",
+        "settlement_definition": "TEXT",
+        "candidate_models_json": "JSON canonical ordered model ids",
+        "supported_masks_json": "JSON exact available-set hashes and approved weights",
+        "residual_covariance_json": "JSON",
+        "correlation_penalty": "REAL >=0",
+        "weight_shrinkage": "REAL >=0",
+        "selection_evidence_sha256": "TEXT[64]",
+        "previous_ensemble_artifact_sha256": "TEXT[64] nullable",
+        "weight_method": "TEXT offline OOS only",
+        "effective_sample_n": "REAL >0",
+        "max_weight_delta": "REAL >=0",
+        "train_start_date": "DATE",
+        "train_end_date": "DATE",
+        "recent_start_date": "DATE",
+        "recent_end_date": "DATE",
+        "holdout_start_date": "DATE",
+        "holdout_end_date": "DATE",
+        "oos_metrics_json": "JSON NLL/Brier/CRPS/ECE/stability",
+        "valid_from_utc": "TIMESTAMP",
+        "valid_until_utc": "TIMESTAMP",
+        "content_sha256": "TEXT[64]"
+      },
+      "forbidden": "不得在请求时对当前可用模型做未注册的临时权重拟合或原始温度简单平均"
+    },
+    {
+      "name": "ArtifactPromotionDecision",
+      "table": "calibration_artifact_promotion",
+      "primary_key": ["promotion_decision_id"],
+      "natural_key": ["artifact_kind", "artifact_id", "gate_version", "decision_seq"],
+      "immutable": true,
+      "ttl": "NONE",
+      "required_fields": {
+        "promotion_decision_id": "TEXT content address",
+        "artifact_kind": "TEXT MODEL_CALIBRATION|MODEL_ENSEMBLE",
+        "artifact_id": "TEXT",
+        "decision_seq": "INTEGER",
+        "decision": "TEXT PROMOTED|REJECTED|SUPERSEDED",
+        "gate_version": "TEXT",
+        "metrics_sha256": "TEXT[64]",
+        "decided_at_utc": "TIMESTAMP",
+        "receipt_sha256": "TEXT[64]"
+      }
+    },
+    {
+      "name": "CalibrationActivation",
+      "table": "calibration_activation",
+      "primary_key": ["activation_id"],
+      "scope_key": ["artifact_kind", "station_id", "model_id_or_star", "season_bin", "lead_bucket", "run_cycle", "settlement_definition", "available_model_set_hash_or_star"],
+      "immutable": true,
+      "ttl": "ACTIVATION_VALIDITY_WINDOW",
+      "required_fields": {
+        "activation_id": "TEXT content address",
+        "artifact_kind": "TEXT MODEL_CALIBRATION|MODEL_ENSEMBLE",
+        "artifact_id": "TEXT promoted artifact",
+        "station_id": "TEXT",
+        "model_id_or_star": "TEXT model id for calibration; * for ensemble",
+        "season_bin": "TEXT",
+        "lead_bucket": "TEXT",
+        "run_cycle": "TEXT",
+        "settlement_definition": "TEXT",
+        "available_model_set_hash_or_star": "TEXT exact hash for ensemble; * for calibration",
+        "generation": "INTEGER strictly increasing within scope",
+        "valid_from_utc": "TIMESTAMP",
+        "valid_until_utc": "TIMESTAMP",
+        "activated_at_utc": "TIMESTAMP",
+        "supersedes_activation_id": "TEXT nullable",
+        "content_sha256": "TEXT[64]"
+      },
+      "resolution_rule": "按scope_key与decision_at_utc解析有效窗口内最高generation；重放必须固定activation_id，禁止查询含糊latest"
+    }
+  ],
+  "lookup_contracts": {
+    "model_calibration": {
+      "request_key": ["station_id", "model_id", "season_bin", "lead_bucket", "run_cycle", "settlement_definition", "decision_at_utc"],
+      "replay_key": ["calibration_artifact_id", "activation_id"],
+      "success": "恰好一个已晋级、已激活、未过期artifact，且current model run和artifact均满足strict-as-of",
+      "failure": "FAIL_CLOSED_NO_P0M"
+    },
+    "model_ensemble": {
+      "request_key": ["station_id", "season_bin", "lead_bucket", "run_cycle", "settlement_definition", "available_model_set_hash", "decision_at_utc"],
+      "replay_key": ["ensemble_artifact_id", "activation_id"],
+      "success": "恰好一个已晋级、已激活、未过期ensemble artifact，且exact mask在supported_masks中",
+      "failure": "FAIL_CLOSED_NO_P0M"
+    }
+  },
+  "missing_model_policy": {
+    "canonical_models": [
+      "ECMWF_IFS",
+      "ECMWF_AIFS_SINGLE",
+      "NOAA_GEFS",
+      "ECCC_GEM_GEPS",
+      "DWD_ICON_GLOBAL_EPS",
+      "DWD_ICON_EU_EPS",
+      "DWD_ICON_D2_EPS",
+      "UKMO_GLOBAL_ENS",
+      "UKMO_UK_ENS"
+    ],
+    "lineage_rule": "官方原生 transport/arrival 优先；原生不可用时允许 Open-Meteo 作为显式 aggregator_republisher 历史同日 calibration/no-live fallback，绝不伪造 native arrival 或 formal P0",
+    "set_hash_rule": "sha256('|'.join(sorted(available_model_ids)))",
+    "three_available": "使用exact三模型mask对应的已晋级权重",
+    "two_available": "只允许使用artifact中为该exact二模型mask预注册并通过OOS门的权重；否则fail closed",
+    "one_available": "只允许benchmark、ablation或候选证据积累；禁止物化正式P0",
+    "zero_available": "官方原生为零时，仅当至少两个独立家族的 Open-Meteo aggregator_republisher 已通过闭日 AWC strict historical OOS 且有 PRODUCTION_NO_LIVE_ONLY activation，才允许 no-live fallback；否则 fail closed",
+    "renormalization": "只有supported_masks_json明确声明该exact mask允许由完整权重重归一且该规则已OOS晋级时才允许；禁止运行时自行重归一",
+    "stale_model": "先按QC与freshness从available set移除，再解析exact mask；不得使用陈旧模型或陈旧artifact凑齐模型数"
+  },
+  "ttl_policy": {
+    "raw_facts": "无运行TTL；不可变保留用于审计与重放",
+    "residuals": "无运行TTL；真值修订以新pair追加，不覆盖",
+    "artifacts": "必须同时满足decision_at位于artifact和activation有效窗口、trained_through不晚于decision_at、promotion决定早于activation",
+    "online_expiry": "任一校准或组合artifact过期、缺失、hash不符或激活重叠即fail closed，不回退旧artifact、不临时训练"
+  },
+  "promotion_state_machine": {
+    "states": ["CANDIDATE", "PROMOTED", "REJECTED", "SUPERSEDED"],
+    "allowed": [
+      "CANDIDATE->PROMOTED",
+      "CANDIDATE->REJECTED",
+      "PROMOTED->SUPERSEDED"
+    ],
+    "activation_precondition": "PRODUCTION_NO_LIVE_ONLY requires strict historical offline OOS plus exact scope activation; republisher fallback additionally requires source_role=aggregator_republisher, future_event_count=0, native_arrival_index_eligible=false and formal_p0_eligible=false; FORMAL_PROMOTED additionally requires latest append-only promotion decision PROMOTED",
+    "required_gates": [
+      "strict-as-of train/holdout separation",
+      "positive/negative/zero residual sign tests",
+      "station/season/lead/cycle hierarchical shrinkage tests",
+      "ECMWF/GFS/ICON separate calibration tests",
+      "correlated-model penalty tests",
+      "2/3 model exact availability mask tests plus single-model production rejection",
+      "3/7/15/30 day and cross-season OOS checks",
+      "multiple forward/backward time rewinds"
+    ]
+  },
+  "online_compile": {
+    "input": "CurrentAsOfModelRuns + scope-authorized CalibrationActivation + OOS-validated ModelCalibrationArtifact + OOS-validated 2+ ModelEnsembleArtifact + station climatology; republisher fallback uses only closed historical AWC truth and explicit Open-Meteo lineage",
+    "output": "P0 ProbabilityEnvelope with model_run_ids, calibration_artifact_ids, ensemble_artifact_id, activation_ids, available_model_set_hash and complete lineage",
+    "hot_path_forbidden": [
+      "training residuals",
+      "fitting bias/scale/tails",
+      "optimizing ensemble weights",
+      "writing raw model facts",
+      "falling back to uncalibrated raw average"
+    ],
+    "basket_boundary": "AdaptiveBasketEvaluator只读取已物化P0/P0-M/P1，不读取本SSOT训练表；TAF在下游原子修订P0为P0-M"
+  },
+  "invariants": [
+    "站点是校准主键，城市不是",
+    "站点长期误差是模型×站点×季节×lead×cycle的历史配对残差分布，不是站点自身固定误差",
+    "真值、原始模型、残差和artifact均追加写且内容寻址",
+    "原始模型值永不被校准过程覆盖",
+    "线上查表只返回已晋级且在decision_at有效的artifact",
+    "单模型先校正，模型组合后发生",
+    "缺模型只走exact supported mask；官方原生缺失时只允许带 aggregator_republisher lineage 的历史 no-live fallback，否则 fail closed",
+    "未来日数据只作 arrival/interface/temporal observation，不计入任何 OOS、20 train/8 holdout、TAF 24 或 production_no_live blocker",
+    "离线训练与在线P0编译解耦",
+    "任何校准证据缺失或不足两个正权重独立家族不得绕过到未校准P0；republisher fallback 不得进入 native arrival/P1",
+    "本合同不创建第四个生产服务、不授权订单、保持用户域production_no_live"
+  ],
+  "awc_global_primary_contract": {
+    "authority": "NOAA_AWC_WORLDWIDE_RELAY",
+    "scope": "all 45 production stations, including former AMSC-owned stations",
+    "required_report_minute": "official_valid_time_preserved",
+    "allowed_outputs": ["realtime truth", "P1", "pure-YES basket hard-fact exclusions", "production_no_live OOS", "calibration artifacts", "PRODUCTION_NO_LIVE_ONLY P0 ensemble activation"],
+    "forbidden_outputs": ["cross_lane fallback", "uncalibrated P0", "formal promotion without strict OOS", "live orders while no-live"],
+    "retired_source": "AMSC production lane retired by explicit SSOT revision 2026-08-01",
+    "awc_source_registry": "config/trading/reported_trajectory_official_sources_v1.json"
+  },
+  "artifacts": {
+    "reference_ddl": "station_model_calibration_ssot_v1.sql",
+    "canonical_markdown": "station_model_calibration_ssot_v1.md",
+    "validator": "../validate_station_model_calibration_ssot.py"
+  }
+}

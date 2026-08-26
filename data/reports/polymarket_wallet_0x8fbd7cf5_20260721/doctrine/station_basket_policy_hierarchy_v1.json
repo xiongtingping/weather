@@ -1,0 +1,214 @@
+{
+  "schema": "station_basket_policy_hierarchy_v1",
+  "version": "1.4.2",
+  "production_constitution": {
+    "authority": "bayes_basket_target_architecture_v1",
+    "vertical_slice_station_id": "CANONICAL_45",
+    "batch_expansion_requires": "CANONICAL_45_BOUNDED_NO_LIVE_EXPANSION",
+    "forward_oos_blocks_production_no_live_or_batch_expansion": false,
+    "forward_oos_blocks_live_or_parameter_promotion": false,
+    "oos_temporal_policy": "HISTORICAL_CLOSED_DAY_STRICT_AS_OF_ONLY",
+    "future_observation_role": "OBSERVATIONAL_CANDIDATE_NOT_OOS",
+    "future_data_counts_as_oos": false,
+    "future_data_blocks_production_no_live": false,
+    "future_data_blocks_formal_or_live": false,
+    "formal_or_live_requires_historical_oos": true,
+    "native_precedence": "OFFICIAL_NATIVE_FIRST_REUSE_RETAINED_RAW",
+    "open_meteo_fallback": {
+      "source_role": "aggregator_republisher",
+      "allowed_when": ["native_missing", "native_invalid", "native_stale_or_late"],
+      "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+      "native_arrival_index_eligible": false,
+      "p1_eligible": false,
+      "formal_live_eligible": false,
+      "requires_independent_historical_strict_oos_activation": true
+    }
+    ,
+    "maker_bundle_execution": {
+      "activation_unit": "COMPLETE_EXECUTION_GAP_SUPPORT",
+      "same_ssot_cycle_multi_intent": true,
+      "atomic_total_capital_reservation": true,
+      "missing_leg_or_budget_failure": "HOLD_COMPLETE_BASKET",
+      "any_leg_result": "RECOMPUTE_COMPLETE_BASKET",
+      "urgent_fok": "SINGLE_BUCKET_ONLY_AFTER_CONFIRMED_MAKER_CANCEL"
+    }
+  },
+  "current_runtime_boundary": {
+    "as_of_utc": "2026-07-30T08:12:33Z",
+    "proxy_url": "http://127.0.0.1:7897",
+    "service_domain": "gui/501",
+    "system_domain_same_name_service_count": 0,
+    "execution_mode": "production_no_live",
+    "canonical_station_count": 45,
+    "station_policy_artifact_count": 135,
+    "station_policy_artifact_station_count": 45,
+    "station_policy_artifact_stage_scope": ["P0-M"],
+    "station_policy_activation_count": 200,
+    "station_policy_promotion_count": 0,
+    "probability_materialized_station_count": 1,
+    "probability_materialized_station_ids": ["RKPK"],
+    "policy_stage_exactness_complete": false,
+    "family_specific_oos_complete": false,
+    "cash_phase_authority": "DESIGN_CANDIDATE_ONLY",
+    "heavy_phase_unobserved_fail_closed": true,
+    "historical_complete_maker_bundle_evidence_station_ids": ["RKPK"],
+    "cross_event_allocation_unit": "COMPLETE_BASKET_BUNDLE",
+    "individual_maker_leg_is_portfolio_candidate": false,
+    "reconcile_cancels_safe_prepared_siblings": true,
+    "gateway_order_event_count": 0,
+    "execution_receipt_count": 0,
+    "execution_transition_count": 0,
+    "forward_oos_blocks_production_no_live": false,
+    "forward_oos_blocks_parameter_or_live_promotion": false,
+    "live_order_authorized": false
+  },
+  "forward_observation_lifecycle": {
+    "decision_authority": "auto_trade_decisions",
+    "source_label_commit_precedes_projection": true,
+    "projection_is_replayable_not_authoritative": true,
+    "poison_payload_persisted": false,
+    "retention_requires_latest_label_revision": true,
+    "retention_requires_embedded_scorecard_and_attribution_receipts": true,
+    "sha_only_retention_authorization": false
+  },
+  "status": "TARGET_PRODUCTION_NO_LIVE_RUNNING",
+  "effective_date": "2026-07-30",
+  "live_order_authorized": false,
+  "decision": {
+    "global_formula_role": "cold_start_prior_and_shrinkage_regularizer_only",
+    "station_specific_families": [
+      "target_inventory",
+      "reserve_price",
+      "replenishment_cadence"
+    ],
+    "probability_authority": "committed current-stage p_s(B)",
+    "settlement_timezone_authority": "market_registry.settlement_timezone with exact probability/truth/TAF/WS match; mismatch FAIL_CLOSED",
+    "p0_readiness": "materialize and preselect on any activated 2+ model exact mask; do not wait for TAF or all three models",
+    "taf_role": "P0-M is one atomic TAF checkpoint: calibrated TX first confirms or boundedly revises P0, then cloud/precipitation/wind physically confirm that revision direction and discount its strength when conflicting; every OOS sample binds station/season/lead/run-cycle/settlement scope and the same-decision NWP combination artifact; holdout TAF-vs-NWP residual correlation discounts duplicate evidence; never a second center, separate stage, hard exclusion, or P0 blocker",
+    "final_ssot": "P1; malformed, stale, or missing P1 evidence never falls back to executable P0",
+    "formal_ensemble_minimum_positive_weight_models": 2,
+    "cash_clip_authority": "explicit versioned BasketCashPhasePolicyArtifact after station target/reserve resolution",
+    "may_modify_probability_center_or_direction": false,
+    "online_learning": false
+  },
+  "placement": {
+    "upstream": "Stage-versioned ProbabilityEnvelope",
+    "layer": "L4 station policy compiler before AdaptiveBasketEvaluator",
+    "downstream": "Versioned AdaptiveBasketPlan",
+    "hard_boundaries": [
+      "station policy cannot modify p_s(B), c_s*, or sign(D_s)",
+      "station reserve price cannot exceed the B14 mathematical ceiling",
+      "station cadence cannot bypass B13, budget, risk, or known-order-state gates",
+      "cash phase is execution sizing state, not P0/P0-M/P1 evidence stage and cannot modify support, center, direction, or target inventory",
+      "diagnostic extrema only diagnose disagreement; candidate boundary only caps search; final support is sparse and probability/value qualified"
+    ]
+  },
+  "hierarchical_model": {
+    "formula": "theta_post_sj=rho_sj*theta_local_hat_sj+(1-rho_sj)*theta_global_j",
+    "shrinkage": "rho_sj=n_eff_sj/(n_eff_sj+kappa_j)",
+    "families": [
+      {
+        "id": "target",
+        "output": "per-bucket target cost and share weights within the current support set",
+        "constraint": "station allocation may change concentration but cannot reverse current-stage posterior direction"
+      },
+      {
+        "id": "reserve",
+        "output": "station-specific conservative price margin",
+        "constraint": "r_final=tick_down(min(r_math,r_learned))"
+      },
+      {
+        "id": "cadence",
+        "output": "discrete-time reevaluation and replenishment hazard",
+        "constraint": "hazard opens scheduling only after all eligibility gates pass"
+      }
+    ],
+    "effective_sample_size": "event-cluster, season, stage, and serial-correlation adjusted",
+    "hyperparameter_rule": "pre-registered and promoted only through strict temporal, leave-station-out, and cross-season OOS"
+  },
+  "ssot": {
+    "logical_database": "ONE_UNIFIED_BASKET_POLICY_SSOT",
+    "per_station_database": false,
+    "primary_key": "station_id",
+    "city_role": "display_and_reporting_only",
+    "raw_artifact_activation_decoupled": true,
+    "online_lookup": "station_id+stage+season_bin+maturity_bin+liquidity_bin+strategy_version+decision_at_utc",
+    "ambiguous_latest_forbidden": true
+  },
+  "contracts": [
+    "BasketPolicyTrainingFact",
+    "GlobalBasketPriorArtifact",
+    "StationTargetPolicyArtifact",
+    "StationReservePriceArtifact",
+    "StationCadenceArtifact",
+    "StationBasketPolicyActivation",
+    "ResolvedStationBasketPolicy",
+    "BasketCashPhasePolicyArtifact",
+    "BasketCashPhaseDecision"
+  ],
+  "global_cash_phase_policy": {
+    "placement": "after target inventory and reserve-price resolution, before order cash/share sizing",
+    "phase_clock": "station-local event date and IANA timezone",
+    "formula": "C_base=T[explicit_clip_policy_version,cash_phase]; C_order=min(C_base,r_limit*positive_share_gap,remaining_budget,executable_depth_cash); q_order=C_order/r_limit",
+    "source_behavior_prior": {
+      "source_clip_clock_v20260714_16": {
+        "HEAVY": 15.0,
+        "STANDARD": 9.05,
+        "TAIL": 2.22
+      },
+      "source_clip_clock_v20260716_17_partial": {
+        "HEAVY": null,
+        "STANDARD": 10.77,
+        "TAIL": 0.25
+      }
+    },
+    "new_partial_heavy_rule": "FAIL_CLOSED_UNOBSERVED_PHASE",
+    "private_switch_time_rule": "the 10.800-minute gap between last old and first new observation is an unidentified interval, not an exact activation timestamp",
+    "production_authority": false
+  },
+  "fallback": {
+    "station_activation": "use exact promoted station posterior",
+    "insufficient_station_data": "use promoted global or regional fallback only when exact fallback mask is activated",
+    "missing_or_stale_artifact": "FAIL_CLOSED_NO_STATION_POLICY",
+    "borrow_neighbor_station_at_runtime": false
+  },
+  "promotion": {
+    "comparisons": [
+      "same-station temporal holdout versus global prior",
+      "leave-one-station-out versus random and market baselines",
+      "cross-season and 3/7/15/30-day stress windows"
+    ],
+    "metric_families": [
+      "initial support Precision@observed K",
+      "next-bucket Top-1 and rank likelihood",
+      "reserve-price interval likelihood and execution cost",
+      "cadence waiting-time calibration and over-trading rate",
+      "scenario PnL, concentration, outside-basket loss, and capital usage"
+    ],
+    "station_artifact_required": true,
+    "production_authority": false
+  },
+  "evidence": {
+    "source": "derived/station_hierarchical_basket_transfer_v1.json",
+    "non_shenzhen_initial_precision_at_observed_k": 0.7518518518518519,
+    "non_shenzhen_dynamic_orders": 1496,
+    "non_shenzhen_dynamic_top1": 0.3462566844919786,
+    "non_shenzhen_random_top1": 0.253249140565317,
+    "non_shenzhen_top1_lift_pp": 9.30075439266616,
+    "interpretation": "pooled behavior is a useful prior but station heterogeneity rules out one direct global execution formula",
+    "not_weather_or_pnl_accuracy": true
+  },
+  "awc_global_primary_contract": {
+    "authority": "NOAA_AWC_WORLDWIDE_RELAY",
+    "use": "45站实时 truth/P1/纯YES篮子硬事实排除、offline OOS/calibration and production_no_live P0 artifact",
+    "enters_realtime_truth": true,
+    "enters_p1": true,
+    "hard_fact_exclusion_only": true,
+    "creates_buy_no_intent": false,
+    "formal_promotion_requires_strict_oos": true,
+    "retired_amsc_history_only": true,
+    "cross_lane_fallback_allowed": false
+  },
+  "orders_submitted": 0,
+  "writes_production_db": false
+}

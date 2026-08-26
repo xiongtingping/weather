@@ -1,0 +1,69 @@
+{
+  "schema": "bayes_basket_stage_checkpoint_routing_v1",
+  "version": "1.1.0",
+  "status": "TARGET_PRODUCTION_NO_LIVE",
+  "live_order_authorized": false,
+  "core_rule": "每个新提交的P0、P0-M或P1检查点都必须独立直连同一个AdaptiveBasketPlan纯函数，重新执行选桶、偏置、配仓、状态迁移和增量计算；证据更新不是下单指令。",
+  "stages": [
+    {
+      "stage": "P0",
+      "evidence": "站点/季节/lead/起报时次校正后的strict-as-of NWP模型组合概率；至少两个正式模型正权重，诊断模型不冒充组合成员",
+      "basket_effect": "直连篮子内核，执行初始选桶、支持集构造、方向候选、目标账本与受限SEED求值",
+      "waits_for": [],
+      "does_not_wait_for": [
+        "TAF",
+        "METAR/SPECI"
+      ]
+    },
+    {
+      "stage": "P0-M",
+      "evidence": "首份TAF或AMD/COR的单一原子revision proof：校准后TX先确认/有限修正P0，云量、降水、风场再做物理证据二次确认并对冲突修订折扣强度",
+      "basket_effect": "直连同一篮子内核，完整重选支持集并重算中心、方向、成本/份额目标、状态、缺口与执行候选",
+      "optional": true,
+      "does_not_create": "第二概率中心、第二TAF阶段、硬排除或对P0的等待门",
+      "does_not_rewrite": "历史P0决策与计划快照"
+    },
+    {
+      "stage": "P1",
+      "evidence": "canonical METAR/SPECI顺序强观测更新",
+      "basket_effect": "直连同一篮子内核，完整重选支持集并重算中心、方向、成本/份额目标、状态、缺口与执行候选",
+      "can_follow": [
+        "P0",
+        "P0-M"
+      ],
+      "does_not_rewrite": "历史P0或P0-M决策与计划快照"
+    }
+  ],
+  "stage_generic_projection": "p_s(b)=Sum_x P_s(X=x)*P(B=b|X=x,contract), s in {P0,P0-M,P1}",
+  "stage_center": "c_s*=argmax_b p_s(b)",
+  "stage_direction": "D_s=Sum_{b>c_s*}p_s(b)-Sum_{b<c_s*}p_s(b)",
+  "stage_bias_gate": "G_bias,s=1[|D_s|>=delta_s and H(p_s)<=h_max,s and M_tail,s>=m_min,s and fresh(p_s)]；方向恒为sign(D_s)",
+  "plan_evolution": "Plan@P0 -> Plan@P0-M(r) -> Plan@P1(t)；每个计划均追加写、可追溯，后计划可改变期望支持集与目标，但不覆盖前计划或自动卖出已成交库存。",
+  "same_decision_precedence": [
+    "P1",
+    "P0-M",
+    "P0"
+  ],
+  "precedence_scope": "只用于同一篮子决策时点恰有多个有效已提交阶段版本时的确定性冲突消解；不得用于等待后阶段，也不得抹掉早期阶段的篮子决策。",
+  "trigger_semantics": "新检查点只打开确定性重算门；交易仍要求正增量以及盘口、库存、订单状态、预算、目标价、版本向量和风险门全部通过。",
+  "no_silent_downgrade": "后阶段尚未产生时使用实际存在的最新阶段；后阶段已存在但损坏或过期时必须fail closed，不得静默回退。",
+  "layers": {
+    "L2": {
+      "owns": "构建站点真值×历史as-of模型残差，分别校正ECMWF/GFS/ICON并做相关性约束组合形成P0；同时物化可选P0-M与P1并保存不可变lineage",
+      "output": "Calibration/Ensemble + ProbabilityEnvelope"
+    },
+    "L3": {
+      "owns": "对每个阶段执行通用桶投影、检查freshness/lineage/bridge并发出独立NEW_CHECKPOINT触发；同一时点优先级仅作冲突消解",
+      "output": "已提交p_stage(B) + BasketReevaluationTrigger"
+    }
+  },
+  "invariants": [
+    "P0物化后必须立即进入篮子选桶与SEED求值。",
+    "有效TAF修订提交P0-M后必须完整重算篮子。",
+    "canonical METAR/SPECI提交P1后必须完整重算篮子。",
+    "每个阶段都可改变中心、支持集、方向候选、目标、状态与增量，但不得重写此前检查点决策。",
+    "方向偏置只来自当前阶段概率分布；模型、TAF和METAR/SPECI不得绕过后验形成第二套方向输入。",
+    "检查点变化不强制产生订单；所有执行硬门仍然必须通过。",
+    "后续检查点不得自动减持已成交库存；在单独授权退出合同前，执行候选保持只增不减。"
+  ]
+}

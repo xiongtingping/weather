@@ -1,0 +1,947 @@
+{
+  "schema": "weather_basket_trading_operating_system_v1",
+  "status": "TARGET_PRODUCTION_NO_LIVE",
+  "authority": "SUBORDINATE_TO_BAYES_BASKET_TARGET_ARCHITECTURE_V1",
+  "live_order_authorized": false,
+  "title": "最高温篮子交易操作系统",
+  "subtitle": "报告对照审计、交易哲学、策略语言、数学定义、系统架构、宪章、边界与状态流程",
+  "version": "1.3.10",
+  "effective_date": "2026-08-02",
+  "account_studied": "0x8fbd7cf5f806f563080864694415829f7229a959",
+  "source_report": "output/pdf/wallet_0x8fbd7cf5_weather_basket_strategy_deep_report.pdf",
+  "source_report_sha256": "486e826d32f2cd16773a5452c74b88b5560b8dd23db1f3ff7332904faa20502a",
+  "audience": "technical",
+  "purpose": "冻结production_no_live最高温篮子纵向主链与统一执行边界；历史公开成交研究只保留为lineage和候选证据。",
+  "thesis": "At least two-model calibrated P0, atomic TAF P0-M, METAR/SPECI P1, sparse support, joint target inventory, complete Maker bundle, and strict DeltaBasketScore v2.",
+  "production_contract": {
+    "normative_priority": "this object, bayes_basket_target_architecture_v1, and centralized contract tests override historical research formulas below",
+    "stages": ["NWP->P0", "TAF_TX_PLUS_PHYSICAL_CONFIRMATION->P0-M", "METAR_SPECI->P1"],
+    "legacy_stage_branches_allowed": false,
+    "settlement_timezone_authority": "market_registry.settlement_timezone",
+    "minimum_p0_models": 2,
+    "support_relation": "final_support subset candidate_boundary subset officially_possible_buckets",
+    "support_sparse": true,
+    "maximum_risk_extension_layers_per_side": 2,
+    "objective": "DeltaBasketScore v2 only",
+    "target_inventory": "one joint full-scenario optimization",
+    "execution_unit": "complete Maker bundle",
+    "single_leg_first": false,
+    "urgent_fok": "single bucket only after confirmed Maker cancellation",
+    "forward_oos_blocks_production_no_live": false,
+    "forward_oos_blocks_parameter_or_live_promotion": false,
+    "oos_temporal_policy": "HISTORICAL_CLOSED_DAY_STRICT_AS_OF_ONLY",
+    "future_observation_role": "OBSERVATIONAL_CANDIDATE_NOT_OOS",
+    "future_data_counts_as_oos": false,
+    "future_data_blocks_production_no_live": false,
+    "future_data_blocks_formal_or_live": false,
+    "formal_or_live_requires_historical_oos": true,
+    "native_precedence": "OFFICIAL_NATIVE_FIRST_REUSE_RETAINED_RAW",
+    "open_meteo_fallback": {
+      "source_role": "aggregator_republisher",
+      "allowed_when": ["native_missing", "native_invalid", "native_stale_or_late"],
+      "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+      "native_arrival_index_eligible": false,
+      "p1_eligible": false,
+      "formal_live_eligible": false,
+      "requires_independent_historical_strict_oos_activation": true
+    },
+    "live_submit_authorized": false,
+    "calls_order_gateway": false,
+    "orders_submitted": 0
+  },
+  "epistemic_levels": [
+    {
+      "id": "F",
+      "name": "可复算事实",
+      "definition": "公开成交、桶、时间、价格、份额、订单哈希、已冻结模型/TAF/METAR、结算结果和快照lineage可独立复算。",
+      "allowed_language": "发生了、观测到、复算为",
+      "forbidden_language": "因此私有算法必然是"
+    },
+    {
+      "id": "I",
+      "name": "机制推断",
+      "definition": "由多事件、跨时间或外样本证据支持的最小充分行为解释，但无法识别精确权重、阈值、未成交挂单或私有模型。",
+      "allowed_language": "支持、符合、最小充分解释、候选驱动",
+      "forbidden_language": "已经证明因果、精确公式就是"
+    },
+    {
+      "id": "N",
+      "name": "规范性设计",
+      "definition": "为了可实施、可审计与风险可控而提出的系统合同、公式、阈值接口和状态机。",
+      "allowed_language": "应当、必须、建议定义为、候选公式",
+      "forbidden_language": "对手实际使用"
+    }
+  ],
+  "executive_answers": [
+    "交易对象不是一个温度点，而是一个带结算规则、离散桶和盘口成本的条件收益分布。",
+    "多桶的第一功能是覆盖模型分歧与结算误差，第二功能才是让低价边缘桶提供非线性收益；多桶本身不等于保本。",
+    "重仓必须拆成成本重仓与份额重仓：中心/高价桶可承载更多本金，低价边缘桶可用较少本金获得更多结算份额。",
+    "方向偏置不是把所有桶整体平移，而是改变带宽内的目标库存、补仓顺序和边缘凸性预算，并且必须有证据、置信度和失效时间。",
+    "建仓不是一次性静态最优化，而是证据、价格、库存和未决订单共同驱动的状态机；没有新桶也可能发生主成本桶切换。",
+    "3/7/15/30天嵌套窗口只能描述观察长度，真实演进必须看互不重叠分段；近期是更窄、更连续、更主动成交，但方向至少两次折返。",
+    "最终重仓更像离散现金clip、填单率和补单次数共同形成的库存结果，而不是一笔更大的概率押注。",
+    "10分钟参考价只能用于事后描述成交偏离，不能替代当时可执行bid/ask/depth或证明挂单上限。",
+    "任何公式都必须标记为数据定义、候选决策模型或硬约束；报告无法支持把候选模型写成对手精确私有算法。"
+  ],
+  "window_evolution": {
+    "as_of": "2026-07-21T12:30:15Z",
+    "timezone": "America/New_York",
+    "nested_window_rule": "3/7/15/30天共享最近日期，只能比较不同观察长度，不能把差值解释为按时间发生的策略迁移。",
+    "disjoint_segment_rule": "16-30天前、8-15天前、4-7天前、最近3天互不重叠，用于描述时间演进；仍受城市组合、天气难度、流动性和未结算选择影响。",
+    "nested_windows": [
+      {"label": "3天", "events": 135, "mean_bucket_count": 3.8889, "continuous_share": 0.8963, "conditional_floor_share": 0.0889, "direction_up_share": 0.2889, "direction_neutral_share": 0.4963, "direction_down_share": 0.2148, "full_buy_path_roi": 0.1946, "maker_cost_share": 0.7005},
+      {"label": "7天", "events": 315, "mean_bucket_count": 4.0095, "continuous_share": 0.9111, "conditional_floor_share": 0.0571, "direction_up_share": 0.3206, "direction_neutral_share": 0.4667, "direction_down_share": 0.2127, "full_buy_path_roi": 0.2291, "maker_cost_share": 0.7167},
+      {"label": "15天", "events": 675, "mean_bucket_count": 3.9526, "continuous_share": 0.9037, "conditional_floor_share": 0.0711, "direction_up_share": 0.3141, "direction_neutral_share": 0.4933, "direction_down_share": 0.1926, "full_buy_path_roi": 0.1494, "maker_cost_share": 0.7532},
+      {"label": "30天", "events": 1333, "mean_bucket_count": 4.9805, "continuous_share": 0.7532, "conditional_floor_share": 0.1193, "direction_up_share": 0.3136, "direction_neutral_share": 0.4306, "direction_down_share": 0.2558, "full_buy_path_roi": 0.0286, "maker_cost_share": 0.9007}
+    ],
+    "disjoint_segments": [
+      {"label": "16-30天前", "events": 658, "mean_bucket_count": 6.0350, "continuous_share": 0.5988, "conditional_floor_share": 0.1687, "direction_up_share": 0.3131, "direction_neutral_share": 0.3663, "direction_down_share": 0.3207, "full_buy_path_roi": -0.0413, "maker_cost_share": 0.9980},
+      {"label": "8-15天前", "events": 360, "mean_bucket_count": 3.9028, "continuous_share": 0.8972, "conditional_floor_share": 0.0833, "direction_up_share": 0.3083, "direction_neutral_share": 0.5167, "direction_down_share": 0.1750, "full_buy_path_roi": 0.0443, "maker_cost_share": 0.8112},
+      {"label": "4-7天前", "events": 180, "mean_bucket_count": 4.1000, "continuous_share": 0.9222, "conditional_floor_share": 0.0333, "direction_up_share": 0.3444, "direction_neutral_share": 0.4444, "direction_down_share": 0.2111, "full_buy_path_roi": 0.2531, "maker_cost_share": 0.7297},
+      {"label": "最近3天", "events": 135, "mean_bucket_count": 3.8889, "continuous_share": 0.8963, "conditional_floor_share": 0.0889, "direction_up_share": 0.2889, "direction_neutral_share": 0.4963, "direction_down_share": 0.2148, "full_buy_path_roi": 0.1946, "maker_cost_share": 0.7005}
+    ],
+    "decision": "从最早分段到最近3天，均桶数6.03降至3.89、连续带59.9%升至89.6%、Maker成本99.8%降至70.0%，但严格条件保本16.9%降至8.9%，方向并未单调转暖；因此应升级形成与执行机制，不应固化方向。"
+  },
+  "comparison_audit": {
+    "schema": "trading_operating_system_comparison_audit_v1",
+    "source_report_pages": 47,
+    "audit_result": "18项对照中，3项保留、14项加强、1项纠错；未发现可把研究候选直接晋级为生产规则的证据。",
+    "items": [
+      {"id": "A01", "report_fact": "多桶同时承担覆盖与低价边缘凸性，但多桶本身不等于保本。", "prior_design": "覆盖底座+偏置+边缘凸性三本预算。", "verdict": "保留", "revision": "继续使用非严格保本语言，并要求逐情景地板。", "clause_refs": ["P02", "P09", "P10", "M15", "M18-M20"], "evidence_refs": ["E06", "E10"], "confidence": "高"},
+      {"id": "A02", "report_fact": "30天严格条件保本约11.9%，聚合完整买入路径ROI约2.86%。", "prior_design": "E06误把79.1%写成路径ROI。", "verdict": "纠错", "revision": "将79.1%只保留给模型包络极端选择，路径ROI改为2.86%，并加入数值锁定校验。", "clause_refs": ["M18-M20", "E01", "E06"], "evidence_refs": ["E01", "E06"], "confidence": "高"},
+      {"id": "A03", "report_fact": "3/7/15/30天是嵌套窗口，不能直接当成真实时间演进。", "prior_design": "只在治理门提到多窗口，未定义重叠偏差。", "verdict": "加强", "revision": "新增嵌套窗与互斥窗定义、M35-M36及完整窗口表。", "clause_refs": ["M35", "M36", "G3"], "evidence_refs": ["E19"], "confidence": "高"},
+      {"id": "A04", "report_fact": "互斥分段中方向至少两次折返，不支持从冷偏永久切换为暖偏。", "prior_design": "偏置有TTL，但未把非单调演进写成迁移禁令。", "verdict": "加强", "revision": "禁止从账户级窗口机械迁移方向，增加站点迁移闸门M42。", "clause_refs": ["P03", "M12", "M42"], "evidence_refs": ["E14", "E19"], "confidence": "高"},
+      {"id": "A05", "report_fact": "TAF TX仅覆盖44/306事件，且有效窗滚动可让日内TX不再代表全天日高。", "prior_design": "TAF作为二级锚。", "verdict": "加强", "revision": "TAF必须绑定issue、validity、目标峰值覆盖和修订链，缺一则alpha_taf归零。", "clause_refs": ["M07", "宪章5", "F1"], "evidence_refs": ["E02"], "confidence": "高"},
+      {"id": "A06", "report_fact": "严格前推只有46.3%选择此前MAE最低模型。", "prior_design": "历史MAE形成模型可靠度权重。", "verdict": "保留", "revision": "明确历史表现只是先验；当日模型聚类和离群闸门可覆盖先验排序。", "clause_refs": ["P04", "M04-M06"], "evidence_refs": ["E01", "E13"], "confidence": "高"},
+      {"id": "A07", "report_fact": "站点差异明显，八站GFS冷差与钱包偏移相关仅0.063，不能跨站复制单因子方向。", "prior_design": "站点化中心，但跨站迁移边界不够硬。", "verdict": "加强", "revision": "新增M42站点迁移闸门，跨站信号只可做弱日期regime候选。", "clause_refs": ["宪章3", "M11", "M42"], "evidence_refs": ["E14"], "confidence": "高"},
+      {"id": "A08", "report_fact": "模型跨度从不超过1C到大于2C时，主桶成本占比53.1%降至45.1%，桶数3.74升至4.37。", "prior_design": "模型分歧驱动带宽。", "verdict": "保留", "revision": "将跨度只用作带宽/集中度候选，不写成方向或因果公式。", "clause_refs": ["M08-M10", "M26"], "evidence_refs": ["E11", "E16"], "confidence": "中高"},
+      {"id": "A09", "report_fact": "成本重仓与份额重仓显著分离；首价解释成本占比远强于份额占比。", "prior_design": "M16默认先给资本再换算份额。", "verdict": "加强", "revision": "M16显式支持CAPITAL_FIRST与SHARE_FIRST两种目标模式，M32要求成本和份额双残差闭合。", "clause_refs": ["P06", "M13", "M16", "M32"], "evidence_refs": ["E09", "E10"], "confidence": "高"},
+      {"id": "A10", "report_fact": "20,694个匹配订单族呈离散现金clip；最常见9.05 USDC，占YES BUY订单19.6%。", "prior_design": "只有目标库存和限价，没有订单族/clip层。", "verdict": "加强", "revision": "新增CLIP原语与M37，目标库存通过多个离散订单族实现。", "clause_refs": ["CLIP", "M37", "F4"], "evidence_refs": ["E12", "E17"], "confidence": "高"},
+      {"id": "A11", "report_fact": "同价、上涨、下跌加仓成本分别约37.6%/30.5%/26.1%。", "prior_design": "价格与库存驱动，但容易被误读成抄底。", "verdict": "加强", "revision": "明确价格方向不是充分条件；只有缺口、有效价、地板和硬门共同通过才补。", "clause_refs": ["P05", "M23-M25", "M29"], "evidence_refs": ["E18"], "confidence": "高"},
+      {"id": "A12", "report_fact": "10分钟prices-history是参考成交序列，不是历史可执行bid/ask/depth或队列。", "prior_design": "M24使用真实深度，但未定义参考价禁用边界。", "verdict": "加强", "revision": "新增参考价定义、M39，并禁止它进入可执行价格或限价证明。", "clause_refs": ["M24", "M39", "宪章17"], "evidence_refs": ["E20"], "confidence": "高"},
+      {"id": "A13", "report_fact": "237个历史事件中97.5%在D-1 20:30后仍买，72.2%新增桶，但低/高/内部缺口方向接近均衡。", "prior_design": "形成成熟度只有概念定义。", "verdict": "加强", "revision": "新增成熟度向量M33、同成熟度对照M34和CHECKPOINT_REVIEW。", "clause_refs": ["M33", "M34", "F4-F6"], "evidence_refs": ["E03", "E04", "E21"], "confidence": "高"},
+      {"id": "A14", "report_fact": "Maker加权填单率39.1%，Taker 99.2%；成都42C临近截止从Maker转Taker。", "prior_design": "未量化Maker等待与时间紧迫。", "verdict": "加强", "revision": "新增M38紧迫度，只有缺口、截止时间和主动成交溢价共同满足才切换。", "clause_refs": ["M38", "F4-F5"], "evidence_refs": ["E17", "E23"], "confidence": "中高"},
+      {"id": "A15", "report_fact": "7/23新篮子在快照间未新增桶但仍补现有桶；当前构建尚未结算。", "prior_design": "有REPLENISH状态，但未硬化未成熟快照边界。", "verdict": "加强", "revision": "所有形成中快照必须带as_of、成熟度与unresolved，不得赋赢家或PnL。", "clause_refs": ["M33-M34", "状态机", "F5-F7"], "evidence_refs": ["E07", "E08", "E22"], "confidence": "高"},
+      {"id": "A16", "report_fact": "候选中心与不确定度尚未被严格投影为每个离散桶的概率。", "prior_design": "M22直接使用未定义来源的p_i。", "verdict": "加强", "revision": "新增M31连续分布到桶区间积分，并要求全桶归一与开口桶闭合。", "clause_refs": ["M08-M10", "M22", "M31"], "evidence_refs": ["E15"], "confidence": "规范性"},
+      {"id": "A17", "report_fact": "成都7/21的39C晚到由价格急跌Maker成交解释更强；7/22的42C重仓由低价份额杠杆和持续补单形成。", "prior_design": "个案逻辑未写入可泛化边界。", "verdict": "加强", "revision": "个案仅校验价格/库存/紧迫机制，不允许导出固定+2C、固定暖尾或固定限价。", "clause_refs": ["P05", "M23-M25", "M38-M39"], "evidence_refs": ["E23"], "confidence": "中高"},
+      {"id": "A18", "report_fact": "模型、TAF、实况、盘口、订单和截止时间在不同检查点改变目标或执行。", "prior_design": "触发条件散落在状态转换中。", "verdict": "加强", "revision": "新增M41检查点触发向量；无变化不重算，任一更新也不自动等于加仓。", "clause_refs": ["CHECKPOINT", "M41", "F5-F6"], "evidence_refs": ["E03", "E05", "E21"], "confidence": "中高"}
+    ]
+  },
+  "philosophy": [
+    {
+      "id": "P01",
+      "name": "交易分布，不交易单点预报",
+      "statement": "中心只是候选温标；实际决策同时需要宽度、偏置、价格、库存和结算合同。",
+      "implication": "任何单模型最高温不得直接等同于唯一重仓桶。"
+    },
+    {
+      "id": "P02",
+      "name": "先覆盖，再表达观点",
+      "statement": "覆盖底座处理模型分歧与结算离散化，方向预算只在底座之上制造可控凸起。",
+      "implication": "方向偏置不能吞噬使篮子保持可承受情景损失所需的底座资本。"
+    },
+    {
+      "id": "P03",
+      "name": "偏置是有期限的叠加层",
+      "statement": "偏上、偏下或中性必须绑定站点、日期、证据快照、置信度和TTL。",
+      "implication": "昨日暖向或站点长期冷差不能自动复制到下一目标日。"
+    },
+    {
+      "id": "P04",
+      "name": "模型没有永久王者",
+      "statement": "模型选择必须按站点、季节、运行时次和提前量校准，并允许当日离群闸门改变有效模型集合。",
+      "implication": "最低历史MAE只影响先验权重，不直接决定当日主桶。"
+    },
+    {
+      "id": "P05",
+      "name": "价格决定表达效率，不决定天气真值",
+      "statement": "模型、TAF和实况决定哪些桶可被允许；盘口与深度决定用多少成本、多少份额以及何时成交。",
+      "implication": "低价只能提高凸性倍数，不能单独把一个低概率桶变成高概率桶。"
+    },
+    {
+      "id": "P06",
+      "name": "成本与份额必须双账本",
+      "statement": "美元成本衡量资本暴露，结算份额衡量情景收益；二者在低价桶上会显著分离。",
+      "implication": "‘重仓’若不说明按成本还是按份额，属于无效策略语言。"
+    },
+    {
+      "id": "P07",
+      "name": "时间既产生信息，也提供成交选择权",
+      "statement": "分批建仓保留对模型、TAF、实况和盘口变化的响应空间，同时通过提前挂单争取更低有效价格。",
+      "implication": "不是第一时间建满并非犹豫，而是保留信息与执行期权。"
+    },
+    {
+      "id": "P08",
+      "name": "主桶是状态，不是身份",
+      "statement": "主成本桶会因同桶补仓、价格成交和目标库存变化而切换，即使已选温度带完全不变。",
+      "implication": "监控必须同时追踪扩桶和带内资金排序。"
+    },
+    {
+      "id": "P09",
+      "name": "彩票性来自收益曲线，不来自标签",
+      "statement": "低价边缘桶提供高每美元结算倍数，但只有在预算上限和情景损失可控时才是条件凸性。",
+      "implication": "边缘桶不能用‘彩票’一词豁免概率、价格、预算和证据审查。"
+    },
+    {
+      "id": "P10",
+      "name": "保本必须逐情景证明",
+      "statement": "只有对明确结果集合、有效成交价、费用和份额计算出的最低利润不小于零，才能称为条件保本。",
+      "implication": "覆盖多个桶或YES价格和小于1都不能自动证明全市场保本。"
+    },
+    {
+      "id": "P11",
+      "name": "未知订单状态优先于新观点",
+      "statement": "未决、部分成交或结果不明时，库存真值不闭合，系统应先对账而不是继续解释天气。",
+      "implication": "执行状态不确定必须fail closed。"
+    },
+    {
+      "id": "P12",
+      "name": "每个结论都要可过期",
+      "statement": "数据截面、模型运行、TAF有效窗、盘口快照和仓位状态都有时间边界。",
+      "implication": "没有as-of和lineage的结论不能进入决策。"
+    }
+  ],
+  "definitions": [
+    {"term": "目标日", "symbol": "d", "definition": "市场resolution contract指定的站点本地结算日期；不得与交易值班日混用。"},
+    {"term": "站点", "symbol": "s", "definition": "市场结算规则所绑定的气象站或明确地点，是模型、TAF、实况和历史误差对齐的最小空间单位。"},
+    {"term": "温度桶", "symbol": "b_i", "definition": "互斥的离散结算结果，带下界、上界、单位和边界包含规则。"},
+    {"term": "篮子", "symbol": "S", "definition": "同一站点与目标日中被选中的多个YES温度桶集合；默认要求连续或明确说明为何跨桶。"},
+    {"term": "候选中心", "symbol": "C", "definition": "经站点化模型组合、历史误差修正和可选TAF确认得到的连续温度中心，不等于最终主桶。"},
+    {"term": "模型包络", "symbol": "E_model", "definition": "同一as-of下有效模型预报最高温的最冷到最暖区间及其内部聚类。"},
+    {"term": "站点长期误差", "symbol": "bias(s,m,k,r,h)", "definition": "站点×模型×季节/天气型×运行时次×提前量下，历史实际日最高温减历史预报日最高温的误差分布；不是历史最高温的简单平均。"},
+    {"term": "方向偏置", "symbol": "D", "definition": "在候选中心和基础带宽确定后，对更高或更低结果的临时库存倾斜；取UP、DOWN或NEUTRAL并绑定强度与TTL。"},
+    {"term": "覆盖底座", "symbol": "K_base", "definition": "用于覆盖中心附近主要情景的资本与份额配置，目标是降低条件情景损失而不是保证全市场不亏。"},
+    {"term": "偏置预算", "symbol": "K_bias", "definition": "用于放大方向一致桶的额外资本上限，不能被包装成基础覆盖。"},
+    {"term": "边缘凸性预算", "symbol": "K_edge", "definition": "用于低价远端桶的受限资本，以换取高每美元结算倍数。"},
+    {"term": "主成本桶", "symbol": "b_cost*", "definition": "累计买入成本最大的桶。"},
+    {"term": "主份额桶", "symbol": "b_share*", "definition": "累计YES份额最大的桶；可能与主成本桶不同。"},
+    {"term": "扩桶", "symbol": "EXTEND", "definition": "相对上一闭合快照首次增加一个温度桶。"},
+    {"term": "同桶追补", "symbol": "REPLENISH", "definition": "不改变已选桶集合，只减少目标份额或目标成本缺口。"},
+    {"term": "补内部缺口", "symbol": "FILL_GAP", "definition": "在已选低端和高端之间增加此前未持有的中间桶，使温度带连续。"},
+    {"term": "形成成熟度", "symbol": "M", "definition": "从首笔成交起，结合相对时间、累计成本比例、已用检查点和桶数衡量篮子形成进度。"},
+    {"term": "有效成交价", "symbol": "a_i_eff", "definition": "按真实深度、费用和滑点计算的加权平均每份成本，不是单一最优卖一价。"},
+    {"term": "条件结算地板", "symbol": "Floor(S)", "definition": "只在明确结果集合S内计算的最低净利润；若赢家落在S外，完整篮子仍可能损失全部成本。"},
+    {"term": "证据新鲜度", "symbol": "Fresh", "definition": "模型、TAF、实况、盘口、持仓和订单状态相对各自TTL是否仍可用于当前决策。"},
+    {"term": "桶概率", "symbol": "p_i", "definition": "同一strict-as-of连续温度分布在温度桶区间上的概率质量；必须覆盖开口桶并使所有互斥桶概率和为1。"},
+    {"term": "目标模式", "symbol": "mode", "definition": "CAPITAL_FIRST先声明每桶成本目标再换算份额；SHARE_FIRST先声明情景份额目标再反算成本；两种模式都必须同时闭合成本与份额账本。"},
+    {"term": "订单clip", "symbol": "c_ij", "definition": "桶i第j个离散现金或份额订单族的原始目标规模；它与实际成交比例共同决定已成交成本。"},
+    {"term": "填单率", "symbol": "rho_ij", "definition": "某订单族已成交规模除以其可识别原始目标规模；只对至少部分成交且能匹配的订单可计算。"},
+    {"term": "历史参考价", "symbol": "p_ref", "definition": "prices-history等成交/参考序列在指定回看窗内的描述性价格；不是当时可执行bid/ask/depth、排队位置或对手限价。"},
+    {"term": "可执行盘口", "symbol": "Book_t", "definition": "同一时点官方订单簿的bid/ask逐档深度及新鲜度，是计算a_i_eff的唯一市场价格输入。"},
+    {"term": "形成检查点", "symbol": "X_t", "definition": "模型运行、TAF修订、实况推进、盘口变化、订单更新或截止时间跨阈值中的至少一项发生变化并触发复核的时点。"},
+    {"term": "嵌套窗口", "symbol": "W_nested", "definition": "共享同一结束日的3/7/15/30天累计窗口；用于比较观察长度，不用于直接判断按时间发生的策略迁移。"},
+    {"term": "互斥窗口", "symbol": "W_disjoint", "definition": "彼此无重叠的时间分段；用于描述演进，但仍需控制城市组合、天气难度、流动性与未结算选择。"}
+  ],
+  "architecture_layers": [
+    {
+      "level": "L0",
+      "name": "宪章与授权层",
+      "owns": "不可变原则、风险偏好、生产授权、禁止事项和变更治理",
+      "inputs": "本文件的研究结论与独立审批",
+      "outputs": "允许的策略族、资本上限、fail-closed规则",
+      "must_not": "直接消费盘口或生成订单"
+    },
+    {
+      "level": "L1",
+      "name": "本体与合同层",
+      "owns": "站点、目标日、结算来源、温度桶、单位、边界、时区和数据lineage",
+      "inputs": "市场合同与官方来源登记",
+      "outputs": "唯一market contract和bucket map",
+      "must_not": "把预测值冒充结算真值"
+    },
+    {
+      "level": "L2",
+      "name": "证据层",
+      "owns": "模型运行、TAF修订、官方实况、站点历史误差、盘口和深度的各自事实",
+      "inputs": "带as-of的不可变原始数据",
+      "outputs": "标准化证据快照与质量标记",
+      "must_not": "跨源无lineage覆盖或用未来数据回填当时决策"
+    },
+    {
+      "level": "L3",
+      "name": "信念与候选层",
+      "owns": "站点化中心、模型分歧、总不确定度、方向偏置对象和有效期",
+      "inputs": "L2天气证据，不含盘口价格作为天气真值",
+      "outputs": "C、sigma_total、D、confidence、TTL",
+      "must_not": "直接生成下单数量"
+    },
+    {
+      "level": "L4",
+      "name": "组合与配仓层",
+      "owns": "选桶带、覆盖/偏置/边缘预算、成本目标、份额目标和情景PnL",
+      "inputs": "L3候选分布、L1桶合同、风险预算与只读可执行价格",
+      "outputs": "版本化target inventory plan",
+      "must_not": "把目标计划当作已成交持仓"
+    },
+    {
+      "level": "L5",
+      "name": "执行与订单层",
+      "owns": "真实深度、限价、分批、订单ID、成交、撤单、部分成交和对账",
+      "inputs": "L4计划与官方CLOB证据",
+      "outputs": "intent、order、fill和working inventory事实",
+      "must_not": "重算天气中心或静默重试未知订单"
+    },
+    {
+      "level": "L6",
+      "name": "风险与状态机层",
+      "owns": "资本预留、情景损失、集中度、新鲜度、状态转换、停牌和reconcile",
+      "inputs": "L1-L5的原子事实",
+      "outputs": "ALLOW、HOLD、STOP、RECONCILE_REQUIRED",
+      "must_not": "在事实不闭合时降级放行"
+    },
+    {
+      "level": "L7",
+      "name": "审计与研究层",
+      "owns": "不可变快照、指标、归因、回放、验证、版本晋级和退役",
+      "inputs": "全链路lineage与结算结果",
+      "outputs": "可复算报告、参数候选与晋级证据",
+      "must_not": "以离线结论绕过生产授权"
+    }
+  ],
+  "charter_articles": [
+    {"article": 1, "title": "结算合同先于预测", "rule": "未冻结站点、目标日、单位、桶边界和resolution source，不得选桶或计算PnL。"},
+    {"article": 2, "title": "天气事实与市场事实分域", "rule": "天气中心不得读取盘口或钱包；执行价格不得反向改写天气证据。"},
+    {"article": 3, "title": "站点化而非全球固定模型", "rule": "模型权重必须至少可按站点、季节、运行时次和提前量区分；跨站方向只有通过M42迁移闸门才能作为弱先验，禁止机械复制。"},
+    {"article": 4, "title": "离群闸门必须显式", "rule": "当日模型分裂若触发离群处理，必须保存触发原因、被降权模型和反事实中心。"},
+    {"article": 5, "title": "TAF只能在有效窗内使用", "rule": "TAF TX必须绑定issue、原始修订链、validity和目标峰值覆盖；有效窗已越过日峰或覆盖缺失时alpha_taf必须为0。"},
+    {"article": 6, "title": "偏置必须是对象", "rule": "每个方向偏置必须包含方向、强度、证据、置信度、创建时点、TTL和撤销条件。"},
+    {"article": 7, "title": "覆盖、偏置、边缘三本预算", "rule": "K_base、K_bias、K_edge独立记账，任何一项不得通过重命名突破总资本上限。"},
+    {"article": 8, "title": "成本与份额双账本", "rule": "每桶必须同时保存成本、份额、均价、成本占比和份额占比；目标模式必须显式声明并通过M32双残差校验。"},
+    {"article": 9, "title": "保本逐情景证明", "rule": "只有费用后最小情景利润非负且结果集合明确，才可使用‘条件保本’；不得使用无条件‘保本’标签。"},
+    {"article": 10, "title": "分阶段建仓", "rule": "首建、检查点复核、扩腿、同桶追补和停止加仓必须是不同动作；形成成熟度不得压缩成单一成本百分比。"},
+    {"article": 11, "title": "加仓来自目标缺口", "rule": "价格上涨、下跌、同价，模型更新或新报文本身都不是充分条件；只有新计划下的正库存缺口、目标一致性和正边际得分才能加仓。"},
+    {"article": 12, "title": "未知订单先对账", "rule": "提交结果未知、部分成交或订单事实冲突时，状态进入RECONCILE_REQUIRED并阻断新增。"},
+    {"article": 13, "title": "只用当时可见信息", "rule": "任何回测、归因或参数晋级必须满足strict-as-of，禁止未来模型运行、修订TAF或最终盘口泄漏；历史角色回补只修正归类，不计为时间新增。"},
+    {"article": 14, "title": "推断不等于生产授权", "rule": "对手行为的强关联推断只能产生研究候选，必须经过独立回放、风控和审批才能成为生产规则。"},
+    {"article": 15, "title": "全部动作可追溯", "rule": "计划、intent、订单、成交、持仓和结算必须绑定同一决策版本与证据快照。"},
+    {"article": 16, "title": "变更原子化", "rule": "模型、公式、阈值、资本上限和状态机版本不得热拼接；晋级和回滚必须按完整版本执行。"},
+    {"article": 17, "title": "沉默失败禁止", "rule": "证据过期、可执行盘口缺失、深度不足、预算冲突和PnL无法闭合都必须产生明确阻断原因；历史参考价不得替代盘口放行。"},
+    {"article": 18, "title": "研究与生产隔离", "rule": "本研究宪章不修改现有L0生产宪章、不启动服务、不提交订单，也不构成复制对手策略的授权。"}
+  ],
+  "strategy_language": {
+    "purpose": "用少量受控原语表达选桶、偏置、配仓和执行，而不是让自然语言直接驱动下单。",
+    "primitives": [
+      {"token": "CONTRACT", "meaning": "冻结站点、目标日、resolution source和bucket map"},
+      {"token": "CENTER", "meaning": "声明候选中心及其lineage"},
+      {"token": "DISTRIBUTION", "meaning": "声明连续温度分布、桶概率和归一校验"},
+      {"token": "WIDTH", "meaning": "声明带宽或连续桶数量"},
+      {"token": "BIAS", "meaning": "声明UP/DOWN/NEUTRAL、强度、置信度与TTL"},
+      {"token": "BUDGET", "meaning": "声明BASE/BIAS/EDGE三类资本上限"},
+      {"token": "MODE", "meaning": "声明CAPITAL_FIRST或SHARE_FIRST目标模式"},
+      {"token": "TARGET", "meaning": "同时声明每桶目标成本、目标份额和最大有效价格"},
+      {"token": "CHECKPOINT", "meaning": "冻结触发向量、形成成熟度和复核时点"},
+      {"token": "QUOTE", "meaning": "冻结官方可执行bid/ask/depth及TTL"},
+      {"token": "CLIP", "meaning": "声明离散订单族规模、Maker/Taker与期限"},
+      {"token": "SEED", "meaning": "首次建立核心腿"},
+      {"token": "EXTEND", "meaning": "增加低端、高端或内部缺口桶"},
+      {"token": "REPLENISH", "meaning": "对已存在桶补目标库存"},
+      {"token": "REVIEW", "meaning": "在检查点重新计算目标但不自动生成加仓"},
+      {"token": "HOLD", "meaning": "保持持仓且不新增"},
+      {"token": "STOP", "meaning": "停止本轮新增，不等于卖出"},
+      {"token": "RECONCILE", "meaning": "闭合未知订单、成交和库存事实"},
+      {"token": "SETTLE", "meaning": "按官方结果计算逐情景与实际PnL"}
+    ],
+    "grammar": [
+      "PLAN := CONTRACT EVIDENCE CENTER DISTRIBUTION WIDTH BIAS BUDGET MODE TARGET*",
+      "EVIDENCE := MODEL_SET [TAF] [OBSERVATION] HISTORY BOOK",
+      "BIAS := UP(strength, confidence, ttl) | DOWN(strength, confidence, ttl) | NEUTRAL",
+      "CHECKPOINT := delta(model, taf, observation, book, order, deadline)",
+      "ACTION := REVIEW | SEED | EXTEND_LOW | EXTEND_HIGH | FILL_GAP | REPLENISH | HOLD | STOP | RECONCILE",
+      "ORDER := ACTION bucket CLIP quantity limit_price maker_or_taker evidence_id plan_version",
+      "TRANSITION := state + trigger + guards -> action + next_state"
+    ],
+    "example": [
+      "CONTRACT ZUUU 2026-07-23 C buckets[40,41,42]",
+      "CENTER 40.3 source=station_calibrated_model_cluster",
+      "DISTRIBUTION p40=P40 p41=P41 p42=P42 normalization=PASS",
+      "WIDTH contiguous count=3 reason=model_dispersion",
+      "BIAS UP strength=0.62 confidence=MEDIUM ttl=6h",
+      "BUDGET BASE=K_base BIAS=K_bias EDGE=K_edge total<=K_max",
+      "MODE SHARE_FIRST",
+      "TARGET 40C cost=k40 shares=q40 max_price=a40_max dual_residual=PASS",
+      "CHECKPOINT delta_book=1 delta_deadline=0 maturity=M quote_id=Q",
+      "CLIP 42C cash=c42 maker ttl=15m",
+      "REVIEW then REPLENISH 42C quantity=gap42 limit_price=a42_max evidence_id=EVID plan_version=V"
+    ]
+  },
+  "formulas": [
+    {
+      "id": "M01",
+      "name": "站点模型单日误差",
+      "class": "数据定义",
+      "formula": "e(s,m,d,r,h) = T_actual(s,d) - T_forecast(s,m,d,r,h)",
+      "variables": "s站点；m模型；d目标日；r运行时次；h提前量；正值表示模型偏冷。",
+      "use": "构造站点×模型×季节×时次×提前量误差分布。",
+      "boundary": "T_actual必须是冻结resolution口径下的历史日最高温，不得用预报页面最高温代替。"
+    },
+    {
+      "id": "M02",
+      "name": "带时间衰减的历史误差",
+      "class": "候选估计式",
+      "formula": "bias_raw = sum_t[exp(-age_t/tau) * e_t] / sum_t[exp(-age_t/tau)]",
+      "variables": "tau为半衰尺度接口；age_t为样本距目标日的时间。",
+      "use": "让近期同季节误差比远期样本权重更高。",
+      "boundary": "tau必须离线验证；短样本不能称为长期误差。"
+    },
+    {
+      "id": "M03",
+      "name": "站点误差收缩",
+      "class": "候选估计式",
+      "formula": "bias_shrunk = n/(n+kappa) * bias_raw + kappa/(n+kappa) * bias_parent",
+      "variables": "n为有效样本量；kappa为收缩强度；bias_parent为城市群/气候区/全局先验。",
+      "use": "避免小样本站点产生极端固定上修或下修。",
+      "boundary": "kappa属于版本化参数，不能按单日盈亏临时改动。"
+    },
+    {
+      "id": "M04",
+      "name": "模型可靠度权重",
+      "class": "候选估计式",
+      "formula": "w_m = rel_m * exp(-lambda * MAE_m) / sum_j[rel_j * exp(-lambda * MAE_j)]",
+      "variables": "rel_m为数据完整性/新鲜度系数；lambda控制MAE差异的放大程度。",
+      "use": "把历史表现转化为先验权重而不是永久赢家。",
+      "boundary": "权重必须按站点、季节、时次和提前量分层；不能只用全局MAE。"
+    },
+    {
+      "id": "M05",
+      "name": "当日模型离群闸门",
+      "class": "候选决策式",
+      "formula": "g_m = 1 if abs(F_m - median(F)) <= q_outlier else gamma_outlier",
+      "variables": "gamma_outlier在[0,1]；q_outlier为当日分裂阈值。",
+      "use": "允许双模型聚类在特定日期降低离群模型影响。",
+      "boundary": "报告只支持‘候选离群闸门’，不支持已识别精确q_outlier。"
+    },
+    {
+      "id": "M06",
+      "name": "站点化候选中心",
+      "class": "候选决策式",
+      "formula": "C_model = sum_m[w_m * g_m * (F_m + bias_shrunk_m)] / sum_m[w_m * g_m]",
+      "variables": "F_m为同一as-of下的目标日最高温预报。",
+      "use": "得到模型与站点误差共同校准的连续中心。",
+      "boundary": "不能把C_model直接四舍五入后视为唯一主桶。"
+    },
+    {
+      "id": "M07",
+      "name": "TAF有效性混合",
+      "class": "候选决策式",
+      "formula": "C = (1-alpha_taf) * C_model + alpha_taf * TAF_TX",
+      "variables": "alpha_taf = coverage * validity * freshness * calibrated_skill，范围[0,1]。",
+      "use": "TAF在有效窗、覆盖完整且经校准时作为二级锚。",
+      "boundary": "TAF覆盖缺失或有效窗越过日峰时alpha_taf必须降为0。"
+    },
+    {
+      "id": "M08",
+      "name": "总不确定度",
+      "class": "候选估计式",
+      "formula": "sigma_total^2 = sigma_model^2 + sigma_station^2 + sigma_obs^2 + sigma_resolution^2",
+      "variables": "分别代表模型分歧、站点残差、实况未成熟度和结算映射误差。",
+      "use": "把选桶带宽与多种不确定性绑定。",
+      "boundary": "各项相关时不得机械平方相加，应改用协方差矩阵。"
+    },
+    {
+      "id": "M09",
+      "name": "连续选桶带",
+      "class": "候选决策式",
+      "formula": "S(z) = {b_i: interval(b_i) intersects [C - z*sigma_total, C + z*sigma_total]}",
+      "variables": "z由目标覆盖率和资本约束决定。",
+      "use": "把中心与总不确定度投影到离散桶。",
+      "boundary": "S默认连续；若跨桶必须单独记录内部缺口理由。"
+    },
+    {
+      "id": "M10",
+      "name": "选桶集合优化",
+      "class": "候选优化式",
+      "formula": "S* = argmax_S [CoverageProb(S) - lam_width*|S| - lam_cost*Cost(S) - lam_gap*GapPenalty(S)]",
+      "variables": "S受连续性、预算、深度和结算合同约束。",
+      "use": "在覆盖、桶数、成本和内部缺口之间做显式权衡。",
+      "boundary": "lambda参数必须离线晋级；不可用单次事件反推。"
+    },
+    {
+      "id": "M11",
+      "name": "方向偏置分数",
+      "class": "候选决策式",
+      "formula": "D = beta1*z_cluster + beta2*z_taf + beta3*z_station + beta4*z_cross_station - beta5*z_maturity_risk",
+      "variables": "各z项必须是同as-of标准化信号；D>tau_up为UP，D<tau_down为DOWN，否则NEUTRAL。",
+      "use": "把方向偏置从隐含形容词变成有门槛的对象。",
+      "boundary": "7/22跨站暖向只支持cross_station信号候选，不提供精确beta或tau。"
+    },
+    {
+      "id": "M12",
+      "name": "偏置强度与TTL",
+      "class": "硬接口",
+      "formula": "BiasObject = (direction, strength=clip(abs(D),0,1), confidence, created_at, expires_at, invalidators)",
+      "variables": "invalidators包括新模型聚类反转、TAF撤销、实况硬下界冲突和证据过期。",
+      "use": "保证偏置可撤销、可过期、可审计。",
+      "boundary": "没有expires_at的偏置对象不得进入配仓。"
+    },
+    {
+      "id": "M13",
+      "name": "成本中心与份额中心",
+      "class": "数据定义",
+      "formula": "mu_cost = sum_i[q_i*a_i*t_i]/sum_i[q_i*a_i]; mu_share = sum_i[q_i*t_i]/sum_i[q_i]",
+      "variables": "q_i为YES份额；a_i为有效均价；t_i为桶中心。",
+      "use": "区分资本重心与情景收益重心。",
+      "boundary": "开口桶需采用冻结代表值或区间方法并显式标记。"
+    },
+    {
+      "id": "M14",
+      "name": "中心偏移",
+      "class": "数据定义",
+      "formula": "offset_share = mu_share - C; offset_cost = mu_cost - C",
+      "variables": "正值为相对候选中心偏上。",
+      "use": "描述方向与配仓形态。",
+      "boundary": "若C不是同时点中心，只能称桶内偏移，不能称天气模型偏差。"
+    },
+    {
+      "id": "M15",
+      "name": "三本资本预算",
+      "class": "硬约束",
+      "formula": "K_total = K_base + K_bias + K_edge <= K_max",
+      "variables": "三类预算独立预留、独立归因。",
+      "use": "防止边缘凸性或方向偏置吞噬覆盖底座。",
+      "boundary": "报告无法识别三者精确比例，因此本版不提供默认百分比。"
+    },
+    {
+      "id": "M16",
+      "name": "每桶目标成本与目标份额",
+      "class": "候选配仓式",
+      "formula": "CAPITAL_FIRST: k_i*=K_base*u_i^k+K_bias*v_i^k(D)+K_edge*x_i^k, q_i*=k_i*/a_i_eff; SHARE_FIRST: q_i*=Q_base*u_i^q+Q_bias*v_i^q(D)+Q_edge*x_i^q, k_i*=q_i* a_i_eff",
+      "variables": "mode必须显式；u、v、x分别是成本或份额空间中的归一权重。",
+      "use": "同时支持资本目标优先和情景份额目标优先，避免把观察到的成本凸起误当成唯一目标函数。",
+      "boundary": "两种模式都必须通过M32成本/份额双残差、预算、桶级上限和逐情景PnL校验。"
+    },
+    {
+      "id": "M17",
+      "name": "每美元凸性倍数",
+      "class": "数据定义",
+      "formula": "convexity_i = (1 - a_i_eff) / a_i_eff",
+      "variables": "若投入1美元且桶i获胜，忽略费用时净利润倍数。",
+      "use": "量化低价边缘桶的彩票形收益。",
+      "boundary": "高凸性通常伴随低命中概率，不能单独作为买入理由。"
+    },
+    {
+      "id": "M18",
+      "name": "逐情景篮子利润",
+      "class": "硬核算式",
+      "formula": "PnL(j) = q_j - sum_i[q_i*a_i_eff] - fees if j in S; else -sum_i[q_i*a_i_eff] - fees",
+      "variables": "j为最终赢家桶；S为已选YES桶集合。",
+      "use": "计算每个结算情景的净利润。",
+      "boundary": "必须使用真实份额和all-in成本，不能用平均价和总份额的错误乘积。"
+    },
+    {
+      "id": "M19",
+      "name": "条件结算地板",
+      "class": "硬约束",
+      "formula": "Floor(S) = min_j_in_S[PnL(j)]; conditionally_protected iff Floor(S) >= 0",
+      "variables": "只对赢家位于S内的情景成立。",
+      "use": "严格定义何时可以说条件保本。",
+      "boundary": "若赢家落在S外，损失仍可能等于全部成本与费用。"
+    },
+    {
+      "id": "M20",
+      "name": "等份篮子价差",
+      "class": "硬核算式",
+      "formula": "For q_i=q: PnL(j in S) = q*(1 - sum_i[a_i_eff]) - fees",
+      "variables": "仅在每桶购买相同份额q时成立。",
+      "use": "解释为何sum(all-in YES ask)<1可产生选中集合内地板。",
+      "boundary": "不同份额、深度滑点或集合外赢家会破坏该简式。"
+    },
+    {
+      "id": "M21",
+      "name": "库存缺口",
+      "class": "硬接口",
+      "formula": "gap_i = max(0, q_i_target - q_i_filled - q_i_working)",
+      "variables": "working必须只计可确认仍有效的挂单数量。",
+      "use": "把加仓定义为目标库存的未满足部分。",
+      "boundary": "订单状态未知时q_i_working不可信，必须先RECONCILE。"
+    },
+    {
+      "id": "M22",
+      "name": "边际加仓期望值",
+      "class": "候选诊断式",
+      "formula": "DeltaEV_i(dq) = dq*(p_i - a_i_eff) - fees_i(dq) - slippage_i(dq)",
+      "variables": "p_i由M31从不含盘口反馈的连续温度分布投影；dq为拟新增份额。",
+      "use": "衡量新增一小批份额的概率价值。",
+      "boundary": "覆盖底座可能接受局部负DeltaEV以改善情景地板，因此不能只看EV。"
+    },
+    {
+      "id": "M23",
+      "name": "边际加仓综合得分",
+      "class": "候选决策式",
+      "formula": "Score_i = w_ev*DeltaEV_i + w_gap*GapNorm_i + w_floor*DeltaFloor_i + w_bias*Align_i - w_stale*Stale_i - w_conc*DeltaConcentration_i",
+      "variables": "各项必须标准化且绑定版本。",
+      "use": "统一回答什么时候补、加仓或不加。",
+      "boundary": "Score_i>tau只是候选门槛，还必须通过预算、深度、新鲜度和订单闭合硬门。"
+    },
+    {
+      "id": "M24",
+      "name": "真实深度有效价格",
+      "class": "硬核算式",
+      "formula": "a_i_eff(Q) = [sum_l price_l * fill_l(Q) + fees(Q)] / Q",
+      "variables": "沿卖盘逐档吃到目标份额Q。",
+      "use": "替代仅用best ask的虚假可执行成本。",
+      "boundary": "盘口快照过期或深度不足时不得输出可执行计划。"
+    },
+    {
+      "id": "M25",
+      "name": "限价上限",
+      "class": "候选执行式",
+      "formula": "limit_i_max = min(fair_i - edge_min, floor_preserving_price_i, budget_affordable_price_i)",
+      "variables": "fair_i来自天气概率；另外两项来自组合地板和预算。",
+      "use": "把证据、组合和资本约束转化为挂单价格上限。",
+      "boundary": "报告只能观察成交价，不能识别对手真实edge_min或挂单队列策略。"
+    },
+    {
+      "id": "M26",
+      "name": "成本与份额集中度",
+      "class": "诊断定义",
+      "formula": "HHI_cost = sum_i[(cost_i/Cost)^2]; HHI_share = sum_i[(q_i/Q)^2]",
+      "variables": "范围(0,1]，越高越集中。",
+      "use": "监控首建集中、后续扩腿和带内主仓切换。",
+      "boundary": "不同桶数的HHI需与1/|S|基线比较。"
+    },
+    {
+      "id": "M27",
+      "name": "最大情景损失",
+      "class": "硬风险式",
+      "formula": "L_max = max_j[-PnL(j)] over all contract outcomes j",
+      "variables": "包括S外赢家、费用和未决订单保守占用。",
+      "use": "给总资本和边缘桶设置上限。",
+      "boundary": "若未覆盖全部市场桶，S外情景必须进入计算。"
+    },
+    {
+      "id": "M28",
+      "name": "路径PnL分解",
+      "class": "诊断定义",
+      "formula": "PnL_total = PnL_base + PnL_bias + PnL_edge - execution_cost - fees",
+      "variables": "各分量用冻结的反事实基线计划计算。",
+      "use": "区分覆盖底座、方向观点、边缘凸性与执行质量。",
+      "boundary": "分解依赖反事实定义，不等于账户会计已实现收益。"
+    },
+    {
+      "id": "M29",
+      "name": "停止加仓判定",
+      "class": "硬状态式",
+      "formula": "ADD_i = 1 iff CheckpointChanged=1 and gap_i>0 and Score_i>tau and TargetConsistent=1 and Fresh=1 and BudgetOK=1 and DepthOK=1 and OrdersClosed=1",
+      "variables": "任一硬门失败即ADD_i=0。",
+      "use": "明确什么时候会不加仓。",
+      "boundary": "STOP只停止新增，不自动意味着卖出或策略反向。"
+    },
+    {
+      "id": "M30",
+      "name": "偏置归因增益",
+      "class": "验证定义",
+      "formula": "Gain_bias = Metric(strategy_with_bias) - Metric(same_system_neutral_bias)",
+      "variables": "必须保持选桶、价格、资本、时间和执行规则可比。",
+      "use": "检验方向偏置是否真的增加PnL、命中或风险调整收益。",
+      "boundary": "不能把全账户结果与不同时间、不同覆盖策略直接比较。"
+    },
+    {
+      "id": "M31",
+      "name": "连续分布投影为桶概率",
+      "class": "硬接口",
+      "formula": "p_i = integral_[L_i,U_i] f_s,d(T | Evidence_asof) dT; p_i>=0; sum_i p_i=1",
+      "variables": "[L_i,U_i]按MarketContract定义；开口桶使用负/正无穷边界；f不得吸收盘口价格。",
+      "use": "为选桶覆盖率、fair_i和DeltaEV提供同源、归一的离散概率。",
+      "boundary": "分布族、尾部和协方差需严格前推校准；概率不是从成交价反推。",
+      "evidence_refs": ["E15"]
+    },
+    {
+      "id": "M32",
+      "name": "成本与份额双目标一致性",
+      "class": "硬约束",
+      "formula": "R_k=max_i|k_i_target-q_i_target*a_i_eff|; R_q=max_i|q_i_target-k_i_target/a_i_eff|; TargetConsistent=1 iff R_k<=eps_k and R_q<=eps_q and sum_i k_i_target<=K_max",
+      "variables": "eps_k、eps_q为版本化数值容差；有效价必须来自同一盘口快照。",
+      "use": "防止资本优先和份额优先在不同价格或版本上各自成立却彼此矛盾。",
+      "boundary": "任何一项残差超限时只能重算计划，不得通过四舍五入静默放行。",
+      "evidence_refs": ["E09", "E10"]
+    },
+    {
+      "id": "M33",
+      "name": "形成成熟度向量",
+      "class": "数据定义",
+      "formula": "M_t=(elapsed_since_first_fill, cumulative_cost/final_or_target_cost, selected_bucket_count/target_bucket_count, checkpoint_count, unresolved_order_count)",
+      "variables": "历史事件可用最终成本；形成中事件只能用当时目标成本并标记unresolved。",
+      "use": "区分形成早晚、资本进度、桶覆盖、信息检查点和订单闭合程度。",
+      "boundary": "M_t是向量而非单一百分比；形成中事件不得使用未来最终成本或赢家。",
+      "evidence_refs": ["E03", "E04", "E21", "E22"]
+    },
+    {
+      "id": "M34",
+      "name": "同成熟度历史基线",
+      "class": "验证定义",
+      "formula": "Baseline_s(M_t)=distribution{metric_e(cutoff=first_fill_e+elapsed_s,t) | station=s, event_date<d}; percentile_t=ECDF_Baseline(metric_t)",
+      "variables": "按站点使用与当前事件相同的形成经过时长裁切历史事件。",
+      "use": "判断当前偏置或扩桶是否只是形成尚早，避免把未完成篮子与历史最终仓位直接比较。",
+      "boundary": "只提供描述性异常度；当前未结算事件不赋赢家或PnL。",
+      "evidence_refs": ["E21", "E22"]
+    },
+    {
+      "id": "M35",
+      "name": "嵌套窗口统计",
+      "class": "诊断定义",
+      "formula": "theta_nested(W)=A({e: d-W<date_e<=d}); W in {3,7,15,30}",
+      "variables": "A为固定定义的事件级聚合；较长窗口包含较短窗口。",
+      "use": "比较不同观察长度下的策略形态和经济性。",
+      "boundary": "theta_nested(W1)-theta_nested(W2)不是时间变化量，不得据此宣称策略版本切换。",
+      "evidence_refs": ["E19"]
+    },
+    {
+      "id": "M36",
+      "name": "互斥分段演进",
+      "class": "验证定义",
+      "formula": "theta_r=A(E_r), E_r intersect E_k=empty for r!=k; Delta_r=theta_r-theta_(r-1)",
+      "variables": "本报告E_r依次为16-30天前、8-15天前、4-7天前、最近3天。",
+      "use": "描述真实时间段之间的策略演进与方向折返。",
+      "boundary": "Delta仍是描述性差异，需控制城市组合、天气难度、流动性和未结算选择后才能归因代码变更。",
+      "evidence_refs": ["E19"]
+    },
+    {
+      "id": "M37",
+      "name": "离散clip与填单成本",
+      "class": "数据定义",
+      "formula": "filled_cost_i=sum_j(c_ij*rho_ij); rho_ij=filled_notional_ij/identified_original_notional_ij; cash_core=argmax_i(filled_cost_i)",
+      "variables": "c_ij为订单族原始现金clip；rho_ij范围[0,1]。",
+      "use": "解释主成本桶由更多订单尝试、填单率和后续补单累积形成，而非单笔规模更大。",
+      "boundary": "从未成交或已撤销的链下订单不可见，不能把已成交订单数等同全部下单意图。",
+      "evidence_refs": ["E12", "E17"]
+    },
+    {
+      "id": "M38",
+      "name": "Maker转Taker紧迫度",
+      "class": "候选执行式",
+      "formula": "U_i(t)=w_d*DeadlinePressure(t)+w_g*GapNorm_i+w_f*(1-FillRate_i)-w_p*AggressivePremium_i; use_taker iff U_i>tau_U and a_i_eff_taker<=limit_i_max",
+      "variables": "DeadlinePressure随剩余时间缩短上升；AggressivePremium是主动成交相对Maker目标价的成本。",
+      "use": "把等待低价与及时补足目标库存之间的权衡显式化。",
+      "boundary": "报告只支持候选机制，不识别精确权重或tau_U；不存在正缺口时不得因临近截止主动买。",
+      "evidence_refs": ["E17", "E23"]
+    },
+    {
+      "id": "M39",
+      "name": "成交相对参考价偏离",
+      "class": "诊断定义",
+      "formula": "delta_ref_i(t)=p_fill_i(t)-p_ref_i(t;lookback); executable=false unless contemporaneous Book_t exists",
+      "variables": "p_ref来自成交/参考序列；Book_t是同一时点官方逐档盘口。",
+      "use": "描述Maker成交发生在参考序列上方或下方，并与个案时间线对齐。",
+      "boundary": "delta_ref不能证明挂单时点、最大限价、队列位置或可执行滑点。",
+      "evidence_refs": ["E20", "E23"]
+    },
+    {
+      "id": "M40",
+      "name": "形成后新订单族占比",
+      "class": "数据定义",
+      "formula": "R_new=late_cost_from_first_seen_order_hashes/late_total_cost",
+      "variables": "first_seen仅指此前成交记录中未出现的订单哈希。",
+      "use": "区分旧订单继续漏斗式成交与形成后新订单族贡献。",
+      "boundary": "新哈希不必然等于新观点，可能是补单、改单、过期重挂或执行重试。",
+      "evidence_refs": ["E05"]
+    },
+    {
+      "id": "M41",
+      "name": "检查点触发向量",
+      "class": "硬接口",
+      "formula": "X_t=(Delta_model,Delta_taf,Delta_observation,Delta_book,Delta_order,Delta_deadline); CheckpointChanged=1 iff any component crosses its versioned materiality threshold",
+      "variables": "每个分量保存旧值、新值、as_of、lineage、阈值和触发原因。",
+      "use": "统一触发REVIEW，随后才重算中心、目标、缺口和执行。",
+      "boundary": "检查点变化只是复核条件，不是加仓充分条件；无变化时禁止定时器制造虚假新计划。",
+      "evidence_refs": ["E03", "E05", "E21"]
+    },
+    {
+      "id": "M42",
+      "name": "跨站方向迁移闸门",
+      "class": "硬约束",
+      "formula": "Transfer(s0->s,d)=1 iff same_regime=1 and station_calibration_s_valid=1 and sign_consistency>=tau_sign and effect_stability>=tau_stability; otherwise cross_station_signal=0",
+      "variables": "same_regime需在当时可见证据上定义；站点自身校准始终优先。",
+      "use": "防止把成都、八站组合或账户级近期方向直接复制到另一站点。",
+      "boundary": "当前证据不足以标定tau_sign和tau_stability；7/22跨站暖向只能作为弱日期regime候选。",
+      "evidence_refs": ["E14", "E19", "E22"]
+    }
+  ],
+  "states": [
+    {"state": "UNBOUND", "meaning": "市场合同或来源未冻结", "allowed": "补合同", "forbidden": "计算中心、下单"},
+    {"state": "EVIDENCE_READY", "meaning": "证据快照完整且新鲜", "allowed": "计算C、sigma、D", "forbidden": "跳过L3直接下单"},
+    {"state": "PLAN_READY", "meaning": "桶、预算、目标库存和情景PnL闭合", "allowed": "生成intent", "forbidden": "把计划计为持仓"},
+    {"state": "CORE_SEEDING", "meaning": "首次建立核心覆盖腿", "allowed": "按批次SEED", "forbidden": "无上限一次建满"},
+    {"state": "COVERAGE_EXPANDING", "meaning": "增加低/高/内部缺口桶", "allowed": "EXTEND", "forbidden": "不重算情景PnL扩桶"},
+    {"state": "INVENTORY_REPLENISHING", "meaning": "温度带不变但目标缺口为正", "allowed": "REPLENISH", "forbidden": "把补库存描述为重新选带"},
+    {"state": "MATURE_HOLD", "meaning": "无正缺口或新增边际不足", "allowed": "HOLD、监控", "forbidden": "因无成交自动推断观点消失"},
+    {"state": "STOPPED", "meaning": "预算、新鲜度、深度、成熟度或风险门阻断新增", "allowed": "等待新检查点", "forbidden": "静默绕过阻断"},
+    {"state": "RECONCILE_REQUIRED", "meaning": "订单、成交或库存事实不闭合", "allowed": "只做对账", "forbidden": "任何新增intent"},
+    {"state": "SETTLED", "meaning": "官方结果锁定并完成PnL归因", "allowed": "审计、复盘、研究晋级", "forbidden": "用结算后信息改写当时证据"}
+  ],
+  "transitions": [
+    {"from": "UNBOUND", "trigger": "合同与来源冻结", "guards": "bucket map完整", "action": "建立L1合同", "to": "EVIDENCE_READY"},
+    {"from": "EVIDENCE_READY", "trigger": "证据齐备", "guards": "as-of、lineage、新鲜度、桶概率归一通过", "action": "计算中心、宽度、偏置、目标模式、预算和情景PnL", "to": "PLAN_READY"},
+    {"from": "PLAN_READY", "trigger": "存在核心桶正缺口", "guards": "目标双残差/预算/真实深度/订单闭合", "action": "按离散CLIP执行SEED", "to": "CORE_SEEDING"},
+    {"from": "CORE_SEEDING", "trigger": "X_t检查点变化", "guards": "先REVIEW且带宽应扩大、边际风险通过", "action": "EXTEND_LOW/HIGH/FILL_GAP", "to": "COVERAGE_EXPANDING"},
+    {"from": "CORE_SEEDING", "trigger": "X_t变化且温度带不变", "guards": "REVIEW后缺口、目标一致性、Score与硬门通过", "action": "REPLENISH", "to": "INVENTORY_REPLENISHING"},
+    {"from": "COVERAGE_EXPANDING", "trigger": "全部当前目标缺口归零", "guards": "无working/未知订单", "action": "HOLD", "to": "MATURE_HOLD"},
+    {"from": "INVENTORY_REPLENISHING", "trigger": "目标缺口归零或边际得分失效", "guards": "库存闭合", "action": "HOLD", "to": "MATURE_HOLD"},
+    {"from": "MATURE_HOLD", "trigger": "X_t变化后产生新目标缺口", "guards": "REVIEW、计划版本更新且全部硬门通过", "action": "EXTEND或REPLENISH", "to": "COVERAGE_EXPANDING"},
+    {"from": "ANY_ACTIVE", "trigger": "证据过期、预算冲突、深度不足或风险超限", "guards": "任一硬门失败", "action": "STOP", "to": "STOPPED"},
+    {"from": "ANY_ACTIVE", "trigger": "订单结果未知或库存冲突", "guards": "事实不闭合", "action": "RECONCILE", "to": "RECONCILE_REQUIRED"},
+    {"from": "RECONCILE_REQUIRED", "trigger": "订单和库存唯一闭合", "guards": "审计通过", "action": "重算计划", "to": "PLAN_READY"},
+    {"from": "ANY_NON_SETTLED", "trigger": "官方结算锁定", "guards": "resolution source确认", "action": "SETTLE与归因", "to": "SETTLED"}
+  ],
+  "flows": [
+    {
+      "phase": "F0 合同绑定",
+      "goal": "先确定交易的真值和离散化规则",
+      "steps": ["登记站点和本地目标日", "冻结resolution source与时区", "冻结温度单位、桶边界和开口桶表示", "生成contract_id与bucket_map_hash"],
+      "exit_gate": "合同完整且唯一"
+    },
+    {
+      "phase": "F1 证据快照",
+      "goal": "形成严格as-of的天气和市场事实",
+      "steps": ["抓取同一初始化口径且证明当时已可见的三模型运行", "读取TAF issue、原始修订链、validity和目标峰值覆盖", "读取官方实况和已报硬下界", "加载站点×模型×季节×时次×提前量误差", "冻结官方可执行盘口深度、持仓和working orders", "将历史参考价单独标记为non_executable"],
+      "exit_gate": "每个输入有lineage、新鲜度、角色归类和缺失原因"
+    },
+    {
+      "phase": "F2 中心、宽度与偏置",
+      "goal": "把天气证据变成候选分布对象",
+      "steps": ["计算历史可靠度权重", "执行当日模型离群闸门", "计算C与sigma_total", "将TAF作为有条件二级锚", "计算BiasObject并设置TTL与撤销条件"],
+      "exit_gate": "C、sigma、D、confidence和TTL闭合"
+    },
+    {
+      "phase": "F3 选桶与预算",
+      "goal": "把候选分布投影成可解释组合",
+      "steps": ["将连续分布积分为互斥桶概率并归一", "选择连续基础带S", "拆分K_base/K_bias/K_edge", "显式选择CAPITAL_FIRST或SHARE_FIRST", "同步计算每桶目标成本和目标份额并通过双残差", "计算所有结算情景PnL、Floor(S)和L_max", "标记主成本/主份额候选桶"],
+      "exit_gate": "概率、双目标、预算与情景风险全部通过"
+    },
+    {
+      "phase": "F4 首建",
+      "goal": "用有限批次建立核心覆盖并保留信息期权",
+      "steps": ["记录形成成熟度向量", "计算真实深度有效价格", "按limit_i_max拆分离散现金/份额CLIP", "优先Maker分批SEED核心腿", "仅在M38通过时切换Taker", "原子更新成交、库存、working order和资本预留"],
+      "exit_gate": "核心腿达到阶段目标、进入working order等待或硬门阻断"
+    },
+    {
+      "phase": "F5 扩桶与追补",
+      "goal": "根据新检查点调整覆盖范围或库存排序",
+      "steps": ["冻结M41触发向量并执行CHECKPOINT REVIEW", "更新成熟度和可执行盘口", "重算计划版本和双目标残差", "比较新旧桶集合和目标库存", "新桶走EXTEND，旧桶正缺口走REPLENISH", "逐桶计算DeltaEV、DeltaFloor、Score、紧迫度和集中度变化", "监控主成本桶与主份额桶切换"],
+      "exit_gate": "缺口归零、边际不足、预算用尽或证据过期"
+    },
+    {
+      "phase": "F6 停止、持有与对账",
+      "goal": "在不确定状态下保护事实一致性",
+      "steps": ["无检查点变化或无缺口时HOLD", "证据/风险/真实深度失败时STOP", "working order等待时不重复占用库存", "未知订单时RECONCILE_REQUIRED", "新检查点到来后从闭合库存重算"],
+      "exit_gate": "恢复PLAN_READY或进入SETTLED"
+    },
+    {
+      "phase": "F7 结算与归因",
+      "goal": "把结果拆成覆盖、偏置、凸性和执行质量",
+      "steps": ["锁定官方赢家桶", "计算逐情景与实际PnL", "冻结中性偏置反事实", "分解PnL_base/PnL_bias/PnL_edge/execution_cost", "更新研究样本但不自动晋级生产"],
+      "exit_gate": "报告、数据、验证和版本审计完成"
+    }
+  ],
+  "boundaries": [
+    {"area": "可识别", "inside": "成交时间、桶、价格、份额、订单哈希、已成交配仓演进、主桶切换、模型/TAF/实况冻结数据、路径PnL和已匹配订单族填单率", "outside": "无"},
+    {"area": "只能推断", "inside": "模型包络给候选中心、分歧给带宽、价格和库存塑造补仓、边缘桶提供凸性、Maker到Taker紧迫机制", "outside": "精确权重、阈值、目标库存函数和下单队列规则"},
+    {"area": "不可识别", "inside": "无", "outside": "私有模型、从未成交挂单、撤单原因、完整历史可执行盘口与队列、真实风险函数、账户会计收益"},
+    {"area": "天气边界", "inside": "带as-of的模型、TAF、官方实况和历史误差", "outside": "用盘口价格反推并覆盖天气概率"},
+    {"area": "执行边界", "inside": "同一时点官方真实深度、限价、库存缺口、订单状态、clip和资本预留", "outside": "在执行层重算天气中心或用历史参考价替代可执行盘口"},
+    {"area": "保本边界", "inside": "对明确S内情景计算的费用后Floor(S)", "outside": "把多桶、低均价或sum ask<1泛化为全市场保本"},
+    {"area": "部署边界", "inside": "研究文档、离线模拟、shadow和dry-run候选", "outside": "直接修改生产L0/L1、启动服务或提交订单"}
+  ],
+  "invariants": [
+    "contract_id、bucket_map_hash和resolution source缺一不可。",
+    "所有天气输入必须满足同目标日、同站点和可证明as-of。",
+    "桶概率必须由同一连续分布投影，覆盖开口桶且总和为1。",
+    "BiasObject缺direction、confidence、TTL或invalidators任一字段即无效。",
+    "K_base + K_bias + K_edge不得超过K_max，且资本预留不得跨事件重复使用。",
+    "每桶cost、shares、filled、working和reserved必须同一版本闭合。",
+    "每个InventoryPlan必须声明CAPITAL_FIRST或SHARE_FIRST，并通过成本与份额双残差。",
+    "PnL必须覆盖全部合同结果，包括已选集合外赢家。",
+    "任何‘保本’结论必须引用公式M18-M20的逐情景输出。",
+    "主成本桶与主份额桶分列保存，禁止用单一main_bucket字段混合。",
+    "未知订单、部分成交或库存冲突时只允许RECONCILE。",
+    "盘口深度过期或不足时不输出可执行配仓。",
+    "10分钟参考价或任何prices-history不得替代同一时点官方bid/ask/depth。",
+    "形成中事件必须标记as_of、成熟度和unresolved，禁止提前赋赢家或PnL。",
+    "嵌套窗口差异不得被表述为时间演进；方向迁移必须使用互斥窗口和站点闸门。",
+    "模型、TAF或实况更新只生成新计划版本，不直接修改已成交历史。",
+    "离线验证失败只阻止候选版本晋级，不得偷偷fallback到未登记公式。",
+    "研究结论不得自动变成生产授权。"
+  ],
+  "governance": [
+    {"gate": "G0 语义审查", "question": "定义、单位、时区、结算和证据等级是否唯一？", "owner": "策略/数据治理"},
+    {"gate": "G1 数据审查", "question": "原始数据、as-of、lineage、缺失和去重是否可信？", "owner": "数据工程"},
+    {"gate": "G2 数学审查", "question": "公式、约束、数值稳定性和边界情景是否通过？", "owner": "量化研究"},
+    {"gate": "G3 回放审查", "question": "跨站点、跨季节、3/7/15/30天与严格前推表现是否稳定？", "owner": "研究验证"},
+    {"gate": "G4 执行审查", "question": "深度、限价、滑点、部分成交、幂等和对账是否闭合？", "owner": "交易工程"},
+    {"gate": "G5 风险审查", "question": "L_max、集中度、预算、停牌和未知订单是否受控？", "owner": "风险控制"},
+    {"gate": "G6 Shadow/Dry-run", "question": "不下单条件下能否稳定生成同一决策和审计轨迹？", "owner": "运行治理"},
+    {"gate": "G7 原子晋级", "question": "完整版本是否被批准且可整体回滚？", "owner": "生产授权人"}
+  ],
+  "evidence": [
+    {"id": "E01", "level": "F", "claim": "306个事件中79.1%的早期核心选择靠近三模型包络的最暖或最冷端。", "supports": "模型包络优于固定单模型作为候选中心语言。", "source": "原报告第1-2节；derived/model_selection_behavior.csv"},
+    {"id": "E02", "level": "F", "claim": "TAF数值TX覆盖约14.4%。", "supports": "TAF只能是条件二级锚，不能解释全局选桶。", "source": "原报告第1、3节；derived/taf_model_comparison.csv"},
+    {"id": "E03", "level": "F", "claim": "74.1%的事件在25%成本点桶数少于最终桶数。", "supports": "首建集中、后续扩腿是稳定形成特征。", "source": "原报告第6节；formation stage outputs"},
+    {"id": "E04", "level": "F", "claim": "40.4%的事件最终主桶相对早期发生变化。", "supports": "主桶是动态状态而非静态身份。", "source": "原报告第6节；formation stage outputs"},
+    {"id": "E05", "level": "F", "claim": "形成后新增成本99.51%来自新订单哈希。", "supports": "后续成交主要是新意图/新订单，不是单一旧单被动漏斗。", "source": "原报告第1、6节；order hash analysis"},
+    {"id": "E06", "level": "F", "claim": "30天严格条件保本事件占比约11.9%，聚合完整买入路径ROI约2.86%。", "supports": "多桶不等于普遍严格保本，且窗口聚合收益不能与模型包络极端选择率混用。", "source": "原报告第1、8节；derived/settled_window_economics.csv；derived/strategy_window_evolution.csv"},
+    {"id": "E07", "level": "F", "claim": "7/23的29个新篮子中27个为多桶，均桶数2.03->2.66，主桶平均成本占比81.9%->71.4%。", "supports": "外样本继续支持先集中、后扩覆盖。", "source": "原报告第9E节；derived/wallet_latest_24h_headline.json"},
+    {"id": "E08", "level": "F", "claim": "卡拉奇未扩桶，但同桶补入后主成本桶由34C切至33C。", "supports": "不扩桶不等于主仓排序不变。", "source": "原报告第9E节；derived/wallet_current_build_capture_chain.csv"},
+    {"id": "E09", "level": "F", "claim": "首价与最终成本占比相关约+0.409，与最终份额占比约+0.015。", "supports": "成本重仓和份额重仓必须分离。", "source": "原报告第9D节；derived/formation_maturity_entry_relationships.csv"},
+    {"id": "E10", "level": "F", "claim": "距修正中心越远，成本占比相关约-0.346，份额占比仅约-0.093。", "supports": "中心桶承载资本、远端低价桶仍可承载份额凸性。", "source": "原报告第9D节；derived/formation_maturity_entry_relationships.csv"},
+    {"id": "E11", "level": "F", "claim": "成都30事件中模型分裂与桶数相关约0.542。", "supports": "模型分歧更适合作为带宽驱动而非单一方向公式。", "source": "原报告第9B节；derived/chengdu_long_behavior_headline.json"},
+    {"id": "E12", "level": "F", "claim": "主桶平均已成交订单哈希20.29个，其他桶9.85个。", "supports": "资金凸起与更多订单尝试、成交和目标库存追补一致。", "source": "原报告第1、6节；order hash analysis"},
+    {"id": "E13", "level": "F", "claim": "严格前推仅46.3%选择站点此前MAE最低模型。", "supports": "历史最优模型不能直接等于当日主桶。", "source": "原报告第1、3节；derived/station_historical_error_walkforward.csv"},
+    {"id": "E14", "level": "F", "claim": "八站GFS冷差与钱包偏移相关0.063，至少6小时子样本0.003。", "supports": "不存在‘GFS越冷就越向上选桶’的跨站固定公式。", "source": "原报告第9C节；derived/china8_formation_behavior_headline.json"},
+    {"id": "E15", "level": "I", "claim": "可识别的最小充分行为链是站点化中心、分歧给带宽、方向闸门、价格/库存决定成交、边缘腿提供凸性。", "supports": "本操作系统的层级与原语。", "source": "原报告第9D结论与第9E外样本验证"},
+    {"id": "E16", "level": "F", "claim": "模型跨度从不超过1C到大于2C时，主桶成本占比53.1%降至45.1%，最终桶数3.74升至4.37，中位总投入升至约164.9 USDC。", "supports": "模型分歧更适合作为带宽和集中度驱动，不代表不确定时必然少投入。", "source": "原报告第5节；derived/deep_model_taf_strategy_headline.json#allocation_by_model_spread"},
+    {"id": "E17", "level": "F", "claim": "20,694个匹配订单族中，最常见原始clip为9.05 USDC并占YES BUY订单19.6%；Maker/Taker加权填单率约39.1%/99.2%。", "supports": "最终重仓由离散clip、填单率和重复订单族累积形成，并存在Maker等待与主动成交的执行差异。", "source": "原报告第7节；derived/deep_model_taf_strategy_headline.json#order_execution"},
+    {"id": "E18", "level": "F", "claim": "30天同价、上涨、下跌加仓成本占比分别约37.6%、30.5%、26.1%。", "supports": "价格方向本身不是加仓底层驱动，正库存缺口和可接受有效价才是共同条件。", "source": "原报告第6、8节；derived/execution_window_evolution.csv"},
+    {"id": "E19", "level": "F", "claim": "互斥分段从平均6.03桶、59.9%连续带、99.8% Maker成本转为3.89桶、89.6%连续带、70.0% Maker成本；严格条件保本16.9%降至8.9%，方向至少两次折返。", "supports": "近期变化是更窄、更连续、更主动执行，不是统一转暖或加厚保险。", "source": "原报告第8、9C节；derived/strategy_window_evolution.csv；derived/execution_window_evolution.csv；derived/china8_formation_behavior_segments.csv"},
+    {"id": "E20", "level": "F", "claim": "CLOB prices-history仅是成交/参考价格序列，不包含历史可执行bid/ask/depth、排队位置或未成交挂单。", "supports": "参考价只能用于事后偏离诊断，不能成为可执行计划输入。", "source": "原报告第7节；derived/data_quality.json#public_limitations"},
+    {"id": "E21", "level": "F", "claim": "237个历史事件中97.5%在D-1 20:30后继续买，72.2%新增桶；低桶、高桶、内部缺口新增率约27.0%/25.3%/27.8%。", "supports": "分阶段形成是常态，但后续扩桶方向不固定，成熟度必须与方向分离。", "source": "原报告第9D节；derived/formation_maturity_headline.json"},
+    {"id": "E22", "level": "F", "claim": "2026-07-22形成中八站快照仍未结算，未赋赢家或PnL；同成熟度控制后暖向仍异常，但不能作因果结论。", "supports": "形成中快照必须标记unresolved并进行同成熟度对照。", "source": "原报告第9D节；derived/formation_maturity_headline.json；derived/formation_maturity_validation.json"},
+    {"id": "E23", "level": "F", "claim": "成都7/21的39C在价格急跌后以Maker 0.30/0.21晚成交；7/22的42C均价约0.097，以71.9%成本取得83.2%份额，并在临近截止出现Taker补仓。", "supports": "成交顺序不同于概率排序，低价份额杠杆、库存追补与紧迫度共同塑造重仓。", "source": "原报告第9B节；derived/highest-temperature-in-chengdu-on-july-21-2026_timeline.csv；derived/highest-temperature-in-chengdu-on-july-22-2026_timeline.csv"}
+  ],
+  "formula_evidence_index": [
+    {"formula_refs": "M01-M06", "evidence_refs": ["E01", "E13", "E14", "E16"], "role": "站点历史误差和三模型只支持候选中心/离群机制。"},
+    {"formula_refs": "M07-M12", "evidence_refs": ["E02", "E11", "E14", "E22"], "role": "TAF、模型分歧和跨站信号约束宽度与临时偏置。"},
+    {"formula_refs": "M13-M17", "evidence_refs": ["E09", "E10", "E16"], "role": "成本与份额分离，支持双目标和三本预算但不识别比例。"},
+    {"formula_refs": "M18-M20", "evidence_refs": ["E06", "E23"], "role": "逐情景核算锁定条件保本边界。"},
+    {"formula_refs": "M21-M30", "evidence_refs": ["E03", "E04", "E07", "E08", "E18", "E23"], "role": "目标缺口、价格、风险和归因共同控制增量行为。"},
+    {"formula_refs": "M31-M32", "evidence_refs": ["E09", "E10", "E15"], "role": "概率投影和双目标一致性是规范性补强。"},
+    {"formula_refs": "M33-M36", "evidence_refs": ["E03", "E04", "E19", "E21", "E22"], "role": "成熟度与双窗口方法约束演进结论。"},
+    {"formula_refs": "M37-M40", "evidence_refs": ["E05", "E12", "E17", "E20", "E23"], "role": "订单族、clip、填单率、紧迫度和参考价边界。"},
+    {"formula_refs": "M41-M42", "evidence_refs": ["E14", "E19", "E21", "E22"], "role": "检查点复核与跨站迁移防止错误泛化。"}
+  ],
+  "implementation_contracts": [
+    {"contract": "MarketContract", "required_fields": "contract_id, station_id, resolution_local_date, timezone, unit, resolution_source, bucket_map_hash"},
+    {"contract": "EvidenceSnapshot", "required_fields": "evidence_id, as_of, source_ids, raw_hashes, freshness, missing_reasons, model_runs, model_visibility, taf_issue, taf_revision_chain, taf_validity, observations"},
+    {"contract": "DistributionObject", "required_fields": "distribution_id, evidence_id, family, parameters, bucket_probabilities, normalization_residual, tail_method"},
+    {"contract": "BiasObject", "required_fields": "direction, strength, confidence, created_at, expires_at, invalidators, evidence_id"},
+    {"contract": "InventoryPlan", "required_fields": "plan_version, distribution_id, target_mode, selected_buckets, K_base, K_bias, K_edge, target_cost, target_shares, residual_cost, residual_shares, max_price, scenario_pnl"},
+    {"contract": "CheckpointSnapshot", "required_fields": "checkpoint_id, trigger_vector, maturity_vector, old_values, new_values, thresholds, as_of, evidence_id"},
+    {"contract": "ExecutableQuote", "required_fields": "quote_id, token_id, as_of, bid_depth, ask_depth, ttl, source, effective_prices"},
+    {"contract": "OrderIntent", "required_fields": "intent_id, plan_version, checkpoint_id, quote_id, bucket, action, clip_type, clip_size, maker_or_taker, quantity, limit_price, expected_order_id, capital_reservation"},
+    {"contract": "InventoryFact", "required_fields": "filled_shares, filled_cost, working_shares, reserved_capital, main_cost_bucket, main_share_bucket, version"},
+    {"contract": "DecisionFact", "required_fields": "state, trigger, guards, decision, block_reason, evidence_id, plan_version, timestamp"},
+    {"contract": "SettlementAttribution", "required_fields": "winner_bucket, pnl_actual, pnl_by_scenario, pnl_base, pnl_bias, pnl_edge, execution_cost, fees"}
+  ],
+  "awc_global_primary_contract": {
+    "authority": "NOAA_AWC_WORLDWIDE_RELAY",
+    "station_scope": "all_45_stations",
+    "official_valid_time_preserved": true,
+    "production_no_live_p0_allowed": true,
+    "realtime_truth_allowed": true,
+    "p1_allowed": true,
+    "hard_fact_exclusion_only": true,
+    "creates_buy_no_intent": false,
+    "formal_promotion_requires_strict_oos": true,
+    "retired_amsc_history_only": true,
+    "cross_lane_fallback_allowed": false
+  },
+  "open_questions": [
+    "需要多少严格as-of逐档盘口深度与working-order历史，才能识别各桶限价上限、Maker等待和撤单函数？",
+    "偏置预算对中性反事实的真实增益，在跨站点、跨季节和不同流动性分层中是否稳定？",
+    "K_base/K_bias/K_edge的风险最优边界是什么，且是否会随目标日成熟度变化？",
+    "使用站点×季节×时次误差收缩后，是否优于简单模型聚类中心？",
+    "扩桶与同桶追补的触发更依赖天气检查点、盘口价格还是库存缺口，需要逐秒订单簿才能区分到什么程度？",
+    "何种停止加仓规则能在不损害覆盖地板的前提下降低尾部资本占用？",
+    "CAPITAL_FIRST与SHARE_FIRST在严格前推、相同预算和相同深度下，哪一种更能复现成本/份额双账本？",
+    "离散clip模板、Maker到Taker紧迫度和新订单族占比能否在逐秒订单簿上稳定外样本复现？",
+    "跨站方向迁移闸门在跨季节样本中能否优于始终清零cross_station信号的基线？"
+  ]
+}

@@ -1,0 +1,1424 @@
+{
+  "schema": "bayes_basket_target_architecture_v1",
+  "version": "1.14.47",
+  "production_constitution": {
+    "frozen": true,
+    "change_requires_impact_matrix": true,
+    "probability_stages": [
+      "P0",
+      "P0-M",
+      "P1"
+    ],
+    "stage_evidence": {
+      "P0": "CURRENT_NWP_CALIBRATED_BY_HISTORICAL_MODEL_ARCHIVE_PLUS_OOF_BOUNDED_SAME_DAY_POINT_TRUTH_TILT",
+      "P0-M": "TAF_TX_PLUS_CLOUD_PRECIPITATION_WIND_ATOMIC_CONFIRMATION",
+      "P1": "METAR_SPECI_HARD_BOUND_PLUS_TRAJECTORY_SOFT_LIKELIHOOD"
+    },
+    "history_lineage_contract": {
+      "historical_model_archive": "STRICT_AS_OF_MODEL_RUNS_PAIRED_WITH_FINAL_TRUTH_FOR_CALIBRATION_AND_ENSEMBLE_ONLY",
+      "same_day_point_truth": "PRIOR_YEARS_SETTLED_DAILY_MAXIMA_WITHOUT_HISTORICAL_MODEL_INPUT",
+      "combination": "ROLLING_OOF_META_ARTIFACT_ONLY",
+      "direct_probability_product_forbidden": true,
+      "second_direction_vote_forbidden": true
+    },
+    "direction_and_core_contract": {
+      "direction_authority": "CURRENT_STAGE_PROBABILITY_SIDE_MASS_ONLY",
+      "model_anchor_role": "DISAGREEMENT_DIAGNOSTIC_AND_CAPPED_CANDIDATE_BOUNDARY_ONLY",
+      "core_authority": "CURRENT_STAGE_COMBINED_PROBABILITY_COVERAGE_ONLY",
+      "candidate_boundary_authority": "ACTIVE_ENSEMBLE_CALIBRATED_CENTER_EXTREMES_CAPPED_BY_MAX_EXTENSION_LAYERS",
+      "optional_risk_bucket_authority": "PER_BUCKET_PROBABILITY_RELIABILITY_PRICE_COVERAGE_AND_EXTENSION_GATES",
+      "core_contiguous": true,
+      "core_each_bucket_positive_target_inventory": true,
+      "up": "RANK_WARM_SIDE_OPTIONAL_BUCKETS_AND_ADJUST_CONCENTRATION_WITHOUT_SHIFTING_CORE",
+      "down": "RANK_COLD_SIDE_OPTIONAL_BUCKETS_AND_ADJUST_CONCENTRATION_WITHOUT_SHIFTING_CORE",
+      "neutral": "NO_DIRECTIONAL_OPTIONAL_BUCKET_PRIORITY",
+      "outlier_model_may_force_expansion": false,
+      "selected_outer_endpoints_may_fill_intervening_optional_buckets": false
+    },
+    "new_probability_capabilities_status": "TESTED",
+    "truth_ownership": {
+      "all_45_stations_formal": "AWC_METAR_SPECI_WORLDWIDE_RELAY",
+      "amsc_production": "RETIRED_HISTORICAL_AUDIT_ONLY",
+      "same_station_mixed_sources": false,
+      "cross_source_fallback": false,
+      "missing_awc": "FAIL_CLOSED"
+    },
+    "settlement_timezone_authority": "market_registry.settlement_timezone",
+    "formal_ensemble_minimum_positive_weight_models": 2,
+    "ensemble_weight_updates": "OFFLINE_STRICT_OOS_IMMUTABLE_ARTIFACT_ONLY",
+    "taf_artifact_resolution": {
+      "exact_fields": [
+        "station_id",
+        "settlement_timezone",
+        "season_bin",
+        "lead_bucket",
+        "run_cycle"
+      ],
+      "cross_station_fallback_forbidden": true,
+      "missing_exact_artifact_preserves_p0": true,
+      "duplicate_exact_artifact_fails_closed": true,
+      "registry_max_artifacts": 256
+    },
+    "candidate_model_prefetch_contract": {
+      "station_scope": "CANONICAL_45_REGISTRY_BOUNDED_ROUND_ROBIN",
+      "max_station_date_scopes_per_cycle": 1,
+      "models_per_scope_min": 2,
+      "models_per_scope_max": 5,
+      "same_run_required": true,
+      "candidate_only": true,
+      "p0_materialization_authorized": false,
+      "creates_activation": false,
+      "creates_native_arrival_index": false,
+      "writes_target_database": false,
+      "aggregator_identity_preserved": true,
+      "arrival_adapter_requires_bound_provider_payload": true,
+      "arrival_fields_may_be_synthesized": false,
+      "adapter_creates_activation_or_p0": false
+    },
+    "canonical_nwp_rotation_contract": {
+      "catalog_scope_cap": 135,
+      "network_scope_cap_per_cycle": 4,
+      "candidate_scope_cap_per_cycle": 1,
+      "restart_safe": true,
+      "single_current_state_file": true,
+      "state_max_bytes": 1048576,
+      "catalog_sha_bound": true,
+      "failed_scope_counts_as_attempt_not_materialization": true,
+      "corrupt_state_blocks_only_nwp_lane": true
+    },
+    "objective_schema": "delta_basket_score_policy_artifact_v2",
+    "objective_may_rewrite_probability": false,
+    "execution_expression": "COMPLETE_MAKER_BASKET_BUNDLE_ATOMIC_MULTI_INTENT_WITH_BOUNDED_SINGLE_BUCKET_FOK_ONLY_AFTER_CONFIRMED_CANCEL",
+    "maker_bundle_contract": {
+      "required_buckets": "ALL_POSITIVE_EXECUTION_GAP_SUPPORT",
+      "one_maker_intent_per_required_bucket": true,
+      "partial_support_admissible": false,
+      "joint_fill_outcome_value_evaluation": true,
+      "atomic_commit": [
+        "decision",
+        "all_maker_intents",
+        "total_capital_reservation",
+        "training_fact"
+      ],
+      "any_leg_result_recomputes_complete_basket": true,
+      "fok_may_coexist_with_maker_bundle": false
+    },
+    "execution_mode": "production_no_live",
+    "live_submit_authorized": false,
+    "calls_order_gateway": false,
+    "orders_submitted": 0,
+    "unresolved_correction_action": "HALT_BEFORE_P1_TRUTH_LABEL_DECISION",
+    "non_hourly_correction_checked_before_hourly_truth_filter": true,
+    "settlement_truth_freeze": "REGISTRY_TIMEZONE_FORMAL_SOURCE_HOURLY_ONLY_AFTER_CLOSE",
+    "latest_quarantined_truth_may_fallback_to_accepted": false,
+    "correction_review_authority": "APPEND_ONLY_CONTENT_ADDRESSED_RECEIPT",
+    "non_hourly_correction_review_decisions": [
+      "CLEAR_REFERENCE_ONLY",
+      "QUARANTINE_STATION_DAY"
+    ],
+    "hourly_correction_clear_requires_replacement_contract": true,
+    "mutable_halt_row_is_review_authority": false,
+    "resource_overflow_action": "FAIL_CLOSED",
+    "delivery_order": [
+      "CONTRACT",
+      "DDL",
+      "MIGRATION_ROLLBACK",
+      "REAL_MAINTENANCE_WINDOW",
+      "WRITER",
+      "READER",
+      "MATERIALIZATION",
+      "OOS"
+    ],
+    "vertical_slice": {
+      "station_id": "CANONICAL_45",
+      "source_lane": "AWC_WORLDWIDE_RELAY",
+      "stages": [
+        "registry",
+        "calibration",
+        "P0",
+        "P0-M/P1",
+        "official_ws",
+        "inventory/order-state",
+        "DeltaBasketScore",
+        "decision/reconcile",
+        "training_fact",
+        "settlement_label"
+      ],
+      "batch_expansion_requires": "CANONICAL_45_BOUNDED_NO_LIVE_EXPANSION",
+      "forward_oos_blocks_production_no_live_or_batch_expansion": false,
+      "forward_oos_blocks_live_or_parameter_promotion": false,
+      "oos_temporal_policy": "HISTORICAL_CLOSED_DAY_STRICT_AS_OF_ONLY",
+      "future_observation_role": "OBSERVATIONAL_CANDIDATE_NOT_OOS",
+      "future_data_counts_as_oos": false,
+      "future_data_blocks_production_no_live": false,
+      "future_data_blocks_formal_or_live": false,
+      "formal_or_live_requires_historical_oos": true,
+      "native_precedence": "OFFICIAL_NATIVE_FIRST_REUSE_RETAINED_RAW",
+      "open_meteo_fallback": {
+        "source_role": "aggregator_republisher",
+        "allowed_when": ["native_missing", "native_invalid", "native_stale_or_late"],
+        "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+        "native_arrival_index_eligible": false,
+        "p1_eligible": false,
+        "formal_live_eligible": false,
+        "requires_independent_historical_strict_oos_activation": true
+      }
+    },
+    "delivery_states": [
+      "DESIGN",
+      "IMPLEMENTED",
+      "TESTED",
+      "REHEARSED",
+      "MATERIALIZED",
+      "RUNNING",
+      "OOS_PASSED",
+      "DONE"
+    ]
+  },
+  "forward_observation_lifecycle": {
+    "store_schema": "bayes_basket_target_forward_observation_store_v2",
+    "decision_authority": "auto_trade_decisions",
+    "resident_format": "target_local_sqlite_only",
+    "source_cursor": "auto_trade_decisions.rowid",
+    "label_cursor": "basket_policy_training_label.rowid",
+    "source_label_commit_precedes_projection": true,
+    "projection_failure_semantics": "BLOCKED_FAIL_CLOSED_RETRYABLE_LAG",
+    "poison_payload_persisted": false,
+    "poison_quarantine_advances_only_after_cas_commit": true,
+    "retention_requires_embedded_scorecard_receipt": true,
+    "retention_requires_embedded_attribution_receipt": true,
+    "retention_requires_no_downstream_dependencies": true,
+    "database_max_bytes": 67108864,
+    "wal_max_bytes": 16777216,
+    "minimum_free_bytes": 536870912,
+    "runtime_state": "MATERIALIZED_RUNNING_AWAITING_SAME_DAY_SETTLEMENT_LABEL",
+    "generation": 3,
+    "last_source_rowid": 630,
+    "observation_count": 2,
+    "effective_quarantine_count": 0,
+    "historical_quarantine_count": 2,
+    "append_only_repair_count": 2,
+    "repair_reason_allowlist": [
+      "cash_phase_forward_binding_scope_or_clock_mismatch"
+    ],
+    "repair_may_authorize_order": false,
+    "forward_oos_blocks_production_no_live_or_batch_expansion": false,
+    "forward_oos_blocks_live_or_parameter_promotion": false,
+    "live_submit_authorized": false
+  },
+  "strict_delta_runtime_contract": {
+    "schema": "strict_delta_basket_objective_v1",
+    "authorization": "DeltaBasketScore > epsilon_score",
+    "legacy_absolute_score_authorizes": false,
+    "fok_cost": "OFFICIAL_CLOB_WS_MULTILEVEL_ALL_IN",
+    "maker_cost_requires_oos_artifact": true,
+    "enforced_at": [
+      "state_machine",
+      "runtime_sizing",
+      "M5",
+      "auto_trade_decisions"
+    ],
+    "missing_or_drift": "HOLD_FAIL_CLOSED",
+    "proposal_optimizer": "piecewise_ws_basket_proposal_optimizer_v3",
+    "fixed_role_allocation_removed": true,
+    "maker_authorization_unit": "COMPLETE_BASKET_BUNDLE",
+    "cross_event_allocation_unit": "COMPLETE_BASKET_BUNDLE",
+    "individual_maker_leg_is_portfolio_candidate": false,
+    "reconcile_cancels_safe_prepared_siblings": true,
+    "implementation_status": "MATERIALIZED_RUNNING_PENDING_FORMAL_FORWARD_OOS"
+  },
+  "effective_date": "2026-07-23",
+  "status": "TARGET_PRODUCTION_NO_LIVE",
+  "live_order_authorized": false,
+  "settlement_time_contract": {
+    "authority": "market_registry.settlement_timezone",
+    "probability_market_exact_match_required": true,
+    "history_truth_calibration_use_registry_timezone": true,
+    "operational_reporting_timezone": "America/New_York",
+    "operational_timezone_may_override_market": false,
+    "mismatch_action": "FAIL_CLOSED",
+    "rkpk_2026_07_27_window_utc": [
+      "2026-07-26T15:00:00Z",
+      "2026-07-27T15:00:00Z"
+    ]
+  },
+  "title": "Bayes概率核心 × 最高温篮子操作系统",
+  "subtitle": "旧Bayes终局方向 × 源账户证据驱动的自适应篮子候选架构",
+  "scope": {
+    "bayes_baseline": "旧代码的最终方向是完整Physical-State Bayes；当前仍缺完整实况接入，不能把现状当成终局。",
+    "basket_baseline": "取证报告转化出的v1.1篮子操作系统，属于研究治理方案而非对手私有算法复刻。",
+    "decision": "采用分层融合：Bayes生产概率，篮子生产组合计划，硬NO完全绕开概率。"
+  },
+  "technical_summary": [
+    "2026-07-28（动态计数截至2026-07-28T03:03:50Z）：Clash Verge代理统一为http://127.0.0.1:7897，三个system服务PID为48372/89318/95880；production_no_live、gateway只读和live_submit_authorized=false保持不变。当前SSOT schema/activation迁移已真实物化，RKPK preflight为PREFLIGHT_READY，production-no-live run为COMPLETED_PRODUCTION_NO_LIVE。真实target DB已有RKPK probability 25行、官方WS snapshot 9行、inventory/order-state各13行、training fact 3行，label 0行；intent/order/reconcile均为0。RKPK 11-token exact publisher已完成前台演练并形成真实原子decision，但system market_ws PID 89318尚未加载新代码，故官方WS状态仍为REHEARSED而不是RUNNING。旧28站308-token及45站候选证据只保留审计价值；下一维护窗只允许重启market_ws，reported_trajectory_no与clob_order_service保持不变。",
+    "2026-07-28 维护事务升级：唯一切换脚本按forward store、hard-NO timezone、SSOT schema和no-live activation四个独立提交阶段持久化状态，并在首个数据变更前以原子替换写入固定路径的有界cutover journal；普通失败由EXIT trap逆序恢复，SIGKILL/断电遗留journal则由下一次维护入口在任何新preflight前优先恢复。恢复顺序为activation/schema→hard-NO→forward store→原pause状态；SQLite恢复镜像与恢复结果均执行有界quick_check，任何部分恢复失败都保留journal、恢复镜像和双pause且禁止重启writer。只有切换成功或完整回滚后才执行内容寻址dry-run/apply maintenance retention：至少保留最新可恢复备份，按数量、年龄、总字节、目录项和扫描字节上限清理无引用旧恢复物；apply显式确认并重验plan及inode/mtime/size，active DB/WAL/SHM、symlink、hardlink或状态漂移一律fail closed。",
+    "2026-07-27 resident P1已收口到现有system-domain reported_trajectory_no：唯一p1_compiler按market_registry.settlement_timezone、正式AMSC/AWC整点source lane、strict-as-of与correction硬门消费canonical事实，只扫描已有committed P0/P1根的开放scope；重复、半点、同温与旧温零写，真实副本完成P0-M→P1→重复零写且不调用gateway。真实target五张旧正式表分别有223个概率envelope、8个WS snapshot、5个WS evidence cache、231个execution cycle和231个decision且均缺settlement_timezone，受控迁移将其逐表整体退役并核对行数，新正式表禁止默认补ET。AWC除系统CA有界curl外，已删除country router固定2小时窗口：resident按registry结算日/时区计算当前开放窗口，未来日、陈旧active行和关闭日不扩大请求，硬限制2–30小时且内部主路径无隐式默认；19:50Z真实26小时请求新增272条canonical observation并验证RKPK窗起点15Z=29℃，窗前13Z/14Z不得进入P1。全程production_no_live、零submit。",
+    "RKPK已完成隔离TAF确认链与首个P1回放：AWC官方历史TAF/METAR以date=寻址，27个完整Asia/Seoul结算日经至少24日、holdout至少6日、NLL/CRPS不退化和trained_through早于valid_from硬门形成summer/d2_fallback/18Z artifact；NWP生成P0，TAF首报及AMD/COR从同一P0根原子生成版本化P0-M，P1独立。2026-07-27窗口为2026-07-26T15:00Z至2026-07-27T15:00Z，15Z/16Z/17Z正式AWC整点METAR为29/28/28℃，仅29℃新高生成p1_9adc7f1f389f822ef85e83bac18caf84；事件时钟为canonical commit 17:53:02Z，官方WS为17:56:03.005Z。P1无硬排除，保持35℃中心、34–37℃支持，中心领先0.1292个百分点而NEUTRAL/HOLD；独立P1 cold-start activation仅显式global fallback，不复用P0站点参数。隔离原子账本零intent、零资本、零订单，receipt重复写字节级一致且不调用gateway；最终truth尚未冻结。",
+    "最佳升级不是替换Bayes，而是把系统拆成信念平面与交易平面：Bayes分别发布P0、P0-M和P1阶段检查点，篮子对每个新检查点独立执行选桶、偏置、配仓与增量重算。",
+    "首建时的中心与方向必须来自P0；官方METAR/SPECI到达后，状态Bayes将硬观测编译为P1_t，篮子随后改用新的当前阶段p_s(B)重算，而不是继续使用旧P0。",
+    "P0上游必须显式拆成站点真值与历史as-of模型运行配对、ECMWF/GFS/ICON逐模型站点偏差/方差校正、残差相关性约束的OOS模型组合，再物化P0；历史最高温用于训练与气候先验，不是被校正的预测对象。",
+    "校准数据采用一个统一逻辑SSOT并以官方station_id为训练/结算主键；城市只作展示，原始事实、残差、单模型artifact、组合artifact、晋级决定和激活指针分层解耦，禁止每站独立权威数据库。",
+    "B00残差统一定义为e=y-f_raw，因此校正式必须为f_cal=f_raw+E[e]；原减号语义已纠正，并要求正负残差、零偏差与反向定义测试。",
+    "概率链应拆接口、不拆数学权威：早期P0只由历史+模型+站点校正生成；TAF实际发布后以校准TX完成第一次确认/有限修正，再由云量、降水和风场做物理证据二次确认，两层原子生成同一个P0-M；只有METAR/SPECI产生顺序P1_t；三阶段均直连同一个篮子纯函数。",
+    "动态篮子不是P1优先、P0兜底后的一次性下游消费：Plan@P0、Plan@P0-M和Plan@P1按检查点追加演进，同一时点优先级仅用于并发冲突消解。",
+    "旧Bayes当前最先要补的是完整实况入口：现有worker的可见路径仍固定AMSC/ZUUU，必须扩展为AMSC中国站与AWC非中国站的canonical exactly-once链。",
+    "固定4→3→2、阶段内等份和固定2:1都不是源账户事实，应从目标方案撤销；候选篮子改为SEED→EXTEND_LOW/HIGH→FILL_GAP→REPLENISH→HOLD/STOP的自适应状态机。",
+    "方向偏置完全由当前阶段校准后桶概率的上下尾偏斜形成；模型校正、模型组合、TAF与METAR/SPECI只能先进入对应阶段后验，禁止第二套天气方向修正或同源证据双算。",
+    "统一篮子公式正式降级为GlobalBasketPriorArtifact：它只承担冷启动、层级收缩中心和预先晋级的缺样本回退，不得作为所有站点的直接执行参数。",
+    "每个站点分别学习目标仓位、保留价和补仓节奏三个可解释artifact；三族独立晋级、独立回退，在线仅按station_id与decision_at解析已晋级版本，不合并成不可审计黑盒分数。",
+    "站点策略层只改变如何表达同一份p_s(B)：它不得改写概率中心c_s*、方向sign(D_s)或支持集的天气语义；学习保留价只能比B14数学上限更保守，学习节奏只能打开等待/重评估选择。",
+    "配仓同时维护成本与份额双账本，以K_base/K_bias/K_edge表达角色预算；CAPITAL_FIRST与SHARE_FIRST是待严格回放晋级的候选族，不允许运行时任意切换。",
+    "源账户的Maker等待、离散clip、临近截止Taker补仓只达到机制推断等级；精确目标价、阈值、未成交单和私有模型不可识别，必须先在同一resident的production_no_live forward链验证并单独修订L0宪章，不得创建第二套Shadow运行线。",
+    "最近7天45站精确签名订单把下单决策拆成四个正交问题：当前阶段后验与站点目标决定支持集/目标库存，全部正库存缺口共同决定完整Maker bundle腿集合，市场路径与B14保留价逐腿决定挂价，显式现金策略版本×站点本地阶段提供有界现金上下文，最终各腿份数由唯一DeltaBasketScore v2联合求解；禁止先提交单桶。",
+    "现金阶段不得与P0/P0-M/P1证据阶段混用：旧源行为版本完整观察到HEAVY/STANDARD/TAIL=15/9.05/2.22，新部分版本只观察到STANDARD/TAIL=10.77/0.25且HEAVY必须fail closed；这些值只进入BasketCashPhasePolicyArtifact行为先验，不直接成为live参数。",
+    "新版221笔10.77全部落在站点本地STANDARD、25笔0.25全部落在TAIL；13个完整10.77→0.25转换以本地D 09:58预测F1=1.000、错误使用UTC时F1=0，证明现金模板由显式版本与站点本地时钟共同索引，而非由概率、edge或累计成本连续计算。",
+    "挂价仍由市场路径在B14价值上限内表达：最近7天挂价与当时参考价Spearman=0.967；单笔份数恒等式shares=cash/price最大误差2.27e-13，因此份数不是独立优化变量。",
+    "硬NO继续只依赖官方METAR/SPECI数学硬下界，绝不能读取Bayes、TAF或NWP。",
+    "当前点位验收仍有暂停、未决订单/循环和额外消费者等事实；它们是迁移前置清理项，不是目标Bayes哲学的评价依据。",
+    "45站时间外复刻证明同一choice set内的站点常数会严格抵消；初始/动态选桶只允许站点斜率候选，桶数、保留价、clip和节奏才允许数值offset。",
+    "旧零订单实现曾保留8.4822 USDC全局clip基线；目标production_no_live单实现已将其退役并使用独立BasketCashPhasePolicyArtifact，只有完成正式合同映射、前向production_no_live证据和自有风险晋级后才可激活参数，不能因源账户行为证据直接改live。"
+  ],
+  "source_doctrine": "data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/weather_basket_trading_operating_system_v1.json",
+  "source_doctrine_sha256": "f0e0d49fb58f2dba487bf4cbed92871fcafa916c22ef67d5de47016266e22d79",
+  "evidence_ledger": [
+    {
+      "id": "E01",
+      "grade": "FACT",
+      "finding": "79.1%的早期核心桶靠近三模型包络的冷端或暖端。",
+      "design_use": "模型包络端点只能通过校正后模型组合影响阶段后验，不得作为平行方向证据重复计数。"
+    },
+    {
+      "id": "E02",
+      "grade": "FACT",
+      "finding": "40.4%的事件最终主成本桶发生切换。",
+      "design_use": "主桶必须是随成交与时间演进的账本结果，不能在首建时永久锁死。"
+    },
+    {
+      "id": "E03",
+      "grade": "FACT",
+      "finding": "三模型跨度从不超过1°C增至超过2°C时，平均桶数由3.74增至4.37，主桶成本占比由53.1%降至45.1%。",
+      "design_use": "模型分歧应扩大候选支持集并降低单桶集中度，禁止固定桶数。"
+    },
+    {
+      "id": "E04",
+      "grade": "FACT",
+      "finding": "首价与成本占比相关约+0.409，与份额占比相关约+0.015。",
+      "design_use": "成本重仓与份额重仓必须分账，不得用一个权重同时代表二者。"
+    },
+    {
+      "id": "E05",
+      "grade": "FACT",
+      "finding": "主桶平均成交订单哈希20.29个，其他桶9.85个。",
+      "design_use": "重仓更像多次追补累积，不是一次性固定比例下单。"
+    },
+    {
+      "id": "E06",
+      "grade": "FACT",
+      "finding": "20,694个订单族中常见clip约9.05 USDC，Maker/Taker填单率约39.1%/99.2%。",
+      "design_use": "离散clip、Maker等待与紧迫Taker进入候选执行模型。"
+    },
+    {
+      "id": "E07",
+      "grade": "FACT",
+      "finding": "同价、上涨、下跌加仓成本占比约37.6%、30.5%、26.1%。",
+      "design_use": "价格涨跌不是充分驱动，补仓还必须解释库存缺口、证据和时间。"
+    },
+    {
+      "id": "E08",
+      "grade": "FACT",
+      "finding": "237个事件中97.5%在D-1 20:30后继续买，72.2%扩桶；向低、向高、补内部缺口约27.0%、25.3%、27.8%。",
+      "design_use": "扩桶方向不是固定单边，状态机必须同时支持低扩、高扩和补缺口。"
+    },
+    {
+      "id": "E09",
+      "grade": "FACT",
+      "finding": "七个非深圳站点留一站点初始选桶Precision@observed K为75.2%；1,496笔时间外Maker补仓的Top-1为34.6%，随机基线25.3%，提升9.3个百分点。",
+      "design_use": "跨站规律足以形成全局先验，但不足以作为各站点直接执行公式。"
+    },
+    {
+      "id": "E10",
+      "grade": "FACT",
+      "finding": "动态补仓Top-1在成都/北京/上海明显高于随机，在重庆接近随机，在广州/武汉/深圳低于随机。",
+      "design_use": "目标仓位、保留价和补仓节奏必须按站点分别学习并做层级收缩。"
+    },
+    {
+      "id": "E11",
+      "grade": "FACT",
+      "finding": "最近7天10,949笔精确签名Maker YES BUY覆盖45站；挂价与当时市场参考价Spearman为0.967，中位参考价减挂价为0.006 USDC。",
+      "design_use": "实际挂价由市场路径在B14保留价上限内表达，概率/edge负责准入与价值上限而非生成精确tick。"
+    },
+    {
+      "id": "E12",
+      "grade": "FACT",
+      "finding": "旧行为版本完整观察到HEAVY/STANDARD/TAIL现金模板15.00/9.05/2.22；新部分版本221笔10.77全部位于STANDARD、25笔0.25全部位于TAIL。",
+      "design_use": "标准单笔现金必须从显式版本化BasketCashPhasePolicyArtifact读取，不能用概率、edge、累计成本或站点截距连续回归。"
+    },
+    {
+      "id": "E13",
+      "grade": "FACT",
+      "finding": "13个新版本完整10.77→0.25转换以站点本地D 09:58预测Precision/Recall/F1均为1.000，错误使用UTC时F1为0。",
+      "design_use": "cash phase必须使用事件本地日与站点IANA时区；UTC、机器本地时区或P0/P1阶段枚举不得替代。"
+    },
+    {
+      "id": "E14",
+      "grade": "FACT",
+      "finding": "最近7天订单shares=cash/limit_price最大绝对误差2.27e-13。",
+      "design_use": "份数不是独立决策变量；先决定价格和现金并完成风险截断，再机械计算份数。"
+    },
+    {
+      "id": "I01",
+      "grade": "INFERENCE",
+      "finding": "SEED→扩桶/补缺口→同桶追补→停止与Maker→紧迫Taker最能统一解释可见成交。",
+      "design_use": "作为可证伪候选机制进入shadow，不声称是源账户私有算法。"
+    },
+    {
+      "id": "N01",
+      "grade": "NORMATIVE",
+      "finding": "未知订单、陈旧证据、预算或情景地板不满足时必须fail closed。",
+      "design_use": "这是本系统安全设计，不是从源账户行为识别出的事实。"
+    }
+  ],
+  "evidence_boundary": "公开成交只能识别已签名/成交订单与部分角色，不能识别未成交挂单、私有天气模型、目标库存、精确权重、阈值或私有策略切换秒；新版cash policy的HEAVY阶段仍未观察并必须fail closed。所有INFERENCE必须在跨站、3/7/15/30天和跨季节严格as-of回放中被证伪或晋级。",
+  "historical_snapshot_2026_07_22": {
+    "schema": "bayes_basket_current_state_audit_v1",
+    "as_of": "2026-07-22",
+    "scope_note": "点位核对只描述构建本报告时的实现与激活状态，不等同于旧Bayes终局设计。",
+    "database": {
+      "basket_activation": {
+        "generation": 5,
+        "state": "enabled",
+        "strategy_id": "weather_basket_plus_hard_no_v2",
+        "activation_sha256": "baabc8c7b74e8bebe4db16a50c78e266fb5e9262923d26c945a1300f84303236",
+        "updated_at": "2026-07-20T01:06:03.288Z"
+      },
+      "reported_trajectory_activation": {
+        "generation": 18,
+        "state": "paused",
+        "old_bayes_execution_disabled": 1,
+        "updated_at": "2026-07-22 01:29:38"
+      },
+      "basket_cycle_counts": {
+        "failed": 1,
+        "prepared": 1
+      },
+      "auto_trade_decision_count": 129407
+    },
+    "config": {
+      "probability_state": "production_enabled",
+      "probability_places_orders": false,
+      "probability_composer_schema": "identifiable_physical_state_bayes_v1_pre_event_predict_update",
+      "probability_physical_state_vector": [
+        "latent_temperature",
+        "specific_humidity",
+        "net_temperature_tendency",
+        "surface_wetness_memory",
+        "cold_pool_memory"
+      ],
+      "basket_state": "enabled",
+      "basket_strategy_id": "weather_basket_plus_hard_no_v2",
+      "basket_convergence_widths": [
+        4,
+        3,
+        2
+      ],
+      "basket_order_type": "FOK",
+      "basket_all_legs_required": true,
+      "basket_allocation_mode": "profit_weighted_settlement_floor",
+      "basket_primary_secondary_weight": "2:1"
+    },
+    "code_facts": {
+      "observation_worker_station_filter": "station_id='ZUUU'",
+      "observation_worker_source_filter": "source_lane='amsc'",
+      "basket_p1_before_p0": true,
+      "daemon_has_copy_follow_worker": true,
+      "daemon_has_physical_probability_worker": true,
+      "daemon_has_forecast_snapshot_worker": true,
+      "daemon_has_runtime_registry_refresh": true
+    },
+    "acceptance": {
+      "historical_service_name_note": "Point-in-time 2026-07-22 snapshot only; com.weather.reported_trajectory_no is retired and current owner is com.weather.weather_basket_yes.",
+      "exit_code": 1,
+      "ok": false,
+      "observed_at": "2026-07-22T02:22:15.984Z",
+      "core_services": [
+        "com.weather.clob_order_service",
+        "com.weather.market_ws",
+        "com.weather.reported_trajectory_no",
+        "com.xiong.weather.ui"
+      ],
+      "failed_checks": [
+        "activation_enabled",
+        "active_held_yes_balances_ready",
+        "clob_gateway_clean",
+        "config_hash_exact",
+        "core_services_single_domain",
+        "only_core_weather_services_loaded",
+        "registry_fresh",
+        "registry_watchdog_healthy",
+        "ui_disabled"
+      ],
+      "idempotency_unresolved_count": 6
+    },
+    "focused_tests": {
+      "receipt": "output/audits/bayes_basket_target_focused_test_receipt.json",
+      "receipt_sha256": "4a9b96b8b7670ec9473d456bb455b28c78cbe3ef97d78ff4744ac75900813ce6",
+      "exit_code": 0,
+      "passed": 1490,
+      "failed": 0,
+      "skipped": 0
+    },
+    "source_hashes": {
+      "identifiable_physical_probability_worker.py": "3aa10da3dc3ac983e55928a1d4e3c520545c1bc2c752d9e899737cf5a59944f2",
+      "production_probability_physical_state_composer.py": "58373e7e93c69a2a24d5031fc50eb0f0a7d79e910a45959e7ed3a2fa31346207",
+      "basket_strategy/probability_adapter.py": "4a5b93cd388009e5d1a3ee6356d96d9e11f2093fccd9ab28c715bbdc01a35a67",
+      "basket_strategy/runtime.py": "8ef384a6f5fe0fed98079ed76f0295455be781d0f944994d2eb4220e6a6f3a88",
+      "basket_strategy/production.py": "d1ba1622dcae71aef08ae13f83739bdabdf7afcf5aeea7db23e8425e1622e184",
+      "scripts/reported_trajectory_no_daemon.py": "b033feb6d13a83ae9a0c75ac866e77a03c877e057ef55281103137fadf7f6f40",
+      "config/production_probability_runtime_activation.json": "e6243b4027f35cb693d3835c5e04a3f4ddc597482361ef52e3c67e95877ae295",
+      "config/trading/basket_plus_hard_no_v1.json": "d790a3ca98bf870776b2d4a6461d2d04865e9f845bacc11c8ef61c5eee52f221",
+      "config/trading/basket_strategy_policy_v2.json": "4f98b257e0ff3a4160df9505520a91b7fcdff447bf007e65b76dc658a6f00306",
+      "data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/weather_basket_trading_operating_system_v1.json": "94c6b77016bcf5490a38a73ff7e65f1ca70712c8b37f5aa75e723a59339ee92b"
+    }
+  },
+  "probability_stages": [
+    {
+      "stage": "P0",
+      "trigger": "目标日初始/首建前模型冻结",
+      "evidence": "站点气候先验、ECMWF/GFS/ICON逐模型校正分布、OOS组合权重、残差相关矩阵与当前可用模型掩码",
+      "strategy_action": "按P0形成SEED候选核心与首批clip；桶数和份额由不确定性、价格与风险约束决定，TAF缺失不阻断"
+    },
+    {
+      "stage": "P0-M",
+      "trigger": "首份TAF或新AMD/COR且有效特征变化",
+      "evidence": "同scope激活OOS TafRevisionArtifact把校准TX与云量、降水、风场物理二次确认原子编译为同一个P0-M有界proof；每版绑定同一P0根并替换重算",
+      "strategy_action": "在确认/修正强度、概率质量迁移、中心位移、LR正下限/上限和相关性折扣内重算支持集与目标；物理二次确认不得另建stage或中心，TAF不得硬排除或归零"
+    },
+    {
+      "stage": "P1",
+      "trigger": "新canonical METAR/SPECI",
+      "evidence": "Predict→当前事件强似然→硬下界→normalize",
+      "strategy_action": "按新后验重算角色目标与库存缺口；不按固定桶数收敛，可扩桶、追补、HOLD或STOP"
+    }
+  ],
+  "non_probability_lanes": [
+    {
+      "stage": "HARD_FACT_EXCLUSION",
+      "trigger": "官方最高温硬下界推进",
+      "evidence": "官方METAR/SPECI硬事实",
+      "strategy_action": "只从纯YES支持集剔除数学不可能桶；绝不生成BUY NO intent/order"
+    }
+  ],
+  "model_calibration_and_ensemble": {
+    "ssot_contract": {
+      "schema": "station_model_calibration_ssot_v1",
+      "logical_database": "ONE_UNIFIED_CALIBRATION_SSOT",
+      "per_station_database": false,
+      "training_primary_key": "station_id",
+      "city_role": "display_and_reporting_only",
+      "raw_and_artifacts_decoupled": true,
+      "online_lookup": "scope_key + decision_at_utc -> unique promoted activated artifact",
+      "ambiguous_latest_query_forbidden": true,
+      "exact_missing_model_mask_required": true,
+      "unsupported_mask_semantics": "FAIL_CLOSED_NO_P0M"
+    },
+    "placement": {
+      "L1": "保存StationDailyHighTruth、HistoricalAsOfModelRun与ModelStationResidual不可变事实",
+      "L2": "训练/应用逐模型ModelCalibrationArtifact与ModelEnsembleArtifact生成P_model，再由OOF历史同日元组合proof有界生成P0；P1轨迹proof从预测根与完整canonical序列重算",
+      "L3": "只发布已物化P0及其完整lineage，不在篮子热路径训练或重算权重",
+      "L7": "执行strict-as-of train/holdout、跨站跨季节验证与原子晋级"
+    },
+    "data_contracts": [
+      "StationRegistry",
+      "StationDailyHighTruth",
+      "HistoricalAsOfModelRun",
+      "ModelStationResidual",
+      "ModelCalibrationArtifact",
+      "ModelEnsembleArtifact",
+      "SameDayClimatologyArtifact",
+      "P0HistoricalMetaCombinationArtifact",
+      "P0HistoricalTiltProof",
+      "MetarTrajectoryLikelihoodArtifact",
+      "MetarTrajectoryUpdateProof",
+      "ArtifactPromotionDecision",
+      "CalibrationActivation"
+    ],
+    "models": [
+      "ECMWF IFS ENS/PF50",
+      "ECMWF AIFS-Single (same ECMWF family)",
+      "NOAA GEFS",
+      "ECCC GEPS/GEM",
+      "DWD ICON Global/EPS",
+      "DWD ICON-EU regional",
+      "DWD ICON-D2 regional",
+      "other station-authorized regional ensembles"
+    ],
+    "residual_convention": "e=y-f_raw",
+    "calibration_formula": "f_cal=f_raw+E[e|model,station,season,lead,cycle]",
+    "combination_rule": "校正后的单模型概率分布按OOS技能、残差协方差、稳定性与缺模型掩码组合；禁止原始点预测简单平均",
+    "private_source_boundary": "钱包公开成交无法识别源账户私有校正器、组合权重与阈值；它们只能作为可证伪候选"
+  },
+  "historical_same_day_and_metar_trajectory": {
+    "status": "DESIGN",
+    "same_day_input": "PRIOR_YEARS_SETTLED_SINGLE_DAILY_MAXIMUM_TRUTH_ONLY",
+    "same_day_must_not_read": [
+      "historical_model_runs",
+      "TAF",
+      "METAR_trajectory",
+      "market_or_order_data"
+    ],
+    "same_day_fallback": "theta_h=0_DOES_NOT_BLOCK_P0",
+    "trajectory_input": "IMMUTABLE_P0M_OR_P0_ROOT_PLUS_COMPLETE_ORDERED_CANONICAL_OBSERVATION_SET",
+    "trajectory_target": "REMAINING_WARMING_DISTRIBUTION_TO_FINAL_SETTLEMENT_TRUTH",
+    "trajectory_recompute": "FROM_ROOT_NOT_FROM_PREVIOUS_P1",
+    "trajectory_fallback": "alpha_t=0_LR=1_HARD_BOUND_NORMALIZATION_ONLY",
+    "hard_excluded_bucket_may_revive": false,
+    "hard_fact_exclusion_may_read_soft_likelihood": false,
+    "hard_fact_exclusion_only": true,
+    "creates_buy_no_intent": false
+  },
+  "station_basket_policy_hierarchy": {
+    "schema": "station_basket_policy_hierarchy_v1",
+    "status": "SHADOW_ONLY_NON_PRODUCTION",
+    "global_formula_role": "cold_start_prior_and_shrinkage_regularizer_only",
+    "probability_authority": "committed current-stage p_s(B)",
+    "may_modify_probability_center_or_direction": false,
+    "online_learning": false,
+    "placement": "L4 station policy resolver before AdaptiveBasketEvaluator",
+    "hierarchical_formula": "numeric families: theta_post_sj=rho_sj*theta_local_hat_sj+(1-rho_sj)*theta_global_j; choice families: beta_post_s=beta_global+rho_s*(beta_local_s-beta_global); rho=n_eff/(n_eff+kappa)",
+    "choice_constant_intercept_policy": "forbidden because a station constant added to every bucket cancels inside ranking and softmax",
+    "parameter_families": [
+      {
+        "family": "target_inventory",
+        "artifact": "StationTargetPolicyArtifact",
+        "output": "current-support-set per-bucket target cost/share weights",
+        "hard_boundary": "cannot modify c_s*, sign(D_s), or reverse the current-stage posterior direction"
+      },
+      {
+        "family": "reserve_price",
+        "artifact": "StationReservePriceArtifact",
+        "output": "station-specific conservative reserve-price margin",
+        "hard_boundary": "r_final=tick_down(min(r_math,r_learned)); learned price never exceeds B14"
+      },
+      {
+        "family": "replenishment_cadence",
+        "artifact": "StationCadenceArtifact",
+        "output": "discrete-time wait and reevaluation hazard",
+        "hard_boundary": "cannot bypass B13, B14, budget, risk, or known-order-state gates"
+      }
+    ],
+    "contracts": [
+      "BasketPolicyTrainingFact",
+      "GlobalBasketPriorArtifact",
+      "StationTargetPolicyArtifact",
+      "StationReservePriceArtifact",
+      "StationCadenceArtifact",
+      "StationBasketPolicyActivation",
+      "ResolvedStationBasketPolicy",
+      "BasketCashPhasePolicyArtifact",
+      "BasketCashPhaseDecision"
+    ],
+    "ssot": {
+      "logical_database": "ONE_UNIFIED_BASKET_POLICY_SSOT",
+      "per_station_database": false,
+      "primary_key": "station_id",
+      "city_role": "display_and_reporting_only",
+      "online_lookup": "station_id+stage+season_bin+maturity_bin+liquidity_bin+strategy_version+decision_at_utc",
+      "ambiguous_latest_forbidden": true,
+      "artifact_and_activation_decoupled": true
+    },
+    "fallback": {
+      "exact_station_activation": "use promoted station posterior for all three families",
+      "insufficient_station_data": "use only a pre-promoted global or regional fallback mask",
+      "missing_stale_or_scope_mismatch": "FAIL_CLOSED_NO_STATION_POLICY",
+      "runtime_neighbor_borrowing": false
+    },
+    "evidence": {
+      "source": "derived/global_station_executable_formula_v1/formula_coefficients.json",
+      "stations": 45,
+      "events": 306,
+      "signed_yes_buy_orders": 15158,
+      "price_points": 8465432,
+      "holdout_initial_events": 155,
+      "holdout_initial_support_precision": 0.7958064516129032,
+      "holdout_initial_support_recall": 0.6956682027649769,
+      "holdout_dynamic_orders": 6248,
+      "full_global_dynamic_top1": 0.34282970550576186,
+      "random_dynamic_top1": 0.2892813319309798,
+      "final_audit_equal_inventory_deficit_top1": 0.4057971014492754,
+      "final_audit_probability_center_only_top1": 0.25296442687747034,
+      "interpretation": "P0 selects the basket; equal-share inventory deficit is the most stable next-bucket driver; station target/reserve/clip personalization did not pass the final audit. Behavioral replication only, not weather, settlement-win, or PnL accuracy."
+    }
+  },
+  "global_station_formula_evidence": {
+    "schema": "global_station_executable_basket_formula_v1",
+    "status": "DETERMINISTIC_SHADOW_EXECUTABLE_NOT_LIVE",
+    "training_window": "2026-07-10..2026-07-13",
+    "promotion_window": "2026-07-14..2026-07-16",
+    "final_audit_day": "2026-07-17",
+    "activated_variants": {
+      "initial_support": "global",
+      "basket_cardinality": "global",
+      "target_policy": "uniform",
+      "dynamic_bucket_utility": "equal_inventory_deficit_only",
+      "reserve_price": "reference_price",
+      "clip_notional": "legacy_train_median_cash_8.4822_usdc_current_shadow_baseline_pending_replacement",
+      "cadence": "global_ridge"
+    },
+    "target_clip_policy": {
+      "status": "DESIGN_ONLY_NOT_MAPPED_TO_ADAPTIVE_BASKET_SHADOW",
+      "formula": "C_base=T[explicit_clip_policy_version,cash_phase]; C_order=min(C_base,r_limit*positive_share_gap,remaining_budget,executable_depth_cash); shares=C_order/r_limit",
+      "source_behavior_versions": {
+        "source_clip_clock_v20260714_16": {
+          "HEAVY": 15.0,
+          "STANDARD": 9.05,
+          "TAIL": 2.22
+        },
+        "source_clip_clock_v20260716_17_partial": {
+          "HEAVY": null,
+          "STANDARD": 10.77,
+          "TAIL": 0.25
+        }
+      },
+      "partial_heavy_semantics": "FAIL_CLOSED_UNOBSERVED_PHASE",
+      "source": "derived/recent_7d_clip_policy_versions_v2/headline.json",
+      "live_order_authorized": false
+    },
+    "runtime_probability": "committed current-stage P0/P0-M/P1 p_s(B); research proxy forbidden at runtime",
+    "shadow_evaluator": "shadow_global_station_basket_formula.py",
+    "live_order_authorized": false,
+    "orders_submitted": 0
+  },
+  "component_matrix": [
+    {
+      "id": "C01",
+      "component": "Physical-State Bayes内核",
+      "current": "状态空间、转移、观测似然、reporting operator代码已存在",
+      "target": "只负责生成可校准的P0/P1，不直接决定订单",
+      "action": "保留",
+      "boundary": "生产篮子不得现场复算"
+    },
+    {
+      "id": "C02",
+      "component": "实况接入",
+      "current": "原型仅从reported_trajectory_observations读取AMSC/ZUUU",
+      "target": "AMSC中国站、AWC非中国站分别形成exactly-once canonical event",
+      "action": "新增/补齐",
+      "boundary": "来源不得交叉fallback"
+    },
+    {
+      "id": "C03",
+      "component": "站点×模型历史配对",
+      "current": "NCEI先验、TAF/NWP弱证据和lineage骨架已存在",
+      "target": "把官方站点日最高温真值与同站点/目标日的历史as-of模型运行逐条配对并物化e=y-f_raw",
+      "action": "新增并收口",
+      "boundary": "未来模型运行、单位/结算定义不一致或配对不唯一时拒绝"
+    },
+    {
+      "id": "C03A",
+      "component": "逐模型站点校正",
+      "current": "仅有笼统站点残差与lineage骨架",
+      "target": "ECMWF/GFS/ICON分别按station/season/lead/cycle估计bias、scale、tails与n_eff，并对小样本做层级收缩",
+      "action": "新增",
+      "boundary": "残差e=y-f_raw时f_cal=f_raw+E[e]；符号、样本量与父层必须显式"
+    },
+    {
+      "id": "C03B",
+      "component": "相关性约束模型组合",
+      "current": "L_models未显式定义组合权重、残差依赖与缺模型规则",
+      "target": "用strict-as-of OOS NLL/Brier、残差协方差与稳定性选择非负归一权重，并对可用模型掩码重归一",
+      "action": "新增",
+      "boundary": "禁止原始点预测简单平均、相关模型重复计证据或从钱包成交反推私有权重"
+    },
+    {
+      "id": "C04",
+      "component": "P1实况后验",
+      "current": "canonical drain与update路径存在，完整多站实况闭环尚未完成",
+      "target": "每条METAR/SPECI生成顺序P1_t并发布不可变ProbabilityEnvelope",
+      "action": "新增/补齐",
+      "boundary": "缺事件或lineage即fail closed"
+    },
+    {
+      "id": "C05",
+      "component": "X→S→B投影",
+      "current": "已有market-bucket projection适配器",
+      "target": "绑定contract、bucket_map_hash、bridge_hash并校验归一化",
+      "action": "保留并加强",
+      "boundary": "bridge未闭合不得交易"
+    },
+    {
+      "id": "C06",
+      "component": "阶段检查点直连路由",
+      "current": "probability_adapter按P1再P0读取",
+      "target": "P0、P0-M、P1每次新提交都独立投影并直连篮子重算；同一决策时点多版本才按P1>P0-M>P0仲裁",
+      "action": "重写",
+      "boundary": "不得等待后阶段才选桶；已存在但损坏的后阶段不得静默回退"
+    },
+    {
+      "id": "C07",
+      "component": "概率中心",
+      "current": "最高概率精确桶作为中心",
+      "target": "每个阶段独立计算c_s*=argmax p_s(B)，并形成对应版本的篮子计划",
+      "action": "保留并硬化",
+      "boundary": "盘口不得平移中心"
+    },
+    {
+      "id": "C08",
+      "component": "方向偏置",
+      "current": "中心相对market anchor定方向",
+      "target": "当前阶段p_s(B)的上下尾偏斜唯一决定候选方向，偏斜强度、熵、方向侧质量与后验新鲜度决定是否启用K_bias",
+      "action": "重写",
+      "boundary": "价格不是天气真值"
+    },
+    {
+      "id": "C09",
+      "component": "固定4→3→2连续篮子",
+      "current": "动态收敛、连续精确桶和质量阈值已存在",
+      "target": "改为非固定桶数的SEED/EXTEND_LOW/EXTEND_HIGH/FILL_GAP/REPLENISH/HOLD/STOP状态机",
+      "action": "删除硬编码并重写",
+      "boundary": "源账户可见成交不支持固定收敛序列；生产执行按全部正库存缺口原子生成完整Maker bundle，各腿可异步成交但不得主动串行遗漏计划腿"
+    },
+    {
+      "id": "C10",
+      "component": "2:1主副桶配仓",
+      "current": "profit_weighted_settlement_floor写入2:1",
+      "target": "删除固定比例；用物化概率、方向、价格、库存缺口和情景地板动态生成每桶成本/份额目标",
+      "action": "删除硬编码并重写",
+      "boundary": "任何精确比例都必须由独立OOS回放晋级，不能从单一账户样本直接抄入"
+    },
+    {
+      "id": "C11",
+      "component": "CAPITAL_FIRST/SHARE_FIRST",
+      "current": "原操作系统提出双模式，当前生产未实现",
+      "target": "作为两类可比较allocator进入shadow；promotion后每个activation只允许一个锁定版本",
+      "action": "新增候选并治理",
+      "boundary": "禁止运行时任意切换；成本账本与份额账本无论哪种模式都必须同时保存"
+    },
+    {
+      "id": "C12",
+      "component": "K_base/K_bias/K_edge",
+      "current": "原方案作为三本预算",
+      "target": "同时作为事前角色预算与事后归因账本：基础覆盖、方向偏置、低价边缘分别核算",
+      "action": "保留并硬化",
+      "boundary": "三本之和受总预算、情景地板和单桶/事件集中度限制"
+    },
+    {
+      "id": "C13",
+      "component": "Maker→Taker",
+      "current": "对手行为推断，现系统篮子为逐腿FOK",
+      "target": "先实现可取消的post-only Maker候选与临近截止的有上限Taker/FOK候选，并按桶独立对账",
+      "action": "Shadow新增，晋级后替换旧FOK-only",
+      "boundary": "当前L0仍规定FOK-only；没有单独宪章修订、队列/撤单/未知态测试和人工授权不得live"
+    },
+    {
+      "id": "C14",
+      "component": "动态补仓",
+      "current": "delta=max(target-filled-pending,0)，只增不减",
+      "target": "保留只增库存语义，并由价格≤目标价、库存缺口、成交率、截止时间、checkpoint触发向量和双版本CAS共同决定",
+      "action": "保留并加强",
+      "boundary": "任一价格涨跌本身都不足以触发补仓；无缺口、无预算或已STOP均不补"
+    },
+    {
+      "id": "C15",
+      "component": "FOK和reconcile",
+      "current": "逐腿FOK、未知/部分状态进入reconcile_required",
+      "target": "保留幂等与未知态reconcile；FOK保留为紧迫Taker工具，Maker订单增加撤单与队列状态机",
+      "action": "拆分职责",
+      "boundary": "未知状态禁止重发；同一桶未知pending必须先对账，其他桶是否继续由风险门显式决定"
+    },
+    {
+      "id": "C16",
+      "component": "资本与订单账本",
+      "current": "cycle、target、ledger、parent/child表已存在",
+      "target": "与decision、intent、资本预留和bounds原子提交",
+      "action": "保留并加强",
+      "boundary": "auto_trade_decisions为唯一阻断事实"
+    },
+    {
+      "id": "C17",
+      "component": "官方实况硬NO",
+      "current": "reported-trajectory lane已存在且old Bayes execution disabled",
+      "target": "保持完全独立，只读官方METAR/SPECI硬下界",
+      "action": "保留并隔离",
+      "boundary": "不得读取P0/P1/TAF/NWP"
+    },
+    {
+      "id": "C18",
+      "component": "Dynamic Three-Leg / Target Realization",
+      "current": "旧代码和文档仍广泛存在，当前目标已退役",
+      "target": "从生产入口、activation与读取链彻底删除",
+      "action": "删除",
+      "boundary": "不得fallback"
+    },
+    {
+      "id": "C19",
+      "component": "Copy-follow",
+      "current": "daemon仍定时运行CopyFollowWorker",
+      "target": "从唯一生产服务删除",
+      "action": "删除",
+      "boundary": "生产allowlist仅篮子YES与硬NO"
+    },
+    {
+      "id": "C20",
+      "component": "概率/模型/预测worker",
+      "current": "daemon内仍含PhysicalProbability、ForecastSnapshot等worker",
+      "target": "移出生产循环，改为受控物化/研究编译",
+      "action": "移出热路径",
+      "boundary": "不得成为第四服务或交易依赖"
+    },
+    {
+      "id": "C21",
+      "component": "市场REST刷新/行情tick历史",
+      "current": "daemon仍有registry refresh骨架，WS已可零tick写入",
+      "target": "生产只读官方CLOB WS原子快照",
+      "action": "删除/停用",
+      "boundary": "盘口缺失即fail closed"
+    },
+    {
+      "id": "C22",
+      "component": "UI与monitor",
+      "current": "验收快照仍发现额外UI服务",
+      "target": "完全退出生产消费者集合",
+      "action": "删除/停用",
+      "boundary": "不得为了展示增加热路径读写"
+    },
+    {
+      "id": "C23",
+      "component": "3/7/15/30天与跨季节回放",
+      "current": "取证报告已有描述性分析，生产无晋级门",
+      "target": "新增严格as-of、互斥分段、同成熟度和跨站回放",
+      "action": "新增",
+      "boundary": "只控制候选版本晋级"
+    },
+    {
+      "id": "C24",
+      "component": "结算归因",
+      "current": "缺少base/bias/edge与执行质量闭环",
+      "target": "新增base/bias/edge、扩桶方向、主成本桶切换、滑点、排队、未成交机会归因",
+      "action": "新增",
+      "boundary": "不得用事后结果重写当时证据"
+    },
+    {
+      "id": "C25",
+      "component": "TAF修订语义",
+      "current": "TAF与METAR容易在‘实况修正’语言中混用",
+      "target": "TAF单列ForecastRevision层：校准TX完成第一次确认/有限修正，云量、降水和风场做物理证据二次确认，两层原子形成同一个P0-M；AMD/COR从同一P0根替换重算新的P0-M；METAR/SPECI才创建P1_t",
+      "action": "重写",
+      "boundary": "TAF不是实况，也不是模型型首建的前置条件"
+    },
+    {
+      "id": "C26",
+      "component": "证据等级与可识别性",
+      "current": "事实、行为推断和本系统安全设计在旧方案中混写",
+      "target": "每项机制标记FACT/INFERENCE/NORMATIVE并绑定来源、反例和promotion证据",
+      "action": "新增",
+      "boundary": "公开成交无法识别未成交挂单、私有模型、精确权重或阈值"
+    },
+    {
+      "id": "C27",
+      "component": "全局篮子先验",
+      "current": "B09/B15候选公式仍容易被误读为所有站点共用的直接参数",
+      "target": "冻结GlobalBasketPriorArtifact，只承担冷启动、层级收缩中心和预先晋级的fallback",
+      "action": "降级并治理",
+      "boundary": "全局先验不得直接绕过station activation生成订单候选"
+    },
+    {
+      "id": "C28",
+      "component": "站点目标仓位策略",
+      "current": "所有站点共享同一allocator候选族",
+      "target": "按station/stage/season/maturity/liquidity分别学习目标成本与份额权重并向全局先验收缩",
+      "action": "Shadow新增",
+      "boundary": "不得改变当前p_s(B)中心、方向或把目标集中度解释为天气证据"
+    },
+    {
+      "id": "C29",
+      "component": "站点保留价策略",
+      "current": "B14只有统一数学上限，公开成交不能识别未成交保留价",
+      "target": "用区间删失与前向Shadow成交事实学习站点保守价格margin",
+      "action": "Shadow新增",
+      "boundary": "r_final只能取min(r_math,r_learned)，绝不能提高B14数学上限"
+    },
+    {
+      "id": "C30",
+      "component": "站点补仓节奏策略",
+      "current": "B15五权重是统一Shadow候选",
+      "target": "把固定五权重降为全局先验候选，按站点学习离散时间hazard与等待/重评估节奏",
+      "action": "Shadow重写",
+      "boundary": "hazard不授权下单，不得绕过B13/B14/预算/风险/订单状态"
+    },
+    {
+      "id": "C31",
+      "component": "站点策略SSOT与解析器",
+      "current": "尚无三个参数族的独立artifact、activation和fail-closed解析",
+      "target": "统一逻辑SSOT按station_id+scope+decision_at解析ResolvedStationBasketPolicy",
+      "action": "新增",
+      "boundary": "禁止模糊latest、在线训练、临时借邻站参数或未晋级fallback"
+    },
+    {
+      "id": "C32",
+      "component": "版本化现金阶段策略",
+      "current": "现有Shadow使用单一全局clip基线，源账户阶段模板此前只作描述性候选",
+      "target": "新增BasketCashPhasePolicyArtifact与单调纯函数，以显式clip policy版本、事件本地日、站点IANA时区和当前cash phase解析C_base",
+      "action": "Shadow新增并替换单常数设计",
+      "boundary": "cash phase与P0/P0-M/P1正交；未知版本、有效期空洞、未观察阶段和时钟/时区缺失全部fail closed"
+    },
+    {
+      "id": "C33",
+      "component": "订单现金与份数",
+      "current": "金额、价格、份数容易被误解为同一个概率/edge优化问题",
+      "target": "先由B14与盘口路径确定r_limit，再由现金模板、正库存缺口、预算和深度截断C_order，最后计算q_order=C_order/r_limit",
+      "action": "职责拆分并硬化恒等式",
+      "boundary": "份数不是独立控制量；无正缺口、价格越限、预算/深度为零或pending未知时不得生成订单"
+    }
+  ],
+  "architecture_layers": [
+    {
+      "level": "L0",
+      "name": "宪章与授权",
+      "owns": "三服务边界、策略allowlist、资本上限、禁止事项",
+      "output": "Activation + Invariants"
+    },
+    {
+      "level": "L1",
+      "name": "合同与事实",
+      "owns": "站点、目标日、结算源、单位、桶映射、StationDailyHighTruth、HistoricalAsOfModelRun和官方实况",
+      "output": "MarketContract + CalibrationFacts + CanonicalEvent"
+    },
+    {
+      "level": "L2",
+      "name": "Bayes编译平面",
+      "owns": "残差配对、ECMWF/GFS/ICON逐模型站点校正、OOS模型组合，以及P0/P0-M/P1分阶段物化",
+      "output": "CalibrationArtifact + ModelEnsembleArtifact + Stage-versioned ProbabilityEnvelope"
+    },
+    {
+      "level": "L3",
+      "name": "物化概率边界",
+      "owns": "每阶段通用桶投影、lineage/freshness/bridge校验与独立NEW_CHECKPOINT触发；同一时点优先级仅作冲突消解",
+      "output": "Committed p_stage(B) + BasketReevaluationTrigger"
+    },
+    {
+      "level": "L4",
+      "name": "篮子决策内核",
+      "owns": "解析全局先验与站点三个策略artifact；用当前阶段概率生成自适应支持集、base/bias/edge角色、成本/份额双目标、状态转换与增量缺口；保持证据阶段与现金阶段正交",
+      "output": "ResolvedStationBasketPolicy + Versioned AdaptiveBasketPlan + PositiveInventoryGap"
+    },
+    {
+      "level": "L5",
+      "name": "风险与原子决策",
+      "owns": "情景PnL、预算、库存、资本预留、停牌、reconcile",
+      "output": "DecisionFact + Intent"
+    },
+    {
+      "level": "L6",
+      "name": "执行",
+      "owns": "CLOB WS证据、B14目标价、BasketCashPhasePolicy版本/本地时钟、现金截断、份数恒等式、Maker排队/撤单、紧迫Taker/FOK、幂等与对账",
+      "output": "BasketCashPhaseDecision + OrderSizingDecision + Order/Fill/Inventory facts"
+    },
+    {
+      "level": "L7",
+      "name": "审计与晋级",
+      "owns": "严格回放、3/7/15/30天、跨季节、结算归因、原子晋级",
+      "output": "Validation + Promotion"
+    }
+  ],
+  "formulas": [
+    {
+      "id": "B00",
+      "name": "历史配对残差",
+      "formula": "e_m,s,d,h,c = y_s,d - f_raw,m,s,d,h,c",
+      "role": "Bayes层",
+      "production": "官方站点日最高温与当时已发布模型运行严格配对；禁止未来泄漏、单位或结算定义错配"
+    },
+    {
+      "id": "B00A",
+      "name": "逐模型站点偏差校正",
+      "formula": "b_hat_m,s,k,h,c=ShrinkageMean(e|model,station,season,lead,cycle); f_cal,m=f_raw,m+b_hat_m,s,k,h,c",
+      "role": "Bayes校准层",
+      "production": "残差定义为y-f_raw时使用加号；ECMWF/GFS/ICON分别校正并对小样本做层级收缩"
+    },
+    {
+      "id": "B00B",
+      "name": "逐模型概率分布",
+      "formula": "p_m(X)=Discretize(Family(location=f_cal,m,scale=sigma_hat_m,s,k,h,c,tails=q_hat_m))",
+      "role": "Bayes校准层",
+      "production": "必须保存bias、scale、tails、n/n_eff、父层与OOS指标，禁止只校正点预测"
+    },
+    {
+      "id": "B00C",
+      "name": "相关性约束模型组合",
+      "formula": "w*=argmin OOS_NLL(Sum_m w_m p_m)+lambda_corr*w^T Sigma_e w+lambda_shrink||w-w_prior||^2; P_model(X)=Sum_m w_m p_m(X)",
+      "role": "Bayes组合层",
+      "production": "P_model是P0内部基础分布而非第四stage；非负归一OOS权重、残差协方差和exact mask全部绑定artifact hash，禁止运行时缺模型重归一"
+    },
+    {
+      "id": "B00D-B00E",
+      "name": "历年同日单点最高温弱气候锚与OOF元组合",
+      "formula": "Q_same_day(T)=Normalize[Sum_i weight_i*K_h(T-TrendAdjust(y_same_day,i))]; delta_h=E[Q_same_day]-E[P_model^OOF]; P0(b)=Normalize[P_model(b)*exp(theta_h*z_b)]",
+      "role": "Bayes元组合层",
+      "production": "历史模型档案与历年同日单点truth独立lineage；theta_h只来自rolling OOF artifact并受中心位移、KL、质量迁移、单桶放大和反转门约束；缺失或无增益时theta_h=0"
+    },
+    {
+      "id": "B01",
+      "name": "P0方向与连续核心",
+      "formula": "D_0=Sum_{b>c_0*}P0(b)-Sum_{b<c_0*}P0(b); Core_0=MinContiguousCoverage(P0,c_0*,coverage_target); CandidateBoundary_0=CapByLayers(Hull(calibrated_member_centers),k_disagreement)",
+      "role": "概率到篮子边界",
+      "production": "组合概率覆盖唯一决定连续核心；模型中心极值只诊断分歧并限制有层数上限的候选边界；方向只排序外围候选和调节集中度，不移动核心或要求越过模型极值"
+    },
+    {
+      "id": "B01R",
+      "name": "TAF弱预测修订",
+      "formula": "P0-M_r=Normalize[P0_root * LR_r^alpha_r], 0<LR_floor<=LR_r(b)<=LR_ceiling",
+      "role": "Bayes层",
+      "production": "TAF逐样本绑定站点×季节×lead×起报时次×结算定义并与同决策正式NWP组合artifact exact join；校准TX先完成第一次确认/有限修正，云量、降水和风场随后做物理证据二次确认与冲突折扣，两层原子生成同一个P0-M；首份TAF及AMD/COR均从同一P0根替换重算，禁止裸似然、重复累计、另建stage或第二中心、硬排除、归零、覆盖P0或冒充P1"
+    },
+    {
+      "id": "B02",
+      "name": "METAR/SPECI硬下界与轨迹软似然",
+      "formula": "P1_t(b)=Normalize[P_base(b)*LR_traj,t(b)^alpha_t*I_hard(H_t,b)]",
+      "role": "Bayes层",
+      "production": "每版从不可变P0-M/P0预测根和截至当前的完整canonical序列重算，禁止在上一P1重复乘完整轨迹；未晋级时alpha_t=0/LR=1并退化为硬排除归一化"
+    },
+    {
+      "id": "B03",
+      "name": "市场桶投影",
+      "formula": "p_s(b)=Sum_x P_s(X=x) * P(B=b|X=x,contract), s in {P0,P0-M,P1}",
+      "role": "物化边界",
+      "production": "每个阶段均要求sum_b p_s(b)=1并绑定stage、checkpoint与bridge hash"
+    },
+    {
+      "id": "B04",
+      "name": "唯一中心",
+      "formula": "c*_s=argmax_b p_s(b), s in {P0,P0-M,P1}",
+      "role": "篮子层",
+      "production": "价格不得平移c*"
+    },
+    {
+      "id": "B05",
+      "name": "阶段概率偏斜方向",
+      "formula": "D_s=Sum_{b>c*_s}p_s(b)-Sum_{b<c*_s}p_s(b)",
+      "role": "篮子层",
+      "production": "只形成候选UP/DOWN，不直接加仓"
+    },
+    {
+      "id": "B06",
+      "name": "当前阶段概率偏置置信门",
+      "formula": "G_bias,s=1[|D_s|>=delta_s and H(p_s)<=h_max,s and M_tail,s>=m_min,s and fresh(p_s)]",
+      "role": "风险层",
+      "production": "方向恒为sign(D_s)；置信不足时K_bias=0或HOLD，不调用外部天气方向"
+    },
+    {
+      "id": "B07",
+      "name": "连续核心与可选外围支持",
+      "formula": "Core_s*=MinContiguousCoverage(p_s,c_s*,coverage_target); Boundary_s=CapByLayers(ModelAnchorRange_s,k_disagreement); S_s*=Core_s* union {b in Boundary_s\\Core_s: PerBucketGate_s(b)}",
+      "role": "篮子层",
+      "production": "核心连续且每桶正目标库存并只由组合概率覆盖决定；方向只排序外围候选和调集中度；外围风险桶可非连续且逐桶过概率、可靠性、价格覆盖和扩展上限门；全部核心正缺口必须共同进入完整Maker bundle"
+    },
+    {
+      "id": "B08",
+      "name": "角色分解",
+      "formula": "r_b=(u_b,v_b,x_b); u_b=g_base(p_t,b), v_b=g_bias(p_t,b,D), x_b=g_edge(p_t,b,a_b^eff)",
+      "role": "篮子层",
+      "production": "K_base/K_bias/K_edge分别表达覆盖、方向和边缘可选性；函数与权重须由严格OOS晋级"
+    },
+    {
+      "id": "B08A",
+      "name": "全局先验到站点策略后验",
+      "formula": "theta_post,s,j=rho_s,j*theta_local_hat,s,j+(1-rho_s,j)*theta_global,j; rho_s,j=n_eff,s,j/(n_eff,s,j+kappa_j), j in {target,reserve,cadence}",
+      "role": "站点策略层",
+      "production": "统一公式仅为theta_global；三个参数族独立学习与晋级，缺失或未激活时fail closed或命中预先晋级fallback"
+    },
+    {
+      "id": "B09",
+      "name": "站点目标仓位与成本/份额双账本",
+      "formula": "w_s,b=softmax(phi_target(p_s,stage,season,maturity,spread,depth,inventory)_b*theta_post,s,target); (k_b*,q_b*)=ProjectTarget(w_s,b,K_base,K_bias,K_edge,Budget,PnL_floor,concentration_caps,a_b^eff)",
+      "role": "配仓层",
+      "production": "站点目标只在当前概率支持集内调整集中度和角色预算；不得翻转sign(D_s)，同时保存k与q并禁止固定等份/固定2:1"
+    },
+    {
+      "id": "B10",
+      "name": "逐情景PnL",
+      "formula": "Pi_t(y)=q_filled,y-Sum_b k_filled,b-fees; define q_filled,y=0 when y is outside held buckets",
+      "role": "风险层",
+      "production": "必须包含赢家落在所有已选集合外的情景"
+    },
+    {
+      "id": "B11",
+      "name": "增量补仓",
+      "formula": "Delta q_b=max(q_target,b - q_filled,b - q_pending,b, 0)",
+      "role": "篮子层",
+      "production": "只增不减；未知pending先reconcile"
+    },
+    {
+      "id": "B12",
+      "name": "真实有效买价",
+      "formula": "a_b^eff(q,mode)=maker_limit_b+fee+queue_cost when mode=MAKER; VWAP_ask,b(q)+fee+slippage_buffer_b when mode=TAKER",
+      "role": "执行层",
+      "production": "行情只来自官方CLOB WS；Maker排队成本与Taker逐档成本分开估计"
+    },
+    {
+      "id": "B13",
+      "name": "订单状态硬门",
+      "formula": "ALLOW_b=EvidenceFresh*ContractMatch*BudgetOK*OrderStateKnown*RiskInputsComplete*RiskFloorOK*1[Delta q_b>0]*TriggerChanged*ClipMinimumMet*1[a_b^eff<=limit_b]*VersionVectorMatch*CandidatePresent",
+      "role": "风险层",
+      "production": "十二因子合取；任一因子为0即零执行候选并HOLD/STOP/RECONCILE"
+    },
+    {
+      "id": "B14",
+      "name": "数学上限与站点保留价",
+      "formula": "r_math,b=sup{l: EV_after(l)>=EV_min and min_{y in protected}Pi_after(y,l)>=pi_floor and Capital_after(l)<=Budget}; r_final,s,b=tick_down(min(r_math,b,r_learned,s,b))",
+      "role": "执行层",
+      "production": "站点保留价artifact只能比数学上限更保守；盘口涨跌不改变天气概率，公开历史成交只提供删失区间而非精确保留价"
+    },
+    {
+      "id": "B15",
+      "name": "触发与站点补仓节奏",
+      "formula": "TRIGGER_b=1[checkpoint or quote_change or fill_update or time_gate]; h_s,b,t=sigmoid(phi_cadence(stage,time_left,gap,fill_rate,spread,depth,quote_change)*theta_post,s,cadence)",
+      "role": "执行层",
+      "production": "原五权重只保留为GlobalBasketPrior候选；站点hazard只决定等待/重评估节奏，低/高紧迫表达仍须B13与B14全部通过"
+    },
+    {
+      "id": "B15A",
+      "name": "版本化现金阶段",
+      "formula": "cash_phase_t=ClockPhase(event_date_local,station_timezone,observed_at_utc,current_cash_phase); C_base=T[explicit_clip_policy_version,cash_phase_t]",
+      "role": "执行定额层",
+      "production": "现金阶段与P0/P0-M/P1证据阶段正交；只进不退；未知版本、有效期空洞或未观察阶段fail closed"
+    },
+    {
+      "id": "B16",
+      "name": "订单现金与份数恒等式",
+      "formula": "C_order,b=min(C_base,r_limit,b*Delta q_b,remaining_budget,executable_depth_cash_b); q_order,b=C_order,b/r_limit,b",
+      "role": "执行定额层",
+      "production": "版本×本地现金阶段只给标准片段；库存缺口、预算和深度向下截断；份数不是独立决策变量"
+    },
+    {
+      "id": "B17",
+      "name": "自适应状态与动态重算",
+      "formula": "state_t in {SEED,EXTEND_LOW,EXTEND_HIGH,FILL_GAP,REPLENISH,HOLD,STOP}; checkpoint -> p_s(B) -> support/target -> Delta q -> r_cap/r_limit -> cash_phase/C_order/q_order",
+      "role": "篮子与执行编排层",
+      "production": "概率检查点可重算支持集和目标；quote只重算价格/深度；fill只重算库存缺口；cash clock只重算标准片段；STOP不可自动复活"
+    },
+    {
+      "id": "B18",
+      "name": "策略增益归因",
+      "formula": "PnL=P_base+P_bias+P_edge+P_coverage-C_spread-C_slippage-C_queue-C_failure",
+      "role": "审计层",
+      "production": "主成本桶切换、扩桶方向和每次clip均按当时lineage归因，禁止事后改写"
+    }
+  ],
+  "migration_phases": [
+    {
+      "phase": "P0",
+      "name": "冻结与对账",
+      "changes": "保持live暂停；解决prepared/reconcile/idempotency未决；冻结现有hash",
+      "exit": "未决订单=0、资本账本闭合、只读验收可重复"
+    },
+    {
+      "phase": "P1",
+      "name": "证据入口拆分",
+      "changes": "TAF/AMD/COR进入ForecastRevision；AMSC中国站与AWC非中国站METAR/SPECI进入CanonicalObservationEvent；去掉ZUUU硬编码",
+      "exit": "两类事件不混用，跨站exactly-once、修订停牌、乱序/重复/跨日回放通过"
+    },
+    {
+      "phase": "P2",
+      "name": "Bayes概率物化",
+      "changes": "建立站点真值×历史as-of模型配对、ECMWF/GFS/ICON逐模型校正、残差相关性约束OOS组合，再完成P0/P0-M/P1物化与独立篮子重算触发",
+      "exit": "残差符号与配对正确；逐模型bias/scale/tails、层级收缩、组合权重/协方差/缺模型重归一通过；三阶段分别触发篮子"
+    },
+    {
+      "phase": "P3",
+      "name": "篮子内核Shadow",
+      "changes": "实现B04-B18；把统一B09/B15参数降为GlobalBasketPriorArtifact，分别学习站点目标仓位、保留价与补仓节奏；增加与天气阶段正交的BasketCashPhasePolicyArtifact，并对P0/P0-M/P1逐检查点重算",
+      "exit": "三阶段分别直连篮子；三个站点artifact与现金阶段artifact独立解析和fail-closed；站点层不改c_s*/sign(D_s)、不突破B14；现金阶段不改支持集/目标；固定4→3→2/等份/2:1在候选闭包零命中"
+    },
+    {
+      "phase": "P4",
+      "name": "原子账本与执行",
+      "changes": "decision/bounds/intent/资本预留原子提交；版本化cash phase、金额截断、shares=cash/price、Maker排队/撤单与紧迫Taker/FOK先shadow",
+      "exit": "cash policy未知版本/有效期空洞/未观察阶段、时区回绕、故障注入、重复回报、撤单竞态、未知POST和部分成交全部fail closed；L0未修订不得live"
+    },
+    {
+      "phase": "P5",
+      "name": "纯YES硬事实排除",
+      "changes": "官方硬下界只物化不可能YES桶掩码，禁止生成任何NO intent/order",
+      "exit": "静态与运行验收同时证明仅YES/BUY意图可写，旧hard-NO写入被数据库硬拒绝"
+    },
+    {
+      "phase": "P6",
+      "name": "退役旧生产路径",
+      "changes": "删除three-leg、Target Realization、copy-follow、热路径模型/REST/UI/monitor/tick写入",
+      "exit": "gui/$(id -u)用户域仅com.weather.weather_basket_yes、com.weather.market_ws、com.weather.clob_order_service；system域为零"
+    },
+    {
+      "phase": "P7",
+      "name": "原子晋级",
+      "changes": "用新内容寻址activation一次切换；禁止双活和旧fallback",
+      "exit": "G0-G7全通过；人工授权后才允许live_submit"
+    }
+  ],
+  "philosophy_comparison": [
+    {
+      "axis": "认识论对象",
+      "bayes": "真实最高温及物理状态的概率分布",
+      "basket": "离散结算情景下的收益分布与执行路径",
+      "hybrid": "Bayes回答相信什么；篮子回答如何表达"
+    },
+    {
+      "axis": "优化目标",
+      "bayes": "校准、NLL/CRPS、物理一致性、后验收敛",
+      "basket": "覆盖、情景地板、资本效率、成交质量、可对账",
+      "hybrid": "模型分与交易分双目标，禁止互相替代"
+    },
+    {
+      "axis": "不确定性处理",
+      "bayes": "通过先验、弱/强似然和隐状态显式更新",
+      "basket": "通过多桶覆盖、阶段收敛和保留资本选择权",
+      "hybrid": "分布宽度决定候选窗口，盘口决定表达成本"
+    },
+    {
+      "axis": "价格角色",
+      "bayes": "不应成为天气观测",
+      "basket": "决定是否值得和如何成交",
+      "hybrid": "天气真值与执行价格严格隔离"
+    },
+    {
+      "axis": "时间角色",
+      "bayes": "新实况到达后更新信念",
+      "basket": "等待提供新信息与更好成交机会",
+      "hybrid": "checkpoint驱动，不按固定轮询盲补"
+    },
+    {
+      "axis": "主要强项",
+      "bayes": "可解释、可校准、跨天/站点具有统计结构",
+      "basket": "承认结算离散性与执行摩擦，避免单点押注",
+      "hybrid": "概率正确性与交易可执行性同时闭环"
+    },
+    {
+      "axis": "主要风险",
+      "bayes": "复杂、实况入口/bridge任一断裂即失真；好概率不等于好交易",
+      "basket": "行为模仿易过拟合；多腿执行和外部赢家损失不可忽视",
+      "hybrid": "用硬边界阻止两套系统互相污染"
+    },
+    {
+      "axis": "交易哲学",
+      "bayes": "用最佳信念选择最可能或最优角色",
+      "basket": "先建立核心覆盖，再按方向、价格、库存缺口和时间选择扩桶或追补",
+      "hybrid": "不赌单点、不伪称全局保本、不用固定等份掩盖动态风险，也不以盘口替代天气"
+    }
+  ],
+  "risks": [
+    {
+      "risk": "把Bayes与篮子混成一个函数",
+      "failure": "价格、天气、仓位互相反向污染，无法归因",
+      "guard": "L2/L3物化边界；L4只读ProbabilityEnvelope"
+    },
+    {
+      "risk": "实况接入半闭环",
+      "failure": "P1看似更新但漏报、重放或只覆盖ZUUU",
+      "guard": "跨站canonical identity、exactly-once、修订停牌、缺失原因"
+    },
+    {
+      "risk": "把源账户行为推断伪装成已知私有算法",
+      "failure": "精确权重、未成交挂单和队列位置不可识别，直接上线会产生过拟合与裸腿风险",
+      "guard": "FACT/INFERENCE/NORMATIVE分级；Maker/Taker、双allocator和全部阈值先shadow、独立OOS且须L0修订"
+    },
+    {
+      "risk": "多桶被误称保本",
+      "failure": "赢家在已选集合外时损失全部成本",
+      "guard": "B10强制枚举所有合同结果"
+    },
+    {
+      "risk": "P1损坏后自动回P0",
+      "failure": "旧信念掩盖新证据链故障",
+      "guard": "P0仅在P1不存在时使用；P1无效直接阻断"
+    },
+    {
+      "risk": "轮询触发重复补仓",
+      "failure": "无信息变化仍累积库存",
+      "guard": "CheckpointSnapshot+plan_version+quote_hash双CAS"
+    },
+    {
+      "risk": "把现金阶段误当成天气证据阶段或把源模板直接上线",
+      "failure": "P0/P1变化错误切换订单金额，或未知HEAVY模板被默认值填充并造成过量下单",
+      "guard": "证据stage与cash_phase使用独立枚举/版本；BasketCashPhasePolicyArtifact显式有效期；未知版本、空洞和未观察阶段fail closed；源值只作Shadow先验"
+    },
+    {
+      "risk": "硬事实排除被误用为NO交易信号",
+      "failure": "数学排除集合越权生成BUY NO intent/order",
+      "guard": "策略allowlist、原子账本和数据库约束只允许basket YES/BUY"
+    },
+    {
+      "risk": "双活/旧fallback",
+      "failure": "同一事件出现多个决策权威",
+      "guard": "三服务、单用户域、原子activation、旧代码硬删除"
+    }
+  ],
+  "target_invariants": [
+    "TAF/AMD/COR属于独立弱预测修订层而非实况；早期P0不依赖TAF；TAF校准TX与云量、降水、风场物理二次确认必须原子生成同一个P0-M，METAR/SPECI才允许生成P1_t canonical强更新。",
+    "历史最高温既是气候先验样本也是模型验证真值；校正器作用于当前各模型预报，禁止把历史最高温本身描述为被校正对象。",
+    "ECMWF/GFS/ICON必须分别校正中心与不确定性，再用strict-as-of OOS技能和残差相关性组合；禁止原始点预测简单平均或相关证据重复计数。",
+    "P0、P0-M、P1每个新提交检查点都必须独立直连篮子选桶、偏置、配仓、状态与增量重算；不得等待P1才运行篮子。",
+    "每个阶段的篮子中心和方向偏置只能来自该阶段p_s(B)：中心为最高概率精确桶，方向为上下尾偏斜符号，偏斜强度与后验不确定性决定K_bias是否启用。",
+    "统一篮子公式只允许作为GlobalBasketPriorArtifact用于冷启动、层级收缩和已晋级fallback；不得作为所有站点的直接执行参数。",
+    "目标仓位、保留价和补仓节奏必须按站点分别学习、分别晋级、分别记录n_eff与rho；禁止合并成一条不可解释总分或在线临场训练。",
+    "站点目标仓位不得修改c_s*或翻转sign(D_s)；站点保留价不得高于B14数学上限；站点补仓hazard不得绕过B13/B14、预算、风险或已知订单状态门。",
+    "站点策略使用统一逻辑SSOT按station_id查询，缺失/过期/scope不匹配且无预先晋级fallback时必须FAIL_CLOSED_NO_STATION_POLICY。",
+    "Plan@P0、Plan@P0-M、Plan@P1按检查点追加写；后计划可改变期望支持集与目标，但不得覆盖前计划或自动卖出已成交库存。",
+    "目标篮子不得硬编码桶数、4→3→2序列、阶段内等份或固定2:1；支持集由后验宽度、模型分歧、价格和风险共同决定。",
+    "建仓状态只能是SEED、EXTEND_LOW、EXTEND_HIGH、FILL_GAP、REPLENISH、HOLD、STOP；选择集合可扩展，已成交库存不自动减仓，STOP不可自动复活。",
+    "每桶同时保存成本目标、份额目标、filled、pending与角色归因；主成本桶与主份额桶允许不同且随成交演进。",
+    "补仓只允许delta=max(target-filled-pending,0)，并且必须同时满足新checkpoint/盘口/成交事件、目标价、预算、风险地板与订单状态门。",
+    "支持集/目标仓位、完整Maker bundle腿集合、逐腿挂价、现金上下文与份数必须拆成五个可审计输出：当前阶段后验与站点目标决定支持集/目标，全部正库存缺口共同决定完整bundle腿集合，市场路径在B14上限内逐腿决定挂价，显式clip policy版本×站点本地cash phase提供有界现金上下文，各腿份数由唯一DeltaBasketScore v2联合求解。",
+    "P0/P0-M/P1是天气证据阶段，HEAVY/STANDARD/TAIL是订单现金阶段；两者不得共用字段、枚举或版本权威，任何cash phase变化都不得修改p_s(B)、c_s*、sign(D_s)、支持集或q*。",
+    "BasketCashPhasePolicyArtifact必须显式绑定IANA时区、事件本地日、阈值、阶段现金表、有效期与artifact SHA；未知版本、版本间空洞和未观察阶段必须fail closed。",
+    "源账户15/9.05/2.22与10.77/0.25只作为行为复刻先验；本系统不得把这些值未经自身风险/OOS/同一resident前向production_no_live晋级直接写入live activation。",
+    "Maker等待、撤单和紧迫Taker/FOK属于待晋级执行候选；任一订单未知必须先reconcile，禁止猜测重发。",
+    "所有源账户机制标记FACT/INFERENCE/NORMATIVE；不可识别的精确权重、阈值、私有模型和未成交挂单不得写成事实。",
+    "当前L0仍规定4→3→2等份与FOK-only；本v1.8只能作为非生产候选，单独修订宪章并通过门禁前不得live。",
+    "官方METAR/SPECI硬下界只生成纯YES篮子排除掩码；禁止任何NO买入、补仓或自动退出策略。",
+    "auto_trade_decisions是唯一阻断原因来源；decision、YES intent和资本预留原子提交，硬事实排除不得创建NO intent。",
+    "生产仅保留com.weather.weather_basket_yes、com.weather.market_ws、com.weather.clob_order_service三个gui/$(id -u)用户域服务，system域同名job为零。",
+    "旧three-leg、Target Realization、copy-follow、UI、monitor、市场REST、tick写入和任务队列不得fallback。"
+  ],
+  "acceptance_gates": [
+    {
+      "gate": "A0",
+      "name": "语义",
+      "pass": "站点、目标日、结算源、时区、单位、bucket_map_hash唯一"
+    },
+    {
+      "gate": "A1",
+      "name": "实况",
+      "pass": "AMSC/AWC分泳道、exactly-once、乱序/重复/修订/跨日回放通过"
+    },
+    {
+      "gate": "A2",
+      "name": "概率",
+      "pass": "P0/P1归一化、lineage、freshness、bridge、OOS与校准通过"
+    },
+    {
+      "gate": "A3",
+      "name": "策略",
+      "pass": "当前阶段p_s(B)中心与方向、全局先验→站点三artifact解析、置信门、自适应状态机、双账本、B10全情景PnL和固定硬编码零命中通过；首建阶段必须为P0；天气stage与cash_phase正交"
+    },
+    {
+      "gate": "A4",
+      "name": "执行",
+      "pass": "官方WS、B14目标价、版本化cash phase、金额截断、shares=cash/price、Maker排队/撤单、Taker/FOK、幂等、部分/未知成交和reconcile故障注入通过"
+    },
+    {
+      "gate": "A5",
+      "name": "隔离",
+      "pass": "硬NO无概率依赖；篮子无raw weather；生产无第四服务"
+    },
+    {
+      "gate": "A6",
+      "name": "回放",
+      "pass": "3/7/15/30天互斥分段、同站时间外、留一站点、跨季节和同成熟度通过；分别报告目标/保留价/节奏而非只报聚合命中率"
+    },
+    {
+      "gate": "A7",
+      "name": "晋级",
+      "pass": "shadow/dry-run稳定、原子activation、无双活无fallback、人工授权"
+    }
+  ],
+  "recommended_sequence": "先拆清模型、TAF弱预测入口与METAR/SPECI强观测入口并闭合NWP→P0、TAF校准TX＋物理证据二次确认→同一个P0-M、METAR/SPECI→P1_t；随后物化GlobalBasketPriorArtifact及三个站点策略artifact，再接入独立BasketCashPhasePolicyArtifact，把选桶/目标、完整Maker bundle、逐腿挂价、现金上下文和联合份数拆开做production_no_live零订单前向验证；只有同站时间外、留一站点、跨季节、前向成交质量与故障门全部通过后，才讨论L0修订，禁止恢复真实下单。"
+}
