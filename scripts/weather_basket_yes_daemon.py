@@ -3246,6 +3246,13 @@ def main() -> int:
                 and now_mono >= next_production
                 and production_future is None
                 and hosted_sweep_future is None
+                # Symmetric with the prefetch gate below: whichever of the
+                # two starts first owns the writer until it finishes.  The
+                # prefetch is bounded by its own 300s subprocess timeout,
+                # so the worst this costs production is one deferred slot,
+                # against a cycle that currently fails closed outright when
+                # the two overlap.
+                and forecast_future is None
             ):
                 production_future = executor.submit(
                     run_target_production_cycle,
@@ -3254,7 +3261,24 @@ def main() -> int:
                 production_submitted_mono = time.monotonic()
                 production_submitted_at = utc_now()
                 next_production = time.monotonic() + 15.0
-            if storage_ok and now_mono >= next_forecast and forecast_future is None:
+            if (
+                storage_ok
+                and now_mono >= next_forecast
+                and forecast_future is None
+                # The third writer.  Production and the hosted sweeps were
+                # serialised against each other on 2026-08-24, but the
+                # forecast prefetch was left ungated -- and it writes the
+                # same ``calibration_forward_taf_capture`` rows the
+                # production cycle writes.  Measured 2026-08-26: every
+                # ingress in the cycle reported
+                # ``OperationalError:database is locked``, the failing
+                # statement was that table's INSERT, and the resident sat
+                # BLOCKED_FAIL_CLOSED across cycles while the prefetch ran
+                # beside it.  One writer at a time means all three lanes,
+                # not two of them.
+                and production_future is None
+                and hosted_sweep_future is None
+            ):
                 # Keep the last completed bounded TAF receipt visible while a
                 # new worker is in flight.  Replacing the whole prefetch
                 # object with a bare ``pending`` marker used to erase the
