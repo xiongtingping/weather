@@ -3297,6 +3297,11 @@ font:12.5px/1.35 inherit;display:flex;align-items:center;gap:5px}
 .daytabs button[data-active="1"]{color:var(--text);border-color:var(--accent);
 background:var(--why-bg)}
 .daytabs .muted{font-size:11px}
+/* 全部 stacks every day in one card, so the days need a seam.  Only
+   there: with one pane showing, a rule keyed on the hidden pane before it
+   draws a line under nothing. */
+.card[data-dayall="1"] [data-daypane]+[data-daypane]{margin-top:14px;
+padding-top:10px;border-top:1px solid var(--line)}
 .grouptitle{display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;
 margin:18px 0 0;font-weight:650}
 .grouptitle .muted{font-weight:400}
@@ -5628,6 +5633,7 @@ document.querySelectorAll("[data-daytabs]").forEach(card => {
     card.querySelectorAll("[data-daypane]").forEach(pane => {
       pane.hidden = day !== "all" && pane.dataset.daypane !== day;
     });
+    card.dataset.dayall = day === "all" ? "1" : "";
   });
 });
 
