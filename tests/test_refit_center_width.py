@@ -449,3 +449,132 @@ def test_round_memo_keeps_different_caller_bounds_apart() -> None:
     assert (first, second, repeat) == ("a", "b", "a")
     # Outside a round there is no memo at all, so direct callers are unchanged.
     assert store._memoised(("evidence_floor", "P0", "A"), lambda: "fresh") == "fresh"
+
+
+def _journal_fixture() -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE calibration_center_width_fit_journal("
+        "stage TEXT,fitted_at_utc TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE calibration_center_width_station_journal("
+        "stage TEXT,fitted_at_utc TEXT)"
+    )
+    return conn
+
+
+def test_stage_order_serves_the_least_recently_fitted_first() -> None:
+    """A truncated round used to cut the same stage every time.
+
+    P1 sat last in the tuple and was the most expensive, so it was what never
+    got fitted: sixteen journal rows for P0 against eleven for P1, whose
+    newest was a full day behind.
+    """
+
+    from bayes_basket_target.center_width_store import stage_order_by_staleness
+
+    conn = _journal_fixture()
+    try:
+        conn.executemany(
+            "INSERT INTO calibration_center_width_fit_journal VALUES(?,?)",
+            [
+                ("P0", "2026-08-26T10:00:00Z"),
+                ("P0-M", "2026-08-26T09:00:00Z"),
+                ("P1", "2026-08-25T17:11:00Z"),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO calibration_center_width_station_journal VALUES(?,?)",
+            [
+                ("P0", "2026-08-26T10:00:05Z"),
+                ("P0-M", "2026-08-26T09:00:05Z"),
+                ("P1", "2026-08-25T17:13:07Z"),
+            ],
+        )
+        assert stage_order_by_staleness(
+            conn, ("P0", "P0-M", "P1")
+        ) == ("P1", "P0-M", "P0")
+    finally:
+        conn.close()
+
+
+def test_stage_order_ranks_a_stage_by_its_most_neglected_lane() -> None:
+    """SQL's MIN drops the missing lane and would invert this exactly.
+
+    The two lanes are separately isolated, so a stage can carry a row for one
+    and not the other. Ranking it by the lane that did run puts the stage that
+    should go first dead last.
+    """
+
+    from bayes_basket_target.center_width_store import stage_order_by_staleness
+
+    conn = _journal_fixture()
+    try:
+        conn.executemany(
+            "INSERT INTO calibration_center_width_fit_journal VALUES(?,?)",
+            [
+                ("P0", "2026-08-26T01:00:00Z"),
+                ("P0-M", "2026-08-26T02:00:00Z"),
+                ("P1", "2026-08-26T03:00:00Z"),
+            ],
+        )
+        # P1's scalar lane is the newest of the three, but its station lane
+        # has never run at all.
+        conn.executemany(
+            "INSERT INTO calibration_center_width_station_journal VALUES(?,?)",
+            [("P0", "2026-08-26T01:05:00Z"), ("P0-M", "2026-08-26T02:05:00Z")],
+        )
+        assert stage_order_by_staleness(
+            conn, ("P0", "P0-M", "P1")
+        ) == ("P1", "P0", "P0-M")
+    finally:
+        conn.close()
+
+
+def test_stage_order_is_canonical_when_nothing_has_been_fitted() -> None:
+    """No journal at all is no reason to be non-deterministic."""
+
+    from bayes_basket_target.center_width_store import stage_order_by_staleness
+
+    conn = _journal_fixture()
+    try:
+        assert stage_order_by_staleness(
+            conn, ("P0", "P0-M", "P1")
+        ) == ("P0", "P0-M", "P1")
+    finally:
+        conn.close()
+
+    missing = sqlite3.connect(":memory:")
+    try:
+        assert stage_order_by_staleness(
+            missing, ("P0", "P0-M", "P1")
+        ) == ("P0", "P0-M", "P1")
+    finally:
+        missing.close()
+
+
+def test_explicit_stage_list_keeps_the_order_the_caller_gave() -> None:
+    """Rotation is for the default sweep, not for a caller who named an order."""
+
+    import bayes_basket_target.center_width_store as store
+
+    seen: list[str] = []
+
+    def _record_order(conn, wanted, results, commit, bound):  # noqa: ANN001, ARG001
+        seen.extend(wanted)
+
+    original = store._refit_stages
+    store._refit_stages = _record_order
+    conn = _journal_fixture()
+    try:
+        conn.execute(
+            "INSERT INTO calibration_center_width_fit_journal VALUES(?,?)",
+            ("P1", "2026-08-20T00:00:00Z"),
+        )
+        store.refit_all_center_width(conn, commit=False, stages=("P0-M", "P0"))
+    finally:
+        store._refit_stages = original
+        conn.close()
+
+    assert seen == ["P0-M", "P0"]

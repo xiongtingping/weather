@@ -42,6 +42,7 @@ from bayes_basket_target.center_width_store import served_arithmetic_anchor
 from bayes_basket_target.center_width_store import (  # noqa: E402
     MIN_QUALIFYING_DAYS,
     refit_all_center_width,
+    stage_order_by_staleness,
 )
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
@@ -141,7 +142,11 @@ def main() -> int:
     try:
         if per_stage:
             stages = {}
-            for stage in ("P0", "P0-M", "P1"):
+            # Same rotation as the default path.  This loop drives one stage
+            # per call, so the store's own ordering cannot reach it, and a
+            # hand-written order here would put the operator's runs back on
+            # the fixed sequence the rotation exists to break.
+            for stage in stage_order_by_staleness(conn, ("P0", "P0-M", "P1")):
                 one = refit_all_center_width(
                     conn, commit=args.commit,
                     min_decision_at_utc=per_stage.get(stage, min_decision),

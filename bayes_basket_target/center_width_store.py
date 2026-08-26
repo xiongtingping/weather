@@ -1353,10 +1353,13 @@ def journal_center_width_fit(
     stage_id = _check_stage(stage)
     ensure_center_width_schema(conn)
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    # The activated row hashes the TAF cells too, so a journal digest that
+    # omits them can never match the row it is evidence for.
     digest = center_width_sha256(
         stage=stage_id,
         delta_c=fitted["delta_c"],
         width_lambda=fitted["width_lambda"],
+        taf_cells=fitted.get("taf_cells") or None,
     )
     fit_id = "cwfit-" + content_sha256({
         "stage": stage_id,
@@ -1423,10 +1426,71 @@ def refit_all_center_width(
     """
 
     results: dict[str, Any] = {}
-    wanted = tuple(stages) if stages else CENTER_WIDTH_STAGES
+    # An explicit ``stages`` is the caller's own order and is honoured as
+    # given; only the default sweep order is rotated.
+    wanted = (
+        tuple(stages) if stages
+        else stage_order_by_staleness(conn, CENTER_WIDTH_STAGES)
+    )
     with _round_memo():
         _refit_stages(conn, wanted, results, commit, min_decision_at_utc)
     return results
+
+
+def stage_order_by_staleness(
+    conn: sqlite3.Connection, stages: "Sequence[str]"
+) -> tuple[str, ...]:
+    """Least-recently fitted first, ties in the canonical order.
+
+    A round that is cut short always cut the same stage.  The tuple was read
+    from the head every time and nothing remembered where the previous round
+    stopped, so P1 -- last in it and the most expensive -- was what never got
+    fitted: measured 2026-08-26, sixteen journal rows for P0 and eleven for
+    P1, whose newest was a full day behind the other two.  The resident's
+    hosted-sweep scheduler had the identical fault and the identical fix.
+
+    Staleness comes from the journals because they are the only record that
+    survives the process.  A stage is as stale as its *most* neglected lane,
+    and a lane with no row at all has never run, which sorts first: the two
+    lanes are separately isolated, so a stage can carry one and not the other,
+    and SQL's ``MIN`` would drop the missing one and rank that stage by the
+    lane that did run -- the exact inversion of what is wanted.
+
+    Known boundary: a stage that raises writes no row, so its timestamp stays
+    frozen and it keeps the head.  While it fails fast that is merely a bad
+    stage pinned where the old order pinned P1, and no worse; a slow failure
+    would spend budget before the others run.  The error lives only in the
+    returned entry, never in a table, so no ordering read from the database
+    can see it.
+    """
+
+    def _last_fit(stage: str) -> str:
+        newest = ""
+        for table in (
+            "calibration_center_width_fit_journal",
+            "calibration_center_width_station_journal",
+        ):
+            try:
+                row = conn.execute(
+                    f"SELECT MAX(fitted_at_utc) FROM {table} WHERE stage=?",
+                    (stage,),
+                ).fetchone()
+            except sqlite3.Error:
+                # No journal is the same answer as no fit: run it first.
+                return ""
+            value = "" if row is None or row[0] is None else str(row[0])
+            if not value:
+                return ""
+            newest = value if not newest else min(newest, value)
+        return newest
+
+    canonical = {stage: index for index, stage in enumerate(CENTER_WIDTH_STAGES)}
+    return tuple(
+        sorted(
+            stages,
+            key=lambda stage: (_last_fit(stage), canonical.get(stage, 0)),
+        )
+    )
 
 
 def _refit_stages(
