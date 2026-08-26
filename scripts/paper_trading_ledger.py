@@ -653,6 +653,54 @@ MAKER_RESTING_SHOULDER_LAMBDA = str(
         )
     )
 ).strip().lower()
+# The fill-information lifecycle (research arm A5, 2026-08-26).  The user's
+# ruling made fill status a calibration input for EXECUTION decisions only:
+# the market does not define value, it provides information, and p(t) claims
+# are never rewritten.  Multipliers fitted on first-half legs (decision date
+# before 08-21) and direction-verified on the second half (0.39->0.51,
+# 1.18->1.57, 0.32->0.37, 0.06->0.00): a leg the market has already sold to
+# us realises x0.39 of its claim (x0.32 when claimed >=0.35), a leg the
+# market will not fill realises x1.18, and a leg asking under five cents
+# realises nothing regardless of claim.  Wired into four lifecycle
+# decisions: replenishment stops on high-claim filled legs and sub-nickel
+# asks, the late-phase crossing ceiling carries the unfilled boost (the
+# EHAM 08-19 winning shoulder crosses at 0.270 under 0.224*1.18), crossing
+# refuses sub-nickel asks, and the belief gate weighs each leg's claim by
+# its own fill state.  '' = off; fingerprint carries the arm key only when
+# enabled.
+_PPOST_RAW = str(os.environ.get("PAPER_LEDGER_PPOST", "") or "").strip().lower()
+# Component vocabulary: w1 replenish stop, w2 unfilled crossing boost,
+# w3 sub-nickel ask veto, w4 belief-gate weighting.  "1"/"on"/"all" is the
+# whole bundle; a comma list picks components -- the bundled first run
+# measured W4's kept-alive baskets at -46.5% ROI while W2/W3's thesis
+# stayed untested under the noise, so decomposition is the honest follow-up.
+MAKER_RESTING_PPOST_COMPONENTS = (
+    frozenset({"w1", "w2", "w3", "w4"})
+    if _PPOST_RAW in {"1", "on", "true", "all"}
+    else frozenset(
+        part.strip() for part in _PPOST_RAW.split(",") if part.strip()
+    )
+)
+MAKER_RESTING_PPOST = bool(MAKER_RESTING_PPOST_COMPONENTS)
+PPOST_FILLED_MULT = 0.39
+PPOST_UNFILLED_MULT = 1.18
+PPOST_HIGH_CLAIM_FILLED_MULT = 0.32
+PPOST_HIGH_CLAIM_THRESHOLD = 0.35
+PPOST_LOW_ASK_VETO = 0.05
+
+
+def _ppost_multiplier(claim: float, has_fill: bool) -> float:
+    """The fill-state correction for one leg's claim, execution-side only."""
+
+    if has_fill:
+        return (
+            PPOST_HIGH_CLAIM_FILLED_MULT
+            if claim >= PPOST_HIGH_CLAIM_THRESHOLD
+            else PPOST_FILLED_MULT
+        )
+    return PPOST_UNFILLED_MULT
+
+
 # The toxic-band gate (research arm, 2026-08-26).  A non-centre leg whose
 # claimed probability stands this far above the market's ask is not a
 # bargain, it is the market ruling the leg out: measured on the settled
@@ -991,6 +1039,13 @@ SELECTION_RULE_SHA256 = content_sha256({
     **(
         {"maker_max_claim_edge": MAKER_RESTING_MAX_CLAIM_EDGE}
         if MAKER_RESTING_MAX_CLAIM_EDGE else {}
+    ),
+    # The fill-information lifecycle changes what every reprice decision is,
+    # so its book cannot share a fingerprint with the default one.
+    **(
+        {"maker_ppost": "v1_firsthalf_0.39_1.18_0.32_askveto0.05:"
+         + ",".join(sorted(MAKER_RESTING_PPOST_COMPONENTS))}
+        if MAKER_RESTING_PPOST else {}
     ),
     **(
         {"center_width_override": {
@@ -3316,6 +3371,13 @@ def _resting_ladder_fill(
                         bought = filled.get(str(bucket)) or []
                         open_rungs = pending.get(str(bucket)) or []
                         claim = current_p.get(str(bucket), 0.0)
+                        if "w4" in MAKER_RESTING_PPOST_COMPONENTS:
+                            # W4: the gate weighs each leg's claim by what
+                            # the market has already done with it -- eager
+                            # fills discount, standing rejections appreciate.
+                            claim = claim * _ppost_multiplier(
+                                claim, bool(bought)
+                            )
                         expectation += (
                             claim * (len(bought) + len(open_rungs))
                             - sum(bought) - sum(open_rungs)
@@ -3447,6 +3509,18 @@ def _resting_ladder_fill(
                         progress >= MAKER_RESTING_GAP_LATE
                         and cross_ceiling is not None
                     ):
+                        if (
+                            "w2" in MAKER_RESTING_PPOST_COMPONENTS
+                            and not filled[bucket]
+                        ):
+                            # W2: a leg the market has refused to fill all
+                            # this time carries the unfilled appreciation --
+                            # its crossing ceiling rises with it, which is
+                            # what lets the standing winning shoulder take
+                            # an ask its raw claim called too dear.
+                            cross_ceiling = (
+                                float(cross_ceiling) * PPOST_UNFILLED_MULT
+                            )
                         cross_ask = item.get("best_ask")
                         cross_levels = item.get("ask_levels") or []
                         if cross_ask is None and cross_levels:
@@ -3463,6 +3537,12 @@ def _resting_ladder_fill(
                             cross_ask is not None
                             and float(cross_ask) <= float(cross_ceiling) + 1e-9
                             and float(cross_ask) >= MINIMUM_LEG_ALL_IN_ASK
+                            # W3: under the arm, a sub-nickel ask realises
+                            # nothing regardless of claim -- never cross it.
+                            and (
+                                "w3" not in MAKER_RESTING_PPOST_COMPONENTS
+                                or float(cross_ask) >= PPOST_LOW_ASK_VETO
+                            )
                         ):
                             filled[bucket].extend(
                                 [float(cross_ask)] * open_rungs
@@ -3510,6 +3590,38 @@ def _resting_ladder_fill(
                             MAKER_RESTING_GAP_LATE - MAKER_RESTING_GAP_MID
                         ))
                         floor_gap = leg_gap * ramp
+                    if "w1" in MAKER_RESTING_PPOST_COMPONENTS:
+                        # W1: replenishment stops where the fill information
+                        # says more buying realises little -- a high-claim
+                        # leg the market has already sold into (x0.32), or
+                        # any leg asking under a nickel (x0.06 measured,
+                        # x0.00 on the verification half).  Standing rungs
+                        # stay within the cap; no new ones are derived.
+                        ppost_claim = float(
+                            current_p.get(str(bucket)) or 0.0
+                        )
+                        ppost_ask = item.get("best_ask")
+                        if ppost_ask is None:
+                            ppost_ask_levels = item.get("ask_levels") or []
+                            if ppost_ask_levels:
+                                ppost_ask = ppost_ask_levels[0].get("price")
+                        if (
+                            (
+                                filled[bucket]
+                                and ppost_claim
+                                >= PPOST_HIGH_CLAIM_THRESHOLD
+                            )
+                            or (
+                                ppost_ask is not None
+                                and float(ppost_ask) < PPOST_LOW_ASK_VETO
+                            )
+                        ):
+                            if cap is not None:
+                                pending[bucket] = [
+                                    rung for rung in pending[bucket]
+                                    if rung <= cap + 1e-9
+                                ]
+                            continue
                     fresh = _ladder_from_quote(
                         item,
                         open_rungs,
