@@ -985,7 +985,7 @@ def _search(cells: Sequence[Mapping[str, Any]]) -> tuple[float, float, float]:
 
 
 def served_arithmetic_anchor(
-    conn: sqlite3.Connection, *, stage: str
+    conn: sqlite3.Connection, *, stage: str, known_floor: str | None = None
 ) -> str | None:
     """When the arithmetic this stage serves today first started serving.
 
@@ -1025,6 +1025,27 @@ def served_arithmetic_anchor(
         version = str(current[0] or "")
         if not version:
             return None
+        if known_floor:
+            # The caller already holds a bound and takes the maximum, so this
+            # anchor only matters if it lands strictly above it.  One
+            # descending seek answers that: if any decision at or below the
+            # bound already carries the served version, the minimum is at or
+            # below it too and cannot move the maximum.  The scan below walks
+            # every row of the stage older than the version's first
+            # appearance -- 147,870 of them for P1 -- so skipping it is the
+            # difference between 27.0s and 1.5ms, for the same answer.
+            settled_below = conn.execute(
+                "SELECT 1"
+                " FROM basket_probability_bridge_history h"
+                " JOIN basket_probability_envelope e"
+                "   ON e.envelope_id = h.checkpoint_id"
+                " WHERE h.stage=? AND h.state='COMMITTED'"
+                " AND h.decision_at_utc<=? AND e.posterior_version=?"
+                " ORDER BY h.decision_at_utc DESC LIMIT 1",
+                (_check_stage(stage), str(known_floor), version),
+            ).fetchone()
+            if settled_below is not None:
+                return None
         row = conn.execute(
             "SELECT MIN(h.decision_at_utc)"
             " FROM basket_probability_bridge_history h"
@@ -1095,13 +1116,20 @@ def _evidence_floor(
     """
 
     def _resolve() -> str | None:
+        # Cheapest first, and hand the running maximum to the dearest.  This
+        # bound is a maximum, so a candidate that cannot exceed what is
+        # already held contributes nothing, and the version anchor is the
+        # only one that costs anything to find out -- 27.5s of a 42.8s round,
+        # against microseconds for the other two.  Across all 44 fits on
+        # record it has won twice, and the window those two wins excluded held
+        # zero decisions.
         floor = caller_bound
-        for candidate in (
-            served_arithmetic_anchor(conn, stage=stage),
-            serving_arithmetic.anchor(conn, stage=stage),
-        ):
-            if candidate and (floor is None or str(candidate) > str(floor)):
-                floor = candidate
+        ast_bound = serving_arithmetic.anchor(conn, stage=stage)
+        if ast_bound and (floor is None or str(ast_bound) > str(floor)):
+            floor = ast_bound
+        served = served_arithmetic_anchor(conn, stage=stage, known_floor=floor)
+        if served and (floor is None or str(served) > str(floor)):
+            floor = served
         return floor
 
     # ``caller_bound`` is in the key: two lanes given different bounds are

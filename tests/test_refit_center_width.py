@@ -411,7 +411,7 @@ def test_round_memo_asks_each_loading_question_once_per_stage(
 
     calls = {"anchor": 0, "truth": 0, "cells": 0}
 
-    def _anchor(_conn, *, stage):  # noqa: ANN001, ARG001
+    def _anchor(_conn, *, stage, known_floor=None):  # noqa: ANN001, ARG001
         calls["anchor"] += 1
         return None
 
@@ -578,3 +578,119 @@ def test_explicit_stage_list_keeps_the_order_the_caller_gave() -> None:
         conn.close()
 
     assert seen == ["P0-M", "P0"]
+
+
+def _anchor_fixture() -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE basket_probability_bridge_history("
+        "stage TEXT,state TEXT,checkpoint_id TEXT,decision_at_utc TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE basket_probability_envelope("
+        "envelope_id TEXT PRIMARY KEY,posterior_version TEXT)"
+    )
+    return conn
+
+
+def _add_decision(
+    conn: sqlite3.Connection, *, at: str, version: str, stage: str = "P1"
+) -> None:
+    envelope_id = f"env-{at}-{version}"
+    conn.execute(
+        "INSERT OR IGNORE INTO basket_probability_envelope VALUES(?,?)",
+        (envelope_id, version),
+    )
+    conn.execute(
+        "INSERT INTO basket_probability_bridge_history VALUES(?,?,?,?)",
+        (stage, "COMMITTED", envelope_id, at),
+    )
+
+
+def test_served_anchor_skips_the_scan_when_it_cannot_move_the_maximum() -> None:
+    """The caller takes a maximum, so a candidate under it contributes nothing.
+
+    One descending seek answers whether that is the case; the scan it replaces
+    walks every row of the stage older than the served version's first
+    appearance -- 147,870 of them for P1 in production, 27.0s against 1.5ms.
+    """
+
+    from bayes_basket_target.center_width_store import served_arithmetic_anchor
+
+    conn = _anchor_fixture()
+    try:
+        _add_decision(conn, at="2026-08-20T00:00:00Z", version="v_now")
+        _add_decision(conn, at="2026-08-24T00:00:00Z", version="v_now")
+
+        # Unbounded, the anchor is the earliest decision carrying v_now.
+        assert served_arithmetic_anchor(
+            conn, stage="P1"
+        ) == "2026-08-20T00:00:00Z"
+
+        # A floor at or above that earliest decision cannot be raised by it.
+        assert served_arithmetic_anchor(
+            conn, stage="P1", known_floor="2026-08-22T00:00:00Z"
+        ) is None
+        assert served_arithmetic_anchor(
+            conn, stage="P1", known_floor="2026-08-20T00:00:00Z"
+        ) is None
+    finally:
+        conn.close()
+
+
+def test_served_anchor_still_answers_when_it_would_win() -> None:
+    """The skip must not fire on the one case the anchor exists for.
+
+    A version bumped by hand in a constant the AST fingerprint does not hash
+    -- P0's POSTERIOR_VERSION lives outside the hashed function -- moves this
+    bound and nothing else.
+    """
+
+    from bayes_basket_target.center_width_store import served_arithmetic_anchor
+
+    conn = _anchor_fixture()
+    try:
+        _add_decision(conn, at="2026-08-01T00:00:00Z", version="v_old")
+        _add_decision(conn, at="2026-08-26T00:00:00Z", version="v_now")
+
+        # Every decision carrying the served version is above the floor, so
+        # the anchor genuinely raises it and must be computed.
+        assert served_arithmetic_anchor(
+            conn, stage="P1", known_floor="2026-08-10T00:00:00Z"
+        ) == "2026-08-26T00:00:00Z"
+    finally:
+        conn.close()
+
+
+def test_evidence_floor_takes_the_latest_bound_either_way() -> None:
+    """Reordering the candidates may not change which bound wins."""
+
+    import bayes_basket_target.center_width_store as store
+
+    conn = _anchor_fixture()
+    try:
+        _add_decision(conn, at="2026-08-01T00:00:00Z", version="v_old")
+        _add_decision(conn, at="2026-08-26T00:00:00Z", version="v_now")
+
+        # The version anchor is the latest of the three and must win.
+        original = store.serving_arithmetic.anchor
+        store.serving_arithmetic.anchor = lambda conn, *, stage: (  # noqa: ARG005
+            "2026-08-05T00:00:00Z"
+        )
+        try:
+            assert store._evidence_floor(
+                conn, stage="P1", caller_bound="2026-08-02T00:00:00Z"
+            ) == "2026-08-26T00:00:00Z"
+
+            # And when the AST bound is the latest, it wins and the version
+            # anchor is skipped rather than consulted.
+            store.serving_arithmetic.anchor = lambda conn, *, stage: (  # noqa: ARG005
+                "2026-08-27T00:00:00Z"
+            )
+            assert store._evidence_floor(
+                conn, stage="P1", caller_bound="2026-08-02T00:00:00Z"
+            ) == "2026-08-27T00:00:00Z"
+        finally:
+            store.serving_arithmetic.anchor = original
+    finally:
+        conn.close()
