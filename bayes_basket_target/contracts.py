@@ -35,6 +35,12 @@ FORMAL_ENSEMBLE_METHOD_VERSION = (
     "rolling_origin_probability_stack_v4_five_model_pool_min2"
 )
 STAGES = ("P0", "P0-M", "P1")
+# How far the *event* still is, which is not how old the run is.  Both
+# quantities are labelled from this one vocabulary and no table carries both
+# columns, so nothing shows a reader they differ -- a join written on them
+# returns rows.  Naming the admissible set once gives the few places that
+# convert or accept a maturity something to check against.
+POLICY_MATURITY_BINS = ("d0", "d1", "d2", "d2_fallback")
 # How far past its cadence the newest P1 probability still describes the day.
 # P1 re-rolls off arriving observations, so a lapsed ``fresh_until`` usually
 # means the observation lane stalled, not that the reading turned wrong.  Two
@@ -880,6 +886,7 @@ class ProbabilityEnvelope:
 
 
 __all__ = [
+    "POLICY_MATURITY_BINS",
     "CALIBRATION_CANDIDATE_MODEL_IDS",
     "CalibrationActivation",
     "ContractError",

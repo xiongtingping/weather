@@ -1898,3 +1898,17 @@ def test_maturity_bin_is_the_event_distance_not_the_run_lead() -> None:
     # And an empty lead is refused rather than defaulted.
     with pytest.raises(ContractError):
         derive_policy_maturity_bin("", **common)
+
+    # A calendar label outside the maturity vocabulary is refused rather than
+    # carried into a policy lookup nothing can match.  The fallback lane's own
+    # deriver can emit these: it computes d{delta} from the capture time with
+    # no ceiling, so a stale capture yields d3 and a future one d-1.
+    for outside in ("d3", "d-1", "D0"):
+        with pytest.raises(ContractError) as caught:
+            derive_policy_maturity_bin(outside, **common)
+        assert "vocabulary_invalid" in str(caught.value)
+
+    # The 'h' prefix is the branch selector, not a vocabulary member: anything
+    # leading with it is converted from the dates and never checked against the
+    # maturity set, so an unknown hour spelling still yields a real maturity.
+    assert derive_policy_maturity_bin("h00_12x", **common) == "d2"

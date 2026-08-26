@@ -28,6 +28,7 @@ from .cash_phase_authority import (
     resolve_active_cash_phase_policy,
 )
 from .contracts import (
+    POLICY_MATURITY_BINS,
     CalibrationActivation,
     ContractError,
     FORMAL_ENSEMBLE_METHOD_VERSION,
@@ -1923,13 +1924,23 @@ def derive_policy_maturity_bin(
     the calendar branch it converts nothing: it takes the caller's word that
     the label already means maturity.
 
-    Measured 2026-08-26: all 20,000 most recent envelopes carry an hour
-    bucket, so production always takes the converting branch.  Making the
-    pass-through verify itself against the computed distance was tried and
-    reverted -- twenty tests depend on supplying a calendar label with dates
-    that do not agree, so the pass-through is load-bearing in replay and
-    fixture paths that were never characterised.  The distinction is pinned in
-    tests instead of enforced here.
+    The pass-through has already been wrong, at scale.  4,499 committed
+    envelopes carry a calendar label, and twelve of twelve sampled disagree
+    with the distance their own decision time implies -- every one says d1 for
+    an event that was that same local day.  They reach here because the
+    republisher fallback lane derives its label from the *capture* time
+    (``native_ensemble_p0._lead_bucket``), and ``lead_bucket`` is a frozen
+    lineage key, so P0-M and P1 repeat it verbatim.  Those decisions were
+    priced against a station policy one day off.
+
+    It is not happening now: every envelope since 2026-08-18 carries an hour
+    bucket, so production takes the converting branch.  Enforcing agreement
+    here was tried and reverted -- it turned 18 failures in the production_io
+    tests into 38.  All twenty come from one fixture literal
+    (``tests/test_bayes_basket_target.py`` ``"lead_bucket": "d1"`` against an
+    event that is d0), so the strict version is one constant away and is worth
+    revisiting deliberately rather than by accident.  What is enforced here
+    meanwhile is only the vocabulary.
     """
 
     label = str(lead_label or "").strip()
@@ -1952,6 +1963,10 @@ def derive_policy_maturity_bin(
         maturity = "d2_fallback"
     if label.startswith("h"):
         return maturity
+    if label not in POLICY_MATURITY_BINS:
+        raise ContractError(
+            "probability_policy_maturity_bin_vocabulary_invalid:" + label
+        )
     return label
 
 
