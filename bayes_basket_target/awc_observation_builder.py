@@ -45,6 +45,10 @@ LEGACY_ORIGIN_AUTHORITY_BINDING_SCHEMA = (
     "bayes_basket_target_pr12_legacy_awc_origin_authority_binding_v1"
 )
 MAX_ROWS = 20_000
+# A local day runs 25 hours across a DST fall-back and starts as much as 14
+# hours before its UTC date, so 48 hours behind the caller's bound reaches
+# the first report of any day that bound can land inside.
+WHOLE_DAY_READ_MARGIN = timedelta(hours=48)
 _CORRECTION_TOKEN = re.compile(r"(?:^|\s)(COR|AMD)(?:\s|$)")
 
 
@@ -165,16 +169,24 @@ def export_awc_ingress_evidence_v4(
 ) -> dict[str, Any]:
     """Freeze exact AWC observation, poll, origin, halt and review evidence.
 
-    ``since_valid_at_utc`` bounds the read to reports at or after an instant.
-    The pass is a full rebuild by construction -- it re-derives every
-    station-day it can see -- and the archive is append-only, so the read
-    grows without limit and eventually trips ``MAX_ROWS``: measured
+    ``since_valid_at_utc`` selects which station-days are exported: every
+    local day holding a report at or after that instant, and each of them
+    whole.  The pass is a full rebuild by construction -- it re-derives every
+    station-day it can see -- and the archive is append-only, so an unbounded
+    read grows without limit and eventually trips ``MAX_ROWS``: measured
     2026-08-21 at 44,710 AWC rows against a 20,000 cap, which fails the
     whole lane closed rather than the days it cannot fit.  Callers that have
     already materialised the older station-days pass their watermark here so
-    the pass reads only what is still open.  Days are resolved in local time,
-    so a caller must leave a margin of at least one day for the settlement
-    offsets in its fleet.
+    the pass reads only what is still open.
+
+    The instant is a UTC one and a day is a local one, so the bound lands
+    inside whichever day straddles it.  The read therefore reaches
+    ``WHOLE_DAY_READ_MARGIN`` further back than the bound and completes that
+    day rather than exporting its tail: an exported day is always the whole
+    day, because the builder numbers a day's reports from one and seals the
+    ordinal into a fact whose scope key does not carry it, so a day exported
+    from its tail hands the same scope different content and canonical
+    ingress refuses it -- for the entire round, not just for the day.
     """
 
     source = Path(source_db).expanduser().resolve(strict=True)
@@ -243,8 +255,15 @@ def export_awc_ingress_evidence_v4(
             "reported_trajectory_station_halt_reviews",
         ):
             _table_required(conn, table)
+        # Read behind the caller's bound by a whole day plus the widest
+        # settlement offset, so the local day the bound lands inside can be
+        # completed rather than truncated.  The bound still decides which days
+        # are exported; the margin only decides how much of them is visible.
         since_bound = (
-            _stamp(_utc(since_valid_at_utc, "since_valid_at_utc"))
+            _stamp(
+                _utc(since_valid_at_utc, "since_valid_at_utc")
+                - WHOLE_DAY_READ_MARGIN
+            )
             if str(since_valid_at_utc or "").strip()
             else ""
         )
@@ -452,30 +471,50 @@ def export_awc_ingress_evidence_v4(
     truncated_day_scopes: list[dict[str, str]] = []
     if since_bound:
         since_instant = _utc(since_valid_at_utc, "since_valid_at_utc")
-        whole_day_rows = []
-        dropped: dict[tuple[str, str], datetime] = {}
+        read_instant = since_instant - WHOLE_DAY_READ_MARGIN
+        # A day is in the window if any of its reports is, and it is then
+        # exported in full -- including the reports that precede the caller's
+        # bound, which is what the margin was read for.  Dropping such a day
+        # instead was tried first and is worse than the disease: measured on
+        # the 2026-08-26 recovery it would have discarded 18 station-days of
+        # 2026-08-22 that nothing had ever identified, permanently, because a
+        # day only gets older and no later round reaches back for it.
+        in_window: set[tuple[str, str]] = set()
+        day_start: dict[tuple[str, str], datetime] = {}
         for row in evidence_rows:
-            local_day_start = datetime.combine(
-                date.fromisoformat(str(row["event_date"])),
-                datetime.min.time(),
-                ZoneInfo(str(row["settlement_timezone"])),
-            )
-            if local_day_start < since_instant:
-                dropped[(str(row["station_id"]), str(row["event_date"]))] = (
-                    local_day_start
+            key = (str(row["station_id"]), str(row["event_date"]))
+            if key not in day_start:
+                day_start[key] = datetime.combine(
+                    date.fromisoformat(str(row["event_date"])),
+                    datetime.min.time(),
+                    ZoneInfo(str(row["settlement_timezone"])),
                 )
-                continue
-            whole_day_rows.append(row)
-        evidence_rows = whole_day_rows
+            if _utc(row["observed_at_utc"], "observed_at_utc") >= since_instant:
+                in_window.add(key)
+        # The margin covers the longest local day against the widest offset in
+        # the fleet, so a day in the window is whole in the read.  The check
+        # stays because a margin that is ever too small must say so rather
+        # than renumber a day, which is the failure this whole rule exists for.
+        truncated = {
+            key: day_start[key]
+            for key in in_window
+            if day_start[key] < read_instant
+        }
+        evidence_rows = [
+            row for row in evidence_rows
+            if (str(row["station_id"]), str(row["event_date"])) in in_window
+            and (str(row["station_id"]), str(row["event_date"])) not in truncated
+        ]
         truncated_day_scopes = [
             {
                 "station_id": station,
                 "event_date": event_date,
-                "local_day_start_utc": _stamp(start),
+                "local_day_start_utc": _stamp(truncated[(station, event_date)]),
                 "since_valid_at_utc": _stamp(since_instant),
+                "read_bound_utc": _stamp(read_instant),
                 "failure_code": "PR12_LOCAL_DAY_PARTLY_BEFORE_READ_BOUND",
             }
-            for (station, event_date), start in sorted(dropped.items())
+            for station, event_date in sorted(truncated)
         ]
 
     observed_stations = {str(row["station_id"]) for row in evidence_rows}
@@ -505,7 +544,12 @@ def export_awc_ingress_evidence_v4(
         "station_day_halts": halt_rows,
         "station_day_reviews": review_rows,
         "extraction_gaps": extraction_gaps,
-        "since_valid_at_utc": since_bound,
+        "since_valid_at_utc": (
+            _stamp(_utc(since_valid_at_utc, "since_valid_at_utc"))
+            if str(since_valid_at_utc or "").strip()
+            else ""
+        ),
+        "read_bound_utc": since_bound,
         "truncated_day_scopes": truncated_day_scopes,
         "source_read_only": True,
         "source_query_only": True,

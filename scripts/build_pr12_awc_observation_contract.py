@@ -232,8 +232,9 @@ def main() -> int:
     parser.add_argument(
         "--window-days",
         type=int,
-        default=2,
-        help="read reports from this many days back; 0 reads the whole archive",
+        default=3,
+        help="export station-days holding a report this many days back;"
+        " 0 exports the whole archive",
     )
     args = parser.parse_args()
     target = args.target_database.expanduser().resolve(strict=True)
