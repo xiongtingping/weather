@@ -3245,16 +3245,31 @@ def main() -> int:
                 and hosted_sweep_future is None
                 and production_future is None
             ):
-                for name, script, interval_sec, timeout_sec in HOSTED_SWEEPS:
-                    if now_mono >= next_hosted_sweep[name]:
-                        hosted_sweep_name = name
-                        state["hosted_sweeps"]["running"] = name
-                        hosted_sweep_future = executor.submit(
-                            run_hosted_sweep,
-                            str(ROOT / script),
-                            timeout_sec,
-                        )
-                        break
+                # Serve whichever sweep has been due longest, not whichever
+                # sits earliest in the tuple.  Strict list order gives the
+                # head absolute priority, so an entry at the tail only runs
+                # in an instant when nothing above it is due -- and with a
+                # 300s probe at index 0 and an 1104s ledger round at index 2,
+                # those instants are rare.  Measured on 2026-08-26:
+                # settled_day_cycle_close came due at boot+510s and had still
+                # not run 36 minutes later while index 0 ran repeatedly.
+                # Ties keep list order, so the choice stays deterministic.
+                due = [
+                    (now_mono - next_hosted_sweep[name], index, name, script, timeout_sec)
+                    for index, (name, script, _interval_sec, timeout_sec)
+                    in enumerate(HOSTED_SWEEPS)
+                    if now_mono >= next_hosted_sweep[name]
+                ]
+                if due:
+                    _overdue, _index, hosted_sweep_name, sweep_script, sweep_timeout = max(
+                        due, key=lambda item: (item[0], -item[1])
+                    )
+                    state["hosted_sweeps"]["running"] = hosted_sweep_name
+                    hosted_sweep_future = executor.submit(
+                        run_hosted_sweep,
+                        str(ROOT / sweep_script),
+                        sweep_timeout,
+                    )
             if (
                 storage_ok
                 and now_mono >= next_production
