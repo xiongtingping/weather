@@ -3,10 +3,17 @@ from __future__ import annotations
 from bayes_basket_target.contracts import content_sha256
 from bayes_basket_target.pr12_authority_scope_projection import (
     AUTHORITY_VERSION, BUILDER_ID, REQUIRED_DOCTRINE_SHA256, SCHEMA,
+    SETTLEMENT_TIMEZONE_SOURCE,
 )
 
 
-def authority_projection(*, primary_station: str = "KATL") -> dict:
+def authority_projection(
+    *, primary_station: str = "KATL", settlement_timezone: str = "America/New_York"
+) -> dict:
+    """Stations settle on the zone their own listing declares, so the zone is
+    an argument here rather than a constant -- a fixture that can only build
+    an Eastern fleet cannot exercise the 42 stations that are not."""
+
     stations = sorted([primary_station] + [f"T{index:03d}" for index in range(44)])
     rows = []
     for station in stations:
@@ -17,7 +24,7 @@ def authority_projection(*, primary_station: str = "KATL") -> dict:
             "source_authority_content_sha256": "c" * 64,
             "legacy_station_registry_content_sha256": "b" * 64,
             "settlement_definition": "official_daily_tmax_c",
-            "settlement_timezone": "America/New_York",
+            "settlement_timezone": settlement_timezone,
             "settlement_timezone_authority": AUTHORITY_VERSION,
         }
         rows.append({**identity, "content_sha256": content_sha256(identity)})
@@ -27,7 +34,7 @@ def authority_projection(*, primary_station: str = "KATL") -> dict:
         "as_of_utc": "2026-08-02T06:00:00.000Z",
         "state": "MATERIALIZED_UNPUBLISHED",
         "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
-        "settlement_timezone": "America/New_York",
+        "settlement_timezone_source": SETTLEMENT_TIMEZONE_SOURCE,
         "settlement_timezone_authority": AUTHORITY_VERSION,
         "doctrine_receipts": [
             {"document_name": name, "raw_sha256": sha}

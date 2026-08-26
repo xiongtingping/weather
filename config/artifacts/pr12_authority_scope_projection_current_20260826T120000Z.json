@@ -1,0 +1,531 @@
+{
+  "as_of_utc": "2026-08-26T12:00:00.000Z",
+  "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+  "builder_id": "pr12.authority_scope_projection.v1",
+  "consumable": false,
+  "content_sha256": "b5868f00338ad540cce34ccac83f8e962304df761b3bd4250a59fd14bf5cef01",
+  "doctrine_receipt_set_sha256": "d60e47a410bdeaa7a83a0734d5819177f5d64a1ec39841a3a52e1d6f1364151d",
+  "doctrine_receipts": [
+    {
+      "document_name": "global_station_executable_basket_formula_v1.md",
+      "raw_sha256": "ad309d0e4675d4ea5bc2ca4c0dbfd0f110a4110dae5a6e16cbd7acfa719f3eab"
+    },
+    {
+      "document_name": "station_basket_policy_hierarchy_v1.md",
+      "raw_sha256": "8043b0dce987587c46903a5cc6180b861ca90a8976793ed1013b597086b7dce1"
+    },
+    {
+      "document_name": "station_model_calibration_ssot_v1.md",
+      "raw_sha256": "46c7fd6fbfdd13840daf471aa8345918278e68844a516f69b6ebea903301c36b"
+    },
+    {
+      "document_name": "weather_basket_trading_operating_system_v1.md",
+      "raw_sha256": "6e6f5303b0841ccb52827029227a037864d70c9b5840f179bcb96e606334da4b"
+    }
+  ],
+  "rows": [
+    {
+      "content_sha256": "51cd1f5fc80caead2c761c921b1f507185b307af4c3bdc9d781986ee59e6f85d",
+      "legacy_station_registry_content_sha256": "baf72c6c0f06ef1a019d1953d5b30386e6ab331a65c69a67bf68697e9776a196",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/Toronto",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "fe0399bcd7ac6faf25508d9f4df5b010aab632c96e42b83cccc0aa4fd99bda3c",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "CYYZ"
+    },
+    {
+      "content_sha256": "985d6c50e960d4cd833ba4c9424c99fbd07628d82d0b546900ce95cea96aaee8",
+      "legacy_station_registry_content_sha256": "a44ec1858bd7e81061e814fc9973aa2f6a46ce895e5bfba2d2333746cb98dd8b",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Europe/Berlin",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "950d8e3caa22fac75109028f654579fbad64538b7e27aa65bcc44cf95c75d255",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "EDDM"
+    },
+    {
+      "content_sha256": "79fc8794a58a21092f5d33d59f6c20241aecdb385cbac540b921a97b4d8a0cee",
+      "legacy_station_registry_content_sha256": "7144530e01d2a184bcc761daab0b35139138577c3f9d30afc408d97e7f5e10b9",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Europe/Helsinki",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "009cf1f3f4d679d18ebf42b215d0984108d76bcc8c366e35de84cb9dc3d0045f",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "EFHK"
+    },
+    {
+      "content_sha256": "02995a270380f3536c6938214103d32bbb0af2031f05bfc6c28dc7f184677992",
+      "legacy_station_registry_content_sha256": "78c140c4e46aec4caa1bca20a073ed2c82c4a8ce26d2fc3a4dbbcbc4fef4d08d",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Europe/London",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "61fc74ddc5703cc223407dd74d797cb0024dad81e7eab310a7d792ed713c57fb",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "EGLC"
+    },
+    {
+      "content_sha256": "b266419f01714fa0946c370a9ce67bb8a0624c46607d87bd927b1a56ecb9ce1a",
+      "legacy_station_registry_content_sha256": "3c621577be21e4812f73777a76f5e5dbffb48e034810b216a8ac8e5171db1d34",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Europe/Amsterdam",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "ef3a9408639d7c7c5311840fe7577fa59e9cfa49992325b856c35294da13b275",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "EHAM"
+    },
+    {
+      "content_sha256": "8d0c583f885303643ae279d271d4a1a094fada17fe9553b0e71ef269d695c9c9",
+      "legacy_station_registry_content_sha256": "b8886dca0ecdace63cb9ed938619bce3db0075c40c109255d80289390287d27b",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Europe/Warsaw",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "9f366f9346a0fafa1c94a34b965a5d66a6feb4831a886185bb2562d9b1ff921f",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "EPWA"
+    },
+    {
+      "content_sha256": "c04e0c68e642412e1d4bf461b9d3aa2ae0d71cc193705bb0a10e5af70acffeba",
+      "legacy_station_registry_content_sha256": "361df5c3c12a7fbe0434fe22a7e4fc34cc73dd7e61747e0d8b933a2b5b922e43",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Africa/Johannesburg",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "25b2485a61c2c924987ea2694f5e6c7ace5970822fcf032a546b62564546d464",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "FACT"
+    },
+    {
+      "content_sha256": "31d6100261668a6e87768f21c601d880b8f36e216afac10f00d614d75b97079b",
+      "legacy_station_registry_content_sha256": "d0e2ecd6b52fd7c4d61e5b4480fdf1f31a87073f3f967bed14e632bc1608e179",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "71f956bb2fd0e9f8e96131ed1df9be392dfc95e8549ab54a538ed3172bdaac0c",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KATL"
+    },
+    {
+      "content_sha256": "98c70fc8f4d000761892706fc4a53d3e34624283690614dc0d4bc2b56e445776",
+      "legacy_station_registry_content_sha256": "5511b670ddbe0a74cda889eb54e3342ec2810843fff0a8e3a3b0f0c14722d6f3",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/Chicago",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "6229185a858daa46b6624f1b8fde3536fe0cb1a0c83e781ad0e1fc9712dd947f",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KAUS"
+    },
+    {
+      "content_sha256": "ced9db25e75c02e2a237b125ceeba39f295778758fbc2817605a58cffc981e6a",
+      "legacy_station_registry_content_sha256": "ac0b4bf06d52262ffb1950e7c67f88dae8f99c90aafd5d463eab4097fa1257db",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/Denver",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "7e9fcd44678a7ca0aae5e17e3fffeafe7283da0ae0dc9109d1d618ea8a5561e7",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KBKF"
+    },
+    {
+      "content_sha256": "fa8fee22656be43489cd71c685407779d95560ce256785011e21c4f0428960a6",
+      "legacy_station_registry_content_sha256": "63a7e0980bd05a94529a665670a3be70e77c4c16d1266217405239f9ec1c67b2",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/Chicago",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "85655da212b7d697c29758e5f907eb813e4f1312adeb86e7703c835b2132cf42",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KDAL"
+    },
+    {
+      "content_sha256": "78bbdb0727fb7ca629e76607534626a1aab966b9b78c8c3bc5436ffaba7a57fc",
+      "legacy_station_registry_content_sha256": "246dc5e2fa0346c2909624c4ec54ebca2f500f4c95a1d78276c8d0184e008fdd",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/Chicago",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "09df2d4d32f4a2e6314f3a01810955aefc24ffdf304c8e59401b2181b3254d50",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KHOU"
+    },
+    {
+      "content_sha256": "a9141362915f589500846bb4155d3f3583971e9d7ffd8a9be5aa2539bf718941",
+      "legacy_station_registry_content_sha256": "4185772300f855cfe4ae1b0ad31819016509350e6f8c09fb9882bd33c78b3f1d",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/Los_Angeles",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "68138d2d8d837d9bd9821dfa0918754966bb945745b5d4211713d31c5104620c",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KLAX"
+    },
+    {
+      "content_sha256": "767c587d4ff0505033badbec7c0e28ced888ad431899b2b23e2d3779dbc01dff",
+      "legacy_station_registry_content_sha256": "06923d2013cbb84cfabb8fdc1eb3a6374ccaee671258f50128dd5072ac59a4a6",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "911c805b3c0539cdcf9a9196da7083c38b66f527b196207a78f827e3b57a7d64",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KLGA"
+    },
+    {
+      "content_sha256": "ad5b79a70dd262801c1a7509f78ad2761b69d96168f62eb7b9370abad6803565",
+      "legacy_station_registry_content_sha256": "bbbd9a68b0e9f51b1e7cbefda47fa4754bace3c90e1013c42a9be2ca928748d6",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/New_York",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "72ee084e7d61f51696a5639a00978570d31f33d1a99871cf250966f599742791",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KMIA"
+    },
+    {
+      "content_sha256": "2925d9c5cba10872bf77e4559d9b583ad60ad945245beb47cafe189106c7a9b8",
+      "legacy_station_registry_content_sha256": "103637133b2b285384a17b257714c0f6140566efe6855e7a4a6f561d13750637",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/Chicago",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "6580b142c27489576bf3a6d7a0a9ba2a6499993e32732b482807d896dca11613",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KORD"
+    },
+    {
+      "content_sha256": "8d9aa536b0866cd597a0a6be410d310af77de714a2a07dde1df26082e65ca4e5",
+      "legacy_station_registry_content_sha256": "78a2404ed693848ad3d10197164016dec5f377815f4ea459e98102639746654f",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/Los_Angeles",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "26f3012a248480198c6fe32d2aed0a71a6064cd48510fdc47e56fcf04e14a530",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KSEA"
+    },
+    {
+      "content_sha256": "363717e905af1dd014bac21418dfd8df22577bb99150cb40917360a5fe8a3008",
+      "legacy_station_registry_content_sha256": "6728ea52d8294c3d39953402ab49ba478bd705eb38f7266a49568459330a317f",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/Los_Angeles",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "34f4618ae147c97b526eb81611f378e9bb4c5c064b658a47eb9863ac8c9f6da8",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "KSFO"
+    },
+    {
+      "content_sha256": "441beecf9d92d91951faf869474937d510a440e8c8cd6220370161c351d9d50f",
+      "legacy_station_registry_content_sha256": "0be4e3c9285e9414741cd5cce22cb216d43c02f83498b19078717bcbf2ceb195",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Europe/Madrid",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "4794a44456a29e4157d19be8b6aaae7eb7331a519c90982479ea55a087745824",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "LEMD"
+    },
+    {
+      "content_sha256": "019b0245209151353ec3fd96de9c63cb0e63d2fac5b4c2be7f76a6f85b2dfe66",
+      "legacy_station_registry_content_sha256": "f35d330f38e6a498000df20d56088a09c6c1b4beccffe0558c082745a0751be7",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Europe/Paris",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "9f6b480bd19b3705fbf730f6ed69421cd3b47648b18810acb594afcfed731152",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "LFPB"
+    },
+    {
+      "content_sha256": "4cb7c82ad56fb2fdeb58a31e2f3487943ef42a5663957c0c85e953da48e664c3",
+      "legacy_station_registry_content_sha256": "5cdcfe10de7dbb2cd6dda75b37b65e237db4fa543526fe5963259153d3943528",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Europe/Rome",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "f2f7251110bdc2445b90eb7a21037150ae04ec3bec088aeed4f448762541df9c",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "LIMC"
+    },
+    {
+      "content_sha256": "bb632515e95bacf518a4b91b86a8be5bf509315c9ed8aad98479f4eb83de70ea",
+      "legacy_station_registry_content_sha256": "81349cab636b1c7e6fb9dac32be6dd6af303e9813ffefae13dc64ebbda99395b",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Europe/Istanbul",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "af32946701700ee9447e61a11f5040f73edc2fc1abb8bfcf4d6b33f1a11f1d56",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "LTAC"
+    },
+    {
+      "content_sha256": "fc9ba46cb33e064a8e523f2babe478fb8b99cf8cb463fc1a6a4f62b306365017",
+      "legacy_station_registry_content_sha256": "5bb04ee6c78ff27782cf1bc78a7ec7476056f2697a89e7467264c331912fe9e7",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/Mexico_City",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "b47913146124c67cf99712b338538e0be0b74fd30299fe1fee82b1dadaea3cfe",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "MMMX"
+    },
+    {
+      "content_sha256": "dff6039d99fdeb6fdb6a15c9db66b40d09382544a6dd030aeed148f72f01ad6d",
+      "legacy_station_registry_content_sha256": "e5e789622e3608ad1b98e331da2ba13d93974d8924fa4e0c96a1b8929ec394d3",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/Panama",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "05cfdfbe60509f8dbdc66c1b7e64f33bec1f5ec7eb4707890914d9dcf178cbb8",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "MPMG"
+    },
+    {
+      "content_sha256": "801a2b28fd8dd43f57e32695555306cdd88cf7eac760baf6fcedc5f4c1b0b391",
+      "legacy_station_registry_content_sha256": "01f6dd1710cffbd142c408e53e10996e477b560391a59b01f1fd414443ef630c",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Pacific/Auckland",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "41b8382ae00c93bc6e9ec0348ec73b6bcd6e075c7b44dc28fcc2916c9cc8bdcd",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "NZWN"
+    },
+    {
+      "content_sha256": "2dbe65cedaf4f5d8a61b8f3cac9e1bf88f2f76cba2baf1855e6d1cb01bcd3322",
+      "legacy_station_registry_content_sha256": "446799d0a22fac5e5697fb9dd278794ffac1c4116a51cca5e2d0c07848d32ae5",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Riyadh",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "31d2b32be0106572b05b02e33c394dd096c7de936eb4f01fee5f9025cbc665c3",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "OEJN"
+    },
+    {
+      "content_sha256": "582d358b3262f06089e49cb6f839d9ccb9891012495ec3acf6a1eed5ad6bf2f3",
+      "legacy_station_registry_content_sha256": "5e211f9895548e35caca9b20b4c88508ede42703c0422dc9e89c9a73f5a0a849",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Karachi",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "f512cc5964a58c97a548d9a05105f99650ee066fd224329ea6910c1872fe1bb9",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "OPKC"
+    },
+    {
+      "content_sha256": "e00326460737c1f74b018da8ca885a8b127c8aff833e644a9ce25feb172ac963",
+      "legacy_station_registry_content_sha256": "b71d07f77b51899888e2fb920f78c0246d9d10e149b187e2004581c3c0f861bf",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Taipei",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "7614290fb107e1af4b8b0e97755858cf2c63c5c1e1a698cb04e2929b191b5623",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "RCSS"
+    },
+    {
+      "content_sha256": "c58db0effe497ff3d603def8921596b22b736f783e45eb2a9e892e4e20ba942d",
+      "legacy_station_registry_content_sha256": "05e6605a1c206ccbf35fecad921495995231329f6cd92b48b4ef280a4f70693c",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Tokyo",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "3379a4b55e41d637677ece3ae75a1174faabd4d0dbd8e3be1d13d710bd6484ea",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "RJTT"
+    },
+    {
+      "content_sha256": "22131b1286eee288fa624fc082ced0a77ed6fba4b79b7fc251ae6894a1bc433f",
+      "legacy_station_registry_content_sha256": "468bdd2a4d5912e74d781bb487342160da7d7998b2263c50c7834b0e81587da3",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "4a6da9646fc9c3fd6ef4a0674e7d022d42da89dc0754b070c8a24d3d50b2a7e0",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "RKPK"
+    },
+    {
+      "content_sha256": "7fd50d073f31baa2fe628cd91421294fec967721c784be2569706166fadbd4d8",
+      "legacy_station_registry_content_sha256": "81d6da4e7da27086d2f22fbdda4e40a5d0535aaa4f3d7035f732913c6ffddf66",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Seoul",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "aa1a8f87195be44a4fe061e955d91d83a9944e40fc6aec57683563a8706032d9",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "RKSI"
+    },
+    {
+      "content_sha256": "dc6896b0a8973c7c8bbcceaf88b824b0520eaeef18896086082d7b6346bb1e77",
+      "legacy_station_registry_content_sha256": "e527dfff1d6e6b8c9027ba86e7caf043cd34ffe5742d84813cc020189ceb4f43",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Manila",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "d96b14eb6eabeb7cf29519ee2940f9b1cb6ad7324bb40da668ec03830e92083f",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "RPLL"
+    },
+    {
+      "content_sha256": "0f125f35c83d69e13657b7ff0f001fa95b2e343fdfe10e83ef1896950a469fec",
+      "legacy_station_registry_content_sha256": "9d9184281dd5ef17cc6a8639179f5453aabc20a4d1f0d15aea634aa01a7a9dc3",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/Argentina/Buenos_Aires",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "634e3f858b344c90f73d66f5c464b6283eafa717cea6161d1d25c22c087dd9dd",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "SAEZ"
+    },
+    {
+      "content_sha256": "8ef1b07ec62a6a8fc3edd5397878acff41bf764d306baec55cc7ea0dd4aa9fc9",
+      "legacy_station_registry_content_sha256": "5c2a3ef427432e25ffa986a38ff685d644ac2cf65e5ad1978cdf5863eaf7aace",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "America/Sao_Paulo",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "5933d9c6b0c0a5adc3ce5f51b48ff4c3e44eb96717745b0a8069d987d3be128c",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "SBGR"
+    },
+    {
+      "content_sha256": "61380de7994c2b8421048b793e2f3fd5e797b3b3767fbaca731cc941410896d9",
+      "legacy_station_registry_content_sha256": "a16554edaea25963f3fd8a6db08251f153419cbc96e64d15142fa0eab16bedbe",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Kolkata",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "f10657bf1858dcc2d3bccc4aea16fc893d6f82e1aadb2fe38630d172a59d62ff",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "VILK"
+    },
+    {
+      "content_sha256": "7c4d7cdb4ca31de12ce0f56cadf28ae4cf3db485df328080da688e37c14d2f1f",
+      "legacy_station_registry_content_sha256": "8fc9711eb9fe3a5fb77942f0af38bafd48eee2c7203857b6f0864e2e9d446920",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Kuala_Lumpur",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "521072d566f4decd5a95987ace87ee3628f7360fa84b56ad9d58811706ae426e",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "WMKK"
+    },
+    {
+      "content_sha256": "f95b108a9f7bfdf0e1b3af7f12c0639660760bfd9ad1718ceef5aa3166d3b4e9",
+      "legacy_station_registry_content_sha256": "179284deb54cf3072365d4e70ace2ac1de4123a64900d1a1edb5702d37e4c9aa",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Singapore",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "8a2f51f67ff88d155fa561170ca520a53dd5b70751061089f626bf26d15c48cd",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "WSSS"
+    },
+    {
+      "content_sha256": "cbaab604608488183bc1a3fe2483cf1851715224ed8c143d9c8fa746ec54c283",
+      "legacy_station_registry_content_sha256": "aca56ad8ca9e87a70021ebcfc3cbad91f7fb2b04c264b0932e3023228fb03df5",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Shanghai",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "05ef434f7e7f606b2807eb79415c9a1dda10fb4d58882d7a1d2befe3a5f84125",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "ZBAA"
+    },
+    {
+      "content_sha256": "ebea0d406b46680b1c858bff1e80034c82a5ce0901ea4b4f65df8aba3296e186",
+      "legacy_station_registry_content_sha256": "126f5d25cbff1ee6f5e4270eb6c737253bb5e4d1daf14326da39fcb275be3816",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Shanghai",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "73e0db72aed7b1425af63490c3d28e27bed52ff7d7c90e061a2bf8d6e6280ce0",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "ZGGG"
+    },
+    {
+      "content_sha256": "58b7ed22272de4025a0fa904099b7ca4de0de9778f17d303fc3b81f2a91dc059",
+      "legacy_station_registry_content_sha256": "afbf5a23d92680be3e27110785df7d2b550028b7e5929217c6bdd8e9929f50c1",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Shanghai",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "f907f5427fbfc12c07b72be10238a17698679e8b32584f4ed88bddcb9fcb6338",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "ZGSZ"
+    },
+    {
+      "content_sha256": "df85dc5b4d0f161490ee53aca0f0ef390f24c1a31369cf5b873d6a0a617e4727",
+      "legacy_station_registry_content_sha256": "55697d9bf3ca8c2d0ef7c0c90ba9e1122d382fec15161d41c92659eb7ac21492",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Shanghai",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "bd297e894741ab211aaf0acdfeff62502f99bc3559e034231496e24f0cccb770",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "ZHHH"
+    },
+    {
+      "content_sha256": "31e7af3159e6182ea443ff64a185bfa7aa0a315fa3a9e1528bdeb054f540e687",
+      "legacy_station_registry_content_sha256": "e5f56d0b895ae47f3a3a4dda4d7cb80caa16e5706d03f32f3ac98ad0924cb378",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Shanghai",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "d172be7c8fcc7935b003adeb4dcdb92679c99463b720d5276bd14a1fe4e37ec6",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "ZSPD"
+    },
+    {
+      "content_sha256": "1e6adb9c3c6e387f749b391ccf54bc811f94298c49664756ffc758889d1f9702",
+      "legacy_station_registry_content_sha256": "f0030df7665d9a7de00fec544cf3cc6dc8a7f8c5837872c3fb0bbe2c496c08a9",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Shanghai",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "2b6877dd21ca826c60dc1ad191784983f65f8e2627336826dd8799e9ccb083ba",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "ZSQD"
+    },
+    {
+      "content_sha256": "3bd17c57271d5b6ecf279462ffd18fb81d24afce8a036da79487cc8dd4dbdc52",
+      "legacy_station_registry_content_sha256": "33882acebb189018c6b76038961e711c8644e671aed7db980df36e45ec890552",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Shanghai",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "e3cd0f3c489eda2571c2f7e12508222b44d24a1ef47f8a6f2501d9b4eba7715f",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "ZUCK"
+    },
+    {
+      "content_sha256": "a3884f451342c964cab89938b30a20fd9ce9b94bb2889b5bc9068c7bd4600bf0",
+      "legacy_station_registry_content_sha256": "8cd922b5eeb61f2fa0d69ee9f617971f4848c7a9c57ff6fc7083a63b1c3098fc",
+      "settlement_definition": "official_daily_tmax_c",
+      "settlement_timezone": "Asia/Shanghai",
+      "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+      "source_authority_content_sha256": "c7622da9a09cf40f4002756126327fca09e4bea4b5d032171f9d848192575d79",
+      "source_authority_version": "global_awc_ssot_v1",
+      "source_lane": "AWC",
+      "station_id": "ZUUU"
+    }
+  ],
+  "schema": "bayes_basket_target_pr12_authority_scope_projection_v1",
+  "settlement_timezone_authority": "FOUR_DOCTRINE_MARKET_LISTED_DAY_20260826_V1",
+  "settlement_timezone_source": "basket_target_market_registry.settlement_timezone",
+  "source_authority_vector_sha256": "f4e0e2fc504e1f17bb23853eb74c217293fd01b1390ada09bfbee743177774d0",
+  "state": "MATERIALIZED_UNPUBLISHED",
+  "station_authority_rowset_sha256": "feae901bed4e4283f548d901c90d23ea58b191893b0aa3cb7721569bc5435b08",
+  "station_count": 45,
+  "station_registry_vector_sha256": "d10e6e6de27a45db79df0121b8de714f1834964c68e08483938aafbb6cd63667"
+}

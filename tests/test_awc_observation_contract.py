@@ -199,7 +199,12 @@ def test_speci_may_use_non_hour_minute() -> None:
     (
         ("source_lane", "AMSC", "authority_invalid"),
         ("raw_object_kind", "AWC_MESSAGE", "raw_object_kind_invalid"),
-        ("settlement_timezone", "Pacific/Kiritimati", "settlement_timezone_mismatch"),
+        # Toronto keeps New York's offset, so the fact's own event_date still
+        # agrees with it and the per-fact checks pass.  Only the binding to
+        # the projection catches it -- which is the check that has to exist
+        # now that each station carries its own zone rather than one pinned
+        # fleet-wide.
+        ("settlement_timezone", "America/Toronto", "settlement_timezone_mismatch"),
         ("observed_at_utc", "2026-08-01T12:30:00.000Z", "timestamp_order_invalid"),
     ),
 )

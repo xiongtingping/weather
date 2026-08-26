@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
 from bayes_basket_target.pr12_authority_scope_projection import (  # noqa: E402
     REQUIRED_DOCTRINE_SHA256, build_pr12_authority_scope_projection,
 )
+from bayes_basket_target.contracts import ContractError  # noqa: E402
 from bayes_basket_target.resource_bounds import write_bounded_json_if_changed  # noqa: E402
 from bayes_basket_target.station_source_authority import (  # noqa: E402
     resolve_global_awc_source_authority,
@@ -43,11 +44,42 @@ def main() -> int:
             station: dict(resolve_global_awc_source_authority(conn, station_id=station))
             for station in sorted(registry)
         }
+        # The listing decides the day, per the 2026-08-26 doctrine amendment.
+        # Not calibration_station_registry.timezone_name, which is mislabelled
+        # for 33 of the 45 and which the doctrine forbids deriving from; the
+        # binding table stands behind the listing for a station the current
+        # registry snapshot does not cover.
+        listed = {
+            str(row["station_id"]).upper(): str(row["settlement_timezone"])
+            for row in conn.execute(
+                "SELECT station_id,settlement_timezone,COUNT(*) AS n "
+                "FROM basket_target_market_registry WHERE source_eligible=1 "
+                "GROUP BY station_id,settlement_timezone ORDER BY station_id,n"
+            )
+        }
+        bound = {
+            str(row["station_id"]).upper(): str(row["settlement_timezone"])
+            for row in conn.execute(
+                "SELECT station_id,settlement_timezone "
+                "FROM calibration_station_market_timezone_binding"
+            )
+        }
+        timezones = {
+            station: listed.get(station) or bound[station]
+            for station in sorted(registry)
+            if station in listed or station in bound
+        }
+        missing = sorted(set(registry) - set(timezones))
+        if missing:
+            raise ContractError(
+                "pr12_authority_projection_settlement_timezone_missing:"
+                + ",".join(missing)
+            )
     doctrine = args.doctrine_directory.expanduser().resolve(strict=True)
     projection = build_pr12_authority_scope_projection(
         doctrine_paths=[doctrine / name for name in REQUIRED_DOCTRINE_SHA256],
         station_registry=registry, station_source_authorities=authorities,
-        as_of_utc=args.as_of_utc,
+        station_settlement_timezones=timezones, as_of_utc=args.as_of_utc,
     )
     write_bounded_json_if_changed(args.output.expanduser().resolve(), projection)
     print(json.dumps({

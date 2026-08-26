@@ -96,7 +96,9 @@ def _evidence(
     ]
     end = slots[-1] + timedelta(hours=2)
     registry_sha = "b" * 64
-    projection = authority_projection(primary_station="KJFK")
+    projection = authority_projection(
+        primary_station="KJFK", settlement_timezone=zone
+    )
     identity = {
         "schema": EVIDENCE_SCHEMA,
         "as_of_utc": _stamp(end),
@@ -132,6 +134,31 @@ def test_clean_day_builds_revision_vector_and_bounds() -> None:
     assert [x.raw["sequence"] for x in parsed.revision_facts] == list(range(1, 25))
     assert len(parsed.day_bounds_facts) == 1
     assert receipt["state"] == "MATERIALIZED_UNPUBLISHED"
+    assert receipt["terminal_gaps"] == []
+
+
+def test_a_station_files_its_reports_under_its_own_local_day() -> None:
+    """The day is the one the station's market listing settles on.
+
+    Until 2026-08-26 this lane pinned every station to America/New_York, so a
+    Tokyo station's reports were grouped into an Eastern day: RJTT 2026-07-18
+    reads 32C over that window and 29C over its own, and 29C is what the
+    market pays. Only 3 of the 45 stations settle on an Eastern day.
+    """
+
+    zone = "Asia/Tokyo"
+    evidence = _evidence(zone=zone)
+    contract, receipt = build_awc_observation_contract(evidence)
+    parsed = CanonicalAWCObservationContract.from_mapping(contract)
+
+    assert {x.raw["settlement_timezone"] for x in parsed.revision_facts} == {zone}
+    assert len(parsed.day_bounds_facts) == 1
+    bounds = parsed.day_bounds_facts[0].raw
+    assert bounds["settlement_timezone"] == zone
+    # The window is that local day, not an Eastern one: Tokyo runs UTC+9, so
+    # its 2026-08-01 opens at 15:00Z the day before.
+    assert bounds["day_start_utc"] == "2026-07-31T15:00:00.000Z"
+    assert bounds["day_end_utc"] == "2026-08-01T15:00:00.000Z"
     assert receipt["terminal_gaps"] == []
 
 

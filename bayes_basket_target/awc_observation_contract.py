@@ -15,6 +15,9 @@ from .source_policy import source_policy_reason
 CONTRACT_SCHEMA = "bayes_basket_target_canonical_awc_observation_contract_v2"
 COVERAGE_RECEIPT_SCHEMA = "bayes_basket_target_pr12_awc_hourly_coverage_receipt_v1"
 AUTHORITY_SCOPE = "PRODUCTION_NO_LIVE_ONLY"
+# Retained only so a caller can still name the Eastern zone; it is no longer
+# the fleet's settlement zone.  Each station settles on the zone its own
+# market listing declares (doctrine, 2026-08-26 canonical-day 口径换代).
 SETTLEMENT_TIMEZONE = "America/New_York"
 RAW_OBJECT_KIND = "AWC_RAW_METAR_TEXT_UTF8"
 AWC_ORIGIN_SOURCE_IDS = frozenset({"global_noaa_awc_relay", "us_noaa_awc"})
@@ -157,10 +160,11 @@ class CanonicalAWCObservationRevisionFact:
             not in AWC_ORIGIN_AUTHORITIES
         ):
             raise ContractError("awc_observation_revision_origin_lineage_invalid")
-        if value["settlement_timezone"] != SETTLEMENT_TIMEZONE:
-            raise ContractError("awc_observation_settlement_timezone_mismatch")
+        # The station's own settlement zone, from the sealed projection this
+        # fact is bound to.  Pinning one zone fleet-wide is what filed 42
+        # stations' reports under an Eastern day they do not settle on.
         try:
-            zone = ZoneInfo(SETTLEMENT_TIMEZONE)
+            zone = ZoneInfo(str(value["settlement_timezone"]))
         except Exception as exc:
             raise ContractError("awc_observation_revision_timezone_invalid") from exc
         observed = datetime.fromisoformat(value["observed_at_utc"].replace("Z", "+00:00"))
@@ -280,10 +284,8 @@ class CanonicalAWCObservationDayBoundsFact:
             value[field] = _utc(value[field], field)
         if not value["day_start_utc"] < value["day_end_utc"] <= value["canonical_committed_at_utc"]:
             raise ContractError("awc_observation_day_bounds_timestamp_order_invalid")
-        if value["settlement_timezone"] != SETTLEMENT_TIMEZONE:
-            raise ContractError("awc_observation_settlement_timezone_mismatch")
         try:
-            zone = ZoneInfo(SETTLEMENT_TIMEZONE)
+            zone = ZoneInfo(str(value["settlement_timezone"]))
         except Exception as exc:
             raise ContractError("awc_observation_day_bounds_timezone_invalid") from exc
         day_start = datetime.fromisoformat(value["day_start_utc"].replace("Z", "+00:00"))
@@ -404,6 +406,22 @@ class CanonicalAWCObservationContract:
             for fact in (*revisions, *bounds)
         ):
             raise ContractError("awc_observation_authority_projection_parent_mismatch")
+        # A fact's zone must be the one the projection binds for its station,
+        # not merely a zone that its own event_date happens to agree with.
+        # While one zone was pinned fleet-wide a plain equality check covered
+        # this; now that each station carries its own, a fact could otherwise
+        # declare any zone and stay internally consistent by shifting the
+        # event_date to match it.
+        listed_zone = {
+            str(row["station_id"]).upper(): str(row["settlement_timezone"])
+            for row in projection["rows"]
+        }
+        if any(
+            listed_zone.get(str(fact.raw["station_id"]).upper())
+            != str(fact.raw["settlement_timezone"])
+            for fact in (*revisions, *bounds)
+        ):
+            raise ContractError("awc_observation_settlement_timezone_mismatch")
         if len({x.scope_key for x in revisions}) != len(revisions) or len({x.scope_key for x in bounds}) != len(bounds):
             raise ContractError("awc_observation_contract_scope_duplicate")
         sequence_keys = [

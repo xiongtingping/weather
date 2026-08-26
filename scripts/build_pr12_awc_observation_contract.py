@@ -73,16 +73,31 @@ def _materialized_event_dates(target_db: Path) -> list[str]:
 
 
 def _exclude_materialized_day_scopes(
-    target_db: Path, evidence: dict[str, object]
+    target_db: Path, evidence: dict[str, object], projection_sha: str
 ) -> dict[str, object]:
-    """Do not rebuild an append-only station-day already in canonical SSOT."""
+    """Do not rebuild an append-only station-day already in canonical SSOT.
+
+    "Already" means under the authority this pass is building against, not
+    under any authority ever.  The 2026-08-26 doctrine amendment moved the
+    settlement day from a fleet-wide Eastern one to the one each station's
+    market listing declares, which minted a new projection and therefore a new
+    generation of facts. Days closed under the old Eastern authority are
+    history: they keep their rows, they do not block the new generation from
+    building the same calendar day over the window the market actually
+    settles, and comparing the two generations' zones is meaningless -- they
+    are answers to different questions. Their scope keys carry the projection
+    hash, so the two generations cannot collide.
+    """
 
     existing: dict[tuple[str, str], str] = {}
     with sqlite3.connect(f"file:{target_db}?mode=ro", uri=True) as conn:
         conn.execute("PRAGMA query_only=ON")
         rows = conn.execute(
             "SELECT fact_json FROM canonical_ssot_fact "
-            "WHERE fact_type='truth_observation_day_bounds'"
+            "WHERE fact_type='truth_observation_day_bounds' "
+            "  AND json_extract(fact_json,"
+            "'$.authority_scope_projection_content_sha256')=?",
+            (str(projection_sha),),
         ).fetchall()
     for (raw_json,) in rows:
         raw = json.loads(str(raw_json))
@@ -272,7 +287,9 @@ def main() -> int:
         as_of_utc=args.as_of_utc,
         since_valid_at_utc=since_valid_at,
     )
-    evidence = _exclude_materialized_day_scopes(target, evidence)
+    evidence = _exclude_materialized_day_scopes(
+        target, evidence, projection["content_sha256"]
+    )
     # Build once to learn which days the store already identifies differently,
     # then drop those and build the contract that actually ships.  Quarantining
     # before staging rather than during is what keeps the artifact on disk one
