@@ -230,7 +230,14 @@ if _P0_SHARE_ENV:
     STAGE_BUDGET_SHARE = {
         **STAGE_BUDGET_SHARE, "P0": float(_P0_SHARE_ENV),
     }
-MAXIMUM_SUPPORT_BUCKETS = 4
+# Research arm only: the production cap is charter 50's and lives in the
+# kernel's policy.  This exists so a width sweep can pin the window to an
+# exact size (min=max=k) without editing the file per arm; the default is the
+# production cap and the value is already part of the rule identity above, so
+# every non-default arm fingerprints itself.
+MAXIMUM_SUPPORT_BUCKETS = int(
+    os.environ.get("PAPER_LEDGER_MAX_SUPPORT_BUCKETS", "4") or 4
+)
 # The earliest event day this book admits.  Charter 50's ladder floor landed on
 # 2026-08-15; every chain before it was seated under a minimum basket width the
 # live engine no longer trades, so those rows score a strategy that does not
