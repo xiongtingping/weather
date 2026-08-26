@@ -212,6 +212,20 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     # content-addressed and admission-gated, so an early or doubled run
     # commits nothing new.
     ("calibration_refit", "scripts/calibration_refit_sweep.sh", 86_400.0, 900.0),
+    # Capital that only ever leaves the pool.  A prepared cycle holds its
+    # reservation until a newer decision on the same station-day supersedes
+    # it, and a day whose settlement window has closed can never compile one
+    # -- so the last cycle of every day that traded strands its reservation.
+    # 161.32 USDC on 54 station-days as of 2026-08-26 against a Tier-1 cap of
+    # 180.00, and crossing that cap zeroes all forty-five stations at once.
+    # Hourly because the cost of a pass with nothing to do is one indexed
+    # scan, and the cost of being late is a fleet-wide halt.
+    (
+        "settled_day_cycle_close",
+        "scripts/settled_day_cycle_close_sweep.sh",
+        3600.0,
+        900.0,
+    ),
 )
 
 

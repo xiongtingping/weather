@@ -12,6 +12,7 @@ from bayes_basket_target.atomic_ledger import (
     apply_target_ledger_schema,
     arbitrate_capital_requests,
     build_target_atomic_bundle,
+    close_settled_day_cycle,
     close_target_cycle,
     commit_stage_zero_execution_scope_decision,
     commit_blocked_scope_decision,
@@ -2396,3 +2397,165 @@ def test_the_worker_names_a_blocker_when_stage_open_cannot_be_attempted() -> Non
     assert "stage_open_returned_no_candidate" in worker
     # And the blocker travels into the record rather than being dropped.
     assert "stage_open_blocker=(" in worker
+
+
+def test_close_settled_day_cycle_releases_stranded_reservation() -> None:
+    """A day nobody can supersede any more is the terminal path's whole job."""
+
+    # 2026-07-23 in America/New_York ends at 2026-07-24T04:00Z.
+    day_end = "2026-07-24T04:00:00Z"
+    after_close = "2026-07-24T05:00:00Z"
+    with _db(balance=20.0) as conn:
+        bundle = _bundle(index=1, amount=4.0)
+        commit_target_atomic_bundle(conn, bundle=bundle)
+        cycle_id = bundle["cycle"]["cycle_id"]
+        assert conn.execute(
+            "SELECT reserved_usdc FROM basket_target_capital_pool"
+        ).fetchone()[0] == 4.0
+
+        # Refuses while the settlement day is still running.
+        with pytest.raises(
+            AtomicLedgerError,
+            match="settled_day_close_before_settlement_day_end",
+        ):
+            close_settled_day_cycle(
+                conn,
+                cycle_id=cycle_id,
+                settlement_day_end_utc=day_end,
+                closed_at_utc=NOW,
+                reason="too_early",
+            )
+        assert conn.execute(
+            "SELECT state FROM basket_target_execution_cycles WHERE cycle_id=?",
+            (cycle_id,),
+        ).fetchone()[0] == "prepared"
+
+        result = close_settled_day_cycle(
+            conn,
+            cycle_id=cycle_id,
+            settlement_day_end_utc=day_end,
+            closed_at_utc=after_close,
+            reason="settlement_day_closed_without_successor",
+        )
+        assert result["state"] == "settled"
+        assert result["released_usdc"] == 4.0
+        assert result["cancelled_intent_count"] >= 1
+        assert conn.execute(
+            "SELECT balance_usdc,reserved_usdc FROM basket_target_capital_pool"
+        ).fetchone() == (20.0, 0.0)
+        assert conn.execute(
+            "SELECT state FROM basket_target_capital_reservations "
+            "WHERE cycle_id=?",
+            (cycle_id,),
+        ).fetchone()[0] == "released"
+        # No intent may be left dangling inside a settled cycle.
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_target_order_intents "
+            "WHERE cycle_id=? AND state<>'cancelled'",
+            (cycle_id,),
+        ).fetchone()[0] == 0
+
+        replay = close_settled_day_cycle(
+            conn,
+            cycle_id=cycle_id,
+            settlement_day_end_utc=day_end,
+            closed_at_utc=after_close,
+            reason="replay",
+        )
+        assert replay["state"] == "already_settled"
+        assert replay["released_usdc"] == 0.0
+        assert conn.execute(
+            "SELECT reserved_usdc FROM basket_target_capital_pool"
+        ).fetchone()[0] == 0.0
+
+
+def test_close_settled_day_cycle_refuses_a_cycle_still_in_flight() -> None:
+    """Anything that reached the exchange is not this sweep's to retire."""
+
+    day_end = "2026-07-24T04:00:00Z"
+    after_close = "2026-07-24T05:00:00Z"
+    with _db(balance=20.0) as conn:
+        bundle = _bundle(index=2, amount=5.0)
+        commit_target_atomic_bundle(conn, bundle=bundle)
+        cycle_id = bundle["cycle"]["cycle_id"]
+        conn.execute(
+            "UPDATE basket_target_order_intents SET state='submitted' "
+            "WHERE cycle_id=?",
+            (cycle_id,),
+        )
+        conn.commit()
+        with pytest.raises(
+            AtomicLedgerError,
+            match="settled_day_close_intent_not_quiescent",
+        ):
+            close_settled_day_cycle(
+                conn,
+                cycle_id=cycle_id,
+                settlement_day_end_utc=day_end,
+                closed_at_utc=after_close,
+                reason="should_refuse",
+            )
+        assert conn.execute(
+            "SELECT reserved_usdc FROM basket_target_capital_pool"
+        ).fetchone()[0] == 5.0
+        assert conn.execute(
+            "SELECT state FROM basket_target_execution_cycles WHERE cycle_id=?",
+            (cycle_id,),
+        ).fetchone()[0] == "prepared"
+
+
+def test_close_target_cycle_absorbs_reserved_float_residue() -> None:
+    """The last release must not be blocked by binary residue.
+
+    ``reserved_usdc`` is a running sum, so by the final release it carries
+    noise the stored amount does not.  Production met exactly this: a 0.40791
+    reservation against a reserved of 0.4079099999999879, whose difference of
+    -1.2e-14 tripped ``CHECK(reserved_usdc>=0)`` and made that reservation
+    permanently unreleasable.
+    """
+
+    with _db(balance=20.0) as conn:
+        bundle = _bundle(index=3, amount=4.0)
+        commit_target_atomic_bundle(conn, bundle=bundle)
+        conn.execute(
+            "UPDATE basket_target_capital_pool SET reserved_usdc=? "
+            "WHERE pool_id=1",
+            (4.0 - 1.2e-14,),
+        )
+        conn.commit()
+
+        result = close_target_cycle(
+            conn,
+            cycle_id=bundle["cycle"]["cycle_id"],
+            outcome="released",
+            closed_at_utc=NOW,
+            reason="residue",
+        )
+        assert result["state"] == "settled"
+        assert conn.execute(
+            "SELECT reserved_usdc FROM basket_target_capital_pool"
+        ).fetchone()[0] == 0.0
+
+
+def test_close_target_cycle_still_refuses_real_reserved_drift() -> None:
+    """Clamping absorbs noise, not capital: a real shortfall still refuses."""
+
+    with _db(balance=20.0) as conn:
+        bundle = _bundle(index=4, amount=4.0)
+        commit_target_atomic_bundle(conn, bundle=bundle)
+        conn.execute(
+            "UPDATE basket_target_capital_pool SET reserved_usdc=? "
+            "WHERE pool_id=1",
+            (3.5,),
+        )
+        conn.commit()
+        with pytest.raises(
+            AtomicLedgerError, match="pool_reserved_balance_drift"
+        ):
+            close_target_cycle(
+                conn,
+                cycle_id=bundle["cycle"]["cycle_id"],
+                outcome="released",
+                closed_at_utc=NOW,
+                reason="real_drift",
+            )

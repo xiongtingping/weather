@@ -83,6 +83,16 @@ TARGET_LEDGER_TABLES = (
 CYCLE_STATES = frozenset({"prepared", "submitting", "submitted", "reconcile_required", "settled"})
 INTENT_STATES = frozenset({"prepared", "submitting", "submitted", "reconcile_required", "filled", "cancelled", "failed"})
 RESERVATION_STATES = frozenset({"active", "released", "consumed", "expired"})
+# A cycle that produced any of these reached the exchange, so neither
+# terminal path may retire it.  Shared so the two paths admit exactly the
+# same class of cycle rather than drifting apart.
+_EXECUTION_FACT_CHECKS = (
+    ("basket_target_order_events", "order_intent_id"),
+    ("basket_target_order_reconciliations", "order_intent_id"),
+    ("basket_target_execution_receipts", "order_intent_id"),
+    ("basket_target_execution_transition_versions", "order_intent_id"),
+    ("basket_target_post_fill_recompute_requests", "order_intent_id"),
+)
 # ``hard_no`` records may exist in historical SQLite files, but that is not a
 # production lane.  All target-lane writes are now the pure-YES basket.
 LANES = frozenset({"basket"})
@@ -3644,9 +3654,18 @@ def close_target_cycle(
             if outcome_value == "consumed" and amount > balance + 1e-9:
                 raise AtomicLedgerError("pool_balance_drift")
             if outcome_value == "consumed":
-                conn.execute("UPDATE basket_target_capital_pool SET balance_usdc=balance_usdc-?,reserved_usdc=reserved_usdc-?,version=version+1,updated_at=? WHERE pool_id=1", (amount, amount, closed_at))
+                conn.execute("UPDATE basket_target_capital_pool SET balance_usdc=MAX(0.0,balance_usdc-?),reserved_usdc=MAX(0.0,reserved_usdc-?),version=version+1,updated_at=? WHERE pool_id=1", (amount, amount, closed_at))
             else:
-                conn.execute("UPDATE basket_target_capital_pool SET reserved_usdc=reserved_usdc-?,version=version+1,updated_at=? WHERE pool_id=1", (amount, closed_at))
+                # Clamp at zero rather than subtracting straight.  Reserved is
+                # a running sum of reservations added and removed in a
+                # different order than they were made, so by the last release
+                # it carries binary residue the stored amount does not: the
+                # final 0.40791 met a reserved of 0.4079099999999879 and the
+                # difference, -1.2e-14, tripped the CHECK and made that
+                # reservation unreleasable for good.  The guard above already
+                # refused anything more than a nanounit over, so everything
+                # this can absorb is arithmetic noise, not capital.
+                conn.execute("UPDATE basket_target_capital_pool SET reserved_usdc=MAX(0.0,reserved_usdc-?),version=version+1,updated_at=? WHERE pool_id=1", (amount, closed_at))
             conn.execute("UPDATE basket_target_capital_reservations SET state=?,release_reason=?,updated_at=? WHERE reservation_id=? AND state='active'", (outcome_value, close_reason, closed_at, reservation_id))
             settled_amount = amount
         elif reservation_state == "expired":
@@ -3663,6 +3682,123 @@ def close_target_cycle(
             raise AtomicLedgerError("reservation_state_invalid")
         conn.execute("UPDATE basket_target_execution_cycles SET state='settled',updated_at=? WHERE cycle_id=?", (closed_at, cycle))
     return {"schema": SCHEMA, "state": "settled", "cycle_id": cycle, "outcome": outcome_value, "released_or_consumed_usdc": float(settled_amount)}
+
+
+def close_settled_day_cycle(
+    conn: sqlite3.Connection,
+    *,
+    cycle_id: str,
+    settlement_day_end_utc: str,
+    closed_at_utc: str,
+    reason: str = "settlement_day_closed",
+) -> dict[str, Any]:
+    """Retire a prepared cycle whose settlement day closed without a successor.
+
+    A prepared cycle holds its capital reservation until a newer decision on
+    the same station-day supersedes it, and ``supersede_prepared_cycle_and_
+    commit_bundle`` is the only path in production that releases one.  A
+    station-day whose settlement window has closed can never receive that
+    successor, so the last cycle of every day that traded strands its
+    reservation for good: the pool's ``reserved_usdc`` never comes back and
+    the Tier-1 portfolio gate keeps counting exposure nobody holds.  Measured
+    2026-08-26 -- 161.32 USDC across 54 station-days against a 180.00 breach
+    threshold that zeroes every station's budget.
+
+    The caller proves the day is over by passing that day's settlement-window
+    end; this only checks the close happens at or after it, so the timezone
+    rule stays in ``settlement_time.settlement_day_state`` alone.
+
+    Refuses anything still live, and mirrors supersession's inertness checks
+    so the two terminal paths admit exactly the same class of cycle.
+    """
+
+    cycle = _text("cycle_id", cycle_id)
+    day_end = _timestamp("settlement_day_end_utc", settlement_day_end_utc)
+    closed_at = _timestamp("closed_at_utc", closed_at_utc)
+    close_reason = _text("close_reason", reason)
+    if closed_at < day_end:
+        raise AtomicLedgerError("settled_day_close_before_settlement_day_end")
+
+    with _atomic_transaction(conn, operation="close_settled_day_cycle"):
+        row = conn.execute(
+            "SELECT state FROM basket_target_execution_cycles WHERE cycle_id=?",
+            (cycle,),
+        ).fetchone()
+        if row is None:
+            raise AtomicLedgerError("cycle_missing")
+        if str(row[0]) == "settled":
+            return {
+                "schema": SCHEMA,
+                "state": "already_settled",
+                "cycle_id": cycle,
+                "cancelled_intent_count": 0,
+                "released_usdc": 0.0,
+            }
+
+        intents = conn.execute(
+            "SELECT order_intent_id,state,live_submit_authorized "
+            "FROM basket_target_order_intents WHERE cycle_id=? "
+            "ORDER BY order_intent_id",
+            (cycle,),
+        ).fetchall()
+        if any(int(item[2] or 0) != 0 for item in intents):
+            raise AtomicLedgerError("settled_day_close_live_intent_present")
+        if any(
+            str(item[1]) not in {"prepared", "cancelled", "failed"}
+            for item in intents
+        ):
+            raise AtomicLedgerError("settled_day_close_intent_not_quiescent")
+
+        open_intent_ids = [
+            str(item[0]) for item in intents if str(item[1]) == "prepared"
+        ]
+        if open_intent_ids:
+            placeholders = ",".join("?" for _ in open_intent_ids)
+            execution_tables = {
+                str(item[0])
+                for item in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+            for table, column in _EXECUTION_FACT_CHECKS:
+                if table not in execution_tables:
+                    continue
+                if conn.execute(
+                    f"SELECT 1 FROM {table} WHERE {column} IN ({placeholders}) "
+                    "LIMIT 1",
+                    open_intent_ids,
+                ).fetchone() is not None:
+                    raise AtomicLedgerError(
+                        "settled_day_close_execution_fact_present"
+                    )
+            conn.execute(
+                f"UPDATE basket_target_order_intents SET state='cancelled' "
+                f"WHERE order_intent_id IN ({placeholders}) AND state='prepared'",
+                open_intent_ids,
+            )
+            if conn.execute("SELECT changes()").fetchone()[0] != len(
+                open_intent_ids
+            ):
+                raise AtomicLedgerError("settled_day_close_intent_cas_conflict")
+
+        # Reuse the one implementation of the release arithmetic rather than
+        # writing a third: it nests on a savepoint inside this transaction,
+        # so a refusal there rolls the intent cancellations back with it.
+        closed = close_target_cycle(
+            conn,
+            cycle_id=cycle,
+            outcome="released",
+            closed_at_utc=closed_at,
+            reason=close_reason,
+        )
+
+    return {
+        "schema": SCHEMA,
+        "state": closed["state"],
+        "cycle_id": cycle,
+        "cancelled_intent_count": len(open_intent_ids),
+        "released_usdc": float(closed.get("released_or_consumed_usdc") or 0.0),
+    }
 
 
 def supersede_prepared_cycle_and_commit_bundle(
@@ -3775,14 +3911,7 @@ def supersede_prepared_cycle_and_commit_bundle(
                 "SELECT name FROM sqlite_master WHERE type='table'"
             ).fetchall()
         }
-        checks = [
-            ("basket_target_order_events", "order_intent_id"),
-            ("basket_target_order_reconciliations", "order_intent_id"),
-            ("basket_target_execution_receipts", "order_intent_id"),
-            ("basket_target_execution_transition_versions", "order_intent_id"),
-            ("basket_target_post_fill_recompute_requests", "order_intent_id"),
-        ]
-        for table, column in checks:
+        for table, column in _EXECUTION_FACT_CHECKS:
             if table not in execution_tables:
                 continue
             found = conn.execute(
@@ -3986,6 +4115,7 @@ __all__ = [
     "apply_target_ledger_schema",
     "arbitrate_capital_requests",
     "build_target_atomic_bundle",
+    "close_settled_day_cycle",
     "close_target_cycle",
     "supersede_prepared_cycle_and_commit_bundle",
     "commit_blocked_scope_decision",
