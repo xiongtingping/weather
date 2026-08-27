@@ -794,6 +794,23 @@ MAKER_RESTING_GAP_MID = float(
 MAKER_RESTING_GAP_LATE = float(
     os.environ.get("PAPER_LEDGER_GAP_LATE", "") or (2.0 / 3.0)
 )
+# Research arm (2026-08-27): direction-confirmed take.  The 2026-08-20
+# ruling says market moves trigger nothing in this lifecycle; this cell
+# exists to price that ruling, exactly as MAKER_RESTING_CRASH_TICKS prices
+# its withdrawal half.  From GAP_MID onward, a leg still open whose best
+# ask has RISEN at least this many ticks above the first book its resting
+# order was re-priced against is read as the market moving toward the
+# claim, and may take the ask inside its value ceiling -- the same ceiling,
+# floor and sub-nickel refusals as the late-phase take, only the clock
+# differs.  A falling ask triggers nothing either way: the leg keeps
+# resting, never withdrawn.  What this arm is aimed at, measured
+# 2026-08-27: the maker book's entire deficit against taker sits in 33
+# chains whose winning legs rested unfilled while the price ran away
+# (+77.1 USDC); on the 225 chains both books opened the two were level.
+# Empty disables and reproduces the shipped lifecycle bit for bit.
+MAKER_RESTING_CONFIRM_TAKE_TICKS = float(
+    os.environ.get("PAPER_LEDGER_CONFIRM_TAKE_TICKS", "") or 0.0
+)
 # Completeness re-priced as risk (user ruling, 2026-08-24; twice corrected the
 # same day).  The lifecycle is untouched for every leg -- the tail included, it
 # is the hedge leg and fills at its clamp like everyone else.  The budget
@@ -1011,6 +1028,10 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     else "相位%.2f/%.2f" % (
         MAKER_RESTING_GAP_MID, MAKER_RESTING_GAP_LATE
     ),
+    None
+    if EXECUTION_MODE != "maker_resting"
+    or MAKER_RESTING_CONFIRM_TAKE_TICKS <= 0.0
+    else "同向确认吃单≥%g跳" % MAKER_RESTING_CONFIRM_TAKE_TICKS,
     None
     if SELECTION_DISCOUNT <= 0
     else f"选择折扣λs{SELECTION_DISCOUNT:g}",
@@ -3670,6 +3691,12 @@ def _resting_ladder_fill(
     }
     filled: dict[str, list[float]] = {b: [] for b in pending}
     queue_state: dict[str, dict[str, float]] = {}
+    # The confirmation arm's baseline: the best ask each leg first re-priced
+    # against.  Deliberately the first re-pricing round's book rather than
+    # the placement snapshot -- one baseline per leg, recorded where it is
+    # compared, and a rise measured from an hour in is a conservative read
+    # of "the market moved toward us".
+    first_ask: dict[str, float] = {}
     withdrawn = False
     next_reprice = (
         None if MAKER_RESTING_REPRICE_MINUTES <= 0
@@ -3846,8 +3873,36 @@ def _resting_ladder_fill(
                     # budgets for -- but only when the ask sits inside the
                     # leg's value ceiling.  Above the ceiling the red line
                     # holds and the leg stays a resting order.
+                    #
+                    # The confirmation arm moves only the clock: from
+                    # GAP_MID, an ask that has climbed the configured ticks
+                    # above this leg's first re-priced book takes early,
+                    # through the identical ceiling and floor checks below.
+                    round_ask = item.get("best_ask")
+                    if round_ask is None:
+                        round_levels = item.get("ask_levels") or []
+                        if round_levels:
+                            round_ask = round_levels[0].get("price")
+                    if round_ask is not None:
+                        first_ask.setdefault(bucket, float(round_ask))
+                    confirm_take = False
                     if (
-                        progress >= MAKER_RESTING_GAP_LATE
+                        MAKER_RESTING_CONFIRM_TAKE_TICKS > 0.0
+                        and progress >= MAKER_RESTING_GAP_MID
+                        and round_ask is not None
+                        and bucket in first_ask
+                    ):
+                        confirm_take = (
+                            float(round_ask)
+                            >= first_ask[bucket]
+                            + MAKER_RESTING_CONFIRM_TAKE_TICKS
+                            * float(item.get("price_tick_size") or 0.001)
+                        )
+                    if (
+                        (
+                            progress >= MAKER_RESTING_GAP_LATE
+                            or confirm_take
+                        )
                         and cross_ceiling is not None
                     ):
                         if (

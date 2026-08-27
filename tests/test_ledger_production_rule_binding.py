@@ -307,6 +307,10 @@ LEDGER_ONLY = {
     "PAPER_LEDGER_FLEET_REGIME_STAGES": "same",
     "SELECTION_DISCOUNT": "measurement lane; must not become a gate",
     "MAKER_RESTING_BAND_TOP": "research arm",
+    "MAKER_RESTING_CONFIRM_TAKE_TICKS": (
+        "research arm pricing the 2026-08-20 market-moves-trigger-nothing"
+        " ruling, take half"
+    ),
     "MAKER_RESTING_CENTRE_LAMBDA": "research arm",
     "MAKER_RESTING_TAIL_LAMBDA": "research arm (rejected, kept for replay)",
     "MAKER_RESTING_MAX_CLAIM_EDGE": "research arm (rejected)",
