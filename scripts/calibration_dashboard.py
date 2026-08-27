@@ -3739,7 +3739,12 @@ HTML_TEMPLATE = r"""<!doctype html>
 --pill-red-bg:rgba(248,81,73,.15);--pill-red-fg:#ff7b72;
 --pill-violet-bg:rgba(188,140,255,.16);
 --why-bg:rgba(88,166,255,.07);--why-fg:#c9d4e5;--bar-bg:#232833;
---shadow:none}
+--shadow:none;
+/* Scrollbars, form controls and the ground the UA paints follow this, not
+   the tokens above.  Omitting it left the board dark with light scrollbars
+   wherever a host stylesheet had declared `color-scheme: light` -- which is
+   what the Artifact shell does. */
+color-scheme:dark}
 /* The light palette is not the dark one inverted: on a white ground the
    same hues read washed out and the greens stop being distinguishable from
    the ambers, so each accent is darkened to its own readable weight. */
@@ -3752,7 +3757,7 @@ HTML_TEMPLATE = r"""<!doctype html>
 --pill-red-bg:rgba(207,34,46,.10);--pill-red-fg:#a40e26;
 --pill-violet-bg:rgba(130,80,223,.12);
 --why-bg:rgba(9,105,218,.06);--why-fg:#2b3648;--bar-bg:#e6e9ef;
---shadow:0 1px 2px rgba(27,31,36,.06)}
+--shadow:0 1px 2px rgba(27,31,36,.06);color-scheme:light}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);
 font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
@@ -4376,9 +4381,9 @@ function bandShadow(){
       const blocked = (L.blocked||[]).map(b =>
         `${h(b.reason)} ${b.n}`).join("；");
       return `<tr>
-        <td>${h(L.label)}</td>
-        <td class="mono">${L.tested} → ${L.eligible} →
-          <span class="factor ${cls}">${L.promoted}</span></td>
+        <td style="white-space:nowrap">${h(L.label)}</td>
+        <td class="mono" style="white-space:nowrap">${L.tested} →
+          ${L.eligible} → <span class="factor ${cls}">${L.promoted}</span></td>
         <td class="muted">${blocked || "—"}</td></tr>`;
     }).join("");
     const promoted = (s.promoted||[]).map(p => {
@@ -4403,7 +4408,8 @@ function bandShadow(){
         : (left == null ? "—" : `还需约 ${left} 天`);
       const pct = Math.min(100, 100 * d.best_mass / d.floor);
       return `<tr>
-        <td>${label}<br><span class="muted">${d.cells} 格</span></td>
+        <td style="white-space:nowrap">${label}<br>
+          <span class="muted">${d.cells} 格</span></td>
         <td><div class="bar" style="margin:0"><i style="width:${pct}%"></i></div>
           <span class="muted">最肥格 ${d.best_mass.toFixed(2)} /
           门槛 ${d.floor.toFixed(1)}</span></td>
@@ -4425,7 +4431,7 @@ function bandShadow(){
         版本 <span class="mono">${h(s.sha)}</span> ·
         上次拟合 ${hours(s.fit_age_hours)}</div>
       <table style="margin-top:12px"><thead><tr>
-        <th>维度</th><th>测 → 过样本门 → 自身够格</th>
+        <th>维度</th><th style="white-space:nowrap">测→过门→够格</th>
         <th>卡在哪一门</th></tr></thead><tbody>${levels}</tbody></table>
       ${promoted ? `<div class="muted" style="margin-top:10px">够格的格子
         （前向窗 ${s.forward_nll_gain >= 0 ? "+" : ""}${
@@ -4462,9 +4468,11 @@ function bandShadow(){
   同时检验几千格时，不校正会凭空冒出上百个假阳性。
   ③<b>试算门</b>——把这个系数放进最近四成的日子里重算一遍，真的更准才采用，
   而且比的是"退回池权重"那个基准，不是"完全不修正"。</div>
-  <div class="why" style="margin-top:8px"><b>怎么读「自身够格」这一列：</b>
-  它数的是<b>这一维自己测出来</b>的格子。下面「继承格数」是另一回事——
-  一个全舰队的桶位置系数会被两百多个细格继承，那不代表两百多个站各自测准了。</div>
+  <div class="why" style="margin-top:8px"><b>怎么读「测→过门→够格」：</b>
+  这是一条漏斗——先看这一维拆出<b>多少格</b>，再看<b>多少格攒够了样本</b>，
+  最后看<b>多少格真的自己测出了系数</b>。最后那个数只算<b>这一维自己测出来</b>的；
+  卡片下方「最近几次影子拟合」里的「继承格数」是另一回事——一个全舰队的桶位置
+  系数会被两百多个细格继承，那<b>不代表</b>两百多个站各自测准了。</div>
   <div class="grid g3" style="margin-top:8px">${cards}</div>`;
 }
 

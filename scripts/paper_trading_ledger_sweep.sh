@@ -47,3 +47,12 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] paper ledger sweep"
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] dashboard render"
 "$PY" scripts/calibration_dashboard.py --html-out tmp/cal_dashboard.html \
   || echo "dashboard render failed; ledger sweep above still committed" >&2
+
+# The publishable copy, kept in step with the local page.  Building it here
+# rather than at publish time means the shareable file is never a stale
+# vintage of the board: whoever republishes picks up whatever the last
+# render produced.  Publishing itself stays manual (the Artifact tool) --
+# a sweep that pushed a public page every fifteen minutes would be
+# republishing the user's positions on a timer nobody asked for.
+"$PY" scripts/publish_dashboard_artifact.py \
+  || echo "artifact copy failed; local dashboard above is still current" >&2
