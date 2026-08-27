@@ -850,6 +850,31 @@ def _chosen_miss_offsets(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def _fleet_regime(conn: sqlite3.Connection) -> dict[str, Any]:
+    """The next-day drift light and the series behind it.
+
+    Read through the layer's own status function rather than re-queried here:
+    an audit that reimplements the rule it is auditing reports on a rule
+    nobody serves.
+    """
+
+    try:
+        from bayes_basket_target.fleet_regime_shift import (  # noqa: PLC0415
+            fleet_regime_status,
+        )
+    except ImportError:
+        return {"available": False}
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    try:
+        status = fleet_regime_status(conn, now_utc=now)
+    except sqlite3.OperationalError:
+        return {"available": False}
+    status["available"] = any(
+        stage.get("recent") for stage in status.get("stages", {}).values()
+    )
+    return status
+
+
 def _resting_entry_trend(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     """The same fill account as ``_resting_entry_stats``, one row per day.
 
@@ -1929,6 +1954,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "basket_hit_by_size": _basket_hit_by_size(conn),
         "chosen_basket_hit": _posted_basket_hit_trend(conn),
         "chosen_miss_offsets": _chosen_miss_offsets(conn),
+        "fleet_regime": _fleet_regime(conn),
         "consolidation_lights": _consolidation_lights(conn),
         "maker_probe": _maker_probe(conn),
         "resting_entry": _resting_entry_stats(conn),

@@ -4065,7 +4065,66 @@ function basketHit(){
     <th>声称</th><th>实现/声称</th><th>均成本</th><th>每元回报</th></tr></thead>
     <tbody>${rows}</tbody></table>
   ${chosenBlock}
-  ${offBlock}`;
+  ${offBlock}
+  ${fleetRegime()}`;
+}
+
+// Sits under the miss distribution because it is that distribution's
+// diagnosed cause: the +1 misses were the served centre running cold while
+// the fitted layers, which need days of held-out evidence before they may
+// move, had not moved.  This is what reacts the next morning instead.
+function fleetRegime(){
+  const R=(D.selection||{}).fleet_regime;
+  if(!R||!R.available) return "";
+  const LIGHT={GREEN:["#3fb950","正常"],YELLOW:["#d29922","偏移"],
+    RED:["#f85149","显著偏移"]};
+  const rows=Object.entries(R.stages||{}).map(([stage,s])=>{
+    const [colour,word]=LIGHT[s.alert]||LIGHT.GREEN;
+    const sig=s.signal_c==null?"—":`${s.signal_c>=0?"+":""}${s.signal_c.toFixed(2)}`;
+    // A dark stage shows what it would have served, in brackets, so the
+    // number it is withholding stays visible rather than reading as zero.
+    const shift=s.served
+      ?`${s.regime_delta_c>=0?"+":""}${s.regime_delta_c.toFixed(2)}`
+      :(s.withheld_delta_c==null?"—"
+        :`(${s.withheld_delta_c>=0?"+":""}${s.withheld_delta_c.toFixed(2)})`);
+    const spark=(s.recent||[]).map(d=>{
+      const v=d.residual_c_mean;
+      const c=Math.abs(v)<0.3?"#8b949e":(v>0?"#f85149":"#58a6ff");
+      return `<span style="color:${c}" title="${h(d.event_date)} ${
+        v>=0?"+":""}${v.toFixed(2)}°C，${d.station_count} 站">${
+        v>=0?"▲":"▼"}</span>`;
+    }).join(" ");
+    return `<tr>
+      <td><b>${h(stage)}</b>${s.served?"":
+        '<span class="muted"> 暗</span>'}</td>
+      <td><span class="pill" style="background:${colour}22;color:${
+        colour}">${word}</span></td>
+      <td class="mono">${sig}</td>
+      <td class="mono">${s.run_length}</td>
+      <td class="mono">${h(s.tier)}</td>
+      <td class="mono">${shift}</td>
+      <td class="mono">${s.station_count||"—"}</td>
+      <td>${spark}</td>
+      <td class="muted">${h(s.reason||s.state||"")}</td>
+    </tr>`;
+  }).join("");
+  const [banner,word]=LIGHT[R.alert]||LIGHT.GREEN;
+  return `<h3 style="margin-top:18px">舰队隔日政权偏移
+    <span class="pill" style="background:${banner}22;color:${banner}">${
+      word}</span></h3>
+  <p class="sub">昨天全舰队结算下来，服务出去的分布中心差了多少度；
+  今天按这个差额把中心挪回来。</p>
+  <div class="why"><b>为什么要有这一层：</b>拟合出来的中心/宽度层必须先攒够
+  八天证据、再过前向闸才准动，八月这波升温里它一次都没攒够。这一层不拟合
+  任何参数——它只读昨天真实差了多少，乘一个写死的系数，并且封顶。所以它敢
+  在一天证据上动，而旁边那层不敢。<b>自动退场：</b>差额是拿服务出去的分布
+  量的，等慢层追上来，差额归零，这一层的修正也自动归零，不会重复计算。
+  <b>三天确认才加力：</b>一天算天气，连续三天同向才算政权，那时才升到高档。
+  实测（08-17~26 闭环）：P0 −24%、P0-M −24%；P1 +7% 反而更差，
+  因为它的残差本来就只有三分之一且逐日翻号，所以留暗不服务。</div>
+  <table><thead><tr><th>阶段</th><th>灯</th><th>昨日差额°C</th><th>连续</th>
+    <th>档位</th><th>今日修正°C</th><th>站数</th><th>近七日</th><th>状态</th>
+    </tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function refusalStats(){

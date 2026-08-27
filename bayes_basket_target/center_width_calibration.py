@@ -54,6 +54,14 @@ MAX_WIDTH_LAMBDA = 1.5
 # 0.25, which no single layer would be entitled to claim alone.
 MIN_STATION_WIDTH_SCALE = 0.5
 MAX_STATION_WIDTH_SCALE = 1.5
+# The next-day fleet regime shift composes onto the same axis as ``delta_c``
+# -- two shifts along one line add -- and carries its own entitlement bound,
+# checked separately for the same reason the station width scale is.  The two
+# answer different questions on different clocks: ``delta_c`` is a fitted
+# scalar that had to clear a forward gate, this is an unfitted read of what
+# the fleet settled yesterday.  Keeping the bounds apart keeps a fast layer
+# from ever spending a slow layer's entitlement.
+MAX_ABS_REGIME_SHIFT_C = 1.0
 
 
 def _axis(
@@ -79,6 +87,7 @@ def apply_center_width_calibration(
     key_centers_c: Sequence[float],
     excluded_buckets: Sequence[str] = (),
     station_width_scale: float = 1.0,
+    regime_delta_c: float = 0.0,
 ) -> tuple[dict[str, float], dict[str, Any]]:
     """Shift by ``delta_c`` and scale about the mean by ``width_lambda``.
 
@@ -112,8 +121,11 @@ def apply_center_width_calibration(
     shift = float(delta_c)
     lam = float(width_lambda)
     scale = float(station_width_scale)
+    regime = float(regime_delta_c)
     if not math.isfinite(shift) or abs(shift) > MAX_ABS_SHIFT_C:
         raise ValueError("center_width_shift_out_of_range")
+    if not math.isfinite(regime) or abs(regime) > MAX_ABS_REGIME_SHIFT_C:
+        raise ValueError("center_width_regime_shift_out_of_range")
     if not math.isfinite(lam) or not (
         MIN_WIDTH_LAMBDA <= lam <= MAX_WIDTH_LAMBDA
     ):
@@ -123,8 +135,11 @@ def apply_center_width_calibration(
     ):
         raise ValueError("center_width_station_scale_out_of_range")
     # Composed after each factor passed its own bounds: the product is what a
-    # point's deviation from the mean is multiplied by.
+    # point's deviation from the mean is multiplied by, and the sum is how far
+    # along the axis the whole distribution travels.
     lam = lam * scale
+    fitted_shift = shift
+    shift = shift + regime
 
     index = {key: position for position, key in enumerate(keys)}
     total_in = sum(float(value) for value in probability.values())
@@ -175,6 +190,8 @@ def apply_center_width_calibration(
             "method_tag": CENTER_WIDTH_METHOD_TAG,
             "state": "REFUSED_EMPTY_AFTER_HARD_BOUND",
             "delta_c": shift,
+            "fitted_delta_c": fitted_shift,
+            "regime_delta_c": regime,
             "width_lambda": lam,
             "distribution_mean_c": mean_c,
         }
@@ -189,6 +206,11 @@ def apply_center_width_calibration(
         ),
         "station_width_scale": scale,
         "delta_c": shift,
+        # Kept apart from the composed total so an audit can say which layer
+        # moved the distribution.  A single ``delta_c`` would make a fitted
+        # scalar and a next-day reaction indistinguishable after the fact.
+        "fitted_delta_c": fitted_shift,
+        "regime_delta_c": regime,
         "width_lambda": lam,
         "distribution_mean_c": mean_c,
         "mass_returned_to_hard_bound": restored,

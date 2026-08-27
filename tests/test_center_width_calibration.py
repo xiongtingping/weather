@@ -271,9 +271,12 @@ def test_serving_layer_is_wired_ahead_of_the_band_table() -> None:
         / "materialization.py"
     ).read_text(encoding="utf-8")
     # The condition widened when the per-station width scale joined the
-    # layer: either piece may be present without the other.
+    # layer, and again when the next-day fleet regime shift did: any one of
+    # the three may be present without the others, and each on its own is
+    # enough to move the distribution before the band table sees the claim.
     centre_at = source.index(
-        "if center_width is not None or station_scale != 1.0:"
+        "if center_width is not None or station_scale != 1.0"
+        " or regime_delta != 0.0:"
     )
     band_at = source.index("if band_table is not None:", centre_at)
     assert centre_at < band_at

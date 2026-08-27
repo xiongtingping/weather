@@ -50,6 +50,10 @@ from .center_width_store import (
     load_center_width_cells,
     load_station_width,
 )
+from .fleet_regime_shift import (
+    load_regime_shift,
+    refresh_fleet_regime_daily,
+)
 from .contracts import (
     ContractError,
     ProbabilityEnvelope,
@@ -9188,6 +9192,12 @@ class TargetProductionWorker:
                     station_width=load_station_width(
                         self.commit_conn, stage="P1"
                     ),
+                    fleet_regime=load_regime_shift(
+                        self.commit_conn,
+                        stage="P1",
+                        event_date=predecessor.event_date,
+                        as_of_utc=as_of_utc,
+                    ),
                     observations=observations,
                     registry_rows=registry_rows,
                     compilation_at_utc=as_of_utc,
@@ -10187,6 +10197,12 @@ class TargetProductionWorker:
                                 station_width=load_station_width(
                                     self.commit_conn, stage="P0-M"
                                 ),
+                                fleet_regime=load_regime_shift(
+                                    self.commit_conn,
+                                    stage="P0-M",
+                                    event_date=day,
+                                    as_of_utc=decision_at,
+                                ),
                             )
                         except Exception as exc:  # noqa: BLE001
                             # This path is additive: it seats a stage that had
@@ -10542,6 +10558,12 @@ class TargetProductionWorker:
                         ),
                         station_width=load_station_width(
                             self.commit_conn, stage="P0-M"
+                        ),
+                        fleet_regime=load_regime_shift(
+                            self.commit_conn,
+                            stage="P0-M",
+                            event_date=day,
+                            as_of_utc=decision_at,
                         ),
                     )
                     pending_envelopes.append((envelope, decision_at))

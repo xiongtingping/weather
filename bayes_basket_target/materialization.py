@@ -634,6 +634,7 @@ def _posterior(
     ] | None = None,
     center_width: tuple[float, float, str] | None = None,
     station_width: tuple[Mapping[str, float], str] | None = None,
+    fleet_regime: Mapping[str, Any] | None = None,
     ceiling: Mapping[str, Any] | None = None,
 ) -> ProbabilityEnvelope:
     if predecessor.stage not in {"P0", "P0-M", "P1"}:
@@ -681,7 +682,12 @@ def _posterior(
         station_width_sha = (
             str(station_width[1]) if station_scale != 1.0 else None
         )
-    if center_width is not None or station_scale != 1.0:
+    # The next-day fleet regime shift travels the same axis as the scalars and
+    # is composed with them, but is loaded per stage-day by the caller rather
+    # than read from an activated table: it is a reading of yesterday, not a
+    # fitted artifact, and it has no version for a pointer to name.
+    regime_delta = float((fleet_regime or {}).get("regime_delta_c") or 0.0)
+    if center_width is not None or station_scale != 1.0 or regime_delta != 0.0:
         shift_c, width_lambda, center_width_sha = (
             center_width
             if center_width is not None
@@ -709,6 +715,7 @@ def _posterior(
                 delta_c=shift_c,
                 width_lambda=width_lambda,
                 station_width_scale=station_scale,
+                regime_delta_c=regime_delta,
                 ordered_keys=ordered_keys,
                 key_centers_c=key_centers_c,
                 excluded_buckets=sorted(excluded),
@@ -716,6 +723,8 @@ def _posterior(
             center_receipt["center_width_sha256"] = str(center_width_sha)
             if station_width_sha is not None:
                 center_receipt["station_width_sha256"] = station_width_sha
+            if fleet_regime:
+                center_receipt["fleet_regime"] = dict(fleet_regime)
             lineage["center_width_json"] = json.dumps(
                 center_receipt, sort_keys=True
             )
@@ -873,6 +882,7 @@ def materialize_p0m_observed(
     ] | None = None,
     center_width: tuple[float, float, str] | None = None,
     center_width_taf_cells: Mapping[str, Sequence[float]] | None = None,
+    fleet_regime: Mapping[str, Any] | None = None,
     station_width: tuple[Mapping[str, float], str] | None = None,
 ) -> ProbabilityEnvelope:
     """Seat P0-M on a TAF that arrived without a calibrated correction.
@@ -992,6 +1002,7 @@ def materialize_p0m_observed(
         band_table=band_table,
         center_width=center_width,
         station_width=station_width,
+        fleet_regime=fleet_regime,
     )
 
 
@@ -1014,6 +1025,7 @@ def materialize_p0m(
     ] | None = None,
     center_width: tuple[float, float, str] | None = None,
     center_width_taf_cells: Mapping[str, Sequence[float]] | None = None,
+    fleet_regime: Mapping[str, Any] | None = None,
     station_width: tuple[Mapping[str, float], str] | None = None,
     observed_hard_excluded_buckets: Sequence[str] = (),
     observed_running_high_c: float | None = None,
@@ -1161,6 +1173,7 @@ def materialize_p0m(
         band_table=band_table,
         center_width=center_width,
         station_width=station_width,
+        fleet_regime=fleet_regime,
     )
 
 
@@ -1228,6 +1241,7 @@ def materialize_p1(
     ] | None = None,
     center_width: tuple[float, float, str] | None = None,
     station_width: tuple[Mapping[str, float], str] | None = None,
+    fleet_regime: Mapping[str, Any] | None = None,
 ) -> ProbabilityEnvelope:
     """Recompute P1 from one immutable P0/P0-M root and full METAR prefix.
 
@@ -1503,6 +1517,7 @@ def materialize_p1(
         band_table=band_table,
         center_width=center_width,
         station_width=station_width,
+        fleet_regime=fleet_regime,
         # The proof already decided both of the ceiling's preconditions: which
         # bucket the day's high sits in, and whether this step's high is the
         # current one.  Reading them off the proof keeps the served
