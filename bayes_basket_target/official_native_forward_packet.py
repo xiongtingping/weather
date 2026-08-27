@@ -58,7 +58,52 @@ POINT_FORECAST_SYSTEM_IDS = frozenset({
     "OFFICIAL_AIRPORT_TAF_TX",
     METAR_PHYSICAL_SYSTEM_ID,
 })
+# The one regional model this fleet has evidence for.  RCSS sits on the floor
+# of the Taipei basin at five metres inside a ring of 500-1000m hills, and a
+# 25 km global cell averages those hills into the airfield: the bias layer has
+# been applying +5.75C there all month and still leaves +1.4C standing, which
+# is not a fit that needs tuning but a resolution the source does not have.
+# MSM's 5 km cell for the same point sits at four metres.  Measured day-ahead
+# over sixty settled days it beat the served posterior on CRPS, NLL and Brier
+# and kept beating it with the three best days removed -- the only one of
+# twenty-six candidate station-model pairs that did.
+#
+# Registered as a point system because a deterministic run is one number, the
+# same way a TAF TX is: there is no member spread to characterise before its
+# centre can be trusted, which is what the twenty-day profile exists to buy.
+# Its width comes from its own residual record, as the single-member path
+# already handles.
+#
+# Deliberately NOT in POINT_FORECAST_SYSTEM_IDS.  That set waives the check
+# that a run's init hour equals its cycle, and it exists because a TAF's issue
+# instant jitters across the 6h grid so its cycle is only a scope label.  MSM
+# runs on a strict three-hourly grid and its init hour *is* its cycle, so it
+# keeps the check: a waiver granted to something that does not need one is a
+# check silently lost.
+JMA_MSM_POINT_SYSTEM_ID = "JMA_MSM_POINT"
+JMA_MSM_FAMILY_ID = "JMA_MSM"
+
 POINT_FORECAST_SYSTEMS = {
+    JMA_MSM_POINT_SYSTEM_ID: {
+        "ensemble_system_id": JMA_MSM_POINT_SYSTEM_ID,
+        "canonical_name": "JMA MSM 5km Regional Deterministic Point",
+        # Its own family, like every other centre's.  The weight machinery
+        # aggregates within a family before capping across families, so a
+        # regional model filed under a global family would spend that
+        # family's cap while sharing neither its grid nor its physics.
+        "independence_family_id": JMA_MSM_FAMILY_ID,
+        "provider_id": "JMA_RJTD",
+        "expected_member_count": 1,
+        "content_sha256": content_sha256({
+            "ensemble_system_id": JMA_MSM_POINT_SYSTEM_ID,
+            "member_identity_contract_version": (
+                "jma_msm_surface_single_cell_v1"
+            ),
+            "publication_contract_version": (
+                "three_hourly_run_grid_nearest_cell_v1"
+            ),
+        }),
+    },
     "OFFICIAL_AIRPORT_TAF_TX": {
         "ensemble_system_id": "OFFICIAL_AIRPORT_TAF_TX",
         "canonical_name": "Official Airport TAF TX Point",
