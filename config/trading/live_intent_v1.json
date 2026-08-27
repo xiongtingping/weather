@@ -1,0 +1,10 @@
+{
+  "schema": "basket_target_live_intent_v1",
+  "rationale": "The staging flag for going live, and nothing more. The worker is contract-locked to production_no_live (mode string, activation file and runtime config all three), so flipping this does not and cannot place an order; it records the operator's intent, the station allowlist the first live batch is limited to, and travels into the go-live migration as its input. The migration that mints the live contract must refuse to run while live_enabled is false.",
+  "live_enabled": false,
+  "armed_by": null,
+  "armed_at_utc": null,
+  "station_allowlist": ["ZBAA", "EFHK", "ZSQD", "OEJN", "MMMX", "VILK", "OPKC", "KORD"],
+  "allowlist_note": "5/5 gates: ZBAA EFHK; 4/5 with one soft fail: ZSQD OEJN MMMX VILK OPKC KORD (scored 2026-08-28: claim honesty, centre bias, chain count, book ROI, truth freshness)",
+  "updated_at_utc": "2026-08-28T00:00:00Z"
+}

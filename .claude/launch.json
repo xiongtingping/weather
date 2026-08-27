@@ -1,0 +1,27 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cal-dashboard-static",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8123",
+        "--directory",
+        "tmp",
+        "--bind",
+        "127.0.0.1"
+      ],
+      "port": 8123
+    },
+    {
+      "name": "live-control",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": [
+        "scripts/live_control_server.py"
+      ],
+      "port": 8788
+    }
+  ]
+}

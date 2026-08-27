@@ -16,6 +16,7 @@ Read-only by construction: opens the database read-only and writes nothing.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 from bisect import bisect_left
@@ -1737,6 +1738,318 @@ def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:
     return {"labels": labels, "stages": stages_out, "stations": stations}
 
 
+def collect_band_shadow(conn: sqlite3.Connection) -> dict[str, Any]:
+    """The shadow band layer's standing: which dimension earns its keep.
+
+    The served table (section six) is pooled -- one factor per stage per
+    claim band, the same for forty-five stations and every bucket in a
+    ladder.  The shadow fits that same evidence with two extra dimensions
+    and serves none of it; this panel is how the accumulation is read.
+
+    The number that matters is per *level*, never the total.  A fit that
+    promotes five fleet-wide position cells and lets two hundred fine
+    cells inherit them reads as "209 qualified" on a total, which is the
+    one reading that would be false.
+    """
+
+    if not _table_exists(conn, "calibration_band_shadow_journal"):
+        return {}
+    from bayes_basket_target.band_shadow_store import (
+        BACKOFF_LEVELS,
+        MIN_CELL_CLAIMED_MASS,
+        MIN_CELL_DAYS,
+        MIN_CELL_ROWS,
+        FDR_Q,
+    )
+
+    LEVEL_LABEL = {
+        "station_position": "站 × 桶位置",
+        "station": "站",
+        "position": "桶位置",
+    }
+    GROUP_LABEL = {
+        "cool_far": "偏冷远端",
+        "cool_near": "偏冷邻桶",
+        "centre": "峰值桶",
+        "warm_near": "偏暖邻桶",
+        "warm_far": "偏暖远端",
+    }
+    BLOCK_LABEL = {
+        "gate_a_insufficient_mass": "样本不够（一门）",
+        "gate_b_halves_not_stable": "前后半段不稳（二门）",
+        "gate_b_fdr_not_significant": "多重校正后不显著（二门）",
+        "gate_c_forward_window_not_improved": "试算反而变差（三门）",
+    }
+    stages: list[dict[str, Any]] = []
+    for stage in ("P0", "P0-M", "P1"):
+        rows = conn.execute(
+            "SELECT fitted_at_utc, shadow_sha256, serving_day_count,"
+            " serving_station_day_count, cell_count, promoted_cell_count,"
+            " forward_nll_gain, evidence_json"
+            " FROM calibration_band_shadow_journal"
+            " WHERE stage=? ORDER BY fitted_at_utc DESC LIMIT 8",
+            (stage,),
+        ).fetchall()
+        if not rows:
+            continue
+        latest = rows[0]
+        try:
+            evidence = json.loads(latest[7])
+        except (TypeError, ValueError):
+            evidence = {}
+        levels = evidence.get("levels") or {}
+        level_rows = []
+        for level in BACKOFF_LEVELS[:-1]:
+            report = levels.get(level)
+            if not report:
+                continue
+            blocked = report.get("blocked") or {}
+            level_rows.append({
+                "level": level,
+                "label": LEVEL_LABEL.get(level, level),
+                "tested": report.get("tested", 0),
+                "eligible": report.get("eligible", 0),
+                "promoted": report.get("promoted", 0),
+                "blocked": [
+                    {"reason": BLOCK_LABEL.get(key, key), "n": value}
+                    for key, value in sorted(
+                        blocked.items(), key=lambda kv: -kv[1]
+                    )
+                ],
+            })
+        promoted = []
+        for key, factor in sorted((evidence.get("promoted") or {}).items()):
+            try:
+                parsed = ast.literal_eval(key)
+            except (ValueError, SyntaxError):
+                continue
+            station, group, band = parsed
+            promoted.append({
+                "station": None if station == "*" else station,
+                "group": group,
+                "group_label": GROUP_LABEL.get(group, group),
+                "band": [float(band[0]), float(band[1])],
+                "factor": float(factor),
+            })
+        promoted.sort(key=lambda row: (row["band"][0], row["group"]))
+        stages.append({
+            "stage": stage,
+            "meaning": STAGE_MEANING.get(stage, ""),
+            "fitted_at": latest[0],
+            "fit_age_hours": _age_hours(latest[0]),
+            "sha": str(latest[1])[:12],
+            "serving_days": int(latest[2]),
+            "station_days": int(latest[3]),
+            "cell_count": int(latest[4]),
+            "inherited_cell_count": int(latest[5]),
+            "forward_nll_gain": float(latest[6]),
+            "levels": level_rows,
+            "promoted": promoted,
+            "journal": [
+                {
+                    "at": row[0],
+                    "sha": str(row[1])[:12],
+                    "days": int(row[2]),
+                    "promoted": int(row[5]),
+                    "gain": float(row[6]),
+                }
+                for row in rows
+            ],
+        })
+    if not stages:
+        return {}
+    return {
+        "stages": stages,
+        "gates": {
+            "min_claimed_mass": MIN_CELL_CLAIMED_MASS,
+            "min_days": MIN_CELL_DAYS,
+            "min_rows": MIN_CELL_ROWS,
+            "fdr_q": FDR_Q,
+        },
+        "distance": collect_band_shadow_distance(conn),
+    }
+
+
+def collect_band_shadow_distance(
+    conn: sqlite3.Connection,
+) -> list[dict[str, Any]]:
+    """How far the starved levels are from the mass floor, in days.
+
+    A level that promotes nothing reads the same on day one and on the day
+    before it qualifies.  The fattest cell's mass against the floor, at
+    the rate it has actually been accumulating, is the difference between
+    "this is going nowhere" and "this needs three more weeks" -- and the
+    ETA is the only actionable number on a panel of zeroes.
+    """
+
+    if not _table_exists(conn, "calibration_band_shadow_cell"):
+        return []
+    from bayes_basket_target.band_shadow_store import MIN_CELL_CLAIMED_MASS
+
+    out: list[dict[str, Any]] = []
+    for stage in ("P0", "P0-M", "P1"):
+        sha_row = conn.execute(
+            "SELECT shadow_sha256, serving_day_count"
+            " FROM calibration_band_shadow_journal"
+            " WHERE stage=? ORDER BY fitted_at_utc DESC LIMIT 1",
+            (stage,),
+        ).fetchone()
+        if sha_row is None:
+            continue
+        sha, days = str(sha_row[0]), int(sha_row[1] or 0)
+        if days <= 0:
+            continue
+        # The stored cells are the finest level; the coarser levels are
+        # their sums, so both distances come from one scan.
+        rows = conn.execute(
+            "SELECT station_id, position_group, band_lower, claimed_mass"
+            " FROM calibration_band_shadow_cell"
+            " WHERE shadow_sha256=? AND stage=?",
+            (sha, stage),
+        ).fetchall()
+        if not rows:
+            continue
+        fine: dict[tuple[str, str, float], float] = {}
+        by_station: dict[tuple[str, float], float] = {}
+        for station, group, lower, mass in rows:
+            fine[(station, group, float(lower))] = float(mass)
+            key = (station, float(lower))
+            by_station[key] = by_station.get(key, 0.0) + float(mass)
+        for level, masses in (
+            ("station", by_station.values()),
+            ("station_position", fine.values()),
+        ):
+            values = sorted(masses, reverse=True)
+            if not values:
+                continue
+            best = values[0]
+            reached = sum(1 for m in values if m >= MIN_CELL_CLAIMED_MASS)
+            rate = best / days
+            out.append({
+                "stage": stage,
+                "level": level,
+                "cells": len(values),
+                "best_mass": best,
+                "floor": MIN_CELL_CLAIMED_MASS,
+                "reached": reached,
+                "days_now": days,
+                "days_needed": (
+                    None if rate <= 0
+                    else max(0.0, MIN_CELL_CLAIMED_MASS / rate)
+                ),
+            })
+    return out
+
+
+def collect_live_readiness(
+    conn: sqlite3.Connection,
+    band_stations: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Everything the go-live page needs: gates per station, knobs, contracts.
+
+    Five gates, all measured, none aesthetic: the band table's own
+    realized/claimed ratio (claim honesty), the served centre's bias
+    against settled truth, the ledger's chain count and ROI for the
+    station, and truth freshness.  The three control files are read fresh
+    at render so the page shows what production would read this cycle;
+    the write path is scripts/live_control_server.py, never this page.
+    """
+
+    ratio_by_station = {
+        str(row["station"]): row for row in (band_stations or [])
+    }
+    bias: dict[str, tuple[int, float]] = {}
+    try:
+        for sid, n, value in conn.execute(
+            "SELECT p.station_id, COUNT(*),"
+            " AVG(p.center_c - t.official_tmax_c)"
+            " FROM paper_trade_position p"
+            " JOIN calibration_station_daily_high_truth t"
+            "   ON t.station_id=p.station_id AND t.local_date=p.event_date"
+            " WHERE p.center_c IS NOT NULL GROUP BY p.station_id"
+        ):
+            bias[str(sid)] = (int(n), float(value))
+        book: dict[str, dict[str, Any]] = {}
+        for sid, day, hit, stake, pnl in conn.execute(
+            "SELECT station_id, event_date, hit, stake_usdc, pnl_usdc"
+            " FROM paper_trade_settlement"
+        ):
+            slot = book.setdefault(str(sid), {
+                "stake": 0.0, "pnl": 0.0, "days": set(),
+            })
+            slot["stake"] += float(stake or 0.0)
+            slot["pnl"] += float(pnl or 0.0)
+            slot["days"].add(str(day))
+        truth_latest = {
+            str(sid): str(day) for sid, day in conn.execute(
+                "SELECT station_id, MAX(local_date)"
+                " FROM calibration_station_daily_high_truth"
+                " GROUP BY station_id"
+            )
+        }
+    except sqlite3.OperationalError:
+        return {"available": False}
+
+    import datetime as _dt
+    fresh_floor = (
+        _dt.date.today() - _dt.timedelta(days=2)
+    ).isoformat()
+    stations = []
+    for sid in sorted(set(ratio_by_station) | set(book) | set(bias)):
+        band_row = ratio_by_station.get(sid)
+        ratio = float(band_row["ratio"]) if band_row else None
+        chain_count = len(book[sid]["days"]) if sid in book else 0
+        stake = book[sid]["stake"] if sid in book else 0.0
+        roi = (book[sid]["pnl"] / stake) if stake else None
+        bias_c = bias[sid][1] if sid in bias else None
+        gates = {
+            "claim_honest": (
+                ratio is not None and 0.88 <= ratio <= 1.18
+            ),
+            "centre_bias": bias_c is not None and abs(bias_c) <= 0.8,
+            "chains": chain_count >= 5,
+            "roi": roi is not None and roi > -0.08,
+            "truth_fresh": truth_latest.get(sid, "") >= fresh_floor,
+        }
+        stations.append({
+            "station": sid,
+            "station_label": STATION_LABELS.get(sid, ""),
+            "score": sum(gates.values()),
+            "gates": gates,
+            "ratio": ratio,
+            "bias_c": bias_c,
+            "chains": chain_count,
+            "roi": roi,
+            "truth_latest": truth_latest.get(sid),
+        })
+    stations.sort(key=lambda row: (-row["score"], -(row["roi"] or -9.0)))
+
+    def _config(path: Path) -> dict[str, Any]:
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+
+    policy = _config(ROOT / "config/trading/portfolio_capital_policy_v1.json")
+    runtime = _config(
+        ROOT / "config/bayes_basket_target/no_live_runtime_v1.json"
+    )
+    intent = _config(ROOT / "config/trading/live_intent_v1.json")
+    return {
+        "available": True,
+        "stations": stations,
+        "kelly": policy.get("portfolio_risk_fraction"),
+        "budget_usdc": runtime.get("target_remaining_budget_usdc"),
+        "live_enabled": intent.get("live_enabled"),
+        "station_allowlist": intent.get("station_allowlist") or [],
+        "contracts": {
+            "execution_mode": runtime.get("execution_mode"),
+            "live_submit_authorized": runtime.get("live_submit_authorized"),
+            "policy_scope": policy.get("authority_scope"),
+        },
+    }
+
+
 def collect_center_width(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     """The two scalars that move the served distribution, per stage.
 
@@ -3306,6 +3619,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     members = collect_members(conn, collect_run_cadence(conn))
     tables = collect_correction_and_weights(conn)
     stages = collect_band_stages(conn)
+    band_shadow = collect_band_shadow(conn)
     chain = collect_chain(conn)
     gaps = collect_gaps(conn, members, stages, tables)
     p0m = collect_p0m_progress(conn)
@@ -3389,8 +3703,14 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "members": members,
         "tables": tables,
         "truth_landing": truth_landing,
-        "band_residual_audit": collect_band_residual_audit(conn),
+        "band_residual_audit": (band_audit := collect_band_residual_audit(
+            conn,
+        )),
+        "live_readiness": collect_live_readiness(
+            conn, band_audit.get("stations") or [],
+        ),
         "stages": stages,
+        "band_shadow": band_shadow,
         "chain": chain,
         "gaps": gaps,
         "p0m": p0m,
@@ -4036,6 +4356,116 @@ function stages(){
   它只诊断、不回写。若某档残差持续变大，说明对应旋钮方向或粒度不对——回到 ②。</div>
   <div class="grid g3" style="margin-top:8px">${cards}</div>
   ${reliabilityAudit()}`;
+}
+
+// The shadow candidate for the knob section six turns.  It is rendered
+// beside that section on purpose: the question it answers -- is one
+// factor per band per stage too coarse -- is unreadable without the table
+// it would replace sitting next to it.
+function bandShadow(){
+  const S = D.band_shadow || {};
+  if(!(S.stages||[]).length) return "";
+  const g = S.gates || {};
+  const cards = S.stages.map(s => {
+    // Three columns, not five: these cards sit three to a row, and a
+    // five-column table there breaks its own header mid-word.  The funnel
+    // reads better as one cell anyway -- 1091 → 0 → 0 is the story, and
+    // splitting it across columns makes the reader reassemble it.
+    const levels = (s.levels||[]).map(L => {
+      const cls = L.promoted > 0 ? "up" : "flat";
+      const blocked = (L.blocked||[]).map(b =>
+        `${h(b.reason)} ${b.n}`).join("；");
+      return `<tr>
+        <td>${h(L.label)}</td>
+        <td class="mono">${L.tested} → ${L.eligible} →
+          <span class="factor ${cls}">${L.promoted}</span></td>
+        <td class="muted">${blocked || "—"}</td></tr>`;
+    }).join("");
+    const promoted = (s.promoted||[]).map(p => {
+      const cls = p.factor > 1.001 ? "up" : (p.factor < 0.999 ? "down" : "flat");
+      const arrow = p.factor > 1.001 ? "调高" : (p.factor < 0.999 ? "调低" : "不动");
+      return `<tr>
+        <td>${h(p.group_label)}${p.station ? " · " + h(p.station) : ""}</td>
+        <td class="mono">${(p.band[0]*100).toFixed(0)}–${
+          Math.min(100, p.band[1]*100).toFixed(0)}%</td>
+        <td class="factor ${cls}">${p.factor.toFixed(3)}
+          <span class="muted">${arrow}</span></td></tr>`;
+    }).join("");
+    const dist = (S.distance||[]).filter(d => d.stage === s.stage);
+    const distRows = dist.map(d => {
+      const label = d.level === "station" ? "站" : "站 × 桶位置";
+      // Days REMAINING, not days total.  days_needed counts from the
+      // start of accumulation, and reporting it raw reads as "37 more
+      // days" when 28 of those 37 are already banked.
+      const left = d.days_needed == null ? null
+        : Math.max(0, Math.ceil(d.days_needed - d.days_now));
+      const eta = d.reached > 0 ? "已达标"
+        : (left == null ? "—" : `还需约 ${left} 天`);
+      const pct = Math.min(100, 100 * d.best_mass / d.floor);
+      return `<tr>
+        <td>${label}<br><span class="muted">${d.cells} 格</span></td>
+        <td><div class="bar" style="margin:0"><i style="width:${pct}%"></i></div>
+          <span class="muted">最肥格 ${d.best_mass.toFixed(2)} /
+          门槛 ${d.floor.toFixed(1)}</span></td>
+        <td>${eta}</td></tr>`;
+    }).join("");
+    const journal = (s.journal||[]).slice(0,5).map(j =>
+      `<tr><td class="mono">${h(j.at).slice(0,16).replace("T"," ")}</td>
+       <td>${j.days} 天</td><td>${j.promoted} 格继承非池因子</td>
+       <td class="mono">${j.gain >= 0 ? "+" : ""}${j.gain.toFixed(2)}</td>
+       <td class="mono muted">${h(j.sha)}</td></tr>`).join("");
+    return `<div class="card">
+      <div style="display:flex;align-items:center;gap:8px">
+        <b>${h(s.stage)}</b><span class="muted">${h(s.meaning)}</span>
+        <span style="flex:1"></span>
+        <span class="pill">影子 · 不服务</span>
+      </div>
+      <div class="muted" style="margin-top:8px">
+        证据：${s.serving_days} 天 / ${s.station_days} 个站日 ·
+        版本 <span class="mono">${h(s.sha)}</span> ·
+        上次拟合 ${hours(s.fit_age_hours)}</div>
+      <table style="margin-top:12px"><thead><tr>
+        <th>维度</th><th>测 → 过样本门 → 自身够格</th>
+        <th>卡在哪一门</th></tr></thead><tbody>${levels}</tbody></table>
+      ${promoted ? `<div class="muted" style="margin-top:10px">够格的格子
+        （前向窗 ${s.forward_nll_gain >= 0 ? "+" : ""}${
+        s.forward_nll_gain.toFixed(2)} NLL）：</div>
+      <table><thead><tr><th>位置</th><th>概率档</th><th>系数</th>
+      </tr></thead><tbody>${promoted}</tbody></table>` :
+      `<div class="muted" style="margin-top:10px">本次没有任何格子够格，
+        全部回退池权重。</div>`}
+      ${distRows ? `<div class="muted" style="margin-top:10px">饿死的维度
+        还差多远：</div>
+      <table><thead><tr><th>维度</th><th>最肥格的证据量</th>
+      <th>按当前速率</th></tr></thead><tbody>${distRows}</tbody></table>` : ""}
+      ${journal ? `<details style="margin-top:8px">
+      <summary class="muted" style="cursor:pointer">最近几次影子拟合</summary>
+      <table><thead><tr><th>时间</th><th>样本</th><th>继承格数</th>
+      <th>前向窗</th><th>版本</th></tr></thead>
+      <tbody>${journal}</tbody></table></details>` : ""}
+    </div>`;
+  }).join("");
+  return `<h2>六之二、影子：一张更细的分档表值不值得</h2>
+  <p class="sub">上一节那张表是<b>全舰队共用</b>的——四十五个站、一天里所有温度桶，
+  只要报的数字落在同一档，就吃同一个折扣。这一节在问：拆开来会不会更准？</p>
+  <div class="why"><b>拆成两维试：</b>一维是<b>站</b>（成都和纽约分开记账），
+  一维是<b>桶位置</b>（离当天最高点最近的那个桶，和远在偏冷／偏暖一侧的桶，分开记账）。
+  拆完之后每一格都要自己重新过三道门；<b>过不了的格子，退回去用全舰队那个折扣</b>
+  ——不是退回"不打折"，那样会把舰队层面已经测准的修正一起扔掉。</div>
+  <div class="why" style="margin-top:8px"><b>这一节不改任何数字。</b>
+  它是影子层：只记录"如果按这个更细的表来，会怎样"，服务端仍然走上一节那张池化表。
+  真要启用，得改代码并过账本重放，不是这里点一下就生效。</div>
+  <div class="why" style="margin-top:8px"><b>三道门为薄格重设过：</b>
+  ①<b>样本门</b>——这一格至少要攒到 ${g.min_claimed_mass} 个"期望命中"、
+  跨 ${g.min_days} 天、${g.min_rows} 行；攒不到就根本判不出该调高还是调低。
+  ②<b>显著门</b>——按天重抽样，并做<b>多重比较校正</b>（FDR ${g.fdr_q}）：
+  同时检验几千格时，不校正会凭空冒出上百个假阳性。
+  ③<b>试算门</b>——把这个系数放进最近四成的日子里重算一遍，真的更准才采用，
+  而且比的是"退回池权重"那个基准，不是"完全不修正"。</div>
+  <div class="why" style="margin-top:8px"><b>怎么读「自身够格」这一列：</b>
+  它数的是<b>这一维自己测出来</b>的格子。下面「继承格数」是另一回事——
+  一个全舰队的桶位置系数会被两百多个细格继承，那不代表两百多个站各自测准了。</div>
+  <div class="grid g3" style="margin-top:8px">${cards}</div>`;
 }
 
 // Step ③ of section 4: the post-correction residual, pooled and re-binned.
@@ -5841,6 +6271,102 @@ function centerWidth(){
 }
 
 
+function liveReadiness(){
+  const L = D.live_readiness || {};
+  if(!L.available) return "";
+  const allow = new Set(L.station_allowlist||[]);
+  const GATE = {claim_honest:"声称诚实", centre_bias:"中心偏差",
+    chains:"链数", roi:"账本ROI", truth_fresh:"真值新鲜"};
+  const rows = (L.stations||[]).map(r=>`<tr class="${allow.has(r.station)?"":""}">
+    <td class="mono">${allow.has(r.station)?"✔ ":""}${h(r.station)}${r.station_label?` <span class="muted">${h(r.station_label)}</span>`:""}</td>
+    <td class="mono ${r.score>=5?"up":(r.score>=4?"":"down")}">${r.score}/5</td>
+    <td class="mono">${r.ratio==null?"—":r.ratio.toFixed(2)}</td>
+    <td class="mono">${r.bias_c==null?"—":(r.bias_c>0?"+":"")+r.bias_c.toFixed(2)}</td>
+    <td class="mono">${r.chains}</td>
+    <td class="mono ${r.roi==null?"":(r.roi>=0?"up":"down")}">${r.roi==null?"—":((r.roi>=0?"+":"")+(100*r.roi).toFixed(1)+"%")}</td>
+    <td class="muted">${Object.entries(r.gates).filter(([k,v])=>!v).map(([k])=>GATE[k]).join("、")||"✓"}</td>
+  </tr>`).join("");
+  return `<h2>Live 上线准备</h2>
+  <p class="sub"><b>三重合同现锁 no_live</b>（执行模式字符串、激活文件、runtime config），
+  下面的开关是<b>上线意向旗</b>：它不下单也不能下单，真正的 go-live 迁移必须在旗亮时才允许铸造 live 契约。</p>
+  <div class="card">
+    <div class="grid g3">
+      <div><div class="muted">Live 意向</div>
+        <div class="big" id="lc-live">${L.live_enabled?"已 armed":"OFF"}</div>
+        <button type="button" id="lc-live-btn" disabled onclick="lcLive()">切换</button></div>
+      <div><div class="muted">凯利系数 portfolio_risk_fraction</div>
+        <div class="big" id="lc-kelly">${L.kelly==null?"—":L.kelly}</div>
+        <button type="button" disabled class="lc-w" onclick="lcAdjust('kelly',-0.05)">−0.05</button>
+        <button type="button" disabled class="lc-w" onclick="lcAdjust('kelly',0.05)">＋0.05</button></div>
+      <div><div class="muted">预算 target_remaining_budget_usdc</div>
+        <div class="big" id="lc-budget">${L.budget_usdc==null?"—":L.budget_usdc}</div>
+        <button type="button" disabled class="lc-w" onclick="lcAdjust('budget',-50)">−50</button>
+        <button type="button" disabled class="lc-w" onclick="lcAdjust('budget',50)">＋50</button></div>
+    </div>
+    <div class="muted" style="margin-top:8px" id="lc-status">控制服务未连接——启动：
+      <span class="mono">.venv/bin/python scripts/live_control_server.py</span>
+      （只监听 127.0.0.1:8788，每次改动写审计日志）</div>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <div class="muted">首批站点闸门（五闸：实现/声称∈[0.88,1.18]、|中心偏差|≤0.8°C、
+      链≥5、ROI＞−8%、真值≤2天新）· ✔=当前 allowlist（${(L.station_allowlist||[]).join(" ")}）</div>
+    <div class="scroll" style="max-height:360px;margin-top:6px">
+    <table><thead><tr><th>站</th><th>过闸</th><th>实现/声称</th><th>中心偏差</th>
+      <th>链</th><th>ROI</th><th>未过项</th></tr></thead><tbody>${rows}</tbody></table></div>
+  </div>`;
+}
+
+function lcApi(path, body){
+  return fetch("http://127.0.0.1:8788"+path, body?{
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(body)}:{}).then(r=>r.json());
+}
+function lcRender(s){
+  if(!s) return;
+  const kelly=document.getElementById("lc-kelly");
+  const budget=document.getElementById("lc-budget");
+  const live=document.getElementById("lc-live");
+  if(kelly) kelly.textContent = s.kelly.portfolio_risk_fraction;
+  if(budget) budget.textContent = s.budget.target_remaining_budget_usdc;
+  if(live) live.textContent = s.live.enabled?"已 armed":"OFF";
+  const status=document.getElementById("lc-status");
+  if(status) status.textContent =
+    "控制服务已连接 · 每次改动写 data/live_control_audit.jsonl";
+  document.querySelectorAll(".lc-w, #lc-live-btn")
+    .forEach(b=>b.disabled=false);
+  window.__lcState = s;
+}
+function lcAdjust(knob, delta){
+  const s = window.__lcState; if(!s) return;
+  if(knob==="kelly"){
+    const next = Math.round((s.kelly.portfolio_risk_fraction+delta)*100)/100;
+    lcApi("/api/kelly", {value: next}).then(lcRender)
+      .catch(e=>alert("失败: "+e));
+  } else {
+    const next = Math.round(
+      (s.budget.target_remaining_budget_usdc+delta)*100)/100;
+    lcApi("/api/budget", {value: next}).then(lcRender)
+      .catch(e=>alert("失败: "+e));
+  }
+}
+function lcLive(){
+  const s = window.__lcState; if(!s) return;
+  if(s.live.enabled){
+    lcApi("/api/live", {enabled:false}).then(lcRender);
+    return;
+  }
+  const word = prompt(
+    "确认 arm 上线意向旗？它不下单（三重合同仍锁 no_live），"
+    + "但 go-live 迁移将以它为前提。输入 LIVE 确认：");
+  if(word !== "LIVE") return;
+  lcApi("/api/live", {enabled:true, confirm:"LIVE", by:"dashboard"})
+    .then(lcRender).catch(e=>alert("失败: "+e));
+}
+function lcInit(){
+  if(!document.getElementById("lc-status")) return;
+  lcApi("/api/state").then(lcRender).catch(()=>{});
+}
+
 // Click a header to sort by that column.  Numbers, percentages, prices and
 // odds all read as numbers; anything else falls back to text, and an em dash
 // always sinks so empty cells never crowd the top of either direction.
@@ -6100,13 +6626,15 @@ function servingWeights(){
 // number that no longer matches its neighbours is a worse handle than a
 // renumbered one, because it only reads as an accident.
 const GROUPS = [
-  {id:"model", label:"模型与校准", note:"一～九节：数据到货、订正与权重、离散度与命中率、各层校准打分",
+  {id:"model", label:"模型与校准", note:"一～九节：数据到货、订正与权重、离散度与命中率、各层校准打分（含六之二影子）",
    sections:[[members,"成员"],[tables,"偏差订正与权重"],
      [servingWeights,"四大模型权重"],[dispersion,"模型离散度"],
-     [hitRate,"模型命中率"],[stages,"概率分档校准"],[oosScores,"OOS 打分"],
+     [hitRate,"模型命中率"],[stages,"概率分档校准"],
+     [bandShadow,"分档影子：站 × 桶位置"],[oosScores,"OOS 打分"],
      [centerWidth,"中心/宽度"],[scorecard,"模型校准总检"]]},
-  {id:"market", label:"市场与执行", note:"十～十六节：覆盖与 EV、逐站与逐日的账、挂单执行、没建仓的原因、分布与持仓分家",
-   sections:[[coverage,"覆盖"],[stationSummary,"站汇总"],[roster,"站名册"],
+  {id:"market", label:"市场与执行", note:"十～十六节：覆盖与 EV、逐站与逐日的账、挂单执行、没建仓的原因、分布与持仓分家、Live 上线准备",
+   sections:[[liveReadiness,"Live 上线准备"],
+     [coverage,"覆盖"],[stationSummary,"站汇总"],[roster,"站名册"],
      [anomalies,"异常"],[basketHit,"篮子命中率"],
      [makerProbe,"挂单影子探针"],[refusalStats,"未建仓原因"],
      [windowDivergence,"分布与持仓分家"],[truthLanding,"真值落位"],
@@ -6255,6 +6783,7 @@ document.querySelectorAll("[data-daytabs]").forEach(card => {
 })();
 
 document.querySelectorAll("table").forEach(makeSortable);
+lcInit();
 
 // Prose folds away by default (user ruling, 2026-08-18).  Forty-six
 // explanation blocks is most of the page's height, and every one of them is
