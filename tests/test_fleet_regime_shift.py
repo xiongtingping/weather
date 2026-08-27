@@ -422,3 +422,25 @@ def test_every_stage_is_dark_until_one_is_shown_to_help_the_claim(
 def test_every_served_stage_is_a_known_stage() -> None:
     for stage in F.FLEET_REGIME_SERVED_STAGES:
         assert stage in F.FLEET_REGIME_STAGES
+
+
+def test_a_thin_day_says_it_does_not_know_rather_than_crying_drift() -> None:
+    # Found in production 2026-08-27: one station had settled when the series
+    # was built, and its +0.83C lit RED as though forty-five had agreed.  A
+    # stale signal was once a real fleet reading and still deserves an alert;
+    # a thin one never was one.
+    thin = F.derive_offset(
+        [_row("2026-08-26", 0.9, stations=F.MIN_STATION_COUNT - 1)],
+        event_date="2026-08-27",
+    )
+    assert thin["alert"] == "UNKNOWN"
+    assert thin["alert_reason"] == "station_count_below_floor"
+    assert thin["state"] == "STOOD_DOWN"
+
+    # The same reading with the fleet behind it is a real warning.
+    full = F.derive_offset(
+        [_row("2026-08-26", 0.9, stations=F.MIN_STATION_COUNT)],
+        event_date="2026-08-27",
+    )
+    assert full["alert"] == "RED"
+    assert full.get("alert_reason") is None

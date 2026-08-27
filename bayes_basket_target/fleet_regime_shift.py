@@ -395,10 +395,22 @@ def derive_offset(
         expected = day - timedelta(days=1)
     receipt["run_length"] = run_length
 
-    # Alerting is independent of whether the correction fires: a fleet that
-    # is drifting is worth saying out loud even on a day the guards stand the
+    # Alerting is independent of whether the correction fires -- a fleet that
+    # is drifting is worth saying out loud on a day the guards stand the
     # correction down, because that is exactly the day somebody should look.
-    if abs(signal) >= ALERT_RED_C or run_length >= ESCALATION_RUN_DAYS:
+    #
+    # Independent of *that* guard, not of every guard, and the difference was
+    # found by this firing in production.  A stale signal was a real fleet
+    # reading that has aged, so alerting on it is right.  A thin one is not a
+    # fleet reading at all: on 2026-08-27 a single station had settled when
+    # the series was built, and one station reading +0.83C lit RED as though
+    # forty-five had agreed.  Below the floor the honest alert is that we do
+    # not know yet, so it says so rather than borrowing the confidence of a
+    # number that has no fleet in it.
+    if int(newest["station_count"]) < MIN_STATION_COUNT:
+        receipt["alert"] = "UNKNOWN"
+        receipt["alert_reason"] = "station_count_below_floor"
+    elif abs(signal) >= ALERT_RED_C or run_length >= ESCALATION_RUN_DAYS:
         receipt["alert"] = "RED"
     elif abs(signal) >= ALERT_YELLOW_C:
         receipt["alert"] = "YELLOW"
@@ -618,7 +630,10 @@ def fleet_regime_status(
         "alert": "GREEN",
     }
     worst = 0
-    rank = {"GREEN": 0, "YELLOW": 1, "RED": 2}
+    # UNKNOWN sits between quiet and warning: it is not calm, but it is
+    # not evidence of drift either, and rolling it up as either would
+    # misreport the fleet.
+    rank = {"GREEN": 0, "UNKNOWN": 1, "YELLOW": 2, "RED": 3}
     for stage in FLEET_REGIME_STAGES:
         # Dated to now so a stale series reports as stale rather than being
         # scored against a day it can no longer speak for.  Read through the
@@ -631,6 +646,7 @@ def fleet_regime_status(
         series = visible_daily_series(conn, stage=stage, as_of_utc=now_utc)
         out["stages"][stage] = {
             "alert": receipt["alert"],
+            "alert_reason": receipt.get("alert_reason"),
             "served": stage in FLEET_REGIME_SERVED_STAGES,
             "state": receipt["state"],
             "reason": receipt.get("reason"),
@@ -652,7 +668,9 @@ def fleet_regime_status(
             ],
         }
         worst = max(worst, rank.get(receipt["alert"], 0))
-    out["alert"] = {0: "GREEN", 1: "YELLOW", 2: "RED"}[worst]
+    out["alert"] = {
+        0: "GREEN", 1: "UNKNOWN", 2: "YELLOW", 3: "RED",
+    }[worst]
     return out
 
 
