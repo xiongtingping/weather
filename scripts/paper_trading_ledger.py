@@ -918,19 +918,36 @@ ALLOCATION_SHAPE = (
 ALLOCATION_SHAPES = ("equal_shares", "centre_tilt", "curve_solved")
 # Which price the stake rule and the payout test are struck against.
 #
-# ``lane`` -- the standing rule since 2026-08-26 -- is what THIS execution
-# mode would actually pay: the resting band under a maker mode, the offer
-# under taker.  ``crossing`` is the pre-2026-08-26 behaviour kept as a
-# comparison arm: production's ``_support_windows`` prices at the offer, and
-# the ledger used to size and refuse on that number whatever mode it was
-# running.  It is here so the two can be rebuilt against each other rather
-# than argued about; it is not a knob anything should run on.
+# ``crossing`` -- the standing rule again since 2026-08-27 (user ruling) --
+# judges the seat at the offer: the ask is information, not merely a cost
+# this mode never pays.  ``lane`` judged it at what the mode would actually
+# pay (the resting band under maker), which held for one day (2026-08-26)
+# and was reversed by three same-entry rebuilds: crossing-priced gates
+# measured +50.7, +55.5 and +62.8 USDC against lane-priced ones.  The
+# mechanism is the 55-chain decomposition's bad-bet half: a basket that is
+# only +EV at the price we hope to fill at has already been priced out by
+# the market's open ask, and the hoped-for fills select for the times the
+# market knew better.  Execution is untouched: orders still rest in the
+# band, and whatever they save against the crossing price is now a bonus
+# on top of the decision rather than the assumption underneath it.
+#
+# ``SEAT_PRICING_LANE_STAGES`` is the ruling's one exemption: P0-M posts
+# once and takes whatever book it finds, so a crossing gate there mostly
+# closes a stage that is already thin.
 SEAT_PRICING_BASIS = (
-    os.environ.get("PAPER_LEDGER_SEAT_PRICING", "lane").strip() or "lane"
+    os.environ.get("PAPER_LEDGER_SEAT_PRICING", "crossing").strip()
+    or "crossing"
 )
 SEAT_PRICING_BASES = ("lane", "crossing")
 if SEAT_PRICING_BASIS not in SEAT_PRICING_BASES:
     raise ValueError(f"unknown seat pricing basis: {SEAT_PRICING_BASIS}")
+SEAT_PRICING_LANE_STAGES = tuple(
+    stage.strip()
+    for stage in os.environ.get(
+        "PAPER_LEDGER_SEAT_PRICING_LANE_STAGES", "P0-M"
+    ).split(",")
+    if stage.strip()
+)
 # Every structural rule a recorded seat depends on.  Positions are derived rows,
 # so a change to any of these makes the ones already in the table describe a
 # strategy that no longer runs -- the ladder floor landed on 2026-08-15 and the
@@ -993,13 +1010,18 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     else f"价值钳λ{MAKER_RESTING_VALUE_LAMBDA:g}·中心桶豁免",
     # Which price the stake rule and the refusal copy judge on.  Taker has
     # only one, so it says nothing; a maker run says so, because rows on
-    # either side of 2026-08-26 were sized against different numbers.
+    # either side of 2026-08-26 -- and again 2026-08-27 -- were sized
+    # against different numbers.
     None
     if EXECUTION_MODE == "taker"
     else (
-        "席位按挂单价定价"
+        "席位按挂单价定价(对照)"
         if SEAT_PRICING_BASIS == "lane"
-        else "席位按吃单价定价(对照)"
+        else "闸按吃单价" + (
+            ""
+            if not SEAT_PRICING_LANE_STAGES
+            else "·%s按挂单价" % "+".join(SEAT_PRICING_LANE_STAGES)
+        )
     ),
     None
     if OFF_CENTER_CLAIM_RAMP_BUCKETS == 1.0
@@ -1065,7 +1087,10 @@ SELECTION_RULE_SHA256 = content_sha256({
     # from taker, where the two prices are the same number and the standing
     # taker book must keep its fingerprint.
     **(
-        {"seat_pricing_basis": SEAT_PRICING_BASIS}
+        {
+            "seat_pricing_basis": SEAT_PRICING_BASIS,
+            "seat_pricing_lane_stages": list(SEAT_PRICING_LANE_STAGES),
+        }
         if EXECUTION_MODE != "taker" else {}
     ),
     # The ladder's rungs are now floored to the exchange's tick, because
@@ -2679,14 +2704,30 @@ def _maker_leg_prices(
     return prices
 
 
+def _seat_pricing_basis(stage: str) -> str:
+    """Which price this stage's gate judges on -- crossing, unless exempt."""
+
+    if str(stage) in SEAT_PRICING_LANE_STAGES:
+        return "lane"
+    return SEAT_PRICING_BASIS
+
+
 def _seat_execution_price(
     seat: Mapping[str, Any],
     *,
     snapshot: Any,
     probabilities: Mapping[str, float],
     centre_bucket: str,
+    stage: str,
 ) -> float:
-    """What THIS lane pays for the seated basket, per set.
+    """The price the stake rule and the payout test judge the seat on.
+
+    Crossing by default since 2026-08-27 (user ruling; three same-entry
+    rebuilds at +50.7/+55.5/+62.8 USDC) -- the ask is treated as
+    information.  The lane paragraphs below are kept as the history of the
+    one-day reversal they argued for, and ``lane`` remains the basis for
+    the stages in ``SEAT_PRICING_LANE_STAGES`` (P0-M: posts once, takes
+    whatever book it finds) and for any run that sets the env back.
 
     ``_support_windows`` belongs to production and production crosses the
     spread, so the ``all_in_price`` it hands back is always the sum of the
@@ -2715,7 +2756,7 @@ def _seat_execution_price(
     different decision.
     """
 
-    if EXECUTION_MODE == "taker" or SEAT_PRICING_BASIS == "crossing":
+    if EXECUTION_MODE == "taker" or _seat_pricing_basis(stage) == "crossing":
         return float(seat["all_in_price"])
     return sum(
         _maker_leg_prices(
@@ -4926,6 +4967,7 @@ def backfill(
                         centre_bucket=str(
                             audit.get("ladder_center_bucket") or center
                         ),
+                        stage=stage,
                     )
                     # Sized off the book as it stood when the day opened, and
                     # never beyond what the per-scope cap leaves this chain.
@@ -5048,20 +5090,41 @@ def backfill(
                     )
                     stake = min(wanted_stake, max(0.0, stage_room))
                     if stake <= 0.0:
-                        # The price this lane would have paid, not the one it
-                        # would have paid crossing.  Both are printed: the
-                        # crossing total is the honest upper bound and the
-                        # number production would have judged on, so a reader
-                        # comparing this page against a live plan can still
-                        # see it -- it is just no longer the thing being
-                        # refused.
+                        # Whichever price the stage's basis judged on, the
+                        # OTHER one is the context the reader needs.  Under
+                        # the crossing basis (the rule since 2026-08-27) the
+                        # parenthetical is the resting band this lane could
+                        # have posted -- and the copy says why that number
+                        # did not save the seat: the open ask is the market's
+                        # judgement, and a basket that is only +EV at the
+                        # hoped-for fill price has already been priced out.
+                        # Under a lane-priced stage (P0-M) the parenthetical
+                        # stays the crossing total, the honest upper bound.
                         cost = seat_cost
-                        crossing_note = (
-                            ""
-                            if EXECUTION_MODE == "taker"
-                            or abs(seat_crossing_cost - cost) < 5e-4
-                            else "（吃单 %.3f）" % seat_crossing_cost
-                        )
+                        if EXECUTION_MODE == "taker":
+                            crossing_note = ""
+                        elif abs(cost - seat_crossing_cost) < 5e-4:
+                            resting_cost = sum(_maker_leg_prices(
+                                snapshot,
+                                seat["buckets"],
+                                probabilities,
+                                centre_bucket=str(
+                                    audit.get("ladder_center_bucket")
+                                    or center
+                                ),
+                            ))
+                            crossing_note = (
+                                ""
+                                if abs(resting_cost - cost) < 5e-4
+                                else (
+                                    "（本可挂 %.3f——要价本身说明不该买）"
+                                    % resting_cost
+                                )
+                            )
+                        else:
+                            crossing_note = (
+                                "（吃单 %.3f）" % seat_crossing_cost
+                            )
                         # Only say the budget stopped it when the budget
                         # stopped it.  This used to fire on any chain that
                         # already held something, so a stage refused on a

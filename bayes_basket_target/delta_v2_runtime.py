@@ -439,22 +439,41 @@ def _maker_market_anchor(
 # Which price the TARGET INVENTORY is chosen against -- not which price the
 # orders are placed at, which has been the maker ladder since 31a68f52.
 #
-# ``lane`` prices the target at what this lane would actually pay: the band
-# its resting orders sit in.  ``ask_depth`` is the pre-2026-08-26 behaviour,
-# kept as a comparison arm: the solver was handed the cost of *crossing* the
-# spread and then the execution layer went and posted inside it, so the
-# objective sized -- and refused -- on a price the engine never pays.
+# ``ask_depth`` hands the solver the cost of crossing the spread; ``lane``
+# hands it the band its resting orders would sit in.  The default is
+# ``ask_depth`` again (user ruling, 2026-08-27): the ask is treated as
+# information, not merely as a cost the engine never pays.
 #
-# KHOU 2026-08-27 is the case: four legs offered at 0.23/0.37/0.32/0.18 sum
-# to 1.100 against a payout of 1.00, so the objective sees a basket that
-# cannot win and holds; the same four legs rest at 0.061/0.365/0.300/0.150
-# = 0.876, which is a normal bet.  The paper ledger had the identical defect
-# one layer down and was corrected the same day; this is the other half.
+# The 2026-08-26 lane switch had a named case -- KHOU, four legs offered at
+# 1.100 against a 1.00 payout that would rest at 0.876 -- and the reversal
+# has three: the same-entry ledger rebuilds measured crossing-priced gates
+# worth +50.7, +55.5 and +62.8 USDC against lane-priced ones, and the
+# 55-chain decomposition shows why.  Half the maker losses are bad bets the
+# lane price flattered into passing: a basket that is only +EV at the price
+# we hope to fill at is a basket the market's open ask has already priced
+# out, and the fills that do come at the hoped-for price select for the
+# times the market knew better.  Of 94 crossing-refused seats measured to
+# 2026-08-26, two carried a real edge at the resting price -- KHOU's class,
+# the priced cost of the gate -- and 92 were refused either way.
+#
+# P0-M keeps lane pricing (the ruling's one exemption): it posts once and
+# takes whatever book it finds, so a crossing gate there mostly closes a
+# stage that is already thin.  Execution is untouched either way -- orders
+# still rest in the band; what changed is only the price the decision is
+# judged on.
 TARGET_PRICING_BASIS = (
-    os.environ.get("PM_TARGET_PRICING_BASIS", "lane").strip() or "lane"
+    os.environ.get("PM_TARGET_PRICING_BASIS", "ask_depth").strip()
+    or "ask_depth"
 )
 if TARGET_PRICING_BASIS not in {"lane", "ask_depth"}:
     raise ValueError(f"unknown target pricing basis: {TARGET_PRICING_BASIS}")
+TARGET_PRICING_LANE_STAGES = tuple(
+    stage.strip()
+    for stage in os.environ.get(
+        "PM_TARGET_PRICING_LANE_STAGES", "P0-M"
+    ).split(",")
+    if stage.strip()
+)
 
 
 class _Level:
@@ -471,6 +490,7 @@ def _lane_purchase_levels(
     row: Any,
     *,
     value_cap: float | None,
+    stage: str | None = None,
 ) -> tuple[Sequence[Any], float | None, str]:
     """The ladder the target inventory is priced against, and at what price.
 
@@ -488,7 +508,12 @@ def _lane_purchase_levels(
     the honest one.
     """
 
-    if TARGET_PRICING_BASIS == "ask_depth" or not row.ask_available:
+    basis = (
+        "lane"
+        if stage is not None and str(stage) in TARGET_PRICING_LANE_STAGES
+        else TARGET_PRICING_BASIS
+    )
+    if basis == "ask_depth" or not row.ask_available:
         return row.ask_levels, None, "official_ws_ask_depth"
     rungs = _maker_ladder(
         bid=float(row.bid_price),
@@ -1731,6 +1756,7 @@ def _target_candidates(
                 probability=probabilities_by_bucket.get(bucket),
                 window=ordered,
             ),
+            stage=str(snapshot.evidence.probability_stage or ""),
         )
         lane_levels[bucket] = levels
         lane_prices[bucket] = (

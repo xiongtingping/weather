@@ -298,8 +298,13 @@ LEDGER_ONLY = {
     "EXECUTION_MODES": "research arm",
     "WINDOW_STRATEGY": "research arm",
     "WINDOW_STRATEGIES": "research arm",
-    "SEAT_PRICING_BASIS": "comparison arm for the 2026-08-26 fix",
+    "SEAT_PRICING_BASIS": "crossing-priced gates, the 2026-08-27 ruling",
     "SEAT_PRICING_BASES": "same",
+    "SEAT_PRICING_LANE_STAGES": "the ruling's P0-M exemption",
+    "PAPER_LEDGER_FLEET_REGIME": (
+        "research arm (fleet regime, measured -7 points and taken back out)"
+    ),
+    "PAPER_LEDGER_FLEET_REGIME_STAGES": "same",
     "SELECTION_DISCOUNT": "measurement lane; must not become a gate",
     "MAKER_RESTING_BAND_TOP": "research arm",
     "MAKER_RESTING_CENTRE_LAMBDA": "research arm",
