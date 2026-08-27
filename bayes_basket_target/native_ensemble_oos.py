@@ -164,6 +164,11 @@ ROLLING_TRAIN_WINDOW_DAYS = 60
 # station on the first half scores 1.0434 on the second against 1.0397 for
 # a flat H5.  The station-level spread is sampling noise, not character.
 BIAS_HALF_LIFE_DAYS = 5.0
+# The half-life the model-versus-climatology blend is priced at, held at the
+# value that blend was calibrated under while the bias half-life moved.  See
+# the note beside ``reliability_weight``: these answer different questions and
+# were only ever the same number by accident of sharing one weight vector.
+RELIABILITY_HALF_LIFE_DAYS = 15.0
 # A ready scope whose newest settled case is older than this stops being
 # emitted and re-activated.  Sized above the observed truth lag (2-4 days)
 # plus the worst routine capture stall (2-7 days, the IEM one-minute lane),
@@ -887,7 +892,34 @@ def _fit_parameters(
     train_n_effective = weight_total ** 2 / sum(
         weight * weight for weight in weights
     )
-    reliability_weight = train_n_effective / (train_n_effective + 10.0)
+    # The blend between this scope's model and raw climatology is deliberately
+    # NOT taken from the decay above, and the parenthetical in the comment is
+    # why: charter 62 adopted Kish having checked that it left the climate
+    # blend alone, and that check was a condition of adopting it, not an
+    # observation about it.  It holds at a fifteen-day half-life and fails at
+    # five -- measured on the artifacts themselves, the median effective
+    # sample falls 31.1 -> 11.3 days and the served climatology share would
+    # rise from 24% to 47%.  Nearly doubling how much climatology every
+    # station serves is a large change to the distribution, and it is not the
+    # change the half-life sweep measured: that sweep scored the centre and
+    # nothing else.
+    #
+    # So the two questions are separated.  How fast does this scope's bias
+    # drift -- that is ``BIAS_HALF_LIFE_DAYS``, and it moved.  How much
+    # history does this scope have before its model outranks climatology --
+    # that is this, and it is held at the reference the blend was calibrated
+    # under.  Changing it is its own ruling and needs its own measurement.
+    reliability_weights = [
+        0.5 ** ((anchor_day - event_day).days / RELIABILITY_HALF_LIFE_DAYS)
+        for event_day in event_days
+    ]
+    reliability_total = sum(reliability_weights)
+    reliability_n_effective = reliability_total ** 2 / sum(
+        weight * weight for weight in reliability_weights
+    )
+    reliability_weight = reliability_n_effective / (
+        reliability_n_effective + 10.0
+    )
     # Every key returned here has to reach an artifact column, or serving
     # silently runs a different fit from the one the OOS gate scored.  That is
     # not hypothetical: the removed affine form was fitted, gated and folded
