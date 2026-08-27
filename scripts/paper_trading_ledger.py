@@ -782,8 +782,18 @@ def _is_shoulder(
 # line the pressure can never move: a hedge leg's clamp (lambda p) and the
 # core leg's own claimed probability.  A market asking more than the model
 # says the leg is worth stays unbought, at any completion gap, by design.
-MAKER_RESTING_GAP_MID = 1.0 / 3.0
-MAKER_RESTING_GAP_LATE = 2.0 / 3.0
+# Research knobs (2026-08-27): the crossing-priced gate changed what the
+# late phase means.  Every seated basket now clears +EV at the ask, so a
+# late-phase take pays a price the entry gate already endorsed -- which
+# was not true under lane pricing, and is why an earlier GAP_LATE is worth
+# measuring now and was not before.  Non-default values enter the
+# fingerprint; the defaults reproduce the shipped lifecycle bit for bit.
+MAKER_RESTING_GAP_MID = float(
+    os.environ.get("PAPER_LEDGER_GAP_MID", "") or (1.0 / 3.0)
+)
+MAKER_RESTING_GAP_LATE = float(
+    os.environ.get("PAPER_LEDGER_GAP_LATE", "") or (2.0 / 3.0)
+)
 # Completeness re-priced as risk (user ruling, 2026-08-24; twice corrected the
 # same day).  The lifecycle is untouched for every leg -- the tail included, it
 # is the hedge leg and fills at its clamp like everyone else.  The budget
@@ -993,6 +1003,14 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     None
     if EXECUTION_MODE != "maker_resting"
     else "缺口驱压三段·晚段值内吃单·核芯对冲分账",
+    None
+    if EXECUTION_MODE != "maker_resting" or (
+        abs(MAKER_RESTING_GAP_MID - 1.0 / 3.0) < 1e-9
+        and abs(MAKER_RESTING_GAP_LATE - 2.0 / 3.0) < 1e-9
+    )
+    else "相位%.2f/%.2f" % (
+        MAKER_RESTING_GAP_MID, MAKER_RESTING_GAP_LATE
+    ),
     None
     if SELECTION_DISCOUNT <= 0
     else f"选择折扣λs{SELECTION_DISCOUNT:g}",
