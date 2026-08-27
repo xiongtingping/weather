@@ -1816,8 +1816,72 @@ def collect_center_width(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             ),
             "min_forward_nll_gain": evidence.get("min_forward_nll_gain"),
             "last_outcome": outcome,
+            **_evidence_clock(conn, stage),
         })
     return rows
+
+
+def _evidence_clock(conn: sqlite3.Connection, stage: str) -> dict[str, Any]:
+    """Why this stage is still accumulating: where its floor sits and who set it.
+
+    The fit's evidence floor is the latest of three bounds, and the AST
+    fingerprint is the one that moves without anyone deciding anything: it
+    hashes the serving functions, so a commit that only records a receipt
+    or opens an inert replay door resets the floor exactly as a genuine
+    arithmetic change does.  Measured 2026-08-27, three P0 generations
+    landed in four hours and P1 has never once held a fingerprint for the
+    eight days the layer needs.  Without this on the page the layer just
+    reads "攒证据中" forever with nothing saying what keeps restarting it.
+    """
+
+    out: dict[str, Any] = {
+        "min_qualifying_days": None,
+        "ast_fingerprint": None,
+        "ast_first_seen_utc": None,
+        "ast_generations": None,
+        "ast_days_held": None,
+        "ast_longest_quiet_days": None,
+    }
+    try:
+        from bayes_basket_target import serving_arithmetic
+        from bayes_basket_target.center_width_store import MIN_QUALIFYING_DAYS
+    except ImportError:
+        return out
+    out["min_qualifying_days"] = MIN_QUALIFYING_DAYS
+    try:
+        current = serving_arithmetic.fingerprint(stage)
+        stamps = [
+            (str(sha), str(seen))
+            for sha, seen in conn.execute(
+                "SELECT fingerprint_sha256, first_seen_utc"
+                " FROM calibration_serving_arithmetic"
+                " WHERE stage=? ORDER BY first_seen_utc",
+                (stage,),
+            )
+        ]
+    except sqlite3.OperationalError:
+        return out
+    if not stamps:
+        return out
+    out["ast_generations"] = len(stamps)
+    seen_by_sha = {sha: seen for sha, seen in stamps}
+    first_seen = seen_by_sha.get(str(current or ""))
+    if first_seen:
+        out["ast_fingerprint"] = str(current)[:10]
+        out["ast_first_seen_utc"] = first_seen
+        held = _age_hours(first_seen)
+        out["ast_days_held"] = None if held is None else held / 24.0
+    moments = [seen for _sha, seen in stamps]
+    gaps = [
+        (_age_hours(a) or 0.0) - (_age_hours(b) or 0.0)
+        for a, b in zip(moments, moments[1:])
+    ]
+    newest_age = _age_hours(moments[-1])
+    if newest_age is not None:
+        gaps.append(newest_age)
+    if gaps:
+        out["ast_longest_quiet_days"] = max(gaps) / 24.0
+    return out
 
 
 # Thresholds for the six-layer scorecard.  Every one of them is anchored to
@@ -5660,13 +5724,25 @@ function centerWidth(){
         <div class="muted">×，小于 1 是收窄</div></div>
     </div>
     <div class="muted" style="margin-top:10px">
-      证据 ${r.serving_days} 天${r.serving_cells ?
+      证据 ${r.serving_days} 天${r.min_qualifying_days
+        ? " / 需 " + r.min_qualifying_days + " 天" : ""}${r.serving_cells ?
         " · " + r.serving_cells.toLocaleString() + " 个格子" : ""} ·
       上次拟合 ${hours(r.fit_age_hours)}</div>
     ${r.forward_nll_gain == null ? "" : `<div class="muted">
       前瞻 NLL 收益 ${r.forward_nll_gain.toFixed(4)}${
       r.min_forward_nll_gain == null ? "" :
       "，门槛 " + r.min_forward_nll_gain}</div>`}
+    ${r.ast_days_held == null ? "" : `<div class="muted"
+      style="margin-top:8px;border-top:1px solid rgba(128,128,128,.25);
+             padding-top:8px">
+      <b>证据时钟</b>：服务算术指纹
+      <span class="mono">${h(r.ast_fingerprint || "")}</span>
+      已保持 <b class="${r.ast_days_held >= (r.min_qualifying_days || 8)
+        ? "up" : "down"}">${r.ast_days_held.toFixed(2)} 天</b>
+      ${r.ast_generations ? "· 累计 " + r.ast_generations + " 代" : ""}
+      ${r.ast_longest_quiet_days == null ? "" :
+        "· 历史最长安静窗 " + r.ast_longest_quiet_days.toFixed(1) + " 天"}
+      <br>指纹一换，证据从零重数——包括只改记账、不改分布的提交。</div>`}
   </div>`).join("");
   return `<h2>八、中心/宽度两标量</h2>
   <p class="sub">最后一层修正只有两个数：把整条分布左右平移多少（中心 δ），
@@ -5674,7 +5750,13 @@ function centerWidth(){
   <div class="why"><b>为什么必须按阶段分开拟合：</b>P0 面对的是一堆模型融出来的
   分布，P1 面对的是当天实测已经把它收窄之后的分布——同一对数字不可能对两者都成立。
   一个阶段还没接线或还在攒证据，是按原样服务，不是出错。
-  <b>只有前瞻试算确实变好（NLL 收益超过门槛）才会换上去</b>，试算变差就退回原样。</div>
+  <b>只有前瞻试算确实变好（NLL 收益超过门槛）才会换上去</b>，试算变差就退回原样。<br>
+  <b>"攒证据中"为什么可能一直攒不满（2026-08-27 实测）：</b>证据窗从"服务算术上次
+  改变"起算，而那个时刻由被服务函数的 AST 指纹判定——<b>指纹只看代码变没变，
+  不看分布变没变</b>：一条只补记账字段、或只开一扇回放门的提交，与真正改算术一样
+  把时钟清零。当天 P0 四小时内换了三代指纹，P1 自 08-23 起<b>从未</b>持有过一代
+  满 8 天。每张卡片底部的"证据时钟"就是这件事的读数：它不满 8 天，这一层就永远
+  按原样服务。</div>
   <div class="grid g3" style="margin-top:12px">${cards}</div>`;
 }
 
