@@ -58,6 +58,7 @@ from .native_ensemble_contract import (
     validate_native_ensemble_transport_gate,
 )
 from .native_archive_lead import lead_hour_bucket_for_run
+from .native_ensemble_oos import BIAS_CORRECTION_FORM, _resolved_bias_c
 from .native_ensemble_authority import (
     NativeOosSnapshot,
     pointer_activation_mismatch_reasons,
@@ -79,7 +80,12 @@ from .ssot import native_ensemble_foundation_schema_status
 
 
 SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v1"
+# v2: member bias may vary with the member's own forecast level
+# (``level_terciles_v1``, user ruling 2026-08-27).  The bump is the point,
+# not a formality -- posterior_version now bounds the centre/width evidence
+# clock (the AST fingerprint only watches), so a serving change that keeps
+# its version steals evidence from a fit describing a shape nobody serves.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v2"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
@@ -387,13 +393,36 @@ def _calibrated_system_probability(
 ) -> dict[str, float]:
     current = [float(value) for value in values]
     mean = sum(current) / len(current)
-    bias = float(bias_parameters["bias_c"])
+    # The forms this build can reproduce, refused otherwise -- never served
+    # as a silent constant in their place.  That silent fallback is the bug
+    # this guard replaces: a level-dependent form was once fitted and gated
+    # but never persisted, so every affected scope served a centre the OOS
+    # gate never scored.  An absent field is the constant form (every
+    # artifact before 2026-08-27 omits it).  The resolver is the trainer's
+    # own -- ``native_ensemble_oos._resolved_bias_c`` -- so the centre served
+    # here is the centre the certificate was earned on, by construction.
+    correction_form = str(
+        bias_parameters.get("correction_form") or "constant"
+    )
+    if correction_form not in ("constant", BIAS_CORRECTION_FORM):
+        raise ContractError(
+            "native_ensemble_p0_calibration_correction_form_unsupported"
+        )
+    bias = _resolved_bias_c(mean, bias_parameters)
+    # Every shift the artifact could ever apply is range-checked, not just
+    # the one today's level selects: a bin holding an insane number is a
+    # malformed artifact even on the days it is not chosen.
+    all_biases = (
+        [bias]
+        if correction_form == "constant"
+        else [float(value) for value in bias_parameters["bias_bin_shifts_c"]]
+    )
     spread = float(spread_parameters["spread_factor"])
     reliability = float(
         reliability_parameters["reliability_weight"]
     )
     if (
-        not -20.0 <= bias <= 20.0
+        any(not -20.0 <= value <= 20.0 for value in all_biases)
         # The upper bound is the trainer's spread-factor cap in
         # native_ensemble_oos.py, not an independent judgement; the two must
         # move together or every artifact fitted at the cap is rejected here.
@@ -402,19 +431,6 @@ def _calibrated_system_probability(
     ):
         raise ContractError(
             "native_ensemble_p0_calibration_parameters_invalid"
-        )
-    # The trainer fits exactly one correction form, a constant shift, so an
-    # artifact that names any other form was fitted by a build this server
-    # cannot reproduce -- refuse it rather than quietly serving the constant
-    # form in its place.  That silent fallback is the bug this guard replaces:
-    # a level-dependent form was fitted and gated but never persisted, so
-    # every affected scope served a centre the OOS gate never scored.  Absent
-    # field is the norm and stays byte-identical (no artifact has ever carried
-    # this key).  See ``native_ensemble_oos._fit_parameters``.
-    correction_form = bias_parameters.get("correction_form")
-    if correction_form is not None and str(correction_form) != "constant":
-        raise ContractError(
-            "native_ensemble_p0_calibration_correction_form_unsupported"
         )
     center = mean + bias
     corrected = [
@@ -2238,12 +2254,16 @@ def compile_native_ensemble_p0(
             sum(float(member["raw_tmax_c"]) for member in members)
             / len(members)
         )
-        # Same single form as the histogram above, which has already refused
-        # any artifact naming another one.
+        # Same resolver as the histogram above, which has already refused
+        # any artifact naming a form it cannot run.  Under the binned form
+        # the bias a peer can see -- and borrow -- is the shift this run's
+        # own level selects: the number actually moving today's centre, not
+        # a bin nobody is standing in.
+        resolved_bias_c = _resolved_bias_c(raw_center, bias_parameters)
         calibrated_system_centers_c[system_id] = (
-            raw_center + float(bias_parameters["bias_c"])
+            raw_center + resolved_bias_c
         )
-        system_bias_c[system_id] = float(bias_parameters["bias_c"])
+        system_bias_c[system_id] = resolved_bias_c
         system_spread_factor[system_id] = float(
             json.loads(str(system_artifact[1]))["spread_factor"]
         )

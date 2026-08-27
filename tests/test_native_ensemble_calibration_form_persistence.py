@@ -58,7 +58,12 @@ def _cases(count: int = 40) -> list[dict[str, object]]:
 # it.  ``_system_artifact_identity`` writes exactly three parameter columns;
 # a key in none of them never reaches the server.
 PERSISTED_BY_COLUMN = {
-    "bias_parameters_json": {"bias_c"},
+    "bias_parameters_json": {
+        "bias_c",
+        "correction_form",
+        "bias_bin_cuts_c",
+        "bias_bin_shifts_c",
+    },
     "spread_parameters_json": {
         "spread_factor",
         "train_rmse_c",
@@ -91,35 +96,105 @@ def test_fit_parameter_keys_are_all_persisted() -> None:
     )
 
 
-def test_fit_declares_no_correction_form() -> None:
-    """One form only, so nothing about the form needs persisting."""
+def test_fit_declares_the_binned_form_well_formed() -> None:
+    """The fit names its form and ships a complete tercile table."""
 
-    assert "correction_form" not in oos._fit_parameters(_cases())
+    parameters = oos._fit_parameters(_cases())
+    assert parameters["correction_form"] == oos.BIAS_CORRECTION_FORM
+    cuts = parameters["bias_bin_cuts_c"]
+    shifts = parameters["bias_bin_shifts_c"]
+    assert len(shifts) == len(cuts) + 1 == oos.BIAS_BIN_COUNT
+    assert cuts == sorted(cuts)
 
 
 def test_evaluator_and_server_center_identically() -> None:
-    """The two centres are the same arithmetic on the same fields."""
+    """One resolver object, so the two centres cannot drift apart."""
+
+    assert p0._resolved_bias_c is oos._resolved_bias_c
 
     parameters = oos._fit_parameters(_cases())
     values = [21.5, 22.0, 22.5]
     mean = sum(values) / len(values)
-
-    evaluator_center = oos._corrected_center(mean, parameters)
-    server_center = mean + float(parameters["bias_c"])
-
-    assert evaluator_center == pytest.approx(server_center)
+    assert oos._corrected_center(mean, parameters) == pytest.approx(
+        mean + oos._resolved_bias_c(mean, parameters)
+    )
 
 
-def test_trend_does_not_produce_a_level_dependent_fit() -> None:
-    """A strongly level-dependent residual still fits one constant.
+def test_trend_produces_a_level_dependent_fit_that_flat_input_does_not() -> None:
+    """The tercile shifts follow the residual, and degrade to the constant.
 
-    Guards the removal itself: this input is what the affine branch existed
-    for, and it must now come back as a plain shift.
+    The warming cases carry a residual that grows with the forecast level,
+    so the high bin must correct more than the low one.  Cases with no
+    level-dependence at all must come back with every bin at the pooled
+    shift -- the shrinkage's promise that a bin never invents a signal.
     """
 
-    parameters = oos._fit_parameters(_cases())
-    assert set(parameters) == set().union(*PERSISTED_BY_COLUMN.values())
-    assert isinstance(parameters["bias_c"], float)
+    trending = oos._fit_parameters(_cases())
+    shifts = trending["bias_bin_shifts_c"]
+    assert shifts[-1] > shifts[0]
+
+    flat = []
+    start = date(2026, 6, 1)
+    for index in range(40):
+        flat.append({
+            "event_date": (start + timedelta(days=index)).isoformat(),
+            "values": [21.0, 22.0, 23.0],
+            "actual_tmax_c": 22.5,
+        })
+    parameters = oos._fit_parameters(flat)
+    for shift in parameters["bias_bin_shifts_c"]:
+        assert shift == pytest.approx(parameters["bias_c"])
+
+
+def test_server_accepts_the_binned_form_and_centers_by_level() -> None:
+    """Which bin the level lands in decides where the mass goes."""
+
+    bias_parameters = {
+        "bias_c": 0.5,
+        "correction_form": oos.BIAS_CORRECTION_FORM,
+        "bias_bin_cuts_c": [21.0, 23.0],
+        "bias_bin_shifts_c": [-1.0, 0.5, 2.0],
+    }
+    shared = {
+        "intervals": _LADDER,
+        "spread_parameters": {"spread_factor": 1.0, "train_rmse_c": 1.0},
+        "reliability_parameters": {
+            "reliability_weight": 1.0,
+            "climate_samples_c": [20.0, 21.0, 22.0],
+        },
+    }
+    low = p0._calibrated_system_probability(
+        values=[20.0, 20.5, 21.0], bias_parameters=bias_parameters, **shared
+    )
+    high = p0._calibrated_system_probability(
+        values=[23.0, 23.5, 24.0], bias_parameters=bias_parameters, **shared
+    )
+    # Low levels are pulled down a degree, high levels pushed up two: the
+    # cold bucket must dominate the first and the hot bucket the second.
+    assert low["21"] > low["23"]
+    assert high["23"] > high["21"]
+
+
+def test_server_refuses_a_malformed_binned_table() -> None:
+    """A shift list that does not match its cuts is refused, not padded."""
+
+    with pytest.raises(ContractError) as error:
+        p0._calibrated_system_probability(
+            values=[21.0, 22.0, 23.0],
+            intervals=_LADDER,
+            bias_parameters={
+                "bias_c": 0.5,
+                "correction_form": oos.BIAS_CORRECTION_FORM,
+                "bias_bin_cuts_c": [21.0, 23.0],
+                "bias_bin_shifts_c": [0.5, 2.0],
+            },
+            spread_parameters={"spread_factor": 2.0, "train_rmse_c": 1.0},
+            reliability_parameters={
+                "reliability_weight": 0.8,
+                "climate_samples_c": [20.0, 21.0, 22.0],
+            },
+        )
+    assert "binned_bias_malformed" in str(error.value)
 
 
 def test_server_refuses_an_unsupported_correction_form() -> None:

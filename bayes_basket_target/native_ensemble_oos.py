@@ -164,6 +164,23 @@ ROLLING_TRAIN_WINDOW_DAYS = 60
 # station on the first half scores 1.0434 on the second against 1.0397 for
 # a flat H5.  The station-level spread is sampling noise, not character.
 BIAS_HALF_LIFE_DAYS = 5.0
+# The bias shift, split by the scope's own forecast level (user ruling,
+# 2026-08-27).  Not the removed affine form and not the refused scope
+# dimensions: the affine slope re-measured dead the same day at production's
+# one-step horizon (CRPS +0.46% n.s. with ridge shrinkage), and the refused
+# bins cut ACROSS scopes on weather-type and month, starving every cell.
+# These bins sit INSIDE one scope, split its training days into forecast-
+# level terciles, and shrink each tercile's shift toward the pooled one by
+# ``BIAS_BIN_SHRINKAGE_CASES`` case-equivalents -- a thin or degenerate bin
+# degrades to exactly the constant form.  Measured rolling one-step-ahead
+# over 507 scopes x 4916 predictions: CRPS and NLL both -0.52% with the 95%
+# bootstrap interval clear of zero, 32 of 45 stations improved, and the sign
+# survives dropping the three largest station contributions.  RKPK, the
+# band table's worst overclaimer, gains most; RCSS gains nothing -- its
+# misses sit on days its own forecast level cannot see coming.
+BIAS_CORRECTION_FORM = "level_terciles_v1"
+BIAS_BIN_COUNT = 3
+BIAS_BIN_SHRINKAGE_CASES = 10.0
 # The half-life the model-versus-climatology blend is priced at, held at the
 # value that blend was calibrated under while the bias half-life moved.  See
 # the note beside ``reliability_weight``: these answer different questions and
@@ -854,10 +871,39 @@ def _fit_parameters(
     bias = sum(
         weight * error for weight, error in zip(weights, errors)
     ) / weight_total
+    # The tercile shifts.  Cuts come from the scope's own training levels;
+    # each bin's decayed-mean error is shrunk toward the pooled shift, so a
+    # bin holding little weight -- or a degenerate scope whose levels never
+    # move -- returns the pooled number rather than its own noise.
+    ordered_levels = sorted(centers)
+    bias_bin_cuts = [
+        ordered_levels[
+            max(0, (len(ordered_levels) * (index + 1)) // BIAS_BIN_COUNT - 1)
+        ]
+        for index in range(BIAS_BIN_COUNT - 1)
+    ]
+    bin_weight_totals = [0.0] * BIAS_BIN_COUNT
+    bin_error_sums = [0.0] * BIAS_BIN_COUNT
+    for weight, center, error in zip(weights, centers, errors):
+        index = _level_bin(center, bias_bin_cuts)
+        bin_weight_totals[index] += weight
+        bin_error_sums[index] += weight * error
+    bias_bin_shifts = [
+        (bin_error_sums[index] + BIAS_BIN_SHRINKAGE_CASES * bias)
+        / (bin_weight_totals[index] + BIAS_BIN_SHRINKAGE_CASES)
+        for index in range(BIAS_BIN_COUNT)
+    ]
     rmse = math.sqrt(sum(
         weight * error * error
         for weight, error in zip(weights, errors)
     ) / weight_total)
+    # ``rmse`` and ``residual_sigma`` stay on the POOLED shift deliberately,
+    # not the tercile one: ``train_rmse_c`` is the cross weight, and a form
+    # that lowers its own in-sample residual with extra parameters buys
+    # weight it has not earned -- the affine form banked a median 1.44x
+    # this way and delivered 1.05x out of sample.  One basis for every
+    # form keeps the weights comparable.
+    #
     # The scale the served distribution actually has to cover.  ``rmse`` is
     # taken about zero and so carries the bias, but the bias is exactly what
     # the centre shift above removes: sizing a width by it charges the
@@ -929,6 +975,9 @@ def _fit_parameters(
     # the three parameter columns; adding a key means deciding where it lands.
     return {
         "bias_c": bias,
+        "correction_form": BIAS_CORRECTION_FORM,
+        "bias_bin_cuts_c": bias_bin_cuts,
+        "bias_bin_shifts_c": bias_bin_shifts,
         "spread_factor": spread_factor,
         "reliability_weight": reliability_weight,
         "climate_samples_c": climate_samples[-180:],
@@ -939,19 +988,58 @@ def _fit_parameters(
     }
 
 
+def _level_bin(mean: float, cuts: Sequence[float]) -> int:
+    """Which forecast-level bin a centre falls in, lowest first."""
+
+    for index, cut in enumerate(cuts):
+        if float(mean) <= float(cut):
+            return index
+    return len(cuts)
+
+
+def _resolved_bias_c(
+    mean: float,
+    parameters: Mapping[str, Any],
+) -> float:
+    """The shift this centre actually earns, whatever form fitted it.
+
+    One resolver for the evaluator and the server -- the affine incident was
+    exactly these two disagreeing -- so the form gate lives here: a
+    parameters payload naming a form this build cannot run is refused, never
+    silently served as the constant.
+    """
+
+    form = str(parameters.get("correction_form") or "constant")
+    if form == "constant":
+        return float(parameters["bias_c"])
+    if form == BIAS_CORRECTION_FORM:
+        cuts = [float(cut) for cut in parameters["bias_bin_cuts_c"]]
+        shifts = [
+            float(shift) for shift in parameters["bias_bin_shifts_c"]
+        ]
+        if not shifts or len(shifts) != len(cuts) + 1:
+            raise ContractError(
+                "native_ensemble_oos_binned_bias_malformed"
+            )
+        return shifts[_level_bin(float(mean), cuts)]
+    raise ContractError(
+        "native_ensemble_oos_correction_form_unsupported"
+    )
+
+
 def _corrected_center(
     mean: float,
     parameters: Mapping[str, Any],
 ) -> float:
     """Where the calibrated distribution centers.
 
-    One form, one field: the shift is level-independent, so this is the same
-    arithmetic ``native_ensemble_p0._calibrated_system_probability`` runs at
-    serving time.  Keep the two together -- an evaluator that centers
+    Routed through ``_resolved_bias_c``, the same resolver
+    ``native_ensemble_p0._calibrated_system_probability`` runs at serving
+    time.  Keep the two on one function -- an evaluator that centers
     differently from the server hands out certificates it did not earn.
     """
 
-    return mean + float(parameters["bias_c"])
+    return mean + _resolved_bias_c(mean, parameters)
 
 
 def _apply_parameters(
@@ -4812,6 +4900,9 @@ def _system_artifact_identity(
         ),
         "bias_parameters_json": _json({
             "bias_c": parameters["bias_c"],
+            "correction_form": parameters["correction_form"],
+            "bias_bin_cuts_c": parameters["bias_bin_cuts_c"],
+            "bias_bin_shifts_c": parameters["bias_bin_shifts_c"],
         }),
         "spread_parameters_json": _json({
             "spread_factor": parameters["spread_factor"],
