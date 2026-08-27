@@ -268,6 +268,19 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
         1800.0,
         1800.0,
     ),
+    # The inbox a P0 compile reads is overwritten every cycle, so the input to
+    # any past compile is gone and no upstream parameter has ever been
+    # scorable on the book -- the ledger reads compiled envelopes and cannot
+    # produce them.  This keeps each packet once, content-keyed, so a later
+    # recompile can be handed exactly what production was handed.  Ten minutes
+    # because a packet that is overwritten before it is seen is the one case
+    # this cannot recover, and a pass over an unchanged inbox writes nothing.
+    (
+        "forward_packet_retention",
+        "scripts/forward_packet_retention_sweep.sh",
+        600.0,
+        600.0,
+    ),
 )
 
 
