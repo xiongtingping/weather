@@ -581,6 +581,23 @@ PAPER_LEDGER_CENTER_WIDTH_STAGES = (
 )
 _CW_REPLAY: dict[str, Any] | None = None
 
+# The next-day fleet regime shift, replayed the same way and off by default.
+# It travels the same axis as the centre/width shift and is composed into the
+# same ``apply_center_width_calibration`` call rather than applied after it:
+# two shifts through one call is what production does, and two separate calls
+# would redistribute mass onto the discrete grid twice and quietly disagree
+# with it wherever an edge bucket absorbs.
+_FR_RAW = os.environ.get("PAPER_LEDGER_FLEET_REGIME", "0").strip()
+PAPER_LEDGER_FLEET_REGIME = _FR_RAW not in {"0", "false", "FALSE", "no", ""}
+PAPER_LEDGER_FLEET_REGIME_STAGES = (
+    frozenset({"P0", "P0-M", "P1"})
+    if _FR_RAW in {"1", "true", "TRUE", "yes", "all"}
+    else frozenset(
+        part.strip() for part in _FR_RAW.split(",") if part.strip()
+    )
+)
+_FR_REPLAY: dict[str, Any] | None = None
+
 # Which stages may add a leg to a chain.  Defaults to all three, because all
 # three are one book.  It exists because they have not always been one book in
 # practice: production could not compile a P0-M decision between 2026-07-30 and
@@ -1175,6 +1192,22 @@ SELECTION_RULE_SHA256 = content_sha256({
         + ",".join(sorted(PAPER_LEDGER_CENTER_WIDTH_STAGES))
         if PAPER_LEDGER_CENTER_WIDTH else "off"
     ),
+    # Same axis, different clock.  A book built on posteriors that reacted to
+    # yesterday is not the book built on ones that did not, so the two must
+    # not share a fingerprint and compound together in one equity curve.
+    #
+    # Present only when the arm is on, so the off state keeps the historical
+    # digest.  A key that merely reads "off" would have restamped every row
+    # in the live book for a rule that had not changed -- and the incremental
+    # walk only reaches back ``--recent-days``, so the older rows would have
+    # kept the old digest and the curve would have compounded two rule sets:
+    # the exact failure this fingerprint exists to prevent.
+    **({
+        "fleet_regime": (
+            "replay_table_asof_by_event_date:"
+            + ",".join(sorted(PAPER_LEDGER_FLEET_REGIME_STAGES))
+        )
+    } if PAPER_LEDGER_FLEET_REGIME else {}),
     # Which stages were allowed to add a leg.  A chain built from two stages is
     # not the same chain as one built from three, so they must not share a
     # fingerprint and silently mix in one book.
@@ -3163,6 +3196,40 @@ def _settlement_timezone(conn, station_id: str, event_date: str) -> str:
 # fitted only on earlier days, the same discipline the ceiling replay uses.
 
 
+def _fleet_regime_delta(*, stage: str, event_date: str) -> float:
+    """The next-day shift this stage-day would have served, as of that day.
+
+    Read from the replay table rather than from the live series: an entry is
+    built only from days whose truth was visible before the event day began,
+    so a replay cannot buy information the decision never had.
+    """
+
+    global _FR_REPLAY
+    if (
+        not PAPER_LEDGER_FLEET_REGIME
+        or str(stage) not in PAPER_LEDGER_FLEET_REGIME_STAGES
+    ):
+        return 0.0
+    if _FR_REPLAY is None:
+        path = (
+            Path(__file__).resolve().parents[1] / "data" / "runtime"
+            / "bayes_basket_target_nwp" / "fleet_regime_replay_table.json"
+        )
+        try:
+            _FR_REPLAY = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            _FR_REPLAY = {"stages": {}}
+    entry = (
+        (_FR_REPLAY.get("stages") or {}).get(str(stage)) or {}
+    ).get(str(event_date))
+    if not entry:
+        return 0.0
+    try:
+        return float(entry.get("regime_delta_c") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _center_width_corrected(
     probabilities: dict[str, float],
     *,
@@ -3170,14 +3237,20 @@ def _center_width_corrected(
     envelope_json: Any,
     event_date: str,
 ) -> dict[str, float]:
-    """The belief with this stage's shift and width scale applied."""
+    """The belief with this stage's shift and width scale applied.
+
+    Also carries the next-day fleet regime shift, which is a different layer
+    on the same axis: production composes both into one call, so this does
+    too, and either being active on its own is enough to reach the transform.
+    """
 
     global _CW_REPLAY
-    if (
-        not PAPER_LEDGER_CENTER_WIDTH
-        or str(stage) not in PAPER_LEDGER_CENTER_WIDTH_STAGES
-        or not probabilities
-    ):
+    regime_delta = _fleet_regime_delta(stage=stage, event_date=event_date)
+    center_width_on = (
+        PAPER_LEDGER_CENTER_WIDTH
+        and str(stage) in PAPER_LEDGER_CENTER_WIDTH_STAGES
+    )
+    if not probabilities or (not center_width_on and regime_delta == 0.0):
         return probabilities
     if _CW_REPLAY is None:
         path = (
@@ -3190,9 +3263,15 @@ def _center_width_corrected(
             _CW_REPLAY = {"stages": {}}
     entry = (
         (_CW_REPLAY.get("stages") or {}).get(str(stage)) or {}
-    ).get(str(event_date))
+    ).get(str(event_date)) if center_width_on else None
     if not entry:
-        return probabilities
+        # The fitted layer has nothing to say for this stage-day.  That is
+        # not a reason for the unfitted one to stay silent too: it answers a
+        # different question on a different clock, and identity scalars leave
+        # the composed call doing exactly the regime shift and nothing else.
+        if regime_delta == 0.0:
+            return probabilities
+        entry = {"delta_c": 0.0, "width_lambda": 1.0}
     forced = os.environ.get("PAPER_LEDGER_CW_FORCE_LAMBDA", "").strip()
     if forced:
         # Test the mechanism rather than the fitted scalars: if sharpening
@@ -3226,6 +3305,7 @@ def _center_width_corrected(
     excluded = str(lineage.get("hard_excluded_buckets") or "NONE")
     corrected, _ = apply_center_width_calibration(
         probabilities,
+        regime_delta_c=regime_delta,
         delta_c=float(entry["delta_c"]),
         width_lambda=float(entry["width_lambda"]),
         ordered_keys=keys,

@@ -297,8 +297,17 @@ def test_each_stage_keeps_its_own_book(conn) -> None:
     # derived, not on what it was allowed to do with it.
     assert p0["signal_c"] > 0.0
     assert p1["signal_c"] < 0.0
-    assert p0["regime_delta_c"] > 0.0
-    assert p1["withheld_delta_c"] < 0.0
+    # Asserted on what each stage derived rather than on what it was allowed
+    # to serve: the separation is a property of the measurement, and it has
+    # to keep holding while every stage is dark.
+    def derived(receipt):
+        return (
+            receipt["regime_delta_c"] if receipt.get("withheld_delta_c") is None
+            else receipt["withheld_delta_c"]
+        )
+
+    assert derived(p0) > 0.0
+    assert derived(p1) < 0.0
 
 
 def test_the_loader_creates_nothing_on_a_database_without_the_table() -> None:
@@ -383,7 +392,13 @@ def test_a_dark_stage_measures_and_alerts_but_serves_nothing(conn) -> None:
     assert receipt["alert"] == "RED"
 
 
-def test_a_served_stage_is_not_withheld(conn) -> None:
+def test_every_stage_is_dark_until_one_is_shown_to_help_the_claim(
+    conn,
+) -> None:
+    # The ledger replay measured the served arms as costing 7.3 points of
+    # return for no coverage, so nothing is served today.  This asserts the
+    # gate rather than the emptiness: whatever the tuple holds, a stage in it
+    # serves its shift and a stage outside it withholds one.
     F.upsert_daily_residual(
         conn, stage="P0", event_date="2026-08-26", residual_c_mean=0.9,
         station_count=40, cell_count=120,
@@ -394,9 +409,14 @@ def test_a_served_stage_is_not_withheld(conn) -> None:
         conn, stage="P0", event_date="2026-08-27",
         as_of_utc="2026-08-27T00:00:00Z",
     )
-    assert receipt["state"] == "APPLIED"
-    assert receipt["regime_delta_c"] > 0.0
-    assert "withheld_delta_c" not in receipt
+    if "P0" in F.FLEET_REGIME_SERVED_STAGES:
+        assert receipt["state"] == "APPLIED"
+        assert receipt["regime_delta_c"] > 0.0
+        assert "withheld_delta_c" not in receipt
+    else:
+        assert receipt["state"] == "NOT_SERVED_FOR_STAGE"
+        assert receipt["regime_delta_c"] == 0.0
+        assert receipt["withheld_delta_c"] > 0.0
 
 
 def test_every_served_stage_is_a_known_stage() -> None:

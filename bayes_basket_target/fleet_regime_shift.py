@@ -72,16 +72,42 @@ FLEET_REGIME_STAGES = ("P0", "P0-M", "P1")
 #     P0-M                  0.418C -> 0.318C   (-24%)
 #     P1                    0.142C -> 0.152C   (+7%, worse on 7 of 9 days)
 #
-# P1 is excluded on that measurement, and the reason is structural rather
-# than a thin window.  By the time P1 decides, the observation hard bound and
-# the day's own reported high have already removed most of what a forecast
-# got wrong: its residual is a third of P0's to begin with, and what is left
-# does not persist -- it alternates sign almost every day (-0.43, -0.06,
-# +0.19, +0.01, +0.10, -0.14, +0.05, -0.26, -0.03).  Reacting to yesterday on
-# a series that alternates is not a slow correction, it is an anticorrelated
-# one.  Nothing here needs changing for P1 to join: the day its measured
-# series persists, this tuple is the only edit.
-FLEET_REGIME_SERVED_STAGES = ("P0", "P0-M")
+# P1 was excluded on that measurement for a structural reason: by the time it
+# decides, the observation hard bound and the day's reported high have removed
+# most of what a forecast got wrong, so its residual is a third of P0's and
+# alternates sign almost daily (-0.43, -0.06, +0.19, +0.01, +0.10, -0.14,
+# +0.05, -0.26, -0.03).  Reacting to yesterday on a series that alternates is
+# not a slow correction, it is an anticorrelated one.
+#
+# Then P0 and P0-M were excluded too, and this is the important part.
+#
+# Replayed through the paper ledger over 2026-08-17..26 (207 chains settled
+# by both arms, the shift derived only from days visible before each event
+# day began):
+#
+#     basket coverage   118 -> 117   gained 3, lost 4, exact p = 1.000
+#     return on stake  -19.36% -> -26.67%   (-7.31 points)
+#     dropping the best 1 / 2 / 3 chains:   -6.70 / -6.29 / -6.69 points
+#
+# So the correction buys no coverage at all, and costs seven points of return
+# that survive the drop-the-best check.  The mechanism is not selection: 200
+# of the 207 chains chose exactly the same buckets in both arms, and those 200
+# alone went from -323.3 to -454.2 USDC.  What moved was the *claim*.  Kelly
+# sizes on the claimed win probability and the EV gate admits legs against it,
+# so a claim that is better about the fleet's mean and slightly worse about
+# this station's own truth bucket sizes every one of those chains slightly
+# wrong.  Measured directly: the shift lifts the truth bucket's rank (better
+# 595, worse 406 at P0) while lowering its probability (median -0.0011),
+# because shifting warm moves mass off the truth bucket on the majority of
+# station-days that were not the ones running cold.
+#
+# Which is the whole lesson: this layer was fitted, measured and justified on
+# a fleet-mean residual, and the book is not priced on a fleet mean.  A
+# per-station claim cannot be improved by a number that has no station in it.
+# The daily series is still produced and the alert still fires -- both are
+# free and both are worth having -- but nothing is served until a version of
+# this exists that improves the claim a station actually makes.
+FLEET_REGIME_SERVED_STAGES: tuple[str, ...] = ()
 FLEET_REGIME_METHOD_TAG = "fleet_regime_shift_v1"
 
 # One day of evidence.  Deliberately below half: yesterday is real evidence
