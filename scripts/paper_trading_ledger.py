@@ -934,6 +934,38 @@ CONSOLIDATION_TILT_SIGNALS: tuple[str, ...] = tuple(
 CONSOLIDATION_TILT_FACTOR = min(1.0, float(
     os.environ.get("PAPER_LEDGER_CONSOLIDATION_TILT", "0.10") or 1.0
 ))
+# The tilt clamps at the smallest order the venue takes (user ruling,
+# 2026-08-28: 把减仓档钳在最低单之上).  A tenth of a small chain falls
+# under the minimum order size, and a sub-minimum order is a zero order
+# -- which would quietly turn the tilt into the gate it is chartered
+# never to become.  So a tilted chain's stake never drops below one
+# minimum clip per leg (and never rises above what the untilted budget
+# would have allowed).  The clip comes from production's own
+# cash_clip_grid at run time, the same number ``clip_below_minimum``
+# enforces in sizing; the rule travels in the fingerprint, the value
+# deliberately does not -- the same looseness the peak cutoffs accept.
+_tilt_min_clip_cache: list[float] = []
+
+
+def _tilt_minimum_clip(conn: sqlite3.Connection) -> float:
+    if not _tilt_min_clip_cache:
+        env = os.environ.get("PAPER_LEDGER_TILT_MIN_CLIP", "").strip()
+        if env:
+            value = float(env)
+        else:
+            try:
+                row = conn.execute(
+                    "SELECT artifact_json FROM basket_delta_v2_policy_artifact"
+                    " ORDER BY rowid DESC LIMIT 1"
+                ).fetchone()
+                value = (
+                    min(json.loads(str(row[0]))["cash_clip_grid"])
+                    if row else 0.25
+                )
+            except (sqlite3.Error, KeyError, ValueError, TypeError):
+                value = 0.25
+        _tilt_min_clip_cache.append(float(value))
+    return _tilt_min_clip_cache[0]
 # When the order stops trying: past the hours in which this station's
 # daily maximum actually lands, not at settlement (user ruling,
 # 2026-08-20, revised from a fixed local hour).  Per station: the P-th
@@ -1081,7 +1113,7 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
         ""
         if CONSOLIDATION_TILT_SIGNALS == ("stable", "sharp", "quoted")
         else "·灯" + "+".join(CONSOLIDATION_TILT_SIGNALS)
-    ),
+    ) + "·钳最低单",
     None
     if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_VALUE_LAMBDA <= 0
     else f"价值钳λ{MAKER_RESTING_VALUE_LAMBDA:g}·中心桶豁免",
@@ -5192,14 +5224,28 @@ def backfill(
                         cost=seat_cost,
                         equity=equity_at_open,
                     )
-                    stage_room = (
+                    stage_budget = (
                         equity_at_open
                         * MAX_STAKE_FRACTION_PER_SCOPE
                         * STAGE_BUDGET_SHARE.get(stage, 1.0)
-                        * tilt
-                        - chain_stake
                     )
+                    stage_room = stage_budget * tilt - chain_stake
                     stake = min(wanted_stake, max(0.0, stage_room))
+                    # A tilted stake floors at one minimum clip per leg:
+                    # below that the venue refuses the order and the tilt
+                    # becomes a gate.  The floor never lifts the stake
+                    # above the untilted budget or the Kelly ask -- it
+                    # only stops the cut from cutting past executability.
+                    if 0.0 < tilt < 1.0 and stake > 0.0:
+                        stake = min(
+                            wanted_stake,
+                            max(0.0, stage_budget - chain_stake),
+                            max(
+                                stake,
+                                _tilt_minimum_clip(conn)
+                                * len(seat["buckets"]),
+                            ),
+                        )
                     if stake <= 0.0:
                         # Whichever price the stage's basis judged on, the
                         # OTHER one is the context the reader needs.  Under
