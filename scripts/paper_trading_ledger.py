@@ -387,9 +387,24 @@ WINDOW_STRATEGY = (
 # them do and should be read as "the best this could possibly be worth".
 # They are worth measuring because the spread is large: 27.3% of ask at the
 # median, and the whole of the book's 8.6% vig.
+# Taker by charter 65 (user ruling, 2026-08-27: "整篮 EV" -- basket-level
+# EV is the execution layer's only law).  The week that settled it: on
+# same-entry rebuilds the maker book's entire deficit against taker sat in
+# 33 chains whose winning legs rested unfilled (+77.1 USDC) while the 225
+# shared chains were level -- the spread saving exactly paid for the
+# adverse fills.  Every hybrid died the same death: taking earlier
+# (drop-k flips), taking on confirmation (the ask has left the value
+# ceiling by the time a rise confirms), taking the centre at entry
+# (rescues 1 of 33) -- because on winner days the ask already sits above
+# the leg's own claimed value at entry, and any mode bound by the per-leg
+# red line caps below it and waits for a market that never comes down.
+# Taker answers only to the basket-level EV gate, which is what lets it
+# pay a leg more than the model claims and buy the winners.  The per-leg
+# value line retires from execution constraint to maker-arm pricing
+# reference; the resting machinery below stays as research arms.
 EXECUTION_MODE = (
-    os.environ.get("PAPER_LEDGER_EXECUTION", "maker_resting").strip()
-    or "maker_resting"
+    os.environ.get("PAPER_LEDGER_EXECUTION", "taker").strip()
+    or "taker"
 )
 EXECUTION_MODES = (
     "taker", "maker_bid", "maker_improve", "mid", "maker_resting",

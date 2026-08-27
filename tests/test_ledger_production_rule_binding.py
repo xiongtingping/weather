@@ -294,8 +294,8 @@ LEDGER_ONLY = {
     # run, not a rule change, and the fingerprint records it.
     "ALLOCATION_SHAPE": "research arm (default follows production's switch)",
     "ALLOCATION_SHAPES": "research arm",
-    "EXECUTION_MODE": "research arm",
-    "EXECUTION_MODES": "research arm",
+    "EXECUTION_MODE": "taker by charter 65; the maker modes stay as arms",
+    "EXECUTION_MODES": "same",
     "WINDOW_STRATEGY": "research arm",
     "WINDOW_STRATEGIES": "research arm",
     "SEAT_PRICING_BASIS": "crossing-priced gates, the 2026-08-27 ruling",
