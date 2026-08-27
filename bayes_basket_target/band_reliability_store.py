@@ -486,13 +486,13 @@ def _invert_band_receipt(
     ]
 
 
-def serving_lane_by_day(
+def serving_lane_by_station_day(
     conn: sqlite3.Connection,
     truth: Mapping[tuple[str, str], float],
     *,
     stage: str = "P0",
     pre_band: bool = True,
-) -> dict[str, list[list[tuple[float, int]]]]:
+) -> dict[tuple[str, str], list[list[tuple[float, int, float]]]]:
     """First decision per station-day for one stage, as pre-band claims.
 
     First, not last (user ruling, 2026-08-24).  The last recompute of a
@@ -512,11 +512,18 @@ def serving_lane_by_day(
     writes one row per observation step of a burst, and only the final row
     of the burst is the complete prefix (the same contract every other
     reader of the bridge history follows).
+
+    Keyed by (station, event) with each claim carrying its bucket's
+    lower bound, ordered coldest first, so a per-station reader can
+    reconstruct windows; ``serving_lane_by_day`` derives the fit's
+    day-keyed pair view from this and stays the fit's own entry.
     """
 
     from .probability_bridge import history_envelope_payload
 
-    by_day: dict[str, list[list[tuple[float, int]]]] = defaultdict(list)
+    by_station_day: dict[
+        tuple[str, str], list[list[tuple[float, int, float]]]
+    ] = defaultdict(list)
     rows = conn.execute(
         "SELECT h.station_id, h.event_date, h.history_id,"
         " h.envelope_json, h.checkpoint_id, h.envelope_content_sha256,"
@@ -564,14 +571,38 @@ def serving_lane_by_day(
         # included -- the residual audit's view; the fit keeps inverting.
         if receipt is not None and pre_band:
             keyed = _invert_band_receipt(keyed, receipt)
-        hits = {}
+        claim_by_bucket = {key: probability for probability, key in keyed}
+        entries = []
         for bucket, lower, upper, _probability in buckets:
             lower_c = -1e9 if lower is None else float(lower)
             upper_c = 1e9 if upper is None else float(upper)
-            hits[str(bucket)] = 1 if lower_c <= actual < upper_c else 0
-        by_day[str(event)].append([
-            (probability, hits[key]) for probability, key in keyed
-        ])
+            entries.append((
+                claim_by_bucket[str(bucket)],
+                1 if lower_c <= actual < upper_c else 0,
+                lower_c,
+            ))
+        entries.sort(key=lambda entry: entry[2])
+        by_station_day[(str(station), str(event))].append(entries)
+    return dict(by_station_day)
+
+
+def serving_lane_by_day(
+    conn: sqlite3.Connection,
+    truth: Mapping[tuple[str, str], float],
+    *,
+    stage: str = "P0",
+    pre_band: bool = True,
+) -> dict[str, list[list[tuple[float, int]]]]:
+    """The fit's day-keyed view of ``serving_lane_by_station_day``."""
+
+    by_day: dict[str, list[list[tuple[float, int]]]] = defaultdict(list)
+    for (_station, event), day_rows in serving_lane_by_station_day(
+        conn, truth, stage=stage, pre_band=pre_band,
+    ).items():
+        for entries in day_rows:
+            by_day[str(event)].append([
+                (probability, hit) for probability, hit, _lower in entries
+            ])
     return dict(by_day)
 
 

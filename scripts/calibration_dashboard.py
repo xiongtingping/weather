@@ -1647,7 +1647,7 @@ def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:
 
     from bayes_basket_target.band_reliability_store import (
         BAND_TABLE_CELLS,
-        serving_lane_by_day,
+        serving_lane_by_station_day,
     )
     from bayes_basket_target.center_width_store import _truth
 
@@ -1657,17 +1657,25 @@ def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:
         for low, high in BAND_TABLE_CELLS
     ]
     stages_out = []
+    # Per station, pooled across the three stages: claimed centre+-1 mass
+    # against whether truth landed there, the promise-conservation ruler.
+    # This is the court for "does band need station structure": the band
+    # tables are deliberately fleet-pooled, so a station whose ratio sits
+    # significantly off 1 after them is upstream evidence, not band's.
+    station_cells: dict[str, list[float]] = {}
     for stage in ("P0", "P0-M", "P1"):
         try:
-            by_day = serving_lane_by_day(
+            by_station_day = serving_lane_by_station_day(
                 conn, truth, stage=stage, pre_band=False,
             )
         except Exception:  # noqa: BLE001 -- an audit must not blank the page
             continue
         cells = {index: [0, 0.0, 0] for index in range(len(BAND_TABLE_CELLS))}
-        for day_rows in by_day.values():
-            for pairs in day_rows:
-                for claim, hit in pairs:
+        days = set()
+        for (station, event), day_rows in by_station_day.items():
+            days.add(event)
+            for entries in day_rows:
+                for claim, hit, _lower in entries:
                     for index, (low, high) in enumerate(BAND_TABLE_CELLS):
                         if low <= claim < high:
                             slot = cells[index]
@@ -1675,6 +1683,17 @@ def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:
                             slot[1] += float(claim)
                             slot[2] += int(hit)
                             break
+                if entries:
+                    centre = max(
+                        range(len(entries)), key=lambda i: entries[i][0]
+                    )
+                    window = entries[max(0, centre - 1):centre + 2]
+                    slot = station_cells.setdefault(station, [0, 0.0, 0])
+                    slot[0] += 1
+                    slot[1] += sum(claim for claim, _hit, _low in window)
+                    slot[2] += 1 if any(
+                        hit for _claim, hit, _low in window
+                    ) else 0
         rows = []
         for index, label in enumerate(labels):
             n, promised, hits = cells[index]
@@ -1689,10 +1708,33 @@ def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:
         stages_out.append({
             "stage": stage,
             "since": None,
-            "day_count": len(by_day),
+            "day_count": len(days),
             "rows": rows,
         })
-    return {"labels": labels, "stages": stages_out}
+    stations = []
+    for station, (n, promised, hits) in sorted(station_cells.items()):
+        if not n or promised <= 0:
+            continue
+        claimed = promised / n
+        realized = hits / n
+        # Binomial 2-sigma on the realized rate, read in ratio units; a
+        # stratum whose |ratio-1| clears it is marked, not gated.
+        sigma = (
+            (realized * (1.0 - realized) / n) ** 0.5 / claimed
+            if 0.0 < realized < 1.0 else 1.0 / (n * claimed)
+        )
+        ratio = realized / claimed
+        stations.append({
+            "station": station,
+            "station_label": STATION_LABELS.get(station, ""),
+            "n": n,
+            "claimed": claimed,
+            "realized": realized,
+            "ratio": ratio,
+            "significant": abs(ratio - 1.0) > 2.0 * sigma,
+        })
+    stations.sort(key=lambda row: row["ratio"])
+    return {"labels": labels, "stages": stages_out, "stations": stations}
 
 
 def collect_center_width(conn: sqlite3.Connection) -> list[dict[str, Any]]:
@@ -3959,6 +4001,25 @@ function reliabilityAudit(){
       </tr></thead><tbody>${rows}</tbody></table></div>`;
   }).join("");
   if(!stageBlocks) return "";
+  const stationRows=(A.stations||[]).map(r=>`<tr>
+      <td class="mono">${h(r.station)}${r.station_label
+        ?` <span class="muted">${h(r.station_label)}</span>`:""}</td>
+      <td class="mono muted">${r.n}</td>
+      <td class="mono">${(r.claimed*100).toFixed(0)}%</td>
+      <td class="mono">${(r.realized*100).toFixed(0)}%</td>
+      <td class="mono ${r.ratio>=1?"up":"down"}">${r.ratio.toFixed(2)}${
+        r.significant?' <b title="按 2σ 显著偏离 1">✱</b>':""}</td>
+    </tr>`).join("");
+  const stationBlock=!stationRows?"":`<div style="margin-top:14px">
+    <div class="muted"><b>每站 实现/声称（中心±1，三 stage 合并）</b> ·
+    band 是全舰队池化的，这张表是「band 要不要分站」的法庭：
+    带 ✱ 的站在池化修正之后仍按 2σ 显著偏离 1——
+    比值持续 &lt;1 是该站上游（偏差/权重层）没修干净的证据，
+    先修上游；上游修好后仍显著，才轮到给 band 加站维度（向池化收缩）。</div>
+    <div class="scroll" style="max-height:340px;margin-top:6px">
+    <table><thead><tr>
+      <th>站</th><th>站日</th><th>声称(中心±1)</th><th>实现</th><th>实现/声称</th>
+    </tr></thead><tbody>${stationRows}</tbody></table></div></div>`;
   return `<div class="card" style="margin-top:12px">
   <div class="muted"><b>③ 体检：说了多少 vs 真发生了多少</b>（band 店同一车道 ·
   每站日首个决策 · 同窗同 stage 同一把 5% 尺 · 唯一差别：上表读系数前的原始声称，
@@ -3967,7 +4028,8 @@ function reliabilityAudit(){
   <div class="muted" style="margin-top:6px">
     「差」为正＝实际比声称更常发生（修完还保守）；为负＝修完仍吹头。
     与上表逐行对照：某档上表刚给了压缩系数、本表仍显著为负，说明系数还没压够；
-    本表转正说明压过了头。只显示样本 ≥30 的档。</div></div>`;
+    本表转正说明压过了头。只显示样本 ≥30 的档。</div>
+  ${stationBlock}</div>`;
 }
 
 function basketHit(){
