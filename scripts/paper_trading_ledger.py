@@ -909,23 +909,30 @@ SELECTION_DISCOUNT = float(
 # certainty premium was measured to eat the edge.  The factor is decided
 # by the P0 opener's own entry signals and inherited by the whole chain,
 # which is the basis the strata were measured on.  Never above 1.
+# "稳∨尖 ×0.10" (user ruling 2026-08-28, measured twice).  ``quoted`` no
+# longer counts: it fires on nearly every chain and says only that a book
+# exists -- the discrimination lives entirely in the two model-side
+# lights.  Either of them lit at the P0 opener tilts the whole chain to a
+# tenth.  Ranked first among five same-entry arms on the maker-era book,
+# then re-measured on the taker baseline the day charter 65 shipped:
+# -5.32% -> -3.70%, paired +39.9 USDC with drop-1/2/3 at +71.9/+61.1/
+# +51.0 and 138:113 of changed chains improved -- the rare shape where
+# every robustness cut strengthens the verdict (the one big chain the
+# rule hurts, SBGR 08-26 at -32, is the drop-1).
 CONSOLIDATION_TILT_MIN_SIGNALS = int(
-    os.environ.get("PAPER_LEDGER_CONSOLIDATION_TILT_MIN_SIGNALS", "2") or 2
+    os.environ.get("PAPER_LEDGER_CONSOLIDATION_TILT_MIN_SIGNALS", "1") or 1
 )
-# Which of the three signs the tilt counts (research knob, 2026-08-27).
-# Default all three, the shipped rule; a subset asks whether one light
-# alone carries the stratification the count was measured on.
 CONSOLIDATION_TILT_SIGNALS: tuple[str, ...] = tuple(
     name.strip()
     for name in (
         os.environ.get(
-            "PAPER_LEDGER_CONSOLIDATION_TILT_SIGNALS", "stable,sharp,quoted"
-        ) or "stable,sharp,quoted"
+            "PAPER_LEDGER_CONSOLIDATION_TILT_SIGNALS", "stable,sharp"
+        ) or "stable,sharp"
     ).split(",")
     if name.strip() in ("stable", "sharp", "quoted")
 )
 CONSOLIDATION_TILT_FACTOR = min(1.0, float(
-    os.environ.get("PAPER_LEDGER_CONSOLIDATION_TILT", "0.25") or 1.0
+    os.environ.get("PAPER_LEDGER_CONSOLIDATION_TILT", "0.10") or 1.0
 ))
 # When the order stops trying: past the hours in which this station's
 # daily maximum actually lands, not at settlement (user ruling,
