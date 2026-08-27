@@ -53,6 +53,9 @@ ARCHIVE = (
 SSOT = ROOT / "data" / "bayes_basket_target_ssot.db"
 
 
+_CASES: dict[tuple[str, str], dict] = {}
+
+
 def _refit_parameters(
     ssot: sqlite3.Connection,
     *,
@@ -65,13 +68,29 @@ def _refit_parameters(
 
     Strictly earlier days only, and production's own loader and fit, so the
     only difference from what was served is the constant under test.
+
+    The case load is cached per station-day rather than per envelope.  A
+    station-day carries dozens of P0 decisions and loading every case afresh
+    for each of them made a 22-chain run take a quarter of an hour.  The cache
+    is sound because of what the fit is allowed to see: every case it uses is
+    from a day strictly before the event date and therefore already closed, so
+    it was equally visible to the first decision of that day and to the last.
+    The as-of cut still bounds the load; it just does not need re-cutting per
+    decision.
     """
 
-    try:
-        by_scope = OOS._load_cases(
-            ssot, station_id=station, as_of_utc=as_of_utc
-        )
-    except Exception:
+    key = (station, event_date)
+    if key in _CASES:
+        by_scope = _CASES[key]
+    else:
+        try:
+            by_scope = OOS._load_cases(
+                ssot, station_id=station, as_of_utc=as_of_utc
+            )
+        except Exception:
+            by_scope = {}
+        _CASES[key] = by_scope
+    if not by_scope:
         return {}
     truth = {
         str(row[0]): float(row[1])
@@ -222,7 +241,13 @@ def main() -> int:
                 continue
             merged = {k: v / total for k, v in merged.items()}
 
+            # ``schema`` first, exactly as ``history_envelope_payload``
+            # builds it.  Omitting it produced a hash that did not match and
+            # the rebuild refused all 240 swapped envelopes -- the contract
+            # failing loudly rather than serving a body the projection was
+            # not computed from, which is what it is for.
             payload = {
+                "schema": "bayes_basket_probability_envelope_v1",
                 "stage": str(body[0]), "checkpoint_id": str(body[1]),
                 "station_id": str(body[2]), "event_date": str(body[3]),
                 "settlement_timezone": str(body[4]),
