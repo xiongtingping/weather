@@ -3135,6 +3135,15 @@ def compile_native_ensemble_p0(
         **({"band_reliability_json": json.dumps(
             band_reliability_receipt, sort_keys=True
         )} if band_reliability_receipt is not None else {}),
+        # What moved the distribution along the temperature axis, which until
+        # now P0 computed and then dropped: the scalars' receipt reached no
+        # lineage key here, so a P0 envelope could not be asked whether the
+        # correction had run.  P1 has always recorded it.  Absent when nothing
+        # corrected the distribution, so an uncorrected envelope keeps its
+        # historical content hash.
+        **({"center_width_json": json.dumps(
+            center_width_receipt, sort_keys=True
+        )} if center_width_receipt is not None else {}),
         "native_calibrated_system_centers_c_json": _json(
             calibrated_system_centers_c
         ),
