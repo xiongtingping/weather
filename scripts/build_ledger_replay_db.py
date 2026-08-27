@@ -97,7 +97,12 @@ def main() -> int:
     )
     src.execute("PRAGMA query_only=ON")
     out = sqlite3.connect(str(args.out), timeout=120.0)
-    out.execute("PRAGMA journal_mode=WAL")
+    # No journal while building.  This database is created from scratch on
+    # every run and thrown away, so there is nothing a rollback journal could
+    # protect -- and in WAL the log grew as large as the file itself, which
+    # is what turned a 2.5 GB extract into a 7.8 GB one and filled the disk.
+    out.execute("PRAGMA journal_mode=OFF")
+    out.execute("PRAGMA synchronous=OFF")
 
     counts: dict[str, int] = {}
     try:
@@ -156,6 +161,14 @@ def main() -> int:
     finally:
         out.close()
         src.close()
+
+    # The ledger writes its own tables into this file, so hand it back a
+    # journalled database rather than the unjournalled one used to load it.
+    finish = sqlite3.connect(str(args.out), timeout=120.0)
+    try:
+        finish.execute("PRAGMA journal_mode=WAL")
+    finally:
+        finish.close()
 
     size = args.out.stat().st_size
     print(f"\n  wrote {args.out} ({size/1048576:.1f} MB)")
