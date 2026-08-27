@@ -119,14 +119,51 @@ FORWARD_ACCUMULATION_THRESHOLD_PROFILE = (
 # the tropical stations measured 0.4-1.3C of surviving under-correction in
 # late August 2026 -- was always chased by an estimate diluted with months
 # of quieter history, and the dilution grew with every settled day.  Sixty
-# days keeps 97% of the half-life-15 weight mass below.
+# days keeps 97% of the half-life-15 weight mass below, and effectively all
+# of it once the half-life shortened to 5 (see below) -- the window stopped
+# binding on the decay and is now only the ceiling on how far back a case may
+# be read at all.
 ROLLING_TRAIN_WINDOW_DAYS = 60
-# Same ruling: within the window, residual evidence decays with a 15-day
-# half-life.  Measured as-of on August 2026 (equal weight vs H in {10, 15,
-# 20, 30}): the systematic under-correction at the drifting stations fell
-# 18% at H=10 with a +0.033C MAE cost at the stable ones; H=15 keeps most
-# of the tracking gain at a third of that cost.
-BIAS_HALF_LIFE_DAYS = 15.0
+# Same ruling: within the window, residual evidence decays with a half-life.
+# Charter 62 set it to 15 days as a compromise -- its own measurement read
+# "monotonically prefers 10" and 15 was chosen for steadiness.
+#
+# Shortened to 5 on 2026-08-27 (user ruling) after the sweep was re-run on
+# production's own cases.  Two earlier attempts that session measured the
+# wrong rows -- one pooled the retired d0/d1/d2 lead vocabulary with the hour
+# buckets, halving every scope until a minimum-training filter dropped it;
+# the other omitted the authority, holdout and transport filters the real
+# loader applies.  Both ended up describing the TAF and METAR lanes while
+# appearing to describe the ensemble families.  The measurement below calls
+# ``_load_cases`` and ``_fit_parameters`` and varies nothing but this number,
+# over 11,075 scope-days, 706 scopes, 7 families, all 45 stations, walking
+# forward and scoring only days the fit had not seen:
+#
+#     H2 1.0877   H3 1.0758   H5 1.0739   H7 1.0768   H10 1.0832
+#     H15 1.0927 (incumbent)  H25 1.1030          -- mean absolute error, C
+#
+# The curve is single-troughed at 5 and every cut agrees: RMSE -1.9%, the
+# p99 tail -2.5% (so this is not mean-for-tail), all seven families and all
+# five lead buckets negative, thin and thick training alike, and a held-out
+# second half that reproduces the ordering more strongly than the first
+# (-2.2% against -1.2%).
+#
+# Two limits belong here with it.  The gain is concentrated: dropping the
+# five stations it helps most leaves -0.6%, and 16 of 45 stations get worse,
+# EDDM by 7%.  And it has never been scored on the book -- this constant is
+# upstream of the compiled envelope, and the paper ledger reads envelopes
+# rather than producing them, so the ledger A/B that caught the fleet regime
+# shift costing seven points cannot reach this.  H15 was never book-scored
+# either; what the change buys is the better-evidenced of two values that
+# stand on residuals alone.
+#
+# A per-station half-life was measured and refused on the same data: the
+# per-station optimum is bimodal (12 stations want 2 days, 12 want 15) but
+# it does not persist -- the first half's pick matches the second half's for
+# only 14 of 45 stations, log-optimum correlates +0.31, and selecting per
+# station on the first half scores 1.0434 on the second against 1.0397 for
+# a flat H5.  The station-level spread is sampling noise, not character.
+BIAS_HALF_LIFE_DAYS = 5.0
 # A ready scope whose newest settled case is older than this stops being
 # emitted and re-activated.  Sized above the observed truth lag (2-4 days)
 # plus the worst routine capture stall (2-7 days, the IEM one-minute lane),
