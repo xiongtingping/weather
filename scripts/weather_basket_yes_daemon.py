@@ -281,6 +281,21 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
         600.0,
         600.0,
     ),
+    # The regional source RCSS earned.  It is the only station of twenty-six
+    # candidates whose regional model cleared the dispersion line, all three
+    # admission gates, and the drop-the-best-days check -- and RCSS is the
+    # station the bias layer has failed at all month, +5.75C applied with
+    # +1.4C still standing, because a 25 km cell cannot see the Taipei basin.
+    # Hourly: only two of MSM's eight daily runs are captured, so there is
+    # seldom anything new within an hour, and a pass with nothing new exits
+    # on a handful of indexed reads.  The timeout is generous because a
+    # station-day is 86 seconds against a mirror that sometimes times out.
+    (
+        "capture_jma_msm_forward",
+        "scripts/capture_jma_msm_forward_sweep.sh",
+        3600.0,
+        1800.0,
+    ),
 )
 
 

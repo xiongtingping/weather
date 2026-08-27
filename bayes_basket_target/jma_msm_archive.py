@@ -34,6 +34,7 @@ from __future__ import annotations
 import ctypes
 import struct
 import threading
+import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
@@ -121,17 +122,45 @@ def file_url(run_init: datetime, span_label: str) -> str:
     )
 
 
+# A third-party mirror times out and drops connections; the ICON lane is on
+# record for how brittle a regional capture path can be.  A transient network
+# fault is not evidence about the archive and must not be allowed to look
+# like one, so ranges retry with backoff and only a real status refuses.
+RANGE_ATTEMPTS = 4
+RANGE_BACKOFF_SECONDS = 2.0
+
+
 def _range(url: str, start: int, length: int) -> bytes:
     if length <= 0:
         return b""
-    response = _client().get(
-        url, headers={"Range": f"bytes={start}-{start + length - 1}"}
-    )
-    if response.status_code not in (200, 206):
+    last: Exception | None = None
+    for attempt in range(RANGE_ATTEMPTS):
+        try:
+            response = _client().get(
+                url,
+                headers={"Range": f"bytes={start}-{start + length - 1}"},
+            )
+        except httpx.HTTPError as exc:
+            last = exc
+            # The pooled connection may be the thing that died; drop it so
+            # the retry dials fresh rather than reusing a broken socket.
+            close_client()
+            time.sleep(RANGE_BACKOFF_SECONDS * (attempt + 1))
+            continue
+        if response.status_code in (200, 206):
+            return response.content
+        if response.status_code in (429, 500, 502, 503, 504):
+            last = ContractError(
+                f"jma_msm_archive_range_status_{response.status_code}"
+            )
+            time.sleep(RANGE_BACKOFF_SECONDS * (attempt + 1))
+            continue
         raise ContractError(
             f"jma_msm_archive_range_status_{response.status_code}"
         )
-    return response.content
+    raise ContractError(
+        f"jma_msm_archive_range_unreachable:{type(last).__name__}"
+    )
 
 
 def _section_header(url: str, offset: int) -> tuple[int, int]:
