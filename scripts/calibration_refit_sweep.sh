@@ -50,5 +50,14 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] center_width refit"
 "$PY" scripts/refit_center_width.py --commit --summary \
   --since "2026-08-27T09:20:00Z" || RC=$?
 
+# Shadow only: station x bucket-position band factors, fitted on the same
+# serving lane as the pooled table above and served by nothing.  It rides
+# this sweep so its evidence clock advances on the same cadence as the
+# layer it is a candidate to refine -- the two are only comparable if
+# they see the same settled days.  Measured at ~95s against the live
+# store on 2026-08-28, which the 900s sweep budget absorbs.
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] band_shadow refit (shadow, unserved)"
+"$PY" scripts/refit_band_shadow.py --commit --summary || RC=$?
+
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] calibration refit sweep done rc=$RC"
 exit "$RC"
