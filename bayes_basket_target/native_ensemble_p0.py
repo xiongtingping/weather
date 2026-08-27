@@ -1155,8 +1155,29 @@ def compile_native_ensemble_p0(
     decision_at_utc: str,
     fresh_seconds: int = DEFAULT_FRESH_SECONDS,
     native_oos_snapshot: NativeOosSnapshot | Mapping[str, Any] | None = None,
+    artifact_parameter_override: (
+        Mapping[str, Mapping[str, Any]] | None
+    ) = None,
 ) -> dict[str, Any]:
-    """Compile one station-day, or fail closed with ``NO_P0``."""
+    """Compile one station-day, or fail closed with ``NO_P0``.
+
+    ``artifact_parameter_override`` exists for one purpose: scoring an
+    upstream constant on the book.  Everything the trainer decides -- the
+    bias, the spread factor, the climatology blend -- is baked into a stored
+    artifact by the time this runs, so a replay that varies such a constant
+    cannot reach it by setting the constant; it has to hand in the numbers
+    the constant would have produced.
+
+    Deliberately narrow.  It is keyed by ``ensemble_system_id`` and replaces
+    only the three fitted parameter maps, *after* the activation has been
+    resolved and its run cycle checked.  Every gate the compile normally
+    passes still runs and still fails closed; what this can change is the
+    numbers, never whether a system was entitled to be seated.  An override
+    naming a system this station is not serving is ignored rather than
+    seated, for the same reason.
+
+    Production never passes it.  ``None`` leaves this function byte-identical.
+    """
 
     if native_ensemble_foundation_schema_status(conn)["ok"] is not True:
         raise ContractError(
@@ -2119,6 +2140,30 @@ def compile_native_ensemble_p0(
         ):
             raise ContractError(
                 "FAIL_CLOSED_NO_P0:native_system_artifact_cycle_mismatch"
+            )
+        # The replay override, applied after the activation and its cycle
+        # check above have both passed -- it substitutes fitted numbers, it
+        # does not seat anything.
+        override = (artifact_parameter_override or {}).get(system_id)
+        if override is not None:
+            system_artifact = (
+                json.dumps(
+                    override.get("bias_parameters")
+                    or json.loads(str(system_artifact[0])),
+                    sort_keys=True,
+                ),
+                json.dumps(
+                    override.get("spread_parameters")
+                    or json.loads(str(system_artifact[1])),
+                    sort_keys=True,
+                ),
+                json.dumps(
+                    override.get("reliability_parameters")
+                    or json.loads(str(system_artifact[2])),
+                    sort_keys=True,
+                ),
+                system_artifact[3],
+                system_artifact[4],
             )
         reliability_parameters = json.loads(str(system_artifact[2]))
         if not official_snapshot:
