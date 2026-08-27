@@ -1841,6 +1841,8 @@ def _evidence_clock(conn: sqlite3.Connection, stage: str) -> dict[str, Any]:
         "ast_generations": None,
         "ast_days_held": None,
         "ast_longest_quiet_days": None,
+        "watchdog_discrepancy": None,
+        "served_version": None,
     }
     try:
         from bayes_basket_target import serving_arithmetic
@@ -1848,6 +1850,12 @@ def _evidence_clock(conn: sqlite3.Connection, stage: str) -> dict[str, Any]:
     except ImportError:
         return out
     out["min_qualifying_days"] = MIN_QUALIFYING_DAYS
+    try:
+        alarm = serving_arithmetic.watchdog(conn, stage=stage)
+        out["watchdog_discrepancy"] = bool(alarm.get("discrepancy"))
+        out["served_version"] = alarm.get("served_version")
+    except sqlite3.OperationalError:
+        pass
     try:
         current = serving_arithmetic.fingerprint(stage)
         stamps = [
@@ -5735,14 +5743,20 @@ function centerWidth(){
     ${r.ast_days_held == null ? "" : `<div class="muted"
       style="margin-top:8px;border-top:1px solid rgba(128,128,128,.25);
              padding-top:8px">
-      <b>证据时钟</b>：服务算术指纹
-      <span class="mono">${h(r.ast_fingerprint || "")}</span>
-      已保持 <b class="${r.ast_days_held >= (r.min_qualifying_days || 8)
-        ? "up" : "down"}">${r.ast_days_held.toFixed(2)} 天</b>
+      <b>证据时钟</b>：边界取<b>服务版本</b>
+      <span class="mono">${h(r.served_version || "—")}</span>
+      ${r.watchdog_discrepancy
+        ? `<span class="pill amber" title="服务函数的 AST 在该版本开始服务之后变过：
+若那次改动确实动了分布，请升 posterior_version；若只是记账/回放门，无需处理">
+           看门狗：算术变了但版本没升</span>`
+        : `<span class="pill green">看门狗：版本与算术同步</span>`}
+      <br>代码指纹 <span class="mono">${h(r.ast_fingerprint || "")}</span>
+      已保持 ${r.ast_days_held.toFixed(2)} 天
       ${r.ast_generations ? "· 累计 " + r.ast_generations + " 代" : ""}
       ${r.ast_longest_quiet_days == null ? "" :
         "· 历史最长安静窗 " + r.ast_longest_quiet_days.toFixed(1) + " 天"}
-      <br>指纹一换，证据从零重数——包括只改记账、不改分布的提交。</div>`}
+      <br>2026-08-27 起指纹只报警不清零：它认代码不认分布，
+      只补记账的提交曾与真改算术一样清空八天证据。</div>`}
   </div>`).join("");
   return `<h2>八、中心/宽度两标量</h2>
   <p class="sub">最后一层修正只有两个数：把整条分布左右平移多少（中心 δ），

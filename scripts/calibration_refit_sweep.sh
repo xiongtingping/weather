@@ -38,11 +38,17 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] band_reliability refit"
 "$PY" scripts/refit_band_reliability.py --commit --summary || RC=$?
 
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] center_width refit"
-# --since is the pre-AST-fingerprint fallback bound, same value the cron
-# segment carries; the serving-arithmetic fingerprint supersedes it per
-# stage once each stage has 8 days under the automatic anchor.
+# The transition floor for the 2026-08-27 ruling that made posterior_version
+# the evidence boundary and the AST fingerprint a watchdog.  It has to be
+# stated once: P0 has served version v1 since 2026-07-30 while its arithmetic
+# moved several times without a bump, so the content anchor alone would reach
+# back across shapes nobody serves -- the exact failure the old bound existed
+# to prevent.  Every stage therefore starts its eight days here, and from
+# this moment on only a version bump moves the floor.  This constant is
+# deliberately not maintained: it stops mattering as soon as each stage's
+# posterior_version moves past it.
 "$PY" scripts/refit_center_width.py --commit --summary \
-  --since "2026-08-18T09:20:00Z" || RC=$?
+  --since "2026-08-27T09:20:00Z" || RC=$?
 
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] calibration refit sweep done rc=$RC"
 exit "$RC"

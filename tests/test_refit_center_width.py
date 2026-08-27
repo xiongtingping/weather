@@ -672,25 +672,74 @@ def test_evidence_floor_takes_the_latest_bound_either_way() -> None:
         _add_decision(conn, at="2026-08-01T00:00:00Z", version="v_old")
         _add_decision(conn, at="2026-08-26T00:00:00Z", version="v_now")
 
-        # The version anchor is the latest of the three and must win.
+        assert store._evidence_floor(
+            conn, stage="P1", caller_bound="2026-08-02T00:00:00Z"
+        ) == "2026-08-26T00:00:00Z"
+        assert store._evidence_floor(
+            conn, stage="P1", caller_bound="2026-08-27T00:00:00Z"
+        ) == "2026-08-27T00:00:00Z"
+    finally:
+        conn.close()
+
+
+def test_a_code_change_alone_does_not_spend_the_evidence() -> None:
+    """The AST fingerprint is a watchdog now, not a boundary.
+
+    It hashes the serving functions, so it moves for a commit that only
+    records a receipt exactly as for a real change of arithmetic.  Measured
+    2026-08-27, that cost P1 every clock it ever started: longest window
+    held was 1.5 days against the eight the layer needs.
+    """
+
+    import bayes_basket_target.center_width_store as store
+
+    conn = _anchor_fixture()
+    try:
+        _add_decision(conn, at="2026-08-26T00:00:00Z", version="v_now")
         original = store.serving_arithmetic.anchor
         store.serving_arithmetic.anchor = lambda conn, *, stage: (  # noqa: ARG005
-            "2026-08-05T00:00:00Z"
+            "2026-08-27T12:00:00Z"
         )
         try:
             assert store._evidence_floor(
                 conn, stage="P1", caller_bound="2026-08-02T00:00:00Z"
             ) == "2026-08-26T00:00:00Z"
-
-            # And when the AST bound is the latest, it wins and the version
-            # anchor is skipped rather than consulted.
-            store.serving_arithmetic.anchor = lambda conn, *, stage: (  # noqa: ARG005
-                "2026-08-27T00:00:00Z"
-            )
-            assert store._evidence_floor(
-                conn, stage="P1", caller_bound="2026-08-02T00:00:00Z"
-            ) == "2026-08-27T00:00:00Z"
         finally:
             store.serving_arithmetic.anchor = original
+    finally:
+        conn.close()
+
+
+def test_arithmetic_moving_after_its_version_raises_a_discrepancy() -> None:
+    """What the demoted bound still owes: naming the skipped version bump."""
+
+    from bayes_basket_target import serving_arithmetic
+
+    conn = _anchor_fixture()
+    try:
+        original = serving_arithmetic.anchor
+        original_fingerprint = serving_arithmetic.fingerprint
+        serving_arithmetic.fingerprint = lambda stage: "deadbeef"  # noqa: ARG005
+        try:
+            # The version was already serving when the code moved: the bump
+            # is owed.
+            _add_decision(conn, at="2026-08-26T00:00:00Z", version="v_now")
+            serving_arithmetic.anchor = lambda conn, *, stage: (  # noqa: ARG005
+                "2026-08-27T12:00:00Z"
+            )
+            late = serving_arithmetic.watchdog(conn, stage="P1")
+            assert late["served_version"] == "v_now"
+            assert late["discrepancy"] is True
+
+            # The version started after the code moved: nothing is owed.
+            serving_arithmetic.anchor = lambda conn, *, stage: (  # noqa: ARG005
+                "2026-08-25T00:00:00Z"
+            )
+            assert serving_arithmetic.watchdog(
+                conn, stage="P1"
+            )["discrepancy"] is False
+        finally:
+            serving_arithmetic.anchor = original
+            serving_arithmetic.fingerprint = original_fingerprint
     finally:
         conn.close()

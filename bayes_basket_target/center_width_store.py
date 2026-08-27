@@ -1099,34 +1099,33 @@ def _memoised(key: tuple[Any, ...], produce: "Callable[[], Any]") -> Any:
 def _evidence_floor(
     conn: sqlite3.Connection, *, stage: str, caller_bound: str | None
 ) -> str | None:
-    """The latest of every boundary anyone can offer, never the earliest.
+    """The latest of the boundaries that say what is actually being served.
 
-    Three say when the served distribution last changed shape, and they fail
-    in different directions.  The AST fingerprint needs nobody to remember
-    anything but only knows what it has been told to hash.  The version string
-    catches a bump somebody did make, and the 2026-08-18 width fix shows what
-    it misses -- P0 kept its version, so on its own that bound still reached
-    back to 2026-07-30 and pooled three weeks of a distribution nobody serves.
-    The caller's bound covers what happened before any of this existed.
+    Two bounds, not three (user ruling, 2026-08-27).  ``posterior_version``
+    rides on every envelope and moves when the served distribution moves, so
+    it is the honest one; the caller's bound covers what happened before any
+    of this existed.  The AST fingerprint used to be a third, and it is now
+    a watchdog instead -- see ``serving_arithmetic.watchdog``.
 
-    Taking the maximum means a boundary can only ever be too recent, and too
-    recent merely costs days of evidence.  Too old fits the scalars on a
-    distribution that is no longer served, which is the failure this whole
-    bound exists to prevent.
+    Why it was demoted: it hashes the serving functions, so it moves for a
+    commit that only records a receipt or opens an inert replay door exactly
+    as it does for a real change of arithmetic.  The original note here said
+    a boundary "can only ever be too recent, and too recent merely costs days
+    of evidence".  Measured 2026-08-27, that is false: three P0 generations
+    landed within four hours, and P1 had never once held a fingerprint for
+    the eight days the layer needs -- longest quiet window since 2026-08-23
+    was 1.5 days.  Too recent did not cost days of evidence, it cost all of
+    it, permanently, and a layer that never activates never corrects the
+    error it was built to correct.
+
+    The failure the AST caught is real and stays caught: it now raises a
+    discrepancy that names the stage and the moment, rather than silently
+    spending the evidence.  What clears it is bumping the version, which is
+    the thing that was skipped in the first place.
     """
 
     def _resolve() -> str | None:
-        # Cheapest first, and hand the running maximum to the dearest.  This
-        # bound is a maximum, so a candidate that cannot exceed what is
-        # already held contributes nothing, and the version anchor is the
-        # only one that costs anything to find out -- 27.5s of a 42.8s round,
-        # against microseconds for the other two.  Across all 44 fits on
-        # record it has won twice, and the window those two wins excluded held
-        # zero decisions.
         floor = caller_bound
-        ast_bound = serving_arithmetic.anchor(conn, stage=stage)
-        if ast_bound and (floor is None or str(ast_bound) > str(floor)):
-            floor = ast_bound
         served = served_arithmetic_anchor(conn, stage=stage, known_floor=floor)
         if served and (floor is None or str(served) > str(floor)):
             floor = served
@@ -1182,6 +1181,13 @@ def fit_center_width(
         "min_qualifying_days": MIN_QUALIFYING_DAYS,
         "min_qualifying_cells": MIN_QUALIFYING_CELLS,
         "min_decision_at_utc": min_decision_at_utc,
+        # Travels with every fit, refused or not: if the arithmetic moved
+        # after the version that names it, these days may span two shapes
+        # and the reader has to know that before trusting the scalars.
+        "serving_arithmetic_watchdog": _memoised(
+            ("watchdog", stage_id),
+            lambda: serving_arithmetic.watchdog(conn, stage=stage_id),
+        ),
     }
     if accumulating:
         evidence["basis"] = "ACCUMULATING"

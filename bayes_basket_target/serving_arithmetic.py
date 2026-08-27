@@ -182,3 +182,69 @@ def anchor(conn: sqlite3.Connection, *, stage: str) -> str | None:
     except sqlite3.OperationalError:
         return None
     return str(row[0]) if row and row[0] else None
+
+
+def watchdog(conn: sqlite3.Connection, *, stage: str) -> dict[str, Any]:
+    """Did the serving code move after the version that describes it did?
+
+    The fingerprint stopped being an evidence boundary on 2026-08-27 (it was
+    resetting eight-day clocks for commits that only wrote a receipt) and
+    became this: a discrepancy that names what happened and asks for the
+    version bump that was skipped, instead of quietly spending the evidence.
+
+    A fingerprint stamped after the served version started serving means one
+    of two things, and only whoever wrote the commit can say which: the
+    change was inert -- a receipt, a replay door, a refactor -- and nothing
+    is owed; or it changed what is served, the version owes a bump, and
+    until it gets one the fit is pooling two shapes.  Reported, never
+    enforced: a watchdog that failed the fit closed would be the old bound
+    again under a new name.
+
+    Answered with a descending seek rather than the version anchor's own
+    minimum, which walks every older row of the stage -- 147,870 of them for
+    P1.  A committed decision that predates the code change while carrying
+    the version being served now proves the version is the older of the two,
+    which is the whole question.
+    """
+
+    current = fingerprint(stage)
+    out: dict[str, Any] = {
+        "stage": str(stage),
+        "fingerprint": current,
+        "fingerprint_since_utc": None,
+        "served_version": None,
+        "discrepancy": False,
+    }
+    if current is None:
+        return out
+    since = anchor(conn, stage=stage)
+    out["fingerprint_since_utc"] = since
+    if not since:
+        return out
+    try:
+        latest = conn.execute(
+            "SELECT e.posterior_version"
+            " FROM basket_probability_bridge_history h"
+            " JOIN basket_probability_envelope e"
+            "   ON e.envelope_id = h.checkpoint_id"
+            " WHERE h.stage=? AND h.state='COMMITTED'"
+            " ORDER BY h.decision_at_utc DESC LIMIT 1",
+            (str(stage),),
+        ).fetchone()
+        if not latest or not latest[0]:
+            return out
+        out["served_version"] = str(latest[0])
+        older = conn.execute(
+            "SELECT 1"
+            " FROM basket_probability_bridge_history h"
+            " JOIN basket_probability_envelope e"
+            "   ON e.envelope_id = h.checkpoint_id"
+            " WHERE h.stage=? AND h.state='COMMITTED'"
+            " AND h.decision_at_utc<? AND e.posterior_version=?"
+            " ORDER BY h.decision_at_utc DESC LIMIT 1",
+            (str(stage), str(since), out["served_version"]),
+        ).fetchone()
+    except (sqlite3.OperationalError, TypeError, ValueError):
+        return out
+    out["discrepancy"] = older is not None
+    return out
