@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sqlite3
 import sys
 from datetime import date, datetime, timedelta, timezone
@@ -74,6 +75,46 @@ LOOKAHEAD_DAYS = 2
 MAX_RUNS_PER_PASS = 4
 
 
+def _transport_is_writable(conn: sqlite3.Connection) -> tuple[bool, str]:
+    """Can this transport be stored at all, before anything is fetched.
+
+    The table's ``transport_provider_id`` carries a fixed allowlist, and a
+    transport not on it is refused at INSERT -- after the fetch has already
+    cost about 86 seconds a run.  An hourly sweep that discovers this at the
+    end of every pass burns six minutes an hour to learn something a single
+    indexed read already knows, so it is checked at the front.
+
+    Parsed from the live schema rather than restated here: a copy of the
+    allowlist in this file would go stale the moment the real one is widened,
+    and would then block a capture the table would actually accept.
+    """
+
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+        ("calibration_native_ensemble_historical_member_run",),
+    ).fetchone()
+    if not row or not row[0]:
+        return False, "表不存在"
+    match = re.search(
+        r"transport_provider_id IN \(([^)]*)\)", str(row[0]), re.S
+    )
+    if not match:
+        # No parseable allowlist means no constraint to fail, so let the
+        # INSERT itself be the judge rather than refusing on a guess.
+        return True, ""
+    allowed = {
+        part.strip().strip("'")
+        for part in match.group(1).split(",")
+        if part.strip()
+    }
+    if TRANSPORT_PROVIDER_ID in allowed:
+        return True, ""
+    return False, (
+        f"transport {TRANSPORT_PROVIDER_ID} 不在表的白名单里"
+        f"（允许: {', '.join(sorted(allowed))}）"
+    )
+
+
 def _rows_for_day(
     conn: sqlite3.Connection, station: str, event_date: str
 ) -> set[tuple[str, str]]:
@@ -97,6 +138,14 @@ def main() -> int:
     now = datetime.now(timezone.utc)
     conn = sqlite3.connect(str(DB), timeout=120.0)
     conn.execute("PRAGMA busy_timeout=60000")
+    writable, reason = _transport_is_writable(conn)
+    if not writable and not args.dry_run:
+        # Refuse before spending the network, and say what would fix it.
+        print(f"  采集已就绪但无法落库：{reason}")
+        print("  在 transport 白名单加宽之前不抓取（每轮省约 6 分钟）")
+        conn.close()
+        return 0
+
     written = 0
     skipped = 0
     attempted = 0
