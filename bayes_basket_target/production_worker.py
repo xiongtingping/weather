@@ -1061,6 +1061,28 @@ def _candidate_ensemble_station_ids(
     ]
 
 
+def _native_ensemble_artifact_vintage_by_station(
+    conn: sqlite3.Connection,
+) -> dict[str, str]:
+    """Latest system-calibration vintage per station, for staleness-first picks.
+
+    A station with no artifact at all maps to "" and therefore sorts ahead
+    of every dated vintage: never-fitted is the hungriest state there is.
+    """
+
+    try:
+        return {
+            str(row[0]): str(row[1] or "")
+            for row in conn.execute(
+                "SELECT station_id, MAX(valid_from_utc)"
+                " FROM calibration_native_ensemble_system_artifact"
+                " GROUP BY station_id"
+            )
+        }
+    except sqlite3.OperationalError:
+        return {}
+
+
 def _candidate_ensemble_scopes_without_truth(
     conn: sqlite3.Connection,
     *,
@@ -13117,7 +13139,28 @@ class TargetProductionWorker:
                 )
                 if oos_due and all_oos_stations:
                     if new_oos_stations:
-                        oos_station = new_oos_stations[0]
+                        # Stalest artifact first, never the alphabet.  Truth
+                        # lands for the whole fleet every day, so the changed
+                        # list almost always holds many stations and taking
+                        # its first element let the alphabet head re-queue
+                        # ahead of the tail forever: measured 2026-08-27,
+                        # 24 L-Z stations frozen at the 08-25 full pass
+                        # (RCSS serving a bias fit that predates its four
+                        # worst miss days) while C-L refreshed hourly.  Same
+                        # starvation class, same fix shape, as the P1 stage
+                        # rotation and the hosted-sweep scheduler.
+                        vintage = (
+                            _native_ensemble_artifact_vintage_by_station(
+                                self.commit_conn,
+                            )
+                        )
+                        oos_station = min(
+                            new_oos_stations,
+                            key=lambda station: (
+                                vintage.get(station, ""),
+                                station,
+                            ),
+                        )
                     else:
                         cursor = int(getattr(
                             self,
