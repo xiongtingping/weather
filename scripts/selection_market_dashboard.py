@@ -1523,6 +1523,174 @@ def _maker_probe(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def _station_failure_matrix(
+    conn: sqlite3.Connection,
+    station_stats: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Which stations fail on dimensions that are not each other.
+
+    Ranking stations by P&L cannot separate a broken one from an unlucky one:
+    on five to ten settled chains a station loses badly by chance often
+    enough that the worst-ten list always contains some.  What separates them
+    is failing on measurements that do not share a mechanism, so each
+    dimension here answers a different question and indicts a different
+    layer -- and a station that fails several at once is failing for a
+    reason, not for a fortnight.
+
+    Measured 2026-08-27 over 44 stations: exactly one failed all five
+    (RCSS -- 22% coverage, claim overstated four-fold, centre still 1.41C
+    out after its bias correction, losing in both halves), two failed four,
+    and ten failed none.  The one that failed everything is also one of the
+    two stations the bias layer has been unable to correct all month, which
+    is two independent evidence chains meeting at the same station.
+
+    The flags are reported, never summed into a verdict.  They disagree on
+    purpose: EHAM returns thirty times what the model expected of it while
+    failing three other dimensions, and a score would hide exactly that.
+    Sample size rides beside every row for the same reason -- a station with
+    two settled chains is not a good station, it is an unjudged one.
+    """
+
+    from bayes_basket_target.center_width_store import (  # noqa: PLC0415
+        _truth, serving_cells_by_day,
+    )
+    from bayes_basket_target.fleet_regime_shift import (  # noqa: PLC0415
+        cell_residual_c,
+    )
+
+    # Thresholds, each set where the dimension stops being noise rather than
+    # where it makes the list a convenient length.
+    CLAIM_FLOOR = 0.75          # hit rate under three quarters of the claim
+    CENTRE_LIMIT_C = 0.8        # most of a bucket, after every correction
+    COVERAGE_FLOOR = 0.45       # the basket missed more often than not
+
+    residual: dict[str, list[float]] = defaultdict(list)
+    try:
+        truth = _truth(conn)
+        by_day = serving_cells_by_day(
+            conn, truth, stage="P0",
+            min_decision_at_utc=STATS_START_EVENT_DATE + "T00:00:00Z",
+            pre_band=False,
+        )
+        for _day, cells in by_day.items():
+            per: dict[str, list[float]] = defaultdict(list)
+            for cell in cells:
+                actual = truth.get(
+                    (cell["station_id"], cell["event_date"])
+                )
+                if actual is None:
+                    continue
+                value = cell_residual_c(cell, actual)
+                if value is not None:
+                    per[str(cell["station_id"])].append(value)
+            for station, values in per.items():
+                residual[station].append(sum(values) / len(values))
+    except Exception:  # noqa: BLE001
+        residual = defaultdict(list)
+
+    covered: dict[str, list[int]] = defaultdict(list)
+    halves: dict[str, list[float]] = defaultdict(lambda: [0.0, 0.0])
+    counts: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+    # Read per station-day here rather than through
+    # ``_settled_chain_baskets``: that helper keys its chains by
+    # ``(station, event_date)`` and does not carry the station or the P&L
+    # inside the record, so asking it for either returns nothing and the two
+    # flags below would never fire -- silently, which is how this section
+    # first reported RCSS as failing three dimensions instead of five.
+    chain_rows = conn.execute(
+        "SELECT s.station_id, s.event_date, s.settled_bucket,"
+        " SUM(s.pnl_usdc),"
+        " MIN(p.intended_legs_json), MIN(p.posted_buckets_json),"
+        " MIN(p.window_buckets_json)"
+        " FROM paper_trade_settlement s"
+        " JOIN paper_trade_position p USING(station_id, event_date)"
+        " WHERE s.settled_bucket IS NOT NULL AND s.event_date>=?"
+        " GROUP BY s.station_id, s.event_date",
+        (STATS_START_EVENT_DATE,),
+    ).fetchall()
+    days = sorted({str(row[1]) for row in chain_rows})
+    cut = days[len(days) // 2] if days else ""
+    for station, day, landed, pnl, intended, posted, window in chain_rows:
+        station = str(station)
+        chosen: list[str] = []
+        try:
+            chosen = [
+                str(bucket)
+                for bucket in (json.loads(intended) if intended else {})
+            ]
+        except (TypeError, ValueError, AttributeError):
+            chosen = []
+        if not chosen:
+            for fallback in (posted, window):
+                try:
+                    chosen = [
+                        str(bucket)
+                        for bucket in json.loads(fallback or "[]")
+                    ]
+                except (TypeError, ValueError):
+                    chosen = []
+                if chosen:
+                    break
+        covered[station].append(int(str(landed) in set(chosen)))
+        index = 0 if str(day) < cut else 1
+        halves[station][index] += float(pnl or 0.0)
+        counts[station][index] += 1
+
+    out: list[dict[str, Any]] = []
+    for row in station_stats:
+        station = str(row["station_id"])
+        ratio = row.get("realization_ratio")
+        claim = row.get("calibration_ratio")
+        centre = (
+            sum(residual[station]) / len(residual[station])
+            if residual.get(station) else None
+        )
+        coverage = (
+            sum(covered[station]) / len(covered[station])
+            if covered.get(station) else None
+        )
+        early, late = halves[station]
+        n_early, n_late = counts[station]
+        flags = {
+            "realization": ratio is not None and ratio < 0,
+            "claim": claim is not None and claim < CLAIM_FLOOR,
+            "centre": centre is not None and abs(centre) > CENTRE_LIMIT_C,
+            "coverage": coverage is not None and coverage < COVERAGE_FLOOR,
+            "persistence": bool(
+                n_early and n_late and early < 0 and late < 0
+            ),
+        }
+        out.append({
+            "station_id": station,
+            "station_label": row.get("station_label") or "",
+            "settled_count": int(row.get("settled_count") or 0),
+            "realized_usdc": float(row.get("realized_usdc") or 0.0),
+            "realization_ratio": ratio,
+            "calibration_ratio": claim,
+            "centre_residual_c": centre,
+            "basket_coverage": coverage,
+            "early_pnl_usdc": early,
+            "late_pnl_usdc": late,
+            "early_chains": n_early,
+            "late_chains": n_late,
+            "flags": flags,
+            "flag_count": sum(1 for value in flags.values() if value),
+        })
+    out.sort(
+        key=lambda item: (-item["flag_count"], item["realized_usdc"])
+    )
+    return {
+        "available": bool(out),
+        "split_event_date": cut,
+        "thresholds": {
+            "claim_floor": CLAIM_FLOOR,
+            "centre_limit_c": CENTRE_LIMIT_C,
+            "coverage_floor": COVERAGE_FLOOR,
+        },
+        "stations": out,
+    }
+
+
 def build_payload(db: Path) -> dict[str, Any]:
     # The connection lives exactly one payload and is closed on every path.
     # Leaking it kept a read snapshot open on a WAL database and starved
@@ -1971,6 +2139,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "anomalies": anomalies[:40],
         "coverage_stats": coverage_stats,
         "station_stats": station_stats,
+        "station_failure_matrix": _station_failure_matrix(
+            conn, station_stats
+        ),
         "station_roster": roster,
         "roster_event_dates": sorted({e["event_date"] for e in roster}, reverse=True),
         "stats_start_event_date": STATS_START_EVENT_DATE,

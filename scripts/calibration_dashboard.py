@@ -4265,6 +4265,71 @@ function fleetRegime(){
     </tr></thead><tbody>${rows}</tbody></table>`;
 }
 
+// Sits after the per-station summary because it is that table's follow-up
+// question: the summary ranks stations by what they lost, this asks which
+// of them lost for a reason.  Ranking by P&L alone cannot tell a broken
+// station from an unlucky one on five settled chains; failing several
+// dimensions that do not share a mechanism can.
+function stationFailureMatrix(){
+  const M=(D.selection||{}).station_failure_matrix;
+  if(!M||!M.available) return "";
+  const t=M.thresholds||{};
+  const NAMES={realization:"实现", claim:"声称", centre:"中心",
+    coverage:"覆盖", persistence:"持续"};
+  const rows=(M.stations||[]).filter(s=>s.flag_count>0).map(s=>{
+    const bad=Object.keys(NAMES).filter(k=>(s.flags||{})[k]);
+    // Thin stations are not good stations, they are unjudged ones, so the
+    // count is muted rather than hidden and the row says so in place.
+    const thin=s.settled_count<6;
+    const num=(v,d,suffix="")=>v==null?"—":
+      (v>=0&&suffix==="C"?"+":"")+Number(v).toFixed(d)+suffix;
+    return `<tr>
+      <td><span class="mono">${h(s.station_id)}</span>
+        <span class="muted">${h(s.station_label)}</span></td>
+      <td class="mono${thin?" muted":""}">${s.settled_count}${
+        thin?" 薄":""}</td>
+      <td class="mono">${s.basket_coverage==null?"—":
+        (100*s.basket_coverage).toFixed(0)+"%"}</td>
+      <td class="mono">${num(s.realization_ratio,2)}</td>
+      <td class="mono">${num(s.calibration_ratio,2)}</td>
+      <td class="mono">${num(s.centre_residual_c,2,"C")}</td>
+      <td class="mono">${s.early_pnl_usdc>=0?"+":""}${
+        s.early_pnl_usdc.toFixed(1)}<span class="muted">(${
+        s.early_chains})</span></td>
+      <td class="mono">${s.late_pnl_usdc>=0?"+":""}${
+        s.late_pnl_usdc.toFixed(1)}<span class="muted">(${
+        s.late_chains})</span></td>
+      <td>${bad.map(k=>`<span class="pill amber">${NAMES[k]}</span>`)
+        .join(" ")}</td>
+      <td class="mono"><b>${s.flag_count}</b>/5</td>
+    </tr>`;
+  }).join("");
+  const worst=(M.stations||[]).filter(s=>s.flag_count>=4)
+    .map(s=>h(s.station_id)).join("、")||"无";
+  const clean=(M.stations||[]).filter(s=>s.flag_count===0).length;
+  return `<h3 style="margin-top:18px">哪些站是系统性地不行</h3>
+  <p class="sub">五个维度，各指向不同的层。分割点 ${
+    h(M.split_event_date)}；只列出至少一项不行的站。</p>
+  <div class="why"><b>为什么不能只看亏多少：</b>一个站只有五到十条已结算链，
+  单靠运气就能亏得很难看，所以"亏损前十"里永远混着运气差的。能分开的是
+  <b>同时在互不重复的维度上不行</b>——每一项指认不同的一层：
+  <b>实现</b>（实现/期望 &lt;0，模型想去的日子反而亏，病在声称或执行）、
+  <b>声称</b>（命中/声称 &lt;${t.claim_floor}，声称虚高，病在校准层）、
+  <b>中心</b>（残差 &gt;${t.centre_limit_c}°C，中心就是错的，病在偏差层，最上游）、
+  <b>覆盖</b>（选桶盖住真值 &lt;${(100*(t.coverage_floor||0)).toFixed(0)}%，病在选桶层）、
+  <b>持续</b>（前后半段都亏，是站的性格不是那两周）。
+  <b>旗标只列不求和：</b>它们会互相打架且那正是信息——EHAM 赚得远超模型期望
+  却另外三项不行，加总成一个分数恰好会把这件事抹掉。
+  <b>薄样本标"薄"不剔除：</b>两条链的站不是好站，是没被判过的站。
+  <b>这是诊断不是处方：</b>前瞻检验实测，按前半段排名剔掉最差十站，
+  后半段只从 −55.7 改善到 −20.4，仍是亏的——剔站买不来一本赚钱的账。
+  当前 ${worst} 至少四项不行，另有 ${clean} 站一项都不占。</div>
+  <table><thead><tr><th>站</th><th>已结算</th><th>覆盖率</th>
+    <th>实现/期望</th><th>命中/声称</th><th>中心残差</th>
+    <th>前半段</th><th>后半段</th><th>不行的维度</th><th>计</th>
+    </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
 function refusalStats(){
   const S=D.selection||{};
   const stages=(S.refusal_stats||{}).stages||[];
@@ -5090,7 +5155,8 @@ function stationSummary(){
     <th>概率和</th><th>卖价和</th><th>赔率</th><th>EV/U</th>
     <th>命中率</th><th>声称</th><th>实现/声称</th>
     <th>投入</th><th>实得</th><th>兑现比</th>
-  </tr></thead><tbody>${rows}</tbody></table></div>${note}</div>`;
+  </tr></thead><tbody>${rows}</tbody></table></div>${note}</div>
+  ${stationFailureMatrix()}`;
 }
 
 
