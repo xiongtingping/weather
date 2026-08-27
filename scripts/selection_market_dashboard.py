@@ -415,103 +415,155 @@ def _basket_hit_by_size(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return out
 
 
-# The two signs that actually say "the pricing work is done".  ``quoted``
-# is the third thing the ledger records, and it is deliberately not one of
-# them: it fires on 172 of 186 settled days, so it describes whether there
-# was a book to trade at all rather than how certain that book was.
-# Counting it as a certainty signal put the days with *no quotes* into the
-# zero-signal stratum, which is how that stratum came to hold six lottery
-# days reading +220% -- and -74% once its single best day is removed.
-CERTAINTY_SIGNALS = ("stable", "sharp")
+CONSOLIDATION_LIGHTS = ("stable", "sharp", "quoted")
 
 
-def _consolidation_split(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Settled outcomes by whether the market had finished pricing at entry.
+def _consolidation_lights(conn: sqlite3.Connection) -> dict[str, Any]:
+    """The three consolidation lights, chain by chain, with their strata.
 
-    Split one signal at a time rather than by a count.  The count pooled
-    three unlike things and its strata could not survive their own ex-best
-    test in either direction; measured per signal the inversion is there
-    and it is much sturdier than the count ever showed:
+    Chain level on purpose: the stake tilt the lights drive is decided by
+    the P0 opener and inherited by the whole chain, so the strata that
+    justify it must be counted on chains, not on stage rows.  Every group
+    carries the same two honesty checks (ex-best, ex-best-two): a stratum
+    whose sign needs its best chain is a lottery.
 
-        stable unlit  +39.9%  (+20.5% ex-best, +3.2% ex-best-two)
-        stable lit    -54.8%  (-60.2%,         -63.7%)
-        sharp  unlit  +43.9%  (+23.3% ex-best, +5.1% ex-best-two)
-        sharp  lit    -50.2%  (-55.0%,         -57.2%)
-
-    Both reverse sign when lit, and both keep a positive sign on the unlit
-    side after their best *two* days are removed -- the check the pooled
-    count failed.  It still gates nothing: the margin after two drops is
-    3-5 points on 107-117 settlements, which is a direction worth watching
-    rather than a rule worth enforcing.
-
-    The flags are read off the ``P0`` row on purpose.  A later stage
-    recomputes the same three signs at *its* decision time, so joining on
-    the settlement's own position row measures how consolidated the market
-    was hours after entry -- a different question, and one that reads the
-    inversion about half as strong.
+    ``quoted`` is shown but flagged: it fires on nearly every settled day,
+    so alone it mostly says whether there was a book at all.  Its earlier
+    exclusion from the per-signal split (the six-day +220% lottery stratum)
+    is why the combo table separates it rather than pooling it away.
     """
 
     try:
-        rows = conn.execute(
-            "SELECT p.consolidation_json, s.hit, s.stake_usdc, s.pnl_usdc"
-            " FROM paper_trade_settlement s"
-            " JOIN paper_trade_position p"
-            "  ON p.station_id=s.station_id AND p.event_date=s.event_date"
-            " WHERE p.stage='P0' AND p.consolidation_json<>''"
+        opener_rows = conn.execute(
+            "SELECT station_id, event_date, consolidation_json"
+            " FROM paper_trade_position"
+            " WHERE stage='P0' AND consolidation_json<>''"
+        ).fetchall()
+        settle_rows = conn.execute(
+            "SELECT station_id, event_date, hit, stake_usdc, pnl_usdc"
+            " FROM paper_trade_settlement"
+        ).fetchall()
+        open_rows = conn.execute(
+            "SELECT p.station_id, p.event_date, SUM(p.stake_usdc)"
+            " FROM paper_trade_position p"
+            " WHERE NOT EXISTS (SELECT 1 FROM paper_trade_settlement s"
+            "  WHERE s.station_id=p.station_id"
+            "    AND s.event_date=p.event_date)"
+            " GROUP BY p.station_id, p.event_date"
         ).fetchall()
     except sqlite3.OperationalError:
         return {"available": False}
-    strata: dict[tuple[str, bool], dict[str, Any]] = {}
-    for payload, hit, stake, pnl in rows:
+
+    lights: dict[tuple[str, str], dict[str, Any]] = {}
+    for sid, day, payload in opener_rows:
         try:
             flags = json.loads(payload) or {}
         except (TypeError, ValueError):
             continue
-        if not isinstance(flags, Mapping):
-            continue
-        for signal in CERTAINTY_SIGNALS:
-            if signal not in flags:
-                continue
-            slot = strata.setdefault((signal, flags[signal] is True), {
-                "settled": 0, "hits": 0, "staked": 0.0, "pnls": [],
-            })
-            slot["settled"] += 1
-            slot["hits"] += int(hit or 0)
-            slot["staked"] += float(stake or 0.0)
-            slot["pnls"].append(float(pnl or 0.0))
-    out = []
-    for signal in CERTAINTY_SIGNALS:
+        if isinstance(flags, Mapping):
+            lights[(str(sid), str(day))] = {
+                name: flags.get(name) is True
+                for name in CONSOLIDATION_LIGHTS
+            }
+
+    chains: dict[tuple[str, str], dict[str, Any]] = {}
+    for sid, day, hit, stake, pnl in settle_rows:
+        key = (str(sid), str(day))
+        chain = chains.setdefault(key, {
+            "station": key[0], "event_date": key[1],
+            "stake": 0.0, "pnl": 0.0, "hit": False,
+            "flags": lights.get(key),
+        })
+        chain["stake"] += float(stake or 0.0)
+        chain["pnl"] += float(pnl or 0.0)
+        chain["hit"] = chain["hit"] or bool(hit)
+
+    def stats(group: list[dict[str, Any]]) -> dict[str, Any]:
+        staked = sum(c["stake"] for c in group)
+        pnl = sum(c["pnl"] for c in group)
+        wins = sorted((c["pnl"] for c in group if c["pnl"] > 0),
+                      reverse=True)
+        return {
+            "chains": len(group),
+            "hit_chains": sum(1 for c in group if c["hit"]),
+            "staked": staked,
+            "pnl": pnl,
+            "roi": pnl / staked if staked else None,
+            "roi_ex_best": (
+                (pnl - (wins[0] if wins else 0.0)) / staked
+                if staked else None
+            ),
+            "roi_ex_best2": (
+                (pnl - sum(wins[:2])) / staked if staked else None
+            ),
+        }
+
+    flagged = [c for c in chains.values() if c["flags"] is not None]
+    combos = []
+    for stable in (False, True):
+        for sharp in (False, True):
+            for quoted in (False, True):
+                group = [
+                    c for c in flagged
+                    if c["flags"]["stable"] == stable
+                    and c["flags"]["sharp"] == sharp
+                    and c["flags"]["quoted"] == quoted
+                ]
+                count = int(stable) + int(sharp) + int(quoted)
+                combos.append({
+                    "stable": stable, "sharp": sharp, "quoted": quoted,
+                    "count": count,
+                    "tilted": count >= _tilt_rule()["min_signals"],
+                    **stats(group),
+                })
+
+    counts = []
+    for count in (0, 1, 2, 3):
+        group = [c for c in flagged
+                 if sum(c["flags"].values()) == count]
+        counts.append({"count": count, **stats(group)})
+
+    singles = []
+    for name in CONSOLIDATION_LIGHTS:
         for lit in (False, True):
-            slot = strata.get((signal, lit))
-            if not slot:
-                continue
-            pnl = sum(slot["pnls"])
-            wins = sorted(
-                (value for value in slot["pnls"] if value > 0), reverse=True
-            )
-            staked = slot["staked"]
-            out.append({
-                "signal": signal,
-                "lit": lit,
-                "settled": slot["settled"],
-                "hit_rate": (
-                    slot["hits"] / slot["settled"] if slot["settled"] else None
-                ),
-                "staked": staked,
-                "pnl": pnl,
-                "roi": pnl / staked if staked else None,
-                # Two honesty checks, not one.  A stratum whose sign needs
-                # its best day is a lottery; one whose sign needs its best
-                # two is thin, and thin is what both of these still are.
-                "roi_ex_best": (
-                    (pnl - (wins[0] if wins else 0.0)) / staked
-                    if staked else None
-                ),
-                "roi_ex_best2": (
-                    (pnl - sum(wins[:2])) / staked if staked else None
-                ),
-            })
-    return {"available": bool(out), "strata": out}
+            group = [c for c in flagged if c["flags"][name] is lit]
+            singles.append({"signal": name, "lit": lit, **stats(group)})
+
+    open_chains = sorted(
+        (
+            {
+                "station": str(sid), "event_date": str(day),
+                "stake": float(stake or 0.0),
+                "flags": lights.get((str(sid), str(day))),
+            }
+            for sid, day, stake in open_rows
+        ),
+        key=lambda c: (c["event_date"], c["station"]),
+        reverse=True,
+    )
+
+    return {
+        "available": bool(flagged or open_chains),
+        "rule": _tilt_rule(),
+        "combos": combos,
+        "counts": counts,
+        "singles": singles,
+        "settled_chains": len(chains),
+        "flagged_chains": len(flagged),
+        "open_chains": open_chains,
+    }
+
+
+def _tilt_rule() -> dict[str, Any]:
+    """The shipped tilt rule, read from the ledger itself, never restated."""
+
+    import paper_trading_ledger as ledger  # noqa: PLC0415
+
+    return {
+        "min_signals": ledger.CONSOLIDATION_TILT_MIN_SIGNALS,
+        "factor": ledger.CONSOLIDATION_TILT_FACTOR,
+        "signals": list(ledger.CONSOLIDATION_TILT_SIGNALS),
+    }
 
 
 def _settled_chain_baskets(
@@ -1877,7 +1929,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "basket_hit_by_size": _basket_hit_by_size(conn),
         "chosen_basket_hit": _posted_basket_hit_trend(conn),
         "chosen_miss_offsets": _chosen_miss_offsets(conn),
-        "consolidation_split": _consolidation_split(conn),
+        "consolidation_lights": _consolidation_lights(conn),
         "maker_probe": _maker_probe(conn),
         "resting_entry": _resting_entry_stats(conn),
         "resting_entry_trend": _resting_entry_trend(conn),

@@ -837,7 +837,21 @@ SELECTION_DISCOUNT = float(
 # certainty premium was measured to eat the edge.  The factor is decided
 # by the P0 opener's own entry signals and inherited by the whole chain,
 # which is the basis the strata were measured on.  Never above 1.
-CONSOLIDATION_TILT_MIN_SIGNALS = 2
+CONSOLIDATION_TILT_MIN_SIGNALS = int(
+    os.environ.get("PAPER_LEDGER_CONSOLIDATION_TILT_MIN_SIGNALS", "2") or 2
+)
+# Which of the three signs the tilt counts (research knob, 2026-08-27).
+# Default all three, the shipped rule; a subset asks whether one light
+# alone carries the stratification the count was measured on.
+CONSOLIDATION_TILT_SIGNALS: tuple[str, ...] = tuple(
+    name.strip()
+    for name in (
+        os.environ.get(
+            "PAPER_LEDGER_CONSOLIDATION_TILT_SIGNALS", "stable,sharp,quoted"
+        ) or "stable,sharp,quoted"
+    ).split(",")
+    if name.strip() in ("stable", "sharp", "quoted")
+)
 CONSOLIDATION_TILT_FACTOR = min(1.0, float(
     os.environ.get("PAPER_LEDGER_CONSOLIDATION_TILT", "0.25") or 1.0
 ))
@@ -952,6 +966,10 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     if CONSOLIDATION_TILT_FACTOR >= 1.0
     else "固化≥%d减仓%g" % (
         CONSOLIDATION_TILT_MIN_SIGNALS, CONSOLIDATION_TILT_FACTOR
+    ) + (
+        ""
+        if CONSOLIDATION_TILT_SIGNALS == ("stable", "sharp", "quoted")
+        else "·灯" + "+".join(CONSOLIDATION_TILT_SIGNALS)
     ),
     None
     if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_VALUE_LAMBDA <= 0
@@ -4922,10 +4940,13 @@ def backfill(
                     seat_consolidation = None
                     if stage == "P0":
                         seat_consolidation = stage_consolidation
+                        lit = sum(
+                            1 for name in CONSOLIDATION_TILT_SIGNALS
+                            if seat_consolidation.get(name) is True
+                        )
                         tilt = (
                             CONSOLIDATION_TILT_FACTOR
-                            if seat_consolidation["count"]
-                            >= CONSOLIDATION_TILT_MIN_SIGNALS
+                            if lit >= CONSOLIDATION_TILT_MIN_SIGNALS
                             else 1.0
                         )
                     else:

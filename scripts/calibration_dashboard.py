@@ -4418,36 +4418,76 @@ function makerProbe(){
       ${depth?`<div class="muted" style="margin-top:8px">${depth}</div>`:""}
     </div>`;
   }).join("");
-    const cons=(S.consolidation_split||{});
-  const SIGLABEL={stable:"中心桶连续 3 次未变",sharp:"头两桶质量 ≥60%"};
-  const consRows=(cons.strata||[]).map(r=>`<tr>
-      <td>${h(SIGLABEL[r.signal]||r.signal)}</td>
-      <td class="mono ${r.lit?"down":"up"}">${r.lit?"亮":"未亮"}</td>
-      <td class="mono">${r.settled}</td>
-      <td class="mono">${r.hit_rate==null?"—":(100*r.hit_rate).toFixed(0)+"%"}</td>
+    const cons=(S.consolidation_lights||{});
+  const consRule=cons.rule||{};
+  const LAMP={stable:"稳",sharp:"尖",quoted:"价"};
+  const LAMPDEF={stable:"中心稳：中心桶连续 3 次未变",
+    sharp:"分布尖：头两桶质量 ≥60%",
+    quoted:"报满价：中心±1 质量 80% 有 ≥0.03 卖价"};
+  const lamp=(on)=>on?`<span class="down">●</span>`:`<span class="muted">○</span>`;
+  const fmtRoi=(v)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(1)+"%");
+  const roiTd=(v)=>`<td class="mono ${v==null?"":(v>=0?"up":"down")}">${fmtRoi(v)}</td>`;
+  const statTds=(r)=>`
+      <td class="mono">${r.chains}</td>
+      <td class="mono">${r.chains?((100*r.hit_chains/r.chains).toFixed(0)+"%"):"—"}</td>
       <td class="mono">${r.staked.toFixed(0)}</td>
-      <td class="mono ${r.roi>=0?"up":"down"}">${r.roi==null?"—":((r.roi>=0?"+":"")+(100*r.roi).toFixed(1)+"%")}</td>
-      <td class="mono ${r.roi_ex_best>=0?"up":"down"}">${r.roi_ex_best==null?"—":((r.roi_ex_best>=0?"+":"")+(100*r.roi_ex_best).toFixed(1)+"%")}</td>
-      <td class="mono ${r.roi_ex_best2>=0?"up":"down"}">${r.roi_ex_best2==null?"—":((r.roi_ex_best2>=0?"+":"")+(100*r.roi_ex_best2).toFixed(1)+"%")}</td>
+      <td class="mono ${r.pnl>=0?"up":"down"}">${r.pnl>=0?"+":""}${r.pnl.toFixed(1)}</td>
+      ${roiTd(r.roi)}${roiTd(r.roi_ex_best)}${roiTd(r.roi_ex_best2)}`;
+  const comboRows=(cons.combos||[]).filter(r=>r.chains>0)
+    .sort((a,b)=>a.count-b.count||b.chains-a.chains).map(r=>`<tr>
+      <td class="mono">${lamp(r.stable)}${lamp(r.sharp)}${lamp(r.quoted)}
+        <span class="muted">${["stable","sharp","quoted"]
+          .filter(k=>r[k]).map(k=>LAMP[k]).join("")||"全灭"}</span></td>
+      <td class="mono">${r.tilted
+        ?`<span class="pill amber">×${consRule.factor}</span>`:"满仓"}</td>
+      ${statTds(r)}
     </tr>`).join("");
+  const countRows=(cons.counts||[]).map(r=>`<tr>
+      <td class="mono">${r.count} 盏${r.count>=(consRule.min_signals||2)
+        ?` <span class="pill amber">×${consRule.factor}</span>`:""}</td>
+      <td></td>${statTds(r)}
+    </tr>`).join("");
+  const singleRows=(cons.singles||[]).map(r=>`<tr>
+      <td>${h(LAMPDEF[r.signal]||r.signal)}</td>
+      <td class="mono ${r.lit?"down":"up"}">${r.lit?"亮":"灭"}</td>
+      ${statTds(r)}
+    </tr>`).join("");
+  const openChips=(cons.open_chains||[]).map(c=>{
+    const f=c.flags;
+    return `<span class="mono" style="margin-right:14px;white-space:nowrap">
+      ${h(c.event_date)} ${h(c.station)} ${f
+        ?lamp(f.stable)+lamp(f.sharp)+lamp(f.quoted)
+        :'<span class="muted">无灯</span>'} ${c.stake.toFixed(0)}u</span>`;
+  }).join("");
+  const consHead=`<tr><th></th><th>注码</th><th>链</th><th>命中链</th>
+      <th>投入</th><th>pnl</th><th>ROI</th><th>去最大赢</th><th>去前两赢</th></tr>`;
   const consBlock=cons.available?`<div class="card" style="margin-top:12px">
-    <div class="muted">确定性溢价 · 前向验证中（只读，不参与任何决策）</div>
-    <div class="why" style="margin-top:8px">入场那一刻数两个"市场已经把话说完"的信号，
-    <b>每个信号单独分层</b>，不再合成一个计数。
-    <b>合成计数已废</b>：第三个记录项「理想窗全数有报价」186 天里亮了 172 天，它说的是
-    「有没有盘口可买」而不是「市场有多确定」，把它算进计数，会让<b>没有报价</b>的怪日子
-    落进「0 信号」组——那一格只有 6 天、读数 +220%，去掉最大一笔赢就变成 −74%，
-    是彩票不是发现。<br>
-    <b>分开看，反转比合成计数强得多</b>：两个信号亮起时都由正转负（−50% / −55%），
-    未亮时不但为正，<b>连去掉最前两笔赢之后仍是正的</b>（+3.2% / +5.1%）——
-    这正是合成计数没能通过的那道检验。<br>
-    <b>但仍然只读、仍然不设门</b>：去前两赢之后只剩 3–5 个点、样本 107–117 笔，
-    这是个值得盯的方向，还不是值得执行的规则。信号取的是 <b>P0 入场那一刻</b>的读数；
-    后续阶段会在各自的决策时刻重算同样三个标志，按那个口径读，反转只有一半强。</div>
-    <table style="margin-top:8px"><thead><tr>
-      <th>信号</th><th>状态</th><th>结算</th><th>命中</th><th>投入</th>
+    <div class="muted">三盏灯（固化度）· 驱动固化减仓，P0 开链定档、全链继承</div>
+    <div class="why" style="margin-top:8px"><b>入场那一刻记三盏灯，
+    量的是"当天的答案定型了没有"：</b>
+    ${Object.values(LAMPDEF).join("；")}。
+    灯亮得越多市场的定价功课做得越足，此时还剩的价差多半是别人知道我们不知道的事。
+    <b>现行规则（2026-08-21 裁定）：亮 ≥${consRule.min_signals??2} 盏，
+    整链注码 ×${consRule.factor??0.25}</b>——只减注码、永不拒入场
+    （改成门会自反，折扣门 −54% 判例）。<br>
+    <b>读表注意：</b>「报满价」几乎天天亮，它单独说的是"有没有盘口"而非"市场多确定"，
+    全灭组因此混着"没盘口的怪日子"；层薄的格子以"去前两赢"为准，
+    符号靠最大一两条链撑住的读数是彩票不是发现。灯取 <b>P0 开链那一刻</b>的读数，
+    链级合计（P0+P0-M+P1 同链同档）。</div>
+    <table style="margin-top:8px"><thead>${consHead}</thead>
+    <tbody>${comboRows}</tbody></table>
+    <div class="muted" style="margin-top:10px">按亮灯数</div>
+    <table style="margin-top:4px"><thead>${consHead}</thead>
+    <tbody>${countRows}</tbody></table>
+    <div class="muted" style="margin-top:10px">单灯切分</div>
+    <table style="margin-top:4px"><thead><tr><th>灯</th><th>状态</th>
+      <th>链</th><th>命中链</th><th>投入</th><th>pnl</th>
       <th>ROI</th><th>去最大赢</th><th>去前两赢</th></tr></thead>
-    <tbody>${consRows}</tbody></table></div>`:"";
+    <tbody>${singleRows}</tbody></table>
+    ${openChips?`<div class="muted" style="margin-top:10px">
+      在场链的灯（未结算，稳·尖·价）</div>
+    <div style="margin-top:4px;line-height:2">${openChips}</div>`:""}
+  </div>`:"";
   const restingWhy=!stageCards?"":`
     <div class="why" style="margin-top:12px"><b>三个阶段分开看，不合并：</b>
     P0 在赛前十几小时挂，盘口几乎不动；P1 在盘中挂，是当天最活跃的书；
