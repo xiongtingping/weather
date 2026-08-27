@@ -811,6 +811,19 @@ MAKER_RESTING_GAP_LATE = float(
 MAKER_RESTING_CONFIRM_TAKE_TICKS = float(
     os.environ.get("PAPER_LEDGER_CONFIRM_TAKE_TICKS", "") or 0.0
 )
+# Research arm (2026-08-27): the hybrid -- centre leg takes at entry,
+# every other leg keeps the full resting lifecycle.  The centre is the one
+# leg whose value ceiling is its own claimed probability (no lambda
+# discount), so an entry ask the crossing gate admitted is an ask the
+# centre may pay by this book's own law; and the missed-winner mechanism
+# this aims at concentrates where the claim mass does.  Implemented as
+# the centre's rungs all posted at min(entry ask, value cap): inside
+# value they fill on the first tick, which is what taking means under
+# the touch model; above value they rest at the cap and the red line
+# holds.  Empty disables, bit-identical.
+MAKER_CENTRE_TAKER = bool(
+    (os.environ.get("PAPER_LEDGER_CENTRE_TAKER", "") or "").strip()
+)
 # Completeness re-priced as risk (user ruling, 2026-08-24; twice corrected the
 # same day).  The lifecycle is untouched for every leg -- the tail included, it
 # is the hedge leg and fills at its clamp like everyone else.  The budget
@@ -1032,6 +1045,9 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     if EXECUTION_MODE != "maker_resting"
     or MAKER_RESTING_CONFIRM_TAKE_TICKS <= 0.0
     else "同向确认吃单≥%g跳" % MAKER_RESTING_CONFIRM_TAKE_TICKS,
+    None
+    if EXECUTION_MODE != "maker_resting" or not MAKER_CENTRE_TAKER
+    else "中心桶入场吃单",
     None
     if SELECTION_DISCOUNT <= 0
     else f"选择折扣λs{SELECTION_DISCOUNT:g}",
@@ -5344,26 +5360,42 @@ def backfill(
                         seat_centre = str(
                             audit.get("ladder_center_bucket") or center
                         )
-                        ladders = [
-                            _resting_ladder(
-                                by_row[str(b)],
-                                value_cap=_leg_value_cap(
-                                    str(b),
-                                    probabilities=probabilities,
-                                    centre_bucket=seat_centre,
-                                    window=seat["buckets"],
-                                    market_top_bucket=_market_top_bucket(
-                                        seat["buckets"], by_row),
-                                    all_in_ask=(
-                                        float(by_row[str(b)].ask_price)
-                                        if by_row[str(b)].ask_available
-                                        else None
-                                    ),
+                        ladders = []
+                        for b in seat["buckets"]:
+                            if str(b) not in by_row:
+                                ladders.append([])
+                                continue
+                            row_b = by_row[str(b)]
+                            cap_b = _leg_value_cap(
+                                str(b),
+                                probabilities=probabilities,
+                                centre_bucket=seat_centre,
+                                window=seat["buckets"],
+                                market_top_bucket=_market_top_bucket(
+                                    seat["buckets"], by_row),
+                                all_in_ask=(
+                                    float(row_b.ask_price)
+                                    if row_b.ask_available
+                                    else None
                                 ),
                             )
-                            if str(b) in by_row else []
-                            for b in seat["buckets"]
-                        ]
+                            rungs = _resting_ladder(row_b, value_cap=cap_b)
+                            # The hybrid arm: the centre's whole ladder
+                            # posts at min(entry ask, its value cap) --
+                            # taking inside value, resting at the red
+                            # line above it.
+                            if (
+                                MAKER_CENTRE_TAKER
+                                and str(b) == seat_centre
+                                and rungs
+                                and row_b.ask_available
+                            ):
+                                take = float(row_b.ask_price)
+                                if cap_b is not None:
+                                    take = min(take, float(cap_b))
+                                if take >= MINIMUM_LEG_ALL_IN_ASK:
+                                    rungs = [take] * len(rungs)
+                            ladders.append(rungs)
                         got, missing, withdrawn = _resting_ladder_fill(
                             conn,
                             settlement_timezone=timezones.get(
