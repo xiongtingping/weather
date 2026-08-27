@@ -4682,10 +4682,9 @@ function makerProbe(){
   }).join("");
     const cons=(S.consolidation_lights||{});
   const consRule=cons.rule||{};
-  const LAMP={stable:"稳",sharp:"尖",quoted:"价"};
+  const LAMP={stable:"稳",sharp:"尖"};
   const LAMPDEF={stable:"中心稳：中心桶连续 3 次未变",
-    sharp:"分布尖：头两桶质量 ≥60%",
-    quoted:"报满价：中心±1 质量 80% 有 ≥0.03 卖价"};
+    sharp:"分布尖：头两桶质量 ≥60%"};
   const lamp=(on)=>on?`<span class="down">●</span>`:`<span class="muted">○</span>`;
   const fmtRoi=(v)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(1)+"%");
   const roiTd=(v)=>`<td class="mono ${v==null?"":(v>=0?"up":"down")}">${fmtRoi(v)}</td>`;
@@ -4697,8 +4696,8 @@ function makerProbe(){
       ${roiTd(r.roi)}${roiTd(r.roi_ex_best)}${roiTd(r.roi_ex_best2)}`;
   const comboRows=(cons.combos||[]).filter(r=>r.chains>0)
     .sort((a,b)=>a.count-b.count||b.chains-a.chains).map(r=>`<tr>
-      <td class="mono">${lamp(r.stable)}${lamp(r.sharp)}${lamp(r.quoted)}
-        <span class="muted">${["stable","sharp","quoted"]
+      <td class="mono">${lamp(r.stable)}${lamp(r.sharp)}
+        <span class="muted">${["stable","sharp"]
           .filter(k=>r[k]).map(k=>LAMP[k]).join("")||"全灭"}</span></td>
       <td class="mono">${r.tilted
         ?`<span class="pill amber">×${consRule.factor}</span>`:"满仓"}</td>
@@ -4718,22 +4717,23 @@ function makerProbe(){
     const f=c.flags;
     return `<span class="mono" style="margin-right:14px;white-space:nowrap">
       ${h(c.event_date)} ${h(c.station)} ${f
-        ?lamp(f.stable)+lamp(f.sharp)+lamp(f.quoted)
+        ?lamp(f.stable)+lamp(f.sharp)
         :'<span class="muted">无灯</span>'} ${c.stake.toFixed(0)}u</span>`;
   }).join("");
   const consHead=`<tr><th></th><th>注码</th><th>链</th><th>命中链</th>
       <th>投入</th><th>pnl</th><th>ROI</th><th>去最大赢</th><th>去前两赢</th></tr>`;
   const consBlock=cons.available?`<div class="card" style="margin-top:12px">
-    <div class="muted">三盏灯（固化度）· 驱动固化减仓，P0 开链定档、全链继承</div>
-    <div class="why" style="margin-top:8px"><b>入场那一刻记三盏灯，
+    <div class="muted">两盏灯（固化度）· 驱动固化减仓，P0 开链定档、全链继承</div>
+    <div class="why" style="margin-top:8px"><b>入场那一刻记两盏模型灯，
     量的是"当天的答案定型了没有"：</b>
     ${Object.values(LAMPDEF).join("；")}。
-    灯亮得越多市场的定价功课做得越足，此时还剩的价差多半是别人知道我们不知道的事。
-    <b>现行规则（2026-08-21 裁定）：亮 ≥${consRule.min_signals??2} 盏，
-    整链注码 ×${consRule.factor??0.25}</b>——只减注码、永不拒入场
-    （改成门会自反，折扣门 −54% 判例）。<br>
-    <b>读表注意：</b>「报满价」几乎天天亮，它单独说的是"有没有盘口"而非"市场多确定"，
-    全灭组因此混着"没盘口的怪日子"；层薄的格子以"去前两赢"为准，
+    灯亮=市场的定价功课做完了，此时还剩的价差多半是别人知道我们不知道的事。
+    <b>现行规则（2026-08-28 裁定）：任一盏亮，
+    整链注码 ×${consRule.factor??0.1}</b>——只在开仓时少买，
+    永不拒入场、永不卖出、永不撤单（改成门会自反，折扣门 −54% 判例）。<br>
+    <b>第三盏灯「报满价」已退役（2026-08-28）：</b>它几乎天天亮，
+    说的是"有没有盘口"而非"市场多确定"，不再计数也不再显示；
+    原始记录仍逐链落盘。层薄的格子以"去前两赢"为准，
     符号靠最大一两条链撑住的读数是彩票不是发现。灯取 <b>P0 开链那一刻</b>的读数，
     链级合计（P0+P0-M+P1 同链同档）。</div>
     <table style="margin-top:8px"><thead>${consHead}</thead>
@@ -4747,7 +4747,7 @@ function makerProbe(){
       <th>ROI</th><th>去最大赢</th><th>去前两赢</th></tr></thead>
     <tbody>${singleRows}</tbody></table>
     ${openChips?`<div class="muted" style="margin-top:10px">
-      在场链的灯（未结算，稳·尖·价）</div>
+      在场链的灯（未结算，稳·尖）</div>
     <div style="margin-top:4px;line-height:2">${openChips}</div>`:""}
   </div>`:"";
   const restingWhy=!stageCards?"":`

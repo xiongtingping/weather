@@ -415,7 +415,13 @@ def _basket_hit_by_size(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return out
 
 
-CONSOLIDATION_LIGHTS = ("stable", "sharp", "quoted")
+# ``quoted`` retired from the page with the 2026-08-28 tilt ruling: it
+# fires on nearly every chain, so it says whether a book exists rather
+# than how certain the market is, and it no longer counts toward the
+# tilt.  The ledger still records it in consolidation_json -- raw data
+# outlives displays -- but every table here reads the two lights the
+# rule reads.
+CONSOLIDATION_LIGHTS = ("stable", "sharp")
 
 
 def _consolidation_lights(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -427,10 +433,9 @@ def _consolidation_lights(conn: sqlite3.Connection) -> dict[str, Any]:
     carries the same two honesty checks (ex-best, ex-best-two): a stratum
     whose sign needs its best chain is a lottery.
 
-    ``quoted`` is shown but flagged: it fires on nearly every settled day,
-    so alone it mostly says whether there was a book at all.  Its earlier
-    exclusion from the per-signal split (the six-day +220% lottery stratum)
-    is why the combo table separates it rather than pooling it away.
+    ``quoted`` is recorded but no longer shown or counted (user ruling,
+    2026-08-28): it fires on nearly every settled day, so alone it mostly
+    says whether there was a book at all.
     """
 
     try:
@@ -502,29 +507,25 @@ def _consolidation_lights(conn: sqlite3.Connection) -> dict[str, Any]:
     combos = []
     for stable in (False, True):
         for sharp in (False, True):
-            for quoted in (False, True):
-                group = [
-                    c for c in flagged
-                    if c["flags"]["stable"] == stable
-                    and c["flags"]["sharp"] == sharp
-                    and c["flags"]["quoted"] == quoted
-                ]
-                count = int(stable) + int(sharp) + int(quoted)
-                rule = _tilt_rule()
-                lit_for_rule = sum(
-                    1 for name in rule["signals"]
-                    if {"stable": stable, "sharp": sharp,
-                        "quoted": quoted}[name]
-                )
-                combos.append({
-                    "stable": stable, "sharp": sharp, "quoted": quoted,
-                    "count": count,
-                    "tilted": lit_for_rule >= rule["min_signals"],
-                    **stats(group),
-                })
+            group = [
+                c for c in flagged
+                if c["flags"]["stable"] == stable
+                and c["flags"]["sharp"] == sharp
+            ]
+            rule = _tilt_rule()
+            lit_for_rule = sum(
+                1 for name in rule["signals"]
+                if {"stable": stable, "sharp": sharp}.get(name)
+            )
+            combos.append({
+                "stable": stable, "sharp": sharp,
+                "count": int(stable) + int(sharp),
+                "tilted": lit_for_rule >= rule["min_signals"],
+                **stats(group),
+            })
 
     counts = []
-    for count in (0, 1, 2, 3):
+    for count in (0, 1, 2):
         group = [c for c in flagged
                  if sum(c["flags"].values()) == count]
         counts.append({"count": count, **stats(group)})
