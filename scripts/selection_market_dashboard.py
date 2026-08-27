@@ -510,10 +510,16 @@ def _consolidation_lights(conn: sqlite3.Connection) -> dict[str, Any]:
                     and c["flags"]["quoted"] == quoted
                 ]
                 count = int(stable) + int(sharp) + int(quoted)
+                rule = _tilt_rule()
+                lit_for_rule = sum(
+                    1 for name in rule["signals"]
+                    if {"stable": stable, "sharp": sharp,
+                        "quoted": quoted}[name]
+                )
                 combos.append({
                     "stable": stable, "sharp": sharp, "quoted": quoted,
                     "count": count,
-                    "tilted": count >= _tilt_rule()["min_signals"],
+                    "tilted": lit_for_rule >= rule["min_signals"],
                     **stats(group),
                 })
 
