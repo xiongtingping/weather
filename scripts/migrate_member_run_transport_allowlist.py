@@ -39,6 +39,7 @@ NEW_TRANSPORTS = (
     "RISH_KYOTO_JMA_ARCHIVE",   # ruled 2026-08-28, JMA MSM via RISH Kyoto
     "NOAA_HRRR_PDS_S3",         # ruled 2026-08-28, HRRR via NOAA open data
     "NOAA_NBM_PDS_S3",          # ruled 2026-08-28, NBM core via NOAA open data
+    "DWD_OPENDATA_ICON_EU",     # ruled 2026-08-28, ICON-EU deterministic
 )
 
 

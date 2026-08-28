@@ -98,6 +98,11 @@ NCEP_HRRR_POINT_SYSTEM_ID = "NCEP_HRRR_POINT"
 NCEP_HRRR_FAMILY_ID = "NCEP_HRRR"
 NCEP_NBM_POINT_SYSTEM_ID = "NCEP_NBM_POINT"
 NCEP_NBM_FAMILY_ID = "NCEP_NBM"
+# ICON-EU deterministic, same sweep and day.  Unlike MSM and the CONUS
+# pair it does NOT get its own family: it is the same ICON physics from
+# the same centre that already seats three EPS systems, and a second
+# family for one model's physics would let it spend two families' caps.
+DWD_ICON_EU_POINT_SYSTEM_ID = "DWD_ICON_EU_POINT"
 
 POINT_FORECAST_SYSTEMS = {
     JMA_MSM_POINT_SYSTEM_ID: {
@@ -149,6 +154,22 @@ POINT_FORECAST_SYSTEMS = {
             ),
             "publication_contract_version": (
                 "hourly_run_grid_idx_byte_range_v1"
+            ),
+        }),
+    },
+    DWD_ICON_EU_POINT_SYSTEM_ID: {
+        "ensemble_system_id": DWD_ICON_EU_POINT_SYSTEM_ID,
+        "canonical_name": "DWD ICON-EU 7km Deterministic Point",
+        "independence_family_id": "DWD_ICON_EPS",
+        "provider_id": "DWD",
+        "expected_member_count": 1,
+        "content_sha256": content_sha256({
+            "ensemble_system_id": DWD_ICON_EU_POINT_SYSTEM_ID,
+            "member_identity_contract_version": (
+                "dwd_icon_eu_surface_nearest_cell_v1"
+            ),
+            "publication_contract_version": (
+                "six_hourly_run_grid_whole_domain_no_history_v1"
             ),
         }),
     },

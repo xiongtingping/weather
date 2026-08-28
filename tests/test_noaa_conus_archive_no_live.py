@@ -121,3 +121,31 @@ def test_point_system_registration() -> None:
         # Strict hourly grids: init hour IS the cycle, so neither may sit
         # in the waiver set that skips that check.
         assert system_id not in POINT_FORECAST_SYSTEM_IDS
+
+
+def test_icon_eu_lane_arithmetic_and_registration() -> None:
+    import bayes_basket_target.dwd_icon_eu_point_archive as icon_eu
+    from pathlib import Path
+    from bayes_basket_target.official_native_forward_packet import (
+        POINT_FORECAST_SYSTEM_IDS, POINT_FORECAST_SYSTEMS,
+    )
+    run = datetime(2026, 8, 27, 12, tzinfo=timezone.utc)
+    hours = icon_eu.product_hours(run)
+    assert hours[:79] == list(range(0, 79))
+    assert hours[79:] == list(range(81, 121, 3))
+    # Whole-domain URL shape, cycle directory only (no date in the path:
+    # the archive keeps no history).
+    assert icon_eu.file_url(run, 7).endswith(
+        "/12/t_2m/icon-eu_europe_regular-lat-lon_single-level_"
+        "2026082712_007_T_2M.grib2.bz2"
+    )
+    registration = POINT_FORECAST_SYSTEMS[icon_eu.SYSTEM_ID]
+    assert registration["expected_member_count"] == 1
+    # Same physics, same centre, same family as the seated EPS systems --
+    # NOT a second family for one model's physics.
+    assert registration["independence_family_id"] == "DWD_ICON_EPS"
+    assert icon_eu.SYSTEM_ID not in POINT_FORECAST_SYSTEM_IDS
+    source = (
+        Path(icon_eu.__file__).resolve().parent / "ssot.py"
+    ).read_text(encoding="utf-8")
+    assert source.count(f"'{icon_eu.TRANSPORT_PROVIDER_ID}'") >= 2

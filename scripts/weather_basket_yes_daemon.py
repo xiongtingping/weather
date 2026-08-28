@@ -309,6 +309,16 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
         3600.0,
         1800.0,
     ),
+    # ICON-EU deterministic, run-scoped: one whole-domain download serves
+    # seven European stations and two event days.  Hourly against a
+    # six-hourly product because the DWD archive keeps no history -- a
+    # missed run is permanent, a wasted pass is two directory probes.
+    (
+        "capture_dwd_icon_eu_forward",
+        "scripts/capture_dwd_icon_eu_forward_sweep.sh",
+        3600.0,
+        1800.0,
+    ),
 )
 
 

@@ -210,10 +210,17 @@ def _bind_nearest(library: ctypes.CDLL) -> None:
         fn.restype = restype
 
 
-def decode_field(
+def nearest_point_kelvin(
     message: bytes, *, latitude: float, longitude: float,
-    run_init: datetime, forecast_hour: int, url: str,
-) -> ConusField:
+) -> tuple[float, float]:
+    """(kelvin, distance_km) of the grid cell nearest the point.
+
+    Grid-agnostic on purpose: eccodes' nearest search knows the
+    projection, so the same call serves the CONUS Lambert grids and the
+    ICON-EU regular grid alike.  Shared here rather than copied into each
+    lane -- a decode bug fixed in one lane must not survive in another.
+    """
+
     library = _eccodes()
     _bind_nearest(library)
     buffer = ctypes.create_string_buffer(message, len(message))
@@ -252,6 +259,16 @@ def decode_field(
             raise ContractError("noaa_conus_value_out_of_range")
     finally:
         library.codes_handle_delete(handle)
+    return kelvin, distance
+
+
+def decode_field(
+    message: bytes, *, latitude: float, longitude: float,
+    run_init: datetime, forecast_hour: int, url: str,
+) -> ConusField:
+    kelvin, distance = nearest_point_kelvin(
+        message, latitude=latitude, longitude=longitude
+    )
     return ConusField(
         run_init_utc=run_init.astimezone(timezone.utc)
         .isoformat().replace("+00:00", "Z"),
