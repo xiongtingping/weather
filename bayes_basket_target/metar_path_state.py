@@ -43,7 +43,15 @@ HOURLY_CURVE_PATH_MODEL_COEFFICIENT_KEYS = frozenset({
     "future_curve_slope_c_per_hour",
 })
 
-_TEMP_DEW = re.compile(r"(?<![A-Z0-9])(M?\d{2})/(M?\d{2}|XX)(?![A-Z0-9])")
+# ``XX`` and ``//`` are both ICAO spellings of "dewpoint not available", and
+# only the first was accepted.  One report in 866 -- OEJN 2026-08-18T01:00Z,
+# ``32/// Q1003`` -- used the slash form, and because the parser raises
+# rather than skipping, that single report took OEJN's whole trajectory
+# training packet down with it: the station stopped emitting artifacts after
+# 08-17 and sat at generation 1 while the rest of the fleet reached a median
+# of 73.  No other station has produced one, which is why it read as a
+# station-specific evidence gap rather than as a parser that could not spell.
+_TEMP_DEW = re.compile(r"(?<![A-Z0-9])(M?\d{2})/(M?\d{2}|XX|//)(?![A-Z0-9])")
 _WIND = re.compile(
     r"(?<![A-Z0-9])(?:\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?(KT|MPS)(?![A-Z0-9])"
 )
@@ -142,7 +150,7 @@ def parse_metar_physical_state(
         raise ContractError("metar_path_temperature_mismatch")
     dewpoint = (
         None
-        if temp_match.group(2) == "XX"
+        if temp_match.group(2) in {"XX", "//"}
         else _signed_temperature(temp_match.group(2))
     )
 
