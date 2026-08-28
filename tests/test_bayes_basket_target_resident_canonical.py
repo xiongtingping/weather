@@ -15,6 +15,7 @@ from bayes_basket_target.correction_review import (
 from weather_basket_yes_schema import (
     apply_weather_basket_yes_schema,
 )
+from bayes_basket_target.ssot import apply_target_ssot_schema
 
 
 def _source() -> sqlite3.Connection:
@@ -287,3 +288,112 @@ def test_resident_adapter_rejects_retired_amsc_registry_lane() -> None:
             event_date="2026-07-27",
             as_of_utc="2026-07-26T16:00:00Z",
         )
+
+
+def _revision_fact(
+    conn: sqlite3.Connection, *, station: str, observation_id: str,
+    revision_no: int, committed_at: str, sha: str,
+) -> None:
+    """One truth_observation_revision fact, keyed the way production keys it."""
+
+    import json
+    scope_key = (
+        f"{station}|{observation_id}|{revision_no}"
+        f"|2026-08-23T17:43:00.000Z|{committed_at}|proj"
+    )
+    conn.execute(
+        "INSERT INTO canonical_ssot_fact("
+        "fact_id,fact_type,scope_key,content_sha256,fact_json,"
+        "lineage_json,ingested_at_utc) VALUES(?,?,?,?,?,?,?)",
+        (
+            f"f-{station}-{observation_id}-{revision_no}",
+            "truth_observation_revision", scope_key, sha,
+            json.dumps({
+                "station_id": station,
+                "observation_id": observation_id,
+                "revision_no": revision_no,
+                "canonical_committed_at_utc": committed_at,
+            }),
+            "{}", "2026-08-23T18:00:00Z",
+        ),
+    )
+
+
+def test_revision_lookup_seeks_by_scope_key_and_still_filters_by_station(
+) -> None:
+    """The station range is an accelerator; the predicates still decide.
+
+    Pinned because the range was added for speed (136s of a 735s cycle
+    spent scanning every revision fact) and a range that quietly changed
+    the row set would corrupt P1's lineage rather than slow it down.  The
+    neighbour station's id shares this one's prefix on purpose: a bound
+    computed from the delimiter's successor over-includes it, and the
+    station equality is what keeps it out.
+    """
+
+    from bayes_basket_target.resident_canonical import (
+        attach_truth_observation_revisions,
+    )
+    conn = sqlite3.connect(":memory:")
+    # The fact table's ingress trigger calls this guard; the tests
+    # here are about the lookup's access path, not about ingress.
+    conn.create_function("canonical_ingress_authorized", 0, lambda: 1)
+    apply_target_ssot_schema(conn)
+    _revision_fact(conn, station="KLA", observation_id="rtobs_a",
+                   revision_no=1, committed_at="2026-08-23T17:44:00.000Z",
+                   sha="a" * 64)
+    # Same prefix, different station -- inside the byte range, outside the
+    # answer.
+    _revision_fact(conn, station="KLAX", observation_id="rtobs_a",
+                   revision_no=9, committed_at="2026-08-23T17:44:00.000Z",
+                   sha="b" * 64)
+    # A later revision of the same observation, after the decision clock.
+    _revision_fact(conn, station="KLA", observation_id="rtobs_a",
+                   revision_no=2, committed_at="2026-08-24T09:00:00.000Z",
+                   sha="c" * 64)
+    conn.commit()
+
+    observations = [{"observation_id": "rtobs_a"}]
+    early = attach_truth_observation_revisions(
+        conn, observations, station_id="KLA",
+        as_of_utc="2026-08-23T20:00:00Z",
+    )
+    assert early[0]["truth_observation_revision_content_sha256"] == "a" * 64
+    late = attach_truth_observation_revisions(
+        conn, observations, station_id="KLA",
+        as_of_utc="2026-08-25T00:00:00Z",
+    )
+    assert late[0]["truth_observation_revision_content_sha256"] == "c" * 64
+    # The neighbour resolves to its own fact, not the shorter station's.
+    neighbour = attach_truth_observation_revisions(
+        conn, observations, station_id="KLAX",
+        as_of_utc="2026-08-25T00:00:00Z",
+    )
+    assert neighbour[0]["truth_observation_revision_content_sha256"] == "b" * 64
+
+
+def test_revision_lookup_uses_the_scope_key_index() -> None:
+    """A plan that stops using the index is the regression, not a slow test.
+
+    Timing is not assertable on a two-row table; the access path is.
+    """
+
+    conn = sqlite3.connect(":memory:")
+    # The fact table's ingress trigger calls this guard; the tests
+    # here are about the lookup's access path, not about ingress.
+    conn.create_function("canonical_ingress_authorized", 0, lambda: 1)
+    apply_target_ssot_schema(conn)
+    _revision_fact(conn, station="KATL", observation_id="rtobs_a",
+                   revision_no=1, committed_at="2026-08-23T17:44:00.000Z",
+                   sha="d" * 64)
+    conn.commit()
+    plan = conn.execute(
+        "EXPLAIN QUERY PLAN "
+        "SELECT content_sha256 FROM canonical_ssot_fact "
+        "WHERE fact_type='truth_observation_revision' "
+        "  AND scope_key >= ? AND scope_key < ? "
+        "  AND json_extract(fact_json,'$.station_id')=?",
+        ("KATL|", "KATL}", "KATL"),
+    ).fetchall()
+    detail = " ".join(str(row[-1]) for row in plan)
+    assert "scope_key>" in detail.replace(" ", ""), detail
