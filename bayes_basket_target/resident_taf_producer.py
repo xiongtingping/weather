@@ -35,12 +35,13 @@ from .taf_revision import (
     TAF_NWP_LIVE_COMPATIBILITY_CONTRACT_VERSION,
     TafRevisionArtifact,
 )
+from .fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_resident_taf_producer_v1"
 INBOX_SCHEMA = "bayes_basket_target_taf_revision_inbox_v1"
-MAX_STATIONS = 45
-MAX_SOURCE_INBOXES = 45
+MAX_STATIONS = expected_station_count()
+MAX_SOURCE_INBOXES = expected_station_count()
 MAX_CAPTURES = 256
 MAX_SOURCE_INBOX_BYTES = 2 * 1024 * 1024
 MAX_ARTIFACT_BYTES = 1024 * 1024

@@ -24,6 +24,7 @@ from .model_system_coverage import (
     canonical_station_ids,
     make_coverage_row,
 )
+from .fleet import expected_station_count
 
 
 OFFICIAL_READINESS_SCHEMA = "dwd_icon_global_eps_official_readiness_v1"
@@ -205,7 +206,7 @@ def _validate_candidate_daily_archives(archives: Sequence[Mapping[str, Any]]) ->
             ) != EXPECTED_GLOBAL_MEMBER_COUNT
             or _nonnegative_int(
                 archive.get("station_count"), error="icon_eps_coverage_daily_archive_count_invalid"
-            ) != 45
+            ) != expected_station_count()
         ):
             raise ContractError("icon_eps_coverage_daily_archive_identity_invalid")
         authority = _mapping(
@@ -408,7 +409,7 @@ def render_icon_global_eps_terminal_matrix(matrix: Mapping[str, Any]) -> str:
     if matrix.get("schema") != MATRIX_SCHEMA:
         raise ContractError("icon_eps_coverage_matrix_schema_invalid")
     rows = matrix.get("rows")
-    if not isinstance(rows, list) or len(rows) != 45 * len(LEADS):
+    if not isinstance(rows, list) or len(rows) != expected_station_count() * len(LEADS):
         raise ContractError("icon_eps_coverage_matrix_rows_invalid")
     by_station: dict[str, dict[str, Mapping[str, Any]]] = {}
     for raw in rows:

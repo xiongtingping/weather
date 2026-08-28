@@ -31,6 +31,7 @@ from .contracts import (
     timestamp_lte,
     timestamp_lt,
 )
+from .fleet import expected_station_count
 
 
 SCHEMA = "native_ensemble_basket_binding_v1"
@@ -43,7 +44,7 @@ SCENARIO_ARTIFACT_SCHEMAS = frozenset({
 SCENARIO_CANDIDATE_SCHEMA = "native_ensemble_scenario_roles_station_v1"
 AUTHORITY_SCOPE = "PRODUCTION_NO_LIVE_CANDIDATE"
 STAGES = ("P1", "P0-M", "P0")
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 MAX_SNAPSHOTS = 3 * MAX_STATIONS
 MAX_ROLE_LINEAGE_PRODUCTS = 256
 ROLE_NAMES = ("M", "L", "H")

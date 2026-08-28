@@ -26,6 +26,7 @@ from .icon_eps_daily_curve import (
 from .icon_eps_native_arrival_index import INDEX_SCHEMA as ARRIVAL_INDEX_SCHEMA
 from .settlement_time import settlement_day_state
 from .station_registry import coordinate_registry_manifest
+from .fleet import expected_station_count
 
 
 TRAINING_FACT_SCHEMA = "dwd_icon_global_eps_official_training_fact_v1"
@@ -33,7 +34,7 @@ TRAINING_BATCH_SCHEMA = "dwd_icon_global_eps_official_training_fact_batch_v1"
 MODEL_ID = "ICON"
 GRID_UUID = "ae487d14fe2e11e4af85e50a2a56a360"
 GRID_CELL_COUNT = 737_280
-MAX_FACTS = 45
+MAX_FACTS = expected_station_count()
 MAX_LEADS = 64
 _ARCHIVE_STATE = "OFFICIAL_MEMBER_DAILY_CURVES_READY_STRICT_OOS_PENDING"
 _CLOSED_TRUTH_AUTHORITY_SCOPE = "FORMAL_NATIVE_ELIGIBLE"

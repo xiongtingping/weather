@@ -17,14 +17,15 @@ from typing import Any, Mapping, Sequence
 from .contracts import ContractError, content_sha256
 from .settlement_time import settlement_day_window
 from .taf_oos_contract import HISTORICAL_OOS_TEMPORAL_SCOPE
+from .fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_taf_p0m_exact_join_45station_audit_v1"
 EXACT_JOIN_SCHEMA = "taf_native_ensemble_strict_oos_exact_join_v1"
 P0_INBOX_SCHEMA = "bayes_basket_target_p0_inbox_v1"
 MIN_TAF_NATIVE_OOS_SAMPLE_N = 24
-MAX_STATIONS = 45
-MAX_EXACT_JOINS = 45
+MAX_STATIONS = expected_station_count()
+MAX_EXACT_JOINS = expected_station_count()
 MAX_SAMPLES_PER_JOIN = 366
 _HEX = frozenset("0123456789abcdef")
 _ALLOWED_TAF_SOURCE_CLASSES = frozenset({

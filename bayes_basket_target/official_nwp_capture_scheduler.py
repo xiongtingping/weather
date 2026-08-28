@@ -48,6 +48,7 @@ from .strict_asof_replay import (
     maturity_key_for_model_run,
     season_bin_for_event_date,
 )
+from .fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_official_nwp_capture_scheduler_v1"
@@ -148,7 +149,7 @@ SUPPORTED_LEAD_DAYS = tuple(range(0, MAX_RUN_AGE_DAYS + 1))
 # start until it closes), and one scope per supported lead.  Truncating below
 # that drops the longest-lead scopes, which are the only ones ready early
 # enough to give a not-yet-started day any P0 at all.
-MAX_DISCOVERED_SCOPES = 45 * 4 * len(SUPPORTED_LEAD_DAYS)
+MAX_DISCOVERED_SCOPES = expected_station_count() * 4 * len(SUPPORTED_LEAD_DAYS)
 MAX_SCOPES_PER_CYCLE = 4
 SETTLEMENT_DEFINITION = "official_daily_tmax_c"
 CANDIDATE_PREFETCH_SCHEMA = (

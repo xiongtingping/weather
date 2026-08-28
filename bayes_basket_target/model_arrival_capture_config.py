@@ -13,11 +13,12 @@ from .resource_bounds import (
     MIB,
     load_bounded_json,
 )
+from .fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_model_arrival_capture_v1"
 EXPECTED_SCOPE = "canonical_45_station"
-EXPECTED_STATION_COUNT = 45
+EXPECTED_STATION_COUNT = expected_station_count()
 EXPECTED_PROVIDERS = frozenset({
     "ecmwf_ifs025_official",
     "ecmwf_aifs025_official",

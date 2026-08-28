@@ -15,13 +15,14 @@ from .station_policy_forward_outcome_binding import (
     build_station_policy_utility_contract_pointer,
 )
 from .station_registry import coordinate_registry_manifest
+from .fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_pr14_strategy_terminal_bundle_v1"
 TERMINAL_BASIS_SCHEMA = "bayes_basket_target_pr14_strategy_station_terminal_basis_v1"
 TERMINAL_ROW_SCHEMA = "bayes_basket_target_pr14_strategy_station_terminal_v1"
 BUILDER_ID = "pr14.canonical_strategy_terminal_basis.v1"
-EXPECTED_STATION_COUNT = 45
+EXPECTED_STATION_COUNT = expected_station_count()
 
 
 class PR14StrategyBasisError(ContractError):

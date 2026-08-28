@@ -35,6 +35,7 @@ from .strict_asof_replay import (
     maturity_key_for_model_run,
     season_bin_for_event_date,
 )
+from .fleet import expected_station_count
 
 
 SCHEMA = "dwd_icon_global_eps_official_strict_oos_v1"
@@ -45,8 +46,8 @@ MODEL_ID = "ICON"
 INDEPENDENCE_FAMILY_ID = "DWD_ICON_EPS"
 MIN_TRAIN_DAYS = 20
 MIN_HOLDOUT_DAYS = 8
-MAX_FACTS = 45 * 366
-MAX_SCOPES = 45 * 4 * 4
+MAX_FACTS = expected_station_count() * 366
+MAX_SCOPES = expected_station_count() * 4 * 4
 _EPS = 1e-12
 
 

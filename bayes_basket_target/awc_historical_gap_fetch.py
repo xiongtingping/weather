@@ -43,6 +43,7 @@ from .resource_bounds import (
     write_bounded_json,
 )
 from .station_registry import coordinate_registry_manifest
+from .fleet import expected_station_count
 
 
 INVENTORY_SCHEMA = "awc_historical_truth_gap_inventory_v1"
@@ -56,7 +57,7 @@ USER_AGENT = "weather-pr02c-awc-history/1.0"
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 MAX_CUMULATIVE_RESPONSE_BYTES = 64 * 1024 * 1024
 MAX_QUERY_STATIONS = 8
-MAX_TARGETS = 45 * 32 * 25
+MAX_TARGETS = expected_station_count() * 32 * 25
 MAX_QUERY_COUNT = 4096
 MAX_TIMEOUT_SECONDS = 30
 MAX_BATCH_SECONDS = 15 * 60

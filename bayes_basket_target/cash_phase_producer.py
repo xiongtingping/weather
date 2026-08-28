@@ -24,12 +24,13 @@ from .contracts import ContractError, content_sha256
 from .et_history import assert_event_day_started
 from .cash_phase_oos import build_cash_phase_oos_scorecard
 from .resource_bounds import write_bounded_json_if_changed
+from .fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_cash_phase_producer_v1"
 INGRESS_SCHEMA = "bayes_basket_cash_phase_ingress_v1"
 AUTHORITY_SET_SCHEMA = "bayes_basket_target_cash_phase_authority_set_v1"
-MAX_AUTHORITY_STATIONS = 45
+MAX_AUTHORITY_STATIONS = expected_station_count()
 MAX_AUTHORITY_ROWS = 4096
 
 

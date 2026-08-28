@@ -15,11 +15,12 @@ import sqlite3
 from typing import Any, Mapping, Sequence
 
 from .contracts import ContractError, canonical_json, content_sha256
+from .fleet import expected_station_count
 
 
 SCHEMA = "calibration_station_global_awc_source_authority_v1"
 SOURCE_LANE = "AWC"
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 AUTHORITY_FIELDS = {
     "authority_id", "station_id", "source_lane", "authority_version",
     "activated_at_utc", "legacy_registry_content_sha256", "lineage_json",

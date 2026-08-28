@@ -19,6 +19,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .contracts import ContractError, content_sha256
+from .fleet import expected_station_count
 
 
 INDEX_SCHEMA = "dwd_icon_global_eps_immutable_native_arrival_index_v1"
@@ -133,7 +134,7 @@ def _cohort_entry(
         "product_id": PRODUCT_ID,
         "independence_family_id": FAMILY_ID,
         "member_count": 40,
-        "station_count": 45,
+        "station_count": expected_station_count(),
         "member_record_count": 1_800,
         "formal_p0_eligible": False,
         "native_arrival_index_eligible": False,
@@ -162,7 +163,7 @@ def _cohort_entry(
         "provider_published_at_utc": _stamp(published),
         "received_at_utc": _stamp(received),
         "member_count": 40,
-        "station_count": 45,
+        "station_count": expected_station_count(),
         "capture_mode": "prospective_native_http_receipt",
         "historical_arrival_time_observed": True,
     }
@@ -378,7 +379,7 @@ def validate_icon_eps_native_arrival_index(raw: Mapping[str, Any]) -> dict[str, 
             or published > received
             or _official_dwd_url(entry.get("source_url")) != str(entry.get("source_url"))
             or int(entry.get("member_count") or 0) != 40
-            or int(entry.get("station_count") or 0) != 45
+            or int(entry.get("station_count") or 0) != expected_station_count()
             or entry.get("capture_mode") != "prospective_native_http_receipt"
             or entry.get("historical_arrival_time_observed") is not True
         ):

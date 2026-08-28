@@ -28,6 +28,7 @@ from .canonical_ssot_schema import inspect_canonical_ssot_schema
 from .contracts import ContractError, content_sha256
 from .p0_forecast_snapshot import CanonicalP0ForecastSnapshotFact
 from .station_registry import coordinate_registry_manifest
+from .fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_pr13_p1_readiness_terminal_receipt_v4"
@@ -40,7 +41,7 @@ SEASON = "JJA"
 MATURITY = "D0"
 SETTLEMENT_DEFINITION = "official_daily_tmax_c"
 INTRADAY_BUCKETS = ("NIGHT", "MORNING", "AFTERNOON", "EVENING")
-EXPECTED_SCOPE_COUNT = 45 * len(INTRADAY_BUCKETS)
+EXPECTED_SCOPE_COUNT = expected_station_count() * len(INTRADAY_BUCKETS)
 
 
 class PR13P1BasisError(ContractError):
@@ -80,7 +81,7 @@ def _sha(value: object, label: str) -> str:
 def _scope_contract() -> dict[str, Any]:
     registry = coordinate_registry_manifest()
     stations = list(registry["station_ids"])
-    if len(stations) != 45 or stations != sorted(set(stations)):
+    if len(stations) != expected_station_count() or stations != sorted(set(stations)):
         raise PR13P1BasisError("pr13_registry_not_exact_45")
     identity = {
         "schema": SCOPE_CONTRACT_SCHEMA,

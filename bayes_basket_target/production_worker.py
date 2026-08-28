@@ -243,6 +243,7 @@ from .forward_observation_store import (
     read_forward_store_state,
     resolve_forward_store_path,
 )
+from .fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_production_worker_v2"
@@ -303,7 +304,7 @@ MAX_FORWARD_P0_STATIONS = 45
 #
 # 45 stations x three open event days is what the horizon prune below leaves
 # behind, and at the observed packet size that is ~13MiB with headroom.
-MAX_REPUBLISHER_INBOX_PACKETS = 45 * 3
+MAX_REPUBLISHER_INBOX_PACKETS = expected_station_count() * 3
 # Capture states that mean an official packet is on its way for this scope.
 #
 # The republisher is a fallback for scopes the official archives cannot serve,
@@ -12526,7 +12527,7 @@ class TargetProductionWorker:
                 additional_scopes: list[tuple[str, str]] = []
                 candidate_scopes = _candidate_ensemble_scopes_without_truth(
                     self.commit_conn,
-                    limit=45 * 4,
+                    limit=expected_station_count() * 4,
                 )
                 if candidate_scopes:
                     # Bootstrap truth directly from bounded forward member

@@ -30,6 +30,7 @@ from .awc_observation_contract import (
 from .canonical_ssot_schema import inspect_canonical_ssot_schema
 from .contracts import ContractError, content_sha256
 from .settlement_time import settlement_day_window
+from .fleet import expected_station_count
 
 
 SCHEMA = "deterministic_republisher_strict_oos_v2"
@@ -40,7 +41,7 @@ SOURCE_ROLE = "aggregator_republisher"
 TRANSPORT_PROVIDER_ID = "OPEN_METEO"
 MIN_TRAIN_DAYS = 20
 MIN_HOLDOUT_DAYS = 8
-MAX_CURVES = 45 * 366
+MAX_CURVES = expected_station_count() * 366
 
 
 def _utc(name: str, value: Any) -> datetime:

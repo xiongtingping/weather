@@ -23,6 +23,7 @@ from .model_product_identity import (
     REGISTRY_CONTENT_SHA256,
     REGISTRY_VERSION,
 )
+from .fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_pr06_aifs_single_historical_terminal_bundle_v1"
@@ -196,7 +197,7 @@ def _validate_decode(
         or raw.get("authority", {}).get("source_role") != "official_native"
         or raw.get("authority", {}).get("native_arrival_index_eligible") is not True
         or raw.get("authority", {}).get("formal_p0_eligible") is not False
-        or raw.get("checks", {}).get("canonical_station_count") != 45
+        or raw.get("checks", {}).get("canonical_station_count") != expected_station_count()
         or raw.get("checks", {}).get("all_station_curves_complete") is not True
     ):
         raise ContractError("pr06_aifs_terminal_decode_semantics_invalid")

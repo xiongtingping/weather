@@ -13,6 +13,7 @@ from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .contracts import ContractError, content_sha256
+from .fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_model_run_contract_v1"
@@ -23,7 +24,7 @@ PROVIDERS = (
     "icon_global_official",
 )
 ALLOWED_RUN_HOURS_UTC = frozenset({0, 6, 12, 18})
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 
 
 def _text(name: str, value: Any) -> str:

@@ -42,6 +42,7 @@ from .settlement_time import settlement_day_window
 from .source_policy import (
     source_policy_reason,
 )
+from .fleet import expected_station_count
 
 
 _MAX_TRANSMISSION_LEAD = timedelta(
@@ -53,7 +54,7 @@ CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1 = (
     "CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1"
 )
 SOURCE_ROLE = CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1
-MAX_TRUTH_SCOPES = 45
+MAX_TRUTH_SCOPES = expected_station_count()
 # A settlement day holds 24 routine hourly reports; everything above that is
 # SPECI, which a station issues as conditions demand rather than on a schedule.
 # 64 was below what an ordinary busy day produces at the stations that report

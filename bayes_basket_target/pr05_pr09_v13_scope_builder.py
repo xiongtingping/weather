@@ -19,6 +19,7 @@ from .model_product_identity import build_model_product_identity_receipt
 from .model_product_identity import REGISTRY_CONTENT_SHA256
 from .model_system_coverage import validate_coverage_matrix
 from .station_registry import coordinate_registry_manifest
+from .fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_pr05_pr09_v13_model_oos_scope_bundle_v1"
@@ -168,7 +169,7 @@ def build_pr05_pr09_v13_scope_bundle(
         raise PR05PR09V13ScopeError("pr05_pr09_v13_as_of_mismatch")
     registry = coordinate_registry_manifest()
     station_ids = list(registry["station_ids"])
-    if len(station_ids) != 45 or station_ids != sorted(set(station_ids)):
+    if len(station_ids) != expected_station_count() or station_ids != sorted(set(station_ids)):
         raise PR05PR09V13ScopeError("pr05_pr09_v13_registry_not_exact_45")
 
     matrix_sha = _sha(matrix["content_sha256"], "coverage_matrix_content_sha256")

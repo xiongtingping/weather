@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from .contracts import ContractError, content_sha256
 from .station_source_authority import validate_global_awc_source_authority
+from .fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_pr12_authority_scope_projection_v1"
@@ -91,7 +92,7 @@ def build_pr12_authority_scope_projection(
 
     receipts = _doctrine_receipts(doctrine_paths)
     stations = sorted(station_registry)
-    if len(stations) != 45 or set(stations) != set(station_source_authorities):
+    if len(stations) != expected_station_count() or set(stations) != set(station_source_authorities):
         raise ContractError("pr12_authority_projection_45station_scope_required")
     if set(stations) != set(station_settlement_timezones):
         raise ContractError("pr12_authority_projection_timezone_scope_required")
@@ -192,8 +193,8 @@ def validate_pr12_authority_scope_projection(raw: Mapping[str, Any]) -> dict[str
         raise ContractError("pr12_authority_projection_doctrine_receipts_invalid")
     rows = value.get("rows")
     if (
-        not isinstance(rows, list) or len(rows) != 45
-        or value.get("station_count") != 45
+        not isinstance(rows, list) or len(rows) != expected_station_count()
+        or value.get("station_count") != expected_station_count()
         or value.get("station_authority_rowset_sha256") != content_sha256(rows)
     ):
         raise ContractError("pr12_authority_projection_45station_scope_required")

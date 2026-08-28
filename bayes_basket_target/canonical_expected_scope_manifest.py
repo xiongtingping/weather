@@ -37,6 +37,7 @@ from .contracts import ContractError, ProbabilityEnvelope, content_sha256
 from .model_system_coverage import validate_coverage_matrix
 from .republisher_no_live_p0_contract import CanonicalP0SnapshotFact
 from .station_registry import coordinate_registry_manifest
+from .fleet import expected_station_count
 
 
 EXPECTED_SCOPE_BASIS_SCHEMA = (
@@ -82,7 +83,7 @@ def _sha(value: object, field: str) -> str:
 
 def _canonical_stations() -> tuple[str, ...]:
     stations = tuple(coordinate_registry_manifest()["station_ids"])
-    if len(stations) != 45 or stations != tuple(sorted(set(stations))):
+    if len(stations) != expected_station_count() or stations != tuple(sorted(set(stations))):
         raise CanonicalExpectedScopeError("expected_scope_registry_not_exact_45")
     return stations
 

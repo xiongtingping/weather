@@ -7,6 +7,7 @@ from typing import Any, Mapping, Sequence
 
 from .contracts import ContractError, content_sha256
 from .resource_bounds import load_bounded_json, write_bounded_json_if_changed
+from .fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_nwp_rotation_state_v1"
@@ -18,7 +19,7 @@ SCHEMA = "bayes_basket_target_nwp_rotation_state_v1"
 # arithmetic is spelled out rather than a bare number.  The previous 135 was
 # "45 x 3 event days" from when a station-day was one scope; leaving it there
 # made every rotation write fail closed the moment leads entered the key.
-MAX_CATALOG_SCOPES = 45 * 4 * 3
+MAX_CATALOG_SCOPES = expected_station_count() * 4 * 3
 MAX_SELECTED_SCOPES = 4
 MAX_BYTES = 1024 * 1024
 

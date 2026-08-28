@@ -10,6 +10,7 @@ from typing import Any, Mapping
 
 from .contracts import ContractError, canonical_json, content_sha256
 from .station_registry import coordinate_registry_manifest
+from .fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_45station_expansion_gate_v1"
@@ -180,14 +181,14 @@ def evaluate_45station_no_live_expansion(
     blockers: list[str] = []
     settlement_scorecard_blockers: list[str] = []
     if (
-        len(manifests) != 45
-        or len(set(manifest_stations)) != 45
+        len(manifests) != expected_station_count()
+        or len(set(manifest_stations)) != expected_station_count()
         or manifest_stations != expected_stations
     ):
         blockers.append("canonical_45station_authority_manifest_incomplete")
     if (
-        len(cash_policies) != 45
-        or len(set(policy_stations)) != 45
+        len(cash_policies) != expected_station_count()
+        or len(set(policy_stations)) != expected_station_count()
         or policy_stations != expected_stations
     ):
         blockers.append("canonical_45station_cash_policy_incomplete")

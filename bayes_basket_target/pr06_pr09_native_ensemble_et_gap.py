@@ -23,6 +23,7 @@ from .model_product_identity import (
 from .truth_authority_supersession import (
     CanonicalTruthAuthoritySupersessionContract,
 )
+from .fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_pr06_pr09_native_ensemble_et_gap_bundle_v1"
@@ -188,7 +189,7 @@ def build_native_ensemble_et_gap_bundle(
             or product["source_class"] != "native_official"
             or packet.get("ensemble_system_id") != spec["ensemble_system_id"]
             or packet.get("run_cycle") != spec["run_cycle"]
-            or int(packet.get("station_count") or -1) != 45
+            or int(packet.get("station_count") or -1) != expected_station_count()
             or packet.get("training_only") is not True
             or packet.get("calls_order_gateway") is not False
             or packet.get("live_submit_authorized") is not False
@@ -196,7 +197,7 @@ def build_native_ensemble_et_gap_bundle(
         ):
             raise ContractError("native_ensemble_et_packet_semantics_invalid")
         captures = packet.get("captures")
-        if not isinstance(captures, list) or len(captures) != 45:
+        if not isinstance(captures, list) or len(captures) != expected_station_count():
             raise ContractError("native_ensemble_et_packet_exact45_required")
         seen: set[str] = set()
         for capture in captures:

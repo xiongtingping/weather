@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from .canonical_contract import CONTRACT_VERSION, SCHEMA
 from .contracts import ContractError, content_sha256
 from .model_system_coverage import canonical_station_ids
+from .fleet import expected_station_count
 
 
 ADAPTER_SCHEMA = "retained_native_ensemble_canonical_candidate_adapter_v1"
@@ -260,9 +261,9 @@ def adapt_retained_packet_to_canonical_candidates(
         packet.get("event_date"), "retained_member_packet_event_date_missing"
     )
     captures = packet.get("captures")
-    if not isinstance(captures, list) or len(captures) != 45:
+    if not isinstance(captures, list) or len(captures) != expected_station_count():
         raise ContractError("retained_member_packet_exact45_required")
-    if int(packet.get("station_count") or -1) != 45:
+    if int(packet.get("station_count") or -1) != expected_station_count():
         raise ContractError("retained_member_packet_station_count_invalid")
 
     facts: list[dict[str, Any]] = []
@@ -405,7 +406,7 @@ def adapt_retained_packet_to_canonical_candidates(
             facts.append({**identity, "content_sha256": content_sha256(identity)})
     if tuple(sorted(stations)) != canonical_station_ids():
         raise ContractError("retained_member_packet_station_set_invalid")
-    if len(used_legacy_keys) != 45 * spec.expected_member_count:
+    if len(used_legacy_keys) != expected_station_count() * spec.expected_member_count:
         raise ContractError("retained_member_packet_member_coverage_invalid")
     contract_identity = {
         "schema": SCHEMA,

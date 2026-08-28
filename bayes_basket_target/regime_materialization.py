@@ -14,9 +14,10 @@ from .regime_artifact import (
     resolve_regime_artifact,
 )
 from .stages import STAGE_PRECEDENCE, select_current_stage
+from .fleet import expected_station_count
 
 
-MAX_RESIDENT_REGIME_STATIONS = 45
+MAX_RESIDENT_REGIME_STATIONS = expected_station_count()
 MAX_RESIDENT_PROBABILITY_ENVELOPES = 512
 
 

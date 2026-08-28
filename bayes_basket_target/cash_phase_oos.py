@@ -23,6 +23,7 @@ from .cash_phase import (
     evaluate_cash_phase,
 )
 from .contracts import ContractError, content_sha256
+from .fleet import expected_station_count
 
 
 # Keep the governed promotion schema stable; the richer attribution is an
@@ -32,7 +33,7 @@ EVIDENCE_BUNDLE_SCHEMA = "bayes_basket_target_cash_phase_oos_evidence_v1"
 PROMOTION_DECISION_SCHEMA = "bayes_basket_target_cash_phase_promotion_decision_candidate_v1"
 WINDOWS_DAYS = (3, 7, 15, 30)
 MAX_ROWS = 4096
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 MAX_REGISTRY_ROWS = 4096
 MAX_FAULT_CASES = 256
 DEFAULT_MIN_UNIQUE_EVENTS_PER_PHASE = 30

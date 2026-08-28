@@ -12,10 +12,11 @@ from typing import Any, Mapping, Sequence
 
 from .contracts import ContractError, content_sha256
 from .taf_revision import TafRevisionArtifact
+from .fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_taf_revision_artifact_registry_v1"
-MAX_ARTIFACTS = 45
+MAX_ARTIFACTS = expected_station_count()
 
 
 def _scope_key(artifact: TafRevisionArtifact) -> tuple[str, str, str, str, str]:

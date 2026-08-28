@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .contracts import ContractError, content_sha256
 from .station_registry import coordinate_registry_manifest
+from .fleet import expected_station_count
 
 
 SCHEMA = "dwd_icon_global_eps_official_daily_members_v1"
@@ -61,10 +62,10 @@ def _verified_cohort(raw: Mapping[str, Any]) -> dict[str, Any]:
         != "OFFICIAL_40_MEMBER_45_STATION_DECODED_CANDIDATE_ONLY"
         or cohort.get("content_sha256") != content_sha256(identity)
         or cohort.get("member_count") != len(EXPECTED_MEMBERS)
-        or cohort.get("station_count") != 45
-        or cohort.get("member_record_count") != 45 * len(EXPECTED_MEMBERS)
+        or cohort.get("station_count") != expected_station_count()
+        or cohort.get("member_record_count") != expected_station_count() * len(EXPECTED_MEMBERS)
         or not isinstance(records, list)
-        or len(records) != 45 * len(EXPECTED_MEMBERS)
+        or len(records) != expected_station_count() * len(EXPECTED_MEMBERS)
         or not isinstance(lineage, Mapping)
         or lineage.get("source_role") != "official_native"
         or lineage.get("transport_provider_id") != "DWD"

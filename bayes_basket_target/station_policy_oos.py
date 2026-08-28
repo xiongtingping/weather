@@ -24,12 +24,13 @@ from .station_policy_artifact import (
     StationPolicyScope,
     build_promotion_decision,
 )
+from .fleet import expected_station_count
 
 
 SCHEMA = "station_policy_oos_evidence_v1"
 DEFAULT_LIMITS = {
     "max_rows": 100_000,
-    "max_stations": 45,
+    "max_stations": expected_station_count(),
     "min_station_sample_n": 4,
     "min_window_n_eff": 2.0,
     "min_cross_seasons": 4,

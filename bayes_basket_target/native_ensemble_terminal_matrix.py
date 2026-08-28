@@ -19,6 +19,7 @@ from .model_system_coverage import (
     build_coverage_matrix,
     make_coverage_row,
 )
+from .fleet import expected_station_count
 
 
 AUDIT_SCHEMA = "native_ensemble_forward_oos_manifest_v1"
@@ -100,7 +101,7 @@ def _audit_reports(
 ) -> tuple[dict[str, Mapping[str, Any]], str]:
     if not isinstance(audit, Mapping) or audit.get("schema") != AUDIT_SCHEMA:
         raise ContractError("pr08_pr09_audit_schema_invalid")
-    if _count(audit.get("station_count"), "pr08_pr09_audit_station_count_invalid") != 45:
+    if _count(audit.get("station_count"), "pr08_pr09_audit_station_count_invalid") != expected_station_count():
         raise ContractError("pr08_pr09_audit_exact_45_required")
     if _count(audit.get("min_train_days"), "pr08_pr09_audit_train_threshold_invalid") != REQUIRED_TRAIN_COUNT:
         raise ContractError("pr08_pr09_audit_train_threshold_invalid")
@@ -121,7 +122,7 @@ def _audit_reports(
         raise ContractError("pr08_pr09_audit_after_compiled_at")
 
     reports = audit.get("reports")
-    if not isinstance(reports, list) or len(reports) != 45:
+    if not isinstance(reports, list) or len(reports) != expected_station_count():
         raise ContractError("pr08_pr09_audit_reports_exact_45_required")
     expected = canonical_station_ids()
     by_station: dict[str, Mapping[str, Any]] = {}

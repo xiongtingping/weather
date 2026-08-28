@@ -15,6 +15,7 @@ from typing import Any, Mapping
 from .contracts import ContractError, content_sha256
 from .model_product_identity import PRODUCT_BY_ID, REGISTRY_CONTENT_SHA256
 from .resource_bounds import load_bounded_json
+from .fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_pr05_pr09_icon_legacy_terminal_bundle_v1"
@@ -92,7 +93,7 @@ def build_icon_legacy_terminal_bundle(
         if row.get("product_id") == "ICON" and row.get("lead_bucket") == "d0"
     }
     product = PRODUCT_BY_ID["ICON"]
-    if len(expected) != 45 or any(
+    if len(expected) != expected_station_count() or any(
         row.get("provider_id") != product["provider_id"]
         or row.get("provider_product_id") != product["provider_product_id"]
         for row in expected.values()

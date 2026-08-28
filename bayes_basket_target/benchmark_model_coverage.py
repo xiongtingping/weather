@@ -16,6 +16,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from .canonical_ssot_schema import inspect_canonical_ssot_schema
 from .contracts import ContractError, content_sha256
 from .model_system_coverage import LEADS, canonical_station_ids, make_coverage_row
+from .fleet import expected_station_count
 
 
 GLOBAL_DETERMINISTIC_PRODUCTS = ("CMA", "ECMWF", "GEM", "GFS", "ICON")
@@ -87,7 +88,7 @@ def _station_statuses(receipt: Mapping[str, Any]) -> dict[str, Mapping[str, Any]
     if not isinstance(values, list):
         raise ContractError("benchmark_coverage_d1_statuses_missing")
     result = {str(item.get("station_id") or "").upper(): item for item in values if isinstance(item, Mapping)}
-    if set(result) != set(canonical_station_ids()) or len(values) != 45:
+    if set(result) != set(canonical_station_ids()) or len(values) != expected_station_count():
         raise ContractError("benchmark_coverage_d1_statuses_not_exact_45")
     return result
 

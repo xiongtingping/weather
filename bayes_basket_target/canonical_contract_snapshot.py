@@ -19,6 +19,7 @@ from .canonical_ssot_schema import inspect_canonical_ssot_schema
 from .contracts import content_sha256
 from .resource_bounds import assert_process_memory_budget, assert_target_db_capacity
 from .resource_bounds import load_bounded_json
+from .fleet import expected_station_count
 
 
 class CanonicalContractSnapshotError(ValueError):
@@ -226,7 +227,7 @@ def rebind_truth_gap_evidence(
         (fact.station_id, fact.event_date) for fact in contract.truth_facts
     }
     stations = source.get("stations")
-    if not isinstance(stations, list) or len(stations) != 45:
+    if not isinstance(stations, list) or len(stations) != expected_station_count():
         raise CanonicalContractSnapshotError("truth_gap_rebind_station_scope_invalid")
     receipt_pairs: set[tuple[str, str]] = set()
     station_ids: list[str] = []

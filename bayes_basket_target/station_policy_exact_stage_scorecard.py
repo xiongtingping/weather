@@ -32,6 +32,7 @@ from .station_policy_forward_outcome_binding import (
     validate_historical_station_policy_utility_binding,
 )
 from .settlement_time import settlement_day_window
+from .fleet import expected_station_count
 
 
 SCHEMA = "station_policy_exact_stage_scorecard_v1"
@@ -1115,7 +1116,7 @@ def _load_bundle(path: Path, stage: str) -> dict[str, Any]:
     assert_candidate_bundle_boundary(raw)
     if raw.get("scope", {}).get("stage") != stage:
         raise ContractError("station_policy_scorecard_bundle_stage_mismatch")
-    if int(raw.get("station_count", 0)) != 45 or int(raw.get("artifact_count", 0)) != 135:
+    if int(raw.get("station_count", 0)) != expected_station_count() or int(raw.get("artifact_count", 0)) != 135:
         raise ContractError("station_policy_scorecard_bundle_exact_45x3_required")
     return dict(raw)
 
@@ -1148,7 +1149,7 @@ def _family_gap_report(
         "state": "METRIC_CONTRACT_DEFINED_UNBOUND",
         "metric_contract_status": METRIC_CONTRACT_STATE,
         "row_count": 0,
-        "report_count": 45,
+        "report_count": expected_station_count(),
         "station_count_with_scores": 0,
         "strict_oos": {"complete": False, "sample_count": 0},
         "leave_one_station_out": {"complete": False, "sample_count": 0},
@@ -1243,7 +1244,7 @@ def build_exact_stage_scorecard(
 
     as_of = _utc_text(as_of_utc, "as_of")
     expected = tuple(sorted({str(station).strip().upper() for station in station_ids if str(station).strip()}))
-    if len(expected) != 45:
+    if len(expected) != expected_station_count():
         raise ContractError("station_policy_scorecard_exact_45_station_scope_required")
     if set(bundle_paths) != set(STAGES):
         raise ContractError("station_policy_scorecard_all_exact_stages_required")

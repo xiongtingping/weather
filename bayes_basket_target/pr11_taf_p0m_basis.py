@@ -26,6 +26,7 @@ from .p0_activation_root import CanonicalP0ActivationRootContract
 from .p0_calibrated_distribution import CanonicalP0CalibratedDistributionContract
 from .resource_bounds import MAX_JSON_INPUT_BYTES, load_bounded_json
 from .station_registry import coordinate_registry_manifest
+from .fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_pr11_taf_p0m_terminal_bundle_v2"
@@ -45,7 +46,7 @@ REQUIRED_ARTIFACT_KEY_FIELDS = (
     "run_cycle",
 )
 UNPROVEN_ARTIFACT_KEY_FIELDS = REQUIRED_ARTIFACT_KEY_FIELDS[1:]
-EXPECTED_STATION_COUNT = 45
+EXPECTED_STATION_COUNT = expected_station_count()
 LEGACY_GAP_EVIDENCE_SCHEMA = (
     "bayes_basket_target_taf_p0m_exact_join_45station_audit_v1"
 )

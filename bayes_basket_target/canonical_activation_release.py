@@ -41,6 +41,7 @@ from .resource_bounds import (
     bounded_json_bytes,
     load_bounded_json,
 )
+from .fleet import expected_station_count
 
 
 LEDGER_SCHEMA = "bayes_basket_target_canonical_gap_ledger_v2"
@@ -173,7 +174,7 @@ def load_expected_scope_manifest(
     stations = [str(item).strip().upper() for item in value.get("station_ids", ())]
     expected_stations = [str(item).strip().upper() for item in canonical_station_ids]
     if (
-        len(expected_stations) != 45
+        len(expected_stations) != expected_station_count()
         or expected_stations != sorted(set(expected_stations))
         or stations != expected_stations
     ):
@@ -386,7 +387,7 @@ def load_expected_scope_manifest(
         "content_sha256": supplied,
         "as_of_utc": cutoff,
         "canonical_registry_sha256": registry_sha,
-        "station_count": 45,
+        "station_count": expected_station_count(),
     }
     return {
         **dict(value),
@@ -561,8 +562,8 @@ def load_inner_snapshot(path: Path | str) -> dict[str, Any]:
     stations = value.get("canonical_station_ids")
     exact_stations = (
         isinstance(stations, list)
-        and len(stations) == 45
-        and len(set(stations)) == 45
+        and len(stations) == expected_station_count()
+        and len(set(stations)) == expected_station_count()
         and stations == sorted(stations)
         and all(isinstance(item, str) and item and item == item.upper() for item in stations)
     )
@@ -587,7 +588,7 @@ def load_inner_snapshot(path: Path | str) -> dict[str, Any]:
     boundary_valid = all(
         (
             value.get("schema") == INNER_SCHEMA,
-            value.get("canonical_station_count") == 45,
+            value.get("canonical_station_count") == expected_station_count(),
             exact_stations,
             value.get("read_only") is True,
             value.get("production_no_live") is True,
@@ -654,13 +655,13 @@ def load_truth_gap_evidence(
         raise CanonicalActivationReleaseError("truth_gap_evidence_boundary_invalid")
     expected_stations = list(canonical_station_ids)
     if (
-        len(expected_stations) != 45
+        len(expected_stations) != expected_station_count()
         or expected_stations != sorted(expected_stations)
-        or len(set(expected_stations)) != 45
+        or len(set(expected_stations)) != expected_station_count()
     ):
         raise CanonicalActivationReleaseError("truth_gap_evidence_station_authority_invalid")
     stations = value.get("stations")
-    if not isinstance(stations, list) or value.get("station_count") != 45:
+    if not isinstance(stations, list) or value.get("station_count") != expected_station_count():
         raise CanonicalActivationReleaseError("truth_gap_evidence_station_count_invalid")
     allowed_blockers = {DATA_MISSING, OOS_SAMPLE_SHORT}
     normalized: dict[str, dict[str, Any]] = {}
@@ -734,7 +735,7 @@ def load_truth_gap_evidence(
         "as_of_utc": evidence_as_of,
         "builder_id": str(value.get("builder_id") or ""),
         "canonical_contract_content_sha256": canonical_contract_sha,
-        "station_count": 45,
+        "station_count": expected_station_count(),
         "truth_fact_count": total_truths,
         "complete_station_count": value.get("complete_station_count"),
         "blocked_station_count": value.get("blocked_station_count"),

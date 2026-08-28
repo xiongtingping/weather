@@ -15,6 +15,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from .canonical_contract import TYPED_SCOPE_BLOCKERS
 from .contracts import ContractError, content_sha256
 from .station_registry import coordinate_registry_manifest
+from .fleet import expected_station_count
 
 
 ROW_SCHEMA = "bayes_basket_target_model_system_coverage_row_v1"
@@ -127,7 +128,7 @@ def _boolean(value: Any, code: str) -> bool:
 def canonical_station_ids() -> tuple[str, ...]:
     manifest = coordinate_registry_manifest()
     stations = tuple(str(value).upper() for value in manifest["station_ids"])
-    if len(stations) != 45 or len(set(stations)) != 45:
+    if len(stations) != expected_station_count() or len(set(stations)) != expected_station_count():
         raise ContractError("model_coverage_station_registry_not_exact_45")
     return stations
 
@@ -334,10 +335,10 @@ def build_coverage_matrix(
         "schema": MATRIX_SCHEMA,
         "as_of_utc": canonical_as_of,
         "station_registry_sha256": coordinate_registry_manifest()["registry_sha256"],
-        "station_count": 45,
+        "station_count": expected_station_count(),
         "lead_buckets": list(LEADS),
         "product_ids": list(expected_products),
-        "expected_scope_count": 45 * len(LEADS) * len(expected_products),
+        "expected_scope_count": expected_station_count() * len(LEADS) * len(expected_products),
         "scope_count": len(ordered),
         "state_counts": state_counts,
         "cross_selection_count": 0,
