@@ -465,3 +465,58 @@ def test_additive_schema_migration_preserves_existing_observations() -> None:
     assert conn.execute(
         "SELECT COUNT(*) FROM reported_trajectory_station_halt_reviews"
     ).fetchone()[0] == 0
+
+
+def test_unflagged_same_slot_disagreement_can_reach_the_review_gate() -> None:
+    """A measured same-slot disagreement is correction evidence by itself.
+
+    Pinned by VILK 2026-08-28 01:00Z: a complete re-issue with a different
+    temperature and no COR marker, so the upstream flag stayed 0 on both
+    rows.  The trajectory reader fail-closed on the conflict every cycle,
+    while this gate refused the only tool that could resolve it -- the
+    review had to be written after a hand UPDATE of the flag, which must
+    never be the process.  The gate's intent is "a genuine correction
+    suspicion must exist", and two temperatures in one slot is that
+    suspicion in its strongest form.
+    """
+
+    conn = _db()
+    _hourly_observation(
+        conn, observation_id="obs-first", temperature_c=26, correction=0
+    )
+    _hourly_observation(
+        conn, observation_id="obs-reissue", temperature_c=27, correction=0
+    )
+    review = append_correction_review(
+        conn,
+        source_lane="awc",
+        station_id="RKPK",
+        event_date="2026-07-28",
+        triggering_observation_id="obs-reissue",
+        decision=QUARANTINE_STATION_DAY,
+        reviewer="test.reviewer",
+        rationale="same-slot disagreement, quarantined",
+        reviewed_at="2026-07-28T04:00:00Z",
+    )
+    assert review["state"] == "committed"
+
+
+def test_unflagged_observation_without_conflict_still_refused() -> None:
+    """The widened gate admits measured disagreement, not everything."""
+
+    conn = _db()
+    _hourly_observation(
+        conn, observation_id="obs-lone", temperature_c=26, correction=0
+    )
+    with pytest.raises(ContractError, match="scope_invalid"):
+        append_correction_review(
+            conn,
+            source_lane="awc",
+            station_id="RKPK",
+            event_date="2026-07-28",
+            triggering_observation_id="obs-lone",
+            decision=QUARANTINE_STATION_DAY,
+            reviewer="test.reviewer",
+            rationale="no conflict, no flag -- must be refused",
+            reviewed_at="2026-07-28T04:00:00Z",
+        )

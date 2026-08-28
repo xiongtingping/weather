@@ -156,14 +156,28 @@ def _fetch_corrections(
     as_of_utc: str,
 ) -> list[dict[str, Any]]:
     try:
+        # Two candidate shapes, unioned.  The upstream flag catches explicit
+        # COR/RTD markers; the second arm catches the implicit correction the
+        # flag misses -- a complete re-issue of the same slot with a
+        # different temperature and no marker (VILK 2026-08-28 01:00Z, 26C
+        # then 27C).  Those blocked P1 every cycle while never appearing in
+        # any review packet, because every discovery path keyed on the flag.
         cursor = conn.execute(
             "SELECT observation_id,source_lane,station_id,report_type,valid_at,"
             "reported_temperature_c,raw_sha256,raw_text,canonical_committed_at "
-            "FROM reported_trajectory_observations "
-            "WHERE lower(source_lane)=? AND correction_suspected=1 "
-            "AND julianday(valid_at)>=julianday(?) AND julianday(valid_at)<julianday(?) "
-            "AND julianday(canonical_committed_at)<=julianday(?) "
-            "ORDER BY station_id,valid_at,report_type,canonical_committed_at,observation_id "
+            "FROM reported_trajectory_observations AS o "
+            "WHERE lower(o.source_lane)=? "
+            "AND (o.correction_suspected=1 OR EXISTS ("
+            "  SELECT 1 FROM reported_trajectory_observations AS p "
+            "  WHERE p.source_lane=o.source_lane AND p.station_id=o.station_id "
+            "  AND p.valid_at=o.valid_at AND p.report_type=o.report_type "
+            "  AND p.observation_id<>o.observation_id "
+            "  AND p.reported_temperature_c IS NOT NULL "
+            "  AND o.reported_temperature_c IS NOT NULL "
+            "  AND p.reported_temperature_c<>o.reported_temperature_c)) "
+            "AND julianday(o.valid_at)>=julianday(?) AND julianday(o.valid_at)<julianday(?) "
+            "AND julianday(o.canonical_committed_at)<=julianday(?) "
+            "ORDER BY o.station_id,o.valid_at,o.report_type,o.canonical_committed_at,o.observation_id "
             "LIMIT ?",
             (SOURCE_LANE, start_utc, end_utc, as_of_utc, MAX_CORRECTIONS + 1),
         )

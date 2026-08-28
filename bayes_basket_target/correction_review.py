@@ -187,9 +187,31 @@ def append_correction_review(
     if (
         str(observation[0]).lower() != lane
         or str(observation[1]).upper() != station
-        or int(observation[5] or 0) != 1
     ):
         raise ContractError("correction_review_observation_scope_invalid")
+    if int(observation[5] or 0) != 1:
+        # The upstream flag is one form of correction evidence; a second
+        # report in the same slot with a different temperature is another,
+        # and the stronger one.  VILK 2026-08-28 01:00Z carried a complete
+        # re-issue (26C then 27C, no COR marker -- publishers do this) and
+        # the trajectory reader fail-closed on the conflict every cycle,
+        # while this gate refused the only tool that could resolve it
+        # because the owner-controlled ingest had not flagged the row.
+        # The gate's intent is "a genuine correction suspicion must
+        # exist", not "the upstream flag must exist"; a measured same-slot
+        # disagreement satisfies the intent directly.
+        conflicting = conn.execute(
+            "SELECT 1 FROM reported_trajectory_observations "
+            "WHERE source_lane=? AND station_id=? AND valid_at=? "
+            "AND observation_id<>? AND reported_temperature_c IS NOT NULL "
+            "AND reported_temperature_c<>? LIMIT 1",
+            (
+                lane, station, str(observation[2]), observation_id,
+                observation[6],
+            ),
+        ).fetchone()
+        if conflicting is None:
+            raise ContractError("correction_review_observation_scope_invalid")
     valid_at = _instant("correction_review_observation_valid_at", observation[2])
     registry_rows = conn.execute(
         "SELECT DISTINCT settlement_timezone,source_lane "
