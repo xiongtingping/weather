@@ -52,11 +52,18 @@ EXTRACTION_VERSION = "jma_msm_surface_nearest_cell_v1"
 SETTLEMENT_DEFINITION = "official_daily_tmax_c"
 MEMBER_ID = "MSM_CONTROL"
 MEMBER_ROLE = "CONTROL"
-# The station this source was admitted for, and only it.  Widening the list
-# is a ruling: the other twenty-five candidate pairs were measured and
-# refused, and eleven of them were refused at this very model.
+# Widened by ruling on 2026-08-28, from the 46-pair sweep: all four MSM
+# pairs beat the served morning read on argmax (RKPK 32%-vs-14% with ±1 at
+# 82-vs-50), and RCSS/RJTT/RKPK cleared all three admission gates.  RKSI
+# missed the NLL gate on this window and is captured anyway: the corpus is
+# what future gates re-ask, and a station that stops being captured can
+# never earn the seat back.  Seats themselves are still raced -- capture
+# admits evidence, never authority.
 STATIONS = (
     ("RCSS", 25.0697, 121.5525, "Asia/Taipei"),
+    ("RJTT", 35.553, 139.781, "Asia/Tokyo"),
+    ("RKPK", 35.179, 128.938, "Asia/Seoul"),
+    ("RKSI", 37.469, 126.451, "Asia/Seoul"),
 )
 # MSM publishes eight runs a day; these two align with the fleet's six-hourly
 # ladder, so a scope formed here has peers to pair with rather than sitting
@@ -182,9 +189,20 @@ def main() -> int:
             for offset in range(-BACKFILL_DAYS, LOOKAHEAD_DAYS + 1):
                 target = (now.astimezone(zone).date()
                           + timedelta(days=offset))
-                day_start = datetime.combine(
+                day_start_local = datetime.combine(
                     target, datetime.min.time(), tzinfo=zone
-                ).astimezone(timezone.utc)
+                )
+                day_start = day_start_local.astimezone(timezone.utc)
+                # The zone's signed offset, read BEFORE the conversion to
+                # UTC zeroes it.  The original expression took utcoffset()
+                # of the converted instant -- always zero -- and negated
+                # it, so every capture used the UTC day's hours: near
+                # harmless for a daily maximum (the afternoon sits inside
+                # both windows) but the wrong window, found while building
+                # the CONUS lane against stations seven hours west.
+                offset_hours = int(
+                    day_start_local.utcoffset().total_seconds() // 3600
+                )
                 held = _rows_for_day(conn, station, target.isoformat())
                 for hour in RUN_CYCLES:
                     for back in (1, 2):
@@ -221,10 +239,7 @@ def main() -> int:
                         try:
                             captured = fetch_day_maximum(
                                 run_init=run, event_date=target,
-                                utc_offset_hours=int(
-                                    day_start.utcoffset().total_seconds()
-                                    // 3600
-                                ) * -1,
+                                utc_offset_hours=offset_hours,
                                 latitude=latitude, longitude=longitude,
                             )
                         except Exception as exc:  # noqa: BLE001
