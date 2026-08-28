@@ -73,5 +73,15 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] band_shadow refit (shadow, unserved)"
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] delta_v2 policy re-pin"
 "$PY" scripts/repin_delta_v2_policy_to_current_fill.py --commit || RC=$?
 
+# Which listed markets this fleet cannot serve yet.  Read-only, and
+# deliberately noisy: discovery ran days ahead of onboarding and the two
+# were joined by hand, which is how Istanbul, Moscow and Tel Aviv carried
+# resolved stations and full timezones for six days without anyone being
+# told.  Not part of RC -- a market nobody has onboarded is not a failure
+# of this sweep, and making it one would train the receipt to be ignored.
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] new market discovery"
+"$PY" scripts/onboard_station.py --stage discover \
+  || echo "market discovery failed; refits above still committed" >&2
+
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] calibration refit sweep done rc=$RC"
 exit "$RC"
