@@ -125,3 +125,70 @@ def test_packet_builder_no_longer_hardcodes_a_calendar_trigram():
     ).read_text(encoding="utf-8")
     assert '"season_bin": "JJA"' not in source
     assert "station_season_bin(" in source
+
+
+def test_activation_id_is_unique_per_fit_not_per_day():
+    """The primary key that silently ate six activations.
+
+    The id carried the training date, so two fits of one station and bucket
+    on the same day want the same id.  The activation store keys on it, and
+    the artifact is inserted first -- so the second fit lands its artifact
+    and loses its pointer, which reads downstream as an artifact nobody
+    activated rather than as a collision.  On 2026-08-28 the resident refit
+    after a restart and produced six artifacts with zero activations, every
+    id already held by that morning's row.
+    """
+
+    import pathlib
+
+    import bayes_basket_target
+
+    root = pathlib.Path(bayes_basket_target.__file__).resolve().parents[1]
+    source = (
+        root
+        / "scripts"
+        / "build_bayes_basket_target_metar_trajectory_training_packet.py"
+    ).read_text(encoding="utf-8")
+    start = source.index('"activation_id": (')
+    body = source[start:start + 900]
+    # The date alone is not identity; the fit's own content has to be in it.
+    assert "content_sha256(" in body, body[:300]
+    assert "trained_through_utc" in body
+    assert "valid_from_utc" in body
+
+
+def test_two_fits_the_same_day_get_different_activation_ids():
+    """Same station, same bucket, same day, different fit -> different id."""
+
+    from bayes_basket_target.contracts import content_sha256
+    from bayes_basket_target.station_season import station_season_bin
+
+    def activation_id(*, trained_through, valid_from):
+        return (
+            "metar-trajectory-CYYZ-evening-physical-"
+            + trained_through[:10].replace("-", "")
+            + "-"
+            + content_sha256({
+                "station_id": "CYYZ",
+                "bucket": "EVENING",
+                "method": "physical",
+                "season_bin": station_season_bin("CYYZ", valid_from[:10]),
+                "trained_through_utc": trained_through,
+                "valid_from_utc": valid_from,
+            })[:12]
+        )
+
+    morning_run = activation_id(
+        trained_through="2026-08-28T03:59:59.000Z",
+        valid_from="2026-08-28T05:27:57.712Z",
+    )
+    evening_run = activation_id(
+        trained_through="2026-08-28T03:59:59.000Z",
+        valid_from="2026-08-28T06:29:15.923Z",
+    )
+    assert morning_run != evening_run
+    # And an identical re-fit stays a no-op rather than a new row.
+    assert morning_run == activation_id(
+        trained_through="2026-08-28T03:59:59.000Z",
+        valid_from="2026-08-28T05:27:57.712Z",
+    )

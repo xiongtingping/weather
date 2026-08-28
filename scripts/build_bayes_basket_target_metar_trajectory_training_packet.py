@@ -1111,10 +1111,31 @@ def build_training_packet(
             # The physical lane carries its own tag: both methods share the
             # scope key, and a same-day refit of each would otherwise collide
             # on this id in the activation store and roll the commit back.
+            # The date made this unique per *day*, not per fit, so a second
+            # fit of the same station and bucket on one day reuses an id the
+            # first already took.  The activation store keys on it, so the
+            # second activation is refused on the primary key while its
+            # artifact -- inserted before it -- stays.  That is how the
+            # season migration produced six artifacts and zero activations
+            # on 2026-08-28: the resident refit after the restart, and every
+            # id it wanted was already held by that morning's JJA row.
+            # Same lesson the delta-v2 re-mint learned: name the id after
+            # the content, so a genuinely new artifact is a new row and an
+            # unchanged one is a no-op.
             "activation_id": (
                 f"metar-trajectory-{station}-{bucket.lower()}"
                 + ("-physical" if method == "physical" else "")
                 + f"-{_iso_utc(trained_through)[:10].replace('-', '')}"
+                + "-" + content_sha256({
+                    "station_id": station,
+                    "bucket": bucket,
+                    "method": method,
+                    "season_bin": station_season_bin(
+                        station, valid_from_utc[:10]
+                    ),
+                    "trained_through_utc": _iso_utc(trained_through),
+                    "valid_from_utc": valid_from_utc,
+                })[:12]
             ),
             "station_id": station,
             "source_lane": "awc",
