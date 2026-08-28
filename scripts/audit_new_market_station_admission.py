@@ -67,14 +67,29 @@ def _awc(client: httpx.Client, path: str, **params: object) -> object:
 def _candidates(conn: sqlite3.Connection) -> list[dict[str, str]]:
     """Markets whose station cannot yet be placed on a settlement day."""
 
-    rows = conn.execute(
-        "SELECT DISTINCT station_id,city_slug,COUNT(*) AS listings,"
-        "       MIN(event_date) AS first_date,MAX(event_date) AS last_date "
-        "FROM reported_trajectory_market_registry "
-        "WHERE (settlement_timezone IS NULL OR settlement_timezone='') "
-        "  AND station_id IS NOT NULL AND station_id<>'' "
-        "GROUP BY station_id,city_slug ORDER BY station_id"
-    ).fetchall()
+    # Two ways a listed market is not yet a station, and the original
+    # query only saw the first.  A missing settlement timezone (Jinan,
+    # Zhengzhou) fails the registry export outright.  But a market can
+    # carry a full timezone AND a resolved station -- Istanbul, Moscow and
+    # Tel Aviv have both since 2026-08-22 -- and still be unusable because
+    # the station has no coordinate-registry entry, which is the gate the
+    # docstring above calls "deliberately unusable".  Those never showed
+    # up here, so three admissible-looking candidates sat invisible while
+    # the audit reported only the two broken ones.
+    manifest_stations = set(
+        coordinate_registry_manifest().get("station_ids") or ()
+    )
+    rows = [
+        row
+        for row in conn.execute(
+            "SELECT DISTINCT station_id,city_slug,COUNT(*) AS listings,"
+            "       MIN(event_date) AS first_date,MAX(event_date) AS last_date "
+            "FROM reported_trajectory_market_registry "
+            "WHERE station_id IS NOT NULL AND station_id<>'' "
+            "GROUP BY station_id,city_slug ORDER BY station_id"
+        ).fetchall()
+        if str(row[0]).strip().upper() not in manifest_stations
+    ]
     return [
         {
             "station_id": str(row[0]).strip().upper(),

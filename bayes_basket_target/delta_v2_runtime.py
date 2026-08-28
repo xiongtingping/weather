@@ -1081,6 +1081,14 @@ def _support_windows(
     edge_refused = 0
     enumerated = 0
     shortlisted = 0
+    # The window the price gate came closest to admitting.  The counters
+    # below say how many were refused and by which gate; they cannot say
+    # *which* basket the objective wanted, so a reader looking at "边际不敌
+    # 摩擦" sees a number of refusals and no target.  Kept only for the
+    # gate that is genuinely about price -- a structural refusal has no
+    # near-miss, it has an illegal shape -- and only as a diagnostic: it is
+    # a window that was refused, and nothing downstream may seat it.
+    best_refused: dict[str, Any] | None = None
 
     windows: list[dict[str, Any]] = []
     seen: set[tuple[str, ...]] = set()
@@ -1333,6 +1341,17 @@ def _support_windows(
                     unpriced_refused += 1
                 else:
                     edge_refused += 1
+                    if edge is not None and (
+                        best_refused is None
+                        or float(edge) > float(best_refused["edge"])
+                    ):
+                        best_refused = {
+                            "buckets": list(window),
+                            "edge": float(edge),
+                            "win_probability": float(win),
+                            "all_in_cost": float(price),
+                            "friction": float(friction),
+                        }
                 continue
             shortlisted += 1
             kl = None
@@ -1443,6 +1462,12 @@ def _support_windows(
         # was whole, every leg carried a real quote, and the model's own edge
         # over the all-in price did not clear tick-rounding across the legs.
         "edge_refused_window_count": edge_refused,
+        # The basket the objective wanted and the price would not give it:
+        # of the windows the edge gate refused, the one whose edge came
+        # closest to clearing friction.  Absent when no window reached that
+        # gate, which is itself the answer -- the refusal was structural,
+        # and there was no target to miss.
+        "edge_best_refused_window": best_refused,
         "unpriced_refused_window_count": unpriced_refused,
         # The friction the edge gate measured against is not repeated here:
         # ``_solve_over_support_windows`` already publishes it into the same

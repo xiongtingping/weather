@@ -1571,11 +1571,31 @@ def _window_refusal_detail(audit: Mapping[str, Any]) -> str:
         for gate, count in zip(WINDOW_REFUSAL_FUNNEL, parts)
     )
     gate = str(audit.get("last_refusing_gate") or "")
-    return "枚举 %d = %s + 入围 %d · 最后出局：%s%s" % (
+    # Which basket the objective was reaching for.  The funnel counts say
+    # how many windows died and at which gate; they never said *what* the
+    # engine wanted, so a page reporting "边际不敌摩擦" showed a refusal
+    # with no target beside it.  Only the price gate has a near-miss to
+    # name -- a structural refusal is an illegal shape, not a basket the
+    # market priced out of reach -- so this appears exactly when the edge
+    # gate is what refused.
+    target = ""
+    best = audit.get("edge_best_refused_window")
+    if isinstance(best, Mapping) and best.get("buckets"):
+        target = (
+            " · 目标篮 %s：胜率 %.3f 成本 %.3f 边际 %+.4f（摩擦 %.4f）" % (
+                "+".join(str(bucket) for bucket in best["buckets"]),
+                float(best.get("win_probability") or 0.0),
+                float(best.get("all_in_cost") or 0.0),
+                float(best.get("edge") or 0.0),
+                float(best.get("friction") or 0.0),
+            )
+        )
+    return "枚举 %d = %s + 入围 %d · 最后出局：%s%s%s" % (
         enumerated, body, shortlisted,
         # No gate fired and still no seat: what is on the shortlist is an
         # inherited support carried past the floors with no ask to price it.
         GATE_LABEL.get(gate, "无闸拒绝"),
+        target,
         "" if enumerated == sum(parts) + shortlisted else " · 计数不闭合",
     )
 
@@ -5367,7 +5387,14 @@ def backfill(
                             continue
                         refusal = _deeper_refusal(refusal, (
                             "no_positive_kelly",
-                            "概率 %.3f · 成本 %.3f%s%s" % (
+                            # The seat's own buckets, not a near-miss: this
+                            # branch had a basket, priced it, and Kelly sized
+                            # it at zero.  Naming it turns "赔率不划算" from a
+                            # verdict into a verdict about something.
+                            "目标篮 %s · 概率 %.3f · 成本 %.3f%s%s" % (
+                                "+".join(
+                                    str(bucket) for bucket in seat["buckets"]
+                                ),
                                 gate_win,
                                 cost, crossing_note, exhausted,
                             ),

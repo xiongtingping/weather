@@ -5650,6 +5650,12 @@ function roster(){
     no_seat_taken:["未入座","有概率也有盘口，目标函数看过后选择不坐"]};
   const short=x=>String(x).replace("°C","").replace("°F","");
   const LAB={above:"偏上",below:"偏下",aligned:"一致",unknown:"—"};
+  // Charter 55's own reading, named in its own words: a positive gap
+  // (mean above mode) is a warm tail.  Deliberately NOT reusing LAB --
+  // "偏上" there means "model above market", a quantity this column no
+  // longer shows, and one word for two different readings is how the
+  // disagreement between them stayed invisible.
+  const SKEW_LAB={"1":"偏暖","-1":"偏冷","0":"无偏斜"};
   // An empty stage cell used to be a dash and nothing else, so a station with
   // no P0 basket looked identical whether the market was never quoted or the
   // objective priced it and declined.  The refusal goes in the cell it
@@ -5778,8 +5784,21 @@ function roster(){
   };
   const row=(e)=>{
     const any=e.stages.P0||e.stages["P0-M"]||e.stages.P1;
-    const side=any?`<span class="pill ${any.side==="below"?"amber":any.side==="aligned"?"green":""}"
-      ${any.side==="above"?'style="background:var(--pill-violet-bg);color:var(--violet)"':""}>${LAB[any.side]}</span>`:"";
+    // One definition: mean minus mode, which is the predicate charter 55
+    // gates window selection on (user ruling, 2026-08-28).  This column
+    // used to show model-mean minus market-mean instead -- a different
+    // quantity, disagreeing with the skew on 34 of 400 seated rows
+    // (above/cold and below/warm) -- so the position a reader saw was not
+    // the position that chose the basket.  The market lean is still real
+    // information and is kept, but on the hover rather than presented as
+    // the answer, because two quantities under one heading is how the
+    // disagreement became invisible in the first place.
+    const side=any&&any.skew_sign!=null?`<span class="pill ${
+      any.skew_sign>0?"amber":any.skew_sign<0?"green":""}"
+      title="均值−众数（宪章55 选桶闸的同一把尺）· 模型相对市场：${
+        LAB[any.side]||"—"}${any.lean_buckets==null?"":
+        "（"+(any.lean_buckets>0?"+":"")+any.lean_buckets.toFixed(2)+" 桶）"}"
+      >${SKEW_LAB[String(any.skew_sign)]}</span>`:"";
     const note=e.seated_stage_count?"":
       `<span class="muted">${(REASON[e.absent_reason]||["—",""])[0]}</span>`;
     const taf=e.taf_tx_c==null?`<div class="muted">TAF 无温度组</div>`:
@@ -5855,7 +5874,7 @@ function roster(){
       <td class="mono">${pnl}</td></tr>`;
   };
   const head=`<tr><th>站点</th><th>P0 建仓</th><th>P0-M 确认</th><th>P1 盯盘</th>
-    <th>位置</th><th>实测</th><th>实得</th></tr>`;
+    <th title="均值−众数">偏斜</th><th>实测</th><th>实得</th></tr>`;
   const dates=S.roster_event_dates||[];
   const block=(day,index)=>{
     const rows=rs.filter(e=>e.event_date===day);

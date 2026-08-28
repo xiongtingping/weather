@@ -1103,6 +1103,62 @@ def commit_delta_v2_fill_distribution_artifact(
   }
 
 
+# One fingerprint per fitting batch, computed at most once per process: a
+# batch is ~7,200 rows and the binding check runs per leg per candidate, so
+# recomputing it per resolution would repeat the 20,783-row lesson the
+# push-down above this file already paid for.  Keyed on everything that
+# names a batch; immutable rows (append-only by trigger) make the cache
+# safe for the life of the process.
+_BATCH_FINGERPRINT_CACHE: dict[tuple[str, ...], str] = {}
+
+
+def _fill_batch_fingerprint(
+  conn: sqlite3.Connection,
+  *,
+  station_id: str,
+  stage: str,
+  season_bin: str,
+  maturity_bin: str,
+  liquidity_bin: str,
+  valid_from_utc: str,
+  authority_scope: str,
+) -> str:
+  """content_sha256 over the batch's sorted distribution hashes.
+
+  The identity of "the fill model" once distributions became per-cell:
+  every cell minted in one fitting run shares one valid_from in one scope,
+  and the sorted set of their distribution hashes changes iff any
+  distribution in the batch changes.  A placeholder-era batch degenerates
+  to a single hash -- but its fingerprint is the hash of a one-element
+  list, deliberately NOT equal to the bare cell hash, so the two pin
+  vocabularies cannot be confused for each other by accident.
+  """
+
+  key = (
+    station_id, stage, season_bin, maturity_bin, liquidity_bin,
+    valid_from_utc, authority_scope,
+  )
+  cached = _BATCH_FINGERPRINT_CACHE.get(key)
+  if cached is not None:
+    return cached
+  hashes = sorted(
+    str(row[0])
+    for row in conn.execute(
+      f"SELECT DISTINCT fill_distribution_artifact_sha256 FROM {TABLE_ARTIFACT}"
+      " WHERE station_id=? AND stage=? AND season_bin=?"
+      "   AND maturity_bin=? AND liquidity_bin=?"
+      "   AND valid_from_utc=? AND authority_scope=?",
+      key,
+    )
+  )
+  fingerprint = content_sha256({
+    "schema": "delta_v2_fill_batch_fingerprint_v1",
+    "distribution_sha256s": hashes,
+  })
+  _BATCH_FINGERPRINT_CACHE[key] = fingerprint
+  return fingerprint
+
+
 def resolve_delta_v2_fill_distribution(
   conn: sqlite3.Connection,
   *,
@@ -1315,11 +1371,46 @@ def resolve_delta_v2_fill_distribution(
   ):
     raise ContractError("delta_v2_fill_distribution_scope_reject")
 
-  if normalized_policy is not None and (
-    str(normalized_policy).lower()
-    != artifact.fill_distribution_artifact_sha256
-  ):
-    raise ContractError("delta_v2_fill_distribution_policy_binding_mismatch")
+  # The policy's pin has meant two different things in this table's life,
+  # and the check accepts either -- exact first, batch second -- so each
+  # vintage keeps the binding semantics it was minted under.
+  #
+  # Born 2026-07-30, when every fill cell was the same placeholder
+  # distribution: one sha covered a whole scope, so "the policy trained
+  # against the fill model being served" could be stated as equality with
+  # the finalist cell's own distribution hash.  The 2026-08-22 refit
+  # replaced the placeholders with distributions measured per (station,
+  # price band, horizon) -- 151 distinct hashes per scope -- and a
+  # single-valued pin can no longer equal "the fill model" cell by cell.
+  # Nothing re-pinned the policies either, so every resolution that
+  # reached this check after 08-22 failed it: the check was not wrong --
+  # the policies genuinely still named the placeholder generation -- but
+  # no pin value could have satisfied it.
+  #
+  # The unit that still has a single identity is the fitting batch: the
+  # cells minted together, sharing one valid_from in one scope.  A policy
+  # minted from here on pins content_sha256 over the batch's sorted
+  # distribution hashes, and the check holds it against the batch the
+  # finalist belongs to.  A policy pinning neither the finalist's own
+  # hash nor its batch fingerprint is still refused loudly -- a stale pin
+  # keeps failing until a re-pin runs, never silently passing.
+  if normalized_policy is not None:
+    pin = str(normalized_policy).lower()
+    if pin != artifact.fill_distribution_artifact_sha256 and pin != (
+      _fill_batch_fingerprint(
+        conn,
+        station_id=artifact.station_id,
+        stage=artifact.stage,
+        season_bin=artifact.season_bin,
+        maturity_bin=artifact.maturity_bin,
+        liquidity_bin=artifact.liquidity_bin,
+        valid_from_utc=str(candidate["valid_from_utc"]),
+        authority_scope=str(candidate["authority_scope"]),
+      )
+    ):
+      raise ContractError(
+        "delta_v2_fill_distribution_policy_binding_mismatch"
+      )
 
   promotion = conn.execute(
     f"SELECT decision,gate_version FROM {TABLE_PROMOTION} "
