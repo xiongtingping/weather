@@ -49,14 +49,66 @@ OUT = (
 )
 PREV = "https://previous-runs-api.open-meteo.com/v1/forecast"
 
-# The four that cleared Phase 0's dispersion line, and only those.  Widening
-# this list is a ruling, not an edit: the eleven that did not clear were
-# measured and refused.
+# Widened by ruling on 2026-08-28 ("接入更多区域模型，不要仅仅是单站点"):
+# every regional model crossed with every roster station inside its domain.
+# The original four (Phase 0's survivors) are unchanged; the widening is the
+# rest of each model's domain, plus the CONUS pair the first pass never
+# tried at all.  Domain membership is geography, not hope -- a station a
+# model's grid does not cover returns nulls and is skipped by the fetch
+# guard, so an over-generous entry costs one request, not a wrong verdict.
 CANDIDATES = [
-    ("EDDM", "dwd_icon_d2", "ICON-D2 2km"),
-    ("LIMC", "italia_meteo_arpae_icon_2i", "ICON-2I 2km"),
-    ("EHAM", "dwd_icon_d2", "ICON-D2 2km"),
+    # East Asia -- JMA MSM 5km (Japan + surrounding waters).
     ("RCSS", "jma_msm", "JMA MSM 5km"),
+    ("RJTT", "jma_msm", "JMA MSM 5km"),
+    ("RKPK", "jma_msm", "JMA MSM 5km"),
+    ("RKSI", "jma_msm", "JMA MSM 5km"),
+    # Central Europe -- ICON-D2 2km (Germany + margins).
+    ("EDDM", "dwd_icon_d2", "ICON-D2 2km"),
+    ("EHAM", "dwd_icon_d2", "ICON-D2 2km"),
+    # Europe-wide nests.
+    ("EDDM", "dwd_icon_eu", "ICON-EU 7km"),
+    ("EHAM", "dwd_icon_eu", "ICON-EU 7km"),
+    ("EGLC", "dwd_icon_eu", "ICON-EU 7km"),
+    ("EPWA", "dwd_icon_eu", "ICON-EU 7km"),
+    ("EFHK", "dwd_icon_eu", "ICON-EU 7km"),
+    ("LFPB", "dwd_icon_eu", "ICON-EU 7km"),
+    ("LIMC", "dwd_icon_eu", "ICON-EU 7km"),
+    ("LEMD", "dwd_icon_eu", "ICON-EU 7km"),
+    ("LTAC", "dwd_icon_eu", "ICON-EU 7km"),
+    ("EHAM", "knmi_harmonie_arome_europe", "HARMONIE-EU 5km"),
+    ("EGLC", "knmi_harmonie_arome_europe", "HARMONIE-EU 5km"),
+    ("LFPB", "knmi_harmonie_arome_europe", "HARMONIE-EU 5km"),
+    ("EDDM", "knmi_harmonie_arome_europe", "HARMONIE-EU 5km"),
+    # National high-resolution nests.
+    ("LFPB", "meteofrance_arome_france0025", "AROME-FR 2.5km"),
+    ("EGLC", "ukmo_uk_deterministic_2km", "UKMO 2km"),
+    ("EHAM", "knmi_harmonie_arome_netherlands", "HARMONIE-NL 2km"),
+    ("LIMC", "italia_meteo_arpae_icon_2i", "ICON-2I 2km"),
+    # CONUS -- HRRR 3km and the NBM blend, all eleven US stations plus
+    # Toronto, which sits inside the HRRR grid's northern margin.
+    ("KATL", "ncep_hrrr_conus", "HRRR 3km"),
+    ("KAUS", "ncep_hrrr_conus", "HRRR 3km"),
+    ("KBKF", "ncep_hrrr_conus", "HRRR 3km"),
+    ("KDAL", "ncep_hrrr_conus", "HRRR 3km"),
+    ("KHOU", "ncep_hrrr_conus", "HRRR 3km"),
+    ("KLAX", "ncep_hrrr_conus", "HRRR 3km"),
+    ("KLGA", "ncep_hrrr_conus", "HRRR 3km"),
+    ("KMIA", "ncep_hrrr_conus", "HRRR 3km"),
+    ("KORD", "ncep_hrrr_conus", "HRRR 3km"),
+    ("KSEA", "ncep_hrrr_conus", "HRRR 3km"),
+    ("KSFO", "ncep_hrrr_conus", "HRRR 3km"),
+    ("CYYZ", "ncep_hrrr_conus", "HRRR 3km"),
+    ("KATL", "ncep_nbm_conus", "NBM blend"),
+    ("KAUS", "ncep_nbm_conus", "NBM blend"),
+    ("KBKF", "ncep_nbm_conus", "NBM blend"),
+    ("KDAL", "ncep_nbm_conus", "NBM blend"),
+    ("KHOU", "ncep_nbm_conus", "NBM blend"),
+    ("KLAX", "ncep_nbm_conus", "NBM blend"),
+    ("KLGA", "ncep_nbm_conus", "NBM blend"),
+    ("KMIA", "ncep_nbm_conus", "NBM blend"),
+    ("KORD", "ncep_nbm_conus", "NBM blend"),
+    ("KSEA", "ncep_nbm_conus", "NBM blend"),
+    ("KSFO", "ncep_nbm_conus", "NBM blend"),
 ]
 MIN_TRAIN_DAYS = 20
 PAST_DAYS = 90
@@ -256,10 +308,25 @@ def main() -> int:
                     "brier": brier, "crps": crps,
                 }
 
+            # The user's own measure (2026-08-28): would the morning have
+            # named the right bucket?  ``incumbent`` here is the served P0
+            # at its FIRST decision -- the pre-dawn read -- and the
+            # candidate is the regional model's previous-day run, which is
+            # exactly what a small-hours P1 could have held.  Distance is
+            # in bucket order, so ±1 is comparable across C and F ladders.
+            cand_argmax = max(candidate, key=lambda k: candidate[k])
+            inc_argmax = max(incumbent, key=lambda k: incumbent[k])
+            def _dist(bucket):
+                try:
+                    return abs(keys.index(bucket) - keys.index(landed))
+                except ValueError:
+                    return 99
             scored.append({
                 "event_date": day,
                 "candidate": score(candidate),
                 "incumbent": score(incumbent),
+                "candidate_argmax_dist": _dist(cand_argmax),
+                "incumbent_argmax_dist": _dist(inc_argmax),
                 "residual_c": actual - centre,
                 "train_days": len(history),
             })
@@ -285,8 +352,35 @@ def main() -> int:
             < summary[f"incumbent_{metric}"]
             for metric in ("nll", "brier", "crps")
         }
+        hit = {
+            arm: {
+                "exact": sum(
+                    1 for row in scored if row[f"{arm}_argmax_dist"] == 0
+                ) / len(scored),
+                "within_1": sum(
+                    1 for row in scored if row[f"{arm}_argmax_dist"] <= 1
+                ) / len(scored),
+            }
+            for arm in ("candidate", "incumbent")
+        }
+        # Days the regional run named the settled bucket and the served
+        # morning read did not: the size of the pre-dawn prize.
+        flips = sum(
+            1 for row in scored
+            if row["candidate_argmax_dist"] == 0
+            and row["incumbent_argmax_dist"] != 0
+        )
         entry = {
             "station_id": station, "model": model, "label": label,
+            "morning_argmax": {
+                **hit,
+                "candidate_fixes_incumbent_days": flips,
+                "incumbent_fixes_candidate_days": sum(
+                    1 for row in scored
+                    if row["incumbent_argmax_dist"] == 0
+                    and row["candidate_argmax_dist"] != 0
+                ),
+            },
             "holdout_days": len(scored),
             "residual_dispersion_c": pstdev(
                 [row["residual_c"] for row in scored]

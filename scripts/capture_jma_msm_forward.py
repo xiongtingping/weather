@@ -95,16 +95,30 @@ def _transport_is_writable(conn: sqlite3.Connection) -> tuple[bool, str]:
     ).fetchone()
     if not row or not row[0]:
         return False, "表不存在"
-    match = re.search(
-        r"transport_provider_id IN \(([^)]*)\)", str(row[0]), re.S
-    )
+    # Strip SQL comments first, then walk to the balanced close of the
+    # IN(...) list.  The naive ``[^)]*`` version was defeated by its own
+    # schema on 2026-08-28: a comment inside the parentheses carried a
+    # ')' of its own, the parse truncated there, and the transport this
+    # guard exists to admit read as absent right after the migration that
+    # admitted it.
+    ddl = re.sub(r"--[^\n]*", "", str(row[0]))
+    match = re.search(r"transport_provider_id[^(]*IN\s*\(", ddl, re.S)
     if not match:
         # No parseable allowlist means no constraint to fail, so let the
         # INSERT itself be the judge rather than refusing on a guess.
         return True, ""
+    start = match.end()
+    depth = 1
+    end = start
+    while end < len(ddl) and depth:
+        if ddl[end] == "(":
+            depth += 1
+        elif ddl[end] == ")":
+            depth -= 1
+        end += 1
     allowed = {
         part.strip().strip("'")
-        for part in match.group(1).split(",")
+        for part in ddl[start:end - 1].split(",")
         if part.strip()
     }
     if TRANSPORT_PROVIDER_ID in allowed:
@@ -117,11 +131,22 @@ def _transport_is_writable(conn: sqlite3.Connection) -> tuple[bool, str]:
 
 def _rows_for_day(
     conn: sqlite3.Connection, station: str, event_date: str
-) -> set[tuple[str, str]]:
+) -> set[str]:
+    """Lead buckets already stored for this station-day.
+
+    Keyed the way the table's UNIQUE is -- on the lead bucket -- and not on
+    (run_cycle, init) as it first was.  Those name the run, but the table
+    holds one row per (station, day, bucket): the first pass stored the
+    00Z run into h12_24, the second pass computed the same bucket from the
+    06Z run, found its (cycle, init) unheld, fetched 8MB, and died on the
+    UNIQUE constraint it was always going to hit.  The pre-check has to ask
+    the question the INSERT will ask.
+    """
+
     return {
-        (str(row[0]), str(row[1]))
+        str(row[0])
         for row in conn.execute(
-            "SELECT run_cycle, native_run_init_utc"
+            "SELECT archive_lead_bucket"
             " FROM calibration_native_ensemble_historical_member_run"
             " WHERE ensemble_system_id=? AND station_id=?"
             " AND target_local_date=?",
@@ -177,9 +202,6 @@ def main() -> int:
                             continue
                         cycle = f"{run:%H}Z"
                         init = run.isoformat().replace("+00:00", "Z")
-                        if (cycle, init) in held:
-                            skipped += 1
-                            continue
                         bucket = capture_lead_bucket(
                             event_date=target.isoformat(),
                             settlement_timezone=zone_name,
@@ -189,6 +211,9 @@ def main() -> int:
                             # Outside the two groups this station's peers
                             # actually form.  Capturing it would build a
                             # scope with no one to pair with.
+                            continue
+                        if bucket in held:
+                            skipped += 1
                             continue
                         if attempted >= MAX_RUNS_PER_PASS:
                             continue
@@ -279,6 +304,10 @@ def main() -> int:
                             ),
                         )
                         conn.commit()
+                        # The pre-loop snapshot does not know about this
+                        # row; without this, a same-pass run landing in the
+                        # same bucket walks straight into the UNIQUE.
+                        held.add(bucket)
                         written += 1
     finally:
         close_client()

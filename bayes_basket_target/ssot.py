@@ -474,11 +474,19 @@ CREATE TABLE IF NOT EXISTS calibration_native_ensemble_historical_member_run (
   settlement_definition TEXT NOT NULL,
   extraction_version TEXT NOT NULL,
   provider_id TEXT NOT NULL,
+  -- RISH_KYOTO_JMA_ARCHIVE ruled in 2026-08-28: the JMA MSM lane through
+  -- the Kyoto RISH mirror, byte-range reads of the native GRIB archive.
+  -- The capture lane existed for weeks with its rows refused at INSERT.
+  -- A CHECK cannot be altered in place; the live table takes the widening
+  -- via scripts/migrate_member_run_transport_allowlist.py.  Keep comments
+  -- OUT of the IN(...) list itself: the capture pre-flight parses the live
+  -- DDL for the allowlist, and a comment inside the parentheses reads as
+  -- phantom members and truncates at the first ')' it happens to contain.
   transport_provider_id TEXT NOT NULL CHECK(
     transport_provider_id IN (
       'OPEN_METEO','NOAA_GEFS_PDS_S3','ECMWF_OPEN_DATA_S3',
       'ECCC_DD_WEATHER','DWD_OPENDATA_ICON_EPS','AWC_TAF_DATA_API',
-      'AWC_METAR_PHYSICAL_PATH'
+      'AWC_METAR_PHYSICAL_PATH','RISH_KYOTO_JMA_ARCHIVE'
     )
   ),
   native_run_init_utc TEXT,
@@ -492,13 +500,20 @@ CREATE TABLE IF NOT EXISTS calibration_native_ensemble_historical_member_run (
   authority_scope TEXT NOT NULL CHECK(authority_scope='CALIBRATION_TRAIN_ONLY'),
   holdout_eligible INTEGER NOT NULL CHECK(holdout_eligible=0),
   content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
+  -- The OOS-eligibility list is narrower than the storage list on
+  -- purpose: only a transport whose bytes can be re-fetched by range from
+  -- the original archive may score in offline OOS.  RISH_KYOTO_JMA_ARCHIVE
+  -- qualifies on exactly that ground (native GRIB, byte-range reads of the
+  -- Kyoto mirror, run init carried) -- ruled in with the storage widening,
+  -- 2026-08-28, after the first capture cleared the storage CHECK and
+  -- failed here with the run already fetched.
   CHECK(
     offline_oos_eligible=0
     OR (
       transport_provider_id IN (
         'NOAA_GEFS_PDS_S3','ECMWF_OPEN_DATA_S3',
         'ECCC_DD_WEATHER','DWD_OPENDATA_ICON_EPS','AWC_TAF_DATA_API',
-        'AWC_METAR_PHYSICAL_PATH'
+        'AWC_METAR_PHYSICAL_PATH','RISH_KYOTO_JMA_ARCHIVE'
       )
       AND native_run_init_utc IS NOT NULL
       AND run_cycle!='AGGREGATOR_UNKNOWN_NATIVE_CYCLE'
