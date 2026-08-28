@@ -3615,6 +3615,201 @@ def build_payload(db: Path) -> dict[str, Any]:
         conn.close()
 
 
+REGIONAL_SWEEP_JSON = (
+    ROOT / "data" / "runtime" / "bayes_basket_target_nwp"
+    / "regional_hires_historical_oos.json"
+)
+# The four regional point systems and how each one's archive behaves.
+# ``backfillable`` decides how a stale lane reads: the NOAA buckets and
+# the RISH mirror keep history, so a stale lane there is a delay; the DWD
+# directory keeps only the newest run of each cycle, so a stale lane
+# there is runs permanently lost.
+REGIONAL_LANES = {
+    "JMA_MSM_POINT": {
+        "label": "JMA MSM 5km", "region": "东亚",
+        "transport": "RISH 京都镜像·字节区间", "backfillable": True},
+    "NCEP_HRRR_POINT": {
+        "label": "HRRR 3km", "region": "美国",
+        "transport": "NOAA S3·idx 区间", "backfillable": True},
+    "NCEP_NBM_POINT": {
+        "label": "NBM 混合", "region": "美国",
+        "transport": "NOAA S3·idx 区间", "backfillable": True},
+    "DWD_ICON_EU_POINT": {
+        "label": "ICON-EU 7km", "region": "欧洲",
+        "transport": "DWD opendata·全域场", "backfillable": False},
+}
+_SWEEP_MODEL_TO_SYSTEM = {
+    "jma_msm": "JMA_MSM_POINT",
+    "ncep_hrrr_conus": "NCEP_HRRR_POINT",
+    "ncep_nbm_conus": "NCEP_NBM_POINT",
+    "dwd_icon_eu": "DWD_ICON_EU_POINT",
+}
+
+
+def _capture_rosters() -> dict[str, set[str]]:
+    """Which stations each lane is RULED IN at -- read from the lanes.
+
+    Not inferred from which rows exist.  A station whose lane started an
+    hour ago, or whose turn the per-pass cap has not reached, has no rows
+    and is not a reversal; reading the roster off the corpus would print
+    "measured reversed" over stations that were admitted.  The rosters
+    live in the archive modules for exactly this second reader.
+    """
+
+    from bayes_basket_target import noaa_conus_archive
+    from bayes_basket_target import dwd_icon_eu_point_archive
+    from bayes_basket_target import jma_msm_archive  # noqa: F401
+
+    rosters = {
+        "NCEP_HRRR_POINT": {
+            s[0] for s in noaa_conus_archive.CAPTURE_STATIONS["HRRR"]
+        },
+        "NCEP_NBM_POINT": {
+            s[0] for s in noaa_conus_archive.CAPTURE_STATIONS["NBM"]
+        },
+        "DWD_ICON_EU_POINT": {
+            s[0] for s in dwd_icon_eu_point_archive.CAPTURE_STATIONS
+        },
+        "JMA_MSM_POINT": {
+            s[0] for s in getattr(
+                jma_msm_archive, "CAPTURE_STATIONS", ()
+            )
+        },
+    }
+    return rosters
+
+
+def collect_regional_lanes(conn: sqlite3.Connection) -> dict[str, Any]:
+    """The regional capture lanes: corpus growth, race state, verdicts.
+
+    Three questions in one section, because they are one story read at
+    three moments: what the 46-pair sweep measured (the reason a lane
+    exists), what each lane has captured so far (the corpus the gates
+    will re-ask), and where each system stands in the OOS race (what a
+    win will buy -- envelope evidence, never a membership seat).
+    """
+
+    lanes = []
+    rosters = _capture_rosters()
+    captured_stations: dict[str, set[str]] = {}
+    for system_id, meta in REGIONAL_LANES.items():
+        row = conn.execute(
+            "SELECT COUNT(*), COUNT(DISTINCT station_id),"
+            " COUNT(DISTINCT station_id || '|' || target_local_date),"
+            " MAX(archive_query_at_utc), MAX(native_run_init_utc)"
+            " FROM calibration_native_ensemble_historical_member_run"
+            " WHERE ensemble_system_id=?",
+            (system_id,),
+        ).fetchone()
+        rows, stations, station_days, last_query, last_run = row
+        captured_stations[system_id] = {
+            str(r[0]) for r in conn.execute(
+                "SELECT DISTINCT station_id"
+                " FROM calibration_native_ensemble_historical_member_run"
+                " WHERE ensemble_system_id=?",
+                (system_id,),
+            )
+        }
+        age = _age_hours(last_query)
+        # A lane is judged by whether the hourly sweep is still landing
+        # rows, on the clock of the product it captures (six-hourly runs,
+        # a few hours of publication lag).  For the DWD lane a red is not
+        # a delay but permanent loss, which the note says out loud.
+        if rows == 0:
+            health = "amber"
+            note = "道已建，等第一批行落库"
+        elif age is not None and age <= 26:
+            health = "green"
+            note = ""
+        elif age is not None and age <= 50:
+            health = "amber"
+            note = "超过一天没有新行"
+        else:
+            health = "red"
+            note = (
+                "断采——DWD 不留历史，错过的 run 永久丢失"
+                if not meta["backfillable"]
+                else "断采——归档还在，可回填"
+            )
+        lanes.append({
+            "system_id": system_id, **meta,
+            "row_count": rows, "station_count": stations,
+            # The roster's size beside the count that has rows: a lane
+            # at 1/10 is either young or starved, and either way that is
+            # the number to look at, not the row total.
+            "roster_count": len(rosters.get(system_id, set())),
+            "station_days": station_days,
+            "last_capture_age_hours": age,
+            "last_run_init": last_run,
+            "health": health, "note": note,
+        })
+
+    # Race state, from the worker's own OOS ingress readiness -- the same
+    # rows the admission gates read, not a reimplementation of them.
+    readiness = []
+    if STATUS_JSON.is_file():
+        try:
+            status = json.loads(STATUS_JSON.read_text())
+            for entry in (
+                status.get("production", {})
+                .get("native_ensemble_oos_ingress", {})
+                .get("readiness") or []
+            ):
+                if entry.get("ensemble_system_id") in REGIONAL_LANES:
+                    readiness.append(entry)
+        except (ValueError, OSError):
+            pass
+
+    # The sweep's verdicts, pinned: which pairs earned a lane and which
+    # measured reversed.  Only the four systems that HAVE lanes -- the
+    # rest of the 46 pairs stay in the evidence file.
+    verdicts = []
+    if REGIONAL_SWEEP_JSON.is_file():
+        try:
+            sweep = json.loads(REGIONAL_SWEEP_JSON.read_text())
+            for candidate in sweep.get("candidates") or []:
+                system_id = _SWEEP_MODEL_TO_SYSTEM.get(
+                    str(candidate.get("model"))
+                )
+                if system_id is None:
+                    continue
+                station = str(candidate.get("station_id"))
+                morning = candidate.get("morning_argmax") or {}
+                verdicts.append({
+                    "system_id": system_id,
+                    "system_label": REGIONAL_LANES[system_id]["label"],
+                    "station_id": station,
+                    "passes_all_three": bool(
+                        candidate.get("passes_all_three")
+                    ),
+                    "gates": candidate.get("gates") or {},
+                    "holdout_days": candidate.get("holdout_days"),
+                    "candidate_exact": (morning.get("candidate") or {})
+                    .get("exact"),
+                    "incumbent_exact": (morning.get("incumbent") or {})
+                    .get("exact"),
+                    "candidate_within_1": (morning.get("candidate") or {})
+                    .get("within_1"),
+                    # Two different questions, kept apart on purpose.
+                    # ``in_roster`` is the ruling (is this pair captured
+                    # at all); ``has_rows`` is progress (has its turn
+                    # come yet).  Collapsing them prints "measured
+                    # reversed" over stations that were admitted an hour
+                    # ago and simply have no rows yet.
+                    "in_roster": station in rosters.get(system_id, set()),
+                    "has_rows": station in captured_stations[system_id],
+                })
+        except (ValueError, OSError):
+            pass
+    verdicts.sort(
+        key=lambda v: (
+            not v["in_roster"], not v["has_rows"],
+            -(v["candidate_exact"] or 0.0),
+        )
+    )
+    return {"lanes": lanes, "readiness": readiness, "verdicts": verdicts}
+
+
 def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     members = collect_members(conn, collect_run_cadence(conn))
     tables = collect_correction_and_weights(conn)
@@ -3722,6 +3917,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "scorecard": scorecard,
         "window_divergence": collect_window_divergence(conn),
         "edge_band_health": collect_edge_band_health(conn),
+        "regional": collect_regional_lanes(conn),
         "worker": worker,
     }
 
@@ -6202,6 +6398,73 @@ function materialization(){
     : `近 ${cov.length} 天每一天的在册站都有真值行，没有可列的缺口。`}</div>`;
 }
 
+function regional(){
+  const R = D.regional || {};
+  const lanes = R.lanes || [], ready = R.readiness || [],
+        verdicts = R.verdicts || [];
+  const pct = x => x==null ? "—" : Math.round(x*100)+"%";
+  const laneCards = lanes.map(l => `<div class="card">
+    <div class="muted">${h(l.label)} · ${h(l.region)}
+      <span class="pill ${l.health==="green"?"green":l.health==="amber"?"amber":"red"}"
+        style="float:right">${l.health==="green"?"在采":l.health==="amber"?"待观察":"断采"}</span></div>
+    <div class="big">${(l.row_count||0).toLocaleString()} 行</div>
+    <div class="muted">${l.station_count||0}/${l.roster_count||0} 站已落行 ·
+      ${l.station_days||0} 站日 · 最近采集 ${hours(l.last_capture_age_hours)}前</div>
+    <div class="muted">${h(l.transport)}${l.backfillable?"":" · <b>不留历史，错过永失</b>"}</div>
+    ${l.note?`<div class="muted" style="margin-top:4px">${h(l.note)}</div>`:""}
+  </div>`).join("");
+  const readyRows = ready.map(r => `<tr>
+    <td>${h((lanes.find(l=>l.system_id===r.ensemble_system_id)||{}).label
+      || r.ensemble_system_id)}</td>
+    <td class="mono">${r.training_case_count||0} / ${r.required_train_case_count||5}</td>
+    <td class="mono">${r.strict_holdout_case_count||0} / ${r.required_strict_holdout_case_count||3}</td>
+    <td><span class="pill ${r.state==="ACCUMULATING_STRICT_OOS"?"amber":"green"}">${
+      r.state==="ACCUMULATING_STRICT_OOS"?"攒案例中":h(r.state||"")}</span></td>
+  </tr>`).join("");
+  const verdictRows = verdicts.map(v => `<tr>
+    <td class="mono">${h(v.station_id)}</td>
+    <td>${h(v.system_label)}</td>
+    <td class="mono ${v.passes_all_three?"up":""}">${v.passes_all_three
+      ? "三门全过" : Object.entries(v.gates||{}).filter(([,ok])=>!ok)
+        .map(([g])=>({crps:"CRPS",nll:"NLL",brier:"Brier"}[g]||g)).join("/")+" 未过"}</td>
+    <td class="mono">${pct(v.candidate_exact)} vs ${pct(v.incumbent_exact)}</td>
+    <td class="mono">${pct(v.candidate_within_1)}</td>
+    <td>${!v.in_roster
+      ? `<span class="pill red">实测反向·剔除</span>`
+      : v.has_rows ? `<span class="pill green">在采</span>`
+      : `<span class="pill amber">在册·等首行</span>`}</td>
+  </tr>`).join("");
+  return `<h2>二十、区域模型：采集道与赛道</h2>
+  <p class="sub">三条高分辨率区域模型采集道（2026-08-28 起）：每小时自动把
+  HRRR/NBM/MSM/ICON-EU 的"这个站这天的预报最高温"存进语料库。
+  语料攒够、过三道门的站对，赢到的是<b>扩展概率包络的证据席位</b>——
+  不是融合成员：单值模型没有散布，做成员会把分布拉尖。</p>
+  <div class="why"><b>为什么买它们：</b>全球模型 25km 一格，把台北盆地周围的山、
+  城市热岛全平均掉了。8/27 亚特兰大降温，3km 的 HRRR 提前一天报出日最高
+  35.3→28.7°C。46 对站×模型实测：过门对的次晨直中中位 38%，在职分布只有 30%。</div>
+  <div class="grid g4" style="margin-top:12px">${laneCards}</div>
+  ${readyRows ? `<div class="card" style="margin-top:12px">
+    <div class="muted">赛道：攒够 5 个训练日 + 3 个留出日就自动评
+      CRPS/NLL/Brier 三道门（判据来自 worker 自己的 readiness，不是页面重算）</div>
+    <table style="margin-top:8px"><thead><tr>
+      <th>系统</th><th>训练案例</th><th>留出案例</th><th>状态</th>
+    </tr></thead><tbody>${readyRows}</tbody></table></div>` : `
+  <div class="muted" style="margin-top:12px">worker readiness 里还没有这些系统——
+    语料落行后会自动出现。</div>`}
+  <div class="card" style="margin-top:12px">
+    <div class="muted">46 对扫描的判决（钉在案）：直中 = 次晨最可能桶恰好是结算桶的天数占比，
+      "vs" 后是在职晨间分布同日的成绩</div>
+    <table style="margin-top:8px"><thead><tr>
+      <th>站</th><th>模型</th><th>三道门</th><th>直中 vs 在职</th><th>±1 桶</th><th>处置</th>
+    </tr></thead><tbody>${verdictRows}</tbody></table>
+    <div class="muted" style="margin-top:8px">差 NLL 一门的站也在采（MSM 判例：
+      语料是未来闸门重新提问的对象，停采的站永远赢不回席位）；
+      "实测反向"= 在职分布反而更准，采了只会花钱买噪声；
+      "在册·等首行"= 已裁定要采、还没轮到，不是被剔除。
+      处置读的是采集名册（裁定），不是库里有没有行（进度）。</div>
+  </div>`;
+}
+
 function oosScores(){
   const S = D.scores || {}; const rows = S.rows || [];
   if(!rows.length) return "";
@@ -6679,8 +6942,9 @@ const GROUPS = [
      [makerProbe,"挂单影子探针"],[refusalStats,"未建仓原因"],
      [windowDivergence,"分布与持仓分家"],[truthLanding,"真值落位"],
      [edgeBandHealth,"声称边际体温计"]]},
-  {id:"data", label:"数据与链路", note:"十七～十九节：链路每一环、数据缺口、真值物化",
-   sections:[[chain,"链路"],[gaps,"数据缺口"],[materialization,"真值物化"]]},
+  {id:"data", label:"数据与链路", note:"十七～二十节：链路每一环、数据缺口、真值物化、区域模型采集道",
+   sections:[[chain,"链路"],[gaps,"数据缺口"],[materialization,"真值物化"],
+     [regional,"区域模型"]]},
 ];
 
 const tabs = `<nav class="tabs" id="tabs">${
