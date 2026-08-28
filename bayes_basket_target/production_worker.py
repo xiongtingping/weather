@@ -75,6 +75,7 @@ from .database import (
     resolve_target_ws_manifest,
 )
 from .et_history import event_day_window
+from .station_season import station_season_bin
 from .consolidation_chain import record_chain_opener_tilt
 from .production import (
     commit_production_candidate_atomic,
@@ -3354,12 +3355,33 @@ class TargetProductionWorker:
         # than after the next day settles (12 stations spent 2026-08-20
         # locked out of P1 rebase waiting exactly that long).  A stamp
         # exactly at the close remains covered, as it always was.
-        return (
-            covered_at < closes_at - timedelta(seconds=1)
-            or covered_at > closes_at,
-            timezone_name,
-            latest_day,
-        )
+        if covered_at < closes_at - timedelta(seconds=1) or (
+            covered_at > closes_at
+        ):
+            return True, timezone_name, latest_day
+        # Training coverage is not the only way an artifact stops being
+        # servable.  The consumer builds its scope key from the P0 root's
+        # own ``season_bin``, so an artifact emitted under a different
+        # season label is unreachable however current its folds are -- and
+        # the miss is silent, falling back to applied strength 0.  That is
+        # what charter 62 did on 2026-08-25: the lineage moved to the
+        # station-local vocabulary, every artifact still answered to the
+        # calendar trigram, and P1's soft likelihood went from 72% coverage
+        # to nil in two days without a single blocker being recorded.  A
+        # season the serving side no longer asks for is staleness, and this
+        # is where staleness is decided.
+        served_season = station_season_bin(station_id, latest_day)
+        emitted = read_conn.execute(
+            "SELECT scope_key FROM basket_probability_evidence_artifact"
+            " WHERE station_id=? AND artifact_kind='METAR_TRAJECTORY_LIKELIHOOD'"
+            " ORDER BY trained_through_utc DESC LIMIT 1",
+            (station_id,),
+        ).fetchone()
+        if emitted is not None and str(emitted[0] or ""):
+            parts = str(emitted[0]).split("|")
+            if len(parts) > 1 and parts[1] != served_season:
+                return True, timezone_name, latest_day
+        return False, timezone_name, latest_day
 
     def _run_metar_trajectory_training(
         self, *, as_of_utc: str

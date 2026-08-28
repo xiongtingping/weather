@@ -37,6 +37,7 @@ from bayes_basket_target.future_temperature_curve import (
     build_root_future_temperature_curve,
 )
 from bayes_basket_target.settlement_time import settlement_day_window
+from bayes_basket_target.station_season import station_season_bin
 
 
 SCHEMA = "bayes_basket_metar_trajectory_training_packet_v1"
@@ -1117,7 +1118,22 @@ def build_training_packet(
             ),
             "station_id": station,
             "source_lane": "awc",
-            "season_bin": "JJA",
+            # Charter 62's station-local label, not the calendar trigram this
+            # was hardcoded to.  The consumer builds the same scope key from
+            # the P0 root's own lineage, which moved to PEAK/DESCENT/TROUGH/
+            # ASCENT/ALLYEAR on 2026-08-25 -- so from that day every lookup
+            # asked for ``awc|PEAK|…`` while all 6,642 artifacts answered to
+            # ``awc|JJA|…``.  Nothing raised: the miss falls back to applied
+            # strength 0, so P1's soft likelihood went from 72% coverage on
+            # 08-23 to 14.5% on the 25th and 0% from the 26th, silently.
+            # The disjoint vocabularies were meant to make exactly this join
+            # fail loudly; a hardcoded literal on one side is how it failed
+            # quietly instead.
+            # Keyed on the serving window's start, not the training window:
+            # charter 62 is explicit that these labels say which serving
+            # dates an artifact was emitted for, and that the fit itself is
+            # a rolling tail window, cross-season by construction.
+            "season_bin": station_season_bin(station, valid_from_utc[:10]),
             "local_time_bucket": bucket,
             "maturity_bin": "D0",
             "settlement_definition": "official_daily_tmax_c",
