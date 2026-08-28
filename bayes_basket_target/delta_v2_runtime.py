@@ -668,6 +668,11 @@ WINDOW_REFUSAL_FUNNEL = (
     "center",
     "short",
     "skew",
+    # Direction against the book's read of the day (user ruling
+    # 2026-08-28); sits with the structural gates because it rules on
+    # placement, not price.  Counts stay zero while the gate runs in
+    # shadow, which keeps the funnel arithmetic closed either way.
+    "market_lean",
     "leg_floor",
     "unpriced",
     "edge",
@@ -799,6 +804,109 @@ SKEW_PLACEMENT_MODE = (
 SKEW_GAP_THRESHOLD_BUCKETS = float(
     os.environ.get("DELTA_V2_SKEW_GAP_THRESHOLD", "") or 0.5
 )
+# The market-lean gate (user ruling, 2026-08-28): the book is information,
+# and a window may not lean AGAINST it.  Measured before wiring, on 481
+# morning station-days (local pre-noon snapshot vs the probability served
+# at that instant): when the book's implied mean sat more than half a
+# bucket WARM of the model's, settlement landed warm of the model's mean
+# 94% of the time against a 56% base rate; the cold side mirrors at 82%
+# vs 44%.  Both by-day bootstrap CIs clear zero by 30+ points.  That
+# signal lives exactly in the consensus bridge's dead zone -- the bridge
+# blends only past a 1.5C centre gap, and the mornings that carried the
+# 94% sat at 0.5-1.2C -- so nothing was reading it.
+#
+# Same funnel family as the skew gate one block up, and the same shape:
+# a *direction* rule on window placement, not a price rule.  The skew gate
+# refuses windows leaning against the model's own asymmetry; this one
+# refuses windows leaning against the book's disagreement with the model.
+# The incumbent is exempt -- "keep what we hold" is not a lean -- and the
+# gate never *creates* a buy: a window it passes still faces the leg
+# floor, the pricing, and the edge test below.
+#
+# ``shadow`` counts what it would refuse without refusing (the wiring
+# default until a ledger replay prices the on-arm); ``on`` refuses.
+MARKET_LEAN_GATE_MODE = (
+    os.environ.get("PM_MARKET_LEAN_GATE", "").strip().lower() or "shadow"
+)
+# Same half-bucket convention as the skew threshold: below this the book
+# and the model agree and the gate stays out of the way.
+MARKET_LEAN_MIN_BUCKETS = float(
+    os.environ.get("PM_MARKET_LEAN_MIN_BUCKETS", "") or 0.5
+)
+# A book too empty to state a mean states nothing: quoted buckets must
+# carry at least this much summed mid-price mass before a lean is read.
+MARKET_LEAN_MIN_QUOTED_MASS = 0.2
+
+
+def market_lean_ordinal(
+    quotes: Mapping[str, Any],
+    probabilities: Mapping[str, float],
+    ordinals: Mapping[str, int],
+) -> float | None:
+    """Book-implied mean minus model mean, in bucket ordinals.
+
+    Positive: the market sits warm of the model.  Mid prices where both
+    sides exist, one-sided quotes as themselves; ``None`` when too little
+    of the book is quoted to state a mean, which callers must treat as
+    "no signal", never as "aligned".
+    """
+
+    priced: list[tuple[int, float]] = []
+    for bucket, ordinal in ordinals.items():
+        quote = quotes.get(bucket)
+        if quote is None:
+            continue
+        ask = getattr(quote, "ask_price", None) if getattr(
+            quote, "ask_available", False
+        ) else None
+        bid = getattr(quote, "bid_price", None) if getattr(
+            quote, "bid_available", False
+        ) else None
+        if ask is not None and bid is not None:
+            price = (float(ask) + float(bid)) / 2.0
+        elif ask is not None:
+            price = float(ask)
+        elif bid is not None:
+            price = float(bid)
+        else:
+            continue
+        priced.append((int(ordinal), min(1.0, max(0.0, price))))
+    quoted_mass = sum(price for _, price in priced)
+    if len(priced) < 3 or quoted_mass < MARKET_LEAN_MIN_QUOTED_MASS:
+        return None
+    market_mean = sum(o * p for o, p in priced) / quoted_mass
+    model_pairs = [
+        (int(ordinals[bucket]), float(value))
+        for bucket, value in probabilities.items()
+        if bucket in ordinals and float(value) > 0.0
+    ]
+    model_mass = sum(value for _, value in model_pairs)
+    if model_mass <= 0.0:
+        return None
+    model_mean = sum(o * v for o, v in model_pairs) / model_mass
+    return market_mean - model_mean
+
+
+def market_lean_opposes(
+    lean: float | None,
+    *,
+    window_mid_ordinal: float,
+    model_mean_ordinal: float,
+) -> bool:
+    """Whether a window leans against the book's read of the day.
+
+    A window whose geometric midpoint sits half a bucket or more on the
+    OPPOSITE side of the model mean from the market's lean is opposed.
+    No signal, or a small lean, or a window near the mean: not opposed --
+    the gate abstains rather than guessing.
+    """
+
+    if lean is None or abs(lean) < MARKET_LEAN_MIN_BUCKETS:
+        return False
+    offset = window_mid_ordinal - model_mean_ordinal
+    if abs(offset) < MARKET_LEAN_MIN_BUCKETS:
+        return False
+    return (lean > 0) != (offset > 0)
 
 
 def _skew_extension_sign(
@@ -1075,6 +1183,31 @@ def _support_windows(
     center_refused = 0
     short_refused = 0
     skew_refused = 0
+    market_lean_refused = 0
+    market_lean_shadow_refused = 0
+    # Computed once per solve, not per window: the book and the model do
+    # not change inside the enumeration.
+    market_lean_value = (
+        market_lean_ordinal(
+            by_bucket,
+            probabilities,
+            {bucket: int(row.ordinal) for bucket, row in by_bucket.items()},
+        )
+        if MARKET_LEAN_GATE_MODE != "off"
+        else None
+    )
+    model_mean_ordinal_value = None
+    if market_lean_value is not None:
+        model_pairs = [
+            (int(by_bucket[bucket].ordinal), float(value))
+            for bucket, value in probabilities.items()
+            if bucket in by_bucket and float(value) > 0.0
+        ]
+        mass = sum(value for _, value in model_pairs)
+        if mass > 0.0:
+            model_mean_ordinal_value = (
+                sum(o * v for o, v in model_pairs) / mass
+            )
     leg_floor_refused = 0
     gapped_refused = 0
     unpriced_refused = 0
@@ -1288,6 +1421,29 @@ def _support_windows(
                 if opposed:
                     skew_refused += 1
                     continue
+            # The market-lean gate: the constants block up top carries the
+            # measurement that earned it (94%/82% directional realisation
+            # in the bridge's dead zone).  Incumbent exempt -- keeping what
+            # we hold is not a lean.  In shadow it counts and stands aside.
+            if (
+                MARKET_LEAN_GATE_MODE != "off"
+                and not is_incumbent
+                and market_lean_value is not None
+                and model_mean_ordinal_value is not None
+            ):
+                window_mid = (
+                    int(by_bucket[window[0]].ordinal)
+                    + int(by_bucket[window[-1]].ordinal)
+                ) / 2.0
+                if market_lean_opposes(
+                    market_lean_value,
+                    window_mid_ordinal=window_mid,
+                    model_mean_ordinal=model_mean_ordinal_value,
+                ):
+                    if MARKET_LEAN_GATE_MODE == "on":
+                        market_lean_refused += 1
+                        continue
+                    market_lean_shadow_refused += 1
             # Third floor: every leg must carry a price a market could
             # plausibly have made.  A leg offered at a tenth of a cent is the
             # known one-sided tail quote -- it does not state a probability,
@@ -1454,6 +1610,14 @@ def _support_windows(
         "dispersion_support_size": dispersion_receipt,
         "short_refused_window_count": short_refused,
         "skew_refused_window_count": skew_refused,
+        "market_lean_refused_window_count": market_lean_refused,
+        # Shadow bookkeeping: what the gate WOULD have refused, plus the
+        # signal itself so a receipt shows the lean the decision saw.
+        "market_lean_shadow_refused_window_count": (
+            market_lean_shadow_refused
+        ),
+        "market_lean_ordinal": market_lean_value,
+        "market_lean_gate_mode": MARKET_LEAN_GATE_MODE,
         "skew_extension_sign": skew_sign,
         "leg_floor_refused_window_count": leg_floor_refused,
         "leg_floor_excluded_buckets": leg_floor_excluded,
@@ -1489,6 +1653,7 @@ def _support_windows(
             center=center_refused,
             short=short_refused,
             skew=skew_refused,
+            market_lean=market_lean_refused,
             leg_floor=leg_floor_refused,
             unpriced=unpriced_refused,
             edge=edge_refused,

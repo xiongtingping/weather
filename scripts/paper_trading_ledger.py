@@ -1499,6 +1499,9 @@ GATE_REFUSAL_REASON = {
     # the rules refuse, the same structural family as the centre rung and
     # the length floor.
     "skew": "no_legal_window",
+    # Direction against the book's read (2026-08-28): structural family,
+    # same reason bucket as the other placement rules.
+    "market_lean": "no_legal_window",
     "leg_floor": "leg_below_floor",
     "unpriced": "no_priced_window",
     "edge": "negative_edge_window",
@@ -1509,6 +1512,7 @@ GATE_LABEL = {
     "center": "中心桶",
     "short": "桶数不足",
     "skew": "逆偏斜扩边",
+    "market_lean": "逆市场方向",
     "leg_floor": "单腿低于下限",
     "unpriced": "无法定价（视同非正EV）",
     "edge": "整篮非正EV",
