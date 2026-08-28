@@ -764,6 +764,7 @@ def _compile_target_plan(
     regime_artifact: RegimeArtifact | Mapping[str, Any] | None = None,
     require_regime_ssot: bool = True,
     expected_source_lane: str | None = None,
+    chain_consolidation_tilt: float | None = None,
 ) -> dict[str, Any]:
     """Compile one full stage → policy → v2 delta plan, no-live boundary."""
 
@@ -1044,6 +1045,7 @@ def _compile_target_plan(
             ),
             resource_probe_ok=resource_probe_ok,
             previous_probabilities=previous_probabilities,
+            chain_consolidation_tilt=chain_consolidation_tilt,
             # Newest first: the certainty gate asks whether the mass centre
             # has held still, and the answer is read off the same envelope
             # chain the previous-probabilities comparison already walks.
@@ -1492,6 +1494,7 @@ class DeltaBasketScoreV2Optimizer:
         regime_artifact: RegimeArtifact | Mapping[str, Any] | None = None,
         require_regime_ssot: bool = True,
         expected_source_lane: str | None = None,
+    chain_consolidation_tilt: float | None = None,
     ) -> dict[str, Any]:
         result = _compile_target_plan(
             station_policy_stage=station_policy_stage,
@@ -1518,6 +1521,7 @@ class DeltaBasketScoreV2Optimizer:
             regime_artifact=regime_artifact,
             require_regime_ssot=require_regime_ssot,
             expected_source_lane=expected_source_lane,
+            chain_consolidation_tilt=chain_consolidation_tilt,
         )
         boundary = dict(result.get("boundary") or {})
         boundary.update({
@@ -1567,11 +1571,13 @@ def compile_target_plan(
     regime_artifact: RegimeArtifact | Mapping[str, Any] | None = None,
     require_regime_ssot: bool = True,
     expected_source_lane: str | None = None,
+    chain_consolidation_tilt: float | None = None,
 ) -> dict[str, Any]:
     """Compatibility-free public facade for the one optimizer boundary."""
 
     return DeltaBasketScoreV2Optimizer().compile(
         station_policy_stage=station_policy_stage,
+        chain_consolidation_tilt=chain_consolidation_tilt,
         probability_envelopes=probability_envelopes,
         market_snapshot=market_snapshot,
         policy_activations=policy_activations,

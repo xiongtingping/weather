@@ -934,6 +934,18 @@ CONSOLIDATION_TILT_SIGNALS: tuple[str, ...] = tuple(
 CONSOLIDATION_TILT_FACTOR = min(1.0, float(
     os.environ.get("PAPER_LEDGER_CONSOLIDATION_TILT", "0.10") or 1.0
 ))
+# Whose lights decide a top-up's tilt.  ``opener`` is the measured rule:
+# the P0 opener's lights set the whole chain's factor.  ``stage`` asks the
+# lights at each stage's own decision moment -- the only semantics a
+# distributed production walk can compute without cross-cycle state, so it
+# is the semantics production runs, and this knob exists to price the
+# difference between the two on the same book before the two layers are
+# declared aligned.
+CONSOLIDATION_TILT_SCOPE = (
+    os.environ.get("PAPER_LEDGER_TILT_SCOPE", "opener").strip() or "opener"
+)
+if CONSOLIDATION_TILT_SCOPE not in ("opener", "stage"):
+    raise ValueError(f"unknown tilt scope: {CONSOLIDATION_TILT_SCOPE}")
 # The tilt clamps at the smallest order the venue takes (user ruling,
 # 2026-08-28: 把减仓档钳在最低单之上).  A tenth of a small chain falls
 # under the minimum order size, and a sub-minimum order is a zero order
@@ -1113,7 +1125,9 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
         ""
         if CONSOLIDATION_TILT_SIGNALS == ("stable", "sharp", "quoted")
         else "·灯" + "+".join(CONSOLIDATION_TILT_SIGNALS)
-    ) + "·钳最低单",
+    ) + "·钳最低单" + (
+        "" if CONSOLIDATION_TILT_SCOPE == "opener" else "·逐段灯"
+    ),
     None
     if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_VALUE_LAMBDA <= 0
     else f"价值钳λ{MAKER_RESTING_VALUE_LAMBDA:g}·中心桶豁免",
@@ -5208,6 +5222,16 @@ def backfill(
                         lit = sum(
                             1 for name in CONSOLIDATION_TILT_SIGNALS
                             if seat_consolidation.get(name) is True
+                        )
+                        tilt = (
+                            CONSOLIDATION_TILT_FACTOR
+                            if lit >= CONSOLIDATION_TILT_MIN_SIGNALS
+                            else 1.0
+                        )
+                    elif CONSOLIDATION_TILT_SCOPE == "stage":
+                        lit = sum(
+                            1 for name in CONSOLIDATION_TILT_SIGNALS
+                            if stage_consolidation.get(name) is True
                         )
                         tilt = (
                             CONSOLIDATION_TILT_FACTOR

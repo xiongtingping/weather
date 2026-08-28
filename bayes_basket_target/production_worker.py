@@ -75,6 +75,7 @@ from .database import (
     resolve_target_ws_manifest,
 )
 from .et_history import event_day_window
+from .consolidation_chain import record_chain_opener_tilt
 from .production import (
     commit_production_candidate_atomic,
     commit_production_stage_zero_execution_atomic,
@@ -13856,6 +13857,17 @@ class TargetProductionWorker:
                             created_at_utc=now,
                         ),
                     }
+                    # The chain's stake factor is the opener's, forever:
+                    # the first authorized P0 plan writes one row and every
+                    # later stage compiles against it (INSERT OR IGNORE, so
+                    # a re-authorized P0 cycle does not re-decide).
+                    record_chain_opener_tilt(
+                        self.commit_conn,
+                        station_id=station,
+                        event_date=day,
+                        plan=candidate,
+                        decided_at_utc=now,
+                    )
                     results.append(candidate)
                 except Exception as exc:
                     reason = f"{type(exc).__name__}:{exc}"

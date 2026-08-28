@@ -1665,3 +1665,105 @@ def test_the_centre_anchored_shape_sizes_shares_not_cash() -> None:
             f"got {shares}"
         )
         assert shares["96-97"] > shares["94-95"], shares
+
+
+def test_consolidation_tilt_scales_capital_floored_and_recorded() -> None:
+    """A lit light tilts the decision's capital, floored, and says so.
+
+    The fixture book is two buckets, so the sharp light (top-two mass at
+    60%) is lit by construction -- which makes the default compile the
+    tilted arm.  The control pins the factor to one and must reproduce
+    the untilted capital exactly; the tilted arm must never fall under
+    one minimum clip per target leg, and the audit must carry the basis
+    either way, because the ledger proves alignment off that field.
+    """
+
+    import bayes_basket_target.delta_v2_runtime as runtime
+
+    tilted = compile_delta_v2_runtime_plan(
+        snapshot=_snapshot(),
+        basket_policy=_basket_policy(),
+        delta_policy=_delta_policy(),
+        fill_resolver=_fill_resolver,
+        capital_available_usdc=5.0,
+        minimum_profit_floor=-5.0,
+        resource_probe_ok=True,
+    )
+    audit = tilted["delta_v2_audit"]["consolidation_tilt"]
+    assert audit["factor"] == runtime.CONSOLIDATION_TILT_FACTOR
+    assert "sharp" in audit["signals_lit"]
+    assert audit["capital_before_usdc"] == 5.0
+    floor = (
+        min(_delta_policy().cash_clip_grid)
+        * runtime.CONSOLIDATION_TILT_FLOOR_LEGS
+    )
+    assert audit["capital_after_usdc"] == max(
+        5.0 * runtime.CONSOLIDATION_TILT_FACTOR, floor
+    )
+    assert audit["capital_after_usdc"] < 5.0
+
+    original = runtime.CONSOLIDATION_TILT_FACTOR
+    runtime.CONSOLIDATION_TILT_FACTOR = 1.0
+    try:
+        control = compile_delta_v2_runtime_plan(
+            snapshot=_snapshot(),
+            basket_policy=_basket_policy(),
+            delta_policy=_delta_policy(),
+            fill_resolver=_fill_resolver,
+            capital_available_usdc=5.0,
+            minimum_profit_floor=-5.0,
+            resource_probe_ok=True,
+        )
+    finally:
+        runtime.CONSOLIDATION_TILT_FACTOR = original
+    control_audit = control["delta_v2_audit"]["consolidation_tilt"]
+    assert control_audit["factor"] == 1.0
+    assert control_audit["capital_after_usdc"] == 5.0
+
+
+def test_consolidation_tilt_inherits_the_opener_and_never_relights() -> None:
+    """A later stage runs the opener's factor, or untilted -- never its own.
+
+    The fixture's two-bucket book keeps sharp lit at every stage, which is
+    exactly the trap: re-reading lights late was priced at -81.8 USDC
+    against opener inheritance.  A later-stage compile with no opener record must
+    ignore its own lit lights and run untilted; one handed the opener's
+    factor must run it.
+    """
+
+    raw = _snapshot().to_dict()
+    raw["evidence"]["probability_stage"] = "P0-M"
+    policy_raw = _delta_policy().to_dict()
+    policy_raw["stage"] = "P0-M"
+    policy_raw.pop("content_sha256", None)
+    policy_raw["content_sha256"] = content_sha256(policy_raw)
+    policy = DeltaV2PolicyArtifact.from_mapping(policy_raw)
+
+    unrecorded = compile_delta_v2_runtime_plan(
+        snapshot=TargetBasketSnapshot.from_mapping(raw),
+        basket_policy=_basket_policy(),
+        delta_policy=policy,
+        fill_resolver=_fill_resolver,
+        capital_available_usdc=5.0,
+        minimum_profit_floor=-5.0,
+        resource_probe_ok=True,
+    )
+    audit = unrecorded["delta_v2_audit"]["consolidation_tilt"]
+    assert audit["basis"] == "no_opener_record"
+    assert audit["factor"] == 1.0
+    assert audit["capital_after_usdc"] == 5.0
+
+    inherited = compile_delta_v2_runtime_plan(
+        snapshot=TargetBasketSnapshot.from_mapping(raw),
+        basket_policy=_basket_policy(),
+        delta_policy=policy,
+        fill_resolver=_fill_resolver,
+        capital_available_usdc=5.0,
+        minimum_profit_floor=-5.0,
+        resource_probe_ok=True,
+        chain_consolidation_tilt=0.1,
+    )
+    audit = inherited["delta_v2_audit"]["consolidation_tilt"]
+    assert audit["basis"] == "opener_inherited"
+    assert audit["factor"] == 0.1
+    assert audit["capital_after_usdc"] < 5.0

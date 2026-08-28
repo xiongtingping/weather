@@ -296,6 +296,7 @@ def compile_production_plan(
     expected_source_lane: str | None = None,
     order_transport: Callable[[str, Mapping[str, Any]], Mapping[str, Any]] | None = None,
     live_submit_authorized: bool = False,
+    chain_consolidation_tilt: float | None = None,
 ) -> dict[str, Any]:
     """Compile one v2-only production decision, and deliver it when authorised.
 
@@ -309,6 +310,7 @@ def compile_production_plan(
 
     result = DeltaBasketScoreV2Optimizer().compile(
         station_policy_stage=station_policy_stage,
+        chain_consolidation_tilt=chain_consolidation_tilt,
         probability_envelopes=probability_envelopes,
         market_snapshot=market_snapshot,
         policy_activations=policy_activations,

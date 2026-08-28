@@ -312,6 +312,10 @@ LEDGER_ONLY = {
         " ruling, take half"
     ),
     "MAKER_CENTRE_TAKER": "research arm: centre takes at entry, rest rests",
+    "CONSOLIDATION_TILT_SCOPE": (
+        "opener is the measured rule; stage prices production's stateless"
+        " semantics"
+    ),
     "MAKER_RESTING_CENTRE_LAMBDA": "research arm",
     "MAKER_RESTING_TAIL_LAMBDA": "research arm (rejected, kept for replay)",
     "MAKER_RESTING_MAX_CLAIM_EDGE": "research arm (rejected)",

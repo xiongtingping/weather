@@ -51,6 +51,7 @@ from .policy import (
     resolve_station_policy,
 )
 from .production import compile_production_plan
+from .consolidation_chain import load_chain_tilt
 from .probability_bridge import load_current_probability_bridge
 from .native_ensemble_contract import (
     P0_PROBABILITY_PATHWAY,
@@ -2184,6 +2185,12 @@ def compile_production_cycle_from_ssot(
         evaluation_at_utc=evaluation_at_utc,
     )
     plan = compile_production_plan(
+        # The opener's recorded stake factor, read-only; None until a P0
+        # decision authorizes and the worker records it, which keeps this
+        # module inside its never-writes contract.
+        chain_consolidation_tilt=load_chain_tilt(
+            conn, station_id=station_id, event_date=event_date,
+        ),
         probability_envelopes=envelopes,
         market_snapshot=market_snapshot,
         policy_activations=bundle.policy_activations,

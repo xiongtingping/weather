@@ -222,6 +222,39 @@ CERTAINTY_GATE_SIGNALS = tuple(
 )
 CERTAINTY_STABLE_LOOKBACK = 3
 CERTAINTY_SHARP_TOP2 = 0.60
+# The consolidation stake tilt, production side (user ruling 2026-08-28;
+# G1 of the go-live alignment audit).  The ledger measured it twice --
+# maker-era five-arm ranking, then the taker baseline at -5.32% -> -3.70%
+# with drop-1/2/3 at +71.9/+61.1/+51.0 -- and the go-live audit found it
+# living only there, which live trading cannot tolerate: the book would
+# score stakes production never places.  Same two lights, same 0.10, same
+# minimum-clip floor as the ledger.
+#
+# One deliberate semantic difference, priced before shipping: the ledger's
+# measured rule lets the P0 opener's lights set the whole chain's factor,
+# which needs cross-cycle state a distributed walk does not have.  Here
+# every decision tilts by its own lights ("stage" scope) -- computable
+# stateless, and conservative: consolidation grows through the day, so a
+# top-up is more often tilted here than under opener inheritance, never
+# less.  The ledger prices the gap with PAPER_LEDGER_TILT_SCOPE=stage.
+CONSOLIDATION_TILT_FACTOR = min(1.0, float(
+    os.environ.get("PM_CONSOLIDATION_TILT", "0.10") or 1.0
+))
+CONSOLIDATION_TILT_SIGNALS = tuple(
+    name.strip()
+    for name in (
+        os.environ.get("PM_CONSOLIDATION_TILT_SIGNALS", "stable,sharp")
+        or "stable,sharp"
+    ).split(",")
+    if name.strip() in ("stable", "sharp")
+)
+CONSOLIDATION_TILT_MIN_SIGNALS = int(
+    os.environ.get("PM_CONSOLIDATION_TILT_MIN_SIGNALS", "1") or 1
+)
+# The floor is sized for the three-rung target opening width (clause 50 /
+# charter 59): a tilted decision can always still afford one minimum clip
+# on each of three legs, so the tilt reduces and never quietly refuses.
+CONSOLIDATION_TILT_FLOOR_LEGS = 3
 
 
 def certainty_signals(
@@ -2418,8 +2451,17 @@ def compile_delta_v2_runtime_plan(
     confirmed_cancel_for_fok: bool = False,
     previous_probabilities: Mapping[str, float] | None = None,
     prior_centre_buckets: Sequence[str] = (),
+    chain_consolidation_tilt: float | None = None,
 ) -> dict[str, Any]:
     """Compile the single-event q* and best no-live action under v2.
+
+    ``chain_consolidation_tilt`` is the factor the chain's P0 opener earned,
+    handed back by the caller that recorded it; present it wins at every
+    stage.  Absent, a P0 decision earns its own from its own lights, and a
+    later stage runs untilted -- never its own lights, which the ledger
+    priced at -81.8 USDC against opener inheritance (drop-1/2/3 all
+    negative): late top-ups are the profitable adds, and lights that came
+    on after the opener must not cut them.
 
     ``previous_probabilities`` is the same station-day's probability at the
     previous checkpoint.  Rebalancing follows the probability, not the
@@ -2529,6 +2571,44 @@ def compile_delta_v2_runtime_plan(
     if gated_by:
         raise ContractError(
             "delta_v2_certainty_gate_lit:" + ",".join(gated_by)
+        )
+    # The consolidation tilt: a lit light scales this decision's capital to
+    # a tenth, floored at one minimum clip per target leg so the cut never
+    # quietly becomes a refusal, and never lifted above the untilted
+    # allowance.  A stake decision, not a gate -- the enumeration and every
+    # window below see the same book either way.  Whose lights decide is
+    # the opener's, exactly as the ledger measured it: an inherited factor
+    # wins outright, a P0 decision with none earns its own, and a later
+    # stage with none runs untilted.
+    consolidation_tilt_lit = [
+        name for name in CONSOLIDATION_TILT_SIGNALS
+        if lit_certainty.get(name)
+    ]
+    if chain_consolidation_tilt is not None:
+        consolidation_tilt = min(1.0, float(chain_consolidation_tilt))
+        consolidation_tilt_basis = "opener_inherited"
+    elif str(snapshot.evidence.probability_stage or "") == "P0":
+        consolidation_tilt = (
+            CONSOLIDATION_TILT_FACTOR
+            if len(consolidation_tilt_lit) >= CONSOLIDATION_TILT_MIN_SIGNALS
+            else 1.0
+        )
+        consolidation_tilt_basis = "p0_own_lights"
+    else:
+        consolidation_tilt = 1.0
+        consolidation_tilt_basis = "no_opener_record"
+    capital_before_tilt_usdc = float(capital_available_usdc)
+    if consolidation_tilt < 1.0 and capital_before_tilt_usdc > 0.0:
+        tilt_floor_usdc = (
+            min(delta_policy.cash_clip_grid) * CONSOLIDATION_TILT_FLOOR_LEGS
+            if delta_policy.cash_clip_grid else 0.0
+        )
+        capital_available_usdc = min(
+            capital_before_tilt_usdc,
+            max(
+                capital_before_tilt_usdc * consolidation_tilt,
+                tilt_floor_usdc,
+            ),
         )
     bankroll_usdc = float(basket_policy.total_budget_usdc)
     objective_form = (
@@ -3122,6 +3202,15 @@ def compile_delta_v2_runtime_plan(
         reason_codes.append("regime_direction_not_allowed")
     delta_v2_audit = {
         "schema": "delta_basket_score_authorization_v2",
+        # The stake tilt this decision compiled under, so the ledger and a
+        # reviewer can prove the sizing basis without re-deriving lights.
+        "consolidation_tilt": {
+            "factor": consolidation_tilt,
+            "basis": consolidation_tilt_basis,
+            "signals_lit": consolidation_tilt_lit,
+            "capital_before_usdc": capital_before_tilt_usdc,
+            "capital_after_usdc": float(capital_available_usdc),
+        },
         "selected_actions": selected_evaluations,
         "selected_bundle_sha256": selection.get("selected_bundle_sha256"),
         "authorized": selection.get("authorized") is True,
