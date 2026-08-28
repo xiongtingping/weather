@@ -23,6 +23,9 @@ from bayes_basket_target.awc_observation_contract import (  # noqa: E402
     CanonicalAWCObservationContract,
 )
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
+from bayes_basket_target.station_registry import (  # noqa: E402
+    coordinate_registry_manifest,
+)
 from bayes_basket_target.resource_bounds import (  # noqa: E402
     write_bounded_json_if_changed,
 )
@@ -48,9 +51,31 @@ def _station_registry(target_db: Path) -> dict[str, dict[str, object]]:
             raise ContractError(f"pr12_station_registry_duplicate:{station}")
         record["station_id"] = station
         result[station] = record
-    if len(result) != 45:
-        raise ContractError(f"pr12_station_registry_not_45:{len(result)}")
-    return result
+    # The guard's claim is "the registry carries the fleet", and the count
+    # was a proxy for it that broke the moment the registry carried one
+    # row more.  Three onboarding rows for stations not yet in the fleet
+    # (LTFM/UUWW/LLBG, written 2026-08-28 07:56Z, append-only so not
+    # removable) took the table to 48, and this sweep failed in under a
+    # second every ten minutes for the next ten hours -- the observation
+    # projection stopped and P1 packets could not close, all while the
+    # fleet's own 45 rows sat in the table intact.  Check membership, not
+    # count: every fleet station must have exactly one row, and rows for
+    # stations outside the fleet are staged onboarding, ignored here.
+    fleet = {
+        str(value).upper()
+        for value in coordinate_registry_manifest()["station_ids"]
+    }
+    missing = sorted(fleet - set(result))
+    if missing:
+        raise ContractError(
+            "pr12_station_registry_missing_fleet_station:"
+            + ",".join(missing[:5])
+        )
+    return {
+        station: record
+        for station, record in result.items()
+        if station in fleet
+    }
 
 
 def _parse_as_of_date(as_of_utc: str) -> date:
