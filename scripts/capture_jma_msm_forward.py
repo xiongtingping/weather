@@ -42,7 +42,7 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target.contracts import ContractError, content_sha256
 from bayes_basket_target.jma_msm_archive import (
-    FAMILY_ID, PROVIDER_ID, SYSTEM_ID, TRANSPORT_PROVIDER_ID,
+    CAPTURE_STATIONS, PROVIDER_ID, SYSTEM_ID, TRANSPORT_PROVIDER_ID,
     close_client, fetch_day_maximum, file_url,
 )
 from bayes_basket_target.native_archive_lead import capture_lead_bucket
@@ -52,19 +52,9 @@ EXTRACTION_VERSION = "jma_msm_surface_nearest_cell_v1"
 SETTLEMENT_DEFINITION = "official_daily_tmax_c"
 MEMBER_ID = "MSM_CONTROL"
 MEMBER_ROLE = "CONTROL"
-# Widened by ruling on 2026-08-28, from the 46-pair sweep: all four MSM
-# pairs beat the served morning read on argmax (RKPK 32%-vs-14% with ±1 at
-# 82-vs-50), and RCSS/RJTT/RKPK cleared all three admission gates.  RKSI
-# missed the NLL gate on this window and is captured anyway: the corpus is
-# what future gates re-ask, and a station that stops being captured can
-# never earn the seat back.  Seats themselves are still raced -- capture
-# admits evidence, never authority.
-STATIONS = (
-    ("RCSS", 25.0697, 121.5525, "Asia/Taipei"),
-    ("RJTT", 35.553, 139.781, "Asia/Tokyo"),
-    ("RKPK", 35.179, 128.938, "Asia/Seoul"),
-    ("RKSI", 37.469, 126.451, "Asia/Seoul"),
-)
+# The roster is the archive module's, so the board that reports which
+# pairs were ruled in reads the same tuple this capture walks.
+STATIONS = CAPTURE_STATIONS
 # MSM publishes eight runs a day; these two align with the fleet's six-hourly
 # ladder, so a scope formed here has peers to pair with rather than sitting
 # alone in a cycle nobody else fits.

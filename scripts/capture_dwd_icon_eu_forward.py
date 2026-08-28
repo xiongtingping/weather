@@ -30,7 +30,7 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target.contracts import content_sha256
 from bayes_basket_target.dwd_icon_eu_point_archive import (
-    PROVIDER_ID, SYSTEM_ID, TRANSPORT_PROVIDER_ID,
+    CAPTURE_STATIONS, PROVIDER_ID, SYSTEM_ID, TRANSPORT_PROVIDER_ID,
     close_client, fetch_run_day_maxima, run_directory_url,
 )
 from bayes_basket_target.native_archive_lead import capture_lead_bucket
@@ -40,20 +40,9 @@ EXTRACTION_VERSION = "dwd_icon_eu_surface_nearest_cell_v1"
 SETTLEMENT_DEFINITION = "official_daily_tmax_c"
 MEMBER_ID = "ICON_EU_CONTROL"
 MEMBER_ROLE = "CONTROL"
-# The sweep's verdicts: LTAC and EPWA cleared all three gates; the next
-# five cleared CRPS and Brier and missed NLL, captured on the MSM
-# precedent (the corpus is what future gates re-ask, and with whole-domain
-# fields an extra station is free).  EGLC (two gates against) and LIMC
-# (CRPS and Brier both against) are excluded as measured reversals.
-STATIONS = (
-    ("LTAC", 40.128, 32.995, "Europe/Istanbul"),
-    ("EPWA", 52.163, 20.961, "Europe/Warsaw"),
-    ("EDDM", 48.348, 11.813, "Europe/Berlin"),
-    ("EHAM", 52.315, 4.79, "Europe/Amsterdam"),
-    ("EFHK", 60.327, 24.957, "Europe/Helsinki"),
-    ("LFPB", 48.967, 2.428, "Europe/Paris"),
-    ("LEMD", 40.466, -3.555, "Europe/Madrid"),
-)
+# The roster is the archive module's, so the board that reports which
+# pairs were ruled in reads the same tuple this capture walks.
+STATIONS = CAPTURE_STATIONS
 RUN_CYCLES = (0, 12)
 # Runs per pass.  Two is every run the archive can currently hold for the
 # captured cycles.

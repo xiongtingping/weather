@@ -26,6 +26,7 @@ import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,7 +35,7 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target.contracts import content_sha256
 from bayes_basket_target.noaa_conus_archive import (
-    PROVIDER_IDS, SYSTEM_IDS, TRANSPORTS,
+    CAPTURE_STATIONS, PROVIDER_IDS, SYSTEM_IDS, TRANSPORTS,
     close_client, fetch_day_maximum, run_covers_peak, run_directory_url,
 )
 from bayes_basket_target.native_archive_lead import capture_lead_bucket
@@ -47,25 +48,7 @@ EXTRACTION_VERSIONS = {
 SETTLEMENT_DEFINITION = "official_daily_tmax_c"
 MEMBER_IDS = {"HRRR": "HRRR_CONTROL", "NBM": "NBM_BLEND"}
 MEMBER_ROLE = "CONTROL"
-US_STATIONS = (
-    ("KATL", 33.62972, -84.44223, "America/New_York"),
-    ("KAUS", 30.1831, -97.68063, "America/Chicago"),
-    ("KBKF", 39.713, -104.758, "America/Denver"),
-    ("KDAL", 32.83836, -96.83584, "America/Chicago"),
-    ("KHOU", 29.64582, -95.28214, "America/Chicago"),
-    ("KLAX", 33.93817, -118.3866, "America/Los_Angeles"),
-    ("KLGA", 40.77945, -73.88027, "America/New_York"),
-    ("KMIA", 25.78806, -80.31692, "America/New_York"),
-    ("KORD", 41.96017, -87.93161, "America/Chicago"),
-    ("KSEA", 47.44467, -122.31442, "America/Los_Angeles"),
-    ("KSFO", 37.61961, -122.36561, "America/Los_Angeles"),
-)
-STATIONS = {
-    # KLAX/HRRR measured reversed in the 46-pair sweep; it stays in NBM,
-    # where it did not.
-    "HRRR": tuple(s for s in US_STATIONS if s[0] != "KLAX"),
-    "NBM": US_STATIONS,
-}
+STATIONS = CAPTURE_STATIONS
 # Aligned with the fleet's six-hourly ladder for MSM's reason: a scope
 # formed here has peers to pair with.  The peak pre-filter prunes what a
 # product cannot serve (NBM's 00Z never covers a US afternoon).
@@ -129,6 +112,101 @@ def _rows_for_day(
     }
 
 
+def _plan(
+    conn: sqlite3.Connection, now: datetime
+) -> tuple[list[dict[str, Any]], int]:
+    """Every run worth capturing this pass, before any of them is fetched.
+
+    Planned first and interleaved by product second, because a pass cap
+    applied to a product-major walk starves the later product outright:
+    the first pass spent all six of its runs on HRRR and the NBM lane sat
+    at zero rows with nothing wrong with it.  A cap has to be shared by
+    rotation, not by sort order -- the same lesson the resident's single
+    writer learned.  Costs only indexed reads and arithmetic.
+    """
+
+    by_product: dict[str, list[dict[str, Any]]] = {}
+    skipped = 0
+    for product in ("HRRR", "NBM"):
+        items: list[dict[str, Any]] = []
+        system_id = SYSTEM_IDS[product]
+        for station, latitude, longitude, zone_name in STATIONS[product]:
+            zone = ZoneInfo(zone_name)
+            for offset in range(-BACKFILL_DAYS, LOOKAHEAD_DAYS + 1):
+                target = now.astimezone(zone).date() + timedelta(days=offset)
+                day_start_local = datetime.combine(
+                    target, datetime.min.time(), tzinfo=zone
+                )
+                day_start = day_start_local.astimezone(timezone.utc)
+                # The zone's signed UTC offset, taken BEFORE the
+                # conversion to UTC zeroes it.
+                offset_hours = int(
+                    day_start_local.utcoffset().total_seconds() // 3600
+                )
+                held = _rows_for_day(
+                    conn, system_id, station, target.isoformat()
+                )
+                for hour in RUN_CYCLES:
+                    for back in (1, 2):
+                        run = datetime(
+                            target.year, target.month, target.day,
+                            hour, tzinfo=timezone.utc
+                        ) - timedelta(days=back)
+                        if run >= day_start:
+                            continue
+                        # S3 publication lags the run by about two hours;
+                        # the f48 tail arrives later still.
+                        if run > now - timedelta(hours=4):
+                            continue
+                        if not run_covers_peak(
+                            product=product, run_init=run,
+                            event_date=target,
+                            utc_offset_hours=offset_hours,
+                        ):
+                            continue
+                        bucket = capture_lead_bucket(
+                            event_date=target.isoformat(),
+                            settlement_timezone=zone_name,
+                            run_init=run,
+                        )
+                        if bucket not in ("h12_24", "h24_48"):
+                            continue
+                        if bucket in held:
+                            skipped += 1
+                            continue
+                        # Two runs of the same day can land in one bucket;
+                        # the table holds one row per bucket, so the
+                        # second would fetch 30 MB to die on the UNIQUE.
+                        held.add(bucket)
+                        items.append({
+                            "product": product, "system_id": system_id,
+                            "station": station, "latitude": latitude,
+                            "longitude": longitude, "target": target,
+                            "offset_hours": offset_hours, "run": run,
+                            "cycle": f"{run:%H}Z",
+                            "init": run.isoformat().replace("+00:00", "Z"),
+                            "bucket": bucket,
+                        })
+        # Newest event day first, across all stations, before any station's
+        # backfill.  Station-major order starves the far end of the roster
+        # of exactly the runs that matter: a station whose newest run is
+        # never reached contributes nothing to the live race no matter how
+        # complete its history gets.  Sorting by day rotates the stations
+        # for free, since each contributes about two items per day.
+        items.sort(key=lambda i: (
+            -i["target"].toordinal(), i["station"], i["run"].isoformat()
+        ))
+        by_product[product] = items
+    # Round-robin: one run from each product in turn, so a cap reached
+    # mid-list leaves both lanes equally far along.
+    plan: list[dict[str, Any]] = []
+    for index in range(max((len(v) for v in by_product.values()), default=0)):
+        for product in ("HRRR", "NBM"):
+            if index < len(by_product[product]):
+                plan.append(by_product[product][index])
+    return plan, skipped
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
@@ -139,155 +217,102 @@ def main() -> int:
     conn.execute("PRAGMA busy_timeout=60000")
 
     written = 0
-    skipped = 0
     attempted = 0
     failed: list[str] = []
+    blocked = {
+        product for product in ("HRRR", "NBM")
+        if not _transport_is_writable(conn, TRANSPORTS[product])[0]
+    }
+    if blocked and not args.dry_run:
+        for product in sorted(blocked):
+            reason = _transport_is_writable(conn, TRANSPORTS[product])[1]
+            print(f"  {product} 采集已就绪但无法落库：{reason}")
 
     try:
-        for product in ("HRRR", "NBM"):
-            writable, reason = _transport_is_writable(
-                conn, TRANSPORTS[product]
-            )
-            if not writable and not args.dry_run:
-                print(f"  {product} 采集已就绪但无法落库：{reason}")
+        plan, skipped = _plan(conn, now)
+        for item in plan:
+            product = item["product"]
+            if product in blocked and not args.dry_run:
                 continue
-            system_id = SYSTEM_IDS[product]
-            for station, latitude, longitude, zone_name in STATIONS[product]:
-                zone = ZoneInfo(zone_name)
-                for offset in range(-BACKFILL_DAYS, LOOKAHEAD_DAYS + 1):
-                    target = (now.astimezone(zone).date()
-                              + timedelta(days=offset))
-                    day_start_local = datetime.combine(
-                        target, datetime.min.time(), tzinfo=zone
-                    )
-                    day_start = day_start_local.astimezone(timezone.utc)
-                    # The zone's signed UTC offset, taken BEFORE the
-                    # conversion to UTC zeroes it.
-                    offset_hours = int(
-                        day_start_local.utcoffset().total_seconds() // 3600
-                    )
-                    held = _rows_for_day(
-                        conn, system_id, station, target.isoformat()
-                    )
-                    for hour in RUN_CYCLES:
-                        for back in (1, 2):
-                            run = datetime(
-                                target.year, target.month, target.day,
-                                hour, tzinfo=timezone.utc
-                            ) - timedelta(days=back)
-                            if run >= day_start:
-                                continue
-                            # S3 publication lags the run by about two
-                            # hours; the f48 tail arrives later still.
-                            if run > now - timedelta(hours=4):
-                                continue
-                            if not run_covers_peak(
-                                product=product, run_init=run,
-                                event_date=target,
-                                utc_offset_hours=offset_hours,
-                            ):
-                                continue
-                            cycle = f"{run:%H}Z"
-                            init = run.isoformat().replace("+00:00", "Z")
-                            bucket = capture_lead_bucket(
-                                event_date=target.isoformat(),
-                                settlement_timezone=zone_name,
-                                run_init=run,
-                            )
-                            if bucket not in ("h12_24", "h24_48"):
-                                continue
-                            if bucket in held:
-                                skipped += 1
-                                continue
-                            if attempted >= MAX_RUNS_PER_PASS:
-                                continue
-                            attempted += 1
-                            try:
-                                captured = fetch_day_maximum(
-                                    product=product, run_init=run,
-                                    event_date=target,
-                                    utc_offset_hours=offset_hours,
-                                    latitude=latitude, longitude=longitude,
-                                )
-                            except Exception as exc:  # noqa: BLE001
-                                failed.append(
-                                    f"{product} {station} {target} {cycle}"
-                                    f" {type(exc).__name__}:"
-                                    f" {str(exc)[:60]}"
-                                )
-                                continue
-                            if not captured["complete"]:
-                                failed.append(
-                                    f"{product} {station} {target} {cycle}"
-                                    " 时次不全"
-                                    f" {len(captured['hours_covered'])}"
-                                    f"/{len(captured['hours_wanted'])}"
-                                )
-                                continue
-                            identity = {
-                                "ensemble_system_id": system_id,
-                                "station_id": station,
-                                "target_local_date": target.isoformat(),
-                                "run_cycle": cycle,
-                                "native_run_init_utc": init,
-                                "member_id": MEMBER_IDS[product],
-                                "raw_tmax_c": round(
-                                    captured["forecast_tmax_c"], 6
-                                ),
-                                "extraction_version":
-                                    EXTRACTION_VERSIONS[product],
-                            }
-                            digest = content_sha256(identity)
-                            url = run_directory_url(product, run)
-                            print(
-                                f"  {product} {station} {target} {cycle}"
-                                f" {bucket}"
-                                f" {captured['forecast_tmax_c']:.2f}°C"
-                                f" ({captured['bytes_downloaded']/1048576:.1f}"
-                                " MB)"
-                                + ("  [dry-run]" if args.dry_run else "")
-                            )
-                            if args.dry_run:
-                                continue
-                            conn.execute(
-                                "INSERT INTO"
-                                " calibration_native_ensemble_historical_member_run("
-                                " historical_member_run_id,"
-                                " ensemble_system_id,"
-                                " station_id, target_local_date,"
-                                " archive_lead_bucket, run_cycle, member_id,"
-                                " member_role, raw_tmax_c,"
-                                " settlement_definition,"
-                                " extraction_version, provider_id,"
-                                " transport_provider_id,"
-                                " native_run_init_utc,"
-                                " offline_oos_eligible, archive_query_at_utc,"
-                                " source_url, raw_object_ref,"
-                                " source_object_sha256, qc_status,"
-                                " authority_scope, holdout_eligible,"
-                                " content_sha256)"
-                                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
-                                "?,?,?,?,?,?)",
-                                (
-                                    f"{product.lower()}-{digest[:32]}",
-                                    system_id, station,
-                                    target.isoformat(), bucket, cycle,
-                                    MEMBER_IDS[product], MEMBER_ROLE,
-                                    float(captured["forecast_tmax_c"]),
-                                    SETTLEMENT_DEFINITION,
-                                    EXTRACTION_VERSIONS[product],
-                                    PROVIDER_IDS[product],
-                                    TRANSPORTS[product], init,
-                                    1,
-                                    now.isoformat().replace("+00:00", "Z"),
-                                    url, captured["grid_geometry"], digest,
-                                    "ACCEPTED", "CALIBRATION_TRAIN_ONLY", 0,
-                                    digest,
-                                ),
-                            )
-                            conn.commit()
-                            held.add(bucket)
-                            written += 1
+            if attempted >= MAX_RUNS_PER_PASS:
+                break
+            attempted += 1
+            station, target = item["station"], item["target"]
+            cycle, bucket = item["cycle"], item["bucket"]
+            try:
+                captured = fetch_day_maximum(
+                    product=product, run_init=item["run"],
+                    event_date=target,
+                    utc_offset_hours=item["offset_hours"],
+                    latitude=item["latitude"], longitude=item["longitude"],
+                )
+            except Exception as exc:  # noqa: BLE001
+                failed.append(
+                    f"{product} {station} {target} {cycle}"
+                    f" {type(exc).__name__}: {str(exc)[:60]}"
+                )
+                continue
+            if not captured["complete"]:
+                failed.append(
+                    f"{product} {station} {target} {cycle} 时次不全"
+                    f" {len(captured['hours_covered'])}"
+                    f"/{len(captured['hours_wanted'])}"
+                )
+                continue
+            identity = {
+                "ensemble_system_id": item["system_id"],
+                "station_id": station,
+                "target_local_date": target.isoformat(),
+                "run_cycle": cycle,
+                "native_run_init_utc": item["init"],
+                "member_id": MEMBER_IDS[product],
+                "raw_tmax_c": round(captured["forecast_tmax_c"], 6),
+                "extraction_version": EXTRACTION_VERSIONS[product],
+            }
+            digest = content_sha256(identity)
+            print(
+                f"  {product} {station} {target} {cycle} {bucket}"
+                f" {captured['forecast_tmax_c']:.2f}°C"
+                f" ({captured['bytes_downloaded']/1048576:.1f} MB)"
+                + ("  [dry-run]" if args.dry_run else "")
+            )
+            if args.dry_run:
+                continue
+            conn.execute(
+                "INSERT INTO"
+                " calibration_native_ensemble_historical_member_run("
+                " historical_member_run_id, ensemble_system_id,"
+                " station_id, target_local_date,"
+                " archive_lead_bucket, run_cycle, member_id,"
+                " member_role, raw_tmax_c, settlement_definition,"
+                " extraction_version, provider_id,"
+                " transport_provider_id, native_run_init_utc,"
+                " offline_oos_eligible, archive_query_at_utc,"
+                " source_url, raw_object_ref,"
+                " source_object_sha256, qc_status,"
+                " authority_scope, holdout_eligible,"
+                " content_sha256)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    f"{product.lower()}-{digest[:32]}",
+                    item["system_id"], station,
+                    target.isoformat(), bucket, cycle,
+                    MEMBER_IDS[product], MEMBER_ROLE,
+                    float(captured["forecast_tmax_c"]),
+                    SETTLEMENT_DEFINITION,
+                    EXTRACTION_VERSIONS[product],
+                    PROVIDER_IDS[product],
+                    TRANSPORTS[product], item["init"],
+                    1,
+                    now.isoformat().replace("+00:00", "Z"),
+                    run_directory_url(product, item["run"]),
+                    captured["grid_geometry"], digest,
+                    "ACCEPTED", "CALIBRATION_TRAIN_ONLY", 0,
+                    digest,
+                ),
+            )
+            conn.commit()
+            written += 1
     finally:
         close_client()
         conn.close()

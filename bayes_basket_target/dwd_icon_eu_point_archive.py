@@ -44,6 +44,23 @@ SYSTEM_ID = "DWD_ICON_EU_POINT"
 FAMILY_ID = "DWD_ICON_EPS"
 PROVIDER_ID = "DWD"
 _BASE = "https://opendata.dwd.de/weather/nwp/icon-eu/grib"
+# The roster this lane is ruled in at.  LTAC and EPWA cleared all three
+# gates; the next five cleared CRPS and Brier and missed NLL, captured on
+# the MSM precedent and free at the margin (the fields are whole-domain,
+# so a seventh station costs one more nearest-cell decode).  EGLC and
+# LIMC measured reversed and are absent.  It lives here, not in the
+# capture script, because the board reports the ruling too -- and a board
+# that infers the roster from which rows exist yet would call a station
+# whose turn has not come "measured reversed".
+CAPTURE_STATIONS = (
+    ("LTAC", 40.128, 32.995, "Europe/Istanbul"),
+    ("EPWA", 52.163, 20.961, "Europe/Warsaw"),
+    ("EDDM", 48.348, 11.813, "Europe/Berlin"),
+    ("EHAM", 52.315, 4.79, "Europe/Amsterdam"),
+    ("EFHK", 60.327, 24.957, "Europe/Helsinki"),
+    ("LFPB", 48.967, 2.428, "Europe/Paris"),
+    ("LEMD", 40.466, -3.555, "Europe/Madrid"),
+)
 _TIMEOUT = httpx.Timeout(60.0, connect=15.0)
 _ATTEMPTS = 3
 

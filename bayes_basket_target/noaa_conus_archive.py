@@ -52,6 +52,31 @@ _BUCKETS = {
     "HRRR": "https://noaa-hrrr-bdp-pds.s3.amazonaws.com",
     "NBM": "https://noaa-nbm-grib2-pds.s3.amazonaws.com",
 }
+_US_STATIONS = (
+    ("KATL", 33.62972, -84.44223, "America/New_York"),
+    ("KAUS", 30.1831, -97.68063, "America/Chicago"),
+    ("KBKF", 39.713, -104.758, "America/Denver"),
+    ("KDAL", 32.83836, -96.83584, "America/Chicago"),
+    ("KHOU", 29.64582, -95.28214, "America/Chicago"),
+    ("KLAX", 33.93817, -118.3866, "America/Los_Angeles"),
+    ("KLGA", 40.77945, -73.88027, "America/New_York"),
+    ("KMIA", 25.78806, -80.31692, "America/New_York"),
+    ("KORD", 41.96017, -87.93161, "America/Chicago"),
+    ("KSEA", 47.44467, -122.31442, "America/Los_Angeles"),
+    ("KSFO", 37.61961, -122.36561, "America/Los_Angeles"),
+)
+# The roster each product is captured at, which is the sweep's verdict and
+# not a progress report.  It lives here rather than in the capture script
+# because two readers need the same answer: the capture, and the board
+# that reports which pairs were ruled in -- and a board that infers the
+# roster from which rows exist yet calls a station that has not had its
+# turn "measured reversed", which is a different claim entirely.
+CAPTURE_STATIONS = {
+    # KLAX/HRRR measured reversed in the 46-pair sweep (the served
+    # posterior beat it); it stays in NBM, where it did not.
+    "HRRR": tuple(s for s in _US_STATIONS if s[0] != "KLAX"),
+    "NBM": _US_STATIONS,
+}
 # The idx line that names the 2m temperature field.  NBM carries a second
 # TMP 2m line for the ensemble standard deviation; the trailing colon on
 # the match keeps the mean and drops ":ens std dev".

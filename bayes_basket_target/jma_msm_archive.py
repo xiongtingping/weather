@@ -48,6 +48,19 @@ SYSTEM_ID = "JMA_MSM_POINT"
 FAMILY_ID = "JMA_MSM"
 PROVIDER_ID = "JMA_RJTD"
 TRANSPORT_PROVIDER_ID = "RISH_KYOTO_JMA_ARCHIVE"
+# The roster this lane is ruled in at, from the 46-pair sweep.  RKSI
+# missed the NLL gate on that window and is captured anyway: the corpus
+# is what future gates re-ask, and a station that stops being captured
+# can never earn the seat back.  It lives here, not in the capture
+# script, because the board reports the ruling too -- and a board that
+# infers the roster from which rows exist yet would call a station whose
+# turn has not come "measured reversed", which is a different claim.
+CAPTURE_STATIONS = (
+    ("RCSS", 25.0697, 121.5525, "Asia/Taipei"),
+    ("RJTT", 35.553, 139.781, "Asia/Tokyo"),
+    ("RKPK", 35.179, 128.938, "Asia/Seoul"),
+    ("RKSI", 37.469, 126.451, "Asia/Seoul"),
+)
 ARCHIVE_ROOT = (
     "http://database.rish.kyoto-u.ac.jp/arch/jmadata/data/gpv/original"
 )
