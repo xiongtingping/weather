@@ -296,6 +296,19 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
         3600.0,
         1800.0,
     ),
+    # The CONUS pair from the same 46-pair sweep that widened the MSM lane:
+    # HRRR and the NBM cleared the three admission gates at more roster
+    # stations than every other regional source combined (NBM at ten of
+    # eleven US stations).  Hourly for the MSM lane's reason -- only the
+    # 00Z/12Z cycles are captured and the peak-coverage pre-filter prunes
+    # arithmetically, so most passes exit on indexed reads.  The timeout
+    # covers six runs of ranged S3 reads at 30-50 MB each.
+    (
+        "capture_noaa_conus_forward",
+        "scripts/capture_noaa_conus_forward_sweep.sh",
+        3600.0,
+        1800.0,
+    ),
 )
 
 

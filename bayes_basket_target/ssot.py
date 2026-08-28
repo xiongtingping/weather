@@ -477,6 +477,9 @@ CREATE TABLE IF NOT EXISTS calibration_native_ensemble_historical_member_run (
   -- RISH_KYOTO_JMA_ARCHIVE ruled in 2026-08-28: the JMA MSM lane through
   -- the Kyoto RISH mirror, byte-range reads of the native GRIB archive.
   -- The capture lane existed for weeks with its rows refused at INSERT.
+  -- NOAA_HRRR_PDS_S3 and NOAA_NBM_PDS_S3 ruled in the same day, from the
+  -- same 46-pair sweep: idx-sidecar byte-range reads of the NOAA open
+  -- data buckets, one complete GRIB2 message per field.
   -- A CHECK cannot be altered in place; the live table takes the widening
   -- via scripts/migrate_member_run_transport_allowlist.py.  Keep comments
   -- OUT of the IN(...) list itself: the capture pre-flight parses the live
@@ -486,7 +489,8 @@ CREATE TABLE IF NOT EXISTS calibration_native_ensemble_historical_member_run (
     transport_provider_id IN (
       'OPEN_METEO','NOAA_GEFS_PDS_S3','ECMWF_OPEN_DATA_S3',
       'ECCC_DD_WEATHER','DWD_OPENDATA_ICON_EPS','AWC_TAF_DATA_API',
-      'AWC_METAR_PHYSICAL_PATH','RISH_KYOTO_JMA_ARCHIVE'
+      'AWC_METAR_PHYSICAL_PATH','RISH_KYOTO_JMA_ARCHIVE',
+      'NOAA_HRRR_PDS_S3','NOAA_NBM_PDS_S3'
     )
   ),
   native_run_init_utc TEXT,
@@ -506,14 +510,17 @@ CREATE TABLE IF NOT EXISTS calibration_native_ensemble_historical_member_run (
   -- qualifies on exactly that ground (native GRIB, byte-range reads of the
   -- Kyoto mirror, run init carried) -- ruled in with the storage widening,
   -- 2026-08-28, after the first capture cleared the storage CHECK and
-  -- failed here with the run already fetched.
+  -- failed here with the run already fetched.  The two NOAA S3 buckets
+  -- qualify on the same ground and more so: the idx sidecar IS a byte
+  -- range contract, published by the archive itself.
   CHECK(
     offline_oos_eligible=0
     OR (
       transport_provider_id IN (
         'NOAA_GEFS_PDS_S3','ECMWF_OPEN_DATA_S3',
         'ECCC_DD_WEATHER','DWD_OPENDATA_ICON_EPS','AWC_TAF_DATA_API',
-        'AWC_METAR_PHYSICAL_PATH','RISH_KYOTO_JMA_ARCHIVE'
+        'AWC_METAR_PHYSICAL_PATH','RISH_KYOTO_JMA_ARCHIVE',
+        'NOAA_HRRR_PDS_S3','NOAA_NBM_PDS_S3'
       )
       AND native_run_init_utc IS NOT NULL
       AND run_cycle!='AGGREGATOR_UNKNOWN_NATIVE_CYCLE'

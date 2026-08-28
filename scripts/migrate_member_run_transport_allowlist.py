@@ -31,7 +31,15 @@ if str(ROOT) not in sys.path:
 
 TABLE = "calibration_native_ensemble_historical_member_run"
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
-NEW_TRANSPORT = "RISH_KYOTO_JMA_ARCHIVE"
+# Every transport the schema source now carries beyond what the original
+# CHECK held.  Re-running after each ruling is the intended shape: the
+# done-check below compares the live DDL against this list, so widening
+# the list re-arms the migration.
+NEW_TRANSPORTS = (
+    "RISH_KYOTO_JMA_ARCHIVE",   # ruled 2026-08-28, JMA MSM via RISH Kyoto
+    "NOAA_HRRR_PDS_S3",         # ruled 2026-08-28, HRRR via NOAA open data
+    "NOAA_NBM_PDS_S3",          # ruled 2026-08-28, NBM core via NOAA open data
+)
 
 
 def _schema_ddl() -> str:
@@ -60,10 +68,10 @@ def _schema_ddl() -> str:
                 break
     else:
         raise SystemExit("DDL not found in schema source")
-    if NEW_TRANSPORT not in body:
+    missing = [t for t in NEW_TRANSPORTS if t not in body]
+    if missing:
         raise SystemExit(
-            "schema source does not carry the widened allowlist; "
-            "edit ssot.py first"
+            f"schema source does not carry {missing}; edit ssot.py first"
         )
     return body.replace(
         f"CREATE TABLE IF NOT EXISTS {TABLE}",
@@ -93,9 +101,12 @@ def main() -> int:
         # members and its embedded ')' truncated the parse before the new
         # transport.  A live DDL still carrying comments in the list is
         # therefore not done, however wide it is.
-        # Done = the transport appears in BOTH checks (storage and the
-        # narrower OOS-eligibility one) and no comment pollutes a list.
-        if live.count(NEW_TRANSPORT) >= 2 and "-- Ruled" not in live:
+        # Done = every ruled transport appears in BOTH checks (storage and
+        # the narrower OOS-eligibility one) and no comment pollutes a list.
+        if (
+            all(live.count(t) >= 2 for t in NEW_TRANSPORTS)
+            and "-- Ruled" not in live
+        ):
             print("already widened; nothing to do")
             return 0
         before = conn.execute(f"SELECT COUNT(*) FROM {TABLE}").fetchone()[0]
@@ -146,9 +157,12 @@ def main() -> int:
         widened = str(conn.execute(
             "SELECT sql FROM sqlite_master WHERE name=?", (TABLE,)
         ).fetchone()[0])
-        assert NEW_TRANSPORT in widened
+        assert all(t in widened for t in NEW_TRANSPORTS)
         after = conn.execute(f"SELECT COUNT(*) FROM {TABLE}").fetchone()[0]
-        print(f"migrated: rows={after}, allowlist now carries {NEW_TRANSPORT}")
+        print(
+            f"migrated: rows={after}, allowlist now carries"
+            f" {', '.join(NEW_TRANSPORTS)}"
+        )
         return 0
     finally:
         conn.close()

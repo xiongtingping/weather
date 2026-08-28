@@ -83,6 +83,22 @@ POINT_FORECAST_SYSTEM_IDS = frozenset({
 JMA_MSM_POINT_SYSTEM_ID = "JMA_MSM_POINT"
 JMA_MSM_FAMILY_ID = "JMA_MSM"
 
+# The CONUS pair, ruled in 2026-08-28 from the 46-pair sweep: HRRR and the
+# NBM cleared the three admission gates at more roster stations than every
+# other regional source combined.  Both are single numbers per run --
+# HRRR a 3km deterministic, the NBM a calibrated blend -- so both take the
+# point-forecast path MSM defined: capture builds the corpus, the OOS gates
+# race each station-pair, and what a win buys is envelope evidence, never a
+# membership seat.  Neither goes in POINT_FORECAST_SYSTEM_IDS: both run on
+# strict hourly grids where init hour IS the cycle, so they keep the check
+# for MSM's reason.  The NBM blends other centres' output, including
+# families already seated; its family id names the blend, and any seat race
+# that puts it beside what it blends must ask the overlap question openly.
+NCEP_HRRR_POINT_SYSTEM_ID = "NCEP_HRRR_POINT"
+NCEP_HRRR_FAMILY_ID = "NCEP_HRRR"
+NCEP_NBM_POINT_SYSTEM_ID = "NCEP_NBM_POINT"
+NCEP_NBM_FAMILY_ID = "NCEP_NBM"
+
 POINT_FORECAST_SYSTEMS = {
     JMA_MSM_POINT_SYSTEM_ID: {
         "ensemble_system_id": JMA_MSM_POINT_SYSTEM_ID,
@@ -101,6 +117,38 @@ POINT_FORECAST_SYSTEMS = {
             ),
             "publication_contract_version": (
                 "three_hourly_run_grid_nearest_cell_v1"
+            ),
+        }),
+    },
+    NCEP_HRRR_POINT_SYSTEM_ID: {
+        "ensemble_system_id": NCEP_HRRR_POINT_SYSTEM_ID,
+        "canonical_name": "NCEP HRRR 3km CONUS Deterministic Point",
+        "independence_family_id": NCEP_HRRR_FAMILY_ID,
+        "provider_id": "NCEP_NOAA",
+        "expected_member_count": 1,
+        "content_sha256": content_sha256({
+            "ensemble_system_id": NCEP_HRRR_POINT_SYSTEM_ID,
+            "member_identity_contract_version": (
+                "ncep_hrrr_surface_nearest_cell_v1"
+            ),
+            "publication_contract_version": (
+                "hourly_run_grid_idx_byte_range_v1"
+            ),
+        }),
+    },
+    NCEP_NBM_POINT_SYSTEM_ID: {
+        "ensemble_system_id": NCEP_NBM_POINT_SYSTEM_ID,
+        "canonical_name": "NCEP National Blend of Models Core Point",
+        "independence_family_id": NCEP_NBM_FAMILY_ID,
+        "provider_id": "NCEP_NOAA",
+        "expected_member_count": 1,
+        "content_sha256": content_sha256({
+            "ensemble_system_id": NCEP_NBM_POINT_SYSTEM_ID,
+            "member_identity_contract_version": (
+                "ncep_nbm_core_nearest_cell_v1"
+            ),
+            "publication_contract_version": (
+                "hourly_run_grid_idx_byte_range_v1"
             ),
         }),
     },
