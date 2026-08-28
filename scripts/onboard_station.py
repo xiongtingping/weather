@@ -228,11 +228,40 @@ def rebaseline() -> dict[str, object]:
             "manifest; changing the fleet rewrites those hashes and unbinds "
             "artifacts pinned to them"
         ),
+        # Measured, not estimated: the fleet was taken to 48 on 2026-08-28
+        # and the suite run at both sizes.  Production imported and the
+        # derived guards all followed, but 305 tests turned red -- 343 lines
+        # across 147 files carry the literal, and most are fixtures that
+        # BUILD a 45-station manifest rather than assertions that compare to
+        # a constant, so they need three more real stations each, not a
+        # changed number.  The change was rolled back on that evidence.
+        "measured_test_debt": {
+            "as_of": "2026-08-28",
+            "fleet_tried": 48,
+            "new_test_failures": 305,
+            "literal_lines_in_tests": 343,
+            "test_files": 147,
+            "note": (
+                "most are fixtures constructing a 45-station manifest, so "
+                "they take three station entries each rather than an edited "
+                "constant"
+            ),
+        },
         "evidence_still_required_per_station": [
             "arrival corpus across the model families",
             "settled truth history for OOS folds",
             "season anchor from its own climatology",
             "TAF/METAR capture on the resident's rotation",
+        ],
+        # What already works, so a later attempt does not redo it: the two
+        # SSOT rows are written and idempotent (commit_station_onboarding_
+        # rows.py), the ERA5 climatology for LTFM/UUWW/LLBG is captured, and
+        # the anchor months derive cleanly -- 7, 7 and 8, amplitudes 18.7,
+        # 27.5 and 14.9C, all far above the 2.0C ALLYEAR floor.
+        "already_done_for_ltfm_uuww_llbg": [
+            "calibration_station_registry row",
+            "calibration_station_market_timezone_binding row",
+            "nine years of ERA5 same-day climatology",
         ],
     }
 
