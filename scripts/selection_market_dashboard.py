@@ -1893,6 +1893,36 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         for day in {d for _, d in evidence_days}
         for station in registered
     }
+    # The market this station-day was actually registered against, so the
+    # page can hand the reader the book rather than making them search for
+    # it by city and date.  One slug covers every outcome of a station-day,
+    # which is why this reads DISTINCT rather than per-bucket.  Read from
+    # the registry, never rebuilt from city and date: the slug is Polymarket's
+    # identifier and a station-day whose market was listed under a different
+    # name would get a link that quietly 404s.
+    # ``station_id`` is empty for a registered market this roster has no
+    # station for -- Hong Kong, Istanbul, Moscow and Tel Aviv are all listed
+    # and none is one of the forty-five.  Those rows share the empty key and
+    # look like one station-day carrying four different slugs, which is what
+    # made a first cut of this drop links for "ambiguity" that did not exist.
+    # Excluded here rather than tolerated: an empty station is not a station.
+    # Among real stations one slug per day is the rule, and the newest
+    # refresh settles a re-listing, which does happen.
+    market_slug: dict[tuple[str, str], str] = {}
+    try:
+        for station, day, slug in conn.execute(
+            "SELECT station_id, event_date, slug"
+            " FROM basket_target_market_registry"
+            " WHERE slug IS NOT NULL AND slug <> ''"
+            "   AND station_id IS NOT NULL AND station_id <> ''"
+            "   AND event_date >= ?"
+            " GROUP BY station_id, event_date"
+            " HAVING refreshed_at = MAX(refreshed_at)",
+            (STATS_START_EVENT_DATE,),
+        ):
+            market_slug[(str(station), str(day))] = str(slug)
+    except sqlite3.Error:
+        market_slug = {}
     roster = []
     for station, day in sorted(
         scope_days, key=lambda kv: (kv[1], kv[0]), reverse=True
@@ -1902,6 +1932,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
             "station_label": STATION_LABELS.get(station, ""),
             "settlement_unit": settlement_units.get(station, "C"),
             "event_date": day,
+            "market_slug": market_slug.get((station, day)) or "",
             "taf_tx_c": taf_tx.get((station, day)),
             "p1_history": p1_history.get((station, day), [])[-12:],
             "stages": {},

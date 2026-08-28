@@ -3767,6 +3767,13 @@ h2{font-size:16px;margin:22px 0 4px;display:flex;align-items:center;gap:8px}
 .sub{color:var(--muted);font-size:13px;margin:0 0 14px}
 .card{background:var(--card);border:1px solid var(--line);
 border-radius:9px;padding:10px 12px;margin-bottom:8px;box-shadow:var(--shadow)}
+/* The station cell's link to its own book.  Undecorated until hover so a
+   table of forty-five stations does not read as forty-five links, and
+   coloured from the accent token so it stays legible on both grounds
+   rather than falling back to the browser's blue on a dark card. */
+a.mkt{color:var(--accent);text-decoration:none}
+a.mkt:hover,a.mkt:focus-visible{text-decoration:underline}
+a.mkt:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .grid{display:grid;gap:8px}
 .g4{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
 .g3{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
@@ -5829,7 +5836,13 @@ function roster(){
     const unit=e.settlement_unit||"C";
     return `<tr>
       <td class="st ${STATE[state][0]}" title="${STATE[state][1]}">
-        <div class="mono">${h(e.station_id)}</div>
+        <div class="mono">${e.market_slug
+          ? `<a class="mkt" target="_blank" rel="noopener noreferrer"
+              href="https://polymarket.com/event/${encodeURIComponent(
+                e.market_slug)}"
+              title="打开 ${h(e.station_id)} ${h(e.event_date)} 的盘口"
+              >${h(e.station_id)} ↗</a>`
+          : h(e.station_id)}</div>
         <div class="muted">${h(e.station_label)}</div>
         <div class="muted" style="font-size:11px">${STATE[state][1]} ·
           盘口 °${h(unit)}</div></td>

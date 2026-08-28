@@ -2438,6 +2438,71 @@ def _resident_open_event_dates(
     return tuple(sorted(dates))
 
 
+def reaffirmed_lineage(
+    base_lineage: Mapping[str, Any],
+    observations: Sequence[Mapping[str, Any]],
+    *,
+    predecessor_checkpoint_id: str,
+    newest_observation_id: str,
+) -> dict[str, Any]:
+    """The lineage a P1 reaffirmation carries, with the revision re-resolved.
+
+    A reaffirmation restates a predecessor's probabilities against newer
+    observations that did not beat the high, so it inherits the
+    predecessor's lineage.  Inheriting it *wholesale* is what turned a
+    transient race into a standing outage.
+
+    P1 and the canonical ingress that writes an observation's truth
+    revision fact run within a fifth of a second of each other: measured
+    across 271 observations on 2026-08-28, the fact landed after the P1
+    decision half the time.  A P1 that lost that race is committed without
+    the sha, the envelope table is append-only, and every reaffirmation
+    built on it copied the gap forward -- EFHK was still missing at 03:38 a
+    sha whose fact had existed since 21:21, and
+    ``target_atomic_lineage_incomplete`` refused the station-day on every
+    cycle in between.
+
+    The observations passed here are already revision-enriched, so the
+    re-resolve costs nothing and the loss heals on the next cycle.  It is a
+    re-resolve, not an invention: an observation the ingress has genuinely
+    produced no fact for stays empty, and the atomic-fact gate refusing it
+    is the correct outcome rather than a forged key into the truth ledger.
+
+    The sha follows the *closing* observation -- the one the packet was
+    computed against -- not ``newest_observation_id``, which names the
+    newest report examined and is a different thing.
+    """
+
+    lineage = {
+        **base_lineage,
+        "reaffirmation_of_checkpoint_id": str(predecessor_checkpoint_id),
+        "reaffirmed_observation_count": str(len(observations)),
+        "reaffirmed_through_observation_id": str(newest_observation_id),
+    }
+    if str(
+        lineage.get("truth_observation_revision_content_sha256") or ""
+    ).strip():
+        return lineage
+    closing = str(
+        lineage.get("canonical_observation_event_id") or ""
+    ).strip()
+    if not closing:
+        return lineage
+    healed = next(
+        (
+            str(
+                row.get("truth_observation_revision_content_sha256") or ""
+            ).strip()
+            for row in observations
+            if str(row.get("observation_id") or "").strip() == closing
+        ),
+        "",
+    )
+    if healed:
+        lineage["truth_observation_revision_content_sha256"] = healed
+    return lineage
+
+
 def _shift_window(
     decision_at_utc: str, root_decision_utc: str, root_fresh_until_utc: str
 ) -> str:
@@ -9305,16 +9370,14 @@ class TargetProductionWorker:
                             str(row.get("observation_id") or "")
                             for row in observations
                         )
-                        lineage = {
-                            **base.get("lineage", {}),
-                            "reaffirmation_of_checkpoint_id": (
+                        lineage = reaffirmed_lineage(
+                            base.get("lineage", {}),
+                            observations,
+                            predecessor_checkpoint_id=(
                                 predecessor.checkpoint_id
                             ),
-                            "reaffirmed_observation_count": str(
-                                len(observations)
-                            ),
-                            "reaffirmed_through_observation_id": newest_obs,
-                        }
+                            newest_observation_id=newest_obs,
+                        )
                         fresh_until = (
                             datetime.fromisoformat(
                                 as_of_utc.replace("Z", "+00:00")
