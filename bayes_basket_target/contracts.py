@@ -153,6 +153,66 @@ def timestamp_lt(left: str, right: str) -> bool:
     return datetime.fromisoformat(left.replace("Z", "+00:00")) < datetime.fromisoformat(right.replace("Z", "+00:00"))
 
 
+# A freshness window shorter than this is dead on arrival: nothing can act
+# on it, and it is a defect wherever it is minted.  60s is where the
+# measured evidence puts the boundary (2026-08-28, 317,799 envelopes): every
+# degenerate window on record is 0.044s, while the shortest window a healthy
+# compile has ever produced is 30s at P0's 0.1st percentile.  A floor at one
+# production cycle (295-518s measured) would be the stricter reading of "can
+# any later cycle see it", but it would refuse 13% of P0-M compiles, and a
+# coverage cost that size has to be earned in a ledger replay rather than
+# argued from a definition.
+MIN_USABLE_FRESHNESS_SECONDS = 60.0
+
+
+def freshness_window_ordering_agrees(
+    decision_at_utc: str, fresh_until_utc: str
+) -> bool:
+    """Do the instant order and the byte order of this window agree?
+
+    They can disagree, and on 2026-08-28 they did, on sixteen rows.  Code
+    compares parsed instants; the SQLite CHECK on every table storing this
+    pair compares the raw TEXT.  When the two stamps land in the same second
+    and only one carries a fractional part, ``'…:11Z'`` sorts AFTER
+    ``'…:11.044000Z'`` -- ``Z`` is 0x5A and ``.`` is 0x2E -- so the contract
+    admits a window the database then rejects, and the lane fails closed on
+    an IntegrityError three layers from the defect.
+
+    Requiring agreement here is what makes the two definitions one.  It is
+    only reachable at all for sub-second windows, which the mint-time floor
+    already forbids; this is the backstop that says so out loud rather than
+    leaving it to arithmetic nobody re-derives.
+    """
+
+    return (
+        timestamp_lt(decision_at_utc, fresh_until_utc)
+        and str(decision_at_utc) < str(fresh_until_utc)
+    )
+
+
+def assert_mintable_freshness_window(
+    decision_at_utc: str, fresh_until_utc: str, *, name: str
+) -> None:
+    """Gate a freshness window at the moment it is created, not on load.
+
+    Both halves belong here and nowhere else.
+    ``basket_probability_envelope`` is append-only by trigger -- no UPDATE,
+    no DELETE -- so a window that reaches it is permanent.  Refusing at the
+    mint costs one checkpoint and the scope waits for the next root;
+    refusing on load would cost every station-day that already holds one,
+    across every stage, for as long as the row exists.
+    """
+
+    if not freshness_window_ordering_agrees(decision_at_utc, fresh_until_utc):
+        raise ContractError(f"{name}_freshness_window_ordering_disagrees")
+    span = (
+        datetime.fromisoformat(str(fresh_until_utc).replace("Z", "+00:00"))
+        - datetime.fromisoformat(str(decision_at_utc).replace("Z", "+00:00"))
+    ).total_seconds()
+    if span < MIN_USABLE_FRESHNESS_SECONDS:
+        raise ContractError(f"{name}_freshness_window_unusable")
+
+
 def timestamp_eq(left: str, right: str) -> bool:
     """Compare timestamp instants, independent of ISO fractional precision."""
 
@@ -802,6 +862,16 @@ class ProbabilityEnvelope:
             bridge_sha256=_sha("bridge_sha256", raw.get("bridge_sha256")),
             lineage={str(key): _text("lineage_value", item) for key, item in (raw.get("lineage") or {}).items()},
         )
+        # Instant order only, deliberately.  ``from_mapping`` is both the
+        # mint constructor and the load path for every committed row, and
+        # ``basket_probability_envelope`` is append-only by trigger -- no
+        # UPDATE, no DELETE, ever.  Tightening here would therefore not
+        # repair the sixteen self-contradictory rows of 2026-08-27; it would
+        # make the seven station-days holding them unreadable for every
+        # stage, turning a missing regime companion into a lost trading day.
+        # The stricter rule lives at the mint sites
+        # (``assert_mintable_freshness_window``), where refusing costs one
+        # checkpoint instead of the history that already exists.
         if not timestamp_lt(value.decision_at_utc, value.fresh_until_utc):
             raise ContractError("probability_freshness_window_invalid")
         if not value.lineage:

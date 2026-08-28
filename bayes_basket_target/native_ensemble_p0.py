@@ -10,7 +10,13 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from .contracts import ContractError, ProbabilityEnvelope, content_sha256
+from .contracts import (
+    MIN_USABLE_FRESHNESS_SECONDS,
+    ContractError,
+    ProbabilityEnvelope,
+    assert_mintable_freshness_window,
+    content_sha256,
+)
 
 # Weight-zero tolerance for provisional riders; matches the kernel's EPS.
 EPS = 1e-9
@@ -1267,7 +1273,20 @@ def compile_native_ensemble_p0(
     # branch only prevents a stale native receipt from suppressing it.
     # ``ProbabilityEnvelope`` requires a strictly positive freshness window,
     # so an age exactly equal to the TTL is already stale as well.
-    if (decision - captured).total_seconds() >= fresh_seconds:
+    #
+    # Strictly positive is not the same as usable, and on 2026-08-27 the
+    # difference cost a lane.  A compile landed 44 milliseconds inside a
+    # six-hour TTL: the age test passed, and forty stations were handed a P0
+    # that expired 44ms after it was born.  Sixteen P0-M checkpoints then
+    # inherited that window through ``_shift_window`` and the regime lane
+    # fail-closed on every cycle afterwards.  What this boundary is for --
+    # see the note above -- is deciding when the native receipt should stop
+    # suppressing the independently governed fallback, and a receipt with
+    # milliseconds left suppresses it just as completely as a fresh one
+    # while producing nothing anybody can act on.  So the test is remaining
+    # life, not age.
+    remaining_seconds = fresh_seconds - (decision - captured).total_seconds()
+    if remaining_seconds < MIN_USABLE_FRESHNESS_SECONDS:
         raise ContractError(
             "FAIL_CLOSED_NO_P0:native_ensemble_snapshot_stale"
         )
@@ -3225,6 +3244,14 @@ def compile_native_ensemble_p0(
     fresh_until = (
         captured + timedelta(seconds=fresh_seconds)
     ).isoformat().replace("+00:00", "Z")
+    # The remaining-life guard above already makes this unreachable; it is
+    # here because the two stamps are produced by different code with
+    # different fractional precision, and the SSOT compares them as bytes
+    # while everything else compares them as instants.  Whatever changes
+    # upstream, the pair that leaves this function has to satisfy both.
+    assert_mintable_freshness_window(
+        decision_at_utc, fresh_until, name="native_ensemble_p0"
+    )
     if root_future_curve is not None:
         lineage.update({
             "conditional_future_temperature_curve_json": _json(

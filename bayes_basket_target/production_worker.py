@@ -55,10 +55,13 @@ from .fleet_regime_shift import (
     refresh_fleet_regime_daily,
 )
 from .contracts import (
+    MIN_USABLE_FRESHNESS_SECONDS,
     ContractError,
     ProbabilityEnvelope,
+    assert_mintable_freshness_window,
     content_sha256,
     timestamp_eq,
+    timestamp_lt,
 )
 from .cash_phase_forward_observation import (
     build_forward_observation_packet,
@@ -2444,6 +2447,17 @@ def _shift_window(
     root's duration measured from P0-M's own decision -- not the root's
     absolute expiry, which would make the checkpoint stale at birth, and not
     a constant, which would silently re-cadence a scope.
+
+    The span carried over is the root's *remaining* life at its own decision,
+    so a root compiled at the edge of its TTL carries almost none.  Refused
+    rather than floored: the span is what the root had, and lengthening it
+    would mint freshness the evidence never had -- the same move the native
+    TTL exists to forbid, where "a nearly expired packet could be recompiled
+    repeatedly and made arbitrarily fresh without a new model arrival".  A
+    root with nothing left to lend is a root P0-M should not be built on, and
+    the scope waits for the next one.  Before 2026-08-28 the only test was
+    for a non-positive span, which let a 44-millisecond root through and put
+    sixteen dead-on-arrival checkpoints in the SSOT.
     """
 
     start = datetime.fromisoformat(
@@ -2456,9 +2470,17 @@ def _shift_window(
         str(decision_at_utc).replace("Z", "+00:00")
     )
     span = end - start
-    if span.total_seconds() <= 0:
+    if span.total_seconds() < MIN_USABLE_FRESHNESS_SECONDS:
         raise ContractError("resident_taf_root_window_invalid")
-    return (here + span).isoformat().replace("+00:00", "Z")
+    shifted = (here + span).isoformat().replace("+00:00", "Z")
+    # This function mints half of the pair the SSOT will compare as bytes,
+    # and the other half is whatever the caller's decision stamp looks like.
+    # The span floor makes a disagreement unreachable; asserting it here is
+    # what keeps that true if either stamp's precision ever changes.
+    assert_mintable_freshness_window(
+        decision_at_utc, shifted, name="resident_taf_root"
+    )
+    return shifted
 
 
 class TargetProductionWorker:
@@ -11132,14 +11154,38 @@ class TargetProductionWorker:
                     station_id=str(station_id),
                     event_date=str(event_date),
                 )
-                envelopes.extend(load_materialized_probability_envelopes(
-                    self.conn,
-                    station_id=str(station_id),
-                    event_date=str(event_date),
-                    evaluation_at_utc=as_of_utc,
-                    expected_source_lane=expected_source_lane,
-                    include_future_decisions=True,
-                ))
+                envelopes.extend(
+                    envelope
+                    for envelope in load_materialized_probability_envelopes(
+                        self.conn,
+                        station_id=str(station_id),
+                        event_date=str(event_date),
+                        evaluation_at_utc=as_of_utc,
+                        expected_source_lane=expected_source_lane,
+                        include_future_decisions=True,
+                    )
+                    # Coverage is "every envelope a later evaluation could
+                    # see", and an already-expired envelope is exactly the
+                    # one no later evaluation can: ``load_regime_artifact``
+                    # matches on ``valid_until_utc > evaluation``, the window
+                    # is fixed, and evaluation clocks only move forward.  A
+                    # companion built here could therefore never be read
+                    # back.  The visibility rule that ``include_future_
+                    # decisions`` lifts is about decision stamps landing
+                    # ahead of the cycle clock -- it was never a licence to
+                    # reach backwards past expiry.
+                    #
+                    # This is also what makes the sixteen self-contradictory
+                    # P0-M rows of 2026-08-27 harmless.  Their 44ms windows
+                    # closed within a second of opening, so the SSOT's
+                    # CHECK -- a TEXT comparison, where ``'…:11Z'`` sorts
+                    # after ``'…:11.044000Z'`` -- rejected every companion
+                    # and fail-closed this lane on every cycle.  The table
+                    # is append-only by trigger, so those rows cannot be
+                    # repaired or retracted; they can only stop being asked
+                    # for, and they should never have been asked for.
+                    if timestamp_lt(as_of_utc, envelope.fresh_until_utc)
+                )
             except Exception as exc:
                 blockers.append({
                     "station_id": str(station_id),
