@@ -1369,9 +1369,15 @@ def build_payload(db: Path) -> dict[str, Any]:
 
 def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     rows = _rows(conn)
+    # Section 10's position strip reads the LADDER side -- charter 54's mean
+    # landing bucket against the market's centre of mass -- the same reading
+    # the daily table has used since 2026-08-28 (user ruling, 2026-08-29).
+    # ``side`` is the unsnapped model centre of mass, a different number
+    # that disagrees with the seated bucket on part of the book, and two
+    # quantities under one heading is how that disagreement stayed hidden.
     by_side: dict[str, int] = defaultdict(int)
     for row in rows:
-        by_side[row["side"]] += 1
+        by_side[row["ladder_side"]] += 1
 
     def _slice(subset: list[dict[str, Any]]) -> dict[str, Any]:
         # One row per chain: a settled position is counted where it

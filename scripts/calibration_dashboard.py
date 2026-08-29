@@ -3124,8 +3124,23 @@ def _daily_table(
             r for r in rows if r.get("settled") and r.get("chain_tail")
         ]
         hits = sum(int(r["hit"]) for r in settled)
-        staked = sum(float(r["chain_stake_usdc"]) for r in settled)
         pnl = sum(float(r["pnl_usdc"] or 0.0) for r in settled)
+        # What the day actually put on the table.  Summing over settled
+        # chains made an unsettled day read as 0.00 deployed while it was
+        # carrying real positions (user ruling, 2026-08-29).  One reading
+        # per station -- the chain stake, which every stage of the chain
+        # carries -- so a topped-up day is not counted twice.
+        chain_stake_by_station: dict[str, float] = {}
+        for row in rows:
+            key = str(row["station_id"])
+            value = float(row.get("chain_stake_usdc") or 0.0)
+            if value > chain_stake_by_station.get(key, 0.0):
+                chain_stake_by_station[key] = value
+        staked = sum(chain_stake_by_station.values())
+        # P&L only ever belongs to settled chains, so the ratio a reader
+        # forms from these two columns is only meaningful once the day has
+        # settled; the settled-only stake is kept for that.
+        settled_staked = sum(float(r["chain_stake_usdc"]) for r in settled)
         odds = [r["odds"] for r in settled if r.get("odds") is not None]
         claimed = (
             sum(float(r["win_probability"]) for r in settled) / len(settled)
@@ -3218,9 +3233,11 @@ def _daily_table(
             ),
             "odds_mean": sum(odds) / len(odds) if odds else None,
             "staked_usdc": staked,
+            "settled_staked_usdc": settled_staked,
             "pnl_usdc": pnl,
             **((cover or {}).get(day) or {
                 "cover_rate": None,
+                "claimed_cover_mean": None,
                 "cover_station_count": 0,
                 "cover_settled_count": 0,
                 "unfilled_intended": 0,
@@ -3311,6 +3328,14 @@ def _intended_cover_by_day(
                 None if truth_ordinal is None
                 else (1 if settled_bucket in set(window) else 0)
             ),
+            # What the model CLAIMED the intended window covers: the mass it
+            # put on those buckets, summed.  Known the moment the basket is
+            # chosen (user ruling, 2026-08-29) -- the realised cover above
+            # needs the truth, this does not, and a day with no settlement
+            # was printing a dash for both.
+            "claimed_cover": sum(
+                float(probabilities.get(bucket) or 0.0) for bucket in window
+            ),
         })
     by_day: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for entry in rows:
@@ -3322,8 +3347,16 @@ def _intended_cover_by_day(
             e["intended_cover"] for e in members
             if e["intended_cover"] is not None
         ]
+        claims = [
+            e["claimed_cover"] for e in members
+            if e.get("claimed_cover") is not None
+        ]
         out[day] = {
             "cover_rate": sum(covers) / len(covers) if covers else None,
+            # The ex-ante reading, on every day the book chose baskets.
+            "claimed_cover_mean": (
+                sum(claims) / len(claims) if claims else None
+            ),
             "cover_station_count": len(members),
             "cover_settled_count": len(covers),
             "unfilled_intended": unfilled.get(day, 0),
@@ -3375,33 +3408,44 @@ def collect_edge_band_health(conn: sqlite3.Connection) -> dict[str, Any]:
     }
     latest_day = ""
     legs: list[dict[str, Any]] = []
+    # The legs come from ``leg_shares_json`` -- what the position actually
+    # holds -- not from ``resting_fill_json``, which was the resting lane's
+    # per-rung fill record and has been empty on every row since charter 65
+    # made taker the execution law.  Read from there, this whole section
+    # found zero legs and printed "无腿级数据" while the book traded every
+    # day (2026-08-29).  Crossing fills a leg or refuses it, so ``filled``
+    # is true for every leg that carries shares and the filled/unfilled
+    # split the resting lane made -- its sharpest reading -- has no taker
+    # analogue; the cells below say so rather than printing an empty half.
     for row in conn.execute(
         "SELECT station_id, event_date, probabilities_json, prices_json,"
-        " resting_fill_json FROM paper_trade_position"
+        " leg_shares_json FROM paper_trade_position"
     ):
         try:
             probs = json.loads(row[2] or "{}")
             prices = json.loads(row[3] or "{}")
-            fills = json.loads(row[4] or "{}")
+            held = json.loads(row[4] or "{}")
         except ValueError:
             continue
         key = (str(row[0]), str(row[1]))
         truth = settled.get(key)
         latest_day = max(latest_day, str(row[1]))
-        for bucket, spec in fills.items():
+        for bucket, shares in held.items():
             claim = probs.get(bucket)
             ask = prices.get(bucket)
             if claim is None or ask is None:
                 continue
             try:
-                filled = int(str(spec).split("/")[0]) > 0
-            except ValueError:
+                bought = float(shares) > 0.0
+            except (TypeError, ValueError):
+                continue
+            if not bought:
                 continue
             legs.append({
                 "day": str(row[1]),
                 "band": band_of(float(claim) - float(ask)),
                 "claim": float(claim),
-                "filled": filled,
+                "filled": True,
                 "win": (
                     None if truth is None
                     else (1 if str(bucket) == truth else 0)
@@ -4088,16 +4132,32 @@ footer{margin-top:34px;color:var(--muted);font-size:12.5px;text-align:center}
    into. */
 .topnav{position:sticky;top:0;z-index:8;margin:14px 0 16px;padding:9px 0 0;
 background:var(--bg);border-bottom:1px solid var(--line)}
-.tabs{display:flex;gap:6px;flex-wrap:wrap;align-items:center;
-margin:0;padding:0 0 8px}
+/* Five areas, not one flat row (user ruling, 2026-08-29).  Each group
+   carries its own hue -- set per button as --tone -- so the bar reads as
+   regions rather than as eleven identical pills, and the group titles
+   below repeat the same hue so a reader never has to match text to know
+   where a tab landed.  "全部" is pushed to its own end of the bar because
+   it is not one of the areas; it is the way out of them. */
+.tabs{display:flex;gap:7px;flex-wrap:wrap;align-items:stretch;
+margin:0;padding:0 0 9px}
 .tabs button{cursor:pointer;background:var(--card);color:var(--muted);
-border:1px solid var(--line);border-radius:99px;padding:5px 13px;
+border:1px solid var(--line);border-radius:9px;padding:5px 12px 5px 10px;
 font-family:inherit;font-size:13px;line-height:1.35;
-display:flex;align-items:center;gap:6px}
-.tabs button:hover{color:var(--text);border-color:var(--accent)}
-.tabs button[data-active="1"]{color:var(--text);border-color:var(--accent);
-background:var(--why-bg)}
+display:flex;align-items:center;gap:7px;
+border-left:3px solid var(--tone,var(--line))}
+.tabs button:hover{color:var(--text);border-color:var(--line);
+border-left-color:var(--tone,var(--accent));background:var(--why-bg)}
+.tabs button[data-active="1"]{color:var(--text);
+border-color:var(--tone,var(--accent));background:var(--why-bg);
+box-shadow:inset 0 0 0 1px var(--tone,var(--accent))}
+.tabs button .cnt{font-size:11px;color:var(--muted);
+background:var(--bar-bg);border-radius:99px;padding:0 6px;min-width:18px;
+text-align:center}
+.tabs .spacer{flex:1;min-width:10px}
+.tabs button.all{border-left-color:var(--line);color:var(--muted)}
 .tabs .muted{font-size:11.5px}
+/* The group heading wears its area's colour on the same edge as its tab. */
+.grouptitle{border-left:3px solid var(--tone,var(--line));padding-left:10px}
 /* Per-day tabs inside a card.  The same pill as the group switcher, one
    size down and not sticky: this one picks which day a card shows, it is
    not a way around the page. */
@@ -4190,8 +4250,9 @@ function head(){
     ? `<span class="muted">…等 ${named.length} 处，详见下文标${
         D.overall_health === "red" ? "红" : "黄"}的环节</span>` : "";
   return `<h1>气温篮子全链看板</h1>
-  <p class="sub">从模型到下单的一整条链，回答三件事：模型准不准、这笔生意赚不赚、
-  喂它们的数据有没有断。下面第一行标签换大组，第二行按钮直接跳到板块。</p>
+  <p class="sub">从模型到下单的一整条链。页顶是<b>逐日的账</b>（每日统计 → 逐站逐日明细
+  → 跨日汇总 / 异常盘口 / 没建仓原因）；往下按五个<b>区域</b>分组，每区一个颜色，
+  标签栏与区标题同色。板块不再编号——它们会随分组移动，编号只会指错地方。</p>
   <div class="card"><div style="display:flex;gap:14px;align-items:center;
     flex-wrap:wrap">
     <span class="dot ${D.overall_health}" style="width:13px;height:13px"></span>
@@ -4200,6 +4261,7 @@ function head(){
     <span style="flex:1"></span>
     <span class="muted">常驻进程心跳 ${hours(w.heartbeat_age_hours)}
       ${w.pid ? "· pid " + w.pid : ""}</span>
+    ${liveSwitch()}
   </div>
   <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;
     margin-top:9px;padding-top:9px;border-top:1px solid var(--line)">
@@ -4252,7 +4314,7 @@ function overview(){
     h(W.production_note||"—"),
     `常驻自己的生产回执：${h(W.production_state||"未发布")}。`+
     `绿=正常产出，黄=单条车道阻断，红=多车道断/被写锁挡住/超一小时没完成一轮。`+
-    `逐候选的日常拒绝不计入——那是目标函数在正常挑站日，见第十五节`);
+    `逐候选的日常拒绝不计入——那是目标函数在正常挑站日，见「没建仓是因为什么」`);
   push(W.live_submit_authorized?"amber":"green",
     "下单授权", W.live_submit_authorized?"已授权":"未授权（纸面）",
     W.live_submit_authorized?"真实下单已开启":"全链纸面运行，网关不发单",
@@ -4282,7 +4344,7 @@ function overview(){
     "模型在进来", `${fresh}/${total}`,
     laggard?`最旧一家 ${h(laggard.label)} · ${
       hours(laggard.run_age_hours)}的 run`:"没有成员族",
-    "第一节：四家集合预报的到货情况");
+    "「模型数据到货」：四家集合预报的到货情况");
 
   // 2. Is anything blocking the chain right now.
   const blocking=(D.gaps||[]).filter(g=>g.severity==="high").length;
@@ -4293,14 +4355,14 @@ function overview(){
   push(blocking?"red":"green",
     "要处理的缺口", String(blocking),
     waiting?`另有 ${waiting} 条在正常等待`:"没有待处理项",
-    "第十七节：数据缺口与健康检查");
+    "「数据缺口」：数据缺口与健康检查");
 
   // 3. Did the truth for settled days actually land.
   const outstanding=(D.truth||{}).outstanding;
   push(outstanding==null?"muted":outstanding===0?"green"
       :outstanding<=5?"amber":"red",
     "真值待物化", outstanding==null?"—":String(outstanding),
-    "结算真值还没落库的站日", "第十八节：真值物化健康度");
+    "结算真值还没落库的站日", "「真值物化健康度」：真值物化健康度");
 
   // 4. How much of the fleet actually opened a position on the newest day.
   const day=S.latest_day||(S.roster_event_dates||[])[0];
@@ -4320,7 +4382,7 @@ function overview(){
       :(cal>=0.6&&cal<=1.4)?"amber":"red",
     "说得准不准", cal==null?"—":cal.toFixed(2)+"×",
     "命中率 ÷ 声称胜率，1.00× 是说得准",
-    "第六节与第十节：概率分档校准");
+    "「band 表」与「覆盖 · 价格 · EV」：概率分档校准");
 
   // 6b. Does the basket the objective CHOSE cover the truth, at the widths
   // the charter actually seats -- and is that moving.  Grouped on the
@@ -4354,7 +4416,7 @@ function overview(){
       `，差额是市场没把会赢的那条腿卖给我们。声称 ${
       pct0(row.claimed_mean)}，实现/声称 ${
       row.realised_over_claimed==null?"—"
-        :row.realised_over_claimed.toFixed(2)}×。见第十三节的脱靶分布`);
+        :row.realised_over_claimed.toFixed(2)}×。见「篮子命中率」的脱靶分布`);
   });
 
   // 7. What the one book is worth now.
@@ -4373,7 +4435,7 @@ function overview(){
     `${h(S.stats_start_event_date||"")} 起 · 投入 ${
       (cs.staked_usdc||0).toFixed(0)} · 实得 ${
       (cs.realized_usdc||0).toFixed(0)}`,
-    "第十节：覆盖 · 价格 · EV");
+    "「覆盖 · 价格 · EV」：覆盖 · 价格 · EV");
 
   return `<div class="kpi" style="margin:10px 0 4px">${cards.join("")}</div>`;
 }
@@ -4439,7 +4501,7 @@ function members(){
       ${m.stations} 站 · ${(m.member_rows/1000).toFixed(0)}k 条成员预报</div>
   </div>`;
   }).join("");
-  return `<h2>一、四家模型的数据在不在进来</h2>
+  return `<h2>四家模型的数据在不在进来</h2>
   <p class="sub">大字是这家机构最新一次 run 的轮次（UTC），后面是它多久前发布、
   多久前落到我们库里、这一轮覆盖了几个站，以及按它自己观察到的节奏下一轮该什么时候到。
   灰色那行是最近几轮的轮次与站数，中间断一档就是漏了一轮。
@@ -4458,7 +4520,7 @@ function chain(){
     <td class="mono">${h(c.volume)}</td>
     <td class="muted">${h(c.note)}</td>
   </tr>`).join("");
-  return `<h2>十六、整条链路每一环是否在动</h2>
+  return `<h2>整条链路每一环是否在动</h2>
   <p class="sub">数据从上到下流：模型下载 → 真值结算 → 算校正 → 算概率修正 →
   出概率 → 盘中更新。任何一环停了，它下面的环节迟早会跟着停。</p>
   <div class="card"><div class="scroll"><table><thead><tr>
@@ -4468,7 +4530,7 @@ function chain(){
 
 function tables(){
   const t = D.tables;
-  return `<h2>二、每站的偏差订正与融合权重</h2>
+  return `<h2>每站的偏差订正与融合权重</h2>
   <p class="sub">这两张表是"每个模型在每个站偏多少度"和"融合时各模型占多大比重"，
   每天自动重算、自动换代。</p>
   <div class="grid g3">
@@ -4561,7 +4623,7 @@ function stages(){
       <tbody>${journal}</tbody></table></details>` : ""}
     </div>`;
   }).join("");
-  return `<h2>六、概率分档校准：三个阶段各自的账</h2>
+  return `<h2>band 表：概率分档校准（三阶段各自的账）</h2>
   <p class="sub">系统会记录"凡是说过 X% 的地方，后来实际发生了多少次"。
   如果长期说 6% 只发生 4%，就把这一档的数字乘一个小于 1 的系数压回去。</p>
   <div class="why"><b>怎么看这张表：</b>「实际兑现」是实测兑现率除以声称概率——
@@ -4584,6 +4646,15 @@ function stages(){
 // beside that section on purpose: the question it answers -- is one
 // factor per band per stage too coarse -- is unreadable without the table
 // it would replace sitting next to it.
+// Charter-level knob, its shadow, and its audit are one reading, not three
+// sections (user ruling, 2026-08-29): the shadow's whole question is "should
+// the table above be split finer", and answering it two headings away made
+// readers compare a pooled row with a split row by scrolling.
+function bandTable(){
+  return stages() + bandShadow();
+}
+
+
 function bandShadow(){
   const S = D.band_shadow || {};
   if(!(S.stages||[]).length) return "";
@@ -4668,8 +4739,8 @@ function bandShadow(){
       <tbody>${journal}</tbody></table></details>` : ""}
     </div>`;
   }).join("");
-  return `<h2>六之二、影子：一张更细的分档表值不值得</h2>
-  <p class="sub">上一节那张表是<b>全舰队共用</b>的——四十五个站、一天里所有温度桶，
+  return `<h3 style="margin-top:30px">影子 band 表：拆细了值不值得</h3>
+  <p class="sub">上面那张表是<b>全舰队共用</b>的——四十五个站、一天里所有温度桶，
   只要报的数字落在同一档，就吃同一个折扣。这一节在问：拆开来会不会更准？</p>
   <div class="why"><b>拆成两维试：</b>一维是<b>站</b>（成都和纽约分开记账），
   一维是<b>桶位置</b>（离当天最高点最近的那个桶，和远在偏冷／偏暖一侧的桶，分开记账）。
@@ -4851,7 +4922,7 @@ function basketHit(){
   // running; it was removed on 2026-08-29 rather than left printing a dash.
   // The number is NOT reused: every other section keeps the number a reader
   // already knows it by, and a gap is cheaper than renumbering nine of them.
-  return `<h2>十三、篮子命中率（按桶数）</h2>
+  return `<h2>篮子命中率（按桶数）</h2>
   <p class="sub">结算真值落在篮子里就算命中。只算可成交的（整篮 ≥1 分）。</p>
   <div class="why"><b>这张表回答一件事：</b>多买一个桶买到的命中率，
   值不值它多花的钱。命中率一定随桶数上升——问题是成本也上升，
@@ -5036,7 +5107,7 @@ function refusalStats(){
       ${restBlock}
     </div>`;
   }).join("");
-  return `<h2>十五、没建仓是因为什么（逐阶段）</h2>
+  return `<h2>没建仓是因为什么（逐阶段）</h2>
   <p class="sub">分母是这一阶段扫到的全部站日，建仓数 + 各项原因 = 分母，
   所以这是一条漏斗而不是两份互不相干的清单。
   <b>P0-M 只统计 TAF 带温度组的那 17 个站</b>——这一阶段是拿 TAF 做确认，
@@ -5104,7 +5175,7 @@ function truthLanding(){
     市场比模型乐观（真值跟着市场走——别因模型嫌贵而放弃）&nbsp;
     <span class="zone-agree" style="padding:2px 8px;border-radius:4px">蓝区</span>
     两者一致（校准良好的对角线）</p>`;
-  return `<h2>十五B、真值落位（价格 × 概率）</h2>
+  return `<h2>真值落位（价格 × 概率）</h2>
   <p class="sub">${T.since} 起 · 已闭合站日 ${T.closed_station_days}
     · 市场裁定出赢家 ${T.adjudicated_station_days}
     · 采集截断剔除 ${T.capture_truncated_days}。
@@ -5127,7 +5198,7 @@ function edgeBandHealth(){
   const E=D.edge_band_health||{};
   const rows=E.bands||[];
   if(!rows.length)
-    return `<h2>十五C、声称边际体温计（edge 带 × 兑现）</h2>
+    return `<h2>声称边际体温计（edge 带 × 兑现）</h2>
     <div class="card"><span class="dot green"></span> 无腿级数据。</div>`;
   const pct=v=>v==null?"—":(v*100).toFixed(0)+"%";
   const mult=v=>v==null?"—":"×"+v.toFixed(2);
@@ -5151,7 +5222,7 @@ function edgeBandHealth(){
       <td>${pct(r.share_recent)}</td>
       <td>${mult(rc.realize_filled_x)}</td></tr>`;
   };
-  return `<h2>十五C、声称边际体温计（edge 带 × 兑现）</h2>
+  return `<h2>声称边际体温计（edge 带 × 兑现）</h2>
   <div class="card">
   <p class="note"><b>这张表回答一个问题：模型觉得"捡到的便宜"是真是假。</b>
   每条腿有两个数——模型信它多少（声称）、市场卖它多少（卖价），差值＝模型自认占的便宜，
@@ -5172,7 +5243,7 @@ function windowDivergence(){
   const rows=W.flagged||[];
   const ths=W.thresholds||[];
   if(!rows.length&&!ths.length)
-    return `<h2>十五A、分布与持仓分家</h2>
+    return `<h2>分布与持仓分家</h2>
     <div class="card"><span class="dot green"></span> 没有可评估的站日。</div>`;
   const pct=v=>v==null?"—":(v*100).toFixed(0)+"%";
   const thRows=ths.map(t=>`<tr>
@@ -5197,7 +5268,7 @@ function windowDivergence(){
     <td>${r.hit?'<span class="up">中</span>':'<span class="down">未中</span>'}</td>
     <td class="${r.pnl>=0?"up":"down"}">${r.pnl>=0?"+":""}${r.pnl.toFixed(2)}</td></tr>`;
   };
-  return `<h2>十五A、分布与持仓分家</h2>
+  return `<h2>分布与持仓分家</h2>
   <p class="sub">每个已结算的持仓站日，取<b>持仓桶还活着的最后一次概率重算</b>
   （持仓桶质量仍高于 5%，即加仓还来得及的最后时刻），量它有多少后验质量落在持仓窗之外。
   共评估 ${W.evaluated_station_days||0} 个站日，下表列出末态窗外质量超过 40% 的。</p>
@@ -5301,7 +5372,7 @@ function consolidation(){
 
 
 function gaps(){
-  if(!D.gaps.length) return `<h2>十七、数据缺口</h2>
+  if(!D.gaps.length) return `<h2>数据缺口</h2>
     <div class="card"><span class="dot green"></span> 当前没有发现缺口。</div>`;
   const sev = {high:["red","要处理"],medium:["amber","留意"],low:["amber","正常等待"]};
   const rows = D.gaps.map(g => {
@@ -5313,7 +5384,7 @@ function gaps(){
       <td class="muted">${g.self_heals ? "会自行恢复" : "需要人工介入"}</td>
     </tr>`;
   }).join("");
-  return `<h2>十七、数据缺口与健康检查</h2>
+  return `<h2>数据缺口与健康检查</h2>
   <p class="sub">每一条都写清楚"缺了什么、会造成什么、会不会自己好"。
   标"正常等待"的不是故障，是样本还在积累。</p>
   <div class="card"><div class="scroll"><table><thead><tr>
@@ -5351,9 +5422,11 @@ function daily(){
       <td>${r.station_count}</td>
       <td>${r.position_count}</td>
       <td class="muted">${s.above||0}/${s.aligned||0}/${s.below||0}</td>
-      <td class="${covCls}">${cov==null&&!r.settled_count
-        ?`<span class="muted" title="盖住率要等真值：真值到之前无法判断它落没落进意向篮子">待结算</span>`
-        :pct(cov)}${
+      <td class="${covCls}">${cov!=null?pct(cov)
+        :r.claimed_cover_mean!=null
+          ?`<span class="muted" title="真值未到，无法说它落没落进篮子。这里是模型自己声称的盖住率：意向窗各桶概率之和的站均值——选桶那一刻就知道，不必等结算"
+            >声称 ${(r.claimed_cover_mean*100).toFixed(0)}%*</span>`
+          :"—"}${
         r.cover_settled_count?`<span class="muted"> ${
           r.cover_settled_count}/${r.cover_station_count} 站</span>`:""}${
         r.unfilled_intended?`<span class="muted"> +${
@@ -5391,7 +5464,10 @@ function daily(){
   三个阶段是同一个仓位：P0 建仓，后两个只加不减；
   「声称」带 * 的是尚未结算日：取各链最新阶段的声称胜率均值，
   与已结算日的口径不同（那一列只算结算样本），不可直接相比；
-  「盖住率」要等真值，未结算日写「待结算」；
+  「盖住率」已结算日是真值有没有落进意向篮子；未结算日写「声称 N%*」——
+  意向窗各桶概率之和的站均值，选桶当刻即知，与已结算日的实测口径不是一回事；
+  「投入」是当天真实部署的资金（每站按整链算一次），不等结算；「盈亏」只属于已结算链，
+  所以未结算日的这两列不能相除；
   「实现/声称」是命中率÷声称胜率，1.00× 表示概率说得准；
   「赔率」是 (1−成本)/成本。</div>
   <div class="card"><table><thead><tr>
@@ -5413,10 +5489,12 @@ function coverage(){
   const rr=c.realization_ratio;
   const sd=S.sides||{};const tot=S.position_count||1;
   const seg=(k,col)=>`<i style="display:block;height:9px;width:${100*(sd[k]||0)/tot}%;background:${col}"></i>`;
-  return `<h2>十、覆盖 · 价格 · EV</h2>
+  return `<h2>覆盖 · 价格 · EV</h2>
   <p class="sub">只算可成交的（整篮 ≥1 分，排除虚价）。三组数回答同一个问题的三面：
   座位罩住了多少概率、为此付了多少、这笔交换值不值。</p>
-  <div class="card"><div class="muted">相对市场的位置（模型质量中心减市场质量中心，单位是桶）</div>
+  <div class="card"><div class="muted">相对市场的位置（<b>均值落点桶</b>减市场质量中心，单位是桶）
+    <span title="宪章 54 生产就座的那个中心桶，直接读账本记录——与「每日统计」同一把尺。
+不是模型未取整的质量中心：那是另一个数，两者在部分仓位上不一致。">ⓘ</span></div>
     <div style="display:flex;height:9px;border-radius:99px;overflow:hidden;margin-top:7px">
       ${seg("above","#bc8cff")}${seg("aligned","#3fb950")}${seg("below","#d29922")}</div>
     <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
@@ -5509,7 +5587,7 @@ function stationSummary(){
     silentOff.length} 个站有结算时区和已挂牌市场，但模型从未为其算过概率——
     舰队 45 站、时区册 48 站，这是备好未接入的差额，不是这段窗口的失败：${
     idList(silentOff)}`:""}</div>`:"";
-  return `<h2>十一、逐站汇总（跨日）</h2>
+  return `<h2>逐站汇总（跨日）</h2>
   <p class="sub">一站一行，把该站 ${h(S.stats_start_event_date)} 起的全部可成交仓位
   （整篮 ≥1 分，排除虚价）平均到一起。<b>这些数不属于任何一天</b>——它们回答的是
   「这个站长期表现如何」，逐日的账在页顶「逐站逐日明细」。</p>
@@ -5519,7 +5597,7 @@ function stationSummary(){
   命中率与实现/声称基本读不出信号；
   「建仓桶」是该站这段窗口里买到的腿数合计（括号里是每座位平均几腿）；
   「位置」是相对市场偏上/一致/偏下的笔数；
-  「概率和/卖价和/赔率/EV」同第十节，只是范围缩到这一个站；
+  「概率和/卖价和/赔率/EV」同「覆盖 · 价格 · EV」，只是范围缩到这一个站；
   「实现/声称」是命中率÷声称胜率；「兑现比」是实得÷期望。</div>
   <div class="card"><div class="scroll"><table><thead><tr>
     <th>#</th><th>站点</th><th>仓位</th><th>已结算</th>
@@ -5929,7 +6007,7 @@ function roster(){
   P1 格里的「预测最高」是当天<b>最后一次重算</b>的点预测（后验加权中心，随盘口单位显示），
   旁边注明它出自哪个条件化器：<b>物理路径</b>是只看观测的 v5 预测器（带生效强度），
   「仅硬下界」表示该次重算没有任何软证据参与——那不是预测，只是排除。
-  每行只讲这一天：跨日均值在「市场与执行」的第十一节逐站汇总。日期在下面的页签里选，默认最新一天；
+  每行只讲这一天：跨日均值在「市场与执行」的「逐站汇总（跨日）」逐站汇总。日期在下面的页签里选，默认最新一天；
   「全部」是原来的通栏视图，也是浏览器自带查找唯一能搜到所有日期的那一档。</p>
   <div class="why"><b>站点格的底色＝这个站日最后怎么了：</b>
   <span class="pill green">命中</span>真值落在最终持仓里 ·
@@ -5956,7 +6034,7 @@ function roster(){
 
 function anomalies(){
   const S=D.selection||{};const an=S.anomalies||[];
-  if(!an.length) return `<h2>十二、异常盘口</h2>
+  if(!an.length) return `<h2>异常盘口</h2>
     <div class="card"><span class="dot green"></span> 未发现异常。</div>`;
   const rows=an.map(a=>`<tr>
     <td class="mono">${h(a.station_id)}</td><td class="mono">${h(a.event_date)}</td>
@@ -5966,7 +6044,7 @@ function anomalies(){
     <td>${(a.win_probability*100).toFixed(1)}%</td>
     <td><span class="pill red">${a.kind==="basket_under_one_cent"?"虚价（整篮不足1分）":"声称超市场10倍"}</span></td>
   </tr>`).join("");
-  return `<h2>十二、异常盘口</h2>
+  return `<h2>异常盘口</h2>
   <p class="sub">这些不是机会，是信号：整篮报价不足一分（虚价）、或声称概率超市场定价十倍，
   几乎总是无人出价那侧的单边报价，真下单填不满。</p>
   <div class="card scroll"><table><thead><tr>
@@ -5998,7 +6076,7 @@ function dispersion(){
       r.width_ratio == null ? "—" : r.width_ratio.toFixed(2) + "×"}</td>
   </tr>`).join("");
   const bare = [...new Set(rows.filter(r => !r.paired).map(r => r.label))];
-  return `<h2>四、四大模型的离散度</h2>
+  return `<h2>四大模型的离散度</h2>
   <p class="sub">离散度是一个集合预报里几十个成员之间的分歧，也是模型对自己唯一的
   不确定性表态：成员挤在一起就是"我很有把握"，散开就是"这天不好说"。
   统计窗口 ${h(S.summary.window_start)} 至 ${h(S.summary.window_end)}
@@ -6083,7 +6161,7 @@ function hitRate(){
     <td colspan="4" class="muted">这一格的 ${r.uncorrected.toLocaleString()}
       个 run 都没有事件日之前就已拟合好的校正表，不参与对比</td>
   </tr>`).join("");
-  return `<h2>五、四大模型的命中率：原始 vs 校正后</h2>
+  return `<h2>四大模型的命中率：原始 vs 校正后</h2>
   <p class="sub">把一个模型的成员均值当成它的答案，看它落在市场的哪个桶里，
   再和当天结算真值所在的桶比。桶按各站自己的市场刻度数——美国站 2°F 一档，
   其余 1°C 一档——所以"差一个桶"在各站是同一件事。</p>
@@ -6138,7 +6216,7 @@ function materialization(){
       "证据不全" : "证据矛盾"}</span></td>
     <td class="mono muted">${h(r.example)}</td>
   </tr>`).join("");
-  return `<h2>十八、真值物化健康度</h2>
+  return `<h2>真值物化健康度</h2>
   <p class="sub">观测进来只是第一步：还要把一整天的报文收敛成"这个站这天的最高温"
   一行，才有东西给预报打分。这一节看的是这一步有没有落下。</p>
   <div class="why"><b>为什么单独看它：</b>缺一行真值几乎从来不是缺观测——
@@ -6214,7 +6292,7 @@ function regional(){
       : v.has_rows ? `<span class="pill green">在采</span>`
       : `<span class="pill amber">在册·等首行</span>`}</td>
   </tr>`).join("");
-  return `<h2>十九、区域模型：采集道与赛道</h2>
+  return `<h2>区域模型：采集道与赛道</h2>
   <p class="sub">三条高分辨率区域模型采集道（2026-08-28 起）：每小时自动把
   HRRR/NBM/MSM/ICON-EU 的"这个站这天的预报最高温"存进语料库。
   语料攒够、过三道门的站对，赢到的是<b>扩展概率包络的证据席位</b>——
@@ -6265,7 +6343,7 @@ function oosScores(){
     <td class="mono">${n3(r.nll)}</td>
     <td class="mono muted">${n3(r.nll_base)}</td>
   </tr>`).join("");
-  return `<h2>七、OOS 打分：CRPS / Brier / NLL</h2>
+  return `<h2>OOS 打分：CRPS / Brier / NLL</h2>
   <p class="sub">这是门自己用的分数，全部在样本外的 holdout 上算。
   近 7 天共 ${S.scope_count.toLocaleString()} 个站×提前量×cycle 被评过，
   最近一次 ${hours(S.latest_age_hours)}。</p>
@@ -6337,7 +6415,7 @@ function centerWidth(){
       <br>2026-08-27 起指纹只报警不清零：它认代码不认分布，
       只补记账的提交曾与真改算术一样清空八天证据。</div>`}
   </div>`).join("");
-  return `<h2>八、中心/宽度两标量</h2>
+  return `<h2>中心/宽度两标量</h2>
   <p class="sub">最后一层修正只有两个数：把整条分布左右平移多少（中心 δ），
   再横向拉宽或收窄多少倍（宽度 λ）。δ=0、λ=1 就是原样不动。</p>
   <div class="why"><b>为什么必须按阶段分开拟合：</b>P0 面对的是一堆模型融出来的
@@ -6351,6 +6429,27 @@ function centerWidth(){
   满 8 天。每张卡片底部的"证据时钟"就是这件事的读数：它不满 8 天，这一层就永远
   按原样服务。</div>
   <div class="grid g3" style="margin-top:12px">${cards}</div>`;
+}
+
+
+// The live flag belongs where the reader's eye already is (user ruling,
+// 2026-08-29): it is the one control on this page that changes what the
+// system may do, and it was fifteen sections down inside a table of
+// station gates.  The banner carries the switch; the gates stay in their
+// own section, which the switch links to.
+function liveSwitch(){
+  const L = D.live_readiness || {};
+  if(!L.available) return "";
+  const on = !!L.live_enabled;
+  return `<span class="pill ${on?"red":""}" id="lc-head"
+    style="font-size:13px;display:inline-flex;gap:7px;align-items:center">
+    <b>LIVE</b>
+    <span id="lc-live" class="mono">${on?"ARMED":"OFF"}</span>
+    <button type="button" id="lc-live-btn" disabled onclick="lcLive()"
+      style="font-size:12px;padding:1px 8px">切换</button>
+    <span class="muted" id="lc-head-note" style="font-size:11.5px"
+      title="控制服务未连接时按钮不可用">控制服务未连接</span>
+  </span>`;
 }
 
 
@@ -6373,10 +6472,7 @@ function liveReadiness(){
   <p class="sub"><b>三重合同现锁 no_live</b>（执行模式字符串、激活文件、runtime config），
   下面的开关是<b>上线意向旗</b>：它不下单也不能下单，真正的 go-live 迁移必须在旗亮时才允许铸造 live 契约。</p>
   <div class="card">
-    <div class="grid g3">
-      <div><div class="muted">Live 意向</div>
-        <div class="big" id="lc-live">${L.live_enabled?"已 armed":"OFF"}</div>
-        <button type="button" id="lc-live-btn" disabled onclick="lcLive()">切换</button></div>
+    <div class="grid g2">
       <div><div class="muted">凯利系数 portfolio_risk_fraction</div>
         <div class="big" id="lc-kelly">${L.kelly==null?"—":L.kelly}</div>
         <button type="button" disabled class="lc-w" onclick="lcAdjust('kelly',-0.05)">−0.05</button>
@@ -6411,7 +6507,16 @@ function lcRender(s){
   const live=document.getElementById("lc-live");
   if(kelly) kelly.textContent = s.kelly.portfolio_risk_fraction;
   if(budget) budget.textContent = s.budget.target_remaining_budget_usdc;
-  if(live) live.textContent = s.live.enabled?"已 armed":"OFF";
+  if(live) live.textContent = s.live.enabled?"ARMED":"OFF";
+  // The banner switch carries the same state; paint it red only when the
+  // flag is actually up, so a glance at the top of the page answers "may
+  // this book go live".
+  const head=document.getElementById("lc-head");
+  if(head) head.className = "pill" + (s.live.enabled?" red":"");
+  const headNote=document.getElementById("lc-head-note");
+  if(headNote) headNote.textContent = s.live.enabled
+    ? "意向旗已举起 · 三重合同仍锁 no_live"
+    : "控制服务已连接";
   const status=document.getElementById("lc-status");
   if(status) status.textContent =
     "控制服务已连接 · 每次改动写 data/live_control_audit.jsonl";
@@ -6523,7 +6628,7 @@ const VERDICT_WORD = {green:"良好", amber:"注意", red:"有问题", muted:"�
 
 function scorecard(){
   const S = D.scorecard || {};
-  if(!S.available) return `<h2>九、模型校准总检</h2>
+  if(!S.available) return `<h2>模型校准总检</h2>
     <p class="sub">还没有已结算的预测可以评分。</p>`;
   const cards = (S.layers||[]).map(L => `<div class="card">
     <div style="display:flex;align-items:center;gap:8px">
@@ -6580,7 +6685,7 @@ function scorecard(){
       </tr>`;
     }).join("");
 
-  return `<h2>九、模型校准总检：六层各自及格没有</h2>
+  return `<h2>模型校准总检：六层各自及格没有</h2>
   <p class="sub">近 45 天 ${S.sample_days.toLocaleString()} 个已结算站日、
   ${S.station_count} 个站，全部在样本外。总体
   <span class="pill ${S.overall}">${VERDICT_WORD[S.overall]||""}</span>，
@@ -6604,7 +6709,7 @@ function scorecard(){
   </tr></thead><tbody>${leadRows}</tbody></table>
 
   <p class="sub" style="margin-top:26px">「说了多少 vs 真发生了多少」残差表
-  已并入第六节，与产生它的修正系数放在同一条闭环里；本节的校准灯仍由同一份
+  已并入「band 表」，与产生它的修正系数放在同一条闭环里；本节的校准灯仍由同一份
   数据打分。</p>
 
   <h2 style="margin-top:26px">PIT：分布形状正不正</h2>
@@ -6669,7 +6774,7 @@ function servingWeights(){
       <td class="mono">${r.candidate_count}→${r.selected_count}</td>
       <td class="mono ${stale ? "down" : ""}">${h(r.holdout_end)}</td></tr>`;
   }).join("");
-  return `<h2>三、四大模型的权重：谁在场、占多少</h2>
+  return `<h2>四大模型的权重：谁在场、占多少</h2>
   <p class="sub">这里读的是服务路径本身——每个「站×提前量×cycle」格子当前激活的
   组合指针，连到它绑定的选拔证据，把里面的权重原样摊开。不是权重表的行数统计，
   就是 P0 此刻在用的那份配比。</p>
@@ -6709,27 +6814,41 @@ function servingWeights(){
 // number that no longer matches its neighbours is a worse handle than a
 // renumbered one, because it only reads as an accident.
 const GROUPS = [
-  {id:"model", label:"模型与校准", note:"一～九节：数据到货、订正与权重（含区域模型采集道）、离散度与命中率、各层校准打分",
-   sections:[[members,"成员"],[tables,"偏差订正与权重"],
+  // Grouped by what the reader is asking, not by the order the sections
+  // were built in (user ruling, 2026-08-29).  Five questions: is the data
+  // arriving, is the model any good, what shape is the probability and the
+  // position it buys, does the market let that make money, and is the
+  // machine running.  Each group carries a colour so the tab bar and the
+  // group titles agree without the reader matching text.
+  {id:"upstream", label:"上游数据", tone:"#58a6ff",
+   note:"喂进来的东西到没到：四家模型的到货、区域采集道、缺口",
+   sections:[[members,"模型数据到货"],[gaps,"数据缺口"]]},
+  {id:"model", label:"模型", tone:"#d2a8ff",
+   note:"模型本身准不准：订正与权重、离散度、命中率、OOS、中心/宽度、总检",
+   sections:[[tables,"偏差订正与权重"],
      [servingWeights,"四大模型权重"],[regional,"区域模型"],
-     [dispersion,"模型离散度"],
-     [hitRate,"模型命中率"],[stages,"概率分档校准"],
-     [bandShadow,"分档影子：站 × 桶位置"],[oosScores,"OOS 打分"],
-     [centerWidth,"中心/宽度"],[scorecard,"模型校准总检"]]},
-  {id:"market", label:"市场与执行", note:"十～十五节：覆盖与 EV、逐站汇总的账、没建仓的原因、分布与持仓分家、固化减仓",
-   sections:[[coverage,"覆盖"],[stationSummary,"站汇总"],
-     [anomalies,"异常"],[basketHit,"篮子命中率"],
-     [consolidation,"固化减仓"],[refusalStats,"未建仓原因"],
-     [windowDivergence,"分布与持仓分家"],[truthLanding,"真值落位"],
-     [edgeBandHealth,"声称边际体温计"]]},
-  {id:"data", label:"数据与链路", note:"十六～十八节：链路每一环、数据缺口、真值物化",
-   sections:[[chain,"链路"],[gaps,"数据缺口"],[materialization,"真值物化"]]},
+     [dispersion,"模型离散度"],[hitRate,"模型命中率"],
+     [oosScores,"OOS 打分"],[centerWidth,"中心/宽度"],
+     [scorecard,"模型校准总检"]]},
+  {id:"shape", label:"概率与持仓形状", tone:"#7ee787",
+   note:"概率怎么被分档修正、注码怎么被固化减仓、分布和实际持仓差在哪",
+   sections:[[bandTable,"band 表"],[consolidation,"固化减仓"],
+     [windowDivergence,"分布与持仓分家"]]},
+  {id:"market", label:"市场与执行门槛", tone:"#e3b341",
+   note:"市场肯不肯让这套东西赚钱：覆盖与 EV、篮子命中率、真值落位、声称边际",
+   sections:[[coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"],
+     [truthLanding,"真值落位"],[edgeBandHealth,"声称边际体温计"]]},
+  {id:"health", label:"系统健康", tone:"#f85149",
+   note:"机器在不在转：整条链路每一环、真值物化、Live 上线闸门",
+   sections:[[chain,"链路"],[materialization,"真值物化"],
+     [liveReadiness,"Live 上线闸门"]]},
 ];
-
 const tabs = `<nav class="tabs" id="tabs">${
-  GROUPS.map(g => `<button type="button" data-tab="${g.id}">${g.label}
-    <span class="muted">${g.sections.length}</span></button>`).join("")
-}<button type="button" data-tab="all">全部</button></nav>`;
+  GROUPS.map(g => `<button type="button" data-tab="${g.id}"
+    style="--tone:${g.tone}">${g.label}
+    <span class="cnt">${g.sections.length}</span></button>`).join("")
+}<span class="spacer"></span><button type="button" class="all"
+  data-tab="all">全部</button></nav>`;
 
 // Every section gets its own element and id so the jump bar has somewhere
 // to land.  The label the bar shows is read back out of the section's own
@@ -6738,7 +6857,8 @@ const tabs = `<nav class="tabs" id="tabs">${
 const sec = (fn, name, id) =>
   `<section class="sec" id="${id}" data-name="${name}">${safe(fn, name)}</section>`;
 
-const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}">
+const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}"
+  style="--tone:${g.tone}">
   <div class="grouptitle">${g.label}<span class="muted">${g.note}</span></div>
   ${g.sections.map(([fn, name], i) =>
     sec(fn, name, `sec-${g.id}-${i}`)).join("")}</section>`).join("");
@@ -6751,8 +6871,15 @@ const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}">
 // "may this book place a real order yet", which gates everything below it
 // -- reading it last meant scrolling past fifteen sections of analysis to
 // find out the answer was no.
-const TOP = [[overview, "总览"], [liveReadiness, "Live 上线准备"],
-  [daily, "每日统计"], [roster, "逐站逐日明细"]];
+// The day-level account, in the order a reader walks it: the strip, the
+// per-day table, the per-station-day detail, and then the three tables
+// that answer questions the detail raises -- how each station does across
+// days, which books were abnormal, and why a station did not seat (user
+// ruling, 2026-08-29).  These three used to sit in the market group, two
+// scrolls away from the rows they explain.
+const TOP = [[overview, "总览"], [daily, "每日统计"],
+  [roster, "逐站逐日明细"], [stationSummary, "逐站汇总（跨日）"],
+  [anomalies, "异常盘口"], [refusalStats, "没建仓是因为什么"]];
 
 document.getElementById("app").innerHTML =
   safe(head, "页头") +
