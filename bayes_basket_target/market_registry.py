@@ -84,6 +84,12 @@ CREATE INDEX IF NOT EXISTS basket_target_market_registry_latest_idx
 -- production reads actually have.
 CREATE INDEX IF NOT EXISTS basket_target_market_registry_scope_idx
   ON {TABLE}(station_id,event_date);
+-- The board asks this table for one row per station -- the settlement unit
+-- each one trades in -- and got it by grouping 398k scope rows through a
+-- temp B-tree, 10.7 seconds of every render (2026-08-29).  Two columns,
+-- covering, answers it in 0.03.
+CREATE INDEX IF NOT EXISTS basket_target_market_registry_unit_idx
+  ON {TABLE}(station_id,settlement_unit);
 """
 
 

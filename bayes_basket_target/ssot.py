@@ -1046,6 +1046,13 @@ CREATE INDEX IF NOT EXISTS calibration_activation_asof_idx ON calibration_activa
 CREATE INDEX IF NOT EXISTS calibration_native_member_scope_idx ON calibration_native_ensemble_member_run(ensemble_system_id,station_id,target_local_date,run_init_utc,member_id);
 CREATE INDEX IF NOT EXISTS calibration_native_member_bucket_scope_idx ON calibration_native_ensemble_member_bucket(ensemble_system_id,station_id,target_local_date,aggregator_snapshot_at_utc);
 CREATE INDEX IF NOT EXISTS calibration_native_historical_member_scope_idx ON calibration_native_ensemble_historical_member_run(ensemble_system_id,station_id,target_local_date,archive_lead_bucket,member_id);
+-- The dispersion/hit-rate board groups this table by system, station, day,
+-- run and lead over a rolling window; the scope index above leads with the
+-- wrong keys for that shape, so 1.16M rows went through a temp B-tree on
+-- every render -- 23.7 seconds of one collector, measured 2026-08-29.
+-- Leading with the filter keys and carrying the grouping keys and the value
+-- makes it a covering scan: the collector runs in 3.6 seconds.
+CREATE INDEX IF NOT EXISTS calibration_native_member_skill_idx ON calibration_native_ensemble_historical_member_run(ensemble_system_id,transport_provider_id,qc_status,target_local_date,station_id,native_run_init_utc,run_cycle,archive_lead_bucket,raw_tmax_c);
 CREATE INDEX IF NOT EXISTS calibration_native_historical_bucket_scope_idx ON calibration_native_ensemble_historical_member_bucket(ensemble_system_id,station_id,target_local_date,archive_query_at_utc);
 CREATE INDEX IF NOT EXISTS calibration_native_system_artifact_scope_idx ON calibration_native_ensemble_system_artifact(ensemble_system_id,station_id,season_bin,lead_bucket,run_cycle,valid_from_utc,valid_until_utc);
 CREATE INDEX IF NOT EXISTS calibration_cross_native_artifact_scope_idx ON calibration_cross_native_ensemble_artifact(station_id,season_bin,lead_bucket,run_cycle,valid_from_utc,valid_until_utc);
