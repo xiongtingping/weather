@@ -257,43 +257,40 @@ def _history_identity(projection: Mapping[str, Any], envelope: ProbabilityEnvelo
     return core
 
 
-def history_envelope_payload(
-    conn: sqlite3.Connection,
-    *,
-    checkpoint_id: str,
-    envelope_content_sha256: str,
-    stored: str | None = None,
-) -> dict[str, Any]:
-    """The envelope body for one bridge-history row, as a mapping.
+# The envelope body columns, in the order ``envelope_payload_from_columns``
+# reads them.  A walker that joins the envelope table selects exactly this,
+# aliased to its own table, so the join and the single-row fetch below can
+# never drift apart.
+ENVELOPE_BODY_COLUMNS = (
+    "stage", "checkpoint_id", "station_id", "event_date",
+    "settlement_timezone", "decision_at_utc", "fresh_until_utc",
+    "bucket_ordinals_json", "probabilities_json", "posterior_version",
+    "posterior_sha256", "bridge_sha256", "lineage_json",
+)
 
-    History rows written before 2026-08-26 carry the body inline in
-    ``envelope_json``; pass that column as ``stored`` and it is parsed
-    as-is.  Newer rows leave the column empty -- the body was already
-    written to ``basket_probability_envelope`` by the same savepoint, keyed
-    by this checkpoint, and copying it doubled the store (5.9 GB of the 27
-    that hit the 2026-08-26 ceiling).  A rebuilt payload is hashed and must
-    equal the sha the history row has always carried, so a divergence fails
-    loudly instead of serving a body the projection was not computed from.
+
+def envelope_body_select(alias: str) -> str:
+    """``ENVELOPE_BODY_COLUMNS`` qualified for a join, comma separated."""
+
+    return ",".join(f"{alias}.{column}" for column in ENVELOPE_BODY_COLUMNS)
+
+
+def envelope_payload_from_columns(
+    row: Sequence[Any],
+    *,
+    envelope_content_sha256: str,
+) -> dict[str, Any]:
+    """Build and verify one envelope body from already-fetched columns.
+
+    Split out of ``history_envelope_payload`` (2026-08-29) so a walker can
+    join the envelope table instead of issuing one SELECT per history row.
+    Every history row references its own envelope -- 332,459 rows against
+    332,459 distinct checkpoints -- so there is nothing for a cache to
+    reuse, and the N+1 shape was costing 285,014 queries and 140 seconds of
+    a single dashboard render.  The sha verification is unchanged and still
+    happens here, on the same bytes, whichever path fetched them.
     """
 
-    if stored:
-        try:
-            parsed = json.loads(str(stored))
-        except (TypeError, ValueError, json.JSONDecodeError) as exc:
-            raise ContractError("xsb_history_envelope_body_invalid") from exc
-        if not isinstance(parsed, dict):
-            raise ContractError("xsb_history_envelope_body_invalid")
-        return parsed
-    row = conn.execute(
-        "SELECT stage,checkpoint_id,station_id,event_date,"
-        "settlement_timezone,decision_at_utc,fresh_until_utc,"
-        "bucket_ordinals_json,probabilities_json,posterior_version,"
-        "posterior_sha256,bridge_sha256,lineage_json "
-        "FROM basket_probability_envelope WHERE envelope_id=?",
-        (str(checkpoint_id),),
-    ).fetchone()
-    if row is None:
-        raise ContractError("xsb_history_envelope_body_missing")
     try:
         payload = {
             "schema": "bayes_basket_probability_envelope_v1",
@@ -316,6 +313,48 @@ def history_envelope_payload(
     if content_sha256(payload) != str(envelope_content_sha256):
         raise ContractError("xsb_history_envelope_body_sha_mismatch")
     return payload
+
+
+def history_envelope_payload(
+    conn: sqlite3.Connection,
+    *,
+    checkpoint_id: str,
+    envelope_content_sha256: str,
+    stored: str | None = None,
+) -> dict[str, Any]:
+    """The envelope body for one bridge-history row, as a mapping.
+
+    History rows written before 2026-08-26 carry the body inline in
+    ``envelope_json``; pass that column as ``stored`` and it is parsed
+    as-is.  Newer rows leave the column empty -- the body was already
+    written to ``basket_probability_envelope`` by the same savepoint, keyed
+    by this checkpoint, and copying it doubled the store (5.9 GB of the 27
+    that hit the 2026-08-26 ceiling).
+
+    One row at a time.  A caller walking many rows must join the envelope
+    table instead (``envelope_body_select`` /
+    ``envelope_payload_from_columns``): every history row has its own
+    envelope, so this path costs one query each and nothing can cache it.
+    """
+
+    if stored:
+        try:
+            parsed = json.loads(str(stored))
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ContractError("xsb_history_envelope_body_invalid") from exc
+        if not isinstance(parsed, dict):
+            raise ContractError("xsb_history_envelope_body_invalid")
+        return parsed
+    row = conn.execute(
+        "SELECT " + ",".join(ENVELOPE_BODY_COLUMNS)
+        + " FROM basket_probability_envelope WHERE envelope_id=?",
+        (str(checkpoint_id),),
+    ).fetchone()
+    if row is None:
+        raise ContractError("xsb_history_envelope_body_missing")
+    return envelope_payload_from_columns(
+        row, envelope_content_sha256=envelope_content_sha256,
+    )
 
 
 def history_envelope_json(
@@ -346,11 +385,11 @@ def _history_rows(
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     where_as_of = (
-        " AND decision_at_utc<=?"
+        " AND h.decision_at_utc<=?"
         if as_of_utc is not None
         else ""
     )
-    where_history = " AND history_id=?" if history_id is not None else ""
+    where_history = " AND h.history_id=?" if history_id is not None else ""
     parameters: tuple[str, ...] = (
         (station_id, event_date, as_of_utc)
         if as_of_utc is not None
@@ -358,27 +397,64 @@ def _history_rows(
     )
     if history_id is not None:
         parameters = parameters + (history_id,)
-    for row in conn.execute(
-        "SELECT history_id,stage,checkpoint_id,decision_at_utc,fresh_until_utc,"
-        "envelope_content_sha256,bridge_sha256,bucket_map_sha256,"
-        "bucket_intervals_json,projection_sha256,envelope_json,"
-        "content_sha256,created_at_utc "
-        "FROM basket_probability_bridge_history "
-        "WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-        + where_as_of
-        + where_history
-        + " "
-        "ORDER BY decision_at_utc,stage,checkpoint_id",
-        parameters,
-    ).fetchall():
+    # The envelope body rides along on the join (2026-08-29).  Fetching it
+    # per row was 285,014 queries and 140 seconds of one dashboard render;
+    # there is no cache to add, because every history row owns its own
+    # envelope.  ``e.stage`` etc. are the same columns the single-row path
+    # selects, in the same order, from one shared constant.
+    try:
+        walk = conn.execute(
+            "SELECT h.history_id,h.stage,h.checkpoint_id,h.decision_at_utc,"
+            "h.fresh_until_utc,h.envelope_content_sha256,h.bridge_sha256,"
+            "h.bucket_map_sha256,h.bucket_intervals_json,h.projection_sha256,"
+            "h.envelope_json,h.content_sha256,h.created_at_utc,"
+            + envelope_body_select("e")
+            + " FROM basket_probability_bridge_history h"
+            " LEFT JOIN basket_probability_envelope e"
+            "   ON e.envelope_id = h.checkpoint_id"
+            " WHERE h.station_id=? AND h.event_date=? AND h.state='COMMITTED'"
+            + where_as_of
+            + where_history
+            + " ORDER BY h.decision_at_utc,h.stage,h.checkpoint_id",
+            parameters,
+        ).fetchall()
+    except sqlite3.OperationalError:
+        # No envelope table (fixtures, pre-2026-08-26 stores): the inline
+        # body path still answers, one row at a time.
+        walk = [
+            tuple(r) + (None,) * len(ENVELOPE_BODY_COLUMNS)
+            for r in conn.execute(
+                "SELECT h.history_id,h.stage,h.checkpoint_id,"
+                "h.decision_at_utc,h.fresh_until_utc,"
+                "h.envelope_content_sha256,h.bridge_sha256,"
+                "h.bucket_map_sha256,h.bucket_intervals_json,"
+                "h.projection_sha256,h.envelope_json,h.content_sha256,"
+                "h.created_at_utc"
+                " FROM basket_probability_bridge_history h"
+                " WHERE h.station_id=? AND h.event_date=?"
+                "   AND h.state='COMMITTED'"
+                + where_as_of
+                + where_history
+                + " ORDER BY h.decision_at_utc,h.stage,h.checkpoint_id",
+                parameters,
+            ).fetchall()
+        ]
+    for row in walk:
         try:
             intervals_payload = json.loads(str(row[8]))
-            envelope_payload = history_envelope_payload(
-                conn,
-                checkpoint_id=str(row[2]),
-                envelope_content_sha256=str(row[5]),
-                stored=str(row[10]) if row[10] else None,
-            )
+            if row[10]:
+                envelope_payload = history_envelope_payload(
+                    conn,
+                    checkpoint_id=str(row[2]),
+                    envelope_content_sha256=str(row[5]),
+                    stored=str(row[10]),
+                )
+            elif row[13] is None:
+                raise ContractError("xsb_history_envelope_body_missing")
+            else:
+                envelope_payload = envelope_payload_from_columns(
+                    row[13:26], envelope_content_sha256=str(row[5]),
+                )
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
             raise ContractError("xsb_history_envelope_json_invalid") from exc
         if not isinstance(intervals_payload, Mapping):

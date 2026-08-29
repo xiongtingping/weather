@@ -519,36 +519,75 @@ def serving_lane_by_station_day(
     day-keyed pair view from this and stays the fit's own entry.
     """
 
-    from .probability_bridge import history_envelope_payload
+    from .probability_bridge import (
+        ENVELOPE_BODY_COLUMNS,
+        envelope_body_select,
+        envelope_payload_from_columns,
+        history_envelope_payload,
+    )
 
     by_station_day: dict[
         tuple[str, str], list[list[tuple[float, int, float]]]
     ] = defaultdict(list)
-    rows = conn.execute(
-        "SELECT h.station_id, h.event_date, h.history_id,"
-        " h.envelope_json, h.checkpoint_id, h.envelope_content_sha256,"
-        " MAX(h.rowid)"
-        " FROM basket_probability_bridge_history h"
-        " JOIN (SELECT station_id, event_date,"
-        "         MIN(decision_at_utc) AS first_decision_at"
-        "       FROM basket_probability_bridge_history"
-        "       WHERE stage=? GROUP BY station_id, event_date) f"
-        "   ON f.station_id = h.station_id AND f.event_date = h.event_date"
-        "  AND h.decision_at_utc = f.first_decision_at"
-        " WHERE h.stage=?"
-        " GROUP BY h.station_id, h.event_date",
-        (_check_stage(stage), _check_stage(stage)),
-    ).fetchall()
-    for station, event, history_id, stored, checkpoint, sha, _last_row in rows:
+    # The envelope body joins in rather than costing a query per station-day
+    # (2026-08-29); see ``probability_bridge.envelope_payload_from_columns``.
+    try:
+        rows = conn.execute(
+            "SELECT h.station_id, h.event_date, h.history_id,"
+            " h.envelope_json, h.checkpoint_id, h.envelope_content_sha256,"
+            " MAX(h.rowid), "
+            + envelope_body_select("e")
+            + " FROM basket_probability_bridge_history h"
+            " JOIN (SELECT station_id, event_date,"
+            "         MIN(decision_at_utc) AS first_decision_at"
+            "       FROM basket_probability_bridge_history"
+            "       WHERE stage=? GROUP BY station_id, event_date) f"
+            "   ON f.station_id = h.station_id AND f.event_date = h.event_date"
+            "  AND h.decision_at_utc = f.first_decision_at"
+            " LEFT JOIN basket_probability_envelope e"
+            "   ON e.envelope_id = h.checkpoint_id"
+            " WHERE h.stage=?"
+            " GROUP BY h.station_id, h.event_date",
+            (_check_stage(stage), _check_stage(stage)),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        # No envelope table (fixtures, pre-2026-08-26 stores): the
+        # inline body path still answers.
+        rows = [
+            tuple(r) + (None,) * len(ENVELOPE_BODY_COLUMNS)
+            for r in conn.execute(
+                "SELECT h.station_id, h.event_date, h.history_id,"
+                " h.envelope_json, h.checkpoint_id,"
+                " h.envelope_content_sha256, MAX(h.rowid)"
+                " FROM basket_probability_bridge_history h"
+                " JOIN (SELECT station_id, event_date,"
+                "         MIN(decision_at_utc) AS first_decision_at"
+                "       FROM basket_probability_bridge_history"
+                "       WHERE stage=? GROUP BY station_id, event_date) f"
+                "   ON f.station_id = h.station_id"
+                "  AND f.event_date = h.event_date"
+                "  AND h.decision_at_utc = f.first_decision_at"
+                " WHERE h.stage=?"
+                " GROUP BY h.station_id, h.event_date",
+                (_check_stage(stage), _check_stage(stage)),
+            ).fetchall()
+        ]
+    for row in rows:
+        station, event, history_id, stored, checkpoint, sha, _last_row = row[:7]
         actual = truth.get((str(station), str(event)))
         if actual is None:
             continue
-        envelope = history_envelope_payload(
-            conn,
-            checkpoint_id=str(checkpoint),
-            envelope_content_sha256=str(sha),
-            stored=str(stored) if stored else None,
-        )
+        if stored or row[7] is None:
+            envelope = history_envelope_payload(
+                conn,
+                checkpoint_id=str(checkpoint),
+                envelope_content_sha256=str(sha),
+                stored=str(stored) if stored else None,
+            )
+        else:
+            envelope = envelope_payload_from_columns(
+                row[7:20], envelope_content_sha256=str(sha),
+            )
         receipt = None
         lineage = envelope.get("lineage") or {}
         raw = lineage.get("band_reliability_json")
