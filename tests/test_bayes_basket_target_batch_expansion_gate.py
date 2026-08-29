@@ -8,6 +8,7 @@ from bayes_basket_target.batch_expansion_gate import (
 )
 from bayes_basket_target.contracts import content_sha256
 from bayes_basket_target.station_registry import coordinate_registry_manifest
+from bayes_basket_target.fleet import expected_station_count
 from scripts.check_bayes_basket_target_45station_expansion import (
     apply_runtime_no_live_guards,
     readiness_exit_code,
@@ -153,7 +154,10 @@ def test_batch_expansion_does_not_wait_for_future_settlement_labels() -> None:
     )
     assert result["resident_materialization_state"] == "PENDING"
     assert result["resident_vertical_chain_station_count"] == 0
-    assert result["resident_missing_probability_station_count"] == 45
+    assert (
+        result["resident_missing_probability_station_count"]
+        == expected_station_count()
+    )
     assert (
         result[
             "resident_materialization_blocks_expansion_authorization"
@@ -272,7 +276,7 @@ def test_batch_expansion_becomes_ready_after_labels_and_projection() -> None:
     )
     assert result["state"] == "READY"
     assert result["blockers"] == []
-    assert result["station_count"] == 45
+    assert result["station_count"] == expected_station_count()
     assert result["orders_submitted"] == 0
     assert result["calls_order_gateway"] is False
     assert result["order_counts"]["basket_target_order_intents"] == 1

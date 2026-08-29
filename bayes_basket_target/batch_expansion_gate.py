@@ -202,8 +202,12 @@ def evaluate_45station_no_live_expansion(
         )
         for station in expected_stations
     }
+    # Three artifacts per station, so the count follows the fleet.  Left as
+    # the literal 135 it survived the derivation of every guard around it
+    # and fail-closed the whole gate the first time the fleet moved
+    # (2026-08-30, 45 -> 48).
     if (
-        len(policy_artifacts) != 135
+        len(policy_artifacts) != expected_station_count() * 3
         or artifact_stations != expected_stations
         or any(value != 3 for value in artifact_count_by_station.values())
     ):
@@ -219,7 +223,7 @@ def evaluate_45station_no_live_expansion(
         for station in expected_stations
     }
     if (
-        len(policy_activations) != 135
+        len(policy_activations) != expected_station_count() * 3
         or activation_stations != expected_stations
         or any(
             stages != {"P0", "P0-M", "P1"}
