@@ -824,65 +824,34 @@ def serving_cells_by_day(
     retired arithmetic vote on the very fit meant to exclude it.
     """
 
-    from .probability_bridge import (
-        ENVELOPE_BODY_COLUMNS,
-        envelope_body_select,
-        envelope_payload_from_columns,
-        history_envelope_payload,
-    )
+    from .probability_bridge import history_envelope_payload
 
     stage_id = _check_stage(stage)
-    # The envelope body joins in (2026-08-29): this walk covers every
-    # committed decision of a stage, and fetching one body per row was
-    # 285,068 queries a render.
     query = (
-        "SELECT h.station_id, h.event_date, h.decision_at_utc,"
-        " h.envelope_json, h.settlement_timezone,"
-        " h.checkpoint_id, h.envelope_content_sha256, "
-        + envelope_body_select("e")
-        + " FROM basket_probability_bridge_history h"
-        " LEFT JOIN basket_probability_envelope e"
-        "   ON e.envelope_id = h.checkpoint_id"
-        " WHERE h.stage=?"
+        "SELECT station_id, event_date, decision_at_utc,"
+        " envelope_json, settlement_timezone,"
+        " checkpoint_id, envelope_content_sha256"
+        " FROM basket_probability_bridge_history"
+        " WHERE stage=?"
     )
     parameters: list[Any] = [stage_id]
     if min_decision_at_utc:
-        query += " AND h.decision_at_utc>=?"
+        query += " AND decision_at_utc>=?"
         parameters.append(str(min_decision_at_utc))
     grouped: dict[tuple[str, str, int], list[tuple[float, dict[str, Any]]]] = {}
-    try:
-        walk = conn.execute(query, parameters).fetchall()
-    except sqlite3.OperationalError:
-        # A store without the envelope table -- fixtures, and any database
-        # older than the 2026-08-26 split -- keeps the inline body path.
-        walk = [
-            tuple(row) + (None,) * len(ENVELOPE_BODY_COLUMNS)
-            for row in conn.execute(
-                query.replace(", " + envelope_body_select("e"), "")
-                .replace(
-                    " LEFT JOIN basket_probability_envelope e"
-                    "   ON e.envelope_id = h.checkpoint_id", ""
-                ),
-                parameters,
-            )
-        ]
-    for row in walk:
-        station, day, decided, envelope_json, tz_name, checkpoint, sha = row[:7]
+    for station, day, decided, envelope_json, tz_name, checkpoint, sha in conn.execute(
+        query, parameters
+    ):
         actual = truth.get((str(station), str(day)))
         if actual is None or not tz_name:
             continue
         try:
-            if envelope_json or row[7] is None:
-                envelope = history_envelope_payload(
-                    conn,
-                    checkpoint_id=str(checkpoint),
-                    envelope_content_sha256=str(sha),
-                    stored=str(envelope_json) if envelope_json else None,
-                )
-            else:
-                envelope = envelope_payload_from_columns(
-                    row[7:20], envelope_content_sha256=str(sha),
-                )
+            envelope = history_envelope_payload(
+                conn,
+                checkpoint_id=str(checkpoint),
+                envelope_content_sha256=str(sha),
+                stored=str(envelope_json) if envelope_json else None,
+            )
             lineage = envelope.get("lineage") or {}
             probabilities = envelope.get("probabilities") or {}
             ordinals = envelope.get("bucket_ordinals") or {}

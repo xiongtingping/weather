@@ -1352,6 +1352,19 @@ ON basket_probability_bridge_history(
   stage,decision_at_utc
 );
 
+-- The fits ask a second question this table could not answer without a
+-- sort: "the first decision of each station-day, for one stage".  The
+-- index above leads with stage and then time, so the group-by fell to a
+-- temp B-tree over every row of the stage -- 332k rows re-sorted on every
+-- call, measured 2026-08-29 at 37.3 seconds per stage for the band
+-- serving lane and 111 seconds for the residual audit.  Leading with the
+-- grouping keys makes it a covering scan: the same lane runs in 1.7
+-- seconds and the audit in 4.5.
+CREATE INDEX IF NOT EXISTS basket_probability_bridge_history_stage_scope_idx
+ON basket_probability_bridge_history(
+  stage,station_id,event_date,decision_at_utc
+);
+
 CREATE TABLE IF NOT EXISTS basket_probability_bridge_latest (
   station_id TEXT NOT NULL,
   event_date TEXT NOT NULL,
