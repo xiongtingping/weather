@@ -20,6 +20,7 @@ import ast
 import json
 import math
 import re
+import statistics
 from bisect import bisect_left
 from collections import Counter, defaultdict
 import random
@@ -197,11 +198,32 @@ def _production_health(status: Mapping[str, Any]) -> dict[str, Any]:
         if not isinstance(lane, Mapping):
             continue
         state = str(lane.get("state") or "").upper()
-        if "BLOCK" in state or "FAIL" in state:
-            reason = str(lane.get("reason") or "")
-            blocked.append(f"{label}{'·' + reason.split(':')[-1][:40] if reason else ''}")
-            if "locked" in reason:
-                locked += 1
+        if "BLOCK" not in state and "FAIL" not in state:
+            continue
+        reason = str(lane.get("reason") or "")
+        detail = reason.split(":")[-1][:40] if reason else ""
+        if not detail:
+            # A scoped halt (P1 correction/revision, one station-day)
+            # carries no lane-level reason -- the detail lives only in the
+            # ``blockers`` list, and the status file is overwritten every
+            # cycle.  The 2026-08-29 16:03 P1 flap was undiagnosable an
+            # hour later because this note read just "P1".
+            scoped = [
+                b for b in lane.get("blockers") or []
+                if isinstance(b, Mapping)
+            ]
+            if scoped:
+                first = scoped[0]
+                reason = str(first.get("reason") or "")
+                detail = (
+                    f"{first.get('station_id')}|{first.get('event_date')}"
+                    f"·{reason.split(':')[-1][:40]}"
+                )
+                if len(scoped) > 1:
+                    detail += f" 等{len(scoped)}个站日"
+        blocked.append(f"{label}{'·' + detail if detail else ''}")
+        if "locked" in reason:
+            locked += 1
     notes: list[str] = []
     health = "green"
     if stale_hours is not None and stale_hours > 1.0:
@@ -212,8 +234,13 @@ def _production_health(status: Mapping[str, Any]) -> dict[str, Any]:
         notes.append(f"{locked} 条车道被写锁挡住（单写者门失效？）")
     elif blocked:
         # A blocked lane with no lock error is a genuine fault too, but the
-        # kind that usually names one station -- amber, not red.
-        health = "red" if len(blocked) >= 3 else "amber"
+        # kind that usually names one station -- amber, not red.  Escalate
+        # only: a stale cycle already went red above and a single blocked
+        # lane must not talk it back down.
+        if len(blocked) >= 3:
+            health = "red"
+        elif health == "green":
+            health = "amber"
         notes.append("阻断车道：" + "、".join(blocked[:4]))
     cycle_ms = (production.get("stage_timings_ms") or {}).get("cycle_total")
     if isinstance(cycle_ms, (int, float)) and cycle_ms > 600_000:
@@ -3239,7 +3266,7 @@ def _daily_table(
             "pnl_usdc": pnl,
             **((cover or {}).get(day) or {
                 "cover_rate": None,
-                "claimed_cover_mean": None,
+                "truth_inside_rate": None,
                 "cover_station_count": 0,
                 "cover_settled_count": 0,
                 "unfilled_intended": 0,
@@ -3354,10 +3381,17 @@ def _intended_cover_by_day(
             if e.get("claimed_cover") is not None
         ]
         out[day] = {
-            "cover_rate": sum(covers) / len(covers) if covers else None,
-            # The ex-ante reading, on every day the book chose baskets.
-            "claimed_cover_mean": (
-                sum(claims) / len(claims) if claims else None
+            # 意向窗盖住率 IS the probability the chosen buckets carry --
+            # the model's own mass summed over the intended window (user
+            # ruling, 2026-08-30).  It is not a hit rate, claimed or
+            # realised: those are different questions and they already have
+            # their own columns.  Known the moment the basket is chosen, so
+            # it never waits for settlement.
+            "cover_rate": sum(claims) / len(claims) if claims else None,
+            # Whether the truth actually landed inside that window, kept
+            # under its own name so it can never be read as the line above.
+            "truth_inside_rate": (
+                sum(covers) / len(covers) if covers else None
             ),
             "cover_station_count": len(members),
             "cover_settled_count": len(covers),
@@ -3384,8 +3418,25 @@ def collect_risk_metrics(conn: sqlite3.Connection) -> dict[str, Any]:
     sees "1.54" beside a target of 2 and thinks the gap is the finding.
     """
 
+    # Claimed EV comes along for the ride: a basket costing C pays 1 when
+    # the truth lands inside, so a unit of stake buys 1/C of payout and
+    # expects p/C - 1 back.  That is the same ``ev_per_usdc`` the coverage
+    # section reports, summed in money instead of averaged per seat, so
+    # the board has exactly one definition of EV and not a second one
+    # wearing the same name.
     rows = conn.execute(
-        "SELECT event_date, SUM(stake_usdc), SUM(pnl_usdc)"
+        "SELECT event_date, SUM(stake_usdc), SUM(pnl_usdc),"
+        " SUM(CASE WHEN basket_all_in_cost > 0"
+        "   THEN stake_usdc * (claimed_win_probability"
+        "        / basket_all_in_cost - 1.0) ELSE 0 END),"
+        # Odds and cost, weighted by the money that bought them: a 30-USDC
+        # seat at 1.4x and a 1-USDC seat at 9x do not average to 5.2x for
+        # any purpose this book has.
+        " SUM(CASE WHEN basket_all_in_cost > 0"
+        "   THEN stake_usdc * (1.0 - basket_all_in_cost)"
+        "        / basket_all_in_cost ELSE 0 END),"
+        " SUM(stake_usdc * basket_all_in_cost),"
+        " SUM(stake_usdc * hit), COUNT(*), SUM(hit)"
         " FROM paper_trade_settlement GROUP BY 1 ORDER BY 1"
     ).fetchall()
     if len(rows) < 3:
@@ -3393,17 +3444,34 @@ def collect_risk_metrics(conn: sqlite3.Connection) -> dict[str, Any]:
     equity = INITIAL_CAPITAL_USDC
     series: list[dict[str, Any]] = []
     returns: list[float] = []
-    for day, staked, pnl in rows:
+    claimed_ev_total = 0.0
+    claimed_equity = INITIAL_CAPITAL_USDC
+    odds_weighted = 0.0
+    cost_weighted = 0.0
+    hit_weighted = 0.0
+    chain_count = 0
+    hit_count = 0
+    for day, staked, pnl, claimed_ev, odds_w, cost_w, hit_w, n, hits in rows:
+        odds_weighted += float(odds_w or 0.0)
+        cost_weighted += float(cost_w or 0.0)
+        hit_weighted += float(hit_w or 0.0)
+        chain_count += int(n or 0)
+        hit_count += int(hits or 0)
         opening = equity
         value = float(pnl or 0.0)
+        expected = float(claimed_ev or 0.0)
         returns.append(value / opening if opening > 0 else 0.0)
         equity = opening + value
+        claimed_ev_total += expected
+        claimed_equity += expected
         series.append({
             "event_date": str(day),
             "staked_usdc": round(float(staked or 0.0), 2),
             "pnl_usdc": round(value, 2),
+            "claimed_ev_usdc": round(expected, 2),
             "opening_equity_usdc": round(opening, 2),
             "equity_usdc": round(equity, 2),
+            "claimed_equity_usdc": round(claimed_equity, 2),
             "return": returns[-1],
         })
     count = len(returns)
@@ -3463,6 +3531,16 @@ def collect_risk_metrics(conn: sqlite3.Connection) -> dict[str, Any]:
         }
 
     tails = [tail_at(level) for level in (0.95, 0.90, 0.80)]
+    daily_ratios = [
+        row["pnl_usdc"] / row["claimed_ev_usdc"]
+        for row in series if row["claimed_ev_usdc"] > 0
+    ]
+    window = series[-7:]
+    window_claim = sum(row["claimed_ev_usdc"] for row in window)
+    trailing_7d = (
+        sum(row["pnl_usdc"] for row in window) / window_claim
+        if window_claim > 0 else None
+    )
     losing = [r for r in returns if r < 0]
     peak = float(INITIAL_CAPITAL_USDC)
     max_drawdown = 0.0
@@ -3521,6 +3599,62 @@ def collect_risk_metrics(conn: sqlite3.Connection) -> dict[str, Any]:
         ),
         "days_to_separate_from_zero": days_needed,
         "sortino": sortino,
+        # What the book said it would make, against what it made.  Not a
+        # forecast score -- the claim is what sized every bet, so a ratio
+        # far from 1.0 says the sizing input is wrong, not just the copy.
+        "claimed_ev_usdc": claimed_ev_total,
+        "total_staked_usdc": sum(row["staked_usdc"] for row in series),
+        # (1 - cost) / cost: what a winning USDC pays back on top of itself.
+        "odds_mean": (
+            odds_weighted / sum(row["staked_usdc"] for row in series)
+            if sum(row["staked_usdc"] for row in series) > 0 else None
+        ),
+        "cost_mean": (
+            cost_weighted / sum(row["staked_usdc"] for row in series)
+            if sum(row["staked_usdc"] for row in series) > 0 else None
+        ),
+        # The win rate those odds need just to break even, and what the
+        # book actually hit -- the pair that says whether the price was
+        # payable at all.
+        "realised_win_rate_weighted": (
+            hit_weighted / sum(row["staked_usdc"] for row in series)
+            if sum(row["staked_usdc"] for row in series) > 0 else None
+        ),
+        "realised_win_rate": (hit_count / chain_count) if chain_count else None,
+        "chain_count": chain_count,
+        "breakeven_win_rate": (
+            cost_weighted / sum(row["staked_usdc"] for row in series)
+            if sum(row["staked_usdc"] for row in series) > 0 else None
+        ),
+        "claimed_ev_per_usdc": (
+            claimed_ev_total / sum(row["staked_usdc"] for row in series)
+            if sum(row["staked_usdc"] for row in series) > 0 else None
+        ),
+        "realised_pnl_usdc": equity - INITIAL_CAPITAL_USDC,
+        "ev_realisation_ratio": (
+            (equity - INITIAL_CAPITAL_USDC) / claimed_ev_total
+            if claimed_ev_total > 0 else None
+        ),
+        "days_beating_claim": sum(
+            1 for row in series
+            if row["pnl_usdc"] >= row["claimed_ev_usdc"]
+        ),
+        # One ratio cannot answer this.  Money-weighted, a handful of big
+        # losing days set the whole number: 0.055x aggregate against 0.343x
+        # on the median day, a factor of six apart on the same fifteen days
+        # (user challenge, 2026-08-30).  Both are published, plus the
+        # trailing window, because they answer different questions -- what
+        # happened to the money, what a typical day does, and where it has
+        # been lately.  None of the three escapes the sample-size problem
+        # the Sharpe tile states.
+        "ev_realisation_daily_median": (
+            statistics.median(daily_ratios) if daily_ratios else None
+        ),
+        "ev_realisation_daily_mean": (
+            statistics.fmean(daily_ratios) if daily_ratios else None
+        ),
+        "ev_realisation_trailing_7d": trailing_7d,
+        "ev_realisation_daily": daily_ratios,
         "tails": tails,
         "losing_days": len(losing),
         "mean_losing_day": (sum(losing) / len(losing)) if losing else None,
@@ -4431,9 +4565,9 @@ function head(){
     ? `<span class="muted">…等 ${named.length} 处，详见下文标${
         D.overall_health === "red" ? "红" : "黄"}的环节</span>` : "";
   return `<h1>气温篮子全链看板</h1>
-  <p class="sub">从模型到下单的一整条链。页顶是<b>逐日的账</b>（每日统计 → 逐站逐日明细
-  → 跨日汇总 / 异常盘口 / 没建仓原因）；往下按五个<b>区域</b>分组，每区一个颜色，
-  标签栏与区标题同色。板块不再编号——它们会随分组移动，编号只会指错地方。</p>
+  <p class="sub">从模型到下单的一整条链。<b>首页是看板</b>：健康条、组合风险指标与图表、
+  每日统计；往下按六个<b>区域</b>分组，每区一个颜色，标签栏与区标题同色，
+  逐站明细四张表在「逐站明细」区。板块不再编号——它们会随分组移动，编号只会指错地方。</p>
   <div class="card"><div style="display:flex;gap:14px;align-items:center;
     flex-wrap:wrap">
     <span class="dot ${D.overall_health}" style="width:13px;height:13px"></span>
@@ -5617,6 +5751,14 @@ function riskMetrics(){
   const eq = pts.map(r=>r.equity_usdc);
   const line = pts.map((_,i)=>R.trend_intercept_usdc
     + R.trend_slope_usdc_per_day*(i+1) + R.initial_equity_usdc);
+  // What the book said it would be worth by now, accumulated from the same
+  // per-day claims that sized every bet.  The gap between this and the
+  // green line is the claim layer's whole error, in money.
+  const claimed = pts.map(r=>r.claimed_equity_usdc);
+  // Two panels, not one.  Drawing the claim line into the equity chart put
+  // 1513 and 1028 on one axis and flattened the curve the trend line is
+  // supposed to describe -- the divergence was legible and everything else
+  // was not.  Each panel gets the scale its own question needs.
   const lo = Math.min(R.initial_equity_usdc, ...eq, ...line);
   const hi = Math.max(R.initial_equity_usdc, ...eq, ...line);
   const span = (hi-lo)||1;
@@ -5656,11 +5798,44 @@ function riskMetrics(){
         stroke-width="2"></path>
     </svg></div>
     <div class="muted" style="font-size:11.5px">
-      虚线是起始本金 ${R.initial_equity_usdc.toFixed(0)}；蓝虚线是最小二乘趋势线
+      灰虚线是起始本金 ${R.initial_equity_usdc.toFixed(0)}；蓝虚线是最小二乘趋势线
       <span class="mono">${(R.trend_slope_usdc_per_day>=0?"+":"")}${
         num(R.trend_slope_usdc_per_day)} USDC/天</span>，
       R²=${num(R.trend_r_squared)}——R² 低说明这条线只是把噪声拟合成了方向，
       不是"每天稳定赚这么多"。</div></div>`;
+
+  // Panel two: the same equity line against what the book said it would
+  // be worth.  Its own scale, because the claim runs 18x further and one
+  // axis for both is what flattened the first panel.
+  const lo2 = Math.min(R.initial_equity_usdc, ...eq, ...claimed);
+  const hi2 = Math.max(R.initial_equity_usdc, ...eq, ...claimed);
+  const span2 = (hi2-lo2)||1;
+  const H2 = 150;
+  const Y2 = v => PADY + (H2-2*PADY) * (1 - (v-lo2)/span2);
+  const path2 = (vals)=>vals.map((v,i)=>`${i?"L":"M"}${X(i).toFixed(1)},${Y2(v).toFixed(1)}`).join("");
+  const ticks2 = [hi2, lo2].map(v=>`
+    <text x="6" y="${(Y2(v)+4).toFixed(1)}" fill="var(--muted)"
+      font-size="11">${v.toFixed(0)}</text>`).join("");
+  const claimChart = pts.length<2 ? "" : `<div class="card" style="margin-top:12px">
+    <div class="muted">声称 EV 该到的权益 vs 实际权益 · 两条线的落差就是声称层的全部误差</div>
+    <div class="scroll"><svg viewBox="0 0 ${W} ${H2}" width="100%"
+      style="min-width:520px;height:${H2}px;display:block;margin-top:6px"
+      role="img" aria-label="声称权益与实际权益">
+      ${ticks2}
+      <line x1="${PADX}" y1="${Y2(R.initial_equity_usdc).toFixed(1)}"
+        x2="${W-10}" y2="${Y2(R.initial_equity_usdc).toFixed(1)}"
+        stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3"></line>
+      <path d="${path2(claimed)}" fill="none" stroke="var(--violet)"
+        stroke-width="1.5" stroke-dasharray="2 3"></path>
+      <path d="${path2(eq)}" fill="none" stroke="var(--up)"
+        stroke-width="2"></path>
+    </svg></div>
+    <div class="muted" style="font-size:11.5px">
+      <span style="color:var(--violet)">紫点线</span>：把每天的声称 EV 累加到起始本金上，
+      到今天该是 <b>${num(R.initial_equity_usdc + R.claimed_ev_usdc,0)}</b>；
+      <span style="color:var(--up)">绿线</span>：实际权益
+      <b>${R.final_equity_usdc.toFixed(0)}</b>。
+      同一个 EV 数在给每笔定规模——两条线分得越开，说明定规模的输入错得越多。</div></div>`;
 
   return `<h2>组合风险指标</h2>
   <p class="sub">把整本账当一个组合来量：每个事件日一笔收益（当日已结算盈亏 ÷
@@ -5695,8 +5870,60 @@ function riskMetrics(){
       h(R.first_day)+" → "+h(R.last_day)+"）",
       R.final_equity_usdc>=R.initial_equity_usdc?"up":"down")}
   </div>
+  <div class="grid g3" style="margin-top:10px">
+    ${tile("平均 EV <span class='muted'>声称 · 每 USDC</span>",
+      mag(R.claimed_ev_per_usdc),
+      "下单当刻自己说的：胜率÷成本−1，按投入加权", "up")}
+    ${tile("EV 兑现比 <span class='muted'>按钱加权</span>",
+      R.ev_realisation_ratio==null?"—":num(R.ev_realisation_ratio,3)+"×",
+      "声称共 "+num(R.claimed_ev_usdc,1)+" USDC · 实得 "+
+      num(R.realised_pnl_usdc,1)+" USDC",
+      R.ev_realisation_ratio>=0.8?"up":"down")}
+    ${tile("EV 兑现比 <span class='muted'>中位日 · 近7日</span>",
+      num(R.ev_realisation_daily_median,2)+"× · "+
+      num(R.ev_realisation_trailing_7d,2)+"×",
+      "跑赢自己声称的日子 "+R.days_beating_claim+" / "+R.days,
+      R.ev_realisation_daily_median>=0.8?"up":"")}
+  </div>
+  <div class="grid g3" style="margin-top:10px">
+    ${tile("平均赔率 <span class='muted'>按投入加权</span>",
+      num(R.odds_mean,2)+"x",
+      "赢一次，每 USDC 净赚这么多 · 平均成本 "+num(R.cost_mean,3))}
+    ${tile("保本胜率", mag(R.breakeven_win_rate),
+      "这个价钱下，不赚不亏需要的胜率（＝平均成本）")}
+    ${tile("实际胜率", mag(R.realised_win_rate_weighted),
+      "按投入加权 · 按链数是 "+mag(R.realised_win_rate)+
+      "（"+R.chain_count+" 条链）",
+      R.realised_win_rate_weighted>R.breakeven_win_rate?"up":"down")}
+  </div>
+  <div class="why" style="margin-top:10px"><b>赔率这一组读法：</b>
+  平均花 ${num(R.cost_mean,3)} 买一份满赔 1.00 的赔付，所以赔率
+  ${num(R.odds_mean,2)}x，<b>不赚不亏就要赢
+  ${mag(R.breakeven_win_rate)}</b>。按投入加权实际赢了
+  ${mag(R.realised_win_rate_weighted)}——只高出
+  ${mag(R.realised_win_rate_weighted - R.breakeven_win_rate)}；
+  按链数则是 ${mag(R.realised_win_rate)}，<b>反而低于保本线</b>。
+  两个口径分居保本线两侧，正是"钱赚在少数大仓、链数上是亏的"的另一种说法，
+  也解释了为什么上面的 EV 兑现比按钱算和按天算差六倍。</div>
+  <div class="why" style="margin-top:10px"><b>这三块是全页最重的一组，
+  但两个兑现比必须一起读。</b>
+  EV 不是事后打分，它是<b>给每一笔定规模的输入</b>——Kelly 用它决定下多少。
+  这本账按 ${mag(R.claimed_ev_per_usdc)}/U 的预期下注，实际拿回
+  ${R.total_staked_usdc>0?mag(R.realised_pnl_usdc/R.total_staked_usdc):"—"}/U。<br>
+  <b>按钱加权是 ${num(R.ev_realisation_ratio,3)}×，中位日却是
+  ${num(R.ev_realisation_daily_median,2)}×——差六倍，两个都没算错。</b>
+  前者被少数几个大亏日按仓位大小拖住（08-15、08-20、08-22 三天各亏掉
+  当日声称的一倍以上），后者说的是"平常的一天"。近 7 日是
+  ${num(R.ev_realisation_trailing_7d,2)}×。三个数分别回答"钱发生了什么"、
+  "典型一天什么样"、"最近怎么样"，${R.days} 天里
+  ${R.days_beating_claim} 天跑赢了自己当天的声称。<br>
+  <b>不要把近 7 日的回升当成好转</b>——它和夏普来自同一个 ${R.days} 天样本，
+  同样分不开噪声。能确定的只有方向：三个口径全部远低于 1.0，
+  说明<b>定规模用的那个数偏高</b>，而这个偏差每天都在重复，
+  不像夏普要等 ${R.days_to_separate_from_zero} 天才能判。</div>
   ${cvar}
-  ${chart}`;
+  ${chart}
+  ${claimChart}`;
 }
 
 
@@ -5751,13 +5978,10 @@ function daily(){
       <td>${r.station_count}</td>
       <td>${r.position_count}</td>
       <td class="muted">${s.above||0}/${s.aligned||0}/${s.below||0}</td>
-      <td class="${covCls}">${cov!=null?pct(cov)
-        :r.claimed_cover_mean!=null
-          ?`<span class="muted" title="真值未到，无法说它落没落进篮子。这里是模型自己声称的盖住率：意向窗各桶概率之和的站均值——选桶那一刻就知道，不必等结算"
-            >声称 ${(r.claimed_cover_mean*100).toFixed(0)}%*</span>`
-          :"—"}${
-        r.cover_settled_count?`<span class="muted"> ${
-          r.cover_settled_count}/${r.cover_station_count} 站</span>`:""}${
+      <td class="${covCls}" title="意向窗各桶概率之和，按站取均值——选桶那一刻就知道，与结算无关">${
+        pct(cov)}${
+        r.truth_inside_rate!=null?`<span class="muted" title="真值确实落进意向篮子的站比例（要等结算，与左边不是一回事）"> 真值落入 ${
+          (r.truth_inside_rate*100).toFixed(0)}%</span>`:""}${
         r.unfilled_intended?`<span class="muted"> +${
           r.unfilled_intended} 缺席</span>`:""}</td>
       <td class="mono">${r.filled_leg_total}
@@ -5793,8 +6017,9 @@ function daily(){
   三个阶段是同一个仓位：P0 建仓，后两个只加不减；
   「声称」带 * 的是尚未结算日：取各链最新阶段的声称胜率均值，
   与已结算日的口径不同（那一列只算结算样本），不可直接相比；
-  「盖住率」已结算日是真值有没有落进意向篮子；未结算日写「声称 N%*」——
-  意向窗各桶概率之和的站均值，选桶当刻即知，与已结算日的实测口径不是一回事；
+  「意向窗盖住率」<b>就是选中那几个桶的概率之和</b>（按站取均值）——选桶当刻即知，
+  不等结算，也<b>不是</b>声称胜率或实际命中率（那两个另有其列）。
+  它后面的「真值落入 N%」才是事后的：真值确实掉进意向篮子的站比例；
   「投入」是当天真实部署的资金（每站按整链算一次），不等结算；「盈亏」只属于已结算链，
   所以未结算日的这两列不能相除；
   「实现/声称」是命中率÷声称胜率，1.00× 表示概率说得准；
@@ -5802,7 +6027,7 @@ function daily(){
   <div class="card"><table><thead><tr>
     <th>事件日</th><th>站数</th><th>仓位</th>
     <th>位置<br><span class="muted">均值桶 上/平/下</span></th>
-    <th>意向窗<br><span class="muted">盖住率</span></th>
+    <th>意向窗盖住率<br><span class="muted">选桶概率和</span></th>
     <th>建仓桶<br><span class="muted">腿数 · 分阶段</span></th>
     <th>已结算</th><th>命中率</th><th>声称</th><th>实现/声称</th>
     <th>赔率</th><th>投入</th><th>盈亏</th>
@@ -7163,10 +7388,13 @@ const GROUPS = [
    note:"概率怎么被分档修正、注码怎么被固化减仓、分布和实际持仓差在哪",
    sections:[[bandTable,"band 表"],[consolidation,"固化减仓"],
      [windowDivergence,"分布与持仓分家"]]},
+  {id:"detail", label:"逐站明细", tone:"#9aa4b8",
+   note:"带着问题来查的四张表：某站某天做了什么、跨日怎么样、盘口异常、为什么没坐",
+   sections:[[roster,"逐站逐日明细"],[stationSummary,"逐站汇总（跨日）"],
+     [anomalies,"异常盘口"],[refusalStats,"没建仓是因为什么"]]},
   {id:"market", label:"市场与执行门槛", tone:"#e3b341",
    note:"市场肯不肯让这套东西赚钱：覆盖与 EV、篮子命中率、真值落位、声称边际",
-   sections:[[riskMetrics,"组合风险指标"],
-     [coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"],
+   sections:[[coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"],
      [truthLanding,"真值落位"],[edgeBandHealth,"声称边际体温计"]]},
   {id:"health", label:"系统健康", tone:"#f85149",
    note:"机器在不在转：整条链路每一环、真值物化、Live 上线闸门",
@@ -7207,9 +7435,15 @@ const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}"
 // days, which books were abnormal, and why a station did not seat (user
 // ruling, 2026-08-29).  These three used to sit in the market group, two
 // scrolls away from the rows they explain.
-const TOP = [[overview, "总览"], [daily, "每日统计"],
-  [roster, "逐站逐日明细"], [stationSummary, "逐站汇总（跨日）"],
-  [anomalies, "异常盘口"], [refusalStats, "没建仓是因为什么"]];
+// The homepage is a dashboard: the health strip, the portfolio tiles and
+// their charts, and the day table they summarise (user ruling,
+// 2026-08-30).  The four per-station-day tables that used to sit here are
+// a different kind of reading -- you go to them with a question, you do
+// not scan them -- so they move into their own area together, keeping the
+// order the reader asked for: detail first, then the three tables that
+// answer what the detail raises.
+const TOP = [[overview, "总览"], [riskMetrics, "组合风险指标"],
+  [daily, "每日统计"]];
 
 document.getElementById("app").innerHTML =
   safe(head, "页头") +
