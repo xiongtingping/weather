@@ -1774,7 +1774,22 @@ def _canonical_live_taf_registry_rows(source_db: Path) -> list[dict[str, Any]]:
 # A production cycle is submitted every 15 seconds; anything still running
 # after this has missed several turns and is worth seeing as a number rather
 # than as an absence.
-PRODUCTION_CYCLE_OVERDUE_SEC = 120.0
+# The stuck-cycle detector, not a performance target.  Written on
+# 2026-08-16 at two minutes, when that was eight times the fifteen-second
+# re-arm and a cycle that had not returned was plainly wedged.  The cycle
+# has since grown into real work and now takes 440-620s end to end --
+# measured 2026-08-29: forward_p0_loop 172s and probability_p0m 131s are
+# 68% of a 443s round -- so 120s fired on every healthy cycle and the
+# board's card sat amber permanently.  An alarm that is always on is not
+# an alarm; anyone reading it stops reading it.
+#
+# Raised to twelve minutes: above anything a legitimate round has taken,
+# below the board's own red line at 900s, so amber still means "longer
+# than this cycle has ever needed" and red still means "stop waiting".
+# What this number must NOT become is a place to hide cycle growth --
+# the 443->620s spread is itself worth watching, and it is watched by the
+# stage timings the receipt publishes, not by this bound.
+PRODUCTION_CYCLE_OVERDUE_SEC = 720.0
 
 
 def run_target_production_cycle(

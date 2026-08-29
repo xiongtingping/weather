@@ -1580,6 +1580,18 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
             market_slug[(str(station), str(day))] = str(slug)
     except sqlite3.Error:
         market_slug = {}
+    # Stations the model has never produced a probability for, in any
+    # window -- not onboarded rather than failing.  One query, not one per
+    # station-day.
+    computed_ever = {
+        str(row[0])
+        for row in conn.execute(
+            "SELECT DISTINCT station_id FROM basket_probability_bridge_history"
+        )
+    }
+    never_computed = {
+        station for station, _day in scope_days
+    } - computed_ever
     roster = []
     for station, day in sorted(
         scope_days, key=lambda kv: (kv[1], kv[0]), reverse=True
@@ -1681,8 +1693,18 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
                     " WHERE station_id=? AND event_date=? LIMIT 1",
                     (station, day),
                 ).fetchone() is not None
+                # "No probability today" and "this station is not in the
+                # fleet" are different facts and the second one is not a
+                # fault.  LLBG / LTFM / UUWW carry a settlement timezone and
+                # a listed market but no bridge history on any day at all:
+                # the fleet the model computes is 45 stations, the timezone
+                # binding names 48, and the three extra are prepared, not
+                # onboarded.  Reported as "no probability" they read as a
+                # model that failed on 16 straight days.
                 entry["absent_reason"] = (
-                    "no_probability" if not has_probability
+                    "station_not_onboarded"
+                    if station in never_computed
+                    else "no_probability" if not has_probability
                     else ("no_market_book" if not has_book
                           else "no_seat_taken")
                 )

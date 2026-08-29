@@ -3131,8 +3131,32 @@ def _daily_table(
             sum(float(r["win_probability"]) for r in settled) / len(settled)
             if settled else None
         )
+        # A day that has not settled still knows what it claimed: the seat
+        # stated a win probability the moment it was taken.  Averaging only
+        # over settled chains left the two newest rows -- the days a reader
+        # most wants to look at -- printing a dash for a number that has
+        # existed since the position opened (user ruling, 2026-08-29).
+        # One reading per station: the chain's latest stage, which is the
+        # claim the position currently carries.
+        latest: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            key = str(row["station_id"])
+            prior = latest.get(key)
+            if prior is None or str(row["decision_at_utc"]) > str(
+                prior["decision_at_utc"]
+            ):
+                latest[key] = row
+        claimed_open = (
+            sum(float(r["win_probability"]) for r in latest.values())
+            / len(latest)
+            if latest else None
+        )
         table.append({
             "event_date": day,
+            # The open claim is only shown where the settled one cannot be:
+            # they are averaged over different populations and must never be
+            # read as the same column.
+            "claimed_open_mean": claimed_open,
             "station_count": len({r["station_id"] for r in rows}),
             "position_count": len(rows),
             "settled_count": len(settled),
@@ -5235,8 +5259,8 @@ function consolidation(){
     </tr>`).join("");
   const openChips=(cons.open_chains||[]).map(c=>{
     const f=c.flags;
-    return `<span class="mono" style="margin-right:14px;white-space:nowrap">
-      ${h(c.event_date)} ${h(c.station)} ${f
+    return `<span class="mono" style="white-space:nowrap">${
+      h(c.event_date)} ${h(c.station)} ${f
         ?lamp(f.stable)+lamp(f.sharp)
         :'<span class="muted">无灯</span>'} ${c.stake.toFixed(0)}u</span>`;
   }).join("");
@@ -5270,7 +5294,8 @@ function consolidation(){
     <tbody>${singleRows}</tbody></table>
     ${openChips?`<div class="muted" style="margin-top:10px">
       在场链的灯（未结算，稳·尖）</div>
-    <div style="margin-top:4px;line-height:2">${openChips}</div>`:""}
+    <div style="margin-top:4px;display:flex;flex-wrap:wrap;
+      gap:4px 14px;line-height:1.9">${openChips}</div>`:""}
   </div>`;
 }
 
@@ -5326,7 +5351,9 @@ function daily(){
       <td>${r.station_count}</td>
       <td>${r.position_count}</td>
       <td class="muted">${s.above||0}/${s.aligned||0}/${s.below||0}</td>
-      <td class="${covCls}">${pct(cov)}${
+      <td class="${covCls}">${cov==null&&!r.settled_count
+        ?`<span class="muted" title="盖住率要等真值：真值到之前无法判断它落没落进意向篮子">待结算</span>`
+        :pct(cov)}${
         r.cover_settled_count?`<span class="muted"> ${
           r.cover_settled_count}/${r.cover_station_count} 站</span>`:""}${
         r.unfilled_intended?`<span class="muted"> +${
@@ -5338,7 +5365,12 @@ function daily(){
           >${stageTxt}</div></td>
       <td>${r.settled_count}</td>
       <td>${r.hit_rate==null?"—":(r.hit_rate*100).toFixed(0)+"%"}</td>
-      <td>${r.claimed_win_probability_mean==null?"—":(r.claimed_win_probability_mean*100).toFixed(0)+"%"}</td>
+      <td>${r.claimed_win_probability_mean!=null
+        ?(r.claimed_win_probability_mean*100).toFixed(0)+"%"
+        :r.claimed_open_mean!=null
+          ?`<span class="muted" title="本日尚未结算：这是已入座各链最新阶段的声称胜率均值，没有结算样本可比"
+            >${(r.claimed_open_mean*100).toFixed(0)}%*</span>`
+          :"—"}</td>
       <td class="factor ${calCls}">${cal==null?"—":cal.toFixed(2)+"×"}</td>
       <td>${r.odds_mean==null?"—":r.odds_mean.toFixed(1)+"x"}</td>
       <td class="mono">${r.staked_usdc.toFixed(2)}</td>
@@ -5357,6 +5389,9 @@ function daily(){
   「建仓桶」是当天所有座位买到的腿数合计（括号里是每座位平均几腿），
   下面一行按 <b>P0 / P0-M / P1</b> 拆开，
   三个阶段是同一个仓位：P0 建仓，后两个只加不减；
+  「声称」带 * 的是尚未结算日：取各链最新阶段的声称胜率均值，
+  与已结算日的口径不同（那一列只算结算样本），不可直接相比；
+  「盖住率」要等真值，未结算日写「待结算」；
   「实现/声称」是命中率÷声称胜率，1.00× 表示概率说得准；
   「赔率」是 (1−成本)/成本。</div>
   <div class="card"><table><thead><tr>
@@ -5456,10 +5491,24 @@ function stationSummary(){
       <td class="mono ${(s.realized_usdc||0)>=0?"up":"down"}">${((s.realized_usdc||0)>=0?"+":"")+n2(s.realized_usdc,2)}</td>
       <td class="${rr==null?"":(rr>=1?"up":"down")}">${rr==null?"—":n2(rr,2)+"×"}</td></tr>`;
   }).join("");
-  const note=silent.length?`<div class="muted" style="margin-top:8px">
-    另有 ${silent.length} 个站在这段窗口里一笔可成交仓位都没有，因此没有可平均的数，
-    只出现在页顶「逐站逐日明细」里：<span class="mono">${
-      silent.map((id,i)=>`${i+1}.${h(id)}`).join("　")}</span></div>`:"";
+  // Two different absences under one sentence read as one fault.  A fleet
+  // station that never took a credible seat is a result; a station the
+  // model has never computed at all is not in the fleet yet.
+  const offFleet=new Set((S.station_roster||[])
+    .filter(e=>e.absent_reason==="station_not_onboarded")
+    .map(e=>e.station_id));
+  const silentFleet=silent.filter(id=>!offFleet.has(id));
+  const silentOff=silent.filter(id=>offFleet.has(id));
+  const idList=(ids)=>`<span class="mono">${
+    ids.map((id,i)=>`${i+1}.${h(id)}`).join("　")}</span>`;
+  const note=(silentFleet.length||silentOff.length)
+    ?`<div class="muted" style="margin-top:8px">${
+    silentFleet.length?`另有 ${silentFleet.length} 个站在这段窗口里一笔可成交仓位都没有，
+    因此没有可平均的数，只出现在页顶「逐站逐日明细」里：${idList(silentFleet)}<br>`:""}${
+    silentOff.length?`<span class="pill amber">未接入</span> ${
+    silentOff.length} 个站有结算时区和已挂牌市场，但模型从未为其算过概率——
+    舰队 45 站、时区册 48 站，这是备好未接入的差额，不是这段窗口的失败：${
+    idList(silentOff)}`:""}</div>`:"";
   return `<h2>十一、逐站汇总（跨日）</h2>
   <p class="sub">一站一行，把该站 ${h(S.stats_start_event_date)} 起的全部可成交仓位
   （整篮 ≥1 分，排除虚价）平均到一起。<b>这些数不属于任何一天</b>——它们回答的是
@@ -5528,7 +5577,8 @@ function roster(){
     chain_cost_at_par:["买入后整链必亏","宪章66甲款：这一笔单独看过得了本阶段的闸，但买下去之后整条链的混合成本≥1.00——满额赔付也回不了本，中了也亏。只做算术不读声称；实测这类链38条中37仍净亏31.9"],
     chain_never_opened:["P0 未开仓","只有 P0 开仓，后面两阶段是加仓；P0 没坐下这里就没仓可加，真正的原因看 P0"],
     no_depth:["盘口太薄","价格划算但卖方挂出的量填不满最小整篮"],
-    no_seat_taken:["未入座","有概率也有盘口，目标函数看过后选择不坐"]};
+    no_seat_taken:["未入座","有概率也有盘口，目标函数看过后选择不坐"],
+    station_not_onboarded:["未接入舰队","这个站有结算时区和已挂牌的市场，但模型从来没为它算过概率——舰队是 45 站，时区册是 48 站，多出来的三站是备好未接入。不是今天算不出来，是从来没算过；接入是舰队身份变更（22 个文件硬编码 45 站）"]};
   const short=x=>String(x).replace("°C","").replace("°F","");
   const LAB={above:"偏上",below:"偏下",aligned:"一致",unknown:"—"};
   // Charter 55's own reading, named in its own words: a positive gap
@@ -6659,22 +6709,21 @@ function servingWeights(){
 // number that no longer matches its neighbours is a worse handle than a
 // renumbered one, because it only reads as an accident.
 const GROUPS = [
-  {id:"model", label:"模型与校准", note:"一～九节：数据到货、订正与权重、离散度与命中率、各层校准打分（含六之二影子）",
+  {id:"model", label:"模型与校准", note:"一～九节：数据到货、订正与权重（含区域模型采集道）、离散度与命中率、各层校准打分",
    sections:[[members,"成员"],[tables,"偏差订正与权重"],
-     [servingWeights,"四大模型权重"],[dispersion,"模型离散度"],
+     [servingWeights,"四大模型权重"],[regional,"区域模型"],
+     [dispersion,"模型离散度"],
      [hitRate,"模型命中率"],[stages,"概率分档校准"],
      [bandShadow,"分档影子：站 × 桶位置"],[oosScores,"OOS 打分"],
      [centerWidth,"中心/宽度"],[scorecard,"模型校准总检"]]},
-  {id:"market", label:"市场与执行", note:"十～十五节：覆盖与 EV、逐站汇总的账、没建仓的原因、分布与持仓分家、Live 上线准备",
-   sections:[[liveReadiness,"Live 上线准备"],
-     [coverage,"覆盖"],[stationSummary,"站汇总"],
+  {id:"market", label:"市场与执行", note:"十～十五节：覆盖与 EV、逐站汇总的账、没建仓的原因、分布与持仓分家、固化减仓",
+   sections:[[coverage,"覆盖"],[stationSummary,"站汇总"],
      [anomalies,"异常"],[basketHit,"篮子命中率"],
      [consolidation,"固化减仓"],[refusalStats,"未建仓原因"],
      [windowDivergence,"分布与持仓分家"],[truthLanding,"真值落位"],
      [edgeBandHealth,"声称边际体温计"]]},
-  {id:"data", label:"数据与链路", note:"十六～十九节：链路每一环、数据缺口、真值物化、区域模型采集道",
-   sections:[[chain,"链路"],[gaps,"数据缺口"],[materialization,"真值物化"],
-     [regional,"区域模型"]]},
+  {id:"data", label:"数据与链路", note:"十六～十八节：链路每一环、数据缺口、真值物化",
+   sections:[[chain,"链路"],[gaps,"数据缺口"],[materialization,"真值物化"]]},
 ];
 
 const tabs = `<nav class="tabs" id="tabs">${
@@ -6698,7 +6747,12 @@ const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}">
 // ungrouped sections where the group switcher used to live.  Sticky from
 // two thousand pixels down is not a top navigation -- it only appears once
 // the reader has already scrolled past everything it could have saved them.
-const TOP = [[overview, "总览"], [daily, "每日统计"], [roster, "逐站逐日明细"]];
+// Live readiness leads the page (user ruling, 2026-08-29).  It answers
+// "may this book place a real order yet", which gates everything below it
+// -- reading it last meant scrolling past fifteen sections of analysis to
+// find out the answer was no.
+const TOP = [[overview, "总览"], [liveReadiness, "Live 上线准备"],
+  [daily, "每日统计"], [roster, "逐站逐日明细"]];
 
 document.getElementById("app").innerHTML =
   safe(head, "页头") +
