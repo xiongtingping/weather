@@ -3435,6 +3435,35 @@ def collect_risk_metrics(conn: sqlite3.Connection) -> dict[str, Any]:
     # that lost on day one had that loss excluded from its own drawdown:
     # this one opened at 1000, closed day one at 947.8, and reported -8.2%
     # where the trough is -9.3% below the money that was actually put in.
+    # Value at Risk and its conditional cousin, from the empirical tail --
+    # no distribution assumed, because fifteen points cannot support one.
+    #
+    # The honest part is the tail count.  Expected shortfall at 95% asks
+    # for the mean of the worst 5% of days; on fifteen days that is the
+    # worst 0.75 of a day, which rounds to exactly one observation.  Both
+    # the 95% and 90% levels therefore report the same number and it is
+    # not an estimate of a tail -- it is the worst day this book has had.
+    # A tail needs its own sample: five observations in the tail wants
+    # 100 days at 95%, 50 at 90%, 25 at 80%.  So each level is published
+    # WITH the count standing behind it, and the section refuses to let a
+    # one-observation number wear the same weight as the others.
+    ordered = sorted(returns)
+
+    def tail_at(level: float) -> dict[str, Any]:
+        wanted = math.floor((1.0 - level) * count)
+        size = max(1, wanted)
+        tail = ordered[:size]
+        return {
+            "level": level,
+            "tail_days": size,
+            "tail_days_wanted": wanted,
+            "var": tail[-1],
+            "cvar": sum(tail) / size,
+            "days_for_five_in_tail": int(math.ceil(5.0 / (1.0 - level))),
+        }
+
+    tails = [tail_at(level) for level in (0.95, 0.90, 0.80)]
+    losing = [r for r in returns if r < 0]
     peak = float(INITIAL_CAPITAL_USDC)
     max_drawdown = 0.0
     trough_day = ""
@@ -3492,6 +3521,17 @@ def collect_risk_metrics(conn: sqlite3.Connection) -> dict[str, Any]:
         ),
         "days_to_separate_from_zero": days_needed,
         "sortino": sortino,
+        "tails": tails,
+        "losing_days": len(losing),
+        "mean_losing_day": (sum(losing) / len(losing)) if losing else None,
+        "worst_day": ordered[0] if ordered else None,
+        "worst_day_date": (
+            next(
+                (row["event_date"] for row in series
+                 if abs(row["return"] - ordered[0]) < 1e-12),
+                "",
+            ) if ordered else ""
+        ),
         "max_drawdown": max_drawdown,
         "max_drawdown_peak_day": peak_day,
         "max_drawdown_trough_day": trough_day,
@@ -5533,6 +5573,41 @@ function riskMetrics(){
     <div class="big ${klass||""}">${value}</div>
     <div class="muted" style="font-size:11.5px">${note}</div></div>`;
 
+  // Expected shortfall, with the sample standing behind each level shown
+  // beside it.  At fifteen days the 95% tail is one observation, so the
+  // number is the worst day wearing a percentile's clothes; the table
+  // says so per row rather than in a footnote nobody reads.
+  const tails = R.tails || [];
+  const eqNow = R.final_equity_usdc;
+  const thin = t => t.tail_days < 3;
+  const cvarRows = tails.map(t => `<tr class="${thin(t)?"muted":""}">
+    <td class="mono">${(t.level*100).toFixed(0)}%</td>
+    <td class="mono ${thin(t)?"":"down"}">${mag(-t.var)}</td>
+    <td class="mono ${thin(t)?"":"down"}"><b>${mag(-t.cvar)}</b></td>
+    <td class="mono">${(t.cvar*eqNow).toFixed(1)}</td>
+    <td>${t.tail_days} 天${thin(t)
+      ? ` <span class="pill amber">样本不足</span>` : ""}</td>
+    <td class="muted">${t.days_for_five_in_tail} 天</td></tr>`).join("");
+  const cvar = !tails.length ? "" : `<div class="card" style="margin-top:12px">
+    <div class="muted">CVaR / 期望损失（Expected Shortfall）· 经验尾部，不假设分布</div>
+    <div class="why" style="margin-top:8px"><b>先看最右两列。</b>
+    CVaR 是"最差那 (1−置信) 比例的日子，平均亏多少"。${R.days} 天的样本里，
+    95% 的尾部只剩 <b>${tails[0].tail_days} 个观测</b>——那不是尾部估计，
+    那就是<b>最差的一天</b>穿了个百分位的外衣，95% 和 90% 两行报同一个数正是这个原因。
+    要让尾部自己有五个观测，95% 需要约 ${tails[0].days_for_five_in_tail} 天、
+    80% 需要约 ${tails[2].days_for_five_in_tail} 天。标灰的行是样本不足的行。</div>
+    <div class="scroll"><table style="margin-top:6px"><thead><tr>
+      <th>置信</th><th>VaR</th><th>CVaR</th><th>按现权益</th>
+      <th>尾部样本</th><th>够五个需要</th>
+    </tr></thead><tbody>${cvarRows}</tbody></table></div>
+    <div class="muted" style="margin-top:8px;font-size:11.5px">
+      对照：${R.days} 天里亏了 <b>${R.losing_days}</b> 天，
+      平均每个亏损日 <b>${mag(-R.mean_losing_day)}</b>，
+      最差一天 <b>${mag(-R.worst_day)}</b>（${h(R.worst_day_date||"—")}，
+      ${(R.worst_day*eqNow).toFixed(1)} USDC）。这三个数各有
+      ${R.losing_days} / ${R.losing_days} / 1 个观测撑着，
+      比上表 95% 那一行诚实得多。</div></div>`;
+
   // Equity curve plus its least-squares line.  Drawn from the same series
   // the ratios are computed on, so the picture and the numbers are one
   // reading.  Plain SVG in the page's own tokens -- no library, and it
@@ -5549,11 +5624,16 @@ function riskMetrics(){
   const Y = v => PADY + (H-2*PADY) * (1 - (v-lo)/span);
   const path = (vals)=>vals.map((v,i)=>`${i?"L":"M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join("");
   // Peak-to-trough band, so the drawdown number has somewhere to point.
-  const peakIdx = pts.findIndex(r=>r.event_date===R.max_drawdown_peak_day);
+  // The peak can be the opening capital, which has no point on the curve
+  // -- that is exactly the case a book that lost on day one produces, and
+  // it is the case this book is in.  Anchor the band at the left edge
+  // rather than dropping it.
   const troughIdx = pts.findIndex(r=>r.event_date===R.max_drawdown_trough_day);
-  const ddBand = (peakIdx>=0 && troughIdx>peakIdx)
-    ? `<rect x="${X(peakIdx).toFixed(1)}" y="${PADY}"
-        width="${(X(troughIdx)-X(peakIdx)).toFixed(1)}" height="${H-2*PADY}"
+  const rawPeakIdx = pts.findIndex(r=>r.event_date===R.max_drawdown_peak_day);
+  const peakX = rawPeakIdx>=0 ? X(rawPeakIdx) : X(0);
+  const ddBand = (troughIdx>=0 && X(troughIdx)>peakX)
+    ? `<rect x="${peakX.toFixed(1)}" y="${PADY}"
+        width="${(X(troughIdx)-peakX).toFixed(1)}" height="${H-2*PADY}"
         fill="var(--pill-red-bg)"></rect>` : "";
   const ticks = [hi, (hi+lo)/2, lo].map(v=>`
     <text x="6" y="${(Y(v)+4).toFixed(1)}" fill="var(--muted)"
@@ -5615,6 +5695,7 @@ function riskMetrics(){
       h(R.first_day)+" → "+h(R.last_day)+"）",
       R.final_equity_usdc>=R.initial_equity_usdc?"up":"down")}
   </div>
+  ${cvar}
   ${chart}`;
 }
 
