@@ -1622,3 +1622,128 @@ def test_coverage_premium_defaults_off_and_matches_production() -> None:
     source = inspect.getsource(ledger)
     assert '"maker_completion_contract"' in source
     assert '"maker_coverage_risk_budget": MAKER_RESTING_COVERAGE_BUDGET' in source
+
+
+def test_every_leg_carries_its_own_cash_and_the_legs_sum_to_the_stake(
+) -> None:
+    """Share counts do not price themselves (user ruling, 2026-08-29).
+
+    A four-rung ladder buys each rung at a different price, so the widest
+    leg is routinely not the dearest one -- OEJN 2026-08-30 put 25.7 shares
+    on 38C for 4.11 and 20.1 shares on 39C for 5.42 -- and the basket total
+    cannot be split by eye.  The cash is recorded where it is spent, leg by
+    leg, and the legs add up to the stake the position is recorded at.
+    """
+
+    import sys
+    import pytest
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    from paper_trading_ledger import (  # noqa: PLC0415
+        _fillable_size,
+        _fillable_weighted,
+    )
+
+    # Two legs, each two levels deep, so a clip that outgrows the top level
+    # pays the second one -- the walk the top-of-book price cannot see.
+    legs = [
+        [{"price": 0.10, "shares": 50.0}, {"price": 0.12, "shares": 500.0}],
+        [{"price": 0.20, "shares": 40.0}, {"price": 0.25, "shares": 500.0}],
+    ]
+    equal = _fillable_size(
+        legs=legs, win_probability=0.60, budget=30.0,
+        fee_rate=0.0, capacity=200.0,
+    )
+    assert equal is not None
+    size, cost, per_leg = equal
+    assert len(per_leg) == len(legs)
+    assert sum(per_leg) == pytest.approx(cost)
+    # Equal share counts, unequal cash: the dear leg carries twice the money.
+    assert per_leg[1] > per_leg[0]
+    assert size > 0.0
+
+    weighted = _fillable_weighted(
+        legs=legs, weights=[0.3, 0.7], probabilities=[0.25, 0.35],
+        budget=30.0, fee_rate=0.0,
+    )
+    assert weighted is not None
+    shares, spend, per_leg = weighted
+    assert len(per_leg) == len(shares)
+    assert sum(per_leg) == pytest.approx(spend)
+
+    # And the recorded row carries both: what each posted leg was priced to
+    # cost and what each filled leg did cost.  Without the first, a leg that
+    # bought nothing has no cash to be short of.
+    source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    assert "intended_leg_stake_json" in source
+    assert "leg_stake_json" in source
+    assert "json.dumps(intended_leg_stake, sort_keys=True)" in source
+    assert "json.dumps(leg_stake, sort_keys=True)" in source
+
+
+def test_the_page_prices_a_leg_and_says_when_it_only_derived_it() -> None:
+    """Rows written before the cash was recorded are priced at top of book.
+
+    That derivation is a lower bound, not the spend: it is exact when the
+    clip never had to walk the offer and short by exactly the walk when it
+    did (LFPB 2026-08-30, 0.22 of 11.32).  So it is marked, and the
+    shortfall against the recorded stake is carried rather than hidden.
+    """
+
+    import sys
+    import pytest
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    from selection_market_dashboard import _entry_fill  # noqa: PLC0415
+
+    common = {
+        "posted_json": '["31C", "32C"]',
+        "intended_json": '{"31C": 100.0, "32C": 50.0}',
+        "kept_json": '{"31C": 100.0, "32C": 50.0}',
+        "rungs_json": "",
+        "prices": {"31C": 0.10, "32C": 0.30},
+        "intended_stake": 26.0,
+        "window": ["31C", "32C"],
+    }
+    measured = _entry_fill(
+        intended_cash_json='{"31C": 10.5, "32C": 15.5}',
+        kept_cash_json='{"31C": 10.5, "32C": 15.5}',
+        stake=26.0, **common,
+    )
+    assert measured["leg_cash_derived"] is False
+    assert measured["leg_cash_shortfall_usdc"] is None
+    assert [leg["filled_stake_usdc"] for leg in measured["legs"]] == [
+        10.5, 15.5
+    ]
+    # The thinner leg is the dearer one, which is the whole reason the cash
+    # cannot be read off the share column.
+    assert measured["legs"][1]["filled_stake_usdc"] > (
+        measured["legs"][0]["filled_stake_usdc"]
+    )
+
+    derived = _entry_fill(
+        intended_cash_json="", kept_cash_json="", stake=26.0, **common,
+    )
+    assert derived["leg_cash_derived"] is True
+    # 100*0.10 + 50*0.30 = 25.0 against a 26.0 stake: the missing 1.0 is the
+    # walk, and the page has to be able to say so.
+    assert [leg["filled_stake_usdc"] for leg in derived["legs"]] == [
+        10.0, 15.0
+    ]
+    assert derived["leg_cash_shortfall_usdc"] == pytest.approx(1.0)
+
+    page = (root / "scripts" / "calibration_dashboard.py").read_text(
+        encoding="utf-8"
+    )
+    # The column exists, and the derived rows are marked where they are read.
+    assert "<th title=\"该腿的资金成本" in page
+    assert "const approx=e.leg_cash_derived;" in page
+    assert "leg_cash_shortfall_usdc" in page

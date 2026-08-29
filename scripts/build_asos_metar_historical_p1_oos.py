@@ -25,6 +25,7 @@ from asos_one_minute_ingress import (
 from madis_hfmetar import (
     AsosTemperatureProduct,
     build_asos_p1_oos_artifact,
+    ingest_asos_metar_matches_and_artifact,
     match_metar_to_asos,
 )
 
@@ -191,6 +192,12 @@ def main() -> int:
     parser.add_argument("--end-date", type=date.fromisoformat, required=True)
     parser.add_argument("--station", action="append", default=[])
     parser.add_argument("--reuse-retained", action="store_true")
+    parser.add_argument(
+        "--commit",
+        action="store_true",
+        help="Ingest the built match facts and per-station OOS artifacts "
+        "into the archive database (short transaction, no held lock).",
+    )
     args = parser.parse_args()
     if args.end_date < args.start_date or (args.end_date - args.start_date).days > 62:
         raise SystemExit("historical_window_invalid")
@@ -199,11 +206,30 @@ def main() -> int:
         station_ids=[str(value).upper() for value in args.station],
         reuse_retained=args.reuse_retained,
     )
+    committed: dict[str, object] = {}
+    if args.commit:
+        committed_at = _stamp(datetime.now(timezone.utc))
+        with sqlite3.connect(args.db, timeout=60.0) as conn:
+            conn.execute("PRAGMA busy_timeout=60000")
+            for station in report["artifacts"]:
+                matches = json.loads(
+                    (args.output / station / "asos_metar_matches.json").read_text(
+                        encoding="utf-8"
+                    )
+                )
+                committed[station] = ingest_asos_metar_matches_and_artifact(
+                    conn,
+                    matches,
+                    report["artifacts"][station],
+                    committed_at_utc=committed_at,
+                )
+            conn.commit()
     print(json.dumps({
         "download_count": report["download_count"],
         "failure_count": len(report["failures"]),
         "artifact_states": {key: value["state"] for key, value in report["artifacts"].items()},
-    }, sort_keys=True))
+        "committed": committed,
+    }, sort_keys=True, default=str))
     return 0 if not report["failures"] else 1
 
 

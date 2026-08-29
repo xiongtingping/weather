@@ -381,8 +381,13 @@ def _load_staged_revision_fact(
     if len(sha) != 64 or any(char not in "0123456789abcdef" for char in sha):
         raise ContractError("target_atomic_revision_sha256_invalid")
     rows = conn.execute(
+        # Either identity lane may hold the root: PR12 truth revisions for
+        # AWC reports, parallel substitute identity facts for scheduled ASOS
+        # slot fills.  Content addresses cannot collide across the two.
         "SELECT fact_json FROM canonical_ssot_fact "
-        "WHERE fact_type='truth_observation_revision' AND content_sha256=? "
+        "WHERE fact_type IN ("
+        "  'truth_observation_revision','substitute_observation_revision'"
+        ") AND content_sha256=? "
         "ORDER BY fact_id",
         (sha,),
     ).fetchall()

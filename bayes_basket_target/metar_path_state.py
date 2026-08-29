@@ -367,10 +367,40 @@ def compile_conditional_metar_path_state(
             raw_text,
             expected_temperature_c=temperature,
         ))
-    latest = states[-1]
+    # The current physical state (clouds, wind, pressure, dewpoint) comes
+    # from the most recent row that carries a parsable METAR body.  Soft
+    # carrier rows (madis_hfmetar / asos_1min) have no METAR text by
+    # construction, so ``states[-1]`` went None the moment one of them ended
+    # the prefix and the whole physical method fail-closed
+    # (``metar_path_state_incomplete``, 17 of 41 standing samples in the
+    # 2026-08-29 uplift replay).  The sky does not change carrier to
+    # carrier; the last METAR's state speaks for it -- bounded at two hours,
+    # past which a stale state is honestly incomplete again.
+    latest = None
+    latest_index = None
+    for index in range(len(states) - 1, -1, -1):
+        if states[index] is not None:
+            latest, latest_index = states[index], index
+            break
+    if (
+        latest is not None
+        and (times[-1] - times[latest_index]).total_seconds() > 7200.0
+    ):
+        latest = None
+    # Two carriers may legally share a minute (a METAR and the MADIS row of
+    # the same reading, or a SPECI on a five-minute mark).  Sorted input
+    # makes a genuine rewind impossible; an equal timestamp is not one.  For
+    # the slope series, the last row of a shared minute speaks (the sort is
+    # deterministic), so no zero-length segment ever divides.
+    collapsed: list[tuple] = []
+    for t, temp in zip(times, temperatures):
+        if collapsed and collapsed[-1][0] == t:
+            collapsed[-1] = (t, temp)
+        else:
+            collapsed.append((t, temp))
     segment_slopes: list[float] = []
-    for left_t, right_t, left_temp, right_temp in zip(
-        times, times[1:], temperatures, temperatures[1:]
+    for (left_t, left_temp), (right_t, right_temp) in zip(
+        collapsed, collapsed[1:]
     ):
         hours = (right_t - left_t).total_seconds() / 3600.0
         if hours <= 0.0:
@@ -378,7 +408,9 @@ def compile_conditional_metar_path_state(
         segment_slopes.append((right_temp - left_temp) / hours)
     momentum = segment_slopes[-1] if segment_slopes else 0.0
     if len(segment_slopes) >= 2:
-        hours = (times[-1] - times[-2]).total_seconds() / 3600.0
+        hours = (
+            collapsed[-1][0] - collapsed[-2][0]
+        ).total_seconds() / 3600.0
         acceleration = (segment_slopes[-1] - segment_slopes[-2]) / hours
     else:
         acceleration = 0.0

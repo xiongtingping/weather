@@ -1586,7 +1586,7 @@ def _window_refusal_detail(audit: Mapping[str, Any]) -> str:
     best = audit.get("edge_best_refused_window")
     if isinstance(best, Mapping) and best.get("buckets"):
         target = (
-            " · 目标篮 %s：胜率 %.3f 成本 %.3f 边际 %+.4f（摩擦 %.4f）" % (
+            "目标篮 %s：胜率 %.3f 成本 %.3f 边际 %+.4f（摩擦 %.4f）" % (
                 "+".join(str(bucket) for bucket in best["buckets"]),
                 float(best.get("win_probability") or 0.0),
                 float(best.get("all_in_cost") or 0.0),
@@ -1594,14 +1594,21 @@ def _window_refusal_detail(audit: Mapping[str, Any]) -> str:
                 float(best.get("friction") or 0.0),
             )
         )
-    return "枚举 %d = %s + 入围 %d · 最后出局：%s%s%s" % (
+    funnel = "枚举 %d = %s + 入围 %d · 最后出局：%s%s" % (
         enumerated, body, shortlisted,
         # No gate fired and still no seat: what is on the shortlist is an
         # inherited support carried past the floors with no ask to price it.
         GATE_LABEL.get(gate, "无闸拒绝"),
-        target,
         "" if enumerated == sum(parts) + shortlisted else " · 计数不闭合",
     )
+    # The basket goes first when there is one (user ruling, 2026-08-28).  A
+    # reader asking why a station did not seat wants the shape it wanted and
+    # what it cost; the funnel answers a different question -- how many
+    # windows died where -- and it is the same eight terms on every station
+    # of every day, so leading with it buries the one clause that is about
+    # this station.  The funnel keeps its checkable equation, one clause
+    # later, and the page shows it on hover.
+    return f"{target} · {funnel}" if target else funnel
 
 
 _POSITION_DDL = """
@@ -1633,6 +1640,8 @@ CREATE TABLE IF NOT EXISTS paper_trade_position (
   posted_buckets_json TEXT NOT NULL DEFAULT '',
   intended_legs_json TEXT NOT NULL DEFAULT '',
   intended_stake_usdc REAL,
+  intended_leg_stake_json TEXT NOT NULL DEFAULT '',
+  leg_stake_json TEXT NOT NULL DEFAULT '',
   held_before_json TEXT NOT NULL DEFAULT '',
   chain_shares_json TEXT NOT NULL DEFAULT '',
   chain_stake_usdc REAL,
@@ -1803,6 +1812,25 @@ def ensure_schema(conn: sqlite3.Connection) -> bool:
         conn.execute(
             "ALTER TABLE paper_trade_position"
             " ADD COLUMN intended_stake_usdc REAL"
+        )
+    if "intended_leg_stake_json" not in columns:
+        # What each posted leg was priced to cost, and what each leg the
+        # book answered actually cost.  Share counts alone cannot answer
+        # "which rung is the money in": the rungs are bought at different
+        # prices, so the widest leg is routinely not the dearest one, and
+        # reconstructing the cash from the top-of-book price understates it
+        # by exactly the amount the clip had to walk -- 2% on LFPB
+        # 2026-08-30, and silently, which is the worst way for a money
+        # number to be wrong.  Recorded leg by leg where it is spent; the
+        # legs sum to ``stake_usdc`` by construction.
+        conn.execute(
+            "ALTER TABLE paper_trade_position"
+            " ADD COLUMN intended_leg_stake_json TEXT NOT NULL DEFAULT ''"
+        )
+    if "leg_stake_json" not in columns:
+        conn.execute(
+            "ALTER TABLE paper_trade_position"
+            " ADD COLUMN leg_stake_json TEXT NOT NULL DEFAULT ''"
         )
     if "held_before_json" not in columns:
         # What the chain already held when this stage looked.  A top-up buys
@@ -4192,7 +4220,9 @@ def _progressive_entry(
     filled_fraction: Mapping[str, float],
     prices: Mapping[str, float],
     probabilities: Mapping[str, float],
-) -> tuple[list[str], list[float], float, float] | None:
+) -> tuple[
+    list[str], list[float], float, float, list[float]
+] | None:
     """Keep the part of each leg that filled, and only that part.
 
     A resting basket is built up, not switched on (user ruling,
@@ -4211,12 +4241,15 @@ def _progressive_entry(
     bought.  All three are recorded rather than assumed away.
 
     Returns ``None`` when nothing filled anywhere -- there is no position to
-    record, which is the one case that is still a refusal.
+    record, which is the one case that is still a refusal.  The kept cash is
+    returned leg by leg beside the shares: the rungs fill at different
+    prices, so which leg the money went into does not follow from the share
+    counts and cannot be recovered from the total.
     """
 
     kept_buckets: list[str] = []
     kept_shares: list[float] = []
-    stake = 0.0
+    kept_stake: list[float] = []
     for bucket, target in zip(buckets, leg_shares):
         quantity = float(target) * float(filled_fraction.get(str(bucket), 0.0))
         price = float(prices.get(str(bucket), 0.0))
@@ -4224,13 +4257,14 @@ def _progressive_entry(
             continue
         kept_buckets.append(str(bucket))
         kept_shares.append(quantity)
-        stake += quantity * price
+        kept_stake.append(quantity * price)
     if not kept_buckets:
         return None
+    stake = sum(kept_stake)
     win_probability = sum(
         float(probabilities.get(bucket, 0.0)) for bucket in kept_buckets
     )
-    return kept_buckets, kept_shares, stake, win_probability
+    return kept_buckets, kept_shares, stake, win_probability, kept_stake
 
 
 def _kelly_stake(
@@ -4317,7 +4351,7 @@ def _fillable_weighted(
     probabilities: Sequence[float],
     budget: float,
     fee_rate: float,
-) -> tuple[list[float], float] | None:
+) -> tuple[list[float], float, list[float]] | None:
     """Largest weighted clip inside budget whose expected payout beats it.
 
     The equal-share path bounds itself with "average price under the win
@@ -4334,23 +4368,27 @@ def _fillable_weighted(
     # 6.51 on the centre bought 50, and the payout curve peaked two rungs out.
     # Sizing shares directly makes the centre the position and lets price
     # decide what that costs.
-    def attempt(scale: float) -> tuple[list[float], float, float] | None:
+    def attempt(
+        scale: float,
+    ) -> tuple[list[float], float, float, list[float]] | None:
         shares: list[float] = []
-        spend = 0.0
+        cash: list[float] = []
         for leg, weight in zip(legs, weights):
             want = scale * weight
             got, paid = _walk_ask_shares(leg, want)
             if got <= 0.0 or got + 1e-9 < want:
                 return None
             shares.append(got)
-            spend += paid
-        spend *= 1.0 + fee_rate
+            # The fee rides on the leg that incurred it, so the legs still
+            # add up to the stake the position is recorded at.
+            cash.append(paid * (1.0 + fee_rate))
+        spend = sum(cash)
         if spend > budget + 1e-9:
             return None
         expected = sum(p * q for p, q in zip(probabilities, shares))
-        return shares, spend, expected
+        return shares, spend, expected, cash
 
-    best: tuple[list[float], float] | None = None
+    best: tuple[list[float], float, list[float]] | None = None
     # ``scale`` is now a share multiplier, so its ceiling comes from the
     # thinnest leg rather than from the budget being a fraction of itself.
     ceiling = min(
@@ -4368,7 +4406,7 @@ def _fillable_weighted(
         mid = 0.5 * (low + high)
         got = attempt(mid)
         if got is not None and got[2] > got[1]:
-            best = (got[0], got[1])
+            best = (got[0], got[1], got[3])
             low = mid
         else:
             high = mid
@@ -4417,7 +4455,7 @@ def _fillable_size(
     budget: float,
     fee_rate: float,
     capacity: float,
-) -> tuple[float, float] | None:
+) -> tuple[float, float, list[float]] | None:
     """Largest clip whose walked cost stays inside budget and edge.
 
     Both constraints are monotone in size -- spend rises with it, and so
@@ -4425,19 +4463,24 @@ def _fillable_size(
     zero and a bisection finds its end.
     """
 
-    def spend(size: float) -> float | None:
-        total = 0.0
+    def spend(size: float) -> tuple[float, list[float]] | None:
+        # Per leg, then summed -- equal share counts do not mean equal cash,
+        # and the page has to be able to say which rung the money is in.
+        # The fee rides on the leg that incurred it so the parts still add
+        # up to the whole.
+        per_leg: list[float] = []
         for leg in legs:
             leg_cost = _walk_ask(leg, size)
             if leg_cost is None:
                 return None
-            total += leg_cost
-        return total * (1.0 + fee_rate)
+            per_leg.append(leg_cost * (1.0 + fee_rate))
+        return sum(per_leg), per_leg
 
     def feasible(size: float) -> float | None:
-        cost = spend(size)
-        if cost is None or cost > budget:
+        walked = spend(size)
+        if walked is None or walked[0] > budget:
             return None
+        cost = walked[0]
         # An all-in average at or above the payout is a guaranteed loss no
         # matter how the day settles, which is exactly what the top-of-book
         # price hid when the clip outran the level that quoted it.
@@ -4456,10 +4499,10 @@ def _fillable_size(
             high = mid
         else:
             low = mid
-    cost = spend(low)
-    if low <= 0.0 or cost is None:
+    walked = spend(low)
+    if low <= 0.0 or walked is None:
         return None
-    return low, cost
+    return low, walked[0], walked[1]
 
 
 def _settled_bucket(
@@ -5653,7 +5696,7 @@ def backfill(
                                 cycles, payload["decision_at_utc"],
                             ))
                             continue
-                        shares, stake = filled
+                        shares, stake, leg_cash = filled
                         leg_shares = [shares] * len(seat["buckets"])
                     else:
                         weighted = _fillable_weighted(
@@ -5674,7 +5717,7 @@ def backfill(
                                 cycles, payload["decision_at_utc"],
                             ))
                             continue
-                        leg_shares, stake = weighted
+                        leg_shares, stake, leg_cash = weighted
                     # What was chosen and posted, before the book had a say.
                     # The charter's minimum support is a rule about
                     # selection, so it has to stay auditable even though the
@@ -5692,6 +5735,7 @@ def backfill(
                     }
                     if held:
                         topped: list[float] = []
+                        topped_cash: list[float] = []
                         spend = 0.0
                         for leg, bucket, want in zip(
                             legs, seat["buckets"], leg_shares
@@ -5701,9 +5745,11 @@ def backfill(
                             )
                             if delta <= 0.0:
                                 topped.append(0.0)
+                                topped_cash.append(0.0)
                                 continue
                             got, paid = _walk_ask_shares(leg, delta)
                             topped.append(got)
+                            topped_cash.append(paid * (1.0 + FEE_RATE))
                             spend += paid
                         if sum(topped) <= 0.0:
                             refusal = _deeper_refusal(refusal, (
@@ -5715,6 +5761,7 @@ def backfill(
                             ))
                             continue
                         leg_shares = topped
+                        leg_cash = topped_cash
                         stake = spend * (1.0 + FEE_RATE)
                     # The order as posted, leg by leg, kept beside the one
                     # that came back.  Progressive entry overwrites
@@ -5736,6 +5783,15 @@ def backfill(
                             seat["buckets"], leg_shares
                         )
                     }
+                    # What each posted leg was priced to cost.  Sizing
+                    # weights the share counts, not the cash, so the cash
+                    # per leg is the share count times whatever the book
+                    # charged for it -- a number the share column cannot be
+                    # read as and the basket total cannot be split into.
+                    intended_leg_stake = {
+                        str(bucket): float(cash)
+                        for bucket, cash in zip(seat["buckets"], leg_cash)
+                    }
                     intended_stake = float(stake)
                     if EXECUTION_MODE == "maker_resting":
                         # The sizing above is the order that was posted.
@@ -5754,7 +5810,10 @@ def backfill(
                                 cycles, payload["decision_at_utc"],
                             ))
                             continue
-                        kept, leg_shares, stake, win_probability = entered
+                        (
+                            kept, leg_shares, stake, win_probability,
+                            leg_cash,
+                        ) = entered
                         if len(kept) < len(seat["buckets"]):
                             counts["resting_partial_basket"] += 1
                             ordinals = {
@@ -5795,6 +5854,14 @@ def backfill(
                     per_leg = {
                         str(b): float(q)
                         for b, q in zip(seat["buckets"], leg_shares)
+                    }
+                    # The same split for the cash.  Built after progressive
+                    # entry has replaced the window with the legs that
+                    # filled, so this is what the position cost, leg by leg,
+                    # and it sums to ``stake``.
+                    leg_stake = {
+                        str(b): float(c)
+                        for b, c in zip(seat["buckets"], leg_cash)
                     }
                     expected_payout = sum(
                         float(probabilities.get(b, 0.0)) * q
@@ -5876,6 +5943,8 @@ def backfill(
                             json.dumps(posted_buckets, ensure_ascii=False),
                             json.dumps(intended_legs, sort_keys=True),
                             intended_stake,
+                            json.dumps(intended_leg_stake, sort_keys=True),
+                            json.dumps(leg_stake, sort_keys=True),
                             json.dumps(held_before, sort_keys=True),
                             json.dumps(held, sort_keys=True),
                             chain_stake,
@@ -6064,10 +6133,11 @@ def backfill(
             " refused_window_count, content_sha256, selection_rule_sha256,"
             " selection_rule_label, leg_shares_json, resting_fill_json,"
             " posted_buckets_json, intended_legs_json, intended_stake_usdc,"
+            " intended_leg_stake_json, leg_stake_json,"
             " held_before_json, chain_shares_json, chain_stake_usdc,"
             " consolidation_json"
             ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
-            "?,?,?,?,?,?)",
+            "?,?,?,?,?,?,?,?)",
             pending_positions,
         )
     if pending_settlements:

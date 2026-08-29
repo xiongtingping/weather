@@ -46,6 +46,11 @@ from .awc_observation_contract import (
     CanonicalAWCObservationContract,
     CanonicalAWCObservationRevisionFact,
 )
+from .asos_substitute_observation_contract import (
+    CONTRACT_SCHEMA as SUBSTITUTE_OBSERVATION_CONTRACT_SCHEMA,
+    FACT_TYPE as SUBSTITUTE_OBSERVATION_FACT_TYPE,
+    CanonicalSubstituteObservationContract,
+)
 from .band_reliability_store import load_band_table
 from .center_width_store import load_center_width, load_station_width
 from .fleet_regime_shift import load_regime_shift
@@ -181,6 +186,7 @@ FACT_TYPES = (
     "market_bucket_bridge",
     "truth_observation_revision",
     "truth_observation_day_bounds",
+    "substitute_observation_revision",
     "model_oos_event",
     "model_oos_cohort",
     "p0_model_family_selection",
@@ -293,9 +299,17 @@ def materialize_p1_from_canonical_observation(
     ).fetchone()
     if row is None:
         raise ContractError("canonical_observation_missing")
-    if str(row[1] or "").upper() != "AWC":
+    # Same formal trio as the atomic ledger, with exact lane/report pairing:
+    # AWC METAR/SPECI, plus the scheduled ASOS substitute carriers.
+    observation_lane = str(row[1] or "").upper()
+    formal_report_types = {
+        "AWC": {"METAR", "SPECI"},
+        "MADIS_HFMETAR": {"ASOS_HF"},
+        "ASOS_1MIN": {"ASOS_1MIN"},
+    }
+    if observation_lane not in formal_report_types:
         raise ContractError("canonical_observation_source_lane_invalid")
-    if str(row[3] or "").upper() not in {"METAR", "SPECI"}:
+    if str(row[3] or "").upper() not in formal_report_types[observation_lane]:
         raise ContractError("canonical_observation_report_type_invalid")
     if int(row[6] or 0) != 0:
         raise ContractError("canonical_observation_correction_requires_review")
@@ -618,6 +632,51 @@ def stage_awc_observation_contract(
     )
     result = {
         "schema": "bayes_basket_target_pr12_awc_observation_atomic_stage_v1",
+        "state": "STAGED_IN_CALLER_TRANSACTION",
+        "contract_content_sha256": contract.content_sha256,
+        "canonical_ingress_receipt": receipt,
+        "writes_legacy_projection": False,
+        "commits_outer_transaction": False,
+        "calls_order_gateway": False,
+        "orders_submitted": 0,
+    }
+    return {**result, "receipt_sha256": content_sha256(result)}
+
+
+def stage_substitute_observation_contract(
+    conn: sqlite3.Connection,
+    packet: Mapping[str, Any] | CanonicalSubstituteObservationContract,
+    *,
+    ingested_at_utc: str,
+) -> dict[str, Any]:
+    """Stage substitute identity facts inside a caller-owned transaction.
+
+    The substitute lanes' analogue of the PR12 seam: same staging
+    discipline, its own fact type, and structurally unable to touch the
+    truth lane -- the contract carries revision identities only, never day
+    bounds.
+    """
+
+    if not conn.in_transaction:
+        raise ContractError(
+            "canonical_substitute_observation_outer_transaction_required"
+        )
+    contract = (
+        packet
+        if isinstance(packet, CanonicalSubstituteObservationContract)
+        else CanonicalSubstituteObservationContract.from_mapping(packet)
+    )
+    receipt = ingest_canonical_contract(
+        conn,
+        contract,
+        commit=True,
+        finalize_transaction=False,
+        ingested_at_utc=ingested_at_utc,
+    )
+    result = {
+        "schema": (
+            "bayes_basket_target_substitute_observation_atomic_stage_v1"
+        ),
         "state": "STAGED_IN_CALLER_TRANSACTION",
         "contract_content_sha256": contract.content_sha256,
         "canonical_ingress_receipt": receipt,
@@ -1066,6 +1125,48 @@ def _awc_observation_rows(
                 json.dumps(mapping, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
                 json.dumps(lineage, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
             ))
+    return rows
+
+
+def _substitute_observation_rows(
+    contract: CanonicalSubstituteObservationContract,
+) -> list[tuple[str, str, str, str, str]]:
+    """Parallel identity lane for scheduled ASOS substitutes.
+
+    Never a truth fact: substitutes carry no day bounds, no truth vectors,
+    and can never close or settle a day.  ``p1_eligible`` mirrors the AWC
+    revision lineage so the same consumers can gate on it.
+    """
+
+    rows: list[tuple[str, str, str, str, str]] = []
+    for fact in contract.revision_facts:
+        mapping = fact.raw
+        lineage = {
+            "source_lane": mapping["source_lane"],
+            "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
+            "raw_object_kind": mapping["raw_object_kind"],
+            "raw_object_sha256": mapping["raw_object_sha256"],
+            "source_receipt_sha256": mapping["source_receipt_sha256"],
+            "asos_p1_oos_artifact_content_sha256": mapping[
+                "asos_p1_oos_artifact_content_sha256"
+            ],
+            "schedule_content_sha256": mapping["schedule_content_sha256"],
+            "origin_source_id": mapping["origin_source_id"],
+            "origin_url": mapping["origin_url"],
+            "origin_transport": mapping["origin_transport"],
+            "production_no_live_only": True,
+            "formal_live_authority": False,
+            "p1_eligible": mapping["qc_state"] == "ACCEPTED",
+        }
+        rows.append(
+            (
+                f"{SUBSTITUTE_OBSERVATION_FACT_TYPE}:{fact.content_sha256}",
+                SUBSTITUTE_OBSERVATION_FACT_TYPE,
+                fact.scope_key,
+                json.dumps(mapping, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+                json.dumps(lineage, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+            )
+        )
     return rows
 
 
@@ -2641,6 +2742,7 @@ def ingest_canonical_contract(
         | CanonicalRepublisherNoLiveP0Contract
         | CanonicalMarketBucketBridgeContract
         | CanonicalAWCObservationContract
+        | CanonicalSubstituteObservationContract
         | CanonicalModelOOSContract
         | CanonicalNativeEnsembleOOSContract
         | CanonicalModelOOSSelectionContract
@@ -2699,6 +2801,7 @@ def ingest_canonical_contract(
             CanonicalRepublisherNoLiveP0Contract,
             CanonicalMarketBucketBridgeContract,
             CanonicalAWCObservationContract,
+            CanonicalSubstituteObservationContract,
             CanonicalModelOOSContract,
             CanonicalNativeEnsembleOOSContract,
             CanonicalModelOOSSelectionContract,
@@ -2727,6 +2830,8 @@ def ingest_canonical_contract(
         contract = CanonicalMarketBucketBridgeContract.from_mapping(packet)
     elif packet.get("schema") == AWC_OBSERVATION_CONTRACT_SCHEMA:
         contract = CanonicalAWCObservationContract.from_mapping(packet)
+    elif packet.get("schema") == SUBSTITUTE_OBSERVATION_CONTRACT_SCHEMA:
+        contract = CanonicalSubstituteObservationContract.from_mapping(packet)
     elif packet.get("schema") == MODEL_OOS_CONTRACT_SCHEMA:
         contract = CanonicalModelOOSContract.from_mapping(packet)
     elif packet.get("schema") == NATIVE_ENSEMBLE_OOS_CONTRACT_SCHEMA:
@@ -2785,6 +2890,15 @@ def ingest_canonical_contract(
     if isinstance(contract, CanonicalAWCObservationContract):
         if inspection.get("state") not in {"V12", "V13", "V14", "V15", "V16", "V17"} or inspection.get("errors"):
             raise ContractError("canonical_awc_observation_v12_required")
+    if isinstance(contract, CanonicalSubstituteObservationContract):
+        # The fact-store CHECK enumerates admissible types per version, and
+        # ``substitute_observation_revision`` enters that list at V17 -- a
+        # V16 store would refuse the row at INSERT, so the gate has to ask
+        # for the schema that can actually hold the fact.
+        if inspection.get("state") != "V17" or inspection.get("errors"):
+            raise ContractError(
+                "canonical_substitute_observation_v17_required"
+            )
     if isinstance(contract, CanonicalModelOOSContract):
         if inspection.get("state") not in {"V13", "V14", "V15", "V16", "V17"} or inspection.get("errors"):
             raise ContractError("canonical_model_oos_v13_required")
@@ -2923,6 +3037,12 @@ def ingest_canonical_contract(
         if awc_daily_truth_projection is not None:
             raise ContractError("canonical_awc_observation_truth_projection_forbidden")
         rows = _awc_observation_rows(contract)
+    elif isinstance(contract, CanonicalSubstituteObservationContract):
+        if awc_daily_truth_projection is not None:
+            raise ContractError(
+                "canonical_substitute_observation_truth_projection_forbidden"
+            )
+        rows = _substitute_observation_rows(contract)
     elif isinstance(contract, CanonicalTruthAuthoritySupersessionContract):
         if awc_daily_truth_projection is not None:
             raise ContractError(
@@ -3195,6 +3315,12 @@ def ingest_canonical_contract(
                 "truth_observation_day_bounds": len(contract.day_bounds_facts),
             }
             if isinstance(contract, CanonicalAWCObservationContract)
+            else {
+                SUBSTITUTE_OBSERVATION_FACT_TYPE: len(
+                    contract.revision_facts
+                ),
+            }
+            if isinstance(contract, CanonicalSubstituteObservationContract)
             else {
                 "truth_observation_revision": len(
                     contract.awc_observation_contract.revision_facts

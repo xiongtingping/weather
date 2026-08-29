@@ -52,4 +52,15 @@ NOW="$("$PY" -c "from datetime import datetime,timezone;print(datetime.now(timez
   --receipt "$AUDIT/pr12_awc_observation_stage_latest.json" \
   --apply
 
+# The substitute lanes' identity facts ride the same timer: a scheduled
+# ASOS slot fill needs its parallel identity fact before the atomic chain
+# can root on it, exactly as an AWC report needs its PR12 revision.  On a
+# healthy AWC day the window is empty and this is a no-op receipt.
+"$PY" "$ROOT/scripts/stage_asos_substitute_observation_facts.py" \
+  --archive-database "$ROOT/data/archive.db" \
+  --target-database "$ROOT/data/bayes_basket_target_ssot.db" \
+  --window-days 3 \
+  --receipt "$AUDIT/asos_substitute_observation_stage_latest.json" \
+  --apply
+
 echo "$(date '+%F %T') [pr12] staged as_of=$NOW"

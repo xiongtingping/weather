@@ -9103,11 +9103,23 @@ class TargetProductionWorker:
                     for item in observations
                     if str(item.get("source_lane") or "").strip()
                 }
-                if len(source_lanes) != 1:
+                # The registry still binds every formal station to exactly
+                # one lane.  An AWC station-day may additionally carry
+                # OOS-governed ASOS substitutes for its own frozen METAR
+                # slots -- same sensor, same slots, admitted by the adapter
+                # at write time -- so the observation set is a subset of
+                # that trio, never a second registry lane.
+                admitted_observation_lanes = {expected_source_lane}
+                if expected_source_lane == "awc":
+                    admitted_observation_lanes |= {
+                        "asos_1min",
+                        "madis_hfmetar",
+                    }
+                if not source_lanes:
                     raise ContractError(
                         "resident_p1_source_lane_ambiguous"
                     )
-                if source_lanes != {expected_source_lane}:
+                if not source_lanes <= admitted_observation_lanes:
                     raise ContractError(
                         "resident_p1_source_lane_registry_mismatch"
                     )
@@ -9138,8 +9150,12 @@ class TargetProductionWorker:
                     fallback with its own bucket's activation sitting unused.
                     """
 
+                    # Artifact scopes are fitted per registry lane; a mixed
+                    # observation set (AWC plus scheduled ASOS substitutes)
+                    # must not let set iteration order pick a lane no
+                    # artifact was ever fitted for.
                     scope_key = metar_trajectory_scope_key(
-                        source_lane=next(iter(source_lanes)),
+                        source_lane=expected_source_lane,
                         season_bin=str(
                             prediction_root.lineage.get("season_bin") or ""
                         ),
@@ -9181,7 +9197,7 @@ class TargetProductionWorker:
                         ),
                         station_id=station,
                         scope_key=metar_trajectory_scope_key(
-                            source_lane=next(iter(source_lanes)),
+                            source_lane=expected_source_lane,
                             season_bin=str(
                                 prediction_root.lineage.get(
                                     "season_bin"
@@ -9217,7 +9233,7 @@ class TargetProductionWorker:
                             ),
                             station_id=station,
                             scope_key=metar_trajectory_scope_key(
-                                source_lane=next(iter(source_lanes)),
+                                source_lane=expected_source_lane,
                                 season_bin=str(
                                     prediction_root.lineage.get(
                                         "season_bin"
@@ -9668,6 +9684,9 @@ class TargetProductionWorker:
             float(item["reported_temperature_c"])
             for item in observations
             if item.get("reported_temperature_c") is not None
+            # SOFT_PATH carrier rows feed the path state only; a hard bound
+            # is a claim about the METAR series settlement follows.
+            and str(item.get("evidence_role") or "").upper() == "FORMAL"
         ]
         if not highs:
             return (), None

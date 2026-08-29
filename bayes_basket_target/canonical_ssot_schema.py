@@ -52,12 +52,18 @@ FACT_TYPES_V16 = (
 # V17 closes the probability-to-execution chain without reusing legacy
 # envelope or observation tables.  Raw surface observations and their
 # priority winner remain distinct facts; neither can be renamed into P1.
+# ``substitute_observation_revision`` is the scheduled ASOS substitute
+# lanes' parallel identity fact (user ruling 2026-08-28): the role
+# ``truth_observation_revision`` plays for AWC reports, without ever
+# entering the truth lane.  Added while V17 was still unapplied anywhere,
+# so no database can hold the earlier V17 signature.
 FACT_TYPES_V17 = (
     *FACT_TYPES_V16,
     "surface_observation",
     "surface_observation_winner",
     "p1_base",
     "pure_yes_basket_plan",
+    "substitute_observation_revision",
 )
 EXPECTED_COLUMNS = (
     "fact_id",

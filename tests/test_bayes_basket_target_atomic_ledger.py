@@ -551,7 +551,7 @@ def test_atomic_observation_timezone_is_content_addressed_and_replays() -> None:
 def test_atomic_bundle_rejects_non_awc_source_lane(source_lane: str) -> None:
     with pytest.raises(
         AtomicLedgerError,
-        match="plan_lineage_source_lane_must_be_awc",
+        match="plan_lineage_source_lane_must_be_formal_observation_lane",
     ):
         _bundle(index=615, source_lane=source_lane)
 
@@ -559,8 +559,8 @@ def test_atomic_bundle_rejects_non_awc_source_lane(source_lane: str) -> None:
 @pytest.mark.parametrize(
     ("target", "error"),
     [
-        ("observation", "observation_source_lane_must_be_awc"),
-        ("lineage", "plan_lineage_source_lane_must_be_awc"),
+        ("observation", "observation_source_lane_must_be_formal_observation_lane"),
+        ("lineage", "plan_lineage_source_lane_must_be_formal_observation_lane"),
     ],
 )
 def test_atomic_commit_rejects_non_awc_source_lane_before_any_write(

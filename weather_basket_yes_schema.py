@@ -500,9 +500,14 @@ ON reported_trajectory_source_polls(source_lane,response_completed_at);
 
 CREATE TABLE IF NOT EXISTS reported_trajectory_observations (
   observation_id TEXT PRIMARY KEY,
-  source_lane TEXT NOT NULL CHECK(source_lane IN ('amsc','awc')),
+  -- amsc/awc are the formal report lanes; asos_1min/madis_hfmetar carry the
+  -- SOFT_PATH intra-hour readings (2026-08-29 soft-in-hard-out ruling) with
+  -- their exact report-type pairing enforced in the reader and compiler.
+  source_lane TEXT NOT NULL
+    CHECK(source_lane IN ('amsc','awc','asos_1min','madis_hfmetar')),
   station_id TEXT NOT NULL,
-  report_type TEXT NOT NULL CHECK(report_type IN ('METAR','SPECI')),
+  report_type TEXT NOT NULL
+    CHECK(report_type IN ('METAR','SPECI','ASOS_HF','ASOS_1MIN')),
   valid_at TEXT NOT NULL,
   reported_temperature_c INTEGER NOT NULL,
   raw_sha256 TEXT NOT NULL,
@@ -597,7 +602,8 @@ ON daily_regime_snapshots(station_id,event_date,as_of,created_at);
 
 CREATE TABLE IF NOT EXISTS reported_trajectory_observation_origins (
   observation_id TEXT PRIMARY KEY,
-  source_lane TEXT NOT NULL CHECK(source_lane IN ('amsc','awc')),
+  source_lane TEXT NOT NULL
+    CHECK(source_lane IN ('amsc','awc','asos_1min','madis_hfmetar')),
   station_id TEXT NOT NULL,
   origin_source_id TEXT NOT NULL,
   origin_country_code TEXT NOT NULL,

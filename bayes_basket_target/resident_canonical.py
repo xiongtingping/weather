@@ -18,10 +18,33 @@ from .settlement_time import (
 )
 
 
-MAX_FORMAL_OBSERVATIONS_PER_SCOPE = 64
+# A resource bound on one station-day's read, not an evidence policy.  64
+# was sized for hourly reporters and fail-closed LTAC on 2026-08-28 at 66
+# legitimate formal rows: a half-hourly cadence is 48 routine METARs before
+# the first SPECI, and a stormy day adds a burst of those.  96 holds
+# half-hourly plus a severe SPECI day plus the bounded ASOS substitutes
+# (at most one per missed slot) with headroom, while still refusing a
+# runaway ingest.
+MAX_FORMAL_OBSERVATIONS_PER_SCOPE = 96
 _MAX_TRANSMISSION_LEAD = timedelta(
     seconds=MAX_REPORT_TRANSMISSION_LEAD_SECONDS
 )
+# ASOS carrier rows beside the formal AWC lane.  The lane names its report
+# type exactly; a row claiming any other pairing is not one this reader may
+# admit.  Since the 2026-08-29 soft-in-hard-out ruling every row in these
+# lanes is SOFT_PATH evidence: it feeds the path state and nothing else --
+# measured against settlement (which follows the METAR series), the carrier
+# maxima overshoot it on a third of days, so they may never touch the
+# running high.  Rows are minted only by the slot materializer behind the
+# station's OOS_READY artifact, and carry its identity prefix as a second
+# boundary ("asos_p1_" from the retired formal-substitute era, "asos_soft_"
+# for the intra-hour soft carrier).
+P1_ASOS_SUBSTITUTE_LANE_REPORT_TYPES = {
+    "asos_1min": "ASOS_1MIN",
+    "madis_hfmetar": "ASOS_HF",
+}
+_P1_ASOS_CARRIER_ID_PREFIXES = ("asos_p1_", "asos_soft_")
+MAX_SOFT_PATH_OBSERVATIONS_PER_SCOPE = 400
 
 
 def _utc(value: Any, *, reason: str) -> datetime:
@@ -95,7 +118,7 @@ def load_resident_formal_observations(
         raise ContractError(
             f"resident_p1_correction_requires_manual_review:{exc}"
         ) from exc
-    rows = conn.execute(
+    formal_rows = conn.execute(
         "SELECT observation_id,source_lane,station_id,report_type,valid_at,"
         "reported_temperature_c,raw_sha256,raw_text,canonical_committed_at,"
         "correction_suspected "
@@ -115,8 +138,37 @@ def load_resident_formal_observations(
             MAX_FORMAL_OBSERVATIONS_PER_SCOPE + 1,
         ),
     ).fetchall()
-    if len(rows) > MAX_FORMAL_OBSERVATIONS_PER_SCOPE:
+    if len(formal_rows) > MAX_FORMAL_OBSERVATIONS_PER_SCOPE:
         raise ContractError("resident_p1_observation_scope_cap_exceeded")
+    # Soft path-evidence lanes on their own resource bound: an intra-hour
+    # carrier day is ~288 rows, an order of magnitude past the formal
+    # cadence the formal cap was sized for, and one bound covering both
+    # would let a carrier flood evict the very reports settlement follows.
+    soft_rows = conn.execute(
+        "SELECT observation_id,source_lane,station_id,report_type,valid_at,"
+        "reported_temperature_c,raw_sha256,raw_text,canonical_committed_at,"
+        "correction_suspected "
+        "FROM reported_trajectory_observations "
+        "WHERE station_id=? AND source_lane IN ('asos_1min','madis_hfmetar') "
+        "AND julianday(valid_at)>=julianday(?) "
+        "AND julianday(valid_at)<julianday(?) "
+        "AND julianday(canonical_committed_at)<=julianday(?) "
+        "ORDER BY valid_at,canonical_committed_at,observation_id "
+        "LIMIT ?",
+        (
+            station,
+            window["target_day_start_utc"],
+            window["target_day_end_utc"],
+            as_of_utc,
+            MAX_SOFT_PATH_OBSERVATIONS_PER_SCOPE + 1,
+        ),
+    ).fetchall()
+    if len(soft_rows) > MAX_SOFT_PATH_OBSERVATIONS_PER_SCOPE:
+        raise ContractError("resident_p1_soft_observation_scope_cap_exceeded")
+    rows = sorted(
+        [*formal_rows, *soft_rows],
+        key=lambda row: (str(row[4]), str(row[8]), str(row[0])),
+    )
     result: list[dict[str, Any]] = []
     for row in rows:
         valid_at = _utc(
@@ -143,8 +195,26 @@ def load_resident_formal_observations(
         ):
             raise ContractError("resident_p1_observation_not_strict_asof")
         report_type = str(row[3] or "").strip().upper()
-        if report_type not in {"METAR", "SPECI"}:
-            raise ContractError("resident_p1_report_type_invalid")
+        row_lane = str(row[1] or "").strip().lower()
+        if row_lane == source_lane:
+            if report_type not in {"METAR", "SPECI"}:
+                raise ContractError("resident_p1_report_type_invalid")
+        elif row_lane in P1_ASOS_SUBSTITUTE_LANE_REPORT_TYPES:
+            # An OOS-governed ASOS carrier row.  Its admission (station
+            # OOS_READY artifact, QC eligibility) was proved by the
+            # materializer that minted it; this reader re-checks only the
+            # identity stamp and the lane/report-type pairing as a second
+            # fail-closed boundary.
+            if report_type != P1_ASOS_SUBSTITUTE_LANE_REPORT_TYPES[row_lane]:
+                raise ContractError("resident_p1_report_type_invalid")
+            if not str(row[0] or "").startswith(
+                _P1_ASOS_CARRIER_ID_PREFIXES
+            ):
+                raise ContractError(
+                    "resident_p1_asos_substitute_identity_invalid"
+                )
+        else:
+            raise ContractError("resident_p1_source_lane_not_awc")
         # A correction/revision halts the whole station-day even when that
         # particular report is not eligible for formal hourly truth.  Checking
         # the minute first would silently discard a COR SPECI and let later
@@ -162,18 +232,21 @@ def load_resident_formal_observations(
         # LFPB 2026-07-31 divergence (P1 reading sub-hourly rows settlement
         # then rejected) cannot recur: the two sides now agree by
         # construction.  Any surviving policy reason is a fail-closed
-        # blocker, never a cadence artifact.
-        policy_reason = source_policy_reason(
-            source_lane=source_lane.lower(),
-            report_type=report_type,
-            valid_at=valid_at,
-            expected_lane="awc",
-        )
-        if policy_reason:
-            raise ContractError(
-                "resident_p1_observation_source_policy_invalid:"
-                + policy_reason
+        # blocker, never a cadence artifact.  The ASOS substitute lanes are
+        # outside this policy's two-lane vocabulary by design: their timing
+        # legality is the frozen schedule the adapter already enforced.
+        if row_lane == source_lane:
+            policy_reason = source_policy_reason(
+                source_lane=source_lane.lower(),
+                report_type=report_type,
+                valid_at=valid_at,
+                expected_lane="awc",
             )
+            if policy_reason:
+                raise ContractError(
+                    "resident_p1_observation_source_policy_invalid:"
+                    + policy_reason
+                )
         raw_sha = str(row[6] or "").strip().lower()
         if (
             len(raw_sha) != 64
@@ -193,9 +266,11 @@ def load_resident_formal_observations(
             ).replace("+00:00", "Z"),
             "raw_sha256": raw_sha,
             "raw_text": str(row[7] or ""),
-            "source_lane": source_lane,
+            "source_lane": row_lane,
             "report_type": report_type,
-            "evidence_role": "FORMAL",
+            "evidence_role": (
+                "FORMAL" if row_lane == source_lane else "SOFT_PATH"
+            ),
             "qc_status": "ACCEPTED",
             "correction_suspected": False,
             "settlement_timezone": timezone_name,
@@ -266,13 +341,19 @@ def attach_truth_observation_revisions(
     scope_low = f"{station}|"
     scope_high = station + chr(ord("|") + 1)
     try:
+        # Two identity lanes, one join: AWC reports carry PR12 truth
+        # revisions, scheduled ASOS substitutes carry their own parallel
+        # identity facts.  Both are keyed the same way and both scope_keys
+        # open with the station id, so the same range seek serves each.
         found = conn.execute(
             "SELECT json_extract(fact_json,'$.observation_id'),"
             "  json_extract(fact_json,'$.revision_no'),"
             "  json_extract(fact_json,'$.canonical_committed_at_utc'),"
             "  content_sha256 "
             "FROM canonical_ssot_fact "
-            "WHERE fact_type='truth_observation_revision' "
+            "WHERE fact_type IN ("
+            "  'truth_observation_revision','substitute_observation_revision'"
+            ") "
             "  AND scope_key >= ? AND scope_key < ? "
             "  AND json_extract(fact_json,'$.station_id')=? "
             f"  AND json_extract(fact_json,'$.observation_id') IN ({placeholders})",
@@ -307,6 +388,8 @@ def attach_truth_observation_revisions(
 
 __all__ = [
     "MAX_FORMAL_OBSERVATIONS_PER_SCOPE",
+    "MAX_SOFT_PATH_OBSERVATIONS_PER_SCOPE",
+    "P1_ASOS_SUBSTITUTE_LANE_REPORT_TYPES",
     "attach_truth_observation_revisions",
     "load_resident_formal_observations",
 ]

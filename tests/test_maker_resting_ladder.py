@@ -210,10 +210,14 @@ def test_a_leg_that_filled_nothing_leaves_the_basket_it_was_chosen_for(
         probabilities={"31C": 0.30, "32C": 0.25, "33C": 0.15},
     )
     assert entered is not None
-    buckets, shares, stake, win = entered
+    buckets, shares, stake, win, leg_stake = entered
     assert buckets == ["31C", "33C"]
     assert shares == [100.0, 40.0]
     assert stake == pytest.approx(100.0 * 0.20 + 40.0 * 0.10)
+    # The cash follows the legs that survived, and the legs still add up to
+    # the stake the position is recorded at.
+    assert leg_stake == pytest.approx([100.0 * 0.20, 40.0 * 0.10])
+    assert sum(leg_stake) == pytest.approx(stake)
     # The claim shrinks with the position: 32C was never bought, so its
     # probability is not part of what this basket can win.
     assert win == pytest.approx(0.45)

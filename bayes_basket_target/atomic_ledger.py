@@ -25,6 +25,10 @@ from datetime import datetime, timezone
 from typing import Any, Iterator, Mapping, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .asos_substitute_observation_contract import (
+    CanonicalSubstituteObservationRevisionFact,
+    is_substitute_revision_mapping,
+)
 from .awc_observation_contract import (
     CanonicalAWCObservationContract,
     CanonicalAWCObservationRevisionFact,
@@ -184,12 +188,27 @@ def _settlement_timezone(name: str, value: Any) -> str:
     return result
 
 
-def _awc_source_lane(name: str, value: Any) -> str:
-    """Accept only the formal AWC lane and return its canonical spelling."""
+def _formal_observation_source_lane(name: str, value: Any) -> str:
+    """Accept the formal observation lanes, canonically spelled.
 
-    if _text(name, value).upper() != "AWC":
-        raise AtomicLedgerError(f"{name}_must_be_awc")
-    return "AWC"
+    AWC is the registry lane.  MADIS_HFMETAR and ASOS_1MIN are the scheduled
+    ASOS substitute carriers -- the same sensor filling the station's own
+    frozen METAR slot when the relay missed it, admitted behind an OOS_READY
+    exact-match artifact.  A substitute-closed P1 may therefore root an
+    atomic plan.  Everything else (AMSC, garbage) stays refused.
+    """
+
+    lane = _text(name, value).upper()
+    if lane not in {"AWC", "MADIS_HFMETAR", "ASOS_1MIN"}:
+        raise AtomicLedgerError(f"{name}_must_be_formal_observation_lane")
+    return lane
+
+
+_FORMAL_REPORT_TYPES_BY_LANE = {
+    "AWC": frozenset({"METAR", "SPECI"}),
+    "MADIS_HFMETAR": frozenset({"ASOS_HF"}),
+    "ASOS_1MIN": frozenset({"ASOS_1MIN"}),
+}
 
 
 def _timestamp(name: str, value: Any) -> str:
@@ -621,9 +640,18 @@ def build_target_atomic_bundle(
             # the one named.  Nothing weaker: the sha is what the commit
             # boundary looks the row up by, so a fact whose content hashes to
             # something else would root the chain on a report the store never
-            # agreed to.
-            named_fact = CanonicalAWCObservationRevisionFact.from_mapping(
-                observed_revision_fact
+            # agreed to.  Two identity lanes share this root: PR12 truth
+            # revisions for AWC reports, and the parallel substitute identity
+            # facts for scheduled ASOS slot fills -- each validated by its
+            # own canonical class, dispatched on the lane the fact declares.
+            named_fact = (
+                CanonicalSubstituteObservationRevisionFact.from_mapping(
+                    observed_revision_fact
+                )
+                if is_substitute_revision_mapping(observed_revision_fact)
+                else CanonicalAWCObservationRevisionFact.from_mapping(
+                    observed_revision_fact
+                )
             )
             if named_fact.content_sha256 != revision_sha:
                 raise AtomicLedgerError(
@@ -674,7 +702,7 @@ def build_target_atomic_bundle(
                 _mapping("plan", plan).get("settlement_timezone")
                 or revision.get("settlement_timezone"),
             ),
-            "source_lane": _awc_source_lane(
+            "source_lane": _formal_observation_source_lane(
                 "observation_source_lane", revision.get("source_lane")
             ),
             "report_type": _text("observation_report_type", revision.get("report_type")).upper(),
@@ -682,9 +710,16 @@ def build_target_atomic_bundle(
                 "observation_observed_at_utc", revision.get("observed_at_utc")
             ),
             "raw_sha256": _sha("observation_raw_sha256", revision.get("raw_object_sha256")),
+            # The projection's source-receipt slot.  The key keeps its
+            # historical name -- it hashes into OBSERVATION_SCHEMA and names
+            # a table column -- but the slot holds whichever fetch receipt
+            # the fact's own lane carries: the AWC batch receipt for a PR12
+            # revision, the MADIS object / IEM request receipt for a
+            # substitute identity fact.
             "awc_source_receipt_sha256": _sha(
                 "observation_awc_source_receipt_sha256",
-                revision.get("awc_source_receipt_sha256"),
+                revision.get("awc_source_receipt_sha256")
+                or revision.get("source_receipt_sha256"),
             ),
             # The observation's own canonical commit, which is what the plan
             # consumed and carries.  The fact's ``canonical_committed_at_utc``
@@ -701,7 +736,9 @@ def build_target_atomic_bundle(
             ),
             "truth_observation_revision_content_sha256": revision_sha,
         }
-        if obs["report_type"] not in {"METAR", "SPECI"}:
+        if obs["report_type"] not in _FORMAL_REPORT_TYPES_BY_LANE[
+            obs["source_lane"]
+        ]:
             raise AtomicLedgerError("observation_report_type_invalid")
         obs_sha = _content_hash(OBSERVATION_SCHEMA, obs)
         observation_fact_id = _verify_or_set_id(
@@ -742,7 +779,7 @@ def build_target_atomic_bundle(
         # The source lane names which observation feed the plan consumed, so
         # it belongs to an observed root only.  Demanding it of a stage-rooted
         # plan asked P0 to declare a feed it never read.
-        plan_lineage["source_lane"] = _awc_source_lane(
+        plan_lineage["source_lane"] = _formal_observation_source_lane(
             "plan_lineage_source_lane", plan_lineage.get("source_lane")
         )
     plan_payload["lineage"] = plan_lineage
@@ -2125,7 +2162,7 @@ def commit_target_atomic_bundle(
     # lineage; the commit boundary re-verifies content addresses either way.
     stage_rooted = bundle.get("stage_evidence_root") is not None
     if not stage_rooted:
-        obs["source_lane"] = _awc_source_lane(
+        obs["source_lane"] = _formal_observation_source_lane(
             "observation_source_lane", obs.get("source_lane")
         )
     bound = dict(bundle["bound"])
@@ -2145,8 +2182,16 @@ def commit_target_atomic_bundle(
             # simply fails closed here rather than being written on the way
             # past.
             try:
-                named_fact = CanonicalAWCObservationRevisionFact.from_mapping(
-                    bundle["observed_revision_fact"]
+                named_fact = (
+                    CanonicalSubstituteObservationRevisionFact.from_mapping(
+                        bundle["observed_revision_fact"]
+                    )
+                    if is_substitute_revision_mapping(
+                        bundle["observed_revision_fact"]
+                    )
+                    else CanonicalAWCObservationRevisionFact.from_mapping(
+                        bundle["observed_revision_fact"]
+                    )
                 )
             except ContractError as exc:
                 raise AtomicLedgerError(
@@ -2218,7 +2263,7 @@ def commit_target_atomic_bundle(
         raise AtomicLedgerError("target_atomic_commit_lineage_missing")
     plan_lineage = dict(plan_lineage)
     if not stage_rooted:
-        plan_lineage["source_lane"] = _awc_source_lane(
+        plan_lineage["source_lane"] = _formal_observation_source_lane(
             "plan_lineage_source_lane", plan_lineage.get("source_lane")
         )
     plan_identity["lineage"] = plan_lineage
@@ -2361,9 +2406,15 @@ def commit_target_atomic_bundle(
                 expected_revision = revisions[0].raw
             _fault(fault_after, "canonical_stage")
             canonical_rows = conn.execute(
+                # Either identity lane: PR12 truth revisions for AWC
+                # reports, parallel substitute identity facts for scheduled
+                # ASOS slot fills.  Content addressing keeps the sha unique
+                # across the two.
                 "SELECT fact_json,content_sha256 FROM canonical_ssot_fact "
-                "WHERE fact_type='truth_observation_revision' "
-                "AND content_sha256=? ORDER BY fact_id",
+                "WHERE fact_type IN ("
+                "  'truth_observation_revision',"
+                "  'substitute_observation_revision'"
+                ") AND content_sha256=? ORDER BY fact_id",
                 (revision_sha,),
             ).fetchall()
             if (

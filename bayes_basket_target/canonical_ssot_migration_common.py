@@ -419,8 +419,29 @@ def migrate_append_only_fact_schema(
                 fail("post_swap_fingerprint_mismatch")
             if conn.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                 fail("quick_check_failed")
-            if conn.execute("PRAGMA foreign_key_check").fetchone() is not None:
-                fail("foreign_key_check_failed")
+            # Scoped to what this migration touched: the rebuilt table's own
+            # foreign keys and every table that declares one against it.  The
+            # whole-database check this used to be made every future fact
+            # migration hostage to unrelated historical debt -- on 2026-08-28
+            # the V17 apply completed its copy and swap, then rolled the
+            # whole thing back over 48 pre-existing
+            # calibration_native_ensemble_historical_member_run orphans that
+            # no fact-store migration created and none may repair (the
+            # calibration tables are append-only).  A violation the swap
+            # itself could cause still fails closed here.
+            fk_scope = [table] + [
+                str(row[0])
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' "
+                    "AND sql LIKE ?",
+                    (f"%REFERENCES {table}%",),
+                )
+            ]
+            for scoped_table in fk_scope:
+                if conn.execute(
+                    f'PRAGMA foreign_key_check("{scoped_table}")'
+                ).fetchone() is not None:
+                    fail("foreign_key_check_failed")
             fault("before_commit")
             conn.execute("COMMIT")
         except Exception:

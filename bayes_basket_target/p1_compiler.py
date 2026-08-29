@@ -21,6 +21,7 @@ from .metar_trajectory import (
     METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
     METAR_TRAJECTORY_METHOD_VERSION,
     METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION,
+    SOFT_PATH_SOURCE_LANES,
     MetarTrajectoryLikelihoodArtifact,
     MetarTrajectoryObservation,
     build_metar_trajectory_likelihood_artifact,
@@ -368,7 +369,12 @@ def compile_station_p1_packets(
     fleet_regime: Mapping[str, Any] | None = None,
     ceiling_artifact: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Compile every canonical P1 prefix; flag only running-high advances.
+    """Compile every canonical P1 prefix; emit on running-high advances.
+
+    One deliberate exception: after a packet closed by a scheduled ASOS
+    substitute (asos_1min / madis_hfmetar), the first AWC report emits a
+    re-anchoring packet even without a new high, restoring an atomic-capable
+    head for the order chain.  ``reported_high_advanced`` stays honest on it.
 
     The two post-hoc correction layers are passed in rather than loaded here:
     this module takes no connection by design, and the compiled packet is the
@@ -444,6 +450,25 @@ def compile_station_p1_packets(
     packets: list[dict[str, Any]] = []
     running_high_c: float | None = None
     generation = 0
+    # The lane of the observation the current head packet was closed on.
+    # An ASOS substitute may close a packet -- the posterior and hard bound
+    # must move the moment the evidence exists -- and it roots the atomic
+    # chain through its parallel identity fact
+    # (``substitute_observation_revision``), which the PR12 sweep stages on
+    # its own 600s timer.  The first AWC report after a substitute-closed
+    # head still re-anchors -- a packet even without a new high -- so the
+    # order chain regains a METAR-rooted head promptly instead of riding
+    # the staging race, and keeps working even if the identity sweep lags.
+    last_closing_lane: str | None = (
+        (
+            str(previous.lineage.get("source_lane") or "")
+            .strip()
+            .lower()
+            or None
+        )
+        if previous.stage == "P1"
+        else None
+    )
     last_decision = _parse_utc(previous.decision_at_utc)
     if decision_floor_at_utc is not None:
         floor = _parse_utc(decision_floor_at_utc)
@@ -504,9 +529,14 @@ def compile_station_p1_packets(
             else max(day_running_high_c, value)
         )
     for sequence, observation in enumerate(ordered, start=1):
+        # SOFT_PATH rows (the intra-hour ASOS carrier readings) walk the
+        # prefix like everything else, so the path state sees the dense
+        # trajectory -- but they hold no hard rights below: no running-high
+        # update, no packet, no closing identity.
         if (
             str(observation.get("qc_status") or "").upper() != "ACCEPTED"
-            or str(observation.get("evidence_role") or "").upper() != "FORMAL"
+            or str(observation.get("evidence_role") or "").upper()
+            not in {"FORMAL", "SOFT_PATH"}
             or bool(observation.get("correction_suspected"))
         ):
             continue
@@ -539,12 +569,25 @@ def compile_station_p1_packets(
             reported_c = float(observation["reported_temperature_c"])
         except (KeyError, TypeError, ValueError) as exc:
             raise ContractError("p1_reported_temperature_invalid") from exc
-        old_high = running_high_c
-        running_high_c = (
-            reported_c
-            if running_high_c is None
-            else max(running_high_c, reported_c)
+        observation_lane = str(
+            observation.get("source_lane") or ""
+        ).strip().lower()
+        # Lane decides hard rights, not the role label: a soft-lane row may
+        # never move the official running high, whatever a caller stamped on
+        # it.  Settlement follows the formal METAR series (measured
+        # 2026-08-29), so only formal rows may claim what it will honor.
+        soft_path_only = (
+            observation_lane in SOFT_PATH_SOURCE_LANES
+            or str(observation.get("evidence_role") or "").upper()
+            == "SOFT_PATH"
         )
+        old_high = running_high_c
+        if not soft_path_only:
+            running_high_c = (
+                reported_c
+                if running_high_c is None
+                else max(running_high_c, reported_c)
+            )
         observation_id = str(observation.get("observation_id") or "")
         if not observation_id:
             raise ContractError("p1_observation_id_missing")
@@ -583,10 +626,19 @@ def compile_station_p1_packets(
                 or None,
             })
         )
+        if soft_path_only:
+            # Path evidence delivered; nothing below (consumption, advance,
+            # emission, closing identity) belongs to a soft row.
+            continue
         if observation_id in consumed:
             continue
         high_advanced = old_high is None or reported_c > old_high
-        if not high_advanced:
+        reanchors_atomic_head = (
+            not high_advanced
+            and observation_lane == "awc"
+            and last_closing_lane not in (None, "awc")
+        )
+        if not high_advanced and not reanchors_atomic_head:
             continue
         decision = max(
             committed,
@@ -682,8 +734,18 @@ def compile_station_p1_packets(
             if artifact_in_bucket
             else _fallback_trajectory_artifact(
                 root,
-                source_lane=str(
-                    observation.get("source_lane") or ""
+                # The governing lane, not the closer's: an ASOS substitute
+                # closes a step inside an AWC-governed scope, and the proof
+                # canonicalizes the whole prefix against the artifact's
+                # lane -- a substitute-laned artifact would refuse the AWC
+                # reports around it.
+                source_lane=(
+                    "awc"
+                    if str(observation.get("source_lane") or "")
+                    .strip()
+                    .lower()
+                    in {"asos_1min", "madis_hfmetar"}
+                    else str(observation.get("source_lane") or "")
                 ),
                 maturity_bin=maturity_bin,
                 as_of_utc=decision_text,
@@ -772,6 +834,7 @@ def compile_station_p1_packets(
         })
         previous = envelope
         last_decision = decision
+        last_closing_lane = observation_lane
     return packets
 
 

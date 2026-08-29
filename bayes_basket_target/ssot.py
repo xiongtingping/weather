@@ -2076,8 +2076,13 @@ CREATE TABLE IF NOT EXISTS basket_target_observation_facts (
   station_id TEXT NOT NULL,
   event_date TEXT NOT NULL,
   settlement_timezone TEXT NOT NULL,
-  source_lane TEXT NOT NULL CHECK(source_lane IN ('AMSC','AWC')),
-  report_type TEXT NOT NULL CHECK(report_type IN ('METAR','SPECI')),
+  -- AMSC is retained history; AWC is the registry lane; MADIS_HFMETAR and
+  -- ASOS_1MIN are the scheduled ASOS substitute carriers, admitted with
+  -- their exact report-type pairing (enforced in the ledger code path).
+  source_lane TEXT NOT NULL
+    CHECK(source_lane IN ('AMSC','AWC','MADIS_HFMETAR','ASOS_1MIN')),
+  report_type TEXT NOT NULL
+    CHECK(report_type IN ('METAR','SPECI','ASOS_HF','ASOS_1MIN')),
   observed_at_utc TEXT,
   raw_sha256 TEXT NOT NULL CHECK(length(raw_sha256)=64),
   awc_source_receipt_sha256 TEXT,

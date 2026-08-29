@@ -114,6 +114,9 @@ def _entry_fill(
     intended_json: str,
     kept_json: str,
     rungs_json: str,
+    intended_cash_json: str,
+    kept_cash_json: str,
+    prices: Mapping[str, float],
     intended_stake: float | None,
     stake: float,
     window: list[str],
@@ -131,6 +134,15 @@ def _entry_fill(
     say how much of the ladder the market came down to; shares and stake say
     how much of the intended position that bought, which is smaller whenever
     the legs that missed were the ones carrying weight.
+
+    And the cash, leg by leg (user ruling, 2026-08-29).  Share counts do not
+    price themselves: the rungs sell at different prices, so the widest leg
+    is routinely not the dearest one and no reader can split the basket
+    total by eye.  The ledger records the spend where it happens; rows
+    written before it did are priced at top of book instead, which is a
+    lower bound -- exact when the clip never had to walk the offer, short by
+    exactly the walk when it did -- and is marked as derived so the two are
+    never read as the same number.
     """
 
     def _load(payload: str, default: Any) -> Any:
@@ -144,6 +156,9 @@ def _entry_fill(
     intended: dict[str, float] = _load(intended_json, {})
     kept: dict[str, float] = _load(kept_json, {})
     rungs: dict[str, str] = _load(rungs_json, {})
+    intended_cash: dict[str, float] = _load(intended_cash_json, {})
+    kept_cash: dict[str, float] = _load(kept_cash_json, {})
+    derived_cash = not intended_cash and not kept_cash
     legs: list[dict[str, Any]] = []
     got_rungs = 0
     posted_rungs = 0
@@ -166,6 +181,12 @@ def _entry_fill(
         if filled_rungs is not None and leg_rungs:
             got_rungs += filled_rungs
             posted_rungs += leg_rungs
+        quote = prices.get(bucket)
+        want_cash = intended_cash.get(bucket)
+        have_cash = kept_cash.get(bucket)
+        if derived_cash and quote is not None:
+            want_cash = want * float(quote)
+            have_cash = have * float(quote)
         legs.append({
             "bucket": bucket,
             "intended_shares": want,
@@ -174,10 +195,19 @@ def _entry_fill(
             "filled_rungs": filled_rungs,
             "posted_rungs": leg_rungs,
             "fill_price": price,
+            "intended_stake_usdc": (
+                None if want_cash is None else float(want_cash)
+            ),
+            "filled_stake_usdc": (
+                None if have_cash is None else float(have_cash)
+            ),
             "empty": have <= 0.0,
         })
     want_shares = sum(leg["intended_shares"] for leg in legs)
     have_shares = sum(leg["filled_shares"] for leg in legs)
+    leg_cash_total = sum(
+        leg["filled_stake_usdc"] or 0.0 for leg in legs
+    )
     want_stake = (
         float(intended_stake) if intended_stake is not None else None
     )
@@ -189,6 +219,14 @@ def _entry_fill(
         "legs": legs,
         "intended_shares": want_shares,
         "filled_shares": have_shares,
+        # Whether the per-leg cash was measured or priced at top of book,
+        # and how far the derived legs fall short of the recorded stake --
+        # the size of the book walk, which is exactly what the derivation
+        # cannot see.
+        "leg_cash_derived": derived_cash,
+        "leg_cash_shortfall_usdc": (
+            None if not derived_cash else stake - leg_cash_total
+        ),
         "share_completion": (
             have_shares / want_shares if want_shares > 0 else None
         ),
@@ -236,7 +274,8 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         " p.posted_buckets_json, p.intended_legs_json, p.leg_shares_json,"
         " p.resting_fill_json, p.intended_stake_usdc,"
         " p.chain_shares_json, p.chain_stake_usdc, s.stage,"
-        " s.basket_all_in_cost"
+        " s.basket_all_in_cost,"
+        " p.intended_leg_stake_json, p.leg_stake_json"
         " FROM paper_trade_position p"
         # Joined on the station-day, not the position: the three stages are
         # one position and settle once, so every top-up in a chain reads the
@@ -276,6 +315,29 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             side = "below"
         else:
             side = "aligned"
+        # The same question asked of the seat's own centre instead of the
+        # distribution's: charter 54 seats on ``ladder_center_bucket``, the
+        # mass-weighted mean snapped to an admitted bucket, and that -- not
+        # the unsnapped centre of mass -- is the bucket the day was actually
+        # built around.  The two disagree by up to half a bucket, which is
+        # inside the lean tolerance often enough to flip a station's side,
+        # so the pair ships as two named readings rather than one silently
+        # chosen definition (see the three-centre split: A, B and C are
+        # different numbers and a page that says "位置" has to say which).
+        ladder_ordinal = ordinals.get(str(r[5] or ""))
+        ladder_lean = (
+            None
+            if ladder_ordinal is None or market_centre is None
+            else float(ladder_ordinal) - market_centre
+        )
+        if ladder_lean is None:
+            ladder_side = "unknown"
+        elif ladder_lean > LEAN_TOLERANCE_BUCKETS:
+            ladder_side = "above"
+        elif ladder_lean < -LEAN_TOLERANCE_BUCKETS:
+            ladder_side = "below"
+        else:
+            ladder_side = "aligned"
         cost = float(r[7])
         win = float(r[6])
         # What the seat covers, what it cost, and what that pair is worth.
@@ -337,6 +399,8 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             "stake_usdc": float(r[9]),
             "lean_buckets": lean,
             "side": side,
+            "ladder_lean_buckets": ladder_lean,
+            "ladder_side": ladder_side,
             "skew_sign": skew_sign,
             "dust_offer": cost < DUST_COST_FLOOR,
             # The chain's outcome belongs to the chain, and it is carried by
@@ -371,6 +435,9 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 intended_json=str(r[21] or ""),
                 kept_json=str(r[22] or ""),
                 rungs_json=str(r[23] or ""),
+                intended_cash_json=str(r[29] or ""),
+                kept_cash_json=str(r[30] or ""),
+                prices=prices,
                 intended_stake=r[24],
                 stake=stake,
                 window=json.loads(r[4]),
@@ -2183,7 +2250,13 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "station_roster": roster,
         "roster_event_dates": sorted({e["event_date"] for e in roster}, reverse=True),
         "stats_start_event_date": STATS_START_EVENT_DATE,
-        "rows": rows[:400],
+        # Every row, in date-descending order.  This list used to be cut to
+        # the newest four hundred here, which is a page-weight guard applied
+        # to the wrong end of the pipe: the daily table aggregates from it,
+        # so the cut silently deleted whole event days off the bottom -- the
+        # oldest three, and one more every time the ledger grew.  The
+        # dashboard trims its own copy after it has finished aggregating.
+        "rows": rows,
     }
 
 

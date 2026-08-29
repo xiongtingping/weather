@@ -71,6 +71,15 @@ METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION = (
 )
 METAR_TRAJECTORY_AUTHORITY_SCOPE = "PRODUCTION_NO_LIVE_ONLY"
 MAX_METAR_TRAJECTORY_OBSERVATIONS = 512
+# Soft path-evidence lanes (user ruling 2026-08-29, "soft in, hard out").
+# Their rows enter the path state -- momentum, drawdown, the physical
+# conditioner's view of the day -- but never the running high or the hard
+# exclusion mask: measured against the official settlement value, the MADIS
+# intra-hour maximum exceeds it on 35.7% of days (IEM one-minute on 89.5%),
+# because settlement follows the METAR series, and a hard bound built on a
+# reading settlement will never see killed the true bucket 57 times in the
+# 160-station-day replay of 2026-08-29.
+SOFT_PATH_SOURCE_LANES = frozenset({"asos_1min", "madis_hfmetar"})
 MAX_METAR_TRAJECTORY_BUCKETS = 256
 MAX_METAR_TRAJECTORY_FEATURES = 32
 MAX_METAR_TRAJECTORY_PROOF_TEXT_BYTES = 131_072
@@ -942,7 +951,19 @@ def canonicalize_metar_trajectory_observations(
             or event.event_date != event_date
         ):
             raise ContractError("metar_trajectory_observation_scope_mismatch")
-        if event.source_lane != expected_lane:
+        # An AWC-governed prefix may carry OOS-governed ASOS substitutes for
+        # the station's own frozen METAR slots (asos_1min exact product,
+        # madis_hfmetar five-minute carrier).  Admission policy lives at the
+        # write boundary -- ``build_asos_p1_observation`` refuses a row
+        # without an OOS_READY artifact and an ex-ante schedule slot -- so
+        # this layer only pins scope: the substitute lanes are the same
+        # sensor behind the same slots, while AMSC remains a different
+        # network and stays refused.
+        if event.source_lane not in (
+            {expected_lane, "asos_1min", "madis_hfmetar"}
+            if expected_lane == "awc"
+            else {expected_lane}
+        ):
             raise ContractError("metar_trajectory_source_lane_mismatch")
         if event.qc_state != "ACCEPTED" or event.supersedes_observation_id:
             raise ContractError("metar_trajectory_noncanonical_revision_forbidden")
@@ -1536,7 +1557,19 @@ def compile_metar_trajectory_update_proof(
         )
     ):
         raise ContractError("metar_trajectory_bucket_geometry_invalid")
-    running_high = max(item.temperature_c for item in ordered)
+    # Soft in, hard out: the running high -- and with it the hard mask, the
+    # remaining-warming origin and the reported-high bucket -- is a claim
+    # about what settlement will honor, and settlement follows the formal
+    # METAR series.  Soft carrier rows stay in ``ordered`` so the path state
+    # below sees the dense trajectory, but they may not move this number.
+    formal_temperatures = [
+        item.temperature_c
+        for item in ordered
+        if item.event.source_lane not in SOFT_PATH_SOURCE_LANES
+    ]
+    if not formal_temperatures:
+        raise ContractError("metar_trajectory_formal_observation_required")
+    running_high = max(formal_temperatures)
     conditional_path_state = None
     governed_remaining_distribution = governed.remaining_warming_distribution
     if (

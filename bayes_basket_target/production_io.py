@@ -601,11 +601,21 @@ def load_materialized_probability_envelopes(
                 )
                 == newest_at
             ]
+            # An AWC scope's newest P1 may legally be closed by an
+            # OOS-governed ASOS substitute for one of the station's own
+            # frozen METAR slots.  The substitute lanes are the same sensor
+            # on the same slots; a retired AMSC lane still blocks the scope
+            # exactly as before.
+            allowed_p1_lanes = (
+                {expected_lane, "asos_1min", "madis_hfmetar"}
+                if expected_lane == "awc"
+                else {expected_lane}
+            )
             if any(
                 str(envelope.lineage.get("source_lane") or "")
                 .strip()
                 .lower()
-                != expected_lane
+                not in allowed_p1_lanes
                 for envelope in newest_p1
             ):
                 raise ContractError("probability_p1_source_lane_mismatch")
@@ -1193,7 +1203,16 @@ def target_atomic_facts_from_cycle(compiled_cycle: Mapping[str, Any]) -> dict[st
         raise ContractError("target_atomic_lineage_incomplete")
     source_lane = str(lineage["source_lane"]).strip().upper()
     report_type = str(lineage["report_type"]).strip().upper()
-    if source_lane != "AWC" or report_type not in {"METAR", "SPECI"}:
+    # AWC reports root on PR12 truth revisions; scheduled ASOS substitutes
+    # root on their parallel identity facts.  The lane/report pairing is
+    # exact -- a lane may not borrow another lane's report type -- and
+    # anything outside the formal trio (AMSC, garbage) stays refused.
+    formal_report_types = {
+        "AWC": {"METAR", "SPECI"},
+        "MADIS_HFMETAR": {"ASOS_HF"},
+        "ASOS_1MIN": {"ASOS_1MIN"},
+    }
+    if report_type not in formal_report_types.get(source_lane, ()):
         raise ContractError("target_atomic_lineage_source_invalid")
     settlement_timezone = str(lineage["settlement_timezone"]).strip()
     if settlement_timezone != str(envelope.get("settlement_timezone") or "").strip():

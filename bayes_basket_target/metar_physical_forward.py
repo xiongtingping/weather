@@ -281,7 +281,13 @@ def plan_metar_physical_member_runs(
                         "SELECT observation_id,valid_at,"
                         "reported_temperature_c,raw_text "
                         "FROM reported_trajectory_observations "
-                        "WHERE station_id=? AND valid_at>=? AND valid_at<=? "
+                        # Pinned to the lane this layer was trained on: the
+                        # archive now also carries scheduled ASOS substitutes
+                        # (asos_1min / madis_hfmetar), and letting them into
+                        # this prefix would serve a population the fit never
+                        # saw.
+                        "WHERE station_id=? AND source_lane='awc' "
+                        "AND valid_at>=? AND valid_at<=? "
                         "ORDER BY valid_at",
                         (station_id, _iso(day_start), _iso(anchor)),
                     )
