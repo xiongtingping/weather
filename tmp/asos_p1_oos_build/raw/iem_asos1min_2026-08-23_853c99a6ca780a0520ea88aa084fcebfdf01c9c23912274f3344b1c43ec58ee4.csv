@@ -1,0 +1,2639 @@
+station,station_name,valid(UTC),tmpf
+LGA,New York/LaGuardia,2026-08-23 04:00,71
+LGA,New York/LaGuardia,2026-08-23 04:01,71
+LGA,New York/LaGuardia,2026-08-23 04:02,71
+LGA,New York/LaGuardia,2026-08-23 04:03,71
+LGA,New York/LaGuardia,2026-08-23 04:04,71
+LGA,New York/LaGuardia,2026-08-23 04:05,71
+LGA,New York/LaGuardia,2026-08-23 04:06,71
+LGA,New York/LaGuardia,2026-08-23 04:07,71
+LGA,New York/LaGuardia,2026-08-23 04:08,71
+LGA,New York/LaGuardia,2026-08-23 04:09,71
+LGA,New York/LaGuardia,2026-08-23 04:10,71
+LGA,New York/LaGuardia,2026-08-23 04:11,71
+LGA,New York/LaGuardia,2026-08-23 04:12,71
+LGA,New York/LaGuardia,2026-08-23 04:13,71
+LGA,New York/LaGuardia,2026-08-23 04:14,71
+LGA,New York/LaGuardia,2026-08-23 04:15,71
+LGA,New York/LaGuardia,2026-08-23 04:16,71
+LGA,New York/LaGuardia,2026-08-23 04:17,71
+LGA,New York/LaGuardia,2026-08-23 04:18,71
+LGA,New York/LaGuardia,2026-08-23 04:19,71
+LGA,New York/LaGuardia,2026-08-23 04:20,71
+LGA,New York/LaGuardia,2026-08-23 04:21,71
+LGA,New York/LaGuardia,2026-08-23 04:22,71
+LGA,New York/LaGuardia,2026-08-23 04:23,71
+LGA,New York/LaGuardia,2026-08-23 04:24,71
+LGA,New York/LaGuardia,2026-08-23 04:25,71
+LGA,New York/LaGuardia,2026-08-23 04:26,71
+LGA,New York/LaGuardia,2026-08-23 04:27,71
+LGA,New York/LaGuardia,2026-08-23 04:28,71
+LGA,New York/LaGuardia,2026-08-23 04:29,71
+LGA,New York/LaGuardia,2026-08-23 04:30,71
+LGA,New York/LaGuardia,2026-08-23 04:31,71
+LGA,New York/LaGuardia,2026-08-23 04:32,71
+LGA,New York/LaGuardia,2026-08-23 04:33,71
+LGA,New York/LaGuardia,2026-08-23 04:34,71
+LGA,New York/LaGuardia,2026-08-23 04:35,71
+LGA,New York/LaGuardia,2026-08-23 04:36,71
+LGA,New York/LaGuardia,2026-08-23 04:37,71
+LGA,New York/LaGuardia,2026-08-23 04:38,71
+LGA,New York/LaGuardia,2026-08-23 04:39,71
+LGA,New York/LaGuardia,2026-08-23 04:40,71
+LGA,New York/LaGuardia,2026-08-23 04:41,71
+LGA,New York/LaGuardia,2026-08-23 04:42,71
+LGA,New York/LaGuardia,2026-08-23 04:43,71
+LGA,New York/LaGuardia,2026-08-23 04:44,71
+LGA,New York/LaGuardia,2026-08-23 04:45,71
+LGA,New York/LaGuardia,2026-08-23 04:46,71
+LGA,New York/LaGuardia,2026-08-23 04:47,71
+LGA,New York/LaGuardia,2026-08-23 04:48,71
+LGA,New York/LaGuardia,2026-08-23 04:49,71
+LGA,New York/LaGuardia,2026-08-23 04:50,71
+LGA,New York/LaGuardia,2026-08-23 04:51,71
+LGA,New York/LaGuardia,2026-08-23 04:52,71
+LGA,New York/LaGuardia,2026-08-23 04:53,71
+LGA,New York/LaGuardia,2026-08-23 04:54,71
+LGA,New York/LaGuardia,2026-08-23 04:55,71
+LGA,New York/LaGuardia,2026-08-23 04:56,71
+LGA,New York/LaGuardia,2026-08-23 04:57,71
+LGA,New York/LaGuardia,2026-08-23 04:58,71
+LGA,New York/LaGuardia,2026-08-23 04:59,71
+LGA,New York/LaGuardia,2026-08-23 05:00,71
+LGA,New York/LaGuardia,2026-08-23 05:01,71
+LGA,New York/LaGuardia,2026-08-23 05:02,71
+LGA,New York/LaGuardia,2026-08-23 05:03,71
+LGA,New York/LaGuardia,2026-08-23 05:04,71
+LGA,New York/LaGuardia,2026-08-23 05:05,71
+LGA,New York/LaGuardia,2026-08-23 05:06,71
+LGA,New York/LaGuardia,2026-08-23 05:07,71
+LGA,New York/LaGuardia,2026-08-23 05:08,71
+LGA,New York/LaGuardia,2026-08-23 05:09,71
+LGA,New York/LaGuardia,2026-08-23 05:10,71
+LGA,New York/LaGuardia,2026-08-23 05:11,71
+LGA,New York/LaGuardia,2026-08-23 05:12,71
+LGA,New York/LaGuardia,2026-08-23 05:13,71
+LGA,New York/LaGuardia,2026-08-23 05:14,71
+LGA,New York/LaGuardia,2026-08-23 05:15,71
+LGA,New York/LaGuardia,2026-08-23 05:16,71
+LGA,New York/LaGuardia,2026-08-23 05:17,71
+LGA,New York/LaGuardia,2026-08-23 05:18,71
+LGA,New York/LaGuardia,2026-08-23 05:19,71
+LGA,New York/LaGuardia,2026-08-23 05:20,71
+LGA,New York/LaGuardia,2026-08-23 05:21,71
+LGA,New York/LaGuardia,2026-08-23 05:22,71
+LGA,New York/LaGuardia,2026-08-23 05:23,71
+LGA,New York/LaGuardia,2026-08-23 05:24,71
+LGA,New York/LaGuardia,2026-08-23 05:25,71
+LGA,New York/LaGuardia,2026-08-23 05:26,71
+LGA,New York/LaGuardia,2026-08-23 05:27,71
+LGA,New York/LaGuardia,2026-08-23 05:28,71
+LGA,New York/LaGuardia,2026-08-23 05:29,71
+LGA,New York/LaGuardia,2026-08-23 05:30,71
+LGA,New York/LaGuardia,2026-08-23 05:31,71
+LGA,New York/LaGuardia,2026-08-23 05:32,71
+LGA,New York/LaGuardia,2026-08-23 05:33,71
+LGA,New York/LaGuardia,2026-08-23 05:34,71
+LGA,New York/LaGuardia,2026-08-23 05:35,71
+LGA,New York/LaGuardia,2026-08-23 05:36,71
+LGA,New York/LaGuardia,2026-08-23 05:37,71
+LGA,New York/LaGuardia,2026-08-23 05:38,71
+LGA,New York/LaGuardia,2026-08-23 05:39,71
+LGA,New York/LaGuardia,2026-08-23 05:40,71
+LGA,New York/LaGuardia,2026-08-23 05:41,71
+LGA,New York/LaGuardia,2026-08-23 05:42,71
+LGA,New York/LaGuardia,2026-08-23 05:43,71
+LGA,New York/LaGuardia,2026-08-23 05:44,71
+LGA,New York/LaGuardia,2026-08-23 05:45,71
+LGA,New York/LaGuardia,2026-08-23 05:46,71
+LGA,New York/LaGuardia,2026-08-23 05:47,71
+LGA,New York/LaGuardia,2026-08-23 05:48,71
+LGA,New York/LaGuardia,2026-08-23 05:49,71
+LGA,New York/LaGuardia,2026-08-23 05:50,71
+LGA,New York/LaGuardia,2026-08-23 05:51,71
+LGA,New York/LaGuardia,2026-08-23 05:52,71
+LGA,New York/LaGuardia,2026-08-23 05:53,71
+LGA,New York/LaGuardia,2026-08-23 05:54,71
+LGA,New York/LaGuardia,2026-08-23 05:55,71
+LGA,New York/LaGuardia,2026-08-23 05:56,71
+LGA,New York/LaGuardia,2026-08-23 05:57,71
+LGA,New York/LaGuardia,2026-08-23 05:58,71
+LGA,New York/LaGuardia,2026-08-23 05:59,71
+LGA,New York/LaGuardia,2026-08-23 06:00,71
+LGA,New York/LaGuardia,2026-08-23 06:01,71
+LGA,New York/LaGuardia,2026-08-23 06:02,71
+LGA,New York/LaGuardia,2026-08-23 06:03,71
+LGA,New York/LaGuardia,2026-08-23 06:04,71
+LGA,New York/LaGuardia,2026-08-23 06:05,71
+LGA,New York/LaGuardia,2026-08-23 06:06,71
+LGA,New York/LaGuardia,2026-08-23 06:07,71
+LGA,New York/LaGuardia,2026-08-23 06:08,71
+LGA,New York/LaGuardia,2026-08-23 06:09,71
+LGA,New York/LaGuardia,2026-08-23 06:10,71
+LGA,New York/LaGuardia,2026-08-23 06:11,71
+LGA,New York/LaGuardia,2026-08-23 06:12,71
+LGA,New York/LaGuardia,2026-08-23 06:13,71
+LGA,New York/LaGuardia,2026-08-23 06:14,71
+LGA,New York/LaGuardia,2026-08-23 06:15,71
+LGA,New York/LaGuardia,2026-08-23 06:16,71
+LGA,New York/LaGuardia,2026-08-23 06:17,71
+LGA,New York/LaGuardia,2026-08-23 06:18,71
+LGA,New York/LaGuardia,2026-08-23 06:19,71
+LGA,New York/LaGuardia,2026-08-23 06:20,71
+LGA,New York/LaGuardia,2026-08-23 06:21,71
+LGA,New York/LaGuardia,2026-08-23 06:22,71
+LGA,New York/LaGuardia,2026-08-23 06:23,71
+LGA,New York/LaGuardia,2026-08-23 06:24,71
+LGA,New York/LaGuardia,2026-08-23 06:25,71
+LGA,New York/LaGuardia,2026-08-23 06:26,71
+LGA,New York/LaGuardia,2026-08-23 06:27,71
+LGA,New York/LaGuardia,2026-08-23 06:28,71
+LGA,New York/LaGuardia,2026-08-23 06:29,71
+LGA,New York/LaGuardia,2026-08-23 06:30,71
+LGA,New York/LaGuardia,2026-08-23 06:31,71
+LGA,New York/LaGuardia,2026-08-23 06:32,71
+LGA,New York/LaGuardia,2026-08-23 06:33,71
+LGA,New York/LaGuardia,2026-08-23 06:34,71
+LGA,New York/LaGuardia,2026-08-23 06:35,71
+LGA,New York/LaGuardia,2026-08-23 06:36,71
+LGA,New York/LaGuardia,2026-08-23 06:37,71
+LGA,New York/LaGuardia,2026-08-23 06:38,71
+LGA,New York/LaGuardia,2026-08-23 06:39,71
+LGA,New York/LaGuardia,2026-08-23 06:40,71
+LGA,New York/LaGuardia,2026-08-23 06:41,71
+LGA,New York/LaGuardia,2026-08-23 06:42,71
+LGA,New York/LaGuardia,2026-08-23 06:43,71
+LGA,New York/LaGuardia,2026-08-23 06:44,71
+LGA,New York/LaGuardia,2026-08-23 06:45,71
+LGA,New York/LaGuardia,2026-08-23 06:46,71
+LGA,New York/LaGuardia,2026-08-23 06:47,71
+LGA,New York/LaGuardia,2026-08-23 06:48,71
+LGA,New York/LaGuardia,2026-08-23 06:49,71
+LGA,New York/LaGuardia,2026-08-23 06:50,71
+LGA,New York/LaGuardia,2026-08-23 06:51,71
+LGA,New York/LaGuardia,2026-08-23 06:52,71
+LGA,New York/LaGuardia,2026-08-23 06:53,71
+LGA,New York/LaGuardia,2026-08-23 06:54,71
+LGA,New York/LaGuardia,2026-08-23 06:55,71
+LGA,New York/LaGuardia,2026-08-23 06:56,71
+LGA,New York/LaGuardia,2026-08-23 06:57,71
+LGA,New York/LaGuardia,2026-08-23 06:58,71
+LGA,New York/LaGuardia,2026-08-23 06:59,71
+LGA,New York/LaGuardia,2026-08-23 07:00,71
+LGA,New York/LaGuardia,2026-08-23 07:01,71
+LGA,New York/LaGuardia,2026-08-23 07:02,71
+LGA,New York/LaGuardia,2026-08-23 07:03,71
+LGA,New York/LaGuardia,2026-08-23 07:04,71
+LGA,New York/LaGuardia,2026-08-23 07:05,71
+LGA,New York/LaGuardia,2026-08-23 07:06,71
+LGA,New York/LaGuardia,2026-08-23 07:07,71
+LGA,New York/LaGuardia,2026-08-23 07:08,71
+LGA,New York/LaGuardia,2026-08-23 07:09,71
+LGA,New York/LaGuardia,2026-08-23 07:10,71
+LGA,New York/LaGuardia,2026-08-23 07:11,71
+LGA,New York/LaGuardia,2026-08-23 07:12,71
+LGA,New York/LaGuardia,2026-08-23 07:13,71
+LGA,New York/LaGuardia,2026-08-23 07:14,71
+LGA,New York/LaGuardia,2026-08-23 07:15,71
+LGA,New York/LaGuardia,2026-08-23 07:16,71
+LGA,New York/LaGuardia,2026-08-23 07:17,71
+LGA,New York/LaGuardia,2026-08-23 07:18,71
+LGA,New York/LaGuardia,2026-08-23 07:19,71
+LGA,New York/LaGuardia,2026-08-23 07:20,71
+LGA,New York/LaGuardia,2026-08-23 07:21,71
+LGA,New York/LaGuardia,2026-08-23 07:22,71
+LGA,New York/LaGuardia,2026-08-23 07:23,71
+LGA,New York/LaGuardia,2026-08-23 07:24,71
+LGA,New York/LaGuardia,2026-08-23 07:25,71
+LGA,New York/LaGuardia,2026-08-23 07:26,71
+LGA,New York/LaGuardia,2026-08-23 07:27,71
+LGA,New York/LaGuardia,2026-08-23 07:28,71
+LGA,New York/LaGuardia,2026-08-23 07:29,71
+LGA,New York/LaGuardia,2026-08-23 07:30,71
+LGA,New York/LaGuardia,2026-08-23 07:31,71
+LGA,New York/LaGuardia,2026-08-23 07:32,71
+LGA,New York/LaGuardia,2026-08-23 07:33,71
+LGA,New York/LaGuardia,2026-08-23 07:34,71
+LGA,New York/LaGuardia,2026-08-23 07:35,71
+LGA,New York/LaGuardia,2026-08-23 07:36,71
+LGA,New York/LaGuardia,2026-08-23 07:37,71
+LGA,New York/LaGuardia,2026-08-23 07:38,71
+LGA,New York/LaGuardia,2026-08-23 07:39,71
+LGA,New York/LaGuardia,2026-08-23 07:40,71
+LGA,New York/LaGuardia,2026-08-23 07:41,71
+LGA,New York/LaGuardia,2026-08-23 07:42,71
+LGA,New York/LaGuardia,2026-08-23 07:43,71
+LGA,New York/LaGuardia,2026-08-23 07:44,71
+LGA,New York/LaGuardia,2026-08-23 07:45,71
+LGA,New York/LaGuardia,2026-08-23 07:46,71
+LGA,New York/LaGuardia,2026-08-23 07:47,71
+LGA,New York/LaGuardia,2026-08-23 07:48,71
+LGA,New York/LaGuardia,2026-08-23 07:49,71
+LGA,New York/LaGuardia,2026-08-23 07:50,71
+LGA,New York/LaGuardia,2026-08-23 07:51,71
+LGA,New York/LaGuardia,2026-08-23 07:52,71
+LGA,New York/LaGuardia,2026-08-23 07:53,71
+LGA,New York/LaGuardia,2026-08-23 07:54,71
+LGA,New York/LaGuardia,2026-08-23 07:55,71
+LGA,New York/LaGuardia,2026-08-23 07:56,71
+LGA,New York/LaGuardia,2026-08-23 07:57,71
+LGA,New York/LaGuardia,2026-08-23 07:58,71
+LGA,New York/LaGuardia,2026-08-23 07:59,71
+LGA,New York/LaGuardia,2026-08-23 08:00,71
+LGA,New York/LaGuardia,2026-08-23 08:01,71
+LGA,New York/LaGuardia,2026-08-23 08:02,71
+LGA,New York/LaGuardia,2026-08-23 08:03,71
+LGA,New York/LaGuardia,2026-08-23 08:04,71
+LGA,New York/LaGuardia,2026-08-23 08:05,71
+LGA,New York/LaGuardia,2026-08-23 08:06,71
+LGA,New York/LaGuardia,2026-08-23 08:07,71
+LGA,New York/LaGuardia,2026-08-23 08:08,71
+LGA,New York/LaGuardia,2026-08-23 08:09,71
+LGA,New York/LaGuardia,2026-08-23 08:10,71
+LGA,New York/LaGuardia,2026-08-23 08:11,71
+LGA,New York/LaGuardia,2026-08-23 08:12,71
+LGA,New York/LaGuardia,2026-08-23 08:13,71
+LGA,New York/LaGuardia,2026-08-23 08:14,71
+LGA,New York/LaGuardia,2026-08-23 08:15,71
+LGA,New York/LaGuardia,2026-08-23 08:16,71
+LGA,New York/LaGuardia,2026-08-23 08:17,71
+LGA,New York/LaGuardia,2026-08-23 08:18,71
+LGA,New York/LaGuardia,2026-08-23 08:19,71
+LGA,New York/LaGuardia,2026-08-23 08:20,71
+LGA,New York/LaGuardia,2026-08-23 08:21,71
+LGA,New York/LaGuardia,2026-08-23 08:22,71
+LGA,New York/LaGuardia,2026-08-23 08:23,71
+LGA,New York/LaGuardia,2026-08-23 08:24,71
+LGA,New York/LaGuardia,2026-08-23 08:25,71
+LGA,New York/LaGuardia,2026-08-23 08:26,71
+LGA,New York/LaGuardia,2026-08-23 08:27,71
+LGA,New York/LaGuardia,2026-08-23 08:28,71
+LGA,New York/LaGuardia,2026-08-23 08:29,71
+LGA,New York/LaGuardia,2026-08-23 08:30,71
+LGA,New York/LaGuardia,2026-08-23 08:31,71
+LGA,New York/LaGuardia,2026-08-23 08:32,71
+LGA,New York/LaGuardia,2026-08-23 08:33,71
+LGA,New York/LaGuardia,2026-08-23 08:34,71
+LGA,New York/LaGuardia,2026-08-23 08:35,71
+LGA,New York/LaGuardia,2026-08-23 08:36,71
+LGA,New York/LaGuardia,2026-08-23 08:37,71
+LGA,New York/LaGuardia,2026-08-23 08:38,71
+LGA,New York/LaGuardia,2026-08-23 08:39,71
+LGA,New York/LaGuardia,2026-08-23 08:40,71
+LGA,New York/LaGuardia,2026-08-23 08:41,71
+LGA,New York/LaGuardia,2026-08-23 08:42,71
+LGA,New York/LaGuardia,2026-08-23 08:43,71
+LGA,New York/LaGuardia,2026-08-23 08:44,71
+LGA,New York/LaGuardia,2026-08-23 08:45,71
+LGA,New York/LaGuardia,2026-08-23 08:46,71
+LGA,New York/LaGuardia,2026-08-23 08:47,71
+LGA,New York/LaGuardia,2026-08-23 08:48,71
+LGA,New York/LaGuardia,2026-08-23 08:49,71
+LGA,New York/LaGuardia,2026-08-23 08:50,71
+LGA,New York/LaGuardia,2026-08-23 08:51,71
+LGA,New York/LaGuardia,2026-08-23 08:52,71
+LGA,New York/LaGuardia,2026-08-23 08:53,71
+LGA,New York/LaGuardia,2026-08-23 08:54,71
+LGA,New York/LaGuardia,2026-08-23 08:55,71
+LGA,New York/LaGuardia,2026-08-23 08:56,71
+LGA,New York/LaGuardia,2026-08-23 08:57,71
+LGA,New York/LaGuardia,2026-08-23 08:58,71
+LGA,New York/LaGuardia,2026-08-23 08:59,71
+LGA,New York/LaGuardia,2026-08-23 09:00,71
+LGA,New York/LaGuardia,2026-08-23 09:01,71
+LGA,New York/LaGuardia,2026-08-23 09:02,71
+LGA,New York/LaGuardia,2026-08-23 09:03,71
+LGA,New York/LaGuardia,2026-08-23 09:04,71
+LGA,New York/LaGuardia,2026-08-23 09:05,71
+LGA,New York/LaGuardia,2026-08-23 09:06,71
+LGA,New York/LaGuardia,2026-08-23 09:07,71
+LGA,New York/LaGuardia,2026-08-23 09:08,71
+LGA,New York/LaGuardia,2026-08-23 09:09,71
+LGA,New York/LaGuardia,2026-08-23 09:10,71
+LGA,New York/LaGuardia,2026-08-23 09:11,71
+LGA,New York/LaGuardia,2026-08-23 09:12,71
+LGA,New York/LaGuardia,2026-08-23 09:13,71
+LGA,New York/LaGuardia,2026-08-23 09:14,71
+LGA,New York/LaGuardia,2026-08-23 09:15,71
+LGA,New York/LaGuardia,2026-08-23 09:16,71
+LGA,New York/LaGuardia,2026-08-23 09:17,71
+LGA,New York/LaGuardia,2026-08-23 09:18,71
+LGA,New York/LaGuardia,2026-08-23 09:19,71
+LGA,New York/LaGuardia,2026-08-23 09:20,71
+LGA,New York/LaGuardia,2026-08-23 09:21,71
+LGA,New York/LaGuardia,2026-08-23 09:22,71
+LGA,New York/LaGuardia,2026-08-23 09:23,71
+LGA,New York/LaGuardia,2026-08-23 09:24,71
+LGA,New York/LaGuardia,2026-08-23 09:25,71
+LGA,New York/LaGuardia,2026-08-23 09:26,71
+LGA,New York/LaGuardia,2026-08-23 09:27,71
+LGA,New York/LaGuardia,2026-08-23 09:28,71
+LGA,New York/LaGuardia,2026-08-23 09:29,71
+LGA,New York/LaGuardia,2026-08-23 09:30,71
+LGA,New York/LaGuardia,2026-08-23 09:31,71
+LGA,New York/LaGuardia,2026-08-23 09:32,71
+LGA,New York/LaGuardia,2026-08-23 09:33,71
+LGA,New York/LaGuardia,2026-08-23 09:34,71
+LGA,New York/LaGuardia,2026-08-23 09:35,71
+LGA,New York/LaGuardia,2026-08-23 09:36,71
+LGA,New York/LaGuardia,2026-08-23 09:37,71
+LGA,New York/LaGuardia,2026-08-23 09:38,71
+LGA,New York/LaGuardia,2026-08-23 09:39,71
+LGA,New York/LaGuardia,2026-08-23 09:40,71
+LGA,New York/LaGuardia,2026-08-23 09:41,71
+LGA,New York/LaGuardia,2026-08-23 09:42,71
+LGA,New York/LaGuardia,2026-08-23 09:43,71
+LGA,New York/LaGuardia,2026-08-23 09:44,71
+LGA,New York/LaGuardia,2026-08-23 09:45,71
+LGA,New York/LaGuardia,2026-08-23 09:46,71
+LGA,New York/LaGuardia,2026-08-23 09:47,71
+LGA,New York/LaGuardia,2026-08-23 09:48,71
+LGA,New York/LaGuardia,2026-08-23 09:49,71
+LGA,New York/LaGuardia,2026-08-23 09:50,71
+LGA,New York/LaGuardia,2026-08-23 09:51,71
+LGA,New York/LaGuardia,2026-08-23 09:52,71
+LGA,New York/LaGuardia,2026-08-23 09:53,71
+LGA,New York/LaGuardia,2026-08-23 09:54,71
+LGA,New York/LaGuardia,2026-08-23 09:55,71
+LGA,New York/LaGuardia,2026-08-23 09:56,71
+LGA,New York/LaGuardia,2026-08-23 09:57,71
+LGA,New York/LaGuardia,2026-08-23 09:58,71
+LGA,New York/LaGuardia,2026-08-23 09:59,71
+LGA,New York/LaGuardia,2026-08-23 10:00,71
+LGA,New York/LaGuardia,2026-08-23 10:01,71
+LGA,New York/LaGuardia,2026-08-23 10:02,71
+LGA,New York/LaGuardia,2026-08-23 10:03,71
+LGA,New York/LaGuardia,2026-08-23 10:04,71
+LGA,New York/LaGuardia,2026-08-23 10:05,71
+LGA,New York/LaGuardia,2026-08-23 10:06,71
+LGA,New York/LaGuardia,2026-08-23 10:07,71
+LGA,New York/LaGuardia,2026-08-23 10:08,71
+LGA,New York/LaGuardia,2026-08-23 10:09,71
+LGA,New York/LaGuardia,2026-08-23 10:10,71
+LGA,New York/LaGuardia,2026-08-23 10:11,71
+LGA,New York/LaGuardia,2026-08-23 10:12,71
+LGA,New York/LaGuardia,2026-08-23 10:13,72
+LGA,New York/LaGuardia,2026-08-23 10:14,72
+LGA,New York/LaGuardia,2026-08-23 10:15,72
+LGA,New York/LaGuardia,2026-08-23 10:16,71
+LGA,New York/LaGuardia,2026-08-23 10:17,71
+LGA,New York/LaGuardia,2026-08-23 10:18,71
+LGA,New York/LaGuardia,2026-08-23 10:19,71
+LGA,New York/LaGuardia,2026-08-23 10:20,71
+LGA,New York/LaGuardia,2026-08-23 10:21,71
+LGA,New York/LaGuardia,2026-08-23 10:22,71
+LGA,New York/LaGuardia,2026-08-23 10:23,71
+LGA,New York/LaGuardia,2026-08-23 10:24,71
+LGA,New York/LaGuardia,2026-08-23 10:25,71
+LGA,New York/LaGuardia,2026-08-23 10:26,71
+LGA,New York/LaGuardia,2026-08-23 10:27,71
+LGA,New York/LaGuardia,2026-08-23 10:28,71
+LGA,New York/LaGuardia,2026-08-23 10:29,71
+LGA,New York/LaGuardia,2026-08-23 10:30,71
+LGA,New York/LaGuardia,2026-08-23 10:31,71
+LGA,New York/LaGuardia,2026-08-23 10:32,71
+LGA,New York/LaGuardia,2026-08-23 10:33,71
+LGA,New York/LaGuardia,2026-08-23 10:34,71
+LGA,New York/LaGuardia,2026-08-23 10:35,71
+LGA,New York/LaGuardia,2026-08-23 10:36,71
+LGA,New York/LaGuardia,2026-08-23 10:37,71
+LGA,New York/LaGuardia,2026-08-23 10:38,71
+LGA,New York/LaGuardia,2026-08-23 10:39,71
+LGA,New York/LaGuardia,2026-08-23 10:40,70
+LGA,New York/LaGuardia,2026-08-23 10:41,70
+LGA,New York/LaGuardia,2026-08-23 10:42,71
+LGA,New York/LaGuardia,2026-08-23 10:43,71
+LGA,New York/LaGuardia,2026-08-23 10:44,71
+LGA,New York/LaGuardia,2026-08-23 10:45,71
+LGA,New York/LaGuardia,2026-08-23 10:46,71
+LGA,New York/LaGuardia,2026-08-23 10:47,71
+LGA,New York/LaGuardia,2026-08-23 10:48,71
+LGA,New York/LaGuardia,2026-08-23 10:49,71
+LGA,New York/LaGuardia,2026-08-23 10:50,70
+LGA,New York/LaGuardia,2026-08-23 10:51,70
+LGA,New York/LaGuardia,2026-08-23 10:52,70
+LGA,New York/LaGuardia,2026-08-23 10:53,70
+LGA,New York/LaGuardia,2026-08-23 10:54,70
+LGA,New York/LaGuardia,2026-08-23 10:55,70
+LGA,New York/LaGuardia,2026-08-23 10:56,70
+LGA,New York/LaGuardia,2026-08-23 10:57,70
+LGA,New York/LaGuardia,2026-08-23 10:58,70
+LGA,New York/LaGuardia,2026-08-23 10:59,70
+LGA,New York/LaGuardia,2026-08-23 11:00,70
+LGA,New York/LaGuardia,2026-08-23 11:01,70
+LGA,New York/LaGuardia,2026-08-23 11:02,70
+LGA,New York/LaGuardia,2026-08-23 11:03,70
+LGA,New York/LaGuardia,2026-08-23 11:04,70
+LGA,New York/LaGuardia,2026-08-23 11:05,70
+LGA,New York/LaGuardia,2026-08-23 11:06,70
+LGA,New York/LaGuardia,2026-08-23 11:07,69
+LGA,New York/LaGuardia,2026-08-23 11:08,70
+LGA,New York/LaGuardia,2026-08-23 11:09,69
+LGA,New York/LaGuardia,2026-08-23 11:10,69
+LGA,New York/LaGuardia,2026-08-23 11:11,69
+LGA,New York/LaGuardia,2026-08-23 11:12,69
+LGA,New York/LaGuardia,2026-08-23 11:13,69
+LGA,New York/LaGuardia,2026-08-23 11:14,69
+LGA,New York/LaGuardia,2026-08-23 11:15,70
+LGA,New York/LaGuardia,2026-08-23 11:16,69
+LGA,New York/LaGuardia,2026-08-23 11:17,69
+LGA,New York/LaGuardia,2026-08-23 11:18,69
+LGA,New York/LaGuardia,2026-08-23 11:19,68
+LGA,New York/LaGuardia,2026-08-23 11:20,69
+LGA,New York/LaGuardia,2026-08-23 11:21,69
+LGA,New York/LaGuardia,2026-08-23 11:22,69
+LGA,New York/LaGuardia,2026-08-23 11:23,69
+LGA,New York/LaGuardia,2026-08-23 11:24,70
+LGA,New York/LaGuardia,2026-08-23 11:25,70
+LGA,New York/LaGuardia,2026-08-23 11:26,69
+LGA,New York/LaGuardia,2026-08-23 11:27,70
+LGA,New York/LaGuardia,2026-08-23 11:28,70
+LGA,New York/LaGuardia,2026-08-23 11:29,70
+LGA,New York/LaGuardia,2026-08-23 11:30,69
+LGA,New York/LaGuardia,2026-08-23 11:31,70
+LGA,New York/LaGuardia,2026-08-23 11:32,70
+LGA,New York/LaGuardia,2026-08-23 11:33,70
+LGA,New York/LaGuardia,2026-08-23 11:34,70
+LGA,New York/LaGuardia,2026-08-23 11:35,70
+LGA,New York/LaGuardia,2026-08-23 11:36,70
+LGA,New York/LaGuardia,2026-08-23 11:37,70
+LGA,New York/LaGuardia,2026-08-23 11:38,70
+LGA,New York/LaGuardia,2026-08-23 11:39,70
+LGA,New York/LaGuardia,2026-08-23 11:40,70
+LGA,New York/LaGuardia,2026-08-23 11:41,70
+LGA,New York/LaGuardia,2026-08-23 11:42,70
+LGA,New York/LaGuardia,2026-08-23 11:43,70
+LGA,New York/LaGuardia,2026-08-23 11:44,70
+LGA,New York/LaGuardia,2026-08-23 11:45,70
+LGA,New York/LaGuardia,2026-08-23 11:46,70
+LGA,New York/LaGuardia,2026-08-23 11:47,70
+LGA,New York/LaGuardia,2026-08-23 11:48,70
+LGA,New York/LaGuardia,2026-08-23 11:49,70
+LGA,New York/LaGuardia,2026-08-23 11:50,70
+LGA,New York/LaGuardia,2026-08-23 11:51,70
+LGA,New York/LaGuardia,2026-08-23 11:52,70
+LGA,New York/LaGuardia,2026-08-23 11:53,71
+LGA,New York/LaGuardia,2026-08-23 11:54,70
+LGA,New York/LaGuardia,2026-08-23 11:55,71
+LGA,New York/LaGuardia,2026-08-23 11:56,71
+LGA,New York/LaGuardia,2026-08-23 11:57,71
+LGA,New York/LaGuardia,2026-08-23 11:58,72
+LGA,New York/LaGuardia,2026-08-23 11:59,72
+LGA,New York/LaGuardia,2026-08-23 12:00,71
+LGA,New York/LaGuardia,2026-08-23 12:01,71
+LGA,New York/LaGuardia,2026-08-23 12:02,71
+LGA,New York/LaGuardia,2026-08-23 12:03,71
+LGA,New York/LaGuardia,2026-08-23 12:04,71
+LGA,New York/LaGuardia,2026-08-23 12:05,71
+LGA,New York/LaGuardia,2026-08-23 12:06,71
+LGA,New York/LaGuardia,2026-08-23 12:07,71
+LGA,New York/LaGuardia,2026-08-23 12:08,71
+LGA,New York/LaGuardia,2026-08-23 12:09,70
+LGA,New York/LaGuardia,2026-08-23 12:10,70
+LGA,New York/LaGuardia,2026-08-23 12:11,70
+LGA,New York/LaGuardia,2026-08-23 12:12,70
+LGA,New York/LaGuardia,2026-08-23 12:13,71
+LGA,New York/LaGuardia,2026-08-23 12:14,71
+LGA,New York/LaGuardia,2026-08-23 12:15,71
+LGA,New York/LaGuardia,2026-08-23 12:16,71
+LGA,New York/LaGuardia,2026-08-23 12:17,71
+LGA,New York/LaGuardia,2026-08-23 12:18,71
+LGA,New York/LaGuardia,2026-08-23 12:19,71
+LGA,New York/LaGuardia,2026-08-23 12:20,71
+LGA,New York/LaGuardia,2026-08-23 12:21,71
+LGA,New York/LaGuardia,2026-08-23 12:22,72
+LGA,New York/LaGuardia,2026-08-23 12:23,71
+LGA,New York/LaGuardia,2026-08-23 12:24,71
+LGA,New York/LaGuardia,2026-08-23 12:25,71
+LGA,New York/LaGuardia,2026-08-23 12:26,71
+LGA,New York/LaGuardia,2026-08-23 12:27,71
+LGA,New York/LaGuardia,2026-08-23 12:28,71
+LGA,New York/LaGuardia,2026-08-23 12:29,71
+LGA,New York/LaGuardia,2026-08-23 12:30,71
+LGA,New York/LaGuardia,2026-08-23 12:31,71
+LGA,New York/LaGuardia,2026-08-23 12:32,72
+LGA,New York/LaGuardia,2026-08-23 12:33,72
+LGA,New York/LaGuardia,2026-08-23 12:34,72
+LGA,New York/LaGuardia,2026-08-23 12:35,71
+LGA,New York/LaGuardia,2026-08-23 12:36,72
+LGA,New York/LaGuardia,2026-08-23 12:37,72
+LGA,New York/LaGuardia,2026-08-23 12:38,71
+LGA,New York/LaGuardia,2026-08-23 12:39,72
+LGA,New York/LaGuardia,2026-08-23 12:40,71
+LGA,New York/LaGuardia,2026-08-23 12:41,71
+LGA,New York/LaGuardia,2026-08-23 12:42,71
+LGA,New York/LaGuardia,2026-08-23 12:43,71
+LGA,New York/LaGuardia,2026-08-23 12:44,72
+LGA,New York/LaGuardia,2026-08-23 12:45,71
+LGA,New York/LaGuardia,2026-08-23 12:46,72
+LGA,New York/LaGuardia,2026-08-23 12:47,72
+LGA,New York/LaGuardia,2026-08-23 12:48,73
+LGA,New York/LaGuardia,2026-08-23 12:49,73
+LGA,New York/LaGuardia,2026-08-23 12:50,73
+LGA,New York/LaGuardia,2026-08-23 12:51,72
+LGA,New York/LaGuardia,2026-08-23 12:52,72
+LGA,New York/LaGuardia,2026-08-23 12:53,73
+LGA,New York/LaGuardia,2026-08-23 12:54,72
+LGA,New York/LaGuardia,2026-08-23 12:55,73
+LGA,New York/LaGuardia,2026-08-23 12:56,72
+LGA,New York/LaGuardia,2026-08-23 12:57,72
+LGA,New York/LaGuardia,2026-08-23 12:58,73
+LGA,New York/LaGuardia,2026-08-23 12:59,73
+LGA,New York/LaGuardia,2026-08-23 13:00,73
+LGA,New York/LaGuardia,2026-08-23 13:01,73
+LGA,New York/LaGuardia,2026-08-23 13:02,73
+LGA,New York/LaGuardia,2026-08-23 13:03,73
+LGA,New York/LaGuardia,2026-08-23 13:04,73
+LGA,New York/LaGuardia,2026-08-23 13:05,73
+LGA,New York/LaGuardia,2026-08-23 13:06,74
+LGA,New York/LaGuardia,2026-08-23 13:07,75
+LGA,New York/LaGuardia,2026-08-23 13:08,75
+LGA,New York/LaGuardia,2026-08-23 13:09,75
+LGA,New York/LaGuardia,2026-08-23 13:10,74
+LGA,New York/LaGuardia,2026-08-23 13:11,75
+LGA,New York/LaGuardia,2026-08-23 13:12,74
+LGA,New York/LaGuardia,2026-08-23 13:13,74
+LGA,New York/LaGuardia,2026-08-23 13:14,74
+LGA,New York/LaGuardia,2026-08-23 13:15,74
+LGA,New York/LaGuardia,2026-08-23 13:16,74
+LGA,New York/LaGuardia,2026-08-23 13:17,73
+LGA,New York/LaGuardia,2026-08-23 13:18,74
+LGA,New York/LaGuardia,2026-08-23 13:19,74
+LGA,New York/LaGuardia,2026-08-23 13:20,73
+LGA,New York/LaGuardia,2026-08-23 13:21,73
+LGA,New York/LaGuardia,2026-08-23 13:22,74
+LGA,New York/LaGuardia,2026-08-23 13:23,74
+LGA,New York/LaGuardia,2026-08-23 13:24,74
+LGA,New York/LaGuardia,2026-08-23 13:25,74
+LGA,New York/LaGuardia,2026-08-23 13:26,73
+LGA,New York/LaGuardia,2026-08-23 13:27,73
+LGA,New York/LaGuardia,2026-08-23 13:28,74
+LGA,New York/LaGuardia,2026-08-23 13:29,73
+LGA,New York/LaGuardia,2026-08-23 13:30,73
+LGA,New York/LaGuardia,2026-08-23 13:31,74
+LGA,New York/LaGuardia,2026-08-23 13:32,74
+LGA,New York/LaGuardia,2026-08-23 13:33,74
+LGA,New York/LaGuardia,2026-08-23 13:34,74
+LGA,New York/LaGuardia,2026-08-23 13:35,73
+LGA,New York/LaGuardia,2026-08-23 13:36,73
+LGA,New York/LaGuardia,2026-08-23 13:37,73
+LGA,New York/LaGuardia,2026-08-23 13:38,74
+LGA,New York/LaGuardia,2026-08-23 13:39,74
+LGA,New York/LaGuardia,2026-08-23 13:40,74
+LGA,New York/LaGuardia,2026-08-23 13:41,74
+LGA,New York/LaGuardia,2026-08-23 13:42,74
+LGA,New York/LaGuardia,2026-08-23 13:43,74
+LGA,New York/LaGuardia,2026-08-23 13:44,73
+LGA,New York/LaGuardia,2026-08-23 13:45,73
+LGA,New York/LaGuardia,2026-08-23 13:46,74
+LGA,New York/LaGuardia,2026-08-23 13:47,74
+LGA,New York/LaGuardia,2026-08-23 13:48,74
+LGA,New York/LaGuardia,2026-08-23 13:49,75
+LGA,New York/LaGuardia,2026-08-23 13:50,74
+LGA,New York/LaGuardia,2026-08-23 13:51,74
+LGA,New York/LaGuardia,2026-08-23 13:52,74
+LGA,New York/LaGuardia,2026-08-23 13:53,74
+LGA,New York/LaGuardia,2026-08-23 13:54,74
+LGA,New York/LaGuardia,2026-08-23 13:55,74
+LGA,New York/LaGuardia,2026-08-23 13:56,74
+LGA,New York/LaGuardia,2026-08-23 13:57,75
+LGA,New York/LaGuardia,2026-08-23 13:58,75
+LGA,New York/LaGuardia,2026-08-23 13:59,75
+LGA,New York/LaGuardia,2026-08-23 14:00,75
+LGA,New York/LaGuardia,2026-08-23 14:01,75
+LGA,New York/LaGuardia,2026-08-23 14:02,75
+LGA,New York/LaGuardia,2026-08-23 14:03,75
+LGA,New York/LaGuardia,2026-08-23 14:04,74
+LGA,New York/LaGuardia,2026-08-23 14:05,75
+LGA,New York/LaGuardia,2026-08-23 14:06,75
+LGA,New York/LaGuardia,2026-08-23 14:07,75
+LGA,New York/LaGuardia,2026-08-23 14:08,75
+LGA,New York/LaGuardia,2026-08-23 14:09,75
+LGA,New York/LaGuardia,2026-08-23 14:10,75
+LGA,New York/LaGuardia,2026-08-23 14:11,75
+LGA,New York/LaGuardia,2026-08-23 14:12,75
+LGA,New York/LaGuardia,2026-08-23 14:13,75
+LGA,New York/LaGuardia,2026-08-23 14:14,74
+LGA,New York/LaGuardia,2026-08-23 14:15,75
+LGA,New York/LaGuardia,2026-08-23 14:16,75
+LGA,New York/LaGuardia,2026-08-23 14:17,75
+LGA,New York/LaGuardia,2026-08-23 14:18,75
+LGA,New York/LaGuardia,2026-08-23 14:19,74
+LGA,New York/LaGuardia,2026-08-23 14:20,74
+LGA,New York/LaGuardia,2026-08-23 14:21,74
+LGA,New York/LaGuardia,2026-08-23 14:22,75
+LGA,New York/LaGuardia,2026-08-23 14:23,75
+LGA,New York/LaGuardia,2026-08-23 14:24,75
+LGA,New York/LaGuardia,2026-08-23 14:25,75
+LGA,New York/LaGuardia,2026-08-23 14:26,75
+LGA,New York/LaGuardia,2026-08-23 14:27,75
+LGA,New York/LaGuardia,2026-08-23 14:28,75
+LGA,New York/LaGuardia,2026-08-23 14:29,75
+LGA,New York/LaGuardia,2026-08-23 14:30,75
+LGA,New York/LaGuardia,2026-08-23 14:31,75
+LGA,New York/LaGuardia,2026-08-23 14:32,75
+LGA,New York/LaGuardia,2026-08-23 14:33,76
+LGA,New York/LaGuardia,2026-08-23 14:34,75
+LGA,New York/LaGuardia,2026-08-23 14:35,75
+LGA,New York/LaGuardia,2026-08-23 14:36,75
+LGA,New York/LaGuardia,2026-08-23 14:37,75
+LGA,New York/LaGuardia,2026-08-23 14:38,75
+LGA,New York/LaGuardia,2026-08-23 14:39,75
+LGA,New York/LaGuardia,2026-08-23 14:40,75
+LGA,New York/LaGuardia,2026-08-23 14:41,75
+LGA,New York/LaGuardia,2026-08-23 14:42,75
+LGA,New York/LaGuardia,2026-08-23 14:43,75
+LGA,New York/LaGuardia,2026-08-23 14:44,75
+LGA,New York/LaGuardia,2026-08-23 14:45,76
+LGA,New York/LaGuardia,2026-08-23 14:46,76
+LGA,New York/LaGuardia,2026-08-23 14:47,76
+LGA,New York/LaGuardia,2026-08-23 14:48,76
+LGA,New York/LaGuardia,2026-08-23 14:49,76
+LGA,New York/LaGuardia,2026-08-23 14:50,76
+LGA,New York/LaGuardia,2026-08-23 14:51,76
+LGA,New York/LaGuardia,2026-08-23 14:52,77
+LGA,New York/LaGuardia,2026-08-23 14:53,76
+LGA,New York/LaGuardia,2026-08-23 14:54,76
+LGA,New York/LaGuardia,2026-08-23 14:55,77
+LGA,New York/LaGuardia,2026-08-23 14:56,76
+LGA,New York/LaGuardia,2026-08-23 14:57,76
+LGA,New York/LaGuardia,2026-08-23 14:58,76
+LGA,New York/LaGuardia,2026-08-23 14:59,76
+LGA,New York/LaGuardia,2026-08-23 15:00,76
+LGA,New York/LaGuardia,2026-08-23 15:01,77
+LGA,New York/LaGuardia,2026-08-23 15:02,77
+LGA,New York/LaGuardia,2026-08-23 15:03,77
+LGA,New York/LaGuardia,2026-08-23 15:04,77
+LGA,New York/LaGuardia,2026-08-23 15:05,78
+LGA,New York/LaGuardia,2026-08-23 15:06,78
+LGA,New York/LaGuardia,2026-08-23 15:07,77
+LGA,New York/LaGuardia,2026-08-23 15:08,77
+LGA,New York/LaGuardia,2026-08-23 15:09,77
+LGA,New York/LaGuardia,2026-08-23 15:10,78
+LGA,New York/LaGuardia,2026-08-23 15:11,77
+LGA,New York/LaGuardia,2026-08-23 15:12,77
+LGA,New York/LaGuardia,2026-08-23 15:13,76
+LGA,New York/LaGuardia,2026-08-23 15:14,76
+LGA,New York/LaGuardia,2026-08-23 15:15,77
+LGA,New York/LaGuardia,2026-08-23 15:16,77
+LGA,New York/LaGuardia,2026-08-23 15:17,76
+LGA,New York/LaGuardia,2026-08-23 15:18,76
+LGA,New York/LaGuardia,2026-08-23 15:19,76
+LGA,New York/LaGuardia,2026-08-23 15:20,76
+LGA,New York/LaGuardia,2026-08-23 15:21,76
+LGA,New York/LaGuardia,2026-08-23 15:22,76
+LGA,New York/LaGuardia,2026-08-23 15:23,76
+LGA,New York/LaGuardia,2026-08-23 15:24,76
+LGA,New York/LaGuardia,2026-08-23 15:25,75
+LGA,New York/LaGuardia,2026-08-23 15:26,75
+LGA,New York/LaGuardia,2026-08-23 15:27,75
+LGA,New York/LaGuardia,2026-08-23 15:28,76
+LGA,New York/LaGuardia,2026-08-23 15:29,76
+LGA,New York/LaGuardia,2026-08-23 15:30,76
+LGA,New York/LaGuardia,2026-08-23 15:31,76
+LGA,New York/LaGuardia,2026-08-23 15:32,77
+LGA,New York/LaGuardia,2026-08-23 15:33,77
+LGA,New York/LaGuardia,2026-08-23 15:34,77
+LGA,New York/LaGuardia,2026-08-23 15:35,77
+LGA,New York/LaGuardia,2026-08-23 15:36,77
+LGA,New York/LaGuardia,2026-08-23 15:37,77
+LGA,New York/LaGuardia,2026-08-23 15:38,77
+LGA,New York/LaGuardia,2026-08-23 15:39,77
+LGA,New York/LaGuardia,2026-08-23 15:40,77
+LGA,New York/LaGuardia,2026-08-23 15:41,77
+LGA,New York/LaGuardia,2026-08-23 15:42,77
+LGA,New York/LaGuardia,2026-08-23 15:43,77
+LGA,New York/LaGuardia,2026-08-23 15:44,77
+LGA,New York/LaGuardia,2026-08-23 15:45,77
+LGA,New York/LaGuardia,2026-08-23 15:46,78
+LGA,New York/LaGuardia,2026-08-23 15:47,78
+LGA,New York/LaGuardia,2026-08-23 15:48,79
+LGA,New York/LaGuardia,2026-08-23 15:49,78
+LGA,New York/LaGuardia,2026-08-23 15:50,78
+LGA,New York/LaGuardia,2026-08-23 15:51,79
+LGA,New York/LaGuardia,2026-08-23 15:52,79
+LGA,New York/LaGuardia,2026-08-23 15:53,79
+LGA,New York/LaGuardia,2026-08-23 15:54,78
+LGA,New York/LaGuardia,2026-08-23 15:55,78
+LGA,New York/LaGuardia,2026-08-23 15:56,79
+LGA,New York/LaGuardia,2026-08-23 15:57,78
+LGA,New York/LaGuardia,2026-08-23 15:58,78
+LGA,New York/LaGuardia,2026-08-23 15:59,79
+LGA,New York/LaGuardia,2026-08-23 16:00,78
+LGA,New York/LaGuardia,2026-08-23 16:01,78
+LGA,New York/LaGuardia,2026-08-23 16:02,78
+LGA,New York/LaGuardia,2026-08-23 16:03,78
+LGA,New York/LaGuardia,2026-08-23 16:04,79
+LGA,New York/LaGuardia,2026-08-23 16:05,79
+LGA,New York/LaGuardia,2026-08-23 16:06,79
+LGA,New York/LaGuardia,2026-08-23 16:07,78
+LGA,New York/LaGuardia,2026-08-23 16:08,79
+LGA,New York/LaGuardia,2026-08-23 16:09,79
+LGA,New York/LaGuardia,2026-08-23 16:10,79
+LGA,New York/LaGuardia,2026-08-23 16:11,78
+LGA,New York/LaGuardia,2026-08-23 16:12,78
+LGA,New York/LaGuardia,2026-08-23 16:13,78
+LGA,New York/LaGuardia,2026-08-23 16:14,78
+LGA,New York/LaGuardia,2026-08-23 16:15,78
+LGA,New York/LaGuardia,2026-08-23 16:16,78
+LGA,New York/LaGuardia,2026-08-23 16:17,78
+LGA,New York/LaGuardia,2026-08-23 16:18,78
+LGA,New York/LaGuardia,2026-08-23 16:19,78
+LGA,New York/LaGuardia,2026-08-23 16:20,78
+LGA,New York/LaGuardia,2026-08-23 16:21,78
+LGA,New York/LaGuardia,2026-08-23 16:22,78
+LGA,New York/LaGuardia,2026-08-23 16:23,78
+LGA,New York/LaGuardia,2026-08-23 16:24,78
+LGA,New York/LaGuardia,2026-08-23 16:25,79
+LGA,New York/LaGuardia,2026-08-23 16:26,78
+LGA,New York/LaGuardia,2026-08-23 16:27,78
+LGA,New York/LaGuardia,2026-08-23 16:28,79
+LGA,New York/LaGuardia,2026-08-23 16:29,80
+LGA,New York/LaGuardia,2026-08-23 16:30,80
+LGA,New York/LaGuardia,2026-08-23 16:31,80
+LGA,New York/LaGuardia,2026-08-23 16:32,79
+LGA,New York/LaGuardia,2026-08-23 16:33,79
+LGA,New York/LaGuardia,2026-08-23 16:34,79
+LGA,New York/LaGuardia,2026-08-23 16:35,79
+LGA,New York/LaGuardia,2026-08-23 16:36,79
+LGA,New York/LaGuardia,2026-08-23 16:37,79
+LGA,New York/LaGuardia,2026-08-23 16:38,79
+LGA,New York/LaGuardia,2026-08-23 16:39,79
+LGA,New York/LaGuardia,2026-08-23 16:40,80
+LGA,New York/LaGuardia,2026-08-23 16:41,81
+LGA,New York/LaGuardia,2026-08-23 16:42,81
+LGA,New York/LaGuardia,2026-08-23 16:43,81
+LGA,New York/LaGuardia,2026-08-23 16:44,81
+LGA,New York/LaGuardia,2026-08-23 16:45,81
+LGA,New York/LaGuardia,2026-08-23 16:46,81
+LGA,New York/LaGuardia,2026-08-23 16:47,80
+LGA,New York/LaGuardia,2026-08-23 16:48,80
+LGA,New York/LaGuardia,2026-08-23 16:49,81
+LGA,New York/LaGuardia,2026-08-23 16:50,81
+LGA,New York/LaGuardia,2026-08-23 16:51,80
+LGA,New York/LaGuardia,2026-08-23 16:52,81
+LGA,New York/LaGuardia,2026-08-23 16:53,80
+LGA,New York/LaGuardia,2026-08-23 16:54,80
+LGA,New York/LaGuardia,2026-08-23 16:55,80
+LGA,New York/LaGuardia,2026-08-23 16:56,80
+LGA,New York/LaGuardia,2026-08-23 16:57,81
+LGA,New York/LaGuardia,2026-08-23 16:58,80
+LGA,New York/LaGuardia,2026-08-23 16:59,80
+LGA,New York/LaGuardia,2026-08-23 17:00,80
+LGA,New York/LaGuardia,2026-08-23 17:01,80
+LGA,New York/LaGuardia,2026-08-23 17:02,80
+LGA,New York/LaGuardia,2026-08-23 17:03,80
+LGA,New York/LaGuardia,2026-08-23 17:04,80
+LGA,New York/LaGuardia,2026-08-23 17:05,80
+LGA,New York/LaGuardia,2026-08-23 17:06,80
+LGA,New York/LaGuardia,2026-08-23 17:07,79
+LGA,New York/LaGuardia,2026-08-23 17:08,80
+LGA,New York/LaGuardia,2026-08-23 17:09,80
+LGA,New York/LaGuardia,2026-08-23 17:10,80
+LGA,New York/LaGuardia,2026-08-23 17:11,80
+LGA,New York/LaGuardia,2026-08-23 17:12,80
+LGA,New York/LaGuardia,2026-08-23 17:13,80
+LGA,New York/LaGuardia,2026-08-23 17:14,80
+LGA,New York/LaGuardia,2026-08-23 17:15,80
+LGA,New York/LaGuardia,2026-08-23 17:16,81
+LGA,New York/LaGuardia,2026-08-23 17:17,80
+LGA,New York/LaGuardia,2026-08-23 17:18,80
+LGA,New York/LaGuardia,2026-08-23 17:19,80
+LGA,New York/LaGuardia,2026-08-23 17:20,80
+LGA,New York/LaGuardia,2026-08-23 17:21,80
+LGA,New York/LaGuardia,2026-08-23 17:22,80
+LGA,New York/LaGuardia,2026-08-23 17:23,80
+LGA,New York/LaGuardia,2026-08-23 17:24,80
+LGA,New York/LaGuardia,2026-08-23 17:25,80
+LGA,New York/LaGuardia,2026-08-23 17:26,81
+LGA,New York/LaGuardia,2026-08-23 17:27,81
+LGA,New York/LaGuardia,2026-08-23 17:28,81
+LGA,New York/LaGuardia,2026-08-23 17:29,81
+LGA,New York/LaGuardia,2026-08-23 17:30,81
+LGA,New York/LaGuardia,2026-08-23 17:31,81
+LGA,New York/LaGuardia,2026-08-23 17:32,82
+LGA,New York/LaGuardia,2026-08-23 17:33,81
+LGA,New York/LaGuardia,2026-08-23 17:34,81
+LGA,New York/LaGuardia,2026-08-23 17:35,82
+LGA,New York/LaGuardia,2026-08-23 17:36,82
+LGA,New York/LaGuardia,2026-08-23 17:37,82
+LGA,New York/LaGuardia,2026-08-23 17:38,82
+LGA,New York/LaGuardia,2026-08-23 17:39,82
+LGA,New York/LaGuardia,2026-08-23 17:40,82
+LGA,New York/LaGuardia,2026-08-23 17:41,82
+LGA,New York/LaGuardia,2026-08-23 17:42,82
+LGA,New York/LaGuardia,2026-08-23 17:43,82
+LGA,New York/LaGuardia,2026-08-23 17:44,82
+LGA,New York/LaGuardia,2026-08-23 17:45,82
+LGA,New York/LaGuardia,2026-08-23 17:46,82
+LGA,New York/LaGuardia,2026-08-23 17:47,82
+LGA,New York/LaGuardia,2026-08-23 17:48,82
+LGA,New York/LaGuardia,2026-08-23 17:49,82
+LGA,New York/LaGuardia,2026-08-23 17:50,82
+LGA,New York/LaGuardia,2026-08-23 17:51,82
+LGA,New York/LaGuardia,2026-08-23 17:52,82
+LGA,New York/LaGuardia,2026-08-23 17:53,82
+LGA,New York/LaGuardia,2026-08-23 17:54,82
+LGA,New York/LaGuardia,2026-08-23 17:55,82
+LGA,New York/LaGuardia,2026-08-23 17:56,82
+LGA,New York/LaGuardia,2026-08-23 17:57,82
+LGA,New York/LaGuardia,2026-08-23 17:58,81
+LGA,New York/LaGuardia,2026-08-23 17:59,82
+LGA,New York/LaGuardia,2026-08-23 18:00,82
+LGA,New York/LaGuardia,2026-08-23 18:01,82
+LGA,New York/LaGuardia,2026-08-23 18:02,82
+LGA,New York/LaGuardia,2026-08-23 18:03,82
+LGA,New York/LaGuardia,2026-08-23 18:04,81
+LGA,New York/LaGuardia,2026-08-23 18:05,81
+LGA,New York/LaGuardia,2026-08-23 18:06,81
+LGA,New York/LaGuardia,2026-08-23 18:07,81
+LGA,New York/LaGuardia,2026-08-23 18:08,82
+LGA,New York/LaGuardia,2026-08-23 18:09,82
+LGA,New York/LaGuardia,2026-08-23 18:10,83
+LGA,New York/LaGuardia,2026-08-23 18:11,81
+LGA,New York/LaGuardia,2026-08-23 18:12,81
+LGA,New York/LaGuardia,2026-08-23 18:13,82
+LGA,New York/LaGuardia,2026-08-23 18:14,82
+LGA,New York/LaGuardia,2026-08-23 18:15,82
+LGA,New York/LaGuardia,2026-08-23 18:16,82
+LGA,New York/LaGuardia,2026-08-23 18:17,82
+LGA,New York/LaGuardia,2026-08-23 18:18,82
+LGA,New York/LaGuardia,2026-08-23 18:19,82
+LGA,New York/LaGuardia,2026-08-23 18:20,82
+LGA,New York/LaGuardia,2026-08-23 18:21,82
+LGA,New York/LaGuardia,2026-08-23 18:22,82
+LGA,New York/LaGuardia,2026-08-23 18:23,82
+LGA,New York/LaGuardia,2026-08-23 18:24,82
+LGA,New York/LaGuardia,2026-08-23 18:25,82
+LGA,New York/LaGuardia,2026-08-23 18:26,82
+LGA,New York/LaGuardia,2026-08-23 18:27,82
+LGA,New York/LaGuardia,2026-08-23 18:28,83
+LGA,New York/LaGuardia,2026-08-23 18:29,83
+LGA,New York/LaGuardia,2026-08-23 18:30,83
+LGA,New York/LaGuardia,2026-08-23 18:31,83
+LGA,New York/LaGuardia,2026-08-23 18:32,82
+LGA,New York/LaGuardia,2026-08-23 18:33,81
+LGA,New York/LaGuardia,2026-08-23 18:34,81
+LGA,New York/LaGuardia,2026-08-23 18:35,81
+LGA,New York/LaGuardia,2026-08-23 18:36,82
+LGA,New York/LaGuardia,2026-08-23 18:37,82
+LGA,New York/LaGuardia,2026-08-23 18:38,82
+LGA,New York/LaGuardia,2026-08-23 18:39,82
+LGA,New York/LaGuardia,2026-08-23 18:40,82
+LGA,New York/LaGuardia,2026-08-23 18:41,82
+LGA,New York/LaGuardia,2026-08-23 18:42,82
+LGA,New York/LaGuardia,2026-08-23 18:43,82
+LGA,New York/LaGuardia,2026-08-23 18:44,82
+LGA,New York/LaGuardia,2026-08-23 18:45,82
+LGA,New York/LaGuardia,2026-08-23 18:46,82
+LGA,New York/LaGuardia,2026-08-23 18:47,82
+LGA,New York/LaGuardia,2026-08-23 18:48,82
+LGA,New York/LaGuardia,2026-08-23 18:49,83
+LGA,New York/LaGuardia,2026-08-23 18:50,83
+LGA,New York/LaGuardia,2026-08-23 18:51,83
+LGA,New York/LaGuardia,2026-08-23 18:52,82
+LGA,New York/LaGuardia,2026-08-23 18:53,83
+LGA,New York/LaGuardia,2026-08-23 18:54,83
+LGA,New York/LaGuardia,2026-08-23 18:55,83
+LGA,New York/LaGuardia,2026-08-23 18:56,83
+LGA,New York/LaGuardia,2026-08-23 18:57,83
+LGA,New York/LaGuardia,2026-08-23 18:58,83
+LGA,New York/LaGuardia,2026-08-23 18:59,84
+LGA,New York/LaGuardia,2026-08-23 19:00,83
+LGA,New York/LaGuardia,2026-08-23 19:01,83
+LGA,New York/LaGuardia,2026-08-23 19:02,83
+LGA,New York/LaGuardia,2026-08-23 19:03,82
+LGA,New York/LaGuardia,2026-08-23 19:04,82
+LGA,New York/LaGuardia,2026-08-23 19:05,82
+LGA,New York/LaGuardia,2026-08-23 19:06,82
+LGA,New York/LaGuardia,2026-08-23 19:07,83
+LGA,New York/LaGuardia,2026-08-23 19:08,83
+LGA,New York/LaGuardia,2026-08-23 19:09,83
+LGA,New York/LaGuardia,2026-08-23 19:10,83
+LGA,New York/LaGuardia,2026-08-23 19:11,83
+LGA,New York/LaGuardia,2026-08-23 19:12,83
+LGA,New York/LaGuardia,2026-08-23 19:13,83
+LGA,New York/LaGuardia,2026-08-23 19:14,83
+LGA,New York/LaGuardia,2026-08-23 19:15,82
+LGA,New York/LaGuardia,2026-08-23 19:16,82
+LGA,New York/LaGuardia,2026-08-23 19:17,83
+LGA,New York/LaGuardia,2026-08-23 19:18,82
+LGA,New York/LaGuardia,2026-08-23 19:19,83
+LGA,New York/LaGuardia,2026-08-23 19:20,82
+LGA,New York/LaGuardia,2026-08-23 19:21,82
+LGA,New York/LaGuardia,2026-08-23 19:22,83
+LGA,New York/LaGuardia,2026-08-23 19:23,83
+LGA,New York/LaGuardia,2026-08-23 19:24,83
+LGA,New York/LaGuardia,2026-08-23 19:25,84
+LGA,New York/LaGuardia,2026-08-23 19:26,83
+LGA,New York/LaGuardia,2026-08-23 19:27,83
+LGA,New York/LaGuardia,2026-08-23 19:28,83
+LGA,New York/LaGuardia,2026-08-23 19:29,82
+LGA,New York/LaGuardia,2026-08-23 19:30,83
+LGA,New York/LaGuardia,2026-08-23 19:31,83
+LGA,New York/LaGuardia,2026-08-23 19:32,83
+LGA,New York/LaGuardia,2026-08-23 19:33,83
+LGA,New York/LaGuardia,2026-08-23 19:34,83
+LGA,New York/LaGuardia,2026-08-23 19:35,84
+LGA,New York/LaGuardia,2026-08-23 19:36,83
+LGA,New York/LaGuardia,2026-08-23 19:37,83
+LGA,New York/LaGuardia,2026-08-23 19:38,83
+LGA,New York/LaGuardia,2026-08-23 19:39,82
+LGA,New York/LaGuardia,2026-08-23 19:40,83
+LGA,New York/LaGuardia,2026-08-23 19:41,83
+LGA,New York/LaGuardia,2026-08-23 19:42,83
+LGA,New York/LaGuardia,2026-08-23 19:43,83
+LGA,New York/LaGuardia,2026-08-23 19:44,83
+LGA,New York/LaGuardia,2026-08-23 19:45,84
+LGA,New York/LaGuardia,2026-08-23 19:46,83
+LGA,New York/LaGuardia,2026-08-23 19:47,83
+LGA,New York/LaGuardia,2026-08-23 19:48,83
+LGA,New York/LaGuardia,2026-08-23 19:49,83
+LGA,New York/LaGuardia,2026-08-23 19:50,83
+LGA,New York/LaGuardia,2026-08-23 19:51,84
+LGA,New York/LaGuardia,2026-08-23 19:52,83
+LGA,New York/LaGuardia,2026-08-23 19:53,83
+LGA,New York/LaGuardia,2026-08-23 19:54,83
+LGA,New York/LaGuardia,2026-08-23 19:55,83
+LGA,New York/LaGuardia,2026-08-23 19:56,82
+LGA,New York/LaGuardia,2026-08-23 19:57,83
+LGA,New York/LaGuardia,2026-08-23 19:58,82
+LGA,New York/LaGuardia,2026-08-23 19:59,83
+LGA,New York/LaGuardia,2026-08-23 20:00,83
+LGA,New York/LaGuardia,2026-08-23 20:01,84
+LGA,New York/LaGuardia,2026-08-23 20:02,84
+LGA,New York/LaGuardia,2026-08-23 20:03,83
+LGA,New York/LaGuardia,2026-08-23 20:04,83
+LGA,New York/LaGuardia,2026-08-23 20:05,83
+LGA,New York/LaGuardia,2026-08-23 20:06,83
+LGA,New York/LaGuardia,2026-08-23 20:07,83
+LGA,New York/LaGuardia,2026-08-23 20:08,84
+LGA,New York/LaGuardia,2026-08-23 20:09,84
+LGA,New York/LaGuardia,2026-08-23 20:10,84
+LGA,New York/LaGuardia,2026-08-23 20:11,84
+LGA,New York/LaGuardia,2026-08-23 20:12,84
+LGA,New York/LaGuardia,2026-08-23 20:13,84
+LGA,New York/LaGuardia,2026-08-23 20:14,83
+LGA,New York/LaGuardia,2026-08-23 20:15,84
+LGA,New York/LaGuardia,2026-08-23 20:16,83
+LGA,New York/LaGuardia,2026-08-23 20:17,82
+LGA,New York/LaGuardia,2026-08-23 20:18,82
+LGA,New York/LaGuardia,2026-08-23 20:19,83
+LGA,New York/LaGuardia,2026-08-23 20:20,82
+LGA,New York/LaGuardia,2026-08-23 20:21,83
+LGA,New York/LaGuardia,2026-08-23 20:22,83
+LGA,New York/LaGuardia,2026-08-23 20:23,83
+LGA,New York/LaGuardia,2026-08-23 20:24,83
+LGA,New York/LaGuardia,2026-08-23 20:25,83
+LGA,New York/LaGuardia,2026-08-23 20:26,82
+LGA,New York/LaGuardia,2026-08-23 20:27,83
+LGA,New York/LaGuardia,2026-08-23 20:28,83
+LGA,New York/LaGuardia,2026-08-23 20:29,83
+LGA,New York/LaGuardia,2026-08-23 20:30,83
+LGA,New York/LaGuardia,2026-08-23 20:31,83
+LGA,New York/LaGuardia,2026-08-23 20:32,83
+LGA,New York/LaGuardia,2026-08-23 20:33,83
+LGA,New York/LaGuardia,2026-08-23 20:34,83
+LGA,New York/LaGuardia,2026-08-23 20:35,83
+LGA,New York/LaGuardia,2026-08-23 20:36,83
+LGA,New York/LaGuardia,2026-08-23 20:37,83
+LGA,New York/LaGuardia,2026-08-23 20:38,83
+LGA,New York/LaGuardia,2026-08-23 20:39,83
+LGA,New York/LaGuardia,2026-08-23 20:40,83
+LGA,New York/LaGuardia,2026-08-23 20:41,83
+LGA,New York/LaGuardia,2026-08-23 20:42,83
+LGA,New York/LaGuardia,2026-08-23 20:43,83
+LGA,New York/LaGuardia,2026-08-23 20:44,83
+LGA,New York/LaGuardia,2026-08-23 20:45,84
+LGA,New York/LaGuardia,2026-08-23 20:46,83
+LGA,New York/LaGuardia,2026-08-23 20:47,83
+LGA,New York/LaGuardia,2026-08-23 20:48,83
+LGA,New York/LaGuardia,2026-08-23 20:49,83
+LGA,New York/LaGuardia,2026-08-23 20:50,83
+LGA,New York/LaGuardia,2026-08-23 20:51,83
+LGA,New York/LaGuardia,2026-08-23 20:52,83
+LGA,New York/LaGuardia,2026-08-23 20:53,83
+LGA,New York/LaGuardia,2026-08-23 20:54,83
+LGA,New York/LaGuardia,2026-08-23 20:55,83
+LGA,New York/LaGuardia,2026-08-23 20:56,83
+LGA,New York/LaGuardia,2026-08-23 20:57,83
+LGA,New York/LaGuardia,2026-08-23 20:58,83
+LGA,New York/LaGuardia,2026-08-23 20:59,83
+LGA,New York/LaGuardia,2026-08-23 21:00,84
+LGA,New York/LaGuardia,2026-08-23 21:01,83
+LGA,New York/LaGuardia,2026-08-23 21:02,83
+LGA,New York/LaGuardia,2026-08-23 21:03,83
+LGA,New York/LaGuardia,2026-08-23 21:04,83
+LGA,New York/LaGuardia,2026-08-23 21:05,83
+LGA,New York/LaGuardia,2026-08-23 21:06,83
+LGA,New York/LaGuardia,2026-08-23 21:07,83
+LGA,New York/LaGuardia,2026-08-23 21:08,83
+LGA,New York/LaGuardia,2026-08-23 21:09,83
+LGA,New York/LaGuardia,2026-08-23 21:10,84
+LGA,New York/LaGuardia,2026-08-23 21:11,84
+LGA,New York/LaGuardia,2026-08-23 21:12,83
+LGA,New York/LaGuardia,2026-08-23 21:13,83
+LGA,New York/LaGuardia,2026-08-23 21:14,83
+LGA,New York/LaGuardia,2026-08-23 21:15,83
+LGA,New York/LaGuardia,2026-08-23 21:16,83
+LGA,New York/LaGuardia,2026-08-23 21:17,83
+LGA,New York/LaGuardia,2026-08-23 21:18,83
+LGA,New York/LaGuardia,2026-08-23 21:19,83
+LGA,New York/LaGuardia,2026-08-23 21:20,83
+LGA,New York/LaGuardia,2026-08-23 21:21,83
+LGA,New York/LaGuardia,2026-08-23 21:22,83
+LGA,New York/LaGuardia,2026-08-23 21:23,83
+LGA,New York/LaGuardia,2026-08-23 21:24,83
+LGA,New York/LaGuardia,2026-08-23 21:25,83
+LGA,New York/LaGuardia,2026-08-23 21:26,83
+LGA,New York/LaGuardia,2026-08-23 21:27,83
+LGA,New York/LaGuardia,2026-08-23 21:28,83
+LGA,New York/LaGuardia,2026-08-23 21:29,83
+LGA,New York/LaGuardia,2026-08-23 21:30,83
+LGA,New York/LaGuardia,2026-08-23 21:31,83
+LGA,New York/LaGuardia,2026-08-23 21:32,83
+LGA,New York/LaGuardia,2026-08-23 21:33,83
+LGA,New York/LaGuardia,2026-08-23 21:34,83
+LGA,New York/LaGuardia,2026-08-23 21:35,83
+LGA,New York/LaGuardia,2026-08-23 21:36,83
+LGA,New York/LaGuardia,2026-08-23 21:37,83
+LGA,New York/LaGuardia,2026-08-23 21:38,82
+LGA,New York/LaGuardia,2026-08-23 21:39,83
+LGA,New York/LaGuardia,2026-08-23 21:40,83
+LGA,New York/LaGuardia,2026-08-23 21:41,83
+LGA,New York/LaGuardia,2026-08-23 21:42,83
+LGA,New York/LaGuardia,2026-08-23 21:43,83
+LGA,New York/LaGuardia,2026-08-23 21:44,83
+LGA,New York/LaGuardia,2026-08-23 21:45,83
+LGA,New York/LaGuardia,2026-08-23 21:46,83
+LGA,New York/LaGuardia,2026-08-23 21:47,83
+LGA,New York/LaGuardia,2026-08-23 21:48,83
+LGA,New York/LaGuardia,2026-08-23 21:49,83
+LGA,New York/LaGuardia,2026-08-23 21:50,83
+LGA,New York/LaGuardia,2026-08-23 21:51,83
+LGA,New York/LaGuardia,2026-08-23 21:52,83
+LGA,New York/LaGuardia,2026-08-23 21:53,83
+LGA,New York/LaGuardia,2026-08-23 21:54,83
+LGA,New York/LaGuardia,2026-08-23 21:55,83
+LGA,New York/LaGuardia,2026-08-23 21:56,83
+LGA,New York/LaGuardia,2026-08-23 21:57,83
+LGA,New York/LaGuardia,2026-08-23 21:58,83
+LGA,New York/LaGuardia,2026-08-23 21:59,83
+LGA,New York/LaGuardia,2026-08-23 22:00,83
+LGA,New York/LaGuardia,2026-08-23 22:01,84
+LGA,New York/LaGuardia,2026-08-23 22:02,83
+LGA,New York/LaGuardia,2026-08-23 22:03,83
+LGA,New York/LaGuardia,2026-08-23 22:04,83
+LGA,New York/LaGuardia,2026-08-23 22:05,83
+LGA,New York/LaGuardia,2026-08-23 22:06,83
+LGA,New York/LaGuardia,2026-08-23 22:07,83
+LGA,New York/LaGuardia,2026-08-23 22:08,82
+LGA,New York/LaGuardia,2026-08-23 22:09,83
+LGA,New York/LaGuardia,2026-08-23 22:10,83
+LGA,New York/LaGuardia,2026-08-23 22:11,82
+LGA,New York/LaGuardia,2026-08-23 22:12,82
+LGA,New York/LaGuardia,2026-08-23 22:13,83
+LGA,New York/LaGuardia,2026-08-23 22:14,83
+LGA,New York/LaGuardia,2026-08-23 22:15,83
+LGA,New York/LaGuardia,2026-08-23 22:16,83
+LGA,New York/LaGuardia,2026-08-23 22:17,83
+LGA,New York/LaGuardia,2026-08-23 22:18,82
+LGA,New York/LaGuardia,2026-08-23 22:19,82
+LGA,New York/LaGuardia,2026-08-23 22:20,82
+LGA,New York/LaGuardia,2026-08-23 22:21,82
+LGA,New York/LaGuardia,2026-08-23 22:22,82
+LGA,New York/LaGuardia,2026-08-23 22:23,82
+LGA,New York/LaGuardia,2026-08-23 22:24,83
+LGA,New York/LaGuardia,2026-08-23 22:25,83
+LGA,New York/LaGuardia,2026-08-23 22:26,82
+LGA,New York/LaGuardia,2026-08-23 22:27,82
+LGA,New York/LaGuardia,2026-08-23 22:28,82
+LGA,New York/LaGuardia,2026-08-23 22:29,82
+LGA,New York/LaGuardia,2026-08-23 22:30,82
+LGA,New York/LaGuardia,2026-08-23 22:31,82
+LGA,New York/LaGuardia,2026-08-23 22:32,82
+LGA,New York/LaGuardia,2026-08-23 22:33,82
+LGA,New York/LaGuardia,2026-08-23 22:34,82
+LGA,New York/LaGuardia,2026-08-23 22:35,81
+LGA,New York/LaGuardia,2026-08-23 22:36,81
+LGA,New York/LaGuardia,2026-08-23 22:37,81
+LGA,New York/LaGuardia,2026-08-23 22:38,81
+LGA,New York/LaGuardia,2026-08-23 22:39,81
+LGA,New York/LaGuardia,2026-08-23 22:40,81
+LGA,New York/LaGuardia,2026-08-23 22:41,82
+LGA,New York/LaGuardia,2026-08-23 22:42,82
+LGA,New York/LaGuardia,2026-08-23 22:43,81
+LGA,New York/LaGuardia,2026-08-23 22:44,81
+LGA,New York/LaGuardia,2026-08-23 22:45,81
+LGA,New York/LaGuardia,2026-08-23 22:46,81
+LGA,New York/LaGuardia,2026-08-23 22:47,81
+LGA,New York/LaGuardia,2026-08-23 22:48,81
+LGA,New York/LaGuardia,2026-08-23 22:49,81
+LGA,New York/LaGuardia,2026-08-23 22:50,81
+LGA,New York/LaGuardia,2026-08-23 22:51,81
+LGA,New York/LaGuardia,2026-08-23 22:52,81
+LGA,New York/LaGuardia,2026-08-23 22:53,81
+LGA,New York/LaGuardia,2026-08-23 22:54,81
+LGA,New York/LaGuardia,2026-08-23 22:55,81
+LGA,New York/LaGuardia,2026-08-23 22:56,81
+LGA,New York/LaGuardia,2026-08-23 22:57,81
+LGA,New York/LaGuardia,2026-08-23 22:58,81
+LGA,New York/LaGuardia,2026-08-23 22:59,81
+LGA,New York/LaGuardia,2026-08-23 23:00,81
+LGA,New York/LaGuardia,2026-08-23 23:01,81
+LGA,New York/LaGuardia,2026-08-23 23:02,81
+LGA,New York/LaGuardia,2026-08-23 23:03,81
+LGA,New York/LaGuardia,2026-08-23 23:04,81
+LGA,New York/LaGuardia,2026-08-23 23:05,81
+LGA,New York/LaGuardia,2026-08-23 23:06,81
+LGA,New York/LaGuardia,2026-08-23 23:07,81
+LGA,New York/LaGuardia,2026-08-23 23:08,81
+LGA,New York/LaGuardia,2026-08-23 23:09,81
+LGA,New York/LaGuardia,2026-08-23 23:10,81
+LGA,New York/LaGuardia,2026-08-23 23:11,81
+LGA,New York/LaGuardia,2026-08-23 23:12,81
+LGA,New York/LaGuardia,2026-08-23 23:13,81
+LGA,New York/LaGuardia,2026-08-23 23:14,81
+LGA,New York/LaGuardia,2026-08-23 23:15,81
+LGA,New York/LaGuardia,2026-08-23 23:16,81
+LGA,New York/LaGuardia,2026-08-23 23:17,81
+LGA,New York/LaGuardia,2026-08-23 23:18,81
+LGA,New York/LaGuardia,2026-08-23 23:19,81
+LGA,New York/LaGuardia,2026-08-23 23:20,81
+LGA,New York/LaGuardia,2026-08-23 23:21,81
+LGA,New York/LaGuardia,2026-08-23 23:22,81
+LGA,New York/LaGuardia,2026-08-23 23:23,81
+LGA,New York/LaGuardia,2026-08-23 23:24,81
+LGA,New York/LaGuardia,2026-08-23 23:25,80
+LGA,New York/LaGuardia,2026-08-23 23:26,81
+LGA,New York/LaGuardia,2026-08-23 23:27,81
+LGA,New York/LaGuardia,2026-08-23 23:28,81
+LGA,New York/LaGuardia,2026-08-23 23:29,81
+LGA,New York/LaGuardia,2026-08-23 23:30,81
+LGA,New York/LaGuardia,2026-08-23 23:31,81
+LGA,New York/LaGuardia,2026-08-23 23:32,81
+LGA,New York/LaGuardia,2026-08-23 23:33,81
+LGA,New York/LaGuardia,2026-08-23 23:34,81
+LGA,New York/LaGuardia,2026-08-23 23:35,81
+LGA,New York/LaGuardia,2026-08-23 23:36,81
+LGA,New York/LaGuardia,2026-08-23 23:37,81
+LGA,New York/LaGuardia,2026-08-23 23:38,81
+LGA,New York/LaGuardia,2026-08-23 23:39,81
+LGA,New York/LaGuardia,2026-08-23 23:40,81
+LGA,New York/LaGuardia,2026-08-23 23:41,81
+LGA,New York/LaGuardia,2026-08-23 23:42,81
+LGA,New York/LaGuardia,2026-08-23 23:43,81
+LGA,New York/LaGuardia,2026-08-23 23:44,81
+LGA,New York/LaGuardia,2026-08-23 23:45,81
+LGA,New York/LaGuardia,2026-08-23 23:46,81
+LGA,New York/LaGuardia,2026-08-23 23:47,81
+LGA,New York/LaGuardia,2026-08-23 23:48,81
+LGA,New York/LaGuardia,2026-08-23 23:49,81
+LGA,New York/LaGuardia,2026-08-23 23:50,81
+LGA,New York/LaGuardia,2026-08-23 23:51,81
+LGA,New York/LaGuardia,2026-08-23 23:52,81
+LGA,New York/LaGuardia,2026-08-23 23:53,81
+LGA,New York/LaGuardia,2026-08-23 23:54,81
+LGA,New York/LaGuardia,2026-08-23 23:55,81
+LGA,New York/LaGuardia,2026-08-23 23:56,81
+LGA,New York/LaGuardia,2026-08-23 23:57,80
+LGA,New York/LaGuardia,2026-08-23 23:58,80
+LGA,New York/LaGuardia,2026-08-23 23:59,80
+LGA,New York/LaGuardia,2026-08-24 00:00,80
+LGA,New York/LaGuardia,2026-08-24 00:01,80
+LGA,New York/LaGuardia,2026-08-24 00:02,80
+LGA,New York/LaGuardia,2026-08-24 00:03,81
+LGA,New York/LaGuardia,2026-08-24 00:04,81
+LGA,New York/LaGuardia,2026-08-24 00:05,81
+LGA,New York/LaGuardia,2026-08-24 00:06,81
+LGA,New York/LaGuardia,2026-08-24 00:07,81
+LGA,New York/LaGuardia,2026-08-24 00:08,81
+LGA,New York/LaGuardia,2026-08-24 00:09,81
+LGA,New York/LaGuardia,2026-08-24 00:10,81
+LGA,New York/LaGuardia,2026-08-24 00:11,81
+LGA,New York/LaGuardia,2026-08-24 00:12,81
+LGA,New York/LaGuardia,2026-08-24 00:13,80
+LGA,New York/LaGuardia,2026-08-24 00:14,80
+LGA,New York/LaGuardia,2026-08-24 00:15,80
+LGA,New York/LaGuardia,2026-08-24 00:16,80
+LGA,New York/LaGuardia,2026-08-24 00:17,80
+LGA,New York/LaGuardia,2026-08-24 00:18,80
+LGA,New York/LaGuardia,2026-08-24 00:19,80
+LGA,New York/LaGuardia,2026-08-24 00:20,80
+LGA,New York/LaGuardia,2026-08-24 00:21,80
+LGA,New York/LaGuardia,2026-08-24 00:22,80
+LGA,New York/LaGuardia,2026-08-24 00:23,80
+LGA,New York/LaGuardia,2026-08-24 00:24,80
+LGA,New York/LaGuardia,2026-08-24 00:25,80
+LGA,New York/LaGuardia,2026-08-24 00:26,80
+LGA,New York/LaGuardia,2026-08-24 00:27,80
+LGA,New York/LaGuardia,2026-08-24 00:28,80
+LGA,New York/LaGuardia,2026-08-24 00:29,80
+LGA,New York/LaGuardia,2026-08-24 00:30,80
+LGA,New York/LaGuardia,2026-08-24 00:31,80
+LGA,New York/LaGuardia,2026-08-24 00:32,80
+LGA,New York/LaGuardia,2026-08-24 00:33,80
+LGA,New York/LaGuardia,2026-08-24 00:34,80
+LGA,New York/LaGuardia,2026-08-24 00:35,79
+LGA,New York/LaGuardia,2026-08-24 00:36,80
+LGA,New York/LaGuardia,2026-08-24 00:37,79
+LGA,New York/LaGuardia,2026-08-24 00:38,80
+LGA,New York/LaGuardia,2026-08-24 00:39,80
+LGA,New York/LaGuardia,2026-08-24 00:40,80
+LGA,New York/LaGuardia,2026-08-24 00:41,80
+LGA,New York/LaGuardia,2026-08-24 00:42,79
+LGA,New York/LaGuardia,2026-08-24 00:43,79
+LGA,New York/LaGuardia,2026-08-24 00:44,79
+LGA,New York/LaGuardia,2026-08-24 00:45,79
+LGA,New York/LaGuardia,2026-08-24 00:46,79
+LGA,New York/LaGuardia,2026-08-24 00:47,79
+LGA,New York/LaGuardia,2026-08-24 00:48,79
+LGA,New York/LaGuardia,2026-08-24 00:49,79
+LGA,New York/LaGuardia,2026-08-24 00:50,79
+LGA,New York/LaGuardia,2026-08-24 00:51,79
+LGA,New York/LaGuardia,2026-08-24 00:52,79
+LGA,New York/LaGuardia,2026-08-24 00:53,79
+LGA,New York/LaGuardia,2026-08-24 00:54,79
+LGA,New York/LaGuardia,2026-08-24 00:55,79
+LGA,New York/LaGuardia,2026-08-24 00:56,79
+LGA,New York/LaGuardia,2026-08-24 00:57,79
+LGA,New York/LaGuardia,2026-08-24 00:58,79
+LGA,New York/LaGuardia,2026-08-24 00:59,79
+LGA,New York/LaGuardia,2026-08-24 01:00,79
+LGA,New York/LaGuardia,2026-08-24 01:01,79
+LGA,New York/LaGuardia,2026-08-24 01:02,79
+LGA,New York/LaGuardia,2026-08-24 01:03,79
+LGA,New York/LaGuardia,2026-08-24 01:04,79
+LGA,New York/LaGuardia,2026-08-24 01:05,79
+LGA,New York/LaGuardia,2026-08-24 01:06,79
+LGA,New York/LaGuardia,2026-08-24 01:07,79
+LGA,New York/LaGuardia,2026-08-24 01:08,79
+LGA,New York/LaGuardia,2026-08-24 01:09,79
+LGA,New York/LaGuardia,2026-08-24 01:10,78
+LGA,New York/LaGuardia,2026-08-24 01:11,79
+LGA,New York/LaGuardia,2026-08-24 01:12,79
+LGA,New York/LaGuardia,2026-08-24 01:13,79
+LGA,New York/LaGuardia,2026-08-24 01:14,79
+LGA,New York/LaGuardia,2026-08-24 01:15,79
+LGA,New York/LaGuardia,2026-08-24 01:16,79
+LGA,New York/LaGuardia,2026-08-24 01:17,78
+LGA,New York/LaGuardia,2026-08-24 01:18,79
+LGA,New York/LaGuardia,2026-08-24 01:19,78
+LGA,New York/LaGuardia,2026-08-24 01:20,78
+LGA,New York/LaGuardia,2026-08-24 01:21,78
+LGA,New York/LaGuardia,2026-08-24 01:22,78
+LGA,New York/LaGuardia,2026-08-24 01:23,78
+LGA,New York/LaGuardia,2026-08-24 01:24,78
+LGA,New York/LaGuardia,2026-08-24 01:25,78
+LGA,New York/LaGuardia,2026-08-24 01:26,78
+LGA,New York/LaGuardia,2026-08-24 01:27,78
+LGA,New York/LaGuardia,2026-08-24 01:28,78
+LGA,New York/LaGuardia,2026-08-24 01:29,78
+LGA,New York/LaGuardia,2026-08-24 01:30,78
+LGA,New York/LaGuardia,2026-08-24 01:31,78
+LGA,New York/LaGuardia,2026-08-24 01:32,78
+LGA,New York/LaGuardia,2026-08-24 01:33,78
+LGA,New York/LaGuardia,2026-08-24 01:34,78
+LGA,New York/LaGuardia,2026-08-24 01:35,78
+LGA,New York/LaGuardia,2026-08-24 01:36,78
+LGA,New York/LaGuardia,2026-08-24 01:37,78
+LGA,New York/LaGuardia,2026-08-24 01:38,78
+LGA,New York/LaGuardia,2026-08-24 01:39,78
+LGA,New York/LaGuardia,2026-08-24 01:40,78
+LGA,New York/LaGuardia,2026-08-24 01:41,78
+LGA,New York/LaGuardia,2026-08-24 01:42,78
+LGA,New York/LaGuardia,2026-08-24 01:43,78
+LGA,New York/LaGuardia,2026-08-24 01:44,78
+LGA,New York/LaGuardia,2026-08-24 01:45,78
+LGA,New York/LaGuardia,2026-08-24 01:46,78
+LGA,New York/LaGuardia,2026-08-24 01:47,78
+LGA,New York/LaGuardia,2026-08-24 01:48,78
+LGA,New York/LaGuardia,2026-08-24 01:49,78
+LGA,New York/LaGuardia,2026-08-24 01:50,78
+LGA,New York/LaGuardia,2026-08-24 01:51,78
+LGA,New York/LaGuardia,2026-08-24 01:52,78
+LGA,New York/LaGuardia,2026-08-24 01:53,78
+LGA,New York/LaGuardia,2026-08-24 01:54,78
+LGA,New York/LaGuardia,2026-08-24 01:55,78
+LGA,New York/LaGuardia,2026-08-24 01:56,78
+LGA,New York/LaGuardia,2026-08-24 01:57,78
+LGA,New York/LaGuardia,2026-08-24 01:58,78
+LGA,New York/LaGuardia,2026-08-24 01:59,78
+LGA,New York/LaGuardia,2026-08-24 02:00,78
+LGA,New York/LaGuardia,2026-08-24 02:01,78
+LGA,New York/LaGuardia,2026-08-24 02:02,78
+LGA,New York/LaGuardia,2026-08-24 02:03,77
+LGA,New York/LaGuardia,2026-08-24 02:04,77
+LGA,New York/LaGuardia,2026-08-24 02:05,77
+LGA,New York/LaGuardia,2026-08-24 02:06,77
+LGA,New York/LaGuardia,2026-08-24 02:07,78
+LGA,New York/LaGuardia,2026-08-24 02:08,77
+LGA,New York/LaGuardia,2026-08-24 02:09,77
+LGA,New York/LaGuardia,2026-08-24 02:10,77
+LGA,New York/LaGuardia,2026-08-24 02:11,78
+LGA,New York/LaGuardia,2026-08-24 02:12,78
+LGA,New York/LaGuardia,2026-08-24 02:13,77
+LGA,New York/LaGuardia,2026-08-24 02:14,77
+LGA,New York/LaGuardia,2026-08-24 02:15,77
+LGA,New York/LaGuardia,2026-08-24 02:16,77
+LGA,New York/LaGuardia,2026-08-24 02:17,77
+LGA,New York/LaGuardia,2026-08-24 02:18,77
+LGA,New York/LaGuardia,2026-08-24 02:19,77
+LGA,New York/LaGuardia,2026-08-24 02:20,78
+LGA,New York/LaGuardia,2026-08-24 02:21,77
+LGA,New York/LaGuardia,2026-08-24 02:22,77
+LGA,New York/LaGuardia,2026-08-24 02:23,77
+LGA,New York/LaGuardia,2026-08-24 02:24,77
+LGA,New York/LaGuardia,2026-08-24 02:25,77
+LGA,New York/LaGuardia,2026-08-24 02:26,77
+LGA,New York/LaGuardia,2026-08-24 02:27,77
+LGA,New York/LaGuardia,2026-08-24 02:28,78
+LGA,New York/LaGuardia,2026-08-24 02:29,78
+LGA,New York/LaGuardia,2026-08-24 02:30,78
+LGA,New York/LaGuardia,2026-08-24 02:31,78
+LGA,New York/LaGuardia,2026-08-24 02:32,78
+LGA,New York/LaGuardia,2026-08-24 02:33,78
+LGA,New York/LaGuardia,2026-08-24 02:34,78
+LGA,New York/LaGuardia,2026-08-24 02:35,78
+LGA,New York/LaGuardia,2026-08-24 02:36,78
+LGA,New York/LaGuardia,2026-08-24 02:37,78
+LGA,New York/LaGuardia,2026-08-24 02:38,78
+LGA,New York/LaGuardia,2026-08-24 02:39,78
+LGA,New York/LaGuardia,2026-08-24 02:40,78
+LGA,New York/LaGuardia,2026-08-24 02:41,77
+LGA,New York/LaGuardia,2026-08-24 02:42,77
+LGA,New York/LaGuardia,2026-08-24 02:43,77
+LGA,New York/LaGuardia,2026-08-24 02:44,77
+LGA,New York/LaGuardia,2026-08-24 02:45,77
+LGA,New York/LaGuardia,2026-08-24 02:46,77
+LGA,New York/LaGuardia,2026-08-24 02:47,78
+LGA,New York/LaGuardia,2026-08-24 02:48,77
+LGA,New York/LaGuardia,2026-08-24 02:49,77
+LGA,New York/LaGuardia,2026-08-24 02:50,78
+LGA,New York/LaGuardia,2026-08-24 02:51,77
+LGA,New York/LaGuardia,2026-08-24 02:52,77
+LGA,New York/LaGuardia,2026-08-24 02:53,77
+LGA,New York/LaGuardia,2026-08-24 02:54,77
+LGA,New York/LaGuardia,2026-08-24 02:55,77
+LGA,New York/LaGuardia,2026-08-24 02:56,77
+LGA,New York/LaGuardia,2026-08-24 02:57,77
+LGA,New York/LaGuardia,2026-08-24 02:58,77
+LGA,New York/LaGuardia,2026-08-24 02:59,77
+LGA,New York/LaGuardia,2026-08-24 03:00,77
+LGA,New York/LaGuardia,2026-08-24 03:01,77
+LGA,New York/LaGuardia,2026-08-24 03:02,77
+LGA,New York/LaGuardia,2026-08-24 03:03,77
+LGA,New York/LaGuardia,2026-08-24 03:04,77
+LGA,New York/LaGuardia,2026-08-24 03:05,77
+LGA,New York/LaGuardia,2026-08-24 03:06,76
+LGA,New York/LaGuardia,2026-08-24 03:07,77
+LGA,New York/LaGuardia,2026-08-24 03:08,77
+LGA,New York/LaGuardia,2026-08-24 03:09,77
+LGA,New York/LaGuardia,2026-08-24 03:10,76
+LGA,New York/LaGuardia,2026-08-24 03:11,76
+LGA,New York/LaGuardia,2026-08-24 03:12,77
+LGA,New York/LaGuardia,2026-08-24 03:13,76
+LGA,New York/LaGuardia,2026-08-24 03:14,77
+LGA,New York/LaGuardia,2026-08-24 03:15,77
+LGA,New York/LaGuardia,2026-08-24 03:16,76
+LGA,New York/LaGuardia,2026-08-24 03:17,76
+LGA,New York/LaGuardia,2026-08-24 03:18,76
+LGA,New York/LaGuardia,2026-08-24 03:19,77
+LGA,New York/LaGuardia,2026-08-24 03:20,76
+LGA,New York/LaGuardia,2026-08-24 03:21,76
+LGA,New York/LaGuardia,2026-08-24 03:22,76
+LGA,New York/LaGuardia,2026-08-24 03:23,76
+LGA,New York/LaGuardia,2026-08-24 03:24,76
+LGA,New York/LaGuardia,2026-08-24 03:25,76
+LGA,New York/LaGuardia,2026-08-24 03:26,76
+LGA,New York/LaGuardia,2026-08-24 03:27,76
+LGA,New York/LaGuardia,2026-08-24 03:28,76
+LGA,New York/LaGuardia,2026-08-24 03:29,76
+LGA,New York/LaGuardia,2026-08-24 03:30,76
+LGA,New York/LaGuardia,2026-08-24 03:31,76
+LGA,New York/LaGuardia,2026-08-24 03:32,76
+LGA,New York/LaGuardia,2026-08-24 03:33,76
+LGA,New York/LaGuardia,2026-08-24 03:34,76
+LGA,New York/LaGuardia,2026-08-24 03:35,76
+LGA,New York/LaGuardia,2026-08-24 03:36,76
+LGA,New York/LaGuardia,2026-08-24 03:37,76
+LGA,New York/LaGuardia,2026-08-24 03:38,76
+LGA,New York/LaGuardia,2026-08-24 03:39,76
+LGA,New York/LaGuardia,2026-08-24 03:40,76
+LGA,New York/LaGuardia,2026-08-24 03:41,76
+LGA,New York/LaGuardia,2026-08-24 03:42,76
+LGA,New York/LaGuardia,2026-08-24 03:43,76
+LGA,New York/LaGuardia,2026-08-24 03:44,76
+LGA,New York/LaGuardia,2026-08-24 03:45,76
+LGA,New York/LaGuardia,2026-08-24 03:46,76
+LGA,New York/LaGuardia,2026-08-24 03:47,76
+LGA,New York/LaGuardia,2026-08-24 03:48,76
+LGA,New York/LaGuardia,2026-08-24 03:49,76
+LGA,New York/LaGuardia,2026-08-24 03:50,76
+LGA,New York/LaGuardia,2026-08-24 03:51,76
+LGA,New York/LaGuardia,2026-08-24 03:52,76
+LGA,New York/LaGuardia,2026-08-24 03:53,76
+LGA,New York/LaGuardia,2026-08-24 03:54,76
+LGA,New York/LaGuardia,2026-08-24 03:55,76
+LGA,New York/LaGuardia,2026-08-24 03:56,76
+LGA,New York/LaGuardia,2026-08-24 03:57,76
+LGA,New York/LaGuardia,2026-08-24 03:58,76
+LGA,New York/LaGuardia,2026-08-24 03:59,76
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:25,M
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:26,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:27,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:28,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:29,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:30,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:31,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:32,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:33,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:34,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:35,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:36,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:37,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:38,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:39,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:40,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:41,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:42,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:43,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:44,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:45,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:46,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:47,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:48,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:49,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:50,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:51,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:52,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:53,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:54,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:55,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:56,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:57,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:58,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 05:59,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:00,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:01,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:02,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:03,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:04,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:05,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:06,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:07,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:08,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:09,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:10,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:11,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:12,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:13,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:14,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:15,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:16,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:17,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:18,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:19,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:20,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:21,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:22,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:23,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:24,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:25,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:26,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:27,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:28,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:29,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:30,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:31,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:32,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:33,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:34,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:35,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:36,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:37,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:38,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:39,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:40,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:41,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:42,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:43,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:44,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:45,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:46,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:47,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:48,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:49,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:50,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:51,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:52,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:53,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:54,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:55,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:56,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:57,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:58,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 06:59,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:00,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:01,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:02,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:03,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:04,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:05,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:06,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:07,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:08,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:09,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:10,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:11,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:12,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:13,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:14,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:15,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:16,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:17,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:18,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:19,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:20,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:21,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:22,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:23,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:24,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:25,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:26,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:27,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:28,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:29,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:30,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:31,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:32,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:33,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:34,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:35,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:36,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:37,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:38,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:39,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:40,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:41,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:42,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:43,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:44,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:45,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:46,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:47,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:48,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:49,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:50,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:51,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:52,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:53,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:54,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:55,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:56,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:57,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:58,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 07:59,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:00,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:01,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:02,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:03,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:04,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:05,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:06,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:07,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:08,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:09,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:10,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:11,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:12,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:13,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:14,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:15,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:16,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:17,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:18,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:19,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:20,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:21,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:22,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:23,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:24,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:25,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:26,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:27,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:28,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:29,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:30,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:31,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:32,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:33,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:34,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:35,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:36,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:37,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:38,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:39,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:40,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:41,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:42,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:43,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:44,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:45,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:46,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:47,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:48,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:49,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:50,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:51,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:52,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:53,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:54,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:55,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:56,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:57,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:58,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 08:59,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:00,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:01,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:02,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:03,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:04,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:05,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:06,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:07,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:08,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:09,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:10,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:11,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:12,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:13,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:14,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:15,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:16,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:17,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:18,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:19,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:20,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:21,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:22,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:23,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:24,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:25,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:26,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:27,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:28,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:29,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:30,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:31,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:32,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:33,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:34,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:35,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:36,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:37,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:38,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:39,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:40,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:41,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:42,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:43,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:44,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:45,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:46,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:47,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:48,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:49,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:50,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:51,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:52,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:53,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:54,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:55,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:56,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:57,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:58,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 09:59,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:00,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:01,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:02,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:03,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:04,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:05,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:06,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:07,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:08,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:09,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:10,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:11,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:12,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:13,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:14,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:15,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:16,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:17,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:18,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:19,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:20,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:21,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:22,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:23,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:24,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:25,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:26,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:27,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:28,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:29,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:30,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:31,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:32,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:33,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:34,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:35,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:36,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:37,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:38,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:39,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:40,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:41,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:42,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:43,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:44,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:45,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:46,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:47,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:48,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:49,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:50,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:51,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:52,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:53,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:54,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:55,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:56,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:57,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:58,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 10:59,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:00,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:01,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:02,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:03,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:04,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:05,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:06,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:07,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:08,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:09,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:10,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:11,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:12,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:13,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:14,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:15,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:16,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:17,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:18,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:19,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:20,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:21,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:22,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:23,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:24,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:25,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:26,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:27,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:28,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:29,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:30,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:31,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:32,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:33,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:34,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:35,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:36,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:37,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:38,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:39,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:40,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:41,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:42,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:43,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:44,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:45,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:46,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:47,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:48,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:49,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:50,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:51,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:52,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:53,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:54,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:55,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:56,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:57,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:58,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 11:59,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:00,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:01,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:02,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:03,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:04,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:05,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:06,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:07,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:08,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:09,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:10,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:11,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:12,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:13,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:14,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:15,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:16,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:17,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:18,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:19,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:20,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:21,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:22,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:23,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:24,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:25,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:26,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:27,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:28,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:29,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:30,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:31,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:32,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:33,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:34,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:35,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:36,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:37,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:38,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:39,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:40,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:41,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:42,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:43,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:44,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:45,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:46,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:47,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:48,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:49,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:50,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:51,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:52,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:53,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:54,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:55,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:56,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:57,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:58,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 12:59,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:00,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:01,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:02,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:03,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:04,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:05,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:06,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:07,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:08,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:09,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:10,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:11,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:12,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:13,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:14,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:15,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:16,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:17,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:18,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:19,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:20,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:21,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:22,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:23,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:24,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:25,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:26,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:27,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:28,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:29,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:30,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:31,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:32,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:33,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:34,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:35,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:36,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:37,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:38,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:39,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:40,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:41,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:42,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:43,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:44,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:45,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:46,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:47,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:48,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:49,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:50,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:51,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:52,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:53,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:54,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:55,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:56,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:57,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:58,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 13:59,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:00,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:01,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:02,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:03,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:04,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:05,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:06,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:07,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:08,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:09,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:10,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:11,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:12,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:13,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:14,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:15,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:16,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:17,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:18,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:19,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:20,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:21,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:22,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:23,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:24,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:25,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:26,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:27,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:28,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:29,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:30,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:31,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:32,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:33,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:34,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:35,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:36,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:37,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:38,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:39,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:40,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:41,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:42,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:43,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:44,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:45,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:46,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:47,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:48,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:49,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:50,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:51,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:52,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:53,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:54,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:55,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:56,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:57,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:58,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 14:59,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:00,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:01,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:02,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:03,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:04,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:05,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:06,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:07,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:08,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:09,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:10,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:11,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:12,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:13,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:14,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:15,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:16,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:17,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:18,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:19,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:20,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:21,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:22,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:23,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:24,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:25,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:26,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:27,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:28,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:29,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:30,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:31,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:32,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:33,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:34,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:35,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:36,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:37,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:38,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:39,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:40,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:41,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:42,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:43,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:44,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:45,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:46,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:47,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:48,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:49,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:50,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:51,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:52,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:53,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:54,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:55,93
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:56,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:57,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:58,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 15:59,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:00,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:01,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:02,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:03,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:04,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:05,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:06,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:07,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:08,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:09,93
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:10,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:11,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:12,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:13,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:14,93
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:15,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:16,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:17,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:18,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:19,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:20,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:21,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:22,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:23,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:24,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:25,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:26,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:27,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:28,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:29,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:30,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:31,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:32,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:33,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:34,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:35,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:36,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:37,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:38,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:39,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:40,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:41,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:42,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:43,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:44,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:45,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:46,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:47,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:48,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:49,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:50,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:51,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:52,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:53,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:54,93
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:55,94
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:56,94
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:57,93
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:58,93
+MIA,MIAMI INTL AIRPORT,2026-08-23 16:59,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:00,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:01,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:02,93
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:03,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:04,94
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:05,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:06,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:07,94
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:08,93
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:09,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:10,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:11,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:12,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:13,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:14,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:15,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:16,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:17,94
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:18,94
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:19,93
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:20,93
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:21,93
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:22,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:23,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:24,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:25,93
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:26,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:27,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:28,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:29,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:30,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:31,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:32,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:33,93
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:34,93
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:35,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:36,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:37,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:38,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:39,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:40,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:41,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:42,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:43,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:44,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:45,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:46,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:47,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:48,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:49,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:50,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:51,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:52,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:53,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:54,92
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:55,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:56,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:57,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:58,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 17:59,91
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:00,90
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:01,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:02,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:03,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:04,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:05,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:06,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:07,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:08,89
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:09,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:10,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:11,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:12,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:13,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:14,88
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:15,87
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:16,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:17,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:18,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:19,86
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:20,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:21,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:22,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:23,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:24,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:25,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:26,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:27,85
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:28,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:29,84
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:30,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:31,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:32,83
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:33,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:34,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:35,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:36,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:37,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:38,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:39,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:40,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:41,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:42,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:43,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:44,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:45,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:46,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:47,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:48,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:49,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:50,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:51,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:52,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:53,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:54,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:55,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:56,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:57,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:58,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 18:59,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:00,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:01,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:02,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:03,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:04,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:05,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:06,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:07,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:08,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:09,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:10,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:11,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:12,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:13,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:14,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:15,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:16,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:17,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:18,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:19,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:20,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:21,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:22,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:23,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:24,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:25,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:26,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:27,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:28,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:29,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:30,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:31,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:32,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:33,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:34,82
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:35,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:36,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:37,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:38,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:39,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:40,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:41,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:42,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:43,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:44,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:45,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:46,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:47,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:48,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:49,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:50,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:51,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:52,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:53,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:54,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:55,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:56,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:57,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:58,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 19:59,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:00,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:01,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:02,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:03,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:04,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:05,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:06,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:07,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:08,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:09,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:10,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:11,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:12,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:13,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:14,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:15,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:16,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:17,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:18,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:19,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:20,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:21,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:22,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:23,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:24,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:25,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:26,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:27,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:28,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:29,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:30,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:31,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:32,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:33,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:34,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:35,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:36,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:37,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:38,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:39,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:40,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:41,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:42,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:43,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:44,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:45,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:46,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:47,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:48,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:49,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:50,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:51,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:52,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:53,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:54,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:55,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:56,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:57,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:58,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 20:59,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:00,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:01,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:02,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:03,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:04,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:05,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:06,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:07,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:08,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:09,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:10,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:11,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:12,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:13,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:14,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:15,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:16,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:17,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:18,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:19,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:20,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:21,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:22,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:23,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:24,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:25,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:26,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:27,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:28,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:29,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:30,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:31,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:32,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:33,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:34,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:35,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:36,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:37,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:38,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:39,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:40,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:41,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:42,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:43,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:44,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:45,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:46,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:47,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:48,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:49,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:50,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:51,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:52,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:53,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:54,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:55,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:56,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:57,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:58,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 21:59,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:00,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:01,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:02,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:03,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:04,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:05,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:06,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:07,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:08,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:09,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:10,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:11,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:12,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:13,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:14,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:15,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:16,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:17,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:18,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:19,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:20,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:21,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:22,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:23,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:24,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:25,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:26,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:27,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:28,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:29,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:30,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:31,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:32,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:33,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:34,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:35,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:36,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:37,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:38,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:39,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:40,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:41,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:42,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:43,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:44,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:45,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:46,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:47,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:48,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:49,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:50,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:51,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:52,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:53,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:54,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:55,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:56,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:57,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:58,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 22:59,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:00,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:01,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:02,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:03,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:04,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:05,81
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:06,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:07,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:08,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:09,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:10,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:11,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:12,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:13,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:14,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:15,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:16,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:17,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:18,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:19,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:20,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:21,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:22,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:23,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:24,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:25,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:26,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:27,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:28,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:29,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:30,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:31,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:32,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:33,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:34,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:35,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:36,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:37,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:38,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:39,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:40,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:41,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:42,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:43,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:44,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:45,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:46,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:47,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:48,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:49,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:50,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:51,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:52,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:53,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:54,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:55,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:56,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:57,80
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:58,79
+MIA,MIAMI INTL AIRPORT,2026-08-23 23:59,79
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:00,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:01,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:02,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:03,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:04,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:05,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:06,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:07,79
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:08,79
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:09,79
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:10,79
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:11,79
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:12,79
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:13,79
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:14,79
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:15,79
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:16,79
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:17,79
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:18,79
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:19,79
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:20,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:21,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:22,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:23,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:24,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:25,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:26,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:27,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:28,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:29,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:30,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:31,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:32,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:33,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:34,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:35,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:36,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:37,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:38,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:39,79
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:40,79
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:41,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:42,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:43,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:44,79
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:45,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:46,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:47,79
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:48,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:49,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:50,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:51,79
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:52,79
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:53,79
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:54,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:55,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:56,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:57,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:58,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 00:59,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:00,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:01,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:02,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:03,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:04,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:05,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:06,81
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:07,81
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:08,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:09,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:10,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:11,81
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:12,81
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:13,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:14,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:15,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:16,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:17,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:18,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:19,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:20,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:21,80
+MIA,MIAMI INTL AIRPORT,2026-08-24 01:22,80

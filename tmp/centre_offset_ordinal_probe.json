@@ -1,0 +1,3283 @@
+[
+ {
+  "position_id": "paper-pos-34793fccc72027e70fefc219",
+  "station_id": "ZBAA",
+  "event_date": "2026-08-11",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-10T13:57:05.999Z",
+  "ladder": "32°C",
+  "model": "32°C",
+  "offset": 0,
+  "window": [
+   "29°C or below",
+   "32°C"
+  ],
+  "model_center_c": "32.1575768038",
+  "settled_bucket": "33°C",
+  "settled_ord": 4,
+  "d_from_ladder": 1,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-5b40ac7592e7341d194af226",
+  "station_id": "ZBAA",
+  "event_date": "2026-08-11",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-11T00:35:28.049000Z",
+  "ladder": "32°C",
+  "model": "29°C or below",
+  "offset": 3,
+  "window": [
+   "32°C"
+  ],
+  "model_center_c": "28",
+  "settled_bucket": "33°C",
+  "settled_ord": 4,
+  "d_from_ladder": 1,
+  "d_from_model": 4
+ },
+ {
+  "position_id": "paper-pos-dbe6004bf92a732678dd82e5",
+  "station_id": "RJTT",
+  "event_date": "2026-08-12",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-11T02:29:15.374Z",
+  "ladder": "29°C",
+  "model": "29°C",
+  "offset": 0,
+  "window": [
+   "28°C",
+   "29°C",
+   "30°C"
+  ],
+  "model_center_c": "29.0891912745",
+  "settled_bucket": "29°C",
+  "settled_ord": 6,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-1b201edc165dc91d9b8f1d40",
+  "station_id": "RJTT",
+  "event_date": "2026-08-12",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-12T05:12:06.507001Z",
+  "ladder": "30°C",
+  "model": "24°C",
+  "offset": 6,
+  "window": [
+   "31°C"
+  ],
+  "model_center_c": "24",
+  "settled_bucket": "29°C",
+  "settled_ord": 6,
+  "d_from_ladder": -1,
+  "d_from_model": 5
+ },
+ {
+  "position_id": "paper-pos-87caec63158e4c127b33de58",
+  "station_id": "WMKK",
+  "event_date": "2026-08-12",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-11T07:31:26.214Z",
+  "ladder": "33°C",
+  "model": "33°C",
+  "offset": 0,
+  "window": [
+   "32°C",
+   "33°C"
+  ],
+  "model_center_c": "33.0412655381",
+  "settled_bucket": "34°C",
+  "settled_ord": 7,
+  "d_from_ladder": 1,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-06e7f547d74c6f5ff4ceeb7a",
+  "station_id": "RJTT",
+  "event_date": "2026-08-13",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-12T07:50:44.803Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "29°C",
+   "30°C",
+   "31°C"
+  ],
+  "model_center_c": "31.0813927071",
+  "settled_bucket": "28°C",
+  "settled_ord": 5,
+  "d_from_ladder": -3,
+  "d_from_model": -3
+ },
+ {
+  "position_id": "paper-pos-f09a4897e7cab80a7ecc4f46",
+  "station_id": "RJTT",
+  "event_date": "2026-08-13",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-13T02:47:39.592001Z",
+  "ladder": "31°C",
+  "model": "25°C",
+  "offset": 6,
+  "window": [
+   "30°C",
+   "31°C"
+  ],
+  "model_center_c": "25",
+  "settled_bucket": "28°C",
+  "settled_ord": 5,
+  "d_from_ladder": -3,
+  "d_from_model": 3
+ },
+ {
+  "position_id": "paper-pos-767530aa98fb77280b471e50",
+  "station_id": "FACT",
+  "event_date": "2026-08-14",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-14T10:14:26.061Z",
+  "ladder": "17°C",
+  "model": "17°C",
+  "offset": 0,
+  "window": [
+   "17°C",
+   "18°C",
+   "19°C"
+  ],
+  "model_center_c": "16.9795524982",
+  "settled_bucket": "17°C",
+  "settled_ord": 4,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-d35e022ca63200ca27925b7e",
+  "station_id": "FACT",
+  "event_date": "2026-08-14",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-13T22:05:26.459000Z",
+  "ladder": "16°C",
+  "model": "14°C",
+  "offset": 2,
+  "window": [
+   "15°C",
+   "16°C"
+  ],
+  "model_center_c": "14",
+  "settled_bucket": "17°C",
+  "settled_ord": 4,
+  "d_from_ladder": 1,
+  "d_from_model": 3
+ },
+ {
+  "position_id": "paper-pos-ae7d2d7c21caec80d46fe300",
+  "station_id": "KHOU",
+  "event_date": "2026-08-14",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-13T08:26:20.850Z",
+  "ladder": "96-97°F",
+  "model": "96-97°F",
+  "offset": 0,
+  "window": [
+   "96-97°F"
+  ],
+  "model_center_c": "35.4288236004",
+  "settled_bucket": "92-93°F",
+  "settled_ord": 6,
+  "d_from_ladder": -2,
+  "d_from_model": -2
+ },
+ {
+  "position_id": "paper-pos-acfab80b5f3785d59bfb001c",
+  "station_id": "MMMX",
+  "event_date": "2026-08-14",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-14T03:01:34.870Z",
+  "ladder": "24°C",
+  "model": "24°C",
+  "offset": 0,
+  "window": [
+   "22°C",
+   "23°C",
+   "24°C",
+   "25°C"
+  ],
+  "model_center_c": "23.911266322",
+  "settled_bucket": "26°C",
+  "settled_ord": 7,
+  "d_from_ladder": 2,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-488a937679018d63f15a8bd3",
+  "station_id": "RPLL",
+  "event_date": "2026-08-14",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-13T09:15:50.954Z",
+  "ladder": "32°C",
+  "model": "32°C",
+  "offset": 0,
+  "window": [
+   "31°C",
+   "32°C",
+   "33°C"
+  ],
+  "model_center_c": "31.5070579062",
+  "settled_bucket": "28°C",
+  "settled_ord": 3,
+  "d_from_ladder": -4,
+  "d_from_model": -4
+ },
+ {
+  "position_id": "paper-pos-82abcebecd11846da9478042",
+  "station_id": "RPLL",
+  "event_date": "2026-08-14",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-13T16:02:43.677000Z",
+  "ladder": "32°C",
+  "model": "27°C",
+  "offset": 5,
+  "window": [
+   "32°C",
+   "33°C"
+  ],
+  "model_center_c": "27",
+  "settled_bucket": "28°C",
+  "settled_ord": 3,
+  "d_from_ladder": -4,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-7d041c42ca01623cb4df580b",
+  "station_id": "ZBAA",
+  "event_date": "2026-08-14",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-13T08:42:23.999Z",
+  "ladder": "30°C",
+  "model": "30°C",
+  "offset": 0,
+  "window": [
+   "29°C",
+   "30°C",
+   "31°C"
+  ],
+  "model_center_c": "30.0833822352",
+  "settled_bucket": "32°C",
+  "settled_ord": 7,
+  "d_from_ladder": 2,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-cc3cd71bc9dc12cd21e7d2db",
+  "station_id": "ZUUU",
+  "event_date": "2026-08-14",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-13T09:15:50.954Z",
+  "ladder": "35°C",
+  "model": "35°C",
+  "offset": 0,
+  "window": [
+   "34°C",
+   "35°C"
+  ],
+  "model_center_c": "35.2194715587",
+  "settled_bucket": "37°C",
+  "settled_ord": 7,
+  "d_from_ladder": 2,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-8e0c47c0119eef87221dfe03",
+  "station_id": "CYYZ",
+  "event_date": "2026-08-15",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-14T04:34:52.641Z",
+  "ladder": "24°C",
+  "model": "24°C",
+  "offset": 0,
+  "window": [
+   "24°C"
+  ],
+  "model_center_c": "24.3563655932",
+  "settled_bucket": "24°C",
+  "settled_ord": 5,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-f7013a247e1af152522acb56",
+  "station_id": "KSEA",
+  "event_date": "2026-08-15",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-14T08:51:11.128Z",
+  "ladder": "80-81°F",
+  "model": "80-81°F",
+  "offset": 0,
+  "window": [
+   "78-79°F",
+   "80-81°F",
+   "82-83°F"
+  ],
+  "model_center_c": "26.7257110216",
+  "settled_bucket": "74-75°F",
+  "settled_ord": 1,
+  "d_from_ladder": -3,
+  "d_from_model": -3
+ },
+ {
+  "position_id": "paper-pos-36b19dcb2e2e710203312b5b",
+  "station_id": "KSEA",
+  "event_date": "2026-08-15",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-15T07:59:41.648001Z",
+  "ladder": "82-83°F",
+  "model": "73°F or below",
+  "offset": 5,
+  "window": [
+   "82-83°F"
+  ],
+  "model_center_c": "15",
+  "settled_bucket": "74-75°F",
+  "settled_ord": 1,
+  "d_from_ladder": -4,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-7fc2067f9c43cc3659098d30",
+  "station_id": "LEMD",
+  "event_date": "2026-08-15",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-15T04:28:22.730Z",
+  "ladder": "30°C or below",
+  "model": "33°C",
+  "offset": -3,
+  "window": [
+   "30°C or below",
+   "32°C",
+   "33°C"
+  ],
+  "model_center_c": "33.1273414406",
+  "settled_bucket": "30°C or below",
+  "settled_ord": 0,
+  "d_from_ladder": 0,
+  "d_from_model": -3
+ },
+ {
+  "position_id": "paper-pos-90c15c74b8fa5fe3d90ddce5",
+  "station_id": "RCSS",
+  "event_date": "2026-08-15",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-14T13:29:52.913Z",
+  "ladder": "33°C",
+  "model": "34°C",
+  "offset": -1,
+  "window": [
+   "33°C",
+   "34°C"
+  ],
+  "model_center_c": "33.5238285455",
+  "settled_bucket": "36°C",
+  "settled_ord": 8,
+  "d_from_ladder": 3,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-052b873698b8b411fd2eadb6",
+  "station_id": "RJTT",
+  "event_date": "2026-08-15",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-14T03:01:34.870Z",
+  "ladder": "28°C",
+  "model": "29°C",
+  "offset": -1,
+  "window": [
+   "28°C"
+  ],
+  "model_center_c": "28.9949738245",
+  "settled_bucket": "29°C",
+  "settled_ord": 5,
+  "d_from_ladder": 1,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-5120fcc8d609d53ecc7f52df",
+  "station_id": "RKSI",
+  "event_date": "2026-08-15",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-14T10:14:26.061Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "31°C",
+   "32°C"
+  ],
+  "model_center_c": "31.2028108253",
+  "settled_bucket": "28°C",
+  "settled_ord": 4,
+  "d_from_ladder": -3,
+  "d_from_model": -3
+ },
+ {
+  "position_id": "paper-pos-35f98253a4ee013667d8541b",
+  "station_id": "ZBAA",
+  "event_date": "2026-08-15",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-15T04:51:21.194Z",
+  "ladder": "31°C",
+  "model": "32°C",
+  "offset": -1,
+  "window": [
+   "30°C",
+   "31°C",
+   "32°C"
+  ],
+  "model_center_c": "31.6337787751",
+  "settled_bucket": "29°C",
+  "settled_ord": 2,
+  "d_from_ladder": -2,
+  "d_from_model": -3
+ },
+ {
+  "position_id": "paper-pos-fc25657dc6948b0888038114",
+  "station_id": "ZGGG",
+  "event_date": "2026-08-15",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-14T02:46:23.156Z",
+  "ladder": "33°C",
+  "model": "33°C",
+  "offset": 0,
+  "window": [
+   "32°C",
+   "33°C",
+   "34°C"
+  ],
+  "model_center_c": "33.1146037233",
+  "settled_bucket": "35°C",
+  "settled_ord": 6,
+  "d_from_ladder": 2,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-3cbec8b20e9a22bb81ab350f",
+  "station_id": "ZGGG",
+  "event_date": "2026-08-15",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-14T16:06:20.084000Z",
+  "ladder": "33°C",
+  "model": "29°C or below",
+  "offset": 4,
+  "window": [
+   "33°C",
+   "34°C"
+  ],
+  "model_center_c": "26",
+  "settled_bucket": "35°C",
+  "settled_ord": 6,
+  "d_from_ladder": 2,
+  "d_from_model": 6
+ },
+ {
+  "position_id": "paper-pos-be663765bb645d9f40095758",
+  "station_id": "KBKF",
+  "event_date": "2026-08-16",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-15T20:25:40.636Z",
+  "ladder": "73°F or below",
+  "model": "82-83°F",
+  "offset": -5,
+  "window": [
+   "76-77°F"
+  ],
+  "model_center_c": "27.5260308134",
+  "settled_bucket": "82-83°F",
+  "settled_ord": 5,
+  "d_from_ladder": 5,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-f5493baa68278d462b23759b",
+  "station_id": "KMIA",
+  "event_date": "2026-08-16",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-15T20:25:40.636Z",
+  "ladder": "98-99°F",
+  "model": "96-97°F",
+  "offset": 1,
+  "window": [
+   "96-97°F",
+   "98-99°F",
+   "100-101°F"
+  ],
+  "model_center_c": "36.1007529941",
+  "settled_bucket": "92-93°F",
+  "settled_ord": 4,
+  "d_from_ladder": -3,
+  "d_from_model": -2
+ },
+ {
+  "position_id": "paper-pos-5be3ebdd3d05882f1e4c53a2",
+  "station_id": "ZSQD",
+  "event_date": "2026-08-16",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-15T04:28:22.730Z",
+  "ladder": "34°C",
+  "model": "34°C",
+  "offset": 0,
+  "window": [
+   "34°C"
+  ],
+  "model_center_c": "33.534523345",
+  "settled_bucket": "33°C",
+  "settled_ord": 7,
+  "d_from_ladder": -1,
+  "d_from_model": -1
+ },
+ {
+  "position_id": "paper-pos-3136f5fb76deed58a1f6df5f",
+  "station_id": "KDAL",
+  "event_date": "2026-08-17",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-16T05:32:56.998Z",
+  "ladder": "106-107°F",
+  "model": "104-105°F",
+  "offset": 1,
+  "window": [
+   "106-107°F",
+   "108-109°F",
+   "110-111°F"
+  ],
+  "model_center_c": "40.7659968464",
+  "settled_bucket": "104-105°F",
+  "settled_ord": 4,
+  "d_from_ladder": -1,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-f799484f57833228cd26cde7",
+  "station_id": "KDAL",
+  "event_date": "2026-08-17",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-17T16:48:30.003001Z",
+  "ladder": "106-107°F",
+  "model": "106-107°F",
+  "offset": 0,
+  "window": [
+   "106-107°F"
+  ],
+  "model_center_c": "41.6130840403",
+  "settled_bucket": "104-105°F",
+  "settled_ord": 4,
+  "d_from_ladder": -1,
+  "d_from_model": -1
+ },
+ {
+  "position_id": "paper-pos-1bf5b29b9b2629ed737ae334",
+  "station_id": "KHOU",
+  "event_date": "2026-08-17",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-16T05:32:56.998Z",
+  "ladder": "100-101°F",
+  "model": "98-99°F",
+  "offset": 1,
+  "window": [
+   "100-101°F",
+   "102-103°F"
+  ],
+  "model_center_c": "37.0208838339",
+  "settled_bucket": "96-97°F",
+  "settled_ord": 4,
+  "d_from_ladder": -2,
+  "d_from_model": -1
+ },
+ {
+  "position_id": "paper-pos-7084e0206a049016a15fece5",
+  "station_id": "OEJN",
+  "event_date": "2026-08-17",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-16T17:46:21.303Z",
+  "ladder": "39°C",
+  "model": "39°C",
+  "offset": 0,
+  "window": [
+   "37°C",
+   "38°C",
+   "39°C",
+   "40°C"
+  ],
+  "model_center_c": "39.3340875656",
+  "settled_bucket": "41°C",
+  "settled_ord": 6,
+  "d_from_ladder": 2,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-5d0b0ebf91473f285b4532f4",
+  "station_id": "OPKC",
+  "event_date": "2026-08-17",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-15T21:09:37.079Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "30°C",
+   "31°C"
+  ],
+  "model_center_c": "30.9253101571",
+  "settled_bucket": "31°C",
+  "settled_ord": 4,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-105566abf956cffb43fe6e0f",
+  "station_id": "OPKC",
+  "event_date": "2026-08-17",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-16T17:46:02Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "29°C",
+   "30°C",
+   "31°C"
+  ],
+  "model_center_c": "31.0829288027",
+  "settled_bucket": "31°C",
+  "settled_ord": 4,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-85b15e6c2bf519368f5383ac",
+  "station_id": "WMKK",
+  "event_date": "2026-08-17",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-16T02:20:12.147Z",
+  "ladder": "32°C",
+  "model": "31°C",
+  "offset": 1,
+  "window": [
+   "31°C",
+   "32°C",
+   "33°C"
+  ],
+  "model_center_c": "31.4653582505",
+  "settled_bucket": "34°C",
+  "settled_ord": 6,
+  "d_from_ladder": 2,
+  "d_from_model": 3
+ },
+ {
+  "position_id": "paper-pos-165f39783dadc27be167db4a",
+  "station_id": "ZBAA",
+  "event_date": "2026-08-17",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-16T17:41:03.975Z",
+  "ladder": "33°C",
+  "model": "33°C",
+  "offset": 0,
+  "window": [
+   "32°C",
+   "33°C"
+  ],
+  "model_center_c": "32.8015778785",
+  "settled_bucket": "33°C",
+  "settled_ord": 6,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-05c412f28b60fdfe54e6ed31",
+  "station_id": "ZGSZ",
+  "event_date": "2026-08-17",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-15T21:09:37.079Z",
+  "ladder": "33°C",
+  "model": "33°C",
+  "offset": 0,
+  "window": [
+   "33°C"
+  ],
+  "model_center_c": "32.9763554063",
+  "settled_bucket": "32°C",
+  "settled_ord": 5,
+  "d_from_ladder": -1,
+  "d_from_model": -1
+ },
+ {
+  "position_id": "paper-pos-bc6fc3560c27336955071e14",
+  "station_id": "ZGSZ",
+  "event_date": "2026-08-17",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-16T17:25:51Z",
+  "ladder": "32°C",
+  "model": "32°C",
+  "offset": 0,
+  "window": [
+   "32°C",
+   "33°C"
+  ],
+  "model_center_c": "32.2455551177",
+  "settled_bucket": "32°C",
+  "settled_ord": 5,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-f16ddca04cfcc2be96e05d8e",
+  "station_id": "ZSPD",
+  "event_date": "2026-08-17",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-16T02:20:12.147Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "31°C",
+   "32°C",
+   "33°C",
+   "34°C"
+  ],
+  "model_center_c": "31.2402535602",
+  "settled_bucket": "31°C",
+  "settled_ord": 6,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-960efed0be5f14b71eb2c2dc",
+  "station_id": "ZUCK",
+  "event_date": "2026-08-17",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-17T02:47:12.403Z",
+  "ladder": "38°C",
+  "model": "37°C",
+  "offset": 1,
+  "window": [
+   "38°C",
+   "39°C"
+  ],
+  "model_center_c": "37.4098796786",
+  "settled_bucket": "36°C",
+  "settled_ord": 3,
+  "d_from_ladder": -2,
+  "d_from_model": -1
+ },
+ {
+  "position_id": "paper-pos-b189ca6baab82d080e1f49f4",
+  "station_id": "EDDM",
+  "event_date": "2026-08-18",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-17T16:14:14.773Z",
+  "ladder": "23°C",
+  "model": "22°C",
+  "offset": 1,
+  "window": [
+   "22°C",
+   "23°C",
+   "24°C"
+  ],
+  "model_center_c": "21.9076620863",
+  "settled_bucket": "20°C",
+  "settled_ord": 5,
+  "d_from_ladder": -3,
+  "d_from_model": -2
+ },
+ {
+  "position_id": "paper-pos-3e168e94ad701397ccfff0ee",
+  "station_id": "EGLC",
+  "event_date": "2026-08-18",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-17T01:50:52.102Z",
+  "ladder": "22°C or below",
+  "model": "25°C",
+  "offset": -3,
+  "window": [
+   "22°C or below"
+  ],
+  "model_center_c": "24.692233543",
+  "settled_bucket": "26°C",
+  "settled_ord": 4,
+  "d_from_ladder": 4,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-7e1462b0dc6aa57a5f4ab714",
+  "station_id": "KORD",
+  "event_date": "2026-08-18",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-17T07:35:47.761Z",
+  "ladder": "78-79°F",
+  "model": "80-81°F",
+  "offset": -1,
+  "window": [
+   "76-77°F",
+   "78-79°F"
+  ],
+  "model_center_c": "26.4547422861",
+  "settled_bucket": "78-79°F",
+  "settled_ord": 4,
+  "d_from_ladder": 0,
+  "d_from_model": -1
+ },
+ {
+  "position_id": "paper-pos-b656d59051ae4d380e3b766b",
+  "station_id": "KSEA",
+  "event_date": "2026-08-18",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-17T17:51:34.149Z",
+  "ladder": "80-81°F",
+  "model": "78-79°F",
+  "offset": 1,
+  "window": [
+   "80-81°F"
+  ],
+  "model_center_c": "26.2473724719",
+  "settled_bucket": "78-79°F",
+  "settled_ord": 4,
+  "d_from_ladder": -1,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-bde239490e70dd7f00ba91ee",
+  "station_id": "OPKC",
+  "event_date": "2026-08-18",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-17T01:24:27.491Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "30°C",
+   "31°C"
+  ],
+  "model_center_c": "31.324853415",
+  "settled_bucket": "32°C",
+  "settled_ord": 5,
+  "d_from_ladder": 1,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-2c20a7fefde2749dab7b0c5a",
+  "station_id": "OPKC",
+  "event_date": "2026-08-18",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-17T19:07:33.298001Z",
+  "ladder": "30°C",
+  "model": "31°C",
+  "offset": -1,
+  "window": [
+   "30°C"
+  ],
+  "model_center_c": "31.213408435",
+  "settled_bucket": "32°C",
+  "settled_ord": 5,
+  "d_from_ladder": 2,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-5d4ee2722b490fdddc00818c",
+  "station_id": "RJTT",
+  "event_date": "2026-08-18",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-17T01:50:52.102Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "31°C",
+   "32°C",
+   "34°C"
+  ],
+  "model_center_c": "31.2375175608",
+  "settled_bucket": "31°C",
+  "settled_ord": 6,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-5be73562e1561a0d4af75e69",
+  "station_id": "RJTT",
+  "event_date": "2026-08-18",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-17T06:42:19Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "33°C"
+  ],
+  "model_center_c": "31.2375175608",
+  "settled_bucket": "31°C",
+  "settled_ord": 6,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-5d0c66ad3b876f27394778ed",
+  "station_id": "RJTT",
+  "event_date": "2026-08-18",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-17T16:14:14.773001Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "33°C"
+  ],
+  "model_center_c": "31.7288885888",
+  "settled_bucket": "31°C",
+  "settled_ord": 6,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-562d8f419fa08f11baf7bb54",
+  "station_id": "RKSI",
+  "event_date": "2026-08-18",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-17T01:55:41.318Z",
+  "ladder": "30°C",
+  "model": "30°C",
+  "offset": 0,
+  "window": [
+   "30°C",
+   "31°C"
+  ],
+  "model_center_c": "30.2065145028",
+  "settled_bucket": "31°C",
+  "settled_ord": 8,
+  "d_from_ladder": 1,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-e7d420ec19f4b5d8db18a2ec",
+  "station_id": "RKSI",
+  "event_date": "2026-08-18",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-16T23:21:40Z",
+  "ladder": "28°C",
+  "model": "28°C",
+  "offset": 0,
+  "window": [
+   "27°C",
+   "28°C"
+  ],
+  "model_center_c": "27.8761152601",
+  "settled_bucket": "31°C",
+  "settled_ord": 8,
+  "d_from_ladder": 3,
+  "d_from_model": 3
+ },
+ {
+  "position_id": "paper-pos-c54ace8563834a31ed6b41b1",
+  "station_id": "VILK",
+  "event_date": "2026-08-18",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-17T01:24:27.491Z",
+  "ladder": "30°C",
+  "model": "29°C",
+  "offset": 1,
+  "window": [
+   "30°C"
+  ],
+  "model_center_c": "29.3472928748"
+ },
+ {
+  "position_id": "paper-pos-fe2ae5ebe4796fad1ec8b39b",
+  "station_id": "ZUCK",
+  "event_date": "2026-08-18",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-16T19:16:53.477Z",
+  "ladder": "31°C or below",
+  "model": "32°C",
+  "offset": -1,
+  "window": [
+   "31°C or below"
+  ],
+  "model_center_c": "32.1475631826",
+  "settled_bucket": "34°C",
+  "settled_ord": 3,
+  "d_from_ladder": 3,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-51f009efea6a131eee93884b",
+  "station_id": "ZUUU",
+  "event_date": "2026-08-18",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-16T19:16:53.477Z",
+  "ladder": "23°C",
+  "model": "23°C",
+  "offset": 0,
+  "window": [
+   "21°C",
+   "23°C"
+  ],
+  "model_center_c": "23.1698750711",
+  "settled_bucket": "23°C",
+  "settled_ord": 3,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-92e8a8e16a700a04d5c391ff",
+  "station_id": "ZUUU",
+  "event_date": "2026-08-18",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-17T06:51:31Z",
+  "ladder": "23°C",
+  "model": "23°C",
+  "offset": 0,
+  "window": [
+   "22°C"
+  ],
+  "model_center_c": "23.1698750711",
+  "settled_bucket": "23°C",
+  "settled_ord": 3,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-4385218983d235218d1f8518",
+  "station_id": "EGLC",
+  "event_date": "2026-08-19",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-18T13:46:11.117Z",
+  "ladder": "22°C",
+  "model": "23°C",
+  "offset": -1,
+  "window": [
+   "21°C",
+   "22°C",
+   "23°C"
+  ],
+  "model_center_c": "23.0246589572",
+  "settled_bucket": "25°C",
+  "settled_ord": 5,
+  "d_from_ladder": 3,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-cc8d8ab0c73969ab1d832c81",
+  "station_id": "EHAM",
+  "event_date": "2026-08-19",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-18T02:47:20.601Z",
+  "ladder": "20°C",
+  "model": "20°C",
+  "offset": 0,
+  "window": [
+   "18°C",
+   "19°C",
+   "20°C"
+  ],
+  "model_center_c": "20.3491739469",
+  "settled_bucket": "21°C",
+  "settled_ord": 5,
+  "d_from_ladder": 1,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-2dc6ee1ef0f63d80c812b0bf",
+  "station_id": "KHOU",
+  "event_date": "2026-08-19",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-18T08:15:40.723Z",
+  "ladder": "96-97°F",
+  "model": "96-97°F",
+  "offset": 0,
+  "window": [
+   "92-93°F",
+   "94-95°F",
+   "96-97°F"
+  ],
+  "model_center_c": "35.6941339795",
+  "settled_bucket": "96-97°F",
+  "settled_ord": 4,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-be94e9c4e6b38be940660938",
+  "station_id": "KLGA",
+  "event_date": "2026-08-19",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-18T06:14:20.154Z",
+  "ladder": "86-87°F",
+  "model": "86-87°F",
+  "offset": 0,
+  "window": [
+   "86-87°F"
+  ],
+  "model_center_c": "29.8650468772",
+  "settled_bucket": "86-87°F",
+  "settled_ord": 6,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-783fa98500c6d742bed25492",
+  "station_id": "KLGA",
+  "event_date": "2026-08-19",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-19T15:52:22.024001Z",
+  "ladder": "86-87°F",
+  "model": "86-87°F",
+  "offset": 0,
+  "window": [
+   "84-85°F"
+  ],
+  "model_center_c": "30.4132342216",
+  "settled_bucket": "86-87°F",
+  "settled_ord": 6,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-e36bd4d3a6d7453ee37e903e",
+  "station_id": "LFPB",
+  "event_date": "2026-08-19",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-18T02:47:20.601Z",
+  "ladder": "28°C",
+  "model": "24°C",
+  "offset": 4,
+  "window": [
+   "25°C",
+   "26°C",
+   "28°C"
+  ],
+  "model_center_c": "24.4183303098",
+  "settled_bucket": "29°C or higher",
+  "settled_ord": 10,
+  "d_from_ladder": 1,
+  "d_from_model": 5
+ },
+ {
+  "position_id": "paper-pos-461ba479ca88dbf6d79c1e85",
+  "station_id": "LFPB",
+  "event_date": "2026-08-19",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-19T01:51:16.054Z",
+  "ladder": "27°C",
+  "model": "25°C",
+  "offset": 2,
+  "window": [
+   "24°C",
+   "25°C",
+   "27°C"
+  ],
+  "model_center_c": "25.7716329009",
+  "settled_bucket": "29°C or higher",
+  "settled_ord": 10,
+  "d_from_ladder": 2,
+  "d_from_model": 4
+ },
+ {
+  "position_id": "paper-pos-ca23d6623d153a94538c981b",
+  "station_id": "MMMX",
+  "event_date": "2026-08-19",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-19T08:50:06.512Z",
+  "ladder": "25°C",
+  "model": "25°C",
+  "offset": 0,
+  "window": [
+   "25°C"
+  ],
+  "model_center_c": "25.2423701058",
+  "settled_bucket": "25°C",
+  "settled_ord": 3,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-58af8102a5d3463d2895e800",
+  "station_id": "MMMX",
+  "event_date": "2026-08-19",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-19T08:50:06.512001Z",
+  "ladder": "25°C",
+  "model": "25°C",
+  "offset": 0,
+  "window": [
+   "25°C"
+  ],
+  "model_center_c": "25.8274339585",
+  "settled_bucket": "25°C",
+  "settled_ord": 3,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-f0c5ef3f80dd515eeccc4215",
+  "station_id": "OEJN",
+  "event_date": "2026-08-19",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-18T08:15:40.723Z",
+  "ladder": "39°C",
+  "model": "39°C",
+  "offset": 0,
+  "window": [
+   "39°C"
+  ],
+  "model_center_c": "38.9597016386",
+  "settled_bucket": "37°C",
+  "settled_ord": 6,
+  "d_from_ladder": -2,
+  "d_from_model": -2
+ },
+ {
+  "position_id": "paper-pos-e1a780e1fdb61a75e2558752",
+  "station_id": "OEJN",
+  "event_date": "2026-08-19",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-19T05:32:16Z",
+  "ladder": "39°C",
+  "model": "39°C",
+  "offset": 0,
+  "window": [
+   "41°C or higher"
+  ],
+  "model_center_c": "38.9597016386",
+  "settled_bucket": "37°C",
+  "settled_ord": 6,
+  "d_from_ladder": -2,
+  "d_from_model": -2
+ },
+ {
+  "position_id": "paper-pos-cba30ff672563f65b47ba005",
+  "station_id": "OEJN",
+  "event_date": "2026-08-19",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-18T21:01:28.279000Z",
+  "ladder": "39°C",
+  "model": "39°C",
+  "offset": 0,
+  "window": [
+   "41°C or higher"
+  ],
+  "model_center_c": "39.5147310258",
+  "settled_bucket": "37°C",
+  "settled_ord": 6,
+  "d_from_ladder": -2,
+  "d_from_model": -2
+ },
+ {
+  "position_id": "paper-pos-866434dd454e1134b70cc1c6",
+  "station_id": "RCSS",
+  "event_date": "2026-08-19",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-17T18:09:32.579Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "30°C",
+   "31°C",
+   "33°C"
+  ],
+  "model_center_c": "31.4758492439",
+  "settled_bucket": "32°C",
+  "settled_ord": 6,
+  "d_from_ladder": 1,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-f18f9b0a727ee631157830b9",
+  "station_id": "RJTT",
+  "event_date": "2026-08-19",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-18T03:03:57.438Z",
+  "ladder": "32°C",
+  "model": "32°C",
+  "offset": 0,
+  "window": [
+   "31°C",
+   "32°C",
+   "33°C",
+   "34°C"
+  ],
+  "model_center_c": "31.6068413742",
+  "settled_bucket": "32°C",
+  "settled_ord": 7,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-f0b1b13c7fa7e5d79e4b6128",
+  "station_id": "RJTT",
+  "event_date": "2026-08-19",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-18T00:28:26Z",
+  "ladder": "30°C",
+  "model": "30°C",
+  "offset": 0,
+  "window": [
+   "29°C",
+   "30°C"
+  ],
+  "model_center_c": "29.6199961439",
+  "settled_bucket": "32°C",
+  "settled_ord": 7,
+  "d_from_ladder": 2,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-c3b46a1aa5252d76d10fb24e",
+  "station_id": "RKSI",
+  "event_date": "2026-08-19",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-18T08:15:40.723Z",
+  "ladder": "31°C",
+  "model": "30°C",
+  "offset": 1,
+  "window": [
+   "31°C",
+   "32°C"
+  ],
+  "model_center_c": "30.4271774732",
+  "settled_bucket": "29°C",
+  "settled_ord": 6,
+  "d_from_ladder": -2,
+  "d_from_model": -1
+ },
+ {
+  "position_id": "paper-pos-0679271acaf9d7239ee54746",
+  "station_id": "RKSI",
+  "event_date": "2026-08-19",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-17T23:19:01Z",
+  "ladder": "27°C",
+  "model": "27°C",
+  "offset": 0,
+  "window": [
+   "27°C",
+   "28°C"
+  ],
+  "model_center_c": "27.3082646243",
+  "settled_bucket": "29°C",
+  "settled_ord": 6,
+  "d_from_ladder": 2,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-70054bd7b5bcb82a540ce0db",
+  "station_id": "RKSI",
+  "event_date": "2026-08-19",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-19T03:34:33.081Z",
+  "ladder": "30°C",
+  "model": "31°C",
+  "offset": -1,
+  "window": [
+   "30°C"
+  ],
+  "model_center_c": "31.0592221635",
+  "settled_bucket": "29°C",
+  "settled_ord": 6,
+  "d_from_ladder": -1,
+  "d_from_model": -2
+ },
+ {
+  "position_id": "paper-pos-559cd52751edeac6dd68102f",
+  "station_id": "RPLL",
+  "event_date": "2026-08-19",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-17T18:09:32.579Z",
+  "ladder": "28°C",
+  "model": "28°C",
+  "offset": 0,
+  "window": [
+   "27°C",
+   "28°C"
+  ],
+  "model_center_c": "27.9337450167",
+  "settled_bucket": "30°C",
+  "settled_ord": 8,
+  "d_from_ladder": 2,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-eb8b70a368b32beb28446fb7",
+  "station_id": "SAEZ",
+  "event_date": "2026-08-19",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-18T03:40:06.872Z",
+  "ladder": "17°C",
+  "model": "17°C",
+  "offset": 0,
+  "window": [
+   "17°C",
+   "18°C"
+  ],
+  "model_center_c": "16.5608900614",
+  "settled_bucket": "17°C",
+  "settled_ord": 7,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-4f7b6039a1a1c8b8d26eb648",
+  "station_id": "SAEZ",
+  "event_date": "2026-08-19",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-18T12:23:40Z",
+  "ladder": "18°C",
+  "model": "17°C",
+  "offset": 1,
+  "window": [
+   "18°C",
+   "19°C"
+  ],
+  "model_center_c": "17.0859878446",
+  "settled_bucket": "17°C",
+  "settled_ord": 7,
+  "d_from_ladder": -1,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-983a644755ec997cfbd6ae7e",
+  "station_id": "WSSS",
+  "event_date": "2026-08-19",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-17T20:22:55.223Z",
+  "ladder": "30°C",
+  "model": "30°C",
+  "offset": 0,
+  "window": [
+   "29°C",
+   "30°C",
+   "31°C"
+  ],
+  "model_center_c": "30.1699508315",
+  "settled_bucket": "33°C",
+  "settled_ord": 6,
+  "d_from_ladder": 3,
+  "d_from_model": 3
+ },
+ {
+  "position_id": "paper-pos-f58fe38598ba7a7aa1249cda",
+  "station_id": "ZBAA",
+  "event_date": "2026-08-19",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-18T03:03:57.438Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "29°C",
+   "30°C",
+   "31°C"
+  ],
+  "model_center_c": "30.8026641706",
+  "settled_bucket": "32°C",
+  "settled_ord": 5,
+  "d_from_ladder": 1,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-d78c2f4e7adb9ca87cca3e7e",
+  "station_id": "ZBAA",
+  "event_date": "2026-08-19",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-18T04:27:05Z",
+  "ladder": "32°C",
+  "model": "32°C",
+  "offset": 0,
+  "window": [
+   "32°C",
+   "33°C"
+  ],
+  "model_center_c": "31.6683554439",
+  "settled_bucket": "32°C",
+  "settled_ord": 5,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-d4a9162ca9a34c3af87aeea7",
+  "station_id": "ZSQD",
+  "event_date": "2026-08-19",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-17T18:09:32.579Z",
+  "ladder": "33°C",
+  "model": "32°C",
+  "offset": 1,
+  "window": [
+   "31°C",
+   "33°C",
+   "34°C"
+  ],
+  "model_center_c": "31.6861062144",
+  "settled_bucket": "33°C",
+  "settled_ord": 7,
+  "d_from_ladder": 0,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-cc44963e6229151cb7280935",
+  "station_id": "ZUUU",
+  "event_date": "2026-08-19",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-18T00:19:34.154Z",
+  "ladder": "27°C",
+  "model": "27°C",
+  "offset": 0,
+  "window": [
+   "25°C"
+  ],
+  "model_center_c": "27.096777143",
+  "settled_bucket": "29°C",
+  "settled_ord": 6,
+  "d_from_ladder": 2,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-e3946bee28cfc2c882ecb47d",
+  "station_id": "EDDM",
+  "event_date": "2026-08-20",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-19T02:38:13.950Z",
+  "ladder": "29°C",
+  "model": "27°C",
+  "offset": 2,
+  "window": [
+   "28°C",
+   "29°C"
+  ],
+  "model_center_c": "26.9376552305",
+  "settled_bucket": "25°C",
+  "settled_ord": 5,
+  "d_from_ladder": -4,
+  "d_from_model": -2
+ },
+ {
+  "position_id": "paper-pos-0da50445cf9ac955ef027a7e",
+  "station_id": "EFHK",
+  "event_date": "2026-08-20",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-18T21:09:17.881Z",
+  "ladder": "20°C",
+  "model": "19°C",
+  "offset": 1,
+  "window": [
+   "19°C",
+   "20°C",
+   "21°C",
+   "22°C"
+  ],
+  "model_center_c": "19.0451321539",
+  "settled_bucket": "18°C",
+  "settled_ord": 4,
+  "d_from_ladder": -2,
+  "d_from_model": -1
+ },
+ {
+  "position_id": "paper-pos-4bf4e3a79b85b4c5f3c0f552",
+  "station_id": "EFHK",
+  "event_date": "2026-08-20",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-20T08:11:29.321004Z",
+  "ladder": "20°C",
+  "model": "20°C",
+  "offset": 0,
+  "window": [
+   "19°C",
+   "20°C"
+  ],
+  "model_center_c": "20.2907001403",
+  "settled_bucket": "18°C",
+  "settled_ord": 4,
+  "d_from_ladder": -2,
+  "d_from_model": -2
+ },
+ {
+  "position_id": "paper-pos-1e603f2d8d93cfe307ab1be2",
+  "station_id": "EHAM",
+  "event_date": "2026-08-20",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-19T01:24:46.170Z",
+  "ladder": "19°C",
+  "model": "20°C",
+  "offset": -1,
+  "window": [
+   "18°C",
+   "19°C"
+  ],
+  "model_center_c": "19.6962907422",
+  "settled_bucket": "22°C",
+  "settled_ord": 7,
+  "d_from_ladder": 3,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-f7b5946c811b74516f4b3a86",
+  "station_id": "EHAM",
+  "event_date": "2026-08-20",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-19T05:50:30Z",
+  "ladder": "18°C",
+  "model": "20°C",
+  "offset": -2,
+  "window": [
+   "20°C"
+  ],
+  "model_center_c": "19.6692265732",
+  "settled_bucket": "22°C",
+  "settled_ord": 7,
+  "d_from_ladder": 4,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-a71f8001b4aed4f3303ef312",
+  "station_id": "KLAX",
+  "event_date": "2026-08-20",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T10:15:17.613Z",
+  "ladder": "80-81°F",
+  "model": "80-81°F",
+  "offset": 0,
+  "window": [
+   "80-81°F",
+   "82-83°F",
+   "84-85°F"
+  ],
+  "model_center_c": "27.0996936493",
+  "settled_bucket": "76-77°F",
+  "settled_ord": 1,
+  "d_from_ladder": -2,
+  "d_from_model": -2
+ },
+ {
+  "position_id": "paper-pos-0fe9046d0b319026b59042db",
+  "station_id": "KLAX",
+  "event_date": "2026-08-20",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-20T18:26:09.078001Z",
+  "ladder": "80-81°F",
+  "model": "80-81°F",
+  "offset": 0,
+  "window": [
+   "78-79°F",
+   "80-81°F",
+   "82-83°F"
+  ],
+  "model_center_c": "27.2960268974",
+  "settled_bucket": "76-77°F",
+  "settled_ord": 1,
+  "d_from_ladder": -2,
+  "d_from_model": -2
+ },
+ {
+  "position_id": "paper-pos-d8408f6d3fcc9e6023f1112e",
+  "station_id": "KSFO",
+  "event_date": "2026-08-20",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T08:11:29.321Z",
+  "ladder": "68-69°F",
+  "model": "68-69°F",
+  "offset": 0,
+  "window": [
+   "68-69°F",
+   "70-71°F",
+   "72-73°F"
+  ],
+  "model_center_c": "20.5848190105",
+  "settled_bucket": "68-69°F",
+  "settled_ord": 5,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-c8b803504f36fa47668812c5",
+  "station_id": "KSFO",
+  "event_date": "2026-08-20",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-20T16:27:45.589002Z",
+  "ladder": "70-71°F",
+  "model": "70-71°F",
+  "offset": 0,
+  "window": [
+   "70-71°F",
+   "72-73°F"
+  ],
+  "model_center_c": "21.3758234413",
+  "settled_bucket": "68-69°F",
+  "settled_ord": 5,
+  "d_from_ladder": -1,
+  "d_from_model": -1
+ },
+ {
+  "position_id": "paper-pos-ddaf63c5241e098b0274620d",
+  "station_id": "RCSS",
+  "event_date": "2026-08-20",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-18T19:09:59.748Z",
+  "ladder": "30°C",
+  "model": "30°C",
+  "offset": 0,
+  "window": [
+   "30°C",
+   "31°C"
+  ],
+  "model_center_c": "29.6100108977",
+  "settled_bucket": "33°C",
+  "settled_ord": 7,
+  "d_from_ladder": 3,
+  "d_from_model": 3
+ },
+ {
+  "position_id": "paper-pos-e10d6e7e3c1296309630ffd8",
+  "station_id": "RCSS",
+  "event_date": "2026-08-20",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-19T17:13:26.284Z",
+  "ladder": "35°C",
+  "model": "33°C",
+  "offset": 2,
+  "window": [
+   "34°C",
+   "35°C"
+  ],
+  "model_center_c": "33.7977003885",
+  "settled_bucket": "33°C",
+  "settled_ord": 7,
+  "d_from_ladder": -2,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-87b3ff438bc9ac7321e37122",
+  "station_id": "RJTT",
+  "event_date": "2026-08-20",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-18T19:09:59.748Z",
+  "ladder": "30°C",
+  "model": "29°C",
+  "offset": 1,
+  "window": [
+   "29°C",
+   "30°C"
+  ],
+  "model_center_c": "29.4039939673",
+  "settled_bucket": "33°C",
+  "settled_ord": 7,
+  "d_from_ladder": 3,
+  "d_from_model": 4
+ },
+ {
+  "position_id": "paper-pos-15a92ae8e58e2e29b0486b18",
+  "station_id": "RJTT",
+  "event_date": "2026-08-20",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-19T05:58:37Z",
+  "ladder": "30°C",
+  "model": "29°C",
+  "offset": 1,
+  "window": [
+   "30°C"
+  ],
+  "model_center_c": "29.4067756871",
+  "settled_bucket": "33°C",
+  "settled_ord": 7,
+  "d_from_ladder": 3,
+  "d_from_model": 4
+ },
+ {
+  "position_id": "paper-pos-80f3c125ec194d40914cbec9",
+  "station_id": "RJTT",
+  "event_date": "2026-08-20",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-19T15:05:40.826000Z",
+  "ladder": "33°C",
+  "model": "32°C",
+  "offset": 1,
+  "window": [
+   "32°C",
+   "33°C",
+   "34°C"
+  ],
+  "model_center_c": "32.7848096559",
+  "settled_bucket": "33°C",
+  "settled_ord": 7,
+  "d_from_ladder": 0,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-e22f343a435e17f68a8225dc",
+  "station_id": "WMKK",
+  "event_date": "2026-08-20",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-18T21:09:17.881Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "31°C",
+   "32°C",
+   "33°C"
+  ],
+  "model_center_c": "30.5553243367",
+  "settled_bucket": "34°C",
+  "settled_ord": 6,
+  "d_from_ladder": 3,
+  "d_from_model": 3
+ },
+ {
+  "position_id": "paper-pos-9a057e72a1071d78ddbcc066",
+  "station_id": "WMKK",
+  "event_date": "2026-08-20",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-19T17:08:35.814Z",
+  "ladder": "32°C",
+  "model": "32°C",
+  "offset": 0,
+  "window": [
+   "32°C",
+   "33°C"
+  ],
+  "model_center_c": "32.4471431677",
+  "settled_bucket": "34°C",
+  "settled_ord": 6,
+  "d_from_ladder": 2,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-3dce95eda6005e6b6d3e775f",
+  "station_id": "ZBAA",
+  "event_date": "2026-08-20",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-19T02:47:05.586Z",
+  "ladder": "30°C",
+  "model": "31°C",
+  "offset": -1,
+  "window": [
+   "29°C",
+   "30°C",
+   "31°C"
+  ],
+  "model_center_c": "30.7968094209",
+  "settled_bucket": "32°C",
+  "settled_ord": 6,
+  "d_from_ladder": 2,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-623c25b97bfbe80b2ea43a6b",
+  "station_id": "ZGGG",
+  "event_date": "2026-08-20",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-18T21:15:14.473Z",
+  "ladder": "34°C",
+  "model": "33°C",
+  "offset": 1,
+  "window": [
+   "32°C",
+   "33°C",
+   "34°C"
+  ],
+  "model_center_c": "33.1457883756",
+  "settled_bucket": "35°C",
+  "settled_ord": 6,
+  "d_from_ladder": 1,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-c3af75e76aae4063e9e60e83",
+  "station_id": "ZGGG",
+  "event_date": "2026-08-20",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-19T16:38:24.646001Z",
+  "ladder": "37°C",
+  "model": "36°C",
+  "offset": 1,
+  "window": [
+   "36°C",
+   "37°C"
+  ],
+  "model_center_c": "36.558494341",
+  "settled_bucket": "35°C",
+  "settled_ord": 6,
+  "d_from_ladder": -2,
+  "d_from_model": -1
+ },
+ {
+  "position_id": "paper-pos-a313dd2c2d21df1ca2160256",
+  "station_id": "ZUUU",
+  "event_date": "2026-08-20",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-19T02:47:05.586Z",
+  "ladder": "33°C",
+  "model": "31°C",
+  "offset": 2,
+  "window": [
+   "30°C",
+   "32°C",
+   "33°C"
+  ],
+  "model_center_c": "31.3917645323",
+  "settled_bucket": "31°C",
+  "settled_ord": 7,
+  "d_from_ladder": -2,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-087e5f0db7c2fd8136f89cd5",
+  "station_id": "ZUUU",
+  "event_date": "2026-08-20",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-19T16:35:26Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "31°C"
+  ],
+  "model_center_c": "31.3917645323",
+  "settled_bucket": "31°C",
+  "settled_ord": 7,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-1a5a697602251f9dd9fd86bd",
+  "station_id": "EGLC",
+  "event_date": "2026-08-21",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T03:36:20.911Z",
+  "ladder": "21°C",
+  "model": "21°C",
+  "offset": 0,
+  "window": [
+   "19°C",
+   "21°C"
+  ],
+  "model_center_c": "20.5353121531",
+  "settled_bucket": "21°C",
+  "settled_ord": 4,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-fa623f4f9e9cc78bca76ffc5",
+  "station_id": "EPWA",
+  "event_date": "2026-08-21",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T09:12:17.233Z",
+  "ladder": "26°C",
+  "model": "25°C",
+  "offset": 1,
+  "window": [
+   "24°C",
+   "25°C",
+   "26°C"
+  ],
+  "model_center_c": "25.0497385958",
+  "settled_bucket": "27°C",
+  "settled_ord": 9,
+  "d_from_ladder": 1,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-1e95ff8758bc6fdaf53cfa67",
+  "station_id": "EPWA",
+  "event_date": "2026-08-21",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-20T12:15:20Z",
+  "ladder": "25°C",
+  "model": "24°C",
+  "offset": 1,
+  "window": [
+   "24°C"
+  ],
+  "model_center_c": "23.7790231807",
+  "settled_bucket": "27°C",
+  "settled_ord": 9,
+  "d_from_ladder": 2,
+  "d_from_model": 3
+ },
+ {
+  "position_id": "paper-pos-5712ed4640b8f4adfcc2aab9",
+  "station_id": "KATL",
+  "event_date": "2026-08-21",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T09:23:57.962Z",
+  "ladder": "94-95°F",
+  "model": "94-95°F",
+  "offset": 0,
+  "window": [
+   "94-95°F",
+   "96-97°F",
+   "98-99°F"
+  ],
+  "model_center_c": "34.6125804746",
+  "settled_bucket": "94-95°F",
+  "settled_ord": 5,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-8aa4794e6f540e58671e3795",
+  "station_id": "KATL",
+  "event_date": "2026-08-21",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-21T16:14:12.278001Z",
+  "ladder": "92-93°F",
+  "model": "92-93°F",
+  "offset": 0,
+  "window": [
+   "92-93°F"
+  ],
+  "model_center_c": "34.1670174471",
+  "settled_bucket": "94-95°F",
+  "settled_ord": 5,
+  "d_from_ladder": 1,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-f1e651b4e03055d67f1dbe43",
+  "station_id": "KLAX",
+  "event_date": "2026-08-21",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-21T15:28:17.942Z",
+  "ladder": "78-79°F",
+  "model": "80-81°F",
+  "offset": -1,
+  "window": [
+   "76-77°F",
+   "78-79°F"
+  ],
+  "model_center_c": "26.8754971272",
+  "settled_bucket": "80-81°F",
+  "settled_ord": 4,
+  "d_from_ladder": 1,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-10e14a2d5aa33698acf4cb07",
+  "station_id": "KLAX",
+  "event_date": "2026-08-21",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-21T09:35:11.165001Z",
+  "ladder": "82-83°F",
+  "model": "80-81°F",
+  "offset": 1,
+  "window": [
+   "82-83°F",
+   "84-85°F"
+  ],
+  "model_center_c": "27.9220893156",
+  "settled_bucket": "80-81°F",
+  "settled_ord": 4,
+  "d_from_ladder": -1,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-84b45fc195b9169726213e63",
+  "station_id": "KLGA",
+  "event_date": "2026-08-21",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-21T14:13:06.405Z",
+  "ladder": "74-75°F",
+  "model": "74-75°F",
+  "offset": 0,
+  "window": [
+   "74-75°F",
+   "76-77°F"
+  ],
+  "model_center_c": "23.509605264",
+  "settled_bucket": "78-79°F",
+  "settled_ord": 4,
+  "d_from_ladder": 2,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-5a6693d7316b4940c8acaaa6",
+  "station_id": "KSEA",
+  "event_date": "2026-08-21",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T09:23:57.962Z",
+  "ladder": "84-85°F",
+  "model": "82-83°F",
+  "offset": 1,
+  "window": [
+   "82-83°F",
+   "84-85°F",
+   "86-87°F"
+  ],
+  "model_center_c": "28.3987880837",
+  "settled_bucket": "80-81°F",
+  "settled_ord": 4,
+  "d_from_ladder": -2,
+  "d_from_model": -1
+ },
+ {
+  "position_id": "paper-pos-e03777abed52d2abe45a69ed",
+  "station_id": "KSEA",
+  "event_date": "2026-08-21",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-21T07:55:53.356000Z",
+  "ladder": "86-87°F",
+  "model": "84-85°F",
+  "offset": 1,
+  "window": [
+   "86-87°F"
+  ],
+  "model_center_c": "29.8092498314",
+  "settled_bucket": "80-81°F",
+  "settled_ord": 4,
+  "d_from_ladder": -3,
+  "d_from_model": -2
+ },
+ {
+  "position_id": "paper-pos-365396287f87b64dc7cc3345",
+  "station_id": "SAEZ",
+  "event_date": "2026-08-21",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T03:19:34.135Z",
+  "ladder": "14°C",
+  "model": "13°C",
+  "offset": 1,
+  "window": [
+   "13°C",
+   "14°C",
+   "15°C"
+  ],
+  "model_center_c": "13.2493650378",
+  "settled_bucket": "13°C",
+  "settled_ord": 6,
+  "d_from_ladder": -1,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-194946d4d205787c3e908054",
+  "station_id": "VILK",
+  "event_date": "2026-08-21",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T11:28:43.052Z",
+  "ladder": "34°C",
+  "model": "34°C",
+  "offset": 0,
+  "window": [
+   "33°C",
+   "34°C"
+  ],
+  "model_center_c": "33.7002253679",
+  "settled_bucket": "35°C",
+  "settled_ord": 8,
+  "d_from_ladder": 1,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-93f174a491ec7ded0d3884bd",
+  "station_id": "VILK",
+  "event_date": "2026-08-21",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-20T18:41:06.204001Z",
+  "ladder": "33°C",
+  "model": "32°C",
+  "offset": 1,
+  "window": [
+   "30°C",
+   "31°C",
+   "32°C",
+   "33°C"
+  ],
+  "model_center_c": "32.8457459381",
+  "settled_bucket": "35°C",
+  "settled_ord": 8,
+  "d_from_ladder": 2,
+  "d_from_model": 3
+ },
+ {
+  "position_id": "paper-pos-40f3446c4df8fb4768944ce4",
+  "station_id": "WMKK",
+  "event_date": "2026-08-21",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-19T17:31:10.713Z",
+  "ladder": "32°C",
+  "model": "31°C",
+  "offset": 1,
+  "window": [
+   "31°C",
+   "32°C",
+   "33°C"
+  ],
+  "model_center_c": "30.9992684668",
+  "settled_bucket": "33°C",
+  "settled_ord": 5,
+  "d_from_ladder": 1,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-c16124e13b84906b39cb3497",
+  "station_id": "ZBAA",
+  "event_date": "2026-08-21",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T11:28:43.052Z",
+  "ladder": "34°C",
+  "model": "33°C",
+  "offset": 1,
+  "window": [
+   "34°C",
+   "35°C"
+  ],
+  "model_center_c": "33.4081063344",
+  "settled_bucket": "34°C",
+  "settled_ord": 7,
+  "d_from_ladder": 0,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-6e680dc80101f7f569520304",
+  "station_id": "ZBAA",
+  "event_date": "2026-08-21",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-21T00:40:19.934001Z",
+  "ladder": "35°C",
+  "model": "34°C",
+  "offset": 1,
+  "window": [
+   "35°C"
+  ],
+  "model_center_c": "34.5663960893",
+  "settled_bucket": "34°C",
+  "settled_ord": 7,
+  "d_from_ladder": -1,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-6898efdb5904329f94496aa9",
+  "station_id": "ZGGG",
+  "event_date": "2026-08-21",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-19T17:31:10.713Z",
+  "ladder": "33°C",
+  "model": "32°C",
+  "offset": 1,
+  "window": [
+   "31°C",
+   "33°C"
+  ],
+  "model_center_c": "31.9290194859",
+  "settled_bucket": "34°C",
+  "settled_ord": 7,
+  "d_from_ladder": 1,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-8a281535f98691ded0deb15e",
+  "station_id": "ZGGG",
+  "event_date": "2026-08-21",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-20T22:34:11Z",
+  "ladder": "33°C",
+  "model": "32°C",
+  "offset": 1,
+  "window": [
+   "31°C",
+   "32°C",
+   "33°C"
+  ],
+  "model_center_c": "31.9290194859",
+  "settled_bucket": "34°C",
+  "settled_ord": 7,
+  "d_from_ladder": 1,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-fead7cc9835ff27c046330d9",
+  "station_id": "ZGGG",
+  "event_date": "2026-08-21",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-20T23:36:20.063001Z",
+  "ladder": "35°C",
+  "model": "34°C",
+  "offset": 1,
+  "window": [
+   "35°C",
+   "36°C"
+  ],
+  "model_center_c": "34.5807530453",
+  "settled_bucket": "34°C",
+  "settled_ord": 7,
+  "d_from_ladder": -1,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-28fef1c3c340b0e2ca3ad5bb",
+  "station_id": "ZUCK",
+  "event_date": "2026-08-21",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T09:12:17.233Z",
+  "ladder": "36°C",
+  "model": "35°C",
+  "offset": 1,
+  "window": [
+   "35°C",
+   "36°C"
+  ],
+  "model_center_c": "34.8324998778",
+  "settled_bucket": "34°C",
+  "settled_ord": 6,
+  "d_from_ladder": -2,
+  "d_from_model": -1
+ },
+ {
+  "position_id": "paper-pos-6da592be8bc2df968093c5e7",
+  "station_id": "ZUUU",
+  "event_date": "2026-08-21",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T11:28:43.052Z",
+  "ladder": "31°C",
+  "model": "30°C",
+  "offset": 1,
+  "window": [
+   "29°C",
+   "30°C",
+   "31°C"
+  ],
+  "model_center_c": "30.2837776405",
+  "settled_bucket": "32°C",
+  "settled_ord": 6,
+  "d_from_ladder": 1,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-31d42100c68d538a9610d957",
+  "station_id": "ZUUU",
+  "event_date": "2026-08-21",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-21T06:29:32.327007Z",
+  "ladder": "31°C",
+  "model": "32°C",
+  "offset": -1,
+  "window": [
+   "31°C"
+  ],
+  "model_center_c": "32.989245276",
+  "settled_bucket": "32°C",
+  "settled_ord": 6,
+  "d_from_ladder": 1,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-c4fbc46d555d8b8c57781da9",
+  "station_id": "CYYZ",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-21T06:13:13.865Z",
+  "ladder": "26°C",
+  "model": "26°C",
+  "offset": 0,
+  "window": [
+   "26°C",
+   "27°C",
+   "28°C"
+  ],
+  "model_center_c": "25.5291500488"
+ },
+ {
+  "position_id": "paper-pos-76a7b624118793d773019198",
+  "station_id": "EGLC",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-21T14:56:36.778Z",
+  "ladder": "20°C",
+  "model": "21°C",
+  "offset": -1,
+  "window": [
+   "19°C",
+   "20°C"
+  ],
+  "model_center_c": "20.9029809853"
+ },
+ {
+  "position_id": "paper-pos-7a127ee49c70c0fd37f60f1a",
+  "station_id": "EHAM",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T22:46:43.883Z",
+  "ladder": "18°C",
+  "model": "18°C",
+  "offset": 0,
+  "window": [
+   "16°C",
+   "17°C",
+   "18°C"
+  ],
+  "model_center_c": "18.3672895023"
+ },
+ {
+  "position_id": "paper-pos-b2484693bb5ff87e792fab3c",
+  "station_id": "EHAM",
+  "event_date": "2026-08-22",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-21T17:38:07Z",
+  "ladder": "18°C",
+  "model": "18°C",
+  "offset": 0,
+  "window": [
+   "17°C",
+   "18°C"
+  ],
+  "model_center_c": "18.4173686372"
+ },
+ {
+  "position_id": "paper-pos-7823182dd516cd5af029b36b",
+  "station_id": "EPWA",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-21T03:15:00.266Z",
+  "ladder": "20°C",
+  "model": "20°C",
+  "offset": 0,
+  "window": [
+   "19°C",
+   "20°C",
+   "21°C"
+  ],
+  "model_center_c": "20.3782985905"
+ },
+ {
+  "position_id": "paper-pos-d152962a81adeabd9ac4e162",
+  "station_id": "FACT",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T23:52:03.990Z",
+  "ladder": "16°C",
+  "model": "18°C",
+  "offset": -2,
+  "window": [
+   "15°C",
+   "16°C"
+  ],
+  "model_center_c": "17.5819081127"
+ },
+ {
+  "position_id": "paper-pos-96e5987889298acae1d9f0f2",
+  "station_id": "KBKF",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-21T07:24:30.726Z",
+  "ladder": "94-95°F",
+  "model": "94-95°F",
+  "offset": 0,
+  "window": [
+   "94-95°F",
+   "96-97°F",
+   "98-99°F"
+  ],
+  "model_center_c": "34.5040783228"
+ },
+ {
+  "position_id": "paper-pos-61cff5df34a8d716a08c1ca8",
+  "station_id": "KHOU",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-21T06:13:13.865Z",
+  "ladder": "102-103°F",
+  "model": "100-101°F",
+  "offset": 1,
+  "window": [
+   "102-103°F",
+   "104-105°F"
+  ],
+  "model_center_c": "38.5364334218"
+ },
+ {
+  "position_id": "paper-pos-1834651172043534c754d4cb",
+  "station_id": "KLAX",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-21T07:24:30.726Z",
+  "ladder": "82-83°F",
+  "model": "82-83°F",
+  "offset": 0,
+  "window": [
+   "82-83°F"
+  ],
+  "model_center_c": "27.65028279"
+ },
+ {
+  "position_id": "paper-pos-0d46a4d910ad5a625fd38a46",
+  "station_id": "KLAX",
+  "event_date": "2026-08-22",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-21T17:53:49Z",
+  "ladder": "82-83°F",
+  "model": "82-83°F",
+  "offset": 0,
+  "window": [
+   "84-85°F",
+   "86-87°F"
+  ],
+  "model_center_c": "27.65028279"
+ },
+ {
+  "position_id": "paper-pos-2aaedc9e26ae87c842e5a70e",
+  "station_id": "KLGA",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-21T06:13:13.865Z",
+  "ladder": "70-71°F",
+  "model": "72-73°F",
+  "offset": -1,
+  "window": [
+   "70-71°F",
+   "72-73°F"
+  ],
+  "model_center_c": "22.8141615136"
+ },
+ {
+  "position_id": "paper-pos-99aab3b0c9b277005be860dd",
+  "station_id": "KLGA",
+  "event_date": "2026-08-22",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-21T08:27:33Z",
+  "ladder": "70-71°F",
+  "model": "72-73°F",
+  "offset": -1,
+  "window": [
+   "70-71°F",
+   "72-73°F"
+  ],
+  "model_center_c": "22.8428419304"
+ },
+ {
+  "position_id": "paper-pos-f8956e93b77ac908cb4781f9",
+  "station_id": "KORD",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-21T06:13:13.865Z",
+  "ladder": "78-79°F",
+  "model": "78-79°F",
+  "offset": 0,
+  "window": [
+   "74-75°F",
+   "76-77°F",
+   "78-79°F"
+  ],
+  "model_center_c": "25.7182771691"
+ },
+ {
+  "position_id": "paper-pos-907c7a14a97e53de469fae3a",
+  "station_id": "LFPB",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T22:46:43.883Z",
+  "ladder": "22°C",
+  "model": "22°C",
+  "offset": 0,
+  "window": [
+   "21°C",
+   "22°C"
+  ],
+  "model_center_c": "22.1316505902"
+ },
+ {
+  "position_id": "paper-pos-a533e9256aeaf153145b4adf",
+  "station_id": "LIMC",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T22:46:43.883Z",
+  "ladder": "28°C",
+  "model": "28°C",
+  "offset": 0,
+  "window": [
+   "26°C",
+   "27°C",
+   "28°C"
+  ],
+  "model_center_c": "27.530503576"
+ },
+ {
+  "position_id": "paper-pos-fcab6fb772ddab54b5175ac6",
+  "station_id": "RCSS",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T23:21:18.039Z",
+  "ladder": "29°C",
+  "model": "29°C",
+  "offset": 0,
+  "window": [
+   "29°C",
+   "30°C",
+   "31°C",
+   "32°C"
+  ],
+  "model_center_c": "29.2580124939",
+  "settled_bucket": "35°C",
+  "settled_ord": 8,
+  "d_from_ladder": 6,
+  "d_from_model": 6
+ },
+ {
+  "position_id": "paper-pos-a961ad20f734c5cc2e5ab573",
+  "station_id": "RCSS",
+  "event_date": "2026-08-22",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-21T16:50:29.740001Z",
+  "ladder": "30°C",
+  "model": "31°C",
+  "offset": -1,
+  "window": [
+   "33°C"
+  ],
+  "model_center_c": "31.1678190119",
+  "settled_bucket": "35°C",
+  "settled_ord": 8,
+  "d_from_ladder": 5,
+  "d_from_model": 4
+ },
+ {
+  "position_id": "paper-pos-b0d6969060b9c372db515291",
+  "station_id": "RJTT",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T23:44:25.087Z",
+  "ladder": "30°C",
+  "model": "30°C",
+  "offset": 0,
+  "window": [
+   "28°C",
+   "30°C"
+  ],
+  "model_center_c": "29.7282140002",
+  "settled_bucket": "31°C",
+  "settled_ord": 5,
+  "d_from_ladder": 1,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-f37ef0739ba959ff66920ac8",
+  "station_id": "RJTT",
+  "event_date": "2026-08-22",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-21T23:42:18Z",
+  "ladder": "30°C",
+  "model": "30°C",
+  "offset": 0,
+  "window": [
+   "29°C",
+   "30°C"
+  ],
+  "model_center_c": "29.7282140002",
+  "settled_bucket": "31°C",
+  "settled_ord": 5,
+  "d_from_ladder": 1,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-a43b5b105a4cbc6a4e764924",
+  "station_id": "RJTT",
+  "event_date": "2026-08-22",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-21T22:07:20.069001Z",
+  "ladder": "33°C",
+  "model": "33°C",
+  "offset": 0,
+  "window": [
+   "33°C",
+   "34°C"
+  ],
+  "model_center_c": "33.1128831523",
+  "settled_bucket": "31°C",
+  "settled_ord": 5,
+  "d_from_ladder": -2,
+  "d_from_model": -2
+ },
+ {
+  "position_id": "paper-pos-57c466353ff7e918c1ae6ae0",
+  "station_id": "RKPK",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T22:46:43.883Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "30°C",
+   "31°C",
+   "32°C"
+  ],
+  "model_center_c": "31.2946727039",
+  "settled_bucket": "35°C",
+  "settled_ord": 8,
+  "d_from_ladder": 4,
+  "d_from_model": 4
+ },
+ {
+  "position_id": "paper-pos-8255fbe31be45639194d25f9",
+  "station_id": "RKPK",
+  "event_date": "2026-08-22",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-21T19:27:18.580001Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "30°C",
+   "31°C"
+  ],
+  "model_center_c": "31.5795016136",
+  "settled_bucket": "35°C",
+  "settled_ord": 8,
+  "d_from_ladder": 4,
+  "d_from_model": 4
+ },
+ {
+  "position_id": "paper-pos-bb62fbcae67fb0626f17af58",
+  "station_id": "RPLL",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T22:46:43.883Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "28°C",
+   "29°C",
+   "30°C",
+   "31°C"
+  ],
+  "model_center_c": "30.8980643475",
+  "settled_bucket": "32°C",
+  "settled_ord": 7,
+  "d_from_ladder": 1,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-158e4cd129a3db4caa7ee900",
+  "station_id": "RPLL",
+  "event_date": "2026-08-22",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-20T23:25:13Z",
+  "ladder": "29°C",
+  "model": "29°C",
+  "offset": 0,
+  "window": [
+   "28°C",
+   "29°C",
+   "30°C"
+  ],
+  "model_center_c": "29.3394037305",
+  "settled_bucket": "32°C",
+  "settled_ord": 7,
+  "d_from_ladder": 3,
+  "d_from_model": 3
+ },
+ {
+  "position_id": "paper-pos-024496c4ea44f63465d1ac6f",
+  "station_id": "RPLL",
+  "event_date": "2026-08-22",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-22T01:02:34.336Z",
+  "ladder": "32°C",
+  "model": "32°C",
+  "offset": 0,
+  "window": [
+   "32°C"
+  ],
+  "model_center_c": "32.007811314",
+  "settled_bucket": "32°C",
+  "settled_ord": 7,
+  "d_from_ladder": 0,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-c4d3a20619bbe7baf38beb40",
+  "station_id": "VILK",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T22:46:43.883Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "31°C"
+  ],
+  "model_center_c": "31.1852208466"
+ },
+ {
+  "position_id": "paper-pos-b2fa8eb97311e4d3141f90b0",
+  "station_id": "VILK",
+  "event_date": "2026-08-22",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-21T18:42:42.852001Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "31°C"
+  ],
+  "model_center_c": "31.7681303485"
+ },
+ {
+  "position_id": "paper-pos-57b7723df9567dd1383e759a",
+  "station_id": "ZBAA",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T22:46:43.883Z",
+  "ladder": "32°C",
+  "model": "31°C",
+  "offset": 1,
+  "window": [
+   "29°C",
+   "32°C"
+  ],
+  "model_center_c": "31.4714796723",
+  "settled_bucket": "30°C",
+  "settled_ord": 3,
+  "d_from_ladder": -2,
+  "d_from_model": -1
+ },
+ {
+  "position_id": "paper-pos-9447aeff45c23a3293f1cd3b",
+  "station_id": "ZBAA",
+  "event_date": "2026-08-22",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-21T16:50:29.740001Z",
+  "ladder": "33°C",
+  "model": "32°C",
+  "offset": 1,
+  "window": [
+   "33°C"
+  ],
+  "model_center_c": "32.9281320653",
+  "settled_bucket": "30°C",
+  "settled_ord": 3,
+  "d_from_ladder": -3,
+  "d_from_model": -2
+ },
+ {
+  "position_id": "paper-pos-e323e5f8518893e3d6ae9036",
+  "station_id": "ZGGG",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T23:21:18.039Z",
+  "ladder": "33°C",
+  "model": "33°C",
+  "offset": 0,
+  "window": [
+   "32°C",
+   "33°C",
+   "35°C"
+  ],
+  "model_center_c": "32.6158256648",
+  "settled_bucket": "36°C",
+  "settled_ord": 9,
+  "d_from_ladder": 3,
+  "d_from_model": 3
+ },
+ {
+  "position_id": "paper-pos-ee489da3004a889bd8351ad8",
+  "station_id": "ZGGG",
+  "event_date": "2026-08-22",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-22T02:15:59.795Z",
+  "ladder": "36°C",
+  "model": "35°C",
+  "offset": 1,
+  "window": [
+   "36°C"
+  ],
+  "model_center_c": "35.7053968181",
+  "settled_bucket": "36°C",
+  "settled_ord": 9,
+  "d_from_ladder": 0,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-04ea73cddc64031ddee967e0",
+  "station_id": "ZHHH",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T22:46:43.883Z",
+  "ladder": "36°C",
+  "model": "35°C",
+  "offset": 1,
+  "window": [
+   "36°C"
+  ],
+  "model_center_c": "35.213830841",
+  "settled_bucket": "36°C",
+  "settled_ord": 7,
+  "d_from_ladder": 0,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-46cfd5f285edabdffa42d8eb",
+  "station_id": "ZHHH",
+  "event_date": "2026-08-22",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-21T18:34:02.613Z",
+  "ladder": "35°C",
+  "model": "35°C",
+  "offset": 0,
+  "window": [
+   "35°C"
+  ],
+  "model_center_c": "35.3670692859",
+  "settled_bucket": "36°C",
+  "settled_ord": 7,
+  "d_from_ladder": 1,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-12f099c28d8344a1ac428dc9",
+  "station_id": "ZSPD",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T22:46:43.883Z",
+  "ladder": "30°C",
+  "model": "30°C",
+  "offset": 0,
+  "window": [
+   "28°C",
+   "29°C"
+  ],
+  "model_center_c": "29.9635510039",
+  "settled_bucket": "31°C",
+  "settled_ord": 7,
+  "d_from_ladder": 1,
+  "d_from_model": 1
+ },
+ {
+  "position_id": "paper-pos-eccd76f695ad19aa7cc8c0ac",
+  "station_id": "ZSQD",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T22:46:43.883Z",
+  "ladder": "29°C",
+  "model": "29°C",
+  "offset": 0,
+  "window": [
+   "28°C",
+   "29°C",
+   "30°C"
+  ],
+  "model_center_c": "29.3233902121",
+  "settled_bucket": "31°C",
+  "settled_ord": 7,
+  "d_from_ladder": 2,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-60d05185655a94fc52d40f7a",
+  "station_id": "ZUCK",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-20T23:21:18.039Z",
+  "ladder": "35°C",
+  "model": "34°C",
+  "offset": 1,
+  "window": [
+   "33°C"
+  ],
+  "model_center_c": "34.3919064163",
+  "settled_bucket": "38°C or higher",
+  "settled_ord": 10,
+  "d_from_ladder": 3,
+  "d_from_model": 4
+ },
+ {
+  "position_id": "paper-pos-8457602d27b76a8707a7c964",
+  "station_id": "ZUCK",
+  "event_date": "2026-08-22",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-21T05:51:12Z",
+  "ladder": "38°C or higher",
+  "model": "36°C",
+  "offset": 2,
+  "window": [
+   "38°C or higher"
+  ],
+  "model_center_c": "36.4245921854",
+  "settled_bucket": "38°C or higher",
+  "settled_ord": 10,
+  "d_from_ladder": 0,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-591c5f19111d8b37bc189937",
+  "station_id": "ZUCK",
+  "event_date": "2026-08-22",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-21T20:49:26.346001Z",
+  "ladder": "36°C",
+  "model": "36°C",
+  "offset": 0,
+  "window": [
+   "34°C"
+  ],
+  "model_center_c": "36.2806229092",
+  "settled_bucket": "38°C or higher",
+  "settled_ord": 10,
+  "d_from_ladder": 2,
+  "d_from_model": 2
+ },
+ {
+  "position_id": "paper-pos-07acfe005d3c1b1b3dea312a",
+  "station_id": "ZUUU",
+  "event_date": "2026-08-22",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-21T03:15:00.266Z",
+  "ladder": "36°C or higher",
+  "model": "33°C",
+  "offset": 3,
+  "window": [
+   "36°C or higher"
+  ],
+  "model_center_c": "33.0326373505",
+  "settled_bucket": "32°C",
+  "settled_ord": 6,
+  "d_from_ladder": -4,
+  "d_from_model": -1
+ },
+ {
+  "position_id": "paper-pos-3f32a3073c807fdb0230a5a4",
+  "station_id": "ZUUU",
+  "event_date": "2026-08-22",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-21T05:51:15Z",
+  "ladder": "36°C or higher",
+  "model": "33°C",
+  "offset": 3,
+  "window": [
+   "36°C or higher"
+  ],
+  "model_center_c": "33.0326373505",
+  "settled_bucket": "32°C",
+  "settled_ord": 6,
+  "d_from_ladder": -4,
+  "d_from_model": -1
+ },
+ {
+  "position_id": "paper-pos-87d4d42a51c29acf6f2f0308",
+  "station_id": "ZUUU",
+  "event_date": "2026-08-22",
+  "stage": "P1",
+  "decision_at_utc": "2026-08-21T17:33:09.347Z",
+  "ladder": "31°C",
+  "model": "32°C",
+  "offset": -1,
+  "window": [
+   "29°C"
+  ],
+  "model_center_c": "32.1283247216",
+  "settled_bucket": "32°C",
+  "settled_ord": 6,
+  "d_from_ladder": 1,
+  "d_from_model": 0
+ },
+ {
+  "position_id": "paper-pos-8056e2688fe66b7acba86dc4",
+  "station_id": "LIMC",
+  "event_date": "2026-08-23",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-22T02:42:19.998Z",
+  "ladder": "27°C",
+  "model": "26°C",
+  "offset": 1,
+  "window": [
+   "27°C"
+  ],
+  "model_center_c": "26.0398496004"
+ },
+ {
+  "position_id": "paper-pos-fc12d2dba0342ae3f0ae8e89",
+  "station_id": "OPKC",
+  "event_date": "2026-08-23",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-21T19:54:52.009Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "30°C",
+   "31°C"
+  ],
+  "model_center_c": "31.3792880411"
+ },
+ {
+  "position_id": "paper-pos-56bfbae10b5585a504102ac4",
+  "station_id": "OPKC",
+  "event_date": "2026-08-23",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-21T23:54:32Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "31°C"
+  ],
+  "model_center_c": "31.3792880411"
+ },
+ {
+  "position_id": "paper-pos-3aede3f32bb5ff5cc86342c3",
+  "station_id": "RCSS",
+  "event_date": "2026-08-23",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-21T19:31:53.769Z",
+  "ladder": "29°C",
+  "model": "30°C",
+  "offset": -1,
+  "window": [
+   "29°C"
+  ],
+  "model_center_c": "29.6131473817"
+ },
+ {
+  "position_id": "paper-pos-f22efdee11efb54fd1f3c98d",
+  "station_id": "RJTT",
+  "event_date": "2026-08-23",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-21T19:31:53.769Z",
+  "ladder": "28°C",
+  "model": "29°C",
+  "offset": -1,
+  "window": [
+   "27°C"
+  ],
+  "model_center_c": "29.0247838566"
+ },
+ {
+  "position_id": "paper-pos-eaf896f02e783f8170d54fae",
+  "station_id": "RKPK",
+  "event_date": "2026-08-23",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-21T17:33:09.347Z",
+  "ladder": "32°C",
+  "model": "32°C",
+  "offset": 0,
+  "window": [
+   "32°C"
+  ],
+  "model_center_c": "32.3306275274"
+ },
+ {
+  "position_id": "paper-pos-b3d18c2853dca2fd63dac034",
+  "station_id": "WMKK",
+  "event_date": "2026-08-23",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-21T19:31:53.769Z",
+  "ladder": "33°C",
+  "model": "32°C",
+  "offset": 1,
+  "window": [
+   "32°C",
+   "33°C"
+  ],
+  "model_center_c": "31.5531967717"
+ },
+ {
+  "position_id": "paper-pos-8bf61656a3c4e0730770bb0a",
+  "station_id": "ZGGG",
+  "event_date": "2026-08-23",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-21T19:31:53.769Z",
+  "ladder": "32°C",
+  "model": "32°C",
+  "offset": 0,
+  "window": [
+   "32°C",
+   "33°C"
+  ],
+  "model_center_c": "31.8213126835"
+ },
+ {
+  "position_id": "paper-pos-8682d330ba623dc32a99dcab",
+  "station_id": "ZGSZ",
+  "event_date": "2026-08-23",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-21T17:23:43.075Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "31°C"
+  ],
+  "model_center_c": "30.8445581261"
+ },
+ {
+  "position_id": "paper-pos-e0cbef0a7488723d3301adf2",
+  "station_id": "ZGSZ",
+  "event_date": "2026-08-23",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-21T22:13:13Z",
+  "ladder": "31°C",
+  "model": "31°C",
+  "offset": 0,
+  "window": [
+   "28°C",
+   "29°C"
+  ],
+  "model_center_c": "30.8445581261"
+ },
+ {
+  "position_id": "paper-pos-7412f68adb4099b46fd16dd6",
+  "station_id": "ZHHH",
+  "event_date": "2026-08-23",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-21T20:18:38.450Z",
+  "ladder": "35°C",
+  "model": "35°C",
+  "offset": 0,
+  "window": [
+   "35°C",
+   "37°C"
+  ],
+  "model_center_c": "35.3971715836"
+ },
+ {
+  "position_id": "paper-pos-6e6c2569325042327773d8a1",
+  "station_id": "ZHHH",
+  "event_date": "2026-08-23",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-21T22:14:09Z",
+  "ladder": "35°C",
+  "model": "35°C",
+  "offset": 0,
+  "window": [
+   "35°C"
+  ],
+  "model_center_c": "35.3971715836"
+ },
+ {
+  "position_id": "paper-pos-cf1f6b807e59f4d5b1561fd4",
+  "station_id": "ZUCK",
+  "event_date": "2026-08-23",
+  "stage": "P0",
+  "decision_at_utc": "2026-08-21T19:31:53.769Z",
+  "ladder": "36°C",
+  "model": "36°C",
+  "offset": 0,
+  "window": [
+   "34°C",
+   "36°C"
+  ],
+  "model_center_c": "35.5421145793"
+ },
+ {
+  "position_id": "paper-pos-03693b5b1754610da1f998d9",
+  "station_id": "ZUCK",
+  "event_date": "2026-08-23",
+  "stage": "P0-M",
+  "decision_at_utc": "2026-08-21T22:14:13Z",
+  "ladder": "35°C",
+  "model": "34°C",
+  "offset": 1,
+  "window": [
+   "34°C",
+   "35°C"
+  ],
+  "model_center_c": "34.3784950048"
+ }
+]

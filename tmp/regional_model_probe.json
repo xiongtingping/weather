@@ -1,0 +1,555 @@
+{
+ "results": [
+  {
+   "centre_residual_c": 0.8114629233747794,
+   "flag_count": 5,
+   "grid_elevation_m": 7.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": 0.6745454545454546,
+     "dispersion_c": 1.274108341592544,
+     "label": "GRAPES 15km",
+     "mae_after_bias_c": 0.9377190082644626,
+     "model": "cma_grapes_global",
+     "paired_days": 55
+    }
+   ],
+   "station_id": "RPLL"
+  },
+  {
+   "centre_residual_c": 1.2751341220344998,
+   "flag_count": 5,
+   "grid_elevation_m": 4.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": 2.7280701754385968,
+     "dispersion_c": 1.5204748088009268,
+     "label": "JMA MSM 5km",
+     "mae_after_bias_c": 1.0556478916589722,
+     "model": "jma_msm",
+     "paired_days": 57
+    },
+    {
+     "bias_c": 2.189473684210526,
+     "dispersion_c": 1.707535847459757,
+     "label": "GRAPES 15km",
+     "mae_after_bias_c": 1.1599261311172668,
+     "model": "cma_grapes_global",
+     "paired_days": 57
+    }
+   ],
+   "station_id": "RCSS"
+  },
+  {
+   "centre_residual_c": 0.4245513183847193,
+   "flag_count": 4,
+   "grid_elevation_m": -5.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": -0.005357142857142743,
+     "dispersion_c": 1.0079008672301386,
+     "label": "ICON-D2 2km",
+     "mae_after_bias_c": 0.6074617346938777,
+     "model": "dwd_icon_d2",
+     "paired_days": 56
+    },
+    {
+     "bias_c": -2.5660714285714286,
+     "dispersion_c": 1.6173475624475717,
+     "label": "HARMONIE NL 2km",
+     "mae_after_bias_c": 1.1458545918367349,
+     "model": "knmi_harmonie_arome_netherlands",
+     "paired_days": 56
+    }
+   ],
+   "station_id": "EHAM"
+  },
+  {
+   "centre_residual_c": 0.29141244935396343,
+   "flag_count": 4,
+   "grid_elevation_m": 445.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": 0.38392857142857145,
+     "dispersion_c": 1.3963954599654946,
+     "label": "ICON-D2 2km",
+     "mae_after_bias_c": 0.6283801020408164,
+     "model": "dwd_icon_d2",
+     "paired_days": 56
+    }
+   ],
+   "station_id": "EDDM"
+  },
+  {
+   "centre_residual_c": 0.11436887747397512,
+   "flag_count": 4,
+   "grid_elevation_m": 201.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": -0.3375000000000002,
+     "dispersion_c": 0.7080058766907033,
+     "label": "HRRR 3km",
+     "mae_after_bias_c": 0.5334821428571432,
+     "model": "ncep_hrrr_conus",
+     "paired_days": 56
+    }
+   ],
+   "station_id": "KORD"
+  },
+  {
+   "centre_residual_c": -0.30689982023695134,
+   "flag_count": 3,
+   "grid_elevation_m": 413.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": 0.9160714285714285,
+     "dispersion_c": 1.126273372314055,
+     "label": "GRAPES 15km",
+     "mae_after_bias_c": 0.8000637755102046,
+     "model": "cma_grapes_global",
+     "paired_days": 56
+    }
+   ],
+   "station_id": "ZUCK"
+  },
+  {
+   "centre_residual_c": 0.3439809387285395,
+   "flag_count": 3,
+   "grid_elevation_m": 50.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": -0.40714285714285675,
+     "dispersion_c": 0.7250263893860158,
+     "label": "AROME-HD 1.3km",
+     "mae_after_bias_c": 0.5030612244897962,
+     "model": "meteofrance_arome_france_hd",
+     "paired_days": 56
+    },
+    {
+     "bias_c": 0.19285714285714267,
+     "dispersion_c": 0.4999489769884894,
+     "label": "ICON-D2 2km",
+     "mae_after_bias_c": 0.3793367346938778,
+     "model": "dwd_icon_d2",
+     "paired_days": 56
+    },
+    {
+     "bias_c": 0.012500000000000051,
+     "dispersion_c": 0.5788111275956701,
+     "label": "UKMO UK 2km",
+     "mae_after_bias_c": 0.43437500000000007,
+     "model": "ukmo_uk_deterministic_2km",
+     "paired_days": 56
+    }
+   ],
+   "station_id": "LFPB"
+  },
+  {
+   "centre_residual_c": -0.12108459235239054,
+   "flag_count": 3,
+   "grid_elevation_m": 3.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": 2.303448275862069,
+     "dispersion_c": 1.8034416825883304,
+     "label": "JMA MSM 5km",
+     "mae_after_bias_c": 1.3200951248513675,
+     "model": "jma_msm",
+     "paired_days": 58
+    },
+    {
+     "bias_c": 0.37586206896551727,
+     "dispersion_c": 1.160307679889051,
+     "label": "GRAPES 15km",
+     "mae_after_bias_c": 0.8481569560047558,
+     "model": "cma_grapes_global",
+     "paired_days": 58
+    }
+   ],
+   "station_id": "ZSPD"
+  },
+  {
+   "centre_residual_c": 0.3985534434819391,
+   "flag_count": 3,
+   "grid_elevation_m": 4.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": -1.2357142857142858,
+     "dispersion_c": 1.2428981930823406,
+     "label": "HARMONIE NL 2km",
+     "mae_after_bias_c": 0.9022959183673472,
+     "model": "knmi_harmonie_arome_netherlands",
+     "paired_days": 56
+    },
+    {
+     "bias_c": -0.2535714285714285,
+     "dispersion_c": 0.8088714107839844,
+     "label": "UKMO UK 2km",
+     "mae_after_bias_c": 0.5788265306122446,
+     "model": "ukmo_uk_deterministic_2km",
+     "paired_days": 56
+    }
+   ],
+   "station_id": "EGLC"
+  },
+  {
+   "centre_residual_c": -0.4183655138289163,
+   "flag_count": 3,
+   "grid_elevation_m": 13.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": -0.6696428571428573,
+     "dispersion_c": 0.827198292615575,
+     "label": "HRRR 3km",
+     "mae_after_bias_c": 0.6450892857142857,
+     "model": "ncep_hrrr_conus",
+     "paired_days": 56
+    }
+   ],
+   "station_id": "KHOU"
+  },
+  {
+   "centre_residual_c": 1.171521049704899,
+   "flag_count": 3,
+   "grid_elevation_m": 3.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": 1.3678571428571429,
+     "dispersion_c": 1.4947655266267805,
+     "label": "JMA MSM 5km",
+     "mae_after_bias_c": 1.068877551020408,
+     "model": "jma_msm",
+     "paired_days": 56
+    },
+    {
+     "bias_c": 2.0142857142857147,
+     "dispersion_c": 1.494564983463723,
+     "label": "GRAPES 15km",
+     "mae_after_bias_c": 1.1275510204081631,
+     "model": "cma_grapes_global",
+     "paired_days": 56
+    }
+   ],
+   "station_id": "RKPK"
+  },
+  {
+   "centre_residual_c": 0.06556653699959636,
+   "flag_count": 2,
+   "grid_elevation_m": 2.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": -1.010526315789474,
+     "dispersion_c": 1.1564744079853313,
+     "label": "GRAPES 15km",
+     "mae_after_bias_c": 0.8987996306555864,
+     "model": "cma_grapes_global",
+     "paired_days": 57
+    }
+   ],
+   "station_id": "ZGSZ"
+  },
+  {
+   "centre_residual_c": -0.47685255857642495,
+   "flag_count": 2,
+   "grid_elevation_m": 146.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": 1.3821428571428573,
+     "dispersion_c": 0.9651252958733872,
+     "label": "HRRR 3km",
+     "mae_after_bias_c": 0.7510204081632649,
+     "model": "ncep_hrrr_conus",
+     "paired_days": 56
+    }
+   ],
+   "station_id": "KDAL"
+  },
+  {
+   "centre_residual_c": 0.04958538336375191,
+   "flag_count": 2,
+   "grid_elevation_m": 2.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": -0.6107142857142861,
+     "dispersion_c": 0.7889139395914061,
+     "label": "HRRR 3km",
+     "mae_after_bias_c": 0.5841836734693878,
+     "model": "ncep_hrrr_conus",
+     "paired_days": 56
+    }
+   ],
+   "station_id": "KLGA"
+  },
+  {
+   "centre_residual_c": -0.1335299378555275,
+   "flag_count": 2,
+   "grid_elevation_m": 111.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": -0.2946428571428573,
+     "dispersion_c": 1.0089633369484357,
+     "label": "HRRR 3km",
+     "mae_after_bias_c": 0.5141581632653058,
+     "model": "ncep_hrrr_conus",
+     "paired_days": 56
+    }
+   ],
+   "station_id": "KSEA"
+  },
+  {
+   "centre_residual_c": -0.34651631823056617,
+   "flag_count": 2,
+   "grid_elevation_m": 2.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": 0.298214285714284,
+     "dispersion_c": 0.7359374661488792,
+     "label": "HRRR 3km",
+     "mae_after_bias_c": 0.5802933673469387,
+     "model": "ncep_hrrr_conus",
+     "paired_days": 56
+    }
+   ],
+   "station_id": "KMIA"
+  },
+  {
+   "centre_residual_c": 0.905025442344285,
+   "flag_count": 2,
+   "grid_elevation_m": 221.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": -0.8964285714285712,
+     "dispersion_c": 1.2434060774619797,
+     "label": "AROME-HD 1.3km",
+     "mae_after_bias_c": 0.6607142857142853,
+     "model": "meteofrance_arome_france_hd",
+     "paired_days": 56
+    },
+    {
+     "bias_c": -0.16250000000000028,
+     "dispersion_c": 1.2987029930995442,
+     "label": "ICON-D2 2km",
+     "mae_after_bias_c": 0.6584821428571428,
+     "model": "dwd_icon_d2",
+     "paired_days": 56
+    },
+    {
+     "bias_c": 0.6107142857142862,
+     "dispersion_c": 1.257502992247018,
+     "label": "ICON-2I 2km",
+     "mae_after_bias_c": 0.7099489795918367,
+     "model": "italia_meteo_arpae_icon_2i",
+     "paired_days": 56
+    },
+    {
+     "bias_c": -0.24285714285714283,
+     "dispersion_c": 1.342952124300515,
+     "label": "ICON-CH1 1km",
+     "mae_after_bias_c": 0.801530612244898,
+     "model": "meteoswiss_icon_ch1",
+     "paired_days": 56
+    }
+   ],
+   "station_id": "LIMC"
+  },
+  {
+   "centre_residual_c": 0.40226891955784977,
+   "flag_count": 2,
+   "grid_elevation_m": 32.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": 0.25789473684210507,
+     "dispersion_c": 1.31201564074185,
+     "label": "GRAPES 15km",
+     "mae_after_bias_c": 1.013111726685134,
+     "model": "cma_grapes_global",
+     "paired_days": 57
+    }
+   ],
+   "station_id": "ZHHH"
+  },
+  {
+   "centre_residual_c": 0.010194358288171168,
+   "flag_count": 2,
+   "grid_elevation_m": 493.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": 1.4140350877192984,
+     "dispersion_c": 1.3510799574416128,
+     "label": "GRAPES 15km",
+     "mae_after_bias_c": 1.1000307787011385,
+     "model": "cma_grapes_global",
+     "paired_days": 57
+    }
+   ],
+   "station_id": "ZUUU"
+  },
+  {
+   "centre_residual_c": -0.24158952961642222,
+   "flag_count": 1,
+   "grid_elevation_m": 170.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": 0.06428571428571418,
+     "dispersion_c": 0.5859755514855337,
+     "label": "HRRR 3km",
+     "mae_after_bias_c": 0.4727040816326531,
+     "model": "ncep_hrrr_conus",
+     "paired_days": 56
+    }
+   ],
+   "station_id": "CYYZ"
+  },
+  {
+   "centre_residual_c": 0.20227485853394075,
+   "flag_count": 1,
+   "grid_elevation_m": 29.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": -0.34821428571428564,
+     "dispersion_c": 0.42468100273220705,
+     "label": "HRRR 3km",
+     "mae_after_bias_c": 0.3426658163265309,
+     "model": "ncep_hrrr_conus",
+     "paired_days": 56
+    }
+   ],
+   "station_id": "KLAX"
+  },
+  {
+   "centre_residual_c": 0.23290985141596376,
+   "flag_count": 1,
+   "grid_elevation_m": 31.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": 0.2672413793103448,
+     "dispersion_c": 1.2522239431527393,
+     "label": "GRAPES 15km",
+     "mae_after_bias_c": 0.9199762187871581,
+     "model": "cma_grapes_global",
+     "paired_days": 58
+    }
+   ],
+   "station_id": "ZBAA"
+  },
+  {
+   "centre_residual_c": 0.1280872718051253,
+   "flag_count": 1,
+   "grid_elevation_m": 1700.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": 0.3035714285714287,
+     "dispersion_c": 0.9441481961675992,
+     "label": "HRRR 3km",
+     "mae_after_bias_c": 0.6100765306122452,
+     "model": "ncep_hrrr_conus",
+     "paired_days": 56
+    }
+   ],
+   "station_id": "KBKF"
+  },
+  {
+   "centre_residual_c": 0.48496933488073624,
+   "flag_count": 1,
+   "grid_elevation_m": 122.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": -1.6963636363636365,
+     "dispersion_c": 1.7424083266730286,
+     "label": "GRAPES 15km",
+     "mae_after_bias_c": 1.320595041322314,
+     "model": "cma_grapes_global",
+     "paired_days": 55
+    }
+   ],
+   "station_id": "VILK"
+  },
+  {
+   "centre_residual_c": -0.3361829237060587,
+   "flag_count": 1,
+   "grid_elevation_m": 5.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": 3.1982142857142857,
+     "dispersion_c": 1.2832006678932306,
+     "label": "JMA MSM 5km",
+     "mae_after_bias_c": 1.0805484693877552,
+     "model": "jma_msm",
+     "paired_days": 56
+    },
+    {
+     "bias_c": 3.460714285714286,
+     "dispersion_c": 1.4087327856000547,
+     "label": "GRAPES 15km",
+     "mae_after_bias_c": 1.1113520408163264,
+     "model": "cma_grapes_global",
+     "paired_days": 56
+    }
+   ],
+   "station_id": "RKSI"
+  },
+  {
+   "centre_residual_c": -0.02748683674919246,
+   "flag_count": 1,
+   "grid_elevation_m": 308.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": 0.299999999999999,
+     "dispersion_c": 0.7986595913511229,
+     "label": "HRRR 3km",
+     "mae_after_bias_c": 0.5928571428571431,
+     "model": "ncep_hrrr_conus",
+     "paired_days": 56
+    }
+   ],
+   "station_id": "KATL"
+  },
+  {
+   "centre_residual_c": -1.0004352531956344,
+   "flag_count": 1,
+   "grid_elevation_m": 2.0,
+   "incumbents": [],
+   "models": [
+    {
+     "bias_c": -1.6249999999999998,
+     "dispersion_c": 2.06762890425586,
+     "label": "HRRR 3km",
+     "mae_after_bias_c": 1.403571428571429,
+     "model": "ncep_hrrr_conus",
+     "paired_days": 56
+    }
+   ],
+   "station_id": "KSFO"
+  }
+ ],
+ "window": [
+  "2026-06-11",
+  "2026-08-25"
+ ]
+}

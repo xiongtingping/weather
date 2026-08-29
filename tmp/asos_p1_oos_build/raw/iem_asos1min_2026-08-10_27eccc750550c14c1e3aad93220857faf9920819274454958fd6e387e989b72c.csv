@@ -1,0 +1,4433 @@
+station,station_name,valid(UTC),tmpf
+AUS,Austin Bergstrom Intl,2026-08-10 10:51,M
+AUS,Austin Bergstrom Intl,2026-08-10 10:52,M
+AUS,Austin Bergstrom Intl,2026-08-10 10:53,M
+AUS,Austin Bergstrom Intl,2026-08-10 10:54,M
+AUS,Austin Bergstrom Intl,2026-08-10 10:55,M
+AUS,Austin Bergstrom Intl,2026-08-10 10:56,M
+AUS,Austin Bergstrom Intl,2026-08-10 10:57,M
+AUS,Austin Bergstrom Intl,2026-08-10 10:58,M
+AUS,Austin Bergstrom Intl,2026-08-10 10:59,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:00,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:01,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:02,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:03,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:04,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:05,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:06,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:07,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:08,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:09,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:10,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:11,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:12,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:13,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:14,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:15,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:16,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:17,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:18,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:19,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:20,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:21,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:22,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:23,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:24,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:25,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:26,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:27,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:28,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:29,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:30,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:31,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:32,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:33,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:34,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:35,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:36,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:37,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:38,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:39,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:40,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:41,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:42,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:43,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:44,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:45,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:46,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:47,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:48,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:49,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:50,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:51,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:52,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:53,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:54,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:55,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:56,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:57,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:58,M
+AUS,Austin Bergstrom Intl,2026-08-10 11:59,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:00,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:01,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:02,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:03,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:04,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:05,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:06,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:07,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:08,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:09,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:10,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:11,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:12,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:13,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:14,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:15,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:16,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:17,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:18,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:19,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:20,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:21,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:22,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:23,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:24,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:25,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:26,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:27,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:28,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:29,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:30,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:31,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:32,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:33,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:34,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:35,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:36,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:37,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:38,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:39,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:40,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:41,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:42,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:43,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:44,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:45,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:46,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:47,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:48,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:49,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:50,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:51,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:52,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:53,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:54,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:55,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:56,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:57,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:58,M
+AUS,Austin Bergstrom Intl,2026-08-10 12:59,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:00,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:01,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:02,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:03,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:04,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:05,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:06,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:07,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:08,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:09,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:10,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:11,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:12,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:13,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:14,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:15,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:16,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:17,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:18,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:19,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:20,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:21,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:22,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:23,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:24,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:25,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:26,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:27,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:28,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:29,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:30,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:31,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:32,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:33,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:34,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:35,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:36,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:37,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:38,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:39,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:40,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:41,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:42,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:43,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:44,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:45,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:46,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:47,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:48,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:49,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:50,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:51,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:52,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:53,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:54,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:55,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:56,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:57,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:58,M
+AUS,Austin Bergstrom Intl,2026-08-10 13:59,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:00,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:01,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:02,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:03,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:04,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:05,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:06,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:07,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:08,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:09,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:10,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:11,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:12,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:13,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:14,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:15,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:16,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:17,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:18,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:19,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:20,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:21,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:22,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:23,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:24,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:25,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:26,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:27,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:28,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:29,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:30,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:31,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:32,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:33,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:34,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:35,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:36,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:37,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:38,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:39,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:40,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:41,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:42,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:43,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:44,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:45,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:46,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:47,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:48,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:49,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:50,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:51,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:52,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:53,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:54,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:55,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:56,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:57,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:58,M
+AUS,Austin Bergstrom Intl,2026-08-10 14:59,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:00,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:01,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:02,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:03,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:04,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:05,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:06,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:07,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:08,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:09,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:10,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:11,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:12,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:13,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:14,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:15,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:16,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:17,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:18,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:19,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:20,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:21,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:22,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:23,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:24,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:25,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:26,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:27,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:28,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:29,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:30,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:31,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:32,M
+AUS,Austin Bergstrom Intl,2026-08-10 15:33,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:02,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:10,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:11,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:12,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:13,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:14,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:15,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:16,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:17,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:18,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:19,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:20,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:21,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:22,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:23,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:24,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:25,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:26,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:27,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:28,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:29,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:30,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:31,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:32,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:33,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:34,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:35,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:36,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:37,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:38,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:39,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:40,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:41,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:42,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:43,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:44,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:45,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:46,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:47,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:48,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:49,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:50,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:51,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:52,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:53,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:54,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:55,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:56,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:57,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:58,M
+AUS,Austin Bergstrom Intl,2026-08-10 16:59,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:00,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:01,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:02,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:03,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:04,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:05,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:06,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:07,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:08,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:09,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:10,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:11,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:12,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:13,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:14,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:15,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:16,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:17,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:18,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:19,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:20,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:21,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:22,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:23,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:24,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:25,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:26,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:27,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:28,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:29,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:30,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:31,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:32,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:33,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:34,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:35,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:36,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:37,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:38,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:39,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:40,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:41,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:42,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:43,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:44,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:45,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:46,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:47,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:48,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:49,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:50,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:51,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:52,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:53,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:54,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:55,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:56,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:57,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:58,M
+AUS,Austin Bergstrom Intl,2026-08-10 17:59,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:00,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:01,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:02,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:03,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:04,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:05,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:06,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:07,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:08,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:09,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:10,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:11,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:12,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:13,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:14,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:15,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:16,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:17,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:18,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:19,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:20,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:21,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:22,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:23,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:24,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:25,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:26,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:27,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:28,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:29,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:30,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:31,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:32,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:33,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:34,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:35,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:36,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:37,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:38,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:39,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:40,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:41,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:42,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:43,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:44,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:45,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:46,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:47,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:48,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:49,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:50,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:51,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:52,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:53,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:54,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:55,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:56,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:57,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:58,M
+AUS,Austin Bergstrom Intl,2026-08-10 18:59,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:00,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:01,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:02,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:03,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:04,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:05,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:06,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:07,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:08,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:09,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:10,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:11,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:12,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:13,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:14,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:15,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:16,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:17,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:18,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:19,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:20,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:21,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:22,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:23,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:24,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:25,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:26,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:27,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:28,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:29,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:30,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:31,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:32,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:33,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:34,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:35,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:36,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:37,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:38,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:39,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:40,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:41,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:42,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:43,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:44,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:45,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:46,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:47,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:48,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:49,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:50,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:51,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:52,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:53,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:54,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:55,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:56,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:57,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:58,M
+AUS,Austin Bergstrom Intl,2026-08-10 19:59,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:00,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:01,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:02,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:03,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:04,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:05,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:06,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:07,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:08,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:09,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:10,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:11,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:12,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:13,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:14,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:15,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:16,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:17,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:18,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:19,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:20,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:21,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:22,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:23,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:24,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:25,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:26,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:27,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:28,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:29,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:30,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:31,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:32,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:33,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:34,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:35,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:36,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:37,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:38,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:39,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:40,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:41,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:42,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:43,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:44,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:45,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:46,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:47,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:48,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:49,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:50,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:51,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:52,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:53,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:54,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:55,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:56,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:57,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:58,M
+AUS,Austin Bergstrom Intl,2026-08-10 20:59,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:00,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:01,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:02,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:03,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:04,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:05,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:06,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:07,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:08,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:09,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:10,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:11,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:12,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:13,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:14,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:15,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:16,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:17,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:18,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:19,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:20,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:21,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:22,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:23,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:24,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:53,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:54,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:55,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:56,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:57,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:58,M
+AUS,Austin Bergstrom Intl,2026-08-10 21:59,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:00,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:01,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:02,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:03,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:04,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:05,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:06,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:07,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:08,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:09,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:10,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:11,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:12,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:13,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:14,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:15,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:16,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:17,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:18,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:19,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:20,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:21,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:22,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:23,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:24,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:25,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:26,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:27,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:28,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:29,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:30,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:31,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:32,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:33,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:34,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:35,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:36,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:37,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:38,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:39,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:40,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:41,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:42,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:43,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:44,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:45,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:46,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:47,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:48,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:49,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:50,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:51,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:52,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:53,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:54,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:55,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:56,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:57,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:58,M
+AUS,Austin Bergstrom Intl,2026-08-10 22:59,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:00,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:01,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:02,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:03,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:04,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:05,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:06,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:07,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:08,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:09,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:10,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:11,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:12,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:13,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:14,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:15,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:16,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:17,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:18,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:19,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:20,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:21,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:22,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:23,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:24,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:25,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:26,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:27,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:28,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:29,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:30,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:31,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:32,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:33,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:34,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:35,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:36,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:37,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:38,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:39,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:40,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:41,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:42,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:43,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:44,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:45,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:46,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:47,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:48,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:49,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:50,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:51,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:52,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:53,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:54,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:55,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:56,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:57,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:58,M
+AUS,Austin Bergstrom Intl,2026-08-10 23:59,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:00,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:01,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:02,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:03,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:04,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:05,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:06,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:07,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:08,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:09,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:10,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:11,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:12,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:13,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:14,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:15,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:16,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:17,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:18,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:19,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:20,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:21,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:22,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:23,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:24,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:25,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:26,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:27,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:28,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:29,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:30,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:31,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:32,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:33,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:34,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:35,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:36,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:37,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:38,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:39,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:40,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:41,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:42,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:43,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:44,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:45,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:46,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:47,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:48,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:49,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:50,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:51,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:52,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:53,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:54,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:55,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:56,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:57,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:58,M
+AUS,Austin Bergstrom Intl,2026-08-11 00:59,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:00,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:01,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:02,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:03,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:04,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:05,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:06,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:07,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:08,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:09,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:10,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:11,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:12,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:13,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:14,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:15,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:16,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:17,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:18,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:19,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:20,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:21,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:22,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:23,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:24,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:25,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:26,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:27,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:28,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:29,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:30,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:31,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:32,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:33,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:34,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:35,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:36,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:37,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:38,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:39,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:40,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:41,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:42,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:43,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:44,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:45,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:46,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:47,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:48,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:49,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:50,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:51,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:52,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:53,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:54,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:55,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:56,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:57,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:58,M
+AUS,Austin Bergstrom Intl,2026-08-11 01:59,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:00,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:01,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:02,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:03,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:04,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:05,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:06,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:07,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:08,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:09,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:10,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:11,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:12,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:13,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:14,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:15,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:16,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:17,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:18,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:19,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:20,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:21,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:22,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:23,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:24,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:25,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:26,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:27,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:28,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:29,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:30,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:31,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:32,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:33,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:34,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:35,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:36,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:37,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:38,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:39,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:40,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:41,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:42,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:43,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:44,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:45,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:46,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:47,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:48,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:49,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:50,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:51,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:52,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:53,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:54,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:55,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:56,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:57,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:58,M
+AUS,Austin Bergstrom Intl,2026-08-11 02:59,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:00,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:01,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:02,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:03,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:04,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:05,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:06,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:07,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:08,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:09,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:10,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:11,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:12,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:13,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:14,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:15,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:16,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:17,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:18,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:19,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:20,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:21,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:22,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:23,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:24,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:25,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:26,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:27,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:28,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:29,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:30,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:31,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:32,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:33,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:34,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:35,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:36,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:37,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:38,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:39,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:40,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:41,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:42,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:43,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:44,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:45,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:46,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:47,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:48,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:49,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:50,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:51,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:52,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:53,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:54,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:55,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:56,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:57,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:58,M
+AUS,Austin Bergstrom Intl,2026-08-11 03:59,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:00,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:01,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:02,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:03,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:04,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:05,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:06,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:07,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:08,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:09,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:10,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:11,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:12,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:13,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:14,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:15,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:16,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:17,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:18,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:19,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:20,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:21,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:22,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:23,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:24,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:25,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:26,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:27,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:28,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:29,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:30,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:31,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:32,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:33,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:34,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:35,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:36,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:37,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:38,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:39,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:40,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:41,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:42,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:43,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:44,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:45,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:46,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:47,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:48,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:49,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:50,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:51,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:52,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:53,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:54,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:55,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:56,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:57,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:58,M
+AUS,Austin Bergstrom Intl,2026-08-11 04:59,M
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:17,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:18,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:19,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:20,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:21,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:22,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:23,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:24,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:25,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:26,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:27,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:28,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:29,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:30,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:31,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:32,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:33,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:34,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:35,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:36,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:37,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:38,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:39,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:40,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:41,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:42,78
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:43,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:44,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:45,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:46,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:47,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:48,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:49,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:50,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:51,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:52,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:53,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:54,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:55,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:56,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:57,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:58,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 11:59,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:00,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:01,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:02,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:03,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:04,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:05,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:06,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:07,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:08,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:09,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:10,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:11,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:12,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:13,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:14,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:15,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:16,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:17,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:18,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:19,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:20,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:21,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:22,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:23,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:24,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:25,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:26,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:27,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:28,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:29,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:30,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:31,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:32,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:33,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:34,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:35,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:36,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:37,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:38,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:39,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:40,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:41,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:42,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:43,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:44,79
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:45,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:46,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:47,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:48,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:49,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:50,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:51,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:52,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:53,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:54,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:55,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:56,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:57,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:58,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 12:59,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:00,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:01,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:02,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:03,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:04,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:05,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:06,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:07,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:08,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:09,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:10,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:11,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:12,81
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:13,80
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:14,81
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:15,81
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:16,81
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:17,81
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:18,81
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:19,81
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:20,81
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:21,81
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:22,81
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:23,81
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:24,81
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:25,81
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:26,81
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:27,82
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:28,82
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:29,82
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:30,81
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:31,81
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:32,81
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:33,82
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:34,82
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:35,82
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:36,82
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:37,82
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:38,82
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:39,82
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:40,82
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:41,82
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:42,82
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:43,82
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:44,82
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:45,82
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:46,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:47,82
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:48,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:49,82
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:50,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:51,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:52,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:53,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:54,82
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:55,82
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:56,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:57,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:58,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 13:59,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:00,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:01,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:02,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:03,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:04,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:05,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:06,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:07,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:08,84
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:09,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:10,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:11,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:12,84
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:13,84
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:14,84
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:15,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:16,84
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:17,84
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:18,83
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:19,84
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:20,84
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:21,85
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:22,85
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:23,84
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:24,85
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:25,84
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:26,84
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:27,85
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:28,85
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:29,85
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:30,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:31,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:32,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:33,84
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:34,84
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:35,85
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:36,85
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:37,85
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:38,84
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:39,85
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:40,85
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:41,85
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:42,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:43,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:44,85
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:45,85
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:46,85
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:47,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:48,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:49,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:50,85
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:51,85
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:52,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:53,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:54,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:55,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:56,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:57,87
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:58,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 14:59,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:00,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:01,87
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:02,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:03,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:04,87
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:05,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:06,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:07,87
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:08,87
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:09,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:10,87
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:11,87
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:12,86
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:13,87
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:14,88
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:15,87
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:16,87
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:17,87
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:18,87
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:19,87
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:20,88
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:21,88
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:22,87
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:23,87
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:24,87
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:25,88
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:26,87
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:27,87
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:28,87
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:29,88
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:30,89
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:31,89
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:32,88
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:33,88
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:34,88
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:35,87
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:36,87
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:37,88
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:38,89
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:39,88
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:40,88
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:41,90
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:42,90
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:43,90
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:44,89
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:45,89
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:46,89
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:47,89
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:48,89
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:49,89
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:50,89
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:51,89
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:52,89
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:53,90
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:54,89
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:55,89
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:56,90
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:57,88
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:58,89
+DAL,DALLAS/LOVE FIELD,2026-08-10 15:59,89
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:00,89
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:01,90
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:02,89
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:03,90
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:04,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:05,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:06,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:07,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:08,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:09,89
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:10,90
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:11,89
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:12,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:13,90
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:14,90
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:15,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:16,90
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:17,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:18,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:19,90
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:20,90
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:21,90
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:22,90
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:23,90
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:24,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:25,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:26,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:27,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:28,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:29,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:30,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:31,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:32,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:33,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:34,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:35,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:36,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:37,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:38,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:39,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:40,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:41,90
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:42,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:43,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:44,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:45,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:46,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:47,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:48,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:49,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:50,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:51,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:52,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:53,93
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:54,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:55,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:56,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:57,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:58,93
+DAL,DALLAS/LOVE FIELD,2026-08-10 16:59,93
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:00,93
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:01,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:02,93
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:03,93
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:04,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:05,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:06,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:07,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:08,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:09,93
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:10,93
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:11,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:12,91
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:13,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:14,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:15,93
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:16,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:17,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:18,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:19,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:20,93
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:21,93
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:22,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:23,93
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:24,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:25,93
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:26,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:27,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:28,93
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:29,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:30,93
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:31,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:32,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:33,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:34,92
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:35,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:36,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:37,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:38,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:39,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:40,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:41,93
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:42,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:43,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:44,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:45,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:46,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:47,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:48,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:49,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:50,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:51,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:52,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:53,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:54,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:55,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:56,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:57,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:58,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 17:59,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:00,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:01,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:02,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:03,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:04,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:05,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:06,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:07,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:08,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:09,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:10,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:11,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:12,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:13,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:14,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:15,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:16,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:17,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:18,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:19,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:20,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:21,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:22,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:23,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:24,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:25,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:26,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:27,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:28,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:29,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:30,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:31,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:32,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:33,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:34,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:35,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:36,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:37,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:38,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:39,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:40,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:41,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:42,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:43,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:44,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:45,94
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:46,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:47,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:48,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:49,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:50,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:51,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:52,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:53,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:54,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:55,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:56,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:57,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:58,95
+DAL,DALLAS/LOVE FIELD,2026-08-10 18:59,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:00,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:01,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:02,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:03,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:04,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:05,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:06,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:07,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:08,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:09,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:10,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:11,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:12,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:13,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:14,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:15,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:16,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:17,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:18,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:19,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:20,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:21,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:22,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:23,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:24,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:25,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:26,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:27,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:28,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:29,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:30,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:31,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:32,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:33,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:34,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:35,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:36,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:37,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:38,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:39,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:40,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:41,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:42,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:43,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:44,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:45,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:46,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:47,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:48,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:49,99
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:50,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:51,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:52,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:53,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:54,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:55,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:56,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:57,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:58,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 19:59,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:00,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:01,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:02,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:03,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:04,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:05,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:06,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:07,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:08,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:09,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:10,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:11,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:12,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:13,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:14,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:15,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:16,99
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:17,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:18,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:19,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:20,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:21,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:22,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:23,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:24,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:25,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:26,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:27,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:28,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:29,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:30,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:31,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:32,99
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:33,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:34,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:35,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:36,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:37,99
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:38,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:39,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:40,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:41,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:42,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:43,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:44,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:45,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:46,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:47,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:48,99
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:49,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:50,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:51,99
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:52,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:53,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:54,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:55,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:56,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:57,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:58,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 20:59,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:00,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:01,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:02,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:03,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:04,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:05,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:06,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:07,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:08,99
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:09,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:10,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:11,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:12,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:13,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:14,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:15,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:16,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:17,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:18,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:19,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:20,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:21,99
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:22,99
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:23,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:24,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:25,99
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:26,99
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:27,99
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:28,99
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:29,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:30,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:31,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:32,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:33,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:34,99
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:35,99
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:36,99
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:37,99
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:38,99
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:39,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:40,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:41,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:42,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:43,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:44,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:45,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:46,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:47,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:48,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:49,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:50,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:51,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:52,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:53,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:54,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:55,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:56,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:57,99
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:58,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 21:59,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:00,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:01,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:02,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:03,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:04,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:05,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:06,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:07,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:08,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:09,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:10,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:11,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:12,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:13,99
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:14,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:15,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:16,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:17,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:18,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:19,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:20,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:21,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:22,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:23,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:24,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:25,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:26,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:27,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:28,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:29,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:30,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:31,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:32,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:33,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:34,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:35,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:36,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:37,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:38,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:39,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:40,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:41,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:42,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:43,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:44,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:45,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:46,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:47,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:48,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:49,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:50,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:51,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:52,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:53,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:54,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:55,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:56,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:57,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:58,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 22:59,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:00,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:01,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:02,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:03,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:04,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:05,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:06,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:07,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:08,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:09,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:10,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:11,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:12,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:13,96
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:14,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:15,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:16,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:17,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:18,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:19,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:20,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:21,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:22,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:23,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:24,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:25,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:26,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:27,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:28,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:29,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:30,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:31,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:32,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:33,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:34,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:35,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:36,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:37,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:38,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:39,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:40,98
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:41,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:42,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:43,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:44,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:45,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:46,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:47,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:48,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:49,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:50,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:51,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:52,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:53,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:54,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:55,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:56,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:57,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:58,97
+DAL,DALLAS/LOVE FIELD,2026-08-10 23:59,97
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:00,97
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:01,97
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:02,97
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:03,97
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:04,97
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:05,97
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:06,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:07,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:08,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:09,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:10,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:11,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:12,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:13,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:14,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:15,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:16,97
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:17,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:18,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:19,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:20,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:21,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:22,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:23,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:24,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:25,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:26,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:27,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:28,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:29,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:30,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:31,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:32,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:33,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:34,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:35,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:36,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:37,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:38,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:39,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:40,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:41,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:42,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:43,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:44,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:45,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:46,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:47,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:48,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:49,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:50,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:51,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:52,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:53,96
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:54,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:55,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:56,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:57,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:58,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 00:59,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:00,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:01,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:02,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:03,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:04,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:05,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:06,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:07,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:08,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:09,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:10,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:11,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:12,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:13,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:14,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:15,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:16,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:17,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:18,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:19,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:20,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:21,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:22,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:23,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:24,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:25,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:26,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:27,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:28,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:29,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:30,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:31,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:32,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:33,95
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:34,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:35,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:36,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:37,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:38,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:39,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:40,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:41,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:42,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:43,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:44,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:45,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:46,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:47,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:48,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:49,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:50,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:51,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:52,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:53,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:54,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:55,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:56,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:57,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:58,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 01:59,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:00,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:01,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:02,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:03,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:04,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:05,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:06,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:07,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:08,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:09,94
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:10,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:11,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:12,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:13,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:14,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:15,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:16,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:17,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:18,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:19,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:20,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:21,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:22,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:23,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:24,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:25,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:26,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:27,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:28,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:29,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:30,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:31,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:32,92
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:33,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:34,93
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:35,92
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:36,92
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:37,92
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:38,92
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:39,92
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:40,92
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:41,92
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:42,92
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:43,92
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:44,91
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:45,91
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:46,92
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:47,91
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:48,91
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:49,91
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:50,91
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:51,91
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:52,91
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:53,91
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:54,91
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:55,91
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:56,90
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:57,90
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:58,90
+DAL,DALLAS/LOVE FIELD,2026-08-11 02:59,90
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:00,90
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:01,90
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:02,90
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:03,90
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:04,90
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:05,90
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:06,90
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:07,90
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:08,90
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:09,90
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:10,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:11,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:12,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:13,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:14,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:15,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:16,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:17,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:18,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:19,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:20,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:21,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:22,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:23,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:24,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:25,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:26,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:27,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:28,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:29,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:30,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:31,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:32,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:33,89
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:34,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:35,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:36,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:37,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:38,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:39,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:40,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:41,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:42,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:43,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:44,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:45,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:46,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:47,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:48,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:49,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:50,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:51,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:52,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:53,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:54,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:55,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:56,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:57,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:58,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 03:59,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:00,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:01,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:02,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:03,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:04,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:05,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:06,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:07,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:08,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:09,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:10,88
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:11,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:12,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:13,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:14,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:15,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:16,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:17,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:18,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:19,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:20,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:21,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:22,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:23,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:24,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:25,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:26,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:27,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:28,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:29,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:30,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:31,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:32,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:33,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:34,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:35,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:36,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:37,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:38,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:39,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:40,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:41,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:42,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:43,86
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:44,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:45,86
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:46,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:47,87
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:48,86
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:49,86
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:50,86
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:51,86
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:52,86
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:53,86
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:54,86
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:55,86
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:56,86
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:57,86
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:58,86
+DAL,DALLAS/LOVE FIELD,2026-08-11 04:59,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 11:43,M
+HOU,HOUSTON/WILL HOBBY,2026-08-10 11:44,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 11:45,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 11:46,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 11:47,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 11:48,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 11:49,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 11:50,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 11:51,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 11:52,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 11:53,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 11:54,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 11:55,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 11:56,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 11:57,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 11:58,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 11:59,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:00,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:01,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:02,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:03,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:04,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:05,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:06,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:07,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:08,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:09,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:10,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:11,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:12,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:13,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:14,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:15,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:16,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:17,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:18,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:19,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:20,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:21,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:22,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:23,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:24,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:25,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:26,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:27,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:28,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:29,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:30,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:31,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:32,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:33,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:34,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:35,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:36,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:37,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:38,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:39,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:40,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:41,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:42,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:43,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:44,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:45,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:46,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:47,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:48,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:49,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:50,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:51,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:52,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:53,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:54,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:55,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:56,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:57,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:58,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 12:59,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:00,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:01,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:02,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:03,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:04,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:05,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:06,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:07,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:08,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:09,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:10,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:11,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:12,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:13,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:14,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:15,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:16,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:17,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:18,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:19,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:20,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:21,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:22,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:23,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:24,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:25,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:26,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:27,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:28,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:29,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:30,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:31,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:32,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:33,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:34,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:35,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:36,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:37,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:38,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:39,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:40,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:41,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:42,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:43,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:44,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:45,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:46,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:47,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:48,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:49,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:50,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:51,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:52,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:53,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:54,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:55,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:56,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:57,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:58,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 13:59,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:00,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:01,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:02,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:03,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:04,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:05,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:06,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:07,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:08,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:09,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:10,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:11,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:12,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:13,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:14,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:15,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:16,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:17,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:18,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:19,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:20,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:21,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:22,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:23,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:24,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:25,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:26,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:27,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:28,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:29,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:30,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:31,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:32,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:33,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:34,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:35,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:36,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:37,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:38,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:39,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:40,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:41,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:42,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:43,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:44,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:45,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:46,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:47,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:48,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:49,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:50,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:51,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:52,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:53,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:54,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:55,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:56,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:57,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:58,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 14:59,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:00,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:01,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:02,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:03,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:04,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:05,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:06,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:07,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:08,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:09,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:10,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:11,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:12,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:13,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:14,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:15,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:16,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:17,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:18,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:19,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:20,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:21,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:22,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:23,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:24,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:25,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:26,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:27,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:28,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:29,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:30,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:31,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:32,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:33,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:34,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:35,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:36,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:37,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:38,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:39,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:40,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:41,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:42,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:43,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:44,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:45,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:46,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:47,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:48,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:49,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:50,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:51,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:52,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:53,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:54,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:55,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:56,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:57,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:58,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 15:59,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:00,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:01,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:02,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:03,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:04,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:05,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:06,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:07,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:08,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:09,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:10,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:11,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:12,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:13,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:14,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:15,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:16,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:17,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:18,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:19,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:20,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:21,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:22,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:23,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:24,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:25,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:26,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:27,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:28,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:29,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:30,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:31,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:32,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:33,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:34,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:35,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:36,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:37,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:38,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:39,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:40,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:41,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:42,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:43,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:44,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:45,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:46,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:47,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:48,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:49,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:50,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:51,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:52,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:53,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:54,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:55,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:56,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:57,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:58,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 16:59,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:00,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:01,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:02,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:03,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:04,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:05,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:06,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:07,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:08,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:09,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:10,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:11,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:12,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:13,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:14,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:15,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:16,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:17,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:18,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:19,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:20,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:21,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:22,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:23,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:24,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:25,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:26,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:27,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:28,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:29,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:30,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:31,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:32,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:33,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:34,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:35,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:36,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:37,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:38,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:39,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:40,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:41,85
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:42,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:43,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:44,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:45,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:46,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:47,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:48,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:49,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:50,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:51,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:52,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:53,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:54,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:55,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:56,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:57,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:58,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 17:59,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:00,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:01,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:02,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:03,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:04,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:05,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:06,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:07,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:08,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:09,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:10,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:11,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:12,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:13,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:14,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:15,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:16,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:17,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:18,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:19,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:20,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:21,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:22,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:23,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:24,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:25,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:26,87
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:27,86
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:28,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:29,84
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:30,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:31,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:32,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:33,83
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:34,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:35,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:36,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:37,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:38,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:39,82
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:40,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:41,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:42,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:43,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:44,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:45,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:46,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:47,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:48,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:49,81
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:50,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:51,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:52,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:53,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:54,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:55,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:56,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:57,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:58,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 18:59,80
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:00,79
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:01,79
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:02,79
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:03,79
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:04,79
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:05,79
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:06,79
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:07,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:08,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:09,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:10,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:11,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:12,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:13,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:14,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:15,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:16,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:17,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:18,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:19,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:20,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:21,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:22,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:23,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:24,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:25,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:26,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:27,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:28,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:29,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:30,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:31,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:32,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:33,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:34,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:35,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:36,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:37,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:38,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:39,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:40,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:41,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:42,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:43,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:44,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:45,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:46,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:47,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:48,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:49,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:50,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:51,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:52,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:53,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:54,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:55,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:56,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:57,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:58,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 19:59,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:00,74
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:01,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:02,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:03,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:04,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:05,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:06,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:07,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:08,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:09,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:10,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:11,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:12,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:13,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:14,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:15,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:16,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:17,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:18,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:19,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:20,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:21,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:22,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:23,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:24,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:25,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:26,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:27,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:28,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:29,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:30,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:31,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:32,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:33,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:34,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:35,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:36,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:37,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:38,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:39,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:40,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:41,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:42,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:43,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:44,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:45,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:46,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:47,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:48,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:49,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:50,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:51,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:52,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:53,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:54,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:55,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:56,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:57,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:58,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 20:59,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:00,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:01,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:02,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:03,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:04,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:05,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:06,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:07,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:08,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:09,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:10,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:11,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:12,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:13,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:14,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:15,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:16,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:17,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:18,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:19,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:20,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:21,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:22,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:23,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:24,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:25,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:26,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:27,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:28,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:29,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:30,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:31,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:32,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:33,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:34,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:35,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:36,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:37,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:38,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:39,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:40,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:41,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:42,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:43,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:44,75
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:45,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:46,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:47,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:48,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:49,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:50,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:51,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:52,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:53,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:54,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:55,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:56,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:57,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:58,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 21:59,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:00,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:01,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:02,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:03,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:04,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:05,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:06,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:07,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:08,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:09,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:10,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:11,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:12,76
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:13,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:14,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:15,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:16,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:17,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:18,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:19,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:20,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:21,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:22,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:23,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:24,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:25,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:26,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:27,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:28,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:29,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:30,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:31,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:32,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:33,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:34,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:35,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:36,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:37,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:38,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:39,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:40,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:41,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:42,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:43,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:44,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:45,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:46,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:47,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:48,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:49,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:50,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:51,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:52,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:53,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:54,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:55,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:56,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:57,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:58,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 22:59,77
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:00,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:01,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:02,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:03,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:04,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:05,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:06,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:07,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:08,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:09,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:10,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:11,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:12,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:13,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:14,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:15,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:16,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:17,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:18,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:19,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:20,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:21,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:22,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:23,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:24,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:25,79
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:26,79
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:27,79
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:28,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:29,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:30,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:31,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:32,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:33,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:34,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:35,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:36,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:37,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:38,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:39,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:40,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:41,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:42,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:43,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:44,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:45,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:46,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:47,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:48,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:49,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:50,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:51,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:52,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:53,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:54,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:55,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:56,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:57,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:58,78
+HOU,HOUSTON/WILL HOBBY,2026-08-10 23:59,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:00,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:01,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:02,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:03,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:04,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:05,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:06,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:07,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:08,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:09,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:10,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:11,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:12,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:13,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:14,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:15,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:16,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:17,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:18,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:19,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:20,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:21,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:22,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:23,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:24,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:25,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:26,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:27,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:28,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:29,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:30,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:31,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:32,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:33,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:34,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:35,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:36,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:37,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:38,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:39,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:40,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:41,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:42,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:43,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:44,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:45,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:46,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:47,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:48,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:49,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:50,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:51,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:52,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:53,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:54,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:55,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:56,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:57,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:58,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 00:59,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:00,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:01,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:02,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:03,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:04,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:05,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:06,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:07,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:08,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:09,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:10,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:11,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:12,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:13,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:14,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:15,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:16,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:17,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:18,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:19,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:20,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:21,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:22,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:23,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:24,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:25,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:26,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:27,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:28,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:29,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:30,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:31,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:32,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:33,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:34,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:35,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:36,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:37,79
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:38,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:39,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:40,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:41,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:42,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:43,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:44,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:45,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:46,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:47,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:48,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:49,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:50,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:51,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:52,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:53,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:54,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:55,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:56,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:57,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:58,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 01:59,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:00,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:01,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:02,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:03,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:04,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:05,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:06,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:07,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:08,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:09,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:10,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:11,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:12,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:13,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:14,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:15,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:16,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:17,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:18,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:19,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:20,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:21,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:22,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:23,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:24,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:25,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:26,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:27,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:28,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:29,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:30,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:31,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:32,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:33,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:34,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:35,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:36,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:37,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:38,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:39,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:40,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:41,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:42,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:43,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:44,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:45,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:46,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:47,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:48,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:49,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:50,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:51,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:52,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:53,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:54,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:55,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:56,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:57,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:58,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 02:59,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:00,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:01,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:02,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:03,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:04,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:05,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:06,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:07,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:08,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:09,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:10,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:11,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:12,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:13,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:14,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:15,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:16,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:17,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:18,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:19,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:20,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:21,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:22,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:23,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:24,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:25,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:26,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:27,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:28,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:29,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:30,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:31,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:32,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:33,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:34,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:35,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:36,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:37,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:38,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:39,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:40,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:41,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:42,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:43,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:44,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:45,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:46,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:47,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:48,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:49,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:50,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:51,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:52,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:53,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:54,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:55,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:56,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:57,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:58,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 03:59,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:00,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:01,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:02,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:03,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:04,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:05,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:06,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:07,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:08,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:09,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:10,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:11,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:12,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:13,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:14,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:15,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:16,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:17,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:18,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:19,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:20,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:21,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:22,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:23,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:24,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:25,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:26,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:27,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:28,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:29,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:30,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:31,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:32,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:33,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:34,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:35,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:36,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:37,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:38,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:39,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:40,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:41,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:42,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:43,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:44,78
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:45,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:46,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:47,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:48,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:49,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:50,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:51,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:52,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:53,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:54,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:55,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:56,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:57,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:58,77
+HOU,HOUSTON/WILL HOBBY,2026-08-11 04:59,77
+ORD,Chicago OHare,2026-08-10 05:00,76
+ORD,Chicago OHare,2026-08-10 05:01,76
+ORD,Chicago OHare,2026-08-10 05:02,76
+ORD,Chicago OHare,2026-08-10 05:03,77
+ORD,Chicago OHare,2026-08-10 05:04,77
+ORD,Chicago OHare,2026-08-10 05:05,77
+ORD,Chicago OHare,2026-08-10 05:06,77
+ORD,Chicago OHare,2026-08-10 05:07,77
+ORD,Chicago OHare,2026-08-10 05:08,77
+ORD,Chicago OHare,2026-08-10 05:09,77
+ORD,Chicago OHare,2026-08-10 05:10,77
+ORD,Chicago OHare,2026-08-10 05:11,77
+ORD,Chicago OHare,2026-08-10 05:12,77
+ORD,Chicago OHare,2026-08-10 05:13,77
+ORD,Chicago OHare,2026-08-10 05:14,77
+ORD,Chicago OHare,2026-08-10 05:15,77
+ORD,Chicago OHare,2026-08-10 05:16,77
+ORD,Chicago OHare,2026-08-10 05:17,77
+ORD,Chicago OHare,2026-08-10 05:18,77
+ORD,Chicago OHare,2026-08-10 05:19,77
+ORD,Chicago OHare,2026-08-10 05:20,77
+ORD,Chicago OHare,2026-08-10 05:21,77
+ORD,Chicago OHare,2026-08-10 05:22,77
+ORD,Chicago OHare,2026-08-10 05:23,77
+ORD,Chicago OHare,2026-08-10 05:24,77
+ORD,Chicago OHare,2026-08-10 05:25,77
+ORD,Chicago OHare,2026-08-10 05:26,77
+ORD,Chicago OHare,2026-08-10 05:27,77
+ORD,Chicago OHare,2026-08-10 05:28,77
+ORD,Chicago OHare,2026-08-10 05:29,77
+ORD,Chicago OHare,2026-08-10 05:30,77
+ORD,Chicago OHare,2026-08-10 05:31,77
+ORD,Chicago OHare,2026-08-10 05:32,77
+ORD,Chicago OHare,2026-08-10 05:33,77
+ORD,Chicago OHare,2026-08-10 05:34,77
+ORD,Chicago OHare,2026-08-10 05:35,77
+ORD,Chicago OHare,2026-08-10 05:36,77
+ORD,Chicago OHare,2026-08-10 05:37,77
+ORD,Chicago OHare,2026-08-10 05:38,77
+ORD,Chicago OHare,2026-08-10 05:39,77
+ORD,Chicago OHare,2026-08-10 05:40,77
+ORD,Chicago OHare,2026-08-10 05:41,77
+ORD,Chicago OHare,2026-08-10 05:42,77
+ORD,Chicago OHare,2026-08-10 05:43,77
+ORD,Chicago OHare,2026-08-10 05:44,77
+ORD,Chicago OHare,2026-08-10 05:45,77
+ORD,Chicago OHare,2026-08-10 05:46,77
+ORD,Chicago OHare,2026-08-10 05:47,77
+ORD,Chicago OHare,2026-08-10 05:48,77
+ORD,Chicago OHare,2026-08-10 05:49,77
+ORD,Chicago OHare,2026-08-10 05:50,77
+ORD,Chicago OHare,2026-08-10 05:51,77
+ORD,Chicago OHare,2026-08-10 05:52,77
+ORD,Chicago OHare,2026-08-10 05:53,77
+ORD,Chicago OHare,2026-08-10 05:54,77
+ORD,Chicago OHare,2026-08-10 05:55,77
+ORD,Chicago OHare,2026-08-10 05:56,77
+ORD,Chicago OHare,2026-08-10 05:57,77
+ORD,Chicago OHare,2026-08-10 05:58,77
+ORD,Chicago OHare,2026-08-10 05:59,77
+ORD,Chicago OHare,2026-08-10 06:00,77
+ORD,Chicago OHare,2026-08-10 06:01,77
+ORD,Chicago OHare,2026-08-10 06:02,77
+ORD,Chicago OHare,2026-08-10 06:03,77
+ORD,Chicago OHare,2026-08-10 06:04,77
+ORD,Chicago OHare,2026-08-10 06:05,77
+ORD,Chicago OHare,2026-08-10 06:06,77
+ORD,Chicago OHare,2026-08-10 06:07,77
+ORD,Chicago OHare,2026-08-10 06:08,77
+ORD,Chicago OHare,2026-08-10 06:09,77
+ORD,Chicago OHare,2026-08-10 06:10,77
+ORD,Chicago OHare,2026-08-10 06:11,77
+ORD,Chicago OHare,2026-08-10 06:12,77
+ORD,Chicago OHare,2026-08-10 06:13,77
+ORD,Chicago OHare,2026-08-10 06:14,77
+ORD,Chicago OHare,2026-08-10 06:15,77
+ORD,Chicago OHare,2026-08-10 06:16,77
+ORD,Chicago OHare,2026-08-10 06:17,77
+ORD,Chicago OHare,2026-08-10 06:18,77
+ORD,Chicago OHare,2026-08-10 06:19,77
+ORD,Chicago OHare,2026-08-10 06:20,77
+ORD,Chicago OHare,2026-08-10 06:21,77
+ORD,Chicago OHare,2026-08-10 06:22,77
+ORD,Chicago OHare,2026-08-10 06:23,77
+ORD,Chicago OHare,2026-08-10 06:24,77
+ORD,Chicago OHare,2026-08-10 06:25,77
+ORD,Chicago OHare,2026-08-10 06:26,77
+ORD,Chicago OHare,2026-08-10 06:27,77
+ORD,Chicago OHare,2026-08-10 06:28,76
+ORD,Chicago OHare,2026-08-10 06:29,77
+ORD,Chicago OHare,2026-08-10 06:30,77
+ORD,Chicago OHare,2026-08-10 06:31,77
+ORD,Chicago OHare,2026-08-10 06:32,77
+ORD,Chicago OHare,2026-08-10 06:33,76
+ORD,Chicago OHare,2026-08-10 06:34,76
+ORD,Chicago OHare,2026-08-10 06:35,76
+ORD,Chicago OHare,2026-08-10 06:36,76
+ORD,Chicago OHare,2026-08-10 06:37,77
+ORD,Chicago OHare,2026-08-10 06:38,77
+ORD,Chicago OHare,2026-08-10 06:39,77
+ORD,Chicago OHare,2026-08-10 06:40,76
+ORD,Chicago OHare,2026-08-10 06:41,76
+ORD,Chicago OHare,2026-08-10 06:42,76
+ORD,Chicago OHare,2026-08-10 06:43,76
+ORD,Chicago OHare,2026-08-10 06:44,76
+ORD,Chicago OHare,2026-08-10 06:45,76
+ORD,Chicago OHare,2026-08-10 06:46,76
+ORD,Chicago OHare,2026-08-10 06:47,76
+ORD,Chicago OHare,2026-08-10 06:48,76
+ORD,Chicago OHare,2026-08-10 06:49,76
+ORD,Chicago OHare,2026-08-10 06:50,76
+ORD,Chicago OHare,2026-08-10 06:51,76
+ORD,Chicago OHare,2026-08-10 06:52,76
+ORD,Chicago OHare,2026-08-10 06:53,76
+ORD,Chicago OHare,2026-08-10 06:54,76
+ORD,Chicago OHare,2026-08-10 06:55,76
+ORD,Chicago OHare,2026-08-10 06:56,76
+ORD,Chicago OHare,2026-08-10 06:57,76
+ORD,Chicago OHare,2026-08-10 06:58,76
+ORD,Chicago OHare,2026-08-10 06:59,76
+ORD,Chicago OHare,2026-08-10 07:00,76
+ORD,Chicago OHare,2026-08-10 07:01,76
+ORD,Chicago OHare,2026-08-10 07:02,76
+ORD,Chicago OHare,2026-08-10 07:03,76
+ORD,Chicago OHare,2026-08-10 07:04,76
+ORD,Chicago OHare,2026-08-10 07:05,76
+ORD,Chicago OHare,2026-08-10 07:06,76
+ORD,Chicago OHare,2026-08-10 07:07,76
+ORD,Chicago OHare,2026-08-10 07:08,76
+ORD,Chicago OHare,2026-08-10 07:09,76
+ORD,Chicago OHare,2026-08-10 07:10,76
+ORD,Chicago OHare,2026-08-10 07:11,76
+ORD,Chicago OHare,2026-08-10 07:12,76
+ORD,Chicago OHare,2026-08-10 07:13,76
+ORD,Chicago OHare,2026-08-10 07:14,76
+ORD,Chicago OHare,2026-08-10 07:15,76
+ORD,Chicago OHare,2026-08-10 07:16,76
+ORD,Chicago OHare,2026-08-10 07:17,76
+ORD,Chicago OHare,2026-08-10 07:18,75
+ORD,Chicago OHare,2026-08-10 07:19,75
+ORD,Chicago OHare,2026-08-10 07:20,75
+ORD,Chicago OHare,2026-08-10 07:21,75
+ORD,Chicago OHare,2026-08-10 07:22,75
+ORD,Chicago OHare,2026-08-10 07:23,75
+ORD,Chicago OHare,2026-08-10 07:24,75
+ORD,Chicago OHare,2026-08-10 07:25,75
+ORD,Chicago OHare,2026-08-10 07:26,75
+ORD,Chicago OHare,2026-08-10 07:27,75
+ORD,Chicago OHare,2026-08-10 07:28,75
+ORD,Chicago OHare,2026-08-10 07:29,75
+ORD,Chicago OHare,2026-08-10 07:30,75
+ORD,Chicago OHare,2026-08-10 07:31,75
+ORD,Chicago OHare,2026-08-10 07:32,75
+ORD,Chicago OHare,2026-08-10 07:33,74
+ORD,Chicago OHare,2026-08-10 07:34,74
+ORD,Chicago OHare,2026-08-10 07:35,74
+ORD,Chicago OHare,2026-08-10 07:36,74
+ORD,Chicago OHare,2026-08-10 07:37,74
+ORD,Chicago OHare,2026-08-10 07:38,74
+ORD,Chicago OHare,2026-08-10 07:39,74
+ORD,Chicago OHare,2026-08-10 07:40,74
+ORD,Chicago OHare,2026-08-10 07:41,74
+ORD,Chicago OHare,2026-08-10 07:42,74
+ORD,Chicago OHare,2026-08-10 07:43,74
+ORD,Chicago OHare,2026-08-10 07:44,74
+ORD,Chicago OHare,2026-08-10 07:45,74
+ORD,Chicago OHare,2026-08-10 07:46,74
+ORD,Chicago OHare,2026-08-10 07:47,74
+ORD,Chicago OHare,2026-08-10 07:48,74
+ORD,Chicago OHare,2026-08-10 07:49,73
+ORD,Chicago OHare,2026-08-10 07:50,74
+ORD,Chicago OHare,2026-08-10 07:51,73
+ORD,Chicago OHare,2026-08-10 07:52,73
+ORD,Chicago OHare,2026-08-10 07:53,73
+ORD,Chicago OHare,2026-08-10 07:54,74
+ORD,Chicago OHare,2026-08-10 07:55,74
+ORD,Chicago OHare,2026-08-10 07:56,73
+ORD,Chicago OHare,2026-08-10 07:57,73
+ORD,Chicago OHare,2026-08-10 07:58,73
+ORD,Chicago OHare,2026-08-10 07:59,73
+ORD,Chicago OHare,2026-08-10 08:00,73
+ORD,Chicago OHare,2026-08-10 08:01,73
+ORD,Chicago OHare,2026-08-10 08:02,73
+ORD,Chicago OHare,2026-08-10 08:03,73
+ORD,Chicago OHare,2026-08-10 08:04,73
+ORD,Chicago OHare,2026-08-10 08:05,73
+ORD,Chicago OHare,2026-08-10 08:06,73
+ORD,Chicago OHare,2026-08-10 08:07,73
+ORD,Chicago OHare,2026-08-10 08:08,73
+ORD,Chicago OHare,2026-08-10 08:09,73
+ORD,Chicago OHare,2026-08-10 08:10,73
+ORD,Chicago OHare,2026-08-10 08:11,73
+ORD,Chicago OHare,2026-08-10 08:12,73
+ORD,Chicago OHare,2026-08-10 08:13,73
+ORD,Chicago OHare,2026-08-10 08:14,73
+ORD,Chicago OHare,2026-08-10 08:15,73
+ORD,Chicago OHare,2026-08-10 08:16,73
+ORD,Chicago OHare,2026-08-10 08:17,73
+ORD,Chicago OHare,2026-08-10 08:18,73
+ORD,Chicago OHare,2026-08-10 08:19,73
+ORD,Chicago OHare,2026-08-10 08:20,73
+ORD,Chicago OHare,2026-08-10 08:21,73
+ORD,Chicago OHare,2026-08-10 08:22,73
+ORD,Chicago OHare,2026-08-10 08:23,73
+ORD,Chicago OHare,2026-08-10 08:24,73
+ORD,Chicago OHare,2026-08-10 08:25,73
+ORD,Chicago OHare,2026-08-10 08:26,73
+ORD,Chicago OHare,2026-08-10 08:27,73
+ORD,Chicago OHare,2026-08-10 08:28,73
+ORD,Chicago OHare,2026-08-10 08:29,73
+ORD,Chicago OHare,2026-08-10 08:30,73
+ORD,Chicago OHare,2026-08-10 08:31,73
+ORD,Chicago OHare,2026-08-10 08:32,73
+ORD,Chicago OHare,2026-08-10 08:33,73
+ORD,Chicago OHare,2026-08-10 08:34,73
+ORD,Chicago OHare,2026-08-10 08:35,73
+ORD,Chicago OHare,2026-08-10 08:36,73
+ORD,Chicago OHare,2026-08-10 08:37,73
+ORD,Chicago OHare,2026-08-10 08:38,73
+ORD,Chicago OHare,2026-08-10 08:39,73
+ORD,Chicago OHare,2026-08-10 08:40,73
+ORD,Chicago OHare,2026-08-10 08:41,73
+ORD,Chicago OHare,2026-08-10 08:42,73
+ORD,Chicago OHare,2026-08-10 08:43,73
+ORD,Chicago OHare,2026-08-10 08:44,73
+ORD,Chicago OHare,2026-08-10 08:45,73
+ORD,Chicago OHare,2026-08-10 08:46,73
+ORD,Chicago OHare,2026-08-10 08:47,73
+ORD,Chicago OHare,2026-08-10 08:48,73
+ORD,Chicago OHare,2026-08-10 08:49,73
+ORD,Chicago OHare,2026-08-10 08:50,73
+ORD,Chicago OHare,2026-08-10 08:51,73
+ORD,Chicago OHare,2026-08-10 08:52,73
+ORD,Chicago OHare,2026-08-10 08:53,73
+ORD,Chicago OHare,2026-08-10 08:54,73
+ORD,Chicago OHare,2026-08-10 08:55,73
+ORD,Chicago OHare,2026-08-10 08:56,73
+ORD,Chicago OHare,2026-08-10 08:57,73
+ORD,Chicago OHare,2026-08-10 08:58,73
+ORD,Chicago OHare,2026-08-10 08:59,73
+ORD,Chicago OHare,2026-08-10 09:00,73
+ORD,Chicago OHare,2026-08-10 09:01,73
+ORD,Chicago OHare,2026-08-10 09:02,73
+ORD,Chicago OHare,2026-08-10 09:03,73
+ORD,Chicago OHare,2026-08-10 09:04,73
+ORD,Chicago OHare,2026-08-10 09:05,73
+ORD,Chicago OHare,2026-08-10 09:06,73
+ORD,Chicago OHare,2026-08-10 09:07,73
+ORD,Chicago OHare,2026-08-10 09:08,73
+ORD,Chicago OHare,2026-08-10 09:09,73
+ORD,Chicago OHare,2026-08-10 09:10,73
+ORD,Chicago OHare,2026-08-10 09:11,73
+ORD,Chicago OHare,2026-08-10 09:12,73
+ORD,Chicago OHare,2026-08-10 09:13,73
+ORD,Chicago OHare,2026-08-10 09:14,73
+ORD,Chicago OHare,2026-08-10 09:15,73
+ORD,Chicago OHare,2026-08-10 09:16,73
+ORD,Chicago OHare,2026-08-10 09:17,73
+ORD,Chicago OHare,2026-08-10 09:18,73
+ORD,Chicago OHare,2026-08-10 09:19,73
+ORD,Chicago OHare,2026-08-10 09:20,73
+ORD,Chicago OHare,2026-08-10 09:21,73
+ORD,Chicago OHare,2026-08-10 09:22,73
+ORD,Chicago OHare,2026-08-10 09:23,73
+ORD,Chicago OHare,2026-08-10 09:24,73
+ORD,Chicago OHare,2026-08-10 09:25,73
+ORD,Chicago OHare,2026-08-10 09:26,73
+ORD,Chicago OHare,2026-08-10 09:27,73
+ORD,Chicago OHare,2026-08-10 09:28,73
+ORD,Chicago OHare,2026-08-10 09:29,73
+ORD,Chicago OHare,2026-08-10 09:30,73
+ORD,Chicago OHare,2026-08-10 09:31,73
+ORD,Chicago OHare,2026-08-10 09:32,73
+ORD,Chicago OHare,2026-08-10 09:33,73
+ORD,Chicago OHare,2026-08-10 09:34,73
+ORD,Chicago OHare,2026-08-10 09:35,73
+ORD,Chicago OHare,2026-08-10 09:36,73
+ORD,Chicago OHare,2026-08-10 09:37,73
+ORD,Chicago OHare,2026-08-10 09:38,73
+ORD,Chicago OHare,2026-08-10 09:39,73
+ORD,Chicago OHare,2026-08-10 09:40,73
+ORD,Chicago OHare,2026-08-10 09:41,73
+ORD,Chicago OHare,2026-08-10 09:42,73
+ORD,Chicago OHare,2026-08-10 09:43,73
+ORD,Chicago OHare,2026-08-10 09:44,73
+ORD,Chicago OHare,2026-08-10 09:45,73
+ORD,Chicago OHare,2026-08-10 09:46,73
+ORD,Chicago OHare,2026-08-10 09:47,73
+ORD,Chicago OHare,2026-08-10 09:48,73
+ORD,Chicago OHare,2026-08-10 09:49,73
+ORD,Chicago OHare,2026-08-10 09:50,73
+ORD,Chicago OHare,2026-08-10 09:51,73
+ORD,Chicago OHare,2026-08-10 09:52,73
+ORD,Chicago OHare,2026-08-10 09:53,73
+ORD,Chicago OHare,2026-08-10 09:54,73
+ORD,Chicago OHare,2026-08-10 09:55,73
+ORD,Chicago OHare,2026-08-10 09:56,73
+ORD,Chicago OHare,2026-08-10 09:57,73
+ORD,Chicago OHare,2026-08-10 09:58,73
+ORD,Chicago OHare,2026-08-10 09:59,73
+ORD,Chicago OHare,2026-08-10 10:00,73
+ORD,Chicago OHare,2026-08-10 10:01,73
+ORD,Chicago OHare,2026-08-10 10:02,73
+ORD,Chicago OHare,2026-08-10 10:03,73
+ORD,Chicago OHare,2026-08-10 10:04,73
+ORD,Chicago OHare,2026-08-10 10:05,73
+ORD,Chicago OHare,2026-08-10 10:06,73
+ORD,Chicago OHare,2026-08-10 10:07,73
+ORD,Chicago OHare,2026-08-10 10:08,73
+ORD,Chicago OHare,2026-08-10 10:09,73
+ORD,Chicago OHare,2026-08-10 10:10,73
+ORD,Chicago OHare,2026-08-10 10:11,73
+ORD,Chicago OHare,2026-08-10 10:12,73
+ORD,Chicago OHare,2026-08-10 10:13,73
+ORD,Chicago OHare,2026-08-10 10:14,73
+ORD,Chicago OHare,2026-08-10 10:15,73
+ORD,Chicago OHare,2026-08-10 10:16,73
+ORD,Chicago OHare,2026-08-10 10:17,73
+ORD,Chicago OHare,2026-08-10 10:18,73
+ORD,Chicago OHare,2026-08-10 10:19,73
+ORD,Chicago OHare,2026-08-10 10:20,72
+ORD,Chicago OHare,2026-08-10 10:21,72
+ORD,Chicago OHare,2026-08-10 10:22,72
+ORD,Chicago OHare,2026-08-10 10:23,72
+ORD,Chicago OHare,2026-08-10 10:24,72
+ORD,Chicago OHare,2026-08-10 10:25,72
+ORD,Chicago OHare,2026-08-10 10:26,72
+ORD,Chicago OHare,2026-08-10 10:27,72
+ORD,Chicago OHare,2026-08-10 10:28,72
+ORD,Chicago OHare,2026-08-10 10:29,72
+ORD,Chicago OHare,2026-08-10 10:30,72
+ORD,Chicago OHare,2026-08-10 10:31,72
+ORD,Chicago OHare,2026-08-10 10:32,72
+ORD,Chicago OHare,2026-08-10 10:33,72
+ORD,Chicago OHare,2026-08-10 10:34,72
+ORD,Chicago OHare,2026-08-10 10:35,72
+ORD,Chicago OHare,2026-08-10 10:36,72
+ORD,Chicago OHare,2026-08-10 10:37,72
+ORD,Chicago OHare,2026-08-10 10:38,72
+ORD,Chicago OHare,2026-08-10 10:39,72
+ORD,Chicago OHare,2026-08-10 10:40,72
+ORD,Chicago OHare,2026-08-10 10:41,72
+ORD,Chicago OHare,2026-08-10 10:42,72
+ORD,Chicago OHare,2026-08-10 10:43,73
+ORD,Chicago OHare,2026-08-10 10:44,73
+ORD,Chicago OHare,2026-08-10 10:45,72
+ORD,Chicago OHare,2026-08-10 10:46,73
+ORD,Chicago OHare,2026-08-10 10:47,73
+ORD,Chicago OHare,2026-08-10 10:48,73
+ORD,Chicago OHare,2026-08-10 10:49,73
+ORD,Chicago OHare,2026-08-10 10:50,73
+ORD,Chicago OHare,2026-08-10 10:51,73
+ORD,Chicago OHare,2026-08-10 10:52,73
+ORD,Chicago OHare,2026-08-10 10:53,73
+ORD,Chicago OHare,2026-08-10 10:54,73
+ORD,Chicago OHare,2026-08-10 10:55,73
+ORD,Chicago OHare,2026-08-10 10:56,73
+ORD,Chicago OHare,2026-08-10 10:57,73
+ORD,Chicago OHare,2026-08-10 10:58,73
+ORD,Chicago OHare,2026-08-10 10:59,73
+ORD,Chicago OHare,2026-08-10 11:00,73
+ORD,Chicago OHare,2026-08-10 11:01,73
+ORD,Chicago OHare,2026-08-10 11:02,73
+ORD,Chicago OHare,2026-08-10 11:03,73
+ORD,Chicago OHare,2026-08-10 11:04,73
+ORD,Chicago OHare,2026-08-10 11:05,73
+ORD,Chicago OHare,2026-08-10 11:06,73
+ORD,Chicago OHare,2026-08-10 11:07,73
+ORD,Chicago OHare,2026-08-10 11:08,73
+ORD,Chicago OHare,2026-08-10 11:09,73
+ORD,Chicago OHare,2026-08-10 11:10,73
+ORD,Chicago OHare,2026-08-10 11:11,73
+ORD,Chicago OHare,2026-08-10 11:12,73
+ORD,Chicago OHare,2026-08-10 11:13,73
+ORD,Chicago OHare,2026-08-10 11:14,73
+ORD,Chicago OHare,2026-08-10 11:15,73
+ORD,Chicago OHare,2026-08-10 11:16,73
+ORD,Chicago OHare,2026-08-10 11:17,73
+ORD,Chicago OHare,2026-08-10 11:18,73
+ORD,Chicago OHare,2026-08-10 11:19,73
+ORD,Chicago OHare,2026-08-10 11:20,73
+ORD,Chicago OHare,2026-08-10 11:21,73
+ORD,Chicago OHare,2026-08-10 11:22,73
+ORD,Chicago OHare,2026-08-10 11:23,73
+ORD,Chicago OHare,2026-08-10 11:24,73
+ORD,Chicago OHare,2026-08-10 11:25,73
+ORD,Chicago OHare,2026-08-10 11:26,73
+ORD,Chicago OHare,2026-08-10 11:27,73
+ORD,Chicago OHare,2026-08-10 11:28,73
+ORD,Chicago OHare,2026-08-10 11:29,73
+ORD,Chicago OHare,2026-08-10 11:30,73
+ORD,Chicago OHare,2026-08-10 11:31,73
+ORD,Chicago OHare,2026-08-10 11:32,73
+ORD,Chicago OHare,2026-08-10 11:33,74
+ORD,Chicago OHare,2026-08-10 11:34,74
+ORD,Chicago OHare,2026-08-10 11:35,74
+ORD,Chicago OHare,2026-08-10 11:36,74
+ORD,Chicago OHare,2026-08-10 11:37,74
+ORD,Chicago OHare,2026-08-10 11:38,74
+ORD,Chicago OHare,2026-08-10 11:39,74
+ORD,Chicago OHare,2026-08-10 11:40,74
+ORD,Chicago OHare,2026-08-10 11:41,74
+ORD,Chicago OHare,2026-08-10 11:42,74
+ORD,Chicago OHare,2026-08-10 11:43,74
+ORD,Chicago OHare,2026-08-10 11:44,74
+ORD,Chicago OHare,2026-08-10 11:45,74
+ORD,Chicago OHare,2026-08-10 11:46,74
+ORD,Chicago OHare,2026-08-10 11:47,74
+ORD,Chicago OHare,2026-08-10 11:48,74
+ORD,Chicago OHare,2026-08-10 11:49,74
+ORD,Chicago OHare,2026-08-10 11:50,74
+ORD,Chicago OHare,2026-08-10 11:51,74
+ORD,Chicago OHare,2026-08-10 11:52,74
+ORD,Chicago OHare,2026-08-10 11:53,74
+ORD,Chicago OHare,2026-08-10 11:54,74
+ORD,Chicago OHare,2026-08-10 11:55,74
+ORD,Chicago OHare,2026-08-10 11:56,74
+ORD,Chicago OHare,2026-08-10 11:57,74
+ORD,Chicago OHare,2026-08-10 11:58,74
+ORD,Chicago OHare,2026-08-10 11:59,74
+ORD,Chicago OHare,2026-08-10 12:00,74
+ORD,Chicago OHare,2026-08-10 12:01,74
+ORD,Chicago OHare,2026-08-10 12:02,74
+ORD,Chicago OHare,2026-08-10 12:03,74
+ORD,Chicago OHare,2026-08-10 12:04,74
+ORD,Chicago OHare,2026-08-10 12:05,74
+ORD,Chicago OHare,2026-08-10 12:06,74
+ORD,Chicago OHare,2026-08-10 12:07,74
+ORD,Chicago OHare,2026-08-10 12:08,74
+ORD,Chicago OHare,2026-08-10 12:09,74
+ORD,Chicago OHare,2026-08-10 12:10,74
+ORD,Chicago OHare,2026-08-10 12:11,74
+ORD,Chicago OHare,2026-08-10 12:12,74
+ORD,Chicago OHare,2026-08-10 12:13,74
+ORD,Chicago OHare,2026-08-10 12:14,74
+ORD,Chicago OHare,2026-08-10 12:15,74
+ORD,Chicago OHare,2026-08-10 12:16,74
+ORD,Chicago OHare,2026-08-10 12:17,74
+ORD,Chicago OHare,2026-08-10 12:18,74
+ORD,Chicago OHare,2026-08-10 12:19,74
+ORD,Chicago OHare,2026-08-10 12:20,74
+ORD,Chicago OHare,2026-08-10 12:21,74
+ORD,Chicago OHare,2026-08-10 12:22,75
+ORD,Chicago OHare,2026-08-10 12:23,75
+ORD,Chicago OHare,2026-08-10 12:24,75
+ORD,Chicago OHare,2026-08-10 12:25,75
+ORD,Chicago OHare,2026-08-10 12:26,75
+ORD,Chicago OHare,2026-08-10 12:27,75
+ORD,Chicago OHare,2026-08-10 12:28,75
+ORD,Chicago OHare,2026-08-10 12:29,75
+ORD,Chicago OHare,2026-08-10 12:30,75
+ORD,Chicago OHare,2026-08-10 12:31,75
+ORD,Chicago OHare,2026-08-10 12:32,75
+ORD,Chicago OHare,2026-08-10 12:33,75
+ORD,Chicago OHare,2026-08-10 12:34,75
+ORD,Chicago OHare,2026-08-10 12:35,74
+ORD,Chicago OHare,2026-08-10 12:36,74
+ORD,Chicago OHare,2026-08-10 12:37,75
+ORD,Chicago OHare,2026-08-10 12:38,75
+ORD,Chicago OHare,2026-08-10 12:39,75
+ORD,Chicago OHare,2026-08-10 12:40,75
+ORD,Chicago OHare,2026-08-10 12:41,75
+ORD,Chicago OHare,2026-08-10 12:42,75
+ORD,Chicago OHare,2026-08-10 12:43,75
+ORD,Chicago OHare,2026-08-10 12:44,75
+ORD,Chicago OHare,2026-08-10 12:45,74
+ORD,Chicago OHare,2026-08-10 12:46,74
+ORD,Chicago OHare,2026-08-10 12:47,74
+ORD,Chicago OHare,2026-08-10 12:48,74
+ORD,Chicago OHare,2026-08-10 12:49,74
+ORD,Chicago OHare,2026-08-10 12:50,74
+ORD,Chicago OHare,2026-08-10 12:51,74
+ORD,Chicago OHare,2026-08-10 12:52,74
+ORD,Chicago OHare,2026-08-10 12:53,74
+ORD,Chicago OHare,2026-08-10 12:54,74
+ORD,Chicago OHare,2026-08-10 12:55,74
+ORD,Chicago OHare,2026-08-10 12:56,74
+ORD,Chicago OHare,2026-08-10 12:57,74
+ORD,Chicago OHare,2026-08-10 12:58,74
+ORD,Chicago OHare,2026-08-10 12:59,74
+ORD,Chicago OHare,2026-08-10 13:00,74
+ORD,Chicago OHare,2026-08-10 13:01,75
+ORD,Chicago OHare,2026-08-10 13:02,74
+ORD,Chicago OHare,2026-08-10 13:03,74
+ORD,Chicago OHare,2026-08-10 13:04,74
+ORD,Chicago OHare,2026-08-10 13:05,74
+ORD,Chicago OHare,2026-08-10 13:06,74
+ORD,Chicago OHare,2026-08-10 13:07,74
+ORD,Chicago OHare,2026-08-10 13:08,74
+ORD,Chicago OHare,2026-08-10 13:09,74
+ORD,Chicago OHare,2026-08-10 13:10,74
+ORD,Chicago OHare,2026-08-10 13:11,74
+ORD,Chicago OHare,2026-08-10 13:12,74
+ORD,Chicago OHare,2026-08-10 13:13,74
+ORD,Chicago OHare,2026-08-10 13:14,74
+ORD,Chicago OHare,2026-08-10 13:15,74
+ORD,Chicago OHare,2026-08-10 13:16,74
+ORD,Chicago OHare,2026-08-10 13:17,74
+ORD,Chicago OHare,2026-08-10 13:18,74
+ORD,Chicago OHare,2026-08-10 13:19,74
+ORD,Chicago OHare,2026-08-10 13:20,74
+ORD,Chicago OHare,2026-08-10 13:21,74
+ORD,Chicago OHare,2026-08-10 13:22,74
+ORD,Chicago OHare,2026-08-10 13:23,74
+ORD,Chicago OHare,2026-08-10 13:24,75
+ORD,Chicago OHare,2026-08-10 13:25,74
+ORD,Chicago OHare,2026-08-10 13:26,75
+ORD,Chicago OHare,2026-08-10 13:27,75
+ORD,Chicago OHare,2026-08-10 13:28,75
+ORD,Chicago OHare,2026-08-10 13:29,74
+ORD,Chicago OHare,2026-08-10 13:30,75
+ORD,Chicago OHare,2026-08-10 13:31,75
+ORD,Chicago OHare,2026-08-10 13:32,75
+ORD,Chicago OHare,2026-08-10 13:33,75
+ORD,Chicago OHare,2026-08-10 13:34,75
+ORD,Chicago OHare,2026-08-10 13:35,75
+ORD,Chicago OHare,2026-08-10 13:36,75
+ORD,Chicago OHare,2026-08-10 13:37,75
+ORD,Chicago OHare,2026-08-10 13:38,75
+ORD,Chicago OHare,2026-08-10 13:39,75
+ORD,Chicago OHare,2026-08-10 13:40,75
+ORD,Chicago OHare,2026-08-10 13:41,75
+ORD,Chicago OHare,2026-08-10 13:42,75
+ORD,Chicago OHare,2026-08-10 13:43,75
+ORD,Chicago OHare,2026-08-10 13:44,75
+ORD,Chicago OHare,2026-08-10 13:45,75
+ORD,Chicago OHare,2026-08-10 13:46,75
+ORD,Chicago OHare,2026-08-10 13:47,76
+ORD,Chicago OHare,2026-08-10 13:48,75
+ORD,Chicago OHare,2026-08-10 13:49,75
+ORD,Chicago OHare,2026-08-10 13:50,75
+ORD,Chicago OHare,2026-08-10 13:51,76
+ORD,Chicago OHare,2026-08-10 13:52,76
+ORD,Chicago OHare,2026-08-10 13:53,75
+ORD,Chicago OHare,2026-08-10 13:54,76
+ORD,Chicago OHare,2026-08-10 13:55,76
+ORD,Chicago OHare,2026-08-10 13:56,76
+ORD,Chicago OHare,2026-08-10 13:57,76
+ORD,Chicago OHare,2026-08-10 13:58,76
+ORD,Chicago OHare,2026-08-10 13:59,76
+ORD,Chicago OHare,2026-08-10 14:00,76
+ORD,Chicago OHare,2026-08-10 14:01,76
+ORD,Chicago OHare,2026-08-10 14:02,76
+ORD,Chicago OHare,2026-08-10 14:03,76
+ORD,Chicago OHare,2026-08-10 14:04,76
+ORD,Chicago OHare,2026-08-10 14:05,76
+ORD,Chicago OHare,2026-08-10 14:06,76
+ORD,Chicago OHare,2026-08-10 14:07,76
+ORD,Chicago OHare,2026-08-10 14:08,76
+ORD,Chicago OHare,2026-08-10 14:09,77
+ORD,Chicago OHare,2026-08-10 14:10,76
+ORD,Chicago OHare,2026-08-10 14:11,76
+ORD,Chicago OHare,2026-08-10 14:12,76
+ORD,Chicago OHare,2026-08-10 14:13,76
+ORD,Chicago OHare,2026-08-10 14:14,76
+ORD,Chicago OHare,2026-08-10 14:15,76
+ORD,Chicago OHare,2026-08-10 14:16,76
+ORD,Chicago OHare,2026-08-10 14:17,76
+ORD,Chicago OHare,2026-08-10 14:18,76
+ORD,Chicago OHare,2026-08-10 14:19,76
+ORD,Chicago OHare,2026-08-10 14:20,76
+ORD,Chicago OHare,2026-08-10 14:21,76
+ORD,Chicago OHare,2026-08-10 14:22,76
+ORD,Chicago OHare,2026-08-10 14:23,76
+ORD,Chicago OHare,2026-08-10 14:24,76
+ORD,Chicago OHare,2026-08-10 14:25,77
+ORD,Chicago OHare,2026-08-10 14:26,76
+ORD,Chicago OHare,2026-08-10 14:27,76
+ORD,Chicago OHare,2026-08-10 14:28,76
+ORD,Chicago OHare,2026-08-10 14:29,76
+ORD,Chicago OHare,2026-08-10 14:30,76
+ORD,Chicago OHare,2026-08-10 14:31,76
+ORD,Chicago OHare,2026-08-10 14:32,76
+ORD,Chicago OHare,2026-08-10 14:33,76
+ORD,Chicago OHare,2026-08-10 14:34,77
+ORD,Chicago OHare,2026-08-10 14:35,76
+ORD,Chicago OHare,2026-08-10 14:36,76
+ORD,Chicago OHare,2026-08-10 14:37,76
+ORD,Chicago OHare,2026-08-10 14:38,76
+ORD,Chicago OHare,2026-08-10 14:39,76
+ORD,Chicago OHare,2026-08-10 14:40,77
+ORD,Chicago OHare,2026-08-10 14:41,77
+ORD,Chicago OHare,2026-08-10 14:42,77
+ORD,Chicago OHare,2026-08-10 14:43,77
+ORD,Chicago OHare,2026-08-10 14:44,77
+ORD,Chicago OHare,2026-08-10 14:45,77
+ORD,Chicago OHare,2026-08-10 14:46,77
+ORD,Chicago OHare,2026-08-10 14:47,76
+ORD,Chicago OHare,2026-08-10 14:48,77
+ORD,Chicago OHare,2026-08-10 14:49,77
+ORD,Chicago OHare,2026-08-10 14:50,77
+ORD,Chicago OHare,2026-08-10 14:51,76
+ORD,Chicago OHare,2026-08-10 14:52,76
+ORD,Chicago OHare,2026-08-10 14:53,77
+ORD,Chicago OHare,2026-08-10 14:54,77
+ORD,Chicago OHare,2026-08-10 14:55,78
+ORD,Chicago OHare,2026-08-10 14:56,77
+ORD,Chicago OHare,2026-08-10 14:57,77
+ORD,Chicago OHare,2026-08-10 14:58,77
+ORD,Chicago OHare,2026-08-10 14:59,78
+ORD,Chicago OHare,2026-08-10 15:00,78
+ORD,Chicago OHare,2026-08-10 15:01,78
+ORD,Chicago OHare,2026-08-10 15:02,78
+ORD,Chicago OHare,2026-08-10 15:03,78
+ORD,Chicago OHare,2026-08-10 15:04,78
+ORD,Chicago OHare,2026-08-10 15:05,78
+ORD,Chicago OHare,2026-08-10 15:06,78
+ORD,Chicago OHare,2026-08-10 15:07,78
+ORD,Chicago OHare,2026-08-10 15:08,78
+ORD,Chicago OHare,2026-08-10 15:09,78
+ORD,Chicago OHare,2026-08-10 15:10,77
+ORD,Chicago OHare,2026-08-10 15:11,78
+ORD,Chicago OHare,2026-08-10 15:12,78
+ORD,Chicago OHare,2026-08-10 15:13,78
+ORD,Chicago OHare,2026-08-10 15:14,78
+ORD,Chicago OHare,2026-08-10 15:15,79
+ORD,Chicago OHare,2026-08-10 15:16,78
+ORD,Chicago OHare,2026-08-10 15:17,78
+ORD,Chicago OHare,2026-08-10 15:18,78
+ORD,Chicago OHare,2026-08-10 15:19,78
+ORD,Chicago OHare,2026-08-10 15:20,79
+ORD,Chicago OHare,2026-08-10 15:21,79
+ORD,Chicago OHare,2026-08-10 15:22,79
+ORD,Chicago OHare,2026-08-10 15:23,79
+ORD,Chicago OHare,2026-08-10 15:24,79
+ORD,Chicago OHare,2026-08-10 15:25,78
+ORD,Chicago OHare,2026-08-10 15:26,79
+ORD,Chicago OHare,2026-08-10 15:27,79
+ORD,Chicago OHare,2026-08-10 15:28,79
+ORD,Chicago OHare,2026-08-10 15:29,79
+ORD,Chicago OHare,2026-08-10 15:30,79
+ORD,Chicago OHare,2026-08-10 15:31,79
+ORD,Chicago OHare,2026-08-10 15:32,79
+ORD,Chicago OHare,2026-08-10 15:33,79
+ORD,Chicago OHare,2026-08-10 15:34,79
+ORD,Chicago OHare,2026-08-10 15:35,79
+ORD,Chicago OHare,2026-08-10 15:36,79
+ORD,Chicago OHare,2026-08-10 15:37,80
+ORD,Chicago OHare,2026-08-10 15:38,79
+ORD,Chicago OHare,2026-08-10 15:39,80
+ORD,Chicago OHare,2026-08-10 15:40,80
+ORD,Chicago OHare,2026-08-10 15:41,80
+ORD,Chicago OHare,2026-08-10 15:42,80
+ORD,Chicago OHare,2026-08-10 15:43,80
+ORD,Chicago OHare,2026-08-10 15:44,80
+ORD,Chicago OHare,2026-08-10 15:45,80
+ORD,Chicago OHare,2026-08-10 15:46,80
+ORD,Chicago OHare,2026-08-10 15:47,80
+ORD,Chicago OHare,2026-08-10 15:48,80
+ORD,Chicago OHare,2026-08-10 15:49,80
+ORD,Chicago OHare,2026-08-10 15:50,79
+ORD,Chicago OHare,2026-08-10 15:51,80
+ORD,Chicago OHare,2026-08-10 15:52,80
+ORD,Chicago OHare,2026-08-10 15:53,80
+ORD,Chicago OHare,2026-08-10 15:54,80
+ORD,Chicago OHare,2026-08-10 15:55,80
+ORD,Chicago OHare,2026-08-10 15:56,80
+ORD,Chicago OHare,2026-08-10 15:57,80
+ORD,Chicago OHare,2026-08-10 15:58,81
+ORD,Chicago OHare,2026-08-10 15:59,81
+ORD,Chicago OHare,2026-08-10 16:00,81
+ORD,Chicago OHare,2026-08-10 16:01,81
+ORD,Chicago OHare,2026-08-10 16:02,81
+ORD,Chicago OHare,2026-08-10 16:03,81
+ORD,Chicago OHare,2026-08-10 16:04,81
+ORD,Chicago OHare,2026-08-10 16:05,81
+ORD,Chicago OHare,2026-08-10 16:06,81
+ORD,Chicago OHare,2026-08-10 16:07,81
+ORD,Chicago OHare,2026-08-10 16:08,80
+ORD,Chicago OHare,2026-08-10 16:09,80
+ORD,Chicago OHare,2026-08-10 16:10,80
+ORD,Chicago OHare,2026-08-10 16:11,80
+ORD,Chicago OHare,2026-08-10 16:12,81
+ORD,Chicago OHare,2026-08-10 16:13,81
+ORD,Chicago OHare,2026-08-10 16:14,82
+ORD,Chicago OHare,2026-08-10 16:15,81
+ORD,Chicago OHare,2026-08-10 16:16,81
+ORD,Chicago OHare,2026-08-10 16:17,81
+ORD,Chicago OHare,2026-08-10 16:18,81
+ORD,Chicago OHare,2026-08-10 16:19,82
+ORD,Chicago OHare,2026-08-10 16:20,81
+ORD,Chicago OHare,2026-08-10 16:21,81
+ORD,Chicago OHare,2026-08-10 16:22,81
+ORD,Chicago OHare,2026-08-10 16:23,80
+ORD,Chicago OHare,2026-08-10 16:24,80
+ORD,Chicago OHare,2026-08-10 16:25,81
+ORD,Chicago OHare,2026-08-10 16:26,82
+ORD,Chicago OHare,2026-08-10 16:27,82
+ORD,Chicago OHare,2026-08-10 16:28,81
+ORD,Chicago OHare,2026-08-10 16:29,81
+ORD,Chicago OHare,2026-08-10 16:30,81
+ORD,Chicago OHare,2026-08-10 16:31,81
+ORD,Chicago OHare,2026-08-10 16:32,81
+ORD,Chicago OHare,2026-08-10 16:33,82
+ORD,Chicago OHare,2026-08-10 16:34,82
+ORD,Chicago OHare,2026-08-10 16:35,82
+ORD,Chicago OHare,2026-08-10 16:36,81
+ORD,Chicago OHare,2026-08-10 16:37,82
+ORD,Chicago OHare,2026-08-10 16:38,82
+ORD,Chicago OHare,2026-08-10 16:39,82
+ORD,Chicago OHare,2026-08-10 16:40,82
+ORD,Chicago OHare,2026-08-10 16:41,82
+ORD,Chicago OHare,2026-08-10 16:42,82
+ORD,Chicago OHare,2026-08-10 16:43,82
+ORD,Chicago OHare,2026-08-10 16:44,81
+ORD,Chicago OHare,2026-08-10 16:45,82
+ORD,Chicago OHare,2026-08-10 16:46,82
+ORD,Chicago OHare,2026-08-10 16:47,82
+ORD,Chicago OHare,2026-08-10 16:48,82
+ORD,Chicago OHare,2026-08-10 16:49,83
+ORD,Chicago OHare,2026-08-10 16:50,83
+ORD,Chicago OHare,2026-08-10 16:51,82
+ORD,Chicago OHare,2026-08-10 16:52,82
+ORD,Chicago OHare,2026-08-10 16:53,82
+ORD,Chicago OHare,2026-08-10 16:54,83
+ORD,Chicago OHare,2026-08-10 16:55,83
+ORD,Chicago OHare,2026-08-10 16:56,83
+ORD,Chicago OHare,2026-08-10 16:57,83
+ORD,Chicago OHare,2026-08-10 16:58,82
+ORD,Chicago OHare,2026-08-10 16:59,83
+ORD,Chicago OHare,2026-08-10 17:00,82
+ORD,Chicago OHare,2026-08-10 17:01,82
+ORD,Chicago OHare,2026-08-10 17:02,83
+ORD,Chicago OHare,2026-08-10 17:03,83
+ORD,Chicago OHare,2026-08-10 17:04,83
+ORD,Chicago OHare,2026-08-10 17:05,83
+ORD,Chicago OHare,2026-08-10 17:06,83
+ORD,Chicago OHare,2026-08-10 17:07,82
+ORD,Chicago OHare,2026-08-10 17:08,83
+ORD,Chicago OHare,2026-08-10 17:09,84
+ORD,Chicago OHare,2026-08-10 17:10,84
+ORD,Chicago OHare,2026-08-10 17:11,83
+ORD,Chicago OHare,2026-08-10 17:12,83
+ORD,Chicago OHare,2026-08-10 17:13,83
+ORD,Chicago OHare,2026-08-10 17:14,83
+ORD,Chicago OHare,2026-08-10 17:15,83
+ORD,Chicago OHare,2026-08-10 17:16,83
+ORD,Chicago OHare,2026-08-10 17:17,83
+ORD,Chicago OHare,2026-08-10 17:18,83
+ORD,Chicago OHare,2026-08-10 17:19,83
+ORD,Chicago OHare,2026-08-10 17:20,84
+ORD,Chicago OHare,2026-08-10 17:21,84
+ORD,Chicago OHare,2026-08-10 17:22,84
+ORD,Chicago OHare,2026-08-10 17:23,84
+ORD,Chicago OHare,2026-08-10 17:24,85
+ORD,Chicago OHare,2026-08-10 17:25,84
+ORD,Chicago OHare,2026-08-10 17:26,84
+ORD,Chicago OHare,2026-08-10 17:27,83
+ORD,Chicago OHare,2026-08-10 17:28,83
+ORD,Chicago OHare,2026-08-10 17:29,83
+ORD,Chicago OHare,2026-08-10 17:30,84
+ORD,Chicago OHare,2026-08-10 17:31,84
+ORD,Chicago OHare,2026-08-10 17:32,83
+ORD,Chicago OHare,2026-08-10 17:33,83
+ORD,Chicago OHare,2026-08-10 17:34,85
+ORD,Chicago OHare,2026-08-10 17:35,84
+ORD,Chicago OHare,2026-08-10 17:36,84
+ORD,Chicago OHare,2026-08-10 17:37,83
+ORD,Chicago OHare,2026-08-10 17:38,84
+ORD,Chicago OHare,2026-08-10 17:39,85
+ORD,Chicago OHare,2026-08-10 17:40,85
+ORD,Chicago OHare,2026-08-10 17:41,84
+ORD,Chicago OHare,2026-08-10 17:42,84
+ORD,Chicago OHare,2026-08-10 17:43,84
+ORD,Chicago OHare,2026-08-10 17:44,84
+ORD,Chicago OHare,2026-08-10 17:45,84
+ORD,Chicago OHare,2026-08-10 17:46,85
+ORD,Chicago OHare,2026-08-10 17:47,85
+ORD,Chicago OHare,2026-08-10 17:48,85
+ORD,Chicago OHare,2026-08-10 17:49,84
+ORD,Chicago OHare,2026-08-10 17:50,85
+ORD,Chicago OHare,2026-08-10 17:51,84
+ORD,Chicago OHare,2026-08-10 17:52,84
+ORD,Chicago OHare,2026-08-10 17:53,85
+ORD,Chicago OHare,2026-08-10 17:54,84
+ORD,Chicago OHare,2026-08-10 17:55,85
+ORD,Chicago OHare,2026-08-10 17:56,84
+ORD,Chicago OHare,2026-08-10 17:57,84
+ORD,Chicago OHare,2026-08-10 17:58,84
+ORD,Chicago OHare,2026-08-10 17:59,84
+ORD,Chicago OHare,2026-08-10 18:00,85
+ORD,Chicago OHare,2026-08-10 18:01,85
+ORD,Chicago OHare,2026-08-10 18:02,85
+ORD,Chicago OHare,2026-08-10 18:03,85
+ORD,Chicago OHare,2026-08-10 18:04,86
+ORD,Chicago OHare,2026-08-10 18:05,86
+ORD,Chicago OHare,2026-08-10 18:06,85
+ORD,Chicago OHare,2026-08-10 18:07,85
+ORD,Chicago OHare,2026-08-10 18:08,85
+ORD,Chicago OHare,2026-08-10 18:09,85
+ORD,Chicago OHare,2026-08-10 18:10,86
+ORD,Chicago OHare,2026-08-10 20:25,85
+ORD,Chicago OHare,2026-08-10 20:26,85
+ORD,Chicago OHare,2026-08-10 20:27,85
+ORD,Chicago OHare,2026-08-10 20:28,85
+ORD,Chicago OHare,2026-08-10 20:29,85
+ORD,Chicago OHare,2026-08-10 20:30,85
+ORD,Chicago OHare,2026-08-10 20:31,85
+ORD,Chicago OHare,2026-08-10 20:32,85
+ORD,Chicago OHare,2026-08-10 20:33,85
+ORD,Chicago OHare,2026-08-10 20:34,85
+ORD,Chicago OHare,2026-08-10 20:35,84
+ORD,Chicago OHare,2026-08-10 20:36,85
+ORD,Chicago OHare,2026-08-10 20:37,85
+ORD,Chicago OHare,2026-08-10 20:38,85
+ORD,Chicago OHare,2026-08-10 20:39,85
+ORD,Chicago OHare,2026-08-10 20:40,85
+ORD,Chicago OHare,2026-08-10 20:41,85
+ORD,Chicago OHare,2026-08-10 20:42,85
+ORD,Chicago OHare,2026-08-10 20:43,85
+ORD,Chicago OHare,2026-08-10 20:44,84
+ORD,Chicago OHare,2026-08-10 20:45,84
+ORD,Chicago OHare,2026-08-10 20:46,84
+ORD,Chicago OHare,2026-08-10 20:47,84
+ORD,Chicago OHare,2026-08-10 20:48,84
+ORD,Chicago OHare,2026-08-10 20:49,84
+ORD,Chicago OHare,2026-08-10 20:50,84
+ORD,Chicago OHare,2026-08-10 20:51,84
+ORD,Chicago OHare,2026-08-10 20:52,84
+ORD,Chicago OHare,2026-08-10 20:53,84
+ORD,Chicago OHare,2026-08-10 20:54,84
+ORD,Chicago OHare,2026-08-10 20:55,84
+ORD,Chicago OHare,2026-08-10 20:56,84
+ORD,Chicago OHare,2026-08-10 20:57,84
+ORD,Chicago OHare,2026-08-10 20:58,84
+ORD,Chicago OHare,2026-08-10 20:59,84
+ORD,Chicago OHare,2026-08-10 21:00,84
+ORD,Chicago OHare,2026-08-10 21:01,84
+ORD,Chicago OHare,2026-08-10 21:02,84
+ORD,Chicago OHare,2026-08-10 21:03,84
+ORD,Chicago OHare,2026-08-10 21:04,84
+ORD,Chicago OHare,2026-08-10 21:05,84
+ORD,Chicago OHare,2026-08-10 21:06,84
+ORD,Chicago OHare,2026-08-10 21:07,84
+ORD,Chicago OHare,2026-08-10 21:08,84
+ORD,Chicago OHare,2026-08-10 21:09,84
+ORD,Chicago OHare,2026-08-10 21:10,84
+ORD,Chicago OHare,2026-08-10 21:11,84
+ORD,Chicago OHare,2026-08-10 21:12,84
+ORD,Chicago OHare,2026-08-10 21:13,84
+ORD,Chicago OHare,2026-08-10 21:14,84
+ORD,Chicago OHare,2026-08-10 21:15,84
+ORD,Chicago OHare,2026-08-10 21:16,84
+ORD,Chicago OHare,2026-08-10 21:17,84
+ORD,Chicago OHare,2026-08-10 21:18,84
+ORD,Chicago OHare,2026-08-10 21:19,84
+ORD,Chicago OHare,2026-08-10 21:20,84
+ORD,Chicago OHare,2026-08-10 21:21,84
+ORD,Chicago OHare,2026-08-10 21:22,84
+ORD,Chicago OHare,2026-08-10 21:23,83
+ORD,Chicago OHare,2026-08-10 21:24,84
+ORD,Chicago OHare,2026-08-10 21:25,84
+ORD,Chicago OHare,2026-08-10 21:26,84
+ORD,Chicago OHare,2026-08-10 21:27,84
+ORD,Chicago OHare,2026-08-10 21:28,84
+ORD,Chicago OHare,2026-08-10 21:29,84
+ORD,Chicago OHare,2026-08-10 21:30,84
+ORD,Chicago OHare,2026-08-10 21:31,84
+ORD,Chicago OHare,2026-08-10 21:32,84
+ORD,Chicago OHare,2026-08-10 21:33,84
+ORD,Chicago OHare,2026-08-10 21:34,84
+ORD,Chicago OHare,2026-08-10 21:35,84
+ORD,Chicago OHare,2026-08-10 21:36,84
+ORD,Chicago OHare,2026-08-10 21:37,84
+ORD,Chicago OHare,2026-08-10 21:38,84
+ORD,Chicago OHare,2026-08-10 21:39,84
+ORD,Chicago OHare,2026-08-10 21:40,84
+ORD,Chicago OHare,2026-08-10 21:41,84
+ORD,Chicago OHare,2026-08-10 21:42,84
+ORD,Chicago OHare,2026-08-10 21:43,84
+ORD,Chicago OHare,2026-08-10 21:44,84
+ORD,Chicago OHare,2026-08-10 21:45,84
+ORD,Chicago OHare,2026-08-10 21:46,84
+ORD,Chicago OHare,2026-08-10 21:47,84
+ORD,Chicago OHare,2026-08-10 21:48,83
+ORD,Chicago OHare,2026-08-10 21:49,83
+ORD,Chicago OHare,2026-08-10 21:50,83
+ORD,Chicago OHare,2026-08-10 21:51,83
+ORD,Chicago OHare,2026-08-10 21:52,83
+ORD,Chicago OHare,2026-08-10 21:53,83
+ORD,Chicago OHare,2026-08-10 21:54,83
+ORD,Chicago OHare,2026-08-10 21:55,83
+ORD,Chicago OHare,2026-08-10 21:56,83
+ORD,Chicago OHare,2026-08-10 21:57,83
+ORD,Chicago OHare,2026-08-10 21:58,83
+ORD,Chicago OHare,2026-08-10 21:59,83
+ORD,Chicago OHare,2026-08-10 22:00,83
+ORD,Chicago OHare,2026-08-10 22:01,83
+ORD,Chicago OHare,2026-08-10 22:02,83
+ORD,Chicago OHare,2026-08-10 22:03,83
+ORD,Chicago OHare,2026-08-10 22:04,83
+ORD,Chicago OHare,2026-08-10 22:05,83
+ORD,Chicago OHare,2026-08-10 22:06,83
+ORD,Chicago OHare,2026-08-10 22:07,83
+ORD,Chicago OHare,2026-08-10 22:08,83
+ORD,Chicago OHare,2026-08-10 22:09,83
+ORD,Chicago OHare,2026-08-10 22:10,82
+ORD,Chicago OHare,2026-08-10 22:11,82
+ORD,Chicago OHare,2026-08-10 22:12,82
+ORD,Chicago OHare,2026-08-10 22:13,82
+ORD,Chicago OHare,2026-08-10 22:14,82
+ORD,Chicago OHare,2026-08-10 22:15,82
+ORD,Chicago OHare,2026-08-10 22:16,82
+ORD,Chicago OHare,2026-08-10 22:17,82
+ORD,Chicago OHare,2026-08-10 22:18,82
+ORD,Chicago OHare,2026-08-10 22:19,82
+ORD,Chicago OHare,2026-08-10 22:20,82
+ORD,Chicago OHare,2026-08-10 22:21,82
+ORD,Chicago OHare,2026-08-10 22:22,82
+ORD,Chicago OHare,2026-08-10 22:23,82
+ORD,Chicago OHare,2026-08-10 22:24,82
+ORD,Chicago OHare,2026-08-10 22:25,82
+ORD,Chicago OHare,2026-08-10 22:26,82
+ORD,Chicago OHare,2026-08-10 22:27,82
+ORD,Chicago OHare,2026-08-10 22:28,82
+ORD,Chicago OHare,2026-08-10 22:29,82
+ORD,Chicago OHare,2026-08-10 22:30,82
+ORD,Chicago OHare,2026-08-10 22:31,82
+ORD,Chicago OHare,2026-08-10 22:32,82
+ORD,Chicago OHare,2026-08-10 22:33,82
+ORD,Chicago OHare,2026-08-10 22:34,82
+ORD,Chicago OHare,2026-08-10 22:35,82
+ORD,Chicago OHare,2026-08-10 22:36,82
+ORD,Chicago OHare,2026-08-10 22:37,82
+ORD,Chicago OHare,2026-08-10 22:38,82
+ORD,Chicago OHare,2026-08-10 22:39,82
+ORD,Chicago OHare,2026-08-10 22:40,82
+ORD,Chicago OHare,2026-08-10 22:41,82
+ORD,Chicago OHare,2026-08-10 22:42,82
+ORD,Chicago OHare,2026-08-10 22:43,82
+ORD,Chicago OHare,2026-08-10 22:44,82
+ORD,Chicago OHare,2026-08-10 22:45,82
+ORD,Chicago OHare,2026-08-10 22:46,82
+ORD,Chicago OHare,2026-08-10 22:47,82
+ORD,Chicago OHare,2026-08-10 22:48,81
+ORD,Chicago OHare,2026-08-10 22:49,81
+ORD,Chicago OHare,2026-08-10 22:50,82
+ORD,Chicago OHare,2026-08-10 22:51,81
+ORD,Chicago OHare,2026-08-10 22:52,81
+ORD,Chicago OHare,2026-08-10 22:53,81
+ORD,Chicago OHare,2026-08-10 22:54,81
+ORD,Chicago OHare,2026-08-10 22:55,81
+ORD,Chicago OHare,2026-08-10 22:56,81
+ORD,Chicago OHare,2026-08-10 22:57,81
+ORD,Chicago OHare,2026-08-10 22:58,81
+ORD,Chicago OHare,2026-08-10 22:59,81
+ORD,Chicago OHare,2026-08-10 23:00,81
+ORD,Chicago OHare,2026-08-10 23:01,81
+ORD,Chicago OHare,2026-08-10 23:02,81
+ORD,Chicago OHare,2026-08-10 23:03,81
+ORD,Chicago OHare,2026-08-10 23:04,81
+ORD,Chicago OHare,2026-08-10 23:05,81
+ORD,Chicago OHare,2026-08-10 23:06,81
+ORD,Chicago OHare,2026-08-10 23:07,81
+ORD,Chicago OHare,2026-08-10 23:08,81
+ORD,Chicago OHare,2026-08-10 23:09,81
+ORD,Chicago OHare,2026-08-10 23:10,81
+ORD,Chicago OHare,2026-08-10 23:11,81
+ORD,Chicago OHare,2026-08-10 23:12,81
+ORD,Chicago OHare,2026-08-10 23:13,81
+ORD,Chicago OHare,2026-08-10 23:14,81
+ORD,Chicago OHare,2026-08-10 23:15,81
+ORD,Chicago OHare,2026-08-10 23:16,81
+ORD,Chicago OHare,2026-08-10 23:17,81
+ORD,Chicago OHare,2026-08-10 23:18,81
+ORD,Chicago OHare,2026-08-10 23:19,81
+ORD,Chicago OHare,2026-08-10 23:20,81
+ORD,Chicago OHare,2026-08-10 23:21,81
+ORD,Chicago OHare,2026-08-10 23:22,81
+ORD,Chicago OHare,2026-08-10 23:23,81
+ORD,Chicago OHare,2026-08-10 23:24,81
+ORD,Chicago OHare,2026-08-10 23:25,81
+ORD,Chicago OHare,2026-08-10 23:26,81
+ORD,Chicago OHare,2026-08-10 23:27,81
+ORD,Chicago OHare,2026-08-10 23:28,81
+ORD,Chicago OHare,2026-08-10 23:29,81
+ORD,Chicago OHare,2026-08-10 23:30,81
+ORD,Chicago OHare,2026-08-10 23:31,81
+ORD,Chicago OHare,2026-08-10 23:32,81
+ORD,Chicago OHare,2026-08-10 23:33,81
+ORD,Chicago OHare,2026-08-10 23:34,81
+ORD,Chicago OHare,2026-08-10 23:35,81
+ORD,Chicago OHare,2026-08-10 23:36,81
+ORD,Chicago OHare,2026-08-10 23:37,81
+ORD,Chicago OHare,2026-08-10 23:38,81
+ORD,Chicago OHare,2026-08-10 23:39,81
+ORD,Chicago OHare,2026-08-10 23:40,81
+ORD,Chicago OHare,2026-08-10 23:41,81
+ORD,Chicago OHare,2026-08-10 23:42,81
+ORD,Chicago OHare,2026-08-10 23:43,81
+ORD,Chicago OHare,2026-08-10 23:44,81
+ORD,Chicago OHare,2026-08-10 23:45,81
+ORD,Chicago OHare,2026-08-10 23:46,81
+ORD,Chicago OHare,2026-08-10 23:47,81
+ORD,Chicago OHare,2026-08-10 23:48,81
+ORD,Chicago OHare,2026-08-10 23:49,80
+ORD,Chicago OHare,2026-08-10 23:50,80
+ORD,Chicago OHare,2026-08-10 23:51,80
+ORD,Chicago OHare,2026-08-10 23:52,81
+ORD,Chicago OHare,2026-08-10 23:53,81
+ORD,Chicago OHare,2026-08-10 23:54,81
+ORD,Chicago OHare,2026-08-10 23:55,81
+ORD,Chicago OHare,2026-08-10 23:56,81
+ORD,Chicago OHare,2026-08-10 23:57,81
+ORD,Chicago OHare,2026-08-10 23:58,81
+ORD,Chicago OHare,2026-08-10 23:59,81
+ORD,Chicago OHare,2026-08-11 00:00,81
+ORD,Chicago OHare,2026-08-11 00:01,80
+ORD,Chicago OHare,2026-08-11 00:02,80
+ORD,Chicago OHare,2026-08-11 00:03,80
+ORD,Chicago OHare,2026-08-11 00:04,80
+ORD,Chicago OHare,2026-08-11 00:05,80
+ORD,Chicago OHare,2026-08-11 00:06,80
+ORD,Chicago OHare,2026-08-11 00:07,80
+ORD,Chicago OHare,2026-08-11 00:08,80
+ORD,Chicago OHare,2026-08-11 00:09,80
+ORD,Chicago OHare,2026-08-11 00:10,80
+ORD,Chicago OHare,2026-08-11 00:11,80
+ORD,Chicago OHare,2026-08-11 00:12,80
+ORD,Chicago OHare,2026-08-11 00:13,80
+ORD,Chicago OHare,2026-08-11 00:14,80
+ORD,Chicago OHare,2026-08-11 00:15,80
+ORD,Chicago OHare,2026-08-11 00:16,80
+ORD,Chicago OHare,2026-08-11 00:17,80
+ORD,Chicago OHare,2026-08-11 00:18,80
+ORD,Chicago OHare,2026-08-11 00:19,80
+ORD,Chicago OHare,2026-08-11 00:20,80
+ORD,Chicago OHare,2026-08-11 00:21,80
+ORD,Chicago OHare,2026-08-11 00:22,80
+ORD,Chicago OHare,2026-08-11 00:23,80
+ORD,Chicago OHare,2026-08-11 00:24,80
+ORD,Chicago OHare,2026-08-11 00:25,80
+ORD,Chicago OHare,2026-08-11 00:26,80
+ORD,Chicago OHare,2026-08-11 00:27,80
+ORD,Chicago OHare,2026-08-11 00:28,80
+ORD,Chicago OHare,2026-08-11 00:29,80
+ORD,Chicago OHare,2026-08-11 00:30,80
+ORD,Chicago OHare,2026-08-11 00:31,80
+ORD,Chicago OHare,2026-08-11 00:32,80
+ORD,Chicago OHare,2026-08-11 00:33,80
+ORD,Chicago OHare,2026-08-11 00:34,80
+ORD,Chicago OHare,2026-08-11 00:35,80
+ORD,Chicago OHare,2026-08-11 00:36,80
+ORD,Chicago OHare,2026-08-11 00:37,80
+ORD,Chicago OHare,2026-08-11 00:38,80
+ORD,Chicago OHare,2026-08-11 00:39,80
+ORD,Chicago OHare,2026-08-11 00:40,80
+ORD,Chicago OHare,2026-08-11 00:41,80
+ORD,Chicago OHare,2026-08-11 00:42,80
+ORD,Chicago OHare,2026-08-11 00:43,80
+ORD,Chicago OHare,2026-08-11 00:44,80
+ORD,Chicago OHare,2026-08-11 00:45,80
+ORD,Chicago OHare,2026-08-11 00:46,80
+ORD,Chicago OHare,2026-08-11 00:47,80
+ORD,Chicago OHare,2026-08-11 00:48,79
+ORD,Chicago OHare,2026-08-11 00:49,79
+ORD,Chicago OHare,2026-08-11 00:50,79
+ORD,Chicago OHare,2026-08-11 00:51,79
+ORD,Chicago OHare,2026-08-11 00:52,79
+ORD,Chicago OHare,2026-08-11 00:53,79
+ORD,Chicago OHare,2026-08-11 00:54,79
+ORD,Chicago OHare,2026-08-11 00:55,79
+ORD,Chicago OHare,2026-08-11 00:56,79
+ORD,Chicago OHare,2026-08-11 00:57,79
+ORD,Chicago OHare,2026-08-11 00:58,79
+ORD,Chicago OHare,2026-08-11 00:59,79
+ORD,Chicago OHare,2026-08-11 01:00,79
+ORD,Chicago OHare,2026-08-11 01:01,79
+ORD,Chicago OHare,2026-08-11 01:02,79
+ORD,Chicago OHare,2026-08-11 01:03,79
+ORD,Chicago OHare,2026-08-11 01:04,79
+ORD,Chicago OHare,2026-08-11 01:05,78
+ORD,Chicago OHare,2026-08-11 01:06,78
+ORD,Chicago OHare,2026-08-11 01:07,79
+ORD,Chicago OHare,2026-08-11 01:08,78
+ORD,Chicago OHare,2026-08-11 01:09,79
+ORD,Chicago OHare,2026-08-11 01:10,78
+ORD,Chicago OHare,2026-08-11 01:11,78
+ORD,Chicago OHare,2026-08-11 01:12,78
+ORD,Chicago OHare,2026-08-11 01:13,78
+ORD,Chicago OHare,2026-08-11 01:14,78
+ORD,Chicago OHare,2026-08-11 01:15,78
+ORD,Chicago OHare,2026-08-11 01:16,78
+ORD,Chicago OHare,2026-08-11 01:17,78
+ORD,Chicago OHare,2026-08-11 01:18,78
+ORD,Chicago OHare,2026-08-11 01:19,78
+ORD,Chicago OHare,2026-08-11 01:20,78
+ORD,Chicago OHare,2026-08-11 01:21,78
+ORD,Chicago OHare,2026-08-11 01:22,78
+ORD,Chicago OHare,2026-08-11 01:23,78
+ORD,Chicago OHare,2026-08-11 01:24,78
+ORD,Chicago OHare,2026-08-11 01:25,78
+ORD,Chicago OHare,2026-08-11 01:26,78
+ORD,Chicago OHare,2026-08-11 01:27,78
+ORD,Chicago OHare,2026-08-11 01:28,78
+ORD,Chicago OHare,2026-08-11 01:29,78
+ORD,Chicago OHare,2026-08-11 01:30,78
+ORD,Chicago OHare,2026-08-11 01:31,78
+ORD,Chicago OHare,2026-08-11 01:32,78
+ORD,Chicago OHare,2026-08-11 01:33,78
+ORD,Chicago OHare,2026-08-11 01:34,78
+ORD,Chicago OHare,2026-08-11 01:35,78
+ORD,Chicago OHare,2026-08-11 01:36,78
+ORD,Chicago OHare,2026-08-11 01:37,78
+ORD,Chicago OHare,2026-08-11 01:38,78
+ORD,Chicago OHare,2026-08-11 01:39,78
+ORD,Chicago OHare,2026-08-11 01:40,77
+ORD,Chicago OHare,2026-08-11 01:41,77
+ORD,Chicago OHare,2026-08-11 01:42,77
+ORD,Chicago OHare,2026-08-11 01:43,77
+ORD,Chicago OHare,2026-08-11 01:44,77
+ORD,Chicago OHare,2026-08-11 01:45,77
+ORD,Chicago OHare,2026-08-11 01:46,77
+ORD,Chicago OHare,2026-08-11 01:47,77
+ORD,Chicago OHare,2026-08-11 01:48,78
+ORD,Chicago OHare,2026-08-11 01:49,77
+ORD,Chicago OHare,2026-08-11 01:50,77
+ORD,Chicago OHare,2026-08-11 01:51,77
+ORD,Chicago OHare,2026-08-11 01:52,77
+ORD,Chicago OHare,2026-08-11 01:53,77
+ORD,Chicago OHare,2026-08-11 01:54,77
+ORD,Chicago OHare,2026-08-11 01:55,77
+ORD,Chicago OHare,2026-08-11 01:56,77
+ORD,Chicago OHare,2026-08-11 01:57,77
+ORD,Chicago OHare,2026-08-11 01:58,77
+ORD,Chicago OHare,2026-08-11 01:59,77
+ORD,Chicago OHare,2026-08-11 02:00,77
+ORD,Chicago OHare,2026-08-11 02:01,77
+ORD,Chicago OHare,2026-08-11 02:02,77
+ORD,Chicago OHare,2026-08-11 02:03,77
+ORD,Chicago OHare,2026-08-11 02:04,77
+ORD,Chicago OHare,2026-08-11 02:05,77
+ORD,Chicago OHare,2026-08-11 02:06,77
+ORD,Chicago OHare,2026-08-11 02:07,77
+ORD,Chicago OHare,2026-08-11 02:08,77
+ORD,Chicago OHare,2026-08-11 02:09,77
+ORD,Chicago OHare,2026-08-11 02:10,77
+ORD,Chicago OHare,2026-08-11 02:11,77
+ORD,Chicago OHare,2026-08-11 02:12,77
+ORD,Chicago OHare,2026-08-11 02:13,77
+ORD,Chicago OHare,2026-08-11 02:14,77
+ORD,Chicago OHare,2026-08-11 02:15,77
+ORD,Chicago OHare,2026-08-11 02:16,77
+ORD,Chicago OHare,2026-08-11 02:17,77
+ORD,Chicago OHare,2026-08-11 02:18,77
+ORD,Chicago OHare,2026-08-11 02:19,77
+ORD,Chicago OHare,2026-08-11 02:20,77
+ORD,Chicago OHare,2026-08-11 02:21,77
+ORD,Chicago OHare,2026-08-11 02:22,77
+ORD,Chicago OHare,2026-08-11 02:23,77
+ORD,Chicago OHare,2026-08-11 02:24,77
+ORD,Chicago OHare,2026-08-11 02:25,77
+ORD,Chicago OHare,2026-08-11 02:26,77
+ORD,Chicago OHare,2026-08-11 02:27,76
+ORD,Chicago OHare,2026-08-11 02:28,76
+ORD,Chicago OHare,2026-08-11 02:29,76
+ORD,Chicago OHare,2026-08-11 02:30,76
+ORD,Chicago OHare,2026-08-11 02:31,76
+ORD,Chicago OHare,2026-08-11 02:32,76
+ORD,Chicago OHare,2026-08-11 02:33,76
+ORD,Chicago OHare,2026-08-11 02:34,76
+ORD,Chicago OHare,2026-08-11 02:35,76
+ORD,Chicago OHare,2026-08-11 02:36,76
+ORD,Chicago OHare,2026-08-11 02:37,76
+ORD,Chicago OHare,2026-08-11 02:38,76
+ORD,Chicago OHare,2026-08-11 02:39,76
+ORD,Chicago OHare,2026-08-11 02:40,76
+ORD,Chicago OHare,2026-08-11 02:41,76
+ORD,Chicago OHare,2026-08-11 02:42,76
+ORD,Chicago OHare,2026-08-11 02:43,76
+ORD,Chicago OHare,2026-08-11 02:44,76
+ORD,Chicago OHare,2026-08-11 02:45,76
+ORD,Chicago OHare,2026-08-11 02:46,76
+ORD,Chicago OHare,2026-08-11 02:47,76
+ORD,Chicago OHare,2026-08-11 02:48,76
+ORD,Chicago OHare,2026-08-11 02:49,76
+ORD,Chicago OHare,2026-08-11 02:50,76
+ORD,Chicago OHare,2026-08-11 02:51,76
+ORD,Chicago OHare,2026-08-11 02:52,76
+ORD,Chicago OHare,2026-08-11 02:53,76
+ORD,Chicago OHare,2026-08-11 02:54,76
+ORD,Chicago OHare,2026-08-11 02:55,76
+ORD,Chicago OHare,2026-08-11 02:56,76
+ORD,Chicago OHare,2026-08-11 02:57,76
+ORD,Chicago OHare,2026-08-11 02:58,76
+ORD,Chicago OHare,2026-08-11 02:59,76
+ORD,Chicago OHare,2026-08-11 03:00,76
+ORD,Chicago OHare,2026-08-11 03:01,76
+ORD,Chicago OHare,2026-08-11 03:02,76
+ORD,Chicago OHare,2026-08-11 03:03,76
+ORD,Chicago OHare,2026-08-11 03:04,76
+ORD,Chicago OHare,2026-08-11 03:05,76
+ORD,Chicago OHare,2026-08-11 03:06,76
+ORD,Chicago OHare,2026-08-11 03:07,76
+ORD,Chicago OHare,2026-08-11 03:08,76
+ORD,Chicago OHare,2026-08-11 03:09,76
+ORD,Chicago OHare,2026-08-11 03:10,76
+ORD,Chicago OHare,2026-08-11 03:11,76
+ORD,Chicago OHare,2026-08-11 03:12,76
+ORD,Chicago OHare,2026-08-11 03:13,76
+ORD,Chicago OHare,2026-08-11 03:14,76
+ORD,Chicago OHare,2026-08-11 03:15,76
+ORD,Chicago OHare,2026-08-11 03:16,76
+ORD,Chicago OHare,2026-08-11 03:17,76
+ORD,Chicago OHare,2026-08-11 03:18,76
+ORD,Chicago OHare,2026-08-11 03:19,76
+ORD,Chicago OHare,2026-08-11 03:20,76
+ORD,Chicago OHare,2026-08-11 03:21,76
+ORD,Chicago OHare,2026-08-11 03:22,76
+ORD,Chicago OHare,2026-08-11 03:23,76
+ORD,Chicago OHare,2026-08-11 03:24,76
+ORD,Chicago OHare,2026-08-11 03:25,76
+ORD,Chicago OHare,2026-08-11 03:26,75
+ORD,Chicago OHare,2026-08-11 03:27,75
+ORD,Chicago OHare,2026-08-11 03:28,75
+ORD,Chicago OHare,2026-08-11 03:29,75
+ORD,Chicago OHare,2026-08-11 03:30,75
+ORD,Chicago OHare,2026-08-11 03:31,75
+ORD,Chicago OHare,2026-08-11 03:32,75
+ORD,Chicago OHare,2026-08-11 03:33,75
+ORD,Chicago OHare,2026-08-11 03:34,75
+ORD,Chicago OHare,2026-08-11 03:35,75
+ORD,Chicago OHare,2026-08-11 03:36,75
+ORD,Chicago OHare,2026-08-11 03:37,75
+ORD,Chicago OHare,2026-08-11 03:38,75
+ORD,Chicago OHare,2026-08-11 03:39,75
+ORD,Chicago OHare,2026-08-11 03:40,76
+ORD,Chicago OHare,2026-08-11 03:41,76
+ORD,Chicago OHare,2026-08-11 03:42,76
+ORD,Chicago OHare,2026-08-11 03:43,76
+ORD,Chicago OHare,2026-08-11 03:44,76
+ORD,Chicago OHare,2026-08-11 03:45,76
+ORD,Chicago OHare,2026-08-11 03:46,75
+ORD,Chicago OHare,2026-08-11 03:47,75
+ORD,Chicago OHare,2026-08-11 03:48,75
+ORD,Chicago OHare,2026-08-11 03:49,75
+ORD,Chicago OHare,2026-08-11 03:50,75
+ORD,Chicago OHare,2026-08-11 03:51,75
+ORD,Chicago OHare,2026-08-11 03:52,75
+ORD,Chicago OHare,2026-08-11 03:53,76
+ORD,Chicago OHare,2026-08-11 03:54,75
+ORD,Chicago OHare,2026-08-11 03:55,75
+ORD,Chicago OHare,2026-08-11 03:56,75
+ORD,Chicago OHare,2026-08-11 03:57,76
+ORD,Chicago OHare,2026-08-11 03:58,76
+ORD,Chicago OHare,2026-08-11 03:59,75
+ORD,Chicago OHare,2026-08-11 04:00,75
+ORD,Chicago OHare,2026-08-11 04:01,75
+ORD,Chicago OHare,2026-08-11 04:02,75
+ORD,Chicago OHare,2026-08-11 04:03,75
+ORD,Chicago OHare,2026-08-11 04:04,75
+ORD,Chicago OHare,2026-08-11 04:05,76
+ORD,Chicago OHare,2026-08-11 04:06,76
+ORD,Chicago OHare,2026-08-11 04:07,76
+ORD,Chicago OHare,2026-08-11 04:08,76
+ORD,Chicago OHare,2026-08-11 04:09,76
+ORD,Chicago OHare,2026-08-11 04:10,76
+ORD,Chicago OHare,2026-08-11 04:11,76
+ORD,Chicago OHare,2026-08-11 04:12,76
+ORD,Chicago OHare,2026-08-11 04:13,76
+ORD,Chicago OHare,2026-08-11 04:14,76
+ORD,Chicago OHare,2026-08-11 04:15,76
+ORD,Chicago OHare,2026-08-11 04:16,76
+ORD,Chicago OHare,2026-08-11 04:17,76
+ORD,Chicago OHare,2026-08-11 04:18,76
+ORD,Chicago OHare,2026-08-11 04:19,76
+ORD,Chicago OHare,2026-08-11 04:20,76
+ORD,Chicago OHare,2026-08-11 04:21,76
+ORD,Chicago OHare,2026-08-11 04:22,76
+ORD,Chicago OHare,2026-08-11 04:23,76
+ORD,Chicago OHare,2026-08-11 04:24,76
+ORD,Chicago OHare,2026-08-11 04:25,76
+ORD,Chicago OHare,2026-08-11 04:26,76
+ORD,Chicago OHare,2026-08-11 04:27,76
+ORD,Chicago OHare,2026-08-11 04:28,76
+ORD,Chicago OHare,2026-08-11 04:29,76
+ORD,Chicago OHare,2026-08-11 04:30,76
+ORD,Chicago OHare,2026-08-11 04:31,76
+ORD,Chicago OHare,2026-08-11 04:32,76
+ORD,Chicago OHare,2026-08-11 04:33,76
+ORD,Chicago OHare,2026-08-11 04:34,76
+ORD,Chicago OHare,2026-08-11 04:35,76
+ORD,Chicago OHare,2026-08-11 04:36,76
+ORD,Chicago OHare,2026-08-11 04:37,76
+ORD,Chicago OHare,2026-08-11 04:38,76
+ORD,Chicago OHare,2026-08-11 04:39,76
+ORD,Chicago OHare,2026-08-11 04:40,76
+ORD,Chicago OHare,2026-08-11 04:41,76
+ORD,Chicago OHare,2026-08-11 04:42,76
+ORD,Chicago OHare,2026-08-11 04:43,76
+ORD,Chicago OHare,2026-08-11 04:44,76
+ORD,Chicago OHare,2026-08-11 04:45,76
+ORD,Chicago OHare,2026-08-11 04:46,76
+ORD,Chicago OHare,2026-08-11 04:47,76
+ORD,Chicago OHare,2026-08-11 04:48,76
+ORD,Chicago OHare,2026-08-11 04:49,76
+ORD,Chicago OHare,2026-08-11 04:50,76
+ORD,Chicago OHare,2026-08-11 04:51,76
+ORD,Chicago OHare,2026-08-11 04:52,76
+ORD,Chicago OHare,2026-08-11 04:53,76
+ORD,Chicago OHare,2026-08-11 04:54,76
+ORD,Chicago OHare,2026-08-11 04:55,76
+ORD,Chicago OHare,2026-08-11 04:56,76
+ORD,Chicago OHare,2026-08-11 04:57,76
+ORD,Chicago OHare,2026-08-11 04:58,76
+ORD,Chicago OHare,2026-08-11 04:59,76

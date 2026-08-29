@@ -1,0 +1,60 @@
+{
+ "rule_label": "D-质量·整篮EV·中心底仓·腿≥0.02·maker_resting·阶梯5档·逐步建仓·挂至达峰P95+60分·每60分钟重挂·未成交档0.35窗程收拢·价值钳λ0.53·中心桶豁免·信念EV闸·一本账·只加不减",
+ "stages": {
+  "P0": {
+   "positions": 172,
+   "zero_fill_baskets": 4,
+   "share_fill_rate": 0.7534505655987394,
+   "rung_fill_rate": 0.7305728871242201,
+   "stake_fill_rate": 0.7289360863652734,
+   "maker_saving_vs_taker": 0.39758763201706215,
+   "mean_entry_edge": 0.2642563635811183,
+   "settled": {
+    "n": 76,
+    "hits": 14,
+    "stake": 693.6669052519734,
+    "pnl": -146.59922266704706,
+    "roi": -0.21133950828142092
+   }
+  },
+  "P0-M": {
+   "positions": 19,
+   "zero_fill_baskets": 7,
+   "share_fill_rate": 0.5184528614371491,
+   "rung_fill_rate": 0.5786802030456852,
+   "stake_fill_rate": 0.5683274447572245,
+   "maker_saving_vs_taker": 0.16511011687410704,
+   "mean_entry_edge": 0.20264770583827427,
+   "settled": {
+    "n": 12,
+    "hits": 5,
+    "stake": 120.2202400157574,
+    "pnl": 56.46542067498617,
+    "roi": 0.4696831470939102
+   }
+  },
+  "P1": {
+   "positions": 58,
+   "zero_fill_baskets": 5,
+   "share_fill_rate": 0.83104843600618,
+   "rung_fill_rate": 0.7878787878787878,
+   "stake_fill_rate": 0.750011071920851,
+   "maker_saving_vs_taker": 0.4721656646660849,
+   "mean_entry_edge": 0.24881971829306634,
+   "settled": {
+    "n": 48,
+    "hits": 15,
+    "stake": 708.970314101544,
+    "pnl": -103.96745528101383,
+    "roi": -0.14664571028304416
+   }
+  }
+ },
+ "total_settled": {
+  "n": 136,
+  "hits": 34,
+  "stake": 1522.8574593692747,
+  "pnl": -194.1012572730747,
+  "roi": -0.1274585852266607
+ }
+}

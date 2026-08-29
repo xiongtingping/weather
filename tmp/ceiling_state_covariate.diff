@@ -1,0 +1,646 @@
+diff --git a/bayes_basket_target/metar_ceiling.py b/bayes_basket_target/metar_ceiling.py
+index f308aa53..0d8152ad 100644
+--- a/bayes_basket_target/metar_ceiling.py
++++ b/bayes_basket_target/metar_ceiling.py
+@@ -22,6 +22,7 @@ wrongly left above was taken from the bucket that settles.
+ from __future__ import annotations
+ 
+ import json
++import math
+ import os
+ from datetime import datetime, timedelta
+ from pathlib import Path
+@@ -86,10 +87,40 @@ def hours_left(event_date: str, settlement_timezone: str, as_of_utc: str) -> flo
+     return (close - now).total_seconds() / 3600.0
+ 
+ 
++def _sigmoid(value: float) -> float:
++    if value >= 0.0:
++        return 1.0 / (1.0 + math.exp(-value))
++    scaled = math.exp(value)
++    return scaled / (1.0 + scaled)
++
++
+ def probability_still_rising(
+-    artifact: Mapping[str, Any], remaining_hours: float
++    artifact: Mapping[str, Any],
++    remaining_hours: float,
++    path_state: Mapping[str, Any] | None = None,
+ ) -> float | None:
+-    """P(the day ends above the bucket already holding its high)."""
++    """P(the day ends above the bucket already holding its high).
++
++    The clock alone answers this to within a few points from six hours out,
++    and not at all at nine: measured over ~720 station-days per anchor, nine
++    hours before local settlement the day rose out of that bucket 28% of the
++    time overall, 0% where the temperature had already fallen four degrees
++    off its high, and 40% where it was still sitting on it.  One number
++    served to both groups is wrong in both directions, and the second of
++    them is the pre-peak harm the standing evaluation measured.
++
++    So a fitted artifact may carry slopes on the observed path.  They are
++    applied in logit space around the bin's own intercept, which is what
++    makes a low-probability hour safe: the same shift that moves 0.28 to
++    0.45 moves 0.011 to 0.023.  Covariates are centred at their training
++    means, so a state at the mean reproduces the bin's marginal rate, and a
++    predictor the caller cannot supply is skipped -- which, centred, is the
++    same as assuming it average rather than assuming it zero.
++
++    Absent slopes mean the bin's marginal rate, byte for byte: an artifact
++    fitted before this existed conditions on nothing and says what it always
++    said.
++    """
+ 
+     bins = artifact.get("bins") or {}
+     for entry in bins.values():
+@@ -100,7 +131,34 @@ def probability_still_rising(
+             # at once, which is the one thing this layer must not do.
+             if entry.get("backed_off"):
+                 return None
+-            return float(entry["p_still_rose"])
++            marginal = float(entry["p_still_rose"])
++            slopes = artifact.get("state_coefficients") or {}
++            intercept = entry.get("logit_intercept")
++            if not slopes or not path_state or intercept is None:
++                return marginal
++            means = artifact.get("state_covariate_means") or {}
++            total = float(intercept)
++            used = 0
++            for name, slope in sorted(slopes.items()):
++                if name not in path_state:
++                    continue
++                try:
++                    value = float(path_state[name])
++                    centre = float(means.get(name, 0.0))
++                    weight = float(slope)
++                except (TypeError, ValueError):
++                    return marginal
++                if not (
++                    math.isfinite(value)
++                    and math.isfinite(centre)
++                    and math.isfinite(weight)
++                ):
++                    return marginal
++                total += weight * (value - centre)
++                used += 1
++            if not used or not math.isfinite(total):
++                return marginal
++            return _sigmoid(total)
+     return None
+ 
+ 
+@@ -114,6 +172,7 @@ def apply_ceiling(
+     as_of_utc: str,
+     artifact: Mapping[str, Any] | None = None,
+     enabled: bool | None = None,
++    path_state: Mapping[str, Any] | None = None,
+ ) -> tuple[dict[str, float], dict[str, str]]:
+     """Rescale the above/below split to the fitted rate; keep both shapes.
+ 
+@@ -150,7 +209,7 @@ def apply_ceiling(
+     if running_high_bucket not in ordinals:
+         note["metar_ceiling_skip_reason"] = "RUNNING_HIGH_BUCKET_UNKNOWN"
+         return base, note
+-    target = probability_still_rising(payload, remaining)
++    target = probability_still_rising(payload, remaining, path_state)
+     if target is None:
+         note["metar_ceiling_skip_reason"] = "BIN_BACKED_OFF"
+         return base, note
+@@ -181,6 +240,13 @@ def apply_ceiling(
+         "metar_ceiling_mass_above_after": f"{target:.6f}",
+         "metar_ceiling_artifact_trained_through": str(
+             payload.get("trained_through") or ""),
++        # Which form spoke.  The rate is diagnosable without it, but only by
++        # inverting the arithmetic; naming it costs one string.
++        "metar_ceiling_form": (
++            "hours_and_state"
++            if (payload.get("state_coefficients") and path_state)
++            else "hours_only"
++        ),
+     }
+     return {k: v / total for k, v in scaled.items()}, note
+ 
+@@ -220,5 +286,12 @@ def replay_curve(event_date: str, table: Mapping[str, Any] | None = None):
+         return None
+     # Reuse the serving shape so both paths run the same arithmetic; the date
+     # guard is already satisfied by construction here, so it is set aside.
+-    return {"schema": SCHEMA, "bins": entry.get("bins") or {},
+-            "trained_through": ""}
++    # The state slopes have to come along or the replay would measure the
++    # hours-only rule while production runs the conditioned one.
++    return {
++        "schema": SCHEMA,
++        "bins": entry.get("bins") or {},
++        "state_coefficients": entry.get("state_coefficients") or {},
++        "state_covariate_means": entry.get("state_covariate_means") or {},
++        "trained_through": "",
++    }
+diff --git a/bayes_basket_target/metar_path_state.py b/bayes_basket_target/metar_path_state.py
+index 4d2dd884..0fc4e35c 100644
+--- a/bayes_basket_target/metar_path_state.py
++++ b/bayes_basket_target/metar_path_state.py
+@@ -313,6 +313,75 @@ class ConditionalMetarPathState:
+         return result
+ 
+ 
++PATH_DESCRIPTOR_KEYS = (
++    "running_high_c",
++    "current_temperature_c",
++    "momentum_c_per_hour",
++    "acceleration_c_per_hour2",
++    "drawdown_from_high_c",
++    "observation_count",
++)
++
++
++def observation_path_descriptors(
++    observations: Sequence[Mapping[str, Any]],
++) -> dict[str, float]:
++    """What the temperature series alone says: no clock, no model, no METAR body.
++
++    Extracted so a second consumer conditions on exactly the numbers the
++    trajectory layer conditions on.  The cooling-side ceiling is that second
++    consumer, and a private copy of "momentum" would be a second definition
++    of it -- this codebase has already paid for one of those.
++    """
++
++    rows = sorted(
++        (dict(row) for row in observations),
++        key=lambda row: (
++            _utc("metar_path_observed_at_utc", row.get("observed_at_utc")),
++            str(row.get("observation_id") or ""),
++        ),
++    )
++    if not rows:
++        raise ContractError("metar_path_observation_sequence_empty")
++    temperatures = [
++        _finite("metar_path_temperature_c", row.get("temperature_c"))
++        for row in rows
++    ]
++    times = [
++        _utc("metar_path_observed_at_utc", row.get("observed_at_utc"))
++        for row in rows
++    ]
++    return _descriptors_from_series(times, temperatures)
++
++
++def _descriptors_from_series(
++    times: Sequence[datetime], temperatures: Sequence[float]
++) -> dict[str, float]:
++    segment_slopes: list[float] = []
++    for left_t, right_t, left_temp, right_temp in zip(
++        times, times[1:], temperatures, temperatures[1:]
++    ):
++        hours = (right_t - left_t).total_seconds() / 3600.0
++        if hours <= 0.0:
++            raise ContractError("metar_path_observation_time_rewind")
++        segment_slopes.append((right_temp - left_temp) / hours)
++    momentum = segment_slopes[-1] if segment_slopes else 0.0
++    if len(segment_slopes) >= 2:
++        hours = (times[-1] - times[-2]).total_seconds() / 3600.0
++        acceleration = (segment_slopes[-1] - segment_slopes[-2]) / hours
++    else:
++        acceleration = 0.0
++    running_high = max(temperatures)
++    return {
++        "running_high_c": running_high,
++        "current_temperature_c": temperatures[-1],
++        "momentum_c_per_hour": momentum,
++        "acceleration_c_per_hour2": acceleration,
++        "drawdown_from_high_c": running_high - temperatures[-1],
++        "observation_count": float(len(temperatures)),
++    }
++
++
+ def compile_conditional_metar_path_state(
+     observations: Sequence[Mapping[str, Any]],
+     *,
+@@ -360,20 +429,9 @@ def compile_conditional_metar_path_state(
+             expected_temperature_c=temperature,
+         ))
+     latest = states[-1]
+-    segment_slopes: list[float] = []
+-    for left_t, right_t, left_temp, right_temp in zip(
+-        times, times[1:], temperatures, temperatures[1:]
+-    ):
+-        hours = (right_t - left_t).total_seconds() / 3600.0
+-        if hours <= 0.0:
+-            raise ContractError("metar_path_observation_time_rewind")
+-        segment_slopes.append((right_temp - left_temp) / hours)
+-    momentum = segment_slopes[-1] if segment_slopes else 0.0
+-    if len(segment_slopes) >= 2:
+-        hours = (times[-1] - times[-2]).total_seconds() / 3600.0
+-        acceleration = (segment_slopes[-1] - segment_slopes[-2]) / hours
+-    else:
+-        acceleration = 0.0
++    descriptors = _descriptors_from_series(times, temperatures)
++    momentum = descriptors["momentum_c_per_hour"]
++    acceleration = descriptors["acceleration_c_per_hour2"]
+ 
+     decision = _utc("metar_path_as_of_utc", as_of_utc)
+     local = decision.astimezone(ZoneInfo(settlement_timezone))
+@@ -549,11 +607,13 @@ def condition_remaining_warming_distribution(
+ __all__ = [
+     "ConditionalMetarPathState",
+     "MetarPhysicalState",
++    "PATH_DESCRIPTOR_KEYS",
+     "PATH_STATE_SCHEMA",
+     "PATH_MODEL_COEFFICIENT_KEYS",
+     "HOURLY_CURVE_PATH_MODEL_COEFFICIENT_KEYS",
+     "PHYSICAL_STATE_SCHEMA",
+     "compile_conditional_metar_path_state",
+     "condition_remaining_warming_distribution",
++    "observation_path_descriptors",
+     "parse_metar_physical_state",
+ ]
+diff --git a/bayes_basket_target/metar_trajectory.py b/bayes_basket_target/metar_trajectory.py
+index 937d26f6..097e7adc 100644
+--- a/bayes_basket_target/metar_trajectory.py
++++ b/bayes_basket_target/metar_trajectory.py
+@@ -33,6 +33,7 @@ from .metar_path_state import (
+     PATH_STATE_SCHEMA,
+     compile_conditional_metar_path_state,
+     condition_remaining_warming_distribution,
++    observation_path_descriptors,
+ )
+ from .metar_physical_tmax import (
+     PHYSICAL_COEFFICIENT_KEYS,
+@@ -1766,6 +1767,10 @@ def compile_metar_trajectory_update_proof(
+         # The ceiling stays on the decision clock: its rate pairs "the hours
+         # the day has left now" with "the high the day holds now", and
+         # ``prefix_is_current`` is what guarantees the second half.
++        # The observed path, on the same definitions the trajectory layer
++        # conditions on.  Available on every method including the identity
++        # fallback, because it needs neither an artifact nor a parseable
++        # METAR body -- only the temperatures already in hand.
+         posterior, _ = apply_metar_ceiling(
+             posterior,
+             ordinals=root.bucket_ordinals,
+@@ -1773,6 +1778,14 @@ def compile_metar_trajectory_update_proof(
+             event_date=root.event_date,
+             settlement_timezone=root.settlement_timezone,
+             as_of_utc=as_of_utc,
++            path_state=observation_path_descriptors([
++                {
++                    "observation_id": item.event.observation_id,
++                    "observed_at_utc": item.event.observed_at_utc,
++                    "temperature_c": item.temperature_c,
++                }
++                for item in ordered
++            ]),
+         )
+         # A rate must never resurrect a bucket the observation killed.
+         posterior = {
+diff --git a/scripts/fit_metar_ceiling_artifact.py b/scripts/fit_metar_ceiling_artifact.py
+index 72dbe271..3032bcb8 100644
+--- a/scripts/fit_metar_ceiling_artifact.py
++++ b/scripts/fit_metar_ceiling_artifact.py
+@@ -21,13 +21,24 @@ from __future__ import annotations
+ 
+ import argparse
+ import json
++import math
+ import sqlite3
++import sys
+ from collections import defaultdict
+ from datetime import datetime, timedelta
+ from pathlib import Path
+ from zoneinfo import ZoneInfo
+ 
++import numpy as np
++
+ ROOT = Path(__file__).resolve().parents[1]
++sys.path.insert(0, str(ROOT))
++
++from bayes_basket_target.contracts import ContractError  # noqa: E402
++from bayes_basket_target.metar_path_state import (  # noqa: E402
++    observation_path_descriptors,
++)
++
+ SCHEMA = "bayes_basket_target_metar_ceiling_v1"
+ # Hours left until local settlement.  Fine where the curve moves (the collapse
+ # runs from roughly ten hours out to zero) and coarse where it is flat.
+@@ -35,6 +46,26 @@ HOURS_EDGES = (0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 13.0, 16.0,
+                20.0, 24.0, 1e9)
+ MIN_BIN_SAMPLES = 40
+ 
++# What the airport itself says, on the trajectory layer's own definitions --
++# imported rather than restated, so there is one momentum in this codebase.
++# Measured at 2026-08-24 over ~720 station-days per anchor: nine hours before
++# local settlement the day left the running high's bucket 28% of the time,
++# 0% where the temperature had already fallen four degrees off its high, and
++# 40% where it still sat on it.  Three and five hours out the same split is
++# flat at ~1%, which is why the slopes live in logit space rather than in
++# probability: there they cannot do damage where there is nothing to say.
++STATE_COVARIATES = ("momentum_c_per_hour", "drawdown_from_high_c")
++# Ridge on the slopes, in units of equivalent observations.  Mild against a
++# five-figure sample, and it is what keeps a bin whose state groups separate
++# perfectly from handing back an unbounded coefficient.
++SLOPE_RIDGE = 10.0
++# The intercepts are shrunk toward each bin's own marginal logit rather than
++# toward zero.  Zero would mean "absent state information, call it even
++# money"; the marginal is the honest prior and it makes the conditioned form
++# a refinement of the served number instead of a replacement for it.
++INTERCEPT_RIDGE = 5.0
++NEWTON_ITERATIONS = 60
++
+ 
+ def hours_bin(hours: float) -> int:
+     for index in range(len(HOURS_EDGES) - 1):
+@@ -90,11 +121,74 @@ def collect(target_db: Path, archive_db: Path) -> list[dict]:
+         held = burst.get(slot)
+         if held is None or float(running) >= held[0]:
+             burst[slot] = (float(running), row[3], envelope, str(row[2]))
++    # One local day of reports per station-day, read once and reused by every
++    # burst inside it.  The state a burst saw is the prefix up to its own
++    # instant, which is a slice of this list rather than another query.
++    observations: dict[tuple[str, str], list[dict]] = {}
++
++    def day_observations(station: str, day: str, close: datetime) -> list[dict]:
++        key = (station, day)
++        if key not in observations:
++            rows = archive.execute(
++                "SELECT observation_id,valid_at,reported_temperature_c FROM"
++                " reported_trajectory_observations"
++                " WHERE station_id=? AND source_lane='awc'"
++                " AND julianday(valid_at)>=julianday(?)"
++                " AND julianday(valid_at)<julianday(?)"
++                " ORDER BY valid_at,observation_id",
++                (
++                    station,
++                    (close - timedelta(days=1)).isoformat(),
++                    close.isoformat(),
++                ),
++            ).fetchall()
++            observations[key] = [
++                {
++                    "observation_id": str(r[0]),
++                    "observed_at_utc": str(r[1]),
++                    "temperature_c": float(r[2]),
++                    "_at": _parse(str(r[1])),
++                }
++                for r in rows
++            ]
++        return observations[key]
++
++    # How long each burst's belief stood before the next one replaced it.
++    # The fit population and the served population are not the same thing: a
++    # burst is written every time the running high advances, so bursts cluster
++    # on the advances, while what production actually serves at any instant is
++    # whichever belief is standing then.  Weighting by that duration measures
++    # the second population using the rows of the first.
++    stood: dict[tuple, float] = {}
++    by_scope: dict[tuple[str, str], list[tuple[datetime, tuple]]] = defaultdict(
++        list
++    )
++    for slot, held in burst.items():
++        by_scope[(slot[0], slot[1])].append((_parse(held[3]), slot))
++    for (station, day), entries in by_scope.items():
++        if (station, day) not in zones:
++            continue
++        zone = ZoneInfo(zones[(station, day)])
++        close = datetime.fromisoformat(day).replace(tzinfo=zone) + timedelta(
++            days=1
++        )
++        entries.sort()
++        for position, (moment, slot) in enumerate(entries):
++            following = (
++                entries[position + 1][0] if position + 1 < len(entries)
++                else close
++            )
++            stood[slot] = max(
++                0.0, (following - moment).total_seconds()
++            )
++
+     samples = []
++    skipped_state = 0
+     for (station, day, _), (running, intervals_json, envelope, at) in burst.items():
+         zone = ZoneInfo(zones[(station, day)])
+         close = datetime.fromisoformat(day).replace(tzinfo=zone) + timedelta(days=1)
+-        hours = (close - _parse(at)).total_seconds() / 3600.0
++        decided = _parse(at)
++        hours = (close - decided).total_seconds() / 3600.0
+         if hours < 0:
+             continue
+         intervals = json.loads(intervals_json)
+@@ -105,32 +199,201 @@ def collect(target_db: Path, archive_db: Path) -> list[dict]:
+             continue
+         if running_bucket not in ordinals or truth_bucket not in ordinals:
+             continue
++        prefix = [
++            row for row in day_observations(station, day, close)
++            if row["_at"] <= decided
++        ]
++        # A burst with no readable path contributes to the marginal rate and
++        # not to the slopes: dropping it outright would bias the bin, and
++        # imputing a state would invent the very evidence being fitted.
++        state: dict[str, float] | None = None
++        if prefix:
++            try:
++                state = observation_path_descriptors(prefix)
++            except ContractError:
++                state = None
++        if state is None:
++            skipped_state += 1
+         samples.append({
+             "station_id": station,
+             "event_date": day,
+             "hours_left": hours,
+             "still_rose": int(ordinals[truth_bucket] > ordinals[running_bucket]),
++            "stood_seconds": stood.get((station, day, str(at)[:19]), 0.0),
++            "state": (
++                None if state is None
++                else {key: state[key] for key in STATE_COVARIATES}
++            ),
+         })
++    if skipped_state:
++        print(f"  {skipped_state}/{len(samples)} 个样本无可读路径状态"
++              f"(仍计入边际率,不进斜率拟合)", file=sys.stderr)
+     return samples
+ 
+ 
+-def fit(samples: list[dict]) -> dict:
++def _logit(probability: float, *, n: int) -> float:
++    # Clamped by the sample it came from, so a bin that saw no rise at all
++    # gets the strongest statement its own size supports rather than -inf.
++    floor = 1.0 / (2.0 * max(n, 1))
++    bounded = min(max(probability, floor), 1.0 - floor)
++    return math.log(bounded / (1.0 - bounded))
++
++
++def sample_weights(
++    samples: list[dict], *, standing_weighted: bool
++) -> list[float]:
++    """One per sample: equal, or proportional to how long the belief stood."""
++
++    if not standing_weighted:
++        return [1.0] * len(samples)
++    raw = [max(float(s.get("stood_seconds") or 0.0), 0.0) for s in samples]
++    total = sum(raw)
++    if total <= 0.0:
++        return [1.0] * len(samples)
++    # Rescaled to keep the effective sample size comparable, so the ridge
++    # constants keep meaning the same thing in both modes.
++    scale = len(samples) / total
++    return [value * scale for value in raw]
++
++
++def fit_state_slopes(
++    samples: list[dict],
++    *,
++    served_bins: dict[int, dict],
++    standing_weighted: bool = False,
++) -> dict:
++    """Per-bin intercepts and one shared slope per covariate, in logit space.
++
++    Only samples in bins the layer would actually serve are fitted: a bin
++    under the sample floor answers ``None`` at serving time, so letting its
++    handful of rows pull the shared slopes would be paying for an answer
++    nobody reads.  Intercepts are shrunk toward each bin's own marginal
++    logit and slopes toward zero, which makes the mean-state prediction the
++    marginal rate and leaves the whole layer a refinement of what it served
++    before.
++    """
++
++    usable = [
++        sample for sample in samples
++        if sample.get("state") is not None
++        and hours_bin(sample["hours_left"]) in served_bins
++    ]
++    if len(usable) < 200:
++        return {}
++    weights = np.asarray(
++        sample_weights(usable, standing_weighted=standing_weighted)
++    )
++    if float(weights.sum()) <= 0.0:
++        return {}
++    bin_ids = sorted({hours_bin(s["hours_left"]) for s in usable})
++    bin_index = {value: position for position, value in enumerate(bin_ids)}
++    n_bins = len(bin_ids)
++    n_cov = len(STATE_COVARIATES)
++    means = {
++        name: float(
++            np.average(
++                [float(s["state"][name]) for s in usable], weights=weights
++            )
++        )
++        for name in STATE_COVARIATES
++    }
++    design = np.zeros((len(usable), n_bins + n_cov))
++    outcome = np.zeros(len(usable))
++    for row, sample in enumerate(usable):
++        design[row, bin_index[hours_bin(sample["hours_left"])]] = 1.0
++        for offset, name in enumerate(STATE_COVARIATES):
++            design[row, n_bins + offset] = (
++                float(sample["state"][name]) - means[name]
++            )
++        outcome[row] = float(sample["still_rose"])
++    prior = np.zeros(n_bins + n_cov)
++    penalty = np.zeros(n_bins + n_cov)
++    for value, position in bin_index.items():
++        entry = served_bins[value]
++        prior[position] = _logit(
++            float(entry["p_still_rose"]), n=int(entry["sample_n"])
++        )
++        penalty[position] = INTERCEPT_RIDGE
++    penalty[n_bins:] = SLOPE_RIDGE
++    beta = prior.copy()
++    for _ in range(NEWTON_ITERATIONS):
++        eta = design @ beta
++        probability = 1.0 / (1.0 + np.exp(-np.clip(eta, -30.0, 30.0)))
++        weight = weights * np.clip(
++            probability * (1.0 - probability), 1e-9, None
++        )
++        gradient = (
++            design.T @ (weights * (outcome - probability))
++            - penalty * (beta - prior)
++        )
++        hessian = (design.T * weight) @ design + np.diag(penalty)
++        try:
++            step = np.linalg.solve(hessian, gradient)
++        except np.linalg.LinAlgError:
++            return {}
++        beta = beta + step
++        if not np.all(np.isfinite(beta)):
++            return {}
++        if float(np.max(np.abs(step))) < 1e-9:
++            break
++    else:
++        return {}
++    return {
++        "state_coefficients": {
++            name: float(beta[n_bins + offset])
++            for offset, name in enumerate(STATE_COVARIATES)
++        },
++        "state_covariate_means": means,
++        "state_fit_sample_n": len(usable),
++        "state_logit_intercepts": {
++            str(value): float(beta[position])
++            for value, position in bin_index.items()
++        },
++    }
++
++
++def fit(samples: list[dict], *, standing_weighted: bool = False) -> dict:
++    weights = sample_weights(samples, standing_weighted=standing_weighted)
+     per_bin = defaultdict(list)
+-    for sample in samples:
+-        per_bin[hours_bin(sample["hours_left"])].append(sample["still_rose"])
+-    pooled = (sum(v for values in per_bin.values() for v in values)
+-              / max(sum(len(v) for v in per_bin.values()), 1))
++    for sample, weight in zip(samples, weights):
++        per_bin[hours_bin(sample["hours_left"])].append(
++            (sample["still_rose"], weight)
++        )
++    all_rows = [pair for values in per_bin.values() for pair in values]
++    pooled = (
++        sum(value * weight for value, weight in all_rows)
++        / max(sum(weight for _, weight in all_rows), 1e-9)
++    )
+     table = {}
+     for index in range(len(HOURS_EDGES) - 1):
+         values = per_bin.get(index, [])
++        mass = sum(weight for _, weight in values)
+         # A bin under the floor describes its own thinness, not the hour.
++        # The floor counts rows, not weight: it is a statement about how much
++        # evidence there is, which reweighting does not create.
+         table[str(index)] = {
+             "hours_from": HOURS_EDGES[index],
+             "hours_to": HOURS_EDGES[index + 1],
+-            "p_still_rose": (sum(values) / len(values)) if len(values) >= MIN_BIN_SAMPLES else pooled,
++            "p_still_rose": (
++                sum(value * weight for value, weight in values) / mass
++                if len(values) >= MIN_BIN_SAMPLES and mass > 0.0
++                else pooled
++            ),
+             "sample_n": len(values),
+             "backed_off": len(values) < MIN_BIN_SAMPLES,
+         }
++    served = {
++        index: table[str(index)]
++        for index in range(len(HOURS_EDGES) - 1)
++        if not table[str(index)]["backed_off"]
++    }
++    state = fit_state_slopes(
++        samples, served_bins=served, standing_weighted=standing_weighted
++    )
++    # The intercept rides on the bin it belongs to, so serving needs one
++    # lookup rather than two.  A bin without one conditions on nothing.
++    for key, value in (state.pop("state_logit_intercepts", {}) or {}).items():
++        table[key]["logit_intercept"] = value
+     return {
+         "schema": SCHEMA,
+         "pooled_p_still_rose": pooled,
+@@ -141,7 +404,12 @@ def fit(samples: list[dict]) -> dict:
+         "trained_from": min(s["event_date"] for s in samples),
+         "hours_edges": list(HOURS_EDGES),
+         "minimum_bin_samples": MIN_BIN_SAMPLES,
++        "standing_weighted": bool(standing_weighted),
++        "state_covariates": list(STATE_COVARIATES),
++        "slope_ridge": SLOPE_RIDGE,
++        "intercept_ridge": INTERCEPT_RIDGE,
+         "bins": table,
++        **state,
+     }
+ 
+ 

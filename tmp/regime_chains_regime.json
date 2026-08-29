@@ -1,0 +1,2855 @@
+{
+"CYYZ|2026-08-18": {
+"chosen": [
+"24°C",
+"25°C",
+"26°C"
+],
+"covered": false,
+"landed": "27°C",
+"offset": 1,
+"pnl": -9.45793,
+"stake": 9.45793
+},
+"CYYZ|2026-08-20": {
+"chosen": [
+"26°C",
+"27°C",
+"28°C"
+],
+"covered": false,
+"landed": "24°C",
+"offset": -2,
+"pnl": -6.322974,
+"stake": 6.322974
+},
+"CYYZ|2026-08-22": {
+"chosen": [
+"25°C",
+"26°C",
+"27°C",
+"28°C"
+],
+"covered": true,
+"landed": "25°C",
+"offset": 0,
+"pnl": 2.147049,
+"stake": 9.998751
+},
+"CYYZ|2026-08-23": {
+"chosen": [
+"20°C",
+"21°C",
+"22°C",
+"23°C"
+],
+"covered": true,
+"landed": "20°C",
+"offset": 0,
+"pnl": 2.800572,
+"stake": 5.109216
+},
+"CYYZ|2026-08-24": {
+"chosen": [
+"19°C",
+"20°C",
+"21°C",
+"22°C"
+],
+"covered": true,
+"landed": "22°C",
+"offset": 0,
+"pnl": 24.902554,
+"stake": 17.632653
+},
+"EDDM|2026-08-16": {
+"chosen": [
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": 3.554105,
+"stake": 2.607082
+},
+"EDDM|2026-08-19": {
+"chosen": [
+"26°C",
+"27°C",
+"28°C",
+"29°C"
+],
+"covered": false,
+"landed": "31°C",
+"offset": 2,
+"pnl": -1.363596,
+"stake": 1.363596
+},
+"EDDM|2026-08-21": {
+"chosen": [
+"19°C",
+"20°C",
+"21°C",
+"22°C",
+"23°C"
+],
+"covered": true,
+"landed": "22°C",
+"offset": 0,
+"pnl": 0.825922,
+"stake": 8.57599
+},
+"EDDM|2026-08-22": {
+"chosen": [
+"22°C",
+"23°C",
+"24°C"
+],
+"covered": false,
+"landed": "21°C",
+"offset": -1,
+"pnl": -2.499688,
+"stake": 2.499688
+},
+"EDDM|2026-08-25": {
+"chosen": [
+"19°C",
+"20°C",
+"21°C",
+"22°C",
+"23°C or higher"
+],
+"covered": false,
+"landed": "17°C",
+"offset": -2,
+"pnl": -6.941398,
+"stake": 6.941398
+},
+"EFHK|2026-08-18": {
+"chosen": [
+"18°C",
+"19°C",
+"20°C"
+],
+"covered": true,
+"landed": "20°C",
+"offset": 0,
+"pnl": -0.981619,
+"stake": 0.981619
+},
+"EFHK|2026-08-19": {
+"chosen": [
+"18°C",
+"19°C",
+"20°C",
+"21°C"
+],
+"covered": true,
+"landed": "20°C",
+"offset": 0,
+"pnl": 21.959967,
+"stake": 23.700324
+},
+"EFHK|2026-08-22": {
+"chosen": [
+"19°C",
+"20°C",
+"21°C"
+],
+"covered": false,
+"landed": "18°C",
+"offset": -1,
+"pnl": -0.358551,
+"stake": 0.358551
+},
+"EFHK|2026-08-24": {
+"chosen": [
+"19°C",
+"20°C",
+"21°C"
+],
+"covered": false,
+"landed": "18°C",
+"offset": -1,
+"pnl": -8.677515,
+"stake": 8.677515
+},
+"EGLC|2026-08-16": {
+"chosen": [
+"26°C",
+"27°C",
+"28°C"
+],
+"covered": true,
+"landed": "26°C",
+"offset": 0,
+"pnl": 0.202047,
+"stake": 1.803801
+},
+"EGLC|2026-08-19": {
+"chosen": [
+"21°C",
+"22°C",
+"23°C",
+"24°C"
+],
+"covered": false,
+"landed": "25°C",
+"offset": 1,
+"pnl": -0.897634,
+"stake": 0.897634
+},
+"EGLC|2026-08-20": {
+"chosen": [
+"21°C",
+"22°C",
+"23°C"
+],
+"covered": false,
+"landed": "24°C",
+"offset": 1,
+"pnl": -1.886028,
+"stake": 1.886028
+},
+"EGLC|2026-08-26": {
+"chosen": [
+"23°C",
+"24°C",
+"25°C"
+],
+"covered": false,
+"landed": "26°C",
+"offset": 1,
+"pnl": -0.160179,
+"stake": 0.160179
+},
+"EHAM|2026-08-15": {
+"chosen": [
+"25°C",
+"26°C",
+"27°C"
+],
+"covered": false,
+"landed": "23°C",
+"offset": -2,
+"pnl": -8.369932,
+"stake": 8.369932
+},
+"EHAM|2026-08-16": {
+"chosen": [
+"20°C",
+"21°C",
+"22°C"
+],
+"covered": false,
+"landed": "23°C",
+"offset": 1,
+"pnl": -1.262024,
+"stake": 1.262024
+},
+"EHAM|2026-08-19": {
+"chosen": [
+"19°C",
+"20°C",
+"21°C"
+],
+"covered": true,
+"landed": "21°C",
+"offset": 0,
+"pnl": -7.866141,
+"stake": 7.866141
+},
+"EHAM|2026-08-20": {
+"chosen": [
+"18°C",
+"19°C",
+"20°C"
+],
+"covered": false,
+"landed": "22°C",
+"offset": 2,
+"pnl": -0.909685,
+"stake": 0.909685
+},
+"EHAM|2026-08-24": {
+"chosen": [
+"20°C",
+"21°C",
+"22°C",
+"23°C",
+"24°C"
+],
+"covered": true,
+"landed": "21°C",
+"offset": 0,
+"pnl": -0.027412,
+"stake": 30.484864
+},
+"EHAM|2026-08-25": {
+"chosen": [
+"22°C",
+"23°C",
+"24°C"
+],
+"covered": false,
+"landed": "25°C",
+"offset": 1,
+"pnl": -4.671899,
+"stake": 4.671899
+},
+"EHAM|2026-08-26": {
+"chosen": [
+"22°C",
+"23°C",
+"24°C"
+],
+"covered": false,
+"landed": "26°C",
+"offset": 2,
+"pnl": -2.251377,
+"stake": 2.251377
+},
+"EPWA|2026-08-18": {
+"chosen": [
+"19°C",
+"20°C",
+"21°C"
+],
+"covered": true,
+"landed": "21°C",
+"offset": 0,
+"pnl": 2.185689,
+"stake": 2.19906
+},
+"EPWA|2026-08-19": {
+"chosen": [
+"19°C",
+"20°C",
+"21°C",
+"22°C"
+],
+"covered": false,
+"landed": "23°C",
+"offset": 1,
+"pnl": -11.545643,
+"stake": 11.545643
+},
+"EPWA|2026-08-20": {
+"chosen": [
+"21°C",
+"22°C",
+"23°C"
+],
+"covered": false,
+"landed": "25°C or higher",
+"offset": 2,
+"pnl": -10.494213,
+"stake": 10.494213
+},
+"EPWA|2026-08-21": {
+"chosen": [
+"24°C",
+"25°C",
+"26°C"
+],
+"covered": false,
+"landed": "27°C",
+"offset": 1,
+"pnl": -20.16415,
+"stake": 20.16415
+},
+"EPWA|2026-08-22": {
+"chosen": [
+"19°C",
+"20°C",
+"21°C"
+],
+"covered": false,
+"landed": "23°C",
+"offset": 2,
+"pnl": -9.998751,
+"stake": 9.998751
+},
+"EPWA|2026-08-25": {
+"chosen": [
+"20°C",
+"21°C",
+"22°C"
+],
+"covered": true,
+"landed": "22°C",
+"offset": 0,
+"pnl": 4.391585,
+"stake": 6.049715
+},
+"EPWA|2026-08-26": {
+"chosen": [
+"20°C",
+"21°C",
+"22°C"
+],
+"covered": false,
+"landed": "23°C",
+"offset": 1,
+"pnl": -2.251377,
+"stake": 2.251377
+},
+"FACT|2026-08-16": {
+"chosen": [
+"17°C",
+"18°C",
+"19°C",
+"20°C"
+],
+"covered": true,
+"landed": "17°C",
+"offset": 0,
+"pnl": -21.865468,
+"stake": 21.865468
+},
+"FACT|2026-08-24": {
+"chosen": [
+"19°C",
+"20°C",
+"21°C"
+],
+"covered": false,
+"landed": "18°C",
+"offset": -1,
+"pnl": -20.47452,
+"stake": 20.47452
+},
+"FACT|2026-08-25": {
+"chosen": [
+"19°C",
+"20°C",
+"21°C"
+],
+"covered": false,
+"landed": "22°C",
+"offset": 1,
+"pnl": -4.894949,
+"stake": 4.894949
+},
+"KATL|2026-08-15": {
+"chosen": [
+"88-89°F",
+"90-91°F",
+"92-93°F"
+],
+"covered": false,
+"landed": "94-95°F",
+"offset": 1,
+"pnl": -6.322608,
+"stake": 6.322608
+},
+"KATL|2026-08-17": {
+"chosen": [
+"92-93°F",
+"94-95°F",
+"96-97°F"
+],
+"covered": false,
+"landed": "98-99°F",
+"offset": 1,
+"pnl": -20.184899,
+"stake": 20.184899
+},
+"KATL|2026-08-21": {
+"chosen": [
+"90-91°F",
+"92-93°F",
+"94-95°F",
+"96-97°F"
+],
+"covered": true,
+"landed": "94-95°F",
+"offset": 0,
+"pnl": 26.193813,
+"stake": 38.825856
+},
+"KATL|2026-08-24": {
+"chosen": [
+"86-87°F",
+"88-89°F",
+"90-91°F",
+"92-93°F"
+],
+"covered": true,
+"landed": "90-91°F",
+"offset": 0,
+"pnl": 0.70806,
+"stake": 6.94841
+},
+"KBKF|2026-08-15": {
+"chosen": [
+"76-77°F",
+"78-79°F",
+"80-81°F",
+"84-85°F",
+"86-87°F"
+],
+"covered": false,
+"landed": "82-83°F",
+"offset": 0,
+"pnl": -10.0,
+"stake": 10.0
+},
+"KBKF|2026-08-22": {
+"chosen": [
+"92-93°F",
+"94-95°F",
+"96-97°F",
+"98-99°F"
+],
+"covered": true,
+"landed": "92-93°F",
+"offset": 0,
+"pnl": 4.581924,
+"stake": 9.644615
+},
+"KDAL|2026-08-21": {
+"chosen": [
+"100-101°F",
+"102-103°F",
+"104-105°F",
+"106-107°F",
+"108-109°F"
+],
+"covered": false,
+"landed": "99°F or below",
+"offset": -1,
+"pnl": -8.632527,
+"stake": 8.632527
+},
+"KDAL|2026-08-26": {
+"chosen": [
+"100-101°F",
+"102-103°F",
+"104-105°F",
+"106-107°F",
+"96-97°F",
+"98-99°F"
+],
+"covered": true,
+"landed": "100-101°F",
+"offset": 0,
+"pnl": -30.018361,
+"stake": 30.018361
+},
+"KHOU|2026-08-16": {
+"chosen": [
+"100-101°F",
+"102-103°F",
+"104-105°F",
+"94-95°F",
+"96-97°F",
+"98-99°F"
+],
+"covered": true,
+"landed": "94-95°F",
+"offset": 0,
+"pnl": -5.97315,
+"stake": 5.97315
+},
+"KLAX|2026-08-20": {
+"chosen": [
+"78-79°F",
+"80-81°F",
+"82-83°F",
+"84-85°F"
+],
+"covered": false,
+"landed": "76-77°F",
+"offset": -1,
+"pnl": -34.244838,
+"stake": 34.244838
+},
+"KLAX|2026-08-22": {
+"chosen": [
+"80-81°F",
+"82-83°F",
+"84-85°F",
+"86-87°F"
+],
+"covered": true,
+"landed": "82-83°F",
+"offset": 0,
+"pnl": 23.957658,
+"stake": 15.51648
+},
+"KLGA|2026-08-17": {
+"chosen": [
+"82-83°F",
+"84-85°F",
+"86-87°F",
+"88-89°F"
+],
+"covered": false,
+"landed": "80-81°F",
+"offset": -1,
+"pnl": -32.474409,
+"stake": 32.474409
+},
+"KLGA|2026-08-19": {
+"chosen": [
+"82-83°F",
+"84-85°F",
+"86-87°F"
+],
+"covered": true,
+"landed": "86-87°F",
+"offset": 0,
+"pnl": 1.408848,
+"stake": 2.591872
+},
+"KLGA|2026-08-25": {
+"chosen": [
+"74-75°F",
+"76-77°F",
+"78-79°F",
+"80-81°F",
+"82-83°F"
+],
+"covered": true,
+"landed": "78-79°F",
+"offset": 0,
+"pnl": 0.343067,
+"stake": 7.004726
+},
+"KMIA|2026-08-16": {
+"chosen": [
+"94-95°F",
+"96-97°F",
+"98-99°F"
+],
+"covered": false,
+"landed": "92-93°F",
+"offset": -1,
+"pnl": -10.654963,
+"stake": 10.654963
+},
+"KMIA|2026-08-18": {
+"chosen": [
+"92-93°F",
+"94-95°F",
+"96-97°F"
+],
+"covered": false,
+"landed": "98-99°F",
+"offset": 1,
+"pnl": -2.278488,
+"stake": 2.278488
+},
+"KMIA|2026-08-22": {
+"chosen": [
+"88-89°F",
+"90-91°F",
+"92-93°F",
+"94-95°F"
+],
+"covered": true,
+"landed": "94-95°F",
+"offset": 0,
+"pnl": -4.37523,
+"stake": 4.37523
+},
+"KORD|2026-08-18": {
+"chosen": [
+"76-77°F",
+"78-79°F",
+"80-81°F"
+],
+"covered": true,
+"landed": "78-79°F",
+"offset": 0,
+"pnl": -0.942923,
+"stake": 0.942923
+},
+"KORD|2026-08-21": {
+"chosen": [
+"76-77°F",
+"78-79°F",
+"80-81°F",
+"82-83°F"
+],
+"covered": true,
+"landed": "80-81°F",
+"offset": 0,
+"pnl": 2.740859,
+"stake": 6.850336
+},
+"KSEA|2026-08-15": {
+"chosen": [
+"78-79°F",
+"80-81°F",
+"82-83°F"
+],
+"covered": false,
+"landed": "74-75°F",
+"offset": -2,
+"pnl": -12.0,
+"stake": 12.0
+},
+"KSEA|2026-08-16": {
+"chosen": [
+"72-73°F",
+"74-75°F",
+"76-77°F",
+"78-79°F",
+"80-81°F",
+"82-83°F",
+"84-85°F"
+],
+"covered": true,
+"landed": "74-75°F",
+"offset": 0,
+"pnl": -7.591845,
+"stake": 11.771542
+},
+"KSEA|2026-08-17": {
+"chosen": [
+"74-75°F",
+"76-77°F",
+"78-79°F",
+"80-81°F",
+"82-83°F"
+],
+"covered": true,
+"landed": "78-79°F",
+"offset": 0,
+"pnl": 2.746374,
+"stake": 7.476236
+},
+"KSEA|2026-08-18": {
+"chosen": [
+"78-79°F",
+"80-81°F",
+"82-83°F"
+],
+"covered": true,
+"landed": "78-79°F",
+"offset": 0,
+"pnl": 11.22611,
+"stake": 5.008322
+},
+"KSEA|2026-08-20": {
+"chosen": [
+"78-79°F",
+"80-81°F",
+"82-83°F"
+],
+"covered": false,
+"landed": "84-85°F",
+"offset": 1,
+"pnl": -5.677511,
+"stake": 5.677511
+},
+"KSEA|2026-08-21": {
+"chosen": [
+"76-77°F",
+"78-79°F",
+"80-81°F",
+"82-83°F",
+"84-85°F",
+"86-87°F"
+],
+"covered": true,
+"landed": "80-81°F",
+"offset": 0,
+"pnl": -9.27827,
+"stake": 26.121811
+},
+"KSEA|2026-08-23": {
+"chosen": [
+"74-75°F",
+"76-77°F",
+"78-79°F"
+],
+"covered": true,
+"landed": "74-75°F",
+"offset": 0,
+"pnl": 2.984554,
+"stake": 3.36556
+},
+"KSEA|2026-08-24": {
+"chosen": [
+"72-73°F",
+"74-75°F",
+"76-77°F",
+"78-79°F",
+"80-81°F",
+"82-83°F"
+],
+"covered": true,
+"landed": "80-81°F",
+"offset": 0,
+"pnl": -0.428875,
+"stake": 7.413811
+},
+"KSEA|2026-08-25": {
+"chosen": [
+"86-87°F",
+"88-89°F",
+"90-91°F"
+],
+"covered": false,
+"landed": "84-85°F",
+"offset": -1,
+"pnl": -6.552796,
+"stake": 6.552796
+},
+"KSFO|2026-08-20": {
+"chosen": [
+"66-67°F",
+"68-69°F",
+"70-71°F",
+"72-73°F"
+],
+"covered": true,
+"landed": "68-69°F",
+"offset": 0,
+"pnl": 29.115925,
+"stake": 23.12982
+},
+"KSFO|2026-08-24": {
+"chosen": [
+"70-71°F",
+"72-73°F",
+"74-75°F",
+"76-77°F"
+],
+"covered": true,
+"landed": "70-71°F",
+"offset": 0,
+"pnl": -1.264311,
+"stake": 11.136617
+},
+"KSFO|2026-08-25": {
+"chosen": [
+"70-71°F",
+"72-73°F",
+"74-75°F"
+],
+"covered": false,
+"landed": "66-67°F",
+"offset": -2,
+"pnl": -17.75345,
+"stake": 17.75345
+},
+"LEMD|2026-08-20": {
+"chosen": [
+"29°C",
+"30°C",
+"31°C"
+],
+"covered": false,
+"landed": "32°C",
+"offset": 1,
+"pnl": -0.663256,
+"stake": 0.663256
+},
+"LEMD|2026-08-24": {
+"chosen": [
+"28°C",
+"29°C",
+"30°C"
+],
+"covered": true,
+"landed": "29°C",
+"offset": 0,
+"pnl": 25.929286,
+"stake": 9.379372
+},
+"LFPB|2026-08-15": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": false,
+"landed": "31°C",
+"offset": -1,
+"pnl": -7.433754,
+"stake": 7.433754
+},
+"LFPB|2026-08-18": {
+"chosen": [
+"28°C",
+"29°C",
+"30°C"
+],
+"covered": false,
+"landed": "27°C",
+"offset": -1,
+"pnl": -0.28219,
+"stake": 0.28219
+},
+"LFPB|2026-08-19": {
+"chosen": [
+"24°C",
+"25°C",
+"26°C",
+"27°C"
+],
+"covered": false,
+"landed": "29°C or higher",
+"offset": 2,
+"pnl": -20.217774,
+"stake": 20.217774
+},
+"LFPB|2026-08-20": {
+"chosen": [
+"22°C",
+"23°C",
+"24°C",
+"25°C"
+],
+"covered": false,
+"landed": "26°C",
+"offset": 1,
+"pnl": -0.605355,
+"stake": 0.605355
+},
+"LFPB|2026-08-22": {
+"chosen": [
+"21°C",
+"22°C",
+"23°C"
+],
+"covered": false,
+"landed": "24°C",
+"offset": 1,
+"pnl": -5.964061,
+"stake": 5.964061
+},
+"LFPB|2026-08-25": {
+"chosen": [
+"26°C",
+"27°C",
+"28°C",
+"29°C"
+],
+"covered": true,
+"landed": "29°C",
+"offset": 0,
+"pnl": -0.835928,
+"stake": 18.174606
+},
+"LIMC|2026-08-17": {
+"chosen": [
+"31°C",
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": true,
+"landed": "31°C",
+"offset": 0,
+"pnl": 3.668164,
+"stake": 5.494197
+},
+"LIMC|2026-08-19": {
+"chosen": [
+"30°C or below",
+"31°C",
+"32°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": 1.25598,
+"stake": 0.786264
+},
+"LIMC|2026-08-22": {
+"chosen": [
+"26°C",
+"27°C",
+"28°C",
+"29°C"
+],
+"covered": true,
+"landed": "29°C",
+"offset": 0,
+"pnl": -10.821107,
+"stake": 10.821107
+},
+"LIMC|2026-08-26": {
+"chosen": [
+"26°C",
+"27°C",
+"28°C",
+"29°C"
+],
+"covered": true,
+"landed": "29°C",
+"offset": 0,
+"pnl": 1.916343,
+"stake": 8.006189
+},
+"LTAC|2026-08-21": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C"
+],
+"covered": false,
+"landed": "33°C",
+"offset": 1,
+"pnl": -0.13939,
+"stake": 0.13939
+},
+"LTAC|2026-08-22": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": false,
+"landed": "35°C",
+"offset": 1,
+"pnl": -5.17439,
+"stake": 5.17439
+},
+"MMMX|2026-08-25": {
+"chosen": [
+"20°C",
+"21°C",
+"22°C"
+],
+"covered": true,
+"landed": "22°C",
+"offset": 0,
+"pnl": 19.31922,
+"stake": 23.456431
+},
+"MPMG|2026-08-17": {
+"chosen": [
+"27°C",
+"28°C",
+"29°C"
+],
+"covered": false,
+"landed": "26°C",
+"offset": -1,
+"pnl": -24.932375,
+"stake": 24.932375
+},
+"MPMG|2026-08-21": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C",
+"35°C"
+],
+"covered": true,
+"landed": "33°C",
+"offset": 0,
+"pnl": 4.357546,
+"stake": 7.615085
+},
+"MPMG|2026-08-22": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": true,
+"landed": "33°C",
+"offset": 0,
+"pnl": 0.526888,
+"stake": 0.874038
+},
+"MPMG|2026-08-23": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "31°C",
+"offset": 0,
+"pnl": -2.424685,
+"stake": 2.424685
+},
+"MPMG|2026-08-26": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": -0.342139,
+"stake": 0.342139
+},
+"NZWN|2026-08-17": {
+"chosen": [
+"7°C",
+"8°C",
+"9°C"
+],
+"covered": false,
+"landed": "10°C",
+"offset": 1,
+"pnl": -2.648627,
+"stake": 2.648627
+},
+"NZWN|2026-08-18": {
+"chosen": [
+"10°C",
+"11°C",
+"12°C",
+"13°C",
+"9°C"
+],
+"covered": true,
+"landed": "12°C",
+"offset": 0,
+"pnl": 6.801275,
+"stake": 8.560668
+},
+"NZWN|2026-08-19": {
+"chosen": [
+"10°C",
+"11°C",
+"9°C"
+],
+"covered": true,
+"landed": "11°C",
+"offset": 0,
+"pnl": 0.47149,
+"stake": 1.818291
+},
+"NZWN|2026-08-20": {
+"chosen": [
+"10°C",
+"11°C",
+"12°C"
+],
+"covered": true,
+"landed": "12°C",
+"offset": 0,
+"pnl": -0.33851,
+"stake": 1.855473
+},
+"OEJN|2026-08-17": {
+"chosen": [
+"37°C",
+"38°C",
+"39°C",
+"40°C"
+],
+"covered": false,
+"landed": "41°C",
+"offset": 1,
+"pnl": -3.081121,
+"stake": 3.081121
+},
+"OEJN|2026-08-18": {
+"chosen": [
+"36°C",
+"37°C",
+"38°C"
+],
+"covered": true,
+"landed": "38°C",
+"offset": 0,
+"pnl": 31.745005,
+"stake": 9.143688
+},
+"OEJN|2026-08-19": {
+"chosen": [
+"39°C",
+"40°C",
+"41°C or higher"
+],
+"covered": false,
+"landed": "37°C",
+"offset": -2,
+"pnl": -18.073089,
+"stake": 18.073089
+},
+"OEJN|2026-08-21": {
+"chosen": [
+"35°C",
+"36°C",
+"37°C",
+"38°C"
+],
+"covered": true,
+"landed": "37°C",
+"offset": 0,
+"pnl": 4.159389,
+"stake": 25.580467
+},
+"OEJN|2026-08-22": {
+"chosen": [
+"35°C",
+"36°C",
+"37°C"
+],
+"covered": false,
+"landed": "38°C or higher",
+"offset": 1,
+"pnl": -3.376403,
+"stake": 3.376403
+},
+"OEJN|2026-08-26": {
+"chosen": [
+"37°C",
+"38°C",
+"39°C or higher"
+],
+"covered": true,
+"landed": "37°C",
+"offset": 0,
+"pnl": -2.053561,
+"stake": 2.053561
+},
+"OPKC|2026-08-17": {
+"chosen": [
+"29°C",
+"30°C",
+"31°C"
+],
+"covered": true,
+"landed": "31°C",
+"offset": 0,
+"pnl": 10.320831,
+"stake": 7.364804
+},
+"OPKC|2026-08-18": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": 0.695406,
+"stake": 0.804122
+},
+"OPKC|2026-08-19": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": 0.245629,
+"stake": 1.154111
+},
+"OPKC|2026-08-20": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": 0.585687,
+"stake": 0.896127
+},
+"OPKC|2026-08-24": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C",
+"35°C"
+],
+"covered": true,
+"landed": "33°C",
+"offset": 0,
+"pnl": 0.169202,
+"stake": 2.139596
+},
+"OPKC|2026-08-25": {
+"chosen": [
+"31°C",
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": true,
+"landed": "33°C",
+"offset": 0,
+"pnl": 0.989013,
+"stake": 4.791991
+},
+"OPKC|2026-08-26": {
+"chosen": [
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "33°C",
+"offset": 0,
+"pnl": -0.696623,
+"stake": 0.696623
+},
+"RCSS|2026-08-15": {
+"chosen": [
+"33°C",
+"34°C",
+"35°C"
+],
+"covered": false,
+"landed": "36°C",
+"offset": 1,
+"pnl": -8.823215,
+"stake": 8.823215
+},
+"RCSS|2026-08-17": {
+"chosen": [
+"31°C",
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": false,
+"landed": "36°C",
+"offset": 2,
+"pnl": -2.179513,
+"stake": 2.179513
+},
+"RCSS|2026-08-18": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": true,
+"landed": "34°C",
+"offset": 0,
+"pnl": -0.797859,
+"stake": 0.797859
+},
+"RCSS|2026-08-19": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": 11.716594,
+"stake": 10.367488
+},
+"RCSS|2026-08-20": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C"
+],
+"covered": false,
+"landed": "33°C",
+"offset": 1,
+"pnl": -7.013601,
+"stake": 7.013601
+},
+"RCSS|2026-08-21": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": false,
+"landed": "35°C",
+"offset": 2,
+"pnl": -34.530107,
+"stake": 34.530107
+},
+"RCSS|2026-08-22": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": false,
+"landed": "35°C",
+"offset": 2,
+"pnl": -37.970013,
+"stake": 37.970013
+},
+"RCSS|2026-08-23": {
+"chosen": [
+"29°C",
+"30°C",
+"31°C"
+],
+"covered": false,
+"landed": "32°C",
+"offset": 1,
+"pnl": -1.73737,
+"stake": 1.73737
+},
+"RJTT|2026-08-18": {
+"chosen": [
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "31°C",
+"offset": 0,
+"pnl": 1.4391,
+"stake": 0.757999
+},
+"RJTT|2026-08-19": {
+"chosen": [
+"28°C",
+"29°C",
+"30°C",
+"31°C"
+],
+"covered": false,
+"landed": "32°C",
+"offset": 1,
+"pnl": -3.639266,
+"stake": 3.639266
+},
+"RJTT|2026-08-20": {
+"chosen": [
+"29°C",
+"30°C",
+"31°C"
+],
+"covered": false,
+"landed": "33°C",
+"offset": 2,
+"pnl": -13.942113,
+"stake": 13.942113
+},
+"RJTT|2026-08-21": {
+"chosen": [
+"28°C",
+"29°C",
+"30°C",
+"31°C"
+],
+"covered": false,
+"landed": "32°C",
+"offset": 1,
+"pnl": -2.420052,
+"stake": 2.420052
+},
+"RJTT|2026-08-22": {
+"chosen": [
+"28°C",
+"29°C",
+"30°C",
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "31°C",
+"offset": 0,
+"pnl": -6.092698,
+"stake": 12.498439
+},
+"RJTT|2026-08-23": {
+"chosen": [
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "31°C",
+"offset": 0,
+"pnl": -8.73523,
+"stake": 8.73523
+},
+"RJTT|2026-08-26": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": true,
+"landed": "33°C",
+"offset": 0,
+"pnl": 9.590474,
+"stake": 1.623176
+},
+"RKPK|2026-08-17": {
+"chosen": [
+"25°C",
+"26°C",
+"27°C",
+"28°C",
+"29°C"
+],
+"covered": true,
+"landed": "26°C",
+"offset": 0,
+"pnl": 7.098485,
+"stake": 6.942596
+},
+"RKPK|2026-08-18": {
+"chosen": [
+"28°C",
+"29°C",
+"30°C",
+"31°C"
+],
+"covered": true,
+"landed": "31°C",
+"offset": 0,
+"pnl": -4.012224,
+"stake": 4.012224
+},
+"RKPK|2026-08-21": {
+"chosen": [
+"29°C",
+"30°C",
+"31°C",
+"32°C"
+],
+"covered": false,
+"landed": "34°C",
+"offset": 2,
+"pnl": -2.345461,
+"stake": 2.345461
+},
+"RKPK|2026-08-22": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C"
+],
+"covered": false,
+"landed": "35°C",
+"offset": 3,
+"pnl": -13.237003,
+"stake": 13.237003
+},
+"RKSI|2026-08-17": {
+"chosen": [
+"27°C",
+"28°C",
+"29°C",
+"30°C",
+"31°C"
+],
+"covered": true,
+"landed": "28°C",
+"offset": 0,
+"pnl": -8.990398,
+"stake": 8.990398
+},
+"RKSI|2026-08-18": {
+"chosen": [
+"27°C",
+"28°C",
+"29°C",
+"30°C"
+],
+"covered": false,
+"landed": "31°C",
+"offset": 1,
+"pnl": -2.451318,
+"stake": 2.451318
+},
+"RKSI|2026-08-19": {
+"chosen": [
+"27°C",
+"28°C",
+"29°C",
+"30°C",
+"31°C"
+],
+"covered": true,
+"landed": "29°C",
+"offset": 0,
+"pnl": -6.120379,
+"stake": 6.120379
+},
+"RKSI|2026-08-20": {
+"chosen": [
+"27°C",
+"28°C",
+"29°C"
+],
+"covered": true,
+"landed": "28°C",
+"offset": 0,
+"pnl": -0.453207,
+"stake": 0.453207
+},
+"RKSI|2026-08-22": {
+"chosen": [
+"26°C",
+"27°C",
+"28°C",
+"29°C",
+"30°C",
+"31°C"
+],
+"covered": true,
+"landed": "27°C",
+"offset": 0,
+"pnl": -20.472968,
+"stake": 20.472968
+},
+"RKSI|2026-08-23": {
+"chosen": [
+"29°C",
+"30°C",
+"31°C"
+],
+"covered": false,
+"landed": "32°C",
+"offset": 1,
+"pnl": -5.632233,
+"stake": 5.632233
+},
+"RPLL|2026-08-18": {
+"chosen": [
+"26°C",
+"27°C",
+"28°C"
+],
+"covered": false,
+"landed": "29°C",
+"offset": 1,
+"pnl": -3.788083,
+"stake": 3.788083
+},
+"RPLL|2026-08-19": {
+"chosen": [
+"26°C",
+"27°C",
+"28°C",
+"29°C"
+],
+"covered": false,
+"landed": "30°C",
+"offset": 1,
+"pnl": -7.889716,
+"stake": 7.889716
+},
+"RPLL|2026-08-20": {
+"chosen": [
+"29°C",
+"30°C",
+"31°C"
+],
+"covered": false,
+"landed": "32°C",
+"offset": 1,
+"pnl": -2.419286,
+"stake": 2.419286
+},
+"RPLL|2026-08-21": {
+"chosen": [
+"29°C",
+"30°C",
+"31°C",
+"32°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": -6.389086,
+"stake": 6.389086
+},
+"RPLL|2026-08-22": {
+"chosen": [
+"29°C",
+"30°C",
+"31°C",
+"32°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": -2.659422,
+"stake": 5.818951
+},
+"RPLL|2026-08-23": {
+"chosen": [
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": 2.001075,
+"stake": 1.640831
+},
+"RPLL|2026-08-25": {
+"chosen": [
+"28°C",
+"29°C",
+"30°C",
+"31°C",
+"32°C"
+],
+"covered": true,
+"landed": "31°C",
+"offset": 0,
+"pnl": 3.749288,
+"stake": 24.319352
+},
+"RPLL|2026-08-26": {
+"chosen": [
+"29°C",
+"30°C",
+"31°C",
+"32°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": -13.93607,
+"stake": 20.727648
+},
+"SAEZ|2026-08-15": {
+"chosen": [
+"14°C",
+"15°C",
+"16°C"
+],
+"covered": true,
+"landed": "16°C",
+"offset": 0,
+"pnl": -6.515562,
+"stake": 6.515562
+},
+"SAEZ|2026-08-19": {
+"chosen": [
+"17°C",
+"18°C",
+"19°C",
+"20°C or higher"
+],
+"covered": true,
+"landed": "17°C",
+"offset": 0,
+"pnl": 14.073808,
+"stake": 8.668433
+},
+"SAEZ|2026-08-21": {
+"chosen": [
+"12°C",
+"13°C",
+"14°C",
+"15°C"
+],
+"covered": true,
+"landed": "13°C",
+"offset": 0,
+"pnl": 9.20179,
+"stake": 26.253285
+},
+"SAEZ|2026-08-22": {
+"chosen": [
+"15°C",
+"16°C",
+"17°C"
+],
+"covered": false,
+"landed": "14°C",
+"offset": -1,
+"pnl": -2.499688,
+"stake": 2.499688
+},
+"SAEZ|2026-08-26": {
+"chosen": [
+"18°C",
+"19°C",
+"20°C"
+],
+"covered": false,
+"landed": "17°C",
+"offset": -1,
+"pnl": -3.465097,
+"stake": 3.465097
+},
+"SBGR|2026-08-15": {
+"chosen": [
+"23°C",
+"24°C",
+"25°C"
+],
+"covered": false,
+"landed": "22°C",
+"offset": -1,
+"pnl": -3.0,
+"stake": 3.0
+},
+"SBGR|2026-08-16": {
+"chosen": [
+"25°C",
+"26°C",
+"27°C",
+"28°C"
+],
+"covered": true,
+"landed": "27°C",
+"offset": 0,
+"pnl": -3.684839,
+"stake": 3.684839
+},
+"SBGR|2026-08-18": {
+"chosen": [
+"28°C",
+"29°C",
+"30°C"
+],
+"covered": false,
+"landed": "31°C",
+"offset": 1,
+"pnl": -9.399263,
+"stake": 9.399263
+},
+"SBGR|2026-08-19": {
+"chosen": [
+"29°C",
+"30°C",
+"31°C"
+],
+"covered": false,
+"landed": "32°C",
+"offset": 1,
+"pnl": -7.655212,
+"stake": 7.655212
+},
+"SBGR|2026-08-21": {
+"chosen": [
+"26°C",
+"27°C",
+"28°C"
+],
+"covered": false,
+"landed": "25°C",
+"offset": -1,
+"pnl": -5.731283,
+"stake": 5.731283
+},
+"SBGR|2026-08-25": {
+"chosen": [
+"20°C",
+"21°C",
+"22°C",
+"23°C",
+"24°C"
+],
+"covered": false,
+"landed": "19°C",
+"offset": -1,
+"pnl": -24.454173,
+"stake": 24.454173
+},
+"VILK|2026-08-15": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": false,
+"landed": "35°C",
+"offset": 1,
+"pnl": -1.421576,
+"stake": 1.421576
+},
+"VILK|2026-08-19": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": -0.861861,
+"stake": 0.861861
+},
+"VILK|2026-08-20": {
+"chosen": [
+"31°C",
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": true,
+"landed": "33°C",
+"offset": 0,
+"pnl": 0.917383,
+"stake": 6.457478
+},
+"VILK|2026-08-21": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": false,
+"landed": "35°C",
+"offset": 2,
+"pnl": -18.529446,
+"stake": 18.529446
+},
+"VILK|2026-08-22": {
+"chosen": [
+"29°C",
+"30°C",
+"31°C",
+"32°C"
+],
+"covered": true,
+"landed": "31°C",
+"offset": 0,
+"pnl": 19.042959,
+"stake": 23.198229
+},
+"VILK|2026-08-24": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "33°C",
+"offset": 0,
+"pnl": -5.829642,
+"stake": 23.460657
+},
+"VILK|2026-08-25": {
+"chosen": [
+"31°C",
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": false,
+"landed": "30°C",
+"offset": -1,
+"pnl": -5.982666,
+"stake": 5.982666
+},
+"WMKK|2026-08-17": {
+"chosen": [
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": false,
+"landed": "34°C",
+"offset": 1,
+"pnl": -3.093595,
+"stake": 3.093595
+},
+"WMKK|2026-08-20": {
+"chosen": [
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": false,
+"landed": "34°C",
+"offset": 1,
+"pnl": -2.728799,
+"stake": 2.728799
+},
+"WMKK|2026-08-23": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": true,
+"landed": "34°C",
+"offset": 0,
+"pnl": 0.268417,
+"stake": 5.646665
+},
+"WMKK|2026-08-25": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": -8.943788,
+"stake": 8.943788
+},
+"WSSS|2026-08-15": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C"
+],
+"covered": false,
+"landed": "33°C",
+"offset": 1,
+"pnl": -0.592726,
+"stake": 0.592726
+},
+"WSSS|2026-08-22": {
+"chosen": [
+"33°C",
+"34°C",
+"35°C"
+],
+"covered": true,
+"landed": "33°C",
+"offset": 0,
+"pnl": 1.336973,
+"stake": 1.88174
+},
+"WSSS|2026-08-25": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C"
+],
+"covered": false,
+"landed": "33°C",
+"offset": 1,
+"pnl": -2.04515,
+"stake": 2.04515
+},
+"WSSS|2026-08-26": {
+"chosen": [
+"29°C",
+"30°C",
+"31°C"
+],
+"covered": true,
+"landed": "31°C",
+"offset": 0,
+"pnl": 2.315109,
+"stake": 2.033997
+},
+"ZBAA|2026-08-15": {
+"chosen": [
+"31°C",
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": false,
+"landed": "29°C",
+"offset": -2,
+"pnl": -12.0,
+"stake": 12.0
+},
+"ZBAA|2026-08-19": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": 1.394414,
+"stake": 1.799056
+},
+"ZBAA|2026-08-20": {
+"chosen": [
+"29°C",
+"30°C",
+"31°C"
+],
+"covered": false,
+"landed": "32°C",
+"offset": 1,
+"pnl": -10.915196,
+"stake": 10.915196
+},
+"ZBAA|2026-08-22": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C",
+"35°C"
+],
+"covered": false,
+"landed": "30°C",
+"offset": -2,
+"pnl": -5.757249,
+"stake": 5.757249
+},
+"ZBAA|2026-08-23": {
+"chosen": [
+"33°C",
+"34°C",
+"35°C"
+],
+"covered": true,
+"landed": "33°C",
+"offset": 0,
+"pnl": -4.634293,
+"stake": 4.634293
+},
+"ZBAA|2026-08-24": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C"
+],
+"covered": false,
+"landed": "33°C",
+"offset": 1,
+"pnl": -9.379372,
+"stake": 9.379372
+},
+"ZBAA|2026-08-25": {
+"chosen": [
+"29°C",
+"30°C",
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "31°C",
+"offset": 0,
+"pnl": 47.551631,
+"stake": 24.589505
+},
+"ZBAA|2026-08-26": {
+"chosen": [
+"25°C",
+"26°C",
+"27°C",
+"28°C"
+],
+"covered": true,
+"landed": "28°C",
+"offset": 0,
+"pnl": 13.461671,
+"stake": 12.06333
+},
+"ZGGG|2026-08-15": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C",
+"35°C"
+],
+"covered": true,
+"landed": "35°C",
+"offset": 0,
+"pnl": -11.168337,
+"stake": 11.168337
+},
+"ZGGG|2026-08-17": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C",
+"35°C"
+],
+"covered": true,
+"landed": "34°C",
+"offset": 0,
+"pnl": 4.164351,
+"stake": 7.83125
+},
+"ZGGG|2026-08-18": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C",
+"35°C"
+],
+"covered": true,
+"landed": "34°C",
+"offset": 0,
+"pnl": 1.504741,
+"stake": 2.491473
+},
+"ZGGG|2026-08-19": {
+"chosen": [
+"34°C",
+"35°C",
+"36°C"
+],
+"covered": true,
+"landed": "35°C",
+"offset": 0,
+"pnl": 45.568158,
+"stake": 9.766138
+},
+"ZGGG|2026-08-20": {
+"chosen": [
+"33°C",
+"34°C",
+"35°C"
+],
+"covered": true,
+"landed": "35°C",
+"offset": 0,
+"pnl": 0.591644,
+"stake": 2.728799
+},
+"ZGGG|2026-08-21": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C",
+"33°C",
+"34°C",
+"35°C"
+],
+"covered": true,
+"landed": "34°C",
+"offset": 0,
+"pnl": 42.16452,
+"stake": 49.528252
+},
+"ZGGG|2026-08-22": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C",
+"35°C"
+],
+"covered": false,
+"landed": "36°C",
+"offset": 1,
+"pnl": -4.970273,
+"stake": 4.970273
+},
+"ZGGG|2026-08-23": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": true,
+"landed": "33°C",
+"offset": 0,
+"pnl": 17.755382,
+"stake": 8.821632
+},
+"ZGGG|2026-08-24": {
+"chosen": [
+"33°C",
+"34°C",
+"35°C or higher"
+],
+"covered": true,
+"landed": "34°C",
+"offset": 0,
+"pnl": 0.454635,
+"stake": 2.344843
+},
+"ZGGG|2026-08-25": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "33°C",
+"offset": 0,
+"pnl": 5.934946,
+"stake": 4.64186
+},
+"ZGSZ|2026-08-15": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "31°C",
+"offset": 0,
+"pnl": 1.166667,
+"stake": 3.0
+},
+"ZGSZ|2026-08-17": {
+"chosen": [
+"33°C",
+"34°C",
+"35°C"
+],
+"covered": false,
+"landed": "32°C",
+"offset": -1,
+"pnl": -4.529152,
+"stake": 4.529152
+},
+"ZGSZ|2026-08-18": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": 0.338762,
+"stake": 1.538945
+},
+"ZGSZ|2026-08-19": {
+"chosen": [
+"31°C",
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": false,
+"landed": "35°C",
+"offset": 1,
+"pnl": -3.113702,
+"stake": 3.113702
+},
+"ZGSZ|2026-08-20": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C",
+"33°C",
+"34°C",
+"35°C"
+],
+"covered": true,
+"landed": "31°C",
+"offset": 0,
+"pnl": -12.441459,
+"stake": 12.441459
+},
+"ZGSZ|2026-08-21": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "31°C",
+"offset": 0,
+"pnl": 1.509086,
+"stake": 9.3607
+},
+"ZGSZ|2026-08-22": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C",
+"33°C",
+"34°C",
+"35°C or higher"
+],
+"covered": true,
+"landed": "33°C",
+"offset": 0,
+"pnl": 3.833935,
+"stake": 2.317394
+},
+"ZGSZ|2026-08-23": {
+"chosen": [
+"28°C",
+"29°C",
+"30°C",
+"31°C"
+],
+"covered": false,
+"landed": "32°C",
+"offset": 1,
+"pnl": -5.62767,
+"stake": 5.62767
+},
+"ZGSZ|2026-08-25": {
+"chosen": [
+"31°C",
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": -3.339533,
+"stake": 3.339533
+},
+"ZGSZ|2026-08-26": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "31°C",
+"offset": 0,
+"pnl": -1.081694,
+"stake": 21.703195
+},
+"ZHHH|2026-08-17": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": true,
+"landed": "34°C",
+"offset": 0,
+"pnl": -0.709698,
+"stake": 5.411581
+},
+"ZHHH|2026-08-18": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": false,
+"landed": "35°C",
+"offset": 1,
+"pnl": -0.819092,
+"stake": 0.819092
+},
+"ZHHH|2026-08-19": {
+"chosen": [
+"33°C",
+"34°C",
+"35°C"
+],
+"covered": false,
+"landed": "36°C",
+"offset": 1,
+"pnl": -1.96366,
+"stake": 1.96366
+},
+"ZHHH|2026-08-20": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": false,
+"landed": "36°C",
+"offset": 2,
+"pnl": -1.029444,
+"stake": 1.029444
+},
+"ZHHH|2026-08-21": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C",
+"35°C",
+"36°C"
+],
+"covered": true,
+"landed": "35°C",
+"offset": 0,
+"pnl": 1.214625,
+"stake": 8.98074
+},
+"ZHHH|2026-08-23": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": false,
+"landed": "35°C",
+"offset": 1,
+"pnl": -0.221187,
+"stake": 0.221187
+},
+"ZHHH|2026-08-25": {
+"chosen": [
+"35°C",
+"36°C",
+"37°C"
+],
+"covered": true,
+"landed": "37°C",
+"offset": 0,
+"pnl": -0.400141,
+"stake": 6.678747
+},
+"ZSPD|2026-08-17": {
+"chosen": [
+"28°C",
+"29°C",
+"30°C",
+"32°C",
+"33°C"
+],
+"covered": false,
+"landed": "31°C",
+"offset": 0,
+"pnl": -8.990398,
+"stake": 8.990398
+},
+"ZSPD|2026-08-18": {
+"chosen": [
+"29°C",
+"30°C",
+"31°C"
+],
+"covered": true,
+"landed": "31°C",
+"offset": 0,
+"pnl": -9.764747,
+"stake": 9.764747
+},
+"ZSPD|2026-08-20": {
+"chosen": [
+"29°C",
+"30°C",
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": 37.276579,
+"stake": 54.57598
+},
+"ZSPD|2026-08-21": {
+"chosen": [
+"28°C",
+"29°C",
+"30°C",
+"32°C",
+"33°C"
+],
+"covered": false,
+"landed": "31°C",
+"offset": 0,
+"pnl": -8.057284,
+"stake": 8.057284
+},
+"ZSQD|2026-08-18": {
+"chosen": [
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "33°C",
+"offset": 0,
+"pnl": -2.967414,
+"stake": 2.967414
+},
+"ZSQD|2026-08-19": {
+"chosen": [
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "33°C",
+"offset": 0,
+"pnl": 9.611958,
+"stake": 7.958612
+},
+"ZSQD|2026-08-20": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C"
+],
+"covered": true,
+"landed": "30°C",
+"offset": 0,
+"pnl": -3.829935,
+"stake": 9.095997
+},
+"ZSQD|2026-08-22": {
+"chosen": [
+"27°C",
+"28°C",
+"29°C",
+"30°C"
+],
+"covered": false,
+"landed": "31°C",
+"offset": 1,
+"pnl": -17.22299,
+"stake": 17.22299
+},
+"ZSQD|2026-08-23": {
+"chosen": [
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "31°C",
+"offset": 0,
+"pnl": 0.522719,
+"stake": 3.137527
+},
+"ZSQD|2026-08-25": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": -2.24608,
+"stake": 2.24608
+},
+"ZSQD|2026-08-26": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": 7.436538,
+"stake": 15.786861
+},
+"ZUCK|2026-08-18": {
+"chosen": [
+"34°C",
+"35°C",
+"36°C",
+"37°C"
+],
+"covered": true,
+"landed": "34°C",
+"offset": 0,
+"pnl": -4.171278,
+"stake": 4.171278
+},
+"ZUCK|2026-08-19": {
+"chosen": [
+"31°C",
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": false,
+"landed": "29°C",
+"offset": -2,
+"pnl": -0.790176,
+"stake": 0.790176
+},
+"ZUCK|2026-08-20": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C"
+],
+"covered": true,
+"landed": "33°C",
+"offset": 0,
+"pnl": 0.356454,
+"stake": 3.326067
+},
+"ZUCK|2026-08-21": {
+"chosen": [
+"33°C",
+"34°C",
+"35°C"
+],
+"covered": true,
+"landed": "34°C",
+"offset": 0,
+"pnl": -6.732993,
+"stake": 10.009253
+},
+"ZUCK|2026-08-22": {
+"chosen": [
+"35°C",
+"36°C",
+"37°C",
+"38°C or higher"
+],
+"covered": true,
+"landed": "38°C or higher",
+"offset": 0,
+"pnl": 2.459231,
+"stake": 2.499688
+},
+"ZUCK|2026-08-23": {
+"chosen": [
+"36°C",
+"37°C",
+"38°C or higher"
+],
+"covered": true,
+"landed": "37°C",
+"offset": 0,
+"pnl": 0.377473,
+"stake": 1.014389
+},
+"ZUCK|2026-08-25": {
+"chosen": [
+"33°C",
+"34°C",
+"35°C",
+"36°C",
+"37°C"
+],
+"covered": false,
+"landed": "38°C",
+"offset": 1,
+"pnl": -41.299763,
+"stake": 41.299763
+},
+"ZUCK|2026-08-26": {
+"chosen": [
+"35°C",
+"36°C",
+"37°C",
+"38°C"
+],
+"covered": true,
+"landed": "38°C",
+"offset": 0,
+"pnl": -4.860825,
+"stake": 4.860825
+},
+"ZUUU|2026-08-16": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C",
+"35°C or higher"
+],
+"covered": false,
+"landed": "30°C",
+"offset": -2,
+"pnl": -7.259961,
+"stake": 7.259961
+},
+"ZUUU|2026-08-19": {
+"chosen": [
+"25°C",
+"26°C",
+"27°C"
+],
+"covered": false,
+"landed": "29°C",
+"offset": 2,
+"pnl": -1.402444,
+"stake": 1.402444
+},
+"ZUUU|2026-08-20": {
+"chosen": [
+"28°C",
+"29°C",
+"30°C",
+"31°C"
+],
+"covered": true,
+"landed": "31°C",
+"offset": 0,
+"pnl": 0.935349,
+"stake": 4.044647
+},
+"ZUUU|2026-08-21": {
+"chosen": [
+"29°C",
+"30°C",
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": -4.492673,
+"stake": 9.85035
+},
+"ZUUU|2026-08-22": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": -0.359763,
+"stake": 0.359763
+},
+"ZUUU|2026-08-23": {
+"chosen": [
+"30°C",
+"31°C",
+"32°C",
+"33°C"
+],
+"covered": true,
+"landed": "32°C",
+"offset": 0,
+"pnl": -3.582421,
+"stake": 3.582421
+},
+"ZUUU|2026-08-24": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C",
+"35°C",
+"36°C"
+],
+"covered": false,
+"landed": "37°C",
+"offset": 1,
+"pnl": -30.295281,
+"stake": 30.295281
+},
+"ZUUU|2026-08-25": {
+"chosen": [
+"33°C",
+"34°C",
+"35°C",
+"36°C"
+],
+"covered": true,
+"landed": "36°C",
+"offset": 0,
+"pnl": 3.155385,
+"stake": 5.083865
+},
+"ZUUU|2026-08-26": {
+"chosen": [
+"32°C",
+"33°C",
+"34°C",
+"35°C"
+],
+"covered": false,
+"landed": "36°C",
+"offset": 1,
+"pnl": -21.361057,
+"stake": 21.361057
+}
+}

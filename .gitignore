@@ -36,3 +36,11 @@ logs/
 # ignored canonical_contract.json snapshots under here -- ignoring the whole
 # directory subsumes it.)
 output/audits/
+
+# Analysis caches and oversized rendered artifacts (2026-08-29).  tmp/ is a
+# tracked directory -- probes belong in history -- but a 1.0GB pickle cache
+# and multi-megabyte rendered HTML are not source: GitHub rejects the push
+# outright, and the tree is 27GB of database already.
+tmp/*.pkl
+tmp/cal_dashboard_preview.html
+tmp/h1_night_ceiling_rows.json
