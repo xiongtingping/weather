@@ -1189,7 +1189,11 @@ def test_consolidation_is_an_annotation_and_measures_what_it_says() -> None:
         encoding="utf-8"
     )
     assert 'if stage == "P0":\n                        seat_consolidation' in source
-    assert source.count('["count"]\n') == 1, "count has a second consumer"
+    # Since 2026-08-28 (commit 10395c56) the tilt reads the named lights,
+    # not the three-light count; ``count`` is written on the row and read
+    # by nothing.  Zero consumers, not one, is now the annotation contract.
+    assert source.count('["count"]') == 0, "count grew a consumer"
+    assert 'if seat_consolidation.get(name) is True' in source
     assert "CONSOLIDATION_TILT_MIN_SIGNALS" in source
     assert "consolidation_json" in source
 
@@ -1251,13 +1255,22 @@ def test_the_selection_discount_shades_the_gate_and_only_the_gate() -> None:
 def test_the_consolidation_tilt_scales_stakes_and_never_selects() -> None:
     """Less money where the certainty premium eats the edge; same trades.
 
-    Chains opened with two or more consolidation signs on returned -41.6%
-    (ex-best -46.0%, ex-top-two -50.1%, both temporal halves negative)
-    while the 0-1 stratum held +24.0% after removing its best win.  A gate
-    on that split would change the population it was measured on -- the
-    shading replay demonstrated exactly that failure at -54% -- so the
-    ruling is a stake scale: the opener's entry signals set the chain's
-    allowance factor, the whole chain inherits it, and it can only shrink.
+    The rule as re-ruled on 2026-08-28 (commits 4c8224be, 66ce4ac2): the
+    tilt counts the two lights that discriminate -- ``stable`` and
+    ``sharp`` -- fires at one of them, and cuts the allowance to a tenth.
+    ``quoted`` left the tilt: it never separated winners from losers.
+
+    Re-measured on the 2026-08-29 charter-66 book (301 settled chains),
+    strata by lit count at the opener are monotone: 0 lights +5.6% (65%
+    hit, 110 chains), 1 light -14.8% (167), 2 lights -47.8% (24).  The
+    earlier ruling's boundary (fire at >= 2, cut to a quarter) pooled the
+    +5.6% and -14.8% strata into one "healthy" band -- the split it was
+    measured on was coarser than the phenomenon.  The permutation test on
+    the 0-versus-rest split is p=0.14 on this sample, so the boundary is
+    held by the ruling and its commit-time measurement, not by this book
+    alone -- and this book's stakes are themselves shaped by the tilt, so
+    its strata ROI are partly endogenous.  What this test pins is the
+    RULE: reduce-only, opener-frozen, never selecting.
     """
 
     import sys
@@ -1269,32 +1282,38 @@ def test_the_consolidation_tilt_scales_stakes_and_never_selects() -> None:
     from paper_trading_ledger import (  # noqa: PLC0415
         CONSOLIDATION_TILT_FACTOR,
         CONSOLIDATION_TILT_MIN_SIGNALS,
+        CONSOLIDATION_TILT_SIGNALS,
         SELECTION_RULE_LABEL,
     )
 
-    # On by default, reduce-only, at the measured boundary.
-    assert CONSOLIDATION_TILT_MIN_SIGNALS == 2
+    # On by default, reduce-only, at the re-ruled boundary: one of the two
+    # discriminating lights fires it, and it cuts to a tenth.
+    assert CONSOLIDATION_TILT_MIN_SIGNALS == 1
     assert 0.0 < CONSOLIDATION_TILT_FACTOR < 1.0
-    assert CONSOLIDATION_TILT_FACTOR == 0.25
+    assert CONSOLIDATION_TILT_FACTOR == 0.1
+    assert CONSOLIDATION_TILT_SIGNALS == ("stable", "sharp")
     # It reshapes the book, so it must reshape the fingerprint.
-    assert "固化≥2减仓0.25" in SELECTION_RULE_LABEL
+    assert "固化≥1减仓0.1" in SELECTION_RULE_LABEL
+    assert "灯stable+sharp" in SELECTION_RULE_LABEL
+    # The tilted stake floors at one minimum clip per leg, or the cut
+    # becomes a gate the venue enforces (commit e4dac184).
+    assert "钳最低单" in SELECTION_RULE_LABEL
 
     source = (root / "scripts" / "paper_trading_ledger.py").read_text(
         encoding="utf-8"
     )
     # The factor can only ever shrink an allowance: clamped at parse...
     assert "CONSOLIDATION_TILT_FACTOR = min(1.0, float(" in source
-    # ...applied inside the stage allowance...
-    assert (
-        "* STAGE_BUDGET_SHARE.get(stage, 1.0)\n"
-        "                        * tilt" in source
-    )
+    # ...applied to the stage allowance...
+    assert "stage_room = stage_budget * tilt - chain_stake" in source
     # ...frozen for the chain by its opener, inherited by later stages.
     assert "chain_tilt = tilt" in source
     assert "tilt = chain_tilt" in source
-    # And it never appears in a refusal decision: the only reads of the
-    # signal count are the tilt choice and the recorded row.
-    assert source.count('seat_consolidation["count"]') == 1
+    # The tilt reads the NAMED lights, and the recorded ``count`` has no
+    # consumer at all any more -- it is annotation, full stop.  A second
+    # reader of either is how the annotation became a selector last time.
+    assert source.count('["count"]') == 0
+    assert 'if seat_consolidation.get(name) is True' in source
 
 
 def test_new_artifacts_name_the_seat_rule_that_actually_ran() -> None:
