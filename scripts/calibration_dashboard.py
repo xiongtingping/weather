@@ -5197,6 +5197,84 @@ function windowDivergence(){
 
 
 
+function consolidation(){
+  const S=D.selection||{};
+  const cons=(S.consolidation_lights||{});
+  if(!cons.available) return "";
+  const consRule=cons.rule||{};
+  const LAMP={stable:"稳",sharp:"尖"};
+  const LAMPDEF={stable:"中心稳：中心桶连续 3 次未变",
+    sharp:"分布尖：头两桶质量 ≥60%"};
+  const lamp=(on)=>on?`<span class="down">●</span>`:`<span class="muted">○</span>`;
+  const fmtRoi=(v)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(1)+"%");
+  const roiTd=(v)=>`<td class="mono ${v==null?"":(v>=0?"up":"down")}">${fmtRoi(v)}</td>`;
+  const statTds=(r)=>`
+      <td class="mono">${r.chains}</td>
+      <td class="mono">${r.chains?((100*r.hit_chains/r.chains).toFixed(0)+"%"):"—"}</td>
+      <td class="mono">${r.staked.toFixed(0)}</td>
+      <td class="mono ${r.pnl>=0?"up":"down"}">${r.pnl>=0?"+":""}${r.pnl.toFixed(1)}</td>
+      ${roiTd(r.roi)}${roiTd(r.roi_ex_best)}${roiTd(r.roi_ex_best2)}`;
+  const comboRows=(cons.combos||[]).filter(r=>r.chains>0)
+    .sort((a,b)=>a.count-b.count||b.chains-a.chains).map(r=>`<tr>
+      <td class="mono">${lamp(r.stable)}${lamp(r.sharp)}
+        <span class="muted">${["stable","sharp"]
+          .filter(k=>r[k]).map(k=>LAMP[k]).join("")||"全灭"}</span></td>
+      <td class="mono">${r.tilted
+        ?`<span class="pill amber">×${consRule.factor}</span>`:"满仓"}</td>
+      ${statTds(r)}
+    </tr>`).join("");
+  const countRows=(cons.counts||[]).map(r=>`<tr>
+      <td class="mono">${r.count} 盏${r.count>=(consRule.min_signals||2)
+        ?` <span class="pill amber">×${consRule.factor}</span>`:""}</td>
+      <td></td>${statTds(r)}
+    </tr>`).join("");
+  const singleRows=(cons.singles||[]).map(r=>`<tr>
+      <td>${h(LAMPDEF[r.signal]||r.signal)}</td>
+      <td class="mono ${r.lit?"down":"up"}">${r.lit?"亮":"灭"}</td>
+      ${statTds(r)}
+    </tr>`).join("");
+  const openChips=(cons.open_chains||[]).map(c=>{
+    const f=c.flags;
+    return `<span class="mono" style="margin-right:14px;white-space:nowrap">
+      ${h(c.event_date)} ${h(c.station)} ${f
+        ?lamp(f.stable)+lamp(f.sharp)
+        :'<span class="muted">无灯</span>'} ${c.stake.toFixed(0)}u</span>`;
+  }).join("");
+  const consHead=`<tr><th></th><th>注码</th><th>链</th><th>命中链</th>
+      <th>投入</th><th>pnl</th><th>ROI</th><th>去最大赢</th><th>去前两赢</th></tr>`;
+  return `<h2>固化减仓：两盏灯的账</h2>
+  <p class="sub">驱动固化减仓的两盏模型灯，P0 开链定档、全链继承。
+  原与挂单执行同节；挂单显示退役后（2026-08-29）自立门户，规则本身没动。</p>
+  <div class="card">
+    <div class="why" style="margin-top:8px"><b>入场那一刻记两盏模型灯，
+    量的是"当天的答案定型了没有"：</b>
+    ${Object.values(LAMPDEF).join("；")}。
+    灯亮=市场的定价功课做完了，此时还剩的价差多半是别人知道我们不知道的事。
+    <b>现行规则（2026-08-28 裁定）：任一盏亮，
+    整链注码 ×${consRule.factor??0.1}</b>——只在开仓时少买，
+    永不拒入场、永不卖出、永不撤单（改成门会自反，折扣门 −54% 判例）。<br>
+    <b>第三盏灯「报满价」已退役（2026-08-28）：</b>它几乎天天亮，
+    说的是"有没有盘口"而非"市场多确定"，不再计数也不再显示；
+    原始记录仍逐链落盘。层薄的格子以"去前两赢"为准，
+    符号靠最大一两条链撑住的读数是彩票不是发现。灯取 <b>P0 开链那一刻</b>的读数，
+    链级合计（P0+P0-M+P1 同链同档）。</div>
+    <table style="margin-top:8px"><thead>${consHead}</thead>
+    <tbody>${comboRows}</tbody></table>
+    <div class="muted" style="margin-top:10px">按亮灯数</div>
+    <table style="margin-top:4px"><thead>${consHead}</thead>
+    <tbody>${countRows}</tbody></table>
+    <div class="muted" style="margin-top:10px">单灯切分</div>
+    <table style="margin-top:4px"><thead><tr><th>灯</th><th>状态</th>
+      <th>链</th><th>命中链</th><th>投入</th><th>pnl</th>
+      <th>ROI</th><th>去最大赢</th><th>去前两赢</th></tr></thead>
+    <tbody>${singleRows}</tbody></table>
+    ${openChips?`<div class="muted" style="margin-top:10px">
+      在场链的灯（未结算，稳·尖）</div>
+    <div style="margin-top:4px;line-height:2">${openChips}</div>`:""}
+  </div>`;
+}
+
+
 function gaps(){
   if(!D.gaps.length) return `<h2>十七、数据缺口</h2>
     <div class="card"><span class="dot green"></span> 当前没有发现缺口。</div>`;
@@ -6591,7 +6669,7 @@ const GROUPS = [
    sections:[[liveReadiness,"Live 上线准备"],
      [coverage,"覆盖"],[stationSummary,"站汇总"],
      [anomalies,"异常"],[basketHit,"篮子命中率"],
-     [refusalStats,"未建仓原因"],
+     [consolidation,"固化减仓"],[refusalStats,"未建仓原因"],
      [windowDivergence,"分布与持仓分家"],[truthLanding,"真值落位"],
      [edgeBandHealth,"声称边际体温计"]]},
   {id:"data", label:"数据与链路", note:"十六～十九节：链路每一环、数据缺口、真值物化、区域模型采集道",
