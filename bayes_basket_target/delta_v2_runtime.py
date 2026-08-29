@@ -1003,6 +1003,42 @@ def _alternate_ladder_center(
     )
 
 
+# Charter 66 clause A (user ruling, 2026-08-29): once a station holds
+# inventory, a stage may only buy if the CHAIN it would leave behind still
+# prices under par.  Blended cost is the same expectation-equivalent share
+# arithmetic the paper ledger settles on; at or past 1.00 no outcome
+# returns the stake -- the class the ledger measured at 37 hits in 38
+# chains and -31.9 USDC, every one of them assembled from stages that each
+# passed their own gates.  The gate reads the *undeflated* served claim:
+# it is an arithmetic honesty bound, not a preference, and deflating the
+# claim would only make it stricter in the direction it already errs.
+CHAIN_COST_PAR_BOUND = 1.0
+
+
+def _chain_blended_cost(
+    *,
+    shares_by_bucket: Mapping[str, float],
+    cost_total: float,
+    probabilities: Mapping[str, float],
+) -> float | None:
+    """The post-trade chain's cost per unit of expected payout, or None."""
+
+    win = sum(
+        float(probabilities.get(bucket, 0.0))
+        for bucket, quantity in shares_by_bucket.items()
+        if float(quantity) > EPS
+    )
+    if win <= EPS:
+        return None
+    expected = sum(
+        float(probabilities.get(bucket, 0.0)) * float(quantity)
+        for bucket, quantity in shares_by_bucket.items()
+    )
+    if expected / win <= EPS:
+        return None
+    return float(cost_total) / (expected / win)
+
+
 def _support_windows(
     *,
     snapshot: TargetBasketSnapshot,
@@ -1855,6 +1891,56 @@ def _solve_over_support_windows(
                 "reason": f"ContractError:{exc}",
             })
             continue
+        # Charter 66 clause A.  Binds only when the plan spends new money
+        # on a station that already holds -- a HOLD (target == inventory)
+        # is never refused here, and an opening stage has no chain to
+        # protect.  Buckets the window cannot touch still pay and still
+        # cost, so they join the arithmetic before the division.
+        target_shares = {
+            str(bucket): float(quantity)
+            for bucket, quantity in (
+                solution.get("target_shares_by_bucket") or {}
+            ).items()
+        }
+        target_cost = {
+            str(bucket): float(value)
+            for bucket, value in (
+                solution.get("target_cost_by_bucket") or {}
+            ).items()
+        }
+        inventory_cost = 0.0
+        holds_anything = False
+        for bucket_row in snapshot.buckets:
+            inventory = (
+                float(bucket_row.filled_shares)
+                + float(bucket_row.pending_shares)
+            )
+            sunk_here = (
+                float(bucket_row.filled_cost_usdc)
+                + float(bucket_row.pending_notional_usdc)
+            )
+            inventory_cost += sunk_here
+            if inventory > EPS:
+                holds_anything = True
+                if bucket_row.bucket not in target_shares:
+                    target_shares[bucket_row.bucket] = inventory
+                    target_cost[bucket_row.bucket] = sunk_here
+        planned_total = sum(target_cost.values())
+        if holds_anything and planned_total > inventory_cost + EPS:
+            chain_cost = _chain_blended_cost(
+                shares_by_bucket=target_shares,
+                cost_total=planned_total,
+                probabilities=probabilities,
+            )
+            if chain_cost is None or chain_cost >= CHAIN_COST_PAR_BOUND:
+                failures.append({
+                    "buckets": list(window),
+                    "reason": "chain_cost_at_par:%s" % (
+                        "%.4f" % chain_cost
+                        if chain_cost is not None else "no_expected_payout"
+                    ),
+                })
+                continue
         score = (
             solution["target_curve_score"]
             if objective_form == CURVE_OBJECTIVE_FORM

@@ -244,6 +244,9 @@ def test_the_scope_stake_cap_is_the_kernels_on_both_sides() -> None:
 # to import.  Weaker than an import, so each is pinned by an assertion above
 # or below rather than by construction.
 SHARED_WITH_PRODUCTION = {
+    # Charter 66 clause A: the same par bound is spelled in
+    # delta_v2_runtime, asserted identical by the charter-66 binding test.
+    "CHAIN_COST_PAR_BOUND",
     "CERTAINTY_GATE", "FEE_RATE", "KELLY_FRACTION",
     "MAKER_RESTING_IMPROVE_TICKS", "MAKER_RESTING_LADDER_STEPS",
     "MAKER_RESTING_SHOULDER_LAMBDA", "MAKER_RESTING_VALUE_LAMBDA",
@@ -253,6 +256,10 @@ SHARED_WITH_PRODUCTION = {
 
 # This lane's own, with the reason it has no production counterpart.
 LEDGER_ONLY = {
+    # Charter 66 replay arms: the bankroll frame and the miss-mass floor a
+    # replay may vary; production's frame is its own capital plumbing.
+    "CHAIN_TOPUP_BANKROLL_USDC": "replay arm; 0 = scope allowance",
+    "CHAIN_TOPUP_MISS_FLOOR": "replay arm; off by default",
     # A replay simulates fills; production observes them.
     "MAKER_FILL_MODEL": "fill simulation, production reads real fills",
     "MAKER_RESTING_HORIZON_MINUTES": "how long a simulated order rests",

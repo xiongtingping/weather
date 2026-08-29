@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sqlite3
 import sys
@@ -123,6 +124,35 @@ INITIAL_CAPITAL_USDC = 1000.0
 # than written again here: it is the same quarter production's curve score
 # uses, and two copies of one number is how they stop being one number.
 KELLY_FRACTION = DEFAULT_KELLY_FRACTION
+# Charter 66 (user ruling, 2026-08-29): a top-up is sized and admitted on
+# the CHAIN, not on itself.  Stage-level positive EV built 38 chains whose
+# blended cost crossed 1.0 -- guaranteed losses that hit 37 times out of 38
+# and still returned -31.9 USDC -- because each leg passed its own gate and
+# nobody priced the whole book they were building.  Two clauses:
+#
+#   A. the chain's blended cost after the buy must stay under par.  This
+#      gate does not read the model's claim at all: at or above 1.0 no
+#      outcome returns the stake, which is arithmetic, and it is the only
+#      clause that survives the claim being wrong (these chains claimed
+#      ~0.99 and realized 0.974).
+#   B. the buy must raise the chain's expected log growth from here --
+#      sunk cost excluded, the held payout curve as the initial condition.
+#      Sized by the same solver production's generator uses, so the two
+#      lanes cannot drift: the log-optimal *increment* from inventory,
+#      which is zero exactly when the chain's curve cannot be improved.
+#
+# The bankroll the top-up curve is shaped against is the scope's own risk
+# capital (the per-scope fraction of the book's equity), overridable for
+# replay arms; the chain's spend rides inside it as sunk, per the solver's
+# contract.  A miss-mass floor is carried as a replay arm and off by
+# default: gate A already caps what a wrong near-1 claim can cost.
+CHAIN_TOPUP_BANKROLL_USDC = float(
+    os.environ.get("PAPER_LEDGER_TOPUP_BANKROLL", "") or 0.0
+)  # 0 = the scope's own allowance, equity * MAX_STAKE_FRACTION_PER_SCOPE
+CHAIN_TOPUP_MISS_FLOOR = float(
+    os.environ.get("PAPER_LEDGER_TOPUP_MISS_FLOOR", "") or 0.0
+)
+CHAIN_COST_PAR_BOUND = 1.0
 # The per-scope cap and the per-stage shares both live in the kernel now
 # (user ruling, 2026-08-26): production read a flat 30 USDC per station while
 # this book read 2% of its own equity, so the same station-day was sized two
@@ -364,6 +394,13 @@ REFUSAL_DEPTH = {
     # is reported turns on whether we cancelled it or the book never came.
     "resting_unfilled": 8,
     "belief_withdrew_order": 8,
+    # One layer, the deepest judgement a top-up can receive: the buy was
+    # fully sized, walked against the book, and refused by chain law --
+    # charter 66's growth clause or its par clause.  Deeper than the layers
+    # above because everything was known when it was refused; which of the
+    # two is reported turns on which clause fired.
+    "no_chain_growth": 8,
+    "chain_cost_at_par": 8,
     "chain_never_opened": 9,
 }
 # Which bucket-selection rule this sweep runs.  ``live`` is production's own
@@ -1071,6 +1108,16 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
         "probability_mass", "probability_mass"
     ),
     "整篮EV",
+    # Charter 66: the two chain-level clauses every top-up answers to.
+    # Always on, so always in the label -- a book compiled without them is
+    # a different strategy and must not read as comparable.
+    "加仓链增益>0·链本<%g" % CHAIN_COST_PAR_BOUND,
+    None
+    if CHAIN_TOPUP_MISS_FLOOR <= 0
+    else "加仓漏桶地板%g" % CHAIN_TOPUP_MISS_FLOOR,
+    None
+    if CHAIN_TOPUP_BANKROLL_USDC <= 0
+    else "加仓本金%g" % CHAIN_TOPUP_BANKROLL_USDC,
     "中心底仓",
     f"腿≥{MINIMUM_LEG_ALL_IN_ASK:g}",
     None if WINDOW_STRATEGY == "live" else WINDOW_STRATEGY,
@@ -1200,6 +1247,14 @@ SELECTION_RULE_SHA256 = content_sha256({
     # how a "verification" ended up reading the numbers it was meant to
     # check.
     "cost_basis": "expected_payout_equivalent_shares",
+    # Charter 66: how a top-up is sized and what it must clear.  Both are
+    # rules about what the ledger records, so both travel in the identity.
+    "chain_topup_sizing": "tilt_delta_gated_by_chain_growth_and_par_v2",
+    "chain_cost_par_bound": CHAIN_COST_PAR_BOUND,
+    "chain_topup_bankroll": (
+        CHAIN_TOPUP_BANKROLL_USDC or "scope_allowance"
+    ),
+    "chain_topup_miss_floor": CHAIN_TOPUP_MISS_FLOOR,
     "window_strategy": WINDOW_STRATEGY,
     "execution_mode": EXECUTION_MODE,
     # Which price the Kelly stake and the payout test are struck against.
@@ -1484,6 +1539,18 @@ REFUSAL_REASONS = (
     # A later stage whose station-day never opened.  Only P0 opens a
     # position; a top-up with nothing to top up is not a position of its own.
     "chain_never_opened",
+    # Charter 66 clause B: the log-optimal increment from the chain's own
+    # held curve is zero -- either the window is already covered, or every
+    # buyable rung is priced past what it adds to the curve.  Distinct from
+    # ``no_top_up_needed`` (the old want-minus-held reading) in that the
+    # judge is the chain's growth, not the stage's shopping list.
+    "no_chain_growth",
+    # Charter 66 clause A: the buy would put the whole chain's blended cost
+    # at or past 1.00 -- a position that loses even when it wins.  Named
+    # separately from ``cost_exceeds_payout`` because that one is a single
+    # basket's price and this one is the book the chain has been building;
+    # the stage's own basket usually passes every stage-level gate.
+    "chain_cost_at_par",
 )
 # Which refusal each gate of the enumeration funnel is.  Keyed by the gate
 # names ``_support_windows`` publishes, so adding a gate there without a
@@ -4267,6 +4334,97 @@ def _progressive_entry(
     return kept_buckets, kept_shares, stake, win_probability, kept_stake
 
 
+def _chain_cost_after_topup(
+    *,
+    held_after: Mapping[str, float],
+    probabilities: Mapping[str, float],
+    total_stake: float,
+) -> float | None:
+    """Charter 66 clause A's number: the chain's blended cost after a buy.
+
+    The same expectation-equivalent share count the settlement rows carry
+    (``cost_basis`` in the rule fingerprint), computed on the whole chain --
+    every bucket it would hold after the buy, under the stage's served
+    probabilities, against every USDC it would then have spent.  At or past
+    1.00 no outcome returns the stake: the chain loses even when it wins,
+    which is the class measured at 37 hits in 38 chains and -31.9 USDC.
+
+    ``None`` when the claim carries no mass on any held bucket -- there is
+    no expected payout to divide by, and a chain like that is refused for
+    the same reason a division by zero is.
+    """
+
+    win = sum(
+        float(probabilities.get(bucket, 0.0))
+        for bucket, quantity in held_after.items()
+        if quantity > 0.0
+    )
+    if win <= 1e-9:
+        return None
+    expected = sum(
+        float(probabilities.get(bucket, 0.0)) * float(quantity)
+        for bucket, quantity in held_after.items()
+    )
+    if expected / win <= 1e-12:
+        return None
+    return float(total_stake) / (expected / win)
+
+
+def _chain_topup_growth(
+    *,
+    held: Mapping[str, float],
+    bought: Mapping[str, float],
+    probabilities: Mapping[str, float],
+    spend: float,
+    bankroll: float,
+) -> float:
+    """Charter 66 clause B's number: what the buy does to expected log wealth.
+
+    From here, not from flat: the chain's held payout curve is the initial
+    condition and its past spend is sunk.  The frame is the scope's own risk
+    capital; a buy that consumes the whole frame is minus infinity by
+    construction, which is the right answer for a log bettor.
+
+    Deliberately a *gate* on the sizing production's tilt rule proposes, not
+    a sizer of its own: the full log-optimal increment was tried on the
+    2026-08-29 rebuild and bought its way from -3.3%% to -18.1%% ROI --
+    claimed edge, sized to the claim, on a model measured 0.47 buckets
+    worse than the market.  The tilt delta stays the size; this only asks
+    whether that buy improves the chain's curve at all.
+    """
+
+    frame = float(bankroll)
+    cost = float(spend)
+    if frame <= 0.0 or frame - cost <= 1e-9:
+        return float("-inf")
+    buckets = set(held) | set(bought)
+    mass_in = sum(
+        float(probabilities.get(bucket, 0.0)) for bucket in buckets
+    )
+    # Replay arm, off by default: reserve at least this much mass for
+    # "none of ours settles", deflating the in-mass proportionally.  The
+    # near-1 claims are the ones this gate is most exposed to being wrong
+    # about (the par class claimed ~0.99 and realized 0.974).
+    deflate = 1.0
+    if CHAIN_TOPUP_MISS_FLOOR > 0.0 and mass_in > 1.0 - CHAIN_TOPUP_MISS_FLOOR:
+        deflate = (1.0 - CHAIN_TOPUP_MISS_FLOOR) / mass_in
+        mass_in *= deflate
+    p_out = max(0.0, 1.0 - mass_in)
+    growth = p_out * (math.log(frame - cost) - math.log(frame))
+    for bucket in buckets:
+        mass = float(probabilities.get(bucket, 0.0)) * deflate
+        if mass <= 0.0:
+            continue
+        before = frame + float(held.get(bucket, 0.0))
+        after = (
+            frame - cost
+            + float(held.get(bucket, 0.0))
+            + float(bought.get(bucket, 0.0))
+        )
+        growth += mass * (math.log(after) - math.log(before))
+    return growth
+
+
 def _kelly_stake(
     *, win_probability: float, cost: float, equity: float
 ) -> tuple[float, float]:
@@ -5760,9 +5918,78 @@ def backfill(
                                 cycles, payload["decision_at_utc"],
                             ))
                             continue
+                        spend *= 1.0 + FEE_RATE
+                        # Charter 66 (user ruling, 2026-08-29).  The tilt
+                        # delta above stays the size -- the log-optimal
+                        # increment was tried as the sizer on the 08-29
+                        # rebuild and bought the book from -3.3% to -18.1%
+                        # -- but it buys only if it clears two chain-level
+                        # clauses.  B first: does this buy improve the
+                        # chain's expected log growth from here?  Then A:
+                        # is the chain it leaves behind still priced under
+                        # par?  A does not read the claim at all, which is
+                        # why B cannot replace it.
+                        bought_by_bucket = {
+                            bucket: quantity
+                            for bucket, quantity in zip(
+                                seat["buckets"], topped
+                            )
+                            if quantity > 0.0
+                        }
+                        growth_frame = CHAIN_TOPUP_BANKROLL_USDC or (
+                            equity_at_open * MAX_STAKE_FRACTION_PER_SCOPE
+                        )
+                        growth = _chain_topup_growth(
+                            held=held,
+                            bought=bought_by_bucket,
+                            probabilities=probabilities,
+                            spend=spend,
+                            bankroll=growth_frame,
+                        )
+                        if not growth > 0.0:
+                            refusal = _deeper_refusal(refusal, (
+                                "no_chain_growth",
+                                "目标篮 %s · 本笔 %.2f 不改善整链对数增长"
+                                "（ΔG=%.4f ≤ 0）· 本链已投 %.2f" % (
+                                    "+".join(seat["buckets"]), spend,
+                                    growth if math.isfinite(growth)
+                                    else float("nan"),
+                                    chain_stake,
+                                ),
+                                cycles, payload["decision_at_utc"],
+                            ))
+                            continue
+                        held_after = dict(held)
+                        for bucket, quantity in bought_by_bucket.items():
+                            held_after[bucket] = (
+                                held_after.get(bucket, 0.0) + quantity
+                            )
+                        chain_cost_after = _chain_cost_after_topup(
+                            held_after=held_after,
+                            probabilities=probabilities,
+                            total_stake=chain_stake + spend,
+                        )
+                        if (
+                            chain_cost_after is None
+                            or chain_cost_after >= CHAIN_COST_PAR_BOUND
+                        ):
+                            refusal = _deeper_refusal(refusal, (
+                                "chain_cost_at_par",
+                                "买入后整链混合成本 %s ≥ %.2f"
+                                " · 本链已投 %.2f · 本笔 %.2f"
+                                "（链层必亏，本阶段自身成本 %.3f 无关）" % (
+                                    "%.3f" % chain_cost_after
+                                    if chain_cost_after is not None
+                                    else "∞",
+                                    CHAIN_COST_PAR_BOUND,
+                                    chain_stake, spend, seat_cost,
+                                ),
+                                cycles, payload["decision_at_utc"],
+                            ))
+                            continue
                         leg_shares = topped
                         leg_cash = topped_cash
-                        stake = spend * (1.0 + FEE_RATE)
+                        stake = spend
                     # The order as posted, leg by leg, kept beside the one
                     # that came back.  Progressive entry overwrites
                     # ``leg_shares`` and ``stake`` with the filled part a

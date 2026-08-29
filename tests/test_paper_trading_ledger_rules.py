@@ -1747,3 +1747,155 @@ def test_the_page_prices_a_leg_and_says_when_it_only_derived_it() -> None:
     assert "<th title=\"该腿的资金成本" in page
     assert "const approx=e.leg_cash_derived;" in page
     assert "leg_cash_shortfall_usdc" in page
+
+
+def test_charter_66_a_topup_answers_to_the_chain_not_to_itself() -> None:
+    """Charter 66 (user ruling, 2026-08-29): two chain-level gates.
+
+    Stage-level positive EV assembled 38 chains whose blended cost crossed
+    1.0 -- they hit 37 times out of 38 and still returned -31.9 USDC.
+    EFHK 2026-08-24 is the canonical case: P0 held 19/20/21 for 11.05, P1
+    then bought 18C at 0.997 against a 0.999 claim.  Under the claim the
+    buy is rational insurance (clause B's growth is positive), and the
+    chain it builds loses even when it wins (clause A refuses it) -- which
+    is why both clauses exist and neither implies the other.
+
+    The clauses are GATES on the tilt-delta size, not a sizer: the full
+    log-optimal increment was tried as the sizer on the 2026-08-29 rebuild
+    and bought the book from -3.3% to -18.1% ROI.
+    """
+
+    import math
+    import sys
+    import pytest
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    from paper_trading_ledger import (  # noqa: PLC0415
+        CHAIN_COST_PAR_BOUND,
+        REFUSAL_REASONS,
+        SELECTION_RULE_LABEL,
+        _chain_cost_after_topup,
+        _chain_topup_growth,
+    )
+
+    assert CHAIN_COST_PAR_BOUND == 1.0
+    assert "chain_cost_at_par" in REFUSAL_REASONS
+    assert "no_chain_growth" in REFUSAL_REASONS
+    # The clauses ride in the label, so a book compiled without them can
+    # never read as comparable to one compiled with them.
+    assert "加仓链增益>0" in SELECTION_RULE_LABEL
+    assert "链本<1" in SELECTION_RULE_LABEL
+
+    held = {"19C": 14.64, "20C": 29.28, "21C": 20.08}
+    claim = {"18C": 0.999, "19C": 0.0004, "20C": 0.0003, "21C": 0.0003}
+    # Clause B, fed the claim, admits the insurance buy (tiny but positive).
+    growth = _chain_topup_growth(
+        held=held, bought={"18C": 7.39}, probabilities=claim,
+        spend=7.37, bankroll=20.0,
+    )
+    assert growth > 0.0
+    # Clause A prices the chain that buy leaves behind, and the number
+    # matches what the ledger actually recorded for this chain (2.488).
+    after = dict(held)
+    after["18C"] = 7.39
+    blended = _chain_cost_after_topup(
+        held_after=after, probabilities=claim, total_stake=11.05 + 7.37,
+    )
+    assert blended is not None and blended >= CHAIN_COST_PAR_BOUND
+    assert blended == pytest.approx(2.488, abs=0.05)
+
+    # The discriminating case clause B exists for: a buy that concentrates
+    # money on an outcome the chain already covers, at a price that eats
+    # the gain, is refused by growth alone -- its blended cost stays under
+    # par, so clause A never sees it.
+    fat = {"20C": 0.50, "19C": 0.25, "21C": 0.20, "18C": 0.05}
+    bad = _chain_topup_growth(
+        held=held, bought={"20C": 10.0}, probabilities=fat,
+        spend=9.99, bankroll=20.0,
+    )
+    assert not bad > 0.0
+    # And a cheap, uncovered bucket that genuinely improves the curve
+    # passes both clauses.
+    good = _chain_topup_growth(
+        held=held, bought={"18C": 24.7},
+        probabilities={"18C": 0.55, "19C": 0.10, "20C": 0.25, "21C": 0.05},
+        spend=7.4, bankroll=20.0,
+    )
+    assert good > 0.0
+    good_after = dict(held)
+    good_after["18C"] = 24.7
+    good_cost = _chain_cost_after_topup(
+        held_after=good_after,
+        probabilities={"18C": 0.55, "19C": 0.10, "20C": 0.25, "21C": 0.05},
+        total_stake=11.05 + 7.4,
+    )
+    assert good_cost is not None and good_cost < CHAIN_COST_PAR_BOUND
+
+    # Spending the whole growth frame is minus infinity, not a crash.
+    assert _chain_topup_growth(
+        held=held, bought={"18C": 30.0}, probabilities=fat,
+        spend=25.0, bankroll=20.0,
+    ) == float("-inf")
+    assert math.isfinite(growth)
+
+    # A claim with no mass on any held bucket has no expected payout to
+    # divide by, and refuses the same way par does.
+    assert _chain_cost_after_topup(
+        held_after={"30C": 5.0},
+        probabilities={"31C": 1.0},
+        total_stake=5.0,
+    ) is None
+
+
+def test_charter_66_binds_production_and_ledger_together() -> None:
+    """Both lanes carry both clauses, from the same solver and same bound.
+
+    The ledger is the measurement lane for the strategy production runs; a
+    clause present in one and absent in the other measures a strategy that
+    does not exist (memory: production-and-ledger-must-stay-aligned).
+    """
+
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+
+    ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    runtime_source = (
+        root / "bayes_basket_target" / "delta_v2_runtime.py"
+    ).read_text(encoding="utf-8")
+
+    # Clause B: the ledger gates the tilt delta on chain growth; the
+    # kernel's own baseline rule is production's spelling of the same
+    # clause (a candidate must beat the no-new-action baseline to act).
+    assert "_chain_topup_growth(" in ledger_source
+    assert "complete_basket_target_not_activated" in (
+        root / "bayes_basket_target" / "basket_kernel" / "delta_v2.py"
+    ).read_text(encoding="utf-8")
+    # Clause A: the same par bound on both sides, spelled the same way.
+    assert "CHAIN_COST_PAR_BOUND = 1.0" in ledger_source
+    assert "CHAIN_COST_PAR_BOUND = 1.0" in runtime_source
+    assert "chain_cost_at_par" in ledger_source
+    assert "chain_cost_at_par" in runtime_source
+    # Production's gate must not exempt the incumbent: it sits in the
+    # scored-window loop upstream of seat choice, where every window --
+    # incumbent included -- passes through.
+    assert "holds_anything and planned_total > inventory_cost" in (
+        runtime_source
+    )
+    # The identity travels: rows record which sizing produced them.
+    from paper_trading_ledger import SELECTION_RULE_SHA256  # noqa: PLC0415
+    import paper_trading_ledger as ledger_module  # noqa: PLC0415
+
+    assert hasattr(ledger_module, "CHAIN_TOPUP_BANKROLL_USDC")
+    assert isinstance(SELECTION_RULE_SHA256, str) and len(
+        SELECTION_RULE_SHA256
+    ) == 64
+    assert "chain_topup_sizing" in ledger_source
