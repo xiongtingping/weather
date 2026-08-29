@@ -1,0 +1,144 @@
+diff --git a/bayes_basket_target/station_registry.py b/bayes_basket_target/station_registry.py
+index 541b5e0a..0faac7e4 100644
+--- a/bayes_basket_target/station_registry.py
++++ b/bayes_basket_target/station_registry.py
+@@ -1,10 +1,17 @@
+ """Canonical station coordinates for the isolated target model decoder.
+ 
+ Coordinates are station metadata, not a forecast input.  The registry is a
+-small, immutable projection of the official AWC ``stationinfo`` snapshot used
+-by the target's 45-station arrival corpus.  A station absent from this
+-registry is deliberately unusable: callers must not silently decode it at the
+-ZUUU coordinate or at any other guessed location.
++small, immutable projection of official AWC ``stationinfo`` snapshots.  A
++station absent from this registry is deliberately unusable: callers must not
++silently decode it at the ZUUU coordinate or at any other guessed location.
++
++The projection is kept in per-snapshot blocks, each carrying the hash of the
++response its rows came from.  Onboarding a station means adding a block, not
++editing an existing one: re-taking the whole fleet from a fresh snapshot
++would silently move the 45 incumbent coordinates if AWC had revised any of
++them, and a coordinate move is a change to where every model decodes.  The
++lookup merges the blocks; the lineage each station reports is its own
++block's, so a reader can always tell which response attested which row.
+ """
+ 
+ from __future__ import annotations
+@@ -21,12 +28,14 @@ SCHEMA = "bayes_basket_target_station_coordinate_registry_v1"
+ SOURCE_SCHEMA = "awc_stationinfo_v1"
+ SOURCE_ID = "awc_stationinfo"
+ SOURCE_URL = "https://aviationweather.gov/api/data/stationinfo"
++# The founding snapshot: the 45-station arrival corpus.  Unchanged, and not
++# to be re-taken -- see the module docstring.
+ SOURCE_SNAPSHOT_SHA256 = "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6"
+ 
+ # Official AWC stationinfo lat/lon values.  Keep this projection intentionally
+ # small: elevation, city labels, and provider fields do not belong in the
+ # native model decoder's coordinate contract.
+-_COORDINATES: dict[str, tuple[float, float]] = {
++_FOUNDING_COORDINATES: dict[str, tuple[float, float]] = {
+     "CYYZ": (43.679, -79.629),
+     "EDDM": (48.348, 11.813),
+     "EFHK": (60.327, 24.957),
+@@ -74,6 +83,38 @@ _COORDINATES: dict[str, tuple[float, float]] = {
+     "ZUUU": (30.576, 103.95),
+ }
+ 
++# Onboarded 2026-08-29 (user ruling): three markets that had been listed and
++# settleable for a week and were excluded only for want of a coordinate --
++# Tel Aviv, Istanbul, Moscow.  Their rows come from their own stationinfo
++# response, fetched for exactly these three ids and hashed here, so the
++# founding block's attestation stays true to what it attested.
++#
++#   GET .../stationinfo?ids=LLBG,LTFM,UUWW&format=json   (614 bytes)
++ONBOARDED_SNAPSHOT_SHA256 = (
++    "b5b5b43754ed61009bc46d16d57eca3d6a2ef4498578c4cff5d5496c887c1cdd"
++)
++_ONBOARDED_COORDINATES: dict[str, tuple[float, float]] = {
++    "LLBG": (32.011, 34.887),   # Tel Aviv/Ben Gurion Arpt
++    "LTFM": (41.262, 28.74),    # Istanbul Arpt
++    "UUWW": (55.592, 37.261),   # Moscow/Vnukovo Arpt
++}
++
++# Which snapshot attested each row.  A station may appear in exactly one
++# block; overlapping blocks would make the lineage a coin toss.
++_SNAPSHOT_BY_STATION: dict[str, str] = {
++    **{station: SOURCE_SNAPSHOT_SHA256 for station in _FOUNDING_COORDINATES},
++    **{station: ONBOARDED_SNAPSHOT_SHA256
++       for station in _ONBOARDED_COORDINATES},
++}
++_overlap = set(_FOUNDING_COORDINATES) & set(_ONBOARDED_COORDINATES)
++if _overlap:
++    raise ContractError("native_station_coordinates_duplicated")
++
++_COORDINATES: dict[str, tuple[float, float]] = {
++    **_FOUNDING_COORDINATES,
++    **_ONBOARDED_COORDINATES,
++}
++
+ 
+ def _canonical(value: Any) -> bytes:
+     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+@@ -101,7 +142,8 @@ def station_coordinates(station_id: str) -> dict[str, Any]:
+         "source_schema": SOURCE_SCHEMA,
+         "source_id": SOURCE_ID,
+         "source_url": SOURCE_URL,
+-        "source_snapshot_sha256": SOURCE_SNAPSHOT_SHA256,
++        # This row's own attestation, not the module's first one.
++        "source_snapshot_sha256": _SNAPSHOT_BY_STATION[station],
+     }
+ 
+ 
+@@ -115,9 +157,29 @@ def coordinate_registry_manifest() -> dict[str, Any]:
+         "source_id": SOURCE_ID,
+         "source_url": SOURCE_URL,
+         "source_snapshot_sha256": SOURCE_SNAPSHOT_SHA256,
++        # Every snapshot the registry draws on, with what each attested.  The
++        # scalar above stays the founding one so a consumer pinned to it does
++        # not silently rebind; a reader who needs the whole lineage reads
++        # this list.
++        "source_snapshots": [
++            {
++                "sha256": SOURCE_SNAPSHOT_SHA256,
++                "station_ids": sorted(_FOUNDING_COORDINATES),
++            },
++            {
++                "sha256": ONBOARDED_SNAPSHOT_SHA256,
++                "station_ids": sorted(_ONBOARDED_COORDINATES),
++            },
++        ],
+         "station_count": len(_COORDINATES),
+         "station_ids": sorted(_COORDINATES),
+     }
+ 
+ 
+-__all__ = ["REGISTRY_SHA256", "SCHEMA", "coordinate_registry_manifest", "station_coordinates"]
++__all__ = [
++    "ONBOARDED_SNAPSHOT_SHA256",
++    "REGISTRY_SHA256",
++    "SCHEMA",
++    "coordinate_registry_manifest",
++    "station_coordinates",
++]
+diff --git a/bayes_basket_target/station_season.py b/bayes_basket_target/station_season.py
+index de6f0da6..5bf539aa 100644
+--- a/bayes_basket_target/station_season.py
++++ b/bayes_basket_target/station_season.py
+@@ -73,7 +73,9 @@ _SEASON_ANCHOR_MONTH: dict[str, int | None] = {
+     "LEMD": 7,  # amplitude 23.8C
+     "LFPB": 7,  # amplitude 18.2C
+     "LIMC": 7,  # amplitude 20.9C
++    "LLBG": 8,  # amplitude 14.9C
+     "LTAC": 8,  # amplitude 25.5C
++    "LTFM": 7,  # amplitude 18.7C
+     "MMMX": 4,  # amplitude 5.6C
+     "MPMG": 3,  # amplitude 3.6C
+     "NZWN": 2,  # amplitude 7.5C
+@@ -86,6 +88,7 @@ _SEASON_ANCHOR_MONTH: dict[str, int | None] = {
+     "RPLL": 4,  # amplitude 4.2C
+     "SAEZ": 1,  # amplitude 15.1C
+     "SBGR": 2,  # amplitude 5.3C
++    "UUWW": 7,  # amplitude 27.5C
+     "VILK": 5,  # amplitude 17.8C
+     "WMKK": None,  # amplitude 1.6C
+     "WSSS": None,  # amplitude 1.4C
