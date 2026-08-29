@@ -101,6 +101,7 @@ from asos_argmax_window import (
 from asos_argmax_entry import materialize_argmax_entry_facts
 from asos_argmax_execution import process_pending_argmax_orders
 from asos_argmax_taf_reference import materialize_argmax_taf_references
+from asos_p1_slot_materializer import materialize_scheduled_asos_p1_observations
 from bayes_basket_target import serving_arithmetic
 from bayes_basket_target.database import DEFAULT_TARGET_DB
 from bayes_basket_target.market_registry import (
@@ -2413,6 +2414,16 @@ def poll_madis_hfmetar_source(
             fetch_hours[-1] = current_hour
         else:
             fetch_hours.append(current_hour)
+    # An hour already seen is never revisited by the missing-hours walk, but
+    # its :55 row can be published upstream only around or after the top of
+    # the next hour -- exactly the row the KSFO :56 slot races for.  Refetch
+    # the previous hour's object briefly after the hour turns so a
+    # late-published carrier row still lands; content addressing makes an
+    # unchanged object a no-op.
+    if due_current_refresh and now.minute <= 5:
+        previous_hour = current_hour - timedelta(hours=1)
+        if previous_hour >= et_start and previous_hour not in fetch_hours:
+            fetch_hours.append(previous_hour)
     if not fetch_hours:
         return {
             "ok": True, "state": "rate_limited_cached",
@@ -2486,10 +2497,20 @@ def run_once(
         margin_hours=float(policy.get("awc_settlement_lookback_margin_hours", 1.0)),
         maximum_hours=float(policy.get("awc_settlement_lookback_max_hours", 30.0)),
     )
+    # The :50/:55 carrier rows are the slot readings P1 races to consume
+    # before the METAR lands six-seven minutes after the hour (user ruling
+    # 2026-08-29).  Poll the hourly object fast while those rows are being
+    # published upstream; objects run ~0.6MB compressed, so the hot window
+    # costs on the order of 150MB/day.
+    _madis_now_minute = datetime.now(timezone.utc).minute
     madis_priority = poll_madis_hfmetar_source(
         conn,
         stations,
-        minimum_interval_sec=float(policy.get("madis_hfmetar_poll_interval_sec", 300.0)),
+        minimum_interval_sec=float(
+            policy.get("madis_hfmetar_hot_poll_sec", 45.0)
+            if _madis_now_minute >= 49 or _madis_now_minute <= 5
+            else policy.get("madis_hfmetar_poll_interval_sec", 300.0)
+        ),
     )
     asos_priority = poll_asos_priority_source(
         conn,
@@ -2550,6 +2571,28 @@ def run_once(
         })
     if post_awc_selection:
         conn.commit()
+    # After the AWC transaction, materialize the open day's qc-eligible MADIS
+    # carrier rows as SOFT_PATH evidence for P1 (soft in, hard out; user
+    # ruling 2026-08-29).  Canonical capture on the main line -- the resident
+    # P1 ingress reads them through the same loader as every AWC report, the
+    # trajectory layer feeds them to the path state only -- and it never
+    # touches the order gateway.
+    try:
+        asos_p1_substitutes = materialize_scheduled_asos_p1_observations(
+            conn,
+            stations,
+        )
+    except Exception as exc:
+        conn.rollback()
+        asos_p1_substitutes = {
+            "ok": False,
+            "state": "error",
+            "inserted_observation_count": 0,
+            "scopes": [],
+            "errors": [f"{type(exc).__name__}:{exc}"],
+            "calls_order_gateway": False,
+            "orders_submitted": 0,
+        }
     # The 10-station ASOS argmax side lane is deliberately absent here.  Its
     # entry facts and order processing own a separate worker, connection and
     # failure boundary (``AsosArgmaxEntryWorker``) so that an AWC transport or
@@ -2569,6 +2612,7 @@ def run_once(
         "awc_requested_hours": awc_hours,
         "asos_priority_source": asos_priority,
         "madis_hfmetar_source": madis_priority,
+        "asos_p1_slot_substitutes": asos_p1_substitutes,
         "canonical_surface_selection": post_awc_selection,
         "new_observation_count": int(result.get("new_observation_count") or 0),
         "station_day_fact_updates": list(result.get("station_day_fact_updates") or []),
@@ -2911,6 +2955,17 @@ def main() -> int:
             max_workers=1,
             thread_name_prefix="reported-trajectory-asos-argmax",
         )
+        # The dashboard render is a READER on its own clock (2026-08-29).
+        # It lived inside the hosted paper-ledger sweep from 2026-08-16 and
+        # had grown to twenty minutes of read-only work holding a WRITER
+        # slot; with ten-plus hosted members the queue starved production
+        # for two hours on 2026-08-28.  Its own single-worker pool keeps it
+        # off the writer rotation entirely, and the three-services charter
+        # is preserved by hosting it here rather than as a fourth agent.
+        render_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="reported-trajectory-dashboard-render",
+        )
         # The entry/order lane gets its own single-worker pool so that a slow
         # NWS forecast fetch in the window worker can never delay an entry fact
         # that must reach the gateway inside its frozen argmax period.
@@ -2994,6 +3049,8 @@ def main() -> int:
         next_materialized_registry_read = now_mono
         next_registry_refresh = now_mono
         next_argmax_refresh = now_mono
+        next_render_refresh = now_mono + 120.0
+        render_future = None
         # A MADIS HF-METAR slot lands every five minutes and an exact ASOS
         # minute observation can land at any time.  Poll the lane far more often
         # than either cadence so a new station-day high reaches the gateway well
@@ -3012,8 +3069,13 @@ def main() -> int:
             "production": now_mono,
             "sweeps": now_mono,
         }
+        # Which lane took the most recent writer slot, for the production
+        # floor below: a maintenance lane may not take two in a row while
+        # production is due.
+        last_writer_slot = ""
         next_storage_probe = 0.0
         next_wal_maintenance = 0.0
+        next_target_wal_maintenance = 0.0
         # Hosted sweeps: staggered first runs so boot does not fire all four
         # into the first idle gap at once.
         next_hosted_sweep = {
@@ -3108,6 +3170,47 @@ def main() -> int:
                         SERVICE_LOG_PATHS
                     )
                     next_wal_maintenance = now_mono + WAL_MAINTENANCE_INTERVAL_SEC
+                # The target SSOT gets the same hygiene (2026-08-29).  A day
+                # of killed rebuilds left its WAL at 1.2GB with no live
+                # reader pinning it -- SQLite never shrinks a WAL without a
+                # truncating checkpoint -- and every DB-bound stage slowed
+                # threefold while probability_bridge_resource_gate_failed
+                # stamped 34 stations at once.  Best effort at a moment the
+                # writer is idle; busy readers make it a no-op retried next
+                # interval, exactly like the archive's.
+                if (
+                    int(
+                        (state.get("target_ssot_capacity") or {})
+                        .get("wal_bytes") or 0
+                    ) >= 256 * 1024 * 1024
+                    and now_mono >= next_target_wal_maintenance
+                    and production_future is None
+                    and hosted_sweep_future is None
+                    and forecast_future is None
+                ):
+                    try:
+                        _twal = sqlite3.connect(str(DEFAULT_TARGET_DB), timeout=5)
+                        try:
+                            _twal.execute("PRAGMA busy_timeout=5000")
+                            _row = _twal.execute(
+                                "PRAGMA wal_checkpoint(TRUNCATE)"
+                            ).fetchone()
+                            state["target_wal_maintenance"] = {
+                                "ok": bool(_row and int(_row[0]) == 0),
+                                "result": list(_row or ()),
+                                "at": utc_now(),
+                            }
+                        finally:
+                            _twal.close()
+                    except sqlite3.Error as exc:
+                        state["target_wal_maintenance"] = {
+                            "ok": False,
+                            "reason": f"{type(exc).__name__}:{exc}",
+                            "at": utc_now(),
+                        }
+                    next_target_wal_maintenance = (
+                        now_mono + WAL_MAINTENANCE_INTERVAL_SEC
+                    )
             if now_mono >= next_materialized_registry_read:
                 try:
                     materialized_registry = current_registry_summary(conn)
@@ -3230,6 +3333,15 @@ def main() -> int:
                     }
                     next_registry_refresh = time.monotonic() + registry_retry_sec
                 registry_future = None
+            if render_future is not None and render_future.done():
+                try:
+                    state["dashboard_render"] = render_future.result()
+                except Exception as exc:
+                    state["dashboard_render"] = {
+                        "state": "failed",
+                        "reason": f"{type(exc).__name__}:{exc}",
+                    }
+                render_future = None
             if argmax_future is not None and argmax_future.done():
                 try:
                     argmax_result = argmax_future.result()
@@ -3515,6 +3627,21 @@ def main() -> int:
                 key=lambda lane: writer_last_served[lane],
                 default="",
             )
+            # The production floor (2026-08-29).  "Longest ago" is fair
+            # between lanes, but sweeps are ONE lane with ten-plus members:
+            # once their combined due-rate outruns the drain rate the lane
+            # is due at every instant, and generation 72534 served sweeps
+            # for two straight hours while production -- the thing this
+            # process exists to run -- got zero slots.  So a maintenance
+            # lane may never take two consecutive slots while production is
+            # due: the alternation production/sweep/production/... is the
+            # worst case, whatever the queue holds.
+            if (
+                "production" in writer_candidates
+                and writer_turn != "production"
+                and last_writer_slot != "production"
+            ):
+                writer_turn = "production"
             if (
                 storage_ok
                 and now_mono >= next_registry_refresh
@@ -3530,6 +3657,17 @@ def main() -> int:
             ):
                 argmax_future = argmax_executor.submit(argmax_worker.run)
                 next_argmax_refresh = time.monotonic() + 300.0
+            if (
+                storage_ok
+                and now_mono >= next_render_refresh
+                and render_future is None
+            ):
+                render_future = render_executor.submit(
+                    run_hosted_sweep,
+                    str(ROOT / "scripts/dashboard_render_sweep.sh"),
+                    2400.0,
+                )
+                next_render_refresh = time.monotonic() + 1800.0
             if (
                 storage_ok
                 and now_mono >= next_argmax_entry
@@ -3597,6 +3735,7 @@ def main() -> int:
                         due, key=lambda item: (item[0], -item[1])
                     )
                     state["hosted_sweeps"]["running"] = hosted_sweep_name
+                    last_writer_slot = "sweeps"
                     hosted_sweep_future = executor.submit(
                         run_hosted_sweep,
                         str(ROOT / sweep_script),
@@ -3616,6 +3755,7 @@ def main() -> int:
                 and forecast_future is None
                 and writer_turn == "production"
             ):
+                last_writer_slot = "production"
                 production_future = executor.submit(
                     run_target_production_cycle,
                     production_worker,
@@ -3674,6 +3814,7 @@ def main() -> int:
                     "live_submit_authorized": False,
                     "orders_submitted": 0,
                 }
+                last_writer_slot = "forecast"
                 forecast_future = forecast_executor.submit(
                     run_target_forecast_refresh_cycle,
                     forecast_worker,
@@ -3702,6 +3843,7 @@ def main() -> int:
             "forecast_executor",
             "registry_executor",
             "argmax_executor",
+            "render_executor",
             "argmax_entry_executor",
         ):
             resident_executor = locals().get(executor_name)

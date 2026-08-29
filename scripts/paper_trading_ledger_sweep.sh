@@ -35,18 +35,14 @@ cd "$PROJECT_DIR"
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] paper ledger sweep"
 "$PY" scripts/paper_trading_ledger.py --backfill
 
-# Render the page from what the sweep just landed.  The dashboard had no
-# schedule of its own either, so it only ever showed whatever moment someone
-# last rendered it by hand -- on 2026-08-16 that meant reading "最新 run 12
-# 小时前" for an hour after the models had actually advanced, which is
-# indistinguishable from the lane still being stuck.  Rendering here keeps the
-# page's age bounded by this timer rather than by when anyone last looked.
-#
-# Non-fatal: the ledger write above is the thing worth protecting, and a
-# render that fails must not make the sweep look like it did not run.
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] dashboard render"
-"$PY" scripts/calibration_dashboard.py --html-out tmp/cal_dashboard.html \
-  || echo "dashboard render failed; ledger sweep above still committed" >&2
+# The render moved out (2026-08-29).  It lived here from 2026-08-16 so the
+# page's age would be bounded by a timer, but a render is a reader that had
+# grown to twenty minutes, and it was holding a WRITER slot: with ten-plus
+# hosted members the queue starved production for two hours on 2026-08-28,
+# and three "上轮 N 小时前" alarms in two days were this sweep waiting for
+# a turn, not the ledger being stuck.  com.weather.dashboard_render (its
+# own launchd timer, single_instance "dashboard_render") owns the page
+# now; the no-clobber write in the renderer keeps any overlap harmless.
 
 # The publishable copy, kept in step with the local page.  Building it here
 # rather than at publish time means the shareable file is never a stale

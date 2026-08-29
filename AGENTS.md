@@ -4,6 +4,8 @@
 - 生产执行唯一为纯 YES 篮子：篮子只消费已物化的 P0/P0-M/P1、regime 与官方 METAR/SPECI 形成的硬事实排除集合；禁止任何自动买 NO 策略。
 
 ## 工程原则（必须遵守）
+- 单写者调度法（2026-08-29，源自一周四起饥饿/停摆事故）：SSOT 写者轮转只准放真正写 SSOT 的车道；**只读工作（渲染、报表、探针的读段）一律走独立 executor，不占写者槽**；维护类车道（sweeps/采集）在生产到期时**不得连占两个槽**（生产保底交替是最坏情形下限）；单个槽位超过 ~300 秒的成员必须拆分或移出；SSOT 与 archive 的 WAL 超 256M 且写者空闲时由 daemon 自动 TRUNCATE。新增任何托管 sweep 前先回答：它写 SSOT 吗？一轮多久？不写或超长就不进队。
+
 - 根因优先、零技术债务：先全链路分析再给长期方案与最小改动。
 - 数据治理总则：同一事实必须通过唯一 canonical schema 和唯一 lineage 进入 SSOT；字段或语义无法一一对应时立即 fail closed，禁止改名、猜测、默认补值或跨表兼容。
 - 生产仅保留三个同一用户域服务：`com.weather.weather_basket_yes`、`com.weather.market_ws`、`com.weather.clob_order_service`；固定运行于`gui/$(id -u)`，禁止user/system双活。旧 `com.weather.reported_trajectory_no` label 必须退役。root-owned旧LaunchDaemon只允许在一次性迁移中以不弹密码的`sudo -n`退役；迁移后安装、切换、重启和验收不得依赖sudo。
