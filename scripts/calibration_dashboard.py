@@ -4288,19 +4288,6 @@ function overview(){
     `${h(day||"")} · ${pct0(rate)} 的站建了仓`,
     "「逐站逐日明细」（每日统计下方）：没建仓的站，格子里写着原因");
 
-  // 5. Of what was posted, how much the book actually sold us.  The
-  // target is 90% on every stage; the card shows the worst one, because
-  // the strip is for finding the number that needs attention.
-  const p0=(S.resting_entry||{}).stages||[];
-  const worstFill=p0.reduce((worst,s)=>{
-    const v=s.closed_share_fill_rate!=null?s.closed_share_fill_rate
-      :s.share_fill_rate!=null?s.share_fill_rate:s.rung_completion_rate;
-    return v!=null&&(worst.v==null||v<worst.v)?{v,stage:s.stage}:worst;
-  },{v:null,stage:null});
-  push(band(worstFill.v,0.8,0.7), "挂单成交率", pct0(worstFill.v),
-    worstFill.stage?`最低的阶段 ${h(worstFill.stage)} · 底线每段 ≥80%`:"—",
-    "第十四节：EV 优先，成交率是守底线的诊断指标");
-
   // 6. Does the model's stated probability survive contact with the truth.
   const cs=S.coverage_stats||{};
   const stagesAll=S.stages||{};
@@ -4834,6 +4821,12 @@ function basketHit(){
     </tr></thead><tbody>${offRows}</tbody></table>`;
   }
 
+  // Section 14 was the maker lane's own account -- resting fill rates, the
+  // shadow probe, the stage-by-stage saving-versus-taker table.  Charter 65
+  // made taker the execution law, so it described a lane that stopped
+  // running; it was removed on 2026-08-29 rather than left printing a dash.
+  // The number is NOT reused: every other section keeps the number a reader
+  // already knows it by, and a gap is cheaper than renumbering nine of them.
   return `<h2>十三、篮子命中率（按桶数）</h2>
   <p class="sub">结算真值落在篮子里就算命中。只算可成交的（整篮 ≥1 分）。</p>
   <div class="why"><b>这张表回答一件事：</b>多买一个桶买到的命中率，
@@ -5203,315 +5196,6 @@ function windowDivergence(){
 }
 
 
-function makerProbe(){
-  const S=D.selection||{};const m=S.maker_probe||{};
-  if(!m.available) return "";
-  const cells=m.cells||[];
-  if(!cells.length) return `<h2>十四、挂单影子探针</h2>
-    <div class="card"><span class="dot amber"></span>
-      已写入 ${m.open_count||0} 个未到期意图，还没有到期可判定的。</div>`;
-  const p=v=>v==null?"—":(v*100).toFixed(1)+"%";
-  const BAND={open_gt24h:"建仓 >24h",open_12_24h:"12–24h",
-    pre_event_0_12h:"0–12h",event_day:"事件日"};
-  const rows=cells.map(c=>`<tr>
-    <td>${BAND[c.lead_band]||c.lead_band}</td>
-    <td class="mono">${h(c.price_rule)}</td>
-    <td>${c.horizon_minutes}分</td>
-    <td>${c.decided_count}</td>
-    <td class="${c.fill_rate>=0.5?"up":""}">${p(c.fill_rate)}</td>
-    <td class="${c.unfilled_rate>=0.5?"down":"muted"}">${p(c.unfilled_rate)}</td>
-    <td class="mono">${c.limit_price_mean.toFixed(3)}</td>
-    <td class="mono">${c.reference_ask_mean.toFixed(3)}</td>
-    <td class="mono up">+${c.spread_saved_mean.toFixed(3)}</td></tr>`).join("");
-  const st=m.settled||{};
-  const settledLine=st.count
-    ? `<div class="card" style="margin-top:12px"><div class="muted">已结算的成交</div>
-       <div class="big">${st.count} 笔 · 命中 ${p(st.hit_rate)}</div>
-       <div class="muted">均价 ${st.limit_price_mean==null?"—":st.limit_price_mean.toFixed(3)}
-       · 每份盈亏 ${st.pnl_per_share_mean==null?"—":
-         ((st.pnl_per_share_mean>=0?"+":"")+st.pnl_per_share_mean.toFixed(4))}</div></div>`
-    : `<div class="card" style="margin-top:12px"><span class="dot amber"></span>
-       成交已记录，但所属站日还没有结算真值，所以还没有命中率。</div>`;
-  const re=S.resting_entry||{};
-  const pct=(v)=>v==null?"—":(v*100).toFixed(1)+"%";
-  // The three-stage assessment under the ROI-first objective (user
-  // ruling, 2026-08-20): EV is the goal, fill rate is a diagnostic with
-  // an 80% floor -- it exists to catch the failure mode where resting
-  // orders quietly stop buying anything, not to be maximised.  One
-  // verdict line, then one card per stage.
-  const TARGET=0.8;
-  const reStages=re.stages||[];
-  // Judged on resolved days: an unresolved day's orders are still on the
-  // book, not missed, and counting them fails every morning.
-  const judged=(r)=>r.closed_share_fill_rate!=null
-    ?r.closed_share_fill_rate:r.share_fill_rate;
-  // The 80% floor is P0's alone.  P0 opens the position, so its posted
-  // basket is the whole target and "how much of it did we get" is a fair
-  // question.  P0-M and P1 add to what P0 opened, and a large share of
-  // what they post is a rung an earlier stage already posted and the
-  // market never came down to -- measured 2026-08-22, 94% of P0-M's
-  // whole-basket misses were on days P0 had also left a leg unbought.
-  // Holding a top-up stage to the opener's floor scores it on the
-  // opener's leftovers, which is why P0-M read "挂单在空转" while its
-  // core leg was filling 93.9% and it was still saving 30.9% against
-  // crossing.  The two rates below say what it is actually doing.
-  const failing=reStages.filter(r=>
-    r.stage==="P0"&&(judged(r)==null||judged(r)<TARGET)).map(r=>r.stage);
-  const evbad=reStages.filter(r=>
-    r.maker_saving_vs_taker!=null&&r.maker_saving_vs_taker<=0)
-    .map(r=>r.stage);
-  const verdict=!reStages.length?"":
-    (failing.length===0&&evbad.length===0
-      ?`<span class="pill green">底线守住：P0 成交率 ≥80%，三阶段挂单仍优于吃单</span>`
-      :[failing.length?`<span class="pill red">P0 成交率破 80% 底线</span>`:"",
-        evbad.length?`<span class="pill red">价差收益转负：${
-          evbad.map(h).join("、")}</span>`:""].join(" "));
-  const stageCards=reStages.map(r=>{
-    const sf=judged(r);
-    const sav=r.maker_saving_vs_taker;
-    const core=r.core_fill_rate, hedge=r.hedge_fill_rate;
-    // Three gates, not one: the core leg answers to a hard floor (its job
-    // is the exposure), the portfolio to the old 80% line, and the hedge
-    // to the value red line first -- its rate is a reading, not a target.
-    const coreOk=core==null||core>=0.9;
-    const opener=r.stage==="P0";
-    // A top-up stage answers to the core floor only; its pooled rate is
-    // reported but not judged, because its denominator is inherited.
-    const ok=coreOk&&(!opener||(sf!=null&&sf>=TARGET));
-    const carried=r.carried_fill_rate, fresh=r.fresh_fill_rate;
-    const rc=r.rung_completion_rate;
-    const depth=(r.by_posted_rungs||[]).map(d=>
-      `${d.posted_rungs}档×${d.leg_count}腿 平均成交${d.mean_filled_rungs.toFixed(2)}`
-    ).join(" · ");
-    // Spelled as arithmetic rather than as an indented tree: P0-M once read
-    // "建仓 19 / 落空 20" side by side and was taken for 20 inside 19.
-    const days=`${r.seated_count+r.nothing_filled_count} ＝ 建仓 ${
-      r.seated_count}（其中缺腿 ${r.partial_basket_count}）＋ 落空 ${
-      r.nothing_filled_count}`;
-    return `<div class="card">
-      <div class="muted">${h(r.stage)} · ${opener
-        ?"建仓完整度（核心 ≥90% · 组合 ≥80%，按已收盘）"
-        :"加仓完整度（核心 ≥90%；组合率只读，分母是继承来的）"}</div>
-      <div class="big ${sf==null?"":(ok?"up":"down")}">${pct(sf)}</div>
-      <div class="muted">${sf==null?"还没有挂单记录"
-        :!coreOk?"核心腿破线 · 底仓没建起来，先查执行"
-        :ok&&opener?"两道门之上 · 目标仓位基本建成"
-        :ok?"核心腿之上 · 在 P0 的仓位上加仓"
-        :"组合破线 · 挂单在空转，先查执行不查模型"}</div>
-      <table style="margin-top:10px"><tbody>
-        <tr><td>核心腿成交率（中心桶，门 ≥90%）</td>
-            <td class="mono ${core==null?"":(core>=0.9?"up":"down")}">${pct(core)}</td></tr>
-        <tr><td>对冲腿成交率（受价值红线约束，只读不设门）</td>
-            <td class="mono">${pct(hedge)}</td></tr>
-        ${opener?"":`<tr><td>继承腿 / 新增腿成交率</td>
-            <td class="mono">${pct(carried)} / ${pct(fresh)}</td></tr>`}
-        <tr><td>省价 vs 吃单（正 = 还在赚价差）</td>
-            <td class="mono ${sav==null?"":(sav>0?"up":"down")}">${
-              sav==null?"—":((sav>=0?"+":"")+(sav*100).toFixed(1)+"%")}</td></tr>
-        <tr><td>档位完成率（挂出的阶梯买到几档）</td>
-            <td class="mono ${rc==null?"":(rc>=0.8?"up":"")}">${pct(rc)}
-              <span class="muted">${r.leg_count} 腿</span></td></tr>
-        <tr><td>空桶率 / 整条阶梯全档成交</td>
-            <td class="mono">${pct(r.empty_leg_rate)} / ${pct(r.full_ladder_rate)}</td></tr>
-        <tr><td>金额成交率 / 实际成交均价</td>
-            <td class="mono">${pct(r.stake_fill_rate)} / ${
-              r.mean_filled_price==null?"—":r.mean_filled_price.toFixed(4)}</td></tr>
-        <tr><td>含进行中事件日（单还在书上）</td>
-            <td class="mono">${pct(r.share_fill_rate)}</td></tr>
-        <tr><td>站日：挂过单 ＝ 建仓 ＋ 落空</td>
-            <td class="mono">${days}</td></tr>
-      </tbody></table>
-      ${depth?`<div class="muted" style="margin-top:8px">${depth}</div>`:""}
-    </div>`;
-  }).join("");
-    const cons=(S.consolidation_lights||{});
-  const consRule=cons.rule||{};
-  const LAMP={stable:"稳",sharp:"尖"};
-  const LAMPDEF={stable:"中心稳：中心桶连续 3 次未变",
-    sharp:"分布尖：头两桶质量 ≥60%"};
-  const lamp=(on)=>on?`<span class="down">●</span>`:`<span class="muted">○</span>`;
-  const fmtRoi=(v)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(1)+"%");
-  const roiTd=(v)=>`<td class="mono ${v==null?"":(v>=0?"up":"down")}">${fmtRoi(v)}</td>`;
-  const statTds=(r)=>`
-      <td class="mono">${r.chains}</td>
-      <td class="mono">${r.chains?((100*r.hit_chains/r.chains).toFixed(0)+"%"):"—"}</td>
-      <td class="mono">${r.staked.toFixed(0)}</td>
-      <td class="mono ${r.pnl>=0?"up":"down"}">${r.pnl>=0?"+":""}${r.pnl.toFixed(1)}</td>
-      ${roiTd(r.roi)}${roiTd(r.roi_ex_best)}${roiTd(r.roi_ex_best2)}`;
-  const comboRows=(cons.combos||[]).filter(r=>r.chains>0)
-    .sort((a,b)=>a.count-b.count||b.chains-a.chains).map(r=>`<tr>
-      <td class="mono">${lamp(r.stable)}${lamp(r.sharp)}
-        <span class="muted">${["stable","sharp"]
-          .filter(k=>r[k]).map(k=>LAMP[k]).join("")||"全灭"}</span></td>
-      <td class="mono">${r.tilted
-        ?`<span class="pill amber">×${consRule.factor}</span>`:"满仓"}</td>
-      ${statTds(r)}
-    </tr>`).join("");
-  const countRows=(cons.counts||[]).map(r=>`<tr>
-      <td class="mono">${r.count} 盏${r.count>=(consRule.min_signals||2)
-        ?` <span class="pill amber">×${consRule.factor}</span>`:""}</td>
-      <td></td>${statTds(r)}
-    </tr>`).join("");
-  const singleRows=(cons.singles||[]).map(r=>`<tr>
-      <td>${h(LAMPDEF[r.signal]||r.signal)}</td>
-      <td class="mono ${r.lit?"down":"up"}">${r.lit?"亮":"灭"}</td>
-      ${statTds(r)}
-    </tr>`).join("");
-  const openChips=(cons.open_chains||[]).map(c=>{
-    const f=c.flags;
-    return `<span class="mono" style="margin-right:14px;white-space:nowrap">
-      ${h(c.event_date)} ${h(c.station)} ${f
-        ?lamp(f.stable)+lamp(f.sharp)
-        :'<span class="muted">无灯</span>'} ${c.stake.toFixed(0)}u</span>`;
-  }).join("");
-  const consHead=`<tr><th></th><th>注码</th><th>链</th><th>命中链</th>
-      <th>投入</th><th>pnl</th><th>ROI</th><th>去最大赢</th><th>去前两赢</th></tr>`;
-  const consBlock=cons.available?`<div class="card" style="margin-top:12px">
-    <div class="muted">两盏灯（固化度）· 驱动固化减仓，P0 开链定档、全链继承</div>
-    <div class="why" style="margin-top:8px"><b>入场那一刻记两盏模型灯，
-    量的是"当天的答案定型了没有"：</b>
-    ${Object.values(LAMPDEF).join("；")}。
-    灯亮=市场的定价功课做完了，此时还剩的价差多半是别人知道我们不知道的事。
-    <b>现行规则（2026-08-28 裁定）：任一盏亮，
-    整链注码 ×${consRule.factor??0.1}</b>——只在开仓时少买，
-    永不拒入场、永不卖出、永不撤单（改成门会自反，折扣门 −54% 判例）。<br>
-    <b>第三盏灯「报满价」已退役（2026-08-28）：</b>它几乎天天亮，
-    说的是"有没有盘口"而非"市场多确定"，不再计数也不再显示；
-    原始记录仍逐链落盘。层薄的格子以"去前两赢"为准，
-    符号靠最大一两条链撑住的读数是彩票不是发现。灯取 <b>P0 开链那一刻</b>的读数，
-    链级合计（P0+P0-M+P1 同链同档）。</div>
-    <table style="margin-top:8px"><thead>${consHead}</thead>
-    <tbody>${comboRows}</tbody></table>
-    <div class="muted" style="margin-top:10px">按亮灯数</div>
-    <table style="margin-top:4px"><thead>${consHead}</thead>
-    <tbody>${countRows}</tbody></table>
-    <div class="muted" style="margin-top:10px">单灯切分</div>
-    <table style="margin-top:4px"><thead><tr><th>灯</th><th>状态</th>
-      <th>链</th><th>命中链</th><th>投入</th><th>pnl</th>
-      <th>ROI</th><th>去最大赢</th><th>去前两赢</th></tr></thead>
-    <tbody>${singleRows}</tbody></table>
-    ${openChips?`<div class="muted" style="margin-top:10px">
-      在场链的灯（未结算，稳·尖）</div>
-    <div style="margin-top:4px;line-height:2">${openChips}</div>`:""}
-  </div>`:"";
-  const restingWhy=!stageCards?"":`
-    <div class="why" style="margin-top:12px"><b>三个阶段分开看，不合并：</b>
-    P0 在赛前十几小时挂，盘口几乎不动；P1 在盘中挂，是当天最活跃的书；
-    P0-M 只挂一次，赶上什么行情算什么。合并成一个成交率是三个不同市场的平均数，
-    哪个都不描述。<br>
-    <b>逐步建仓，不是全腿成交才建仓：</b>每条腿的每一档都是独立的一张单，
-    各自成交。一条腿只成交四档就是四档，一条腿一档没成交就是缺这条腿——
-    篮子照样建，中奖概率按<b>实际买到的桶</b>重算，缺的桶不算数。
-    只有一条腿都没成交才放弃。<br>
-    <b>建仓与落空是并列的两堆，不是包含关系：</b>落空的站日一张单都没成交、
-    压根没建仓，所以不在建仓数里面——卡片上那行写成加法就是这个意思。
-    成交率的分母也只含建了仓的那些：落空的站日没有成交价可算，
-    计入会把「一张没成交」和「买到八成」压进同一个平均数。<br>
-    <b>挂单价格是区间不是单点：</b>每条腿在<b>买价上一跳 ~
-    min(卖价, 价值上限)下一跳</b>之间均分挂 8 档（档数与生产同源）。
-    挂单本身永远站在卖价之下；但生命周期后段有吃单支路（见闸3）。
-    价差只有一跳时区间退化成买价一档。<br>
-    <b>没成交的档不会一直原地等：</b>每 60 分钟按当时盘口重挂一次，
-    且区间下沿在挂单窗<b>前 35%</b>里逐步向上沿收拢——前几个小时要价差，
-    后几个小时要成交（这个比例早先是 50%，2026-08-20 起是 35%）。
-    收拢后区间放不下的档挂在同一价位（同价多档 = 同一价位一张更大的单）。<br>
-    <b>这一栏来自纸面账本回放，回放与生产同一份合同：挂单站在卖价之下，
-    但窗程后 1/3 允许在价值红线内直接吃单</b>（2026-08-21 起，提交 247ea7bc；
-    此前的"回放从不穿价"已过时）。省价的基准是<b>入场时刻</b>的卖价——
-    重挂后的梯子和后段吃单都按当时的市价付，市价涨了就可能付得比入场吃单还贵，
-    所以这一栏<b>可以为负</b>；读到正数是实测信息，不是结构保证。</div>`;
-  const assessBlock=stageCards?`
-    <h2 style="margin-top:0">十四、挂单执行 · 三阶段总体评估 ${verdict}</h2>
-    <p class="sub"><b>目标是在不突破模型价值的前提下，用剩余时间最大化目标仓位的
-    实际建成度（2026-08-21 重设计）。</b>三层闸：<b>闸1 价值红线</b>——对冲腿不超过
-    λ·p(t)，核心腿不超过它自己的 p(t)，永不突破；<b>闸2 组合EV</b>——整篮声称 EV
-    转负即全撤，只管"还买不买"；<b>闸3 执行压力</b>——只管"剩下的单挂在哪"：
-    前 1/3 窗程挂带底要价差，中段起加价随<b>本腿未成交缺口</b>上浮（买满的腿无压力），
-    后 1/3 窗程仍未成交的腿直接吃单——但只在价值红线之内，市场要价高过模型估值的腿
-    宁可不买。有效期到该站达峰时刻分位为止。成交结果不改变价值，只改变剩余订单的挂法。
-    省价为正说明挂单还在赚价差；进行中的事件日单子还挂在书上，读数会暂时偏低。</p>
-    <div class="grid g3">${stageCards}</div>${restingWhy}${consBlock}`:"";
-  // The pooled cards above say whether resting works; they cannot say
-  // whether it is getting better or worse, and that is the question after
-  // every change to how long an order rests or how often it is re-posted.
-  //
-  // Only from 2026-08-15 (user ruling, 2026-08-21).  The rows before that
-  // date were filled under a different resting rule -- other rung ladders,
-  // other re-post cadence, another book -- so putting them in the same
-  // column invites reading a rule change as a trend.  The older days are
-  // dropped from the table rather than folded: this table exists to be
-  // compared row against row, and a row that is not comparable is not
-  // evidence at any depth.
-  const TREND_FROM="2026-08-15";
-  const trendAll=S.resting_entry_trend||[];
-  const trend=trendAll.filter(d=>String(d.event_date)>=TREND_FROM);
-  const trendDropped=trendAll.length-trend.length;
-  const STAGES=["P0","P0-M","P1"];
-  const cell=(s)=>{
-    if(!s) return `<td class="muted">—</td>`;
-    const rc=s.rung_completion_rate;
-    return `<td class="mono ${rc==null?"":(rc>=0.8?"up":rc<0.5?"down":"")}">
-      ${pct(rc)}
-      <span class="muted">腿 ${pct(s.leg_fill_rate)} ·
-      ${s.baskets}篮/${s.legs}腿 · 均价 ${
-        s.mean_filled_price==null?"—":s.mean_filled_price.toFixed(3)}</span></td>`;
-  };
-  // A day that has not resolved is still filling.  Without saying so the
-  // last two rows read as a collapse in fill rate when they are simply the
-  // rows whose orders are still on the book.
-  const today=(D.generated_at_utc||"").slice(0,10);
-  const trendRows=trend.map(d=>`<tr>
-    <td class="mono">${h(d.event_date)}${d.event_date>=today
-      ? ` <span class="pill amber" title="事件日未结束，挂单还在成交，这一行会继续往上走">进行中</span>`
-      : ""}</td>
-    ${STAGES.map(k=>cell(d.stages[k])).join("")}
-  </tr>`).join("");
-  // Totals across the window, computed from the same rows rather than
-  // restated: a footer that disagrees with its own column is worse than no
-  // footer.
-  const totals=STAGES.map(k=>{
-    const acc=trend.reduce((a,d)=>{const s=d.stages[k];if(!s)return a;
-      a.baskets+=s.baskets;a.legs+=s.legs;
-      if(s.rung_completion_rate!=null)a.rc+=s.rung_completion_rate*s.legs;
-      if(s.leg_fill_rate!=null)a.lf+=s.leg_fill_rate*s.legs;
-      a.days++;return a;},{baskets:0,legs:0,rc:0,lf:0,days:0});
-    return acc.legs?`<td class="mono"><b>${pct(acc.rc/acc.legs)}</b>
-      <span class="muted">腿 ${pct(acc.lf/acc.legs)} ·
-      ${acc.baskets}篮/${acc.legs}腿 · ${acc.days}天</span></td>`
-      :`<td class="muted">—</td>`;
-  }).join("");
-  const trendBlock=trendRows?`
-    <h2 style="margin-top:26px">按事件日看三阶段的成交趋势</h2>
-    <p class="sub">每格上行是<b>档位成交率</b>（挂出去的阶梯买到几档），
-    下行是整腿成交率、篮子数/腿数与实际成交均价。挂单时长或重挂周期一改，
-    先看这里有没有动。标「进行中」的事件日还没结束，单子还挂在书上，
-    那一行只会继续往上走——不要拿它和已经走完的日子直接比。<br>
-    <b>只列 ${TREND_FROM} 起的事件日</b>，合计行也只合计这几行：
-    更早的日子挂在另一套挂法下${trendDropped?`（${trendDropped} 天）`:""}，
-    与现在的成交率不是同一件事的两次测量。</p>
-    <div class="card"><div class="scroll"><table><thead><tr>
-      <th>事件日</th>${STAGES.map(k=>`<th>${k}</th>`).join("")}
-    </tr></thead><tbody>${trendRows}
-      <tr><td><b>合计</b></td>${totals}</tr>
-    </tbody></table></div></div>`:"";
-  return `${assessBlock}${trendBlock}
-  <h2 style="margin-top:26px">挂单影子探针（不下真单）</h2>
-  <p class="sub">在真实时间轴上记录"此刻会挂什么单"，<b>不下真单</b>，
-  再用后到的实时盘口判定它会不会成交。${m.open_count||0} 个意图未到期。</p>
-  <div class="why"><b>为什么只有成交率没有成交量比例：</b>
-  探针记录的是价格和到期，不带下单数量——它不下真单，就没有"挂 100 成交 80"
-  这回事。这里的成交率是<b>订单级</b>的：到期时市场有没有穿过这个价。
-  「空桶率」就是没穿过、这条腿买不到的比例。<br>
-  <b>成交判据偏乐观：</b>只要盘口触及限价就算成交，没有排队位置。
-  每条意图都存了 <span class="mono">queue_ahead_shares</span>，
-  将来可以据此修正，而不是现在假设掉。</div>
-  <div class="scroll"><table><thead><tr>
-    <th>提前期</th><th>挂单价</th><th>有效期</th><th>已判定</th>
-    <th>成交率</th><th>空桶率</th><th>挂单均价</th><th>同刻卖价</th><th>省下价差</th>
-  </tr></thead><tbody>${rows}</tbody></table></div>
-  ${settledLine}`;
-}
-
 
 function gaps(){
   if(!D.gaps.length) return `<h2>十七、数据缺口</h2>
@@ -5549,16 +5233,13 @@ function daily(){
     const cal=r.calibration_ratio;
     const calCls=cal==null?"":(cal>=0.9&&cal<=1.15?"up":"down");
     const byStage=r.filled_leg_by_stage||{};
-    const postedByStage=r.posted_leg_by_stage||{};
     // Three stages of one position, so the split is written out rather
     // than folded into a total: a day built at entry and a day topped up
-    // afterwards have the same filled count and are not the same day.
+    // afterwards have the same leg count and are not the same day.
     const stageTxt=STAGES.map(st=>{
       const n=byStage[st]||0;
-      const posted=postedByStage[st]||0;
-      if(!posted) return `<span class="muted">${st} —</span>`;
-      return `<span title="${st}：挂 ${posted} 腿，成交 ${n} 腿"
-        >${st} <b>${n}</b><span class="muted">/${posted}</span></span>`;
+      if(!n) return `<span class="muted">${st} —</span>`;
+      return `<span title="${st}：${n} 腿">${st} <b>${n}</b></span>`;
     }).join(`<span class="muted"> · </span>`);
     const cov=r.cover_rate;
     const covCls=cov==null?"":(cov>=0.6?"up":(cov<0.4?"down":""));
@@ -5572,14 +5253,9 @@ function daily(){
           r.cover_settled_count}/${r.cover_station_count} 站</span>`:""}${
         r.unfilled_intended?`<span class="muted"> +${
           r.unfilled_intended} 缺席</span>`:""}</td>
-      <td class="mono">${r.posted_leg_total}
-        <span class="muted">均 ${r.posted_leg_mean==null?"—"
-          :r.posted_leg_mean.toFixed(1)}</span></td>
       <td class="mono">${r.filled_leg_total}
         <span class="muted">均 ${r.filled_leg_mean==null?"—"
           :r.filled_leg_mean.toFixed(1)}</span>
-        ${r.posted_leg_total?`<span class="muted"> · ${
-          (100*r.filled_leg_total/r.posted_leg_total).toFixed(0)}%</span>`:""}
         <div class="muted" style="font-size:11px;margin-top:2px"
           >${stageTxt}</div></td>
       <td>${r.settled_count}</td>
@@ -5593,16 +5269,15 @@ function daily(){
   }).join("");
   return `<h2>每日统计</h2>
   <p class="sub">按事件日汇总，只算可成交的（整篮成本 ≥1 分）——不足一分的多是无人出价那侧的
-  挂单，名义上有价、实际买不到，混进来会让当天的盈亏读不出意思。</p>
+  单边报价，名义上有价、实际买不到，混进来会让当天的盈亏读不出意思。</p>
   <div class="why"><b>列的意思：</b>「位置」是相对市场偏上/一致/偏下的笔数，
   用的是<b>均值落点桶</b>（宪章 54 生产就座的那个中心桶，直接读账本记录）与市场质心比，
   差 ${(0.35).toFixed(2)} 桶以内算一致；
   「意向窗盖住率」是真值有没有落进 P0<b>意向</b>篮子——评的是选桶质量、与成交无关，
-  所以它的站数按 P0 记录的站日算，可以多于当天仓位数，挂单全程零成交、账本只留文字的站日
+  所以它的站数按 P0 记录的站日算，可以多于当天仓位数，全程没买到、账本只留文字的站日
   单列为「缺席」；
-  「预计建仓桶」是当天所有座位挂出去的腿数合计（括号里是每座位平均几腿），
-  「实际建仓桶」是其中真正买到的腿数与占比——两者的差是市场没卖，不是选桶变窄，
-  下面一行按 <b>P0 / P0-M / P1</b> 拆开写成「成交/挂出」，
+  「建仓桶」是当天所有座位买到的腿数合计（括号里是每座位平均几腿），
+  下面一行按 <b>P0 / P0-M / P1</b> 拆开，
   三个阶段是同一个仓位：P0 建仓，后两个只加不减；
   「实现/声称」是命中率÷声称胜率，1.00× 表示概率说得准；
   「赔率」是 (1−成本)/成本。</div>
@@ -5610,8 +5285,7 @@ function daily(){
     <th>事件日</th><th>站数</th><th>仓位</th>
     <th>位置<br><span class="muted">均值桶 上/平/下</span></th>
     <th>意向窗<br><span class="muted">盖住率</span></th>
-    <th>预计建仓桶<br><span class="muted">挂单腿数</span></th>
-    <th>实际建仓桶<br><span class="muted">成交腿数 · 分阶段</span></th>
+    <th>建仓桶<br><span class="muted">腿数 · 分阶段</span></th>
     <th>已结算</th><th>命中率</th><th>声称</th><th>实现/声称</th>
     <th>赔率</th><th>投入</th><th>盈亏</th>
   </tr></thead><tbody>${rows}</tbody></table></div>`;
@@ -5688,14 +5362,10 @@ function stationSummary(){
         <span class="muted">${h(s.station_label)}</span></td>
       <td>${s.position_count}</td>
       <td>${s.settled_count}</td>
-      <td class="mono">${s.posted_leg_total}
-        <span class="muted">均 ${s.posted_leg_mean==null?"—"
-          :s.posted_leg_mean.toFixed(1)}</span></td>
       <td class="mono">${s.filled_leg_total}
         <span class="muted">均 ${s.filled_leg_mean==null?"—"
           :s.filled_leg_mean.toFixed(1)}</span>
-        ${s.posted_leg_total?`<span class="muted"> · ${
-          (100*s.filled_leg_total/s.posted_leg_total).toFixed(0)}%</span>`:""}</td>
+        </td>
       <td class="muted">${sd.above||0}/${sd.aligned||0}/${sd.below||0}</td>
       <td>${p2(s.model_coverage_mean)}</td>
       <td class="mono">${n2(s.seat_ask_total_mean)}</td>
@@ -5720,15 +5390,13 @@ function stationSummary(){
   排序时跟着这一站走，所以可以直接拿它点名某一行；
   「仓位」是参与平均的笔数，样本少于三笔时右侧的
   命中率与实现/声称基本读不出信号；
-  「预计建仓桶」是该站这段窗口里挂出去的腿数合计（括号里是每座位平均几腿），
-  「实际建仓桶」是真正买到的腿数与占比——占比低说明这个站的盘口不肯按我们的价成交，
-  与选桶宽窄无关；「位置」是相对市场偏上/一致/偏下的笔数；
+  「建仓桶」是该站这段窗口里买到的腿数合计（括号里是每座位平均几腿）；
+  「位置」是相对市场偏上/一致/偏下的笔数；
   「概率和/卖价和/赔率/EV」同第十节，只是范围缩到这一个站；
   「实现/声称」是命中率÷声称胜率；「兑现比」是实得÷期望。</div>
   <div class="card"><div class="scroll"><table><thead><tr>
     <th>#</th><th>站点</th><th>仓位</th><th>已结算</th>
-    <th>预计建仓桶<br><span class="muted">挂单腿数</span></th>
-    <th>实际建仓桶<br><span class="muted">成交腿数</span></th>
+    <th>建仓桶<br><span class="muted">腿数</span></th>
     <th>位置<br><span class="muted">上/平/下</span></th>
     <th>概率和</th><th>卖价和</th><th>赔率</th><th>EV/U</th>
     <th>命中率</th><th>声称</th><th>实现/声称</th>
@@ -5771,17 +5439,17 @@ function roster(){
     no_priced_window:["窗口定不出价","窗口过了全部结构闸，但里面有腿根本没有卖价，成本算不出来。缺的是盘口"],
     negative_edge_window:["边际不敌摩擦","窗口过闸也报得出价，胜率减全包成本仍盖不住逐腿最小跳动——这一条才是市场比模型贵。约六成的未入座是这一类，最好的一篮边际中位数 −0.25"],
     leg_below_floor:["单腿报价过低","窗口里有腿的报价低于一分——那是无人出价那侧的挂牌，不是价格。这是我们自己设的闸，不是市场没给价"],
-    no_positive_kelly:["赔率不划算","篮子凑出来也定了价，但赢面低于要价，Kelly 给出零仓位。成本按本车道自己的价算——挂单模式下是要挂出去的价，括号里的吃单价是上界"],
+    no_positive_kelly:["赔率不划算","篮子凑出来也定了价，但赢面低于要价，Kelly 给出零仓位"],
     certainty_gate_lit:["市场已定价完毕","中心桶连三次没动，或头两桶已占六成——证据收敛了，溢价市场早收过了，这一轮主动不做，等下一个决策时刻。与「赔率不划算」相反：那是算过嫌贵，这是压根没问"],
     unquoted_ideal_window:["理想窗口没报价","中心±1 里凑不出八成质量有像样卖价的桶。市场不报价常常不是疏忽，是它判定这些桶不会发生。默认关闭，由前向验证决定是否启用"],
-    cost_exceeds_payout:["比满赔还贵","整篮成本超过它赢了能赔的 1.00，多高的概率都是亏——模型没被问到，是书的问题。成本按本车道自己的价算：挂单模式下是这几条腿要挂的价合计，括号里的吃单价是上界。2026-08-26 之前这里印的是吃单价，KHOU 2026-08-27 因此被写成 1.100，而这一篮实际会挂在 0.876"],
+    cost_exceeds_payout:["比满赔还贵","整篮成本超过它赢了能赔的 1.00，多高的概率都是亏——模型没被问到，是书的问题"],
     resting_unfilled:["挂单没成交","价格没等到；规模是够的，市场没走到我们这里来。每 60 分钟重挂一次，但过了本站达峰时刻就收摊，不是挂到结算"],
     belief_withdrew_order:["信念转负撤单","不是市场没来，是我们自己撤的：重挂时用最新概率重算整篮期望，转负即全撤。该查模型，不是执行"],
     no_top_up_needed:["无需加仓","这一阶段想要的梯级已经在仓里了，按兵不动"],
     no_chain_growth:["加仓救不动链曲线","宪章66乙款：加仓按整条链的对数增长定规模，从已持仓位出发这一笔要让链的赔率曲线变优才买；求解器给出的最优增量为零——已持仓覆盖，或价格吃尽了增益"],
     chain_cost_at_par:["买入后整链必亏","宪章66甲款：这一笔单独看过得了本阶段的闸，但买下去之后整条链的混合成本≥1.00——满额赔付也回不了本，中了也亏。只做算术不读声称；实测这类链38条中37仍净亏31.9"],
     chain_never_opened:["P0 未开仓","只有 P0 开仓，后面两阶段是加仓；P0 没坐下这里就没仓可加，真正的原因看 P0"],
-    no_depth:["盘口太薄","价格划算但挂单量填不满最小整篮"],
+    no_depth:["盘口太薄","价格划算但卖方挂出的量填不满最小整篮"],
     no_seat_taken:["未入座","有概率也有盘口，目标函数看过后选择不坐"]};
   const short=x=>String(x).replace("°C","").replace("°F","");
   const LAB={above:"偏上",below:"偏下",aligned:"一致",unknown:"—"};
@@ -5831,21 +5499,21 @@ function roster(){
     const legs=e.legs.map(l=>l.empty
       ? `<span class="muted" style="text-decoration:line-through">${short(l.bucket)}</span>`
       : `<span>${short(l.bucket)}</span>`).join("+");
+    // Charter 50/50a is a rule about the ladder that was CHOSEN, so it
+    // stays; the fill pills beside it do not.  Crossing buys the basket
+    // whole, so "整篮" was true on every row and "缺腿" on none -- two
+    // badges that never varied, describing a resting lane this book has
+    // not run since charter 65 made taker the law.
     const floorBad=e.posted_leg_count<(FLOOR[stage]||3);
-    const full=e.filled_leg_count===e.posted_leg_count;
     const legLine=`<div class="mono" style="font-size:11px">${legs}
-      <span class="muted">${e.posted_leg_count}腿→${e.filled_leg_count}腿</span>
-      ${floorBad?`<span class="pill red" title="宪章 50/50a：${stage} 的挂单下界是 ${FLOOR[stage]||3} 桶">挂单不足${FLOOR[stage]||3}桶</span>`:""}
-      ${e.gapped?`<span class="pill amber" title="选桶层强制连续，出洞必是成交造成的">缺腿</span>`:""}</div>`;
-    // Share completion and stake completion disagree whenever the legs that
-    // missed were not the ones carrying the money, so both are shown; the
-    // rung count is what the market actually came down to.
-    const money=`<div class="muted" style="font-size:11px">
-      ${usd2(e.intended_stake_usdc)}→${usd2(e.filled_stake_usdc)}
-      <span title="金额完成">(${pctS(e.stake_completion)})</span> ·
-      <span title="份数完成 / 档位完成">份${pctS(e.share_completion)} ·
-      档${pctS(e.rung_completion)}</span>${full?
-        ` <span class="pill green">整篮</span>`:""}</div>`;
+      <span class="muted">${e.posted_leg_count}腿</span>
+      ${floorBad?`<span class="pill red" title="宪章 50/50a：${stage} 的桶数下界是 ${FLOOR[stage]||3}">桶数不足${FLOOR[stage]||3}</span>`:""}</div>`;
+    // What the position cost.  The three completion rates that used to sit
+    // here -- money, shares, rungs -- are all a resting lane's questions:
+    // a crossing basket fills whole or refuses, so all three read 100% (or
+    // a dash) on every row of this book.
+    const money=`<div class="muted" style="font-size:11px">实投 ${
+      usd2(e.filled_stake_usdc)}</div>`;
     // What this rung cost, which the share count does not say: the rungs
     // sell at different prices, so the widest leg is routinely not the
     // dearest one and the basket total cannot be split by eye.  Shown as a
@@ -5857,31 +5525,30 @@ function roster(){
         +"吃单走深盘口的部分它看不见，所以是下界"
       : "成交时逐腿实付";
     const legCash=(l)=>{
-      const got=l.filled_stake_usdc, want=l.intended_stake_usdc;
-      if(got==null&&want==null) return "—";
-      const share=(got!=null&&e.filled_stake_usdc>0)
+      const got=l.filled_stake_usdc;
+      if(got==null) return "—";
+      const share=e.filled_stake_usdc>0
         ? ` <span class="muted">(${(100*got/e.filled_stake_usdc).toFixed(0)}%)</span>`:"";
-      const partial=(want!=null&&got!=null&&Math.abs(want-got)>0.005)
-        ? `${usd2(want)}→`:"";
-      return `<span title="${h(cashTip)}">${approx?"≈":""}${partial}${
-        got==null?"—":usd2(got)}</span>${share}`;
+      return `<span title="${h(cashTip)}">${approx?"≈":""}${
+        usd2(got)}</span>${share}`;
     };
     // The walked average the leg actually paid.  A crossing basket records
     // no rung fills, so the price column is empty for every taker row on
     // the page even though the money says exactly what was paid per share.
     const legPrice=(l)=>{
       if(l.empty) return "—";
-      if(l.fill_price!=null) return l.fill_price.toFixed(4);
       if(l.filled_stake_usdc==null||!(l.filled_shares>0)) return "—";
       const tip=approx?"建仓时的盘口卖一价，吃单走深的部分不在里面（下界）"
         :"资金÷份数，即含走深盘口后的实付均价";
       return `<span title="${h(tip)}">${
         approx?"≈":""}${(l.filled_stake_usdc/l.filled_shares).toFixed(4)}</span>`;
     };
+    // "目标份" and "档" were both the resting lane's account of a leg:
+    // what was posted versus what the book came down to.  Crossing has one
+    // number per leg, so the columns held a duplicate and a dash.
     const rows=e.legs.map(l=>`<tr${l.empty?' class="muted"':''}>
-      <td>${h(l.bucket)}</td><td>${l.intended_shares.toFixed(1)}</td>
+      <td>${h(l.bucket)}</td>
       <td>${l.empty?"<b>0</b>":l.filled_shares.toFixed(1)}</td>
-      <td>${l.posted_rungs==null?"—":l.filled_rungs+"/"+l.posted_rungs}</td>
       <td>${legPrice(l)}</td>
       <td>${legCash(l)}</td></tr>`).join("");
     // A derived column that does not add up to the recorded stake says so
@@ -5892,7 +5559,7 @@ function roster(){
     return legLine+money+`<details style="font-size:11px">
       <summary class="muted">逐腿</summary>
       <table class="mono" style="font-size:11px"><thead><tr>
-        <th>腿</th><th>目标份</th><th>成交份</th><th>档</th><th>均价</th>
+        <th>腿</th><th>份数</th><th>均价</th>
         <th title="该腿的资金成本（USDC）与占整篮比重">资金</th>
       </tr></thead><tbody>${rows}</tbody></table>${gap}</details>`;
   };
@@ -6091,13 +5758,9 @@ function roster(){
     const short3=rows.flatMap(e=>["P0","P0-M","P1"].map(k=>[k,e.stages[k]]))
       .filter(([k,v])=>v&&v.entry&&v.entry.posted_leg_count
         &&v.entry.posted_leg_count<(FLOOR[k]||3)).length;
-    const partial=seats.filter(v=>
-      v.entry.filled_leg_count<v.entry.posted_leg_count).length;
-    const want=seats.reduce((s,v)=>s+(v.entry.intended_stake_usdc||0),0);
     const got=seats.reduce((s,v)=>s+v.stake_usdc,0);
-    const fill=seats.length?` · 部分成交 ${partial}/${seats.length} ·
-      计划 ${usd2(want)}→实投 ${usd2(got)}（${pctS(want>0?got/want:null)}）${
-        short3?`<span class="pill red">挂单低于本阶段下界 ${short3}</span>`:""}`:"";
+    const fill=seats.length?` · 实投 ${usd2(got)}${
+        short3?`<span class="pill red">桶数低于本阶段下界 ${short3}</span>`:""}`:"";
     return {day:day, count:rows.length, p0:p0, seated:seated,
       pane:`<div data-daypane="${h(day)}"${index?" hidden":""}>
       <div class="card">
@@ -6127,12 +5790,11 @@ function roster(){
   const legend=Object.entries(REASON).map(([k,v])=>
     `<div class="muted">· <b>${v[0]}</b>：${v[1]}</div>`).join("");
   // Newest day open, everything older folded away beneath it.
-  return `<h2>逐站逐日明细：选了什么、挂了什么、买到了什么</h2>
+  return `<h2>逐站逐日明细：选了什么、买到了什么</h2>
   <p class="sub">每个事件日一组，注册表里的每个站都在，包括没有座位、甚至当天没算出概率的
   ——没坐比坐了更值得看清原因。
-  每格上行是<b>成交后</b>的桶，下方是横梁与胜率 @ 成本 · 赔率；再下一行是这一笔的
-  <b>挂单账</b>：挂出去的每一桶都在，一档没买到的划掉，后面跟腿数、金额与三个完成率，
-  展开「逐腿」是每条腿的目标份数 / 成交份数 / 成交档位 / 均价 / 资金成本
+  每格上行是买到的桶，下方是横梁与胜率 @ 成本 · 赔率；再下一行是这一笔的腿数与实投，
+  展开「逐腿」是每条腿的份数 / 均价 / 资金成本
   （该腿实付的 USDC 与它占整篮资金的比重；带 ≈ 的是按建仓盘口价折算的下界，
   早于逐腿现金记账的旧行才会出现）。
   空格里写的是账本自己给出的拒绝理由，不再统一算作「未入座」。
@@ -6155,13 +5817,10 @@ function roster(){
   「投入」是开仓加历次加仓的总和；后面两个阶段的格子里写「并入本链」，
   不是没结算，是结算记在本链最后一次加仓那一格。
   同一个 2% 单站上限也管整条链——三个阶段各拿 2% 就是同一件事上押了 6%。</div>
-  <div class="why"><b>桶数下界管的是挂单那一栏。</b>宪章 50/50a 要求席位≥3 桶，
-  那是选桶层的规则——划掉的桶照样算数，所以「挂 3 腿成 1 腿」不违宪，标黄；
-  只有<b>挂单</b>本身低于 3 桶才标红。建仓是渐进的：每条腿在买卖价之间挂 5 档，
-  6 小时内盘口穿到哪档成交哪档，一档没穿到的腿就此不存在，因此持仓可以比选中的篮子窄、
-  甚至中间缺一腿（选桶层强制连续，出洞必是成交造成的）。
-  <b>三个完成率不是一回事：</b>「档」是市场把价压下来多少档，「份」是这买到了计划仓位的
-  多少份，「金额」又与份数不同——便宜的腿没成交时，金额完成率会显著高于份数完成率。</div>
+  <div class="why"><b>桶数下界是选桶层的规则。</b>宪章 50/50a 要求席位 ≥3 桶
+  （P1 是 ≥2），低于下界才标红。宪章 65 之后建仓一律吃单，整篮要么按卖价买齐、
+  要么不买，所以这一栏只有一个腿数——从前那套"挂出去几腿、买到几腿、三个完成率"
+  是挂单车道的账，那条车道已经不在跑。</div>
   <div class="why">${legend}</div>
   <div data-daytabs="roster">${dayNav}${blocks.map(b=>b.pane).join("")}</div>`;
 }
@@ -6181,7 +5840,7 @@ function anomalies(){
   </tr>`).join("");
   return `<h2>十二、异常盘口</h2>
   <p class="sub">这些不是机会，是信号：整篮报价不足一分（虚价）、或声称概率超市场定价十倍，
-  几乎总是无人出价那侧的挂单，真下单填不满。</p>
+  几乎总是无人出价那侧的单边报价，真下单填不满。</p>
   <div class="card scroll"><table><thead><tr>
     <th>站点</th><th>事件日</th><th>阶段</th><th>窗口</th><th>成本</th><th>声称</th><th>类型</th>
   </tr></thead><tbody>${rows}</tbody></table></div>`;
@@ -6928,11 +6587,11 @@ const GROUPS = [
      [hitRate,"模型命中率"],[stages,"概率分档校准"],
      [bandShadow,"分档影子：站 × 桶位置"],[oosScores,"OOS 打分"],
      [centerWidth,"中心/宽度"],[scorecard,"模型校准总检"]]},
-  {id:"market", label:"市场与执行", note:"十～十五节：覆盖与 EV、逐站汇总的账、挂单执行、没建仓的原因、分布与持仓分家、Live 上线准备",
+  {id:"market", label:"市场与执行", note:"十～十五节：覆盖与 EV、逐站汇总的账、没建仓的原因、分布与持仓分家、Live 上线准备",
    sections:[[liveReadiness,"Live 上线准备"],
      [coverage,"覆盖"],[stationSummary,"站汇总"],
      [anomalies,"异常"],[basketHit,"篮子命中率"],
-     [makerProbe,"挂单影子探针"],[refusalStats,"未建仓原因"],
+     [refusalStats,"未建仓原因"],
      [windowDivergence,"分布与持仓分家"],[truthLanding,"真值落位"],
      [edgeBandHealth,"声称边际体温计"]]},
   {id:"data", label:"数据与链路", note:"十六～十九节：链路每一环、数据缺口、真值物化、区域模型采集道",
