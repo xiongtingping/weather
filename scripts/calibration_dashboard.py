@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import math
 import re
 from bisect import bisect_left
 from collections import Counter, defaultdict
@@ -39,6 +40,7 @@ if str(ROOT) not in sys.path:
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from paper_trading_ledger import INITIAL_CAPITAL_USDC  # noqa: E402
 from selection_market_dashboard import (  # noqa: E402
     STATION_LABELS,
     STATS_START_EVENT_DATE,
@@ -3364,6 +3366,144 @@ def _intended_cover_by_day(
     return out
 
 
+def collect_risk_metrics(conn: sqlite3.Connection) -> dict[str, Any]:
+    """The book as a portfolio: Sharpe against its target, and its cousins.
+
+    One return per event day -- the day's settled P&L over the equity the
+    book opened that day with -- which is the series the equity curve is
+    actually built from, so the chart and the ratios cannot disagree.
+    Annualised at 365, not 252: this book trades every calendar day it has
+    a market for, weekends included.
+
+    The honest part is the error bar.  A Sharpe estimated on a handful of
+    days is almost pure noise, and the classical standard error says so:
+    ``sqrt((1 + S^2/2) / n)`` per period, which annualises by the same
+    root-365 the ratio does.  On this book that error bar is several times
+    the estimate, so the section leads with the interval and with how many
+    days it would take to tell the number from zero -- otherwise a reader
+    sees "1.54" beside a target of 2 and thinks the gap is the finding.
+    """
+
+    rows = conn.execute(
+        "SELECT event_date, SUM(stake_usdc), SUM(pnl_usdc)"
+        " FROM paper_trade_settlement GROUP BY 1 ORDER BY 1"
+    ).fetchall()
+    if len(rows) < 3:
+        return {"available": False, "days": len(rows)}
+    equity = INITIAL_CAPITAL_USDC
+    series: list[dict[str, Any]] = []
+    returns: list[float] = []
+    for day, staked, pnl in rows:
+        opening = equity
+        value = float(pnl or 0.0)
+        returns.append(value / opening if opening > 0 else 0.0)
+        equity = opening + value
+        series.append({
+            "event_date": str(day),
+            "staked_usdc": round(float(staked or 0.0), 2),
+            "pnl_usdc": round(value, 2),
+            "opening_equity_usdc": round(opening, 2),
+            "equity_usdc": round(equity, 2),
+            "return": returns[-1],
+        })
+    count = len(returns)
+    mean = sum(returns) / count
+    variance = sum((r - mean) ** 2 for r in returns) / count
+    sigma = math.sqrt(variance)
+    # Downside deviation against a zero target: the losing days only, and
+    # divided by the whole count -- the winning days are not evidence that
+    # the downside is small, they are evidence that there is upside.
+    downside = math.sqrt(
+        sum(min(0.0, r) ** 2 for r in returns) / count
+    )
+    annual = 365.0
+    root = math.sqrt(annual)
+    sharpe = (mean / sigma * root) if sigma > 0 else None
+    sortino = (mean / downside * root) if downside > 0 else None
+    per_period = (mean / sigma) if sigma > 0 else 0.0
+    sharpe_se = math.sqrt((1.0 + 0.5 * per_period ** 2) / count) * root
+    # How long until the estimate could clear zero at 95%.  Solving
+    # 1.96 * se(n) < |S| for n, with se scaling as 1/sqrt(n).
+    days_needed = None
+    if sharpe not in (None, 0.0):
+        days_needed = int(math.ceil(
+            (1.96 ** 2) * (1.0 + 0.5 * per_period ** 2) * annual
+            / (sharpe ** 2)
+        ))
+    # The running peak starts at the capital the book opened with, not at
+    # its first closing equity.  Seeded from the series instead, a book
+    # that lost on day one had that loss excluded from its own drawdown:
+    # this one opened at 1000, closed day one at 947.8, and reported -8.2%
+    # where the trough is -9.3% below the money that was actually put in.
+    peak = float(INITIAL_CAPITAL_USDC)
+    max_drawdown = 0.0
+    trough_day = ""
+    peak_day = ""
+    running_peak_day = "开仓前"
+    for row in series:
+        if row["equity_usdc"] > peak:
+            peak = row["equity_usdc"]
+            running_peak_day = row["event_date"]
+        drop = (row["equity_usdc"] - peak) / peak if peak > 0 else 0.0
+        if drop < max_drawdown:
+            max_drawdown = drop
+            trough_day = row["event_date"]
+            peak_day = running_peak_day
+    # Least squares on cumulative P&L: the straight line a reader draws by
+    # eye, made explicit so the eye is not doing the fitting.
+    xs = list(range(1, count + 1))
+    ys = [row["equity_usdc"] - INITIAL_CAPITAL_USDC for row in series]
+    mean_x = sum(xs) / count
+    mean_y = sum(ys) / count
+    denominator = sum((x - mean_x) ** 2 for x in xs)
+    slope = (
+        sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys)) / denominator
+        if denominator else 0.0
+    )
+    intercept = mean_y - slope * mean_x
+    residual = sum(
+        (y - (slope * x + intercept)) ** 2 for x, y in zip(xs, ys)
+    )
+    total_ss = sum((y - mean_y) ** 2 for y in ys)
+    total_return = (equity / INITIAL_CAPITAL_USDC) - 1.0
+    return {
+        "available": True,
+        "days": count,
+        "first_day": series[0]["event_date"],
+        "last_day": series[-1]["event_date"],
+        "initial_equity_usdc": INITIAL_CAPITAL_USDC,
+        "final_equity_usdc": round(equity, 2),
+        "total_return": total_return,
+        "annualised_return_geometric": (
+            (equity / INITIAL_CAPITAL_USDC) ** (annual / count) - 1.0
+            if equity > 0 else None
+        ),
+        "annualised_return_arithmetic": mean * annual,
+        "annualised_volatility": sigma * root,
+        "daily_mean_return": mean,
+        "daily_volatility": sigma,
+        "downside_deviation": downside,
+        "sharpe": sharpe,
+        "sharpe_target": 2.0,
+        "sharpe_standard_error": sharpe_se,
+        "sharpe_ci": (
+            None if sharpe is None
+            else [sharpe - 1.96 * sharpe_se, sharpe + 1.96 * sharpe_se]
+        ),
+        "days_to_separate_from_zero": days_needed,
+        "sortino": sortino,
+        "max_drawdown": max_drawdown,
+        "max_drawdown_peak_day": peak_day,
+        "max_drawdown_trough_day": trough_day,
+        "trend_slope_usdc_per_day": slope,
+        "trend_intercept_usdc": intercept,
+        "trend_r_squared": (
+            None if total_ss <= 0 else max(0.0, 1.0 - residual / total_ss)
+        ),
+        "series": series,
+    }
+
+
 def collect_edge_band_health(conn: sqlite3.Connection) -> dict[str, Any]:
     """The claims layer's thermometer: edge bands versus what they realise.
 
@@ -3988,6 +4128,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "scorecard": scorecard,
         "window_divergence": collect_window_divergence(conn),
         "edge_band_health": collect_edge_band_health(conn),
+        "risk_metrics": collect_risk_metrics(conn),
         "regional": collect_regional_lanes(conn),
         "worker": worker,
     }
@@ -5368,6 +5509,113 @@ function consolidation(){
     <div style="margin-top:4px;display:flex;flex-wrap:wrap;
       gap:4px 14px;line-height:1.9">${openChips}</div>`:""}
   </div>`;
+}
+
+
+function riskMetrics(){
+  const R = D.risk_metrics || {};
+  if(!R.available) return `<h2>组合风险指标</h2>
+    <div class="card"><span class="dot muted"></span>
+      结算日不足 3 天，比率算不出来。</div>`;
+  // Signed for anything that can go either way; unsigned for dispersion,
+  // which cannot be negative and reads wrong with a plus in front of it.
+  const pct = (v,d=1)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(d)+"%");
+  const mag = (v,d=1)=>v==null?"—":(100*v).toFixed(d)+"%";
+  const num = (v,d=2)=>v==null?"—":v.toFixed(d);
+  const S = R.sharpe, TGT = R.sharpe_target, CI = R.sharpe_ci||[];
+  // The target is a goal, not a verdict: with an error bar this wide the
+  // only honest colour is "cannot tell", so the tile is muted until the
+  // interval clears zero.
+  const decided = CI.length===2 && (CI[0]>0 || CI[1]<0);
+  const cls = !decided ? "muted" : (S>=TGT ? "up" : "down");
+  const tile = (label, value, note, klass) => `<div class="card">
+    <div class="muted">${label}</div>
+    <div class="big ${klass||""}">${value}</div>
+    <div class="muted" style="font-size:11.5px">${note}</div></div>`;
+
+  // Equity curve plus its least-squares line.  Drawn from the same series
+  // the ratios are computed on, so the picture and the numbers are one
+  // reading.  Plain SVG in the page's own tokens -- no library, and it
+  // survives the light/dark switch because it names variables, not hexes.
+  const pts = R.series||[];
+  const W = 900, H = 210, PADX = 46, PADY = 16;
+  const eq = pts.map(r=>r.equity_usdc);
+  const line = pts.map((_,i)=>R.trend_intercept_usdc
+    + R.trend_slope_usdc_per_day*(i+1) + R.initial_equity_usdc);
+  const lo = Math.min(R.initial_equity_usdc, ...eq, ...line);
+  const hi = Math.max(R.initial_equity_usdc, ...eq, ...line);
+  const span = (hi-lo)||1;
+  const X = i => PADX + (W-PADX-10) * (pts.length<2?0:i/(pts.length-1));
+  const Y = v => PADY + (H-2*PADY) * (1 - (v-lo)/span);
+  const path = (vals)=>vals.map((v,i)=>`${i?"L":"M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+  // Peak-to-trough band, so the drawdown number has somewhere to point.
+  const peakIdx = pts.findIndex(r=>r.event_date===R.max_drawdown_peak_day);
+  const troughIdx = pts.findIndex(r=>r.event_date===R.max_drawdown_trough_day);
+  const ddBand = (peakIdx>=0 && troughIdx>peakIdx)
+    ? `<rect x="${X(peakIdx).toFixed(1)}" y="${PADY}"
+        width="${(X(troughIdx)-X(peakIdx)).toFixed(1)}" height="${H-2*PADY}"
+        fill="var(--pill-red-bg)"></rect>` : "";
+  const ticks = [hi, (hi+lo)/2, lo].map(v=>`
+    <text x="6" y="${(Y(v)+4).toFixed(1)}" fill="var(--muted)"
+      font-size="11">${v.toFixed(0)}</text>
+    <line x1="${PADX-6}" y1="${Y(v).toFixed(1)}" x2="${W-10}"
+      y2="${Y(v).toFixed(1)}" stroke="var(--line)" stroke-width="1"></line>`).join("");
+  const chart = pts.length<2 ? "" : `<div class="card" style="margin-top:12px">
+    <div class="muted">权益曲线与趋势线 · 红带是最大回撤区间（${
+      h(R.max_drawdown_peak_day||"—")} → ${h(R.max_drawdown_trough_day||"—")}）</div>
+    <div class="scroll"><svg viewBox="0 0 ${W} ${H}" width="100%"
+      style="min-width:520px;height:${H}px;display:block;margin-top:6px"
+      role="img" aria-label="权益曲线与趋势线">
+      ${ddBand}${ticks}
+      <line x1="${PADX}" y1="${Y(R.initial_equity_usdc).toFixed(1)}"
+        x2="${W-10}" y2="${Y(R.initial_equity_usdc).toFixed(1)}"
+        stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3"></line>
+      <path d="${path(line)}" fill="none" stroke="var(--accent)"
+        stroke-width="1.5" stroke-dasharray="6 4"></path>
+      <path d="${path(eq)}" fill="none" stroke="var(--up)"
+        stroke-width="2"></path>
+    </svg></div>
+    <div class="muted" style="font-size:11.5px">
+      虚线是起始本金 ${R.initial_equity_usdc.toFixed(0)}；蓝虚线是最小二乘趋势线
+      <span class="mono">${(R.trend_slope_usdc_per_day>=0?"+":"")}${
+        num(R.trend_slope_usdc_per_day)} USDC/天</span>，
+      R²=${num(R.trend_r_squared)}——R² 低说明这条线只是把噪声拟合成了方向，
+      不是"每天稳定赚这么多"。</div></div>`;
+
+  return `<h2>组合风险指标</h2>
+  <p class="sub">把整本账当一个组合来量：每个事件日一笔收益（当日已结算盈亏 ÷
+  当日开盘权益），按 <b>365 天</b>年化（这本账有市场就交易，不跳周末）。</p>
+  <div class="why"><b>先看误差棒再看数字。</b>
+  ${R.days} 天的样本估夏普，经典标准误是
+  <span class="mono">√((1+S²/2)/n)</span>，年化后是 <b>±${num(R.sharpe_standard_error)}</b>——
+  比估计值本身大好几倍。所以下面的 ${num(S)} <b>与目标 2 的差距不是发现</b>，
+  它和 0 都还分不开。要让这个数字在 95% 置信下离开 0，
+  按当前的信噪比需要约 <b>${R.days_to_separate_from_zero==null?"—":R.days_to_separate_from_zero} 个交易日</b>
+  （现有 ${R.days} 天）。最大回撤和波动率受样本影响小得多，可以先当真。</div>
+  <div class="grid g3">
+    ${tile("夏普比率 <span class='muted'>目标 "+TGT.toFixed(1)+"</span>",
+      num(S), "95% 区间 ["+num(CI[0])+", "+num(CI[1])+"] · "+
+      (decided?"已与 0 可分":"<b>与 0 不可分</b>"), cls)}
+    ${tile("Sortino", num(R.sortino),
+      "只罚下行波动 "+mag(R.downside_deviation,2)+"/天 · 同样受样本量所限",
+      decided?(R.sortino>=TGT?"up":"down"):"muted")}
+    ${tile("最大回撤", pct(R.max_drawdown),
+      "峰 "+h(R.max_drawdown_peak_day||"—")+" → 谷 "+h(R.max_drawdown_trough_day||"—"),
+      R.max_drawdown<=-0.15?"down":"")}
+  </div>
+  <div class="grid g3" style="margin-top:10px">
+    ${tile("年化收益 <span class='muted'>几何</span>",
+      pct(R.annualised_return_geometric),
+      "算术口径 "+pct(R.annualised_return_arithmetic)+" · 累计 "+pct(R.total_return,2),
+      R.annualised_return_geometric>=0?"up":"down")}
+    ${tile("年化波动率", mag(R.annualised_volatility),
+      "日波动 "+mag(R.daily_volatility,2)+" × √365")}
+    ${tile("权益", R.final_equity_usdc.toFixed(2),
+      "起始 "+R.initial_equity_usdc.toFixed(0)+" · "+R.days+" 个结算日（"+
+      h(R.first_day)+" → "+h(R.last_day)+"）",
+      R.final_equity_usdc>=R.initial_equity_usdc?"up":"down")}
+  </div>
+  ${chart}`;
 }
 
 
@@ -6836,7 +7084,8 @@ const GROUPS = [
      [windowDivergence,"分布与持仓分家"]]},
   {id:"market", label:"市场与执行门槛", tone:"#e3b341",
    note:"市场肯不肯让这套东西赚钱：覆盖与 EV、篮子命中率、真值落位、声称边际",
-   sections:[[coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"],
+   sections:[[riskMetrics,"组合风险指标"],
+     [coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"],
      [truthLanding,"真值落位"],[edgeBandHealth,"声称边际体温计"]]},
   {id:"health", label:"系统健康", tone:"#f85149",
    note:"机器在不在转：整条链路每一环、真值物化、Live 上线闸门",
