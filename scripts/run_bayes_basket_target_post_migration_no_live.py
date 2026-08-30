@@ -32,6 +32,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.activation import load_target_activation  # noqa: E402
 from bayes_basket_target.atomic_cutover_receipt import (  # noqa: E402
     HISTORICAL_OOS_BOUNDARY as ATOMIC_HISTORICAL_OOS_BOUNDARY,
@@ -64,7 +65,7 @@ EXECUTION_MODE = "production_no_live"
 CANONICAL_STATION_IDS = tuple(
     coordinate_registry_manifest()["station_ids"]
 )
-MAX_STATION_SCOPE = 45
+MAX_STATION_SCOPE = expected_station_count()
 RESIDENT_ACCEPTANCE_SCHEMA = (
     "bayes_basket_target_probability_resident_two_round_acceptance_v2"
 )

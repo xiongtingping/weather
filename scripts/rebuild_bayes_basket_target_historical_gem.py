@@ -32,6 +32,7 @@ import sys
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.et_history import assert_event_day_closed  # noqa: E402
 from bayes_basket_target.resource_bounds import (  # noqa: E402
@@ -65,7 +66,7 @@ DEFAULT_OUTPUT = (
     ROOT / "output/audits/bayes_basket_target_historical_gem_rebuild.json"
 )
 MAX_DATES = 4
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 MIN_FREE_BYTES = 10 * 1024 * 1024 * 1024
 _RAW_PERSIST_LOCK = threading.Lock()

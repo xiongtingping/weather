@@ -30,6 +30,7 @@ import sys
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.et_history import assert_event_day_closed, event_day_window  # noqa: E402
 from bayes_basket_target.model_sources import provider_role, provider_source_class  # noqa: E402
@@ -82,7 +83,7 @@ DEFAULT_STATION_MAP = ROOT / "config/trading/bayes_basket_target_station_lane_ma
 DEFAULT_TIMEZONE_REGISTRY = ROOT / "data/bayes_basket_target_market_registry_snapshot.json"
 DEFAULT_OUTPUT_ROOT = ROOT / "data/research/bayes_basket_target/model_arrivals"
 DEFAULT_OUTPUT = ROOT / "output/audits/bayes_basket_target_open_meteo_icon_rebuild.json"
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 MAX_DATES = 14
 MAX_RESPONSE_BYTES = 1 * 1024 * 1024
 MAX_TOTAL_RAW_BYTES = 256 * 1024 * 1024

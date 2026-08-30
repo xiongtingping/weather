@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.aifs_deterministic_oos import (  # noqa: E402
     PROVIDER_ID,
     build_aifs_deterministic_training_facts,
@@ -67,7 +68,7 @@ DEFAULT_OUTPUT = ROOT / "output/audits/aifs_deterministic_training_facts_latest.
 # only lifecycle-v2 evidence here prevents a lexical ``*_post_consumption``
 # legacy receipt from becoming the implicit default again.
 DEFAULT_DECODE_GLOB = "aifs_official_45station_native_decode_lifecycle_v2_*.json"
-MAX_CURVES = 45
+MAX_CURVES = expected_station_count()
 MAX_ARRIVAL_ARTIFACTS = MAX_CURVES * 8
 MAX_AUDIT_BYTES = 4 * MIB
 MAX_ARRIVAL_ARTIFACT_BYTES = 1 * MIB

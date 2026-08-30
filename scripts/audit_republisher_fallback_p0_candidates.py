@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.native_ensemble_p0 import compile_native_ensemble_p0  # noqa: E402
 from bayes_basket_target.resource_bounds import (  # noqa: E402
@@ -36,7 +37,7 @@ INBOX_SCHEMA = "native_ensemble_forward_inbox_v1"
 OFFICIAL_SCHEMA = "official_native_ensemble_forward_packet_v1"
 REPUBLISHER_SCHEMA = "open_meteo_native_ensemble_forward_packet_v1"
 MAX_PACKETS = 256
-MAX_SCOPES = 45
+MAX_SCOPES = expected_station_count()
 OBSERVATIONAL_ROLE = "observational_candidate_not_oos"
 OBSERVATIONAL_SCOPE = "observational_candidate_not_oos"
 

@@ -21,13 +21,14 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Mapping
 from zoneinfo import ZoneInfo
+from bayes_basket_target.fleet import expected_station_count
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 DEFAULT_OUTPUT = ROOT / "output" / "audits" / (
     "open_meteo_historical_oos_contract_append_20260802.json"
 )
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 CONTRACT_VERSION = "open_meteo_historical_oos_v1"
 RECEIPT_CLASS = "HISTORICAL_ASOF_REPUBLISHER_RECEIPT"
 TEMPORAL_SCOPE = "CLOSED_HISTORICAL_AWC_TRUTH"

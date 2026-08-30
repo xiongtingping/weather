@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.database import DEFAULT_TARGET_DB  # noqa: E402
 from bayes_basket_target.native_ensemble_training_facts import (  # noqa: E402
     ingest_historical_taf_correction_quarantine,
@@ -29,7 +30,7 @@ from bayes_basket_target.resource_bounds import (  # noqa: E402
 )
 
 
-MAX_ARCHIVES = 45
+MAX_ARCHIVES = expected_station_count()
 MAX_OUTPUT_BYTES = 4 * 1024 * 1024
 
 

@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.database import (  # noqa: E402
     DEFAULT_TARGET_DB,
@@ -51,10 +52,10 @@ from scripts.build_native_ensemble_training_facts import (  # noqa: E402
 
 SCHEMA = "historical_taf_native_p0m_exact_join_manifest_v1"
 P0M_CANDIDATE_SCHEMA = "historical_taf_p0m_candidate_v1"
-MAX_STATIONS = 45
-MAX_ARCHIVES = 45
-MAX_TAF_ARTIFACTS = 45
-MAX_SCOPES = 45
+MAX_STATIONS = expected_station_count()
+MAX_ARCHIVES = expected_station_count()
+MAX_TAF_ARTIFACTS = expected_station_count()
+MAX_SCOPES = expected_station_count()
 MAX_SAMPLES_PER_ARCHIVE = 366
 REQUIRED_HISTORICAL_TAF_TABLE = "calibration_historical_taf_capture"
 OPEN_TRUTH_DAY_BLOCKER = "awc_taf_calibration_open_truth_day_forbidden"

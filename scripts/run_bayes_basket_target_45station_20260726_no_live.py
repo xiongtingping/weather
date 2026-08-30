@@ -35,6 +35,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.resource_bounds import MAX_TARGET_PROCESS_RSS_BYTES
 from bayes_basket_target.resource_bounds import MIB
 
@@ -60,7 +61,7 @@ DECODE_PATHS = {
     "ICON": ROOT / "output/audits/bayes_basket_target_native_model_arrival_decode_icon_20260725_00z_exact5.json",
 }
 
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 MAX_INPUT_FILE_BYTES = 8 * 1024 * 1024
 MAX_TOTAL_INPUT_BYTES = 256 * MIB
 MAX_OUTPUT_FILE_BYTES = 16 * 1024 * 1024

@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from bayes_basket_target.fleet import expected_station_count
+from bayes_basket_target.icon_eps_daily_curve import COHORT_STATE
 from bayes_basket_target.contracts import ContractError, content_sha256
 from bayes_basket_target.icon_eps_native_arrival_index import (
     bind_icon_eps_daily_archive_arrival_index,
@@ -44,7 +46,7 @@ def _inputs(tmp_path: Path) -> tuple[dict[str, object], dict[str, object], Path]
     capture = {**capture_identity, "content_sha256": content_sha256(capture_identity)}
     cohort_identity = {
         "schema": "bayes_basket_target_icon_global_eps_station_member_cohort_v1",
-        "state": "OFFICIAL_40_MEMBER_45_STATION_DECODED_CANDIDATE_ONLY",
+        "state": COHORT_STATE,
         "provider_id": "icon_global_eps_official",
         "product_id": "DWD_ICON_GLOBAL_EPS",
         "independence_family_id": "DWD_ICON_EPS",
@@ -57,7 +59,7 @@ def _inputs(tmp_path: Path) -> tuple[dict[str, object], dict[str, object], Path]
         "response_completed_at_utc": "2026-08-01T03:00:00Z",
         "member_count": 40,
         "station_count": 45,
-        "member_record_count": 1_800,
+        "member_record_count": expected_station_count() * 40,
         "lineage": {
             "source_url": capture_identity["source_url"],
         },

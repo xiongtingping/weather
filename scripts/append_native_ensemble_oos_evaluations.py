@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.native_ensemble_oos import (  # noqa: E402
     SCHEMA as REPORT_SCHEMA,
@@ -32,7 +33,7 @@ from bayes_basket_target.resource_bounds import (  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 MAX_MANIFEST_BYTES = 8 * 1024 * 1024
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 HISTORICAL_OOS_TEMPORAL_SCOPE = "CLOSED_HISTORICAL_AWC_TRUTH"
 HISTORICAL_REPUBLISHER_RECEIPT = "HISTORICAL_ASOF_REPUBLISHER_RECEIPT"
 HISTORICAL_HOLDOUT_CLASSES = {

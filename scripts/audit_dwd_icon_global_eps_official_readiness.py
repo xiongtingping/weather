@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.resource_bounds import (  # noqa: E402
     ResourceBoundError,
     load_bounded_json,
@@ -35,7 +36,7 @@ from bayes_basket_target.model_sources import REGIONAL_MODEL_LINEAGE  # noqa: E4
 
 SCHEMA = "dwd_icon_global_eps_official_readiness_v1"
 EXPECTED_MEMBER_COUNT = 40
-EXPECTED_STATION_COUNT = 45
+EXPECTED_STATION_COUNT = expected_station_count()
 EXPECTED_MEMBER_STATION_RECORD_COUNT = EXPECTED_MEMBER_COUNT * EXPECTED_STATION_COUNT
 STATION_MEMBER_COHORT_SCHEMA = "bayes_basket_target_icon_global_eps_station_member_cohort_v1"
 OFFICIAL_GRID_CAPTURE_SCHEMA = "bayes_basket_target_icon_eps_official_grid_capture_v1"

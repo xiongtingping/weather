@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.model_system_coverage import (  # noqa: E402
     LEADS,
@@ -36,7 +37,7 @@ from bayes_basket_target.resource_bounds import (  # noqa: E402
 
 
 MAX_INPUT_BYTES = 64 * 1024 * 1024
-EXPECTED_STATION_COUNT = 45
+EXPECTED_STATION_COUNT = expected_station_count()
 
 PF50_PRODUCT = "ECMWF_IFS_ENS_OPEN_PF50"
 AIFS_SINGLE_PRODUCT = "ECMWF_AIFS_SINGLE_0P25"

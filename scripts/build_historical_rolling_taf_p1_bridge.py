@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256
 from bayes_basket_target.resource_bounds import (
     MAX_JSON_INPUT_BYTES,
@@ -43,7 +44,7 @@ ROLLING_SCHEMA = "native_ensemble_forward_oos_manifest_v1"
 TAF_AUDIT_SCHEMA = "bayes_basket_target_taf_p0m_exact_join_45station_audit_v1"
 P1_AUDIT_SCHEMA = "bayes_basket_target_p1_trajectory_45station_audit_v1"
 TAF_MIN = 24
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 MIN_HISTORICAL_CUTOFF = date(2026, 7, 28)
 
 

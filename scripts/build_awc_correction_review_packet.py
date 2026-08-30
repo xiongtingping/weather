@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import (
     MAX_REPORT_TRANSMISSION_LEAD_SECONDS,
     ContractError,
@@ -46,7 +47,7 @@ DEFAULT_SOURCE_DB = ROOT / "data" / "archive.db"
 DEFAULT_EVENT_DATE = "2026-07-31"
 DEFAULT_OUTPUT = ROOT / "output" / "audits" / "awc_correction_review_packet_20260731.json"
 SOURCE_LANE = "awc"
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 MAX_CORRECTIONS = 256
 MAX_SAME_SLOT_ORIGINALS = 4
 MAX_PACKET_BYTES = 1 * 1024 * 1024

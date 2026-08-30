@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import (  # noqa: E402
     ContractError,
     content_sha256,
@@ -81,7 +82,7 @@ MIN_FREE_BYTES = 1024 * 1024 * 1024
 CANONICAL_STATION_IDS = tuple(
     coordinate_registry_manifest()["station_ids"]
 )
-MAX_STATION_SCOPE = 45
+MAX_STATION_SCOPE = expected_station_count()
 MATERIALIZATION_PENDING_BLOCKER_SUFFIXES = (
     "formal_two_model_scope_missing_p0",
     "candidate_artifact_missing",

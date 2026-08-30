@@ -42,13 +42,14 @@ DEFAULT_OUTPUT = ROOT / "output" / "audits" / (
 # historical collector on the same endpoint/variable contract as the retained
 # Open-Meteo ensemble receipts.
 API_URL = "https://ensemble-api.open-meteo.com/v1/ensemble"
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 MAX_DAYS = 31
 MAX_RESPONSE_BYTES = 16 * 1024 * 1024
 MAX_TOTAL_RAW_BYTES = 256 * 1024 * 1024
 MAX_WORKERS = 4
 EXTRACTION_VERSION = "open_meteo_archived_daily_tmax_member_v1"
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.open_meteo_ensemble import ENSEMBLE_SYSTEMS  # noqa: E402
 from bayes_basket_target.station_registry import station_coordinates  # noqa: E402

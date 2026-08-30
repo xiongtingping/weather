@@ -29,6 +29,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
+from bayes_basket_target.icon_eps_daily_curve import COHORT_STATE
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.native_model_decode import (  # noqa: E402
     materialize_native_daily_curves_by_station_timezone,
@@ -43,7 +45,7 @@ PROVIDER_ID = "icon_global_eps_official"
 NATIVE_CURVE_PROVIDER_ID = "icon_global_official"
 PRODUCT_ID = "DWD_ICON_GLOBAL_EPS"
 FAMILY_ID = "DWD_ICON_EPS"
-EXPECTED_STATIONS = 45
+EXPECTED_STATIONS = expected_station_count()
 EXPECTED_MEMBERS = tuple(range(1, 41))
 EXPECTED_MEMBER_RECORDS = EXPECTED_STATIONS * len(EXPECTED_MEMBERS)
 MAX_COHORTS = 32
@@ -159,7 +161,7 @@ def _load_cohort(path: Path) -> dict[str, Any]:
         raise IconEpsDailyCurveError("icon_eps_daily_cohort_content_sha_mismatch")
     if (
         document.get("schema") != COHORT_SCHEMA
-        or document.get("state") != "OFFICIAL_40_MEMBER_45_STATION_DECODED_CANDIDATE_ONLY"
+        or document.get("state") != COHORT_STATE
         or document.get("provider_id") != PROVIDER_ID
         or document.get("product_id") != PRODUCT_ID
         or document.get("independence_family_id") != FAMILY_ID

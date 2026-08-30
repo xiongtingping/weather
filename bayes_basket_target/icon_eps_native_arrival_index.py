@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from .icon_eps_daily_curve import COHORT_STATE
 from .contracts import ContractError, content_sha256
 from .fleet import expected_station_count
 
@@ -129,13 +130,13 @@ def _cohort_entry(
         raise ContractError("icon_eps_arrival_index_timestamp_order_invalid")
     expected = {
         "schema": COHORT_SCHEMA,
-        "state": "OFFICIAL_40_MEMBER_45_STATION_DECODED_CANDIDATE_ONLY",
+        "state": COHORT_STATE,
         "provider_id": PROVIDER_ID,
         "product_id": PRODUCT_ID,
         "independence_family_id": FAMILY_ID,
         "member_count": 40,
         "station_count": expected_station_count(),
-        "member_record_count": 1_800,
+        "member_record_count": expected_station_count() * 40,
         "formal_p0_eligible": False,
         "native_arrival_index_eligible": False,
         "hard_no_eligible": False,

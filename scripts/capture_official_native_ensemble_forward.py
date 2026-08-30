@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.database import DEFAULT_TARGET_DB  # noqa: E402
 from bayes_basket_target.ecmwf_ifs_archive import (  # noqa: E402
@@ -70,7 +71,7 @@ DEFAULT_REGISTRY = DEFAULT_RUNTIME_ROOT / "market_registry_forward.json"
 DEFAULT_GEFS_OUTPUT = DEFAULT_RUNTIME_ROOT / "official_noaa_gefs_forward_archive.json"
 DEFAULT_ECMWF_OUTPUT = DEFAULT_RUNTIME_ROOT / "official_ecmwf_ifs_forward_archive.json"
 DEFAULT_INBOX_OUTPUT = DEFAULT_RUNTIME_ROOT / "official_native_ensemble_forward_inbox.json"
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 MIN_TIMEOUT_SECONDS = 5.0
 MAX_TIMEOUT_SECONDS = 120.0
 # ICON's fetches are whole objects, not byte ranges: one ~36MiB file per lead

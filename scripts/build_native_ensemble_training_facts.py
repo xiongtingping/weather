@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.native_ensemble_training_facts import (  # noqa: E402
     build_taf_native_exact_join,
     ingest_forward_taf_inbox,
@@ -37,7 +38,7 @@ DEFAULT_TAF_INBOX = (
     ROOT / "data" / "bayes_basket_target_taf_revision_inbox.json"
 )
 DEFAULT_P0_INBOX = ROOT / "data" / "bayes_basket_target_p0_inbox.json"
-MAX_LIVE_SCOPES = 45
+MAX_LIVE_SCOPES = expected_station_count()
 
 
 def _discover_live_scopes(

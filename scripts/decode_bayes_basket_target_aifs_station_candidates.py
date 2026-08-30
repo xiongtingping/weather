@@ -36,6 +36,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.model_arrival import validate_model_arrival_capture  # noqa: E402
 from bayes_basket_target.native_model_decode import (  # noqa: E402
@@ -62,7 +63,7 @@ OFFICIAL_AIFS_HOST = "ecmwf-forecasts.s3.eu-central-1.amazonaws.com"
 DEFAULT_CAPTURE = ROOT / "output/audits/aifs_official_forward_capture_20260801_full45.json"
 DEFAULT_OUTPUT = ROOT / "output/audits/aifs_official_station_candidates_20260801.json"
 
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 MAX_CAPTURE_OUTPUTS = 512
 MAX_AIFS_RAW_OBJECTS = 8
 MAX_AIFS_POINTS = MAX_STATIONS * 8

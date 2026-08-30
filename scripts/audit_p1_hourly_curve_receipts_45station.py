@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.database import DEFAULT_TARGET_DB, resolve_target_database  # noqa: E402
 from bayes_basket_target.future_temperature_curve import (  # noqa: E402
@@ -42,9 +43,9 @@ from bayes_basket_target.station_registry import coordinate_registry_manifest  #
 SCHEMA = "bayes_basket_target_p1_hourly_curve_receipt_audit_45station_v1"
 MANIFEST_SCHEMA = "bayes_basket_target_hourly_v3_multimodel_manifest_v1"
 FORWARD_INBOX_SCHEMA = "native_ensemble_forward_inbox_v1"
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 MAX_EVENT_DATES = 31
-MAX_PACKETS_PER_INBOX = 45
+MAX_PACKETS_PER_INBOX = expected_station_count()
 MAX_INPUT_BYTES = 16 * 1024 * 1024
 MAX_OUTPUT_BYTES = 8 * 1024 * 1024
 DEFAULT_MANIFEST = (

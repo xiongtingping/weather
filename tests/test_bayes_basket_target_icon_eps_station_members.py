@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from bayes_basket_target.icon_eps_daily_curve import COHORT_STATE
 from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256
 from bayes_basket_target.station_registry import coordinate_registry_manifest
@@ -90,10 +91,10 @@ def test_decodes_one_40_member_45_station_candidate_cohort(tmp_path: Path) -> No
         _capture(tmp_path), adapter=FakeOfficialRemapAdapter()
     )
 
-    assert receipt["state"] == "OFFICIAL_40_MEMBER_45_STATION_DECODED_CANDIDATE_ONLY"
+    assert receipt["state"] == COHORT_STATE
     assert receipt["member_count"] == 40
     assert receipt["station_count"] == expected_station_count()
-    assert receipt["member_record_count"] == 1800
+    assert receipt["member_record_count"] == expected_station_count() * 40
     assert receipt["raw_object_count"] == 1
     assert receipt["single_raw_bytes"] == receipt["cumulative_raw_bytes"]
     assert receipt["resource_guard"]["raw_member_fanout_forbidden"] is True

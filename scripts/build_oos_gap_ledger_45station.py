@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.republisher_fallback_binding import (  # noqa: E402
     validate_republisher_fallback_binding,
@@ -31,7 +32,7 @@ from bayes_basket_target.station_policy_forward_outcome_binding import (  # noqa
     build_station_policy_utility_contract_pointer,
 )
 
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 MAX_INPUT_BYTES = 64 * 1024 * 1024
 SCHEMA = "bayes_basket_target_oos_gap_ledger_45station_v1"
 SNAPSHOT_MANIFEST_SCHEMA = "bayes_basket_target_oos_atomic_snapshot_manifest_v1"

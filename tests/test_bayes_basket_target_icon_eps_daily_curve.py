@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from bayes_basket_target.icon_eps_daily_curve import COHORT_STATE
 from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256
 from bayes_basket_target.icon_eps_daily_curve import build_icon_eps_daily_archive
@@ -31,7 +32,7 @@ def _cohort(lead: int) -> dict[str, object]:
     ]
     identity = {
         "schema": "bayes_basket_target_icon_global_eps_station_member_cohort_v1",
-        "state": "OFFICIAL_40_MEMBER_45_STATION_DECODED_CANDIDATE_ONLY",
+        "state": COHORT_STATE,
         "provider_id": "icon_global_eps_official",
         "product_id": "DWD_ICON_GLOBAL_EPS",
         "independence_family_id": "DWD_ICON_EPS",
@@ -43,7 +44,7 @@ def _cohort(lead: int) -> dict[str, object]:
         "raw_sha256": raw_sha,
         "member_count": 40,
         "station_count": expected_station_count(),
-        "member_record_count": 1800,
+        "member_record_count": expected_station_count() * 40,
         "lineage": {
             "source_role": "official_native",
             "transport_provider_id": "DWD",

@@ -25,6 +25,16 @@ ENSEMBLE_SYSTEM_ID = "DWD_ICON_GLOBAL_EPS"
 FAMILY_ID = "DWD_ICON_EPS"
 PROVIDER_ID = "icon_global_eps_official"
 EXPECTED_MEMBERS = tuple(range(1, 41))
+# The decoded cohort's state label.  Derived rather than written out,
+# because it names the member and station counts and so goes stale the
+# moment either moves -- it was spelled in full in six places, and a
+# fleet change left the writer emitting one string while five readers
+# demanded another.  The counts it reports are the same two constants
+# the guards below check, so the label cannot disagree with them.
+COHORT_STATE = (
+    f"OFFICIAL_{len(EXPECTED_MEMBERS)}_MEMBER_"
+    f"{expected_station_count()}_STATION_DECODED_CANDIDATE_ONLY"
+)
 MAX_COHORTS = 64
 MAX_GAP_HOURS = 3.0
 ENDPOINT_TOLERANCE_HOURS = 3.0
@@ -58,8 +68,7 @@ def _verified_cohort(raw: Mapping[str, Any]) -> dict[str, Any]:
         or cohort.get("provider_id") != PROVIDER_ID
         or cohort.get("product_id") != ENSEMBLE_SYSTEM_ID
         or cohort.get("independence_family_id") != FAMILY_ID
-        or cohort.get("state")
-        != "OFFICIAL_40_MEMBER_45_STATION_DECODED_CANDIDATE_ONLY"
+        or cohort.get("state") != COHORT_STATE
         or cohort.get("content_sha256") != content_sha256(identity)
         or cohort.get("member_count") != len(EXPECTED_MEMBERS)
         or cohort.get("station_count") != expected_station_count()

@@ -29,6 +29,7 @@ from typing import Any, Mapping, Sequence
 import certifi
 import websockets
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import (
     PROBABILITY_MAX_STALE_SECONDS,
     STAGES_SERVABLE_PAST_CADENCE,
@@ -74,7 +75,7 @@ MANIFEST_SCHEMA = "bayes_basket_target_resident_multi_scope_ws_manifest_v1"
 # The catalog is intentionally dynamic, but bounded to the canonical rollout
 # domain.  A station may contribute exactly one current open scope and one
 # fresh not-started scope; it cannot silently rotate through additional days.
-MAX_TARGET_STATIONS = 45
+MAX_TARGET_STATIONS = expected_station_count()
 # Three concurrent dates per station once listing-day subscription landed:
 # the day being settled, tomorrow, and the day after (markets list at D-2).
 MAX_TARGET_SCOPES = MAX_TARGET_STATIONS * 3

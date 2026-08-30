@@ -21,6 +21,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from bayes_basket_target.fleet import expected_station_count
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,7 +32,7 @@ SCHEMA = "dwd_icon_global_eps_candidate_materialization_v1"
 OFFICIAL_READINESS_SCHEMA = "dwd_icon_global_eps_official_readiness_v1"
 OFFICIAL_GLOBAL_EPS = "DWD_ICON_GLOBAL_EPS"
 OFFICIAL_EPS_MEMBER_COUNT = 40
-OFFICIAL_EPS_STATION_COUNT = 45
+OFFICIAL_EPS_STATION_COUNT = expected_station_count()
 OFFICIAL_EPS_STATION_MEMBER_RECORD_COUNT = (
     OFFICIAL_EPS_MEMBER_COUNT * OFFICIAL_EPS_STATION_COUNT
 )

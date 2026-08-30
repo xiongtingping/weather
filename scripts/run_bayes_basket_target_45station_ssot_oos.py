@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import MODEL_IDS, ContractError, content_sha256
 from bayes_basket_target.et_history import assert_event_day_closed
 from bayes_basket_target.resource_bounds import (
@@ -36,7 +37,7 @@ DEFAULT_DB = ROOT / "data/bayes_basket_target_ssot.db"
 DEFAULT_OUTPUT = (
     ROOT / "output/audits/bayes_basket_target_45station_ssot_oos_20260730_v1"
 )
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 MAX_DAYS = 120
 HISTORICAL_AWC_ROLE = "AWC_HISTORICAL_REPLAY_INGRESS"
 

@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.aifs_deterministic_authority import (  # noqa: E402
     PROVIDER_AUTHORITY_SCHEMA,
@@ -58,7 +59,7 @@ OFFICIAL_AIFS_HOST = "ecmwf-forecasts.s3.eu-central-1.amazonaws.com"
 MAX_RUN_RESULTS = 16
 MAX_STATION_ARRIVALS = 256
 MAX_INPUT_BYTES = 2 * 1024 * 1024
-EXPECTED_STATION_COUNT = 45
+EXPECTED_STATION_COUNT = expected_station_count()
 LEGACY_EXPECTED_VALID_TIMES_PER_STATION = 4
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 DEFAULT_CAPTURE_ROOT = ROOT / "output/audits/bayes_basket_target_aifs_forward_runs"

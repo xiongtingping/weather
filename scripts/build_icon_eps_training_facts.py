@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError  # noqa: E402
 from bayes_basket_target.icon_eps_training_facts import (  # noqa: E402
     build_icon_eps_training_facts,
@@ -28,7 +29,7 @@ from bayes_basket_target.resource_bounds import (  # noqa: E402
 DEFAULT_ARCHIVE = ROOT / "output/audits/icon_global_eps_daily_members_20260802.json"
 DEFAULT_DB = ROOT / "data/bayes_basket_target_ssot.db"
 DEFAULT_OUTPUT = ROOT / "output/audits/icon_global_eps_training_facts_20260802.json"
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 
 
 def _utc(value: str) -> str:

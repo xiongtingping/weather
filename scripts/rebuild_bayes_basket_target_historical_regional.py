@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.et_history import event_day_window  # noqa: E402
 from bayes_basket_target.resource_bounds import (  # noqa: E402
@@ -46,7 +47,7 @@ DEFAULT_RAW_ROOT = (
     ROOT / "data/research/bayes_basket_target/regional_exact_run_history"
 )
 MAX_DAYS = 32
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 MIN_FREE_BYTES = 10 * 1024 * 1024 * 1024
 

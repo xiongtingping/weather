@@ -39,6 +39,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
+from bayes_basket_target.icon_eps_daily_curve import COHORT_STATE
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.resource_bounds import (  # noqa: E402
     assert_process_memory_budget,
@@ -57,7 +59,7 @@ PROVIDER_ID = "icon_global_eps_official"
 PRODUCT_ID = "DWD_ICON_GLOBAL_EPS"
 FAMILY_ID = "DWD_ICON_EPS"
 EXPECTED_MEMBERS = tuple(range(1, 41))
-EXPECTED_STATION_COUNT = 45
+EXPECTED_STATION_COUNT = expected_station_count()
 # The previous capture adapter permits a larger object.  Station-member
 # decoding intentionally has a narrower retained-raw admission limit: one
 # object may never exceed 64 MiB and its (one-object) cohort may never exceed
@@ -1091,7 +1093,7 @@ def decode_station_members(
         raise ContractError("icon_eps_station_cumulative_raw_bound_exceeded")
     identity = {
         "schema": SCHEMA,
-        "state": "OFFICIAL_40_MEMBER_45_STATION_DECODED_CANDIDATE_ONLY",
+        "state": COHORT_STATE,
         "provider_id": PROVIDER_ID,
         "product_id": PRODUCT_ID,
         "independence_family_id": FAMILY_ID,

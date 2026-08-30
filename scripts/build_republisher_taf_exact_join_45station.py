@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.resource_bounds import (  # noqa: E402
     MAX_JSON_INPUT_BYTES,
@@ -48,7 +49,7 @@ TEMPORAL_SCOPE = "CLOSED_HISTORICAL_AWC_TRUTH"
 SOURCE_ROLE = "aggregator_republisher"
 MIN_TRAIN_DAYS = 3
 MIN_TAF_SAMPLE_N = 24
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 MODEL_IDS = ("AIFS", "ICON")
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"

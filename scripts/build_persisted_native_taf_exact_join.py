@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.database import DEFAULT_TARGET_DB, resolve_target_database  # noqa: E402
 from bayes_basket_target.native_ensemble_training_facts import (  # noqa: E402
@@ -35,7 +36,7 @@ from bayes_basket_target.resource_bounds import (  # noqa: E402
 )
 
 
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 MAX_SCOPES = 256
 OFFICIAL_SYSTEMS = frozenset({
     "ECMWF_IFS_ENS_OPEN_PF50",

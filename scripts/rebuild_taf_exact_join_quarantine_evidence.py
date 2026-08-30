@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.database import DEFAULT_TARGET_DB, resolve_target_database  # noqa: E402
 from bayes_basket_target.native_ensemble_training_facts import (  # noqa: E402
@@ -48,7 +49,7 @@ from bayes_basket_target.taf_native_ensemble_oos import (  # noqa: E402
 
 SCHEMA = "bayes_basket_target_taf_exact_join_quarantine_rebuild_v1"
 REVISION_QUARANTINE_SCHEMA = "bayes_basket_target_taf_revision_quarantine_receipt_v1"
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 # The exact-join builder deliberately caps a usable station-day at 16
 # corrections and raises above that bound.  The receipt export has a wider
 # (still bounded) cap so it does not hide the tail of an already quarantined

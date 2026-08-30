@@ -37,6 +37,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError  # noqa: E402
 from bayes_basket_target.market_registry import load_market_registry_snapshot  # noqa: E402
 from bayes_basket_target.settlement_time import settlement_day_window  # noqa: E402
@@ -53,7 +54,7 @@ SCHEMA = "bayes_basket_target_official_ws_snapshot_capture_v1"
 MANIFEST_SCHEMA = "clob_ws_latest_quote_snapshot_v1"
 WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
 MAX_TOKENS = 600
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 MAX_SHARDS = 4
 MAX_FRAME_BYTES = 8 * 1024 * 1024
 DEFAULT_TIMEOUT_SEC = 45.0

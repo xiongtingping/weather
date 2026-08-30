@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.calibration_ingress import (  # noqa: E402
     CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
     HISTORICAL_AWC_REPLAY,
@@ -72,7 +73,7 @@ DEFAULT_OUTPUT = (
 MAX_INPUT_FILES = 160
 MAX_INPUT_BYTES = 256 * MIB
 MAX_OUTPUT_BYTES = 256 * MIB
-EXPECTED_STATION_COUNT = 45
+EXPECTED_STATION_COUNT = expected_station_count()
 EXPECTED_DAY_COUNT = 29
 
 

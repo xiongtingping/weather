@@ -34,6 +34,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.native_ensemble_oos import (  # noqa: E402
     FORWARD_ACCUMULATION_MIN_HOLDOUT_DAYS,
@@ -71,7 +72,7 @@ ACCEPTED_MANIFEST_SCHEMAS = {
 NO_LIVE_SCOPE = "PRODUCTION_NO_LIVE_ONLY"
 PASS = "PRODUCTION_NO_LIVE_OOS_PASS"
 REJECTED = "OOS_REJECTED"
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 MAX_MANIFEST_BYTES = MAX_JSON_INPUT_BYTES
 MAX_ACTIVATION_ROWS = 2_048
 # Bounded-read guard, not a business rule.  The table is append-only and its

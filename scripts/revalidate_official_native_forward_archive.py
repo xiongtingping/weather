@@ -34,6 +34,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.resource_bounds import (  # noqa: E402
     MAX_JSON_INPUT_BYTES,
@@ -46,7 +47,7 @@ from bayes_basket_target.resource_bounds import (  # noqa: E402
 DEFAULT_ROOT = ROOT / "data" / "runtime" / "bayes_basket_target_nwp"
 DEFAULT_REGISTRY = DEFAULT_ROOT / "market_registry_forward.json"
 DEFAULT_PROXY = "http://127.0.0.1:1082"
-MAX_STATIONS = 45
+MAX_STATIONS = expected_station_count()
 MAX_WORKERS = 4
 MAX_REQUESTS = 1_000
 MAX_INDEX_BYTES = 3 * 1024 * 1024
