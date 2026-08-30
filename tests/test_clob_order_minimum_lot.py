@@ -28,6 +28,15 @@ from weather_basket_yes_schema import apply_weather_basket_yes_schema
 ROOT = Path(__file__).resolve().parents[1]
 TOKEN = "123456"
 
+# Funded, because the collateral gate sits ahead of the minimum-lot gate:
+# an order the account cannot pay for never reaches the question of
+# whether its lot is legal.  1,000 USDC, far above anything here.
+FUNDED_COLLATERAL = (
+    "service.cachedCollateral = {"
+    "value: {balance: '1000000000', allowance: '1000000000'},"
+    "observed_at: new Date().toISOString(), latency_ms: 1};"
+)
+
 
 def _registry_db(db_path: Path, registry_extra: dict | None = None) -> None:
     conn = sqlite3.connect(db_path)
@@ -143,6 +152,7 @@ def test_undersized_order_is_refused_before_anything_is_signed(
       const {{ ClobOrderService }} = await import({json.dumps(service_uri)});
       const base = {json.dumps(base)};
       const service = new ClobOrderService();
+      {FUNDED_COLLATERAL}
       const under = await service.placeOrderWithIdempotency(
         {{...base, size: 3.03, idempotency_key: 'k-under', order_intent_id: 'i-under'}});
       const exact = await service.placeOrderWithIdempotency(
@@ -185,6 +195,7 @@ def test_order_is_refused_when_the_registry_carries_no_sizing_rule(
     script = f"""
       const {{ ClobOrderService }} = await import({json.dumps(service_uri)});
       const service = new ClobOrderService();
+      {FUNDED_COLLATERAL}
       const result = await service.placeOrderWithIdempotency({{
         strategy_id: 'bayes_basket_target_v1', token_id: {json.dumps(TOKEN)},
         side: 'BUY', order_type: 'GTC', price: 0.66, size: 1000,
@@ -218,6 +229,7 @@ def test_a_market_order_sized_in_cash_is_not_judged_by_the_share_minimum(
     script = f"""
       const {{ ClobOrderService }} = await import({json.dumps(service_uri)});
       const service = new ClobOrderService();
+      {FUNDED_COLLATERAL}
       const base = {{
         strategy_id: 'bayes_basket_target_v1', token_id: {json.dumps(TOKEN)},
         side: 'BUY', allow_market: true,

@@ -166,6 +166,26 @@ export function effectiveOrderShares(payload) {
   return NaN;
 }
 
+// What a BUY actually costs the account.
+//
+// Mirrors ``effectiveOrderShares``: an explicit limit states the notional
+// outright or as size times price, and a BUY market order carries the
+// notional as ``amount``.  Returns NaN when the payload does not determine
+// one -- which the caller must read as fail-closed, because an order whose
+// cost is unknown cannot be checked against a balance.
+export function effectiveOrderNotional(payload) {
+  const notional = Number(payload?.notional);
+  if (Number.isFinite(notional) && notional > 0) return notional;
+  const amount = Number(payload?.amount);
+  if (Number.isFinite(amount) && amount > 0) return amount;
+  const size = Number(payload?.size);
+  const price = Number(payload?.price);
+  if (Number.isFinite(size) && size > 0 && Number.isFinite(price) && price > 0) {
+    return size * price;
+  }
+  return NaN;
+}
+
 // The market's own minimum lot and price increment, as the exchange states
 // them.
 //
@@ -918,6 +938,7 @@ export class ClobOrderService {
     this.registeredPositionTokens = new Set();
     this.conditionalPrefetchErrors = new Map();
     this.lastBalancePrefetchError = "";
+    this.lastCollateralPrefetchError = "";
     // Congestion guard: CLOB 429s previously opened hundreds of connections
     // through the shared local VPN proxy and starved Codex. Keep the
     // dedupe, bounded queue, and cooldown even when tuning for lower latency.
@@ -1389,6 +1410,7 @@ export class ClobOrderService {
       if (!this.client || this.balancePrefetchInflight > 0) return;
       this.balancePrefetchInflight += 1;
       try {
+        await this.prefetchCollateralBalance();
         await this.prefetchRegisteredPositionBalances();
       } catch (err) {
         this.lastBalancePrefetchError = redactErrorText(err?.message || String(err || ""));
@@ -1398,6 +1420,63 @@ export class ClobOrderService {
     };
     run().catch(() => {});
     setInterval(() => run().catch(() => {}), intervalMs).unref?.();
+  }
+
+  async prefetchCollateralBalance() {
+    // What the account can actually spend.
+    //
+    // ``cachedCollateral`` existed as a field, was initialised to null and
+    // reset to null, and was never once written: nothing fetched it.  So the
+    // guard reported ``collateral_balance_allowance: null`` while also
+    // reporting ok, health advertised ``collateral_cache_ready: true`` off a
+    // hardcoded constant, and no layer between the objective and the chain
+    // knew what the account held.  The objective sizes against
+    // ``target_remaining_budget_usdc`` -- a number in a config file -- so an
+    // account holding 0.08 USDC would size, sign and post against a budget of
+    // 1014.29 and learn the truth from the chain.
+    //
+    // One request a cycle, not one per token: collateral is a single account
+    // quantity.  It shares the same limiter as the conditional reads, so it
+    // cannot contend with the order path -- the congestion guard that limiter
+    // exists for is the reason this is a background read and not a check made
+    // inline at submit time.
+    if (!this.client) return;
+    const started = Date.now();
+    try {
+      const value = await this.getBalanceAllowanceForPrefetch({
+        asset_type: AssetType.COLLATERAL,
+      });
+      if (!balanceEvidenceValid(value)) {
+        throw new Error("clob_collateral_prefetch_evidence_invalid");
+      }
+      this.cachedCollateral = {
+        value,
+        observed_at: new Date().toISOString(),
+        latency_ms: Date.now() - started,
+      };
+      this.lastCollateralPrefetchError = "";
+    } catch (err) {
+      // Keep the last good reading and say why it stopped refreshing; the
+      // freshness bound below is what decides whether it may still be used.
+      this.lastCollateralPrefetchError = redactErrorText(
+        err?.message || String(err || ""),
+      );
+    }
+  }
+
+  collateralEvidence(maxAgeMs = null) {
+    // The cached reading, or null when there is none or it is too old.  Age
+    // matters because a balance is spendable state: a stale one can say the
+    // account can afford an order it has since spent.
+    const bound = maxAgeMs === null
+      ? Math.max(1000, Math.floor(positiveNumber(
+        env("PM_CLOB_COLLATERAL_MAX_AGE_MS", "60000"), 60000)))
+      : maxAgeMs;
+    const cached = this.cachedCollateral;
+    if (!cached || !balanceEvidenceValid(cached.value)) return null;
+    const ageMs = Date.now() - Date.parse(cached.observed_at);
+    if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > bound) return null;
+    return { ...cached, age_ms: ageMs };
   }
 
   async prefetchRegisteredPositionBalances() {
@@ -1993,8 +2072,9 @@ export class ClobOrderService {
     } catch {
       wsPartialSnapshotReady = false;
     }
-    const collateralAgeMs = null;
-    const collateralCacheReady = true;
+    const collateralFresh = this.collateralEvidence();
+    const collateralAgeMs = collateralFresh ? collateralFresh.age_ms : null;
+    const collateralCacheReady = collateralFresh !== null;
     const conditionalReadyTokens = [];
     const conditionalNotReadyTokens = [];
     for (const tokenID of this.registeredPositionTokens) {
@@ -2082,7 +2162,13 @@ export class ClobOrderService {
       ws_materialized_token_count: wsMaterializedTokenCount,
       ws_subscribed_token_count: wsSubscribedTokenCount,
       collateral_cache_ready: collateralCacheReady,
-      collateral_balance_fetch_disabled: true,
+      last_collateral_prefetch_error: this.lastCollateralPrefetchError || "",
+      // Stated in the clear so a caller that must not touch credentials --
+      // the go-live migration checks its budget against this -- can still
+      // learn what the account holds.
+      collateral_balance_usdc: collateralFresh
+        ? Number(collateralFresh.value.balance) / 1e6
+        : null,
       all_shards_prefetched_evidence_ready: wsSnapshotReady,
       signer_prewarmed: this.signerPrewarmed,
       hot_order_path_ready: wsPartialSnapshotReady && this.signerPrewarmed,
@@ -2386,7 +2472,10 @@ export class ClobOrderService {
       evidence_source: wsEvidenceSource,
     };
     const collateralAgeMs = Number.POSITIVE_INFINITY;
-    const collateral = null;
+    // Was hardcoded null, which is what made the snapshot able to report
+    // "ok" with no idea what the account holds.
+    const collateralCached = this.collateralEvidence();
+    const collateral = collateralCached ? collateralCached.value : null;
     let conditionalCache = this.cachedConditional.get(tokenID);
     let conditionalAgeMs = conditionalCache
       ? Date.now() - Date.parse(conditionalCache.observed_at || "") : Number.POSITIVE_INFINITY;
@@ -2583,6 +2672,55 @@ export class ClobOrderService {
         source: SERVICE_NAME,
         service_pid: process.pid,
       };
+    }
+    // Money the account does not have.
+    //
+    // The objective sizes against ``target_remaining_budget_usdc`` -- a
+    // number in a config file, 1014.29 at the time of writing -- and no layer
+    // between it and the chain compared that to the balance.  The guard
+    // snapshot could not help: ``cachedCollateral`` was a field nothing ever
+    // wrote, so it reported null collateral and ok in the same breath, and
+    // health advertised the cache ready off a hardcoded constant.  An account
+    // holding 0.077 USDC would therefore size, sign and post against 1014.29
+    // and learn the truth from the chain -- the third constraint found today
+    // that existed only at the exchange.
+    //
+    // Fail closed on missing or stale evidence: a balance is spendable state
+    // and an old reading can approve an order the account has since spent
+    // out from under.  BUY only -- a SELL spends conditional tokens, whose
+    // evidence the guard already requires.
+    if (String(payload?.side || "BUY").toUpperCase() !== "SELL") {
+      const collateralCached = this.collateralEvidence();
+      if (collateralCached === null) {
+        return {
+          ok: false, accepted: false, pending: false, reconcile_required: false,
+          error: "clob_collateral_evidence_unavailable",
+          error_class: "collateral_evidence_missing",
+          retryable: true, fatal: false,
+          exchange_post_started: false,
+          idempotency_key: String(payload?.idempotency_key || ""),
+          order_intent_id: String(payload?.order_intent_id || ""),
+          source: SERVICE_NAME,
+        };
+      }
+      const availableUsdc = Number(collateralCached.value.balance) / 1e6;
+      const requiredUsdc = effectiveOrderNotional(payload);
+      if (!Number.isFinite(requiredUsdc)
+        || requiredUsdc > availableUsdc + 1e-9) {
+        return {
+          ok: false, accepted: false, pending: false, reconcile_required: false,
+          error: `clob_insufficient_collateral:${availableUsdc.toFixed(6)}`,
+          error_class: "collateral_insufficient",
+          retryable: false, fatal: true,
+          collateral_available_usdc: availableUsdc,
+          collateral_observed_at: collateralCached.observed_at,
+          required_notional_usdc: Number.isFinite(requiredUsdc) ? requiredUsdc : null,
+          exchange_post_started: false,
+          idempotency_key: String(payload?.idempotency_key || ""),
+          order_intent_id: String(payload?.order_intent_id || ""),
+          source: SERVICE_NAME,
+        };
+      }
     }
     // An order below the market's minimum lot cannot be accepted, so refuse
     // it here rather than discovering it from the exchange's reply.  This

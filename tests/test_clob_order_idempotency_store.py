@@ -789,6 +789,12 @@ def test_gateway_posts_signal_sell_and_no_buy_concurrently(tmp_path: Path) -> No
       const service = new ClobOrderService();
       service.persistIntent = () => {{}};
       service.saveIdempotency = () => {{}};
+      // Funded: the collateral gate sits ahead of the serialisation this test
+      // is about, and a BUY the account cannot pay for never reaches it.
+      service.cachedCollateral = {{
+        value: {{ balance: '1000000000', allowance: '1000000000' }},
+        observed_at: new Date().toISOString(), latency_ms: 1,
+      }};
       const calls = [];
       service.placeOrder = async (payload) => {{
         calls.push(`${{payload.side}}-start`);

@@ -356,3 +356,45 @@ def test_the_preselection_table_is_out_of_scope_and_stays_that_way() -> None:
     assert "NOT touched" in source
     # And the migration must never name it as a table it rebuilds.
     assert "basket_p0_preselection_plan" not in mig.LEGACY
+
+
+def test_a_live_budget_the_account_cannot_back_is_a_precondition_failure(
+    monkeypatch,
+) -> None:
+    """The budget is carried across unchanged; that is why it must be checked.
+
+    ``mint_live_runtime`` copies ``target_remaining_budget_usdc`` from the
+    no-live runtime on purpose -- the operator sized it and a migration that
+    quietly reset it would open live at a budget nobody chose.  Carrying it
+    without looking is how 1014.29 USDC gets minted onto an account holding
+    0.077345, which is what the two numbers actually were on 2026-08-31.
+
+    It is asked of the local gateway rather than of the credentials: this
+    script reads no secret and signs nothing.
+    """
+    monkeypatch.setattr(mig, "_live_scope", lambda: {
+        "scope": "test", "stations": ["ZBAA"], "barred": [],
+        "probation": [], "minimum_settlements": 5,
+    })
+    monkeypatch.setattr(mig, "_json", lambda path: (
+        {"live_enabled": True} if path == mig.INTENT_PATH
+        else {"target_remaining_budget_usdc": 1014.29}
+    ))
+
+    def budget_failures(collateral):
+        monkeypatch.setattr(mig, "_gateway_collateral_usdc", lambda: collateral)
+        return [f for f in mig.preconditions(require_quiet=False)
+                if "collateral" in f]
+
+    poor = budget_failures(0.077345)
+    assert len(poor) == 1
+    assert "1014.29" in poor[0] and "0.077345" in poor[0]
+
+    # Unreadable is not "covers everything": a balance nobody can read
+    # cannot back a budget.
+    unknown = budget_failures(None)
+    assert len(unknown) == 1
+    assert "no fresh collateral evidence" in unknown[0]
+
+    assert budget_failures(1014.29) == []      # exactly covered
+    assert budget_failures(5000.0) == []

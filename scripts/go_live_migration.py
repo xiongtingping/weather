@@ -36,8 +36,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sqlite3
+from urllib.request import urlopen
 import subprocess
 import sys
 import tempfile
@@ -78,6 +80,7 @@ WIDENED_CHECK = "CHECK(live_submit_authorized IN (0,1))"
 
 LIVE_ACTIVATION_SCHEMA = "bayes_basket_target_production_live_activation_v1"
 LIVE_RUNTIME_SCHEMA = "bayes_basket_target_live_runtime_v1"
+GATEWAY_PORT = os.environ.get("PM_CLOB_ORDER_SERVICE_PORT", "8765")
 # Not a new scope: the live contract keeps the one the artifacts carry.
 LIVE_AUTHORITY_SCOPE = "PRODUCTION_NO_LIVE_CANDIDATE"
 
@@ -129,6 +132,34 @@ def preconditions(*, require_quiet: bool) -> list[str]:
     overlap = sorted(set(allowlist) & set(scope["barred"]))
     if overlap:
         failures.append(f"live batch carries barred stations: {','.join(overlap)}")
+    # A live budget the account cannot back.
+    #
+    # ``mint_live_runtime`` carries ``target_remaining_budget_usdc`` across
+    # unchanged, on purpose -- the operator sized that number and a migration
+    # that quietly reset it would open live at a budget nobody chose.  But
+    # carrying it across without looking is how a 1014.29 budget gets minted
+    # onto an account holding 0.077345, which is exactly what the numbers were
+    # on 2026-08-31.  The gateway refuses such an order now, so this would not
+    # spend money; it would mint a contract that is a lie about what can be
+    # traded, and every cycle under it would end in a local refusal.
+    #
+    # Asked of the local gateway, not of the credentials: this script reads no
+    # secret and signs nothing, which is the same boundary the preflight keeps
+    # ("whether the account is funded is the operator's to state").  The
+    # gateway already holds the reading and states it in the clear.
+    budget = _json(NO_LIVE_RUNTIME).get("target_remaining_budget_usdc")
+    collateral = _gateway_collateral_usdc()
+    if collateral is None:
+        failures.append(
+            "the gateway has no fresh collateral evidence; a live budget"
+            " cannot be checked against a balance nobody can read"
+        )
+    elif isinstance(budget, (int, float)) and float(budget) > collateral + 1e-9:
+        failures.append(
+            f"live budget {float(budget):.2f} USDC exceeds account collateral"
+            f" {collateral:.6f} USDC -- fund the account or size the budget"
+            " down on the control panel before minting the live contract"
+        )
     if not NO_LIVE_ACTIVATION.is_file():
         failures.append(f"missing {NO_LIVE_ACTIVATION.name} to mint the live one from")
     if not DB.is_file():
@@ -144,6 +175,33 @@ def preconditions(*, require_quiet: bool) -> list[str]:
 # --------------------------------------------------------------------------
 # The rebuild
 # --------------------------------------------------------------------------
+
+
+def _gateway_collateral_usdc() -> float | None:
+    """What the account holds, as the local gateway last read it.
+
+    ``None`` when the gateway is down or its reading is absent or stale --
+    which fails the precondition rather than passing it, because a balance
+    nobody can read is not a balance that covers anything.
+    """
+    try:
+        with urlopen(
+            f"http://127.0.0.1:{GATEWAY_PORT}/health", timeout=5
+        ) as response:
+            health = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError):
+        return None
+    if health.get("collateral_cache_ready") is not True:
+        return None
+    raw = (health.get("collateral_balance_usdc")
+           if "collateral_balance_usdc" in health else None)
+    if raw is None:
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if value >= 0 else None
 
 
 def _table_sql(conn: sqlite3.Connection, name: str) -> str:
