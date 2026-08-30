@@ -371,6 +371,58 @@ def hosted_sweep_write_domain(name: str) -> str:
     return HOSTED_SWEEP_WRITE_DOMAIN.get(name, "ssot")
 
 
+# Where each sweep's last completion is remembered across restarts.  The
+# schedule used to live only in ``next_hosted_sweep`` -- monotonic-seeded,
+# in-memory -- so every restart forgot who was overdue and re-ran the boot
+# stagger from scratch.  On 2026-08-30 five deploy restarts did exactly
+# that in sequence and the settlement-truth sweep, fourth in the stagger
+# behind a seventeen-minute ledger round, went 6.8 hours unserved while
+# every generation started the queue over.  Persisting the completion
+# clock makes a restart harmless to the queue: the boot seed below puts a
+# genuinely overdue member's due-time in the past by its true overdue
+# amount, so the most-starved member wins the first slot its domain frees.
+HOSTED_SWEEP_CLOCKS_PATH = ROOT / "data" / "hosted_sweep_clocks.json"
+
+
+def seed_hosted_sweep_clock(
+    *,
+    now_mono: float,
+    now_wall_utc: str,
+    completed_at_utc: str | None,
+    interval_sec: float,
+    stagger_sec: float,
+) -> float:
+    """One member's boot due-time, honouring its persisted last completion.
+
+    No record keeps the old boot stagger.  A record seeds the due-time
+    where an uninterrupted daemon would have it: ``completion + interval``
+    -- in the past by the true overdue amount when the member is starved
+    (a small boot grace keeps the first slots from racing startup), in the
+    future by the genuine remainder when it is not.
+    """
+
+    if not completed_at_utc:
+        return now_mono + stagger_sec
+    try:
+        completed = datetime.fromisoformat(
+            str(completed_at_utc).replace("Z", "+00:00")
+        )
+        now_wall = datetime.fromisoformat(
+            str(now_wall_utc).replace("Z", "+00:00")
+        )
+    except ValueError:
+        return now_mono + stagger_sec
+    since = (now_wall - completed).total_seconds()
+    if since < 0:
+        # A completion stamped in the future is clock damage, not a
+        # schedule; fall back to the stagger rather than trusting it.
+        return now_mono + stagger_sec
+    overdue = since - float(interval_sec)
+    if overdue >= 0:
+        return max(now_mono - overdue, now_mono - 86_400.0) + 60.0
+    return now_mono - overdue
+
+
 def admissible_hosted_sweeps(
     due: "list[tuple[float, int, str, str, float]]",
     *,
@@ -3184,11 +3236,30 @@ def main() -> int:
         next_storage_probe = 0.0
         next_wal_maintenance = 0.0
         next_target_wal_maintenance = 0.0
-        # Hosted sweeps: staggered first runs so boot does not fire all four
-        # into the first idle gap at once.
+        # Hosted sweeps: seeded from each member's persisted last completion
+        # when one exists, so a restart no longer resets who is overdue; a
+        # member without a record keeps the staggered first run so boot does
+        # not fire the whole roster into the first idle gap at once.
+        try:
+            _sweep_clocks = json.loads(
+                HOSTED_SWEEP_CLOCKS_PATH.read_text()
+            )
+            if not isinstance(_sweep_clocks, dict):
+                _sweep_clocks = {}
+        except (OSError, ValueError):
+            _sweep_clocks = {}
         next_hosted_sweep = {
-            name: now_mono + 60.0 + 90.0 * index
-            for index, (name, _, _, _) in enumerate(HOSTED_SWEEPS)
+            name: seed_hosted_sweep_clock(
+                now_mono=now_mono,
+                now_wall_utc=utc_now(),
+                completed_at_utc=(
+                    (_sweep_clocks.get(name) or {}).get("completed_at_utc")
+                    if isinstance(_sweep_clocks.get(name), dict) else None
+                ),
+                interval_sec=interval_sec,
+                stagger_sec=60.0 + 90.0 * index,
+            )
+            for index, (name, _, interval_sec, _) in enumerate(HOSTED_SWEEPS)
         }
         # Keyed by sweep name so several may be in flight at once, at most one
         # per write domain.  ``running`` stays a list for the same reason.
@@ -3813,6 +3884,25 @@ def main() -> int:
                         next_hosted_sweep[name] = (
                             time.monotonic() + interval_sec
                         )
+                # Only a completed attempt advances the persisted clock: a
+                # member whose run was killed or failed stays overdue across
+                # a restart, which is the point of persisting at all.
+                if str(sweep_result.get("state") or "") == "ok":
+                    try:
+                        _clocks = json.loads(
+                            HOSTED_SWEEP_CLOCKS_PATH.read_text()
+                        )
+                        if not isinstance(_clocks, dict):
+                            _clocks = {}
+                    except (OSError, ValueError):
+                        _clocks = {}
+                    _clocks[done_name] = {
+                        "completed_at_utc": utc_now(),
+                    }
+                    try:
+                        _atomic_json(HOSTED_SWEEP_CLOCKS_PATH, _clocks)
+                    except OSError:
+                        pass
                 del hosted_sweep_futures[done_name]
                 # Served when a sweep FINISHES, as before: the rotation ranks
                 # lanes by how long ago each last completed, so stamping this

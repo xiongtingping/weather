@@ -164,3 +164,81 @@ def test_a_generator_of_running_names_is_not_consumed_twice(daemon) -> None:
 
 def test_nothing_due_admits_nothing(daemon) -> None:
     assert daemon.admissible_hosted_sweeps([], running_names=[]) == []
+
+
+def test_boot_seed_puts_a_starved_member_first(daemon) -> None:
+    """A restart must not reset who is overdue.
+
+    2026-08-30: five deploy restarts each re-ran the boot stagger, and the
+    settlement-truth sweep -- fourth in the stagger behind a seventeen-minute
+    ledger round -- went 6.8 hours unserved because no generation lived long
+    enough for its turn.  Seeded from the persisted completion clock, its
+    due-time lands in the past by the true overdue amount and it outranks
+    every fresher member at the first slot.
+    """
+
+    now_mono = 1000.0
+    starved = daemon.seed_hosted_sweep_clock(
+        now_mono=now_mono,
+        now_wall_utc="2026-08-30T04:50:00Z",
+        completed_at_utc="2026-08-29T22:01:24Z",   # 6.8h ago
+        interval_sec=1800.0,
+        stagger_sec=330.0,
+    )
+    fresh = daemon.seed_hosted_sweep_clock(
+        now_mono=now_mono,
+        now_wall_utc="2026-08-30T04:50:00Z",
+        completed_at_utc="2026-08-30T04:45:00Z",   # 5 min ago, 300s interval
+        interval_sec=300.0,
+        stagger_sec=60.0,
+    )
+    # Both due, but the starved member's overdue (now - due) must dominate.
+    assert now_mono - starved > now_mono - fresh
+    assert now_mono - starved > 5 * 3600.0
+
+
+def test_boot_seed_without_a_record_keeps_the_stagger(daemon) -> None:
+    assert daemon.seed_hosted_sweep_clock(
+        now_mono=1000.0,
+        now_wall_utc="2026-08-30T04:50:00Z",
+        completed_at_utc=None,
+        interval_sec=1800.0,
+        stagger_sec=330.0,
+    ) == 1330.0
+
+
+def test_boot_seed_honours_a_genuine_remainder(daemon) -> None:
+    # Completed 10 minutes ago on a 30-minute interval: due in 20 minutes,
+    # not at boot.
+    due = daemon.seed_hosted_sweep_clock(
+        now_mono=1000.0,
+        now_wall_utc="2026-08-30T04:50:00Z",
+        completed_at_utc="2026-08-30T04:40:00Z",
+        interval_sec=1800.0,
+        stagger_sec=330.0,
+    )
+    assert due == pytest.approx(1000.0 + 1200.0)
+
+
+def test_boot_seed_rejects_future_and_garbage_stamps(daemon) -> None:
+    for stamp in ("2026-08-30T05:50:00Z", "not-a-time"):
+        assert daemon.seed_hosted_sweep_clock(
+            now_mono=1000.0,
+            now_wall_utc="2026-08-30T04:50:00Z",
+            completed_at_utc=stamp,
+            interval_sec=1800.0,
+            stagger_sec=330.0,
+        ) == 1330.0
+
+
+def test_boot_seed_caps_the_lookback(daemon) -> None:
+    # A record from last month must not seed a due-time so deep in the
+    # monotonic past that it dwarfs every ranking forever.
+    due = daemon.seed_hosted_sweep_clock(
+        now_mono=1000.0,
+        now_wall_utc="2026-08-30T04:50:00Z",
+        completed_at_utc="2026-07-01T00:00:00Z",
+        interval_sec=1800.0,
+        stagger_sec=330.0,
+    )
+    assert due >= 1000.0 - 86_400.0
