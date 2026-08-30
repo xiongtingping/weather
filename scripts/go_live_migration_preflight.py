@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """What stands between this book and a live order, measured rather than recalled.
 
-There is no go-live migration script in this repository, and this file is not
-one.  It is the read-only preflight the migration would have to pass, written
-because "B2 三重契约→go-live 迁移" was a name on a blocker list and not an
+The migration exists now -- scripts/go_live_migration.py, written and
+rehearsed against the real table -- and this file is not it.  It is the
+read-only preflight that migration has to pass, written back when there was
+no migration at all, because "B2 三重契约→go-live 迁移" was a name on a blocker list and not an
 inventory: the phrase said three locks, the code has nine, and two of them are
 SQL CHECK constraints on tables holding 44k rows of production history.  That
 last fact is why the step is called a migration at all -- SQLite cannot alter a
@@ -93,7 +94,17 @@ def _check(
 def check_intent_flag() -> dict[str, Any]:
     intent = _json(ROOT / "config" / "trading" / "live_intent_v1.json")
     armed = intent.get("live_enabled") is True
-    allowlist = intent.get("station_allowlist") or []
+    # The stored allowlist is empty by design in all_except_barred mode -- the
+    # live batch is derived from the barred list, not enumerated -- so
+    # printing its length said "0 站" about a batch of 23 and read like a
+    # blocker of its own.  Report what the migration will actually trade.
+    stored = intent.get("station_allowlist") or []
+    try:
+        import go_live_migration as _mig  # noqa: PLC0415
+        scope = _mig._live_scope()
+        batch = f"live 批次={len(scope['stations'])}站（禁{len(scope['barred'])}）"
+    except Exception:
+        batch = f"allowlist={len(stored)}站（存储值；派生批次读取失败）"
     return _check(
         "意向旗 live_enabled",
         0,
@@ -101,8 +112,7 @@ def check_intent_flag() -> dict[str, Any]:
         PASS if armed else BLOCK,
         (
             f"live_enabled={intent.get('live_enabled')}"
-            f" armed_by={intent.get('armed_by')}"
-            f" allowlist={len(allowlist)}站"
+            f" armed_by={intent.get('armed_by')} {batch}"
         ),
         "看板「Live 上线准备」输入 LIVE 解锁；这是操作者的动作，脚本不代劳。",
     )
@@ -571,7 +581,7 @@ def main() -> int:
         span = sum(2 if ord(ch) > 0x2E80 else 1 for ch in text)
         return text + " " * max(1, width - span)
 
-    print("go-live 迁移预检 — 迁移脚本本身不存在，本表是它必须先过的门\n")
+    print("go-live 迁移预检 — scripts/go_live_migration.py 必须先过的门\n")
     print(wide("层", 4) + wide("归属", 11) + wide("状态", 8)
           + wide("闸", 40) + "说明")
     print("-" * 116)
