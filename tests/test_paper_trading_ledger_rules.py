@@ -32,7 +32,13 @@ def test_the_ledger_carries_productions_structural_rules() -> None:
     source = (root / "scripts" / "paper_trading_ledger.py").read_text(
         encoding="utf-8"
     )
-    assert "MINIMUM_SUPPORT_BUCKETS = 3" in source
+    # The floor's spelling became an env knob (replay arms); the default
+    # literal must stay production's three.  The binding suite pins the
+    # resolved value against production's policy.
+    assert (
+        'os.environ.get("PAPER_LEDGER_MIN_SUPPORT_BUCKETS", "3") or 3'
+        in source
+    )
     assert "minimum_support_buckets=MINIMUM_SUPPORT_BUCKETS" in source
     # The evidence support is the mass-selected run, not a bare centre.
     assert "desired=set(core) or {center}" in source
@@ -91,8 +97,20 @@ def test_recorded_seats_obey_the_ladder_bounds() -> None:
     checked -- which is why the posted window is recorded separately at all.
     """
 
+    import json
     import sqlite3
+    import sys
     from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    from bayes_basket_target.delta_v2_runtime import (  # noqa: PLC0415
+        MINIMUM_LEG_ALL_IN_ASK,
+    )
+    from paper_trading_ledger import FEE_RATE  # noqa: PLC0415
 
     db = (
         Path(__file__).resolve().parents[1]
@@ -114,6 +132,19 @@ def test_recorded_seats_obey_the_ladder_bounds() -> None:
             "  ORDER BY decision_at_utc DESC LIMIT 1)"
             " GROUP BY 1, 2"
         ).fetchall()
+        narrow = conn.execute(
+            "SELECT station_id, event_date, stage,"
+            " CASE WHEN posted_buckets_json IN ('', NULL)"
+            "  THEN window_buckets_json ELSE posted_buckets_json END,"
+            " probabilities_json, prices_json"
+            " FROM paper_trade_position"
+            " WHERE selection_rule_sha256 = ("
+            "  SELECT selection_rule_sha256 FROM paper_trade_position"
+            "  ORDER BY decision_at_utc DESC LIMIT 1)"
+            " AND json_array_length("
+            "  CASE WHEN posted_buckets_json IN ('', NULL)"
+            "   THEN window_buckets_json ELSE posted_buckets_json END) < 3"
+        ).fetchall()
     except sqlite3.DatabaseError:
         return
     finally:
@@ -130,9 +161,39 @@ def test_recorded_seats_obey_the_ladder_bounds() -> None:
     # current stamp is answerable to the current rule.
     for stage, size, count in rows:
         low = 1 if str(stage) == "P1" else 3
-        assert low <= int(size) <= 4, (
-            f"{count} {stage} seats recorded at {size} buckets, "
-            f"outside [{low}, 4]"
+        assert int(size) <= 4, (
+            f"{count} {stage} seats recorded at {size} buckets, over the cap"
+        )
+        if int(size) >= low:
+            continue
+        # Below the floor is legal in exactly one situation: the floor
+        # cannot ask for more rungs than the day still has
+        # (``policy_min = max(1, min(stage_min, max_size, len(admitted)))``
+        # in ``_support_windows``).  Every bucket outside such a seat must
+        # be dead -- zero recorded probability, or quoted under the leg
+        # floor (KLAX 2026-08-23: one live outcome at 0.997, the rest
+        # offered at 0.001-0.008 under the 0.03 floor).
+        checked = 0
+        for st, day, row_stage, posted_js, probs_js, prices_js in narrow:
+            if str(row_stage) != str(stage):
+                continue
+            checked += 1
+            posted = set(json.loads(posted_js))
+            probs = json.loads(probs_js or "{}")
+            prices = json.loads(prices_js or "{}")
+            for bucket, prob in probs.items():
+                if bucket in posted or float(prob) <= 1e-6:
+                    continue
+                quote = prices.get(bucket)
+                assert quote is not None and (
+                    float(quote) * (1.0 + FEE_RATE)
+                    < MINIMUM_LEG_ALL_IN_ASK
+                ), (
+                    f"{st} {day} {row_stage}: seat narrower than the floor"
+                    f" while {bucket} was live at p={prob} quote={quote}"
+                )
+        assert checked, (
+            f"{count} {stage} seats at {size} buckets, none re-checkable"
         )
 
 
@@ -169,11 +230,10 @@ def test_only_credible_fills_bankroll_the_book() -> None:
     # allowed to deploy, and that a chain settles once.
     assert "credible = all_in_cost >= DUST_COST_FLOOR" in source
     assert "chain_credible = chain_cost >= DUST_COST_FLOOR" in source
-    assert (
-        "* STAGE_BUDGET_SHARE.get(stage, 1.0)\n"
-        "                        * tilt\n"
-        "                        - chain_stake" in source
-    )
+    # Charter 66 reshaped the spelling: the stage budget is built first,
+    # then the tilt scales it and the chain's spend comes off.
+    assert "* STAGE_BUDGET_SHARE.get(stage, 1.0)" in source
+    assert "stage_room = stage_budget * tilt - chain_stake" in source
     assert "if chain_credible:\n                day_pnl += scored.pnl_usdc" in source
 
     db = root / "data" / "bayes_basket_target_ssot.db"
@@ -672,17 +732,18 @@ def test_seated_and_wholly_unfilled_are_disjoint_tallies() -> None:
     board = (root / "scripts" / "selection_market_dashboard.py").read_text(
         encoding="utf-8"
     )
-    # Different sources, and that is the whole point.  Read the SQL blocks
-    # themselves rather than guessing at character distances.
+    # Different sources, and that is the whole point.  The grouping moved
+    # into Python when the tallies grew a station-scope filter, but each
+    # side still reads only its own table.
     assert (
-        "SELECT COUNT(*), stage FROM paper_trade_position GROUP BY stage"
-        in board
+        "SELECT stage, station_id FROM paper_trade_position" in board
     ), "seated_count no longer counts positions"
-    assert "SELECT COUNT(*), stage FROM paper_trade_refusal" in board
-    # Both posted-and-bought-nothing codes feed this tally.
     assert (
-        "WHERE reason IN ('resting_unfilled','belief_withdrew_order')" in board
-    )
+        "SELECT stage, reason, station_id, detail FROM paper_trade_refusal"
+        in board
+    ), "refusals no longer come from the refusal table"
+    # And the card's denominator is their sum -- disjoint, not nested.
+    assert "scopes = refused + seated.get(stage, 0)" in board
     queries = re.findall(r"conn\.execute\(\s*(.*?)\)\s*(?:\.fetchall\(\))?",
                          board, re.S)
     ladder_q = [q for q in queries if "intended_legs_json" in q]
@@ -691,15 +752,11 @@ def test_seated_and_wholly_unfilled_are_disjoint_tallies() -> None:
     assert ladder_q and "paper_trade_position" in ladder_q[0]
     assert "paper_trade_refusal" not in ladder_q[0]
 
-    page = (root / "scripts" / "calibration_dashboard.py").read_text(
-        encoding="utf-8"
-    )
-    # The card states the total the two make up, and marks the nesting.
-    assert "r.seated_count+r.nothing_filled_count" in page
-    assert "├ 建仓篮子" in page
-    assert "└ 全篮落空" in page
-    # And the note names the case that misread.
-    assert "并列的两堆，不是包含关系" in page
+    # The card that printed the two tallies nested ("建仓 19" over "全篮落空
+    # 20") was retired with the maker display (charter 65 made the book
+    # taker-only; a wholly-unfilled resting basket is a maker outcome).  The
+    # surviving invariant is the source split asserted above; the refusal
+    # page's per-stage denominator is checked against the board spelling.
 
 
 def test_withdrawing_and_never_being_reached_are_told_apart() -> None:
@@ -890,7 +947,9 @@ def test_posted_basket_hit_is_grouped_on_what_was_chosen() -> None:
         conn.close()
 
     for row in payload["sizes"]:
-        assert row["posted_size"] in (3, 4)
+        # ``chosen_size`` since 2026-08-24: the base moved from the posted
+        # ladder to the objective's own pick (intended legs).
+        assert row["chosen_size"] in (3, 4)
         # Every posted basket is at least as likely to cover as the part of
         # it we managed to buy -- the filled set is a subset of the posted.
         assert row["filled_hit_rate"] <= row["hit_rate"] + 1e-9, row
@@ -982,7 +1041,8 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
                 "SELECT station_id, event_date, stage, decision_at_utc,"
                 " posted_buckets_json, window_buckets_json,"
                 " ladder_center_bucket, win_probability, all_in_cost,"
-                " prices_json FROM paper_trade_position"
+                " prices_json, probabilities_json, held_before_json"
+                " FROM paper_trade_position"
                 " WHERE selection_rule_sha256=?",
                 (SELECTION_RULE_SHA256,),
             ).fetchall()
@@ -992,28 +1052,54 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
             return
 
         for (st, day, stage, at, posted_js, filled_js, centre, win, cost,
-             prices_js) in positions:
+             prices_js, probs_js, held_js) in positions:
             posted = json.loads(posted_js) if posted_js else json.loads(
                 filled_js
             )
             filled = json.loads(filled_js)
             prices = json.loads(prices_js) if prices_js else {}
+            probs = json.loads(probs_js) if probs_js else {}
+            held = json.loads(held_js) if held_js else {}
             scope = f"{st} {day} {stage}"
 
             assert str(centre) in {str(b) for b in posted}, (
                 f"{scope}: centre {centre} not in posted window {posted}"
             )
             low = 2 if str(stage) == "P1" else 3
-            assert low <= len(posted) <= 4, (
-                f"{scope}: posted width {len(posted)} outside [{low}, 4]"
+            assert len(posted) <= 4, (
+                f"{scope}: posted width {len(posted)} over the cap"
             )
+            if len(posted) < low:
+                # Legal only under the floor's own clamp: the floor cannot
+                # ask for more rungs than the day still has.  Every bucket
+                # outside the seat must be dead -- no recorded probability,
+                # or quoted under the leg floor.
+                for bucket, prob in probs.items():
+                    if str(bucket) in {str(b) for b in posted}:
+                        continue
+                    if float(prob) <= 1e-6:
+                        continue
+                    quote = prices.get(str(bucket))
+                    assert quote is not None and (
+                        float(quote) * (1.0 + FEE_RATE)
+                        < MINIMUM_LEG_ALL_IN_ASK
+                    ), (
+                        f"{scope}: width {len(posted)} under the floor while"
+                        f" {bucket} was live at p={prob} quote={quote}"
+                    )
             for bucket in posted:
                 quote = prices.get(str(bucket))
                 if quote is not None:
                     assert float(quote) >= MINIMUM_LEG_ALL_IN_ASK - 1e-9, (
                         f"{scope}: leg {bucket} quoted {quote} under floor"
                     )
-            if len(filled) == len(posted):
+            if len(filled) == len(posted) and not held:
+                # A fresh seat must clear the whole-basket EV gate.  A
+                # top-up answers to the chain instead (charter 66): its
+                # blended cost after the buy stays under par and the buy
+                # improves the chain's expected log growth, and either can
+                # hold with the seat's own claim under its own cost --
+                # buying the miss rung as insurance prices exactly there.
                 assert float(win) > float(cost), (
                     f"{scope}: fully-filled seat with EV<=0 "
                     f"({win} vs {cost}) -- the entry gate cannot have run"

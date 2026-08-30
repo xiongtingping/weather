@@ -262,6 +262,10 @@ LEDGER_ONLY = {
     # replay may vary; production's frame is its own capital plumbing.
     "CHAIN_TOPUP_BANKROLL_USDC": "replay arm; 0 = scope allowance",
     "CHAIN_TOPUP_MISS_FLOOR": "replay arm; off by default",
+    # Measured 2026-08-30 and declined: every delay arm lost to entering at
+    # the first seatable cycle.  Kept at 0 as the replayable record of that
+    # ruling; production has no counterpart because the answer was no.
+    "P0_ENTRY_DELAY_HOURS": "replay arm; measured and declined, default 0",
     # A replay simulates fills; production observes them.
     "MAKER_FILL_MODEL": "fill simulation, production reads real fills",
     "MAKER_RESTING_HORIZON_MINUTES": "how long a simulated order rests",
