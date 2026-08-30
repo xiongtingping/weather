@@ -10,6 +10,7 @@ from bayes_basket_target.model_arrival import ALLOWED_PROVIDERS
 from bayes_basket_target.model_sources import ALLOWED_MODEL_PROVIDERS
 import scripts.audit_dwd_icon_global_eps_official_readiness as readiness
 from scripts.audit_dwd_icon_global_eps_official_readiness import assess_records, build_audit
+from bayes_basket_target.fleet import expected_station_count
 
 
 def _with_content_sha(identity: dict[str, object]) -> dict[str, object]:
@@ -191,7 +192,7 @@ def test_station_member_cohort_requires_exact_grid_bound_45_by_40(tmp_path: Path
     })
     records = [
         {"station_id": f"S{station:02d}", "member_id": member, "raw_sha256": raw_sha}
-        for station in range(45)
+        for station in range(expected_station_count())
         for member in range(1, 41)
     ]
     station = _with_content_sha({
@@ -200,7 +201,7 @@ def test_station_member_cohort_requires_exact_grid_bound_45_by_40(tmp_path: Path
         "run_initialization_utc": "2026-08-01T00:00:00Z",
         "valid_time_utc": "2026-08-01T00:00:00Z",
         "raw_sha256": raw_sha,
-        "station_count": 45,
+        "station_count": expected_station_count(),
         "member_count": 40,
         "member_record_count": 1800,
         "member_station_records": records,

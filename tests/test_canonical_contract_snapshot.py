@@ -21,6 +21,7 @@ from bayes_basket_target.canonical_ssot_v11_migration import (
     TARGET_TRIGGER_DDL,
 )
 from bayes_basket_target.contracts import content_sha256
+from bayes_basket_target.fleet import expected_station_count
 
 
 def _truth() -> dict[str, object]:
@@ -192,7 +193,7 @@ def _truth_gap_receipt(path: Path) -> tuple[Path, list[str]]:
         "as_of_utc": "2026-08-04T09:00:00Z",
         "builder_id": "old.truth.gap.v1",
         "canonical_contract_sha256": "f" * 64,
-        "station_count": 45,
+        "station_count": expected_station_count(),
         "truth_fact_count": 1,
         "complete_station_count": 0,
         "blocked_station_count": 44,

@@ -18,6 +18,7 @@ from scripts.capture_bayes_basket_target_official_ws_snapshot import (
     _quote_from_message,
     _settlement_day_state,
 )
+from bayes_basket_target.fleet import expected_station_count
 
 
 def _manifest_registry_scope(
@@ -667,7 +668,7 @@ def test_exact_45_station_registry_scope_materializes_nonempty_allowlist(
                 "Asia/Seoul" if index % 2 else "America/New_York"
             ),
         )
-        for index in range(45)
+        for index in range(expected_station_count())
     ]
     path = _write_registry_snapshot(tmp_path / "registry-45.json", rows)
     scope = _registry_snapshot_scope(
@@ -676,8 +677,8 @@ def test_exact_45_station_registry_scope_materializes_nonempty_allowlist(
         as_of_utc="2026-07-24T12:00:00Z",
     )
 
-    assert len(scope["station_allowlist"]) == 45
-    assert len(scope["tokens"]) == 45
+    assert len(scope["station_allowlist"]) == expected_station_count()
+    assert len(scope["tokens"]) == expected_station_count()
     assert scope["target_timezone"] is None
     assert set(scope["settlement_timezones_by_station"].values()) == {
         "America/New_York",
@@ -708,7 +709,7 @@ def test_exact_45_station_registry_scope_materializes_nonempty_allowlist(
         registry_scope=scope,
     )
     assert manifest["station_scope"]["mode"] == "allowlist"
-    assert len(manifest["station_scope"]["station_ids"]) == 45
+    assert len(manifest["station_scope"]["station_ids"]) == expected_station_count()
     assert manifest["event_date"] == manifest["target_local_date"] == "2026-07-24"
     assert (
         manifest["settlement_timezone_authority"]

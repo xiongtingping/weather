@@ -16,6 +16,7 @@ from scripts.audit_ecmwf_pf50_aifs_terminal_coverage import (
     TerminalCoverageError,
     build_terminal_matrix,
 )
+from bayes_basket_target.fleet import expected_station_count
 
 
 AS_OF = "2026-08-04T00:00:00Z"
@@ -52,7 +53,7 @@ def _pf50_archive() -> dict[str, object]:
         "schema": "ecmwf_ifs_open_pf50_historical_multistation_members_v1",
         "ensemble_system_id": PF50_PRODUCT,
         "archive_lead_bucket": "d2",
-        "station_count": 45,
+        "station_count": expected_station_count(),
         "member_count": 50,
         "member_availability_contract": PF50_MEMBER_CONTRACT,
         "captures": captures,
@@ -66,7 +67,7 @@ def _pf50_oos_linkage() -> dict[str, object]:
         "current_pointer": {
             "state": "BOUND",
             "selected_system_ids_filter": [PF50_PRODUCT, "NOAA_GEFS_05"],
-            "station_count": 45,
+            "station_count": expected_station_count(),
             "station_ids": _stations(),
         },
     }
@@ -79,7 +80,7 @@ def _aifs_readiness() -> dict[str, object]:
         "state": "BLOCKED_STRICT_OOS",
         "official_native_forward_capture": {
             "capture_state": "OFFICIAL_NATIVE_FORWARD_COMPLETE",
-            "station_count": 45,
+            "station_count": expected_station_count(),
             "station_valid_arrival_count": 179,
             "unique_raw_message_count": 7,
             "raw_message_sha256s": [f"{number:064x}" for number in range(1, 8)],
@@ -150,9 +151,9 @@ def test_matrix_is_shared_exact_45_by_three_by_three_and_all_rows_validate() -> 
     station = _stations()[0]
 
     assert matrix["schema"] == "bayes_basket_target_model_system_coverage_matrix_v1"
-    assert matrix["station_count"] == 45
+    assert matrix["station_count"] == expected_station_count()
     assert matrix["lead_buckets"] == ["d0", "d1", "d2"]
-    assert matrix["scope_count"] == 45 * 3 * 3
+    assert matrix["scope_count"] == expected_station_count() * 3 * 3
     assert matrix["cross_selection_count"] == 0
     assert matrix["cross_activation_count"] == 0
     assert matrix["p0_count"] == 0

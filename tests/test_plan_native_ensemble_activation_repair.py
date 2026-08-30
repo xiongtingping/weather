@@ -19,6 +19,7 @@ from tests.test_audit_native_ensemble_activation_oos_linkage import (
     _insert_evaluation,
     _schema,
 )
+from bayes_basket_target.fleet import expected_station_count
 
 
 AS_OF = "2026-08-02T00:00:00.000Z"
@@ -368,8 +369,8 @@ def test_repair_plan_is_read_only_and_surfaces_missing_evaluations(tmp_path):
 
     plan = build_plan(database, manifest_path, as_of_utc=AS_OF, activated_at_utc=ACTIVATED)
 
-    assert plan["station_count"] == 45
-    assert plan["candidate_count"] == 45
+    assert plan["station_count"] == expected_station_count()
+    assert plan["candidate_count"] == expected_station_count()
     assert plan["candidate_action_summary"] == {"READY_APPEND_EXACT_EVALUATION": 45}
     assert plan["artifact_pointer_count"] == 0
     assert database.read_bytes() == before
@@ -396,7 +397,7 @@ def test_exact_mask_filter_excludes_eccc_candidate_and_activation(tmp_path):
 
     assert plan["selected_system_ids_filter"] == SYSTEM_IDS
     assert plan["manifest_candidate_count"] == 46
-    assert plan["candidate_count"] == 45
+    assert plan["candidate_count"] == expected_station_count()
     assert plan["filtered_out_candidate_count"] == 1
     assert plan["activation_count"] == 1
     assert all(

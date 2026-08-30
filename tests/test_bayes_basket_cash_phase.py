@@ -537,70 +537,87 @@ def test_a_station_may_never_spend_past_its_own_bankroll() -> None:
     assert worst_wealth >= 0.75 - 1e-9
 
 
-def test_leg_under_the_exchange_minimum_lot_is_dropped_not_rounded_up() -> None:
-    """A leg the exchange would refuse is not a leg.
+def test_leg_under_the_exchange_minimum_lot_is_raised_to_one_lot() -> None:
+    """User ruling 2026-08-31 -- 多花: spend more, do not re-pick the rungs.
 
-    Polymarket refuses an order below the market's ``orderMinSize``.  Until
-    2026-08-30 the sizing layer had no notion of it -- 275 of the 1,406 basket
-    intents on the books that day were under a five-share lot -- and each one
-    was found out by signing it and posting it.
-
-    Dropping is the deliberate choice over rounding up: the objective solved
-    the basket's budget, concentration and profit curve against the size it
-    picked, so buying more than that to satisfy the exchange is a different
-    basket than the one that was scored.
+    The numbers here are a real ladder (decision_b6dd5e95ca0): 37/38/39C
+    posted contiguous, with the centre rung quoted 0.94 and sized to 1.05
+    shares -- about a ninth of a lot.  Dropping that leg, which is what this
+    layer did for one day, left the two wings and threw away the bucket the
+    market put 94% of the mass on.  Re-selecting a cheaper window would
+    change what the objective picked, and picking is its job.  So the leg is
+    raised instead, and what the raise costs is recorded rather than hidden
+    inside the clip.
     """
     policy = _policy()
     phase = evaluate_cash_phase(policy, _input(policy))
 
-    def sized(*, delta_shares: float, minimum_lot_shares: float):
-        return OrderSizingDecision.compute(
-            bucket="38",
-            phase_decision=phase,
-            delta_shares=delta_shares,
-            r_limit=0.20,
-            remaining_budget=10.0,
-            executable_depth_cash=12.0,
-            candidate_present=True,
-            minimum_lot_shares=minimum_lot_shares,
-        )
+    def sized(**overrides):
+        kwargs = {
+            "bucket": "38",
+            "phase_decision": phase,
+            "delta_shares": 1.05,
+            "r_limit": 0.94,
+            "remaining_budget": 10.0,
+            "executable_depth_cash": 12.0,
+            "candidate_present": True,
+            "minimum_lot_shares": 5.0,
+        }
+        kwargs.update(overrides)
+        return OrderSizingDecision.compute(**kwargs)
 
-    # 3 shares at 0.20 is 0.60 USDC -- comfortably inside budget and depth,
-    # and refused only because it is under a lot.
-    under = sized(delta_shares=3.0, minimum_lot_shares=5.0)
-    assert under.reason_code == "below_exchange_minimum_lot"
-    assert under.eligible is False
-    assert under.c_order == 0.0
-    assert under.q_order == 0.0
-    assert under.minimum_lot_shares == 5.0
+    raised = sized()
+    assert raised.reason_code == "raised_to_exchange_minimum_lot"
+    assert raised.eligible is True
+    assert raised.q_order == pytest.approx(5.0)
+    assert raised.c_order == pytest.approx(4.70)
+    # The gap was 1.05 shares; buying a legal lot overshoots it, and that
+    # overshoot is the "more" the ruling asks for.
+    assert raised.delta_shares == pytest.approx(1.05)
+    assert raised.lot_raise_usdc == pytest.approx(4.70 - 1.05 * 0.94)
+    assert raised.remaining_budget_after == pytest.approx(10.0 - 4.70)
 
-    # The boundary is inclusive: exactly one lot is a legal order.
-    exact = sized(delta_shares=5.0, minimum_lot_shares=5.0)
-    assert exact.reason_code != "below_exchange_minimum_lot"
-    assert exact.eligible is True
-    assert exact.q_order == pytest.approx(5.0)
+    # The clip the objective authorized is exceeded on purpose.  Nothing else
+    # in this function may exceed it, which is why the raise is recorded.
+    over_clip = sized(target_clip_notional_usdc=0.987, cash_template_caps_target=False,
+                      clamped_clip_authorized=True)
+    assert over_clip.eligible is True
+    assert over_clip.c_order == pytest.approx(4.70)
+    assert over_clip.c_order > over_clip.target_clip_notional_usdc
 
-    over = sized(delta_shares=20.0, minimum_lot_shares=5.0)
-    assert over.reason_code != "below_exchange_minimum_lot"
-    assert over.eligible is True
+    # Budget and depth are not policy.  A lot that does not exist cannot be
+    # bought, and the leg says so in its own words rather than looking like a
+    # budget refusal.
+    for label, kwargs in (
+        ("budget", {"remaining_budget": 2.0}),
+        ("depth", {"executable_depth_cash": 2.0}),
+    ):
+        broke = sized(**kwargs)
+        assert broke.reason_code == "exchange_minimum_lot_unaffordable", label
+        assert broke.eligible is False, label
+        assert broke.c_order == 0.0, label
+        assert broke.lot_raise_usdc == 0.0, label
 
-    # Without this the first assertion would also pass on a leg that was
-    # already zero for some other reason.
-    no_floor = sized(delta_shares=3.0, minimum_lot_shares=0.0)
+    # A leg already at or above a lot is untouched, and the boundary is
+    # inclusive.
+    for delta in (5.0, 20.0):
+        untouched = sized(delta_shares=delta, r_limit=0.20)
+        assert untouched.reason_code != "raised_to_exchange_minimum_lot"
+        assert untouched.eligible is True
+        assert untouched.lot_raise_usdc == 0.0
+
+    # Without this the first assertion would also pass on a fixture that was
+    # being raised for some other reason.
+    no_floor = sized(minimum_lot_shares=0.0)
     assert no_floor.eligible is True
-    assert no_floor.q_order == pytest.approx(3.0)
+    assert no_floor.q_order == pytest.approx(1.05)
+    assert no_floor.lot_raise_usdc == 0.0
 
-    # The floor is shares, so the cash it implies moves with the price.  The
-    # same three shares clear a five-share lot nowhere, but ten shares at a
-    # tenth the price is a legal order for a fifth of the money.
-    cheap = OrderSizingDecision.compute(
-        bucket="38", phase_decision=phase, delta_shares=10.0, r_limit=0.02,
-        remaining_budget=10.0, executable_depth_cash=12.0,
-        candidate_present=True, minimum_lot_shares=5.0,
-    )
+    # The floor is shares, so the cash it demands moves with the price: the
+    # same lot on a two-cent rung costs a fortieth of what it costs here.
+    cheap = sized(delta_shares=1.0, r_limit=0.02)
     assert cheap.eligible is True
-    assert cheap.c_order == pytest.approx(0.20)
+    assert cheap.c_order == pytest.approx(0.10)
 
-    # It is recorded, so an audit can tell this refusal from a budget one.
-    assert "minimum_lot_shares" in under.to_dict()
-    assert under.content_sha256 != no_floor.content_sha256
+    assert "lot_raise_usdc" in raised.to_dict()
+    assert raised.content_sha256 != no_floor.content_sha256

@@ -8,6 +8,7 @@ from bayes_basket_target.benchmark_model_coverage import (
 )
 from bayes_basket_target.contracts import content_sha256
 from bayes_basket_target.model_system_coverage import build_coverage_matrix, canonical_station_ids
+from bayes_basket_target.fleet import expected_station_count
 
 
 AS_OF = "2026-08-03T21:08:00Z"
@@ -72,7 +73,7 @@ def test_pr05_matrix_is_exact_and_never_mints_p0() -> None:
     )
     products = (*GLOBAL_DETERMINISTIC_PRODUCTS, *REGIONAL_BENCHMARK_PRODUCTS)
     matrix = build_coverage_matrix(rows, expected_product_ids=products, as_of_utc=AS_OF)
-    assert matrix["scope_count"] == 45 * 3 * len(products)
+    assert matrix["scope_count"] == expected_station_count() * 3 * len(products)
     assert matrix["p0_count"] == 0
     assert matrix["cross_activation_count"] == 0
     assert matrix["state_counts"]["OOS_READY"] == 0

@@ -606,7 +606,9 @@ def _write_sqlite(path: Path, rows: list[dict[str, Any]], run_sha256: str) -> No
               event_date TEXT NOT NULL,
               decision_cutoff_utc TEXT NOT NULL,
               run_initialization_utc TEXT NOT NULL,
-              station_count INTEGER NOT NULL CHECK(station_count<=45),
+              station_count INTEGER NOT NULL CHECK(station_count<="""
+            + str(MAX_STATIONS)
+            + """),
               execution_mode TEXT NOT NULL CHECK(execution_mode='production_no_live'),
               live_submit_authorized INTEGER NOT NULL CHECK(live_submit_authorized=0),
               calls_order_gateway INTEGER NOT NULL CHECK(calls_order_gateway=0),

@@ -6,10 +6,11 @@ import pytest
 
 from bayes_basket_target.contracts import ContractError, content_sha256
 from scripts import capture_official_native_ensemble_forward as capture
+from bayes_basket_target.fleet import expected_station_count
 
 
 def _station_ids() -> list[str]:
-    return [f"T{index:03d}" for index in range(45)]
+    return [f"T{index:03d}" for index in range(expected_station_count())]
 
 
 def _registry(*, missing_station: str | None = None) -> dict[str, object]:
@@ -50,7 +51,7 @@ def test_build_station_scopes_requires_all_45_canonical_eligible_scopes(
         _registry(), event_date="2026-08-01"
     )
 
-    assert len(scopes) == 45
+    assert len(scopes) == expected_station_count()
     assert {scope["station_id"] for scope in scopes} == set(_station_ids())
     assert all(scope["settlement_timezone"] == "Etc/UTC" for scope in scopes)
 

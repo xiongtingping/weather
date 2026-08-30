@@ -77,7 +77,7 @@ def test_builds_45_by_40_complete_local_day_members_without_authority() -> None:
     )
     assert archive["station_count"] == expected_station_count()
     assert archive["member_count"] == 40
-    assert archive["capture_count"] == 45
+    assert archive["capture_count"] == expected_station_count()
     assert all(capture["daily_curve_complete"] for capture in archive["captures"])
     assert all(len(capture["members"]) == 40 for capture in archive["captures"])
     assert archive["holdout_eligible"] is True
@@ -96,7 +96,7 @@ def test_builds_exact_et_day_from_retained_three_hour_native_slots() -> None:
         built_at_utc="2026-08-05T12:00:00Z",
     )
 
-    assert archive["capture_count"] == 45
+    assert archive["capture_count"] == expected_station_count()
     assert archive["component_cohort_count"] == 8
     assert archive["captures"][0]["settlement_timezone"] == "America/New_York"
     assert archive["captures"][0]["valid_times_utc"] == [

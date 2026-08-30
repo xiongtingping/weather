@@ -10,10 +10,11 @@ from bayes_basket_target.station_source_authority import (
     migrate_global_awc_source_authorities,
     resolve_global_awc_source_authority,
 )
+from bayes_basket_target.fleet import expected_station_count
 
 
 def _stations(conn: sqlite3.Connection) -> list[str]:
-    stations = [f"T{index:03d}" for index in range(45)]
+    stations = [f"T{index:03d}" for index in range(expected_station_count())]
     for index, station in enumerate(stations):
         identity = {
             "station_id": station,
@@ -48,7 +49,7 @@ def test_global_awc_authority_is_append_only_and_supersedes_legacy_lane() -> Non
             commit=True,
         )
 
-        assert report["wrote_count"] == 45
+        assert report["wrote_count"] == expected_station_count()
         assert conn.execute(
             "SELECT source_lane FROM calibration_station_registry WHERE station_id='T000'"
         ).fetchone()[0] == "AMSC"
@@ -69,5 +70,5 @@ def test_global_awc_authority_is_append_only_and_supersedes_legacy_lane() -> Non
             lane_map_content_sha256="a" * 64,
             commit=True,
         )
-        assert replay["idempotent_count"] == 45
+        assert replay["idempotent_count"] == expected_station_count()
 

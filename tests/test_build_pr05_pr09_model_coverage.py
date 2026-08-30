@@ -20,6 +20,7 @@ from scripts.build_pr05_pr09_model_coverage import (
     build_pr05_pr09_coverage_matrix,
     main,
 )
+from bayes_basket_target.fleet import expected_station_count
 
 
 def _matrix(products: tuple[str, ...], *, as_of_utc: str = COMPILED_AT_UTC) -> dict:
@@ -69,7 +70,7 @@ def test_outer_builder_rebuilds_exact_21_product_coverage_and_validates_readback
         pr08_pr09_matrix=_matrix(PR08_PR09_PRODUCTS),
     )
 
-    assert result["scope_count"] == EXPECTED_SCOPE_COUNT == 21 * 45 * 3
+    assert result["scope_count"] == EXPECTED_SCOPE_COUNT == 21 * expected_station_count() * 3
     assert result["product_ids"] == list(EXPECTED_PRODUCT_IDS)
     assert result["state_counts"] == {
         "DATA_READY": 0,

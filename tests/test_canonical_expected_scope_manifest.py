@@ -23,6 +23,7 @@ from bayes_basket_target.model_system_coverage import (
     make_coverage_row,
 )
 from bayes_basket_target.station_registry import coordinate_registry_manifest
+from bayes_basket_target.fleet import expected_station_count
 
 
 AS_OF = "2026-08-04T10:00:00Z"
@@ -94,7 +95,7 @@ def _runtime_keys() -> list[dict]:
 def test_model_basis_comes_from_frozen_matrix_not_observed_release() -> None:
     basis = build_model_oos_scope_basis(_matrix(), release_as_of_utc=AS_OF)
     assert basis["scope_type"] == "MODEL_OOS"
-    assert len(basis["expected_keys"]) == 45 * 3
+    assert len(basis["expected_keys"]) == expected_station_count() * 3
     assert {item["natural_key"]["lead_bucket"] for item in basis["expected_keys"]} == set(LEADS)
     assert basis["source_content_sha256s"] == [_matrix()["content_sha256"]]
 
@@ -110,8 +111,8 @@ def test_model_basis_keeps_complete_product_vector_when_family_key_collapses() -
     basis = build_model_oos_scope_basis(
         _matrix(("ECMWF", "GFS")), release_as_of_utc=AS_OF
     )
-    assert len(basis["expected_keys"]) == 45 * 3
-    assert len(basis["expected_key_evidence"]) == 45 * 3
+    assert len(basis["expected_keys"]) == expected_station_count() * 3
+    assert len(basis["expected_key_evidence"]) == expected_station_count() * 3
     assert all(
         [item["product_id"] for item in row["evidence"]["components"]]
         == ["ECMWF", "GFS"]

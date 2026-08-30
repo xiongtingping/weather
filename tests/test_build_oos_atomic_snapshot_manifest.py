@@ -113,7 +113,7 @@ def test_snapshot_binds_p0_pointer_and_scope(monkeypatch: pytest.MonkeyPatch, tm
     assert result["input_artifacts"]["taf_audit"]["evidence_clock_utc"] == "2026-08-02T00:00:00.000Z"
     assert result["input_artifacts"]["taf_audit"]["evidence_clock_field"] == "as_of_utc"
     assert result["scope_fingerprint"]
-    assert result["native_p0_binding"]["binding_count"] == 45
+    assert result["native_p0_binding"]["binding_count"] == expected_station_count()
     assert result["native_p0_binding"]["source_linkage_content_sha256"] == result["input_artifacts"]["native_linkage"]["declared_content_sha256"]
     assert result["native_p0_binding"]["source_repair_content_sha256"] == result["input_artifacts"]["native_repair"]["declared_content_sha256"]
 

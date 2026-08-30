@@ -28,6 +28,7 @@ from bayes_basket_target.regime_materialization import (
 from bayes_basket_target.ssot import apply_production_ssot_schema
 from bayes_basket_target.production import compile_production_plan
 from bayes_basket_target.runtime import compile_target_plan
+from bayes_basket_target.fleet import expected_station_count
 
 
 def _artifact(**changes):
@@ -493,7 +494,7 @@ def test_registry_timezone_scope_and_probability_content_drift_fail_closed():
 
 
 def test_resident_batch_is_atomic_across_stations_and_bounded_at_45():
-    stations = [f"K{index:03d}" for index in range(45)]
+    stations = [f"K{index:03d}" for index in range(expected_station_count())]
     registry = {
         (station, "2026-07-27"): "America/New_York"
         for station in stations
@@ -515,7 +516,7 @@ def test_resident_batch_is_atomic_across_stations_and_bounded_at_45():
             evaluation_at_utc="2026-07-26T19:00:00Z",
             created_at_utc="2026-07-26T19:00:00Z",
         )
-        assert receipt["station_count"] == 45
+        assert receipt["station_count"] == expected_station_count()
         assert len(str(receipt).encode("utf-8")) < 1024 * 1024
 
     registry_46 = {

@@ -58,7 +58,7 @@ def _inputs(tmp_path: Path) -> tuple[dict[str, object], dict[str, object], Path]
         "provider_published_at_utc": "2026-08-01T02:43:18Z",
         "response_completed_at_utc": "2026-08-01T03:00:00Z",
         "member_count": 40,
-        "station_count": 45,
+        "station_count": expected_station_count(),
         "member_record_count": expected_station_count() * 40,
         "lineage": {
             "source_url": capture_identity["source_url"],
