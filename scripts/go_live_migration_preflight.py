@@ -125,24 +125,38 @@ def check_schema_constraints() -> list[dict[str, Any]]:
             "SELECT name, sql FROM sqlite_master WHERE type='table'"
             " AND sql LIKE '%live_submit_authorized%'"
         ).fetchall()
+        # Only the intents table gates an order.  basket_p0_preselection_plan
+        # carries the same column and is out of scope: its own compiler says
+        # that path "never creates an intent, reservation, order, or gateway
+        # call", and its five no-live constraints describe what a forward-day
+        # preselection is rather than what the lane may do.  Reporting it as a
+        # blocker (as this did on 2026-08-30) points the migration at 42k rows
+        # it must not touch.
         for name, sql in rows:
             flat = (sql or "").replace(" ", "")
             locked = "CHECK(live_submit_authorized=0)" in flat
             count = conn.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0]
+            on_order_path = name == "basket_target_order_intents"
             out.append(
                 _check(
                     f"CHECK 约束 {name}",
                     1,
-                    "code",
-                    BLOCK if locked else PASS,
+                    "code" if on_order_path else "n/a",
+                    (BLOCK if locked else PASS) if on_order_path else PASS,
                     (
                         f"CHECK(live_submit_authorized=0) 生效，{count} 行历史"
-                        if locked
-                        else f"无 CHECK 锁，{count} 行"
+                        if locked and on_order_path
+                        else (
+                            f"{count} 行；不在下单路上，迁移不动它"
+                            if locked else f"无 CHECK 锁，{count} 行"
+                        )
                     ),
                     (
                         "SQLite 不能原地改 CHECK：建新表→拷贝→换名，需停机窗口。"
                         " 这一条就是「迁移」二字的来源。"
+                        " 脚本：scripts/go_live_migration.py"
+                        if on_order_path
+                        else "无需处置：前瞻预选按设计从不建 intent 或下单。"
                     ),
                 )
             )
@@ -167,7 +181,15 @@ def check_schema_constraints() -> list[dict[str, Any]]:
 
 def check_activation_validator() -> dict[str, Any]:
     source = _read(ROOT / "bayes_basket_target" / "activation.py")
-    refuses = 'row.get("execution_mode") != "production_no_live"' in source
+    # Resolved once a live validator exists beside the no-live one.  The
+    # no-live refusal staying in place is the point, not the blocker: both
+    # lanes have to keep working, so this asks whether a live contract has a
+    # validator at all -- not whether the other one was relaxed.
+    has_live = "def validate_live_activation(" in source
+    refuses = (
+        'row.get("execution_mode") != "production_no_live"' in source
+        and not has_live
+    )
     falses = re.search(
         r"for key in \(\s*((?:\s*\"[a-z_]+\",\s*)+)\s*\):", source
     )
@@ -181,7 +203,7 @@ def check_activation_validator() -> dict[str, Any]:
             f"validate_target_activation 硬拒非 production_no_live，"
             f"并要求 {len(keys)} 个键恒 False：{','.join(keys[:4])}…"
             if refuses
-            else "已接受 live 模式"
+            else "validate_live_activation 已就位（增量，未放松 no-live 校验器）"
         ),
         (
             "需新增 schema bayes_basket_target_production_live_activation_v1"
@@ -194,7 +216,12 @@ def check_runtime_config_loader() -> dict[str, Any]:
     source = _read(ROOT / "bayes_basket_target" / "runtime_config.py")
     # The loader builds its return dict from literals, so editing the JSON
     # cannot produce a live config -- that is the point worth reporting.
-    hardcoded = '"live_submit_authorized": False,' in source
+    # Same shape as the activation check: the no-live loader still pinning
+    # its five literals is correct, so this asks whether a live loader exists.
+    hardcoded = (
+        '"live_submit_authorized": False,' in source
+        and "def load_target_live_runtime_config(" not in source
+    )
     return _check(
         "runtime config 加载器",
         3,
@@ -203,7 +230,7 @@ def check_runtime_config_loader() -> dict[str, Any]:
         (
             "返回值把 5 个 live 边界写死为 False，改 JSON 无效"
             if hardcoded
-            else "返回值跟随文件"
+            else "load_target_live_runtime_config 已就位（no-live 加载器仍钉死 5 个边界）"
         ),
         "需 live 变体加载器；勿在原文件放宽，no-live 车道还要用它。",
     )

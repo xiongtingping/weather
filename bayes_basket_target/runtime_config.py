@@ -96,8 +96,89 @@ def load_target_no_live_runtime_config(
     }
 
 
+LIVE_SCHEMA = "bayes_basket_target_live_runtime_v1"
+DEFAULT_TARGET_LIVE_RUNTIME_CONFIG = TARGET_CONFIG_ROOT / "live_runtime_v1.json"
+
+
+def load_target_live_runtime_config(
+    path: Path | str = DEFAULT_TARGET_LIVE_RUNTIME_CONFIG,
+) -> dict[str, Any]:
+    """The live budget contract, loaded by its own function.
+
+    ``load_target_no_live_runtime_config`` above returns the five live
+    boundaries as literal ``False`` regardless of what the file says, which is
+    why editing that JSON could never produce a live runtime and why this is a
+    separate function rather than a flag on that one.  Here the three that an
+    order needs are literal ``True`` for the same reason in reverse: the file
+    declares intent, the loader decides what the lane is, and neither can be
+    talked out of its answer by a typo.
+
+    ``writes_production_db`` and ``reads_shared_live_capital`` stay false in
+    both.  Going live authorises orders, not a second writer and not the
+    shared capital pool -- the target lane funds itself.
+    """
+
+    candidate = Path(path).expanduser()
+    if candidate.is_symlink():
+        raise TargetRuntimeConfigError("target_runtime_config_symlink_forbidden")
+    resolved = candidate.resolve()
+    try:
+        resolved.relative_to(TARGET_CONFIG_ROOT)
+    except ValueError as exc:
+        raise TargetRuntimeConfigError(
+            "target_runtime_config_outside_target_config"
+        ) from exc
+
+    raw = load_bounded_json(resolved)
+    if not isinstance(raw, Mapping):
+        raise TargetRuntimeConfigError("target_runtime_config_not_object")
+    if raw.get("schema") != LIVE_SCHEMA:
+        raise TargetRuntimeConfigError("live_runtime_config_schema_invalid")
+    if raw.get("state") != "ENABLED_FOR_PRODUCTION_LIVE":
+        raise TargetRuntimeConfigError("live_runtime_config_state_invalid")
+    if raw.get("execution_mode") != "production_live":
+        raise TargetRuntimeConfigError("live_runtime_config_execution_mode_invalid")
+    if raw.get("target_only") is not True:
+        raise TargetRuntimeConfigError("live_runtime_config_target_only_required")
+    if raw.get("capital_scope") != "target_owned_only":
+        raise TargetRuntimeConfigError("live_runtime_config_capital_scope_invalid")
+    for key in ("live_submit_authorized", "places_orders", "calls_order_gateway"):
+        if raw.get(key) is not True:
+            raise TargetRuntimeConfigError(f"live_runtime_config_{key}_required")
+    for key in ("writes_production_db", "reads_shared_live_capital"):
+        if raw.get(key) is not False:
+            raise TargetRuntimeConfigError(f"live_runtime_config_{key}_boundary_invalid")
+
+    budget = _nonnegative_number(
+        raw.get("target_remaining_budget_usdc", DEFAULT_TARGET_REMAINING_BUDGET_USDC),
+        "target_remaining_budget_usdc",
+    )
+    if budget <= 0.0:
+        # A live lane with a zero budget is not a safety state, it is a
+        # silently dead one: every cycle would compute a plan and size it to
+        # nothing.  Refuse, so the operator sets a number on purpose.
+        raise TargetRuntimeConfigError("live_runtime_config_budget_must_be_positive")
+    return {
+        "schema": LIVE_SCHEMA,
+        "state": str(raw["state"]),
+        "execution_mode": str(raw["execution_mode"]),
+        "target_only": True,
+        "capital_scope": "target_owned_only",
+        "target_remaining_budget_usdc": budget,
+        "source": str(resolved),
+        "live_submit_authorized": True,
+        "places_orders": True,
+        "calls_order_gateway": True,
+        "writes_production_db": False,
+        "reads_shared_live_capital": False,
+    }
+
+
 __all__ = [
+    "DEFAULT_TARGET_LIVE_RUNTIME_CONFIG",
     "DEFAULT_TARGET_NO_LIVE_RUNTIME_CONFIG",
+    "LIVE_SCHEMA",
+    "load_target_live_runtime_config",
     "DEFAULT_TARGET_REMAINING_BUDGET_USDC",
     "SCHEMA",
     "TargetRuntimeConfigError",
