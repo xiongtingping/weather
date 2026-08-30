@@ -2396,9 +2396,16 @@ def collect_live_readiness(
     exclusion_doc = _config(
         ROOT / "config/trading/live_station_exclusions_v1.json"
     )
-    exclusions = sorted({
+    exclusions_set = {
         str(row.get("station") or "").strip().upper()
-        for row in (exclusion_doc.get("excluded_stations") or [])
+        for key in ("excluded_stations", "auto_excluded_stations")
+        for row in (exclusion_doc.get(key) or [])
+        if isinstance(row, dict) and row.get("station")
+    }
+    exclusions = sorted(exclusions_set)
+    auto_barred = sorted({
+        str(row.get("station") or "").strip().upper()
+        for row in (exclusion_doc.get("auto_excluded_stations") or [])
         if isinstance(row, dict) and row.get("station")
     })
     # Candidates, recomputed every render so the list tracks the data -- and
@@ -2406,6 +2413,36 @@ def collect_live_readiness(
     # 2026-08-30 and the best was p=0.346 against excluding stations at
     # random, so nothing here may move a station by itself; the criteria earn
     # their keep by putting one in front of a person with its numbers.
+    # What the bar is worth, in the only terms that settle the argument: the
+    # money on each side of it.  Barred stations keep being seated and settled
+    # on paper precisely so this comparison exists -- stop booking them and
+    # the next release decision has nothing to read.  Both sides are the same
+    # window and the same rule fingerprint, so they are comparable; neither is
+    # a forecast of the other.
+    def _side(members: set[str]) -> dict[str, Any]:
+        rows = [r for r in stations if r["station"] in members]
+        stake = sum(book[r["station"]]["stake"] for r in rows if r["station"] in book)
+        pnl = sum(book[r["station"]]["pnl"] for r in rows if r["station"] in book)
+        return {
+            "stations": len(rows),
+            "settled_days": sum(
+                len(book[r["station"]]["days"]) for r in rows if r["station"] in book
+            ),
+            "staked_usdc": stake,
+            "pnl_usdc": pnl,
+            "roi": (pnl / stake) if stake else None,
+        }
+
+    allowlist_set = {
+        str(s).strip().upper() for s in (intent.get("station_allowlist") or [])
+    }
+    every = {r["station"] for r in stations}
+    split = {
+        "barred": _side(exclusions_set),
+        "live": _side(allowlist_set),
+        "not_barred": _side(every - exclusions_set),
+        "fleet": _side(every),
+    }
     for row in stations:
         row["excluded"] = row["station"] in exclusions
         barred = row["excluded"]
@@ -2448,6 +2485,8 @@ def collect_live_readiness(
         # station table below marks the difference so the two do not read
         # the same.
         "station_exclusions": exclusions,
+        "auto_barred": auto_barred,
+        "bar_split": split,
         "contracts": {
             "execution_mode": runtime.get("execution_mode"),
             "live_submit_authorized": runtime.get("live_submit_authorized"),
@@ -7512,6 +7551,25 @@ function liveReadiness(){
     <td class="mono ${r.recent_roi==null?"":(r.recent_roi>=0?"up":"down")}">${r.recent_roi==null?"—":((r.recent_roi>=0?"+":"")+(100*r.recent_roi).toFixed(1)+"%")}</td>
     <td class="muted">${r.add_candidate?"☆建议加入 ":""}${r.release_candidate?"★建议放出 ":""}${Object.entries(r.gates).filter(([k,v])=>!v).map(([k])=>GATE[k]).join("、")||"✓"}</td>
   </tr>`).join("");
+  const SP=L.bar_split||{};
+  const money=(v)=>v==null?"—":((v>=0?"+":"")+v.toFixed(2));
+  const pct=(v)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(1)+"%");
+  const cell=(k,label,note)=>{const r=SP[k]||{};return `<div class="card">
+    <div class="muted">${label}</div>
+    <div class="big ${r.roi==null?"":(r.roi>=0?"up":"down")}">${pct(r.roi)}</div>
+    <div class="mono ${(r.pnl_usdc||0)>=0?"up":"down"}">${money(r.pnl_usdc)} U</div>
+    <div class="muted" style="font-size:11.5px">投入 ${money(r.staked_usdc)} U ·
+      ${r.stations||0} 站 · ${r.settled_days||0} 个结算站日<br>${note}</div></div>`;};
+  const splitCard=SP.barred?`<div class="card" style="margin-top:12px">
+    <div class="muted">禁入 vs 实盘：同一窗口、同一规则指纹，纸面账本对两边一视同仁地建仓结算——
+      <b>禁的是下单，不是记账</b>，所以这个对比才存在。它衡量的是这道闸拦掉了什么，
+      <b>不是对未来的预测</b>。</div>
+    <div class="grid g2" style="margin-top:8px">
+      ${cell("live","实盘首批（allowlist）","真上线只有这一组会下单")}
+      ${cell("barred","被禁入的站","这些钱本来会亏/赚在这里")}
+      ${cell("not_barred","未禁入全体","allowlist 之外也算上")}
+      ${cell("fleet","全舰队","不设任何闸的对照")}
+    </div></div>`:"";
   return `<h2>Live 上线准备</h2>
   <p class="sub"><b>三重合同现锁 no_live</b>（执行模式字符串、激活文件、runtime config），
   下面的开关是<b>上线意向旗</b>：它不下单也不能下单，真正的 go-live 迁移必须在旗亮时才允许铸造 live 契约。</p>
@@ -7530,12 +7588,13 @@ function liveReadiness(){
       <span class="mono">.venv/bin/python scripts/live_control_server.py</span>
       （只监听 127.0.0.1:8788，每次改动写审计日志）</div>
   </div>
+  ${splitCard}
   <div class="card" style="margin-top:12px">
     <div class="muted">首批站点闸门（五闸：实现/声称∈[0.88,1.18]、|中心偏差|≤0.8°C、
       链≥5、ROI＞−8%、真值≤2天新）· ✔=当前 allowlist（${(L.station_allowlist||[]).join(" ")}）
-      ${(L.station_exclusions||[]).length?`<br>⛔=实盘禁入（操作者裁定，控制服务拒绝加入 allowlist）：<span class="mono">${(L.station_exclusions||[]).join(" ")}</span>
+      ${(L.station_exclusions||[]).length?`<br>⛔=实盘禁入（操作者裁定 ∪ 自动层，控制服务拒绝加入 allowlist）：<span class="mono">${(L.station_exclusions||[]).join(" ")}</span>
       　禁入是<b>风险裁定不是测量结论</b>：14 种自动规则做逐日 walk-forward，最好的一个 p=0.346——与随机剔同样多的站无异；
-      同一份手挑名单固定不动反而 +17.0 点（p=0.002）。所以这张表<b>不自动改</b>。`:""}
+      同一份手挑名单固定不动反而 +17.0 点（p=0.002）。所以<b>操作者裁定的行永远不由机器改</b>；自动层只管操作者没裁定过的站，判据＝第一看兑现比（实得÷期望；期望＜3U 时读不出，改看第二项）、第二看实得差，进出用滞回避免来回摆。${(L.auto_barred||[]).length?`　当前自动禁入：<span class="mono">${(L.auto_barred||[]).join(" ")}</span>`:""}`:""}
       ${((L.add_candidates||[]).length||(L.release_candidates||[]).length)?`<br><span class="pill amber">待复核</span>
       随数据每轮重算的候选（<b>只提示不执行</b>）：${(L.add_candidates||[]).length?`建议加入 <span class="mono">${(L.add_candidates||[]).join(" ")}</span>`:""}
       ${(L.release_candidates||[]).length?`　建议放出 <span class="mono">${(L.release_candidates||[]).join(" ")}</span>`:""}

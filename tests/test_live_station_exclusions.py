@@ -34,14 +34,62 @@ def test_the_barred_list_is_the_operators_current_ruling() -> None:
     released -- so it is asserted as a set rather than by count.
     """
 
-    barred = {
-        "RPLL", "ZUCK", "RCSS", "EHAM", "SBGR", "KLAX", "KMIA",
-        "RKSI", "KAUS", "FACT",
-        "CYYZ", "EDDM", "NZWN",
-        # Released and re-barred the same day.
-        "EPWA", "LTAC",
+    parsed = json.loads(EXCLUSIONS.read_text(encoding="utf-8"))
+    operator = {r["station"] for r in parsed["excluded_stations"]}
+    auto = {r["station"] for r in parsed.get("auto_excluded_stations") or []}
+    # Ten stations the operator barred by hand, after four rounds of rulings.
+    assert operator == {
+        "EDDM", "EHAM", "EPWA", "FACT", "KMIA",
+        "LTAC", "RCSS", "RPLL", "SBGR", "ZUCK",
     }
-    assert control.excluded_stations() == barred
+    # The union is what binds: a station barred by either list is barred.
+    assert control.excluded_stations() == operator | auto
+    # And the two lists must not overlap -- a station managed by both would
+    # let the automatic layer appear to own an operator ruling.
+    assert not (operator & auto)
+
+
+def test_the_automatic_layer_never_touches_an_operator_ruling() -> None:
+    """Three operator surfaces, and the machine may not write over any.
+
+    The allowlist counts as a ruling too, and leaving it out was a real
+    defect: on 2026-08-30 the layer moved to bar EFHK -- a 5/5 station on
+    the live allowlist returning +13.5% -- because it earned 4.02 against
+    an expected 11.17, so the fulfilment ratio read 0.36.  The union with
+    the allowlist would then have failed the migration's own disjointness
+    precondition and blocked the open.
+    """
+
+    import auto_station_exclusions as auto  # noqa: PLC0415
+
+    parsed = json.loads(EXCLUSIONS.read_text(encoding="utf-8"))
+    intent = json.loads(control.INTENT_PATH.read_text(encoding="utf-8"))
+    protected = (
+        {r["station"] for r in parsed["excluded_stations"]}
+        | {r["station"] for r in parsed.get("released_stations") or []}
+        | set(intent.get("station_allowlist") or [])
+    )
+    auto_barred = {
+        r["station"] for r in parsed.get("auto_excluded_stations") or []
+    }
+    assert not (auto_barred & protected)
+    # The decision function itself must skip them, not merely happen to.
+    verdict = auto.decide(
+        {s: {"settlements": 99, "fulfilment_ratio": -9.0,
+             "realized_gap_usdc": -999.0} for s in sorted(protected)},
+        currently_auto_barred=set(),
+        operator_ruled=protected,
+    )
+    assert verdict["bar"] == [] and verdict["release"] == []
+
+
+def test_the_bar_never_intersects_the_live_allowlist() -> None:
+    """If it ever did, the go-live migration would refuse to run."""
+
+    intent = json.loads(control.INTENT_PATH.read_text(encoding="utf-8"))
+    assert not (
+        set(intent.get("station_allowlist") or []) & control.excluded_stations()
+    )
 
 
 def test_a_reversal_stays_visible_in_the_record() -> None:

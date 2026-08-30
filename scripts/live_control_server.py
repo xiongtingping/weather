@@ -175,12 +175,15 @@ def excluded_stations() -> set:
         parsed = json.loads(EXCLUSION_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return set()
-    rows = parsed.get("excluded_stations") or []
-    return {
-        str(row.get("station") or "").strip().upper()
-        for row in rows
-        if isinstance(row, dict) and row.get("station")
-    }
+    # Two lists, one bar.  The operator's rulings and the automatic layer are
+    # kept apart in the file so neither can quietly overwrite the other, and
+    # the union is what binds here -- a station barred by either is barred.
+    out: set[str] = set()
+    for key in ("excluded_stations", "auto_excluded_stations"):
+        for row in parsed.get(key) or []:
+            if isinstance(row, dict) and row.get("station"):
+                out.add(str(row["station"]).strip().upper())
+    return out
 
 
 def set_allowlist(stations: list) -> dict:

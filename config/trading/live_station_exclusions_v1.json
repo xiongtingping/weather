@@ -4,13 +4,6 @@
   "why_not_automatic": "Walk-forward over the 332 settlements of 2026-08-15..29, warming up on six days and testing on the remaining nine: fourteen automatic rules were swept (ROI thresholds -8%/-25%/-50% crossed with minimum samples 3/5/8, plus both-halves-negative persistence at 4/6/8, plus their intersections). Every one landed between -6.8 and +1.8 points against a +5.6% baseline, and the best of the fourteen (ROI<=-25%, n>=5) is p=0.346 against randomly excluding the same number of stations -- so even that is a multiple-comparison artifact. The persistence rules were the worst of all: the stations they barred went on to return +26% to +44%, because a station that just lost is disproportionately about to mean-revert. The same nine-station hand list held fixed across the whole test returned +15.3 points at p=0.001, and with RKSI/KAUS/FACT added, +17.0 points at p=0.002. Judgement about the stations beats any statistic about their recent returns, so this file does not compute itself.",
   "excluded_stations": [
     {
-      "station": "CYYZ",
-      "city": "多伦多",
-      "both_halves_negative": false,
-      "full_sample_roi": -0.253,
-      "added_utc": "2026-08-30"
-    },
-    {
       "station": "EDDM",
       "city": "慕尼黑",
       "both_halves_negative": true,
@@ -42,20 +35,6 @@
       "added_utc": "2026-08-30"
     },
     {
-      "station": "KAUS",
-      "city": "奥斯汀",
-      "both_halves_negative": true,
-      "full_sample_roi": -0.744,
-      "added_utc": "2026-08-30"
-    },
-    {
-      "station": "KLAX",
-      "city": "洛杉矶",
-      "both_halves_negative": false,
-      "full_sample_roi": -0.315,
-      "added_utc": "2026-08-30"
-    },
-    {
       "station": "KMIA",
       "city": "迈阿密",
       "both_halves_negative": true,
@@ -73,24 +52,10 @@
       "note": "Released and re-barred the same day (2026-08-30). The release was made over a contrary reading and the re-bar restores it: EPWA's six forward seats all lost 100% and its three wins were P1 near-certainties at claims 0.93-0.99 with the model running 1.62C cold and delivering 0.46 of what it claims; LTAC is the same shape at bias -0.83 and ratio 0.35. Recorded as a round trip rather than smoothed away, because a list that hides its own reversals cannot be scored later."
     },
     {
-      "station": "NZWN",
-      "city": "惠灵顿",
-      "both_halves_negative": false,
-      "full_sample_roi": -0.369,
-      "added_utc": "2026-08-30"
-    },
-    {
       "station": "RCSS",
       "city": "台北",
       "both_halves_negative": true,
       "full_sample_roi": -0.656,
-      "added_utc": "2026-08-30"
-    },
-    {
-      "station": "RKSI",
-      "city": "首尔",
-      "both_halves_negative": true,
-      "full_sample_roi": -0.709,
       "added_utc": "2026-08-30"
     },
     {
@@ -135,8 +100,110 @@
       "RKPK"
     ]
   },
-  "authority": "operator ruling 2026-08-30 for the 2026-09-01 live open; nine named, then RKSI/KAUS/FACT, then CYYZ/EDDM/NZWN added with EPWA/LTAC released, then EPWA and LTAC re-barred the same day",
+  "authority": "operator rulings 2026-08-30 for the 2026-09-01 live open; the list moved four times in the day and each row carries its own dates",
   "valid_from_utc": "2026-08-30T00:00:00Z",
-  "updated_at_utc": "2026-08-30T14:00:00Z",
-  "released_stations": []
+  "updated_at_utc": "2026-08-30T15:00:00Z",
+  "released_stations": [
+    {
+      "station": "CYYZ",
+      "city": "多伦多",
+      "both_halves_negative": false,
+      "full_sample_roi": -0.253,
+      "added_utc": "2026-08-30",
+      "released_utc": "2026-08-30",
+      "note": "Released on the operator's ruling 2026-08-30 (second release round)."
+    },
+    {
+      "station": "KAUS",
+      "city": "奥斯汀",
+      "both_halves_negative": true,
+      "full_sample_roi": -0.744,
+      "added_utc": "2026-08-30",
+      "released_utc": "2026-08-30",
+      "note": "Released on the operator's ruling 2026-08-30 (second release round)."
+    },
+    {
+      "station": "KLAX",
+      "city": "洛杉矶",
+      "both_halves_negative": false,
+      "full_sample_roi": -0.315,
+      "added_utc": "2026-08-30",
+      "released_utc": "2026-08-30",
+      "note": "Released on the operator's ruling 2026-08-30 (second release round)."
+    },
+    {
+      "station": "NZWN",
+      "city": "惠灵顿",
+      "both_halves_negative": false,
+      "full_sample_roi": -0.369,
+      "added_utc": "2026-08-30",
+      "released_utc": "2026-08-30",
+      "note": "Released on the operator's ruling 2026-08-30 (second release round)."
+    },
+    {
+      "station": "RKSI",
+      "city": "首尔",
+      "both_halves_negative": true,
+      "full_sample_roi": -0.709,
+      "added_utc": "2026-08-30",
+      "released_utc": "2026-08-30",
+      "note": "Released on the operator's ruling 2026-08-30 (second release round)."
+    }
+  ],
+  "auto_excluded_stations": [
+    {
+      "station": "KSEA",
+      "barred_on": "fulfilment_ratio",
+      "value": -0.611,
+      "settlements": 8,
+      "auto_barred_utc": "2026-08-30"
+    },
+    {
+      "station": "LFPB",
+      "barred_on": "fulfilment_ratio",
+      "value": -0.335,
+      "settlements": 10,
+      "auto_barred_utc": "2026-08-30"
+    },
+    {
+      "station": "SAEZ",
+      "barred_on": "fulfilment_ratio",
+      "value": -0.818,
+      "settlements": 5,
+      "auto_barred_utc": "2026-08-30"
+    },
+    {
+      "station": "WMKK",
+      "barred_on": "fulfilment_ratio",
+      "value": -0.489,
+      "settlements": 6,
+      "auto_barred_utc": "2026-08-30"
+    },
+    {
+      "station": "ZSPD",
+      "barred_on": "fulfilment_ratio",
+      "value": -0.184,
+      "settlements": 7,
+      "auto_barred_utc": "2026-08-30"
+    },
+    {
+      "station": "ZUUU",
+      "barred_on": "fulfilment_ratio",
+      "value": -0.362,
+      "settlements": 13,
+      "auto_barred_utc": "2026-08-30"
+    }
+  ],
+  "auto_policy": {
+    "keys": "第一看 兑现比差 (realized/expected), 第二看 实得差 (realized-expected)",
+    "bar_ratio_below": 0.5,
+    "release_ratio_above": 0.8,
+    "bar_gap_below_usdc": -15.0,
+    "release_gap_above_usdc": -5.0,
+    "minimum_settlements": 5,
+    "ratio_denominator_floor_usdc": 3.0,
+    "operator_rows_are_never_auto_managed": true,
+    "measured": "Walk-forward on 332 settlements over 2026-08-15..29, warming on six days and scoring on nine: the best of sixteen automatic rules returned +2.4 points at p=0.356 against excluding the same number of stations at random. The operator's own ten-station list held fixed returned +15.6 points at p=0.001. This layer runs because it was asked for and because barring a station only costs a skipped market -- not because it was shown to pay.",
+    "updated_utc": "2026-08-30"
+  }
 }
