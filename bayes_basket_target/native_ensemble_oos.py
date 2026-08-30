@@ -82,7 +82,11 @@ from .metar_physical_tmax import (
     SYSTEM_ID as METAR_PHYSICAL_SYSTEM_ID,
 )
 from .official_native_forward_packet import (
+    DWD_ICON_EU_POINT_SYSTEM_ID,
+    JMA_MSM_POINT_SYSTEM_ID,
     MIXED_NATIVE_CYCLES,
+    NCEP_HRRR_POINT_SYSTEM_ID,
+    NCEP_NBM_POINT_SYSTEM_ID,
     POINT_FORECAST_SYSTEMS,
 )
 from .ssot import native_ensemble_foundation_schema_status
@@ -386,6 +390,88 @@ POINT_FORECAST_SCOPE_CONTRACTS = {
                 lambda _lead, _cycle_hour: METAR_PHYSICAL_METHOD_VERSION
             ),
         ),
+    },
+    # The four regional point lanes (2026-08-30).  They were registered in
+    # POINT_FORECAST_SYSTEMS when their collectors shipped, which is what
+    # lets P0 recognise the system id -- but a scope contract is what lets
+    # the OOS reader see the rows, and none was written.  The transport
+    # allowlist below is DERIVED from these two dicts, so a lane with no
+    # contract is not merely unadmitted: its transport never reaches the
+    # SQL IN-list and every row is discarded before the per-row check runs.
+    # Measured that day: MSM 37 rows over 8 days and 3 stations, HRRR 24,
+    # NBM 18, ICON-EU 35 -- all captured, all verified against truth by
+    # their own lanes, none ever read.  Same shape as the ICON omission the
+    # derivation above was introduced to end, one layer further out.
+    #
+    # Every field here is taken from what the collectors actually wrote,
+    # not from the registration blurbs: the JMA identity string in
+    # POINT_FORECAST_SYSTEMS says ``single_cell`` while the rows say
+    # ``nearest_cell``, and a contract restating the blurb would pass the
+    # transport filter and then reject every row on the extraction version.
+    # These lanes stamp hour buckets, so the lead label is not compared --
+    # the extraction version is the lead statement (see
+    # ``_historical_transport_scope_allowed``) -- and the cycles below are
+    # the ones the archives were observed to serve.
+    JMA_MSM_POINT_SYSTEM_ID: {
+        "transport_provider_id": "RISH_KYOTO_JMA_ARCHIVE",
+        "leads": {
+            "h12_24": {
+                "run_cycle": "00Z",
+                "extraction_version": "jma_msm_surface_nearest_cell_v1",
+            },
+            "h24_48": {
+                "run_cycle": "00Z",
+                "extraction_version": "jma_msm_surface_nearest_cell_v1",
+            },
+        },
+    },
+    NCEP_HRRR_POINT_SYSTEM_ID: {
+        "transport_provider_id": "NOAA_HRRR_PDS_S3",
+        "leads": {
+            "h12_24": {
+                "run_cycle": "12Z",
+                "extraction_version": "ncep_hrrr_surface_nearest_cell_v1",
+            },
+            "h24_48": {
+                "run_cycle": "00Z",
+                "extraction_version": "ncep_hrrr_surface_nearest_cell_v1",
+            },
+        },
+    },
+    NCEP_NBM_POINT_SYSTEM_ID: {
+        "transport_provider_id": "NOAA_NBM_PDS_S3",
+        "leads": {
+            "h12_24": {
+                "run_cycle": "12Z",
+                "extraction_version": "ncep_nbm_core_nearest_cell_v1",
+            },
+        },
+    },
+    DWD_ICON_EU_POINT_SYSTEM_ID: {
+        "transport_provider_id": "DWD_OPENDATA_ICON_EU",
+        "leads": {
+            "h12_24": {
+                "run_cycle": "00Z",
+                "extraction_version": "dwd_icon_eu_surface_nearest_cell_v1",
+            },
+            # Both cycles are served at the longer lead, so both are
+            # admitted; the cycle is part of the training scope key, so
+            # they stay separate candidates rather than being merged.
+            "h24_48": [
+                {
+                    "run_cycle": "00Z",
+                    "extraction_version": (
+                        "dwd_icon_eu_surface_nearest_cell_v1"
+                    ),
+                },
+                {
+                    "run_cycle": "12Z",
+                    "extraction_version": (
+                        "dwd_icon_eu_surface_nearest_cell_v1"
+                    ),
+                },
+            ],
+        },
     },
 }
 def _admitted_scope_contract(system_id: str) -> Mapping[str, Any] | None:
