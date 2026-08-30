@@ -694,6 +694,12 @@ def load_active_registry_rows(
             "source_lane": str(row[8] or "").strip().lower(),
             "market_id": str(raw.get("market_id") or ""),
             "lower": raw.get("lower"), "upper": raw.get("upper"),
+            # The exchange's own minimum lot, carried raw like lower/upper and
+            # validated where an order is actually sized.  Collected since
+            # 2026-08-30; a market that will not state it is already blocked
+            # upstream by source_block_reasons, so an eligible row reaching
+            # here without one can only be a pre-change snapshot.
+            "order_min_size": raw.get("order_min_size"),
         }
         if (
             not item["station_id"]

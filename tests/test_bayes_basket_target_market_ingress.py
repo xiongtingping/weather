@@ -157,6 +157,12 @@ def _inputs(tmp_path: Path):
     return tuple(paths)
 
 
+# The exchange's own admission rule, on every live Gamma market.  The
+# production snapshot refuses a bucket without it, so a fixture without it is
+# not a smaller fixture -- it is a market that cannot be traded.
+EXCHANGE_SIZING = {"order_min_size": 5, "order_price_min_tick_size": 0.01}
+
+
 def _registry(conn):
     conn.execute("""CREATE TABLE reported_trajectory_market_registry(
         slug TEXT,event_date TEXT,station_id TEXT,settlement_timezone TEXT,
@@ -165,7 +171,8 @@ def _registry(conn):
     conn.execute("""INSERT INTO reported_trajectory_market_registry VALUES
         (?,?,?,?,?,?,?,?,?,?)""", (
         "highest-temperature-in-test-on-july-23-2026", "2026-07-23", "TEST", "UTC",
-        "38°C", "yes-38", json.dumps({"market_id": "m-38", "lower": 38.0, "upper": 38.0}), 1, 1, 1,
+        "38°C", "yes-38",
+        json.dumps({"market_id": "m-38", "lower": 38.0, "upper": 38.0, **EXCHANGE_SIZING}), 1, 1, 1,
     ))
 
 
@@ -267,6 +274,7 @@ def test_basket_freshness_uses_oldest_economic_book_leg() -> None:
             "yes_token": token,
             "lower": ordinal,
             "upper": ordinal,
+            "order_min_size": 5,
         }
         for ordinal, (bucket, token) in enumerate(
             (("38°C", "yes-38"), ("39°C", "yes-39")),
@@ -315,6 +323,7 @@ def test_market_ingress_preserves_distinct_official_token_ticks() -> None:
             "yes_token": token,
             "lower": ordinal,
             "upper": ordinal,
+            "order_min_size": 5,
         }
         for ordinal, (bucket, token) in enumerate(
             (("38°C", "yes-38"), ("39°C", "yes-39")),
@@ -359,6 +368,7 @@ def test_market_ingress_derives_legacy_low_price_book_grid() -> None:
         "yes_token": "yes-38",
         "lower": 38,
         "upper": 38,
+        "order_min_size": 5,
     }]
     quotes = {
         "yes-38": {
@@ -390,6 +400,7 @@ def test_market_ingress_rejects_official_tick_price_mismatch() -> None:
         "yes_token": "yes-38",
         "lower": 38,
         "upper": 38,
+        "order_min_size": 5,
     }]
     quotes = {
         "yes-38": {
@@ -558,7 +569,8 @@ def test_market_ingress_can_select_an_explicit_complete_scope_subset(tmp_path: P
             "INSERT INTO reported_trajectory_market_registry VALUES(?,?,?,?,?,?,?,?,?,?)",
             (
                 "highest-temperature-in-test-on-july-24-2026", "2026-07-24", "TEST", "UTC",
-                "38°C", "missing-yes-38", json.dumps({"market_id": "m-24-38", "lower": 38.0, "upper": 38.0}), 1, 1, 1,
+                "38°C", "missing-yes-38",
+                json.dumps({"market_id": "m-24-38", "lower": 38.0, "upper": 38.0, **EXCHANGE_SIZING}), 1, 1, 1,
             ),
         )
         result = materialize_market_evidence(
@@ -795,3 +807,67 @@ def test_an_explicit_exchange_tick_still_outranks_inference() -> None:
 
     assert tick == 0.01
     assert source == "OFFICIAL_WS_TICK_SIZE"
+
+
+def test_bucket_without_an_exchange_sizing_rule_fails_closed() -> None:
+    """A snapshot that cannot state the minimum lot is refused, not defaulted.
+
+    The collector blocks a market that will not state ``orderMinSize``, and
+    only ``source_eligible=1`` rows are read, so an eligible row without one
+    can only come from a registry snapshot taken before the rule was
+    collected.  Sizing against it would mint exactly the undersized legs the
+    rule exists to stop, and the last good snapshot still carries the value,
+    so refusing the new snapshot is the safe direction.
+    """
+    def _rows(sizing: dict) -> list[dict]:
+        return [{
+            "station_id": "TEST",
+            "event_date": "2026-07-23",
+            "outcome": "38°C",
+            "yes_token": "yes-38",
+            "lower": 38,
+            "upper": 38,
+            **sizing,
+        }]
+
+    quotes = {
+        "yes-38": {
+            "token_id": "yes-38",
+            "side": "YES",
+            "best_bid": 0.41,
+            "best_ask": 0.42,
+            "bids": [{"price": 0.41, "size": 100.0}],
+            "asks": [{"price": 0.42, "size": 100.0}],
+            "book_observed_at": "2026-07-23T05:00:00Z",
+        },
+    }
+
+    buckets, _ = _scope_quote_values(_rows({"order_min_size": 5}), quotes)
+    assert buckets[0]["min_order_size"] == 5.0
+
+    for label, sizing in (
+        ("absent", {}),
+        ("null", {"order_min_size": None}),
+        ("zero", {"order_min_size": 0}),
+        ("negative", {"order_min_size": -5}),
+        ("boolean", {"order_min_size": True}),
+        ("unparseable", {"order_min_size": "five"}),
+    ):
+        with pytest.raises(ContractError, match="order_min_size"), \
+                _subtest(label):
+            _scope_quote_values(_rows(sizing), quotes)
+
+
+class _subtest:
+    """Name the shape under test in the traceback without a pytest fixture."""
+
+    def __init__(self, label: str) -> None:
+        self.label = label
+
+    def __enter__(self) -> "_subtest":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        if exc is not None:
+            exc.args = (f"{self.label}: {exc.args[0] if exc.args else ''}",)
+        return False

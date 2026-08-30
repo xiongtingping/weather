@@ -154,8 +154,8 @@ def test_resident_no_live_market_ingress_materializes_manifest_and_q0(tmp_path: 
         conn.executemany(
             "INSERT INTO reported_trajectory_market_registry VALUES(?,?,?,?,?,?,?,?,?,?)",
             [
-                ("test", "2026-07-23", "TEST", "UTC", "38°C", "yes-38", json.dumps({"lower": 38, "upper": 38}), 1, 1, 1),
-                ("test", "2026-07-23", "TEST", "UTC", "39°C", "yes-39", json.dumps({"lower": 39, "upper": 39}), 1, 1, 1),
+                ("test", "2026-07-23", "TEST", "UTC", "38°C", "yes-38", json.dumps({"lower": 38, "upper": 38, "order_min_size": 5, "order_price_min_tick_size": 0.01}), 1, 1, 1),
+                ("test", "2026-07-23", "TEST", "UTC", "39°C", "yes-39", json.dumps({"lower": 39, "upper": 39, "order_min_size": 5, "order_price_min_tick_size": 0.01}), 1, 1, 1),
             ],
         )
         conn.execute(
@@ -219,8 +219,8 @@ def test_resident_missing_promoted_policy_keeps_only_evidence_cache(tmp_path: Pa
         conn.executemany(
             "INSERT INTO reported_trajectory_market_registry VALUES(?,?,?,?,?,?,?,?,?,?)",
             [
-                ("test", "2026-07-23", "TEST", "UTC", "38°C", "yes-38", json.dumps({"lower": 38, "upper": 38}), 1, 1, 1),
-                ("test", "2026-07-23", "TEST", "UTC", "39°C", "yes-39", json.dumps({"lower": 39, "upper": 39}), 1, 1, 1),
+                ("test", "2026-07-23", "TEST", "UTC", "38°C", "yes-38", json.dumps({"lower": 38, "upper": 38, "order_min_size": 5, "order_price_min_tick_size": 0.01}), 1, 1, 1),
+                ("test", "2026-07-23", "TEST", "UTC", "39°C", "yes-39", json.dumps({"lower": 39, "upper": 39, "order_min_size": 5, "order_price_min_tick_size": 0.01}), 1, 1, 1),
             ],
         )
         conn.execute(

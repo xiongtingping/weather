@@ -70,8 +70,41 @@ def _official_ws_quote(token_id: str, *, root: Path) -> tuple[str, Mapping[str, 
     return supplied, quote
 
 
+def _exchange_min_lot(conn: sqlite3.Connection, token_id: str) -> float:
+    """The market's minimum lot in shares, as the exchange states it.
+
+    This lane's own cap is 2.0 USDC an intent, and a five-share lot at that
+    cap needs a price at or under 0.40 -- while the strategy buys YES right
+    after a new high, which is to say it buys the expensive buckets.  Of the
+    31 intents this lane had ever written by 2026-08-30, 27 were under a lot
+    and none of the 31 ever came back with an exchange order id.  Reading the
+    rule here is what turns that from an unexplained reconcile backlog into a
+    refusal that names its cause.
+
+    Fail closed: a market that will not state the rule is blocked upstream,
+    so a missing value here is a pre-2026-08-30 registry row, and sizing
+    against it reproduces exactly the intents this is meant to stop.
+    """
+    row = conn.execute(
+        "SELECT json_extract(registry_json,'$.order_min_size') "
+        "FROM reported_trajectory_market_registry "
+        "WHERE yes_token=? OR no_token=? "
+        "ORDER BY refreshed_at DESC LIMIT 1",
+        (token_id, token_id),
+    ).fetchone()
+    if row is None:
+        raise ValueError("exchange_order_sizing_market_unknown")
+    try:
+        value = float(row[0])
+    except (TypeError, ValueError) as exc:
+        raise ValueError("exchange_order_sizing_rule_missing") from exc
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError("exchange_order_sizing_rule_missing")
+    return value
+
+
 def _official_ws_buy_sweep(
-    token_id: str, *, budget: float, root: Path,
+    token_id: str, *, budget: float, root: Path, min_order_size: float,
 ) -> dict[str, Any]:
     supplied, quote = _official_ws_quote(token_id, root=root)
     asks = sorted(
@@ -103,6 +136,14 @@ def _official_ws_buy_sweep(
             }
     if best is None or best["size"] <= SHARE_TOLERANCE:
         raise ValueError("market_buy_ws_ask_depth_insufficient")
+    # The book may well hold the depth; the budget just cannot reach a legal
+    # lot at this price.  Say which, because the two have different fixes:
+    # depth is the market's, the lot is this lane's cap against the price.
+    if best["size"] + SHARE_TOLERANCE < min_order_size:
+        raise ValueError(
+            "market_buy_below_exchange_minimum_lot:"
+            f"{best['size']:.6f}<{min_order_size:g}@{best['limit_price']:g}"
+        )
     remaining = best["size"]
     consumed: list[dict[str, float]] = []
     for level in asks:
@@ -1049,7 +1090,10 @@ def process_pending_argmax_orders(conn: sqlite3.Connection, *, root: Path) -> di
             results.append({"entry_fact_id": entry_fact_id, "state": "budget_exhausted"})
             continue
         try:
-            ws = _official_ws_buy_sweep(str(token), budget=budget, root=root)
+            ws = _official_ws_buy_sweep(
+                str(token), budget=budget, root=root,
+                min_order_size=_exchange_min_lot(conn, str(token)),
+            )
             price = float(ws["limit_price"])
             notional = float(ws["notional"])
             size = float(ws["size"])

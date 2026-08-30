@@ -9,9 +9,35 @@ import asos_argmax_execution as execution
 from weather_basket_yes_schema import apply_weather_basket_yes_schema
 
 
+def _seed_registry(conn: sqlite3.Connection, *tokens: str) -> None:
+    """State the exchange's minimum lot for each token the lane may buy.
+
+    Sizing reads it since 2026-08-30, so a fixture without it is not a
+    smaller fixture -- it is a market this lane is not allowed to size
+    against.
+    """
+    for index, token in enumerate(tokens):
+        conn.execute(
+            """INSERT INTO reported_trajectory_market_registry(
+                 slug,event_date,outcome,city_slug,station_id,settlement_timezone,
+                 settlement_unit,source_lane,source_eligible,source_block_reason,
+                 resolution_url,rules_sha256,yes_token,no_token,market_active,
+                 market_accepting_orders,registry_json,refreshed_at
+               ) VALUES(?,'2026-08-05',?,'atlanta','KATL','America/New_York',
+                        'F','awc',1,NULL,'url',?,?,?,1,1,?,
+                        '2026-08-05T00:00:00Z')""",
+            (
+                f"slug-{token}", f"bucket-{index}", "a" * 64, token, f"no-{token}",
+                json.dumps({"order_min_size": 5, "order_price_min_tick_size": 0.01}),
+            ),
+        )
+    conn.commit()
+
+
 def _rotation_fixture(*, new_token: str = "222222") -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     apply_weather_basket_yes_schema(conn)
+    _seed_registry(conn, "111111", "222222", new_token)
     for entry_id, observation_id, observed, prior, high, token, outcome, created in (
         ("old-entry", "old-obs", "2026-08-05T18:00:00Z", 25, 26, "111111", "78-79°F", "2026-08-05T18:00:01Z"),
         ("new-entry", "new-obs", "2026-08-05T18:05:00Z", 26, 27, new_token, "80-81°F", "2026-08-05T18:05:01Z"),
@@ -140,7 +166,8 @@ def test_market_buy_sweep_uses_multiple_ask_levels_in_one_protected_fok(
         }),
     )
 
-    sweep = execution._official_ws_buy_sweep("222222", budget=2.0, root=tmp_path)
+    sweep = execution._official_ws_buy_sweep(
+        "222222", budget=2.0, root=tmp_path, min_order_size=5.0)
 
     assert sweep["limit_price"] == 0.25
     assert sweep["notional"] == 2.0
@@ -149,6 +176,20 @@ def test_market_buy_sweep_uses_multiple_ask_levels_in_one_protected_fok(
         {"price": 0.20, "size": 3.0},
         {"price": 0.25, "size": 5.0},
     ]
+
+    # The same book and the same budget, refused for the one reason the lane
+    # could not see before 2026-08-30: eight shares is a legal order against a
+    # five-share lot and not against a ten-share one.  The message says which
+    # of the two constraints bit, because depth is the market's problem and
+    # the lot is this lane's 2.0 USDC cap meeting the price.
+    with pytest.raises(ValueError, match="market_buy_below_exchange_minimum_lot"):
+        execution._official_ws_buy_sweep(
+            "222222", budget=2.0, root=tmp_path, min_order_size=10.0)
+
+    # And the boundary is inclusive.
+    exact = execution._official_ws_buy_sweep(
+        "222222", budget=2.0, root=tmp_path, min_order_size=8.0)
+    assert exact["size"] == 8.0
 
 
 def test_reconcile_releases_only_explicit_not_filled_receipt(monkeypatch) -> None:
@@ -276,6 +317,7 @@ def test_new_high_flows_to_exact_fok_intent_and_exchange_receipt(monkeypatch, tm
         ("a" * 64, "b" * 64, "c" * 64),
     )
     conn.commit()
+    _seed_registry(conn, "123456")
     monkeypatch.setattr(
         execution, "_official_ws_buy_sweep",
         lambda *_args, **_kwargs: {
@@ -636,3 +678,35 @@ def test_rotation_insufficient_ws_bid_depth_blocks_without_buying(monkeypatch, t
     assert conn.execute(
         "SELECT COUNT(*) FROM reported_trajectory_asos_argmax_order_intents WHERE entry_fact_id='new-entry'"
     ).fetchone()[0] == 0
+
+
+def test_exchange_min_lot_is_read_per_token_and_fails_closed() -> None:
+    """No rule means no order, not an order with no floor.
+
+    The collector blocks a market that will not state ``orderMinSize``, so an
+    absent value here is a registry row written before 2026-08-30.  Sizing
+    against it reproduces the intents this lane spent 31 attempts on without
+    ever receiving an exchange order id.
+    """
+    conn = sqlite3.connect(":memory:")
+    apply_weather_basket_yes_schema(conn)
+    _seed_registry(conn, "123456")
+    assert execution._exchange_min_lot(conn, "123456") == 5.0
+
+    with pytest.raises(ValueError, match="exchange_order_sizing_market_unknown"):
+        execution._exchange_min_lot(conn, "999999")
+
+    for label, value in (
+        ("absent", {}),
+        ("null", {"order_min_size": None}),
+        ("zero", {"order_min_size": 0}),
+        ("negative", {"order_min_size": -5}),
+        ("unparseable", {"order_min_size": "five"}),
+    ):
+        conn.execute(
+            "UPDATE reported_trajectory_market_registry SET registry_json=?"
+            " WHERE yes_token='123456'",
+            (json.dumps(value),),
+        )
+        with pytest.raises(ValueError, match="exchange_order_sizing_rule_missing"):
+            assert label and execution._exchange_min_lot(conn, "123456")

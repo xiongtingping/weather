@@ -117,7 +117,8 @@ def _prepare_target_db(tmp_path: Path) -> Path:
                 "no-38",
                 1,
                 1,
-                json.dumps({"market_id": "market-test", "lower": 38.0, "upper": 38.0}),
+                json.dumps({"market_id": "market-test", "lower": 38.0, "upper": 38.0,
+                            "order_min_size": 5, "order_price_min_tick_size": 0.01}),
                 NOW,
             ),
         )

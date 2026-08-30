@@ -103,6 +103,9 @@ def _normalize_event(raw: Mapping[str, Any]) -> dict[str, Any]:
         "candidate_present": raw.get("candidate_present"),
         "target_clip_notional_usdc": raw.get("target_clip_notional_usdc"),
         "minimum_clip_notional_usdc": _number("minimum_clip_notional_usdc", raw.get("minimum_clip_notional_usdc", 0.0)),
+        # Absent on events recorded before 2026-08-30; zero replays them with
+        # no lot floor, which is what those cycles actually did.
+        "minimum_lot_shares": _number("minimum_lot_shares", raw.get("minimum_lot_shares", 0.0)),
         "share_quantum": _number("share_quantum", raw.get("share_quantum", 0.01)),
     }
     if event["sequence"] < 0:
@@ -194,6 +197,7 @@ def replay_materialized_target_chain(
             candidate_present=event["candidate_present"],
             target_clip_notional_usdc=event["target_clip_notional_usdc"],
             minimum_clip_notional_usdc=event["minimum_clip_notional_usdc"],
+            minimum_lot_shares=event["minimum_lot_shares"],
             share_quantum=event["share_quantum"],
         )
         row = {

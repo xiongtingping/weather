@@ -407,6 +407,12 @@ class BucketObservation:
     pending_shares: float = 0.0
     pending_notional_usdc: float = 0.0
     active_before: bool = False
+    # The exchange's minimum lot for this token, in shares.  Zero means the
+    # producer did not state one: the preselection scan does not need it and
+    # does not carry it, while the production market snapshot fails closed
+    # rather than emit a bucket without it, so a zero reaching the sizing
+    # layer can only come from a snapshot taken before 2026-08-30.
+    min_order_size: float = 0.0
     # A listing-day bucket nobody has quoted on either side yet.  The
     # publisher subscribes at listing (charter 48) and names such tokens
     # explicitly; a named bookless bucket is a legal market state --
@@ -492,6 +498,9 @@ class BucketObservation:
                 "bucket_pending_notional_usdc", raw.get("pending_notional_usdc", 0.0)
             ),
             active_before=_boolean("bucket_active_before", raw.get("active_before", False)),
+            min_order_size=_nonnegative(
+                "bucket_min_order_size", raw.get("min_order_size", 0.0)
+            ),
             unmaterialized_book=unmaterialized,
         )
         prices = [level.price for level in value.ask_levels]

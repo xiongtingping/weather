@@ -313,11 +313,36 @@ def _load_registry(
             "market_id": str(row.get("market_id") or ""),
             "lower": row.get("lower"),
             "upper": row.get("upper"),
+            "order_min_size": row.get("order_min_size"),
         }
         if not item["station_id"] or not item["yes_token"] or not item["outcome"]:
             raise ContractError("market_registry_target_identity_missing")
         grouped.setdefault(_scope_key(item["station_id"], item["event_date"]), []).append(item)
     return grouped
+
+
+def _exchange_min_lot(row: Mapping[str, Any]) -> float:
+    """The market's minimum lot, in shares, as the exchange states it.
+
+    Fail closed.  A market that does not state its lot is already blocked
+    upstream -- the collector adds ``official_market_order_sizing_rule_missing``
+    to ``source_block_reasons`` and ``load_active_registry_rows`` only reads
+    ``source_eligible=1`` -- so an eligible row arriving here without one can
+    only come from a registry snapshot taken before 2026-08-30.  Sizing a leg
+    against that snapshot would mint the same undersized intents this rule
+    exists to stop, and the last good snapshot still carries the value, so
+    refusing the new snapshot is the safe direction.
+    """
+    raw = row.get("order_min_size")
+    if isinstance(raw, bool) or raw is None:
+        raise ContractError("market_registry_order_min_size_missing")
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ContractError("market_registry_order_min_size_invalid") from exc
+    if not math.isfinite(value) or value <= 0:
+        raise ContractError("market_registry_order_min_size_invalid")
+    return value
 
 
 def _bucket_sort_key(row: Mapping[str, Any]) -> tuple[float, float, str]:
@@ -652,6 +677,10 @@ def _scope_quote_values(
             "bid_levels": bid_levels,
             "price_tick_size": price_tick_size,
             "tick_size_source": tick_size_source,
+            # Shares, not cash: the exchange refuses a smaller lot outright,
+            # so the sizing layer needs it to avoid minting a leg that cannot
+            # be filled at any price.
+            "min_order_size": _exchange_min_lot(row),
             "bid_price": best_bid,
             "bid_available": bool(bid_levels),
             # Official WS depth is the queue authority.  The basket kernel

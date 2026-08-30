@@ -400,6 +400,7 @@ class OrderSizingDecision:
     depth_shares_cap: float
     target_clip_notional_usdc: float | None
     minimum_clip_notional_usdc: float
+    minimum_lot_shares: float
     cash_template_caps_target: bool
     clamped_clip_authorized: bool
     share_quantum: float
@@ -429,6 +430,7 @@ class OrderSizingDecision:
         candidate_present: bool,
         target_clip_notional_usdc: float | None = None,
         minimum_clip_notional_usdc: float = 0.0,
+        minimum_lot_shares: float = 0.0,
         cash_template_caps_target: bool = True,
         share_quantum: float = 0.01,
         clamped_clip_authorized: bool = False,
@@ -439,6 +441,7 @@ class OrderSizingDecision:
         budget = _nonnegative("remaining_budget", remaining_budget)
         depth = _nonnegative("executable_depth_cash", executable_depth_cash)
         minimum_clip = _nonnegative("minimum_clip_notional_usdc", minimum_clip_notional_usdc)
+        minimum_lot = _nonnegative("minimum_lot_shares", minimum_lot_shares)
         if not isinstance(cash_template_caps_target, bool):
             raise ContractError("cash_template_caps_target_invalid")
         if not isinstance(clamped_clip_authorized, bool):
@@ -523,6 +526,22 @@ class OrderSizingDecision:
                 reason = "sizing_clamped_below_authorized_clip"
                 c_order = 0.0
                 q_order = 0.0
+            elif c_order + EPS < minimum_lot * limit:
+                # The exchange refuses a lot smaller than the market's
+                # ``orderMinSize``, so a leg under it cannot fill at any
+                # price.  Before this gate the lane minted them anyway --
+                # 275 of 1,406 intents on the books at 2026-08-30 were under
+                # a five-share lot -- and each one was discovered by signing
+                # it and posting it.  Drop the leg rather than round it up:
+                # rounding up spends more than the objective chose, and the
+                # basket's budget and concentration were solved against the
+                # size it chose.  ``minimum_lot`` is zero only for a snapshot
+                # written before the rule was collected, and that case is
+                # caught at the gateway instead.
+                eligible = False
+                reason = "below_exchange_minimum_lot"
+                c_order = 0.0
+                q_order = 0.0
             elif c_order + EPS < minimum_clip:
                 eligible = False
                 reason = "clip_below_minimum"
@@ -551,6 +570,7 @@ class OrderSizingDecision:
             "depth_shares_cap": depth_shares_cap,
             "target_clip_notional_usdc": target_clip,
             "minimum_clip_notional_usdc": minimum_clip,
+            "minimum_lot_shares": minimum_lot,
             "cash_template_caps_target": cash_template_caps_target,
             "clamped_clip_authorized": clamped_clip_authorized,
             "share_quantum": quantum,

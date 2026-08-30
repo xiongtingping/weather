@@ -1270,6 +1270,10 @@ def _compile_target_plan(
                 minimum_clip_notional_usdc=float(
                     policy.clip_min_notional_usdc
                 ),
+                # The policy floor is cash; this one is shares, and it is the
+                # exchange's rule rather than ours.  Both have to hold: a leg
+                # can clear the notional floor and still be under a lot.
+                minimum_lot_shares=float(snap_row.min_order_size or 0.0),
                 # DeltaBasketScore v2 owns the selected adaptive clip.  The
                 # legacy phase cash template remains auditable cadence
                 # context, but may not silently replace the unique
