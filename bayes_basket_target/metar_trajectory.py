@@ -1004,8 +1004,20 @@ def canonicalize_metar_trajectory_observations(
     # fixed in place (OPKC ``23 017G27KT``) -- and ingest deduplicates by raw
     # hash, so every such re-issue reaches this sequence.  When the
     # temperature agrees, the later transmission is the same measurement
-    # said again: the last-received one speaks for the slot.  A temperature
-    # that changed is a real correction and stays fail-closed for review.
+    # said again: the last-received one speaks for the slot.
+    #
+    # A temperature that CHANGED used to fail-close the whole station-day
+    # here -- and when the re-issue carries no COR token (VILK re-sends the
+    # half-hourly with the temperature silently amended; 4 of the fleet's 6
+    # conflicting slots in 14 days measured 2026-08-30 were unmarked) no
+    # review machinery ever sees it, so the halt had no clearing agent and
+    # held until the day ended.  This layer only feeds bounds, and bounds
+    # have a safe answer under ambiguity: the LOWER temperature.  Whichever
+    # transmission was right, the day's high is at least the lower reading,
+    # so the hard bound never wrongly excludes a bucket and the cooling-side
+    # ceiling only relaxes.  The slot resolves conservatively and the walk
+    # continues; settlement truth keeps its own ambiguity gate fail-closed,
+    # where exactness is the point and manual review is the lifter.
     by_slot: dict[tuple[str, str], MetarTrajectoryObservation] = {}
     for item in ordered:
         slot = (item.event.observed_at_utc, item.event.report_type)
@@ -1014,7 +1026,9 @@ def canonicalize_metar_trajectory_observations(
             by_slot[slot] = item
             continue
         if held.temperature_c != item.temperature_c:
-            raise ContractError("metar_trajectory_observation_slot_conflict")
+            if item.temperature_c < held.temperature_c:
+                by_slot[slot] = item
+            continue
         if _parsed(item.event.received_at_utc) >= _parsed(
             held.event.received_at_utc
         ):

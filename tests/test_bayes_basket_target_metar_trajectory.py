@@ -909,13 +909,29 @@ def test_conflicting_duplicate_and_same_slot_are_rejected() -> None:
     proof = _compile([row, same_slot])
     assert proof.canonical_observation_ids == ("obs-other",)
 
-    # A same-slot temperature change is a real correction and stays closed.
+    # A same-slot temperature change resolves to the LOWER reading rather
+    # than fail-closing the station-day: this layer feeds bounds, and the
+    # day's high is at least the lower transmission whichever one was
+    # right, so the conservative pick never wrongly excludes a bucket.
+    # (VILK 2026-08-30 00:30Z: 28 then a silently amended 27 with no COR
+    # token, so no review machinery would ever have lifted the old halt.)
     warmer_slot = _observation(
         "warmer", sequence=3, observed="2026-07-29T06:00:00Z",
         received="2026-07-29T06:03:00Z", temperature_c=35.0,
     )
-    with pytest.raises(ContractError, match="observation_slot_conflict"):
-        _compile([row, warmer_slot])
+    proof = _compile([row, warmer_slot])
+    assert proof.canonical_observation_ids == ("obs-same",)
+    assert proof.running_high_c == 34.0
+
+    # Symmetric: when the later transmission is the cooler one, it wins the
+    # slot -- order of arrival must not decide the bound.
+    cooler_slot = _observation(
+        "cooler", sequence=4, observed="2026-07-29T06:00:00Z",
+        received="2026-07-29T06:04:00Z", temperature_c=33.0,
+    )
+    proof = _compile([row, cooler_slot])
+    assert proof.canonical_observation_ids == ("obs-cooler",)
+    assert proof.running_high_c == 33.0
 
 
 def test_future_unavailable_conflict_cannot_contaminate_asof_prefix() -> None:
