@@ -645,6 +645,48 @@ def _reservation_grid(*, row: Any, artifact: DeltaV2PolicyArtifact) -> tuple[flo
 # first and cut the book from 102 chains to 33 by pricing sharp markets'
 # shoulders out of the contiguity requirement; three keeps most of those
 # seats while dropping the ground where cheapness is the market being right.
+# Which order shape production forms.
+#
+# Charter 65 (user ruling 2026-08-27, "整篮 EV"): basket-level EV is the
+# execution layer's only law, and it made taker the law.  The week that
+# settled it: on same-entry rebuilds the maker book's entire deficit against
+# taker sat in 33 chains whose winning legs rested unfilled (+77.1 USDC)
+# while the 225 shared chains were level.
+#
+# That ruling shipped to the ledger on the day and never reached here, so for
+# four days the ledger scored taker while production could only form maker
+# orders -- 1,406 of 1,406 intents MAKER, not one FOK in the lane's whole
+# history, because the FOK family was gated behind a ``confirmed_cancel_for_fok``
+# parameter no caller ever passed and a 120-minute urgency window that was the
+# pre-charter rule's own implementation.  Both gates were the old rule and
+# both are gone.
+#
+# It is a named constant rather than a branch so the two sides can be checked
+# against each other: ``tests/test_ledger_production_rule_binding`` could
+# classify the ledger's ``EXECUTION_MODE`` but had nothing here to equate it
+# to, which is exactly why the drift was silent.  The maker machinery stays,
+# as arms, on the same terms the ledger keeps its resting modes.
+# The default is still "maker", and that is not the ruling being ignored --
+# it is the migration not being finished.  Switching the family on is one
+# gate and it works: FOK candidates are enumerated and built, two per scope
+# on the standard fixture.  They are then refused downstream, at
+# ``solve_reservation_price_v2`` and the authorization behind it, and the
+# scope reports ``missing_maker_candidate`` -- legacy naming for "this bucket
+# produced no authorized candidate at all".  Flipping the default before that
+# path accepts an FOK action would not make production take; it would make it
+# hold, every scope, every cycle.
+#
+# So the default flips in the commit that makes the reservation path admit a
+# taker action, not before, and this constant exists now so the binding test
+# has something to compare and the drift cannot go silent a second time.
+EXECUTION_MODES = ("taker", "maker")
+EXECUTION_MODE = (
+    os.environ.get("PM_EXECUTION_MODE", "maker").strip() or "maker"
+)
+if EXECUTION_MODE not in EXECUTION_MODES:
+    raise ValueError(f"unknown execution mode: {EXECUTION_MODE}")
+
+
 MINIMUM_LEG_ALL_IN_ASK = float(
     os.environ.get("PM_MINIMUM_LEG_ALL_IN_ASK", "0.03") or 0.03
 )
@@ -3058,7 +3100,8 @@ def compile_delta_v2_runtime_plan(
             )
         for clip in delta_policy.cash_clip_grid:
             if (
-                clip > capital_available_usdc + EPS
+                EXECUTION_MODE != "maker"
+                or clip > capital_available_usdc + EPS
                 or not reservation_grid
                 or maker_anchor is None
             ):
@@ -3071,23 +3114,41 @@ def compile_delta_v2_runtime_plan(
                     candidate_descriptors.append(
                         (bucket, action_clip, rung, f"MAKER:{timeout}")
                     )
-        # FOK is intentionally a single zero-time candidate family and is
-        # admitted only in the existing urgency window with sufficient depth.
-        if (
-            confirmed_cancel_for_fok
-            and snapshot.time_left_minutes
-            <= basket_policy.taker_time_threshold_minutes + EPS
-        ):
+        # FOK is a single zero-time candidate family, and under charter 65 it
+        # is the family production forms.  It was previously admitted only
+        # after a confirmed maker cancel and only inside a 120-minute urgency
+        # window; both were the pre-charter rule -- FOK as a close-out tool --
+        # and neither survives a ruling that makes taker the law.  The cancel
+        # gate is doubly spent: it existed so an FOK could not double-buy
+        # against a resting maker, and in taker mode nothing rests.
+        #
+        # What remains are the two conditions that are about the book rather
+        # than about policy: the clip has to be absorbable at the ask
+        # (``spent >= clip``), and it may not overshoot the inventory gap.
+        if EXECUTION_MODE == "taker":
             for clip in delta_policy.cash_clip_grid:
                 if clip > capital_available_usdc + EPS:
                     continue
+                # Scale the clip to the gap rather than reject for exceeding
+                # it -- the same thing the maker branch above does with
+                # ``min(clip, gap * rung)``, and the same rule: never buy
+                # past the gap.  FOK expressed that rule by refusing, which
+                # was survivable while it was a close-out tool used inside a
+                # two-hour window and is not survivable now that it is the
+                # family production forms.  The smallest clip on the grid
+                # buys 1.25 shares at a 0.20 ask, so on any gap under that
+                # the refusal produced no taker candidate at all and the
+                # scope simply held.
+                action_clip = min(float(clip), gap * row.ask_price)
+                if action_clip <= EPS:
+                    continue
                 shares, spent = _ask_depth_purchase(
                     levels=row.ask_levels,
-                    cash_limit=float(clip),
+                    cash_limit=action_clip,
                 )
-                if spent + EPS >= clip and shares <= gap + EPS:
+                if spent + EPS >= action_clip and shares <= gap + EPS:
                     candidate_descriptors.append(
-                        (bucket, clip, row.ask_price, "FOK:0")
+                        (bucket, action_clip, row.ask_price, "FOK:0")
                     )
     if len(candidate_descriptors) > delta_policy.execution_weights.maximum_candidates:
         raise ContractError("delta_v2_action_candidate_bound_exceeded")

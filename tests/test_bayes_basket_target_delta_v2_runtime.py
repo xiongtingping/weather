@@ -196,20 +196,36 @@ def _p1_delta_policy() -> DeltaV2PolicyArtifact:
     return DeltaV2PolicyArtifact.from_mapping(raw)
 
 
-def _fill_resolver(**_: object) -> dict[str, object]:
+_NO_EXECUTION_COST = {
+    "wait": 0.0,
+    "queue": 0.0,
+    "adverse_selection": 0.0,
+    "reprice": 0.0,
+    "capital_lock": 0.0,
+}
+
+
+def _fill_resolver(**kwargs: object) -> dict[str, object]:
+    """A fill distribution of the shape the candidate's own mode requires.
+
+    FOK is all-or-nothing by contract, so a partial-fill distribution on one
+    is rejected outright; a resting maker must carry both a partial and a
+    zero.  Charter 65 made taker the production family, so most callers here
+    now get the FOK shape -- which is why this had to stop being one fixed
+    distribution handed to every mode.
+    """
+    if kwargs.get("order_mode") == "FOK":
+        return {
+            "fill_distribution": [{"fill_fraction": 1.0, "probability": 1.0}],
+            "execution_costs": dict(_NO_EXECUTION_COST),
+        }
     return {
         "fill_distribution": [
             {"fill_fraction": 0.0, "probability": 0.1},
             {"fill_fraction": 0.5, "probability": 0.2},
             {"fill_fraction": 1.0, "probability": 0.7},
         ],
-        "execution_costs": {
-            "wait": 0.0,
-            "queue": 0.0,
-            "adverse_selection": 0.0,
-            "reprice": 0.0,
-            "capital_lock": 0.0,
-        },
+        "execution_costs": dict(_NO_EXECUTION_COST),
     }
 
 
@@ -712,57 +728,48 @@ def test_resource_probe_failure_is_a_hard_fail_closed_gate() -> None:
         )
 
 
-def test_fok_is_fail_closed_until_maker_cancel_is_confirmed() -> None:
-    raw = _snapshot().to_dict()
-    raw["time_left_minutes"] = 0.0
-    for bucket in raw["buckets"]:
-        bucket["ask_levels"] = [{"price": 0.10, "shares": 100.0}]
-    modes_without_cancel: list[str] = []
-    modes_with_cancel: list[str] = []
+def test_the_execution_family_follows_charter_65_not_a_cancel_handshake(
+    monkeypatch,
+) -> None:
+    """Which order shape production forms is the mode, and nothing else.
 
-    def resolver_without_cancel(**kwargs: object) -> dict[str, object]:
-        modes_without_cancel.append(str(kwargs["order_mode"]))
-        return _fill_resolver(**kwargs)
+    Charter 65 (user ruling 2026-08-27) made taker the execution layer's law.
+    Before it, FOK was a close-out tool: admitted only after a confirmed
+    maker cancel and only inside a 120-minute urgency window.  Both were that
+    rule's own implementation -- the cancel gate existed so an FOK could not
+    double-buy against a resting order, and in taker mode nothing rests --
+    and this test used to pin them.
 
-    def resolver_with_cancel(**kwargs: object) -> dict[str, object]:
-        modes_with_cancel.append(str(kwargs["order_mode"]))
-        if kwargs["order_mode"] == "FOK":
-            return {
-                "fill_distribution": [
-                    {"fill_fraction": 1.0, "probability": 1.0},
-                ],
-                "execution_costs": {
-                    "wait": 0.0,
-                    "queue": 0.0,
-                    "adverse_selection": 0.0,
-                    "reprice": 0.0,
-                    "capital_lock": 0.0,
-                },
-            }
-        return _fill_resolver(**kwargs)
+    It pins the replacement instead: the family is chosen by EXECUTION_MODE,
+    the two lanes are exclusive, and no handshake stands between the mode and
+    the candidates.
+    """
+    import bayes_basket_target.delta_v2_runtime as runtime_module
 
     base_kwargs = {
-        "snapshot": TargetBasketSnapshot.from_mapping(raw),
+        "snapshot": _snapshot(),
         "basket_policy": _basket_policy(),
         "delta_policy": _delta_policy(),
         "capital_available_usdc": 5.0,
         "minimum_profit_floor": -5.0,
         "resource_probe_ok": True,
     }
-    blocked = compile_delta_v2_runtime_plan(
-        **base_kwargs,
-        fill_resolver=resolver_without_cancel,
-    )
-    admitted = compile_delta_v2_runtime_plan(
-        **base_kwargs,
-        fill_resolver=resolver_with_cancel,
-        confirmed_cancel_for_fok=True,
-    )
 
-    assert "FOK" not in modes_without_cancel
-    assert "FOK" in modes_with_cancel
-    assert blocked["fok_cancel_acknowledged"] is False
-    assert admitted["fok_cancel_acknowledged"] is True
+    def modes_under(mode: str) -> set[str]:
+        seen: set[str] = set()
+
+        def resolver(**kwargs: object) -> dict[str, object]:
+            seen.add(str(kwargs.get("order_mode")))
+            return _fill_resolver(**kwargs)
+
+        monkeypatch.setattr(runtime_module, "EXECUTION_MODE", mode)
+        runtime_module.compile_delta_v2_runtime_plan(
+            **base_kwargs, fill_resolver=resolver
+        )
+        return seen
+
+    assert modes_under("taker") == {"FOK"}
+    assert modes_under("maker") == {"MAKER"}
 
 
 def test_low_high_low_is_content_deterministic() -> None:

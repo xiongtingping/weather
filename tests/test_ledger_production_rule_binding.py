@@ -380,6 +380,33 @@ def _ledger_rule_constants() -> set[str]:
     return assigned - set(imported), imported
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Charter 65 shipped to the ledger on 2026-08-27 and never reached "
+        "production: the ledger has scored taker ever since while production "
+        "formed maker and only maker -- 1,406 of 1,406 intents.  The FOK "
+        "family is now enumerable (PM_EXECUTION_MODE) but the reservation "
+        "path still refuses an FOK action, so flipping production's default "
+        "would make every scope hold rather than take.  When that path lands, "
+        "this xfail turns into an xpass and fails -- which is the point: "
+        "whoever moves production must come here and say so."
+    ),
+)
+def test_the_two_sides_form_the_same_order_family() -> None:
+    """The execution family is one rule, and it had no equivalence check.
+
+    The completeness device classified the ledger's ``EXECUTION_MODE`` as
+    "taker by charter 65" and was satisfied, because there was nothing on the
+    production side to equate it to -- production's family was implicit in
+    which candidate descriptors got enumerated, behind a parameter no caller
+    passed.  That is how a ruling lived on one side for four days in silence.
+    Production now declares the same constant so the two can be compared.
+    """
+    assert L.EXECUTION_MODES[:1] == P.EXECUTION_MODES[:1]
+    assert L.EXECUTION_MODE == P.EXECUTION_MODE
+
+
 def test_every_ledger_rule_constant_is_classified() -> None:
     """A new knob on one side must be classified before it can land.
 
