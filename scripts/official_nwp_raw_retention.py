@@ -76,6 +76,17 @@ try:
 except ImportError:  # pragma: no cover - the budget lane is then explicit-only
     MAX_TARGET_RESEARCH_RAW_BYTES = 1024 * 1024 * 1024
 RAW_STORE_DIR_NAME = "raw"
+# ``native_raw_object_store.store_range_alias`` writes one
+# ``<store>/ranges/<coordinate>.json`` per downloaded byte range, and that file
+# carries the body's ``message_sha256``.  It is a download-dedup index, not a
+# reference: ``find_range_addressed_message`` verifies the digest on the way
+# out and degrades to a fresh download when the body is gone.  Counting it as
+# a reference makes every body in the store look live forever -- exactly what
+# happened between 2026-08-18 and 2026-08-30, when the daily pass reported
+# ``referenced == bodies`` and deleted nothing while the store grew 2.3 GiB a
+# day.  The alias sits one level below the store, so the ``inside_store`` test
+# does not cover it; it is skipped by name like the cold-archive tombstone.
+RANGE_ALIAS_DIR_NAME = "ranges"
 REFERENCE_DOCUMENT_SUFFIXES = (".json", ".jsonl")
 # A capture stores the body first and writes its packet at the end of the
 # cycle, so a body younger than this floor may simply be mid-flight.  The
@@ -646,6 +657,7 @@ def build_native_reference_index(
     referenced_outside_store: set[str] = set()
     unreadable: list[dict[str, str]] = []
     self_plans: list[str] = []
+    skipped_range_alias_dirs: list[str] = []
     documents = 0
     document_bytes = 0
     scanned_roots: list[str] = []
@@ -659,7 +671,16 @@ def build_native_reference_index(
             directories[:] = [
                 name for name in directories if not (Path(current) / name).is_symlink()
             ]
-            inside_store = Path(current).resolve() in stores
+            resolved_current = Path(current).resolve()
+            if (
+                resolved_current.name == RANGE_ALIAS_DIR_NAME
+                and resolved_current.parent in stores
+            ):
+                # Range-alias index: a cache coordinate, never a reference.
+                skipped_range_alias_dirs.append(str(resolved_current))
+                directories[:] = []
+                continue
+            inside_store = resolved_current in stores
             for name in sorted(files):
                 if not name.lower().endswith(REFERENCE_DOCUMENT_SUFFIXES):
                     continue
@@ -712,6 +733,7 @@ def build_native_reference_index(
         "reference_document_bytes": document_bytes,
         "unreadable_reference_documents": unreadable,
         "skipped_self_plan_documents": sorted(self_plans),
+        "skipped_range_alias_dirs": sorted(skipped_range_alias_dirs),
     }
 
 
@@ -830,6 +852,7 @@ def build_native_plan(
             index["unreadable_reference_documents"]
         ),
         "skipped_self_plan_documents": index["skipped_self_plan_documents"],
+        "skipped_range_alias_dirs": index["skipped_range_alias_dirs"],
         "body_hash_count": len(bodies),
         "referenced_hash_count": len(referenced),
         "unreferenced_files": unreferenced,

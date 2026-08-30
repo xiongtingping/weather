@@ -193,6 +193,46 @@ def test_native_lane_reads_references_from_roots_outside_the_object_store(tmp_pa
     assert recorded["state"] == "body_discarded"
 
 
+def test_native_lane_ignores_the_range_alias_download_index(tmp_path: Path) -> None:
+    """``<store>/ranges/<coordinate>.json`` is a cache index, not a reference.
+
+    The alias names the body's ``message_sha256`` so a re-run can skip the
+    download, but it does not need the body: the lookup verifies the digest and
+    falls back to a fresh download when the file is gone.  Counting it made
+    every body in ``ecmwf_pf50``/``gefs`` look referenced and the daily pass
+    delete nothing for thirteen days while the store grew 2.3 GiB a day.
+    """
+
+    from bayes_basket_target.native_raw_object_store import store_range_alias
+
+    source_root = tmp_path / "official_nwp_sources"
+    store = source_root / "ecmwf_pf50" / "raw"
+    body = _native_body(store, b"cached-range")
+    store_range_alias(
+        root=store,
+        object_key="20260810/00z/ifs/0p25/enfo/20260810000000-30h-enfo-ef.grib2",
+        range_start=0,
+        range_end=11,
+        message_sha256=body.name.split(".", 1)[0],
+        last_modified="Mon, 10 Aug 2026 01:00:00 GMT",
+    )
+    alias_dir = store / "ranges"
+    assert list(alias_dir.glob("*.json")), "alias layout changed; update the skip"
+
+    # The source root is itself a reference root in production (data/runtime).
+    plan = build_native_plan([source_root], reference_roots=[tmp_path])
+
+    assert plan["referenced_hash_count"] == 0
+    assert plan["skipped_range_alias_dirs"] == [str(alias_dir.resolve())]
+    assert [row["path"] for row in plan["unreferenced_files"]] == [str(body)]
+
+    apply_native_unreferenced(plan)
+
+    assert not body.exists()
+    # The index itself survives; a later hit simply re-downloads.
+    assert list(alias_dir.glob("*.json"))
+
+
 def test_native_lane_withholds_bodies_young_enough_to_be_mid_capture(tmp_path: Path) -> None:
     source_root = tmp_path / "official_nwp_sources"
     store = source_root / "gefs" / "raw"
