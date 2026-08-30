@@ -373,33 +373,32 @@ def test_rotation_sell_admission_is_exact_and_cannot_oversell_or_change_target(t
     assert value["changedPrice"]["reason"] == "asos_argmax_rotation_sell_intent_mismatch"
 
 
-def test_pause_flag_and_read_only_stop_even_an_admissible_asos_intent(
+def test_the_asos_order_lane_is_retired_and_the_operator_gates_have_no_exemption(
     tmp_path: Path,
 ) -> None:
-    """The two operator gates admit no lane exception.
+    """Two rulings, a day apart, and the second one subsumes the first.
 
-    Until 2026-08-30 ``isAsosLive`` was carried into both conditions in
-    ``placeOrderWithIdempotency``, so exactly the payload seeded here -- one
-    the admission function certifies as ``ok`` -- walked past
-    ``data/live_paused.flag`` and past ``PM_CLOB_ORDER_SERVICE_READ_ONLY``
-    and went on to sign and POST.  While the region pre-reject still stood
-    that was survivable; ``PM_CLOB_IGNORE_REGION_BLOCK=1`` retired it and
-    left the lane with no gate at all, which made the flag the operator had
-    placed as the last manual e-stop not one.
+    2026-08-30: ``isAsosLive`` was carried into both the read-only check and
+    the pause check, so exactly the payload seeded here -- one the admission
+    function certifies as ``ok`` -- walked past ``data/live_paused.flag`` and
+    past ``PM_CLOB_ORDER_SERVICE_READ_ONLY`` and went on to sign and post.
+    The exemption was removed.
 
-    The first assertion is what keeps the other two honest: it proves the
-    payload really is admissible, so the rejections below are the gates
-    firing rather than the fixture being quietly malformed.
+    2026-08-31: there is no separate ASOS order lane at all.  One mainline,
+    the three-stage P0 / P0-M / P1 basket ladder.  So this payload no longer
+    reaches those gates -- it is refused as a retired strategy before them --
+    and the gates are shown to have no exemption using a payload that does
+    reach them.
+
+    The first assertion is what keeps the rest honest: it proves the payload
+    is one the admission function would still accept, so the refusal below is
+    the retirement and not a malformed fixture.
     """
     db_path = tmp_path / "archive.db"
-    # Anchored on the real clock: placeOrderWithIdempotency calls admission
-    # with its own Date.now(), so a far-future fixture would be rejected as
-    # period_not_active at the ASOS strategy check and never reach the gates
-    # under test -- the test would pass without exercising anything.
     _seed_admissible_asos_intent(db_path, datetime.now(UTC))
     pause_file = tmp_path / "live_paused.flag"
     service_uri = (ROOT / "scripts" / "clob_order_service.mjs").as_uri()
-    payload = {
+    asos_payload = {
         "strategy_id": "asos_argmax_new_high_yes_v1",
         "entry_fact_id": "entry", "order_intent_id": "intent",
         "idempotency_key": "idem", "token_id": "123456", "side": "BUY",
@@ -407,24 +406,33 @@ def test_pause_flag_and_read_only_stop_even_an_admissible_asos_intent(
         "allow_market": True, "post_only": False,
         "ws_snapshot_sha256": "e" * 64, "guard_snapshot_sha256": "f" * 64,
     }
+    other_payload = {
+        "strategy_id": "bayes_basket_target_v1",
+        "order_intent_id": "other", "idempotency_key": "other-idem",
+        "token_id": "123456", "side": "BUY", "order_type": "GTC",
+        "price": 0.20, "size": 10, "post_only": True,
+    }
     script = f"""
       const fs = await import('node:fs');
       const {{ ClobOrderService, asosArgmaxLiveAdmission }} =
         await import({json.dumps(service_uri)});
-      const payload = {json.dumps(payload)};
+      const asosPayload = {json.dumps(asos_payload)};
+      const otherPayload = {json.dumps(other_payload)};
       const pauseFile = {json.dumps(str(pause_file))};
+
       const admissible = asosArgmaxLiveAdmission(
-        payload, {json.dumps(str(db_path))}, Date.now());
+        asosPayload, {json.dumps(str(db_path))}, Date.now());
 
       const service = new ClobOrderService();
       fs.writeFileSync(pauseFile, '');
-      const paused = await service.placeOrderWithIdempotency({{...payload}});
+      const asosRetired = await service.placeOrderWithIdempotency({{...asosPayload}});
+      const paused = await service.placeOrderWithIdempotency({{...otherPayload}});
       fs.rmSync(pauseFile);
 
       process.env.PM_CLOB_ORDER_SERVICE_READ_ONLY = '1';
-      const readOnly = await service.placeOrderWithIdempotency({{...payload}});
+      const readOnly = await service.placeOrderWithIdempotency({{...otherPayload}});
 
-      console.log(JSON.stringify({{admissible, paused, readOnly}}));
+      console.log(JSON.stringify({{admissible, asosRetired, paused, readOnly}}));
     """
     env = {
         **os.environ,
@@ -440,9 +448,13 @@ def test_pause_flag_and_read_only_stop_even_an_admissible_asos_intent(
     assert result.returncode == 0, result.stderr
     value = json.loads(result.stdout)
 
-    # Without this the two rejections below would also pass on a payload the
-    # gateway rejects for being the wrong shape entirely.
+    # Still admissible on every field, and still refused: the lane is retired
+    # as a lane, not disqualified on a detail.  PM_ASOS_ARGMAX_LIVE_ENABLED is
+    # set to 1 here for the same reason -- the flag no longer buys anything.
     assert value["admissible"]["ok"] is True
+    assert value["asosRetired"]["error"] == "retired_strategy_forbidden"
+    assert value["asosRetired"]["ok"] is False
+    assert value["asosRetired"]["exchange_post_started"] is False
 
     assert value["paused"]["error"] == "clob_order_service_live_paused"
     assert value["paused"]["ok"] is False

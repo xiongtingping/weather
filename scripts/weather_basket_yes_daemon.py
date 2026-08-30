@@ -99,7 +99,6 @@ from asos_argmax_window import (
     materialize_missing_argmax_windows,
 )
 from asos_argmax_entry import materialize_argmax_entry_facts
-from asos_argmax_execution import process_pending_argmax_orders
 from asos_argmax_taf_reference import materialize_argmax_taf_references
 from asos_p1_slot_materializer import materialize_scheduled_asos_p1_observations
 from bayes_basket_target import serving_arithmetic
@@ -2917,17 +2916,18 @@ class AsosArgmaxWindowWorker:
 class AsosArgmaxEntryWorker:
     """Independent entry-fact and order worker for the 10-station ASOS lane.
 
-    This is the only resident component allowed to call the order gateway.  It
-    is kept off the AWC canonical main line on purpose: the charter requires the
-    side lane's state, budget, intents and receipts to be partitioned, so that a
-    main-line fault blocks only the main line.  Before this worker existed the
-    lane ran at the tail of the AWC ingress transaction, and a single recurring
-    ``disk I/O error`` in AWC ingress silently suppressed every entry fact and
-    every order for the whole event day.
+    It calls no order gateway.  Until 2026-08-31 it did -- it was the one
+    resident component that placed orders, on its own strategy ids and its own
+    budget -- and that made it a second execution lane in fact, whatever the
+    charter said about the pure YES basket being the only one.  The operator
+    settled it: one mainline, the three-stage P0 / P0-M / P1 basket ladder.
 
-    Entry materialization and order processing stay in one worker because they
-    are one causal step: a newly materialized entry fact must reach the gateway
-    within the same frozen argmax period that authorized it.
+    It is kept off the AWC canonical main line on purpose, and that reason
+    still stands for the evidence it produces: a main-line fault must block
+    only the main line.  Before this worker existed the lane ran at the tail
+    of the AWC ingress transaction, and a single recurring ``disk I/O error``
+    in AWC ingress silently suppressed every entry fact for the whole event
+    day.
     """
 
     def __init__(self, db_path: Path) -> None:
@@ -2935,22 +2935,27 @@ class AsosArgmaxEntryWorker:
         self.conn = _open_runtime(db_path)
 
     def run(self) -> dict[str, Any]:
+        # Entry facts only.  Operator ruling 2026-08-31: there is no separate
+        # ASOS order lane -- the system has one mainline, the three-stage
+        # P0 / P0-M / P1 basket ladder.  The order step this worker used to
+        # run (``process_pending_argmax_orders``) is not called any more, and
+        # the gateway bars its three strategy ids outright, so the ruling does
+        # not depend on this call site alone.
+        #
+        # What ASOS keeps is its real job and the reason this worker exists:
+        # it is a canonical observation source feeding P1, partitioned off the
+        # AWC main line so an AWC ingress fault cannot silently suppress a
+        # whole event day's entry facts the way it did before.
         entry = materialize_argmax_entry_facts(
             self.conn, sorted(ASOS_ARGMAX_LIVE_STATIONS)
         )
-        # Order processing must still run when no new entry fact appeared this
-        # cycle: prepared intents, unresolved submissions and exits from an
-        # earlier cycle have to keep converging toward a reconciled state.
-        execution = process_pending_argmax_orders(self.conn, root=ROOT)
-        submitted = int(execution.get("submission_attempt_count") or 0)
         return {
-            "ok": bool(entry.get("ok", True)) and bool(execution.get("ok", True)),
-            "state": "processed",
+            "ok": bool(entry.get("ok", True)),
+            "state": "entry_facts_only_order_lane_retired",
             "entry": entry,
-            "execution": execution,
-            "calls_order_gateway": int(execution.get("gateway_call_count") or 0) > 0,
-            "places_orders": submitted > 0,
-            "orders_submitted": submitted,
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "orders_submitted": 0,
         }
 
     def close(self) -> None:

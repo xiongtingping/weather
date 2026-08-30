@@ -32,8 +32,20 @@ const ASOS_ARGMAX_ROTATION_SELL_STRATEGY_ID = "asos_argmax_rotation_sell_fak_v1"
 const ASOS_ARGMAX_LIVE_STATIONS = new Set([
   "KATL", "KAUS", "KDAL", "KHOU", "KLAX", "KLGA", "KMIA", "KORD", "KSEA", "KSFO",
 ]);
+// Operator ruling 2026-08-31: there is no separate ASOS order lane.  The
+// system has one mainline -- the three-stage P0 / P0-M / P1 basket ladder --
+// and the charter has said so all along ("生产执行唯一为纯 YES 篮子").  The
+// argmax lane grew its own strategy ids, its own intents table, its own
+// budget and its own gateway admission, which made it a second lane in fact
+// whatever the charter said.  It is barred here, at the one chokepoint every
+// order passes through, so the ruling holds regardless of what any caller
+// still tries to submit.  ASOS keeps its real job: a canonical observation
+// source feeding P1.  It does not place orders.
 const RETIRED_STRATEGY_IDS = new Set([
   "weather_copy_follow_v1",
+  ASOS_ARGMAX_LIVE_STRATEGY_ID,
+  ASOS_ARGMAX_EXIT_STRATEGY_ID,
+  ASOS_ARGMAX_ROTATION_SELL_STRATEGY_ID,
 ]);
 const IDEMPOTENCY_TERMINAL_STATES = new Set(["exchange_accepted", "submit_failed"]);
 const KNOWN_EXCHANGE_ORDER_STATUSES = new Set([

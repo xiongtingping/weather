@@ -1,17 +1,38 @@
-"""The 10-station ASOS argmax lane must not share a failure boundary with AWC.
+"""The ASOS argmax lane produces evidence and places no orders.
 
-The charter requires the side lane's state, budget, intents and receipts to be
-partitioned from the main line so that a main-line fault blocks only the main
-line.  The lane previously ran at the tail of the AWC canonical ingress
-function, on the AWC connection, inside the AWC transaction: a recurring
-``disk I/O error`` in AWC ingress therefore silently suppressed every entry fact
-and every order for a whole event day.  These tests pin the partition.
+Operator ruling 2026-08-31: there is no separate ASOS order lane.  The system
+has one mainline -- the three-stage P0 / P0-M / P1 basket ladder -- and the
+charter always said so ("生产执行唯一为纯 YES 篮子").  The lane had drifted
+into being a second one in fact: its own strategy ids, its own intents table,
+its own budget, its own gateway admission, and a submission step running every
+resident cycle.
+
+What survives is the reason the worker exists at all.  ASOS is a canonical
+observation source feeding P1, and it must not share a failure boundary with
+AWC: the lane previously ran at the tail of the AWC canonical ingress
+function, on the AWC connection, inside the AWC transaction, so a recurring
+``disk I/O error`` in AWC ingress silently suppressed every entry fact for a
+whole event day.  These tests pin both the partition and the retirement.
 """
 
 import inspect
+import re
 from pathlib import Path
 
 from scripts import weather_basket_yes_daemon as daemon
+
+
+_COMMENT = re.compile(r"^\s*#.*$", re.M)
+
+
+def _code_only(source: str) -> str:
+    """Source with comments stripped.
+
+    An assertion about what the worker *calls* must not be satisfied by a
+    comment explaining what it no longer calls -- which is exactly how this
+    file's execution assertion stayed green through the retirement.
+    """
+    return _COMMENT.sub("", source)
 
 
 def test_awc_ingress_never_materializes_entries_or_reaches_the_gateway() -> None:
@@ -37,13 +58,22 @@ def test_entry_worker_owns_its_own_connection() -> None:
     assert "_open_runtime" in init_source
 
 
-def test_entry_worker_runs_entry_and_execution_together() -> None:
-    run_source = inspect.getsource(daemon.AsosArgmaxEntryWorker.run)
+def test_entry_worker_materializes_evidence_and_never_orders() -> None:
+    run_source = _code_only(inspect.getsource(daemon.AsosArgmaxEntryWorker.run))
 
-    # One causal step: a new entry fact must reach the gateway inside the same
-    # frozen argmax period that authorized it.
     assert "materialize_argmax_entry_facts" in run_source
-    assert "process_pending_argmax_orders" in run_source
+    # The order step is gone, not merely disabled behind a flag.
+    assert "process_pending_argmax_orders" not in run_source
+    assert '"calls_order_gateway": False' in run_source
+    assert '"places_orders": False' in run_source
+    assert '"orders_submitted": 0' in run_source
+
+
+def test_the_daemon_does_not_import_the_order_step_at_all() -> None:
+    source = _code_only(Path(daemon.__file__).read_text(encoding="utf-8"))
+
+    assert "from asos_argmax_execution import" not in source
+    assert "process_pending_argmax_orders" not in source
 
 
 def test_entry_worker_can_rebuild_its_connection(tmp_path: Path, monkeypatch) -> None:
@@ -68,66 +98,39 @@ def test_entry_worker_can_rebuild_its_connection(tmp_path: Path, monkeypatch) ->
     assert worker.conn is new_connection
 
 
-def test_execution_runs_even_when_no_entry_fact_was_materialized(monkeypatch) -> None:
+def test_lane_reports_no_order_activity_whatever_the_entry_result(monkeypatch) -> None:
     calls: list[str] = []
 
+    for entry_result in (
+        {"ok": True, "inserted_entry_fact_count": 0},
+        {"ok": True, "inserted_entry_fact_count": 3},
+    ):
+        calls.clear()
+        monkeypatch.setattr(
+            daemon,
+            "materialize_argmax_entry_facts",
+            lambda _conn, _stations, _r=entry_result: (calls.append("entry"), _r)[1],
+        )
+        worker = object.__new__(daemon.AsosArgmaxEntryWorker)
+        worker.conn = object()
+        result = worker.run()
+
+        assert calls == ["entry"]
+        assert result["ok"] is True
+        assert result["calls_order_gateway"] is False
+        assert result["places_orders"] is False
+        assert result["orders_submitted"] == 0
+        assert result["state"] == "entry_facts_only_order_lane_retired"
+
+
+def test_lane_is_not_ok_when_entry_materialization_fails(monkeypatch) -> None:
     monkeypatch.setattr(
-        daemon,
-        "materialize_argmax_entry_facts",
-        lambda _conn, _stations: (calls.append("entry"), {"ok": True, "inserted_entry_fact_count": 0})[1],
-    )
-    monkeypatch.setattr(
-        daemon,
-        "process_pending_argmax_orders",
-        lambda _conn, *, root: (calls.append("execution"), {
-            "ok": True, "gateway_call_count": 0, "submission_attempt_count": 0,
-        })[1],
-    )
-
-    worker = object.__new__(daemon.AsosArgmaxEntryWorker)
-    worker.conn = object()
-    result = worker.run()
-
-    # Prepared intents, unresolved submissions and exits from an earlier cycle
-    # must keep converging even on a cycle that produced no new entry fact.
-    assert calls == ["entry", "execution"]
-    assert result["ok"] is True
-    assert result["orders_submitted"] == 0
-    assert result["places_orders"] is False
-
-
-def test_lane_reports_gateway_activity_from_execution(monkeypatch) -> None:
-    monkeypatch.setattr(
-        daemon, "materialize_argmax_entry_facts", lambda _conn, _stations: {"ok": True}
-    )
-    monkeypatch.setattr(
-        daemon,
-        "process_pending_argmax_orders",
-        lambda _conn, *, root: {
-            "ok": True, "gateway_call_count": 2, "submission_attempt_count": 1,
-        },
-    )
-
-    worker = object.__new__(daemon.AsosArgmaxEntryWorker)
-    worker.conn = object()
-    result = worker.run()
-
-    assert result["calls_order_gateway"] is True
-    assert result["places_orders"] is True
-    assert result["orders_submitted"] == 1
-
-
-def test_lane_is_not_ok_when_execution_fails(monkeypatch) -> None:
-    monkeypatch.setattr(
-        daemon, "materialize_argmax_entry_facts", lambda _conn, _stations: {"ok": True}
-    )
-    monkeypatch.setattr(
-        daemon,
-        "process_pending_argmax_orders",
-        lambda _conn, *, root: {"ok": False, "gateway_call_count": 0, "submission_attempt_count": 0},
+        daemon, "materialize_argmax_entry_facts", lambda _conn, _stations: {"ok": False}
     )
 
     worker = object.__new__(daemon.AsosArgmaxEntryWorker)
     worker.conn = object()
 
+    # Evidence is the lane's whole job now, so a failure to materialize it is
+    # the lane failing.
     assert worker.run()["ok"] is False
