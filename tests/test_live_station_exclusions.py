@@ -38,25 +38,30 @@ def test_the_barred_list_is_the_operators_current_ruling() -> None:
         "RPLL", "ZUCK", "RCSS", "EHAM", "SBGR", "KLAX", "KMIA",
         "RKSI", "KAUS", "FACT",
         "CYYZ", "EDDM", "NZWN",
+        # Released and re-barred the same day.
+        "EPWA", "LTAC",
     }
     assert control.excluded_stations() == barred
-    # Released stations must be out of the bar, not merely annotated.
-    assert not ({"EPWA", "LTAC"} & control.excluded_stations())
 
 
-def test_a_release_keeps_its_record() -> None:
-    """A released station leaves a row saying what it was released against.
+def test_a_reversal_stays_visible_in_the_record() -> None:
+    """A station that went out and came back must say so on its own row.
 
-    Without it the next review sees a clean station and cannot tell that
-    the call was made over a contrary reading -- which is the one thing
-    that would let the same argument be had twice.
+    EPWA and LTAC were released and re-barred on 2026-08-30.  Smoothing
+    that into a plain bar would leave the list unable to be scored later:
+    the interesting question about a station is not only whether it is
+    barred but how many times the call has changed.
     """
 
     parsed = json.loads(EXCLUSIONS.read_text(encoding="utf-8"))
-    released = {row["station"]: row for row in parsed["released_stations"]}
-    assert {"EPWA", "LTAC"} <= set(released)
-    for row in released.values():
-        assert row["released_utc"] and row["note"]
+    rows = {row["station"]: row for row in parsed["excluded_stations"]}
+    for station in ("EPWA", "LTAC"):
+        row = rows[station]
+        assert row.get("released_utc") and row.get("rebarred_utc")
+        assert row.get("note")
+    # Anything still sitting in released_stations must really be released.
+    for row in parsed.get("released_stations") or []:
+        assert row["station"] not in control.excluded_stations()
 
 
 def test_the_allowlist_and_the_exclusions_do_not_overlap() -> None:

@@ -25,6 +25,16 @@
       "added_utc": "2026-08-30"
     },
     {
+      "station": "EPWA",
+      "city": "华沙",
+      "both_halves_negative": false,
+      "full_sample_roi": -0.228,
+      "added_utc": "2026-08-30",
+      "released_utc": "2026-08-30",
+      "rebarred_utc": "2026-08-30",
+      "note": "Released and re-barred the same day (2026-08-30). The release was made over a contrary reading and the re-bar restores it: EPWA's six forward seats all lost 100% and its three wins were P1 near-certainties at claims 0.93-0.99 with the model running 1.62C cold and delivering 0.46 of what it claims; LTAC is the same shape at bias -0.83 and ratio 0.35. Recorded as a round trip rather than smoothed away, because a list that hides its own reversals cannot be scored later."
+    },
+    {
       "station": "FACT",
       "city": "开普敦",
       "both_halves_negative": true,
@@ -51,6 +61,16 @@
       "both_halves_negative": true,
       "full_sample_roi": -0.864,
       "added_utc": "2026-08-30"
+    },
+    {
+      "station": "LTAC",
+      "city": "安卡拉",
+      "both_halves_negative": false,
+      "full_sample_roi": 0.13,
+      "added_utc": "2026-08-30",
+      "released_utc": "2026-08-30",
+      "rebarred_utc": "2026-08-30",
+      "note": "Released and re-barred the same day (2026-08-30). The release was made over a contrary reading and the re-bar restores it: EPWA's six forward seats all lost 100% and its three wins were P1 near-certainties at claims 0.93-0.99 with the model running 1.62C cold and delivering 0.46 of what it claims; LTAC is the same shape at bias -0.83 and ratio 0.35. Recorded as a round trip rather than smoothed away, because a list that hides its own reversals cannot be scored later."
     },
     {
       "station": "NZWN",
@@ -103,7 +123,7 @@
     "standing_candidates_2026_08_30": {
       "add": [],
       "release": [],
-      "note": "All standing candidates were acted on by the operator on 2026-08-30; recomputed each render."
+      "note": "All candidates acted on by the operator on 2026-08-30; recomputed each render."
     },
     "why_release_is_stricter": "Barring costs a skipped market; releasing puts money back, so the two directions are deliberately asymmetric. EPWA forced this on 2026-08-30: under an ROI-only rule it cleared on a 2.2-point technicality (-22.8% against the -25% line) with a five-day window reading +60.1%. Underneath, all six of its forward seats lost 100% (P0 5/5, P0-M 1/1), its only three wins were P1 near-certainties bought after the day was observed at claims of 0.93-0.99, and it runs 1.62C cold with a claim ratio of 0.46. The +60.1% was one P1 chain on 08-29 (+12.02 on 17.62), not a recovery. LTAC fails the same way at bias -0.83 and ratio 0.35."
   },
@@ -115,27 +135,8 @@
       "RKPK"
     ]
   },
-  "authority": "operator ruling 2026-08-30, for the 2026-09-01 live open; nine named, then RKSI/KAUS/FACT added, then CYYZ/EDDM/NZWN added and EPWA/LTAC released",
+  "authority": "operator ruling 2026-08-30 for the 2026-09-01 live open; nine named, then RKSI/KAUS/FACT, then CYYZ/EDDM/NZWN added with EPWA/LTAC released, then EPWA and LTAC re-barred the same day",
   "valid_from_utc": "2026-08-30T00:00:00Z",
-  "updated_at_utc": "2026-08-30T12:00:00Z",
-  "released_stations": [
-    {
-      "station": "EPWA",
-      "city": "华沙",
-      "both_halves_negative": false,
-      "full_sample_roi": -0.228,
-      "added_utc": "2026-08-30",
-      "released_utc": "2026-08-30",
-      "note": "Released on the operator's ruling. The analysis had recommended keeping both: EPWA's six forward seats all lost 100% and its three wins were P1 near-certainties at claims 0.93-0.99 with the model running 1.62C cold and delivering 0.46 of what it claims; LTAC is the same shape at bias -0.83 and ratio 0.35. Recorded so the next review can score the call rather than rediscover the argument."
-    },
-    {
-      "station": "LTAC",
-      "city": "安卡拉",
-      "both_halves_negative": false,
-      "full_sample_roi": 0.13,
-      "added_utc": "2026-08-30",
-      "released_utc": "2026-08-30",
-      "note": "Released on the operator's ruling. The analysis had recommended keeping both: EPWA's six forward seats all lost 100% and its three wins were P1 near-certainties at claims 0.93-0.99 with the model running 1.62C cold and delivering 0.46 of what it claims; LTAC is the same shape at bias -0.83 and ratio 0.35. Recorded so the next review can score the call rather than rediscover the argument."
-    }
-  ]
+  "updated_at_utc": "2026-08-30T14:00:00Z",
+  "released_stations": []
 }
