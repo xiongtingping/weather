@@ -527,6 +527,17 @@ def scope_stake_cap_usdc(
 # mispriced bucket; the zero-cost baseline always satisfies it, so a book
 # that only offers lottery shapes resolves to HOLD instead of a lottery.
 SUPPORT_SCENARIO_FLOOR_FRACTION = -0.10
+# Charter 67 (user ruling, 2026-08-30): the local hour before which P1 may
+# not take a seat.  The P1 lane starts compiling at local midnight, and both
+# lanes' entry rules were spending the stage's budget on a midnight book with
+# one observation behind it.  Measured on the settled multi-stage book: P1
+# seats before local 11:00 contributed -49.5 USDC net of the P0-only
+# counterfactual; seats in the 11:00-16:00 window contributed +99.8 (+38.7
+# ex-best, permutation p=0.006).  The daily maximum forms in the early
+# afternoon; the stage whose whole edge is intraday observation has nothing
+# to say before it.  One definition, imported by the runtime and the paper
+# ledger both, so the strategy measured is the strategy run.
+DEFAULT_P1_ENTRY_LOCAL_HOUR = 11.0
 # Retired hard rails (2026-08-14 ruling).  The 0.45 win-probability gate was
 # a portfolio-level target (55% book win rate) misapplied per window: it
 # forbade the base+tail mixing the doctrine explicitly wants, contradicted

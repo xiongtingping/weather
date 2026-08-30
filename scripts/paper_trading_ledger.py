@@ -104,6 +104,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
 )
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     DEFAULT_KELLY_FRACTION,
+    DEFAULT_P1_ENTRY_LOCAL_HOUR,
     MAX_STAKE_FRACTION_PER_SCOPE,
     OFF_CENTER_CLAIM_RAMP_BUCKETS,
     STAGE_BUDGET_SHARE,
@@ -153,6 +154,22 @@ CHAIN_TOPUP_MISS_FLOOR = float(
     os.environ.get("PAPER_LEDGER_TOPUP_MISS_FLOOR", "") or 0.0
 )
 CHAIN_COST_PAR_BOUND = 1.0
+# Charter 67 (user ruling, 2026-08-30): P1 may not take its seat before the
+# day has anything to say.  The P1 lane starts compiling at local midnight
+# and the entry walk consumed its one top-up at the first cycle whose
+# objective seated -- ZSQD 2026-08-29 bought 30+31 six minutes after local
+# midnight on one midnight observation, and the truth (28) was being priced
+# by the market from mid-morning.  Measured over the 117 settled multi-stage
+# chains: P1 seats taken before local 11:00 contributed -49.5 USDC net of
+# the P0-only counterfactual (54 overnight -12.2, 26 morning -25.0), seats
+# taken 11:00-16:00 local contributed +99.8 (+38.7 with the best chain
+# removed; permutation p=0.006 on the mean split).  The gate holds P1's
+# budget until the local hour the daily maximum actually forms in, spending
+# the stage's information advantage where it exists.  0 disables.
+P1_ENTRY_LOCAL_HOUR = float(
+    os.environ.get("PAPER_LEDGER_P1_ENTRY_LOCAL_HOUR", "")
+    or DEFAULT_P1_ENTRY_LOCAL_HOUR
+)
 # The per-scope cap and the per-stage shares both live in the kernel now
 # (user ruling, 2026-08-26): production read a flat 30 USDC per station while
 # this book read 2% of its own equity, so the same station-day was sized two
@@ -383,6 +400,7 @@ REFUSAL_DEPTH = {
     # reported as "the odds were not worth it" until 2026-08-24.
     "unquoted_ideal_window": 5,
     "certainty_gate_lit": 5,
+    "entry_window_not_open": 5,
     # One layer: a basket was assembled, priced and put to the objective, and
     # no stake followed.  Which of the two is reported depends on whether the
     # price left the objective anything to judge.
@@ -1113,6 +1131,9 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     # a different strategy and must not read as comparable.
     "加仓链增益>0·链本<%g" % CHAIN_COST_PAR_BOUND,
     None
+    if P1_ENTRY_LOCAL_HOUR <= 0
+    else "P1≥本地%g时" % P1_ENTRY_LOCAL_HOUR,
+    None
     if CHAIN_TOPUP_MISS_FLOOR <= 0
     else "加仓漏桶地板%g" % CHAIN_TOPUP_MISS_FLOOR,
     None
@@ -1255,6 +1276,7 @@ SELECTION_RULE_SHA256 = content_sha256({
         CHAIN_TOPUP_BANKROLL_USDC or "scope_allowance"
     ),
     "chain_topup_miss_floor": CHAIN_TOPUP_MISS_FLOOR,
+    "p1_entry_local_hour": P1_ENTRY_LOCAL_HOUR,
     "window_strategy": WINDOW_STRATEGY,
     "execution_mode": EXECUTION_MODE,
     # Which price the Kelly stake and the payout test are struck against.
@@ -1545,6 +1567,11 @@ REFUSAL_REASONS = (
     # ``no_top_up_needed`` (the old want-minus-held reading) in that the
     # judge is the chain's growth, not the stage's shopping list.
     "no_chain_growth",
+    # Charter 67: every cycle this stage was offered fell before its entry
+    # window opened -- for P1, before the local hour the gate names.  Its
+    # owner is our own clock, exactly like ``certainty_gate_lit``: the
+    # market was there, the model was asked nothing.
+    "entry_window_not_open",
     # Charter 66 clause A: the buy would put the whole chain's blended cost
     # at or past 1.00 -- a position that loses even when it wins.  Named
     # separately from ``cost_exceeds_payout`` because that one is a single
@@ -5185,6 +5212,34 @@ def backfill(
                     conn, station_id, event_date, stage
                 ):
                     cycles += 1
+                    # Charter 67: P1's one top-up waits for the hours the
+                    # daily maximum forms in.  A cycle before the window is
+                    # not judged at all -- the walk keeps going, so a stage
+                    # with an afternoon cycle still seats there.
+                    if stage == "P1" and P1_ENTRY_LOCAL_HOUR > 0:
+                        local_hour = (
+                            datetime.fromisoformat(
+                                str(payload["decision_at_utc"])
+                                .replace("Z", "+00:00")
+                            )
+                            .astimezone(ZoneInfo(
+                                timezones.get(station_id, "UTC")
+                            ))
+                        )
+                        if (
+                            local_hour.hour + local_hour.minute / 60.0
+                            < P1_ENTRY_LOCAL_HOUR
+                        ):
+                            refusal = _deeper_refusal(refusal, (
+                                "entry_window_not_open",
+                                "P1 入座窗未开：该轮本地 %02d:%02d"
+                                " · 窗从 %g 时起（宪章 67）" % (
+                                    local_hour.hour, local_hour.minute,
+                                    P1_ENTRY_LOCAL_HOUR,
+                                ),
+                                cycles, payload["decision_at_utc"],
+                            ))
+                            continue
                     quotes = payload["quotes"]
                     observed_at = payload["observed_at"]
                     built = _build_snapshot(

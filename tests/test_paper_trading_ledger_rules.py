@@ -1918,3 +1918,61 @@ def test_charter_66_binds_production_and_ledger_together() -> None:
         SELECTION_RULE_SHA256
     ) == 64
     assert "chain_topup_sizing" in ledger_source
+
+
+def test_charter_67_p1_waits_for_its_window() -> None:
+    """P1's edge is intraday observation; its seat waits for the hours the
+    daily maximum forms in (user ruling, 2026-08-30).
+
+    The P1 lane compiles from local midnight and the entry walk took the
+    first seatable cycle -- ZSQD 2026-08-29 spent P1's one top-up six
+    minutes after local midnight on a single midnight observation.
+    Measured over 117 settled multi-stage chains, net of the P0-only
+    counterfactual: seats before local 11:00 contributed -49.5 USDC (54
+    overnight -12.2, 26 morning -25.0); seats 11:00-16:00 contributed
+    +99.8, still +38.7 with the best chain removed, permutation p=0.006.
+
+    One kernel constant serves both lanes, so the strategy the ledger
+    measures is the strategy production runs.
+    """
+
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: PLC0415
+        DEFAULT_P1_ENTRY_LOCAL_HOUR,
+    )
+    from paper_trading_ledger import (  # noqa: PLC0415
+        P1_ENTRY_LOCAL_HOUR,
+        REFUSAL_DEPTH,
+        REFUSAL_REASONS,
+        SELECTION_RULE_LABEL,
+    )
+
+    assert DEFAULT_P1_ENTRY_LOCAL_HOUR == 11.0
+    assert P1_ENTRY_LOCAL_HOUR == DEFAULT_P1_ENTRY_LOCAL_HOUR
+    assert "entry_window_not_open" in REFUSAL_REASONS
+    # Its owner is our own clock, the same layer as the certainty gate: the
+    # market was there, the model was never asked.
+    assert REFUSAL_DEPTH["entry_window_not_open"] == (
+        REFUSAL_DEPTH["certainty_gate_lit"]
+    )
+    assert "P1≥本地11时" in SELECTION_RULE_LABEL
+
+    ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    runtime_source = (root / "bayes_basket_target" / "runtime.py").read_text(
+        encoding="utf-8"
+    )
+    # The ledger gates inside the entry walk, so a station with an afternoon
+    # cycle still seats there -- the cycle is skipped, never the day.
+    assert 'if stage == "P1" and P1_ENTRY_LOCAL_HOUR > 0:' in ledger_source
+    # Production holds explicitly BEFORE the compile: the observation and
+    # bound persistence upstream must keep flowing, so the gate must never
+    # be an exception out of the compile itself.
+    assert '"p1_entry_window_not_open"' in runtime_source
+    assert "DEFAULT_P1_ENTRY_LOCAL_HOUR > 0" in runtime_source

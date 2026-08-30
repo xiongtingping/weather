@@ -247,6 +247,8 @@ SHARED_WITH_PRODUCTION = {
     # Charter 66 clause A: the same par bound is spelled in
     # delta_v2_runtime, asserted identical by the charter-66 binding test.
     "CHAIN_COST_PAR_BOUND",
+    # Charter 67: one kernel constant, imported by both lanes.
+    "P1_ENTRY_LOCAL_HOUR",
     "CERTAINTY_GATE", "FEE_RATE", "KELLY_FRACTION",
     "MAKER_RESTING_IMPROVE_TICKS", "MAKER_RESTING_LADDER_STEPS",
     "MAKER_RESTING_SHOULDER_LAMBDA", "MAKER_RESTING_VALUE_LAMBDA",

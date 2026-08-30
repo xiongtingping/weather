@@ -13,6 +13,9 @@ import math
 from typing import Any, Callable, Mapping, Sequence
 
 from .contracts import ContractError, ProbabilityEnvelope, content_sha256
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from .basket_kernel.contracts import (
     TARGET_BASKET_SNAPSHOT_SCHEMA,
     TargetBasketPolicy,
@@ -20,6 +23,7 @@ from .basket_kernel.contracts import (
 )
 from .basket_kernel.delta_v2 import (
     BUNDLE_RESCORE_SCHEMA,
+    DEFAULT_P1_ENTRY_LOCAL_HOUR,
     rescore_maker_bundle_v2,
     scope_stake_cap_usdc,
 )
@@ -1032,6 +1036,39 @@ def _compile_target_plan(
             remaining_budget_before=remaining_budget_before,
             station_policy=resolved.to_dict(),
         )
+
+    # Charter 67: P1 holds until the local hour the daily maximum forms in.
+    # An explicit HOLD, not a compile refusal -- the observation and bound
+    # persistence upstream of this point must keep flowing, and a stage
+    # whose window has not opened has declined to act, not failed to.  The
+    # ledger's entry walk carries the same clause from the same kernel
+    # constant, so the strategy measured is the strategy run.
+    if (
+        str(snapshot.evidence.probability_stage or "") == "P1"
+        and DEFAULT_P1_ENTRY_LOCAL_HOUR > 0
+        and envelope.settlement_timezone
+    ):
+        try:
+            _local = datetime.fromisoformat(
+                str(snapshot.observed_at).replace("Z", "+00:00")
+            ).astimezone(ZoneInfo(str(envelope.settlement_timezone)))
+        except (ValueError, KeyError):
+            _local = None
+        if _local is not None and (
+            _local.hour + _local.minute / 60.0 < DEFAULT_P1_ENTRY_LOCAL_HOUR
+        ):
+            return _blocked(
+                blockers=["p1_entry_window_not_open"],
+                remaining_budget_before=remaining_budget_before,
+                station_policy=resolved.to_dict(),
+                extra_plan={
+                    "p1_entry_window": {
+                        "opens_local_hour": DEFAULT_P1_ENTRY_LOCAL_HOUR,
+                        "decision_local_time": _local.strftime("%H:%M"),
+                        "charter": 67,
+                    }
+                },
+            )
 
     try:
         delta_plan = compile_delta_v2_runtime_plan(
