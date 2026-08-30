@@ -19,6 +19,8 @@ import json
 import sqlite3
 from typing import Any, Mapping
 
+from .contracts import ContractError
+
 SCHEMA_SQL = (
     "CREATE TABLE IF NOT EXISTS basket_target_consolidation_chain_tilt ("
     " station_id TEXT NOT NULL,"
@@ -70,8 +72,6 @@ def record_chain_opener_tilt(
     a row was written.
     """
 
-    if str(plan.get("stage") or "") != "P0":
-        return False
     if str(plan.get("status") or "") != "ready_no_live":
         return False
     audit = plan.get("delta_v2_audit")
@@ -80,10 +80,19 @@ def record_chain_opener_tilt(
         if isinstance(audit, Mapping) else None
     )
     if not isinstance(tilt, Mapping):
-        return False
+        # A ready plan always compiles the tilt audit.  Its absence is
+        # shape drift, and shape drift here must be loud: the first
+        # version of this guard chain checked ``plan.get("stage")`` -- a
+        # key the compiled plan has never carried -- so every call
+        # returned False, the table was never created, and the whole
+        # opener-inheritance layer silently no-opped from 2026-08-28
+        # until 2026-08-30 while every later stage ran untilted.
+        raise ContractError("consolidation_chain_plan_missing_tilt_audit")
     if str(tilt.get("basis") or "") != "p0_own_lights":
-        # An inherited factor means an opener row already exists; a
-        # no-record basis at P0 cannot happen (P0 always earns its own).
+        # Which stage this decision was needs no key of its own: the
+        # compiler stamps ``p0_own_lights`` only on a P0 deciding by its
+        # own lights.  An inherited factor means an opener row already
+        # exists, and a no-record basis marks a later stage.
         return False
     ensure_schema(conn)
     cursor = conn.execute(

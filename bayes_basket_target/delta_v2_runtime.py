@@ -230,22 +230,23 @@ CERTAINTY_SHARP_TOP2 = 0.60
 # score stakes production never places.  Same two lights, same 0.10, same
 # minimum-clip floor as the ledger.
 #
-# One deliberate semantic difference, priced before shipping: the ledger's
-# measured rule lets the P0 opener's lights set the whole chain's factor,
-# which needs cross-cycle state a distributed walk does not have.  Here
-# every decision tilts by its own lights ("stage" scope) -- computable
-# stateless, and conservative: consolidation grows through the day, so a
-# top-up is more often tilted here than under opener inheritance, never
-# less.  The ledger prices the gap with PAPER_LEDGER_TILT_SCOPE=stage.
+# The scope is the opener's, exactly as the ledger measured it: the P0
+# opener's lights set the whole chain's factor, carried in one row of
+# cross-cycle state (``consolidation_chain``, since 5f7d4987).  This
+# paragraph once described a stateless "stage" alternative as the shipped
+# semantics; that alternative was priced twice and lost twice -- 81.8u at
+# shipping time, ~95u on the 2026-08-30 sweep, both with the loss
+# concentrated in dark-open chains whose profitable late top-ups the
+# stage reading kept cutting -- and the stale text then sent a reviewer
+# hunting a scope problem that was already solved.  What was ACTUALLY
+# broken for the first two days was the opener row's writer, gated on a
+# plan key that does not exist (see consolidation_chain.py).
 #
 # 0.10 -> 0.05 (2026-08-30 re-measure on the charter-66/67 stack, 319
 # chains): depth is monotone down to a clamp plateau below 0.05; under
-# the ledger's opener rule +14.58 with drop-1/2/3 and both temporal
-# halves positive, and under THIS stage semantics +24.45 with sign
-# 164:148 (drop-1 dips to -5.7 on one chain, drop-2/3 recover).  The
-# same sweep also priced the semantic gap itself: stage-scope trails
-# opener inheritance by ~95u on the same book, so the open question on
-# this knob is the scope, not the depth.
+# the opener rule +14.58 with drop-1/2/3 and both temporal halves
+# positive, and under the stage reading +24.45 with sign 164:148 -- the
+# depth verdict holds under either scope.
 CONSOLIDATION_TILT_FACTOR = min(1.0, float(
     os.environ.get("PM_CONSOLIDATION_TILT", "0.05") or 1.0
 ))

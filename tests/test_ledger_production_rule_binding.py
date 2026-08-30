@@ -325,8 +325,8 @@ LEDGER_ONLY = {
     ),
     "MAKER_CENTRE_TAKER": "research arm: centre takes at entry, rest rests",
     "CONSOLIDATION_TILT_SCOPE": (
-        "opener is the measured rule; stage prices production's stateless"
-        " semantics"
+        "opener is the measured rule AND production's (consolidation_chain,"
+        " 5f7d4987); the stage arm prices the rejected stateless reading"
     ),
     "MAKER_RESTING_CENTRE_LAMBDA": "research arm",
     "MAKER_RESTING_TAIL_LAMBDA": "research arm (rejected, kept for replay)",
