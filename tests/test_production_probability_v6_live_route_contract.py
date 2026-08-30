@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from scripts.weather_basket_yes_daemon import TargetProductionWorker
+from bayes_basket_target.production import PRODUCTION_EXECUTION_MODE
 from bayes_basket_target.database import SHARED_LIVE_DB
 from scripts.weather_basket_yes_daemon import (
     DEFAULT_TARGET_ACTIVATION,
@@ -91,8 +92,15 @@ def test_target_production_worker_uses_an_enforced_read_only_connection(
 def test_target_worker_defaults_are_isolated_from_live_activation_and_database() -> None:
     assert DEFAULT_TARGET_DB.name == "bayes_basket_target_ssot.db"
     assert DEFAULT_TARGET_DB != SHARED_LIVE_DB
+    # The activation follows the mode -- one constant decides both, so the
+    # worker cannot run one and validate the other.  It became the live
+    # contract at the 2026-08-30 go-live migration; what this test is really
+    # about, and what has not changed, is the line below: the target lane
+    # never borrows the shared live database.
     assert DEFAULT_TARGET_ACTIVATION.name == (
-        "bayes_basket_target_production_no_live_activation_v1.json"
+        "bayes_basket_target_production_live_activation_v1.json"
+        if PRODUCTION_EXECUTION_MODE == "production_live"
+        else "bayes_basket_target_production_no_live_activation_v1.json"
     )
     with pytest.raises(ValueError, match="must_not_be_shared_live"):
         TargetProductionWorker(SHARED_LIVE_DB)

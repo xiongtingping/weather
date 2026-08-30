@@ -1,0 +1,63 @@
+{
+  "activation_contract_sha256": "c11d8ecd75b7937014303da2d3785708a8b54c94dc63498cde22942e98e2c0c6",
+  "authorizes_order": true,
+  "calls_order_gateway": true,
+  "derived_from": {
+    "activation_contract_sha256": "c0d294d288b82d93fdb5857116e64913337778e5f7f4af4b77599c6887ed2e61",
+    "schema": "bayes_basket_target_production_no_live_activation_v1"
+  },
+  "execution_mode": "production_live",
+  "fallback_policy": "FAIL_CLOSED_NO_STATION_POLICY",
+  "live_decision_write_authorized": true,
+  "live_order_authorized": true,
+  "live_submit_authorized": true,
+  "minted_at_utc": "2026-08-30T17:23:19+00:00",
+  "missing_model_policy": "FAIL_CLOSED_NO_P0",
+  "network_access": true,
+  "next_consumers": [
+    "weather_basket_yes_internal_target_worker"
+  ],
+  "places_orders": true,
+  "policy_authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+  "production_mutation": false,
+  "production_service_count_impact": 0,
+  "quote_freshness_policy": {
+    "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
+    "content_sha256": "4e6c9a76da7c08e7c6102b5669b885290149cf196c756575e298cb0ada644a69",
+    "evidence_status": "DESIGN_CANDIDATE",
+    "max_quote_age_seconds": 60.0,
+    "policy_id": "target-official-ws-60s-no-live-v2",
+    "schema": "bayes_basket_quote_freshness_policy_v1",
+    "valid_from_utc": "2026-07-01T00:00:00Z",
+    "valid_until_utc": "2027-01-01T00:00:00Z"
+  },
+  "required_inputs": [
+    "strict_asof_current_model_runs",
+    "production_no_live_only_calibration_activations",
+    "exact_available_model_set_ensemble_mask",
+    "materialized_stage_probability_envelope",
+    "materialized_regime_artifact",
+    "official_clob_ws_quote_snapshot",
+    "resolved_station_policy_activation",
+    "confirmed_inventory_snapshot",
+    "production_no_live_order_state_snapshot",
+    "basket_cash_phase_authority_manifest",
+    "content_addressed_quote_freshness_policy"
+  ],
+  "schema": "bayes_basket_target_production_live_activation_v1",
+  "stage_precedence_same_decision_only": [
+    "P1",
+    "P0-M",
+    "P0"
+  ],
+  "state": "production_live",
+  "strategy_id": "bayes_basket_target_v1",
+  "target_only": true,
+  "target_scope": {
+    "liquidity_bin": "liquid",
+    "maturity_bin": "d1",
+    "season_bin": "summer",
+    "strategy_version": "target-v2"
+  },
+  "writes_production_db": false
+}

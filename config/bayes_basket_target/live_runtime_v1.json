@@ -1,0 +1,15 @@
+{
+  "calls_order_gateway": true,
+  "capital_scope": "target_owned_only",
+  "derived_from": "bayes_basket_target_no_live_runtime_v1",
+  "execution_mode": "production_live",
+  "live_submit_authorized": true,
+  "minted_at_utc": "2026-08-30T17:23:19+00:00",
+  "places_orders": true,
+  "reads_shared_live_capital": false,
+  "schema": "bayes_basket_target_live_runtime_v1",
+  "state": "ENABLED_FOR_PRODUCTION_LIVE",
+  "target_only": true,
+  "target_remaining_budget_usdc": 114.29,
+  "writes_production_db": false
+}

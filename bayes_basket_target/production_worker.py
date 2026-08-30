@@ -251,7 +251,13 @@ from .fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_production_worker_v2"
-PRODUCTION_EXECUTION_MODE = "production_no_live"
+# Live as of the 2026-08-30 go-live migration: the operator armed
+# live_intent_v1, the migration widened the intents CHECK, minted the live
+# activation and runtime, and raised the capital policy's three boundaries.
+# What still stops an order from reaching the exchange is data/live_paused.flag,
+# which is the operator's and no code's.
+PRODUCTION_EXECUTION_MODE = "production_live"
+NO_LIVE_EXECUTION_MODE = "production_no_live"
 MAX_PREPARED_CYCLES_PER_SCOPE = 1
 # Measured on 1022 observed station-days: the daily high landed inside these
 # local hours 80% of the time.  It peaks at 15:00 but only 17.6% there, so
@@ -605,11 +611,18 @@ def _writer_transaction(
             conn.execute(f"RELEASE {savepoint}")
         raise
 
+# One constant decides both the mode and the contract that has to agree with
+# it; they cannot drift apart into a worker running one and validating the
+# other.
 DEFAULT_TARGET_ACTIVATION = (
     Path(__file__).resolve().parents[1]
     / "config"
     / "trading"
-    / "bayes_basket_target_production_no_live_activation_v1.json"
+    / (
+        "bayes_basket_target_production_live_activation_v1.json"
+        if PRODUCTION_EXECUTION_MODE == "production_live"
+        else "bayes_basket_target_production_no_live_activation_v1.json"
+    )
 )
 DEFAULT_TARGET_MARKET_MANIFEST = DEFAULT_TARGET_WS_MANIFEST
 DEFAULT_TARGET_NATIVE_OOS_SNAPSHOT_MANIFEST = DEFAULT_NATIVE_OOS_SNAPSHOT_MANIFEST
@@ -1012,19 +1025,38 @@ def open_target_writer_if_enabled(path: Path, *, activation_path: Path) -> sqlit
         return None
     mode = str(os.environ.get("PM_TARGET_EXECUTION_MODE", "") or "").strip()
     if mode and mode != PRODUCTION_EXECUTION_MODE:
-        raise RuntimeError("target_writer_execution_mode_not_production_no_live")
+        raise RuntimeError("target_writer_execution_mode_mismatch")
     activation = load_target_activation(activation_path)
     if activation.get("execution_mode") != PRODUCTION_EXECUTION_MODE:
-        raise RuntimeError("target_writer_activation_not_production_no_live")
-    if any(activation.get(key) is not False for key in (
-        "live_decision_write_authorized",
-        "live_order_authorized",
-        "live_submit_authorized",
-        "places_orders",
-        "writes_production_db",
-        "calls_order_gateway",
-        "network_access",
-    )):
+        raise RuntimeError("target_writer_activation_mode_mismatch")
+    # Each mode asserts its own boundaries rather than one mode asserting all
+    # of them false.  Two stay false in both -- the target lane does not write
+    # the shared production database and does not mutate production in either
+    # mode -- and a live contract that let those through would be claiming a
+    # reach this lane has never had.
+    if PRODUCTION_EXECUTION_MODE == "production_live":
+        must_be_true = (
+            "live_decision_write_authorized",
+            "live_order_authorized",
+            "live_submit_authorized",
+            "places_orders",
+            "calls_order_gateway",
+            "network_access",
+        )
+        must_be_false = ("writes_production_db", "production_mutation")
+        if any(activation.get(key) is not True for key in must_be_true):
+            raise RuntimeError("target_writer_activation_live_boundary_invalid")
+    else:
+        must_be_false = (
+            "live_decision_write_authorized",
+            "live_order_authorized",
+            "live_submit_authorized",
+            "places_orders",
+            "writes_production_db",
+            "calls_order_gateway",
+            "network_access",
+        )
+    if any(activation.get(key) is not False for key in must_be_false):
         raise RuntimeError("target_writer_activation_live_boundary_invalid")
     resolved = resolve_target_database(path)
     conn = sqlite3.connect(

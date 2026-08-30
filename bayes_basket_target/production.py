@@ -64,7 +64,11 @@ from .stages import select_current_stage
 
 
 PRODUCTION_PLAN_SCHEMA = "bayes_basket_production_plan_v1"
-PRODUCTION_EXECUTION_MODE = "production_no_live"
+# Live since the 2026-08-30 migration; kept identical to
+# production_worker.PRODUCTION_EXECUTION_MODE, which a test asserts, because a
+# split here would have the worker and the submission path each believing a
+# different thing about what they are allowed to do.
+PRODUCTION_EXECUTION_MODE = "production_live"
 STAGE_ZERO_EXECUTION_ANCHOR_SCHEMA = (
     "basket_target_stage_zero_execution_anchor_v1"
 )

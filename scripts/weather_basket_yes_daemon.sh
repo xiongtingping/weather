@@ -18,7 +18,7 @@ if [ "${WEATHER_SERVICE_DOMAIN:-}" != "user" ]; then
   exit 78
 fi
 export WEATHER_SERVICE_DOMAIN=user
-export PM_TARGET_EXECUTION_MODE=production_no_live
+export PM_TARGET_EXECUTION_MODE=production_live
 export PM_TARGET_PRODUCTION_WRITER=1
 # The cooling-side ceiling: after the peak the day cannot warm, and
 # nothing else in the chain says so.  Serving refuses any event date at

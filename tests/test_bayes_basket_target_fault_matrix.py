@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from bayes_basket_target.production import PRODUCTION_EXECUTION_MODE
 from bayes_basket_target import ContractError, content_sha256
 from bayes_basket_target.canonical_ssot_v12_migration import (
     TARGET_TABLE_DDL as V12_TABLE_DDL,
@@ -515,7 +516,7 @@ def test_fault_matrix_unknown_partial_and_gateway_boundary_never_authorize() -> 
             commit_production_candidate_atomic(
                 conn,
                 compiled_plan={
-                    "execution_mode": "production_no_live",
+                    "execution_mode": PRODUCTION_EXECUTION_MODE,
                     "live_submit_authorized": False,
                     "boundary": {"calls_order_gateway": True},
                     "plan": {"station_id": "ZUUU", "event_date": "2026-07-23"},

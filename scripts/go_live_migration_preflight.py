@@ -255,18 +255,33 @@ def check_runtime_config_loader() -> dict[str, Any]:
 
 
 def check_execution_mode_constant() -> dict[str, Any]:
-    hits = []
+    """Both sites must say production_live, and must say the same thing.
+
+    This used to block on the constant merely existing, which is what "it is
+    pinned to no_live and has to change" looks like when you write the check
+    before the change and detect the wrong half of it.  It read the site, not
+    the value, so it stayed red after the constants were flipped.
+    """
+
+    values: dict[str, str] = {}
     for rel in ("bayes_basket_target/production_worker.py",
                 "bayes_basket_target/production.py"):
         for i, line in enumerate(_read(ROOT / rel).splitlines(), 1):
             if line.startswith("PRODUCTION_EXECUTION_MODE = "):
-                hits.append(f"{rel}:{i}")
+                values[f"{rel}:{i}"] = line.split("=", 1)[1].strip().strip('"\'')
+    distinct = set(values.values())
+    live = distinct == {"production_live"}
     return _check(
         "执行模式常量",
         4,
         "code",
-        BLOCK if hits else PASS,
-        f"production_no_live 硬编码于 {len(hits)} 处：{'; '.join(hits)}",
+        PASS if live else BLOCK,
+        (
+            f"两处一致为 production_live：{'; '.join(sorted(values))}"
+            if live
+            else f"取值 {sorted(distinct) or ['缺失']}；两处必须一致："
+                 + "; ".join(f"{k}={v}" for k, v in sorted(values.items()))
+        ),
         "两处必须同步，分叉会让 worker 与提交路各说各话。",
     )
 
@@ -297,17 +312,25 @@ def check_capital_policy() -> dict[str, Any]:
                     "live_submit_authorized")
         if policy.get(key) is False
     ]
-    blocked = scope.endswith("NO_LIVE_CANDIDATE") or bool(falses)
+    # Not on the scope.  ``authority_scope`` names which calibration
+    # artifacts the policy may resolve against, and a live contract keeps
+    # PRODUCTION_NO_LIVE_CANDIDATE -- ``activation.LIVE_AUTHORITY_SCOPE`` is
+    # that same string.  Blocking on its suffix made this gate one no
+    # migration could ever clear, and the migration, reading the same field
+    # the same wrong way, reported success on a step it had skipped.
+    blocked = bool(falses)
     return _check(
         "组合资金政策",
         5,
         "code",
         BLOCK if blocked else PASS,
         (
-            f"authority_scope={scope}，{len(falses)} 个 live 边界为 False；"
+            f"{len(falses)} 个 live 边界为 False{('：' + '、'.join(falses)) if falses else ''}；"
             f"风险敞口 {policy.get('portfolio_risk_fraction')}"
+            f"；authority_scope={scope}（live 下不变，指校准 artifact 范围）"
         ),
-        "迁移须把 authority_scope 升为 live 并重签；风险分数是真实敞口，先复核。",
+        "迁移翻 calls_order_gateway / places_orders / live_submit_authorized"
+        " 三个边界；风险分数是真实敞口，先复核。",
     )
 
 
@@ -318,17 +341,21 @@ def check_capital_policy() -> dict[str, Any]:
 
 def check_gateway_launcher() -> dict[str, Any]:
     source = _read(ROOT / "scripts" / "clob_order_service.sh")
-    refuses_live = 'PM_TARGET_EXECUTION_MODE:-}" != "production_no_live"' in source
+    # Reads what it exports and what it refuses, rather than matching the one
+    # phrase the pre-migration version happened to contain.
+    accepts_live = '"production_live"' in source
+    exports_live = "export PM_TARGET_EXECUTION_MODE=production_live" in source
+    refuses_live = not (accepts_live and exports_live)
     return _check(
         "网关启动器（反向闸）",
         6,
         "code",
         BLOCK if refuses_live else PASS,
         (
-            "clob_order_service.sh 在模式≠production_no_live 时 exit 78"
-            "——网关拒绝以 live 模式启动，方向与其它闸相反"
+            "clob_order_service.sh 仍拒绝以 live 模式启动"
+            f"（接受 live={accepts_live} 导出 live={exports_live}）"
             if refuses_live
-            else "启动器接受 live 模式"
+            else "启动器接受并导出 production_live"
         ),
         "迁移必须同时改启动器，否则改完模式网关直接起不来。",
     )

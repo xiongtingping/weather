@@ -14,8 +14,14 @@ if [ "${WEATHER_SERVICE_DOMAIN:-}" != "user" ]; then
   exit 78
 fi
 
-if [ "${PM_TARGET_EXECUTION_MODE:-}" != "production_no_live" ]; then
-  echo "[clob_order_service] production_no_live_required" >&2
+# Inverted on purpose while the system was no-live: the gateway refused to
+# start in any other mode, so a half-finished go-live could not leave it
+# running under a live contract it had not been checked against.  The
+# migration ran on 2026-08-30 and this is the check that moves with it.
+# Still a gate, not a rubber stamp: an unset or unknown mode is refused.
+if [ "${PM_TARGET_EXECUTION_MODE:-}" != "production_live" ] \
+  && [ "${PM_TARGET_EXECUTION_MODE:-}" != "production_no_live" ]; then
+  echo "[clob_order_service] known_execution_mode_required" >&2
   exit 78
 fi
 
@@ -36,7 +42,7 @@ fi
 # resident supplies evidence and health only; order submission remains closed.
 export WEATHER_SERVICE_DOMAIN=user
 export PM_LIVE_PAUSE_FILE="$ROOT/data/live_paused.flag"
-export PM_TARGET_EXECUTION_MODE=production_no_live
+export PM_TARGET_EXECUTION_MODE=production_live
 export PM_CLOB_ORDER_SERVICE_READ_ONLY=0
 # The region pre-rejection reads polymarket.com/api/geoblock -- the website's
 # restriction -- and refuses before signing, so the exchange's own answer was

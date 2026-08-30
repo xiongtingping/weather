@@ -2,7 +2,7 @@
   "schema": "basket_target_portfolio_capital_policy_v1",
   "policy_version": "portfolio-capital-v1",
   "rationale": "One book, several limits. The allocator already prices shared weather into each station's quota; these are the outer bounds that hold whatever the allocator concludes, so a single mispriced edge or a bad run cannot take the account.",
-  "portfolio_risk_fraction": 0.35,
+  "portfolio_risk_fraction": 0.3,
   "station_cap_fraction": 0.25,
   "block_exposure_cap_fraction": 0.5,
   "settlement_window_cap_fraction": 0.25,
@@ -15,7 +15,8 @@
   "valid_from_utc": "2026-08-01T00:00:00Z",
   "valid_until_utc": "2027-01-01T00:00:00Z",
   "authority_scope": "PRODUCTION_NO_LIVE_CANDIDATE",
-  "calls_order_gateway": false,
-  "places_orders": false,
-  "live_submit_authorized": false
+  "calls_order_gateway": true,
+  "places_orders": true,
+  "live_submit_authorized": true,
+  "scope_raised_utc": "2026-08-30T17:23:19+00:00"
 }

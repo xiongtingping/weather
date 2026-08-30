@@ -99,6 +99,7 @@ from asos_argmax_window import (
     materialize_missing_argmax_windows,
 )
 from asos_argmax_entry import materialize_argmax_entry_facts
+from bayes_basket_target.production import PRODUCTION_EXECUTION_MODE
 from asos_argmax_taf_reference import materialize_argmax_taf_references
 from asos_p1_slot_materializer import materialize_scheduled_asos_p1_observations
 from bayes_basket_target import serving_arithmetic
@@ -2966,6 +2967,38 @@ class AsosArgmaxEntryWorker:
         self.conn = _open_runtime(self.db_path)
 
 
+def _execution_mode_status() -> dict[str, Any]:
+    """What this resident is actually configured to do, read from the contract.
+
+    The mode comes from the one constant that also selects the activation
+    file, so the board cannot report a mode the worker is not validating
+    against.  The two boundaries come from the runtime config the mode
+    selects; if it cannot be read, they fail closed to False rather than
+    claiming an authority nobody proved.
+    """
+
+    live = PRODUCTION_EXECUTION_MODE == "production_live"
+    submit = gateway = False
+    try:
+        from bayes_basket_target.runtime_config import (
+            load_target_live_runtime_config,
+            load_target_no_live_runtime_config,
+        )
+        config = (
+            load_target_live_runtime_config() if live
+            else load_target_no_live_runtime_config()
+        )
+        submit = config.get("live_submit_authorized") is True
+        gateway = config.get("calls_order_gateway") is True
+    except Exception:
+        pass
+    return {
+        "execution_mode": PRODUCTION_EXECUTION_MODE,
+        "live_submit_authorized": submit,
+        "calls_order_gateway": gateway,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
@@ -2992,9 +3025,12 @@ def main() -> int:
         "basket_consumes_materialized_probability": True,
         "basket_strategy_id": "weather_basket_yes_v2",
         "hard_no_strategy_removed": True,
-        "execution_mode": "production_no_live",
-        "live_submit_authorized": False,
-        "calls_order_gateway": False,
+        # Read, not asserted.  These three were literals, and after the
+        # 2026-08-30 go-live migration the status board went on reporting
+        # production_no_live at a system running live -- a board that states
+        # what the code once was rather than what it is now is worse than no
+        # board, because it is the first thing anybody checks.
+        **_execution_mode_status(),
         "source_results": {},
     }
     try:

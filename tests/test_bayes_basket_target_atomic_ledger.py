@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from bayes_basket_target.production import PRODUCTION_EXECUTION_MODE
 from bayes_basket_target.atomic_ledger import (
     AtomicLedgerError,
     InjectedAtomicFault,
@@ -1611,7 +1612,7 @@ def test_production_candidate_adapter_requires_exact_version_training_inputs() -
     bundle = _bundle(index=10, amount=3.0)
     compiled = {
         "status": "ready_no_live",
-        "execution_mode": "production_no_live",
+        "execution_mode": PRODUCTION_EXECUTION_MODE,
         "live_submit_authorized": False,
         "production_plan_sha256": SHA_B,
         "production_cycle_sha256": SHA_A,
@@ -1703,7 +1704,7 @@ def test_ready_production_candidate_without_delta_v2_audit_fails_closed() -> Non
     bundle = _bundle(index=101, amount=3.0)
     compiled = {
         "status": "ready_no_live",
-        "execution_mode": "production_no_live",
+        "execution_mode": PRODUCTION_EXECUTION_MODE,
         "live_submit_authorized": False,
         "production_plan_sha256": SHA_B,
         "production_cycle_sha256": SHA_A,
@@ -1761,7 +1762,7 @@ def test_production_candidate_adapter_rejects_p0_before_any_write() -> None:
     bundle = _bundle(index=11, amount=3.0)
     compiled = {
         "status": "ready_no_live",
-        "execution_mode": "production_no_live",
+        "execution_mode": PRODUCTION_EXECUTION_MODE,
         "live_submit_authorized": False,
         "plan": {
             "station_id": "ZUUU",

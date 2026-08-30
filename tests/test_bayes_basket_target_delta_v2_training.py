@@ -6,6 +6,7 @@ import sqlite3
 import pytest
 from tests.pr12_atomic_test_support import awc_contract, install_canonical_v12
 
+from bayes_basket_target.production import PRODUCTION_EXECUTION_MODE
 from bayes_basket_target.atomic_ledger import (
     AtomicLedgerError,
     initialize_capital_pool,
@@ -189,7 +190,7 @@ def _compiled(envelope: ProbabilityEnvelope) -> dict:
         "status": "ready_no_live",
         "cadence_allows_candidate": True,
         "cadence_decision": "ALLOW_CANDIDATE",
-        "execution_mode": "production_no_live",
+        "execution_mode": PRODUCTION_EXECUTION_MODE,
         "live_submit_authorized": False,
         "production_plan_sha256": SHA_A,
         "production_cycle_sha256": SHA_B,

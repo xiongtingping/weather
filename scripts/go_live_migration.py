@@ -61,6 +61,9 @@ from live_control_server import live_stations as _live_scope  # noqa: E402
 DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 TABLE = "basket_target_order_intents"
 LEGACY = f"{TABLE}_pre_live"
+# The rollback point.  ``LEGACY`` lives only for the length of the
+# rebuild; this one is kept.
+ROLLBACK_TABLE = f"{TABLE}_pre_go_live"
 SERVICE_LABEL = f"gui/{__import__('os').getuid()}/com.weather.weather_basket_yes"
 
 INTENT_PATH = ROOT / "config/trading/live_intent_v1.json"
@@ -211,6 +214,31 @@ def _table_sql(conn: sqlite3.Connection, name: str) -> str:
     return str(row[0]) if row else ""
 
 
+def _foreign_key_children(conn: sqlite3.Connection) -> list[str]:
+    """Tables holding a foreign key into the table being rebuilt."""
+
+    children: list[str] = []
+    for (name,) in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+    ):
+        for row in conn.execute(f"PRAGMA foreign_key_list({name})"):
+            if str(row[2]) == TABLE:
+                children.append(str(name))
+                break
+    return sorted(children)
+
+
+def _scoped_foreign_key_violations(
+    conn: sqlite3.Connection,
+) -> list[tuple[Any, ...]]:
+    """Referential integrity for the rebuilt table and everything pointing at it."""
+
+    violations: list[tuple[Any, ...]] = []
+    for name in [TABLE, *_foreign_key_children(conn)]:
+        violations.extend(conn.execute(f"PRAGMA foreign_key_check({name})").fetchall())
+    return violations
+
+
 def _rebuild(conn: sqlite3.Connection) -> dict[str, Any]:
     """Widen the one CHECK, carrying every row and every attachment across.
 
@@ -256,6 +284,19 @@ def _rebuild(conn: sqlite3.Connection) -> dict[str, Any]:
         raise ContractError("go_live_migration_ddl_rewrite_failed")
 
     conn.execute("PRAGMA foreign_keys=OFF")
+    # Without this, the rename below silently rewrites every other table's
+    # foreign-key clause to follow it.  Six tables hold keys into this one --
+    # reconciliations, execution receipts, transition versions, version
+    # vectors and two post-fill request tables -- and they would come out of
+    # the migration pointing at ``_pre_live``: at a table that no longer
+    # exists once it is dropped, or at the kept rollback point once it is
+    # renamed.  Either way the bindings are gone and nothing complains, since
+    # a foreign key naming a missing table simply never fires.
+    #
+    # The rehearsal cannot see this and never could: its throwaway database
+    # holds the one table, so there are no children to repoint.  A fixture
+    # with a child is what the tests carry now.
+    conn.execute("PRAGMA legacy_alter_table=ON")
     conn.execute("BEGIN IMMEDIATE")
     for name, _sql in triggers:
         conn.execute(f"DROP TRIGGER IF EXISTS {name}")
@@ -287,11 +328,47 @@ def _rebuild(conn: sqlite3.Connection) -> dict[str, Any]:
         # Nothing recorded before the migration may claim live authority; a
         # row that does would mean the copy invented one.
         raise ContractError("go_live_migration_history_gained_authority")
-    conn.execute(f"DROP TABLE {LEGACY}")
-    violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+    # Keep it, under a stable name, as the rollback point.
+    #
+    # This used to be a DROP, and the rollback point was a copy of the whole
+    # SSOT taken in apply().  That database is 27 GB and the disk it lives on
+    # runs at 95%: the first real apply died in shutil.copy2 with ENOSPC,
+    # having filled the volume to zero bytes free before it failed.  Freeing
+    # the room was not available either -- the retention sweep reports every
+    # one of 80,617 raw NWP objects still referenced and required for strict
+    # replay, so there was nothing it was allowed to delete.
+    #
+    # Backing up 27 GB to protect a 1,406-row rebuild was disproportionate
+    # anyway, and a whole-file restore is the worse rollback: it discards
+    # every unrelated production write since the migration.  The kept table
+    # carries its original DDL, pinned CHECK and all, so the rollback is exact
+    # for the thing that changed and touches nothing else.
+    conn.execute(f"DROP TABLE IF EXISTS {ROLLBACK_TABLE}")
+    conn.execute(f"ALTER TABLE {LEGACY} RENAME TO {ROLLBACK_TABLE}")
+    # Scoped to what this migration can actually have broken: the rebuilt
+    # table, and the tables holding foreign keys into it, which a drop and
+    # recreate could orphan.  Six of those exist.
+    #
+    # It was an unscoped ``PRAGMA foreign_key_check``, which reads the whole
+    # database, and the first real apply died on it -- 128 violations, every
+    # one of them in calibration_native_ensemble_historical_member_run, an
+    # unrelated table, and none in this one.  A migration that refuses to run
+    # because of a pre-existing defect somewhere else in a 117-table database
+    # is not checking its own work; it is holding the whole schema hostage to
+    # a rebuild of 1,406 rows.
+    #
+    # The rehearsal could never have caught it: the throwaway database holds
+    # only this table, so the whole-database check and the scoped one are the
+    # same question there.  That is the shape of this class of bug -- a
+    # rehearsal is only as representative as the fixture it runs on.
+    violations = _scoped_foreign_key_violations(conn)
     if violations:
-        raise ContractError("go_live_migration_foreign_key_broken")
+        raise ContractError(
+            "go_live_migration_foreign_key_broken:"
+            + ",".join(sorted({str(row[0]) for row in violations}))
+        )
     conn.execute("COMMIT")
+    conn.execute("PRAGMA legacy_alter_table=OFF")
     conn.execute("PRAGMA foreign_keys=ON")
 
     final = _table_sql(conn, TABLE)
@@ -404,13 +481,35 @@ def mint_live_runtime(*, dry_run: bool) -> dict[str, Any]:
             "budget_usdc": payload["target_remaining_budget_usdc"]}
 
 
+LIVE_CAPITAL_BOUNDARIES = (
+    "calls_order_gateway", "places_orders", "live_submit_authorized",
+)
+
+
 def raise_capital_policy_scope(*, dry_run: bool) -> dict[str, Any]:
+    """Raise the three boundaries that decide what the capital policy permits.
+
+    ``authority_scope`` is not one of them and is not touched.  It names which
+    calibration artifacts a policy may resolve against -- FORMAL_PROMOTED or
+    PRODUCTION_NO_LIVE_CANDIDATE -- and a live contract keeps the latter;
+    ``activation.LIVE_AUTHORITY_SCOPE`` is that same string, and the live
+    activation this migration mints validates against it.
+
+    The idempotence check used to key on that field, comparing it to a
+    constant it always equalled, so this function returned "already_live"
+    every time and never once set the three booleans it exists to set.  The
+    first real apply reported success on this step and changed nothing; the
+    preflight, reading the same field the same wrong way, then reported a
+    blocker that no migration could ever clear.  Key it on what actually
+    changes.
+    """
+
     policy = _json(CAPITAL_POLICY)
-    before = policy.get("authority_scope")
-    if before == LIVE_AUTHORITY_SCOPE:
-        return {"path": str(CAPITAL_POLICY), "state": "already_live"}
-    policy["authority_scope"] = LIVE_AUTHORITY_SCOPE
-    for key in ("calls_order_gateway", "places_orders", "live_submit_authorized"):
+    before = {key: policy.get(key) for key in LIVE_CAPITAL_BOUNDARIES}
+    if all(value is True for value in before.values()):
+        return {"path": str(CAPITAL_POLICY), "state": "already_live",
+                "boundaries": before}
+    for key in LIVE_CAPITAL_BOUNDARIES:
         policy[key] = True
     policy["scope_raised_utc"] = datetime.now(UTC).isoformat(timespec="seconds")
     if not dry_run:
@@ -418,7 +517,9 @@ def raise_capital_policy_scope(*, dry_run: bool) -> dict[str, Any]:
             json.dumps(policy, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
     return {"path": str(CAPITAL_POLICY), "before": before,
-            "after": LIVE_AUTHORITY_SCOPE, "written": not dry_run}
+            "after": {key: True for key in LIVE_CAPITAL_BOUNDARIES},
+            "authority_scope_unchanged": policy.get("authority_scope"),
+            "written": not dry_run}
 
 
 # --------------------------------------------------------------------------
@@ -502,15 +603,16 @@ def apply(*, backup: bool = True) -> dict[str, Any]:
         "schema": "go_live_migration_receipt_v1",
         "started_at_utc": datetime.now(UTC).isoformat(timespec="seconds"),
     }
-    if backup:
-        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-        target = DB.with_name(f"{DB.name}.pre_go_live_{stamp}")
-        shutil.copy2(DB, target)
-        receipt["backup"] = str(target)
     conn = sqlite3.connect(DB, timeout=120.0, isolation_level=None)
     try:
         conn.execute("PRAGMA busy_timeout=120000")
         receipt["rebuild"] = _rebuild(conn)
+        receipt["rollback_point"] = {
+            "table": ROLLBACK_TABLE,
+            "rows": int(conn.execute(
+                f"SELECT COUNT(*) FROM {ROLLBACK_TABLE}"
+            ).fetchone()[0]),
+        }
     finally:
         conn.close()
     receipt["live_activation"] = mint_live_activation(dry_run=False)
@@ -531,25 +633,78 @@ def apply(*, backup: bool = True) -> dict[str, Any]:
     return receipt
 
 
-def rollback(*, backup_path: str) -> dict[str, Any]:
-    """Put the pinned CHECK back by restoring the pre-migration file.
+def rollback() -> dict[str, Any]:
+    """Put the pinned CHECK back by restoring the table the migration kept.
 
-    Restoring the backup rather than re-narrowing the CHECK in place: a
-    re-narrow would fail the moment one live-authorised intent exists, which
-    is exactly when somebody would be reaching for this.
+    Restoring rather than re-narrowing in place: a re-narrow would fail the
+    moment one live-authorised intent exists, which is exactly when somebody
+    would be reaching for this.  The kept table carries the original DDL, so
+    restoring it restores the pinned CHECK and the pre-migration rows
+    together, and any intent written under live authority since is discarded
+    -- which is what rolling back means.
+
+    Symmetric with ``_rebuild``: that moved the indexes and triggers onto the
+    widened table, so they are read off it, dropped with it, and recreated on
+    the restored one.
     """
 
-    source = Path(backup_path).expanduser().resolve(strict=True)
     if _service_running():
         raise ContractError("go_live_rollback_writer_running")
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    aside = DB.with_name(f"{DB.name}.rolled_back_{stamp}")
-    shutil.move(str(DB), str(aside))
-    shutil.copy2(source, DB)
+    conn = sqlite3.connect(DB, timeout=120.0, isolation_level=None)
+    try:
+        conn.execute("PRAGMA busy_timeout=120000")
+        kept = _table_sql(conn, ROLLBACK_TABLE)
+        if not kept:
+            raise ContractError("go_live_rollback_point_missing")
+        if PINNED_CHECK not in kept:
+            raise ContractError("go_live_rollback_point_not_pinned")
+        attachments = [
+            str(row[0]) for row in conn.execute(
+                "SELECT sql FROM sqlite_master WHERE tbl_name=?"
+                " AND type IN ('index','trigger') AND sql IS NOT NULL", (TABLE,),
+            )
+        ]
+        names = [
+            (str(row[0]), str(row[1])) for row in conn.execute(
+                "SELECT type,name FROM sqlite_master WHERE tbl_name=?"
+                " AND type IN ('index','trigger') AND sql IS NOT NULL", (TABLE,),
+            )
+        ]
+        discarded = int(conn.execute(
+            f"SELECT COUNT(*) FROM {TABLE} WHERE live_submit_authorized<>0"
+        ).fetchone()[0])
+        restored = int(conn.execute(
+            f"SELECT COUNT(*) FROM {ROLLBACK_TABLE}"
+        ).fetchone()[0])
+
+        conn.execute("PRAGMA foreign_keys=OFF")
+        # Same hazard as the rebuild: the rename would drag every child's
+        # foreign key along with it.
+        conn.execute("PRAGMA legacy_alter_table=ON")
+        conn.execute("BEGIN IMMEDIATE")
+        for kind, name in names:
+            conn.execute(f"DROP {kind.upper()} IF EXISTS {name}")
+        conn.execute(f"DROP TABLE {TABLE}")
+        conn.execute(f"ALTER TABLE {ROLLBACK_TABLE} RENAME TO {TABLE}")
+        conn.execute("COMMIT")
+        for sql in attachments:
+            conn.execute(sql)
+        conn.execute("PRAGMA legacy_alter_table=OFF")
+        conn.execute("PRAGMA foreign_keys=ON")
+
+        final = _table_sql(conn, TABLE)
+        if PINNED_CHECK not in final:
+            raise ContractError("go_live_rollback_check_not_pinned")
+    finally:
+        conn.close()
     for path in (LIVE_ACTIVATION, LIVE_RUNTIME):
         if path.is_file():
             path.unlink()
-    return {"restored_from": str(source), "previous_db_kept_at": str(aside)}
+    return {
+        "restored_from": ROLLBACK_TABLE,
+        "rows_restored": restored,
+        "live_authorised_rows_discarded": discarded,
+    }
 
 
 def main() -> int:
@@ -561,15 +716,11 @@ def main() -> int:
              " real rebuild on a throwaway copy; apply is the migration;"
              " rollback restores a pre-migration backup",
     )
-    parser.add_argument("--backup", help="rollback: the .pre_go_live_ file")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
     if args.mode == "rollback":
-        if not args.backup:
-            print("rollback needs --backup", file=sys.stderr)
-            return 2
-        print(json.dumps(rollback(backup_path=args.backup), ensure_ascii=False, indent=2))
+        print(json.dumps(rollback(), ensure_ascii=False, indent=2))
         return 0
 
     if args.mode == "rehearse":
