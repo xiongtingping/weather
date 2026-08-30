@@ -1179,6 +1179,101 @@ TRUTH_LANDING_PRICE_BANDS = ((0.00, 0.03), (0.03, 0.05)) + tuple(
 TRUTH_LANDING_COARSE = TRUTH_LANDING_PRICE_BANDS
 
 
+# The bias layer's half-life change, and the instant it began being fitted.
+# Both are facts about a past deployment, so they are stated rather than
+# derived -- the same two constants ``h5_ledger_readiness_check`` states.
+H5_FROM_UTC = "2026-08-27T06:48:00Z"
+
+
+def collect_h5_readiness(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Whether the bias half-life change can yet be scored on the book.
+
+    The question the section answers is "has the fleet finished turning
+    over onto H5", and it is asked of the DECISIONS rather than of the
+    artifact pool.  Each P0 envelope records the artifact fingerprint that
+    served each of its systems, so the answer is exact.  Two pool proxies
+    were tried first and both lied by a wide margin -- artifacts carry a
+    thirty-day validity window against a daily refit, so a scope holds
+    about twenty-one superseded generations that no decision will ever
+    read, and counting them put 2026-08-29 at 18% when the decisions say
+    100%.  Provisional members are excluded, not counted against: they
+    have no artifact of their own by design.
+    """
+
+    known = {
+        str(row[0]) for row in conn.execute(
+            "SELECT content_sha256"
+            " FROM calibration_native_ensemble_system_artifact"
+        )
+    }
+    fitted_under_h5 = {
+        str(row[0]) for row in conn.execute(
+            "SELECT content_sha256"
+            " FROM calibration_native_ensemble_system_artifact"
+            " WHERE valid_from_utc>=?",
+            (H5_FROM_UTC,),
+        )
+    }
+    days: list[dict[str, Any]] = []
+    for (day,) in conn.execute(
+        "SELECT DISTINCT event_date FROM basket_probability_envelope"
+        " WHERE stage='P0' AND state='COMMITTED' AND event_date>=?"
+        " ORDER BY event_date",
+        (H5_FROM_UTC[:10],),
+    ):
+        decisions = 0
+        under_h5 = 0
+        provisional_only = 0
+        for (lineage_json,) in conn.execute(
+            "SELECT lineage_json FROM basket_probability_envelope"
+            " WHERE stage='P0' AND state='COMMITTED' AND event_date=?",
+            (str(day),),
+        ):
+            try:
+                lineage = json.loads(lineage_json)
+            except (TypeError, ValueError):
+                continue
+            raw = lineage.get("system_artifact_shas_json")
+            if not raw:
+                continue
+            try:
+                shas = json.loads(raw) if isinstance(raw, str) else raw
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(shas, dict) or not shas:
+                continue
+            calibrated = [v for v in shas.values() if v in known]
+            if not calibrated:
+                provisional_only += 1
+                continue
+            decisions += 1
+            if all(v in fitted_under_h5 for v in calibrated):
+                under_h5 += 1
+        if not decisions:
+            continue
+        settled = conn.execute(
+            "SELECT COUNT(*) FROM paper_trade_settlement WHERE event_date=?",
+            (str(day),),
+        ).fetchone()[0]
+        days.append({
+            "event_date": str(day),
+            "decisions": decisions,
+            "served_under_h5": under_h5,
+            "share": round(under_h5 / decisions, 3),
+            "provisional_only": provisional_only,
+            "settled_chains": int(settled or 0),
+        })
+    scored = [
+        item for item in days
+        if item["share"] >= 0.9 and item["settled_chains"] > 0
+    ]
+    return {
+        "from_utc": H5_FROM_UTC,
+        "days": days,
+        "scoreable_days": [item["event_date"] for item in scored],
+    }
+
+
 def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
     """Where truth settles, by market price and by model claim.
 
@@ -4385,6 +4480,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "serving_weights": serving_weights,
         "center_width": center_width,
         "scorecard": scorecard,
+        "h5_readiness": collect_h5_readiness(conn),
         "window_divergence": collect_window_divergence(conn),
         "edge_band_health": collect_edge_band_health(conn),
         "risk_metrics": collect_risk_metrics(conn),
@@ -6830,6 +6926,45 @@ function hitRate(){
 }
 
 
+function h5Readiness(){
+  const H = D.h5_readiness || {}; const days = H.days || [];
+  if(!days.length) return "";
+  const latest = days[days.length-1];
+  const ready = (H.scoreable_days || []);
+  const pill = latest.share >= 0.9
+    ? `<span class="pill green">舰队已换代 ${(100*latest.share).toFixed(0)}%</span>`
+    : `<span class="pill amber">换代中 ${(100*latest.share).toFixed(0)}%</span>`;
+  const rows = days.map(d => `<tr>
+    <td>${d.event_date}</td>
+    <td class="num">${d.decisions}</td>
+    <td class="num">${d.served_under_h5}</td>
+    <td class="num"><b>${(100*d.share).toFixed(1)}%</b></td>
+    <td class="num">${d.provisional_only}</td>
+    <td class="num">${d.settled_chains || "—"}</td>
+    <td>${d.share>=0.9 && d.settled_chains>0 ? "可打分" : ""}</td>
+  </tr>`).join("");
+  return `<h2 id="h5">偏差半衰期 H5 换代进度 ${pill}</h2>
+  <p class="sub">偏差层的半衰期 2026-08-27 从 15 天改为 5 天。要在账本上给这个改动
+  打分，那一天的决策必须确实由 H5 拟合的订正表服务过——这里逐条决策数，不是数表。</p>
+  <div class="why"><b>为什么按决策数而不按表数：</b>每张订正表有 30 天有效期而舰队
+  每天重拟合，所以同一个 scope 会同时躺着约 21 代旧表，而一次决策只读它激活指针
+  指名的那一张。按表数会把这些没人读的旧代算进分母——2026-08-29 因此显示 18%，
+  而它的决策口径是 100%。<b>临时成员（provisional）单列不计入</b>：它们按设计
+  就没有自己的订正表，借用同站已认证成员的参数，不属于任何半衰期。</div>
+  <table style="margin-top:12px"><thead><tr>
+    <th>事件日</th><th>已标定决策</th><th>其中 H5 服务</th><th>占比</th>
+    <th>纯临时成员决策</th><th>已结算链</th><th></th>
+  </tr></thead><tbody>${rows}</tbody></table>
+  ${ready.length ? `<div class="why" style="margin-top:10px"><b>已可打分：</b>
+  ${ready.join("、")}。<b>但首次实跑（2026-08-30，8-29 单日）判定为无判别力</b>：
+  H5 臂 31 链 −31.2%、H15 反事实臂 26 链 −8.8%，差额 +19.33 全部由 RPLL 与 SAEZ
+  两条链扛着——剔 1 剩 +8.08、剔 2 剩 +0.01、剔 3 转负 −1.21，符号 5:7 反而更多链
+  变差，且两臂开出的链集合本身就不同（H5 独有 7 条、H15 独有 2 条）。
+  单日 31 条链远低于账本判例要求的量级，<b>结论是"还不能判"，不是"H15 更好"</b>。
+  要有结论得攒到几十个事件日。</div>` : ""}`;
+}
+
+
 function materialization(){
   const T = D.truth || {}; const cov = T.coverage || [];
   if(!cov.length) return "";
@@ -7482,7 +7617,7 @@ const GROUPS = [
      [servingWeights,"四大模型权重"],[regional,"区域模型"],
      [dispersion,"模型离散度"],[hitRate,"模型命中率"],
      [oosScores,"OOS 打分"],[centerWidth,"中心/宽度"],
-     [scorecard,"模型校准总检"]]},
+     [scorecard,"模型校准总检"],[h5Readiness,"H5 换代进度"]]},
   {id:"shape", label:"概率与持仓形状", tone:"#7ee787",
    note:"概率怎么被分档修正、注码怎么被固化减仓、分布和实际持仓差在哪",
    sections:[[bandTable,"band 表"],[consolidation,"固化减仓"],

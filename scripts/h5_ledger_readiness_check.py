@@ -69,6 +69,22 @@ def main() -> int:
         "ready_days": [],
     }
     try:
+        # Fingerprints, read once: which artifacts exist at all, and which
+        # of them were fitted under H5.
+        known_shas = {
+            str(row[0]) for row in conn.execute(
+                "SELECT content_sha256"
+                " FROM calibration_native_ensemble_system_artifact"
+            )
+        }
+        h5_shas = {
+            str(row[0]) for row in conn.execute(
+                "SELECT content_sha256"
+                " FROM calibration_native_ensemble_system_artifact"
+                " WHERE valid_from_utc>=?",
+                (H5_FROM_UTC,),
+            )
+        }
         settled = [
             str(row[0]) for row in conn.execute(
                 "SELECT DISTINCT event_date FROM paper_trade_settlement"
@@ -90,19 +106,62 @@ def main() -> int:
                 " WHERE event_date=? AND stage='P0' AND decision_at_utc>=?",
                 (day, retention or H5_FROM_UTC),
             ).fetchone()[0]
-            # How much of what served that day had been refit under H5.  A
-            # decision reads the artifact valid at its own instant, so the
-            # honest measure is over artifacts valid across the day.
-            h5_share = conn.execute(
-                "SELECT COUNT(*) FROM calibration_native_ensemble_system_artifact"
-                " WHERE valid_from_utc>=? AND valid_from_utc<=?",
-                (H5_FROM_UTC, str(latest)),
-            ).fetchone()[0]
-            all_valid = conn.execute(
-                "SELECT COUNT(*) FROM calibration_native_ensemble_system_artifact"
-                " WHERE valid_from_utc<=? AND valid_until_utc>?",
-                (str(latest), str(latest)),
-            ).fetchone()[0]
+            # How much of what served that day had been refit under H5.
+            #
+            # Asked of the DECISIONS, not of the artifact pool.  Each P0
+            # envelope records the artifact fingerprint that served each of
+            # its systems (``system_artifact_shas_json``), so the question
+            # has an exact answer and needs no proxy.  Two proxies were
+            # tried and both lied: counting every artifact whose validity
+            # window covers the instant understated coverage three-fold
+            # (artifacts carry a thirty-day window and the fleet refits
+            # daily, so a scope holds ~21 superseded generations at once --
+            # CYYZ JJA/h00_12/00Z alone had 634 -- while production reads
+            # exactly the one its highest-generation activation names), and
+            # ranking by that activation fixed the denominator but still
+            # measured the pool at ``latest``, which for a just-closed day
+            # is now, not then.  Measured 2026-08-30, the three answers for
+            # 2026-08-29 were 18%, 52%, and the true 97%.
+            #
+            # A day is served under H5 when every calibrated member of
+            # every decision came from an H5-fitted artifact.  Provisional
+            # members are excluded rather than counted against it: they
+            # have no artifact of their own by design -- they enter at a
+            # certified weight borrowing their station's calibrated peers'
+            # parameters -- so their fingerprints are not in the artifact
+            # table and belong to neither half-life.
+            provisional_only = 0
+            decisions = 0
+            served_under_h5 = 0
+            for (lineage_json,) in conn.execute(
+                "SELECT lineage_json FROM basket_probability_envelope"
+                " WHERE stage='P0' AND event_date=? AND state='COMMITTED'",
+                (day,),
+            ):
+                try:
+                    lineage = json.loads(lineage_json)
+                except (TypeError, ValueError):
+                    continue
+                raw = lineage.get("system_artifact_shas_json")
+                if not raw:
+                    continue
+                try:
+                    shas = json.loads(raw) if isinstance(raw, str) else raw
+                except (TypeError, ValueError):
+                    continue
+                if not isinstance(shas, dict) or not shas:
+                    continue
+                calibrated = [
+                    value for value in shas.values() if value in known_shas
+                ]
+                if not calibrated:
+                    provisional_only += 1
+                    continue
+                decisions += 1
+                if all(value in h5_shas for value in calibrated):
+                    served_under_h5 += 1
+            h5_share = served_under_h5
+            all_valid = decisions
             packets = (ARCHIVE / day)
             retained = (
                 sum(1 for _ in packets.glob("*.json.gz"))
@@ -117,6 +176,9 @@ def main() -> int:
                 "retention_coverage": round(covered, 3),
                 "retained_packets": retained,
                 "h5_artifact_share": round(share, 3),
+                "calibrated_decisions": all_valid,
+                "calibrated_decisions_h5": h5_share,
+                "provisional_only_decisions": provisional_only,
                 "ready": bool(
                     covered >= 0.9 and retained > 0 and share >= 0.9
                 ),
