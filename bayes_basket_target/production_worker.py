@@ -729,6 +729,23 @@ CORRECTION_AUTO_CLEAR_DEADLINE_SEC = 900.0
 # Far enough back to pick up a halt raised while the pass was down, without
 # reopening months of settled history on every run.
 CORRECTION_AUTO_CLEAR_WINDOW_DAYS = 21
+
+
+def correction_review_pending(blockers: Any) -> bool:
+    """Whether a P1 blocker list names a station-day awaiting a review.
+
+    The blocker is the cheapest precise signal that the auto-clear pass has
+    work: it costs nothing to read and it only appears when a correction is
+    genuinely unresolved at this decision clock.
+    """
+
+    return any(
+        "correction_review_required" in str(item.get("reason") or "")
+        for item in (blockers or [])
+        if isinstance(item, Mapping)
+    )
+
+
 HISTORICAL_TAF_CAPTURE_RETRY_SEC = 24 * 3600.0
 HISTORICAL_TAF_CAPTURE_DEADLINE_SEC = 3600.0
 HISTORICAL_TAF_DECISION_ANCHOR_HOURS = (1, 7, 13, 19)
@@ -13553,6 +13570,20 @@ class TargetProductionWorker:
                     raise ContractError(
                         "resident_p1_blocked_before_current_scope_market"
                     )
+            # A pending correction review halts that station-day's P1 -- the
+            # only writer of the reported-high hard bound -- until the standing
+            # auto-clear policy runs, and that runs on a six-hour timer.
+            # Measured over 128 corrections since 2026-08-23: median wait 0.8h,
+            # but 55 waited over an hour, 14 over three, one 16.  The blocker
+            # itself is the cheap, precise signal that work is pending, so let
+            # it retire the timer; the next poll runs the same policy
+            # subprocess it always would, and the halt lasts a poll instead of
+            # a shift.  Only the throttle is cleared -- never the in-flight
+            # guard, which is what keeps one subprocess running at a time.
+            if correction_review_pending(
+                resident_p1_ingress.get("blockers")
+            ):
+                self._correction_auto_clear_last_mono = None
             regime_ingress = self._materialize_regime_ssot(as_of_utc=now)
             self._mark("regime")
             ws_scope_catalog = (
