@@ -328,6 +328,7 @@ def check_gateway_health() -> list[dict[str, Any]]:
             )
         ]
     region = health.get("region") or {}
+    proxy_region = (health.get("proxy") or {}).get("region") or {}
     caps = health.get("capabilities") or []
     out = [
         _check(
@@ -338,21 +339,65 @@ def check_gateway_health() -> list[dict[str, Any]]:
             f"read_only={health.get('read_only')} 能力={len(caps)} 项",
             "网关侧已具备下单能力，不是缺口。",
         ),
+        # Not an ``external`` gate.  ``blocking_orders`` is computed from
+        # ``polymarket.com/api/geoblock`` -- the *website's* restriction --
+        # and clob_order_service.mjs:2798 turns it into a local pre-rejection
+        # that never signs and never posts.  The exchange's own answer is a
+        # different question, and the record separates them: the three real
+        # "Trading restricted in your region" responses are all 2026-08-07,
+        # from the US egress.  Every rejection since the gate landed
+        # (2026-08-09, 81d119f0) is our own ``clob_region_blocked:JP``, so
+        # the CLOB has not been asked from this egress even once.
         _check(
-            "交易所区域（网关自证）",
-            7,
-            "external",
+            "区域预拒闸（本地，非交易所）",
+            6,
+            "code",
             BLOCK if region.get("blocking_orders") else PASS,
             (
-                f"country={region.get('country')} region={region.get('region')}"
+                f"网关按网站 geoblock 自我预拒："
+                f"country={region.get('country') or proxy_region.get('country') or '?'}"
                 f" blocked={region.get('blocked')}"
-                f" blocking_orders={region.get('blocking_orders')}"
-                f" @ {region.get('observed_at')}"
+                f" 探针={region.get('error') or 'ok'}"
+                f"；此闸 fail-open（探针失败即放行），"
+                "且交易所本身自 2026-08-09 起从未被问过"
             ),
-            "只能由操作者在代理里换非受限地区节点。",
+            (
+                "旋钮 PM_CLOB_IGNORE_REGION_BLOCK=1 可关闸。"
+                "⚠️ 先读 check_asos_bypass 的警告：ASOS 车道绕过暂停旗与只读位，"
+                "这道闸是它唯一的阻拦。"
+            ),
         ),
     ]
     return out
+
+
+def check_asos_bypass() -> dict[str, Any]:
+    """Who actually gets stopped by the pause flag -- and who does not.
+
+    ``if (livePausePresent()) { if (!isAsosLive) { reject } }``: the ASOS
+    argmax lane is exempt from the pause flag, and from the read-only flag
+    directly above it.  So for that lane the region pre-rejection is not one
+    gate among several, it is the last one.  Anybody reaching for
+    PM_CLOB_IGNORE_REGION_BLOCK has to know that before they reach.
+    """
+
+    source = _read(ROOT / "scripts" / "clob_order_service.mjs")
+    bypasses_pause = "if (livePausePresent()) {\n      if (!isAsosLive) {" in source
+    launcher = _read(ROOT / "scripts" / "clob_order_service.sh")
+    asos_live = "PM_ASOS_ARGMAX_LIVE_ENABLED=1" in launcher
+    return _check(
+        "ASOS 车道的暂停旗豁免",
+        6,
+        "operator",
+        WARN if (bypasses_pause and asos_live) else PASS,
+        (
+            "ASOS 车道绕过暂停旗与只读位（isAsosLive），"
+            "区域预拒是它唯一剩下的闸——关闸即可能真下单"
+            if (bypasses_pause and asos_live)
+            else "ASOS 无豁免，或未启用"
+        ),
+        "关区域闸之前，先决定 ASOS 车道是否也该放行；两者是同一个开关。",
+    )
 
 
 # --------------------------------------------------------------------------
@@ -373,14 +418,18 @@ def check_geoblock_direct() -> dict[str, Any]:
             "地区探针（直连）", 7, "external", WARN,
             "探针无响应", "联网后重跑。",
         )
+    # Reported, not scored: this endpoint is the website's, and the ledger
+    # of real attempts shows the exchange answering differently.  Calling it
+    # BLOCK is what produced the wrong verdict on 2026-08-30.
     return _check(
-        "地区探针（直连）",
+        "网站 geoblock 探针（仅参考）",
         7,
         "external",
-        BLOCK if probe.get("blocked") else PASS,
+        WARN if probe.get("blocked") else PASS,
         f"country={probe.get('country')} region={probe.get('region')}"
-        f" blocked={probe.get('blocked')}",
-        "换出口节点后复验：curl -s https://polymarket.com/api/geoblock",
+        f" blocked={probe.get('blocked')}"
+        "（网站口径；不等于 CLOB 拒单）",
+        "要证明交易所口径只能真发一单，那是操作者的动作。",
     )
 
 
@@ -431,6 +480,7 @@ def main() -> int:
     checks.append(check_gateway_launcher())
     checks.append(check_pause_flag())
     checks.extend(check_gateway_health())
+    checks.append(check_asos_bypass())
     checks.append(check_geoblock_direct())
     checks.append(check_credentials_present())
     checks.append(check_funding_is_unstated())
