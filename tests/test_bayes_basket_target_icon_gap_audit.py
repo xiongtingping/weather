@@ -13,6 +13,8 @@ from scripts.audit_bayes_basket_target_icon_gap import build_audit  # noqa: E402
 from scripts.audit_bayes_basket_target_icon_gap import _launchctl_icon_jobs  # noqa: E402
 from scripts.audit_bayes_basket_target_icon_gap import _latest_model_arrival_set  # noqa: E402
 from scripts.audit_bayes_basket_target_icon_gap import _latest_native_decode  # noqa: E402
+from bayes_basket_target.fleet import expected_station_count
+from bayes_basket_target.model_arrival_capture_config import EXPECTED_SCOPE
 
 
 def test_audit_does_not_count_macos_iconservices_as_weather_scheduler() -> None:
@@ -28,7 +30,7 @@ def test_icon_is_not_removed_but_monitor_gate_is_not_default_open() -> None:
     assert switches["catalog_provider_present"] is True
     assert switches["target_capture_config_enabled"] is True
     assert switches["target_capture_config_includes_icon"] is True
-    assert switches["target_capture_config_station_scope"] == "canonical_45_station"
+    assert switches["target_capture_config_station_scope"] == EXPECTED_SCOPE
     assert switches["target_capture_is_45_station_scoped"] is True
     assert switches["resident_capture_config_station_scope"] == "ZUUU"
     assert switches["model_ids_include_icon"] is True
@@ -53,10 +55,10 @@ def test_audit_keeps_forward_preflight_out_of_default_historical_audit() -> None
     assert statement["current_forward_icon_data"] == "PRESENT"
     assert statement["historical_closed_icon_data_for_calibration"] == "PRESENT_BUT_CALIBRATION_WINDOW_INSUFFICIENT"
     assert "当前 ICON 有数据" in statement["interpretation"]
-    assert result["availability_summary"]["historical_closed"]["complete_curve_count"] == 45
-    assert result["availability_summary"]["historical_closed"]["closed_et_exact_join_station_day_count"] == 45
-    assert result["availability_summary"]["current_forward"]["icon_arrival_count"] == 45
-    assert result["availability_summary"]["current_forward"]["icon_complete_curve_count"] == 45
+    assert result["availability_summary"]["historical_closed"]["complete_curve_count"] == expected_station_count()
+    assert result["availability_summary"]["historical_closed"]["closed_et_exact_join_station_day_count"] == expected_station_count()
+    assert result["availability_summary"]["current_forward"]["icon_arrival_count"] == expected_station_count()
+    assert result["availability_summary"]["current_forward"]["icon_complete_curve_count"] == expected_station_count()
     assert result["target_icon_forward_fanout"]["valid_time_count"] == 24
     archive = result["external_official_probe"]["retained_official_archive_probe"]
     # The probe set is intentionally bounded but may grow as new dated
@@ -92,7 +94,7 @@ def test_same_run_open_day_is_reported_as_prospective_not_misaligned() -> None:
     assert "FORWARD_ICON_EXISTS_SAME_RUN_OPEN_DAY" in causes
     assert "FORWARD_ICON_EXISTS_BUT_RUN_MISALIGNED" not in causes
     assert "TARGET_EXACT_JOIN_ZERO_MIXED_RUN" not in causes
-    assert result["forward_preflight"]["exact_three_model_join_count"] == 45
+    assert result["forward_preflight"]["exact_three_model_join_count"] == expected_station_count()
     assert result["forward_preflight"]["date_boundary"]["et_window_state"] == "open"
     assert result["forward_preflight"]["date_boundary"]["historical_ssot_allowed"] is False
 
@@ -236,5 +238,5 @@ def test_latest_native_decode_does_not_replace_complete_decode_with_newer_incomp
     write_decode(incomplete, "2026-07-25T09:00:00Z", 0)
 
     payload, selected = _latest_native_decode()
-    assert payload["curves"]["complete_curve_count"] == 45
+    assert payload["curves"]["complete_curve_count"] == expected_station_count()
     assert selected == complete

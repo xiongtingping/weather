@@ -32,6 +32,7 @@ from bayes_basket_target.p0_forecast_snapshot import (
 )
 from bayes_basket_target.station_registry import coordinate_registry_manifest
 from tests.pr12_authority_projection_test_support import authority_projection
+from bayes_basket_target.fleet import expected_station_count
 
 
 AS_OF = "2026-08-04T12:00:00Z"
@@ -240,7 +241,7 @@ def _insert_p0_snapshot(path: Path, fact: dict[str, object]) -> None:
         )
 
 
-def test_registry_contract_produces_exact_180_blocked_scopes(tmp_path: Path) -> None:
+def test_registry_contract_produces_one_blocked_scope_per_fleet_lead(tmp_path: Path) -> None:
     path = _db(tmp_path)
     before = path.stat()
     expected, envelope, receipt = build_pr13_p1_readiness_artifacts(
@@ -248,11 +249,11 @@ def test_registry_contract_produces_exact_180_blocked_scopes(tmp_path: Path) -> 
     )
     after = path.stat()
 
-    assert EXPECTED_SCOPE_COUNT == 180
-    assert len(expected["expected_keys"]) == 180
-    assert len(envelope["records"]) == 180
-    assert receipt["terminal_scope_count"] == 180
-    assert receipt["blocker_counts"] == {"ACTIVATION_ROOT_MISSING": 180}
+    assert EXPECTED_SCOPE_COUNT == expected_station_count() * 4
+    assert len(expected["expected_keys"]) == expected_station_count() * 4
+    assert len(envelope["records"]) == expected_station_count() * 4
+    assert receipt["terminal_scope_count"] == expected_station_count() * 4
+    assert receipt["blocker_counts"] == {"ACTIVATION_ROOT_MISSING": expected_station_count() * 4}
     assert receipt["formal_eligible_scope_count"] == 0
     assert receipt["canonical_awc_observation_fact_count"] == 24
     assert receipt["canonical_awc_observation_station_day_count"] == 1
@@ -336,7 +337,7 @@ def test_v14_snapshot_binds_exact_station_day_timezone_before_awc_revision(
         for row in roots
     )
     assert all(row["consumable"] is False for row in roots)
-    assert receipt["blocker_counts"] == {"ACTIVATION_ROOT_MISSING": 180}
+    assert receipt["blocker_counts"] == {"ACTIVATION_ROOT_MISSING": expected_station_count() * 4}
     assert (before.st_size, before.st_mtime_ns) == (after.st_size, after.st_mtime_ns)
 
 

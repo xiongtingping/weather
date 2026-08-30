@@ -12,6 +12,7 @@ from bayes_basket_target.pr14_strategy_basis import (
     build_pr14_strategy_artifacts,
 )
 from bayes_basket_target.station_registry import coordinate_registry_manifest
+from bayes_basket_target.fleet import expected_station_count
 
 
 AS_OF = "2026-08-04T12:00:00Z"
@@ -52,9 +53,9 @@ def test_pr14_has_45_unresolved_rows_and_two_empty_expected_bases(tmp_path: Path
     )
     after = path.stat()
     assert policy["expected_keys"] == utility["expected_keys"] == []
-    assert len(policy["unresolved_input_receipts"]) == 45
-    assert len(utility["unresolved_input_receipts"]) == 45
-    assert terminals["terminal_scope_count"] == receipt["terminal_scope_count"] == 45
+    assert len(policy["unresolved_input_receipts"]) == expected_station_count()
+    assert len(utility["unresolved_input_receipts"]) == expected_station_count()
+    assert terminals["terminal_scope_count"] == receipt["terminal_scope_count"] == expected_station_count()
     assert receipt["strategy_policy_expected_key_count"] == 0
     assert receipt["strategy_utility_expected_key_count"] == 0
     assert receipt["will_order_scope_count"] == 0

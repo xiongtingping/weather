@@ -12,6 +12,7 @@ from bayes_basket_target.icon_eps_strict_oos import (
     build_icon_eps_strict_oos_report,
 )
 from bayes_basket_target.icon_eps_training_facts import TRAINING_BATCH_SCHEMA, TRAINING_FACT_SCHEMA
+from bayes_basket_target.fleet import expected_station_count
 
 
 def _sha(value: str) -> str:
@@ -182,7 +183,7 @@ def test_zero_fact_batch_keeps_canonical_station_gap_rows() -> None:
     )
 
     assert result["candidate_count"] == 0
-    assert len(result["readiness"]) == 45
+    assert len(result["readiness"]) == expected_station_count()
     katl = next(row for row in result["readiness"] if row["station_id"] == "KATL")
     assert katl["state"] == "PENDING_CLOSED_AWC_TRUTH"
     assert "truth 缺失" in katl["blockers"]

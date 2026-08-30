@@ -8,6 +8,7 @@ from scripts.build_bayes_basket_target_45station_non_model_ingress import (
     MODEL_FIELDS,
     build_non_model_packet,
 )
+from bayes_basket_target.fleet import expected_station_count
 
 
 def _packet() -> dict:
@@ -66,9 +67,9 @@ def _packet() -> dict:
 def test_non_model_packet_strips_all_model_rows_and_keeps_policy_scope() -> None:
     result = build_non_model_packet(_packet())
 
-    assert len(result["station_ids"]) == 45
-    assert len(result["policy_artifacts"]) == 135
-    assert len(result["policy_activations"]) == 135
+    assert len(result["station_ids"]) == expected_station_count()
+    assert len(result["policy_artifacts"]) == expected_station_count() * 3
+    assert len(result["policy_activations"]) == expected_station_count() * 3
     assert all(result[field] == [] for field in MODEL_FIELDS)
     assert result["live_submit_authorized"] is False
     assert result["calls_order_gateway"] is False

@@ -19,6 +19,7 @@ from bayes_basket_target.pr11_taf_p0m_basis import (
     build_pr11_taf_p0m_artifacts,
 )
 from bayes_basket_target.station_registry import coordinate_registry_manifest
+from bayes_basket_target.fleet import expected_station_count
 
 
 AS_OF = "2026-08-04T12:00:00Z"
@@ -56,14 +57,14 @@ def test_v12_without_roots_has_45_station_terminals_and_empty_typed_basis(
     )
     after = path.stat()
 
-    assert EXPECTED_STATION_COUNT == 45
+    assert EXPECTED_STATION_COUNT == expected_station_count()
     assert expected["scope_type"] == "TAF_P0M"
     assert expected["expected_keys"] == []
-    assert len(expected["unresolved_input_receipts"]) == 45
-    assert terminals["terminal_scope_count"] == 45
-    assert receipt["terminal_scope_count"] == 45
+    assert len(expected["unresolved_input_receipts"]) == expected_station_count()
+    assert terminals["terminal_scope_count"] == expected_station_count()
+    assert receipt["terminal_scope_count"] == expected_station_count()
     assert receipt["typed_expected_key_count"] == 0
-    assert receipt["unresolved_input_receipt_count"] == 45
+    assert receipt["unresolved_input_receipt_count"] == expected_station_count()
     assert receipt["state"] == receipt["release_state"] == "BLOCKED"
     assert receipt["blockers"] == ["ACTIVATION_ROOT_MISSING"]
     assert receipt["canonical_p0_activation_root_count"] == 0
@@ -90,7 +91,7 @@ def test_station_terminal_set_is_exact_frozen_registry(tmp_path: Path) -> None:
     rows = terminals["terminal_scopes"]
     registry = coordinate_registry_manifest()
     assert [row["station_id"] for row in rows] == registry["station_ids"]
-    assert len({row["content_sha256"] for row in rows}) == 45
+    assert len({row["content_sha256"] for row in rows}) == expected_station_count()
     assert set(expected["unresolved_input_receipts"]) == {
         row["content_sha256"] for row in rows
     }

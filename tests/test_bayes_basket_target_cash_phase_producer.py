@@ -17,6 +17,7 @@ from bayes_basket_target.cash_phase_producer import (
     materialize_cash_phase_authority_set,
 )
 from bayes_basket_target.contracts import ContractError, content_sha256
+from bayes_basket_target.fleet import expected_station_count
 
 
 def _policy() -> BasketCashPhasePolicyArtifact:
@@ -211,13 +212,13 @@ def test_authority_set_rejects_formal_scope_without_dedicated_oos_schema() -> No
 
 
 def test_authority_set_45_stations_is_complete_and_content_addressed() -> None:
-    args = _authority_inputs(45)
+    args = _authority_inputs(expected_station_count())
     first = build_cash_phase_authority_set(**args)
     second = build_cash_phase_authority_set(**args)
     assert first == second
     assert first["state"] == "BLOCKED_REPAIR_CANDIDATE"
-    assert len(first["station_ids"]) == 45
-    assert len(first["authority_manifests"]) == 45
+    assert len(first["station_ids"]) == expected_station_count()
+    assert len(first["authority_manifests"]) == expected_station_count()
     core = {
         key: value
         for key, value in first.items()
@@ -233,7 +234,7 @@ def test_authority_set_45_stations_is_complete_and_content_addressed() -> None:
     assert ready["blockers"] == []
     assert len({
         row["station_id"] for row in ready["authority_manifests"]
-    }) == 45
+    }) == expected_station_count()
 
 
 def test_authority_set_rejects_46_stations() -> None:
@@ -241,15 +242,15 @@ def test_authority_set_rejects_46_stations() -> None:
         ContractError,
         match="cash_phase_authority_station_scope_exceeded",
     ):
-        build_cash_phase_authority_set(**_authority_inputs(46))
+        build_cash_phase_authority_set(**_authority_inputs(expected_station_count() + 1))
 
 
 def test_extra_46th_existing_manifest_blocks_45_station_ready_set() -> None:
-    args = _authority_inputs(45)
+    args = _authority_inputs(expected_station_count())
     candidate = build_cash_phase_authority_set(**args)
     desired = candidate["authority_manifests"]
     extra = CashPhaseAuthorityManifest.create(
-        station_id="S45",
+        station_id=f"S{expected_station_count()}",
         policy_version="extra-v1",
         artifact_sha256="f" * 64,
         station_timezone="UTC",
@@ -264,7 +265,7 @@ def test_extra_46th_existing_manifest_blocks_45_station_ready_set() -> None:
     assert packet["state"] == "BLOCKED_REPAIR_CANDIDATE"
     assert packet["execution_authorized"] is False
     assert packet["blockers"][0] == {
-        "station_id": "S45",
+        "station_id": f"S{expected_station_count()}",
         "reason": "cash_phase_authority_manifest_station_scope_mismatch",
         "active_manifest_count": 1,
     }

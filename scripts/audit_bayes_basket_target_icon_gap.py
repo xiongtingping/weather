@@ -31,6 +31,7 @@ from bayes_basket_target.contracts import MODEL_IDS, model_set_hash  # noqa: E40
 from bayes_basket_target.et_history import MODEL_PROVIDERS, event_day_window  # noqa: E402
 from bayes_basket_target.model_arrival import ALLOWED_PROVIDERS  # noqa: E402
 from bayes_basket_target.resource_bounds import write_bounded_json  # noqa: E402
+from bayes_basket_target.model_arrival_capture_config import EXPECTED_SCOPE
 
 
 SCHEMA = "bayes_basket_target_icon_gap_audit_v1"
@@ -661,7 +662,7 @@ def build_audit(
         "target_capture_config_includes_icon": bool({str(item).strip().lower() for item in target_capture.get("providers") or []} & {"icon", "icon_global_official"}),
         "target_capture_config_station_scope": str(target_capture.get("scope") or ""),
         "target_capture_is_45_station_scoped": (
-            str(target_capture.get("scope") or "").strip().lower() == "canonical_45_station"
+            str(target_capture.get("scope") or "").strip().lower() == EXPECTED_SCOPE
             and int(target_capture.get("station_count") or 0) == 45
         ),
         "monitor_job_enabled_by_default": monitor.get("enabled_by_default") is True,

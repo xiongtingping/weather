@@ -16,6 +16,7 @@ from scripts.run_bayes_basket_target_icon_forward_capture import (
     _find_existing_capture_receipt,
     _previous_icon_cycles,
 )
+from bayes_basket_target.model_arrival_capture_config import EXPECTED_SCOPE
 
 
 AS_OF = "2026-07-24T23:24:00Z"
@@ -72,7 +73,7 @@ def test_plan_fails_closed_when_target_capture_switch_is_disabled(tmp_path) -> N
         "schema": "bayes_basket_target_model_arrival_capture_v1",
         "enabled": False,
         "target_only": True,
-        "scope": "canonical_45_station",
+        "scope": EXPECTED_SCOPE,
         "station_count": 45,
         "providers": [
             "ecmwf_ifs025_official",

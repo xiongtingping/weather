@@ -10,6 +10,7 @@ from bayes_basket_target.model_system_coverage import (
     validate_coverage_matrix,
     validate_coverage_row,
 )
+from bayes_basket_target.fleet import expected_station_count
 
 
 AS_OF = "2026-08-03T21:08:00Z"
@@ -53,8 +54,8 @@ def test_exact_45x3_product_matrix_and_zero_cross_authority() -> None:
         for lead in ("d0", "d1", "d2")
     ]
     matrix = build_coverage_matrix(rows, expected_product_ids=["TEST_SYSTEM"], as_of_utc=AS_OF)
-    assert matrix["scope_count"] == 135
-    assert matrix["state_counts"]["OOS_READY"] == 135
+    assert matrix["scope_count"] == expected_station_count() * 3
+    assert matrix["state_counts"]["OOS_READY"] == expected_station_count() * 3
     assert matrix["cross_selection_count"] == 0
     assert matrix["cross_activation_count"] == 0
     assert matrix["p0_count"] == 0

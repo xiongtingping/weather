@@ -10,10 +10,11 @@ from zoneinfo import ZoneInfo
 from .contracts import ContractError, content_sha256
 from .resource_bounds import load_bounded_json, write_bounded_json_if_changed
 from .settlement_time import settlement_day_state
+from .fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_taf_rotation_state_v1"
-MAX_CATALOG_SCOPES = 135
+MAX_CATALOG_SCOPES = expected_station_count() * 3
 MAX_SELECTED_SCOPES = 4
 MAX_BYTES = 1024 * 1024
 # The forward TAF physical summary uses this shared local window.  It is not a

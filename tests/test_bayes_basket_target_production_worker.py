@@ -70,6 +70,7 @@ from bayes_basket_target.taf_artifact_registry import (
     build_taf_artifact_registry,
 )
 from scripts.initialize_bayes_basket_target_ssot import initialize
+from bayes_basket_target.fleet import expected_station_count
 
 
 def _seed_target_registry_source_lane(
@@ -2848,7 +2849,7 @@ def test_delta_v2_truth_blocker_rolls_back_before_labels(
     ):
         assert canonical_conn is worker.canonical_source_conn
         assert as_of_utc == "2026-07-28T15:00:00Z"
-        assert max_scopes == 45
+        assert max_scopes == expected_station_count()
         assert after_fact_rowid == 0
         target_conn.execute("INSERT INTO truth_marker VALUES('rollback')")
         return {
@@ -2967,7 +2968,7 @@ def test_delta_v2_truth_commits_before_label_scan(
         max_scopes,
         after_fact_rowid,
     ):
-        assert max_scopes == 45
+        assert max_scopes == expected_station_count()
         assert after_fact_rowid == 0
         target_conn.execute("INSERT INTO truth_marker VALUES('commit')")
         return {
@@ -3582,9 +3583,9 @@ def test_resident_consumer_capacity_matches_canonical_45station_three_day_scope(
     # steady state: the listing day, today and tomorrow.  The reader's cap
     # must match the publisher's (MAX_TARGET_SCOPES = 45 x 3); a stricter
     # reader turns a bigger catalog into a global WS-path outage.
-    assert len(CANONICAL_TARGET_STATIONS) == 45
-    assert len(set(CANONICAL_TARGET_STATIONS)) == 45
-    assert MAX_RESIDENT_WS_SCOPES == 135
+    assert len(CANONICAL_TARGET_STATIONS) == expected_station_count()
+    assert len(set(CANONICAL_TARGET_STATIONS)) == expected_station_count()
+    assert MAX_RESIDENT_WS_SCOPES == expected_station_count() * 3
 
 
 def test_production_default_station_scope_is_canonical_45(
@@ -3606,7 +3607,7 @@ def test_production_default_station_scope_is_canonical_45(
     try:
         assert worker.station_allowlist == CANONICAL_TARGET_STATIONS
         assert "RKPK" in worker.station_allowlist
-        assert len(worker.station_allowlist) == 45
+        assert len(worker.station_allowlist) == expected_station_count()
     finally:
         if worker.conn is not None:
             worker.conn.close()

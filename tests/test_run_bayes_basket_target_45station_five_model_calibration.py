@@ -15,6 +15,7 @@ from scripts import (
 from scripts.build_bayes_basket_target_station_calibration_dataset import (
     build as build_truth_dataset,
 )
+from bayes_basket_target.fleet import expected_station_count
 
 
 def _valid_external_truth() -> dict[str, object]:
@@ -71,7 +72,7 @@ def test_scope_is_exact_registry_bound_45():
         target.DEFAULT_MARKET_REGISTRY,
     )
 
-    assert len(scope) == 45
+    assert len(scope) == expected_station_count()
     assert scope["ZBAA"] == {
         "source_lane": "awc",
         "settlement_timezone": "Asia/Shanghai",

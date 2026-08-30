@@ -8,6 +8,7 @@ import pytest
 from bayes_basket_target.contracts import ContractError, content_sha256
 from bayes_basket_target.station_registry import coordinate_registry_manifest
 from scripts.build_current_snapshot_gap_ledger import build
+from bayes_basket_target.fleet import expected_station_count
 
 
 EVENT_DATE = "2026-08-03"
@@ -39,7 +40,7 @@ def _p1_pair(tmp_path):
         "schema": "bayes_basket_target_p1_trajectory_45station_audit_v1",
         "as_of_utc": "2026-08-02T00:00:00.000Z",
         "formal_eligible_scope_count": 0,
-        "scope_count": 180,
+        "scope_count": expected_station_count() * 4,
         "scopes": audit_scopes,
     })
     scopes = []
@@ -58,7 +59,7 @@ def _p1_pair(tmp_path):
         "schema": "bayes_basket_target_p1_trajectory_repair_plan_v1",
         "as_of_utc": "2026-08-02T00:00:00.000Z",
         "audit_content_sha256": audit["content_sha256"],
-        "scope_count": 180,
+        "scope_count": expected_station_count() * 4,
         "scopes": scopes,
         "usable_candidate_pointer_count": 0,
         "safe_write_state": "NO_SAFE_FORMAL_WRITE_REQUIRED",
@@ -105,7 +106,7 @@ def test_current_ledger_separates_stale_official_from_missing_fallback_receipts(
 
     assert ledger["summary"]["full_45_station_coverage_proven"] is True
     assert ledger["summary"]["official"] == {
-        "packet_present_count": 45,
+        "packet_present_count": expected_station_count(),
         "fresh_count": 0,
         "stale_count": 45,
         "timestamp_missing_count": 0,
@@ -119,7 +120,7 @@ def test_current_ledger_separates_stale_official_from_missing_fallback_receipts(
         "timestamp_missing_count": 36,
         "missing_count": 9,
     }
-    assert ledger["summary"]["both_currently_unavailable_count"] == 45
+    assert ledger["summary"]["both_currently_unavailable_count"] == expected_station_count()
     assert ledger["stations"][0]["official"]["http_503_evidence"]["state"] == "OFFICIAL_HTTP_503_RETAINED"
     assert ledger["stations"][1]["official"]["http_503_evidence"]["state"] == "OFFICIAL_CAPTURE_RECEIPT_MISSING_OR_NON503"
     assert ledger["stations"][0]["fallback"]["reason"] == "FALLBACK_RECEIPT_TIMESTAMP_MISSING"
