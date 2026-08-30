@@ -26,16 +26,37 @@ import live_control_server as control  # noqa: E402
 EXCLUSIONS = ROOT / "config" / "trading" / "live_station_exclusions_v1.json"
 
 
-def test_the_nine_named_stations_are_on_the_list() -> None:
-    """The operator's 2026-08-30 ruling, station by station."""
+def test_the_barred_list_is_the_operators_current_ruling() -> None:
+    """Station by station, and the released two are really gone.
 
-    named = {
-        "RPLL", "ZUCK", "RCSS", "EPWA", "EHAM",
-        "SBGR", "KLAX", "KMIA", "LTAC",
-        # Added the same day, on the same authority.
+    The list moved three times on 2026-08-30 -- nine named, then
+    RKSI/KAUS/FACT added, then CYYZ/EDDM/NZWN added and EPWA/LTAC
+    released -- so it is asserted as a set rather than by count.
+    """
+
+    barred = {
+        "RPLL", "ZUCK", "RCSS", "EHAM", "SBGR", "KLAX", "KMIA",
         "RKSI", "KAUS", "FACT",
+        "CYYZ", "EDDM", "NZWN",
     }
-    assert control.excluded_stations() == named
+    assert control.excluded_stations() == barred
+    # Released stations must be out of the bar, not merely annotated.
+    assert not ({"EPWA", "LTAC"} & control.excluded_stations())
+
+
+def test_a_release_keeps_its_record() -> None:
+    """A released station leaves a row saying what it was released against.
+
+    Without it the next review sees a clean station and cannot tell that
+    the call was made over a contrary reading -- which is the one thing
+    that would let the same argument be had twice.
+    """
+
+    parsed = json.loads(EXCLUSIONS.read_text(encoding="utf-8"))
+    released = {row["station"]: row for row in parsed["released_stations"]}
+    assert {"EPWA", "LTAC"} <= set(released)
+    for row in released.values():
+        assert row["released_utc"] and row["note"]
 
 
 def test_the_allowlist_and_the_exclusions_do_not_overlap() -> None:

@@ -6480,6 +6480,11 @@ function stationSummary(){
   const seated=new Set(ss.map(s=>s.station_id));
   const silent=[...new Set((S.station_roster||[]).map(e=>e.station_id))]
     .filter(id=>!seated.has(id)).sort();
+  // Barred stations stay in this table on purpose.  Dropping them would
+  // hide the very rows a review of the bar has to read, and the numbers
+  // here are what the next release decision is argued from -- so they are
+  // marked, greyed, and counted separately rather than removed.
+  const barred=new Set((D.live_readiness||{}).station_exclusions||[]);
   const rows=ss.map((s,i)=>{
     const sd=s.sides||{};const cal=s.calibration_ratio;
     const rr=s.realization_ratio;const ev=s.ev_per_usdc_mean;
@@ -6487,9 +6492,10 @@ function stationSummary(){
     // table's natural order -- station id, ascending -- and printed in the
     // row rather than derived from the row's position, so it stays with the
     // station when a column is sorted instead of renumbering under it.
-    return `<tr>
+    const off=barred.has(s.station_id);
+    return `<tr${off?' style="opacity:.55"':""}>
       <td class="mono muted">${i+1}</td>
-      <td><span class="mono">${h(s.station_id)}</span>
+      <td>${off?'<span class="pill" style="background:#f8514922;color:#f85149;border-color:#f8514955" title="实盘禁入：控制服务拒绝把它加进 allowlist">⛔ 禁入</span> ':""}<span class="mono">${h(s.station_id)}</span>
         <span class="muted">${h(s.station_label)}</span></td>
       <td>${s.position_count}</td>
       <td>${s.settled_count}</td>
@@ -6519,6 +6525,12 @@ function stationSummary(){
   const silentOff=silent.filter(id=>offFleet.has(id));
   const idList=(ids)=>`<span class="mono">${
     ids.map((id,i)=>`${i+1}.${h(id)}`).join("　")}</span>`;
+  const barredHere=ss.map(s=>s.station_id).filter(id=>barred.has(id));
+  const barNote=barredHere.length?`<div class="muted" style="margin-top:8px">
+    <span class="pill" style="background:#f8514922;color:#f85149;border-color:#f8514955">⛔ 禁入</span>
+    ${barredHere.length} 个站已被实盘禁入，仍留在本表里——<b>禁的是下单，不是记账</b>：
+    纸面账本继续为它们建仓结算，这些数就是下次复核放不放它们出来的依据。
+    控制服务拒绝把它们加进 allowlist：${idList(barredHere)}</div>`:"";
   const note=(silentFleet.length||silentOff.length)
     ?`<div class="muted" style="margin-top:8px">${
     silentFleet.length?`另有 ${silentFleet.length} 个站在这段窗口里一笔可成交仓位都没有，
@@ -6546,7 +6558,7 @@ function stationSummary(){
     <th>概率和</th><th>卖价和</th><th>赔率</th><th>EV/U</th>
     <th>命中率</th><th>声称</th><th>实现/声称</th>
     <th>投入</th><th>实得</th><th>兑现比</th>
-  </tr></thead><tbody>${rows}</tbody></table></div>${note}</div>
+  </tr></thead><tbody>${rows}</tbody></table></div>${barNote}${note}</div>
   ${stationFailureMatrix()}`;
 }
 
