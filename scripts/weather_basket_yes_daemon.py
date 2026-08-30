@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import re
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -321,6 +321,89 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
         1800.0,
     ),
 )
+
+
+# Which database each sweep WRITES.  Concurrency is granted across domains and
+# never within one, so "one routine writer per database at a time" -- the whole
+# reason these were taken off launchd on 2026-08-24, after four ledger rounds
+# ran at once, three held the SSOT write lock, and P1 was fail-closed for
+# forty-five minutes -- survives verbatim.  Read-only access does not count:
+# WAL readers never block a writer, which is why the correction pass, which
+# opens the SSOT ``mode=ro`` and commits only to the archive, is an archive
+# writer here.
+#
+# Verified per script rather than assumed, since a wrong entry here is exactly
+# the 2026-08-24 outage:
+#   ssot       - the sweep opens data/bayes_basket_target_ssot.db writable
+#   archive    - writes data/archive.db only (SSOT connection is mode=ro)
+#   none       - touches no database at all (packet retention is gzip files on
+#                disk, deliberately: the SSOT sits near its size ceiling)
+# A name missing from this map is treated as an SSOT writer, so a sweep added
+# without a decision here loses throughput rather than the invariant.
+HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
+    "maker_shadow_probe": "ssot",
+    "pr12_awc_observation": "ssot",
+    "paper_trading_ledger": "ssot",
+    "settlement_truth": "ssot",
+    "calibration_refit": "ssot",
+    "settled_day_cycle_close": "ssot",
+    "correction_review_auto_clear": "archive",
+    "fleet_regime_refresh": "ssot",
+    "forward_packet_retention": "none",
+    "capture_jma_msm_forward": "ssot",
+    "capture_noaa_conus_forward": "ssot",
+    "capture_dwd_icon_eu_forward": "ssot",
+}
+# Domains that name a database hold one sweep at a time; "none" writes nothing
+# and is bounded only by the total cap below.
+_EXCLUSIVE_WRITE_DOMAINS = frozenset({"ssot", "archive"})
+# Total sweeps in flight at once.  Concurrency here costs production nothing:
+# a slot already excludes production, so running k sweeps in one slot takes
+# max(duration) where k slots took the sum, and production's share of turns is
+# unchanged -- it is the sweep queue that drains k times faster.  Four bounds
+# the subprocess fan-out on a machine that is also running the cycle.
+HOSTED_SWEEP_MAX_CONCURRENCY = 4
+
+
+def hosted_sweep_write_domain(name: str) -> str:
+    """The database a sweep writes; unknown names are assumed to write the SSOT."""
+
+    return HOSTED_SWEEP_WRITE_DOMAIN.get(name, "ssot")
+
+
+def admissible_hosted_sweeps(
+    due: "list[tuple[float, int, str, str, float]]",
+    *,
+    running_names: "Iterable[str]",
+    max_concurrency: int = HOSTED_SWEEP_MAX_CONCURRENCY,
+) -> "list[tuple[float, int, str, str, float]]":
+    """Pick the due sweeps that may start now, most overdue first.
+
+    Admission is by write domain, not by name: a sweep may start when nothing
+    already running writes the database it writes.  ``due`` carries the same
+    ``(overdue, index, name, script, timeout)`` shape the scheduler sorts on,
+    so the ordering rule -- longest overdue wins, list order breaks ties --
+    stays in one place.
+    """
+
+    # Materialized once: the caller may pass a view or a generator, and
+    # consuming it twice would silently read the second use as empty.
+    running = list(running_names)
+    claimed = {
+        hosted_sweep_write_domain(name) for name in running
+    } & _EXCLUSIVE_WRITE_DOMAINS
+    inflight = len(running)
+    chosen: list[tuple[float, int, str, str, float]] = []
+    for item in sorted(due, key=lambda entry: (-entry[0], entry[1])):
+        if inflight + len(chosen) >= max_concurrency:
+            break
+        domain = hosted_sweep_write_domain(item[2])
+        if domain in claimed:
+            continue
+        if domain in _EXCLUSIVE_WRITE_DOMAINS:
+            claimed.add(domain)
+        chosen.append(item)
+    return chosen
 
 
 # Every hosted sweep currently running, so shutdown can end them instead of
@@ -2981,6 +3064,16 @@ def main() -> int:
             max_workers=1,
             thread_name_prefix="reported-trajectory-dashboard-render",
         )
+        # Hosted sweeps get their own pool now that several run at once.  The
+        # shared executor above is sized for the source lanes and the
+        # production cycle -- four workers with one lane enabled -- so putting
+        # a concurrent sweep fan-out through it would let maintenance consume
+        # the worker a decision needs.  Same reasoning that moved the dashboard
+        # render onto its own pool.
+        sweep_executor = ThreadPoolExecutor(
+            max_workers=HOSTED_SWEEP_MAX_CONCURRENCY,
+            thread_name_prefix="reported-trajectory-hosted-sweep",
+        )
         # The entry/order lane gets its own single-worker pool so that a slow
         # NWS forecast fetch in the window worker can never delay an entry fact
         # that must reach the gateway inside its frozen argmax period.
@@ -3097,11 +3190,12 @@ def main() -> int:
             name: now_mono + 60.0 + 90.0 * index
             for index, (name, _, _, _) in enumerate(HOSTED_SWEEPS)
         }
-        hosted_sweep_future: Any = None
-        hosted_sweep_name = ""
+        # Keyed by sweep name so several may be in flight at once, at most one
+        # per write domain.  ``running`` stays a list for the same reason.
+        hosted_sweep_futures: "dict[str, Any]" = {}
         state["hosted_sweeps"] = {
-            "schema": "resident_hosted_sweeps_v1",
-            "running": None,
+            "schema": "resident_hosted_sweeps_v2",
+            "running": [],
             "results": {},
         }
         storage_guard: dict[str, Any] = {
@@ -3200,7 +3294,7 @@ def main() -> int:
                     ) >= 256 * 1024 * 1024
                     and now_mono >= next_target_wal_maintenance
                     and production_future is None
-                    and hosted_sweep_future is None
+                    and not hosted_sweep_futures
                     and forecast_future is None
                 ):
                     try:
@@ -3626,7 +3720,7 @@ def main() -> int:
                 storage_ok
                 and forecast_future is None
                 and production_future is None
-                and hosted_sweep_future is None
+                and not hosted_sweep_futures
             )
             writer_candidates = []
             if writer_idle:
@@ -3695,33 +3789,44 @@ def main() -> int:
             if storage_ok and "awc" in lane_workers and now_mono >= next_source.get("awc", now_mono) and "awc" not in lane_futures:
                 lane_futures["awc"] = executor.submit(lane_workers["awc"].poll)
                 next_source["awc"] = time.monotonic() + awc_poll_interval(config, datetime.now(timezone.utc))
-            # Hosted sweeps and production cycles exclude each other: that
-            # mutual gate is the whole point of hosting them -- one routine
-            # writer at a time, so a sweep burst can never again hold the
-            # lock into a production write and fail P1 closed.
-            if hosted_sweep_future is not None and hosted_sweep_future.done():
+            # Hosted sweeps and production cycles still exclude each other:
+            # that mutual gate is the whole point of hosting them, so a sweep
+            # burst can never again hold the lock into a production write and
+            # fail P1 closed.  What relaxed (2026-08-30) is sweep against
+            # sweep -- they may overlap, but only across write domains, so
+            # "one routine writer per database" is unchanged.
+            for done_name in [
+                name
+                for name, future in hosted_sweep_futures.items()
+                if future.done()
+            ]:
                 try:
-                    sweep_result = hosted_sweep_future.result()
+                    sweep_result = hosted_sweep_futures[done_name].result()
                 except Exception as exc:  # noqa: BLE001
                     sweep_result = {
                         "state": "future_failed",
                         "reason": f"{type(exc).__name__}:{exc}",
                     }
-                state["hosted_sweeps"]["results"][hosted_sweep_name] = (
-                    sweep_result
-                )
-                state["hosted_sweeps"]["running"] = None
+                state["hosted_sweeps"]["results"][done_name] = sweep_result
                 for name, _, interval_sec, _ in HOSTED_SWEEPS:
-                    if name == hosted_sweep_name:
+                    if name == done_name:
                         next_hosted_sweep[name] = (
                             time.monotonic() + interval_sec
                         )
-                hosted_sweep_future = None
-                hosted_sweep_name = ""
+                del hosted_sweep_futures[done_name]
+                # Served when a sweep FINISHES, as before: the rotation ranks
+                # lanes by how long ago each last completed, so stamping this
+                # per finisher keeps the sweeps lane from claiming a fresh
+                # turn while its own slower members are still running.
                 writer_last_served["sweeps"] = time.monotonic()
+            state["hosted_sweeps"]["running"] = sorted(hosted_sweep_futures)
             if (
                 storage_ok
-                and hosted_sweep_future is None
+                # A slot may still admit a sweep whose database nothing running
+                # is writing.  The exclusion against production and the
+                # prefetch is unchanged: they write the same databases, and
+                # whichever starts first owns the writer until it finishes.
+                and len(hosted_sweep_futures) < HOSTED_SWEEP_MAX_CONCURRENCY
                 and production_future is None
                 # The prefetch is the third writer of the same databases, so
                 # the exclusion has to name it here too.  Gating only against
@@ -3744,23 +3849,36 @@ def main() -> int:
                     for index, (name, script, _interval_sec, timeout_sec)
                     in enumerate(HOSTED_SWEEPS)
                     if now_mono >= next_hosted_sweep[name]
+                    and name not in hosted_sweep_futures
                 ]
-                if due:
-                    _overdue, _index, hosted_sweep_name, sweep_script, sweep_timeout = max(
-                        due, key=lambda item: (item[0], -item[1])
-                    )
-                    state["hosted_sweeps"]["running"] = hosted_sweep_name
+                # One slot now starts every due sweep whose database is free,
+                # not just the most overdue one.  Twelve members become due at
+                # about seven per ten minutes while the lane served one per
+                # turn, so the queue was permanently behind and a 600s member
+                # waited a measured 43 minutes at the median.  Draining several
+                # at once costs production no turns -- the slot already
+                # excludes it, and k sweeps in one slot take max(duration)
+                # where k slots took the sum.
+                admitted = admissible_hosted_sweeps(
+                    due,
+                    running_names=hosted_sweep_futures.keys(),
+                )
+                for _overdue, _index, name, sweep_script, sweep_timeout in admitted:
                     last_writer_slot = "sweeps"
-                    hosted_sweep_future = executor.submit(
+                    hosted_sweep_futures[name] = sweep_executor.submit(
                         run_hosted_sweep,
                         str(ROOT / sweep_script),
                         sweep_timeout,
+                    )
+                if admitted:
+                    state["hosted_sweeps"]["running"] = sorted(
+                        hosted_sweep_futures
                     )
             if (
                 storage_ok
                 and now_mono >= next_production
                 and production_future is None
-                and hosted_sweep_future is None
+                and not hosted_sweep_futures
                 # Symmetric with the prefetch gate below: whichever of the
                 # two starts first owns the writer until it finishes.  The
                 # prefetch is bounded by its own 300s subprocess timeout,
@@ -3794,7 +3912,7 @@ def main() -> int:
                 # beside it.  One writer at a time means all three lanes,
                 # not two of them.
                 and production_future is None
-                and hosted_sweep_future is None
+                and not hosted_sweep_futures
                 and writer_turn == "forecast"
             ):
                 # Keep the last completed bounded TAF receipt visible while a
@@ -3859,6 +3977,7 @@ def main() -> int:
             "registry_executor",
             "argmax_executor",
             "render_executor",
+            "sweep_executor",
             "argmax_entry_executor",
         ):
             resident_executor = locals().get(executor_name)
