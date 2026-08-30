@@ -1287,13 +1287,16 @@ def test_the_consolidation_tilt_scales_stakes_and_never_selects() -> None:
     )
 
     # On by default, reduce-only, at the re-ruled boundary: one of the two
-    # discriminating lights fires it, and it cuts to a tenth.
+    # discriminating lights fires it, and it cuts to a twentieth (0.10 ->
+    # 0.05, 2026-08-30 re-measure: monotone in depth down to the
+    # minimum-clip plateau, +14.58 over 0.10 with drop-1/2/3, sign and
+    # both temporal halves agreeing).
     assert CONSOLIDATION_TILT_MIN_SIGNALS == 1
     assert 0.0 < CONSOLIDATION_TILT_FACTOR < 1.0
-    assert CONSOLIDATION_TILT_FACTOR == 0.1
+    assert CONSOLIDATION_TILT_FACTOR == 0.05
     assert CONSOLIDATION_TILT_SIGNALS == ("stable", "sharp")
     # It reshapes the book, so it must reshape the fingerprint.
-    assert "固化≥1减仓0.1" in SELECTION_RULE_LABEL
+    assert "固化≥1减仓0.05" in SELECTION_RULE_LABEL
     assert "灯stable+sharp" in SELECTION_RULE_LABEL
     # The tilted stake floors at one minimum clip per leg, or the cut
     # becomes a gate the venue enforces (commit e4dac184).

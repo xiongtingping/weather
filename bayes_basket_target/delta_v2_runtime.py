@@ -237,8 +237,17 @@ CERTAINTY_SHARP_TOP2 = 0.60
 # stateless, and conservative: consolidation grows through the day, so a
 # top-up is more often tilted here than under opener inheritance, never
 # less.  The ledger prices the gap with PAPER_LEDGER_TILT_SCOPE=stage.
+#
+# 0.10 -> 0.05 (2026-08-30 re-measure on the charter-66/67 stack, 319
+# chains): depth is monotone down to a clamp plateau below 0.05; under
+# the ledger's opener rule +14.58 with drop-1/2/3 and both temporal
+# halves positive, and under THIS stage semantics +24.45 with sign
+# 164:148 (drop-1 dips to -5.7 on one chain, drop-2/3 recover).  The
+# same sweep also priced the semantic gap itself: stage-scope trails
+# opener inheritance by ~95u on the same book, so the open question on
+# this knob is the scope, not the depth.
 CONSOLIDATION_TILT_FACTOR = min(1.0, float(
-    os.environ.get("PM_CONSOLIDATION_TILT", "0.10") or 1.0
+    os.environ.get("PM_CONSOLIDATION_TILT", "0.05") or 1.0
 ))
 CONSOLIDATION_TILT_SIGNALS = tuple(
     name.strip()

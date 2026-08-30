@@ -276,7 +276,10 @@ LEDGER_ONLY = {
         "withdraws resting legs; production's CANCEL_ACK has never run"
     ),
     "MAKER_RESTING_CRASH_TICKS": "control arm for the above",
-    "CONSOLIDATION_TILT_FACTOR": "measured stake tilt, not yet in production",
+    "CONSOLIDATION_TILT_FACTOR": (
+        "stake tilt; production carries the same 0.05 in delta_v2_runtime"
+        " (G1 port, both moved together 2026-08-30)"
+    ),
     "CONSOLIDATION_TILT_MIN_SIGNALS": "same",
     "CONSOLIDATION_QUOTED_FRACTION": "annotation only",
     "CONSOLIDATION_SHARP_TOP2": "annotation only",

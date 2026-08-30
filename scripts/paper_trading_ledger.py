@@ -983,6 +983,15 @@ SELECTION_DISCOUNT = float(
 # +51.0 and 138:113 of changed chains improved -- the rare shape where
 # every robustness cut strengthens the verdict (the one big chain the
 # rule hurts, SBGR 08-26 at -32, is the drop-1).
+# Re-measured 2026-08-30 on the charter-66/67 stack (319 chains, 11 arms,
+# full rebuild each): the threshold shape is confirmed hard -- dropping
+# either light or requiring both costs -111 to -295 -- and the depth is
+# monotone down to a plateau: 0.05 beats 0.10 by +14.58 with drop-1/2/3
+# all positive, sign 170:142, and both temporal halves positive, while
+# 0.02 and the floor sit within 1.5u of 0.05 (the minimum-clip clamp
+# dominates below 0.05).  At full stake the strata run +5.5% / -18.3% /
+# -39.8% for 0/1/2 lights lit, so the certainty premium is monotone and
+# a graduated cut stays worth measuring.  0.10 -> 0.05.
 CONSOLIDATION_TILT_MIN_SIGNALS = int(
     os.environ.get("PAPER_LEDGER_CONSOLIDATION_TILT_MIN_SIGNALS", "1") or 1
 )
@@ -996,7 +1005,7 @@ CONSOLIDATION_TILT_SIGNALS: tuple[str, ...] = tuple(
     if name.strip() in ("stable", "sharp", "quoted")
 )
 CONSOLIDATION_TILT_FACTOR = min(1.0, float(
-    os.environ.get("PAPER_LEDGER_CONSOLIDATION_TILT", "0.10") or 1.0
+    os.environ.get("PAPER_LEDGER_CONSOLIDATION_TILT", "0.05") or 1.0
 ))
 # Whose lights decide a top-up's tilt.  ``opener`` is the measured rule:
 # the P0 opener's lights set the whole chain's factor.  ``stage`` asks the
