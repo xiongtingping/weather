@@ -166,6 +166,15 @@ CHAIN_COST_PAR_BOUND = 1.0
 # removed; permutation p=0.006 on the mean split).  The gate holds P1's
 # budget until the local hour the daily maximum actually forms in, spending
 # the stage's information advantage where it exists.  0 disables.
+# Research arm only (2026-08-30): hold P0 for this many hours after its
+# lane's first cycle -- "how long after listing is the best entry" is the
+# question, asked the only way this house accepts answers: by replaying the
+# book under each candidate delay.  0 disables and is the default; the
+# production rule (enter at the first cycle whose objective seats) is
+# unchanged until an arm wins and is ruled on.
+P0_ENTRY_DELAY_HOURS = float(
+    os.environ.get("PAPER_LEDGER_P0_ENTRY_DELAY_HOURS", "") or 0.0
+)
 P1_ENTRY_LOCAL_HOUR = float(
     os.environ.get("PAPER_LEDGER_P1_ENTRY_LOCAL_HOUR", "")
     or DEFAULT_P1_ENTRY_LOCAL_HOUR
@@ -1133,6 +1142,9 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     None
     if P1_ENTRY_LOCAL_HOUR <= 0
     else "P1≥本地%g时" % P1_ENTRY_LOCAL_HOUR,
+    None
+    if P0_ENTRY_DELAY_HOURS <= 0
+    else "P0挂牌后%g时" % P0_ENTRY_DELAY_HOURS,
     None
     if CHAIN_TOPUP_MISS_FLOOR <= 0
     else "加仓漏桶地板%g" % CHAIN_TOPUP_MISS_FLOOR,
@@ -5208,10 +5220,35 @@ def backfill(
                 refusal = ("no_book_at_decision", "", 0, "")
                 cycles = 0
                 opened = False
+                lane_opened_at: datetime | None = None
                 for payload in _stage_entry_candidates(
                     conn, station_id, event_date, stage
                 ):
                     cycles += 1
+                    # Research arm: P0 waits out the young book.  Measured
+                    # from the lane's own first cycle -- the listing proxy
+                    # the ledger can see -- and skipping the cycle, never
+                    # the day.
+                    if stage == "P0" and P0_ENTRY_DELAY_HOURS > 0:
+                        decided_at = datetime.fromisoformat(
+                            str(payload["decision_at_utc"])
+                            .replace("Z", "+00:00")
+                        )
+                        if lane_opened_at is None:
+                            lane_opened_at = decided_at
+                        age_hours = (
+                            decided_at - lane_opened_at
+                        ).total_seconds() / 3600.0
+                        if age_hours < P0_ENTRY_DELAY_HOURS:
+                            refusal = _deeper_refusal(refusal, (
+                                "entry_window_not_open",
+                                "P0 入座窗未开：挂牌后 %.1f 时"
+                                " · 窗从 %g 时起（研究臂）" % (
+                                    age_hours, P0_ENTRY_DELAY_HOURS,
+                                ),
+                                cycles, payload["decision_at_utc"],
+                            ))
+                            continue
                     # Charter 67: P1's one top-up waits for the hours the
                     # daily maximum forms in.  A cycle before the window is
                     # not judged at all -- the walk keeps going, so a stage
