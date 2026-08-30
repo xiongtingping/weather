@@ -534,7 +534,7 @@ def test_complete_maker_bundle_requires_every_bucket_and_is_order_deterministic(
     reversed_input = _complete_bundle([leg_36, leg_35])
 
     assert missing["authorized"] is False
-    assert "missing_maker_candidate:36" in missing["blockers"]
+    assert "missing_leg_candidate:36" in missing["blockers"]
     assert forward["authorized"] is True
     assert [
         row["action"]["bucket"] for row in forward["selected_actions"]
@@ -542,7 +542,7 @@ def test_complete_maker_bundle_requires_every_bucket_and_is_order_deterministic(
     assert reversed_input["content_sha256"] == forward["content_sha256"]
 
 
-def test_empty_target_is_economic_hold_not_missing_maker_candidate() -> None:
+def test_empty_target_is_economic_hold_not_missing_leg_candidate() -> None:
     result = select_complete_maker_bundle_v2(
         [],
         required_buckets=[],

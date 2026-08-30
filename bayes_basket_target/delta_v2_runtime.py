@@ -666,22 +666,19 @@ def _reservation_grid(*, row: Any, artifact: DeltaV2PolicyArtifact) -> tuple[flo
 # classify the ledger's ``EXECUTION_MODE`` but had nothing here to equate it
 # to, which is exactly why the drift was silent.  The maker machinery stays,
 # as arms, on the same terms the ledger keeps its resting modes.
-# The default is still "maker", and that is not the ruling being ignored --
-# it is the migration not being finished.  Switching the family on is one
-# gate and it works: FOK candidates are enumerated and built, two per scope
-# on the standard fixture.  They are then refused downstream, at
-# ``solve_reservation_price_v2`` and the authorization behind it, and the
-# scope reports ``missing_maker_candidate`` -- legacy naming for "this bucket
-# produced no authorized candidate at all".  Flipping the default before that
-# path accepts an FOK action would not make production take; it would make it
-# hold, every scope, every cycle.
+# The blocker turned out to be two filter lines, not the reservation solver:
+# the runtime handed the bundle selector maker actions only, and the selector
+# skipped anything that was not MAKER even so.  Nothing beneath them was
+# maker-specific -- the bundle helpers pass ``order_mode`` straight through to
+# the fill contract, which already knew FOK is all-or-nothing.  Both are gone,
+# so taker composes the basket and the default is the ruling.
 #
-# So the default flips in the commit that makes the reservation path admit a
-# taker action, not before, and this constant exists now so the binding test
-# has something to compare and the drift cannot go silent a second time.
+# The maker machinery stays as an arm on the same terms the ledger keeps its
+# resting modes, and the two sides now declare this constant under the same
+# name so the binding test can equate them.
 EXECUTION_MODES = ("taker", "maker")
 EXECUTION_MODE = (
-    os.environ.get("PM_EXECUTION_MODE", "maker").strip() or "maker"
+    os.environ.get("PM_EXECUTION_MODE", "taker").strip() or "taker"
 )
 if EXECUTION_MODE not in EXECUTION_MODES:
     raise ValueError(f"unknown execution mode: {EXECUTION_MODE}")
@@ -2776,7 +2773,6 @@ def compile_delta_v2_runtime_plan(
     minimum_profit_floor: float,
     resource_probe_ok: bool,
     regime_direction_allowed: bool = True,
-    confirmed_cancel_for_fok: bool = False,
     previous_probabilities: Mapping[str, float] | None = None,
     prior_centre_buckets: Sequence[str] = (),
     chain_consolidation_tilt: float | None = None,
@@ -3325,23 +3321,22 @@ def compile_delta_v2_runtime_plan(
             ),
         })
         actions.append(evaluate_action_v2(**action_kwargs))
-    maker_actions = [
-        action for action in actions
-        if str(dict(action.get("action") or {}).get("order_mode") or "").upper()
-        == "MAKER"
-    ]
-    maker_action_buckets = {
+    # The complete basket is composed from whichever family was enumerated.
+    # This read ``== "MAKER"`` until 2026-08-31 and was the first of the two
+    # filters that kept charter 65 out of production: a taker candidate could
+    # be built and then never reach the selector at all.
+    action_buckets = {
         str(dict(action.get("action") or {}).get("bucket") or "")
-        for action in maker_actions
+        for action in actions
     }
     for bucket in execution_gap_support:
-        if bucket not in maker_action_buckets:
+        if bucket not in action_buckets:
             maker_candidate_diagnostics.setdefault(
                 bucket,
-                "maker_candidate_rejected_by_reservation_or_size",
+                "leg_candidate_rejected_by_reservation_or_size",
             )
     selection = select_complete_maker_bundle_v2(
-        maker_actions,
+        actions,
         required_buckets=execution_gap_support,
         probabilities=probabilities,
         current_shares_by_bucket=current_shares,
@@ -3356,55 +3351,13 @@ def compile_delta_v2_runtime_plan(
         minimum_profit_floor=minimum_profit_floor,
         fee_rate=basket_policy.fee_rate,
     )
-    # Urgent FOK remains a single-bucket close-out mechanism.  It is never
-    # allowed to coexist with a Maker bundle or bypass an incomplete basket.
-    if (
-        selection.get("authorized") is not True
-        and len(execution_gap_support) == 1
-        and confirmed_cancel_for_fok
-    ):
-        fok_selection = select_action_v2(
-            [
-                action for action in actions
-                if str(
-                    dict(action.get("action") or {}).get("order_mode") or ""
-                ).upper() == "FOK"
-            ],
-            execution_weights=delta_policy.execution_weights,
-        )
-        fok_selected = fok_selection["selected_action"]
-        if fok_selected.get("authorized") is True:
-            selection = {
-                "schema": "delta_basket_bundle_selection_v2",
-                "required_buckets": list(execution_gap_support),
-                "selected_actions": [fok_selected],
-                "selected_bundle": None,
-                "selected_action_sha256s": [
-                    str(fok_selected.get("content_sha256") or "")
-                ],
-                "selected_score": float(
-                    fok_selected.get("delta_basket_score_v2") or 0.0
-                ),
-                "capital_reserved_usdc": float(
-                    fok_selected.get("capital_reserved_usdc") or 0.0
-                ),
-                "basket_complete": True,
-                "authorized": True,
-                "blockers": [],
-                "hold_selected": False,
-                "execution_mode": "SINGLE_BUCKET_FOK",
-                "calls_order_gateway": False,
-                "places_orders": False,
-                "orders_submitted": 0,
-                "live_submit_authorized": False,
-                "content_sha256": content_sha256({
-                    "schema": "delta_basket_bundle_selection_v2",
-                    "selected_action_sha256s": [
-                        str(fok_selected.get("content_sha256") or "")
-                    ],
-                    "execution_mode": "SINGLE_BUCKET_FOK",
-                }),
-            }
+    # The single-bucket FOK close-out that used to sit here is gone with the
+    # rule that created it.  It fired only when the maker bundle failed, on a
+    # one-bucket gap, after a confirmed cancel -- FOK as an escape hatch from
+    # a maker world.  Under charter 65 taker composes the basket itself and
+    # answers to the same basket-level EV gate every other family does, so an
+    # escape hatch that bypasses the complete-basket requirement is exactly
+    # the thing that must not exist.
     if not regime_direction_allowed and selection.get("authorized") is True:
         selection = {
             **selection,
@@ -3505,11 +3458,9 @@ def compile_delta_v2_runtime_plan(
                 else ""
             ),
             "post_only": action.get("order_mode") == "MAKER",
-            "cancel_acknowledged": (
-                bool(confirmed_cancel_for_fok)
-                if action.get("order_mode") == "FOK"
-                else False
-            ),
+            # Nothing rests under charter 65, so there is never a maker
+            # order to have cancelled before this one.
+            "cancel_acknowledged": False,
             "target_price_id": (
                 "delta_v2_price_"
                 + str(
@@ -3716,7 +3667,7 @@ def compile_delta_v2_runtime_plan(
         "probability_direction_source": (
             "previous_checkpoint" if previous_probabilities else "absent"
         ),
-        "fok_cancel_acknowledged": bool(confirmed_cancel_for_fok),
+        "execution_mode": EXECUTION_MODE,
         "target_only": True,
         "places_orders": False,
         "writes_production_db": False,

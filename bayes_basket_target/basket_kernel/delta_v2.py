@@ -1909,6 +1909,22 @@ def rescore_maker_bundle_v2(
     return {**identity, "content_sha256": content_sha256(identity)}
 
 
+# Which order families may compose a complete basket.
+#
+# This selector skipped everything that was not MAKER until 2026-08-31, which
+# made it the second of two filters standing between charter 65 and
+# production: the runtime handed it maker actions only, and it dropped
+# anything else that reached it anyway.  Nothing under this line was ever
+# maker-specific -- the two bundle helpers pass ``order_mode`` straight
+# through to the fill-distribution contract, which already knows that FOK is
+# all-or-nothing and a resting maker needs partial and zero support.  So the
+# family was a filter, not an assumption, and it comes out.
+#
+# The caller decides which family to enumerate (``delta_v2_runtime`` has one
+# mode at a time); this only stops an unknown mode from entering a bundle.
+EXECUTION_FAMILIES = frozenset({"MAKER", "FOK"})
+
+
 def select_complete_maker_bundle_v2(
     actions: Sequence[Mapping[str, Any]],
     *,
@@ -1979,7 +1995,7 @@ def select_complete_maker_bundle_v2(
         if not isinstance(action, Mapping):
             raise ContractError("delta_v2_action_mapping_required")
         mode = str(action.get("order_mode") or "").upper()
-        if mode != "MAKER":
+        if mode not in EXECUTION_FAMILIES:
             continue
         bucket = str(action.get("bucket") or "")
         if bucket in by_bucket:
@@ -2086,7 +2102,7 @@ def select_complete_maker_bundle_v2(
     elif missing:
         blockers = [
             "complete_basket_candidate_missing",
-            *[f"missing_maker_candidate:{bucket}" for bucket in missing],
+            *[f"missing_leg_candidate:{bucket}" for bucket in missing],
         ]
     else:
         blockers = ["complete_basket_delta_not_positive"]

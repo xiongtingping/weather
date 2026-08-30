@@ -433,7 +433,11 @@ def test_multi_bucket_target_starts_every_gap_leg_in_one_bundle() -> None:
     ) == 2
 
 
-def test_min_tick_ask_reports_structural_maker_unavailability() -> None:
+def test_min_tick_ask_reports_structural_maker_unavailability(monkeypatch) -> None:
+    # Maker is an arm since charter 65 made taker the family
+    # production forms; this test is about the arm.
+    import bayes_basket_target.delta_v2_runtime as _rt
+    monkeypatch.setattr(_rt, "EXECUTION_MODE", "maker")
     raw = _snapshot().to_dict()
     raw["buckets"][0].update({
         "probability": 0.5,
@@ -472,7 +476,7 @@ def test_min_tick_ask_reports_structural_maker_unavailability() -> None:
         "maker_post_only_price_unavailable_at_min_tick:35"
         in result["reason_codes"]
     )
-    assert "missing_maker_candidate:35" in (
+    assert "missing_leg_candidate:35" in (
         result["delta_v2_action_selection"]["blockers"]
     )
 
@@ -674,7 +678,11 @@ def test_target_grid_can_still_be_priced_at_the_crossing_arm(
     assert both["shares_by_bucket"]["36"] == pytest.approx(1.0)
 
 
-def test_maker_limit_is_quote_anchored_and_not_the_static_reservation_grid_floor() -> None:
+def test_maker_limit_is_quote_anchored_and_not_the_static_reservation_grid_floor(monkeypatch) -> None:
+    # Maker is an arm since charter 65 made taker the family
+    # production forms; this test is about the arm.
+    import bayes_basket_target.delta_v2_runtime as _rt
+    monkeypatch.setattr(_rt, "EXECUTION_MODE", "maker")
     raw = _snapshot().to_dict()
     raw["buckets"][1]["bid_price"] = 0.19
     raw["buckets"][1]["bid_levels"] = [{"price": 0.19, "shares": 10.0}]
