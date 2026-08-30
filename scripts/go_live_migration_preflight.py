@@ -51,6 +51,14 @@ def _read(path: Path) -> str:
         return ""
 
 
+def _strip_js_comments(text: str) -> str:
+    return re.sub(r"^\s*//.*$", "", re.sub(r"/\*.*?\*/", "", text, flags=re.S), flags=re.M)
+
+
+def _strip_py_comments(text: str) -> str:
+    return re.sub(r"^\s*#.*$", "", text, flags=re.M)
+
+
 def _json(path: Path) -> dict[str, Any]:
     try:
         parsed = json.loads(path.read_text(encoding="utf-8"))
@@ -398,32 +406,57 @@ def check_gateway_health() -> list[dict[str, Any]]:
     return out
 
 
-def check_asos_bypass() -> dict[str, Any]:
-    """Who actually gets stopped by the pause flag -- and who does not.
+def check_asos_lane_retired() -> dict[str, Any]:
+    """The ASOS argmax lane is not an order lane, and the code has to say so.
 
-    ``if (livePausePresent()) { if (!isAsosLive) { reject } }``: the ASOS
-    argmax lane is exempt from the pause flag, and from the read-only flag
-    directly above it.  So for that lane the region pre-rejection is not one
-    gate among several, it is the last one.  Anybody reaching for
-    PM_CLOB_IGNORE_REGION_BLOCK has to know that before they reach.
+    This gate used to read the other way round: it warned that the lane was
+    exempt from the pause flag and the read-only flag, so the region
+    pre-rejection was its last gate and anybody reaching for
+    PM_CLOB_IGNORE_REGION_BLOCK was about to remove it.
+
+    The operator settled that on 2026-08-31: one mainline, the three-stage
+    P0 / P0-M / P1 basket ladder, and no separate ASOS order lane.  So the
+    gate now checks the retirement rather than the exemption -- both halves
+    of it, because barring the strategy ids while the resident still calls
+    the submitter would leave it failing loudly every cycle instead of not
+    running.
     """
 
-    source = _read(ROOT / "scripts" / "clob_order_service.mjs")
-    bypasses_pause = "if (livePausePresent()) {\n      if (!isAsosLive) {" in source
-    launcher = _read(ROOT / "scripts" / "clob_order_service.sh")
-    asos_live = "PM_ASOS_ARGMAX_LIVE_ENABLED=1" in launcher
+    # Strip comments first.  Every one of these three is a claim about what
+    # the code *does*, and prose explaining what it no longer does mentions
+    # the same identifiers -- which is exactly how this check first read
+    # green-by-comment on a daemon that had already stopped calling the
+    # submitter.  Third time that trap fired in two days; the other two were
+    # in tests.
+    source = _strip_js_comments(_read(ROOT / "scripts" / "clob_order_service.mjs"))
+    daemon = _strip_py_comments(_read(ROOT / "scripts" / "weather_basket_yes_daemon.py"))
+    barred = all(
+        f"ASOS_ARGMAX_{name}_STRATEGY_ID" in source.split(
+            "const RETIRED_STRATEGY_IDS", 1
+        )[-1].split("]);", 1)[0]
+        for name in ("LIVE", "EXIT", "ROTATION_SELL")
+    )
+    resident_clear = "process_pending_argmax_orders" not in daemon
+    exemption_gone = "isAsosLive" not in source
+    retired = barred and resident_clear and exemption_gone
+    missing = [
+        label for label, ok in (
+            ("网关退役闸", barred),
+            ("常驻不再调用", resident_clear),
+            ("豁免已删除", exemption_gone),
+        ) if not ok
+    ]
     return _check(
-        "ASOS 车道的暂停旗豁免",
+        "ASOS 下单车道已退役",
         6,
-        "operator",
-        WARN if (bypasses_pause and asos_live) else PASS,
+        "code",
+        PASS if retired else BLOCK,
         (
-            "ASOS 车道绕过暂停旗与只读位（isAsosLive），"
-            "区域预拒是它唯一剩下的闸——关闸即可能真下单"
-            if (bypasses_pause and asos_live)
-            else "ASOS 无豁免，或未启用"
+            "三个 strategy_id 在网关退役集内；常驻不再调用提交步；豁免已删除"
+            if retired
+            else "未完成：" + "、".join(missing)
         ),
-        "关区域闸之前，先决定 ASOS 车道是否也该放行；两者是同一个开关。",
+        "唯一主线是三阶段 P0/P0-M/P1 篮子梯子；ASOS 只作 P1 观测源。",
     )
 
 
@@ -507,7 +540,7 @@ def main() -> int:
     checks.append(check_gateway_launcher())
     checks.append(check_pause_flag())
     checks.extend(check_gateway_health())
-    checks.append(check_asos_bypass())
+    checks.append(check_asos_lane_retired())
     checks.append(check_geoblock_direct())
     checks.append(check_credentials_present())
     checks.append(check_funding_is_unstated())

@@ -100,10 +100,16 @@ def test_fresh_region_block_rejects_before_persistence_signing_or_posting(tmp_pa
     assert not payload.get("orderID")
 
 
-def test_region_block_rejection_is_released_not_reconciled_by_the_lane(tmp_path):
-    """The execution lane must free the budget a blocked route never used."""
+def test_region_block_rejection_is_not_reconcilable(tmp_path):
+    """A route the gateway refused before signing owes nobody a reconcile.
 
-    import asos_argmax_execution as execution  # noqa: PLC0415
+    This used to assert the ASOS execution lane's budget states too -- that a
+    region rejection landed in a state which released the reservation rather
+    than one which held it pending reconcile.  That lane was retired on
+    2026-08-31 (one mainline, the basket ladder), and its module went with
+    it.  What the gateway itself promises is unchanged and is what remains
+    here: nothing was posted, so nothing is in flight.
+    """
 
     response = _run(
         """
@@ -122,5 +128,4 @@ def test_region_block_rejection_is_released_not_reconciled_by_the_lane(tmp_path)
         or response.get("orderID")
     )
     assert not reconcile_required
-    assert "RECONCILE_REQUIRED" in execution.ACTIVE_BUDGET_STATES
-    assert "RELEASED" not in execution.ACTIVE_BUDGET_STATES
+    assert response.get("exchange_post_started") is False

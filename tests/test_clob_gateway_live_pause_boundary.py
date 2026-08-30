@@ -39,6 +39,68 @@ def test_gateway_pause_gate_is_dynamic_and_precedes_idempotency_admission():
     assert "postOrder" not in code
 
 
+def test_the_asos_order_lane_is_retired_at_the_chokepoint(tmp_path):
+    """One mainline.  The bar is checked before every other admission test.
+
+    Operator ruling 2026-08-31: there is no separate ASOS order lane -- the
+    system has one, the three-stage P0 / P0-M / P1 basket ladder.  The lane
+    had grown its own strategy ids, intents table, budget and gateway
+    admission, and ran a submission step every resident cycle.
+
+    Its three ids are in the retired set, which is tested first, so the
+    ruling does not depend on any later gate still being in place.  The
+    admission functions that used to sit behind it are gone from the source
+    entirely, which is asserted here too: a retired lane that still carries
+    its own admission path invites being switched back on.
+    """
+    service_uri = (ROOT / "scripts" / "clob_order_service.mjs").as_uri()
+    script = f"""
+      process.env.PM_DATA_DIR = {json.dumps(str(tmp_path))};
+      const {{ ClobOrderService }} = await import({json.dumps(service_uri)});
+      const service = new ClobOrderService();
+      service.persistIntent = () => {{ throw new Error('must not persist'); }};
+      service.client = {{
+        createOrder: async () => {{ throw new Error('must not sign'); }},
+        postOrder: async () => {{ throw new Error('must not post'); }},
+      }};
+      const out = {{}};
+      for (const id of [
+        'asos_argmax_new_high_yes_v1',
+        'asos_argmax_yes_exit_099_v1',
+        'asos_argmax_rotation_sell_fak_v1',
+      ]) {{
+        out[id] = await service.placeOrderWithIdempotency({{
+          strategy_id: id, token_id: '123456', side: 'BUY', order_type: 'FOK',
+          price: 0.2, size: 10, notional: 2, allow_market: true,
+          post_only: false, idempotency_key: `k-${{id}}`, order_intent_id: id,
+        }});
+      }}
+      console.log(JSON.stringify(out));
+    """
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script], cwd=ROOT,
+        text=True, capture_output=True, timeout=20, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    for strategy_id, payload in json.loads(result.stdout).items():
+        assert payload["error"] == "retired_strategy_forbidden", strategy_id
+        assert payload["ok"] is False
+        assert payload["accepted"] is False
+        assert payload["exchange_post_started"] is False
+
+    source = (ROOT / "scripts" / "clob_order_service.mjs").read_text(encoding="utf-8")
+    code = _code_only(source)
+    for name in (
+        "asosArgmaxLiveAdmission",
+        "asosArgmaxExitAdmission",
+        "asosArgmaxRotationSellAdmission",
+        "isAsosLive",
+        "ASOS_ARGMAX_LIVE_STATIONS",
+        "PM_ASOS_ARGMAX_LIVE_ENABLED",
+    ):
+        assert name not in code, name
+
+
 def test_gateway_starts_during_pause_instead_of_sleeping():
     shell = (ROOT / "scripts" / "clob_order_service.sh").read_text(encoding="utf-8")
     assert "export PM_LIVE_PAUSE_FILE=" in shell

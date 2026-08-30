@@ -38,7 +38,6 @@ export WEATHER_SERVICE_DOMAIN=user
 export PM_LIVE_PAUSE_FILE="$ROOT/data/live_paused.flag"
 export PM_TARGET_EXECUTION_MODE=production_no_live
 export PM_CLOB_ORDER_SERVICE_READ_ONLY=0
-export PM_ASOS_ARGMAX_LIVE_ENABLED=1
 # The region pre-rejection reads polymarket.com/api/geoblock -- the website's
 # restriction -- and refuses before signing, so the exchange's own answer was
 # never obtained.  The attempt record separates the two: the three responses
