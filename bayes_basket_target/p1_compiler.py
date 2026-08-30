@@ -481,6 +481,20 @@ def compile_station_p1_packets(
             # predecessor, so stage routing never sees same-instant competing
             # authorities.
             last_decision = floor
+    # The local-midnight report may commit a transmission lead ahead of its
+    # own nominal minute (OEJN -6.4s, SBGR ~-30s on 7 of 12 days measured
+    # 2026-08-30).  Both as-of gates below already allow that lead, but a
+    # packet whose decision clock inherits the early commit sits before the
+    # settlement day's start and materialize_p1's day-started assert
+    # fail-closes the whole scope -- until the first post-midnight P0 root
+    # lifts last_decision past midnight, which on SBGR 2026-08-29 took seven
+    # hours of the event morning.  A decision about this day cannot predate
+    # the day: floor every packet's clock at the day's own start.
+    event_day_start_utc = datetime.fromisoformat(
+        previous.event_date
+    ).replace(tzinfo=ZoneInfo(root.settlement_timezone)).astimezone(
+        timezone.utc
+    )
     trajectory_prefix: list[MetarTrajectoryObservation] = []
     truth_revision_sha_by_observation: dict[str, str] = {}
     # Parsed once for the exhaustion test below.  A malformed curve stays
@@ -643,6 +657,7 @@ def compile_station_p1_packets(
         decision = max(
             committed,
             last_decision + timedelta(microseconds=1),
+            event_day_start_utc,
         )
         decision_text = _stamp(decision)
         # This loop replays the whole station-day: every observation gets its

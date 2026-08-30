@@ -693,3 +693,63 @@ def test_builder_rejects_tampered_canonical_evidence_before_db_read(
             as_of_utc="2026-07-26T08:00:00Z",
             output_dir=tmp_path / "packets",
         )
+
+
+def _midnight_observation(
+    observation_id: str,
+    temperature_c: float,
+    *,
+    valid_at: str,
+    committed_at: str,
+) -> dict:
+    return {
+        "observation_id": observation_id,
+        "station_id": "KATL",
+        "event_date_local": "2026-07-26",
+        "settlement_timezone": "America/New_York",
+        "reported_temperature_c": temperature_c,
+        "valid_at_utc": valid_at,
+        "canonical_committed_at_utc": committed_at,
+        "raw_sha256": ("1" if observation_id == "o1" else "2") * 64,
+        "source_lane": "AWC",
+        "report_type": "METAR",
+        "evidence_role": "FORMAL",
+        "qc_status": "ACCEPTED",
+        "correction_suspected": False,
+    }
+
+
+def test_midnight_report_committed_early_does_not_predate_its_event_day() -> None:
+    """The local-midnight report may commit ahead of its nominal minute.
+
+    OEJN commits ~6s early and SBGR ~30s early on most days.  Inheriting that
+    commit as the packet's decision clock put the decision before the
+    settlement day started, and the day-started assert in ``materialize_p1``
+    fail-closed the whole station-day (SBGR lost the first seven hours of
+    2026-08-29's event morning that way).  A decision about a day may not
+    predate the day.
+    """
+
+    packets = compile_station_p1_packets(
+        # A P0-M root frozen the evening before, so nothing else lifts the
+        # stage clock past midnight before the first report arrives.
+        predecessor=_predecessor(decision_at_utc="2026-07-25T22:00:00Z"),
+        observations=[
+            _midnight_observation(
+                "o1",
+                26.0,
+                valid_at="2026-07-26T04:00:00Z",
+                committed_at="2026-07-26T03:59:30Z",
+            ),
+        ],
+        registry_rows=_registry(),
+        compilation_at_utc="2026-07-26T08:00:00Z",
+    )
+
+    assert [packet["observation_id"] for packet in packets] == ["o1"]
+    # Floored at the event day's own start (00:00 America/New_York), not the
+    # early commit clock.
+    assert (
+        packets[0]["expected_envelope"]["decision_at_utc"]
+        == "2026-07-26T04:00:00.000000Z"
+    )
