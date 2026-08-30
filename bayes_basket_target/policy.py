@@ -436,6 +436,33 @@ class ResolvedStationBasketPolicy:
     policy_sha256: str
     authority_scope: str = "FORMAL_PROMOTED"
 
+    def to_dict(self) -> dict[str, Any]:
+        """The resolution as a plain record, for receipts and blocked plans.
+
+        Four call sites in runtime.py have wanted this since charter 67 and
+        every one of them sat on a blocked path, so instead of a receipt
+        naming the real blocker -- a missing budget, a stale quote -- the
+        cycle died on AttributeError and the receipt said that instead.
+        Twelve decisions in one two-hour window wore the wrong cause.
+        """
+
+        return {
+            "station_id": self.station_id,
+            "stage": self.stage,
+            "season_bin": self.season_bin,
+            "maturity_bin": self.maturity_bin,
+            "liquidity_bin": self.liquidity_bin,
+            "strategy_version": self.strategy_version,
+            "activation_id": self.activation_id,
+            "global_prior_id": self.global_prior_id,
+            "target_artifact_id": self.target_artifact_id,
+            "reserve_artifact_id": self.reserve_artifact_id,
+            "cadence_artifact_id": self.cadence_artifact_id,
+            "fallback_reason": self.fallback_reason,
+            "policy_sha256": self.policy_sha256,
+            "authority_scope": self.authority_scope,
+        }
+
     def to_adaptive_policy_overrides(self, base: Mapping[str, Any] | None = None) -> dict[str, Any]:
         """Map learned target parameters into the existing pure evaluator.
 

@@ -368,7 +368,7 @@ MULTI_SCOPE_WS_MANIFEST_SCHEMA = (
 # carry scopes at once.  The publisher's own cap (MAX_TARGET_SCOPES) moved to
 # 45x3 for the same reason; a reader stricter than the writer turns a bigger
 # catalog into a global WS-path outage.
-MAX_RESIDENT_WS_SCOPES = 135
+MAX_RESIDENT_WS_SCOPES = expected_station_count() * 3
 
 
 def insert_probability_envelope(
@@ -2880,9 +2880,22 @@ class TargetProductionWorker:
                     ).items()
                 }
         except Exception as exc:
-            self._nwp_rotation_state_load_error = (
-                f"{type(exc).__name__}:{exc}"
-            )
+            reason = f"{type(exc).__name__}:{exc}"
+            if "nwp_rotation_station_scope_mismatch" in reason:
+                # The fleet grew.  The state file pins the station scope it
+                # was built for, and on 2026-08-31 a 45-station state met a
+                # 48-station fleet and the whole NWP cycle sat down
+                # (blocked_fail_closed, every poll) -- for a file whose own
+                # writer declares it "scheduler telemetry and a restart hint,
+                # not an authorization boundary", and whose write failures
+                # deliberately do not block.  Reading it cannot be stricter
+                # than writing it: a scope from a smaller fleet is a stale
+                # hint, so it is discarded and the first cycle rebuilds it
+                # for the fleet that exists, rotation cursor starting over.
+                self._nwp_rotation_state = None
+                self._nwp_rotation_state_stale_discarded = reason
+            else:
+                self._nwp_rotation_state_load_error = reason
         self._resident_open_scope_cursor = 0
         self._native_ensemble_scope_cursor = int(
             getattr(
@@ -12958,7 +12971,7 @@ class TargetProductionWorker:
                         ) % len(settled_scopes)
                 truth_kwargs: dict[str, Any] = {
                     "as_of_utc": as_of_utc,
-                    "max_scopes": 45,
+                    "max_scopes": expected_station_count(),
                     "after_fact_rowid": source_cursor,
                 }
                 if additional_scopes:

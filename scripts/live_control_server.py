@@ -32,6 +32,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 POLICY_PATH = ROOT / "config/trading/portfolio_capital_policy_v1.json"
 RUNTIME_PATH = ROOT / "config/bayes_basket_target/no_live_runtime_v1.json"
+# The live twin.  Production in production_live mode reads this file, not the
+# no-live one, so a budget knob that wrote only the no-live file would be a
+# dial connected to nothing -- the operator turns it, the number changes, and
+# the running system never sees it.  Both are written whenever both exist.
+LIVE_RUNTIME_PATH = ROOT / "config/bayes_basket_target/live_runtime_v1.json"
+STATION_CAP_PATH = ROOT / "config/trading/station_cap_v1.json"
 INTENT_PATH = ROOT / "config/trading/live_intent_v1.json"
 EXCLUSION_PATH = ROOT / "config/trading/live_station_exclusions_v1.json"
 AUDIT_PATH = ROOT / "data" / "live_control_audit.jsonl"
@@ -40,6 +46,7 @@ PORT = 8788
 KELLY_BOUNDS = (0.05, 0.50)
 KELLY_STEP_MAX = 0.50
 BUDGET_BOUNDS = (0.0, 2000.0)
+STATION_CAP_BOUNDS = (1.0, 30.0)
 STATION_RE = re.compile(r"^[A-Z0-9]{3,6}$")
 
 
@@ -95,6 +102,15 @@ def state() -> dict:
             "bounds": BUDGET_BOUNDS,
             "step": 50.0,
         },
+        "station_cap": {
+            "station_cap_usdc": (
+                _read(STATION_CAP_PATH).get("station_cap_usdc")
+                if STATION_CAP_PATH.is_file() else None
+            ),
+            "default_usdc": 15.0,
+            "bounds": STATION_CAP_BOUNDS,
+            "step": 1.0,
+        },
         "live": {
             "enabled": intent["live_enabled"],
             "armed_by": intent.get("armed_by"),
@@ -143,9 +159,48 @@ def set_budget(value: float) -> dict:
     before = float(runtime["target_remaining_budget_usdc"])
     runtime["target_remaining_budget_usdc"] = round(float(value), 2)
     _write_atomic(RUNTIME_PATH, runtime)
+    if LIVE_RUNTIME_PATH.is_file():
+        live_runtime = _read(LIVE_RUNTIME_PATH)
+        live_runtime["target_remaining_budget_usdc"] = runtime[
+            "target_remaining_budget_usdc"
+        ]
+        _write_atomic(LIVE_RUNTIME_PATH, live_runtime)
     _audit({
         "knob": "target_remaining_budget_usdc",
         "before": before, "after": runtime["target_remaining_budget_usdc"],
+        "wrote_live_twin": LIVE_RUNTIME_PATH.is_file(),
+    })
+    return state()
+
+
+def set_station_cap(value: float) -> dict:
+    """The per-station bankroll, moved live without a deploy.
+
+    Until 2026-08-31 this number was a code constant
+    (runtime._DEFAULT_POLICY["total_budget_usdc"]) and changing it took an
+    edit and a restart; the operator asked for a dial.  The file this writes
+    is read fresh at every plan compile, and the three bankroll-shaped
+    bounds (protected floor, outside loss, minimum expected pnl) are derived
+    from it there, not stored here -- one number, one owner.
+    """
+
+    if not STATION_CAP_BOUNDS[0] <= value <= STATION_CAP_BOUNDS[1]:
+        raise ValueError(
+            f"station cap out of bounds {STATION_CAP_BOUNDS}: {value}"
+        )
+    current = (
+        _read(STATION_CAP_PATH) if STATION_CAP_PATH.is_file() else {}
+    )
+    before = current.get("station_cap_usdc")
+    payload = {
+        "schema": "basket_station_cap_v1",
+        "station_cap_usdc": round(float(value), 2),
+        "updated_at_utc": _now(),
+    }
+    _write_atomic(STATION_CAP_PATH, payload)
+    _audit({
+        "knob": "station_cap_usdc",
+        "before": before, "after": payload["station_cap_usdc"],
     })
     return state()
 
@@ -311,14 +366,27 @@ def live_stations() -> dict:
             "barred": sorted(barred),
             "minimum_settlements": 0,
         }
+    # An operator may graduate a station by name before the settlement count
+    # does it (ruling 2026-08-31: LIMC and LEMD trade now).  This is a waiver
+    # of the qualifying threshold, not an enumeration of the live list -- the
+    # membership stays derived, and a waiver for a barred station is inert
+    # because the bar is checked first.  Recorded in the intent file so the
+    # ruling survives restarts and shows up in /api/state.
+    waived = {
+        str(s).strip().upper()
+        for s in (intent.get("station_probation_waivers") or [])
+    }
     return {
         "scope": SCOPE_QUALIFIED,
         "stations": sorted(
-            s for s in unbarred if counts.get(s, 0) >= minimum
+            s for s in unbarred
+            if counts.get(s, 0) >= minimum or s in waived
         ),
         "probation": sorted(
-            s for s in unbarred if counts.get(s, 0) < minimum
+            s for s in unbarred
+            if counts.get(s, 0) < minimum and s not in waived
         ),
+        "probation_waivers": sorted(waived),
         "barred": sorted(barred),
         "minimum_settlements": minimum,
     }
@@ -396,6 +464,8 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length) or b"{}")
             if self.path.rstrip("/") == "/api/kelly":
                 out = set_kelly(float(body["value"]))
+            elif self.path.rstrip("/") == "/api/station-cap":
+                result = set_station_cap(float(payload["value"]))
             elif self.path.rstrip("/") == "/api/budget":
                 out = set_budget(float(body["value"]))
             elif self.path.rstrip("/") == "/api/live":

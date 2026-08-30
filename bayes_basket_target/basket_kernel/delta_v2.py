@@ -1819,7 +1819,12 @@ def rescore_maker_bundle_v2(
         action = raw.get("action")
         if not isinstance(action, Mapping):
             raise ContractError("delta_v2_action_mapping_required")
-        if str(action.get("order_mode") or "").upper() != "MAKER":
+        # The third family filter found after charter 65 landed: the two in
+        # enumeration and bundle selection came out on 2026-08-31, and this
+        # one sat in the re-score path, where it would have refused the first
+        # clamped-clip re-authorization of any taker bundle.  Same rule as
+        # the selector: the enumerated families pass, an unknown mode does not.
+        if str(action.get("order_mode") or "").upper() not in EXECUTION_FAMILIES:
             raise ContractError("delta_v2_rescore_order_mode_invalid")
         bucket = str(action.get("bucket") or "")
         if bucket in seen_buckets:

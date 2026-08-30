@@ -1992,6 +1992,36 @@ def run_target_production_cycle(
             "live_submit_authorized": False,
             "orders_submitted": 0,
         }
+    # The 0.998 recycle lane (operator ruling 2026-08-31): a position whose
+    # settlement day has closed on a high inside a held bucket is sold at
+    # 0.998 rather than waiting for settlement, and the freed capital
+    # re-enters the budget.  Runs after the main cycle on the same writer
+    # connection, and a failure here is reported on the receipt rather than
+    # raised -- a take-profit convenience must not be able to stop the lane
+    # that produces the positions it profits from.
+    recycle_receipt: dict[str, Any] | None = None
+    if PRODUCTION_EXECUTION_MODE == "production_live":
+        canonical = getattr(worker, "canonical_source_conn", None)
+        if canonical is not None:
+            try:
+                from bayes_basket_target.certain_win_recycle import (
+                    execute_certain_win_recycles,
+                )
+                from bayes_basket_target.production import (
+                    _default_order_transport,
+                )
+                recycle_receipt = execute_certain_win_recycles(
+                    connection,
+                    canonical,
+                    transport=_default_order_transport,
+                    now_utc=utc_now(),
+                    live_submit_authorized=True,
+                )
+            except Exception as exc:
+                recycle_receipt = {
+                    "ok": False,
+                    "error": f"{type(exc).__name__}:{exc}",
+                }
     return {
         **result,
         "post_cycle_resource_guard": {
@@ -1999,6 +2029,7 @@ def run_target_production_cycle(
             "database": None if guard is None else str(guard),
         },
         "target_cycle_runtime": runtime,
+        **({"certain_win_recycle": recycle_receipt} if recycle_receipt else {}),
     }
 
 

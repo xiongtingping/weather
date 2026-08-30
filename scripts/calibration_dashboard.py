@@ -7728,6 +7728,12 @@ function liveReadiness(){
         <div class="big" id="lc-budget">${L.budget_usdc==null?"—":L.budget_usdc}</div>
         <button type="button" disabled class="lc-w" onclick="lcAdjust('budget',-50)">−50</button>
         <button type="button" disabled class="lc-w" onclick="lcAdjust('budget',50)">＋50</button></div>
+    <div style="margin-top:6px">单站上限 <b id="lc-cap" class="mono">—</b> u
+        <span class="muted" style="font-size:11px">（默认 15，范围 1–30；三个本金型边界同步派生）</span>
+        <button type="button" disabled class="lc-w" onclick="lcAdjust('cap',-1)">−1</button>
+        <button type="button" disabled class="lc-w" onclick="lcAdjust('cap',1)">＋1</button>
+        <button type="button" disabled class="lc-w" onclick="lcAdjust('cap',-5)">−5</button>
+        <button type="button" disabled class="lc-w" onclick="lcAdjust('cap',5)">＋5</button></div>
     </div>
     <div class="muted" style="margin-top:8px" id="lc-status">控制服务未连接——启动：
       <span class="mono">.venv/bin/python scripts/live_control_server.py</span>
@@ -7763,6 +7769,10 @@ function lcRender(s){
   const live=document.getElementById("lc-live");
   if(kelly) kelly.textContent = s.kelly.portfolio_risk_fraction;
   if(budget) budget.textContent = s.budget.target_remaining_budget_usdc;
+  const cap=document.getElementById("lc-cap");
+  if(cap) cap.textContent = (s.station_cap&&s.station_cap.station_cap_usdc!=null)
+    ? s.station_cap.station_cap_usdc
+    : ((s.station_cap&&s.station_cap.default_usdc)||15)+"(默认)";
   if(live) live.textContent = s.live.enabled?"ARMED":"OFF";
   // The banner switch carries the same state; paint it red only when the
   // flag is actually up, so a glance at the top of the page answers "may
@@ -7792,6 +7802,13 @@ function lcAdjust(knob, delta){
   if(knob==="kelly"){
     const next = Math.round((s.kelly.portfolio_risk_fraction+delta)*100)/100;
     lcApi("/api/kelly", {value: next}).then(lcRender)
+      .catch(e=>alert("失败: "+e));
+  } else if(knob==="cap"){
+    const cur = (s.station_cap&&s.station_cap.station_cap_usdc!=null)
+      ? s.station_cap.station_cap_usdc
+      : ((s.station_cap&&s.station_cap.default_usdc)||15);
+    const next = Math.round((cur+delta)*100)/100;
+    lcApi("/api/station-cap", {value: next}).then(lcRender)
       .catch(e=>alert("失败: "+e));
   } else {
     const next = Math.round(

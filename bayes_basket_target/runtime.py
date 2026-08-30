@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import math
+from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from .contracts import ContractError, ProbabilityEnvelope, content_sha256
@@ -59,14 +60,47 @@ DELTA_V2_OPTIMIZER_SCHEMA = "bayes_basket_target_delta_v2_optimizer_v2"
 DELTA_V2_OPTIMIZER_ID = "DeltaBasketScoreV2Optimizer"
 
 
+def _station_cap_override() -> dict[str, float]:
+    """The operator's per-station bankroll, read fresh at every compile.
+
+    scripts/live_control_server.py writes station_cap_v1.json from the
+    dashboard dial; absent or unreadable, the compiled-in default stands.
+    The three bankroll-shaped bounds are derived here rather than stored in
+    the file, because they are the same number wearing three names --
+    protected floor, outside loss, minimum expected pnl -- and letting them
+    be set independently is how a floor ends up deeper than the bankroll.
+    """
+
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "config" / "trading" / "station_cap_v1.json"
+    )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        cap = float(raw["station_cap_usdc"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+    if not math.isfinite(cap) or not 1.0 <= cap <= 30.0:
+        return {}
+    return {
+        "total_budget_usdc": cap,
+        "minimum_expected_pnl_after_usdc": -cap,
+        "protected_floor_usdc": -cap,
+        "max_outside_loss_usdc": cap,
+    }
+
+
 _DEFAULT_POLICY = {
-    # 20, down from 30 by operator ruling 2026-08-31 ("单站上限 30 USDC改为
-    # 10u-20u"), taken at the top of the stated range and matching the 20.0
-    # the v3/global_v4 station policy files already carry.  The three
-    # bankroll-shaped bounds below (protected floor, outside loss, minimum
-    # expected pnl) scale with it: they are "the whole bankroll" expressed as
-    # a number, not independent choices.
-    "total_budget_usdc": 20.0,
+    # 15 by operator ruling 2026-08-31, revised within the hour from 20:
+    # at 20 the 114.29 budget spreads across barely 5.7 full stations, and
+    # the operator judged that concentration a risk ("预算最多摊 5.7 个满额站：
+    # 有风险：还是调整为10-15u吧"), taking the top of the new 10-15 range.
+    # At 15 the same budget covers 7.6 full stations.  The three
+    # bankroll-shaped bounds below scale with it: they are "the whole
+    # bankroll" expressed as a number, not independent choices.  This is
+    # also only the default -- the operator can move it live from the
+    # control panel, which writes station_cap_v1.json, read fresh each cycle.
+    "total_budget_usdc": 15.0,
     "base_coverage": 0.55,
     "entropy_coverage_gain": 0.20,
     "maximum_coverage": 0.92,
@@ -85,12 +119,12 @@ _DEFAULT_POLICY = {
     "price_tick_size": 0.01,
     "maximum_limit_price": 0.99,
     "minimum_expected_edge_per_share": 0.0,
-    "minimum_expected_pnl_after_usdc": -20.0,
+    "minimum_expected_pnl_after_usdc": -15.0,
     "fee_rate": 0.0,
     "maker_queue_cost_per_share": 0.0,
     "taker_slippage_buffer_per_share": 0.0,
-    "protected_floor_usdc": -20.0,
-    "max_outside_loss_usdc": 20.0,
+    "protected_floor_usdc": -15.0,
+    "max_outside_loss_usdc": 15.0,
     "basket_downside_lambda_per_usdc": 0.02,
     "basket_directional_coverage_lambda_usdc": 0.05,
     "basket_concentration_lambda_usdc": 0.25,
@@ -954,6 +988,7 @@ def _compile_target_plan(
         )
 
     policy_config = dict(_DEFAULT_POLICY)
+    policy_config.update(_station_cap_override())
     policy_config.update(resolved.to_adaptive_policy_overrides())
     policy_config.update(dict(base_policy or {}))
     policy = TargetBasketPolicy.from_mapping(policy_config)

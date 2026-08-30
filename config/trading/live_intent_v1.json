@@ -6,8 +6,12 @@
   "armed_at_utc": "2026-08-30T16:50:46Z",
   "station_allowlist": [],
   "allowlist_note": "Default deny. Operator ruling 2026-08-31: a station is not live until it has earned it. Three states, derived on every read and never enumerated -- LIVE (judged, survived, not barred), PROBATION (fewer than minimum_settlements_to_qualify settlements, so nothing can be said about it yet), BARRED (judged and found wanting; capped at fifteen). Probation is deliberately not the bar: a station with two settlements is not bad, and putting it on the bar list would also spend one of the fifteen capped places. The threshold is the same one the automatic layer needs before it may judge a station at all -- admitting on less evidence than that would admit something nothing could ever bar for cause. Probation costs nothing to sit in: the paper ledger keeps seating and settling these stations, which is how they accumulate the evidence that graduates them. Membership stays derived rather than listed, for the reasons of the 2026-08-30 ruling that did not change: the fleet only grows, the eight-station batch went stale in two days, and any frozen enumeration is wrong by the time it is read. station_allowlist is read only in scope=explicit.",
-  "updated_at_utc": "2026-08-30T16:50:46Z",
+  "updated_at_utc": "2026-08-30T18:15:00Z",
   "allowlist_basis_utc": "2026-08-30",
   "station_scope": "qualified_and_not_barred",
-  "minimum_settlements_to_qualify": 5
+  "minimum_settlements_to_qualify": 5,
+  "station_probation_waivers": [
+    "LEMD",
+    "LIMC"
+  ]
 }
