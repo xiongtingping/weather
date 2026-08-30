@@ -130,6 +130,14 @@ def _floor_step(value: float, step: float) -> float:
     return round(max(0.0, math.floor((value + EPS) / step) * step), 10)
 
 
+def _ceil_step(value: float, step: float) -> float:
+    """Raise a positive quantity to the next exchange share quantum."""
+
+    if value <= EPS:
+        return 0.0
+    return round(max(0.0, math.ceil((value - EPS) / step) * step), 10)
+
+
 @dataclass(frozen=True)
 class BasketCashPhasePolicyArtifact:
     """Explicit self-owned cash policy; source-wallet values are never defaults."""
@@ -401,6 +409,7 @@ class OrderSizingDecision:
     target_clip_notional_usdc: float | None
     minimum_clip_notional_usdc: float
     minimum_lot_shares: float
+    lot_raise_usdc: float
     cash_template_caps_target: bool
     clamped_clip_authorized: bool
     share_quantum: float
@@ -476,6 +485,7 @@ class OrderSizingDecision:
             reason = "target_clip_empty"
         raw_c_order = 0.0
         c_order = 0.0
+        lot_raise = 0.0
         depth_shares_cap = depth / limit if limit > EPS else 0.0
         if eligible:
             caps = [limit * delta, budget, depth]
@@ -526,36 +536,62 @@ class OrderSizingDecision:
                 reason = "sizing_clamped_below_authorized_clip"
                 c_order = 0.0
                 q_order = 0.0
-            elif c_order + EPS < minimum_lot * limit:
+            else:
                 # The exchange refuses a lot smaller than the market's
                 # ``orderMinSize``, so a leg under it cannot fill at any
-                # price.  Before this gate the lane minted them anyway --
-                # 275 of 1,406 intents on the books at 2026-08-30 were under
-                # a five-share lot -- and each one was discovered by signing
-                # it and posting it.  Drop the leg rather than round it up:
-                # rounding up spends more than the objective chose, and the
-                # basket's budget and concentration were solved against the
-                # size it chose.  ``minimum_lot`` is zero only for a snapshot
-                # written before the rule was collected, and that case is
-                # caught at the gateway instead.
-                eligible = False
-                reason = "below_exchange_minimum_lot"
-                c_order = 0.0
-                q_order = 0.0
-            elif c_order + EPS < minimum_clip:
-                eligible = False
-                reason = "clip_below_minimum"
-                c_order = 0.0
-                q_order = 0.0
-            elif (
-                target_clip is not None
-                and not cash_template_caps_target
-                and clamped_clip_authorized
-                and raw_c_order + EPS < target_clip
-            ):
-                reason = "sized_discrete_after_rescore"
-            else:
-                reason = "sized_discrete"
+                # price.  Raise it to one lot -- user ruling 2026-08-31,
+                # 多花: spend more and leave the objective's choice of rungs
+                # alone.  The alternatives were both rejected by name.
+                # Dropping the leg was tried first and is what a measured
+                # 39 station-days show it does: a KATL-shaped ladder posted
+                # 37/38/39C with the centre rung at 0.94 sized to 1.05
+                # shares, and dropping it left the two wings and threw away
+                # the bucket carrying the mass.  Re-selecting a cheaper
+                # window would change what the objective picked, and picking
+                # is its job.
+                #
+                # So the raise may exceed the clip the objective authorized,
+                # the phase cash template, and even the inventory gap -- all
+                # three are the "more" in 多花.  It may not exceed the
+                # remaining budget or the executable depth: those are not
+                # policy, they are what exists.
+                #
+                # This does hand the ledger a basket bigger than the one that
+                # was scored, which is the same objection ``sizing_clamped_
+                # below_authorized_clip`` raises about a basket smaller than
+                # it.  That is why the raise is recorded rather than folded
+                # into the clip: ``lot_raise_usdc`` is what an arm has to
+                # price.
+                if minimum_lot > EPS and q_order + EPS < minimum_lot:
+                    lot_q = _ceil_step(minimum_lot, quantum)
+                    lot_c = lot_q * limit
+                    if lot_c > budget + EPS or lot_q > depth_shares_cap + EPS:
+                        eligible = False
+                        reason = "exchange_minimum_lot_unaffordable"
+                        c_order = 0.0
+                        q_order = 0.0
+                    else:
+                        lot_raise = lot_c - c_order
+                        q_order = lot_q
+                        c_order = lot_c
+                if eligible:
+                    if c_order + EPS < minimum_clip:
+                        eligible = False
+                        reason = "clip_below_minimum"
+                        c_order = 0.0
+                        q_order = 0.0
+                        lot_raise = 0.0
+                    elif lot_raise > EPS:
+                        reason = "raised_to_exchange_minimum_lot"
+                    elif (
+                        target_clip is not None
+                        and not cash_template_caps_target
+                        and clamped_clip_authorized
+                        and raw_c_order + EPS < target_clip
+                    ):
+                        reason = "sized_discrete_after_rescore"
+                    else:
+                        reason = "sized_discrete"
         else:
             q_order = 0.0
         q_order = c_order / limit if limit > EPS else 0.0
@@ -571,6 +607,7 @@ class OrderSizingDecision:
             "target_clip_notional_usdc": target_clip,
             "minimum_clip_notional_usdc": minimum_clip,
             "minimum_lot_shares": minimum_lot,
+            "lot_raise_usdc": lot_raise,
             "cash_template_caps_target": cash_template_caps_target,
             "clamped_clip_authorized": clamped_clip_authorized,
             "share_quantum": quantum,

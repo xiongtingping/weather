@@ -2594,9 +2594,22 @@ export class ClobOrderService {
     // reconciles it.  The 27-of-31 ASOS argmax intents that ended in
     // RECONCILE_REQUIRED without ever receiving an exchange order id are what
     // that ambiguity looks like in the ledger.
+    // Scope: this is a limit-order rule.  Every one of the 137 rejections the
+    // exchange actually returned for it reads "Size (0.32) lower than the
+    // minimum: 5" on a GTC order, and an order signed with an explicit share
+    // count is the only shape that carries a size for the book to check.  A
+    // market order is sized in USDC and swept through the ask levels; what
+    // the exchange requires of one is a dollar figure this codebase has no
+    // observation of, so it is not asserted here.  Better to let the
+    // exchange answer for a shape we have never seen it judge than to invent
+    // its rule.
+    const sizingHasExplicitShares = Number.isFinite(Number(payload?.size))
+      && Number(payload?.size) > 0;
     const sizingToken = String(
       payload?.token_id || payload?.tokenID || payload?.token || "");
-    const sizingRule = exchangeOrderSizingRule(sizingToken);
+    const sizingRule = sizingHasExplicitShares
+      ? exchangeOrderSizingRule(sizingToken)
+      : { ok: true, minSize: 0, tickSize: null };
     if (!sizingRule.ok) {
       return {
         ok: false, accepted: false, pending: false, reconcile_required: false,
@@ -2610,8 +2623,8 @@ export class ClobOrderService {
       };
     }
     const requestedShares = effectiveOrderShares(payload);
-    if (!Number.isFinite(requestedShares)
-      || requestedShares + 1e-9 < sizingRule.minSize) {
+    if (sizingRule.minSize > 0 && (!Number.isFinite(requestedShares)
+      || requestedShares + 1e-9 < sizingRule.minSize)) {
       return {
         ok: false, accepted: false, pending: false, reconcile_required: false,
         error: `exchange_min_order_size_not_met:${sizingRule.minSize}`,

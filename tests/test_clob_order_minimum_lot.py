@@ -199,3 +199,46 @@ def test_order_is_refused_when_the_registry_carries_no_sizing_rule(
     assert value["result"]["error"] == "exchange_order_sizing_rule_missing"
     assert value["result"]["error_class"] == "exchange_order_sizing_unknown"
     assert value["result"]["exchange_post_started"] is False
+
+
+def test_a_market_order_sized_in_cash_is_not_judged_by_the_share_minimum(
+    tmp_path: Path,
+) -> None:
+    """The rule is scoped to the shape the exchange has actually judged.
+
+    All 137 rejections on record read "Size (0.32) lower than the minimum: 5"
+    and every one of them is a GTC order.  A market order is sized in USDC
+    and swept through the ask levels; what the exchange requires of one is a
+    dollar figure nothing here has observed.  Asserting five shares against
+    it would be inventing the exchange's rule rather than enforcing it.
+    """
+    db_path = tmp_path / "archive.db"
+    _registry_db(db_path, {"order_min_size": 5, "order_price_min_tick_size": 0.001})
+    service_uri = (ROOT / "scripts" / "clob_order_service.mjs").as_uri()
+    script = f"""
+      const {{ ClobOrderService }} = await import({json.dumps(service_uri)});
+      const service = new ClobOrderService();
+      const base = {{
+        strategy_id: 'bayes_basket_target_v1', token_id: {json.dumps(TOKEN)},
+        side: 'BUY', allow_market: true,
+      }};
+      // 0.50 USDC at 0.66 is well under a five-share lot either way.
+      const marketOrder = await service.placeOrderWithIdempotency({{
+        ...base, order_type: 'FOK', amount: 0.5, price: 0.66,
+        idempotency_key: 'k-market', order_intent_id: 'i-market',
+      }});
+      const limitOrder = await service.placeOrderWithIdempotency({{
+        ...base, order_type: 'GTC', size: 0.76, price: 0.66, post_only: true,
+        idempotency_key: 'k-limit', order_intent_id: 'i-limit',
+      }});
+      console.log(JSON.stringify({{marketOrder, limitOrder}}));
+    """
+    value = _run_node(script, db_path, tmp_path)
+
+    # Same token, same money, same book: only the shape differs.
+    assert value["limitOrder"]["error"] == "exchange_min_order_size_not_met:5"
+    assert value["limitOrder"]["exchange_post_started"] is False
+
+    assert value["marketOrder"].get("error") != "exchange_min_order_size_not_met:5"
+    assert value["marketOrder"].get("error_class") != "exchange_order_below_minimum_lot"
+    assert value["marketOrder"].get("error_class") != "exchange_order_sizing_unknown"
