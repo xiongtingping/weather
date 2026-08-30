@@ -32,6 +32,7 @@ ROOT = Path(__file__).resolve().parent.parent
 POLICY_PATH = ROOT / "config/trading/portfolio_capital_policy_v1.json"
 RUNTIME_PATH = ROOT / "config/bayes_basket_target/no_live_runtime_v1.json"
 INTENT_PATH = ROOT / "config/trading/live_intent_v1.json"
+EXCLUSION_PATH = ROOT / "config/trading/live_station_exclusions_v1.json"
 AUDIT_PATH = ROOT / "data" / "live_control_audit.jsonl"
 PORT = 8788
 
@@ -97,6 +98,9 @@ def state() -> dict:
             "armed_by": intent.get("armed_by"),
             "armed_at_utc": intent.get("armed_at_utc"),
             "station_allowlist": intent.get("station_allowlist") or [],
+            # Published alongside the allowlist because a reader checking
+            # "is Manila live" should not have to know a second file exists.
+            "station_exclusions": sorted(excluded_stations()),
         },
         "contracts": {
             "execution_mode": runtime.get("execution_mode"),
@@ -156,6 +160,29 @@ def set_live(enabled: bool, confirm: str, by: str) -> dict:
     return state()
 
 
+def excluded_stations() -> set:
+    """Stations barred from live trading, read fresh on every call.
+
+    Read rather than cached because the file is the authority and an
+    operator may edit it between requests; a stale copy would silently
+    re-admit a station somebody just barred.  A missing or unreadable file
+    excludes nothing -- this gate refuses admissions, it does not grant
+    them, so failing open here cannot by itself put money anywhere the
+    allowlist had not already named.
+    """
+
+    try:
+        parsed = json.loads(EXCLUSION_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    rows = parsed.get("excluded_stations") or []
+    return {
+        str(row.get("station") or "").strip().upper()
+        for row in rows
+        if isinstance(row, dict) and row.get("station")
+    }
+
+
 def set_allowlist(stations: list) -> dict:
     cleaned = sorted({str(s).strip().upper() for s in stations if s})
     for station in cleaned:
@@ -163,6 +190,18 @@ def set_allowlist(stations: list) -> dict:
             raise ValueError(f"bad station id: {station}")
     if not cleaned:
         raise ValueError("allowlist cannot be empty")
+    # The allowlist is the positive list and the exclusions are the negative
+    # one; when they disagree the exclusion wins.  Refusing the whole request
+    # rather than quietly dropping the barred entries is deliberate: a caller
+    # that asked for a barred station has a different list in mind than the
+    # one it would have got back, and silently returning a shorter list is how
+    # an operator ends up believing a station is live when it is not.
+    barred = sorted(set(cleaned) & excluded_stations())
+    if barred:
+        raise ValueError(
+            "stations barred by live_station_exclusions_v1: "
+            + ",".join(barred)
+        )
     intent = _read(INTENT_PATH)
     before = intent.get("station_allowlist") or []
     intent["station_allowlist"] = cleaned

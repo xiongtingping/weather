@@ -1,0 +1,23 @@
+{
+  "schema": "basket_target_live_station_exclusion_v1",
+  "rationale": "Stations barred from live trading regardless of what any re-score concludes. This is a risk ruling, not a profit optimization, and the distinction is load-bearing: every mechanical screen we tested has no predictive power out of sample (see measured_note), so a list that regenerates itself from recent ROI would be noise with a config file around it. This list is entered by hand, cites its evidence, and only a human edits it.",
+  "measured_note": "2026-08-30, 332 settlements over 15 days (2026-08-15..29), first half fits the rule and the second half scores it, on the 29 stations with at least 3 first-half settlements. Excluding first-half ROI<=-8% returned -11.0% against a -4.3% baseline; |centre bias|>0.8 returned -9.8%; claim-ratio outside [0.88,1.18] returned -4.0%. A permutation test drawing the same number of stations at random matched or beat every one of them 54-71% of the time, so none of the three carries signal. The hand-picked list below is the exception that motivated the file: it returned -43.3% in the second half against +20.8% for the rest, and random 9-station draws are that bad 1.4% of the time. That test is contaminated by hindsight if the list was read off a full-sample scoreboard, but it was not: LTAC is +13.0% full-sample and named anyway, while RKSI (-70.9%), KAUS (-74.4%), FACT (-66.9%) and EDDM (-52.7%) are worse and not named. The selection is therefore judgement about the stations, not about the leaderboard, and it is recorded as such.",
+  "excluded_stations": [
+    {"station": "RPLL", "city": "马尼拉", "both_halves_negative": true, "full_sample_roi": -0.706},
+    {"station": "ZUCK", "city": "重庆", "both_halves_negative": false, "full_sample_roi": -0.547},
+    {"station": "RCSS", "city": "台北", "both_halves_negative": true, "full_sample_roi": -0.656},
+    {"station": "EPWA", "city": "华沙", "both_halves_negative": false, "full_sample_roi": -0.228},
+    {"station": "EHAM", "city": "阿姆斯特丹", "both_halves_negative": true, "full_sample_roi": -0.860},
+    {"station": "SBGR", "city": "圣保罗", "both_halves_negative": true, "full_sample_roi": -0.606},
+    {"station": "KLAX", "city": "洛杉矶", "both_halves_negative": false, "full_sample_roi": -0.315},
+    {"station": "KMIA", "city": "迈阿密", "both_halves_negative": true, "full_sample_roi": -0.864},
+    {"station": "LTAC", "city": "安卡拉", "both_halves_negative": false, "full_sample_roi": 0.130}
+  ],
+  "watchlist_not_excluded": {
+    "rationale": "Persistently negative in both halves but not named by the operator. Recorded so the next review starts from evidence rather than from memory; they are NOT barred, because nothing measured says a mechanical extension of the list would help.",
+    "stations": ["EDDM", "FACT", "KAUS", "KDAL", "KHOU", "RKPK"]
+  },
+  "authority": "operator ruling 2026-08-30, for the 2026-09-01 live open",
+  "valid_from_utc": "2026-08-30T00:00:00Z",
+  "updated_at_utc": "2026-08-30T09:00:00Z"
+}

@@ -2093,6 +2093,16 @@ def collect_live_readiness(
         ROOT / "config/bayes_basket_target/no_live_runtime_v1.json"
     )
     intent = _config(ROOT / "config/trading/live_intent_v1.json")
+    exclusion_doc = _config(
+        ROOT / "config/trading/live_station_exclusions_v1.json"
+    )
+    exclusions = sorted({
+        str(row.get("station") or "").strip().upper()
+        for row in (exclusion_doc.get("excluded_stations") or [])
+        if isinstance(row, dict) and row.get("station")
+    })
+    for row in stations:
+        row["excluded"] = row["station"] in exclusions
     return {
         "available": True,
         "stations": stations,
@@ -2100,6 +2110,11 @@ def collect_live_readiness(
         "budget_usdc": runtime.get("target_remaining_budget_usdc"),
         "live_enabled": intent.get("live_enabled"),
         "station_allowlist": intent.get("station_allowlist") or [],
+        # The bar, not just the pass.  A station absent from the allowlist
+        # might be merely unselected; one on this list is refused, and the
+        # station table below marks the difference so the two do not read
+        # the same.
+        "station_exclusions": exclusions,
         "contracts": {
             "execution_mode": runtime.get("execution_mode"),
             "live_submit_authorized": runtime.get("live_submit_authorized"),
@@ -7048,10 +7063,14 @@ function liveReadiness(){
   const L = D.live_readiness || {};
   if(!L.available) return "";
   const allow = new Set(L.station_allowlist||[]);
+  const barred = new Set(L.station_exclusions||[]);
   const GATE = {claim_honest:"声称诚实", centre_bias:"中心偏差",
     chains:"链数", roi:"账本ROI", truth_fresh:"真值新鲜"};
-  const rows = (L.stations||[]).map(r=>`<tr class="${allow.has(r.station)?"":""}">
-    <td class="mono">${allow.has(r.station)?"✔ ":""}${h(r.station)}${r.station_label?` <span class="muted">${h(r.station_label)}</span>`:""}</td>
+  // Three states, not two: on the allowlist, merely unselected, or barred.
+  // An unselected station can still be added; a barred one is refused by
+  // the control server, so it must not read as simply "not chosen".
+  const rows = (L.stations||[]).map(r=>`<tr class="${barred.has(r.station)?"muted":""}">
+    <td class="mono">${allow.has(r.station)?"✔ ":(barred.has(r.station)?"⛔ ":"")}${h(r.station)}${r.station_label?` <span class="muted">${h(r.station_label)}</span>`:""}</td>
     <td class="mono ${r.score>=5?"up":(r.score>=4?"":"down")}">${r.score}/5</td>
     <td class="mono">${r.ratio==null?"—":r.ratio.toFixed(2)}</td>
     <td class="mono">${r.bias_c==null?"—":(r.bias_c>0?"+":"")+r.bias_c.toFixed(2)}</td>
@@ -7079,7 +7098,9 @@ function liveReadiness(){
   </div>
   <div class="card" style="margin-top:12px">
     <div class="muted">首批站点闸门（五闸：实现/声称∈[0.88,1.18]、|中心偏差|≤0.8°C、
-      链≥5、ROI＞−8%、真值≤2天新）· ✔=当前 allowlist（${(L.station_allowlist||[]).join(" ")}）</div>
+      链≥5、ROI＞−8%、真值≤2天新）· ✔=当前 allowlist（${(L.station_allowlist||[]).join(" ")}）
+      ${(L.station_exclusions||[]).length?`<br>⛔=实盘禁入（操作者 2026-08-30 裁定，控制服务拒绝加入 allowlist）：<span class="mono">${(L.station_exclusions||[]).join(" ")}</span>
+      　禁入是<b>风险裁定不是测量结论</b>：三种机械筛选（ROI／中心偏差／声称比）在前半期定规则、后半期检验全部无效，置换检验 p=0.54–0.71。`:""}</div>
     <div class="scroll" style="max-height:360px;margin-top:6px">
     <table><thead><tr><th>站</th><th>过闸</th><th>实现/声称</th><th>中心偏差</th>
       <th>链</th><th>ROI</th><th>未过项</th></tr></thead><tbody>${rows}</tbody></table></div>
