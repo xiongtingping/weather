@@ -83,6 +83,49 @@ def test_the_automatic_layer_never_touches_an_operator_ruling() -> None:
     assert verdict["bar"] == [] and verdict["release"] == []
 
 
+def test_a_profitable_station_is_never_auto_barred() -> None:
+    """EFHK is the case, and the guard that used to save it was the wrong one.
+
+    Both keys measure a shortfall against what was claimed and neither can
+    see that the shortfall was still a profit.  EFHK earned +4.02 against
+    an expected 11.17, so the fulfilment ratio read 0.36 and the layer
+    moved to bar a station that makes money and sits on the live batch.
+    It was covered for one day by treating the allowlist as an operator
+    ruling -- but once the allowlist became every unbarred station that
+    guard covered the whole fleet and the layer could never act at all.
+    The floor states the rule directly instead.
+    """
+
+    import auto_station_exclusions as auto  # noqa: PLC0415
+
+    verdict = auto.decide(
+        {
+            "PROFIT": {
+                "settlements": 99, "fulfilment_ratio": -9.0,
+                "realized_gap_usdc": -999.0, "realized_usdc": 4.02,
+            },
+            "LOSER": {
+                "settlements": 99, "fulfilment_ratio": -9.0,
+                "realized_gap_usdc": -999.0, "realized_usdc": -4.02,
+            },
+        },
+        currently_auto_barred=set(),
+        operator_ruled=set(),
+    )
+    assert [row["station"] for row in verdict["bar"]] == ["LOSER"]
+
+
+def test_an_auto_bar_leaves_the_live_batch_in_the_same_move() -> None:
+    """Otherwise the two lists overlap and the migration refuses to run."""
+
+    parsed = json.loads(EXCLUSIONS.read_text(encoding="utf-8"))
+    intent = json.loads(control.INTENT_PATH.read_text(encoding="utf-8"))
+    auto_barred = {
+        r["station"] for r in parsed.get("auto_excluded_stations") or []
+    }
+    assert not (auto_barred & set(intent.get("station_allowlist") or []))
+
+
 def test_the_bar_is_capped_at_fifteen_stations() -> None:
     """Operator ruling 2026-08-30, and the cap binds the machine only.
 

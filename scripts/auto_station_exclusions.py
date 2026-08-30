@@ -132,6 +132,11 @@ def decide(
             continue
         ratio = row["fulfilment_ratio"]
         gap = row["realized_gap_usdc"]
+        # A station that is up on the book is never barred for under-delivering.
+        # Both keys measure a shortfall against what was claimed, and neither
+        # can see that the shortfall was still a profit -- EFHK is the case.
+        if station not in currently_auto_barred and row["realized_usdc"] > 0.0:
+            continue
         if station in currently_auto_barred:
             # Release needs both keys clear of the higher bar.  A ratio that
             # cannot be computed cannot clear anything, so an unreadable
@@ -154,24 +159,31 @@ def decide(
 
 def run(*, apply_changes: bool) -> dict[str, Any]:
     doc = json.loads(CONFIG.read_text(encoding="utf-8"))
-    # The allowlist is an operator ruling too, and leaving it out was a real
-    # defect rather than an omission: on 2026-08-30 this layer moved to bar
-    # EFHK -- a 5/5 station on the live allowlist returning +13.5% -- purely
-    # because it earned 4.02 against an expected 11.17, so the fulfilment
-    # ratio read 0.36.  The ratio cannot tell "made money, less than it
-    # promised" from "lost money", and the union with the allowlist would
-    # then have failed the migration's own disjointness precondition and
-    # blocked the open.  Three operator surfaces, one guard.
+    # Guarded by the operator's explicit rulings only -- the bar list and the
+    # release list.  The allowlist was in this set for one day and had to come
+    # out: once it became "everything not barred" (30 of 45 on 2026-08-30) the
+    # guard covered the entire fleet and this layer could never act again, so
+    # the automatic bar the operator asked for was silently doing nothing.
+    #
+    # What the allowlist was really protecting against is handled where it
+    # belongs, in the criterion.  The layer moved to bar EFHK -- profitable at
+    # +4.02, on the live batch -- purely because it earned less than the 11.17
+    # it expected, so the fulfilment ratio read 0.36.  The ratio cannot tell
+    # "made money, less than it promised" from "lost money".  A profitability
+    # floor says it directly: a station that is up on the book does not get
+    # barred for under-delivering, and EFHK is then safe on its own merits
+    # rather than by a guard that happened to cover it.
     intent = json.loads(INTENT.read_text(encoding="utf-8"))
+    allowlist = [
+        str(station).strip().upper()
+        for station in (intent.get("station_allowlist") or [])
+    ]
     operator_ruled = {
         str(row.get("station") or "").strip().upper()
         for row in (doc.get("excluded_stations") or [])
     } | {
         str(row.get("station") or "").strip().upper()
         for row in (doc.get("released_stations") or [])
-    } | {
-        str(station).strip().upper()
-        for station in (intent.get("station_allowlist") or [])
     }
     auto_rows = {
         str(row.get("station") or "").strip().upper(): row
@@ -225,6 +237,13 @@ def run(*, apply_changes: bool) -> dict[str, Any]:
         trimmed = sorted(set(auto_rows) - set(keep))
         auto_rows = {station: auto_rows[station] for station in sorted(keep)}
 
+    # Barring a station means it stops trading, so it leaves the live batch in
+    # the same move.  Without this the two lists would overlap and the go-live
+    # migration's own disjointness precondition would refuse to run -- the
+    # invariant is maintained here rather than left for someone to notice.
+    dropped_from_allowlist = sorted(set(allowlist) & set(auto_rows))
+    remaining_allowlist = [s for s in allowlist if s not in auto_rows]
+
     doc["auto_excluded_stations"] = [auto_rows[k] for k in sorted(auto_rows)]
     doc["auto_policy"] = {
         "keys": "第一看 兑现比差 (realized/expected), 第二看 实得差 (realized-expected)",
@@ -252,7 +271,16 @@ def run(*, apply_changes: bool) -> dict[str, Any]:
         CONFIG.write_text(
             json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
+        if dropped_from_allowlist:
+            intent["station_allowlist"] = remaining_allowlist
+            intent["allowlist_last_auto_drop_utc"] = stamp
+            INTENT.write_text(
+                json.dumps(intent, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
     return {
+        "dropped_from_allowlist": dropped_from_allowlist,
+        "allowlist_size": len(remaining_allowlist),
         "cap": MAX_BARRED_STATIONS,
         "operator_barred": len(operator_ruled_barred),
         "auto_room": room,
