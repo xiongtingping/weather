@@ -4565,9 +4565,10 @@ function head(){
     ? `<span class="muted">…等 ${named.length} 处，详见下文标${
         D.overall_health === "red" ? "红" : "黄"}的环节</span>` : "";
   return `<h1>气温篮子全链看板</h1>
-  <p class="sub">从模型到下单的一整条链。<b>首页是看板</b>：健康条、组合风险指标与图表、
-  每日统计；往下按六个<b>区域</b>分组，每区一个颜色，标签栏与区标题同色，
-  逐站明细四张表在「逐站明细」区。板块不再编号——它们会随分组移动，编号只会指错地方。</p>
+  <p class="sub">从模型到下单的一整条链。<b>首页是看板加逐站账</b>：健康条、
+  组合风险指标与图表、每日统计、逐站逐日明细与三张跟进表；
+  往下按五个<b>区域</b>分组，每区一个颜色，标签栏与区标题同色。
+  板块不再编号——它们会随分组移动，编号只会指错地方。</p>
   <div class="card"><div style="display:flex;gap:14px;align-items:center;
     flex-wrap:wrap">
     <span class="dot ${D.overall_health}" style="width:13px;height:13px"></span>
@@ -7389,10 +7390,6 @@ const GROUPS = [
    note:"概率怎么被分档修正、注码怎么被固化减仓、分布和实际持仓差在哪",
    sections:[[bandTable,"band 表"],[consolidation,"固化减仓"],
      [windowDivergence,"分布与持仓分家"]]},
-  {id:"detail", label:"逐站明细", tone:"#9aa4b8",
-   note:"带着问题来查的四张表：某站某天做了什么、跨日怎么样、盘口异常、为什么没坐",
-   sections:[[roster,"逐站逐日明细"],[stationSummary,"逐站汇总（跨日）"],
-     [anomalies,"异常盘口"],[refusalStats,"没建仓是因为什么"]]},
   {id:"market", label:"市场与执行门槛", tone:"#e3b341",
    note:"市场肯不肯让这套东西赚钱：覆盖与 EV、篮子命中率、真值落位、声称边际",
    sections:[[coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"],
@@ -7444,7 +7441,9 @@ const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}"
 // order the reader asked for: detail first, then the three tables that
 // answer what the detail raises.
 const TOP = [[overview, "总览"], [riskMetrics, "组合风险指标"],
-  [daily, "每日统计"]];
+  [daily, "每日统计"], [roster, "逐站逐日明细"],
+  [stationSummary, "逐站汇总（跨日）"], [anomalies, "异常盘口"],
+  [refusalStats, "没建仓是因为什么"]];
 
 document.getElementById("app").innerHTML =
   safe(head, "页头") +
