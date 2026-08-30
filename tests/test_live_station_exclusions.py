@@ -32,6 +32,8 @@ def test_the_nine_named_stations_are_on_the_list() -> None:
     named = {
         "RPLL", "ZUCK", "RCSS", "EPWA", "EHAM",
         "SBGR", "KLAX", "KMIA", "LTAC",
+        # Added the same day, on the same authority.
+        "RKSI", "KAUS", "FACT",
     }
     assert control.excluded_stations() == named
 
@@ -103,10 +105,18 @@ def test_the_file_carries_its_evidence() -> None:
     """
 
     parsed = json.loads(EXCLUSIONS.read_text(encoding="utf-8"))
-    note = str(parsed.get("measured_note") or "")
-    assert "permutation" in note
-    assert "0.88,1.18" in note or "0.88, 1.18" in note
+    note = str(parsed.get("why_not_automatic") or "")
+    assert "walk-forward" in note.lower()
+    assert "p=0.346" in note
     assert parsed.get("authority")
+    # The review policy must keep saying that its own criteria do not decide.
+    policy = parsed["review_policy"]
+    assert policy["add_candidate_when"] and policy["release_candidate_when"]
+    assert "not" in policy["candidates_are_not_decisions"].lower()
+    # And a standing candidate must never already be barred/released silently.
+    standing = policy["standing_candidates_2026_08_30"]
+    assert not (set(standing["add"]) & control.excluded_stations())
+    assert set(standing["release"]) <= control.excluded_stations()
     for row in parsed["excluded_stations"]:
         assert row["station"] and row["city"]
         assert "full_sample_roi" in row

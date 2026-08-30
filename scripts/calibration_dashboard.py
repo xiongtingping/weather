@@ -2028,16 +2028,26 @@ def collect_live_readiness(
         ):
             bias[str(sid)] = (int(n), float(value))
         book: dict[str, dict[str, Any]] = {}
-        for sid, day, hit, stake, pnl in conn.execute(
+        settled = conn.execute(
             "SELECT station_id, event_date, hit, stake_usdc, pnl_usdc"
             " FROM paper_trade_settlement"
-        ):
+        ).fetchall()
+        # The trailing window the release criterion reads.  Five settled days
+        # is short enough to answer "has it stopped bleeding" and long enough
+        # that one lucky basket cannot carry it on its own.
+        recent_floor = sorted({str(row[1]) for row in settled})[-5:]
+        recent_floor = recent_floor[0] if recent_floor else ""
+        for sid, day, hit, stake, pnl in settled:
             slot = book.setdefault(str(sid), {
                 "stake": 0.0, "pnl": 0.0, "days": set(),
+                "recent_stake": 0.0, "recent_pnl": 0.0,
             })
             slot["stake"] += float(stake or 0.0)
             slot["pnl"] += float(pnl or 0.0)
             slot["days"].add(str(day))
+            if str(day) >= recent_floor:
+                slot["recent_stake"] += float(stake or 0.0)
+                slot["recent_pnl"] += float(pnl or 0.0)
         truth_latest = {
             str(sid): str(day) for sid, day in conn.execute(
                 "SELECT station_id, MAX(local_date)"
@@ -2069,7 +2079,11 @@ def collect_live_readiness(
             "roi": roi is not None and roi > -0.08,
             "truth_fresh": truth_latest.get(sid, "") >= fresh_floor,
         }
+        recent_roi = None
+        if sid in book and book[sid]["recent_stake"]:
+            recent_roi = book[sid]["recent_pnl"] / book[sid]["recent_stake"]
         stations.append({
+            "recent_roi": recent_roi,
             "station": sid,
             "station_label": STATION_LABELS.get(sid, ""),
             "score": sum(gates.values()),
@@ -2101,9 +2115,30 @@ def collect_live_readiness(
         for row in (exclusion_doc.get("excluded_stations") or [])
         if isinstance(row, dict) and row.get("station")
     })
+    # Candidates, recomputed every render so the list tracks the data -- and
+    # candidates only.  Fourteen automatic rules were walk-forward tested on
+    # 2026-08-30 and the best was p=0.346 against excluding stations at
+    # random, so nothing here may move a station by itself; the criteria earn
+    # their keep by putting one in front of a person with its numbers.
     for row in stations:
         row["excluded"] = row["station"] in exclusions
+        barred = row["excluded"]
+        roi_now, recent = row["roi"], row["recent_roi"]
+        row["add_candidate"] = bool(
+            not barred and roi_now is not None
+            and roi_now <= -0.25 and row["chains"] >= 5
+        )
+        row["release_candidate"] = bool(
+            barred and recent is not None and recent > 0.0
+            and roi_now is not None and roi_now > -0.25
+        )
     return {
+        "add_candidates": [
+            r["station"] for r in stations if r["add_candidate"]
+        ],
+        "release_candidates": [
+            r["station"] for r in stations if r["release_candidate"]
+        ],
         "available": True,
         "stations": stations,
         "kelly": policy.get("portfolio_risk_fraction"),
@@ -7076,7 +7111,8 @@ function liveReadiness(){
     <td class="mono">${r.bias_c==null?"—":(r.bias_c>0?"+":"")+r.bias_c.toFixed(2)}</td>
     <td class="mono">${r.chains}</td>
     <td class="mono ${r.roi==null?"":(r.roi>=0?"up":"down")}">${r.roi==null?"—":((r.roi>=0?"+":"")+(100*r.roi).toFixed(1)+"%")}</td>
-    <td class="muted">${Object.entries(r.gates).filter(([k,v])=>!v).map(([k])=>GATE[k]).join("、")||"✓"}</td>
+    <td class="mono ${r.recent_roi==null?"":(r.recent_roi>=0?"up":"down")}">${r.recent_roi==null?"—":((r.recent_roi>=0?"+":"")+(100*r.recent_roi).toFixed(1)+"%")}</td>
+    <td class="muted">${r.add_candidate?"☆建议加入 ":""}${r.release_candidate?"★建议放出 ":""}${Object.entries(r.gates).filter(([k,v])=>!v).map(([k])=>GATE[k]).join("、")||"✓"}</td>
   </tr>`).join("");
   return `<h2>Live 上线准备</h2>
   <p class="sub"><b>三重合同现锁 no_live</b>（执行模式字符串、激活文件、runtime config），
@@ -7099,11 +7135,16 @@ function liveReadiness(){
   <div class="card" style="margin-top:12px">
     <div class="muted">首批站点闸门（五闸：实现/声称∈[0.88,1.18]、|中心偏差|≤0.8°C、
       链≥5、ROI＞−8%、真值≤2天新）· ✔=当前 allowlist（${(L.station_allowlist||[]).join(" ")}）
-      ${(L.station_exclusions||[]).length?`<br>⛔=实盘禁入（操作者 2026-08-30 裁定，控制服务拒绝加入 allowlist）：<span class="mono">${(L.station_exclusions||[]).join(" ")}</span>
-      　禁入是<b>风险裁定不是测量结论</b>：三种机械筛选（ROI／中心偏差／声称比）在前半期定规则、后半期检验全部无效，置换检验 p=0.54–0.71。`:""}</div>
+      ${(L.station_exclusions||[]).length?`<br>⛔=实盘禁入（操作者裁定，控制服务拒绝加入 allowlist）：<span class="mono">${(L.station_exclusions||[]).join(" ")}</span>
+      　禁入是<b>风险裁定不是测量结论</b>：14 种自动规则做逐日 walk-forward，最好的一个 p=0.346——与随机剔同样多的站无异；
+      同一份手挑名单固定不动反而 +17.0 点（p=0.002）。所以这张表<b>不自动改</b>。`:""}
+      ${((L.add_candidates||[]).length||(L.release_candidates||[]).length)?`<br><span class="pill amber">待复核</span>
+      随数据每轮重算的候选（<b>只提示不执行</b>）：${(L.add_candidates||[]).length?`建议加入 <span class="mono">${(L.add_candidates||[]).join(" ")}</span>`:""}
+      ${(L.release_candidates||[]).length?`　建议放出 <span class="mono">${(L.release_candidates||[]).join(" ")}</span>`:""}
+      　判据：加入＝全样本 ROI≤−25% 且链≥5；放出＝已禁且最近 5 个结算日 ROI＞0 且全样本 ROI＞−25%。`:""}</div>
     <div class="scroll" style="max-height:360px;margin-top:6px">
     <table><thead><tr><th>站</th><th>过闸</th><th>实现/声称</th><th>中心偏差</th>
-      <th>链</th><th>ROI</th><th>未过项</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <th>链</th><th>ROI</th><th title="最近 5 个结算日">近5日</th><th>未过项</th></tr></thead><tbody>${rows}</tbody></table></div>
   </div>`;
 }
 
