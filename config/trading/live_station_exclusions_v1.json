@@ -180,13 +180,6 @@
       "auto_barred_utc": "2026-08-30"
     },
     {
-      "station": "ZSPD",
-      "barred_on": "fulfilment_ratio",
-      "value": -0.184,
-      "settlements": 7,
-      "auto_barred_utc": "2026-08-30"
-    },
-    {
       "station": "ZUUU",
       "barred_on": "fulfilment_ratio",
       "value": -0.362,
@@ -203,6 +196,8 @@
     "minimum_settlements": 5,
     "ratio_denominator_floor_usdc": 3.0,
     "operator_rows_are_never_auto_managed": true,
+    "max_barred_stations": 15,
+    "cap_applies_to": "the automatic layer only; operator rows are never trimmed",
     "measured": "Walk-forward on 332 settlements over 2026-08-15..29, warming on six days and scoring on nine: the best of sixteen automatic rules returned +2.4 points at p=0.356 against excluding the same number of stations at random. The operator's own ten-station list held fixed returned +15.6 points at p=0.001. This layer runs because it was asked for and because barring a station only costs a skipped market -- not because it was shown to pay.",
     "updated_utc": "2026-08-30"
   }

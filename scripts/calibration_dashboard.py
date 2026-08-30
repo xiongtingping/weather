@@ -7594,7 +7594,7 @@ function liveReadiness(){
       链≥5、ROI＞−8%、真值≤2天新）· ✔=当前 allowlist（${(L.station_allowlist||[]).join(" ")}）
       ${(L.station_exclusions||[]).length?`<br>⛔=实盘禁入（操作者裁定 ∪ 自动层，控制服务拒绝加入 allowlist）：<span class="mono">${(L.station_exclusions||[]).join(" ")}</span>
       　禁入是<b>风险裁定不是测量结论</b>：14 种自动规则做逐日 walk-forward，最好的一个 p=0.346——与随机剔同样多的站无异；
-      同一份手挑名单固定不动反而 +17.0 点（p=0.002）。所以<b>操作者裁定的行永远不由机器改</b>；自动层只管操作者没裁定过的站，判据＝第一看兑现比（实得÷期望；期望＜3U 时读不出，改看第二项）、第二看实得差，进出用滞回避免来回摆。${(L.auto_barred||[]).length?`　当前自动禁入：<span class="mono">${(L.auto_barred||[]).join(" ")}</span>`:""}`:""}
+      同一份手挑名单固定不动反而 +17.0 点（p=0.002）。所以<b>操作者裁定的行永远不由机器改</b>；自动层只管操作者没裁定过的站，判据＝第一看兑现比（实得÷期望；期望＜3U 时读不出，改看第二项）、第二看实得差，进出用滞回避免来回摆；全表<b>上限 15 站</b>，名额先给操作者裁定，剩下的才轮到自动层（按同一排序取最差的几个）。${(L.auto_barred||[]).length?`　当前自动禁入：<span class="mono">${(L.auto_barred||[]).join(" ")}</span>`:""}`:""}
       ${((L.add_candidates||[]).length||(L.release_candidates||[]).length)?`<br><span class="pill amber">待复核</span>
       随数据每轮重算的候选（<b>只提示不执行</b>）：${(L.add_candidates||[]).length?`建议加入 <span class="mono">${(L.add_candidates||[]).join(" ")}</span>`:""}
       ${(L.release_candidates||[]).length?`　建议放出 <span class="mono">${(L.release_candidates||[]).join(" ")}</span>`:""}

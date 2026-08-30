@@ -83,6 +83,28 @@ def test_the_automatic_layer_never_touches_an_operator_ruling() -> None:
     assert verdict["bar"] == [] and verdict["release"] == []
 
 
+def test_the_bar_is_capped_at_fifteen_stations() -> None:
+    """Operator ruling 2026-08-30, and the cap binds the machine only.
+
+    Trimming operator rows to make room would let a budget for the
+    automatic layer's judgement overrule a person's, so the cap is spent
+    by hand rulings first and the layer takes what is left.
+    """
+
+    import auto_station_exclusions as auto  # noqa: PLC0415
+
+    parsed = json.loads(EXCLUSIONS.read_text(encoding="utf-8"))
+    operator = {r["station"] for r in parsed["excluded_stations"]}
+    auto_barred = {
+        r["station"] for r in parsed.get("auto_excluded_stations") or []
+    }
+    assert len(control.excluded_stations()) <= auto.MAX_BARRED_STATIONS
+    assert len(auto_barred) <= auto.MAX_BARRED_STATIONS - len(operator)
+    assert parsed["auto_policy"]["max_barred_stations"] == (
+        auto.MAX_BARRED_STATIONS
+    )
+
+
 def test_the_bar_never_intersects_the_live_allowlist() -> None:
     """If it ever did, the go-live migration would refuse to run."""
 

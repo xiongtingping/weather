@@ -54,6 +54,12 @@ RELEASE_RATIO = 0.80
 BAR_GAP_USDC = -15.0
 RELEASE_GAP_USDC = -5.0
 MIN_SETTLEMENTS = 5
+# Operator ruling 2026-08-30: at most fifteen stations barred at once.  The
+# cap binds the automatic layer only -- operator rows are never trimmed to
+# make room, because a cap is a budget for the machine's judgement and not a
+# licence to overrule a person's.  When the cap is already spent by hand
+# rulings the layer simply adds nothing and says so.
+MAX_BARRED_STATIONS = 15
 # Below this, realized/expected is a division by noise rather than a ratio.
 RATIO_DENOMINATOR_FLOOR_USDC = 3.0
 
@@ -178,6 +184,10 @@ def run(*, apply_changes: bool) -> dict[str, Any]:
     finally:
         conn.close()
 
+    operator_ruled_barred = {
+        str(row.get("station") or "").strip().upper()
+        for row in (doc.get("excluded_stations") or [])
+    }
     verdict = decide(
         keys,
         currently_auto_barred=set(auto_rows),
@@ -196,6 +206,25 @@ def run(*, apply_changes: bool) -> dict[str, Any]:
     for station in verdict["release"]:
         auto_rows.pop(station, None)
 
+    # The cap, applied in the order the operator named: worst fulfilment
+    # ratio first, money gap breaking ties.  A station trimmed here is not
+    # cleared of anything -- it is the least bad of the ones the layer wanted,
+    # and it is reported so the trim is visible rather than inferred from a
+    # list that quietly stopped growing.
+    room = max(0, MAX_BARRED_STATIONS - len(operator_ruled_barred))
+    trimmed: list[str] = []
+    if len(auto_rows) > room:
+        def severity(station: str) -> tuple[float, float]:
+            row = keys.get(station) or {}
+            ratio = row.get("fulfilment_ratio")
+            return (
+                ratio if ratio is not None else 1e9,
+                row.get("realized_gap_usdc", 0.0),
+            )
+        keep = sorted(auto_rows, key=severity)[:room]
+        trimmed = sorted(set(auto_rows) - set(keep))
+        auto_rows = {station: auto_rows[station] for station in sorted(keep)}
+
     doc["auto_excluded_stations"] = [auto_rows[k] for k in sorted(auto_rows)]
     doc["auto_policy"] = {
         "keys": "第一看 兑现比差 (realized/expected), 第二看 实得差 (realized-expected)",
@@ -206,6 +235,8 @@ def run(*, apply_changes: bool) -> dict[str, Any]:
         "minimum_settlements": MIN_SETTLEMENTS,
         "ratio_denominator_floor_usdc": RATIO_DENOMINATOR_FLOOR_USDC,
         "operator_rows_are_never_auto_managed": True,
+        "max_barred_stations": MAX_BARRED_STATIONS,
+        "cap_applies_to": "the automatic layer only; operator rows are never trimmed",
         "measured": (
             "Walk-forward on 332 settlements over 2026-08-15..29, warming on six"
             " days and scoring on nine: the best of sixteen automatic rules"
@@ -222,6 +253,10 @@ def run(*, apply_changes: bool) -> dict[str, Any]:
             json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
     return {
+        "cap": MAX_BARRED_STATIONS,
+        "operator_barred": len(operator_ruled_barred),
+        "auto_room": room,
+        "trimmed_by_cap": trimmed,
         "barred_now": verdict["bar"],
         "released_now": verdict["release"],
         "auto_barred_total": sorted(auto_rows),
