@@ -135,6 +135,82 @@ export function livePausePresent(pausePath = LIVE_PAUSE_FILE) {
   }
 }
 
+// How many shares an order actually asks the book for.
+//
+// Mirrors the shape resolution in ``placeOrder``: an explicit limit carries
+// ``size`` in shares; a BUY market order carries ``amount`` in USDC and is
+// only convertible with a price; a SELL market order is denominated in shares
+// already.  Returns NaN when the payload does not determine a share count --
+// which the caller must treat as fail-closed, not as "no constraint".
+export function effectiveOrderShares(payload) {
+  const size = Number(payload?.size);
+  if (Number.isFinite(size) && size > 0) return size;
+  const amount = Number(payload?.amount);
+  const price = Number(payload?.price);
+  if (String(payload?.side || "BUY").toUpperCase() === "SELL"
+    && Number.isFinite(amount) && amount > 0) {
+    return amount;
+  }
+  if (Number.isFinite(amount) && amount > 0 && Number.isFinite(price) && price > 0) {
+    return amount / price;
+  }
+  return NaN;
+}
+
+// The market's own minimum lot and price increment, as the exchange states
+// them.
+//
+// Until 2026-08-30 nothing local held this rule: the registry did not collect
+// ``orderMinSize`` and the gateway read only tick size, so an order below the
+// minimum lot was discovered by building it, signing it, posting it, and
+// reading the refusal -- after a durable idempotency record already existed
+// for it.  Measured over the intents on disk that was not a rare edge: 275 of
+// 1,406 basket intents and 27 of 31 ASOS argmax intents were under a 5-share
+// lot, and not one ASOS intent ever came back with an exchange order id.
+//
+// Fail closed when the rule is absent.  A market whose sizing rule we cannot
+// read is one whose orders we cannot judge, and the alternative -- assuming
+// no minimum -- is exactly the behaviour being removed.
+export function exchangeOrderSizingRule(tokenID, dbPath = DB_PATH) {
+  const normalizedTokenID = String(tokenID || "").trim();
+  if (!/^[0-9]+$/.test(normalizedTokenID)) {
+    return { ok: false, reason: "exchange_order_sizing_token_invalid" };
+  }
+  if (!fs.existsSync(dbPath)) {
+    return { ok: false, reason: "exchange_order_sizing_registry_unavailable" };
+  }
+  let db;
+  try {
+    db = new DatabaseSync(dbPath, { readOnly: true });
+    const row = db.prepare(`
+      SELECT json_extract(registry_json,'$.order_min_size') AS min_size,
+             json_extract(registry_json,'$.order_price_min_tick_size') AS tick_size
+        FROM reported_trajectory_market_registry
+       WHERE yes_token=? OR no_token=?
+       ORDER BY refreshed_at DESC
+       LIMIT 1
+    `).get(normalizedTokenID, normalizedTokenID);
+    if (!row) return { ok: false, reason: "exchange_order_sizing_market_unknown" };
+    const minSize = Number(row.min_size);
+    if (!Number.isFinite(minSize) || minSize <= 0) {
+      return { ok: false, reason: "exchange_order_sizing_rule_missing" };
+    }
+    const tickSize = Number(row.tick_size);
+    return {
+      ok: true,
+      minSize,
+      tickSize: Number.isFinite(tickSize) && tickSize > 0 ? tickSize : null,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      reason: `exchange_order_sizing_error:${redactErrorText(err?.message || String(err || ""))}`,
+    };
+  } finally {
+    try { db?.close(); } catch {}
+  }
+}
+
 export function latestContiguousArgmaxPeriods(rawPeriods) {
   if (!Array.isArray(rawPeriods)) return [];
   const valid = rawPeriods
@@ -2781,7 +2857,20 @@ export class ClobOrderService {
         source: SERVICE_NAME,
       };
     }
-    if (truthy(env("PM_CLOB_ORDER_SERVICE_READ_ONLY", "0")) && !isAsosLive) {
+    // The read-only bit and the pause flag admit no exceptions.  Until
+    // 2026-08-30 an admitted ASOS argmax intent skipped both: `isAsosLive`
+    // was carried into each condition, so a lane the operator believed was
+    // stopped could reach createOrder and POST /order.  That exemption was
+    // survivable only while the region pre-reject still stood in front of it;
+    // once PM_CLOB_IGNORE_REGION_BLOCK=1 retired that gate the lane had no
+    // gate left at all, and data/live_paused.flag -- placed 2026-08-21 and
+    // described everywhere as the last manual e-stop -- was silently not one.
+    //
+    // Operator ruling 2026-08-30: close it.  These two gates are the human
+    // controls over the whole gateway; a strategy lane does not get to opt
+    // out of them.  `isAsosLive` keeps its one legitimate job below/above:
+    // deciding whether an asos_argmax payload is a well-formed live intent.
+    if (truthy(env("PM_CLOB_ORDER_SERVICE_READ_ONLY", "0"))) {
       return {
         ok: false, accepted: false, pending: false, reconcile_required: false,
         error: "clob_order_service_read_only",
@@ -2792,16 +2881,14 @@ export class ClobOrderService {
       };
     }
     if (livePausePresent()) {
-      if (!isAsosLive) {
-        return {
-          ok: false, accepted: false, pending: false, reconcile_required: false,
-          error: "clob_order_service_live_paused",
-          exchange_post_started: false,
-          idempotency_key: String(payload?.idempotency_key || ""),
-          order_intent_id: String(payload?.order_intent_id || ""),
-          source: SERVICE_NAME,
-        };
-      }
+      return {
+        ok: false, accepted: false, pending: false, reconcile_required: false,
+        error: "clob_order_service_live_paused",
+        exchange_post_started: false,
+        idempotency_key: String(payload?.idempotency_key || ""),
+        order_intent_id: String(payload?.order_intent_id || ""),
+        source: SERVICE_NAME,
+      };
     }
     // A fresh attestation that the exchange refuses this egress makes the POST
     // a guaranteed 403.  Reject here, alongside the other admission gates and
@@ -2820,6 +2907,48 @@ export class ClobOrderService {
         order_intent_id: String(payload?.order_intent_id || ""),
         source: SERVICE_NAME,
         service_pid: process.pid,
+      };
+    }
+    // An order below the market's minimum lot cannot be accepted, so refuse
+    // it here rather than discovering it from the exchange's reply.  This
+    // belongs with the other admission gates and ahead of idempotency for the
+    // same reason the region gate does: nothing is signed, nothing is posted,
+    // and no durable identity is created for an order that never had a
+    // chance, so the caller sees a plain terminal rejection instead of an
+    // ambiguous in-flight order whose budget stays reserved until someone
+    // reconciles it.  The 27-of-31 ASOS argmax intents that ended in
+    // RECONCILE_REQUIRED without ever receiving an exchange order id are what
+    // that ambiguity looks like in the ledger.
+    const sizingToken = String(
+      payload?.token_id || payload?.tokenID || payload?.token || "");
+    const sizingRule = exchangeOrderSizingRule(sizingToken);
+    if (!sizingRule.ok) {
+      return {
+        ok: false, accepted: false, pending: false, reconcile_required: false,
+        error: sizingRule.reason,
+        error_class: "exchange_order_sizing_unknown",
+        retryable: false, fatal: true,
+        exchange_post_started: false,
+        idempotency_key: String(payload?.idempotency_key || ""),
+        order_intent_id: String(payload?.order_intent_id || ""),
+        source: SERVICE_NAME,
+      };
+    }
+    const requestedShares = effectiveOrderShares(payload);
+    if (!Number.isFinite(requestedShares)
+      || requestedShares + 1e-9 < sizingRule.minSize) {
+      return {
+        ok: false, accepted: false, pending: false, reconcile_required: false,
+        error: `exchange_min_order_size_not_met:${sizingRule.minSize}`,
+        error_class: "exchange_order_below_minimum_lot",
+        retryable: false, fatal: true,
+        exchange_min_order_size: sizingRule.minSize,
+        exchange_price_min_tick_size: sizingRule.tickSize,
+        requested_size: Number.isFinite(requestedShares) ? requestedShares : null,
+        exchange_post_started: false,
+        idempotency_key: String(payload?.idempotency_key || ""),
+        order_intent_id: String(payload?.order_intent_id || ""),
+        source: SERVICE_NAME,
       };
     }
     const key = String(payload.idempotency_key || stableKey(payload));

@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import subprocess
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from weather_basket_yes_schema import apply_weather_basket_yes_schema
@@ -12,8 +13,38 @@ from weather_basket_yes_schema import apply_weather_basket_yes_schema
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_exact_canonical_intent_is_only_pause_read_only_exception(tmp_path: Path) -> None:
-    db_path = tmp_path / "archive.db"
+DEFAULT_ANCHOR = datetime(2099, 8, 5, 12, 0, 0, tzinfo=UTC)
+
+
+def _stamp(moment: datetime) -> str:
+    return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _seed_admissible_asos_intent(
+    db_path: Path, anchor: datetime = DEFAULT_ANCHOR
+) -> None:
+    """A KATL intent that ``asosArgmaxLiveAdmission`` accepts on every field.
+
+    Shared so the pause/read-only test cannot drift from the admission test:
+    the point of that test is that the gates stop an intent which is
+    otherwise perfectly admissible, and it only proves that if this is the
+    same fixture the admission test certifies as ``ok``.
+
+    ``anchor`` is the instant the new high is observed.  The argmax period is
+    built as ``[anchor-1h, anchor+1h)`` because admission requires the period
+    to contain the observation, the receipt *and* ``nowMs`` -- so a test that
+    needs the gateway's own ``Date.now()`` to fall inside the window has to
+    anchor the fixture on the real clock rather than on the fixed far-future
+    date the admission test uses.
+    """
+    event_date = anchor.date().isoformat()
+    window_start = _stamp(anchor - timedelta(hours=1))
+    window_end = _stamp(anchor + timedelta(hours=1))
+    observed_at = _stamp(anchor)
+    received_at = _stamp(anchor + timedelta(seconds=1))
+    day_start = f"{event_date}T00:00:00Z"
+    fetched_at = f"{event_date}T01:00:00Z"
+
     conn = sqlite3.connect(db_path)
     apply_weather_basket_yes_schema(conn)
     conn.execute(
@@ -22,9 +53,9 @@ def test_exact_canonical_intent_is_only_pause_read_only_exception(tmp_path: Path
              settlement_unit,source_lane,source_eligible,source_block_reason,
              resolution_url,rules_sha256,yes_token,no_token,market_active,
              market_accepting_orders,registry_json,refreshed_at
-           ) VALUES('slug','2099-08-05','82-83°F','atlanta','KATL','America/New_York',
-                    'F','awc',1,NULL,'url',?,'123456','654321',1,1,'{}','2099-08-05T00:00:00Z')""",
-        ("a" * 64,),
+           ) VALUES('slug',?,'82-83°F','atlanta','KATL','America/New_York',
+                    'F','awc',1,NULL,'url',?,'123456','654321',1,1,'{}',?)""",
+        (event_date, "a" * 64, day_start),
     )
     conn.execute(
         """INSERT INTO reported_trajectory_asos_argmax_windows(
@@ -34,16 +65,13 @@ def test_exact_canonical_intent_is_only_pause_read_only_exception(tmp_path: Path
              argmax_periods_json,points_receipt_sha256,forecast_receipt_sha256,
              raw_object_ref,coordinate_registry_sha256,content_sha256,state,
              timing_only,provides_temperature_bucket,provides_probability,enters_p0,enters_p0m
-           ) VALUES('window','KATL','2099-08-05','America/New_York',
+           ) VALUES('window','KATL',?,'America/New_York',
                     'NOAA_NWS_GRIDPOINT_HOURLY','official_forecast_product',
-                    '2099-08-05T00:00:00Z','2099-08-05T01:00:00Z',
-                    '2099-08-05T11:00:00Z','2099-08-05T13:00:00Z',30,?,
+                    ?,?,?,?,30,?,
                     ?,?,'/raw',?,?, 'FROZEN',1,0,0,0,0)""",
         (
-            json.dumps([{
-                "start_utc": "2099-08-05T11:00:00Z",
-                "end_utc": "2099-08-05T13:00:00Z",
-            }]),
+            event_date, day_start, fetched_at, window_start, window_end,
+            json.dumps([{"start_utc": window_start, "end_utc": window_end}]),
             "1" * 64, "2" * 64, "3" * 64, "4" * 64,
         ),
     )
@@ -54,11 +82,14 @@ def test_exact_canonical_intent_is_only_pause_read_only_exception(tmp_path: Path
              source_receipt_sha256,window_id,argmax_window_start_utc,market_slug,
              outcome,yes_token,settlement_scalar,settlement_unit,reason,
              content_sha256,gateway_submitted,created_at_utc
-           ) VALUES('entry','KATL','2099-08-05','madis_hfmetar','obs',
-                    '2099-08-05T12:00:00Z','2099-08-05T12:00:01Z',20,21,?,?,
-                    'window','2099-08-05T11:00:00Z','slug','82-83°F','123456',82,'F',
-                    'ASOS_NEW_HIGH_RECEIVED_DURING_ARGMAX_PERIOD',?,0,'2099-08-05T12:00:01Z')""",
-        ("b" * 64, "c" * 64, "d" * 64),
+           ) VALUES('entry','KATL',?,'madis_hfmetar','obs',
+                    ?,?,20,21,?,?,
+                    'window',?,'slug','82-83°F','123456',82,'F',
+                    'ASOS_NEW_HIGH_RECEIVED_DURING_ARGMAX_PERIOD',?,0,?)""",
+        (
+            event_date, observed_at, received_at, "b" * 64, "c" * 64,
+            window_start, "d" * 64, received_at,
+        ),
     )
     conn.execute(
         """INSERT INTO reported_trajectory_asos_argmax_order_intents(
@@ -66,13 +97,20 @@ def test_exact_canonical_intent_is_only_pause_read_only_exception(tmp_path: Path
              side,order_type,limit_price,size,requested_notional,idempotency_key,
              ws_snapshot_sha256,guard_snapshot_sha256,guard_snapshot_json,state,
              gateway_request_json,gateway_response_json,created_at_utc,updated_at_utc
-           ) VALUES('intent','entry','asos_argmax_new_high_yes_v1','KATL','2099-08-05',
+           ) VALUES('intent','entry','asos_argmax_new_high_yes_v1','KATL',?,
                     '123456','BUY','FOK',0.20,10,2,'idem',?,?,'{}','SUBMITTING','{}','{}',
-                    '2099-08-05T12:00:01Z','2099-08-05T12:00:01Z')""",
-        ("e" * 64, "f" * 64),
+                    ?,?)""",
+        (event_date, "e" * 64, "f" * 64, received_at, received_at),
     )
     conn.commit()
     conn.close()
+
+
+def test_exact_canonical_intent_is_the_only_admissible_asos_live_payload(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "archive.db"
+    _seed_admissible_asos_intent(db_path)
     service_uri = (ROOT / "scripts" / "clob_order_service.mjs").as_uri()
     payload = {
         "strategy_id": "asos_argmax_new_high_yes_v1",
@@ -333,3 +371,85 @@ def test_rotation_sell_admission_is_exact_and_cannot_oversell_or_change_target(t
     assert value["oversell"]["reason"] == "asos_argmax_rotation_sell_intent_mismatch"
     assert value["changedTarget"]["reason"] == "asos_argmax_rotation_sell_intent_mismatch"
     assert value["changedPrice"]["reason"] == "asos_argmax_rotation_sell_intent_mismatch"
+
+
+def test_pause_flag_and_read_only_stop_even_an_admissible_asos_intent(
+    tmp_path: Path,
+) -> None:
+    """The two operator gates admit no lane exception.
+
+    Until 2026-08-30 ``isAsosLive`` was carried into both conditions in
+    ``placeOrderWithIdempotency``, so exactly the payload seeded here -- one
+    the admission function certifies as ``ok`` -- walked past
+    ``data/live_paused.flag`` and past ``PM_CLOB_ORDER_SERVICE_READ_ONLY``
+    and went on to sign and POST.  While the region pre-reject still stood
+    that was survivable; ``PM_CLOB_IGNORE_REGION_BLOCK=1`` retired it and
+    left the lane with no gate at all, which made the flag the operator had
+    placed as the last manual e-stop not one.
+
+    The first assertion is what keeps the other two honest: it proves the
+    payload really is admissible, so the rejections below are the gates
+    firing rather than the fixture being quietly malformed.
+    """
+    db_path = tmp_path / "archive.db"
+    # Anchored on the real clock: placeOrderWithIdempotency calls admission
+    # with its own Date.now(), so a far-future fixture would be rejected as
+    # period_not_active at the ASOS strategy check and never reach the gates
+    # under test -- the test would pass without exercising anything.
+    _seed_admissible_asos_intent(db_path, datetime.now(UTC))
+    pause_file = tmp_path / "live_paused.flag"
+    service_uri = (ROOT / "scripts" / "clob_order_service.mjs").as_uri()
+    payload = {
+        "strategy_id": "asos_argmax_new_high_yes_v1",
+        "entry_fact_id": "entry", "order_intent_id": "intent",
+        "idempotency_key": "idem", "token_id": "123456", "side": "BUY",
+        "order_type": "FOK", "price": 0.20, "size": 10, "notional": 2,
+        "allow_market": True, "post_only": False,
+        "ws_snapshot_sha256": "e" * 64, "guard_snapshot_sha256": "f" * 64,
+    }
+    script = f"""
+      const fs = await import('node:fs');
+      const {{ ClobOrderService, asosArgmaxLiveAdmission }} =
+        await import({json.dumps(service_uri)});
+      const payload = {json.dumps(payload)};
+      const pauseFile = {json.dumps(str(pause_file))};
+      const admissible = asosArgmaxLiveAdmission(
+        payload, {json.dumps(str(db_path))}, Date.now());
+
+      const service = new ClobOrderService();
+      fs.writeFileSync(pauseFile, '');
+      const paused = await service.placeOrderWithIdempotency({{...payload}});
+      fs.rmSync(pauseFile);
+
+      process.env.PM_CLOB_ORDER_SERVICE_READ_ONLY = '1';
+      const readOnly = await service.placeOrderWithIdempotency({{...payload}});
+
+      console.log(JSON.stringify({{admissible, paused, readOnly}}));
+    """
+    env = {
+        **os.environ,
+        "PM_DATA_DIR": str(tmp_path),
+        "PM_ARCHIVE_DB": str(db_path),
+        "PM_ASOS_ARGMAX_LIVE_ENABLED": "1",
+        "PM_CLOB_ORDER_SERVICE_READ_ONLY": "0",
+    }
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script], cwd=ROOT, env=env,
+        text=True, capture_output=True, timeout=30, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    value = json.loads(result.stdout)
+
+    # Without this the two rejections below would also pass on a payload the
+    # gateway rejects for being the wrong shape entirely.
+    assert value["admissible"]["ok"] is True
+
+    assert value["paused"]["error"] == "clob_order_service_live_paused"
+    assert value["paused"]["ok"] is False
+    assert value["paused"]["accepted"] is False
+    assert value["paused"]["exchange_post_started"] is False
+
+    assert value["readOnly"]["error"] == "clob_order_service_read_only"
+    assert value["readOnly"]["ok"] is False
+    assert value["readOnly"]["accepted"] is False
+    assert value["readOnly"]["exchange_post_started"] is False

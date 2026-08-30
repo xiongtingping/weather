@@ -419,6 +419,27 @@ def fetch_gamma_events_window(
     return [events[key] for key in sorted(events)]
 
 
+def _positive_number(value: Any) -> float | None:
+    """A strictly positive finite number, or ``None`` for anything else.
+
+    Gamma sends ``orderMinSize``/``orderPriceMinTickSize`` as bare JSON
+    numbers today and as decimal strings on some events, so parse both and
+    reject everything else rather than coercing.  These two values are the
+    exchange's own admission rule for an order; a wrong one is worse than a
+    missing one, because a missing one fails closed downstream and a wrong
+    one signs and posts an order the book will refuse.
+    """
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed != parsed or parsed in (float("inf"), float("-inf")) or parsed <= 0:
+        return None
+    return parsed
+
+
 def _json_list(value: Any) -> list[Any]:
     if isinstance(value, list):
         return list(value)
@@ -495,6 +516,10 @@ def materialize_event_registry(
             row_blocks.append("official_market_token_mapping_missing")
         if not interval.get("unit"):
             row_blocks.append("official_market_bucket_interval_missing")
+        order_min_size = _positive_number(market.get("orderMinSize"))
+        order_price_min_tick_size = _positive_number(market.get("orderPriceMinTickSize"))
+        if order_min_size is None or order_price_min_tick_size is None:
+            row_blocks.append("official_market_order_sizing_rule_missing")
         eligible = not row_blocks
         registry = {
             "schema": SCHEMA_VERSION,
@@ -519,6 +544,13 @@ def materialize_event_registry(
             "no_token": token_map.get("NO", ""),
             "market_active": market.get("active") is True and market.get("closed") is not True,
             "market_accepting_orders": market.get("acceptingOrders") is True,
+            # The exchange's own minimum lot and price increment.  Without
+            # these the only thing that knows an order is too small to exist
+            # is the CLOB itself, which means every undersized order is
+            # discovered by signing it and posting it.  Carried here so the
+            # gateway can refuse it locally, before anything is signed.
+            "order_min_size": order_min_size,
+            "order_price_min_tick_size": order_price_min_tick_size,
             "rules_sha256": _sha({"description": description, "outcome": outcome, "resolution_url": resolution_url}),
             "source_disjoint": True,
             "origin_country_code": origin_route.get("country_code", ""),

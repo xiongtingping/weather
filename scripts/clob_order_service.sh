@@ -46,8 +46,13 @@ export PM_ASOS_ARGMAX_LIVE_ENABLED=1
 # 2026-08-07 from the US egress, and every rejection since the gate landed on
 # 2026-08-09 is our own clob_region_blocked:JP with exchange_post_started
 # false.  User ruling 2026-08-30, with the consequence stated first: the ASOS
-# lane is exempt from the pause flag and the read-only flag above, so this
-# gate was its last one and lifting it lets that lane reach the exchange.
+# lane was exempt from the pause flag and the read-only flag above, so this
+# gate was its last one and lifting it let that lane reach the exchange.
+#
+# That exemption is gone as of the same day, by the follow-up ruling: the
+# pause flag and the read-only flag now stop every lane without exception, so
+# lifting this gate no longer leaves anything ungated -- it only lets the
+# exchange answer for itself once the operator lifts the pause flag.
 export PM_CLOB_IGNORE_REGION_BLOCK=1
 # Keep exact-token conditional balances fresh for held-YES safety checks. This
 # is read-only evidence and remains bounded by the service concurrency/queue

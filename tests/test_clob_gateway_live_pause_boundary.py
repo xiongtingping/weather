@@ -1,9 +1,24 @@
 import json
+import re
 import subprocess
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
+_LINE_COMMENT = re.compile(r"^\s*//.*$", re.M)
+
+
+def _code_only(source: str) -> str:
+    """Source with comments removed.
+
+    The "must not appear" assertions below are about what the admission
+    section *does*, not about what it says.  Explaining in a comment why an
+    order must not reach the signer should not read as the signer being
+    called there.
+    """
+    return _LINE_COMMENT.sub("", _BLOCK_COMMENT.sub("", source))
 
 
 def test_gateway_pause_gate_is_dynamic_and_precedes_idempotency_admission():
@@ -14,9 +29,14 @@ def test_gateway_pause_gate_is_dynamic_and_precedes_idempotency_admission():
     assert "if (livePausePresent())" in method
     assert "clob_order_service_live_paused" in method
     assert "exchange_post_started: false" in method
-    assert "persistIntent" not in method
-    assert "createOrder" not in method
-    assert "postOrder" not in method
+    # The pause gate carries no lane exemption: it is the operator's stop for
+    # the whole gateway, and an admitted ASOS argmax intent used to walk past
+    # it (closed 2026-08-30, see test_asos_argmax_gateway_admission).
+    assert "if (!isAsosLive)" not in _code_only(method)
+    code = _code_only(method)
+    assert "persistIntent" not in code
+    assert "createOrder" not in code
+    assert "postOrder" not in code
 
 
 def test_gateway_starts_during_pause_instead_of_sleeping():

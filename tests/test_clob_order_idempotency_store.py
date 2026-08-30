@@ -1,12 +1,35 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import subprocess
 from pathlib import Path
+
+from weather_basket_yes_schema import apply_weather_basket_yes_schema
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVICE = ROOT / "scripts" / "clob_order_service.mjs"
+
+
+def _minimum_lot_registry(db_path: Path) -> None:
+    """A registry row stating the exchange's minimum lot for token 123456."""
+    conn = sqlite3.connect(db_path)
+    apply_weather_basket_yes_schema(conn)
+    conn.execute(
+        """INSERT INTO reported_trajectory_market_registry(
+             slug,event_date,outcome,city_slug,station_id,settlement_timezone,
+             settlement_unit,source_lane,source_eligible,source_block_reason,
+             resolution_url,rules_sha256,yes_token,no_token,market_active,
+             market_accepting_orders,registry_json,refreshed_at
+           ) VALUES('slug','2099-08-05','82-83°F','atlanta','KATL','America/New_York',
+                    'F','awc',1,NULL,'url',?,'123456','654321',1,1,?,
+                    '2099-08-05T00:00:00Z')""",
+        ("a" * 64, json.dumps({"order_min_size": 5, "order_price_min_tick_size": 0.01})),
+    )
+    conn.commit()
+    conn.close()
+
 
 
 def test_sqlite_idempotency_store_survives_restart_and_keeps_unresolved(tmp_path: Path) -> None:
@@ -753,9 +776,15 @@ def test_controlled_rebalance_sell_fak_uses_gateway_limit_signing_without_market
     }
 
 
-def test_gateway_posts_signal_sell_and_no_buy_concurrently() -> None:
+def test_gateway_posts_signal_sell_and_no_buy_concurrently(tmp_path: Path) -> None:
+    # Real token and size: since 2026-08-30 admission refuses an order that
+    # does not meet the market's minimum lot, so a payload with neither a
+    # token nor a size never reaches the serialisation this test is about.
+    db_path = tmp_path / "archive.db"
+    _minimum_lot_registry(db_path)
     script = f"""
       process.env.PM_LIVE_PAUSE_FILE = `/tmp/weather-test-no-pause-${{process.pid}}`;
+      process.env.PM_ARCHIVE_DB = {json.dumps(str(db_path))};
       const {{ ClobOrderService }} = await import({json.dumps(SERVICE.as_uri())});
       const service = new ClobOrderService();
       service.persistIntent = () => {{}};
@@ -771,6 +800,7 @@ def test_gateway_posts_signal_sell_and_no_buy_concurrently() -> None:
         direct_target_order_context:true,
         strategy_id:'reported_trajectory_no_v1',
         target_execution_hard_deadline_at:'2099-01-01T00:00:00.000Z',
+        token_id:'123456', price:0.5, size:10,
       }};
       const sell = service.placeOrderWithIdempotency({{
         ...common, side:'SELL', direct_target_exit_order:true,

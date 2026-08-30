@@ -24,6 +24,12 @@ AWC_GLOBAL_STATIONS = {
 }
 
 
+# Every live Gamma market carries the exchange's own admission rule for an
+# order.  Observed on the real API 2026-08-30: ``orderMinSize`` 5 across the
+# board, ``orderPriceMinTickSize`` 0.001 or 0.01 depending on the bucket.
+SIZING = {"orderMinSize": 5, "orderPriceMinTickSize": 0.01}
+
+
 def event(city: str, station: str = "ZBAA") -> dict:
     slug = f"highest-temperature-in-{city}-on-july-18-2026"
     return {
@@ -35,9 +41,9 @@ def event(city: str, station: str = "ZBAA") -> dict:
             "The resolution source measures temperatures to whole degrees Celsius."
         ),
         "markets": [
-            {"id": "1", "groupItemTitle": "29°C or below", "outcomes": '["Yes","No"]', "clobTokenIds": '["y1","n1"]', "active": True, "closed": False, "acceptingOrders": True},
-            {"id": "2", "groupItemTitle": "30°C", "outcomes": '["Yes","No"]', "clobTokenIds": '["y2","n2"]', "active": True, "closed": False, "acceptingOrders": True},
-            {"id": "3", "groupItemTitle": "31°C or higher", "outcomes": '["Yes","No"]', "clobTokenIds": '["y3","n3"]', "active": True, "closed": False, "acceptingOrders": True},
+            {"id": "1", "groupItemTitle": "29°C or below", "outcomes": '["Yes","No"]', "clobTokenIds": '["y1","n1"]', "active": True, "closed": False, "acceptingOrders": True, **SIZING},
+            {"id": "2", "groupItemTitle": "30°C", "outcomes": '["Yes","No"]', "clobTokenIds": '["y2","n2"]', "active": True, "closed": False, "acceptingOrders": True, **SIZING},
+            {"id": "3", "groupItemTitle": "31°C or higher", "outcomes": '["Yes","No"]', "clobTokenIds": '["y3","n3"]', "active": True, "closed": False, "acceptingOrders": True, **SIZING},
         ],
     }
 
@@ -217,6 +223,55 @@ class ReportedTrajectoryRegistryTests(unittest.TestCase):
         rows = materialize_event_registry(value, event_date="2026-07-18", config=load_config())
         self.assertTrue(all(row["source_lane"] == "awc" for row in rows))
         self.assertTrue(all(not row["source_eligible"] for row in rows))
+
+    def test_exchange_order_sizing_rule_is_captured_and_missing_rule_fails_closed(self) -> None:
+        """The minimum lot has to reach the registry, or the gateway cannot enforce it.
+
+        Polymarket refuses an order below the market's ``orderMinSize``.  Before
+        this field was collected the only thing that knew the rule was the CLOB,
+        so an undersized order was found out by signing it and posting it.  A
+        market that does not state its rule is one whose orders cannot be judged,
+        so it is blocked rather than defaulted.
+        """
+        rows = materialize_event_registry(event("beijing"), event_date="2026-07-18", config=load_config())
+        self.assertTrue(rows)
+        for row in rows:
+            self.assertEqual(row["order_min_size"], 5)
+            self.assertEqual(row["order_price_min_tick_size"], 0.01)
+            self.assertTrue(row["source_eligible"])
+
+        for label, broken in (
+            ("absent", {}),
+            ("null", {"orderMinSize": None, "orderPriceMinTickSize": None}),
+            ("zero", {"orderMinSize": 0, "orderPriceMinTickSize": 0}),
+            ("negative", {"orderMinSize": -5, "orderPriceMinTickSize": -0.01}),
+            ("unparseable", {"orderMinSize": "five", "orderPriceMinTickSize": "fine"}),
+            ("tick_only", {"orderPriceMinTickSize": 0.01}),
+        ):
+            with self.subTest(shape=label):
+                value = event("beijing")
+                for market in value["markets"]:
+                    market.pop("orderMinSize", None)
+                    market.pop("orderPriceMinTickSize", None)
+                    market.update(broken)
+                rows = materialize_event_registry(value, event_date="2026-07-18", config=load_config())
+                self.assertTrue(rows)
+                for row in rows:
+                    self.assertIsNone(row["order_min_size"])
+                    self.assertFalse(row["source_eligible"])
+                    self.assertIn("official_market_order_sizing_rule_missing", row["source_block_reasons"])
+
+    def test_decimal_string_sizing_rule_is_parsed_not_rejected(self) -> None:
+        """Gamma sends these as bare numbers today and as strings on some events."""
+        value = event("beijing")
+        for market in value["markets"]:
+            market.update({"orderMinSize": "5", "orderPriceMinTickSize": "0.001"})
+        rows = materialize_event_registry(value, event_date="2026-07-18", config=load_config())
+        self.assertTrue(rows)
+        for row in rows:
+            self.assertEqual(row["order_min_size"], 5.0)
+            self.assertEqual(row["order_price_min_tick_size"], 0.001)
+            self.assertTrue(row["source_eligible"])
 
 
 if __name__ == "__main__":
