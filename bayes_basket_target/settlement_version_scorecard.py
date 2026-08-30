@@ -16,6 +16,7 @@ from collections import Counter, defaultdict
 from datetime import date, datetime, timezone
 from typing import Any, Iterable, Mapping
 
+from .fleet import expected_station_count
 from .contracts import ContractError, content_sha256
 from .resource_bounds import assert_process_memory_budget
 from .settled_attribution import (
@@ -55,7 +56,7 @@ def _stations(values: Iterable[str]) -> tuple[str, ...]:
         for value in values
         if str(value).strip()
     }))
-    if not result or len(result) > 45:
+    if not result or len(result) > expected_station_count():
         raise ContractError("settlement_version_station_scope_invalid")
     return result
 

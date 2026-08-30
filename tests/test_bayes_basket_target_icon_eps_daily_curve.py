@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256
 from bayes_basket_target.icon_eps_daily_curve import build_icon_eps_daily_archive
 from bayes_basket_target.station_registry import coordinate_registry_manifest
@@ -41,7 +42,7 @@ def _cohort(lead: int) -> dict[str, object]:
         "valid_time_utc": valid.isoformat().replace("+00:00", "Z"),
         "raw_sha256": raw_sha,
         "member_count": 40,
-        "station_count": 45,
+        "station_count": expected_station_count(),
         "member_record_count": 1800,
         "lineage": {
             "source_role": "official_native",
@@ -73,7 +74,7 @@ def test_builds_45_by_40_complete_local_day_members_without_authority() -> None:
     assert [row["forecast_hour"] for row in archive["lead_results"]] == list(
         range(0, 24, 3)
     )
-    assert archive["station_count"] == 45
+    assert archive["station_count"] == expected_station_count()
     assert archive["member_count"] == 40
     assert archive["capture_count"] == 45
     assert all(capture["daily_curve_complete"] for capture in archive["captures"])

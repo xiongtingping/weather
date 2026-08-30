@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256
 from bayes_basket_target.station_registry import coordinate_registry_manifest
 import scripts.decode_bayes_basket_target_icon_eps_station_members as icon_eps_members
@@ -91,7 +92,7 @@ def test_decodes_one_40_member_45_station_candidate_cohort(tmp_path: Path) -> No
 
     assert receipt["state"] == "OFFICIAL_40_MEMBER_45_STATION_DECODED_CANDIDATE_ONLY"
     assert receipt["member_count"] == 40
-    assert receipt["station_count"] == 45
+    assert receipt["station_count"] == expected_station_count()
     assert receipt["member_record_count"] == 1800
     assert receipt["raw_object_count"] == 1
     assert receipt["single_raw_bytes"] == receipt["cumulative_raw_bytes"]
@@ -99,7 +100,7 @@ def test_decodes_one_40_member_45_station_candidate_cohort(tmp_path: Path) -> No
     assert receipt["formal_p0_eligible"] is False
     assert receipt["native_arrival_index_eligible"] is False
     assert receipt["hard_no_eligible"] is False
-    assert receipt["station_coordinate_lineage"]["station_count"] == 45
+    assert receipt["station_coordinate_lineage"]["station_count"] == expected_station_count()
     assert set(row["station_id"] for row in receipt["member_station_records"]) == set(
         coordinate_registry_manifest()["station_ids"]
     )

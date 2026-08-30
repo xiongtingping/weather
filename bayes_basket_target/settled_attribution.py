@@ -23,6 +23,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
 
+from .fleet import expected_station_count
 from .contracts import ContractError, content_sha256
 from .delta_v2_settlement_label import (
     LABEL_SCHEMA,
@@ -559,7 +560,7 @@ def build_settled_attribution(
             for value in station_ids
             if str(value).strip()
         }))
-        if not station_scope or len(station_scope) > 45:
+        if not station_scope or len(station_scope) > expected_station_count():
             raise ContractError("settled_attribution_station_scope_invalid")
     if (window_start_date is None) != (window_end_date is None):
         raise ContractError("settled_attribution_window_incomplete")

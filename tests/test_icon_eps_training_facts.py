@@ -6,6 +6,7 @@ import sqlite3
 
 import pytest
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256
 from bayes_basket_target.icon_eps_daily_curve import build_icon_eps_daily_archive
 from bayes_basket_target.icon_eps_training_facts import (
@@ -41,7 +42,7 @@ def _cohort(lead: int) -> dict[str, object]:
         "valid_time_utc": valid.isoformat().replace("+00:00", "Z"),
         "raw_sha256": raw_sha,
         "member_count": 40,
-        "station_count": 45,
+        "station_count": expected_station_count(),
         "member_record_count": 1_800,
         "lineage": {
             "source_role": "official_native",
@@ -118,7 +119,7 @@ def test_builds_45_closed_awc_facts_with_member_raw_and_grid_lineage() -> None:
 
     assert batch["schema"] == TRAINING_BATCH_SCHEMA
     assert batch["state"] == "ACCUMULATING_STRICT_OOS"
-    assert batch["fact_count"] == 45
+    assert batch["fact_count"] == expected_station_count()
     assert batch["unresolved_station_days"] == []
     assert batch["formal_p0_eligible"] is False
     fact = batch["facts"][0]
@@ -158,7 +159,7 @@ def test_indexed_daily_archive_carries_immutable_arrival_pointer_to_facts() -> N
         archive, _truths(), as_of_utc="2026-08-02T01:00:00Z"
     )
 
-    assert batch["fact_count"] == 45
+    assert batch["fact_count"] == expected_station_count()
     lineage = batch["facts"][0]["source_lineage"]
     assert lineage["native_arrival_index_eligible"] is True
     assert lineage["native_arrival_index_evidence_sha256"] == arrival_index_sha
@@ -171,7 +172,7 @@ def test_open_day_returns_zero_facts_without_reading_a_future_truth() -> None:
 
     assert batch["state"] == "PENDING_CLOSED_AWC_TRUTH"
     assert batch["fact_count"] == 0
-    assert len(batch["unresolved_station_days"]) == 45
+    assert len(batch["unresolved_station_days"]) == expected_station_count()
     assert {row["reason"] for row in batch["unresolved_station_days"]} == {
         "settlement_day_open_as_of"
     }

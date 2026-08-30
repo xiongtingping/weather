@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.et_history import assert_event_day_closed  # noqa: E402
 from bayes_basket_target.native_model_decode import (  # noqa: E402
@@ -420,7 +421,7 @@ def rebuild(
     requested_stations = sorted({str(value).strip().upper() for value in station_ids if str(value).strip()})
     if not requested_dates or len(requested_dates) > 31:
         raise ContractError("icon_retained_raw_event_dates_invalid")
-    if not requested_stations or len(requested_stations) > 45:
+    if not requested_stations or len(requested_stations) > expected_station_count():
         raise ContractError("icon_retained_raw_station_ids_invalid")
     reconstruction_clock = str(as_of_utc or _now()).strip()
     for event_date in requested_dates:

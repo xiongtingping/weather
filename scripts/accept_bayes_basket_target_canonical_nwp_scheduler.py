@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import is_exact_fleet
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.resource_bounds import (  # noqa: E402
     load_bounded_json,
@@ -71,7 +72,7 @@ def audit_status(
     as_of_utc: str,
 ) -> dict[str, Any]:
     canonical = tuple(coordinate_registry_manifest()["station_ids"])
-    if len(canonical) != 45 or len(set(canonical)) != 45:
+    if not is_exact_fleet(canonical):
         raise RuntimeError("canonical_station_registry_invalid")
     blockers: list[str] = []
     heartbeat = str(status.get("heartbeat_at") or "")

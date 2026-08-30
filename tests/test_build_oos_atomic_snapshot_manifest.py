@@ -6,11 +6,12 @@ from pathlib import Path
 
 import pytest
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import content_sha256
 from scripts import build_oos_atomic_snapshot_manifest as snapshot
 
 
-STATION_IDS = tuple(f"T{index:03d}" for index in range(45))
+STATION_IDS = tuple(f"T{index:03d}" for index in range(expected_station_count()))
 
 
 def _write(path: Path, identity: dict) -> dict:
@@ -107,7 +108,7 @@ def test_snapshot_binds_p0_pointer_and_scope(monkeypatch: pytest.MonkeyPatch, tm
     assert result["schema"] == snapshot.SCHEMA
     assert result["production_no_live"] is True
     assert result["writes_production_database"] is False
-    assert result["input_artifacts"]["p0_inbox"]["packet_count"] == 45
+    assert result["input_artifacts"]["p0_inbox"]["packet_count"] == expected_station_count()
     assert result["input_artifacts"]["taf_audit"]["p0_inbox_content_sha256"] == result["input_artifacts"]["p0_inbox"]["declared_content_sha256"]
     assert result["input_artifacts"]["taf_audit"]["evidence_clock_utc"] == "2026-08-02T00:00:00.000Z"
     assert result["input_artifacts"]["taf_audit"]["evidence_clock_field"] == "as_of_utc"
@@ -208,7 +209,7 @@ def test_snapshot_rejects_unbound_taf(tmp_path: Path, monkeypatch: pytest.Monkey
     identity = {k: v for k, v in value.items() if k != "content_sha256"}
     value["content_sha256"] = content_sha256(identity)
     taf.write_text(json.dumps(value, sort_keys=True) + "\n", encoding="utf-8")
-    monkeypatch.setattr(snapshot, "coordinate_registry_manifest", lambda: {"station_ids": [f"T{i:03d}" for i in range(45)]})
+    monkeypatch.setattr(snapshot, "coordinate_registry_manifest", lambda: {"station_ids": [f"T{i:03d}" for i in range(expected_station_count())]})
     with pytest.raises(snapshot.SnapshotError, match="taf_p0_input_pointer_missing"):
         snapshot.build(args)
 
@@ -225,7 +226,7 @@ def test_snapshot_rejects_p0_drift_after_taf_was_bound(
     monkeypatch.setattr(
         snapshot,
         "coordinate_registry_manifest",
-        lambda: {"station_ids": [f"T{i:03d}" for i in range(45)]},
+        lambda: {"station_ids": [f"T{i:03d}" for i in range(expected_station_count())]},
     )
     with pytest.raises(snapshot.SnapshotError, match="snapshot_taf_p0_input_pointer_mismatch"):
         snapshot.build(args)
@@ -391,7 +392,7 @@ def test_snapshot_rejects_empty_or_future_native_frozen_clock(
     monkeypatch.setattr(
         snapshot,
         "coordinate_registry_manifest",
-        lambda: {"station_ids": [f"T{i:03d}" for i in range(45)]},
+        lambda: {"station_ids": [f"T{i:03d}" for i in range(expected_station_count())]},
     )
     with pytest.raises(snapshot.SnapshotError, match=match):
         snapshot.build(args)
@@ -418,7 +419,7 @@ def test_snapshot_rejects_native_pointer_selection_mismatch(
     monkeypatch.setattr(
         snapshot,
         "coordinate_registry_manifest",
-        lambda: {"station_ids": [f"T{i:03d}" for i in range(45)]},
+        lambda: {"station_ids": [f"T{i:03d}" for i in range(expected_station_count())]},
     )
     with pytest.raises(snapshot.SnapshotError, match="native_p0_binding_identity_mismatch"):
         snapshot.build(args)
@@ -457,7 +458,7 @@ def test_snapshot_rejects_content_addressed_pointer_mismatch(
     monkeypatch.setattr(
         snapshot,
         "coordinate_registry_manifest",
-        lambda: {"station_ids": [f"T{i:03d}" for i in range(45)]},
+        lambda: {"station_ids": [f"T{i:03d}" for i in range(expected_station_count())]},
     )
     with pytest.raises(
         snapshot.SnapshotError,
@@ -481,7 +482,7 @@ def test_snapshot_rejects_native_linkage_scope_outside_canonical_registry(
     monkeypatch.setattr(
         snapshot,
         "coordinate_registry_manifest",
-        lambda: {"station_ids": [f"T{i:03d}" for i in range(45)]},
+        lambda: {"station_ids": [f"T{i:03d}" for i in range(expected_station_count())]},
     )
     with pytest.raises(
         snapshot.SnapshotError,

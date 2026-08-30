@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.database import DEFAULT_TARGET_DB  # noqa: E402
 from bayes_basket_target.resource_bounds import (  # noqa: E402
     load_bounded_json,
@@ -63,7 +64,7 @@ def _station_scopes(
     expected_count = len(requested) if requested else 45
     if (
         len(result) != expected_count
-        or len(result) > 45
+        or len(result) > expected_station_count()
         or requested - set(result)
     ):
         raise RuntimeError("historical_taf_station_scope_invalid")

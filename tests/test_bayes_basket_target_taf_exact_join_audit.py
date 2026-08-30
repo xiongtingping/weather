@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import content_sha256
 from bayes_basket_target.taf_exact_join_audit import (
     MIN_TAF_NATIVE_OOS_SAMPLE_N,
@@ -15,7 +16,7 @@ def _registry() -> list[dict[str, str]]:
         "timezone_name": "Etc/UTC",
         "source_lane": "AWC",
         "settlement_definition": "official_daily_tmax_c",
-    } for index in range(45)]
+    } for index in range(expected_station_count())]
 
 
 def _p0_inbox() -> dict:
@@ -138,7 +139,7 @@ def test_audit_preserves_24_sample_gate_and_reports_all_45_stations() -> None:
     )
 
     entry = _entry(result)
-    assert result["canonical_station_count"] == 45
+    assert result["canonical_station_count"] == expected_station_count()
     assert result["as_of_utc"] == "2026-08-02T00:00:00.000Z"
     assert result["input_artifacts"]["p0_inbox"] == {
         "content_sha256": _p0_inbox()["content_sha256"],

@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError  # noqa: E402
 from scripts import rebuild_bayes_basket_target_icon_from_retained_raw as rebuild_module  # noqa: E402
 
@@ -226,13 +227,16 @@ def test_rebuild_rejects_future_et_day_before_decoder_work(tmp_path: Path) -> No
         )
 
 
-def test_rebuild_rejects_more_than_45_stations_before_work(tmp_path: Path) -> None:
+def test_rebuild_rejects_more_than_the_fleet_before_work(tmp_path: Path) -> None:
     fake_binary = shutil.which("true")
     assert fake_binary
     with pytest.raises(ContractError, match="icon_retained_raw_station_ids_invalid"):
         rebuild_module.rebuild(
             event_dates=["2026-07-24"],
-            station_ids=[f"S{index:02d}" for index in range(46)],
+            station_ids=[
+                f"S{index:02d}"
+                for index in range(expected_station_count() + 1)
+            ],
             source_roots=[tmp_path / "icon"],
                 output=tmp_path / "evidence.json",
                 target_timezone="America/New_York",

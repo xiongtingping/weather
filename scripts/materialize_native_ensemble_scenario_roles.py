@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.market_registry import (  # noqa: E402
     load_market_registry_snapshot,
@@ -52,7 +53,9 @@ MAX_SYSTEMS_PER_STATION = 128
 MAX_MEMBERS_PER_SYSTEM = 512
 MAX_BUCKETS = 256
 MAX_INPUT_PACKETS = 1024
-MAX_TOTAL_MEMBER_ROWS = 45 * MAX_SYSTEMS_PER_STATION * MAX_MEMBERS_PER_SYSTEM
+MAX_TOTAL_MEMBER_ROWS = (
+    expected_station_count() * MAX_SYSTEMS_PER_STATION * MAX_MEMBERS_PER_SYSTEM
+)
 
 
 def _text(name: str, value: Any) -> str:
@@ -180,7 +183,7 @@ def _verified_registry(raw: Any) -> dict[str, Any]:
     # load_market_registry_snapshot already verifies the snapshot's own
     # content.  Keep this local shape check because tests and callers may pass
     # an in-memory snapshot directly to build_scenario_roles_artifact().
-    if len(rows) > 45 * MAX_BUCKETS:
+    if len(rows) > expected_station_count() * MAX_BUCKETS:
         raise ContractError("scenario_cli_registry_rows_bound_exceeded")
     if any(not isinstance(row, Mapping) for row in rows):
         raise ContractError("scenario_cli_registry_row_invalid")

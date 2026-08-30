@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.database import DEFAULT_TARGET_DB  # noqa: E402
 from bayes_basket_target.probability_evidence_store import (  # noqa: E402
@@ -177,7 +178,7 @@ def _load_hourly_curve_audit(path: Path | None) -> Mapping[str, Any] | None:
     ):
         raise ContractError("p1_repair_hourly_curve_audit_contract_invalid")
     entries = payload.get("entries")
-    if not isinstance(entries, list) or len(entries) > 45 * 31:
+    if not isinstance(entries, list) or len(entries) > expected_station_count() * 31:
         raise ContractError("p1_repair_hourly_curve_audit_entries_invalid")
     return payload
 

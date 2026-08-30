@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .fleet import expected_station_count
 from .activation import assert_target_database_owner, load_target_activation
 from .atomic_ledger import (
     AtomicLedgerError,
@@ -2775,7 +2776,7 @@ class TargetProductionWorker:
                 }
             )
         )
-        if len(self.station_allowlist) > 45:
+        if len(self.station_allowlist) > expected_station_count():
             raise RuntimeError("target_station_allowlist_cap_exceeded")
         raw_event_dates: Sequence[str]
         if event_date_allowlist is None:

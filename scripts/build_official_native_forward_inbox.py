@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.market_registry import (  # noqa: E402
     load_market_registry_snapshot,
@@ -289,7 +290,7 @@ def main() -> int:
     stations = sorted(requested or available)
     if (
         not stations
-        or len(stations) > 45
+        or len(stations) > expected_station_count()
         or not set(stations).issubset(available)
     ):
         raise RuntimeError("official_native_forward_station_scope_invalid")

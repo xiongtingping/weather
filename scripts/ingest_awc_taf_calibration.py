@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.database import DEFAULT_TARGET_DB  # noqa: E402
 from bayes_basket_target.native_ensemble_training_facts import (  # noqa: E402
     ingest_historical_taf_calibration_with_quarantine,
@@ -34,7 +35,7 @@ def main() -> int:
     )
     parser.add_argument("--commit", action="store_true")
     args = parser.parse_args()
-    if len(args.archive) > 45:
+    if len(args.archive) > expected_station_count():
         raise RuntimeError("historical_taf_archive_count_exceeded")
     archives = [
         load_bounded_json(path.expanduser().resolve(strict=True))

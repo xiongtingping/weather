@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.resource_bounds import (  # noqa: E402
     MAX_JSON_INPUT_BYTES,
@@ -548,9 +549,14 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
         str(item).strip().upper()
         for item in coordinate_registry_manifest()["station_ids"]
     ]
+    # Deliberately NOT ``is_exact_fleet``: that helper reads the coordinate
+    # registry through its own import, while this module's tests substitute
+    # ``coordinate_registry_manifest`` here to drive synthetic fleets.
+    # Swapping the local call for the helper made the guard consult the real
+    # registry and reject every stubbed scope.
     if (
-        len(canonical) != 45
-        or len(set(canonical)) != 45
+        len(canonical) != expected_station_count()
+        or len(set(canonical)) != len(canonical)
         or any(not station for station in canonical)
     ):
         raise SnapshotError("snapshot_canonical_station_count_not_45")

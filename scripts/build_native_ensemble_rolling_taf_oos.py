@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.database import DEFAULT_TARGET_DB  # noqa: E402
 from bayes_basket_target.resource_bounds import write_bounded_json_if_changed  # noqa: E402
@@ -38,7 +39,7 @@ def main() -> int:
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
     stations = sorted({str(value).strip().upper() for value in args.station_id if str(value).strip()})
-    if not stations or len(stations) > 45:
+    if not stations or len(stations) > expected_station_count():
         raise RuntimeError("rolling_native_taf_station_scope_invalid")
     database = args.db.expanduser().resolve(strict=True)
     destination = args.output_dir.expanduser().resolve()

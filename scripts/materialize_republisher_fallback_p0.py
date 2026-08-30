@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.database import DEFAULT_TARGET_DB  # noqa: E402
 from bayes_basket_target.native_ensemble_p0 import (  # noqa: E402
@@ -114,7 +115,7 @@ def materialize(
         official.resolve(strict=True), republisher.resolve(strict=True), event_date
     )
     stations = sorted(set(official_by_station) | set(republisher_by_station))
-    if len(stations) > 45:
+    if len(stations) > expected_station_count():
         raise RuntimeError("fallback_station_count_exceeded")
 
     read_conn = sqlite3.connect(

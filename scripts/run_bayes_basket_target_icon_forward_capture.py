@@ -32,6 +32,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.et_history import TARGET_TIMEZONE, event_day_window  # noqa: E402
 from bayes_basket_target.model_arrival import validate_prospective_capture_window  # noqa: E402
@@ -223,7 +224,7 @@ def build_plan(
     )
     stations = sorted({str(item).strip().upper() for item in (station_ids or coordinate_registry_manifest()["station_ids"])})
     if registry_bound:
-        if not stations or len(stations) > 45:
+        if not stations or len(stations) > expected_station_count():
             raise ContractError("icon_forward_scheduler_registry_station_scope_invalid")
         registry_sha = str(market_registry_snapshot_sha256 or "").strip().lower()
         if len(registry_sha) != 64 or any(
@@ -234,7 +235,7 @@ def build_plan(
         if anchor not in stations:
             raise ContractError("icon_forward_scheduler_source_station_outside_scope")
     else:
-        if len(stations) != 45:
+        if len(stations) != expected_station_count():
             raise ContractError("icon_forward_scheduler_station_scope_not_45")
         if "ZUUU" not in stations:
             raise ContractError("icon_forward_scheduler_global_anchor_missing")

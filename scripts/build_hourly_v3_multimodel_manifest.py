@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.resource_bounds import (  # noqa: E402
     load_bounded_json,
@@ -71,7 +72,7 @@ def main() -> int:
             "source_class": "official_native_archive_query",
         })
         packets = raw.get("packets")
-        if not isinstance(packets, list) or len(packets) != 45:
+        if not isinstance(packets, list) or len(packets) != expected_station_count():
             raise RuntimeError("hourly_v3_manifest_native_scope_invalid")
         for packet in packets:
             if not isinstance(packet, Mapping):

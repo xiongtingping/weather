@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.resource_bounds import (  # noqa: E402
     MAX_TARGET_PROCESS_RSS_BYTES,
@@ -79,7 +80,7 @@ def rebuild(
     stations = sorted({str(item).strip().upper() for item in station_ids if str(item).strip()})
     if not dates or len(dates) > 14:
         raise ContractError("open_meteo_retained_event_date_count_invalid")
-    if not stations or len(stations) > 45:
+    if not stations or len(stations) > expected_station_count():
         raise ContractError("open_meteo_retained_station_count_invalid")
     target_timezone = _registry_timezone(
         timezone_registry,

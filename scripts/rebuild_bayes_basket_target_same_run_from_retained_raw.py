@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 from bayes_basket_target.et_history import assert_event_day_started  # noqa: E402
 from bayes_basket_target.model_arrival import load_model_arrival_receipts  # noqa: E402
@@ -395,7 +396,7 @@ def rebuild(
         target_timezone=target_timezone,
     )
     registry_stations = set(coordinate_registry_manifest()["station_ids"])
-    if not stations or len(stations) > 45 or not set(stations).issubset(registry_stations):
+    if not stations or len(stations) > expected_station_count() or not set(stations).issubset(registry_stations):
         raise ContractError("same_run_station_scope_invalid")
     grib_get = _binary(grib_get_binary or GRIB_GET, "grib_get")
     grib_get_data = _binary(GRIB_GET_DATA, "grib_get_data")
