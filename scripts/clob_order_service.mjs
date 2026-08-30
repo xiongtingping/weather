@@ -2248,7 +2248,21 @@ export class ClobOrderService {
       ready_at: this.readyAt ? this.readyAt.toISOString() : null,
       uptime_sec: Math.round(process.uptime() * 1000) / 1000,
       proxy: this.proxy,
-      region: { ...this.region, observed_at: this.regionObservedAt, blocking_orders: this.regionBlockedNow() },
+      // ``blocking_orders`` must answer "will an order be stopped here", not
+      // "did the website say blocked".  PM_CLOB_IGNORE_REGION_BLOCK is read at
+      // the admission gate, so reporting regionBlockedNow() alone made health
+      // claim the lane was closed while orders were in fact reaching the
+      // exchange -- the reverse of the failure that is safe to have.  Both
+      // readings are published: the region's own verdict, and whether it binds.
+      region: {
+        ...this.region,
+        observed_at: this.regionObservedAt,
+        region_says_blocked: this.regionBlockedNow(),
+        region_block_ignored: truthy(env("PM_CLOB_IGNORE_REGION_BLOCK", "0")),
+        blocking_orders:
+          this.regionBlockedNow()
+          && !truthy(env("PM_CLOB_IGNORE_REGION_BLOCK", "0")),
+      },
       metadata_cache_size: this.metadata.size,
       idempotency_cache_size: this.idem.size,
       idempotency_unresolved_count: this.unresolved.size,

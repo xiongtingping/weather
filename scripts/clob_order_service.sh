@@ -39,6 +39,16 @@ export PM_LIVE_PAUSE_FILE="$ROOT/data/live_paused.flag"
 export PM_TARGET_EXECUTION_MODE=production_no_live
 export PM_CLOB_ORDER_SERVICE_READ_ONLY=0
 export PM_ASOS_ARGMAX_LIVE_ENABLED=1
+# The region pre-rejection reads polymarket.com/api/geoblock -- the website's
+# restriction -- and refuses before signing, so the exchange's own answer was
+# never obtained.  The attempt record separates the two: the three responses
+# that actually came back "Trading restricted in your region" are all
+# 2026-08-07 from the US egress, and every rejection since the gate landed on
+# 2026-08-09 is our own clob_region_blocked:JP with exchange_post_started
+# false.  User ruling 2026-08-30, with the consequence stated first: the ASOS
+# lane is exempt from the pause flag and the read-only flag above, so this
+# gate was its last one and lifting it lets that lane reach the exchange.
+export PM_CLOB_IGNORE_REGION_BLOCK=1
 # Keep exact-token conditional balances fresh for held-YES safety checks. This
 # is read-only evidence and remains bounded by the service concurrency/queue
 # limits; it never authorizes an order.
