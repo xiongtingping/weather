@@ -7430,9 +7430,8 @@ const GROUPS = [
    sections:[[coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"],
      [truthLanding,"真值落位"],[edgeBandHealth,"声称边际体温计"]]},
   {id:"health", label:"系统健康", tone:"#f85149",
-   note:"机器在不在转：整条链路每一环、真值物化、Live 上线闸门",
-   sections:[[chain,"链路"],[materialization,"真值物化"],
-     [liveReadiness,"Live 上线闸门"]]},
+   note:"机器在不在转：整条链路每一环、真值物化",
+   sections:[[chain,"链路"],[materialization,"真值物化"]]},
 ];
 const tabs = `<nav class="tabs" id="tabs">${
   GROUPS.map(g => `<button type="button" data-tab="${g.id}"
@@ -7475,7 +7474,8 @@ const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}"
 // not scan them -- so they move into their own area together, keeping the
 // order the reader asked for: detail first, then the three tables that
 // answer what the detail raises.
-const TOP = [[overview, "总览"], [riskMetrics, "组合风险指标"],
+const TOP = [[overview, "总览"], [liveReadiness, "Live 上线准备"],
+  [riskMetrics, "组合风险指标"],
   [daily, "每日统计"], [roster, "逐站逐日明细"],
   [stationSummary, "逐站汇总（跨日）"], [anomalies, "异常盘口"],
   [refusalStats, "没建仓是因为什么"]];
