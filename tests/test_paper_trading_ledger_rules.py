@@ -1958,10 +1958,17 @@ def test_charter_67_p1_waits_for_its_window() -> None:
     assert DEFAULT_P1_ENTRY_LOCAL_HOUR == 11.0
     assert P1_ENTRY_LOCAL_HOUR == DEFAULT_P1_ENTRY_LOCAL_HOUR
     assert "entry_window_not_open" in REFUSAL_REASONS
-    # Its owner is our own clock, the same layer as the certainty gate: the
-    # market was there, the model was never asked.
-    assert REFUSAL_DEPTH["entry_window_not_open"] == (
-        REFUSAL_DEPTH["certainty_gate_lit"]
+    # Our own clock, but NOT the certainty gate's layer.  The certainty
+    # gate fires instead of judging on its own cycle; a pre-window cycle
+    # never entered the funnel, and the afternoon cycles that follow DO get
+    # judged -- so every judged refusal must outrank this one, or a day
+    # priced and refused on edge all afternoon reads "窗未开" at 14:50
+    # local (ZGGG 2026-08-30, the founding misreport).
+    assert REFUSAL_DEPTH["entry_window_not_open"] < (
+        REFUSAL_DEPTH["no_legal_window"]
+    )
+    assert REFUSAL_DEPTH["entry_window_not_open"] > (
+        REFUSAL_DEPTH["incomplete_book"]
     )
     assert "P1≥本地11时" in SELECTION_RULE_LABEL
 

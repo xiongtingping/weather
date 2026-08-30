@@ -383,6 +383,16 @@ REFUSAL_DEPTH = {
     "no_book_at_decision": 0,
     "incomplete_book": 1,
     "selection_failed": 2,
+    # Charter 67's clock refusal is NOT on the certainty gate's layer,
+    # though both are "our own clock".  The certainty gate fires INSTEAD of
+    # judging on its cycle, so it can honestly be the day's deepest event.
+    # A pre-window cycle never entered the funnel at all -- and later
+    # cycles exist and DO get judged, so any judged refusal must outrank
+    # this one.  At depth 5 it shadowed them: ZGGG 2026-08-30 was priced
+    # and refused on edge all afternoon and the page said "窗未开" at
+    # 14:50 local, because midnight's clock refusal outranked the
+    # afternoon's economics.
+    "entry_window_not_open": 2,
     # One layer: all three mean the enumeration produced no basket to price.
     # Which of the three is reported is decided by the gate that took the
     # last window standing, not by depth -- the funnel order lives in
@@ -409,7 +419,6 @@ REFUSAL_DEPTH = {
     # reported as "the odds were not worth it" until 2026-08-24.
     "unquoted_ideal_window": 5,
     "certainty_gate_lit": 5,
-    "entry_window_not_open": 5,
     # One layer: a basket was assembled, priced and put to the objective, and
     # no stake followed.  Which of the two is reported depends on whether the
     # price left the objective anything to judge.
