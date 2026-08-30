@@ -2284,6 +2284,18 @@ def collect_band_shadow_distance(
     return out
 
 
+def _live_execution_mode() -> str:
+    """The mode the production lane is actually compiled for."""
+
+    try:
+        from bayes_basket_target.production import (  # noqa: PLC0415
+            PRODUCTION_EXECUTION_MODE,
+        )
+        return str(PRODUCTION_EXECUTION_MODE)
+    except Exception:
+        return "unknown"
+
+
 def collect_live_readiness(
     conn: sqlite3.Connection,
     band_stations: list[dict[str, Any]],
@@ -2507,6 +2519,13 @@ def collect_live_readiness(
         "kelly": policy.get("portfolio_risk_fraction"),
         "budget_usdc": runtime.get("target_remaining_budget_usdc"),
         "live_enabled": intent.get("live_enabled"),
+        # What the system is, not what it was when this panel was written.
+        # The banner used to state "三重合同仍锁 no_live" as a fixed string,
+        # and the arming prompt promised "它不下单" -- both true only until
+        # the go-live migration ran, after which the panel was reassuring the
+        # operator about a system that had stopped being that system.
+        "execution_mode": _live_execution_mode(),
+        "submission_paused": (ROOT / "data" / "live_paused.flag").is_file(),
         "station_scope": scope_mode,
         "minimum_settlements_to_qualify": minimum,
         "station_allowlist": sorted(allowlist_set),
@@ -7660,9 +7679,16 @@ function lcRender(s){
   const head=document.getElementById("lc-head");
   if(head) head.className = "pill" + (s.live.enabled?" red":"");
   const headNote=document.getElementById("lc-head-note");
-  if(headNote) headNote.textContent = s.live.enabled
-    ? "意向旗已举起 · 三重合同仍锁 no_live"
-    : "控制服务已连接";
+  if(headNote){
+    const L = D.live_readiness || {};
+    const liveMode = L.execution_mode === "production_live";
+    headNote.textContent = !s.live.enabled ? "控制服务已连接"
+      : liveMode && L.submission_paused === false
+        ? "实盘中 · 网关正在下单"
+        : liveMode
+          ? "合同已 live · 暂停旗在位，网关不发单"
+          : "意向旗已举起 · 三重合同仍锁 no_live";
+  }
   const status=document.getElementById("lc-status");
   if(status) status.textContent =
     "控制服务已连接 · 每次改动写 data/live_control_audit.jsonl";
@@ -7689,9 +7715,13 @@ function lcLive(){
     lcApi("/api/live", {enabled:false}).then(lcRender);
     return;
   }
+  const liveMode = (D.live_readiness || {}).execution_mode === "production_live";
   const word = prompt(
-    "确认 arm 上线意向旗？它不下单（三重合同仍锁 no_live），"
-    + "但 go-live 迁移将以它为前提。输入 LIVE 确认：");
+    liveMode
+      ? "确认 arm 上线意向旗？合同已经是 live —— 移除 data/live_paused.flag "
+        + "后网关会用真实资金下单。输入 LIVE 确认："
+      : "确认 arm 上线意向旗？它不下单（三重合同仍锁 no_live），"
+        + "但 go-live 迁移将以它为前提。输入 LIVE 确认：");
   if(word !== "LIVE") return;
   lcApi("/api/live", {enabled:true, confirm:"LIVE", by:"dashboard"})
     .then(lcRender).catch(e=>alert("失败: "+e));
