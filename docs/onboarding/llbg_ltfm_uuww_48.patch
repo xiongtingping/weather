@@ -1,36 +1,24 @@
 diff --git a/bayes_basket_target/station_registry.py b/bayes_basket_target/station_registry.py
-index 541b5e0a..0faac7e4 100644
+index 541b5e0a..9b40af44 100644
 --- a/bayes_basket_target/station_registry.py
 +++ b/bayes_basket_target/station_registry.py
-@@ -1,10 +1,17 @@
- """Canonical station coordinates for the isolated target model decoder.
- 
- Coordinates are station metadata, not a forecast input.  The registry is a
--small, immutable projection of the official AWC ``stationinfo`` snapshot used
--by the target's 45-station arrival corpus.  A station absent from this
--registry is deliberately unusable: callers must not silently decode it at the
--ZUUU coordinate or at any other guessed location.
-+small, immutable projection of official AWC ``stationinfo`` snapshots.  A
-+station absent from this registry is deliberately unusable: callers must not
-+silently decode it at the ZUUU coordinate or at any other guessed location.
-+
-+The projection is kept in per-snapshot blocks, each carrying the hash of the
-+response its rows came from.  Onboarding a station means adding a block, not
-+editing an existing one: re-taking the whole fleet from a fresh snapshot
-+would silently move the 45 incumbent coordinates if AWC had revised any of
-+them, and a coordinate move is a change to where every model decodes.  The
-+lookup merges the blocks; the lineage each station reports is its own
-+block's, so a reader can always tell which response attested which row.
- """
- 
- from __future__ import annotations
-@@ -21,12 +28,14 @@ SCHEMA = "bayes_basket_target_station_coordinate_registry_v1"
+@@ -21,12 +21,24 @@ SCHEMA = "bayes_basket_target_station_coordinate_registry_v1"
  SOURCE_SCHEMA = "awc_stationinfo_v1"
  SOURCE_ID = "awc_stationinfo"
  SOURCE_URL = "https://aviationweather.gov/api/data/stationinfo"
-+# The founding snapshot: the 45-station arrival corpus.  Unchanged, and not
-+# to be re-taken -- see the module docstring.
++# The founding snapshot: the one AWC stationinfo response the original
++# 45-station corpus was projected from.
  SOURCE_SNAPSHOT_SHA256 = "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6"
++# The 2026-08-30 onboarding snapshot: a second stationinfo response, fetched
++# for exactly the three ids it admits (614 bytes).  Kept as its own block
++# rather than folded into a re-taken fleet-wide snapshot, because re-taking
++# one would silently move the 45 coordinates already in production -- AWC
++# revises values -- and a registry that claims a snapshot it did not project
++# from is claiming provenance it does not have.  Every station reports the
++# snapshot it actually came from; see ``_SNAPSHOT_BY_STATION``.
++ONBOARDED_SNAPSHOT_SHA256 = (
++    "b5b5b43754ed61009bc46d16d57eca3d6a2ef4498578c4cff5d5496c887c1cdd"
++)
  
  # Official AWC stationinfo lat/lon values.  Keep this projection intentionally
  # small: elevation, city labels, and provider fields do not belong in the
@@ -40,70 +28,72 @@ index 541b5e0a..0faac7e4 100644
      "CYYZ": (43.679, -79.629),
      "EDDM": (48.348, 11.813),
      "EFHK": (60.327, 24.957),
-@@ -74,6 +83,38 @@ _COORDINATES: dict[str, tuple[float, float]] = {
+@@ -74,6 +86,36 @@ _COORDINATES: dict[str, tuple[float, float]] = {
      "ZUUU": (30.576, 103.95),
  }
  
-+# Onboarded 2026-08-29 (user ruling): three markets that had been listed and
-+# settleable for a week and were excluded only for want of a coordinate --
-+# Tel Aviv, Istanbul, Moscow.  Their rows come from their own stationinfo
-+# response, fetched for exactly these three ids and hashed here, so the
-+# founding block's attestation stays true to what it attested.
-+#
-+#   GET .../stationinfo?ids=LLBG,LTFM,UUWW&format=json   (614 bytes)
-+ONBOARDED_SNAPSHOT_SHA256 = (
-+    "b5b5b43754ed61009bc46d16d57eca3d6a2ef4498578c4cff5d5496c887c1cdd"
-+)
++# Admitted 2026-08-30 from ``ONBOARDED_SNAPSHOT_SHA256``.  Three markets that
++# had been listed and settleable for weeks -- settlement timezone present,
++# station id resolved from the settlement URL, 23-24 METARs a day -- and were
++# refused only here, because a station with no coordinate cannot be decoded
++# and must never be silently decoded at a guessed location.
 +_ONBOARDED_COORDINATES: dict[str, tuple[float, float]] = {
-+    "LLBG": (32.011, 34.887),   # Tel Aviv/Ben Gurion Arpt
-+    "LTFM": (41.262, 28.74),    # Istanbul Arpt
-+    "UUWW": (55.592, 37.261),   # Moscow/Vnukovo Arpt
++    "LLBG": (32.011, 34.887),
++    "LTFM": (41.262, 28.74),
++    "UUWW": (55.592, 37.261),
 +}
-+
-+# Which snapshot attested each row.  A station may appear in exactly one
-+# block; overlapping blocks would make the lineage a coin toss.
-+_SNAPSHOT_BY_STATION: dict[str, str] = {
-+    **{station: SOURCE_SNAPSHOT_SHA256 for station in _FOUNDING_COORDINATES},
-+    **{station: ONBOARDED_SNAPSHOT_SHA256
-+       for station in _ONBOARDED_COORDINATES},
-+}
-+_overlap = set(_FOUNDING_COORDINATES) & set(_ONBOARDED_COORDINATES)
-+if _overlap:
-+    raise ContractError("native_station_coordinates_duplicated")
 +
 +_COORDINATES: dict[str, tuple[float, float]] = {
 +    **_FOUNDING_COORDINATES,
 +    **_ONBOARDED_COORDINATES,
 +}
++if len(_COORDINATES) != len(_FOUNDING_COORDINATES) + len(
++    _ONBOARDED_COORDINATES
++):
++    # An id in both blocks would take the onboarded value while the founding
++    # snapshot still claimed it.  Loud, because it is a provenance error.
++    raise ContractError("native_station_coordinate_block_overlap")
++
++_SNAPSHOT_BY_STATION: dict[str, str] = {
++    **{station: SOURCE_SNAPSHOT_SHA256 for station in _FOUNDING_COORDINATES},
++    **{
++        station: ONBOARDED_SNAPSHOT_SHA256
++        for station in _ONBOARDED_COORDINATES
++    },
++}
 +
  
  def _canonical(value: Any) -> bytes:
      return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-@@ -101,7 +142,8 @@ def station_coordinates(station_id: str) -> dict[str, Any]:
+@@ -101,7 +143,8 @@ def station_coordinates(station_id: str) -> dict[str, Any]:
          "source_schema": SOURCE_SCHEMA,
          "source_id": SOURCE_ID,
          "source_url": SOURCE_URL,
 -        "source_snapshot_sha256": SOURCE_SNAPSHOT_SHA256,
-+        # This row's own attestation, not the module's first one.
++        # This station's own snapshot, not the registry's first one.
 +        "source_snapshot_sha256": _SNAPSHOT_BY_STATION[station],
      }
  
  
-@@ -115,9 +157,29 @@ def coordinate_registry_manifest() -> dict[str, Any]:
+@@ -114,10 +157,33 @@ def coordinate_registry_manifest() -> dict[str, Any]:
+         "source_schema": SOURCE_SCHEMA,
          "source_id": SOURCE_ID,
          "source_url": SOURCE_URL,
++        # Kept for readers that predate the second block; it names the
++        # snapshot the founding corpus came from and nothing else.
          "source_snapshot_sha256": SOURCE_SNAPSHOT_SHA256,
-+        # Every snapshot the registry draws on, with what each attested.  The
-+        # scalar above stays the founding one so a consumer pinned to it does
-+        # not silently rebind; a reader who needs the whole lineage reads
-+        # this list.
++        # The whole lineage, one entry per snapshot this registry projects
++        # from, so an auditor can see which stations each one accounts for
++        # without reading the module.
 +        "source_snapshots": [
 +            {
-+                "sha256": SOURCE_SNAPSHOT_SHA256,
++                "source_snapshot_sha256": SOURCE_SNAPSHOT_SHA256,
++                "station_count": len(_FOUNDING_COORDINATES),
 +                "station_ids": sorted(_FOUNDING_COORDINATES),
 +            },
 +            {
-+                "sha256": ONBOARDED_SNAPSHOT_SHA256,
++                "source_snapshot_sha256": ONBOARDED_SNAPSHOT_SHA256,
++                "station_count": len(_ONBOARDED_COORDINATES),
 +                "station_ids": sorted(_ONBOARDED_COORDINATES),
 +            },
 +        ],
@@ -142,3 +132,45 @@ index de6f0da6..5bf539aa 100644
      "VILK": 5,  # amplitude 17.8C
      "WMKK": None,  # amplitude 1.6C
      "WSSS": None,  # amplitude 1.4C
+diff --git a/config/bayes_basket_target/icon_forward_capture_scheduler_v1.json b/config/bayes_basket_target/icon_forward_capture_scheduler_v1.json
+index 6605c188..782cf890 100644
+--- a/config/bayes_basket_target/icon_forward_capture_scheduler_v1.json
++++ b/config/bayes_basket_target/icon_forward_capture_scheduler_v1.json
+@@ -12,7 +12,7 @@
+     "official_metadata": "provider_http_last_modified"
+   },
+   "scope": {
+-    "station_count": 45,
++    "station_count": 48,
+     "global_anchor_station": "ZUUU",
+     "valid_time_resolution": "PT1H",
+     "max_valid_times_per_run": 32
+diff --git a/config/bayes_basket_target/model_arrival_capture_v1.json b/config/bayes_basket_target/model_arrival_capture_v1.json
+index be000e17..5b980b41 100644
+--- a/config/bayes_basket_target/model_arrival_capture_v1.json
++++ b/config/bayes_basket_target/model_arrival_capture_v1.json
+@@ -3,9 +3,9 @@
+   "state": "enabled_for_target_no_live_forward_capture",
+   "enabled": true,
+   "target_only": true,
+-  "scope": "canonical_45_station",
++  "scope": "canonical_48_station",
+   "station_source": "bayes_basket_target.station_registry",
+-  "station_count": 45,
++  "station_count": 48,
+   "providers": [
+     "ecmwf_ifs025_official",
+     "ecmwf_aifs025_official",
+diff --git a/config/bayes_basket_target/open_meteo_aux_nwp_capture_v1.json b/config/bayes_basket_target/open_meteo_aux_nwp_capture_v1.json
+index d857cdfa..fc93d8c2 100644
+--- a/config/bayes_basket_target/open_meteo_aux_nwp_capture_v1.json
++++ b/config/bayes_basket_target/open_meteo_aux_nwp_capture_v1.json
+@@ -2,7 +2,7 @@
+   "schema": "open_meteo_aux_nwp_capture_config_v1",
+   "state": "enabled_auxiliary_no_live_capture",
+   "enabled": true,
+-  "scope": "canonical_45_station",
++  "scope": "canonical_48_station",
+   "selection_contract": {
+     "precedence": "official_native_first",
+     "fallback_when_native": [
