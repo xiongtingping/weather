@@ -104,7 +104,9 @@ def state() -> dict:
             # all_except_barred mode the stored list is not that answer.
             "station_scope": _scope["scope"],
             "station_allowlist": _scope["stations"],
+            "station_probation": _scope["probation"],
             "station_exclusions": _scope["barred"],
+            "minimum_settlements_to_qualify": _scope["minimum_settlements"],
             "pinned_allowlist": intent.get("station_allowlist") or [],
         },
         "contracts": {
@@ -191,9 +193,15 @@ def excluded_stations() -> set:
     return out
 
 
+SCOPE_QUALIFIED = "qualified_and_not_barred"
 SCOPE_ALL_EXCEPT_BARRED = "all_except_barred"
 SCOPE_EXPLICIT = "explicit"
 SSOT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
+# The same threshold the automatic layer needs before it may judge a station.
+# Kept in one place so admission and judgement cannot drift apart: a station
+# admitted on less evidence than the layer needs would be one nothing could
+# ever bar for cause.
+MIN_SETTLEMENTS_TO_QUALIFY = 5
 
 
 def tradeable_stations() -> set:
@@ -227,23 +235,60 @@ def tradeable_stations() -> set:
         conn.close()
 
 
+def settlement_counts() -> dict:
+    """How much evidence each station has actually produced."""
+
+    try:
+        conn = sqlite3.connect(f"file:{SSOT_DB}?mode=ro", uri=True, timeout=30.0)
+    except sqlite3.Error:
+        return {}
+    try:
+        conn.execute("PRAGMA busy_timeout=30000")
+        return {
+            str(row[0]).strip().upper(): int(row[1])
+            for row in conn.execute(
+                "SELECT station_id, COUNT(*) FROM paper_trade_settlement"
+                " GROUP BY station_id"
+            )
+            if row[0]
+        }
+    except sqlite3.Error:
+        return {}
+    finally:
+        conn.close()
+
+
 def live_stations() -> dict:
-    """What actually trades: the bar's complement, unless pinned explicitly.
+    """What actually trades: judged, survived, and not barred.
 
-    The operator's ruling (2026-08-30) is that the live batch is defined by
-    what is barred, not by a list of what is allowed -- so a station that
-    comes online joins automatically and a station that is barred leaves
-    automatically, and the two lists cannot drift apart or overlap because
-    one is derived from the other.  The earlier eight-station batch went
-    stale in two days exactly because it was enumerated.
+    Operator ruling 2026-08-31 reverses the default -- a new station is not
+    live until it has earned it.  That needs three states rather than two,
+    because "not proven yet" and "judged and found wanting" are different
+    facts and collapsing them does real damage: a station with two
+    settlements is not bad, and putting it on the bar list would also spend
+    one of the fifteen places the bar is capped at.
 
-    ``explicit`` mode remains for pinning a specific set; it is what
-    ``set_allowlist`` switches to.
+    So membership is still derived, never enumerated -- the ruling of
+    2026-08-30 stands and the reasons for it did not change, the fleet only
+    grows and any frozen list is wrong by the time it is read.  What changed
+    is one more term in the derivation: a station must have produced at
+    least ``MIN_SETTLEMENTS_TO_QUALIFY`` settlements, which is the same
+    threshold the automatic layer needs before it may judge a station at
+    all.  Sharing that number is the point: below it nothing can be said
+    about a station, so below it nothing is traded on it.
+
+    Probation is not a punishment and costs nothing to sit in -- the paper
+    ledger keeps seating and settling these stations, which is precisely how
+    they accumulate the evidence that graduates them.
     """
 
     intent = _read(INTENT_PATH)
-    scope = str(intent.get("station_scope") or SCOPE_ALL_EXCEPT_BARRED)
+    scope = str(intent.get("station_scope") or SCOPE_QUALIFIED)
     barred = excluded_stations()
+    minimum = int(
+        intent.get("minimum_settlements_to_qualify")
+        or MIN_SETTLEMENTS_TO_QUALIFY
+    )
     if scope == SCOPE_EXPLICIT:
         pinned = sorted({
             str(s).strip().upper()
@@ -252,17 +297,35 @@ def live_stations() -> dict:
         return {
             "scope": SCOPE_EXPLICIT,
             "stations": [s for s in pinned if s not in barred],
+            "probation": [],
             "barred": sorted(barred),
+            "minimum_settlements": minimum,
+        }
+    unbarred = tradeable_stations() - barred
+    counts = settlement_counts()
+    if scope == SCOPE_ALL_EXCEPT_BARRED:
+        return {
+            "scope": SCOPE_ALL_EXCEPT_BARRED,
+            "stations": sorted(unbarred),
+            "probation": [],
+            "barred": sorted(barred),
+            "minimum_settlements": 0,
         }
     return {
-        "scope": SCOPE_ALL_EXCEPT_BARRED,
-        "stations": sorted(tradeable_stations() - barred),
+        "scope": SCOPE_QUALIFIED,
+        "stations": sorted(
+            s for s in unbarred if counts.get(s, 0) >= minimum
+        ),
+        "probation": sorted(
+            s for s in unbarred if counts.get(s, 0) < minimum
+        ),
         "barred": sorted(barred),
+        "minimum_settlements": minimum,
     }
 
 
 def set_scope(scope: str) -> dict:
-    if scope not in (SCOPE_ALL_EXCEPT_BARRED, SCOPE_EXPLICIT):
+    if scope not in (SCOPE_QUALIFIED, SCOPE_ALL_EXCEPT_BARRED, SCOPE_EXPLICIT):
         raise ValueError(f"unknown station scope: {scope}")
     intent = _read(INTENT_PATH)
     before = intent.get("station_scope")

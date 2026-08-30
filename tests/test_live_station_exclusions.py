@@ -115,6 +115,54 @@ def test_a_profitable_station_is_never_auto_barred() -> None:
     assert [row["station"] for row in verdict["bar"]] == ["LOSER"]
 
 
+def test_a_new_station_is_not_live_until_it_has_earned_it() -> None:
+    """Default deny, operator ruling 2026-08-31 -- and three states, not two.
+
+    "Not proven yet" and "judged and found wanting" call for opposite
+    actions, so probation is its own state.  Collapsing it into the bar
+    would also spend one of the fifteen capped places on a station nobody
+    has anything against.
+    """
+
+    import auto_station_exclusions as auto  # noqa: PLC0415
+
+    scope = control.live_stations()
+    assert scope["scope"] == control.SCOPE_QUALIFIED
+    counts = control.settlement_counts()
+    minimum = scope["minimum_settlements"]
+    # Admission and judgement share one threshold: admitting on less
+    # evidence than the layer needs would admit something nothing could
+    # ever bar for cause.
+    assert minimum == auto.MIN_SETTLEMENTS == control.MIN_SETTLEMENTS_TO_QUALIFY
+    for station in scope["stations"]:
+        assert counts.get(station, 0) >= minimum
+    for station in scope["probation"]:
+        assert counts.get(station, 0) < minimum
+    # A station nobody has ever settled is not live and not barred.
+    assert "LLBG" not in scope["stations"]
+    assert "LLBG" not in scope["barred"]
+
+
+def test_the_three_states_are_disjoint_and_cover_what_trades() -> None:
+    scope = control.live_stations()
+    live, probation, barred = (
+        set(scope["stations"]), set(scope["probation"]), set(scope["barred"])
+    )
+    assert not (live & probation) and not (live & barred)
+    assert not (probation & barred)
+    assert live | probation == control.tradeable_stations() - barred
+
+
+def test_probation_does_not_spend_a_capped_bar_place() -> None:
+    """The cap is fifteen; unproven stations must not eat into it."""
+
+    import auto_station_exclusions as auto  # noqa: PLC0415
+
+    scope = control.live_stations()
+    assert len(scope["barred"]) <= auto.MAX_BARRED_STATIONS
+    assert not (set(scope["probation"]) & set(scope["barred"]))
+
+
 def test_the_live_batch_is_the_bars_complement_not_a_list() -> None:
     """Operator ruling 2026-08-30, and the reason is that lists go stale.
 
@@ -127,10 +175,12 @@ def test_the_live_batch_is_the_bars_complement_not_a_list() -> None:
     """
 
     scope = control.live_stations()
-    assert scope["scope"] == control.SCOPE_ALL_EXCEPT_BARRED
+    assert scope["scope"] in (
+        control.SCOPE_QUALIFIED, control.SCOPE_ALL_EXCEPT_BARRED
+    )
     barred = control.excluded_stations()
     tradeable = control.tradeable_stations()
-    assert set(scope["stations"]) == tradeable - barred
+    assert set(scope["stations"]) <= tradeable - barred
     # Disjointness by construction, asserted anyway: the migration refuses
     # to run on an overlap, and a precondition nobody checks is not one.
     assert not (set(scope["stations"]) & barred)
@@ -247,14 +297,16 @@ def test_pinning_a_list_switches_the_scope_and_still_refuses_barred() -> None:
         with pytest.raises(ValueError, match=barred):
             control.set_allowlist(["ZBAA", barred])
     finally:
-        control.set_scope(control.SCOPE_ALL_EXCEPT_BARRED)
-        restored = json.loads(control.INTENT_PATH.read_text(encoding="utf-8"))
-        restored["station_allowlist"] = before.get("station_allowlist") or []
+        # Restore what was there, not a hardcoded mode.  The first version of
+        # this wrote SCOPE_ALL_EXCEPT_BARRED back unconditionally and silently
+        # reverted the live config out of default-deny -- a test that mutates
+        # the running configuration has to put back exactly what it found.
         control.INTENT_PATH.write_text(
-            json.dumps(restored, ensure_ascii=False, indent=2) + "\n",
+            json.dumps(before, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
-    assert control.live_stations()["scope"] == control.SCOPE_ALL_EXCEPT_BARRED
+    after = json.loads(control.INTENT_PATH.read_text(encoding="utf-8"))
+    assert after == before
 
 
 def test_a_missing_file_bars_nothing_rather_than_everything() -> None:

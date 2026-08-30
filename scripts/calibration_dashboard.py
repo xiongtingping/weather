@@ -2324,9 +2324,10 @@ def collect_live_readiness(
         recent_floor = recent_floor[0] if recent_floor else ""
         for sid, day, hit, stake, pnl in settled:
             slot = book.setdefault(str(sid), {
-                "stake": 0.0, "pnl": 0.0, "days": set(),
+                "stake": 0.0, "pnl": 0.0, "days": set(), "settlements": 0,
                 "recent_stake": 0.0, "recent_pnl": 0.0, "recent_n": 0,
             })
+            slot["settlements"] += 1
             slot["stake"] += float(stake or 0.0)
             slot["pnl"] += float(pnl or 0.0)
             slot["days"].add(str(day))
@@ -2436,17 +2437,37 @@ def collect_live_readiness(
     # The batch that would actually trade, derived the way the control server
     # derives it: in all_except_barred mode the stored list is empty and
     # reading it would report a live open of nothing.
-    if str(intent.get("station_scope") or "all_except_barred") == "explicit":
+    scope_mode = str(intent.get("station_scope") or "qualified_and_not_barred")
+    minimum = int(intent.get("minimum_settlements_to_qualify") or 5)
+    if scope_mode == "explicit":
         allowlist_set = {
             str(s).strip().upper()
             for s in (intent.get("station_allowlist") or [])
         }
+        probation_set: set[str] = set()
     else:
-        allowlist_set = {r["station"] for r in stations} - exclusions_set
+        unbarred = {r["station"] for r in stations} - exclusions_set
+        if scope_mode == "all_except_barred":
+            allowlist_set, probation_set = unbarred, set()
+        else:
+            # Default deny: judged and survived, or not live yet.  Probation
+            # is shown as its own state because "unproven" and "found
+            # wanting" call for opposite actions -- one wants patience, the
+            # other wants a decision.
+            # Settlements, not distinct days: two stages settling on one day
+            # are two pieces of evidence, and the automatic layer counts them
+            # that way, so admission has to count them the same or the two
+            # thresholds mean different things under the same number.
+            counts = {
+                station: row["settlements"] for station, row in book.items()
+            }
+            allowlist_set = {s for s in unbarred if counts.get(s, 0) >= minimum}
+            probation_set = unbarred - allowlist_set
     every = {r["station"] for r in stations}
     split = {
         "barred": _side(exclusions_set),
         "live": _side(allowlist_set),
+        "probation": _side(probation_set),
         "not_barred": _side(every - exclusions_set),
         "fleet": _side(every),
     }
@@ -2486,8 +2507,10 @@ def collect_live_readiness(
         "kelly": policy.get("portfolio_risk_fraction"),
         "budget_usdc": runtime.get("target_remaining_budget_usdc"),
         "live_enabled": intent.get("live_enabled"),
-        "station_scope": str(intent.get("station_scope") or "all_except_barred"),
+        "station_scope": scope_mode,
+        "minimum_settlements_to_qualify": minimum,
         "station_allowlist": sorted(allowlist_set),
+        "station_probation": sorted(probation_set),
         # The bar, not just the pass.  A station absent from the allowlist
         # might be merely unselected; one on this list is refused, and the
         # station table below marks the difference so the two do not read
@@ -6532,6 +6555,7 @@ function stationSummary(){
   // here are what the next release decision is argued from -- so they are
   // marked, greyed, and counted separately rather than removed.
   const barred=new Set((D.live_readiness||{}).station_exclusions||[]);
+  const probation=new Set((D.live_readiness||{}).station_probation||[]);
   const rows=ss.map((s,i)=>{
     const sd=s.sides||{};const cal=s.calibration_ratio;
     const rr=s.realization_ratio;const ev=s.ev_per_usdc_mean;
@@ -6542,7 +6566,7 @@ function stationSummary(){
     const off=barred.has(s.station_id);
     return `<tr${off?' style="opacity:.55"':""}>
       <td class="mono muted">${i+1}</td>
-      <td>${off?'<span class="pill" style="background:#f8514922;color:#f85149;border-color:#f8514955" title="实盘禁入：控制服务拒绝把它加进 allowlist">⛔ 禁入</span> ':""}<span class="mono">${h(s.station_id)}</span>
+      <td>${off?'<span class="pill" style="background:#f8514922;color:#f85149;border-color:#f8514955" title="实盘禁入：已判且不合格">⛔ 禁入</span> ':(probation.has(s.station_id)?'<span class="pill amber" title="证据不足，尚未上线；账本继续记账攒证据">⏳ 待观察</span> ':"")}<span class="mono">${h(s.station_id)}</span>
         <span class="muted">${h(s.station_label)}</span></td>
       <td>${s.position_count}</td>
       <td>${s.settled_count}</td>
@@ -7569,13 +7593,17 @@ function liveReadiness(){
     <div class="muted" style="font-size:11.5px">投入 ${money(r.staked_usdc)} U ·
       ${r.stations||0} 站 · ${r.settled_days||0} 个结算站日<br>${note}</div></div>`;};
   const splitCard=SP.barred?`<div class="card" style="margin-top:12px">
-    <div class="muted">禁入 vs 实盘：同一窗口、同一规则指纹，纸面账本对两边一视同仁地建仓结算——
-      <b>禁的是下单，不是记账</b>，所以这个对比才存在。它衡量的是这道闸拦掉了什么，
-      <b>不是对未来的预测</b>。</div>
+    <div class="muted">三态：<b>上线 / 待观察 / 禁入</b>。同一窗口、同一规则指纹，纸面账本对三边
+      一视同仁地建仓结算——<b>禁的是下单，不是记账</b>，所以这个对比才存在，
+      待观察的站也正是靠继续记账攒够证据毕业的。它衡量的是这些闸拦掉了什么，
+      <b>不是对未来的预测</b>。<br>
+      <b>默认禁止</b>（2026-08-31 裁定）：新站不上线，攒够
+      ${L.minimum_settlements_to_qualify||5} 笔结算被判过且没被禁，才自动上线。
+      <b>「待观察」不是「禁入」</b>——只有 2 笔的站不是坏站，把它塞进禁入表还会占掉 15 个名额之一。</div>
     <div class="grid g2" style="margin-top:8px">
-      ${cell("live","实盘首批（allowlist）","真上线只有这一组会下单")}
-      ${cell("barred","被禁入的站","这些钱本来会亏/赚在这里")}
-      ${cell("not_barred","未禁入全体","allowlist 之外也算上")}
+      ${cell("live","上线（已判且过关）","真上线只有这一组会下单")}
+      ${cell("probation","待观察（证据不足）","够 "+(L.minimum_settlements_to_qualify||5)+" 笔结算才判，判过了自动上线")}
+      ${cell("barred","禁入（已判且不合格）","这些钱本来会亏/赚在这里")}
       ${cell("fleet","全舰队","不设任何闸的对照")}
     </div></div>`:"";
   return `<h2>Live 上线准备</h2>
