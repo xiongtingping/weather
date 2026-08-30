@@ -13,6 +13,7 @@ from bayes_basket_target.gap_ledger import BuilderScopeStatus, build_gap_ledger
 from bayes_basket_target.station_registry import coordinate_registry_manifest
 from scripts import build_ssot_baseline_manifest as baseline
 from scripts import build_oos_atomic_snapshot_manifest as atomic_snapshot
+from bayes_basket_target.fleet import expected_station_count
 
 
 def _write(path: Path, identity: dict) -> dict:
@@ -76,7 +77,7 @@ def _inner_oos_snapshot(tmp_path: Path) -> Path:
         str(item).strip().upper()
         for item in coordinate_registry_manifest()["station_ids"]
     )
-    assert len(station_ids) == 45
+    assert len(station_ids) == expected_station_count()
     as_of_utc = "2026-08-03T12:10:00Z"
     p0 = tmp_path / "p0.json"
     p0_value = _write(p0, {

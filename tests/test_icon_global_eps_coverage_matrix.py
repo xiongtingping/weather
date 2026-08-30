@@ -151,7 +151,7 @@ def test_final_output_is_exact_shared_45_by_three_matrix_with_unique_blockers() 
     assert all(row["blockers"][0] in TYPED_SCOPE_BLOCKERS for row in matrix["rows"])
 
     terminal = render_icon_global_eps_terminal_matrix(matrix)
-    assert len(terminal.splitlines()) == 48
+    assert len(terminal.splitlines()) == expected_station_count() + 3
     assert "KATL | BLOCKED/DATA_MISSING" in terminal
     assert terminal.endswith("cross_selection_count=0; cross_activation_count=0; p0_count=0")
 

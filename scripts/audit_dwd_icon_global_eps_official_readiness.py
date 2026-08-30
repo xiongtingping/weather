@@ -447,7 +447,10 @@ def _station_member_cohort_blockers(
         cohort.get("declared_member_record_count") != EXPECTED_MEMBER_STATION_RECORD_COUNT
         or cohort.get("actual_member_record_count") != EXPECTED_MEMBER_STATION_RECORD_COUNT
     ):
-        reasons.append("station_member_record_count_not_1800")
+        reasons.append(
+            "station_member_record_count_not_"
+            f"{EXPECTED_MEMBER_STATION_RECORD_COUNT}"
+        )
     if not bool(cohort.get("record_shape_valid")) or not bool(cohort.get("station_member_pairs_unique")):
         reasons.append("station_member_record_shape_invalid")
     if not bool(cohort.get("per_station_member_set_complete")):

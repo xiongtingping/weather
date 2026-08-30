@@ -48,6 +48,7 @@ from bayes_basket_target.resource_bounds import (  # noqa: E402
     MAX_JSON_INPUT_BYTES,
     write_bounded_json_if_changed,
 )
+from bayes_basket_target.fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_ssot_baseline_manifest_v2"
@@ -170,10 +171,10 @@ def _read_stable_json(path: Path | str) -> tuple[dict[str, Any], dict[str, Any]]
 
 
 def _exact_station_ids(value: object, *, field: str) -> tuple[str, ...] | None:
-    if not isinstance(value, list) or len(value) != 45:
+    if not isinstance(value, list) or len(value) != expected_station_count():
         return None
     stations = tuple(str(item).strip().upper() for item in value)
-    if any(not station for station in stations) or len(set(stations)) != 45:
+    if any(not station for station in stations) or len(set(stations)) != expected_station_count():
         return None
     if tuple(sorted(stations)) != stations:
         return None
@@ -234,7 +235,7 @@ def _inner_oos_snapshot(
         blockers.append(str(exc).upper())
 
     canonical = _exact_station_ids(value.get("canonical_station_ids"), field="canonical_station_ids")
-    if value.get("canonical_station_count") != 45 or canonical is None:
+    if value.get("canonical_station_count") != expected_station_count() or canonical is None:
         blockers.append("INNER_OOS_SNAPSHOT_CANONICAL_SCOPE_INVALID")
     scopes = value.get("scope_station_ids")
     if not isinstance(scopes, Mapping) or canonical is None:
@@ -303,7 +304,7 @@ def _inner_oos_snapshot(
         repair_sha = _sha256_text(repair.get("declared_content_sha256")) if isinstance(repair, Mapping) else None
         if (
             binding.get("authority_scope") != "PRODUCTION_NO_LIVE_ONLY"
-            or binding.get("binding_count") != 45
+            or binding.get("binding_count") != expected_station_count()
             or binding_stations != canonical
             or binding.get("source_linkage_content_sha256") != linkage_sha
             or binding.get("source_repair_content_sha256") != repair_sha

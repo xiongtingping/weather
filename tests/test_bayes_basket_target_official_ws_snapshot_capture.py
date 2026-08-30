@@ -805,10 +805,10 @@ def test_non_registry_station_fails_closed(tmp_path: Path) -> None:
         )
 
 
-def test_46_station_scope_fails_closed(tmp_path: Path) -> None:
+def test_one_over_the_fleet_fails_closed(tmp_path: Path) -> None:
     path = _write_registry_snapshot(
-        tmp_path / "registry-46.json",
-        [_registry_row(station_id=f"S{index:02d}") for index in range(46)],
+        tmp_path / "registry-over-fleet.json",
+        [_registry_row(station_id=f"S{index:02d}") for index in range(expected_station_count() + 1)],
     )
     with pytest.raises(ContractError, match="station_scope_cap_exceeded"):
         _registry_snapshot_scope(

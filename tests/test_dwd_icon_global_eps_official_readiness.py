@@ -203,7 +203,7 @@ def test_station_member_cohort_requires_exact_grid_bound_45_by_40(tmp_path: Path
         "raw_sha256": raw_sha,
         "station_count": expected_station_count(),
         "member_count": 40,
-        "member_record_count": 1800,
+        "member_record_count": expected_station_count() * 40,
         "member_station_records": records,
         "native_arrival_index_eligible": False,
         "formal_p0_eligible": False,
@@ -250,7 +250,7 @@ def test_station_member_cohort_requires_exact_grid_bound_45_by_40(tmp_path: Path
     assert result["state"] == "STATION_MEMBER_COHORT_READY_STRICT_OOS_PENDING"
     assert product["station_member_cohort_ready_count"] == 1
     assert cohort["station_member_cohort_ready"] is True
-    assert cohort["station_member_cohort"]["actual_member_record_count"] == 1800
+    assert cohort["station_member_cohort"]["actual_member_record_count"] == expected_station_count() * 40
     assert result["boundary"]["production_activation_allowed"] is False
 
 
@@ -259,11 +259,11 @@ def test_station_member_cohort_grid_mismatch_remains_fail_closed() -> None:
         "content_sha256_valid": True,
         "declared_raw_sha256": "a" * 64,
         "record_raw_sha256s": ["a" * 64],
-        "declared_station_count": 45,
-        "actual_station_count": 45,
+        "declared_station_count": expected_station_count(),
+        "actual_station_count": expected_station_count(),
         "declared_member_count": 40,
-        "declared_member_record_count": 1800,
-        "actual_member_record_count": 1800,
+        "declared_member_record_count": expected_station_count() * 40,
+        "actual_member_record_count": expected_station_count() * 40,
         "record_shape_valid": True,
         "station_member_pairs_unique": True,
         "per_station_member_set_complete": True,

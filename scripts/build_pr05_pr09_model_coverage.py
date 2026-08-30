@@ -58,6 +58,7 @@ from scripts.audit_ecmwf_pf50_aifs_terminal_coverage import (  # noqa: E402
     PF50_PRODUCT,
     build_terminal_matrix as build_pr06_coverage_matrix,
 )
+from bayes_basket_target.fleet import expected_station_count
 
 
 COMPILED_AT_UTC = "2026-08-03T21:08:00Z"
@@ -73,7 +74,9 @@ EXPECTED_PRODUCT_IDS = tuple(sorted({
     *PR07_PRODUCTS,
     *PR08_PR09_PRODUCTS,
 }))
-EXPECTED_SCOPE_COUNT = 45 * 3 * len(EXPECTED_PRODUCT_IDS)
+EXPECTED_SCOPE_COUNT = (
+    expected_station_count() * 3 * len(EXPECTED_PRODUCT_IDS)
+)
 
 DEFAULT_D1_RECEIPT = (
     ROOT / "output/audits/d1_canonical_residual_45station_20260804_post_pr02c_v2/build_receipt.json"

@@ -1245,7 +1245,10 @@ def build_exact_stage_scorecard(
     as_of = _utc_text(as_of_utc, "as_of")
     expected = tuple(sorted({str(station).strip().upper() for station in station_ids if str(station).strip()}))
     if len(expected) != expected_station_count():
-        raise ContractError("station_policy_scorecard_exact_45_station_scope_required")
+        raise ContractError(
+            "station_policy_scorecard_exact_"
+            f"{expected_station_count()}_station_scope_required"
+        )
     if set(bundle_paths) != set(STAGES):
         raise ContractError("station_policy_scorecard_all_exact_stages_required")
     bundles = {stage: _load_bundle(Path(bundle_paths[stage]), stage) for stage in STAGES}

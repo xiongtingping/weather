@@ -174,7 +174,8 @@ def _load_hourly_curve_audit(path: Path | None) -> Mapping[str, Any] | None:
     if (
         str(payload.get("schema") or "") != HOURLY_CURVE_AUDIT_SCHEMA
         or str(payload.get("content_sha256") or "") != content_sha256(identity)
-        or int(payload.get("canonical_station_count") or 0) != 45
+        or int(payload.get("canonical_station_count") or 0)
+        != expected_station_count()
     ):
         raise ContractError("p1_repair_hourly_curve_audit_contract_invalid")
     entries = payload.get("entries")
@@ -467,7 +468,7 @@ def build_plan(
                 "summary": hourly_curve_audit.get("summary") or {},
             }
         ),
-        "station_count": 45,
+        "station_count": expected_station_count(),
         "scope_count": len(scopes),
         "formal_eligible_scope_count": sum(bool(item["formal_eligible_from_audit"]) for item in scopes),
         "candidate_pointer_count": pointer_count,

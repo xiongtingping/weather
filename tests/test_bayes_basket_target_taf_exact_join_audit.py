@@ -153,7 +153,10 @@ def test_audit_preserves_24_sample_gate_and_reports_all_45_stations() -> None:
     assert entry["missing_to_24"] == 24
     assert "taf_native_oos_sample_n_insufficient" in entry["blockers"]
     assert "forward_taf_observational_not_oos" in entry["blockers"]
-    assert result["blocker_counts"]["exact_join_artifact_missing"] == 44
+    assert (
+        result["blocker_counts"]["exact_join_artifact_missing"]
+        == expected_station_count() - 1
+    )
     assert result["totals"] == {
         "qualified_scope_count_at_24": 0,
         "sample_count_total": 0,

@@ -56,7 +56,7 @@ def _audit(tmp_path, *, blockers: list[str] | None = None, candidate: dict | Non
         },
         "minimums": {"minimum_prior_truths": 3, "minimum_effective_sample_n": 20.0, "method_version": "canonical_conditional_hourly_future_path_v3"},
         "scopes": scopes,
-        "scope_count": 180,
+        "scope_count": expected_station_count() * 4,
         "formal_eligible_scope_count": sum(bool(item["formal_eligible"]) for item in scopes),
         "blocked_scope_count": sum(not bool(item["formal_eligible"]) for item in scopes),
         "blocker_counts": {},
@@ -106,11 +106,14 @@ def test_all_blocked_audit_emits_precise_no_write_plan(tmp_path):
     plan = build_plan(audit_path=audit_path, database=database, as_of_utc=AS_OF)
 
     assert plan["station_count"] == expected_station_count()
-    assert plan["scope_count"] == 180
+    assert plan["scope_count"] == expected_station_count() * 4
     assert plan["formal_eligible_scope_count"] == 0
     assert plan["candidate_pointer_count"] == 0
-    assert plan["action_summary"] == {"BLOCKED_EVIDENCE": 180}
-    assert plan["blocker_summary"] == {"arrival_lineage_missing": 180, "sample_insufficient": 180}
+    assert plan["action_summary"] == {"BLOCKED_EVIDENCE": expected_station_count() * 4}
+    assert plan["blocker_summary"] == {
+        "arrival_lineage_missing": expected_station_count() * 4,
+        "sample_insufficient": expected_station_count() * 4,
+    }
     assert plan["safe_write_state"] == "NO_SAFE_FORMAL_WRITE_REQUIRED"
     assert database.read_bytes() == before
 

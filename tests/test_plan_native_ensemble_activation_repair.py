@@ -371,7 +371,7 @@ def test_repair_plan_is_read_only_and_surfaces_missing_evaluations(tmp_path):
 
     assert plan["station_count"] == expected_station_count()
     assert plan["candidate_count"] == expected_station_count()
-    assert plan["candidate_action_summary"] == {"READY_APPEND_EXACT_EVALUATION": 45}
+    assert plan["candidate_action_summary"] == {"READY_APPEND_EXACT_EVALUATION": expected_station_count()}
     assert plan["artifact_pointer_count"] == 0
     assert database.read_bytes() == before
 
@@ -396,7 +396,7 @@ def test_exact_mask_filter_excludes_eccc_candidate_and_activation(tmp_path):
     )
 
     assert plan["selected_system_ids_filter"] == SYSTEM_IDS
-    assert plan["manifest_candidate_count"] == 46
+    assert plan["manifest_candidate_count"] == expected_station_count() + 1
     assert plan["candidate_count"] == expected_station_count()
     assert plan["filtered_out_candidate_count"] == 1
     assert plan["activation_count"] == 1

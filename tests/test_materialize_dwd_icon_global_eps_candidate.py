@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from scripts.materialize_dwd_icon_global_eps_candidate import build_manifest
+from bayes_basket_target.fleet import expected_station_count
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -159,8 +160,8 @@ def _official_readiness(path: Path) -> None:
         "record_shape_valid": True,
         "station_member_pairs_unique": True,
         "per_station_member_set_complete": True,
-        "actual_station_count": 45,
-        "actual_member_record_count": 1800,
+        "actual_station_count": expected_station_count(),
+        "actual_member_record_count": expected_station_count() * 40,
         "native_arrival_index_eligible": False,
         "formal_p0_eligible": False,
     }

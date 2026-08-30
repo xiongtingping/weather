@@ -171,7 +171,9 @@ def test_release_projection_exactly_rechecks_ensemble_arrays(tmp_path: Path) -> 
 
 
 def _truth_gap_receipt(path: Path) -> tuple[Path, list[str]]:
-    station_ids = sorted(["ZUUU", *(f"X{index:03d}" for index in range(44))])
+    station_ids = sorted(
+        ["ZUUU", *(f"X{index:03d}" for index in range(expected_station_count() - 1))]
+    )
     stations = []
     for station_id in station_ids:
         ready = ["2026-07-23"] if station_id == "ZUUU" else []

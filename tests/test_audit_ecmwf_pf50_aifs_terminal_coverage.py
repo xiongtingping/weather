@@ -87,7 +87,7 @@ def _aifs_readiness() -> dict[str, object]:
             "run_initialization_utc": "2026-08-03T18:00:00Z",
         },
         "decode_evidence": {
-            "complete_curve_count": 45,
+            "complete_curve_count": expected_station_count(),
             "decoded_station_ids": stations,
             "coverage_scope": "FULL_45_STATION_FORWARD_NOT_CLOSED_DAY_STRICT_OOS",
         },
