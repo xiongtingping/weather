@@ -4,6 +4,7 @@ from copy import deepcopy
 
 import pytest
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import ContractError, content_sha256
 from bayes_basket_target.model_system_coverage import (
     MATRIX_SCHEMA,
@@ -70,7 +71,7 @@ def _audit(
     payload: dict[str, object] = {
         "schema": AUDIT_SCHEMA,
         "as_of_utc": "2026-08-03T21:08:00Z",
-        "station_count": 45,
+        "station_count": expected_station_count(),
         "min_train_days": 20,
         "min_holdout_days": 8,
         "calls_order_gateway": False,
@@ -98,7 +99,7 @@ def _matrix() -> dict[str, object]:
         gefs_audit=_audit(
             system_id="NOAA_GEFS_05",
             run_cycle="18Z",
-            ready_count=45,
+            ready_count=expected_station_count(),
             include_wrong_d0=True,
         ),
         geps_audit=_audit(
@@ -117,12 +118,12 @@ def test_terminal_adapter_returns_only_shared_45_by_three_product_matrix() -> No
     matrix = _matrix()
 
     assert matrix["schema"] == MATRIX_SCHEMA
-    assert matrix["scope_count"] == 45 * 3 * 2
+    assert matrix["scope_count"] == expected_station_count() * 3 * 2
     assert matrix["state_counts"] == {
         "DATA_READY": 0,
         "OOS_READY": 0,
         "CANDIDATE_ONLY": 0,
-        "BLOCKED": 270,
+        "BLOCKED": expected_station_count() * 3 * 2,
     }
     assert matrix["cross_selection_count"] == 0
     assert matrix["cross_activation_count"] == 0
@@ -132,7 +133,7 @@ def test_terminal_adapter_returns_only_shared_45_by_three_product_matrix() -> No
     assert len({
         (row["station_id"], row["product_id"], row["lead_bucket"])
         for row in rows
-    }) == 270
+    }) == expected_station_count() * 3 * 2
     assert all(validate_coverage_row(row) == row for row in rows)
     assert all(row["cross_selection_count"] == 0 for row in rows)
     assert all(row["cross_activation_count"] == 0 for row in rows)
@@ -178,7 +179,7 @@ def test_terminal_adapter_rejects_duplicate_or_noncanonical_audit_station_set() 
     gefs = _audit(
         system_id="NOAA_GEFS_05",
         run_cycle="18Z",
-        ready_count=45,
+        ready_count=expected_station_count(),
     )
     duplicate = deepcopy(gefs)
     duplicate["reports"][44]["station_id"] = STATIONS[0]
@@ -206,12 +207,12 @@ def test_d2_wrong_cycle_or_ready_count_conflict_remain_nonready() -> None:
         gefs_audit=_audit(
             system_id="NOAA_GEFS_05",
             run_cycle="18Z",
-            ready_count=45,
+            ready_count=expected_station_count(),
         ),
         geps_audit=_audit(
             system_id="ECCC_GEM_GLOBAL_ENS",
             run_cycle="18Z",
-            ready_count=45,
+            ready_count=expected_station_count(),
         ),
         station_ids=STATIONS,
         gefs_audit_pointer="gefs.json",
@@ -230,7 +231,7 @@ def test_d2_wrong_cycle_or_ready_count_conflict_remain_nonready() -> None:
     malformed = _audit(
         system_id="ECCC_GEM_GLOBAL_ENS",
         run_cycle="00Z",
-        ready_count=45,
+        ready_count=expected_station_count(),
     )
     malformed["reports"][0]["readiness"][-1]["case_count"] = 27
     malformed["content_sha256"] = content_sha256({
@@ -240,7 +241,7 @@ def test_d2_wrong_cycle_or_ready_count_conflict_remain_nonready() -> None:
         gefs_audit=_audit(
             system_id="NOAA_GEFS_05",
             run_cycle="18Z",
-            ready_count=45,
+            ready_count=expected_station_count(),
         ),
         geps_audit=malformed,
         station_ids=STATIONS,

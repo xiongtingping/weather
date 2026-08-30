@@ -17,8 +17,14 @@ from .fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_model_arrival_capture_v1"
-EXPECTED_SCOPE = "canonical_45_station"
 EXPECTED_STATION_COUNT = expected_station_count()
+# The scope label names the fleet it is a scope over, so it follows the
+# fleet rather than restating a number beside a derived one.  Pinning the
+# label while the count derived left the two disagreeing the moment the
+# fleet changed, and the config files carrying the old label failed the
+# check as ``target_capture_scope_invalid`` -- a scope error, which is not
+# what a fleet change is.
+EXPECTED_SCOPE = f"canonical_{EXPECTED_STATION_COUNT}_station"
 EXPECTED_PROVIDERS = frozenset({
     "ecmwf_ifs025_official",
     "ecmwf_aifs025_official",

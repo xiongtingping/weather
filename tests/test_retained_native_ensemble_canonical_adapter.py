@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.canonical_contract import CanonicalContract
 from bayes_basket_target.contracts import ContractError, content_sha256
 from bayes_basket_target.model_system_coverage import canonical_station_ids
@@ -143,7 +144,7 @@ def _packet() -> tuple[dict[str, object], dict[tuple[str, str, str, str, str, st
         "run_cycle": SPEC.run_cycle,
         "ensemble_system_id": SPEC.ensemble_system_id,
         "independence_family_id": SPEC.independence_family_id,
-        "station_count": 45,
+        "station_count": expected_station_count(),
         "captures": captures,
         "training_only": True,
         "calls_order_gateway": False,
@@ -201,7 +202,7 @@ def test_exact_retained_members_become_non_oos_canonical_candidates() -> None:
         builder_id="test-retained-adapter",
     )
     parsed = CanonicalContract.from_mapping(contract)
-    assert len(parsed.ensemble_member_facts) == 45 * SPEC.expected_member_count
+    assert len(parsed.ensemble_member_facts) == expected_station_count() * SPEC.expected_member_count
     assert len(parsed.native_arrival_facts) == 0
     assert {item.oos_role for item in parsed.ensemble_member_facts} == {
         CANONICAL_OOS_ROLE
@@ -286,8 +287,8 @@ def test_ingress_preview_is_zero_write_then_apply_and_replay_are_exact(
     )
     assert database.read_bytes() == before
     assert preview["state"] == "PREVIEW_VALIDATED_NO_WRITE"
-    assert preview["canonical_member_fact_count"] == 45 * SPEC.expected_member_count
-    assert preview["insertable_or_inserted_count"] == 45 * SPEC.expected_member_count
+    assert preview["canonical_member_fact_count"] == expected_station_count() * SPEC.expected_member_count
+    assert preview["insertable_or_inserted_count"] == expected_station_count() * SPEC.expected_member_count
     assert preview["replayed_count"] == 0
     assert preview["writes_database"] is False
 
@@ -300,9 +301,9 @@ def test_ingress_preview_is_zero_write_then_apply_and_replay_are_exact(
         writer_quiescence_receipt=synthetic_writer_quiescence_receipt(database),
     )
     assert applied["state"] == "COMMITTED"
-    assert applied["insertable_or_inserted_count"] == 45 * SPEC.expected_member_count
+    assert applied["insertable_or_inserted_count"] == expected_station_count() * SPEC.expected_member_count
     assert applied["replayed_count"] == 0
-    assert applied["fact_type_counts_after"]["ensemble_member"] == 45 * SPEC.expected_member_count
+    assert applied["fact_type_counts_after"]["ensemble_member"] == expected_station_count() * SPEC.expected_member_count
     assert applied["canonical_native_arrival_fact_count"] == 0
     assert applied["strict_asof_member_count"] == 0
 
@@ -315,7 +316,7 @@ def test_ingress_preview_is_zero_write_then_apply_and_replay_are_exact(
         writer_quiescence_receipt=synthetic_writer_quiescence_receipt(database),
     )
     assert replay["insertable_or_inserted_count"] == 0
-    assert replay["replayed_count"] == 45 * SPEC.expected_member_count
+    assert replay["replayed_count"] == expected_station_count() * SPEC.expected_member_count
     assert replay["writes_database"] is False
     assert replay["fact_type_counts_after"] == applied["fact_type_counts_after"]
 

@@ -44,6 +44,7 @@ from bayes_basket_target.canonical_contract import (
 from bayes_basket_target.canonical_ingress import ingest_canonical_contract
 from bayes_basket_target.contracts import ContractError, content_sha256
 from bayes_basket_target.ssot import apply_production_ssot_schema
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.station_registry import coordinate_registry_manifest
 
 
@@ -222,10 +223,10 @@ def _truth_gap_receipt(
             "as_of_utc": as_of_utc,
             "builder_id": "truth-gap-test.v1",
             "canonical_contract_sha256": canonical_contract_sha256,
-            "station_count": 45,
-            "truth_fact_count": len(ready) * 45,
+            "station_count": len(stations),
+            "truth_fact_count": len(ready) * len(stations),
             "complete_station_count": 0,
-            "blocked_station_count": 45,
+            "blocked_station_count": len(stations),
             "stations": rows,
             "production_no_live": True,
             "writes_target_database": False,
@@ -252,7 +253,7 @@ def _inner(
             "state": BLOCKED if blockers else "FROZEN_READ_ONLY",
             "blockers": blockers,
             "as_of_utc": as_of,
-            "canonical_station_count": 45,
+            "canonical_station_count": len(stations),
             "canonical_station_ids": stations,
             "read_only": True,
             "production_no_live": True,
@@ -462,7 +463,7 @@ def test_truth_gap_receipt_loads_exact_45_and_rejects_tampering(
     )
 
     assert sorted(loaded["stations_by_id"]) == stations
-    assert loaded["source_evidence"]["station_count"] == 45
+    assert loaded["source_evidence"]["station_count"] == len(stations)
     tampered = json.loads(receipt_path.read_text(encoding="utf-8"))
     tampered["stations"][0]["truth_fact_count"] = 0
     receipt_path.write_text(json.dumps(tampered, sort_keys=True) + "\n", encoding="utf-8")
@@ -848,7 +849,7 @@ def test_expected_scope_manifest_requires_all_45_stations_and_blocks_one_station
         typed_records=typed_records,
     )
     assert complete is False
-    assert coverage[0]["expected_key_count"] == 45
+    assert coverage[0]["expected_key_count"] == expected_station_count()
     assert coverage[0]["missing_count"] == 44
     assert coverage[-1]["expected_key_count"] == 3
     assert coverage[-1]["missing_count"] == 2

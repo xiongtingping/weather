@@ -14,6 +14,7 @@ from typing import Any, Callable
 
 import pytest
 
+from bayes_basket_target.fleet import expected_station_count
 from bayes_basket_target.contracts import content_sha256
 from bayes_basket_target.model_arrival import validate_model_arrival_capture
 from bayes_basket_target.station_registry import station_coordinates
@@ -29,6 +30,16 @@ from scripts.run_bayes_basket_target_aifs_forward_capture import build_plan
 
 _ROOT = Path(__file__).resolve().parents[1]
 _REGISTRY = _ROOT / "data/bayes_basket_target_market_registry_snapshot.json"
+# The fixture's scope is the snapshot's, not today's fleet: this capture
+# tree is decoded FROM that export, and the export is a frozen 2026-07-31
+# state in which the fleet genuinely had 45 stations.  Deriving it from the
+# snapshot keeps the test honest when the fleet grows and the snapshot has
+# not been re-exported yet.
+_SNAPSHOT_STATION_COUNT = len({
+    str(row["station_id"])
+    for row in json.loads(_REGISTRY.read_text(encoding="utf-8"))["rows"]
+    if row.get("station_id")
+})
 _RUN = "2026-07-31T18:00:00Z"
 _PUBLISHED = "2026-07-31T23:28:00Z"
 _RECEIVED = "2026-08-01T07:34:00Z"
@@ -168,7 +179,7 @@ def _fixture(
             "expected_arrival_count": len(outputs),
             "captured_count": len(outputs),
             "blocked_count": 0,
-            "station_count": 45,
+            "station_count": _SNAPSHOT_STATION_COUNT,
             "outputs": outputs,
         },
     }
@@ -224,10 +235,10 @@ def test_aifs_single_45_station_candidate_is_complete_and_never_promoted(
 
     assert evidence["state"] == "OFFICIAL_NATIVE_AIFS_SINGLE_45_STATION_CANDIDATE_COMPLETE"
     assert evidence["checks"] == {
-        "canonical_station_count": 45,
+        "canonical_station_count": _SNAPSHOT_STATION_COUNT,
         "station_arrival_count": 179,
         "decoded_point_count": 179,
-        "complete_curve_count": 45,
+        "complete_curve_count": _SNAPSHOT_STATION_COUNT,
         "all_station_curves_complete": True,
         "all_raw_objects_official_native": True,
         "all_station_arrivals_prospective": True,
