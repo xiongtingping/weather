@@ -180,19 +180,35 @@ def test_it_refuses_while_the_operator_has_not_armed_it() -> None:
         mig.apply()
 
 
-def test_a_barred_station_in_the_allowlist_stops_the_migration(monkeypatch, tmp_path) -> None:
-    """The two lists disagreeing is a reason to stop, not to pick one."""
+def test_a_barred_station_in_the_live_batch_stops_the_migration(monkeypatch) -> None:
+    """Disjointness holds by construction now, and is still checked.
 
-    intent = json.loads(mig.INTENT_PATH.read_text(encoding="utf-8"))
+    In all_except_barred mode the batch cannot contain a barred station --
+    which is a reason to keep the assertion rather than drop it, because a
+    precondition that only ever passes is the one nobody notices breaking
+    when somebody pins an explicit list.
+    """
+
     barred = json.loads(mig.EXCLUSIONS_PATH.read_text(encoding="utf-8"))
     first = barred["excluded_stations"][0]["station"]
-    intent["live_enabled"] = True
-    intent["station_allowlist"] = [first, "ZBAA"]
-    forged = tmp_path / "intent.json"
-    forged.write_text(json.dumps(intent), encoding="utf-8")
-    monkeypatch.setattr(mig, "INTENT_PATH", forged)
+    monkeypatch.setattr(
+        mig, "_live_scope",
+        lambda: {"scope": "explicit", "stations": [first, "ZBAA"],
+                 "barred": [first]},
+    )
     failures = mig.preconditions(require_quiet=False)
     assert any(first in item and "barred" in item for item in failures)
+
+
+def test_an_empty_live_batch_stops_the_migration(monkeypatch) -> None:
+    """A derived batch that resolves to nothing must not read as ready."""
+
+    monkeypatch.setattr(
+        mig, "_live_scope",
+        lambda: {"scope": "all_except_barred", "stations": [], "barred": []},
+    )
+    failures = mig.preconditions(require_quiet=False)
+    assert any("no stations" in item for item in failures)
 
 
 # --------------------------------------------------------------------------

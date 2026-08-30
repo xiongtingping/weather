@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sqlite3
 import tempfile
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -78,6 +79,7 @@ def state() -> dict:
     policy = _read(POLICY_PATH)
     runtime = _read(RUNTIME_PATH)
     intent = _read(INTENT_PATH)
+    _scope = live_stations()
     return {
         "schema": "live_control_state_v1",
         "at_utc": _now(),
@@ -97,10 +99,13 @@ def state() -> dict:
             "enabled": intent["live_enabled"],
             "armed_by": intent.get("armed_by"),
             "armed_at_utc": intent.get("armed_at_utc"),
-            "station_allowlist": intent.get("station_allowlist") or [],
-            # Published alongside the allowlist because a reader checking
-            # "is Manila live" should not have to know a second file exists.
-            "station_exclusions": sorted(excluded_stations()),
+            # The derived set, not the stored one: a reader asking what
+            # trades has to get the answer the system would act on, and in
+            # all_except_barred mode the stored list is not that answer.
+            "station_scope": _scope["scope"],
+            "station_allowlist": _scope["stations"],
+            "station_exclusions": _scope["barred"],
+            "pinned_allowlist": intent.get("station_allowlist") or [],
         },
         "contracts": {
             "execution_mode": runtime.get("execution_mode"),
@@ -186,6 +191,88 @@ def excluded_stations() -> set:
     return out
 
 
+SCOPE_ALL_EXCEPT_BARRED = "all_except_barred"
+SCOPE_EXPLICIT = "explicit"
+SSOT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
+
+
+def tradeable_stations() -> set:
+    """Every station the model actually produces for, read from the book.
+
+    Derived rather than enumerated because the fleet grows: the roster went
+    from 45 to 48 while this was being written, and any list of station ids
+    frozen into a config is a list that will be wrong by the time somebody
+    reads it.  Book history is the right test rather than the coordinate
+    roster -- LLBG, LTFM and UUWW are on the roster and have never produced a
+    position, and a live batch cannot contain a station the model has never
+    computed.
+    """
+
+    try:
+        conn = sqlite3.connect(f"file:{SSOT_DB}?mode=ro", uri=True, timeout=30.0)
+    except sqlite3.Error:
+        return set()
+    try:
+        conn.execute("PRAGMA busy_timeout=30000")
+        return {
+            str(row[0]).strip().upper()
+            for row in conn.execute(
+                "SELECT DISTINCT station_id FROM paper_trade_position"
+            )
+            if row[0]
+        }
+    except sqlite3.Error:
+        return set()
+    finally:
+        conn.close()
+
+
+def live_stations() -> dict:
+    """What actually trades: the bar's complement, unless pinned explicitly.
+
+    The operator's ruling (2026-08-30) is that the live batch is defined by
+    what is barred, not by a list of what is allowed -- so a station that
+    comes online joins automatically and a station that is barred leaves
+    automatically, and the two lists cannot drift apart or overlap because
+    one is derived from the other.  The earlier eight-station batch went
+    stale in two days exactly because it was enumerated.
+
+    ``explicit`` mode remains for pinning a specific set; it is what
+    ``set_allowlist`` switches to.
+    """
+
+    intent = _read(INTENT_PATH)
+    scope = str(intent.get("station_scope") or SCOPE_ALL_EXCEPT_BARRED)
+    barred = excluded_stations()
+    if scope == SCOPE_EXPLICIT:
+        pinned = sorted({
+            str(s).strip().upper()
+            for s in (intent.get("station_allowlist") or [])
+        })
+        return {
+            "scope": SCOPE_EXPLICIT,
+            "stations": [s for s in pinned if s not in barred],
+            "barred": sorted(barred),
+        }
+    return {
+        "scope": SCOPE_ALL_EXCEPT_BARRED,
+        "stations": sorted(tradeable_stations() - barred),
+        "barred": sorted(barred),
+    }
+
+
+def set_scope(scope: str) -> dict:
+    if scope not in (SCOPE_ALL_EXCEPT_BARRED, SCOPE_EXPLICIT):
+        raise ValueError(f"unknown station scope: {scope}")
+    intent = _read(INTENT_PATH)
+    before = intent.get("station_scope")
+    intent["station_scope"] = scope
+    intent["updated_at_utc"] = _now()
+    _write_atomic(INTENT_PATH, intent)
+    _audit({"knob": "station_scope", "before": before, "after": scope})
+    return state()
+
+
 def set_allowlist(stations: list) -> dict:
     cleaned = sorted({str(s).strip().upper() for s in stations if s})
     for station in cleaned:
@@ -208,6 +295,9 @@ def set_allowlist(stations: list) -> dict:
     intent = _read(INTENT_PATH)
     before = intent.get("station_allowlist") or []
     intent["station_allowlist"] = cleaned
+    # Pinning a list is what explicit mode means; saying so here keeps a
+    # posted list from being silently ignored by a derived scope.
+    intent["station_scope"] = SCOPE_EXPLICIT
     intent["updated_at_utc"] = _now()
     _write_atomic(INTENT_PATH, intent)
     _audit({

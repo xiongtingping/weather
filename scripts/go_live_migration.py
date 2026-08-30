@@ -52,6 +52,10 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
 
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
+from live_control_server import live_stations as _live_scope  # noqa: E402
+
 DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 TABLE = "basket_target_order_intents"
 LEGACY = f"{TABLE}_pre_live"
@@ -110,16 +114,21 @@ def preconditions(*, require_quiet: bool) -> list[str]:
             "live_intent_v1.live_enabled is false -- the operator arms this,"
             " not the migration"
         )
-    allowlist = [str(s).strip().upper() for s in (intent.get("station_allowlist") or [])]
+    # The live batch is derived, not enumerated -- read it the way the system
+    # reads it rather than off the stored field, which is empty by design in
+    # all_except_barred mode.  Disjointness then holds by construction, and is
+    # still asserted: a precondition that can only pass is worth nothing, but
+    # one that cannot fail silently is worth keeping.
+    scope = _live_scope()
+    allowlist = scope["stations"]
     if not allowlist:
-        failures.append("station_allowlist is empty; a live open needs a positive list")
-    barred = {
-        str(row.get("station") or "").strip().upper()
-        for row in (_json(EXCLUSIONS_PATH).get("excluded_stations") or [])
-    }
-    overlap = sorted(set(allowlist) & barred)
+        failures.append(
+            f"the live batch resolves to no stations (scope={scope['scope']});"
+            " a live open needs something to trade"
+        )
+    overlap = sorted(set(allowlist) & set(scope["barred"]))
     if overlap:
-        failures.append(f"allowlist carries barred stations: {','.join(overlap)}")
+        failures.append(f"live batch carries barred stations: {','.join(overlap)}")
     if not NO_LIVE_ACTIVATION.is_file():
         failures.append(f"missing {NO_LIVE_ACTIVATION.name} to mint the live one from")
     if not DB.is_file():

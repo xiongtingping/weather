@@ -174,7 +174,15 @@ def run(*, apply_changes: bool) -> dict[str, Any]:
     # barred for under-delivering, and EFHK is then safe on its own merits
     # rather than by a guard that happened to cover it.
     intent = json.loads(INTENT.read_text(encoding="utf-8"))
-    allowlist = [
+    # In all_except_barred mode there is nothing to drop: the live batch is
+    # the bar's complement, so barring a station removes it from trading in
+    # the same act and the two can never overlap.  The drop below exists only
+    # for scope=explicit, where a pinned list would otherwise keep naming a
+    # station this layer just barred.
+    derived_scope = (
+        str(intent.get("station_scope") or "all_except_barred") != "explicit"
+    )
+    allowlist = [] if derived_scope else [
         str(station).strip().upper()
         for station in (intent.get("station_allowlist") or [])
     ]

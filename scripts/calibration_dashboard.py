@@ -2433,9 +2433,16 @@ def collect_live_readiness(
             "roi": (pnl / stake) if stake else None,
         }
 
-    allowlist_set = {
-        str(s).strip().upper() for s in (intent.get("station_allowlist") or [])
-    }
+    # The batch that would actually trade, derived the way the control server
+    # derives it: in all_except_barred mode the stored list is empty and
+    # reading it would report a live open of nothing.
+    if str(intent.get("station_scope") or "all_except_barred") == "explicit":
+        allowlist_set = {
+            str(s).strip().upper()
+            for s in (intent.get("station_allowlist") or [])
+        }
+    else:
+        allowlist_set = {r["station"] for r in stations} - exclusions_set
     every = {r["station"] for r in stations}
     split = {
         "barred": _side(exclusions_set),
@@ -2479,7 +2486,8 @@ def collect_live_readiness(
         "kelly": policy.get("portfolio_risk_fraction"),
         "budget_usdc": runtime.get("target_remaining_budget_usdc"),
         "live_enabled": intent.get("live_enabled"),
-        "station_allowlist": intent.get("station_allowlist") or [],
+        "station_scope": str(intent.get("station_scope") or "all_except_barred"),
+        "station_allowlist": sorted(allowlist_set),
         # The bar, not just the pass.  A station absent from the allowlist
         # might be merely unselected; one on this list is refused, and the
         # station table below marks the difference so the two do not read

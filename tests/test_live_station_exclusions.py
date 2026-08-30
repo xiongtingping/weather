@@ -115,15 +115,42 @@ def test_a_profitable_station_is_never_auto_barred() -> None:
     assert [row["station"] for row in verdict["bar"]] == ["LOSER"]
 
 
-def test_an_auto_bar_leaves_the_live_batch_in_the_same_move() -> None:
-    """Otherwise the two lists overlap and the migration refuses to run."""
+def test_the_live_batch_is_the_bars_complement_not_a_list() -> None:
+    """Operator ruling 2026-08-30, and the reason is that lists go stale.
 
-    parsed = json.loads(EXCLUSIONS.read_text(encoding="utf-8"))
+    The eight-station batch was wrong within two days -- KLGA and KSFO
+    reached 5/5 while absent from it, KORD stayed on it with three chains
+    -- and the fleet roster moved 45 to 48 in the same window.  Deriving
+    the batch means a station that comes online joins by itself and a
+    station that is barred leaves by itself, and the two sets cannot drift
+    apart or overlap because one is computed from the other.
+    """
+
+    scope = control.live_stations()
+    assert scope["scope"] == control.SCOPE_ALL_EXCEPT_BARRED
+    barred = control.excluded_stations()
+    tradeable = control.tradeable_stations()
+    assert set(scope["stations"]) == tradeable - barred
+    # Disjointness by construction, asserted anyway: the migration refuses
+    # to run on an overlap, and a precondition nobody checks is not one.
+    assert not (set(scope["stations"]) & barred)
+    # And the stored list stays empty in this mode -- a populated one is the
+    # stale-list trap the ruling replaced.
     intent = json.loads(control.INTENT_PATH.read_text(encoding="utf-8"))
-    auto_barred = {
-        r["station"] for r in parsed.get("auto_excluded_stations") or []
-    }
-    assert not (auto_barred & set(intent.get("station_allowlist") or []))
+    assert not (intent.get("station_allowlist") or [])
+
+
+def test_a_station_the_model_never_computed_is_not_in_the_batch() -> None:
+    """Membership comes from book history, not the coordinate roster.
+
+    LLBG, LTFM and UUWW are on the roster and have never produced a
+    position, so a complement over the roster would put stations into a
+    live batch that cannot trade.
+    """
+
+    scope = set(control.live_stations()["stations"])
+    for station in ("LLBG", "LTFM", "UUWW"):
+        assert station not in scope
 
 
 def test_the_bar_is_capped_at_fifteen_stations() -> None:
@@ -203,19 +230,31 @@ def test_a_barred_station_cannot_be_allowlisted() -> None:
     assert before == after, "a refused request must not touch the file"
 
 
-def test_a_clean_list_still_passes() -> None:
-    """The gate must not be a blanket refusal."""
+def test_pinning_a_list_switches_the_scope_and_still_refuses_barred() -> None:
+    """Explicit mode is still reachable, and the bar still wins inside it.
+
+    Restores derived mode afterwards -- this is the live config, and a test
+    that left the batch pinned would quietly freeze the thing the ruling
+    was made to unfreeze.
+    """
 
     before = json.loads(control.INTENT_PATH.read_text(encoding="utf-8"))
-    original = list(before.get("station_allowlist") or [])
     try:
-        state = control.set_allowlist(original)
-        assert set(state["live"]["station_allowlist"]) == set(original)
-        assert state["live"]["station_exclusions"] == sorted(
-            control.excluded_stations()
-        )
+        state = control.set_allowlist(["ZBAA", "ZSQD"])
+        assert state["live"]["station_scope"] == control.SCOPE_EXPLICIT
+        assert set(state["live"]["station_allowlist"]) == {"ZBAA", "ZSQD"}
+        barred = sorted(control.excluded_stations())[0]
+        with pytest.raises(ValueError, match=barred):
+            control.set_allowlist(["ZBAA", barred])
     finally:
-        control.set_allowlist(original)
+        control.set_scope(control.SCOPE_ALL_EXCEPT_BARRED)
+        restored = json.loads(control.INTENT_PATH.read_text(encoding="utf-8"))
+        restored["station_allowlist"] = before.get("station_allowlist") or []
+        control.INTENT_PATH.write_text(
+            json.dumps(restored, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    assert control.live_stations()["scope"] == control.SCOPE_ALL_EXCEPT_BARRED
 
 
 def test_a_missing_file_bars_nothing_rather_than_everything() -> None:
