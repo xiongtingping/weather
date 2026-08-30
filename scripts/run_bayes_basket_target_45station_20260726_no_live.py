@@ -754,7 +754,7 @@ def main() -> int:
         {str(item).strip().upper() for item in contract.get("station_ids", [])}
     )
     if len(station_ids) != MAX_STATIONS:
-        raise FailClosed("canonical_station_count_not_45")
+        raise FailClosed(f"canonical_station_count_not_{MAX_STATIONS}")
     if str(contract.get("target_local_date") or "") == EVENT_DATE:
         contract_scope_state = "EXACT"
         contract_scope_reasons: list[str] = []

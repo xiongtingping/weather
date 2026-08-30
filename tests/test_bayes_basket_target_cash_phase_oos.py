@@ -15,6 +15,7 @@ from bayes_basket_target.contracts import ContractError
 from bayes_basket_target.promotion_evidence import (
     validate_cash_phase_forward_scorecard,
 )
+from bayes_basket_target.fleet import expected_station_count
 
 
 AS_OF = "2026-07-12T00:00:00Z"
@@ -225,7 +226,11 @@ def test_same_semantic_event_with_different_content_is_conflict() -> None:
     assert scorecard["checks"]["promotion_eligible"] is False
 
 
-def _fleet(count: int = 45) -> dict[str, object]:
+def _fleet(count: int | None = None) -> dict[str, object]:
+    # Defaults to the fleet rather than restating its size, so the
+    # "44 or 46 is out of scope" cases stay one either side of it.
+    if count is None:
+        count = expected_station_count()
     station_ids = [f"S{index:02d}" for index in range(count)]
     return {
         "observations": [
@@ -254,8 +259,8 @@ def test_45_station_evidence_is_content_addressed_but_never_mutates() -> None:
     second = build_cash_phase_oos_evidence(**args)
     assert first == second
     assert first["status"] == "PROMOTION_ELIGIBLE"
-    assert first["promotion_eligible_station_count"] == 45
-    assert len(first["promotion_decision_candidates"]) == 45
+    assert first["promotion_eligible_station_count"] == expected_station_count()
+    assert len(first["promotion_decision_candidates"]) == expected_station_count()
     assert all(
         row["mutates_policy"] is False and row["writes_authority"] is False
         for row in first["promotion_decision_candidates"]
@@ -264,10 +269,13 @@ def test_45_station_evidence_is_content_addressed_but_never_mutates() -> None:
     assert first["calls_order_gateway"] is False
 
 
-@pytest.mark.parametrize("count", [44, 46])
-def test_44_or_46_station_scope_is_na(count: int) -> None:
+@pytest.mark.parametrize(
+    "count",
+    [expected_station_count() - 1, expected_station_count() + 1],
+)
+def test_one_either_side_of_the_fleet_is_na(count: int) -> None:
     args = _fleet(count)
-    if count == 46:
+    if count > expected_station_count():
         with pytest.raises(
             ContractError,
             match="cash_phase_oos_policy_rows_exceeded",
@@ -277,7 +285,10 @@ def test_44_or_46_station_scope_is_na(count: int) -> None:
         evidence = build_cash_phase_oos_evidence(**args)
         assert evidence["status"] == "NA"
         assert evidence["promotion_decision_candidates"] == []
-        assert "expected_station_count_not_45:44" in evidence["global_blockers"]
+        assert (
+            f"expected_station_count_not_{expected_station_count()}:{count}"
+            in evidence["global_blockers"]
+        )
 
 
 def test_low_wrong_low_rewind_restores_identical_content() -> None:

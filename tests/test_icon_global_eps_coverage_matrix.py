@@ -18,6 +18,7 @@ from bayes_basket_target.model_system_coverage import (
     canonical_station_ids,
     validate_coverage_row,
 )
+from bayes_basket_target.fleet import expected_station_count
 
 
 AS_OF = "2026-08-03T21:08:00Z"
@@ -94,7 +95,7 @@ def _daily_candidate() -> dict[str, object]:
         "schema": "dwd_icon_global_eps_official_daily_members_v1",
         "ensemble_system_id": GLOBAL_EPS,
         "member_count": 40,
-        "station_count": 45,
+        "station_count": expected_station_count(),
         "formal_p0_eligible": False,
         "native_arrival_index_eligible": False,
         "source_authority": {
@@ -138,12 +139,12 @@ def test_final_output_is_exact_shared_45_by_three_matrix_with_unique_blockers() 
     )
 
     assert matrix["schema"] == MATRIX_SCHEMA
-    assert matrix["scope_count"] == 135
+    assert matrix["scope_count"] == expected_station_count() * 3
     assert matrix["product_ids"] == [GLOBAL_EPS]
     assert matrix["cross_selection_count"] == 0
     assert matrix["cross_activation_count"] == 0
     assert matrix["p0_count"] == 0
-    assert matrix["state_counts"]["BLOCKED"] == 135
+    assert matrix["state_counts"]["BLOCKED"] == expected_station_count() * 3
     assert all(validate_coverage_row(row) == row for row in matrix["rows"])
     assert all(row["blockers"] == ["DATA_MISSING"] for row in matrix["rows"])
     assert all(len(row["blockers"]) == 1 for row in matrix["rows"])
@@ -183,7 +184,7 @@ def test_missing_explicit_lead_or_run_cycle_is_canonical_cycle_mismatch_not_infe
         strict_oos=_strict_oos(native_arrival_index_used=True),
     )
 
-    assert matrix["state_counts"]["BLOCKED"] == 135
+    assert matrix["state_counts"]["BLOCKED"] == expected_station_count() * 3
     assert all(row["run_cycle"] is None for row in matrix["rows"])
     assert all(row["blockers"] == ["RUN_CYCLE_MISMATCH"] for row in matrix["rows"])
 
@@ -199,7 +200,7 @@ def test_regional_republisher_is_validated_but_never_added_as_a_global_product(
     )
 
     assert matrix["product_ids"] == [GLOBAL_EPS]
-    assert matrix["scope_count"] == 135
+    assert matrix["scope_count"] == expected_station_count() * 3
     assert all(row["product_id"] == GLOBAL_EPS for row in matrix["rows"])
 
 
@@ -242,5 +243,5 @@ def test_unlabelled_icon_republisher_gets_no_schema_alias_or_global_product() ->
         republisher_binding=binding,
     )
 
-    assert matrix["scope_count"] == 135
+    assert matrix["scope_count"] == expected_station_count() * 3
     assert all(row["product_id"] == GLOBAL_EPS for row in matrix["rows"])

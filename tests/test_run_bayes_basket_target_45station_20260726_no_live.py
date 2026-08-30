@@ -12,14 +12,15 @@ from pathlib import Path
 import pytest
 
 from scripts import run_bayes_basket_target_45station_20260726_no_live as runner
+from bayes_basket_target.fleet import expected_station_count
+from bayes_basket_target.station_registry import coordinate_registry_manifest
 
 
-CANONICAL_STATIONS = (
-    "CYYZ", "EDDM", "EFHK", "EGLC", "EHAM", "EPWA", "FACT", "KATL", "KAUS",
-    "KBKF", "KDAL", "KHOU", "KLAX", "KLGA", "KMIA", "KORD", "KSEA", "KSFO",
-    "LEMD", "LFPB", "LIMC", "LTAC", "MMMX", "MPMG", "NZWN", "OEJN", "OPKC",
-    "RCSS", "RJTT", "RKPK", "RKSI", "RPLL", "SAEZ", "SBGR", "VILK", "WMKK",
-    "WSSS", "ZBAA", "ZGGG", "ZGSZ", "ZHHH", "ZSPD", "ZSQD", "ZUCK", "ZUUU",
+# The fleet itself, not a copy of it: a hand-written tuple was a second
+# place for the roster to be wrong, and it went stale the moment three
+# stations were onboarded.
+CANONICAL_STATIONS = tuple(
+    sorted(coordinate_registry_manifest()["station_ids"])
 )
 
 
@@ -204,13 +205,13 @@ def _assert_isolated_sqlite(sqlite_path: Path) -> None:
             "station_chain_status",
             "no_live_audit_decision",
         }
-        assert conn.execute("SELECT COUNT(*) FROM station_chain_status").fetchone()[0] == 45
-        assert conn.execute("SELECT COUNT(*) FROM no_live_audit_decision").fetchone()[0] == 45
+        assert conn.execute("SELECT COUNT(*) FROM station_chain_status").fetchone()[0] == expected_station_count()
+        assert conn.execute("SELECT COUNT(*) FROM no_live_audit_decision").fetchone()[0] == expected_station_count()
         metadata = conn.execute(
             "SELECT station_count,execution_mode,live_submit_authorized,"
             "calls_order_gateway,orders_submitted FROM run_metadata"
         ).fetchone()
-        assert tuple(metadata) == (45, "production_no_live", 0, 0, 0)
+        assert tuple(metadata) == (expected_station_count(), "production_no_live", 0, 0, 0)
 
 
 def _assert_baseline(receipt: dict[str, object], output_dir: Path, target_db: Path) -> None:
@@ -221,8 +222,8 @@ def _assert_baseline(receipt: dict[str, object], output_dir: Path, target_db: Pa
     assert receipt["contract_scope"]["state"] == "RETAINED_SCOPE_MISMATCH"
 
     summary = receipt["summary"]
-    assert summary["station_count"] == 45
-    assert summary["fail_closed_station_count"] == 45
+    assert summary["station_count"] == expected_station_count()
+    assert summary["fail_closed_station_count"] == expected_station_count()
     assert summary["orders_submitted"] == 0
     assert summary["intents_written"] == 0
     assert summary["calls_order_gateway"] is False
@@ -242,7 +243,7 @@ def _assert_baseline(receipt: dict[str, object], output_dir: Path, target_db: Pa
     assert Path(boundary["isolated_sqlite"]).parent == output_dir
 
     rows = receipt["rows"]
-    assert len(rows) == 45
+    assert len(rows) == expected_station_count()
     for row in rows:
         assert row["final_state"] == "FAIL_CLOSED"
         assert row["stages"]["model_arrival_decode_exact_join"]["state"] == "BLOCKED"
@@ -329,14 +330,21 @@ def test_rss_over_budget_fails_closed_before_output_creation(
     assert not output_dir.exists()
 
 
-@pytest.mark.parametrize("count", [44, 46])
+@pytest.mark.parametrize(
+    "count",
+    [expected_station_count() - 1, expected_station_count() + 1],
+)
 def test_station_row_cap_rejects_underflow_and_overflow(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, count: int
 ) -> None:
-    station_ids = tuple(CANONICAL_STATIONS[:count]) if count == 44 else CANONICAL_STATIONS + ("XTRA",)
+    station_ids = (
+        tuple(CANONICAL_STATIONS[:count])
+        if count < len(CANONICAL_STATIONS)
+        else CANONICAL_STATIONS + ("XTRA",)
+    )
     output_dir, _ = _fixture(tmp_path, monkeypatch, station_ids=station_ids)
 
-    with pytest.raises(runner.FailClosed, match="canonical_station_count_not_45"):
+    with pytest.raises(runner.FailClosed, match=f"canonical_station_count_not_{expected_station_count()}"):
         runner.main()
     assert list(output_dir.iterdir()) == []
 

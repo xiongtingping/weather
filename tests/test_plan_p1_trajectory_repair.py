@@ -9,6 +9,7 @@ from bayes_basket_target.contracts import ContractError, content_sha256
 from bayes_basket_target.probability_evidence_store import apply_probability_evidence_schema
 from bayes_basket_target.station_registry import coordinate_registry_manifest
 from scripts.plan_p1_trajectory_repair import build_plan
+from bayes_basket_target.fleet import expected_station_count
 
 
 AS_OF = "2026-08-02T00:00:00.000Z"
@@ -49,8 +50,8 @@ def _audit(tmp_path, *, blockers: list[str] | None = None, candidate: dict | Non
         "as_of_utc": AS_OF,
         "station_scope": {
             "requested_station_ids": coordinate_registry_manifest()["station_ids"],
-            "station_count": 45,
-            "canonical_station_count": 45,
+            "station_count": expected_station_count(),
+            "canonical_station_count": expected_station_count(),
             "canonical_registry_sha256": coordinate_registry_manifest()["registry_sha256"],
         },
         "minimums": {"minimum_prior_truths": 3, "minimum_effective_sample_n": 20.0, "method_version": "canonical_conditional_hourly_future_path_v3"},
@@ -86,7 +87,7 @@ def _hourly_curve_audit(tmp_path, *, station_id: str = "KATL"):
     }
     identity = {
         "schema": "bayes_basket_target_p1_hourly_curve_receipt_audit_45station_v1",
-        "canonical_station_count": 45,
+        "canonical_station_count": expected_station_count(),
         "entries": [entry],
         "summary": {"archive_query_after_station_day_not_strict_asof": 1},
     }
@@ -104,7 +105,7 @@ def test_all_blocked_audit_emits_precise_no_write_plan(tmp_path):
 
     plan = build_plan(audit_path=audit_path, database=database, as_of_utc=AS_OF)
 
-    assert plan["station_count"] == 45
+    assert plan["station_count"] == expected_station_count()
     assert plan["scope_count"] == 180
     assert plan["formal_eligible_scope_count"] == 0
     assert plan["candidate_pointer_count"] == 0
@@ -187,7 +188,7 @@ def test_late_archive_curve_requires_forward_arrival_capture_not_rebinding(tmp_p
     assert plan["hourly_curve_receipt_audit"]["content_sha256"] == content_sha256(
         {
             "schema": "bayes_basket_target_p1_hourly_curve_receipt_audit_45station_v1",
-            "canonical_station_count": 45,
+            "canonical_station_count": expected_station_count(),
             "entries": [{
                 "station_id": "KATL",
                 "event_date": "2026-07-31",
