@@ -1895,6 +1895,17 @@ def _resolve_target_remaining_budget() -> float:
         if not math.isfinite(remaining_budget) or remaining_budget < 0.0:
             raise RuntimeError("target_remaining_budget_usdc_invalid")
         return remaining_budget
+    # The budget comes from the runtime config the mode selects.  After the
+    # go-live migration this still read the no-live file; the two happened to
+    # carry the same number, which is the only reason it went unnoticed -- a
+    # live system taking its budget from a contract that says
+    # live_submit_authorized: false is wrong even on the day the numbers agree.
+    if PRODUCTION_EXECUTION_MODE == "production_live":
+        from .runtime_config import load_target_live_runtime_config  # noqa: PLC0415
+
+        return float(
+            load_target_live_runtime_config()["target_remaining_budget_usdc"]
+        )
     runtime_config = load_target_no_live_runtime_config(DEFAULT_TARGET_NO_LIVE_RUNTIME_CONFIG)
     return float(runtime_config["target_remaining_budget_usdc"])
 

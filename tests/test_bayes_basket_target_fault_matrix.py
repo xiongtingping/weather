@@ -517,8 +517,11 @@ def test_fault_matrix_unknown_partial_and_gateway_boundary_never_authorize() -> 
                 conn,
                 compiled_plan={
                     "execution_mode": PRODUCTION_EXECUTION_MODE,
-                    "live_submit_authorized": False,
-                    "boundary": {"calls_order_gateway": True},
+                    "live_submit_authorized": PRODUCTION_EXECUTION_MODE == "production_live",
+                    # The wrong value for whichever mode is compiled in: the
+                    # validator demands agreement with the mode, and this test
+                    # is that a disagreement is refused before any write.
+                    "boundary": {"calls_order_gateway": PRODUCTION_EXECUTION_MODE != "production_live"},
                     "plan": {"station_id": "ZUUU", "event_date": "2026-07-23"},
                 },
                 market_snapshot={"station_id": "ZUUU", "event_date": "2026-07-23"},

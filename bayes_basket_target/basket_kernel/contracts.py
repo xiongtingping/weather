@@ -573,7 +573,8 @@ class TargetBasketPolicy:
     """Immutable candidate parameters; promotion must lock one full policy."""
 
     policy_id: str = "target_basket_target_candidate_v1"
-    total_budget_usdc: float = 30.0
+    # 20 by operator ruling 2026-08-31; was 30 (ruling of 2026-08-16).
+    total_budget_usdc: float = 20.0
     base_coverage: float = 0.55
     entropy_coverage_gain: float = 0.20
     maximum_coverage: float = 0.92
@@ -625,7 +626,7 @@ class TargetBasketPolicy:
     price_tick_size: float = 0.01
     maximum_limit_price: float = 0.99
     minimum_expected_edge_per_share: float = 0.0
-    minimum_expected_pnl_after_usdc: float = -30.0
+    minimum_expected_pnl_after_usdc: float = -20.0
     fee_rate: float = 0.0
     maker_queue_cost_per_share: float = 0.0
     taker_slippage_buffer_per_share: float = 0.0
@@ -639,8 +640,8 @@ class TargetBasketPolicy:
     urgency_weight_fill: float = 0.15
     urgency_weight_spread: float = 0.075
     urgency_weight_depth: float = 0.075
-    protected_floor_usdc: float = -30.0
-    max_outside_loss_usdc: float = 30.0
+    protected_floor_usdc: float = -20.0
+    max_outside_loss_usdc: float = 20.0
     basket_downside_lambda_per_usdc: float = 0.02
     basket_directional_coverage_lambda_usdc: float = 0.05
     basket_concentration_lambda_usdc: float = 0.25

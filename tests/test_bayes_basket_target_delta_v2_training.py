@@ -191,7 +191,7 @@ def _compiled(envelope: ProbabilityEnvelope) -> dict:
         "cadence_allows_candidate": True,
         "cadence_decision": "ALLOW_CANDIDATE",
         "execution_mode": PRODUCTION_EXECUTION_MODE,
-        "live_submit_authorized": False,
+        "live_submit_authorized": PRODUCTION_EXECUTION_MODE == "production_live",
         "production_plan_sha256": SHA_A,
         "production_cycle_sha256": SHA_B,
         "probability_envelope": envelope.to_dict(),
@@ -273,7 +273,7 @@ def _compiled(envelope: ProbabilityEnvelope) -> dict:
             }
         ],
         "reason_codes": [],
-        "boundary": {"calls_order_gateway": False},
+        "boundary": {"calls_order_gateway": PRODUCTION_EXECUTION_MODE == "production_live"},
     }
 
 

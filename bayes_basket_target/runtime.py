@@ -60,7 +60,13 @@ DELTA_V2_OPTIMIZER_ID = "DeltaBasketScoreV2Optimizer"
 
 
 _DEFAULT_POLICY = {
-    "total_budget_usdc": 30.0,
+    # 20, down from 30 by operator ruling 2026-08-31 ("单站上限 30 USDC改为
+    # 10u-20u"), taken at the top of the stated range and matching the 20.0
+    # the v3/global_v4 station policy files already carry.  The three
+    # bankroll-shaped bounds below (protected floor, outside loss, minimum
+    # expected pnl) scale with it: they are "the whole bankroll" expressed as
+    # a number, not independent choices.
+    "total_budget_usdc": 20.0,
     "base_coverage": 0.55,
     "entropy_coverage_gain": 0.20,
     "maximum_coverage": 0.92,
@@ -79,12 +85,12 @@ _DEFAULT_POLICY = {
     "price_tick_size": 0.01,
     "maximum_limit_price": 0.99,
     "minimum_expected_edge_per_share": 0.0,
-    "minimum_expected_pnl_after_usdc": -30.0,
+    "minimum_expected_pnl_after_usdc": -20.0,
     "fee_rate": 0.0,
     "maker_queue_cost_per_share": 0.0,
     "taker_slippage_buffer_per_share": 0.0,
-    "protected_floor_usdc": -30.0,
-    "max_outside_loss_usdc": 30.0,
+    "protected_floor_usdc": -20.0,
+    "max_outside_loss_usdc": 20.0,
     "basket_downside_lambda_per_usdc": 0.02,
     "basket_directional_coverage_lambda_usdc": 0.05,
     "basket_concentration_lambda_usdc": 0.25,

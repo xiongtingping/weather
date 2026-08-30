@@ -1613,7 +1613,7 @@ def test_production_candidate_adapter_requires_exact_version_training_inputs() -
     compiled = {
         "status": "ready_no_live",
         "execution_mode": PRODUCTION_EXECUTION_MODE,
-        "live_submit_authorized": False,
+        "live_submit_authorized": PRODUCTION_EXECUTION_MODE == "production_live",
         "production_plan_sha256": SHA_B,
         "production_cycle_sha256": SHA_A,
         "plan": {
@@ -1669,7 +1669,7 @@ def test_production_candidate_adapter_requires_exact_version_training_inputs() -
             "content_sha256": SHA_A,
         }],
         "reason_codes": [],
-        "boundary": {"calls_order_gateway": False},
+        "boundary": {"calls_order_gateway": PRODUCTION_EXECUTION_MODE == "production_live"},
         "production_inputs": {
             "delta_v2_artifact_sha256": "0" * 64,
         },
@@ -1705,7 +1705,7 @@ def test_ready_production_candidate_without_delta_v2_audit_fails_closed() -> Non
     compiled = {
         "status": "ready_no_live",
         "execution_mode": PRODUCTION_EXECUTION_MODE,
-        "live_submit_authorized": False,
+        "live_submit_authorized": PRODUCTION_EXECUTION_MODE == "production_live",
         "production_plan_sha256": SHA_B,
         "production_cycle_sha256": SHA_A,
         "plan": {
@@ -1733,7 +1733,7 @@ def test_ready_production_candidate_without_delta_v2_audit_fails_closed() -> Non
         },
         "order_sizing_decisions": [],
         "reason_codes": [],
-        "boundary": {"calls_order_gateway": False},
+        "boundary": {"calls_order_gateway": PRODUCTION_EXECUTION_MODE == "production_live"},
     }
     with _db() as conn:
         before = _counts(conn)
@@ -1763,13 +1763,13 @@ def test_production_candidate_adapter_rejects_p0_before_any_write() -> None:
     compiled = {
         "status": "ready_no_live",
         "execution_mode": PRODUCTION_EXECUTION_MODE,
-        "live_submit_authorized": False,
+        "live_submit_authorized": PRODUCTION_EXECUTION_MODE == "production_live",
         "plan": {
             "station_id": "ZUUU",
             "event_date": "2026-07-23",
             "lineage": {"probability_stage": "P0"},
         },
-        "boundary": {"calls_order_gateway": False},
+        "boundary": {"calls_order_gateway": PRODUCTION_EXECUTION_MODE == "production_live"},
     }
     with _db() as conn:
         before = _counts(conn)
@@ -1929,7 +1929,7 @@ def _stage_zero_anchor(conn: sqlite3.Connection) -> dict[str, object]:
         "intents_written": 0,
         "reservations_written": 0,
         "calls_order_gateway": False,
-        "live_submit_authorized": False,
+        "live_submit_authorized": PRODUCTION_EXECUTION_MODE == "production_live",
         "orders_submitted": 0,
     }
     anchor["content_sha256"] = content_sha256(

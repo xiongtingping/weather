@@ -2296,6 +2296,55 @@ def _live_execution_mode() -> str:
         return "unknown"
 
 
+def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
+    """The live order book: counts, money and the rows themselves."""
+
+    out: dict[str, Any] = {
+        "intent_count": 0, "submitted_count": 0, "accepted_count": 0,
+        "notional_usdc": 0.0, "matched_notional_usdc": 0.0, "rows": [],
+    }
+    try:
+        rows = conn.execute(
+            "SELECT i.order_intent_id, i.decision_id, i.bucket, i.side,"
+            " i.limit_price, i.requested_size, i.requested_notional_usdc,"
+            " i.state, i.created_at"
+            " FROM basket_target_order_intents i"
+            " WHERE i.live_submit_authorized=1"
+            " ORDER BY i.created_at DESC LIMIT 200"
+        ).fetchall()
+    except sqlite3.Error:
+        return out
+    out["intent_count"] = len(rows)
+    for row in rows:
+        out["notional_usdc"] += float(row[6] or 0.0)
+        out["rows"].append({
+            "order_intent_id": str(row[0]), "decision_id": str(row[1]),
+            "bucket": str(row[2]), "side": str(row[3]),
+            "limit_price": row[4], "requested_size": row[5],
+            "requested_notional_usdc": row[6], "state": str(row[7]),
+            "created_at": str(row[8]),
+        })
+    try:
+        for kind, count, matched in conn.execute(
+            "SELECT e.event_type, COUNT(*), COALESCE(SUM(e.matched_notional_usdc),0)"
+            " FROM basket_target_order_events e"
+            " JOIN basket_target_order_intents i"
+            "   ON i.order_intent_id=e.order_intent_id"
+            " WHERE i.live_submit_authorized=1 GROUP BY e.event_type"
+        ):
+            kind_l = str(kind).lower()
+            if "accept" in kind_l or "submit" in kind_l:
+                out["submitted_count"] += int(count)
+            if "accept" in kind_l:
+                out["accepted_count"] += int(count)
+            out["matched_notional_usdc"] += float(matched or 0.0)
+    except sqlite3.Error:
+        pass
+    out["notional_usdc"] = round(out["notional_usdc"], 4)
+    out["matched_notional_usdc"] = round(out["matched_notional_usdc"], 4)
+    return out
+
+
 def collect_live_readiness(
     conn: sqlite3.Connection,
     band_stations: list[dict[str, Any]],
@@ -2526,6 +2575,12 @@ def collect_live_readiness(
         # operator about a system that had stopped being that system.
         "execution_mode": _live_execution_mode(),
         "submission_paused": (ROOT / "data" / "live_paused.flag").is_file(),
+        # The live book, distinguished at the row level.  An intent minted
+        # with live_submit_authorized=1 is a live order by identity -- the
+        # widened CHECK is what the go-live migration existed to change --
+        # while every pre-migration row carries 0.  Counted fresh at render
+        # so the panel and the ledger cannot say different things.
+        "live_orders": _collect_live_orders(conn),
         "station_scope": scope_mode,
         "minimum_settlements_to_qualify": minimum,
         "station_allowlist": sorted(allowlist_set),
@@ -7582,6 +7637,41 @@ function liveSwitch(){
 }
 
 
+function liveOrderCard(L){
+  // Live rows are live by identity: live_submit_authorized=1 exists only on
+  // rows minted after the go-live migration widened the CHECK.  Every number
+  // here is counted off those rows at render, so the card and the ledger
+  // cannot disagree.
+  const O = L.live_orders || {};
+  const liveMode = L.execution_mode === "production_live";
+  const state = !liveMode ? "no-live 模式"
+    : L.submission_paused ? "暂停旗在位" : "实盘发单中";
+  const rows = (O.rows||[]).slice(0, 30).map(r=>`<tr>
+    <td><span class="pill red" style="font-size:10px">LIVE</span></td>
+    <td class="mono">${r.bucket}</td><td>${r.side}</td>
+    <td class="mono">${r.limit_price}</td><td class="mono">${r.requested_size}</td>
+    <td class="mono">${(r.requested_notional_usdc??0).toFixed(2)}</td>
+    <td>${r.state}</td>
+    <td class="mono" title="${r.order_intent_id}">${r.created_at}</td></tr>`).join("");
+  return `<div class="card" style="margin-top:12px">
+    <h3 style="margin-top:0">实盘订单 <span class="pill ${liveMode&&!L.submission_paused?"red":""}"
+      style="font-size:11px">${state}</span></h3>
+    <div class="muted" style="font-size:12px">
+      判据唯一：<span class="mono">live_submit_authorized=1</span> 的意向才是实盘——
+      该列只有 go-live 迁移之后铸造的行才可能为 1，历史 1406 行全部为 0。
+      纸面账本（paper_trade_*）与实盘账本是两套表，互不混计。</div>
+    <div style="margin:8px 0">
+      <b>实盘意向 ${O.intent_count||0}</b> ·
+      已提交 ${O.submitted_count||0} · 交易所受理 ${O.accepted_count||0} ·
+      计划名义 ${(O.notional_usdc||0).toFixed(2)}u ·
+      已成交名义 ${(O.matched_notional_usdc||0).toFixed(2)}u</div>
+    ${rows?`<div style="overflow-x:auto"><table><thead><tr>
+      <th></th><th>桶</th><th>侧</th><th>价</th><th>股数</th><th>名义u</th>
+      <th>状态</th><th>时间</th></tr></thead><tbody>${rows}</tbody></table></div>`
+      :`<div class="muted">尚无实盘意向。第一条出现时此表自动列出。</div>`}
+  </div>`;
+}
+
 function liveReadiness(){
   const L = D.live_readiness || {};
   if(!L.available) return "";
@@ -7643,6 +7733,7 @@ function liveReadiness(){
       <span class="mono">.venv/bin/python scripts/live_control_server.py</span>
       （只监听 127.0.0.1:8788，每次改动写审计日志）</div>
   </div>
+  ${liveOrderCard(L)}
   ${splitCard}
   <div class="card" style="margin-top:12px">
     <div class="muted">首批站点闸门（五闸：实现/声称∈[0.88,1.18]、|中心偏差|≤0.8°C、

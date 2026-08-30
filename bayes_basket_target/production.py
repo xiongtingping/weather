@@ -263,6 +263,28 @@ def _bucket_ordinals_from_lineage(
     }
 
 
+def _default_order_transport(path: str, payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    """The one local gateway, reached the one approved way.
+
+    Only ever selected when the plan carries live authority; a no-live plan
+    keeps ``_no_transport`` and cannot reach the network.  The client refuses
+    any base URL that is not loopback HTTP, so this cannot be repointed at an
+    exchange directly.
+    """
+
+    import sys
+    from pathlib import Path as _Path
+    root = str(_Path(__file__).resolve().parents[1])
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    from clob_order_service_client import ClobOrderServiceClient  # noqa: PLC0415
+
+    client = ClobOrderServiceClient(timeout_seconds=15.0)
+    if path != "/place-order":
+        raise ContractError("production_order_transport_unknown_path")
+    return client.place_order(payload)
+
+
 def _no_transport(path: str, payload: Mapping[str, Any]) -> Mapping[str, Any]:
     """Refuse to reach the exchange when no caller supplied a way to.
 
@@ -337,10 +359,17 @@ def compile_production_plan(
         delta_v2_owns_cadence=delta_v2_owns_cadence,
         expected_source_lane=expected_source_lane,
     )
+    live_mode = PRODUCTION_EXECUTION_MODE == "production_live"
     plan = dict(result)
     plan["schema"] = PRODUCTION_PLAN_SCHEMA
     plan["execution_mode"] = PRODUCTION_EXECUTION_MODE
-    plan["live_submit_authorized"] = False
+    # The third of the three no-live locks, and the last found: the intents
+    # CHECK and the runtime config moved with the go-live migration, while
+    # this literal False rode along under them -- compiled into every plan,
+    # demanded back by the validator below, and never passed as True by the
+    # worker.  A live system with this still False submits nothing and says
+    # "not_authorized" about it, which reads as a refusal rather than a lock.
+    plan["live_submit_authorized"] = live_mode
     plan["production_decision_path"] = True
     plan["policy_authority_scope"] = str(policy_authority_scope)
     optimizer_status = str(plan.get("status") or "").strip().lower()
@@ -354,13 +383,15 @@ def compile_production_plan(
     plan["boundary"] = {
         "production_decision_path": True,
         "execution_mode": PRODUCTION_EXECUTION_MODE,
-        "live_order_authorized": False,
-        "live_submit_authorized": False,
-        "places_orders": False,
+        "live_order_authorized": live_mode,
+        "live_submit_authorized": live_mode,
+        # What the cycle may do, not what it has done: orders_submitted stays
+        # a fact reported by the submission receipt.
+        "places_orders": live_mode,
         "orders_submitted": 0,
         "writes_production_db": False,
-        "calls_order_gateway": False,
-        "network_access": False,
+        "calls_order_gateway": live_mode,
+        "network_access": live_mode,
         "order_candidates_are_non_authoritative": True,
         "target_compiler": "DeltaBasketScoreV2Optimizer",
         "target_compiler_schema": "bayes_basket_target_delta_v2_optimizer_v2",
@@ -432,9 +463,10 @@ def commit_production_candidate_atomic(
         raise ContractError("production_compiled_plan_missing")
     if compiled_plan.get("execution_mode") != PRODUCTION_EXECUTION_MODE:
         raise ContractError("production_execution_mode_invalid")
-    if compiled_plan.get("live_submit_authorized") is not False:
+    live_mode = PRODUCTION_EXECUTION_MODE == "production_live"
+    if compiled_plan.get("live_submit_authorized") is not live_mode:
         raise ContractError("production_live_submit_boundary_invalid")
-    if compiled_plan.get("boundary", {}).get("calls_order_gateway") is not False:
+    if compiled_plan.get("boundary", {}).get("calls_order_gateway") is not live_mode:
         raise ContractError("production_gateway_boundary_invalid")
     lineage = plan.get("lineage")
     # A P0 forward plan carries no ``plan.lineage`` at all.  Normalize once:
@@ -952,15 +984,25 @@ def commit_production_candidate_atomic(
     # exchange boundary and stops there, leaving the payload hash on the
     # receipt.  A cycle that prepared nothing returns an empty submission set
     # instead of a special case.
+    # Authority comes from the compiled plan -- the same field the validator
+    # above pinned to the execution mode -- unless the caller explicitly
+    # withholds it.  Requiring every caller to separately pass True is how
+    # the third lock stayed shut after the other two opened.
+    effective_authority = bool(
+        live_submit_authorized
+        or compiled_plan.get("live_submit_authorized") is True
+    )
     submission_receipt = submit_prepared_intents(
         conn,
         cycle_id=str(bundle["cycle"]["cycle_id"]),
         transport=(
             order_transport
             if order_transport is not None
+            else _default_order_transport
+            if effective_authority
             else _no_transport
         ),
-        live_submit_authorized=bool(live_submit_authorized),
+        live_submit_authorized=effective_authority,
         observed_at_utc=str(evaluation_at_utc or created_at_utc),
     )
     result = {
