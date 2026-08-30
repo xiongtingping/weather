@@ -2135,7 +2135,7 @@ def collect_live_readiness(
         for sid, day, hit, stake, pnl in settled:
             slot = book.setdefault(str(sid), {
                 "stake": 0.0, "pnl": 0.0, "days": set(),
-                "recent_stake": 0.0, "recent_pnl": 0.0,
+                "recent_stake": 0.0, "recent_pnl": 0.0, "recent_n": 0,
             })
             slot["stake"] += float(stake or 0.0)
             slot["pnl"] += float(pnl or 0.0)
@@ -2143,6 +2143,7 @@ def collect_live_readiness(
             if str(day) >= recent_floor:
                 slot["recent_stake"] += float(stake or 0.0)
                 slot["recent_pnl"] += float(pnl or 0.0)
+                slot["recent_n"] = slot.get("recent_n", 0) + 1
         truth_latest = {
             str(sid): str(day) for sid, day in conn.execute(
                 "SELECT station_id, MAX(local_date)"
@@ -2223,9 +2224,21 @@ def collect_live_readiness(
             not barred and roi_now is not None
             and roi_now <= -0.25 and row["chains"] >= 5
         )
+        # Releasing is not the mirror of barring, and the criterion must not
+        # be either.  Barring a station costs a skipped market; releasing one
+        # puts money back on it, so release asks for more.  EPWA 2026-08-30 is
+        # the case that forced this: it cleared an ROI-only rule on a 2.2-point
+        # technicality (-22.8% against a -25% line) with a five-day window
+        # reading +60.1% -- and underneath, every one of its six forward seats
+        # lost 100%, the three wins were all P1 near-certainties bought after
+        # the day was observed at claims of 0.93-0.99, and the model runs
+        # 1.62C cold with a claim ratio of 0.46.  A recovery has to show in the
+        # station's structure, not only in the last few settlements.
         row["release_candidate"] = bool(
             barred and recent is not None and recent > 0.0
             and roi_now is not None and roi_now > -0.25
+            and gates["claim_honest"] and gates["centre_bias"]
+            and (book[sid]["recent_n"] if sid in book else 0) >= 3
         )
     return {
         "add_candidates": [
@@ -7276,7 +7289,7 @@ function liveReadiness(){
       ${((L.add_candidates||[]).length||(L.release_candidates||[]).length)?`<br><span class="pill amber">待复核</span>
       随数据每轮重算的候选（<b>只提示不执行</b>）：${(L.add_candidates||[]).length?`建议加入 <span class="mono">${(L.add_candidates||[]).join(" ")}</span>`:""}
       ${(L.release_candidates||[]).length?`　建议放出 <span class="mono">${(L.release_candidates||[]).join(" ")}</span>`:""}
-      　判据：加入＝全样本 ROI≤−25% 且链≥5；放出＝已禁且最近 5 个结算日 ROI＞0 且全样本 ROI＞−25%。`:""}</div>
+      　判据：加入＝全样本 ROI≤−25% 且链≥5；放出＝已禁且最近 5 个结算日 ROI＞0（≥3 笔）<b>且中心偏差与声称诚实两闸都过</b>——只看 ROI 会把靠盘后 P1 铁板捞回来的站放出去（EPWA 判例）。`:""}</div>
     <div class="scroll" style="max-height:360px;margin-top:6px">
     <table><thead><tr><th>站</th><th>过闸</th><th>实现/声称</th><th>中心偏差</th>
       <th>链</th><th>ROI</th><th title="最近 5 个结算日">近5日</th><th>未过项</th></tr></thead><tbody>${rows}</tbody></table></div>

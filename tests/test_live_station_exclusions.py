@@ -117,6 +117,12 @@ def test_the_file_carries_its_evidence() -> None:
     standing = policy["standing_candidates_2026_08_30"]
     assert not (set(standing["add"]) & control.excluded_stations())
     assert set(standing["release"]) <= control.excluded_stations()
+    # Release must stay stricter than barring.  An ROI-only release rule let
+    # EPWA out on a technicality while every forward seat it ever took lost,
+    # so the criterion has to keep naming the structural gates.
+    release = policy["release_candidate_when"]
+    assert "centre bias" in release and "0.88" in release
+    assert policy["why_release_is_stricter"]
     for row in parsed["excluded_stations"]:
         assert row["station"] and row["city"]
         assert "full_sample_roi" in row

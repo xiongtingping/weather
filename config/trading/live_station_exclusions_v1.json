@@ -3,35 +3,116 @@
   "rationale": "Stations barred from live trading. The bar is temporary by intent and revisable as data accumulates, but it is revised by a person, because the alternative was measured and does not work. Candidates for adding and releasing are recomputed every render and shown on the board; promoting a candidate is an edit to this file.",
   "why_not_automatic": "Walk-forward over the 332 settlements of 2026-08-15..29, warming up on six days and testing on the remaining nine: fourteen automatic rules were swept (ROI thresholds -8%/-25%/-50% crossed with minimum samples 3/5/8, plus both-halves-negative persistence at 4/6/8, plus their intersections). Every one landed between -6.8 and +1.8 points against a +5.6% baseline, and the best of the fourteen (ROI<=-25%, n>=5) is p=0.346 against randomly excluding the same number of stations -- so even that is a multiple-comparison artifact. The persistence rules were the worst of all: the stations they barred went on to return +26% to +44%, because a station that just lost is disproportionately about to mean-revert. The same nine-station hand list held fixed across the whole test returned +15.3 points at p=0.001, and with RKSI/KAUS/FACT added, +17.0 points at p=0.002. Judgement about the stations beats any statistic about their recent returns, so this file does not compute itself.",
   "excluded_stations": [
-    {"station": "RPLL", "city": "马尼拉", "both_halves_negative": true, "full_sample_roi": -0.706, "added_utc": "2026-08-30"},
-    {"station": "ZUCK", "city": "重庆", "both_halves_negative": false, "full_sample_roi": -0.547, "added_utc": "2026-08-30"},
-    {"station": "RCSS", "city": "台北", "both_halves_negative": true, "full_sample_roi": -0.656, "added_utc": "2026-08-30"},
-    {"station": "EPWA", "city": "华沙", "both_halves_negative": false, "full_sample_roi": -0.228, "added_utc": "2026-08-30"},
-    {"station": "EHAM", "city": "阿姆斯特丹", "both_halves_negative": true, "full_sample_roi": -0.860, "added_utc": "2026-08-30"},
-    {"station": "SBGR", "city": "圣保罗", "both_halves_negative": true, "full_sample_roi": -0.606, "added_utc": "2026-08-30"},
-    {"station": "KLAX", "city": "洛杉矶", "both_halves_negative": false, "full_sample_roi": -0.315, "added_utc": "2026-08-30"},
-    {"station": "KMIA", "city": "迈阿密", "both_halves_negative": true, "full_sample_roi": -0.864, "added_utc": "2026-08-30"},
-    {"station": "LTAC", "city": "安卡拉", "both_halves_negative": false, "full_sample_roi": 0.130, "added_utc": "2026-08-30"},
-    {"station": "RKSI", "city": "首尔", "both_halves_negative": true, "full_sample_roi": -0.709, "added_utc": "2026-08-30"},
-    {"station": "KAUS", "city": "奥斯汀", "both_halves_negative": true, "full_sample_roi": -0.744, "added_utc": "2026-08-30"},
-    {"station": "FACT", "city": "开普敦", "both_halves_negative": true, "full_sample_roi": -0.669, "added_utc": "2026-08-30"}
+    {
+      "station": "RPLL",
+      "city": "马尼拉",
+      "both_halves_negative": true,
+      "full_sample_roi": -0.706,
+      "added_utc": "2026-08-30"
+    },
+    {
+      "station": "ZUCK",
+      "city": "重庆",
+      "both_halves_negative": false,
+      "full_sample_roi": -0.547,
+      "added_utc": "2026-08-30"
+    },
+    {
+      "station": "RCSS",
+      "city": "台北",
+      "both_halves_negative": true,
+      "full_sample_roi": -0.656,
+      "added_utc": "2026-08-30"
+    },
+    {
+      "station": "EPWA",
+      "city": "华沙",
+      "both_halves_negative": false,
+      "full_sample_roi": -0.228,
+      "added_utc": "2026-08-30"
+    },
+    {
+      "station": "EHAM",
+      "city": "阿姆斯特丹",
+      "both_halves_negative": true,
+      "full_sample_roi": -0.86,
+      "added_utc": "2026-08-30"
+    },
+    {
+      "station": "SBGR",
+      "city": "圣保罗",
+      "both_halves_negative": true,
+      "full_sample_roi": -0.606,
+      "added_utc": "2026-08-30"
+    },
+    {
+      "station": "KLAX",
+      "city": "洛杉矶",
+      "both_halves_negative": false,
+      "full_sample_roi": -0.315,
+      "added_utc": "2026-08-30"
+    },
+    {
+      "station": "KMIA",
+      "city": "迈阿密",
+      "both_halves_negative": true,
+      "full_sample_roi": -0.864,
+      "added_utc": "2026-08-30"
+    },
+    {
+      "station": "LTAC",
+      "city": "安卡拉",
+      "both_halves_negative": false,
+      "full_sample_roi": 0.13,
+      "added_utc": "2026-08-30"
+    },
+    {
+      "station": "RKSI",
+      "city": "首尔",
+      "both_halves_negative": true,
+      "full_sample_roi": -0.709,
+      "added_utc": "2026-08-30"
+    },
+    {
+      "station": "KAUS",
+      "city": "奥斯汀",
+      "both_halves_negative": true,
+      "full_sample_roi": -0.744,
+      "added_utc": "2026-08-30"
+    },
+    {
+      "station": "FACT",
+      "city": "开普敦",
+      "both_halves_negative": true,
+      "full_sample_roi": -0.669,
+      "added_utc": "2026-08-30"
+    }
   ],
   "review_policy": {
     "cadence": "every board render recomputes candidates; a person promotes them",
     "add_candidate_when": "full-sample ROI <= -25% and at least 5 settlements",
-    "release_candidate_when": "barred, last 5 days ROI > 0, and full-sample ROI > -25%",
+    "release_candidate_when": "barred, last 5 settled days ROI > 0 over at least 3 settlements, full-sample ROI > -25%, AND both structural gates pass (|centre bias| <= 0.8C, realized/claimed in [0.88,1.18])",
     "candidates_are_not_decisions": "These two criteria are the least-bad of the fourteen swept and are still indistinguishable from random (p=0.346). They exist to put a station in front of a human with its numbers attached, not to move it. Do not wire them to an automatic edit of excluded_stations.",
     "standing_candidates_2026_08_30": {
-      "add": ["EDDM", "NZWN", "CYYZ"],
-      "release": ["EPWA", "LTAC"],
-      "note": "Not applied. NZWN (+20.6%) and CYYZ (+3.5%) are positive over the last five days and would be barred on full-sample ROI alone, which is the exact signal measured to be worthless; EPWA and LTAC are release candidates the operator barred deliberately on 2026-08-30."
-    }
+      "add": [
+        "NZWN",
+        "CYYZ",
+        "EDDM"
+      ],
+      "release": [],
+      "note": "Release list is empty under the corrected criterion; EPWA and LTAC were candidates only while the rule read ROI alone. The add list is still not applied: NZWN (+20.6%) and CYYZ (+3.5%) are positive over the last five days and would be barred on full-sample ROI alone, which is the signal measured to be worthless."
+    },
+    "why_release_is_stricter": "Barring costs a skipped market; releasing puts money back, so the two directions are deliberately asymmetric. EPWA forced this on 2026-08-30: under an ROI-only rule it cleared on a 2.2-point technicality (-22.8% against the -25% line) with a five-day window reading +60.1%. Underneath, all six of its forward seats lost 100% (P0 5/5, P0-M 1/1), its only three wins were P1 near-certainties bought after the day was observed at claims of 0.93-0.99, and it runs 1.62C cold with a claim ratio of 0.46. The +60.1% was one P1 chain on 08-29 (+12.02 on 17.62), not a recovery. LTAC fails the same way at bias -0.83 and ratio 0.35."
   },
   "watchlist_not_excluded": {
     "rationale": "Persistently negative in both halves and not barred. Kept so a review starts from evidence rather than memory.",
-    "stations": ["KDAL", "KHOU", "RKPK"]
+    "stations": [
+      "KDAL",
+      "KHOU",
+      "RKPK"
+    ]
   },
   "authority": "operator ruling 2026-08-30, for the 2026-09-01 live open; nine stations named 2026-08-30, RKSI/KAUS/FACT added the same day",
   "valid_from_utc": "2026-08-30T00:00:00Z",
-  "updated_at_utc": "2026-08-30T10:00:00Z"
+  "updated_at_utc": "2026-08-30T11:00:00Z"
 }
