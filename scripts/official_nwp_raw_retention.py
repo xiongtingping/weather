@@ -920,6 +920,15 @@ def plan_budget_cold_archive(
         if str(row.get("store") or "") in stores_in_root
     )
     observed = _tree_bytes(root)
+    # The unreferenced purge runs first in the same pass, so those bytes are
+    # already gone by the time anything here is deleted.  Measuring against the
+    # pre-purge tree would buy the same space twice and discard re-obtainable
+    # bodies the budget never actually needed.
+    pending_unreferenced = sum(
+        int(row.get("size_bytes") or 0)
+        for row in plan.get("unreferenced_files") or []
+        if str(row.get("store") or "") in stores_in_root
+    )
     candidates = [
         row
         for row in plan.get("cold_archive_candidates") or []
@@ -928,7 +937,7 @@ def plan_budget_cold_archive(
     ]
     candidates.sort(key=lambda row: (row["mtime_epoch"], row["path"]))
     selected: list[dict[str, Any]] = []
-    remaining = observed
+    remaining = max(0, observed - pending_unreferenced)
     for row in candidates:
         if remaining <= int(budget_bytes):
             break
@@ -939,6 +948,8 @@ def plan_budget_cold_archive(
         "budget_root": str(root),
         "budget_bytes": int(budget_bytes),
         "observed_bytes": observed,
+        "pending_unreferenced_bytes": pending_unreferenced,
+        "observed_after_unreferenced_purge_bytes": max(0, observed - pending_unreferenced),
         "body_bytes": total,
         "in_store_evidence_bytes": evidence_bytes,
         "cold_archive_store_keys": sorted(wanted),

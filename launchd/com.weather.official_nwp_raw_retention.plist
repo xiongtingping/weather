@@ -33,6 +33,21 @@
          that has not written its packet yet. -->
     <key>PM_OFFICIAL_NWP_NATIVE_RETENTION_MIN_AGE_DAYS</key>
     <string>2</string>
+    <!-- Budget lane.  The unreferenced lane can only reclaim what nothing
+         names, and capture packets are kept forever, so the bodies their
+         field_receipts pin keep the store climbing about a gigabyte a day
+         after a clean pass.  This caps data/runtime/official_nwp_sources at
+         12 GiB, oldest first, and only touches stores whose receipts carry an
+         S3 object_key plus byte range -- ecmwf_pf50 and gefs are re-obtainable
+         that way, ICON/DWD is not and is deliberately absent.  The job exits
+         non-zero when the cap can no longer be held, so a silently useless
+         pass shows up in launchctl instead of only in the log. -->
+    <key>PM_OFFICIAL_NWP_NATIVE_RETENTION_BUDGET_ROOT</key>
+    <string>/Users/xiong/weather/data/runtime/official_nwp_sources</string>
+    <key>PM_OFFICIAL_NWP_NATIVE_RETENTION_BUDGET_BYTES</key>
+    <string>12884901888</string>
+    <key>PM_OFFICIAL_NWP_NATIVE_RETENTION_BUDGET_STORES</key>
+    <string>ecmwf_pf50/raw gefs/raw</string>
     <!-- Left at 0 deliberately.  A reference document this user cannot read
          cannot prove a body is garbage, so the pass refuses rather than
          guesses; twelve root-owned 0600 files under data/research currently

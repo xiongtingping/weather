@@ -382,6 +382,55 @@ def test_budget_lane_takes_the_fewest_oldest_bodies_that_fit_the_root(tmp_path: 
     assert manifest["receipt_retained_outside_store"] is True
 
 
+def test_budget_lane_counts_the_unreferenced_purge_it_runs_first(tmp_path: Path) -> None:
+    """One pass, two lanes: the free bytes must not be bought twice.
+
+    ``_run_native_lane`` discards the unreferenced bodies before the budget
+    selection is applied, so measuring the selection against the pre-purge tree
+    would discard re-obtainable bodies the budget never needed.
+    """
+
+    source_root = tmp_path / "model_arrivals"
+    store = source_root / "icon_global_official" / "raw"
+    audits = tmp_path / "audits"
+    audits.mkdir()
+    named = [
+        _native_body(store, b"y" * 1000 + str(index).encode(), age_days=30 - index)
+        for index in range(3)
+    ]
+    orphan = _native_body(store, b"z" * 1000, age_days=40)
+    (audits / "packet.json").write_text(
+        json.dumps([path.name.split(".", 1)[0] for path in named]), encoding="utf-8"
+    )
+
+    plan = build_native_plan([source_root], reference_roots=[audits])
+    assert [row["path"] for row in plan["unreferenced_files"]] == [str(orphan)]
+
+    each = named[0].stat().st_size
+    total = sum(path.stat().st_size for path in named) + orphan.stat().st_size
+    # The orphan alone closes the gap; nothing referenced needs to go.
+    selection = plan_budget_cold_archive(
+        plan,
+        budget_root=source_root,
+        budget_bytes=total - orphan.stat().st_size,
+        store_keys=["icon_global_official/raw"],
+    )
+
+    assert selection["pending_unreferenced_bytes"] == orphan.stat().st_size
+    assert selection["selected_files"] == []
+    assert selection["fits_budget"] is True
+
+    # One body deeper than the orphan: exactly one referenced body, the oldest.
+    deeper = plan_budget_cold_archive(
+        plan,
+        budget_root=source_root,
+        budget_bytes=total - orphan.stat().st_size - each,
+        store_keys=["icon_global_official/raw"],
+    )
+
+    assert [row["path"] for row in deeper["selected_files"]] == [str(named[0])]
+
+
 def test_budget_lane_only_touches_the_stores_it_was_given(tmp_path: Path) -> None:
     source_root = tmp_path / "model_arrivals"
     audits = tmp_path / "audits"

@@ -24,6 +24,20 @@ RESULT="$AUDIT_DIR/official_nwp_native_raw_retention_apply_latest.json"
 MIN_AGE_DAYS="${PM_OFFICIAL_NWP_NATIVE_RETENTION_MIN_AGE_DAYS:-2}"
 AUDITS_RETENTION_DAYS="${PM_OUTPUT_AUDITS_RETENTION_DAYS:-14}"
 
+# Budget lane.  The unreferenced lane above can only reclaim bodies nothing
+# names any more, and a capture packet is kept forever -- so the bodies its
+# field_receipts pin grow without bound and the store still climbs about a
+# gigabyte a day after a clean pass.  This caps the root: oldest first, only as
+# many as the budget requires, and only in stores whose receipts carry an S3
+# object_key plus byte range, so a discarded body is re-obtainable.
+#
+# ecmwf_pf50 and gefs qualify; icon/DWD deliberately does not (its receipts
+# carry a bare opendata URL and DWD keeps roughly 24h, so a discarded ICON body
+# is gone for good).  Set BUDGET_ROOT empty to turn the lane off.
+BUDGET_ROOT="${PM_OFFICIAL_NWP_NATIVE_RETENTION_BUDGET_ROOT-$ROOT/data/runtime/official_nwp_sources}"
+BUDGET_BYTES="${PM_OFFICIAL_NWP_NATIVE_RETENTION_BUDGET_BYTES:-12884901888}"
+BUDGET_STORES="${PM_OFFICIAL_NWP_NATIVE_RETENTION_BUDGET_STORES:-ecmwf_pf50/raw gefs/raw}"
+
 # Runs first, not after: a raw body only becomes reclaimable below once no
 # packet under output/audits names its hash any more, and a packet that is
 # never pruned keeps it referenced forever.  Pruning stale packets in the
@@ -67,6 +81,12 @@ COMMON=(
 # a deliberate operator decision and records every skipped document.
 if [ "${PM_OFFICIAL_NWP_NATIVE_RETENTION_ALLOW_UNREADABLE_REFS:-0}" = "1" ]; then
   COMMON+=(--allow-unreadable-reference-documents)
+fi
+if [ -n "$BUDGET_ROOT" ]; then
+  COMMON+=(--cold-archive-to-budget --budget-root "$BUDGET_ROOT" --budget-bytes "$BUDGET_BYTES")
+  for store_key in $BUDGET_STORES; do
+    COMMON+=(--cold-archive-store "$store_key")
+  done
 fi
 
 echo "=== official NWP native raw retention ==="
@@ -117,6 +137,17 @@ print(f"  unreadable_reference_documents={plan['unreadable_reference_document_co
 for row in plan["store_rows"][:5]:
     if row["unreferenced_bytes"]:
         print(f"    {row['provider']}: {row['unreferenced_count']} / {mib(row['unreferenced_bytes'])}")
+budget = plan.get("budget_cold_archive")
+if budget:
+    print(
+        f"  budget={mib(budget['budget_bytes'])} observed={mib(budget['observed_bytes'])}"
+        f" 免费删后={mib(budget['observed_after_unreferenced_purge_bytes'])}"
+    )
+    print(
+        f"  cold_archive: 候选={budget['candidate_count']} ({mib(budget['candidate_bytes'])})"
+        f" 选中={budget['selected_count']} ({mib(budget['selected_bytes'])})"
+        f" 预计={mib(budget['projected_bytes'])} fits={budget['fits_budget']}"
+    )
 PYSUMMARY
 
 if [ "${PM_OFFICIAL_NWP_NATIVE_RETENTION_APPLY:-0}" != "1" ]; then
@@ -124,7 +155,10 @@ if [ "${PM_OFFICIAL_NWP_NATIVE_RETENTION_APPLY:-0}" != "1" ]; then
   exit 0
 fi
 
-echo "【apply】只删除无引用且早于 ${MIN_AGE_DAYS} 天的 body；删前写 cold archive manifest。"
+echo "【apply】删除无引用且早于 ${MIN_AGE_DAYS} 天的 body；删前写 cold archive manifest。"
+if [ -n "$BUDGET_ROOT" ]; then
+  echo "  预算车道：$BUDGET_ROOT 压到 ${BUDGET_BYTES} 字节以内，只动 [${BUDGET_STORES}]（可重取）。"
+fi
 "$PY" "${COMMON[@]}" --apply --purge-unreferenced --audit-output "$RESULT" >/dev/null
 "$PY" - "$RESULT" <<'PYAPPLY'
 import json, sys
@@ -134,10 +168,62 @@ print(
     f"  deleted={plan.get('deleted_count', 0)}"
     f" ({int(plan.get('deleted_bytes', 0)) / 1024 / 1024:.1f} MiB)"
 )
+budget = plan.get("budget_cold_archive")
+if budget:
+    print(
+        f"  cold_archived={plan.get('cold_archived_count', budget['selected_count'])}"
+        f" ({int(plan.get('cold_archived_bytes', budget['selected_bytes'])) / 1024 / 1024:.1f} MiB)"
+        f" fits_budget={budget['fits_budget']}"
+    )
 for path in plan.get("archive_manifest_paths") or []:
     print(f"  manifest: {path}")
 PYAPPLY
 
 echo "【剩余】"
 du -sh data/runtime/official_nwp_sources data/research/bayes_basket_target/model_arrivals
+
+# The alarm: a pass that ran, reported success and reclaimed nothing looked
+# exactly like a healthy one for thirteen days in August.  Exit non-zero when
+# the root is still over budget after the pass -- the lane has then exhausted
+# the bodies it is allowed to discard and needs a person, and launchd records
+# the failure without anyone reading this log.
+if [ -n "$BUDGET_ROOT" ]; then
+  if ! "$PY" - "$RESULT" <<'PYHEALTH'
+import json, sys
+plan = json.load(open(sys.argv[1], encoding="utf-8"))
+budget = plan.get("budget_cold_archive") or {}
+if not budget:
+    print("  健康检查：预算车道已开但计划里没有 budget_cold_archive，视为失败。")
+    raise SystemExit(1)
+gib = lambda value: f"{int(value) / 1024 ** 3:.2f} GiB"
+cap = int(budget["budget_bytes"])
+if not budget.get("fits_budget"):
+    print(
+        f"  告警：可重取候选已用尽，仍需 {gib(int(budget['projected_bytes']) - cap)}"
+        f" 才能压到 {gib(cap)}。"
+    )
+    print("  处置：提高 PM_OFFICIAL_NWP_NATIVE_RETENTION_BUDGET_BYTES，")
+    print("        或用 scripts/cold_archive_nwp_raw_to_external.py 把冷 body 搬到外置盘。")
+    raise SystemExit(1)
+# The selection stops the moment the projection fits, so the tree measured
+# afterwards always sits a little over: this pass appends one manifest line per
+# discarded body under the same root, and the resident capture keeps writing
+# throughout.  A 2% band absorbs that.  Past it, something is filling the root
+# that the named stores do not cover -- a new store, or a store that belongs in
+# BUDGET_STORES and is not there -- which is the shape of failure that went
+# unnoticed for thirteen days in August.
+actual = plan.get("budget_root_bytes_after")
+if actual is not None and int(actual) > cap * 1.02:
+    print(
+        f"  告警：清完实测 {gib(actual)}，超出 {gib(cap)} 的 2% 容差 —— "
+        "有未纳入预算车道的东西在撑大这个 root。"
+    )
+    print("  处置：核对 store_rows 里字节最多的 store 是否在 BUDGET_STORES 里。")
+    raise SystemExit(1)
+PYHEALTH
+  then
+    echo "=== 完成（带告警） ==="
+    exit 1
+  fi
+fi
 echo "=== 完成 ==="
