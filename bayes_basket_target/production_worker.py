@@ -213,7 +213,10 @@ from .regime_materialization import (
     insert_regime_artifact,
 )
 from .ssot import production_ssot_schema_status
-from .settlement_truth import materialize_settled_training_truths
+from .settlement_truth import (
+    materialize_settled_station_truth,
+    materialize_settled_training_truths,
+)
 from .settlement_time import settlement_day_window
 from .station_registry import coordinate_registry_manifest, station_coordinates
 from .taf_artifact_registry import (
@@ -729,6 +732,61 @@ CORRECTION_AUTO_CLEAR_DEADLINE_SEC = 900.0
 # Far enough back to pick up a halt raised while the pass was down, without
 # reopening months of settled history on every run.
 CORRECTION_AUTO_CLEAR_WINDOW_DAYS = 21
+
+
+# How far back the in-cycle pre-clear looks for unreviewed corrections.
+# The live halts worth clearing before P1 compiles are on open or
+# just-closed days; the six-hour pass and the hosted sweep keep the deep
+# twenty-one-day window.
+CORRECTION_PRECLEAR_WINDOW_DAYS = 3
+# The pre-clear runs inside the production cycle, so its deadline is sized
+# for the cycle, not for a maintenance pass: the policy run itself measured
+# 1.3 seconds on 2026-08-30, and a pre-clear that cannot finish in three
+# minutes should yield to the cycle and leave the halt for the backstops.
+CORRECTION_PRECLEAR_DEADLINE_SEC = 180.0
+# The in-cycle truth increment: how far back it looks and how many scopes
+# one cycle may materialize.  Newly closed days sit at the window's edge;
+# the hosted sweep keeps the forty-five-day deep window, so this cap is a
+# per-cycle work bound, not a coverage bound -- an unusually large backlog
+# drains over consecutive cycles, oldest first.
+TRUTH_INCREMENT_WINDOW_DAYS = 3
+TRUTH_INCREMENT_MAX_SCOPES = 12
+
+
+def pending_correction_review_count(
+    conn: "sqlite3.Connection",
+    *,
+    as_of_utc: str,
+    window_days: int = CORRECTION_PRECLEAR_WINDOW_DAYS,
+) -> int:
+    """Corrections in the live window with no review receipt at all.
+
+    This is the exact condition under which a station-day's P1 will raise
+    ``correction_review_required``, asked cheaply (281ms measured against
+    the live archive) before P1 compiles instead of discovered as a
+    blocker after it.  Counting rows rather than fetching them keeps the
+    read bounded; the policy subprocess re-derives its own scope list.
+    """
+
+    since = (
+        datetime.fromisoformat(as_of_utc.replace("Z", "+00:00"))
+        .astimezone(timezone.utc)
+        - timedelta(days=window_days)
+    ).isoformat().replace("+00:00", "Z")
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM reported_trajectory_observations o"
+            " WHERE o.correction_suspected=1"
+            " AND o.canonical_committed_at>=?"
+            " AND NOT EXISTS ("
+            "  SELECT 1 FROM reported_trajectory_station_halt_reviews r"
+            "  WHERE r.triggering_observation_id=o.observation_id)",
+            (since,),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        # A missing table means a fresh archive with nothing to clear.
+        return 0
+    return int(row[0] or 0)
 
 
 def correction_review_pending(blockers: Any) -> bool:
@@ -3624,6 +3682,217 @@ class TargetProductionWorker:
             "last_completed": dict(
                 getattr(self, "_metar_trajectory_last_result", {}) or {}
             ),
+            **boundary,
+        }
+
+    def _preclear_pending_corrections(
+        self, *, as_of_utc: str
+    ) -> dict[str, Any]:
+        """Clear live correction halts before P1 compiles, in this cycle.
+
+        Corrections land on seven to seventeen stations every day, and each
+        one fail-closes its station-day's P1 until a review receipt exists.
+        Every prior clearing agent was a timer -- a six-hour worker pass, a
+        hosted sweep in a contended lane -- so the halt's duration was set
+        by scheduler health, measured at forty-three minutes median and
+        sixteen hours worst.  The condition is knowable before P1 runs for
+        the price of one indexed count, and the policy run itself is around
+        a second, so the cycle clears its own path: detect, run the standing
+        policy synchronously, then compile P1 against a clean gate.  The
+        timers stay as backstops; a genuine conflict still refuses and still
+        halts, which is that gate's job.
+        """
+
+        boundary = {
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "live_submit_authorized": False,
+            "orders_submitted": 0,
+        }
+        if self.canonical_source_conn is None:
+            return {"state": "NOT_CONFIGURED", **boundary}
+        try:
+            pending = pending_correction_review_count(
+                self.canonical_source_conn, as_of_utc=as_of_utc
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "state": "PROBE_FAILED",
+                "reason": f"{type(exc).__name__}:{str(exc)[:160]}",
+                **boundary,
+            }
+        if pending <= 0:
+            return {"state": "NOTHING_PENDING", "pending": 0, **boundary}
+        inflight = getattr(self, "_correction_auto_clear_inflight", None)
+        if inflight is not None and not inflight.done():
+            # The six-hour pass is already running; wait for it rather than
+            # racing a second policy subprocess against the same archive.
+            try:
+                inflight.result(timeout=CORRECTION_PRECLEAR_DEADLINE_SEC)
+            except Exception as exc:  # noqa: BLE001
+                return {
+                    "state": "INFLIGHT_WAIT_FAILED",
+                    "pending": pending,
+                    "reason": f"{type(exc).__name__}:{str(exc)[:160]}",
+                    **boundary,
+                }
+            return {"state": "INFLIGHT_COMPLETED", "pending": pending, **boundary}
+        since = (
+            datetime.fromisoformat(as_of_utc.replace("Z", "+00:00"))
+            .astimezone(timezone.utc)
+            .date()
+            - timedelta(days=CORRECTION_PRECLEAR_WINDOW_DAYS)
+        ).isoformat()
+        command = [
+            sys.executable,
+            str(
+                ROOT / "scripts" / "auto_clear_pending_correction_reviews.py"
+            ),
+            "--archive-db", str(self.canonical_source_db_path),
+            "--target-db", str(self.db_path),
+            "--since", since,
+            "--as-of-utc", as_of_utc,
+            "--commit",
+        ]
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                timeout=CORRECTION_PRECLEAR_DEADLINE_SEC,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "state": "FAILED",
+                "pending": pending,
+                "reason": f"{type(exc).__name__}:{str(exc)[:160]}",
+                **boundary,
+            }
+        # A completed pre-clear satisfies the six-hour pass's purpose for
+        # this window, so stamp its throttle rather than letting both run.
+        self._correction_auto_clear_last_mono = time.monotonic()
+        summary: dict[str, Any] = {}
+        try:
+            summary = json.loads(
+                (completed.stdout or "").strip().splitlines()[-1]
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        return {
+            "state": "CLEARED" if completed.returncode == 0 else "PARTIAL",
+            "pending": pending,
+            "since": since,
+            "cleared_scope_count": summary.get("cleared_scope_count"),
+            "cleared_observation_count": summary.get(
+                "cleared_observation_count"
+            ),
+            "skipped_count": summary.get("skipped_count"),
+            "stderr": (completed.stderr or "").strip()[-200:],
+            **boundary,
+        }
+
+    def _materialize_truth_increment(
+        self, *, as_of_utc: str
+    ) -> dict[str, Any]:
+        """Materialize settled truth for the live edge, inside the cycle.
+
+        Truth's only retry engine was a timer-driven sweep in a contended
+        maintenance lane, so its freshness was set by scheduler health --
+        starved by launchd stacking once, by lane oversubscription once,
+        and by five deploy restarts in one day resetting its queue place.
+        Coverage never actually broke (449 of 450 recent station-days have
+        truth), but the engine's staleness alarm fired every deploy day
+        because nothing else would have retried.  The cycle is the one loop
+        with a heartbeat and a watchdog, so it now materializes newly
+        closed station-days itself: the same per-scope materializer, a
+        short window, a hard cap per cycle.  The hosted sweep keeps the
+        forty-five-day deep window and remains the backstop.
+        """
+
+        boundary = {
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "live_submit_authorized": False,
+            "orders_submitted": 0,
+        }
+        if self.commit_conn is None or self.canonical_source_conn is None:
+            return {"state": "NOT_CONFIGURED", **boundary}
+        window_start = str(
+            (
+                datetime.fromisoformat(as_of_utc.replace("Z", "+00:00"))
+                .astimezone(timezone.utc)
+                - timedelta(days=TRUTH_INCREMENT_WINDOW_DAYS)
+            ).date()
+        )
+        try:
+            pending = self.commit_conn.execute(
+                "SELECT r.station_id, r.event_date"
+                " FROM (SELECT DISTINCT station_id, event_date"
+                "       FROM basket_target_market_registry"
+                "       WHERE source_eligible=1 AND event_date>=?) r"
+                " LEFT JOIN (SELECT DISTINCT station_id, local_date"
+                "       FROM calibration_station_daily_high_truth"
+                "       WHERE qc_status='ACCEPTED') t"
+                "  ON t.station_id=r.station_id"
+                " AND t.local_date=r.event_date"
+                " WHERE t.station_id IS NULL"
+                " ORDER BY r.event_date, r.station_id LIMIT ?",
+                (window_start, TRUTH_INCREMENT_MAX_SCOPES),
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            return {
+                "state": "PROBE_FAILED",
+                "reason": f"{type(exc).__name__}:{str(exc)[:160]}",
+                **boundary,
+            }
+        outcomes: dict[str, int] = {}
+        refusals: dict[str, int] = {}
+        committed: list[str] = []
+        for station, day in pending:
+            try:
+                result = materialize_settled_station_truth(
+                    self.commit_conn,
+                    self.canonical_source_conn,
+                    station_id=str(station),
+                    event_date=str(day),
+                    as_of_utc=as_of_utc,
+                )
+            except sqlite3.OperationalError as exc:
+                if "locked" in str(exc) or "busy" in str(exc):
+                    outcomes["deferred_locked"] = (
+                        outcomes.get("deferred_locked", 0) + 1
+                    )
+                    self.commit_conn.rollback()
+                    continue
+                raise
+            except ContractError as exc:
+                reason = str(exc).split(":", 1)[0].strip() or "unknown"
+                refusals[reason] = refusals.get(reason, 0) + 1
+                outcomes["refused"] = outcomes.get("refused", 0) + 1
+                self.commit_conn.rollback()
+                continue
+            state = str(result.get("state") or "unknown")
+            outcomes[state] = outcomes.get(state, 0) + 1
+            if result.get("wrote"):
+                self.commit_conn.commit()
+                committed.append(f"{station}|{day}")
+            else:
+                self.commit_conn.rollback()
+        return {
+            "state": "COMMITTED" if not pending or committed or all(
+                key in {
+                    "skipped_open_settlement_day", "refused", "idempotent",
+                    "deferred_locked",
+                }
+                for key in outcomes
+            ) else "PARTIAL",
+            "checked_at_utc": as_of_utc,
+            "window_start": window_start,
+            "backlog": len(pending),
+            "outcomes": outcomes,
+            "refusals": refusals,
+            "committed_scopes": committed[:12],
             **boundary,
         }
 
@@ -9016,6 +9285,14 @@ class TargetProductionWorker:
                 "writes_target_ssot": False,
             }
         assert_process_memory_budget()
+        # Clear the path before compiling: an unreviewed correction in the
+        # live window WILL halt its station-day below, and the standing
+        # policy that lifts it costs about a second.  Detect-and-clear here
+        # makes the halt last one compile instead of one scheduler cycle.
+        with self._span("p1_correction_preclear"):
+            correction_preclear = self._preclear_pending_corrections(
+                as_of_utc=as_of_utc,
+            )
         with self._span("p1_started_registry_rows"):
             rows = load_started_registry_rows(
                 self.commit_conn,
@@ -9586,6 +9863,7 @@ class TargetProductionWorker:
             assert_process_memory_budget()
         return {
             "schema": "bayes_basket_target_resident_p1_ingress_v1",
+            "correction_preclear": correction_preclear,
             # A correction/revision blocker halts only that station-day.  If
             # other scopes committed successfully, preserve their P1 chain
             # and surface the isolated halt as PARTIAL_FAIL_CLOSED; a wholly
@@ -12939,6 +13217,7 @@ class TargetProductionWorker:
         resident_p1_ingress: dict[str, Any] | None = None
         resident_probability_chain: dict[str, Any] | None = None
         regime_ingress: dict[str, Any] | None = None
+        truth_materialization: dict[str, Any] | None = None
         delta_v2_truth_ingress: dict[str, Any] | None = None
         delta_v2_label_ingress: dict[str, Any] | None = None
         post_fill_recompute: dict[str, Any] | None = None
@@ -13586,6 +13865,10 @@ class TargetProductionWorker:
                 self._correction_auto_clear_last_mono = None
             regime_ingress = self._materialize_regime_ssot(as_of_utc=now)
             self._mark("regime")
+            truth_materialization = self._materialize_truth_increment(
+                as_of_utc=now,
+            )
+            self._mark("truth_increment")
             ws_scope_catalog = (
                 self._resident_ws_scope_catalog()
                 if self.market_manifest_path.is_file()
@@ -14078,6 +14361,7 @@ class TargetProductionWorker:
                 "resident_p1_ingress": resident_p1_ingress,
                 "resident_probability_chain": resident_probability_chain,
                 "regime_ingress": regime_ingress,
+                "truth_materialization": truth_materialization,
                 "delta_v2_truth_ingress": delta_v2_truth_ingress,
                 "delta_v2_label_ingress": delta_v2_label_ingress,
                 "post_fill_recompute": post_fill_recompute,

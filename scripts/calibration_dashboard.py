@@ -1426,12 +1426,47 @@ def collect_truth_materialization(conn: sqlite3.Connection) -> dict[str, Any]:
         - still_open - refused - deferred,
     )
     age = _age_hours(sweep.get("swept_at_utc"))
-    if not sweep:
-        health, note = "red", "从未跑过物化清扫"
-    elif age is None or age > 3:
-        health, note = "red", "清扫已停，缺的日子没有任何东西会重试"
+    # The cycle materializes the live edge itself now (2026-08-30), so the
+    # sweep's clock alone no longer decides whether anything would retry a
+    # missing day.  Freshness is whichever engine asked most recently, and
+    # the alarm is graded on actual harm: red means settled station-days
+    # with no truth row and nothing fresh retrying; a stale engine with a
+    # complete book is a scheduling observation, not a data emergency --
+    # that conflation cried wolf on every deploy day.
+    worker_truth: dict[str, Any] = {}
+    try:
+        worker_truth = (
+            json.loads(STATUS_JSON.read_text())
+            .get("production", {})
+            .get("truth_materialization") or {}
+        )
+    except (OSError, ValueError, AttributeError):
+        worker_truth = {}
+    cycle_age = _age_hours(worker_truth.get("checked_at_utc"))
+    fresh_age = min(
+        (value for value in (age, cycle_age) if value is not None),
+        default=None,
+    )
+    engines = "；".join(
+        part for part in (
+            f"清扫 {age:.1f}h 前" if age is not None else "清扫从未跑过",
+            (
+                f"周期增量 {cycle_age:.1f}h 前"
+                if cycle_age is not None else "周期增量还没有回执"
+            ),
+        )
+    )
+    if outstanding and (fresh_age is None or fresh_age > 3):
+        health, note = "red", (
+            f"{outstanding} 个已结算站日缺真值，且两台重试引擎都停了"
+            f"（{engines}）"
+        )
     elif outstanding:
-        health, note = "amber", f"{outstanding} 个已结算站日还没有真值行"
+        health, note = "amber", (
+            f"{outstanding} 个已结算站日还没有真值行（{engines}）"
+        )
+    elif fresh_age is None or fresh_age > 3:
+        health, note = "amber", f"覆盖完整，但重试引擎陈旧（{engines}）"
     elif deferred:
         health, note = "green", f"{deferred} 个站日让给了常驻写入，下一轮再问"
     elif refused:
