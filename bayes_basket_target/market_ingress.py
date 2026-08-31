@@ -19,7 +19,10 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from .contracts import ContractError, content_sha256
-from .market_registry import load_started_registry_rows
+from .market_registry import (
+    load_active_registry_rows,
+    load_started_registry_rows,
+)
 from .market_materialization import insert_market_evidence_bundle
 from .quote_freshness import QuoteFreshnessPolicy
 from .resource_bounds import (
@@ -294,12 +297,32 @@ def _load_registry(
     station_id: str = "",
     event_date: str = "",
     as_of_utc: str | None = None,
+    include_listing_days: bool = False,
 ) -> dict[str, list[dict[str, Any]]]:
-    rows = load_started_registry_rows(
-        conn,
-        as_of_utc=as_of_utc,
-        station_id=station_id,
-        event_date=event_date,
+    """Registry rows for the requested scope.
+
+    ``include_listing_days`` admits a listed-but-not-started settlement day.
+    Charter 48 (2026-08-14) makes a listing tradable at listing, so the
+    caller that compiles a listing scope needs its registry rows; every
+    other caller keeps the started-day view it has always had, because a
+    formal inventory, order-state or readiness read still belongs to a day
+    that has begun.  The switch is explicit for exactly that reason -- the
+    two beliefs are both live, and which one applies is the caller's.
+    """
+
+    rows = (
+        load_active_registry_rows(
+            conn,
+            station_id=station_id,
+            event_date=event_date,
+        )
+        if include_listing_days
+        else load_started_registry_rows(
+            conn,
+            as_of_utc=as_of_utc,
+            station_id=station_id,
+            event_date=event_date,
+        )
     )
     grouped: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
@@ -831,6 +854,7 @@ def materialize_official_ws_evidence_cache(
     scope_keys: Iterable[tuple[str, str]] | None = None,
     as_of_utc: str | None = None,
     commit: bool = False,
+    include_listing_days: bool = False,
 ) -> dict[str, Any]:
     """Keep only latest complete official-WS evidence, with no execution inputs.
 
@@ -841,7 +865,12 @@ def materialize_official_ws_evidence_cache(
 
     root, quotes = load_official_ws_quotes(Path(manifest_path))
     # The cache is evidence-only, but it is still target-owned formal input
-    # storage.  Do not persist a quote for an ET day that has not started.
+    # storage.  It holds no quote for a day that has not started unless the
+    # caller asks for one: charter 48 makes a listed day tradable at
+    # listing, and a scope this book may open on needs its evidence stored
+    # like any other.  The sentence that stood here -- "do not persist a
+    # quote for an ET day that has not started" -- predates that ruling and
+    # was the gate that kept listing entry at zero.
     # Accept an explicit clock so replays and audits cannot depend on the
     # workstation wall clock.
     groups = _load_registry(
@@ -849,6 +878,7 @@ def materialize_official_ws_evidence_cache(
         station_id=station_id,
         event_date=event_date,
         as_of_utc=as_of_utc,
+        include_listing_days=include_listing_days,
     )
     selected = sorted(groups)
     if scope_keys is not None:

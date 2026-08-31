@@ -8652,6 +8652,7 @@ class TargetProductionWorker:
                 for station_id, day in listing_scopes
                 if day != manifest_event_date
             ]
+            current_day_materialized = 0
             for station_id, scope_event_date in evidence_scopes:
                 try:
                     evidence_cache_receipts.append(
@@ -8661,21 +8662,26 @@ class TargetProductionWorker:
                             station_id=station_id,
                             event_date=scope_event_date,
                             commit=True,
+                            # Only for the scopes charter 48 admitted; the
+                            # current day keeps the started-day view.
+                            include_listing_days=(
+                                scope_event_date != manifest_event_date
+                            ),
                         )
                     )
+                    if scope_event_date == manifest_event_date:
+                        current_day_materialized += 1
                 except ContractError as exc:
                     evidence_cache_failures.append({
                         "station_id": station_id,
                         "event_date": scope_event_date,
                         "reason": f"{type(exc).__name__}:{exc}",
                     })
-            current_day_receipts = [
-                receipt
-                for receipt in evidence_cache_receipts
-                if isinstance(receipt, Mapping)
-                and str(receipt.get("event_date") or "") == manifest_event_date
-            ]
-            if not current_day_receipts:
+            # Counted in the loop, not inferred from the receipt: the
+            # receipt does not have to carry an event_date, and reading one
+            # off it turned every cycle fatal the moment listing scopes were
+            # added -- 51 scopes materialized and the filter still saw none.
+            if not current_day_materialized:
                 # Nothing was materialized for any station, so there is no
                 # partial pass to keep -- fail the way the single-scope
                 # contract does, naming what was skipped.
