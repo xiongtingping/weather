@@ -2939,35 +2939,17 @@ def compile_native_ensemble_p0(
             taf_compatibility_identity
         ),
     }
-    # A checkpoint names a forecast, not the moment it was compiled.
-    #
-    # decision_at_utc was in both of these hashes, so a recompile whose
-    # probabilities and evidence were byte-identical still minted a new
-    # posterior and a new checkpoint id.  Measured 2026-08-31 across the
-    # fleet: 5,520 committed P0 envelopes carrying 5,520 distinct identities
-    # over 796 distinct forecasts -- identity churning about seven times
-    # faster than substance.
-    #
-    # What that cost is every downstream pin.  P0-M roots on a P0 checkpoint
-    # and is re-minted only when a TAF revision arrives, twice a day; the
-    # root it named was superseded within ten minutes by a P0 that said the
-    # same thing, so resident_p0m_replay_required refused every listing-day
-    # scope on every cycle.  The current day escapes only because a matching
-    # P1 short-circuits that check.
-    #
-    # The instant has not been thrown away -- decision_at_utc and
-    # fresh_until_utc remain columns on every row, and freshness is still
-    # decided per row.  What changed is that two rows stating the same
-    # forecast now say so with one name.
     posterior_sha = content_sha256({
         "station_id": station_id,
         "event_date": event_date,
+        "decision_at_utc": decision_at_utc,
         "probabilities": probability,
         "native_probability_evidence_sha256": evidence_sha,
     })
     checkpoint_identity = {
         "station_id": station_id,
         "event_date": event_date,
+        "decision_at_utc": decision_at_utc,
         "posterior_sha256": posterior_sha,
     }
     # ``compiled_stage`` was resolved before the envelope, because the TAF is

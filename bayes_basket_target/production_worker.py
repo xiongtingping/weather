@@ -414,12 +414,7 @@ def _stored_probability_envelope(
         "settlement_timezone,decision_at_utc,fresh_until_utc,"
         "bucket_ordinals_json,probabilities_json,posterior_version,"
         "posterior_sha256,bridge_sha256,lineage_json "
-        # Newest first, explicitly.  A checkpoint id names a forecast rather
-        # than a compile instant, so several rows can carry it -- each a
-        # restatement with its own freshness window -- and an unordered
-        # fetchone would return whichever the file happened to hold first.
-        "FROM basket_probability_envelope WHERE checkpoint_id=? "
-        "ORDER BY decision_at_utc DESC LIMIT 1",
+        "FROM basket_probability_envelope WHERE checkpoint_id=?",
         (checkpoint_id,),
     ).fetchone()
     if row is None:
