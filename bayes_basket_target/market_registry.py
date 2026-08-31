@@ -84,6 +84,16 @@ CREATE INDEX IF NOT EXISTS basket_target_market_registry_latest_idx
 -- production reads actually have.
 CREATE INDEX IF NOT EXISTS basket_target_market_registry_scope_idx
   ON {TABLE}(station_id,event_date);
+
+-- The newest snapshot is chosen by ordering the snapshot table and taking
+-- one row, and without an index on that order SQLite scanned every snapshot,
+-- ran the correlated existence check on each, then sorted the survivors in a
+-- temp b-tree.  2.78 seconds standalone and 12.2 under the writer's lock,
+-- inside a per-cycle path -- one of the reads that was affordable at one
+-- event day and stopped being affordable at two.  Ordered, it walks the
+-- index and stops at the first row that qualifies: 0.001 seconds.
+CREATE INDEX IF NOT EXISTS basket_target_market_registry_snapshot_recency_idx
+  ON {SNAPSHOT_TABLE}(ingested_at_utc DESC, snapshot_sha256 DESC);
 -- The board asks this table for one row per station -- the settlement unit
 -- each one trades in -- and got it by grouping 398k scope rows through a
 -- temp B-tree, 10.7 seconds of every render (2026-08-29).  Two columns,
