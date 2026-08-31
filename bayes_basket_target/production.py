@@ -595,20 +595,34 @@ def commit_production_candidate_atomic(
             else None
         )
         if isinstance(envelope_lineage, Mapping):
-            for key in (
-                "canonical_observation_event_id",
-                "truth_observation_revision_content_sha256",
-                "canonical_observation_committed_at",
-                "hard_bound_id",
-                "source_lane",
-                "report_type",
-                "bound_generation",
-            ):
+            # Mirror the whole copy the success path makes -- the envelope
+            # lineage spread plus the four computed identities runtime.py
+            # writes beside it -- rather than the six keys the first ledger
+            # check happens to read.  Picking keys one refusal at a time is
+            # how this fix would otherwise be rediscovered one gate per
+            # cycle: probability_stage was demanded by the very next check
+            # after the observation binding was satisfied.
+            for key, value in envelope_lineage.items():
                 if str(plan_lineage.get(key) or "").strip():
                     continue
-                value = envelope_lineage.get(key)
                 if value not in (None, ""):
                     plan_lineage[key] = value
+            for key, value in {
+                "probability_stage": candidate_probability_envelope.get("stage"),
+                "probability_envelope_sha256": (
+                    candidate_probability_envelope.get("content_sha256")
+                ),
+                "posterior_sha256": (
+                    candidate_probability_envelope.get("posterior_sha256")
+                ),
+                "probability_decision_at_utc": (
+                    candidate_probability_envelope.get("decision_at_utc")
+                ),
+            }.items():
+                if str(plan_lineage.get(key) or "").strip():
+                    continue
+                if value not in (None, ""):
+                    plan_lineage[key] = str(value)
     # P1 roots on the observation the day produced; the two stages that run
     # before one exists root on their own evidence instead.  Both are derived
     # from this same lineage, so the caller supplies neither and cannot pair a
