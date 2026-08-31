@@ -20,6 +20,7 @@ from scripts.weather_basket_yes_production_acceptance import (
     primary_ws_pure_yes_token_snapshots,
 )
 from scripts import reconcile_reported_trajectory_held_yes_clob as held_yes_reconcile
+from bayes_basket_target.fleet import expected_station_count
 
 
 ROOT = Path(__file__).parents[1]
@@ -46,7 +47,7 @@ def _canonical_registry_lanes() -> dict[str, set[str]]:
     }
 
 
-def test_global_awc_station_contract_covers_all_45_stations() -> None:
+def test_global_awc_station_contract_covers_the_whole_fleet() -> None:
     official = load_official_source_config()
     lanes = _canonical_registry_lanes()
 
@@ -58,7 +59,7 @@ def test_global_awc_station_contract_covers_all_45_stations() -> None:
     )
 
     assert failures == []
-    assert len(lanes) == 45
+    assert len(lanes) == expected_station_count()
     assert all(lane == {"awc"} for lane in lanes.values())
 
 

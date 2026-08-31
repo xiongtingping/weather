@@ -174,3 +174,25 @@ index d857cdfa..fc93d8c2 100644
    "selection_contract": {
      "precedence": "official_native_first",
      "fallback_when_native": [
+diff --git a/config/trading/reported_trajectory_official_sources_v1.json b/config/trading/reported_trajectory_official_sources_v1.json
+index 4db2d3a8..838fdc5b 100644
+--- a/config/trading/reported_trajectory_official_sources_v1.json
++++ b/config/trading/reported_trajectory_official_sources_v1.json
+@@ -235,7 +235,9 @@
+     "LEMD": "global_noaa_awc_relay",
+     "LFPB": "global_noaa_awc_relay",
+     "LIMC": "global_noaa_awc_relay",
++    "LLBG": "global_noaa_awc_relay",
+     "LTAC": "global_noaa_awc_relay",
++    "LTFM": "global_noaa_awc_relay",
+     "MMMX": "global_noaa_awc_relay",
+     "MPMG": "global_noaa_awc_relay",
+     "NZWN": "global_noaa_awc_relay",
+@@ -248,6 +250,7 @@
+     "RPLL": "global_noaa_awc_relay",
+     "SAEZ": "global_noaa_awc_relay",
+     "SBGR": "global_noaa_awc_relay",
++    "UUWW": "global_noaa_awc_relay",
+     "VILK": "global_noaa_awc_relay",
+     "WMKK": "global_noaa_awc_relay",
+     "WSSS": "global_noaa_awc_relay",

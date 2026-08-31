@@ -12,16 +12,15 @@ from reported_trajectory_market_registry import (
     load_config,
     materialize_event_registry,
 )
+from bayes_basket_target.fleet import expected_station_count
+from bayes_basket_target.station_registry import coordinate_registry_manifest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AWC_GLOBAL_STATIONS = {
-    "CYYZ", "EDDM", "EFHK", "EGLC", "EHAM", "EPWA", "FACT", "KATL", "KAUS",
-    "KBKF", "KDAL", "KHOU", "KLAX", "KLGA", "KMIA", "KORD", "KSEA", "KSFO",
-    "LEMD", "LFPB", "LIMC", "LTAC", "MMMX", "MPMG", "NZWN", "OEJN", "OPKC",
-    "RCSS", "RJTT", "RKPK", "RKSI", "RPLL", "SAEZ", "SBGR", "VILK", "WMKK",
-    "WSSS", "ZBAA", "ZGGG", "ZGSZ", "ZHHH", "ZSPD", "ZSQD", "ZUCK", "ZUUU",
-}
+# The fleet, not a third copy of it: this file, the season map and the
+# no-live runner each kept their own roster, and each went stale on its own
+# schedule.
+AWC_GLOBAL_STATIONS = set(coordinate_registry_manifest()["station_ids"])
 
 
 # Every live Gamma market carries the exchange's own admission rule for an
@@ -198,7 +197,7 @@ class ReportedTrajectoryRegistryTests(unittest.TestCase):
         self.assertTrue(all(row["source_lane"] == "awc" for row in rows))
         self.assertTrue(all(row["source_eligible"] for row in rows))
 
-    def test_station_lane_config_has_nine_amsc_and_thirty_six_awc_stations(self) -> None:
+    def test_station_lane_config_is_the_whole_fleet_on_awc(self) -> None:
         lane_map = json.loads(
             (ROOT / "config/trading/bayes_basket_target_station_lane_map_v1.json").read_text(
                 encoding="utf-8"
@@ -209,7 +208,7 @@ class ReportedTrajectoryRegistryTests(unittest.TestCase):
         awc = {station for station, lane in stations.items() if lane == "awc"}
         self.assertEqual(amsc, set())
         self.assertEqual(awc, AWC_GLOBAL_STATIONS)
-        self.assertEqual(len(awc), 45)
+        self.assertEqual(len(awc), expected_station_count())
         self.assertEqual(awc, set(stations))
 
     def test_non_china_market_routes_to_awc_when_enabled(self) -> None:
