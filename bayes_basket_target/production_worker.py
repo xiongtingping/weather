@@ -20,6 +20,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 import threading
 import traceback
 import time
@@ -348,6 +349,12 @@ OFFICIAL_NATIVE_CAPTURE_PENDING_STATES = frozenset({
 # station count made "more than one day is open" an error, which is how the
 # lane came to depend on something upstream pinning it to a single date.
 MAX_FORWARD_P0_STATION_DAYS = MAX_FORWARD_P0_STATIONS * 4
+# Comfortably inside the sixty-second quote lease, so a scope compiled just
+# after a refresh and one compiled just before the next both hold a book the
+# freshness contract still accepts.  Not derived from the policy at import:
+# the policy is per-activation and this is a loop cadence, and a cadence that
+# silently tracked a widened lease would stop being a safety margin.
+QUOTE_EVIDENCE_REFRESH_SECONDS = 40.0
 MAX_RESIDENT_NWP_SCOPES_PER_CYCLE = 4
 MAX_NATIVE_ENSEMBLE_TRUTH_CASES_PER_STATION = 64
 MAX_RESIDENT_CANDIDATE_PREFETCH_SCOPES_PER_CYCLE = 1
@@ -8588,6 +8595,45 @@ class TargetProductionWorker:
                 "post_fill_recompute_filled_notional_not_projected"
             )
 
+    def _refresh_scope_day_evidence(
+        self,
+        activation: Mapping[str, Any],
+        *,
+        event_date: str,
+        as_of_utc: str,
+    ) -> dict[str, Any]:
+        """Re-read one event day's books and restate its evidence.
+
+        The publisher rewrites the scope catalog every couple of seconds, so
+        this is a bounded file read and the same validation path the cycle's
+        first pass took -- no quote is fetched, recomputed or reinterpreted.
+        It exists because the compile loop outlives the quote lease.
+        """
+
+        catalog = self._resident_ws_scope_catalog()
+        day_scopes = [
+            item["manifest"]
+            for item in catalog
+            if str(item.get("event_date") or "") == str(event_date)
+            and isinstance(item.get("manifest"), Mapping)
+            and item.get("probability_evidence_fresh") is True
+            and not item.get("scope_blocker")
+        ]
+        if not day_scopes:
+            return {"event_date": str(event_date), "state": "no_scope_manifest"}
+        listing_days = {
+            day for _station, day in self._listing_entry_scopes(as_of_utc=as_of_utc)
+        }
+        with self._temporary_scope_manifest(
+            _merge_scope_manifests(day_scopes)
+        ) as refreshed_path:
+            return self._materialize_market_evidence_from_manifest(
+                activation,
+                manifest_path=refreshed_path,
+                full_materialization=False,
+                listing_day_pass=str(event_date) in listing_days,
+            )
+
     def _materialize_market_evidence(self, activation: Mapping[str, Any]) -> dict[str, Any]:
         return self._materialize_market_evidence_from_manifest(
             activation,
@@ -14578,11 +14624,55 @@ class TargetProductionWorker:
                 if isinstance(item, Mapping)
                 and isinstance(item.get("candidate"), Mapping)
             ]
+            # One evidence read, then a compile loop several times longer
+            # than the lease it depends on.  Measured 2026-08-31: the books
+            # were stamped 09:48:25, the cycle ran to 09:51:03, and the quote
+            # lease is sixty seconds -- so every scope compiled after
+            # 09:49:25 died on production_quote_expired no matter how healthy
+            # it was.  Eighty-two scopes over a 158-second window against a
+            # 60-second lease can only ever commit the first third.
+            #
+            # An earlier fix moved this from one scope per cycle to all of
+            # them in one ingest, which removed the worst of it; what was
+            # left is this, and the answer is the same as it was then.  Read
+            # the books again -- the publisher rewrites the manifest every
+            # couple of seconds and it costs one bounded file read -- rather
+            # than lengthening the lease, which would mint a freshness the
+            # evidence never had and is the one move the freshness contract
+            # exists to forbid.
+            #
+            # Refreshed per day, not per scope: one re-materialization serves
+            # every scope of that day still to come, so a 158-second loop
+            # costs three reads instead of eighty-two.
+            evidence_refreshed_at: dict[str, float] = {
+                day_key: time.monotonic()
+                for day_key in {str(item[1]) for item in rows}
+            }
+            quote_refresh_failures: list[dict[str, str]] = []
             for station_id, event_date in rows:
                 station = str(station_id)
                 day = str(event_date)
                 if (station, day) in recomputed_scopes:
                     continue
+                if (
+                    time.monotonic() - evidence_refreshed_at.get(day, 0.0)
+                    >= QUOTE_EVIDENCE_REFRESH_SECONDS
+                ):
+                    evidence_refreshed_at[day] = time.monotonic()
+                    try:
+                        self._refresh_scope_day_evidence(
+                            activation,
+                            event_date=day,
+                            as_of_utc=utc_now(),
+                        )
+                        now = utc_now()
+                    except Exception as exc:  # noqa: BLE001 -- observational
+                        # A failed refresh leaves the previous books in
+                        # place; the scope then fails on its own expiry with
+                        # its own reason, which is the honest outcome.
+                        quote_refresh_failures.append(
+                            {"event_date": day, "reason": f"{type(exc).__name__}:{exc}"[:160]}
+                        )
                 # Cleared before the compile so the except arm can tell a
                 # compile-side throw (candidate still None) from a
                 # commit-side one (candidate exists and carries the plan's
@@ -14760,6 +14850,11 @@ class TargetProductionWorker:
                 "execution_mode": PRODUCTION_EXECUTION_MODE,
                 "candidate_count": len(results),
                 "candidates": results,
+                "quote_evidence_refresh": {
+                    "interval_seconds": QUOTE_EVIDENCE_REFRESH_SECONDS,
+                    "failures": quote_refresh_failures[:10],
+                    "failure_count": len(quote_refresh_failures),
+                },
                 "ws_scope_catalog": self._ws_scope_catalog_summary(
                     ws_scope_catalog
                 ),
