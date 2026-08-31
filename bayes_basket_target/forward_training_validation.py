@@ -881,7 +881,15 @@ def build_validated_forward_fact_delta_v2(
     )
     feature = {
         "schema": "delta_basket_score_forward_feature_vector_v2",
-        "basket_lifecycle": basket_lifecycle_projection(plan),
+        # required follows the plan's own claim, exactly as the decision
+        # details writer does: a blocked plan carries no lifecycle and the
+        # training fact records that as None rather than refusing the
+        # decision -- this was the tenth reader of the same absence on
+        # 2026-08-31, standing over charter 67's entry window.
+        "basket_lifecycle": basket_lifecycle_projection(
+            plan,
+            required=compiled_plan.get("status") in {"ready_no_live", "hold"},
+        ),
         "candidate_status": compiled_plan.get("status"),
         "reason_codes": list(compiled_plan.get("reason_codes") or []),
         "plan": plan,
