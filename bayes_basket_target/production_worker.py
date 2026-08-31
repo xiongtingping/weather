@@ -349,6 +349,18 @@ OFFICIAL_NATIVE_CAPTURE_PENDING_STATES = frozenset({
 # station count made "more than one day is open" an error, which is how the
 # lane came to depend on something upstream pinning it to a single date.
 MAX_FORWARD_P0_STATION_DAYS = MAX_FORWARD_P0_STATIONS * 4
+# How many station-days may rebuild their TAF confirmation in one cycle.
+#
+# A cap, not a policy: the replay itself is bounded by how often a forecast
+# actually moves, 8 to 10 times a day per station.  This is what stands
+# between that and the pathological case -- a generation change, a repaired
+# inbox, anything that makes every scope eligible at once.  The first attempt
+# at this replay had no cap and re-applied 383 scopes in a single cycle,
+# taking it from eight minutes to nineteen and past its overdue bound.
+#
+# Scopes over the cap are not dropped, only deferred: they are the ones whose
+# confirmation is most recent, and they rebuild on the next cycle.
+MAX_P0M_REPLAYS_PER_CYCLE = 12
 # How little lease may remain on a day's books before its next scope is
 # compiled against a re-read instead.
 #
@@ -10394,15 +10406,42 @@ class TargetProductionWorker:
             ),
             default="",
         )
-        roots = [
-            item for item in envelopes
-            if item.stage == "P0"
-            and item.decision_at_utc <= earliest_taf
-        ]
+        # Charter, operator ruling 2026-08-31: a TAF replayed onto a newer
+        # model base is still the forecaster's confirmation, and P0-M should
+        # be built on P0's latest probabilities the way P1 already is.
+        #
+        # The base used to be the last P0 predating the earliest un-applied
+        # TAF, and stayed there while that TAF stayed earliest.  KATL is the
+        # specimen: TAF at 05:39, base frozen on the 05:28 P0, and P0-M was
+        # still serving it at 10:43 -- five hours and four model improvements
+        # later, stating 0.347 for the 92-93F bucket while the current P0
+        # said 0.427.  Stage precedence serves the higher stage, so the book
+        # was priced off the older number with the newer one in hand.
+        roots = [item for item in envelopes if item.stage == "P0"]
+        latest_root = (
+            max(roots, key=lambda item: item.decision_at_utc) if roots else None
+        )
+        # Seen under a base that still states today's forecast.
+        #
+        # On substance, not on identity.  A P0 checkpoint id is re-minted
+        # every compile -- decision_at_utc is inside the hash -- so keying
+        # this on the id makes every scope re-apply every cycle forever.
+        # Keyed on whether the probabilities moved, a TAF speaks again only
+        # when the forecast underneath it actually changed: measured on
+        # 09-01, 47 committed P0 envelopes per station over 8 to 10 distinct
+        # probability vectors.
         seen_revisions = {
             str(item.lineage.get("forecast_source_object_sha256") or "")
             for item in envelopes
             if item.stage == "P0-M"
+            and (
+                latest_root is None
+                or self._same_p0_forecast(
+                    str(item.lineage.get("p0_root_checkpoint_id") or ""),
+                    latest_root,
+                    envelopes,
+                )
+            )
         }
         return {
             "first_root_at": first_root_at,
@@ -10639,6 +10678,8 @@ class TargetProductionWorker:
         # more than an argument that it must.
         shadow_verdicts: dict[tuple[str, str], dict[str, Any] | None] = {}
         shadow_errors: list[dict[str, str]] = []
+        replays_this_cycle = 0
+        replays_deferred: list[str] = []
         for (station, day), captures in sorted(captures_by_scope.items()):
             try:
                 station_artifacts = [
@@ -10812,14 +10853,13 @@ class TargetProductionWorker:
                         expected_source_lane=expected_source_lane,
                         preloaded_validated=scope_validated,
                     )
-                roots = [
-                    item for item in envelopes
-                    if item.stage == "P0"
-                    and item.decision_at_utc <= earliest_taf
-                ]
+                # Same rule as the shape gate: the base is the latest P0, so
+                # a confirmation rebuilt this cycle is rebuilt on the
+                # forecast being served.
+                roots = [item for item in envelopes if item.stage == "P0"]
                 if not roots:
                     raise ContractError("resident_p0_scope_changed_during_lane_gate")
-                root = roots[-1]
+                root = max(roots, key=lambda item: item.decision_at_utc)
                 exact_artifacts = [
                     item
                     for item in station_artifacts
@@ -10911,6 +10951,35 @@ class TargetProductionWorker:
                     seen_revisions = self._p0m_scope_shape(
                         envelopes, captures
                     )["seen_revisions"]
+                    # A rebuild this scope owes only because its base moved --
+                    # every revision here already has a seat under some older
+                    # forecast -- waits its turn when the cycle has spent its
+                    # replay budget.  A scope with a genuinely new TAF is not
+                    # a replay and is never deferred: its revisions are absent
+                    # from seen_revisions whatever the base did.
+                    replay_only = bool(revisions) and all(
+                        any(
+                            str(item.lineage.get(
+                                "forecast_source_object_sha256"
+                            ) or "") == revision.source_object_sha256
+                            for item in envelopes
+                            if item.stage == "P0-M"
+                        )
+                        for revision in revisions
+                    )
+                    if replay_only and not any(
+                        revision.source_object_sha256 in seen_revisions
+                        for revision in revisions
+                    ):
+                        if replays_this_cycle >= MAX_P0M_REPLAYS_PER_CYCLE:
+                            replays_deferred.append(f"{station}|{day}")
+                            receipts.append(self._p0m_no_op_receipt(
+                                station_id=station,
+                                event_date=day,
+                                state="REPLAY_DEFERRED_CYCLE_BUDGET",
+                            ))
+                            continue
+                        replays_this_cycle += 1
                     observed_pending: list[
                         tuple[ProbabilityEnvelope, str]
                     ] = []
@@ -11456,6 +11525,12 @@ class TargetProductionWorker:
             "ignored_no_artifact_scope_count":
                 ignored_no_artifact_scope_count,
             "skipped_no_tx_revision_count": skipped_no_tx_revision_count,
+            # Counted, not inferred.  A replay budget that silently drops
+            # scopes reads exactly like a replay that never fired.
+            "replays_this_cycle": replays_this_cycle,
+            "replay_budget": MAX_P0M_REPLAYS_PER_CYCLE,
+            "replays_deferred": replays_deferred[:20],
+            "replays_deferred_count": len(replays_deferred),
             "writes_target_ssot": any(
                 item["write_count"] > 0 for item in receipts
             ),
