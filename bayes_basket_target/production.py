@@ -667,8 +667,25 @@ def commit_production_candidate_atomic(
         else str(current_direction_raw).strip().upper()
     )
     core_transition = plan_payload.get("core_transition")
+    # These validators guard the decision details written below, and they
+    # were written for the one plan shape that existed: a tradable compile.
+    # A plan blocked upstream carries no directional claim, no transition
+    # and no lifecycle -- and today they were the fifth, sixth and seventh
+    # readers to treat that absence as a wrong value (empty direction is not
+    # UP/DOWN/NEUTRAL; None is not a transition mapping; "" is not a basket
+    # state), each in turn standing as the terminal blocker over the reason
+    # the plan was actually blocked.  Absence on a non-tradable plan is
+    # recorded as absence; a *present* malformed value still refuses, and a
+    # plan that claims tradability answers for every field exactly as
+    # before.
+    plan_claims_tradability = compiled_plan.get("status") in {
+        "ready_no_live",
+        "hold",
+    }
     if direction not in {"UP", "DOWN", "NEUTRAL"}:
-        raise ContractError("production_plan_direction_invalid")
+        if plan_claims_tradability or direction:
+            raise ContractError("production_plan_direction_invalid")
+        direction = None
     if (
         current_direction is not None
         and current_direction not in {"UP", "DOWN", "NEUTRAL"}
@@ -690,7 +707,8 @@ def commit_production_candidate_atomic(
             "HOLD",
         }
     ):
-        raise ContractError("production_plan_core_transition_invalid")
+        if plan_claims_tradability or core_transition is not None:
+            raise ContractError("production_plan_core_transition_invalid")
     production_inputs = compiled_plan.get("production_inputs")
     if not isinstance(production_inputs, Mapping):
         production_inputs = {}
@@ -880,7 +898,9 @@ def commit_production_candidate_atomic(
         "reason_codes": reason_codes,
         "details": {
             "schema": "bayes_basket_production_decision_v1",
-            "basket_lifecycle": basket_lifecycle_projection(plan_payload),
+            "basket_lifecycle": basket_lifecycle_projection(
+                plan_payload, required=plan_claims_tradability
+            ),
             "current_core_buckets": list(
                 plan_payload.get("current_core_buckets") or ()
             ),
@@ -889,7 +909,11 @@ def commit_production_candidate_atomic(
             ),
             "direction": direction,
             "current_direction": current_direction,
-            "core_transition": dict(core_transition),
+            "core_transition": (
+                dict(core_transition)
+                if isinstance(core_transition, Mapping)
+                else None
+            ),
             "candidate_will_order": not blocked,
             "production_plan_sha256": compiled_plan.get("production_plan_sha256"),
             "delta_v2_authorized": delta_v2_authorized,

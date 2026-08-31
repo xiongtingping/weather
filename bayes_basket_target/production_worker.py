@@ -14382,6 +14382,12 @@ class TargetProductionWorker:
                 day = str(event_date)
                 if (station, day) in recomputed_scopes:
                     continue
+                # Cleared before the compile so the except arm can tell a
+                # compile-side throw (candidate still None) from a
+                # commit-side one (candidate exists and carries the plan's
+                # own status and reason codes -- the upstream story the
+                # receipt used to drop on the floor).
+                candidate = None
                 try:
                     replay_blocker = self._replay_root_mismatch_reason(
                         station_id=station,
@@ -14445,10 +14451,29 @@ class TargetProductionWorker:
                         },
                         created_at_utc=now,
                     )
-                    results.append({
+                    wrapper = {
                         **_blocked(reason, station_id=station, event_date=day),
                         "atomic_commit": blocked_commit,
-                    })
+                    }
+                    if isinstance(candidate, Mapping):
+                        # The commit refused a candidate the compile had
+                        # already produced.  What that plan claimed about
+                        # itself -- blocked/hold/ready, and why -- is the
+                        # diagnosis; without it, seven stations spent three
+                        # cycles today naming a different shape error each
+                        # round while the real upstream reasons stayed
+                        # unreadable.
+                        wrapper["compiled_plan_status"] = str(
+                            candidate.get("status") or ""
+                        )
+                        wrapper["compiled_plan_reason_codes"] = [
+                            str(code)
+                            for code in (candidate.get("reason_codes") or ())
+                        ][:8]
+                        wrapper["failed_in"] = "commit"
+                    else:
+                        wrapper["failed_in"] = "compile"
+                    results.append(wrapper)
             # Closed-day truth and labels are maintenance work, not inputs to
             # the current action.  Running their scans before market ingress
             # consumed the strict quote lease and could turn a fresh official
