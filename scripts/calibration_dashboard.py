@@ -8025,6 +8025,35 @@ function liveOrderCard(L){
     <td class="mono">${(r.requested_notional_usdc??0).toFixed(2)}</td>
     <td>${r.state}</td>
     <td class="mono" title="${r.order_intent_id}">${r.created_at}</td></tr>`).join("");
+  // Everything above is counted off our own tables.  This one row is not:
+  // it is what the exchange says is resting on the account right now.  On
+  // 2026-08-31 an order this machine placed and then lost track of rested
+  // for eighteen minutes; it appeared in no table here, and only asking the
+  // account found it.  So the account gets its own row, and a row that
+  // cannot be read says so rather than rendering a reassuring zero.
+  const O2 = L.open_orders || {};
+  const openRows = (O2.orders||[]).map(o=>`<tr>
+    <td><span class="pill red" style="font-size:10px">挂单中</span></td>
+    <td class="mono">${o.outcome||"—"}</td><td>${o.side||""}</td>
+    <td class="mono">${o.price??"—"}</td>
+    <td class="mono">${(o.size_matched??"?")+"/"+(o.original_size??"?")}</td>
+    <td class="mono" title="${o.id}">${String(o.id||"").slice(0,14)}…</td>
+    <td class="mono">${o.created_at??""}</td></tr>`).join("");
+  const openCard = !O2.available
+    ? `<div class="note" style="margin-top:9px">⚠️ <b>账户挂单读不到</b>
+       <span class="muted">（网关无响应：<span class="mono">${h(O2.error||"unknown")}</span>）——
+       这一行问的是交易所，读不到就不是零。</span></div>`
+    : O2.count === 0
+      ? `<div class="muted" style="font-size:12px;margin-top:9px">✅ 交易所侧
+         <b>账户当前零挂单</b> —— 这一行不查我们自己的表，直接问交易所，
+         所以本机不知道其存在的孤儿单也会出现在这里。</div>`
+      : `<div style="margin-top:9px"><b class="mono" style="color:var(--red)">
+         交易所侧：账户当前 ${O2.count} 笔挂单</b>
+         <span class="muted" style="font-size:12px">—— 逐笔核对；若某笔不在上面的意向表里，
+         它就是本机丢了记录的孤儿单，撤掉它。</span>
+         <div style="overflow-x:auto"><table><thead><tr><th></th><th>桶</th><th>侧</th>
+         <th>价</th><th>成交/总</th><th>order id</th><th>挂单时刻</th></tr></thead>
+         <tbody>${openRows}</tbody></table></div></div>`;
   return `<h3 style="margin-top:22px;font-size:15px">实盘订单 · 数量 / ROI / PnL
     <span class="pill ${liveMode&&!L.submission_paused?"red":""}"
       style="font-size:11px">${state}</span></h3>
@@ -8049,6 +8078,7 @@ function liveOrderCard(L){
             :"合同未授权发单 · 分子分母都不存在，不是 0%"),
         !P.available?"muted":((P.roi||0)>=0?"up":"down"))}
     </div>
+    ${openCard}
     <div class="muted" style="font-size:12px;margin-top:9px">
       判据唯一：<span class="mono">live_submit_authorized=1</span> 的意向才是实盘——
       该列只有 go-live 迁移之后铸造的行才可能为 1，历史 1406 行全部为 0。
