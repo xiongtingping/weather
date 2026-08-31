@@ -1097,6 +1097,14 @@ export class ClobOrderService {
       proxy,
       "--connect-timeout",
       "5",
+      // The local proxy drops roughly one connection in twelve (measured
+      // 11/12 on 2026-08-31, the miss a 5s connect timeout), and the
+      // first live-lane probe order died on exactly that miss.  --retry
+      // re-attempts transient connection-stage failures only, and a
+      // duplicate POST that does slip through is harmless by design:
+      // the signed order's id is deterministic, so the exchange sees
+      // the same order twice and takes it once.
+      "--retry", "2",
       "--max-time",
       String(Math.max(5, Math.ceil(Number(axios.defaults.timeout || 15000) / 1000))),
       "--request",
@@ -2283,6 +2291,34 @@ export class ClobOrderService {
         ? await this.requestJsonViaProxy("GET", `/data/order/${expectedOrderID}`)
         : await this.client.getOrder(expectedOrderID);
       const order = unwrapProxyLookupResponse(rawOrder);
+      // An answered "no such order" is a verdict that ends reconciliation:
+      // the deterministic order id was queried and the exchange does not
+      // hold it, so the POST never arrived and nothing is at risk.  It used
+      // to be folded into "empty_response" with genuine lookup failures,
+      // which left an intent unresolved forever over an order that never
+      // existed -- the first probe sat that way through four reconcile
+      // attempts that were each, in fact, the answer.
+      const answeredNotFound = (
+        order && typeof order === "object" && !Array.isArray(order)
+        && !order.id && !order.status
+        && typeof order.error === "string"
+        && /not.?found|does.?not.?exist|no.such/i.test(order.error)
+      ) || order === null;
+      if (answeredNotFound) {
+        const closed = {
+          ok: false, accepted: false, pending: false,
+          reconcile_required: false,
+          error: "order_never_reached_exchange",
+          idempotency_key: normalized,
+          expected_order_id: expectedOrderID,
+          status: "not_found",
+          source: SERVICE_NAME,
+        };
+        this.persistIntent(normalized, "submit_failed", request, closed);
+        this.idem.set(normalized, closed);
+        this.unresolved.delete(normalized);
+        return closed;
+      }
       if (!order || typeof order !== "object" || Array.isArray(order)) {
         return {
           ...this.idempotencyStatus(normalized),
