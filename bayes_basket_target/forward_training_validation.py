@@ -355,8 +355,30 @@ def delta_v2_decision_scope_key(
     plan = _json_mapping(
         "delta_v2_plan", compiled_plan.get("plan")
     )
-    plan_lineage = _json_mapping(
-        "delta_v2_plan_lineage", plan.get("lineage")
+    # Optional on purpose.  This mapping is read exactly once below, as the
+    # third and last fallback for probability_envelope_sha256 -- behind the
+    # envelope's own content_sha256, which every envelope carries, and behind
+    # the probability lineage.  It is therefore almost never read at all.
+    #
+    # Requiring it hard-failed the whole compile for plans that legitimately
+    # do not have it: the delta_v2 optimizer never puts a lineage on its
+    # plan, so a compile blocked before the success path (which adds one in
+    # runtime.py) reaches commit_production_candidate_atomic carrying a plan
+    # without it.  That function sets the lineage on plan_payload, its own
+    # copy for the ledger, and then hands this builder the original -- so the
+    # ledger's record had a lineage and the training fact's view of the same
+    # plan did not.  The compile died here, and the real reason the plan was
+    # blocked never reached the receipt: on 2026-08-31 fourteen stations
+    # stood on delta_v2_plan_lineage_mapping_required with their actual
+    # blockers discarded.
+    #
+    # An absent lineage does not weaken the key.  When it is present it is
+    # used exactly as before, so no existing decision_scope_key changes
+    # value; when it is absent and the two readings ahead of it are also
+    # empty, _sha still fails closed on the empty string.
+    raw_plan_lineage = plan.get("lineage")
+    plan_lineage: Mapping[str, Any] = (
+        raw_plan_lineage if isinstance(raw_plan_lineage, Mapping) else {}
     )
     station_id = _text(
         "delta_v2_station_id", envelope.get("station_id")

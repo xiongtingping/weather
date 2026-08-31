@@ -416,6 +416,48 @@ def test_decision_scope_ignores_transport_versions_but_tracks_economic_changes()
         != first
     )
 
+    # A plan with no lineage of its own is not a contract error.
+    #
+    # The delta_v2 optimizer never puts a lineage on its plan; the success
+    # path in runtime.py adds one, so a compile blocked before that point
+    # arrives here without it.  The mapping is read exactly once, as the last
+    # of three fallbacks for probability_envelope_sha256.  Requiring it made
+    # every such blocked compile die on delta_v2_plan_lineage_mapping_required
+    # and discarded the reason the plan was actually blocked -- fourteen
+    # stations stood on it at once on 2026-08-31.
+    #
+    # Equality is the load-bearing half: the key is an identity, so a key
+    # that shifted would unbind every decision already carrying one.  With
+    # the envelope carrying its own content_sha256, which is the reading
+    # ahead of this one, dropping the plan lineage changes nothing.
+    lineage_free_plan = json.loads(json.dumps(base_plan))
+    lineage_free_plan["plan"].pop("lineage", None)
+    sha_from_envelope = json.loads(json.dumps(lineage_free_plan))
+    sha_from_envelope["probability_envelope"]["content_sha256"] = (
+        base_plan["plan"]["lineage"]["probability_envelope_sha256"]
+    )
+    keyed_from_envelope = delta_v2_decision_scope_key(
+        compiled_plan=sha_from_envelope,
+        market_snapshot=base_market,
+    )
+    with_lineage_too = json.loads(json.dumps(sha_from_envelope))
+    with_lineage_too["plan"]["lineage"] = dict(base_plan["plan"]["lineage"])
+    assert keyed_from_envelope == delta_v2_decision_scope_key(
+        compiled_plan=with_lineage_too,
+        market_snapshot=base_market,
+    )
+
+    # And when no reading supplies the hash at all it still fails closed --
+    # on the missing hash, which is the honest reason, rather than on the
+    # shape of a mapping that was only ever a fallback.
+    with pytest.raises(
+        ContractError, match="delta_v2_probability_envelope_sha256_missing"
+    ):
+        delta_v2_decision_scope_key(
+            compiled_plan=lineage_free_plan,
+            market_snapshot=base_market,
+        )
+
 
 def test_future_station_policy_outcome_contract_gap_is_atomic_fact_evidence() -> None:
     conn, envelope = _seed()
