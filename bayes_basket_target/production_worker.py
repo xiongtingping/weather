@@ -10399,53 +10399,10 @@ class TargetProductionWorker:
         # P1 has always done this correctly: it roots on the latest P0 and
         # its probabilities move with it.  This is P0-M doing the same.
         roots = [item for item in envelopes if item.stage == "P0"]
-        # Seen under the base being served, not seen ever.
-        #
-        # Operator ruling 2026-08-31: a TAF replayed onto a newer model base
-        # is still the forecaster's confirmation.  Keyed globally, a TAF text
-        # had one seat for the whole station-day, so once it had spoken under
-        # any base the lane reported NO_NEW_TAF_REVISION for the rest of the
-        # day and P0-M never rebuilt -- KATL sat on its 05:28 base until
-        # 10:43 while the model improved four times underneath it.
-        #
-        # Keyed on the base, the same text speaks again each time the base
-        # moves, and stays silent while it does not.  The identity is still
-        # the source object hash rather than the revision id, for the reason
-        # below.
-        # Bounded to a day that can still be traded.  A settled day's base
-        # never moves again and nobody prices it, so re-opening its seats
-        # buys nothing and costs a full re-application: the first cycle after
-        # this changed ran the lane over 383 scopes reaching back to 08-24
-        # and went overdue at 1,153 seconds.  A closed day keeps the seat it
-        # always had.
-        replayable = False
-        if roots:
-            sample = roots[-1]
-            try:
-                replayable = event_day_window(
-                    sample.event_date,
-                    as_of_utc=utc_now(),
-                    target_timezone=sample.settlement_timezone,
-                )["state"] in {"open", "not_started"}
-            except Exception:  # noqa: BLE001 -- an unreadable day is not replayable
-                replayable = False
-        latest_root_id = (
-            max(
-                (item for item in roots),
-                key=lambda item: item.decision_at_utc,
-            ).checkpoint_id
-            if roots and replayable
-            else ""
-        )
         seen_revisions = {
             str(item.lineage.get("forecast_source_object_sha256") or "")
             for item in envelopes
             if item.stage == "P0-M"
-            and (
-                not replayable
-                or str(item.lineage.get("p0_root_checkpoint_id") or "")
-                == latest_root_id
-            )
         }
         return {
             "first_root_at": first_root_at,
