@@ -115,6 +115,39 @@ def test_a_profitable_station_is_never_auto_barred() -> None:
     assert [row["station"] for row in verdict["bar"]] == ["LOSER"]
 
 
+def test_the_layer_is_actually_scheduled() -> None:
+    """A policy that only runs when somebody invokes it has not been applied.
+
+    The bar and release rule was written to be automatic on 2026-08-30 and
+    then ran by hand for a day, which is the same gap the correction-review
+    sweep beside it exists to close: a station that went bad stayed live
+    until a person looked, and one that recovered stayed barred.
+    """
+
+    import os  # noqa: PLC0415
+    import re  # noqa: PLC0415
+
+    daemon = (ROOT / "scripts" / "weather_basket_yes_daemon.py").read_text(
+        encoding="utf-8"
+    )
+    entry = re.search(
+        r'\(\s*"auto_station_exclusions",\s*"([^"]+)",\s*([\d_.]+),\s*([\d_.]+),',
+        daemon,
+    )
+    assert entry, "the sweep is not in HOSTED_SWEEPS"
+    script = ROOT / entry.group(1)
+    assert script.is_file(), script
+    assert os.access(script, os.X_OK), f"{script} is not executable"
+    # Its timeout has to leave room for the two aggregate scans it runs.
+    assert float(entry.group(3)) >= 300.0
+    body = script.read_text(encoding="utf-8")
+    # Single-instance, or a slow pass overlaps the next tick and two writers
+    # race on the same config.
+    assert "single_instance auto_station_exclusions_sweep" in body
+    # And it must write, or the schedule buys nothing.
+    assert "auto_station_exclusions.py --apply" in body
+
+
 def test_a_new_station_is_not_live_until_it_has_earned_it() -> None:
     """Default deny, operator ruling 2026-08-31 -- and three states, not two.
 
@@ -134,10 +167,24 @@ def test_a_new_station_is_not_live_until_it_has_earned_it() -> None:
     # evidence than the layer needs would admit something nothing could
     # ever bar for cause.
     assert minimum == auto.MIN_SETTLEMENTS == control.MIN_SETTLEMENTS_TO_QUALIFY
+    # Live means qualified, or waived by name.  A waiver is the operator
+    # graduating a station ahead of its settlement count (LEMD and LIMC on
+    # 2026-08-31) -- which is fine and auditable, and the thing to assert is
+    # that there is no third way in: nothing may be live silently.
+    waived = set(scope.get("probation_waivers") or [])
     for station in scope["stations"]:
-        assert counts.get(station, 0) >= minimum
+        assert counts.get(station, 0) >= minimum or station in waived, station
     for station in scope["probation"]:
-        assert counts.get(station, 0) < minimum
+        assert counts.get(station, 0) < minimum and station not in waived
+    # Every waiver has to be written down where an operator can revoke it.
+    intent = json.loads(control.INTENT_PATH.read_text(encoding="utf-8"))
+    assert waived == {
+        str(s).strip().upper()
+        for s in (intent.get("station_probation_waivers") or [])
+    }
+    # A waiver cannot smuggle a barred station back in: the bar is checked
+    # first, so this must hold no matter what anybody writes in the list.
+    assert not (waived & set(scope["barred"]))
     # A station nobody has ever settled is not live and not barred.
     assert "LLBG" not in scope["stations"]
     assert "LLBG" not in scope["barred"]

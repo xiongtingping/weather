@@ -269,6 +269,22 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
         1800.0,
         1800.0,
     ),
+    # The bar and release policy of 2026-08-30 was written to run
+    # automatically and then ran only when somebody invoked it -- the same
+    # failure the correction-review sweep two entries up was built to end.  A
+    # station that went bad stayed live until a person looked, and one that
+    # recovered stayed barred for the same reason.  Hourly matches the
+    # cadence of what it reads: settlements arrive through the ledger and
+    # truth sweeps above, and a verdict that moves inside an hour is a
+    # verdict resting on a single settlement.  Alone among these it writes no
+    # SSOT row -- two aggregates in, a small JSON config out -- so it is here
+    # for the scheduling rather than for the write lock.
+    (
+        "auto_station_exclusions",
+        "scripts/auto_station_exclusions_sweep.sh",
+        3600.0,
+        600.0,
+    ),
     # The inbox a P0 compile reads is overwritten every cycle, so the input to
     # any past compile is gone and no upstream parameter has ever been
     # scorable on the book -- the ledger reads compiled envelopes and cannot

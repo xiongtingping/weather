@@ -121,6 +121,11 @@ def state() -> dict:
             "station_scope": _scope["scope"],
             "station_allowlist": _scope["stations"],
             "station_probation": _scope["probation"],
+            # A waived station is live without having qualified, so the
+            # reason has to travel with the answer -- otherwise the only way
+            # to explain why a three-settlement station trades is to open the
+            # config and know the mechanism exists.
+            "station_probation_waivers": _scope.get("probation_waivers") or [],
             "station_exclusions": _scope["barred"],
             "minimum_settlements_to_qualify": _scope["minimum_settlements"],
             "pinned_allowlist": intent.get("station_allowlist") or [],
