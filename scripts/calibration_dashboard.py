@@ -7619,8 +7619,9 @@ function centerWidth(){
 // The live flag belongs where the reader's eye already is (user ruling,
 // 2026-08-29): it is the one control on this page that changes what the
 // system may do, and it was fifteen sections down inside a table of
-// station gates.  The banner carries the switch; the gates stay in their
-// own section, which the switch links to.
+// station gates.  The banner carries the switch, and since 2026-08-31 the
+// readiness section sits directly beneath it in the same head area, so the
+// control and its gates are read together.
 function liveSwitch(){
   const L = D.live_readiness || {};
   if(!L.available) return "";
@@ -8150,10 +8151,12 @@ const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}"
 // ungrouped sections where the group switcher used to live.  Sticky from
 // two thousand pixels down is not a top navigation -- it only appears once
 // the reader has already scrolled past everything it could have saved them.
-// Live readiness leads the page (user ruling, 2026-08-29).  It answers
-// "may this book place a real order yet", which gates everything below it
-// -- reading it last meant scrolling past fifteen sections of analysis to
-// find out the answer was no.
+// Live readiness is no longer one of the sections below the bar: it is
+// rendered in the head area, directly under the banner that carries the
+// LIVE switch (user ruling, 2026-08-31).  The switch and the gates that
+// decide whether flipping it does anything are one question, and they were
+// split by the tab bar and the overview strip.  It keeps its own .sec
+// wrapper, so it still gets a jump chip -- the first one.
 // The day-level account, in the order a reader walks it: the strip, the
 // per-day table, the per-station-day detail, and then the three tables
 // that answer questions the detail raises -- how each station does across
@@ -8167,7 +8170,7 @@ const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}"
 // not scan them -- so they move into their own area together, keeping the
 // order the reader asked for: detail first, then the three tables that
 // answer what the detail raises.
-const TOP = [[overview, "总览"], [liveReadiness, "Live 上线准备"],
+const TOP = [[overview, "总览"],
   [riskMetrics, "组合风险指标"],
   [daily, "每日统计"], [roster, "逐站逐日明细"],
   [stationSummary, "逐站汇总（跨日）"], [anomalies, "异常盘口"],
@@ -8175,6 +8178,7 @@ const TOP = [[overview, "总览"], [liveReadiness, "Live 上线准备"],
 
 document.getElementById("app").innerHTML =
   safe(head, "页头") +
+  sec(liveReadiness, "Live 上线准备", "sec-live") +
   `<div class="topnav" id="topnav">${tabs}<nav class="jump" id="jump"></nav></div>` +
   TOP.map(([fn, name], i) => sec(fn, name, `sec-top-${i}`)).join("") +
   groupHtml +
