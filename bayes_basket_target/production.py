@@ -575,6 +575,40 @@ def commit_production_candidate_atomic(
     plan_payload["settlement_timezone"] = market_timezone
     plan_lineage = dict(lineage) if isinstance(lineage, Mapping) else {}
     plan_lineage["settlement_timezone"] = probability_timezone
+    # The ledger binds a P1 plan's lineage to the exact canonical observation
+    # -- six identity keys the success path copies out of the envelope in
+    # runtime.py.  A plan blocked upstream never made that copy, and the
+    # ledger's binding check (the eighth reader of this absence today) then
+    # refused the blocked decision for lacking a join it never performed,
+    # burying the real reason -- p1_entry_window_not_open, charter 67 doing
+    # its job -- under plan_lineage_source_lane_missing.  Complete the copy
+    # here, from the same envelope the facts adapter has already validated,
+    # only where the plan carries nothing: a tradable plan still answers for
+    # its own join, and a present value is never overwritten, so a genuine
+    # mis-join still refuses in the ledger exactly as before.
+    if candidate_stage not in {"P0", "P0-M"} and compiled_plan.get(
+        "status"
+    ) not in {"ready_no_live", "hold"}:
+        envelope_lineage = (
+            candidate_probability_envelope.get("lineage")
+            if isinstance(candidate_probability_envelope, Mapping)
+            else None
+        )
+        if isinstance(envelope_lineage, Mapping):
+            for key in (
+                "canonical_observation_event_id",
+                "truth_observation_revision_content_sha256",
+                "canonical_observation_committed_at",
+                "hard_bound_id",
+                "source_lane",
+                "report_type",
+                "bound_generation",
+            ):
+                if str(plan_lineage.get(key) or "").strip():
+                    continue
+                value = envelope_lineage.get(key)
+                if value not in (None, ""):
+                    plan_lineage[key] = value
     # P1 roots on the observation the day produced; the two stages that run
     # before one exists root on their own evidence instead.  Both are derived
     # from this same lineage, so the caller supplies neither and cannot pair a
