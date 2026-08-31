@@ -12162,9 +12162,18 @@ class TargetProductionWorker:
                 event_date=event_date,
             )
         # Schema-dispatching on purpose: self.activation_path is the live
-            # contract in live mode, and the narrow loader shut production for
-            # seven hours the first time and one more cycle the second.
-            activation = load_activation(self.activation_path)
+        # contract in live mode, and the narrow loader shut production for
+        # seven hours the first time and one more cycle the second.
+        #
+        # The assignment below sat at twelve spaces for a day -- comments do
+        # not take part in indentation, so Python read it as the tail of the
+        # `if self.commit_conn is None:` block above, i.e. dead code behind
+        # its return.  On the live path `activation` was then never bound and
+        # every forward-day P0 preselection died on an UnboundLocalError:
+        # this lane is the only entry that plans tomorrow's baskets, so the
+        # 09-01 and 09-02 books had no P0 opening while the current-day
+        # chain looked healthy.
+        activation = load_activation(self.activation_path)
         self._assert_db_activation(activation)
         scope = activation.get("target_scope")
         if not isinstance(scope, Mapping):
