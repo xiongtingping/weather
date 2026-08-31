@@ -1501,6 +1501,14 @@ CREATE TABLE IF NOT EXISTS basket_official_ws_snapshot (
 CREATE INDEX IF NOT EXISTS basket_official_ws_snapshot_asof_idx
 ON basket_official_ws_snapshot(station_id,event_date,state,observed_at,sequence);
 
+-- The index above leads on station_id, so a question asked of a whole event
+-- day cannot use it and scans instead.  At 114,649 rows that cost 6.8
+-- seconds a call, and the quote-lease check asks exactly that question --
+-- once it did so per scope the cycle went from eight minutes to nineteen and
+-- past its own overdue bound.  Lead on the event day for the day-scoped read.
+CREATE INDEX IF NOT EXISTS basket_official_ws_snapshot_day_expiry_idx
+ON basket_official_ws_snapshot(event_date,quote_expires_at);
+
 -- The calibration and weight tables are read the same way on the same path,
 -- and were scanned the same way.  The member archive is the expensive one:
 -- 818k rows, read per station-day, 1,170ms a scope -- one station cost more

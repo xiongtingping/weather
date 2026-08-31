@@ -8602,18 +8602,23 @@ class TargetProductionWorker:
                 "post_fill_recompute_filled_notional_not_projected"
             )
 
-    def _scope_day_quote_lease_seconds(self, event_date: str) -> float:
-        """Seconds of quote lease left on this day's freshest book.
+    def _scope_day_quote_expiry(self, event_date: str) -> datetime | None:
+        """When this day's freshest book stops being usable, or None.
 
         Read from the snapshot the compile itself validates against, so the
-        answer is the one that decides production_quote_expired rather than a
-        proxy for it.  An unreadable or absent snapshot returns 0.0, which
-        asks for a refresh -- the conservative direction, since a scope with
-        no readable lease is exactly the one about to fail on it.
+        trigger and the failure answer the same question rather than one
+        being a proxy for the other.
+
+        Called once per day and cached by the caller, never once per scope.
+        The first version of this asked the database inside the compile loop:
+        the table is append-only and thousands of rows deep, the scan cost
+        6.8 seconds, and eighty-two of them took the cycle from eight minutes
+        to nineteen and past its own overdue bound.  An expiry is a fact
+        about a materialization, so it is read when one happens.
         """
 
         if self.conn is None:
-            return 0.0
+            return None
         try:
             row = self.conn.execute(
                 "SELECT MAX(quote_expires_at) FROM basket_official_ws_snapshot"
@@ -8621,16 +8626,13 @@ class TargetProductionWorker:
                 (str(event_date),),
             ).fetchone()
         except sqlite3.Error:
-            return 0.0
+            return None
         if row is None or not row[0]:
-            return 0.0
+            return None
         try:
-            expires = datetime.fromisoformat(
-                str(row[0]).replace("Z", "+00:00")
-            )
+            return datetime.fromisoformat(str(row[0]).replace("Z", "+00:00"))
         except ValueError:
-            return 0.0
-        return (expires - datetime.now(timezone.utc)).total_seconds()
+            return None
 
     def _refresh_scope_day_evidence(
         self,
@@ -14718,16 +14720,26 @@ class TargetProductionWorker:
             }
             quote_refresh_failures: list[dict[str, str]] = []
             quote_refresh_attempts: list[str] = []
+            # One read per day, kept until that day is refreshed.  The scan is
+            # expensive and the answer only changes when we change it.
+            day_quote_expiry: dict[str, datetime | None] = {}
             for station_id, event_date in rows:
                 station = str(station_id)
                 day = str(event_date)
                 if (station, day) in recomputed_scopes:
                     continue
-                if self._scope_day_quote_lease_seconds(day) <= (
-                    QUOTE_EVIDENCE_REFRESH_SECONDS
-                ):
+                if day not in day_quote_expiry:
+                    day_quote_expiry[day] = self._scope_day_quote_expiry(day)
+                expiry = day_quote_expiry[day]
+                lease_left = (
+                    (expiry - datetime.now(timezone.utc)).total_seconds()
+                    if expiry is not None
+                    else 0.0
+                )
+                if lease_left <= QUOTE_EVIDENCE_REFRESH_SECONDS:
                     evidence_refreshed_at[day] = time.monotonic()
                     quote_refresh_attempts.append(day)
+                    day_quote_expiry.pop(day, None)
                     try:
                         self._refresh_scope_day_evidence(
                             activation,
