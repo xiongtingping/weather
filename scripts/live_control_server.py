@@ -397,6 +397,47 @@ def live_stations() -> dict:
     }
 
 
+def set_probation_waivers(stations: list) -> dict:
+    """Grant or revoke the waivers that let a station trade before it qualifies.
+
+    The mechanism arrived on 2026-08-31 as a config field with no writer:
+    readable everywhere, settable only by editing the JSON by hand, which
+    left two stations trading below the qualifying threshold with nothing in
+    ``live_control_audit.jsonl`` to say who decided that -- in a control
+    plane where all ninety-three other dial turns are recorded.  A waiver is
+    the one dial that puts an unproven station on live money, so it is the
+    last one that should be the unaudited one.
+
+    Passing an empty list revokes every waiver, which is how a waiver granted
+    elsewhere gets taken back through the panel rather than by editing a file
+    the panel also reads.
+    """
+
+    cleaned = sorted({str(s).strip().upper() for s in stations if s})
+    for station in cleaned:
+        if not STATION_RE.match(station):
+            raise ValueError(f"bad station id: {station}")
+    # A waiver cannot smuggle a barred station in -- the bar is checked first
+    # in live_stations, so such a waiver would be inert -- but accepting one
+    # silently would leave a list that reads like a decision and does
+    # nothing.  Refuse, and say which.
+    barred = sorted(set(cleaned) & excluded_stations())
+    if barred:
+        raise ValueError(
+            "a waiver cannot admit a barred station: " + ",".join(barred)
+        )
+    intent = _read(INTENT_PATH)
+    before = intent.get("station_probation_waivers") or []
+    intent["station_probation_waivers"] = cleaned
+    intent["updated_at_utc"] = _now()
+    _write_atomic(INTENT_PATH, intent)
+    _audit({
+        "knob": "station_probation_waivers",
+        "before": before, "after": cleaned,
+    })
+    return state()
+
+
 def set_scope(scope: str) -> dict:
     if scope not in (SCOPE_QUALIFIED, SCOPE_ALL_EXCEPT_BARRED, SCOPE_EXPLICIT):
         raise ValueError(f"unknown station scope: {scope}")
@@ -481,6 +522,12 @@ class Handler(BaseHTTPRequestHandler):
                 )
             elif self.path.rstrip("/") == "/api/allowlist":
                 out = set_allowlist(list(body.get("stations") or []))
+            elif self.path.rstrip("/") == "/api/probation_waivers":
+                # Empty list revokes; that is the intended way to take back a
+                # waiver rather than editing the file the panel reads.
+                out = set_probation_waivers(
+                    list(body.get("stations") or [])
+                )
             else:
                 self._send(404, {"error": "unknown endpoint"})
                 return

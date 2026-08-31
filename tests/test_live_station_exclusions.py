@@ -115,6 +115,42 @@ def test_a_profitable_station_is_never_auto_barred() -> None:
     assert [row["station"] for row in verdict["bar"]] == ["LOSER"]
 
 
+def test_a_waiver_can_be_granted_and_revoked_through_the_panel(
+    tmp_path, monkeypatch,
+) -> None:
+    """The one dial that puts an unproven station on live money, audited.
+
+    It arrived as a config field with no writer -- readable everywhere,
+    settable only by editing the JSON -- so two stations traded below the
+    qualifying threshold with nothing in live_control_audit.jsonl to say
+    who decided it, in a plane where every other dial turn is recorded.
+    """
+
+    before = json.loads(control.INTENT_PATH.read_text(encoding="utf-8"))
+    work = tmp_path / "intent.json"
+    work.write_text(json.dumps(before, ensure_ascii=False), encoding="utf-8")
+    audit = tmp_path / "audit.jsonl"
+    monkeypatch.setattr(control, "INTENT_PATH", work)
+    monkeypatch.setattr(control, "AUDIT_PATH", audit)
+
+    state = control.set_probation_waivers(["LEMD"])
+    assert state["live"]["station_probation_waivers"] == ["LEMD"]
+    # Revoking is an empty list, not a file edit.
+    state = control.set_probation_waivers([])
+    assert state["live"]["station_probation_waivers"] == []
+    # A waiver on a barred station is refused rather than silently inert.
+    barred = sorted(control.excluded_stations())[0]
+    with pytest.raises(ValueError, match=barred):
+        control.set_probation_waivers([barred])
+    # Both accepted turns are on the record; the refusal is not a turn.
+    lines = [
+        json.loads(line)
+        for line in audit.read_text(encoding="utf-8").splitlines() if line
+    ]
+    knobs = [row["knob"] for row in lines]
+    assert knobs == ["station_probation_waivers"] * 2
+
+
 def test_the_layer_is_actually_scheduled() -> None:
     """A policy that only runs when somebody invokes it has not been applied.
 
@@ -327,7 +363,9 @@ def test_a_barred_station_cannot_be_allowlisted() -> None:
     assert before == after, "a refused request must not touch the file"
 
 
-def test_pinning_a_list_switches_the_scope_and_still_refuses_barred() -> None:
+def test_pinning_a_list_switches_the_scope_and_still_refuses_barred(
+    tmp_path, monkeypatch,
+) -> None:
     """Explicit mode is still reachable, and the bar still wins inside it.
 
     Restores derived mode afterwards -- this is the live config, and a test
@@ -335,7 +373,17 @@ def test_pinning_a_list_switches_the_scope_and_still_refuses_barred() -> None:
     was made to unfreeze.
     """
 
+    # Against copies, not the running configuration.  The first version of
+    # this drove the real control server: it wrote the live intent file and
+    # left six station_allowlist entries in data/live_control_audit.jsonl,
+    # which is the log an operator reads to answer "who turned this dial".
+    # A test that forges entries there can mask a real one.
     before = json.loads(control.INTENT_PATH.read_text(encoding="utf-8"))
+    work = tmp_path / "intent.json"
+    work.write_text(json.dumps(before, ensure_ascii=False), encoding="utf-8")
+    audit = tmp_path / "audit.jsonl"
+    monkeypatch.setattr(control, "INTENT_PATH", work)
+    monkeypatch.setattr(control, "AUDIT_PATH", audit)
     try:
         state = control.set_allowlist(["ZBAA", "ZSQD"])
         assert state["live"]["station_scope"] == control.SCOPE_EXPLICIT
@@ -344,16 +392,14 @@ def test_pinning_a_list_switches_the_scope_and_still_refuses_barred() -> None:
         with pytest.raises(ValueError, match=barred):
             control.set_allowlist(["ZBAA", barred])
     finally:
-        # Restore what was there, not a hardcoded mode.  The first version of
-        # this wrote SCOPE_ALL_EXCEPT_BARRED back unconditionally and silently
-        # reverted the live config out of default-deny -- a test that mutates
-        # the running configuration has to put back exactly what it found.
-        control.INTENT_PATH.write_text(
-            json.dumps(before, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-    after = json.loads(control.INTENT_PATH.read_text(encoding="utf-8"))
-    assert after == before
+        pass
+    # The live configuration was never opened for writing, so there is
+    # nothing to restore and nothing to have got wrong -- which is the
+    # property the earlier restore-by-hand version kept failing to hold.
+    assert json.loads(
+        Path(str(control.__dict__["ROOT"]) + "/config/trading/live_intent_v1.json")
+        .read_text(encoding="utf-8")
+    ) == before
 
 
 def test_a_missing_file_bars_nothing_rather_than_everything() -> None:
