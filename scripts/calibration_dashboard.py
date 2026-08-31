@@ -191,6 +191,51 @@ def _production_health(status: Mapping[str, Any]) -> dict[str, Any]:
             "production_health": "amber",
             "production_note": "常驻未发布 production receipt",
         }
+    # The receipt's own verdict, before any lane is inspected.  A worker
+    # that cannot open the SSOT never reaches a lane, so it publishes a
+    # receipt with no lane maps at all: `state=blocked_fail_closed`,
+    # `ok=false`, a reason, and `cycle_total` of a fraction of a
+    # millisecond because it bailed immediately.  Every test below then
+    # passes -- no blocked lanes, no stale `worker_checked_at` (the key is
+    # absent on this shape), no slow cycle -- and the card printed
+    # "周期正常产出" over a pipeline that had produced nothing for
+    # nineteen hours.  Measured 2026-08-31: last decision 08-30T17:18Z,
+    # every cycle since fail-closed on
+    # `target_database_wal_checkpoint_busy`.  This function's docstring is
+    # about catching exactly this and it was reading past it.
+    state_word = str(production.get("state") or "").upper()
+    fail_closed = (
+        production.get("ok") is False
+        or "BLOCK" in state_word
+        or "FAIL" in state_word
+    )
+    if fail_closed:
+        reason = str(production.get("reason") or "").strip()
+        recovery = production.get("connection_recovery")
+        if not reason and isinstance(recovery, Mapping):
+            reason = str(recovery.get("reason") or "")
+        note = "生产回执 fail-closed：" + (
+            str(production.get("state") or "未命名状态")
+        )
+        if reason:
+            # Head and tail, not the first eighty characters.  These reasons
+            # are colon-chains whose informative end is last -- truncating
+            # from the front kept "target_ssot_read_only_open_failed:
+            # ResourceBoundError" and dropped the part that names what to
+            # fix (``target_database_wal_checkpoint_busy``).
+            parts = [seg for seg in reason.split(":") if seg]
+            note += "·" + (
+                f"{parts[0][:40]}…{parts[-1][:60]}"
+                if len(parts) > 1 else reason[:80]
+            )
+        return {
+            "production_health": "red",
+            "production_note": note,
+            "production_state": str(production.get("state") or ""),
+            "production_checked_at": production.get("worker_checked_at"),
+            "production_cycle_seconds": None,
+            "production_blocked_lanes": [note],
+        }
     stale_hours = _age_hours(production.get("worker_checked_at"))
     blocked: list[str] = []
     locked = 0
@@ -2305,6 +2350,7 @@ def _read_open_orders() -> dict[str, Any]:
     board that cannot reach the gateway should say so, not vanish.
     """
 
+    import datetime as _dt  # noqa: PLC0415
     import urllib.request  # noqa: PLC0415
 
     port = os.environ.get("PM_CLOB_ORDER_SERVICE_PORT", "8765")
@@ -2323,6 +2369,9 @@ def _read_open_orders() -> dict[str, Any]:
     return {
         "available": bool(raw.get("ok")),
         "count": int(raw.get("total_open_orders") or 0),
+        # The board is a static render; this row is a reading taken once, at
+        # render time.  Without the stamp a stale page asserts a live zero.
+        "asked_at": _dt.datetime.now(_dt.UTC).isoformat(timespec="seconds"),
         "orders": [
             {
                 "id": str(o.get("id") or ""),
@@ -8060,10 +8109,12 @@ function liveOrderCard(L){
        这一行问的是交易所，读不到就不是零。</span></div>`
     : O2.count === 0
       ? `<div class="muted" style="font-size:12px;margin-top:9px">✅ 交易所侧
-         <b>账户当前零挂单</b> —— 这一行不查我们自己的表，直接问交易所，
-         所以本机不知道其存在的孤儿单也会出现在这里。</div>`
+         <b>账户零挂单</b>（问于 <span class="mono">${h(O2.asked_at||"?")}</span>）——
+         这一行不查我们自己的表，直接问交易所，所以本机不知道其存在的孤儿单
+         也会出现在这里。板是静态渲染的，这个零是渲染那一刻的读数，不是实时的。</div>`
       : `<div style="margin-top:9px"><b class="mono" style="color:var(--red)">
-         交易所侧：账户当前 ${O2.count} 笔挂单</b>
+         交易所侧：账户 ${O2.count} 笔挂单</b>
+         <span class="muted mono" style="font-size:11px">问于 ${h(O2.asked_at||"?")}</span>
          <span class="muted" style="font-size:12px">—— 逐笔核对；若某笔不在上面的意向表里，
          它就是本机丢了记录的孤儿单，撤掉它。</span>
          <div style="overflow-x:auto"><table><thead><tr><th></th><th>桶</th><th>侧</th>

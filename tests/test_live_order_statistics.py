@@ -161,3 +161,47 @@ def test_the_intent_book_counts_both_authorisations_separately() -> None:
     by_station = {r["station_id"]: r for r in book["by_station"]}
     assert by_station["KLGA"]["count"] == 2
     assert by_station["KLGA"]["days"] == 2
+
+
+def test_a_fail_closed_receipt_turns_the_production_light_red() -> None:
+    """The shape that got past every check: no lanes, because it never ran.
+
+    A worker that cannot open the SSOT publishes a receipt with no lane
+    maps at all, no ``worker_checked_at``, and a ``cycle_total`` of a
+    fraction of a millisecond -- so the lane scan found nothing blocked,
+    the staleness check had nothing to read, and the slow-cycle check
+    passed.  The card printed "周期正常产出" while the pipeline had
+    produced no decision for nineteen hours.
+    """
+
+    receipt = {
+        "production": {
+            "ok": False,
+            "state": "blocked_fail_closed",
+            "reason": "target_ssot_read_only_open_failed:ResourceBoundError:"
+                      "target_database_wal_checkpoint_busy",
+            "execution_mode": "production_live",
+            "orders_submitted": 0,
+            "stage_timings_ms": {"cycle_total": 0.1},
+        }
+    }
+    health = board._production_health(receipt)
+    assert health["production_health"] == "red"
+    assert health["production_state"] == "blocked_fail_closed"
+    assert "fail-closed" in health["production_note"]
+    assert "wal_checkpoint_busy" in health["production_note"]
+
+
+def test_a_producing_receipt_is_still_green() -> None:
+    """The fail-closed check must not swallow the ordinary healthy case."""
+
+    receipt = {
+        "production": {
+            "ok": True,
+            "state": "produced",
+            "stage_timings_ms": {"cycle_total": 240_000},
+        }
+    }
+    health = board._production_health(receipt)
+    assert health["production_health"] == "green"
+    assert health["production_note"] == "周期正常产出"
