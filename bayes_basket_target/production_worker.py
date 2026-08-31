@@ -7028,6 +7028,28 @@ class TargetProductionWorker:
             if isinstance(plan_lineage, Mapping)
             else ""
         )
+        if not candidate_stage:
+            # Ask the envelope, which is the authority on its own stage and
+            # is what the router twenty lines below already asks.  The plan
+            # lineage is a copy of that same value -- runtime.py writes
+            # "probability_stage": envelope.stage into it -- so this can never
+            # disagree when the lineage exists; it only supplies the answer
+            # when it does not.
+            #
+            # It does not, for any plan blocked before the success path adds
+            # a lineage.  An empty stage is not in {"P0", "P0-M"}, so such a
+            # plan fell through to the P1-shaped fact path, and a P0 envelope
+            # -- which has no observed METAR and by contract must not carry
+            # canonical observation keys -- was refused for lacking exactly
+            # the six keys it is forbidden to have.  Ten stations on
+            # 2026-08-31 read target_atomic_lineage_incomplete for that
+            # reason, none of them a lineage problem.
+            probability_envelope = candidate.get("probability_envelope")
+            candidate_stage = (
+                str(probability_envelope.get("stage") or "").strip().upper()
+                if isinstance(probability_envelope, Mapping)
+                else ""
+            )
         facts = (
             {
                 "awc_observation_contract": None,
