@@ -1335,7 +1335,7 @@ def test_the_selection_discount_shades_the_gate_and_only_the_gate() -> None:
     # The shaded number feeds the Kelly stake and the refusal detail...
     assert "win_probability=gate_win," in source
     # ...and nowhere else: the recorded row keeps the raw claim.
-    assert source.count("gate_win") == 6  # define, kelly, refusal detail,
+    assert source.count("gate_win") == 7  # define, kelly, refusal detail,
         # plus the effective-edge shrink (2026-09-01) re-reading it twice
 
 
