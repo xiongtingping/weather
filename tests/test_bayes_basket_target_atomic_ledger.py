@@ -2660,3 +2660,31 @@ def test_close_settled_day_cycle_compares_instants_not_spellings() -> None:
             reason="lexically_later_same_instant",
         )
         assert result["state"] == "settled"
+
+
+def test_intent_live_flag_follows_the_plan_that_authorized_it() -> None:
+    """A live plan mints a live intent; a no-live plan does not.
+
+    The INSERT wrote a literal 0 -- the fourth member of the family that
+    began with the compiled plan's own hard-coded False, and the one
+    furthest downstream.  It is the marker everything uses to tell the two
+    books apart: the ledger keys its live book on it, the dashboard counts
+    rows with it set, and the go-live migration widened this table's CHECK
+    so it could hold 1.  Written as 0 unconditionally, a live deployment
+    mints only no-live-looking intents and reports itself as having placed
+    nothing.
+    """
+    import sqlite3 as _sqlite3
+
+    with _db() as conn:
+        bundle, intent_id = _committed_intent(conn, index=903)
+        row = conn.execute(
+            "SELECT live_submit_authorized FROM basket_target_order_intents"
+            " WHERE order_intent_id=?",
+            (intent_id,),
+        ).fetchone()
+        plan_json = bundle["plan"].get("plan_json") or {}
+        expected = 1 if plan_json.get("live_submit_authorized") is True else 0
+        assert row[0] == expected, (
+            "intent flag must equal the plan's authority, not a literal"
+        )

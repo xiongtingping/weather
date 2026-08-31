@@ -2,9 +2,13 @@
 
 This module is the only target-lane writer for decision facts.  It is a
 database boundary, not an executor: it never opens a network connection,
-calls CLOB, or submits an order.  A committed intent is a no-live candidate
-with ``live_submit_authorized=0``; the single blocking authority remains
-``auto_trade_decisions``.
+calls CLOB, or submits an order.  A committed intent carries the live
+authority of the plan that produced it -- ``live_submit_authorized`` is 0 for
+a no-live plan and 1 for a live one, which is what tells the two books apart
+downstream -- and the single blocking authority remains
+``auto_trade_decisions``.  Writing an order is still somebody else's job:
+this module records what was decided, never reaches a gateway, and a live
+flag here is a statement about the decision, not permission to act on it.
 
 The writer deliberately accepts already compiled observation/bound facts and
 does not inspect weather, probabilities, TAF, NWP, or market REST data.  The
@@ -2267,6 +2271,22 @@ def commit_target_atomic_bundle(
             "plan_lineage_source_lane", plan_lineage.get("source_lane")
         )
     plan_identity["lineage"] = plan_lineage
+    # The intent's live flag, from the plan that authorized it.  This was the
+    # literal 0 in the INSERT below -- the fourth of the same family as the
+    # compiled plan's own hard-coded False, and the one furthest downstream.
+    # It is the marker everything uses to tell a live intent from a no-live
+    # one: the ledger keys its live book on it, the dashboard's live card
+    # counts rows with it set, and the go-live migration widened this table's
+    # CHECK precisely so it could hold 1.  Written as 0 unconditionally, a
+    # live deployment mints only no-live-looking intents and reports itself
+    # as having placed nothing.
+    #
+    # The plan is the authority, not the execution mode: an intent is live
+    # because the decision that produced it carried live authority, and a
+    # plan compiled without it stays 0 whatever the process thinks it is.
+    intent_live_submit_authorized = (
+        1 if plan_identity.get("live_submit_authorized") is True else 0
+    )
     if cycle.get("plan_sha256") != _content_hash(PLAN_SCHEMA, plan_identity):
         raise AtomicLedgerError("plan_content_address_drift")
     cycle_lane = _basket_lane("cycle_strategy_lane", cycle.get("strategy_lane"))
@@ -2603,7 +2623,7 @@ def commit_target_atomic_bundle(
         for item in intents:
             conn.execute(
                 "INSERT INTO basket_target_order_intents(order_intent_id,decision_id,cycle_id,bucket,token_id,side,order_action,limit_price,requested_size,requested_notional_usdc,state,live_submit_authorized,target_execution_hard_deadline_at,idempotency_key,intent_json,intent_sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (item["order_intent_id"], decision["decision_id"], cycle["cycle_id"], item["bucket"], item["token_id"], item["side"], item["order_action"], item["limit_price"], item["requested_size"], item["requested_notional_usdc"], item["state"], 0, item["target_execution_hard_deadline_at"], item["idempotency_key"], canonical_json(item["intent_json"]), item["intent_sha256"], created_at),
+                (item["order_intent_id"], decision["decision_id"], cycle["cycle_id"], item["bucket"], item["token_id"], item["side"], item["order_action"], item["limit_price"], item["requested_size"], item["requested_notional_usdc"], item["state"], intent_live_submit_authorized, item["target_execution_hard_deadline_at"], item["idempotency_key"], canonical_json(item["intent_json"]), item["intent_sha256"], created_at),
             )
         _fault(fault_after, "intent")
         for row in vector_rows:
