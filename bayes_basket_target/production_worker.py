@@ -9309,6 +9309,10 @@ class TargetProductionWorker:
             getattr(self, "_portfolio_allocation_last", None) or {}
         ).get("quota_usdc_by_station")
         served = getattr(self, "_resident_scope_served", None) or {}
+        listing_days = {
+            day
+            for _station, day in self._listing_entry_scopes(as_of_utc=as_of_utc)
+        }
         for scope in sorted(
             (dict(item) for item in open_scopes),
             key=lambda item: self._scope_rotation_key(
@@ -9325,15 +9329,33 @@ class TargetProductionWorker:
             key = str(scope.get("scope_key") or "")
             if key in seen:
                 continue
-            if str(scope.get("event_date") or "") != str(
-                selected.get("event_date") or ""
+            scope_day = str(scope.get("event_date") or "")
+            if (
+                scope_day != str(selected.get("event_date") or "")
+                and scope_day not in listing_days
             ):
-                # One event day per ingress; a scope from another day waits
-                # for a cycle whose selection lands on that day.
+                # One event day per ingress -- the merged document carries a
+                # single event_date and everything downstream reads it -- so
+                # a scope from an unrelated day still waits for a cycle whose
+                # selection lands on it.  A charter 48 listed day is not
+                # unrelated: it is a day this book may already open on, and
+                # the caller merges and materializes it in its own pass, so
+                # its manifests have to survive the sweep to get there.
                 continue
             seen.add(key)
             ordered.append(scope)
-            if len(ordered) >= MAX_FORWARD_P0_STATION_DAYS:
+            if (
+                sum(
+                    1
+                    for item in ordered
+                    if str(item.get("event_date") or "")
+                    == str(selected.get("event_date") or "")
+                )
+                >= MAX_FORWARD_P0_STATION_DAYS
+            ):
+                # The cap is a fail-closed ceiling on the current day's
+                # write, which is what it was written for.  Counting listed
+                # scopes against it would let tomorrow starve today.
                 break
         # Re-read the books at ingest time, keeping the ordering above.
         # The catalog is captured early in the cycle to decide *which*
