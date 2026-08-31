@@ -10382,23 +10382,11 @@ class TargetProductionWorker:
             ),
             default="",
         )
-        # Charter, operator ruling 2026-08-31: a TAF replayed onto a newer
-        # model base is still the forecaster's confirmation, so the base is
-        # the latest P0 rather than the last one that predates the TAF.
-        #
-        # The old filter pinned the base to whichever P0 existed when the
-        # earliest un-applied TAF was issued, and held it there for as long
-        # as that TAF stayed the earliest.  KATL on 2026-08-31 is the
-        # specimen: the TAF arrived 05:39, the base froze at the 05:28 P0,
-        # and P0-M was still serving that base at 10:43 -- five hours and
-        # four genuine model improvements later, stating 0.347 for the
-        # 92-93F bucket while the current P0 said 0.427.  Stage precedence
-        # serves the higher stage, so the book was priced off the older
-        # number with the newer one in hand.
-        #
-        # P1 has always done this correctly: it roots on the latest P0 and
-        # its probabilities move with it.  This is P0-M doing the same.
-        roots = [item for item in envelopes if item.stage == "P0"]
+        roots = [
+            item for item in envelopes
+            if item.stage == "P0"
+            and item.decision_at_utc <= earliest_taf
+        ]
         seen_revisions = {
             str(item.lineage.get("forecast_source_object_sha256") or "")
             for item in envelopes
@@ -10812,14 +10800,14 @@ class TargetProductionWorker:
                         expected_source_lane=expected_source_lane,
                         preloaded_validated=scope_validated,
                     )
-                # Same rule as the shape gate above: the base is the latest
-                # P0, so a confirmation rebuilt this cycle is rebuilt on the
-                # forecast being served rather than on the one that happened
-                # to exist when the TAF was written.
-                roots = [item for item in envelopes if item.stage == "P0"]
+                roots = [
+                    item for item in envelopes
+                    if item.stage == "P0"
+                    and item.decision_at_utc <= earliest_taf
+                ]
                 if not roots:
                     raise ContractError("resident_p0_scope_changed_during_lane_gate")
-                root = max(roots, key=lambda item: item.decision_at_utc)
+                root = roots[-1]
                 exact_artifacts = [
                     item
                     for item in station_artifacts
