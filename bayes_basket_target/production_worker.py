@@ -349,12 +349,19 @@ OFFICIAL_NATIVE_CAPTURE_PENDING_STATES = frozenset({
 # station count made "more than one day is open" an error, which is how the
 # lane came to depend on something upstream pinning it to a single date.
 MAX_FORWARD_P0_STATION_DAYS = MAX_FORWARD_P0_STATIONS * 4
-# Comfortably inside the sixty-second quote lease, so a scope compiled just
-# after a refresh and one compiled just before the next both hold a book the
-# freshness contract still accepts.  Not derived from the policy at import:
-# the policy is per-activation and this is a loop cadence, and a cadence that
-# silently tracked a widened lease would stop being a safety margin.
-QUOTE_EVIDENCE_REFRESH_SECONDS = 40.0
+# How little lease may remain on a day's books before its next scope is
+# compiled against a re-read instead.
+#
+# Not a cadence.  A cadence measured from when the evidence was written was
+# never due, because the books arrive already old: measured 2026-08-31, the
+# publisher's own book age is a median 34 seconds across both days, so a
+# 60-second lease has about 26 seconds left the moment it is stored.  What
+# matters is what is left, not how long ago we wrote it.
+#
+# Twelve seconds is under that remaining headroom and above the cost of the
+# read that answers it, so a day about to run out refreshes once, and a day
+# with room does not pay for a read it does not need.
+QUOTE_EVIDENCE_REFRESH_SECONDS = 12.0
 MAX_RESIDENT_NWP_SCOPES_PER_CYCLE = 4
 MAX_NATIVE_ENSEMBLE_TRUTH_CASES_PER_STATION = 64
 MAX_RESIDENT_CANDIDATE_PREFETCH_SCOPES_PER_CYCLE = 1
@@ -8595,6 +8602,36 @@ class TargetProductionWorker:
                 "post_fill_recompute_filled_notional_not_projected"
             )
 
+    def _scope_day_quote_lease_seconds(self, event_date: str) -> float:
+        """Seconds of quote lease left on this day's freshest book.
+
+        Read from the snapshot the compile itself validates against, so the
+        answer is the one that decides production_quote_expired rather than a
+        proxy for it.  An unreadable or absent snapshot returns 0.0, which
+        asks for a refresh -- the conservative direction, since a scope with
+        no readable lease is exactly the one about to fail on it.
+        """
+
+        if self.conn is None:
+            return 0.0
+        try:
+            row = self.conn.execute(
+                "SELECT MAX(quote_expires_at) FROM basket_official_ws_snapshot"
+                " WHERE event_date=?",
+                (str(event_date),),
+            ).fetchone()
+        except sqlite3.Error:
+            return 0.0
+        if row is None or not row[0]:
+            return 0.0
+        try:
+            expires = datetime.fromisoformat(
+                str(row[0]).replace("Z", "+00:00")
+            )
+        except ValueError:
+            return 0.0
+        return (expires - datetime.now(timezone.utc)).total_seconds()
+
     def _refresh_scope_day_evidence(
         self,
         activation: Mapping[str, Any],
@@ -14686,9 +14723,8 @@ class TargetProductionWorker:
                 day = str(event_date)
                 if (station, day) in recomputed_scopes:
                     continue
-                if (
-                    time.monotonic() - evidence_refreshed_at.get(day, 0.0)
-                    >= QUOTE_EVIDENCE_REFRESH_SECONDS
+                if self._scope_day_quote_lease_seconds(day) <= (
+                    QUOTE_EVIDENCE_REFRESH_SECONDS
                 ):
                     evidence_refreshed_at[day] = time.monotonic()
                     quote_refresh_attempts.append(day)
