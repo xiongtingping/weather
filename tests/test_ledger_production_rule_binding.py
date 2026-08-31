@@ -322,6 +322,16 @@ LEDGER_ONLY = {
     ),
     "PAPER_LEDGER_FLEET_REGIME_STAGES": "same",
     "SELECTION_DISCOUNT": "measurement lane; must not become a gate",
+    "EFFECTIVE_EDGE_MODE": (
+        "replay arm; shrinks claims by the agreement-conditional realization"
+        " ratio so Kelly and the gates inherit the inverted-U of effective"
+        " edge; default off pending forward validation"
+    ),
+    "EFFECTIVE_EDGE_LAMBDA": "the arm's early-window fit, constant",
+    "CHAIN_TICKET_MODE": (
+        "replay arm; keeps a minimum-clip P0 opener when the shrunk claim"
+        " sizes it at zero, so the chain survives for its P1 top-ups"
+    ),
     "SHAPE_GAP_TILT": (
         "replay arm; scales the split-day opening stake instead of refusing,"
         " keeping the chain alive for its P1 top-ups; default 0"

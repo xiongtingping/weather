@@ -999,6 +999,53 @@ SHAPE_GAP_LIMIT_BUCKETS = float(
 SHAPE_GAP_TILT = float(
     os.environ.get("PAPER_LEDGER_SHAPE_GAP_TILT", "0") or 0.0
 )
+# Research arm (2026-09-01, user's Edge -> Effective Edge insight): shrink
+# the claimed probability by the realized/claimed ratio HISTORICALLY seen at
+# this seat's market-agreement level, so every downstream consumer -- Kelly,
+# the EV gate, the chain-growth clause -- inherits the measured inverted-U of
+# effective edge instead of the monotone preference for nominal edge.  The
+# nominal edge is largest exactly where the model is most wrong (agreement
+# < 0.5 realizes 0.14 of its claim), and the only positive strip sits at
+# agreement 0.70-0.85; e_eff = p*(lambda(a) - a) says so and the per-band P0
+# ROI (-88.6 / -33.0 / -5.0 / -27.8) traces the same curve.  The table below
+# is fitted on the EARLY window only (settlements before 2026-08-27) --
+# fitting it on the full sample would let the late collapse grade its own
+# homework.  Opening stages only: P1's lambda runs above 1 where the market
+# disagrees (1.09-1.23, the observation advantage), and shrinking it would
+# destroy the one lane that earns.  Endogeneity warning inherited from
+# SELECTION_DISCOUNT: the ratios are conditional on the current selection
+# distribution, so this may only ever ship after a forward split and a whole
+# -book replay, never from the full-sample fit alone.
+EFFECTIVE_EDGE_MODE = (
+    os.environ.get("PAPER_LEDGER_EFFECTIVE_EDGE", "").strip().lower() or "off"
+)
+# Companion to the arm above.  Every screen that improved P0's own seats --
+# refusal, scaling, direction, and now the effective-edge shrink -- died on
+# the same wall: a refused P0 leaves no chain, and chain_never_opened then
+# forfeits the P1 top-ups that carry the book (fifth family, same autopsy:
+# the shrink saved 133u of P0 losses and lost 126u of P1 profit).  This knob
+# keeps the ticket: when the shrunk claim sizes the P0 opener at nothing,
+# the seat is taken anyway at the smallest executable stake (one venue clip
+# per leg, never below the dust floor that killed the 0.1x scaling arm) so
+# the chain exists for the stages that earn.  Opening seats only; a top-up
+# judged worthless stays refused.
+CHAIN_TICKET_MODE = (
+    os.environ.get("PAPER_LEDGER_CHAIN_TICKET", "").strip().lower() or "off"
+)
+EFFECTIVE_EDGE_LAMBDA = (
+    # (agreement upper bound, realized/claimed on the early window)
+    (0.50, 0.14),
+    (0.70, 0.60),
+    (0.85, 0.87),
+    (9.99, 0.82),
+)
+
+
+def _effective_edge_lambda(agreement: float) -> float:
+    for bound, lam in EFFECTIVE_EDGE_LAMBDA:
+        if agreement < bound:
+            return lam
+    return EFFECTIVE_EDGE_LAMBDA[-1][1]
 # Consolidation stake tilt (user ruling, 2026-08-21): the one discriminator
 # that survived every robustness cut.  Chains entered with two or more of
 # the three consolidation signs on returned -41.6% (ex-best -46.0%,
@@ -1243,6 +1290,12 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     None
     if SELECTION_DISCOUNT <= 0
     else f"选择折扣λs{SELECTION_DISCOUNT:g}",
+    None
+    if EFFECTIVE_EDGE_MODE != "on"
+    else "有效边际λ(a)收缩·P0",
+    None
+    if CHAIN_TICKET_MODE != "on"
+    else "开链保底票",
     None
     if SHAPE_GAP_LIMIT_BUCKETS <= 0
     else (
@@ -5651,6 +5704,14 @@ def backfill(
                     gate_win = float(seat["win_probability"]) * (
                         SELECTION_DISCOUNT if SELECTION_DISCOUNT > 0 else 1.0
                     )
+                    if (
+                        EFFECTIVE_EDGE_MODE == "on"
+                        and stage != "P1"
+                        and gate_win > 0
+                    ):
+                        gate_win = gate_win * _effective_edge_lambda(
+                            float(seat_cost) / gate_win
+                        )
                     fraction, wanted_stake = _kelly_stake(
                         win_probability=gate_win,
                         cost=seat_cost,
@@ -5677,6 +5738,23 @@ def backfill(
                                 _tilt_minimum_clip(conn)
                                 * len(seat["buckets"]),
                             ),
+                        )
+                    if (
+                        stake <= 0.0
+                        and CHAIN_TICKET_MODE == "on"
+                        and stage == "P0"
+                        and not held
+                        and float(seat_cost) < 1.0
+                        and wanted_stake <= 0.0
+                    ):
+                        # The ticket: the objective judged this opener
+                        # worthless, but worthless and skippable are not the
+                        # same thing under one-book chains.  Floor at one
+                        # executable clip per leg, above the dust floor so
+                        # the chain it opens still counts as credible.
+                        stake = max(
+                            _tilt_minimum_clip(conn) * len(seat["buckets"]),
+                            DUST_COST_FLOOR * 2.0,
                         )
                     if stake <= 0.0:
                         # Whichever price the stage's basis judged on, the
