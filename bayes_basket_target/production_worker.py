@@ -32,7 +32,11 @@ from typing import Any, Iterator, Mapping, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .fleet import expected_station_count
-from .activation import assert_target_database_owner, load_target_activation
+from .activation import (
+    assert_target_database_owner,
+    load_activation,
+    load_target_activation,
+)
 from .atomic_ledger import (
     AtomicLedgerError,
     commit_blocked_scope_decision,
@@ -1026,7 +1030,15 @@ def open_target_writer_if_enabled(path: Path, *, activation_path: Path) -> sqlit
     mode = str(os.environ.get("PM_TARGET_EXECUTION_MODE", "") or "").strip()
     if mode and mode != PRODUCTION_EXECUTION_MODE:
         raise RuntimeError("target_writer_execution_mode_mismatch")
-    activation = load_target_activation(activation_path)
+    # load_activation, not load_target_activation: the schema-dispatching
+    # loader.  The go-live flip pointed DEFAULT_TARGET_ACTIVATION at the live
+    # contract while this line still called the no-live-only loader, which
+    # refused the live schema on sight -- target_activation_schema_invalid,
+    # writer gate shut, production blocked_fail_closed for seven hours
+    # (2026-08-30T18:33 to 2026-08-31T01:57) before anybody looked at the
+    # production block of the status file.  The monitor that was watching for
+    # the first live intent could not see it: an intent needs a writer.
+    activation = load_activation(activation_path)
     if activation.get("execution_mode") != PRODUCTION_EXECUTION_MODE:
         raise RuntimeError("target_writer_activation_mode_mismatch")
     # Each mode asserts its own boundaries rather than one mode asserting all
