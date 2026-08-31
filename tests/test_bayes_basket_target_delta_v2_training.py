@@ -447,14 +447,41 @@ def test_decision_scope_ignores_transport_versions_but_tracks_economic_changes()
         market_snapshot=base_market,
     )
 
-    # And when no reading supplies the hash at all it still fails closed --
-    # on the missing hash, which is the honest reason, rather than on the
-    # shape of a mapping that was only ever a fallback.
+    # And when nobody recorded the hash anywhere, it is derived from the
+    # envelope rather than refused.  ProbabilityEnvelope.to_dict() omits
+    # content_sha256 on purpose -- from_mapping rejects it as an unknown
+    # field, so no caller can hand over a hash that disagrees with the body --
+    # and the plan lineage that would otherwise carry it is added only on the
+    # success path.  A blocked plan therefore has none of the three recorded
+    # readings, and recomputing is asking the same question the writer asked,
+    # not trusting a claim.
+    envelope_only = json.loads(json.dumps(lineage_free_plan))
+    envelope_only["probability_envelope"].pop("content_sha256", None)
+    derived = delta_v2_decision_scope_key(
+        compiled_plan=envelope_only,
+        market_snapshot=base_market,
+    )
+    recorded = json.loads(json.dumps(envelope_only))
+    recorded["probability_envelope"]["content_sha256"] = ProbabilityEnvelope.from_mapping(
+        dict(envelope_only["probability_envelope"])
+    ).content_sha256
+    assert derived == delta_v2_decision_scope_key(
+        compiled_plan=recorded,
+        market_snapshot=base_market,
+    )
+
+    # A mapping that is not an envelope at all still fails closed on the
+    # missing hash -- the honest reason -- and not on a parse error thrown
+    # out of a fallback.
+    # Keep the probability lineage -- its own mapping guard sits ahead of
+    # this one -- and remove only what the hash needs to be derivable.
+    not_an_envelope = json.loads(json.dumps(envelope_only))
+    not_an_envelope["probability_envelope"].pop("probabilities", None)
     with pytest.raises(
         ContractError, match="delta_v2_probability_envelope_sha256_missing"
     ):
         delta_v2_decision_scope_key(
-            compiled_plan=lineage_free_plan,
+            compiled_plan=not_an_envelope,
             market_snapshot=base_market,
         )
 

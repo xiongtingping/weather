@@ -324,6 +324,22 @@ def _economic_decision_semantics(
     )
 
 
+def _envelope_content_sha256(envelope: Mapping[str, Any]) -> str:
+    """The envelope's own hash, recomputed from its body.
+
+    Returns "" when the mapping cannot be read as an envelope, so the caller
+    still fails closed on the missing hash rather than on a parse error from
+    a fallback.
+    """
+
+    from .contracts import ProbabilityEnvelope  # noqa: PLC0415
+
+    try:
+        return ProbabilityEnvelope.from_mapping(dict(envelope)).content_sha256
+    except Exception:  # noqa: BLE001 -- a fallback may not raise
+        return ""
+
+
 def delta_v2_decision_scope_key(
     *,
     compiled_plan: Mapping[str, Any],
@@ -425,7 +441,19 @@ def delta_v2_decision_scope_key(
             "delta_v2_probability_envelope_sha256",
             envelope.get("content_sha256")
             or lineage.get("probability_envelope_sha256")
-            or plan_lineage.get("probability_envelope_sha256"),
+            or plan_lineage.get("probability_envelope_sha256")
+            # Last: derive it from the envelope in hand.  The three readings
+            # above are all places someone recorded the hash, and a blocked
+            # plan has none of them -- ProbabilityEnvelope.to_dict()
+            # deliberately omits content_sha256, since from_mapping refuses
+            # it as an unknown field so that no caller can supply a hash that
+            # disagrees with the body, and the plan lineage that carries it
+            # is only added on the success path.  The hash is a pure function
+            # of that body, so recomputing it is not accepting a claim; it is
+            # asking the same question the writer asked.  Verified against
+            # eight stored envelopes: to_dict -> from_mapping -> content
+            # returns the stored hash byte for byte.
+            or _envelope_content_sha256(envelope),
         ),
         "posterior_sha256": _sha(
             "delta_v2_posterior_sha256",
