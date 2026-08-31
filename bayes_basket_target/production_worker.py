@@ -14663,6 +14663,7 @@ class TargetProductionWorker:
                 for day_key in {str(item[1]) for item in rows}
             }
             quote_refresh_failures: list[dict[str, str]] = []
+            quote_refresh_attempts: list[str] = []
             for station_id, event_date in rows:
                 station = str(station_id)
                 day = str(event_date)
@@ -14673,6 +14674,7 @@ class TargetProductionWorker:
                     >= QUOTE_EVIDENCE_REFRESH_SECONDS
                 ):
                     evidence_refreshed_at[day] = time.monotonic()
+                    quote_refresh_attempts.append(day)
                     try:
                         self._refresh_scope_day_evidence(
                             activation,
@@ -14866,6 +14868,14 @@ class TargetProductionWorker:
                 "candidates": results,
                 "quote_evidence_refresh": {
                     "interval_seconds": QUOTE_EVIDENCE_REFRESH_SECONDS,
+                    # Counted, not inferred.  A refresh loop reports how many
+                    # times it fired and for which day, because "zero
+                    # failures" reads the same whether it ran twice or never.
+                    "attempts": len(quote_refresh_attempts),
+                    "attempts_by_day": {
+                        day: quote_refresh_attempts.count(day)
+                        for day in sorted(set(quote_refresh_attempts))
+                    },
                     "failures": quote_refresh_failures[:10],
                     "failure_count": len(quote_refresh_failures),
                 },
