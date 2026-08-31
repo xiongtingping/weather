@@ -14475,10 +14475,52 @@ class TargetProductionWorker:
                     "calls_order_gateway": False,
                     "live_submit_authorized": False,
                 }
+            # One blocked scope out of thirty-eight used to turn this whole
+            # receipt blocked_fail_closed -- all-or-nothing, over a fleet
+            # where some scopes are always in a soft per-station refusal
+            # (support_empty is HOLD semantics, not a fault).  The light was
+            # red on the first cycle that ever carried nine fully committed
+            # live-authority decisions, and the operator read an outage.
+            #
+            # The verdict now counts what the ledger says: a scope whose
+            # atomic commit landed (or was idempotently retained) is
+            # committed; a scope that refused is blocked and its reason is
+            # tallied.  The whole cycle is blocked_fail_closed only when it
+            # produced nothing at all -- no results, or results and not one
+            # of them committed -- which is also exactly the shape of the
+            # worker-level failures the except arm below already reports.
+            committed_scope_states = {
+                "committed",
+                "already_committed",
+                "retained_existing_authority_decision",
+            }
+            committed_scopes = sum(
+                1
+                for item in results
+                if isinstance(item.get("atomic_commit"), Mapping)
+                and str(item["atomic_commit"].get("state") or "")
+                in committed_scope_states
+            )
+            blocked_scope_reasons: dict[str, int] = {}
+            for item in results:
+                if item.get("ok") is not False:
+                    continue
+                key = str(item.get("reason") or "unnamed").split(":")[-1][:60]
+                blocked_scope_reasons[key] = blocked_scope_reasons.get(key, 0) + 1
+            blocked_scopes = sum(blocked_scope_reasons.values())
             return {
                 "schema": SCHEMA,
-                "ok": bool(results) and all(item.get("status") in {"ready_no_live", "hold"} for item in results),
-                "state": "compiled_no_live" if results and all(item.get("ok", True) for item in results) else "blocked_fail_closed",
+                "ok": bool(results) and committed_scopes > 0,
+                "state": (
+                    "blocked_fail_closed"
+                    if not results or committed_scopes == 0
+                    else "cycle_committed"
+                    if blocked_scopes == 0
+                    else "cycle_committed_partial"
+                ),
+                "committed_scope_count": committed_scopes,
+                "blocked_scope_count": blocked_scopes,
+                "blocked_scope_reasons": blocked_scope_reasons,
                 "execution_mode": PRODUCTION_EXECUTION_MODE,
                 "candidate_count": len(results),
                 "candidates": results,

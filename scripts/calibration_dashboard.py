@@ -272,6 +272,27 @@ def _production_health(status: Mapping[str, Any]) -> dict[str, Any]:
             locked += 1
     notes: list[str] = []
     health = "green"
+    # Partial commitment is the fleet's normal shape: some scopes always sit
+    # in a soft per-station refusal.  Name the split instead of painting the
+    # whole cycle red -- committed count first, then the top refusal reasons,
+    # so the reader sees "the cycle works, these scopes are waiting" rather
+    # than an outage banner over nine committed live decisions.
+    blocked_scope_count = int(production.get("blocked_scope_count") or 0)
+    committed_scope_count = int(production.get("committed_scope_count") or 0)
+    if blocked_scope_count and committed_scope_count:
+        reasons = production.get("blocked_scope_reasons") or {}
+        top = "、".join(
+            f"{name}×{count}"
+            for name, count in sorted(
+                reasons.items(), key=lambda kv: -kv[1]
+            )[:3]
+        )
+        health = "amber"
+        notes.append(
+            f"{committed_scope_count} 个 scope 落账，"
+            f"{blocked_scope_count} 个逐站阻断"
+            + (f"（{top}）" if top else "")
+        )
     if stale_hours is not None and stale_hours > 1.0:
         health = "red"
         notes.append(f"周期已 {stale_hours:.1f} 小时没有完成")

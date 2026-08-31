@@ -221,3 +221,63 @@ def test_a_producing_receipt_is_still_green() -> None:
     health = board._production_health(receipt)
     assert health["production_health"] == "green"
     assert health["production_note"] == "周期正常产出"
+
+
+def test_cycle_verdict_counts_the_ledger_not_the_worst_scope() -> None:
+    """One blocked scope must not paint a committed cycle fail-closed.
+
+    The old aggregation was all-or-nothing: state went blocked_fail_closed
+    unless every candidate was clean, over a fleet where some scopes are
+    always in a soft per-station refusal (support_empty is HOLD semantics).
+    On 2026-08-31 the first cycle ever to carry nine fully committed
+    live-authority decisions rendered as an outage banner.
+
+    The verdict now counts what the ledger says.  This drives the health
+    function with the three shapes it distinguishes -- all committed, part
+    committed, nothing committed -- through the real dashboard code.
+    """
+    import importlib.util as _ilu
+    from pathlib import Path as _P
+
+    spec = _ilu.spec_from_file_location(
+        "calibration_dashboard_module",
+        _P(__file__).resolve().parents[1] / "scripts" / "calibration_dashboard.py",
+    )
+    dash = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(dash)
+
+    now = "2026-08-31T06:00:00Z"
+
+    partial = dash._production_health({"production": {
+        "state": "cycle_committed_partial",
+        "ok": True,
+        "committed_scope_count": 9,
+        "blocked_scope_count": 5,
+        "blocked_scope_reasons": {"support_empty": 3, "resident_p1_replay_required": 2},
+        "worker_checked_at": now,
+        "stage_timings_ms": {"cycle_total": 300000.0},
+    }})
+    assert partial["production_health"] == "amber"
+    assert "9 个 scope 落账" in partial["production_note"]
+    assert "support_empty×3" in partial["production_note"]
+
+    clean = dash._production_health({"production": {
+        "state": "cycle_committed",
+        "ok": True,
+        "committed_scope_count": 12,
+        "blocked_scope_count": 0,
+        "blocked_scope_reasons": {},
+        "worker_checked_at": now,
+        "stage_timings_ms": {"cycle_total": 300000.0},
+    }})
+    assert clean["production_health"] == "green"
+
+    # Nothing committed is still an outage, and still red.
+    dead = dash._production_health({"production": {
+        "state": "blocked_fail_closed",
+        "ok": False,
+        "reason": "target_activation_invalid:RuntimeError:target_activation_state_drift",
+        "worker_checked_at": now,
+    }})
+    assert dead["production_health"] == "red"
+    assert "fail-closed" in dead["production_note"]
