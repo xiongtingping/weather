@@ -915,9 +915,20 @@ def verify_probability_bridge_replay_equivalence(
             "SELECT history_id,envelope_content_sha256,bridge_sha256,"
             "bucket_map_sha256,projection_sha256 "
             "FROM basket_probability_bridge_history "
-            "WHERE checkpoint_id=? AND state='COMMITTED'",
-            (expected["checkpoint_id"],),
+            "WHERE checkpoint_id=? AND state='COMMITTED' "
+            "AND envelope_content_sha256=?",
+            (
+                expected["checkpoint_id"],
+                expected["envelope_content_sha256"],
+            ),
         ).fetchall()
+        # Keyed on the envelope as well as the checkpoint.  A checkpoint id
+        # names a forecast, not a compile instant, so a restated forecast
+        # carries the same id with a new envelope hash and this history table
+        # holds a row for each -- cardinality on the id alone stopped meaning
+        # "exactly one bridge" and started meaning "compiled only once".  The
+        # invariant this check exists for is unchanged: the one bridge built
+        # for this exact envelope must match the canonical replay.
         if len(history_row) != 1:
             raise ContractError("xsb_equivalence_history_cardinality_mismatch")
         history_id, envelope_sha, bridge_sha, bucket_map_sha, projection_sha = history_row[0]
