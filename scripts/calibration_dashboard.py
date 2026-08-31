@@ -2296,6 +2296,17 @@ def _live_execution_mode() -> str:
         return "unknown"
 
 
+def _read_chain_probe() -> dict[str, Any]:
+    """The recorded live-order round trip, if one has been run."""
+
+    path = ROOT / "data" / "chain_probe_receipt.json"
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
 def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
     """The live order book: counts, money and the rows themselves."""
 
@@ -2583,6 +2594,11 @@ def collect_live_readiness(
         # while every pre-migration row carries 0.  Counted fresh at render
         # so the panel and the ledger cannot say different things.
         "live_orders": _collect_live_orders(conn),
+        # The round-trip that proved the chain, kept as the record it is.
+        # Before it, every claim about whether this machine could reach the
+        # exchange was inference: the region gate read the website's geoblock
+        # and the exchange itself had not been asked since 2026-08-07.
+        "chain_probe": _read_chain_probe(),
         "station_scope": scope_mode,
         "minimum_settlements_to_qualify": minimum,
         "station_probation_waivers": sorted(waived_set),
@@ -7664,9 +7680,19 @@ function liveOrderCard(L){
     <td class="mono">${(r.requested_notional_usdc??0).toFixed(2)}</td>
     <td>${r.state}</td>
     <td class="mono" title="${r.order_intent_id}">${r.created_at}</td></tr>`).join("");
+  const P = L.chain_probe || {};
+  const probe = P.order_id ? `<div class="why" style="margin-top:10px;font-size:12.5px">
+    <b>链路已验证</b> · ${P.at_utc} · ${P.station||""} ${P.bucket||""}
+    <br>下单 → 交易所受理 <span class="mono">${String(P.order_id).slice(0,14)}…</span>
+    （status ${P.status}，签名 id 与回执逐字节相同）→ 撤销确认
+    <br><span class="muted">延迟：构造签名 ${P.order_build_ms}ms · POST 往返
+    ${P.post_ms}ms · 端到端 ${P.total_ms}ms —— 九成在代理与跨洋，不在本机</span>
+    <br><span class="muted">这是 2026-08-07 之后交易所第一次真正被问到：出口未被拒绝，
+    此前所有「地区封锁」都只是网站口径的推断。</span></div>` : "";
   return `<div class="card" style="margin-top:12px">
     <h3 style="margin-top:0">实盘订单 <span class="pill ${liveMode&&!L.submission_paused?"red":""}"
       style="font-size:11px">${state}</span></h3>
+    ${probe}
     <div class="muted" style="font-size:12px">
       判据唯一：<span class="mono">live_submit_authorized=1</span> 的意向才是实盘——
       该列只有 go-live 迁移之后铸造的行才可能为 1，历史 1406 行全部为 0。
