@@ -246,7 +246,17 @@ def test_cycle_verdict_counts_the_ledger_not_the_worst_scope() -> None:
     dash = _ilu.module_from_spec(spec)
     spec.loader.exec_module(dash)
 
-    now = "2026-08-31T06:00:00Z"
+    # Relative to the running clock, not a literal: worker_checked_at is
+    # aged against "now", so a fixed stamp turns this test red the moment
+    # real time moves three hours past it -- which it did, hours after the
+    # test was written.
+    from datetime import datetime as _dt, timezone as _tz
+
+    now = (
+        _dt.now(_tz.utc)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z")
+    )
 
     partial = dash._production_health({"production": {
         "state": "cycle_committed_partial",

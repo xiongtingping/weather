@@ -6619,6 +6619,67 @@ class TargetProductionWorker:
             return False
         return state == "open"
 
+    def _listing_entry_scopes(
+        self,
+        *,
+        as_of_utc: str,
+        station_allowlist: set[str] | frozenset[str] | None = None,
+    ) -> list[tuple[str, str]]:
+        """Charter 48 scopes: a listed day this book may already open on.
+
+        Clause 48 of the 2026-08-14 ruling is "listing is entry" -- a market
+        becomes tradable when it is listed, not when its settlement day
+        begins.  The admission rule is not invented here: it is the one
+        ``_decision_scopes`` already carries for a not-started day, namely a
+        committed P0 or P0-M authority and no P1 (a future P1 cannot exist,
+        and a scope claiming one is not a listing scope).
+
+        The rule was live and producing between 2026-08-14 and 08-21 -- about
+        twenty entries a day, measured on the local calendar of each
+        station's settlement timezone -- then fell to zero.  The cycle scopes
+        exactly one ``manifest_event_date`` and requires it to be open, so a
+        listed day could not enter, and the preselection lane that does see
+        listed days writes plans no consumer reads.  This restores the path;
+        every downstream gate the current day passes still applies unchanged.
+        """
+
+        allow = {str(item).upper() for item in (station_allowlist or ())}
+        listing: list[tuple[str, str]] = []
+        for station, day in self._decision_scopes(
+            as_of_utc=as_of_utc,
+            include_not_started=True,
+        ):
+            if allow and str(station).upper() not in allow:
+                continue
+            if self._event_day_open(
+                day,
+                settlement_timezone=self._scope_settlement_timezone(
+                    station, day
+                ),
+                as_of_utc=as_of_utc,
+            ):
+                # Already the current day for this station; the ordinary
+                # same-day path owns it and must not be duplicated here.
+                continue
+            listing.append((str(station), str(day)))
+        return sorted(set(listing))
+
+    def _scope_settlement_timezone(self, station_id: str, event_date: str) -> str:
+        """The settlement timezone this scope is keyed on, or ""."""
+
+        if self.conn is None:
+            return ""
+        try:
+            row = self.conn.execute(
+                "SELECT settlement_timezone FROM basket_probability_envelope"
+                " WHERE station_id=? AND event_date=? AND settlement_timezone<>''"
+                " LIMIT 1",
+                (str(station_id), str(event_date)),
+            ).fetchone()
+        except sqlite3.Error:
+            return ""
+        return str(row[0]) if row else ""
+
     def _decision_scopes(
         self,
         *,
@@ -8572,23 +8633,49 @@ class TargetProductionWorker:
         evidence_cache_failures: list[dict[str, str]] = []
         if station_allowlist:
             evidence_cache_receipts = []
-            for station_id in station_allowlist:
+            # Charter 48: the publisher already subscribes a listed day the
+            # moment it is listed -- the scope catalog carries both days --
+            # so the evidence for one is as materializable as the other.  A
+            # listed day that yields no evidence is skipped like any other
+            # station, never fatal: the current day owns the fatal branch
+            # below, because a cycle with no current-day evidence at all is
+            # the outage this contract exists to catch.
+            listing_scopes = self._listing_entry_scopes(
+                as_of_utc=utc_now(),
+                station_allowlist=station_allowlist,
+            )
+            evidence_scopes = [
+                (station_id, manifest_event_date)
+                for station_id in station_allowlist
+            ] + [
+                (station_id, day)
+                for station_id, day in listing_scopes
+                if day != manifest_event_date
+            ]
+            for station_id, scope_event_date in evidence_scopes:
                 try:
                     evidence_cache_receipts.append(
                         materialize_official_ws_evidence_cache(
                             self.commit_conn,
                             manifest_path=manifest_path,
                             station_id=station_id,
-                            event_date=manifest_event_date,
+                            event_date=scope_event_date,
                             commit=True,
                         )
                     )
                 except ContractError as exc:
                     evidence_cache_failures.append({
                         "station_id": station_id,
+                        "event_date": scope_event_date,
                         "reason": f"{type(exc).__name__}:{exc}",
                     })
-            if not evidence_cache_receipts:
+            current_day_receipts = [
+                receipt
+                for receipt in evidence_cache_receipts
+                if isinstance(receipt, Mapping)
+                and str(receipt.get("event_date") or "") == manifest_event_date
+            ]
+            if not current_day_receipts:
                 # Nothing was materialized for any station, so there is no
                 # partial pass to keep -- fail the way the single-scope
                 # contract does, naming what was skipped.
@@ -14329,6 +14416,22 @@ class TargetProductionWorker:
                     as_of_utc=now,
                 )
             ]
+            # Charter 48, restored.  The query above asks for one day and the
+            # predicate requires it to be open, so a listed-but-not-started
+            # day -- the thing clause 48 says is tradable the moment it is
+            # listed -- could never enter this list.  Its scopes are appended
+            # here under the admission rule _decision_scopes already carries
+            # for them (committed P0/P0-M authority, no P1), and they then
+            # meet every downstream gate the current day meets, unchanged.
+            listing_rows = [
+                (station_id, event_date)
+                for station_id, event_date in self._listing_entry_scopes(
+                    as_of_utc=now,
+                    station_allowlist=station_allowlist,
+                )
+                if (station_id, event_date) not in set(rows)
+            ]
+            rows = list(rows) + listing_rows
             self._mark("committed_scope_sweep")
             if not rows:
                 # Preliminary future scopes have their own zero-execution
