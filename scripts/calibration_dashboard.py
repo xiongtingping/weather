@@ -6032,7 +6032,10 @@ function stages(){
 // the table above be split finer", and answering it two headings away made
 // readers compare a pooled row with a split row by scrolling.
 function bandTable(){
-  return stages() + bandShadow();
+  // The edge thermometer lives here rather than under the market tab
+  // (user ruling, 2026-09-01): the band table audits claimed probability,
+  // the thermometer audits claimed edge, and they are one reading.
+  return stages() + bandShadow() + edgeBandHealth();
 }
 
 
@@ -6575,11 +6578,15 @@ function truthLanding(){
   }</tr></thead><tbody>${crossRows}</tbody></table>${legend}`;
 }
 
+// Rendered inside the band-table module, not as its own section (user
+// ruling, 2026-09-01): both tables answer "when the model claims X, what
+// actually happens", one keyed by claimed probability, one by claimed
+// edge, and reading them two tabs apart hid that they are the same audit.
 function edgeBandHealth(){
   const E=D.edge_band_health||{};
   const rows=E.bands||[];
   if(!rows.length)
-    return `<h2>声称边际体温计（edge 带 × 兑现）</h2>
+    return `<h2 style="margin-top:30px">声称边际体温计（edge 带 × 兑现）</h2>
     <div class="card"><span class="dot green"></span> 无腿级数据。</div>`;
   const pct=v=>v==null?"—":(v*100).toFixed(0)+"%";
   const mult=v=>v==null?"—":"×"+v.toFixed(2);
@@ -6603,9 +6610,61 @@ function edgeBandHealth(){
       <td>${pct(r.share_recent)}</td>
       <td>${mult(rc.realize_filled_x)}</td></tr>`;
   };
-  return `<h2>声称边际体温计（edge 带 × 兑现）</h2>
+  // The fever line drawn as the shape it is read as: an inverted-U arc
+  // from true bargains (left, green) to fake ones (right, red).  Equal
+  // angular slots on purpose -- slots sized by leg share would starve the
+  // fever bands of label room, and the label is the point -- so the share
+  // is printed under each band instead.  Outer ring is the whole ledger,
+  // inner ring the recent window, so the charter-62 treatment shows as the
+  // inner ring cooling before the outer one does.
+  const tone=x=>x==null?"var(--soft)"
+    :x>=0.9?"var(--green)":x>=0.5?"var(--amber)"
+    :x>=0.2?"#e8590c":"var(--red)";
+  const P=(r,t)=>{const a=(180-t)*Math.PI/180;
+    return (360+r*Math.cos(a)).toFixed(1)+" "+(258-r*Math.sin(a)).toFixed(1);};
+  const seg=(t0,t1,r0,r1,fill,tip)=>`<path d="M ${P(r1,t0)}
+    A ${r1} ${r1} 0 0 1 ${P(r1,t1)} L ${P(r0,t1)}
+    A ${r0} ${r0} 0 0 0 ${P(r0,t0)} Z" fill="${fill}"><title>${tip}</title></path>`;
+  const step=180/rows.length;
+  const arcs=rows.map((r,i)=>{
+    const t0=i*step+1.2,t1=(i+1)*step-1.2,tm=(t0+t1)/2;
+    const anchor=tm<75?"end":tm>105?"start":"middle";
+    const [lx,ly]=P(232,tm).split(" ");
+    return seg(t0,t1,162,200,tone(r.all.realize_filled_x),
+        `${h(r.band)}：全期兑现 ${mult(r.all.realize_filled_x)}（${r.all.n} 腿）`)
+      +seg(t0,t1,130,152,tone(r.recent.realize_filled_x),
+        `${h(r.band)}：近7天兑现 ${mult(r.recent.realize_filled_x)}（${r.recent.n} 腿）`)
+      +`<text x="${lx}" y="${ly}" text-anchor="${anchor}" font-size="12"
+        fill="var(--text)">${h(r.band)}
+        <tspan font-weight="700">${mult(r.all.realize_filled_x)}</tspan>
+        <tspan x="${lx}" dy="14" fill="var(--muted)">${pct(r.share_all)} 的腿</tspan></text>`;
+  }).join("");
+  const arc=`<svg viewBox="0 0 720 300" role="img"
+    style="width:100%;max-width:840px;display:block;margin:8px auto 0">
+    <line x1="152" y1="258" x2="568" y2="258" stroke="var(--line)"/>
+    ${arcs}
+    <text x="360" y="212" text-anchor="middle" font-size="16" font-weight="700"
+      fill="var(--text)">自认便宜越大</text>
+    <text x="360" y="232" text-anchor="middle" font-size="16" font-weight="700"
+      fill="var(--text)">兑现越崩</text>
+    <text x="360" y="250" text-anchor="middle" font-size="11"
+      fill="var(--muted)">外圈＝全期 · 内圈＝近7天</text>
+    <text x="160" y="284" text-anchor="middle" font-size="12"
+      fill="var(--green)">← 真便宜：说到做到</text>
+    <text x="560" y="284" text-anchor="middle" font-size="12"
+      fill="var(--red)">假便宜：太好的价格是警报 →</text>
+    <text x="360" y="284" text-anchor="middle" font-size="11"
+      fill="var(--muted)">→ 自认占的便宜从小到大 →</text>
+  </svg>
+  <div class="muted" style="margin-top:6px;text-align:center">
+    ✅ ×≥0.9 健康 · 😐 ×0.5–0.9 偏虚 ·
+    <span style="color:#e8590c">🤒 ×0.2–0.5 发烧</span> ·
+    <span style="color:var(--red)">🔥 ×&lt;0.2 重烧</span>
+    ——「×」是买到后真实兑现是声称的几成，弧段下的百分比是这一档占全部腿的比例</div>`;
+  return `<h2 style="margin-top:30px">声称边际体温计（edge 带 × 兑现）</h2>
   <div class="card">
-  <p class="note"><b>这张表回答一个问题：模型觉得"捡到的便宜"是真是假。</b>
+  ${arc}
+  <p class="note" style="margin-top:12px"><b>这张表回答一个问题：模型觉得"捡到的便宜"是真是假。</b>
   每条腿有两个数——模型信它多少（声称）、市场卖它多少（卖价），差值＝模型自认占的便宜，
   按大小分七档。"兑现"列＝买到后真值实际落桶的比例是声称的几成：×1.0 说得准，
   ×0.45 自估打了四五折，×0.07 声称基本是错的。规律从上往下一眼可见：
@@ -8947,13 +9006,13 @@ const GROUPS = [
      [oosScores,"OOS 打分"],[centerWidth,"中心/宽度"],
      [scorecard,"模型校准总检"],[h5Readiness,"H5 换代进度"],[h5BiasAccuracy,"H5 订正准度"]]},
   {id:"shape", label:"概率与持仓形状", tone:"#7ee787",
-   note:"概率怎么被分档修正、注码怎么被固化减仓、分布和实际持仓差在哪",
+   note:"概率怎么被分档修正、声称的便宜兑不兑现、注码怎么被固化减仓、分布和实际持仓差在哪",
    sections:[[bandTable,"band 表"],[consolidation,"固化减仓"],
      [windowDivergence,"分布与持仓分家"]]},
   {id:"market", label:"市场与执行门槛", tone:"#e3b341",
-   note:"市场肯不肯让这套东西赚钱：覆盖与 EV、篮子命中率、真值落位、声称边际",
+   note:"市场肯不肯让这套东西赚钱：覆盖与 EV、篮子命中率、真值落位",
    sections:[[coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"],
-     [truthLanding,"真值落位"],[edgeBandHealth,"声称边际体温计"]]},
+     [truthLanding,"真值落位"]]},
   {id:"health", label:"系统健康", tone:"#f85149",
    note:"机器在不在转：整条链路每一环、真值物化",
    sections:[[chain,"链路"],[materialization,"真值物化"]]},
