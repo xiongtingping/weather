@@ -2475,20 +2475,34 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
 
 
 def _collect_order_book(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Every intent ever minted, cut the three ways a reader asks for."""
+    """The live intent book, cut the three ways a reader asks for.
+
+    Live only (user ruling, 2026-08-31): every query here is filtered to
+    ``live_submit_authorized=1``.  The paper intents are a different book
+    and counting them beside live ones in the same table is how the two
+    get added up by eye.  Their count is carried separately, named as
+    excluded, for the one sentence that explains an empty panel -- a
+    reader who sees zero live intents still needs to know whether the
+    lane is minting anything at all.
+    """
 
     book: dict[str, Any] = {}
     joined = (
         " FROM basket_target_order_intents i"
         " LEFT JOIN auto_trade_decisions d ON d.decision_id=i.decision_id"
+        " WHERE i.live_submit_authorized=1"
     )
-    live = "SUM(CASE WHEN i.live_submit_authorized=1 THEN 1 ELSE 0 END)"
+    try:
+        book["paper_excluded"] = int(conn.execute(
+            "SELECT COUNT(*) FROM basket_target_order_intents"
+            " WHERE live_submit_authorized=0"
+        ).fetchone()[0])
+    except sqlite3.Error:
+        book["paper_excluded"] = 0
     try:
         row = conn.execute(
-            "SELECT COUNT(*), " + live + ","
+            "SELECT COUNT(*),"
             " COALESCE(SUM(i.requested_notional_usdc),0),"
-            " COALESCE(SUM(CASE WHEN i.live_submit_authorized=1"
-            "   THEN i.requested_notional_usdc ELSE 0 END),0),"
             " AVG(i.requested_notional_usdc), AVG(i.limit_price),"
             " COUNT(DISTINCT d.station_id), COUNT(DISTINCT i.decision_id),"
             " COUNT(DISTINCT i.cycle_id),"
@@ -2498,29 +2512,28 @@ def _collect_order_book(conn: sqlite3.Connection) -> dict[str, Any]:
     except sqlite3.Error:
         return book
     if not row or not row[0]:
+        book["total"] = 0
         return book
     book.update({
-        "total": int(row[0]), "live": int(row[1] or 0),
-        "paper": int(row[0]) - int(row[1] or 0),
-        "notional_usdc": round(float(row[2] or 0.0), 2),
-        "live_notional_usdc": round(float(row[3] or 0.0), 2),
-        "mean_notional_usdc": round(float(row[4] or 0.0), 3),
-        "mean_limit_price": round(float(row[5] or 0.0), 4),
-        "stations": int(row[6] or 0), "decisions": int(row[7] or 0),
-        "cycles": int(row[8] or 0),
-        "first_event_date": str(row[9] or ""),
-        "last_event_date": str(row[10] or ""),
-        "last_minted_at": str(row[11] or ""),
+        "total": int(row[0]),
+        "notional_usdc": round(float(row[1] or 0.0), 2),
+        "mean_notional_usdc": round(float(row[2] or 0.0), 3),
+        "mean_limit_price": round(float(row[3] or 0.0), 4),
+        "stations": int(row[4] or 0), "decisions": int(row[5] or 0),
+        "cycles": int(row[6] or 0),
+        "first_event_date": str(row[7] or ""),
+        "last_event_date": str(row[8] or ""),
+        "last_minted_at": str(row[9] or ""),
     })
     try:
         book["by_state"] = [
             {"state": str(state), "count": int(count),
-             "live_count": int(live_count or 0),
              "notional_usdc": round(float(notional or 0.0), 2)}
-            for state, count, live_count, notional in conn.execute(
-                "SELECT i.state, COUNT(*), " + live + ","
+            for state, count, notional in conn.execute(
+                "SELECT i.state, COUNT(*),"
                 " COALESCE(SUM(i.requested_notional_usdc),0)"
                 " FROM basket_target_order_intents i"
+                " WHERE i.live_submit_authorized=1"
                 " GROUP BY i.state ORDER BY COUNT(*) DESC"
             )
         ]
@@ -2529,15 +2542,14 @@ def _collect_order_book(conn: sqlite3.Connection) -> dict[str, Any]:
     try:
         book["by_day"] = [
             {"event_date": str(day), "count": int(count),
-             "live_count": int(live_count or 0),
              "stations": int(stations or 0),
              "notional_usdc": round(float(notional or 0.0), 2)}
-            for day, count, live_count, stations, notional in conn.execute(
-                "SELECT d.event_date, COUNT(*), " + live + ","
+            for day, count, stations, notional in conn.execute(
+                "SELECT d.event_date, COUNT(*),"
                 " COUNT(DISTINCT d.station_id),"
                 " COALESCE(SUM(i.requested_notional_usdc),0)"
                 + joined +
-                " WHERE d.event_date IS NOT NULL"
+                " AND d.event_date IS NOT NULL"
                 " GROUP BY d.event_date ORDER BY d.event_date DESC LIMIT 14"
             )
         ]
@@ -2546,16 +2558,15 @@ def _collect_order_book(conn: sqlite3.Connection) -> dict[str, Any]:
     try:
         book["by_station"] = [
             {"station_id": str(station), "count": int(count),
-             "live_count": int(live_count or 0),
              "days": int(days or 0),
              "mean_limit_price": round(float(price or 0.0), 4),
              "notional_usdc": round(float(notional or 0.0), 2)}
-            for station, count, live_count, days, price, notional in conn.execute(
-                "SELECT d.station_id, COUNT(*), " + live + ","
+            for station, count, days, price, notional in conn.execute(
+                "SELECT d.station_id, COUNT(*),"
                 " COUNT(DISTINCT d.event_date), AVG(i.limit_price),"
                 " COALESCE(SUM(i.requested_notional_usdc),0)"
                 + joined +
-                " WHERE d.station_id IS NOT NULL"
+                " AND d.station_id IS NOT NULL"
                 " GROUP BY d.station_id"
                 " ORDER BY SUM(i.requested_notional_usdc) DESC LIMIT 12"
             )
@@ -8176,14 +8187,27 @@ function liveOrderCard(L){
 }
 
 
-// The intent book, both authorisations.  A lane that mints orders every
-// cycle and never leaves the gateway is the state this system is actually
-// in, and the card above it -- which counts only live-authorised rows --
-// reads as an empty page with no explanation of what is being produced.
-// Counted off the whole intent table, with the live split named on every
-// row so the two books can never be added together by eye.
+// The live intent book, and only it (user ruling, 2026-08-31): paper
+// intents are a different book and were being read as this one's rows.
+// With no live intent yet the panel says so in one line rather than
+// rendering three empty tables -- but it does not disappear, because a
+// missing panel and an empty one answer different questions.
 function orderBookCard(B){
-  if(!B.total) return "";
+  const paper = B.paper_excluded||0;
+  const foot = `<details class="note"><summary>这里只数实盘 · 纸面意向为什么不算在内</summary>
+      <div class="muted">本板块每一个数都过
+      <span class="mono">live_submit_authorized=1</span> 这一道筛——
+      那一位由 runtime 合同给，只有它为 1 的意向才会真的交到交易所。<br>
+      账本里另有 <b>${paper}</b> 笔 <span class="mono">live_submit_authorized=0</span> 的纸面意向，
+      <b>不计入上面任何一个数</b>：它们跑的是同一套选桶与定规模，但走到交易所边界就停，
+      和实盘是两本账，并排放进同一张表只会被眼睛加到一起。
+      纸面那本的成绩在主看板的「三态对比」和「组合风险指标」里。</div>
+    </details>`;
+  if(!B.total) return `<div class="card" style="margin-top:12px">
+    <div class="muted">实盘意向簿</div>
+    <div style="margin:6px 0">还没有实盘意向。<span class="muted">第一笔铸出后，
+      这里按<b>状态 / 事件日 / 站</b>三个维度分列笔数、名义与均价。</span></div>
+    ${foot}</div>`;
   const u = (v,d=2)=>v==null?"—":v.toFixed(d)+" U";
   const share = (n)=>B.total?((100*n/B.total).toFixed(1)+"%"):"—";
   const tile=(lab,val,sub2,klass)=>`<div class="card">
@@ -8194,31 +8218,24 @@ function orderBookCard(B){
     <td class="mono">${h(r.state)}</td>
     <td class="mono">${r.count}</td>
     <td class="mono">${share(r.count)}</td>
-    <td class="mono">${(r.notional_usdc||0).toFixed(2)}</td>
-    <td class="mono ${r.live_count?"down":"muted"}">${r.live_count}</td></tr>`).join("");
+    <td class="mono">${(r.notional_usdc||0).toFixed(2)}</td></tr>`).join("");
   const dayRows=(B.by_day||[]).map(r=>`<tr>
     <td class="mono">${h(r.event_date)}</td>
     <td class="mono">${r.count}</td>
     <td class="mono">${(r.notional_usdc||0).toFixed(2)}</td>
-    <td class="mono">${r.stations}</td>
-    <td class="mono ${r.live_count?"down":"muted"}">${r.live_count}</td></tr>`).join("");
+    <td class="mono">${r.stations}</td></tr>`).join("");
   const stationRows=(B.by_station||[]).map(r=>`<tr>
     <td class="mono">${h(r.station_id)}</td>
     <td class="mono">${r.count}</td>
     <td class="mono">${(r.notional_usdc||0).toFixed(2)}</td>
     <td class="mono">${r.days}</td>
-    <td class="mono">${(r.mean_limit_price||0).toFixed(3)}</td>
-    <td class="mono ${r.live_count?"down":"muted"}">${r.live_count}</td></tr>`).join("");
+    <td class="mono">${(r.mean_limit_price||0).toFixed(3)}</td></tr>`).join("");
   return `<div class="card" style="margin-top:12px">
-    <div class="muted">意向簿全量（实盘 + 纸面）· 这是投递器每轮真的在造的东西</div>
+    <div class="muted">实盘意向簿 · 只数 <span class="mono">live_submit_authorized=1</span> 的行</div>
     <div class="grid g4" style="margin-top:8px">
-      ${tile("意向总数", B.total+" 笔",
-        "实盘授权 "+B.live+" · 纸面 "+B.paper,
-        B.live?"down":"")}
-      ${tile("计划名义合计", u(B.notional_usdc),
-        "其中实盘 "+u(B.live_notional_usdc)+" · 均单 "+u(B.mean_notional_usdc,3))}
-      ${tile("平均限价", (B.mean_limit_price||0).toFixed(4),
-        "按笔简单平均 · 全为 BUY/YES")}
+      ${tile("实盘意向", B.total+" 笔", "均单 "+u(B.mean_notional_usdc,3))}
+      ${tile("计划名义合计", u(B.notional_usdc), "全为 BUY/YES")}
+      ${tile("平均限价", (B.mean_limit_price||0).toFixed(4), "按笔简单平均")}
       ${tile("覆盖", B.stations+" 站",
         B.decisions+" 个决策 · "+B.cycles+" 个周期<br>"+
         h(B.first_event_date)+" → "+h(B.last_event_date))}
@@ -8226,26 +8243,18 @@ function orderBookCard(B){
     <div class="grid g3" style="margin-top:12px">
       <div><div class="muted" style="margin-bottom:4px">按状态</div>
         <div class="scroll"><table><thead><tr><th>状态</th><th>笔</th>
-          <th>占比</th><th>名义u</th><th>实盘</th></tr></thead>
+          <th>占比</th><th>名义u</th></tr></thead>
           <tbody>${stateRows}</tbody></table></div></div>
       <div><div class="muted" style="margin-bottom:4px">按事件日（近 14 个有单的日子）</div>
         <div class="scroll" style="max-height:300px"><table><thead><tr><th>事件日</th>
-          <th>笔</th><th>名义u</th><th>站</th><th>实盘</th></tr></thead>
+          <th>笔</th><th>名义u</th><th>站</th></tr></thead>
           <tbody>${dayRows}</tbody></table></div></div>
       <div><div class="muted" style="margin-bottom:4px">按站（名义前 12）</div>
         <div class="scroll" style="max-height:300px"><table><thead><tr><th>站</th>
-          <th>笔</th><th>名义u</th><th>日</th><th>均价</th><th>实盘</th></tr></thead>
+          <th>笔</th><th>名义u</th><th>日</th><th>均价</th></tr></thead>
           <tbody>${stationRows}</tbody></table></div></div>
     </div>
-    <details class="note"><summary>「意向」和「订单」差在哪 · 为什么 ${B.total} 笔里实盘是 ${B.live} 笔</summary>
-      <div class="muted">意向是<b>投递器算出来、准备发出去的那一笔</b>：桶、侧、限价、股数、名义都已定死，
-      带幂等键，写进账本。它离真实订单只差<b>最后一步——交给交易所</b>。
-      它离真实订单只差一次授权：意向要带 <span class="mono">live_submit_authorized=1</span> 才是实盘行，
-      而那一位由 runtime 合同给。<b>意向 ${B.total} 笔而实盘 ${B.live} 笔，读的是合同不是故障</b>——
-      合同不授权时，投递器每轮照常把意向造出来、走到交易所边界就停。<br>
-      状态里的 <span class="mono">cancelled</span> 是同一件事的下游读数：意向到了执行截止时刻还没发出去，
-      就按设计撤掉，下一轮重造。</div>
-    </details>
+    ${foot}
   </div>`;
 }
 
