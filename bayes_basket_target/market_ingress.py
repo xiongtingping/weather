@@ -649,7 +649,13 @@ def _scope_quote_values(
         if not listing_day:
             return False
         if quote is None:
-            return False
+            # The parser yields no entry for a token it received no book
+            # for, so on a listing day absence and emptiness are the same
+            # state and neither is a defect: the registry names the bucket,
+            # the stream has nothing to say about it yet.  A scope where
+            # every bucket is in that state still refuses, as
+            # official_ws_scope_bookless.
+            return True
         return not _ask_levels(quote, required=False) and not _bid_levels(
             quote, required=False
         )
