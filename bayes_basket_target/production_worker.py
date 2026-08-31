@@ -12031,6 +12031,50 @@ class TargetProductionWorker:
             "orders_submitted": 0,
         }
 
+    @staticmethod
+    def _same_p0_forecast(
+        root_checkpoint_id: str,
+        latest_p0: Any,
+        envelopes: Sequence[Any],
+    ) -> bool:
+        """Whether a higher stage's P0 root still states today's forecast.
+
+        Identity is not the question.  A P0 envelope is re-minted on every
+        cycle -- its lineage carries a conditional future temperature curve
+        that legitimately moves as the event approaches, so the checkpoint id
+        changes with it -- while the forecast itself changes only when new
+        model data arrives.  Measured on 2026-09-01: 47 committed P0
+        envelopes per station, 8 to 10 distinct probability vectors.
+
+        Comparing ids therefore asks "was this rebuilt in the last ten
+        minutes", and P0-M cannot answer yes: it is rebuilt when a TAF
+        revision arrives, twice in a day.  Every listing-day scope failed
+        resident_p0m_replay_required on every cycle for that reason, and the
+        current day only escapes because a matching P1 short-circuits the
+        check before P0-M is examined.
+
+        What the guard is for is a higher stage built on a forecast that has
+        since been superseded.  That is the comparison made here: the root's
+        own probabilities against the ones being served.  An unknown root is
+        not vouched for -- it returns False and the caller refuses, which is
+        the direction that fails closed.
+        """
+
+        if not root_checkpoint_id:
+            return False
+        root = next(
+            (
+                item
+                for item in envelopes
+                if item.stage == "P0"
+                and item.checkpoint_id == root_checkpoint_id
+            ),
+            None,
+        )
+        if root is None:
+            return False
+        return dict(root.probabilities) == dict(latest_p0.probabilities)
+
     def _replay_root_mismatch_reason(
         self,
         *,
@@ -12079,7 +12123,9 @@ class TargetProductionWorker:
             if len(latest_rows) != 1:
                 return f"resident_{stage.lower().replace('-', '')}_scope_ambiguous"
             root_id = str(latest_rows[0].lineage.get(root_key) or "")
-            if root_id != latest_p0.checkpoint_id:
+            if root_id != latest_p0.checkpoint_id and not (
+                self._same_p0_forecast(root_id, latest_p0, envelopes)
+            ):
                 return reason
             if stage == "P1":
                 return None
