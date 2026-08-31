@@ -6638,6 +6638,23 @@ class TargetProductionWorker:
             return False
         return state == "open"
 
+    def _take_listing_scope_turn(self) -> bool:
+        """Whether this cycle serves the listed days.
+
+        Alternates, current day first.  Held on the worker rather than in
+        the database because it is a turn, not a fact: a restart may serve
+        the current day twice in a row, which costs a listed day one cycle
+        of freshness and is the safe direction to be wrong in.
+        """
+
+        # Seeded so the first cycle after a restart serves the current day:
+        # it is the one carrying P1 and the live book, and a restart is
+        # exactly when it is most behind.
+        self._listing_scope_turn = not getattr(
+            self, "_listing_scope_turn", True
+        )
+        return self._listing_scope_turn
+
     def _listing_entry_scopes(
         self,
         *,
@@ -14499,6 +14516,9 @@ class TargetProductionWorker:
             # else arm is an UnboundLocalError waiting for the day the other
             # arm is taken -- twice today already.
             evidence_materialized_at: dict[str, float] = {}
+            # Bound before the branch: the scope assembly below reads it on
+            # every path, and the other arm never sets it.
+            serve_listing = False
             if not ws_scope_catalog or not selected_open_scope or not str(
                 selected_open_scope["probability_stage"]
             ):
@@ -14555,6 +14575,20 @@ class TargetProductionWorker:
                 # pass above owns that, and a listed day whose books have not
                 # arrived is simply not yet tradable.
                 listing_evidence: list[dict[str, Any]] = []
+                # One cycle serves the current day, the next serves the
+                # listed days.  Restoring charter 48 roughly doubled the
+                # scopes a cycle carries -- 45 to between 82 and 90 -- and
+                # the cycle went from 462 seconds to over 2,800 without
+                # completing, which stopped P0 for three hours: P0 is minted
+                # inside the cycle, so a cycle that never lands mints
+                # nothing.
+                #
+                # Halving is enough because the two days are not equally
+                # urgent.  The current day carries P1 and the live book and
+                # wants every cycle it can get; a listed day is entered on a
+                # window measured in days, so serving it every second cycle
+                # costs it about seven minutes of freshness and nothing else.
+                serve_listing = self._take_listing_scope_turn()
                 listing_days = sorted({
                     day
                     for _station, day in self._listing_entry_scopes(
@@ -14562,7 +14596,7 @@ class TargetProductionWorker:
                     )
                     if day != current_day
                 })
-                for listing_day in listing_days:
+                for listing_day in (listing_days if serve_listing else ()):
                     day_scopes = [
                         item for item in sweep_scopes
                         if str(item.get("event_date") or "") == listing_day
@@ -14679,7 +14713,12 @@ class TargetProductionWorker:
                 )
                 if (station_id, event_date) not in set(rows)
             ]
-            rows = list(rows) + listing_rows
+            # Only on the listed days' turn.  Their evidence was not
+            # materialized this cycle otherwise, and compiling a scope
+            # against last cycle's books is how production_quote_expired is
+            # manufactured rather than observed.
+            if serve_listing:
+                rows = list(rows) + listing_rows
             self._mark("committed_scope_sweep")
             if not rows:
                 # Preliminary future scopes have their own zero-execution
@@ -15001,6 +15040,7 @@ class TargetProductionWorker:
                 "execution_mode": PRODUCTION_EXECUTION_MODE,
                 "candidate_count": len(results),
                 "candidates": results,
+                "listing_scope_turn": serve_listing,
                 "quote_evidence_refresh": {
                     "interval_seconds": QUOTE_EVIDENCE_REFRESH_SECONDS,
                     # Counted, not inferred.  A refresh loop reports how many
