@@ -40,6 +40,7 @@ from bayes_basket_target.resource_bounds import load_bounded_json  # noqa: E402
 from bayes_basket_target.station_registry import (  # noqa: E402
     coordinate_registry_manifest,
 )
+from bayes_basket_target.fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_45station_five_model_calibration_run_v1"
@@ -94,7 +95,7 @@ def _load_scope(
 ) -> dict[str, dict[str, str]]:
     lane_raw = load_bounded_json(lane_map_path.resolve())
     lanes = lane_raw.get("stations") if isinstance(lane_raw, Mapping) else None
-    if not isinstance(lanes, Mapping) or len(lanes) != 45:
+    if not isinstance(lanes, Mapping) or len(lanes) != expected_station_count():
         raise ContractError("five_model_45station_lane_map_invalid")
     coordinate_ids = set(coordinate_registry_manifest()["station_ids"])
     if set(lanes) != coordinate_ids:
@@ -114,6 +115,14 @@ def _load_scope(
     result: dict[str, dict[str, str]] = {}
     for station, lane in sorted(lanes.items()):
         values = timezones[station]
+        # Absent and contradictory are different faults and want different
+        # names: a station the registry snapshot has never listed reports
+        # nothing at all, and calling that "ambiguous" sent a reader looking
+        # for two conflicting rows that do not exist.
+        if not values:
+            raise ContractError(
+                f"five_model_45station_timezone_missing:{station}"
+            )
         if len(values) != 1:
             raise ContractError(
                 f"five_model_45station_timezone_ambiguous:{station}"
@@ -741,7 +750,7 @@ def main() -> int:
             model_results, key=lambda item: str(item["station_id"])
         ),
         "checks": {
-            "exact_45_station_scope": len(canonical_scope) == 45,
+            "exact_45_station_scope": len(canonical_scope) == expected_station_count(),
             "selected_station_count": len(scope),
             "truth_ready_station_count": sum(
                 item.get("state") == "TRUTH_READY"

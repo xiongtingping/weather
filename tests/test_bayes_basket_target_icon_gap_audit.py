@@ -234,7 +234,7 @@ def test_latest_native_decode_does_not_replace_complete_decode_with_newer_incomp
 
     complete = audit_dir / "bayes_basket_target_native_model_arrival_decode_complete.json"
     incomplete = audit_dir / "bayes_basket_target_native_model_arrival_decode_incomplete.json"
-    write_decode(complete, "2026-07-25T08:00:00Z", 45)
+    write_decode(complete, "2026-07-25T08:00:00Z", expected_station_count())
     write_decode(incomplete, "2026-07-25T09:00:00Z", 0)
 
     payload, selected = _latest_native_decode()

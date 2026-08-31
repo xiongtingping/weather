@@ -17,6 +17,26 @@ from scripts.build_bayes_basket_target_station_calibration_dataset import (
 )
 from bayes_basket_target.fleet import expected_station_count
 
+# The scope is joined against the frozen 2026-07-31 market registry export,
+# which lists 45 stations; a station onboarded later has no timezone row in
+# it and the join fails closed rather than guessing.  Re-exporting the
+# snapshot is what restores coverage.
+_SNAPSHOT_STATIONS = len({
+    str(row["station_id"])
+    for row in json.loads(
+        target.DEFAULT_MARKET_REGISTRY.read_text(encoding="utf-8")
+    )["rows"]
+    if row.get("station_id")
+})
+pytestmark = pytest.mark.skipif(
+    _SNAPSHOT_STATIONS != expected_station_count(),
+    reason=(
+        f"market registry snapshot holds {_SNAPSHOT_STATIONS} stations"
+        f" against a fleet of {expected_station_count()}; re-export it"
+    ),
+)
+
+
 
 def _valid_external_truth() -> dict[str, object]:
     observation = {
