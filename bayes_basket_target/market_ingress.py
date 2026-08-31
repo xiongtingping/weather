@@ -597,6 +597,8 @@ def _scope_quote_values(
     rows: Iterable[Mapping[str, Any]],
     quotes: Mapping[str, Mapping[str, Any]],
     manifest_root: Mapping[str, Any] | None = None,
+    *,
+    listing_day: bool = False,
 ) -> tuple[list[dict[str, Any]], str]:
     """Validate one complete registry scope using only official WS quotes."""
 
@@ -626,11 +628,36 @@ def _scope_quote_values(
         for value in (manifest_root or {}).get("unmaterialized_tokens") or []
         if str(value)
     }
+
+    def _named_bookless(token: str, quote: Mapping[str, Any] | None) -> bool:
+        """Whether this token is a listing book nobody has quoted yet.
+
+        Two shapes name one, and which appears depends on the publisher's
+        manifest schema.  The sharded single-scope manifest lists the token
+        under ``unmaterialized_tokens``.  The resident exact-scope catalog
+        has no such key: it names the token by carrying it at all, with an
+        empty book, and an empty book on a listed day is precisely the state
+        charter 48 admits.
+
+        Only on a listing day.  On a started day an empty book is the
+        existing official_ws_book_empty defect and stays one -- the market
+        has been open and something should have quoted it.
+        """
+
+        if token in declared_unmaterialized:
+            return True
+        if not listing_day:
+            return False
+        if quote is None:
+            return False
+        return not _ask_levels(quote, required=False) and not _bid_levels(
+            quote, required=False
+        )
     unmaterialized_buckets: list[dict[str, Any]] = []
     for ordinal, row in enumerate(ordered_rows):
         token_id = _text("yes_token", row.get("yes_token"))
         quote = quotes.get(token_id)
-        if quote is None and token_id in declared_unmaterialized:
+        if _named_bookless(token_id, quote):
             unmaterialized_buckets.append({
                 "bucket": str(row["outcome"]),
                 "ordinal": ordinal,
@@ -789,9 +816,12 @@ def _evidence_cache_row(
     root: Mapping[str, Any],
     registry_rows: Iterable[Mapping[str, Any]],
     quotes: Mapping[str, Mapping[str, Any]],
+    listing_day: bool = False,
 ) -> dict[str, Any]:
     rows = sorted(list(registry_rows), key=_bucket_sort_key)
-    bucket_values, observed_at = _scope_quote_values(rows, quotes, root)
+    bucket_values, observed_at = _scope_quote_values(
+        rows, quotes, root, listing_day=listing_day
+    )
     station_id = _text("station_id", rows[0].get("station_id"))
     event_date = _text("event_date", rows[0].get("event_date"))
     settlement_timezones = {
@@ -937,7 +967,12 @@ def materialize_official_ws_evidence_cache(
     skipped: dict[str, list[str]] = {}
     for key in selected:
         try:
-            rows.append(_evidence_cache_row(root=root, registry_rows=groups[key], quotes=quotes))
+            rows.append(_evidence_cache_row(
+                root=root,
+                registry_rows=groups[key],
+                quotes=quotes,
+                listing_day=include_listing_days,
+            ))
         except ContractError as exc:
             skipped[key] = [str(exc)]
     if not rows:
