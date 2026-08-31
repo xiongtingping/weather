@@ -596,6 +596,7 @@ def _market_quote(
 def _scope_quote_values(
     rows: Iterable[Mapping[str, Any]],
     quotes: Mapping[str, Mapping[str, Any]],
+    manifest_root: Mapping[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
     """Validate one complete registry scope using only official WS quotes."""
 
@@ -609,9 +610,46 @@ def _scope_quote_values(
     bucket_values: list[dict[str, Any]] = []
     observed_times: list[str] = []
     missing_tokens: list[str] = []
+    # A listing-day book nobody has quoted yet.  The publisher subscribes at
+    # listing (charter 48) and names such tokens in the manifest root; a
+    # named bookless bucket is a legal market state -- unbuyable this cycle,
+    # never a scope blocker -- while an unnamed missing token stays a defect,
+    # because then the scope claims a bucket the stream is not carrying.
+    #
+    # The preselection lane has admitted exactly this shape since 2026-08-14
+    # (p0_preselection, "p0_preselection_official_ws_token_missing").  The
+    # evidence lane never got the same treatment, so the first cycle that
+    # stored a listing day's evidence refused all 41 scopes on
+    # official_ws_selected_bucket_missing.
+    declared_unmaterialized = {
+        str(value)
+        for value in (manifest_root or {}).get("unmaterialized_tokens") or []
+        if str(value)
+    }
+    unmaterialized_buckets: list[dict[str, Any]] = []
     for ordinal, row in enumerate(ordered_rows):
         token_id = _text("yes_token", row.get("yes_token"))
         quote = quotes.get(token_id)
+        if quote is None and token_id in declared_unmaterialized:
+            unmaterialized_buckets.append({
+                "bucket": str(row["outcome"]),
+                "ordinal": ordinal,
+                "token_id": token_id,
+                "unmaterialized_book": True,
+                "ask_levels": [],
+                "ask_available": False,
+                "bid_levels": [],
+                "bid_available": False,
+                "bid_price": 0.0,
+                "best_ask": None,
+                "price_tick_size": 0.0,
+                "tick_size_source": "UNMATERIALIZED_BOOK",
+                "min_order_size": _exchange_min_lot(row),
+                "maker_queue_ahead_shares": 0.0,
+                "maker_queue_known": False,
+                "quote_source": "OFFICIAL_CLOB_WS",
+            })
+            continue
         if quote is None or not _quote_is_complete(quote):
             missing_tokens.append(token_id)
             continue
@@ -731,7 +769,15 @@ def _scope_quote_values(
         })
     if missing_tokens:
         raise ContractError("official_ws_selected_bucket_missing:" + ",".join(missing_tokens[:5]))
+    bucket_values.extend(unmaterialized_buckets)
+    bucket_values.sort(key=lambda item: int(item["ordinal"]))
     if not observed_times:
+        # Every bucket in this scope is a named bookless listing bucket.
+        # That is a real market state on a listing day and the scope is
+        # recorded as such, rather than refused for lacking a quote nobody
+        # has published yet.
+        if unmaterialized_buckets:
+            raise ContractError("official_ws_scope_bookless")
         raise ContractError("official_ws_selected_quote_missing")
     # Every selected leg must be fresh.  Taking the newest token would let
     # one active bucket mask stale evidence in another basket leg.
@@ -745,7 +791,7 @@ def _evidence_cache_row(
     quotes: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, Any]:
     rows = sorted(list(registry_rows), key=_bucket_sort_key)
-    bucket_values, observed_at = _scope_quote_values(rows, quotes)
+    bucket_values, observed_at = _scope_quote_values(rows, quotes, root)
     station_id = _text("station_id", rows[0].get("station_id"))
     event_date = _text("event_date", rows[0].get("event_date"))
     settlement_timezones = {
