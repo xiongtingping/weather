@@ -8630,7 +8630,11 @@ class TargetProductionWorker:
             return self._materialize_market_evidence_from_manifest(
                 activation,
                 manifest_path=refreshed_path,
-                full_materialization=False,
+                # The point of the refresh is the snapshot the compile reads;
+                # an evidence-cache-only pass returns before writing it and
+                # would leave the loop compiling against the stamp it was
+                # already failing on.
+                full_materialization=True,
                 listing_day_pass=str(event_date) in listing_days,
             )
 
@@ -14481,7 +14485,17 @@ class TargetProductionWorker:
                                 self._materialize_market_evidence_from_manifest(
                                     activation,
                                     manifest_path=listing_manifest_path,
-                                    full_materialization=False,
+                                    # Full, not evidence-cache-only.  The
+                                    # compile reads basket_official_ws_snapshot
+                                    # and full_materialization=False returns
+                                    # before writing it, so a listing day got
+                                    # fresh evidence and a snapshot left over
+                                    # from whenever it last had a full pass --
+                                    # measured 47 seconds behind the current
+                                    # day's, against a 60-second lease, which
+                                    # is most of production_quote_expired on
+                                    # those scopes.
+                                    full_materialization=True,
                                     listing_day_pass=True,
                                 )
                             )
@@ -14664,7 +14678,7 @@ class TargetProductionWorker:
                             activation,
                             event_date=day,
                             as_of_utc=utc_now(),
-                        )
+                        )  # writes the snapshot the compile reads
                         now = utc_now()
                     except Exception as exc:  # noqa: BLE001 -- observational
                         # A failed refresh leaves the previous books in
