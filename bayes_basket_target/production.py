@@ -508,8 +508,18 @@ def commit_production_candidate_atomic(
         raise ContractError("production_candidate_atomic_stage_invalid")
     station_id = str(plan.get("station_id") or "").strip()
     event_date = str(plan.get("event_date") or "").strip()
-    if station_id != str(market_snapshot.get("station_id") or "").strip() or event_date != str(market_snapshot.get("event_date") or "").strip():
-        raise ContractError("production_candidate_market_scope_mismatch")
+    market_station = str(market_snapshot.get("station_id") or "").strip()
+    market_event_date = str(market_snapshot.get("event_date") or "").strip()
+    if station_id != market_station or event_date != market_event_date:
+        # Name both sides.  This stood as the terminal blocker on seven
+        # stations for a whole cycle and the receipt carried nothing to
+        # diagnose it with -- not which side was empty, not whether it was
+        # the station or the date, not by how much.
+        raise ContractError(
+            "production_candidate_market_scope_mismatch:"
+            f"plan={station_id or '(empty)'}@{event_date or '(empty)'}"
+            f":market={market_station or '(empty)'}@{market_event_date or '(empty)'}"
+        )
     market_timezone = str(
         market_snapshot.get("settlement_timezone") or ""
     ).strip()
