@@ -7078,18 +7078,55 @@ function stationSummary(){
   // marked, greyed, and counted separately rather than removed.
   const barred=new Set((D.live_readiness||{}).station_exclusions||[]);
   const probation=new Set((D.live_readiness||{}).station_probation||[]);
-  const rows=ss.map((s,i)=>{
+  // Station geography, [latitude, coastal].  Copied from
+  // calibration_station_forecast_physics rather than added to the payload:
+  // an airport does not move, so shipping it per render would only make a
+  // frontend-only change need the full 20-minute rebuild.  Coastal means
+  // the station sits within roughly 30 km of open sea -- lakes and tidal
+  // rivers do not count, which is why Chicago and Toronto (Great Lakes),
+  // London City (Thames) and Guangzhou (60 km up the Pearl River estuary,
+  // unlike Shenzhen on its mouth) are inland here.
+  const GEO={CYYZ:[43.679,0],EDDM:[48.348,0],EFHK:[60.327,1],EGLC:[51.505,0],
+    EHAM:[52.315,1],EPWA:[52.163,0],FACT:[-33.965,1],KATL:[33.63,0],
+    KAUS:[30.183,0],KBKF:[39.713,0],KDAL:[32.838,0],KHOU:[29.646,1],
+    KLAX:[33.938,1],KLGA:[40.779,1],KMIA:[25.788,1],KORD:[41.96,0],
+    KSEA:[47.445,1],KSFO:[37.62,1],LEMD:[40.466,0],LFPB:[48.967,0],
+    LIMC:[45.631,0],LLBG:[32.011,1],LTAC:[40.128,0],LTFM:[41.262,1],
+    MMMX:[19.436,0],MPMG:[8.967,1],NZWN:[-41.331,1],OEJN:[21.685,1],
+    OPKC:[24.902,1],RCSS:[25.069,1],RJTT:[35.553,1],RKPK:[35.179,1],
+    RKSI:[37.469,1],RPLL:[14.507,1],SAEZ:[-34.822,1],SBGR:[-23.432,0],
+    UUWW:[55.592,0],VILK:[26.761,0],WMKK:[2.747,1],WSSS:[1.368,1],
+    ZBAA:[40.082,0],ZGGG:[23.392,0],ZGSZ:[22.639,1],ZHHH:[30.783,0],
+    ZSPD:[31.146,1],ZSQD:[36.362,1],ZUCK:[29.718,0],ZUUU:[30.576,0]};
+  // Band edges at the tropic (23.4), 35 and 55 degrees.  The tropic edge is
+  // deliberately the line itself, not a rounded 23.5: Sao Paulo (-23.432)
+  // and Guangzhou (23.392) both sit within 5 km of it, and 23.5 would put
+  // Sao Paulo -- a 750 m subtropical-highland station -- in the tropics
+  // band while the line itself does not.
+  const bandOf=lat=>lat>=55?"北半球·高纬":lat>=35?"北半球·温带"
+    :lat>=23.4?"北半球·副热带":lat>=-23.4?"热带"
+    :lat>=-35?"南半球·副热带":"南半球·温带";
+  const BAND_ORDER=["北半球·高纬","北半球·温带","北半球·副热带","热带",
+    "南半球·副热带","南半球·温带"];
+  const fmtLat=lat=>Math.abs(lat).toFixed(1)+"°"+(lat>=0?"N":"S");
+  const rowEntries=ss.map((s,i)=>{
     const sd=s.sides||{};const cal=s.calibration_ratio;
     const rr=s.realization_ratio;const ev=s.ev_per_usdc_mean;
     // A number per station (user ruling, 2026-08-21).  Assigned in the
     // table's natural order -- station id, ascending -- and printed in the
     // row rather than derived from the row's position, so it stays with the
     // station when a column is sorted instead of renumbering under it.
+    // Geographic grouping reorders the rows but must not renumber them, so
+    // the number keeps coming from this map index, not the display order.
     const off=barred.has(s.station_id);
-    return `<tr${off?' style="opacity:.55"':""}>
+    const g=GEO[s.station_id];const bd=g?bandOf(g[0]):null;
+    const html=`<tr${off?' style="opacity:.55"':""}>
       <td class="mono muted">${i+1}</td>
       <td>${off?'<span class="pill" style="background:#f8514922;color:#f85149;border-color:#f8514955" title="实盘禁入：已判且不合格">⛔ 禁入</span> ':(probation.has(s.station_id)?'<span class="pill amber" title="证据不足，尚未上线；账本继续记账攒证据">⏳ 待观察</span> ':"")}<span class="mono">${h(s.station_id)}</span>
         <span class="muted">${h(s.station_label)}</span></td>
+      <td>${bd?h(bd.replace("半球·","")):"—"}
+        <span class="muted">${g?fmtLat(g[0]):""}</span></td>
+      <td>${g?(g[1]?"沿海":"内陆"):"—"}</td>
       <td>${s.position_count}</td>
       <td>${s.settled_count}</td>
       <td class="mono">${s.filled_leg_total}
@@ -7107,7 +7144,53 @@ function stationSummary(){
       <td class="mono">${n2(s.staked_usdc,2)}</td>
       <td class="mono ${(s.realized_usdc||0)>=0?"up":"down"}">${((s.realized_usdc||0)>=0?"+":"")+n2(s.realized_usdc,2)}</td>
       <td class="${rr==null?"":(rr>=1?"up":"down")}">${rr==null?"—":n2(rr,2)+"×"}</td></tr>`;
-  }).join("");
+    return {html,band:bd?BAND_ORDER.indexOf(bd):BAND_ORDER.length,
+      coastal:g&&g[1]?0:1,id:s.station_id};
+  });
+  // Default order walks the globe north to south, coastal before inland
+  // inside each band.  Clicking a header still re-sorts freely; this is
+  // only where the table starts.
+  rowEntries.sort((a,b)=>a.band-b.band||a.coastal-b.coastal
+    ||(a.id<b.id?-1:a.id>b.id?1:0));
+  const rows=rowEntries.map(e=>e.html).join("");
+  // Group subtotals.  Hit and claimed are weighted by settled count -- the
+  // only weight under which their ratio stays comparable to the per-station
+  // 实现/声称 column -- and the money columns are plain sums, so 每U净益 is
+  // the group's actual return, not an average of ratios.
+  const groups=new Map();
+  ss.forEach(s=>{const g=GEO[s.station_id];if(!g)return;
+    const k=bandOf(g[0])+"·"+(g[1]?"沿海":"内陆");
+    const a=groups.get(k)||{n:0,pos:0,set:0,wHit:0,wClaim:0,wSet:0,
+      stake:0,real:0};
+    a.n++;a.pos+=s.position_count||0;a.set+=s.settled_count||0;
+    if(s.hit_rate!=null&&s.settled_count){a.wHit+=s.hit_rate*s.settled_count;
+      a.wClaim+=(s.claimed_win_probability_mean||0)*s.settled_count;
+      a.wSet+=s.settled_count;}
+    a.stake+=s.staked_usdc||0;a.real+=s.realized_usdc||0;
+    groups.set(k,a);});
+  const groupRows=BAND_ORDER.flatMap(bd=>["沿海","内陆"].map(cl=>{
+    const a=groups.get(bd+"·"+cl);if(!a)return "";
+    const hit=a.wSet?a.wHit/a.wSet:null;
+    const claim=a.wSet?a.wClaim/a.wSet:null;
+    const cal=(hit!=null&&claim)?hit/claim:null;
+    const roi=a.stake>0?a.real/a.stake:null;
+    return `<tr><td>${h(bd)}</td><td>${cl}</td><td>${a.n}</td>
+      <td>${a.pos}</td><td>${a.set}</td>
+      <td>${p2(hit)}</td><td>${p2(claim)}</td>
+      <td class="${cal==null?"":(cal>=1?"up":"down")}">${cal==null?"—":n2(cal,2)+"×"}</td>
+      <td class="mono">${n2(a.stake,2)}</td>
+      <td class="mono ${a.real>=0?"up":"down"}">${(a.real>=0?"+":"")+n2(a.real,2)}</td>
+      <td class="${roi==null?"":(roi>=0?"up":"down")}">${roi==null?"—":(roi>=0?"+":"")+n2(roi,2)}</td></tr>`;
+  })).join("");
+  const groupCard=groupRows?`<div class="card"><b>分组小计</b>
+  <div class="scroll"><table><thead><tr>
+    <th>气候带</th><th>海陆</th><th>站数</th><th>仓位</th><th>已结算</th>
+    <th>命中率</th><th>声称</th><th>实现/声称</th>
+    <th>投入</th><th>实得</th><th>每U净益</th>
+  </tr></thead><tbody>${groupRows}</tbody></table></div>
+  <div class="muted" style="margin-top:8px">禁入站也计入小计，口径与下表一致。
+  读的时候记住季节相位：现在（8 月底）北半球是夏末、南半球是冬末，
+  南北两边的命中率不在同一个季节里，别直接横比。</div></div>`:"";
   // Two different absences under one sentence read as one fault.  A fleet
   // station that never took a credible seat is a result; a station the
   // model has never computed at all is not in the fleet yet.
@@ -7138,14 +7221,22 @@ function stationSummary(){
   「这个站长期表现如何」，逐日的账在页顶「逐站逐日明细」。</p>
   <div class="why"><b>列的意思：</b>「#」是站的编号，按站号字母序编，
   排序时跟着这一站走，所以可以直接拿它点名某一行；
+  「气候带」按站点纬度分：回归线（±23.4°）以内是热带，23.4°–35° 副热带，
+  35°–55° 温带，55° 以上高纬，南北半球分开写，灰字是站点纬度；
+  「海陆」按站点离开阔海面约 30 公里内算沿海——湖和内河不算，
+  所以芝加哥（密歇根湖）、广州（离珠江口约 60 公里）算内陆，
+  深圳（就在珠江口上）算沿海。默认行序按气候带从北到南、组内沿海在前；
   「仓位」是参与平均的笔数，样本少于三笔时右侧的
   命中率与实现/声称基本读不出信号；
   「建仓桶」是该站这段窗口里买到的腿数合计（括号里是每座位平均几腿）；
   「位置」是相对市场偏上/一致/偏下的笔数；
   「概率和/卖价和/赔率/EV」同「覆盖 · 价格 · EV」，只是范围缩到这一个站；
   「实现/声称」是命中率÷声称胜率；「兑现比」是实得÷期望。</div>
+  ${groupCard}
   <div class="card"><div class="scroll"><table><thead><tr>
-    <th>#</th><th>站点</th><th>仓位</th><th>已结算</th>
+    <th>#</th><th>站点</th>
+    <th>气候带<br><span class="muted">纬度</span></th><th>海陆</th>
+    <th>仓位</th><th>已结算</th>
     <th>建仓桶<br><span class="muted">腿数</span></th>
     <th>位置<br><span class="muted">上/平/下</span></th>
     <th>概率和</th><th>卖价和</th><th>赔率</th><th>EV/U</th>
