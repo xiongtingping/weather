@@ -3026,7 +3026,17 @@ export class ClobOrderService {
       .finally(() => {
         this.inflight.delete(key);
       });
-    if (!isSell && !priorityEntry && !parallelCopyFollow) {
+    // Serialise ordinary buys behind one another; sells and priority direct
+    // entries run parallel, exactly as the `base` selection twenty lines up
+    // already decides.  This condition used to carry a third term,
+    // `parallelCopyFollow`, that was never defined anywhere in the file or
+    // its history -- it arrived with the pipeline refactor and sat here as a
+    // ReferenceError waiting on the one path that reaches it: an order
+    // actually being submitted.  Nothing reached it until 2026-08-31,
+    // because until then nothing on this machine had ever submitted a live
+    // order.  The copy-follow strategy it named is retired and refused at
+    // the top of this method, so the term is dropped rather than defined.
+    if (!isSell && !priorityEntry) {
       this.submitChain = promise.catch(() => {});
     }
     this.inflight.set(key, { promise, started_ms: acceptedMs, accepted_at: acceptedAt, lane });

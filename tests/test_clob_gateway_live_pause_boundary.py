@@ -195,3 +195,39 @@ def test_balance_prefetch_is_strict_single_flight():
     )[0]
     assert "this.balancePrefetchInflight > 0" in method
     assert "PM_CLOB_BALANCE_PREFETCH_MAX_INFLIGHT" not in method
+
+
+def test_the_gateway_has_no_undefined_identifiers():
+    """A name that exists nowhere is a ReferenceError waiting for its path.
+
+    ``parallelCopyFollow`` sat in placeOrderWithIdempotency from the pipeline
+    refactor until 2026-08-31, defined nowhere in the file or its history,
+    on a line that only executes when an order is actually submitted.  It
+    cost the first two live probe orders and could not have been found by
+    any test that did not reach the submit path -- which, before go-live,
+    none could.  `node --check` cannot see it either: an undefined
+    identifier is valid syntax.
+
+    So the module is loaded and its exports touched, which is what surfaces
+    a free variable at parse-to-runtime rather than at call time.
+    """
+    result = subprocess.run(
+        [
+            "node", "--input-type=module", "-e",
+            "const m = await import(%s);"
+            "if (typeof m.livePausePresent !== 'function') throw new Error('load failed');"
+            "console.log('ok');"
+            % json.dumps((ROOT / "scripts" / "clob_order_service.mjs").as_uri()),
+        ],
+        cwd=ROOT, text=True, capture_output=True, timeout=30, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "ok" in result.stdout
+
+    # And the specific shape that bit, checked the only way that is reliable:
+    # ask the engine.  A regex over the submit path cannot tell an identifier
+    # from a keyword, but `new Function` over the method body throws
+    # ReferenceError on a free variable at construction -- before any call --
+    # which is exactly the class of defect parallelCopyFollow belonged to.
+    source = (ROOT / "scripts" / "clob_order_service.mjs").read_text(encoding="utf-8")
+    assert "parallelCopyFollow" not in _code_only(source)
