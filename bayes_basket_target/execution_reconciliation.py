@@ -177,11 +177,18 @@ def validate_persisted_candidate_consumption_cas(
 ) -> dict[str, Any]:
     """Validate a durable candidate without granting submission authority.
 
-    The current deployment is production-no-live.  This is therefore the
-    terminal consumer boundary: every persisted intent must still match its
-    complete execution vector and deadline, but a successful validation only
-    authorizes evidence consumption.  A future live deployment must introduce
-    a separate authority contract; it cannot reuse the generic cycle CAS.
+    Every persisted intent must still match its complete execution vector
+    and deadline; a successful validation authorizes evidence consumption and
+    nothing else, in either execution mode.
+
+    This docstring used to say the deployment was production-no-live and that
+    a live deployment must introduce a separate authority contract rather
+    than reuse this CAS.  The first half stopped being true on 2026-08-30 and
+    the second half is still the rule: this function grants no submission
+    authority to anyone.  Live submission authority comes from the compiled
+    plan, is exercised inside commit_production_candidate_atomic, and does
+    not pass through here -- what passes through here is the check that what
+    was persisted still matches what was decided.
     """
 
     _schema_guard(conn)
@@ -212,19 +219,35 @@ def validate_persisted_candidate_consumption_cas(
         raise ExecutionCasError("candidate_decision_details_invalid") from exc
     if not isinstance(details, Mapping):
         raise ExecutionCasError("candidate_decision_details_invalid")
-    no_live = (
-        str(details.get("execution_mode") or "")
-        == "production_no_live"
-        or details.get("no_live") is True
-    )
-    if (
-        int(decision[0]) != 0
-        or not no_live
-        or details.get("live_submit_authorized") is True
-    ):
-        raise ExecutionCasError(
-            "candidate_no_live_authority_boundary_invalid"
+    # This validator grants nothing in either mode -- every return below
+    # still reports authorizes_order False, evidence_only True and
+    # orders_submitted 0, and the caller checks exactly that.  What changes
+    # with the mode is the precondition: a no-live decision must not intend
+    # to order, while a live decision legitimately does.  Asserting the
+    # no-live shape unconditionally meant that after the go-live flip every
+    # P1 cycle reached here having already submitted and was then refused
+    # -- see the ordering note at the call site.
+    from .production import PRODUCTION_EXECUTION_MODE  # noqa: PLC0415
+
+    decision_mode = str(details.get("execution_mode") or "")
+    if PRODUCTION_EXECUTION_MODE == "production_live":
+        if decision_mode != "production_live":
+            raise ExecutionCasError(
+                "candidate_no_live_authority_boundary_invalid"
+            )
+    else:
+        no_live = (
+            decision_mode == "production_no_live"
+            or details.get("no_live") is True
         )
+        if (
+            int(decision[0]) != 0
+            or not no_live
+            or details.get("live_submit_authorized") is True
+        ):
+            raise ExecutionCasError(
+                "candidate_no_live_authority_boundary_invalid"
+            )
     intents = conn.execute(
         "SELECT order_intent_id,target_execution_hard_deadline_at "
         "FROM basket_target_order_intents WHERE cycle_id=? "

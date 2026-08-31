@@ -141,7 +141,17 @@ def _bundle(
         "decided_state": "blocked" if blocked else "prepared",
         "will_order": False,
         "reason_codes": ["missing_quote"] if blocked else [],
-        "details": {"candidate_will_order": not blocked, "no_live": True},
+        # Production stamps the decision with the mode in force (see
+        # bayes_basket_target.production, "execution_mode":
+        # PRODUCTION_EXECUTION_MODE).  This fixture carried only the no-live
+        # marker, so after the go-live flip it built a decision no live
+        # deployment ever writes -- and the consumption CAS, reading it, was
+        # being asked a question about a row that could not exist.
+        "details": {
+            "candidate_will_order": not blocked,
+            "no_live": PRODUCTION_EXECUTION_MODE == "production_no_live",
+            "execution_mode": PRODUCTION_EXECUTION_MODE,
+        },
     }
     return build_target_atomic_bundle(
         awc_observation_contract=contract,
@@ -518,7 +528,11 @@ def test_atomic_bundle_rejects_p1_lineage_observation_bound_mismatch(
                 "decided_state": "blocked",
                 "will_order": False,
                 "reason_codes": ["test_only"],
-                "details": {"candidate_will_order": False, "no_live": True},
+                "details": {
+                    "candidate_will_order": False,
+                    "no_live": PRODUCTION_EXECUTION_MODE == "production_no_live",
+                    "execution_mode": PRODUCTION_EXECUTION_MODE,
+                },
             },
             intents=[],
             reserved_amount_usdc=0.0,
@@ -881,7 +895,11 @@ def test_same_plan_with_changed_decision_is_content_address_drift() -> None:
         first = _bundle()
         commit_target_atomic_bundle(conn, bundle=first)
         changed = _bundle()
-        changed["decision"] = {**changed["decision"], "details": {"candidate_will_order": False, "no_live": True}}
+        changed["decision"] = {**changed["decision"], "details": {
+            "candidate_will_order": False,
+            "no_live": PRODUCTION_EXECUTION_MODE == "production_no_live",
+            "execution_mode": PRODUCTION_EXECUTION_MODE,
+        }}
         with pytest.raises(AtomicLedgerError, match="content_address_drift|cycle_existing_decision_drift"):
             commit_target_atomic_bundle(conn, bundle=changed)
         assert all(value == 1 for value in _counts(conn).values())

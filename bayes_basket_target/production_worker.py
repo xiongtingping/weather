@@ -2762,9 +2762,13 @@ class TargetProductionWorker:
                 }
         self.conn: sqlite3.Connection | None = None
         self.open_error: str | None = None
+        # Which of the two opens was in flight when the last reopen
+        # failed: "read_only", "writer", or None if neither has failed.
+        self.open_failed_stage: str | None = None
         try:
             self.conn = open_target_read_only(self.db_path)
         except Exception as exc:
+            self.open_failed_stage = "read_only"
             self.open_error = f"{type(exc).__name__}:{exc}"
         self.taf_artifact_path = Path(
             taf_artifact_path
@@ -2973,6 +2977,19 @@ class TargetProductionWorker:
                     f"{type(exc).__name__}:{exc}"
                 )
 
+    def _target_open_blocker(self) -> str:
+        """Name the connection that actually failed to open.
+
+        Both handles are dropped together, so "self.conn is None" alone
+        cannot tell a caller which open failed -- and for a year it always
+        said read-only.
+        """
+
+        detail = self.open_error or "unknown"
+        if self.open_failed_stage == "writer":
+            return f"target_ssot_writer_open_failed:{detail}"
+        return f"target_ssot_read_only_open_failed:{detail}"
+
     def reopen_target_connections(self) -> None:
         """Rebuild target SSOT handles after a recoverable SQLite I/O fault.
 
@@ -2995,8 +3012,21 @@ class TargetProductionWorker:
         self.commit_conn = None
         self.open_error = None
         self.commit_error = None
+        # Both handles or neither: that pairing is deliberate and stays.  What
+        # was wrong is which connection the failure got attributed to.  Both
+        # opens shared one try and one error slot, so a writer-open failure
+        # landed in open_error, both handles were dropped, and the caller --
+        # finding self.conn None -- reported
+        # "target_ssot_read_only_open_failed:<the writer's error>".  That is
+        # how a WAL checkpoint the writer could not take came back as
+        # target_ssot_read_only_open_failed:...wal_checkpoint_busy, naming a
+        # connection that had opened without complaint and sending the reader
+        # to the wrong layer.  Record which open was in flight instead.
+        self.open_failed_stage = None
         try:
+            stage = "read_only"
             self.conn = open_target_read_only(self.db_path)
+            stage = "writer"
             self.commit_conn = open_target_writer_if_enabled(
                 self.db_path,
                 activation_path=self.activation_path,
@@ -3004,6 +3034,7 @@ class TargetProductionWorker:
             if self.commit_conn is None:
                 raise RuntimeError("target_atomic_writer_not_enabled")
         except Exception as exc:
+            self.open_failed_stage = stage
             self.open_error = f"{type(exc).__name__}:{exc}"
             self.commit_error = (
                 "target_writer_reopen_failed:"
@@ -6352,8 +6383,19 @@ class TargetProductionWorker:
             raise RuntimeError("target_activation_state_json_invalid") from exc
         if not isinstance(details, Mapping) or details.get("execution_mode") != PRODUCTION_EXECUTION_MODE:
             raise RuntimeError("target_activation_state_mode_drift")
+        # Each mode asserts its own boundaries, the same way
+        # open_target_writer_if_enabled does.  These four were hard-coded
+        # False from the day this file was written and stayed that way
+        # through the go-live flip, so the row the DB would have to carry to
+        # satisfy the sha check above -- the live contract -- is exactly the
+        # row this loop then rejected.  Any DB row and any file that disagree
+        # still fail; what no longer fails is a live deployment agreeing with
+        # itself.
+        expected = (
+            PRODUCTION_EXECUTION_MODE == "production_live"
+        )
         for key in ("live_decision_write_authorized", "live_submit_authorized", "places_orders", "calls_order_gateway"):
-            if details.get(key) is not False:
+            if details.get(key) is not expected:
                 raise RuntimeError(f"target_activation_state_{key}_drift")
 
     def _scope_cycle_guard(
@@ -12089,7 +12131,7 @@ class TargetProductionWorker:
 
         if self.conn is None:
             return _blocked(
-                f"target_ssot_read_only_open_failed:{self.open_error or 'unknown'}",
+                self._target_open_blocker(),
                 event_date=event_date,
             )
         if self.commit_conn is None:
@@ -13241,7 +13283,7 @@ class TargetProductionWorker:
 
     def _run_stages(self) -> dict[str, Any]:
         if self.conn is None:
-            return _blocked(f"target_ssot_read_only_open_failed:{self.open_error or 'unknown'}")
+            return _blocked(self._target_open_blocker())
         if self.commit_error is not None:
             return _blocked(self.commit_error)
         if self.commit_conn is None:

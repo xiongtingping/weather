@@ -6,7 +6,7 @@ import sqlite3
 import pytest
 
 from bayes_basket_target.contracts import ContractError, content_sha256
-from bayes_basket_target.activation import REQUIRED_INPUT_KEYS
+from bayes_basket_target.activation import LIVE_AUTHORITY_SCOPE, REQUIRED_INPUT_KEYS
 from bayes_basket_target.database import TARGET_ACTIVATION_DDL
 from bayes_basket_target.market_registry import apply_target_market_registry_schema
 from bayes_basket_target.order_state_producer import build_no_live_order_state_ingress
@@ -52,7 +52,14 @@ def _db(*, active_cycle: bool = False, active_cycle_state: str = "submitting") -
     return conn
 
 
-def _activation(tmp_path):
+# Both contracts, from one builder.  These tests were written when no-live
+# was the only mode and asserted its shape as a constant; after the go-live
+# flip they were asserting the mode the deployment had left, and the guard
+# they cover -- which spelled "production_no_live" as a literal in two places
+# -- had no live coverage at all.  That is how it survived the migration.
+def _activation(tmp_path, *, mode: str = "production_no_live"):
+    if mode == "production_live":
+        return _live_activation(tmp_path)
     path = tmp_path / "activation.json"
     quote_policy = {
         "schema": "bayes_basket_quote_freshness_policy_v1",
@@ -94,8 +101,68 @@ def _activation(tmp_path):
     return path, value
 
 
-def test_no_live_order_state_requires_activation_and_quiescence(tmp_path) -> None:
-    path, activation = _activation(tmp_path)
+def _live_activation(tmp_path):
+    """The live contract, shaped to satisfy ``validate_live_activation``."""
+
+    path = tmp_path / "activation.json"
+    quote_policy = {
+        "schema": "bayes_basket_quote_freshness_policy_v1",
+        "policy_id": "test-quote-freshness-v1",
+        "max_quote_age_seconds": 5.0,
+        "valid_from_utc": "2026-07-01T00:00:00Z",
+        "valid_until_utc": "2026-08-01T00:00:00Z",
+        "authority_scope": LIVE_AUTHORITY_SCOPE,
+        "evidence_status": "DESIGN_CANDIDATE",
+    }
+    quote_policy["content_sha256"] = content_sha256(quote_policy)
+    value = {
+        "schema": "bayes_basket_target_production_live_activation_v1",
+        "state": "production_live",
+        "execution_mode": "production_live",
+        "strategy_id": "bayes_basket_target_v1",
+        "policy_authority_scope": LIVE_AUTHORITY_SCOPE,
+        "quote_freshness_policy": quote_policy,
+        "target_only": True,
+        "authorizes_order": True,
+        "live_decision_write_authorized": True,
+        "live_order_authorized": True,
+        "live_submit_authorized": True,
+        "production_mutation": False,
+        "places_orders": True,
+        "writes_production_db": False,
+        "calls_order_gateway": True,
+        "network_access": True,
+        "required_inputs": sorted(REQUIRED_INPUT_KEYS),
+        "target_scope": {
+            "season_bin": "ALL",
+            "maturity_bin": "ALL",
+            "liquidity_bin": "ALL",
+            "strategy_version": "bayes_basket_target_v1",
+        },
+    }
+    value["activation_contract_sha256"] = content_sha256(value)
+    path.write_text(json.dumps(value), encoding="utf-8")
+    return path, value
+
+
+@pytest.fixture(params=["production_no_live", "production_live"])
+def execution_mode(request, monkeypatch):
+    """Run the mode-sensitive guards under both deployed modes.
+
+    The guard reads the constant from ``bayes_basket_target.production`` at
+    call time, so patching it here is the whole switch.
+    """
+
+    import bayes_basket_target.production as production_module
+
+    monkeypatch.setattr(
+        production_module, "PRODUCTION_EXECUTION_MODE", request.param
+    )
+    return request.param
+
+
+def test_no_live_order_state_requires_activation_and_quiescence(tmp_path, execution_mode) -> None:
+    path, activation = _activation(tmp_path, mode=execution_mode)
     with _db() as conn:
         conn.execute(
             "INSERT INTO basket_strategy_activation_state "
@@ -114,8 +181,8 @@ def test_no_live_order_state_requires_activation_and_quiescence(tmp_path) -> Non
     assert market["known"] == 1
 
 
-def test_no_live_order_state_rejects_active_target_cycle(tmp_path) -> None:
-    path, activation = _activation(tmp_path)
+def test_no_live_order_state_rejects_active_target_cycle(tmp_path, execution_mode) -> None:
+    path, activation = _activation(tmp_path, mode=execution_mode)
     with _db(active_cycle=True) as conn:
         conn.execute(
             "INSERT INTO basket_strategy_activation_state "
@@ -174,8 +241,8 @@ def test_no_live_order_state_rejects_shared_live_owner(tmp_path) -> None:
             )
 
 
-def test_no_live_order_state_allows_prepared_no_live_candidate(tmp_path) -> None:
-    path, activation = _activation(tmp_path)
+def test_no_live_order_state_allows_prepared_no_live_candidate(tmp_path, execution_mode) -> None:
+    path, activation = _activation(tmp_path, mode=execution_mode)
     with _db(active_cycle=True, active_cycle_state="prepared") as conn:
         conn.execute(
             "INSERT INTO basket_strategy_activation_state "
@@ -195,8 +262,8 @@ def test_no_live_order_state_allows_prepared_no_live_candidate(tmp_path) -> None
     assert packet["known"] is True
 
 
-def test_no_live_order_state_rejects_nonterminal_target_reconciliation(tmp_path) -> None:
-    path, activation = _activation(tmp_path)
+def test_no_live_order_state_rejects_nonterminal_target_reconciliation(tmp_path, execution_mode) -> None:
+    path, activation = _activation(tmp_path, mode=execution_mode)
     with _db() as conn:
         conn.execute(
             "INSERT INTO basket_strategy_activation_state "

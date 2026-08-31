@@ -1071,13 +1071,22 @@ def commit_production_stage_zero_execution_atomic(
         raise ContractError("stage_zero_execution_anchor_mapping_required")
     if compiled_plan.get("execution_mode") != PRODUCTION_EXECUTION_MODE:
         raise ContractError("stage_zero_execution_execution_mode_invalid")
-    if compiled_plan.get("live_submit_authorized") is not False:
+    # The plan carries the mode's authority; the anchor below carries this
+    # commit's own zero execution.  Those are two different claims and the
+    # go-live work separated them everywhere except here: `compile` stamps
+    # the plan with live_mode and the validator pins it to live_mode, while
+    # this guard still demanded the literal False.  Every P0 and P0-M
+    # candidate in the resident cycle routes through this function, so a live
+    # deployment refused its own first two stages with
+    # stage_zero_execution_live_submit_boundary_invalid.
+    live_mode = PRODUCTION_EXECUTION_MODE == "production_live"
+    if compiled_plan.get("live_submit_authorized") is not live_mode:
         raise ContractError("stage_zero_execution_live_submit_boundary_invalid")
     boundary = compiled_plan.get("boundary")
     if (
         not isinstance(boundary, Mapping)
-        or boundary.get("calls_order_gateway") is not False
-        or boundary.get("places_orders") is not False
+        or boundary.get("calls_order_gateway") is not live_mode
+        or boundary.get("places_orders") is not live_mode
         or int(boundary.get("orders_submitted", -1)) != 0
     ):
         raise ContractError("stage_zero_execution_gateway_boundary_invalid")

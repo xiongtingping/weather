@@ -36,6 +36,37 @@ TARGET_RECONCILIATION_BLOCKING_STATES = frozenset({"pending", "unknown", "resolv
 TARGET_DECISION_BLOCKING_STATES = frozenset({"submitting", "submitted", "reconcile_required"})
 
 
+
+# The execution mode is read from the worker rather than restated here.  Both
+# guards below spelled "production_no_live" as a literal, so the go-live flip
+# -- which changed the constant in two other modules and never touched this
+# file -- left this lane demanding the mode the system had just left.
+def _expected_execution_mode() -> str:
+    from .production import PRODUCTION_EXECUTION_MODE  # noqa: PLC0415
+
+    return PRODUCTION_EXECUTION_MODE
+
+
+def _assert_activation_row_matches_mode(
+    db_activation: Mapping[str, Any],
+) -> None:
+    """The DB row must carry this mode's own boundaries, not no-live's.
+
+    A live contract states the live flags true and a no-live contract states
+    them false; either disagreeing with the mode in force is drift.  The
+    previous form asserted false unconditionally, which is correct only while
+    no-live is the only mode that exists.
+    """
+
+    mode = _expected_execution_mode()
+    if db_activation.get("execution_mode") != mode:
+        raise ContractError("target_activation_state_mode_drift")
+    expected = mode == "production_live"
+    for key in ("live_submit_authorized", "places_orders", "calls_order_gateway"):
+        if db_activation.get(key) is not expected:
+            raise ContractError(f"target_activation_state_{key}_drift")
+
+
 def _text(name: str, value: Any) -> str:
     result = str(value or "").strip()
     if not result:
@@ -112,12 +143,9 @@ def _assert_target_activation_and_quiescence(
         db_activation = json.loads(str(row[2] or "{}"))
     except (TypeError, ValueError) as exc:
         raise ContractError("target_activation_state_json_invalid") from exc
-    if not isinstance(db_activation, Mapping) or db_activation.get("execution_mode") != "production_no_live":
+    if not isinstance(db_activation, Mapping):
         raise ContractError("target_activation_state_mode_drift")
-
-    for key in ("live_submit_authorized", "places_orders", "calls_order_gateway"):
-        if db_activation.get(key) is not False:
-            raise ContractError(f"target_activation_state_{key}_drift")
+    _assert_activation_row_matches_mode(db_activation)
 
     # The target ledger is the only order-state authority for this lane.  In
     # particular, do not probe basket_strategy_* or any table from the shared
@@ -269,11 +297,9 @@ def build_execution_transition_order_state_ingress(
         db_activation = json.loads(str(row[2] or "{}"))
     except (TypeError, ValueError) as exc:
         raise ContractError("target_activation_state_json_invalid") from exc
-    if not isinstance(db_activation, Mapping) or db_activation.get("execution_mode") != "production_no_live":
+    if not isinstance(db_activation, Mapping):
         raise ContractError("target_activation_state_mode_drift")
-    for key in ("live_submit_authorized", "places_orders", "calls_order_gateway"):
-        if db_activation.get(key) is not False:
-            raise ContractError(f"target_activation_state_{key}_drift")
+    _assert_activation_row_matches_mode(db_activation)
 
     from .execution_transition_runtime import apply_execution_transition_schema
 
