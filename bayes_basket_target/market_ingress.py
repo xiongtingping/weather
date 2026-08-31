@@ -649,13 +649,15 @@ def _scope_quote_values(
         if not listing_day:
             return False
         if quote is None:
-            # The parser yields no entry for a token it received no book
-            # for, so on a listing day absence and emptiness are the same
-            # state and neither is a defect: the registry names the bucket,
-            # the stream has nothing to say about it yet.  A scope where
-            # every bucket is in that state still refuses, as
-            # official_ws_scope_bookless.
-            return True
+            # Absence is NOT emptiness, and treating it as such was a lie
+            # this lane told for one cycle: the scope manifests carry a full
+            # book for every listing token -- CYYZ 09-01 measured eleven
+            # registry tokens, eleven quotes, eleven books, identical sets --
+            # so a token missing here means something between the manifest
+            # and this function dropped it, and reporting that as "nobody has
+            # quoted it yet" hides the defect behind a market state.
+            # official_ws_selected_bucket_missing names it instead.
+            return False
         return not _ask_levels(quote, required=False) and not _bid_levels(
             quote, required=False
         )
