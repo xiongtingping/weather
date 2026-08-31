@@ -650,18 +650,41 @@ def evaluate_regime_gate(
         # direction deadband and therefore classify the same envelope as
         # ``NEUTRAL`` even though the fixed regime companion is UP/DOWN.
         # Treat that as a conservative direction conflict (no directional
-        # actions) instead of throwing a global compile error.  Opposite
-        # directional claims remain a hard lineage mismatch and continue to
-        # fail closed through the existing exception.
-        if probability_direction == "NEUTRAL":
-            state = "NEUTRAL_REGIME_CONFLICT"
-            reasons = (
-                "probability_direction_neutral",
-                "regime_direction_not_authoritative",
-            )
-            allowed = False
-        else:
-            raise ContractError("regime_direction_mismatch")
+        # actions) rather than a compile error.
+        #
+        # Until now the other half of that disagreement -- both sides
+        # directional and not agreeing -- raised instead, on the reading that
+        # opposite claims are a lineage fault.  They are not: by the time
+        # control reaches this line the artifact has already been matched to
+        # this exact station, event date, stage, checkpoint and probability
+        # hash, and resolve_regime_artifact has re-verified every one of them.
+        # Lineage is proven.  What is left is two layers reading the same
+        # envelope and disagreeing about direction, which is the one thing
+        # clause 52c of the 2026-08-16 ruling says this gate does not get a
+        # vote on: "the gate now records and does not enforce", direction
+        # keeps its single honest source in which side of the centre carries
+        # the mass and the EV.  That ruling changed the call site in
+        # runtime.py, which appends regime_direction_recorded_not_enforced and
+        # carries on; it did not change this function, so the exception went
+        # on ending the compile from inside the gate and never reached the
+        # recording it was supposed to get.  The veto it once fed is gone
+        # too: nothing passes regime_direction_allowed any more.
+        #
+        # On 2026-08-31 this was the sole blocker on all eight US stations in
+        # the cycle, and by construction no receipt of it existed anywhere --
+        # the throw is taken before the audit is built, so the only
+        # disagreement this system has ever recorded is the half that returns.
+        state = (
+            "NEUTRAL_REGIME_CONFLICT"
+            if probability_direction == "NEUTRAL"
+            else "REGIME_DIRECTION_CONFLICT"
+        )
+        reasons = (
+            ("probability_direction_neutral", "regime_direction_not_authoritative")
+            if probability_direction == "NEUTRAL"
+            else ("regime_direction_conflict", "regime_direction_not_authoritative")
+        )
+        allowed = False
     elif resolved.regime == "NEUTRAL":
         state = "NEUTRAL"
         reasons = ("stable_neutral_probability_direction",)

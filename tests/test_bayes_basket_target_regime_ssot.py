@@ -269,13 +269,25 @@ def test_all_public_basket_compilers_require_regime_by_default():
         .default
         is True
     )
-    with pytest.raises(ContractError, match="regime_direction_mismatch"):
-        evaluate_regime_gate(
-            _artifact(), station_id="RKPK", event_date="2026-07-27", stage="P0-M",
-            checkpoint_id="p0m-checkpoint-1", settlement_timezone="Asia/Seoul",
-            evaluation_at_utc="2026-07-26T16:00:00Z", probability_direction="DOWN",
-            probability_sha256="1" * 64, center_bucket="37",
-        )
+    # Two directional readings that disagree used to end the compile from
+    # inside the gate.  Clause 52c of the 2026-08-16 ruling left this gate
+    # recording and not enforcing, and lineage is already proven before this
+    # line -- station, date, stage, checkpoint and probability hash all
+    # matched -- so a disagreement here is the gate's opinion, which it does
+    # not get to act on.  It is recorded, with both readings on the audit.
+    direction_conflict = evaluate_regime_gate(
+        _artifact(), station_id="RKPK", event_date="2026-07-27", stage="P0-M",
+        checkpoint_id="p0m-checkpoint-1", settlement_timezone="Asia/Seoul",
+        evaluation_at_utc="2026-07-26T16:00:00Z", probability_direction="DOWN",
+        probability_sha256="1" * 64, center_bucket="37",
+    )
+    assert direction_conflict.direction_allowed is False
+    assert direction_conflict.state == "REGIME_DIRECTION_CONFLICT"
+    assert direction_conflict.audit["probability_direction"] == "DOWN"
+    assert direction_conflict.audit["artifact_regime"] == _artifact()["regime"]
+    # Recorded, but never permissive: a disagreeing gate still caps
+    # concentration exactly as the neutral conflict below does.
+    assert direction_conflict.concentration_multiplier <= 0.75
     neutral_conflict = evaluate_regime_gate(
         _artifact(), station_id="RKPK", event_date="2026-07-27", stage="P0-M",
         checkpoint_id="p0m-checkpoint-1", settlement_timezone="Asia/Seoul",
