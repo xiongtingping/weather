@@ -14723,6 +14723,7 @@ class TargetProductionWorker:
             # One read per day, kept until that day is refreshed.  The scan is
             # expensive and the answer only changes when we change it.
             day_quote_expiry: dict[str, datetime | None] = {}
+            refresh_ineffective_days: set[str] = set()
             for station_id, event_date in rows:
                 station = str(station_id)
                 day = str(event_date)
@@ -14736,7 +14737,10 @@ class TargetProductionWorker:
                     if expiry is not None
                     else 0.0
                 )
-                if lease_left <= QUOTE_EVIDENCE_REFRESH_SECONDS:
+                if (
+                    lease_left <= QUOTE_EVIDENCE_REFRESH_SECONDS
+                    and day not in refresh_ineffective_days
+                ):
                     evidence_refreshed_at[day] = time.monotonic()
                     quote_refresh_attempts.append(day)
                     day_quote_expiry.pop(day, None)
@@ -14747,6 +14751,21 @@ class TargetProductionWorker:
                             as_of_utc=utc_now(),
                         )  # writes the snapshot the compile reads
                         now = utc_now()
+                        # Did it actually renew anything?  A refresh that
+                        # cannot -- the day has no fresh scope manifest to
+                        # merge, so the pass returns without writing -- leaves
+                        # the expiry exactly where it was, and every remaining
+                        # scope of that day then asks for the same refresh
+                        # again.  Measured: 44 refreshes for one event day in
+                        # one cycle, none of them renewing anything, and the
+                        # cycle went from eight minutes to fourteen.  Ask
+                        # once, believe the answer.
+                        renewed = self._scope_day_quote_expiry(day)
+                        if expiry is not None and (
+                            renewed is None or renewed <= expiry
+                        ):
+                            refresh_ineffective_days.add(day)
+                        day_quote_expiry[day] = renewed
                     except Exception as exc:  # noqa: BLE001 -- observational
                         # A failed refresh leaves the previous books in
                         # place; the scope then fails on its own expiry with
@@ -14941,6 +14960,7 @@ class TargetProductionWorker:
                         day: quote_refresh_attempts.count(day)
                         for day in sorted(set(quote_refresh_attempts))
                     },
+                    "ineffective_days": sorted(refresh_ineffective_days),
                     "failures": quote_refresh_failures[:10],
                     "failure_count": len(quote_refresh_failures),
                 },
