@@ -419,6 +419,9 @@ REFUSAL_DEPTH = {
     # reported as "the odds were not worth it" until 2026-08-24.
     "unquoted_ideal_window": 5,
     "certainty_gate_lit": 5,
+    # Same own-clock family: the seat rule declining a shape it cannot
+    # cover, judged before price is even consulted.
+    "shape_gap_too_wide": 5,
     # One layer: a basket was assembled, priced and put to the objective, and
     # no stake followed.  Which of the two is reported depends on whether the
     # price left the objective anything to judge.
@@ -971,6 +974,31 @@ CONSOLIDATION_QUOTED_FRACTION = 0.80
 SELECTION_DISCOUNT = float(
     os.environ.get("PAPER_LEDGER_SELECTION_DISCOUNT", "0") or 0.0
 )
+# Research arm (2026-09-01): refuse a seat whose served distribution's
+# mean sits further than this many bucket steps from its mode, measured at
+# the entry snapshot.  0 disables.  The motivating measurement: through
+# late August the pool's mean-mode gap narrowed while the *bought* sample's
+# doubled -- the market priced the well-shaped days out of reach and the
+# funnel slid into the wide-gap days, where a mean-centred window
+# structurally cannot cover the mode and the extension direction ran 17%
+# aligned with truth.  Both direction-rule arms lost the whole book
+# (off -6.8%, toward_mode -13.2% against -2.3%), so the candidate fix is
+# admission, not placement: a shape this split is a day this seat rule
+# has no edge on.
+SHAPE_GAP_LIMIT_BUCKETS = float(
+    os.environ.get("PAPER_LEDGER_SHAPE_GAP_LIMIT", "0") or 0.0
+)
+# Companion arm: past the limit, scale the opening stake instead of
+# refusing the seat.  The refusal family was measured 2026-09-01 and every
+# threshold lost to the baseline -- not because split days are good (they
+# are the worst days P0 has) but because only P0 opens the chain, so a
+# refused P0 seat also forfeits the P1 top-ups that carry the book's
+# profit (37 seats, +186u, dead of chain_never_opened under the 0.5 arm).
+# Scaling keeps the chain alive at a token stake; 0 keeps the refusal
+# behaviour when the limit alone is set.
+SHAPE_GAP_TILT = float(
+    os.environ.get("PAPER_LEDGER_SHAPE_GAP_TILT", "0") or 0.0
+)
 # Consolidation stake tilt (user ruling, 2026-08-21): the one discriminator
 # that survived every robustness cut.  Chains entered with two or more of
 # the three consolidation signs on returned -41.6% (ex-best -46.0%,
@@ -1215,6 +1243,13 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     None
     if SELECTION_DISCOUNT <= 0
     else f"选择折扣λs{SELECTION_DISCOUNT:g}",
+    None
+    if SHAPE_GAP_LIMIT_BUCKETS <= 0
+    else (
+        "形状撕裂门%g桶" % SHAPE_GAP_LIMIT_BUCKETS
+        if SHAPE_GAP_TILT <= 0
+        else "撕裂减仓%g桶×%g" % (SHAPE_GAP_LIMIT_BUCKETS, SHAPE_GAP_TILT)
+    ),
     None
     if CONSOLIDATION_TILT_FACTOR >= 1.0
     else "固化≥%d减仓%g" % (
@@ -1566,6 +1601,7 @@ REFUSAL_REASONS = (
     # the fix is to wait for a less-consolidated moment, not a better model
     # and not a wider book.
     "certainty_gate_lit",
+    "shape_gap_too_wide",
     # The market never made a book on the window we want: less than 80% of
     # the mass in the ideal centre+-1 window sits on buckets asked at or
     # above the leg floor.  Distinct from ``no_priced_window``, which is
@@ -5539,6 +5575,7 @@ def backfill(
                     ):
                         refusal = _deeper_refusal(refusal, (
                             "certainty_gate_lit",
+    "shape_gap_too_wide",
                             "确定性闸：%s 已亮" % "+".join(
                                 name for name in CERTAINTY_GATE
                                 if stage_consolidation.get(name) is True
@@ -5546,6 +5583,41 @@ def backfill(
                             cycles, payload["decision_at_utc"],
                         ))
                         continue
+                    shape_tilt = 1.0
+                    # Opening stages only.  The first (stage-blind) run of
+                    # this arm cost P1 nineteen seats and 144u of profit --
+                    # P1's edge is the observation, not the shape, and the
+                    # agreement table shows the same split signal *inverts*
+                    # there: P1 earns precisely where the market disagrees.
+                    if SHAPE_GAP_LIMIT_BUCKETS > 0 and stage != "P1":
+                        _pr = {
+                            b: float(v) for b, v in probabilities.items()
+                            if float(v) > 0
+                        }
+                        if len(_pr) >= 3:
+                            _ords = {
+                                r.bucket: int(r.ordinal)
+                                for r in snapshot.buckets
+                            }
+                            _tot = sum(_pr.values())
+                            _mean = sum(
+                                _ords[b] * v / _tot for b, v in _pr.items()
+                                if b in _ords
+                            )
+                            _mode = max(_pr, key=lambda b: _pr[b])
+                            _gap = abs(_mean - _ords.get(_mode, _mean))
+                            if _gap > SHAPE_GAP_LIMIT_BUCKETS:
+                                if SHAPE_GAP_TILT > 0:
+                                    shape_tilt = SHAPE_GAP_TILT
+                                else:
+                                    refusal = _deeper_refusal(refusal, (
+                                        "shape_gap_too_wide",
+                                        "分布撕裂：均值离众数 %.2f 桶（门 %g）"
+                                        % (_gap, SHAPE_GAP_LIMIT_BUCKETS),
+                                        cycles,
+                                        payload["decision_at_utc"],
+                                    ))
+                                    continue
                     # The opener's own entry signals decide the chain's
                     # stake scale; later stages inherit rather than
                     # re-earn -- the strata were measured on the P0 count.
@@ -5575,6 +5647,7 @@ def backfill(
                         )
                     else:
                         tilt = chain_tilt
+                    tilt = tilt * shape_tilt
                     gate_win = float(seat["win_probability"]) * (
                         SELECTION_DISCOUNT if SELECTION_DISCOUNT > 0 else 1.0
                     )

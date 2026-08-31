@@ -322,6 +322,14 @@ LEDGER_ONLY = {
     ),
     "PAPER_LEDGER_FLEET_REGIME_STAGES": "same",
     "SELECTION_DISCOUNT": "measurement lane; must not become a gate",
+    "SHAPE_GAP_TILT": (
+        "replay arm; scales the split-day opening stake instead of refusing,"
+        " keeping the chain alive for its P1 top-ups; default 0"
+    ),
+    "SHAPE_GAP_LIMIT_BUCKETS": (
+        "replay arm; admission gate on the served shape's mean-mode split,"
+        " default 0 (off) pending the 2026-09-01 replay ruling"
+    ),
     "MAKER_RESTING_BAND_TOP": "research arm",
     "MAKER_RESTING_CONFIRM_TAKE_TICKS": (
         "research arm pricing the 2026-08-20 market-moves-trigger-nothing"

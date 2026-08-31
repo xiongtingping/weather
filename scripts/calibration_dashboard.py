@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import collections
 import json
 import math
 import os
@@ -2840,6 +2841,89 @@ def collect_live_readiness(
     fresh_floor = (
         _dt.date.today() - _dt.timedelta(days=2)
     ).isoformat()
+    # Two per-station difficulty readings (2026-09-01 investigation).
+    # ``climate_jump``: mean |Tmax(d) - Tmax(d-1)| from the truth table --
+    # the station's weather temperament, slow-moving and exogenous to the
+    # book.  It passed every hygiene check the investigation ran (feature
+    # from pre-08-27 truth only, neutral in the early window p=0.56,
+    # predictive in the late one p=0.023, stable across cut points), which
+    # none of the ledger-derived screens did.  ``shape_gap``: the model's
+    # own mean-to-mode split, pool scope over the last 14 days -- the
+    # downstream shadow of the same difficulty (r=+0.32), kept beside it as
+    # corroboration.  Both are instruments for the operator's manual bar
+    # rulings, not gates: the hand-picked list is the only station screen
+    # that has ever beaten random on this book.
+    climate_jump: dict[str, float] = {}
+    try:
+        truth_rows = collections.defaultdict(dict)
+        for sid, day, tmax in conn.execute(
+            "SELECT station_id, local_date, official_tmax_c"
+            " FROM calibration_station_daily_high_truth"
+        ):
+            truth_rows[str(sid)][str(day)] = float(tmax)
+        for sid, days in truth_rows.items():
+            ordered = sorted(days)
+            jumps = [
+                abs(days[ordered[i]] - days[ordered[i - 1]])
+                for i in range(1, len(ordered))
+            ]
+            if len(jumps) >= 8:
+                climate_jump[sid] = sum(jumps) / len(jumps)
+    except sqlite3.OperationalError:
+        pass
+    shape_gap: dict[str, float] = {}
+    try:
+        gap_floor = (
+            _dt.date.today() - _dt.timedelta(days=14)
+        ).isoformat()
+        latest: dict[tuple[str, str], tuple[str, int]] = {}
+        for sid, day, created, rowid in conn.execute(
+            "SELECT station_id, event_date, created_at, rowid"
+            " FROM basket_probability_envelope"
+            " WHERE stage='P0' AND event_date >= ?",
+            (gap_floor,),
+        ):
+            key = (str(sid), str(day))
+            if key not in latest or created > latest[key][0]:
+                latest[key] = (str(created), int(rowid))
+        import re as _re
+        gaps: dict[str, list[float]] = collections.defaultdict(list)
+        rowids = [v[1] for v in latest.values()]
+        rid_station = {v[1]: k[0] for k, v in latest.items()}
+        for i in range(0, len(rowids), 500):
+            part = rowids[i:i + 500]
+            for rowid, pj in conn.execute(
+                "SELECT rowid, probabilities_json"
+                " FROM basket_probability_envelope WHERE rowid IN (%s)"
+                % ",".join(map(str, part))
+            ):
+                try:
+                    raw = {
+                        b: float(v) for b, v in json.loads(pj or "{}").items()
+                        if float(v) > 0
+                    }
+                except (TypeError, ValueError):
+                    continue
+                if len(raw) < 3:
+                    continue
+                ords = {}
+                for b in raw:
+                    m = _re.match(r"^\s*(-?\d+)", str(b))
+                    if not m:
+                        ords = None
+                        break
+                    ords[b] = int(m.group(1))
+                if not ords:
+                    continue
+                total = sum(raw.values())
+                mean_o = sum(ords[b] * v / total for b, v in raw.items())
+                mode_o = ords[max(raw, key=lambda b: raw[b])]
+                gaps[rid_station[rowid]].append(abs(mean_o - mode_o))
+        for sid, values in gaps.items():
+            if len(values) >= 3:
+                shape_gap[sid] = sum(values) / len(values)
+    except sqlite3.OperationalError:
+        pass
     stations = []
     for sid in sorted(set(ratio_by_station) | set(book) | set(bias)):
         band_row = ratio_by_station.get(sid)
@@ -2861,6 +2945,10 @@ def collect_live_readiness(
         if sid in book and book[sid]["recent_stake"]:
             recent_roi = book[sid]["recent_pnl"] / book[sid]["recent_stake"]
         stations.append({
+            "climate_jump_c": round(climate_jump[sid], 2)
+            if sid in climate_jump else None,
+            "shape_gap_buckets": round(shape_gap[sid], 2)
+            if sid in shape_gap else None,
             "recent_roi": recent_roi,
             "station": sid,
             "station_label": STATION_LABELS.get(sid, ""),
@@ -7078,6 +7166,11 @@ function stationSummary(){
   // marked, greyed, and counted separately rather than removed.
   const barred=new Set((D.live_readiness||{}).station_exclusions||[]);
   const probation=new Set((D.live_readiness||{}).station_probation||[]);
+  // Difficulty instruments, joined from the readiness payload so this table
+  // and that one cannot quote different numbers for the same station.
+  const difficulty={};
+  for(const rr0 of ((D.live_readiness||{}).stations||[]))
+    difficulty[rr0.station]={j:rr0.climate_jump_c,g:rr0.shape_gap_buckets};
   // Station geography, [latitude, coastal].  Copied from
   // calibration_station_forecast_physics rather than added to the payload:
   // an airport does not move, so shipping it per render would only make a
@@ -7139,7 +7232,9 @@ function stationSummary(){
       <td class="${cal==null?"":(cal>=0.9&&cal<=1.15?"up":"down")}">${cal==null?"—":n2(cal,2)+"×"}</td>
       <td class="mono">${n2(s.staked_usdc,2)}</td>
       <td class="mono ${(s.realized_usdc||0)>=0?"up":"down"}">${((s.realized_usdc||0)>=0?"+":"")+n2(s.realized_usdc,2)}</td>
-      <td class="${rr==null?"":(rr>=1?"up":"down")}">${rr==null?"—":n2(rr,2)+"×"}</td></tr>`;
+      <td class="${rr==null?"":(rr>=1?"up":"down")}">${rr==null?"—":n2(rr,2)+"×"}</td>
+      <td class="mono ${(difficulty[s.station_id]||{}).j>1.76?"down":""}">${(difficulty[s.station_id]||{}).j==null?"—":difficulty[s.station_id].j.toFixed(2)}</td>
+      <td class="mono ${(difficulty[s.station_id]||{}).g>0.93?"down":""}">${(difficulty[s.station_id]||{}).g==null?"—":difficulty[s.station_id].g.toFixed(2)}</td></tr>`;
     return {html,band:bd?BAND_ORDER.indexOf(bd):BAND_ORDER.length,
       coastal:g&&g[1]?0:1,id:s.station_id};
   });
@@ -7237,7 +7332,7 @@ function stationSummary(){
     <th>位置<br><span class="muted">上/平/下</span></th>
     <th>概率和</th><th>卖价和</th><th>赔率</th><th>EV/U</th>
     <th>命中率</th><th>声称</th><th>实现/声称</th>
-    <th>投入</th><th>实得</th><th>兑现比</th>
+    <th>投入</th><th>实得</th><th>兑现比</th><th title="该站真值的日际跳变均值(°C)：>1.76 的站在真边际枯竭期实测 −43% vs 留存 +23% (p=0.023)">跳变/日</th><th title="近14天模型分布的均值−众数距离(桶)，跳变的模型层影子(r=+0.32)">形状gap</th>
   </tr></thead><tbody>${rows}</tbody></table></div>${barNote}${note}</div>
   ${stationFailureMatrix()}`;
 }
@@ -8424,6 +8519,8 @@ function liveReadiness(){
     <td class="mono">${r.chains}</td>
     <td class="mono ${r.roi==null?"":(r.roi>=0?"up":"down")}">${r.roi==null?"—":((r.roi>=0?"+":"")+(100*r.roi).toFixed(1)+"%")}</td>
     <td class="mono ${r.recent_roi==null?"":(r.recent_roi>=0?"up":"down")}">${r.recent_roi==null?"—":((r.recent_roi>=0?"+":"")+(100*r.recent_roi).toFixed(1)+"%")}</td>
+    <td class="mono ${r.climate_jump_c==null?"":(r.climate_jump_c>1.76?"down":"up")}">${r.climate_jump_c==null?"—":r.climate_jump_c.toFixed(2)}</td>
+    <td class="mono ${r.shape_gap_buckets==null?"":(r.shape_gap_buckets>0.93?"down":"")}">${r.shape_gap_buckets==null?"—":r.shape_gap_buckets.toFixed(2)}</td>
     <td class="muted">${r.add_candidate?"☆建议加入 ":""}${r.release_candidate?"★建议放出 ":""}${Object.entries(r.gates).filter(([k,v])=>!v).map(([k])=>GATE[k]).join("、")||"✓"}</td>
   </tr>`).join("");
   const CT = L.contracts || {};
@@ -8477,7 +8574,7 @@ function liveReadiness(){
     </details>
     <div class="scroll" style="max-height:360px;margin-top:6px">
     <table><thead><tr><th>站</th><th>过闸</th><th>实现/声称</th><th>中心偏差</th>
-      <th>链</th><th>ROI</th><th title="最近 5 个结算日">近5日</th><th>未过项</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <th>链</th><th>ROI</th><th title="最近 5 个结算日">近5日</th><th title="该站真值的日际跳变均值(°C)：天气性格，>1.76 的站在真边际枯竭期实测 −43%（留存组 +23%，p=0.023）。外生、慢变、先于账本。">跳变/日</th><th title="近14天池子里模型分布的均值−众数距离(桶)：跳变在模型层的影子(r=+0.32)，>0.93 为高。">形状gap</th><th>未过项</th></tr></thead><tbody>${rows}</tbody></table></div>
   </div>`;
 }
 
