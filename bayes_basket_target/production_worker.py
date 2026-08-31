@@ -14258,11 +14258,32 @@ class TargetProductionWorker:
                         "reservations_written": 0,
                     })
             self._mark("forward_p0_loop")
+            # Charter 48: a listed day's scope belongs in the merged manifest
+            # the ingress reads.  The publisher already subscribes it and
+            # rewrites its book alongside the open ones -- both days' scope
+            # manifests sit in the catalog, each with a full set of quoted
+            # tokens -- but this filter admitted only "open", so the listed
+            # scope's book never reached the evidence lane and every listing
+            # scope resolved to no quotes at all.  Freshness and the scope's
+            # own blocker still apply to both, unchanged.
+            listing_scope_keys = {
+                f"{station}|{day}"
+                # utc_now(), not `now`: that name is bound further down, after
+                # market ingress.  Reading it here is the UnboundLocalError
+                # that killed the forward preselection lane for a day.
+                for station, day in self._listing_entry_scopes(
+                    as_of_utc=utc_now()
+                )
+            }
             open_ws_scopes = [
                 item
                 for item in ws_scope_catalog
                 if (
-                    item["event_day_state"] == "open"
+                    (
+                        item["event_day_state"] == "open"
+                        or str(item.get("scope_key") or "")
+                        in listing_scope_keys
+                    )
                     and item["probability_evidence_fresh"] is True
                     and not item.get("scope_blocker")
                 )
