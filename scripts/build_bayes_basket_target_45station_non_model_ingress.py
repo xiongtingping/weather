@@ -25,6 +25,7 @@ from bayes_basket_target.station_registry import (  # noqa: E402
 from scripts.ingest_bayes_basket_target_artifacts import (  # noqa: E402
     validate_packet_sha256,
 )
+from bayes_basket_target.fleet import expected_station_count
 
 
 SCHEMA = "bayes_basket_target_artifact_ingress_v1"
@@ -95,10 +96,10 @@ def build_non_model_packet(
     }
     expected_counts = {
         "global_priors": 1,
-        "policy_artifacts": 135,
-        "policy_activations": 135,
-        "cash_phase_policies": 45,
-        "cash_phase_authority_manifests": 45,
+        "policy_artifacts": expected_station_count() * 3,
+        "policy_activations": expected_station_count() * 3,
+        "cash_phase_policies": expected_station_count(),
+        "cash_phase_authority_manifests": expected_station_count(),
     }
     for field, expected in expected_counts.items():
         if len(selected[field]) != expected:

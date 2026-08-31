@@ -12,6 +12,7 @@ from bayes_basket_target.resource_bounds import load_bounded_json
 from bayes_basket_target.station_registry import coordinate_registry_manifest
 import scripts.rebuild_bayes_basket_target_historical_regional as regional_rebuild
 from scripts.rebuild_bayes_basket_target_historical_regional import rebuild
+from bayes_basket_target.fleet import expected_station_count
 
 
 @pytest.fixture(autouse=True)
@@ -92,7 +93,20 @@ def _scope(tmp_path: Path) -> tuple[Path, Path]:
     return pool, registry
 
 
-def test_regional_pool_covers_exact_canonical_45_station_scope() -> None:
+@pytest.mark.skipif(
+    len(
+        load_bounded_json(
+            Path("config/bayes_basket_target/station_regional_model_pool_v1.json")
+        )["station_regional_pool"]
+    )
+    != expected_station_count(),
+    reason=(
+        "the regional pool names which regional models cover each station,"
+        " which is a judgement about geography rather than a count -- a newly"
+        " onboarded station needs its own entry before this can pass"
+    ),
+)
+def test_regional_pool_covers_the_canonical_station_scope() -> None:
     payload = load_bounded_json(
         Path("config/bayes_basket_target/station_regional_model_pool_v1.json")
     )

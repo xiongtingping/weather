@@ -143,20 +143,47 @@ def test_live_pause_rejects_before_persistence_signing_or_exchange(tmp_path):
     assert json.loads(result.stdout)["error"] == "clob_order_service_live_paused"
 
 
-def test_gateway_wrapper_is_user_production_no_live_only():
+def test_gateway_wrapper_is_user_domain_and_names_one_known_mode():
+    """What the wrapper still owes after go-live, and what it no longer does.
+
+    This test asserted three things that stopped being true on 2026-08-30 --
+    that the mode is production_no_live, that the launcher refuses anything
+    else, and that the read-only bit is 1 -- and it has been red ever since,
+    which is the wrong way for a suite to record a migration.  Red is how a
+    suite says "somebody broke this"; a rule that was deliberately retired
+    should stop being asserted, not sit failing as a monument to itself.
+
+    What survives is the part the ruling did not touch: the wrapper runs in
+    the user domain, it refuses an unset or unknown execution mode rather
+    than defaulting, and it loads none of the retired lanes.
+    """
+
     shell = (ROOT / "scripts" / "clob_order_service.sh").read_text(encoding="utf-8")
     assert 'if [ "${WEATHER_SERVICE_DOMAIN:-}" != "user" ]; then' in shell
     assert 'echo "[clob_order_service] user_domain_required"' in shell
-    assert 'if [ "${PM_TARGET_EXECUTION_MODE:-}" != "production_no_live" ]; then' in shell
-    assert 'echo "[clob_order_service] production_no_live_required"' in shell
     assert "export WEATHER_SERVICE_DOMAIN=user" in shell
-    assert "export PM_TARGET_EXECUTION_MODE=production_no_live" in shell
-    assert "export PM_CLOB_ORDER_SERVICE_READ_ONLY=1" in shell
-    assert "sequential_bayes_execution_contract" not in shell
-    assert "observation_to_order_" not in shell
-    assert "signal_to_order_" not in shell
-    assert "dynamic_three_leg" not in shell
-    assert "target_realization" not in shell
+
+    # Still a gate, just no longer a one-mode gate: the check names both
+    # known modes and refuses everything else, so an unset or misspelled
+    # PM_TARGET_EXECUTION_MODE cannot start the gateway.
+    assert 'echo "[clob_order_service] known_execution_mode_required"' in shell
+    assert '"production_live"' in shell
+    assert '"production_no_live"' in shell
+    assert "export PM_TARGET_EXECUTION_MODE=production_live" in shell
+
+    # The read-only bit is the operator's, and it is 0 now by their ruling.
+    # Asserted as "present and explicit" rather than as a value, so this test
+    # stops being the thing that goes red when they change their mind.
+    assert re.search(r"^export PM_CLOB_ORDER_SERVICE_READ_ONLY=[01]$", shell, re.M)
+
+    for retired in (
+        "sequential_bayes_execution_contract",
+        "observation_to_order_",
+        "signal_to_order_",
+        "dynamic_three_leg",
+        "target_realization",
+    ):
+        assert retired not in shell, retired
 
 
 def test_gateway_launchd_entry_uses_the_current_wrapper_contract():

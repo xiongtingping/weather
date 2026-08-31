@@ -19,6 +19,7 @@ from bayes_basket_target.regime_materialization import (
     rematerialize_resident_regimes,
 )
 from bayes_basket_target.ssot import apply_production_ssot_schema
+from bayes_basket_target.fleet import expected_station_count
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -216,7 +217,7 @@ def test_more_than_45_stations_and_stage_rewind_fail_closed():
             checkpoint_id=f"K{index:03d}-P0",
             timezone_name="America/New_York",
         )
-        for index in range(46)
+        for index in range(expected_station_count() + 1)
     ]
     registry = {
         (envelope.station_id, envelope.event_date):

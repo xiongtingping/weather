@@ -9,6 +9,7 @@ import pytest
 from bayes_basket_target.contracts import content_sha256
 from bayes_basket_target.resource_bounds import write_bounded_json
 from scripts import build_historical_taf_p0m_exact_join as pipeline
+from bayes_basket_target.fleet import expected_station_count
 
 
 SCOPE = ("TEST", "JJA", "d2", "18Z")
@@ -403,7 +404,7 @@ def test_station_scope_is_hard_capped_at_forty_five(tmp_path, monkeypatch) -> No
     write_bounded_json(live_path, _live_inbox())
     scopes = [
         (f"S{index:02d}", "JJA", "d2", "18Z")
-        for index in range(46)
+        for index in range(expected_station_count() + 1)
     ]
     monkeypatch.setattr(pipeline, "_discover_live_scopes", lambda _inbox: scopes)
     with pytest.raises(RuntimeError, match="live_station_scope_exceeded"):

@@ -366,6 +366,9 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     "correction_review_auto_clear": "archive",
     "fleet_regime_refresh": "ssot",
     "forward_packet_retention": "none",
+    # Reads the SSOT ``mode=ro`` and writes only JSON config files, so it
+    # holds no database lock and can overlap anything.
+    "auto_station_exclusions": "none",
     "capture_jma_msm_forward": "ssot",
     "capture_noaa_conus_forward": "ssot",
     "capture_dwd_icon_eu_forward": "ssot",

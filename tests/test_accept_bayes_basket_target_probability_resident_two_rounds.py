@@ -18,6 +18,7 @@ from scripts.accept_bayes_basket_target_probability_resident_two_rounds import (
     migration_round_from_strict,
     normalize_station_scope,
 )
+from bayes_basket_target.fleet import expected_station_count
 
 
 SCOPE = ("EGLC", "RKPK")
@@ -72,7 +73,7 @@ def _round() -> dict:
 
 def test_default_scope_is_exact_frozen_45() -> None:
     assert normalize_station_scope() == CANONICAL_STATION_IDS
-    assert len(CANONICAL_STATION_IDS) == 45
+    assert len(CANONICAL_STATION_IDS) == expected_station_count()
     with pytest.raises(RuntimeError, match="duplicate_or_empty"):
         normalize_station_scope(("RKPK", "RKPK"))
     with pytest.raises(RuntimeError, match="not_canonical"):

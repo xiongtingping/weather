@@ -21,6 +21,7 @@ from bayes_basket_target.market_registry import (
 )
 from bayes_basket_target.contracts import ContractError
 from bayes_basket_target.ssot import apply_production_ssot_schema
+from bayes_basket_target.fleet import expected_station_count
 
 
 def _database(path: Path) -> None:
@@ -376,8 +377,8 @@ def test_dynamic_catalog_includes_two_registry_stations(
 
 
 def test_connection_shards_are_bounded_at_official_token_limit() -> None:
-    assert publisher.MAX_TARGET_STATIONS == 45
-    assert publisher.MAX_TARGET_SCOPES == 90
+    assert publisher.MAX_TARGET_STATIONS == expected_station_count()
+    assert publisher.MAX_TARGET_SCOPES == expected_station_count() * 3
     assert publisher.MAX_TARGET_TOKENS == 2048
     tokens = [f"yes-{index:04d}" for index in range(
         publisher.MAX_TOKENS_PER_CONNECTION + 1
@@ -416,12 +417,12 @@ def test_station_and_token_resource_caps_fail_closed(
     with pytest.raises(ContractError, match="resident_target_ws_station_cap_exceeded"):
         _scope(db_path=db, as_of_utc="2026-07-28T02:00:00Z")
 
-    monkeypatch.setattr(publisher, "MAX_TARGET_STATIONS", 45)
+    monkeypatch.setattr(publisher, "MAX_TARGET_STATIONS", expected_station_count())
     monkeypatch.setattr(publisher, "MAX_TARGET_SCOPES", 1)
     with pytest.raises(ContractError, match="resident_target_ws_scope_cap_exceeded"):
         _scope(db_path=db, as_of_utc="2026-07-28T02:00:00Z")
 
-    monkeypatch.setattr(publisher, "MAX_TARGET_SCOPES", 90)
+    monkeypatch.setattr(publisher, "MAX_TARGET_SCOPES", expected_station_count() * 3)
     monkeypatch.setattr(publisher, "MAX_TARGET_TOKENS", 3)
     with pytest.raises(ContractError, match="resident_target_ws_token_catalog_invalid"):
         _scope(db_path=db, as_of_utc="2026-07-28T02:00:00Z")
@@ -849,7 +850,7 @@ def test_shard_message_confirms_quiet_books_without_changing_economics() -> None
 
 
 def test_publisher_station_domain_is_exact_canonical_registry() -> None:
-    assert len(publisher.CANONICAL_TARGET_STATIONS) == 45
+    assert len(publisher.CANONICAL_TARGET_STATIONS) == expected_station_count()
     assert "RKPK" in publisher.CANONICAL_TARGET_STATIONS
     assert "XXXX" not in publisher.CANONICAL_TARGET_STATIONS
 

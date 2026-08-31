@@ -28,16 +28,30 @@ def test_gateway_closes_legacy_snapshot_and_sequential_deadline_compatibility() 
     assert "signal_to_order_hard_deadline_at" not in source
 
 
-def test_gateway_wrapper_is_system_only_and_no_live() -> None:
+def test_gateway_wrapper_carries_none_of_the_retired_contracts() -> None:
+    """Closure only.  What the wrapper *should* say lives in the other file.
+
+    This asserted the system-domain, no-live wrapper, and it outlived both
+    rulings: the user-domain migration made "system" wrong, and go-live made
+    "production_no_live" wrong.  It had drifted into contradicting its
+    sibling in test_clob_gateway_live_pause_boundary, which asserts
+    WEATHER_SERVICE_DOMAIN=user is present while this one asserted it absent
+    -- two tests that could not both pass, one of them red for weeks as the
+    only sign.
+
+    A legacy-closure test should say what must stay gone.  The positive
+    contract -- which domain, which modes, which gate messages -- belongs to
+    the test that owns it, and asserting it twice is how the two came to
+    disagree.
+    """
+
     wrapper = WRAPPER.read_text(encoding="utf-8")
 
-    assert '"${WEATHER_SERVICE_DOMAIN:-}" != "system"' in wrapper
-    assert '"${PM_TARGET_EXECUTION_MODE:-}" != "production_no_live"' in wrapper
-    assert "system_domain_required" in wrapper
-    assert "production_no_live_required" in wrapper
     assert "/bin/sleep" not in wrapper
     assert "reported_trajectory_core_only" not in wrapper
-    assert "WEATHER_SERVICE_DOMAIN=user" not in wrapper
+    # The retired system domain, which the user-domain migration replaced.
+    assert 'WEATHER_SERVICE_DOMAIN=system' not in wrapper
+    assert "system_domain_required" not in wrapper
 
 
 def test_target_direct_entry_deadline_is_explicit_and_fail_closed(tmp_path: Path) -> None:
