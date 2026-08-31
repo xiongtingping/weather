@@ -19,6 +19,7 @@ import argparse
 import ast
 import json
 import math
+import os
 import re
 import statistics
 from bisect import bisect_left
@@ -2296,6 +2297,47 @@ def _live_execution_mode() -> str:
         return "unknown"
 
 
+def _read_open_orders() -> dict[str, Any]:
+    """What the exchange says is resting, right now.
+
+    The gateway is the only thing allowed to ask, and it is a local
+    read-only call; a failure is reported rather than raised, because a
+    board that cannot reach the gateway should say so, not vanish.
+    """
+
+    import urllib.request  # noqa: PLC0415
+
+    port = os.environ.get("PM_CLOB_ORDER_SERVICE_PORT", "8765")
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}/lookup-open-orders",
+        data=b"{}",
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            raw = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        return {"available": False, "error": f"{type(exc).__name__}"}
+    orders = raw.get("open_orders") or []
+    return {
+        "available": bool(raw.get("ok")),
+        "count": int(raw.get("total_open_orders") or 0),
+        "orders": [
+            {
+                "id": str(o.get("id") or ""),
+                "side": str(o.get("side") or ""),
+                "price": o.get("price"),
+                "original_size": o.get("original_size"),
+                "size_matched": o.get("size_matched"),
+                "outcome": str(o.get("outcome") or ""),
+                "created_at": o.get("created_at"),
+            }
+            for o in orders[:20]
+        ],
+    }
+
+
 def _read_chain_probe() -> dict[str, Any]:
     """The recorded live-order round trip, if one has been run."""
 
@@ -2308,12 +2350,34 @@ def _read_chain_probe() -> dict[str, Any]:
 
 
 def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
-    """The live order book: counts, money and the rows themselves."""
+    """The order book: how many, worth how much, and what came back.
+
+    Two books, never mixed.  ``live_submit_authorized=1`` is the only
+    thing that makes a row live -- the column exists on rows minted after
+    the go-live migration widened the CHECK, and the 1406 rows that
+    predate it are all 0.  The top-level counts are the live book, so the
+    card's headline cannot quietly count paper intents; ``book`` is the
+    whole intent table with the split named on every row, because an
+    intent lane that is minting every cycle and never leaving the gateway
+    is the state this system is actually in and it was invisible here.
+
+    ROI and PnL come off the reconciliation table -- what the exchange
+    said it filled -- and never off the paper ledger.  The settled bucket
+    label is read from the settlement rows because that label is derived
+    from truth by the production settler; re-deriving it here would mean
+    re-implementing the per-station grid rule (°C and 2°F stations do not
+    share one), which is how audits invent their own findings.  Money is
+    entirely the live fill columns: cost is what was paid, payout is one
+    unit per share on the bucket truth landed in.
+    """
 
     out: dict[str, Any] = {
         "intent_count": 0, "submitted_count": 0, "accepted_count": 0,
         "notional_usdc": 0.0, "matched_notional_usdc": 0.0, "rows": [],
+        "book": {}, "exchange": {}, "pnl": {},
     }
+    if not _table_exists(conn, "basket_target_order_intents"):
+        return out
     try:
         rows = conn.execute(
             "SELECT i.order_intent_id, i.decision_id, i.bucket, i.side,"
@@ -2335,25 +2399,282 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
             "requested_notional_usdc": row[6], "state": str(row[7]),
             "created_at": str(row[8]),
         })
-    try:
-        for kind, count, matched in conn.execute(
-            "SELECT e.event_type, COUNT(*), COALESCE(SUM(e.matched_notional_usdc),0)"
-            " FROM basket_target_order_events e"
-            " JOIN basket_target_order_intents i"
-            "   ON i.order_intent_id=e.order_intent_id"
-            " WHERE i.live_submit_authorized=1 GROUP BY e.event_type"
-        ):
-            kind_l = str(kind).lower()
-            if "accept" in kind_l or "submit" in kind_l:
-                out["submitted_count"] += int(count)
-            if "accept" in kind_l:
-                out["accepted_count"] += int(count)
-            out["matched_notional_usdc"] += float(matched or 0.0)
-    except sqlite3.Error:
-        pass
+    if _table_exists(conn, "basket_target_order_events"):
+        try:
+            for kind, count, matched in conn.execute(
+                "SELECT e.event_type, COUNT(*),"
+                " COALESCE(SUM(e.matched_notional_usdc),0)"
+                " FROM basket_target_order_events e"
+                " JOIN basket_target_order_intents i"
+                "   ON i.order_intent_id=e.order_intent_id"
+                " WHERE i.live_submit_authorized=1 GROUP BY e.event_type"
+            ):
+                kind_l = str(kind).lower()
+                if "accept" in kind_l or "submit" in kind_l:
+                    out["submitted_count"] += int(count)
+                if "accept" in kind_l:
+                    out["accepted_count"] += int(count)
+                out["matched_notional_usdc"] += float(matched or 0.0)
+        except sqlite3.Error:
+            pass
     out["notional_usdc"] = round(out["notional_usdc"], 4)
     out["matched_notional_usdc"] = round(out["matched_notional_usdc"], 4)
+    out["book"] = _collect_order_book(conn)
+    out["exchange"] = _collect_order_exchange(conn)
+    out["pnl"] = _collect_live_pnl(conn)
     return out
+
+
+def _collect_order_book(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Every intent ever minted, cut the three ways a reader asks for."""
+
+    book: dict[str, Any] = {}
+    joined = (
+        " FROM basket_target_order_intents i"
+        " LEFT JOIN auto_trade_decisions d ON d.decision_id=i.decision_id"
+    )
+    live = "SUM(CASE WHEN i.live_submit_authorized=1 THEN 1 ELSE 0 END)"
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*), " + live + ","
+            " COALESCE(SUM(i.requested_notional_usdc),0),"
+            " COALESCE(SUM(CASE WHEN i.live_submit_authorized=1"
+            "   THEN i.requested_notional_usdc ELSE 0 END),0),"
+            " AVG(i.requested_notional_usdc), AVG(i.limit_price),"
+            " COUNT(DISTINCT d.station_id), COUNT(DISTINCT i.decision_id),"
+            " COUNT(DISTINCT i.cycle_id),"
+            " MIN(d.event_date), MAX(d.event_date), MAX(i.created_at)"
+            + joined
+        ).fetchone()
+    except sqlite3.Error:
+        return book
+    if not row or not row[0]:
+        return book
+    book.update({
+        "total": int(row[0]), "live": int(row[1] or 0),
+        "paper": int(row[0]) - int(row[1] or 0),
+        "notional_usdc": round(float(row[2] or 0.0), 2),
+        "live_notional_usdc": round(float(row[3] or 0.0), 2),
+        "mean_notional_usdc": round(float(row[4] or 0.0), 3),
+        "mean_limit_price": round(float(row[5] or 0.0), 4),
+        "stations": int(row[6] or 0), "decisions": int(row[7] or 0),
+        "cycles": int(row[8] or 0),
+        "first_event_date": str(row[9] or ""),
+        "last_event_date": str(row[10] or ""),
+        "last_minted_at": str(row[11] or ""),
+    })
+    try:
+        book["by_state"] = [
+            {"state": str(state), "count": int(count),
+             "live_count": int(live_count or 0),
+             "notional_usdc": round(float(notional or 0.0), 2)}
+            for state, count, live_count, notional in conn.execute(
+                "SELECT i.state, COUNT(*), " + live + ","
+                " COALESCE(SUM(i.requested_notional_usdc),0)"
+                " FROM basket_target_order_intents i"
+                " GROUP BY i.state ORDER BY COUNT(*) DESC"
+            )
+        ]
+    except sqlite3.Error:
+        book["by_state"] = []
+    try:
+        book["by_day"] = [
+            {"event_date": str(day), "count": int(count),
+             "live_count": int(live_count or 0),
+             "stations": int(stations or 0),
+             "notional_usdc": round(float(notional or 0.0), 2)}
+            for day, count, live_count, stations, notional in conn.execute(
+                "SELECT d.event_date, COUNT(*), " + live + ","
+                " COUNT(DISTINCT d.station_id),"
+                " COALESCE(SUM(i.requested_notional_usdc),0)"
+                + joined +
+                " WHERE d.event_date IS NOT NULL"
+                " GROUP BY d.event_date ORDER BY d.event_date DESC LIMIT 14"
+            )
+        ]
+    except sqlite3.Error:
+        book["by_day"] = []
+    try:
+        book["by_station"] = [
+            {"station_id": str(station), "count": int(count),
+             "live_count": int(live_count or 0),
+             "days": int(days or 0),
+             "mean_limit_price": round(float(price or 0.0), 4),
+             "notional_usdc": round(float(notional or 0.0), 2)}
+            for station, count, live_count, days, price, notional in conn.execute(
+                "SELECT d.station_id, COUNT(*), " + live + ","
+                " COUNT(DISTINCT d.event_date), AVG(i.limit_price),"
+                " COALESCE(SUM(i.requested_notional_usdc),0)"
+                + joined +
+                " WHERE d.station_id IS NOT NULL"
+                " GROUP BY d.station_id"
+                " ORDER BY SUM(i.requested_notional_usdc) DESC LIMIT 12"
+            )
+        ]
+    except sqlite3.Error:
+        book["by_station"] = []
+    return book
+
+
+def _collect_order_exchange(conn: sqlite3.Connection) -> dict[str, Any]:
+    """What came back from the gateway, on the live book only."""
+
+    live_join = (
+        " JOIN basket_target_order_intents i"
+        "   ON i.order_intent_id=t.order_intent_id"
+        " WHERE i.live_submit_authorized=1"
+    )
+    ex: dict[str, Any] = {
+        "events": 0, "event_types": [], "reconciliations": 0,
+        "transitions": 0, "filled_size": 0.0, "filled_notional_usdc": 0.0,
+        "by_state": [], "blocking": [],
+    }
+    if _table_exists(conn, "basket_target_order_events"):
+        try:
+            ex["event_types"] = [
+                {"event_type": str(kind), "count": int(count)}
+                for kind, count in conn.execute(
+                    "SELECT t.event_type, COUNT(*)"
+                    " FROM basket_target_order_events t" + live_join +
+                    " GROUP BY t.event_type ORDER BY COUNT(*) DESC"
+                )
+            ]
+        except sqlite3.Error:
+            ex["event_types"] = []
+        ex["events"] = sum(item["count"] for item in ex["event_types"])
+    if _table_exists(conn, "basket_target_order_reconciliations"):
+        try:
+            ex["by_state"] = [
+                {"state": str(state), "count": int(count),
+                 "filled_size": round(float(size or 0.0), 4),
+                 "filled_notional_usdc": round(float(notional or 0.0), 4)}
+                for state, count, size, notional in conn.execute(
+                    "SELECT t.state, COUNT(*),"
+                    " COALESCE(SUM(t.filled_size),0),"
+                    " COALESCE(SUM(t.filled_notional_usdc),0)"
+                    " FROM basket_target_order_reconciliations t" + live_join +
+                    " GROUP BY t.state ORDER BY COUNT(*) DESC"
+                )
+            ]
+            ex["blocking"] = [
+                {"reason": str(reason), "count": int(count)}
+                for reason, count in conn.execute(
+                    "SELECT t.blocking_reason, COUNT(*)"
+                    " FROM basket_target_order_reconciliations t" + live_join +
+                    "   AND t.blocking_reason IS NOT NULL"
+                    " GROUP BY t.blocking_reason ORDER BY COUNT(*) DESC LIMIT 8"
+                )
+            ]
+        except sqlite3.Error:
+            ex["by_state"] = []
+        ex["reconciliations"] = sum(item["count"] for item in ex["by_state"])
+        ex["filled_size"] = round(
+            sum(item["filled_size"] for item in ex["by_state"]), 4)
+        ex["filled_notional_usdc"] = round(
+            sum(item["filled_notional_usdc"] for item in ex["by_state"]), 4)
+    if _table_exists(conn, "basket_target_execution_transition_versions"):
+        try:
+            ex["transitions"] = int(conn.execute(
+                "SELECT COUNT(*)"
+                " FROM basket_target_execution_transition_versions t"
+                + live_join
+            ).fetchone()[0])
+        except sqlite3.Error:
+            pass
+    return ex
+
+
+def _collect_live_pnl(conn: sqlite3.Connection) -> dict[str, Any]:
+    """ROI and PnL of the live book, off live fills and settled truth.
+
+    One row per filled live intent: cost is the notional the exchange
+    reported filling, payout is one USDC per share when truth landed in
+    that intent's bucket and zero otherwise.  A filled leg whose
+    station-day has no settled bucket yet is counted as pending, never
+    scored as a loss -- an unsettled day that reads as a zero payout is
+    how a live book would look worse than it is every afternoon.
+    """
+
+    pnl: dict[str, Any] = {
+        "available": False, "reason": "还没有实盘成交",
+        "filled_legs": 0, "won_legs": 0, "pending_legs": 0,
+        "cost_usdc": 0.0, "payout_usdc": 0.0, "pnl_usdc": 0.0,
+        "roi": None, "station_days": 0, "by_station": [],
+    }
+    needed = ("basket_target_order_reconciliations",
+              "basket_target_order_intents", "auto_trade_decisions")
+    if not all(_table_exists(conn, name) for name in needed):
+        pnl["reason"] = "执行账本表还没建"
+        return pnl
+    try:
+        fills = conn.execute(
+            "SELECT d.station_id, d.event_date, i.bucket,"
+            " r.filled_size, r.filled_notional_usdc"
+            " FROM basket_target_order_reconciliations r"
+            " JOIN basket_target_order_intents i"
+            "   ON i.order_intent_id=r.order_intent_id"
+            " JOIN auto_trade_decisions d ON d.decision_id=i.decision_id"
+            " WHERE i.live_submit_authorized=1 AND r.filled_size>0"
+        ).fetchall()
+    except sqlite3.Error:
+        pnl["reason"] = "执行账本读不出来"
+        return pnl
+    if not fills:
+        pnl["reason"] = "还没有一笔实盘成交"
+        return pnl
+    settled: dict[tuple[str, str], str] = {}
+    if _table_exists(conn, "paper_trade_settlement"):
+        for station, day, bucket in conn.execute(
+            "SELECT station_id, event_date, MAX(settled_bucket)"
+            " FROM paper_trade_settlement WHERE settled_bucket IS NOT NULL"
+            " GROUP BY station_id, event_date"
+        ):
+            settled[(str(station), str(day))] = str(bucket)
+    per_station: dict[str, dict[str, float]] = {}
+    days: set[tuple[str, str]] = set()
+    for station, day, bucket, size, notional in fills:
+        key = (str(station), str(day))
+        truth = settled.get(key)
+        cost = float(notional or 0.0)
+        acc = per_station.setdefault(str(station), {
+            "legs": 0.0, "won": 0.0, "pending": 0.0,
+            "cost": 0.0, "payout": 0.0,
+        })
+        acc["legs"] += 1
+        if truth is None:
+            acc["pending"] += 1
+            pnl["pending_legs"] += 1
+            continue
+        days.add(key)
+        payout = float(size or 0.0) if str(bucket) == truth else 0.0
+        acc["cost"] += cost
+        acc["payout"] += payout
+        acc["won"] += 1 if payout > 0 else 0
+        pnl["filled_legs"] += 1
+        pnl["won_legs"] += 1 if payout > 0 else 0
+        pnl["cost_usdc"] += cost
+        pnl["payout_usdc"] += payout
+    pnl["station_days"] = len(days)
+    pnl["pnl_usdc"] = round(pnl["payout_usdc"] - pnl["cost_usdc"], 4)
+    pnl["cost_usdc"] = round(pnl["cost_usdc"], 4)
+    pnl["payout_usdc"] = round(pnl["payout_usdc"], 4)
+    pnl["roi"] = (
+        round(pnl["pnl_usdc"] / pnl["cost_usdc"], 6)
+        if pnl["cost_usdc"] > 0 else None
+    )
+    pnl["by_station"] = sorted((
+        {"station_id": station, "legs": int(acc["legs"]),
+         "won": int(acc["won"]), "pending": int(acc["pending"]),
+         "cost_usdc": round(acc["cost"], 4),
+         "pnl_usdc": round(acc["payout"] - acc["cost"], 4),
+         "roi": (round((acc["payout"] - acc["cost"]) / acc["cost"], 6)
+                 if acc["cost"] > 0 else None)}
+        for station, acc in per_station.items()
+    ), key=lambda item: item["cost_usdc"], reverse=True)
+    pnl["available"] = pnl["filled_legs"] > 0
+    if not pnl["available"]:
+        pnl["reason"] = "成交腿都还没结算"
+    return pnl
 
 
 def _live_scope() -> dict[str, Any]:
@@ -2599,6 +2920,11 @@ def collect_live_readiness(
         # exchange was inference: the region gate read the website's geoblock
         # and the exchange itself had not been asked since 2026-08-07.
         "chain_probe": _read_chain_probe(),
+        # Asked of the exchange, not of our own records.  An order this
+        # machine placed and then lost track of -- which happened on
+        # 2026-08-31, for eighteen minutes -- is invisible to every table we
+        # own and visible here.
+        "open_orders": _read_open_orders(),
         "station_scope": scope_mode,
         "minimum_settlements_to_qualify": minimum,
         "station_probation_waivers": sorted(waived_set),
@@ -7670,9 +7996,28 @@ function liveOrderCard(L){
   // here is counted off those rows at render, so the card and the ledger
   // cannot disagree.
   const O = L.live_orders || {};
-  const liveMode = L.execution_mode === "production_live";
-  const state = !liveMode ? "no-live 模式"
+  const X = O.exchange || {};
+  const P = O.pnl || {};
+  // Two different flags, and they disagree today: the production lane is
+  // compiled for live, while the runtime contract still refuses to
+  // authorise a live submit.  A pill that reads only the first says
+  // "实盘发单中" over a book that cannot mint a live row -- the exact
+  // reassurance about a system that has stopped being that system which
+  // this panel already got wrong once.
+  const C = L.contracts || {};
+  const compiled = L.execution_mode === "production_live";
+  const authorized = C.live_submit_authorized === true;
+  const liveMode = compiled && authorized;
+  const state = !compiled ? "代码编译为 no-live"
+    : !authorized ? "合同未授权发单"
     : L.submission_paused ? "暂停旗在位" : "实盘发单中";
+  const u = (v,d=2)=>v==null?"—":v.toFixed(d)+" U";
+  const signed = (v,d=2)=>v==null?"—":((v>=0?"+":"")+v.toFixed(d)+" U");
+  const pct = (v,d=1)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(d)+"%");
+  const tile=(lab,val,sub2,klass)=>`<div class="card">
+    <div class="muted">${lab}</div>
+    <div class="big ${klass||""}">${val}</div>
+    <div class="muted" style="font-size:11.5px">${sub2}</div></div>`;
   const rows = (O.rows||[]).slice(0, 30).map(r=>`<tr>
     <td><span class="pill red" style="font-size:10px">LIVE</span></td>
     <td class="mono">${r.bucket}</td><td>${r.side}</td>
@@ -7680,34 +8025,132 @@ function liveOrderCard(L){
     <td class="mono">${(r.requested_notional_usdc??0).toFixed(2)}</td>
     <td>${r.state}</td>
     <td class="mono" title="${r.order_intent_id}">${r.created_at}</td></tr>`).join("");
-  const P = L.chain_probe || {};
-  const probe = P.order_id ? `<div class="why" style="margin-top:10px;font-size:12.5px">
-    <b>链路已验证</b> · ${P.at_utc} · ${P.station||""} ${P.bucket||""}
-    <br>下单 → 交易所受理 <span class="mono">${String(P.order_id).slice(0,14)}…</span>
-    （status ${P.status}，签名 id 与回执逐字节相同）→ 撤销确认
-    <br><span class="muted">延迟：构造签名 ${P.order_build_ms}ms · POST 往返
-    ${P.post_ms}ms · 端到端 ${P.total_ms}ms —— 九成在代理与跨洋，不在本机</span>
-    <br><span class="muted">这是 2026-08-07 之后交易所第一次真正被问到：出口未被拒绝，
-    此前所有「地区封锁」都只是网站口径的推断。</span></div>` : "";
-  return `<div class="card" style="margin-top:12px">
-    <h3 style="margin-top:0">实盘订单 <span class="pill ${liveMode&&!L.submission_paused?"red":""}"
+  return `<h3 style="margin-top:22px;font-size:15px">实盘订单 · 数量 / ROI / PnL
+    <span class="pill ${liveMode&&!L.submission_paused?"red":""}"
       style="font-size:11px">${state}</span></h3>
-    ${probe}
-    <div class="muted" style="font-size:12px">
+  <div class="card">
+    <div class="grid g4">
+      ${tile("实盘意向", (O.intent_count||0)+" 笔",
+        "计划名义 "+u(O.notional_usdc), O.intent_count?"":"muted")}
+      ${tile("走到交易所", (X.events||0)+" 回执",
+        "已提交 "+(O.submitted_count||0)+" · 受理 "+(O.accepted_count||0)+
+        " · 对账 "+(X.reconciliations||0)+" 行", (X.events||0)?"":"muted")}
+      ${tile("已成交", (P.filled_legs||0)+"／"+((P.filled_legs||0)+(P.pending_legs||0))+" 腿",
+        "成交名义 "+u(X.filled_notional_usdc||0)+" · "+(P.station_days||0)+" 个结算站日",
+        (P.filled_legs||0)?"":"muted")}
+      ${tile("实盘 PnL", P.available?signed(P.pnl_usdc):"—",
+        P.available?("投入 "+u(P.cost_usdc)+" · 赔付 "+u(P.payout_usdc))
+          :h(P.reason||"还没有实盘成交"),
+        !P.available?"muted":(P.pnl_usdc>=0?"up":"down"))}
+      ${tile("实盘 ROI", P.available?pct(P.roi):"—",
+        P.available?("命中 "+(P.won_legs||0)+"/"+(P.filled_legs||0)+" 腿"
+          +((P.pending_legs||0)?" · "+P.pending_legs+" 腿待结算":""))
+          :(authorized?"合同已授权，等第一笔成交"
+            :"合同未授权发单 · 分子分母都不存在，不是 0%"),
+        !P.available?"muted":((P.roi||0)>=0?"up":"down"))}
+    </div>
+    <div class="muted" style="font-size:12px;margin-top:9px">
       判据唯一：<span class="mono">live_submit_authorized=1</span> 的意向才是实盘——
       该列只有 go-live 迁移之后铸造的行才可能为 1，历史 1406 行全部为 0。
       纸面账本（paper_trade_*）与实盘账本是两套表，互不混计。</div>
-    <div style="margin:8px 0">
-      <b>实盘意向 ${O.intent_count||0}</b> ·
-      已提交 ${O.submitted_count||0} · 交易所受理 ${O.accepted_count||0} ·
-      计划名义 ${(O.notional_usdc||0).toFixed(2)}u ·
-      已成交名义 ${(O.matched_notional_usdc||0).toFixed(2)}u</div>
-    ${rows?`<div style="overflow-x:auto"><table><thead><tr>
+    <details class="note"><summary>实盘 ROI / PnL 是怎么算的 · 为什么现在是「—」而不是 0%</summary>
+      <div class="muted">钱<b>全部来自实盘成交列</b>：成本＝对账表报回来的成交名义
+      <span class="mono">filled_notional_usdc</span>，赔付＝真值落在该腿桶里时每股 1 USDC、
+      否则 0。结算桶标签取自结算行——那个标签是生产结算器<b>按各站自己的档位</b>从真值推出来的
+      （°C 站和 2°F 站不共用一套），在这里重推一遍等于手抄生产规则。<br>
+      成交了但所在站日还没结算的腿计入<b>待结算</b>，<b>不当亏损算</b>：
+      把未结算日读成零赔付，会让实盘账本每天下午都显得比实际差。<br>
+      现在显示「—」而不是「0%」，是因为<b>一笔实盘成交都没有</b>——
+      分子分母都不存在，写 0% 是在报一个没测过的数。<br>
+      当前两个闸的读数：代码执行模式 <span class="mono">${h(L.execution_mode||"—")}</span>、
+      合同 <span class="mono">${h(C.execution_mode||"—")}</span>
+      （<span class="mono">live_submit_authorized=${C.live_submit_authorized===true?"true":"false"}</span>）。
+      <b>两个都为真才可能铸出实盘行</b>，这两个数每次渲染现读，不是写死的句子。</div>
+    </details>
+    ${rows?`<div style="overflow-x:auto;margin-top:9px"><table><thead><tr>
       <th></th><th>桶</th><th>侧</th><th>价</th><th>股数</th><th>名义u</th>
       <th>状态</th><th>时间</th></tr></thead><tbody>${rows}</tbody></table></div>`
-      :`<div class="muted">尚无实盘意向。第一条出现时此表自动列出。</div>`}
+      :`<div class="muted" style="margin-top:9px">尚无实盘意向。第一条出现时此表自动列出。</div>`}
+    ${(X.blocking||[]).length?`<div class="muted" style="margin-top:8px;font-size:11.5px">
+      对账阻断：${(X.blocking||[]).map(b=>h(b.reason)+" ×"+b.count).join(" · ")}</div>`:""}
+  </div>
+  ${orderBookCard(O.book||{})}`;
+}
+
+
+// The intent book, both authorisations.  A lane that mints orders every
+// cycle and never leaves the gateway is the state this system is actually
+// in, and the card above it -- which counts only live-authorised rows --
+// reads as an empty page with no explanation of what is being produced.
+// Counted off the whole intent table, with the live split named on every
+// row so the two books can never be added together by eye.
+function orderBookCard(B){
+  if(!B.total) return "";
+  const u = (v,d=2)=>v==null?"—":v.toFixed(d)+" U";
+  const share = (n)=>B.total?((100*n/B.total).toFixed(1)+"%"):"—";
+  const tile=(lab,val,sub2,klass)=>`<div class="card">
+    <div class="muted">${lab}</div>
+    <div class="big ${klass||""}">${val}</div>
+    <div class="muted" style="font-size:11.5px">${sub2}</div></div>`;
+  const stateRows=(B.by_state||[]).map(r=>`<tr>
+    <td class="mono">${h(r.state)}</td>
+    <td class="mono">${r.count}</td>
+    <td class="mono">${share(r.count)}</td>
+    <td class="mono">${(r.notional_usdc||0).toFixed(2)}</td>
+    <td class="mono ${r.live_count?"down":"muted"}">${r.live_count}</td></tr>`).join("");
+  const dayRows=(B.by_day||[]).map(r=>`<tr>
+    <td class="mono">${h(r.event_date)}</td>
+    <td class="mono">${r.count}</td>
+    <td class="mono">${(r.notional_usdc||0).toFixed(2)}</td>
+    <td class="mono">${r.stations}</td>
+    <td class="mono ${r.live_count?"down":"muted"}">${r.live_count}</td></tr>`).join("");
+  const stationRows=(B.by_station||[]).map(r=>`<tr>
+    <td class="mono">${h(r.station_id)}</td>
+    <td class="mono">${r.count}</td>
+    <td class="mono">${(r.notional_usdc||0).toFixed(2)}</td>
+    <td class="mono">${r.days}</td>
+    <td class="mono">${(r.mean_limit_price||0).toFixed(3)}</td>
+    <td class="mono ${r.live_count?"down":"muted"}">${r.live_count}</td></tr>`).join("");
+  return `<div class="card" style="margin-top:12px">
+    <div class="muted">意向簿全量（实盘 + 纸面）· 这是投递器每轮真的在造的东西</div>
+    <div class="grid g4" style="margin-top:8px">
+      ${tile("意向总数", B.total+" 笔",
+        "实盘授权 "+B.live+" · 纸面 "+B.paper,
+        B.live?"down":"")}
+      ${tile("计划名义合计", u(B.notional_usdc),
+        "其中实盘 "+u(B.live_notional_usdc)+" · 均单 "+u(B.mean_notional_usdc,3))}
+      ${tile("平均限价", (B.mean_limit_price||0).toFixed(4),
+        "按笔简单平均 · 全为 BUY/YES")}
+      ${tile("覆盖", B.stations+" 站",
+        B.decisions+" 个决策 · "+B.cycles+" 个周期<br>"+
+        h(B.first_event_date)+" → "+h(B.last_event_date))}
+    </div>
+    <div class="grid g3" style="margin-top:12px">
+      <div><div class="muted" style="margin-bottom:4px">按状态</div>
+        <div class="scroll"><table><thead><tr><th>状态</th><th>笔</th>
+          <th>占比</th><th>名义u</th><th>实盘</th></tr></thead>
+          <tbody>${stateRows}</tbody></table></div></div>
+      <div><div class="muted" style="margin-bottom:4px">按事件日（近 14 个有单的日子）</div>
+        <div class="scroll" style="max-height:300px"><table><thead><tr><th>事件日</th>
+          <th>笔</th><th>名义u</th><th>站</th><th>实盘</th></tr></thead>
+          <tbody>${dayRows}</tbody></table></div></div>
+      <div><div class="muted" style="margin-bottom:4px">按站（名义前 12）</div>
+        <div class="scroll" style="max-height:300px"><table><thead><tr><th>站</th>
+          <th>笔</th><th>名义u</th><th>日</th><th>均价</th><th>实盘</th></tr></thead>
+          <tbody>${stationRows}</tbody></table></div></div>
+    </div>
+    <details class="note"><summary>「意向」和「订单」差在哪 · 为什么 ${B.total} 笔里实盘是 ${B.live} 笔</summary>
+      <div class="muted">意向是<b>投递器算出来、准备发出去的那一笔</b>：桶、侧、限价、股数、名义都已定死，
+      带幂等键，写进账本。它离真实订单只差<b>最后一步——交给交易所</b>。
+      它离真实订单只差一次授权：意向要带 <span class="mono">live_submit_authorized=1</span> 才是实盘行，
+      而那一位由 runtime 合同给。<b>意向 ${B.total} 笔而实盘 ${B.live} 笔，读的是合同不是故障</b>——
+      合同不授权时，投递器每轮照常把意向造出来、走到交易所边界就停。<br>
+      状态里的 <span class="mono">cancelled</span> 是同一件事的下游读数：意向到了执行截止时刻还没发出去，
+      就按设计撤掉，下一轮重造。</div>
+    </details>
   </div>`;
 }
+
 
 // The three-state comparison is a portfolio reading, not a control: it
 // says in money what the bars cost or saved, on the same book the strip at
@@ -7768,9 +8211,16 @@ function liveReadiness(){
     <td class="mono ${r.recent_roi==null?"":(r.recent_roi>=0?"up":"down")}">${r.recent_roi==null?"—":((r.recent_roi>=0?"+":"")+(100*r.recent_roi).toFixed(1)+"%")}</td>
     <td class="muted">${r.add_candidate?"☆建议加入 ":""}${r.release_candidate?"★建议放出 ":""}${Object.entries(r.gates).filter(([k,v])=>!v).map(([k])=>GATE[k]).join("、")||"✓"}</td>
   </tr>`).join("");
+  const CT = L.contracts || {};
+  const authorised = CT.live_submit_authorized === true;
   return `<h2>Live 上线准备</h2>
-  <p class="sub"><b>三重合同现锁 no_live</b>（执行模式字符串、激活文件、runtime config），
-  下面的开关是<b>上线意向旗</b>：它不下单也不能下单，真正的 go-live 迁移必须在旗亮时才允许铸造 live 契约。</p>
+  <p class="sub">下面的开关是<b>上线意向旗</b>。能不能真发单由<b>两个闸一起决定</b>：
+  代码编译的执行模式 <span class="mono">${h(L.execution_mode||"—")}</span>，
+  和 runtime 合同 <span class="mono">${h(CT.execution_mode||"—")}</span>
+  （<span class="mono">live_submit_authorized=${authorised?"true":"false"}</span>）。
+  <b>${authorised?"合同已授权铸造 live 契约——旗亮即会发单。"
+    :"合同未授权：旗亮也铸不出 live 契约，意向照造但不出网关。"}</b>
+  这两个字符串每次渲染现读——写死的那句话在 go-live 之后曾经继续安慰一个已经不是它的系统。</p>
   <div class="card">
     <div class="grid g2">
       <div><div class="muted">凯利系数 portfolio_risk_fraction</div>
@@ -7838,13 +8288,17 @@ function lcRender(s){
   const headNote=document.getElementById("lc-head-note");
   if(headNote){
     const L = D.live_readiness || {};
-    const liveMode = L.execution_mode === "production_live";
+    const C = L.contracts || {};
+    const compiled = L.execution_mode === "production_live";
+    const authorized = C.live_submit_authorized === true;
     headNote.textContent = !s.live.enabled ? "控制服务已连接"
-      : liveMode && L.submission_paused === false
+      : compiled && authorized && L.submission_paused === false
         ? "实盘中 · 网关正在下单"
-        : liveMode
+        : compiled && authorized
           ? "合同已 live · 暂停旗在位，网关不发单"
-          : "意向旗已举起 · 三重合同仍锁 no_live";
+          : compiled
+            ? "旗已举起 · 代码 live，合同未授权发单"
+            : "旗已举起 · 代码仍编译为 no-live";
   }
   const status=document.getElementById("lc-status");
   if(status) status.textContent =
@@ -7879,13 +8333,20 @@ function lcLive(){
     lcApi("/api/live", {enabled:false}).then(lcRender);
     return;
   }
-  const liveMode = (D.live_readiness || {}).execution_mode === "production_live";
+  const L = D.live_readiness || {};
+  const C = L.contracts || {};
+  const compiled = L.execution_mode === "production_live";
+  const authorized = C.live_submit_authorized === true;
   const word = prompt(
-    liveMode
-      ? "确认 arm 上线意向旗？合同已经是 live —— 移除 data/live_paused.flag "
+    compiled && authorized
+      ? "确认 arm 上线意向旗？两个闸都已放行 —— 移除 data/live_paused.flag "
         + "后网关会用真实资金下单。输入 LIVE 确认："
-      : "确认 arm 上线意向旗？它不下单（三重合同仍锁 no_live），"
-        + "但 go-live 迁移将以它为前提。输入 LIVE 确认：");
+      : compiled
+        ? "确认 arm 上线意向旗？代码已编译为 live，但 runtime 合同尚未授权"
+          + "（live_submit_authorized=false），现在铸不出 live 行；合同一旦授权，"
+          + "网关就会用真实资金下单。输入 LIVE 确认："
+        : "确认 arm 上线意向旗？代码执行模式仍是 no-live，它不下单，"
+          + "但 go-live 迁移将以它为前提。输入 LIVE 确认：");
   if(word !== "LIVE") return;
   lcApi("/api/live", {enabled:true, confirm:"LIVE", by:"dashboard"})
     .then(lcRender).catch(e=>alert("失败: "+e));
