@@ -63,6 +63,8 @@ from bayes_basket_target.basket_kernel.contracts import (  # noqa: E402
     TargetBasketSnapshot,
 )
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
+    EFFECTIVE_EDGE_STAGES,
+    effective_edge_lambda,
     probability_core,
 )
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
@@ -1016,36 +1018,23 @@ SHAPE_GAP_TILT = float(
 # SELECTION_DISCOUNT: the ratios are conditional on the current selection
 # distribution, so this may only ever ship after a forward split and a whole
 # -book replay, never from the full-sample fit alone.
+# Charter 68: the same switch production carries, defaulting the same way.
+# The table itself lives in the kernel so the two lanes cannot drift -- a
+# local copy here is exactly how a "shared" rule becomes two rules.
 EFFECTIVE_EDGE_MODE = (
-    os.environ.get("PAPER_LEDGER_EFFECTIVE_EDGE", "").strip().lower() or "off"
+    os.environ.get("PAPER_LEDGER_EFFECTIVE_EDGE", "").strip().lower() or "on"
 )
-# Companion to the arm above.  Every screen that improved P0's own seats --
-# refusal, scaling, direction, and now the effective-edge shrink -- died on
-# the same wall: a refused P0 leaves no chain, and chain_never_opened then
-# forfeits the P1 top-ups that carry the book (fifth family, same autopsy:
-# the shrink saved 133u of P0 losses and lost 126u of P1 profit).  This knob
-# keeps the ticket: when the shrunk claim sizes the P0 opener at nothing,
-# the seat is taken anyway at the smallest executable stake (one venue clip
-# per leg, never below the dust floor that killed the 0.1x scaling arm) so
-# the chain exists for the stages that earn.  Opening seats only; a top-up
-# judged worthless stays refused.
+# The chain ticket, and it is deliberately ledger-only.  Under charter 68 the
+# shrink sizes most opening seats to nothing, and under THIS book's rule --
+# one book per station-day, only P0 opens -- a seat sized to nothing forfeits
+# every later stage on that day: measured, 37 P1 seats and +186u dead of
+# ``chain_never_opened``.  Production has no such rule; its three stages
+# compile independently and a P1 there can open on its own, so it needs no
+# ticket and gets none.  This keeps the ledger measuring the strategy
+# production would run rather than an artefact of the ledger's own bookkeeping.
 CHAIN_TICKET_MODE = (
-    os.environ.get("PAPER_LEDGER_CHAIN_TICKET", "").strip().lower() or "off"
+    os.environ.get("PAPER_LEDGER_CHAIN_TICKET", "").strip().lower() or "on"
 )
-EFFECTIVE_EDGE_LAMBDA = (
-    # (agreement upper bound, realized/claimed on the early window)
-    (0.50, 0.14),
-    (0.70, 0.60),
-    (0.85, 0.87),
-    (9.99, 0.82),
-)
-
-
-def _effective_edge_lambda(agreement: float) -> float:
-    for bound, lam in EFFECTIVE_EDGE_LAMBDA:
-        if agreement < bound:
-            return lam
-    return EFFECTIVE_EDGE_LAMBDA[-1][1]
 # Consolidation stake tilt (user ruling, 2026-08-21): the one discriminator
 # that survived every robustness cut.  Chains entered with two or more of
 # the three consolidation signs on returned -41.6% (ex-best -46.0%,
@@ -5706,10 +5695,10 @@ def backfill(
                     )
                     if (
                         EFFECTIVE_EDGE_MODE == "on"
-                        and stage != "P1"
+                        and stage in EFFECTIVE_EDGE_STAGES
                         and gate_win > 0
                     ):
-                        gate_win = gate_win * _effective_edge_lambda(
+                        gate_win = gate_win * effective_edge_lambda(
                             float(seat_cost) / gate_win
                         )
                     fraction, wanted_stake = _kelly_stake(

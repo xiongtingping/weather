@@ -249,6 +249,9 @@ SHARED_WITH_PRODUCTION = {
     "CHAIN_COST_PAR_BOUND",
     # Charter 67: one kernel constant, imported by both lanes.
     "P1_ENTRY_LOCAL_HOUR",
+    # Charter 68: one switch, one table.  The table lives in the kernel and
+    # both lanes import it; the switch is spelled in each and asserted equal.
+    "EFFECTIVE_EDGE_MODE",
     "CERTAINTY_GATE", "FEE_RATE", "KELLY_FRACTION",
     "MAKER_RESTING_IMPROVE_TICKS", "MAKER_RESTING_LADDER_STEPS",
     "MAKER_RESTING_SHOULDER_LAMBDA", "MAKER_RESTING_VALUE_LAMBDA",
@@ -322,12 +325,11 @@ LEDGER_ONLY = {
     ),
     "PAPER_LEDGER_FLEET_REGIME_STAGES": "same",
     "SELECTION_DISCOUNT": "measurement lane; must not become a gate",
-    "EFFECTIVE_EDGE_MODE": (
-        "replay arm; shrinks claims by the agreement-conditional realization"
-        " ratio so Kelly and the gates inherit the inverted-U of effective"
-        " edge; default off pending forward validation"
+    "CHAIN_TICKET_MODE": (
+        "ledger-only by design: it compensates for THIS book's one-book rule"
+        " (only P0 opens), which production does not have -- its three stages"
+        " compile independently, so a production P1 needs no ticket to act"
     ),
-    "EFFECTIVE_EDGE_LAMBDA": "the arm's early-window fit, constant",
     "CHAIN_TICKET_MODE": (
         "replay arm; keeps a minimum-clip P0 opener when the shrunk claim"
         " sizes it at zero, so the chain survives for its P1 top-ups"
@@ -460,6 +462,15 @@ def test_the_support_width_bounds_match_productions_policy_defaults() -> None:
 
     from bayes_basket_target.basket_kernel.contracts import TargetBasketPolicy
 
+    from bayes_basket_target import delta_v2_runtime as PROD  # noqa: PLC0415
+    from bayes_basket_target.basket_kernel import delta_v2 as K2  # noqa: PLC0415
+
+    # Charter 68 moves the objective's belief, so a split here would have the
+    # two lanes trading different strategies while claiming to measure one.
+    assert L.EFFECTIVE_EDGE_MODE == PROD.EFFECTIVE_EDGE_MODE
+    assert L.effective_edge_lambda is K2.effective_edge_lambda
+    assert PROD.effective_edge_lambda is K2.effective_edge_lambda
+    assert L.EFFECTIVE_EDGE_STAGES is K2.EFFECTIVE_EDGE_STAGES
     assert L.MAXIMUM_SUPPORT_BUCKETS == (
         TargetBasketPolicy.maximum_support_buckets
     )

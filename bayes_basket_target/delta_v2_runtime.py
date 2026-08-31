@@ -24,6 +24,8 @@ from .basket_kernel.contracts import (
 )
 from .basket_kernel.delta_v2 import (
     dispersion_support_size,
+    EFFECTIVE_EDGE_STAGES,
+    effective_edge_lambda,
     off_center_claim_factor,
     probability_core,
     PROBABILITY_CORE_MASS,
@@ -800,6 +802,15 @@ LADDER_CENTER_DEFINITION = (
 # itself -- charter 43's ban on weather-covariate branches at the strategy
 # layer stands untouched.  ``off`` restores enumeration with no direction
 # rule for the A/B arms.
+# Charter 68 (user ruling, 2026-09-01): the objective reads effective edge.
+# ``on`` shrinks each opening-stage window's claim by the realized fraction
+# historically seen at its market agreement, so the ranking and the solver
+# both price the inverted U instead of the nominal edge's left cliff.  Off
+# restores the nominal reading for the A/B arms.  The ledger carries the
+# same switch and the two must move together.
+EFFECTIVE_EDGE_MODE = (
+    os.environ.get("DELTA_V2_EFFECTIVE_EDGE", "").strip().lower() or "on"
+)
 SKEW_EXTENSION_RULE = (
     os.environ.get("DELTA_V2_SKEW_EXTENSION_RULE", "").strip().lower()
     or "on"
@@ -1844,9 +1855,26 @@ def _solve_over_support_windows(
 
     scored: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
+    stage = str(snapshot.evidence.probability_stage or "")
     for row in shortlist:
         window = tuple(row["buckets"])
         claim_factor = float(row.get("off_center_claim_factor") or 1.0)
+        # Charter 68: the same deflation machinery, carrying a second and
+        # differently-motivated factor.  ``off_center_claim_factor`` corrects
+        # a window for sitting off the centre; this one corrects every window
+        # for the market's disagreement with it, which is measured to predict
+        # what fraction of the claim arrives.  Multiplying them is right --
+        # they are independent shrinkages of the same claim -- and putting it
+        # here rather than at the solver is what keeps the ranking and the
+        # sizing reading one belief: the block below rebuilds the whole
+        # partition from ``claim_factor`` and hands it to both.
+        if EFFECTIVE_EDGE_MODE == "on" and stage in EFFECTIVE_EDGE_STAGES:
+            priced = row.get("all_in_price")
+            claimed = float(row.get("win_probability") or 0.0)
+            if priced is not None and claimed > EPS:
+                claim_factor *= effective_edge_lambda(
+                    float(priced) / claimed
+                )
         if abs(claim_factor - 1.0) > EPS:
             # The same correction the ranking used, expressed on the
             # distribution this window is solved against: the window's own

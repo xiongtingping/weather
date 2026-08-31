@@ -527,6 +527,50 @@ def scope_stake_cap_usdc(
 # mispriced bucket; the zero-cost baseline always satisfies it, so a book
 # that only offers lottery shapes resolves to HOLD instead of a lottery.
 SUPPORT_SCENARIO_FLOOR_FRACTION = -0.10
+# Effective edge (user ruling, charter 68, 2026-09-01).  Nominal edge --
+# claim minus price -- realizes as an inverted U in the market's agreement
+# with us, a = price / claim.  Measured on the 189 settled opening seats
+# before 2026-08-27, the realized/claimed ratio by agreement band runs
+# 0.14 / 0.60 / 0.87 / 0.82: where the book disagrees most and the nominal
+# edge is largest, five sixths of the claim never arrives, and the only
+# positive strip of e_eff = p*(lambda(a) - a) sits at a in [0.70, 0.85].
+# The objective was climbing the left cliff because it read p; reading
+# lambda(a)*p instead leaves the objective's form untouched -- fractional
+# log wealth, one ranking, one solver -- and lets the inverted U fall out
+# of it.  The 08-27..30 collapse is what the left cliff costs: -67% on the
+# opening stage against -8.8% before it.
+#
+# Fitted on the early window ALONE, deliberately: a table fitted on the
+# whole sample would let the late collapse grade its own homework.  The
+# forward half of that split is the evidence -- +41.0 points, p=0.007.
+#
+# P1 is exempt and the exemption is the point: its ratio runs 1.09-1.23
+# exactly where the market disagrees, because its edge is the observation
+# rather than the shape.  Shrinking it would gut the one stage that earns.
+EFFECTIVE_EDGE_LAMBDA = (
+    (0.50, 0.14),
+    (0.70, 0.60),
+    (0.85, 0.87),
+    (float("inf"), 0.82),
+)
+EFFECTIVE_EDGE_STAGES = frozenset({"P0", "P0-M"})
+
+
+def effective_edge_lambda(agreement: float) -> float:
+    """Realized fraction of a claim, given how far the book agrees with it.
+
+    ``agreement`` is price over claim.  Below the first bound the book is
+    calling us wrong and is measured to be right five times in six; above
+    the last the sliver left is eaten by friction.
+    """
+
+    value = float(agreement)
+    if not math.isfinite(value) or value <= 0.0:
+        return EFFECTIVE_EDGE_LAMBDA[0][1]
+    for bound, lam in EFFECTIVE_EDGE_LAMBDA:
+        if value < bound:
+            return lam
+    return EFFECTIVE_EDGE_LAMBDA[-1][1]
 # Charter 67 (user ruling, 2026-08-30): the local hour before which P1 may
 # not take a seat.  The P1 lane starts compiling at local midnight, and both
 # lanes' entry rules were spending the stage's budget on a midnight book with
