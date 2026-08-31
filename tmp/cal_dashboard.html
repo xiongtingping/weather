@@ -1849,10 +1849,6 @@ function stationSummary(){
       <td>${g?(g[1]?"沿海":"内陆"):"—"}</td>
       <td>${s.position_count}</td>
       <td>${s.settled_count}</td>
-      <td class="mono">${s.filled_leg_total}
-        <span class="muted">均 ${s.filled_leg_mean==null?"—"
-          :s.filled_leg_mean.toFixed(1)}</span>
-        </td>
       <td class="muted">${sd.above||0}/${sd.aligned||0}/${sd.below||0}</td>
       <td>${p2(s.model_coverage_mean)}</td>
       <td class="mono">${n2(s.seat_ask_total_mean)}</td>
@@ -1902,7 +1898,10 @@ function stationSummary(){
       <td class="mono ${a.real>=0?"up":"down"}">${(a.real>=0?"+":"")+n2(a.real,2)}</td>
       <td class="${roi==null?"":(roi>=0?"up":"down")}">${roi==null?"—":(roi>=0?"+":"")+n2(roi,2)}</td></tr>`;
   })).join("");
-  const groupCard=groupRows?`<div class="card"><b>分组小计</b>
+  // Lives inside the section's one card, above the per-station table:
+  // shipped as its own card first, and the extra card boundary read as a
+  // separate section (user, 2026-08-31).
+  const groupBlock=groupRows?`<div style="margin-bottom:14px"><b>分组小计</b>
   <div class="scroll"><table><thead><tr>
     <th>气候带</th><th>海陆</th><th>站数</th><th>仓位</th><th>已结算</th>
     <th>命中率</th><th>声称</th><th>实现/声称</th>
@@ -1948,16 +1947,13 @@ function stationSummary(){
   深圳（就在珠江口上）算沿海。默认行序按气候带从北到南、组内沿海在前；
   「仓位」是参与平均的笔数，样本少于三笔时右侧的
   命中率与实现/声称基本读不出信号；
-  「建仓桶」是该站这段窗口里买到的腿数合计（括号里是每座位平均几腿）；
   「位置」是相对市场偏上/一致/偏下的笔数；
   「概率和/卖价和/赔率/EV」同「覆盖 · 价格 · EV」，只是范围缩到这一个站；
   「实现/声称」是命中率÷声称胜率；「兑现比」是实得÷期望。</div>
-  ${groupCard}
-  <div class="card"><div class="scroll"><table><thead><tr>
+  <div class="card">${groupBlock}<div class="scroll"><table><thead><tr>
     <th>#</th><th>站点</th>
     <th>气候带<br><span class="muted">纬度</span></th><th>海陆</th>
     <th>仓位</th><th>已结算</th>
-    <th>建仓桶<br><span class="muted">腿数</span></th>
     <th>位置<br><span class="muted">上/平/下</span></th>
     <th>概率和</th><th>卖价和</th><th>赔率</th><th>EV/U</th>
     <th>命中率</th><th>声称</th><th>实现/声称</th>
