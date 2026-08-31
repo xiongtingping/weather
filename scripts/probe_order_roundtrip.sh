@@ -51,7 +51,26 @@ if [ -n "$ORDER_ID" ]; then
   curl -s --max-time 20 -X POST "$GATEWAY/lookup-exchange-order" -H 'content-type: application/json' \
     -d "{\"order_id\": \"$ORDER_ID\"}" | python3 -m json.tool
 else
-  echo "!! 没拿到 order_id，无法定向撤销 —— 到交易所界面核对，或用 reconcile-order 查:"
-  echo "   curl -s -X POST $GATEWAY/reconcile-order -d '{\"idempotency_key\":\"$IDEM\"}'"
+  echo "!! 没拿到 order_id，无法定向撤销 —— 见下面的账户核验，它会把任何遗留挂单列出来"
+fi
+
+# 收尾核验：问账户，不问自己那一笔。
+#
+# 2026-08-31 的教训：探针 2 在 POST 之后抛了个 ReferenceError，订单被交易所收下
+# 并挂了 18 分钟，而本机不知道它的 id、幂等库没有记录、unresolved 显示 0。按 id
+# 查只能查到「我以为存在的东西」；只有问账户「你手上还有什么」才能发现孤儿单。
+echo; echo "== 5/5 账户核验：交易所手上还有没有挂单 =="
+OPEN=$(curl -s --max-time 30 -X POST "$GATEWAY/lookup-open-orders" -H 'content-type: application/json' -d '{}')
+echo "$OPEN" | python3 -m json.tool
+N=$(echo "$OPEN" | python3 -c "import json,sys;print(json.load(sys.stdin).get('total_open_orders','?'))")
+if [ "$N" = "0" ]; then
+  echo "✅ 账户零挂单 —— 本次探针未留下任何东西。"
+else
+  echo "⚠️  账户仍有 $N 笔挂单。若非你有意持有，逐笔撤销："
+  echo "$OPEN" | python3 -c "
+import json,sys
+for o in json.load(sys.stdin).get('open_orders') or []:
+    print(f\"   curl -s -X POST $GATEWAY/cancel-order -H 'content-type: application/json' -d '{{\\\"order_id\\\":\\\"{o['id']}\\\",\\\"idempotency_key\\\":\\\"manual_cancel\\\"}}'\")
+"
 fi
 echo; echo "探针完成。idempotency_key = $IDEM（留档可查）"

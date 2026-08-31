@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import subprocess
 from pathlib import Path
@@ -906,3 +907,87 @@ def test_exchange_lookup_does_not_treat_empty_response_as_open_order() -> None:
     assert json.loads(result.stdout.strip().splitlines()[-1]) == {
         "empty": "unknown", "proxyEmpty": "unknown", "mismatch": "unknown",
     }
+
+
+def test_a_throw_after_the_post_becomes_a_reconcile_receipt(tmp_path: Path) -> None:
+    """An order may be resting; the caller has to be told, not thrown at.
+
+    On 2026-08-31 a ReferenceError landed on the line after the submit
+    promise was created.  The POST had already gone, the exchange had
+    accepted the order, and what came back to the caller was
+    "parallelCopyFollow is not defined": no order id, no idempotency record,
+    unresolved at 0, and a live order resting on KSFO for eighteen minutes
+    with nothing on this machine aware of it.  It was found by asking the
+    account what it held.
+
+    The identifier is gone, but the shape that made it dangerous is not
+    unique to it -- anything throwing after the POST does the same.  So the
+    post-submit path is wrapped, and this pins the wrap: the caller gets
+    reconcile_required and the deterministic order id, which is knowable
+    before the POST and is the only thing that makes the order findable.
+    """
+    db_path = tmp_path / "archive.db"
+    _minimum_lot_registry(db_path)
+    script = f"""
+      process.env.PM_LIVE_PAUSE_FILE = `/tmp/weather-test-no-pause-${{process.pid}}`;
+      const {{ ClobOrderService }} = await import({json.dumps(SERVICE.as_uri())});
+      const service = new ClobOrderService();
+      // Funded: the collateral gate sits ahead of everything this test
+      // exercises, and an unpayable order never reaches the POST.
+      service.cachedCollateral = {{value: {{balance: '1000000000', allowance: '1000000000'}},observed_at: new Date().toISOString(), latency_ms: 1}};
+      service.persistIntent = () => {{}};
+      service.saveIdempotency = () => {{}};
+      // The POST succeeds -- the order is live on the exchange.
+      service.placeOrder = async () => ({{
+        ok: true, accepted: true, status: "live",
+        orderID: "0xdeadbeef", exchange_post_started: true,
+      }});
+      // ...and then something after it throws, exactly as the ReferenceError
+      // did.  The break is put on `inflight.set`, which is only reached after
+      // the submit promise exists: the reads earlier in the method (`has`,
+      // `get`) have to keep working or the throw lands before the POST and
+      // proves nothing.
+      const realInflight = service.inflight;
+      service.inflight = {{
+        has: (k) => realInflight.has(k),
+        get: (k) => realInflight.get(k),
+        delete: (k) => realInflight.delete(k),
+        set: () => {{ throw new Error("synthetic post-submit failure"); }},
+      }};
+      const out = await service.placeOrderWithIdempotency({{
+        strategy_id: 'bayes_basket_target_v1', token_id: '123456',
+        side: 'BUY', order_type: 'GTC', post_only: true,
+        price: 0.01, size: 5, notional: 0.05,
+        idempotency_key: 'throw-after-post', order_intent_id: 'throw-after-post',
+      }});
+      console.log(JSON.stringify({{out, unresolved: service.unresolved.size}}));
+    """
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script], cwd=ROOT,
+        env={
+            **os.environ,
+            "PM_DATA_DIR": str(tmp_path),
+            "PM_ARCHIVE_DB": str(db_path),
+            "PM_CLOB_ORDER_SERVICE_READ_ONLY": "0",
+        },
+        text=True, capture_output=True, timeout=30, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    value = json.loads(result.stdout.strip().splitlines()[-1])
+    out = value["out"]
+
+    # Not a raw throw: a receipt that says an order may be out there.
+    assert out["error"] == "submit_path_threw_after_post"
+    assert out["reconcile_required"] is True
+    assert out["exchange_post_started"] is True
+    assert out["idempotency_key"] == "throw-after-post"
+    assert out["order_intent_id"] == "throw-after-post"
+    assert "synthetic post-submit failure" in out["error_detail"]
+
+    # And it is recorded as unresolved, so the reconciler and the operator
+    # can both find it.  Replaying this against the pre-fix code shows the
+    # unresolved entry was already there at the instant of the throw -- what
+    # was missing was any way for the caller to learn of it, and in the real
+    # incident the submit promise then resolved and cleaned the entry away
+    # while the caller was already gone with a bare ReferenceError.
+    assert value["unresolved"] == 1

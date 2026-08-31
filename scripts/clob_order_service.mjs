@@ -3026,6 +3026,21 @@ export class ClobOrderService {
       .finally(() => {
         this.inflight.delete(key);
       });
+    // From here the POST is already in flight and the caller must never be
+    // told otherwise.  On 2026-08-31 a ReferenceError on the very next line
+    // escaped this method after the order had been accepted by the exchange:
+    // the caller saw "parallelCopyFollow is not defined", the idempotency
+    // store recorded nothing, unresolved stayed 0, and a live order rested
+    // on KSFO for eighteen minutes with nothing on this machine aware it
+    // existed.  It was found by asking the account for its open orders, not
+    // by asking after any id we held -- because we held none.
+    //
+    // So everything after the submit is wrapped: any throw is converted into
+    // a reconcile_required receipt that carries the deterministic order id,
+    // which is knowable before the POST and is what makes the order findable
+    // at all.  A caller that gets this knows an order may be resting; a
+    // caller that got the raw throw knew nothing.
+    try {
     // Serialise ordinary buys behind one another; sells and priority direct
     // entries run parallel, exactly as the `base` selection twenty lines up
     // already decides.  This condition used to carry a third term,
@@ -3055,6 +3070,37 @@ export class ClobOrderService {
     }
     const response = await promise;
     return { ...response, idempotency_key: key, order_intent_id: orderIntentId };
+    } catch (err) {
+      const detail = redactErrorText(err?.message || String(err || ""));
+      const orphan = {
+        ok: false, accepted: false, pending: false,
+        reconcile_required: true,
+        error: "submit_path_threw_after_post",
+        error_detail: detail,
+        error_class: "submit_path_internal_error",
+        retryable: false, fatal: true,
+        exchange_post_started: true,
+        idempotency_key: key,
+        order_intent_id: orderIntentId,
+        source: SERVICE_NAME,
+        service_pid: process.pid,
+      };
+      // Keep the promise's own bookkeeping running -- it may still resolve
+      // into a clean receipt -- but record the unresolved state now, so an
+      // operator or the reconciler can find the order even if it does not.
+      promise.catch(() => {});
+      this.unresolved.set(key, {
+        state: "reconcile_required",
+        order_intent_id: orderIntentId,
+        created_ms: Date.now(),
+        request: { ...payload },
+        response: { ...orphan },
+      });
+      try {
+        this.persistIntent(key, "reconcile_required", payload, orphan);
+      } catch {}
+      return orphan;
+    }
   }
 
   async placeOrder(rawPayload, idempotencyKey, submitMeta = {}) {
