@@ -14404,6 +14404,11 @@ class TargetProductionWorker:
                 open_ws_scopes,
                 as_of_utc=now,
             )
+            # Bound before the branch, not inside one of them.  The compile
+            # loop below reads it on every path, and a name bound only in the
+            # else arm is an UnboundLocalError waiting for the day the other
+            # arm is taken -- twice today already.
+            evidence_materialized_at: dict[str, float] = {}
             if not ws_scope_catalog or not selected_open_scope or not str(
                 selected_open_scope["probability_stage"]
             ):
@@ -14449,6 +14454,7 @@ class TargetProductionWorker:
                             ),
                         )
                     )
+                evidence_materialized_at[current_day] = time.monotonic()
                 # Charter 48, one day at a time.  _merge_scope_manifests
                 # refuses to fuse across event days because everything
                 # downstream reads a single event_date off the merged
@@ -14498,6 +14504,9 @@ class TargetProductionWorker:
                                     full_materialization=True,
                                     listing_day_pass=True,
                                 )
+                            )
+                            evidence_materialized_at[listing_day] = (
+                                time.monotonic()
                             )
                     except Exception as exc:  # noqa: BLE001 -- observational
                         listing_evidence.append({
@@ -14658,8 +14667,16 @@ class TargetProductionWorker:
             # Refreshed per day, not per scope: one re-materialization serves
             # every scope of that day still to come, so a 158-second loop
             # costs three reads instead of eighty-two.
+            # Seeded from when each day's evidence was actually written, not
+            # from when this loop began.  Those are not the same instant: the
+            # current day is materialized first and a listed day after it,
+            # measured 45 seconds apart, so seeding both at loop start told
+            # the listed day it had a full lease when most of it was already
+            # spent.  Its scopes also compile last, which is where the
+            # remaining production_quote_expired came from.
+            loop_started = time.monotonic()
             evidence_refreshed_at: dict[str, float] = {
-                day_key: time.monotonic()
+                day_key: evidence_materialized_at.get(day_key, loop_started)
                 for day_key in {str(item[1]) for item in rows}
             }
             quote_refresh_failures: list[dict[str, str]] = []
