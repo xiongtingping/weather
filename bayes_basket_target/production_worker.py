@@ -12097,7 +12097,10 @@ class TargetProductionWorker:
                 self.commit_error or "target_atomic_writer_not_injected",
                 event_date=event_date,
             )
-        activation = load_target_activation(self.activation_path)
+        # Schema-dispatching on purpose: self.activation_path is the live
+            # contract in live mode, and the narrow loader shut production for
+            # seven hours the first time and one more cycle the second.
+            activation = load_activation(self.activation_path)
         self._assert_db_activation(activation)
         scope = activation.get("target_scope")
         if not isinstance(scope, Mapping):
@@ -13253,7 +13256,10 @@ class TargetProductionWorker:
             # already uses for the same condition.
             return _blocked("target_atomic_writer_not_injected")
         try:
-            activation = load_target_activation(self.activation_path)
+            # Schema-dispatching on purpose: self.activation_path is the live
+            # contract in live mode, and the narrow loader shut production for
+            # seven hours the first time and one more cycle the second.
+            activation = load_activation(self.activation_path)
             self._assert_db_activation(activation)
         except Exception as exc:
             return _blocked(f"target_activation_invalid:{type(exc).__name__}:{exc}")

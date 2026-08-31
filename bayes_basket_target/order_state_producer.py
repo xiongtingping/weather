@@ -18,7 +18,7 @@ from typing import Any, Mapping
 
 from .contracts import ContractError, content_sha256
 from .et_history import assert_event_day_started
-from .activation import assert_target_database_owner, load_target_activation
+from .activation import assert_target_database_owner, load_activation
 from .market_registry import load_started_registry_rows
 
 
@@ -55,7 +55,7 @@ def _timestamp(name: str, value: Any) -> str:
 
 
 def _activation(path: Path) -> dict[str, Any]:
-    return load_target_activation(path)
+    return load_activation(path)
 
 
 def _registry_scopes(

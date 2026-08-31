@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
-from .activation import load_target_activation
+from .activation import load_activation
 from .cash_phase import BasketCashPhasePolicyArtifact, CashPhase, evaluate_cash_phase
 from .cash_phase_authority import (
     CashPhaseAuthorityManifest,
@@ -265,7 +265,7 @@ def materialize_resident_no_live_market_evidence(
     """
 
     evidence_cache = None
-    activation = load_target_activation(Path(activation_path))
+    activation = load_activation(Path(activation_path))
     activation_scope = str(
         activation.get("policy_authority_scope") or ""
     ).strip().upper()
