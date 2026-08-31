@@ -8600,6 +8600,7 @@ class TargetProductionWorker:
         *,
         manifest_path: Path,
         full_materialization: bool = True,
+        listing_day_pass: bool = False,
     ) -> dict[str, Any]:
         if self.commit_conn is None:
             return {
@@ -8633,24 +8634,15 @@ class TargetProductionWorker:
         evidence_cache_failures: list[dict[str, str]] = []
         if station_allowlist:
             evidence_cache_receipts = []
-            # Charter 48: the publisher already subscribes a listed day the
-            # moment it is listed -- the scope catalog carries both days --
-            # so the evidence for one is as materializable as the other.  A
-            # listed day that yields no evidence is skipped like any other
-            # station, never fatal: the current day owns the fatal branch
-            # below, because a cycle with no current-day evidence at all is
-            # the outage this contract exists to catch.
-            listing_scopes = self._listing_entry_scopes(
-                as_of_utc=utc_now(),
-                station_allowlist=station_allowlist,
-            )
+            # One manifest, one event day -- _merge_scope_manifests refuses
+            # to fuse across days on purpose, because everything downstream
+            # reads a single event_date off the merged document.  A listed
+            # day therefore gets its own merged manifest and its own pass at
+            # the call site; this function stays single-day, as its contract
+            # has always been.
             evidence_scopes = [
                 (station_id, manifest_event_date)
                 for station_id in station_allowlist
-            ] + [
-                (station_id, day)
-                for station_id, day in listing_scopes
-                if day != manifest_event_date
             ]
             current_day_materialized = 0
             for station_id, scope_event_date in evidence_scopes:
@@ -8662,11 +8654,7 @@ class TargetProductionWorker:
                             station_id=station_id,
                             event_date=scope_event_date,
                             commit=True,
-                            # Only for the scopes charter 48 admitted; the
-                            # current day keeps the started-day view.
-                            include_listing_days=(
-                                scope_event_date != manifest_event_date
-                            ),
+                            include_listing_days=listing_day_pass,
                         )
                     )
                     if scope_event_date == manifest_event_date:
@@ -14371,8 +14359,12 @@ class TargetProductionWorker:
                     selected=selected_open_scope,
                     as_of_utc=now,
                 )
+                current_day = str(selected_open_scope.get("event_date") or "")
                 with self._temporary_scope_manifest(
-                    _merge_scope_manifests(sweep_scopes)
+                    _merge_scope_manifests([
+                        item for item in sweep_scopes
+                        if str(item.get("event_date") or "") == current_day
+                    ])
                 ) as current_scope_manifest_path:
                     market_ingress = (
                         self._materialize_market_evidence_from_manifest(
@@ -14385,6 +14377,54 @@ class TargetProductionWorker:
                             ),
                         )
                     )
+                # Charter 48, one day at a time.  _merge_scope_manifests
+                # refuses to fuse across event days because everything
+                # downstream reads a single event_date off the merged
+                # document, so a listed day gets its own merged manifest and
+                # its own materialization pass.  Its evidence lands in the
+                # same cache the current day's does; the cycle's scope list
+                # already carries its scopes.  Never fatal: the current-day
+                # pass above owns that, and a listed day whose books have not
+                # arrived is simply not yet tradable.
+                listing_evidence: list[dict[str, Any]] = []
+                listing_days = sorted({
+                    day
+                    for _station, day in self._listing_entry_scopes(
+                        as_of_utc=utc_now()
+                    )
+                    if day != current_day
+                })
+                for listing_day in listing_days:
+                    day_scopes = [
+                        item for item in sweep_scopes
+                        if str(item.get("event_date") or "") == listing_day
+                    ]
+                    if not day_scopes:
+                        listing_evidence.append({
+                            "event_date": listing_day,
+                            "state": "no_scope_manifest",
+                        })
+                        continue
+                    try:
+                        with self._temporary_scope_manifest(
+                            _merge_scope_manifests(day_scopes)
+                        ) as listing_manifest_path:
+                            listing_evidence.append(
+                                self._materialize_market_evidence_from_manifest(
+                                    activation,
+                                    manifest_path=listing_manifest_path,
+                                    full_materialization=False,
+                                    listing_day_pass=True,
+                                )
+                            )
+                    except Exception as exc:  # noqa: BLE001 -- observational
+                        listing_evidence.append({
+                            "event_date": listing_day,
+                            "state": "blocked_fail_closed",
+                            "reason": f"{type(exc).__name__}:{exc}"[:200],
+                        })
+                if listing_evidence and isinstance(market_ingress, dict):
+                    market_ingress["listing_day_evidence"] = listing_evidence
             station_allowlist = {
                 str(value or "").strip().upper()
                 for value in market_ingress.get("station_allowlist", [])
