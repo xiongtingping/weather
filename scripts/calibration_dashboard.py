@@ -2800,9 +2800,20 @@ def collect_live_readiness(
             return {}
 
     policy = _config(ROOT / "config/trading/portfolio_capital_policy_v1.json")
-    runtime = _config(
-        ROOT / "config/bayes_basket_target/no_live_runtime_v1.json"
+    # The runtime contract the mode selects, which is the rule production
+    # itself follows (weather_basket_yes_daemon.py, and the budget read in
+    # production_worker.py).  This panel read the no-live file
+    # unconditionally, so after the go-live migration minted the live twin
+    # it reported live_submit_authorized=false about a system whose
+    # contract said true -- the same mistake production_worker.py already
+    # carries a comment about, and it went unnoticed there for the same
+    # reason: the two files carry the same budget.  Naming the file that
+    # was read is the part that makes it impossible to repeat.
+    live_mode = _live_execution_mode() == "production_live"
+    runtime_path = ROOT / "config/bayes_basket_target" / (
+        "live_runtime_v1.json" if live_mode else "no_live_runtime_v1.json"
     )
+    runtime = _config(runtime_path)
     intent = _config(ROOT / "config/trading/live_intent_v1.json")
     exclusion_doc = _config(
         ROOT / "config/trading/live_station_exclusions_v1.json"
@@ -2940,7 +2951,11 @@ def collect_live_readiness(
         "contracts": {
             "execution_mode": runtime.get("execution_mode"),
             "live_submit_authorized": runtime.get("live_submit_authorized"),
+            "calls_order_gateway": runtime.get("calls_order_gateway"),
+            "places_orders": runtime.get("places_orders"),
             "policy_scope": policy.get("authority_scope"),
+            "runtime_config": runtime_path.name,
+            "minted_at_utc": runtime.get("minted_at_utc"),
         },
     }
 
@@ -8094,8 +8109,10 @@ function liveOrderCard(L){
       分子分母都不存在，写 0% 是在报一个没测过的数。<br>
       当前两个闸的读数：代码执行模式 <span class="mono">${h(L.execution_mode||"—")}</span>、
       合同 <span class="mono">${h(C.execution_mode||"—")}</span>
-      （<span class="mono">live_submit_authorized=${C.live_submit_authorized===true?"true":"false"}</span>）。
-      <b>两个都为真才可能铸出实盘行</b>，这两个数每次渲染现读，不是写死的句子。</div>
+      （<span class="mono">live_submit_authorized=${C.live_submit_authorized===true?"true":"false"}</span>、
+      <span class="mono">calls_order_gateway=${C.calls_order_gateway===true?"true":"false"}</span>），
+      读自 <span class="mono">${h(C.runtime_config||"—")}</span>。
+      <b>两个都为真才可能铸出实盘行</b>，都是每次渲染现读，不是写死的句子。</div>
     </details>
     ${rows?`<div style="overflow-x:auto;margin-top:9px"><table><thead><tr>
       <th></th><th>桶</th><th>侧</th><th>价</th><th>股数</th><th>名义u</th>
@@ -8248,9 +8265,12 @@ function liveReadiness(){
   代码编译的执行模式 <span class="mono">${h(L.execution_mode||"—")}</span>，
   和 runtime 合同 <span class="mono">${h(CT.execution_mode||"—")}</span>
   （<span class="mono">live_submit_authorized=${authorised?"true":"false"}</span>）。
-  <b>${authorised?"合同已授权铸造 live 契约——旗亮即会发单。"
+  <b>${authorised?"两个闸都已放行——旗亮即会用真实资金发单。"
     :"合同未授权：旗亮也铸不出 live 契约，意向照造但不出网关。"}</b>
-  这两个字符串每次渲染现读——写死的那句话在 go-live 之后曾经继续安慰一个已经不是它的系统。</p>
+  合同读自 <span class="mono">${h(CT.runtime_config||"—")}</span>${
+    CT.minted_at_utc?`（铸于 ${h(CT.minted_at_utc)}）`:""}——
+  <b>按执行模式选文件，和生产同一条规则</b>。这里曾经不论模式都读 no-live 那份，
+  于是在 go-live 迁移之后，页面对着一个合同说 true 的系统报 false。</p>
   <div class="card">
     <div class="grid g2">
       <div><div class="muted">凯利系数 portfolio_risk_fraction</div>
