@@ -573,6 +573,16 @@ def commit_production_candidate_atomic(
     plan_payload["upstream_plan_id"] = upstream_plan_id
     plan_payload["production_cycle_sha256"] = compiled_plan.get("production_cycle_sha256")
     plan_payload["settlement_timezone"] = market_timezone
+    # Carry the compile's authority onto the plan the ledger records.  The
+    # flag was stamped on the outer compiled plan and the ledger reads the
+    # inner one, so the intent it writes had no authority to follow and fell
+    # back to a literal 0 -- every intent minted since go-live is flagged
+    # no-live, including the ones a live cycle produced.  Not a new decision:
+    # the validator above already pinned this exact field to the mode, and
+    # this copies that same value one level down.
+    plan_payload["live_submit_authorized"] = bool(
+        compiled_plan.get("live_submit_authorized") is True
+    )
     plan_lineage = dict(lineage) if isinstance(lineage, Mapping) else {}
     plan_lineage["settlement_timezone"] = probability_timezone
     # The ledger binds a P1 plan's lineage to the exact canonical observation

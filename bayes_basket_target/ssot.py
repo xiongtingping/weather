@@ -2221,7 +2221,13 @@ CREATE TABLE IF NOT EXISTS basket_target_order_intents (
   requested_size REAL NOT NULL CHECK(requested_size>0),
   requested_notional_usdc REAL NOT NULL CHECK(requested_notional_usdc>0),
   state TEXT NOT NULL CHECK(state IN ('prepared','submitting','submitted','reconcile_required','filled','cancelled','failed')),
-  live_submit_authorized INTEGER NOT NULL CHECK(live_submit_authorized=0),
+  -- Widened by the 2026-08-30 go-live migration on the production
+  -- database; the DDL that creates a new one was left at =0, so a
+  -- rebuilt or test database silently reverted to no-live and the
+  -- ledger could not write the live flag it had just been taught to
+  -- carry.  A migrated table and the statement that creates its
+  -- replacement have to say the same thing.
+  live_submit_authorized INTEGER NOT NULL CHECK(live_submit_authorized IN (0,1)),
   target_execution_hard_deadline_at TEXT,
   idempotency_key TEXT NOT NULL UNIQUE,
   intent_json TEXT NOT NULL,

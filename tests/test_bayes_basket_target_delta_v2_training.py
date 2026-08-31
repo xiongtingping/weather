@@ -581,10 +581,21 @@ def test_decision_and_exact_version_training_fact_commit_atomically() -> None:
             "2026-07-23T05:00:05Z",
             SHA_D,
         )
-        assert conn.execute(
+        # The flag follows the plan that authorized the intent, rather than
+        # the literal 0 it used to be written as.  This fixture compiles
+        # under the deployed mode, so it asserts agreement with that mode --
+        # pinning a constant here is what let the ledger keep writing
+        # no-live intents for a live deployment.
+        live_intents = conn.execute(
             "SELECT COUNT(*) FROM basket_target_order_intents "
             "WHERE live_submit_authorized=1"
-        ).fetchone()[0] == 0
+        ).fetchone()[0]
+        total_intents = conn.execute(
+            "SELECT COUNT(*) FROM basket_target_order_intents"
+        ).fetchone()[0]
+        assert live_intents == (
+            total_intents if PRODUCTION_EXECUTION_MODE == "production_live" else 0
+        )
 
         repeated = _commit(conn, envelope)
         assert repeated["receipt"]["state"] == "already_committed"
