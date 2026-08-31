@@ -20,6 +20,12 @@ quantity.
 
 `llbg_ltfm_uuww_48.patch` flips the fleet:
 
+The patch now carries seven files, not five: the station lane map and the
+official source routes were briefly committed on their own and had to be
+pulled back.  Both are read against the fleet, so a 48-station config under a
+45-station fleet is itself a mismatch -- it turned two passing contract tests
+red.  The pairing has to move together.
+
 * `station_registry.py` -- coordinates in two provenance blocks.  The 45
   founding coordinates keep their original AWC snapshot; the three new ones
   carry their own 614-byte snapshot (sha `b5b5b437…`), fetched for exactly
@@ -36,6 +42,20 @@ Deliberately NOT in the patch: `republisher_no_live_fallback_binding_v1.json`
 also says 45, but that number sits beside a `report_content_sha256` and
 records how many stations a report that already exists actually covered.  It
 is a historical fact, and nothing compares it to the fleet.
+
+## Measured cost (2026-08-31, nine passes)
+
+Full-suite net-new failures at 48, diffed against a 45-side baseline taken
+from the same commit: **75 -> 16**.  The first estimate, before any of this,
+was 305.  Most of the reduction came from deriving literals rather than from
+changing behaviour; every pass was verified as a no-op at 45 by diffing the
+failure sets rather than counting one side.
+
+The remaining sixteen are single cases across eleven files.  A caution about
+that number: the baseline drifts.  Parallel sessions commit while a 35-minute
+suite runs, so a diff against a baseline taken hours earlier attributes their
+failures to the fleet.  Re-take the baseline from the same commit as the
+measurement, or the number is fiction.
 
 ## What remains
 

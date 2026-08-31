@@ -174,6 +174,28 @@ index d857cdfa..fc93d8c2 100644
    "selection_contract": {
      "precedence": "official_native_first",
      "fallback_when_native": [
+diff --git a/config/trading/bayes_basket_target_station_lane_map_v1.json b/config/trading/bayes_basket_target_station_lane_map_v1.json
+index 45dbad22..9b7b9680 100644
+--- a/config/trading/bayes_basket_target_station_lane_map_v1.json
++++ b/config/trading/bayes_basket_target_station_lane_map_v1.json
+@@ -25,7 +25,9 @@
+     "LEMD": "awc",
+     "LFPB": "awc",
+     "LIMC": "awc",
++    "LLBG": "awc",
+     "LTAC": "awc",
++    "LTFM": "awc",
+     "MMMX": "awc",
+     "MPMG": "awc",
+     "NZWN": "awc",
+@@ -38,6 +40,7 @@
+     "RPLL": "awc",
+     "SAEZ": "awc",
+     "SBGR": "awc",
++    "UUWW": "awc",
+     "VILK": "awc",
+     "WMKK": "awc",
+     "WSSS": "awc",
 diff --git a/config/trading/reported_trajectory_official_sources_v1.json b/config/trading/reported_trajectory_official_sources_v1.json
 index 4db2d3a8..838fdc5b 100644
 --- a/config/trading/reported_trajectory_official_sources_v1.json
