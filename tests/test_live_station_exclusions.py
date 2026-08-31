@@ -151,6 +151,49 @@ def test_a_waiver_can_be_granted_and_revoked_through_the_panel(
     assert knobs == ["station_probation_waivers"] * 2
 
 
+def test_the_board_and_the_control_plane_cannot_disagree() -> None:
+    """One rule, one owner.  The board had its own copy for one afternoon.
+
+    They drifted the moment a waiver appeared: the server had LIMC live
+    and the board drew it as probation, and a reader comparing the two had
+    nothing to tell them which one was the system.  The page reads the
+    control plane now rather than re-deriving membership from the same
+    inputs.
+    """
+
+    import sqlite3  # noqa: PLC0415
+
+    from calibration_dashboard import (  # noqa: PLC0415
+        collect_band_residual_audit, collect_live_readiness,
+    )
+
+    db = ROOT / "data" / "bayes_basket_target_ssot.db"
+    if not db.is_file():
+        pytest.skip("no SSOT on this machine")
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=60.0)
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA busy_timeout=60000")
+        board = collect_live_readiness(
+            conn, (collect_band_residual_audit(conn)).get("stations") or []
+        )
+    finally:
+        conn.close()
+    plane = control.live_stations()
+    assert sorted(board["station_allowlist"]) == sorted(plane["stations"])
+    assert sorted(board["station_probation"]) == sorted(plane["probation"])
+    assert sorted(board["station_exclusions"]) == sorted(plane["barred"])
+    assert sorted(board["station_probation_waivers"]) == sorted(
+        plane.get("probation_waivers") or []
+    )
+    # And the page must not have grown a second copy of the derivation.
+    page = (ROOT / "scripts" / "calibration_dashboard.py").read_text(
+        encoding="utf-8"
+    )
+    assert "_live_scope()" in page
+    assert "minimum_settlements_to_qualify\") or 5" not in page
+
+
 def test_the_layer_is_actually_scheduled() -> None:
     """A policy that only runs when somebody invokes it has not been applied.
 

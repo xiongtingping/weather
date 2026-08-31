@@ -2345,6 +2345,23 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
     return out
 
 
+def _live_scope() -> dict[str, Any]:
+    """The live membership, from the one place that owns it.
+
+    Imported lazily: this module is also loaded by tooling that has no
+    business starting anything, and the control server module is where the
+    rule lives rather than a service that has to be running.
+    """
+
+    import sys as _sys  # noqa: PLC0415
+    _scripts = str(ROOT / "scripts")
+    if _scripts not in _sys.path:
+        _sys.path.insert(0, _scripts)
+    from live_control_server import live_stations  # noqa: PLC0415
+
+    return live_stations()
+
+
 def collect_live_readiness(
     conn: sqlite3.Connection,
     band_stations: list[dict[str, Any]],
@@ -2498,32 +2515,17 @@ def collect_live_readiness(
     # The batch that would actually trade, derived the way the control server
     # derives it: in all_except_barred mode the stored list is empty and
     # reading it would report a live open of nothing.
-    scope_mode = str(intent.get("station_scope") or "qualified_and_not_barred")
-    minimum = int(intent.get("minimum_settlements_to_qualify") or 5)
-    if scope_mode == "explicit":
-        allowlist_set = {
-            str(s).strip().upper()
-            for s in (intent.get("station_allowlist") or [])
-        }
-        probation_set: set[str] = set()
-    else:
-        unbarred = {r["station"] for r in stations} - exclusions_set
-        if scope_mode == "all_except_barred":
-            allowlist_set, probation_set = unbarred, set()
-        else:
-            # Default deny: judged and survived, or not live yet.  Probation
-            # is shown as its own state because "unproven" and "found
-            # wanting" call for opposite actions -- one wants patience, the
-            # other wants a decision.
-            # Settlements, not distinct days: two stages settling on one day
-            # are two pieces of evidence, and the automatic layer counts them
-            # that way, so admission has to count them the same or the two
-            # thresholds mean different things under the same number.
-            counts = {
-                station: row["settlements"] for station, row in book.items()
-            }
-            allowlist_set = {s for s in unbarred if counts.get(s, 0) >= minimum}
-            probation_set = unbarred - allowlist_set
+    # Ask the control plane rather than re-deriving it.  This page had its own
+    # copy of the membership rule for one afternoon and the two drifted the
+    # moment a waiver appeared: the server had LIMC live, the board drew it as
+    # probation, and a reader comparing them had no way to tell which one was
+    # the system.  One rule, one owner, read here.
+    scope = _live_scope()
+    scope_mode = scope["scope"]
+    minimum = int(scope.get("minimum_settlements") or 0)
+    allowlist_set = set(scope["stations"])
+    probation_set = set(scope["probation"])
+    waived_set = set(scope.get("probation_waivers") or [])
     every = {r["station"] for r in stations}
     split = {
         "barred": _side(exclusions_set),
@@ -2583,6 +2585,7 @@ def collect_live_readiness(
         "live_orders": _collect_live_orders(conn),
         "station_scope": scope_mode,
         "minimum_settlements_to_qualify": minimum,
+        "station_probation_waivers": sorted(waived_set),
         "station_allowlist": sorted(allowlist_set),
         "station_probation": sorted(probation_set),
         # The bar, not just the pass.  A station absent from the allowlist
