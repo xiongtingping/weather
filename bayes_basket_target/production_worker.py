@@ -14505,7 +14505,17 @@ class TargetProductionWorker:
             for item in results:
                 if item.get("ok") is not False:
                     continue
-                key = str(item.get("reason") or "unnamed").split(":")[-1][:60]
+                raw_reason = str(item.get("reason") or "unnamed")
+                # The family name, not the tail: reasons are colon chains
+                # whose first segments are exception classes and whose later
+                # segments may carry per-station detail (the named market
+                # mismatch puts station@date there), and tallying on the
+                # tail split one family into eight keys of one.
+                segments = [
+                    seg for seg in raw_reason.split(":")
+                    if seg and not seg.endswith("Error")
+                ]
+                key = (segments[0] if segments else raw_reason)[:60]
                 blocked_scope_reasons[key] = blocked_scope_reasons.get(key, 0) + 1
             blocked_scopes = sum(blocked_scope_reasons.values())
             return {

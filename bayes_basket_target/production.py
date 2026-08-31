@@ -508,6 +508,22 @@ def commit_production_candidate_atomic(
         raise ContractError("production_candidate_atomic_stage_invalid")
     station_id = str(plan.get("station_id") or "").strip()
     event_date = str(plan.get("event_date") or "").strip()
+    if not station_id or not event_date:
+        # The same shape as the stage read above, and the fourth reader
+        # today to trip on it: a plan blocked before the success path
+        # carries no scope fields of its own, and an empty string compared
+        # against the market's real values reads as a mismatch.  The
+        # envelope is the authority on its own scope -- the compile was
+        # keyed on it -- so absence falls back there, and a genuine
+        # disagreement between two present values still refuses below.
+        scope_envelope = compiled_plan.get("probability_envelope")
+        if isinstance(scope_envelope, Mapping):
+            station_id = station_id or str(
+                scope_envelope.get("station_id") or ""
+            ).strip()
+            event_date = event_date or str(
+                scope_envelope.get("event_date") or ""
+            ).strip()
     market_station = str(market_snapshot.get("station_id") or "").strip()
     market_event_date = str(market_snapshot.get("event_date") or "").strip()
     if station_id != market_station or event_date != market_event_date:
