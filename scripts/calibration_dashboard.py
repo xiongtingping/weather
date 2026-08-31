@@ -4888,6 +4888,13 @@ a.mkt:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .grid{display:grid;gap:8px}
 .g4{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
 .g3{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+/* .g2 was written at two call sites and never defined here, so both fell
+   back to bare `.grid` -- one column, every cell stacked, and the right
+   two thirds of the card blank (user report, 2026-08-31).  Same auto-fit
+   family as its siblings: the tracks that have no cell collapse and the
+   ones that do share the whole row, so a three- or four-cell card fills
+   the width instead of leaving a margin nothing lives in. */
+.g2{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 .dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
 .green{background:var(--green)}.amber{background:var(--amber)}
 .red{background:var(--red)}
@@ -6218,7 +6225,7 @@ function consolidation(){
 
 function riskMetrics(){
   const R = D.risk_metrics || {};
-  if(!R.available) return `<h2>组合风险指标</h2>
+  if(!R.available) return `<h3 style="margin-top:22px;font-size:15px">组合风险指标</h3>
     <div class="card"><span class="dot muted"></span>
       结算日不足 3 天，比率算不出来。</div>`;
   // Signed for anything that can go either way; unsigned for dispersion,
@@ -6367,7 +6374,7 @@ function riskMetrics(){
       <b>${R.final_equity_usdc.toFixed(0)}</b>。
       同一个 EV 数在给每笔定规模——两条线分得越开，说明定规模的输入错得越多。</div></div>`;
 
-  return `<h2>组合风险指标</h2>
+  return `<h3 style="margin-top:22px;font-size:15px">组合风险指标</h3>
   <p class="sub">把整本账当一个组合来量：每个事件日一笔收益（当日已结算盈亏 ÷
   当日开盘权益），按 <b>365 天</b>年化（这本账有市场就交易，不跳周末）。</p>
   <div class="why"><b>先看误差棒再看数字。</b>
@@ -7673,6 +7680,45 @@ function liveOrderCard(L){
   </div>`;
 }
 
+// The three-state comparison is a portfolio reading, not a control: it
+// says in money what the bars cost or saved, on the same book the strip at
+// the top of the page counts.  It moved out of the live control section
+// and onto the main board (user ruling, 2026-08-31) -- it answers "how is
+// the account doing", not "may this book go live".  The prose that
+// justifies the split folds: it is read once, and it was pushing the four
+// numbers it explains below the fold.
+function barSplit(){
+  const L = D.live_readiness || {};
+  const SP = L.bar_split || {};
+  if(!SP.barred) return "";
+  const money=(v)=>v==null?"—":((v>=0?"+":"")+v.toFixed(2));
+  const pct=(v)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(1)+"%");
+  const cell=(k,label,note)=>{const r=SP[k]||{};return `<div class="card">
+    <div class="muted">${label}</div>
+    <div class="big ${r.roi==null?"":(r.roi>=0?"up":"down")}">${pct(r.roi)}</div>
+    <div class="mono ${(r.pnl_usdc||0)>=0?"up":"down"}">${money(r.pnl_usdc)} U</div>
+    <div class="muted" style="font-size:11.5px">投入 ${money(r.staked_usdc)} U ·
+      ${r.stations||0} 站 · ${r.settled_days||0} 个结算站日<br>${note}</div></div>`;};
+  return `<h3 style="margin-top:22px;font-size:15px">三态对比：上线 / 待观察 / 禁入</h3>
+  <div class="card">
+    <div class="muted">同一窗口、同一规则指纹，纸面账本对三边一视同仁地建仓结算——
+      <b>禁的是下单，不是记账</b>。它衡量的是这些闸拦掉了什么，<b>不是对未来的预测</b>。</div>
+    <div class="grid g2" style="margin-top:8px">
+      ${cell("live","上线（已判且过关）","真上线只有这一组会下单")}
+      ${cell("probation","待观察（证据不足）","够 "+(L.minimum_settlements_to_qualify||5)+" 笔结算才判，判过了自动上线")}
+      ${cell("barred","禁入（已判且不合格）","这些钱本来会亏/赚在这里")}
+      ${cell("fleet","全舰队","不设任何闸的对照")}
+    </div>
+    <details class="note"><summary>三态是怎么分的 · 为什么「待观察」不是「禁入」</summary>
+      <div class="muted">待观察的站正是靠继续记账攒够证据毕业的。
+      <b>默认禁止</b>（2026-08-31 裁定）：新站不上线，攒够
+      ${L.minimum_settlements_to_qualify||5} 笔结算被判过且没被禁，才自动上线。
+      <b>「待观察」不是「禁入」</b>——只有 2 笔的站不是坏站，把它塞进禁入表还会占掉 15 个名额之一。</div>
+    </details>
+  </div>`;
+}
+
+
 function liveReadiness(){
   const L = D.live_readiness || {};
   if(!L.available) return "";
@@ -7693,29 +7739,6 @@ function liveReadiness(){
     <td class="mono ${r.recent_roi==null?"":(r.recent_roi>=0?"up":"down")}">${r.recent_roi==null?"—":((r.recent_roi>=0?"+":"")+(100*r.recent_roi).toFixed(1)+"%")}</td>
     <td class="muted">${r.add_candidate?"☆建议加入 ":""}${r.release_candidate?"★建议放出 ":""}${Object.entries(r.gates).filter(([k,v])=>!v).map(([k])=>GATE[k]).join("、")||"✓"}</td>
   </tr>`).join("");
-  const SP=L.bar_split||{};
-  const money=(v)=>v==null?"—":((v>=0?"+":"")+v.toFixed(2));
-  const pct=(v)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(1)+"%");
-  const cell=(k,label,note)=>{const r=SP[k]||{};return `<div class="card">
-    <div class="muted">${label}</div>
-    <div class="big ${r.roi==null?"":(r.roi>=0?"up":"down")}">${pct(r.roi)}</div>
-    <div class="mono ${(r.pnl_usdc||0)>=0?"up":"down"}">${money(r.pnl_usdc)} U</div>
-    <div class="muted" style="font-size:11.5px">投入 ${money(r.staked_usdc)} U ·
-      ${r.stations||0} 站 · ${r.settled_days||0} 个结算站日<br>${note}</div></div>`;};
-  const splitCard=SP.barred?`<div class="card" style="margin-top:12px">
-    <div class="muted">三态：<b>上线 / 待观察 / 禁入</b>。同一窗口、同一规则指纹，纸面账本对三边
-      一视同仁地建仓结算——<b>禁的是下单，不是记账</b>，所以这个对比才存在，
-      待观察的站也正是靠继续记账攒够证据毕业的。它衡量的是这些闸拦掉了什么，
-      <b>不是对未来的预测</b>。<br>
-      <b>默认禁止</b>（2026-08-31 裁定）：新站不上线，攒够
-      ${L.minimum_settlements_to_qualify||5} 笔结算被判过且没被禁，才自动上线。
-      <b>「待观察」不是「禁入」</b>——只有 2 笔的站不是坏站，把它塞进禁入表还会占掉 15 个名额之一。</div>
-    <div class="grid g2" style="margin-top:8px">
-      ${cell("live","上线（已判且过关）","真上线只有这一组会下单")}
-      ${cell("probation","待观察（证据不足）","够 "+(L.minimum_settlements_to_qualify||5)+" 笔结算才判，判过了自动上线")}
-      ${cell("barred","禁入（已判且不合格）","这些钱本来会亏/赚在这里")}
-      ${cell("fleet","全舰队","不设任何闸的对照")}
-    </div></div>`:"";
   return `<h2>Live 上线准备</h2>
   <p class="sub"><b>三重合同现锁 no_live</b>（执行模式字符串、激活文件、runtime config），
   下面的开关是<b>上线意向旗</b>：它不下单也不能下单，真正的 go-live 迁移必须在旗亮时才允许铸造 live 契约。</p>
@@ -7729,8 +7752,10 @@ function liveReadiness(){
         <div class="big" id="lc-budget">${L.budget_usdc==null?"—":L.budget_usdc}</div>
         <button type="button" disabled class="lc-w" onclick="lcAdjust('budget',-50)">−50</button>
         <button type="button" disabled class="lc-w" onclick="lcAdjust('budget',50)">＋50</button></div>
-    <div style="margin-top:6px">单站上限 <b id="lc-cap" class="mono">—</b> u
-        <span class="muted" style="font-size:11px">（默认 15，范围 1–30；三个本金型边界同步派生）</span>
+      <div><div class="muted">单站上限 station_cap_usdc
+          <span style="font-size:11px">（默认 15，范围 1–30；三个本金型边界同步派生）</span></div>
+        <div class="big"><span id="lc-cap">—</span><span
+          style="font-size:13px;font-weight:400"> u</span></div>
         <button type="button" disabled class="lc-w" onclick="lcAdjust('cap',-1)">−1</button>
         <button type="button" disabled class="lc-w" onclick="lcAdjust('cap',1)">＋1</button>
         <button type="button" disabled class="lc-w" onclick="lcAdjust('cap',-5)">−5</button>
@@ -7741,17 +7766,18 @@ function liveReadiness(){
       （只监听 127.0.0.1:8788，每次改动写审计日志）</div>
   </div>
   ${liveOrderCard(L)}
-  ${splitCard}
   <div class="card" style="margin-top:12px">
     <div class="muted">首批站点闸门（五闸：实现/声称∈[0.88,1.18]、|中心偏差|≤0.8°C、
       链≥5、ROI＞−8%、真值≤2天新）· ✔=当前 allowlist（${(L.station_allowlist||[]).join(" ")}）
-      ${(L.station_exclusions||[]).length?`<br>⛔=实盘禁入（操作者裁定 ∪ 自动层，控制服务拒绝加入 allowlist）：<span class="mono">${(L.station_exclusions||[]).join(" ")}</span>
-      　禁入是<b>风险裁定不是测量结论</b>：14 种自动规则做逐日 walk-forward，最好的一个 p=0.346——与随机剔同样多的站无异；
-      同一份手挑名单固定不动反而 +17.0 点（p=0.002）。所以<b>操作者裁定的行永远不由机器改</b>；自动层只管操作者没裁定过的站，判据＝第一看兑现比（实得÷期望；期望＜3U 时读不出，改看第二项）、第二看实得差，进出用滞回避免来回摆；全表<b>上限 15 站</b>，名额先给操作者裁定，剩下的才轮到自动层（按同一排序取最差的几个）。${(L.auto_barred||[]).length?`　当前自动禁入：<span class="mono">${(L.auto_barred||[]).join(" ")}</span>`:""}`:""}
+      ${(L.station_exclusions||[]).length?`<br>⛔=实盘禁入（操作者裁定 ∪ 自动层，控制服务拒绝加入 allowlist）：<span class="mono">${(L.station_exclusions||[]).join(" ")}</span>${(L.auto_barred||[]).length?`　其中自动禁入：<span class="mono">${(L.auto_barred||[]).join(" ")}</span>`:""}`:""}
       ${((L.add_candidates||[]).length||(L.release_candidates||[]).length)?`<br><span class="pill amber">待复核</span>
       随数据每轮重算的候选（<b>只提示不执行</b>）：${(L.add_candidates||[]).length?`建议加入 <span class="mono">${(L.add_candidates||[]).join(" ")}</span>`:""}
-      ${(L.release_candidates||[]).length?`　建议放出 <span class="mono">${(L.release_candidates||[]).join(" ")}</span>`:""}
-      　判据：加入＝全样本 ROI≤−25% 且链≥5；放出＝已禁且最近 5 个结算日 ROI＞0（≥3 笔）<b>且中心偏差与声称诚实两闸都过</b>——只看 ROI 会把靠盘后 P1 铁板捞回来的站放出去（EPWA 判例）。`:""}</div>
+      ${(L.release_candidates||[]).length?`　建议放出 <span class="mono">${(L.release_candidates||[]).join(" ")}</span>`:""}`:""}</div>
+    <details class="note"><summary>这些闸是怎么定的 · 禁入与候选的判据</summary>
+      <div class="muted">禁入是<b>风险裁定不是测量结论</b>：14 种自动规则做逐日 walk-forward，最好的一个 p=0.346——与随机剔同样多的站无异；
+      同一份手挑名单固定不动反而 +17.0 点（p=0.002）。所以<b>操作者裁定的行永远不由机器改</b>；自动层只管操作者没裁定过的站，判据＝第一看兑现比（实得÷期望；期望＜3U 时读不出，改看第二项）、第二看实得差，进出用滞回避免来回摆；全表<b>上限 15 站</b>，名额先给操作者裁定，剩下的才轮到自动层（按同一排序取最差的几个）。<br>
+      候选判据：加入＝全样本 ROI≤−25% 且链≥5；放出＝已禁且最近 5 个结算日 ROI＞0（≥3 笔）<b>且中心偏差与声称诚实两闸都过</b>——只看 ROI 会把靠盘后 P1 铁板捞回来的站放出去（EPWA 判例）。</div>
+    </details>
     <div class="scroll" style="max-height:360px;margin-top:6px">
     <table><thead><tr><th>站</th><th>过闸</th><th>实现/声称</th><th>中心偏差</th>
       <th>链</th><th>ROI</th><th title="最近 5 个结算日">近5日</th><th>未过项</th></tr></thead><tbody>${rows}</tbody></table></div>
@@ -8138,6 +8164,18 @@ const tabs = `<nav class="tabs" id="tabs">${
 // to land.  The label the bar shows is read back out of the section's own
 // <h2> rather than restated here: a chip that disagrees with the heading it
 // scrolls to is worse than no chip.
+// The homepage board is one section, not three (user ruling, 2026-08-31):
+// the tile strip, the three-state comparison of what the bars cost, and
+// the portfolio ratios all read the same account.  Splitting them behind
+// two more headings and two more jump chips made a reader navigate between
+// halves of one question.  Each part still renders under its own guard, so
+// a broken risk payload cannot take the strip down with it.
+function overviewBoard(){
+  return safe(overview, "总览")
+    + safe(barSplit, "三态对比")
+    + safe(riskMetrics, "组合风险指标");
+}
+
 const sec = (fn, name, id) =>
   `<section class="sec" id="${id}" data-name="${name}">${safe(fn, name)}</section>`;
 
@@ -8170,8 +8208,7 @@ const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}"
 // not scan them -- so they move into their own area together, keeping the
 // order the reader asked for: detail first, then the three tables that
 // answer what the detail raises.
-const TOP = [[overview, "总览"],
-  [riskMetrics, "组合风险指标"],
+const TOP = [[overviewBoard, "总览"],
   [daily, "每日统计"], [roster, "逐站逐日明细"],
   [stationSummary, "逐站汇总（跨日）"], [anomalies, "异常盘口"],
   [refusalStats, "没建仓是因为什么"]];
