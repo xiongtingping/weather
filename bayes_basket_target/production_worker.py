@@ -10999,67 +10999,6 @@ class TargetProductionWorker:
             "seen_revisions": seen_revisions,
         }
 
-    @staticmethod
-    def _p0m_replay_only_settled_day(
-        envelopes: Sequence[ProbabilityEnvelope],
-        shape: Mapping[str, Any],
-        *,
-        event_date: str,
-        as_of_utc: str,
-    ) -> bool:
-        """Would this scope reach REPLAY_SKIPPED_SETTLED_DAY, told early?
-
-        The same three questions the guard downstream asks -- is every
-        revision already seated, is none of them new, and has the day closed
-        -- asked of the narrow P0/P0-M read the shadow has already taken.
-        Every input is a P0 or P0-M row or a capture, so the answer does not
-        change when the full read arrives; what changes is the price of
-        asking.  Measured 2026-09-01: 293 of 368 scopes reached that guard
-        and were skipped, each having first paid a 463ms full-scope load, a
-        source-lane read and a lane-gate re-read for the privilege -- about
-        230 seconds of an 846-second cycle spent proving that days closed a
-        week ago are still closed.
-
-        Deliberately narrower than the guard it anticipates.  A station with
-        a fitted TAF artifact can take the correcting road, where the guard
-        does not sit, so those stations are left to the full path and answer
-        exactly as before.
-        """
-
-        roots = shape.get("roots") or ()
-        if not roots:
-            return False
-        revisions = [
-            str(
-                (capture.get("forecast_revision") or {}).get(
-                    "source_object_sha256"
-                ) or ""
-            )
-            for capture in shape.get("seatable") or ()
-        ]
-        if not revisions or not all(revisions):
-            return False
-        seated = {
-            str(item.lineage.get("forecast_source_object_sha256") or "")
-            for item in envelopes
-            if item.stage == "P0-M"
-        }
-        seen_revisions = shape.get("seen_revisions") or set()
-        if not all(revision in seated for revision in revisions):
-            return False
-        if any(revision in seen_revisions for revision in revisions):
-            return False
-        latest_root = max(roots, key=lambda item: item.decision_at_utc)
-        try:
-            day_state = event_day_window(
-                event_date,
-                as_of_utc=as_of_utc,
-                target_timezone=latest_root.settlement_timezone,
-            )["state"]
-        except Exception:  # noqa: BLE001 -- unreadable is not skippable
-            return False
-        return day_state not in {"open", "not_started"}
-
     def _materialize_resident_p0m(
         self,
         *,
@@ -11304,8 +11243,12 @@ class TargetProductionWorker:
                 # across 44, and 82 scopes a cycle were discarded whole.
                 # Fall through to the observation-only path below.
                 with self._span("p0m_scope_exists", label=station):
+                    # The settlement timezone comes off the same row, from the
+                    # same index seek: the day-state test below needs it and
+                    # nothing else here does, so asking for it costs nothing.
                     scope_exists = self.commit_conn.execute(
-                        "SELECT 1 FROM basket_probability_envelope "
+                        "SELECT settlement_timezone"
+                        " FROM basket_probability_envelope "
                         "WHERE station_id=? AND event_date=? "
                         "AND state='COMMITTED' AND stage='P0' "
                         "AND decision_at_utc<=? LIMIT 1",
@@ -11320,6 +11263,49 @@ class TargetProductionWorker:
                         "write_count": 0,
                         "writes": [],
                     })
+                    continue
+                # A settled day, decided before anything is read.
+                #
+                # "Only where trading can still happen": a settled day's base
+                # never moves again and nobody prices it.  That ruling already
+                # existed, but it sat two reads deep -- past the shadow load
+                # and past the full scope load -- so every closed station-day
+                # in the backlog paid for both before being told it had
+                # nothing to do.  The day state is a pure function of the
+                # date, the timezone and the clock, so it can be asked first.
+                #
+                # Measured 2026-09-01 over one cycle's 389 scopes: 323 were
+                # closed and *every one of them wrote nothing* -- 290 already
+                # labelled REPLAY_SKIPPED_SETTLED_DAY and 33 reaching the same
+                # no-op through the fast path's NO_NEW_TAF_REVISION.  So this
+                # changes no write anywhere; it changes when the answer is
+                # known.  At the shadow load's measured 133.8ms a scope that
+                # is about 43 seconds of a 409-second cycle.
+                #
+                # The 33 are relabelled deliberately.  A closed day does
+                # nothing because it is closed, not because its TAF is
+                # unchanged, and the receipt should say the binding reason.
+                #
+                # Unreadable falls through rather than skipping, and the
+                # original guard downstream stays where it is: it is the
+                # backstop for exactly that case.
+                try:
+                    p0m_day_state = event_day_window(
+                        day,
+                        as_of_utc=as_of_utc,
+                        target_timezone=str(scope_exists[0] or ""),
+                    )["state"]
+                except Exception:  # noqa: BLE001 -- unreadable is not skippable
+                    p0m_day_state = ""
+                if p0m_day_state and p0m_day_state not in {
+                    "open", "not_started"
+                }:
+                    ignored_no_artifact_scope_count += 1
+                    receipts.append(self._p0m_no_op_receipt(
+                        station_id=station,
+                        event_date=day,
+                        state="REPLAY_SKIPPED_SETTLED_DAY",
+                    ))
                     continue
                 # Read the station-day once.  The lane gate below is a pure
                 # function of this list, so the second call reuses it rather
@@ -11377,33 +11363,6 @@ class TargetProductionWorker:
                             else:
                                 ignored_inactive_scope_count += 1
                             receipts.append(fast_receipt)
-                            continue
-                        # The settled-day skip, asked of the read already
-                        # taken.  The guard downstream reaches the same
-                        # verdict from the same rows; it just does so after a
-                        # full-scope load, a source-lane read and a lane-gate
-                        # re-read that the verdict never consults.  Only for
-                        # a station with no fitted artifact, because only
-                        # that station is guaranteed to reach the guard.
-                        if (
-                            fast_receipt is None
-                            and not station_artifacts
-                            and self._p0m_replay_only_settled_day(
-                                narrow,
-                                narrow_shape,
-                                event_date=day,
-                                as_of_utc=as_of_utc,
-                            )
-                        ):
-                            # Counted where the guard counts it: this scope
-                            # took the observation-only road, and the receipt
-                            # totals are read against each other.
-                            ignored_no_artifact_scope_count += 1
-                            receipts.append(self._p0m_no_op_receipt(
-                                station_id=station,
-                                event_date=day,
-                                state="REPLAY_SKIPPED_SETTLED_DAY",
-                            ))
                             continue
                     except Exception as exc:  # noqa: BLE001
                         # A shadow that cannot answer is a shadow finding, not

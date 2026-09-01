@@ -345,9 +345,28 @@ def _production_health(status: Mapping[str, Any]) -> dict[str, Any]:
             health = "amber"
         notes.append("阻断车道：" + "、".join(blocked[:4]))
     cycle_ms = (production.get("stage_timings_ms") or {}).get("cycle_total")
-    if isinstance(cycle_ms, (int, float)) and cycle_ms > 600_000:
+    # From the receipt, so the board judges against what the running daemon
+    # targets rather than a number typed here.  The fallbacks are the values
+    # declared 2026-09-01 and only apply to a receipt written before they
+    # were published.
+    cycle_runtime = production.get("target_cycle_runtime")
+    cycle_runtime = (
+        cycle_runtime if isinstance(cycle_runtime, Mapping) else {}
+    )
+    target_sec = float(cycle_runtime.get("target_seconds") or 300.0)
+    warn_sec = float(cycle_runtime.get("warn_seconds") or 450.0)
+    if isinstance(cycle_ms, (int, float)) and cycle_ms > warn_sec * 1000:
+        # Judged against the declared target, not against a number typed here.
+        # This line used to read "> 600s（常态约 200-350）" -- a threshold and
+        # a normal range that agreed with nothing else in the system, so a
+        # cycle drifting from 350s to 850s said nothing until it passed 600.
+        # That drift happened on 2026-09-01 and took 21 of 28 scopes with it:
+        # the compile loop outran a sixty-second quote lease.
         health = "amber" if health == "green" else health
-        notes.append(f"单轮 {cycle_ms / 1000:.0f} 秒（常态约 200-350）")
+        notes.append(
+            f"单轮 {cycle_ms / 1000:.0f} 秒"
+            f"（目标 {target_sec:.0f}，告警 {warn_sec:.0f}）"
+        )
     return {
         "production_health": health,
         "production_note": "；".join(notes) or "周期正常产出",
@@ -2454,6 +2473,23 @@ def _read_chain_probe() -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
+def _window_seconds(created_at: Any, deadline_at: Any) -> float | None:
+    """Seconds a basket had to reach the exchange, or None if unreadable.
+
+    Reported rather than assumed: the deadline is a fixed offset today, but
+    a panel that prints the constant instead of the row's own two timestamps
+    would keep printing it after the rule changed.  Unparseable reads as
+    unknown -- a missing window is not a generous one.
+    """
+
+    try:
+        start = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+        end = datetime.fromisoformat(str(deadline_at).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return round((end - start).total_seconds(), 3)
+
+
 def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
     """The order book: how many, worth how much, and what came back.
 
@@ -2487,8 +2523,10 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
         rows = conn.execute(
             "SELECT i.order_intent_id, i.decision_id, i.bucket, i.side,"
             " i.limit_price, i.requested_size, i.requested_notional_usdc,"
-            " i.state, i.created_at"
+            " i.state, i.created_at, d.station_id, d.event_date,"
+            " i.target_execution_hard_deadline_at"
             " FROM basket_target_order_intents i"
+            " LEFT JOIN auto_trade_decisions d ON d.decision_id=i.decision_id"
             " WHERE i.live_submit_authorized=1"
             " ORDER BY i.created_at DESC LIMIT 200"
         ).fetchall()
@@ -2503,6 +2541,15 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
             "limit_price": row[4], "requested_size": row[5],
             "requested_notional_usdc": row[6], "state": str(row[7]),
             "created_at": str(row[8]),
+            # A leg is not a basket.  The decision is what the solver sized
+            # as one joint action, so the panel has to be able to put the
+            # legs of one basket back together -- read as five unrelated
+            # single-bucket orders, this table says the system buys buckets
+            # one at a time, which is the opposite of what it does.
+            "station_id": str(row[9] or ""),
+            "event_date": str(row[10] or ""),
+            "execution_deadline_at": str(row[11] or ""),
+            "execution_window_seconds": _window_seconds(row[8], row[11]),
         })
     if _table_exists(conn, "basket_target_order_events"):
         try:
@@ -2629,6 +2676,41 @@ def _collect_order_book(conn: sqlite3.Connection) -> dict[str, Any]:
         ]
     except sqlite3.Error:
         book["by_station"] = []
+    # Keyed by station and day so the three ledger sections -- daily stats,
+    # the cross-day per-station roll-up and the per-station-day detail --
+    # can each show what the live lane did on their own row.  Those three
+    # are built entirely off ``paper_trade_*``, and a reader who only looks
+    # at them has no way to tell a station that traded live from one that
+    # only traded on paper.  Carried as a separate map, never folded into
+    # the paper aggregates: the two books do not add up, and a live column
+    # sitting beside paper columns is the only way to show both without
+    # inviting the eye to sum them.
+    try:
+        book["by_station_day"] = {
+            f"{station}|{day}": {
+                "count": int(count),
+                "legs_reached_exchange": int(reached or 0),
+                "notional_usdc": round(float(notional or 0.0), 4),
+                "baskets": int(baskets or 0),
+                "states": str(states or ""),
+            }
+            for station, day, count, baskets, notional, reached, states in
+            conn.execute(
+                "SELECT d.station_id, d.event_date, COUNT(*),"
+                " COUNT(DISTINCT i.decision_id),"
+                " COALESCE(SUM(i.requested_notional_usdc),0),"
+                " COALESCE(SUM(CASE WHEN EXISTS("
+                "   SELECT 1 FROM basket_target_order_events e"
+                "   WHERE e.order_intent_id=i.order_intent_id"
+                " ) THEN 1 ELSE 0 END),0),"
+                " GROUP_CONCAT(DISTINCT i.state)"
+                + joined +
+                " AND d.station_id IS NOT NULL AND d.event_date IS NOT NULL"
+                " GROUP BY d.station_id, d.event_date"
+            )
+        }
+    except sqlite3.Error:
+        book["by_station_day"] = {}
     return book
 
 
@@ -7213,6 +7295,52 @@ function gaps(){
   </tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
 
+// The live book, cut for the three sections that are otherwise entirely
+// paper (user ruling, 2026-09-01: the ledger sections must show the live
+// orders).  Every cut comes off one map keyed station|day, so the daily
+// row, the cross-day station row and the station-day row cannot disagree
+// about the same legs -- three separate SQL cuts is how they would.
+//
+// Live and paper never merge into a single number.  These sections
+// average paper_trade_* fills; a live leg folded into one of those means
+// would make two books that do not add up look like one that does.  So
+// live gets its own column and its own em dash: a station that minted
+// nothing live shows "—", not 0, because "no live intent" and "a live
+// intent worth zero" are different claims and only one of them is true
+// here.
+const LIVEBOOK = ((D.live_readiness||{}).live_orders||{}).book||{};
+const LIVE_BY_SD = LIVEBOOK.by_station_day||{};
+function liveAgg(pred){
+  let count=0,notional=0,reached=0,baskets=0,any=false;
+  const states=new Set();
+  for(const key in LIVE_BY_SD){
+    const cut=key.indexOf("|");
+    if(cut<0) continue;
+    if(!pred(key.slice(0,cut), key.slice(cut+1))) continue;
+    const e=LIVE_BY_SD[key];
+    any=true;
+    count+=e.count||0; notional+=e.notional_usdc||0;
+    reached+=e.legs_reached_exchange||0; baskets+=e.baskets||0;
+    String(e.states||"").split(",").filter(Boolean).forEach(s=>states.add(s));
+  }
+  return any?{count,notional_usdc:notional,legs_reached_exchange:reached,
+              baskets,states:[...states].sort()}:null;
+}
+// "Reached the exchange" is counted off order events, not off the intent
+// state: an intent can be cancelled after its order went out, and a panel
+// that reports state alone would call that leg untraded.
+function liveCell(e){
+  if(!e) return `<span class="muted" title="该范围没有铸出过实盘意向">—</span>`;
+  const reached=e.legs_reached_exchange||0;
+  const cls=reached?"":"down";
+  return `<span class="pill red" style="font-size:9.5px">LIVE</span>
+    <b class="mono">${e.count}</b><span class="muted"> 腿 · </span>
+    <span class="mono">${(e.notional_usdc||0).toFixed(2)}U</span>
+    <div class="muted ${cls}" style="font-size:10.5px"
+      title="到所＝有订单事件的腿数，按回执数不按意向状态数：撤单后的腿也算走到过交易所">
+      ${e.baskets} 篮 · 到所 ${reached}/${e.count}</div>`;
+}
+
 // The one table that lives above the tabs, with the health light and the
 // strip (user ruling, 2026-08-21).  It is the page's core: one row per
 // event day, every stage's account of it on the same line, and it answers
@@ -7266,6 +7394,7 @@ function daily(){
       <td>${r.odds_mean==null?"—":r.odds_mean.toFixed(1)+"x"}</td>
       <td class="mono">${r.staked_usdc.toFixed(2)}</td>
       <td class="mono ${r.pnl_usdc>=0?"up":"down"}">${(r.pnl_usdc>=0?"+":"")+r.pnl_usdc.toFixed(2)}</td>
+      <td>${liveCell(liveAgg((st,day)=>day===r.event_date))}</td>
     </tr>`;
   }).join("");
   return `<h2>每日统计</h2>
@@ -7296,6 +7425,7 @@ function daily(){
     <th>建仓桶<br><span class="muted">腿数 · 分阶段</span></th>
     <th>已结算</th><th>命中率</th><th>声称</th><th>实现/声称</th>
     <th>赔率</th><th>投入</th><th>盈亏</th>
+    <th title="实盘意向（live_submit_authorized=1），与左侧纸面各列是两套账，不可相加">实盘<br><span class="muted">腿 · 名义</span></th>
   </tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
@@ -7433,7 +7563,8 @@ function stationSummary(){
       <td class="mono ${(s.realized_usdc||0)>=0?"up":"down"}">${((s.realized_usdc||0)>=0?"+":"")+n2(s.realized_usdc,2)}</td>
       <td class="${rr==null?"":(rr>=1?"up":"down")}">${rr==null?"—":n2(rr,2)+"×"}</td>
       <td class="mono ${(difficulty[s.station_id]||{}).j>1.76?"down":""}">${(difficulty[s.station_id]||{}).j==null?"—":difficulty[s.station_id].j.toFixed(2)}</td>
-      <td class="mono ${(difficulty[s.station_id]||{}).g>0.93?"down":""}">${(difficulty[s.station_id]||{}).g==null?"—":difficulty[s.station_id].g.toFixed(2)}</td></tr>`;
+      <td class="mono ${(difficulty[s.station_id]||{}).g>0.93?"down":""}">${(difficulty[s.station_id]||{}).g==null?"—":difficulty[s.station_id].g.toFixed(2)}</td>
+      <td>${liveCell(liveAgg(st=>st===s.station_id))}</td></tr>`;
     return {html,band:bd?BAND_ORDER.indexOf(bd):BAND_ORDER.length,
       coastal:g&&g[1]?0:1,id:s.station_id};
   });
@@ -7532,6 +7663,7 @@ function stationSummary(){
     <th>概率和</th><th>卖价和</th><th>赔率</th><th>EV/U</th>
     <th>命中率</th><th>声称</th><th>实现/声称</th>
     <th>投入</th><th>实得</th><th>兑现比</th><th title="该站真值的日际跳变均值(°C)：>1.76 的站在真边际枯竭期实测 −43% vs 留存 +23% (p=0.023)">跳变/日</th><th title="近14天模型分布的均值−众数距离(桶)，跳变的模型层影子(r=+0.32)">形状gap</th>
+    <th title="该站全部实盘意向（live_submit_authorized=1）跨日合计，与左侧纸面各列是两套账，不可相加">实盘<br><span class="muted">腿 · 名义</span></th>
   </tr></thead><tbody>${rows}</tbody></table></div>${barNote}${note}</div>
   ${stationFailureMatrix()}`;
 }
@@ -7581,6 +7713,8 @@ certainty_gate_lit:["市场已定价完毕","中心桶连三次没动，或头�
     entry_window_not_open:["P1 入座窗未开","宪章67：P1 只允许在本地 11 时后入座——它的本事是盘中观测，日高在午后才成形。11 时前的轮次一律不判；实测 11 时前入座的加仓净亏 49.5，11–16 时入座净赚 99.8。本地已过 11 时仍见此项＝窗开后温度从未创当日新高、P1 没有触发过重算（阴雨天常见），是天气不是故障"],
     no_chain_growth:["加仓救不动链曲线","宪章66乙款：加仓按整条链的对数增长定规模，从已持仓位出发这一笔要让链的赔率曲线变优才买；求解器给出的最优增量为零——已持仓覆盖，或价格吃尽了增益"],
     chain_cost_at_par:["买入后整链必亏","宪章66甲款：这一笔单独看过得了本阶段的闸，但买下去之后整条链的混合成本≥1.00——满额赔付也回不了本，中了也亏。只做算术不读声称；实测这类链38条中37仍净亏31.9"],
+    decline_clamp_hold_basket:["整篮等下一轮","目标篮里有桶的概率比上一 cycle 低了，这一轮整篮不入座（研究臂：钳位=hold）。生产默认不是这条——它砍掉那条腿照买其余"],
+    decline_clamp_emptied_basket:["全篮都在跌","目标篮每一个桶的概率都比上一 cycle 低，砍完没有腿剩下（研究臂：钳位=leg）"],
     chain_never_opened:["P0 未开仓","只有 P0 开仓，后面两阶段是加仓；P0 没坐下这里就没仓可加，真正的原因看 P0"],
     no_depth:["盘口太薄","价格划算但卖方挂出的量填不满最小整篮"],
     no_seat_taken:["未入座","有概率也有盘口，目标函数看过后选择不坐"],
@@ -7859,10 +7993,12 @@ certainty_gate_lit:["市场已定价完毕","中心桶连三次没动，或头�
       <td>${side}${note}</td>
       <td class="mono">${e.settled_tmax_c==null?"—"
         :asUnit(e.settled_tmax_c,unit).toFixed(1)+"°"+h(unit)}</td>
-      <td class="mono">${pnl}</td></tr>`;
+      <td class="mono">${pnl}</td>
+      <td>${liveCell(LIVE_BY_SD[e.station_id+"|"+e.event_date])}</td></tr>`;
   };
   const head=`<tr><th>站点</th><th>P0 建仓</th><th>P0-M 确认</th><th>P1 盯盘</th>
-    <th title="均值−众数">偏斜</th><th>实测</th><th>实得</th></tr>`;
+    <th title="均值−众数">偏斜</th><th>实测</th><th>实得</th>
+    <th title="这一站这一天的实盘意向（live_submit_authorized=1）。左边各列是纸面账本，两套账不可相加">实盘</th></tr>`;
   const dates=S.roster_event_dates||[];
   const block=(day,index)=>{
     const rows=rs.filter(e=>e.event_date===day);
@@ -8514,13 +8650,70 @@ function liveOrderCard(L){
     <div class="muted">${lab}</div>
     <div class="big ${klass||""}">${val}</div>
     <div class="muted" style="font-size:11.5px">${sub2}</div></div>`;
-  const rows = (O.rows||[]).slice(0, 30).map(r=>`<tr>
-    <td><span class="pill red" style="font-size:10px">LIVE</span></td>
-    <td class="mono">${r.bucket}</td><td>${r.side}</td>
-    <td class="mono">${r.limit_price}</td><td class="mono">${r.requested_size}</td>
-    <td class="mono">${(r.requested_notional_usdc??0).toFixed(2)}</td>
-    <td>${r.state}</td>
-    <td class="mono" title="${r.order_intent_id}">${r.created_at}</td></tr>`).join("");
+  // Grouped by decision, because the decision is the basket.  The solver
+  // sizes the whole support set as one joint action and the selector
+  // refuses any proper subset of it -- then the exchange, which has no
+  // basket primitive, takes one order per bucket.  A flat leg table shows
+  // the exchange's shape and hides ours: read row by row it says the
+  // system picks temperature buckets one at a time, when in fact 31°C and
+  // 32°C on 2026-08-31 were two legs of a single WMKK basket that stood
+  // or fell together.  So legs sit under their basket, and a basket that
+  // is one leg wide says so rather than being indistinguishable from a
+  // leg that lost its siblings.
+  const groups = [];
+  const byDecision = new Map();
+  for (const r of (O.rows||[])){
+    let g = byDecision.get(r.decision_id);
+    if (!g){
+      g = {decision_id:r.decision_id, station_id:r.station_id||"",
+            event_date:r.event_date||"", window:r.execution_window_seconds,
+            legs:[], notional:0, latest:r.created_at};
+      byDecision.set(r.decision_id, g);
+      groups.push(g);
+    }
+    g.legs.push(r);
+    g.notional += (r.requested_notional_usdc||0);
+    if (String(r.created_at) > String(g.latest)) g.latest = r.created_at;
+  }
+  // Legs of one basket carry one deadline; if they ever disagree the
+  // narrower one is the one that governs, so show that rather than the
+  // first row's.
+  for (const g of groups){
+    const w = g.legs.map(l=>l.execution_window_seconds).filter(v=>v!=null);
+    g.window = w.length ? Math.min(...w) : null;
+  }
+  const shown = groups.slice(0, 20);
+  const rows = shown.map(g=>{
+    const legs = g.legs.map(r=>`<tr>
+      <td></td>
+      <td class="mono">${r.bucket}</td><td>${r.side}</td>
+      <td class="mono">${r.limit_price}</td><td class="mono">${r.requested_size}</td>
+      <td class="mono">${(r.requested_notional_usdc??0).toFixed(2)}</td>
+      <td>${r.state}</td>
+      <td class="mono" title="${r.order_intent_id}">${r.created_at}</td></tr>`).join("");
+    const who = (g.station_id||g.event_date)
+      ? h(g.station_id||"?")+" · "+h(g.event_date||"?")
+      : "<span class='muted'>决策行缺失</span>";
+    // The window is the whole reason this panel needed grouping: a basket
+    // whose legs go out one at a time over the network cannot finish
+    // inside a window narrower than one round trip, and that fact is
+    // invisible when the legs are not shown as one thing.
+    const win = g.window==null ? ""
+      : `<span class="mono ${g.window<10?"down":"muted"}"
+           title="从铸出到硬期限，逐腿串行发单共享这一个窗口">
+           窗口 ${g.window}s</span>`;
+    return `<tr><td colspan="8" style="padding-top:10px">
+      <span class="pill red" style="font-size:10px">LIVE</span>
+      <b class="mono">${who}</b>
+      <span class="muted" style="font-size:11.5px">篮子 · ${g.legs.length} 腿 ·
+      ${g.notional.toFixed(2)} U</span> ${win}
+      <span class="muted mono" style="font-size:10.5px"
+        title="${h(g.decision_id)}">${h(String(g.decision_id).slice(0,22))}…</span>
+      </td></tr>${legs}`;
+  }).join("");
+  const moreGroups = groups.length > shown.length
+    ? `<div class="muted" style="font-size:11.5px;margin-top:6px">另有
+       ${groups.length - shown.length} 个更早的篮子未列出。</div>` : "";
   // Everything above is counted off our own tables.  This one row is not:
   // it is what the exchange says is resting on the account right now.  On
   // 2026-08-31 an order this machine placed and then lost track of rested
@@ -8597,9 +8790,15 @@ function liveOrderCard(L){
       读自 <span class="mono">${h(C.runtime_config||"—")}</span>。
       <b>两个都为真才可能铸出实盘行</b>，都是每次渲染现读，不是写死的句子。</div>
     </details>
-    ${rows?`<div style="overflow-x:auto;margin-top:9px"><table><thead><tr>
+    ${rows?`<div class="muted" style="font-size:12px;margin-top:11px">
+      <b>按篮子分组</b>，不是按腿。求解器把整个支持集当一件事定规模，选桶层
+      <span class="mono">select_complete_maker_bundle_v2</span> 拒绝它的任何真子集——
+      差一条腿整篮子 HOLD。逐腿下单是交易所那一侧的形状：每个温度桶是独立
+      token、独立订单簿，没有「篮子」这个下单原语。同一行标题下的腿是同一个
+      决策的腿，同生共死。</div>
+      <div style="overflow-x:auto;margin-top:6px"><table data-grouped="1"><thead><tr>
       <th></th><th>桶</th><th>侧</th><th>价</th><th>股数</th><th>名义u</th>
-      <th>状态</th><th>时间</th></tr></thead><tbody>${rows}</tbody></table></div>`
+      <th>状态</th><th>时间</th></tr></thead><tbody>${rows}</tbody></table></div>${moreGroups}`
       :`<div class="muted" style="margin-top:9px">尚无实盘意向。第一条出现时此表自动列出。</div>`}
     ${(X.blocking||[]).length?`<div class="muted" style="margin-top:8px;font-size:11.5px">
       对账阻断：${(X.blocking||[]).map(b=>h(b.reason)+" ×"+b.count).join(" · ")}</div>`:""}
@@ -8905,6 +9104,14 @@ function lcInit(){
 // odds all read as numbers; anything else falls back to text, and an em dash
 // always sinks so empty cells never crowd the top of either direction.
 function makeSortable(table){
+  // Some tables carry meaning in their row order and cannot be sorted at
+  // all: the live order book groups legs under a basket header row, so any
+  // column sort interleaves headers with legs from other baskets and the
+  // grouping silently becomes a lie.  Those tables opt out here rather
+  // than growing a group-aware comparator, and they opt out before the
+  // headers are made to look clickable -- a pointer cursor on a header
+  // that does nothing is its own small deception.
+  if(table.dataset.grouped==="1") return;
   // Direct children only.  A stage cell now carries its own per-leg table,
   // so a descendant selector reaches into it: the outer table's header
   // collected the inner table's `th`, and sorting collected the inner

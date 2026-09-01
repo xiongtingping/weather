@@ -384,3 +384,40 @@ def test_nothing_the_live_chain_blocks_on_is_left_to_the_sweep_queue(
     # The live edge of truth is materialized inside the cycle too
     # (_materialize_truth_increment); this sweep keeps the deep window.
     assert intervals["settlement_truth"] >= 3600.0
+
+
+def test_the_cycle_declares_a_target_and_not_only_a_failure_line(
+    daemon,
+) -> None:
+    """A bound to alarm at is not the same as a length to aim for.
+
+    Until 2026-09-01 the only number was PRODUCTION_CYCLE_OVERDUE_SEC, so the
+    cycle length was emergent -- it re-arms fifteen seconds after it starts
+    and takes as long as the work takes -- and a drift from 350s to 850s
+    produced no signal until it hit 720.  That drift happened and cost the
+    day: at 846s the compile loop outran a sixty-second quote lease and 21 of
+    28 scopes died on production_quote_expired.
+
+    The target is not arbitrary.  The SSOT sweep queue drains one member per
+    production cycle against a declared demand of 5.71 an hour, so a cycle
+    above 630s starves it; the target has to leave room under that.
+    """
+
+    assert daemon.PRODUCTION_CYCLE_TARGET_SEC < daemon.PRODUCTION_CYCLE_WARN_SEC
+    assert daemon.PRODUCTION_CYCLE_WARN_SEC < daemon.PRODUCTION_CYCLE_OVERDUE_SEC
+
+    # The target must keep the sweep queue solvent with room to spare.
+    ssot_demand_per_hour = sum(
+        3600.0 / interval
+        for name, _script, interval, _timeout in daemon.HOSTED_SWEEPS
+        if daemon.hosted_sweep_write_domain(name) == "ssot"
+    )
+    supply_at_target = 3600.0 / daemon.PRODUCTION_CYCLE_TARGET_SEC
+    assert supply_at_target >= 2.0 * ssot_demand_per_hour, (
+        f"at the {daemon.PRODUCTION_CYCLE_TARGET_SEC:.0f}s target the queue"
+        f" drains {supply_at_target:.1f}/h against demand"
+        f" {ssot_demand_per_hour:.2f}/h -- less than the 2x margin a cycle"
+        " that sometimes runs long needs"
+    )
+    # And the warn line must still leave the queue solvent at all.
+    assert 3600.0 / daemon.PRODUCTION_CYCLE_WARN_SEC >= ssot_demand_per_hour

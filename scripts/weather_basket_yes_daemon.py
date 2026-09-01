@@ -2060,6 +2060,34 @@ def _canonical_live_taf_registry_rows(source_db: Path) -> list[dict[str, Any]]:
 # the 443->620s spread is itself worth watching, and it is watched by the
 # stage timings the receipt publishes, not by this bound.
 PRODUCTION_CYCLE_OVERDUE_SEC = 720.0
+# What the cycle is *for*, as opposed to when to alarm about it.
+#
+# Until now the only number in the file was the overdue bound above, which is
+# a failure line.  So the cycle length was emergent -- it re-arms 15 seconds
+# after it starts and simply takes as long as the work takes -- and a drift
+# from 350s to 850s produced no signal at all until it hit 720.  That drift
+# happened on 2026-09-01 and cost the day: at 846s the compile loop outran a
+# 60-second quote lease and 21 of 28 scopes died on production_quote_expired.
+#
+# 300 seconds, from four measurements rather than a preference:
+#
+#   * the SSOT sweep queue drains one member per production cycle, and its
+#     declared demand is 5.71 runs an hour, so anything above 630s starves it
+#     -- which is how a ten-minute identity lane went eight hours unserved;
+#   * the compile loop's own budget is six quote refreshes of 60 seconds per
+#     event day, about 360s, and it is the tail of the cycle -- so the work
+#     ahead of it has to fit in what is left;
+#   * P1 re-rolls hourly off arriving observations, so 300s is twelve turns
+#     inside the cadence it serves;
+#   * the WS publisher republishes every 60-100s, so cycling faster than that
+#     only re-reads the same book.
+#
+# Measured floor on 2026-09-01 was 409s, of which probability_p0m was 135.
+# The number is a target to be closed, not a claim that it is met.
+PRODUCTION_CYCLE_TARGET_SEC = 300.0
+# Halfway to the failure line.  Above the target is ordinary variance; above
+# this is drift that someone should look at while there is still room.
+PRODUCTION_CYCLE_WARN_SEC = 450.0
 
 
 def run_target_production_cycle(
@@ -2105,6 +2133,13 @@ def run_target_production_cycle(
         "sqlite_lock_contention": target_result_has_sqlite_lock_contention(
             result
         ),
+        # Published, not looked up.  The board reads what the *running*
+        # daemon targets rather than what a checked-out constant says, so the
+        # two can never drift apart -- which is the same failure as the
+        # hard-coded "600s（常态约 200-350）" this replaces, one layer up.
+        "target_seconds": PRODUCTION_CYCLE_TARGET_SEC,
+        "warn_seconds": PRODUCTION_CYCLE_WARN_SEC,
+        "overdue_seconds": PRODUCTION_CYCLE_OVERDUE_SEC,
     }
     try:
         guard = assert_connection_target_capacity(
