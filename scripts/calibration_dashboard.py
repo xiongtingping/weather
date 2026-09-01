@@ -5494,7 +5494,7 @@ height:14px;border-radius:99px;background:#fff;
 box-shadow:0 1px 2px rgba(0,0,0,.35);transition:transform .13s ease}
 .lc-sw[aria-checked="true"]::after{transform:translateX(16px)}
 .lc-sw:disabled{opacity:.4;cursor:not-allowed}
-.lc-sw:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+.lc-sw:focus-visible{outline:2px solid var(--text);outline-offset:2px}
 /* The station-day's outcome, on the cell that names the station: hit,
    miss, still open, never opened.  Four states that a reader otherwise has
    to reconstruct by reading three stage cells and a P&L column. */
