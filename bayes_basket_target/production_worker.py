@@ -381,6 +381,21 @@ MAX_P0M_REPLAYS_PER_CYCLE = 4
 # read that answers it, so a day about to run out refreshes once, and a day
 # with room does not pay for a read it does not need.
 QUOTE_EVIDENCE_REFRESH_SECONDS = 12.0
+# How many times one event day may restate its books inside one cycle.
+#
+# The bound exists because a day with nothing to restate used to ask on every
+# scope: 44 refreshes in one cycle, none renewing anything, and the cycle went
+# from eight to fourteen minutes.  The answer to that was "ask once, believe
+# the answer", which overcorrected -- one ineffective pass disabled the day's
+# refresh for the whole cycle, and the compile loop then ran for another four
+# minutes against a sixty-second lease.  Measured 2026-09-01: one attempt,
+# judged ineffective, and twenty-one scopes died on production_quote_expired
+# behind it.
+#
+# A count is the right shape for that bound.  Six passes covers a six-minute
+# loop at roughly one renewal per lease, and a day whose publisher has gone
+# silent still stops after six rather than after forty-four.
+MAX_QUOTE_EVIDENCE_REFRESHES_PER_DAY = 6
 MAX_RESIDENT_NWP_SCOPES_PER_CYCLE = 4
 MAX_NATIVE_ENSEMBLE_TRUTH_CASES_PER_STATION = 64
 MAX_RESIDENT_CANDIDATE_PREFETCH_SCOPES_PER_CYCLE = 1
@@ -7511,6 +7526,13 @@ class TargetProductionWorker:
                 "candidate_consumption_cas": consumption_cas,
                 "authorizes_order": False,
                 "evidence_only": True,
+                # What the submission actually did, kept rather than dropped.
+                # commit_production_candidate_atomic returns it and this
+                # receipt is where an operator looks; without it a prepared
+                # intent that was never offered to the exchange and one that
+                # was offered and refused read identically, and the reason
+                # the submitter recorded is lost with the frame.
+                "order_submission": committed.get("order_submission"),
             }
 
     def _commit_stage_zero_execution_candidate(
@@ -8889,29 +8911,48 @@ class TargetProductionWorker:
                 "post_fill_recompute_filled_notional_not_projected"
             )
 
-    def _scope_day_quote_expiry(self, event_date: str) -> datetime | None:
-        """When this day's freshest book stops being usable, or None.
+    def _scope_day_quote_expiry(
+        self, event_date: str, station_id: str | None = None
+    ) -> datetime | None:
+        """When this scope's freshest book stops being usable, or None.
 
         Read from the snapshot the compile itself validates against, so the
         trigger and the failure answer the same question rather than one
         being a proxy for the other.
 
-        Called once per day and cached by the caller, never once per scope.
-        The first version of this asked the database inside the compile loop:
-        the table is append-only and thousands of rows deep, the scan cost
-        6.8 seconds, and eighty-two of them took the cycle from eight minutes
-        to nineteen and past its own overdue bound.  An expiry is a fact
-        about a materialization, so it is read when one happens.
+        With a station, the answer is that station-day's own newest expiry;
+        without one, the day's across the fleet.  Both callers exist and they
+        are asking different questions.  The trigger wants the station's,
+        because the compile fails on the station's: a fleet maximum says the
+        books are fine while the station in hand has been expired for hours,
+        which is precisely how a scope reaches production_quote_expired with
+        no refresh ever attempted for it.  The effectiveness test wants the
+        day's, because it is asking whether the pass wrote anything at all.
+
+        Cached by the caller, never asked once per scope unconditionally.  The
+        first version scanned the table and cost 6.8 seconds a call; both
+        forms are index reads now -- measured 2026-09-01, 2.3ms for all 44
+        stations of a day -- so per-station is affordable at this cadence.
         """
 
         if self.conn is None:
             return None
+        station = str(station_id or "").strip()
         try:
-            row = self.conn.execute(
-                "SELECT MAX(quote_expires_at) FROM basket_official_ws_snapshot"
-                " WHERE event_date=?",
-                (str(event_date),),
-            ).fetchone()
+            if station:
+                row = self.conn.execute(
+                    "SELECT MAX(quote_expires_at) "
+                    "FROM basket_official_ws_snapshot"
+                    " WHERE station_id=? AND event_date=?",
+                    (station, str(event_date)),
+                ).fetchone()
+            else:
+                row = self.conn.execute(
+                    "SELECT MAX(quote_expires_at) "
+                    "FROM basket_official_ws_snapshot"
+                    " WHERE event_date=?",
+                    (str(event_date),),
+                ).fetchone()
         except sqlite3.Error:
             return None
         if row is None or not row[0]:
@@ -10756,6 +10797,67 @@ class TargetProductionWorker:
             "seen_revisions": seen_revisions,
         }
 
+    @staticmethod
+    def _p0m_replay_only_settled_day(
+        envelopes: Sequence[ProbabilityEnvelope],
+        shape: Mapping[str, Any],
+        *,
+        event_date: str,
+        as_of_utc: str,
+    ) -> bool:
+        """Would this scope reach REPLAY_SKIPPED_SETTLED_DAY, told early?
+
+        The same three questions the guard downstream asks -- is every
+        revision already seated, is none of them new, and has the day closed
+        -- asked of the narrow P0/P0-M read the shadow has already taken.
+        Every input is a P0 or P0-M row or a capture, so the answer does not
+        change when the full read arrives; what changes is the price of
+        asking.  Measured 2026-09-01: 293 of 368 scopes reached that guard
+        and were skipped, each having first paid a 463ms full-scope load, a
+        source-lane read and a lane-gate re-read for the privilege -- about
+        230 seconds of an 846-second cycle spent proving that days closed a
+        week ago are still closed.
+
+        Deliberately narrower than the guard it anticipates.  A station with
+        a fitted TAF artifact can take the correcting road, where the guard
+        does not sit, so those stations are left to the full path and answer
+        exactly as before.
+        """
+
+        roots = shape.get("roots") or ()
+        if not roots:
+            return False
+        revisions = [
+            str(
+                (capture.get("forecast_revision") or {}).get(
+                    "source_object_sha256"
+                ) or ""
+            )
+            for capture in shape.get("seatable") or ()
+        ]
+        if not revisions or not all(revisions):
+            return False
+        seated = {
+            str(item.lineage.get("forecast_source_object_sha256") or "")
+            for item in envelopes
+            if item.stage == "P0-M"
+        }
+        seen_revisions = shape.get("seen_revisions") or set()
+        if not all(revision in seated for revision in revisions):
+            return False
+        if any(revision in seen_revisions for revision in revisions):
+            return False
+        latest_root = max(roots, key=lambda item: item.decision_at_utc)
+        try:
+            day_state = event_day_window(
+                event_date,
+                as_of_utc=as_of_utc,
+                target_timezone=latest_root.settlement_timezone,
+            )["state"]
+        except Exception:  # noqa: BLE001 -- unreadable is not skippable
+            return False
+        return day_state not in {"open", "not_started"}
+
     def _materialize_resident_p0m(
         self,
         *,
@@ -11073,6 +11175,33 @@ class TargetProductionWorker:
                             else:
                                 ignored_inactive_scope_count += 1
                             receipts.append(fast_receipt)
+                            continue
+                        # The settled-day skip, asked of the read already
+                        # taken.  The guard downstream reaches the same
+                        # verdict from the same rows; it just does so after a
+                        # full-scope load, a source-lane read and a lane-gate
+                        # re-read that the verdict never consults.  Only for
+                        # a station with no fitted artifact, because only
+                        # that station is guaranteed to reach the guard.
+                        if (
+                            fast_receipt is None
+                            and not station_artifacts
+                            and self._p0m_replay_only_settled_day(
+                                narrow,
+                                narrow_shape,
+                                event_date=day,
+                                as_of_utc=as_of_utc,
+                            )
+                        ):
+                            # Counted where the guard counts it: this scope
+                            # took the observation-only road, and the receipt
+                            # totals are read against each other.
+                            ignored_no_artifact_scope_count += 1
+                            receipts.append(self._p0m_no_op_receipt(
+                                station_id=station,
+                                event_date=day,
+                                state="REPLAY_SKIPPED_SETTLED_DAY",
+                            ))
                             continue
                     except Exception as exc:  # noqa: BLE001
                         # A shadow that cannot answer is a shadow finding, not
@@ -12674,9 +12803,23 @@ class TargetProductionWorker:
 
         rows: list[dict[str, Any]] = []
         for station_id in stations:
+            # Pick the row by id first, then read it.  Written as
+            # ``WHERE station_id=? ORDER BY rowid DESC LIMIT 1`` the planner
+            # takes the scope index for the filter and then builds a temp
+            # B-tree to sort -- which means materialising every one of that
+            # station's ~1,000 plans, each dragging its plan_json through
+            # overflow pages, to keep one.  Measured 2026-09-01 over 44,670
+            # rows: 864ms per station, 38.9 seconds for the fleet, and the
+            # forward sweep asks this once per scope.  MAX(rowid) is answered
+            # from the covering index without touching a single plan_json,
+            # and the outer lookup is one primary-key seek: 22.5ms for the
+            # same 45 answers, byte-identical on every one.
             record = self.conn.execute(
                 "SELECT plan_json FROM basket_p0_preselection_plan "
-                "WHERE station_id=? ORDER BY rowid DESC LIMIT 1",
+                "WHERE rowid=("
+                "  SELECT MAX(rowid) FROM basket_p0_preselection_plan"
+                "  WHERE station_id=?"
+                ")",
                 (station_id,),
             ).fetchone()
             if record is None:
@@ -15287,18 +15430,31 @@ class TargetProductionWorker:
             }
             quote_refresh_failures: list[dict[str, str]] = []
             quote_refresh_attempts: list[str] = []
-            # One read per day, kept until that day is refreshed.  The scan is
-            # expensive and the answer only changes when we change it.
-            day_quote_expiry: dict[str, datetime | None] = {}
+            # One read per scope, kept until that scope's day is refreshed.
+            #
+            # Per station-day, not per day.  The lease this triggers on has
+            # to be the lease the compile below fails on, and that one is the
+            # station's: ``load_production_market_snapshot`` reads the newest
+            # snapshot for *this* station-day and refuses it if the
+            # evaluation instant is past its expiry.  Keyed by day alone the
+            # trigger read a fleet maximum, so one station holding a fresh
+            # book told every other station of that day it had one -- and a
+            # station whose own book was hours old never asked for a refresh
+            # at all.  Measured 2026-09-01: 21 scopes on production_quote_
+            # expired against a single refresh attempt for the whole cycle.
+            scope_quote_expiry: dict[tuple[str, str], datetime | None] = {}
             refresh_ineffective_days: set[str] = set()
+            day_refresh_counts: dict[str, int] = {}
             for station_id, event_date in rows:
                 station = str(station_id)
                 day = str(event_date)
                 if (station, day) in recomputed_scopes:
                     continue
-                if day not in day_quote_expiry:
-                    day_quote_expiry[day] = self._scope_day_quote_expiry(day)
-                expiry = day_quote_expiry[day]
+                if (station, day) not in scope_quote_expiry:
+                    scope_quote_expiry[(station, day)] = (
+                        self._scope_day_quote_expiry(day, station)
+                    )
+                expiry = scope_quote_expiry[(station, day)]
                 lease_left = (
                     (expiry - datetime.now(timezone.utc)).total_seconds()
                     if expiry is not None
@@ -15307,10 +15463,23 @@ class TargetProductionWorker:
                 if (
                     lease_left <= QUOTE_EVIDENCE_REFRESH_SECONDS
                     and day not in refresh_ineffective_days
+                    and day_refresh_counts.get(day, 0)
+                    < MAX_QUOTE_EVIDENCE_REFRESHES_PER_DAY
                 ):
                     evidence_refreshed_at[day] = time.monotonic()
                     quote_refresh_attempts.append(day)
-                    day_quote_expiry.pop(day, None)
+                    day_refresh_counts[day] = (
+                        day_refresh_counts.get(day, 0) + 1
+                    )
+                    # A day refresh restates every station of that day, so
+                    # every cached expiry for it is now stale -- including
+                    # the scopes still to come, which is the whole point of
+                    # doing it here rather than per scope.
+                    day_expiry_before = self._scope_day_quote_expiry(day)
+                    for cached_key in [
+                        key for key in scope_quote_expiry if key[1] == day
+                    ]:
+                        scope_quote_expiry.pop(cached_key, None)
                     try:
                         self._refresh_scope_day_evidence(
                             activation,
@@ -15325,14 +15494,25 @@ class TargetProductionWorker:
                         # scope of that day then asks for the same refresh
                         # again.  Measured: 44 refreshes for one event day in
                         # one cycle, none of them renewing anything, and the
-                        # cycle went from eight minutes to fourteen.  Ask
-                        # once, believe the answer.
-                        renewed = self._scope_day_quote_expiry(day)
-                        if expiry is not None and (
-                            renewed is None or renewed <= expiry
+                        # cycle went from eight minutes to fourteen.
+                        #
+                        # Asked of the day, not of the station in hand.  "Did
+                        # this pass write anything" is a question about the
+                        # pass; a station the manifest no longer carries can
+                        # fail to renew while the pass restated thirty
+                        # others, and reading that as a dead day disabled the
+                        # refresh for every one of them.  The station's own
+                        # expiry is what decides whether *it* still needs a
+                        # refresh, and it is re-read above.
+                        renewed_day = self._scope_day_quote_expiry(day)
+                        if day_expiry_before is not None and (
+                            renewed_day is None
+                            or renewed_day <= day_expiry_before
                         ):
                             refresh_ineffective_days.add(day)
-                        day_quote_expiry[day] = renewed
+                        scope_quote_expiry[(station, day)] = (
+                            self._scope_day_quote_expiry(day, station)
+                        )
                     except Exception as exc:  # noqa: BLE001 -- observational
                         # A failed refresh leaves the previous books in
                         # place; the scope then fails on its own expiry with
@@ -15531,6 +15711,17 @@ class TargetProductionWorker:
                         for day in sorted(set(quote_refresh_attempts))
                     },
                     "ineffective_days": sorted(refresh_ineffective_days),
+                    # The bound and how close the day came to it.  A day that
+                    # keeps hitting the cap is a loop outrunning its lease,
+                    # which is a different fault from a day that cannot renew
+                    # -- and the two used to be indistinguishable here.
+                    "max_refreshes_per_day": (
+                        MAX_QUOTE_EVIDENCE_REFRESHES_PER_DAY
+                    ),
+                    "capped_days": sorted(
+                        day for day, count in day_refresh_counts.items()
+                        if count >= MAX_QUOTE_EVIDENCE_REFRESHES_PER_DAY
+                    ),
                     "failures": quote_refresh_failures[:10],
                     "failure_count": len(quote_refresh_failures),
                 },

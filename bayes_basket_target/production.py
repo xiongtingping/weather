@@ -917,7 +917,13 @@ def commit_production_candidate_atomic(
                 ),
                 "sizing_content_sha256": row.get("content_sha256"),
                 "target_price_id": target_price_id,
-                "live_submit_authorized": False,
+                # The compile's own authority, not a literal.  Fifth and
+                # sixth of the family that began with the plan's hard-coded
+                # False: the intent row already carries this correctly, so
+                # written as False here the decision's own JSON contradicted
+                # the row it describes, and an auditor reading the decision
+                # concluded no live intent existed while the ledger held one.
+                "live_submit_authorized": bool(live_mode),
                 "target_execution_hard_deadline_at": target_deadline,
             },
         })
@@ -981,7 +987,7 @@ def commit_production_candidate_atomic(
                 else None
             ),
             "execution_mode": PRODUCTION_EXECUTION_MODE,
-            "live_submit_authorized": False,
+            "live_submit_authorized": bool(live_mode),
             "target_execution_hard_deadline_at": target_deadline,
             "forward_evidence_binding": forward_evidence_binding,
             "forward_observation_status": forward_observation_status,
