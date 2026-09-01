@@ -2073,3 +2073,44 @@ def test_charter_67_p1_waits_for_its_window() -> None:
     # be an exception out of the compile itself.
     assert '"p1_entry_window_not_open"' in runtime_source
     assert "DEFAULT_P1_ENTRY_LOCAL_HOUR > 0" in runtime_source
+
+
+def test_a_settled_refusal_is_an_answer_and_an_open_one_is_not() -> None:
+    """The walk must not re-derive an answer it already holds.
+
+    A refused scope writes no seat, so a seats-only short circuit leaves it
+    short of ``present`` forever and the chain is re-derived every pass to
+    reach the same refusal.  Measured 2026-09-01 over the sweep's four-day
+    window: 201 scopes, 22 short-circuiting, 179 re-walked, and every one of
+    the 179 already answered by a seat or a refusal -- 125 of them on settled
+    days, answering ``chain_never_opened`` or ``negative_edge_window`` again
+    every fifteen minutes.
+
+    Settled is the bound that makes it safe.  An open day's refusal is
+    provisional: tomorrow's book or a later P1 can turn it into a seat.
+    """
+
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    from paper_trading_ledger import _scope_answer_is_final  # noqa: PLC0415
+
+    # A seat is final whatever the day is doing -- the chain is walked whole.
+    assert _scope_answer_is_final(
+        {"P0", "P1"}, {"P0", "P1"}, set(), settled=False
+    )
+    # A refusal closes the answer only once the day has settled.
+    assert _scope_answer_is_final({"P0", "P1"}, {"P0"}, {"P1"}, settled=True)
+    assert not _scope_answer_is_final(
+        {"P0", "P1"}, {"P0"}, {"P1"}, settled=False
+    )
+    # A stage with neither a seat nor a refusal is unanswered, settled or not.
+    assert not _scope_answer_is_final(
+        {"P0", "P0-M", "P1"}, {"P0"}, {"P1"}, settled=True
+    )
+    # A scope the bridge knows nothing about is not "answered", it is absent;
+    # the caller's own ``present and ...`` guard says the same thing.
+    assert not _scope_answer_is_final(set(), set(), set(), settled=True)

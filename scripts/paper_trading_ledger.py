@@ -5128,6 +5128,45 @@ def _rescore_settlements(
     return dict(counts)
 
 
+def _scope_answer_is_final(
+    present: set[str],
+    seated: set[str],
+    refused: set[str],
+    *,
+    settled: bool,
+) -> bool:
+    """Whether this station-day's answer is recorded and cannot change.
+
+    A seat is final whatever the day is doing: the chain is walked whole, so
+    a stage with a position row has been priced.  A *refusal* is only final
+    once the day is settled -- an open day's ``no_positive_kelly`` can become
+    a seat on tomorrow's book or a later P1, so those keep being re-derived.
+
+    The walk used to ask about seats alone, and a refused scope writes no
+    seat -- so ``seated`` stayed short of ``present`` forever and the chain
+    was re-derived every pass to reach the refusal it already held.
+    Measured 2026-09-01 over the four-day window: 201 scopes, 22 short-
+    circuiting, 179 re-walked, and every one of the 179 already answered by
+    a seat or a refusal.  Nothing was unanswered.  125 of them sat on
+    settled days -- 08-29, 08-30 and 08-31, forty-odd stations apiece --
+    answering ``chain_never_opened`` or ``negative_edge_window`` again every
+    fifteen minutes.  That is what the pass spent its ~1100 seconds on,
+    beside a resident whose WAL checkpoint waits on the same lock.
+
+    What it costs: ``paper_trade_refusal`` carries no rule fingerprint,
+    unlike a position row, so a structural rule change no longer reaches an
+    old refusal on its own.  ``--rebuild`` is the documented step for exactly
+    that, and a change to the reason vocabulary already forces a full walk
+    through ``refusal_rebuilt``.
+    """
+
+    if not present:
+        return False
+    if present <= seated:
+        return True
+    return settled and present <= (seated | refused)
+
+
 def backfill(
     conn: sqlite3.Connection,
     *,
@@ -5262,6 +5301,23 @@ def backfill(
             if present and present <= seated:
                 counts["already_recorded"] += len(present)
                 continue
+            # A refusal is an answer too, once the day can no longer change.
+            # Asked only on a settled day, and only after the seat check
+            # above has missed; see ``_scope_answer_is_final``.
+            if present and (station_id, event_date) in truth:
+                refused = {
+                    str(row[0])
+                    for row in conn.execute(
+                        "SELECT stage FROM paper_trade_refusal"
+                        " WHERE station_id=? AND event_date=?",
+                        (station_id, event_date),
+                    )
+                }
+                if _scope_answer_is_final(
+                    present, seated, refused, settled=True
+                ):
+                    counts["already_answered_settled"] += len(present)
+                    continue
             # A chain is walked whole or not at all.  A top-up is priced
             # against what the position already holds, so replaying P1 on
             # its own -- with P0's rows left in place and its shares unknown
