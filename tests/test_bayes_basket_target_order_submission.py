@@ -22,6 +22,24 @@ from bayes_basket_target.order_submission import (
     submit_prepared_intents,
 )
 from bayes_basket_target.ssot import apply_production_ssot_schema
+from bayes_basket_target import order_submission as _submission
+
+
+@pytest.fixture(autouse=True)
+def _armed(tmp_path, monkeypatch):
+    """Raise the operator's arming flag for the tests that assert a send.
+
+    The flag is an orthogonal gate added 2026-09-01 (a lowered flag holds
+    every send, and is read fresh per cycle).  Without this the suite would
+    pass or fail on whatever the live config happens to say, which is both
+    non-hermetic and a silent rewrite of what these tests assert.  The flag's
+    own behaviour is covered in test_live_intent_kill_switch.
+    """
+
+    path = tmp_path / "intent.json"
+    path.write_text('{"live_enabled": true}', encoding="utf-8")
+    monkeypatch.setattr(_submission, "LIVE_INTENT_PATH", path)
+    return path
 
 
 OBSERVED = "2026-08-11T09:30:00Z"

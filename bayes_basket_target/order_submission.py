@@ -17,6 +17,8 @@ injected so no import of this module can reach the network on its own.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+import json
+from pathlib import Path
 import sqlite3
 from typing import Any
 
@@ -28,6 +30,10 @@ from .execution_reconciliation import (
 
 
 SCHEMA = "bayes_basket_target_order_submission_v1"
+# The operator's arming flag, read here and nowhere cached.
+LIVE_INTENT_PATH = (
+    Path(__file__).resolve().parents[1] / "config/trading/live_intent_v1.json"
+)
 PLACE_ORDER_PATH = "/place-order"
 BASKET_STRATEGY_ID = "weather_basket_yes_v2"
 SUBMITTABLE_INTENT_STATE = "prepared"
@@ -167,6 +173,34 @@ def _submittable_intents(
     ]
 
 
+def live_intent_armed(path: Path | str | None = None) -> bool:
+    """Whether the operator's arming flag is up, read fresh on every pass.
+
+    The flag was the go-live migration's precondition and nothing else, which
+    left a gap somebody could fall into: once the migration had minted the
+    live contracts, lowering the flag stopped nothing.  On 2026-08-31 the
+    flag was lowered at 13:29 and a real order left the process at 21:25 --
+    the contracts, the runtime config, the worker and the gateway were all
+    still open, and the one control that reads like a stop had become a
+    record of an intention nobody consulted.  A switch that does not stop
+    the thing it names is worse than no switch, because people rely on it.
+
+    Never cached.  A cached answer would keep sending after the operator had
+    stopped the lane, which is the entire failure this closes.
+
+    Fails CLOSED -- missing, unreadable or malformed reads as disarmed.  The
+    station exclusion list fails open for the opposite reason: it only
+    refuses admissions, while this one authorises spending, and the two
+    directions are not symmetric.  A flag nobody can read is not permission.
+    """
+
+    try:
+        raw = Path(path or LIVE_INTENT_PATH).read_text(encoding="utf-8")
+        return json.loads(raw).get("live_enabled") is True
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def submit_prepared_intents(
     conn: sqlite3.Connection,
     *,
@@ -184,6 +218,9 @@ def submit_prepared_intents(
     """
 
     observed_at = _text("observed_at_utc", observed_at_utc)
+    # Once per cycle, before the walk: the flag governs this pass, and asking
+    # it per intent would let it change halfway through one basket.
+    armed = live_intent_armed()
     submissions: list[dict[str, Any]] = []
     submitted = 0
     for intent in _submittable_intents(conn, cycle_id=cycle_id):
@@ -204,14 +241,22 @@ def submit_prepared_intents(
             })
             continue
         payload = build_place_order_payload(intent, strategy_id=strategy_id)
-        if not live_submit_authorized:
+        if not live_submit_authorized or not armed:
             # The whole path runs except the send.  The payload hash is on the
             # receipt so a no-live run can be compared byte for byte against
             # the live one it is standing in for.
             submissions.append({
                 "order_intent_id": intent_id,
                 "state": "not_authorized",
-                "reason": "live_submit_not_authorized",
+                # Told apart on purpose: one says the contract never
+                # authorised this lane, the other says a person stopped it.
+                # Reading a hand on the switch as a missing contract is how
+                # an operator's stop gets diagnosed as a plumbing fault.
+                "reason": (
+                    "live_submit_not_authorized"
+                    if not live_submit_authorized
+                    else "live_intent_disarmed"
+                ),
                 "exchange_post_started": False,
                 "payload_sha256": content_sha256(payload),
             })
@@ -262,7 +307,11 @@ def submit_prepared_intents(
         "schema": SCHEMA,
         "cycle_id": cycle_id,
         "live_submit_authorized": bool(live_submit_authorized),
-        "calls_order_gateway": bool(live_submit_authorized),
+        "live_intent_armed": bool(armed),
+        # What this pass could actually do, not what the contract allows: a
+        # receipt that says the gateway was callable while a lowered flag
+        # held every send is a receipt that describes the wrong system.
+        "calls_order_gateway": bool(live_submit_authorized and armed),
         "intent_count": len(submissions),
         "orders_submitted": submitted,
         "submissions": submissions,
@@ -271,6 +320,8 @@ def submit_prepared_intents(
 
 __all__ = [
     "BASKET_STRATEGY_ID",
+    "LIVE_INTENT_PATH",
+    "live_intent_armed",
     "OrderSubmissionError",
     "PLACE_ORDER_PATH",
     "SCHEMA",
