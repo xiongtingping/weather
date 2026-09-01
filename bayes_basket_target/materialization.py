@@ -1571,6 +1571,44 @@ LINEAGE_DOCUMENT_DDL = (
 )
 
 
+def _store_lineage_document(
+    conn: sqlite3.Connection,
+    *,
+    digest: str,
+    document: str,
+    created_at_utc: str,
+) -> None:
+    """Write one document, creating the table only if it is not there.
+
+    Not ``CREATE TABLE IF NOT EXISTS`` before every write.  That statement is
+    cheap to decide and expensive to ask: SQLite takes the schema lock and
+    bumps the schema cookie, which invalidates every prepared statement on
+    every connection to the file.  Asked once per dehydrated key of every
+    envelope -- three a row, thousands of rows a cycle -- it turned an
+    ordinary write into a schema-churn storm, and the first production cycle
+    after it shipped ran 27 minutes past its own overdue bound without
+    completing.
+
+    Writing first costs nothing in the steady state and pays one caught
+    exception the first time, which is also the only correct way to key this:
+    a per-connection cache cannot be built on ``sqlite3.Connection`` (it
+    supports no weak reference) and an id-keyed one is wrong the moment an id
+    is recycled.
+    """
+
+    insert = (
+        "INSERT OR IGNORE INTO basket_probability_lineage_document("
+        "document_sha256,document,created_at_utc) VALUES(?,?,?)"
+    )
+    try:
+        conn.execute(insert, (digest, document, str(created_at_utc)))
+    except sqlite3.OperationalError as exc:
+        if "no such table" not in str(exc).lower():
+            raise
+        conn.execute(LINEAGE_DOCUMENT_DDL)
+        conn.execute(insert, (digest, document, str(created_at_utc)))
+
+
 def dehydrate_lineage_documents(
     conn: sqlite3.Connection,
     lineage: Mapping[str, Any],
@@ -1586,19 +1624,25 @@ def dehydrate_lineage_documents(
     with it.
     """
 
+    pending = [
+        (key, value)
+        for key, value in (
+            (key, lineage.get(key)) for key in DEHYDRATED_LINEAGE_KEYS
+        )
+        if isinstance(value, str)
+        and value
+        and not value.startswith(LINEAGE_DOCUMENT_REF_PREFIX)
+    ]
+    if not pending:
+        return dict(lineage)
     dehydrated = dict(lineage)
-    for key in DEHYDRATED_LINEAGE_KEYS:
-        value = lineage.get(key)
-        if not isinstance(value, str) or not value:
-            continue
-        if value.startswith(LINEAGE_DOCUMENT_REF_PREFIX):
-            continue
+    for key, value in pending:
         digest = content_sha256(value)
-        conn.execute(LINEAGE_DOCUMENT_DDL)
-        conn.execute(
-            "INSERT OR IGNORE INTO basket_probability_lineage_document("
-            "document_sha256,document,created_at_utc) VALUES(?,?,?)",
-            (digest, value, str(created_at_utc)),
+        _store_lineage_document(
+            conn,
+            digest=digest,
+            document=value,
+            created_at_utc=created_at_utc,
         )
         dehydrated[key] = LINEAGE_DOCUMENT_REF_PREFIX + digest
     return dehydrated

@@ -944,3 +944,57 @@ def test_the_history_body_rebuild_rehydrates_before_it_hashes() -> None:
     )
     assert payload["lineage"] == dict(lineage)
     assert stored_sha == envelope.content_sha256
+
+
+def test_the_document_table_is_created_once_not_once_per_row() -> None:
+    """``CREATE TABLE IF NOT EXISTS`` is cheap to decide and expensive to ask.
+
+    SQLite takes the schema lock and bumps the schema cookie, which
+    invalidates every prepared statement on every connection to the file.
+    Asked before each dehydrated key of each envelope -- three a row,
+    thousands of rows a cycle -- it turned an ordinary write into a
+    schema-churn storm: the first production cycle after dehydration shipped
+    ran 27 minutes past its own 720s overdue bound without completing.
+
+    So the write goes first and the table is created only when it is not
+    there.  A per-connection cache would be the obvious alternative and is not
+    available: ``sqlite3.Connection`` supports no weak reference, and an
+    id-keyed cache is wrong the moment an id is recycled.
+    """
+
+    conn = _connection()
+    seen: list[str] = []
+    conn.set_trace_callback(seen.append)
+    base = _envelope()
+    for index in range(12):
+        lineage = dict(base.lineage)
+        lineage["settlement_timezone"] = "Asia/Karachi"
+        lineage["taf_nwp_live_compatibility_json"] = json.dumps({"a": 1})
+        lineage["native_forward_availability_evidence_json"] = json.dumps({"b": 1})
+        lineage["conditional_future_temperature_curve_json"] = json.dumps(
+            {"c": index}
+        )
+        envelope = ProbabilityEnvelope.from_mapping({
+            **base.to_dict(),
+            "checkpoint_id": f"p0-{index}",
+            "decision_at_utc": f"2026-07-23T04:{index:02d}:00Z",
+            "lineage": lineage,
+        })
+        insert_probability_envelope(
+            conn, envelope, created_at_utc=envelope.decision_at_utc
+        )
+    conn.set_trace_callback(None)
+    created = [
+        statement for statement in seen
+        if "CREATE TABLE IF NOT EXISTS basket_probability_lineage_document"
+        in statement
+    ]
+    # Thirty-six dehydrations, one CREATE.
+    assert len(created) == 1, (
+        f"the document table was created {len(created)} times across 36"
+        " dehydrations"
+    )
+    # Two documents are shared by every row, the third differs per row.
+    assert conn.execute(
+        "SELECT COUNT(*) FROM basket_probability_lineage_document"
+    ).fetchone()[0] == 14
