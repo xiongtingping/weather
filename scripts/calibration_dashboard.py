@@ -6722,7 +6722,9 @@ function edgeBandHealth(){
   const parts=rows.map((r,i)=>{
     const t0=i*step+1.4,t1=(i+1)*step-1.4,tm=(t0+t1)/2;
     const xa=r.all.realize_filled_x,xr=r.recent.realize_filled_x;
-    const ro=xa==null?R0+3:rad(xa);
+    // A band that realises nothing still gets a sliver, so its slot reads
+    // as "measured and zero" rather than as an empty slot with no data.
+    const ro=xa==null?R0+3:Math.max(rad(xa),R0+2);
     const foot=R0-7-(r.share_all||0)/maxShare*46;
     const [lx,ly]=PT(320,tm);
     const anchor=tm<70?"end":(tm>110?"start":"middle");
@@ -6734,7 +6736,8 @@ function edgeBandHealth(){
     const body=`<path d="${wedge(t0,t1,R0,ro)}" fill="${tone(xa)}"
       ><title>${h(r.band)}：全期兑现 ${mult(xa)} · ${r.all.n} 腿 · 占 ${
       pct(r.share_all)}</title></path>`;
-    const recent=xr==null?"":`<path d="${ring(rad(xr),t0+1,t1-1)}" fill="none"
+    const inset=Math.min(1,(t1-t0)*0.08);
+    const recent=xr==null?"":`<path d="${ring(rad(xr),t0+inset,t1-inset)}" fill="none"
       stroke="var(--text)" stroke-width="2.6" stroke-linecap="round"
       opacity=".9"><title>${h(r.band)}：近7天兑现 ${mult(xr)}（${
       r.recent.n} 腿）</title></path>
