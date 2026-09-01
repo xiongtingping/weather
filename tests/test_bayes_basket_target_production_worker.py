@@ -5801,3 +5801,49 @@ def test_unchanged_retiring_scope_retains_instead_of_superseding(
     assert result is not None
     assert result["state"] == "retained_existing_prepared_candidate"
     assert result["writes_target_ledger"] is False
+
+
+def test_p0m_scope_shape_runs_without_an_instance(tmp_path: Path) -> None:
+    """The shape gate is a staticmethod and must not reach for ``self``.
+
+    Written as ``self._same_p0_forecast`` it raised NameError on every scope
+    -- 344 blockers in one cycle, the whole P0-M lane fail-closed -- and
+    nothing caught it: the lane converts a per-scope exception into a
+    blocker rather than letting it escape, so the receipt filled with
+    NameError and the process carried on looking healthy.
+
+    Calling it the way production does, with no instance in scope, is the
+    check that would have.
+    """
+    from bayes_basket_target.contracts import ProbabilityEnvelope
+
+    def _envelope(stage: str, decision_at: str, checkpoint: str) -> ProbabilityEnvelope:
+        return ProbabilityEnvelope.from_mapping({
+            "schema": "bayes_basket_probability_envelope_v1",
+            "stage": stage,
+            "checkpoint_id": checkpoint,
+            "station_id": "KATL",
+            "event_date": "2099-08-05",
+            "settlement_timezone": "America/New_York",
+            "decision_at_utc": decision_at,
+            "fresh_until_utc": "2099-08-05T23:00:00Z",
+            "bucket_ordinals": {"90-91°F": 90, "92-93°F": 92},
+            "probabilities": {"90-91°F": 0.4, "92-93°F": 0.6},
+            "posterior_version": "p0_nwp_v1",
+            "posterior_sha256": "a" * 64,
+            "bridge_sha256": "b" * 64,
+            "lineage": {"p0_root_checkpoint_id": checkpoint},
+        })
+
+    envelopes = [
+        _envelope("P0", "2099-08-04T10:00:00Z", "p0-native-one"),
+        _envelope("P0", "2099-08-04T11:00:00Z", "p0-native-two"),
+        _envelope("P0-M", "2099-08-04T10:30:00Z", "p0m-native-one"),
+    ]
+    # Unbound, exactly as the lane calls it.
+    shape = production_worker_module.TargetProductionWorker._p0m_scope_shape(
+        envelopes, []
+    )
+    assert len(shape["roots"]) == 2
+    # The base is the latest P0, not the last one before some TAF.
+    assert isinstance(shape["seen_revisions"], set)

@@ -10436,7 +10436,13 @@ class TargetProductionWorker:
             if item.stage == "P0-M"
             and (
                 latest_root is None
-                or self._same_p0_forecast(
+                # By class, not by self: _p0m_scope_shape is a staticmethod
+                # and has no instance.  Written as self._same_p0_forecast it
+                # raised NameError on every scope -- 344 blockers in one
+                # cycle, the whole P0-M lane fail-closed -- and no test
+                # caught it because the exception is swallowed into a
+                # per-scope blocker rather than escaping the lane.
+                or TargetProductionWorker._same_p0_forecast(
                     str(item.lineage.get("p0_root_checkpoint_id") or ""),
                     latest_root,
                     envelopes,
