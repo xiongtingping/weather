@@ -1536,6 +1536,127 @@ def materialize_p1(
     )
 
 
+#: Lineage values stored once and referenced, instead of copied into every
+#: envelope row.
+#:
+#: ``lineage_json`` is 95.5% of an envelope row and these three keys are 65%
+#: of it, while carrying almost no information per row.  Measured over 4,000
+#: committed envelopes from 2026-08-31: the live-compatibility document
+#: repeats 49.7x (37.55 MB stored, 0.756 MB distinct), the forward
+#: availability evidence 60.5x (6.56 MB / 0.108 MB) and the conditional curve
+#: 4.5x (4.82 MB / 1.077 MB).  That is 11.75 KB of pure duplication per
+#: envelope, about 208 MB a day at the fleet's 17,711 envelopes.
+#:
+#: Each of the three already carries a companion fingerprint in the same
+#: lineage, verified 1:1 with its document over the same 4,000 rows -- so the
+#: envelope's identity has always bound these bodies by hash.  This is a
+#: storage encoding and nothing more: ``content_sha256`` is still computed
+#: over the whole lineage, and the loader rehydrates before it verifies, so
+#: every stored row and every consumer sees exactly the bytes it saw before.
+DEHYDRATED_LINEAGE_KEYS: tuple[str, ...] = (
+    "taf_nwp_live_compatibility_json",
+    "native_forward_availability_evidence_json",
+    "conditional_future_temperature_curve_json",
+)
+#: A dehydrated value.  Real documents are JSON objects or arrays, so they
+#: begin with ``{`` or ``[`` and can never collide with this.
+LINEAGE_DOCUMENT_REF_PREFIX = "@ref/"
+LINEAGE_DOCUMENT_DDL = (
+    "CREATE TABLE IF NOT EXISTS basket_probability_lineage_document("
+    "  document_sha256 TEXT PRIMARY KEY"
+    "    CHECK(length(document_sha256)=64),"
+    "  document TEXT NOT NULL,"
+    "  created_at_utc TEXT NOT NULL"
+    ")"
+)
+
+
+def dehydrate_lineage_documents(
+    conn: sqlite3.Connection,
+    lineage: Mapping[str, Any],
+    *,
+    created_at_utc: str,
+) -> dict[str, Any]:
+    """Store each large lineage body once and reference it by its own hash.
+
+    Content-addressed and insert-or-ignore, so a body already stored is not
+    rewritten and two envelopes carrying the same document share one row.
+    Written inside the caller's transaction: an envelope that commits without
+    its bodies would be unreadable, and one that rolls back must take them
+    with it.
+    """
+
+    dehydrated = dict(lineage)
+    for key in DEHYDRATED_LINEAGE_KEYS:
+        value = lineage.get(key)
+        if not isinstance(value, str) or not value:
+            continue
+        if value.startswith(LINEAGE_DOCUMENT_REF_PREFIX):
+            continue
+        digest = content_sha256(value)
+        conn.execute(LINEAGE_DOCUMENT_DDL)
+        conn.execute(
+            "INSERT OR IGNORE INTO basket_probability_lineage_document("
+            "document_sha256,document,created_at_utc) VALUES(?,?,?)",
+            (digest, value, str(created_at_utc)),
+        )
+        dehydrated[key] = LINEAGE_DOCUMENT_REF_PREFIX + digest
+    return dehydrated
+
+
+def rehydrate_lineage_documents(
+    conn: sqlite3.Connection,
+    lineage: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Put back the bodies stored once and referenced by hash.
+
+    The counterpart of ``dehydrate_lineage_documents``.  It runs before the
+    envelope is built and therefore before its ``content_sha256`` is checked,
+    which is what keeps the dehydration a storage encoding rather than a
+    change of identity: the sha is computed over the rehydrated lineage and
+    matches the one stored beside it, for rows written before this existed and
+    after it alike.
+
+    A reference whose body is missing fails closed.  It cannot be recovered --
+    the body is the evidence, and an envelope that cannot present it is not
+    servable -- and silently leaving the marker in place would hand a consumer
+    the string ``@ref/...`` where it expected a document.
+    """
+
+    refs = {
+        key: str(value)[len(LINEAGE_DOCUMENT_REF_PREFIX):]
+        for key, value in lineage.items()
+        if isinstance(value, str)
+        and value.startswith(LINEAGE_DOCUMENT_REF_PREFIX)
+    }
+    if not refs:
+        return dict(lineage)
+    try:
+        placeholders = ",".join("?" for _ in refs)
+        stored = {
+            str(row[0]): str(row[1])
+            for row in conn.execute(
+                "SELECT document_sha256,document"
+                "  FROM basket_probability_lineage_document"
+                f" WHERE document_sha256 IN ({placeholders})",
+                tuple(sorted(set(refs.values()))),
+            )
+        }
+    except sqlite3.Error as exc:
+        raise ContractError(
+            "probability_lineage_document_store_unavailable"
+        ) from exc
+    resolved = dict(lineage)
+    for key, digest in refs.items():
+        body = stored.get(digest)
+        if body is None:
+            raise ContractError(
+                "probability_lineage_document_missing:" + key
+            )
+        resolved[key] = body
+    return resolved
+
+
 def insert_probability_envelope(
     conn: sqlite3.Connection,
     envelope: ProbabilityEnvelope,
@@ -1578,7 +1699,17 @@ def insert_probability_envelope(
             as_of_utc=envelope.decision_at_utc,
             target_timezone=envelope.settlement_timezone,
         )
-    encoded_lineage = json.dumps(dict(envelope.lineage), ensure_ascii=False, sort_keys=True)
+    # Stored dehydrated, hashed whole.  ``envelope.content_sha256`` below is
+    # still computed from the full lineage, so the row's identity and every
+    # reference to it are byte-for-byte what they were; only the bytes on disk
+    # are smaller.
+    encoded_lineage = json.dumps(
+        dehydrate_lineage_documents(
+            conn, envelope.lineage, created_at_utc=created_at_utc
+        ),
+        ensure_ascii=False,
+        sort_keys=True,
+    )
     existing = conn.execute(
         "SELECT content_sha256 FROM basket_probability_envelope WHERE envelope_id=?",
         (envelope.checkpoint_id,),

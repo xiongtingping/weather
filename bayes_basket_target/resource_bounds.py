@@ -233,7 +233,26 @@ MAX_JSON_NODES = 500_000
 # housekeeping.  It is the next raise's alternative and there is not another
 # one after it -- a VACUUM needs 31 GB of scratch against 15 GB of disk, so
 # nothing deleted in-store can give this file back.
-MAX_TARGET_DB_BYTES = 33792 * MIB
+#
+# 2026-09-01, second raise of the day, on the operator's instruction.  The
+# store is 28.65 GiB against the 33 GiB ceiling -- 4.67 GB at a rate that is
+# now about 574 MB/day, so roughly eight days.  35 GiB permits 6.82 GB of
+# growth against 12.08 GB of free disk, leaving 5.26 GB even if every byte is
+# taken: about twelve days.  36 would have left 4.19 and 37 only 3.11, and
+# disk headroom is the one thing that cannot be recovered without deleting
+# files, so this stops at 35.
+#
+# The P0 restatement suppression shipped an hour ago and is measured: the P0
+# write rate went from 278 rows an hour to single digits, ~85 MB/day.  That is
+# 13% of the burn, not a solution -- P1 is the larger half of the envelope
+# table (10,917 rows/day against P0's 6,666) and its re-clocking is
+# load-bearing, because the staleness gate reads decision time.  De-duplication
+# cannot fix this ceiling; the remaining levers are the row *width* (lineage_
+# json is 95.5% of a row and one key, taf_nwp_live_compatibility_json, is 48.3%
+# of that at a measured 33.9x duplication) and more disk, which is also the
+# only way to make a VACUUM possible again -- it needs ~31 GB of scratch
+# against 12 GB free, so nothing deleted in-store can give this file back.
+MAX_TARGET_DB_BYTES = 35840 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.

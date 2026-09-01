@@ -44,6 +44,7 @@ from .contracts import (
 )
 from .execution_deadline import derive_target_execution_hard_deadline
 from .market_registry import load_active_registry_rows
+from .materialization import rehydrate_lineage_documents
 from .policy import (
     GlobalBasketPriorArtifact,
     PolicyArtifact,
@@ -537,7 +538,10 @@ def load_materialized_probability_envelopes(
             supplied_sha = str(raw.pop("content_sha256") or "")
             raw["bucket_ordinals"] = _json("bucket_ordinals", raw.pop("bucket_ordinals_json"), mapping=True)
             raw["probabilities"] = _json("probabilities", raw.pop("probabilities_json"), mapping=True)
-            raw["lineage"] = _json("lineage", raw.pop("lineage_json"), mapping=True)
+            raw["lineage"] = rehydrate_lineage_documents(
+                conn,
+                _json("lineage", raw.pop("lineage_json"), mapping=True),
+            )
             lineage_timezone = str(raw["lineage"].get("settlement_timezone") or "").strip()
             storage_timezone = str(raw.get("settlement_timezone") or "").strip()
             if not lineage_timezone or lineage_timezone != storage_timezone:

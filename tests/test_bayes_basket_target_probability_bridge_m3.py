@@ -730,3 +730,217 @@ def test_a_churning_posterior_digest_alone_is_not_a_discovery() -> None:
     assert materialize_probability_bridge(
         conn, served_moved, created_at_utc=served_moved.decision_at_utc
     )["history_wrote"] is True
+
+
+def test_large_lineage_bodies_are_stored_once_and_read_back_whole() -> None:
+    """Dehydration is a storage encoding, not a change of identity.
+
+    ``lineage_json`` is 95.5% of an envelope row and three keys are 65% of it,
+    while carrying almost nothing per row.  Measured over 4,000 committed
+    envelopes from 2026-08-31: the live-compatibility document repeats 49.7x,
+    the forward availability evidence 60.5x and the conditional curve 4.5x --
+    11.75 KB of duplication per envelope, about 208 MB a day at the fleet's
+    17,711.
+
+    What makes it safe is the order: the loader rehydrates *before* it builds
+    the envelope and therefore before it verifies ``content_sha256``, so the
+    sha is computed over the full lineage exactly as it always was.  Rows
+    written before this existed carry no references and pass through
+    untouched.
+    """
+
+    from bayes_basket_target.materialization import (  # noqa: PLC0415
+        DEHYDRATED_LINEAGE_KEYS,
+        LINEAGE_DOCUMENT_REF_PREFIX,
+    )
+    from bayes_basket_target.production_io import (  # noqa: PLC0415
+        load_materialized_probability_envelopes,
+    )
+
+    conn = _connection()
+    base = _envelope()
+    lineage = dict(base.lineage)
+    lineage["settlement_timezone"] = "Asia/Karachi"
+    lineage["taf_nwp_live_compatibility_json"] = json.dumps(
+        {"archive_query_at_utc_by_system": {"ECMWF": "2026-07-23T00:00:00Z"}},
+        sort_keys=True,
+    )
+    lineage["native_forward_availability_evidence_json"] = json.dumps(
+        {"available": True}, sort_keys=True
+    )
+    lineage["conditional_future_temperature_curve_json"] = json.dumps(
+        {"curve": [1, 2, 3]}, sort_keys=True
+    )
+    envelope = ProbabilityEnvelope.from_mapping(
+        {**base.to_dict(), "lineage": lineage}
+    )
+    sha_before = envelope.content_sha256
+    insert_probability_envelope(
+        conn, envelope, created_at_utc=envelope.decision_at_utc
+    )
+
+    stored_lineage, stored_sha = conn.execute(
+        "SELECT lineage_json,content_sha256 FROM basket_probability_envelope"
+        " WHERE envelope_id=?",
+        (envelope.checkpoint_id,),
+    ).fetchone()
+    on_disk = json.loads(stored_lineage)
+    for key in DEHYDRATED_LINEAGE_KEYS:
+        assert str(on_disk[key]).startswith(LINEAGE_DOCUMENT_REF_PREFIX)
+    # The identity is the *rehydrated* one, so nothing that references this
+    # envelope has to be rebound.
+    assert stored_sha == sha_before
+
+    loaded = load_materialized_probability_envelopes(
+        conn,
+        station_id="RKPK",
+        event_date="2026-07-23",
+        evaluation_at_utc="2026-07-23T05:00:00Z",
+        required_probability_pathway=None,
+    )
+    assert len(loaded) == 1
+    assert loaded[0].content_sha256 == sha_before
+    assert dict(loaded[0].lineage) == dict(lineage)
+
+    # One row per distinct document, however many envelopes carry it.
+    assert conn.execute(
+        "SELECT COUNT(*) FROM basket_probability_lineage_document"
+    ).fetchone()[0] == len(DEHYDRATED_LINEAGE_KEYS)
+    twin = ProbabilityEnvelope.from_mapping({
+        **envelope.to_dict(),
+        "checkpoint_id": "p0-twin",
+        "decision_at_utc": "2026-07-23T04:30:00Z",
+        "bridge_sha256": "e" * 64,
+    })
+    insert_probability_envelope(conn, twin, created_at_utc=twin.decision_at_utc)
+    assert conn.execute(
+        "SELECT COUNT(*) FROM basket_probability_lineage_document"
+    ).fetchone()[0] == len(DEHYDRATED_LINEAGE_KEYS)
+
+
+def test_a_lineage_body_that_cannot_be_found_fails_closed() -> None:
+    """The body is the evidence; a reference nobody can resolve is not servable.
+
+    Handing a consumer the string ``@ref/...`` where it expected a document
+    would be the silent version of this, and ``production_io`` reads that
+    document to validate the model authority.
+    """
+
+    from bayes_basket_target.production_io import (  # noqa: PLC0415
+        load_materialized_probability_envelopes,
+    )
+
+    conn = _connection()
+    base = _envelope()
+    lineage = dict(base.lineage)
+    lineage["settlement_timezone"] = "Asia/Karachi"
+    lineage["taf_nwp_live_compatibility_json"] = json.dumps({"a": 1})
+    envelope = ProbabilityEnvelope.from_mapping(
+        {**base.to_dict(), "lineage": lineage}
+    )
+    insert_probability_envelope(
+        conn, envelope, created_at_utc=envelope.decision_at_utc
+    )
+    conn.execute("DELETE FROM basket_probability_lineage_document")
+    with pytest.raises(
+        ContractError, match="probability_lineage_document_missing"
+    ):
+        load_materialized_probability_envelopes(
+            conn,
+            station_id="RKPK",
+            event_date="2026-07-23",
+            evaluation_at_utc="2026-07-23T05:00:00Z",
+            required_probability_pathway=None,
+        )
+
+
+def test_a_row_written_before_dehydration_reads_back_unchanged() -> None:
+    """No migration: an old row carries no references and passes through."""
+
+    from bayes_basket_target.production_io import (  # noqa: PLC0415
+        load_materialized_probability_envelopes,
+        rehydrate_lineage_documents,
+    )
+
+    conn = _connection()
+    base = _envelope()
+    lineage = dict(base.lineage)
+    lineage["settlement_timezone"] = "Asia/Karachi"
+    lineage["taf_nwp_live_compatibility_json"] = json.dumps({"a": 1})
+    envelope = ProbabilityEnvelope.from_mapping(
+        {**base.to_dict(), "lineage": lineage}
+    )
+    # Write the pre-dehydration shape by hand, exactly as the old code did.
+    conn.execute(
+        "INSERT INTO basket_probability_envelope(envelope_id,stage,checkpoint_id,"
+        "station_id,event_date,settlement_timezone,decision_at_utc,fresh_until_utc,"
+        "bucket_ordinals_json,probabilities_json,posterior_version,posterior_sha256,"
+        "bridge_sha256,lineage_json,content_sha256,state,created_at)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            envelope.checkpoint_id, envelope.stage, envelope.checkpoint_id,
+            envelope.station_id, envelope.event_date, envelope.settlement_timezone,
+            envelope.decision_at_utc, envelope.fresh_until_utc,
+            json.dumps(dict(envelope.bucket_ordinals), ensure_ascii=False, sort_keys=True),
+            json.dumps(dict(envelope.probabilities), ensure_ascii=False, sort_keys=True),
+            envelope.posterior_version, envelope.posterior_sha256,
+            envelope.bridge_sha256,
+            json.dumps(dict(envelope.lineage), ensure_ascii=False, sort_keys=True),
+            envelope.content_sha256, "COMMITTED", envelope.decision_at_utc,
+        ),
+    )
+    assert rehydrate_lineage_documents(conn, lineage) == lineage
+    loaded = load_materialized_probability_envelopes(
+        conn,
+        station_id="RKPK",
+        event_date="2026-07-23",
+        evaluation_at_utc="2026-07-23T05:00:00Z",
+        required_probability_pathway=None,
+    )
+    assert dict(loaded[0].lineage) == dict(lineage)
+
+
+def test_the_history_body_rebuild_rehydrates_before_it_hashes() -> None:
+    """The bridge rebuilds envelope bodies without going through the loader.
+
+    ``basket_probability_bridge_history.envelope_json`` has been empty since
+    2026-08-26 -- the body lives in ``basket_probability_envelope`` and is
+    rebuilt from it, then hashed and checked against the sha the history row
+    has always carried.  That reader does not use
+    ``load_materialized_probability_envelopes``, so it has to do the same
+    rehydration the loader does; without it the rebuilt body hashes to
+    something else and every consumer of the bridge fails closed.  Ten
+    production_io tests caught exactly that.
+    """
+
+    from bayes_basket_target.probability_bridge import (  # noqa: PLC0415
+        history_envelope_payload,
+    )
+
+    conn = _connection()
+    base = _envelope()
+    lineage = dict(base.lineage)
+    lineage["settlement_timezone"] = "Asia/Karachi"
+    lineage["taf_nwp_live_compatibility_json"] = json.dumps(
+        {"archive_query_at_utc_by_system": {"ECMWF": "2026-07-23T00:00:00Z"}},
+        sort_keys=True,
+    )
+    envelope = ProbabilityEnvelope.from_mapping(
+        {**base.to_dict(), "lineage": lineage}
+    )
+    materialize_probability_bridge(
+        conn, envelope, created_at_utc=envelope.decision_at_utc
+    )
+    stored_json, stored_sha = conn.execute(
+        "SELECT envelope_json,envelope_content_sha256"
+        "  FROM basket_probability_bridge_history WHERE checkpoint_id=?",
+        (envelope.checkpoint_id,),
+    ).fetchone()
+    assert not stored_json, "the history row must not carry the body inline"
+    payload = history_envelope_payload(
+        conn,
+        checkpoint_id=envelope.checkpoint_id,
+        envelope_content_sha256=stored_sha,
+    )
+    assert payload["lineage"] == dict(lineage)
+    assert stored_sha == envelope.content_sha256

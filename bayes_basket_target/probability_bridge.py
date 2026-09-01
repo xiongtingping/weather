@@ -24,7 +24,11 @@ from typing import Any
 
 from .atomic_ledger import ledger_span
 from .contracts import ContractError, ProbabilityEnvelope, canonical_json, content_sha256, timestamp_lte
-from .materialization import MATERIALIZATION_SCHEMA, insert_probability_envelope
+from .materialization import (
+    MATERIALIZATION_SCHEMA,
+    insert_probability_envelope,
+    rehydrate_lineage_documents,
+)
 from .resource_bounds import ResourceBoundError, assert_connection_target_capacity, assert_process_memory_budget
 from .ssot import PROBABILITY_BRIDGE_DDL
 from .stages import STAGE_PRECEDENCE
@@ -309,7 +313,14 @@ def history_envelope_payload(
             "posterior_version": str(row[9]),
             "posterior_sha256": str(row[10]),
             "bridge_sha256": str(row[11]),
-            "lineage": json.loads(str(row[12])),
+            # Rehydrated: these readers rebuild the envelope from the table
+            # directly rather than through the loader, and the store keeps
+            # the large lineage documents once, referenced by hash.  Skipping
+            # it here would rebuild a body whose sha no longer matches the
+            # one the history row carries.
+            "lineage": rehydrate_lineage_documents(
+                conn, json.loads(str(row[12]))
+            ),
         }
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         raise ContractError("xsb_history_envelope_body_invalid") from exc
@@ -1182,7 +1193,14 @@ def _backfill_probability_bridges(
                 "posterior_version": row[9],
                 "posterior_sha256": row[10],
                 "bridge_sha256": row[11],
-                "lineage": json.loads(str(row[12])),
+                # Rehydrated: these readers rebuild the envelope from the table
+            # directly rather than through the loader, and the store keeps
+            # the large lineage documents once, referenced by hash.  Skipping
+            # it here would rebuild a body whose sha no longer matches the
+            # one the history row carries.
+            "lineage": rehydrate_lineage_documents(
+                conn, json.loads(str(row[12]))
+            ),
             })
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
             raise ContractError("xsb_backfill_envelope_invalid") from exc
