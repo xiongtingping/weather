@@ -1948,6 +1948,42 @@ def _resolve_target_remaining_budget() -> float:
     return float(runtime_config["target_remaining_budget_usdc"])
 
 
+def _group_scope_manifests_by_day_state(
+    manifests: Sequence[Mapping[str, Any]],
+) -> "list[tuple[str, list[dict[str, Any]]]]":
+    """Split one event day's manifests by the day state each scope is in.
+
+    ``event_day_state`` reads like a property of the event day and is not:
+    it is a property of the day AT A STATION, and the fleet spans every
+    timezone.  So for the hours around midnight one event date is genuinely
+    ``open`` at some stations and ``not_started`` at others -- measured
+    2026-08-31T23:45Z, 2026-09-01 was open at 32 stations and not started at
+    16 -- and a merge that demanded one state for the whole day fail-closed
+    the entire cycle every night.
+
+    Merging across those two is not an option: the merged document carries a
+    single ``event_day_state`` and downstream reads it, so one group's
+    stations would be described by the other's state.  They are separate
+    ingress passes over the same day, in a stable order so a cycle's work is
+    reproducible.
+    """
+
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for item in manifests:
+        if not isinstance(item, Mapping):
+            continue
+        grouped.setdefault(
+            str(item.get("event_day_state") or ""), []
+        ).append(dict(item))
+    # Open first: it is the day that can still trade, and a cycle that runs
+    # out of lease should have spent it there rather than on a day that has
+    # not begun.
+    return sorted(
+        grouped.items(),
+        key=lambda entry: (entry[0] != "open", entry[0]),
+    )
+
+
 def _merge_scope_manifests(
     manifests: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
@@ -8692,19 +8728,31 @@ class TargetProductionWorker:
         listing_days = {
             day for _station, day in self._listing_entry_scopes(as_of_utc=as_of_utc)
         }
-        with self._temporary_scope_manifest(
-            _merge_scope_manifests(day_scopes)
-        ) as refreshed_path:
-            return self._materialize_market_evidence_from_manifest(
-                activation,
-                manifest_path=refreshed_path,
-                # The point of the refresh is the snapshot the compile reads;
-                # an evidence-cache-only pass returns before writing it and
-                # would leave the loop compiling against the stamp it was
-                # already failing on.
-                full_materialization=True,
-                listing_day_pass=str(event_date) in listing_days,
-            )
+        # One pass per day state; see _group_scope_manifests_by_day_state.
+        # The refreshed snapshot the caller is waiting for belongs to the
+        # scopes that can still trade, so the open group's result is the one
+        # returned -- but a not-started group present in the same day still
+        # gets its evidence written rather than skipped.
+        results: list[dict[str, Any]] = []
+        for _day_state, group in _group_scope_manifests_by_day_state(
+            day_scopes
+        ):
+            with self._temporary_scope_manifest(
+                _merge_scope_manifests(group)
+            ) as refreshed_path:
+                results.append(
+                    self._materialize_market_evidence_from_manifest(
+                        activation,
+                        manifest_path=refreshed_path,
+                        # The point of the refresh is the snapshot the compile
+                        # reads; an evidence-cache-only pass returns before
+                        # writing it and would leave the loop compiling
+                        # against the stamp it was already failing on.
+                        full_materialization=True,
+                        listing_day_pass=str(event_date) in listing_days,
+                    )
+                )
+        return results[0]
 
     def _materialize_market_evidence(self, activation: Mapping[str, Any]) -> dict[str, Any]:
         return self._materialize_market_evidence_from_manifest(
@@ -14623,23 +14671,37 @@ class TargetProductionWorker:
                     as_of_utc=now,
                 )
                 current_day = str(selected_open_scope.get("event_date") or "")
-                with self._temporary_scope_manifest(
-                    _merge_scope_manifests([
-                        item for item in sweep_scopes
-                        if str(item.get("event_date") or "") == current_day
-                    ])
-                ) as current_scope_manifest_path:
-                    market_ingress = (
-                        self._materialize_market_evidence_from_manifest(
-                            activation,
-                            manifest_path=current_scope_manifest_path,
-                            full_materialization=bool(
-                                selected_open_scope[
-                                    "probability_evidence_fresh"
-                                ]
-                            ),
+                current_day_state = str(
+                    selected_open_scope.get("event_day_state") or ""
+                )
+                # Grouped by day state as well as by day: around midnight the
+                # same event date is open at some stations and not started at
+                # others, and one merged document can only describe one of
+                # those.  ``market_ingress`` is the selected scope's own
+                # group, so what the compile below reads is unchanged; the
+                # other group's evidence is still written.
+                current_ingress: dict[str, Any] | None = None
+                for day_state, group in _group_scope_manifests_by_day_state([
+                    item for item in sweep_scopes
+                    if str(item.get("event_date") or "") == current_day
+                ]):
+                    with self._temporary_scope_manifest(
+                        _merge_scope_manifests(group)
+                    ) as current_scope_manifest_path:
+                        ingress = (
+                            self._materialize_market_evidence_from_manifest(
+                                activation,
+                                manifest_path=current_scope_manifest_path,
+                                full_materialization=bool(
+                                    selected_open_scope[
+                                        "probability_evidence_fresh"
+                                    ]
+                                ),
+                            )
                         )
-                    )
+                    if current_ingress is None or day_state == current_day_state:
+                        current_ingress = ingress
+                market_ingress = current_ingress
                 evidence_materialized_at[current_day] = time.monotonic()
                 # Charter 48, one day at a time.  _merge_scope_manifests
                 # refuses to fuse across event days because everything
@@ -14684,30 +14746,39 @@ class TargetProductionWorker:
                         })
                         continue
                     try:
-                        with self._temporary_scope_manifest(
-                            _merge_scope_manifests(day_scopes)
-                        ) as listing_manifest_path:
-                            listing_evidence.append(
-                                self._materialize_market_evidence_from_manifest(
-                                    activation,
-                                    manifest_path=listing_manifest_path,
-                                    # Full, not evidence-cache-only.  The
-                                    # compile reads basket_official_ws_snapshot
-                                    # and full_materialization=False returns
-                                    # before writing it, so a listing day got
-                                    # fresh evidence and a snapshot left over
-                                    # from whenever it last had a full pass --
-                                    # measured 47 seconds behind the current
-                                    # day's, against a 60-second lease, which
-                                    # is most of production_quote_expired on
-                                    # those scopes.
-                                    full_materialization=True,
-                                    listing_day_pass=True,
+                        # A listed day straddles midnight like any other, so
+                        # it too is grouped by day state before merging.
+                        groups = _group_scope_manifests_by_day_state(
+                            day_scopes
+                        )
+                        for _state, group in groups:
+                            with self._temporary_scope_manifest(
+                                _merge_scope_manifests(group)
+                            ) as listing_manifest_path:
+                                listing_evidence.append(
+                                    self.
+                                    _materialize_market_evidence_from_manifest(
+                                        activation,
+                                        manifest_path=listing_manifest_path,
+                                        # Full, not evidence-cache-only.  The
+                                        # compile reads
+                                        # basket_official_ws_snapshot and
+                                        # full_materialization=False returns
+                                        # before writing it, so a listing day
+                                        # got fresh evidence and a snapshot
+                                        # left over from whenever it last had
+                                        # a full pass -- measured 47 seconds
+                                        # behind the current day's, against a
+                                        # 60-second lease, which is most of
+                                        # production_quote_expired on those
+                                        # scopes.
+                                        full_materialization=True,
+                                        listing_day_pass=True,
+                                    )
                                 )
-                            )
-                            evidence_materialized_at[listing_day] = (
-                                time.monotonic()
-                            )
+                        evidence_materialized_at[listing_day] = (
+                            time.monotonic()
+                        )
                     except Exception as exc:  # noqa: BLE001 -- observational
                         listing_evidence.append({
                             "event_date": listing_day,
