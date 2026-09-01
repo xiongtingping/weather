@@ -148,23 +148,41 @@ def build_portfolio_inventory(
     reserved = float(pool[1]) if pool else 0.0
 
     placeholders = ",".join("?" for _ in _OPEN_CYCLE_STATES)
+    # Two questions, asked separately, because they are answered at wildly
+    # different scales.  Every bound below is computed from cycles carrying
+    # open notional; the open-cycle count is reported and gates nothing.
+    #
+    # Asking them together -- one outer join over every open cycle, grouped
+    # -- made the cheap number set the price of the expensive one.  Measured
+    # 2026-09-01: 52,005 open cycles, of which *none* carried an intent, and
+    # the aggregate cost 757ms.  The forward sweep calls this once per scope,
+    # so that was ~25 seconds a cycle spent grouping fifty-two thousand rows
+    # to arrive at an empty exposure map.  Driven from the intents instead it
+    # is 46ms, and the count is a count.
+    open_cycles = int(
+        conn.execute(
+            "SELECT COUNT(*) FROM basket_target_execution_cycles "
+            f"WHERE state IN ({placeholders})",
+            _OPEN_CYCLE_STATES,
+        ).fetchone()[0]
+        or 0
+    )
     rows = conn.execute(
         "SELECT c.station_id,c.event_date,c.settlement_timezone,"
-        "COALESCE(SUM(i.requested_notional_usdc),0) "
-        "FROM basket_target_execution_cycles AS c "
-        "LEFT JOIN basket_target_order_intents AS i "
-        "  ON i.cycle_id=c.cycle_id AND i.state IN ('prepared','submitted') "
-        f"WHERE c.state IN ({placeholders}) "
-        "GROUP BY c.cycle_id",
+        "SUM(i.requested_notional_usdc) "
+        "FROM basket_target_order_intents AS i "
+        "JOIN basket_target_execution_cycles AS c "
+        "  ON c.cycle_id=i.cycle_id "
+        "WHERE i.state IN ('prepared','submitted') "
+        f"AND c.state IN ({placeholders}) "
+        "GROUP BY i.cycle_id",
         _OPEN_CYCLE_STATES,
     ).fetchall()
 
     by_station: dict[str, float] = {}
     by_window: dict[str, float] = {}
     by_block: dict[str, float] = {}
-    open_cycles = 0
     for station_id, event_date, settlement_timezone, notional in rows:
-        open_cycles += 1
         value = float(notional or 0.0)
         if value <= 0.0:
             continue
