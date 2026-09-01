@@ -242,3 +242,72 @@ def test_boot_seed_caps_the_lookback(daemon) -> None:
         stagger_sec=330.0,
     )
     assert due >= 1000.0 - 86_400.0
+
+
+def test_a_short_contract_lane_outranks_a_long_one_it_is_behind_in_seconds(
+    daemon,
+) -> None:
+    """Rank by intervals late, because that is the contract being broken.
+
+    Measured 2026-09-01: ``pr12_awc_observation`` -- whose whole job is to
+    canonically identify a METAR so P1 can root on it -- went eight hours
+    without completing on a ten-minute clock, while hourly capture lanes that
+    were fewer rounds behind ranked ahead of it on raw seconds.  Every P1
+    committed in that window is permanently without its truth-revision sha,
+    and its station-day is refused by the atomic-fact gate until a newer P1
+    carries one.
+    """
+
+    intervals = {
+        name: interval for name, _script, interval, _timeout
+        in daemon.HOSTED_SWEEPS
+    }
+    now = 10_000_000.0
+    behind_seconds = 8 * 3600.0
+    # Both exactly eight hours late: the ten-minute lane has missed 48 rounds,
+    # the hourly one 8.
+    next_due = {
+        "pr12_awc_observation": now - behind_seconds,
+        "capture_jma_msm_forward": now - behind_seconds,
+    }
+    due = daemon.due_hosted_sweeps(now_mono=now, next_due=next_due)
+    ranked = {name: overdue for overdue, _i, name, _s, _t in due}
+    assert ranked["pr12_awc_observation"] == pytest.approx(
+        behind_seconds / intervals["pr12_awc_observation"]
+    )
+    assert ranked["capture_jma_msm_forward"] == pytest.approx(
+        behind_seconds / intervals["capture_jma_msm_forward"]
+    )
+    assert (
+        ranked["pr12_awc_observation"] > ranked["capture_jma_msm_forward"]
+    )
+    # Both write the SSOT, so only one may start -- and it is the identity
+    # lane, which under the old seconds rule it would not have been when the
+    # capture lane had been idle marginally longer.
+    admitted = daemon.admissible_hosted_sweeps(due, running_names=[])
+    assert [item[2] for item in admitted] == ["pr12_awc_observation"]
+
+
+def test_a_member_not_yet_due_is_not_in_the_queue(daemon) -> None:
+    now = 10_000_000.0
+    due = daemon.due_hosted_sweeps(
+        now_mono=now,
+        next_due={
+            "pr12_awc_observation": now + 1.0,
+            "maker_shadow_probe": now - 1.0,
+        },
+    )
+    assert [item[2] for item in due] == ["maker_shadow_probe"]
+
+
+def test_a_running_member_is_skipped(daemon) -> None:
+    now = 10_000_000.0
+    due = daemon.due_hosted_sweeps(
+        now_mono=now,
+        next_due={
+            "pr12_awc_observation": now - 3600.0,
+            "maker_shadow_probe": now - 3600.0,
+        },
+        skip_names=["pr12_awc_observation"],
+    )
+    assert [item[2] for item in due] == ["maker_shadow_probe"]

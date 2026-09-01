@@ -442,6 +442,40 @@ def seed_hosted_sweep_clock(
     return now_mono - overdue
 
 
+def due_hosted_sweeps(
+    *,
+    now_mono: float,
+    next_due: "Mapping[str, float]",
+    skip_names: "Iterable[str]" = (),
+    sweeps: "Sequence[tuple[str, str, float, float]]" = (),
+) -> "list[tuple[float, int, str, str, float]]":
+    """Every member past its due time, ranked by intervals late.
+
+    Intervals, not seconds.  Those are different questions and only the first
+    is about the contract a member was given: a lane on a ten-minute clock
+    that is eight hours behind has missed forty-eight rounds, while an hourly
+    capture eight hours behind has missed eight, and in raw seconds the two
+    look alike.  The SSOT is an exclusive write domain and ten of the thirteen
+    members write it, so the queue drains one per turn and this ordering is
+    what decides who waits.
+    """
+
+    return [
+        (
+            (now_mono - next_due[name]) / max(float(interval_sec), 1.0),
+            index,
+            name,
+            script,
+            timeout_sec,
+        )
+        for index, (name, script, interval_sec, timeout_sec)
+        in enumerate(sweeps or HOSTED_SWEEPS)
+        if name in next_due
+        and now_mono >= next_due[name]
+        and name not in set(skip_names)
+    ]
+
+
 def admissible_hosted_sweeps(
     due: "list[tuple[float, int, str, str, float]]",
     *,
@@ -455,6 +489,11 @@ def admissible_hosted_sweeps(
     ``(overdue, index, name, script, timeout)`` shape the scheduler sorts on,
     so the ordering rule -- longest overdue wins, list order breaks ties --
     stays in one place.
+
+    ``overdue`` is whatever the caller ranks by; the scheduler passes how many
+    of the member's own intervals it is late, so a ten-minute lane and an
+    hourly one are compared on their contracts rather than on raw seconds.
+    Nothing here depends on the unit.
     """
 
     # Materialized once: the caller may pass a view or a generator, and
@@ -4025,13 +4064,35 @@ def main() -> int:
                 # settled_day_cycle_close came due at boot+510s and had still
                 # not run 36 minutes later while index 0 ran repeatedly.
                 # Ties keep list order, so the choice stays deterministic.
-                due = [
-                    (now_mono - next_hosted_sweep[name], index, name, script, timeout_sec)
-                    for index, (name, script, _interval_sec, timeout_sec)
-                    in enumerate(HOSTED_SWEEPS)
-                    if now_mono >= next_hosted_sweep[name]
-                    and name not in hosted_sweep_futures
-                ]
+                # Ranked by how many of its own intervals a member is late,
+                # not by how many seconds.  Those are different questions and
+                # only the first is about the contract: a lane on a ten-minute
+                # clock that is eight hours behind has missed forty-eight
+                # rounds, while an hourly capture eight hours behind has
+                # missed eight, and in absolute seconds they look alike.  The
+                # SSOT is an exclusive write domain and ten of the thirteen
+                # members write it, so the queue drains one per turn and the
+                # ordering decides who waits.
+                #
+                # Measured 2026-09-01: pr12_awc_observation, whose whole job
+                # is to canonically identify a METAR so P1 can root on it,
+                # went from 2026-08-31T23:25 to 07:19 without completing --
+                # eight hours on a ten-minute contract, 48 rounds -- while
+                # hourly capture lanes sat 7.4 and 6.8 rounds late and ranked
+                # ahead of it on raw seconds. Every P1 committed in that
+                # window is permanently without its truth-revision sha,
+                # because the envelope table is append-only, and its
+                # station-day is refused by the atomic-fact gate until a
+                # newer P1 carries one: fifteen stations blocked on
+                # target_atomic_lineage_incomplete in a single cycle.
+                #
+                # The rest of the rule is untouched -- list order still breaks
+                # ties, and admission is still by write domain.
+                due = due_hosted_sweeps(
+                    now_mono=now_mono,
+                    next_due=next_hosted_sweep,
+                    skip_names=hosted_sweep_futures,
+                )
                 # One slot now starts every due sweep whose database is free,
                 # not just the most overdue one.  Twelve members become due at
                 # about seven per ten minutes while the lane served one per
