@@ -6705,6 +6705,102 @@ class TargetProductionWorker:
         )
         return self._listing_scope_turn
 
+    def _retire_stranded_prepared_intents(
+        self,
+        *,
+        as_of_utc: str,
+        limit: int = 40,
+    ) -> dict[str, Any]:
+        """Retire prepared intents no cycle will ever submit.
+
+        submit_prepared_intents only ever looks at the intents its own cycle
+        just created -- it selects on cycle_id -- so an intent that misses
+        that one window is never offered to the exchange again. And a
+        prepared intent blocks its own bucket and token: can_submit_next_order
+        counts it as pending, so the bucket cannot trade while it sits there.
+        Measured 2026-09-01: two intents stranded that way, one on a day still
+        open and one on a listing day, both buckets shut.
+
+        Nothing here is deleted. The intent is marked cancelled -- the state
+        supersession and settled-day close already use for an intent that
+        never became an order -- so the audit trail keeps it and the bucket
+        is free.
+
+        Only an intent that cannot still be submitted this cycle: its quote
+        has expired, so its limit price describes a market hours gone.  An
+        intent whose cycle is current is left alone, and anything that
+        reached the exchange -- any state past prepared, or a reconciliation
+        row -- is never touched from here.
+        """
+
+        receipt: dict[str, Any] = {
+            "schema": "bayes_basket_target_intent_retire_v1",
+            "state": "no_stranded_intents",
+            "examined": 0,
+            "retired": 0,
+            "retired_scopes": [],
+            "places_orders": False,
+            "calls_order_gateway": False,
+            "orders_submitted": 0,
+        }
+        if self.commit_conn is None:
+            receipt["state"] = "not_attempted"
+            return receipt
+        try:
+            rows = self.commit_conn.execute(
+                "SELECT i.order_intent_id, i.bucket, cy.station_id,"
+                "       cy.event_date, v.quote_expires_at"
+                " FROM basket_target_order_intents i"
+                " JOIN basket_target_execution_cycles cy"
+                "   ON cy.cycle_id = i.cycle_id"
+                " LEFT JOIN basket_target_execution_version_vectors v"
+                "   ON v.order_intent_id = i.order_intent_id"
+                " LEFT JOIN basket_target_order_reconciliations r"
+                "   ON r.order_intent_id = i.order_intent_id"
+                " WHERE i.state='prepared' AND r.order_intent_id IS NULL"
+                " ORDER BY i.created_at LIMIT ?",
+                (int(limit),),
+            ).fetchall()
+        except sqlite3.Error as exc:
+            receipt["state"] = "blocked_fail_closed"
+            receipt["reason"] = f"{type(exc).__name__}:{exc}"
+            return receipt
+        if not rows:
+            return receipt
+        receipt["examined"] = len(rows)
+        stranded: list[tuple[str, str, str, str]] = []
+        for intent_id, bucket, station, day, expires_at in rows:
+            expiry = str(expires_at or "")
+            # No recorded expiry is not a licence to retire: an intent whose
+            # freshness cannot be read is left for a reader that can.
+            if not expiry or expiry > as_of_utc:
+                continue
+            stranded.append((str(intent_id), str(bucket), str(station), str(day)))
+        if not stranded:
+            receipt["state"] = "all_within_quote_lease"
+            return receipt
+        try:
+            with _writer_transaction(
+                self.commit_conn,
+                savepoint="basket_target_retire_stranded_intents",
+            ):
+                for intent_id, bucket, station, day in stranded:
+                    self.commit_conn.execute(
+                        "UPDATE basket_target_order_intents"
+                        " SET state='cancelled'"
+                        " WHERE order_intent_id=? AND state='prepared'",
+                        (intent_id,),
+                    )
+                    receipt["retired_scopes"].append(
+                        f"{station}|{day}|{bucket}"
+                    )
+            receipt["retired"] = len(stranded)
+            receipt["state"] = "committed"
+        except Exception as exc:  # noqa: BLE001 -- observational lane
+            receipt["state"] = "blocked_fail_closed"
+            receipt["reason"] = f"{type(exc).__name__}:{exc}"[:160]
+        return receipt
+
     def _reconcile_unresolved_intents(
         self,
         *,
@@ -13933,6 +14029,19 @@ class TargetProductionWorker:
                 "reason": f"{type(exc).__name__}:{exc}"[:160],
                 "closed": 0,
             }
+        # And retire the ones no cycle will ever submit, which would
+        # otherwise hold their buckets shut indefinitely.
+        try:
+            intent_retire = self._retire_stranded_prepared_intents(
+                as_of_utc=utc_now(),
+            )
+        except Exception as exc:  # noqa: BLE001 -- observational lane
+            intent_retire = {
+                "schema": "bayes_basket_target_intent_retire_v1",
+                "state": "blocked_fail_closed",
+                "reason": f"{type(exc).__name__}:{exc}"[:160],
+                "retired": 0,
+            }
         self._mark("intent_reconcile")
         scope = activation.get("target_scope")
         if not isinstance(scope, Mapping):
@@ -15410,6 +15519,7 @@ class TargetProductionWorker:
                 "candidates": results,
                 "listing_scope_turn": serve_listing,
                 "intent_reconcile": intent_reconcile,
+                "intent_retire": intent_retire,
                 "quote_evidence_refresh": {
                     "interval_seconds": QUOTE_EVIDENCE_REFRESH_SECONDS,
                     # Counted, not inferred.  A refresh loop reports how many
