@@ -6118,3 +6118,38 @@ def test_the_native_merge_lock_does_not_depend_on_who_made_the_pool(
     finally:
         worker._official_native_capture_pool = None
         worker.close()
+
+
+def test_the_p0m_replay_budget_goes_to_the_day_p0m_governs() -> None:
+    """Each event day has one stage that governs it.
+
+    The furthest day has only P0, because nothing else can open its position.
+    The day after it is shaped by P0-M, the TAF confirmation that sizes it
+    before it opens.  The day already open belongs to P1, driven by arriving
+    observations.
+
+    The P0-M replay budget is four scopes a cycle, and the loop used to walk
+    (station, day) alphabetically -- so for any station the *current* day came
+    first and spent the budget before the forward day was reached.  Measured
+    2026-09-01 16:05: twelve scopes deferred on budget, nine of them the
+    current day, and the single write the budget bought went to the current
+    day, refining a book P1 was about to restate anyway.
+    """
+
+    order = production_worker_module._p0m_scope_day_order
+    days = [
+        "2026-08-31",  # settled backlog
+        "2026-09-01",  # open -- P1's day
+        "2026-09-02",  # not started -- P0-M's day
+        "2026-09-03",  # furthest -- P0's day
+    ]
+    assert sorted(days, key=order) == [
+        "2026-09-03", "2026-09-02", "2026-09-01", "2026-08-31",
+    ]
+    # Station breaks ties inside one day, so the walk stays deterministic.
+    scopes = [("KLGA", "2026-09-01"), ("AAAA", "2026-09-02"), ("ZZZZ", "2026-09-02")]
+    assert sorted(scopes, key=lambda item: (order(item[1]), item[0])) == [
+        ("AAAA", "2026-09-02"), ("ZZZZ", "2026-09-02"), ("KLGA", "2026-09-01"),
+    ]
+    # An empty or malformed date sorts last rather than raising.
+    assert order("") == ""

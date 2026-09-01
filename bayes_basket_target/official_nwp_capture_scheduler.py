@@ -398,8 +398,59 @@ def registry_capture_scopes(
                 ),
                 "model_ready": ready_at <= now,
             }))
-    ordered.sort(key=lambda pair: pair[0])
-    scopes = [scope for _, scope in ordered]
+    # Interleaved by forward distance, not ordered by nearest day.
+    #
+    # The sort key above puts the *soonest* local day first, which is exactly
+    # backwards for a strategy that opens its position early.  A d0 capture
+    # refreshes a book that already has a P0; a d2 capture is the only thing
+    # that can open one at all -- there is no other producer of that day's
+    # first probability.  Measured 2026-09-01 on a 267-scope catalogue at 20
+    # scopes a poll: d0's 120 scopes were served in the first 50 minutes,
+    # d1's 135 in the next 70, and d2's 12 -- the entry-critical ones -- last,
+    # at 120 to 130 minutes.  And they stayed last once ready, because the
+    # day-start tiebreak never stops being the latest.
+    #
+    # Reversing it into day blocks would only move the starvation: measured
+    # on the same catalogue, d2 reaches 0 minutes and d0 falls to 70-130.
+    # So the days are interleaved instead, each advancing through its own
+    # queue at a stride set by how far forward it is -- the furthest day
+    # densest.  On that catalogue every day now starts at minute 0, d2 is
+    # complete inside ten minutes, and d0 goes from one 50-minute burst
+    # followed by 80 idle minutes to being refreshed across the whole sweep,
+    # which is what a lane whose job is "the newest run" wants anyway.
+    #
+    # Readiness still outranks everything: a scope whose run has not
+    # published cannot be captured, whatever it would be worth.
+    day_starts: dict[str, Any] = {}
+    for key, scope in ordered:
+        day_starts.setdefault(str(scope["event_date"]), key[1])
+    # Rank 0 is the furthest listed day.  Ranks are dense, so a catalogue
+    # holding one day behaves exactly as it did before.
+    forward_rank = {
+        event_date: index
+        for index, event_date in enumerate(
+            sorted(day_starts, key=lambda name: day_starts[name], reverse=True)
+        )
+    }
+    within_day: dict[str, int] = {}
+    interleaved: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+    for key, scope in sorted(ordered, key=lambda pair: pair[0]):
+        event_date = str(scope["event_date"])
+        rank = forward_rank[event_date]
+        position = within_day.get(event_date, 0)
+        within_day[event_date] = position + 1
+        interleaved.append((
+            (
+                key[0],                 # unready last, unchanged
+                position * (rank + 1),  # the furthest day advances fastest
+                rank,                   # ties go to the furthest day
+                key[2],                 # then the station order it had
+                key[3],                 # then the freshest lead
+            ),
+            scope,
+        ))
+    interleaved.sort(key=lambda pair: pair[0])
+    scopes = [scope for _, scope in interleaved]
     return scopes[: max(0, min(int(max_scopes), MAX_DISCOVERED_SCOPES))]
 
 

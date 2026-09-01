@@ -1103,3 +1103,93 @@ def test_a_single_mapping_lead_still_resolves() -> None:
         scheduler.OFFICIAL_ARCHIVE_SCOPE_CONTRACTS = original
 
     assert runs["LEGACY_SYSTEM"].hour == 6
+
+
+def test_capture_order_serves_the_furthest_day_first_without_starving_today(
+) -> None:
+    """The entry decision leads, and every day still advances every poll.
+
+    A d0 capture refreshes a book that already has a P0; a d2 capture is the
+    only thing that can open one at all, because nothing else produces that
+    day's first probability.  The sort used to put the *soonest* local day
+    first, which is exactly backwards for a strategy that enters early.
+
+    Measured 2026-09-01 on the live 267-scope catalogue at 20 scopes a poll:
+    d0's 120 scopes were served in the first 50 minutes, d1's 135 in the next
+    70, and d2's 12 -- the entry-critical ones -- last, at 120 to 130 minutes.
+    Reversing into day blocks only moved the starvation the other way (d0 fell
+    to 70-130), so the days are interleaved by forward distance instead.
+    """
+
+    rows = []
+    stations = [f"S{index:03d}" for index in range(40)]
+    # d0 is open, d1 and d2 have not started; all three are inside 72 hours.
+    for day in ("2026-07-30", "2026-07-31", "2026-08-01"):
+        for station in stations:
+            rows.append({
+                "station_id": station,
+                "event_date": day,
+                "settlement_timezone": "UTC",
+                "outcome": "mid",
+                "source_eligible": 1,
+                "market_active": 1,
+                "market_accepting_orders": 1,
+            })
+    scopes = scheduler.registry_capture_scopes(
+        {"rows": rows},
+        as_of_utc="2026-07-30T16:00:00Z",
+    )
+    ready = [scope for scope in scopes if scope.get("model_ready")]
+    assert ready, "the fixture must contain ready scopes to order"
+
+    first_position: dict[str, int] = {}
+    last_position: dict[str, int] = {}
+    for index, scope in enumerate(ready):
+        day = str(scope["event_date"])
+        first_position.setdefault(day, index)
+        last_position[day] = index
+    days = sorted(first_position)
+    assert len(days) >= 2, "the fixture must span more than one day"
+
+    # Every day is under way from the very front of the sweep -- none is held
+    # back in a block behind another day.
+    poll = 20
+    for day in days:
+        assert first_position[day] < poll, (
+            f"{day} does not appear until position {first_position[day]};"
+            " a day served in a block starves while another day drains"
+        )
+    # And the furthest day finishes first, because it is the one that opens.
+    furthest, nearest = days[-1], days[0]
+    assert last_position[furthest] < last_position[nearest], (
+        f"{furthest} finishes at {last_position[furthest]} and {nearest} at"
+        f" {last_position[nearest]} -- the entry-critical day must not be last"
+    )
+
+
+def test_an_unready_scope_still_sorts_behind_every_ready_one() -> None:
+    """Readiness outranks worth: an unpublished run cannot be captured."""
+
+    rows = []
+    for day in ("2026-07-30", "2026-08-01"):
+        rows.append({
+            "station_id": "S000",
+            "event_date": day,
+            "settlement_timezone": "UTC",
+            "outcome": "mid",
+            "source_eligible": 1,
+            "market_active": 1,
+            "market_accepting_orders": 1,
+        })
+    scopes = scheduler.registry_capture_scopes(
+        {"rows": rows},
+        as_of_utc="2026-07-30T16:00:00Z",
+    )
+    seen_unready = False
+    for scope in scopes:
+        if not scope.get("model_ready"):
+            seen_unready = True
+            continue
+        assert not seen_unready, (
+            "a ready scope was ordered behind an unready one"
+        )

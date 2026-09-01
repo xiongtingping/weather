@@ -2770,6 +2770,19 @@ def _shift_window(
     return shifted
 
 
+def _p0m_scope_day_order(event_date: Any) -> str:
+    """Sort token putting the furthest event day first.
+
+    Dates are ISO, so descending lexical order is descending chronological
+    order.  Inverting each character keeps the comparison a plain string sort
+    while reversing its direction, which is cheaper and less error-prone than
+    parsing a date per scope in a 389-scope loop.
+    """
+
+    text = str(event_date or "")
+    return "".join(chr(0x10FFFD - ord(char)) for char in text)
+
+
 class TargetProductionWorker:
     """Resident target compiler and target-local no-live ledger writer."""
 
@@ -11227,7 +11240,33 @@ class TargetProductionWorker:
         shadow_errors: list[dict[str, str]] = []
         replays_this_cycle = 0
         replays_deferred: list[str] = []
-        for (station, day), captures in sorted(captures_by_scope.items()):
+        # Furthest event day first, then station.
+        #
+        # The replay budget is four scopes a cycle and this loop used to walk
+        # (station, day) alphabetically, so for any station the *current* day
+        # came before the forward one and spent the budget first.  Measured
+        # 2026-09-01 16:05: twelve scopes deferred on budget -- nine of them
+        # the current day, three the forward one -- and the single write the
+        # budget bought went to the current day.
+        #
+        # That is the wrong day for this stage.  Each event day has one stage
+        # that governs it: the furthest day has only P0, because nothing else
+        # can open its position; the day after that is shaped by P0-M, the
+        # TAF confirmation that sizes it before it opens; and the day already
+        # open is P1's, driven by arriving observations.  A P0-M replay spent
+        # on the open day refines a book P1 is about to restate anyway, while
+        # the forward day -- the one P0-M actually governs -- waits.
+        #
+        # Descending date puts the forward days first and the settled backlog
+        # last, which is also where it belongs: those are skipped above
+        # before anything is read.
+        for (station, day), captures in sorted(
+            captures_by_scope.items(),
+            key=lambda item: (
+                _p0m_scope_day_order(item[0][1]),
+                item[0][0],
+            ),
+        ):
             try:
                 station_artifacts = [
                     item
