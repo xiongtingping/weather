@@ -11031,6 +11031,28 @@ class TargetProductionWorker:
                         revision.source_object_sha256 in seen_revisions
                         for revision in revisions
                     ):
+                        # Only where trading can still happen.  A settled
+                        # day's base never moves again and nobody prices it,
+                        # so re-confirming it buys nothing -- and the backlog
+                        # drains oldest first, so without this the whole
+                        # budget goes to history: the first cycle spent all
+                        # four on 08-24 through 08-27, days closed for a
+                        # week.
+                        try:
+                            replay_day_state = event_day_window(
+                                day,
+                                as_of_utc=as_of_utc,
+                                target_timezone=root.settlement_timezone,
+                            )["state"]
+                        except Exception:  # noqa: BLE001 -- unreadable is not replayable
+                            replay_day_state = "closed"
+                        if replay_day_state not in {"open", "not_started"}:
+                            receipts.append(self._p0m_no_op_receipt(
+                                station_id=station,
+                                event_date=day,
+                                state="REPLAY_SKIPPED_SETTLED_DAY",
+                            ))
+                            continue
                         if replays_this_cycle >= MAX_P0M_REPLAYS_PER_CYCLE:
                             replays_deferred.append(f"{station}|{day}")
                             receipts.append(self._p0m_no_op_receipt(
