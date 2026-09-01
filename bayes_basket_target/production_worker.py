@@ -15560,10 +15560,19 @@ class TargetProductionWorker:
                             )[:200],
                             "skipped_scope_count": (
                                 (refresh_receipt or {}).get(
+                                    "snapshot_skipped_scope_count"
+                                )
+                                if (refresh_receipt or {}).get(
+                                    "snapshot_skipped_scope_count"
+                                ) is not None
+                                else (refresh_receipt or {}).get(
                                     "skipped_scope_count"
                                 )
                             ),
                         })
+                        refresh_wrote = str(
+                            (refresh_receipt or {}).get("state") or ""
+                        ) == "committed"
                         now = utc_now()
                         # Did it actually renew anything?  A refresh that
                         # cannot -- the day has no fresh scope manifest to
@@ -15582,10 +15591,28 @@ class TargetProductionWorker:
                         # refresh for every one of them.  The station's own
                         # expiry is what decides whether *it* still needs a
                         # refresh, and it is re-read above.
+                        #
+                        # And only when the pass did not write.  A refresh
+                        # that commits and still leaves the expiry where it
+                        # was has not failed -- it has restated the newest
+                        # book the publisher has, which republishes every
+                        # 60-100 seconds and so is often the same generation
+                        # twice running.  Reading that as a dead day disabled
+                        # the day's refresh over an unremarkable republish
+                        # gap: measured 2026-09-01 04:55, three passes, all
+                        # three committed with no scope skipped, the third
+                        # landing between generations -- and ten scopes
+                        # behind it died on production_quote_expired.  The
+                        # attempt cap is what bounds a genuinely dead day
+                        # now; this flag is for a pass that wrote nothing.
                         renewed_day = self._scope_day_quote_expiry(day)
-                        if day_expiry_before is not None and (
-                            renewed_day is None
-                            or renewed_day <= day_expiry_before
+                        if (
+                            not refresh_wrote
+                            and day_expiry_before is not None
+                            and (
+                                renewed_day is None
+                                or renewed_day <= day_expiry_before
+                            )
                         ):
                             refresh_ineffective_days.add(day)
                         scope_quote_expiry[(station, day)] = (

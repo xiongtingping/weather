@@ -5847,3 +5847,90 @@ def test_p0m_scope_shape_runs_without_an_instance(tmp_path: Path) -> None:
     assert len(shape["roots"]) == 2
     # The base is the latest P0, not the last one before some TAF.
     assert isinstance(shape["seen_revisions"], set)
+
+
+def _ws_snapshot_row(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    quote_expires_at: str,
+) -> None:
+    """One quote generation for a station-day, expiry only."""
+
+    conn.execute(
+        "INSERT INTO basket_official_ws_snapshot("
+        "snapshot_id,market_id,station_id,event_date,settlement_timezone,"
+        "sequence,observed_at,quote_version,quote_observed_at,"
+        "quote_expires_at,quote_freshness_policy_sha256,quote_source,"
+        "inventory_version,order_state_version,remaining_budget_usdc,"
+        "buckets_json,cash_phase_input_json,content_sha256,state,created_at"
+        ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            f"snap_{station_id}_{quote_expires_at}",
+            f"market_{station_id}",
+            station_id,
+            event_date,
+            "UTC",
+            0,
+            quote_expires_at,
+            "qv",
+            quote_expires_at,
+            quote_expires_at,
+            "a" * 64,
+            "OFFICIAL_CLOB_WS",
+            "iv",
+            "ov",
+            0.0,
+            "[]",
+            "{}",
+            "b" * 64,
+            "COMMITTED",
+            quote_expires_at,
+        ),
+    )
+
+
+def test_quote_expiry_trigger_reads_the_station_not_the_fleet(
+    tmp_path: Path,
+) -> None:
+    """The refresh trigger must ask the lease the compile fails on.
+
+    ``load_production_market_snapshot`` refuses this station-day's newest
+    quote when the evaluation instant is past its expiry, so the trigger that
+    decides whether to re-materialize has to read the same thing.  Read as a
+    fleet maximum, one station holding a fresh book told every other station
+    of that day that it had one -- and a station whose own book was hours old
+    never asked for a refresh at all.
+    """
+
+    db = tmp_path / "target.db"
+    with sqlite3.connect(db) as conn:
+        apply_production_ssot_schema(conn)
+        _ws_snapshot_row(
+            conn,
+            station_id="FRESH",
+            event_date="2026-09-01",
+            quote_expires_at="2026-09-01T12:00:00.000Z",
+        )
+        _ws_snapshot_row(
+            conn,
+            station_id="STALE",
+            event_date="2026-09-01",
+            quote_expires_at="2026-09-01T03:00:00.000Z",
+        )
+    worker = TargetProductionWorker(db)
+    try:
+        fleet = worker._scope_day_quote_expiry("2026-09-01")
+        fresh = worker._scope_day_quote_expiry("2026-09-01", "FRESH")
+        stale = worker._scope_day_quote_expiry("2026-09-01", "STALE")
+        assert fleet is not None and fresh is not None and stale is not None
+        # Without a station the answer is the fleet's, which is what the
+        # other caller -- "did that pass write anything" -- is asking.
+        assert fleet == fresh
+        # With one it is the station's own, and the two differ by nine hours
+        # here: that gap is the whole defect.
+        assert stale < fresh
+        assert worker._scope_day_quote_expiry("2026-09-01", "ABSENT") is None
+    finally:
+        worker.close()
