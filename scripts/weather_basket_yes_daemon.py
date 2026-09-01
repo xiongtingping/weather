@@ -180,6 +180,27 @@ TARGET_WAL_REOPEN_REASONS = (
     "target_database_wal_checkpoint_busy",
     "target_database_wal_bytes_exceeded_after_checkpoint",
 )
+# Resource bounds that a later cycle can find cleared, and which therefore
+# must not survive as a permanent state.
+#
+# The writer is opened once, before the loop, and a failure there sets
+# ``commit_error`` on the worker for the life of the process: every cycle
+# afterwards publishes ``blocked_fail_closed`` and nothing retries.  Measured
+# 2026-09-01: free disk dipped under the 512 MiB floor at 12:13Z, the open
+# failed, and production stayed fail-closed for twenty-six minutes with 23 GB
+# free and the guard passing when asked directly.  Only a restart cleared it.
+#
+# Each of these clears on its own: free space is released, a checkpoint
+# truncates the WAL, and the byte ceiling clears when it is raised -- which
+# happened twice on 2026-09-01 and needed a restart each time.
+# ``target_resource_guard_shared_live_database`` is deliberately absent: it is
+# a misconfiguration, never transient, and retrying it would bury the one
+# blocker an operator has to see.
+TARGET_RESOURCE_REOPEN_REASONS = (
+    "target_database_min_free_space_guard",
+    "target_database_wal_bytes_exceeded",
+    "target_database_bytes_exceeded",
+)
 TARGET_TAF_POLL_INTERVAL_SEC = 60.0
 TARGET_NWP_POLL_INTERVAL_SEC = 600.0
 
@@ -962,6 +983,15 @@ def target_result_has_recoverable_sqlite_io_error(
         if (
             "disk i/o error" in reason
             or any(marker in reason for marker in TARGET_WAL_REOPEN_REASONS)
+        ):
+            return True
+        # A writer that could not be opened at all is the same class of fault
+        # and has the same remedy -- rebuild the handles -- but it arrives by
+        # a different door: the open happens once, before the loop, so nothing
+        # in the cycle ever retries it.  Only the transient bounds qualify;
+        # see TARGET_RESOURCE_REOPEN_REASONS.
+        if "open_failed" in reason and any(
+            marker in reason for marker in TARGET_RESOURCE_REOPEN_REASONS
         ):
             return True
     return False

@@ -643,3 +643,53 @@ def test_serving_arithmetic_stamp_is_inert_without_a_writer() -> None:
     assert daemon._stamp_serving_arithmetic(
         None, started_at_utc="2026-08-26T10:00:00.000Z"
     ) == {"state": "no_writer", "stages": {}}
+
+
+def test_a_transient_resource_bound_at_writer_open_is_recoverable() -> None:
+    """A momentary shortage must not need a person to restart the daemon.
+
+    The writer is opened once, before the loop, so a failure there sets
+    ``commit_error`` for the life of the process and every cycle afterwards
+    publishes blocked_fail_closed with nothing retrying it.  Measured
+    2026-09-01: free disk dipped under the 512 MiB floor at 12:13Z, the open
+    failed, and production stayed down for twenty-six minutes -- with 23 GB
+    free and the guard passing when asked directly.  Only a restart cleared it.
+
+    Each of these bounds clears on its own, so each one gets the reopen the
+    daemon already performs for a SQLite I/O fault.
+    """
+
+    for code in (
+        "target_database_min_free_space_guard",
+        "target_database_wal_bytes_exceeded",
+        # Raised twice on 2026-09-01, and each raise needed a restart.
+        "target_database_bytes_exceeded",
+    ):
+        assert daemon.target_result_has_recoverable_sqlite_io_error({
+            "reason": f"target_writer_open_failed:ResourceBoundError:{code}",
+        }), code
+        assert daemon.target_result_has_recoverable_sqlite_io_error({
+            "reason": f"target_writer_reopen_failed:ResourceBoundError:{code}",
+        }), code
+
+
+def test_a_misconfigured_writer_target_is_not_retried_away() -> None:
+    """Pointing the target lane at the shared live database is never transient.
+
+    Retrying it every cycle would bury the one blocker an operator has to see,
+    behind a connection_recovery receipt that reads like progress.
+    """
+
+    assert not daemon.target_result_has_recoverable_sqlite_io_error({
+        "reason": (
+            "target_writer_open_failed:ResourceBoundError:"
+            "target_resource_guard_shared_live_database"
+        ),
+    })
+    # And an ordinary business refusal is still not a connection fault.
+    assert not daemon.target_result_has_recoverable_sqlite_io_error({
+        "reason": "ContractError:production_quote_expired",
+    })
+    assert not daemon.target_result_has_recoverable_sqlite_io_error({
+        "reason": "materialized_probability_envelope_missing",
+    })
