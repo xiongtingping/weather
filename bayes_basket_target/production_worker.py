@@ -360,7 +360,13 @@ MAX_FORWARD_P0_STATION_DAYS = MAX_FORWARD_P0_STATIONS * 4
 #
 # Scopes over the cap are not dropped, only deferred: they are the ones whose
 # confirmation is most recent, and they rebuild on the next cycle.
-MAX_P0M_REPLAYS_PER_CYCLE = 12
+# Four, not twelve.  The first live cycle spent its whole budget and left
+# 324 scopes deferred, and the cycle ran 1,523 seconds: the backlog is a
+# one-off -- every scope is eligible the first time this rule applies -- so
+# it should drain over hours rather than be paid for in one cycle that
+# cannot land.  Steady state is far under this: a forecast moves 8 to 10
+# times a day per station and only a scope whose base moved replays at all.
+MAX_P0M_REPLAYS_PER_CYCLE = 4
 # How little lease may remain on a day's books before its next scope is
 # compiled against a re-read instead.
 #
@@ -11047,7 +11053,21 @@ class TargetProductionWorker:
                         # inventing a tick past the predecessor would date a
                         # seat at a time nothing happened.  A revision that
                         # does not clear it is simply not this stage's.
-                        decision_at = revision.received_at_utc
+                        #
+                        # Except on a replay, where the moment is now.  The
+                        # forecaster spoke once; what happened just now is
+                        # that the model moved and this confirmation was
+                        # re-made against the forecast being served, which is
+                        # a real event at a real time and not the TAF's
+                        # arrival hours ago.  Dating it at the arrival puts
+                        # two different authorities on one stage and instant
+                        # -- probability_stage_decision_time_conflict, three
+                        # of them on the replay's first live cycle -- and
+                        # would also backdate a decision made on evidence
+                        # that did not exist then.
+                        decision_at = (
+                            as_of_utc if replay_only else revision.received_at_utc
+                        )
                         if (
                             decision_at
                             <= observed_predecessor.decision_at_utc
