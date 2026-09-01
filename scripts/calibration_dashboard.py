@@ -2641,9 +2641,20 @@ def _collect_order_exchange(conn: sqlite3.Connection) -> dict[str, Any]:
             ex["blocking"] = [
                 {"reason": str(reason), "count": int(count)}
                 for reason, count in conn.execute(
+                    # Only reconciliations that are still open.  The
+                    # blocking_reason column keeps its last value after the
+                    # question is settled, so counting every non-null one
+                    # reported a resolved verdict as an outstanding blocker:
+                    # order_never_reached_exchange is the answer, not the
+                    # obstacle, and the board would have shown it as
+                    # "对账阻断 x1" indefinitely over an order proven never
+                    # to have been placed.
                     "SELECT t.blocking_reason, COUNT(*)"
                     " FROM basket_target_order_reconciliations t" + live_join +
                     "   AND t.blocking_reason IS NOT NULL"
+                    "   AND t.state NOT IN ("
+                    "     'resolved_filled','resolved_cancelled',"
+                    "     'resolved_partial','resolved_not_placed')"
                     " GROUP BY t.blocking_reason ORDER BY COUNT(*) DESC LIMIT 8"
                 )
             ]
