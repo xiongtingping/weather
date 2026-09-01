@@ -216,6 +216,29 @@ WRITER_YIELD_SEC = 1.0
 # scheduled: with production idle-gating the realised cadence stretches by
 # the cycle length, which trades probe density for never fail-closing the
 # stage that prices the book.
+# The one arithmetic that governs this table.
+#
+# ``_EXCLUSIVE_WRITE_DOMAINS`` admits one SSOT writer at a time, and the
+# production floor below admits the sweeps lane at most once between
+# production slots -- deliberately, because without it the lane is due at
+# every instant and served sweeps for two straight hours while production got
+# none.  So the SSOT queue drains at one member per production cycle, and its
+# supply is 3600/cycle_seconds runs an hour: about 10.6 at the 340s cycle
+# measured 2026-09-01, about 6 at 600s.
+#
+# Demand is the sum of 3600/interval over every SSOT member.  On 2026-09-01 it
+# was 18.0 an hour against a supply of 10.6 -- oversubscribed 1.7x at the best
+# cycle time of the day and 4.3x at the worst -- so *every* member was
+# permanently late and the ordering only decided who.  That is why this lane
+# kept needing another fix: the ordering was being tuned while the queue was
+# over capacity.  ``test_the_ssot_sweep_queue_fits_its_drain_rate`` is what
+# stops that recurring; it fails when a member is added or an interval
+# shortened past what the lane can drain.
+#
+# Supply cannot be raised without re-opening the starvation the production
+# floor exists to prevent, so every contract below is sized against demand.
+# Live-blocking work does not belong here at all -- it belongs in the cycle,
+# which is why pr12_awc_observation is a backstop and no longer the lane.
 HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     # (name, script, interval_sec, timeout_sec)
     # Fifteen minutes, not five.  An interval is a claim on the SSOT queue --
@@ -230,7 +253,7 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     # What it costs is sample density on ``maker_shadow_order`` -- a table with
     # 3.99M rows, no retention, and one consumer that reads its whole history
     # -- and the campaign it serves is closed. Operator ruling 2026-09-01.
-    ("maker_shadow_probe", "scripts/maker_shadow_probe_sweep.sh", 900.0, 900.0),
+    ("maker_shadow_probe", "scripts/maker_shadow_probe_sweep.sh", 10800.0, 900.0),
     # The backstop, not the lane.  The production cycle now runs this same
     # script itself, before the probability chain that consumes it -- it is
     # the one loop with a heartbeat and a watchdog, it comes round more often
@@ -243,9 +266,9 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     # Half-hourly is what a backstop needs: it covers the rounds where the
     # cycle itself is fail-closed before it reaches the call, and its
     # single-instance guard is what keeps the two from overlapping.
-    ("pr12_awc_observation", "scripts/pr12_awc_observation_sweep.sh", 1800.0, 900.0),
-    ("paper_trading_ledger", "scripts/paper_trading_ledger_sweep.sh", 900.0, 1800.0),
-    ("settlement_truth", "scripts/settlement_truth_sweep.sh", 1800.0, 900.0),
+    ("pr12_awc_observation", "scripts/pr12_awc_observation_sweep.sh", 10800.0, 900.0),
+    ("paper_trading_ledger", "scripts/paper_trading_ledger_sweep.sh", 10800.0, 1800.0),
+    ("settlement_truth", "scripts/settlement_truth_sweep.sh", 10800.0, 900.0),
     # The two served calibration layers (band reliability, centre/width)
     # used to refit only from the 02:00 crontab, and macOS cron silently
     # skips the minute when the machine sleeps through it -- the fit
@@ -290,7 +313,7 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     (
         "fleet_regime_refresh",
         "scripts/fleet_regime_refresh_sweep.sh",
-        1800.0,
+        10800.0,
         1800.0,
     ),
     # The bar and release policy of 2026-08-30 was written to run

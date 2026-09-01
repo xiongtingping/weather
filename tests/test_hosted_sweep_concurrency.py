@@ -249,43 +249,32 @@ def test_a_short_contract_lane_outranks_a_long_one_it_is_behind_in_seconds(
 ) -> None:
     """Rank by intervals late, because that is the contract being broken.
 
-    Measured 2026-09-01: ``pr12_awc_observation`` -- whose whole job is to
-    canonically identify a METAR so P1 can root on it -- went eight hours
-    without completing on a ten-minute clock, while hourly capture lanes that
-    were fewer rounds behind ranked ahead of it on raw seconds.  Every P1
-    committed in that window is permanently without its truth-revision sha,
-    and its station-day is refused by the atomic-fact gate until a newer P1
-    carries one.
+    Measured 2026-09-01: ``pr12_awc_observation`` -- then a ten-minute lane --
+    went eight hours without completing while hourly capture lanes that were
+    fewer rounds behind ranked ahead of it on raw seconds.  Every P1 committed
+    in that window is permanently without its truth-revision sha.  (That lane
+    now runs inside the production cycle, which is the other half of the fix;
+    the ordering rule stands for whoever is shortest-contract next.)
     """
 
     intervals = {
         name: interval for name, _script, interval, _timeout
         in daemon.HOSTED_SWEEPS
     }
+    short, long_ = "settled_day_cycle_close", "calibration_refit"
+    assert intervals[short] < intervals[long_]
     now = 10_000_000.0
     behind_seconds = 8 * 3600.0
-    # Both exactly eight hours late: the ten-minute lane has missed 48 rounds,
-    # the hourly one 8.
-    next_due = {
-        "pr12_awc_observation": now - behind_seconds,
-        "capture_jma_msm_forward": now - behind_seconds,
-    }
+    next_due = {short: now - behind_seconds, long_: now - behind_seconds}
     due = daemon.due_hosted_sweeps(now_mono=now, next_due=next_due)
     ranked = {name: overdue for overdue, _i, name, _s, _t in due}
-    assert ranked["pr12_awc_observation"] == pytest.approx(
-        behind_seconds / intervals["pr12_awc_observation"]
-    )
-    assert ranked["capture_jma_msm_forward"] == pytest.approx(
-        behind_seconds / intervals["capture_jma_msm_forward"]
-    )
-    assert (
-        ranked["pr12_awc_observation"] > ranked["capture_jma_msm_forward"]
-    )
-    # Both write the SSOT, so only one may start -- and it is the identity
-    # lane, which under the old seconds rule it would not have been when the
-    # capture lane had been idle marginally longer.
+    assert ranked[short] == pytest.approx(behind_seconds / intervals[short])
+    assert ranked[long_] == pytest.approx(behind_seconds / intervals[long_])
+    # Equal in seconds, and the one whose contract is more broken wins.
+    assert ranked[short] > ranked[long_]
+    # Both write the SSOT, so only one may start.
     admitted = daemon.admissible_hosted_sweeps(due, running_names=[])
-    assert [item[2] for item in admitted] == ["pr12_awc_observation"]
+    assert [item[2] for item in admitted] == [short]
 
 
 def test_a_member_not_yet_due_is_not_in_the_queue(daemon) -> None:
@@ -311,3 +300,87 @@ def test_a_running_member_is_skipped(daemon) -> None:
         skip_names=["pr12_awc_observation"],
     )
     assert [item[2] for item in due] == ["maker_shadow_probe"]
+
+
+#: The cycle time this table is sized against.  Comfortably above the 340s
+#: steady state measured 2026-09-01 and below the cycle's own 720s overdue
+#: bound, so the queue drains at a cycle time the resident is expected to
+#: hold rather than at its best one.
+SSOT_QUEUE_REFERENCE_CYCLE_SEC = 600.0
+
+
+def test_the_ssot_sweep_queue_fits_its_drain_rate(daemon) -> None:
+    """Demand on the one exclusive writer must not exceed what it drains.
+
+    ``_EXCLUSIVE_WRITE_DOMAINS`` admits one SSOT writer at a time, and the
+    production floor admits the sweeps lane at most once between production
+    slots -- deliberately, because without it the lane is due at every instant
+    and once served sweeps for two straight hours while production got none.
+    So supply is one member per production cycle and cannot be raised without
+    re-opening that starvation.
+
+    Demand is the sum of 3600/interval over the SSOT members.  Measured
+    2026-09-01 it was 18.0 an hour against a supply of 10.6 at the best cycle
+    time of the day and 4.2 at the worst: every member permanently late, the
+    ordering deciding only who.  That is why this lane kept needing another
+    fix -- the ordering was being tuned while the queue was over capacity.
+
+    This is the check that stops it recurring.  Adding a member, or shortening
+    an interval, has to be paid for by lengthening another -- or by moving the
+    work into the production cycle, which is where anything the live decision
+    chain blocks on belongs in the first place.
+    """
+
+    supply_per_hour = 3600.0 / SSOT_QUEUE_REFERENCE_CYCLE_SEC
+    members = [
+        (name, interval)
+        for name, _script, interval, _timeout in daemon.HOSTED_SWEEPS
+        if daemon.hosted_sweep_write_domain(name) == "ssot"
+    ]
+    assert members, "the SSOT queue cannot be empty; the domain map is wrong"
+    demand_per_hour = sum(3600.0 / interval for _name, interval in members)
+    breakdown = "\n".join(
+        f"    {name:32s} {interval:8.0f}s  {3600.0 / interval:5.2f}/h"
+        for name, interval in sorted(members, key=lambda item: -1 / item[1])
+    )
+    assert demand_per_hour <= supply_per_hour, (
+        f"the SSOT sweep queue asks for {demand_per_hour:.2f} runs an hour and"
+        f" drains {supply_per_hour:.2f} at a {SSOT_QUEUE_REFERENCE_CYCLE_SEC:.0f}s"
+        f" cycle.\n{breakdown}\n"
+        "  Lengthen an interval, or move the work into the production cycle."
+    )
+
+
+def test_nothing_the_live_chain_blocks_on_is_left_to_the_sweep_queue(
+    daemon,
+) -> None:
+    """A lane the live decision refuses without belongs in the cycle.
+
+    The queue is best-effort by construction: one member per production cycle,
+    ordered by lateness, with no member guaranteed a turn inside its own
+    contract.  Work the chain fail-closes without cannot live there, and the
+    2026-09-01 outage is the proof -- pr12_awc_observation went eight hours
+    without a turn and every P1 in that window was committed without its
+    truth-revision sha, permanently, taking fifteen station-days out of the
+    book on target_atomic_lineage_incomplete.
+
+    So the identity lane is a backstop here and the cycle owns it.  This
+    names the members that may never again be the *only* producer of
+    something the chain reads.
+    """
+
+    intervals = {
+        name: interval
+        for name, _script, interval, _timeout in daemon.HOSTED_SWEEPS
+    }
+    # Owned by the production cycle; the sweep is the backstop for rounds
+    # where the cycle is fail-closed before it reaches the call.
+    assert "pr12_awc_observation" in intervals
+    assert intervals["pr12_awc_observation"] >= 3600.0, (
+        "pr12_awc_observation is a backstop -- the cycle runs it every round."
+        "  A short interval here re-enters it into the queue it was moved out"
+        " of."
+    )
+    # The live edge of truth is materialized inside the cycle too
+    # (_materialize_truth_increment); this sweep keeps the deep window.
+    assert intervals["settlement_truth"] >= 3600.0
