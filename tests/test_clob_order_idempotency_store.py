@@ -1045,3 +1045,47 @@ def test_a_not_found_verdict_does_not_replay_as_success(tmp_path: Path) -> None:
     # The replay is the half that regressed: same verdict, not a success.
     assert value["replay"]["ok"] is False, "a not-found order replayed as ok"
     assert value["replay"].get("error") == "order_never_reached_exchange"
+
+
+def test_ttl_never_expires_an_unresolved_order(tmp_path: Path) -> None:
+    """An order whose outcome is unknown stays findable however old it is.
+
+    The TTL prunes resolved records, which is what it is for. An unresolved
+    one is the opposite case: it is the record that holds the deterministic
+    order id, and that id is the only thing that can ask the exchange
+    whether a lost submission is resting or filled. Expiring it would make a
+    real position permanently invisible.
+
+    Both halves are exempted and both are checked here, because either alone
+    would be a hole: cleanup spares non-terminal states, and load returns
+    them regardless of the cutoff. Measured against the production TTL of
+    two hours with rows backdated five.
+    """
+    db_path = tmp_path / "idem.sqlite"
+    script = f"""
+      const {{ DurableIdempotencyStore }} = await import({json.dumps(SERVICE.as_uri())});
+      const store = new DurableIdempotencyStore({json.dumps(str(db_path))}, 7200000, 512);
+      store.put('unresolved', 'intent-x', 'reconcile_required',
+                {{token_id: '1'}}, {{expected_order_id: '0xdead'}});
+      store.put('terminal', 'intent-y', 'submit_failed', {{token_id: '2'}}, {{ok: false}});
+      const fiveHoursAgo = Date.now() - 5 * 3600 * 1000;
+      store.db.prepare("UPDATE clob_order_intents SET updated_ms = ?, created_ms = ?")
+        .run(fiveHoursAgo, fiveHoursAgo);
+      store.cleanup();
+      const loaded = Object.fromEntries(store.load().map((r) => [r.idempotency_key, r.state]));
+      const retained = store.db.prepare(
+        "SELECT idempotency_key FROM clob_order_intents").all().map((r) => r.idempotency_key);
+      console.log(JSON.stringify({{loaded, retained}}));
+    """
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script], cwd=ROOT,
+        text=True, capture_output=True, timeout=30, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    value = json.loads(result.stdout.strip().splitlines()[-1])
+
+    # Kept on disk, and rehydrated into memory, five hours past a two-hour TTL.
+    assert "unresolved" in value["retained"]
+    assert value["loaded"].get("unresolved") == "reconcile_required"
+    # The resolved one is what the TTL is for.
+    assert "terminal" not in value["retained"]

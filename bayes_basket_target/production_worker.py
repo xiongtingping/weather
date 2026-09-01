@@ -13911,6 +13911,29 @@ class TargetProductionWorker:
         except Exception as exc:
             return _blocked(f"target_activation_invalid:{type(exc).__name__}:{exc}")
         self._mark("activation")
+        # Close intents the exchange has already answered about, before the
+        # cycle spends anything on anything else.
+        #
+        # Above the market ingress on purpose.  This lane reads the exchange
+        # by deterministic order id and writes only this ledger; it has no
+        # use for quotes, inventory or a scope catalog, and it was sitting
+        # downstream of all of them.  That gate is soft today -- a failed
+        # ingress lets the cycle continue -- so the lane still ran, but a
+        # question about whether real money is resting at an exchange should
+        # not be answerable only when the market evidence happens to
+        # materialize.  Nothing above this point can keep it from running.
+        try:
+            intent_reconcile = self._reconcile_unresolved_intents(
+                as_of_utc=utc_now(),
+            )
+        except Exception as exc:  # noqa: BLE001 -- observational lane
+            intent_reconcile = {
+                "schema": "bayes_basket_target_intent_reconcile_v1",
+                "state": "blocked_fail_closed",
+                "reason": f"{type(exc).__name__}:{exc}"[:160],
+                "closed": 0,
+            }
+        self._mark("intent_reconcile")
         scope = activation.get("target_scope")
         if not isinstance(scope, Mapping):
             return _blocked("target_scope_config_missing")
@@ -15004,21 +15027,6 @@ class TargetProductionWorker:
             # false cross-generation drift.
             now = utc_now()
             self._mark("market_ingress")
-            # Close intents the exchange has already answered about, before
-            # the cycle spends anything on new ones.  Reads the exchange by
-            # deterministic order id, writes only this ledger, never places
-            # or cancels.
-            try:
-                intent_reconcile = self._reconcile_unresolved_intents(
-                    as_of_utc=now,
-                )
-            except Exception as exc:  # noqa: BLE001 -- observational lane
-                intent_reconcile = {
-                    "schema": "bayes_basket_target_intent_reconcile_v1",
-                    "state": "blocked_fail_closed",
-                    "reason": f"{type(exc).__name__}:{exc}"[:160],
-                    "closed": 0,
-                }
             post_fill_recompute = self._consume_post_fill_recompute_requests(
                 activation=activation,
                 scope_config=scope,
