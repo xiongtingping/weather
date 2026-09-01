@@ -6085,3 +6085,36 @@ def test_live_observation_identity_reads_what_was_staged_not_the_exit_code(
     assert receipt["replayed_count"] == 1221
     assert receipt["revision_fact_count"] == 1305
     assert receipt["staged_at_utc"] == "2026-09-01T08:43:42.505Z"
+
+
+def test_the_native_merge_lock_does_not_depend_on_who_made_the_pool(
+    tmp_path: Path,
+) -> None:
+    """A Lock is not a pool and has no reason to be created lazily.
+
+    It used to be built inside ``if _official_native_capture_pool is None``,
+    and the Open-Meteo D2 lane creates that same pool without it.  A
+    generation where D2 captured first found the pool already made, skipped
+    the block, and every native merge afterwards raised AttributeError for
+    the life of the process.  Measured 2026-09-01: every native capture
+    MERGE_FAILED from 04:03Z, no P0 envelope written for 5.3 hours, and since
+    only P1 has a staleness allowance, every station-day whose newest
+    envelope was P0 or P0-M fail-closed on latest_stage_stale_fail_closed --
+    21 scopes in one cycle.
+    """
+
+    db = tmp_path / "target.db"
+    with sqlite3.connect(db) as conn:
+        conn.execute("CREATE TABLE marker(value TEXT)")
+    worker = TargetProductionWorker(db)
+    try:
+        # Present from construction, before any lane has run.
+        assert worker._official_native_capture_merge_lock is not None
+        assert hasattr(worker._official_native_capture_merge_lock, "acquire")
+        # And it survives another lane claiming the pool first, which is the
+        # exact order that broke it.
+        worker._official_native_capture_pool = object()
+        assert worker._official_native_capture_merge_lock is not None
+    finally:
+        worker._official_native_capture_pool = None
+        worker.close()

@@ -2848,6 +2848,22 @@ class TargetProductionWorker:
                     "schema": "invalid_native_oos_snapshot",
                     "load_error": self.native_oos_snapshot_error,
                 }
+        # Serialises the read-modify-write of the shared native inbox.  Built
+        # here rather than beside the capture pool, because it is not a pool:
+        # a Lock starts no threads, so there is nothing to be lazy about, and
+        # the laziness is what broke it.  The lock used to be created inside
+        # ``if self._official_native_capture_pool is None``, and the Open-Meteo
+        # D2 lane creates that same pool without it -- so a generation where
+        # D2 captured first found the pool already made, skipped the block,
+        # and every native merge afterwards raised
+        # ``AttributeError: no attribute '_official_native_capture_merge_lock'``
+        # for the life of the process.  Measured 2026-09-01: every native
+        # capture MERGE_FAILED from 04:03Z, no P0 envelope was written for
+        # 5.3 hours, and because P0 and P0-M have no staleness allowance --
+        # only P1 does -- every station-day whose newest envelope was one of
+        # them fail-closed on ``latest_stage_stale_fail_closed``: 21 scopes in
+        # a single cycle.
+        self._official_native_capture_merge_lock = threading.Lock()
         self.conn: sqlite3.Connection | None = None
         self.open_error: str | None = None
         # Which of the two opens was in flight when the last reopen
@@ -3199,7 +3215,6 @@ class TargetProductionWorker:
                 max_workers=OFFICIAL_NATIVE_CAPTURE_MAX_CONCURRENCY,
                 thread_name_prefix="official-native-capture",
             )
-            self._official_native_capture_merge_lock = threading.Lock()
         # What gets downloaded is a model run, not a station.  Every family
         # here publishes whole global fields on a fixed cycle; a station is an
         # extraction from those fields, so forty-five stations of one event
