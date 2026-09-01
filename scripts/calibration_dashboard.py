@@ -8372,6 +8372,23 @@ function centerWidth(){
 // station gates.  The banner carries the switch, and since 2026-08-31 the
 // readiness section sits directly beneath it in the same head area, so the
 // control and its gates are read together.
+// What arming does *right now*, not in general.  The three downstream gates
+// disagree with each other often enough that "this starts live trading" is
+// sometimes false and sometimes a serious understatement.  With no dialog on
+// the way up, the hover text is where that sentence lives.
+function lcArmEffect(L){
+  const C = L.contracts || {};
+  const compiled = L.execution_mode === "production_live";
+  if(compiled && C.live_submit_authorized === true){
+    return L.submission_paused
+      ? "举旗后，移除 data/live_paused.flag 网关就会用真实资金下单"
+      : "举旗即刻开始用真实资金下单 —— 三道闸都已放行";
+  }
+  return compiled
+    ? "举旗：代码已 live，但合同未授权发单，现在铸不出 live 行"
+    : "举旗：代码仍编译为 no-live，它不下单，但 go-live 迁移以它为前提";
+}
+
 function liveSwitch(){
   const L = D.live_readiness || {};
   if(!L.available) return "";
@@ -8381,7 +8398,7 @@ function liveSwitch(){
     <b>LIVE</b>
     <button type="button" id="lc-live-btn" class="lc-sw" role="switch"
       aria-checked="${on}" aria-label="上线意向旗" disabled onclick="lcLive()"
-      title="点击切换：举旗即开始实盘发单，落旗即刻停止"></button>
+      title="${h(on ? "点击落旗，即刻停止发单" : lcArmEffect(L))}"></button>
     <span id="lc-live" class="mono">${on?"ARMED":"OFF"}</span>
     <span class="muted" id="lc-head-note" style="font-size:11.5px"
       title="控制服务未连接时开关不可用">控制服务未连接</span>
@@ -8720,7 +8737,15 @@ function lcRender(s){
   // an optimistic flip would show ARMED over a refused arm, which is the one
   // lie this control must never tell.
   const sw=document.getElementById("lc-live-btn");
-  if(sw) sw.setAttribute("aria-checked", String(!!s.live.enabled));
+  if(sw){
+    sw.setAttribute("aria-checked", String(!!s.live.enabled));
+    // The hover text carries what a dialog used to say, so it has to follow
+    // the flag: left alone it would keep offering to arm a lane that is
+    // already armed.
+    sw.title = s.live.enabled
+      ? "点击落旗，即刻停止发单"
+      : lcArmEffect(D.live_readiness || {});
+  }
   // The banner switch carries the same state; paint it red only when the
   // flag is actually up, so a glance at the top of the page answers "may
   // this book go live".
@@ -8768,35 +8793,16 @@ function lcAdjust(knob, delta){
       .catch(e=>alert("失败: "+e));
   }
 }
-// What arming does *right now*, not in general.  The three downstream gates
-// disagree with each other often enough that "this arms live trading" is
-// sometimes false and sometimes an understatement, and the reader deserves
-// the one that is true at the moment of the click.
-function lcArmWarning(){
-  const L = D.live_readiness || {};
-  const C = L.contracts || {};
-  const compiled = L.execution_mode === "production_live";
-  const authorized = C.live_submit_authorized === true;
-  if(compiled && authorized){
-    return L.submission_paused
-      ? "举旗后，只要移除 data/live_paused.flag，网关就会用真实资金下单。继续？"
-      : "举旗即刻开始用真实资金下单——代码、合同、暂停旗三道闸都已放行。继续？";
-  }
-  return compiled
-    ? "举旗：代码已编译为 live，但合同尚未授权（live_submit_authorized=false），"
-      + "现在铸不出 live 行；合同一旦授权，网关就会用真实资金下单。继续？"
-    : "举旗：代码执行模式仍是 no-live，它不下单，"
-      + "但 go-live 迁移将以它为前提。继续？";
-}
-
 function lcLive(){
   const s = window.__lcState; if(!s) return;
   const next = !s.live.enabled;
-  // Only arming asks.  A switch that argues with somebody trying to stop it
-  // is the failure this control exists to prevent, and since 2026-09-01 a
-  // lowered flag really does hold every send, so stopping must cost one
-  // click and nothing more.
-  if(next && !confirm(lcArmWarning())) return;
+  // One click, both directions, no dialog -- operator ruling 2026-09-01,
+  // reaffirmed after I shipped a confirmation on the arming half.  What the
+  // switch is about to do is written beside it in the banner: the state
+  // word, the note naming which downstream gates are open, and the readiness
+  // section directly beneath.  A modal would repeat what the reader is
+  // already looking at, and it would sit in the way of the one action that
+  // must never be slowed -- the same click, a moment later, is the stop.
   const btn = document.getElementById("lc-live-btn");
   // Held down for the round trip: the switch is one control over one piece
   // of state, and a second click while the first is in flight sends the
