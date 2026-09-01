@@ -70,6 +70,28 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] band_shadow refit (shadow, unserved)"
 # day its finalist falls to the '*' batch and this sweep re-pins it on
 # the next run -- at most one day of refusals, named here so the gap
 # reads as the designed cost rather than a mystery.
+# Charter 68's lambda table, refitted on the rolling settled window.  The
+# rule shrinks a claim by the fraction history says arrives at its market
+# agreement, and a fitted constant goes stale the moment the selection
+# distribution moves -- which charter 68 itself moves.  A band short of
+# evidence keeps its incumbent value rather than being refitted on whatever
+# few seats landed there, so committing cannot serve a number the admission
+# rule did not clear.
+#
+# Exit 3 means a band has gone blind: no seats at all inside the window, so
+# the number governing it is frozen and nothing on the book can refresh it.
+# That is a human's call (deliberately sample the band, or accept the
+# freeze), not a reason to fail the sweep the other refits ride on.
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] effective edge lambda refit"
+"$PY" scripts/refit_effective_edge_lambda.py --commit || {
+  EE_RC=$?
+  if [ "$EE_RC" = "3" ]; then
+    echo "effective-edge refit: a band has no observations left" >&2
+  else
+    RC=$EE_RC
+  fi
+}
+
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] delta_v2 policy re-pin"
 "$PY" scripts/repin_delta_v2_policy_to_current_fill.py --commit || RC=$?
 

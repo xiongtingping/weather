@@ -556,21 +556,30 @@ EFFECTIVE_EDGE_LAMBDA = (
 EFFECTIVE_EDGE_STAGES = frozenset({"P0", "P0-M"})
 
 
-def effective_edge_lambda(agreement: float) -> float:
+def effective_edge_lambda(
+    agreement: float,
+    table: Sequence[tuple[float, float]] | None = None,
+) -> float:
     """Realized fraction of a claim, given how far the book agrees with it.
 
     ``agreement`` is price over claim.  Below the first bound the book is
     calling us wrong and is measured to be right five times in six; above
     the last the sliver left is eaten by friction.
+
+    ``table`` is the rolling fit from ``effective_edge_store`` when one has
+    been activated.  The constant above is the bootstrap and stays the
+    fallback: a lane that cannot reach the database still prices the
+    inverted U, it just prices it with the numbers charter 68 shipped.
     """
 
+    bands = tuple(table) if table else EFFECTIVE_EDGE_LAMBDA
     value = float(agreement)
     if not math.isfinite(value) or value <= 0.0:
-        return EFFECTIVE_EDGE_LAMBDA[0][1]
-    for bound, lam in EFFECTIVE_EDGE_LAMBDA:
+        return float(bands[0][1])
+    for bound, lam in bands:
         if value < bound:
-            return lam
-    return EFFECTIVE_EDGE_LAMBDA[-1][1]
+            return float(lam)
+    return float(bands[-1][1])
 # Charter 67 (user ruling, 2026-08-30): the local hour before which P1 may
 # not take a seat.  The P1 lane starts compiling at local midnight, and both
 # lanes' entry rules were spending the stage's budget on a midnight book with
