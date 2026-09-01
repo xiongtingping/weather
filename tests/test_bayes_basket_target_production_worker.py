@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -5934,3 +5936,64 @@ def test_quote_expiry_trigger_reads_the_station_not_the_fleet(
         assert worker._scope_day_quote_expiry("2026-09-01", "ABSENT") is None
     finally:
         worker.close()
+
+
+def test_historical_taf_capture_throttle_survives_a_restart(
+    tmp_path: Path,
+) -> None:
+    """A once-a-day bound held only in memory is not once a day.
+
+    The seven-day, seventeen-station AWC capture and its forty-archive ingest
+    are throttled to one run per day.  The clock was a monotonic attribute on
+    the worker, so it was unset on every fresh process and the whole capture
+    fired on the first cycle after each restart -- six times on 2026-09-01
+    against a bound that says once.  The receipt the capture writes on
+    completion is the durable record, so its age is what the throttle reads.
+    """
+
+    root = tmp_path / "nwp"
+    capture_root = root / "historical_taf_multianchor"
+    capture_root.mkdir(parents=True)
+    receipt = capture_root / "receipt.json"
+    receipt.write_text("{}", encoding="utf-8")
+
+    def _worker_with_receipt_age(age_seconds: float) -> SimpleNamespace:
+        stamp = time.time() - age_seconds
+        os.utime(receipt, (stamp, stamp))
+        return SimpleNamespace(
+            nwp_runtime_root=root,
+            _historical_taf_capture_stations=lambda: ["ZUUU"],
+        )
+
+    recent = production_worker_module.TargetProductionWorker.\
+        _capture_historical_taf_daily(
+            _worker_with_receipt_age(3600.0),
+            as_of_utc="2026-09-01T07:00:00Z",
+        )
+    assert recent["state"] == "THROTTLED"
+    # Twenty-three hours left of a twenty-four hour bound, from a receipt an
+    # hour old -- the age is read, not merely the file's existence.
+    assert 82_000.0 < float(recent["retry_in_seconds"]) <= 82_800.0
+    assert recent["calls_order_gateway"] is False
+
+    # Older than the bound: the throttle lets it through, and the call then
+    # fails reaching for the real worker's db_path rather than returning
+    # THROTTLED.  That is the assertion -- it got past the gate.
+    with pytest.raises(AttributeError):
+        production_worker_module.TargetProductionWorker.\
+            _capture_historical_taf_daily(
+                _worker_with_receipt_age(25 * 3600.0),
+                as_of_utc="2026-09-01T07:00:00Z",
+            )
+
+    # No receipt at all is not a throttle: a lane that has never run must run.
+    receipt.unlink()
+    with pytest.raises(AttributeError):
+        production_worker_module.TargetProductionWorker.\
+            _capture_historical_taf_daily(
+                SimpleNamespace(
+                    nwp_runtime_root=root,
+                    _historical_taf_capture_stations=lambda: ["ZUUU"],
+                ),
+                as_of_utc="2026-09-01T07:00:00Z",
+            )

@@ -4244,8 +4244,35 @@ class TargetProductionWorker:
         inflight = getattr(self, "_historical_taf_capture_inflight", None)
         if inflight is not None and not inflight.done():
             return {"state": "IN_FLIGHT", **boundary}
+        capture_root = self.nwp_runtime_root / "historical_taf_multianchor"
+        receipt_path = capture_root / "receipt.json"
         now_mono = time.monotonic()
         last_attempt = getattr(self, "_historical_taf_capture_last_mono", None)
+        if last_attempt is None:
+            # The throttle has to survive a restart, because the work does.
+            # Held only in memory it is None on every fresh worker, so the
+            # full seven-day, seventeen-station AWC capture and its
+            # forty-archive ingest fired on the first cycle after every
+            # restart -- six times on 2026-09-01, against a bound that says
+            # once a day.  That is the AWC traffic six times over and, until
+            # the ingest's lock was split, six chances to stall a cycle.
+            #
+            # The receipt the capture subprocess writes on completion is the
+            # durable record of when it last ran, so read its age and seed
+            # the in-memory clock from it.  A capture that failed leaves an
+            # older receipt and is retried, which is the behaviour wanted.
+            try:
+                receipt_age_sec = max(
+                    0.0, time.time() - receipt_path.stat().st_mtime
+                )
+            except OSError:
+                receipt_age_sec = None
+            if (
+                receipt_age_sec is not None
+                and receipt_age_sec < HISTORICAL_TAF_CAPTURE_RETRY_SEC
+            ):
+                last_attempt = now_mono - receipt_age_sec
+                self._historical_taf_capture_last_mono = last_attempt
         if (
             last_attempt is not None
             and now_mono - last_attempt < HISTORICAL_TAF_CAPTURE_RETRY_SEC
@@ -4267,9 +4294,8 @@ class TargetProductionWorker:
         start_date = end_date - timedelta(
             days=HISTORICAL_TAF_CAPTURE_WINDOW_DAYS - 1
         )
-        capture_root = self.nwp_runtime_root / "historical_taf_multianchor"
+        # Bound above, where the throttle reads the receipt's age.
         capture_root.mkdir(parents=True, exist_ok=True)
-        receipt_path = capture_root / "receipt.json"
         command = [
             sys.executable,
             str(
