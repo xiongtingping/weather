@@ -932,3 +932,110 @@ def test_latest_quarantined_truth_revision_blocks_older_accepted_truth() -> None
     assert conn.execute(
         "SELECT COUNT(*) FROM basket_policy_training_label"
     ).fetchone()[0] == 0
+
+
+def test_an_edge_that_moved_nothing_is_one_fact_not_a_conflict() -> None:
+    """A price is not a new decision.  An edge that moved the answer is.
+
+    ``decision_scope_key`` addresses one economically distinct decision: the
+    probability, the position book, the promoted policy artifacts, and --
+    verbatim and unrounded -- what the objective did with the edge, which is
+    ``selected_score``, ``final_support``, ``selected_buckets`` and every
+    action's ``limit_price``, ``maximum_shares`` and ``cash_clip``.  So a key
+    match is not a claim that the book stood still; it is the stronger claim
+    that the edge curve did not move the sizing instruction by one bit.  Over
+    the 145 adjacent fact pairs since 2026-08-28 whose belief was unchanged,
+    the edge curve moved in 82 and a sizing output moved in all 82.
+
+    The fact's own content hash covers, on top of that, the quote generation,
+    the snapshot ids and the plan sha, which turn over every cycle whether or
+    not anything was decided.  So the two halves disagreed about what "the
+    same decision" means and the comparison half won by raising.
+
+    That stayed rare while P0 re-minted an envelope every few minutes.
+    Suppressing those restatements on 2026-09-01 made the key stable and the
+    conflict routine -- single digits an hour to 50 and 63 -- and it became
+    the largest stage-open blocker on the forward day, 126 of 200 sampled, on
+    the very day the ladder exists to open early.
+    """
+
+    conn, envelope = _seed()
+    first = _commit(conn, envelope)["delta_v2_training_fact"]
+    stored = _row_mapping(conn, first["fact_id"])
+
+    # Everything a later cycle turns over on its own: the clocks, the snapshot
+    # generations, the ids, and the answer computed against a moved book.
+    replay = dict(stored)
+    replay.update({
+        "source_sequence": int(stored["source_sequence"]) + 7,
+        "decision_at_utc": "2027-01-01T00:00:00.000Z",
+        "captured_at_utc": "2027-01-01T00:00:00.000Z",
+        "created_at_utc": "2027-01-01T00:00:00.000Z",
+        "quote_observed_at": "2027-01-01T00:00:00.000Z",
+        "quote_expires_at": "2027-01-01T00:01:00.000Z",
+        "ws_snapshot_id": "p0_ws_moved",
+        "quote_version": "qv_moved",
+        "quote_sha256": SHA_A,
+        "inventory_snapshot_id": "inv_moved",
+        "order_state_snapshot_id": "ord_moved",
+        "cycle_id": "cycle_moved",
+        "decision_id": "decision_moved",
+        "decision_sha256": SHA_A,
+        "plan_sha256": SHA_A,
+        "feature_json": '{"moved": true}',
+    })
+    identity = {
+        key: value for key, value in replay.items()
+        if key not in {"fact_id", "content_sha256"}
+    }
+    replay_sha = content_sha256({"schema": FACT_SCHEMA, **identity})
+    replay["content_sha256"] = replay_sha
+    replay["fact_id"] = f"d2fact_{replay_sha[:40]}"
+    replay["schema"] = FACT_SCHEMA
+    assert replay["decision_scope_key"] == stored["decision_scope_key"]
+    assert replay["content_sha256"] != stored["content_sha256"]
+
+    receipt = commit_delta_v2_training_fact(conn, fact=replay)
+    assert receipt["state"] == "already_committed"
+    assert receipt["idempotent"] is True
+    # The first row stands; the replay adds nothing.  One sample per belief
+    # state is the training set this is for -- a repeated observation of an
+    # unchanged belief is not new information about the belief.
+    assert receipt["fact_id"] == stored["fact_id"]
+    assert conn.execute(
+        "SELECT COUNT(*) FROM basket_policy_training_fact"
+    ).fetchone()[0] == 1
+
+
+def test_a_scope_defining_field_that_differs_under_one_key_still_conflicts(
+) -> None:
+    """What the guard is actually for: a collision or a corrupt row.
+
+    The scope-defining columns are inputs to the key, so they cannot differ
+    between two rows sharing one unless something is wrong, and the blocker
+    now names which field diverged instead of saying only that one did.
+    """
+
+    conn, envelope = _seed()
+    first = _commit(conn, envelope)["delta_v2_training_fact"]
+    stored = _row_mapping(conn, first["fact_id"])
+    corrupt = dict(stored)
+    corrupt["probability_envelope_id"] = "p0-native-someone-elses-envelope"
+    identity = {
+        key: value for key, value in corrupt.items()
+        if key not in {"fact_id", "content_sha256"}
+    }
+    corrupt_sha = content_sha256({"schema": FACT_SCHEMA, **identity})
+    corrupt["content_sha256"] = corrupt_sha
+    corrupt["fact_id"] = f"d2fact_{corrupt_sha[:40]}"
+    corrupt["schema"] = FACT_SCHEMA
+    assert corrupt["decision_scope_key"] == stored["decision_scope_key"]
+
+    with pytest.raises(
+        ContractError,
+        match="delta_v2_training_fact_scope_conflict:probability_envelope_id",
+    ):
+        commit_delta_v2_training_fact(conn, fact=corrupt)
+    assert conn.execute(
+        "SELECT COUNT(*) FROM basket_policy_training_fact"
+    ).fetchone()[0] == 1

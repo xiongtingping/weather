@@ -108,6 +108,26 @@ def build_stage_zero_delta_v2_training_fact(
     )
 
 
+#: The fact columns that are inputs to ``decision_scope_key`` itself.
+#:
+#: Everything else in the row either derives from a wall clock, names a
+#: snapshot generation, or is an instance identity of an answer the key has
+#: already compared in full -- none of which the key treats as a new
+#: decision.  These, by contrast, cannot differ between two rows sharing a
+#: key unless the key collided or the row is corrupt, which is what the guard
+#: below exists to catch.
+SCOPE_DETERMINING_COLUMNS: tuple[str, ...] = (
+    "station_id",
+    "event_date",
+    "settlement_timezone",
+    "stage",
+    "probability_envelope_id",
+    "posterior_sha256",
+    "official_exclusion_mask_sha256",
+    "quote_freshness_policy_sha256",
+)
+
+
 def commit_delta_v2_training_fact(
     conn: sqlite3.Connection,
     *,
@@ -129,20 +149,64 @@ def commit_delta_v2_training_fact(
     ):
         raise ContractError("delta_v2_training_fact_content_address_mismatch")
     existing_scope = conn.execute(
-        "SELECT fact_id,content_sha256 FROM basket_policy_training_fact "
-        "WHERE decision_scope_key=?",
+        "SELECT " + ",".join(SCOPE_DETERMINING_COLUMNS) + ",fact_id "
+        "FROM basket_policy_training_fact WHERE decision_scope_key=?",
         (supplied["decision_scope_key"],),
     ).fetchone()
     if existing_scope is not None:
-        if (
-            str(existing_scope[0]) != expected_id
-            or str(existing_scope[1]) != expected_sha
-        ):
-            raise ContractError("delta_v2_training_fact_scope_conflict")
+        # The key is the idempotence test, not the content hash.
+        #
+        # ``decision_scope_key`` addresses one economically distinct decision:
+        # the probability, the position book, the promoted policy artifacts,
+        # and -- verbatim, unrounded -- what the objective did with the edge:
+        # ``selected_score``, ``final_support``, ``selected_buckets``, and
+        # every action's ``limit_price``, ``maximum_shares`` and ``cash_clip``.
+        #
+        # The raw price is deliberately absent, but the edge is not: a key
+        # match means the edge curve did not move the objective's answer by
+        # one bit.  That is structural rather than statistical -- the sizing
+        # instruction is inside the hash -- and the data agrees: over the 145
+        # adjacent fact pairs since 2026-08-28 whose belief was unchanged, the
+        # edge curve moved in 82 and a sizing output moved in all 82 of them.
+        #
+        # What the fact's own ``content_sha256`` covers, on top of all that,
+        # is the quote generation, the snapshot ids and the plan sha, which
+        # turn over every cycle whether or not anything was decided.  So the
+        # two halves disagreed about what "the same decision" means, and the
+        # comparison half won by raising.
+        #
+        # That was rare while P0 re-minted an envelope every few minutes,
+        # because the key rarely repeated.  Suppressing those restatements on
+        # 2026-09-01 made the key stable and the conflict routine: from single
+        # digits an hour to 50 and 63, and it became the largest single
+        # stage-open blocker on the forward day -- 126 of 200 sampled, on the
+        # very day the ladder exists to open early.  Verified on twelve of
+        # them: the stored fact pointed at the current newest P0 envelope in
+        # all twelve, and the WS snapshot had turned over in all eight checked.
+        #
+        # One sample per belief state is also the right training set.  A
+        # repeated observation of an unchanged belief against a jiggling book
+        # is not new information about the belief, and weighting it by how
+        # long the scope happened to live is a bias, not a signal.
+        #
+        # What is still compared is the scope's own defining fields.  They are
+        # inputs to the key, so they cannot differ without a hash collision or
+        # a corrupt row -- which is the fault this guard is actually for.
+        stored = dict(zip(SCOPE_DETERMINING_COLUMNS, existing_scope))
+        divergent = sorted(
+            name
+            for name in SCOPE_DETERMINING_COLUMNS
+            if str(stored[name] or "") != str(supplied[name] or "")
+        )
+        if divergent:
+            raise ContractError(
+                "delta_v2_training_fact_scope_conflict:"
+                + ",".join(divergent)
+            )
         return {
             "schema": FACT_SCHEMA,
             "state": "already_committed",
-            "fact_id": expected_id,
+            "fact_id": str(existing_scope[-1]),
             "idempotent": True,
         }
     conn.execute(
