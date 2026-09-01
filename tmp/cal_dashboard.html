@@ -1257,57 +1257,137 @@ function edgeBandHealth(){
       <td>${pct(r.share_recent)}</td>
       <td>${mult(rc.realize_filled_x)}</td></tr>`;
   };
-  // The fever line drawn as the shape it is read as: an inverted-U arc
-  // from true bargains (left, green) to fake ones (right, red).  Equal
-  // angular slots on purpose -- slots sized by leg share would starve the
-  // fever bands of label room, and the label is the point -- so the share
-  // is printed under each band instead.  Outer ring is the whole ledger,
-  // inner ring the recent window, so the charter-62 treatment shows as the
-  // inner ring cooling before the outer one does.
-  const tone=x=>x==null?"var(--soft)"
-    :x>=0.9?"var(--green)":x>=0.5?"var(--amber)"
-    :x>=0.2?"#e8590c":"var(--red)";
-  const P=(r,t)=>{const a=(180-t)*Math.PI/180;
-    return (360+r*Math.cos(a)).toFixed(1)+" "+(258-r*Math.sin(a)).toFixed(1);};
-  const seg=(t0,t1,r0,r1,fill,tip)=>`<path d="M ${P(r1,t0)}
-    A ${r1} ${r1} 0 0 1 ${P(r1,t1)} L ${P(r0,t1)}
-    A ${r0} ${r0} 0 0 0 ${P(r0,t0)} Z" fill="${fill}"><title>${tip}</title></path>`;
+  // The fever curve drawn as an arch, with the geometry carrying the
+  // numbers rather than decorating them (user ruling, 2026-09-01 -- the
+  // first version drew seven equal wedges, so the silhouette was ornament
+  // and only the colour and the printed digits said anything).
+  //
+  // Radius is the reading: each band's wedge grows outward from the
+  // springing line by its realisation multiple, so the arch's own outline
+  // IS the fever curve, and the dashed ×1.00 ring is the honesty line --
+  // a wedge that reaches past it delivered what it claimed.  Angular slots
+  // stay equal so the left-to-right trend reads on an even axis; leg share
+  // gets its own channel as the thickness of the footing under each wedge
+  // (how much of the book rests on that band).  The white contour is the
+  // recent window on the same radial scale, so charter 62's treatment is
+  // visible as the line standing outside the fill it sits on.
+  const RAMP=[[0,176,42,55],[0.2,224,49,49],[0.35,232,89,12],
+    [0.55,240,160,32],[0.8,148,181,39],[1.0,47,158,68],[1.5,26,127,55]];
+  const tone=x=>{
+    if(x==null) return "var(--soft)";
+    const v=Math.max(0,Math.min(1.5,x));
+    let a=RAMP[0],b=RAMP[RAMP.length-1];
+    for(let i=0;i<RAMP.length-1;i++)
+      if(v>=RAMP[i][0]&&v<=RAMP[i+1][0]){a=RAMP[i];b=RAMP[i+1];break;}
+    const f=b[0]===a[0]?0:(v-a[0])/(b[0]-a[0]);
+    const c=k=>Math.round(a[k]+(b[k]-a[k])*f);
+    return `rgb(${c(1)},${c(2)},${c(3)})`;
+  };
+  const CX=450,CY=366,R0=124,RMAX=302,XMAX=1.6;
+  const rad=x=>R0+Math.max(0,Math.min(XMAX,x))/XMAX*(RMAX-R0);
+  const PT=(r,t)=>{const a=(180-t)*Math.PI/180;
+    return [(CX+r*Math.cos(a)).toFixed(1),(CY-r*Math.sin(a)).toFixed(1)];};
+  const pt=(r,t)=>PT(r,t).join(" ");
+  const wedge=(t0,t1,ri,ro)=>`M ${pt(ro,t0)} A ${ro} ${ro} 0 0 1 ${pt(ro,t1)}
+    L ${pt(ri,t1)} A ${ri} ${ri} 0 0 0 ${pt(ri,t0)} Z`;
+  const ring=(r,t0,t1)=>`M ${pt(r,t0)} A ${r} ${r} 0 0 1 ${pt(r,t1)}`;
+  // Weighted by claimed mass, which is the only weight under which the
+  // ratio stays the same quantity the per-band column shows.
+  const overall=key=>{
+    let mass=0,hits=0;
+    rows.forEach(r=>{const s=r[key]||{};
+      const n=s.n_settled||s.n||0,c=s.claimed_mean,x=s.realize_filled_x;
+      if(!n||c==null||x==null) return;
+      mass+=n*c;hits+=n*c*x;});
+    return mass>0?hits/mass:null;
+  };
+  const ovAll=overall("all"),ovRec=overall("recent");
+  const feverShare=rows.reduce((a,r)=>a+((r.all.realize_filled_x!=null
+    &&r.all.realize_filled_x<0.5)?(r.share_all||0):0),0);
   const step=180/rows.length;
-  const arcs=rows.map((r,i)=>{
-    const t0=i*step+1.2,t1=(i+1)*step-1.2,tm=(t0+t1)/2;
-    const anchor=tm<75?"end":tm>105?"start":"middle";
-    const [lx,ly]=P(232,tm).split(" ");
-    return seg(t0,t1,162,200,tone(r.all.realize_filled_x),
-        `${h(r.band)}：全期兑现 ${mult(r.all.realize_filled_x)}（${r.all.n} 腿）`)
-      +seg(t0,t1,130,152,tone(r.recent.realize_filled_x),
-        `${h(r.band)}：近7天兑现 ${mult(r.recent.realize_filled_x)}（${r.recent.n} 腿）`)
-      +`<text x="${lx}" y="${ly}" text-anchor="${anchor}" font-size="12"
-        fill="var(--text)">${h(r.band)}
-        <tspan font-weight="700">${mult(r.all.realize_filled_x)}</tspan>
-        <tspan x="${lx}" dy="14" fill="var(--muted)">${pct(r.share_all)} 的腿</tspan></text>`;
+  const maxShare=Math.max(...rows.map(r=>r.share_all||0))||1;
+  const parts=rows.map((r,i)=>{
+    const t0=i*step+1.4,t1=(i+1)*step-1.4,tm=(t0+t1)/2;
+    const xa=r.all.realize_filled_x,xr=r.recent.realize_filled_x;
+    // A band that realises nothing still gets a sliver, so its slot reads
+    // as "measured and zero" rather than as an empty slot with no data.
+    const ro=xa==null?R0+3:Math.max(rad(xa),R0+2);
+    const foot=R0-7-(r.share_all||0)/maxShare*46;
+    const [lx,ly]=PT(320,tm);
+    const anchor=tm<70?"end":(tm>110?"start":"middle");
+    // The footing carries leg share; it is the same colour as the wedge at
+    // low opacity so the eye reads it as one pier rather than two shapes.
+    const pier=`<path d="${wedge(t0,t1,foot,R0-7)}" fill="${tone(xa)}"
+      opacity=".34"><title>${h(r.band)}：占全部腿 ${pct(r.share_all)}（${
+      r.all.n} 腿）</title></path>`;
+    const body=`<path d="${wedge(t0,t1,R0,ro)}" fill="${tone(xa)}"
+      ><title>${h(r.band)}：全期兑现 ${mult(xa)} · ${r.all.n} 腿 · 占 ${
+      pct(r.share_all)}</title></path>`;
+    const inset=Math.min(1,(t1-t0)*0.08);
+    const recent=xr==null?"":`<path d="${ring(rad(xr),t0+inset,t1-inset)}" fill="none"
+      stroke="var(--text)" stroke-width="2.6" stroke-linecap="round"
+      opacity=".9"><title>${h(r.band)}：近7天兑现 ${mult(xr)}（${
+      r.recent.n} 腿）</title></path>
+      <circle cx="${PT(rad(xr),tm)[0]}" cy="${PT(rad(xr),tm)[1]}" r="3"
+      fill="var(--text)"/>`;
+    return pier+body+recent+`<text x="${lx}" y="${ly}"
+      text-anchor="${anchor}" font-size="12.5" fill="var(--text)">${h(r.band)}
+      <tspan font-weight="700">${mult(xa)}</tspan>
+      <tspan x="${lx}" dy="15" font-size="11.5" fill="var(--muted)">${
+      pct(r.share_all)} 的腿</tspan></text>`;
   }).join("");
-  const arc=`<svg viewBox="0 0 720 300" role="img"
-    style="width:100%;max-width:840px;display:block;margin:8px auto 0">
-    <line x1="152" y1="258" x2="568" y2="258" stroke="var(--line)"/>
-    ${arcs}
-    <text x="360" y="212" text-anchor="middle" font-size="16" font-weight="700"
-      fill="var(--text)">自认便宜越大</text>
-    <text x="360" y="232" text-anchor="middle" font-size="16" font-weight="700"
-      fill="var(--text)">兑现越崩</text>
-    <text x="360" y="250" text-anchor="middle" font-size="11"
-      fill="var(--muted)">外圈＝全期 · 内圈＝近7天</text>
-    <text x="160" y="284" text-anchor="middle" font-size="12"
-      fill="var(--green)">← 真便宜：说到做到</text>
-    <text x="560" y="284" text-anchor="middle" font-size="12"
-      fill="var(--red)">假便宜：太好的价格是警报 →</text>
-    <text x="360" y="284" text-anchor="middle" font-size="11"
-      fill="var(--muted)">→ 自认占的便宜从小到大 →</text>
-  </svg>
-  <div class="muted" style="margin-top:6px;text-align:center">
-    ✅ ×≥0.9 健康 · 😐 ×0.5–0.9 偏虚 ·
-    <span style="color:#e8590c">🤒 ×0.2–0.5 发烧</span> ·
-    <span style="color:var(--red)">🔥 ×&lt;0.2 重烧</span>
-    ——「×」是买到后真实兑现是声称的几成，弧段下的百分比是这一档占全部腿的比例</div>`;
+  // The empty track keeps the whole inverted U on the page even where the
+  // reading is short: without it the silhouette is only as tall as the
+  // data, and a band that realises almost nothing loses the column that
+  // ties it to its own label.
+  const tracks=rows.map((r,i)=>{
+    const t0=i*step+1.4,t1=(i+1)*step-1.4;
+    return `<path d="${wedge(t0,t1,R0,RMAX)}" fill="var(--line)"
+      opacity=".38"/>`;
+  }).join("");
+  const guide=x=>`<path d="${ring(rad(x),0,180)}" fill="none"
+    stroke="var(--muted)" stroke-width="1" stroke-dasharray="2 6"
+    opacity=".55"/>`;
+  const dir=(ovAll!=null&&ovRec!=null)
+    ?(ovRec>ovAll+0.01?["↑ 在退烧","var(--up)"]
+      :(ovRec<ovAll-0.01?["↓ 还在烧","var(--down)"]:["＝ 持平","var(--muted)"]))
+    :["","var(--muted)"];
+  const arc=`<div class="scroll"><svg viewBox="0 0 900 442" width="100%"
+    style="min-width:560px;max-width:900px;height:auto;display:block;
+    margin:4px auto 0"
+    role="img" aria-label="声称边际与兑现的拱形图：自认便宜越大，兑现越崩">
+    ${tracks}${guide(0.5)}${guide(1.5)}
+    ${parts}
+    <path d="${ring(rad(1),0,180)}" fill="none" stroke="var(--text)"
+      stroke-width="1.4" stroke-dasharray="6 4" opacity=".75"/>
+    <text x="${(CX-rad(1)).toFixed(1)}" y="${CY+15}" text-anchor="middle"
+      font-size="11.5" fill="var(--text)">×1.00 说到做到</text>
+    <line x1="${(CX-RMAX).toFixed(1)}" y1="${CY}" x2="${(CX+RMAX).toFixed(1)}"
+      y2="${CY}" stroke="var(--line)"/>
+    <text x="${CX}" y="${CY-58}" text-anchor="middle" font-size="15"
+      font-weight="700" fill="var(--text)">自认便宜越大</text>
+    <text x="${CX}" y="${CY-38}" text-anchor="middle" font-size="15"
+      font-weight="700" fill="var(--text)">兑现越崩</text>
+    <text x="${CX}" y="${CY-15}" text-anchor="middle" font-size="11.5"
+      fill="var(--muted)">整体 ${mult(ovAll)}${ovRec==null?""
+      :` · 近7天 <tspan fill="${dir[1]}">${mult(ovRec)} ${dir[0]}</tspan>`}</text>
+    <text x="${CX}" y="${CY+38}" text-anchor="middle" font-size="11.5"
+      fill="var(--muted)">→ 自认占的便宜（声称 − 卖价）从小到大 →</text>
+    <text x="${(CX-RMAX).toFixed(1)}" y="${CY+60}" font-size="12"
+      fill="var(--green)">← 没占多少便宜 · 反而最诚实</text>
+    <text x="${(CX+RMAX).toFixed(1)}" y="${CY+60}" text-anchor="end"
+      font-size="12" fill="var(--red)">自认占了大便宜 · 兑现最崩 →</text>
+  </svg></div>
+  <div class="muted" style="margin-top:2px;text-align:center;font-size:11.5px">
+    <b>怎么读这张拱</b>：扇形<b>伸得越远＝兑现越好</b>（长度就是「×」这个数）；
+    越过<b>虚线圈＝说到做到</b>，缩在圈内＝声称打了折。
+    白线是<b>近7天</b>，站在填色外面说明这一档在退烧。
+    拱脚<b>越厚＝这一档压的腿越多</b>。颜色只是同一个数的冷暖复述：
+    <span style="color:#2f9e44">绿＝健康</span> ·
+    <span style="color:#f0a020">黄＝偏虚</span> ·
+    <span style="color:#e8590c">橙＝发烧</span> ·
+    <span style="color:#e03131">红＝重烧</span>。
+    ${feverShare>0?`当前 <b>${pct(feverShare)}</b> 的腿压在发烧及以上（×&lt;0.5）的档里。`:""}</div>`;
   return `<h2 style="margin-top:30px">声称边际体温计（edge 带 × 兑现）</h2>
   <div class="card">
   ${arc}
