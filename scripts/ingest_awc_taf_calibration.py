@@ -56,16 +56,36 @@ def main() -> int:
             conn,
             recover_oversized_wal=True,
         )
-        conn.execute("BEGIN IMMEDIATE")
-        try:
-            receipts = [
-                ingest_historical_taf_calibration_with_quarantine(conn, artifact)
-                for artifact in archives
-            ]
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
+        # One transaction per archive, not one across the batch.
+        #
+        # This runs as a subprocess of the resident, spawned from the
+        # historical-TAF capture thread while the cycle thread is mid-flight
+        # on the same store.  Held across forty archives the write lock is
+        # held for minutes, and the cycle's market ingress -- which does not
+        # go through the retrying writer-lock helper -- fail-closes on
+        # ``database is locked``.  Measured 2026-09-01: 171 blocked decisions
+        # carrying that error over three days, two consecutive cycles at
+        # 05:44 and 05:58 producing no scope at all, with this process
+        # holding the lock through a forty-file ZUUU backfill.
+        #
+        # An archive is a frozen-fact replay and re-ingest verifies rather
+        # than duplicates, so the archive is the natural atomic unit; batching
+        # them bought nothing but lock hold time.  A failure now leaves the
+        # archives already committed in place, which the next pass re-ingests
+        # idempotently, and still exits nonzero so the caller records it.
+        receipts = []
+        for artifact in archives:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                receipts.append(
+                    ingest_historical_taf_calibration_with_quarantine(
+                        conn, artifact
+                    )
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
     print(json.dumps({
         "state": "COMMITTED",
         "archive_count": len(archives),

@@ -203,7 +203,37 @@ MAX_JSON_NODES = 500_000
 # the fastest-accelerating writer (124k -> 374k rows/day over four days) and
 # has no retention.  Neither change belongs inside a capacity constant; both
 # need a ruling.
-MAX_TARGET_DB_BYTES = 29696 * MIB
+#
+# 2026-09-01: the store is 28.47 GiB against this 29 GiB ceiling -- 573 MB of
+# headroom at a measured 659 MB/day, so about twenty-one hours.  This raise is
+# the one the note above says cannot be sized this way, taken deliberately and
+# on the operator's instruction, and it is bought time rather than a fix.  Say
+# what it buys: +4 GiB permits 4.87 GB of growth against 14.98 GB of free disk,
+# leaving 10.1 GB even if every byte is taken, which is about seven days.
+#
+# The duplicate write named above is fixed -- ``basket_probability_bridge_
+# history.envelope_json`` is empty on every sampled row now, and that table has
+# gone from 5.92 GiB to 0.28 GB.  ``maker_shadow_order`` decelerated on its own
+# (374k rows/day on 08-25 to 16k on 08-31) and is 1.01 GB, still without
+# retention, but it is no longer the grower.
+#
+# Where the growth is now (rows in the 24h to 2026-09-01T06Z, times sampled
+# row size): ``basket_probability_envelope`` 17,690 rows / 188 MB, which is
+# 64% of the 296 MB/day of payload; its dependents follow it one-for-one --
+# regime artifacts 17,667, bridge history 17,690, and eleven bucket rows per
+# history.  ws snapshots are 6,147 rows / 56 MB.
+#
+# And the envelope table is 90% restatement.  Measured on five stations for
+# 2026-08-31: 578 committed P0 rows carrying 58 distinct probability vectors,
+# 7.9x on KLGA and 16.7x on ZUUU.  P0 recompiles on every model update and
+# commits a row whether or not the probabilities moved, so nine rows in ten
+# say again what the store already holds.  Not fixable here either: an
+# envelope is the probability authority and downstream selection binds to its
+# checkpoint_id, so suppressing a write is a ruling about identity, not
+# housekeeping.  It is the next raise's alternative and there is not another
+# one after it -- a VACUUM needs 31 GB of scratch against 15 GB of disk, so
+# nothing deleted in-store can give this file back.
+MAX_TARGET_DB_BYTES = 33792 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.
