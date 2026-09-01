@@ -991,3 +991,57 @@ def test_a_throw_after_the_post_becomes_a_reconcile_receipt(tmp_path: Path) -> N
     # incident the submit promise then resolved and cleaned the entry away
     # while the caller was already gone with a bare ReferenceError.
     assert value["unresolved"] == 1
+
+
+def test_a_not_found_verdict_does_not_replay_as_success(tmp_path: Path) -> None:
+    """An order the exchange never had must not read back as ok.
+
+    reconcileOrder stored its verdict as the bare object while every other
+    writer stores {created_ms, response, state, order_intent_id}.
+    idempotencyStatus reads cached.response, found undefined, and fell
+    through to its ``ok: true`` default -- so a submission the exchange had
+    never heard of replayed as a success with the not_found status and the
+    never-reached error both gone.
+
+    That is the worst direction for this lie: the caller asking "did my
+    submission survive" is told yes, and the ledger lane that closes such an
+    intent sees nothing to close.
+    """
+    db_path = tmp_path / "archive.db"
+    _minimum_lot_registry(db_path)
+    script = f"""
+      process.env.PM_LIVE_PAUSE_FILE = `/tmp/weather-test-no-pause-${{process.pid}}`;
+      const {{ ClobOrderService }} = await import({json.dumps(SERVICE.as_uri())});
+      const service = new ClobOrderService();
+      service.persistIntent = () => {{}};
+      service.saveIdempotency = () => {{}};
+      // An intent left unresolved by a timeout, carrying the deterministic id.
+      service.unresolved.set('k', {{
+        state: 'reconcile_required',
+        order_intent_id: 'intent-1',
+        created_ms: Date.now(),
+        request: {{token_id: '123456'}},
+        response: {{expected_order_id: '0xabc', order_intent_id: 'intent-1'}},
+      }});
+      // The exchange answers: no such order.
+      service.client = {{ getOrder: async () => null }};
+      const verdict = await service.reconcileOrder('k');
+      // And the same question asked again, which is what the ledger lane does.
+      const replay = await service.reconcileOrder('k');
+      console.log(JSON.stringify({{verdict, replay}}));
+    """
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script], cwd=ROOT,
+        env={**os.environ, "PM_DATA_DIR": str(tmp_path), "PM_ARCHIVE_DB": str(db_path),
+             "PM_CLOB_ORDER_SERVICE_READ_ONLY": "0"},
+        text=True, capture_output=True, timeout=30, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    value = json.loads(result.stdout.strip().splitlines()[-1])
+
+    assert value["verdict"]["error"] == "order_never_reached_exchange"
+    assert value["verdict"]["ok"] is False
+
+    # The replay is the half that regressed: same verdict, not a success.
+    assert value["replay"]["ok"] is False, "a not-found order replayed as ok"
+    assert value["replay"].get("error") == "order_never_reached_exchange"

@@ -6781,6 +6781,11 @@ class TargetProductionWorker:
                     "reason": f"{type(exc).__name__}:{exc}"[:120],
                 })
                 continue
+            # The verdict reads the same whether this is the first time the
+            # gateway asked or a replay of an answer it already has -- both
+            # carry order_never_reached_exchange, once the stored record
+            # keeps its shape.  Anything else, including a lookup that could
+            # not reach the exchange, leaves the intent alone.
             if str(answer.get("error") or "") != "order_never_reached_exchange":
                 receipt["still_unresolved"] += 1
                 continue

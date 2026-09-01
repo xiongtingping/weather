@@ -2315,7 +2315,20 @@ export class ClobOrderService {
           source: SERVICE_NAME,
         };
         this.persistIntent(normalized, "submit_failed", request, closed);
-        this.idem.set(normalized, closed);
+        // Stored in the shape every other writer uses.  Written as the bare
+        // verdict, idempotencyStatus read cached.response, found undefined,
+        // and fell through to its `ok: true` default -- so an order the
+        // exchange had never heard of replayed as a success, with the
+        // not_found status and the never-reached error both gone.  That is
+        // the worst direction for this particular lie: the caller asking
+        // "did my submission survive" is told yes.
+        this.idem.set(normalized, {
+          created_ms: Date.now(),
+          response: closed,
+          state: "submit_failed",
+          order_intent_id: String(previousResponse.order_intent_id || ""),
+        });
+        this.saveIdempotency();
         this.unresolved.delete(normalized);
         return closed;
       }
