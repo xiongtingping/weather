@@ -24,7 +24,7 @@ from typing import Any
 
 from .atomic_ledger import ledger_span
 from .contracts import ContractError, ProbabilityEnvelope, canonical_json, content_sha256, timestamp_lte
-from .materialization import insert_probability_envelope
+from .materialization import MATERIALIZATION_SCHEMA, insert_probability_envelope
 from .resource_bounds import ResourceBoundError, assert_connection_target_capacity, assert_process_memory_budget
 from .ssot import PROBABILITY_BRIDGE_DDL
 from .stages import STAGE_PRECEDENCE
@@ -636,6 +636,123 @@ def load_current_probability_bridge(
     }
 
 
+def _restated_p0_checkpoint(
+    conn: sqlite3.Connection,
+    envelope: ProbabilityEnvelope,
+) -> str | None:
+    """The committed P0 this recompile merely restates, or None.
+
+    P0 recompiles on every model refresh and appended a row whether or not
+    the probabilities moved.  Measured 2026-09-01: 578 committed P0 rows over
+    five stations for 2026-08-31 carrying 58 distinct probability vectors --
+    ZUUU alone had 117 rows over 7 vectors, 16.7x.  Nine rows in ten said
+    again what the store already held, and at ~10.6 KB a row (95% of it
+    lineage_json) that was 188 MB a day, 64% of everything the store grew,
+    with the regime artifact, the bridge history and eleven bucket rows
+    following each one.
+
+    What makes suppressing it safe is the freshness window.  ``fresh_until``
+    is a property of the evidence -- the model run the envelope was compiled
+    from -- not of the write: all 26 rows of ZUUU's largest identical group
+    carry the *same* ``fresh_until_utc`` (11:28:28.981) across four hours of
+    recompiles.  So the twenty-sixth row is servable until exactly the
+    instant the first one is, and dropping it costs no scope a moment of
+    servability.  What differs between them is ``decision_at_utc`` and the
+    provenance shas that churn with each archive query -- neither of which
+    any consumer routes on.
+
+    Restated means: same scope and stage, same probabilities, same bucket
+    grid, same evidence window, same posterior version and the same
+    ``bridge_sha256`` -- the digest of what is *served* -- as the newest
+    committed P0.  Anything that moved is a new fact and is appended as one.
+
+    ``posterior_sha256`` is deliberately not in that list, and it is the only
+    field that isn't.  It is a digest of *how* the answer was computed and it
+    churns on every recompile: across ZUUU's 26-row identical group it takes
+    26 distinct values while the probabilities, the bucket grid, the evidence
+    window, the posterior version and the bridge digest are each constant.
+    Including it made this predicate match nothing at all -- measured over
+    2026-08-31, 0 of 6,666 P0 rows -- because re-running the same arithmetic
+    against archive queries stamped a minute apart is not a discovery.
+    Without it, 6,010 of those 6,666 are restatements, and what is kept is
+    the first row of each group with its own posterior digest intact.
+
+    P0 only.  P0-M is seated per TAF revision and P1 per observation; both
+    already refuse to re-seat what they have seen, and a P1 reaffirmation is
+    the declared exception to consume-once precisely because it is
+    deliberately re-clocked.
+    """
+
+    if envelope.stage != "P0":
+        return None
+    try:
+        # Only a statement not yet in the store can be a *re*statement.  The
+        # bridge is also re-run over already-committed envelopes -- the
+        # backfill rebuilds a missing projection for rows that exist -- and
+        # there the newest committed P0 for the scope is this very envelope,
+        # or a later one identical to it.  Suppressing those would leave the
+        # projection permanently unbuilt, which is what the backfill exists
+        # to repair.
+        if conn.execute(
+            "SELECT 1 FROM basket_probability_envelope WHERE envelope_id=?"
+            " LIMIT 1",
+            (envelope.checkpoint_id,),
+        ).fetchone() is not None:
+            return None
+        row = conn.execute(
+            "SELECT checkpoint_id,probabilities_json,bucket_ordinals_json,"
+            "       fresh_until_utc,posterior_version,bridge_sha256"
+            "  FROM basket_probability_envelope"
+            " WHERE station_id=? AND event_date=? AND stage='P0'"
+            "   AND state='COMMITTED'"
+            " ORDER BY decision_at_utc DESC, envelope_id DESC LIMIT 1",
+            (envelope.station_id, envelope.event_date),
+        ).fetchone()
+    except sqlite3.Error:
+        # Unreadable is not restated: append, and let the insert's own
+        # contracts speak.
+        return None
+    if row is None:
+        return None
+    checkpoint_id = str(row[0] or "")
+    if not checkpoint_id:
+        return None
+    # Restated means the store already holds this fact *completely*.  A
+    # materialization is also how a missing projection or a deleted latest
+    # pointer gets rebuilt, so suppressing a write while either is absent
+    # would take away the lane's own repair.  Both are required to be
+    # present before a restatement may be dropped.
+    try:
+        complete = (
+            conn.execute(
+                "SELECT 1 FROM basket_probability_bridge_history"
+                " WHERE checkpoint_id=? LIMIT 1",
+                (checkpoint_id,),
+            ).fetchone() is not None
+            and conn.execute(
+                "SELECT 1 FROM basket_probability_bridge_latest"
+                " WHERE station_id=? AND event_date=? LIMIT 1",
+                (envelope.station_id, envelope.event_date),
+            ).fetchone() is not None
+        )
+    except sqlite3.Error:
+        return None
+    if not complete:
+        return None
+    same = (
+        str(row[1] or "") == json.dumps(
+            dict(envelope.probabilities), ensure_ascii=False, sort_keys=True
+        )
+        and str(row[2] or "") == json.dumps(
+            dict(envelope.bucket_ordinals), ensure_ascii=False, sort_keys=True
+        )
+        and str(row[3] or "") == envelope.fresh_until_utc
+        and str(row[4] or "") == envelope.posterior_version
+        and str(row[5] or "") == envelope.bridge_sha256
+    )
+    return checkpoint_id if same else None
+
+
 def materialize_probability_bridge(
     conn: sqlite3.Connection,
     envelope: ProbabilityEnvelope | Mapping[str, Any],
@@ -673,6 +790,14 @@ def materialize_probability_bridge(
             resolved,
             bucket_intervals=bucket_intervals,
         )
+    # A recompile that discovered nothing writes nothing -- but it still runs
+    # every check this function performs, because the pass is also how a
+    # corrupt projection is caught and how a missing latest pointer is
+    # rebuilt.  Only the three physical writes of the new statement are
+    # skipped; the authority resolution, the projection verification of what
+    # already stands and the pointer validation below are untouched, by being
+    # the same code rather than a copy of it.
+    restated = _restated_p0_checkpoint(conn, resolved)
     identity = _history_identity(projection, resolved, created)
     history_id = "xsb_" + content_sha256(identity)[:32]
     history_sha = content_sha256(identity)
@@ -684,16 +809,26 @@ def materialize_probability_bridge(
 
     conn.execute(f"SAVEPOINT {savepoint}")
     try:
-        with ledger_span("bridge_checkpoint"):
-            checkpoint_receipt = insert_probability_envelope(
-                conn, resolved, created_at_utc=created
-            )
+        if restated is not None:
+            checkpoint_receipt = {
+                "schema": MATERIALIZATION_SCHEMA,
+                "state": "ALREADY_STATED",
+                "wrote": False,
+                "envelope_id": restated,
+            }
+        else:
+            with ledger_span("bridge_checkpoint"):
+                checkpoint_receipt = insert_probability_envelope(
+                    conn, resolved, created_at_utc=created
+                )
         fault("checkpoint")
-        existing = conn.execute(
+        existing = None if restated is not None else conn.execute(
             "SELECT content_sha256 FROM basket_probability_bridge_history WHERE history_id=?",
             (history_id,),
         ).fetchone()
-        if existing is not None:
+        if restated is not None:
+            history_wrote = False
+        elif existing is not None:
             if str(existing[0]) != history_sha:
                 raise ContractError("xsb_history_id_content_conflict")
             history_wrote = False
@@ -812,10 +947,11 @@ def materialize_probability_bridge(
         fault("p_b")
         # Validate before releasing the savepoint so a malformed projection can
         # never become a partially committed current pointer.
-        _load_projection_rows(conn, {"history_id": history_id, "envelope": resolved,
-                                    "bucket_map_sha256": projection["bucket_map_sha256"],
-                                    "bucket_intervals": projection["bucket_intervals"],
-                                    "projection_sha256": projection["projection_sha256"]})
+        if restated is None:
+            _load_projection_rows(conn, {"history_id": history_id, "envelope": resolved,
+                                        "bucket_map_sha256": projection["bucket_map_sha256"],
+                                        "bucket_intervals": projection["bucket_intervals"],
+                                        "projection_sha256": projection["projection_sha256"]})
         if authority["history_id"] != history_id:
             _load_projection_rows(conn, authority)
         _validate_latest_pointer(

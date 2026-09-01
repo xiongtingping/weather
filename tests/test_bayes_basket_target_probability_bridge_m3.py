@@ -580,3 +580,153 @@ def test_unbridgeable_authoritative_legacy_envelope_has_no_latest() -> None:
     assert conn.execute(
         "SELECT COUNT(*) FROM basket_probability_bridge_latest"
     ).fetchone()[0] == 0
+
+
+def test_a_p0_recompile_that_discovered_nothing_writes_nothing() -> None:
+    """P0 appended a row whether or not the probabilities moved.
+
+    Measured 2026-09-01: 578 committed P0 rows over five stations for
+    2026-08-31 carrying 58 distinct probability vectors -- ZUUU alone 117 rows
+    over 7, 16.7x.  At ~10.6 KB a row, 95% of it lineage_json, that was 188 MB
+    a day and 64% of everything the store grew, with a regime artifact, a
+    bridge history row and eleven bucket rows following each one.
+
+    Suppressing it is safe because ``fresh_until`` belongs to the evidence,
+    not to the write: all 26 rows of ZUUU's largest identical group carry the
+    same ``fresh_until_utc`` across four hours of recompiles, so the last one
+    is servable until exactly the instant the first one is.
+    """
+
+    conn = _connection()
+    first = _envelope()
+    materialize_probability_bridge(conn, first, created_at_utc=first.decision_at_utc)
+    after_first = _counts(conn)
+
+    restatement = _envelope(
+        checkpoint_id="p0-restated",
+        decision_at_utc="2026-07-23T04:30:00Z",
+    )
+    receipt = materialize_probability_bridge(
+        conn, restatement, created_at_utc=restatement.decision_at_utc
+    )
+    assert receipt["history_wrote"] is False
+    assert receipt["checkpoint"]["wrote"] is False
+    assert receipt["checkpoint"]["envelope_id"] == first.checkpoint_id
+    # Not one row in any of the four tables.
+    assert _counts(conn) == after_first
+    assert conn.execute(
+        "SELECT COUNT(*) FROM basket_probability_envelope WHERE envelope_id=?",
+        (restatement.checkpoint_id,),
+    ).fetchone()[0] == 0
+
+    # The newest servable P0 is still the first one, with its window intact --
+    # which is the whole reason dropping the restatement costs nothing.
+    current = load_current_probability_bridge(
+        conn,
+        station_id="RKPK",
+        event_date="2026-07-23",
+        as_of_utc="2026-07-23T05:00:00Z",
+    )
+    assert current["checkpoint_id"] == first.checkpoint_id
+    assert current["envelope_content_sha256"] == first.content_sha256
+    # And the window the store still serves is the first one's, unchanged.
+    assert conn.execute(
+        "SELECT fresh_until_utc FROM basket_probability_bridge_latest"
+        " WHERE station_id='RKPK' AND event_date='2026-07-23'"
+    ).fetchone()[0] == first.fresh_until_utc
+
+
+def test_a_p0_whose_probabilities_moved_is_a_new_fact() -> None:
+    """Anything that moved is appended.  Only an identical restatement is not."""
+
+    conn = _connection()
+    first = _envelope()
+    materialize_probability_bridge(conn, first, created_at_utc=first.decision_at_utc)
+    before = _counts(conn)
+
+    moved = _envelope(
+        checkpoint_id="p0-moved",
+        decision_at_utc="2026-07-23T04:30:00Z",
+        probabilities={"35": 0.10, "36": 0.60, "37": 0.30},
+    )
+    receipt = materialize_probability_bridge(
+        conn, moved, created_at_utc=moved.decision_at_utc
+    )
+    assert receipt["history_wrote"] is True
+    assert _counts(conn)[0] == before[0] + 1
+
+    # A different evidence window is a different fact too, even at the same
+    # probabilities: fresh_until is what makes the row servable.
+    rewindowed = _envelope(
+        checkpoint_id="p0-rewindowed",
+        decision_at_utc="2026-07-23T04:45:00Z",
+        fresh_until_utc="2026-07-23T18:00:00Z",
+    )
+    assert materialize_probability_bridge(
+        conn, rewindowed, created_at_utc=rewindowed.decision_at_utc
+    )["history_wrote"] is True
+
+
+def test_only_p0_restatements_are_suppressed() -> None:
+    """P1 is seated per observation and reaffirmation is re-clocked on purpose."""
+
+    conn = _connection()
+    p0 = _envelope()
+    materialize_probability_bridge(conn, p0, created_at_utc=p0.decision_at_utc)
+    p1 = _envelope(stage="P1", checkpoint_id="p1-a", decision_at_utc="2026-07-23T05:00:00Z")
+    materialize_probability_bridge(conn, p1, created_at_utc=p1.decision_at_utc)
+    before = _counts(conn)
+    p1_again = _envelope(
+        stage="P1", checkpoint_id="p1-b", decision_at_utc="2026-07-23T05:30:00Z"
+    )
+    assert materialize_probability_bridge(
+        conn, p1_again, created_at_utc=p1_again.decision_at_utc
+    )["history_wrote"] is True
+    assert _counts(conn)[0] == before[0] + 1
+
+
+def test_a_churning_posterior_digest_alone_is_not_a_discovery() -> None:
+    """``posterior_sha256`` records how the answer was computed, not what it is.
+
+    It is the one envelope field deliberately left out of the restatement
+    predicate.  Measured 2026-08-31: including it matched 0 of 6,666 P0 rows,
+    because it takes a fresh value on every recompile -- 26 distinct values
+    across ZUUU's 26-row identical group -- while the probabilities, the
+    bucket grid, the evidence window, the posterior version and the bridge
+    digest are each constant across the same 26 rows.  Re-running the same
+    arithmetic against archive queries stamped a minute apart is not a
+    discovery, and treating it as one is what wrote 6,010 rows a day saying
+    nothing new.
+    """
+
+    conn = _connection()
+    first = _envelope()
+    materialize_probability_bridge(conn, first, created_at_utc=first.decision_at_utc)
+    before = _counts(conn)
+
+    churned = ProbabilityEnvelope.from_mapping({
+        **first.to_dict(),
+        "checkpoint_id": "p0-churned-posterior",
+        "decision_at_utc": "2026-07-23T04:30:00Z",
+        # Same served distribution, same window, same bridge digest; only the
+        # provenance digest of the computation moved.
+        "posterior_sha256": "c" * 64,
+    })
+    assert churned.bridge_sha256 == first.bridge_sha256
+    assert churned.posterior_sha256 != first.posterior_sha256
+    receipt = materialize_probability_bridge(
+        conn, churned, created_at_utc=churned.decision_at_utc
+    )
+    assert receipt["history_wrote"] is False
+    assert _counts(conn) == before
+
+    # But the served digest moving *is* a discovery.
+    served_moved = ProbabilityEnvelope.from_mapping({
+        **first.to_dict(),
+        "checkpoint_id": "p0-served-moved",
+        "decision_at_utc": "2026-07-23T04:45:00Z",
+        "bridge_sha256": "d" * 64,
+    })
+    assert materialize_probability_bridge(
+        conn, served_moved, created_at_utc=served_moved.decision_at_utc
+    )["history_wrote"] is True
