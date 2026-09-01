@@ -218,8 +218,32 @@ WRITER_YIELD_SEC = 1.0
 # stage that prices the book.
 HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     # (name, script, interval_sec, timeout_sec)
-    ("maker_shadow_probe", "scripts/maker_shadow_probe_sweep.sh", 300.0, 900.0),
-    ("pr12_awc_observation", "scripts/pr12_awc_observation_sweep.sh", 600.0, 900.0),
+    # Fifteen minutes, not five.  An interval is a claim on the SSOT queue --
+    # that domain admits one writer per turn and the ordering ranks by how
+    # many of its own intervals a member is late, so the shortest contract in
+    # the table accumulates priority fastest.  Five minutes was the shortest,
+    # and it belonged to the shadow probe of a concluded maker campaign, which
+    # therefore outbid the identity lane that gates the live stage two turns
+    # to one.  Measured 2026-09-01 08:27: the probe took the SSOT slot at 29.0
+    # rounds late while pr12_awc_observation waited at 5.8.
+    #
+    # What it costs is sample density on ``maker_shadow_order`` -- a table with
+    # 3.99M rows, no retention, and one consumer that reads its whole history
+    # -- and the campaign it serves is closed. Operator ruling 2026-09-01.
+    ("maker_shadow_probe", "scripts/maker_shadow_probe_sweep.sh", 900.0, 900.0),
+    # The backstop, not the lane.  The production cycle now runs this same
+    # script itself, before the probability chain that consumes it -- it is
+    # the one loop with a heartbeat and a watchdog, it comes round more often
+    # than this contract, and it cannot be outbid for a turn because it is the
+    # turn.  Held here at ten minutes the lane competed with nine other SSOT
+    # members for one slot per cycle and went eight hours without completing a
+    # twenty-three second job, which left every P1 in that window permanently
+    # without its truth-revision sha.
+    #
+    # Half-hourly is what a backstop needs: it covers the rounds where the
+    # cycle itself is fail-closed before it reaches the call, and its
+    # single-instance guard is what keeps the two from overlapping.
+    ("pr12_awc_observation", "scripts/pr12_awc_observation_sweep.sh", 1800.0, 900.0),
     ("paper_trading_ledger", "scripts/paper_trading_ledger_sweep.sh", 900.0, 1800.0),
     ("settlement_truth", "scripts/settlement_truth_sweep.sh", 1800.0, 900.0),
     # The two served calibration layers (band reliability, centre/width)

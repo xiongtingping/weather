@@ -872,6 +872,10 @@ def correction_review_pending(blockers: Any) -> bool:
 
 HISTORICAL_TAF_CAPTURE_RETRY_SEC = 24 * 3600.0
 HISTORICAL_TAF_CAPTURE_DEADLINE_SEC = 3600.0
+# How long the cycle will wait for the live window's reports to be
+# canonically identified before giving up on this round.  The pass measures
+# 22.8 seconds end to end; this is a stall bound, not a budget.
+LIVE_OBSERVATION_IDENTITY_DEADLINE_SEC = 240.0
 HISTORICAL_TAF_DECISION_ANCHOR_HOURS = (1, 7, 13, 19)
 # Two days back, not one: the settlement day has to be closed in the station's
 # own timezone before its truth can be read, and the capture refuses an open
@@ -4219,6 +4223,106 @@ class TargetProductionWorker:
         if not yielded:
             return allowlist
         return [station for station in allowlist if station in yielded]
+
+    def _identify_live_observations(self) -> dict[str, Any]:
+        """Canonically identify the live window's reports, inside the cycle.
+
+        P1's atomic root is the observation contract, and its lineage must
+        carry that observation's truth-revision hash before the station-day
+        can become an atomic fact.  The lane that mints those hashes ran as a
+        hosted sweep on a ten-minute contract -- and the SSOT is an exclusive
+        write domain that admits one sweep per turn, so a ten-minute job
+        competed with nine other members for a slot that comes once per
+        production cycle.  Measured 2026-09-01: it went from 08-31T23:25 to
+        07:19 without completing, eight hours and forty-seven missed rounds,
+        for a pass that takes 22.8 seconds.
+
+        Every P1 committed in that window was committed blind, and the
+        envelope table is append-only, so each one is permanently without its
+        sha and its station-day stays refused by the atomic-fact gate until a
+        newer P1 carries one.  Fifteen stations were blocked on
+        ``target_atomic_lineage_incomplete`` in a single cycle, and thirteen
+        of the fifteen had their revision fact in the store by the time it was
+        looked for -- it simply had not existed yet when P1 asked.
+
+        So the cycle identifies its own reports, the same way it materializes
+        its own truth: this is the one loop with a heartbeat and a watchdog,
+        it runs more often than the lane's own contract, and it cannot be
+        outbid for a turn because it *is* the turn.  Run before the
+        probability chain, because the chain is the consumer.
+
+        The hosted sweep keeps the same script and remains the backstop for
+        the rounds where the cycle itself is fail-closed.  Its single-instance
+        guard is what keeps the two from overlapping; a refused start exits
+        zero, which is why this reads the receipt rather than the exit code
+        to decide whether anything was staged.
+        """
+
+        boundary = {
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "live_submit_authorized": False,
+            "orders_submitted": 0,
+        }
+        script = ROOT / "scripts" / "pr12_awc_observation_sweep.sh"
+        if not script.is_file():
+            return {"state": "NOT_CONFIGURED", **boundary}
+        started = time.monotonic()
+        try:
+            completed = subprocess.run(
+                ["/bin/bash", str(script)],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                timeout=LIVE_OBSERVATION_IDENTITY_DEADLINE_SEC,
+            )
+        except subprocess.TimeoutExpired:
+            return {
+                "state": "DEADLINE_EXCEEDED",
+                "reason": (
+                    "live_observation_identity_exceeded_"
+                    f"{LIVE_OBSERVATION_IDENTITY_DEADLINE_SEC:.0f}s"
+                ),
+                "duration_sec": round(time.monotonic() - started, 3),
+                **boundary,
+            }
+        except Exception as exc:  # noqa: BLE001 -- observational
+            return {
+                "state": "FAILED",
+                "reason": f"{type(exc).__name__}:{str(exc)[:200]}",
+                "duration_sec": round(time.monotonic() - started, 3),
+                **boundary,
+            }
+        receipt: dict[str, Any] = {
+            "state": "STAGED" if completed.returncode == 0 else "FAILED",
+            "returncode": completed.returncode,
+            "duration_sec": round(time.monotonic() - started, 3),
+            "stderr": (completed.stderr or "").strip()[-200:],
+            **boundary,
+        }
+        # What was actually written, from the stage receipt rather than from
+        # the exit code: a start the single-instance guard refused also exits
+        # zero, and the two are not the same outcome.
+        try:
+            staged = load_bounded_json(
+                ROOT / "output" / "audits"
+                / "pr12_awc_observation_stage_latest.json"
+            )
+        except Exception:  # noqa: BLE001 -- observational
+            staged = None
+        if isinstance(staged, Mapping):
+            ingress = (
+                (staged.get("stage_receipt") or {})
+                .get("canonical_ingress_receipt")
+                if isinstance(staged.get("stage_receipt"), Mapping)
+                else None
+            )
+            receipt["revision_fact_count"] = staged.get("revision_fact_count")
+            receipt["staged_at_utc"] = staged.get("ingested_at_utc")
+            if isinstance(ingress, Mapping):
+                receipt["inserted_count"] = ingress.get("inserted_count")
+                receipt["replayed_count"] = ingress.get("replayed_count")
+        return receipt
 
     def _capture_historical_taf_daily(
         self, *, as_of_utc: str
@@ -14905,6 +15009,13 @@ class TargetProductionWorker:
                     "live_submit_authorized": False,
                 }
             self._mark("native_ensemble_oos")
+            # Before the chain, because the chain is the consumer: P1 resolves
+            # each observation's truth-revision hash at compile time, and a
+            # report identified after that compile is one this cycle's P1
+            # could not carry -- permanently, the envelope table being
+            # append-only.
+            live_observation_identity = self._identify_live_observations()
+            self._mark("live_observation_identity")
             resident_probability_chain = self._materialize_resident_probability_chain(
                 as_of_utc=now,
             )
@@ -15877,6 +15988,7 @@ class TargetProductionWorker:
                 "resident_p1_ingress": resident_p1_ingress,
                 "resident_probability_chain": resident_probability_chain,
                 "regime_ingress": regime_ingress,
+                "live_observation_identity": live_observation_identity,
                 "truth_materialization": truth_materialization,
                 "delta_v2_truth_ingress": delta_v2_truth_ingress,
                 "delta_v2_label_ingress": delta_v2_label_ingress,

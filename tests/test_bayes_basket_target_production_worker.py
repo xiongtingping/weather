@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -5997,3 +5998,90 @@ def test_historical_taf_capture_throttle_survives_a_restart(
                 ),
                 as_of_utc="2026-09-01T07:00:00Z",
             )
+
+
+def test_live_observation_identity_is_never_fatal_to_the_cycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The identity pass reports, it does not raise.
+
+    It runs before the probability chain, so an exception here would take down
+    the stage it exists to feed -- the whole point being that P1 must see a
+    report identified before it compiles against it.  A timeout, a crash, or a
+    non-zero exit are all outcomes to record and continue from.
+    """
+
+    worker = SimpleNamespace()
+
+    def _timeout(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(cmd="sweep", timeout=1.0)
+
+    monkeypatch.setattr(production_worker_module.subprocess, "run", _timeout)
+    timed_out = production_worker_module.TargetProductionWorker.\
+        _identify_live_observations(worker)
+    assert timed_out["state"] == "DEADLINE_EXCEEDED"
+    assert timed_out["calls_order_gateway"] is False
+    assert timed_out["orders_submitted"] == 0
+
+    def _crash(*_args, **_kwargs):
+        raise OSError("no such interpreter")
+
+    monkeypatch.setattr(production_worker_module.subprocess, "run", _crash)
+    crashed = production_worker_module.TargetProductionWorker.\
+        _identify_live_observations(worker)
+    assert crashed["state"] == "FAILED"
+    assert "OSError" in crashed["reason"]
+    assert crashed["places_orders"] is False
+
+    # A non-zero exit is a failure the receipt names, not an exception.
+    monkeypatch.setattr(
+        production_worker_module.subprocess,
+        "run",
+        lambda *_a, **_k: SimpleNamespace(
+            returncode=78, stdout="", stderr="missing authority projection"
+        ),
+    )
+    refused = production_worker_module.TargetProductionWorker.\
+        _identify_live_observations(worker)
+    assert refused["state"] == "FAILED"
+    assert refused["returncode"] == 78
+    assert "authority projection" in refused["stderr"]
+
+
+def test_live_observation_identity_reads_what_was_staged_not_the_exit_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A start the single-instance guard refuses also exits zero.
+
+    The hosted sweep still runs this script as a backstop, so the two can meet;
+    the guard makes the loser exit zero without staging anything.  Reporting
+    the exit code alone would call that a successful identification.
+    """
+
+    worker = SimpleNamespace()
+    monkeypatch.setattr(
+        production_worker_module.subprocess,
+        "run",
+        lambda *_a, **_k: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+    monkeypatch.setattr(
+        production_worker_module,
+        "load_bounded_json",
+        lambda _path: {
+            "revision_fact_count": 1305,
+            "ingested_at_utc": "2026-09-01T08:43:42.505Z",
+            "stage_receipt": {
+                "canonical_ingress_receipt": {
+                    "inserted_count": 85,
+                    "replayed_count": 1221,
+                }
+            },
+        },
+    )
+    receipt = production_worker_module.TargetProductionWorker.\
+        _identify_live_observations(worker)
+    assert receipt["state"] == "STAGED"
+    assert receipt["inserted_count"] == 85
+    assert receipt["replayed_count"] == 1221
+    assert receipt["revision_fact_count"] == 1305
+    assert receipt["staged_at_utc"] == "2026-09-01T08:43:42.505Z"
