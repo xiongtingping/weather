@@ -88,6 +88,7 @@ from .production import (
     commit_production_stage_zero_execution_atomic,
 )
 from .execution_reconciliation import (
+    record_order_event,
     validate_persisted_candidate_consumption_cas,
 )
 from .execution_version_vector import (
@@ -6703,6 +6704,120 @@ class TargetProductionWorker:
             self, "_listing_scope_turn", True
         )
         return self._listing_scope_turn
+
+    def _reconcile_unresolved_intents(
+        self,
+        *,
+        as_of_utc: str,
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        """Close intents the exchange has already answered about.
+
+        A submission that times out leaves the intent in reconcile_required
+        with an UNKNOWN_POST event, and the gateway can settle it: it asks
+        the exchange for the deterministic order id the signer computed
+        before the POST -- the one thing that makes a lost submission
+        findable -- and gets back whether the order exists.  Nothing
+        consumed that answer, so the ledger stayed unknown after the gateway
+        knew, and the board reported an open reconciliation over a question
+        that had been settled.
+
+        Reads the exchange, writes only this ledger. It never places or
+        cancels: the gateway path used here is a GET on one order id.
+
+        Only "not found" is acted on. An order the exchange does have is
+        left alone -- a resting or filled order is a fact for the fill lane,
+        not something to close from here.
+        """
+
+        receipt: dict[str, Any] = {
+            "schema": "bayes_basket_target_intent_reconcile_v1",
+            "state": "no_unresolved_intents",
+            "examined": 0,
+            "closed": 0,
+            "still_unresolved": 0,
+            "failures": [],
+            "places_orders": False,
+            "calls_order_gateway": True,
+            "orders_submitted": 0,
+        }
+        if self.commit_conn is None:
+            receipt["state"] = "not_attempted"
+            return receipt
+        try:
+            rows = self.commit_conn.execute(
+                "SELECT order_intent_id, idempotency_key"
+                " FROM basket_target_order_intents"
+                " WHERE state='reconcile_required'"
+                " ORDER BY created_at LIMIT ?",
+                (int(limit),),
+            ).fetchall()
+        except sqlite3.Error as exc:
+            receipt["state"] = "blocked_fail_closed"
+            receipt["reason"] = f"{type(exc).__name__}:{exc}"
+            return receipt
+        if not rows:
+            return receipt
+        try:
+            from clob_order_service_client import (  # noqa: PLC0415
+                ClobOrderServiceClient,
+            )
+
+            client = ClobOrderServiceClient(timeout_seconds=20.0)
+        except Exception as exc:  # noqa: BLE001 -- observational lane
+            receipt["state"] = "blocked_fail_closed"
+            receipt["reason"] = f"{type(exc).__name__}:{exc}"[:160]
+            return receipt
+        receipt["examined"] = len(rows)
+        for intent_id, idempotency_key in rows:
+            try:
+                answer = client._post(
+                    "/reconcile-order",
+                    {"idempotency_key": str(idempotency_key or "")},
+                )
+            except Exception as exc:  # noqa: BLE001 -- one scope's problem
+                receipt["failures"].append({
+                    "order_intent_id": str(intent_id),
+                    "reason": f"{type(exc).__name__}:{exc}"[:120],
+                })
+                continue
+            if str(answer.get("error") or "") != "order_never_reached_exchange":
+                receipt["still_unresolved"] += 1
+                continue
+            try:
+                with _writer_transaction(
+                    self.commit_conn,
+                    savepoint="basket_target_intent_reconcile",
+                ):
+                    record_order_event(
+                        self.commit_conn,
+                        order_intent_id=str(intent_id),
+                        event={
+                            "event_type": "NEVER_REACHED_EXCHANGE",
+                            "exchange_order_id": None,
+                            "observed_at": as_of_utc,
+                            "matched_size": 0.0,
+                            "matched_notional_usdc": 0.0,
+                            "event_payload": {
+                                "expected_order_id": str(
+                                    answer.get("expected_order_id") or ""
+                                ),
+                                "exchange_status": str(
+                                    answer.get("status") or ""
+                                ),
+                            },
+                        },
+                    )
+                receipt["closed"] += 1
+            except Exception as exc:  # noqa: BLE001 -- one scope's problem
+                receipt["failures"].append({
+                    "order_intent_id": str(intent_id),
+                    "reason": f"{type(exc).__name__}:{exc}"[:120],
+                })
+        receipt["state"] = (
+            "committed" if receipt["closed"] else "no_change"
+        )
+        return receipt
 
     def _listing_entry_scopes(
         self,
@@ -14884,6 +14999,21 @@ class TargetProductionWorker:
             # false cross-generation drift.
             now = utc_now()
             self._mark("market_ingress")
+            # Close intents the exchange has already answered about, before
+            # the cycle spends anything on new ones.  Reads the exchange by
+            # deterministic order id, writes only this ledger, never places
+            # or cancels.
+            try:
+                intent_reconcile = self._reconcile_unresolved_intents(
+                    as_of_utc=now,
+                )
+            except Exception as exc:  # noqa: BLE001 -- observational lane
+                intent_reconcile = {
+                    "schema": "bayes_basket_target_intent_reconcile_v1",
+                    "state": "blocked_fail_closed",
+                    "reason": f"{type(exc).__name__}:{exc}"[:160],
+                    "closed": 0,
+                }
             post_fill_recompute = self._consume_post_fill_recompute_requests(
                 activation=activation,
                 scope_config=scope,
@@ -15266,6 +15396,7 @@ class TargetProductionWorker:
                 "candidate_count": len(results),
                 "candidates": results,
                 "listing_scope_turn": serve_listing,
+                "intent_reconcile": intent_reconcile,
                 "quote_evidence_refresh": {
                     "interval_seconds": QUOTE_EVIDENCE_REFRESH_SECONDS,
                     # Counted, not inferred.  A refresh loop reports how many

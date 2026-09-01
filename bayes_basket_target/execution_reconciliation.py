@@ -26,7 +26,7 @@ from .execution_version_vector import (
 
 
 SCHEMA = "bayes_basket_target_execution_reconciliation_v1"
-EVENT_TYPES = frozenset({"POST_ACK", "FILL", "PARTIAL_FILL", "CANCEL_ACK", "UNKNOWN_POST", "LATE_FILL", "EXPIRED"})
+EVENT_TYPES = frozenset({"POST_ACK", "FILL", "PARTIAL_FILL", "CANCEL_ACK", "UNKNOWN_POST", "LATE_FILL", "EXPIRED", "NEVER_REACHED_EXCHANGE"})
 RECONCILIATION_STATES = frozenset({"pending", "unknown", "resolved_filled", "resolved_cancelled", "resolved_partial"})
 EPS = 1e-9
 
@@ -338,6 +338,20 @@ def _event_identity(intent_id: str, event: Mapping[str, Any]) -> dict[str, Any]:
 def _state_after_event(event_type: str, filled_size: float, requested_size: float) -> tuple[str, str, str]:
     if event_type == "UNKNOWN_POST":
         return "unknown", "reconcile_required", "unknown_post_state"
+    if event_type == "NEVER_REACHED_EXCHANGE":
+        # The exchange was asked for this order by the deterministic id the
+        # signer computed before the POST -- the one thing that makes a lost
+        # submission findable -- and does not have it.  Nothing rests and
+        # nothing filled, so the submission failed and the intent is done.
+        #
+        # Not CANCEL_ACK and not EXPIRED, which were the only terminal states
+        # available before: both say the order existed and stopped existing,
+        # and an operator reading a cancelled order reasonably believes one
+        # was placed.  A fill contradicts the premise outright and stays
+        # unresolved rather than being explained away.
+        if filled_size > EPS:
+            return "unknown", "reconcile_required", "not_found_with_fill"
+        return "resolved_not_placed", "failed", "order_never_reached_exchange"
     if event_type in {"PARTIAL_FILL", "LATE_FILL"}:
         if filled_size >= requested_size - EPS:
             return "resolved_filled", "filled", "full_fill_authoritative"

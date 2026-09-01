@@ -2405,7 +2405,13 @@ CREATE TABLE IF NOT EXISTS basket_target_order_events (
   event_id TEXT PRIMARY KEY,
   order_intent_id TEXT NOT NULL,
   exchange_order_id TEXT,
-  event_type TEXT NOT NULL CHECK(event_type IN ('POST_ACK','FILL','PARTIAL_FILL','CANCEL_ACK','UNKNOWN_POST','LATE_FILL','EXPIRED')),
+  -- NEVER_REACHED_EXCHANGE closes an UNKNOWN_POST that the exchange
+  -- has since been asked about by its deterministic order id and does
+  -- not have.  Without it the only terminal states available were
+  -- CANCEL_ACK and EXPIRED, and both say the order existed and stopped
+  -- existing; this one says it never arrived, which is a different
+  -- fact about the account and the one that is true.
+  event_type TEXT NOT NULL CHECK(event_type IN ('POST_ACK','FILL','PARTIAL_FILL','CANCEL_ACK','UNKNOWN_POST','LATE_FILL','EXPIRED','NEVER_REACHED_EXCHANGE')),
   observed_at TEXT NOT NULL,
   matched_size REAL NOT NULL CHECK(matched_size>=0),
   matched_notional_usdc REAL NOT NULL CHECK(matched_notional_usdc>=0),
@@ -2417,7 +2423,7 @@ CREATE TABLE IF NOT EXISTS basket_target_order_events (
 CREATE TABLE IF NOT EXISTS basket_target_order_reconciliations (
   order_intent_id TEXT PRIMARY KEY,
   exchange_order_id TEXT,
-  state TEXT NOT NULL CHECK(state IN ('pending','unknown','resolved_filled','resolved_cancelled','resolved_partial')),
+  state TEXT NOT NULL CHECK(state IN ('pending','unknown','resolved_filled','resolved_cancelled','resolved_partial','resolved_not_placed')),
   filled_size REAL NOT NULL CHECK(filled_size>=0),
   filled_notional_usdc REAL NOT NULL CHECK(filled_notional_usdc>=0),
   last_event_id TEXT,
