@@ -9170,32 +9170,76 @@ class TargetProductionWorker:
                 "live_submit_authorized": False,
                 "orders_submitted": 0,
             }
+        # Per station, for the same reason the evidence cache above is per
+        # station: one station's missing book is that station's problem, and
+        # hoisting it to the fleet is what stops the day being written at all.
+        # That fix was made for the cache and not for the snapshot, and the
+        # snapshot is the row the compile actually reads -- so a single
+        # station raising here left every other station of the day on
+        # whatever generation it last had, and the mid-loop refresh, which
+        # calls straight back into this function, could never renew anything.
+        # Measured 2026-09-01: one refresh attempt, recorded ineffective, the
+        # day's refresh disabled behind it, and ten scopes on
+        # production_quote_expired with books minutes past their lease.
+        snapshot_failures: list[dict[str, str]] = []
+        first_snapshot_error: ContractError | None = None
         try:
-            resident_receipts = [
-                materialize_resident_no_live_market_evidence(
-                    self.commit_conn,
-                    manifest_path=manifest_path,
-                    activation_path=self.activation_path,
-                    remaining_budget_usdc=remaining_budget,
-                    policy_authority_scope=str(activation["policy_authority_scope"]),
-                    station_id=station_id,
-                    event_date=manifest_event_date,
-                    materialize_ws_cache=False,
-                )
-                for station_id in station_allowlist
-            ] if station_allowlist else [
-                materialize_resident_no_live_market_evidence(
-                    self.commit_conn,
-                    manifest_path=manifest_path,
-                    activation_path=self.activation_path,
-                    remaining_budget_usdc=remaining_budget,
-                    policy_authority_scope=str(activation["policy_authority_scope"]),
-                    materialize_ws_cache=False,
-                )
-            ]
+            if station_allowlist:
+                resident_receipts = []
+                for station_id in station_allowlist:
+                    try:
+                        resident_receipts.append(
+                            materialize_resident_no_live_market_evidence(
+                                self.commit_conn,
+                                manifest_path=manifest_path,
+                                activation_path=self.activation_path,
+                                remaining_budget_usdc=remaining_budget,
+                                policy_authority_scope=str(
+                                    activation["policy_authority_scope"]
+                                ),
+                                station_id=station_id,
+                                event_date=manifest_event_date,
+                                materialize_ws_cache=False,
+                            )
+                        )
+                    except ContractError as exc:
+                        if first_snapshot_error is None:
+                            first_snapshot_error = exc
+                        snapshot_failures.append({
+                            "station_id": str(station_id),
+                            "event_date": manifest_event_date,
+                            "reason": f"{type(exc).__name__}:{exc}"[:200],
+                        })
+                if not resident_receipts and first_snapshot_error is not None:
+                    # Nothing written for any station: there is no partial
+                    # pass to keep, so fail exactly as the whole-fleet form
+                    # did -- by raising the station's own error, unwrapped.
+                    # The blocker recorded against the scope has to stay the
+                    # real one; a synthetic "n stations skipped" heading in
+                    # front of it is precisely the substitution this function
+                    # already refuses to make one level down.  Who else was
+                    # skipped is carried in the receipt below, where a count
+                    # belongs.
+                    raise first_snapshot_error
+            else:
+                resident_receipts = [
+                    materialize_resident_no_live_market_evidence(
+                        self.commit_conn,
+                        manifest_path=manifest_path,
+                        activation_path=self.activation_path,
+                        remaining_budget_usdc=remaining_budget,
+                        policy_authority_scope=str(activation["policy_authority_scope"]),
+                        materialize_ws_cache=False,
+                    )
+                ]
             result = {
-                "state": "committed",
+                "state": (
+                    "committed" if not snapshot_failures
+                    else "committed_with_skipped_scopes"
+                ),
                 "station_allowlist": list(station_allowlist),
+                "skipped_scope_count": len(snapshot_failures),
+                "skipped_scopes": snapshot_failures[:10],
                 "receipts": resident_receipts,
             }
         except Exception as exc:
@@ -9210,16 +9254,29 @@ class TargetProductionWorker:
                 "station_allowlist": list(station_allowlist),
                 "event_date": manifest_event_date,
                 "evidence_cache": evidence_cache,
+                # Who else could not be written, beside the one whose error
+                # this is.  The reason above stays the station's own; this
+                # says how much of the day went with it.
+                "skipped_scope_count": len(snapshot_failures),
+                "skipped_scopes": snapshot_failures[:10],
                 "places_orders": False,
                 "calls_order_gateway": False,
                 "live_submit_authorized": False,
                 "orders_submitted": 0,
             }
         return {
+            # The lane's own state stays "committed": callers branch on it and
+            # a partial pass is still a pass that wrote.  What was skipped is
+            # named here rather than folded into the word, because a count
+            # dropped silently reads as full coverage -- and the nested
+            # market_evidence receipt says "committed_with_skipped_scopes" for
+            # a reader who wants it in one word.
             "state": "committed",
             "writes_target_ssot": True,
             "station_allowlist": list(station_allowlist),
             "event_date": manifest_event_date,
+            "snapshot_skipped_scope_count": len(snapshot_failures),
+            "snapshot_skipped_scopes": snapshot_failures[:10],
             "market_evidence": result,
             "evidence_cache": evidence_cache,
         }
@@ -15430,6 +15487,7 @@ class TargetProductionWorker:
             }
             quote_refresh_failures: list[dict[str, str]] = []
             quote_refresh_attempts: list[str] = []
+            quote_refresh_receipts: list[dict[str, Any]] = []
             # One read per scope, kept until that scope's day is refreshed.
             #
             # Per station-day, not per day.  The lease this triggers on has
@@ -15481,11 +15539,31 @@ class TargetProductionWorker:
                     ]:
                         scope_quote_expiry.pop(cached_key, None)
                     try:
-                        self._refresh_scope_day_evidence(
+                        # Kept, not discarded.  "Ineffective" is a verdict
+                        # about a pass whose own receipt says why it wrote
+                        # nothing -- no_scope_manifest, blocked_fail_closed
+                        # with a reason, or committed_with_skipped_scopes --
+                        # and throwing it away left the cycle reporting an
+                        # ineffective day with no way to tell those apart.
+                        refresh_receipt = self._refresh_scope_day_evidence(
                             activation,
                             event_date=day,
                             as_of_utc=utc_now(),
                         )  # writes the snapshot the compile reads
+                        quote_refresh_receipts.append({
+                            "event_date": day,
+                            "state": str(
+                                (refresh_receipt or {}).get("state") or ""
+                            ),
+                            "reason": str(
+                                (refresh_receipt or {}).get("reason") or ""
+                            )[:200],
+                            "skipped_scope_count": (
+                                (refresh_receipt or {}).get(
+                                    "skipped_scope_count"
+                                )
+                            ),
+                        })
                         now = utc_now()
                         # Did it actually renew anything?  A refresh that
                         # cannot -- the day has no fresh scope manifest to
@@ -15711,6 +15789,9 @@ class TargetProductionWorker:
                         for day in sorted(set(quote_refresh_attempts))
                     },
                     "ineffective_days": sorted(refresh_ineffective_days),
+                    # What each pass said about itself, so an ineffective day
+                    # names its cause instead of only its verdict.
+                    "receipts": quote_refresh_receipts[:10],
                     # The bound and how close the day came to it.  A day that
                     # keeps hitting the cap is a loop outrunning its lease,
                     # which is a different fault from a day that cannot renew
