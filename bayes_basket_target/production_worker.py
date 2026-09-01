@@ -8740,7 +8740,7 @@ class TargetProductionWorker:
         # returned -- but a not-started group present in the same day still
         # gets its evidence written rather than skipped.
         results: list[dict[str, Any]] = []
-        for _day_state, group in _group_scope_manifests_by_day_state(
+        for day_state, group in _group_scope_manifests_by_day_state(
             day_scopes
         ):
             with self._temporary_scope_manifest(
@@ -8750,6 +8750,10 @@ class TargetProductionWorker:
                     self._materialize_market_evidence_from_manifest(
                         activation,
                         manifest_path=refreshed_path,
+                        # A day that has not started at these stations has
+                        # no registry scope yet; that is the ordinary state
+                        # of the hours before its first midnight.
+                        optional_pass=day_state != "open",
                         # The point of the refresh is the snapshot the compile
                         # reads; an evidence-cache-only pass returns before
                         # writing it and would leave the loop compiling
@@ -8773,6 +8777,7 @@ class TargetProductionWorker:
         manifest_path: Path,
         full_materialization: bool = True,
         listing_day_pass: bool = False,
+        optional_pass: bool = False,
     ) -> dict[str, Any]:
         if self.commit_conn is None:
             return {
@@ -8841,10 +8846,16 @@ class TargetProductionWorker:
             # receipt does not have to carry an event_date, and reading one
             # off it turned every cycle fatal the moment listing scopes were
             # added -- 51 scopes materialized and the filter still saw none.
-            if not current_day_materialized:
+            if not current_day_materialized and not optional_pass:
                 # Nothing was materialized for any station, so there is no
                 # partial pass to keep -- fail the way the single-scope
                 # contract does, naming what was skipped.
+                #
+                # Unless the caller said this pass was optional.  A day that
+                # has not started at any of its stations has no registry
+                # scope to materialize yet, and that is the ordinary state of
+                # the hours before its first midnight -- not a gap.  Only the
+                # group that can still trade owes the cycle evidence.
                 raise ContractError(
                     "official_ws_evidence_complete_scope_missing:"
                     + str(len(evidence_cache_failures))
@@ -8854,6 +8865,23 @@ class TargetProductionWorker:
                         for row in evidence_cache_failures[:5]
                     )
                 )
+            if not current_day_materialized:
+                # Optional pass with nothing to materialize: say so and
+                # stop, rather than carrying an empty receipt set into a
+                # compile that has no evidence to read.
+                return {
+                    "state": "no_scope_materialized",
+                    "event_date": manifest_event_date,
+                    "optional_pass": True,
+                    "skipped_scope_count": len(evidence_cache_failures),
+                    "skipped_scopes": evidence_cache_failures[:10],
+                    "station_allowlist": list(station_allowlist),
+                    "writes_target_ssot": False,
+                    "calls_order_gateway": False,
+                    "places_orders": False,
+                    "live_submit_authorized": False,
+                    "orders_submitted": 0,
+                }
         else:
             evidence_cache_receipts = [
                 materialize_official_ws_evidence_cache(
@@ -14734,6 +14762,9 @@ class TargetProductionWorker:
                             self._materialize_market_evidence_from_manifest(
                                 activation,
                                 manifest_path=current_scope_manifest_path,
+                                optional_pass=(
+                                    day_state != current_day_state
+                                ),
                                 full_materialization=bool(
                                     selected_open_scope[
                                         "probability_evidence_fresh"
@@ -14816,6 +14847,11 @@ class TargetProductionWorker:
                                         # scopes.
                                         full_materialization=True,
                                         listing_day_pass=True,
+                                        # A listed day is by definition one
+                                        # that has not opened yet, so a group
+                                        # of it with nothing to materialize
+                                        # is expected, not a gap.
+                                        optional_pass=_state != "open",
                                     )
                                 )
                         evidence_materialized_at[listing_day] = (
