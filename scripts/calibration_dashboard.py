@@ -268,6 +268,40 @@ def _production_health(status: Mapping[str, Any]) -> dict[str, Any]:
                 )
                 if len(scoped) > 1:
                     detail += f" 等{len(scoped)}个站日"
+        if not detail:
+            # The probability chain is the one lane that blocks on behalf of
+            # something else.  It carries no reason and no blockers of its
+            # own: it names the stage that failed in ``blocked_stages`` and
+            # keeps that stage's blockers one level down.  Reading only the
+            # top level printed a bare "概率链" over a fully diagnosed P0-M
+            # halt -- three station-days named, in the same document.
+            stages = [
+                str(item) for item in lane.get("blocked_stages") or []
+                if str(item or "").strip()
+            ]
+            for stage in stages:
+                nested = lane.get(stage.replace("-", "").lower())
+                scoped = [
+                    b for b in (
+                        nested.get("blockers")
+                        if isinstance(nested, Mapping) else None
+                    ) or []
+                    if isinstance(b, Mapping)
+                ]
+                if not scoped:
+                    continue
+                first = scoped[0]
+                nested_reason = str(first.get("reason") or "")
+                detail = (
+                    f"{stage}·{first.get('station_id')}"
+                    f"|{first.get('event_date')}"
+                    f"·{nested_reason.split(':')[-1][:40]}"
+                )
+                if len(scoped) > 1:
+                    detail += f" 等{len(scoped)}个站日"
+                break
+            if not detail and stages:
+                detail = "、".join(stages)[:40]
         blocked.append(f"{label}{'·' + detail if detail else ''}")
         if "locked" in reason:
             locked += 1
@@ -5446,6 +5480,21 @@ border-color:transparent}
 border-color:transparent}
 .pill.red{background:var(--pill-red-bg);color:var(--pill-red-fg);
 border-color:transparent}
+/* The live flag reads as a switch because it is one: a control with two
+   states and no third.  The old button said "切换" next to a word saying
+   OFF, which asks the reader to work out which of the two the button is
+   about to do.  A switch shows the state and the action as the same
+   object. */
+.lc-sw{position:relative;width:34px;height:18px;padding:0;border-radius:99px;
+border:1px solid var(--line);background:var(--line);cursor:pointer;
+transition:background .13s ease;flex:none}
+.lc-sw[aria-checked="true"]{background:var(--red);border-color:transparent}
+.lc-sw::after{content:"";position:absolute;top:1px;left:1px;width:14px;
+height:14px;border-radius:99px;background:#fff;
+box-shadow:0 1px 2px rgba(0,0,0,.35);transition:transform .13s ease}
+.lc-sw[aria-checked="true"]::after{transform:translateX(16px)}
+.lc-sw:disabled{opacity:.4;cursor:not-allowed}
+.lc-sw:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
 /* The station-day's outcome, on the cell that names the station: hit,
    miss, still open, never opened.  Four states that a reader otherwise has
    to reconstruct by reading three stage cells and a P&L column. */
@@ -8330,11 +8379,12 @@ function liveSwitch(){
   return `<span class="pill ${on?"red":""}" id="lc-head"
     style="font-size:13px;display:inline-flex;gap:7px;align-items:center">
     <b>LIVE</b>
+    <button type="button" id="lc-live-btn" class="lc-sw" role="switch"
+      aria-checked="${on}" aria-label="上线意向旗" disabled onclick="lcLive()"
+      title="点击切换：举旗即开始实盘发单，落旗即刻停止"></button>
     <span id="lc-live" class="mono">${on?"ARMED":"OFF"}</span>
-    <button type="button" id="lc-live-btn" disabled onclick="lcLive()"
-      style="font-size:12px;padding:1px 8px">切换</button>
     <span class="muted" id="lc-head-note" style="font-size:11.5px"
-      title="控制服务未连接时按钮不可用">控制服务未连接</span>
+      title="控制服务未连接时开关不可用">控制服务未连接</span>
   </span>`;
 }
 
@@ -8666,6 +8716,11 @@ function lcRender(s){
     ? s.station_cap.station_cap_usdc
     : ((s.station_cap&&s.station_cap.default_usdc)||15)+"(默认)";
   if(live) live.textContent = s.live.enabled?"ARMED":"OFF";
+  // The switch is repainted from the server's answer, never from the click:
+  // an optimistic flip would show ARMED over a refused arm, which is the one
+  // lie this control must never tell.
+  const sw=document.getElementById("lc-live-btn");
+  if(sw) sw.setAttribute("aria-checked", String(!!s.live.enabled));
   // The banner switch carries the same state; paint it red only when the
   // flag is actually up, so a glance at the top of the page answers "may
   // this book go live".
@@ -8713,29 +8768,47 @@ function lcAdjust(knob, delta){
       .catch(e=>alert("失败: "+e));
   }
 }
-function lcLive(){
-  const s = window.__lcState; if(!s) return;
-  if(s.live.enabled){
-    lcApi("/api/live", {enabled:false}).then(lcRender);
-    return;
-  }
+// What arming does *right now*, not in general.  The three downstream gates
+// disagree with each other often enough that "this arms live trading" is
+// sometimes false and sometimes an understatement, and the reader deserves
+// the one that is true at the moment of the click.
+function lcArmWarning(){
   const L = D.live_readiness || {};
   const C = L.contracts || {};
   const compiled = L.execution_mode === "production_live";
   const authorized = C.live_submit_authorized === true;
-  const word = prompt(
-    compiled && authorized
-      ? "确认 arm 上线意向旗？两个闸都已放行 —— 移除 data/live_paused.flag "
-        + "后网关会用真实资金下单。输入 LIVE 确认："
-      : compiled
-        ? "确认 arm 上线意向旗？代码已编译为 live，但 runtime 合同尚未授权"
-          + "（live_submit_authorized=false），现在铸不出 live 行；合同一旦授权，"
-          + "网关就会用真实资金下单。输入 LIVE 确认："
-        : "确认 arm 上线意向旗？代码执行模式仍是 no-live，它不下单，"
-          + "但 go-live 迁移将以它为前提。输入 LIVE 确认：");
-  if(word !== "LIVE") return;
-  lcApi("/api/live", {enabled:true, confirm:"LIVE", by:"dashboard"})
-    .then(lcRender).catch(e=>alert("失败: "+e));
+  if(compiled && authorized){
+    return L.submission_paused
+      ? "举旗后，只要移除 data/live_paused.flag，网关就会用真实资金下单。继续？"
+      : "举旗即刻开始用真实资金下单——代码、合同、暂停旗三道闸都已放行。继续？";
+  }
+  return compiled
+    ? "举旗：代码已编译为 live，但合同尚未授权（live_submit_authorized=false），"
+      + "现在铸不出 live 行；合同一旦授权，网关就会用真实资金下单。继续？"
+    : "举旗：代码执行模式仍是 no-live，它不下单，"
+      + "但 go-live 迁移将以它为前提。继续？";
+}
+
+function lcLive(){
+  const s = window.__lcState; if(!s) return;
+  const next = !s.live.enabled;
+  // Only arming asks.  A switch that argues with somebody trying to stop it
+  // is the failure this control exists to prevent, and since 2026-09-01 a
+  // lowered flag really does hold every send, so stopping must cost one
+  // click and nothing more.
+  if(next && !confirm(lcArmWarning())) return;
+  const btn = document.getElementById("lc-live-btn");
+  // Held down for the round trip: the switch is one control over one piece
+  // of state, and a second click while the first is in flight sends the
+  // opposite instruction against a state that has already moved.
+  if(btn) btn.disabled = true;
+  // The server still refuses an arm that presents no token; the switch is
+  // the confirmation now, so the switch carries it.
+  lcApi("/api/live", next
+      ? {enabled:true, confirm:"LIVE", by:"dashboard"}
+      : {enabled:false, by:"dashboard"})
+    .then(lcRender)
+    .catch(e=>{ if(btn) btn.disabled=false; alert("失败: "+e); });
 }
 function lcInit(){
   if(!document.getElementById("lc-status")) return;
