@@ -2562,16 +2562,45 @@ def commit_target_atomic_bundle(
             if training_fact is not None
             else set()
         )
-        existing_training_scope = (
-            conn.execute(
-                "SELECT 1 FROM basket_policy_training_fact "
-                "WHERE decision_scope_key=? LIMIT 1",
-                (str(training_fact.get("decision_scope_key") or ""),),
-            ).fetchone()
-            if training_fact is not None
+        # This cycle's version-vector rows are written before the fact writer
+        # is asked, and they carry the candidate's own fact_id.  The fact
+        # writer is idempotent on decision_scope_key, so when the key is
+        # already held it keeps the stored row and this candidate's fact never
+        # lands -- leaving those rows pointing at nothing and, on replay,
+        # ``_assert_existing_cycle_training_fact_binding`` finding no fact for
+        # this cycle at all.  cycle_id is inside the fact's content address,
+        # so a stored row under a different fact_id is by construction another
+        # cycle's; no ordering of these writes makes the reference valid.
+        # Refuse to open a second cycle for a decision already recorded.  The
+        # resident's own scope guard answers this first and retains without a
+        # write, so reaching here means a caller bypassed it.
+        #
+        # The scope question is asked through the forward fact validator, not
+        # re-implemented here: a stored row that disagrees on a scope-defining
+        # field must still raise the validator's own named conflict, naming
+        # the field, rather than being flattened into this coarser refusal.
+        existing_training_scope = None
+        if (
+            training_fact is not None
             and "decision_scope_key" in training_fact_columns
-            else None
-        )
+        ):
+            from .delta_v2_training import committed_scope_fact_id
+
+            try:
+                held_fact_id = committed_scope_fact_id(
+                    conn, fact=training_fact
+                )
+            except ContractError as exc:
+                raise AtomicLedgerError(str(exc)) from exc
+            existing_training_scope = (
+                None if held_fact_id is None else (held_fact_id,)
+            )
+            if held_fact_id is not None and held_fact_id != str(
+                training_fact.get("fact_id") or ""
+            ):
+                raise AtomicLedgerError(
+                    "target_training_fact_decision_scope_already_committed"
+                )
         if (
             decision.get("decided_state") == "prepared"
             and training_fact is not None

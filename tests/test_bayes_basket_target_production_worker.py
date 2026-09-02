@@ -5784,7 +5784,15 @@ def test_unchanged_retiring_scope_retains_instead_of_superseding(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Nothing to supersede: asking the ledger would fail the whole commit."""
+    """Nothing to supersede: asking the ledger would fail the whole commit.
+
+    The guard now answers this at the first and most direct question -- is
+    this exact ``decision_scope_key`` already recorded -- rather than by
+    comparing the station-day's most recent fact and then, failing that,
+    the retiring cycle's own.  ``scope-A`` belongs to ``live-cycle``, so the
+    earlier answer names the same cycle for the same reason; only the label
+    changes, from the prepared-candidate arm to the authority arm.
+    """
 
     worker = _worker(tmp_path, _disarming_guard_conn())
     try:
@@ -5802,8 +5810,12 @@ def test_unchanged_retiring_scope_retains_instead_of_superseding(
         worker.close()
 
     assert result is not None
-    assert result["state"] == "retained_existing_prepared_candidate"
+    assert result["state"] == "retained_existing_authority_decision"
     assert result["writes_target_ledger"] is False
+    # The point of the test is which cycle is retained, not the label.
+    assert result["cycle_id"] == "live-cycle"
+    assert result["decision_id"] == "decision-live"
+    assert result["training_fact_id"] == "fact-live"
 
 
 def test_p0m_scope_shape_runs_without_an_instance(tmp_path: Path) -> None:

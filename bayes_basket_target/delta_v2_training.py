@@ -128,6 +128,43 @@ SCOPE_DETERMINING_COLUMNS: tuple[str, ...] = (
 )
 
 
+def committed_scope_fact_id(
+    conn: sqlite3.Connection,
+    *,
+    fact: Mapping[str, Any],
+) -> str | None:
+    """Return the ``fact_id`` already holding this fact's decision scope.
+
+    Read-only, and the single owner of the scope-divergence rule: a caller
+    that must decide something *before* it writes gets the identical answer
+    from the identical code, rather than a second copy of the comparison
+    that can drift out of agreement with the writer.
+
+    Raises the same named conflict the writer raises when a stored row
+    disagrees on a scope-defining field.
+    """
+
+    supplied = {name: fact.get(name) for name in FACT_COLUMNS}
+    existing_scope = conn.execute(
+        "SELECT " + ",".join(SCOPE_DETERMINING_COLUMNS) + ",fact_id "
+        "FROM basket_policy_training_fact WHERE decision_scope_key=?",
+        (supplied["decision_scope_key"],),
+    ).fetchone()
+    if existing_scope is None:
+        return None
+    stored = dict(zip(SCOPE_DETERMINING_COLUMNS, existing_scope))
+    divergent = sorted(
+        name
+        for name in SCOPE_DETERMINING_COLUMNS
+        if str(stored[name] or "") != str(supplied[name] or "")
+    )
+    if divergent:
+        raise ContractError(
+            "delta_v2_training_fact_scope_conflict:" + ",".join(divergent)
+        )
+    return str(existing_scope[-1])
+
+
 def commit_delta_v2_training_fact(
     conn: sqlite3.Connection,
     *,
@@ -148,12 +185,8 @@ def commit_delta_v2_training_fact(
         or supplied["content_sha256"] != expected_sha
     ):
         raise ContractError("delta_v2_training_fact_content_address_mismatch")
-    existing_scope = conn.execute(
-        "SELECT " + ",".join(SCOPE_DETERMINING_COLUMNS) + ",fact_id "
-        "FROM basket_policy_training_fact WHERE decision_scope_key=?",
-        (supplied["decision_scope_key"],),
-    ).fetchone()
-    if existing_scope is not None:
+    held_fact_id = committed_scope_fact_id(conn, fact=supplied)
+    if held_fact_id is not None:
         # The key is the idempotence test, not the content hash.
         #
         # ``decision_scope_key`` addresses one economically distinct decision:
@@ -192,21 +225,10 @@ def commit_delta_v2_training_fact(
         # What is still compared is the scope's own defining fields.  They are
         # inputs to the key, so they cannot differ without a hash collision or
         # a corrupt row -- which is the fault this guard is actually for.
-        stored = dict(zip(SCOPE_DETERMINING_COLUMNS, existing_scope))
-        divergent = sorted(
-            name
-            for name in SCOPE_DETERMINING_COLUMNS
-            if str(stored[name] or "") != str(supplied[name] or "")
-        )
-        if divergent:
-            raise ContractError(
-                "delta_v2_training_fact_scope_conflict:"
-                + ",".join(divergent)
-            )
         return {
             "schema": FACT_SCHEMA,
             "state": "already_committed",
-            "fact_id": str(existing_scope[-1]),
+            "fact_id": held_fact_id,
             "idempotent": True,
         }
     conn.execute(
@@ -227,6 +249,7 @@ def commit_delta_v2_training_fact(
 
 __all__ = [
     "FACT_SCHEMA",
+    "committed_scope_fact_id",
     "build_delta_v2_training_fact",
     "build_stage_zero_delta_v2_training_fact",
     "commit_delta_v2_training_fact",

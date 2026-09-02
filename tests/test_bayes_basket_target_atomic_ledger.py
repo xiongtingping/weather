@@ -2688,3 +2688,71 @@ def test_intent_live_flag_follows_the_plan_that_authorized_it() -> None:
         assert row[0] == expected, (
             "intent flag must equal the plan's authority, not a literal"
         )
+
+
+def test_second_cycle_for_a_recorded_decision_refuses_before_it_dangles(
+) -> None:
+    """A duplicate scope must not open a cycle bound to a fact that never lands.
+
+    The version-vector rows are written before the fact writer is asked, and
+    they carry this candidate's own ``fact_id``.  The writer is idempotent on
+    ``decision_scope_key``: when the key is already held it keeps the stored
+    row, so this candidate's fact never lands and those rows reference
+    nothing -- and a replay of the cycle then finds no fact for it at all.
+    ``cycle_id`` is inside the fact's content address, so a stored row under
+    another ``fact_id`` is by construction another cycle's; there is no order
+    of these writes that makes the reference valid.  Refuse instead.
+
+    Distinct from the scope-conflict case below it: there the two facts
+    disagree on a scope-defining field and the validator names the field.
+    Here they agree on every one of them, which is precisely the state that
+    became routine once P0 stopped restating an unchanged envelope.
+    """
+
+    first = _bundle(index=206)
+    first["training_fact"] = _training_fact(
+        first, decision_scope_key="scope-recorded"
+    )
+    second = _bundle(index=207)
+    second["training_fact"] = _training_fact(
+        second, decision_scope_key="scope-recorded"
+    )
+    # Same decision, different cycle: every scope-defining field agrees.
+    for column in (
+        "station_id", "event_date", "settlement_timezone", "stage",
+        "probability_envelope_id", "posterior_sha256",
+        "official_exclusion_mask_sha256", "quote_freshness_policy_sha256",
+    ):
+        assert first["training_fact"][column] == second["training_fact"][column]
+    assert (
+        first["training_fact"]["cycle_id"]
+        != second["training_fact"]["cycle_id"]
+    )
+    assert (
+        first["training_fact"]["content_sha256"]
+        != second["training_fact"]["content_sha256"]
+    )
+
+    with _db(with_training_fact=True) as conn:
+        commit_target_atomic_bundle(conn, bundle=first)
+        with pytest.raises(
+            AtomicLedgerError,
+            match="target_training_fact_decision_scope_already_committed",
+        ):
+            commit_target_atomic_bundle(conn, bundle=second)
+        for table, expected in (
+            ("basket_policy_training_fact", 1),
+            ("basket_target_execution_cycles", 1),
+            ("basket_target_execution_version_vectors", 1),
+            ("basket_target_order_intents", 1),
+        ):
+            assert conn.execute(
+                f"SELECT COUNT(*) FROM {table}"
+            ).fetchone()[0] == expected, table
+        # The invariant the refusal exists to hold.
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_target_execution_version_vectors v "
+            "WHERE v.training_fact_id IS NOT NULL AND NOT EXISTS("
+            "SELECT 1 FROM basket_policy_training_fact f "
+            "WHERE f.fact_id=v.training_fact_id)"
+        ).fetchone()[0] == 0

@@ -6666,21 +6666,27 @@ class TargetProductionWorker:
                 compiled_plan=candidate,
                 market_snapshot=market_snapshot,
             )
-        latest_fact = (
+        # Ask for this candidate's own scope, not the station-day's most
+        # recent one.  ``decision_scope_key`` is UNIQUE, so the question "has
+        # this exact decision already been recorded" has a direct answer, and
+        # reading the day's latest row answered a different question: the
+        # three stages interleave inside one station-day, so a P0 candidate
+        # was routinely compared against the P1 fact written between it and
+        # the last P0.  The keys differ, the guard falls through, and the
+        # ledger is entered with a key it already holds -- where the fact
+        # cannot land under this cycle_id, and the version-vector rows are
+        # written before the fact writer is even asked.
+        scope_fact = (
             self.commit_conn.execute(
                 "SELECT fact_id,cycle_id,decision_id,decision_scope_key "
-                "FROM basket_policy_training_fact "
-                "WHERE station_id=? AND event_date=? "
-                "ORDER BY decision_at_utc DESC,rowid DESC LIMIT 1",
-                (station_id, event_date),
+                "FROM basket_policy_training_fact WHERE decision_scope_key=?",
+                (candidate_scope_key,),
             ).fetchone()
-            if has_training_facts
+            if has_training_facts and candidate_scope_key
             else None
         )
-        if (
-            latest_fact is not None
-            and str(latest_fact[3] or "") == candidate_scope_key
-        ):
+        latest_fact = scope_fact
+        if latest_fact is not None:
             return {
                 "schema": SCHEMA,
                 "ok": True,
