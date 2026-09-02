@@ -2703,6 +2703,7 @@ def commit_target_atomic_bundle(
         # field must still raise the validator's own named conflict, naming
         # the field, rather than being flattened into this coarser refusal.
         existing_training_scope = None
+        held_fact_id: str | None = None
         if (
             training_fact is not None
             and "decision_scope_key" in training_fact_columns
@@ -2718,12 +2719,23 @@ def commit_target_atomic_bundle(
             existing_training_scope = (
                 None if held_fact_id is None else (held_fact_id,)
             )
-            if held_fact_id is not None and held_fact_id != str(
-                training_fact.get("fact_id") or ""
-            ):
-                raise AtomicLedgerError(
-                    "target_training_fact_decision_scope_already_committed"
-                )
+        # The refusal itself waits for the decision-identity check below.
+        # A re-decision that resolves to a standing decision id is retained
+        # there as ``already_committed_decision`` -- the same decision, not
+        # an error -- and this refusal must not pre-empt it: it did, once, on
+        # KATL 2026-09-02 at 03:40Z, refusing a stage-open that the retain
+        # would have answered.  What is left for this refusal is the case the
+        # retain cannot see: a fact holding the key with no standing decision
+        # under it, which is a store the migration left with an orphan.
+        held_foreign_fact_id = (
+            held_fact_id
+            if (
+                training_fact is not None
+                and existing_training_scope is not None
+                and held_fact_id != str(training_fact.get("fact_id") or "")
+            )
+            else None
+        )
         if (
             decision.get("decided_state") == "prepared"
             and training_fact is not None
@@ -2781,6 +2793,10 @@ def commit_target_atomic_bundle(
                 "execution_version_vector_count": 0,
                 "training_fact_state": "already_committed_decision",
             }
+        if held_foreign_fact_id is not None:
+            raise AtomicLedgerError(
+                "target_training_fact_decision_scope_already_committed"
+            )
 
         if not stage_rooted:
             # The METAR-only projection tables carry CHECK constraints naming

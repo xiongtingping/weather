@@ -2842,3 +2842,48 @@ def test_a_restated_decision_on_a_new_cycle_is_idempotent_not_a_row() -> None:
         assert receipt_b["decision_id"] == first["decision"]["decision_id"]
         assert receipt_b["cycle_id"] == first["cycle"]["cycle_id"]
         assert _counts(conn) == before
+
+
+def test_a_restated_decision_with_a_recorded_fact_is_retained_not_refused(
+) -> None:
+    """Two guards answer the same key; the retain must answer first.
+
+    The decision-identity retain above says a re-decision that resolves to a
+    standing decision id is that decision -- ``already_committed_decision``,
+    idempotent, no row.  The scope refusal says a fact holding this key under
+    another cycle means a second cycle must not open.  Both are right; on a
+    true restatement both are true at once, and the refusal ran first: KATL
+    2026-09-02 at 03:40Z was refused a stage-open that the retain would have
+    answered.  The refusal is now what is left after the retain declines --
+    a fact holding the key with no standing decision under it, which only an
+    orphaned store can produce (the test above this one).
+    """
+
+    first = _bundle(index=208, amount=3.0)
+    first["training_fact"] = _training_fact(
+        first, decision_scope_key="scope-restated-208"
+    )
+    second = _bundle(index=208, amount=3.0, plan_salt="-restated")
+    second["training_fact"] = _training_fact(
+        second, decision_scope_key="scope-restated-208"
+    )
+    assert second["decision"]["decision_id"] == first["decision"]["decision_id"]
+    assert second["cycle"]["cycle_id"] != first["cycle"]["cycle_id"]
+    assert (
+        second["training_fact"]["fact_id"]
+        != first["training_fact"]["fact_id"]
+    )
+
+    with _db(with_training_fact=True) as conn:
+        assert commit_target_atomic_bundle(conn, bundle=first)["state"] == (
+            "committed"
+        )
+        before = _counts(conn)
+        receipt = commit_target_atomic_bundle(conn, bundle=second)
+        assert receipt["state"] == "already_committed_decision"
+        assert receipt["idempotent"] is True
+        assert receipt["cycle_id"] == first["cycle"]["cycle_id"]
+        assert _counts(conn) == before
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_policy_training_fact"
+        ).fetchone()[0] == 1
