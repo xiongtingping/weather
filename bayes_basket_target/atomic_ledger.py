@@ -3177,12 +3177,18 @@ def commit_blocked_scope_decision(
                 raise AtomicLedgerError(
                     "preliminary_decision_event_day_closed"
                 )
-        else:
+        elif stage_zero_anchor is None:
             _assert_event_day_started(
                 day,
                 settlement_timezone=timezone_name,
                 as_of_utc=created_at,
             )
+        # A stage-zero anchor has already had its day classified above,
+        # under this same write lock: closed refused, a listed not-started
+        # day admitted (clause 48).  Re-asking the started-day guard here
+        # would only rename the refusal -- future_event_day_not_allowed one
+        # line behind stage_zero_execution_event_day_not_open -- which is
+        # exactly the shape of the five gates cleared on 2026-08-31.
 
         conflicting_plan = conn.execute(
             "SELECT cycle_id,plan_sha256 FROM basket_target_execution_cycles WHERE plan_id=?",
@@ -3413,7 +3419,22 @@ def _assert_stage_zero_execution_anchor_current(
         raise AtomicLedgerError(
             "stage_zero_execution_event_window_invalid"
         ) from exc
-    if day_state != "open":
+    # A listed day that has not started is a stage-zero day, not a future
+    # one.  Clause 48 (2026-08-14) makes listing the entry, and clause 46
+    # already lets a stage-rooted P0/P0-M *position* open before the day
+    # exists (commit_target_atomic_bundle skips the started-day guard for
+    # it).  This recheck predates both -- it was written 2026-08-04 for a
+    # ledger that only ever saw the current day -- and until 2026-09-02 it
+    # was the sixth gate on the listing path: every listing-day P0
+    # candidate compiled, evaluated to no execution, and then failed here,
+    # so no decision row and no training fact were ever written for it (18
+    # to 23 scopes per cycle).  The admission is the one _decision_scopes
+    # already applies to a not-started day -- a committed P0/P0-M authority
+    # and no P1 -- and every clause of it is enforced below by the checks
+    # that follow: the anchored envelope must be the current committed row
+    # of its own stage, and any committed P1 refuses the anchor outright.
+    # Closed stays closed.
+    if day_state not in {"open", "not_started"}:
         raise AtomicLedgerError("stage_zero_execution_event_day_not_open")
     probability_sha = _sha(
         "stage_zero_execution_probability_sha256",

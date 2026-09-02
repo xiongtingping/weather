@@ -1867,7 +1867,11 @@ def test_atomic_bundle_rejects_p0_before_identity_or_reservation() -> None:
         )
 
 
-def _stage_zero_anchor(conn: sqlite3.Connection) -> dict[str, object]:
+def _stage_zero_anchor(
+    conn: sqlite3.Connection,
+    *,
+    event_date: str = "2026-07-23",
+) -> dict[str, object]:
     apply_production_ssot_schema(conn)
     checkpoint = "p0-stage-zero"
     probability_sha = "1" * 64
@@ -1878,7 +1882,7 @@ def _stage_zero_anchor(conn: sqlite3.Connection) -> dict[str, object]:
     conn.execute(
         "INSERT INTO basket_probability_envelope VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (
-            checkpoint, "P0", checkpoint, "ZUUU", "2026-07-23",
+            checkpoint, "P0", checkpoint, "ZUUU", event_date,
             SETTLEMENT_TIMEZONE, "2026-07-23T03:00:00Z",
             "2026-07-23T05:00:00Z", '{"38":0}', '{"38":1.0}',
             "posterior-v1", "6" * 64, "7" * 64, "{}",
@@ -1888,7 +1892,7 @@ def _stage_zero_anchor(conn: sqlite3.Connection) -> dict[str, object]:
     conn.execute(
         "INSERT INTO basket_regime_artifact VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (
-            "regime-zero", "ZUUU", "2026-07-23", "P0", checkpoint,
+            "regime-zero", "ZUUU", event_date, "P0", checkpoint,
             SETTLEMENT_TIMEZONE, probability_sha, "2026-07-23T03:00:00Z",
             "2026-07-23T03:00:00Z", "2026-07-23T05:00:00Z", "{}",
             regime_sha, "COMMITTED", "2026-07-23T03:00:00Z",
@@ -1897,7 +1901,7 @@ def _stage_zero_anchor(conn: sqlite3.Connection) -> dict[str, object]:
     conn.execute(
         "INSERT INTO basket_official_ws_snapshot VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (
-            "ws-zero", "market-zero", "ZUUU", "2026-07-23",
+            "ws-zero", "market-zero", "ZUUU", event_date,
             SETTLEMENT_TIMEZONE, 1, "2026-07-23T03:59:00Z", "quote-v1",
             "2026-07-23T03:59:00Z", "2026-07-23T04:01:00Z", "8" * 64,
             "OFFICIAL_CLOB_WS", "inventory-v1", "order-v1", 20.0,
@@ -1907,7 +1911,7 @@ def _stage_zero_anchor(conn: sqlite3.Connection) -> dict[str, object]:
     conn.execute(
         "INSERT INTO basket_confirmed_inventory_snapshot VALUES(?,?,?,?,?,?,?,?,?,?)",
         (
-            "inventory-zero", "ZUUU", "2026-07-23", "inventory-v1",
+            "inventory-zero", "ZUUU", event_date, "inventory-v1",
             "2026-07-23T03:59:00Z", 1, "{}", inventory_sha,
             "COMMITTED", "2026-07-23T03:59:00Z",
         ),
@@ -1915,7 +1919,7 @@ def _stage_zero_anchor(conn: sqlite3.Connection) -> dict[str, object]:
     conn.execute(
         "INSERT INTO basket_order_state_snapshot VALUES(?,?,?,?,?,?,?,?,?,?)",
         (
-            "order-zero", "ZUUU", "2026-07-23", "order-v1",
+            "order-zero", "ZUUU", event_date, "order-v1",
             "2026-07-23T03:59:00Z", 1, "{}", order_sha,
             "COMMITTED", "2026-07-23T03:59:00Z",
         ),
@@ -1923,7 +1927,7 @@ def _stage_zero_anchor(conn: sqlite3.Connection) -> dict[str, object]:
     anchor: dict[str, object] = {
         "schema": "basket_target_stage_zero_execution_anchor_v1",
         "station_id": "ZUUU",
-        "event_date": "2026-07-23",
+        "event_date": event_date,
         "settlement_timezone": SETTLEMENT_TIMEZONE,
         "evaluation_at_utc": NOW,
         "probability_envelope": {
@@ -2172,6 +2176,78 @@ def test_stage_zero_execution_rejects_distinct_ws_timestamp_instant() -> None:
             commit_stage_zero_execution_scope_decision(
                 conn, anchor=anchor, created_at_utc=NOW,
             )
+
+
+@pytest.mark.parametrize("event_date", ("2026-07-24", "2026-07-25"))
+def test_stage_zero_execution_admits_a_listed_day_that_has_not_started(
+    event_date: str,
+) -> None:
+    """Clause 48: listing is entry, so a listed day's no-execution decision
+    and its training fact are written before the day starts.
+
+    NOW is 2026-07-23T04:00Z, midnight in America/New_York, so 07-24 and
+    07-25 are both not started.  Until 2026-09-02 this anchor recheck
+    required the day to be open, and one line behind it the started-day
+    guard did too; every listing-day P0 candidate died there after a full
+    compile, leaving the paper ledger without the decision.
+    """
+
+    with _db(with_training_fact=True) as conn:
+        anchor = _stage_zero_anchor(conn, event_date=event_date)
+        before = _counts(conn)
+        first = commit_stage_zero_execution_scope_decision(
+            conn, anchor=anchor, created_at_utc=NOW,
+        )
+        second = commit_stage_zero_execution_scope_decision(
+            conn, anchor=anchor, created_at_utc=NOW,
+        )
+        after = _counts(conn)
+        assert first["state"] == "committed"
+        assert second["state"] == "already_committed"
+        assert after["basket_target_execution_cycles"] == before["basket_target_execution_cycles"] + 1
+        assert after["auto_trade_decisions"] == before["auto_trade_decisions"] + 1
+        assert after["basket_target_order_intents"] == before["basket_target_order_intents"]
+        assert after["basket_target_capital_reservations"] == before["basket_target_capital_reservations"]
+        row = conn.execute(
+            "SELECT event_date FROM basket_target_execution_cycles "
+            "WHERE cycle_id=?",
+            (first["cycle_id"],),
+        ).fetchone()
+        assert row == (event_date,)
+
+
+def test_stage_zero_execution_still_refuses_a_closed_day() -> None:
+    with _db(with_training_fact=True) as conn:
+        anchor = _stage_zero_anchor(conn, event_date="2026-07-21")
+        before = _counts(conn)
+        with pytest.raises(
+            AtomicLedgerError, match="stage_zero_execution_event_day_not_open"
+        ):
+            commit_stage_zero_execution_scope_decision(
+                conn, anchor=anchor, created_at_utc=NOW,
+            )
+        assert _counts(conn) == before
+
+
+def test_stage_zero_execution_not_started_day_still_yields_to_a_committed_p1() -> None:
+    with _db(with_training_fact=True) as conn:
+        anchor = _stage_zero_anchor(conn, event_date="2026-07-24")
+        conn.execute(
+            "INSERT INTO basket_probability_envelope VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "p1-early", "P1", "p1-early", "ZUUU", "2026-07-24",
+                SETTLEMENT_TIMEZONE, "2026-07-23T03:30:00Z",
+                "2026-07-23T05:00:00Z", '{"38":0}', '{"38":1.0}',
+                "posterior-v1", "d" * 64, "e" * 64, "{}", "f" * 64,
+                "COMMITTED", "2026-07-23T03:30:00Z",
+            ),
+        )
+        before = _counts(conn)
+        with pytest.raises(AtomicLedgerError, match="higher_stage_visible"):
+            commit_stage_zero_execution_scope_decision(
+                conn, anchor=anchor, created_at_utc=NOW,
+            )
+        assert _counts(conn) == before
 
 
 def test_stage_zero_execution_rejects_p1_visible_in_same_transaction() -> None:

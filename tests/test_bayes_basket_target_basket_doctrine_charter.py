@@ -1078,6 +1078,18 @@ def test_clause_48_listing_window_opens_positions() -> None:
     assert "订阅面 = 概率信封 ∪ registry 挂牌面" in clause
     assert "虚桶冷启动" in clause
     assert "分裂包照常服务" in clause
+    # (d) 2026-09-02: the ledger's stage-zero write boundary admits a listed
+    # day that has not started.  The behaviour itself is pinned in
+    # test_bayes_basket_target_atomic_ledger
+    # (test_stage_zero_execution_admits_a_listed_day_that_has_not_started).
+    assert "不得以\"日未开始\"拒绝挂牌日的 stage-zero 决策" in clause
+    ledger_source = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "atomic_ledger.py"
+    ).read_text(encoding="utf-8")
+    assert 'if day_state not in {"open", "not_started"}:' in ledger_source
+    assert "elif stage_zero_anchor is None:" in ledger_source
 
     from bayes_basket_target.native_ensemble_p0 import (
         HOUR_LEAD_BUCKET_FRESHNESS_ORDER,
