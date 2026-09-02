@@ -149,8 +149,18 @@ def clock_only_artifact(hazard: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def score(distribution: Mapping[str, float], *, truth_bucket: str,
-          ordinals: Mapping[str, int]) -> dict[str, float]:
+          ordinals: Mapping[str, int], centers: Mapping[str, float],
+          truth_c: float) -> dict[str, float]:
     argmax = max(distribution, key=lambda bucket: distribution[bucket])
+    # The probability-weighted centre, which is what the basket actually seats
+    # the ladder on (charter 54).  A layer can improve this while leaving the
+    # bucket argmax alone -- after the hard bound and the split that argmax
+    # sits on the running high's bucket -- so a chain scored only on argmax
+    # cannot see the reanchor's channel at all.
+    centre = sum(
+        float(value) * float(centers[bucket])
+        for bucket, value in distribution.items()
+    )
     probability = float(distribution.get(truth_bucket, 0.0))
     brier = sum(
         (float(value) - (1.0 if bucket == truth_bucket else 0.0)) ** 2
@@ -166,6 +176,9 @@ def score(distribution: Mapping[str, float], *, truth_bucket: str,
         "signed": float(
             int(ordinals[argmax]) - int(ordinals[truth_bucket])
         ),
+        "centre_error_c": centre - float(truth_c),
+        "centre_abs_error_c": abs(centre - float(truth_c)),
+        "centre_squared_error": (centre - float(truth_c)) ** 2,
     }
 
 
@@ -271,6 +284,8 @@ def evaluate_day(
                     distribution,
                     truth_bucket=truth_bucket,
                     ordinals=view["ordinals"],
+                    centers=view["centers"],
+                    truth_c=float(sample["truth_tmax_c"]),
                 )
                 for arm, distribution in arms.items()
             },
@@ -286,7 +301,11 @@ def summarise(rows: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, float]]:
             metric: sum(
                 row["weight"] * row["scores"][arm][metric] for row in rows
             ) / total
-            for metric in ("hit", "within_one", "log_score", "brier", "signed")
+            for metric in (
+                "hit", "within_one", "log_score", "brier", "signed",
+                "centre_error_c", "centre_abs_error_c",
+                "centre_squared_error",
+            )
         }
         out[arm]["n"] = float(len(rows))
     return out
@@ -300,14 +319,16 @@ def print_block(title: str, rows: Sequence[Mapping[str, Any]]) -> None:
     base = summary["hard+clock"]
     print(f"\n{title}  n={len(rows)}")
     print(f"  {'arm':<12}{'命中':>8}{'±1桶':>8}{'对数分':>9}{'Brier':>8}"
-          f"{'偏移':>7}{'vs今天':>9}")
+          f"{'中心MAE':>9}{'中心RMSE':>9}{'中心偏':>8}{'vs今天':>8}")
     for arm in ARMS:
         value = summary[arm]
         delta = value["hit"] - base["hit"]
         print(
             f"  {arm:<12}{value['hit']:8.3f}{value['within_one']:8.3f}"
             f"{value['log_score']:9.3f}{value['brier']:8.3f}"
-            f"{value['signed']:+7.2f}{delta:+9.3f}"
+            f"{value['centre_abs_error_c']:9.3f}"
+            f"{math.sqrt(max(value['centre_squared_error'], 0.0)):9.3f}"
+            f"{value['centre_error_c']:+8.2f}{delta:+8.3f}"
         )
 
 
