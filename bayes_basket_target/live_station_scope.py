@@ -14,8 +14,7 @@ on each of the three, as a switch rather than a file edit:
 * ``excluded_stations``            -- 禁入, the bar.  Wins over everything.
 * ``station_probation_waivers``    -- 豁免, trade before the evidence is in.
 * ``station_probation_holds``      -- 待观察, hold back a station that has
-  qualified, without spending one of the fifteen capped bar places and
-  without saying the station is bad.
+  qualified, without saying the station is bad.
 
 The three are mutually exclusive by construction at the write boundary
 (scripts/live_control_server.py), and they are all operator rulings, which
@@ -212,8 +211,7 @@ def live_stations(
     Order of precedence, and each layer is a different kind of statement:
 
     1. 禁入 wins.  A barred station does not trade, whatever else says.
-    2. 待观察 (hold) keeps a qualified station out without calling it bad and
-       without spending one of the fifteen capped bar places.
+    2. 待观察 (hold) keeps a qualified station out without calling it bad.
     3. 豁免 (waiver) admits a station the settlement count has not graduated
        yet -- the operator graduating it by name.
     4. Otherwise the evidence decides: ``MIN_SETTLEMENTS_TO_QUALIFY``

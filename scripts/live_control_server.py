@@ -440,12 +440,6 @@ SCOPE_ALL_EXCEPT_BARRED = scope_rules.SCOPE_ALL_EXCEPT_BARRED
 SCOPE_EXPLICIT = scope_rules.SCOPE_EXPLICIT
 SSOT_DB = scope_rules.SSOT_DB
 MIN_SETTLEMENTS_TO_QUALIFY = scope_rules.MIN_SETTLEMENTS_TO_QUALIFY
-# The bar's ceiling.  Read from the automatic layer so one number governs
-# both the sweep that fills the list and the switch that adds to it.
-try:  # pragma: no cover - exercised by whichever import path is live
-    from auto_station_exclusions import MAX_BARRED_STATIONS
-except ImportError:  # pragma: no cover
-    MAX_BARRED_STATIONS = 15
 
 
 def tradeable_stations() -> set:
@@ -545,57 +539,6 @@ def _city(station: str) -> str:
     return str(STATION_LABELS.get(station) or station)
 
 
-def _trim_auto_rows_to_cap(doc: dict) -> list:
-    """Make room for a hand ruling by releasing the machine's weakest bars.
-
-    The cap is a budget for the automatic layer's judgement, not a licence
-    to overrule a person's -- so when a new hand ruling would push the union
-    past fifteen, the automatic rows give way, least severe first.  This is
-    the same arithmetic the sweep does on its next pass (``room = cap -
-    operator rows``), applied now so the file is never briefly over the cap
-    that the migration and the tests both check.
-
-    Ordering copies the sweep's own, which is the point: it keeps the most
-    severe rows and drops the rest, and a row this releases would be
-    released there too on the next pass.  The sweep sorts by fulfilment
-    ratio ascending with an unreadable ratio pushed to the end, so a row
-    barred on the money gap gives way first, and among ratio rows the
-    least-negative one goes.  The two keys are not comparable directly -- a
-    ratio of -0.5 and a gap of -18 USDC are different units -- so they are
-    ordered as the sweep orders them rather than mixed.
-    """
-
-    operator = {
-        str(row.get("station") or "").strip().upper()
-        for row in (doc.get("excluded_stations") or [])
-    }
-    auto = list(doc.get("auto_excluded_stations") or [])
-    room = max(0, MAX_BARRED_STATIONS - len(operator))
-    if len(auto) <= room:
-        return []
-
-    def _weakest_first(row: dict) -> tuple:
-        value = row.get("value")
-        readable = (
-            str(row.get("barred_on") or "") == "fulfilment_ratio"
-            and isinstance(value, (int, float))
-        )
-        return (
-            # A gap-barred row has no readable ratio, which is where the
-            # sweep parks it too: last to keep, first to give way.
-            1 if readable else 0,
-            -float(value) if readable else 0.0,
-        )
-
-    ordered = sorted(auto, key=_weakest_first)
-    dropped = ordered[:len(auto) - room]
-    keep = {id(row) for row in ordered[len(auto) - room:]}
-    doc["auto_excluded_stations"] = [row for row in auto if id(row) in keep]
-    return sorted(
-        str(row.get("station") or "").strip().upper() for row in dropped
-    )
-
-
 def _clear_intent_switches(station: str) -> dict:
     """A barred station is neither waived nor held -- take both back.
 
@@ -632,6 +575,11 @@ def set_station_bar(station: str, barred: bool, by: str = "") -> dict:
     has ruled on this one".  Without it the next sweep -- minutes away --
     would put the station straight back and the switch would look broken to
     the person who just used it.
+
+    There is no ceiling to make room under any more (operator ruling
+    2026-09-02).  A hand ruling used to evict the automatic layer's weakest
+    row once the union hit fifteen; barring a station now costs nothing but
+    the market it skips, and nothing is released to pay for it.
     """
 
     station = _station(station)
@@ -650,7 +598,6 @@ def set_station_bar(station: str, barred: bool, by: str = "") -> dict:
          if str(row.get("station") or "").upper() == station),
         None,
     )
-    trimmed: list = []
     if barred:
         existing = next(
             (row for row in operator_rows
@@ -742,8 +689,6 @@ def set_station_bar(station: str, barred: bool, by: str = "") -> dict:
     doc["auto_excluded_stations"] = auto_rows
     doc["released_stations"] = released_rows
     doc["updated_at_utc"] = _now()
-    if barred:
-        trimmed = _trim_auto_rows_to_cap(doc)
     _write_atomic(EXCLUSION_PATH, doc)
     cleared = _clear_intent_switches(station) if barred else {}
     # A barred station cannot stay pinned: the two lists are asserted
@@ -764,7 +709,6 @@ def set_station_bar(station: str, barred: bool, by: str = "") -> dict:
         "after": sorted(excluded_stations()),
         "barred": bool(barred),
         "was_auto_barred": was_auto,
-        "auto_rows_released_for_room": trimmed,
         "by": by or "dashboard",
         **cleared,
     })

@@ -54,12 +54,16 @@ RELEASE_RATIO = 0.80
 BAR_GAP_USDC = -15.0
 RELEASE_GAP_USDC = -5.0
 MIN_SETTLEMENTS = 5
-# Operator ruling 2026-08-30: at most fifteen stations barred at once.  The
-# cap binds the automatic layer only -- operator rows are never trimmed to
-# make room, because a cap is a budget for the machine's judgement and not a
-# licence to overrule a person's.  When the cap is already spent by hand
-# rulings the layer simply adds nothing and says so.
-MAX_BARRED_STATIONS = 15
+# No ceiling on the bar (operator ruling 2026-09-02, replacing the fifteen
+# of 2026-08-30).  The cap was a budget for this layer's judgement, and what
+# it actually did on this book was hide the layer's own verdicts: on the day
+# it was lifted the layer wanted six more stations (KDAL, KLGA, KORD, RJTT,
+# ZBAA, ZSQD) and the cap was silently dropping every one of them, so the
+# list a reader saw was not the list the criterion produced.  Barring a
+# station costs one skipped market and nothing else, and the operator's own
+# switch retracts any row in one click -- so a hidden verdict was the
+# expensive half of that trade, not an extra bar.
+MAX_BARRED_STATIONS = None
 # Below this, realized/expected is a division by noise rather than a ratio.
 RATIO_DENOMINATOR_FLOOR_USDC = 3.0
 
@@ -239,24 +243,12 @@ def run(*, apply_changes: bool) -> dict[str, Any]:
     for station in verdict["release"]:
         auto_rows.pop(station, None)
 
-    # The cap, applied in the order the operator named: worst fulfilment
-    # ratio first, money gap breaking ties.  A station trimmed here is not
-    # cleared of anything -- it is the least bad of the ones the layer wanted,
-    # and it is reported so the trim is visible rather than inferred from a
-    # list that quietly stopped growing.
-    room = max(0, MAX_BARRED_STATIONS - len(operator_ruled_barred))
+    # No trim.  Every station the criterion barred stays barred, and the list
+    # is the verdict rather than the fifteen least-bad of it.  The ordering
+    # that used to decide who gave way (worst fulfilment ratio first, money
+    # gap breaking ties) is gone with it -- there is nothing left to rank.
+    room = None
     trimmed: list[str] = []
-    if len(auto_rows) > room:
-        def severity(station: str) -> tuple[float, float]:
-            row = keys.get(station) or {}
-            ratio = row.get("fulfilment_ratio")
-            return (
-                ratio if ratio is not None else 1e9,
-                row.get("realized_gap_usdc", 0.0),
-            )
-        keep = sorted(auto_rows, key=severity)[:room]
-        trimmed = sorted(set(auto_rows) - set(keep))
-        auto_rows = {station: auto_rows[station] for station in sorted(keep)}
 
     # Barring a station means it stops trading, so it leaves the live batch in
     # the same move.  Without this the two lists would overlap and the go-live
@@ -294,7 +286,14 @@ def run(*, apply_changes: bool) -> dict[str, Any]:
         "ratio_denominator_floor_usdc": RATIO_DENOMINATOR_FLOOR_USDC,
         "operator_rows_are_never_auto_managed": True,
         "max_barred_stations": MAX_BARRED_STATIONS,
-        "cap_applies_to": "the automatic layer only; operator rows are never trimmed",
+        "cap_applies_to": (
+            "nothing -- the cap was lifted by operator ruling 2026-09-02."
+            " It bound this layer only, and what it did in practice was hide"
+            " the layer's own verdicts: six stations it had barred were being"
+            " dropped every pass, so the stored list was not the list the"
+            " criterion produced. Barring costs one skipped market and the"
+            " board's switch retracts any row in one click."
+        ),
         "measured": (
             "Walk-forward on 332 settlements over 2026-08-15..29, warming on six"
             " days and scoring on nine: the best of sixteen automatic rules"

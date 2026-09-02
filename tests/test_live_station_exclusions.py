@@ -26,27 +26,37 @@ import live_control_server as control  # noqa: E402
 EXCLUSIONS = ROOT / "config" / "trading" / "live_station_exclusions_v1.json"
 
 
-def test_the_barred_list_is_the_operators_current_ruling() -> None:
-    """Station by station, and the released two are really gone.
+def state_holds() -> set:
+    """Whatever the operator is currently holding back, read fresh."""
 
-    The list moved three times on 2026-08-30 -- nine named, then
-    RKSI/KAUS/FACT added, then CYYZ/EDDM/NZWN added and EPWA/LTAC
-    released -- so it is asserted as a set rather than by count.
+    return set(control.live_stations().get("probation_holds") or [])
+
+
+def test_the_barred_list_is_the_operators_current_ruling() -> None:
+    """The properties, not the membership.
+
+    This asserted the exact ten stations of the 2026-08-30 rulings, which
+    was safe only while changing the list meant editing JSON.  It is a
+    switch on the board now (2026-09-02) and the list moved nine times in
+    four minutes the first time it was used -- a test that pins the
+    membership reports the operator using the control as a regression,
+    which is the same trap the pinning test below already carries a note
+    about.  What has to hold is how the two lists compose.
     """
 
     parsed = json.loads(EXCLUSIONS.read_text(encoding="utf-8"))
     operator = {r["station"] for r in parsed["excluded_stations"]}
     auto = {r["station"] for r in parsed.get("auto_excluded_stations") or []}
-    # Ten stations the operator barred by hand, after four rounds of rulings.
-    assert operator == {
-        "EDDM", "EHAM", "EPWA", "FACT", "KMIA",
-        "LTAC", "RCSS", "RPLL", "SBGR", "ZUCK",
-    }
+    assert operator, "the hand list is not empty on this book"
     # The union is what binds: a station barred by either list is barred.
     assert control.excluded_stations() == operator | auto
     # And the two lists must not overlap -- a station managed by both would
     # let the automatic layer appear to own an operator ruling.
     assert not (operator & auto)
+    # Every hand-ruled row still carries its evidence, whichever way it got
+    # there: the switch writes the same shape the editor used to.
+    for row in parsed["excluded_stations"]:
+        assert row["station"] and row["city"] and "full_sample_roi" in row
 
 
 def test_the_automatic_layer_never_touches_an_operator_ruling() -> None:
@@ -235,8 +245,7 @@ def test_a_new_station_is_not_live_until_it_has_earned_it() -> None:
 
     "Not proven yet" and "judged and found wanting" call for opposite
     actions, so probation is its own state.  Collapsing it into the bar
-    would also spend one of the fifteen capped places on a station nobody
-    has anything against.
+    would also say something about a station nobody has anything against.
     """
 
     import auto_station_exclusions as auto  # noqa: PLC0415
@@ -291,19 +300,16 @@ def test_the_three_states_are_disjoint_and_cover_what_trades() -> None:
     assert live | probation == control.tradeable_stations() - barred
 
 
-def test_probation_does_not_spend_a_capped_bar_place() -> None:
-    """The cap is fifteen; unproven stations must not eat into it."""
+def test_probation_is_not_the_bar() -> None:
+    """Two states, two meanings, and nothing may be in both.
 
-    import auto_station_exclusions as auto  # noqa: PLC0415
+    This used to assert that probation ate none of the fifteen capped bar
+    places.  The cap is gone (operator ruling 2026-09-02) and the reason the
+    two states are separate did not go with it: "not proven yet" and "judged
+    and found wanting" call for opposite actions.
+    """
 
     scope = control.live_stations()
-    doc = json.loads(EXCLUSIONS.read_text(encoding="utf-8"))
-    operator = {r["station"] for r in doc["excluded_stations"]}
-    # Same reading as above: the cap governs the automatic rows.  What this
-    # test is about is that probation eats none of them.
-    assert len(set(scope["barred"]) - operator) <= max(
-        0, auto.MAX_BARRED_STATIONS - len(operator)
-    )
     assert not (set(scope["probation"]) & set(scope["barred"]))
 
 
@@ -347,12 +353,19 @@ def test_a_station_the_model_never_computed_is_not_in_the_batch() -> None:
         assert station not in scope
 
 
-def test_the_bar_is_capped_at_fifteen_stations() -> None:
-    """Operator ruling 2026-08-30, and the cap binds the machine only.
+def test_the_bar_has_no_ceiling() -> None:
+    """Operator ruling 2026-09-02: the fifteen-station cap is lifted.
 
-    Trimming operator rows to make room would let a budget for the
-    automatic layer's judgement overrule a person's, so the cap is spent
-    by hand rulings first and the layer takes what is left.
+    What the cap did on this book was hide the layer's own verdicts rather
+    than restrain them.  On the day it came off, the criterion had barred
+    six more stations (KDAL, KLGA, KORD, RJTT, ZBAA, ZSQD) and every one was
+    being dropped on every pass, so the stored list was not the list the
+    criterion produced -- and a reader could not tell the difference.
+    Barring costs one skipped market, and the board's switch retracts any
+    row in one click.
+
+    The disjointness the cap was tangled up with is asserted here because it
+    still has to hold: one station, one bar list.
     """
 
     import auto_station_exclusions as auto  # noqa: PLC0415
@@ -362,20 +375,18 @@ def test_the_bar_is_capped_at_fifteen_stations() -> None:
     auto_barred = {
         r["station"] for r in parsed.get("auto_excluded_stations") or []
     }
-    # The cap is a budget for the machine's judgement, so what it actually
-    # binds is the automatic layer's share -- the operator's own rulings are
-    # never trimmed to fit, and a hand-barred sixteenth station would be a
-    # decision, not a violation.  Asserting the union instead was right only
-    # while the hand list stayed under fifteen, and it would have reported
-    # the operator's own switch as a regression.
-    assert len(auto_barred) <= max(
-        0, auto.MAX_BARRED_STATIONS - len(operator)
+    assert auto.MAX_BARRED_STATIONS is None
+    assert parsed["auto_policy"]["max_barred_stations"] is None
+    assert not (operator & auto_barred)
+    # And no trim survives anywhere: a decision to bar must reach the file.
+    verdict = auto.decide(
+        {f"S{i:03d}": {"settlements": 99, "fulfilment_ratio": -9.0,
+                       "realized_gap_usdc": -999.0, "realized_usdc": -1.0}
+         for i in range(40)},
+        currently_auto_barred=set(),
+        operator_ruled=set(),
     )
-    if len(operator) <= auto.MAX_BARRED_STATIONS:
-        assert len(control.excluded_stations()) <= auto.MAX_BARRED_STATIONS
-    assert parsed["auto_policy"]["max_barred_stations"] == (
-        auto.MAX_BARRED_STATIONS
-    )
+    assert len(verdict["bar"]) == 40
 
 
 def test_the_bar_never_intersects_the_live_allowlist() -> None:
@@ -468,10 +479,17 @@ def test_pinning_a_list_switches_the_scope_and_still_refuses_barred(
             "ZBAA", "ZSQD", "ZGGG", "ZUUU", "RJTT", "RKSI", "WSSS", "WMKK",
             "EGLL", "LFPG", "EDDF", "KSFO", "KORD", "KSEA", "KLAX",
         ]
-        admissible = [s for s in candidates if s not in set(barred)][:2]
+        # Held stations are excluded here too: a hold keeps a station out of
+        # the batch in every scope, so a pinned list containing one would
+        # come back short and the assertion below would read that as a bug.
+        held = set(state_holds())
+        admissible = [
+            s for s in candidates if s not in set(barred) and s not in held
+        ][:2]
         assert len(admissible) == 2, "this test needs two admissible stations"
         state = control.set_allowlist(admissible)
         assert state["live"]["station_scope"] == control.SCOPE_EXPLICIT
+        assert set(state["live"]["pinned_allowlist"]) == set(admissible)
         assert set(state["live"]["station_allowlist"]) == set(admissible)
         with pytest.raises(ValueError, match=barred[0]):
             control.set_allowlist([admissible[0], barred[0]])
@@ -617,10 +635,8 @@ def test_the_bar_is_a_switch_and_writes_a_ruling_with_its_evidence(
     assert row["city"] and "full_sample_roi" in row and row["added_utc"]
     assert station in control.excluded_stations()
     assert station not in set(control.live_stations()["stations"])
-    # The cap is fifteen and it binds the union, so a hand ruling that would
-    # overflow it takes its place from the automatic layer rather than from
-    # another hand ruling.
-    assert len(control.excluded_stations()) <= 15
+    # Nothing gives way to make room: the ceiling was lifted on 2026-09-02,
+    # so a hand ruling adds a row and releases none.
     parsed = json.loads(exclusions.read_text(encoding="utf-8"))
     operator = {r["station"] for r in parsed["excluded_stations"]}
     auto = {r["station"] for r in parsed["auto_excluded_stations"]}
@@ -658,9 +674,25 @@ def test_releasing_an_automatic_bar_keeps_the_sweep_off_the_station(
     monkeypatch.setattr(auto, "CONFIG", exclusions)
     monkeypatch.setattr(auto, "INTENT", intent)
     doc = json.loads(exclusions.read_text(encoding="utf-8"))
-    auto_rows = [r["station"] for r in doc["auto_excluded_stations"]]
-    assert auto_rows, "this test needs a standing automatic bar"
-    station = auto_rows[0]
+    # Planted rather than borrowed from the live file.  The automatic list
+    # is empty whenever the operator has ruled on everything the criterion
+    # would reach -- which is what happened the day the switches shipped --
+    # and a test that needs one has to bring its own.
+    station = "KSFO"
+    doc["excluded_stations"] = [
+        r for r in doc["excluded_stations"] if r["station"] != station
+    ]
+    doc["released_stations"] = [
+        r for r in (doc.get("released_stations") or [])
+        if r["station"] != station
+    ]
+    doc["auto_excluded_stations"] = [{
+        "station": station, "barred_on": "fulfilment_ratio",
+        "value": -0.9, "settlements": 9, "auto_barred_utc": "2026-09-02",
+    }]
+    exclusions.write_text(
+        json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
     control.set_station_bar(station, False, by="test")
     assert station not in control.excluded_stations()
@@ -695,12 +727,14 @@ def test_waiver_and_hold_are_switches_and_exclude_each_other(
     assert station not in state["live"]["station_allowlist"]
     assert station in state["live"]["station_probation"]
 
-    # A hold is not a bar: it spends none of the fifteen capped places and
-    # says nothing about the station being bad.
+    # A hold is not a bar: it says nothing about the station being bad.
     assert station not in state["live"]["station_exclusions"]
 
     state = control.set_station_hold(station, False, by="test")
-    assert state["live"]["station_probation_holds"] == []
+    # Whatever else the operator is holding stays held -- this switch moves
+    # one station, and asserting an empty list would make the test depend on
+    # nobody else having used the board.
+    assert station not in state["live"]["station_probation_holds"]
 
 
 def test_a_barred_station_takes_neither_of_the_other_two_switches(
