@@ -259,6 +259,7 @@ def _market_snapshot(
     manifest: Mapping[str, Any],
     evaluation_at_utc: str,
     planning_budget_usdc: float = 0.0,
+    book_equity_usdc: float | None = None,
 ) -> dict[str, Any]:
     evaluation = _utc(
         evaluation_at_utc,
@@ -272,6 +273,28 @@ def _market_snapshot(
         ) from exc
     if not math.isfinite(planning_budget) or planning_budget < 0.0:
         raise ContractError("p0_preselection_planning_budget_invalid")
+    # The book's equity is a different number from this scope's planning
+    # budget, and the sizing kernel needs both.  ``remaining_budget_usdc`` is
+    # what this station-day may plan against -- the portfolio quota, a
+    # quarter of the pool at most and often far less -- while the per-scope
+    # stake cap (2% of the book, charter of 2026-08-26) is a share of the
+    # whole book.  ``runtime._compile_target_plan`` falls back to the budget
+    # when no equity is on the snapshot, so on this lane the 2% has been
+    # riding on the quota instead of the pool: 514.29 x 0.25 x 0.02 x 0.6 =
+    # 1.54 USDC for a P0 open, below one exchange lot on any leg above 0.30,
+    # and every positive-edge forward basket of 2026-09-02 (6 of 6) was
+    # refused for a missing leg it could have afforded at 6.17.  The forward
+    # loop passes the pool balance here; nothing is derived from it.
+    book_equity: float | None = None
+    if book_equity_usdc is not None:
+        try:
+            book_equity = float(book_equity_usdc)
+        except (TypeError, ValueError) as exc:
+            raise ContractError(
+                "p0_preselection_book_equity_invalid"
+            ) from exc
+        if not math.isfinite(book_equity) or book_equity < 0.0:
+            raise ContractError("p0_preselection_book_equity_invalid")
     if (
         manifest.get("schema") != "clob_ws_latest_quote_snapshot_v1"
         or manifest.get("state") != "connected"
@@ -570,6 +593,14 @@ def _market_snapshot(
         # and P0-M to compute a real DeltaBasketScore target before P1
         # without creating an intent, reservation, or order.
         "remaining_budget_usdc": planning_budget,
+        # Absent when the caller has no pool to report; the compiler then
+        # sizes off the budget as before.  Never persisted: the materialized
+        # quote row picks its columns by name, so this rides in memory only.
+        **(
+            {"book_equity_usdc": book_equity}
+            if book_equity is not None
+            else {}
+        ),
         "buckets": buckets,
         "checkpoint_changed": True,
         "quote_changed": True,
@@ -597,6 +628,7 @@ def _bind_scope_market_evidence(
     cash_phase_authority_manifest: (
         CashPhaseAuthorityManifest | Mapping[str, Any] | None
     ) = None,
+    book_equity_usdc: float | None = None,
 ) -> tuple[dict[str, Any], Any, BasketCashPhaseInput]:
     """Resolve the scope's book and the cash-phase input bound into it.
 
@@ -633,6 +665,7 @@ def _bind_scope_market_evidence(
         manifest=ws_manifest,
         evaluation_at_utc=evaluation_at_utc,
         planning_budget_usdc=planning_budget_usdc,
+        book_equity_usdc=book_equity_usdc,
     )
     phase_input = BasketCashPhaseInput.from_mapping({
         "policy_version": cash_policy.policy_version,
@@ -665,6 +698,7 @@ def compile_p0_market_evidence(
     cash_phase_authority_manifest: (
         CashPhaseAuthorityManifest | Mapping[str, Any] | None
     ) = None,
+    book_equity_usdc: float | None = None,
 ) -> dict[str, Any]:
     """Resolve one scope's market snapshot without compiling a plan.
 
@@ -715,6 +749,7 @@ def compile_p0_market_evidence(
         ws_quotes=ws_quotes,
         planning_budget_usdc=planning_budget_usdc,
         cash_phase_authority_manifest=cash_phase_authority_manifest,
+        book_equity_usdc=book_equity_usdc,
     )
     return market
 
@@ -734,6 +769,7 @@ def compile_p0_preselection(
     strategy_version: str,
     planning_budget_usdc: float,
     cash_phase_authority_manifest: CashPhaseAuthorityManifest | Mapping[str, Any] | None = None,
+    book_equity_usdc: float | None = None,
 ) -> dict[str, Any]:
     expected_source_lane = target_registry_source_lane(
         conn,
@@ -795,6 +831,7 @@ def compile_p0_preselection(
         ws_quotes=ws_quotes,
         planning_budget_usdc=planning_budget_usdc,
         cash_phase_authority_manifest=cash_phase_authority_manifest,
+        book_equity_usdc=book_equity_usdc,
     )
     (
         delta_v2_artifact,

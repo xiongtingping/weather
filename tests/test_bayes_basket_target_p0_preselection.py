@@ -1025,3 +1025,72 @@ def test_forward_evidence_rows_have_one_builder() -> None:
         "one definition, one call from the compiled path, one from the "
         "refused path"
     )
+
+
+def test_p0_snapshot_carries_the_books_equity_beside_the_scopes_budget() -> None:
+    """The stake cap is 2% of the book; the budget is this scope's quota.
+
+    Two different numbers, and the sizing kernel needs both.  With only the
+    budget on the snapshot the compiler fell back to it and the 2% rode on
+    the quota: a quarter of the pool at most, so 514.29 x 0.25 x 0.02 x 0.6
+    = 1.54 USDC for a P0 open -- below one exchange lot on any leg above
+    0.30.  Measured 2026-09-02: every positive-edge forward basket of the
+    day (6 of 6) was refused for a missing leg it could have afforded at
+    the 6.17 the ruling actually grants.
+    """
+
+    envelope, registry_rows, quotes, manifest = _ws_inputs(
+        observed_at="2026-07-23T12:00:10Z"
+    )
+    envelope.decision_at_utc = "2026-07-23T12:00:09Z"
+
+    with_equity = _market_snapshot(
+        envelope=envelope,
+        registry_rows=registry_rows,
+        quotes=quotes,
+        manifest=manifest,
+        evaluation_at_utc="2026-07-23T12:01:00Z",
+        planning_budget_usdc=20.0,
+        book_equity_usdc=514.29,
+    )
+    assert with_equity["remaining_budget_usdc"] == 20.0
+    assert with_equity["book_equity_usdc"] == 514.29
+
+    # No pool reported: the key is absent, not zero, so the compiler sizes
+    # off the budget exactly as it always did.
+    without = _market_snapshot(
+        envelope=envelope,
+        registry_rows=registry_rows,
+        quotes=quotes,
+        manifest=manifest,
+        evaluation_at_utc="2026-07-23T12:01:00Z",
+        planning_budget_usdc=20.0,
+    )
+    assert "book_equity_usdc" not in without
+
+    # Equity is a sizing input, not part of the quote's economic identity:
+    # the same book at the same prices is the same snapshot.
+    assert with_equity["snapshot_id"] == without["snapshot_id"]
+    assert (
+        with_equity["economic_quote_sha256"]
+        == without["economic_quote_sha256"]
+    )
+
+
+@pytest.mark.parametrize("equity", [-0.01, float("nan"), float("inf")])
+def test_p0_snapshot_refuses_an_unusable_book_equity(equity: float) -> None:
+    envelope, registry_rows, quotes, manifest = _ws_inputs(
+        observed_at="2026-07-23T12:00:10Z"
+    )
+    with pytest.raises(
+        ContractError, match="p0_preselection_book_equity_invalid"
+    ):
+        _market_snapshot(
+            envelope=envelope,
+            registry_rows=registry_rows,
+            quotes=quotes,
+            manifest=manifest,
+            evaluation_at_utc="2026-07-23T12:01:00Z",
+            planning_budget_usdc=20.0,
+            book_equity_usdc=equity,
+        )

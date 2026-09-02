@@ -1655,6 +1655,38 @@ def target_stage_zero_execution_anchor_from_cycle(
     return anchor
 
 
+def _pool_book_equity_usdc(conn: sqlite3.Connection) -> float | None:
+    """The pool's balance, or None when this store has no pool row.
+
+    ``basket_target_capital_pool`` is a production table, but fixtures and
+    older stores may not carry it, and a missing pool must read as "no
+    equity reported" rather than as an equity of zero.
+    """
+
+    try:
+        present = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='basket_target_capital_pool'"
+        ).fetchone()
+        if present is None:
+            return None
+        row = conn.execute(
+            "SELECT balance_usdc FROM basket_target_capital_pool "
+            "ORDER BY pool_id LIMIT 1"
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    if row is None or row[0] is None:
+        return None
+    try:
+        equity = float(row[0])
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(equity) or equity < 0.0:
+        return None
+    return equity
+
+
 def _latest_snapshot_row(conn: sqlite3.Connection, table: str, station_id: str, event_date: str, evaluation_at_utc: str) -> dict[str, Any]:
     cursor = conn.execute(
         f"SELECT * FROM {table} WHERE station_id=? AND event_date=? AND state='COMMITTED' AND observed_at<=? ORDER BY observed_at DESC, rowid DESC LIMIT 1",
@@ -1683,6 +1715,7 @@ def load_production_market_snapshot(
     quote = _latest_snapshot_row(conn, "basket_official_ws_snapshot", station_id, event_date, evaluation_at_utc)
     inventory = _latest_snapshot_row(conn, "basket_confirmed_inventory_snapshot", station_id, event_date, evaluation_at_utc)
     order_state = _latest_snapshot_row(conn, "basket_order_state_snapshot", station_id, event_date, evaluation_at_utc)
+    book_equity_usdc = _pool_book_equity_usdc(conn)
     quote_version = str(quote["quote_version"] or "")
     inventory_version = str(quote["inventory_version"] or "")
     order_version = str(quote["order_state_version"] or "")
@@ -1906,6 +1939,17 @@ def load_production_market_snapshot(
         "order_state_sha256": str(order_state["content_sha256"]),
         "order_state_observed_at": str(order_state["observed_at"]),
         "remaining_budget_usdc": float(quote["remaining_budget_usdc"]),
+        # The book's equity, distinct from this scope's remaining budget.
+        # The kernel's per-scope stake cap is 2% of the book (charter of
+        # 2026-08-26) and ``_compile_target_plan`` falls back to the budget
+        # when no equity is on the snapshot -- which sized every scope off
+        # its quota instead of the pool.  Absent, not zero, when the store
+        # has no pool row: an older store then sizes exactly as before.
+        **(
+            {"book_equity_usdc": book_equity_usdc}
+            if book_equity_usdc is not None
+            else {}
+        ),
         "current_core_buckets": list(current_core_buckets),
         "current_direction": current_direction,
         "buckets": normalized_buckets,

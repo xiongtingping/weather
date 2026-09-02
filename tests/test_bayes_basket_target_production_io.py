@@ -1913,3 +1913,39 @@ def test_maturity_bin_is_the_event_distance_not_the_run_lead() -> None:
     # leading with it is converted from the dates and never checked against the
     # maturity set, so an unknown hour spelling still yields a real maturity.
     assert derive_policy_maturity_bin("h00_12x", **common) == "d2"
+
+
+def test_market_snapshot_reports_the_pools_equity_when_there_is_a_pool() -> None:
+    """``book_equity_usdc`` is the pool balance; absent when no pool exists.
+
+    ``_compile_target_plan`` sizes the per-scope stake cap off this and falls
+    back to ``remaining_budget_usdc`` only when it is missing.  The fallback
+    assumed the budget *was* the pool balance, which stopped being true once
+    the budget became the portfolio quota -- so production sized every scope
+    off a quarter-book or less while the paper ledger sized off the whole
+    book (see test_ledger_production_rule_binding).
+    """
+
+    with sqlite3.connect(":memory:") as conn:
+        _seed(conn, cash_promoted=False)
+        _seed_delta_v2(conn)
+        bare = load_production_market_snapshot(
+            conn, station_id="ZUUU", event_date="2026-07-23",
+            evaluation_at_utc="2026-07-23T05:00:04Z",
+        )
+        assert "book_equity_usdc" not in bare
+
+        initialize_capital_pool(
+            conn,
+            balance_usdc=514.29,
+            capital_epoch_id="book-equity-fixture",
+            updated_at_utc="2026-07-23T05:00:04Z",
+            commit=False,
+        )
+        pooled = load_production_market_snapshot(
+            conn, station_id="ZUUU", event_date="2026-07-23",
+            evaluation_at_utc="2026-07-23T05:00:04Z",
+        )
+        assert pooled["book_equity_usdc"] == 514.29
+        # The scope's own budget is untouched by the equity.
+        assert pooled["remaining_budget_usdc"] == bare["remaining_budget_usdc"]

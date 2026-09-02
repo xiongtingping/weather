@@ -6640,6 +6640,41 @@ class TargetProductionWorker:
             if details.get(key) is not expected:
                 raise RuntimeError(f"target_activation_state_{key}_drift")
 
+    def _pool_book_equity_usdc(self) -> float | None:
+        """The pool's balance, or None when this store has no pool yet.
+
+        Read on the read-only connection: it is an input to sizing, not a
+        write.  None -- not 0.0 -- when the table or its row is absent, so a
+        store that predates the pool sizes off the planning budget exactly as
+        it always did rather than being zeroed by a missing row.
+        """
+
+        conn = self.conn if self.conn is not None else self.commit_conn
+        if conn is None:
+            return None
+        try:
+            present = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='basket_target_capital_pool'"
+            ).fetchone()
+            if present is None:
+                return None
+            row = conn.execute(
+                "SELECT balance_usdc FROM basket_target_capital_pool "
+                "ORDER BY pool_id LIMIT 1"
+            ).fetchone()
+        except sqlite3.Error:
+            return None
+        if row is None or row[0] is None:
+            return None
+        try:
+            equity = float(row[0])
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(equity) or equity < 0.0:
+            return None
+        return equity
+
     def _scope_cycle_guard(
         self,
         *,
@@ -13080,6 +13115,7 @@ class TargetProductionWorker:
         planning_budget_usdc: float,
         activation: Mapping[str, Any],
         compile_blocker: str,
+        book_equity_usdc: float | None = None,
     ) -> dict[str, Any]:
         """Commit the book a refused forward compile was measured against.
 
@@ -13116,6 +13152,7 @@ class TargetProductionWorker:
                 ws_manifest=ws_manifest,
                 ws_quotes=ws_quotes,
                 planning_budget_usdc=planning_budget_usdc,
+                book_equity_usdc=book_equity_usdc,
             )
             (
                 quote_raw,
@@ -13235,6 +13272,19 @@ class TargetProductionWorker:
             raise RuntimeError("forward_p0_station_scope_cap_exceeded")
         assert_process_memory_budget()
         planning_budget_usdc = _resolve_target_remaining_budget()
+        # The book's equity, read once for the whole loop and handed to every
+        # scope's snapshot as ``book_equity_usdc``.  The kernel's per-scope
+        # stake cap is 2% of the *book* (charter of 2026-08-26); the planning
+        # budget is the portfolio quota below, a quarter of the pool at most.
+        # With no equity on the snapshot the compiler fell back to the budget
+        # and the 2% rode on the quota: 514.29 x 0.25 x 0.02 x 0.6 = 1.54
+        # USDC for a P0 open, below one exchange lot on any leg above 0.30.
+        # Measured 2026-09-02: every positive-edge forward basket of the day
+        # (6 of 6) was refused for a missing leg it could have afforded at
+        # the 6.17 the ruling actually grants.  The paper ledger has sized
+        # off whole-book equity since it was built, so this is also what
+        # makes the two sides agree again.
+        book_equity_usdc = self._pool_book_equity_usdc()
         # The bankroll is one book.  Handing every station the whole of it --
         # which is what the configured budget did, forty-five times over the
         # same 20 USDC -- only failed to over-commit because almost nothing
@@ -13286,6 +13336,7 @@ class TargetProductionWorker:
                         liquidity_bin=str(scope["liquidity_bin"]),
                         strategy_version=str(scope["strategy_version"]),
                         planning_budget_usdc=max(0.0, station_budget),
+                        book_equity_usdc=book_equity_usdc,
                     ))
             except ResourceBoundError:
                 # A process at its resource ceiling must not be asked to do
@@ -13320,6 +13371,7 @@ class TargetProductionWorker:
                     compile_blocker=(
                         f"{type(compile_error).__name__}:{compile_error}"
                     ),
+                    book_equity_usdc=book_equity_usdc,
                 )
                 raise
             assert_process_memory_budget()
