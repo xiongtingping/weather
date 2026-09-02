@@ -67,6 +67,10 @@ LEAN_TOLERANCE_BUCKETS = 0.35
 # longer run and averaging them in would describe a system that no longer
 # exists.
 STATS_START_EVENT_DATE = "2026-08-15"
+# How many P1 recomputes a roster row carries.  The page draws the rung path
+# and the last recompute's point estimate from these, and the collector reads
+# exactly this many bodies per station-day rather than all of them.
+P1_HISTORY_DEPTH = 12
 # The registry's city_label is empty for every station, so the readable name
 # lives here.  The ICAO code stays the key everywhere -- it is the stable
 # identifier -- and the label is only ever for the page.
@@ -1529,37 +1533,67 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     )
 
     # P1 re-solves as observations arrive, so its rung moves during the day.
-    p1_history: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
-    for station, day, decided, stored, checkpoint, sha in conn.execute(
-        "SELECT station_id, event_date, decision_at_utc, envelope_json,"
-        " checkpoint_id, envelope_content_sha256"
+    #
+    # Read the bodies of the twelve recomputes the page actually shows, not
+    # of every recompute there has ever been.  Since the envelope body moved
+    # out of ``envelope_json`` on 2026-08-26 each body costs a single-row
+    # lookup against ``basket_probability_envelope`` plus a sha check, and
+    # this loop was doing that 208,226 times to keep 9,858 of the results --
+    # measured 2026-09-02 as the single largest cost in the whole render,
+    # about 220 s of it.  The keys come from a covering index scan (0.7 s,
+    # no table lookups because ``stage_scope_idx`` carries exactly the four
+    # columns asked for), the slice happens in memory, and only the
+    # survivors are read and verified (8.8 s).  The sha contract is
+    # untouched: every body that reaches the page is still checked against
+    # the sha its history row carries.
+    p1_keys: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for station, day, decided in conn.execute(
+        "SELECT station_id, event_date, decision_at_utc"
         " FROM basket_probability_bridge_history"
         " WHERE stage='P1' AND event_date >= ?"
         " ORDER BY station_id, event_date, decision_at_utc",
         (STATS_START_EVENT_DATE,),
     ):
-        lineage = history_envelope_payload(
-            conn,
-            checkpoint_id=str(checkpoint),
-            envelope_content_sha256=str(sha),
-            stored=str(stored) if stored else None,
-        ).get("lineage") or {}
-        try:
-            trajectory_strength = float(
-                lineage.get("metar_trajectory_applied_strength")
-            )
-        except (TypeError, ValueError):
-            trajectory_strength = None
-        p1_history[(str(station), str(day))].append({
-            "decision_at_utc": str(decided),
-            "centre_bucket": lineage.get("model_center_bucket"),
-            "centre_c": lineage.get("model_center_c"),
-            # Which conditioner produced this recompute, and at what applied
-            # strength -- the page labels a physical-path prediction as such
-            # rather than presenting every P1 centre as the same authority.
-            "likelihood_mode": lineage.get("observation_likelihood_mode"),
-            "trajectory_strength": trajectory_strength,
-        })
+        p1_keys[(str(station), str(day))].append(str(decided))
+    p1_history: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for (station, day), decisions in p1_keys.items():
+        for decided in decisions[-P1_HISTORY_DEPTH:]:
+            body = conn.execute(
+                "SELECT envelope_json, checkpoint_id,"
+                " envelope_content_sha256"
+                " FROM basket_probability_bridge_history"
+                " WHERE stage='P1' AND station_id=? AND event_date=?"
+                " AND decision_at_utc=?",
+                (station, day, decided),
+            ).fetchone()
+            if body is None:
+                continue
+            stored, checkpoint, sha = body
+            lineage = history_envelope_payload(
+                conn,
+                checkpoint_id=str(checkpoint),
+                envelope_content_sha256=str(sha),
+                stored=str(stored) if stored else None,
+            ).get("lineage") or {}
+            try:
+                trajectory_strength = float(
+                    lineage.get("metar_trajectory_applied_strength")
+                )
+            except (TypeError, ValueError):
+                trajectory_strength = None
+            p1_history[(station, day)].append({
+                "decision_at_utc": str(decided),
+                "centre_bucket": lineage.get("model_center_bucket"),
+                "centre_c": lineage.get("model_center_c"),
+                # Which conditioner produced this recompute, and at what
+                # applied strength -- the page labels a physical-path
+                # prediction as such rather than presenting every P1 centre
+                # as the same authority.
+                "likelihood_mode": lineage.get(
+                    "observation_likelihood_mode"
+                ),
+                "trajectory_strength": trajectory_strength,
+            })
     # An event day is any day the fleet has evidence for; on such a day every
     # registered station gets a row, whether or not it has evidence of its
     # own.  Keying the roster off the stations with evidence made the two
@@ -1637,7 +1671,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
             "event_date": day,
             "market_slug": market_slug.get((station, day)) or "",
             "taf_tx_c": taf_tx.get((station, day)),
-            "p1_history": p1_history.get((station, day), [])[-12:],
+            "p1_history": p1_history.get((station, day), []),
             "stages": {},
         }
         entry["refusals"] = {
