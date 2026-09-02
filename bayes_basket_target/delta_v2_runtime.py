@@ -104,58 +104,12 @@ def _floor_to_tick(price: float, tick: float) -> float:
     return round(steps * tick, 12)
 
 
-# The model's own ceiling on a hedge rung's price, as a fraction of what
-# the model says that rung is worth.  The centre rung is exempt: it is the
-# position, not the insurance around it, and refusing to pay the market for
-# it is refusing the trade.
-#
-# This existed only in the paper ledger, which is where every ROI number in
-# this system comes from, so production was trading the one setting the
-# ledger measured worst.  The ledger's three-cell sweep, 2026-08-21:
-# lambda 0.53 gave -6.9%, lambda 0.75 gave -10.6%, and exempting the hedge
-# rungs entirely -- which is what production was doing by having no ceiling
-# at all -- gave -15.3%, the worst of the three, even though it lifted the
-# hit rate from 25.8% to 36.1%.  Hit rate is purchasable; the odds are not.
-MAKER_HEDGE_VALUE_LAMBDA = float(
-    os.environ.get("PM_MAKER_HEDGE_VALUE_LAMBDA", "0.53") or 0.0
-)
-# The shoulder -- the rung one bucket either side of the centre -- gets its
-# own, tighter ceiling.
-#
-# The clamp had only ever had two settings, centre-exempt and
-# everything-else-at-lambda, so the shoulder was priced as insurance
-# although it is the centre's nearest neighbour and carries two thirds of
-# the clamped rungs (320 of 476 posted non-centre legs sit one bucket out).
-# Swept alone on the ledger, 2026-08-22, eight cells:
-#
-#     0.20  +15.4%    0.46  +15.7%    0.85   -1.2%
-#     0.30  +18.2%    0.53  +12.7%    exempt -17.3%
-#     0.40  +18.9%    0.70   +3.0%
-#
-# Single-peaked with both flanks monotone, so 0.40 is an interior optimum
-# rather than a boundary.  Under the 2026-08-22 rule set the sweep chose a
-# *tighter* ceiling (0.40), and exempting the shoulder bought nine points
-# of hit rate for thirty of ROI -- the sixth measurement of that same
-# trade, all losses.  Charter 63 (2026-08-26) reversed it: under the
-# charter 54-62 rule set (mean centre, skew gate, pure-EV window, no
-# certainty gate) the exemption wins +3.5 ROI points with the excision
-# test strongly positive (+8.8/+13.0/+10.3 dropping the top divergent
-# chains) and +15 points of settled hit rate.  The mechanism was measured
-# from the fill anatomy: the 0.40 clamp capped a median winning shoulder
-# at 0.089 against a market floor of 0.270 -- shoulder winners filled 12
-# of 76 -- while intermediate lambdas (0.55, 0.70) only paid more for the
-# same misses.  Either do not reach, or reach the market: half-measures
-# lost both ways.  The verdict is rule-set dependent (it has now flipped
-# once in each direction); "exempt" is the default, a number is a lambda
-# research arm, and the forward book re-judges it like everything else.
-_MAKER_SHOULDER_VALUE_LAMBDA_RAW = str(
-    os.environ.get("PM_MAKER_SHOULDER_VALUE_LAMBDA", "exempt") or "exempt"
-).strip().lower()
-MAKER_SHOULDER_VALUE_EXEMPT = _MAKER_SHOULDER_VALUE_LAMBDA_RAW == "exempt"
-MAKER_SHOULDER_VALUE_LAMBDA = (
-    0.0 if MAKER_SHOULDER_VALUE_EXEMPT
-    else float(_MAKER_SHOULDER_VALUE_LAMBDA_RAW or 0.0)
-)
+# The maker-era per-leg value clamp (lambda x claim, centre and shoulders
+# exempt; charter 63) was retired on 2026-09-03.  Under charter 65 the
+# taker family is the law and the taker candidate path never read it: the
+# purchase ladder returned the official ask depth before consulting the
+# cap, and the only other reader fed maker-only anchors and diagnostics.
+# The ledger's maker_resting research arm keeps its own lambda knobs.
 # Ladder completeness re-priced as risk (user ruling, 2026-08-24; twice
 # corrected the same day).  The lifecycle itself is untouched: every leg --
 # tails included, they are the hedge legs that flatten the variance and shape
@@ -325,43 +279,6 @@ CONTINUOUS_OPTIMUM_CANDIDATES_ENABLED = (
 )
 
 
-def _hedge_value_cap(
-    *,
-    bucket: str,
-    centre_bucket: str,
-    probability: float | None,
-    window: Sequence[str] | None = None,
-) -> float | None:
-    """The value ceiling for one rung, or None when it is uncapped.
-
-    Kept as one function so the ledger's ``_leg_value_cap`` and this cannot
-    drift into two different definitions of the same red line.
-    """
-
-    if MAKER_HEDGE_VALUE_LAMBDA <= 0.0:
-        return None
-    if centre_bucket and str(bucket) == str(centre_bucket):
-        return None
-    if probability is None:
-        return None
-    value = float(probability)
-    if not math.isfinite(value) or value <= 0.0:
-        return None
-    lam = MAKER_HEDGE_VALUE_LAMBDA
-    if window and centre_bucket:
-        ordered = [str(item) for item in window]
-        if str(bucket) in ordered and str(centre_bucket) in ordered:
-            distance = abs(
-                ordered.index(str(bucket)) - ordered.index(str(centre_bucket))
-            )
-            if distance == 1:
-                # Charter 63: the shoulder prices off the book like the
-                # centre.  A numeric lambda is the research arm.
-                if MAKER_SHOULDER_VALUE_EXEMPT:
-                    return None
-                if MAKER_SHOULDER_VALUE_LAMBDA > 0.0:
-                    lam = MAKER_SHOULDER_VALUE_LAMBDA
-    return lam * value
 
 
 # How many rungs a leg is offered across, and how far inside the bid the
@@ -419,7 +336,6 @@ def _maker_ladder(
     bid: float,
     ask: float,
     tick: float,
-    value_cap: float | None = None,
     steps: int = MAKER_LADDER_STEPS,
     improve_ticks: int = MAKER_LADDER_IMPROVE_TICKS,
 ) -> list[float]:
@@ -444,8 +360,7 @@ def _maker_ladder(
 
     if bid <= 0.0 or ask <= 0.0 or tick <= 0.0:
         return []
-    ceiling = ask if value_cap is None else min(ask, float(value_cap))
-    high = _floor_to_tick(ceiling - tick, tick)
+    high = _floor_to_tick(ask - tick, tick)
     if high <= EPS:
         return []
     low = min(_floor_to_tick(bid + int(improve_ticks) * tick, tick), high)
@@ -540,7 +455,6 @@ class _Level:
 def _lane_purchase_levels(
     row: Any,
     *,
-    value_cap: float | None,
     stage: str | None = None,
 ) -> tuple[Sequence[Any], float | None, str]:
     """The ladder the target inventory is priced against, and at what price.
@@ -554,9 +468,8 @@ def _lane_purchase_levels(
     at one tick fill a basket of thousands.
 
     Falls back to the real offer ladder, and says so, whenever the band does
-    not exist -- no bid to join, or a value cap under one tick.  Crossing is
-    then genuinely the only way to acquire the leg, so the crossing price is
-    the honest one.
+    not exist -- no bid to join.  Crossing is then genuinely the only way to
+    acquire the leg, so the crossing price is the honest one.
     """
 
     basis = (
@@ -570,7 +483,6 @@ def _lane_purchase_levels(
         bid=float(row.bid_price),
         ask=float(row.ask_price),
         tick=float(row.price_tick_size),
-        value_cap=value_cap,
     )
     if not rungs:
         return row.ask_levels, None, "official_ws_ask_depth"
@@ -2187,12 +2099,6 @@ def _target_candidates(
         row = by_bucket[bucket]
         levels, price, basis = _lane_purchase_levels(
             row,
-            value_cap=_hedge_value_cap(
-                bucket=bucket,
-                centre_bucket=str(centre_bucket or ""),
-                probability=probabilities_by_bucket.get(bucket),
-                window=ordered,
-            ),
             stage=str(snapshot.evidence.probability_stage or ""),
         )
         lane_levels[bucket] = levels
@@ -3211,27 +3117,15 @@ def compile_delta_v2_runtime_plan(
         if gap <= EPS:
             continue
         reservation_grid = _reservation_grid(row=row, artifact=delta_policy)
-        hedge_cap = _hedge_value_cap(
-            bucket=bucket,
-            centre_bucket=str(
-                support_selection.get("ladder_center_bucket") or ""
-            ),
-            probability=probabilities.get(bucket),
-            window=ordered_support,
-        )
         maker_rungs = _maker_ladder(
             bid=row.bid_price,
             ask=row.ask_price,
             tick=row.price_tick_size,
-            value_cap=hedge_cap,
         )
         maker_anchor = maker_rungs[0] if maker_rungs else None
         if maker_anchor is None:
             maker_candidate_diagnostics[bucket] = (
-                "maker_hedge_value_cap_below_min_tick"
-                if hedge_cap is not None
-                and _floor_to_tick(hedge_cap, row.price_tick_size) <= EPS
-                else "maker_post_only_price_unavailable_at_min_tick"
+                "maker_post_only_price_unavailable_at_min_tick"
                 if row.ask_price <= row.price_tick_size + EPS
                 else "maker_post_only_market_anchor_unavailable"
             )

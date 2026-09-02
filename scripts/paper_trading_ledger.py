@@ -82,13 +82,10 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     CONTINUOUS_OPTIMUM_CANDIDATES_ENABLED,
     MAKER_COVERAGE_RISK_BUDGET,
     MAKER_COVERAGE_VALUE_LAMBDA,
-    MAKER_HEDGE_VALUE_LAMBDA,
     LADDER_CENTER_DEFINITION,
     MAKER_LADDER_IMPROVE_TICKS,
     MAKER_LADDER_STEPS,
     CERTAINTY_GATE_SIGNALS,
-    MAKER_SHOULDER_VALUE_EXEMPT,
-    MAKER_SHOULDER_VALUE_LAMBDA,
     MINIMUM_LEG_ALL_IN_ASK,
     OPENING_FALLBACK_MIN_BUCKETS,
     OPENING_WIDTH_FALLBACK_ENABLED,
@@ -100,11 +97,13 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     SKEW_SIGNAL_DEFINITION,
     SUPPORT_EDGE_MARGIN,
     WINDOW_REFUSAL_FUNNEL,
-    # The three pieces of arithmetic the two sides must not each own a copy
-    # of.  Every one of them used to be duplicated here, and the ladder copy
-    # had measurably drifted (see ``_resting_ladder``).
+    # The pieces of arithmetic the two sides must not each own a copy of.
+    # Every one of them used to be duplicated here, and the ladder copy had
+    # measurably drifted (see ``_resting_ladder``).  The per-leg value clamp
+    # is no longer among them: production retired it on 2026-09-03 (charter
+    # 63, dead under charter 65); the maker_resting research arm below keeps
+    # its own lambda.
     _floor_to_tick,
-    _hedge_value_cap,
     _maker_ladder,
     _support_windows,
 )
@@ -747,12 +746,11 @@ MAKER_RESTING_ESCALATE_SHARE = float(
 # without -- and a clamp that prices it away turns every basket into a
 # shoulders-only bet the charter forbids.  Its rungs stand on the book
 # skeleton alone; the whole-basket belief gate still covers it.
-# Production owns this number now (``delta_v2_runtime.MAKER_HEDGE_VALUE_LAMBDA``).
-# It lived only here for as long as production had no ceiling at all, which
-# meant the ledger was measuring a red line the live engine did not draw --
-# the divergence closed on 2026-08-22.  The env override stays so a sweep can
-# still move it here, but with the variable unset the two are the same number
-# by construction rather than by agreement.
+# A maker_resting research-arm number only.  Production carried the same
+# clamp from 2026-08-22 to 2026-09-03 and then retired it: under charter 65
+# the taker path never read it.  This lane's taker path does not either
+# (``_execution_price`` returns the fee-adjusted ask before any cap), so the
+# value below moves nothing unless PAPER_LEDGER_EXECUTION=maker_resting.
 # Which stages the replay applies it to.  Production gates each stage
 # independently -- one stage's forward window can admit while another's
 # refuses -- so a measurement that switches all three together cannot say
@@ -845,8 +843,7 @@ PAPER_LEDGER_CEILING = (
 )
 
 MAKER_RESTING_VALUE_LAMBDA = float(
-    os.environ.get("PAPER_LEDGER_MAKER_VALUE_LAMBDA", "")
-    or MAKER_HEDGE_VALUE_LAMBDA
+    os.environ.get("PAPER_LEDGER_MAKER_VALUE_LAMBDA", "") or "0.53"
 )
 # The whole-basket belief gate: at each re-pricing round, if the order's
 # claimed expectation under p(t) -- rungs already bought plus rungs still
@@ -892,18 +889,10 @@ MAKER_RESTING_TAIL_LAMBDA = str(
 # Unset means the shoulder is clamped like any other non-centre rung, which
 # is the current rule.  "exempt" prices it off the book like the centre; a
 # number is its own lambda.
-# Production owns this number (``delta_v2_runtime.MAKER_SHOULDER_VALUE_LAMBDA``,
-# 0.40 as of the 2026-08-22 sweep).  With the env var unset the two are the
-# same value by construction; a sweep can still move it here.
+# maker_resting research arm only; "exempt" is the charter 63 verdict as it
+# stood when production retired the clamp (2026-09-03).
 MAKER_RESTING_SHOULDER_LAMBDA = str(
-    os.environ.get("PAPER_LEDGER_MAKER_SHOULDER_LAMBDA", "")
-    or (
-        "exempt" if MAKER_SHOULDER_VALUE_EXEMPT
-        else (
-            f"{MAKER_SHOULDER_VALUE_LAMBDA:g}"
-            if MAKER_SHOULDER_VALUE_LAMBDA > 0.0 else ""
-        )
-    )
+    os.environ.get("PAPER_LEDGER_MAKER_SHOULDER_LAMBDA", "") or "exempt"
 ).strip().lower()
 # The fill-information lifecycle (research arm A5, 2026-08-26).  The user's
 # ruling made fill status a calibration input for EXECUTION decisions only:
@@ -3058,14 +3047,17 @@ def _resting_ladder(
     # that in production's own arithmetic (it subtracts a tick from whatever
     # ceiling it is given), so the arm gets tick-legal rungs too instead of
     # being a second place the two can diverge.
+    # The cap is this lane's research-arm ceiling; production's ladder no
+    # longer takes one, so it is folded into the ask before the call and the
+    # arithmetic stays production's.
+    ceiling = ask if value_cap is None else min(ask, float(value_cap))
     if MAKER_RESTING_BAND_TOP == "ask":
-        ceiling = ask if value_cap is None else min(ask, float(value_cap))
         return _maker_ladder(
-            bid=bid, ask=ceiling + tick, tick=tick, value_cap=None,
+            bid=bid, ask=ceiling + tick, tick=tick,
             steps=steps, improve_ticks=MAKER_RESTING_IMPROVE_TICKS,
         )
     return _maker_ladder(
-        bid=bid, ask=ask, tick=tick, value_cap=value_cap,
+        bid=bid, ask=ceiling, tick=tick,
         steps=steps, improve_ticks=MAKER_RESTING_IMPROVE_TICKS,
     )
 
@@ -3272,6 +3264,10 @@ def _leg_value_cap(
     ignored and behaviour is unchanged.
     """
 
+    # Charter 63 retired (2026-09-03): this is maker_resting research-arm
+    # arithmetic.  The taker family never reads it -- ``_execution_price``
+    # returns the fee-adjusted ask before any cap -- so it is left as pure
+    # arithmetic for the arm's own simulation rather than gated here.
     if centre_bucket is not None and str(bucket) == str(centre_bucket):
         if MAKER_RESTING_CENTRE_LAMBDA == 1.0:
             # Unchanged behaviour: the caller falls back to the claim itself,
@@ -3327,25 +3323,10 @@ def _leg_value_cap(
             if lam is not None:
                 p = (probabilities or {}).get(str(bucket))
                 return None if p is None else lam * float(p)
-    # Past the research arms, the red line is production's own -- called,
-    # not restated.  ``_hedge_value_cap``'s docstring has claimed since
-    # 2026-08-22 that it is "kept as one function so the ledger's
-    # ``_leg_value_cap`` and this cannot drift"; until 2026-08-26 that was
-    # two functions agreeing by inspection.  They agreed (150 sampled
-    # bucket/centre/window/probability combinations, zero differences), so
-    # this changes nothing today -- which is the only safe moment to bind
-    # them.  The centre exemption and the charter-63 shoulder exemption now
-    # have exactly one definition between the two sides.
-    if MAKER_RESTING_VALUE_LAMBDA != MAKER_HEDGE_VALUE_LAMBDA:
-        # Research arm: a lambda this lane does not share with production
-        # cannot be answered by production's function.
-        return _value_cap((probabilities or {}).get(str(bucket)))
-    return _hedge_value_cap(
-        bucket=str(bucket),
-        centre_bucket=str(centre_bucket or ""),
-        probability=(probabilities or {}).get(str(bucket)),
-        window=window,
-    )
+    # Past the research arms: the plain lambda.  Until 2026-09-03 this
+    # called production's ``_hedge_value_cap``; production retired it, so the
+    # number is this lane's alone and says so in the binding test.
+    return _value_cap((probabilities or {}).get(str(bucket)))
 
 
 def _execution_price(row: Any, *, value_cap: float | None = None) -> float | None:

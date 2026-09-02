@@ -1156,25 +1156,33 @@ def test_clause_48_listing_window_opens_positions() -> None:
     )
 
 
-def test_clause_63_value_clamp_has_no_effect_on_the_taker_path() -> None:
-    """The maker-era value clamp is dead under charter 65 (taker is law).
-
-    2026-09-03 audit: 133 missing legs after the live flag was armed sat on
-    a price/claim boundary near 0.5 and were misattributed to
-    MAKER_HEDGE_VALUE_LAMBDA=0.53.  The clamp is never read on the taker
-    candidate path -- the purchase ladder returns the official ask depth
-    before consulting it -- and the boundary belongs to charter 68's
-    effective-edge deflation.  Pin both halves so the next reader does not
-    repeat the misattribution.
-    """
+def test_clause_63_is_retired_and_the_clamp_is_gone_from_production() -> None:
+    """Charter 63 retired (2026-09-03): the maker-era value clamp left
+    production.  Under charter 65 the taker path never read it, and the
+    2026-09-02 missing legs it was blamed for belong to charter 68."""
 
     clause = _clause(63)
-    assert "本钳自第 65 条起在生产上无效力" in clause
+    assert "【已退役 2026-09-03】" in clause
+    assert "实测主人是第 68 条" in clause
 
     from bayes_basket_target import delta_v2_runtime as runtime
 
     assert runtime.EXECUTION_MODE == "taker"
     assert runtime.TARGET_PRICING_BASIS == "ask_depth"
+    for name in (
+        "MAKER_HEDGE_VALUE_LAMBDA",
+        "MAKER_SHOULDER_VALUE_EXEMPT",
+        "MAKER_SHOULDER_VALUE_LAMBDA",
+        "_hedge_value_cap",
+    ):
+        assert not hasattr(runtime, name), name
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "delta_v2_runtime.py"
+    ).read_text(encoding="utf-8")
+    assert "PM_MAKER_HEDGE_VALUE_LAMBDA" not in source
+    assert "maker_hedge_value_cap_below_min_tick" not in source
 
     class _Row:
         ask_available = True
@@ -1183,25 +1191,131 @@ def test_clause_63_value_clamp_has_no_effect_on_the_taker_path() -> None:
         price_tick_size = 0.001
         ask_levels = (runtime._Level(0.42, 5.0), runtime._Level(0.43, 321.0))
 
-    # A clamp far below the market must not touch the ladder the taker
-    # path prices against: the ask depth comes back untouched, and the
-    # basis names it.
-    levels, price, basis = runtime._lane_purchase_levels(
-        _Row(), value_cap=0.05, stage="P0"
-    )
+    levels, price, basis = runtime._lane_purchase_levels(_Row(), stage="P0")
     assert basis == "official_ws_ask_depth"
     assert price is None
     assert [level.price for level in levels] == [0.42, 0.43]
 
-    # The ledger prices a taker leg the same way: fee-adjusted ask, cap
-    # ignored.
+
+def test_clause_65_taker_is_the_only_execution_family() -> None:
+    clause = _clause(65)
+    assert "吃单为唯一执行族" in clause
+
+    from bayes_basket_target import delta_v2_runtime as runtime
+    from bayes_basket_target.basket_kernel import delta_v2 as kernel
+
+    assert runtime.EXECUTION_MODE == "taker"
+    assert kernel.EXECUTION_FAMILIES == frozenset({"MAKER", "FOK"})
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "delta_v2_runtime.py"
+    ).read_text(encoding="utf-8")
+    import inspect
+
+    # The cancel handshake that gated FOK is gone as a parameter (a comment
+    # may still name it as history).
+    assert "confirmed_cancel_for_fok" not in inspect.signature(
+        runtime.compile_delta_v2_runtime_plan
+    ).parameters
+    # The FOK clip shrinks to the gap the way the maker clip does; it does
+    # not refuse for exceeding it.
+    assert "action_clip = min(float(clip), gap * row.ask_price)" in source
+
+
+def test_clause_66_chain_topup_gates_are_gates_not_sizers() -> None:
+    clause = _clause(66)
+    assert "只做闸不定规模" in clause
+
     import importlib
 
+    from bayes_basket_target import delta_v2_runtime as runtime
+
     ledger = importlib.import_module("scripts.paper_trading_ledger")
-    if ledger.EXECUTION_MODE == "taker":
-        assert ledger._execution_price(_Row(), value_cap=0.05) == (
-            0.42 * (1.0 + ledger.FEE_RATE)
-        )
+    assert runtime.CHAIN_COST_PAR_BOUND == ledger.CHAIN_COST_PAR_BOUND == 1.0
+    kernel_source = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "basket_kernel"
+        / "delta_v2.py"
+    ).read_text(encoding="utf-8")
+    assert "complete_basket_target_not_activated" in kernel_source
+
+
+def test_clause_67_p1_seats_only_after_local_eleven() -> None:
+    clause = _clause(67)
+    assert "本地 11:00 前入座" in clause
+
+    from bayes_basket_target.basket_kernel import delta_v2 as kernel
+
+    assert kernel.DEFAULT_P1_ENTRY_LOCAL_HOUR == 11.0
+    runtime_source = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "runtime.py"
+    ).read_text(encoding="utf-8")
+    assert 'blockers=["p1_entry_window_not_open"]' in runtime_source
+
+
+def test_clause_68_the_objective_reads_effective_edge() -> None:
+    clause = _clause(68)
+    assert "λ(a)·p" in clause
+    assert "缺腿" in clause
+
+    from bayes_basket_target import delta_v2_runtime as runtime
+    from bayes_basket_target.basket_kernel import delta_v2 as kernel
+
+    assert runtime.EFFECTIVE_EDGE_MODE == "on"
+    assert kernel.EFFECTIVE_EDGE_STAGES == frozenset({"P0", "P0-M"})
+    assert kernel.EFFECTIVE_EDGE_LAMBDA == (
+        (0.50, 0.14),
+        (0.70, 0.60),
+        (0.85, 0.87),
+        (float("inf"), 0.82),
+    )
+    # P1's own table is served capped at one: the exemption was "trust
+    # it", never "trust it more than it says".
+    assert all(lam <= 1.0 for _bound, lam in kernel.EFFECTIVE_EDGE_P1_LAMBDA)
+    assert kernel.effective_edge_lambda_for_stage("P0", 1.27) == 0.82
+    assert kernel.effective_edge_lambda_for_stage("P0-M", 0.3) == 0.14
+
+
+def test_clause_69_the_decline_clamp_waits_for_the_book_to_open() -> None:
+    clause = _clause(69)
+    assert "after_open" in clause
+
+    import importlib
+
+    from bayes_basket_target import delta_v2_runtime as runtime
+    from bayes_basket_target.basket_kernel import delta_v2 as kernel
+
+    ledger = importlib.import_module("scripts.paper_trading_ledger")
+    assert runtime.DECLINE_CLAMP_MODE == "after_open"
+    assert ledger.DECLINE_CLAMP == "after_open"
+    assert callable(kernel.clamp_declining_gaps_v2)
+    assert callable(kernel.contiguous_edge_clamp_v2)
+
+
+def test_clause_70_a_sub_lot_rung_is_lifted_to_one_lot_all_or_none() -> None:
+    clause = _clause(70)
+    assert "全有或全无" in clause
+
+    from bayes_basket_target.basket_kernel import delta_v2 as kernel
+
+    assert kernel.EXCHANGE_LOT_TOP_UP == "smallest_leg"
+    base = dict(
+        target_shares_by_bucket={"a": 2.0, "b": 3.0, "c": 6.0},
+        support=("a", "b", "c"),
+        min_lot_by_bucket={"a": 5.0, "b": 5.0, "c": 5.0},
+        ask_by_bucket={"a": 0.40, "b": 0.30, "c": 0.10},
+    )
+    # committed = 0.8 + 0.9 + 0.6 = 2.3; raises = 3*0.40 + 2*0.30 = 1.8
+    lifted = kernel.raise_sub_lot_targets_v2(**base, capital_available_usdc=5.0)
+    assert lifted["raised_buckets"] == ("a", "b")
+    assert lifted["target_shares_by_bucket"] == {"a": 5.0, "b": 5.0, "c": 6.0}
+    refused = kernel.raise_sub_lot_targets_v2(**base, capital_available_usdc=3.0)
+    assert refused["refused_reason"] == "exchange_lot_top_up_unaffordable"
+    assert refused["target_shares_by_bucket"] == base["target_shares_by_bucket"]
 
 
 def test_clause_38_floor_scope_follows_coverability() -> None:

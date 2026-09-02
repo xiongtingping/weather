@@ -89,9 +89,14 @@ def test_the_ledger_posts_productions_ladder_not_a_copy_of_it() -> None:
             (0.05, 0.02), (0.02, 0.001), (0.55, 0.45), (0.30, 0.05),
         ):
             for cap in (None, 0.0795, 0.212, 0.005, 0.0106):
+                # Production's ladder no longer takes a cap (charter 63
+                # retired, 2026-09-03); the ledger folds its research-arm
+                # cap into the ceiling before the call.
                 assert _resting_ladder(_row(ask, bid, tick), value_cap=cap) \
                     == _maker_ladder(
-                        bid=bid, ask=ask, tick=tick, value_cap=cap,
+                        bid=bid,
+                        ask=ask if cap is None else min(ask, cap),
+                        tick=tick,
                     ), (tick, ask, bid, cap)
 
 

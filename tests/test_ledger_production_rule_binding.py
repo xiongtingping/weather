@@ -52,7 +52,6 @@ BOUND_CONSTANTS = [
     ("MINIMUM_LEG_ALL_IN_ASK", P, "MINIMUM_LEG_ALL_IN_ASK"),
     ("MAKER_RESTING_LADDER_STEPS", P, "MAKER_LADDER_STEPS"),
     ("MAKER_RESTING_IMPROVE_TICKS", P, "MAKER_LADDER_IMPROVE_TICKS"),
-    ("MAKER_RESTING_VALUE_LAMBDA", P, "MAKER_HEDGE_VALUE_LAMBDA"),
     ("CERTAINTY_GATE", P, "CERTAINTY_GATE_SIGNALS"),
 ]
 
@@ -103,106 +102,53 @@ def test_the_resting_ladder_is_productions_maker_ladder() -> None:
     for tick in _TICKS:
         for bid, ask in _BOOKS:
             for cap in _CAPS:
+                # The ledger folds its research-arm cap into the ceiling
+                # before calling production's ladder, which no longer takes
+                # one (charter 63 retired, 2026-09-03).
                 assert L._resting_ladder(
                     _Row(bid, ask, tick), value_cap=cap
                 ) == P._maker_ladder(
-                    bid=bid, ask=ask, tick=tick, value_cap=cap
+                    bid=bid,
+                    ask=ask if cap is None else min(ask, cap),
+                    tick=tick,
                 ), (tick, bid, ask, cap)
 
 
-def test_the_leg_value_cap_is_productions_hedge_value_cap() -> None:
-    """One red line, one definition.
+def test_charter_63_is_retired_the_clamp_has_no_production_definition() -> None:
+    """The per-leg value clamp left production on 2026-09-03.
 
-    ``_hedge_value_cap``'s docstring claimed this from 2026-08-22 while they
-    were in fact two functions agreeing by inspection.  They now agree by
-    call, and this holds them to it across the centre exemption, the charter
-    63 shoulder exemption and the plain lambda.
+    Under charter 65 (taker is the law) the taker candidate path never read
+    it, and 133 missing legs after the 2026-09-02 arming were misattributed
+    to it before charter 68 was found to own them.  What remains is the
+    ledger's maker_resting research arm, which carries its own lambda and
+    must answer None for every other execution family -- the family this
+    lane scores production under.
     """
 
-    for window in (("a", "b", "c"), ("a", "b", "c", "d")):
-        for centre in window:
-            for bucket in window:
-                for probability in (0.02, 0.05, 0.15, 0.3, 0.55, 0.9):
-                    probabilities = {b: probability for b in window}
-                    assert L._leg_value_cap(
-                        bucket,
-                        probabilities=probabilities,
-                        centre_bucket=centre,
-                        window=window,
-                        market_top_bucket=None,
-                        all_in_ask=0.2,
-                    ) == P._hedge_value_cap(
-                        bucket=bucket,
-                        centre_bucket=centre,
-                        probability=probability,
-                        window=window,
-                    ), (window, centre, bucket, probability)
-
-
-def test_charter_63_the_centre_and_both_shoulders_are_never_clamped() -> None:
-    """The value clamp is for the hedge, not for the position.
-
-    Charter 63 (2026-08-26) took the shoulder out of the clamp along with
-    the centre: a rung one step from the centre prices off the book like the
-    centre does.  Only distance 2 and beyond is still capped at lambda times
-    the claim -- the tail exemption was measured and rejected separately.
-
-    Pinned here because the clamp is now read by three callers instead of
-    one (window enumeration, order placement and, since 2026-08-26, target
-    pricing), so a regression would reach further than it used to.
-    """
-
-    assert P.MAKER_SHOULDER_VALUE_EXEMPT is True
-
-    for window in (("a", "b", "c"), ("a", "b", "c", "d"), ("a", "b")):
-        for centre in window:
-            for bucket in window:
-                distance = abs(window.index(bucket) - window.index(centre))
-                cap = P._hedge_value_cap(
-                    bucket=bucket,
-                    centre_bucket=centre,
-                    probability=0.30,
-                    window=window,
-                )
-                if distance <= 1:
-                    assert cap is None, (window, centre, bucket, cap)
-                else:
-                    assert cap == pytest.approx(
-                        P.MAKER_HEDGE_VALUE_LAMBDA * 0.30
-                    ), (window, centre, bucket, cap)
-
-
-def test_an_unknown_centre_clamps_everything_including_the_centre() -> None:
-    """A latent trap, pinned so it stays visible rather than surprising.
-
-    ``_hedge_value_cap`` short-circuits both exemptions on a falsy centre --
-    ``if centre_bucket and ...`` -- so an empty centre reinstates exactly the
-    clamp charter 63 removed, on every leg including the position itself.
-
-    It is unreachable today: ``_support_windows`` always publishes a ladder
-    centre, falling back to its own ``center_bucket`` when nothing is
-    admitted.  It matters because since 2026-08-26 the clamp is also read by
-    target pricing, so the blast radius of ever making it reachable is
-    larger than it was.  Both callers derive the centre the same way, from
-    ``ladder_center_bucket`` with the same ``or ""`` fallback, so if this
-    ever fires it fires on both and they still agree.
-    """
-
-    for bucket in ("a", "b", "c"):
-        assert P._hedge_value_cap(
-            bucket=bucket,
-            centre_bucket="",
-            probability=0.30,
-            window=("a", "b", "c"),
-        ) == pytest.approx(P.MAKER_HEDGE_VALUE_LAMBDA * 0.30)
-
-    # The live path cannot hand it an empty one.
+    for name in (
+        "MAKER_HEDGE_VALUE_LAMBDA",
+        "MAKER_SHOULDER_VALUE_EXEMPT",
+        "MAKER_SHOULDER_VALUE_LAMBDA",
+        "_hedge_value_cap",
+    ):
+        assert not hasattr(P, name), name
     import inspect
 
-    source = inspect.getsource(P._support_windows)
-    assert '"ladder_center_bucket": ladder_center' in source
-    assert "ladder_center = max(" in source
-    assert ") if admitted else center_bucket" in source
+    assert "value_cap" not in inspect.signature(P._maker_ladder).parameters
+    assert "value_cap" not in inspect.signature(
+        P._lane_purchase_levels
+    ).parameters
+
+    # The ledger's research-arm cap still computes, but the family this
+    # lane scores production under never reads it: a taker leg is priced
+    # at the fee-adjusted ask whatever cap is handed in.
+    assert L.EXECUTION_MODE == "taker"
+    for bid, ask in _BOOKS:
+        row = _Row(bid, ask, 0.001)
+        for cap in _CAPS:
+            assert L._execution_price(row, value_cap=cap) == pytest.approx(
+                ask * (1.0 + L.FEE_RATE)
+            ), (bid, ask, cap)
 
 
 def test_the_scope_stake_cap_is_the_kernels_on_both_sides() -> None:
@@ -262,13 +208,17 @@ SHARED_WITH_PRODUCTION = {
     "EXCHANGE_LOT_TOP_UP",
     "CERTAINTY_GATE", "FEE_RATE", "KELLY_FRACTION",
     "MAKER_RESTING_IMPROVE_TICKS", "MAKER_RESTING_LADDER_STEPS",
-    "MAKER_RESTING_SHOULDER_LAMBDA", "MAKER_RESTING_VALUE_LAMBDA",
     "MAXIMUM_SUPPORT_BUCKETS", "MINIMUM_SUPPORT_BUCKETS",
     "MAKER_RESTING_COVERAGE_BUDGET", "MAKER_RESTING_COVERAGE_LAMBDA",
 }
 
 # This lane's own, with the reason it has no production counterpart.
 LEDGER_ONLY = {
+    # Charter 63 retired (2026-09-03): production no longer defines a
+    # per-leg value clamp, so the maker_resting research arm's lambdas are
+    # this lane's alone.  They move nothing under the taker family.
+    "MAKER_RESTING_VALUE_LAMBDA": "maker_resting research arm (production retired the clamp)",
+    "MAKER_RESTING_SHOULDER_LAMBDA": "same",
     # The clamp's switch itself is shared (charter 69, above).  What is
     # this lane's own is the two extra arms it accepts -- "off", the
     # pre-2026-09-02 book, and "hold", the whole-basket refusal -- and the
