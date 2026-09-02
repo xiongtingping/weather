@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Mapping
 
 
@@ -22,6 +22,44 @@ AMSC_METAR_TIMING_INVALID = "amsc_metar_timing_invalid"
 # stations whose provider cadence never lands on the hour.
 AWC_METAR_TIMING_INVALID = "awc_metar_timing_invalid"
 SOURCE_LANE_CROSS_FALLBACK_FORBIDDEN = "source_lane_cross_fallback_forbidden"
+# An official report is stamped with its nominal observation minute and can
+# be on the wire before that instant: the observer files the hourly at :59
+# and the transport relays it at once.  Measured 2026-09-02 over the archive's
+# last thirty days -- 50,169 AWC reports -- 496 (1.0%) were first seen before
+# their nominal time, at most 38.8 s early, p99 34.5 s, none by a minute; the
+# habit belongs to whole stations (SBGR 37% of its reports, MPMG 14%, OEJN
+# 9%).  Every identity boundary used to demand ``valid_at <= first_seen``, so
+# those reports never became revision facts and any P1 closing on one was
+# refused at the atomic-fact gate for the rest of the day.  Two minutes clears
+# the measured shape three times over and is still far inside the hour, so a
+# report stamped for the next hour and seen in this one is still a rewind.
+EARLY_TRANSMISSION_TOLERANCE = timedelta(seconds=120)
+
+
+def _instant(value: datetime | str) -> datetime:
+    """Accept the datetime the builders compare or the ISO text the contract
+    compares; both spellings of the same instant must agree on the answer."""
+
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("timestamp_timezone_required")
+    return parsed
+
+
+def report_seen_within_early_transmission_tolerance(
+    valid_at: datetime | str,
+    first_seen_at: datetime | str,
+) -> bool:
+    """Whether a report's first sighting is no earlier than its nominal time
+    allows -- on time, late, or early by at most the transmission tolerance."""
+
+    return (
+        _instant(valid_at) - EARLY_TRANSMISSION_TOLERANCE
+        <= _instant(first_seen_at)
+    )
 
 
 def normalize_station_lane_map(value: Mapping[str, Any] | None) -> dict[str, str]:

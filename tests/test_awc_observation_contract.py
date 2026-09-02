@@ -220,10 +220,41 @@ def test_revision_rejects_wrong_lane_object_timezone_or_metar_minute(
 
 def test_revision_rejects_timestamp_rewind() -> None:
     revision = _revision()
-    revision["received_at_utc"] = "2026-08-01T11:59:00.000Z"
+    # Three minutes before the nominal minute is past the transmission
+    # tolerance; every later stamp is moved with it so this is the only
+    # order broken.
+    revision.update({
+        "received_at_utc": "2026-08-01T11:57:00.000Z",
+        "first_seen_at_utc": "2026-08-01T11:57:00.000Z",
+        "parsed_at_utc": "2026-08-01T11:57:00.500Z",
+        "fetch_started_at_utc": "2026-08-01T11:56:59.000Z",
+        "fetch_completed_at_utc": "2026-08-01T11:57:00.250Z",
+        "origin_committed_at_utc": "2026-08-01T11:57:00.750Z",
+        "source_observation_committed_at_utc": "2026-08-01T11:57:01.000Z",
+        "canonical_committed_at_utc": "2026-08-01T11:57:01.000Z",
+    })
     revision = _seal({k: v for k, v in revision.items() if k != "content_sha256"})
     with pytest.raises(ContractError, match="timestamp_order_invalid"):
         CanonicalAWCObservationContract.from_mapping(_contract(revision))
+
+
+def test_revision_accepts_a_report_seen_seconds_before_its_nominal_minute() -> None:
+    """SBGR files 37% of its hourlies up to 39 s before the hour they carry."""
+
+    revision = _revision()
+    revision.update({
+        "received_at_utc": "2026-08-01T11:59:25.000Z",
+        "first_seen_at_utc": "2026-08-01T11:59:25.000Z",
+        "parsed_at_utc": "2026-08-01T11:59:25.500Z",
+        "fetch_started_at_utc": "2026-08-01T11:59:24.000Z",
+        "fetch_completed_at_utc": "2026-08-01T11:59:25.250Z",
+        "origin_committed_at_utc": "2026-08-01T11:59:25.750Z",
+        "source_observation_committed_at_utc": "2026-08-01T11:59:26.000Z",
+        "canonical_committed_at_utc": "2026-08-01T11:59:26.000Z",
+    })
+    revision = _seal({k: v for k, v in revision.items() if k != "content_sha256"})
+    contract = CanonicalAWCObservationContract.from_mapping(_contract(revision))
+    assert len(contract.revision_facts) == 1
 
 
 def test_correction_requires_supersession_and_halt() -> None:

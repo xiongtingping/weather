@@ -9,7 +9,10 @@ from zoneinfo import ZoneInfo
 
 from .contracts import ContractError, content_sha256
 from .pr12_authority_scope_projection import validate_pr12_authority_scope_projection
-from .source_policy import source_policy_reason
+from .source_policy import (
+    report_seen_within_early_transmission_tolerance,
+    source_policy_reason,
+)
 
 
 CONTRACT_SCHEMA = "bayes_basket_target_canonical_awc_observation_contract_v2"
@@ -137,8 +140,10 @@ class CanonicalAWCObservationRevisionFact:
         ):
             value[field] = _utc(value[field], field)
         if not (
-            value["observed_at_utc"]
-            <= value["received_at_utc"]
+            report_seen_within_early_transmission_tolerance(
+                value["observed_at_utc"], value["received_at_utc"]
+            )
+            and value["received_at_utc"]
             == value["first_seen_at_utc"]
             <= value["parsed_at_utc"]
             <= value["source_observation_committed_at_utc"]

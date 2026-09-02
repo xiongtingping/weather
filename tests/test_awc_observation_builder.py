@@ -322,21 +322,111 @@ def test_lineage_revision_and_halt_fail_closed(mutation: str, expected: str) -> 
         duplicate["raw_object_sha256"] = "f" * 64
         evidence["rows"].append(duplicate)
     else:
-        evidence["station_day_halts"] = [
-            {
-                "source_lane": "awc",
-                "station_id": "KJFK",
-                "event_date": "2026-08-01",
-                "state": "active",
-                "reason_code": "metar_correction_requires_manual_review",
-                "triggering_observation_id": "obs-0",
-                "created_at": "2026-08-01T05:01:00Z",
-                "cleared_at": None,
-            }
-        ]
+        # An unreviewed correction with its halt still standing: the shape
+        # every corrected report has for the minutes before the standing
+        # policy reviews it.
+        evidence["rows"][0]["correction_kind"] = "COR"
+        evidence["rows"][0]["correction_suspected"] = 1
+        evidence["station_day_halts"] = [_halt()]
     contract, receipt = build_awc_observation_contract(_reseal(evidence))
     assert contract["day_bounds_facts"] == []
     assert expected in receipt["terminal_gaps"][0]["failure_codes"]
+
+
+def _halt(*, reason_code: str = "metar_correction_requires_manual_review") -> dict[str, object]:
+    return {
+        "source_lane": "awc",
+        "station_id": "KJFK",
+        "event_date": "2026-08-01",
+        "state": "active",
+        "reason_code": reason_code,
+        "triggering_observation_id": "obs-0",
+        "created_at": "2026-08-01T05:01:00Z",
+        "cleared_at": None,
+    }
+
+
+def _review(decision: str, *, trigger: str = "obs-0", reviewed_at: str = "2026-08-01T05:12:00Z") -> dict[str, object]:
+    return {
+        "review_id": f"rthreview_{decision.lower()}_{trigger}",
+        "source_lane": "awc",
+        "station_id": "KJFK",
+        "event_date": "2026-08-01",
+        "triggering_observation_id": trigger,
+        "decision": decision,
+        "reviewer": "policy.correction_auto_clear.v1",
+        "rationale": "test",
+        "reviewed_at": reviewed_at,
+        "supersedes_review_id": None,
+        "evidence_json": "{}",
+        "evidence_sha256": "e" * 64,
+        "content_sha256": "c" * 64,
+    }
+
+
+@pytest.mark.parametrize("decision", ("CLEAR_REFERENCE_ONLY", "CLEAR_WITH_REPLACEMENT"))
+def test_reviewed_correction_emits_revision_facts_while_the_halt_row_stays_active(
+    decision: str,
+) -> None:
+    """The receipt resolves the correction; the halt row is never flipped.
+
+    Nothing but the manual script ever wrote ``cleared``: all 356 halts in
+    the archive were active on 2026-09-02, 41 of the 43 recent ones already
+    carrying a CLEAR receipt, and the whole station-day's revision facts were
+    withheld for it (SAEZ 09-02: cleared 10:11:49Z, facts stopped 03:36Z).
+    """
+
+    evidence = _evidence()
+    evidence["rows"][0]["correction_kind"] = "COR"
+    evidence["rows"][0]["correction_suspected"] = 1
+    evidence["station_day_halts"] = [_halt()]
+    evidence["station_day_reviews"] = [_review(decision)]
+    contract, receipt = build_awc_observation_contract(_reseal(evidence))
+
+    # Every report but the corrected one itself is identified; the corrected
+    # report is carried by supersession, not by a revision fact of its own.
+    assert len(contract["revision_facts"]) == len(evidence["rows"]) - 1
+    assert all(
+        "REVISION_REVIEW_REQUIRED" not in gap.get("failure_codes", ())
+        for gap in receipt["terminal_gaps"]
+    )
+    assert all(
+        gap.get("revision_facts_emitted", True)
+        for gap in receipt["terminal_gaps"]
+    )
+
+
+def test_quarantine_still_withholds_the_station_day() -> None:
+    by_receipt = _evidence()
+    by_receipt["rows"][0]["correction_kind"] = "COR"
+    by_receipt["rows"][0]["correction_suspected"] = 1
+    by_receipt["station_day_reviews"] = [
+        _review("CLEAR_REFERENCE_ONLY"),
+        _review("QUARANTINE_STATION_DAY", reviewed_at="2026-08-01T06:00:00Z"),
+    ]
+    contract, receipt = build_awc_observation_contract(_reseal(by_receipt))
+    assert contract["revision_facts"] == []
+    assert "REVISION_REVIEW_REQUIRED" in receipt["terminal_gaps"][0]["failure_codes"]
+
+    by_halt = _evidence()
+    by_halt["station_day_halts"] = [
+        _halt(reason_code="manual_review_quarantine_station_day")
+    ]
+    contract, receipt = build_awc_observation_contract(_reseal(by_halt))
+    assert contract["revision_facts"] == []
+    assert "REVISION_REVIEW_REQUIRED" in receipt["terminal_gaps"][0]["failure_codes"]
+
+
+def test_a_review_for_one_correction_does_not_clear_another() -> None:
+    evidence = _evidence()
+    for index in (0, 1):
+        evidence["rows"][index]["correction_kind"] = "COR"
+        evidence["rows"][index]["correction_suspected"] = 1
+    evidence["station_day_halts"] = [_halt()]
+    evidence["station_day_reviews"] = [_review("CLEAR_WITH_REPLACEMENT", trigger="obs-0")]
+    contract, receipt = build_awc_observation_contract(_reseal(evidence))
+    assert contract["revision_facts"] == []
+    assert "REVISION_REVIEW_REQUIRED" in receipt["terminal_gaps"][0]["failure_codes"]
 
 
 @pytest.mark.parametrize(

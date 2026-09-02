@@ -26,6 +26,7 @@ from .source_policy import (
     AWC_METAR_TIMING_INVALID,
     SOURCE_LANE_CROSS_FALLBACK_FORBIDDEN,
     normalize_station_lane_map,
+    report_seen_within_early_transmission_tolerance,
     source_policy_reason,
 )
 
@@ -347,7 +348,10 @@ def export_canonical_observation_evidence(
             correction = int(raw.get("correction_suspected") or 0)
             if correction not in {0, 1}:
                 raise ContractError("correction_suspected_invalid")
-            if not (valid_at <= first_seen <= parsed_at <= committed_at):
+            if not (
+                report_seen_within_early_transmission_tolerance(valid_at, first_seen)
+                and first_seen <= parsed_at <= committed_at
+            ):
                 raise ContractError("canonical_observation_timestamp_rewind")
             if not (fetch_started <= first_seen <= fetch_completed <= committed_at):
                 raise ContractError("canonical_observation_fetch_timestamp_rewind")

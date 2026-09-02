@@ -33,7 +33,10 @@ from .canonical_observation_export import _source_poll_receipt
 from .contracts import ContractError, content_sha256
 from .metar_precision import official_temperature_c
 from .resource_bounds import assert_process_memory_budget
-from .source_policy import source_policy_reason
+from .source_policy import (
+    report_seen_within_early_transmission_tolerance,
+    source_policy_reason,
+)
 from .pr12_authority_scope_projection import (
     validate_pr12_authority_scope_projection,
 )
@@ -313,7 +316,8 @@ def export_awc_ingress_evidence_v4(
             fetch_started = _utc(raw.get("fetch_started_at"), "fetch_started_at")
             fetch_completed = _utc(raw.get("fetch_completed_at"), "fetch_completed_at")
             if not (
-                valid_at <= first_seen <= parsed_at <= committed_at
+                report_seen_within_early_transmission_tolerance(valid_at, first_seen)
+                and first_seen <= parsed_at <= committed_at
                 and fetch_started <= first_seen <= fetch_completed <= committed_at
             ):
                 raise ContractError("pr12_observation_timestamp_order_invalid")
@@ -698,20 +702,42 @@ def build_awc_observation_contract(
             reviews_by_day.get((station, event_date), ()),
             key=lambda x: (str(x.get("reviewed_at") or ""), str(x.get("review_id") or "")),
         )
-        correction_cleared = bool(
-            correction_rows
-            and halt
-            and halt.get("state") == "cleared"
-            and reviews
-            and reviews[-1].get("decision") in {
-                "CLEAR_REFERENCE_ONLY", "CLEAR_WITH_REPLACEMENT"
-            }
-            and reviews[-1].get("triggering_observation_id")
-            == halt.get("triggering_observation_id")
-        )
-        if correction_rows and not correction_cleared:
+        # A correction is resolved by its review receipt, the same way the
+        # settled-truth lane judges it (``assert_station_day_corrections_
+        # resolved``): the latest review naming that observation clears it
+        # with either CLEAR decision.  This used to demand, in addition, that
+        # the day's halt row read ``cleared`` -- and nothing but the manual
+        # review script ever wrote that state.  The standing auto-clear policy
+        # appends the receipt and leaves the row ``active``, so every one of
+        # the 356 halts in the archive was active on 2026-09-02, 41 of the 43
+        # recent ones with a matching CLEAR receipt already on file, and this
+        # gate refused revision facts for the whole station-day anyway: SAEZ
+        # 09-02 was cleared at 10:11:49Z and its facts stopped at 03:36Z, so
+        # the six P1 checkpoints minted after that carried no revision hash
+        # and the station-day was refused at the atomic-fact boundary on
+        # every cycle.  The halt row is a wait, not a fact; the receipt is
+        # the fact.  A quarantine still stops the day, by receipt or by the
+        # manual script's own halt reason.
+        latest_review_by_trigger: dict[str, Mapping[str, Any]] = {}
+        for review in reviews:
+            latest_review_by_trigger[
+                str(review.get("triggering_observation_id") or "")
+            ] = review
+        unresolved_corrections = [
+            row
+            for row in correction_rows
+            if int(row.get("correction_suspected") or 0) == 1
+            and str(
+                latest_review_by_trigger.get(
+                    str(row.get("observation_id") or ""), {}
+                ).get("decision") or ""
+            ) not in {"CLEAR_REFERENCE_ONLY", "CLEAR_WITH_REPLACEMENT"}
+        ]
+        if unresolved_corrections:
             reasons.add("REVISION_REVIEW_REQUIRED")
-        if halt and halt.get("state") == "active":
+        if halt and str(halt.get("reason_code") or "") == (
+            "manual_review_quarantine_station_day"
+        ):
             reasons.add("REVISION_REVIEW_REQUIRED")
         if reviews and reviews[-1].get("decision") == "QUARANTINE_STATION_DAY":
             reasons.add("REVISION_REVIEW_REQUIRED")
@@ -758,9 +784,10 @@ def build_awc_observation_contract(
         # them only ever covers yesterday.
         #
         # A review hold is different in kind and still stops everything: a
-        # correction or an active halt means these reports are disputed, and
-        # the charter says such a station-day halts for manual review rather
-        # than producing facts.
+        # correction nobody has reviewed, or a quarantine, means these reports
+        # are disputed, and the charter says such a station-day halts for
+        # review rather than producing facts.  A reviewed correction is not a
+        # dispute, whatever its halt row still says.
         review_blocked = "REVISION_REVIEW_REQUIRED" in reasons
         day_bounds_blocked = bool(reasons)
         if reasons:

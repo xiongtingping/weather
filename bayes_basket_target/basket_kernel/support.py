@@ -870,13 +870,49 @@ def _choose_support(
     # settlement inside a skipped bucket pays nothing while the basket was
     # priced as if that outcome were covered.  Convergence only removes
     # buckets, so every survivor keeps the admission evidence it already had.
+    admitted = set(base) | set(bias) | set(edge)
+    probability_by_bucket = {item.bucket: item.probability for item in buckets}
+    center_admitted = center.bucket in admitted
+    if center_admitted:
+        incumbent_anchor = center.bucket
+    else:
+        # The anchor is the stage's own point estimate and, until 2026-09-02,
+        # its absence from the admitted set was raised as
+        # support_center_not_admitted -- a compile exception, which meant no
+        # plan, no anchor, no training fact, and no seat search at all.
+        #
+        # It is not a defect of the inputs; it is the ordinary P1 afternoon.
+        # Replayed on 2026-09-02 with production inputs (FACT, EDDM, LFPB,
+        # EPWA, LEMD): the served P1 puts 0.669 on the reported-high bucket,
+        # the coverage target is 0.65-0.67, so ``base`` is that single bucket;
+        # no production envelope publishes per-bucket model reliability, so
+        # every peripheral candidate reads 0.0 against a 0.15 floor and none
+        # is ever admitted; and the anchor -- running high plus the expected
+        # remaining warming -- is the next rung up.  EGLC alone compiled that
+        # cycle, because 0.669 fell below its 0.670 target and ``base`` took
+        # two buckets.  Ten to twenty-three station-days a day died this way
+        # from 2026-08-24 on.
+        #
+        # What this function owes the caller is a contiguous incumbent; the
+        # seat itself is chosen downstream over the whole reachable domain,
+        # where charter 49/54 already require the seated window to hold the
+        # ladder centre.  So when the anchor is not admitted the incumbent is
+        # grown from the heaviest admitted bucket instead, and the fact is
+        # carried on the transition record for the plan to read.  Nothing is
+        # admitted that the gates refused.
+        incumbent_anchor = max(
+            base,
+            key=lambda bucket: (
+                probability_by_bucket[bucket],
+                -ordinal_by_bucket[bucket],
+                bucket,
+            ),
+        )
     desired = _converge_contiguous_support(
-        set(base) | set(bias) | set(edge),
-        center_bucket=center.bucket,
+        admitted,
+        center_bucket=incumbent_anchor,
         ordinal_by_bucket=ordinal_by_bucket,
-        probability_by_bucket={
-            item.bucket: item.probability for item in buckets
-        },
+        probability_by_bucket=probability_by_bucket,
         maximum_buckets=policy.maximum_support_buckets,
         # Coverage value times distance is exactly what the far breakthrough
         # bucket is bought for, so rank ends by it instead of raw probability.
@@ -945,6 +981,20 @@ def _choose_support(
             "next_core_buckets": [
                 *persisted_probability_core
             ],
+            # Only present when it happened, so every plan that compiled
+            # before this branch existed still hashes byte for byte.
+            **(
+                {}
+                if center_admitted
+                else {
+                    "center_admitted": False,
+                    "center_bucket": center.bucket,
+                    "incumbent_anchor_bucket": incumbent_anchor,
+                    "center_not_admitted_reason": (
+                        "anchor_outside_admitted_support"
+                    ),
+                }
+            ),
         },
     )
 

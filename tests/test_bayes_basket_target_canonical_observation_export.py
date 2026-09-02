@@ -430,6 +430,30 @@ def test_lane_mixing_duplicate_and_timestamp_rewind_fail_closed(tmp_path: Path) 
     assert any("timestamp_rewind" in item for item in result["blockers"])
 
 
+def test_export_accepts_a_report_seen_seconds_before_its_nominal_minute(tmp_path: Path) -> None:
+    early = tmp_path / "early.db"
+    _init_db(early)
+    # Nominal 12:01:00, on the wire at 12:00:40; the fetch that carried it
+    # started at 12:00:30, so every other order still holds.
+    _insert(
+        early, observation_id="early", lane="awc", raw_sha="b" * 64,
+        valid_at="2026-07-01T12:01:00Z", first_seen="2026-07-01T12:00:40Z",
+    )
+    result = _export(early)
+    assert result["state"] == "EXPORTED"
+    assert any(item["observation_id"] == "early" for item in result["observations"])
+
+    rewind = tmp_path / "rewind_far.db"
+    _init_db(rewind)
+    _insert(
+        rewind, observation_id="rewind", lane="awc", raw_sha="b" * 64,
+        valid_at="2026-07-01T12:04:00Z", first_seen="2026-07-01T12:00:40Z",
+    )
+    result = _export(rewind)
+    assert result["state"] == "BLOCKED_FAIL_CLOSED"
+    assert any("canonical_observation_timestamp_rewind" in item for item in result["blockers"])
+
+
 def test_duplicate_identity_is_not_silently_deduplicated(tmp_path: Path) -> None:
     db = tmp_path / "duplicate.db"
     _init_db(db)
