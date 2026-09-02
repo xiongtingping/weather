@@ -18,6 +18,8 @@ from __future__ import annotations
 import argparse
 import ast
 import collections
+import hashlib
+import inspect
 import json
 import math
 import os
@@ -5373,7 +5375,149 @@ def collect_regional_lanes(conn: sqlite3.Connection) -> dict[str, Any]:
     return {"lanes": lanes, "readiness": readiness, "verdicts": verdicts}
 
 
+# ---------------------------------------------------------------------------
+# Section cache
+#
+# A render rebuilds every section from scratch, and the hosted sweep starts
+# one every thirty minutes; measured 2026-09-02 a full build took about
+# fourteen minutes, most of it recomputing answers that had not moved since
+# the previous build.  Sections whose inputs change on the order of hours
+# keep their last value on disk and are recomputed only when it ages out.
+#
+# What may be cached is decided by two safety rules, not by cost:
+#
+#   * Nothing that feeds ``alerts`` / ``overall_health``.  The banner is the
+#     one thing on this page a reader trusts to mean "now" -- production sat
+#     BLOCKED_FAIL_CLOSED for eleven hours behind a healthy heartbeat on
+#     2026-08-26 -- so members, chain, band stages and truth materialization
+#     are rebuilt every render however long they take.
+#   * Nothing about the live book.  Live readiness, open orders and the
+#     whole selection payload are what the page is opened for mid-session.
+#
+# And every cached section carries the moment it was computed, which the
+# footer prints, so a cache that quietly stops refreshing reads as stale
+# rather than as current.
+SECTION_CACHE_DIR = ROOT / "data" / "dashboard_section_cache"
+# Bumped by hand when a helper a cached collector calls changes without the
+# collector's own body changing -- the fingerprint below sees the collector
+# and nothing it calls.  A bump discards every cached section.
+SECTION_CACHE_EPOCH = 1
+# Lifetimes, deliberately unequal.  Renders come round every thirty minutes;
+# equal lifetimes would expire the whole set on one render and put the
+# fourteen minutes back in a single go.
+SECTION_CACHE_TTL_SEC = {
+    "truth_landing": 150 * 60,
+    "window_divergence": 165 * 60,
+    "scorecard": 180 * 60,
+    "h5_readiness": 195 * 60,
+    "skill": 210 * 60,
+    "h5_bias_accuracy": 225 * 60,
+    "band_residual_audit": 240 * 60,
+}
+# Set by ``--no-section-cache`` so a reader who needs every number computed
+# against this instant can have it, at the price of the long build.
+SECTION_CACHE_ENABLED = True
+_SECTION_CACHE_LOG: dict[str, dict[str, Any]] = {}
+
+
+def _section_fingerprint(collector: Any) -> str:
+    try:
+        source = inspect.getsource(collector)
+    except (OSError, TypeError):
+        source = repr(collector)
+    return hashlib.sha256(
+        f"{SECTION_CACHE_EPOCH}\n{source}".encode("utf-8")
+    ).hexdigest()
+
+
+def _cached_section(name: str, collector: Any, *args: Any, **kwargs: Any) -> Any:
+    """The collector's value, reused from disk while it is still young.
+
+    A miss round-trips the fresh value through JSON before returning it, so
+    a hit and a miss hand the rest of the build byte-identical structures --
+    otherwise a tuple would reach the page as a tuple on the render that
+    computed it and as a list on the five that reused it.
+    """
+
+    ttl = SECTION_CACHE_TTL_SEC.get(name)
+    if not ttl or not SECTION_CACHE_ENABLED:
+        return collector(*args, **kwargs)
+    fingerprint = _section_fingerprint(collector)
+    path = SECTION_CACHE_DIR / f"{name}.json"
+    now = _now()
+    try:
+        blob = json.loads(path.read_text(encoding="utf-8"))
+        stamp = str(blob["computed_at_utc"])
+        age = (
+            now - datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+        ).total_seconds()
+        if blob.get("fingerprint") == fingerprint and 0.0 <= age < ttl:
+            _SECTION_CACHE_LOG[name] = {
+                "computed_at_utc": stamp,
+                "age_sec": round(age),
+                "ttl_sec": ttl,
+                "reused": True,
+            }
+            return blob["value"]
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    started = time.perf_counter()
+    value = collector(*args, **kwargs)
+    elapsed = time.perf_counter() - started
+    stamp = now.isoformat().replace("+00:00", "Z")
+    _SECTION_CACHE_LOG[name] = {
+        "computed_at_utc": stamp,
+        "age_sec": 0,
+        "ttl_sec": ttl,
+        "reused": False,
+        "build_sec": round(elapsed, 1),
+    }
+    try:
+        value = json.loads(json.dumps(value, ensure_ascii=False))
+    except (TypeError, ValueError):
+        # Not representable, so it cannot be cached either.  Serve it and
+        # say so rather than pretending the section is cached.
+        _SECTION_CACHE_LOG[name]["reused"] = False
+        _SECTION_CACHE_LOG[name]["uncacheable"] = True
+        return value
+    try:
+        SECTION_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        for stale in SECTION_CACHE_DIR.glob(f"{path.name}.*.tmp"):
+            # A render killed mid-write leaves one of these; nothing reads
+            # them, so they would accumulate silently forever.
+            try:
+                if stale.stat().st_mtime < time.time() - 6 * 3600:
+                    stale.unlink()
+            except OSError:
+                pass
+        # Unique per process: the hosted sweep and a hand-run render can
+        # overlap (measured: two builds in flight at 04:10 on 2026-09-02),
+        # and a shared temp name lets one replace the file the other is
+        # still writing.  Distinct names make last-writer-wins the only
+        # outcome, and both writers leave a complete file behind.
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        tmp.write_text(
+            json.dumps(
+                {
+                    "schema": "dashboard_section_cache_v1",
+                    "section": name,
+                    "fingerprint": fingerprint,
+                    "computed_at_utc": stamp,
+                    "build_sec": round(elapsed, 1),
+                    "value": value,
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        tmp.replace(path)
+    except (OSError, TypeError, ValueError):
+        pass
+    return value
+
+
 def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
+    _SECTION_CACHE_LOG.clear()
     members = collect_members(conn, collect_run_cadence(conn))
     tables = collect_correction_and_weights(conn)
     stages = collect_band_stages(conn)
@@ -5381,13 +5525,17 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     chain = collect_chain(conn)
     gaps = collect_gaps(conn, members, stages, tables)
     p0m = collect_p0m_progress(conn)
-    skill = collect_model_skill(conn)
+    skill = _cached_section("skill", collect_model_skill, conn)
     truth = collect_truth_materialization(conn)
     scores = collect_oos_scores(conn)
     serving_weights = collect_serving_weights(conn)
     center_width = collect_center_width(conn)
-    scorecard = collect_calibration_scorecard(conn)
-    truth_landing = collect_truth_landing(conn)
+    scorecard = _cached_section(
+        "scorecard", collect_calibration_scorecard, conn
+    )
+    truth_landing = _cached_section(
+        "truth_landing", collect_truth_landing, conn
+    )
     worker = {}
     if STATUS_JSON.is_file():
         try:
@@ -5466,8 +5614,8 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "members": members,
         "tables": tables,
         "truth_landing": truth_landing,
-        "band_residual_audit": (band_audit := collect_band_residual_audit(
-            conn,
+        "band_residual_audit": (band_audit := _cached_section(
+            "band_residual_audit", collect_band_residual_audit, conn,
         )),
         "live_readiness": collect_live_readiness(
             conn, band_audit.get("stations") or [],
@@ -5483,13 +5631,20 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "serving_weights": serving_weights,
         "center_width": center_width,
         "scorecard": scorecard,
-        "h5_readiness": collect_h5_readiness(conn),
-        "h5_bias_accuracy": collect_h5_bias_accuracy(conn),
-        "window_divergence": collect_window_divergence(conn),
+        "h5_readiness": _cached_section(
+            "h5_readiness", collect_h5_readiness, conn
+        ),
+        "h5_bias_accuracy": _cached_section(
+            "h5_bias_accuracy", collect_h5_bias_accuracy, conn
+        ),
+        "window_divergence": _cached_section(
+            "window_divergence", collect_window_divergence, conn
+        ),
         "edge_band_health": collect_edge_band_health(conn),
         "risk_metrics": collect_risk_metrics(conn),
         "regional": collect_regional_lanes(conn),
         "worker": worker,
+        "section_cache": dict(_SECTION_CACHE_LOG),
     }
 
 
@@ -9455,6 +9610,27 @@ const TOP = [[overviewBoard, "总览"],
   [stationSummary, "逐站汇总（跨日）"], [anomalies, "异常盘口"],
   [refusalStats, "没建仓是因为什么"]];
 
+// Which sections on this page were reused from the previous build, and how
+// old each one is.  A cached section that quietly stops refreshing is the
+// failure this whole mechanism can cause, so its age is printed rather than
+// left for someone to infer from a number that stopped moving.
+function sectionCacheNote(){
+  const c=D.section_cache||{};
+  const NAME={truth_landing:"真值落点",window_divergence:"窗口分歧",
+    scorecard:"校准计分卡",h5_readiness:"H5 就绪",skill:"模型技巧",
+    h5_bias_accuracy:"H5 偏差准确度",band_residual_audit:"band 残差审计"};
+  const reused=Object.entries(c).filter(([,v])=>v&&v.reused);
+  if(!reused.length){
+    const built=Object.keys(c).length;
+    return built?`本轮全部区块现算 · `:"";
+  }
+  const worst=Math.max(...reused.map(([,v])=>Number(v.age_sec)||0));
+  const list=reused.map(([k,v])=>
+    `${NAME[k]||k} ${Math.round((Number(v.age_sec)||0)/60)} 分钟前`).join("、");
+  return `<span title="慢变区块按各自节奏重算，其余每轮现算">沿用上一轮的区块：`
+    + `${h(list)}（最旧 ${Math.round(worst/60)} 分钟）</span> · `;
+}
+
 document.getElementById("app").innerHTML =
   safe(head, "页头") +
   sec(liveReadiness, "Live 上线准备", "sec-live") +
@@ -9462,6 +9638,7 @@ document.getElementById("app").innerHTML =
   TOP.map(([fn, name], i) => sec(fn, name, `sec-top-${i}`)).join("") +
   groupHtml +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据 ·
+    ${sectionCacheNote()}
     <a href="#" id="footer-top">返回顶部</a></footer>`;
 
 // Which group is showing survives a reload, because the page is reloaded
@@ -9661,7 +9838,17 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=8787)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--html-out", type=Path)
+    parser.add_argument(
+        "--no-section-cache",
+        action="store_true",
+        help=(
+            "recompute every section against this instant instead of"
+            " reusing the slow-moving ones from data/dashboard_section_cache"
+        ),
+    )
     args = parser.parse_args()
+    global SECTION_CACHE_ENABLED
+    SECTION_CACHE_ENABLED = not args.no_section_cache
     database = args.db.expanduser().resolve(strict=True)
     if args.json:
         print(json.dumps(
