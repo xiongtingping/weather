@@ -38,7 +38,8 @@ def _book(rows: list[tuple], fills: list[tuple],
         " order_intent_id TEXT PRIMARY KEY, decision_id TEXT, cycle_id TEXT,"
         " bucket TEXT, side TEXT, limit_price REAL, requested_size REAL,"
         " requested_notional_usdc REAL, state TEXT,"
-        " live_submit_authorized INTEGER, created_at TEXT);"
+        " live_submit_authorized INTEGER, created_at TEXT,"
+        " target_execution_hard_deadline_at TEXT);"
         "CREATE TABLE auto_trade_decisions("
         " decision_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT);"
         "CREATE TABLE basket_target_order_reconciliations("
@@ -51,7 +52,8 @@ def _book(rows: list[tuple], fills: list[tuple],
     for intent, decision, station, day, bucket, live in rows:
         conn.execute(
             "INSERT INTO basket_target_order_intents VALUES"
-            " (?,?,?,?, 'YES', 0.3, 10, 3.0, 'prepared', ?, '2026-08-31T00:00:00Z')",
+            " (?,?,?,?, 'YES', 0.3, 10, 3.0, 'prepared', ?,"
+            " '2026-08-31T00:00:00Z', '2026-08-31T00:00:03.000Z')",
             (intent, decision, "cycle", bucket, live),
         )
         conn.execute(
@@ -291,3 +293,60 @@ def test_cycle_verdict_counts_the_ledger_not_the_worst_scope() -> None:
     }})
     assert dead["production_health"] == "red"
     assert "fail-closed" in dead["production_note"]
+
+
+def test_the_legs_of_one_basket_carry_their_basket_identity() -> None:
+    """Two legs of one decision must be reassemblable into one basket.
+
+    The panel groups by decision because the decision *is* the basket: the
+    solver sizes the whole support set as one joint action and the selector
+    refuses any proper subset.  On 2026-08-31 a WMKK basket went out as
+    31°C and 32°C -- one decision, two legs, one deadline -- and the flat
+    leg table rendered them as two unrelated single-bucket orders, which
+    reads as a system that buys buckets one at a time.  Carrying the
+    station, the day and the window on every row is what lets the board
+    put them back together.
+    """
+
+    conn = _book(
+        rows=[("leg31", "d1", "WMKK", "2026-09-02", "31°C", 1),
+              ("leg32", "d1", "WMKK", "2026-09-02", "32°C", 1),
+              ("other", "d2", "KATL", "2026-08-31", "90-91°F", 1)],
+        fills=[], settled=[],
+    )
+    live = board._collect_live_orders(conn)
+    by_decision: dict[str, list[dict]] = {}
+    for row in live["rows"]:
+        by_decision.setdefault(row["decision_id"], []).append(row)
+    assert sorted(by_decision) == ["d1", "d2"]
+    assert len(by_decision["d1"]) == 2
+    assert {r["bucket"] for r in by_decision["d1"]} == {"31°C", "32°C"}
+    assert {r["station_id"] for r in by_decision["d1"]} == {"WMKK"}
+    assert {r["event_date"] for r in by_decision["d1"]} == {"2026-09-02"}
+    # The window the whole basket shares, not a per-leg allowance: both
+    # legs go out serially inside this one.
+    assert [r["execution_window_seconds"] for r in by_decision["d1"]] == [3.0, 3.0]
+
+
+def test_an_intent_without_its_decision_row_still_renders() -> None:
+    """A leg whose decision row is missing must not vanish or crash.
+
+    The join is LEFT for this reason.  An intent that outlived its decision
+    is exactly the row an operator needs to see, so it degrades to an
+    unnamed basket rather than being filtered out of the count.
+    """
+
+    conn = _book(rows=[], fills=[], settled=[])
+    conn.execute(
+        "INSERT INTO basket_target_order_intents VALUES"
+        " ('orphan','gone','cycle','31°C','YES',0.3,10,3.0,'prepared',1,"
+        " '2026-08-31T00:00:00Z',NULL)"
+    )
+    conn.commit()
+    live = board._collect_live_orders(conn)
+    assert live["intent_count"] == 1
+    row = live["rows"][0]
+    assert row["station_id"] == ""
+    assert row["event_date"] == ""
+    # No deadline is unknown, not unlimited.
+    assert row["execution_window_seconds"] is None

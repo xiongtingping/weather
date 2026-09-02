@@ -66,6 +66,82 @@ BOUND_SCHEMA = "basket_target_bound_projection_v2"
 STAGE_EVIDENCE_ROOT_SCHEMA = "basket_target_stage_evidence_projection_v1"
 PLAN_SCHEMA = "basket_target_plan_v1"
 DECISION_SCHEMA = "basket_target_decision_fact_v1"
+# v2: the decision is addressed by what it was made of, not by when.
+DECISION_SCHEMA_V2 = "basket_target_decision_fact_v2"
+# The keys of ``details`` that describe the decision rather than the moment.
+# Everything else in ``details`` is either the clock in another form
+# (``target_execution_hard_deadline_at`` is created_at + 3s;
+# ``forward_evidence_binding`` carries ``decision_at_utc``) or a receipt
+# flag that does not change what was decided.
+_ECONOMIC_DETAIL_KEYS = (
+    "core_buckets", "direction", "current_core_buckets", "current_direction",
+    "delta_v2_content_sha256", "production_plan_sha256", "execution_mode",
+    "delta_v2_authorized", "candidate_will_order",
+)
+
+
+def economic_decision_identity(
+    *,
+    station_id: str,
+    event_date: str,
+    settlement_timezone: str,
+    strategy_lane: str,
+    decided_state: str,
+    will_order: int,
+    reason_codes: Sequence[str],
+    details: Mapping[str, Any],
+    decision_scope_key: str | None,
+) -> dict[str, Any]:
+    """What a decision is made of (user ruling, 2026-09-02).
+
+    Four legs -- probability, the objective's sizing output, the position
+    book, the policy artefacts -- plus what was decided.  Wall clocks are
+    audit metadata and are not in here.
+
+    The old identity carried ``target_execution_hard_deadline_at``, which
+    is the commit clock plus three seconds, so every re-decision was a new
+    decision by construction: measured 2026-09-02 over 11,364 basket
+    decisions from 08-28, 11,364 distinct shas against 5,080 distinct
+    economic contents.  MMMX 2026-09-02 wrote 99 decisions for 5.
+
+    Two readings, one key.  A decision with a training fact carries
+    ``decision_scope_key``, which is exactly the four legs (see
+    ``delta_v2_decision_scope_key``) and is used whole.  A decision without
+    one -- every blocked decision to date, whose fact is built but never
+    stored -- is addressed by the economic subset of its ``details`` and
+    its reasons, which is everything about it that was ever written down.
+    The two are kept as separate fields so a key from one reading can never
+    collide with a key from the other.
+    """
+
+    lifecycle = details.get("basket_lifecycle")
+    economic_details = {
+        key: details.get(key) for key in _ECONOMIC_DETAIL_KEYS
+        if key in details
+    }
+    if isinstance(lifecycle, Mapping):
+        economic_details["basket_lifecycle"] = {
+            key: lifecycle.get(key)
+            for key in ("state", "reason", "final_support", "candidate_support")
+            if key in lifecycle
+        }
+    return {
+        "scope": {
+            "station_id": str(station_id),
+            "event_date": str(event_date),
+            "settlement_timezone": str(settlement_timezone),
+            "strategy_lane": str(strategy_lane),
+        },
+        "decided": {
+            "decided_state": str(decided_state),
+            "will_order": int(will_order),
+            "reason_codes": sorted(str(code) for code in reason_codes),
+        },
+        "decision_scope_key": (
+            str(decision_scope_key) if decision_scope_key else None
+        ),
+        "economic_details": economic_details,
+    }
 INTENT_SCHEMA = "basket_target_order_intent_v1"
 RESERVATION_SCHEMA = "basket_target_capital_reservation_v1"
 STAGE_ZERO_EXECUTION_ANCHOR_SCHEMA = (
@@ -522,6 +598,7 @@ def build_target_atomic_bundle(
     no_execution_policy: Mapping[str, Any] | NoExecutionVersionPolicy | None = None,
     training_fact: Mapping[str, Any] | None = None,
     target_execution_hard_deadline_at: str | datetime | None = None,
+    decision_scope_key: str | None = None,
     created_at_utc: str,
 ) -> dict[str, Any]:
     """Normalize a candidate and derive every identity from immutable content."""
@@ -898,7 +975,39 @@ def build_target_atomic_bundle(
             raise AtomicLedgerError("target_execution_hard_deadline_missing")
         _target_execution_deadline(deadline, now=created_at)
 
-    decision_identity = {
+    # Economic identity, not clocked (user ruling, 2026-09-02).  ``cycle_id``
+    # and ``plan_id`` are transport handles for this pass and stay on the
+    # row; they are no longer part of what makes the decision itself.
+    # The scope key comes from the training fact when the bundle carries
+    # one -- built for prepared and blocked alike at production.py:1043 --
+    # and the deadline, which was the clock in another form, is gone.
+    training_fact_scope = str(
+        decision_scope_key
+        or (
+            training_fact.get("decision_scope_key")
+            if isinstance(training_fact, Mapping) else ""
+        )
+        or ""
+    )
+    decision_identity = economic_decision_identity(
+        station_id=station_id,
+        event_date=event_date,
+        settlement_timezone=settlement_timezone,
+        strategy_lane=lane,
+        decided_state=decided_state,
+        will_order=will_order,
+        reason_codes=reasons,
+        details=details,
+        decision_scope_key=training_fact_scope or None,
+    )
+    decision_sha = _content_hash(DECISION_SCHEMA_V2, decision_identity)
+    decision_id = _verify_or_set_id(
+        "decision_id", decision.get("decision_id"), _derive_id("decision", decision_identity)
+    )
+    # The row, as distinct from the identity.  Every column the table has
+    # is still written -- the transport handles and the deadline included --
+    # they just no longer decide what the decision *is*.
+    decision_row = {
         "cycle_id": cycle_id,
         "plan_id": plan_id,
         "station_id": station_id,
@@ -910,11 +1019,8 @@ def build_target_atomic_bundle(
         "reason_codes": reasons,
         "details": details,
         "target_execution_hard_deadline_at": deadline,
+        "decision_scope_key": training_fact_scope or None,
     }
-    decision_sha = _content_hash(DECISION_SCHEMA, decision_identity)
-    decision_id = _verify_or_set_id(
-        "decision_id", decision.get("decision_id"), _derive_id("decision", decision_identity)
-    )
 
     intent_rows: list[dict[str, Any]] = []
     for index, raw in enumerate(intents):
@@ -1024,7 +1130,7 @@ def build_target_atomic_bundle(
             "state": "prepared",
         },
         "decision": {
-            **decision_identity,
+            **decision_row,
             "decision_id": decision_id,
             "decision_sha256": decision_sha,
         },
@@ -2338,9 +2444,26 @@ def commit_target_atomic_bundle(
     )
     if any(item.get("target_execution_hard_deadline_at") != deadline for item in intents):
         raise AtomicLedgerError("target_execution_hard_deadline_content_drift")
-    decision_identity = {key: value for key, value in decision.items() if key not in {"decision_id", "decision_sha256"}}
-    if decision.get("decision_sha256") != _content_hash(DECISION_SCHEMA, decision_identity):
+    # Re-derived the way it was minted: from what the decision is made of,
+    # with the row's own scope key.  The transport handles and the deadline
+    # are on the row but not in the address.
+    decision_identity = economic_decision_identity(
+        station_id=str(decision.get("station_id") or ""),
+        event_date=str(decision.get("event_date") or ""),
+        settlement_timezone=str(decision.get("settlement_timezone") or ""),
+        strategy_lane=str(decision.get("strategy_lane") or ""),
+        decided_state=str(decision.get("decided_state") or ""),
+        will_order=int(decision.get("will_order") or 0),
+        reason_codes=_reason_codes(decision.get("reason_codes")),
+        details=_mapping("decision_details", decision.get("details")),
+        decision_scope_key=(
+            str(decision.get("decision_scope_key") or "") or None
+        ),
+    )
+    if decision.get("decision_sha256") != _content_hash(DECISION_SCHEMA_V2, decision_identity):
         raise AtomicLedgerError("decision_content_address_drift")
+    if decision.get("decision_id") != _derive_id("decision", decision_identity):
+        raise AtomicLedgerError("decision_id_content_address_drift")
     if decision.get("decision_id") != _derive_id("decision", decision_identity):
         raise AtomicLedgerError("decision_id_content_address_drift")
     for ordinal, item in enumerate(intents):
@@ -2626,6 +2749,38 @@ def commit_target_atomic_bundle(
                 raise AtomicLedgerError(
                     "target_active_candidate_supersession_required"
                 )
+        # The same decision, arriving on a new cycle, is a restatement and
+        # writes nothing (user ruling, 2026-09-02).  Under the clocked
+        # identity this could not happen -- every cycle minted a fresh
+        # decision id -- so this branch is what the economic identity
+        # *means* at the write boundary: a re-decision that believes,
+        # prices, holds and is governed identically to one already recorded
+        # resolves to that record.  It is not an error and it is not a
+        # second row.  The cycle handle differs by construction and is not
+        # what is being compared.
+        standing = conn.execute(
+            "SELECT cycle_id, decision_sha256 FROM auto_trade_decisions"
+            " WHERE decision_id=?",
+            (decision["decision_id"],),
+        ).fetchone()
+        if standing is not None and str(standing[0]) != cycle["cycle_id"]:
+            if str(standing[1]) != str(decision["decision_sha256"]):
+                raise AtomicLedgerError("decision_id_collision_content_drift")
+            return {
+                "schema": SCHEMA,
+                "state": "already_committed_decision",
+                "idempotent": True,
+                "cycle_id": str(standing[0]),
+                "decision_id": decision["decision_id"],
+                "intent_count": 0,
+                "reserved_amount_usdc": 0.0,
+                "orders_submitted": 0,
+                "places_orders": False,
+                "calls_order_gateway": False,
+                "live_submit_authorized": False,
+                "execution_version_vector_count": 0,
+                "training_fact_state": "already_committed_decision",
+            }
 
         if not stage_rooted:
             # The METAR-only projection tables carry CHECK constraints naming
@@ -2645,8 +2800,8 @@ def commit_target_atomic_bundle(
         )
         _fault(fault_after, "cycle")
         conn.execute(
-            "INSERT INTO auto_trade_decisions(decision_id,cycle_id,plan_id,station_id,event_date,settlement_timezone,strategy_lane,decided_state,will_order,target_execution_hard_deadline_at,reason_codes_json,details_json,decision_sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (decision["decision_id"], decision["cycle_id"], decision["plan_id"], decision["station_id"], decision["event_date"], cycle_timezone, decision["strategy_lane"], decision["decided_state"], decision["will_order"], deadline, canonical_json(decision["reason_codes"]), canonical_json(decision["details"]), decision["decision_sha256"], created_at),
+            "INSERT INTO auto_trade_decisions(decision_id,cycle_id,plan_id,station_id,event_date,settlement_timezone,strategy_lane,decided_state,will_order,target_execution_hard_deadline_at,reason_codes_json,details_json,decision_sha256,created_at,decision_scope_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (decision["decision_id"], decision["cycle_id"], decision["plan_id"], decision["station_id"], decision["event_date"], cycle_timezone, decision["strategy_lane"], decision["decided_state"], decision["will_order"], deadline, canonical_json(decision["reason_codes"]), canonical_json(decision["details"]), decision["decision_sha256"], created_at, decision.get("decision_scope_key")),
         )
         _fault(fault_after, "decision")
         for item in intents:
@@ -2832,19 +2987,21 @@ def commit_blocked_scope_decision(
         "strategy_lane": lane,
     }
     cycle_id = _derive_id("cycle", cycle_identity)
-    decision_identity = {
-        "cycle_id": cycle_id,
-        "plan_id": plan_id,
-        "station_id": station,
-        "event_date": day,
-        "settlement_timezone": timezone_name,
-        "strategy_lane": lane,
-        "decided_state": "blocked",
-        "will_order": 0,
-        "reason_codes": reasons,
-        "details": payload_details,
-    }
-    decision_sha = _content_hash(DECISION_SCHEMA, decision_identity)
+    # A stage-zero block carries no training fact, so it is addressed by
+    # the economic subset of its details and its reasons -- the same reading
+    # the migration gives every historical blocked row.
+    decision_identity = economic_decision_identity(
+        station_id=station,
+        event_date=day,
+        settlement_timezone=timezone_name,
+        strategy_lane=lane,
+        decided_state="blocked",
+        will_order=0,
+        reason_codes=reasons,
+        details=payload_details,
+        decision_scope_key=None,
+    )
+    decision_sha = _content_hash(DECISION_SCHEMA_V2, decision_identity)
     decision_id = _derive_id("decision", decision_identity)
     no_execution_policy = build_no_execution_version_policy(
         {
@@ -3079,11 +3236,12 @@ def commit_blocked_scope_decision(
         conn.execute(
             "INSERT INTO auto_trade_decisions("
             "decision_id,cycle_id,plan_id,station_id,event_date,settlement_timezone,strategy_lane,"
-            "decided_state,will_order,target_execution_hard_deadline_at,reason_codes_json,details_json,decision_sha256,created_at) "
-            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "decided_state,will_order,target_execution_hard_deadline_at,reason_codes_json,details_json,decision_sha256,created_at,decision_scope_key) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 decision_id, cycle_id, plan_id, station, day, timezone_name, lane, "blocked", 0,
                 None, canonical_json(reasons), canonical_json(payload_details), decision_sha, created_at,
+                None,
             ),
         )
         conn.execute(

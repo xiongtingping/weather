@@ -252,6 +252,9 @@ SHARED_WITH_PRODUCTION = {
     # Charter 68: one switch, one table.  The table lives in the kernel and
     # both lanes import it; the switch is spelled in each and asserted equal.
     "EFFECTIVE_EDGE_MODE",
+    # Charter 69: the clamp's mode, spelled in each lane and asserted equal
+    # below; the narrowing itself is one kernel function both import.
+    "DECLINE_CLAMP",
     "CERTAINTY_GATE", "FEE_RATE", "KELLY_FRACTION",
     "MAKER_RESTING_IMPROVE_TICKS", "MAKER_RESTING_LADDER_STEPS",
     "MAKER_RESTING_SHOULDER_LAMBDA", "MAKER_RESTING_VALUE_LAMBDA",
@@ -261,6 +264,29 @@ SHARED_WITH_PRODUCTION = {
 
 # This lane's own, with the reason it has no production counterpart.
 LEDGER_ONLY = {
+    # The clamp's switch itself is shared (charter 69, above).  What is
+    # this lane's own is the two extra arms it accepts -- "off", the
+    # pre-2026-09-02 book, and "hold", the whole-basket refusal -- and the
+    # threshold knob, none of which production spells.
+    #
+    # It is also the case this file's completeness device could not catch:
+    # the clamp lived only in production from 2026-08-18 to 09-01, and a
+    # rule that exists on one side has no constant on the other side to
+    # classify.  See test_a_production_only_rule_has_no_constant_to_catch.
+    "DECLINE_CLAMP_MODES": (
+        "the six arms DECLINE_CLAMP accepts; production spells the four"
+        " it may run (leg, guarded, held_only, after_open), off and hold"
+        " are replay arms"
+    ),
+    "RESEAT_WITHIN_STAGE": (
+        "arm knob: let a stage add to itself on later cycles, as production"
+        " does; off is this ledger's historical one-seat-per-stage walk"
+    ),
+    "DECLINE_MIN_DROP": (
+        "arm knob: how far a probability must fall to count as falling;"
+        " 0 = production's rule, which has no threshold and never had one"
+        " measured against it"
+    ),
     # Charter 66 replay arms: the bankroll frame and the miss-mass floor a
     # replay may vary; production's frame is its own capital plumbing.
     "CHAIN_TOPUP_BANKROLL_USDC": "replay arm; 0 = scope allowance",
@@ -476,4 +502,98 @@ def test_the_support_width_bounds_match_productions_policy_defaults() -> None:
     )
     assert L.MINIMUM_SUPPORT_BUCKETS == (
         TargetBasketPolicy.minimum_support_buckets
+    )
+
+
+def test_the_clamp_is_one_implementation_that_both_sides_import() -> None:
+    """The declining-probability clamp is imported, not copied.
+
+    It was inline in ``delta_v2_runtime`` from 2026-08-18 to 2026-09-01, so
+    the ledger never ran it and the whole recorded book is silently the
+    arm where it is off.  Extracted to the kernel rather than re-typed here
+    because a hand-copy is how the maker ladder drifted on 37 of 64 books
+    while both sides believed they were "the same construction".
+    """
+
+    from bayes_basket_target.basket_kernel import delta_v2 as kernel
+
+    assert L.clamp_declining_gaps_v2 is kernel.clamp_declining_gaps_v2
+    assert P.clamp_declining_gaps_v2 is kernel.clamp_declining_gaps_v2
+    # Charter 69: the guarded narrowing is likewise one function, and the
+    # two lanes default to the same mode.
+    assert L.contiguous_edge_clamp_v2 is kernel.contiguous_edge_clamp_v2
+    assert P.contiguous_edge_clamp_v2 is kernel.contiguous_edge_clamp_v2
+    assert L.DECLINE_CLAMP == P.DECLINE_CLAMP_MODE == "after_open"
+
+
+def test_charter_69_the_guarded_clamp_never_drops_the_centre_or_opens_a_hole() -> None:
+    """Ends only, never the centre: what "guarded" means on both sides.
+
+    Charter 51's clamp runs before the complete-basket check, so a clamp
+    that removes the centre or a middle rung produces a basket that passes
+    as complete (measured 2026-09-01: 48 dropped centres, 10 holes in 581
+    replay openings).  Charter 69 narrows it to what charter 49 and
+    contiguity allow, and this pins the narrowing's shape on the grid the
+    ledger and production both walk.
+    """
+
+    from bayes_basket_target.basket_kernel import delta_v2 as kernel
+
+    support = ("18°C", "19°C", "20°C", "21°C", "22°C")
+    narrow = kernel.contiguous_edge_clamp_v2
+    # Both ends falling: both may go.
+    assert narrow(declining=("18°C", "22°C"), support=support,
+                  centre_bucket="20°C") == ("18°C", "22°C")
+    # A run from one end stops at the first rung that is not falling; a
+    # falling rung behind a rung that is not falling is not at an end, so
+    # 21°C stays even though it fell.
+    assert narrow(declining=("18°C", "19°C", "21°C"), support=support,
+                  centre_bucket="20°C") == ("18°C", "19°C")
+    # A falling rung in the middle is never dropped: no holes.
+    assert narrow(declining=("19°C",), support=support,
+                  centre_bucket="20°C") == ()
+    # The centre is never dropped, even when everything is falling.
+    assert narrow(declining=support, support=support,
+                  centre_bucket="20°C") == ("18°C", "19°C", "21°C", "22°C")
+    # ...and walking in from the ends stops AT the centre, on both sides.
+    assert narrow(declining=("18°C", "19°C", "20°C"), support=support,
+                  centre_bucket="20°C") == ("18°C", "19°C")
+    assert narrow(declining=("20°C", "21°C", "22°C"), support=support,
+                  centre_bucket="20°C") == ("21°C", "22°C")
+    # Every result is a prefix plus a suffix of the window: what survives
+    # is one contiguous run that contains the centre.
+    for falling in (("18°C", "22°C"), ("18°C", "19°C", "21°C"), support):
+        gone = set(narrow(declining=falling, support=support,
+                          centre_bucket="20°C"))
+        kept = [b for b in support if b not in gone]
+        assert "20°C" in kept
+        first, last = support.index(kept[0]), support.index(kept[-1])
+        assert kept == list(support[first:last + 1])
+
+
+def test_a_production_only_rule_has_no_constant_to_catch() -> None:
+    """Name the hole this file's completeness device has.
+
+    ``test_every_ledger_rule_constant_is_classified`` scans the *ledger's*
+    module-level constants and asks which side owns each.  A rule added to
+    production alone contributes no ledger constant, so the scan sees
+    nothing to object to -- which is exactly how the clamp went thirteen
+    days with the two lanes trading different strategies while every test
+    here passed.  The docstring at the top of this file says the contract
+    covers "or the reverse"; the mechanism does not.
+
+    Asserted rather than fixed: closing it means enumerating production's
+    selection surface, which is a larger piece of work than this test.  It
+    fails loudly if somebody believes it is already covered.
+    """
+
+    assigned, _imported = _ledger_rule_constants()
+    # The clamp is production's rule.  It reaches the ledger as an imported
+    # function, so it is deliberately NOT among the ledger's own constants.
+    assert "clamp_declining_gaps_v2" not in assigned
+    # And that is the hole: nothing in the completeness scan would have
+    # noticed its absence for the thirteen days it was production-only.
+    assert "DECLINE_CLAMP" in assigned, (
+        "only the arm switch is a ledger constant; the rule itself is not,"
+        " which is why a production-only rule cannot be caught here"
     )

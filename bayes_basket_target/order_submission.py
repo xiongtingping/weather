@@ -43,6 +43,14 @@ SUBMITTABLE_INTENT_STATE = "prepared"
 # blocked until a reconciliation resolves it rather than be retried blind.
 _ACCEPTED_EVENT = "POST_ACK"
 _UNKNOWN_EVENT = "UNKNOWN_POST"
+# The gateway answered and declined to forward the order.  Recorded as an
+# event like every other outcome: until 2026-09-01 this branch wrote
+# nothing at all -- no event, no state change, no receipt row -- so a leg
+# refused here sat at ``prepared`` until the stranded-intent sweep retired
+# it as ``cancelled``, and the board showed a cancellation with no cause.
+# Two of the five live intents ever minted ended that way and their reason
+# is now unrecoverable: the gateway logs that held it were rotated away.
+_REFUSED_EVENT = "SUBMIT_REFUSED"
 
 Transport = Callable[[str, Mapping[str, Any]], Mapping[str, Any]]
 
@@ -124,6 +132,13 @@ def classify_submission_response(
     started = response.get("exchange_post_started") is True
     reconcile = response.get("reconcile_required") is True
     pending = response.get("pending") is True
+    # No answer came back at all, so this layer does not know whether the
+    # gateway forwarded the order.  The transport says so itself rather
+    # than being inferred from the absence of the flags above -- absence
+    # is exactly what a timeout and a refusal have in common, and reading
+    # one as the other was how a placed order came to be recorded as
+    # nothing having happened.
+    ambiguous = response.get("transport_ambiguous") is True
     error = str(response.get("error") or "").strip()
     if accepted:
         return {
@@ -131,14 +146,14 @@ def classify_submission_response(
             "submitted": True,
             "reason": "",
         }
-    if reconcile or started or pending:
+    if reconcile or started or pending or ambiguous:
         return {
             "event_type": _UNKNOWN_EVENT,
             "submitted": True,
             "reason": error or "exchange_state_unknown",
         }
     return {
-        "event_type": "",
+        "event_type": _REFUSED_EVENT,
         "submitted": False,
         "reason": error or "order_service_refused",
     }
@@ -264,10 +279,41 @@ def submit_prepared_intents(
         response = transport(PLACE_ORDER_PATH, payload)
         outcome = classify_submission_response(response)
         if not outcome["submitted"]:
+            # A refusal is an outcome, so it is recorded like one.  Writing
+            # the event moves the intent to ``failed`` and frees its bucket
+            # and token immediately; leaving it at ``prepared``, as this
+            # branch used to, blocked that bucket until a sweep retired the
+            # intent and then reported the retirement as the cause.
+            refusal = {
+                "event_type": outcome["event_type"],
+                "exchange_order_id": "",
+                "observed_at": observed_at,
+                "matched_size": 0.0,
+                "matched_notional_usdc": 0.0,
+                "event_payload": {
+                    "idempotency_key": payload["idempotency_key"],
+                    "payload_sha256": content_sha256(payload),
+                    "reason": outcome["reason"],
+                    "source": str(response.get("source") or ""),
+                    "http_status": response.get("http_status"),
+                },
+            }
+            receipt = record_order_event(
+                conn,
+                order_intent_id=intent_id,
+                event=refusal,
+            )
             submissions.append({
                 "order_intent_id": intent_id,
-                "state": "refused",
+                "state": receipt.get("state"),
+                "reconciliation_state": receipt.get("reconciliation_state"),
+                "event_type": outcome["event_type"],
+                "event_id": receipt.get("event_id"),
                 "reason": outcome["reason"],
+                # The request did leave this process; what it did not do is
+                # reach the exchange.  Reporting it as never started would
+                # lose the one fact that separates a refusal from a leg
+                # that was never attempted.
                 "exchange_post_started": False,
                 "payload_sha256": content_sha256(payload),
             })

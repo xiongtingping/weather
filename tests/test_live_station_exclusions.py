@@ -428,12 +428,26 @@ def test_pinning_a_list_switches_the_scope_and_still_refuses_barred(
     monkeypatch.setattr(control, "INTENT_PATH", work)
     monkeypatch.setattr(control, "AUDIT_PATH", audit)
     try:
-        state = control.set_allowlist(["ZBAA", "ZSQD"])
+        # Picked from what is currently admissible rather than named.  This
+        # pinned ZBAA and ZSQD by hand until 2026-09-01, when the automatic
+        # layer barred both and the test began failing on a config change
+        # that was the layer working correctly -- the bar list is not a
+        # constant and a test that treats it as one reports fleet news as a
+        # regression.  Only the property is asserted: whatever is admissible
+        # can be pinned, and whatever is barred cannot.
+        barred = sorted(control.excluded_stations())
+        assert barred, "this test needs at least one barred station"
+        candidates = [
+            "ZBAA", "ZSQD", "ZGGG", "ZUUU", "RJTT", "RKSI", "WSSS", "WMKK",
+            "EGLL", "LFPG", "EDDF", "KSFO", "KORD", "KSEA", "KLAX",
+        ]
+        admissible = [s for s in candidates if s not in set(barred)][:2]
+        assert len(admissible) == 2, "this test needs two admissible stations"
+        state = control.set_allowlist(admissible)
         assert state["live"]["station_scope"] == control.SCOPE_EXPLICIT
-        assert set(state["live"]["station_allowlist"]) == {"ZBAA", "ZSQD"}
-        barred = sorted(control.excluded_stations())[0]
-        with pytest.raises(ValueError, match=barred):
-            control.set_allowlist(["ZBAA", barred])
+        assert set(state["live"]["station_allowlist"]) == set(admissible)
+        with pytest.raises(ValueError, match=barred[0]):
+            control.set_allowlist([admissible[0], barred[0]])
     finally:
         pass
     # The live configuration was never opened for writing, so there is
@@ -495,3 +509,29 @@ def test_the_file_carries_its_evidence() -> None:
     # The watchlist is not the list, and must not quietly become it.
     watch = set(parsed["watchlist_not_excluded"]["stations"])
     assert not (watch & control.excluded_stations())
+
+
+def test_a_barred_station_leaves_the_watchlist_in_the_same_move() -> None:
+    """Barring is a verdict, and the watchlist is for stations without one.
+
+    The watchlist defines itself as "persistently negative in both halves
+    and *not barred*", so a station the automatic layer bars stops meeting
+    its own entry condition.  Until 2026-09-01 the layer did not know the
+    watchlist existed: KHOU was barred on 09-01 and stayed listed as under
+    review, so the file asserted two opposite things about one station.
+    The same invariant the layer already maintains against the live batch,
+    now maintained against the watchlist too.
+    """
+
+    parsed = json.loads(EXCLUSIONS.read_text(encoding="utf-8"))
+    watch = set(parsed["watchlist_not_excluded"]["stations"])
+    auto = {
+        str(row["station"]).strip().upper()
+        for row in (parsed.get("auto_excluded_stations") or [])
+    }
+    manual = {
+        str(row["station"]).strip().upper()
+        for row in (parsed.get("excluded_stations") or [])
+    }
+    assert not (watch & auto), "a barred station is not still under review"
+    assert not (watch & manual)

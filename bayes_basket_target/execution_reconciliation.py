@@ -26,7 +26,7 @@ from .execution_version_vector import (
 
 
 SCHEMA = "bayes_basket_target_execution_reconciliation_v1"
-EVENT_TYPES = frozenset({"POST_ACK", "FILL", "PARTIAL_FILL", "CANCEL_ACK", "UNKNOWN_POST", "LATE_FILL", "EXPIRED", "NEVER_REACHED_EXCHANGE"})
+EVENT_TYPES = frozenset({"POST_ACK", "FILL", "PARTIAL_FILL", "CANCEL_ACK", "UNKNOWN_POST", "LATE_FILL", "EXPIRED", "NEVER_REACHED_EXCHANGE", "SUBMIT_REFUSED"})
 RECONCILIATION_STATES = frozenset({"pending", "unknown", "resolved_filled", "resolved_cancelled", "resolved_partial"})
 EPS = 1e-9
 
@@ -352,6 +352,21 @@ def _state_after_event(event_type: str, filled_size: float, requested_size: floa
         if filled_size > EPS:
             return "unknown", "reconcile_required", "not_found_with_fill"
         return "resolved_not_placed", "failed", "order_never_reached_exchange"
+    if event_type == "SUBMIT_REFUSED":
+        # The gateway answered, and its answer was no: it did not forward
+        # this order.  Terminal for the same reason NEVER_REACHED_EXCHANGE
+        # is -- nothing rests and nothing filled -- but reached by the
+        # gateway's own account rather than by asking the exchange, so it
+        # is a separate event and reads as one in the ledger.
+        #
+        # Only an unambiguous refusal may arrive here.  A timeout or a
+        # dropped connection is not a refusal and is classified as
+        # UNKNOWN_POST upstream: the request may have been forwarded, and
+        # a terminal "not placed" written over a live order is how an
+        # orphan is created and then never looked for.
+        if filled_size > EPS:
+            return "unknown", "reconcile_required", "refused_with_fill"
+        return "resolved_not_placed", "failed", "gateway_refused_submission"
     if event_type in {"PARTIAL_FILL", "LATE_FILL"}:
         if filled_size >= requested_size - EPS:
             return "resolved_filled", "filled", "full_fill_authoritative"

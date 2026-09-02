@@ -51,6 +51,14 @@ INPUT_TABLES = (
     # store and 5.9 GB of that doubling is what hit the 27 GiB ceiling.  A
     # replay that omits this table resolves every envelope to nothing.
     ("basket_probability_envelope", "event_date"),
+    # The lineage bodies the envelopes reference by hash.  Without it every
+    # envelope with a dehydrated lineage fails closed in
+    # ``rehydrate_lineage_documents`` and the whole walk dies on the first
+    # station -- which is what it did on 2026-09-01, reported as
+    # ``xsb_history_envelope_body_invalid`` with nothing naming the missing
+    # table.  Copied whole: it is deduplicated by hash, so the entire store
+    # is 295 rows and about 1 MB, and there is no date column to cut on.
+    ("basket_probability_lineage_document", None),
     ("basket_official_ws_snapshot", "event_date"),
     ("calibration_station_daily_high_truth", "local_date"),
     ("calibration_station_market_timezone_binding", None),
@@ -113,21 +121,34 @@ def main() -> int:
                 continue
             for statement in statements:
                 out.execute(statement)
+            # Streamed, not ``fetchall()``.  The envelope bodies average
+            # 18.4 KB each, so reading the table in one call materialises
+            # 7.2 GB of Python objects for the 2026-07-28 window -- which
+            # is what the "vanishing disk" was: swap, not SQLite scratch.
+            # Measured 2026-09-01, after two wrong diagnoses (window width,
+            # then commit cadence) that each moved the symptom without
+            # touching it.  A cursor holds one page at a time.
             if date_column:
-                rows = src.execute(
+                cursor = src.execute(
                     f"SELECT * FROM {table} WHERE {date_column}>=?",
                     (args.since,),
-                ).fetchall()
-            else:
-                rows = src.execute(f"SELECT * FROM {table}").fetchall()
-            if rows:
-                marks = ",".join("?" for _ in rows[0])
-                out.executemany(
-                    f"INSERT INTO {table} VALUES({marks})", rows
                 )
-            counts[table] = len(rows)
+            else:
+                cursor = src.execute(f"SELECT * FROM {table}")
+            copied_rows = 0
+            while True:
+                batch = cursor.fetchmany(2000)
+                if not batch:
+                    break
+                marks = ",".join("?" for _ in batch[0])
+                out.executemany(
+                    f"INSERT INTO {table} VALUES({marks})", batch
+                )
+                copied_rows += len(batch)
+                out.commit()
+            counts[table] = copied_rows
             out.commit()
-            print(f"  {table}: {len(rows)} rows")
+            print(f"  {table}: {copied_rows} rows")
 
         statements = _schema_of(src, JOINED_TABLE)
         for statement in statements:
@@ -142,18 +163,35 @@ def main() -> int:
         for start in range(0, len(history_ids), CHUNK):
             chunk = history_ids[start:start + CHUNK]
             marks = ",".join("?" for _ in chunk)
-            rows = src.execute(
+            joined = src.execute(
                 f"SELECT * FROM {JOINED_TABLE}"
                 f" WHERE history_id IN ({marks})",
                 chunk,
-            ).fetchall()
-            if rows:
-                value_marks = ",".join("?" for _ in rows[0])
+            )
+            while True:
+                batch = joined.fetchmany(2000)
+                if not batch:
+                    break
+                value_marks = ",".join("?" for _ in batch[0])
                 out.executemany(
                     f"INSERT INTO {JOINED_TABLE} VALUES({value_marks})",
-                    rows,
+                    batch,
                 )
-                carried += len(rows)
+                carried += len(batch)
+            # Commit as we go.  One transaction spanning every chunk holds
+            # the whole table's pages uncommitted, and measured 2026-09-01
+            # that peaked around 11 GiB of scratch above the 6 GiB the file
+            # itself had reached -- on a host with 21 GiB free it tripped the
+            # storage guard before the join finished.  The rows are the same
+            # rows either way; only the peak differs.
+            #
+            # Every 5 chunks, not every 50: at 50 the same run still drew
+            # 7 GiB of scratch in four minutes while the file stayed at
+            # 550 MB, because the interval is what bounds the peak and
+            # 20,000 envelopes of bucket rows is not a bound.  A commit is
+            # cheap here -- there is no journal to flush.
+            if start % (CHUNK * 5) == 0:
+                out.commit()
         out.commit()
         counts[JOINED_TABLE] = carried
         print(f"  {JOINED_TABLE}: {carried} rows"

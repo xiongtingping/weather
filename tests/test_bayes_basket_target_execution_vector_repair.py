@@ -39,24 +39,29 @@ def _insert_blocked(
     decision_id = f"decision-{suffix}"
     plan_id = f"plan-{suffix}"
     reasons = [f"blocked-{suffix}"]
-    identity = {
-        "cycle_id": cycle_id,
-        "plan_id": plan_id,
-        "station_id": "RKPK",
-        "event_date": "2026-07-27",
-        "settlement_timezone": "Asia/Seoul",
-        "strategy_lane": "basket",
-        "decided_state": "blocked",
-        "will_order": 0,
-        "reason_codes": reasons,
-        "details": {},
-    }
-    if target_execution_hard_deadline_at is not None:
-        identity["target_execution_hard_deadline_at"] = (
-            target_execution_hard_deadline_at
-        )
+    # Minted the way the ledger mints it since 2026-09-02: from what the
+    # decision is made of, with the v2 schema tag.  The deadline is still
+    # written to its column below but is no longer part of the address, so
+    # passing one here changes the row and not the sha -- which is the
+    # point of the parameter now.
+    from bayes_basket_target.atomic_ledger import (  # noqa: PLC0415
+        DECISION_SCHEMA_V2,
+        economic_decision_identity,
+    )
+
+    identity = economic_decision_identity(
+        station_id="RKPK",
+        event_date="2026-07-27",
+        settlement_timezone="Asia/Seoul",
+        strategy_lane="basket",
+        decided_state="blocked",
+        will_order=0,
+        reason_codes=reasons,
+        details={},
+        decision_scope_key=None,
+    )
     decision_sha = decision_sha_override or content_sha256(
-        {"schema": "basket_target_decision_fact_v1", **identity}
+        {"schema": DECISION_SCHEMA_V2, **identity}
     )
     created_at = "2026-07-27T00:00:00Z"
     conn.execute(

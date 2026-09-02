@@ -2114,3 +2114,153 @@ def test_a_settled_refusal_is_an_answer_and_an_open_one_is_not() -> None:
     # A scope the bridge knows nothing about is not "answered", it is absent;
     # the caller's own ``present and ...`` guard says the same thing.
     assert not _scope_answer_is_final(set(), set(), set(), settled=True)
+
+
+def test_a_refusal_reason_must_be_registered_in_all_four_places() -> None:
+    """Four registries, four different silent failures.
+
+    Adding one reason on 2026-09-01 hit three of them in sequence, each
+    only after the previous was fixed:
+
+    * ``REFUSAL_DEPTH`` -- absent, ``_deeper_refusal`` reads depth 0 and can
+      never keep it, so the walk reports a shallower cause.
+    * ``REFUSAL_REASONS`` -- absent, the table CHECK rejects the entire
+      end-of-run write burst, after a full replay arm has already walked
+      every station-day.
+    * the two dashboards' copy tables -- absent, the page renders a bare
+      code where a sentence belongs.
+
+    The import-time assert in the ledger now covers the first two.  This
+    covers all four together, because the count is the point: a reason is
+    not "added" until every reader can say what it means.
+    """
+
+    import re
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    for extra in (root, root / "scripts"):
+        if str(extra) not in sys.path:
+            sys.path.insert(0, str(extra))
+    import paper_trading_ledger as ledger  # noqa: PLC0415
+    from scripts.selection_market_dashboard import (  # noqa: PLC0415
+        REFUSAL_LABELS,
+    )
+
+    board = (root / "scripts" / "calibration_dashboard.py").read_text(
+        encoding="utf-8"
+    )
+    roster = re.search(r"const REASON=\{.*?\};", board, re.S)
+    assert roster, "the roster reason table moved or was renamed"
+
+    for reason in ledger.REFUSAL_REASONS:
+        assert reason in ledger.REFUSAL_DEPTH, f"{reason}: no depth"
+        assert f"{reason}:[" in roster.group(0), f"{reason}: no roster copy"
+        assert reason in REFUSAL_LABELS, f"{reason}: no market-board copy"
+
+
+def test_every_refusal_reason_the_walk_can_emit_is_registered() -> None:
+    """An unregistered reason resolves to depth 0 and is never reported.
+
+    ``_deeper_refusal`` keeps whichever refusal got further down the funnel
+    and reads depth from ``REFUSAL_DEPTH.get(reason, 0)``.  A reason nobody
+    added to that table is therefore permanently invisible: the walk refuses
+    for the right cause and the page shows a shallower one.  Silent, and the
+    exact class of misattribution the depth table was built to end -- 251
+    waits were reported as "the odds were not worth it" the last time this
+    went wrong.
+
+    Caught for real on 2026-09-01: the declining-clamp arm's two refusals
+    were emitted for a full implementation before anyone noticed they could
+    never surface.
+    """
+
+    import ast
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    import paper_trading_ledger as ledger  # noqa: PLC0415
+
+    source = Path(ledger.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    emitted: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = node.func
+        if isinstance(name, ast.Name) and name.id == "_deeper_refusal":
+            # _deeper_refusal(current, (reason, detail, cycles, at))
+            if len(node.args) >= 2 and isinstance(node.args[1], ast.Tuple):
+                first = node.args[1].elts[0]
+                if isinstance(first, ast.Constant) and isinstance(
+                    first.value, str
+                ):
+                    emitted.add(first.value)
+    assert emitted, "no refusal reasons found -- the scan is broken"
+    unregistered = sorted(emitted - set(ledger.REFUSAL_DEPTH))
+    assert not unregistered, (
+        "these refusal reasons are emitted but carry no depth, so"
+        " _deeper_refusal can never keep them and the page will report"
+        f" some shallower cause instead: {unregistered}"
+    )
+
+
+def test_a_stage_may_seat_twice_and_the_old_unique_is_rebuilt_away() -> None:
+    """The one-seat-per-stage constraint is gone, and a live table loses it.
+
+    Production re-decides on every model update and a stage adds to itself
+    on later cycles.  ``UNIQUE(station_id, event_date, stage)`` encoded the
+    one-seat walk this ledger used to run, and under ``INSERT OR IGNORE``
+    it did not refuse a second seat -- it swallowed it after ``held`` and
+    ``chain_position_id`` had moved on, leaving 38 of 405 settlements
+    pointing at rows never written (measured 2026-09-02).
+
+    Two properties: a table created with the old constraint is rebuilt
+    without it by ``ensure_schema``, and two rows for one stage then insert.
+    """
+
+    import sqlite3
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    import paper_trading_ledger as ledger  # noqa: PLC0415
+
+    conn = sqlite3.connect(":memory:")
+    # The pre-2026-09-02 shape: current DDL plus the constraint it dropped.
+    legacy_ddl = ledger._POSITION_DDL.rstrip().rstrip(")").rstrip().rstrip(",")
+    legacy_ddl += ",\n  UNIQUE(station_id, event_date, stage)\n)"
+    conn.execute(legacy_ddl)
+    assert ledger._position_scope_unique_present(conn)
+
+    ledger.ensure_schema(conn)
+    assert not ledger._position_scope_unique_present(conn)
+
+    # Fill every NOT NULL column off the live schema rather than by hand,
+    # so the test does not have to be re-taught each time the table grows.
+    fixed = {"station_id": "ZUUU", "event_date": "2026-08-31", "stage": "P0"}
+    info = conn.execute("PRAGMA table_info(paper_trade_position)").fetchall()
+    names = [r[1] for r in info if r[3] and r[4] is None]  # NOT NULL, no default
+    def value(col: str, ctype: str, pid: str):
+        if col == "position_id":
+            return pid
+        if col in fixed:
+            return fixed[col]
+        return 0 if ctype.upper() in ("INTEGER", "REAL") else "x"
+    types = {r[1]: r[2] for r in info}
+    for pid in ("paper-pos-first", "paper-pos-second"):
+        conn.execute(
+            f"INSERT INTO paper_trade_position({','.join(names)})"
+            f" VALUES({','.join('?' for _ in names)})",
+            [value(c, types[c], pid) for c in names],
+        )
+    assert conn.execute(
+        "SELECT COUNT(*) FROM paper_trade_position"
+        " WHERE station_id='ZUUU' AND event_date='2026-08-31' AND stage='P0'"
+    ).fetchone()[0] == 2

@@ -124,14 +124,32 @@ def _validate_decision(row: sqlite3.Row) -> list[str]:
         "reason_codes": reasons,
         "details": details,
     }
-    # The deadline became part of the decision content address when executable
-    # candidate lifetimes were introduced.  Rows from the earlier contract have
-    # NULL here and were hashed without the key, so preserve that exact legacy
-    # identity while validating newer rows against their full stored contract.
-    deadline = row["target_execution_hard_deadline_at"]
-    if deadline is not None:
-        identity["target_execution_hard_deadline_at"] = str(deadline)
-    expected = content_sha256({"schema": DECISION_SCHEMA, **identity})
+    # Addressed economically since 2026-09-02: the deadline is no longer in
+    # the identity, and the scope key is read off the row when the migration
+    # has filled it.  One function on both sides, so this tool cannot drift
+    # from the ledger it repairs.
+    from .atomic_ledger import (  # noqa: PLC0415
+        DECISION_SCHEMA_V2,
+        economic_decision_identity,
+    )
+
+    scope_key = None
+    try:
+        scope_key = row["decision_scope_key"]
+    except (IndexError, KeyError):
+        scope_key = None
+    economic = economic_decision_identity(
+        station_id=identity["station_id"],
+        event_date=identity["event_date"],
+        settlement_timezone=identity["settlement_timezone"],
+        strategy_lane=identity["strategy_lane"],
+        decided_state="blocked",
+        will_order=0,
+        reason_codes=reasons,
+        details=details,
+        decision_scope_key=str(scope_key) if scope_key else None,
+    )
+    expected = content_sha256({"schema": DECISION_SCHEMA_V2, **economic})
     if str(row["decision_sha256"] or "").lower() != expected:
         raise ExecutionVectorRepairError("blocked_decision_content_address_drift")
     return reasons

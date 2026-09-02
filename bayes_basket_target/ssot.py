@@ -2097,6 +2097,107 @@ def _upgrade_delta_v2_promotion_decision_constraint(
     return {"state": "migrated", "rows_preserved": row_count}
 
 
+_ORDER_EVENT_COLUMNS = (
+    "event_id", "order_intent_id", "exchange_order_id", "event_type",
+    "observed_at", "matched_size", "matched_notional_usdc",
+    "event_json", "event_sha256",
+)
+
+
+def _upgrade_order_event_type_vocabulary(
+    conn: sqlite3.Connection,
+) -> dict[str, object]:
+    """Admit SUBMIT_REFUSED into the order event vocabulary.
+
+    The gateway declining to forward an order is an outcome and belongs in
+    the ledger, but the CHECK written before that branch recorded anything
+    rejects it, so the widened vocabulary would fail closed on the first
+    real refusal.  Widening what may be stored, not what may be trusted:
+    the event is only written for an unambiguous refusal, and a timeout
+    still becomes UNKNOWN_POST for reconciliation to settle.
+
+    Rows are copied verbatim and counted; the event table is content
+    addressed, so nothing here can silently rewrite an existing event.
+    """
+
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' "
+        "AND name='basket_target_order_events'"
+    ).fetchone()
+    if row is None:
+        return {"state": "table_absent", "rows_preserved": 0}
+    if "SUBMIT_REFUSED" in str(row[0] or ""):
+        return {"state": "unchanged", "rows_preserved": 0}
+    actual = tuple(
+        str(info[1])
+        for info in conn.execute("PRAGMA table_info(basket_target_order_events)")
+    )
+    if actual != _ORDER_EVENT_COLUMNS:
+        raise RuntimeError("order_event_columns_incompatible")
+    archive = "basket_target_order_events_event_type_v1_archive"
+    if conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE name=? LIMIT 1", (archive,)
+    ).fetchone() is not None:
+        raise RuntimeError("order_event_migration_name_collision")
+    row_count = int(
+        conn.execute(
+            "SELECT COUNT(*) FROM basket_target_order_events"
+        ).fetchone()[0]
+    )
+    names = ",".join(_ORDER_EVENT_COLUMNS)
+    savepoint = f"order_event_vocabulary_{id(conn):x}"
+    conn.execute(f"SAVEPOINT {savepoint}")
+    try:
+        conn.execute(
+            f"ALTER TABLE basket_target_order_events RENAME TO {archive}"
+        )
+        # Spelled out rather than replayed from PRODUCTION_TARGET_DDL: that
+        # script also builds indexes over calibration tables this connection
+        # need not have, so replaying it makes the migration depend on the
+        # rest of the store being present.  One table is being rebuilt, so
+        # one table is written here, and the definition must stay in step
+        # with the DDL above -- the vocabulary check at the top of this
+        # function is what catches it if it does not.
+        conn.execute(
+            """
+            CREATE TABLE basket_target_order_events (
+              event_id TEXT PRIMARY KEY,
+              order_intent_id TEXT NOT NULL,
+              exchange_order_id TEXT,
+              event_type TEXT NOT NULL CHECK(event_type IN (
+                'POST_ACK','FILL','PARTIAL_FILL','CANCEL_ACK','UNKNOWN_POST',
+                'LATE_FILL','EXPIRED','NEVER_REACHED_EXCHANGE','SUBMIT_REFUSED'
+              )),
+              observed_at TEXT NOT NULL,
+              matched_size REAL NOT NULL CHECK(matched_size>=0),
+              matched_notional_usdc REAL NOT NULL
+                CHECK(matched_notional_usdc>=0),
+              event_json TEXT NOT NULL,
+              event_sha256 TEXT NOT NULL CHECK(length(event_sha256)=64),
+              UNIQUE(order_intent_id,event_sha256)
+            )
+            """
+        )
+        conn.execute(
+            f"INSERT INTO basket_target_order_events({names}) "
+            f"SELECT {names} FROM {archive}"
+        )
+        copied = int(
+            conn.execute(
+                "SELECT COUNT(*) FROM basket_target_order_events"
+            ).fetchone()[0]
+        )
+        if copied != row_count:
+            raise RuntimeError("order_event_row_count_drift")
+        conn.execute(f"DROP TABLE {archive}")
+    except BaseException:
+        conn.execute(f"ROLLBACK TO {savepoint}")
+        conn.execute(f"RELEASE {savepoint}")
+        raise
+    conn.execute(f"RELEASE {savepoint}")
+    return {"state": "migrated", "rows_preserved": row_count}
+
+
 PRODUCTION_LEDGER_DDL = """
 CREATE TABLE IF NOT EXISTS basket_target_observation_facts (
   observation_fact_id TEXT PRIMARY KEY,
@@ -2214,6 +2315,12 @@ CREATE TABLE IF NOT EXISTS auto_trade_decisions (
   reason_codes_json TEXT NOT NULL,
   details_json TEXT NOT NULL,
   decision_sha256 TEXT NOT NULL CHECK(length(decision_sha256)=64),
+  -- The economic identity the decision is addressed by (user ruling
+  -- 2026-09-02): the four legs -- probability, sizing output, position
+  -- book, policy artefacts -- as one key.  NULL on rows that predate the
+  -- key or were blocked before a fact existed for them; those are
+  -- addressed by the economic subset of their details instead.
+  decision_scope_key TEXT,
   created_at TEXT NOT NULL
 );
 
@@ -2411,7 +2518,16 @@ CREATE TABLE IF NOT EXISTS basket_target_order_events (
   -- CANCEL_ACK and EXPIRED, and both say the order existed and stopped
   -- existing; this one says it never arrived, which is a different
   -- fact about the account and the one that is true.
-  event_type TEXT NOT NULL CHECK(event_type IN ('POST_ACK','FILL','PARTIAL_FILL','CANCEL_ACK','UNKNOWN_POST','LATE_FILL','EXPIRED','NEVER_REACHED_EXCHANGE')),
+  --
+  -- SUBMIT_REFUSED is the same terminal fact reached one hop earlier: the
+  -- local gateway answered and declined to forward the order, so nothing
+  -- was placed and the exchange never has to be asked.  It exists because
+  -- this branch wrote no event at all until 2026-09-01 -- a refused leg
+  -- stayed at 'prepared', held its own bucket shut, and was eventually
+  -- retired by the stranded-intent sweep, which is what the board then
+  -- reported as the cause.  Only an unambiguous refusal may be written
+  -- here; a timeout is UNKNOWN_POST, because an order may be resting.
+  event_type TEXT NOT NULL CHECK(event_type IN ('POST_ACK','FILL','PARTIAL_FILL','CANCEL_ACK','UNKNOWN_POST','LATE_FILL','EXPIRED','NEVER_REACHED_EXCHANGE','SUBMIT_REFUSED')),
   observed_at TEXT NOT NULL,
   matched_size REAL NOT NULL CHECK(matched_size>=0),
   matched_notional_usdc REAL NOT NULL CHECK(matched_notional_usdc>=0),
@@ -5084,6 +5200,8 @@ def apply_production_ssot_schema(conn: sqlite3.Connection, *, commit: bool = Tru
     )
     regime_superseded_upgrade = upgrade_regime_superseded_schema(conn)
     execution_deadline_upgrade = _upgrade_target_execution_deadline_columns(conn)
+    decision_scope_key_upgrade = _upgrade_decision_scope_key_column(conn)
+    order_event_vocabulary_upgrade = _upgrade_order_event_type_vocabulary(conn)
     _upgrade_calibration_activation_authority(conn)
     _upgrade_calibration_ensemble_governance(conn)
     _upgrade_empty_calibration_base_fact_schema(conn)
@@ -5153,6 +5271,8 @@ def apply_production_ssot_schema(conn: sqlite3.Connection, *, commit: bool = Tru
         "observation_fact_timezone_upgrade": observation_fact_timezone_upgrade,
         "quote_freshness_upgrade": quote_freshness_upgrade,
         "execution_deadline_upgrade": execution_deadline_upgrade,
+        "order_event_vocabulary_upgrade": order_event_vocabulary_upgrade,
+        "decision_scope_key_upgrade": decision_scope_key_upgrade,
         "execution_vector_upgrade": execution_vector_upgrade,
         "regime_superseded_upgrade": regime_superseded_upgrade,
         "calibration_model_pool_upgrade": calibration_model_pool_upgrade,
@@ -5317,6 +5437,27 @@ def _upgrade_target_execution_deadline_columns(conn: sqlite3.Connection) -> dict
             )
             upgraded.append(table)
     return {"state": "upgraded" if upgraded else "already_current", "tables": upgraded}
+
+
+def _upgrade_decision_scope_key_column(conn: sqlite3.Connection) -> dict[str, object]:
+    """Add ``decision_scope_key`` to the decision table.
+
+    Additive only: the column is nullable and the migration that fills it
+    (``scripts/migrate_decision_identity_to_economic.py``) is a separate,
+    receipted step, because filling it also collapses restated rows and
+    re-points their references.
+    """
+
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='auto_trade_decisions'"
+    ).fetchone()
+    if exists is None:
+        return {"state": "table_absent"}
+    columns = {str(r[1]) for r in conn.execute("PRAGMA table_info(auto_trade_decisions)")}
+    if "decision_scope_key" in columns:
+        return {"state": "already_current"}
+    conn.execute("ALTER TABLE auto_trade_decisions ADD COLUMN decision_scope_key TEXT")
+    return {"state": "upgraded"}
 
 
 def _assert_target_decision_table_compatible(conn: sqlite3.Connection) -> None:

@@ -930,6 +930,115 @@ def _odds_ratio(audit: Mapping[str, Any]) -> float | None:
     return (win_sum / win_mass) / (loss_sum / loss_mass)
 
 
+def clamp_declining_gaps_v2(
+    *,
+    gap_by_bucket: Mapping[str, Any],
+    support: Sequence[str],
+    probabilities: Mapping[str, Any],
+    previous_probabilities: Mapping[str, Any] | None,
+    minimum_drop: float = 0.0,
+) -> tuple[dict[str, float], tuple[str, ...]]:
+    """Hold, do not add to, a bucket whose probability just fell.
+
+    Returns the clamped gaps and the buckets that were clamped.
+
+    Adding to a bucket the evidence has just moved away from is buying into
+    a fading claim: the objective re-solves from scratch each cycle and
+    would happily top up a leg whose probability fell, because the solve
+    sees today's number and not its direction.
+
+    One-sided on purpose.  ``min(0, gap)`` only ever lowers, so a faded leg
+    is held at the size it already has; selling is a separate matter and
+    stays forbidden.  A bucket with no previous reading is not falling --
+    it is unmeasured -- and is left alone.
+
+    ``minimum_drop`` is how far a probability must fall before this counts
+    as falling.  It defaults to 0, which is the rule as shipped: the
+    comparison is then ``now + EPS < before``, so a drop of 1e-9 clamps a
+    leg exactly as a drop of 0.5 does.  That default has never been
+    measured against any other value.
+
+    Two facts make the question live.  P0 probabilities follow the model
+    run, not the clock: measured over 138,116 adjacent P0 checkpoints from
+    2026-08-15, only 6.5% differ at all -- so this rule fires only in the
+    moment a run lands, and whether a station-day is clamped depends on
+    where its first seatable cycle falls relative to that moment.  And of
+    the drops that do occur, 18% are smaller than 0.001, which is noise
+    against a median drop of 0.0167.
+
+    Lives in the kernel because it is a selection rule, and selection rules
+    are one rule on both sides (standing ruling 2026-08-22).  It was inline
+    in ``delta_v2_runtime`` until 2026-09-01 and the paper ledger therefore
+    never ran it at all: the ledger's whole recorded history is the arm
+    where this clamp is off, which is not something either side declared.
+    The binding test could not catch that -- it classifies the *ledger's*
+    constants, and a rule that exists only in production has no constant
+    there to classify.
+    """
+
+    clamped = {
+        str(bucket): float(gap_by_bucket[bucket]) for bucket in support
+    }
+    if not previous_probabilities:
+        return clamped, ()
+    # EPS is the floor, not the setting: a threshold below it would make
+    # float noise a signal.
+    threshold = max(EPS, float(minimum_drop))
+    declining: list[str] = []
+    for bucket in support:
+        before = previous_probabilities.get(bucket)
+        if before is None:
+            continue
+        now = float(probabilities.get(bucket, 0.0))
+        if float(before) - now > threshold:
+            declining.append(str(bucket))
+            clamped[str(bucket)] = min(0.0, clamped[str(bucket)])
+    return clamped, tuple(declining)
+
+
+def contiguous_edge_clamp_v2(
+    *,
+    declining: Sequence[str],
+    support: Sequence[str],
+    centre_bucket: str | None,
+) -> tuple[str, ...]:
+    """Narrow a clamp to what charter 49 and contiguity would allow.
+
+    Returns the subset of ``declining`` that may actually be dropped: only
+    buckets at the ends of the window, and never the centre rung.
+
+    The plain clamp is free of both rules because it runs *before* the
+    complete-basket check, which then judges what survives -- so a clamp
+    that removes the centre rung, or leaves a hole in the middle, produces
+    a basket that passes as complete.  Measured 2026-09-01 over 581 live
+    replay openings: 48 dropped the centre and 10 left the support
+    non-contiguous.  Neither is a violation of the rules as written; both
+    are outside the path that enforces them.
+
+    Ends-only is what contiguity means here.  Walking in from each side and
+    stopping at the first bucket that is not declining leaves the remainder
+    a single run by construction; dropping from the middle could not.
+    """
+
+    order = [str(bucket) for bucket in support]
+    falling = {str(bucket) for bucket in declining}
+    centre = str(centre_bucket) if centre_bucket else ""
+    allowed: list[str] = []
+    left = 0
+    while left < len(order) and order[left] in falling:
+        if order[left] == centre:
+            break
+        allowed.append(order[left])
+        left += 1
+    right = len(order) - 1
+    while right >= left and order[right] in falling:
+        if order[right] == centre:
+            break
+        allowed.append(order[right])
+        right -= 1
+    return tuple(bucket for bucket in order if bucket in set(allowed))
+
+
 def solve_target_inventory_v2(
     *,
     probabilities: Mapping[str, Any],
@@ -2412,6 +2521,8 @@ __all__ = [
     "VALUE_SCHEMA",
     "ValueWeightsV2",
     "allocate_cross_event_bundle_capital_v2",
+    "clamp_declining_gaps_v2",
+    "contiguous_edge_clamp_v2",
     "evaluate_action_v2",
     "evaluate_basket_value_v2",
     "hold_action_v2",

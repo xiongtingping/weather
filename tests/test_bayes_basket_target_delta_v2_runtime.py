@@ -1782,3 +1782,160 @@ def test_consolidation_tilt_inherits_the_opener_and_never_relights() -> None:
     assert audit["basis"] == "opener_inherited"
     assert audit["factor"] == 0.1
     assert audit["capital_after_usdc"] < 5.0
+
+
+def _compile_with_previous(previous: dict) -> dict:
+    return compile_delta_v2_runtime_plan(
+        snapshot=_snapshot(),
+        basket_policy=_basket_policy(),
+        delta_policy=_delta_policy(),
+        fill_resolver=_fill_resolver,
+        capital_available_usdc=5.0,
+        minimum_profit_floor=-5.0,
+        resource_probe_ok=True,
+        previous_probabilities=previous,
+    )
+
+
+def test_charter_69_a_falling_centre_keeps_its_gap_under_the_guarded_clamp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The production path, not the kernel function: the fixture's ladder is
+    35+36 with 36 the centre (0.3 / 0.7).  When the centre's probability has
+    fallen since the previous checkpoint, charter 51's clamp holds it at
+    zero gap and the basket opens on 35 alone -- a one-rung basket that
+    misses its core.  Charter 69 (2026-09-02) narrows the clamp to the ends
+    of the window and never the centre, so 36 keeps its gap and the ladder
+    stays a ladder.  Both readings are pinned so the difference is visible.
+    """
+
+    import bayes_basket_target.delta_v2_runtime as runtime_module
+
+    monkeypatch.setattr(runtime_module, "DECLINE_CLAMP_MODE", "guarded")
+    fell_at_centre = {"35": 0.3, "36": 0.75}
+
+    guarded = _compile_with_previous(fell_at_centre)
+    assert guarded["probability_clamp_mode"] == "guarded"
+    assert guarded["probability_declined_buckets"] == ("36",)
+    assert guarded["probability_clamped_buckets"] == ()
+    assert guarded["execution_gap_support"] == ["35", "36"]
+
+    monkeypatch.setattr(runtime_module, "DECLINE_CLAMP_MODE", "leg")
+    leg = _compile_with_previous(fell_at_centre)
+    assert leg["probability_clamp_mode"] == "leg"
+    assert leg["probability_declined_buckets"] == ("36",)
+    assert leg["probability_clamped_buckets"] == ("36",)
+    assert leg["execution_gap_support"] == ["35"]
+
+
+def test_charter_69_a_falling_end_rung_is_still_held_under_the_guarded_clamp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Guarded is not off: a falling rung at the end of the window is held
+    exactly as charter 51 holds it.  Both rungs fell here; 35 is an end and
+    goes, 36 is the centre and stays."""
+
+    import bayes_basket_target.delta_v2_runtime as runtime_module
+
+    monkeypatch.setattr(runtime_module, "DECLINE_CLAMP_MODE", "guarded")
+    both_fell = {"35": 0.35, "36": 0.75}
+    result = _compile_with_previous(both_fell)
+    assert result["probability_declined_buckets"] == ("35", "36")
+    assert result["probability_clamped_buckets"] == ("35",)
+    assert result["execution_gap_support"] == ["36"]
+
+
+def test_held_only_never_clamps_an_opening_because_nothing_is_held_yet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """User semantics (2026-09-02): "首次建仓如何评判概率下降？没有对比啊".
+
+    The clamp holds a rung at what the book has.  At an opening the book
+    has nothing, so there is nothing to hold and no rung is clamped -- even
+    though the previous checkpoint exists and says 36 fell.  The decline is
+    still recorded (it is a fact about the probability), only the clamp is
+    withheld.
+    """
+
+    import bayes_basket_target.delta_v2_runtime as runtime_module
+
+    monkeypatch.setattr(runtime_module, "DECLINE_CLAMP_MODE", "held_only")
+    both_fell = {"35": 0.35, "36": 0.75}
+    result = _compile_with_previous(both_fell)
+    assert result["probability_clamp_mode"] == "held_only"
+    assert result["probability_declined_buckets"] == ("35", "36")
+    assert result["probability_clamped_buckets"] == ()
+    assert result["execution_gap_support"] == ["35", "36"]
+
+
+def test_held_only_clamps_every_falling_rung_the_book_has_committed_to(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Once the book has bid for a rung (resting or filled) the clamp has
+    its subject and holds it -- centre included, which is charter 51 as
+    written.  The fixture rests an order on 36 only, so 36 (the centre,
+    fallen) is held at what it has while 35 (fallen too, but nothing
+    committed) is still bought: the clamp follows the commitment, not the
+    probability alone."""
+
+    import bayes_basket_target.delta_v2_runtime as runtime_module
+
+    monkeypatch.setattr(runtime_module, "DECLINE_CLAMP_MODE", "held_only")
+    both_fell = {"35": 0.35, "36": 0.75}
+    result = compile_delta_v2_runtime_plan(
+        snapshot=_snapshot(pending_shares=0.5),
+        basket_policy=_basket_policy(),
+        delta_policy=_delta_policy(),
+        fill_resolver=_fill_resolver,
+        capital_available_usdc=5.0,
+        minimum_profit_floor=-5.0,
+        resource_probe_ok=True,
+        previous_probabilities=both_fell,
+    )
+    assert result["probability_clamp_mode"] == "held_only"
+    assert result["probability_declined_buckets"] == ("35", "36")
+    assert result["probability_clamped_buckets"] == ("36",)
+    assert result["execution_gap_support"] == ["35"]
+
+
+def test_after_open_is_the_default_and_buys_the_opening_ladder_whole() -> None:
+    """Charter 69 as finally ruled (2026-09-02): "开仓时什么都没持有，一律
+    不钳；梯子要整个买齐".  Both rungs fell since the previous run and the
+    book holds nothing: nothing is clamped, the opening buys 35 and 36."""
+
+    import bayes_basket_target.delta_v2_runtime as runtime_module
+
+    assert runtime_module.DECLINE_CLAMP_MODE == "after_open"
+    both_fell = {"35": 0.35, "36": 0.75}
+    result = _compile_with_previous(both_fell)
+    assert result["probability_clamp_mode"] == "after_open"
+    assert result["probability_declined_buckets"] == ("35", "36")
+    assert result["probability_clamped_buckets"] == ()
+    assert result["execution_gap_support"] == ["35", "36"]
+
+
+def test_after_open_holds_every_falling_rung_once_the_book_is_open() -> None:
+    """"开仓之后，任何一格概率比上一个模型 run 低了，不管手里有没有它，
+    这一轮都不买".  The fixture has an order resting on 36 only, so the
+    book is open; 35 (nothing held) and 36 (the centre, held) both fell and
+    both are held at what they have -- held_only would have bought 35."""
+
+    import bayes_basket_target.delta_v2_runtime as runtime_module
+
+    assert runtime_module.DECLINE_CLAMP_MODE == "after_open"
+    both_fell = {"35": 0.35, "36": 0.75}
+    result = compile_delta_v2_runtime_plan(
+        snapshot=_snapshot(pending_shares=0.01),
+        basket_policy=_basket_policy(),
+        delta_policy=_delta_policy(),
+        fill_resolver=_fill_resolver,
+        capital_available_usdc=5.0,
+        minimum_profit_floor=-5.0,
+        resource_probe_ok=True,
+        previous_probabilities=both_fell,
+    )
+    assert result["probability_clamp_mode"] == "after_open"
+    assert result["probability_declined_buckets"] == ("35", "36")
+    assert result["probability_clamped_buckets"] == ("35", "36")
+    assert result["execution_gap_support"] == []
+

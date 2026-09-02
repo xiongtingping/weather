@@ -143,11 +143,65 @@ def test_a_reply_that_reached_the_exchange_is_unknown_not_refused() -> None:
 
 
 def test_a_read_only_refusal_never_reached_the_exchange() -> None:
+    """An unambiguous refusal is terminal, and it is an event.
+
+    This asserted ``event_type == ""`` until 2026-09-01: a refusal wrote
+    nothing to the ledger, so the reason it was refused existed only in a
+    return value nobody stored.  Two of the five live intents ever minted
+    died in this branch and their cause is now unrecoverable.
+    """
+
     outcome = classify_submission_response(_read_only(None, None))
 
     assert outcome["submitted"] is False
-    assert outcome["event_type"] == ""
+    assert outcome["event_type"] == "SUBMIT_REFUSED"
     assert outcome["reason"] == "clob_order_service_read_only"
+
+
+def test_a_transport_that_never_answered_is_unknown_not_refused() -> None:
+    """A timeout may have placed an order; only an answer can deny it.
+
+    The client waits 15s while the gateway's own hop to the exchange can
+    take longer, so silence is not a refusal.  On 2026-08-31 an order
+    placed under exactly that silence rested on the account for eighteen
+    minutes while every local table said nothing had been sent.  The
+    transport now flags its own ambiguity instead of letting the caller
+    infer "refused" from the absence of the success flags -- absence is
+    precisely what a timeout and a refusal have in common.
+    """
+
+    outcome = classify_submission_response({
+        "ok": False,
+        "error": "gateway_transport:TimeoutError",
+        "transport_ambiguous": True,
+    })
+
+    assert outcome["submitted"] is True
+    assert outcome["event_type"] == "UNKNOWN_POST"
+    assert outcome["reason"] == "gateway_transport:TimeoutError"
+
+
+def test_a_gateway_5xx_is_ambiguous_and_a_4xx_is_a_refusal() -> None:
+    """The gateway failing after it had the request is not a denial.
+
+    A 5xx says the gateway broke while holding the order and may already
+    have forwarded it; a 4xx says it declined to take it.  Only the second
+    supports a terminal "not placed".
+    """
+
+    server_error = classify_submission_response({
+        "ok": False, "http_status": 502,
+        "error": "gateway_http_error", "transport_ambiguous": True,
+    })
+    client_error = classify_submission_response({
+        "ok": False, "http_status": 400,
+        "error": "gateway_http_error", "transport_ambiguous": False,
+    })
+
+    assert server_error["event_type"] == "UNKNOWN_POST"
+    assert server_error["submitted"] is True
+    assert client_error["event_type"] == "SUBMIT_REFUSED"
+    assert client_error["submitted"] is False
 
 
 def test_an_authorized_submission_closes_the_chain_to_reconciliation() -> None:
@@ -207,7 +261,18 @@ def test_an_unauthorized_run_walks_the_path_without_sending() -> None:
     ).fetchone()[0] == 0
 
 
-def test_a_read_only_service_leaves_the_intent_prepared() -> None:
+def test_a_read_only_service_fails_the_intent_and_frees_its_bucket() -> None:
+    """A refused intent must not sit at ``prepared`` holding its bucket.
+
+    This asserted the opposite until 2026-09-01, and the opposite is the
+    defect: ``can_submit_next_order`` counts a prepared intent as pending,
+    so a refused leg shut its own bucket and token until the stranded-
+    intent sweep retired it -- at which point the board showed a
+    cancellation whose stated cause was the sweep, not the refusal.  The
+    refusal is authoritative about one thing, that no order was placed, so
+    it is terminal and the bucket is free immediately.
+    """
+
     conn = _conn([_intent()])
     with conn:
         receipt = submit_prepared_intents(
@@ -219,11 +284,25 @@ def test_a_read_only_service_leaves_the_intent_prepared() -> None:
         )
 
     assert receipt["orders_submitted"] == 0
-    assert receipt["submissions"][0]["state"] == "refused"
+    submission = receipt["submissions"][0]
+    assert submission["state"] == "failed"
+    assert submission["event_type"] == "SUBMIT_REFUSED"
+    assert submission["exchange_post_started"] is False
     assert conn.execute(
         "SELECT state FROM basket_target_order_intents "
         "WHERE order_intent_id='intent-a'"
-    ).fetchone()[0] == "prepared"
+    ).fetchone()[0] == "failed"
+    # The cause is now in the ledger rather than in a discarded return value.
+    kind, payload = conn.execute(
+        "SELECT event_type, event_json FROM basket_target_order_events"
+        " WHERE order_intent_id='intent-a'"
+    ).fetchone()
+    assert kind == "SUBMIT_REFUSED"
+    assert "clob_order_service_read_only" in payload
+    assert conn.execute(
+        "SELECT state FROM basket_target_order_reconciliations"
+        " WHERE order_intent_id='intent-a'"
+    ).fetchone()[0] == "resolved_not_placed"
 
 
 def test_an_unresolved_sibling_blocks_the_same_bucket_and_token() -> None:

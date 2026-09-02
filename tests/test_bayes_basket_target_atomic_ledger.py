@@ -86,6 +86,11 @@ def _complete_execution_vector(index: int = 0) -> dict[str, str]:
 def _bundle(
     *,
     index: int = 0,
+    # Salts the plan only.  Plan and cycle are content-addressed off the
+    # plan's own fields; the decision is addressed off what it decided.
+    # A salted plan with the same index is therefore the same decision on
+    # a new cycle -- the restatement case.
+    plan_salt: str | None = None,
     blocked: bool = False,
     amount: float = 4.0,
     token_id: str | None = None,
@@ -109,7 +114,7 @@ def _bundle(
         "strategy_lane": strategy_lane,
         "settlement_timezone": SETTLEMENT_TIMEZONE,
         "probability_checkpoint_id": f"p1-{index}",
-        "quote_snapshot_id": f"quote-{index}",
+        "quote_snapshot_id": f"quote-{index}{plan_salt or ''}",
         "lineage": {
             "probability_stage": "P1",
             "settlement_timezone": SETTLEMENT_TIMEZONE,
@@ -151,6 +156,14 @@ def _bundle(
             "candidate_will_order": not blocked,
             "no_live": PRODUCTION_EXECUTION_MODE == "production_no_live",
             "execution_mode": PRODUCTION_EXECUTION_MODE,
+            # Decisions are addressed by what they are made of (user
+            # ruling, 2026-09-02), not by cycle or clock.  Every other field
+            # ``index`` varies is a transport handle -- bound id, checkpoint
+            # id, quote id, token -- and none of those is in the address, so
+            # two bundles differing only in ``index`` used to be two
+            # decisions and are now one.  The window is economic, so it
+            # carries the index: bundle N is the decision that chose bucket N.
+            "core_buckets": [f"{20 + index}°C"],
         },
     }
     return build_target_atomic_bundle(
@@ -2756,3 +2769,76 @@ def test_second_cycle_for_a_recorded_decision_refuses_before_it_dangles(
             "SELECT 1 FROM basket_policy_training_fact f "
             "WHERE f.fact_id=v.training_fact_id)"
         ).fetchone()[0] == 0
+
+
+# --------------------------------------------------------------------------
+# Economic decision identity (user ruling, 2026-09-02).
+# --------------------------------------------------------------------------
+def test_the_decision_identity_carries_no_clock() -> None:
+    """Two decisions a second apart, economically identical, are one.
+
+    The old identity carried the commit clock as the deadline, so every
+    re-decision was a fresh row: 11,364 shas for 5,080 economic contents
+    over 2026-08-28..09-02.  The four legs -- probability, sizing output,
+    position book, policy -- are what a decision is made of; the clock is
+    audit metadata.
+    """
+
+    from bayes_basket_target.atomic_ledger import economic_decision_identity
+
+    base = dict(
+        station_id="ZUUU", event_date="2026-08-31",
+        settlement_timezone="Asia/Shanghai", strategy_lane="basket",
+        decided_state="prepared", will_order=1, reason_codes=[],
+        details={
+            "core_buckets": ["33°C", "34°C"], "direction": "UP",
+            "delta_v2_content_sha256": "a" * 64,
+            "production_plan_sha256": "b" * 64,
+            # The two clocks that used to leak in.
+            "target_execution_hard_deadline_at": "2026-08-31T10:00:03Z",
+            "forward_evidence_binding": {"decision_at_utc": "2026-08-31T10:00:00Z"},
+        },
+        decision_scope_key="c" * 64,
+    )
+    later = dict(base, details={
+        **base["details"],
+        "target_execution_hard_deadline_at": "2026-08-31T10:00:04Z",
+        "forward_evidence_binding": {"decision_at_utc": "2026-08-31T10:00:01Z"},
+    })
+    assert economic_decision_identity(**base) == economic_decision_identity(**later)
+    # And a change in any leg is a different decision.
+    for leg in (
+        dict(decision_scope_key="d" * 64),
+        dict(reason_codes=["edge_negative"]),
+        dict(details={**base["details"], "core_buckets": ["34°C"]}),
+        dict(will_order=0),
+    ):
+        assert economic_decision_identity(**dict(base, **leg)) != economic_decision_identity(**base)
+
+
+def test_a_restated_decision_on_a_new_cycle_is_idempotent_not_a_row() -> None:
+    """Same economics, new cycle: the ledger returns the standing record.
+
+    This is what the economic identity means at the write boundary.  Under
+    the clocked identity a second cycle always minted a second decision;
+    under this one it resolves to the first, and the commit says so
+    instead of raising on the primary key.
+    """
+
+    with _db() as conn:
+        first = _bundle(index=71, amount=3.0)
+        receipt_a = commit_target_atomic_bundle(conn, bundle=first)
+        assert receipt_a["state"] == "committed"
+        # A second bundle with the SAME economic content but its own cycle:
+        # rebuild with the same index so details/reasons match, then swap
+        # in fresh transport handles.
+        second = _bundle(index=71, amount=3.0, plan_salt="-restated")
+        assert second["decision"]["decision_id"] == first["decision"]["decision_id"]
+        assert second["cycle"]["cycle_id"] != first["cycle"]["cycle_id"]
+        before = _counts(conn)
+        receipt_b = commit_target_atomic_bundle(conn, bundle=second)
+        assert receipt_b["state"] == "already_committed_decision"
+        assert receipt_b["idempotent"] is True
+        assert receipt_b["decision_id"] == first["decision"]["decision_id"]
+        assert receipt_b["cycle_id"] == first["cycle"]["cycle_id"]
+        assert _counts(conn) == before

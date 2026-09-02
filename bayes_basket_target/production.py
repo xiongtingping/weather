@@ -45,6 +45,7 @@ from .stage_evidence import (
     build_stage_evidence_root,
     persist_stage_evidence,
 )
+from .delta_v2_training import delta_v2_decision_scope_key
 from .delta_v2_training import build_delta_v2_training_fact
 from .regime_artifact import RegimeArtifact
 from .runtime import DeltaBasketScoreV2Optimizer
@@ -1004,7 +1005,22 @@ def commit_production_candidate_atomic(
             conn,
             revision_sha256=truth_observation_revision_content_sha256,
         )
+    # The economic identity of this decision (user ruling, 2026-09-02).
+    # Computed here, before the bundle, so the decision row is addressed by
+    # it from the first write; the training fact built after the bundle
+    # carries the same key, which is what makes migrated history and new
+    # rows agree.  A plan the key cannot be derived from is not an error at
+    # this point -- the training-fact builder will raise its own named
+    # contract on it -- so the decision falls back to the economic subset of
+    # its details, which is how every pre-migration blocked row is keyed.
+    try:
+        decision_scope_key = delta_v2_decision_scope_key(
+            compiled_plan=compiled_plan, market_snapshot=market_snapshot,
+        )
+    except ContractError:
+        decision_scope_key = None
     bundle = build_target_atomic_bundle(
+        decision_scope_key=decision_scope_key,
         awc_observation_contract=(
             None if stage_root is not None else awc_observation_contract
         ),

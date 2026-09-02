@@ -50,9 +50,31 @@ class ClobOrderServiceClient:
                 value = json.loads(raw.decode("utf-8")) if raw else {}
                 return dict(value) if isinstance(value, Mapping) else {"ok": False, "error": "gateway_payload_invalid"}
         except HTTPError as exc:
-            return {"ok": False, "http_status": int(exc.code), "error": "gateway_http_error"}
+            # A 5xx is the gateway failing after it had the request, which it
+            # may already have acted on; a 4xx is the gateway declining to.
+            # Only the second is safe to read as "nothing was placed".
+            return {
+                "ok": False,
+                "http_status": int(exc.code),
+                "error": "gateway_http_error",
+                "transport_ambiguous": int(exc.code) >= 500,
+            }
         except (URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as exc:
-            return {"ok": False, "error": f"gateway_transport:{type(exc).__name__}"}
+            # The request left this process and no answer came back, so
+            # whether the gateway forwarded it is unknown here.  Saying
+            # "refused" would be a claim this layer cannot support: the
+            # client waits 15s while the gateway's own hop to the exchange
+            # can take longer, and on 2026-08-31 an order placed under
+            # exactly that silence rested on the account for eighteen
+            # minutes while every local table said nothing was sent.
+            # Flagged so the caller records the ambiguity instead of a
+            # refusal -- an unknown that reconciliation can settle beats a
+            # false negative that nothing will ever revisit.
+            return {
+                "ok": False,
+                "error": f"gateway_transport:{type(exc).__name__}",
+                "transport_ambiguous": True,
+            }
 
     def freeze_execution_guard_snapshot(self, request: Mapping[str, Any]) -> dict[str, Any]:
         return self._post("/execution-guard-snapshot", request)

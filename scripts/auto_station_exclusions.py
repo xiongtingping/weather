@@ -252,6 +252,24 @@ def run(*, apply_changes: bool) -> dict[str, Any]:
     dropped_from_allowlist = sorted(set(allowlist) & set(auto_rows))
     remaining_allowlist = [s for s in allowlist if s not in auto_rows]
 
+    # The watchlist defines itself as "persistently negative in both halves
+    # and *not barred*", so a station this layer bars stops meeting its own
+    # entry condition and leaves in the same move -- the same reasoning that
+    # drops it from the live batch just above.  Without this the two lists
+    # state opposite things about the same station: on 2026-09-01 KHOU was
+    # barred while still sitting on the watchlist, which is what "under
+    # review, no verdict yet" is supposed to exclude.  Barring is a verdict.
+    watch = doc.get("watchlist_not_excluded")
+    dropped_from_watchlist: list[str] = []
+    if isinstance(watch, dict):
+        listed = [
+            str(station).strip().upper()
+            for station in (watch.get("stations") or [])
+        ]
+        dropped_from_watchlist = sorted(set(listed) & set(auto_rows))
+        if dropped_from_watchlist:
+            watch["stations"] = [s for s in listed if s not in auto_rows]
+
     doc["auto_excluded_stations"] = [auto_rows[k] for k in sorted(auto_rows)]
     doc["auto_policy"] = {
         "keys": "第一看 兑现比差 (realized/expected), 第二看 实得差 (realized-expected)",
@@ -288,6 +306,7 @@ def run(*, apply_changes: bool) -> dict[str, Any]:
             )
     return {
         "dropped_from_allowlist": dropped_from_allowlist,
+        "dropped_from_watchlist": dropped_from_watchlist,
         "allowlist_size": len(remaining_allowlist),
         "cap": MAX_BARRED_STATIONS,
         "operator_barred": len(operator_ruled_barred),

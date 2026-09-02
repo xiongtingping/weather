@@ -36,6 +36,8 @@ from .basket_kernel.delta_v2 import (
     CURVE_OBJECTIVE_FORM,
     DEFAULT_KELLY_FRACTION,
     VALUE_OBJECTIVE_FORM,
+    clamp_declining_gaps_v2,
+    contiguous_edge_clamp_v2,
     evaluate_action_v2,
     evaluate_basket_value_v2,
     select_action_v2,
@@ -811,6 +813,46 @@ LADDER_CENTER_DEFINITION = (
 EFFECTIVE_EDGE_MODE = (
     os.environ.get("DELTA_V2_EFFECTIVE_EDGE", "").strip().lower() or "on"
 )
+# Charter 69 (user ruling, 2026-09-02: "切 guarded"): the declining-
+# probability clamp of charter 51 is narrowed to what charter 49 and
+# contiguity allow.  ``guarded`` clamps only falling rungs at the ends of
+# the window, walking in from each side and never past the centre rung, so
+# a basket the clamp has touched is still a ladder: no dropped centre, no
+# hole.  ``leg`` is charter 51 as shipped on 2026-08-15 -- every falling
+# rung clamped, centre included -- kept for the A/B arms.  Measured over the
+# 2026-09-02 reseat replay (405 station-days): leg +15.4%, guarded +14.9%,
+# within one station of each other on P&L, while leg left 5.5% of P0
+# openings a single rung and missed the centre on 11.7% against guarded's
+# 2.9% and 5.3%.  The ledger carries the same switch and the two must move
+# together.
+# Final ruling the same day (熊先生, 2026-09-02): ``after_open``.  The
+# opening seat has no position to hold, so it is never clamped and the
+# ladder is bought whole; from the next seat on, any rung whose probability
+# fell since the previous model run is not bought this round, whether the
+# book holds it or not, centre included.  Measured on one snapshot, 413
+# station-days: off +8.2%, held_only +8.8%, after_open +16.4%, leg +17.7%
+# (after_open and leg one station-day apart; after_open's openings are
+# row-for-row off's).  ``guarded`` was that day's interim reading and stays
+# as an arm.
+DECLINE_CLAMP_MODE = (
+    os.environ.get("DELTA_V2_DECLINE_CLAMP", "").strip().lower()
+    or "after_open"
+)
+# ``held_only`` (user semantics, 2026-09-02: "首次建仓如何评判概率下降？
+# 没有对比啊"): the clamp's subject is a rung the book already holds or has
+# bid for -- "hold at what you have".  A rung nothing has been committed to
+# has nothing to hold, so an opening is never clamped; only a top-up is,
+# and there every falling rung is held, centre included.  Measured on the
+# 2026-09-02 reseat replay: of leg's +82.8 U over off, +74.5 U came from
+# top-ups and +8.3 U (71 better / 46 worse, one station-day either way)
+# from openings -- the clamp earns where it has a subject.
+# ``after_open``: charter 51 as written (every falling rung held, centre
+# included, held or not) -- but only once the book has opened.  The
+# opening seat, where nothing is committed yet, is never clamped; every
+# later seat is, whether the falling rung is one the book holds or one
+# the re-centred window has just brought in.  Replay arm, 2026-09-02.
+if DECLINE_CLAMP_MODE not in {"leg", "guarded", "held_only", "after_open"}:
+    raise ValueError(f"unknown decline clamp mode: {DECLINE_CLAMP_MODE}")
 SKEW_EXTENSION_RULE = (
     os.environ.get("DELTA_V2_SKEW_EXTENSION_RULE", "").strip().lower()
     or "on"
@@ -3056,22 +3098,61 @@ def compile_delta_v2_runtime_plan(
         )
         for bucket in final_support
     }
-    # Adding to a bucket the evidence has just moved away from is buying
-    # into a fading claim: the objective re-solves from scratch each cycle
-    # and would happily top up a leg whose probability fell, because the
-    # solve only sees today's number, not its direction.  Selling is a
-    # separate matter and stays forbidden -- the clamp below is one-sided,
-    # so a faded leg is simply held at the size it already has.
-    declining_buckets: list[str] = []
-    if previous_probabilities:
-        for bucket in final_support:
-            before = previous_probabilities.get(bucket)
-            if before is None:
-                continue
-            now = float(probabilities.get(bucket, 0.0))
-            if now + EPS < float(before):
-                declining_buckets.append(bucket)
-                gap_by_bucket[bucket] = min(0.0, gap_by_bucket[bucket])
+    # Hold, do not add to, a bucket whose probability just fell.  The rule
+    # lives in the kernel so the paper ledger runs the one implementation
+    # rather than a second copy of it -- it was inline here until
+    # 2026-09-01, which is why the ledger never ran it at all.
+    raw_gap_by_bucket = dict(gap_by_bucket)
+    gap_by_bucket, declining_tuple = clamp_declining_gaps_v2(
+        gap_by_bucket=gap_by_bucket,
+        support=final_support,
+        probabilities=probabilities,
+        previous_probabilities=previous_probabilities,
+    )
+    declining_buckets = list(declining_tuple)
+    # Charter 69: under ``guarded`` only the falling rungs at the ends of
+    # the window may be held back, and never the centre.  A falling rung in
+    # the middle, or the centre itself, keeps its gap -- the basket stays a
+    # contiguous ladder that touches its core, which the complete-basket
+    # check downstream assumes but does not enforce on this path.
+    if DECLINE_CLAMP_MODE == "guarded" and declining_tuple:
+        clamped_tuple = contiguous_edge_clamp_v2(
+            declining=declining_tuple,
+            support=final_support,
+            centre_bucket=str(
+                support_selection.get("ladder_center_bucket") or ""
+            ),
+        )
+    elif DECLINE_CLAMP_MODE == "held_only" and declining_tuple:
+        # Only a rung the book has already committed to -- filled or
+        # resting -- can be held at what it has.  An opening commits to
+        # nothing yet, so nothing is clamped there.
+        clamped_tuple = tuple(
+            bucket
+            for bucket in declining_tuple
+            if current_shares[bucket] + pending_shares[bucket] > EPS
+        )
+    elif DECLINE_CLAMP_MODE == "after_open" and declining_tuple:
+        # Nothing committed anywhere on this station-day = the opening
+        # seat: no clamp.  Anything committed = a later seat: charter 51
+        # in full.
+        book_is_open = any(
+            row.filled_shares + row.pending_shares > EPS
+            for row in snapshot.buckets
+        )
+        clamped_tuple = declining_tuple if book_is_open else ()
+    else:
+        clamped_tuple = declining_tuple
+    if tuple(clamped_tuple) != tuple(declining_tuple):
+        gap_by_bucket = {
+            bucket: (
+                gap_by_bucket[bucket]
+                if bucket in clamped_tuple
+                else raw_gap_by_bucket[bucket]
+            )
+            for bucket in final_support
+        }
+    clamped_buckets = list(clamped_tuple)
     execution_gap_support = tuple(
         bucket for bucket in final_support if gap_by_bucket[bucket] > EPS
     )
@@ -3692,6 +3773,8 @@ def compile_delta_v2_runtime_plan(
         # Held at their existing size because p(t) moved away from them this
         # cycle: no top-up, and never a sale.
         "probability_declined_buckets": tuple(declining_buckets),
+        "probability_clamp_mode": DECLINE_CLAMP_MODE,
+        "probability_clamped_buckets": tuple(clamped_buckets),
         "probability_direction_source": (
             "previous_checkpoint" if previous_probabilities else "absent"
         ),

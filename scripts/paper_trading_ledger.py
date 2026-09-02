@@ -64,6 +64,8 @@ from bayes_basket_target.basket_kernel.contracts import (  # noqa: E402
 )
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     EFFECTIVE_EDGE_STAGES,
+    clamp_declining_gaps_v2,
+    contiguous_edge_clamp_v2,
     effective_edge_lambda,
     probability_core,
 )
@@ -296,6 +298,100 @@ if _P0_SHARE_ENV:
 MAXIMUM_SUPPORT_BUCKETS = int(
     os.environ.get("PAPER_LEDGER_MAX_SUPPORT_BUCKETS", "4") or 4
 )
+# Production holds, rather than adds to, a bucket whose probability fell since
+# the previous cycle (``clamp_declining_gaps_v2``).  This ledger never ran that
+# rule -- it was inline in delta_v2_runtime until 2026-09-01 -- which means the
+# entire recorded book is the arm where the clamp is OFF, and nobody declared
+# that.  Measured on production's own SEED decisions 2026-08-25..09-01: it cut a
+# leg off 54 of 194 openings (28%), and it was the only thing that cut any.
+#
+# Default stays "off" so this knob does not silently rewrite what the book has
+# always meant; "on" is the arm that reproduces production.  Which one should be
+# the default is the question the replay exists to answer.
+# Three arms, because there are three coherent answers and only one of them
+# is currently running anywhere:
+#   off  -- buy the whole target; what this ledger has always done
+#   leg  -- drop the declining leg, keep the rest; what production does
+#   hold -- if any target leg is declining, seat nothing this cycle
+# "hold" is the one nobody has run.  It is what the complete-basket rule
+# would imply if it applied to the solver's target instead of to what
+# survives the clamp: production checks completeness *after* the cut, so a
+# basket that lost a leg still passes as complete.
+#   guarded -- three conditions, all required, before a leg may be dropped:
+#              (1) the fall clears DECLINE_MIN_DROP -- not any fall at all;
+#              (2) the bucket sits at an end of the window, so what survives
+#                  is still one run; (3) it is not the centre rung.
+#
+#              (1) was added 2026-09-02 after the shape-only version had
+#              been measured.  P0 probabilities follow the model run, not
+#              the clock -- only 6.5% of 138,116 adjacent P0 checkpoints
+#              differ at all -- so this rule fires in the moment a run
+#              lands, and 18% of the falls it then sees are under 0.001
+#              against a median of 0.0167.  Without a threshold it treats a
+#              1e-9 reshuffle and a 0.5 collapse as the same event.  The
+#              restatement suppression that shipped 2026-09-01 makes this
+#              sharper still: it removes the 87% of checkpoints that
+#              repeated the previous one, so adjacent pairs are now almost
+#              always genuinely different and the rule fires far more often.
+#
+#              The three conditions guard different things and none
+#              subsumes another: (1) noise, (2) a hole in the middle of the
+#              basket, (3) throwing away the rung the model likes best.  The plain clamp runs before the
+#              complete-basket check and is therefore free of both: measured
+#              over 581 replay openings it dropped the centre 48 times and
+#              left the support non-contiguous 10 times, and neither is a
+#              violation of the rules as written -- both are outside the
+#              path that enforces them.
+DECLINE_CLAMP_MODES = ("off", "leg", "hold", "guarded", "held_only", "after_open")
+# How far a probability must fall before the clamp calls it falling.  The
+# shipped rule has no threshold at all -- a drop of 1e-9 clamps a leg
+# exactly as a drop of 0.5 does -- and that has never been measured.
+#
+# Two measurements make it worth measuring.  P0 probabilities follow the
+# model run: over 138,116 adjacent P0 checkpoints from 2026-08-15 only
+# 6.5% differ at all, so the rule fires only in the moment a run lands and
+# a station-day is clamped or not depending on where its first seatable
+# cycle falls relative to that moment.  And 18% of the drops that do occur
+# are under 0.001, against a median of 0.0167.
+# A stage seats as many times as its cycles allow, adding to itself on
+# each later one -- what production does (user ruling, 2026-09-02: "把账本
+# 改为和生产一样").  Off is the one-seat-per-stage walk this ledger ran
+# until then, kept only so an old arm can be reproduced; every number
+# measured before 2026-09-02 describes that world, not production's.
+#
+# Safe to turn on only once the position identity is economic rather than
+# clocked: under the old {station, day, stage, time, window, stake} id a
+# second seat in one stage either collided with the first or left its
+# settlement orphaned (38 of 405 on the first attempt).  Under the four-leg
+# identity a later cycle that believes, prices or holds something different
+# is its own row, and one that is identical is idempotent.
+RESEAT_WITHIN_STAGE = (
+    os.environ.get("PAPER_LEDGER_RESEAT_WITHIN_STAGE", "on").strip().lower()
+    in {"1", "on", "true", "yes"}
+)
+DECLINE_MIN_DROP = float(
+    os.environ.get("PAPER_LEDGER_DECLINE_MIN_DROP", "") or 0.0
+)
+# Default = production.  The clamp is production's own function (imported
+# above) and production has run it on every cycle since 2026-08-15, so a
+# book that skips it scores a strategy production never traded.  The default
+# stayed "off" until 2026-09-02 only because no replay had been run with it
+# on; that replay now exists (reseat_six_arms_20260902.md: leg +15.4% vs
+# off +8.3% over 405 station-days) and the reason has expired.  "off" is
+# kept as an arm so the pre-09-02 book can still be reproduced.
+# Charter 69 (2026-09-02, final ruling "切 after_open"): the opening seat
+# is never clamped, every later seat clamps every falling rung, held or
+# not.  This is the same switch production carries, defaulting the same
+# way.  "leg" is charter 51 as first shipped, "guarded" the day's interim
+# reading, "off" reproduces the pre-09-02 book.
+DECLINE_CLAMP = (
+    os.environ.get("PAPER_LEDGER_DECLINE_CLAMP", "after_open").strip().lower()
+    or "after_open"
+)
+if DECLINE_CLAMP in {"1", "on", "true", "yes"}:
+    DECLINE_CLAMP = "leg"
+if DECLINE_CLAMP not in DECLINE_CLAMP_MODES:
+    raise ValueError(f"unknown decline clamp mode: {DECLINE_CLAMP}")
 # The earliest event day this book admits.  Charter 50's ladder floor landed on
 # 2026-08-15; every chain before it was seated under a minimum basket width the
 # live engine no longer trades, so those rows score a strategy that does not
@@ -442,6 +538,19 @@ REFUSAL_DEPTH = {
     # two is reported turns on which clause fired.
     "no_chain_growth": 8,
     "chain_cost_at_par": 8,
+    # The declining-probability clamp, when it is armed.  Sits at the
+    # top-up layer because everything was known when it fired: the basket
+    # was assembled, priced, sized against real depth, and then held back
+    # by a rule of ours reading the distribution's direction.  It runs
+    # BEFORE the chain clauses, so it never competes with them for the
+    # report -- only one of the two can happen on a cycle.
+    #
+    # Registered at all because an unregistered reason resolves to depth 0
+    # via ``REFUSAL_DEPTH.get(..., 0)`` and can therefore never be kept:
+    # the arm would refuse correctly and then report some shallower cause,
+    # which is the misattribution this whole table exists to prevent.
+    "decline_clamp_hold_basket": 8,
+    "decline_clamp_emptied_basket": 8,
     "chain_never_opened": 9,
 }
 # Which bucket-selection rule this sweep runs.  ``live`` is production's own
@@ -1224,6 +1333,14 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     None
     if P1_ENTRY_LOCAL_HOUR <= 0
     else "P1≥本地%g时" % P1_ENTRY_LOCAL_HOUR,
+    # Charter 69 / user ruling 2026-09-02: which clamp this book ran and
+    # whether a stage may seat itself again.  Both change every row a book
+    # records -- the 2026-09-02 reseat replay moved the same 405 station
+    # -days from +8.3% (off) to +14.9% (guarded) -- so a book compiled
+    # without them must not read as comparable to one compiled with them.
+    None if DECLINE_CLAMP == "off" else "钳位%s" % DECLINE_CLAMP,
+    None if DECLINE_MIN_DROP <= 0 else "降幅≥%g" % DECLINE_MIN_DROP,
+    "反复入座" if RESEAT_WITHIN_STAGE else None,
     None
     if P0_ENTRY_DELAY_HOURS <= 0
     else "P0挂牌后%g时" % P0_ENTRY_DELAY_HOURS,
@@ -1348,7 +1465,7 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     "一本账·只加不减",
 )))
 SELECTION_RULE_SHA256 = content_sha256({
-    "schema": "paper_trade_selection_rule_v4",
+    "schema": "paper_trade_selection_rule_v5",
     "compounding": "credible_fills_only_from_settlements",
     "dust_cost_floor": DUST_COST_FLOOR,
     "entry": "first_cycle_whose_objective_seats",
@@ -1384,6 +1501,10 @@ SELECTION_RULE_SHA256 = content_sha256({
     ),
     "chain_topup_miss_floor": CHAIN_TOPUP_MISS_FLOOR,
     "p1_entry_local_hour": P1_ENTRY_LOCAL_HOUR,
+    # Charter 69 (v5): the clamp arm, its threshold and the seat cadence.
+    "decline_clamp": DECLINE_CLAMP,
+    "decline_min_drop": DECLINE_MIN_DROP,
+    "reseat_within_stage": RESEAT_WITHIN_STAGE,
     "window_strategy": WINDOW_STRATEGY,
     "execution_mode": EXECUTION_MODE,
     # Which price the Kelly stake and the payout test are struck against.
@@ -1668,6 +1789,11 @@ REFUSAL_REASONS = (
     "no_top_up_needed",
     # A later stage whose station-day never opened.  Only P0 opens a
     # position; a top-up with nothing to top up is not a position of its own.
+    # The declining-probability clamp's two refusals (arm-gated; the "off"
+    # default never emits them).  See REFUSAL_DEPTH for why both tables
+    # must list every reason.
+    "decline_clamp_hold_basket",
+    "decline_clamp_emptied_basket",
     "chain_never_opened",
     # Charter 66 clause B: the log-optimal increment from the chain's own
     # held curve is zero -- either the window is already covered, or every
@@ -1722,6 +1848,19 @@ GATE_LABEL = {
 assert set(GATE_REFUSAL_REASON) == set(WINDOW_REFUSAL_FUNNEL)
 assert set(GATE_LABEL) == set(WINDOW_REFUSAL_FUNNEL)
 assert set(GATE_REFUSAL_REASON.values()) <= set(REFUSAL_REASONS)
+# A refusal reason has to be registered in BOTH places or it fails in one of
+# two silent ways: missing from REFUSAL_DEPTH it resolves to depth 0 and can
+# never be kept by ``_deeper_refusal`` (the walk reports a shallower cause);
+# missing from REFUSAL_REASONS the table's CHECK rejects the whole write
+# burst at the end of the run.  Both were hit on 2026-09-01, in that order,
+# by the same two reasons -- the second only after a full replay arm had
+# walked every station-day.  Asserted at import so the second one cannot
+# wait for the write.
+assert set(REFUSAL_DEPTH) == set(REFUSAL_REASONS), (
+    "refusal vocabularies disagree: "
+    f"depth-only={sorted(set(REFUSAL_DEPTH) - set(REFUSAL_REASONS))} "
+    f"reasons-only={sorted(set(REFUSAL_REASONS) - set(REFUSAL_DEPTH))}"
+)
 
 
 def _gate_count(audit: Mapping[str, Any], gate: str) -> int:
@@ -1846,10 +1985,19 @@ CREATE TABLE IF NOT EXISTS paper_trade_position (
   leg_stake_json TEXT NOT NULL DEFAULT '',
   held_before_json TEXT NOT NULL DEFAULT '',
   chain_shares_json TEXT NOT NULL DEFAULT '',
-  chain_stake_usdc REAL,
-  UNIQUE(station_id, event_date, stage)
+  chain_stake_usdc REAL
 )
 """
+# ``UNIQUE(station_id, event_date, stage)`` used to close the table above.
+# It encoded "one seat per stage", which is the walk this ledger ran until
+# 2026-09-02 and not the one production runs: production re-decides on
+# every model update and a stage adds to itself on each later cycle.  Under
+# that walk the constraint did not refuse the second seat -- the write is
+# ``INSERT OR IGNORE`` -- it swallowed it, after ``held``, ``chain_stake``
+# and ``chain_position_id`` had already moved on.  Measured on the first
+# reseating run: 38 of 405 settlements pointed at a position row that was
+# never written.  Uniqueness of a position is now its economic identity
+# (the PRIMARY KEY), and a stage may hold several.
 _REFUSAL_DDL = """
 CREATE TABLE IF NOT EXISTS paper_trade_refusal (
   station_id TEXT NOT NULL,
@@ -1927,6 +2075,44 @@ def _connect(db: Path, *, writable: bool) -> sqlite3.Connection:
     return conn
 
 
+def _position_scope_unique_present(conn: sqlite3.Connection) -> bool:
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table'"
+        " AND name='paper_trade_position'"
+    ).fetchone()
+    return bool(row) and "UNIQUE(station_id, event_date, stage)" in str(row[0])
+
+
+def _rebuild_position_without_scope_unique(conn: sqlite3.Connection) -> None:
+    """Drop the one-seat-per-stage constraint by rebuilding the table.
+
+    SQLite cannot drop a table constraint in place.  Same shape as the
+    refusal rebuild below: rename, recreate from the current DDL, copy the
+    shared columns, drop the old.  Rows are carried verbatim -- the
+    constraint only ever refused writes, it never shaped the rows it let
+    through.
+    """
+
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        conn.execute(
+            "ALTER TABLE paper_trade_position RENAME TO paper_trade_position_old"
+        )
+        conn.execute(_POSITION_DDL)
+        new_cols = [r[1] for r in conn.execute("PRAGMA table_info(paper_trade_position)")]
+        old_cols = {r[1] for r in conn.execute("PRAGMA table_info(paper_trade_position_old)")}
+        shared = ",".join(c for c in new_cols if c in old_cols)
+        conn.execute(
+            f"INSERT INTO paper_trade_position({shared})"
+            f" SELECT {shared} FROM paper_trade_position_old"
+        )
+        conn.execute("DROP TABLE paper_trade_position_old")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+
 def ensure_schema(conn: sqlite3.Connection) -> bool:
     """Create or widen the ledger's tables.
 
@@ -1937,6 +2123,8 @@ def ensure_schema(conn: sqlite3.Connection) -> bool:
     """
 
     conn.execute(_POSITION_DDL)
+    if _position_scope_unique_present(conn):
+        _rebuild_position_without_scope_unique(conn)
     conn.execute(_SETTLEMENT_DDL)
     conn.execute(_REFUSAL_DDL)
     # A new reason cannot be recorded through an existing CHECK, and
@@ -2401,6 +2589,49 @@ def _stage_entry_candidates(
             "buckets": buckets,
             "center_bucket": str(lineage.get("model_center_bucket") or ""),
             "center_c": lineage.get("model_center_c"),
+            # The probability leg of the economic identity (user ruling,
+            # 2026-09-02): envelope content hash + posterior hash + the
+            # exclusion mask.  Queried all along -- the SELECT above reads
+            # both shas -- and simply never carried out of here, which is
+            # why a seat could not be told apart by what it believed.
+            "envelope_content_sha256": str(sha or ""),
+            "checkpoint_id": str(checkpoint or ""),
+            "posterior_sha256": str(
+                envelope_json.get("posterior_sha256") or ""
+            ),
+            "exclusion_mask": json.dumps(
+                {
+                    "excluded_systems": lineage.get(
+                        "excluded_observed_system_ids_json"
+                    ),
+                    "reason": lineage.get("excluded_observed_system_reason"),
+                    "hard_excluded_buckets": envelope_json.get(
+                        "hard_excluded_buckets"
+                    ),
+                },
+                sort_keys=True, ensure_ascii=False,
+            ),
+            # The policy artefacts the compile stood on (identity leg 4).
+            "policy_artifacts": json.dumps(
+                {
+                    "posterior_version": envelope_json.get(
+                        "posterior_version"
+                    ),
+                    "cross_activation": lineage.get(
+                        "native_cross_activation_sha256"
+                    ),
+                    "cross_artifact": lineage.get(
+                        "native_cross_ensemble_artifact_sha256"
+                    ),
+                    "system_activations": lineage.get(
+                        "system_activation_shas_json"
+                    ),
+                    "system_artifacts": lineage.get(
+                        "system_artifact_shas_json"
+                    ),
+                },
+                sort_keys=True, ensure_ascii=False,
+            ),
         }
         if len(seen) >= MAX_ENTRY_CYCLES_PER_STAGE:
             return
@@ -5373,6 +5604,12 @@ def backfill(
                 cycles = 0
                 opened = False
                 lane_opened_at: datetime | None = None
+                # Production's clamp compares this cycle's distribution with
+                # the one before it, so the walk has to carry the previous
+                # cycle forward.  Reset per stage: the first cycle a stage
+                # sees has nothing behind it, which is exactly the case the
+                # kernel treats as "unmeasured, leave alone".
+                previous_probabilities: dict[str, float] | None = None
                 for payload in _stage_entry_candidates(
                     conn, station_id, event_date, stage
                 ):
@@ -5473,6 +5710,19 @@ def backfill(
                                 key_centers_c=centers,
                             )
                         )
+                    # Take the previous cycle's reading, then advance the
+                    # carry immediately.  Every cycle this walk examines is
+                    # a cycle production also computed a distribution for,
+                    # so the carry must move whether or not this one goes
+                    # on to seat -- and there are a dozen ``continue``s
+                    # below.  Advancing here rather than at each of them is
+                    # what makes "the previous cycle" mean the same thing
+                    # on both sides.
+                    previous_cycle_probabilities = previous_probabilities
+                    previous_probabilities = {
+                        str(bucket): float(value)
+                        for bucket, value in probabilities.items()
+                    }
                     center = payload["center_bucket"] or max(
                         probabilities, key=lambda b: probabilities[b]
                     )
@@ -6197,6 +6447,95 @@ def backfill(
                         bucket: held[bucket]
                         for bucket in seat["buckets"] if bucket in held
                     }
+                    # Production's declining-probability clamp, run on the
+                    # same gap it runs on there: what this stage wants less
+                    # what the chain already holds.  Applied before the
+                    # top-up walk so both entry paths see it -- an opening
+                    # holds nothing, so a clamped leg goes to zero shares
+                    # and its cash leaves the stake; a top-up already holds
+                    # some, so the leg is pinned at what it has and the
+                    # delta below is zero.  Both are "held at the size it
+                    # already has", which is what the clamp means.
+                    if DECLINE_CLAMP != "off" and previous_cycle_probabilities:
+                        _gaps = {
+                            bucket: max(0.0, float(want) - held.get(bucket, 0.0))
+                            for bucket, want in zip(seat["buckets"], leg_shares)
+                        }
+                        _, _declined = clamp_declining_gaps_v2(
+                            gap_by_bucket=_gaps,
+                            support=tuple(seat["buckets"]),
+                            probabilities=probabilities,
+                            previous_probabilities=(
+                                previous_cycle_probabilities
+                            ),
+                            minimum_drop=DECLINE_MIN_DROP,
+                        )
+                        if DECLINE_CLAMP == "guarded" and _declined:
+                            _declined = contiguous_edge_clamp_v2(
+                                declining=_declined,
+                                support=tuple(seat["buckets"]),
+                                centre_bucket=str(
+                                    audit.get("ladder_center_bucket")
+                                    or center
+                                ),
+                            )
+                        if DECLINE_CLAMP == "after_open" and _declined:
+                            # Production's ``after_open``: the opening
+                            # seat (chain holds nothing) is never clamped;
+                            # every later seat is, held rung or not.
+                            if not any(
+                                float(v or 0.0) > 0.0 for v in held.values()
+                            ):
+                                _declined = ()
+                        if DECLINE_CLAMP == "held_only" and _declined:
+                            # Production's ``held_only``: only a rung the
+                            # chain already holds can be held at what it
+                            # has.  An opening holds nothing, so it is
+                            # never clamped; a top-up clamps every falling
+                            # rung it holds, centre included.
+                            _declined = tuple(
+                                bucket for bucket in _declined
+                                if held.get(bucket, 0.0) > 0.0
+                            )
+                        if _declined and DECLINE_CLAMP == "hold":
+                            # The whole basket waits.  A target the evidence
+                            # is moving away from in any leg is not a basket
+                            # this cycle should open a piece of; the next
+                            # cycle re-solves and may seat the whole thing.
+                            refusal = _deeper_refusal(refusal, (
+                                "decline_clamp_hold_basket",
+                                "目标篮 %s · 其中 %s 概率较上一 cycle 下降，"
+                                "整篮不入座" % (
+                                    "+".join(seat["buckets"]),
+                                    "+".join(sorted(_declined)),
+                                ),
+                                cycles, payload["decision_at_utc"],
+                            ))
+                            continue
+                        if _declined:
+                            _drop = set(_declined)
+                            _shares: list[float] = []
+                            _cash: list[float] = []
+                            for bucket, want, cash in zip(
+                                seat["buckets"], leg_shares, leg_cash
+                            ):
+                                if bucket in _drop:
+                                    _shares.append(held.get(bucket, 0.0))
+                                    _cash.append(0.0)
+                                else:
+                                    _shares.append(float(want))
+                                    _cash.append(float(cash))
+                            leg_shares = _shares
+                            leg_cash = _cash
+                            stake = sum(_cash)
+                            if stake <= 0.0:
+                                refusal = _deeper_refusal(refusal, (
+                                    "decline_clamp_emptied_basket",
+                                    "本轮全部目标桶概率较上一 cycle 下降：%s"
+                                    % "+".join(sorted(_drop)),
+                                    cycles, payload["decision_at_utc"],
+                                ))
+                                continue
                     if held:
                         topped: list[float] = []
                         topped_cash: list[float] = []
@@ -6440,13 +6779,83 @@ def backfill(
                     chain_last_stage = stage
                     if not chain_opened_at:
                         chain_opened_at = payload["decision_at_utc"]
+                    # The economic identity of one decision (user ruling,
+                    # 2026-09-02).  Four legs, and a decision is the same
+                    # decision only if all four match:
+                    #
+                    #   1 probability   -- envelope content hash, posterior
+                    #                      hash, exclusion mask
+                    #   2 sizing output -- the objective's own answer:
+                    #                      selected buckets and final
+                    #                      support, score, limit price,
+                    #                      maximum shares, cash clip, the
+                    #                      stake, and the status.  Edge
+                    #                      enters here.
+                    #   3 position book -- filled shares and cost, pending
+                    #                      shares and notional, budget left
+                    #   4 policy        -- strategy version, per-station
+                    #                      policy, delta_v2 / regime /
+                    #                      maker_grid artefact hashes
+                    #
+                    # ``decision_at_utc`` is deliberately NOT in it.  The
+                    # old identity was {station, day, stage, decision time,
+                    # window, stake}: the clock made every recompile a new
+                    # row while carrying none of what the decision was
+                    # actually made of, so two economically different
+                    # decisions a second apart could collide on the window
+                    # and stake alone, and two identical ones a minute
+                    # apart could not.  That is the same churn the P0
+                    # posterior identity was corrected for.
+                    #
+                    # This is what lets a stage seat more than once
+                    # honestly: a later cycle that believes something
+                    # different, or is priced differently, or stands on a
+                    # different book, is a different decision and gets its
+                    # own row; one that is economically identical resolves
+                    # to the same id and is idempotent.
                     identity = {
-                        "station_id": station_id,
-                        "event_date": event_date,
-                        "stage": stage,
-                        "decision_at_utc": payload["decision_at_utc"],
-                        "window": list(seat["buckets"]),
-                        "stake_usdc": round(stake, 6),
+                        "schema": "paper_trade_economic_decision_v2",
+                        "scope": {
+                            "station_id": station_id,
+                            "event_date": event_date,
+                            "stage": stage,
+                        },
+                        "probability": {
+                            "envelope_content_sha256": payload.get(
+                                "envelope_content_sha256"
+                            ),
+                            "posterior_sha256": payload.get(
+                                "posterior_sha256"
+                            ),
+                            "exclusion_mask": payload.get("exclusion_mask"),
+                        },
+                        "sizing": {
+                            "selected_buckets": list(seat["buckets"]),
+                            "final_support": list(posted_buckets),
+                            "selected_score": seat.get("log_growth_rank"),
+                            "limit_price": round(float(all_in_cost), 8),
+                            "maximum_shares": round(float(shares), 8),
+                            "cash_clip": round(float(stake), 8),
+                            "sizing": [round(float(q), 8) for q in leg_shares],
+                            "status": "SEATED",
+                        },
+                        "position_book": {
+                            "filled_shares": {
+                                b: round(float(q), 8)
+                                for b, q in sorted(held_before.items())
+                            },
+                            "filled_cost_usdc": round(float(chain_stake), 8),
+                            "pending_shares": {},
+                            "pending_notional_usdc": 0.0,
+                            "budget_remaining_usdc": round(
+                                float(stage_room), 8
+                            ),
+                        },
+                        "policy": {
+                            "strategy_version": SELECTION_RULE_LABEL,
+                            "selection_rule_sha256": SELECTION_RULE_SHA256,
+                            "artifacts": payload.get("policy_artifacts"),
+                        },
                     }
                     position_id = "paper-pos-" + content_sha256(identity)[:24]
                     chain_position_id = position_id
@@ -6499,7 +6908,27 @@ def backfill(
                     counts["entry_cycle_%s" % (
                         "first" if cycles == 1 else "later"
                     )] += 1
-                    break
+                    # Stop at the first seat, or keep walking and let the
+                    # stage add to itself on every later cycle.
+                    #
+                    # Production does the latter: it re-decides on every
+                    # model update (charter 46), and 363 of 387 live
+                    # station-days from 2026-08-25 carry ten or more
+                    # decisions.  This ledger has always done the former,
+                    # so every arm measured on it describes a world where
+                    # each stage is entered once -- which is not the world
+                    # production trades.  The clamp in particular can fire
+                    # ten times a day there and at most once here.
+                    #
+                    # Nothing else has to change to allow it: ``held`` and
+                    # ``chain_stake`` already accumulate across cycles
+                    # because the three stages share one book, and
+                    # ``stage_room`` is ``stage_budget * tilt -
+                    # chain_stake``, so a second seat inside one stage is
+                    # financed out of what the first one left and the
+                    # allowance runs out on its own.
+                    if not RESEAT_WITHIN_STAGE:
+                        break
                 if not opened:
                     counts[refusal[0]] += 1
                     # ``cycles_examined`` stays the whole walk, not the cycle
