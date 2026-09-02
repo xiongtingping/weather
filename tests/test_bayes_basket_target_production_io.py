@@ -10,6 +10,7 @@ import pytest
 
 from bayes_basket_target import ContractError, content_sha256
 from bayes_basket_target.production_io import (
+    assert_p1_execution_evidence,
     STAGE_ZERO_EXECUTION_ANCHOR_SCHEMA,
     compile_production_cycle_from_ssot,
     load_materialized_probability_envelopes,
@@ -1949,3 +1950,130 @@ def test_market_snapshot_reports_the_pools_equity_when_there_is_a_pool() -> None
         assert pooled["book_equity_usdc"] == 514.29
         # The scope's own budget is untouched by the equity.
         assert pooled["remaining_budget_usdc"] == bare["remaining_budget_usdc"]
+
+
+def _suspended_p1_lineage(receipt: dict[str, str] | None) -> dict[str, str]:
+    """The served lineage of a P1 compiled under the 2026-09-02 suspension."""
+
+    values = {
+        "canonical_observation_event_id": "obs-suspended-p1",
+        "canonical_observation_sha256": "1" * 64,
+        "canonical_observation_committed_at": "2026-09-02T05:00:01Z",
+        "hard_bound_id": "hardbound-" + "2" * 32,
+        "hard_excluded_buckets": "26°C or below,27°C",
+        "settlement_timezone": "Asia/Karachi",
+        "source_lane": "AWC",
+        "report_type": "METAR",
+        "metar_trajectory_proof_sha256": "2" * 64,
+        "metar_trajectory_applied_strength": "0",
+        "metar_trajectory_soft_likelihood_policy": (
+            "SUSPENDED_BY_RULING_2026_09_02"
+        ),
+        "observation_likelihood_mode": (
+            "HARD_EXCLUSION_PLUS_CLOCK_CEILING_SOFT_LR_SUSPENDED_V6"
+        ),
+        # The artifact may or may not have resolved; under suspension neither
+        # decides tradability, so the darkest possible lineage is the test.
+        "metar_trajectory_activation_id": "NONE",
+        "metar_trajectory_artifact_id": "metar-trajectory-fallback",
+        "metar_conditional_path_state_sha256": "NONE",
+        "metar_future_temperature_curve_sha256": "NONE",
+    }
+    if receipt is not None:
+        values["metar_ceiling_json"] = json.dumps(
+            {"schema": "metar_ceiling_receipt_v1", **receipt}, sort_keys=True
+        )
+    return values
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        {"metar_ceiling_applied": "true", "metar_ceiling_hours_left": "8.5"},
+        {"metar_ceiling_applied": "false",
+         "metar_ceiling_skip_reason": "TOO_EARLY"},
+        {"metar_ceiling_applied": "false",
+         "metar_ceiling_skip_reason": "SPLIT_DEGENERATE"},
+    ],
+)
+def test_p1_execution_evidence_admits_suspended_p1_on_hard_bound_and_ceiling(
+    receipt: dict[str, str],
+) -> None:
+    """Under suspension the evidence P1 must carry is the hard bound and the
+    clock ceiling having reached the served distribution -- a ceiling that
+    declined for this step is still the layer speaking.  No artifact needs to
+    have resolved: the layer it would have governed is silent by policy."""
+
+    assert_p1_execution_evidence(_suspended_p1_lineage(receipt))
+
+
+@pytest.mark.parametrize(
+    ("lineage_update", "lineage_remove"),
+    [
+        # No ceiling receipt at all: the layer never reached the envelope.
+        ({}, "metar_ceiling_json"),
+        # The layer was absent, not declining.
+        ({"metar_ceiling_json": json.dumps({
+            "schema": "metar_ceiling_receipt_v1",
+            "metar_ceiling_applied": "false",
+            "metar_ceiling_skip_reason": "DISABLED"})}, None),
+        ({"metar_ceiling_json": json.dumps({
+            "schema": "metar_ceiling_receipt_v1",
+            "metar_ceiling_applied": "false",
+            "metar_ceiling_skip_reason": "NO_ARTIFACT"})}, None),
+        # A zero strength without the declared policy is the old failure.
+        ({"metar_trajectory_soft_likelihood_policy": "ACTIVE"}, None),
+        ({}, "metar_trajectory_soft_likelihood_policy"),
+        # A suspended mode that still carries strength is not suspended.
+        ({"metar_trajectory_applied_strength": "0.4"}, None),
+        ({"metar_trajectory_proof_sha256": "not-a-sha"}, None),
+    ],
+)
+def test_p1_execution_evidence_rejects_suspended_p1_missing_its_evidence(
+    lineage_update: dict[str, str],
+    lineage_remove: str | None,
+) -> None:
+    lineage = _suspended_p1_lineage({
+        "metar_ceiling_applied": "false",
+        "metar_ceiling_skip_reason": "TOO_EARLY",
+    })
+    lineage.update(lineage_update)
+    if lineage_remove is not None:
+        lineage.pop(lineage_remove)
+    with pytest.raises(
+        ContractError,
+        match="stage_zero_execution_p1_hard_bound_ceiling_evidence_missing",
+    ):
+        assert_p1_execution_evidence(lineage)
+
+
+def test_p1_execution_evidence_keeps_the_old_rule_for_the_old_modes() -> None:
+    """Pre-suspension lineage is judged as before: a resolved promoted
+    artifact at a strength in (0, 1] admits, a zero strength does not, and a
+    dark placeholder in an old mode is not rescued by the new branch."""
+
+    formal = {
+        **_suspended_p1_lineage(None),
+        "metar_trajectory_activation_id": "formal-activation",
+        "metar_trajectory_artifact_id": "metar-trajectory-formal",
+        "metar_conditional_path_state_sha256": "3" * 64,
+        "metar_future_temperature_curve_sha256": "none",
+        "metar_trajectory_applied_strength": "0.6",
+        "metar_trajectory_soft_likelihood_policy": "ACTIVE",
+        "observation_likelihood_mode": (
+            "PHYSICAL_ABSOLUTE_TMAX_SOFT_LR_PLUS_HARD_EXCLUSION_V5"
+        ),
+    }
+    assert_p1_execution_evidence(formal)
+    for update in (
+        {"metar_trajectory_applied_strength": "0"},
+        {"metar_trajectory_activation_id": "NONE"},
+        {"observation_likelihood_mode": (
+            "FULL_PREFIX_ROOT_RECOMPUTE_SOFT_LR_PLUS_HARD_EXCLUSION_V2"
+        )},
+    ):
+        with pytest.raises(
+            ContractError,
+            match="stage_zero_execution_p1_strong_likelihood_missing",
+        ):
+            assert_p1_execution_evidence({**formal, **update})

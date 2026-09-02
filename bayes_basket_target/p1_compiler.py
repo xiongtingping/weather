@@ -368,6 +368,7 @@ def compile_station_p1_packets(
     station_width: tuple[Mapping[str, float], str] | None = None,
     fleet_regime: Mapping[str, Any] | None = None,
     ceiling_artifact: Mapping[str, Any] | None = None,
+    soft_likelihood_policy: str | None = None,
 ) -> list[dict[str, Any]]:
     """Compile every canonical P1 prefix; emit on running-high advances.
 
@@ -778,6 +779,9 @@ def compile_station_p1_packets(
                 day_running_high_c is not None
                 and running_high_c >= day_running_high_c - 1e-9
             ),
+            # None is production's policy (``SOFT_LIKELIHOOD_POLICY``); tests
+            # of the layer's own mechanics pass ACTIVE explicitly.
+            soft_likelihood_policy=soft_likelihood_policy,
         )
         excluded = list(proof.hard_excluded_buckets)
         reported_value = reported_hard_lower_in_unit(running_high_c, unit)

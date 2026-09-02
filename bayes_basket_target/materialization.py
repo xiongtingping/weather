@@ -37,6 +37,8 @@ from .metar_trajectory import (
     METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
     METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
     METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION,
+    P1_SOFT_LR_SUSPENDED_LIKELIHOOD_MODE,
+    SOFT_LIKELIHOOD_POLICY_SUSPENDED,
     MetarTrajectoryLikelihoodArtifact,
     MetarTrajectoryObservation,
     MetarTrajectoryUpdateProof,
@@ -1234,7 +1236,14 @@ def materialize_p1(
     # distribution.  It had only ever been applied inside the trajectory
     # proof, which no consumer serves, so the shape production published
     # still held the mass the clock had already ruled out.
-    posterior_version: str = "p1_metar_trajectory_target_v5",
+    # v6 (2026-09-02): the soft likelihood is suspended by ruling -- identity
+    # ratios, zero strength -- so the served P1 is the root under the hard
+    # bound and the clock ceiling.  Measured against the exact counterfactual
+    # the soft layer cost 1 to 6 points of argmax accuracy at every fixed
+    # local hour; see ``SOFT_LIKELIHOOD_POLICY``.  The version moves because
+    # the served shape moved: the centre/width evidence clock reads this
+    # string to know where the currently served distribution begins.
+    posterior_version: str = "p1_metar_trajectory_target_v6",
     ceiling_artifact: Mapping[str, Any] | None = None,
     band_table: tuple[
         Sequence[tuple[tuple[float, float], float]], str
@@ -1437,6 +1446,11 @@ def materialize_p1(
             "metar_trajectory_applied_strength": (
                 f"{proof.applied_strength:.17g}"
             ),
+            # The execution gate reads this: a zero strength is admissible
+            # only when the proof itself declares the suspension.
+            "metar_trajectory_soft_likelihood_policy": (
+                proof.soft_likelihood_policy
+            ),
             "metar_trajectory_degradation_reasons": (
                 ",".join(proof.degradation_reasons) or "NONE"
             ),
@@ -1467,7 +1481,13 @@ def materialize_p1(
                 "DIAGNOSTIC_POSITIVE_PROBABILITY_SUPPORT_NOT_BASKET_CORE"
             ),
             "observation_likelihood_mode": (
-                "PHYSICAL_ABSOLUTE_TMAX_SOFT_LR_PLUS_HARD_EXCLUSION_V5"
+                # Under suspension the artifact's method is lineage, not the
+                # update: whatever was fitted, the served P1 is the hard
+                # exclusion and the clock ceiling, and the mode says so.
+                P1_SOFT_LR_SUSPENDED_LIKELIHOOD_MODE
+                if proof.soft_likelihood_policy
+                == SOFT_LIKELIHOOD_POLICY_SUSPENDED
+                else "PHYSICAL_ABSOLUTE_TMAX_SOFT_LR_PLUS_HARD_EXCLUSION_V5"
                 if physical_absolute_tmax
                 else "CONDITIONAL_HOURLY_FUTURE_PATH_SOFT_LR_PLUS_HARD_EXCLUSION_V4"
                 if conditional_hourly_curve

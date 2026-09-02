@@ -8093,6 +8093,7 @@ certainty_gate_lit:["市场已定价完毕","中心桶连三次没动，或头�
     // -- at zero strength -- the bare hard bound, which is not a prediction
     // and must not read as one.
     const MODE_LABEL={
+      HARD_EXCLUSION_PLUS_CLOCK_CEILING_SOFT_LR_SUSPENDED_V6:"硬下界+天花板(软层暂停)",
       PHYSICAL_ABSOLUTE_TMAX_SOFT_LR_PLUS_HARD_EXCLUSION_V5:"物理路径",
       CONDITIONAL_HOURLY_FUTURE_PATH_SOFT_LR_PLUS_HARD_EXCLUSION_V4:"曲线法",
       CONDITIONAL_FUTURE_PATH_SOFT_LR_PLUS_HARD_EXCLUSION_V3:"路径法(旧)",

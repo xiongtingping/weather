@@ -142,6 +142,50 @@ CANDIDATE_STRENGTH_FACTOR = float(
         "PM_METAR_TRAJECTORY_CANDIDATE_STRENGTH_FACTOR", "1.0"
     ) or 1.0
 )
+# Whether the soft likelihood may move the posterior at all (user ruling,
+# 2026-09-02).
+#
+# Measured 2026-08-24..09-01 on ~390 settled station-days, scoring the P1
+# standing at fixed local hours against an exact counterfactual that keeps the
+# hard bound and the clock ceiling and drops only the likelihood ratio: the
+# soft layer cost 1.1 points of argmax accuracy at noon, 6.3 at 15:00 and 3.6
+# at 17:00, and improved none of the seven event days it was live.  The loss
+# sits after the day's peak.  The artifact is fitted on one anchor report per
+# local-time bucket and then served for the whole six-hour bucket, so at 17:00
+# it still believes the noon histogram of remaining warming and keeps its
+# mode one to two buckets above a high the day has already stopped raising
+# (WMKK 2026-08-29 15:00: running high 34, settled 34, hard bound and ceiling
+# chose 34, the soft layer moved the argmax to 35 at 0.587).  The end-of-day
+# figures that once read as this layer's skill were the hard bound's and the
+# ceiling's; the layer had never passed a fair fixed-hour test.
+#
+# Suspension is a policy, not a missing artifact.  The artifact is still
+# resolved and its lineage still recorded, the conditional path state is
+# still computed, so the record shows what would have governed; what changes
+# is that the ratios are identity, the applied strength is zero, and the
+# proof says why.  The policy rides on the proof body so the byte-stable
+# replay validator recompiles a historical proof under the policy it was
+# written under, and the execution gate reads it off the served lineage.
+# Absent in the canonical form means ACTIVE, which keeps every earlier
+# proof's content hash.
+SOFT_LIKELIHOOD_POLICY_ACTIVE = "ACTIVE"
+SOFT_LIKELIHOOD_POLICY_SUSPENDED = "SUSPENDED_BY_RULING_2026_09_02"
+SOFT_LIKELIHOOD_POLICIES = frozenset({
+    SOFT_LIKELIHOOD_POLICY_ACTIVE,
+    SOFT_LIKELIHOOD_POLICY_SUSPENDED,
+})
+# The policy production compiles under.  A code constant rather than an
+# environment switch: the proof validator, the ingress replay and the paper
+# ledger all recompile through this module, and an environment variable that
+# differs between them is exactly how production and its own measurement
+# would come apart.
+SOFT_LIKELIHOOD_POLICY = SOFT_LIKELIHOOD_POLICY_SUSPENDED
+SOFT_LIKELIHOOD_SUSPENDED_REASON = "SOFT_LIKELIHOOD_SUSPENDED_BY_RULING"
+# The served lineage's name for a P1 compiled under suspension: the
+# observation hard bound and the clock ceiling are the whole update.
+P1_SOFT_LR_SUSPENDED_LIKELIHOOD_MODE = (
+    "HARD_EXCLUSION_PLUS_CLOCK_CEILING_SOFT_LR_SUSPENDED_V6"
+)
 
 
 def maturity_strength_for_sample_n(
@@ -1100,6 +1144,10 @@ class MetarTrajectoryUpdateProof:
     # existed were all compiled as current, which is what the parser default
     # restores.
     prefix_is_current: bool
+    # The soft-likelihood policy this proof was compiled under.  Canonical
+    # form: absent means ACTIVE, so every proof written before the field
+    # existed keeps its content hash.  See ``SOFT_LIKELIHOOD_POLICY``.
+    soft_likelihood_policy: str
     content_sha256: str
 
     @classmethod
@@ -1122,6 +1170,7 @@ class MetarTrajectoryUpdateProof:
             "direction_skew", "direction",
             "positive_core_buckets", "content_sha256",
             "conditional_path_state_sha256", "prefix_is_current",
+            "soft_likelihood_policy",
         }
         _strict_fields(raw, allowed=allowed, contract="metar_trajectory_proof")
         if raw.get("schema") not in {None, METAR_TRAJECTORY_PROOF_SCHEMA}:
@@ -1196,6 +1245,14 @@ class MetarTrajectoryUpdateProof:
         ).upper()
         if direction not in {"UP", "DOWN", "NEUTRAL"}:
             raise ContractError("metar_trajectory_direction_invalid")
+        soft_policy = _text(
+            "metar_trajectory_soft_likelihood_policy",
+            raw.get("soft_likelihood_policy", SOFT_LIKELIHOOD_POLICY_ACTIVE),
+        )
+        if soft_policy not in SOFT_LIKELIHOOD_POLICIES:
+            raise ContractError(
+                "metar_trajectory_soft_likelihood_policy_invalid"
+            )
         value = cls(
             proof_id=_text("metar_trajectory_proof_id", raw.get("proof_id")),
             artifact_id=_text(
@@ -1307,6 +1364,7 @@ class MetarTrajectoryUpdateProof:
             prefix_is_current=_prefix_is_current(
                 raw.get("prefix_is_current", True)
             ),
+            soft_likelihood_policy=soft_policy,
             content_sha256=_sha(
                 "metar_trajectory_proof_content_sha256",
                 raw.get("content_sha256"),
@@ -1314,6 +1372,20 @@ class MetarTrajectoryUpdateProof:
         )
         if abs(value.running_high_c - value.hard_bound_c) > _EPS:
             raise ContractError("metar_trajectory_hard_bound_running_high_mismatch")
+        # A suspended proof that still carries strength or a non-identity
+        # ratio is not a suspended proof; the policy is a statement about the
+        # vectors, and the vectors must bear it out.
+        if value.soft_likelihood_policy == SOFT_LIKELIHOOD_POLICY_SUSPENDED and (
+            value.applied_strength != 0.0
+            or any(
+                ratio != 1.0
+                for ratio in value.likelihood_ratio_by_bucket.values()
+            )
+            or SOFT_LIKELIHOOD_SUSPENDED_REASON not in value.degradation_reasons
+        ):
+            raise ContractError(
+                "metar_trajectory_soft_likelihood_suspension_violated"
+            )
         excluded = set(value.hard_excluded_buckets)
         if (
             excluded
@@ -1389,6 +1461,8 @@ class MetarTrajectoryUpdateProof:
         # content hashes byte-identical.
         if not self.prefix_is_current:
             result["prefix_is_current"] = False
+        if self.soft_likelihood_policy != SOFT_LIKELIHOOD_POLICY_ACTIVE:
+            result["soft_likelihood_policy"] = self.soft_likelihood_policy
         if include_content_sha256:
             result["content_sha256"] = self.content_sha256
         return result
@@ -1447,6 +1521,7 @@ def compile_metar_trajectory_update_proof(
     maturity_bin: str,
     as_of_utc: str,
     prefix_is_current: bool = True,
+    soft_likelihood_policy: str | None = None,
 ) -> MetarTrajectoryUpdateProof:
     """Compile P1 trajectory evidence from the immutable prediction root.
 
@@ -1481,6 +1556,17 @@ def compile_metar_trajectory_update_proof(
     )
     as_of = _timestamp("metar_trajectory_as_of_utc", as_of_utc)
     maturity = _text("metar_trajectory_maturity_bin", maturity_bin)
+    # None is "what production runs"; the replay validator passes the policy
+    # the proof was written under so a historical proof recompiles to itself.
+    policy = (
+        SOFT_LIKELIHOOD_POLICY
+        if soft_likelihood_policy is None
+        else _text(
+            "metar_trajectory_soft_likelihood_policy", soft_likelihood_policy
+        )
+    )
+    if policy not in SOFT_LIKELIHOOD_POLICIES:
+        raise ContractError("metar_trajectory_soft_likelihood_policy_invalid")
     if root.stage not in {"P0", "P0-M"}:
         raise ContractError("metar_trajectory_prediction_root_stage_invalid")
     if (
@@ -1776,6 +1862,12 @@ def compile_metar_trajectory_update_proof(
     if missing > governed.max_missing_intervals:
         strength = 0.0
         reasons.append("MISSING_INTERVAL_LIMIT_EXCEEDED")
+    if policy == SOFT_LIKELIHOOD_POLICY_SUSPENDED:
+        # The ruling, not a degradation of the artifact: the reasons above
+        # still say what would have governed, and this one says why it did
+        # not.  The hard exclusion and the clock ceiling below are untouched.
+        strength = 0.0
+        reasons.append(SOFT_LIKELIHOOD_SUSPENDED_REASON)
     if strength <= _EPS:
         strength = 0.0
         ratios = {bucket: 1.0 for bucket in ordered_buckets}
@@ -1970,6 +2062,8 @@ def compile_metar_trajectory_update_proof(
     # written before the attestation existed keep their content hashes.
     if not prefix_is_current:
         body["prefix_is_current"] = False
+    if policy != SOFT_LIKELIHOOD_POLICY_ACTIVE:
+        body["soft_likelihood_policy"] = policy
     digest = content_sha256(body)
     proof_body = {"proof_id": "metar-proof-" + digest[:32], **body}
     return MetarTrajectoryUpdateProof.from_mapping({
@@ -2005,6 +2099,7 @@ def validate_metar_trajectory_update_proof(
         maturity_bin=value.maturity_bin,
         as_of_utc=value.as_of_utc,
         prefix_is_current=value.prefix_is_current,
+        soft_likelihood_policy=value.soft_likelihood_policy,
     )
     if value.to_dict() != expected.to_dict():
         raise ContractError("metar_trajectory_proof_replay_mismatch")
@@ -2023,6 +2118,12 @@ __all__ = [
     "MAX_METAR_TRAJECTORY_BUCKETS",
     "MAX_METAR_TRAJECTORY_FEATURES",
     "MAX_METAR_TRAJECTORY_OBSERVATIONS",
+    "P1_SOFT_LR_SUSPENDED_LIKELIHOOD_MODE",
+    "SOFT_LIKELIHOOD_POLICIES",
+    "SOFT_LIKELIHOOD_POLICY",
+    "SOFT_LIKELIHOOD_POLICY_ACTIVE",
+    "SOFT_LIKELIHOOD_POLICY_SUSPENDED",
+    "SOFT_LIKELIHOOD_SUSPENDED_REASON",
     "MetarTrajectoryLikelihoodArtifact",
     "MetarTrajectoryObservation",
     "MetarTrajectoryUpdateProof",

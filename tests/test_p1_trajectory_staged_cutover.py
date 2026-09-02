@@ -184,6 +184,9 @@ def test_a_single_artifact_leaves_the_other_bucket_dark() -> None:
         predecessor=_p0_root(),
         observations=_two_bucket_observations(),
         registry_rows=_REGISTRY,
+        # The layer's governance mechanics are what these tests pin; the
+        # production default (suspension, 2026-09-02) is tested elsewhere.
+        soft_likelihood_policy="ACTIVE",
         compilation_at_utc="2026-08-09T19:00:00Z",
         trajectory_artifact=_promoted_artifact("AFTERNOON"),
     )
@@ -200,6 +203,9 @@ def test_each_step_is_governed_by_its_own_local_time_bucket() -> None:
         predecessor=_p0_root(),
         observations=_two_bucket_observations(),
         registry_rows=_REGISTRY,
+        # The layer's governance mechanics are what these tests pin; the
+        # production default (suspension, 2026-09-02) is tested elsewhere.
+        soft_likelihood_policy="ACTIVE",
         compilation_at_utc="2026-08-09T19:00:00Z",
         trajectory_artifact=_promoted_artifact("AFTERNOON"),
         trajectory_artifact_by_local_time_bucket={
@@ -226,6 +232,9 @@ def test_a_bucket_absent_from_the_map_keeps_the_single_artifact() -> None:
         predecessor=_p0_root(),
         observations=_two_bucket_observations(),
         registry_rows=_REGISTRY,
+        # The layer's governance mechanics are what these tests pin; the
+        # production default (suspension, 2026-09-02) is tested elsewhere.
+        soft_likelihood_policy="ACTIVE",
         compilation_at_utc="2026-08-09T19:00:00Z",
         trajectory_artifact=_promoted_artifact("AFTERNOON"),
         trajectory_artifact_by_local_time_bucket={
@@ -236,6 +245,9 @@ def test_a_bucket_absent_from_the_map_keeps_the_single_artifact() -> None:
         predecessor=_p0_root(),
         observations=_two_bucket_observations(),
         registry_rows=_REGISTRY,
+        # The layer's governance mechanics are what these tests pin; the
+        # production default (suspension, 2026-09-02) is tested elsewhere.
+        soft_likelihood_policy="ACTIVE",
         compilation_at_utc="2026-08-09T19:00:00Z",
         trajectory_artifact=_promoted_artifact("AFTERNOON"),
     )

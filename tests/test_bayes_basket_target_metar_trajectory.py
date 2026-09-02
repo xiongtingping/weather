@@ -264,7 +264,10 @@ def _compile(
     root: ProbabilityEnvelope | None = None,
     as_of: str = "2026-07-29T06:30:00Z",
     prefix_is_current: bool = True,
+    soft_likelihood_policy: str | None = "ACTIVE",
 ) -> MetarTrajectoryUpdateProof:
+    # The layer's own mechanics are exercised with the policy ACTIVE; the
+    # production default (suspension, 2026-09-02) has its own tests below.
     return compile_metar_trajectory_update_proof(
         root or _root(),
         observations=observations,
@@ -274,6 +277,7 @@ def _compile(
         maturity_bin="D0",
         as_of_utc=as_of,
         prefix_is_current=prefix_is_current,
+        soft_likelihood_policy=soft_likelihood_policy,
     )
 
 
@@ -789,6 +793,7 @@ def test_zuuu_local_midnight_starts_new_day_hard_mask_from_valid_time() -> None:
             bucket_upper_bounds_c=upper_bounds,
             maturity_bin="D0",
             as_of_utc=as_of,
+            soft_likelihood_policy="ACTIVE",
         )
 
     at_midnight = compile_rows(
@@ -1135,3 +1140,130 @@ def test_a_bucket_is_dead_the_moment_the_running_high_reaches_its_upper() -> Non
     # high's own bucket ("35C", threshold 36.0) always survives, so a stricter
     # boundary cannot exhaust the support.
     assert boundary.hard_excluded_buckets == ("33C", "34C")
+
+
+def test_production_policy_suspends_the_soft_likelihood_and_says_so() -> None:
+    """The 2026-09-02 ruling: identity ratios, zero strength, declared.
+
+    Nothing about the artifact changes -- it is still resolved and named in
+    the proof, so the record shows what would have governed -- but the
+    posterior it produces is the root under the hard bound alone, and the
+    proof carries the policy so the served lineage and the execution gate can
+    read it rather than infer it from a zero.
+    """
+
+    from bayes_basket_target.metar_trajectory import (
+        SOFT_LIKELIHOOD_POLICY,
+        SOFT_LIKELIHOOD_POLICY_SUSPENDED,
+        SOFT_LIKELIHOOD_SUSPENDED_REASON,
+    )
+
+    assert SOFT_LIKELIHOOD_POLICY == SOFT_LIKELIHOOD_POLICY_SUSPENDED
+    observations = [
+        _observation("o1", sequence=1, observed="2026-07-29T04:00:00Z",
+                     temperature_c=30.0),
+        _observation("o2", sequence=2, observed="2026-07-29T05:00:00Z",
+                     temperature_c=33.0),
+    ]
+    active = _compile(observations, soft_likelihood_policy="ACTIVE")
+    default = _compile(observations, soft_likelihood_policy=None)
+    assert active.applied_strength > 0.0
+    assert set(active.likelihood_ratio_by_bucket.values()) != {1.0}
+    assert default.soft_likelihood_policy == SOFT_LIKELIHOOD_POLICY_SUSPENDED
+    assert default.applied_strength == 0.0
+    assert set(default.likelihood_ratio_by_bucket.values()) == {1.0}
+    assert SOFT_LIKELIHOOD_SUSPENDED_REASON in default.degradation_reasons
+    # The artifact is still the artifact: lineage is preserved, only the
+    # update is silenced.
+    assert default.artifact_id == active.artifact_id
+    assert default.activation_id == active.activation_id
+    assert default.hard_excluded_buckets == active.hard_excluded_buckets
+    assert (
+        default.conditional_path_state_sha256
+        == active.conditional_path_state_sha256
+    )
+    # The policy is part of the body, so the two proofs are different facts.
+    assert default.content_sha256 != active.content_sha256
+    assert default.to_dict()["soft_likelihood_policy"] == (
+        SOFT_LIKELIHOOD_POLICY_SUSPENDED
+    )
+    # Round trip and byte-stable replay under the recorded policy.
+    parsed = MetarTrajectoryUpdateProof.from_mapping(default.to_dict())
+    assert parsed.to_dict() == default.to_dict()
+    replayed = validate_metar_trajectory_update_proof(
+        default.to_dict(),
+        prediction_root=_root(),
+        observations=observations,
+        artifact=_artifact(),
+        bucket_centers_c=BUCKET_CENTERS,
+        bucket_upper_bounds_c=BUCKET_UPPER_BOUNDS,
+    )
+    assert replayed.content_sha256 == default.content_sha256
+
+
+def test_active_proofs_keep_their_canonical_form_and_replay_as_themselves() -> None:
+    """Absent means ACTIVE: proofs written before the field keep their hash,
+    and the validator recompiles a historical proof under its own policy
+    rather than under today's."""
+
+    observations = [
+        _observation("o1", sequence=1, observed="2026-07-29T04:00:00Z",
+                     temperature_c=30.0),
+        _observation("o2", sequence=2, observed="2026-07-29T05:00:00Z",
+                     temperature_c=33.0),
+    ]
+    active = _compile(observations, soft_likelihood_policy="ACTIVE")
+    body = active.to_dict()
+    assert "soft_likelihood_policy" not in body
+    parsed = MetarTrajectoryUpdateProof.from_mapping(body)
+    assert parsed.soft_likelihood_policy == "ACTIVE"
+    assert parsed.content_sha256 == active.content_sha256
+    # Production's default is now suspension; the validator must still find
+    # this ACTIVE proof byte-identical to itself.
+    replayed = validate_metar_trajectory_update_proof(
+        body,
+        prediction_root=_root(),
+        observations=observations,
+        artifact=_artifact(),
+        bucket_centers_c=BUCKET_CENTERS,
+        bucket_upper_bounds_c=BUCKET_UPPER_BOUNDS,
+    )
+    assert replayed.to_dict() == body
+
+
+def test_a_suspended_proof_cannot_smuggle_strength_or_a_live_ratio() -> None:
+    """The policy is a statement about the vectors, and the parser holds it
+    to that: a body that says suspended and still carries a non-identity
+    ratio, a strength, or no reason is refused, as is an unknown policy."""
+
+    from bayes_basket_target.contracts import content_sha256
+    from bayes_basket_target.metar_trajectory import (
+        SOFT_LIKELIHOOD_POLICY_SUSPENDED,
+        SOFT_LIKELIHOOD_SUSPENDED_REASON,
+    )
+
+    observations = [
+        _observation("o1", sequence=1, observed="2026-07-29T04:00:00Z",
+                     temperature_c=30.0),
+        _observation("o2", sequence=2, observed="2026-07-29T05:00:00Z",
+                     temperature_c=33.0),
+    ]
+    active = _compile(observations, soft_likelihood_policy="ACTIVE").to_dict(
+        include_content_sha256=False
+    )
+    active.pop("proof_id")
+    forged = {**active, "soft_likelihood_policy": SOFT_LIKELIHOOD_POLICY_SUSPENDED}
+    digest = content_sha256(forged)
+    forged = {"proof_id": "metar-proof-" + digest[:32], **forged}
+    forged["content_sha256"] = content_sha256(forged)
+    with pytest.raises(
+        ContractError,
+        match="metar_trajectory_soft_likelihood_suspension_violated",
+    ):
+        MetarTrajectoryUpdateProof.from_mapping(forged)
+    with pytest.raises(
+        ContractError, match="metar_trajectory_soft_likelihood_policy_invalid"
+    ):
+        _compile(observations, soft_likelihood_policy="PAUSED")
+    suspended = _compile(observations, soft_likelihood_policy=None)
+    assert SOFT_LIKELIHOOD_SUSPENDED_REASON in suspended.degradation_reasons

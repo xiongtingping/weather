@@ -4842,7 +4842,16 @@ def test_resident_p1_ingress_is_append_only_and_idempotent(
         assert proof_row is not None
         assert proof_row[0] == formal_artifact.artifact_id
         assert proof_row[1] == formal_artifact.activation_id
-        assert json.loads(str(proof_row[2]))["applied_strength"] > 0.0
+        # The formal artifact resolved and is named in the proof; under the
+        # 2026-09-02 suspension it governs nothing, and the proof says so.
+        written_proof = json.loads(str(proof_row[2]))
+        assert written_proof["applied_strength"] == 0.0
+        assert written_proof["soft_likelihood_policy"] == (
+            "SUSPENDED_BY_RULING_2026_09_02"
+        )
+        assert "SOFT_LIKELIHOOD_SUSPENDED_BY_RULING" in written_proof[
+            "degradation_reasons"
+        ]
         assert commit_conn.execute(
             "SELECT COUNT(*) FROM basket_probability_update_proof "
             "WHERE proof_kind='METAR_TRAJECTORY_UPDATE'"

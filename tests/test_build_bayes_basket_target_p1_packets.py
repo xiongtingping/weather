@@ -178,7 +178,7 @@ def test_only_new_high_updates_p1_while_full_prefix_drives_likelihood() -> None:
     assert final["probabilities"]["76-77°F"] == 0.0
     assert final["probabilities"]["78°F or higher"] == 1.0
     assert final["lineage"]["observation_likelihood_mode"] == (
-        "FULL_PREFIX_ROOT_RECOMPUTE_SOFT_LR_PLUS_HARD_EXCLUSION_V2"
+        "HARD_EXCLUSION_PLUS_CLOCK_CEILING_SOFT_LR_SUSPENDED_V6"
     )
     assert final["lineage"]["reported_high_bucket"] == "78°F or higher"
     assert final["lineage"]["reported_high_ordinal"] == "2"

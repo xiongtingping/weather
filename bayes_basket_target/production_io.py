@@ -27,6 +27,10 @@ from .cash_phase_authority import (
     load_cash_phase_authority_manifest,
     resolve_active_cash_phase_policy,
 )
+from .metar_trajectory import (
+    P1_SOFT_LR_SUSPENDED_LIKELIHOOD_MODE,
+    SOFT_LIKELIHOOD_POLICY_SUSPENDED,
+)
 from .contracts import (
     POLICY_MATURITY_BINS,
     CalibrationActivation,
@@ -1255,6 +1259,137 @@ def target_atomic_facts_from_cycle(compiled_cycle: Mapping[str, Any]) -> dict[st
     }
 
 
+
+def assert_p1_execution_evidence(lineage: Mapping[str, Any]) -> None:
+    """Refuse a P1 that does not carry the evidence its mode claims.
+
+    Two regimes.  Under the 2026-09-02 suspension the soft likelihood is
+    silent by policy and the evidence is the observation hard bound plus the
+    clock ceiling having reached the served distribution.  Under the earlier
+    modes the evidence is a resolved, promoted artifact applied at a strength
+    in (0, 1] with a content-addressed proof.  Module-level so the rule can be
+    tested against a lineage directly; the stage-zero anchor calls it on every
+    P1 cycle.
+    """
+
+    trajectory_lineage = lineage
+    activation_id = str(
+        trajectory_lineage.get("metar_trajectory_activation_id") or ""
+    ).strip()
+    artifact_id = str(
+        trajectory_lineage.get("metar_trajectory_artifact_id") or ""
+    ).strip()
+    likelihood_mode = str(
+        trajectory_lineage.get("observation_likelihood_mode") or ""
+    ).strip()
+    try:
+        applied_strength = float(
+            trajectory_lineage.get("metar_trajectory_applied_strength")
+        )
+    except (TypeError, ValueError):
+        applied_strength = 0.0
+    proof_sha = str(
+        trajectory_lineage.get("metar_trajectory_proof_sha256") or ""
+    ).strip().lower()
+    path_state_sha = str(
+        trajectory_lineage.get("metar_conditional_path_state_sha256")
+        or ""
+    ).strip().lower()
+    future_curve_sha = str(
+        trajectory_lineage.get("metar_future_temperature_curve_sha256")
+        or ""
+    ).strip().lower()
+    soft_policy = str(
+        trajectory_lineage.get("metar_trajectory_soft_likelihood_policy")
+        or ""
+    ).strip()
+    if likelihood_mode == P1_SOFT_LR_SUSPENDED_LIKELIHOOD_MODE:
+        # Under the 2026-09-02 ruling the soft likelihood is silent by
+        # policy, so "P1 carries its evidence" means the two layers that
+        # measured as the whole of P1's skill reached the served
+        # distribution: the observation hard bound (its fact keys are
+        # required above, its proof is content-addressed here) and the
+        # clock ceiling, whose receipt the materializer writes whenever
+        # the layer was handed to it.  The suspension has to be declared
+        # by the proof, not inferred from a zero: a zero strength with any
+        # other story is the old failure, an artifact that never
+        # resolved, and it stays refused.  A receipt saying the ceiling
+        # declined for this step (too early in the day, a degenerate
+        # split) is the layer speaking; a receipt saying the layer was
+        # absent (disabled, no artifact, no clock) is not.
+        ceiling_present = False
+        try:
+            receipt = json.loads(
+                str(trajectory_lineage.get("metar_ceiling_json") or "")
+            )
+        except (TypeError, ValueError):
+            receipt = None
+        if isinstance(receipt, dict) and (
+            receipt.get("schema") == "metar_ceiling_receipt_v1"
+        ):
+            applied = str(receipt.get("metar_ceiling_applied") or "")
+            skip_reason = str(receipt.get("metar_ceiling_skip_reason") or "")
+            ceiling_present = applied == "true" or (
+                applied == "false"
+                and skip_reason
+                not in {"", "DISABLED", "NO_ARTIFACT", "CLOCK_UNAVAILABLE"}
+            )
+        if (
+            soft_policy != SOFT_LIKELIHOOD_POLICY_SUSPENDED
+            or applied_strength != 0.0
+            or len(proof_sha) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in proof_sha
+            )
+            or not ceiling_present
+        ):
+            raise ContractError(
+                "stage_zero_execution_p1_hard_bound_ceiling_evidence_missing"
+            )
+    # The physical method reads no root curve by construction, so the
+    # curve sha it must carry is exactly "none".  Demanding a 64-hex
+    # digest there would readmit the coupling the method exists to
+    # exclude; demanding "NONE" from the curve method would admit a P1
+    # whose evidence lineage lost its curve.
+    elif (
+        not activation_id
+        or activation_id.upper() == "NONE"
+        or not artifact_id
+        or likelihood_mode
+        not in {
+            "CONDITIONAL_HOURLY_FUTURE_PATH_SOFT_LR_PLUS_HARD_EXCLUSION_V4",
+            "PHYSICAL_ABSOLUTE_TMAX_SOFT_LR_PLUS_HARD_EXCLUSION_V5",
+        }
+        or not 0.0 < applied_strength <= 1.0
+        or len(proof_sha) != 64
+        or any(character not in "0123456789abcdef" for character in proof_sha)
+        or len(path_state_sha) != 64
+        or any(
+            character not in "0123456789abcdef"
+            for character in path_state_sha
+        )
+        or (
+            likelihood_mode
+            == "PHYSICAL_ABSOLUTE_TMAX_SOFT_LR_PLUS_HARD_EXCLUSION_V5"
+            and future_curve_sha != "none"
+        )
+        or (
+            likelihood_mode
+            == "CONDITIONAL_HOURLY_FUTURE_PATH_SOFT_LR_PLUS_HARD_EXCLUSION_V4"
+            and (
+                len(future_curve_sha) != 64
+                or any(
+                    character not in "0123456789abcdef"
+                    for character in future_curve_sha
+                )
+            )
+        )
+    ):
+        raise ContractError(
+            "stage_zero_execution_p1_strong_likelihood_missing"
+        )
+
 def target_stage_zero_execution_anchor_from_cycle(
     compiled_cycle: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -1323,75 +1458,7 @@ def target_stage_zero_execution_anchor_from_cycle(
     ):
         raise ContractError("stage_zero_execution_p1_canonical_facts_missing")
     if probability.stage == "P1":
-        trajectory_lineage = probability.lineage
-        activation_id = str(
-            trajectory_lineage.get("metar_trajectory_activation_id") or ""
-        ).strip()
-        artifact_id = str(
-            trajectory_lineage.get("metar_trajectory_artifact_id") or ""
-        ).strip()
-        likelihood_mode = str(
-            trajectory_lineage.get("observation_likelihood_mode") or ""
-        ).strip()
-        try:
-            applied_strength = float(
-                trajectory_lineage.get("metar_trajectory_applied_strength")
-            )
-        except (TypeError, ValueError):
-            applied_strength = 0.0
-        proof_sha = str(
-            trajectory_lineage.get("metar_trajectory_proof_sha256") or ""
-        ).strip().lower()
-        path_state_sha = str(
-            trajectory_lineage.get("metar_conditional_path_state_sha256")
-            or ""
-        ).strip().lower()
-        future_curve_sha = str(
-            trajectory_lineage.get("metar_future_temperature_curve_sha256")
-            or ""
-        ).strip().lower()
-        # The physical method reads no root curve by construction, so the
-        # curve sha it must carry is exactly "none".  Demanding a 64-hex
-        # digest there would readmit the coupling the method exists to
-        # exclude; demanding "NONE" from the curve method would admit a P1
-        # whose evidence lineage lost its curve.
-        if (
-            not activation_id
-            or activation_id.upper() == "NONE"
-            or not artifact_id
-            or likelihood_mode
-            not in {
-                "CONDITIONAL_HOURLY_FUTURE_PATH_SOFT_LR_PLUS_HARD_EXCLUSION_V4",
-                "PHYSICAL_ABSOLUTE_TMAX_SOFT_LR_PLUS_HARD_EXCLUSION_V5",
-            }
-            or not 0.0 < applied_strength <= 1.0
-            or len(proof_sha) != 64
-            or any(character not in "0123456789abcdef" for character in proof_sha)
-            or len(path_state_sha) != 64
-            or any(
-                character not in "0123456789abcdef"
-                for character in path_state_sha
-            )
-            or (
-                likelihood_mode
-                == "PHYSICAL_ABSOLUTE_TMAX_SOFT_LR_PLUS_HARD_EXCLUSION_V5"
-                and future_curve_sha != "none"
-            )
-            or (
-                likelihood_mode
-                == "CONDITIONAL_HOURLY_FUTURE_PATH_SOFT_LR_PLUS_HARD_EXCLUSION_V4"
-                and (
-                    len(future_curve_sha) != 64
-                    or any(
-                        character not in "0123456789abcdef"
-                        for character in future_curve_sha
-                    )
-                )
-            )
-        ):
-            raise ContractError(
-                "stage_zero_execution_p1_strong_likelihood_missing"
-            )
+        assert_p1_execution_evidence(probability.lineage)
 
     evaluation_at_utc, evaluation_at = _normalized_utc(
         "stage_zero_execution_evaluation_at_utc",

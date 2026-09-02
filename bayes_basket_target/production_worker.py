@@ -110,6 +110,7 @@ from .materialization import materialize_p0m, materialize_p0m_observed
 from .probability_bridge import materialize_probability_bridge
 from .metar_ceiling import load_artifact as load_metar_ceiling_artifact
 from .metar_trajectory import (
+    SOFT_LIKELIHOOD_POLICY,
     METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
     MetarTrajectoryLikelihoodArtifact,
     hard_bound_excluded_buckets,
@@ -10701,6 +10702,7 @@ class TargetProductionWorker:
                         "observation_count": len(observations),
                         "p1_update_count": 0,
                         "trajectory_mode": p1_trajectory_mode,
+                        "soft_likelihood_policy": SOFT_LIKELIHOOD_POLICY,
                     })
                     continue
                 final_envelope = ProbabilityEnvelope.from_mapping(
@@ -10784,6 +10786,7 @@ class TargetProductionWorker:
                     "observation_count": len(observations),
                     "p1_update_count": write_count,
                     "trajectory_mode": p1_trajectory_mode,
+                    "soft_likelihood_policy": SOFT_LIKELIHOOD_POLICY,
                     # Which local-time buckets had an artifact to govern their
                     # steps.  ``trajectory_mode`` is the wall-clock bucket's
                     # answer alone and has been misread as the layer's coverage
