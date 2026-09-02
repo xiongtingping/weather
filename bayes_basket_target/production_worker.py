@@ -265,7 +265,12 @@ SCHEMA = "bayes_basket_target_production_worker_v2"
 # live_intent_v1, the migration widened the intents CHECK, minted the live
 # activation and runtime, and raised the capital policy's three boundaries.
 # What still stops an order from reaching the exchange is data/live_paused.flag,
-# which is the operator's and no code's.
+# which is the operator's and no code's -- but it is no longer a second thing
+# the operator has to remember.  Since 2026-09-02 the dashboard LIVE switch
+# owns it in both directions (scripts/live_control_server.set_live): arming
+# lifts the flag after writing the intent, disarming places it before, so
+# every intermediate state is a stopped one and the switch means what it
+# says.  A hand `touch` is still an immediate e-stop for every lane.
 PRODUCTION_EXECUTION_MODE = "production_live"
 NO_LIVE_EXECUTION_MODE = "production_no_live"
 MAX_PREPARED_CYCLES_PER_SCOPE = 1

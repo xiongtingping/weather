@@ -287,3 +287,53 @@ def test_board_real_gaps_with_dead_engines_is_red(
     )
     assert result["health"] == "red"
     assert "两台重试引擎" in result["note"]
+
+
+def test_board_treats_a_just_restarted_resident_as_a_fresh_engine(
+    tmp_path, monkeypatch
+) -> None:
+    """The deploy window: no receipt yet, because no cycle has finished.
+
+    The status document is rebuilt at boot and the production block lands
+    in it only when the first cycle completes, so for the first ten-odd
+    minutes after a restart the cycle engine has nothing to show.  On
+    2026-09-02 20:30 the board rendered five minutes after a restart, read
+    no receipt, and graded a complete book amber on the sweep's clock
+    alone.  A resident that has just started is fresh as of its start.
+    """
+
+    from datetime import datetime, timedelta, timezone
+    boot = datetime.now(timezone.utc) - timedelta(minutes=5)
+    result = _board(
+        tmp_path, monkeypatch,
+        sweep={"swept_at_utc": "2026-08-29T22:01:24Z", "backlog_after": 0},
+        worker_status={
+            "started_at": boot.isoformat().replace("+00:00", "Z"),
+            # No production block at all: the first cycle is still running.
+        },
+    )
+    assert result["health"] == "green"
+    assert result["cycle_age_hours"] is None
+    assert result["resident_boot_age_hours"] == pytest.approx(
+        5 / 60, abs=0.02
+    )
+
+
+def test_board_does_not_let_an_old_boot_stand_in_for_a_receipt(
+    tmp_path, monkeypatch
+) -> None:
+    """A resident up for hours with no receipt is an engine that stopped.
+
+    The boot clock is only a stand-in while the first cycle is pending; it
+    ages like any other clock, so a resident that never completes a cycle
+    turns amber on its own once the sweep is stale too.
+    """
+
+    result = _board(
+        tmp_path, monkeypatch,
+        sweep={"swept_at_utc": "2026-08-29T22:01:24Z", "backlog_after": 0},
+        worker_status={"started_at": "2026-08-29T20:00:00Z", "production": {}},
+    )
+    assert result["health"] == "amber"
+    assert "覆盖完整" in result["note"]
+    assert "首轮未到" in result["note"]

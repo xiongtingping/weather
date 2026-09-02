@@ -1842,28 +1842,49 @@ def collect_truth_materialization(conn: sqlite3.Connection) -> dict[str, Any]:
     # complete book is a scheduling observation, not a data emergency --
     # that conflation cried wolf on every deploy day.
     worker_truth: dict[str, Any] = {}
+    resident_started_at: str | None = None
     try:
+        status_document = json.loads(STATUS_JSON.read_text())
         worker_truth = (
-            json.loads(STATUS_JSON.read_text())
-            .get("production", {})
+            status_document.get("production", {})
             .get("truth_materialization") or {}
         )
+        resident_started_at = status_document.get("started_at") or None
     except (OSError, ValueError, AttributeError):
         worker_truth = {}
     cycle_age = _age_hours(worker_truth.get("checked_at_utc"))
+    # The status document is rebuilt from nothing at every boot and the
+    # production block lands in it only when the first cycle completes, so
+    # for the ten-odd minutes after a deploy the cycle engine has no
+    # receipt to show.  That is not an engine that stopped: it is one that
+    # has not yet come round once.  Measured 2026-09-02 20:30: the board
+    # rendered five minutes after a restart, read no receipt, and graded a
+    # complete book amber on the sweep's clock alone -- the same false
+    # alarm this section was rewritten on 2026-08-30 to stop crying.  A
+    # just-started resident is fresh as of its start; if it never completes
+    # a cycle, that clock ages into a real alarm on its own.
+    boot_age = (
+        _age_hours(resident_started_at) if cycle_age is None else None
+    )
     fresh_age = min(
-        (value for value in (age, cycle_age) if value is not None),
+        (
+            value for value in (age, cycle_age, boot_age)
+            if value is not None
+        ),
         default=None,
     )
-    engines = "；".join(
-        part for part in (
-            f"清扫 {age:.1f}h 前" if age is not None else "清扫从未跑过",
-            (
-                f"周期增量 {cycle_age:.1f}h 前"
-                if cycle_age is not None else "周期增量还没有回执"
-            ),
+    if cycle_age is not None:
+        cycle_engine = f"周期增量 {cycle_age:.1f}h 前"
+    elif boot_age is not None:
+        cycle_engine = (
+            f"周期增量：常驻 {boot_age * 60:.0f} 分钟前重启，首轮未到"
         )
-    )
+    else:
+        cycle_engine = "周期增量还没有回执"
+    engines = "；".join((
+        f"清扫 {age:.1f}h 前" if age is not None else "清扫从未跑过",
+        cycle_engine,
+    ))
     if outstanding and (fresh_age is None or fresh_age > 3):
         health, note = "red", (
             f"{outstanding} 个已结算站日缺真值，且两台重试引擎都停了"
@@ -1887,6 +1908,8 @@ def collect_truth_materialization(conn: sqlite3.Connection) -> dict[str, Any]:
         "health": health,
         "note": note,
         "sweep_age_hours": age,
+        "cycle_age_hours": cycle_age,
+        "resident_boot_age_hours": boot_age,
         "outstanding": outstanding,
         "still_open": still_open,
         "refused": refused,
@@ -9119,9 +9142,13 @@ function lcArmEffect(L){
   const C = L.contracts || {};
   const compiled = L.execution_mode === "production_live";
   if(compiled && C.live_submit_authorized === true){
-    return L.submission_paused
-      ? "举旗后，移除 data/live_paused.flag 网关就会用真实资金下单"
-      : "举旗即刻开始用真实资金下单 —— 三道闸都已放行";
+    // No second step any more.  Until 2026-09-02 arming left
+    // data/live_paused.flag in place and this string had to tell the
+    // operator to go delete a file -- a switch labelled ARMED over a
+    // gateway that refused every order.  The switch now lifts the flag on
+    // the way up and places it on the way down, so both branches of this
+    // sentence became the same sentence.
+    return "举旗即刻开始用真实资金下单 —— 开关同时撤掉网关暂停旗";
   }
   return compiled
     ? "举旗：代码已 live，但合同未授权发单，现在铸不出 live 行"
@@ -9476,6 +9503,15 @@ function liveReadiness(){
     CT.minted_at_utc?`（铸于 ${h(CT.minted_at_utc)}）`:""}——
   <b>按执行模式选文件，和生产同一条规则</b>。这里曾经不论模式都读 no-live 那份，
   于是在 go-live 迁移之后，页面对着一个合同说 true 的系统报 false。</p>
+  <p class="sub"><b>网关暂停旗归这个开关管（操作者裁定 2026-09-02）。</b>
+  举旗时自动撤掉 <span class="mono">data/live_paused.flag</span>，落旗时先把它
+  放回去再落旗——<b>没有第二个要记得的文件</b>。在此之前举旗只写意向旗，
+  开关写着 ARMED 而网关逐笔拒单，页面只能提示"再去删一个文件"。
+  这个文件仍然是随时可用的急停：手动 <span class="mono">touch</span> 它，
+  所有车道立刻停。当前
+  ${L.submission_paused
+    ? `<b style="color:var(--red)">暂停旗在位</b>——它是被手动放上去的（或某次举旗撤旗失败），网关不发单`
+    : "暂停旗不在位"}。</p>
   <div class="card">
     <div class="grid g2">
       <div><div class="muted">凯利系数 portfolio_risk_fraction</div>
@@ -9521,7 +9557,15 @@ function liveReadiness(){
 function lcApi(path, body){
   return fetch("http://127.0.0.1:8788"+path, body?{
     method:"POST", headers:{"Content-Type":"application/json"},
-    body:JSON.stringify(body)}:{}).then(r=>r.json());
+    body:JSON.stringify(body)}:{}).then(r=>r.json()).then(j=>{
+      // A refused or half-applied request answers with {error}.  Returning
+      // it as if it were state let lcRender die on a TypeError whose alert
+      // named a missing property instead of the server's reason -- which
+      // matters most for the one case that can now half-apply: intent
+      // armed, gateway pause flag not lifted.
+      if(j && j.error) throw new Error(j.error);
+      return j;
+    });
 }
 function lcRender(s){
   if(!s) return;
@@ -9545,7 +9589,7 @@ function lcRender(s){
     // the flag: left alone it would keep offering to arm a lane that is
     // already armed.
     sw.title = s.live.enabled
-      ? "点击落旗，即刻停止发单"
+      ? "点击落旗：立刻落下网关暂停旗并停止发单"
       : lcArmEffect(D.live_readiness || {});
   }
   // The banner switch carries the same state; paint it red only when the
@@ -9559,11 +9603,19 @@ function lcRender(s){
     const C = L.contracts || {};
     const compiled = L.execution_mode === "production_live";
     const authorized = C.live_submit_authorized === true;
+    // The pause flag is read from the control server's answer, not from
+    // L: the page snapshot was taken at render time and the switch moves
+    // the flag on this very click, so L would keep reporting the state the
+    // click just left.  Since the switch owns the flag, an armed-and-paused
+    // reading no longer means "now go delete a file" -- it means the two
+    // disagree, which only a hand `touch` or a failed lift can cause, and
+    // the note says so instead of describing a step that no longer exists.
+    const paused = s.live.submission_paused === true;
     headNote.textContent = !s.live.enabled ? "控制服务已连接"
-      : compiled && authorized && L.submission_paused === false
+      : compiled && authorized && !paused
         ? "实盘中 · 网关正在下单"
         : compiled && authorized
-          ? "合同已 live · 暂停旗在位，网关不发单"
+          ? "已举旗但暂停旗仍在位 —— 有人手动放了它，网关不发单"
           : compiled
             ? "旗已举起 · 代码 live，合同未授权发单"
             : "旗已举起 · 代码仍编译为 no-live";

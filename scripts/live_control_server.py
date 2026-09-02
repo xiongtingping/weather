@@ -6,11 +6,18 @@ move exactly one knob each, atomically (tmp + rename), inside hard bounds,
 and append every change to an audit trail.  The page works without this
 server -- controls simply render disabled with the command to start it.
 
-What the live toggle does, stated here so nobody reads more into it: the
-worker is contract-locked to production_no_live three times over (mode
-string, activation file, runtime config), so arming intent places no order
-and cannot.  It records that the operator asked, and the go-live migration
-that mints the live contract is required to refuse while this flag is off.
+What the live toggle does, stated here because it changed and the old
+sentence is quoted all over this repo: until 2026-08-30 the worker was
+contract-locked to production_no_live three times over, so arming placed no
+order and could not.  The go-live migration removed that lock.  Arming now
+starts live trading.
+
+So the switch owns both operator gates rather than one of them.  Arming
+writes the intent flag and lifts data/live_paused.flag; disarming places the
+pause flag back before it records the intent.  One switch, both directions
+(operator ruling, 2026-09-02): a go that leaves a second file to remember is
+not a go, and the reader of a switch labelled ARMED is entitled to believe
+money can move.
 
 POST /api/kelly   {"value": 0.35}          -> portfolio_risk_fraction
 POST /api/budget  {"value": 514.29}        -> target_remaining_budget_usdc
@@ -41,6 +48,12 @@ STATION_CAP_PATH = ROOT / "config/trading/station_cap_v1.json"
 INTENT_PATH = ROOT / "config/trading/live_intent_v1.json"
 EXCLUSION_PATH = ROOT / "config/trading/live_station_exclusions_v1.json"
 AUDIT_PATH = ROOT / "data" / "live_control_audit.jsonl"
+# The gateway's admission gate.  clob_order_service.mjs checks this file at
+# every place-order, before any idempotency write, signing or exchange POST,
+# and it stops every lane without exception.  The switch below owns it; the
+# file stays the mechanism so a manual `touch` is still a working e-stop and
+# so the install and cutover scripts that place it keep working unchanged.
+PAUSE_FLAG_PATH = ROOT / "data" / "live_paused.flag"
 PORT = 8788
 
 KELLY_BOUNDS = (0.05, 0.50)
@@ -48,6 +61,7 @@ KELLY_STEP_MAX = 0.50
 BUDGET_BOUNDS = (0.0, 2000.0)
 STATION_CAP_BOUNDS = (1.0, 30.0)
 STATION_RE = re.compile(r"^[A-Z0-9]{3,6}$")
+_EXECUTION_MODE: str | None = None
 
 
 def _now() -> str:
@@ -74,6 +88,29 @@ def _write_atomic(path: Path, payload: dict) -> None:
             os.unlink(tmp)
 
 
+def _pause_present() -> bool:
+    return PAUSE_FLAG_PATH.is_file()
+
+
+def _place_pause() -> bool:
+    """Stop the gateway.  Returns whether this call is what stopped it."""
+
+    if _pause_present():
+        return False
+    PAUSE_FLAG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PAUSE_FLAG_PATH.touch()
+    return True
+
+
+def _lift_pause() -> bool:
+    """Let the gateway admit orders.  Returns whether a flag was removed."""
+
+    if not _pause_present():
+        return False
+    PAUSE_FLAG_PATH.unlink()
+    return True
+
+
 def _audit(entry: dict) -> None:
     AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
     with AUDIT_PATH.open("a", encoding="utf-8") as fh:
@@ -82,11 +119,61 @@ def _audit(entry: dict) -> None:
         ) + "\n")
 
 
+def _execution_mode() -> str:
+    """The mode the production lane is compiled for, cached for the process.
+
+    Read from the compiled constant rather than from a config file: the
+    files describe two contracts that both exist on disk, and which one is
+    in force is a property of the code.  Import failure answers "unknown"
+    and the caller falls back to the no-live file -- the conservative
+    direction, and the payload names the file it read so a reader can tell
+    the fallback from the answer.
+    """
+
+    global _EXECUTION_MODE
+    if _EXECUTION_MODE is None:
+        try:
+            import sys  # noqa: PLC0415
+
+            if str(ROOT) not in sys.path:
+                sys.path.insert(0, str(ROOT))
+            from bayes_basket_target.production import (  # noqa: PLC0415
+                PRODUCTION_EXECUTION_MODE,
+            )
+            _EXECUTION_MODE = str(PRODUCTION_EXECUTION_MODE)
+        except Exception:  # noqa: BLE001
+            _EXECUTION_MODE = "unknown"
+    return _EXECUTION_MODE
+
+
 def state() -> dict:
     policy = _read(POLICY_PATH)
     runtime = _read(RUNTIME_PATH)
     intent = _read(INTENT_PATH)
+    paused = _pause_present()
     _scope = live_stations()
+    # The contract the running mode selects.  This block read the no-live
+    # file unconditionally, so after the go-live migration minted the live
+    # twin it reported live_submit_authorized=false about a system whose
+    # contract said true -- and the arming hover text on the board is
+    # computed from exactly these three fields.  The two files carry the
+    # same budget, which is why the same mistake went unnoticed elsewhere
+    # for a week; naming the file read is the part that stops it repeating.
+    mode = _execution_mode()
+    contract_path = (
+        LIVE_RUNTIME_PATH
+        if mode == "production_live" and LIVE_RUNTIME_PATH.is_file()
+        else RUNTIME_PATH
+    )
+    contract = _read(contract_path)
+    contracts = {
+        "execution_mode": mode,
+        "runtime_file": contract_path.name,
+        "live_submit_authorized": contract.get("live_submit_authorized"),
+        "places_orders": contract.get("places_orders"),
+        "calls_order_gateway": contract.get("calls_order_gateway"),
+        "policy_authority_scope": policy.get("authority_scope"),
+    }
     return {
         "schema": "live_control_state_v1",
         "at_utc": _now(),
@@ -96,9 +183,14 @@ def state() -> dict:
             "step": 0.05,
         },
         "budget": {
-            "target_remaining_budget_usdc": runtime[
-                "target_remaining_budget_usdc"
-            ],
+            # From the same mode-selected file as the contract facts above.
+            # set_budget writes both twins, so they normally agree; when a
+            # mirror write has failed, the number production will actually
+            # spend is the one to show.
+            "target_remaining_budget_usdc": contract.get(
+                "target_remaining_budget_usdc",
+                runtime["target_remaining_budget_usdc"],
+            ),
             "bounds": BUDGET_BOUNDS,
             "step": 50.0,
         },
@@ -115,6 +207,17 @@ def state() -> dict:
             "enabled": intent["live_enabled"],
             "armed_by": intent.get("armed_by"),
             "armed_at_utc": intent.get("armed_at_utc"),
+            # Both halves of the one switch.  They can still disagree --
+            # `touch data/live_paused.flag` is a working e-stop and the
+            # gateway installer places one -- so the board gets the pair and
+            # the derived answer, never one of the two on its own.  A reader
+            # asking "is it sending" gets that question answered here.
+            "submission_paused": paused,
+            "submitting": bool(
+                intent["live_enabled"]
+                and not paused
+                and contracts["live_submit_authorized"] is True
+            ),
             # The derived set, not the stored one: a reader asking what
             # trades has to get the answer the system would act on, and in
             # all_except_barred mode the stored list is not that answer.
@@ -130,12 +233,7 @@ def state() -> dict:
             "minimum_settlements_to_qualify": _scope["minimum_settlements"],
             "pinned_allowlist": intent.get("station_allowlist") or [],
         },
-        "contracts": {
-            "execution_mode": runtime.get("execution_mode"),
-            "live_submit_authorized": runtime.get("live_submit_authorized"),
-            "places_orders": runtime.get("places_orders"),
-            "policy_authority_scope": policy.get("authority_scope"),
-        },
+        "contracts": contracts,
     }
 
 
@@ -211,19 +309,85 @@ def set_station_cap(value: float) -> dict:
 
 
 def set_live(enabled: bool, confirm: str, by: str) -> dict:
+    """Move both operator gates at once, in the order that cannot leak.
+
+    Two gates stop a live order and both are the operator's: the intent flag
+    this file writes, and data/live_paused.flag, which the gateway reads at
+    every place-order.  Until 2026-09-02 the switch moved only the first, so
+    ARMED meant "armed, and now go delete a file" -- and the reverse asymmetry
+    was worse, because a disarm left the gateway open and relied on the worker
+    honouring the flag.  Operator ruling: the switch is the whole control.
+
+    The order is the safety property, not an implementation detail.
+
+    * Arming writes the intent first, then lifts the pause.  Between the two
+      the system is armed-and-paused, which is stopped.
+    * Disarming places the pause first, then writes the intent.  Between the
+      two the system is paused-and-armed, which is also stopped.
+
+    Either way the intermediate state is a stopped one, so a crash between
+    the two writes cannot leave a gateway that sends without an operator who
+    said so.  Lifting the pause is the last thing that happens on the way up
+    and the first on the way down.
+
+    The pause flag stays a real file, and the e-stop it has always been: a
+    hand `touch` still stops every lane instantly.  What changes is that
+    nobody has to remember it to go live -- and if the two ever disagree,
+    state() reports both and the board draws the disagreement rather than
+    picking one to believe.
+    """
+
     if enabled and confirm != "LIVE":
         raise ValueError("arming live intent requires confirm='LIVE'")
     intent = _read(INTENT_PATH)
     before = bool(intent["live_enabled"])
+    paused_before = _pause_present()
+
+    moved = False
+    flag_error = ""
+
+    if not enabled:
+        # Stop first, record second.  A failure here does not abandon the
+        # disarm: the intent flag still has to go down, because the worker
+        # reads it and a half-done stop must end on the stopping side.
+        try:
+            moved = _place_pause()
+        except OSError as exc:
+            flag_error = f"{type(exc).__name__}: {exc}"
+
     intent["live_enabled"] = bool(enabled)
     intent["armed_by"] = str(by or "dashboard") if enabled else None
     intent["armed_at_utc"] = _now() if enabled else None
     intent["updated_at_utc"] = _now()
     _write_atomic(INTENT_PATH, intent)
+
+    if enabled:
+        try:
+            moved = _lift_pause()
+        except OSError as exc:
+            # Armed but still paused: the old two-key state, which is
+            # stopped.  Reported rather than swallowed -- a switch reading
+            # ARMED while a flag it could not remove still stops every
+            # order is the exact lie this change exists to end, so it must
+            # not return a success.
+            flag_error = f"{type(exc).__name__}: {exc}"
+
     _audit({
         "knob": "live_enabled", "before": before,
         "after": intent["live_enabled"], "by": intent["armed_by"],
+        "pause_flag_before": paused_before,
+        "pause_flag_after": _pause_present(),
+        "pause_flag_moved": bool(moved),
+        **({"pause_flag_error": flag_error} if flag_error else {}),
     })
+    if flag_error:
+        raise RuntimeError((
+            "intent armed but the gateway pause flag could not be lifted, "
+            "so nothing will be sent: "
+            if enabled else
+            "intent lowered but the gateway pause flag could not be placed, "
+            "so only the worker-side stop is in force: "
+        ) + flag_error)
     return state()
 
 
@@ -511,7 +675,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.path.rstrip("/") == "/api/kelly":
                 out = set_kelly(float(body["value"]))
             elif self.path.rstrip("/") == "/api/station-cap":
-                result = set_station_cap(float(payload["value"]))
+                out = set_station_cap(float(body["value"]))
             elif self.path.rstrip("/") == "/api/budget":
                 out = set_budget(float(body["value"]))
             elif self.path.rstrip("/") == "/api/live":
@@ -534,6 +698,12 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, out)
         except (KeyError, ValueError, TypeError, json.JSONDecodeError) as exc:
             self._send(400, {"error": str(exc)})
+        except RuntimeError as exc:
+            # A gate that half moved.  500, not 400: the caller's request was
+            # well formed and part of it was carried out, and the message
+            # says which part, so the operator is not left believing the
+            # switch is where the label says it is.
+            self._send(500, {"error": str(exc), "state": state()})
 
     def log_message(self, *_args) -> None:
         return
