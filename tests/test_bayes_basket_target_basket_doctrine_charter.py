@@ -1156,6 +1156,54 @@ def test_clause_48_listing_window_opens_positions() -> None:
     )
 
 
+def test_clause_63_value_clamp_has_no_effect_on_the_taker_path() -> None:
+    """The maker-era value clamp is dead under charter 65 (taker is law).
+
+    2026-09-03 audit: 133 missing legs after the live flag was armed sat on
+    a price/claim boundary near 0.5 and were misattributed to
+    MAKER_HEDGE_VALUE_LAMBDA=0.53.  The clamp is never read on the taker
+    candidate path -- the purchase ladder returns the official ask depth
+    before consulting it -- and the boundary belongs to charter 68's
+    effective-edge deflation.  Pin both halves so the next reader does not
+    repeat the misattribution.
+    """
+
+    clause = _clause(63)
+    assert "本钳自第 65 条起在生产上无效力" in clause
+
+    from bayes_basket_target import delta_v2_runtime as runtime
+
+    assert runtime.EXECUTION_MODE == "taker"
+    assert runtime.TARGET_PRICING_BASIS == "ask_depth"
+
+    class _Row:
+        ask_available = True
+        ask_price = 0.42
+        bid_price = 0.40
+        price_tick_size = 0.001
+        ask_levels = (runtime._Level(0.42, 5.0), runtime._Level(0.43, 321.0))
+
+    # A clamp far below the market must not touch the ladder the taker
+    # path prices against: the ask depth comes back untouched, and the
+    # basis names it.
+    levels, price, basis = runtime._lane_purchase_levels(
+        _Row(), value_cap=0.05, stage="P0"
+    )
+    assert basis == "official_ws_ask_depth"
+    assert price is None
+    assert [level.price for level in levels] == [0.42, 0.43]
+
+    # The ledger prices a taker leg the same way: fee-adjusted ask, cap
+    # ignored.
+    import importlib
+
+    ledger = importlib.import_module("scripts.paper_trading_ledger")
+    if ledger.EXECUTION_MODE == "taker":
+        assert ledger._execution_price(_Row(), value_cap=0.05) == (
+            0.42 * (1.0 + ledger.FEE_RATE)
+        )
+
+
 def test_clause_38_floor_scope_follows_coverability() -> None:
     """The floor protects the whole live set exactly when a window can span it.
 
