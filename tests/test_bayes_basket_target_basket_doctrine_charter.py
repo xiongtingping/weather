@@ -1106,6 +1106,11 @@ def test_clause_48_listing_window_opens_positions() -> None:
     ).read_text(encoding="utf-8")
     assert 'self.nwp_runtime_root / "listing_scope_turn.json"' in worker_source
     assert "LISTING_SCOPE_TURN_STARVATION_SEC" in worker_source
+    # The third crack: a listed day is a (station, day) whose local day has
+    # not started, never "a date other than the fleet's current one".
+    assert "第三道缝" in clause
+    assert "if day != current_day" not in worker_source
+    assert "listing_stations.update(" in worker_source
     registry_source = (
         Path(__file__).resolve().parents[1]
         / "bayes_basket_target"

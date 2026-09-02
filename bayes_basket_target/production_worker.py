@@ -15575,17 +15575,31 @@ class TargetProductionWorker:
                 # window measured in days, so serving it every second cycle
                 # costs it about seven minutes of freshness and nothing else.
                 serve_listing = self._take_listing_scope_turn()
+                # A listed day is a (station, day) whose local day has not
+                # started -- not a date other than the fleet's current one.
+                # ``current_day`` is the earliest-opening timezone's date,
+                # so from about 16Z every western station's *same* date is
+                # still a listing day: excluding the date here left KSFO
+                # and KHOU 2026-09-03 with no evidence pass and no compile
+                # from 16Z until their own midnight, every night.  The
+                # current date's not-started group therefore takes the
+                # listing pass too; its open group is the main pass's.
                 listing_days = sorted({
                     day
                     for _station, day in self._listing_entry_scopes(
                         as_of_utc=utc_now()
                     )
-                    if day != current_day
                 })
+                listing_stations: set[str] = set()
                 for listing_day in (listing_days if serve_listing else ()):
                     day_scopes = [
                         item for item in sweep_scopes
                         if str(item.get("event_date") or "") == listing_day
+                        and (
+                            listing_day != current_day
+                            or str(item.get("event_day_state") or "")
+                            == "not_started"
+                        )
                     ]
                     if not day_scopes:
                         listing_evidence.append({
@@ -15600,6 +15614,15 @@ class TargetProductionWorker:
                             day_scopes
                         )
                         for _state, group in groups:
+                            if listing_day == current_day and _state == "open":
+                                # Already the main pass's; a second
+                                # materialization would only restate it.
+                                continue
+                            listing_stations.update(
+                                str(item.get("station_id") or "").upper()
+                                for item in group
+                                if str(item.get("station_id") or "")
+                            )
                             with self._temporary_scope_manifest(
                                 _merge_scope_manifests(group)
                             ) as listing_manifest_path:
@@ -15705,11 +15728,18 @@ class TargetProductionWorker:
             # here under the admission rule _decision_scopes already carries
             # for them (committed P0/P0-M authority, no P1), and they then
             # meet every downstream gate the current day meets, unchanged.
+            # The listing rows' station set is the main pass's allowlist
+            # joined with every station a listing pass materialized this
+            # cycle: the allowlist alone names only the current date's open
+            # stations, which is exactly the set a not-started scope is
+            # never in.
             listing_rows = [
                 (station_id, event_date)
                 for station_id, event_date in self._listing_entry_scopes(
                     as_of_utc=now,
-                    station_allowlist=station_allowlist,
+                    station_allowlist=(
+                        set(station_allowlist) | set(listing_stations)
+                    ),
                 )
                 if (station_id, event_date) not in set(rows)
             ]
