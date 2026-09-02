@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import closing
+import copy
 import hashlib
 import json
 import os
@@ -889,6 +890,56 @@ def _apply_price_changes(
     return confirmed_tokens
 
 
+def _seed_books(
+    previous: Mapping[str, Mapping[str, Any]] | None,
+    tokens: Sequence[str],
+) -> dict[str, dict[str, Any]]:
+    """The books the venue actually sent, for the tokens a generation carries.
+
+    Only entries with ``asks`` and ``bids`` lists qualify: those are frames
+    the venue answered for that token, each with its own economic clock.  A
+    placeholder ``_confirm_shard_stream`` materialised carries neither; it
+    describes a socket, not a market, and the next generation rebuilds it.
+    """
+
+    if not previous:
+        return {}
+    seeded: dict[str, dict[str, Any]] = {}
+    for token in tokens:
+        quote = previous.get(token)
+        if not isinstance(quote, Mapping):
+            continue
+        if not isinstance(quote.get("asks"), list) or not isinstance(
+            quote.get("bids"), list
+        ):
+            continue
+        seeded[str(token)] = copy.deepcopy(dict(quote))
+    return seeded
+
+
+def _bookless_frame_token(message: Mapping[str, Any]) -> str:
+    """The token a ``book`` frame answers for when it carries no usable book.
+
+    ``_quote_from_message`` returns nothing for a book frame whose two sides
+    are both empty (or crossed), so a token whose book has been fully
+    cancelled leaves no trace on the quotes it updates.  Inside one socket
+    generation that never mattered -- the next planned refresh started empty
+    and the token surfaced as a placeholder.  A generation seeded from the
+    previous one would carry the cancelled book forward instead, honestly
+    stamped but describing a market that no longer exists; this names the
+    token so the coordinator can drop it and let the placeholder say so.
+    """
+
+    event_type = str(
+        message.get("event_type") or message.get("type") or ""
+    ).lower()
+    if event_type not in {"book", "orderbook", "book_snapshot"} and not (
+        isinstance(message.get("asks"), list)
+    ):
+        return ""
+    return str(message.get("asset_id") or message.get("token_id") or "").strip()
+
+
 def _confirm_shard_stream(
     quotes: dict[str, dict[str, Any]],
     shard_tokens: set[str],
@@ -910,6 +961,16 @@ def _confirm_shard_stream(
             # until the last penny bucket trades.  The reader's
             # ``_quote_is_complete`` classifies these as unmaterialized, so
             # nothing downstream mistakes an empty book for a price.
+            #
+            # That reading is only true of a token the venue has had time
+            # to answer for.  On a fresh socket the first frame lands before
+            # the initial book dump has finished, and every token still
+            # waiting would be materialised here as "nobody has quoted it"
+            # -- 400 to 800 of them at once on every planned refresh
+            # (measured 2026-09-02).  ``_publish_connection`` therefore
+            # seeds a generation with the previous generation's books, so
+            # this branch is reached only for a token no socket has ever
+            # carried a book for.
             quotes[token_id] = {
                 "token_id": token_id,
                 "side": "YES",
@@ -987,12 +1048,34 @@ async def _publish_connection(
     db_path: Path,
     output_path: Path,
     proxy: str | None,
+    carried_books: dict[str, dict[str, Any]] | None = None,
 ) -> None:
     """Publish a complete multi-shard generation or publish nothing.
 
     Any task failure, disconnect, or catalog change cancels every shard before
     the outer resident loop starts a new generation.  This avoids blending
     quotes from different catalog generations.
+
+    ``carried_books`` is the previous generation's books keyed by token, and
+    this coroutine both reads and rewrites it: the generation starts from
+    them and leaves its own behind for the next.  A book is a per-token fact
+    the venue stated, stamped with its own ``book_observed_at``; the socket
+    that carried it closing does not unsay it, and the fresh dump on the new
+    socket re-observes it on arrival (``_merge_book_quote``).  What never
+    crosses a generation is a *manifest*: that is still built only from this
+    generation's ``quotes`` and written only once every shard of this
+    generation has confirmed its stream.
+
+    Why the seed exists.  Measured 2026-09-02: every planned refresh tore all
+    three sockets down, and the venue's initial book dump for 400 tokens per
+    socket took 10-53 s under load.  The first frame or two-second heartbeat
+    on each shard confirmed the stream, ``_confirm_shard_stream`` materialised
+    a bookless placeholder for every token still waiting, the completeness
+    gate saw every token accounted for, and the complete manifest on disk was
+    overwritten with 400-800 tokens marked unmaterialized.  Sampled over four
+    minutes the file spent 40% of the time in that state; a worker reading it
+    then refused 43 of 44 open scopes (``official_ws_selected_bucket_missing``)
+    and 62 scopes died on ``production_quote_expired`` behind them.
     """
 
     tokens = list(catalog["tokens"])
@@ -1015,7 +1098,8 @@ async def _publish_connection(
         raise ContractError("resident_target_ws_shard_catalog_invalid")
     assert_process_memory_budget(projected_bytes=len(tokens) * 64 * 1024)
     started_at = _now_utc()
-    quotes: dict[str, dict[str, Any]] = {}
+    quotes: dict[str, dict[str, Any]] = _seed_books(carried_books, tokens)
+    confirmed_shards: set[int] = set()
     queue: asyncio.Queue[tuple[int, str | None]] = asyncio.Queue()
     tokens_by_shard = {
         int(shard["shard_id"]): set(shard["tokens"])
@@ -1062,8 +1146,22 @@ async def _publish_connection(
                 shard_tokens = tokens_by_shard.get(shard_id)
                 if shard_tokens is None:
                     raise ContractError("resident_target_ws_unknown_shard_event")
+                confirmed_shards.add(shard_id)
                 for message in _iter_messages(raw):
                     parsed = _quote_from_message(message, observed_at=observed_at)
+                    if parsed is None:
+                        # A book frame with nothing on either side is the
+                        # venue saying this token's book is gone.  Drop the
+                        # carried book so the shard confirmation below
+                        # materialises the placeholder that now describes it.
+                        emptied = _bookless_frame_token(message)
+                        if emptied and emptied in token_set:
+                            if emptied not in shard_tokens:
+                                raise ContractError(
+                                    "resident_target_ws_shard_token_escape"
+                                )
+                            if quotes.pop(emptied, None) is not None:
+                                economic_dirty = True
                     if parsed is not None and parsed[0] in token_set:
                         token_id, incoming = parsed
                         if token_id not in shard_tokens:
@@ -1102,6 +1200,7 @@ async def _publish_connection(
                 # when the official socket has no price frame.  Refresh only
                 # the transport lease in memory; the periodic manifest write
                 # below keeps this separate from economic quote timestamps.
+                confirmed_shards.add(shard_id)
                 _confirm_shard_stream(
                     quotes,
                     tokens_by_shard[shard_id],
@@ -1132,6 +1231,13 @@ async def _publish_connection(
                     economic_dirty = True
                 next_scope_probe = time.monotonic() + SCOPE_REFRESH_SECONDS
             if raw is None or len(quotes) != len(tokens):
+                continue
+            # Seeded books make every token present before every socket has
+            # opened.  A manifest still claims one connected generation, so
+            # it waits for each shard to have confirmed its own stream -- the
+            # invariant the placeholders used to enforce implicitly, since
+            # they only ever came from a confirmed shard.
+            if confirmed_shards != set(tokens_by_shard):
                 continue
             now = time.monotonic()
             write_due = (
@@ -1166,6 +1272,9 @@ async def _publish_connection(
             economic_dirty = False
             liveness_dirty = False
     finally:
+        if carried_books is not None:
+            carried_books.clear()
+            carried_books.update(_seed_books(quotes, tokens))
         for task in tasks.values():
             task.cancel()
         await asyncio.gather(*tasks.values(), return_exceptions=True)
@@ -1179,6 +1288,8 @@ async def run_resident_target_ws_publisher(
     """Reconnect forever without disturbing the shared WS listener."""
 
     backoff = 1.0
+    # Books outlive the socket that carried them; see _publish_connection.
+    carried_books: dict[str, dict[str, Any]] = {}
     while True:
         try:
             as_of_utc = datetime.now(timezone.utc).isoformat().replace(
@@ -1193,6 +1304,7 @@ async def run_resident_target_ws_publisher(
                 proxy=_configured_proxy(
                     os.environ.get("PM_MARKET_WS_PROXY", "")
                 ),
+                carried_books=carried_books,
             )
             backoff = 1.0
         except asyncio.CancelledError:
@@ -1236,7 +1348,9 @@ __all__ = [
     "ScopeCatalogChanged",
     "_apply_no_live_boundary",
     "_apply_price_changes",
+    "_bookless_frame_token",
     "_confirm_shard_stream",
+    "_seed_books",
     "_build_multi_scope_manifest",
     "_connection_shards",
     "_future_probability_expired",

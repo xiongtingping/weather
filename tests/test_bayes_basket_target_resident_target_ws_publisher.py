@@ -965,3 +965,233 @@ def test_latest_p1_is_usable_past_cadence_but_not_past_the_age_limit(
     assert current["probability_evidence_fresh"] is True
     assert current["probability_past_cadence"] is False
     assert current["probability_age_seconds"] == 0.0
+
+
+def _book_frame(token: str) -> str:
+    return json.dumps({
+        "event_type": "book",
+        "asset_id": token,
+        "bids": [{"price": "0.40", "size": "10"}],
+        "asks": [{"price": "0.42", "size": "10"}],
+    })
+
+
+def test_reconnect_carries_books_instead_of_publishing_placeholders(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A planned refresh must not overwrite a complete manifest with placeholders.
+
+    Measured 2026-09-02: after every 30 s refresh the fresh sockets confirmed
+    themselves before the venue's initial book dump had landed, every waiting
+    token was materialised as a bookless placeholder, and the manifest on disk
+    spent 40% of the time claiming 400-800 unmaterialized tokens.  The next
+    generation now starts from the books the previous one held.
+    """
+
+    db = tmp_path / "target.db"
+    _database(db)
+    catalog = _scope(db_path=db, as_of_utc="2026-07-28T02:00:00Z")
+    tokens = list(catalog["tokens"])
+    assert len(tokens) == 2
+    writes: list[dict[str, object]] = []
+    monkeypatch.setattr(publisher, "assert_process_memory_budget", lambda **_: None)
+    monkeypatch.setattr(publisher, "write_bounded_json", lambda _path, body, **_: writes.append(body))
+    monkeypatch.setattr(publisher, "RECEIVE_TIMEOUT_SECONDS", 0.1)
+
+    async def first_generation(
+        shard: dict[str, object],
+        *,
+        queue: asyncio.Queue[tuple[int, str | None]],
+        proxy: str | None,
+    ) -> None:
+        # The venue's initial dump, delivered as one batched frame.
+        await queue.put((
+            int(shard["shard_id"]),
+            json.dumps([json.loads(_book_frame(str(token))) for token in shard["tokens"]]),
+        ))
+        await asyncio.sleep(0.05)
+        raise ConnectionError("gen1_closed")
+
+    carried: dict[str, dict[str, object]] = {}
+    monkeypatch.setattr(publisher, "_receive_connection_shard", first_generation)
+    with pytest.raises(ConnectionError, match="gen1_closed"):
+        asyncio.run(
+            publisher._publish_connection(
+                catalog,
+                db_path=db,
+                output_path=tmp_path / "manifest.json",
+                proxy=None,
+                carried_books=carried,
+            )
+        )
+    assert len(writes) == 1
+    first = writes[0]["scope_manifests"]["RKPK|2026-07-28"]
+    assert first["unmaterialized_tokens"] == []
+    assert set(carried) == set(tokens)
+    gen1_book_clock = {
+        token: first["quotes_by_token"][token]["book_observed_at"]
+        for token in tokens
+    }
+
+    writes.clear()
+    gen2_started = publisher._now_utc()
+
+    async def second_generation(
+        shard: dict[str, object],
+        *,
+        queue: asyncio.Queue[tuple[int, str | None]],
+        proxy: str | None,
+    ) -> None:
+        # The socket is open and confirms itself before the venue's initial
+        # book dump arrives: first the receive-timeout heartbeat, then a
+        # frame that carries no book.
+        await queue.put((int(shard["shard_id"]), None))
+        await queue.put((
+            int(shard["shard_id"]),
+            json.dumps({"event_type": "last_trade_price", "asset_id": shard["tokens"][0]}),
+        ))
+        await asyncio.sleep(0.05)
+        raise ConnectionError("gen2_closed")
+
+    monkeypatch.setattr(publisher, "_receive_connection_shard", second_generation)
+    with pytest.raises(ConnectionError, match="gen2_closed"):
+        asyncio.run(
+            publisher._publish_connection(
+                catalog,
+                db_path=db,
+                output_path=tmp_path / "manifest.json",
+                proxy=None,
+                carried_books=carried,
+            )
+        )
+    assert len(writes) == 1
+    second = writes[0]["scope_manifests"]["RKPK|2026-07-28"]
+    assert second["unmaterialized_tokens"] == []
+    assert second["materialized_token_count"] == len(tokens)
+    for token in tokens:
+        quote = second["quotes_by_token"][token]
+        # No dump has re-observed the book yet, so its economic clock is the
+        # one the previous socket stamped ...
+        assert quote["book_observed_at"] == gen1_book_clock[token]
+        # ... while the transport lease belongs to this socket.
+        assert quote["_stream_confirmed_at"] >= gen2_started
+    # The carried set is books only: a placeholder never crosses a generation.
+    assert set(carried) == set(tokens)
+    assert all("asks" in quote and "bids" in quote for quote in carried.values())
+
+
+def test_seeded_generation_waits_for_every_shard_to_confirm(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Seeded books make every token present before every socket has opened.
+
+    The manifest still claims one connected generation, so no write may
+    happen until each shard has confirmed its own stream.
+    """
+
+    monkeypatch.setattr(publisher, "MAX_TOKENS_PER_CONNECTION", 1)
+    db = tmp_path / "target.db"
+    _database(db)
+    catalog = _scope(db_path=db, as_of_utc="2026-07-28T02:00:00Z")
+    assert len(catalog["connection_shards"]) == 2
+    carried = {
+        token: _quote(token, "2026-07-28T01:59:00Z")
+        for token in catalog["tokens"]
+    }
+    writes: list[dict[str, object]] = []
+    monkeypatch.setattr(publisher, "assert_process_memory_budget", lambda **_: None)
+    monkeypatch.setattr(publisher, "write_bounded_json", lambda _path, body, **_: writes.append(body))
+    monkeypatch.setattr(publisher, "RECEIVE_TIMEOUT_SECONDS", 0.1)
+    release = asyncio.Event()
+    late_shard_confirmed_at: list[str] = []
+
+    async def receive(
+        shard: dict[str, object],
+        *,
+        queue: asyncio.Queue[tuple[int, str | None]],
+        proxy: str | None,
+    ) -> None:
+        shard_id = int(shard["shard_id"])
+        if shard_id == 0:
+            await queue.put((0, json.dumps({"event_type": "last_trade_price"})))
+            await release.wait()
+            raise ConnectionError("gen_closed")
+        # Shard 1's handshake is still in flight while shard 0 already speaks.
+        await asyncio.sleep(0.3)
+        late_shard_confirmed_at.append(publisher._now_utc())
+        await queue.put((1, None))
+        await queue.put((1, json.dumps({"event_type": "last_trade_price"})))
+        await asyncio.sleep(0.05)
+        release.set()
+        raise ConnectionError("gen_closed")
+
+    monkeypatch.setattr(publisher, "_receive_connection_shard", receive)
+    with pytest.raises(ConnectionError, match="gen_closed"):
+        asyncio.run(
+            publisher._publish_connection(
+                catalog,
+                db_path=db,
+                output_path=tmp_path / "manifest.json",
+                proxy=None,
+                carried_books=carried,
+            )
+        )
+    assert len(writes) == 1
+    late_token = str(catalog["connection_shards"][1]["tokens"][0])
+    quote = writes[0]["scope_manifests"]["RKPK|2026-07-28"]["quotes_by_token"][late_token]
+    assert quote.get("_stream_confirmed_at", "") >= late_shard_confirmed_at[0]
+
+
+def test_emptied_book_is_not_carried_into_the_next_generation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A book frame with nothing on either side retires the carried book.
+
+    Seeding must not keep describing a market the venue says is gone: the
+    token surfaces as the placeholder a cold generation would have shown.
+    """
+
+    db = tmp_path / "target.db"
+    _database(db)
+    catalog = _scope(db_path=db, as_of_utc="2026-07-28T02:00:00Z")
+    tokens = list(catalog["tokens"])
+    carried = {token: _quote(token, "2026-07-28T01:59:00Z") for token in tokens}
+    writes: list[dict[str, object]] = []
+    monkeypatch.setattr(publisher, "assert_process_memory_budget", lambda **_: None)
+    monkeypatch.setattr(publisher, "write_bounded_json", lambda _path, body, **_: writes.append(body))
+    monkeypatch.setattr(publisher, "RECEIVE_TIMEOUT_SECONDS", 0.1)
+    emptied, kept = "yes-38", "yes-37"
+
+    async def receive(
+        shard: dict[str, object],
+        *,
+        queue: asyncio.Queue[tuple[int, str | None]],
+        proxy: str | None,
+    ) -> None:
+        shard_id = int(shard["shard_id"])
+        await queue.put((shard_id, json.dumps({
+            "event_type": "book", "asset_id": emptied, "bids": [], "asks": [],
+        })))
+        await asyncio.sleep(0.05)
+        raise ConnectionError("gen_closed")
+
+    monkeypatch.setattr(publisher, "_receive_connection_shard", receive)
+    with pytest.raises(ConnectionError, match="gen_closed"):
+        asyncio.run(
+            publisher._publish_connection(
+                catalog,
+                db_path=db,
+                output_path=tmp_path / "manifest.json",
+                proxy=None,
+                carried_books=carried,
+            )
+        )
+    assert len(writes) == 1
+    scope = writes[0]["scope_manifests"]["RKPK|2026-07-28"]
+    assert scope["unmaterialized_tokens"] == [emptied]
+    assert scope["quotes_by_token"][kept]["book_observed_at"] == "2026-07-28T01:59:00Z"
+    assert "asks" not in scope["quotes_by_token"][emptied]
+    assert set(carried) == {kept}
