@@ -623,30 +623,35 @@ def test_target_grid_uses_each_bucket_official_ask_depth_not_static_price_grid()
         and row["shares_by_bucket"]["36"] > 0.0
     )
 
-    # Priced at the band this lane rests in, not at the offer it never
-    # crosses (2026-08-26).  Bucket 35's band is 0.05-0.09 (mean 0.07) and
-    # 36's is 0.06-0.24 (mean 0.14625), so the same 0.25 clip buys more
-    # shares than crossing would -- which is the whole point: the objective
-    # used to size, and refuse, against a price the engine never pays.
-    assert both["pricing_basis"] == "maker_resting_band"
+    # Each bucket is priced at its own posted offer -- 0.10 and 0.25 -- so
+    # the same 0.25 clip buys 2.5 shares of one and 1.0 of the other.  That
+    # is the standing basis (user ruling, 2026-08-27): the ask is treated as
+    # information rather than as a cost the engine never pays.
+    #
+    # It was ``lane`` for one day in between, and this pair was written the
+    # other way round on 2026-08-26 and not turned back on the 27th when the
+    # ruling reversed, so this assertion sat red for six days.
+    assert both["pricing_basis"] == "official_ws_ask_depth"
     assert both["cost_by_bucket"]["35"] == pytest.approx(0.25)
     assert both["cost_by_bucket"]["36"] == pytest.approx(0.25)
-    assert both["shares_by_bucket"]["35"] == pytest.approx(0.25 / 0.07)
-    assert both["shares_by_bucket"]["36"] == pytest.approx(0.25 / 0.14625)
+    assert both["shares_by_bucket"]["35"] == pytest.approx(0.25 / 0.10)
+    assert both["shares_by_bucket"]["36"] == pytest.approx(0.25 / 0.25)
 
 
-def test_target_grid_can_still_be_priced_at_the_crossing_arm(
+def test_target_grid_can_still_be_priced_at_the_resting_lane_arm(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The pre-2026-08-26 basis, pinned so the two can be replayed apart.
+    """The lane basis, pinned so the two can be replayed apart.
 
     Per-bucket depth from the book either way -- that is what this pair of
-    tests has always been about -- but the crossing arm pays the offer, so
-    the same clip buys fewer shares.
+    tests has always been about -- but the lane arm pays the band its own
+    orders would rest in, so the same clip buys more shares.  Still live:
+    P0-M keeps lane pricing as the 2026-08-27 ruling's one exemption, and
+    an untested arm is one nobody notices going wrong.
     """
 
     monkeypatch.setattr(
-        delta_v2_runtime, "TARGET_PRICING_BASIS", "ask_depth"
+        delta_v2_runtime, "TARGET_PRICING_BASIS", "lane"
     )
     raw = _snapshot().to_dict()
     raw["buckets"][0]["ask_levels"] = [{"price": 0.10, "shares": 100.0}]
@@ -671,11 +676,13 @@ def test_target_grid_can_still_be_priced_at_the_crossing_arm(
         and row["shares_by_bucket"]["36"] > 0.0
     )
 
-    assert both["pricing_basis"] == "official_ws_ask_depth"
+    # Bucket 35's band is 0.05-0.09 (mean 0.07), 36's is 0.06-0.24 (mean
+    # 0.14625).
+    assert both["pricing_basis"] == "maker_resting_band"
     assert both["cost_by_bucket"]["35"] == pytest.approx(0.25)
     assert both["cost_by_bucket"]["36"] == pytest.approx(0.25)
-    assert both["shares_by_bucket"]["35"] == pytest.approx(2.5)
-    assert both["shares_by_bucket"]["36"] == pytest.approx(1.0)
+    assert both["shares_by_bucket"]["35"] == pytest.approx(0.25 / 0.07)
+    assert both["shares_by_bucket"]["36"] == pytest.approx(0.25 / 0.14625)
 
 
 def test_maker_limit_is_quote_anchored_and_not_the_static_reservation_grid_floor(monkeypatch) -> None:
