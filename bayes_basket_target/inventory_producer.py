@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .contracts import ContractError, content_sha256
-from .et_history import assert_event_day_started
-from .market_registry import load_started_registry_rows
+from .et_history import assert_event_day_started, event_day_window
+from .market_registry import load_active_registry_rows, load_started_registry_rows
 from .resource_bounds import assert_process_memory_budget, load_bounded_json
 
 
@@ -137,8 +137,16 @@ def _registry_scopes(
     *,
     station_id: str = "",
     event_date: str = "",
+    include_listing_days: bool = False,
 ) -> dict[tuple[str, str], list[dict[str, str]]]:
-    rows = load_started_registry_rows(conn, station_id=station_id, event_date=event_date)
+    # Charter 48: a listed day's inventory is the opening inventory -- zero
+    # everywhere -- and the snapshot the stage-open binds to has to carry
+    # it.  Started-day callers keep the view they always had.
+    rows = (
+        load_active_registry_rows(conn, station_id=station_id, event_date=event_date)
+        if include_listing_days
+        else load_started_registry_rows(conn, station_id=station_id, event_date=event_date)
+    )
     scopes: dict[tuple[str, str], list[dict[str, str]]] = {}
     seen_tokens: dict[str, tuple[str, str, str]] = {}
     for row in rows:
@@ -287,6 +295,7 @@ def build_confirmed_inventory_ingress(
     remaining_budget_usdc: float,
     station_id: str = "",
     event_date: str = "",
+    include_listing_days: bool = False,
 ) -> dict[str, Any]:
     """Return a strict, non-writing inventory ingress packet."""
 
@@ -294,7 +303,12 @@ def build_confirmed_inventory_ingress(
     observed_at = _timestamp("observed_at", manifest.get("observed_at"))
     budget = _number("remaining_budget_usdc", remaining_budget_usdc)
     positions = _position_rows(manifest)
-    scopes = _registry_scopes(conn, station_id=station_id, event_date=event_date)
+    scopes = _registry_scopes(
+        conn,
+        station_id=station_id,
+        event_date=event_date,
+        include_listing_days=include_listing_days,
+    )
     source_sha = content_sha256(manifest)
     version = "inv_" + content_sha256({
         "schema": SCHEMA,
@@ -309,11 +323,19 @@ def build_confirmed_inventory_ingress(
         }
         if len(settlement_timezones) != 1:
             raise ContractError("inventory_registry_settlement_timezone_not_unique")
-        assert_event_day_started(
-            scope_date,
-            as_of_utc=observed_at,
-            target_timezone=next(iter(settlement_timezones)),
-        )
+        if include_listing_days:
+            # Resolved, not asserted: a listed day is the opening state.
+            event_day_window(
+                scope_date,
+                as_of_utc=observed_at,
+                target_timezone=next(iter(settlement_timezones)),
+            )
+        else:
+            assert_event_day_started(
+                scope_date,
+                as_of_utc=observed_at,
+                target_timezone=next(iter(settlement_timezones)),
+            )
         filled_by_bucket: dict[str, float] = {}
         filled_cost_by_bucket: dict[str, float] = {}
         token_ids_by_bucket: dict[str, str] = {}
@@ -369,6 +391,7 @@ def build_no_live_inventory_ingress(
     observed_at_utc: str,
     station_id: str = "",
     event_date: str = "",
+    include_listing_days: bool = False,
 ) -> dict[str, Any]:
     """Build no-live inventory from authoritative terminal fill transitions.
 
@@ -381,7 +404,12 @@ def build_no_live_inventory_ingress(
 
     observed = _timestamp("observed_at_utc", observed_at_utc)
     budget = _number("remaining_budget_usdc", remaining_budget_usdc)
-    scopes = _registry_scopes(conn, station_id=station_id, event_date=event_date)
+    scopes = _registry_scopes(
+        conn,
+        station_id=station_id,
+        event_date=event_date,
+        include_listing_days=include_listing_days,
+    )
     transitions = _execution_transition_rows(
         conn,
         observed_at_utc=observed,
@@ -420,9 +448,14 @@ def build_no_live_inventory_ingress(
         if len(settlement_timezones) != 1:
             raise ContractError("inventory_registry_settlement_timezone_not_unique")
         settlement_timezone = next(iter(settlement_timezones))
-        assert_event_day_started(
-            scope_date, as_of_utc=observed, target_timezone=settlement_timezone
-        )
+        if include_listing_days:
+            event_day_window(
+                scope_date, as_of_utc=observed, target_timezone=settlement_timezone
+            )
+        else:
+            assert_event_day_started(
+                scope_date, as_of_utc=observed, target_timezone=settlement_timezone
+            )
         bucket_names = [str(item["bucket"]) for item in buckets]
         registry_by_bucket = {str(item["bucket"]): item for item in buckets}
         scope_transitions = by_scope.get((scope_station, scope_date), [])

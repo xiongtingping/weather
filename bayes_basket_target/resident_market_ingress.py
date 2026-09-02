@@ -325,6 +325,7 @@ def materialize_resident_no_live_market_evidence(
         observed_at_utc=_timestamp(observed_at),
         station_id=station_id,
         event_date=event_date,
+        include_listing_days=include_listing_days,
     )
     # Once the target transition ledger has any version in the selected
     # scope, q=0/zero-pending is forbidden.  Both projections must consume
