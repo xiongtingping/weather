@@ -2153,13 +2153,69 @@ def _rebuild_position_without_scope_unique(conn: sqlite3.Connection) -> None:
             "ALTER TABLE paper_trade_position RENAME TO paper_trade_position_old"
         )
         conn.execute(_POSITION_DDL)
-        new_cols = [r[1] for r in conn.execute("PRAGMA table_info(paper_trade_position)")]
-        old_cols = {r[1] for r in conn.execute("PRAGMA table_info(paper_trade_position_old)")}
-        shared = ",".join(c for c in new_cols if c in old_cols)
+        old_columns = [
+            (str(row[1]), str(row[2]), row[3], row[4])
+            for row in conn.execute(
+                "PRAGMA table_info(paper_trade_position_old)"
+            )
+        ]
+        new_cols = {
+            str(row[1])
+            for row in conn.execute("PRAGMA table_info(paper_trade_position)")
+        }
+        # Carry every column the old table had, including the ones
+        # ``_POSITION_DDL`` does not spell.
+        #
+        # Copying only the intersection silently drops them, and three of
+        # this table's columns are added by ALTER after the DDL runs
+        # (``content_sha256``, ``consolidation_json``,
+        # ``selection_rule_sha256``).  Measured 2026-09-02, the hard way:
+        # this rebuild blanked the rule fingerprint on all 460 rows that
+        # predated it, and every basket on the page then read "chosen under
+        # a retired rule" because the empty string matches no rule set at
+        # all.  The data is derivable, so nothing was lost for good -- but
+        # nothing said it had happened either.
+        for name, decl, not_null, default in old_columns:
+            if name in new_cols:
+                continue
+            suffix = ""
+            if int(not_null or 0):
+                suffix = f" NOT NULL DEFAULT {default if default is not None else "''"}"
+            elif default is not None:
+                suffix = f" DEFAULT {default}"
+            conn.execute(
+                "ALTER TABLE paper_trade_position"
+                f" ADD COLUMN {name} {decl or 'TEXT'}{suffix}"
+            )
+        # Ask the table what it has, rather than trusting the loop above to
+        # have added what it meant to.  An ALTER that does not take is
+        # exactly the case this guard is for, and bookkeeping that agrees
+        # with itself would miss it.
+        present = {
+            str(row[1])
+            for row in conn.execute("PRAGMA table_info(paper_trade_position)")
+        }
+        carried = [name for name, _, _, _ in old_columns]
+        missing = [name for name in carried if name not in present]
+        if missing:
+            raise RuntimeError(
+                "position rebuild would drop columns: " + ",".join(missing)
+            )
+        shared = ",".join(carried)
         conn.execute(
             f"INSERT INTO paper_trade_position({shared})"
             f" SELECT {shared} FROM paper_trade_position_old"
         )
+        moved = conn.execute(
+            "SELECT COUNT(*) FROM paper_trade_position"
+        ).fetchone()[0]
+        held = conn.execute(
+            "SELECT COUNT(*) FROM paper_trade_position_old"
+        ).fetchone()[0]
+        if int(moved) != int(held):
+            raise RuntimeError(
+                f"position rebuild carried {moved} of {held} rows"
+            )
         conn.execute("DROP TABLE paper_trade_position_old")
         conn.commit()
     except Exception:

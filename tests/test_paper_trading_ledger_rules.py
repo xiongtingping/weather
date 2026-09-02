@@ -661,8 +661,10 @@ def test_both_copies_of_the_reason_table_cover_every_code() -> None:
     page = (root / "scripts" / "calibration_dashboard.py").read_text(
         encoding="utf-8"
     )
-    block = re.search(r"const REASON=\{.*?\};", page, re.S)
-    assert block, "the roster reason table moved or was renamed"
+    # ``ABSENT_REASON`` since 2026-09-02: the map was hoisted to the top of
+    # the script so the daily table's station breakdown reads it too.
+    block = re.search(r"const ABSENT_REASON=\{.*?\};", page, re.S)
+    assert block, "the shared reason table moved or was renamed"
     roster = block.group(0)
     missing = [
         name for name in REFUSAL_REASONS if f"{name}:[" not in roster
@@ -2171,8 +2173,12 @@ def test_a_refusal_reason_must_be_registered_in_all_four_places() -> None:
     board = (root / "scripts" / "calibration_dashboard.py").read_text(
         encoding="utf-8"
     )
-    roster = re.search(r"const REASON=\{.*?\};", board, re.S)
-    assert roster, "the roster reason table moved or was renamed"
+    # Hoisted out of ``roster()`` on 2026-09-02 so the daily table's station
+    # breakdown reads the same map instead of copying it into a fifth place.
+    # Matched by the name it now has; the old nested ``const REASON=`` is an
+    # alias inside the roster and carries no entries of its own.
+    roster = re.search(r"const ABSENT_REASON=\{.*?\};", board, re.S)
+    assert roster, "the shared reason table moved or was renamed"
 
     for reason in ledger.REFUSAL_REASONS:
         assert reason in ledger.REFUSAL_DEPTH, f"{reason}: no depth"
