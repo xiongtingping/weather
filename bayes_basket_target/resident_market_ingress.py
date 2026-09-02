@@ -383,6 +383,7 @@ def materialize_resident_no_live_market_evidence(
         quote_freshness_policy=quote_freshness_policy,
         policy_authority_scope=requested_scope,
         commit=True,
+        include_listing_days=include_listing_days,
     )
     result["scope_selection"] = {
         "registry_scope_count": len(all_scopes),
