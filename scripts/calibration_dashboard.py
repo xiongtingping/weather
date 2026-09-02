@@ -3116,12 +3116,7 @@ def collect_live_readiness(
     exclusion_doc = _config(
         ROOT / "config/trading/live_station_exclusions_v1.json"
     )
-    exclusions_set = {
-        str(row.get("station") or "").strip().upper()
-        for key in ("excluded_stations", "auto_excluded_stations")
-        for row in (exclusion_doc.get(key) or [])
-        if isinstance(row, dict) and row.get("station")
-    }
+    exclusions_set = barred_station_set()
     exclusions = sorted(exclusions_set)
     auto_barred = sorted({
         str(row.get("station") or "").strip().upper()
@@ -4304,6 +4299,87 @@ def collect_gaps(
     return gaps
 
 
+LIVE_STATION_EXCLUSIONS_PATH = (
+    ROOT / "config/trading/live_station_exclusions_v1.json"
+)
+
+
+def barred_station_set() -> set[str]:
+    """Stations the live lane may not trade -- hand-ruled and automatic.
+
+    One reader on purpose.  The live-readiness panel and the daily table's
+    station breakdown both need this list, and two copies of the same file
+    read is how two panels come to disagree about who is barred.
+    """
+
+    try:
+        doc = json.loads(
+            LIVE_STATION_EXCLUSIONS_PATH.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return set()
+    return {
+        str(row.get("station") or "").strip().upper()
+        for key in ("excluded_stations", "auto_excluded_stations")
+        for row in (doc.get(key) or [])
+        if isinstance(row, dict) and row.get("station")
+    }
+
+
+def _station_breakdown(
+    roster: list[dict[str, Any]], barred: set[str]
+) -> dict[str, dict[str, Any]]:
+    """Per event day: of the whole fleet, who opened and why the rest did not.
+
+    The daily table's station count says how many stations carried a
+    position; on 2026-08-30 that was 29 and the fleet was 48, and the page
+    left the other nineteen unaccounted for -- a reader could not tell a day
+    the model had nothing to say about from a day the market priced us out.
+    The ledger already records its own reason per station-day, so this
+    groups those rather than guessing at them (user ruling, 2026-09-02).
+
+    The live bar is counted separately and never folded into the reasons.
+    It is a trading ruling about the live lane, not a reason a paper seat
+    was not taken -- the book seats a barred station exactly as it seats any
+    other -- so adding it to the same total would double-count the ones that
+    opened.
+    """
+
+    by_day: dict[str, dict[str, Any]] = {}
+    grouped: dict[str, Counter] = defaultdict(Counter)
+    fleet: Counter = Counter()
+    opened: Counter = Counter()
+    barred_seen: dict[str, set[str]] = defaultdict(set)
+    for entry in roster:
+        day = str(entry.get("event_date") or "")
+        if not day:
+            continue
+        station = str(entry.get("station_id") or "")
+        fleet[day] += 1
+        if station.upper() in barred:
+            barred_seen[day].add(station)
+        stages = entry.get("stages") or {}
+        if any(stages.get(name) for name in ("P0", "P0-M", "P1")):
+            opened[day] += 1
+            continue
+        grouped[day][str(entry.get("absent_reason") or "unknown")] += 1
+    for day, total in fleet.items():
+        counts = grouped.get(day) or Counter()
+        by_day[day] = {
+            "fleet": total,
+            "opened": opened.get(day, 0),
+            "not_opened": total - opened.get(day, 0),
+            "reasons": [
+                {"reason": reason, "count": count}
+                for reason, count in sorted(
+                    counts.items(), key=lambda item: (-item[1], item[0])
+                )
+            ],
+            "live_barred": len(barred_seen.get(day) or ()),
+        }
+    return by_day
+
+
 def _daily_table(
     selection: dict[str, Any],
     cover: dict[str, dict[str, Any]] | None = None,
@@ -4323,6 +4399,9 @@ def _daily_table(
     """
 
     stages = ("P0", "P0-M", "P1")
+    breakdown = _station_breakdown(
+        list(selection.get("station_roster") or []), barred_station_set()
+    )
     by_day: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in selection.get("rows") or []:
         if row.get("dust_offer"):
@@ -4387,6 +4466,9 @@ def _daily_table(
             # read as the same column.
             "claimed_open_mean": claimed_open,
             "station_count": len({r["station_id"] for r in rows}),
+            # The rest of the fleet, and the ledger's own word for why each
+            # one is not in the count above.
+            "station_breakdown": breakdown.get(day),
             "position_count": len(rows),
             "settled_count": len(settled),
             # Where the seat sat against the market, judged by the bucket
@@ -4860,6 +4942,191 @@ def collect_risk_metrics(conn: sqlite3.Connection) -> dict[str, Any]:
             None if total_ss <= 0 else max(0.0, 1.0 - residual / total_ss)
         ),
         "series": series,
+    }
+
+
+def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
+    """What fraction of a claim arrives, per stage and per agreement band.
+
+    Charter 68 has the objective read ``lambda(a) * p``, where a = price /
+    claim is how far the book agrees with a basket.  P0 and P0-M have carried
+    a fitted table since 2026-09-01; P1 got one of its own on 2026-09-02, and
+    the point of showing them side by side is that they are opposite shapes.
+    P0's is an inverted U -- where the market disagrees most, five sixths of
+    the claim never arrives -- and P1's is monotone at or above one, because
+    P1's edge is the observation rather than the shape and the observation is
+    right exactly where the market doubts it.
+
+    Three columns per band and they answer different questions.  ``served`` is
+    the constant the compile chain is running right now.  ``raw`` is what this
+    book says that constant should be, recomputed here on the same rule the
+    store's rolling fit uses, so a gap between the two IS the promotion
+    backlog.  The early/late split is the only thing that decides whether a
+    gap may be closed: a band whose two halves disagree is a band that has not
+    earned a constant yet, and the 0.70-0.85 P1 band -- 0.54 early, 0.92 late
+    -- is exactly that case.
+    """
+
+    from bayes_basket_target import effective_edge_store as _store
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        EFFECTIVE_EDGE_LAMBDA,
+        EFFECTIVE_EDGE_P1_LAMBDA,
+        EFFECTIVE_EDGE_P1_STAGES,
+        EFFECTIVE_EDGE_STAGES,
+    )
+    from bayes_basket_target.delta_v2_runtime import EFFECTIVE_EDGE_MODE
+
+    def band_label(bound: float) -> str:
+        return "≥0.85" if bound == float("inf") else f"<{bound:g}"
+
+    def measure(stages: tuple[str, ...], served, since: str | None,
+                until: str | None) -> list[dict[str, Any]]:
+        placeholders = ",".join("?" for _ in stages)
+        clause = ""
+        params: list[Any] = list(stages)
+        if since:
+            clause += " AND s.event_date >= ?"
+            params.append(since)
+        if until:
+            clause += " AND s.event_date < ?"
+            params.append(until)
+        try:
+            rows = conn.execute(
+                "SELECT p.win_probability, p.all_in_cost, s.hit,"
+                " s.pnl_usdc, s.stake_usdc"
+                " FROM paper_trade_settlement s"
+                " JOIN paper_trade_position p USING(position_id)"
+                f" WHERE s.stage IN ({placeholders}){clause}",
+                params,
+            ).fetchall()
+        except sqlite3.Error:
+            return []
+        tally = [
+            {"seats": 0, "claim": 0.0, "hits": 0, "pnl": 0.0, "stake": 0.0}
+            for _ in served
+        ]
+        for claim, cost, hit, pnl, stake in rows:
+            claimed = float(claim or 0.0)
+            price = float(cost or 0.0)
+            if claimed <= 0.0 or price <= 0.0:
+                continue
+            index = _store._band_index(price / claimed, served)
+            slot = tally[index]
+            slot["seats"] += 1
+            slot["claim"] += claimed
+            slot["hits"] += int(hit or 0)
+            slot["pnl"] += float(pnl or 0.0)
+            slot["stake"] += float(stake or 0.0)
+        out = []
+        for (bound, lam), slot in zip(served, tally):
+            raw = (slot["hits"] / slot["claim"]) if slot["claim"] > 0 else None
+            out.append({
+                "band": band_label(bound),
+                "served": round(float(lam), 4),
+                "seats": slot["seats"],
+                "claim_mass": round(slot["claim"], 2),
+                "hits": slot["hits"],
+                "raw_lambda": None if raw is None else round(raw, 4),
+                "return": (
+                    None if slot["stake"] <= 0
+                    else round(slot["pnl"] / slot["stake"], 4)
+                ),
+                "admissible": (
+                    slot["seats"] >= _store.MIN_SEATS_PER_BAND
+                    and slot["claim"] >= _store.MIN_CLAIM_MASS
+                ),
+            })
+        return out
+
+    def activated(scope: str) -> dict[str, Any] | None:
+        try:
+            row = conn.execute(
+                "SELECT lambda_table_sha256, fitted_at_utc, seat_count,"
+                " evidence_json FROM calibration_effective_edge_lambda"
+                " WHERE activated=1 AND stage_scope=?"
+                " ORDER BY fitted_at_utc DESC LIMIT 1",
+                (scope,),
+            ).fetchone()
+        except sqlite3.Error:
+            return None
+        if row is None:
+            return None
+        try:
+            evidence = json.loads(str(row[3]))
+        except ValueError:
+            evidence = []
+        return {
+            "sha256": str(row[0])[:12],
+            "fitted_at_utc": str(row[1]),
+            "seat_count": int(row[2] or 0),
+            "blind_bands": [
+                item.get("band_upper_bound") for item in evidence
+                if item.get("accumulating") and not item.get("seats")
+            ],
+        }
+
+    days = [
+        str(row[0]) for row in conn.execute(
+            "SELECT DISTINCT event_date FROM paper_trade_settlement"
+            " ORDER BY event_date"
+        )
+    ]
+    midpoint = days[len(days) // 2] if days else None
+
+    scopes = []
+    for scope, stages, served, ceiling in (
+        ("P0", tuple(sorted(EFFECTIVE_EDGE_STAGES)),
+         EFFECTIVE_EDGE_LAMBDA, _store.LAMBDA_CEILING),
+        ("P1", tuple(sorted(EFFECTIVE_EDGE_P1_STAGES)),
+         EFFECTIVE_EDGE_P1_LAMBDA, _store.P1_LAMBDA_CEILING),
+    ):
+        whole = measure(stages, served, None, None)
+        early = measure(stages, served, None, midpoint)
+        late = measure(stages, served, midpoint, None)
+        for index, band in enumerate(whole):
+            band["early_lambda"] = (
+                early[index]["raw_lambda"] if index < len(early) else None
+            )
+            band["late_lambda"] = (
+                late[index]["raw_lambda"] if index < len(late) else None
+            )
+            band["early_seats"] = (
+                early[index]["seats"] if index < len(early) else 0
+            )
+            # A band may be promoted when this book says something different
+            # from the constant, the evidence clears the store's own hurdle,
+            # and both halves of the window agree.  Anything less is a number
+            # waiting for its second half.
+            capped = None if band["raw_lambda"] is None else min(
+                float(ceiling), band["raw_lambda"]
+            )
+            band["fitted_capped"] = (
+                None if capped is None else round(capped, 4)
+            )
+            stable = (
+                band["early_lambda"] is not None
+                and band["late_lambda"] is not None
+                and band["early_seats"] >= _store.MIN_SEATS_PER_BAND
+                and abs(band["early_lambda"] - band["late_lambda"]) <= 0.25
+            )
+            band["candidate"] = bool(
+                capped is not None
+                and band["admissible"]
+                and abs(capped - band["served"]) > 0.02
+            )
+            band["stable"] = bool(stable)
+        scopes.append({
+            "scope": scope,
+            "stages": list(stages),
+            "ceiling": float(ceiling),
+            "bands": whole,
+            "store": activated(scope),
+        })
+    return {
+        "mode": EFFECTIVE_EDGE_MODE,
+        "minimum_seats_per_band": _store.MIN_SEATS_PER_BAND,
+        "split_at_event_date": midpoint,
+        "scopes": scopes,
     }
 
 
@@ -5641,6 +5908,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
             "window_divergence", collect_window_divergence, conn
         ),
         "edge_band_health": collect_edge_band_health(conn),
+        "effective_edge_lambda": collect_effective_edge_lambda(conn),
         "risk_metrics": collect_risk_metrics(conn),
         "regional": collect_regional_lanes(conn),
         "worker": worker,
@@ -6332,7 +6600,8 @@ function bandTable(){
   // The edge thermometer lives here rather than under the market tab
   // (user ruling, 2026-09-01): the band table audits claimed probability,
   // the thermometer audits claimed edge, and they are one reading.
-  return stages() + bandShadow() + edgeBandHealth();
+  return stages() + bandShadow() + edgeBandHealth()
+    + effectiveEdgeLambda();
 }
 
 
@@ -6873,6 +7142,66 @@ function truthLanding(){
   <table><thead><tr><th>模型＼市场</th>${
     labels.map(l=>`<th class="mono">${l}</th>`).join("")
   }</tr></thead><tbody>${crossRows}</tbody></table>${legend}`;
+}
+
+// The lambda tables, one per stage scope.  Placed beside the edge
+// thermometer because they are the same question asked at the other end:
+// the thermometer measures how much of a claimed EDGE arrives, this
+// measures how much of a claimed PROBABILITY arrives, and the objective
+// sizes on the second.
+function effectiveEdgeLambda(){
+  const E=D.effective_edge_lambda||{};
+  const scopes=E.scopes||[];
+  if(!scopes.length)
+    return `<h2 style="margin-top:30px">有效边际 λ 表（按阶段）</h2>
+    <div class="card"><span class="dot green"></span> 无结算数据。</div>`;
+  const num=(v,d)=>v==null?"—":v.toFixed(d==null?2:d);
+  const pct=v=>v==null?"—":(v*100).toFixed(0)+"%";
+  const block=sc=>{
+    const isP1=sc.scope==="P1";
+    const rows=(sc.bands||[]).map(b=>{
+      // A served value the book disagrees with is the promotion backlog;
+      // whether it may be closed is the early/late column's answer, not
+      // this one's.
+      const gap=b.fitted_capped==null?null:b.fitted_capped-b.served;
+      const mark=!b.candidate?["—",""]
+        :b.stable?["可晋级","up"]
+        :["证据不稳",""];
+      return `<tr>
+        <td class="mono">${b.band}</td>
+        <td class="mono">${num(b.served)}</td>
+        <td class="mono ${gap==null?"":(gap<0?"down":"up")}">${num(b.raw_lambda)}</td>
+        <td class="mono">${num(b.fitted_capped)}</td>
+        <td>${b.seats}${b.admissible?"":" ⚠"}</td>
+        <td class="mono">${num(b.early_lambda)} / ${num(b.late_lambda)}</td>
+        <td class="mono">${pct(b.return)}</td>
+        <td class="${mark[1]}">${mark[0]}</td></tr>`;
+    }).join("");
+    const st=sc.store;
+    const note=isP1
+      ? `P1 的形状是 P0 的镜像：市场越不同意，兑现越超过声称、回报越高，因为 P1 的边际是<b>观测</b>不是形状。
+         服务值封顶 1.00 —— 豁免的意思是「信它」，不是「比它自己还信它」。`
+      : `P0 / P0-M 是倒 U：市场最不同意的那一带，五分之四的声称从未到账；正边际只有 a∈[0.70,0.85] 一条窄带。`;
+    return `<h3 style="margin-top:16px">${sc.scope} 档（阶段 ${sc.stages.join(" / ")}，封顶 ${sc.ceiling.toFixed(2)}）</h3>
+      <div class="card" style="margin-bottom:6px">${note}</div>
+      <table><thead><tr>
+        <th>一致度带 a=价/声称</th><th>当前服务 λ</th><th>本账本 raw λ</th>
+        <th>封顶后</th><th>座位</th><th>前半 / 后半</th><th>该带回报</th><th>状态</th>
+      </tr></thead><tbody>${rows}</tbody></table>
+      <div class="muted mono" style="margin-top:4px">${
+        st?`store 已激活 ${st.sha256} · ${st.fitted_at_utc} · ${st.seat_count} 座`
+          :"store 尚无该档的激活行（明日 refit 起逐日记录）"
+      }</div>`;
+  };
+  return `<h2 style="margin-top:30px">有效边际 λ 表（按阶段）</h2>
+    <div class="card">
+      目标函数读的是 <span class="mono">λ(a)·p</span> 而不是 p（宪章 68）。a = 篮子价格 / 声称胜率，
+      λ = 历史上这声称真正到账的比例。<b>服务列是编译链此刻在用的常量</b>，raw 列是本账本说它该是多少，
+      两者的差就是待晋级的量；能不能晋级由前半/后半那一列决定 —— 两半不一致的带还没挣到一个常量。
+      开关 <span class="mono">${E.mode||"?"}</span>，入选门槛 ${E.minimum_seats_per_band} 座，
+      前后半以 ${E.split_at_event_date||"—"} 为界。
+    </div>
+    ${scopes.map(block).join("")}`;
 }
 
 // Rendered inside the band-table module, not as its own section (user
@@ -7502,6 +7831,65 @@ function liveCell(e){
 // "what happened yesterday" without choosing a group first.  Unnumbered for
 // that reason -- the numbered sections are what the three groups hold, and
 // a number here would imply it sits in one of them.
+// Why a station-day carries no seat, in the ledger's own words.  Read by
+// both the roster (section 12) and the daily table's station breakdown, so
+// a reason code added to the ledger needs one entry here rather than two.
+const ABSENT_REASON={no_probability:["无概率","这一天没有为该站算出概率"],
+    no_market_book:["无盘口","有概率但没抓到可定价的市场"],
+    no_book_at_decision:["盘口未落库","每次决策时刻都没有半小时内的盘口快照"],
+    incomplete_book:["盘口缺桶","有盘口但缺了模型认得的桶，整站不可定价"],
+    selection_failed:["选桶报错","枚举窗口时抛错，该轮跳过"],
+    no_legal_window:["无合法窗口","结构闸拿走了整批枚举：断桶、不含中心桶、或长度不够。这些窗口没走到看报价那一步，跟贵不贵无关。约四成的未入座是这一类"],
+    no_priced_window:["窗口定不出价","窗口过了全部结构闸，但里面有腿根本没有卖价，成本算不出来。缺的是盘口"],
+    negative_edge_window:["边际不敌摩擦","窗口过闸也报得出价，胜率减全包成本仍盖不住逐腿最小跳动——这一条才是市场比模型贵。约六成的未入座是这一类，最好的一篮边际中位数 −0.25"],
+    leg_below_floor:["单腿报价过低","窗口里有腿的报价低于一分——那是无人出价那侧的挂牌，不是价格。这是我们自己设的闸，不是市场没给价"],
+    no_positive_kelly:["赔率不划算","篮子凑出来也定了价，但赢面低于要价，Kelly 给出零仓位"],
+    shape_gap_too_wide:["分布撕裂","均值离众数超过门限（研究臂，默认关）：撕裂形态下不入座"],
+certainty_gate_lit:["市场已定价完毕","中心桶连三次没动，或头两桶已占六成——证据收敛了，溢价市场早收过了，这一轮主动不做，等下一个决策时刻。与「赔率不划算」相反：那是算过嫌贵，这是压根没问"],
+    unquoted_ideal_window:["理想窗口没报价","中心±1 里凑不出八成质量有像样卖价的桶。市场不报价常常不是疏忽，是它判定这些桶不会发生。默认关闭，由前向验证决定是否启用"],
+    cost_exceeds_payout:["比满赔还贵","整篮成本超过它赢了能赔的 1.00，多高的概率都是亏——模型没被问到，是书的问题"],
+    resting_unfilled:["挂单没成交","价格没等到；规模是够的，市场没走到我们这里来。每 60 分钟重挂一次，但过了本站达峰时刻就收摊，不是挂到结算"],
+    belief_withdrew_order:["信念转负撤单","不是市场没来，是我们自己撤的：重挂时用最新概率重算整篮期望，转负即全撤。该查模型，不是执行"],
+    no_top_up_needed:["无需加仓","这一阶段想要的梯级已经在仓里了，按兵不动"],
+    entry_window_not_open:["P1 入座窗未开","宪章67：P1 只允许在本地 11 时后入座——它的本事是盘中观测，日高在午后才成形。11 时前的轮次一律不判；实测 11 时前入座的加仓净亏 49.5，11–16 时入座净赚 99.8。本地已过 11 时仍见此项＝窗开后温度从未创当日新高、P1 没有触发过重算（阴雨天常见），是天气不是故障"],
+    no_chain_growth:["加仓救不动链曲线","宪章66乙款：加仓按整条链的对数增长定规模，从已持仓位出发这一笔要让链的赔率曲线变优才买；求解器给出的最优增量为零——已持仓覆盖，或价格吃尽了增益"],
+    chain_cost_at_par:["买入后整链必亏","宪章66甲款：这一笔单独看过得了本阶段的闸，但买下去之后整条链的混合成本≥1.00——满额赔付也回不了本，中了也亏。只做算术不读声称；实测这类链38条中37仍净亏31.9"],
+    decline_clamp_hold_basket:["整篮等下一轮","目标篮里有桶的概率比上一 cycle 低了，这一轮整篮不入座（研究臂：钳位=hold）。生产默认不是这条——它砍掉那条腿照买其余"],
+    decline_clamp_emptied_basket:["全篮都在跌","目标篮每一个桶的概率都比上一 cycle 低，砍完没有腿剩下（研究臂：钳位=leg）"],
+    chain_never_opened:["P0 未开仓","只有 P0 开仓，后面两阶段是加仓；P0 没坐下这里就没仓可加，真正的原因看 P0"],
+    no_depth:["盘口太薄","价格划算但卖方挂出的量填不满最小整篮"],
+    no_seat_taken:["未入座","有概率也有盘口，目标函数看过后选择不坐"],
+    station_not_onboarded:["未接入舰队","这个站有结算时区和已挂牌的市场，但模型从来没为它算过概率——舰队是 45 站，时区册是 48 站，多出来的三站是备好未接入。不是今天算不出来，是从来没算过；接入是舰队身份变更（22 个文件硬编码 45 站）"]};
+
+// The station count, and what the rest of the fleet was doing.
+//
+// "29" on its own could not tell a day the model had nothing to say about
+// from a day the market priced us out; both read as nineteen stations that
+// simply are not there (user ruling, 2026-09-02).  The reasons are the
+// ledger's own -- one per station-day, the same codes section 12 shows --
+// so this groups what is already recorded rather than inferring it.
+//
+// The live bar is on its own line and deliberately outside the arithmetic:
+// it says what the live lane may not trade, while every number to its left
+// is the paper book, which seats a barred station like any other.
+function stationCell(r){
+  const b=r.station_breakdown;
+  if(!b) return String(r.station_count);
+  const head=`<b>${b.opened}</b><span class="muted">/${b.fleet}</span>`;
+  const parts=(b.reasons||[]).map(x=>{
+    const lab=ABSENT_REASON[x.reason]||[x.reason,""];
+    return `<span title="${h(lab[1]||lab[0])}">${h(lab[0])} ${x.count}</span>`;
+  });
+  const why=parts.length
+    ? `<div class="muted" style="font-size:11px;margin-top:2px">${
+        parts.join(`<span class="muted"> · </span>`)}</div>`
+    : "";
+  const bar=b.live_barred
+    ? `<div class="muted" style="font-size:11px" title="实盘禁入名单上的站，属实盘裁定；纸面账本照常入座，所以这个数不参与左边的加减">实盘禁入 ${b.live_barred}</div>`
+    : "";
+  return head+why+bar;
+}
+
 function daily(){
   if(!D.daily || !D.daily.length) return "";
   const STAGES=["P0","P0-M","P1"];
@@ -7523,7 +7911,7 @@ function daily(){
     const covCls=cov==null?"":(cov>=0.6?"up":(cov<0.4?"down":""));
     return `<tr>
       <td class="mono">${h(r.event_date)}</td>
-      <td>${r.station_count}</td>
+      <td>${stationCell(r)}</td>
       <td>${r.position_count}</td>
       <td class="muted">${s.above||0}/${s.aligned||0}/${s.below||0}</td>
       <td class="${covCls}" title="意向窗各桶概率之和，按站取均值——选桶那一刻就知道，与结算无关">${
@@ -7555,7 +7943,11 @@ function daily(){
   return `<h2>每日统计</h2>
   <p class="sub">按事件日汇总，只算可成交的（整篮成本 ≥1 分）——不足一分的多是无人出价那侧的
   单边报价，名义上有价、实际买不到，混进来会让当天的盈亏读不出意思。</p>
-  <div class="why"><b>列的意思：</b>「位置」是相对市场偏上/一致/偏下的笔数，
+  <div class="why"><b>列的意思：</b>「站数」是当天<b>建仓的站 / 舰队全部站</b>，
+  下面按账本自己记的原因拆开没建仓的那些——盘口太薄和边际为负是两回事，
+  一个是买不到，一个是不划算；「实盘禁入」单列，那是实盘裁定，
+  纸面账本照常入座，不参与这一格的加减；
+  「位置」是相对市场偏上/一致/偏下的笔数，
   用的是<b>均值落点桶</b>（宪章 54 生产就座的那个中心桶，直接读账本记录）与市场质心比，
   差 ${(0.35).toFixed(2)} 桶以内算一致；
   「意向窗盖住率」是真值有没有落进 P0<b>意向</b>篮子——评的是选桶质量、与成交无关，
@@ -7574,7 +7966,7 @@ function daily(){
   「实现/声称」是命中率÷声称胜率，1.00× 表示概率说得准；
   「赔率」是 (1−成本)/成本。</div>
   <div class="card"><table><thead><tr>
-    <th>事件日</th><th>站数</th><th>仓位</th>
+    <th>事件日</th><th>站数<br><span class="muted">建仓/舰队</span></th><th>仓位</th>
     <th>位置<br><span class="muted">均值桶 上/平/下</span></th>
     <th>意向窗盖住率<br><span class="muted">选桶概率和</span></th>
     <th>建仓桶<br><span class="muted">腿数 · 分阶段</span></th>
@@ -7848,32 +8240,7 @@ function roster(){
   // with it is directly comparable; anything else is a leftover from before
   // a rule change and is flagged per basket.
   const CURRENT_RULE=(D.selection||{}).current_selection_rule_label||"";
-  const REASON={no_probability:["无概率","这一天没有为该站算出概率"],
-    no_market_book:["无盘口","有概率但没抓到可定价的市场"],
-    no_book_at_decision:["盘口未落库","每次决策时刻都没有半小时内的盘口快照"],
-    incomplete_book:["盘口缺桶","有盘口但缺了模型认得的桶，整站不可定价"],
-    selection_failed:["选桶报错","枚举窗口时抛错，该轮跳过"],
-    no_legal_window:["无合法窗口","结构闸拿走了整批枚举：断桶、不含中心桶、或长度不够。这些窗口没走到看报价那一步，跟贵不贵无关。约四成的未入座是这一类"],
-    no_priced_window:["窗口定不出价","窗口过了全部结构闸，但里面有腿根本没有卖价，成本算不出来。缺的是盘口"],
-    negative_edge_window:["边际不敌摩擦","窗口过闸也报得出价，胜率减全包成本仍盖不住逐腿最小跳动——这一条才是市场比模型贵。约六成的未入座是这一类，最好的一篮边际中位数 −0.25"],
-    leg_below_floor:["单腿报价过低","窗口里有腿的报价低于一分——那是无人出价那侧的挂牌，不是价格。这是我们自己设的闸，不是市场没给价"],
-    no_positive_kelly:["赔率不划算","篮子凑出来也定了价，但赢面低于要价，Kelly 给出零仓位"],
-    shape_gap_too_wide:["分布撕裂","均值离众数超过门限（研究臂，默认关）：撕裂形态下不入座"],
-certainty_gate_lit:["市场已定价完毕","中心桶连三次没动，或头两桶已占六成——证据收敛了，溢价市场早收过了，这一轮主动不做，等下一个决策时刻。与「赔率不划算」相反：那是算过嫌贵，这是压根没问"],
-    unquoted_ideal_window:["理想窗口没报价","中心±1 里凑不出八成质量有像样卖价的桶。市场不报价常常不是疏忽，是它判定这些桶不会发生。默认关闭，由前向验证决定是否启用"],
-    cost_exceeds_payout:["比满赔还贵","整篮成本超过它赢了能赔的 1.00，多高的概率都是亏——模型没被问到，是书的问题"],
-    resting_unfilled:["挂单没成交","价格没等到；规模是够的，市场没走到我们这里来。每 60 分钟重挂一次，但过了本站达峰时刻就收摊，不是挂到结算"],
-    belief_withdrew_order:["信念转负撤单","不是市场没来，是我们自己撤的：重挂时用最新概率重算整篮期望，转负即全撤。该查模型，不是执行"],
-    no_top_up_needed:["无需加仓","这一阶段想要的梯级已经在仓里了，按兵不动"],
-    entry_window_not_open:["P1 入座窗未开","宪章67：P1 只允许在本地 11 时后入座——它的本事是盘中观测，日高在午后才成形。11 时前的轮次一律不判；实测 11 时前入座的加仓净亏 49.5，11–16 时入座净赚 99.8。本地已过 11 时仍见此项＝窗开后温度从未创当日新高、P1 没有触发过重算（阴雨天常见），是天气不是故障"],
-    no_chain_growth:["加仓救不动链曲线","宪章66乙款：加仓按整条链的对数增长定规模，从已持仓位出发这一笔要让链的赔率曲线变优才买；求解器给出的最优增量为零——已持仓覆盖，或价格吃尽了增益"],
-    chain_cost_at_par:["买入后整链必亏","宪章66甲款：这一笔单独看过得了本阶段的闸，但买下去之后整条链的混合成本≥1.00——满额赔付也回不了本，中了也亏。只做算术不读声称；实测这类链38条中37仍净亏31.9"],
-    decline_clamp_hold_basket:["整篮等下一轮","目标篮里有桶的概率比上一 cycle 低了，这一轮整篮不入座（研究臂：钳位=hold）。生产默认不是这条——它砍掉那条腿照买其余"],
-    decline_clamp_emptied_basket:["全篮都在跌","目标篮每一个桶的概率都比上一 cycle 低，砍完没有腿剩下（研究臂：钳位=leg）"],
-    chain_never_opened:["P0 未开仓","只有 P0 开仓，后面两阶段是加仓；P0 没坐下这里就没仓可加，真正的原因看 P0"],
-    no_depth:["盘口太薄","价格划算但卖方挂出的量填不满最小整篮"],
-    no_seat_taken:["未入座","有概率也有盘口，目标函数看过后选择不坐"],
-    station_not_onboarded:["未接入舰队","这个站有结算时区和已挂牌的市场，但模型从来没为它算过概率——舰队是 45 站，时区册是 48 站，多出来的三站是备好未接入。不是今天算不出来，是从来没算过；接入是舰队身份变更（22 个文件硬编码 45 站）"]};
+  const REASON=ABSENT_REASON;
   const short=x=>String(x).replace("°C","").replace("°F","");
   const LAB={above:"偏上",below:"偏下",aligned:"一致",unknown:"—"};
   // Charter 55's own reading, named in its own words: a positive gap
