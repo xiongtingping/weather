@@ -1157,6 +1157,40 @@ EFFECTIVE_EDGE_MODE = (
 CHAIN_TICKET_MODE = (
     os.environ.get("PAPER_LEDGER_CHAIN_TICKET", "").strip().lower() or "on"
 )
+# A P1-specific effective-edge table, for the replay arms only.  Charter 68
+# exempts P1 from the kernel's lambda on purpose -- its edge is the
+# observation, and where the market disagrees most the observation is right --
+# and nothing here changes that exemption for production or for the default
+# ledger run.  What this admits is a table fitted on P1's own settled rows,
+# keyed by event date so each day reads only the days before it, handed in by
+# path.  Unset means no table and the exemption stands exactly as it did.
+# Deliberately a separate table: the kernel's rolling fit pools every stage it
+# covers into one set of bands, and adding P1 to that pool would move P0 and
+# P0-M's sizing along with it.
+P1_EFFECTIVE_EDGE_TABLE_PATH = (
+    os.environ.get("PAPER_LEDGER_P1_EFFECTIVE_EDGE_TABLE", "").strip()
+)
+
+
+def _load_p1_effective_edge_table() -> dict[str, list[tuple[float, float]]]:
+    if not P1_EFFECTIVE_EDGE_TABLE_PATH:
+        return {}
+    try:
+        raw = json.loads(Path(P1_EFFECTIVE_EDGE_TABLE_PATH).read_text())
+    except (OSError, ValueError) as exc:
+        raise SystemExit(
+            f"paper_ledger_p1_effective_edge_table_unreadable: {exc}"
+        ) from exc
+    tables = raw.get("by_event_date") if isinstance(raw, dict) else None
+    if not isinstance(tables, dict):
+        raise SystemExit("paper_ledger_p1_effective_edge_table_shape_invalid")
+    return {
+        str(day): [(float(bound), float(lam)) for bound, lam in bands]
+        for day, bands in tables.items()
+    }
+
+
+P1_EFFECTIVE_EDGE_TABLE = _load_p1_effective_edge_table()
 # Consolidation stake tilt (user ruling, 2026-08-21): the one discriminator
 # that survived every robustness cut.  Chains entered with two or more of
 # the three consolidation signs on returned -41.6% (ex-best -46.0%,
@@ -6024,6 +6058,17 @@ def backfill(
                     ):
                         gate_win = gate_win * effective_edge_lambda(
                             float(seat_cost) / gate_win
+                        )
+                    elif (
+                        stage == "P1"
+                        and P1_EFFECTIVE_EDGE_TABLE
+                        and gate_win > 0
+                        and str(event_date) in P1_EFFECTIVE_EDGE_TABLE
+                    ):
+                        # Replay arm only; see P1_EFFECTIVE_EDGE_TABLE_PATH.
+                        gate_win = gate_win * effective_edge_lambda(
+                            float(seat_cost) / gate_win,
+                            table=P1_EFFECTIVE_EDGE_TABLE[str(event_date)],
                         )
                     fraction, wanted_stake = _kelly_stake(
                         win_probability=gate_win,
