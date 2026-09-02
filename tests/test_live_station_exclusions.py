@@ -657,6 +657,46 @@ def test_the_bar_is_a_switch_and_writes_a_ruling_with_its_evidence(
     assert entries[1]["barred"] is False
 
 
+def test_a_hand_bar_releases_nobody_to_make_room(tmp_path, monkeypatch) -> None:
+    """The behaviour the ceiling forced, and the reason it was lifted.
+
+    Under the cap each hand ruling past fifteen evicted the automatic
+    layer's weakest row, so barring one station silently un-barred another:
+    on 2026-09-02 KORD released KHOU, KHOU released SAEZ, ZBAA released
+    ZUUU, RKSI released VILK and KAUS released KSEA, and two of the freed
+    ones had to be barred again by hand seconds later.
+    """
+
+    intent, exclusions, audit = _config_copies(tmp_path, monkeypatch)
+    doc = json.loads(exclusions.read_text(encoding="utf-8"))
+    # A full hand list and a standing automatic one, the shape that used to
+    # trigger the eviction.
+    doc["excluded_stations"] = [
+        {"station": f"X{i:03d}", "city": "x", "full_sample_roi": -0.5,
+         "added_utc": "2026-09-02"} for i in range(15)
+    ]
+    doc["auto_excluded_stations"] = [
+        {"station": "KSFO", "barred_on": "fulfilment_ratio", "value": -0.9,
+         "settlements": 9, "auto_barred_utc": "2026-09-02"},
+        {"station": "OEJN", "barred_on": "realized_gap_usdc", "value": -20.0,
+         "settlements": 9, "auto_barred_utc": "2026-09-02"},
+    ]
+    doc["released_stations"] = []
+    exclusions.write_text(
+        json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    control.set_station_bar("MMMX", True, by="test")
+    after = json.loads(exclusions.read_text(encoding="utf-8"))
+    assert {r["station"] for r in after["auto_excluded_stations"]} == {
+        "KSFO", "OEJN"
+    }
+    assert len(after["excluded_stations"]) == 16
+    assert len(control.excluded_stations()) == 18
+    # And nothing was released to pay for it.
+    assert after["released_stations"] == []
+
+
 def test_releasing_an_automatic_bar_keeps_the_sweep_off_the_station(
     tmp_path, monkeypatch,
 ) -> None:
