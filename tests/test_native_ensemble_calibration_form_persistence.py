@@ -74,6 +74,8 @@ PERSISTED_BY_COLUMN = {
         "reliability_weight",
         "climate_samples_c",
         "train_n_effective",
+        "fit_through_date",
+        "fit_case_count",
     },
 }
 

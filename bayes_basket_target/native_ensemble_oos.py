@@ -1071,6 +1071,14 @@ def _fit_parameters(
         "train_residual_sigma_c": residual_sigma,
         "train_mean_spread_c": mean_spread,
         "train_n_effective": train_n_effective,
+        # Provenance of this fit -- what it saw -- so a served row can say
+        # whether it was trained through yesterday or through a week ago.
+        # Measured 2026-09-02: the served bias sat a median six days behind
+        # the event because the gate's holdout was withheld from the fit.
+        "fit_through_date": max(
+            str(case["event_date"])[:10] for case in cases
+        ),
+        "fit_case_count": len(cases),
     }
 
 
@@ -3138,6 +3146,14 @@ def _evaluate_system(
             "missing_strict_holdout_case_count": 0,
         }
     parameters = _fit_parameters(train)
+    serving_cases = sorted(
+        (
+            case for case in cases
+            if rolling_window_start <= str(case["event_date"])
+        ),
+        key=lambda case: str(case["event_date"]),
+    )
+    serving_parameters = _fit_parameters(serving_cases)
     predictions = []
     for case in holdout:
         probability = _apply_parameters(case["values"], parameters)
@@ -3213,6 +3229,21 @@ def _evaluate_system(
             else "MIXED_STRICT_CHRONOLOGICAL"
         ),
         "parameters": parameters,
+        # What gets served (user ruling 2026-09-02, option 1).  The gate fits
+        # on the training window and scores on the holdout; that is what
+        # ``parameters``/``oos_metrics`` above are and they do not change,
+        # so the cross weights, the residual series and the selection
+        # evidence keep their bytes.  But the row that reaches the compiler
+        # was that same train-only fit, and the holdout it withheld is the
+        # newest evidence there is: measured 2026-09-02 on 361 served
+        # artifacts, the event day sat a median six days past
+        # ``train_end_date`` (p90 twelve), so under a five-day half-life the
+        # served bias lacked 56% of its intended weight.  Refit on the whole
+        # rolling window through the newest closed day: -7.7% centre MAE on
+        # 13,431 scope-days, 39/45 stations, every family (tmp/bias_gap_arms.py).
+        "serving_parameters": serving_parameters,
+        "serving_fit_through_date": serving_cases[-1]["event_date"],
+        "serving_n": len(serving_cases),
         "predictions": predictions,
         "oos_metrics": _mean_metrics([
             row["metrics"] for row in predictions
@@ -4936,7 +4967,14 @@ def _system_artifact_identity(
         raise ContractError(
             "native_ensemble_oos_run_cycle_mapping_missing"
         )
-    parameters = evaluation["parameters"]
+    # The served row carries the serving refit (whole rolling window through
+    # the newest closed day); the gate's train-only fit stays in
+    # ``evaluation["parameters"]`` for the weights and the evidence.  An
+    # evaluation without a serving fit (older callers, replays) serves what
+    # it always did.
+    parameters = (
+        evaluation.get("serving_parameters") or evaluation["parameters"]
+    )
     transport_provider_id = str(
         evaluation["transport_provider_id"]
     )
@@ -5034,6 +5072,8 @@ def _system_artifact_identity(
             "formal_promotion_min_train_days": scope["formal_promotion_min_train_days"],
             "formal_promotion_min_holdout_days": scope["formal_promotion_min_holdout_days"],
             "formal_p0_eligible": False,
+            "fit_through_date": parameters.get("fit_through_date"),
+            "fit_case_count": parameters.get("fit_case_count"),
         }),
         "member_qc_contract_sha256": content_sha256({
             "expected_complete_member_set": True,
