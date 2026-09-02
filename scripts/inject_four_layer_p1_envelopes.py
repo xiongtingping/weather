@@ -85,6 +85,14 @@ def main() -> int:
     parser.add_argument("--samples", required=True)
     parser.add_argument("--with-reanchor", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    # A whole fortnight of envelopes does not finish inside one command
+    # window, and an interrupted single transaction leaves a write-ahead log
+    # the size of the swap it was making -- 3.8 GB of one, on the run that
+    # taught this.  Days are the natural chunk: each commits on its own, so
+    # an interrupted run leaves the days it finished and can be resumed from
+    # the next one.
+    parser.add_argument("--since", default=None)
+    parser.add_argument("--through", default=None)
     args = parser.parse_args()
 
     samples = sqlite3.connect(f"file:{args.samples}?mode=ro", uri=True)
@@ -120,12 +128,23 @@ def main() -> int:
         " JOIN basket_probability_envelope e"
         "   ON e.envelope_id = h.checkpoint_id"
         " WHERE h.stage='P1' AND h.state='COMMITTED'"
-        " ORDER BY h.event_date, h.station_id, h.decision_at_utc"
+        + (" AND h.event_date>=?" if args.since else "")
+        + (" AND h.event_date<=?" if args.through else "")
+        + " ORDER BY h.event_date, h.station_id, h.decision_at_utc",
+        tuple(
+            value for value in (args.since, args.through) if value
+        ),
     ).fetchall()
     print(f"  {len(rows)} committed P1 envelopes in the replay database")
 
+    current_day = ""
     for row in rows:
         day = str(row["event_date"])
+        if day != current_day:
+            if current_day and not args.dry_run:
+                replay.commit()
+            current_day = day
+            print(f"    {day} ...", flush=True)
         if day not in artifacts:
             artifacts[day] = walk_forward_artifacts(all_rows, day)
         fitted = artifacts[day]
