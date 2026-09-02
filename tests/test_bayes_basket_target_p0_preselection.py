@@ -1144,3 +1144,45 @@ def test_p0_snapshot_carries_the_exchange_lot_off_the_registry_row() -> None:
         planning_budget_usdc=20.0,
     )
     assert nested["buckets"][0]["min_order_size"] == 5.0
+
+
+def test_blocked_compile_without_a_plan_projects_by_status_and_reasons() -> None:
+    """A runtime ``_blocked`` answer has ``plan`` None and must still project.
+
+    Refusing it turned a named HOLD (delta_v2_support_empty and the other
+    codes the runtime absorbs) into ``p0_preselection_compiled_plan_missing``
+    one layer up -- fail-closed with no preselection row and no decision,
+    15 forward station-days a cycle on 2026-09-02.  A compile that says it
+    is ready, or holds, without a plan is still a contract breach.
+    """
+
+    import pytest
+
+    from bayes_basket_target.contracts import ContractError
+    from bayes_basket_target.p0_preselection import (
+        _decision_semantic_projection,
+    )
+
+    blocked = {
+        "status": "blocked",
+        "reason_codes": ["delta_v2_support_empty"],
+        "cadence_decision": "HOLD",
+        "plan": None,
+        "cash_phase_decision": None,
+        "resolved_station_policy": {"activation_id": "act-1"},
+    }
+    projected = _decision_semantic_projection(blocked)
+    assert projected["status"] == "blocked"
+    assert projected["reason_codes"] == ["delta_v2_support_empty"]
+    assert projected["policy"]["activation_id"] == "act-1"
+    assert projected["plan"]["final_support"] is None
+    assert projected["plan"]["center_bucket"] is None
+    # Deterministic: the same blocked answer projects to the same identity.
+    assert _decision_semantic_projection(dict(blocked)) == projected
+
+    for status in ("ready_no_live", "hold"):
+        with pytest.raises(
+            ContractError, match="p0_preselection_compiled_plan_missing"
+        ):
+            _decision_semantic_projection({**blocked, "status": status})
+

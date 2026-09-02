@@ -62,7 +62,20 @@ def _decision_semantic_projection(
 
     plan = compiled.get("plan")
     if not isinstance(plan, Mapping):
-        raise ContractError("p0_preselection_compiled_plan_missing")
+        # A blocked compile carries no plan by construction: the runtime's
+        # ``_blocked`` answer names its reasons and leaves ``plan`` None.
+        # Its identity is the status and those reasons -- every plan field
+        # below projects to None -- and refusing to project it turned a
+        # HOLD the runtime had already named (support_empty, no solvable
+        # window, certainty gate) into ``p0_preselection_compiled_plan_missing``
+        # one layer up: fail-closed, no preselection row, no decision.
+        # Measured 2026-09-02 07:40Z, 15 forward station-days a cycle.  A
+        # compile that claims to be ready or to hold without a plan is still
+        # the contract breach it always was.
+        if str(compiled.get("status") or "") == "blocked":
+            plan = {}
+        else:
+            raise ContractError("p0_preselection_compiled_plan_missing")
     cash_phase = compiled.get("cash_phase_decision")
     if not isinstance(cash_phase, Mapping):
         cash_phase = {}
