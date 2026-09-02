@@ -48,23 +48,35 @@ def main() -> int:
         )
     conn.execute("PRAGMA busy_timeout=120000")
     try:
-        fit = fit_lambda_table(conn, window_days=args.window_days)
-        receipt = {
-            "schema": "effective_edge_refit_v1",
-            "content_sha256": fit["content_sha256"],
-            "seat_count": fit["seat_count"],
-            "evidence": fit["evidence"],
-            "accumulating_bands": fit["accumulating_bands"],
-            "blind_bands": fit["blind_bands"],
-            "committed": False,
-        }
-        if args.commit:
-            receipt.update(persist_and_activate(conn, fit))
-            receipt["committed"] = True
-        print(json.dumps(receipt, ensure_ascii=False, indent=1))
+        # Two scopes, two fits, never pooled: P0/P0-M under charter 68's
+        # table, P1 under its own (user ruling, 2026-09-02).  Each journals
+        # and activates on its own row, so refreshing one cannot retire the
+        # other.
+        receipts = []
+        blind = False
+        for scope in ("P0", "P1"):
+            fit = fit_lambda_table(
+                conn, window_days=args.window_days, stage_scope=scope
+            )
+            receipt = {
+                "schema": "effective_edge_refit_v2",
+                "stage_scope": scope,
+                "content_sha256": fit["content_sha256"],
+                "seat_count": fit["seat_count"],
+                "evidence": fit["evidence"],
+                "accumulating_bands": fit["accumulating_bands"],
+                "blind_bands": fit["blind_bands"],
+                "committed": False,
+            }
+            if args.commit:
+                receipt.update(persist_and_activate(conn, fit))
+                receipt["committed"] = True
+            receipts.append(receipt)
+            blind = blind or bool(fit["blind_bands"])
+        print(json.dumps(receipts, ensure_ascii=False, indent=1))
         # A blind band is the one condition a human has to see: the number
         # governing it is frozen and nothing on the book can refresh it.
-        return 3 if fit["blind_bands"] else 0
+        return 3 if blind else 0
     finally:
         conn.close()
 

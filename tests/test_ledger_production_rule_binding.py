@@ -292,6 +292,17 @@ LEDGER_ONLY = {
         " 0 = production's rule, which has no threshold and never had one"
         " measured against it"
     ),
+    # 2026-09-02 replay arm: a P1 effective-edge table handed in by path,
+    # one set of bands per event date so each day reads only the days
+    # before it.  Production reads the kernel's P1 constant through the same
+    # dispatch both lanes bind above; unset here is that constant too.
+    "P1_EFFECTIVE_EDGE_TABLE_PATH": (
+        "replay arm; path to a per-event-date P1 lambda table, unset ="
+        " the kernel's EFFECTIVE_EDGE_P1_LAMBDA, exactly as production"
+    ),
+    "P1_EFFECTIVE_EDGE_TABLE": (
+        "the loaded form of P1_EFFECTIVE_EDGE_TABLE_PATH; empty when unset"
+    ),
     # Charter 66 replay arms: the bankroll frame and the miss-mass floor a
     # replay may vary; production's frame is its own capital plumbing.
     "CHAIN_TOPUP_BANKROLL_USDC": "replay arm; 0 = scope allowance",
@@ -502,6 +513,17 @@ def test_the_support_width_bounds_match_productions_policy_defaults() -> None:
     assert L.effective_edge_lambda is K2.effective_edge_lambda
     assert PROD.effective_edge_lambda is K2.effective_edge_lambda
     assert L.EFFECTIVE_EDGE_STAGES is K2.EFFECTIVE_EDGE_STAGES
+    # 2026-09-02: P1 flows through the same dispatch with its own table.  Both
+    # lanes must call the one function and read the one stage set, or P1 is
+    # exempt in one lane and shrunk in the other while both claim one book.
+    assert L.effective_edge_lambda_for_stage is (
+        K2.effective_edge_lambda_for_stage
+    )
+    assert PROD.effective_edge_lambda_for_stage is (
+        K2.effective_edge_lambda_for_stage
+    )
+    assert L.EFFECTIVE_EDGE_P1_STAGES is K2.EFFECTIVE_EDGE_P1_STAGES
+    assert PROD.EFFECTIVE_EDGE_P1_STAGES is K2.EFFECTIVE_EDGE_P1_STAGES
     assert L.MAXIMUM_SUPPORT_BUCKETS == (
         TargetBasketPolicy.maximum_support_buckets
     )

@@ -654,6 +654,41 @@ EFFECTIVE_EDGE_LAMBDA = (
     (float("inf"), 0.82),
 )
 EFFECTIVE_EDGE_STAGES = frozenset({"P0", "P0-M"})
+# P1's own table (user ruling, 2026-09-02).  The exemption above was a
+# statement about a stage; this makes it a table about that stage, so the
+# same machinery -- one function, one rolling fit, one journal -- covers all
+# three and P1's ratio is measured rather than assumed.
+#
+# Fitted on the production book's own 113 settled P1 seats, 2026-08-15..09-01,
+# per agreement band a = price / claim, realized / claimed:
+#
+#     a < 0.50   1.102   (47 seats, +113.7%)    early/late split 0.84 / 1.21
+#     0.50-0.70  1.035   (31 seats,  +16.7%)                     1.10 / 1.01
+#     0.70-0.85  0.831   (20 seats,   +7.7%)                     0.54 / 0.92
+#     a >= 0.85  1.113   (15 seats,  +28.3%)                     1.39 / 1.08
+#
+# Not an inverted U.  Where the market disagrees most, P1 over-delivers and
+# earns most -- the mirror of P0 -- because its edge is the observation.  The
+# served value is capped at one: the exemption was "trust it", never "trust it
+# more than it trusts itself".  That leaves one candidate discount, the
+# 0.70-0.85 band at 0.83, and it is NOT promoted: its early half is five seats
+# (inadmissible) reading 0.54 and its late half reads 0.92, so no stable
+# forward evidence yet.  The store fits this scope separately each day; a
+# person promotes a band here when the journal shows it holding.  Until then
+# the table is identity and P1 sizes exactly as it did.
+#
+# The replay arms of 2026-09-02 measured +6 points from a P1 table -- on a
+# replay book rebuilt from a fresh bankroll, whose bands read 0.80 where this
+# book reads 1.10.  The replay's own four arms stay valid against each other;
+# its bands do not transfer to production's constant, and this one comes from
+# production's book.
+EFFECTIVE_EDGE_P1_LAMBDA = (
+    (0.50, 1.00),
+    (0.70, 1.00),
+    (0.85, 1.00),
+    (float("inf"), 1.00),
+)
+EFFECTIVE_EDGE_P1_STAGES = frozenset({"P1"})
 
 
 def effective_edge_lambda(
@@ -680,6 +715,33 @@ def effective_edge_lambda(
         if value < bound:
             return float(lam)
     return float(bands[-1][1])
+
+
+def effective_edge_lambda_for_stage(
+    stage: str,
+    agreement: float,
+    *,
+    table: Sequence[tuple[float, float]] | None = None,
+    p1_table: Sequence[tuple[float, float]] | None = None,
+) -> float:
+    """The realized fraction of a claim, for the stage that made it.
+
+    One dispatch both lanes call, so the question "does this stage get a
+    lambda, and which" has one answer.  P0 and P0-M read the charter 68 table
+    (or the rolling fit handed in as ``table``); P1 reads its own (or
+    ``p1_table``, which is how a replay arm hands in a per-day fit); any other
+    stage reads one, because no table has been fitted for it and an unfitted
+    shrink is a guess wearing a number.
+    """
+
+    name = str(stage or "").strip().upper()
+    if name in EFFECTIVE_EDGE_STAGES:
+        return effective_edge_lambda(agreement, table)
+    if name in EFFECTIVE_EDGE_P1_STAGES:
+        return effective_edge_lambda(
+            agreement, tuple(p1_table) if p1_table else EFFECTIVE_EDGE_P1_LAMBDA
+        )
+    return 1.0
 # Charter 67 (user ruling, 2026-08-30): the local hour before which P1 may
 # not take a seat.  The P1 lane starts compiling at local midnight, and both
 # lanes' entry rules were spending the stage's budget on a midnight book with

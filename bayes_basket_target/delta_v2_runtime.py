@@ -24,8 +24,10 @@ from .basket_kernel.contracts import (
 )
 from .basket_kernel.delta_v2 import (
     dispersion_support_size,
+    EFFECTIVE_EDGE_P1_STAGES,
     EFFECTIVE_EDGE_STAGES,
     effective_edge_lambda,
+    effective_edge_lambda_for_stage,
     off_center_claim_factor,
     probability_core,
     PROBABILITY_CORE_MASS,
@@ -1912,12 +1914,17 @@ def _solve_over_support_windows(
         # here rather than at the solver is what keeps the ranking and the
         # sizing reading one belief: the block below rebuilds the whole
         # partition from ``claim_factor`` and hands it to both.
-        if EFFECTIVE_EDGE_MODE == "on" and stage in EFFECTIVE_EDGE_STAGES:
+        # P1 now flows through the same dispatch with its own table (identity
+        # today; see EFFECTIVE_EDGE_P1_LAMBDA), so the exemption is a fitted
+        # row rather than an absent branch.
+        if EFFECTIVE_EDGE_MODE == "on" and (
+            stage in EFFECTIVE_EDGE_STAGES or stage in EFFECTIVE_EDGE_P1_STAGES
+        ):
             priced = row.get("all_in_price")
             claimed = float(row.get("win_probability") or 0.0)
             if priced is not None and claimed > EPS:
-                claim_factor *= effective_edge_lambda(
-                    float(priced) / claimed
+                claim_factor *= effective_edge_lambda_for_stage(
+                    stage, float(priced) / claimed
                 )
         if abs(claim_factor - 1.0) > EPS:
             # The same correction the ranking used, expressed on the

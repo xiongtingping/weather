@@ -1,0 +1,174 @@
+"""P1 under the effective-edge machinery: its own table, its own fit, one dispatch.
+
+Charter 68 exempted P1 by leaving it out of a stage set.  The 2026-09-02 ruling
+turns that absence into a fitted row: P1 reads a table of its own through the
+same function P0 reads its table through, and the store fits that table on P1's
+own settled seats, never pooled with P0's.  Three things must hold for that to
+be a safe change on an armed book, and each is pinned here: today's P1 table is
+identity, so nothing P1 sizes moves; a P1 table cannot reach a P0 seat nor a P0
+table a P1 seat; and the store's two scopes cannot see each other's rows or
+retire each other's activation.
+"""
+from __future__ import annotations
+
+import json
+import sqlite3
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
+    EFFECTIVE_EDGE_LAMBDA,
+    EFFECTIVE_EDGE_P1_LAMBDA,
+    effective_edge_lambda,
+    effective_edge_lambda_for_stage,
+)
+from bayes_basket_target import effective_edge_store as store  # noqa: E402
+
+
+def test_p1_table_is_identity_today_so_nothing_p1_sizes_moves() -> None:
+    """The exemption survives as a row of ones until a band is promoted."""
+
+    assert all(lam == 1.0 for _bound, lam in EFFECTIVE_EDGE_P1_LAMBDA)
+    for agreement in (0.1, 0.45, 0.6, 0.8, 0.95, 3.0):
+        assert effective_edge_lambda_for_stage("P1", agreement) == 1.0
+
+
+def test_p0_and_p0m_read_the_charter_68_table_exactly_as_before() -> None:
+    for stage in ("P0", "P0-M"):
+        for agreement in (0.1, 0.45, 0.6, 0.8, 0.95, 3.0):
+            assert effective_edge_lambda_for_stage(stage, agreement) == (
+                effective_edge_lambda(agreement)
+            )
+    # Handing P1's table to a P0 seat must not reach it.
+    assert effective_edge_lambda_for_stage(
+        "P0", 0.3, p1_table=((float("inf"), 0.5),)
+    ) == effective_edge_lambda(0.3)
+
+
+def test_a_p1_table_handed_in_governs_p1_only() -> None:
+    """A replay arm's per-day fit reaches P1 and nothing else."""
+
+    banded = ((0.5, 0.8), (0.7, 0.9), (0.85, 0.95), (float("inf"), 1.0))
+    assert effective_edge_lambda_for_stage("P1", 0.3, p1_table=banded) == 0.8
+    assert effective_edge_lambda_for_stage("P1", 0.6, p1_table=banded) == 0.9
+    assert effective_edge_lambda_for_stage("P1", 0.9, p1_table=banded) == 1.0
+    # Same table offered as the P0 override does nothing to P1.
+    assert effective_edge_lambda_for_stage("P1", 0.3, table=banded) == 1.0
+
+
+def test_an_unfitted_stage_reads_one() -> None:
+    """An unfitted shrink is a guess wearing a number."""
+
+    assert effective_edge_lambda_for_stage("P2", 0.3) == 1.0
+    assert effective_edge_lambda_for_stage("", 0.3) == 1.0
+
+
+def _book(rows) -> sqlite3.Connection:
+    """The two ledger tables the store reads, with one seat per row."""
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE paper_trade_position("
+        "position_id TEXT PRIMARY KEY, win_probability REAL, all_in_cost REAL)"
+    )
+    conn.execute(
+        "CREATE TABLE paper_trade_settlement("
+        "settlement_id TEXT PRIMARY KEY, position_id TEXT, stage TEXT,"
+        " event_date TEXT, hit INTEGER)"
+    )
+    for index, (stage, claim, cost, hit) in enumerate(rows):
+        pid = f"pos-{index}"
+        conn.execute(
+            "INSERT INTO paper_trade_position VALUES(?,?,?)",
+            (pid, claim, cost),
+        )
+        conn.execute(
+            "INSERT INTO paper_trade_settlement VALUES(?,?,?,?,?)",
+            (f"set-{index}", pid, stage, "2026-09-01", hit),
+        )
+    return conn
+
+
+def test_the_store_fits_p1_on_p1_rows_alone() -> None:
+    """Twenty P1 seats that all hit at a = 0.3 read 1.0 for P1 and change
+    nothing in P0's fit, however loudly they would have voted in a pool."""
+
+    p1_rows = [("P1", 0.5, 0.15, 1) for _ in range(20)]      # a = 0.30
+    p0_rows = [("P0", 0.5, 0.15, 0) for _ in range(20)]      # a = 0.30, all miss
+    conn = _book(p1_rows + p0_rows)
+    p1 = store.fit_lambda_table(conn, stage_scope="P1")
+    p0 = store.fit_lambda_table(conn, stage_scope="P0")
+    assert p1["table"]["stages"] == ["P1"]
+    assert p0["table"]["stages"] == ["P0", "P0-M"]
+    # P1's first band: 20 hits on claim mass 10 -> raw 2.0, capped at one.
+    assert p1["bands"][0][1] == 1.0
+    assert p1["evidence"][0]["raw_lambda"] == pytest.approx(2.0)
+    # P0's first band: 0 hits on claim mass 10 -> raw 0, floored, not lifted
+    # by the P1 seats sitting in the same agreement band.
+    assert p0["bands"][0][1] == store.LAMBDA_FLOOR
+    assert p0["evidence"][0]["seats"] == 20
+
+
+def test_the_p1_ceiling_is_one_where_p0s_is_not() -> None:
+    assert store.P1_LAMBDA_CEILING == 1.0
+    assert store.LAMBDA_CEILING > 1.0
+
+
+def test_a_thin_p1_band_keeps_the_identity_incumbent() -> None:
+    """Below the seat floor the band is reported as accumulating and served at
+    the incumbent -- which for P1 is one, the exemption standing."""
+
+    conn = _book([("P1", 0.5, 0.45, 0) for _ in range(3)])   # a = 0.9, 3 seats
+    fit = store.fit_lambda_table(conn, stage_scope="P1")
+    assert fit["bands"][-1][1] == 1.0
+    assert fit["evidence"][-1]["accumulating"] is True
+
+
+def test_activating_one_scope_does_not_retire_the_other() -> None:
+    conn = _book(
+        [("P1", 0.5, 0.15, 1) for _ in range(20)]
+        + [("P0", 0.5, 0.15, 1) for _ in range(20)]
+    )
+    store.persist_and_activate(conn, store.fit_lambda_table(conn, stage_scope="P0"))
+    store.persist_and_activate(conn, store.fit_lambda_table(conn, stage_scope="P1"))
+    active = conn.execute(
+        "SELECT stage_scope, COUNT(*) FROM calibration_effective_edge_lambda"
+        " WHERE activated=1 GROUP BY stage_scope ORDER BY stage_scope"
+    ).fetchall()
+    assert active == [("P0", 1), ("P1", 1)]
+    assert store.load_active_lambda(conn, stage_scope="P0") is not None
+    assert store.load_active_lambda(conn, stage_scope="P1") is not None
+    # Re-activating P0 retires only P0's earlier row.
+    store.persist_and_activate(conn, store.fit_lambda_table(conn, stage_scope="P0", window_days=7))
+    active = dict(conn.execute(
+        "SELECT stage_scope, COUNT(*) FROM calibration_effective_edge_lambda"
+        " WHERE activated=1 GROUP BY stage_scope"
+    ).fetchall())
+    assert active == {"P0": 1, "P1": 1}
+
+
+def test_rows_written_before_scopes_existed_read_as_p0() -> None:
+    """The column arrives with a default, so an old activated row is P0's."""
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(store.TABLE_DDL)
+    conn.execute(store.JOURNAL_DDL)
+    conn.execute(
+        "INSERT INTO calibration_effective_edge_lambda("
+        " lambda_table_sha256, bands_json, evidence_json, fitted_at_utc,"
+        " window_days, seat_count, activated, activated_at_utc)"
+        " VALUES('a'*1, ?, '[]', '2026-09-01T00:00:00', 28, 100, 1,"
+        " '2026-09-01T00:00:00')",
+        (json.dumps({"bands": [{"upper_bound": None, "lambda": 0.7}]}),),
+    )
+    store.ensure_schema(conn)
+    assert store.load_active_lambda(conn, stage_scope="P0") == (
+        (float("inf"), 0.7),
+    )
+    assert store.load_active_lambda(conn, stage_scope="P1") is None

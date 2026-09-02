@@ -63,10 +63,12 @@ from bayes_basket_target.basket_kernel.contracts import (  # noqa: E402
     TargetBasketSnapshot,
 )
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
+    EFFECTIVE_EDGE_P1_STAGES,
     EFFECTIVE_EDGE_STAGES,
     clamp_declining_gaps_v2,
     contiguous_edge_clamp_v2,
     effective_edge_lambda,
+    effective_edge_lambda_for_stage,
     probability_core,
 )
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
@@ -6053,22 +6055,23 @@ def backfill(
                     )
                     if (
                         EFFECTIVE_EDGE_MODE == "on"
-                        and stage in EFFECTIVE_EDGE_STAGES
-                        and gate_win > 0
-                    ):
-                        gate_win = gate_win * effective_edge_lambda(
-                            float(seat_cost) / gate_win
+                        and (
+                            stage in EFFECTIVE_EDGE_STAGES
+                            or stage in EFFECTIVE_EDGE_P1_STAGES
                         )
-                    elif (
-                        stage == "P1"
-                        and P1_EFFECTIVE_EDGE_TABLE
                         and gate_win > 0
-                        and str(event_date) in P1_EFFECTIVE_EDGE_TABLE
                     ):
-                        # Replay arm only; see P1_EFFECTIVE_EDGE_TABLE_PATH.
-                        gate_win = gate_win * effective_edge_lambda(
+                        # The same dispatch production calls.  A replay arm
+                        # may hand P1 a per-day table by path; production
+                        # and the default run read the kernel's P1 constant.
+                        gate_win = gate_win * effective_edge_lambda_for_stage(
+                            stage,
                             float(seat_cost) / gate_win,
-                            table=P1_EFFECTIVE_EDGE_TABLE[str(event_date)],
+                            p1_table=(
+                                P1_EFFECTIVE_EDGE_TABLE.get(str(event_date))
+                                if P1_EFFECTIVE_EDGE_TABLE
+                                else None
+                            ),
                         )
                     fraction, wanted_stake = _kelly_stake(
                         win_probability=gate_win,

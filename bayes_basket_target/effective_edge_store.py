@@ -54,7 +54,10 @@ import sqlite3
 from datetime import UTC, datetime
 from typing import Any, Sequence
 
-from .basket_kernel.delta_v2 import EFFECTIVE_EDGE_LAMBDA
+from .basket_kernel.delta_v2 import (
+    EFFECTIVE_EDGE_LAMBDA,
+    EFFECTIVE_EDGE_P1_LAMBDA,
+)
 from .contracts import content_sha256
 
 
@@ -66,6 +69,15 @@ MIN_CLAIM_MASS = 4.0
 LAMBDA_FLOOR = 0.05
 LAMBDA_CEILING = 1.50
 FIT_STAGES = ("P0", "P0-M")
+# P1 is fitted as its own scope, never pooled with the two above (user
+# ruling, 2026-09-02).  Pooling would let P1's over-delivering bands lift the
+# P0 numbers and P0's cliff drag P1's, and each would then size on a mixture
+# nobody trades.  Its ceiling is one: the exemption charter 68 wrote was
+# "trust the observation", never "trust it more than it trusts itself", so a
+# band where P1 under-claims is served at par, not inflated.
+FIT_STAGES_P1 = ("P1",)
+P1_LAMBDA_CEILING = 1.00
+STAGE_SCOPES = {"P0": FIT_STAGES, "P1": FIT_STAGES_P1}
 
 TABLE_DDL = (
     "CREATE TABLE IF NOT EXISTS calibration_effective_edge_lambda ("
@@ -92,10 +104,26 @@ JOURNAL_DDL = (
 def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.execute(TABLE_DDL)
     conn.execute(JOURNAL_DDL)
+    # Rows written before P1 had a scope are P0 rows; the default says so.
+    for table in (
+        "calibration_effective_edge_lambda",
+        "calibration_effective_edge_fit_journal",
+    ):
+        columns = {
+            str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})")
+        }
+        if "stage_scope" not in columns:
+            conn.execute(
+                f"ALTER TABLE {table}"
+                " ADD COLUMN stage_scope TEXT NOT NULL DEFAULT 'P0'"
+            )
 
 
-def _incumbent_bands() -> list[tuple[float, float]]:
-    return [(float(bound), float(lam)) for bound, lam in EFFECTIVE_EDGE_LAMBDA]
+def _incumbent_bands(stage_scope: str = "P0") -> list[tuple[float, float]]:
+    source = (
+        EFFECTIVE_EDGE_P1_LAMBDA if stage_scope == "P1" else EFFECTIVE_EDGE_LAMBDA
+    )
+    return [(float(bound), float(lam)) for bound, lam in source]
 
 
 def _band_index(agreement: float, bands: Sequence[tuple[float, float]]) -> int:
@@ -110,6 +138,7 @@ def fit_lambda_table(
     *,
     window_days: int = WINDOW_DAYS,
     as_of: str | None = None,
+    stage_scope: str = "P0",
 ) -> dict[str, Any]:
     """Fit one lambda per agreement band from the rolling settled window.
 
@@ -120,7 +149,11 @@ def fit_lambda_table(
     edges on the book.
     """
 
-    incumbent = _incumbent_bands()
+    if stage_scope not in STAGE_SCOPES:
+        raise ValueError(f"effective_edge_fit_scope_invalid:{stage_scope}")
+    stages = STAGE_SCOPES[stage_scope]
+    ceiling = P1_LAMBDA_CEILING if stage_scope == "P1" else LAMBDA_CEILING
+    incumbent = _incumbent_bands(stage_scope)
     newest = conn.execute(
         "SELECT MAX(event_date) FROM paper_trade_settlement"
     ).fetchone()
@@ -132,13 +165,13 @@ def fit_lambda_table(
         - __import__("datetime").timedelta(days=int(window_days))
     ).isoformat()
 
-    placeholders = ",".join("?" for _ in FIT_STAGES)
+    placeholders = ",".join("?" for _ in stages)
     rows = conn.execute(
         "SELECT p.win_probability, p.all_in_cost, s.hit"
         " FROM paper_trade_settlement s"
         " JOIN paper_trade_position p USING(position_id)"
         f" WHERE s.stage IN ({placeholders}) AND s.event_date >= ?",
-        (*FIT_STAGES, floor_day),
+        (*stages, floor_day),
     ).fetchall()
 
     tally = [
@@ -165,7 +198,7 @@ def fit_lambda_table(
         )
         raw = (slot["hits"] / slot["claim"]) if slot["claim"] > 0 else None
         if enough and raw is not None:
-            served = min(LAMBDA_CEILING, max(LAMBDA_FLOOR, raw))
+            served = min(ceiling, max(LAMBDA_FLOOR, raw))
         else:
             served = incumbent_lambda
             accumulating.append(index)
@@ -186,6 +219,8 @@ def fit_lambda_table(
 
     payload = {
         "schema": "effective_edge_lambda_table_v1",
+        "stage_scope": stage_scope,
+        "stages": list(stages),
         "bands": [
             {"upper_bound": None if b == float("inf") else b, "lambda": lam}
             for b, lam in bands
@@ -196,6 +231,7 @@ def fit_lambda_table(
     }
     return {
         "table": payload,
+        "stage_scope": stage_scope,
         "content_sha256": content_sha256(payload),
         "bands": bands,
         "evidence": evidence,
@@ -225,15 +261,18 @@ def persist_and_activate(
     ensure_schema(conn)
     now = datetime.now(UTC).isoformat(timespec="seconds")
     sha = str(fit["content_sha256"])
+    scope = str(fit.get("stage_scope") or "P0")
+    # Deactivation is per scope: activating P1's table must not retire P0's.
     conn.execute(
         "UPDATE calibration_effective_edge_lambda SET activated=0"
-        " WHERE activated=1"
+        " WHERE activated=1 AND stage_scope=?",
+        (scope,),
     )
     conn.execute(
         "INSERT INTO calibration_effective_edge_lambda("
         " lambda_table_sha256, bands_json, evidence_json, fitted_at_utc,"
-        " window_days, seat_count, activated, activated_at_utc)"
-        " VALUES(?,?,?,?,?,?,1,?)"
+        " window_days, seat_count, activated, activated_at_utc, stage_scope)"
+        " VALUES(?,?,?,?,?,?,1,?,?)"
         " ON CONFLICT(lambda_table_sha256) DO UPDATE SET"
         "  activated=1, activated_at_utc=excluded.activated_at_utc,"
         "  evidence_json=excluded.evidence_json",
@@ -245,21 +284,26 @@ def persist_and_activate(
             int(fit["table"]["window_days"]),
             int(fit["seat_count"]),
             now,
+            scope,
         ),
     )
     conn.execute(
         "INSERT INTO calibration_effective_edge_fit_journal("
         " lambda_table_sha256, fitted_at_utc, admitted, accumulating_bands,"
-        " evidence_json) VALUES(?,?,?,?,?)",
+        " evidence_json, stage_scope) VALUES(?,?,?,?,?,?)",
         (
             sha, now,
             len(fit["bands"]) - len(fit["accumulating_bands"]),
             json.dumps(fit["accumulating_bands"]),
             json.dumps(fit["evidence"], ensure_ascii=False),
+            scope,
         ),
     )
     conn.commit()
-    return {"lambda_table_sha256": sha, "activated_at_utc": now}
+    return {
+        "lambda_table_sha256": sha, "activated_at_utc": now,
+        "stage_scope": scope,
+    }
 
 
 # NOT yet wired to serving, and the reason is structural rather than a
@@ -279,6 +323,8 @@ def persist_and_activate(
 # machine computes candidates and a person promotes them.
 def load_active_lambda(
     conn: sqlite3.Connection,
+    *,
+    stage_scope: str = "P0",
 ) -> tuple[tuple[float, float], ...] | None:
     """The served table, or None when nothing has been fitted yet.
 
@@ -290,7 +336,9 @@ def load_active_lambda(
     try:
         row = conn.execute(
             "SELECT bands_json FROM calibration_effective_edge_lambda"
-            " WHERE activated=1 ORDER BY fitted_at_utc DESC LIMIT 1"
+            " WHERE activated=1 AND stage_scope=?"
+            " ORDER BY fitted_at_utc DESC LIMIT 1",
+            (str(stage_scope),),
         ).fetchone()
     except sqlite3.Error:
         return None
@@ -313,6 +361,9 @@ def load_active_lambda(
 
 __all__ = [
     "FIT_STAGES",
+    "FIT_STAGES_P1",
+    "P1_LAMBDA_CEILING",
+    "STAGE_SCOPES",
     "LAMBDA_CEILING",
     "LAMBDA_FLOOR",
     "MIN_CLAIM_MASS",
