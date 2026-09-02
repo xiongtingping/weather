@@ -1278,6 +1278,12 @@ def test_clause_68_the_objective_reads_effective_edge() -> None:
     assert all(lam <= 1.0 for _bound, lam in kernel.EFFECTIVE_EDGE_P1_LAMBDA)
     assert kernel.effective_edge_lambda_for_stage("P0", 1.27) == 0.82
     assert kernel.effective_edge_lambda_for_stage("P0-M", 0.3) == 0.14
+    # (a) 2026-09-03: window scope is the rule, bucket the research arm;
+    # a rung the reservation inversion cannot price still reaches the
+    # joint selector.
+    assert "单腿负边际不得否决整篮正边际" in clause
+    assert runtime.EFFECTIVE_EDGE_SCOPE == "window"
+    assert runtime.TAKER_LEG_VETO == "joint"
 
 
 def test_clause_69_the_decline_clamp_waits_for_the_book_to_open() -> None:

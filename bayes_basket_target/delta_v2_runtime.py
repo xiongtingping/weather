@@ -28,6 +28,7 @@ from .basket_kernel.delta_v2 import (
     EFFECTIVE_EDGE_STAGES,
     effective_edge_lambda,
     effective_edge_lambda_for_stage,
+    effective_edge_bucket_lambda_for_stage,
     off_center_claim_factor,
     probability_core,
     PROBABILITY_CORE_MASS,
@@ -729,6 +730,36 @@ LADDER_CENTER_DEFINITION = (
 EFFECTIVE_EDGE_MODE = (
     os.environ.get("DELTA_V2_EFFECTIVE_EDGE", "").strip().lower() or "on"
 )
+# Charter 68 scope (research arm, 2026-09-03).  ``window`` -- the shipped
+# rule -- deflates every rung of a window by the factor read off the whole
+# window's agreement.  ``bucket`` deflates each rung by its own agreement,
+# off the per-leg table in the kernel, so the mass moves between the rungs
+# of a window rather than only between the window and the rest.  The
+# ledger carries the same switch and the two must move together.
+EFFECTIVE_EDGE_SCOPE = (
+    os.environ.get("DELTA_V2_EFFECTIVE_EDGE_SCOPE", "").strip().lower()
+    or "window"
+)
+if EFFECTIVE_EDGE_SCOPE not in {"window", "bucket"}:
+    raise ValueError(
+        f"unknown effective edge scope: {EFFECTIVE_EDGE_SCOPE}"
+    )
+# Who may refuse one leg of a taker basket (user ruling, 2026-09-03: "a
+# negative-EV rung may not block a positive-EV basket").  ``joint`` hands a
+# rung the reservation inversion found no positive marginal price for to
+# the joint bundle selector at the ask, and only the whole basket's delta
+# authorizes or refuses it -- charter 35/58/65, and what the paper ledger
+# has always scored.  ``reservation`` is the FOK path as shipped on
+# 2026-08-31: a rung with no positive marginal price produced no
+# candidate, the bundle is all-or-none, and the basket held; measured
+# after the 2026-09-02 arming, 133 such legs held 91 baskets, cheap
+# positive-EV rungs included.  The maker branch had always handed its
+# anchor through; only the taker branch vetoed.
+TAKER_LEG_VETO = (
+    os.environ.get("DELTA_V2_TAKER_LEG_VETO", "").strip().lower() or "joint"
+)
+if TAKER_LEG_VETO not in {"joint", "reservation"}:
+    raise ValueError(f"unknown taker leg veto: {TAKER_LEG_VETO}")
 # Charter 69 (user ruling, 2026-09-02: "切 guarded"): the declining-
 # probability clamp of charter 51 is narrowed to what charter 49 and
 # contiguity allow.  ``guarded`` clamps only falling rungs at the ends of
@@ -1817,6 +1848,36 @@ def _solve_over_support_windows(
     for row in shortlist:
         window = tuple(row["buckets"])
         claim_factor = float(row.get("off_center_claim_factor") or 1.0)
+        # Bucket scope: one factor per rung, read off that rung's own
+        # agreement.  Filled only when the arm is on; the scalar path
+        # below is the shipped rule.
+        bucket_factors: dict[str, float] = {}
+        if (
+            EFFECTIVE_EDGE_MODE == "on"
+            and EFFECTIVE_EDGE_SCOPE == "bucket"
+            and (
+                stage in EFFECTIVE_EDGE_STAGES
+                or stage in EFFECTIVE_EDGE_P1_STAGES
+            )
+        ):
+            fee = float(basket_policy.fee_rate)
+            rows_by_bucket = {
+                str(item.bucket): item for item in snapshot.buckets
+            }
+            for bucket in window:
+                claimed_leg = float(probabilities.get(bucket, 0.0) or 0.0)
+                leg_row = rows_by_bucket.get(str(bucket))
+                factor = claim_factor
+                if (
+                    leg_row is not None
+                    and leg_row.ask_available
+                    and claimed_leg > EPS
+                ):
+                    factor *= effective_edge_bucket_lambda_for_stage(
+                        stage,
+                        float(leg_row.ask_price) * (1.0 + fee) / claimed_leg,
+                    )
+                bucket_factors[str(bucket)] = factor
         # Charter 68: the same deflation machinery, carrying a second and
         # differently-motivated factor.  ``off_center_claim_factor`` corrects
         # a window for sitting off the centre; this one corrects every window
@@ -1838,7 +1899,44 @@ def _solve_over_support_windows(
                 claim_factor *= effective_edge_lambda_for_stage(
                     stage, float(priced) / claimed
                 )
-        if abs(claim_factor - 1.0) > EPS:
+        if bucket_factors and any(
+            abs(factor - 1.0) > EPS for factor in bucket_factors.values()
+        ):
+            # Bucket scope: each rung keeps its own corrected mass; the mass
+            # the window gives up (or takes) is balanced against the rest so
+            # the scenario space stays a partition.
+            inside = sum(
+                float(probabilities[bucket]) for bucket in window
+            )
+            outside = max(0.0, 1.0 - inside)
+            corrected_inside = sum(
+                float(probabilities[bucket]) * bucket_factors[str(bucket)]
+                for bucket in window
+            )
+            if corrected_inside > 1.0 - EPS:
+                shrink = (1.0 - EPS) / corrected_inside
+                bucket_factors = {
+                    bucket: factor * shrink
+                    for bucket, factor in bucket_factors.items()
+                }
+                corrected_inside = 1.0 - EPS
+            outside_scale = (
+                (1.0 - corrected_inside) / outside if outside > EPS else 0.0
+            )
+            window_probabilities = {
+                bucket: (
+                    float(value) * bucket_factors[str(bucket)]
+                    if bucket in set(window)
+                    else float(value) * outside_scale
+                )
+                for bucket, value in probabilities.items()
+            }
+            total = sum(window_probabilities.values())
+            window_probabilities = {
+                bucket: value / total
+                for bucket, value in window_probabilities.items()
+            }
+        elif abs(claim_factor - 1.0) > EPS:
             # The same correction the ranking used, expressed on the
             # distribution this window is solved against: the window's own
             # buckets are deflated and the mass they give up returns to the
@@ -3297,8 +3395,14 @@ def compile_delta_v2_runtime_plan(
             },
         )
         reserve = reservation.get("reservation_price")
-        if reserve is None and mode != "MAKER":
+        if reserve is None and mode != "MAKER" and TAKER_LEG_VETO != "joint":
             continue
+        # ``joint``: no grid price improved the basket on this rung's own
+        # marginal reading, and that is not the rung's decision to make.
+        # It goes to the joint selector at the ask, where the whole basket's
+        # delta -- floor, CVaR, concentration and all -- authorizes or
+        # refuses it (charter 35/58/65), exactly as the maker anchor always
+        # has.
         # A Maker leg may be individually negative while the complete basket
         # is jointly positive because floor/CVaR/concentration are nonlinear.
         # Keep the non-crossing market anchor as a bounded bundle candidate;

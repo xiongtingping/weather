@@ -69,6 +69,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     contiguous_edge_clamp_v2,
     effective_edge_lambda,
     effective_edge_lambda_for_stage,
+    effective_edge_bucket_lambda_for_stage,
     probability_core,
 )
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
@@ -1137,6 +1138,27 @@ SHAPE_GAP_TILT = float(
 EFFECTIVE_EDGE_MODE = (
     os.environ.get("PAPER_LEDGER_EFFECTIVE_EDGE", "").strip().lower() or "on"
 )
+# Charter 68 scope (research arm, 2026-09-03), production's
+# DELTA_V2_EFFECTIVE_EDGE_SCOPE: ``window`` deflates the seat's claim by the
+# whole window's agreement; ``bucket`` sums each rung's claim deflated by
+# its own agreement off the kernel's per-leg table.  Asserted equal to
+# production by the binding test.
+EFFECTIVE_EDGE_SCOPE = (
+    os.environ.get("PAPER_LEDGER_EFFECTIVE_EDGE_SCOPE", "").strip().lower()
+    or "window"
+)
+if EFFECTIVE_EDGE_SCOPE not in {"window", "bucket"}:
+    raise SystemExit(f"unknown effective edge scope: {EFFECTIVE_EDGE_SCOPE}")
+# Production's per-leg reservation veto, replayed here as an arm (2026-09-03).
+# ``off`` is this lane's standing rule and production's ``joint``: the seat
+# is judged as one basket.  ``on`` refuses the seat whenever any rung's
+# price exceeds that rung's deflated claim -- the taker path as it shipped
+# on 2026-08-31, which held 91 baskets after the 2026-09-02 arming.
+LEG_VETO = (
+    os.environ.get("PAPER_LEDGER_LEG_VETO", "").strip().lower() or "off"
+)
+if LEG_VETO not in {"off", "on"}:
+    raise SystemExit(f"unknown leg veto: {LEG_VETO}")
 # The chain ticket, and it is deliberately ledger-only.  Under charter 68 the
 # shrink sizes most opening seats to nothing, and under THIS book's rule --
 # one book per station-day, only P0 opens -- a seat sized to nothing forfeits
@@ -1439,6 +1461,10 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     if EFFECTIVE_EDGE_MODE != "on"
     else "有效边际λ(a)收缩·P0",
     None
+    if EFFECTIVE_EDGE_MODE != "on" or EFFECTIVE_EDGE_SCOPE == "window"
+    else "有效边际按桶",
+    None if LEG_VETO != "on" else "逐腿否决",
+    None
     if CHAIN_TICKET_MODE != "on"
     else "开链保底票",
     None
@@ -1548,6 +1574,13 @@ SELECTION_RULE_SHA256 = content_sha256({
     "decline_clamp": DECLINE_CLAMP,
     "decline_min_drop": DECLINE_MIN_DROP,
     "reseat_within_stage": RESEAT_WITHIN_STAGE,
+    # Research arms of 2026-09-03, hashed only away from their defaults so
+    # the standing book keeps its fingerprint.
+    **(
+        {"effective_edge_scope": EFFECTIVE_EDGE_SCOPE}
+        if EFFECTIVE_EDGE_SCOPE != "window" else {}
+    ),
+    **({"leg_veto": LEG_VETO} if LEG_VETO != "off" else {}),
     "window_strategy": WINDOW_STRATEGY,
     "execution_mode": EXECUTION_MODE,
     # Which price the Kelly stake and the payout test are struck against.
@@ -6090,6 +6123,7 @@ def backfill(
                     gate_win = float(seat["win_probability"]) * (
                         SELECTION_DISCOUNT if SELECTION_DISCOUNT > 0 else 1.0
                     )
+                    leg_veto_hit = None
                     if (
                         EFFECTIVE_EDGE_MODE == "on"
                         and (
@@ -6098,18 +6132,87 @@ def backfill(
                         )
                         and gate_win > 0
                     ):
-                        # The same dispatch production calls.  A replay arm
-                        # may hand P1 a per-day table by path; production
-                        # and the default run read the kernel's P1 constant.
-                        gate_win = gate_win * effective_edge_lambda_for_stage(
-                            stage,
-                            float(seat_cost) / gate_win,
-                            p1_table=(
-                                P1_EFFECTIVE_EDGE_TABLE.get(str(event_date))
-                                if P1_EFFECTIVE_EDGE_TABLE
-                                else None
-                            ),
+                        p1_day_table = (
+                            P1_EFFECTIVE_EDGE_TABLE.get(str(event_date))
+                            if P1_EFFECTIVE_EDGE_TABLE
+                            else None
                         )
+                        discount = (
+                            SELECTION_DISCOUNT if SELECTION_DISCOUNT > 0
+                            else 1.0
+                        )
+                        # Each rung's own price and claim, for the bucket
+                        # scope and for the veto arm alike.
+                        leg_rows = {
+                            str(item.bucket): item for item in snapshot.buckets
+                        }
+                        leg_prices = {}
+                        for leg in seat["buckets"]:
+                            leg_row = leg_rows.get(str(leg))
+                            leg_price = (
+                                _execution_price(leg_row)
+                                if leg_row is not None else None
+                            )
+                            if leg_price is not None:
+                                leg_prices[str(leg)] = float(leg_price)
+                        if EFFECTIVE_EDGE_SCOPE == "bucket":
+                            deflated = {}
+                            for leg in seat["buckets"]:
+                                claim_leg = float(
+                                    probabilities.get(str(leg), 0.0) or 0.0
+                                )
+                                price_leg = leg_prices.get(str(leg))
+                                lam_leg = (
+                                    effective_edge_bucket_lambda_for_stage(
+                                        stage,
+                                        price_leg / claim_leg,
+                                        p1_table=p1_day_table,
+                                    )
+                                    if price_leg is not None
+                                    and claim_leg > 0
+                                    else 1.0
+                                )
+                                deflated[str(leg)] = claim_leg * lam_leg
+                            gate_win = discount * sum(deflated.values())
+                        else:
+                            # The same dispatch production calls.  A replay
+                            # arm may hand P1 a per-day table by path;
+                            # production and the default run read the
+                            # kernel's P1 constant.
+                            lam_window = effective_edge_lambda_for_stage(
+                                stage,
+                                float(seat_cost) / gate_win,
+                                p1_table=p1_day_table,
+                            )
+                            gate_win = gate_win * lam_window
+                            deflated = {
+                                str(leg): float(
+                                    probabilities.get(str(leg), 0.0) or 0.0
+                                ) * lam_window
+                                for leg in seat["buckets"]
+                            }
+                        if LEG_VETO == "on":
+                            for leg in seat["buckets"]:
+                                price_leg = leg_prices.get(str(leg))
+                                if (
+                                    price_leg is not None
+                                    and price_leg > deflated.get(str(leg), 0.0)
+                                    + 1e-9
+                                ):
+                                    leg_veto_hit = (
+                                        str(leg), price_leg,
+                                        deflated.get(str(leg), 0.0),
+                                    )
+                                    break
+                    if leg_veto_hit is not None:
+                        refusal = _deeper_refusal(refusal, (
+                            "negative_edge_window",
+                            "逐腿否决：%s 卖价 %.3f > 折后主张 %.3f"
+                            % leg_veto_hit,
+                            cycles,
+                            payload["decision_at_utc"],
+                        ))
+                        continue
                     fraction, wanted_stake = _kelly_stake(
                         win_probability=gate_win,
                         cost=seat_cost,

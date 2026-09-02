@@ -200,6 +200,9 @@ SHARED_WITH_PRODUCTION = {
     # Charter 68: one switch, one table.  The table lives in the kernel and
     # both lanes import it; the switch is spelled in each and asserted equal.
     "EFFECTIVE_EDGE_MODE",
+    # Charter 68 scope arm (2026-09-03): spelled in each lane, asserted
+    # equal below; the per-leg table is the kernel's.
+    "EFFECTIVE_EDGE_SCOPE",
     # Charter 69: the clamp's mode, spelled in each lane and asserted equal
     # below; the narrowing itself is one kernel function both import.
     "DECLINE_CLAMP",
@@ -214,6 +217,9 @@ SHARED_WITH_PRODUCTION = {
 
 # This lane's own, with the reason it has no production counterpart.
 LEDGER_ONLY = {
+    # Production's per-leg reservation veto (TAKER_LEG_VETO), replayed here
+    # as an arm; the two are asserted equivalent below.
+    "LEG_VETO": "production's TAKER_LEG_VETO, asserted equivalent",
     # Charter 63 retired (2026-09-03): production no longer defines a
     # per-leg value clamp, so the maker_resting research arm's lambdas are
     # this lane's alone.  They move nothing under the taker family.
@@ -574,3 +580,29 @@ def test_a_production_only_rule_has_no_constant_to_catch() -> None:
         "only the arm switch is a ledger constant; the rule itself is not,"
         " which is why a production-only rule cannot be caught here"
     )
+
+
+def test_charter_68_scope_and_the_taker_leg_veto_move_together() -> None:
+    """One belief on both sides (2026-09-03).
+
+    The scope arm is spelled in each lane and must read the same word.
+    The veto is production's TAKER_LEG_VETO and the ledger's LEG_VETO: the
+    ledger has always judged a seat as one basket (no per-leg veto), so
+    production's default is ``joint`` -- a rung the reservation inversion
+    finds no positive price for still reaches the joint selector at the
+    ask.  ``reservation`` / ``on`` is the arm that reproduces the taker
+    path as shipped on 2026-08-31.
+    """
+
+    assert L.EFFECTIVE_EDGE_SCOPE == P.EFFECTIVE_EDGE_SCOPE
+    assert (L.LEG_VETO == "on") == (P.TAKER_LEG_VETO == "reservation")
+    assert P.TAKER_LEG_VETO == "joint"
+    assert K.EFFECTIVE_EDGE_BUCKET_LAMBDA == (
+        (0.50, 0.22),
+        (0.70, 0.43),
+        (0.85, 0.80),
+        (float("inf"), 1.38),
+    )
+    assert K.effective_edge_bucket_lambda_for_stage("P0", 1.27) == 1.38
+    assert K.effective_edge_bucket_lambda_for_stage("P1", 1.27) == 1.0
+

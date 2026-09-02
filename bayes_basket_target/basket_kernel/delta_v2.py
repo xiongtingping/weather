@@ -689,6 +689,28 @@ EFFECTIVE_EDGE_P1_LAMBDA = (
     (float("inf"), 1.00),
 )
 EFFECTIVE_EDGE_P1_STAGES = frozenset({"P1"})
+# Charter 68, bucket scope (research arm, 2026-09-03).  The window table
+# above deflates every rung of a window by one factor read off the whole
+# window's agreement.  Measured per leg on the same settled book the shape
+# is not uniform: the cheap tails the market disagrees with realize a
+# fifth of their claim, the dear centre rungs the market agrees with
+# realize more than claimed.  Fitted on the early half alone (settled
+# P0/P0-M legs, event days 2026-08-15..24: 220 / 100 / 57 / 248 legs per
+# band, realized/claimed 0.216 / 0.425 / 0.803 / 1.377); the late half
+# (08-25..09-02) reads 0.208 / 0.502 / 0.750 / 1.326 and is the scoring
+# window, so the table is not grading its own homework.  Served only under
+# EFFECTIVE_EDGE_SCOPE == "bucket".  Measured 2026-09-03 on that scoring
+# window (416 seats, 197 settled, same seats either way): bucket scope
+# staked 917 against window's 800 and returned +263 against +355, ROI
+# +28.7% against +44.4%, and no single station's excision flips the
+# order.  Window stays the rule; this table is the research arm.
+EFFECTIVE_EDGE_BUCKET_LAMBDA = (
+    (0.50, 0.22),
+    (0.70, 0.43),
+    (0.85, 0.80),
+    (float("inf"), 1.38),
+)
+EFFECTIVE_EDGE_SCOPES = ("window", "bucket")
 
 
 def effective_edge_lambda(
@@ -737,6 +759,30 @@ def effective_edge_lambda_for_stage(
     name = str(stage or "").strip().upper()
     if name in EFFECTIVE_EDGE_STAGES:
         return effective_edge_lambda(agreement, table)
+    if name in EFFECTIVE_EDGE_P1_STAGES:
+        return effective_edge_lambda(
+            agreement, tuple(p1_table) if p1_table else EFFECTIVE_EDGE_P1_LAMBDA
+        )
+    return 1.0
+
+
+def effective_edge_bucket_lambda_for_stage(
+    stage: str,
+    agreement: float,
+    *,
+    p1_table: Sequence[tuple[float, float]] | None = None,
+) -> float:
+    """The per-leg realized fraction, for the bucket-scope arm of charter 68.
+
+    ``agreement`` is one leg's price over that leg's claim.  P0 and P0-M
+    read the bucket table; P1 keeps its own (identity) table because its
+    edge is the observation, not the shape, and a per-leg deflation of it
+    was never fitted.
+    """
+
+    name = str(stage or "").strip().upper()
+    if name in EFFECTIVE_EDGE_STAGES:
+        return effective_edge_lambda(agreement, EFFECTIVE_EDGE_BUCKET_LAMBDA)
     if name in EFFECTIVE_EDGE_P1_STAGES:
         return effective_edge_lambda(
             agreement, tuple(p1_table) if p1_table else EFFECTIVE_EDGE_P1_LAMBDA
