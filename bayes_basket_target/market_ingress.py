@@ -1097,6 +1097,7 @@ def materialize_market_evidence(
     scope_keys: Iterable[tuple[str, str]] | None = None,
     quote_freshness_policy: QuoteFreshnessPolicy | Mapping[str, Any],
     policy_authority_scope: str,
+    include_listing_days: bool = False,
     commit: bool = False,
 ) -> dict[str, Any]:
     """Validate and optionally append all complete market evidence bundles.
@@ -1124,7 +1125,14 @@ def materialize_market_evidence(
         _input_payload(cash_phase_path, cash_phase_payload, "cash_phase"),
         "cash_phase",
     )
-    groups = _load_registry(conn, station_id=station_id, event_date=event_date)
+    # Charter 48: the listing pass materializes a day that has not started;
+    # the started-day view is the default for every other caller.
+    groups = _load_registry(
+        conn,
+        station_id=station_id,
+        event_date=event_date,
+        include_listing_days=include_listing_days,
+    )
     selected = sorted(groups)
     if scope_keys is not None:
         requested = {
