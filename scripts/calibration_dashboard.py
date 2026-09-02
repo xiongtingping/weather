@@ -5208,7 +5208,7 @@ def collect_edge_band_health(conn: sqlite3.Connection) -> dict[str, Any]:
     # analogue; the cells below say so rather than printing an empty half.
     for row in conn.execute(
         "SELECT station_id, event_date, probabilities_json, prices_json,"
-        " leg_shares_json FROM paper_trade_position"
+        " leg_shares_json, stage FROM paper_trade_position"
     ):
         try:
             probs = json.loads(row[2] or "{}")
@@ -5232,6 +5232,7 @@ def collect_edge_band_health(conn: sqlite3.Connection) -> dict[str, Any]:
                 continue
             legs.append({
                 "day": str(row[1]),
+                "stage": str(row[5]),
                 "band": band_of(float(claim) - float(ask)),
                 "claim": float(claim),
                 "filled": True,
@@ -5241,7 +5242,7 @@ def collect_edge_band_health(conn: sqlite3.Connection) -> dict[str, Any]:
                 ),
             })
     if not legs:
-        return {"bands": [], "recent_floor": "", "totals": {}}
+        return {"bands": [], "recent_floor": "", "totals": {}, "stages": []}
     recent_floor = (
         date.fromisoformat(latest_day) - timedelta(days=6)
     ).isoformat()
@@ -5274,6 +5275,24 @@ def collect_edge_band_health(conn: sqlite3.Connection) -> dict[str, Any]:
             "n_settled": len(settled_rows),
         }
 
+    # Split by stage, because a claim is not the same claim at every stage.
+    #
+    # P1 re-solves as the day's observations arrive, so a P1 leg claiming a
+    # 30% edge is claiming it with hours of METAR behind it while a P0 leg
+    # claiming the same has only the model.  Pooling them reported >=30% as
+    # realising 0.25x, which was 0.07x for P0 and 0.35x for P1 blended --
+    # a number true of neither lane (measured 2026-09-02, user ruling).
+    # It matters most here of all: this section exists to watch the charter
+    # 62 calibration repair land, and if the stages repair at different
+    # rates the pooled column is exactly what hides it.
+    #
+    # P0-M is kept as a column rather than dropped: it carries three to
+    # twelve legs a band, so ``cell``'s own ten-leg floor blanks nearly
+    # every ratio, which is the honest rendering of a lane too thin to read.
+    stage_names = [
+        name for name in ("P0", "P0-M", "P1")
+        if any(leg["stage"] == name for leg in legs)
+    ]
     band_rows = []
     for name in bands:
         in_band = [leg for leg in legs if leg["band"] == name]
@@ -5283,6 +5302,12 @@ def collect_edge_band_health(conn: sqlite3.Connection) -> dict[str, Any]:
             "recent": cell(
                 [leg for leg in in_band if leg["day"] >= recent_floor]
             ),
+            "by_stage": {
+                stage: cell(
+                    [leg for leg in in_band if leg["stage"] == stage]
+                )
+                for stage in stage_names
+            },
         })
     total_recent = sum(1 for leg in legs if leg["day"] >= recent_floor)
     for entry in band_rows:
@@ -5294,6 +5319,11 @@ def collect_edge_band_health(conn: sqlite3.Connection) -> dict[str, Any]:
     return {
         "bands": band_rows,
         "recent_floor": recent_floor,
+        "stages": stage_names,
+        "stage_totals": {
+            stage: sum(1 for leg in legs if leg["stage"] == stage)
+            for stage in stage_names
+        },
         "totals": {"legs": len(legs), "recent_legs": total_recent},
     }
 
@@ -7239,6 +7269,7 @@ function edgeBandHealth(){
     <div class="card"><span class="dot green"></span> 无腿级数据。</div>`;
   const pct=v=>v==null?"—":(v*100).toFixed(0)+"%";
   const mult=v=>v==null?"—":"×"+v.toFixed(2);
+  const STAGES=E.stages||[];
   const tr=r=>{
     const a=r.all,rc=r.recent;
     // The sick bands are the big-edge ones; paint the band label by the
@@ -7249,12 +7280,26 @@ function edgeBandHealth(){
       :x>=0.5?["😐 偏虚",""]
       :x>=0.2?["🤒 发烧","down"]
       :["🔥 重烧","down"];
+    // Per stage, beside the pooled reading rather than instead of it: the
+    // pooled number is what the reader has been looking at, and the split
+    // only means something next to what it corrects.
+    const byStage=STAGES.map(st=>{
+      const c=(r.by_stage||{})[st];
+      if(!c||!c.n) return `<td class="muted">—</td>`;
+      const v=c.realize_filled_x;
+      const cls=v==null?"muted":(v>=0.9?"":(v>=0.2?"":"down"));
+      return `<td class="${cls}" title="${st}：${c.n} 腿，声称均值 ${
+        pct(c.claimed_mean)}${c.realize_filled_x==null
+          ?"，样本不足 10 条，不出兑现比":""}"><b>${mult(v)}</b><span
+        class="muted" style="font-size:11px"> ${c.n}</span></td>`;
+    }).join("");
     return `<tr>
       <td class="mono ${state[1]}">${r.band}</td>
       <td class="${state[1]}">${state[0]}</td>
       <td>${a.n}</td><td>${pct(r.share_all)}</td><td>${pct(a.fill_rate)}</td>
       <td>${pct(a.claimed_mean)}</td>
       <td class="${state[1]}">${mult(x)}</td>
+      ${byStage}
       <td>${mult(a.realize_unfilled_x)}</td>
       <td>${pct(r.share_recent)}</td>
       <td>${mult(rc.realize_filled_x)}</td></tr>`;
@@ -7400,9 +7445,18 @@ function edgeBandHealth(){
   <b>自认便宜越大，市场越乐意卖，兑现越崩——"太好的价格"本身是警报</b>。
   这是体温计不是门（门的版本已被账本否决）："近7天"两列是宪章62校准修复的疗效仪表，
   起效的样子＝发烧行（黄）占比缩小、兑现回升。样本&lt;10 显 —。
-  近7天窗起点 ${E.recent_floor||"—"}，腿数 ${E.totals&&E.totals.recent_legs||0}/${E.totals&&E.totals.legs||0}。</p>
+  <b>按阶段分开看</b>（用户裁定 2026-09-02）：同一个"声称占 30% 便宜"，
+  P0 只有模型，P1 已经看过当天几小时实测气温——不是同一种声称。
+  合并后 ≥30% 档兑现 ×0.25，拆开是 P0 ×0.07 与 P1 ×0.35，
+  差五倍，那个 ×0.25 哪个阶段都不成立。P0-M 每档只有几条腿，
+  多数格子按十条门槛留空，这就是"这条车道太薄读不出来"的诚实写法。
+  近7天窗起点 ${E.recent_floor||"—"}，腿数 ${E.totals&&E.totals.recent_legs||0}/${E.totals&&E.totals.legs||0}
+  （${(E.stages||[]).map(st=>`${st} ${(E.stage_totals||{})[st]||0}`).join(" · ")}）。</p>
   <table><thead><tr><th>自认便宜多少</th><th>状态</th><th>腿数</th><th>占比</th>
-  <th>市场肯卖率</th><th>模型声称</th><th>买到后兑现</th><th>没买到的兑现</th>
+  <th>市场肯卖率</th><th>模型声称</th><th>买到后兑现<br><span class="muted">全部阶段</span></th>
+  ${(E.stages||[]).map(st=>`<th title="${st} 阶段单独看；括号里是该档该阶段的腿数">${
+    st}<br><span class="muted">兑现·腿数</span></th>`).join("")}
+  <th>没买到的兑现</th>
   <th>近7天占比</th><th>近7天兑现</th></tr></thead>
   <tbody>${rows.map(tr).join("")}</tbody></table></div>`;
 }
