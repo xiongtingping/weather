@@ -33,6 +33,7 @@ from .metar_ceiling import apply_ceiling as apply_metar_ceiling
 from .settlement_time import settlement_day_window
 from .ssot import production_ssot_schema_status
 from .resource_bounds import assert_connection_target_capacity
+from .four_layer_shadow import SHADOW_LINEAGE_KEYS
 from .metar_trajectory import (
     METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
     METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
@@ -1251,6 +1252,12 @@ def materialize_p1(
     center_width: tuple[float, float, str] | None = None,
     station_width: tuple[Mapping[str, float], str] | None = None,
     fleet_regime: Mapping[str, Any] | None = None,
+    # What the four layers would have served, carried beside what was served.
+    # Never multiplied into the distribution; the keys are lineage and the
+    # ledger scores them.  Absent means the caller was handed no artifacts,
+    # and the lineage is then byte-identical to what it was before this
+    # existed.
+    four_layer_shadow: Mapping[str, str] | None = None,
 ) -> ProbabilityEnvelope:
     """Recompute P1 from one immutable P0/P0-M root and full METAR prefix.
 
@@ -1508,6 +1515,10 @@ def materialize_p1(
             "metar_trajectory_proof_sha256",
         ),
     )
+    for shadow_key in SHADOW_LINEAGE_KEYS:
+        shadow_value = (four_layer_shadow or {}).get(shadow_key)
+        if shadow_value:
+            values[shadow_key] = str(shadow_value)
     values["prediction_root_stage"] = root.stage
     values["prediction_root_checkpoint_id"] = root.checkpoint_id
     values["prediction_root_content_sha256"] = root.content_sha256

@@ -34,7 +34,9 @@ reads its own fitted file rebuilds a different one the moment it is refitted.
 """
 from __future__ import annotations
 
+import json
 import math
+from datetime import datetime
 from typing import Any, Mapping, Sequence
 
 from .contracts import ContractError
@@ -67,6 +69,112 @@ def _hours_bin(hours: float, edges: Sequence[float]) -> int:
         if edges[index] <= hours < edges[index + 1]:
             return index
     return len(edges) - 2
+
+
+def curve_points(
+    curve_json: str | Mapping[str, Any] | None,
+) -> list[tuple[datetime, float]]:
+    """The root's hourly curve as sorted (instant, temperature) pairs.
+
+    One parser for training and serving both.  The retired layer kept a view
+    of the curve on each side and they drifted; here a caller that wants the
+    shape or the bias gets it from this function or not at all.
+    """
+
+    if not curve_json:
+        return []
+    try:
+        body = (
+            curve_json
+            if isinstance(curve_json, Mapping)
+            else json.loads(str(curve_json))
+        )
+        return sorted(
+            (
+                datetime.fromisoformat(
+                    str(point["valid_time_utc"]).replace("Z", "+00:00")
+                ),
+                float(point["temperature_c"]),
+            )
+            for point in body.get("points") or []
+        )
+    except (TypeError, ValueError, KeyError, json.JSONDecodeError):
+        return []
+
+
+def interpolate_curve(
+    points: Sequence[tuple[datetime, float]], instant: datetime
+) -> float | None:
+    """The curve's temperature at one instant, linear between its own hours.
+
+    No extrapolation.  Past the curve's last point the model has stopped
+    speaking, and carrying the last value flat would read as a claim it never
+    made -- which is exactly the shape of the evening exhaustion that took a
+    third of station-days off the retired layer.
+    """
+
+    if len(points) < 2 or instant < points[0][0] or instant > points[-1][0]:
+        return None
+    for (left_t, left_v), (right_t, right_v) in zip(points, points[1:]):
+        if left_t <= instant <= right_t:
+            span = (right_t - left_t).total_seconds()
+            if span <= 0.0:
+                return left_v
+            ratio = (instant - left_t).total_seconds() / span
+            return left_v + ratio * (right_v - left_v)
+    return None
+
+
+def curve_shape_realized(
+    points: Sequence[tuple[datetime, float]], instant: datetime
+) -> float | None:
+    """How much of the curve's own daily rise is already behind us.
+
+    Zero at its coldest point, one at its warmest.  This is the only thing
+    the remaining-warming layer reads off the model: the shape of the day,
+    never its level.  Two curves five degrees apart that peak at the same
+    hour give the identical number, which is what keeps that layer
+    independent of the root it multiplies.  A curve with under half a degree
+    of range states no shape at all and returns None.
+    """
+
+    if len(points) < 2:
+        return None
+    value = interpolate_curve(points, instant)
+    if value is None:
+        return None
+    low = min(temperature for _, temperature in points)
+    high = max(temperature for _, temperature in points)
+    if high - low < 0.5:
+        return None
+    return max(0.0, min(1.0, (value - low) / (high - low)))
+
+
+def recent_curve_bias(
+    points: Sequence[tuple[datetime, float]],
+    observations: Sequence[tuple[datetime, float]],
+    *,
+    as_of: datetime,
+    window_seconds: float = 10800.0,
+) -> tuple[float | None, int]:
+    """Mean (observed minus curve) over the recent window, and its report count.
+
+    Three hours because the layer that consumes it models a bias that persists
+    through the day, and one report's difference is mostly that report's own
+    rounding.  Returns ``(None, 0)`` when the curve covers none of the window,
+    which is the honest statement that no bias was measured.
+    """
+
+    values = [
+        temperature - modelled
+        for instant, temperature in observations
+        if 0.0 <= (as_of - instant).total_seconds() <= window_seconds
+        for modelled in (interpolate_curve(points, instant),)
+        if modelled is not None
+    ]
+    if not values:
+        return None, 0
+    return sum(values) / len(values), len(values)
 
 
 def feature_row(
@@ -511,6 +619,10 @@ def compile_four_layer_posterior(
 
 __all__ = [
     "PHASE_RECEIPT_SCHEMA",
+    "curve_points",
+    "curve_shape_realized",
+    "interpolate_curve",
+    "recent_curve_bias",
     "REANCHOR_RECEIPT_SCHEMA",
     "REMAINING_RECEIPT_SCHEMA",
     "SCHEMA",

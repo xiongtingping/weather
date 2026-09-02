@@ -14,7 +14,15 @@ from .contracts import (
     ProbabilityEnvelope,
     content_sha256,
 )
+from .four_layer_shadow import compile_p1_four_layer_shadow
 from .materialization import materialize_p1
+from .metar_four_layer import (
+    curve_points,
+    curve_shape_realized,
+    recent_curve_bias,
+)
+from .metar_path_state import compile_conditional_metar_path_state
+from .settlement_time import settlement_day_window
 from .metar_trajectory import (
     METAR_TRAJECTORY_AUTHORITY_SCOPE,
     METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
@@ -342,6 +350,100 @@ def p1_trajectory_mode(
     return "PROMOTED_PRE_CURVE"
 
 
+def _four_layer_shadow_for_step(
+    *,
+    root: ProbabilityEnvelope,
+    proof: Any,
+    trajectory_prefix: Sequence[Any],
+    bucket_centers_c: Mapping[str, float],
+    decision_at_utc: str,
+    reported_high_bucket: str,
+    artifacts: Mapping[str, Any],
+) -> dict[str, str]:
+    """Build one step's shadow, or nothing, never an exception.
+
+    The path state is recompiled here rather than threaded out of the proof
+    compiler: the shadow is optional and the proof's is not, and a parameter
+    added to that signature for a measurement lane is a parameter every
+    caller of it inherits.  The cost is one extra parse of a prefix already
+    parsed, paid only where a caller supplied artifacts.
+    """
+
+    try:
+        # The promoted set needs no intervals: only the translation reads
+        # them, and the translation is the layer that is not promoted.  Gating
+        # the whole shadow on them would have silenced it on every root that
+        # publishes its geometry some other way.
+        intervals = json.loads(
+            str(root.lineage.get("bucket_intervals_c_json") or "{}")
+        )
+        decision = _parse_utc(decision_at_utc)
+        day_end = _parse_utc(
+            settlement_day_window(
+                root.event_date, root.settlement_timezone
+            )["target_day_end_utc"]
+        )
+        # ``trajectory_prefix`` holds canonicalised observation objects, not
+        # the raw mappings the caller passed in.  Reading them as mappings
+        # returned nothing at all, and because a shadow swallows its own
+        # failures the only symptom was a lineage key that never appeared.
+        rows = [
+            {
+                "observation_id": row.event.observation_id,
+                "observed_at_utc": row.event.observed_at_utc,
+                "temperature_c": float(row.temperature_c),
+                "raw_text": str(row.raw_text or ""),
+            }
+            for row in trajectory_prefix
+        ]
+        points = curve_points(
+            root.lineage.get("conditional_future_temperature_curve_json")
+        )
+        path_state = compile_conditional_metar_path_state(
+            rows,
+            as_of_utc=decision_at_utc,
+            settlement_timezone=root.settlement_timezone,
+            root_probabilities=root.probabilities,
+            bucket_centers_c=bucket_centers_c,
+        )
+        if not path_state.complete:
+            return {}
+        observed = [
+            (_parse_utc(row["observed_at_utc"]), float(row["temperature_c"]))
+            for row in rows
+            if row["observed_at_utc"]
+        ]
+        bias, bias_count = recent_curve_bias(
+            points, observed, as_of=decision
+        )
+        return compile_p1_four_layer_shadow(
+            root_probabilities=root.probabilities,
+            bucket_ordinals=root.bucket_ordinals,
+            bucket_centers_c=bucket_centers_c,
+            bucket_intervals_c=intervals,
+            hard_excluded_buckets=proof.hard_excluded_buckets,
+            running_high_c=proof.running_high_c,
+            running_high_bucket=reported_high_bucket,
+            remaining_hours=max(
+                0.0, (day_end - decision).total_seconds() / 3600.0
+            ),
+            path_state=path_state,
+            warming_so_far_c=(
+                float(proof.running_high_c) - observed[0][1]
+                if observed else 0.0
+            ),
+            curve_shape_realized=curve_shape_realized(points, decision),
+            bias_recent_c=bias,
+            bias_report_count=bias_count,
+            hazard_artifact=artifacts.get("hazard"),
+            # No intervals, no translation: the reanchor document is skipped
+            # rather than fabricated from a geometry the root did not state.
+            reanchor_artifact=artifacts.get("reanchor") if intervals else None,
+        )
+    except Exception:  # noqa: BLE001 - a shadow may not stop a compile
+        return {}
+
+
 def compile_station_p1_packets(
     *,
     predecessor: ProbabilityEnvelope | Mapping[str, Any],
@@ -369,6 +471,9 @@ def compile_station_p1_packets(
     fleet_regime: Mapping[str, Any] | None = None,
     ceiling_artifact: Mapping[str, Any] | None = None,
     soft_likelihood_policy: str | None = None,
+    # {"hazard": ..., "reanchor": ...}.  Absent means no shadow is recorded
+    # and the lineage is exactly what it was before the four layers existed.
+    four_layer_artifacts: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Compile every canonical P1 prefix; emit on running-high advances.
 
@@ -800,6 +905,22 @@ def compile_station_p1_packets(
         }
         hard_bound_id = "hardbound-" + proof.content_sha256[:32]
         fresh_until = decision + timedelta(seconds=int(freshness_seconds))
+        # The shadow, when the caller supplied artifacts for it.  It is
+        # computed from the same prefix, root and instant as the proof above
+        # and multiplied into nothing; the ledger scores it out of lineage.
+        # Its own failures are swallowed inside the shadow compiler, so a
+        # measurement lane can never be the reason a P1 does not compile.
+        four_layer_shadow: dict[str, str] = {}
+        if four_layer_artifacts:
+            four_layer_shadow = _four_layer_shadow_for_step(
+                root=root,
+                proof=proof,
+                trajectory_prefix=trajectory_prefix,
+                bucket_centers_c=bucket_centers_c,
+                decision_at_utc=decision_text,
+                reported_high_bucket=reported_high_bucket,
+                artifacts=four_layer_artifacts,
+            )
         envelope = materialize_p1(
             previous,
             prediction_root=root,
@@ -820,6 +941,7 @@ def compile_station_p1_packets(
             station_width=station_width,
             fleet_regime=fleet_regime,
             ceiling_artifact=ceiling_artifact,
+            four_layer_shadow=four_layer_shadow,
         )
         packets.append({
             "observation_id": observation_id,

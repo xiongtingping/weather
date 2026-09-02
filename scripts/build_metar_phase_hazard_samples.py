@@ -68,6 +68,12 @@ from bayes_basket_target.future_temperature_curve import (  # noqa: E402
 from bayes_basket_target.materialization import (  # noqa: E402
     rehydrate_lineage_documents,
 )
+from bayes_basket_target.metar_four_layer import (  # noqa: E402
+    curve_points,
+    curve_shape_realized,
+    interpolate_curve,
+    recent_curve_bias,
+)
 from bayes_basket_target.metar_path_state import (  # noqa: E402
     compile_conditional_metar_path_state,
 )
@@ -361,60 +367,19 @@ class RootView:
         self.curve = None
         self.curve_points: list[tuple[datetime, float]] = []
         if raw_curve:
+            self.curve_points = curve_points(raw_curve)
             try:
-                body = json.loads(str(raw_curve))
-                self.curve = RootFutureTemperatureCurve.from_mapping(body)
-                self.curve_points = sorted(
-                    (
-                        _parse_utc(str(point["valid_time_utc"])),
-                        float(point["temperature_c"]),
-                    )
-                    for point in body.get("points") or []
+                self.curve = RootFutureTemperatureCurve.from_mapping(
+                    json.loads(str(raw_curve))
                 )
             except (ContractError, TypeError, ValueError, KeyError):
                 self.curve = None
-                self.curve_points = []
 
     def interpolate(self, instant: datetime) -> float | None:
-        """The curve's temperature at one instant, or None outside its span.
-
-        Linear between the two bracketing hours.  No extrapolation: past the
-        curve's last point the model has stopped speaking, and a flat carry
-        would read as a claim it did not make.
-        """
-
-        points = self.curve_points
-        if len(points) < 2 or instant < points[0][0] or instant > points[-1][0]:
-            return None
-        for (left_t, left_v), (right_t, right_v) in zip(points, points[1:]):
-            if left_t <= instant <= right_t:
-                span = (right_t - left_t).total_seconds()
-                if span <= 0.0:
-                    return left_v
-                ratio = (instant - left_t).total_seconds() / span
-                return left_v + ratio * (right_v - left_v)
-        return None
+        return interpolate_curve(self.curve_points, instant)
 
     def shape_realized(self, instant: datetime) -> float | None:
-        """How much of the curve's own daily rise is already behind us.
-
-        Zero at the curve's coldest point, one at its warmest.  This is the
-        only thing the remaining-warming layer is allowed to read off the
-        model: the shape of the day, not its level.  Two curves that disagree
-        by five degrees but peak at the same hour give the same number.
-        """
-
-        points = self.curve_points
-        if len(points) < 2:
-            return None
-        value = self.interpolate(instant)
-        if value is None:
-            return None
-        low = min(temperature for _, temperature in points)
-        high = max(temperature for _, temperature in points)
-        if high - low < 0.5:
-            return None
-        return max(0.0, min(1.0, (value - low) / (high - low)))
+        return curve_shape_realized(self.curve_points, instant)
 
 
 def build_station_day(
@@ -548,13 +513,14 @@ def build_station_day(
         # was built on.  Three hours because the layer that consumes it
         # models a persistent same-day bias, and a single report's difference
         # is mostly the report's own rounding.
-        bias_values = [
-            row["temperature_c"] - value
-            for row in prefix
-            if (instant - sample_instant(row)).total_seconds() <= 10800.0
-            for value in (view.interpolate(sample_instant(row)),)
-            if value is not None
-        ]
+        bias_recent_c, bias_report_count = recent_curve_bias(
+            view.curve_points,
+            [
+                (sample_instant(row), float(row["temperature_c"]))
+                for row in prefix
+            ],
+            as_of=instant,
+        )
         samples.append({
             "station_id": station_id,
             "event_date": event_date,
@@ -580,10 +546,8 @@ def build_station_day(
             "warming_so_far_c": running_high - prefix[0]["temperature_c"],
             "curve_shape_realized": view.shape_realized(instant),
             "curve_complete": int(bool(state.future_curve_complete)),
-            "root_bias_recent_c": (
-                sum(bias_values) / len(bias_values) if bias_values else None
-            ),
-            "root_bias_report_count": len(bias_values),
+            "root_bias_recent_c": bias_recent_c,
+            "root_bias_report_count": bias_report_count,
             "root_center_c": view.center_c,
             "root_checkpoint_id": view.checkpoint_id,
             "running_high_c": running_high,

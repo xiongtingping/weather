@@ -108,6 +108,9 @@ from .market_materialization import insert_market_evidence_bundle, build_confirm
 from .market_ingress import materialize_official_ws_evidence_cache
 from .materialization import materialize_p0m, materialize_p0m_observed
 from .probability_bridge import materialize_probability_bridge
+from .four_layer_shadow import (
+    load_shadow_artifacts as load_four_layer_shadow_artifacts,
+)
 from .metar_ceiling import load_artifact as load_metar_ceiling_artifact
 from .metar_trajectory import (
     SOFT_LIKELIHOOD_POLICY,
@@ -10618,6 +10621,12 @@ class TargetProductionWorker:
                     # same envelope; the module's own env switch still decides
                     # whether the layer speaks at all.
                     ceiling_artifact=load_metar_ceiling_artifact(),
+                    # Measured beside what is served and multiplied into
+                    # nothing.  Empty until the shadow is switched on, and
+                    # empty is the lineage this compiled before it existed.
+                    four_layer_artifacts=(
+                        load_four_layer_shadow_artifacts() or None
+                    ),
                     maturity_bin=maturity_bin,
                 )
                 self._add_span(
@@ -13492,8 +13501,28 @@ class TargetProductionWorker:
                     preselection_receipt["stage_open_blocker"] = (
                         "stage_open_not_attempted:compiled_plan_missing"
                     )
-                if isinstance(market_snapshot, Mapping) and isinstance(
-                    compiled_plan, Mapping
+                elif str(compiled_plan.get("status") or "") == "blocked":
+                    # The runtime already decided: a blocked compile carries
+                    # its reasons and no plan.  Attempting to open it only
+                    # renamed those reasons -- the ledger refused the plan it
+                    # never had as ``production_compiled_plan_missing``, and
+                    # the status file said "plan missing" about fourteen
+                    # forward scopes a cycle whose plan was a named HOLD
+                    # (delta_v2_support_empty, 2026-09-02 07:48Z).  Name the
+                    # runtime's own reasons instead, and do not attempt.
+                    preselection_receipt["stage_open_blocker"] = (
+                        "stage_open_not_attempted:compiled_plan_blocked:"
+                        + ",".join(
+                            str(code)
+                            for code in (
+                                compiled_plan.get("reason_codes") or ()
+                            )
+                        )
+                    )
+                if (
+                    isinstance(market_snapshot, Mapping)
+                    and isinstance(compiled_plan, Mapping)
+                    and str(compiled_plan.get("status") or "") != "blocked"
                 ):
                     # Two savepoints, because two different kinds of thing are
                     # written here.  The evidence bundle is the book as it

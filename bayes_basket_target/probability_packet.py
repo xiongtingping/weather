@@ -37,6 +37,12 @@ ALLOWED_KEYS = {
     # ledger is keyed on the revision, so an envelope without it compiles and
     # then fails at the atomic-fact boundary.
     "truth_observation_revision_content_sha256",
+    # P1 only: the shadow documents.  They ride on the packet so a rebuilt
+    # envelope carries the same lineage the compiler committed -- the
+    # correction layers above (band, ceiling, centre/width) do not, and a
+    # rebuild of a P1 that used them already differs from the committed row.
+    # A new key does not have to inherit that.
+    "four_layer_shadow",
     "decision_at_utc", "fresh_until_utc",
     "bridge_sha256", "checkpoint_id", "posterior_version",
     "created_at_utc",
@@ -323,6 +329,7 @@ def build_probability_envelope(
                 ).strip()
                 or None
             ),
+            four_layer_shadow=packet.get("four_layer_shadow"),
             **common,
         )
     raise ContractError("probability_materialization_stage_invalid")
