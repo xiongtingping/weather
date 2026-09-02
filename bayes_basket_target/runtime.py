@@ -1162,10 +1162,25 @@ def _compile_target_plan(
             "delta_v2_no_solvable_support_window",
         }:
             raise
+        # A hold is a decision, and the ledger records decisions off the
+        # plan: the economic decision key and the training fact both read
+        # ``plan`` as a mapping (``delta_v2_plan_mapping_required``), and the
+        # atomic writer refuses a compile without one.  The entry-window
+        # hold above carries a small plan for exactly that reason; without
+        # the same here, every hold this branch produced was refused at
+        # commit under a name that hid the hold -- measured 2026-09-02
+        # 14:10Z, EGLC, LEMD, SAEZ and SBGR, the first cycle their compiles
+        # reached this branch instead of dying earlier.
         return _blocked(
             blockers=[str(exc)],
             remaining_budget_before=remaining_budget_before,
             station_policy=resolved.to_dict(),
+            extra_plan={
+                "hold": {
+                    "reason": str(exc),
+                    "decided_by": "delta_v2_runtime",
+                }
+            },
         )
 
     selected_actions_by_bucket: dict[str, dict[str, Any]] = {}

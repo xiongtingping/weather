@@ -1120,10 +1120,23 @@ def test_kernel_support_empty_compiles_to_a_blocked_plan_not_a_fail_closed_raise
     monkeypatch.setattr(
         runtime_module, "compile_delta_v2_runtime_plan", _raise_support_empty
     )
-    compiled, _market, _cash_policy, _p0 = _p0_opening_compile()
+    compiled, market, _cash_policy, _p0 = _p0_opening_compile()
     assert compiled["status"] == "blocked"
     assert "delta_v2_support_empty" in compiled["reason_codes"]
     assert compiled["delta_v2_audit"]["authorized"] is False
+    # A hold is recorded off its plan: the decision key and the training
+    # fact read ``plan`` as a mapping, and the atomic writer refuses a
+    # compile without one.  Measured 2026-09-02 14:10Z: the first holds this
+    # branch produced (EGLC, LEMD, SAEZ, SBGR) were refused at commit as
+    # ``delta_v2_plan_mapping_required`` because ``plan`` was None.
+    from bayes_basket_target.forward_training_validation import (
+        delta_v2_decision_scope_key,
+    )
+
+    assert compiled["plan"]["hold"]["reason"] == "delta_v2_support_empty"
+    assert delta_v2_decision_scope_key(
+        compiled_plan=compiled, market_snapshot=market
+    )
 
     def _raise_other(**_kwargs):
         raise KernelContractError("delta_v2_fill_distribution_missing")
