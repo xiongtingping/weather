@@ -245,12 +245,12 @@ def test_only_credible_fills_bankroll_the_book() -> None:
             "SELECT p.event_date, p.station_id, SUM(p.stake_usdc),"
             " MAX(s.pnl_usdc), MAX(COALESCE(s.basket_all_in_cost,"
             "  p.all_in_cost))"
+            ", p.selection_rule_sha256 = ("
+            "  SELECT selection_rule_sha256 FROM paper_trade_position"
+            "  ORDER BY decision_at_utc DESC LIMIT 1)"
             " FROM paper_trade_position p"
             " LEFT JOIN paper_trade_settlement s"
             "  ON s.station_id=p.station_id AND s.event_date=p.event_date"
-            " WHERE p.selection_rule_sha256 = ("
-            "  SELECT selection_rule_sha256 FROM paper_trade_position"
-            "  ORDER BY decision_at_utc DESC LIMIT 1)"
             " GROUP BY p.event_date, p.station_id"
             " ORDER BY p.event_date"
         ).fetchall()
@@ -264,12 +264,32 @@ def test_only_credible_fills_bankroll_the_book() -> None:
     initial, cap, floor = 1000.0, 0.02, 0.01
     equity = initial
     by_day: dict[str, list] = defaultdict(list)
-    for event_date, station_id, stake, pnl, cost in rows:
-        by_day[str(event_date)].append((str(station_id), stake, pnl, cost))
+    for event_date, station_id, stake, pnl, cost, current in rows:
+        by_day[str(event_date)].append(
+            (str(station_id), stake, pnl, cost, bool(current))
+        )
+    # Compound over every row, and check the cap only on the rows the
+    # current rule set produced.
+    #
+    # Those are two different questions and they were one query until
+    # 2026-09-02, when a rule change split the book and this failed on a
+    # seat that was never over its cap.  ``_drop_superseded_positions`` only
+    # re-derives the recent window, so after a fingerprint moves the book
+    # carries two rule sets -- 460 rows of the retired one and 154 of the
+    # new one that day.  Filtering to the new one and then starting equity
+    # at 1000 on its first day reconstructs a bankroll the ledger never
+    # had: EFHK 2026-08-30 staked 23.068439, the ledger sized it against
+    # an equity of 1153.421967 compounded from 2026-08-15, and 2% of that
+    # is 23.068439 to the ninth decimal.  Exactly on the cap, read as 15%
+    # over it, because the reconstruction began mid-stream.
+    #
+    # The ledger compounds on whatever the book holds, retired rows
+    # included, so seeding from every row is what reproduces its arithmetic
+    # rather than a convenience.
     for event_date in sorted(by_day):
         realised = 0.0
-        for station_id, stake, pnl, cost in by_day[event_date]:
-            assert float(stake) <= equity * cap + 1e-6, (
+        for station_id, stake, pnl, cost, current in by_day[event_date]:
+            assert not current or float(stake) <= equity * cap + 1e-6, (
                 f"{station_id} {event_date} staked {float(stake):.2f} across "
                 f"its chain against an opening equity of {equity:.2f} -- over "
                 f"the {cap:.0%} per-scope cap, which means either the "
