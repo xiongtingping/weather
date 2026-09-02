@@ -120,18 +120,49 @@ def build_stage_evidence_root(
     if stage == "P0-M" and not str(
         lineage.get("taf_revision_proof_sha256") or ""
     ).strip():
-        # Two routes produce a TAF-confirmation stage.  The transport route
-        # carries a calibrated revision artifact and names it with the fields
-        # above.  The member route -- the forecaster's TX serving inside the
-        # cross ensemble, where a recompile whose only change is a fresh TAF
-        # issuance is staged P0-M -- has no transport artifact; its evidence
-        # is the ensemble evidence plus the issuance witness that drove it.
-        fields = (
-            "taf_envelope_witness_json",
-            "native_selection_evidence_sha256",
-            "native_cross_activation_sha256",
-            "native_cross_ensemble_artifact_sha256",
-        )
+        # Three routes produce a TAF-confirmation stage, and this contract
+        # knew two of them.  The transport route carries a calibrated revision
+        # artifact and names it with the fields above.  The member route --
+        # the forecaster's TX serving inside the cross ensemble, where a
+        # recompile whose only change is a fresh TAF issuance is staged P0-M
+        # -- has no transport artifact; its evidence is the ensemble evidence
+        # plus the issuance witness that drove it.
+        #
+        # The observed route (``materialize_p0m_observed``) seats the stage on
+        # the forecast alone: the likelihood is identity, the probabilities
+        # are the P0 root's unchanged, and the lineage says so under
+        # ``revision_mode`` and ``taf_revision_state``.  It was added on
+        # 2026-08-17, four days after this contract was written, and has
+        # been every P0-M envelope in production since -- 4,708 rows, the
+        # transport route's last 45 being from July and the member route's
+        # count being zero.  Landing here without a branch of its own, it
+        # was asked for the member route's witness, which it structurally
+        # never carries, so no P0-M evidence root has ever been built:
+        # 10,552 P0 roots, none for P0-M, and on 2026-09-01 the stage-open
+        # of 808 decisions across the forward day refused on it.
+        #
+        # What this route stands on is exactly what it records: which
+        # forecast revision, from which source object, what TX it read,
+        # and which P0 root it left unchanged.  All six are present on every
+        # observed row ever written.
+        if str(lineage.get("revision_mode") or "").strip() == (
+            "observed_without_artifact"
+        ):
+            fields = (
+                "forecast_revision_id",
+                "forecast_source_object_sha256",
+                "taf_revision_state",
+                "taf_observed_tx_c",
+                "p0_root_content_sha256",
+                "p0_root_posterior_sha256",
+            )
+        else:
+            fields = (
+                "taf_envelope_witness_json",
+                "native_selection_evidence_sha256",
+                "native_cross_activation_sha256",
+                "native_cross_ensemble_artifact_sha256",
+            )
     evidence: dict[str, str] = {}
     for field in fields:
         value = str(lineage.get(field) or "").strip()

@@ -35,6 +35,21 @@ P0M_LINEAGE = {
     "model_envelope_lower_ordinal": "1",
     "model_envelope_upper_ordinal": "3",
 }
+# What ``materialize_p0m_observed`` actually writes: the forecast seated on
+# the P0 root with an identity likelihood, and no artifact of any kind.
+P0M_OBSERVED_LINEAGE = {
+    "revision_mode": "observed_without_artifact",
+    "taf_revision_state": "OBSERVED_NO_CALIBRATED_ARTIFACT",
+    "taf_likelihood_mode": "IDENTITY_NO_ARTIFACT",
+    "forecast_revision_id": "taf-revision-1",
+    "forecast_source_object_sha256": "0" * 64,
+    "taf_observed_tx_c": "22",
+    "p0_root_checkpoint_id": "p0-native-1",
+    "p0_root_content_sha256": "1" * 64,
+    "p0_root_posterior_sha256": "2" * 64,
+    "model_envelope_lower_ordinal": "1",
+    "model_envelope_upper_ordinal": "3",
+}
 
 
 def _root(stage: str, lineage: dict) -> dict:
@@ -66,6 +81,63 @@ def test_p0m_adjusts_on_the_taf_revision_proof() -> None:
 
     assert root["position_role"] == "ADJUST"
     assert root["evidence"]["forecast_revision_id"] == "revision-1"
+
+
+def test_p0m_seated_on_the_forecast_alone_roots_on_what_it_recorded() -> None:
+    """The observed route is every P0-M in production; it needs no witness.
+
+    ``materialize_p0m_observed`` seats the stage on the forecast with an
+    identity likelihood and says so under ``revision_mode``.  Asked for the
+    member route's issuance witness -- which it structurally never carries --
+    no P0-M root was ever built: 10,552 P0 roots and none for P0-M, and on
+    2026-09-01 the forward day's stage-open refused 808 times on it.
+    """
+
+    root = _root("P0-M", P0M_OBSERVED_LINEAGE)
+
+    assert root["position_role"] == "ADJUST"
+    assert root["bound_kind"] == SOFT_BOUND_KIND
+    assert set(root["evidence"]) == {
+        "forecast_revision_id",
+        "forecast_source_object_sha256",
+        "taf_revision_state",
+        "taf_observed_tx_c",
+        "p0_root_content_sha256",
+        "p0_root_posterior_sha256",
+    }
+    assert root["evidence"]["taf_revision_state"] == (
+        "OBSERVED_NO_CALIBRATED_ARTIFACT"
+    )
+    # A different forecast revision is different evidence.
+    other = _root(
+        "P0-M", {**P0M_OBSERVED_LINEAGE, "forecast_revision_id": "taf-revision-2"}
+    )
+    assert other["content_sha256"] != root["content_sha256"]
+
+
+def test_an_observed_p0m_missing_its_root_binding_is_still_refused() -> None:
+    lineage = {**P0M_OBSERVED_LINEAGE}
+    del lineage["p0_root_content_sha256"]
+
+    with pytest.raises(
+        StageEvidenceError, match="p0_root_content_sha256_missing"
+    ):
+        _root("P0-M", lineage)
+
+
+def test_a_p0m_that_names_no_route_is_still_asked_for_the_witness() -> None:
+    # Neither a transport proof nor the observed route's self-description:
+    # this is the member route's shape, and the member route must carry the
+    # issuance witness that drove it.
+    lineage = {
+        key: value for key, value in P0M_OBSERVED_LINEAGE.items()
+        if key != "revision_mode"
+    }
+
+    with pytest.raises(
+        StageEvidenceError, match="taf_envelope_witness_json_missing"
+    ):
+        _root("P0-M", lineage)
 
 
 def test_a_stage_missing_its_own_evidence_is_refused() -> None:
