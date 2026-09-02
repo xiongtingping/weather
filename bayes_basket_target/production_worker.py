@@ -15971,6 +15971,7 @@ class TargetProductionWorker:
             committed_scope_states = {
                 "committed",
                 "already_committed",
+                "already_committed_decision",
                 "retained_existing_authority_decision",
             }
             committed_scopes = sum(

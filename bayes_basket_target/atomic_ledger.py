@@ -3239,6 +3239,43 @@ def commit_blocked_scope_decision(
                         "training_fact_state": "already_committed_decision_scope",
                         "training_fact_id": str(existing_scope[0] or ""),
                     }
+        # The same blocked decision, arriving on a new cycle, is a restatement
+        # and writes nothing -- the blocked-path twin of the standing retain
+        # in ``commit_target_atomic_bundle``.  The cycle id is derived from
+        # the whole details payload while the decision id is derived from
+        # its economic subset, so a forward scope whose evidence binding or
+        # observation status moved but whose decision did not mints a new
+        # cycle under a decision id already on file.  Until 2026-09-02 that
+        # reached the INSERT below and died on the primary key, which the
+        # worker reported as ``blocked_fail_closed`` and which threw away
+        # the scope's compile for the cycle: five forward stations a cycle
+        # (OPKC, ZBAA, ZSPD, ZSQD, ZUCK on 2026-09-03), every cycle.  The
+        # scope retain above only sees this when a stored fact holds the
+        # same scope key; a block with no fact, or with a fact whose key
+        # moved with the quote, has to be answered by the decision itself.
+        standing = conn.execute(
+            "SELECT cycle_id, decision_sha256 FROM auto_trade_decisions"
+            " WHERE decision_id=?",
+            (decision_id,),
+        ).fetchone()
+        if standing is not None and str(standing[0]) != cycle_id:
+            if str(standing[1]) != decision_sha:
+                raise AtomicLedgerError("decision_id_collision_content_drift")
+            return {
+                "schema": SCHEMA,
+                "state": "already_committed_decision",
+                "idempotent": True,
+                "cycle_id": str(standing[0]),
+                "decision_id": decision_id,
+                "intent_count": 0,
+                "reserved_amount_usdc": 0.0,
+                "orders_submitted": 0,
+                "places_orders": False,
+                "calls_order_gateway": False,
+                "live_submit_authorized": False,
+                "execution_version_vector_count": 0,
+                "training_fact_state": "already_committed_decision",
+            }
         # Everything above this point is lookups and derivation; from here it
         # is the three-row write the transaction exists for.  Timed as one
         # span because the rows are written together or not at all.

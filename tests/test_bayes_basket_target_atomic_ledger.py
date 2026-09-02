@@ -2887,3 +2887,64 @@ def test_a_restated_decision_with_a_recorded_fact_is_retained_not_refused(
         assert conn.execute(
             "SELECT COUNT(*) FROM basket_policy_training_fact"
         ).fetchone()[0] == 1
+
+
+def test_blocked_restatement_on_a_new_cycle_is_retained_not_a_primary_key_collision() -> None:
+    """Same economic decision, moved non-economic detail: retain, write nothing.
+
+    The cycle id hashes the whole details payload and the decision id only
+    its economic subset, so this shape reached the INSERT and died on the
+    ``auto_trade_decisions.decision_id`` primary key (measured 2026-09-02:
+    five forward stations a cycle).  A moved *economic* detail is a new
+    decision and must still land as a second row.
+    """
+
+    def _details(binding: str, direction: str) -> dict:
+        return {
+            "blocked_scope_decision_version": 1,
+            "direction": direction,
+            "core_buckets": ["30°C", "31°C"],
+            "forward_evidence_binding": binding,
+        }
+
+    with _db() as conn:
+        first = commit_blocked_scope_decision(
+            conn,
+            station_id="ZSPD",
+            event_date="2026-07-23",
+            settlement_timezone=SETTLEMENT_TIMEZONE,
+            reason_codes=["complete_basket_target_not_activated"],
+            details=_details("binding-a", "PEAK"),
+            created_at_utc=NOW,
+        )
+        restated = commit_blocked_scope_decision(
+            conn,
+            station_id="ZSPD",
+            event_date="2026-07-23",
+            settlement_timezone=SETTLEMENT_TIMEZONE,
+            reason_codes=["complete_basket_target_not_activated"],
+            details=_details("binding-b", "PEAK"),
+            created_at_utc=NOW,
+        )
+        assert first["state"] == "committed"
+        assert restated["state"] == "already_committed_decision"
+        assert restated["idempotent"] is True
+        assert restated["cycle_id"] == first["cycle_id"]
+        assert restated["decision_id"] == first["decision_id"]
+        assert conn.execute("SELECT COUNT(*) FROM auto_trade_decisions").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM basket_target_execution_cycles").fetchone()[0] == 1
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_target_execution_version_vectors"
+        ).fetchone()[0] == 1
+        redecided = commit_blocked_scope_decision(
+            conn,
+            station_id="ZSPD",
+            event_date="2026-07-23",
+            settlement_timezone=SETTLEMENT_TIMEZONE,
+            reason_codes=["complete_basket_target_not_activated"],
+            details=_details("binding-b", "DESCENT"),
+            created_at_utc=NOW,
+        )
+        assert redecided["state"] == "committed"
+        assert redecided["decision_id"] != first["decision_id"]
+        assert conn.execute("SELECT COUNT(*) FROM auto_trade_decisions").fetchone()[0] == 2
