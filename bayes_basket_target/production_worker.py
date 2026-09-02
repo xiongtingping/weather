@@ -15972,6 +15972,7 @@ class TargetProductionWorker:
                 "committed",
                 "already_committed",
                 "already_committed_decision",
+                "already_committed_decision_scope",
                 "retained_existing_authority_decision",
             }
             committed_scopes = sum(

@@ -47,6 +47,7 @@ from .stage_evidence import (
 )
 from .delta_v2_training import delta_v2_decision_scope_key
 from .delta_v2_training import build_delta_v2_training_fact
+from .delta_v2_training import committed_scope_fact_id
 from .regime_artifact import RegimeArtifact
 from .runtime import DeltaBasketScoreV2Optimizer
 from .execution_deadline import (
@@ -1067,6 +1068,64 @@ def commit_production_candidate_atomic(
     # content-addressed fact in the bundle binds its id to every execution or
     # NO_EXECUTION vector before any row is committed.
     bundle["training_fact"] = training_fact
+    # A scope key already held by another fact is this same decision, already
+    # on file (user ruling, 2026-09-02: key hit is idempotence).  Answer it
+    # here, before the ledger, with a retain and no rows.  Until now this
+    # reached commit_target_atomic_bundle, whose decision-id retain misses a
+    # restatement (the id hashes the plan sha, which moves with the quote)
+    # and whose scope refusal then raised
+    # target_training_fact_decision_scope_already_committed -- which the
+    # stage-open caller recorded as a *blocker* and answered with a
+    # preliminary blocked decision.  Measured 2026-09-02 06:58Z: 23 of 27
+    # committed forward scopes in one cycle carried that blocker.  The
+    # scope-conflict case (same key, different scope-defining column) keeps
+    # raising the owner's named conflict; supersession is a different act
+    # and keeps its own path.
+    if not supersede_prepared_cycle_id:
+        held_fact_id = committed_scope_fact_id(conn, fact=training_fact)
+        if held_fact_id is not None and held_fact_id != str(
+            training_fact["fact_id"]
+        ):
+            standing = conn.execute(
+                "SELECT cycle_id, decision_id FROM basket_policy_training_fact"
+                " WHERE fact_id=?",
+                (held_fact_id,),
+            ).fetchone()
+            retained_receipt = {
+                "schema": "basket_target_atomic_bundle_receipt_v1",
+                "state": "already_committed_decision_scope",
+                "idempotent": True,
+                "cycle_id": str(standing[0]) if standing else "",
+                "decision_id": str(standing[1]) if standing else "",
+                "intent_count": 0,
+                "reserved_amount_usdc": 0.0,
+                "orders_submitted": 0,
+                "places_orders": False,
+                "calls_order_gateway": False,
+                "live_submit_authorized": False,
+                "execution_version_vector_count": 0,
+                "training_fact_state": "already_committed_decision_scope",
+                "training_fact_id": held_fact_id,
+            }
+            return {
+                "schema": "bayes_basket_target_production_candidate_atomic_v1",
+                "state": "already_committed_decision_scope",
+                "idempotent": True,
+                "receipt": retained_receipt,
+                "delta_v2_training_fact": {
+                    "schema": "delta_basket_score_training_fact_v2",
+                    "state": "already_committed_decision_scope",
+                    "fact_id": held_fact_id,
+                    "idempotent": True,
+                },
+                "candidate_will_order": False,
+                "order_submission": None,
+                "orders_submitted": 0,
+                "places_orders": False,
+                "calls_order_gateway": False,
+                "writes_target_ledger": False,
+                "live_submit_authorized": False,
+            }
     if supersede_prepared_cycle_id:
         receipt = supersede_prepared_cycle_and_commit_bundle(
             conn,

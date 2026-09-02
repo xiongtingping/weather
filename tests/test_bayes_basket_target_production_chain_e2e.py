@@ -735,13 +735,8 @@ def test_optimizer_hold_remains_a_compiled_no_live_decision() -> None:
     assert compiled["boundary"]["calls_order_gateway"] is False
 
 
-def test_p0_opening_commits_stage_rooted_intents_and_evidence() -> None:
-    """P0 opens a position on the ensemble alone: no METAR, no hard bound.
-
-    The commit must root on the stage evidence, persist that evidence in the
-    same transaction, keep every intent inside the model envelope, and stay
-    no-live end to end.
-    """
+def _p0_opening_compile():
+    """The P0 opening fixture: the ensemble-only compile and its market."""
 
     envelopes, priors, artifacts, activations, market, cash_policy = _inputs()
     p0_raw = envelopes[0].to_dict()
@@ -858,6 +853,110 @@ def test_p0_opening_commits_stage_rooted_intents_and_evidence() -> None:
         ),
         "delta_v2_resolution_blocker": None,
     }
+    return compiled, market, cash_policy, p0
+
+
+def _seed_p0_opening_db(conn, *, p0, market, cash_policy) -> None:
+    """Seed the ledger, registry, envelope, book and pool the opening reads."""
+
+    apply_production_ssot_schema(conn)
+    install_canonical_v12(conn)
+    apply_target_market_registry_schema(conn)
+    conn.execute(
+        "INSERT INTO basket_target_market_registry_snapshot "
+        "VALUES(?,?,?,?,?,?,?,?)",
+        (
+            "1" * 64, "reported_trajectory_market_registry_v1",
+            "shared_live_registry_export_only", DECISION,
+            "/read-only/e2e.db", 1, DECISION, "2" * 64,
+        ),
+    )
+    conn.execute(
+        """
+        INSERT INTO basket_target_market_registry(
+          snapshot_sha256,slug,event_date,outcome,city_slug,station_id,
+          settlement_timezone,settlement_unit,source_lane,source_eligible,
+          source_block_reason,resolution_url,rules_sha256,yes_token,
+          no_token,market_active,market_accepting_orders,registry_json,
+          refreshed_at
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            "1" * 64, "e2e-market", "2026-07-23", "38", "chengdu",
+            "ZUUU", "Asia/Shanghai", "C", "awc", 1, "", "",
+            "3" * 64, "yes-38", "no-38", 1, 1, "{}", DECISION,
+        ),
+    )
+    p0_stored = p0.to_dict()
+    conn.execute(
+        """
+        INSERT INTO basket_probability_envelope VALUES(
+          ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+        )
+        """,
+        (
+            p0.checkpoint_id, p0.stage, p0.checkpoint_id,
+            p0.station_id, p0.event_date, p0.settlement_timezone,
+            p0.decision_at_utc, p0.fresh_until_utc,
+            json.dumps(p0_stored["bucket_ordinals"]),
+            json.dumps(p0_stored["probabilities"]),
+            p0.posterior_version, p0.posterior_sha256,
+            p0.bridge_sha256, json.dumps(p0_stored["lineage"]),
+            p0.content_sha256, "COMMITTED", DECISION,
+        ),
+    )
+    conn.execute(
+            """
+            INSERT INTO basket_official_ws_snapshot VALUES(
+              ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+            )
+            """,
+        (
+            market["snapshot_id"], market["market_id"],
+            market["station_id"], market["event_date"],
+                market["settlement_timezone"], market["sequence"],
+                market["observed_at"], market["quote_version"],
+                market["quote_observed_at"], market["quote_expires_at"],
+                "7" * 64, "OFFICIAL_CLOB_WS",
+                market["inventory_version"], market["order_state_version"],
+            market["remaining_budget_usdc"],
+            json.dumps(market["buckets"]),
+            json.dumps(_cash_input(cash_policy).to_dict()),
+            "4" * 64, "COMMITTED", DECISION,
+        ),
+    )
+    conn.execute(
+        "INSERT INTO basket_confirmed_inventory_snapshot "
+        "VALUES(?,?,?,?,?,?,?,?,?,?)",
+        (
+            "e2e-inventory-snapshot", "ZUUU", "2026-07-23",
+            market["inventory_version"], market["observed_at"], 1,
+            "{}", "5" * 64, "COMMITTED", DECISION,
+        ),
+    )
+    conn.execute(
+        "INSERT INTO basket_order_state_snapshot "
+        "VALUES(?,?,?,?,?,?,?,?,?,?)",
+        (
+            "e2e-order-state-snapshot", "ZUUU", "2026-07-23",
+            market["order_state_version"], market["observed_at"], 1,
+            "{}", "6" * 64, "COMMITTED", DECISION,
+        ),
+    )
+    initialize_capital_pool(
+        conn, balance_usdc=30.0, capital_epoch_id="e2e-capital-v1", updated_at_utc=DECISION
+    )
+
+
+def test_p0_opening_commits_stage_rooted_intents_and_evidence() -> None:
+    """P0 opens a position on the ensemble alone: no METAR, no hard bound.
+
+    The commit must root on the stage evidence, persist that evidence in the
+    same transaction, keep every intent inside the model envelope, and stay
+    no-live end to end.
+    """
+
+    compiled, market, cash_policy, p0 = _p0_opening_compile()
     assert compiled["status"] == "ready_no_live"
     assert compiled["plan"]["lineage"]["probability_stage"] == "P0"
     eligible_count = len([
@@ -867,93 +966,7 @@ def test_p0_opening_commits_stage_rooted_intents_and_evidence() -> None:
     assert eligible_count > 1
 
     with sqlite3.connect(":memory:") as conn:
-        apply_production_ssot_schema(conn)
-        install_canonical_v12(conn)
-        apply_target_market_registry_schema(conn)
-        conn.execute(
-            "INSERT INTO basket_target_market_registry_snapshot "
-            "VALUES(?,?,?,?,?,?,?,?)",
-            (
-                "1" * 64, "reported_trajectory_market_registry_v1",
-                "shared_live_registry_export_only", DECISION,
-                "/read-only/e2e.db", 1, DECISION, "2" * 64,
-            ),
-        )
-        conn.execute(
-            """
-            INSERT INTO basket_target_market_registry(
-              snapshot_sha256,slug,event_date,outcome,city_slug,station_id,
-              settlement_timezone,settlement_unit,source_lane,source_eligible,
-              source_block_reason,resolution_url,rules_sha256,yes_token,
-              no_token,market_active,market_accepting_orders,registry_json,
-              refreshed_at
-            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """,
-            (
-                "1" * 64, "e2e-market", "2026-07-23", "38", "chengdu",
-                "ZUUU", "Asia/Shanghai", "C", "awc", 1, "", "",
-                "3" * 64, "yes-38", "no-38", 1, 1, "{}", DECISION,
-            ),
-        )
-        p0_stored = p0.to_dict()
-        conn.execute(
-            """
-            INSERT INTO basket_probability_envelope VALUES(
-              ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
-            )
-            """,
-            (
-                p0.checkpoint_id, p0.stage, p0.checkpoint_id,
-                p0.station_id, p0.event_date, p0.settlement_timezone,
-                p0.decision_at_utc, p0.fresh_until_utc,
-                json.dumps(p0_stored["bucket_ordinals"]),
-                json.dumps(p0_stored["probabilities"]),
-                p0.posterior_version, p0.posterior_sha256,
-                p0.bridge_sha256, json.dumps(p0_stored["lineage"]),
-                p0.content_sha256, "COMMITTED", DECISION,
-            ),
-        )
-        conn.execute(
-                """
-                INSERT INTO basket_official_ws_snapshot VALUES(
-                  ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
-                )
-                """,
-            (
-                market["snapshot_id"], market["market_id"],
-                market["station_id"], market["event_date"],
-                    market["settlement_timezone"], market["sequence"],
-                    market["observed_at"], market["quote_version"],
-                    market["quote_observed_at"], market["quote_expires_at"],
-                    "7" * 64, "OFFICIAL_CLOB_WS",
-                    market["inventory_version"], market["order_state_version"],
-                market["remaining_budget_usdc"],
-                json.dumps(market["buckets"]),
-                json.dumps(_cash_input(cash_policy).to_dict()),
-                "4" * 64, "COMMITTED", DECISION,
-            ),
-        )
-        conn.execute(
-            "INSERT INTO basket_confirmed_inventory_snapshot "
-            "VALUES(?,?,?,?,?,?,?,?,?,?)",
-            (
-                "e2e-inventory-snapshot", "ZUUU", "2026-07-23",
-                market["inventory_version"], market["observed_at"], 1,
-                "{}", "5" * 64, "COMMITTED", DECISION,
-            ),
-        )
-        conn.execute(
-            "INSERT INTO basket_order_state_snapshot "
-            "VALUES(?,?,?,?,?,?,?,?,?,?)",
-            (
-                "e2e-order-state-snapshot", "ZUUU", "2026-07-23",
-                market["order_state_version"], market["observed_at"], 1,
-                "{}", "6" * 64, "COMMITTED", DECISION,
-            ),
-        )
-        initialize_capital_pool(
-            conn, balance_usdc=30.0, capital_epoch_id="e2e-capital-v1", updated_at_utc=DECISION
-        )
+        _seed_p0_opening_db(conn, p0=p0, market=market, cash_policy=cash_policy)
 
         first = commit_production_candidate_atomic(
             conn,
@@ -1006,3 +1019,76 @@ def test_p0_opening_commits_stage_rooted_intents_and_evidence() -> None:
         assert conn.execute(
             "SELECT COUNT(*) FROM basket_target_stage_evidence_roots"
         ).fetchone()[0] == 1
+
+
+def test_p0_stage_open_restatement_on_a_later_clock_is_retained_without_rows() -> None:
+    """Same decision, later clock: retained before the ledger, no new rows.
+
+    A restatement mints a new cycle (the clock is in the cycle id) under the
+    same decision scope key.  Until 2026-09-02 it reached the ledger, missed
+    the decision-id retain (the id hashes the plan sha, which moves with the
+    quote) and was refused as
+    target_training_fact_decision_scope_already_committed -- which the
+    stage-open caller wrote down as a blocker and answered with a preliminary
+    blocked decision.  Measured that day: 23 of 27 committed forward scopes
+    in one cycle carried the blocker.
+    """
+
+    import datetime as _dt
+
+    compiled, market, cash_policy, p0 = _p0_opening_compile()
+    with sqlite3.connect(":memory:") as conn:
+        _seed_p0_opening_db(conn, p0=p0, market=market, cash_policy=cash_policy)
+        first = commit_production_candidate_atomic(
+            conn,
+            compiled_plan=compiled,
+            market_snapshot=market,
+            awc_observation_contract=None,
+            truth_observation_revision_content_sha256="",
+            bound=None,
+            created_at_utc=DECISION,
+        )
+        assert first["state"] == "committed"
+        before = tuple(
+            conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            for table in (
+                "basket_target_execution_cycles",
+                "auto_trade_decisions",
+                "basket_policy_training_fact",
+                "basket_target_execution_version_vectors",
+            )
+        )
+        assert before[0] == 1 and before[1] == 1 and before[2] == 1
+        later = (
+            _dt.datetime.fromisoformat(DECISION.replace("Z", "+00:00"))
+            + _dt.timedelta(seconds=1)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        restated = commit_production_candidate_atomic(
+            conn,
+            compiled_plan=compiled,
+            market_snapshot=market,
+            awc_observation_contract=None,
+            truth_observation_revision_content_sha256="",
+            bound=None,
+            created_at_utc=later,
+        )
+        assert restated["state"] == "already_committed_decision_scope"
+        assert restated["idempotent"] is True
+        assert restated["writes_target_ledger"] is False
+        assert restated["orders_submitted"] == 0
+        assert restated["calls_order_gateway"] is False
+        assert restated["receipt"]["cycle_id"] == first["receipt"]["cycle_id"]
+        held = conn.execute(
+            "SELECT fact_id FROM basket_policy_training_fact"
+        ).fetchone()[0]
+        assert restated["delta_v2_training_fact"]["fact_id"] == held
+        after = tuple(
+            conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            for table in (
+                "basket_target_execution_cycles",
+                "auto_trade_decisions",
+                "basket_policy_training_fact",
+                "basket_target_execution_version_vectors",
+            )
+        )
+        assert after == before
