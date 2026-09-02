@@ -182,6 +182,70 @@ def score(distribution: Mapping[str, float], *, truth_bucket: str,
     }
 
 
+def walk_forward_artifacts(
+    all_rows: Sequence[Mapping[str, Any]], day: str
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    """Both artifacts fitted on strictly earlier days than ``day``.
+
+    Factored out so the ledger injector fits exactly what this evaluation
+    scored.  Two fits of the same window that differ by a line are two
+    different experiments wearing one name.
+    """
+
+    train = [row for row in all_rows if str(row["event_date"]) < day]
+    if len(train) < 500:
+        return None
+    fallbacks = hazard_fit.fleet_means(train, hazard_fit.FULL_FEATURES)
+    risers = [row for row in train if int(row["delta_c"]) >= 1]
+    try:
+        hazard = {
+            "schema": hazard_fit.SCHEMA,
+            "trained_through": max(str(row["event_date"]) for row in train),
+            "feature_fallbacks": fallbacks,
+            "phase": hazard_fit.fit_phase_rung(train, fallbacks),
+            "continuation_full": hazard_fit.fit_continuation(
+                risers, hazard_fit.FULL_FEATURES, fallbacks
+            ),
+            "continuation_phase_only": hazard_fit.fit_continuation(
+                risers, hazard_fit.PHASE_FEATURES, fallbacks
+            ),
+            "content_sha256": "walkforward",
+        }
+    except SystemExit:
+        return None
+    bias_rows = [
+        row for row in train
+        if row["root_bias_recent_c"] is not None
+        and row["root_center_c"] is not None
+        and int(row["root_bias_report_count"]) >= 2
+    ]
+    pooled = reanchor_fit.fit_slope(bias_rows)
+    grouped: dict[int, list[Mapping[str, Any]]] = defaultdict(list)
+    for row in bias_rows:
+        grouped[reanchor_fit.hours_bin(
+            float(row["remaining_hours"])
+        )].append(row)
+    bins: dict[str, Any] = {}
+    for index in range(len(reanchor_fit.HOURS_EDGES) - 1):
+        bucket = grouped.get(index, [])
+        if len(bucket) < reanchor_fit.MIN_BIN_ROWS:
+            bins[str(index)] = {**pooled, "backed_off": True}
+        else:
+            bins[str(index)] = {
+                **reanchor_fit.fit_slope(bucket), "backed_off": False
+            }
+    reanchor = {
+        "schema": reanchor_fit.SCHEMA,
+        "hours_edges": list(reanchor_fit.HOURS_EDGES),
+        "max_shift_c": reanchor_fit.MAX_SHIFT_C,
+        "minimum_bias_reports": reanchor_fit.MIN_BIAS_REPORTS,
+        "bins": bins,
+        "pooled": pooled,
+        "content_sha256": "walkforward",
+    }
+    return hazard, reanchor
+
+
 def evaluate_day(
     *,
     samples: Sequence[Mapping[str, Any]],
@@ -362,58 +426,12 @@ def main() -> int:
     for index, day in enumerate(days):
         if index < args.min_train_days:
             continue
-        train = [
-            row for row in all_rows if str(row["event_date"]) < day
-        ]
-        fallbacks = hazard_fit.fleet_means(train, hazard_fit.FULL_FEATURES)
-        risers = [row for row in train if int(row["delta_c"]) >= 1]
-        try:
-            hazard = {
-                "schema": hazard_fit.SCHEMA,
-                "trained_through": days[index - 1],
-                "feature_fallbacks": fallbacks,
-                "phase": hazard_fit.fit_phase_rung(train, fallbacks),
-                "continuation_full": hazard_fit.fit_continuation(
-                    risers, hazard_fit.FULL_FEATURES, fallbacks
-                ),
-                "continuation_phase_only": hazard_fit.fit_continuation(
-                    risers, hazard_fit.PHASE_FEATURES, fallbacks
-                ),
-                "content_sha256": "walkforward",
-            }
-        except SystemExit as exc:
-            print(f"  {day}: hazard fit refused ({exc})", file=sys.stderr)
+        fitted = walk_forward_artifacts(all_rows, day)
+        if fitted is None:
+            print(f"  {day}: too little history to fit", file=sys.stderr)
             continue
-        bias_rows = [
-            row for row in train
-            if row["root_bias_recent_c"] is not None
-            and row["root_center_c"] is not None
-            and int(row["root_bias_report_count"]) >= 2
-        ]
-        pooled = reanchor_fit.fit_slope(bias_rows)
-        bins: dict[str, Any] = {}
-        grouped: dict[int, list[dict[str, Any]]] = defaultdict(list)
-        for row in bias_rows:
-            grouped[reanchor_fit.hours_bin(
-                float(row["remaining_hours"])
-            )].append(row)
-        for bin_index in range(len(reanchor_fit.HOURS_EDGES) - 1):
-            bucket = grouped.get(bin_index, [])
-            if len(bucket) < reanchor_fit.MIN_BIN_ROWS:
-                bins[str(bin_index)] = {**pooled, "backed_off": True}
-            else:
-                bins[str(bin_index)] = {
-                    **reanchor_fit.fit_slope(bucket), "backed_off": False
-                }
-        reanchor = {
-            "schema": reanchor_fit.SCHEMA,
-            "hours_edges": list(reanchor_fit.HOURS_EDGES),
-            "max_shift_c": reanchor_fit.MAX_SHIFT_C,
-            "minimum_bias_reports": reanchor_fit.MIN_BIAS_REPORTS,
-            "bins": bins,
-            "pooled": pooled,
-            "content_sha256": "walkforward",
-        }
+        hazard, reanchor = fitted
+        train = [row for row in all_rows if str(row["event_date"]) < day]
         scored.extend(evaluate_day(
             samples=by_day[day],
             roots=roots,
