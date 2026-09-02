@@ -41,6 +41,7 @@ from bayes_basket_target.database import (
     DEFAULT_TARGET_WS_MANIFEST,
 )
 from bayes_basket_target.market_registry import (
+    LISTED_DAYS_PER_STATION,
     load_active_registry_rows,
     settlement_day_state,
 )
@@ -565,14 +566,27 @@ def _scope(
     if not scopes:
         raise ContractError("resident_target_ws_scope_missing")
     scopes.sort(key=lambda item: str(item["scope_key"]))
-    station_states: dict[str, set[str]] = {}
+    # One open day per station, and up to LISTED_DAYS_PER_STATION listed
+    # (not-started) days -- the D-2 listing window charter 48(e) admits into
+    # the catalog.  Until 2026-09-02 this guard allowed one scope per state,
+    # which held only while the registry export dropped the second listed
+    # day; the moment that export carried it, every frame died here
+    # (``station_state_ambiguous`` 15:06Z onward), the manifest froze, and
+    # seventy scopes failed on production_quote_expired in one cycle.
+    # Scopes are keyed by (station, event_date), so the listed days are
+    # distinct by construction; what is ambiguous is two *open* days for
+    # one station, or more listed days than the window can hold.
+    station_states: dict[str, dict[str, int]] = {}
     for scope in scopes:
         station_id = str(scope["station_id"])
         state = str(scope["event_day_state"])
-        seen = station_states.setdefault(station_id, set())
-        if state in seen:
+        counts = station_states.setdefault(station_id, {})
+        counts[state] = counts.get(state, 0) + 1
+        limit = (
+            LISTED_DAYS_PER_STATION if state == "not_started" else 1
+        )
+        if counts[state] > limit:
             raise ContractError("resident_target_ws_station_state_ambiguous")
-        seen.add(state)
     if len(station_states) > MAX_TARGET_STATIONS:
         raise ContractError("resident_target_ws_station_cap_exceeded")
     if len(scopes) > MAX_TARGET_SCOPES:

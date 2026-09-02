@@ -547,9 +547,13 @@ def test_only_future_probability_expiry_requires_catalog_refresh() -> None:
     ) is False
 
 
-def test_station_cannot_silently_rotate_through_two_future_scopes(
+def test_station_carries_two_listed_days_and_cannot_rotate_through_a_third(
     tmp_path: Path,
 ) -> None:
+    """Charter 48(e): the D-2 listing window is two not-started days per
+    station (tomorrow and the day just listed).  One more is a station
+    silently rotating through additional days, which is still refused."""
+
     db = tmp_path / "target.db"
     _database(db)
     for event_date, suffix in (
@@ -564,6 +568,23 @@ def test_station_cannot_silently_rotate_through_two_future_scopes(
             fresh_until_utc="2026-07-30T15:00:00Z",
             token_suffix=suffix,
         )
+    catalog = _scope(
+        db_path=db,
+        as_of_utc="2026-07-28T02:00:00Z",
+    )
+    assert sorted(
+        scope["event_date"]
+        for scope in catalog["scopes"]
+        if scope["event_day_state"] == "not_started"
+    ) == ["2026-07-29", "2026-07-30"]
+    _add_scope(
+        db,
+        event_date="2026-07-31",
+        stage="P0-M",
+        decision_at_utc="2026-07-28T01:30:00Z",
+        fresh_until_utc="2026-07-31T15:00:00Z",
+        token_suffix="next-next-next",
+    )
     with pytest.raises(
         ContractError,
         match="resident_target_ws_station_state_ambiguous",
