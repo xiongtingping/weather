@@ -42,6 +42,7 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target import native_ensemble_oos as OOS  # noqa: E402
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
+from bayes_basket_target.probability_bridge import rehydrate_lineage_documents  # noqa: E402
 from bayes_basket_target.native_ensemble_p0 import (  # noqa: E402
     compile_native_ensemble_p0,
 )
@@ -258,7 +259,15 @@ def main() -> int:
                 "posterior_version": str(body[9]),
                 "posterior_sha256": str(body[10]),
                 "bridge_sha256": str(body[11]),
-                "lineage": json.loads(str(body[12])),
+                # Hashed the way the reader rebuilds it: since 926dfa29 the
+                # reader rehydrates lineage document references into their
+                # bodies before hashing (``history_envelope_payload``), so a
+                # hash over the raw column no longer matches and the ledger
+                # refuses every swapped envelope as
+                # ``xsb_history_envelope_body_sha_mismatch`` (2026-09-02).
+                "lineage": rehydrate_lineage_documents(
+                    replay, json.loads(str(body[12]))
+                ),
             }
             replay.execute(
                 "UPDATE basket_probability_envelope SET probabilities_json=?"
