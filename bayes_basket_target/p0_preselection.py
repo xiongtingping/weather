@@ -401,6 +401,7 @@ def _market_snapshot(
                 "bid_levels": [],
                 "price_tick_size": 0.0,
                 "tick_size_source": "UNMATERIALIZED_BOOK",
+                "min_order_size": 0.0,
                 "maker_queue_ahead_shares": 0.0,
                 "maker_queue_known": False,
                 "filled_shares": 0.0,
@@ -513,6 +514,14 @@ def _market_snapshot(
             "bid_levels": bid_levels,
             "price_tick_size": price_tick_size,
             "tick_size_source": tick_size_source,
+            # The exchange's minimum lot, off the same registry row the main
+            # lane reads it from.  This lane never carried it, so every
+            # forward bucket reached the sizing kernel with a lot of 0 -- no
+            # rung could be raised to a lot (charter 70) and no sub-lot rung
+            # was named as such.  Read tolerantly: a snapshot that predates
+            # the field states no lot, which the kernel's contract already
+            # defines as 0, rather than refusing the whole forward compile.
+            "min_order_size": float(registry_row.get("order_min_size") or 0.0),
             "maker_queue_ahead_shares": 0.0,
             "maker_queue_known": False,
             "filled_shares": 0.0,

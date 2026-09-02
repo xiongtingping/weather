@@ -47,6 +47,8 @@ BOUND_CONSTANTS = [
     ("KELLY_FRACTION", K, "DEFAULT_KELLY_FRACTION"),
     ("MAX_STAKE_FRACTION_PER_SCOPE", K, "MAX_STAKE_FRACTION_PER_SCOPE"),
     ("STAGE_BUDGET_SHARE", K, "STAGE_BUDGET_SHARE"),
+    # Charter 70: one kernel constant, imported by both lanes.
+    ("EXCHANGE_LOT_TOP_UP", K, "EXCHANGE_LOT_TOP_UP"),
     ("MINIMUM_LEG_ALL_IN_ASK", P, "MINIMUM_LEG_ALL_IN_ASK"),
     ("MAKER_RESTING_LADDER_STEPS", P, "MAKER_LADDER_STEPS"),
     ("MAKER_RESTING_IMPROVE_TICKS", P, "MAKER_LADDER_IMPROVE_TICKS"),
@@ -255,6 +257,9 @@ SHARED_WITH_PRODUCTION = {
     # Charter 69: the clamp's mode, spelled in each lane and asserted equal
     # below; the narrowing itself is one kernel function both import.
     "DECLINE_CLAMP",
+    # Charter 70: the lot top-up mode is the kernel's; both lanes import it
+    # and the raise itself is one kernel function both call.
+    "EXCHANGE_LOT_TOP_UP",
     "CERTAINTY_GATE", "FEE_RATE", "KELLY_FRACTION",
     "MAKER_RESTING_IMPROVE_TICKS", "MAKER_RESTING_LADDER_STEPS",
     "MAKER_RESTING_SHOULDER_LAMBDA", "MAKER_RESTING_VALUE_LAMBDA",

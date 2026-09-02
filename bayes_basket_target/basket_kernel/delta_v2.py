@@ -526,6 +526,106 @@ def scope_stake_cap_usdc(
 # -0.10 rather than 0.0 keeps a small ability to lean toward a genuinely
 # mispriced bucket; the zero-cost baseline always satisfies it, so a book
 # that only offers lottery shapes resolves to HOLD instead of a lottery.
+# Charter 70 (user ruling, 2026-09-02): a leg whose solved target is under the
+# exchange's minimum lot is raised to one lot when the basket can afford it.
+#
+# The ruling it replaces -- drop a sub-lot leg rather than round it up -- was
+# written for a book sized off a flat 30 USDC, where a sub-lot leg meant the
+# objective had chosen a small position.  Sized off the pool's 2% (6.17 USDC
+# for a P0 open on the current book) a three- or four-rung ladder routinely
+# solves one rung to two or three shares, below the five the exchange will
+# fill, and a basket has to be bought whole: the missing leg refused the
+# whole ladder.  Measured 2026-09-02, 11 of the 17 legs refused on positive-
+# edge forward baskets were under a lot; every one of those baskets was
+# affordable with the raise.
+#
+# This lives in the kernel, like the stake cap, because the paper ledger and
+# production must size the same station-day the same way and both read it
+# from here.  ``smallest_leg`` raises every rung under a lot -- a basket with
+# one rung still under is still not buyable -- and raises none when the sum
+# of the raises would exceed what the scope may still spend; ``off`` is the
+# pre-charter-70 book, kept so a replay can re-derive it.
+EXCHANGE_LOT_TOP_UP_MODES = ("off", "smallest_leg")
+EXCHANGE_LOT_TOP_UP = "smallest_leg"
+
+
+def raise_sub_lot_targets_v2(
+    *,
+    target_shares_by_bucket: Mapping[str, Any],
+    support: Sequence[str],
+    min_lot_by_bucket: Mapping[str, Any],
+    ask_by_bucket: Mapping[str, Any],
+    capital_available_usdc: Any,
+    mode: str = EXCHANGE_LOT_TOP_UP,
+) -> dict[str, Any]:
+    """Raise every seated rung under one exchange lot to exactly one lot.
+
+    Pure and deterministic.  ``min_lot_by_bucket`` is the exchange's stated
+    minimum per market (0 when unstated -- such a rung is left alone, it is
+    not known to be under anything); ``ask_by_bucket`` prices the raise.  The
+    raise is all-or-none over the support: a basket that can afford to lift
+    only some of its short rungs to a lot still cannot be bought, so nothing
+    is changed and the refusal is named.  Affordability is the whole basket's
+    -- the solved targets at their asks plus the raises -- against
+    ``capital_available_usdc``, which is what the scope may still spend.
+    """
+
+    if mode not in EXCHANGE_LOT_TOP_UP_MODES:
+        raise ContractError("delta_v2_exchange_lot_top_up_mode_invalid")
+    targets = {
+        str(bucket): _nonnegative("delta_v2_target_shares", value)
+        for bucket, value in target_shares_by_bucket.items()
+    }
+    unchanged = {
+        "schema": "delta_v2_exchange_lot_top_up_v1",
+        "mode": mode,
+        "target_shares_by_bucket": dict(targets),
+        "raised_buckets": (),
+        "lot_raise_usdc": 0.0,
+        "requested_lot_raise_usdc": 0.0,
+        "refused_reason": None,
+    }
+    if mode == "off":
+        return unchanged
+    capital = _nonnegative("delta_v2_capital_available", capital_available_usdc)
+    raised: list[str] = []
+    lots: dict[str, float] = {}
+    extra = 0.0
+    committed = 0.0
+    for raw_bucket in support:
+        bucket = str(raw_bucket)
+        target = targets.get(bucket, 0.0)
+        lot = _nonnegative(
+            "delta_v2_min_lot", min_lot_by_bucket.get(bucket, 0.0) or 0.0
+        )
+        ask = _nonnegative(
+            "delta_v2_ask", ask_by_bucket.get(bucket, 0.0) or 0.0
+        )
+        committed += target * ask
+        if lot <= EPS or ask <= EPS or target <= EPS or target + EPS >= lot:
+            continue
+        raised.append(bucket)
+        lots[bucket] = lot
+        extra += (lot - target) * ask
+    if not raised:
+        return unchanged
+    if committed + extra > capital + EPS:
+        return {
+            **unchanged,
+            "requested_lot_raise_usdc": extra,
+            "refused_reason": "exchange_lot_top_up_unaffordable",
+        }
+    for bucket in raised:
+        targets[bucket] = lots[bucket]
+    return {
+        **unchanged,
+        "target_shares_by_bucket": targets,
+        "raised_buckets": tuple(raised),
+        "lot_raise_usdc": extra,
+        "requested_lot_raise_usdc": extra,
+    }
+
+
 SUPPORT_SCENARIO_FLOOR_FRACTION = -0.10
 # Effective edge (user ruling, charter 68, 2026-09-01).  Nominal edge --
 # claim minus price -- realizes as an inverted U in the market's agreement
@@ -2525,6 +2625,9 @@ __all__ = [
     "contiguous_edge_clamp_v2",
     "evaluate_action_v2",
     "evaluate_basket_value_v2",
+    "EXCHANGE_LOT_TOP_UP",
+    "EXCHANGE_LOT_TOP_UP_MODES",
+    "raise_sub_lot_targets_v2",
     "hold_action_v2",
     "select_action_v2",
     "select_complete_maker_bundle_v2",

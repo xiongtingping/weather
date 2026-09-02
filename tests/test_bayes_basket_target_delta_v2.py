@@ -867,3 +867,70 @@ def test_rescore_rules_on_the_cut_basket_and_refuses_an_illegal_one() -> None:
             sized_shares_by_bucket=full_shares,
             sized_notional_by_bucket=full_notional,
         )
+
+
+def test_charter_70_sub_lot_rungs_are_raised_to_one_lot_when_the_basket_can_pay() -> None:
+    """User ruling 2026-09-02: 允许最小腿补到一手.
+
+    SAEZ 2026-09-03, sized off the pool's 2% (6.17 USDC): 16C at 0.06 and
+    18C at 0.16 solved to 4.17 and 1.56 shares against a five-share lot, so
+    neither leg had an order the exchange would fill and the whole ladder
+    held.  The raise lifts both to exactly one lot -- 0.60 USDC more -- and
+    leaves the rung already over a lot alone.
+    """
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        EXCHANGE_LOT_TOP_UP,
+        EXCHANGE_LOT_TOP_UP_MODES,
+        raise_sub_lot_targets_v2,
+    )
+
+    assert EXCHANGE_LOT_TOP_UP in EXCHANGE_LOT_TOP_UP_MODES
+    targets = {"16": 4.17, "17": 39.1, "18": 1.56}
+    lots = {"16": 5.0, "17": 5.0, "18": 5.0}
+    asks = {"16": 0.06, "17": 0.05, "18": 0.16}
+
+    raised = raise_sub_lot_targets_v2(
+        target_shares_by_bucket=targets, support=("16", "17", "18"),
+        min_lot_by_bucket=lots, ask_by_bucket=asks,
+        capital_available_usdc=6.17,
+    )
+    assert raised["raised_buckets"] == ("16", "18")
+    assert raised["target_shares_by_bucket"] == {"16": 5.0, "17": 39.1, "18": 5.0}
+    assert raised["lot_raise_usdc"] == pytest.approx((5 - 4.17) * 0.06 + (5 - 1.56) * 0.16)
+    assert raised["refused_reason"] is None
+
+    # All or none: a basket that can lift only one of its short rungs is
+    # still not buyable, so nothing moves and the refusal is named.
+    short = raise_sub_lot_targets_v2(
+        target_shares_by_bucket={"16": 4.17, "18": 1.56}, support=("16", "18"),
+        min_lot_by_bucket={"16": 5.0, "18": 5.0}, ask_by_bucket={"16": 0.06, "18": 0.16},
+        capital_available_usdc=0.9,
+    )
+    assert short["raised_buckets"] == ()
+    assert short["target_shares_by_bucket"] == {"16": 4.17, "18": 1.56}
+    assert short["refused_reason"] == "exchange_lot_top_up_unaffordable"
+    assert short["requested_lot_raise_usdc"] == pytest.approx(raised["lot_raise_usdc"])
+
+    # A market that states no lot is not known to be under one.
+    unstated = raise_sub_lot_targets_v2(
+        target_shares_by_bucket=targets, support=("16", "17", "18"),
+        min_lot_by_bucket={"16": 0.0, "17": 0.0, "18": 0.0}, ask_by_bucket=asks,
+        capital_available_usdc=6.17,
+    )
+    assert unstated["raised_buckets"] == ()
+    assert unstated["target_shares_by_bucket"] == targets
+
+    # The pre-charter-70 book, kept as a replay arm.
+    off = raise_sub_lot_targets_v2(
+        target_shares_by_bucket=targets, support=("16", "17", "18"),
+        min_lot_by_bucket=lots, ask_by_bucket=asks,
+        capital_available_usdc=6.17, mode="off",
+    )
+    assert off["raised_buckets"] == () and off["target_shares_by_bucket"] == targets
+
+    with pytest.raises(ContractError, match="exchange_lot_top_up_mode_invalid"):
+        raise_sub_lot_targets_v2(
+            target_shares_by_bucket=targets, support=("16",),
+            min_lot_by_bucket=lots, ask_by_bucket=asks,
+            capital_available_usdc=6.17, mode="round_up",
+        )

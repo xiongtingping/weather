@@ -35,11 +35,13 @@ from .basket_kernel.delta_v2 import (
     CANDIDATE_KINDS,
     CURVE_OBJECTIVE_FORM,
     DEFAULT_KELLY_FRACTION,
+    EXCHANGE_LOT_TOP_UP,
     VALUE_OBJECTIVE_FORM,
     clamp_declining_gaps_v2,
     contiguous_edge_clamp_v2,
     evaluate_action_v2,
     evaluate_basket_value_v2,
+    raise_sub_lot_targets_v2,
     select_action_v2,
     select_complete_maker_bundle_v2,
     solve_reservation_price_v2,
@@ -3076,6 +3078,33 @@ def compile_delta_v2_runtime_plan(
     scored_shortfall = tuple(sorted(shortfall & desired))
     scored_breakthrough = tuple(sorted(breakthrough & desired))
     target_shares = dict(target_solution["target_shares_by_bucket"])
+    # Charter 70: a seated rung solved to fewer shares than the exchange will
+    # fill is raised to one lot when the basket can afford it.  Applied to
+    # the *targets*, before any gap is derived from them, so the candidate
+    # loop, the kernel's inventory-gap gate and the emitted target rows all
+    # see the same lifted number; raising only the clip would trip
+    # ``clip_exceeds_inventory_gap`` and refuse the very leg being raised.
+    lot_top_up = raise_sub_lot_targets_v2(
+        target_shares_by_bucket=target_shares,
+        support=seated_support,
+        min_lot_by_bucket={
+            bucket: by_bucket[bucket].min_order_size
+            for bucket in seated_support
+        },
+        # A rung with no ask cannot be bought, so it cannot be lifted; the
+        # kernel leaves a zero-priced rung alone rather than pricing a lot
+        # nobody is offering.  ``ask_price`` raises on a bid-only book.
+        ask_by_bucket={
+            bucket: (
+                by_bucket[bucket].ask_price
+                if by_bucket[bucket].ask_available
+                else 0.0
+            )
+            for bucket in seated_support
+        },
+        capital_available_usdc=capital_available_usdc,
+    )
+    target_shares = dict(lot_top_up["target_shares_by_bucket"])
     current_shares = {row.bucket: row.filled_shares for row in snapshot.buckets}
     current_cost = {row.bucket: row.filled_cost_usdc for row in snapshot.buckets}
     pending_shares = {row.bucket: row.pending_shares for row in snapshot.buckets}
@@ -3775,6 +3804,12 @@ def compile_delta_v2_runtime_plan(
         "probability_declined_buckets": tuple(declining_buckets),
         "probability_clamp_mode": DECLINE_CLAMP_MODE,
         "probability_clamped_buckets": tuple(clamped_buckets),
+        # Charter 70: which rungs were lifted to one exchange lot, and what
+        # the lift cost, or why it was refused.
+        "exchange_lot_top_up": EXCHANGE_LOT_TOP_UP,
+        "lot_raised_buckets": tuple(lot_top_up["raised_buckets"]),
+        "lot_raise_usdc": float(lot_top_up["lot_raise_usdc"]),
+        "lot_raise_refused": lot_top_up["refused_reason"],
         "probability_direction_source": (
             "previous_checkpoint" if previous_probabilities else "absent"
         ),

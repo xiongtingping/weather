@@ -1315,19 +1315,20 @@ def _compile_target_plan(
                 # exchange's rule rather than ours.  Both have to hold: a leg
                 # can clear the notional floor and still be under a lot.
                 #
-                # It is asserted only on a MAKER leg.  The rule is one the
-                # exchange states for limit orders and the only rejections it
-                # has ever returned for it -- 137 of them, all "Size (0.32)
-                # lower than the minimum: 5" -- were GTC.  An FOK leg is
-                # enumerated in cash and swept through the ask levels, so its
-                # minimum is a dollar figure nothing here has observed; the
-                # candidate family is unreachable in production today
-                # (``confirmed_cancel_for_fok`` has no caller), and inventing
-                # a rule for it would be worse than letting the exchange
-                # answer when it becomes reachable.
+                # Asserted on every priced leg, MAKER and TAKER_FOK alike.
+                # It was MAKER-only while the FOK family was unreachable in
+                # production and the only lot rejections the exchange had
+                # returned were GTC; charter 65 made FOK the production path
+                # on 2026-08-31, and the gateway's own sizing rule
+                # (``exchangeOrderSizingRule``) refuses any order below the
+                # market's ``orderMinSize`` regardless of type.  Passing 0
+                # here for a FOK leg only deferred that refusal to the
+                # exchange boundary and hid it from the sizing record; the
+                # lot is the same five shares either way.  A NONE candidate
+                # has no order to size and keeps 0.
                 minimum_lot_shares=(
                     float(snap_row.min_order_size or 0.0)
-                    if execution_candidate == "MAKER"
+                    if execution_candidate in ("MAKER", "TAKER_FOK")
                     else 0.0
                 ),
                 # DeltaBasketScore v2 owns the selected adaptive clip.  The

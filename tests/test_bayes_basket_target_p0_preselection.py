@@ -1094,3 +1094,32 @@ def test_p0_snapshot_refuses_an_unusable_book_equity(equity: float) -> None:
             planning_budget_usdc=20.0,
             book_equity_usdc=equity,
         )
+
+
+def test_p0_snapshot_carries_the_exchange_lot_off_the_registry_row() -> None:
+    """The forward bucket never carried ``min_order_size``, so every forward
+    scope reached sizing with a lot of 0 and no rung could be raised to one
+    (charter 70).  Read tolerantly: a row without the field states no lot."""
+
+    envelope, registry_rows, quotes, manifest = _ws_inputs(
+        observed_at="2026-07-23T12:00:10Z"
+    )
+    envelope.decision_at_utc = "2026-07-23T12:00:09Z"
+
+    without = _market_snapshot(
+        envelope=envelope, registry_rows=registry_rows, quotes=quotes,
+        manifest=manifest, evaluation_at_utc="2026-07-23T12:01:00Z",
+        planning_budget_usdc=20.0,
+    )
+    assert without["buckets"][0]["min_order_size"] == 0.0
+
+    with_lot = _market_snapshot(
+        envelope=envelope,
+        registry_rows=[{**row, "order_min_size": 5} for row in registry_rows],
+        quotes=quotes, manifest=manifest,
+        evaluation_at_utc="2026-07-23T12:01:00Z",
+        planning_budget_usdc=20.0,
+    )
+    assert with_lot["buckets"][0]["min_order_size"] == 5.0
+    # Not part of the quote's economic identity.
+    assert with_lot["snapshot_id"] == without["snapshot_id"]

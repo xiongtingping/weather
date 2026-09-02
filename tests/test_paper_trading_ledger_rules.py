@@ -2284,3 +2284,31 @@ def test_a_stage_may_seat_twice_and_the_old_unique_is_rebuilt_away() -> None:
         "SELECT COUNT(*) FROM paper_trade_position"
         " WHERE station_id='ZUUU' AND event_date='2026-08-31' AND stage='P0'"
     ).fetchone()[0] == 2
+
+
+def test_charter_70_the_book_lifts_sub_lot_rungs_with_productions_rule() -> None:
+    """The rule is the kernel's and the fingerprint carries it (v6)."""
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    import paper_trading_ledger as L  # noqa: PLC0415
+    from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: PLC0415
+        EXCHANGE_LOT_TOP_UP,
+        raise_sub_lot_targets_v2,
+    )
+
+    assert L.EXCHANGE_LOT_TOP_UP == EXCHANGE_LOT_TOP_UP
+    assert L.raise_sub_lot_targets_v2 is raise_sub_lot_targets_v2
+    source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    assert '"schema": "paper_trade_selection_rule_v6"' in source
+    assert '"exchange_lot_top_up": EXCHANGE_LOT_TOP_UP' in source
+    assert "补足一手" in L.SELECTION_RULE_LABEL
+    # The raise walks the real ladder for the lot rather than pricing it at
+    # the top ask, and rides on the seat's consolidation record.
+    assert "_walk_ask_shares(\n                                    _leg, _seat_lots[str(_b)]" in source
+    assert '"exchange_lot_top_up": lot_top_up_record' in source

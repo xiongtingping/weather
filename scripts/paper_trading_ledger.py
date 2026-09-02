@@ -109,10 +109,13 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     DEFAULT_KELLY_FRACTION,
     DEFAULT_P1_ENTRY_LOCAL_HOUR,
+    EXCHANGE_LOT_TOP_UP as _KERNEL_EXCHANGE_LOT_TOP_UP,
+    EXCHANGE_LOT_TOP_UP_MODES,
     MAX_STAKE_FRACTION_PER_SCOPE,
     OFF_CENTER_CLAIM_RAMP_BUCKETS,
     STAGE_BUDGET_SHARE,
     SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
+    raise_sub_lot_targets_v2,
     scope_stake_cap_usdc,
 )
 from bayes_basket_target.center_width_calibration import (  # noqa: E402
@@ -129,6 +132,16 @@ INITIAL_CAPITAL_USDC = 1000.0
 # than written again here: it is the same quarter production's curve score
 # uses, and two copies of one number is how they stop being one number.
 KELLY_FRACTION = DEFAULT_KELLY_FRACTION
+# Charter 70 (2026-09-02): a rung solved under the exchange's lot is lifted to
+# one lot when the basket can pay.  Kernel-owned and read by production; the
+# binding test asserts the two lanes equal.  ``off`` is the pre-charter-70
+# book, kept as a replay arm so it can be re-derived, never run in production.
+EXCHANGE_LOT_TOP_UP = (
+    os.environ.get("PAPER_LEDGER_EXCHANGE_LOT_TOP_UP", "").strip()
+    or _KERNEL_EXCHANGE_LOT_TOP_UP
+)
+if EXCHANGE_LOT_TOP_UP not in EXCHANGE_LOT_TOP_UP_MODES:
+    raise ValueError(f"unknown exchange lot top-up mode: {EXCHANGE_LOT_TOP_UP}")
 # Charter 66 (user ruling, 2026-08-29): a top-up is sized and admitted on
 # the CHAIN, not on itself.  Stage-level positive EV built 38 chains whose
 # blended cost crossed 1.0 -- guaranteed losses that hit 37 times out of 38
@@ -1352,6 +1365,7 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     else "加仓本金%g" % CHAIN_TOPUP_BANKROLL_USDC,
     "中心底仓",
     f"腿≥{MINIMUM_LEG_ALL_IN_ASK:g}",
+    None if EXCHANGE_LOT_TOP_UP == "off" else "补足一手",
     None if WINDOW_STRATEGY == "live" else WINDOW_STRATEGY,
     None if EXECUTION_MODE == "taker" else EXECUTION_MODE,
     None
@@ -1465,8 +1479,12 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     "一本账·只加不减",
 )))
 SELECTION_RULE_SHA256 = content_sha256({
-    "schema": "paper_trade_selection_rule_v5",
+    "schema": "paper_trade_selection_rule_v6",
     "compounding": "credible_fills_only_from_settlements",
+    # Charter 70: sub-lot rungs lifted to one exchange lot, or not.  Kernel
+    # constant, read by production too; v6 so the pre-charter-70 book
+    # re-derives instead of pooling with rows sized under it.
+    "exchange_lot_top_up": EXCHANGE_LOT_TOP_UP,
     "dust_cost_floor": DUST_COST_FLOOR,
     "entry": "first_cycle_whose_objective_seats",
     "pre_listing_decision": "first_book_after_listing",
@@ -6649,6 +6667,89 @@ def backfill(
                     # itself used, so it answers "what the basket would have
                     # cost had every rung filled" -- the denominator the
                     # completion rate needs.
+                    # Charter 70: a rung this seat would buy in fewer shares
+                    # than the exchange fills is lifted to one lot when the
+                    # basket can afford it -- same rule, same kernel function
+                    # as production.  The kernel decides which rungs and
+                    # whether the whole raise fits the scope's remaining room;
+                    # this book then walks the real ladder for the lot, since
+                    # a paper fill pays what the depth charges, not the top
+                    # ask.  ``leg_shares`` here are the shares this seat buys
+                    # -- on a top-up seat the deltas -- which is the order the
+                    # exchange would judge.
+                    lot_top_up_record = None
+                    if EXCHANGE_LOT_TOP_UP != "off" and legs:
+                        _seat_lots = {
+                            str(b): float(
+                                (quotes.get(str(b)) or {}).get("min_order_size")
+                                or 0.0
+                            )
+                            for b in seat["buckets"]
+                        }
+                        _seat_asks = {
+                            str(b): float(
+                                ((quotes.get(str(b)) or {}).get("ask_levels")
+                                 or [{}])[0].get("price") or 0.0
+                            )
+                            for b in seat["buckets"]
+                        }
+                        _room = max(0.0, float(stage_room) - float(stake))
+                        _decision = raise_sub_lot_targets_v2(
+                            target_shares_by_bucket={
+                                str(b): float(q)
+                                for b, q in zip(seat["buckets"], leg_shares)
+                            },
+                            support=tuple(str(b) for b in seat["buckets"]),
+                            min_lot_by_bucket=_seat_lots,
+                            ask_by_bucket=_seat_asks,
+                            capital_available_usdc=float(stake) + _room,
+                        )
+                        if _decision["raised_buckets"]:
+                            _new_shares = list(leg_shares)
+                            _new_cash = list(leg_cash)
+                            _walked = True
+                            for _i, (_b, _leg) in enumerate(
+                                zip(seat["buckets"], legs)
+                            ):
+                                if str(_b) not in _decision["raised_buckets"]:
+                                    continue
+                                _got, _paid = _walk_ask_shares(
+                                    _leg, _seat_lots[str(_b)]
+                                )
+                                if _got + 1e-9 < _seat_lots[str(_b)]:
+                                    _walked = False
+                                    break
+                                _new_shares[_i] = _got
+                                _new_cash[_i] = _paid * (1.0 + FEE_RATE)
+                            _new_stake = sum(_new_cash)
+                            if _walked and _new_stake <= float(stake) + _room + 1e-9:
+                                lot_top_up_record = {
+                                    "raised_buckets": list(
+                                        _decision["raised_buckets"]
+                                    ),
+                                    "lot_raise_usdc": round(
+                                        _new_stake - float(stake), 6
+                                    ),
+                                }
+                                leg_shares = _new_shares
+                                leg_cash = _new_cash
+                                stake = _new_stake
+                            else:
+                                lot_top_up_record = {
+                                    "refused": (
+                                        "depth" if not _walked else "room"
+                                    ),
+                                    "raised_buckets": list(
+                                        _decision["raised_buckets"]
+                                    ),
+                                }
+                        elif _decision["refused_reason"]:
+                            lot_top_up_record = {
+                                "refused": _decision["refused_reason"],
+                                "requested_lot_raise_usdc": round(
+                                    float(_decision["requested_lot_raise_usdc"]), 6
+                                ),
+                            }
                     intended_legs = {
                         str(bucket): float(quantity)
                         for bucket, quantity in zip(
@@ -6893,9 +6994,23 @@ def backfill(
                             # The signs this stage entered under, already
                             # computed for the gate.  A later stage used to
                             # recompute them here from the same arguments;
-                            # one call now serves both.
+                            # one call now serves both.  Charter 70's lot
+                            # raise, when one happened, rides on the same
+                            # record.
                             json.dumps(
-                                stage_consolidation, sort_keys=True,
+                                (
+                                    {
+                                        **(
+                                            dict(stage_consolidation)
+                                            if isinstance(stage_consolidation, Mapping)
+                                            else {"value": stage_consolidation}
+                                        ),
+                                        "exchange_lot_top_up": lot_top_up_record,
+                                    }
+                                    if lot_top_up_record is not None
+                                    else stage_consolidation
+                                ),
+                                sort_keys=True,
                             ),
                         )
                     )

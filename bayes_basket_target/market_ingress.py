@@ -1200,7 +1200,15 @@ def materialize_market_evidence(
     }
 
 
+
+
+# The exchange's minimum lot for a registry row, for producers outside this
+# module (the forward P0 snapshot builder) that carry the same field.
+def exchange_min_lot(row: Mapping[str, Any]) -> float:
+    return _exchange_min_lot(row)
+
 __all__ = [
+    "exchange_min_lot",
     "INGRESS_SCHEMA",
     "derive_official_ws_price_tick_size",
     "load_official_ws_quotes",
