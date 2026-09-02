@@ -9473,6 +9473,7 @@ class TargetProductionWorker:
                                 station_id=station_id,
                                 event_date=manifest_event_date,
                                 materialize_ws_cache=False,
+                                include_listing_days=listing_day_pass,
                             )
                         )
                     except ContractError as exc:

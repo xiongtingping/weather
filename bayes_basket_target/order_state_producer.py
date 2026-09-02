@@ -17,9 +17,9 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .contracts import ContractError, content_sha256
-from .et_history import assert_event_day_started
+from .et_history import assert_event_day_started, event_day_window
 from .activation import assert_target_database_owner, load_activation
-from .market_registry import load_started_registry_rows
+from .market_registry import load_active_registry_rows, load_started_registry_rows
 
 
 SCHEMA = "bayes_basket_target_order_state_producer_v1"
@@ -94,8 +94,17 @@ def _registry_scopes(
     *,
     station_id: str = "",
     event_date: str = "",
+    include_listing_days: bool = False,
 ) -> dict[tuple[str, str], dict[str, Any]]:
-    rows = load_started_registry_rows(conn, station_id=station_id, event_date=event_date)
+    # Charter 48: a listed day's order state is the opening state -- nothing
+    # filled, nothing resting -- and it has to be recorded so the stage-open
+    # can bind to it.  The started-day view stays the default for every
+    # caller that reads a day which has begun.
+    rows = (
+        load_active_registry_rows(conn, station_id=station_id, event_date=event_date)
+        if include_listing_days
+        else load_started_registry_rows(conn, station_id=station_id, event_date=event_date)
+    )
     result: dict[tuple[str, str], dict[str, Any]] = {}
     for row in rows:
         key = (
@@ -209,13 +218,19 @@ def build_no_live_order_state_ingress(
     observed_at_utc: str,
     station_id: str = "",
     event_date: str = "",
+    include_listing_days: bool = False,
 ) -> dict[str, Any]:
     """Build zero-pending order state only after target quiescence is proven."""
 
     observed_at = _timestamp("observed_at_utc", observed_at_utc)
     activation = _activation(Path(activation_path))
     _assert_target_activation_and_quiescence(conn, activation)
-    scopes = _registry_scopes(conn, station_id=station_id, event_date=event_date)
+    scopes = _registry_scopes(
+        conn,
+        station_id=station_id,
+        event_date=event_date,
+        include_listing_days=include_listing_days,
+    )
     activation_hash = _text("activation_contract_sha256", activation.get("activation_contract_sha256"))
     version = "ord_" + content_sha256({
         "schema": SCHEMA,
@@ -226,11 +241,20 @@ def build_no_live_order_state_ingress(
     markets: list[dict[str, Any]] = []
     for (scope_station, scope_date), scope in sorted(scopes.items()):
         buckets = scope["buckets"]
-        assert_event_day_started(
-            scope_date,
-            as_of_utc=observed_at,
-            target_timezone=scope["settlement_timezone"],
-        )
+        if include_listing_days:
+            # Resolved, not asserted: a listed day is admitted as the
+            # opening state (charter 48), a malformed date still fails.
+            event_day_window(
+                scope_date,
+                as_of_utc=observed_at,
+                target_timezone=scope["settlement_timezone"],
+            )
+        else:
+            assert_event_day_started(
+                scope_date,
+                as_of_utc=observed_at,
+                target_timezone=scope["settlement_timezone"],
+            )
         snapshot_id = "ord_snapshot_" + content_sha256({
             "order_state_version": version,
             "station_id": scope_station,
@@ -271,6 +295,7 @@ def build_execution_transition_order_state_ingress(
     observed_at_utc: str,
     station_id: str = "",
     event_date: str = "",
+    include_listing_days: bool = False,
 ) -> dict[str, Any]:
     """Project the formal receipt transition state for worker consumption.
 
@@ -304,7 +329,12 @@ def build_execution_transition_order_state_ingress(
     from .execution_transition_runtime import apply_execution_transition_schema
 
     apply_execution_transition_schema(conn)
-    scopes = _registry_scopes(conn, station_id=station_id, event_date=event_date)
+    scopes = _registry_scopes(
+        conn,
+        station_id=station_id,
+        event_date=event_date,
+        include_listing_days=include_listing_days,
+    )
     pending_states = frozenset({"POST_ACKED", "FOK_SUBMITTED", "CANCEL_REQUESTED"})
     blocked_states = frozenset({"RECONCILE_REQUIRED"})
     transitions = conn.execute(
@@ -342,11 +372,20 @@ def build_execution_transition_order_state_ingress(
             "pending_notional_by_bucket": pending_notional_by_bucket,
             "transition_content_sha256": sorted(versions),
         })[:40]
-        assert_event_day_started(
-            scope_date,
-            as_of_utc=observed_at,
-            target_timezone=scope["settlement_timezone"],
-        )
+        if include_listing_days:
+            # Resolved, not asserted: a listed day is admitted as the
+            # opening state (charter 48), a malformed date still fails.
+            event_day_window(
+                scope_date,
+                as_of_utc=observed_at,
+                target_timezone=scope["settlement_timezone"],
+            )
+        else:
+            assert_event_day_started(
+                scope_date,
+                as_of_utc=observed_at,
+                target_timezone=scope["settlement_timezone"],
+            )
         markets.append({
             "station_id": scope_station,
             "event_date": scope_date,

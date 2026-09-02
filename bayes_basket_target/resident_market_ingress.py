@@ -32,7 +32,7 @@ from .market_ingress import (
     materialize_market_evidence,
     materialize_official_ws_evidence_cache,
 )
-from .market_registry import load_started_registry_rows
+from .market_registry import load_active_registry_rows, load_started_registry_rows
 from .order_state_producer import (
     build_execution_transition_order_state_ingress,
     build_no_live_order_state_ingress,
@@ -59,8 +59,17 @@ def _registry_scopes(
     *,
     station_id: str = "",
     event_date: str = "",
+    include_listing_days: bool = False,
 ) -> dict[tuple[str, str], list[dict[str, str]]]:
-    rows = load_started_registry_rows(conn, station_id=station_id, event_date=event_date)
+    # Charter 48: the listing pass materializes a day that has not started.
+    # This read was the started-day view only, so every not-started group
+    # fail-closed on ``resident_market_registry_scope_empty`` and the
+    # snapshot the compile reads was never written by this pass.
+    rows = (
+        load_active_registry_rows(conn, station_id=station_id, event_date=event_date)
+        if include_listing_days
+        else load_started_registry_rows(conn, station_id=station_id, event_date=event_date)
+    )
     scopes: dict[tuple[str, str], list[dict[str, str]]] = {}
     for row in rows:
         station = str(row["station_id"] or "").strip()
@@ -254,6 +263,7 @@ def materialize_resident_no_live_market_evidence(
     station_id: str = "",
     event_date: str = "",
     materialize_ws_cache: bool = True,
+    include_listing_days: bool = False,
 ) -> dict[str, Any]:
     """Materialize current WS evidence, then the stricter executable bundle.
 
@@ -284,9 +294,15 @@ def materialize_resident_no_live_market_evidence(
             station_id=station_id,
             event_date=event_date,
             commit=True,
+            include_listing_days=include_listing_days,
         )
     _root, quotes = load_official_ws_quotes(Path(manifest_path))
-    all_scopes = _registry_scopes(conn, station_id=station_id, event_date=event_date)
+    all_scopes = _registry_scopes(
+        conn,
+        station_id=station_id,
+        event_date=event_date,
+        include_listing_days=include_listing_days,
+    )
     scopes, skipped_scopes = _complete_quote_scopes(all_scopes, quotes)
     if not scopes:
         raise ContractError("resident_complete_quote_scope_missing")
@@ -323,6 +339,7 @@ def materialize_resident_no_live_market_evidence(
             observed_at_utc=_timestamp(observed_at),
             station_id=station_id,
             event_date=event_date,
+            include_listing_days=include_listing_days,
         )
     else:
         order_state = build_no_live_order_state_ingress(
@@ -331,6 +348,7 @@ def materialize_resident_no_live_market_evidence(
             observed_at_utc=_timestamp(observed_at),
             station_id=station_id,
             event_date=event_date,
+            include_listing_days=include_listing_days,
         )
     cash_phase = _cash_phase_payload(
         conn,
