@@ -317,9 +317,12 @@ def test_forward_p0_export_ingests_catalog_but_started_view_stays_closed(
         ) == []
 
 
-def test_current_catalog_omits_closed_history_and_second_future_scope(
+def test_current_catalog_keeps_two_listed_days_and_drops_the_third(
     tmp_path: Path,
 ) -> None:
+    """Charter 48(e): markets list at D-2, so the catalog carries D+1 and
+    D+2 for every station; the one-listed-day filter dropped the day just
+    listed (528 rows, 48 stations, 2026-09-02) before any P0 could see it."""
     source = tmp_path / "archive.db"
     snapshot = tmp_path / "registry.json"
     _source_db(source)
@@ -332,6 +335,7 @@ def test_current_catalog_omits_closed_history_and_second_future_scope(
             ("2026-07-24", "open"),
             ("2026-07-25", "future-1"),
             ("2026-07-26", "future-2"),
+            ("2026-07-27", "future-3"),
         ):
             row = list(original)
             row[0] = f"highest-temperature-in-test-on-{event_date}"
@@ -357,8 +361,9 @@ def test_current_catalog_omits_closed_history_and_second_future_scope(
     assert [row["event_date"] for row in payload["rows"]] == [
         "2026-07-24",
         "2026-07-25",
+        "2026-07-26",
     ]
-    assert result["source_row_count"] == 4
+    assert result["source_row_count"] == 5
     assert result["excluded_closed_row_count"] == 1
     assert result["excluded_additional_future_scope_row_count"] == 1
     assert payload["filters"]["current_catalog_only"] is True

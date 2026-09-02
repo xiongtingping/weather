@@ -6,7 +6,7 @@ import hashlib
 import json
 import math
 from dataclasses import asdict, dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from typing import Any, Iterable, Mapping
 
 
@@ -51,6 +51,42 @@ PROBABILITY_MAX_STALE_SECONDS = 3 * 60 * 60
 # issuance, and a lapsed cadence there means the run everyone else has moved
 # on from -- the fix is to recompile off the newer run, which is available.
 STAGES_SERVABLE_PAST_CADENCE = frozenset({"P1"})
+
+
+def stage_servable_grace_seconds(stage: str) -> float:
+    """Seconds past ``fresh_until_utc`` an envelope of ``stage`` still serves.
+
+    The one rule, stated once.  ``ProbabilityEnvelope.is_servable`` applies
+    it to the envelope; the regime companion -- a pure function of one
+    committed envelope, keyed on its checkpoint and content hash -- must be
+    readable for exactly as long as the envelope it describes, or the
+    compile that still serves a P1 inside its grace dies on
+    ``regime_ssot_not_unique`` the moment the companion's window closes at
+    ``fresh_until`` (25 of 45 stations, 2026-09-02 14:08Z).
+    """
+
+    if str(stage) in STAGES_SERVABLE_PAST_CADENCE:
+        return float(PROBABILITY_MAX_STALE_SECONDS)
+    return 0.0
+
+
+def shift_timestamp_utc(value: str, seconds: float) -> str:
+    """``value`` moved by ``seconds``, as the same ISO-8601 ``Z`` text form."""
+
+    moment = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    shifted = moment.astimezone(timezone.utc) + timedelta(seconds=float(seconds))
+    return shifted.isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
+def servable_horizon_utc(stage: str, fresh_until_utc: str) -> str:
+    """The last instant an envelope of ``stage`` is servable (grace included)."""
+
+    grace = stage_servable_grace_seconds(stage)
+    if grace <= 0.0:
+        return str(fresh_until_utc)
+    return shift_timestamp_utc(fresh_until_utc, grace)
 # How far ahead of the moment it was committed a report's own nominal minute
 # may sit.  A routine METAR goes on the wire slightly before the minute it is
 # stamped for; measured lead across the roster is under 16 seconds (SBGR and

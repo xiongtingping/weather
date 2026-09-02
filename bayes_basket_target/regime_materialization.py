@@ -7,7 +7,13 @@ import json
 import sqlite3
 from typing import Any, Iterable, Mapping
 
-from .contracts import ContractError, ProbabilityEnvelope, content_sha256
+from .contracts import (
+    ContractError,
+    ProbabilityEnvelope,
+    content_sha256,
+    shift_timestamp_utc,
+    stage_servable_grace_seconds,
+)
 from .regime_artifact import (
     REGIME_ARTIFACT_SCHEMA,
     RegimeArtifact,
@@ -612,7 +618,13 @@ def load_regime_artifact(
             probability.checkpoint_id,
             probability.content_sha256,
             evaluation_at_utc,
-            evaluation_at_utc,
+            # The window closes ``valid_until`` plus the stage's serving
+            # grace, the same grace the envelope itself is served under
+            # (``resolve_regime_artifact`` applies it again on the row).
+            shift_timestamp_utc(
+                evaluation_at_utc,
+                -stage_servable_grace_seconds(probability.stage),
+            ),
         ),
     ).fetchall()
     if len(rows) != 1:

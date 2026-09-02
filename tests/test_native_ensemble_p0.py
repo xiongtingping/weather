@@ -30,6 +30,18 @@ from bayes_basket_target.official_native_forward_packet import (
 from tests.test_native_ensemble_oos_p0_pipeline import _insert_fixture
 
 
+@pytest.fixture(autouse=True)
+def _map_the_fixture_station_season(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The fixtures compile station ``TEST``; station-local seasons (charter
+    62) fail closed on an unmapped station, which turned every compile in
+    this file into ``station_season_station_unmapped``.  Map it like a
+    northern mid-latitude station for the duration of each test."""
+
+    from bayes_basket_target import station_season
+
+    monkeypatch.setitem(station_season._SEASON_ANCHOR_MONTH, "TEST", 7)
+
+
 def _archive(
     *,
     system_id: str,
@@ -389,6 +401,37 @@ def test_mixed_native_cycles_use_per_system_oos_lineage_and_family_gate() -> Non
         ),
         content_sha256(packet["run_cycle_by_system"]),
     )
+
+
+def test_native_p0_publishes_per_bucket_model_reliability() -> None:
+    """The support kernel's peripheral gate reads this key; until 2026-09-02
+    no native envelope carried it, so every peripheral candidate read 0.0
+    against a 0.15 floor and the disagreement-expansion layer never ran."""
+
+    conn = sqlite3.connect(":memory:")
+    _install_mixed_cycle_calibrations(conn)
+    compiled = compile_native_ensemble_p0(
+        conn,
+        forward_packet=_mixed_packet(),
+        decision_at_utc="2026-07-01T13:00:00Z",
+    )
+    envelope = compiled["packet"]["native_probability_envelope"]
+    lineage = envelope["lineage"]
+    reliability = json.loads(
+        lineage["peripheral_model_reliability_by_bucket_json"]
+    )
+    # Full support, so a later stage's support check sees the same key set.
+    assert set(reliability) == set(envelope["probabilities"])
+    weights = json.loads(lineage["system_weights_json"])
+    centers = json.loads(lineage["native_calibrated_system_centers_c_json"])
+    assert set(weights) == set(centers)
+    # Every system's weight lands in the bucket its calibrated centre falls
+    # in; nothing else carries any.
+    assert sum(reliability.values()) == pytest.approx(
+        sum(float(value) for value in weights.values()), abs=1e-9
+    )
+    assert all(0.0 <= value <= 1.0 for value in reliability.values())
+    assert any(value > 0.0 for value in reliability.values())
 
 
 def test_native_p0_capture_freshness_is_not_restarted_by_compilation() -> None:

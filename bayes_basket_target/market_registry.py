@@ -26,6 +26,11 @@ from .resource_bounds import assert_connection_target_capacity
 
 
 SCHEMA = "bayes_basket_target_market_registry_snapshot_v1"
+# Charter 48(e): the target catalog carries each station's nearest listed
+# days up to this many beyond the day being settled.  Markets list at D-2,
+# so two is the whole listing window (tomorrow and the day just listed);
+# the publisher's scope cap (MAX_TARGET_STATIONS * 3) is sized for it.
+LISTED_DAYS_PER_STATION = 2
 SHARED_EXPORT_SCOPE = "shared_live_registry_export_only"
 TARGET_LOCAL_EXPORT_SCOPE = "target_local_registry_scope_export"
 EXPORT_SCOPES = frozenset({SHARED_EXPORT_SCOPE, TARGET_LOCAL_EXPORT_SCOPE})
@@ -254,9 +259,20 @@ def export_shared_live_registry(
 ) -> dict[str, Any]:
     """Read only the shared registry and write one independent JSON object.
 
-    The shared/live registry may contain markets listed before their ET event
-    day starts.  Such rows are discovery material, not target SSOT scope, so
+    The shared/live registry carries markets listed before their settlement
+    day starts.  Charter 48 makes a listing tradable at listing, so with
+    ``include_not_started_for_p0`` those rows are target scope; without it
     they are filtered before the target snapshot is written.
+
+    ``current_catalog_only`` bounds the catalog to what the resident lanes
+    are sized for: no closed days, and per station at most
+    ``LISTED_DAYS_PER_STATION`` not-started days, nearest first.  Until
+    2026-09-02 that bound was "the first not-started day only", which is
+    one day short of the listing window: markets list at D-2, so while a
+    station's D+1 is not yet open its D+2 -- the day just listed -- was
+    dropped as an "additional future scope" (528 rows, 48 stations, every
+    cycle of 2026-09-02) and never reached the target SSOT, so no P0 was
+    ever compiled for it and clause 48 had nothing to open.
     """
 
     source = Path(source_db).expanduser().resolve()
@@ -291,7 +307,7 @@ def export_shared_live_registry(
         ]
     decision_clock = as_of_utc or datetime.now(timezone.utc)
     classified_rows: list[tuple[dict[str, Any], str]] = []
-    first_future_date_by_station: dict[str, str] = {}
+    future_dates_by_station: dict[str, set[str]] = {}
     unclassifiable_rows: list[dict[str, str]] = []
     for row in source_rows:
         try:
@@ -330,9 +346,13 @@ def export_shared_live_registry(
                 or row.get("slug")
                 or ""
             )
-            previous = first_future_date_by_station.get(station_scope)
-            if previous is None or row["event_date"] < previous:
-                first_future_date_by_station[station_scope] = row["event_date"]
+            future_dates_by_station.setdefault(station_scope, set()).add(
+                str(row["event_date"])
+            )
+    admitted_future_dates_by_station = {
+        station_scope: frozenset(sorted(dates)[:LISTED_DAYS_PER_STATION])
+        for station_scope, dates in future_dates_by_station.items()
+    }
 
     rows: list[dict[str, Any]] = []
     excluded_future_rows = 0
@@ -353,8 +373,10 @@ def export_shared_live_registry(
                 or ""
             )
             if (
-                row["event_date"]
-                != first_future_date_by_station.get(station_scope)
+                str(row["event_date"])
+                not in admitted_future_dates_by_station.get(
+                    station_scope, frozenset()
+                )
             ):
                 excluded_additional_future_scope_row_count += 1
                 continue
@@ -730,10 +752,11 @@ def load_started_registry_rows(
 ) -> list[dict[str, Any]]:
     """Read formal target scopes whose registry settlement day has started.
 
-    A legacy or externally supplied registry snapshot may still contain
-    forward rows, but the target lane does not create future-day scopes.
-    Formal market, inventory, order-state, and readiness consumers must use
-    this view so only an already-started settlement day can enter the chain.
+    The snapshot carries listed-but-not-started days (charter 48 trades a
+    listing at listing; ``market_ingress`` asks for them explicitly with
+    ``include_listing_days``).  Formal inventory, order-state and readiness
+    consumers keep this started-day view, because those reads belong to a
+    day that has begun.
     """
 
     decision_clock = as_of_utc or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -753,7 +776,8 @@ def load_started_registry_rows(
 
 
 __all__ = [
-    "DDL", "SCHEMA", "SNAPSHOT_TABLE", "TABLE", "apply_target_market_registry_schema",
+    "DDL", "LISTED_DAYS_PER_STATION", "SCHEMA", "SNAPSHOT_TABLE", "TABLE",
+    "apply_target_market_registry_schema",
     "export_shared_live_registry", "ingest_target_market_registry",
     "load_active_registry_rows", "load_started_registry_rows",
 ]

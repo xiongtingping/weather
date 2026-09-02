@@ -2750,6 +2750,29 @@ def compile_native_ensemble_p0(
     # such root: 30 of 43 scopes on 2026-08-16, and 86% of that day's P0
     # envelopes carried the contradiction.  Describe the packet from the
     # packet.
+    # Per-bucket model reliability: how much of the ensemble's weight points
+    # at each bucket, by the calibrated centre of every system that took part
+    # (the same definition ``calibration.materialize_p0`` publishes for its
+    # own lane).  The support kernel's peripheral gate reads this key and
+    # admits a bucket only above ``peripheral_model_reliability_min``; until
+    # 2026-09-02 no native envelope published it, so every peripheral
+    # candidate read 0.0 and the disagreement-expansion layer never once ran
+    # on production.  Keys are the full probability support, zeros where no
+    # system centres, so a later stage's support check sees the same set.
+    peripheral_model_reliability_by_bucket: dict[str, float] = {
+        str(bucket): 0.0 for bucket in ordered
+    }
+    for system_id in system_ids:
+        reliability_bucket = _bucket_for_value(
+            calibrated_system_centers_c[system_id], intervals_raw
+        )
+        peripheral_model_reliability_by_bucket[str(reliability_bucket)] = min(
+            1.0,
+            peripheral_model_reliability_by_bucket.get(
+                str(reliability_bucket), 0.0
+            )
+            + float(system_weights[system_id]),
+        )
     native_forward_cycle_by_system = {
         system_id: official_lineage["run_cycle_by_system"][system_id]
         for system_id in system_ids
@@ -3230,6 +3253,9 @@ def compile_native_ensemble_p0(
         )} if center_width_receipt is not None else {}),
         "native_calibrated_system_centers_c_json": _json(
             calibrated_system_centers_c
+        ),
+        "peripheral_model_reliability_by_bucket_json": _json(
+            peripheral_model_reliability_by_bucket
         ),
         "taf_nwp_live_compatibility_fingerprint_sha256": (
             taf_compatibility["fingerprint_sha256"]

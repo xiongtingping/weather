@@ -1090,6 +1090,30 @@ def test_clause_48_listing_window_opens_positions() -> None:
     ).read_text(encoding="utf-8")
     assert 'if day_state not in {"open", "not_started"}:' in ledger_source
     assert "elif stage_zero_anchor is None:" in ledger_source
+    # (e) 2026-09-02: the target catalog carries two listed days per
+    # station, and the listed days' turn survives a restart.  Behaviour is
+    # pinned in test_bayes_basket_target_market_registry
+    # (test_current_catalog_keeps_two_listed_days_and_drops_the_third) and
+    # test_production_worker_listing_turn (persistence and starvation).
+    assert "挂牌日必须进入目标库" in clause
+    from bayes_basket_target.market_registry import LISTED_DAYS_PER_STATION
+
+    assert LISTED_DAYS_PER_STATION == 2
+    worker_source = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "production_worker.py"
+    ).read_text(encoding="utf-8")
+    assert 'self.nwp_runtime_root / "listing_scope_turn.json"' in worker_source
+    assert "LISTING_SCOPE_TURN_STARVATION_SEC" in worker_source
+    registry_source = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "market_registry.py"
+    ).read_text(encoding="utf-8")
+    assert "first_future_date_by_station" not in registry_source, (
+        "the one-listed-day filter is the drift clause 48(e) kills"
+    )
 
     from bayes_basket_target.native_ensemble_p0 import (
         HOUR_LEAD_BUCKET_FRESHNESS_ORDER,

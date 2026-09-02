@@ -62,10 +62,13 @@ from .fleet_regime_shift import (
 )
 from .contracts import (
     MIN_USABLE_FRESHNESS_SECONDS,
+    PROBABILITY_MAX_STALE_SECONDS,
     ContractError,
     ProbabilityEnvelope,
     assert_mintable_freshness_window,
     content_sha256,
+    servable_horizon_utc,
+    shift_timestamp_utc,
     timestamp_eq,
     timestamp_lt,
 )
@@ -405,6 +408,9 @@ QUOTE_EVIDENCE_REFRESH_SECONDS = 12.0
 # loop at roughly one renewal per lease, and a day whose publisher has gone
 # silent still stops after six rather than after forty-four.
 MAX_QUOTE_EVIDENCE_REFRESHES_PER_DAY = 6
+# Charter 48: a listed day not served for this long takes the next cycle
+# regardless of the alternation -- the guard against a restart storm.
+LISTING_SCOPE_TURN_STARVATION_SEC = 900.0
 MAX_RESIDENT_NWP_SCOPES_PER_CYCLE = 4
 MAX_NATIVE_ENSEMBLE_TRUTH_CASES_PER_STATION = 64
 MAX_RESIDENT_CANDIDATE_PREFETCH_SCOPES_PER_CYCLE = 1
@@ -6911,22 +6917,81 @@ class TargetProductionWorker:
             return False
         return state == "open"
 
-    def _take_listing_scope_turn(self) -> bool:
+    def _listing_scope_turn_path(self) -> Path:
+        return self.nwp_runtime_root / "listing_scope_turn.json"
+
+    def _take_listing_scope_turn(self, *, now_utc: str | None = None) -> bool:
         """Whether this cycle serves the listed days.
 
-        Alternates, current day first.  Held on the worker rather than in
-        the database because it is a turn, not a fact: a restart may serve
-        the current day twice in a row, which costs a listed day one cycle
-        of freshness and is the safe direction to be wrong in.
+        Alternates with the current day, and the alternation is persisted
+        beside the NWP rotation cursor rather than held in memory.  Held in
+        memory it was reseeded to "current day first" by every restart, and
+        restarts are not rare here: nineteen on 2026-09-02, each from a
+        concurrent session redeploying, most of them inside one cycle of
+        the last.  A listed day's turn came second every time and therefore
+        almost never came at all -- charter 48 says listing is entry, and
+        the d2 day is the one only this lane can open (the 2026-09-01
+        stage-governs-its-own-day ruling).  Now a restart resumes the
+        alternation where it stood, and a listed day that has not been
+        served for ``LISTING_SCOPE_TURN_STARVATION_SEC`` takes the next
+        cycle regardless of whose turn it was.
         """
 
-        # Seeded so the first cycle after a restart serves the current day:
-        # it is the one carrying P1 and the live book, and a restart is
-        # exactly when it is most behind.
-        self._listing_scope_turn = not getattr(
-            self, "_listing_scope_turn", True
-        )
-        return self._listing_scope_turn
+        now_text = str(now_utc or utc_now())
+        path = self._listing_scope_turn_path()
+        recorded: dict[str, Any] = {}
+        try:
+            loaded = load_bounded_json(path)
+            if isinstance(loaded, Mapping):
+                recorded = dict(loaded)
+        except Exception:  # noqa: BLE001 -- a turn, not a fact
+            recorded = {}
+        previous_turn = bool(recorded.get("listing_turn", False))
+        last_served = str(recorded.get("listing_served_at_utc") or "")
+        starved = True
+        if last_served:
+            try:
+                age = (
+                    datetime.fromisoformat(now_text.replace("Z", "+00:00"))
+                    - datetime.fromisoformat(
+                        last_served.replace("Z", "+00:00")
+                    )
+                ).total_seconds()
+                starved = age >= LISTING_SCOPE_TURN_STARVATION_SEC
+            except ValueError:
+                starved = True
+        serve = (not previous_turn) or starved
+        record = {
+            "schema": "bayes_basket_target_listing_scope_turn_v1",
+            "listing_turn": bool(serve),
+            "listing_served_at_utc": now_text if serve else last_served,
+            "decided_at_utc": now_text,
+            "starvation_seconds": LISTING_SCOPE_TURN_STARVATION_SEC,
+            "starved": bool(starved),
+        }
+        try:
+            write_bounded_json_if_changed(path, record)
+        except Exception:  # noqa: BLE001 -- telemetry and a restart hint
+            pass
+        self._listing_scope_turn = bool(serve)
+        return bool(serve)
+
+    def request_stop(self) -> None:
+        """Ask the cycle in flight to stop at its next scope boundary.
+
+        The daemon's SIGTERM handler calls this.  A cycle runs several
+        minutes over dozens of scopes; without a boundary to stop at, a
+        restart waits on the whole cycle, launchd's exit timeout expires
+        first and the process is killed mid-write.  Every scope commits in
+        its own transaction, so stopping between two of them loses nothing
+        the next cycle will not redo.
+        """
+
+        self._stop_requested = True
+
+    @property
+    def stop_requested(self) -> bool:
+        return bool(getattr(self, "_stop_requested", False))
 
     def _retire_stranded_prepared_intents(
         self,
@@ -12688,7 +12753,10 @@ class TargetProductionWorker:
             "FROM basket_probability_envelope "
             "WHERE state='COMMITTED' "
             "AND fresh_until_utc>? ORDER BY station_id,event_date",
-            (as_of_utc,),
+            # Widened by the serving grace: a P1 an hour past its roll is
+            # still the day's current reading (contracts.STAGES_SERVABLE_
+            # PAST_CADENCE) and its companion must exist for that long.
+            (shift_timestamp_utc(as_of_utc, -PROBABILITY_MAX_STALE_SECONDS),),
         ).fetchall()
         envelopes: list[ProbabilityEnvelope] = []
         blockers: list[dict[str, str]] = []
@@ -12729,7 +12797,12 @@ class TargetProductionWorker:
                     # is append-only by trigger, so those rows cannot be
                     # repaired or retracted; they can only stop being asked
                     # for, and they should never have been asked for.
-                    if timestamp_lt(as_of_utc, envelope.fresh_until_utc)
+                    if timestamp_lt(
+                        as_of_utc,
+                        servable_horizon_utc(
+                            envelope.stage, envelope.fresh_until_utc
+                        ),
+                    )
                 )
             except Exception as exc:
                 blockers.append({
@@ -13316,6 +13389,9 @@ class TargetProductionWorker:
             )
         compiled = []
         for station_id in stations:
+            if self.stop_requested:
+                # SIGTERM: stop at the scope boundary (see request_stop).
+                break
             station_budget = float(
                 quota_by_station.get(station_id, planning_budget_usdc)
             )
@@ -14418,6 +14494,8 @@ class TargetProductionWorker:
             result.setdefault("stage_timings_ms", dict(self._stage_timings_ms))
             result.setdefault("stage_span_ms", self._stage_span_summary())
             result.setdefault("writer_lock_profile", writer_lock_profile())
+            if self.stop_requested:
+                result["cycle_interrupted"] = True
         return result
 
     def _run_stages(self) -> dict[str, Any]:
@@ -15749,6 +15827,11 @@ class TargetProductionWorker:
             refresh_ineffective_days: set[str] = set()
             day_refresh_counts: dict[str, int] = {}
             for station_id, event_date in rows:
+                if self.stop_requested:
+                    # SIGTERM: stop at the scope boundary.  The scopes not
+                    # reached keep last cycle's decisions; the next cycle
+                    # serves them first because nothing was written.
+                    break
                 station = str(station_id)
                 day = str(event_date)
                 if (station, day) in recomputed_scopes:

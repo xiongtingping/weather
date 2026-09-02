@@ -9,10 +9,14 @@ Raw weather fields are rejected at this boundary.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Mapping
 
-from .contracts import ContractError, content_sha256
+from .contracts import (
+    ContractError,
+    content_sha256,
+    stage_servable_grace_seconds,
+)
 
 
 REGIME_ARTIFACT_SCHEMA = "bayes_basket_regime_artifact_v1"
@@ -246,6 +250,14 @@ def resolve_regime_artifact(
     at = datetime.fromisoformat(_timestamp("evaluation_at_utc", evaluation_at_utc).replace("Z", "+00:00"))
     start = datetime.fromisoformat(resolved.valid_from_utc.replace("Z", "+00:00"))
     end = datetime.fromisoformat(resolved.valid_until_utc.replace("Z", "+00:00"))
+    # The companion lives exactly as long as the envelope it was derived
+    # from.  ``valid_until_utc`` is that envelope's ``fresh_until_utc``, but
+    # a P1 stays servable for a grace period past it (contracts.
+    # STAGES_SERVABLE_PAST_CADENCE), and a compile serving such a P1 read a
+    # companion that had already closed -- ``regime_ssot_not_unique`` on 25
+    # of 45 stations at 2026-09-02 14:08Z, every one a P1 an hour past its
+    # roll and still the day's current reading.  Same grace, same source.
+    end = end + timedelta(seconds=stage_servable_grace_seconds(resolved.stage))
     if not start <= at < end:
         raise ContractError("regime_artifact_expired")
     return resolved

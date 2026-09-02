@@ -200,6 +200,107 @@ def test_expired_artifact_and_direction_conflict_fail_closed():
         )
 
 
+def test_p1_companion_serves_through_the_stage_grace_and_p0_does_not():
+    """The companion lives as long as the envelope it describes.
+
+    A P1 stays servable PROBABILITY_MAX_STALE_SECONDS past fresh_until
+    (contracts.STAGES_SERVABLE_PAST_CADENCE); its regime companion closed
+    at fresh_until and the compile died on regime_ssot_not_unique -- 25 of
+    45 stations at 2026-09-02 14:08Z, every one a P1 an hour past its roll.
+    """
+
+    from bayes_basket_target.contracts import PROBABILITY_MAX_STALE_SECONDS
+
+    common = dict(
+        station_id="RKPK", event_date="2026-07-27",
+        settlement_timezone="Asia/Seoul", probability_sha256="1" * 64,
+    )
+    p1 = _artifact(
+        stage="P1", checkpoint_id="p1-checkpoint-1",
+        valid_from_utc="2026-07-26T15:00:00Z",
+        valid_until_utc="2026-07-26T16:00:00Z",
+        as_of_utc="2026-07-26T15:00:00Z",
+    )
+    p1["content_sha256"] = content_sha256(
+        {key: value for key, value in p1.items() if key != "content_sha256"}
+    )
+    inside_grace = "2026-07-26T17:30:00Z"
+    resolved = resolve_regime_artifact(
+        p1, stage="P1", checkpoint_id="p1-checkpoint-1",
+        evaluation_at_utc=inside_grace, **common,
+    )
+    assert resolved.stage == "P1"
+    past_grace = (
+        datetime(2026, 7, 26, 16, 0, tzinfo=timezone.utc)
+        + timedelta(seconds=PROBABILITY_MAX_STALE_SECONDS)
+    ).isoformat().replace("+00:00", "Z")
+    with pytest.raises(ContractError, match="regime_artifact_expired"):
+        resolve_regime_artifact(
+            p1, stage="P1", checkpoint_id="p1-checkpoint-1",
+            evaluation_at_utc=past_grace, **common,
+        )
+    p0 = _artifact(
+        stage="P0", checkpoint_id="p0-checkpoint-1",
+        valid_from_utc="2026-07-26T15:00:00Z",
+        valid_until_utc="2026-07-26T16:00:00Z",
+        as_of_utc="2026-07-26T15:00:00Z",
+    )
+    p0["content_sha256"] = content_sha256(
+        {key: value for key, value in p0.items() if key != "content_sha256"}
+    )
+    with pytest.raises(ContractError, match="regime_artifact_expired"):
+        resolve_regime_artifact(
+            p0, stage="P0", checkpoint_id="p0-checkpoint-1",
+            evaluation_at_utc="2026-07-26T16:00:01Z", **common,
+        )
+
+
+def test_loader_finds_a_p1_companion_inside_the_grace():
+    """Same rule at the SQL boundary: the row is found, not just resolved."""
+
+    envelope = ProbabilityEnvelope.from_mapping({
+        "stage": "P1",
+        "checkpoint_id": "p1-grace-checkpoint",
+        "station_id": "RKPK",
+        "event_date": "2026-07-27",
+        "settlement_timezone": "Asia/Seoul",
+        "decision_at_utc": "2026-07-27T03:00:00Z",
+        "fresh_until_utc": "2026-07-27T04:00:00Z",
+        "bucket_ordinals": {"36": 36, "37": 37, "38": 38},
+        "probabilities": {"36": 0.2, "37": 0.5, "38": 0.3},
+        "posterior_version": "p1-v1",
+        "posterior_sha256": "2" * 64,
+        "bridge_sha256": "3" * 64,
+        "lineage": {
+            "model_envelope_lower_bucket": "36",
+            "model_envelope_upper_bucket": "38",
+            "model_envelope_span_c": "2",
+        },
+    })
+    artifact = build_regime_artifact(envelope)
+    with sqlite3.connect(":memory:") as conn:
+        apply_production_ssot_schema(conn)
+        insert_regime_artifact(
+            conn, artifact, created_at_utc="2026-07-27T03:00:00Z"
+        )
+        # Fresh: found.  An hour past the roll: still found (P1 grace).
+        assert load_regime_artifact(
+            conn, probability=envelope,
+            evaluation_at_utc="2026-07-27T03:30:00Z",
+        ).checkpoint_id == "p1-grace-checkpoint"
+        assert load_regime_artifact(
+            conn, probability=envelope,
+            evaluation_at_utc="2026-07-27T05:00:00Z",
+        ).checkpoint_id == "p1-grace-checkpoint"
+        # Beyond the grace: the envelope itself is no longer servable, and
+        # neither is its companion.
+        with pytest.raises(ContractError, match="regime_ssot_not_unique"):
+            load_regime_artifact(
+                conn, probability=envelope,
+                evaluation_at_utc="2026-07-27T07:00:01Z",
+            )
+
+
 def test_center_lead_margin_and_append_only_ssot_are_exact():
     envelope = ProbabilityEnvelope.from_mapping({
         "stage": "P0",

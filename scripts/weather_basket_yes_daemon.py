@@ -3323,7 +3323,26 @@ def main() -> int:
         def stop(_signum: int, _frame: Any) -> None:
             nonlocal stopping
             stopping = True
+            # A cycle in flight is asked to stop at its next scope boundary.
+            # Without this, every restart (nineteen on 2026-09-02, all from
+            # concurrent sessions redeploying) waited on ``executor.shutdown``
+            # for a cycle that runs seven minutes, launchd's exit timeout
+            # expired first, and the process died on SIGKILL -- mid-write,
+            # hosted sweeps orphaned on the write lock, status never
+            # finalised.  The workers are bound later in this scope; a signal
+            # that lands before they exist has nothing to interrupt.
+            for worker_name in ("production_worker", "forecast_worker"):
+                try:
+                    resident_worker = locals_workers.get(worker_name)
+                except Exception:  # noqa: BLE001 -- signal context
+                    resident_worker = None
+                if resident_worker is not None:
+                    try:
+                        resident_worker.request_stop()
+                    except Exception:  # noqa: BLE001 -- signal context
+                        pass
 
+        locals_workers: dict[str, Any] = {}
         signal.signal(signal.SIGTERM, stop)
         signal.signal(signal.SIGINT, stop)
         enabled_lanes = tuple(config.get("production_source_allowlist") or [])
@@ -3394,6 +3413,7 @@ def main() -> int:
             commit_error=commit_error,
             canonical_source_db_path=args.db,
         )
+        locals_workers["production_worker"] = production_worker
         if production_worker.commit_error is None:
             try:
                 configure_target_worker_sqlite_lock_budget(production_worker)
@@ -3418,6 +3438,7 @@ def main() -> int:
             # Forward OOS is observational for production_no_live and must
             # never narrow resident acquisition to a single station.
         )
+        locals_workers["forecast_worker"] = forecast_worker
         lane_futures: dict[str, Any] = {}
         lane_recovery_attempts = {lane: 0 for lane in lane_workers}
         production_future: Any = None

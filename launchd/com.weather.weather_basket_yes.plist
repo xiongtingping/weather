@@ -42,6 +42,8 @@
   <true/>
   <key>ThrottleInterval</key>
   <integer>2</integer>
+  <key>ExitTimeOut</key>
+  <integer>120</integer>
   <key>StandardOutPath</key>
   <string>/Users/xiong/weather/data/logs/weather_basket_yes.out.log</string>
   <key>StandardErrorPath</key>
