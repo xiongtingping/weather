@@ -1123,3 +1123,24 @@ def test_p0_snapshot_carries_the_exchange_lot_off_the_registry_row() -> None:
     assert with_lot["buckets"][0]["min_order_size"] == 5.0
     # Not part of the quote's economic identity.
     assert with_lot["snapshot_id"] == without["snapshot_id"]
+
+    # The mirror rows production's forward lane actually reads keep the lot
+    # inside registry_json -- the main lane's loader lifts it, this lane's
+    # does not -- and that is where every live row carried it on 2026-09-02
+    # while the top level said nothing.
+    nested = _market_snapshot(
+        envelope=envelope,
+        registry_rows=[
+            {
+                **row,
+                "registry_json": json.dumps(
+                    {**json.loads(row["registry_json"]), "order_min_size": 5}
+                ),
+            }
+            for row in registry_rows
+        ],
+        quotes=quotes, manifest=manifest,
+        evaluation_at_utc="2026-07-23T12:01:00Z",
+        planning_budget_usdc=20.0,
+    )
+    assert nested["buckets"][0]["min_order_size"] == 5.0

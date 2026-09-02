@@ -251,6 +251,25 @@ def latest_visible_p0_station_ids(
     )
 
 
+def _forward_min_order_size(
+    registry_row: Mapping[str, Any], raw_registry: Any
+) -> float:
+    """The market's stated minimum lot, or 0.0 when the row states none."""
+
+    raw = registry_row.get("order_min_size")
+    if raw is None and isinstance(raw_registry, Mapping):
+        raw = raw_registry.get("order_min_size")
+    if raw is None or isinstance(raw, bool):
+        return 0.0
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(value) or value < 0.0:
+        return 0.0
+    return value
+
+
 def _market_snapshot(
     *,
     envelope: Any,
@@ -518,10 +537,13 @@ def _market_snapshot(
             # lane reads it from.  This lane never carried it, so every
             # forward bucket reached the sizing kernel with a lot of 0 -- no
             # rung could be raised to a lot (charter 70) and no sub-lot rung
-            # was named as such.  Read tolerantly: a snapshot that predates
-            # the field states no lot, which the kernel's contract already
-            # defines as 0, rather than refusing the whole forward compile.
-            "min_order_size": float(registry_row.get("order_min_size") or 0.0),
+            # was named as such.  The mirror rows this lane reads keep the
+            # value inside ``registry_json`` (the main lane's loader lifts it
+            # to the top level; this one does not), so both places are read.
+            # Tolerantly: a snapshot that predates the field states no lot,
+            # which the kernel's contract already defines as 0, rather than
+            # refusing the whole forward compile.
+            "min_order_size": _forward_min_order_size(registry_row, raw_registry),
             "maker_queue_ahead_shares": 0.0,
             "maker_queue_known": False,
             "filled_shares": 0.0,
