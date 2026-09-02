@@ -186,6 +186,9 @@ def test_the_board_and_the_control_plane_cannot_disagree() -> None:
     assert sorted(board["station_probation_waivers"]) == sorted(
         plane.get("probation_waivers") or []
     )
+    assert sorted(board["station_probation_holds"]) == sorted(
+        plane.get("probation_holds") or []
+    )
     # And the page must not have grown a second copy of the derivation.
     page = (ROOT / "scripts" / "calibration_dashboard.py").read_text(
         encoding="utf-8"
@@ -251,10 +254,19 @@ def test_a_new_station_is_not_live_until_it_has_earned_it() -> None:
     # 2026-08-31) -- which is fine and auditable, and the thing to assert is
     # that there is no third way in: nothing may be live silently.
     waived = set(scope.get("probation_waivers") or [])
+    held = set(scope.get("probation_holds") or [])
     for station in scope["stations"]:
         assert counts.get(station, 0) >= minimum or station in waived, station
+        # A held station never trades, whatever its count says.
+        assert station not in held, station
     for station in scope["probation"]:
-        assert counts.get(station, 0) < minimum and station not in waived
+        # Two ways to be on probation and they are different facts: the
+        # settlement count has not got there yet, or the operator is holding
+        # the station back by hand (2026-09-02 switch).
+        assert (
+            (counts.get(station, 0) < minimum and station not in waived)
+            or station in held
+        ), station
     # Every waiver has to be written down where an operator can revoke it.
     intent = json.loads(control.INTENT_PATH.read_text(encoding="utf-8"))
     assert waived == {
@@ -285,7 +297,13 @@ def test_probation_does_not_spend_a_capped_bar_place() -> None:
     import auto_station_exclusions as auto  # noqa: PLC0415
 
     scope = control.live_stations()
-    assert len(scope["barred"]) <= auto.MAX_BARRED_STATIONS
+    doc = json.loads(EXCLUSIONS.read_text(encoding="utf-8"))
+    operator = {r["station"] for r in doc["excluded_stations"]}
+    # Same reading as above: the cap governs the automatic rows.  What this
+    # test is about is that probation eats none of them.
+    assert len(set(scope["barred"]) - operator) <= max(
+        0, auto.MAX_BARRED_STATIONS - len(operator)
+    )
     assert not (set(scope["probation"]) & set(scope["barred"]))
 
 
@@ -344,8 +362,17 @@ def test_the_bar_is_capped_at_fifteen_stations() -> None:
     auto_barred = {
         r["station"] for r in parsed.get("auto_excluded_stations") or []
     }
-    assert len(control.excluded_stations()) <= auto.MAX_BARRED_STATIONS
-    assert len(auto_barred) <= auto.MAX_BARRED_STATIONS - len(operator)
+    # The cap is a budget for the machine's judgement, so what it actually
+    # binds is the automatic layer's share -- the operator's own rulings are
+    # never trimmed to fit, and a hand-barred sixteenth station would be a
+    # decision, not a violation.  Asserting the union instead was right only
+    # while the hand list stayed under fifteen, and it would have reported
+    # the operator's own switch as a regression.
+    assert len(auto_barred) <= max(
+        0, auto.MAX_BARRED_STATIONS - len(operator)
+    )
+    if len(operator) <= auto.MAX_BARRED_STATIONS:
+        assert len(control.excluded_stations()) <= auto.MAX_BARRED_STATIONS
     assert parsed["auto_policy"]["max_barred_stations"] == (
         auto.MAX_BARRED_STATIONS
     )
@@ -535,3 +562,352 @@ def test_a_barred_station_leaves_the_watchlist_in_the_same_move() -> None:
     }
     assert not (watch & auto), "a barred station is not still under review"
     assert not (watch & manual)
+
+
+def _config_copies(tmp_path, monkeypatch):
+    """Point the whole control plane at copies of the two live files.
+
+    Every switch test runs against these.  The first version of the waiver
+    test drove the real server and left six entries in
+    ``data/live_control_audit.jsonl`` -- the log an operator reads to answer
+    "who turned this dial" -- and a test that forges entries there can mask
+    a real one.
+    """
+
+    import bayes_basket_target.live_station_scope as scope_rules  # noqa: PLC0415
+
+    intent = tmp_path / "intent.json"
+    exclusions = tmp_path / "exclusions.json"
+    intent.write_text(
+        control.INTENT_PATH.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    exclusions.write_text(
+        EXCLUSIONS.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    audit = tmp_path / "audit.jsonl"
+    monkeypatch.setattr(control, "INTENT_PATH", intent)
+    monkeypatch.setattr(control, "EXCLUSION_PATH", exclusions)
+    monkeypatch.setattr(control, "AUDIT_PATH", audit)
+    monkeypatch.setattr(scope_rules, "INTENT_PATH", intent)
+    monkeypatch.setattr(scope_rules, "EXCLUSION_PATH", exclusions)
+    return intent, exclusions, audit
+
+
+def test_the_bar_is_a_switch_and_writes_a_ruling_with_its_evidence(
+    tmp_path, monkeypatch,
+) -> None:
+    """禁入, one click, and the row it writes carries what it was ruled on.
+
+    A bar written as a bare name would make the next reader re-derive what
+    the operator was looking at, which is the re-litigation the file's
+    ``why_not_automatic`` note exists to prevent -- and the file's own test
+    asserts every hand-ruled row carries a city and a full-sample ROI, so a
+    switch that could write one without them would break the list it edits.
+    """
+
+    intent, exclusions, audit = _config_copies(tmp_path, monkeypatch)
+    station = "KLGA"
+    assert station not in control.excluded_stations()
+
+    control.set_station_bar(station, True, by="test")
+    doc = json.loads(exclusions.read_text(encoding="utf-8"))
+    row = next(
+        r for r in doc["excluded_stations"] if r["station"] == station
+    )
+    assert row["city"] and "full_sample_roi" in row and row["added_utc"]
+    assert station in control.excluded_stations()
+    assert station not in set(control.live_stations()["stations"])
+    # The cap is fifteen and it binds the union, so a hand ruling that would
+    # overflow it takes its place from the automatic layer rather than from
+    # another hand ruling.
+    assert len(control.excluded_stations()) <= 15
+    parsed = json.loads(exclusions.read_text(encoding="utf-8"))
+    operator = {r["station"] for r in parsed["excluded_stations"]}
+    auto = {r["station"] for r in parsed["auto_excluded_stations"]}
+    assert not (operator & auto), "one station, one bar list"
+
+    control.set_station_bar(station, False, by="test")
+    assert station not in control.excluded_stations()
+    doc = json.loads(exclusions.read_text(encoding="utf-8"))
+    released = {r["station"] for r in doc["released_stations"]}
+    assert station in released, "a release is a ruling, and it is recorded"
+
+    entries = [
+        json.loads(line)
+        for line in audit.read_text(encoding="utf-8").splitlines() if line
+    ]
+    assert [e["knob"] for e in entries] == ["station_bar", "station_bar"]
+    assert entries[0]["station"] == station and entries[0]["barred"] is True
+    assert entries[1]["barred"] is False
+
+
+def test_releasing_an_automatic_bar_keeps_the_sweep_off_the_station(
+    tmp_path, monkeypatch,
+) -> None:
+    """Otherwise the click is undone minutes later and the switch looks broken.
+
+    The automatic layer re-decides every sweep from the same two keys that
+    barred the station in the first place, so removing its row is not enough
+    -- the operator's release has to be recorded as a ruling, which is the
+    one thing the layer will not touch.
+    """
+
+    import auto_station_exclusions as auto  # noqa: PLC0415
+
+    intent, exclusions, audit = _config_copies(tmp_path, monkeypatch)
+    monkeypatch.setattr(auto, "CONFIG", exclusions)
+    monkeypatch.setattr(auto, "INTENT", intent)
+    doc = json.loads(exclusions.read_text(encoding="utf-8"))
+    auto_rows = [r["station"] for r in doc["auto_excluded_stations"]]
+    assert auto_rows, "this test needs a standing automatic bar"
+    station = auto_rows[0]
+
+    control.set_station_bar(station, False, by="test")
+    assert station not in control.excluded_stations()
+    verdict = auto.run(apply_changes=False)
+    assert station in verdict["operator_ruled"]
+    assert station not in [row["station"] for row in verdict["barred_now"]]
+
+
+def test_waiver_and_hold_are_switches_and_exclude_each_other(
+    tmp_path, monkeypatch,
+) -> None:
+    """豁免 and 待观察 are opposite instructions about the same station.
+
+    Holding one while the other stands would leave the file saying two
+    things, and which one wins would be an accident of read order.  The
+    exclusivity is enforced where the write happens rather than checked
+    downstream.
+    """
+
+    intent, exclusions, audit = _config_copies(tmp_path, monkeypatch)
+    station = "LEMD"
+
+    state = control.set_station_waiver(station, True, by="test")
+    assert station in state["live"]["station_probation_waivers"]
+    assert station in state["live"]["station_allowlist"], (
+        "a waiver is what puts an unqualified station in the batch"
+    )
+
+    state = control.set_station_hold(station, True, by="test")
+    assert station in state["live"]["station_probation_holds"]
+    assert station not in state["live"]["station_probation_waivers"]
+    assert station not in state["live"]["station_allowlist"]
+    assert station in state["live"]["station_probation"]
+
+    # A hold is not a bar: it spends none of the fifteen capped places and
+    # says nothing about the station being bad.
+    assert station not in state["live"]["station_exclusions"]
+
+    state = control.set_station_hold(station, False, by="test")
+    assert state["live"]["station_probation_holds"] == []
+
+
+def test_a_barred_station_takes_neither_of_the_other_two_switches(
+    tmp_path, monkeypatch,
+) -> None:
+    """Refused, not accepted-and-inert.
+
+    The bar is checked first in the derivation, so a waiver or a hold on a
+    barred station would do nothing at all -- and a list that reads like a
+    decision and does nothing is worse than a refusal that names the reason.
+    """
+
+    _config_copies(tmp_path, monkeypatch)
+    barred = sorted(control.excluded_stations())[0]
+    with pytest.raises(ValueError, match=barred):
+        control.set_station_waiver(barred, True)
+    with pytest.raises(ValueError, match=barred):
+        control.set_station_hold(barred, True)
+    # And barring a station takes back whatever it was carrying.
+    station = "LEMD"
+    control.set_station_waiver(station, True)
+    control.set_station_bar(station, True)
+    state = control.state()
+    assert station in state["live"]["station_exclusions"]
+    assert station not in state["live"]["station_probation_waivers"]
+
+
+def test_a_switch_that_is_not_a_station_is_refused(
+    tmp_path, monkeypatch,
+) -> None:
+    _config_copies(tmp_path, monkeypatch)
+    for bad in ("", "no", "not-a-station", "TOOLONGID"):
+        with pytest.raises(ValueError):
+            control.set_station_bar(bad, True)
+
+
+def _submission_conn(station: str) -> "sqlite3.Connection":  # noqa: F821
+    """A book with one prepared intent, and enough history to qualify.
+
+    The station gate reads the same two facts the board does -- which
+    stations the model has ever produced for, and how many settlements each
+    has -- so a test of the gate has to give it a book to read rather than
+    stub the answer.
+    """
+
+    import sqlite3  # noqa: PLC0415
+
+    from bayes_basket_target.ssot import (  # noqa: PLC0415
+        apply_production_ssot_schema,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    apply_production_ssot_schema(conn)
+    conn.execute(
+        "CREATE TABLE paper_trade_position(position_id TEXT PRIMARY KEY,"
+        " station_id TEXT, event_date TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE paper_trade_settlement(settlement_id TEXT PRIMARY KEY,"
+        " position_id TEXT, station_id TEXT, event_date TEXT,"
+        " stake_usdc REAL, pnl_usdc REAL)"
+    )
+    for index in range(6):
+        conn.execute(
+            "INSERT INTO paper_trade_position VALUES(?,?,?)",
+            (f"pos-{index}", station, f"2026-08-2{index}"),
+        )
+        conn.execute(
+            "INSERT INTO paper_trade_settlement VALUES(?,?,?,?,?,?)",
+            (f"set-{index}", f"pos-{index}", station,
+             f"2026-08-2{index}", 10.0, 1.0),
+        )
+    conn.execute(
+        "INSERT INTO basket_target_execution_cycles(cycle_id,plan_id,"
+        "station_id,event_date,settlement_timezone,strategy_lane,plan_sha256,"
+        "requested_reserve_usdc,state,created_at,updated_at)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        ("cycle-1", "plan-1", station, "2026-08-30", "UTC", "basket",
+         f"{0:064d}", 10.0, "prepared", "2026-08-30T09:00:00Z",
+         "2026-08-30T09:00:00Z"),
+    )
+    conn.execute(
+        "INSERT INTO basket_target_order_intents(order_intent_id,decision_id,"
+        "cycle_id,bucket,token_id,side,order_action,limit_price,"
+        "requested_size,requested_notional_usdc,state,live_submit_authorized,"
+        "idempotency_key,intent_json,intent_sha256,created_at)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("intent-a", "decision-1", "cycle-1", "35", "token-35", "YES", "BUY",
+         0.12, 40.0, 4.8, "prepared", 1, "idem-a", "{}", f"{1:064d}",
+         "2026-08-30T09:00:00Z"),
+    )
+    return conn
+
+
+def test_the_bar_stops_the_send_and_not_only_the_screen(
+    tmp_path, monkeypatch,
+) -> None:
+    """The gate binds at the one place that spends money.
+
+    Until 2026-09-02 the bar was consulted by the panel, drawn on the board
+    and checked by the go-live migration's precondition, and the submit path
+    did not read it at all: EDDM, KSEA and LTAC all carry live-authorised
+    intents minted while they were barred.  A switch that stops nothing is
+    worse than no switch, because people rely on it.
+    """
+
+    from bayes_basket_target import order_submission as submission  # noqa: PLC0415
+
+    intent_path, exclusions, _audit = _config_copies(tmp_path, monkeypatch)
+    station = "KLGA"
+    conn = _submission_conn(station)
+
+    armed = tmp_path / "armed.json"
+    armed.write_text('{"live_enabled": true}', encoding="utf-8")
+    monkeypatch.setattr(submission, "LIVE_INTENT_PATH", armed)
+
+    def _never(_path, _payload):
+        raise AssertionError("a barred station must not reach the exchange")
+
+    control.set_station_bar(station, True, by="test")
+    with conn:
+        receipt = submission.submit_prepared_intents(
+            conn, cycle_id="cycle-1", transport=_never,
+            live_submit_authorized=True,
+            observed_at_utc="2026-08-30T09:30:00Z",
+        )
+    assert receipt["orders_submitted"] == 0
+    refusal = receipt["submissions"][0]
+    assert refusal["reason"] == "live_station_barred"
+    assert refusal["exchange_post_started"] is False
+    # The whole path still ran except the send, so the payload it would have
+    # sent is on the receipt -- the same shape the disarmed branch produces.
+    assert refusal["payload_sha256"]
+    assert refusal["station_id"] == station
+
+    # A hold refuses too, and says something different: nobody ruled this
+    # station bad, it is being kept back.
+    control.set_station_bar(station, False, by="test")
+    control.set_station_hold(station, True, by="test")
+    with conn:
+        receipt = submission.submit_prepared_intents(
+            conn, cycle_id="cycle-1", transport=_never,
+            live_submit_authorized=True,
+            observed_at_utc="2026-08-30T09:30:00Z",
+        )
+    assert receipt["submissions"][0]["reason"] == "live_station_held"
+
+    # And with both switches off the same intent goes out: the gate refuses
+    # admissions, it does not invent them.
+    control.set_station_hold(station, False, by="test")
+    sent: list = []
+
+    def _accept(_path, payload):
+        sent.append(payload)
+        return {
+            "ok": True, "accepted": True, "pending": False,
+            "reconcile_required": False, "exchange_post_started": True,
+            "exchange_order_id": "exch-1", "source": "clob_order_service",
+        }
+
+    with conn:
+        receipt = submission.submit_prepared_intents(
+            conn, cycle_id="cycle-1", transport=_accept,
+            live_submit_authorized=True,
+            observed_at_utc="2026-08-30T09:30:00Z",
+        )
+    assert len(sent) == 1 and receipt["orders_submitted"] == 1
+
+
+def test_a_bar_does_not_strand_an_open_position(tmp_path, monkeypatch) -> None:
+    """The bar refuses admissions; it must not block the way out.
+
+    A station barred while holding a position has to stay able to trim,
+    reseat or exit it -- otherwise the one ruling made to reduce risk is the
+    thing that prevents the reduction.  So the gate reads the order's
+    direction, and the other submit path (certain_win_recycle) is an exit
+    path by construction.
+    """
+
+    from bayes_basket_target import order_submission as submission  # noqa: PLC0415
+
+    _config_copies(tmp_path, monkeypatch)
+    station = "KLGA"
+    conn = _submission_conn(station)
+    conn.execute(
+        "UPDATE basket_target_order_intents SET order_action='SELL'"
+        " WHERE order_intent_id='intent-a'"
+    )
+    armed = tmp_path / "armed.json"
+    armed.write_text('{"live_enabled": true}', encoding="utf-8")
+    monkeypatch.setattr(submission, "LIVE_INTENT_PATH", armed)
+    control.set_station_bar(station, True, by="test")
+
+    sent: list = []
+
+    def _accept(_path, payload):
+        sent.append(payload)
+        return {
+            "ok": True, "accepted": True, "pending": False,
+            "reconcile_required": False, "exchange_post_started": True,
+            "exchange_order_id": "exch-2", "source": "clob_order_service",
+        }
+
+    with conn:
+        receipt = submission.submit_prepared_intents(
+            conn, cycle_id="cycle-1", transport=_accept,
+            live_submit_authorized=True,
+            observed_at_utc="2026-08-30T09:30:00Z",
+        )
+    assert receipt["orders_submitted"] == 1 and len(sent) == 1

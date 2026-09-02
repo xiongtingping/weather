@@ -3185,6 +3185,16 @@ def collect_live_readiness(
     allowlist_set = set(scope["stations"])
     probation_set = set(scope["probation"])
     waived_set = set(scope.get("probation_waivers") or [])
+    held_set = set(scope.get("probation_holds") or [])
+    # Which of the two bar lists a station is on.  The switch behaves
+    # differently on them -- releasing an automatic bar has to record an
+    # operator ruling too, or the next sweep undoes the click -- so the row
+    # has to be able to say which one it is looking at.
+    operator_barred = sorted({
+        str(row.get("station") or "").strip().upper()
+        for row in (exclusion_doc.get("excluded_stations") or [])
+        if isinstance(row, dict) and row.get("station")
+    })
     every = {r["station"] for r in stations}
     split = {
         "barred": _side(exclusions_set),
@@ -3255,6 +3265,11 @@ def collect_live_readiness(
         "station_scope": scope_mode,
         "minimum_settlements_to_qualify": minimum,
         "station_probation_waivers": sorted(waived_set),
+        # The third switch: a qualified station the operator is holding back.
+        # Reported apart from probation itself because the two look identical
+        # on the board and are not the same fact -- one is arithmetic, the
+        # other is somebody's decision this morning.
+        "station_probation_holds": sorted(held_set),
         "station_allowlist": sorted(allowlist_set),
         "station_probation": sorted(probation_set),
         # The bar, not just the pass.  A station absent from the allowlist
@@ -3263,6 +3278,7 @@ def collect_live_readiness(
         # the same.
         "station_exclusions": exclusions,
         "auto_barred": auto_barred,
+        "operator_barred": operator_barred,
         "bar_split": split,
         "contracts": {
             "execution_mode": runtime.get("execution_mode"),
@@ -6053,6 +6069,27 @@ box-shadow:0 1px 2px rgba(0,0,0,.35);transition:transform .13s ease}
 .lc-sw[aria-checked="true"]::after{transform:translateX(16px)}
 .lc-sw:disabled{opacity:.4;cursor:not-allowed}
 .lc-sw:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+/* The station gate, three switches per row.  A 34px slider each would be
+   110px of chrome on a 45-row table, so these carry their state in the fill
+   instead of a knob -- same contract as .lc-sw (the state and the action are
+   one object), drawn small enough to live in a cell.  Off is an outline, on
+   is the colour of what it means: red bars, green admits, amber waits. */
+.lc-gate{font:inherit;font-size:11px;line-height:1;padding:3px 6px;margin-right:3px;
+border-radius:99px;border:1px solid var(--line);background:transparent;
+color:var(--muted);cursor:pointer;white-space:nowrap}
+.lc-gate:hover:not(:disabled){border-color:var(--text);color:var(--text)}
+.lc-gate[aria-checked="true"][data-gate="bar"]{background:var(--pill-red-bg);
+border-color:var(--red);color:var(--red)}
+.lc-gate[aria-checked="true"][data-gate="waive"]{background:var(--pill-green-bg);
+border-color:var(--green);color:var(--green)}
+.lc-gate[aria-checked="true"][data-gate="hold"]{background:var(--pill-amber-bg);
+border-color:var(--amber);color:var(--amber)}
+/* A bar the machine wrote, not the operator.  Dashed, because clicking it
+   off is a ruling that also has to be recorded as one -- the switch does
+   that, and the border is the warning that this row has an owner. */
+.lc-gate[data-owner="auto"][aria-checked="true"]{border-style:dashed}
+.lc-gate:disabled{opacity:.4;cursor:not-allowed}
+.lc-gate:focus-visible{outline:2px solid var(--text);outline-offset:2px}
 /* The station-day's outcome, on the cell that names the station: hit,
    miss, still open, never opened.  Four states that a reader otherwise has
    to reconstruct by reading three stage cells and a P&L column. */
@@ -9527,13 +9564,30 @@ function liveReadiness(){
   if(!L.available) return "";
   const allow = new Set(L.station_allowlist||[]);
   const barred = new Set(L.station_exclusions||[]);
+  const waived = new Set(L.station_probation_waivers||[]);
+  const heldSet = new Set(L.station_probation_holds||[]);
+  // Probation of either kind gets the hourglass: a station kept out because
+  // its settlement count has not got there yet reads the same to a trader as
+  // one the operator is holding, and the row's switches say which it is.
+  const waiting = new Set(L.station_probation||[]);
+  const autoBar = new Set(L.auto_barred||[]);
   const GATE = {claim_honest:"声称诚实", centre_bias:"中心偏差",
     chains:"链数", roi:"账本ROI", truth_fresh:"真值新鲜"};
   // Three states, not two: on the allowlist, merely unselected, or barred.
   // An unselected station can still be added; a barred one is refused by
   // the control server, so it must not read as simply "not chosen".
+  //
+  // And each of the three is now a switch rather than a reading.  The bar
+  // was editable only by hand in JSON until 2026-09-02 -- which is why it
+  // moved four times in one day through a text editor and why one of those
+  // days is recorded in the file as a same-day round trip -- while probation
+  // had no control at all: an operator who wanted a station recorded but not
+  // traded had the bar as the only tool, and the bar is a verdict.
   const rows = (L.stations||[]).map(r=>`<tr class="${barred.has(r.station)?"muted":""}">
-    <td class="mono">${allow.has(r.station)?"✔ ":(barred.has(r.station)?"⛔ ":"")}${h(r.station)}${r.station_label?` <span class="muted">${h(r.station_label)}</span>`:""}</td>
+    <td class="mono"><span data-lc-state="${h(r.station)}">${allow.has(r.station)?"✔ ":(barred.has(r.station)?"⛔ ":(waiting.has(r.station)?"⏳ ":""))}</span>${h(r.station)}${r.station_label?` <span class="muted">${h(r.station_label)}</span>`:""}</td>
+    <td>${lcGateButtons(r.station, barred.has(r.station),
+      waived.has(r.station), heldSet.has(r.station),
+      autoBar.has(r.station))}</td>
     <td class="mono ${r.score>=5?"up":(r.score>=4?"":"down")}">${r.score}/5</td>
     <td class="mono">${r.ratio==null?"—":r.ratio.toFixed(2)}</td>
     <td class="mono">${r.bias_c==null?"—":(r.bias_c>0?"+":"")+r.bias_c.toFixed(2)}</td>
@@ -9591,19 +9645,35 @@ function liveReadiness(){
   </div>
   ${liveOrderCard(L)}
   <div class="card" style="margin-top:12px">
-    <div class="muted">首批站点闸门（五闸：实现/声称∈[0.88,1.18]、|中心偏差|≤0.8°C、
-      链≥5、ROI＞−8%、真值≤2天新）· ✔=当前 allowlist（${(L.station_allowlist||[]).join(" ")}）
-      ${(L.station_exclusions||[]).length?`<br>⛔=实盘禁入（操作者裁定 ∪ 自动层，控制服务拒绝加入 allowlist）：<span class="mono">${(L.station_exclusions||[]).join(" ")}</span>${(L.auto_barred||[]).length?`　其中自动禁入：<span class="mono">${(L.auto_barred||[]).join(" ")}</span>`:""}`:""}
+    <div class="muted">首批站点闸门 · <b>三个开关全是人工的，点击即开启关闭</b>——
+      写盘、记审计、下一轮生产立刻照它执行；表里的五闸（实现/声称∈[0.88,1.18]、
+      |中心偏差|≤0.8°C、链≥5、ROI＞−8%、真值≤2天新）是给你看的评分，不再自己决定谁上线。
+      <br>✔ 上线（${(L.station_allowlist||[]).length}）：<span class="mono" id="lc-batch-live">${(L.station_allowlist||[]).join(" ")||"—"}</span>
+      <br>⛔ 禁入（${(L.station_exclusions||[]).length}）：<span class="mono" id="lc-batch-barred">${(L.station_exclusions||[]).join(" ")||"—"}</span>${(L.auto_barred||[]).length?`　其中自动层写的（虚线框）：<span class="mono">${(L.auto_barred||[]).join(" ")}</span>`:""}
+      <br>✅ 豁免（证据不够也上线）：<span class="mono" id="lc-batch-waived">${(L.station_probation_waivers||[]).join(" ")||"—"}</span>
+      　⏳ 待观察（${(L.station_probation||[]).length}，其中人工按住的：<span class="mono" id="lc-batch-held">${(L.station_probation_holds||[]).join(" ")||"—"}</span>）
       ${((L.add_candidates||[]).length||(L.release_candidates||[]).length)?`<br><span class="pill amber">待复核</span>
       随数据每轮重算的候选（<b>只提示不执行</b>）：${(L.add_candidates||[]).length?`建议加入 <span class="mono">${(L.add_candidates||[]).join(" ")}</span>`:""}
       ${(L.release_candidates||[]).length?`　建议放出 <span class="mono">${(L.release_candidates||[]).join(" ")}</span>`:""}`:""}</div>
-    <details class="note"><summary>这些闸是怎么定的 · 禁入与候选的判据</summary>
-      <div class="muted">禁入是<b>风险裁定不是测量结论</b>：14 种自动规则做逐日 walk-forward，最好的一个 p=0.346——与随机剔同样多的站无异；
+    <details class="note"><summary>三个开关分别做什么 · 禁入与候选的判据</summary>
+      <div class="muted"><b>⛔ 禁入</b>＝不给这个站下单，<b>但账本照常记账</b>——禁的是下单不是记账，
+      不然下次要不要放出来就没有证据可读。点开＝写一条操作者裁定进
+      <span class="mono">excluded_stations</span>；点关＝写一条 <span class="mono">released_stations</span>，
+      <b>自动层从此不再碰这个站</b>（不写这条的话，下一轮 sweep 几分钟内就会把它禁回去，开关看起来像坏的）。
+      名额上限 15 席只管自动层：人工新禁一个而席位已满时，自动层里最不严重的那条让位，
+      下一轮 sweep 会按真实指标重新裁。<br>
+      <b>✅ 豁免</b>＝结算笔数不够也直接上线（把"等够 ${L.minimum_settlements_to_qualify||5} 笔"这道门跳过去）。
+      <b>⏳ 待观察</b>＝够格了也先不下单，<b>不占禁入席位、也不等于说它坏</b>——账本继续给它建仓结算，
+      证据照攒。三者互斥：开一个自动关掉另外两个；已禁入的站，另外两个开关是灰的（服务端也会拒）。<br>
+      三个开关都算<b>操作者裁定</b>，自动层一律不碰带裁定的站。<b>2026-09-02 起禁入真的挡下单了</b>：
+      在此之前这张名单只活在这个页面、控制服务的 allowlist 写入口和 go-live 迁移的前置检查里，
+      发单那条路根本不读它——EDDM、KSEA、LTAC 都留着"被禁期间铸出来的 live 意向"。<br>
+      禁入是<b>风险裁定不是测量结论</b>：14 种自动规则做逐日 walk-forward，最好的一个 p=0.346——与随机剔同样多的站无异；
       同一份手挑名单固定不动反而 +17.0 点（p=0.002）。所以<b>操作者裁定的行永远不由机器改</b>；自动层只管操作者没裁定过的站，判据＝第一看兑现比（实得÷期望；期望＜3U 时读不出，改看第二项）、第二看实得差，进出用滞回避免来回摆；全表<b>上限 15 站</b>，名额先给操作者裁定，剩下的才轮到自动层（按同一排序取最差的几个）。<br>
       候选判据：加入＝全样本 ROI≤−25% 且链≥5；放出＝已禁且最近 5 个结算日 ROI＞0（≥3 笔）<b>且中心偏差与声称诚实两闸都过</b>——只看 ROI 会把靠盘后 P1 铁板捞回来的站放出去（EPWA 判例）。</div>
     </details>
     <div class="scroll" style="max-height:360px;margin-top:6px">
-    <table><thead><tr><th>站</th><th>过闸</th><th>实现/声称</th><th>中心偏差</th>
+    <table><thead><tr><th>站</th><th title="三个开关都是人工裁定，点击即开启关闭，改动立刻写盘并记审计。禁入=不下单（记账照旧）；豁免=证据不够也上线；待观察=够格也先不下单。三者互斥。">闸门（人工）</th><th>过闸</th><th>实现/声称</th><th>中心偏差</th>
       <th>链</th><th>ROI</th><th title="最近 5 个结算日">近5日</th><th title="该站真值的日际跳变均值(°C)：天气性格，>1.76 的站在真边际枯竭期实测 −43%（留存组 +23%，p=0.023）。外生、慢变、先于账本。">跳变/日</th><th title="近14天池子里模型分布的均值−众数距离(桶)：跳变在模型层的影子(r=+0.32)，>0.93 为高。">形状gap</th><th>未过项</th></tr></thead><tbody>${rows}</tbody></table></div>
   </div>`;
 }
@@ -9679,6 +9749,10 @@ function lcRender(s){
     "控制服务已连接 · 每次改动写 data/live_control_audit.jsonl";
   document.querySelectorAll(".lc-w, #lc-live-btn")
     .forEach(b=>b.disabled=false);
+  // The station gate repaints from the server's answer like the rest: an
+  // optimistic flip would show a bar the server refused, which is the one
+  // lie a control that stops orders must never tell.
+  lcPaintGates(s);
   window.__lcState = s;
 }
 function lcAdjust(knob, delta){
@@ -9723,6 +9797,94 @@ function lcLive(){
       : {enabled:false, by:"dashboard"})
     .then(lcRender)
     .catch(e=>{ if(btn) btn.disabled=false; alert("失败: "+e); });
+}
+// The station gate: three switches per row, one click each.
+//
+// They are drawn disabled and only the control server's answer enables them
+// -- same contract as every other control on this page.  A gate that looks
+// clickable while nothing is listening would let an operator believe a
+// station was barred because the pill turned red.
+const LC_GATES = {
+  bar:   {path:"/api/station-bar",     key:"barred", label:"⛔禁入"},
+  waive: {path:"/api/station-waiver",  key:"waived", label:"✅豁免"},
+  hold:  {path:"/api/station-hold",    key:"held",   label:"⏳待观察"},
+};
+function lcGateTip(kind, on, isAuto){
+  if(kind==="bar") return on
+    ? (isAuto?"自动层禁的。点击＝人工放出，并记一条操作者裁定，让 sweep 不再碰它"
+            :"点击＝人工放出（记 released_stations，自动层从此不碰）")
+    : "点击＝人工禁入：不再给这个站下单，账本照常记账";
+  if(kind==="waive") return on
+    ? "点击＝撤销豁免，回到按结算笔数判"
+    : "点击＝豁免：结算笔数不够也上线";
+  return on ? "点击＝解除按住，回到按结算笔数判"
+            : "点击＝按住：够格也先不下单，不占禁入席位";
+}
+function lcGateButtons(station, isBarred, isWaived, isHeld, isAuto){
+  const state = {bar:isBarred, waive:isWaived, hold:isHeld};
+  return Object.keys(LC_GATES).map(kind=>{
+    const on = !!state[kind];
+    return `<button type="button" class="lc-gate" data-station="${station}"
+      data-gate="${kind}" data-owner="${kind==="bar"&&isAuto?"auto":"operator"}"
+      role="switch" aria-checked="${on}" disabled
+      title="${lcGateTip(kind,on,isAuto)}"
+      onclick="lcGate(this)">${LC_GATES[kind].label}</button>`;
+  }).join("");
+}
+function lcGate(btn){
+  const kind = btn.dataset.gate, station = btn.dataset.station;
+  const spec = LC_GATES[kind]; if(!spec) return;
+  const on = btn.getAttribute("aria-checked")==="true";
+  // Every switch is held down for the round trip, not only the one clicked:
+  // the server clears the other two on the station it moves, so more than
+  // one of them may be about to change and none may show a state that has
+  // not come back yet.
+  document.querySelectorAll(".lc-gate").forEach(b=>{b.disabled=true;});
+  const body = {station: station, by: "dashboard"};
+  body[spec.key] = !on;
+  lcApi(spec.path, body).then(lcRender).catch(e=>{
+    // Repaint from the last state the server confirmed, then say why.  A
+    // refusal here is usually the server enforcing the exclusivity the row
+    // shows (no waiver or hold on a barred station), and leaving the row
+    // disabled would look like the page had broken instead.
+    lcPaintGates(window.__lcState);
+    alert("失败: "+e);
+  });
+}
+function lcPaintGates(s){
+  const live = s && s.live; if(!live) return;
+  const barred = new Set(live.station_exclusions||[]);
+  const waived = new Set(live.station_probation_waivers||[]);
+  const held   = new Set(live.station_probation_holds||[]);
+  const allow  = new Set(live.station_allowlist||[]);
+  const auto   = new Set((live.station_bar_sources||{}).auto||[]);
+  document.querySelectorAll(".lc-gate").forEach(b=>{
+    const station = b.dataset.station, kind = b.dataset.gate;
+    const on = kind==="bar" ? barred.has(station)
+             : kind==="waive" ? waived.has(station) : held.has(station);
+    const isAuto = kind==="bar" && auto.has(station);
+    b.setAttribute("aria-checked", String(on));
+    b.dataset.owner = isAuto ? "auto" : "operator";
+    b.title = lcGateTip(kind, on, isAuto);
+    // The server refuses a waiver or a hold on a barred station rather than
+    // accepting one that would be inert, so those two must not look
+    // available while the bar is up.
+    b.disabled = kind!=="bar" && barred.has(station);
+  });
+  const waiting = new Set(live.station_probation||[]);
+  document.querySelectorAll("[data-lc-state]").forEach(el=>{
+    const station = el.dataset.lcState;
+    el.textContent = barred.has(station) ? "⛔ "
+      : allow.has(station) ? "✔ " : (waiting.has(station) ? "⏳ " : "");
+    const row = el.closest("tr");
+    if(row) row.className = barred.has(station) ? "muted" : "";
+  });
+  const put=(id,text)=>{const el=document.getElementById(id);
+    if(el) el.textContent = text;};
+  put("lc-batch-live",  (live.station_allowlist||[]).join(" ")||"—");
+  put("lc-batch-barred",(live.station_exclusions||[]).join(" ")||"—");
+  put("lc-batch-waived",(live.station_probation_waivers||[]).join(" ")||"—");
+  put("lc-batch-held",  (live.station_probation_holds||[]).join(" ")||"—");
 }
 function lcInit(){
   if(!document.getElementById("lc-status")) return;

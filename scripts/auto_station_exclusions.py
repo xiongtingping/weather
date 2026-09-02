@@ -192,6 +192,19 @@ def run(*, apply_changes: bool) -> dict[str, Any]:
     } | {
         str(row.get("station") or "").strip().upper()
         for row in (doc.get("released_stations") or [])
+    } | {
+        # The two switches that live in the intent file (2026-09-02).  Both
+        # are rulings about a station, so both belong in the set this layer
+        # may not touch: a waiver says "this one trades on my say-so" and a
+        # hold says "this one waits on my say-so", and a machine that barred
+        # either would be overruling the person who just clicked it.  Unlike
+        # the allowlist -- which had to come out of this set once it became
+        # every unbarred station and silenced the layer entirely -- these are
+        # named lists of a handful of stations, so guarding them costs the
+        # layer nothing it was otherwise doing.
+        str(station).strip().upper()
+        for key in ("station_probation_waivers", "station_probation_holds")
+        for station in (intent.get(key) or [])
     }
     auto_rows = {
         str(row.get("station") or "").strip().upper(): row

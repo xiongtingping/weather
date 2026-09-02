@@ -42,6 +42,27 @@ def _armed(tmp_path, monkeypatch):
     return path
 
 
+@pytest.fixture(autouse=True)
+def _admitted(monkeypatch):
+    """Admit the station, for the same reason the flag above is raised.
+
+    The station gate is the other orthogonal control on this path (2026-09-02:
+    barred, held and unproven stations are refused before the send).  It reads
+    the live config and the book, so leaving it live here would make this suite
+    pass or fail on whichever stations happen to be barred today -- and these
+    tests are about the delivery link, not about who may trade.  The gate's own
+    behaviour is covered in test_live_station_exclusions.
+    """
+
+    monkeypatch.setattr(
+        _submission, "live_station_admission",
+        lambda station, **_kw: {
+            "admitted": True, "reason": "live_station_admitted",
+            "station": station, "scope": "test",
+        },
+    )
+
+
 OBSERVED = "2026-08-11T09:30:00Z"
 
 

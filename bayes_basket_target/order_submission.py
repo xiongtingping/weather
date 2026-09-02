@@ -27,6 +27,7 @@ from .execution_reconciliation import (
     can_submit_next_order,
     record_order_event,
 )
+from .live_station_scope import admission as live_station_admission
 
 
 SCHEMA = "bayes_basket_target_order_submission_v1"
@@ -188,6 +189,17 @@ def _submittable_intents(
     ]
 
 
+def _cycle_station(conn: sqlite3.Connection, cycle_id: str) -> str:
+    """Which station this cycle is trading, for the station gate below."""
+
+    row = conn.execute(
+        "SELECT station_id FROM basket_target_execution_cycles"
+        " WHERE cycle_id=?",
+        (_text("cycle_id", cycle_id),),
+    ).fetchone()
+    return str(row[0]).strip().upper() if row and row[0] else ""
+
+
 def live_intent_armed(path: Path | str | None = None) -> bool:
     """Whether the operator's arming flag is up, read fresh on every pass.
 
@@ -236,6 +248,31 @@ def submit_prepared_intents(
     # Once per cycle, before the walk: the flag governs this pass, and asking
     # it per intent would let it change halfway through one basket.
     armed = live_intent_armed()
+    # The station gate, resolved once per pass for the same reason the flag
+    # is: a cycle trades one station, and asking per intent would let the
+    # answer change halfway through one basket.
+    #
+    # It binds here because until 2026-09-02 it bound nowhere on this path.
+    # The bar list was consulted by the panel, drawn on the board and
+    # checked by the go-live migration, and an order for a barred station
+    # went out regardless -- EDDM, KSEA and LTAC all carry live-authorised
+    # intents minted while barred.  A gate that only appears on a screen is
+    # a label, and this one is a risk ruling that beat every automatic rule
+    # ever swept against it (+15.6 points, p=0.001), so it is the last one
+    # that should have been advisory.
+    #
+    # Deferred until there is something to send: the derivation reads two
+    # aggregates off the book, and a pass with no submittable intent should
+    # not pay for them.
+    station = _cycle_station(conn, cycle_id)
+    _admission: dict[str, Any] | None = None
+
+    def _station_gate() -> dict[str, Any]:
+        nonlocal _admission
+        if _admission is None:
+            _admission = live_station_admission(station, conn=conn)
+        return _admission
+
     submissions: list[dict[str, Any]] = []
     submitted = 0
     for intent in _submittable_intents(conn, cycle_id=cycle_id):
@@ -256,7 +293,18 @@ def submit_prepared_intents(
             })
             continue
         payload = build_place_order_payload(intent, strategy_id=strategy_id)
-        if not live_submit_authorized or not armed:
+        # Entries only.  The bar refuses admissions -- it says do not put
+        # money on this station -- and reading it as "touch nothing here"
+        # would strand whatever is already open: a station barred while
+        # holding a position could not trim, reseat or exit it, so the one
+        # ruling meant to reduce risk would be the thing preventing the
+        # reduction.  Exits are out of scope on the other path too, by
+        # construction: certain_win_recycle only ever sells.
+        admitted = (
+            _station_gate() if str(intent["order_action"]).upper() == "BUY"
+            else {"admitted": True, "reason": "exit_not_gated"}
+        )
+        if not live_submit_authorized or not armed or not admitted["admitted"]:
             # The whole path runs except the send.  The payload hash is on the
             # receipt so a no-live run can be compared byte for byte against
             # the live one it is standing in for.
@@ -270,8 +318,12 @@ def submit_prepared_intents(
                 "reason": (
                     "live_submit_not_authorized"
                     if not live_submit_authorized
-                    else "live_intent_disarmed"
+                    else "live_intent_disarmed" if not armed
+                    # barred / held / still earning its way in -- three
+                    # different follow-ups, so three different reasons.
+                    else str(admitted["reason"])
                 ),
+                "station_id": station,
                 "exchange_post_started": False,
                 "payload_sha256": content_sha256(payload),
             })
