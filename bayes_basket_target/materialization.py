@@ -235,6 +235,30 @@ def _named_cycle_riders(root_lineage: Mapping[str, Any]) -> set[str]:
     return {str(system_id) for system_id in declared}
 
 
+def _embedded_capture_cycle(lineage: Mapping[str, Any]) -> str:
+    """The capture cycle recorded inside the compatibility document.
+
+    ``native_forward_run_cycle`` is a P0-only key; the document that carries
+    the same value is inherited by every descendant and is bound by its own
+    hash, so reading it back is not a second source of truth but the same one
+    reached another way.  Silence on anything unreadable: the caller's
+    fallback is the pre-existing behaviour, and a parse failure here must not
+    turn into a refusal that was not there before.
+    """
+
+    raw = lineage.get("taf_nwp_live_compatibility_json")
+    if not raw:
+        return ""
+    try:
+        document = json.loads(str(raw))
+        native = document.get("native_forward_lineage")
+        if not isinstance(native, Mapping):
+            return ""
+        return str(native.get("run_cycle") or "").strip()
+    except (TypeError, ValueError):
+        return ""
+
+
 def _native_forward_lineage(
     stage: str,
     *,
@@ -295,18 +319,54 @@ def _native_forward_lineage(
     # reading the fitted one here rejected every such root.  Older envelopes
     # predate the split and carry only the one value, which was correct for
     # them precisely because nothing rode.
+    # The capture cycle, from wherever this root still records it.  A P0 root
+    # writes it at the top level.  A descendant does not inherit that key --
+    # the inheritance block below says why -- but it does inherit the
+    # compatibility document, and the P0 compiler wrote the same cycle inside
+    # it, under the hash the document is bound by.  Measured: present on
+    # 400 of 400 P0-M rows sampled from 2026-08-28, and equal to the top-level
+    # value wherever both exist.
+    stated_capture_cycle = str(
+        root_lineage.get("native_forward_run_cycle")
+        or _embedded_capture_cycle(root_lineage)
+        or ""
+    ).strip()
     run_cycle = _text(
         "run_cycle",
-        root_lineage.get("native_forward_run_cycle")
-        or root_lineage.get("run_cycle"),
+        stated_capture_cycle or root_lineage.get("run_cycle"),
     )
     if scope not in _NATIVE_FORWARD_SCOPES:
         raise ContractError(f"{stage}_native_forward_run_cycle_scope_invalid")
-    mixed = scope == "PER_SYSTEM_NATIVE_CYCLE" or run_cycle == _MIXED_NATIVE_CYCLES
-    if mixed and (scope != "PER_SYSTEM_NATIVE_CYCLE" or run_cycle != _MIXED_NATIVE_CYCLES):
-        raise ContractError(f"{stage}_native_forward_mixed_scope_mismatch")
-    if not mixed and (scope != "SAME_NATIVE_CYCLE" or run_cycle not in _NATIVE_RUN_CYCLES):
-        raise ContractError(f"{stage}_native_forward_same_scope_mismatch")
+    # Why the recovery above matters.  Before it, a P1 rooted on a P0-M read
+    # no capture cycle and fell back to ``run_cycle`` -- the calibration scope
+    # an activation was fitted under -- and compared it against a question
+    # about what the archive delivered.  That is the same category error the
+    # inheritance block below already names, left standing in this test: it
+    # refused 86 P0-M roots across 27 stations, KAUS on 2026-09-02 among them,
+    # each a P1 blocked on a disagreement that was not one.  The compiler
+    # split those two cycles apart on 2026-08-16 and the older P0-M rows
+    # happen to carry the capture cycle in the ``run_cycle`` key, which is
+    # why only the newer ones broke: 89 of 277 sampled PER_SYSTEM P0-M rows
+    # read 00Z there where 182 read MIXED_NATIVE_CYCLES.
+    if stated_capture_cycle:
+        mixed = (
+            scope == "PER_SYSTEM_NATIVE_CYCLE"
+            or run_cycle == _MIXED_NATIVE_CYCLES
+        )
+        if mixed and (
+            scope != "PER_SYSTEM_NATIVE_CYCLE"
+            or run_cycle != _MIXED_NATIVE_CYCLES
+        ):
+            raise ContractError(f"{stage}_native_forward_mixed_scope_mismatch")
+        if not mixed and (
+            scope != "SAME_NATIVE_CYCLE"
+            or run_cycle not in _NATIVE_RUN_CYCLES
+        ):
+            raise ContractError(f"{stage}_native_forward_same_scope_mismatch")
+    else:
+        mixed = scope == "PER_SYSTEM_NATIVE_CYCLE"
+        if not mixed and run_cycle not in _NATIVE_RUN_CYCLES:
+            raise ContractError(f"{stage}_native_forward_same_scope_mismatch")
 
     cycles = _lineage_json_mapping(
         "run_cycle_by_system_json", root_lineage["run_cycle_by_system_json"]

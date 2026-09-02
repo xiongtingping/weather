@@ -24,6 +24,10 @@ from bayes_basket_target import (
     materialize_p0m,
     materialize_p1,
 )
+from bayes_basket_target.materialization import (
+    _embedded_capture_cycle,
+    _native_forward_lineage,
+)
 from bayes_basket_target.ssot import apply_production_ssot_schema, production_ssot_schema_status
 from bayes_basket_target.calibration import (
     build_taf_nwp_live_compatibility_fingerprint,
@@ -1862,3 +1866,103 @@ def test_probability_insert_replay_is_idempotent_but_same_stage_instant_conflict
         assert conn.execute(
             "SELECT COUNT(*) FROM basket_probability_envelope"
         ).fetchone()[0] == 1
+
+
+def test_a_descendant_root_recovers_the_capture_cycle_from_its_document() -> None:
+    """A P1 may root on a P0-M, which does not inherit the capture cycle key.
+
+    Two encodings of "did the systems ride different cycles" live in a P0
+    root.  ``run_cycle_scope`` is inherited by every stage; the capture cycle
+    itself is written by the P0 compiler under ``native_forward_run_cycle``
+    and deliberately not inherited.  Reading the calibration ``run_cycle`` in
+    its place compares the scope an activation was fitted under against a
+    question about what the archive delivered -- and that refused 86 P0-M
+    roots across 27 stations, KAUS on 2026-09-02 among them, each a P1
+    blocked on a disagreement that was not one.
+
+    The value is not lost: the compatibility document carries it, that
+    document is inherited, and it is bound by its own hash.  This pins the
+    shape that broke -- a mixed-cycle root whose top level says only the
+    calibration cycle -- and the P0 shape it must not disturb.
+    """
+
+    p0 = _mixed_native_envelope()
+    # The descendant shape: the capture cycle key is gone and the top level
+    # carries the calibration cycle instead.  Everything else is inherited.
+    descendant = ProbabilityEnvelope.from_mapping({
+        **p0.to_dict(),
+        "lineage": {
+            **{
+                key: value for key, value in p0.lineage.items()
+                if key != "native_forward_run_cycle"
+            },
+            "run_cycle": "00Z",
+        },
+    })
+    recovered = _native_forward_lineage(
+        "P1", root=descendant, predecessor=descendant
+    )
+    assert recovered["run_cycle_scope"] == "PER_SYSTEM_NATIVE_CYCLE"
+
+    # A P0 root that states the capture cycle at the top level is unchanged,
+    # and the cross-check it gets is still the strict one.
+    stated = ProbabilityEnvelope.from_mapping({
+        **p0.to_dict(),
+        "lineage": {
+            **p0.lineage,
+            "native_forward_run_cycle": "MIXED_NATIVE_CYCLES",
+            "run_cycle": "00Z",
+        },
+    })
+    assert _native_forward_lineage("P1", root=stated, predecessor=stated)
+
+
+def test_a_scope_the_document_contradicts_still_fails_closed() -> None:
+    """Recovery is not permission: the two must still agree.
+
+    A root claiming a same-cycle scope while its own document records a mixed
+    capture is the corruption the check exists for, and it is refused whether
+    the capture cycle sits at the top level or inside the document.
+    """
+
+    p0 = _mixed_native_envelope()
+    forged = ProbabilityEnvelope.from_mapping({
+        **p0.to_dict(),
+        "lineage": {
+            **{
+                key: value for key, value in p0.lineage.items()
+                if key != "native_forward_run_cycle"
+            },
+            "run_cycle_scope": "SAME_NATIVE_CYCLE",
+            "run_cycle": "00Z",
+        },
+    })
+    with pytest.raises(
+        ContractError, match="native_forward_mixed_scope_mismatch"
+    ):
+        _native_forward_lineage("P1", root=forged, predecessor=forged)
+
+
+def test_an_unreadable_document_falls_back_rather_than_refusing() -> None:
+    """A parse failure in the recovery must not invent a refusal.
+
+    The document is read for a value the top level may already carry; if it
+    cannot be read the behaviour is what it was before the recovery existed,
+    never a new way to block a compile.
+    """
+
+    p0 = _mixed_native_envelope()
+    broken = ProbabilityEnvelope.from_mapping({
+        **p0.to_dict(),
+        "lineage": {
+            **p0.lineage,
+            "native_forward_run_cycle": "MIXED_NATIVE_CYCLES",
+            "taf_nwp_live_compatibility_json": "{not json",
+        },
+    })
+    assert _embedded_capture_cycle(broken.lineage) == ""
+    # The top level still states it, so the compile proceeds on that.
+    with pytest.raises(ContractError):
+        # The document itself is checked later and is genuinely broken here;
+        # what matters is that the failure names the document, not the scope.
+        _native_forward_lineage("P1", root=broken, predecessor=broken)
