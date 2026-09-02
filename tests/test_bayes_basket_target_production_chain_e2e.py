@@ -1092,3 +1092,47 @@ def test_p0_stage_open_restatement_on_a_later_clock_is_retained_without_rows() -
             )
         )
         assert after == before
+
+
+def test_kernel_support_empty_compiles_to_a_blocked_plan_not_a_fail_closed_raise(
+    monkeypatch,
+) -> None:
+    """A kernel ``delta_v2_support_empty`` is a HOLD with a reason, not a crash.
+
+    The kernel raises ``basket_kernel.contracts.ContractError``; the runtime
+    caught ``bayes_basket_target.contracts.ContractError``.  Distinct classes,
+    so the branch that turns the hold codes into a blocked plan never fired
+    and the forward lane reported ``blocked_fail_closed`` with no decision and
+    no fact (14 station-days a cycle on 2026-09-02).  Any other kernel code
+    must still propagate.
+    """
+
+    import pytest
+
+    import bayes_basket_target.runtime as runtime_module
+    from bayes_basket_target.basket_kernel.contracts import (
+        ContractError as KernelContractError,
+    )
+
+    def _raise_support_empty(**_kwargs):
+        raise KernelContractError("delta_v2_support_empty")
+
+    monkeypatch.setattr(
+        runtime_module, "compile_delta_v2_runtime_plan", _raise_support_empty
+    )
+    compiled, _market, _cash_policy, _p0 = _p0_opening_compile()
+    assert compiled["status"] == "blocked"
+    assert "delta_v2_support_empty" in compiled["reason_codes"]
+    assert compiled["delta_v2_audit"]["authorized"] is False
+
+    def _raise_other(**_kwargs):
+        raise KernelContractError("delta_v2_fill_distribution_missing")
+
+    monkeypatch.setattr(
+        runtime_module, "compile_delta_v2_runtime_plan", _raise_other
+    )
+    with pytest.raises(
+        KernelContractError, match="delta_v2_fill_distribution_missing"
+    ):
+        _p0_opening_compile()
+

@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 
 from .basket_kernel.contracts import (
     TARGET_BASKET_SNAPSHOT_SCHEMA,
+    ContractError as KernelContractError,
     TargetBasketPolicy,
     TargetBasketSnapshot,
 )
@@ -763,7 +764,7 @@ def _rescore_clamped_bundle(
             },
             fee_rate=policy.fee_rate,
         )
-    except ContractError as exc:
+    except (ContractError, KernelContractError) as exc:
         # A re-score that cannot be computed is a refusal, never a pass.
         return {
             "schema": BUNDLE_RESCORE_SCHEMA,
@@ -1133,7 +1134,16 @@ def _compile_target_plan(
                 if item.probabilities
             ],
         )
-    except ContractError as exc:
+    # The kernel raises its own ContractError class, not this module's: the
+    # two are distinct types (``basket_kernel.contracts`` is self-contained
+    # by design), so ``except ContractError`` here never matched a kernel
+    # raise and the hold codes named below escaped as fail-closed compile
+    # failures -- the forward lane recorded market evidence and nothing
+    # else, no decision and no fact.  Measured 2026-09-02 07:14Z: 14 forward
+    # station-days a cycle (KLGA, ZUUU, WSSS, EFHK, KORD, LEMD, ...) whose
+    # every support window the price gates refused -- a HOLD by every rule
+    # in this file -- reported as ``blocked_fail_closed``.
+    except (ContractError, KernelContractError) as exc:
         # No window can hold a seat is a HOLD, not a crash.  Clause 50 says
         # a ladder that cannot reach its floor should not be bought at all,
         # and once the incumbent lost its waiver (2026-08-16) a station whose
