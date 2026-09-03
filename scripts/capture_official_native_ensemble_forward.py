@@ -650,6 +650,16 @@ def capture_official_native_forward(
                 run_cycle_hour=run_cycle_hour,
             ),
         )
+    # Bank each family the moment it is in hand.  The archives used to be
+    # written only after the last family, so a pass killed at the caller's
+    # deadline left nothing behind and the retry started from zero: the
+    # 2026-09-03 d1 pass reached GEFS 2h23m after the other three, on a
+    # second attempt, and no 2026-09-04 d2 pass ever finished at all.  A
+    # banked family is what the retry reuses (``_load_retained_archive``
+    # above), so a long pass now converges across attempts instead of
+    # repeating itself.
+    if gefs is not None and not reused_gefs:
+        write_bounded_json_if_changed(gefs_path, gefs)
     if ecmwf is None:
         ecmwf = _advance_or_hold(
             "ECMWF_OPEN_DATA_S3",
@@ -666,6 +676,8 @@ def capture_official_native_forward(
                 run_cycle_hour=run_cycle_hour,
             ),
         )
+    if ecmwf is not None and not reused_ecmwf:
+        write_bounded_json_if_changed(ecmwf_path, ecmwf)
     # Holding is only a fallback for a family that has something to hold.  With
     # nothing on disk there is no ensemble to build, and failing here is what
     # keeps that distinct from a rung this publisher simply does not serve.
@@ -696,6 +708,10 @@ def capture_official_native_forward(
             # in a lead-hour bucket no other family occupies.
             run_cycle_hour=ECCC_RUN_CYCLE_HOUR_BY_LEAD[int(lead_days)],
         )
+        if eccc is not None:
+            write_bounded_json_if_changed(
+                eccc_output.expanduser().resolve(), eccc
+            )
     icon_capture_error = ""
     if icon_output is not None and icon is None:
         assert_process_memory_budget()

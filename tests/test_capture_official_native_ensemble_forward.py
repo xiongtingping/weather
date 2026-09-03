@@ -136,3 +136,52 @@ def test_forward_retained_archive_reuse_is_bounded_by_six_hour_ttl(tmp_path) -> 
         as_of_utc="2026-08-01T06:00:01Z",
         max_reuse_age_seconds=capture.FORWARD_REUSE_TTL_SECONDS,
     ) is None
+
+
+def test_a_family_is_banked_before_the_next_family_is_fetched(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """A pass killed mid-way must leave its finished families on disk.
+
+    The archives used to be written only after the last family, so the
+    caller's deadline (2400s until 2026-09-03) discarded whole passes: the
+    2026-09-03 d1 pass banked GEFS 2h23m after the other three, on a second
+    attempt, and no 2026-09-04 d2 pass ever finished.  With each family
+    written as it lands, the retry reuses it through ``_load_retained_archive``
+    and a long pass converges across attempts.
+    """
+    _install_station_registry(monkeypatch)
+    monkeypatch.setattr(
+        capture, "load_market_registry_snapshot", lambda _path: _registry()
+    )
+    gefs_output = tmp_path / "gefs.json"
+    ecmwf_output = tmp_path / "ecmwf.json"
+    banked = {"schema": "noaa_gefs_official_historical_multistation_members_v2",
+              "captures": []}
+    monkeypatch.setattr(
+        capture, "capture_gefs_station_days", lambda **_kw: dict(banked)
+    )
+    seen: dict[str, bool] = {}
+
+    def ecmwf_fails_after_looking(**_kw):
+        seen["gefs_on_disk_when_ecmwf_ran"] = gefs_output.is_file()
+        raise RuntimeError("proxy stalled")
+
+    monkeypatch.setattr(
+        capture, "capture_ecmwf_station_days", ecmwf_fails_after_looking
+    )
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text("{}", encoding="utf-8")
+    with pytest.raises(
+        ContractError, match="official_native_forward_required_family_unavailable"
+    ):
+        capture.capture_official_native_forward(
+            registry_path=registry_path,
+            event_date="2026-08-01",
+            gefs_output=gefs_output,
+            ecmwf_output=ecmwf_output,
+            inbox_output=tmp_path / "inbox.json",
+            timeout_seconds=30.0,
+        )
+    assert seen == {"gefs_on_disk_when_ecmwf_ran": True}
+    assert json.loads(gefs_output.read_text(encoding="utf-8")) == banked

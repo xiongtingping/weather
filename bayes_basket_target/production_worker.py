@@ -737,7 +737,16 @@ ECMWF_GCS_REPLICA_BASE_URL = "https://storage.googleapis.com/ecmwf-open-data"
 # has no second attempt to fall back on within the cycle.  Sized for the whole
 # pass to finish rather than be killed just short of it; a wedged child still
 # gets killed and frees its pool slot.
-OFFICIAL_NATIVE_CAPTURE_DEADLINE_SEC = 2400.0
+#
+# 2400s was not the whole pass.  Measured on 2026-09-02/03: the d1 pass for
+# 2026-09-03 banked ECMWF/ECCC/ICON at 08:11Z and GEFS only at 10:34Z -- the
+# first attempt was killed at 40 minutes inside GEFS and a second attempt
+# (after the 1800s throttle) finished it -- and the d2 pass for 2026-09-04 was
+# killed at 40 minutes on every attempt across two days, so that day never
+# got a packet or a P0.  The capture now banks each family as it lands, so a
+# kill no longer discards the pass, and the ceiling is sized for a whole d2
+# pass through the proxy rather than for the d1 pass the comment above timed.
+OFFICIAL_NATIVE_CAPTURE_DEADLINE_SEC = 7200.0
 # METAR trajectory training is fold-driven: a station gains at most one fold
 # per settled day, so sweeping more often than a few times a day only reruns a
 # gate against unchanged evidence.  The chain stays as offline scripts --
