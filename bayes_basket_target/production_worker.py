@@ -277,6 +277,69 @@ SCHEMA = "bayes_basket_target_production_worker_v2"
 PRODUCTION_EXECUTION_MODE = "production_live"
 NO_LIVE_EXECUTION_MODE = "production_no_live"
 MAX_PREPARED_CYCLES_PER_SCOPE = 1
+# What the ledger accepting a scope looks like.  Four of these write no
+# rows at all -- the decision they would write is already on file -- and
+# they are accepted for the same reason the committing one is: the cycle
+# asked the ledger and the ledger answered with a standing decision.
+# ``retained_existing_prepared_candidate`` was missing, so a cycle whose
+# every scope was that legitimate zero-write retain reported itself as a
+# total outage.
+COMMITTED_SCOPE_STATES = frozenset({
+    "committed",
+    "already_committed",
+    "already_committed_decision",
+    "already_committed_decision_scope",
+    "retained_existing_authority_decision",
+    "retained_existing_prepared_candidate",
+})
+
+
+def _scope_verdict_tally(
+    results: Sequence[Mapping[str, Any]],
+) -> tuple[int, dict[str, int]]:
+    """How many scopes the ledger accepted, and what refused the others.
+
+    A refusal is named whether it was raised by the compile (the scope's own
+    ``ok`` is False) or by the commit (its ``atomic_commit`` fail-closed).
+    Only the first was tallied, and the guard's refusals arrive in the
+    second shape -- so fifteen station-days refused on
+    ``target_prepared_cycle_retention_violation`` counted as neither
+    committed nor blocked, and the board could say the cycle had failed
+    without being able to say what failed.
+    """
+
+    committed = 0
+    reasons: dict[str, int] = {}
+    for item in results:
+        commit = item.get("atomic_commit")
+        commit_map = commit if isinstance(commit, Mapping) else {}
+        state = str(commit_map.get("state") or "")
+        if state in COMMITTED_SCOPE_STATES:
+            committed += 1
+        state_word = state.upper()
+        commit_failed = (
+            "BLOCK" in state_word
+            or "FAIL" in state_word
+            or commit_map.get("ok") is False
+        )
+        if item.get("ok") is not False and not commit_failed:
+            continue
+        raw_reason = str(item.get("reason") or "")
+        if not raw_reason:
+            raw_reason = str(commit_map.get("reason") or "")
+        raw_reason = raw_reason or "unnamed"
+        # The family name, not the tail: reasons are colon chains whose
+        # first segments are exception classes and whose later segments may
+        # carry per-station detail (the named market mismatch puts
+        # station@date there), and tallying on the tail split one family
+        # into eight keys of one.
+        segments = [
+            seg for seg in raw_reason.split(":")
+            if seg and not seg.endswith("Error")
+        ]
+        key = (segments[0] if segments else raw_reason)[:60]
+        reasons[key] = reasons.get(key, 0) + 1
+    return committed, reasons
 # Measured on 1022 observed station-days: the daily high landed inside these
 # local hours 80% of the time.  It peaks at 15:00 but only 17.6% there, so
 # the useful signal is the window rather than a distance from any one hour.
@@ -6820,11 +6883,27 @@ class TargetProductionWorker:
         ).fetchone() is not None
         if has_decisions:
             rows = self.commit_conn.execute(
+                # A cycle with no decision row carries no authority, and
+                # this table is the blocking authority: the row that says
+                # what was decided is the row that makes a cycle standing.
+                # The NULL arm admitted the opposite, and on 2026-09-02 the
+                # decision-identity migration made that fatal -- it
+                # collapsed 67,492 decisions into 27,405 by economic
+                # content, leaving exactly 40,087 cycle rows whose decision
+                # had been merged into a sibling's.  768 of them name event
+                # 2026-09-03, so the moment a late station passed its P1
+                # entry window and reached this guard, two orphans answered
+                # and the scope was refused
+                # target_prepared_cycle_retention_violation on every cycle
+                # after -- fifteen station-days at 14:08Z, and a cycle that
+                # committed nothing at all published a reason-less
+                # blocked_fail_closed.  The orphan rows stay: the ledger is
+                # append-only and the reader is what was wrong.
                 "SELECT c.cycle_id,c.plan_id,c.state FROM basket_target_execution_cycles c "
-                "LEFT JOIN auto_trade_decisions d ON d.cycle_id=c.cycle_id "
+                "JOIN auto_trade_decisions d ON d.cycle_id=c.cycle_id "
                 "WHERE c.station_id=? AND c.event_date=? AND c.state IN "
                 "('prepared','submitting','submitted','reconcile_required') "
-                "AND (d.decided_state IS NULL OR d.decided_state<>'blocked') "
+                "AND d.decided_state<>'blocked' "
                 "ORDER BY c.created_at DESC,c.rowid DESC LIMIT 2",
                 (station_id, event_date),
             ).fetchall()
@@ -16295,36 +16374,9 @@ class TargetProductionWorker:
             # produced nothing at all -- no results, or results and not one
             # of them committed -- which is also exactly the shape of the
             # worker-level failures the except arm below already reports.
-            committed_scope_states = {
-                "committed",
-                "already_committed",
-                "already_committed_decision",
-                "already_committed_decision_scope",
-                "retained_existing_authority_decision",
-            }
-            committed_scopes = sum(
-                1
-                for item in results
-                if isinstance(item.get("atomic_commit"), Mapping)
-                and str(item["atomic_commit"].get("state") or "")
-                in committed_scope_states
+            committed_scopes, blocked_scope_reasons = _scope_verdict_tally(
+                results
             )
-            blocked_scope_reasons: dict[str, int] = {}
-            for item in results:
-                if item.get("ok") is not False:
-                    continue
-                raw_reason = str(item.get("reason") or "unnamed")
-                # The family name, not the tail: reasons are colon chains
-                # whose first segments are exception classes and whose later
-                # segments may carry per-station detail (the named market
-                # mismatch puts station@date there), and tallying on the
-                # tail split one family into eight keys of one.
-                segments = [
-                    seg for seg in raw_reason.split(":")
-                    if seg and not seg.endswith("Error")
-                ]
-                key = (segments[0] if segments else raw_reason)[:60]
-                blocked_scope_reasons[key] = blocked_scope_reasons.get(key, 0) + 1
             blocked_scopes = sum(blocked_scope_reasons.values())
             return {
                 "schema": SCHEMA,

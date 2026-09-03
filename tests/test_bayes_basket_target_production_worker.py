@@ -17,8 +17,10 @@ from bayes_basket_target.production_worker import (
     CANONICAL_TARGET_STATIONS,
     DEFAULT_TARGET_MARKET_MANIFEST,
     MAX_RESIDENT_WS_SCOPES,
+    COMMITTED_SCOPE_STATES,
     MAX_PREPARED_CYCLES_PER_SCOPE,
     TargetProductionWorker,
+    _scope_verdict_tally,
     _upsert_native_p0_inbox,
     _manifest_station_allowlist,
     _resolve_target_remaining_budget,
@@ -3338,6 +3340,140 @@ def test_multiple_unsettled_candidates_are_a_retention_violation(tmp_path: Path)
     assert result["reason"] == "target_prepared_cycle_retention_violation"
 
 
+def _guard_db_with_decisions() -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE basket_target_execution_cycles("
+        "cycle_id TEXT,plan_id TEXT,state TEXT,station_id TEXT,"
+        "event_date TEXT,created_at TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE auto_trade_decisions("
+        "decision_id TEXT,cycle_id TEXT,decided_state TEXT)"
+    )
+    return conn
+
+
+def _guard_cycle(
+    conn: sqlite3.Connection,
+    cycle_id: str,
+    *,
+    created_at: str,
+    decided_state: str | None,
+) -> None:
+    conn.execute(
+        "INSERT INTO basket_target_execution_cycles VALUES(?,?,?,?,?,?)",
+        (cycle_id, f"plan-{cycle_id}", "prepared", "ZUUU", "2026-07-24", created_at),
+    )
+    if decided_state is not None:
+        conn.execute(
+            "INSERT INTO auto_trade_decisions VALUES(?,?,?)",
+            (f"decision-{cycle_id}", cycle_id, decided_state),
+        )
+    conn.commit()
+
+
+def test_a_cycle_with_no_decision_row_is_not_a_standing_candidate(
+    tmp_path: Path,
+) -> None:
+    """Authority lives in the decision, so a cycle without one is not standing.
+
+    The 2026-09-02 decision-identity migration collapsed 67,492 decisions
+    into 27,405 by economic content and left exactly 40,087 cycle rows whose
+    decision had been merged into a sibling's.  768 name event 2026-09-03,
+    and the guard's ``decided_state IS NULL`` arm counted them: fifteen
+    station-days were refused
+    ``target_prepared_cycle_retention_violation`` on every cycle from 14:08Z
+    once they passed their P1 entry window.
+    """
+
+    conn = _guard_db_with_decisions()
+    _guard_cycle(conn, "orphan-1", created_at="2026-07-23T22:00:00Z", decided_state=None)
+    _guard_cycle(conn, "orphan-2", created_at="2026-07-23T23:00:00Z", decided_state=None)
+    worker = _worker(tmp_path, conn)
+    try:
+        # Orphans only: nothing is standing, so the scope is free to decide.
+        assert worker._scope_cycle_guard(
+            station_id="ZUUU",
+            event_date="2026-07-24",
+            candidate={"plan": {"plan_id": "new-plan"}},
+        ) is None
+        # One real prepared decision beside them is a retain, not a
+        # violation.
+        _guard_cycle(
+            conn, "live-1", created_at="2026-07-24T00:00:00Z",
+            decided_state="prepared",
+        )
+        retained = worker._scope_cycle_guard(
+            station_id="ZUUU",
+            event_date="2026-07-24",
+            candidate={"plan": {"plan_id": "new-plan"}},
+        )
+        assert retained is not None
+        assert retained["state"] == "retained_existing_prepared_candidate"
+        # A blocked decision is not standing either.
+        _guard_cycle(
+            conn, "blocked-1", created_at="2026-07-24T00:05:00Z",
+            decided_state="blocked",
+        )
+        assert worker._scope_cycle_guard(
+            station_id="ZUUU",
+            event_date="2026-07-24",
+            candidate={"plan": {"plan_id": "new-plan"}},
+        )["state"] == "retained_existing_prepared_candidate"
+        # Two genuinely standing decisions still are a violation.
+        _guard_cycle(
+            conn, "live-2", created_at="2026-07-24T00:10:00Z",
+            decided_state="prepared",
+        )
+        violation = worker._scope_cycle_guard(
+            station_id="ZUUU",
+            event_date="2026-07-24",
+            candidate={"plan": {"plan_id": "new-plan"}},
+        )
+        assert violation["reason"] == "target_prepared_cycle_retention_violation"
+    finally:
+        worker.close()
+
+
+def test_scope_tally_counts_zero_write_retains_and_names_commit_refusals() -> None:
+    """The cycle verdict reads the ledger's answer for every scope.
+
+    A cycle of legitimate zero-write retains read as a total outage because
+    ``retained_existing_prepared_candidate`` was not in the accepted set,
+    and a refusal raised by the commit rather than the compile was tallied
+    nowhere -- so 2026-09-03T14:08Z published ``blocked_fail_closed`` with
+    no reason at all while fifteen scopes carried one.
+    """
+
+    assert "retained_existing_prepared_candidate" in COMMITTED_SCOPE_STATES
+    results = [
+        {"atomic_commit": {"state": "committed"}},
+        {"atomic_commit": {"state": "retained_existing_prepared_candidate"}},
+        {"atomic_commit": {"state": "retained_existing_authority_decision"}},
+        # Refused by the commit; the scope itself never says ``ok``.
+        {"atomic_commit": {
+            "state": "blocked_fail_closed",
+            "ok": False,
+            "reason": "target_prepared_cycle_retention_violation",
+        }},
+        # Refused by the compile, as before.
+        {
+            "ok": False,
+            "reason": "ContractError:delta_v2_support_empty",
+            "atomic_commit": {"state": "unchanged_blocker_not_rewritten"},
+        },
+    ]
+    committed, reasons = _scope_verdict_tally(results)
+    assert committed == 3
+    assert reasons == {
+        "target_prepared_cycle_retention_violation": 1,
+        "delta_v2_support_empty": 1,
+    }
+    # Nothing at all is still nothing at all.
+    assert _scope_verdict_tally([]) == (0, {})
+
+
 def test_decision_scopes_admit_pre_event_p0_and_p0m_but_not_future_p1(
     tmp_path: Path,
 ) -> None:
@@ -5792,9 +5928,18 @@ def _disarming_guard_conn() -> sqlite3.Connection:
             ),
         ],
     )
-    conn.execute(
+    conn.executemany(
         "INSERT INTO auto_trade_decisions VALUES(?,?)",
-        ("blocked-cycle", "blocked"),
+        [
+            # The prepared cycle carries its own decision, because the
+            # ledger writes the two in one transaction.  Leaving it out
+            # modelled a state production cannot reach and that only the
+            # 2026-09-02 identity migration ever created -- an inert cycle
+            # row whose decision had been merged into a sibling's -- which
+            # is exactly what the guard must now ignore.
+            ("live-cycle", "prepared"),
+            ("blocked-cycle", "blocked"),
+        ],
     )
     conn.executemany(
         "INSERT INTO basket_policy_training_fact VALUES(?,?,?,?,?,?,?)",
