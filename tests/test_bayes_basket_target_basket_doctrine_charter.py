@@ -2511,3 +2511,50 @@ def test_clause_72_production_sizes_by_the_whole_basket_kelly_and_the_curve_keep
     )
     assert "book_equity_usdc=(" in runtime_source
     assert delta_v2_runtime._whole_basket_kelly_candidate is not None
+
+
+def test_clause_73_the_execution_layer_authorizes_on_the_whole_basket_edge() -> None:
+    """Charter 73: the bundle is authorized on the increment's edge, not on
+    the penalized value; the value stays in the audit."""
+    from pathlib import Path
+
+    from bayes_basket_target.basket_kernel import delta_v2 as kernel
+
+    root = Path(__file__).resolve().parents[1]
+    assert kernel.PRODUCTION_EXECUTION_AUTHORIZATION == "whole_basket_edge_v1"
+    assert kernel.PRODUCTION_EXECUTION_AUTHORIZATION in kernel.EXECUTION_AUTHORIZATION_RULES
+    # The number: expected payout of the increment on the seat's belief,
+    # less the cash it spends.  Three legs, one share each, 0.6 of mass
+    # inside against 0.5 of cost: +0.1.
+    edge = kernel.whole_basket_edge_delta_v1(
+        edge_probabilities={"a": 0.2, "b": 0.3, "c": 0.1, "d": 0.4},
+        current_shares={"a": 0.0, "b": 0.0, "c": 0.0, "d": 0.0},
+        current_cost={"a": 0.0, "b": 0.0, "c": 0.0, "d": 0.0},
+        resulting_shares={"a": 1.0, "b": 1.0, "c": 1.0, "d": 0.0},
+        resulting_cost={"a": 0.15, "b": 0.25, "c": 0.10, "d": 0.0},
+    )
+    assert abs(edge - 0.1) < 1e-9
+    # Held inventory is sunk on both sides of the delta.
+    held = kernel.whole_basket_edge_delta_v1(
+        edge_probabilities={"a": 0.2, "b": 0.3},
+        current_shares={"a": 5.0, "b": 5.0},
+        current_cost={"a": 1.0, "b": 1.0},
+        resulting_shares={"a": 6.0, "b": 6.0},
+        resulting_cost={"a": 1.2, "b": 1.3},
+    )
+    assert abs(held - (0.5 - 0.5)) < 1e-9
+    # Both lanes of the execution layer carry the rule and the belief.
+    kernel_source = (
+        root / "bayes_basket_target" / "basket_kernel" / "delta_v2.py"
+    ).read_text(encoding="utf-8")
+    assert kernel_source.count("authorization_rule=authorization_rule,") == 2
+    solver_source = (
+        root / "bayes_basket_target" / "delta_v2_runtime.py"
+    ).read_text(encoding="utf-8")
+    assert "execution_authorization_rule = (" in solver_source
+    assert "\"window_probabilities\": dict(best[\"window_probabilities\"])" in solver_source
+    runtime_source = (root / "bayes_basket_target" / "runtime.py").read_text(
+        encoding="utf-8"
+    )
+    assert "PRODUCTION_EXECUTION_AUTHORIZATION" in runtime_source
+    assert "delta_plan.get(\"basket_support_selection\")" in runtime_source

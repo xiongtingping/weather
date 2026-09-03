@@ -39,8 +39,10 @@ from .basket_kernel.delta_v2 import (
     CURVE_OBJECTIVE_FORM,
     DEFAULT_KELLY_FRACTION,
     EXCHANGE_LOT_TOP_UP,
+    EXECUTION_AUTHORIZATION_JOINT_VALUE,
     KELLY_CANDIDATE_ORIGIN,
     KELLY_OBJECTIVE_FORM,
+    PRODUCTION_EXECUTION_AUTHORIZATION,
     VALUE_OBJECTIVE_FORM,
     chain_topup_growth_v1,
     clamp_declining_gaps_v2,
@@ -2106,6 +2108,12 @@ def _solve_over_support_windows(
             "window": row,
             "solution": solution,
             "score": float(score),
+            # The belief this window was judged on, for the execution
+            # layer's edge rule (charter 73).
+            "window_probabilities": {
+                str(bucket): float(value)
+                for bucket, value in window_probabilities.items()
+            },
         })
     if not scored:
         raise ContractError("delta_v2_no_solvable_support_window")
@@ -2158,6 +2166,7 @@ def _solve_over_support_windows(
             "edge": best["window"]["edge"],
             "curve_score": best["score"],
             "is_incumbent": best["window"]["is_incumbent"],
+            "window_probabilities": dict(best["window_probabilities"]),
         },
         "considered": [
             {
@@ -3618,10 +3627,24 @@ def compile_delta_v2_runtime_plan(
                 bucket,
                 "leg_candidate_rejected_by_reservation_or_size",
             )
+    # Charter 73: under the Kelly sizing law the bundle is authorized on
+    # the whole-basket edge of its increment, read on the seated window's
+    # partition; under the curve form the joint value rule stands.
+    execution_authorization_rule = (
+        PRODUCTION_EXECUTION_AUTHORIZATION
+        if objective_form == KELLY_OBJECTIVE_FORM
+        else EXECUTION_AUTHORIZATION_JOINT_VALUE
+    )
+    edge_probabilities = dict(
+        (support_selection.get("seated") or {}).get("window_probabilities")
+        or probabilities
+    )
     selection = select_complete_maker_bundle_v2(
         actions,
         required_buckets=execution_gap_support,
         probabilities=probabilities,
+        authorization_rule=execution_authorization_rule,
+        edge_probabilities=edge_probabilities,
         current_shares_by_bucket=current_shares,
         current_cost_by_bucket=current_cost,
         target_shares_by_bucket=target_shares,
@@ -3927,6 +3950,7 @@ def compile_delta_v2_runtime_plan(
         "profit_floor_usdc": realised["profit_floor"],
         "cvar_usdc": realised["cvar"],
         "basket_objective_form": objective_form,
+        "execution_authorization_rule": execution_authorization_rule,
         "basket_curve_variance": target_solution.get("target_variance"),
         "basket_curve_score": target_solution.get("target_curve_score"),
         # The curve dials the charter is steered by.  They exist in the solve

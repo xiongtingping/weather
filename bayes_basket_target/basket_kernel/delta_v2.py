@@ -474,6 +474,21 @@ CURVE_OBJECTIVE_FORM = "fractional_log_wealth_curve_v1"
 KELLY_OBJECTIVE_FORM = "whole_basket_kelly_v1"
 KELLY_CANDIDATE_ORIGIN = "WHOLE_BASKET_KELLY"
 PRODUCTION_SIZING_LAW = KELLY_OBJECTIVE_FORM
+# Charter 73 (user ruling, 2026-09-03): what authorizes a bundle at the
+# execution layer.  ``joint_value_v2`` is the penalized value_v2 delta over
+# the joint fill lattice (floor, CVaR, overfill, concentration) -- the
+# per-outcome judge that, applied to the ledger's seats, refuses 170 of
+# 394 with a positive expected pnl and +174.6 of its +358.9.
+# ``whole_basket_edge_v1`` reads what the ledger reads: the increment's
+# expected payout on the seated window's charter-68 partition, less what
+# it costs.  The value delta is still computed, for the audit.
+EXECUTION_AUTHORIZATION_JOINT_VALUE = "joint_value_v2"
+EXECUTION_AUTHORIZATION_WHOLE_BASKET_EDGE = "whole_basket_edge_v1"
+EXECUTION_AUTHORIZATION_RULES = frozenset({
+    EXECUTION_AUTHORIZATION_JOINT_VALUE,
+    EXECUTION_AUTHORIZATION_WHOLE_BASKET_EDGE,
+})
+PRODUCTION_EXECUTION_AUTHORIZATION = EXECUTION_AUTHORIZATION_WHOLE_BASKET_EDGE
 OBJECTIVE_FORMS = frozenset({
     VALUE_OBJECTIVE_FORM, CURVE_OBJECTIVE_FORM, KELLY_OBJECTIVE_FORM,
 })
@@ -846,6 +861,39 @@ def whole_basket_kelly_stake_v1(
         return 0.0, 0.0
     fraction = min(float(kelly_fraction) * full, float(scope_fraction))
     return fraction, max(0.0, fraction * float(book_equity_usdc))
+
+
+def whole_basket_edge_delta_v1(
+    *,
+    edge_probabilities: Mapping[str, Any],
+    current_shares: Mapping[str, Any],
+    current_cost: Mapping[str, Any],
+    resulting_shares: Mapping[str, Any],
+    resulting_cost: Mapping[str, Any],
+) -> float:
+    """Charter 73's number: what the increment pays, less what it costs.
+
+    Expected payout of the shares this action adds, each share paying 1
+    when its bucket settles, read on the belief the seat was judged on
+    (the charter-68 partition), minus the cash it spends.  No penalty
+    terms: those stay in value_v2 and in the audit.
+    """
+
+    buckets = set(resulting_shares) | set(current_shares)
+    payout = sum(
+        float(edge_probabilities.get(bucket, 0.0) or 0.0)
+        * (
+            float(resulting_shares.get(bucket, 0.0))
+            - float(current_shares.get(bucket, 0.0))
+        )
+        for bucket in buckets
+    )
+    spent = sum(
+        float(resulting_cost.get(bucket, 0.0))
+        - float(current_cost.get(bucket, 0.0))
+        for bucket in set(resulting_cost) | set(current_cost)
+    )
+    return payout - spent
 
 
 def probability_vector_identity_v1(probabilities: Mapping[str, float]) -> str:
@@ -2161,6 +2209,8 @@ def _evaluate_maker_bundle_combo(
     outcome_row_budget: int,
     shares_by_bucket: Mapping[str, float] | None = None,
     reserved_by_bucket: Mapping[str, float] | None = None,
+    authorization_rule: str = EXECUTION_AUTHORIZATION_JOINT_VALUE,
+    edge_probabilities: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any], int]:
     """Score one complete Maker bundle over its joint fill lattice.
 
@@ -2220,8 +2270,13 @@ def _evaluate_maker_bundle_combo(
     ]
     if any(not distribution for distribution in distributions):
         raise ContractError("delta_v2_fill_distribution_missing")
+    rule = str(authorization_rule or "").strip()
+    if rule not in EXECUTION_AUTHORIZATION_RULES:
+        raise ContractError("delta_v2_execution_authorization_rule_invalid")
+    edge_belief = edge_probabilities if edge_probabilities else probabilities
     joint_rows: list[dict[str, Any]] = []
     expected_delta = 0.0
+    expected_edge = 0.0
     outcome_rows = 0
     for outcomes in product(*distributions):
         outcome_rows += 1
@@ -2266,10 +2321,19 @@ def _evaluate_maker_bundle_combo(
         )
         delta = float(value["value"]) - float(baseline["value"])
         expected_delta += probability * delta
+        edge_delta = whole_basket_edge_delta_v1(
+            edge_probabilities=edge_belief,
+            current_shares=current_shares,
+            current_cost=current_cost,
+            resulting_shares=resulting_shares,
+            resulting_cost=resulting_cost,
+        )
+        expected_edge += probability * edge_delta
         joint_rows.append({
             "probability": probability,
             "fills": fills,
             "delta_value": delta,
+            "delta_edge": edge_delta,
             "resulting_value_sha256": value["content_sha256"],
             "resulting_profit_floor": value["profit_floor"],
         })
@@ -2285,7 +2349,14 @@ def _evaluate_maker_bundle_combo(
         float(row.get("normalized_execution_cost") or 0.0)
         for row in combo
     )
-    score = expected_delta - execution_cost
+    # Charter 73: under the whole-basket edge rule the score the
+    # authorization reads is the increment's edge; the penalized value
+    # delta is carried beside it for the audit.
+    score = (
+        expected_edge - execution_cost
+        if rule == EXECUTION_AUTHORIZATION_WHOLE_BASKET_EDGE
+        else expected_delta - execution_cost
+    )
     expected_shares = dict(current_shares)
     for evaluation in combo:
         action = dict(evaluation["action"])
@@ -2321,6 +2392,8 @@ def _evaluate_maker_bundle_combo(
         "baseline_value_sha256": baseline["content_sha256"],
         "joint_fill_outcomes": joint_rows,
         "expected_delta_value": expected_delta,
+        "expected_delta_edge": expected_edge,
+        "authorization_rule": rule,
         "normalized_execution_cost": execution_cost,
         "delta_basket_score_v2": score,
         "inventory_fit_distance": fit,
@@ -2370,6 +2443,8 @@ def rescore_maker_bundle_v2(
     sized_shares_by_bucket: Mapping[str, Any],
     sized_notional_by_bucket: Mapping[str, Any],
     fee_rate: Any = 0.0,
+    authorization_rule: str = EXECUTION_AUTHORIZATION_JOINT_VALUE,
+    edge_probabilities: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Re-authorize the bundle at the sizes that will actually be sent.
 
@@ -2485,6 +2560,8 @@ def rescore_maker_bundle_v2(
         ),
         shares_by_bucket=shares,
         reserved_by_bucket=notional,
+        authorization_rule=authorization_rule,
+        edge_probabilities=edge_probabilities,
     )
     identity = {
         "schema": BUNDLE_RESCORE_SCHEMA,
@@ -2550,6 +2627,8 @@ def select_complete_maker_bundle_v2(
     capital_available_usdc: Any,
     minimum_profit_floor: Any,
     fee_rate: Any = 0.0,
+    authorization_rule: str = EXECUTION_AUTHORIZATION_JOINT_VALUE,
+    edge_probabilities: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Select one Maker leg per required bucket as one joint basket action.
 
@@ -2688,6 +2767,8 @@ def select_complete_maker_bundle_v2(
                 outcome_row_budget=(
                     resource_bound["outcome_row_limit"] - outcome_count
                 ),
+                authorization_rule=authorization_rule,
+                edge_probabilities=edge_probabilities,
             )
             outcome_count += consumed
             evaluated.append(evaluation)

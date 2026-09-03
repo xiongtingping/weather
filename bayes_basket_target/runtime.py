@@ -26,7 +26,10 @@ from .basket_kernel.contracts import (
 from .basket_kernel.delta_v2 import (
     BUNDLE_RESCORE_SCHEMA,
     DEFAULT_P1_ENTRY_LOCAL_HOUR,
+    EXECUTION_AUTHORIZATION_JOINT_VALUE,
+    KELLY_OBJECTIVE_FORM,
     MAX_STAKE_FRACTION_PER_SCOPE,
+    PRODUCTION_EXECUTION_AUTHORIZATION,
     rescore_maker_bundle_v2,
     scope_stake_cap_usdc,
 )
@@ -756,6 +759,20 @@ def _rescore_clamped_bundle(
             capital_available_usdc=capital_available_usdc,
             minimum_profit_floor=float(
                 policy.minimum_expected_pnl_after_usdc
+            ),
+            # Charter 73: the re-score authorizes on the rule and the
+            # belief the plan was authorized on.
+            authorization_rule=(
+                PRODUCTION_EXECUTION_AUTHORIZATION
+                if str(delta_plan.get("basket_objective_form") or "")
+                == KELLY_OBJECTIVE_FORM
+                else EXECUTION_AUTHORIZATION_JOINT_VALUE
+            ),
+            edge_probabilities=(
+                (
+                    (delta_plan.get("basket_support_selection") or {})
+                    .get("seated") or {}
+                ).get("window_probabilities") or None
             ),
             sized_shares_by_bucket={
                 bucket: item.q_order for bucket, item in sized.items()
