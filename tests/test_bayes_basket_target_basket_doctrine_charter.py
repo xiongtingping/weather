@@ -2558,3 +2558,69 @@ def test_clause_73_the_execution_layer_authorizes_on_the_whole_basket_edge() -> 
     )
     assert "PRODUCTION_EXECUTION_AUTHORIZATION" in runtime_source
     assert "delta_plan.get(\"basket_support_selection\")" in runtime_source
+
+
+def test_clause_74_only_p0_opens_and_a_no_edge_p0_opens_with_a_ticket() -> None:
+    """Charter 74: the ticket opens the chain; later stages never open one."""
+    import sys
+    from pathlib import Path
+
+    from bayes_basket_target import delta_v2_runtime
+    from bayes_basket_target.basket_kernel import delta_v2 as kernel
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    import paper_trading_ledger as ledger  # noqa: PLC0415
+
+    assert kernel.CHAIN_OPENING_STAGE == "P0"
+    # The ticket: one clip per leg, never under twice the dust floor.
+    assert kernel.chain_ticket_cash_v1(minimum_clip_usdc=0.25, legs=3) == 0.75
+    assert kernel.chain_ticket_cash_v1(minimum_clip_usdc=0.001, legs=3) == (
+        kernel.CHAIN_TICKET_DUST_FLOOR_USDC * 2.0
+    )
+    assert ledger.DUST_COST_FLOOR == kernel.CHAIN_TICKET_DUST_FLOOR_USDC
+    assert ledger.chain_ticket_cash_v1 is kernel.chain_ticket_cash_v1
+    # Winner order under the Kelly form: Kelly, then the ticket, then hold.
+    probabilities = {"a": 0.2, "b": 0.5, "c": 0.3}
+    weights = kernel.ValueWeightsV2.from_mapping({
+        "lambda_profit_floor": 0.0, "lambda_cvar": 0.0, "lambda_shortfall": 0.0,
+        "lambda_breakthrough": 0.0, "lambda_overfill": 0.0, "lambda_excess_hhi": 0.0,
+        "cvar_alpha": 0.25, "hhi_max": 0.75, "expected_pnl_scale": 1.0,
+        "profit_floor_scale": 1.0, "cvar_scale": 1.0, "coverage_scale": 1.0,
+        "overfill_scale": 1.0, "excess_hhi_scale": 1.0,
+    })
+    baseline = {
+        "candidate_id": "base", "shares_by_bucket": {"a": 0.0, "b": 0.0, "c": 0.0},
+        "cost_by_bucket": {"a": 0.0, "b": 0.0, "c": 0.0},
+        "candidate_kind": kernel.CANDIDATE_KIND_BASELINE,
+        "candidate_origin": "CLIP_GRID_PRODUCT",
+    }
+    ticket = {
+        "candidate_id": "ticket", "shares_by_bucket": {"a": 1.0, "b": 1.0, "c": 1.0},
+        "cost_by_bucket": {"a": 0.25, "b": 0.25, "c": 0.25},
+        "candidate_kind": kernel.CANDIDATE_KIND_COMPLETE,
+        "candidate_origin": kernel.CHAIN_TICKET_CANDIDATE_ORIGIN,
+    }
+    kwargs = dict(
+        probabilities=probabilities, protected_buckets=("a", "b", "c"),
+        shortfall_buckets=(), breakthrough_buckets=(), weights=weights,
+        objective_form=kernel.KELLY_OBJECTIVE_FORM, bankroll_usdc=15.0,
+    )
+    picked = kernel.solve_target_inventory_v2(
+        feasible_inventory_candidates=[baseline, ticket], **kwargs
+    )
+    assert picked["winner_candidate_origin"] == kernel.CHAIN_TICKET_CANDIDATE_ORIGIN
+    # The runtime offers the ticket only at P0 on an empty chain, and offers a
+    # later stage nothing there.
+    source = (
+        root / "bayes_basket_target" / "delta_v2_runtime.py"
+    ).read_text(encoding="utf-8")
+    assert "_chain_ticket_candidate(" in source
+    assert "later_stage_on_empty_chain" in source
+    assert "chain_not_opened_by_p0" in source
+    assert delta_v2_runtime._chain_ticket_candidate is not None
+    kernel_source = (
+        root / "bayes_basket_target" / "basket_kernel" / "delta_v2.py"
+    ).read_text(encoding="utf-8")
+    assert "rule == EXECUTION_AUTHORIZATION_CHAIN_TICKET" in kernel_source

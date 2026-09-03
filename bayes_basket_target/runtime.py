@@ -26,6 +26,8 @@ from .basket_kernel.contracts import (
 from .basket_kernel.delta_v2 import (
     BUNDLE_RESCORE_SCHEMA,
     DEFAULT_P1_ENTRY_LOCAL_HOUR,
+    CHAIN_TICKET_CANDIDATE_ORIGIN,
+    EXECUTION_AUTHORIZATION_CHAIN_TICKET,
     EXECUTION_AUTHORIZATION_JOINT_VALUE,
     KELLY_OBJECTIVE_FORM,
     MAX_STAKE_FRACTION_PER_SCOPE,
@@ -763,7 +765,10 @@ def _rescore_clamped_bundle(
             # Charter 73: the re-score authorizes on the rule and the
             # belief the plan was authorized on.
             authorization_rule=(
-                PRODUCTION_EXECUTION_AUTHORIZATION
+                EXECUTION_AUTHORIZATION_CHAIN_TICKET
+                if str(delta_plan.get("basket_winner_candidate_origin") or "")
+                == CHAIN_TICKET_CANDIDATE_ORIGIN
+                else PRODUCTION_EXECUTION_AUTHORIZATION
                 if str(delta_plan.get("basket_objective_form") or "")
                 == KELLY_OBJECTIVE_FORM
                 else EXECUTION_AUTHORIZATION_JOINT_VALUE

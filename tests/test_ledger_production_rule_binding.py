@@ -230,6 +230,9 @@ LEDGER_ONLY = {
     # Which bankroll the production judge's curve reads; production spells
     # the station cap and this arm measures the alternatives.
     "JUDGE_BANKROLL": "production judge replay arm: station (production's) / scope / book",
+    # Whether P0-M/P1 may open an empty chain; off is the book's rule and the
+    # user's (only P0 opens), on is the replay arm that measures the other.
+    "STAGE_SELF_OPEN": "replay arm: later stages opening an empty chain, off by default",
     # Charter 63 retired (2026-09-03): production no longer defines a
     # per-leg value clamp, so the maker_resting research arm's lambdas are
     # this lane's alone.  They move nothing under the taker family.

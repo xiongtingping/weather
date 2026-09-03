@@ -39,10 +39,14 @@ from .basket_kernel.delta_v2 import (
     CURVE_OBJECTIVE_FORM,
     DEFAULT_KELLY_FRACTION,
     EXCHANGE_LOT_TOP_UP,
+    CHAIN_OPENING_STAGE,
+    CHAIN_TICKET_CANDIDATE_ORIGIN,
+    EXECUTION_AUTHORIZATION_CHAIN_TICKET,
     EXECUTION_AUTHORIZATION_JOINT_VALUE,
     KELLY_CANDIDATE_ORIGIN,
     KELLY_OBJECTIVE_FORM,
     PRODUCTION_EXECUTION_AUTHORIZATION,
+    chain_ticket_cash_v1,
     VALUE_OBJECTIVE_FORM,
     chain_topup_growth_v1,
     clamp_declining_gaps_v2,
@@ -2332,7 +2336,21 @@ def _target_candidates(
             ),
             "candidate_origin": "CLIP_GRID_PRODUCT",
         })
-    if book_equity_usdc is not None and float(book_equity_usdc) > 0.0:
+    chain_empty = all(
+        float(current_shares[bucket]) + float(pending_shares[bucket]) <= EPS
+        for bucket in current_shares
+    )
+    stage_name = str(snapshot.evidence.probability_stage or "")
+    later_stage_on_empty_chain = (
+        chain_empty and stage_name != CHAIN_OPENING_STAGE
+    )
+    if (
+        book_equity_usdc is not None
+        and float(book_equity_usdc) > 0.0
+        # Charter 74: P0-M and P1 add to what P0 holds; on an empty chain
+        # they are offered nothing, so the solver holds.
+        and not later_stage_on_empty_chain
+    ):
         # Charter 72: the Kelly-sized seat, offered beside the grid.  Under
         # the whole-basket Kelly form it is the winner when legal.
         kelly_candidate = _whole_basket_kelly_candidate(
@@ -2351,6 +2369,27 @@ def _target_candidates(
         )
         if kelly_candidate is not None:
             candidates.append(kelly_candidate)
+        elif chain_empty and stage_name == CHAIN_OPENING_STAGE:
+            # Charter 74: the ticket.  No edge at P0 is not a reason to
+            # leave the day unopened -- P1 would have nothing to add to.
+            ticket_candidate = _chain_ticket_candidate(
+                ordered=ordered,
+                lane_levels=lane_levels,
+                lane_prices=lane_prices,
+                pricing_basis=pricing_basis,
+                current_shares=current_shares,
+                current_cost=current_cost,
+                pending_shares=pending_shares,
+                pending_cost=pending_cost,
+                capital_available_usdc=capital_available_usdc,
+                minimum_clip_usdc=(
+                    min(artifact.cash_clip_grid)
+                    if artifact.cash_clip_grid else minimum_clip_notional_usdc
+                ),
+                quote_version=str(snapshot.quote_version),
+            )
+            if ticket_candidate is not None:
+                candidates.append(ticket_candidate)
     if centre_bucket:
         candidates.extend(_centre_anchored_candidates(
             snapshot=snapshot,
@@ -2471,6 +2510,73 @@ def _whole_basket_kelly_candidate(
             "stake_usdc": stake,
             "book_equity_usdc": float(book_equity_usdc),
             "shares_per_leg": want,
+        },
+    }
+
+
+def _chain_ticket_candidate(
+    *,
+    ordered: Sequence[str],
+    lane_levels: Mapping[str, Sequence[Any]],
+    lane_prices: Mapping[str, float],
+    pricing_basis: str,
+    current_shares: Mapping[str, float],
+    current_cost: Mapping[str, float],
+    pending_shares: Mapping[str, float],
+    pending_cost: Mapping[str, float],
+    capital_available_usdc: float,
+    minimum_clip_usdc: float,
+    quote_version: str,
+) -> dict[str, Any] | None:
+    """Charter 74's ticket: the seat bought at one clip per leg, equal shares.
+
+    Offered only when the chain is empty at P0 and the Kelly law sized the
+    seat to nothing.  ``None`` when the seat costs a full payout or more,
+    the ticket does not fit the capital, or a leg has no depth.
+    """
+
+    cost_per_share = sum(float(lane_prices.get(bucket, 0.0)) for bucket in ordered)
+    if cost_per_share <= EPS or cost_per_share >= 1.0 - EPS:
+        return None
+    cash = chain_ticket_cash_v1(
+        minimum_clip_usdc=float(minimum_clip_usdc), legs=len(ordered),
+    )
+    if cash > float(capital_available_usdc) + EPS:
+        return None
+    want = cash / cost_per_share
+    shares = {
+        bucket: float(current_shares[bucket]) + float(pending_shares[bucket])
+        for bucket in current_shares
+    }
+    costs = {
+        bucket: float(current_cost[bucket]) + float(pending_cost[bucket])
+        for bucket in current_cost
+    }
+    for bucket in ordered:
+        got, spent = _ask_depth_purchase(
+            levels=lane_levels[bucket],
+            cash_limit=want * float(lane_prices[bucket]),
+        )
+        if got <= EPS:
+            return None
+        shares[bucket] += got
+        costs[bucket] += spent
+    return {
+        "candidate_id": "ticket-" + content_sha256({
+            "ordered_support": tuple(ordered),
+            "cash_usdc": round(cash, 6),
+            "quote_version": quote_version,
+        })[:24],
+        "shares_by_bucket": shares,
+        "cost_by_bucket": costs,
+        "pricing_basis": pricing_basis,
+        "candidate_kind": CANDIDATE_KIND_COMPLETE,
+        "candidate_origin": CHAIN_TICKET_CANDIDATE_ORIGIN,
+        "ticket": {
+            "cash_usdc": cash,
+            "cost_per_share": cost_per_share,
+            "shares_per_leg": want,
+            "minimum_clip_usdc": float(minimum_clip_usdc),
         },
     }
 
@@ -3087,6 +3193,10 @@ def compile_delta_v2_runtime_plan(
     # Charter 71(a): the identity of the belief this compile is served,
     # recorded at commit when it buys and compared here when it holds.
     probability_identity = probability_vector_identity_v1(probabilities)
+    chain_empty = all(
+        float(row.filled_shares) + float(row.pending_shares) <= EPS
+        for row in snapshot.buckets
+    )
     by_bucket = {row.bucket: row for row in snapshot.buckets}
     ordered_support = tuple(
         sorted(desired, key=lambda bucket: (by_bucket[bucket].ordinal, bucket))
@@ -3630,8 +3740,13 @@ def compile_delta_v2_runtime_plan(
     # Charter 73: under the Kelly sizing law the bundle is authorized on
     # the whole-basket edge of its increment, read on the seated window's
     # partition; under the curve form the joint value rule stands.
+    winner_candidate_origin = str(
+        target_solution.get("winner_candidate_origin") or ""
+    )
     execution_authorization_rule = (
-        PRODUCTION_EXECUTION_AUTHORIZATION
+        EXECUTION_AUTHORIZATION_CHAIN_TICKET
+        if winner_candidate_origin == CHAIN_TICKET_CANDIDATE_ORIGIN
+        else PRODUCTION_EXECUTION_AUTHORIZATION
         if objective_form == KELLY_OBJECTIVE_FORM
         else EXECUTION_AUTHORIZATION_JOINT_VALUE
     )
@@ -3800,6 +3915,14 @@ def compile_delta_v2_runtime_plan(
             )
         )
         reason_codes.append("delta_v2_complete_basket_hold_selected")
+    if (
+        objective_form == KELLY_OBJECTIVE_FORM
+        and chain_empty
+        and str(snapshot.evidence.probability_stage or "") != CHAIN_OPENING_STAGE
+    ):
+        # Charter 74: the day was never opened by P0; this stage adds
+        # to a position and there is none.
+        reason_codes.append("chain_not_opened_by_p0")
     if not center_stable:
         reason_codes.append("center_probability_lead_unstable")
     if not regime_direction_allowed:
@@ -3830,6 +3953,8 @@ def compile_delta_v2_runtime_plan(
         "served_probability_identity": probability_identity,
         # Charter 72: which law sized this plan, and the book it read.
         "sizing_law": objective_form,
+        "winner_candidate_origin": winner_candidate_origin,
+        "chain_empty": chain_empty,
         "book_equity_usdc": book_equity_usdc,
         "charter_71": {
             "last_acted_probability_identity": (
@@ -3951,6 +4076,7 @@ def compile_delta_v2_runtime_plan(
         "cvar_usdc": realised["cvar"],
         "basket_objective_form": objective_form,
         "execution_authorization_rule": execution_authorization_rule,
+        "basket_winner_candidate_origin": winner_candidate_origin,
         "basket_curve_variance": target_solution.get("target_variance"),
         "basket_curve_score": target_solution.get("target_curve_score"),
         # The curve dials the charter is steered by.  They exist in the solve

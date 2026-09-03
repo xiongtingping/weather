@@ -484,10 +484,30 @@ PRODUCTION_SIZING_LAW = KELLY_OBJECTIVE_FORM
 # it costs.  The value delta is still computed, for the audit.
 EXECUTION_AUTHORIZATION_JOINT_VALUE = "joint_value_v2"
 EXECUTION_AUTHORIZATION_WHOLE_BASKET_EDGE = "whole_basket_edge_v1"
+# Charter 74 (user ruling, 2026-09-03): only P0 opens a station-day.  A P0
+# the Kelly law sizes to nothing still opens the chain with a ticket --
+# one minimum clip per support leg, above the dust floor -- so P0-M and
+# P1 have a position to add to; a later stage never opens an empty chain.
+# Measured with production's own judge on the replay book: ticket and
+# add-only +48.7% on 938 staked, P1 opening alone +15.7% on 3029.
+CHAIN_TICKET_CANDIDATE_ORIGIN = "CHAIN_TICKET"
+CHAIN_TICKET_DUST_FLOOR_USDC = 0.01
+CHAIN_OPENING_STAGE = "P0"
+EXECUTION_AUTHORIZATION_CHAIN_TICKET = "chain_ticket_v1"
 EXECUTION_AUTHORIZATION_RULES = frozenset({
     EXECUTION_AUTHORIZATION_JOINT_VALUE,
     EXECUTION_AUTHORIZATION_WHOLE_BASKET_EDGE,
+    EXECUTION_AUTHORIZATION_CHAIN_TICKET,
 })
+
+
+def chain_ticket_cash_v1(*, minimum_clip_usdc: float, legs: int) -> float:
+    """Charter 74's ticket: one executable clip per leg, above dust."""
+
+    return max(
+        float(minimum_clip_usdc) * int(legs),
+        CHAIN_TICKET_DUST_FLOOR_USDC * 2.0,
+    )
 PRODUCTION_EXECUTION_AUTHORIZATION = EXECUTION_AUTHORIZATION_WHOLE_BASKET_EDGE
 OBJECTIVE_FORMS = frozenset({
     VALUE_OBJECTIVE_FORM, CURVE_OBJECTIVE_FORM, KELLY_OBJECTIVE_FORM,
@@ -1607,11 +1627,24 @@ def solve_target_inventory_v2(
             row for row in legal
             if row["candidate_origin"] == KELLY_CANDIDATE_ORIGIN
         ]
+        ticket_rows = [
+            row for row in legal
+            if row["candidate_origin"] == CHAIN_TICKET_CANDIDATE_ORIGIN
+        ]
         if kelly_rows:
             winner = max(
                 kelly_rows,
                 key=lambda row: (
                     -sum(row["audit"]["cost_by_bucket"].values()),
+                    row["candidate_id"],
+                ),
+            )
+        elif ticket_rows:
+            # Charter 74: no edge at P0 still opens the chain, minimally.
+            winner = min(
+                ticket_rows,
+                key=lambda row: (
+                    sum(row["audit"]["cost_by_bucket"].values()),
                     row["candidate_id"],
                 ),
             )
@@ -2371,9 +2404,14 @@ def _evaluate_maker_bundle_combo(
         max(0.0, target[bucket] - expected_shares[bucket]) ** 2
         for bucket in required
     )
+    # Charter 74: a ticket is authorized on structure alone -- it exists
+    # to open the chain, and its edge is known to be nothing.
     authorized = (
         not structural_blockers
-        and score > execution_weights.epsilon_score + EPS
+        and (
+            rule == EXECUTION_AUTHORIZATION_CHAIN_TICKET
+            or score > execution_weights.epsilon_score + EPS
+        )
     )
     identity = {
         "schema": BUNDLE_EVALUATION_SCHEMA,

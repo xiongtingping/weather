@@ -143,6 +143,8 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     KELLY_OBJECTIVE_FORM as _KELLY_OBJECTIVE_FORM,
     VALUE_OBJECTIVE_FORM as _VALUE_OBJECTIVE_FORM,
     whole_basket_kelly_stake_v1,
+    CHAIN_TICKET_DUST_FLOOR_USDC,
+    chain_ticket_cash_v1,
 )
 from bayes_basket_target.basket_kernel.support import (  # noqa: E402
     _derive_dual_risk_scope,
@@ -1254,6 +1256,17 @@ JUDGE_BANKROLL = (
 )
 if JUDGE_BANKROLL not in {"station", "scope", "book"}:
     raise SystemExit(f"unknown judge bankroll: {JUDGE_BANKROLL}")
+# Whether a later stage may open a station-day the P0 never opened (replay
+# arm, 2026-09-03).  ``off`` is this book's rule and the user's: only P0
+# opens, P0-M and P1 add to what P0 holds, and the chain ticket exists so a
+# P0 with no edge still leaves P1 something to add to.  ``on`` lets P0-M/P1
+# open on their own when the chain is empty -- the alternative production
+# was briefly described as running -- so the two can be measured.
+STAGE_SELF_OPEN = (
+    os.environ.get("PAPER_LEDGER_STAGE_SELF_OPEN", "").strip().lower() or "off"
+)
+if STAGE_SELF_OPEN not in {"off", "on"}:
+    raise SystemExit(f"unknown stage self-open arm: {STAGE_SELF_OPEN}")
 # The chain ticket, and it is deliberately ledger-only.  Under charter 68 the
 # shrink sizes most opening seats to nothing, and under THIS book's rule --
 # one book per station-day, only P0 opens -- a seat sized to nothing forfeits
@@ -1686,6 +1699,10 @@ SELECTION_RULE_SHA256 = content_sha256({
     **(
         {"judge_bankroll": JUDGE_BANKROLL}
         if JUDGE_BANKROLL != "station" else {}
+    ),
+    **(
+        {"stage_self_open": STAGE_SELF_OPEN}
+        if STAGE_SELF_OPEN != "off" else {}
     ),
     "window_strategy": WINDOW_STRATEGY,
     "execution_mode": EXECUTION_MODE,
@@ -6225,7 +6242,7 @@ def backfill(
                 # never opened is not a bet this strategy would have held --
                 # under three books it was, and that is where a third of the
                 # recorded P1 rows came from.
-                if stage != "P0" and not held:
+                if stage != "P0" and not held and STAGE_SELF_OPEN != "on":
                     counts["chain_never_opened"] += 1
                     pending_refusals.append((
                         station_id, event_date, stage, "chain_never_opened",
@@ -6706,9 +6723,9 @@ def backfill(
                             # Production itself needs no ticket -- its P1
                             # opens alone -- so this measures production's
                             # sizing on the same footing as the ledger's.
-                            _ticket_cash = max(
-                                _tilt_minimum_clip(conn) * len(_row["buckets"]),
-                                DUST_COST_FLOOR * 2.0,
+                            _ticket_cash = chain_ticket_cash_v1(
+                                minimum_clip_usdc=_tilt_minimum_clip(conn),
+                                legs=len(_row["buckets"]),
                             )
                             _ticket_shares = _ticket_cash / float(
                                 _row["all_in_price"]
@@ -6905,9 +6922,11 @@ def backfill(
                             # same thing under one-book chains.  Floor at one
                             # executable clip per leg, above the dust floor so
                             # the chain it opens still counts as credible.
-                            stake = max(
-                                _tilt_minimum_clip(conn) * len(seat["buckets"]),
-                                DUST_COST_FLOOR * 2.0,
+                            # Charter 74: the kernel's ticket, which
+                            # production opens P0 with too.
+                            stake = chain_ticket_cash_v1(
+                                minimum_clip_usdc=_tilt_minimum_clip(conn),
+                                legs=len(seat["buckets"]),
                             )
                     if stake <= 0.0:
                         # Whichever price the stage's basis judged on, the
