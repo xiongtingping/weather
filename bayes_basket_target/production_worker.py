@@ -3620,7 +3620,10 @@ class TargetProductionWorker:
             families_held: dict[str, str] = {}
             try:
                 completed = None
-                for rung_lead, rung_cycle, rung_run_init in run_ladder:
+                last_success = None
+                for rung_index, (rung_lead, rung_cycle, rung_run_init) in enumerate(
+                    run_ladder
+                ):
                     attempt = base_command + [
                         "--lead-days", str(rung_lead),
                         "--gefs-output", str(
@@ -3691,18 +3694,30 @@ class TargetProductionWorker:
                             or candidate > captured_run_init
                         ):
                             captured_run_init = candidate
-                        # A rung every family had to hold on an earlier run
-                        # advanced nothing.  Walk down to one the publishers
-                        # do serve, and stop at the run this date already
-                        # holds -- re-reading that is the fallback the stale
-                        # branch above asks for, not a rung to skip past.
+                        last_success = completed
+                        # A required family that had to hold left this rung
+                        # short of what was asked.  Walk down while a rung
+                        # newer than what was actually served remains -- the
+                        # publishers may serve that one -- and stop once the
+                        # next rung would only re-read what is already in
+                        # hand.  Judged from the receipt alone: process
+                        # memory of the held run is empty after a restart,
+                        # and the first pass after one is exactly when the
+                        # question matters most.
+                        next_rung = (
+                            run_ladder[rung_index + 1]
+                            if rung_index + 1 < len(run_ladder) else None
+                        )
                         if (
-                            held_run_init
-                            and candidate <= held_run_init
-                            and rung_run_init_utc > held_run_init
+                            candidate < rung_run_init_utc
+                            and next_rung is not None
+                            and next_rung[2].isoformat().replace("+00:00", "Z")
+                            > candidate
                         ):
                             continue
                         break
+                if last_success is not None:
+                    completed = last_success
                 if completed is None or completed.returncode != 0:
                     # The tail, not the head.  A child that dies on an
                     # exception prints a traceback whose last line is the only

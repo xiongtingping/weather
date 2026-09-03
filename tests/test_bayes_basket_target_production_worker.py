@@ -3401,11 +3401,15 @@ def test_capture_walks_past_a_rung_that_advanced_nothing() -> None:
         / "production_worker.py"
     ).read_text(encoding="utf-8")
     assert "candidate = served or rung_run_init_utc" in source
+    # Judged from the receipt alone -- process memory of the held run is
+    # empty after a restart, and the first pass after one is exactly when
+    # the question matters most (2026-09-03T16:09Z: 12Z asked, GEFS 12Z,
+    # ECMWF held 00Z, and the pass stopped there with 06Z unasked).
     assert (
-        "            held_run_init\n"
-        "                            and candidate <= held_run_init\n"
-        "                            and rung_run_init_utc > held_run_init"
+        "                            candidate < rung_run_init_utc\n"
+        "                            and next_rung is not None\n"
     ) in source
+    assert "last_success = completed" in source
 
 
 def _guard_db_with_decisions() -> sqlite3.Connection:
