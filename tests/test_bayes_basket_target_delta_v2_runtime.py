@@ -463,22 +463,17 @@ def test_min_tick_ask_reports_structural_maker_unavailability(monkeypatch) -> No
         resource_probe_ok=True,
     )
 
-    assert result["basket_target_activated"] is True
+    # Charter 78: an incumbent de-priced to a min-tick leg has nothing to
+    # prove positive EV on, so it is not a target any more -- the plan holds
+    # on the baseline and the audit names the unpriced refusal.
+    assert result["basket_target_activated"] is False
     assert result["state"] == "HOLD"
     assert result["basket_state"] == "HOLD"
-    assert result["basket_state_reason"] == (
-        "complete_gap_bundle_not_authorized"
-    )
-    assert result["maker_candidate_diagnostics"]["35"] == (
-        "maker_post_only_price_unavailable_at_min_tick"
-    )
-    assert (
-        "maker_post_only_price_unavailable_at_min_tick:35"
-        in result["reason_codes"]
-    )
-    assert "missing_leg_candidate:35" in (
-        result["delta_v2_action_selection"]["blockers"]
-    )
+    assert result["basket_state_reason"] == "target_inventory_satisfied"
+    seated = result["basket_support_selection"]["seated"]
+    assert seated["is_incumbent"] is True
+    assert seated["admissible"] is False
+    assert seated["all_in_price"] is None
 
 
 def test_bid_only_selected_bucket_is_retained_without_buy_candidate() -> None:

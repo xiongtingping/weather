@@ -42,6 +42,9 @@ from .basket_kernel.delta_v2 import (
     CHAIN_OPENING_STAGE,
     CHAIN_TICKET_CANDIDATE_ORIGIN,
     EXECUTION_AUTHORIZATION_CHAIN_TICKET,
+    DECISION_MOMENT_RULE_VERSION,
+    edge_state_v1,
+    is_decision_moment_v1,
     EXECUTION_AUTHORIZATION_JOINT_VALUE,
     KELLY_CANDIDATE_ORIGIN,
     KELLY_OBJECTIVE_FORM,
@@ -1554,7 +1557,14 @@ def _support_windows(
                 float(by_bucket[bucket].price_tick_size)
                 for bucket in window
             ) + SUPPORT_EDGE_MARGIN
-            admissible = is_incumbent or (
+            # Charter 78 (user ruling, 2026-09-04): the incumbent has no
+            # exemption from the whole-basket positive-EV gate either.
+            # It used to be waived past it on the reasoning that the
+            # seed admits it on evidence; measured 2026-09-04 that
+            # waiver was the door for 435 of 459 negative-edge P0
+            # openers (95%).  "Keep what we hold" is the baseline
+            # candidate (charter 37), not a seat the price refuses.
+            admissible = (
                 priced and edge is not None and edge > friction + EPS
             )
             if not admissible:
@@ -1587,8 +1597,14 @@ def _support_windows(
                             "all_in_cost": float(price),
                             "friction": float(friction),
                         }
-                continue
-            shortlisted += 1
+                if not is_incumbent:
+                    continue
+                # Charter 78: the refused incumbent is not seated, but it
+                # stays on the list flagged inadmissible so the solver has
+                # a window to hold on (the baseline is the only candidate
+                # it is offered) instead of failing the compile outright.
+            else:
+                shortlisted += 1
             kl = None
             if priced:
                 # Clipping implements the 0*log(0)=0 limits: a full-partition
@@ -1612,6 +1628,7 @@ def _support_windows(
                 "edge": edge,
                 "log_growth_rank": kl,
                 "is_incumbent": is_incumbent,
+                "admissible": bool(admissible),
             })
     if incumbent not in seen:
         # Enumeration can miss the incumbent outright: it is bounded to
@@ -1635,6 +1652,20 @@ def _support_windows(
             priced = False
         price = sum(quote for quote in quotes if quote is not None)
         win = sum(float(probabilities[bucket]) for bucket in incumbent)
+        # Charter 78: the appended incumbent passes the same gate the
+        # loop applies; an incumbent the price refuses is counted as a
+        # refusal, not carried through.
+        incumbent_friction = SUPPORT_EDGE_FRICTION_TICKS_PER_LEG * sum(
+            float(by_bucket[bucket].price_tick_size) for bucket in incumbent
+        ) + SUPPORT_EDGE_MARGIN
+        incumbent_admissible = (
+            priced and (win - price) > incumbent_friction + EPS
+        )
+        if not incumbent_admissible:
+            if not priced:
+                unpriced_refused += 1
+            else:
+                edge_refused += 1
         incumbent_kl = None
         if priced:
             clipped_win = min(max(win, EPS), 1.0 - EPS)
@@ -1652,6 +1683,7 @@ def _support_windows(
             "edge": (win - price) if priced else None,
             "log_growth_rank": incumbent_kl,
             "is_incumbent": True,
+            "admissible": bool(incumbent_admissible),
         })
     # Rank by belief alone.  KL replaced raw edge here because raw edge
     # over-ranks penny lotteries, and it does price the whole win/lose
@@ -1671,6 +1703,7 @@ def _support_windows(
     # (charter 64); the curve score sizes it.
     windows.sort(
         key=lambda row: (
+            not row.get("admissible", True),
             row["all_in_price"] is None,
             -float(row["win_probability"]),
             len(row["buckets"]),
@@ -1822,6 +1855,7 @@ def _solve_over_support_windows(
     last_acted_probability_identity: str | None = None,
     chain_growth_frame_usdc: float | None = None,
     book_equity_usdc: float | None = None,
+    last_decision_signature: Mapping[str, Any] | None = None,
 ) -> tuple[tuple[str, ...], dict[str, Any], dict[str, Any]]:
     """Run the objective on each shortlisted window; the head one is seated.
 
@@ -1839,7 +1873,32 @@ def _solve_over_support_windows(
         shortlist.append(incumbent)
     if not shortlist:
         raise ContractError("delta_v2_support_empty")
-
+    # Charter 77: is this a decision moment at all?  The model changed
+    # (a new served identity) or the day's admissibility changed; a
+    # quote refresh that changed neither offers no buying candidate.
+    edge_state = edge_state_v1(windows)
+    last_signature = dict(last_decision_signature or {})
+    decision_moment = is_decision_moment_v1(
+        probability_identity=probability_identity,
+        edge_state=edge_state,
+        last_probability_identity=(
+            str(last_signature.get("probability_identity") or "")
+            or None
+        ),
+        last_edge_state=(
+            str(last_signature.get("edge_state") or "") or None
+        ),
+    )
+    decision_moment_audit = {
+        "rule": DECISION_MOMENT_RULE_VERSION,
+        "probability_identity": probability_identity,
+        "edge_state": edge_state,
+        "last_probability_identity": (
+            last_signature.get("probability_identity") or None
+        ),
+        "last_edge_state": last_signature.get("edge_state") or None,
+        "is_decision_moment": bool(decision_moment),
+    }
     scored: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
     stage = str(snapshot.evidence.probability_stage or "")
@@ -1912,6 +1971,9 @@ def _solve_over_support_windows(
                 probabilities=window_probabilities,
                 feasible_inventory_candidates=_target_candidates(
                     snapshot=snapshot,
+                    decision_moment=(
+                        decision_moment and bool(row.get("admissible", True))
+                    ),
                     desired=window,
                     artifact=delta_policy,
                     capital_available_usdc=capital_available_usdc,
@@ -2132,6 +2194,7 @@ def _solve_over_support_windows(
     # measured at +9.7% existed only in the replay.  This closes that gap.
     best = scored[0]
     selection = {
+        "decision_moment": decision_moment_audit,
         "rule": "PROBABILITY_MASS_SHORTLIST_HEAD_CURVE_SOLVED_QUANTITIES_V3",
         "seat_rule_superseded": (
             "MAX_CURVE_SCORE_OVER_CONTIGUOUS_SUPPORT_WINDOWS_V2"
@@ -2152,6 +2215,9 @@ def _solve_over_support_windows(
             "edge": best["window"]["edge"],
             "curve_score": best["score"],
             "is_incumbent": best["window"]["is_incumbent"],
+            # Charter 78: whether the seated window cleared the positive-EV
+            # gate; an inadmissible incumbent is held on, never bought.
+            "admissible": bool(best["window"].get("admissible", True)),
             "window_probabilities": dict(best["window_probabilities"]),
         },
         "considered": [
@@ -2181,6 +2247,7 @@ def _target_candidates(
     probabilities_by_bucket: Mapping[str, float],
     centre_bucket: str = "",
     book_equity_usdc: float | None = None,
+    decision_moment: bool = True,
 ) -> list[dict[str, Any]]:
     """Build a bounded q-grid priced from official WS ask depth.
 
@@ -2404,6 +2471,14 @@ def _target_candidates(
             bankroll_usdc=bankroll_usdc,
             probabilities_by_bucket=probabilities_by_bucket,
         ))
+    if not decision_moment:
+        # Charter 77: nothing changed that a decision reads, or the window
+        # itself is inadmissible (charter 78) -- the baseline (hold what we
+        # hold) is the only candidate offered.
+        candidates = [
+            row for row in candidates
+            if row.get("candidate_kind") == CANDIDATE_KIND_BASELINE
+        ]
     if not candidates:
         raise ContractError("delta_v2_target_candidate_set_empty")
     return _assert_candidate_support_contract(
@@ -3081,6 +3156,7 @@ def compile_delta_v2_runtime_plan(
     last_acted_probability_identity: str | None = None,
     chain_growth_frame_usdc: float | None = None,
     book_equity_usdc: float | None = None,
+    last_decision_signature: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compile the single-event q* and best no-live action under v2.
 
@@ -3318,6 +3394,7 @@ def compile_delta_v2_runtime_plan(
             last_acted_probability_identity=last_acted_probability_identity,
             chain_growth_frame_usdc=chain_growth_frame_usdc,
             book_equity_usdc=book_equity_usdc,
+            last_decision_signature=last_decision_signature,
         )
     )
     ordered_support = seated_support
@@ -3907,6 +3984,13 @@ def compile_delta_v2_runtime_plan(
         # Charter 74: the day was never opened by P0; this stage adds
         # to a position and there is none.
         reason_codes.append("chain_not_opened_by_p0")
+    decision_moment_audit = dict(
+        support_selection.get("decision_moment") or {}
+    )
+    if decision_moment_audit.get("is_decision_moment") is False:
+        # Charter 77: same model, same admissibility as the last
+        # recorded decision -- the quote moved, nothing to decide.
+        reason_codes.append("no_decision_moment")
     if not center_stable:
         reason_codes.append("center_probability_lead_unstable")
     if not regime_direction_allowed:
@@ -3940,6 +4024,12 @@ def compile_delta_v2_runtime_plan(
         "winner_candidate_origin": winner_candidate_origin,
         "chain_empty": chain_empty,
         "book_equity_usdc": book_equity_usdc,
+        # Charter 77: the signature this decision is recorded under and
+        # the one it was compared against.
+        "decision_moment": {
+            **decision_moment_audit,
+            "stage": str(snapshot.evidence.probability_stage or ""),
+        },
         "charter_71": {
             "last_acted_probability_identity": (
                 last_acted_probability_identity

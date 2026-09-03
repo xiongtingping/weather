@@ -221,11 +221,11 @@ def test_the_floor_is_per_leg_not_per_basket() -> None:
 
 
 def test_an_inherited_support_gets_no_exemption_from_the_leg_floor() -> None:
-    """The incumbent reaches the list without passing the loop's floors.
+    """Charter 78: the incumbent passes the same gates as every window.
 
-    It must not thereby keep a lottery leg the enumerated windows are
-    refused -- the floor is about what the quote means, not about which
-    window earned its place.
+    An incumbent resting on a penny leg is de-priced by the leg floor and,
+    with nothing to prove positive EV on, is refused like any other
+    window -- it is no longer carried onto the list unpriced.
     """
 
     rows = (
@@ -240,9 +240,12 @@ def test_an_inherited_support_gets_no_exemption_from_the_leg_floor() -> None:
         rows, desired={"33C", "34C"}, center="33C", minimum=2
     )
     incumbent = [w for w in windows if w["is_incumbent"]]
-    assert incumbent, "the incumbent must still be listed"
+    assert incumbent, "the incumbent stays listed so the solver can hold on it"
     assert incumbent[0]["all_in_price"] is None, (
         "an incumbent resting on a penny leg must not be offered a price"
+    )
+    assert incumbent[0]["admissible"] is False, (
+        "an unpriced incumbent is not admissible (charter 78)"
     )
 
 

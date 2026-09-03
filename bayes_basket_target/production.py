@@ -326,6 +326,7 @@ def compile_production_plan(
     live_submit_authorized: bool = False,
     chain_consolidation_tilt: float | None = None,
     last_acted_probability_identity: str | None = None,
+    last_decision_signature: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compile one v2-only production decision, and deliver it when authorised.
 
@@ -341,6 +342,7 @@ def compile_production_plan(
         station_policy_stage=station_policy_stage,
         chain_consolidation_tilt=chain_consolidation_tilt,
         last_acted_probability_identity=last_acted_probability_identity,
+        last_decision_signature=last_decision_signature,
         probability_envelopes=probability_envelopes,
         market_snapshot=market_snapshot,
         policy_activations=policy_activations,
@@ -985,6 +987,12 @@ def commit_production_candidate_atomic(
             "candidate_will_order": not blocked,
             "production_plan_sha256": compiled_plan.get("production_plan_sha256"),
             "delta_v2_authorized": delta_v2_authorized,
+            # Charter 77: what the next compile compares itself with.
+            "decision_signature": (
+                dict(delta_v2_audit.get("decision_moment") or {})
+                if isinstance(delta_v2_audit, Mapping)
+                else None
+            ),
             "delta_v2_content_sha256": (
                 delta_v2_audit.get("content_sha256")
                 if isinstance(delta_v2_audit, Mapping)

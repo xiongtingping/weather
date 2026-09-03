@@ -2178,6 +2178,45 @@ def resolve_delta_v2_runtime_authority(
     return artifact, (resolve_fill if artifact is not None else None), blocker
 
 
+def load_last_decision_signature(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    stage: str,
+) -> dict[str, Any] | None:
+    """Charter 77: the signature the scope's last recorded decision
+    of this stage carried -- served probability identity and the day's
+    admissibility -- or None when no decision of this stage was
+    recorded under the rule yet (then everything is a moment)."""
+
+    present = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' "
+        "AND name='auto_trade_decisions'"
+    ).fetchone() is not None
+    if not present:
+        return None
+    for (details_json,) in conn.execute(
+        "SELECT details_json FROM auto_trade_decisions "
+        "WHERE station_id=? AND event_date=? AND strategy_lane='basket' "
+        "ORDER BY created_at DESC,rowid DESC LIMIT 24",
+        (station_id, event_date),
+    ):
+        try:
+            details = json.loads(details_json or "{}")
+        except (TypeError, ValueError):
+            continue
+        signature = details.get("decision_signature")
+        if not isinstance(signature, Mapping):
+            continue
+        if str(signature.get("stage") or "") != str(stage):
+            continue
+        if not signature.get("probability_identity"):
+            continue
+        return dict(signature)
+    return None
+
+
 def compile_production_cycle_from_ssot(
     conn: sqlite3.Connection,
     *,
@@ -2333,6 +2372,13 @@ def compile_production_cycle_from_ssot(
             load_last_acted_probability_identity(
                 conn, station_id=station_id, event_date=event_date,
             )
+        ),
+        # Charter 77: the last recorded decision of this stage.
+        last_decision_signature=load_last_decision_signature(
+            conn,
+            station_id=station_id,
+            event_date=event_date,
+            stage=current_envelope.stage,
         ),
         probability_envelopes=envelopes,
         market_snapshot=market_snapshot,

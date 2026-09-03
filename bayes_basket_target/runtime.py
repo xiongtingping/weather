@@ -834,6 +834,7 @@ def _compile_target_plan(
     expected_source_lane: str | None = None,
     chain_consolidation_tilt: float | None = None,
     last_acted_probability_identity: str | None = None,
+    last_decision_signature: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compile one full stage → policy → v2 delta plan, no-live boundary."""
 
@@ -1150,6 +1151,7 @@ def _compile_target_plan(
             previous_probabilities=previous_probabilities,
             chain_consolidation_tilt=chain_consolidation_tilt,
             last_acted_probability_identity=last_acted_probability_identity,
+            last_decision_signature=last_decision_signature,
             # Charter 71: the identity this compile is served under, and the
             # frame the growth gate reads -- the scope's share of the whole
             # book, the same number the paper ledger frames it in.
@@ -1658,6 +1660,7 @@ class DeltaBasketScoreV2Optimizer:
         expected_source_lane: str | None = None,
     chain_consolidation_tilt: float | None = None,
     last_acted_probability_identity: str | None = None,
+    last_decision_signature: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         result = _compile_target_plan(
             station_policy_stage=station_policy_stage,
@@ -1686,6 +1689,7 @@ class DeltaBasketScoreV2Optimizer:
             expected_source_lane=expected_source_lane,
             chain_consolidation_tilt=chain_consolidation_tilt,
             last_acted_probability_identity=last_acted_probability_identity,
+            last_decision_signature=last_decision_signature,
         )
         boundary = dict(result.get("boundary") or {})
         boundary.update({
@@ -1737,6 +1741,7 @@ def compile_target_plan(
     expected_source_lane: str | None = None,
     chain_consolidation_tilt: float | None = None,
     last_acted_probability_identity: str | None = None,
+    last_decision_signature: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compatibility-free public facade for the one optimizer boundary."""
 
@@ -1744,6 +1749,7 @@ def compile_target_plan(
         station_policy_stage=station_policy_stage,
         chain_consolidation_tilt=chain_consolidation_tilt,
         last_acted_probability_identity=last_acted_probability_identity,
+            last_decision_signature=last_decision_signature,
         probability_envelopes=probability_envelopes,
         market_snapshot=market_snapshot,
         policy_activations=policy_activations,

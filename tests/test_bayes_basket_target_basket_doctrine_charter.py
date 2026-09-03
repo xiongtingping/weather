@@ -705,7 +705,9 @@ def test_clause_37_incumbent_survives_a_domain_it_cannot_be_enumerated_in() -> N
         "protected_floor_usdc": -5.0,
         "max_outside_loss_usdc": 5.0,
     })
-    snapshot = _wide_snapshot((0.10, 0.15, 0.20, 0.25, 0.20, 0.10), ask=0.90)
+    # Charter 78: the appended incumbent must clear the positive-EV gate
+    # like every window, so it is priced where the claim beats the ask.
+    snapshot = _wide_snapshot((0.10, 0.15, 0.20, 0.25, 0.20, 0.10), ask=0.10)
     by_bucket = {
         row.bucket: float(row.probability) for row in snapshot.buckets
     }
@@ -2727,3 +2729,105 @@ def test_clause_76_seed_layer_has_no_envelope_anchor_and_no_peripheral_gates() -
     source = (Path(__file__).resolve().parents[1] / "bayes_basket_target" / "basket_kernel" / "support.py").read_text(encoding="utf-8")
     for retired in ("def peripheral_eligible", "_disagreement_expansion_layers", "resolve_continuous_core", "peripheral_model_reliability_min", "edge_max_ask"):
         assert retired not in source, retired
+
+
+def test_clause_77_a_decision_moment_is_a_checkpoint_or_admissibility_change() -> None:
+    """Charter 77: same identity, same admissibility -> no buying candidate."""
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        DECISION_MOMENT_RULE_VERSION,
+        EDGE_STATE_ADMISSIBLE,
+        EDGE_STATE_NONE,
+        edge_state_v1,
+        is_decision_moment_v1,
+    )
+
+    assert DECISION_MOMENT_RULE_VERSION == "checkpoint_or_admissibility_v1"
+    priced = [{"all_in_price": 0.6, "edge": 0.1}]
+    assert edge_state_v1(priced) == EDGE_STATE_ADMISSIBLE
+    assert edge_state_v1([{"all_in_price": 0.9, "edge": -0.2}]) == EDGE_STATE_NONE
+    assert edge_state_v1([{"all_in_price": None, "edge": None}]) == EDGE_STATE_NONE
+    assert edge_state_v1([]) == EDGE_STATE_NONE
+    # No recorded decision: everything is a moment.
+    assert is_decision_moment_v1(
+        probability_identity="a", edge_state="none",
+        last_probability_identity=None, last_edge_state=None,
+    )
+    # Same model, same admissibility: the quote moved, nothing to decide.
+    assert not is_decision_moment_v1(
+        probability_identity="a", edge_state="admissible",
+        last_probability_identity="a", last_edge_state="admissible",
+    )
+    # A new checkpoint is a moment; so is the day becoming (in)admissible.
+    assert is_decision_moment_v1(
+        probability_identity="b", edge_state="admissible",
+        last_probability_identity="a", last_edge_state="admissible",
+    )
+    assert is_decision_moment_v1(
+        probability_identity="a", edge_state="admissible",
+        last_probability_identity="a", last_edge_state="none",
+    )
+    # Both sides read the same rule and the ledger hashes it.
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    import paper_trading_ledger as ledger  # noqa: PLC0415
+
+    assert ledger.DECISION_MOMENT_RULE_VERSION == DECISION_MOMENT_RULE_VERSION
+    runtime_source = (
+        root / "bayes_basket_target" / "delta_v2_runtime.py"
+    ).read_text(encoding="utf-8")
+    assert (
+        'decision_moment and bool(row.get("admissible", True))'
+        in runtime_source
+    )
+    assert 'reason_codes.append("no_decision_moment")' in runtime_source
+    ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    assert '"no_decision_moment",' in ledger_source
+    assert "chain_decision_signatures.get(stage)" in ledger_source
+    io_source = (root / "bayes_basket_target" / "production_io.py").read_text(
+        encoding="utf-8"
+    )
+    assert "def load_last_decision_signature(" in io_source
+
+
+def test_clause_78_the_incumbent_has_no_exemption_from_the_positive_ev_gate() -> None:
+    """Charter 78: an incumbent whose claim does not beat its price is refused."""
+    from bayes_basket_target.basket_kernel.contracts import TargetBasketPolicy
+    from bayes_basket_target.delta_v2_runtime import _support_windows
+
+    policy = TargetBasketPolicy.from_mapping({
+        "total_budget_usdc": 5.0,
+        "clip_min_notional_usdc": 0.01,
+        "clip_max_notional_usdc": 1.0,
+        "protected_floor_usdc": -5.0,
+        "max_outside_loss_usdc": 5.0,
+    })
+    # Every rung asks 0.90: no window, incumbent included, clears the gate.
+    dear = _wide_snapshot((0.10, 0.15, 0.20, 0.25, 0.20, 0.10), ask=0.90)
+    probabilities = {
+        row.bucket: float(row.probability) for row in dear.buckets
+    }
+    windows, audit = _support_windows(
+        snapshot=dear,
+        desired={"34", "35", "36"},
+        probabilities=probabilities,
+        fee_rate=0.0,
+        maximum_support_buckets=policy.maximum_support_buckets,
+        center_bucket="35",
+    )
+    listed = [w for w in windows if w["is_incumbent"]]
+    # The incumbent stays on the list so the solver can hold on it, but it
+    # is flagged inadmissible and sorted behind anything admissible.
+    assert listed and listed[0]["admissible"] is False
+    assert all(w["admissible"] is False for w in windows)
+    assert int(audit.get("edge_refused_window_count") or 0) >= 1
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target" / "delta_v2_runtime.py"
+    ).read_text(encoding="utf-8")
+    assert "admissible = is_incumbent or (" not in source

@@ -851,6 +851,51 @@ def effective_edge_bucket_lambda_for_stage(
 CHARTER_71_TOPUP_GATE_VERSION = (
     "charter_71_probability_change_and_effective_growth_v1"
 )
+# Charter 77 (user ruling, 2026-09-04): a decision moment is a change in
+# the model -- a new served probability identity -- or a change in
+# whether the day has any window clearing the whole-basket positive-EV
+# gate.  A quote refresh that changes neither is not a moment: the book
+# moving is not a reason to decide, the same way charter 71(a) made it
+# not a reason to top up.  The ledger walks the same moments.
+DECISION_MOMENT_RULE_VERSION = "checkpoint_or_admissibility_v1"
+EDGE_STATE_ADMISSIBLE = "admissible"
+EDGE_STATE_NONE = "none"
+
+
+def edge_state_v1(windows: Sequence[Mapping[str, Any]]) -> str:
+    """Whether any enumerated window clears the positive-EV gate.
+
+    Read off the enumeration the seat is chosen from: a priced window
+    whose claim exceeds its all-in price.  Which window it is, and by
+    how much, is the quote's business and not a moment of its own.
+    """
+
+    for row in windows:
+        if (
+            row.get("admissible", True)
+            and row.get("all_in_price") is not None
+            and row.get("edge") is not None
+            and float(row["edge"]) > 0.0
+        ):
+            return EDGE_STATE_ADMISSIBLE
+    return EDGE_STATE_NONE
+
+
+def is_decision_moment_v1(
+    *,
+    probability_identity: str | None,
+    edge_state: str,
+    last_probability_identity: str | None,
+    last_edge_state: str | None,
+) -> bool:
+    """True when the model or the day's admissibility changed since the
+    last recorded decision; always true with no recorded decision."""
+
+    if not last_probability_identity:
+        return True
+    if str(probability_identity or "") != str(last_probability_identity):
+        return True
+    return str(edge_state) != str(last_edge_state or "")
 
 
 def whole_basket_kelly_stake_v1(

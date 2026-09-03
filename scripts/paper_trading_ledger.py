@@ -145,6 +145,9 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     whole_basket_kelly_stake_v1,
     CHAIN_TICKET_DUST_FLOOR_USDC,
     chain_ticket_cash_v1,
+    DECISION_MOMENT_RULE_VERSION,
+    edge_state_v1,
+    is_decision_moment_v1,
 )
 from bayes_basket_target.basket_kernel.support import (  # noqa: E402
     _choose_support,
@@ -612,6 +615,7 @@ REFUSAL_DEPTH = {
     # Charter 71(a): the chain's own law too -- everything was known,
     # and the reason it stood pat is that nothing had changed.
     "topup_requires_probability_change": 8,
+    "no_decision_moment": 8,
     # Charter 71(b) tightening arm: the increment itself does not pay.
     "topup_increment_edge_negative": 8,
     # The declining-probability clamp, when it is armed.  Sits at the
@@ -1666,6 +1670,8 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     ),
     "整篮加仓" if TOPUP_ATOMIC == "on" else "只买缺腿",
     "均值中心",
+    "按checkpoint决策",
+    "在任窗不免检",
     "生产种子" if JUDGE != "ledger" else None,
     "一本账·只加不减",
 )))
@@ -1741,6 +1747,10 @@ SELECTION_RULE_SHA256 = content_sha256({
     "topup_atomic": TOPUP_ATOMIC,
     # Charter 75: the centre and, under the production judge, the seed.
     "centre": "mean_bucket_v1",
+    # Charter 77/78: decision moments and the incumbent's (absent)
+    # exemption from the positive-EV gate.
+    "decision_moments": DECISION_MOMENT_RULE_VERSION,
+    "incumbent_edge_exemption": "off",
     "seed": (
         "production_choose_support_v2"
         if JUDGE != "ledger" else "entry_support_core_v1"
@@ -2057,6 +2067,9 @@ REFUSAL_REASONS = (
     "chain_cost_at_par",
     "topup_requires_probability_change",
     "topup_increment_edge_negative",
+    # Charter 77: same model, same admissibility as the last recorded
+    # decision of this stage -- the quote moved, nothing to decide.
+    "no_decision_moment",
 )
 # Which refusal each gate of the enumeration funnel is.  Keyed by the gate
 # names ``_support_windows`` publishes, so adding a gate there without a
@@ -3323,6 +3336,7 @@ def _production_judge(
     equity: float,
     chain_stake: float,
     tilt: float,
+    last_decision_signature: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Production's whole-basket judge, run on this lane's book.
 
@@ -3513,6 +3527,33 @@ def _production_judge(
                 "生产裁判枚举失败：%s" % type(exc).__name__,
             ),
         }
+    # Charter 77: a decision moment is a new served identity or a change
+    # in whether any window clears the positive-EV gate; a quote-only
+    # refresh is judged once and then held until one of those moves.
+    decision_signature = {
+        "probability_identity": str(
+            payload.get("probability_identity") or ""
+        ),
+        "edge_state": edge_state_v1(windows),
+        "stage": str(stage),
+    }
+    last_signature = dict(last_decision_signature or {})
+    if not is_decision_moment_v1(
+        probability_identity=decision_signature["probability_identity"],
+        edge_state=decision_signature["edge_state"],
+        last_probability_identity=(
+            str(last_signature.get("probability_identity") or "") or None
+        ),
+        last_edge_state=str(last_signature.get("edge_state") or "") or None,
+    ):
+        return {
+            "refusal": (
+                "no_decision_moment",
+                "宪章 77：概率身份与可入座状态（%s）都没变，只是盘口动了"
+                % decision_signature["edge_state"],
+            ),
+            "decision_signature": decision_signature,
+        }
     # Capital the way production hands it to the solver: the scope's share
     # of the book less what the chain has spent, bounded by the station's
     # own cap, then the consolidation tilt on what is left -- floored at a
@@ -3586,6 +3627,7 @@ def _production_judge(
             continue
         delta_cost += delta * float(row.ask_price) * (1.0 + fee_rate)
     return {
+        "decision_signature": decision_signature,
         "buckets": tuple(str(bucket) for bucket in seated),
         "target_shares": target,
         "delta_cost_usdc": delta_cost,
@@ -6343,6 +6385,8 @@ def backfill(
             chain_consolidation: dict | None = None
             chain_probabilities: dict[str, float] = {}
             chain_probability_identity = ""
+            # Charter 77: the last recorded decision per stage.
+            chain_decision_signatures: dict[str, dict] = {}
             chain_ladder: list = []
             chain_center_c: float | None = None
             chain_win_probability = 0.0
@@ -6808,8 +6852,17 @@ def backfill(
                             equity=equity_at_open,
                             chain_stake=chain_stake,
                             tilt=tilt,
+                            last_decision_signature=(
+                                chain_decision_signatures.get(stage)
+                            ),
                         )
                         counts["production_judge_cycles"] += 1
+                        _signature = verdict.get("decision_signature")
+                        if isinstance(_signature, dict) and (
+                            (verdict.get("refusal") or ("", ""))[0]
+                            != "no_decision_moment"
+                        ):
+                            chain_decision_signatures[stage] = _signature
                         if verdict.get("refusal"):
                             _reason, _detail = verdict["refusal"]
                             counts["production_judge_cycles_" + _reason] += 1
