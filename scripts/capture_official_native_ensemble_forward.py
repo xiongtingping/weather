@@ -388,17 +388,13 @@ def _run_coverable_scopes(
     cannot seal are excluded here so the ones that can are not held hostage.
 
     The floor mirrors the archives' own seal: the same-day relief applies
-    when the run's UTC date is the event date, exactly as the collectors
-    choose their ``min_points``.
+    when the run is issued on the event date in UTC or after the station's
+    local day has begun, exactly as the collectors choose their
+    ``min_points``.
     """
 
     event_day = date.fromisoformat(str(event_date))
     run_start = run_init.astimezone(timezone.utc)
-    floor = (
-        MIN_SAME_DAY_CURVE_POINTS
-        if run_start.date() == event_day
-        else MIN_CURVE_POINTS
-    )
     covered: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     for scope in scopes:
@@ -409,7 +405,21 @@ def _run_coverable_scopes(
         day_end = datetime.combine(
             event_day + timedelta(days=1), dt_time(0), tzinfo=zone
         ).astimezone(timezone.utc)
-        step = run_start
+        # "Same day" is the station's day, not the UTC date.  A d1 18Z run
+        # is issued at 03:00 Tokyo time on the event day: it cannot describe
+        # the hours before it any more than a same-day 06Z run can, and the
+        # archives' seal accepts a shorter curve for exactly that reason.
+        # Judged by UTC date it counted as a run "preceding the day" and was
+        # held to the full-day bar, which every station east of UTC+5 fails
+        # -- so the d1 18Z rung failed whole, for the whole fleet, on every
+        # night: ``ecmwf_archive_local_day_grid_incomplete`` on 2026-09-02
+        # 18Z while the 12Z rung behind it captured 45 stations.  The UTC
+        # test is kept alongside, so nothing the old rule admitted is lost.
+        same_day = run_start.date() == event_day or run_start >= day_start
+        floor = MIN_SAME_DAY_CURVE_POINTS if same_day else MIN_CURVE_POINTS
+        # Count what the archives will actually seal: 3-hourly period ends
+        # from the first step after the run, never the run instant itself.
+        step = run_start + timedelta(hours=3)
         while step < day_start:
             step += timedelta(hours=3)
         points = 0
@@ -682,6 +692,12 @@ def capture_official_native_forward(
     # nothing on disk there is no ensemble to build, and failing here is what
     # keeps that distinct from a rung this publisher simply does not serve.
     if gefs is None or ecmwf is None:
+        # Name the cause, not just the family.  The worker's ladder walks
+        # rungs on this exit code and only ever sees the last 200 bytes of
+        # stderr, so a rung refused before any download -- a contract check,
+        # an unpublished cycle, a proxy fault -- read as the same
+        # "unavailable" as a network failure, and the 18Z rung of 2026-09-03
+        # failed silently for a day while the 12Z one behind it succeeded.
         raise ContractError(
             "official_native_forward_required_family_unavailable:"
             + ",".join(sorted(
@@ -692,6 +708,12 @@ def capture_official_native_forward(
                 )
                 if value is None
             ))
+            + ":"
+            + ";".join(
+                f"{name}={family_capture_errors.get(name, '')[:160]}"
+                for name in ("NOAA_GEFS_PDS_S3", "ECMWF_OPEN_DATA_S3")
+                if name in family_capture_errors
+            )
         )
     if eccc_output is not None and eccc is None:
         assert_process_memory_budget()

@@ -376,6 +376,34 @@ def _get_bytes(
     raise ContractError("ecmwf_archive_transport_failed:unknown")
 
 
+def _run_after_local_day_start(
+    *,
+    event_date: str,
+    settlement_timezone: str,
+    run_init_utc: datetime,
+) -> bool:
+    """Whether this run is a same-day run *for this station*.
+
+    A run issued on the event date in UTC is same-day everywhere; a run
+    issued after the station's local midnight is same-day for that station
+    even when its UTC date is the day before -- a d1 18Z run is 03:00 in
+    Tokyo on the event day.  Either way it cannot describe hours that have
+    already happened and its grid is legitimately shorter.  Judging by UTC
+    date alone held those eastern stations to the full-day bar and failed
+    the whole batch on ``*_local_day_grid_incomplete``.
+    """
+
+    target = date.fromisoformat(event_date)
+    run_start = run_init_utc.astimezone(timezone.utc)
+    if run_start.date() == target:
+        return True
+    day_start = datetime(
+        target.year, target.month, target.day,
+        tzinfo=ZoneInfo(settlement_timezone),
+    ).astimezone(timezone.utc)
+    return run_start >= day_start
+
+
 def _period_end_steps(
     *,
     event_date: str,
@@ -401,9 +429,12 @@ def _period_end_steps(
     # cover is the part of the day where the maximum can still occur.  Demanding
     # eight periods here rejected every d0 capture outright, which is why the
     # freshest same-day run was unusable.
-    run_day = run_init_utc.astimezone(timezone.utc).date()
-    lead_days = (target - run_day).days
-    minimum = 1 if lead_days == 0 else 7
+    same_day = _run_after_local_day_start(
+        event_date=event_date,
+        settlement_timezone=settlement_timezone,
+        run_init_utc=run_init_utc,
+    )
+    minimum = 1 if same_day else 7
     if not minimum <= len(result) <= 9:
         raise ContractError("ecmwf_archive_local_day_grid_incomplete")
     return result
@@ -732,10 +763,11 @@ def _build_station_capture(
         # its curve is legitimately shorter than a run that precedes the day.
         min_points=(
             MIN_SAME_DAY_CURVE_POINTS
-            if (
-                date.fromisoformat(event_date)
-                - run_init.astimezone(timezone.utc).date()
-            ).days == 0
+            if _run_after_local_day_start(
+                event_date=event_date,
+                settlement_timezone=str(scope["settlement_timezone"]),
+                run_init_utc=run_init,
+            )
             else MIN_CURVE_POINTS
         ),
         payload={

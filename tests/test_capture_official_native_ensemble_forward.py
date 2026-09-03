@@ -185,3 +185,41 @@ def test_a_family_is_banked_before_the_next_family_is_fetched(
         )
     assert seen == {"gefs_on_disk_when_ecmwf_ran": True}
     assert json.loads(gefs_output.read_text(encoding="utf-8")) == banked
+
+
+def test_d1_18z_run_covers_eastern_stations_under_station_local_same_day_relief() -> None:
+    """A run issued after the station's local midnight is same-day for it.
+
+    2026-09-02 18Z is 03:00 Tokyo on 2026-09-03: it can seal six 3-hourly
+    points, the same relief a same-day 06Z run gets.  Judged by UTC date it
+    was held to the full-day bar and the d1 18Z rung failed for the whole
+    fleet every night, while the 12Z rung behind it captured 45 stations.
+    """
+
+    from datetime import datetime, timezone
+
+    scopes = [
+        {"station_id": "RJTT", "settlement_timezone": "Asia/Tokyo"},
+        {"station_id": "NZWN", "settlement_timezone": "Pacific/Auckland"},
+        {"station_id": "EGLC", "settlement_timezone": "Europe/London"},
+        {"station_id": "KLAX", "settlement_timezone": "America/Los_Angeles"},
+    ]
+    covered, skipped = capture._run_coverable_scopes(
+        scopes,
+        event_date="2026-09-03",
+        run_init=datetime(2026, 9, 2, 18, tzinfo=timezone.utc),
+    )
+    assert [scope["station_id"] for scope in covered] == [
+        "RJTT", "NZWN", "EGLC", "KLAX",
+    ]
+    assert skipped == []
+
+    # The same-day floor is a floor: a run issued after the station's day
+    # has nearly ended still cannot seal, and is still excluded up front.
+    covered, skipped = capture._run_coverable_scopes(
+        scopes[:1],
+        event_date="2026-09-03",
+        run_init=datetime(2026, 9, 3, 12, tzinfo=timezone.utc),
+    )
+    assert covered == []
+    assert skipped[0]["reason"] == "run_cannot_cover_station_day"
