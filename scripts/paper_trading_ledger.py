@@ -1742,7 +1742,7 @@ SELECTION_RULE_SHA256 = content_sha256({
     # Charter 75: the centre and, under the production judge, the seed.
     "centre": "mean_bucket_v1",
     "seed": (
-        "production_choose_support_v1"
+        "production_choose_support_v2"
         if JUDGE != "ledger" else "entry_support_core_v1"
     ),
     "window_strategy": WINDOW_STRATEGY,

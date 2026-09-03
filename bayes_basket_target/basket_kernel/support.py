@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import json
 from typing import Iterable, Mapping
 
 from .contracts import (
@@ -13,14 +12,6 @@ from .contracts import (
     Direction,
     TargetBasketPolicy,
     TargetBasketSnapshot,
-)
-from ..continuous_core import (
-    ContinuousCoreError,
-    ContinuousCorePolicy,
-    CoreResolutionState,
-    ModelCenter,
-    PeripheralRiskCandidate,
-    resolve_continuous_core,
 )
 
 
@@ -412,47 +403,6 @@ def _direction(
     )
 
 
-def _disagreement_expansion_layers(
-    snapshot: TargetBasketSnapshot,
-    policy: TargetBasketPolicy,
-) -> int:
-    """How many rungs of candidate window the model disagreement pays for.
-
-    The evidence side is a physical Celsius span (max minus min of the
-    calibrated model centres), the answer is a count of market rungs, and the
-    exchange rate between them is a station property, not a constant: one rung
-    is 1.0C on a Celsius book and 2F = 10/9 C on a Fahrenheit one.  Dividing by
-    a fixed 1.0 until 2026-08-18 read the Fahrenheit ladder at the Celsius rate,
-    so the same physical disagreement bought a wider window on the eleven
-    Fahrenheit stations -- charter clause 53 boundary (a): a Celsius quantity
-    compared across stations must first be put in the station's own terms.
-    Boundary (b) still governs the cap: ``max_disagreement_expansion_layers``
-    counts rungs and is cross-unit synonymous by design.
-    """
-
-    dispersion_c = snapshot.evidence.forecast_dispersion_c
-    if dispersion_c <= 0.0:
-        return 0
-    rung_width_c = snapshot.evidence.bucket_rung_width_c
-    if rung_width_c is None:
-        # Reachable only from a snapshot that declares a dispersion without
-        # declaring the ladder it is measured against.  Falling back to 1.0
-        # would silently reinstate the defect on exactly the stations it hurt.
-        raise ContractError(
-            "bucket_rung_width_required_for_disagreement_expansion"
-        )
-    return min(
-        policy.max_disagreement_expansion_layers,
-        int(
-            math.ceil(
-                dispersion_c
-                / rung_width_c
-                / policy.dispersion_rungs_per_expansion_layer
-            )
-        ),
-    )
-
-
 def _derive_dual_risk_scope(
     snapshot: TargetBasketSnapshot,
     center: BucketObservation,
@@ -539,264 +489,18 @@ def _choose_support(
         policy.maximum_coverage,
         policy.base_coverage + policy.entropy_coverage_gain * entropy,
     )
-    formal_members_json = snapshot.evidence.formal_model_members_json
-    if formal_members_json is not None:
-        try:
-            formal_rows = json.loads(formal_members_json)
-            members = tuple(
-                ModelCenter(
-                    model_id=str(row["model_id"]),
-                    calibrated_center_bucket=str(
-                        row["calibrated_center_bucket"]
-                    ),
-                    weight=float(row["weight"]),
-                    formal_member=True,
-                )
-                for row in formal_rows
-            )
-        except (
-            TypeError,
-            ValueError,
-            KeyError,
-            json.JSONDecodeError,
-        ) as exc:
-            raise ContractError("formal_model_members_invalid") from exc
-        expansion_layers = _disagreement_expansion_layers(snapshot, policy)
-        _center_bucket, _runner, _lead, center_stable = (
-            probability_center_diagnostics(
-                {item.bucket: item.probability for item in buckets},
-                {item.bucket: item.ordinal for item in buckets},
-                policy,
-            )
-        )
-        max_distance = max(
-            1,
-            max(abs(item.ordinal - center.ordinal) for item in buckets),
-        )
-        risk_candidates = []
-        for item in buckets:
-            first_share_all_in = (
-                item.ask_price * (1.0 + policy.fee_rate)
-                + policy.taker_slippage_buffer_per_share
-            )
-            risk_candidates.append(
-                PeripheralRiskCandidate(
-                    bucket=item.bucket,
-                    probability_mass=item.probability,
-                    model_reliability=item.peripheral_model_reliability,
-                    price_coverage_value=max(
-                        0.0, item.probability - first_share_all_in
-                    ),
-                    target_inventory=1.0,
-                    evidence_eligible=(
-                        item.probability + EPS
-                        >= policy.edge_min_probability
-                        and item.ask_price <= policy.edge_max_ask + EPS
-                    ),
-                    maker_available=item.ask_available,
-                )
-            )
-        probability_core_selected: set[str] = set()
-        probability_core_mass = 0.0
-        for item in sorted(
-            buckets,
-            key=lambda row: (
-                -row.probability,
-                row.ordinal,
-                row.bucket,
-            ),
-        ):
-            probability_core_selected.add(item.bucket)
-            probability_core_mass += item.probability
-            if probability_core_mass + EPS >= coverage_target:
-                break
-        probability_core_lower = min(
-            item.ordinal
-            for item in buckets
-            if item.bucket in probability_core_selected
-        )
-        probability_core_upper = max(
-            item.ordinal
-            for item in buckets
-            if item.bucket in probability_core_selected
-        )
-        proposed_probability_core = tuple(
-            item.bucket
-            for item in buckets
-            if probability_core_lower <= item.ordinal <= probability_core_upper
-        )
-        try:
-            resolved = resolve_continuous_core(
-                bucket_ordinals={
-                    item.bucket: item.ordinal for item in buckets
-                },
-                probabilities={
-                    item.bucket: item.probability for item in buckets
-                },
-                members=members,
-                stable_center_bucket=center.bucket,
-                center_stable=center_stable,
-                direction=direction,
-                policy=ContinuousCorePolicy(
-                    max_peripheral_layers=expansion_layers,
-                    min_peripheral_probability_mass=(
-                        policy.edge_min_probability
-                    ),
-                    min_peripheral_model_reliability=(
-                        policy.peripheral_model_reliability_min
-                    ),
-                    min_peripheral_price_coverage_value=(
-                        policy.peripheral_min_coverage_value
-                    ),
-                ),
-                core_probability_mass_target=coverage_target,
-                proposed_core_buckets=proposed_probability_core,
-                risk_candidates=risk_candidates,
-                maker_available_by_bucket={
-                    item.bucket: item.ask_available for item in buckets
-                },
-                filled_inventory_by_bucket={
-                    item.bucket: item.filled_shares for item in buckets
-                },
-                pending_inventory_by_bucket={
-                    item.bucket: item.pending_shares for item in buckets
-                },
-                current_core_buckets=snapshot.current_core_buckets,
-                current_direction=snapshot.current_direction,
-                order_state_known=snapshot.order_state_known,
-                stop_adding=snapshot.terminal,
-            )
-        except ContinuousCoreError as exc:
-            raise ContractError(f"continuous_core_invalid:{exc}") from exc
-        if (
-            resolved.resolution_state
-            in {
-                CoreResolutionState.BLOCKED,
-                CoreResolutionState.HOLD,
-                CoreResolutionState.UNREPRESENTABLE,
-            }
-            or resolved.support_set is None
-            or resolved.core_interval is None
-            or resolved.candidate_boundary is None
-        ):
-            raise ContractError(
-                "continuous_core_hold:" + resolved.reason
-            )
-        base = set(resolved.support_set.core_buckets)
-        selected_risk = set(resolved.support_set.optional_risk_buckets)
-        bias = {
-            bucket
-            for bucket in selected_risk
-            if (
-                direction is Direction.UP
-                and next(
-                    item.ordinal
-                    for item in buckets
-                    if item.bucket == bucket
-                )
-                > center.ordinal
-            )
-            or (
-                direction is Direction.DOWN
-                and next(
-                    item.ordinal
-                    for item in buckets
-                    if item.bucket == bucket
-                )
-                < center.ordinal
-            )
-        }
-        edge = selected_risk - bias
-        desired = _converge_contiguous_support(
-            base | bias | edge,
-            center_bucket=center.bucket,
-            ordinal_by_bucket={
-                item.bucket: item.ordinal for item in buckets
-            },
-            probability_by_bucket={
-                item.bucket: item.probability for item in buckets
-            },
-            maximum_buckets=policy.maximum_support_buckets,
-            # This branch has no coverage-value scores, so the direction alone
-            # protects the breakthrough end from being trimmed first.
-            breakthrough_is_upper=_breakthrough_is_upper(direction),
-        )
-        # Risk families only ever classify what survived convergence.  A
-        # peripheral bucket that convergence dropped must not keep a bias/edge
-        # role, or the score vector would reference a bucket outside support.
-        base &= desired
-        bias &= desired
-        edge &= desired
-        selected_risk &= desired
-        scores: dict[str, tuple[float, float, float]] = {}
-        for item in buckets:
-            base_score = item.probability if item.bucket in base else 0.0
-            bias_score = (
-                item.probability
-                * abs(item.ordinal - center.ordinal)
-                / max_distance
-                if item.bucket in bias
-                else 0.0
-            )
-            edge_score = (
-                max(
-                    0.0,
-                    item.probability
-                    - (
-                        item.ask_price * (1.0 + policy.fee_rate)
-                        + policy.taker_slippage_buffer_per_share
-                    ),
-                )
-                * abs(item.ordinal - center.ordinal)
-                / max_distance
-                if item.bucket in edge
-                else 0.0
-            )
-            scores[item.bucket] = (
-                base_score,
-                bias_score,
-                edge_score,
-            )
-        ordinal_by_bucket = {
-            item.bucket: item.ordinal for item in buckets
-        }
-        return (
-            center,
-            resolved.effective_direction,
-            base,
-            bias,
-            edge,
-            desired,
-            scores,
-            ordinal_by_bucket[
-                resolved.candidate_boundary.lower_bucket
-            ],
-            ordinal_by_bucket[
-                resolved.candidate_boundary.upper_bucket
-            ],
-            expansion_layers,
-            {
-                "resolution_state": resolved.resolution_state.value,
-                "transition": resolved.transition.value,
-                "direction_transition": (
-                    resolved.direction_transition.value
-                ),
-                "current_direction": (
-                    snapshot.current_direction.value
-                    if snapshot.current_direction is not None
-                    else None
-                ),
-                "next_direction": resolved.effective_direction.value,
-                "reason": resolved.reason,
-                "current_core_buckets": list(
-                    snapshot.current_core_buckets
-                ),
-                "next_core_buckets": list(
-                    resolved.support_set.core_buckets
-                ),
-            },
-        )
-
+    # Charter 76 (user ruling, 2026-09-04): the seed is the probability core
+    # alone.  The envelope anchor (candidate boundary stretched toward the
+    # model envelope by the disagreement-derived layer budget) and the
+    # peripheral gates (probability floor, ask ceiling, per-bucket model
+    # reliability) that admitted bias/edge buckets around it are retired
+    # from this layer.  Measured over 130,764 judged cycles, 2026-08-15 to
+    # 09-03: the reliability gate read 0.0 against its 0.15 floor on every
+    # envelope until 09-02 (no producer published per-bucket reliability),
+    # bias/edge came back non-empty on 78 cycles after that, and not one
+    # seated leg ever came from them.  What the seed decides is therefore
+    # exactly what it decided in practice: the heaviest buckets to the
+    # coverage target, made contiguous and capped around the centre.
     base: set[str] = set()
     mass = 0.0
     for item in sorted(
@@ -807,173 +511,22 @@ def _choose_support(
         mass += item.probability
         if mass + EPS >= coverage_target:
             break
-    core_lower = min(
-        item.ordinal for item in buckets if item.bucket in base
-    )
-    core_upper = max(
-        item.ordinal for item in buckets if item.bucket in base
-    )
-    persisted_probability_core = [
-        item.bucket
-        for item in sorted(
-            buckets,
-            key=lambda row: (row.ordinal, row.bucket),
-        )
-        if core_lower <= item.ordinal <= core_upper
-    ]
-    # Diagnostic extrema bound the outer search range, but never define the
-    # probability core and never add a bucket to final support.  A remote
-    # outlier is still capped by the disagreement-derived layer budget.
-    envelope_lower = snapshot.evidence.model_envelope_lower_ordinal
-    envelope_upper = snapshot.evidence.model_envelope_upper_ordinal
-    if (envelope_lower is None) != (envelope_upper is None):
-        raise ContractError("model_envelope_boundary_incomplete")
-    if envelope_lower is not None and envelope_upper is not None:
-        ordinals = {item.ordinal for item in buckets}
-        if envelope_lower not in ordinals or envelope_upper not in ordinals:
-            raise ContractError(
-                "model_envelope_boundary_outside_probability_support"
-            )
-        if envelope_lower > envelope_upper:
-            raise ContractError("model_envelope_boundary_invalid")
     ordinal_by_bucket = {item.bucket: item.ordinal for item in buckets}
+    probability_by_bucket = {item.bucket: item.probability for item in buckets}
     core_lower = min(ordinal_by_bucket[bucket] for bucket in base)
     core_upper = max(ordinal_by_bucket[bucket] for bucket in base)
-    expansion_layers = _disagreement_expansion_layers(snapshot, policy)
-    support_lower = min(item.ordinal for item in buckets)
-    support_upper = max(item.ordinal for item in buckets)
-    anchor_lower = (
-        core_lower if envelope_lower is None else envelope_lower
-    )
-    anchor_upper = (
-        core_upper if envelope_upper is None else envelope_upper
-    )
-    candidate_lower = (
-        core_lower
-        if anchor_lower >= core_lower
-        else max(
-            support_lower,
-            anchor_lower,
-            core_lower - expansion_layers,
-        )
-    )
-    candidate_upper = (
-        core_upper
-        if anchor_upper <= core_upper
-        else min(
-            support_upper,
-            anchor_upper,
-            core_upper + expansion_layers,
-        )
-    )
-
-    max_distance = max(
-        1,
-        max(abs(item.ordinal - center.ordinal) for item in buckets),
-    )
-
-    def peripheral_eligible(item: BucketObservation) -> bool:
-        if not candidate_lower <= item.ordinal <= candidate_upper:
-            return False
-        if item.probability + EPS < policy.edge_min_probability:
-            return False
-        if not item.ask_available:
-            return False
-        if item.ask_price > policy.edge_max_ask + EPS:
-            return False
-        if (
-            item.peripheral_model_reliability + EPS
-            < policy.peripheral_model_reliability_min
-        ):
-            return False
-        # No per-bucket EV gate (charter 52d, 2026-08-16).  Requiring each
-        # peripheral bucket to clear a cent of its own coverage value asks
-        # the wrong question of a tail rung: its job is the odds and the
-        # shape of the wealth curve, not standing alone on expectation, and
-        # a rung whose own EV is slightly negative can still be right for the
-        # basket.  Whole-basket EV is what the objective solves for, and the
-        # curve score already prices every leg against its ask -- so this
-        # gate was a second, cruder opinion applied before the objective
-        # could form one.  The evidence, ask-ceiling, reliability and Maker
-        # gates above stay: they answer "is this bucket real and buyable",
-        # which is not an EV question.
-        return True
-
-    bias_scores: dict[str, float] = {}
-    if direction is not Direction.NEUTRAL:
-        for item in buckets:
-            if item.bucket in base:
-                continue
-            if not peripheral_eligible(item):
-                continue
-            signed_distance = item.ordinal - center.ordinal
-            aligned = (
-                signed_distance > 0
-                if direction is Direction.UP
-                else signed_distance < 0
-            )
-            if aligned:
-                bias_scores[item.bucket] = (
-                    item.probability * abs(signed_distance) / max_distance
-                )
-    bias = set(bias_scores)
-
-    edge_scores: dict[str, float] = {}
-    for item in buckets:
-        if item.bucket in base or item.bucket in bias:
-            continue
-        if not peripheral_eligible(item):
-            continue
-        distance = abs(item.ordinal - center.ordinal) / max_distance
-        # Price may qualify a peripheral bucket through positive probability
-        # coverage value, but a reciprocal-price multiplier would turn a
-        # cheap quote into synthetic probability and overweight long odds.
-        first_share_all_in = (
-            item.ask_price * (1.0 + policy.fee_rate)
-            + policy.taker_slippage_buffer_per_share
-        )
-        edge_scores[item.bucket] = (
-            max(0.0, item.probability - first_share_all_in)
-            * distance
-        )
-    edge = set(edge_scores)
-
-    # Final support is a contiguous temperature range, never a sparse set.
-    # Historical holdings remain inventory facts, but neither they nor two
-    # selected endpoints may leave an internal gap in the new target support:
-    # settlement inside a skipped bucket pays nothing while the basket was
-    # priced as if that outcome were covered.  Convergence only removes
-    # buckets, so every survivor keeps the admission evidence it already had.
-    admitted = set(base) | set(bias) | set(edge)
-    probability_by_bucket = {item.bucket: item.probability for item in buckets}
-    center_admitted = center.bucket in admitted
+    persisted_probability_core = [
+        item.bucket
+        for item in buckets
+        if core_lower <= item.ordinal <= core_upper
+    ]
+    # The anchor is the stage's centre when the core holds it; otherwise the
+    # incumbent is grown from the heaviest core bucket and the fact is
+    # carried on the transition record (2026-09-02 degrade ruling).
+    center_admitted = center.bucket in base
     if center_admitted:
         incumbent_anchor = center.bucket
     else:
-        # The anchor is the stage's own point estimate and, until 2026-09-02,
-        # its absence from the admitted set was raised as
-        # support_center_not_admitted -- a compile exception, which meant no
-        # plan, no anchor, no training fact, and no seat search at all.
-        #
-        # It is not a defect of the inputs; it is the ordinary P1 afternoon.
-        # Replayed on 2026-09-02 with production inputs (FACT, EDDM, LFPB,
-        # EPWA, LEMD): the served P1 puts 0.669 on the reported-high bucket,
-        # the coverage target is 0.65-0.67, so ``base`` is that single bucket;
-        # no production envelope publishes per-bucket model reliability, so
-        # every peripheral candidate reads 0.0 against a 0.15 floor and none
-        # is ever admitted; and the anchor -- running high plus the expected
-        # remaining warming -- is the next rung up.  EGLC alone compiled that
-        # cycle, because 0.669 fell below its 0.670 target and ``base`` took
-        # two buckets.  Ten to twenty-three station-days a day died this way
-        # from 2026-08-24 on.
-        #
-        # What this function owes the caller is a contiguous incumbent; the
-        # seat itself is chosen downstream over the whole reachable domain,
-        # where charter 49/54 already require the seated window to hold the
-        # ladder centre.  So when the anchor is not admitted the incumbent is
-        # grown from the heaviest admitted bucket instead, and the fact is
-        # carried on the transition record for the plan to read.  Nothing is
-        # admitted that the gates refused.
         incumbent_anchor = max(
             base,
             key=lambda bucket: (
@@ -983,38 +536,30 @@ def _choose_support(
             ),
         )
     desired = _converge_contiguous_support(
-        admitted,
+        set(base),
         center_bucket=incumbent_anchor,
         ordinal_by_bucket=ordinal_by_bucket,
         probability_by_bucket=probability_by_bucket,
         maximum_buckets=policy.maximum_support_buckets,
-        # Coverage value times distance is exactly what the far breakthrough
-        # bucket is bought for, so rank ends by it instead of raw probability.
-        hedge_value_by_bucket=edge_scores,
         breakthrough_is_upper=_breakthrough_is_upper(direction),
     )
     base = set(base) & desired
-    bias = set(bias) & desired
-    edge = set(edge) & desired
-    if any(
-        not candidate_lower <= ordinal_by_bucket[bucket] <= candidate_upper
-        for bucket in desired
-    ):
-        raise ContractError("final_support_outside_candidate_boundary")
-
+    bias: set[str] = set()
+    edge: set[str] = set()
+    # The candidate boundary is the seed's own span now that nothing
+    # stretches it; the plan still records it, and the market-centre
+    # diagnostic (charter 45) still reads it.
+    candidate_lower = min(ordinal_by_bucket[bucket] for bucket in desired)
+    candidate_upper = max(ordinal_by_bucket[bucket] for bucket in desired)
+    expansion_layers = 0
     scores: dict[str, tuple[float, float, float]] = {}
     for item in buckets:
-        if item.bucket not in desired:
-            scores[item.bucket] = (0.0, 0.0, 0.0)
-            continue
-        base_score = item.probability if item.bucket in base else 0.0
-        bias_score = (
-            bias_scores.get(item.bucket, 0.0) if item.bucket in bias else 0.0
+        base_score = (
+            item.probability
+            if item.bucket in desired and item.bucket in base
+            else 0.0
         )
-        edge_score = (
-            edge_scores.get(item.bucket, 0.0) if item.bucket in edge else 0.0
-        )
-        scores[item.bucket] = (base_score, bias_score, edge_score)
+        scores[item.bucket] = (base_score, 0.0, 0.0)
     return (
         center,
         direction,

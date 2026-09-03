@@ -2286,10 +2286,7 @@ def test_clause_53_expansion_layers_convert_at_the_station_rung_width() -> None:
         ContractError as KernelContractError,
         TargetBasketPolicy,
     )
-    from bayes_basket_target.basket_kernel.support import (
-        _choose_support,
-        _disagreement_expansion_layers,
-    )
+    from bayes_basket_target.basket_kernel.support import _choose_support
 
     policy = TargetBasketPolicy.from_mapping({
         "total_budget_usdc": 5.0,
@@ -2305,35 +2302,18 @@ def test_clause_53_expansion_layers_convert_at_the_station_rung_width() -> None:
     celsius = _rung_snapshot(1.0)
     fahrenheit = _rung_snapshot(10.0 / 9.0)
 
-    # The same physical disagreement, read on each book's own ladder.
-    assert _disagreement_expansion_layers(celsius, policy) == 2
-    assert _disagreement_expansion_layers(fahrenheit, policy) == 1
-
-    # And it reaches the candidate window, not just the counter: slot 9 is the
-    # layer budget, slots 7 and 8 the window it opens around the one-bucket
-    # core at ordinal 37.
-    celsius_support = _choose_support(celsius, policy)
-    fahrenheit_support = _choose_support(fahrenheit, policy)
-    assert (celsius_support[7], celsius_support[8]) == (35, 39)
-    assert (fahrenheit_support[7], fahrenheit_support[8]) == (36, 38)
-    assert celsius_support[9] == 2
-    assert fahrenheit_support[9] == 1
-
-    # Boundary (b) is untouched: the cap is a rung count and stays synonymous
-    # across units.  A Fahrenheit book still reaches two layers -- it just has
-    # to disagree by 10/9 C per rung to get there, which is the point.
-    assert _disagreement_expansion_layers(fahrenheit, policy) == 1
-    assert _disagreement_expansion_layers(
-        _rung_snapshot(10.0 / 9.0, dispersion_c=2.3), policy
-    ) == 2
-
-    # A dispersion with no ladder to spend it on is refused, not silently
-    # converted at 1.0 -- that fallback is the defect wearing a default.
-    with pytest.raises(
-        KernelContractError,
-        match="bucket_rung_width_required_for_disagreement_expansion",
-    ):
-        _disagreement_expansion_layers(_rung_snapshot(None), policy)
+    # Charter 76 (2026-09-04) retired the disagreement expansion from the
+    # seed: the layer budget is zero on either ladder and the candidate
+    # boundary is the one-bucket core at ordinal 37 itself, so the
+    # Celsius-versus-Fahrenheit conversion this clause once governed has
+    # nothing left to convert here.  Boundary (a) still governs every other
+    # Celsius quantity named in the clause; boundary (b) still names the
+    # rung-count knob below.
+    for snapshot in (celsius, fahrenheit, _rung_snapshot(None)):
+        resolved = _choose_support(snapshot, policy)
+        assert (resolved[7], resolved[8]) == (37, 37)
+        assert resolved[9] == 0
+        assert resolved[3] == set() and resolved[4] == set()
 
     # The knob is denominated in rungs now.  The Celsius name is refused
     # rather than aliased: the same number means different things under the
@@ -2682,3 +2662,68 @@ def test_clause_75_mean_bucket_centre_and_mean_mode_skew_direction() -> None:
     )
     assert "resolved = _choose_support(snapshot, basket_policy)" in ledger_source
     assert "snapshot = snapshot_from_probability_envelope(envelope, mapping)" in ledger_source
+
+
+def test_clause_76_seed_layer_has_no_envelope_anchor_and_no_peripheral_gates() -> None:
+    """Charter 76: the seed is the probability core; envelope and reliability evidence do not move it."""
+    from pathlib import Path
+
+    from bayes_basket_target.basket_kernel.contracts import (
+        TargetBasketPolicy,
+        TargetBasketSnapshot,
+    )
+    from bayes_basket_target.basket_kernel.support import _choose_support
+
+    def bucket(label, ordinal, probability, ask, reliability):
+        return {
+            "bucket": label, "ordinal": ordinal, "probability": probability,
+            "bid_price": 0.001, "bid_levels": [{"price": 0.001, "shares": 10.0}],
+            "ask_levels": [{"price": ask, "shares": 100.0}],
+            "price_tick_size": 0.001, "maker_queue_ahead_shares": 0.0,
+            "maker_queue_known": True, "peripheral_model_reliability": reliability,
+        }
+
+    def snapshot(*, with_envelope: bool) -> TargetBasketSnapshot:
+        evidence = {
+            "probability_stage": "P0", "posterior_version": "p0-v1",
+            "posterior_sha256": "a" * 64, "model_center_ordinal": 5,
+        }
+        if with_envelope:
+            # A wide model disagreement, cheap and "reliable" tail buckets:
+            # everything the retired machinery would have let in.
+            evidence.update({
+                "forecast_dispersion_c": 4.0, "bucket_rung_width_c": 1.0,
+                "model_envelope_lower_ordinal": 2, "model_envelope_upper_ordinal": 9,
+            })
+        rows = [
+            bucket("21°C", 2, 0.02, 0.02, 1.0), bucket("22°C", 3, 0.05, 0.05, 1.0),
+            bucket("23°C", 4, 0.18, 0.15, 1.0), bucket("24°C", 5, 0.30, 0.30, 1.0),
+            bucket("25°C", 6, 0.25, 0.25, 1.0), bucket("26°C", 7, 0.12, 0.10, 1.0),
+            bucket("27°C", 8, 0.06, 0.05, 1.0), bucket("28°C", 9, 0.02, 0.02, 1.0),
+        ]
+        return TargetBasketSnapshot.from_mapping({
+            "schema": "target_basket_snapshot_v6", "snapshot_id": "c76", "sequence": 1,
+            "observed_at": "2026-09-04T12:00:00Z", "market_id": "c76", "station_id": "C76",
+            "event_date": "2026-09-05", "quote_version": "q", "quote_observed_at": "2026-09-04T12:00:00Z",
+            "quote_source": "OFFICIAL_CLOB_WS", "inventory_version": "i", "order_state_version": "o",
+            "evidence": evidence, "buckets": rows, "checkpoint_changed": True, "quote_changed": True,
+            "fill_changed": True, "time_gate_changed": True, "evidence_fresh": True,
+            "contract_matches": True, "order_state_known": True, "risk_inputs_complete": True,
+            "time_left_minutes": 600.0,
+        })
+
+    policy = TargetBasketPolicy()
+    plain = _choose_support(snapshot(with_envelope=False), policy)
+    loaded = _choose_support(snapshot(with_envelope=True), policy)
+    for resolved in (plain, loaded):
+        _center, _direction, base, bias, edge, desired, scores, lower, upper, layers, _t = resolved
+        assert bias == set() and edge == set()
+        assert layers == 0
+        assert base <= desired and len(desired) <= policy.maximum_support_buckets
+        assert all(score[1] == 0.0 and score[2] == 0.0 for score in scores.values())
+        ordinals = {"21°C": 2, "22°C": 3, "23°C": 4, "24°C": 5, "25°C": 6, "26°C": 7, "27°C": 8, "28°C": 9}
+        assert lower == min(ordinals[b] for b in desired) and upper == max(ordinals[b] for b in desired)
+    assert plain[5] == loaded[5] and plain[2] == loaded[2]
+    source = (Path(__file__).resolve().parents[1] / "bayes_basket_target" / "basket_kernel" / "support.py").read_text(encoding="utf-8")
+    for retired in ("def peripheral_eligible", "_disagreement_expansion_layers", "resolve_continuous_core", "peripheral_model_reliability_min", "edge_max_ask"):
+        assert retired not in source, retired

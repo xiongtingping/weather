@@ -1878,31 +1878,32 @@ def test_model_disagreement_expands_candidate_boundary_while_extrema_remain_diag
     # The seat is the objective's call, not the envelope's, so it is the same
     # under both envelopes: 37/38/39 hold 0.2/0.6/0.2 and each offers at 0.12,
     # so taking all three buys the whole day for 0.36 against a dollar payout
-    # (edge +0.64) where 38 alone pays 0.12 for a 60% chance (+0.48).  What
-    # the envelope moves is the diagnostic boundary below, which is what this
-    # test exists to pin.
+    # (edge +0.64) where 38 alone pays 0.12 for a 60% chance (+0.48).
     assert compact_plan["candidate_support"] == ["37", "38", "39"]
     assert expanded_plan["candidate_support"] == ["37", "38", "39"]
-    # Agreeing models still publish an envelope; it is just degenerate, and a
-    # degenerate envelope that sits on the core widens nothing.  Reading it as
-    # absent was the old behaviour and it came from the ordinals being dropped
-    # on the way in, not from the models having said anything different.
+    # The model extrema stay a diagnostic: a degenerate envelope on the core
+    # reads (38, 38), a two-model disagreement reads (37, 39).
     assert (
         compact_plan["diagnostic_lower_ordinal"],
         compact_plan["diagnostic_upper_ordinal"],
     ) == (38, 38)
     assert (
+        expanded_plan["diagnostic_lower_ordinal"],
+        expanded_plan["diagnostic_upper_ordinal"],
+    ) == (37, 39)
+    # Charter 76 (2026-09-04): the disagreement no longer stretches the
+    # candidate boundary.  It is the seed's own span under both envelopes --
+    # the one-bucket core at 38 -- and the layer budget is zero.
+    assert (
         compact_plan["candidate_lower_ordinal"],
         compact_plan["candidate_upper_ordinal"],
     ) == (38, 38)
     assert (
-        expanded_plan["diagnostic_lower_ordinal"],
-        expanded_plan["diagnostic_upper_ordinal"],
-    ) == (37, 39)
-    assert (
         expanded_plan["candidate_lower_ordinal"],
         expanded_plan["candidate_upper_ordinal"],
-    ) == (37, 39)
+    ) == (38, 38)
+    assert compact_plan.get("disagreement_expansion_layers", 0) == 0
+    assert expanded_plan.get("disagreement_expansion_layers", 0) == 0
 
 
 def test_naming_envelope_buckets_without_ordinals_derives_them() -> None:
