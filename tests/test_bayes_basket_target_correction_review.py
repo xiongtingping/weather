@@ -168,13 +168,16 @@ def test_on_hour_correction_clears_only_under_the_replacement_contract() -> None
     assert _state(conn)["correction_count"] == 1
 
 
-def test_replacement_is_refused_when_another_report_disagrees() -> None:
-    """Standing policy does not get to settle a real disagreement.
+def test_replacement_is_writable_over_a_disagreeing_report() -> None:
+    """The receipt says the correction stands in the slot, not that peers agree.
 
-    The contract is only defensible while nothing else at that instant
-    contradicts it, and that is checked against the stored reports rather than
-    asserted by the reviewer -- so neither a policy nor a person can write the
-    contradiction away.
+    It used to be refused whenever another report for the same instant carried
+    a different temperature.  Two later rulings took that question off the
+    reviewer -- a same-slot disagreement settles by publication order
+    (2026-09-02) and a correction supersedes what it corrects (2026-09-03) --
+    so the refusal left the one case with a rule downstream no way to reach
+    it: VILK 2026-08-28 was quarantined by hand and sat six days without a
+    truth row.  A person can still stop a station-day with QUARANTINE.
     """
 
     conn = _db()
@@ -185,21 +188,20 @@ def test_replacement_is_refused_when_another_report_disagrees() -> None:
         conn, observation_id="peer-0300", temperature_c=31.0, correction=0
     )
 
-    with pytest.raises(
-        ContractError,
-        match="correction_review_replacement_contradicts_peer_report",
-    ):
-        append_correction_review(
-            conn,
-            source_lane="awc",
-            station_id="RKPK",
-            event_date="2026-07-28",
-            triggering_observation_id="cor-0300",
-            decision=CLEAR_WITH_REPLACEMENT,
-            reviewer="reviewer.test",
-            rationale="stands in for the report it corrected",
-            reviewed_at=AS_OF,
-        )
+    receipt = append_correction_review(
+        conn,
+        source_lane="awc",
+        station_id="RKPK",
+        event_date="2026-07-28",
+        triggering_observation_id="cor-0300",
+        decision=CLEAR_WITH_REPLACEMENT,
+        reviewer="reviewer.test",
+        rationale="stands in for the report it corrected",
+        reviewed_at=AS_OF,
+    )
+
+    assert receipt["review_id"]
+    assert _state(conn)["correction_count"] == 1
 
 
 def test_replacement_contract_does_not_apply_to_off_hour_reports() -> None:
@@ -253,7 +255,6 @@ def test_auto_clear_picks_the_contract_each_report_is_entitled_to() -> None:
     )
 
     assert result["cleared_count"] == 2
-    assert result["contested_count"] == 0
     decisions = {
         str(row[0]): str(row[1])
         for row in conn.execute(
@@ -268,9 +269,16 @@ def test_auto_clear_picks_the_contract_each_report_is_entitled_to() -> None:
     assert _state(conn)["correction_count"] == 2
 
 
-def test_auto_clear_leaves_a_contradicted_correction_pending() -> None:
-    # The rest of the scope still clears; the disagreement stays visible
-    # instead of being resolved by policy or blocking its neighbours.
+def test_auto_clear_settles_a_disagreeing_slot_instead_of_stranding_it() -> None:
+    """A same-slot temperature disagreement no longer stays pending.
+
+    It used to be left contested for a person, and nobody came: VILK
+    2026-08-28 was quarantined by hand and had no truth row six days later,
+    while the settled lane had had a rule for it since 2026-09-02 -- the
+    later report supersedes the earlier.  The receipt says the correction
+    stands in the slot; which temperature settles is the lane's own call.
+    """
+
     conn = _db()
     _observation(
         conn,
@@ -295,10 +303,8 @@ def test_auto_clear_leaves_a_contradicted_correction_pending() -> None:
         as_of_utc=AS_OF,
     )
 
-    assert result["cleared_observation_ids"] == ["cor-0315"]
-    assert result["contested_count"] == 1
-    with pytest.raises(ContractError, match="correction_review_required"):
-        _state(conn)
+    assert sorted(result["cleared_observation_ids"]) == ["cor-0300", "cor-0315"]
+    assert _state(conn)["correction_count"] == 2
 
 
 def test_unreviewed_correction_blocks_and_clear_receipt_is_idempotent() -> None:
