@@ -2716,30 +2716,47 @@ def _event_date_or_none(value: str) -> date | None:
         return None
 
 
+# The same two families as ``REQUIRED_CAPTURE_FAMILIES``, in the packet's
+# own vocabulary.
+REQUIRED_PACKET_SYSTEMS = ("NOAA_GEFS_05", "ECMWF_IFS_ENS_OPEN_PF50")
+
+
 def _native_packet_run_init(packet: Mapping[str, Any]) -> datetime | None:
     """The run this packet's members came from, or None if it does not say.
 
-    Packets are built at one shared cycle (``run_cycle_scope`` is
-    ``SAME_NATIVE_CYCLE``), so the systems agree; the newest is taken anyway so
-    a mixed packet is judged by the freshest evidence it holds rather than by
-    its most stale.  A packet that names no run is treated as unjudgeable, not
-    as superseded -- that keeps an unreadable field from forcing a download.
+    A packet that names no run is treated as unjudgeable, not as superseded
+    -- that keeps an unreadable field from forcing a download.  A mixed
+    packet is judged by the slower of its two required systems, for the
+    reason given below; a packet naming neither falls back to its newest.
     """
 
     raw = packet.get("run_init_utc_by_system")
     if not isinstance(raw, Mapping) or not raw:
         return None
-    parsed: list[datetime] = []
-    for value in raw.values():
+    parsed: dict[str, datetime] = {}
+    for system_id, value in raw.items():
         try:
-            parsed.append(
-                datetime.fromisoformat(
-                    str(value).replace("Z", "+00:00")
-                ).astimezone(timezone.utc)
-            )
+            parsed[str(system_id)] = datetime.fromisoformat(
+                str(value).replace("Z", "+00:00")
+            ).astimezone(timezone.utc)
         except (TypeError, ValueError):
             return None
-    return max(parsed) if parsed else None
+    if not parsed:
+        return None
+    # The two required families answer the rung; the packet has advanced
+    # only as far as the slower of them.  Judged by the freshest system, a
+    # packet of GEFS 12Z over ECMWF 00Z read as "already on 12Z": the probe
+    # reused it while ECMWF -- 51 of the members -- sat on a run six hours
+    # older than the one published, and the merge would have preferred it
+    # over a fresh capture that carried ECMWF 06Z.  2026-09-03T16:09Z,
+    # twenty-nine 2026-09-04 scopes.  Same rule as the capture side's
+    # ``_served_run_init_utc``; the two vocabularies name the same families.
+    required = [
+        parsed[system_id]
+        for system_id in REQUIRED_PACKET_SYSTEMS
+        if system_id in parsed
+    ]
+    return min(required) if required else max(parsed.values())
 
 
 def _resident_open_event_dates(
@@ -16469,6 +16486,26 @@ class TargetProductionWorker:
                 results
             )
             blocked_scopes = sum(blocked_scope_reasons.values())
+            # A cycle that committed nothing says why on its own receipt.
+            # The board's fail-closed branch reads ``reason`` and nothing
+            # else, and a listing turn that served only tomorrow's stations
+            # -- every one refused on the P1 entry window -- printed
+            # "blocked_fail_closed" with no reason at all (2026-09-03
+            # 16:56Z, 16 of 16).  A worker-level failure keeps its own
+            # reason from the except arm below; this names the refusals.
+            summary_reason = (
+                None
+                if committed_scopes > 0 or not results
+                else "all_scopes_refused:" + ",".join(
+                    f"{key}x{count}"
+                    for key, count in sorted(
+                        blocked_scope_reasons.items(),
+                        key=lambda item: (-item[1], item[0]),
+                    )
+                )
+                if blocked_scope_reasons
+                else "no_scope_committed_or_refused"
+            )
             return {
                 "schema": SCHEMA,
                 "ok": bool(results) and committed_scopes > 0,
@@ -16479,6 +16516,7 @@ class TargetProductionWorker:
                     if blocked_scopes == 0
                     else "cycle_committed_partial"
                 ),
+                **({"reason": summary_reason} if summary_reason else {}),
                 "committed_scope_count": committed_scopes,
                 "blocked_scope_count": blocked_scopes,
                 "blocked_scope_reasons": blocked_scope_reasons,

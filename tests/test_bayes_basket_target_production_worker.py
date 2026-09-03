@@ -3412,6 +3412,25 @@ def test_capture_walks_past_a_rung_that_advanced_nothing() -> None:
     assert "last_success = completed" in source
 
 
+def test_a_cycle_that_committed_nothing_names_its_refusals() -> None:
+    """The board's fail-closed branch reads ``reason``; give it one.
+
+    A listing turn that served only tomorrow's stations, every one refused
+    on the P1 entry window, printed "blocked_fail_closed" with no reason
+    (2026-09-03T16:56Z, 16 of 16).  The worker-level failure arm keeps its
+    own reason; the all-refused cycle now names its refusals, counted.
+    """
+
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "production_worker.py"
+    ).read_text(encoding="utf-8")
+    assert '"all_scopes_refused:" + ",".join(' in source
+    assert '**({"reason": summary_reason} if summary_reason else {}),' in source
+    assert '"no_scope_committed_or_refused"' in source
+
+
 def _guard_db_with_decisions() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.execute(

@@ -290,14 +290,26 @@ def test_packet_run_identity_is_read_from_its_systems() -> None:
     assert _native_packet_run_init(
         {"run_init_utc_by_system": {"A": "not-a-time"}}
     ) is None
-    newest = _native_packet_run_init({
+    # A mixed packet has advanced only as far as the slower of its two
+    # required systems.  Judged by the newest, GEFS 06Z over ECMWF 00Z read
+    # as "already on 06Z": the probe reused it while ECMWF -- 51 of the
+    # members -- sat a run behind the one published, and the merge would
+    # have kept it over a fresh capture carrying ECMWF 06Z (2026-09-03,
+    # twenty-nine 2026-09-04 scopes).
+    slower = _native_packet_run_init({
         "run_init_utc_by_system": {
             "ECMWF_IFS_ENS_OPEN_PF50": "2026-08-13T00:00:00Z",
             "NOAA_GEFS_05": "2026-08-13T06:00:00Z",
+            "ECCC_GEM_GLOBAL_ENS": "2026-08-12T12:00:00Z",
         }
     })
-    assert newest is not None
-    assert newest.isoformat().replace("+00:00", "Z") == "2026-08-13T06:00:00Z"
+    assert slower is not None
+    assert slower.isoformat().replace("+00:00", "Z") == "2026-08-13T00:00:00Z"
+    # Neither required system named: the newest of what is there.
+    fallback = _native_packet_run_init({
+        "run_init_utc_by_system": {"A": "2026-08-13T00:00:00Z", "B": "2026-08-13T06:00:00Z"}
+    })
+    assert fallback.isoformat().replace("+00:00", "Z") == "2026-08-13T06:00:00Z"
 
 
 def _inbox_with_packet(path: Path, *, event_date: str, received_at_utc: str) -> None:
