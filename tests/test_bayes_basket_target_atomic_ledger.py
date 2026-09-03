@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 from pathlib import Path
@@ -98,6 +99,10 @@ def _bundle(
     intent_side: str = "YES",
     intent_order_action: str = "BUY",
     source_lane: str = "AWC",
+    # A plan compiled with live authority mints intents carrying
+    # ``live_submit_authorized=1`` (the ledger reads the flag off the plan
+    # identity).  This is what every intent of a live deployment looks like.
+    live: bool = False,
 ):
     station = "ZUUU"
     event_date = "2026-07-23"
@@ -126,6 +131,8 @@ def _bundle(
             "report_type": "METAR",
         },
     }
+    if live:
+        plan["live_submit_authorized"] = True
     intents = [] if blocked else [{
         "bucket": "38",
         "token_id": token_id or f"token-{index}",
@@ -1138,8 +1145,9 @@ def _committed_training_bundle(
     *,
     scope: str,
     amount: float = 4.0,
+    live: bool = False,
 ) -> dict:
-    bundle = _bundle(index=index, amount=amount)
+    bundle = _bundle(index=index, amount=amount, live=live)
     bundle["training_fact"] = _training_fact(
         bundle,
         decision_scope_key=scope,
@@ -1292,6 +1300,94 @@ def test_prepared_supersession_blocks_any_execution_fact() -> None:
             "SELECT state FROM basket_target_execution_cycles WHERE cycle_id=?",
             (old["cycle"]["cycle_id"],),
         ).fetchone()[0] == "prepared"
+
+
+def test_prepared_supersession_accepts_cancelled_live_intents_without_facts() -> None:
+    """A live-era cycle whose intents never reached the exchange is inert.
+
+    Production mints every intent with live authority; a disarmed submitter
+    leaves them ``prepared`` and the quote-lease retire cancels them a cycle
+    later.  Nothing at the exchange, so the next scope-changing candidate
+    must be able to retire the cycle and release its reservation.  Measured
+    2026-09-03: WMKK and ZUCK were refused here every cycle from 03:22Z.
+    """
+
+    with _db(balance=20.0, with_training_fact=True) as conn:
+        old = _committed_training_bundle(
+            341, scope="scope-old", amount=4.0, live=True
+        )
+        new = _committed_training_bundle(342, scope="scope-new", amount=5.0)
+        commit_target_atomic_bundle(conn, bundle=old)
+        old_cycle = old["cycle"]["cycle_id"]
+        assert conn.execute(
+            "SELECT live_submit_authorized FROM basket_target_order_intents "
+            "WHERE cycle_id=?",
+            (old_cycle,),
+        ).fetchone()[0] == 1
+        # The quote-lease retire's own write, verbatim.
+        conn.execute(
+            "UPDATE basket_target_order_intents SET state='cancelled' "
+            "WHERE cycle_id=? AND state='prepared'",
+            (old_cycle,),
+        )
+        conn.commit()
+
+        result = supersede_prepared_cycle_and_commit_bundle(
+            conn,
+            old_cycle_id=old_cycle,
+            new_decision_scope_key="scope-new",
+            bundle=new,
+            superseded_at_utc=NOW,
+        )
+
+        assert result["supersession_state"] == "committed"
+        # Nothing was open, so nothing was cancelled by this act.
+        assert result["cancelled_intent_count"] == 0
+        assert conn.execute(
+            "SELECT state FROM basket_target_execution_cycles WHERE cycle_id=?",
+            (old_cycle,),
+        ).fetchone()[0] == "settled"
+        assert conn.execute(
+            "SELECT state,release_reason FROM basket_target_capital_reservations "
+            "WHERE cycle_id=?",
+            (old_cycle,),
+        ).fetchone() == ("released", "authority_input_superseded")
+        assert conn.execute(
+            "SELECT reserved_usdc FROM basket_target_capital_pool"
+        ).fetchone()[0] == pytest.approx(5.0)
+        assert json.loads(conn.execute(
+            "SELECT cancelled_intent_ids_json FROM "
+            "basket_target_prepared_supersession_receipts"
+        ).fetchone()[0]) == []
+
+
+def test_prepared_supersession_still_refuses_an_intent_in_flight() -> None:
+    with _db(balance=20.0, with_training_fact=True) as conn:
+        old = _committed_training_bundle(351, scope="scope-old", live=True)
+        new = _committed_training_bundle(352, scope="scope-new")
+        commit_target_atomic_bundle(conn, bundle=old)
+        conn.execute(
+            "UPDATE basket_target_order_intents SET state='submitted' "
+            "WHERE cycle_id=?",
+            (old["cycle"]["cycle_id"],),
+        )
+        conn.commit()
+        with pytest.raises(
+            AtomicLedgerError,
+            match="prepared_supersession_intent_not_quiescent",
+        ):
+            supersede_prepared_cycle_and_commit_bundle(
+                conn,
+                old_cycle_id=old["cycle"]["cycle_id"],
+                new_decision_scope_key="scope-new",
+                bundle=new,
+                superseded_at_utc=NOW,
+            )
+        assert conn.execute(
+            "SELECT state FROM basket_target_capital_reservations "
+            "WHERE cycle_id=?",
+            (old["cycle"]["cycle_id"],),
+        ).fetchone()[0] == "active"
 
 
 def test_direct_second_active_candidate_requires_atomic_supersession() -> None:
@@ -2575,6 +2671,40 @@ def test_close_settled_day_cycle_releases_stranded_reservation() -> None:
         assert conn.execute(
             "SELECT reserved_usdc FROM basket_target_capital_pool"
         ).fetchone()[0] == 0.0
+
+
+def test_close_settled_day_cycle_releases_live_intents_that_never_left() -> None:
+    """Live authority on an intent is not evidence it reached the exchange."""
+
+    day_end = "2026-07-24T04:00:00Z"
+    after_close = "2026-07-24T05:00:00Z"
+    with _db(balance=20.0) as conn:
+        bundle = _bundle(index=3, amount=5.0, live=True)
+        commit_target_atomic_bundle(conn, bundle=bundle)
+        cycle_id = bundle["cycle"]["cycle_id"]
+        conn.execute(
+            "UPDATE basket_target_order_intents SET state='cancelled' "
+            "WHERE cycle_id=?",
+            (cycle_id,),
+        )
+        conn.commit()
+        result = close_settled_day_cycle(
+            conn,
+            cycle_id=cycle_id,
+            settlement_day_end_utc=day_end,
+            closed_at_utc=after_close,
+            reason="settled_day",
+        )
+        assert result["state"] == "settled"
+        assert result["released_usdc"] == pytest.approx(5.0)
+        assert result["cancelled_intent_count"] == 0
+        assert conn.execute(
+            "SELECT reserved_usdc FROM basket_target_capital_pool"
+        ).fetchone()[0] == 0.0
+        assert conn.execute(
+            "SELECT state FROM basket_target_execution_cycles WHERE cycle_id=?",
+            (cycle_id,),
+        ).fetchone()[0] == "settled"
 
 
 def test_close_settled_day_cycle_refuses_a_cycle_still_in_flight() -> None:

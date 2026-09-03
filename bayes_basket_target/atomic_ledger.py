@@ -4125,8 +4125,16 @@ def close_settled_day_cycle(
             "ORDER BY order_intent_id",
             (cycle,),
         ).fetchall()
-        if any(int(item[2] or 0) != 0 for item in intents):
-            raise AtomicLedgerError("settled_day_close_live_intent_present")
+        # Quiescence is what the exchange saw, not what the plan allowed.  The
+        # live flag says the decision carried authority to send; the order
+        # events and reconciliation rows below say whether anything was
+        # sent.  Refusing on the flag alone was a no-live-era shortcut: once
+        # the mode went live every intent carried it, the submitter left a
+        # disarmed lane's intents at ``prepared`` with no fact of any kind,
+        # the quote-lease retire cancelled them a cycle later, and this sweep
+        # then refused to close the cycle for the rest of time -- nine
+        # settled station-days holding 9.35 USDC on 2026-09-03 with nothing
+        # at the exchange to show for it.
         if any(
             str(item[1]) not in {"prepared", "cancelled", "failed"}
             for item in intents
@@ -4205,9 +4213,11 @@ def supersede_prepared_cycle_and_commit_bundle(
 ) -> dict[str, Any]:
     """Atomically retire one inert no-live candidate and commit its successor.
 
-    Supersession is permitted only while every old intent is still local
-    ``prepared`` state, no execution/reconciliation fact exists, and the
-    reservation remains active.  The immutable old decision and training fact
+    Supersession is permitted only while every old intent is inert --
+    ``prepared``, or ``cancelled``/``failed`` without ever reaching the
+    exchange -- no execution/reconciliation fact exists, and the reservation
+    remains active.  Whether the intents carried live authority is not part
+    of the test: the execution-fact scan is what proves nothing is held.  The immutable old decision and training fact
     are retained; an append-only receipt links them to the new authority
     scope.  Any failure in the new bundle rolls the entire retirement back.
     """
@@ -4291,12 +4301,29 @@ def supersede_prepared_cycle_and_commit_bundle(
         ).fetchall()
         if not intents:
             raise AtomicLedgerError("prepared_supersession_intent_missing")
+        # Same rule as the settled-day close above: an intent is inert when
+        # it never left the process (``prepared``) or left and came back
+        # with nothing (``cancelled``/``failed``), and the execution-fact
+        # scan below is what proves the exchange holds nothing under it.
+        # The live flag is not part of that test.  While it was, a live
+        # deployment could never supersede: every intent it mints carries
+        # the flag, the disarmed submitter leaves them ``prepared``, the
+        # quote-lease retire cancels them on the next cycle, and from then
+        # on every scope-changing candidate for that station-day was refused
+        # here -- WMKK and ZUCK 2026-09-03 sat blocked from 03:22Z on with
+        # 7.81 USDC reserved against cancelled orders.
         if any(
-            str(item[1]) != "prepared" or int(item[2]) != 0
+            str(item[1]) not in {"prepared", "cancelled", "failed"}
             for item in intents
         ):
             raise AtomicLedgerError("prepared_supersession_intent_not_quiescent")
         intent_ids = [str(item[0]) for item in intents]
+        # Only the still-open intents are cancelled by this act; the ones a
+        # retire already cancelled stay as they are, and the CAS below counts
+        # exactly what this transaction changed.
+        open_intent_ids = [
+            str(item[0]) for item in intents if str(item[1]) == "prepared"
+        ]
         placeholders = ",".join("?" for _ in intent_ids)
         execution_tables = {
             str(item[0])
@@ -4332,7 +4359,7 @@ def supersede_prepared_cycle_and_commit_bundle(
         if released_amount > reserved + 1e-9:
             raise AtomicLedgerError("pool_reserved_balance_drift")
 
-        cancelled_json = canonical_json(intent_ids)
+        cancelled_json = canonical_json(open_intent_ids)
         receipt_body = {
             "schema": "basket_target_prepared_supersession_receipt_v1",
             "old_cycle_id": cycle_id,
@@ -4344,20 +4371,27 @@ def supersede_prepared_cycle_and_commit_bundle(
             "new_decision_scope_key": new_scope,
             "reservation_id": reservation_id,
             "released_amount_usdc": round(released_amount, 8),
-            "cancelled_intent_ids": intent_ids,
+            "cancelled_intent_ids": open_intent_ids,
             "reason": "authority_input_superseded",
             "superseded_at": superseded_at,
         }
         receipt_sha = content_sha256(receipt_body)
         supersession_id = _derive_id("supersession", receipt_body)
 
-        conn.execute(
-            f"UPDATE basket_target_order_intents SET state='cancelled' "
-            f"WHERE order_intent_id IN ({placeholders}) AND state='prepared'",
-            intent_ids,
-        )
-        if conn.execute("SELECT changes()").fetchone()[0] != len(intent_ids):
-            raise AtomicLedgerError("prepared_supersession_intent_cas_conflict")
+        if open_intent_ids:
+            open_placeholders = ",".join("?" for _ in open_intent_ids)
+            conn.execute(
+                f"UPDATE basket_target_order_intents SET state='cancelled' "
+                f"WHERE order_intent_id IN ({open_placeholders}) "
+                "AND state='prepared'",
+                open_intent_ids,
+            )
+            if conn.execute("SELECT changes()").fetchone()[0] != len(
+                open_intent_ids
+            ):
+                raise AtomicLedgerError(
+                    "prepared_supersession_intent_cas_conflict"
+                )
         conn.execute(
             "UPDATE basket_target_capital_reservations "
             "SET state='released',release_reason='authority_input_superseded',"
@@ -4430,7 +4464,7 @@ def supersede_prepared_cycle_and_commit_bundle(
         "supersession_content_sha256": receipt_sha,
         "superseded_cycle_id": cycle_id,
         "released_amount_usdc": released_amount,
-        "cancelled_intent_count": len(intent_ids),
+        "cancelled_intent_count": len(open_intent_ids),
     }
 
 
