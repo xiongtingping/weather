@@ -1136,6 +1136,12 @@ def _compile_target_plan(
                 if market_snapshot.get("book_equity_usdc") not in (None, "")
                 else None
             ),
+            # Charter 72: the whole book, for the Kelly stake.
+            book_equity_usdc=(
+                book_equity_usdc
+                if market_snapshot.get("book_equity_usdc") not in (None, "")
+                else None
+            ),
             # Newest first: the certainty gate asks whether the mass centre
             # has held still, and the answer is read off the same envelope
             # chain the previous-probabilities comparison already walks.

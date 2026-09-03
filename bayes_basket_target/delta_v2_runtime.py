@@ -39,12 +39,15 @@ from .basket_kernel.delta_v2 import (
     CURVE_OBJECTIVE_FORM,
     DEFAULT_KELLY_FRACTION,
     EXCHANGE_LOT_TOP_UP,
+    KELLY_CANDIDATE_ORIGIN,
+    KELLY_OBJECTIVE_FORM,
     VALUE_OBJECTIVE_FORM,
     chain_topup_growth_v1,
     clamp_declining_gaps_v2,
     contiguous_edge_clamp_v2,
     deflate_window_partition_v1,
     probability_vector_identity_v1,
+    whole_basket_kelly_stake_v1,
     evaluate_action_v2,
     evaluate_basket_value_v2,
     raise_sub_lot_targets_v2,
@@ -1830,6 +1833,7 @@ def _solve_over_support_windows(
     probability_identity: str | None = None,
     last_acted_probability_identity: str | None = None,
     chain_growth_frame_usdc: float | None = None,
+    book_equity_usdc: float | None = None,
 ) -> tuple[tuple[str, ...], dict[str, Any], dict[str, Any]]:
     """Run the objective on each shortlisted window; the head one is seated.
 
@@ -1933,6 +1937,11 @@ def _solve_over_support_windows(
                     probabilities_by_bucket=window_probabilities,
                     centre_bucket=str(
                         window_audit.get("ladder_center_bucket") or ""
+                    ),
+                    book_equity_usdc=(
+                        book_equity_usdc
+                        if objective_form == KELLY_OBJECTIVE_FORM
+                        else None
                     ),
                 ),
                 # The floor guards the whole live set exactly when full
@@ -2090,7 +2099,7 @@ def _solve_over_support_windows(
                     continue
         score = (
             solution["target_curve_score"]
-            if objective_form == CURVE_OBJECTIVE_FORM
+            if objective_form in (CURVE_OBJECTIVE_FORM, KELLY_OBJECTIVE_FORM)
             else solution["target_value"]
         )
         scored.append({
@@ -2176,6 +2185,7 @@ def _target_candidates(
     bankroll_usdc: float,
     probabilities_by_bucket: Mapping[str, float],
     centre_bucket: str = "",
+    book_equity_usdc: float | None = None,
 ) -> list[dict[str, Any]]:
     """Build a bounded q-grid priced from official WS ask depth.
 
@@ -2313,6 +2323,25 @@ def _target_candidates(
             ),
             "candidate_origin": "CLIP_GRID_PRODUCT",
         })
+    if book_equity_usdc is not None and float(book_equity_usdc) > 0.0:
+        # Charter 72: the Kelly-sized seat, offered beside the grid.  Under
+        # the whole-basket Kelly form it is the winner when legal.
+        kelly_candidate = _whole_basket_kelly_candidate(
+            ordered=ordered,
+            lane_levels=lane_levels,
+            lane_prices=lane_prices,
+            pricing_basis=pricing_basis,
+            current_shares=current_shares,
+            current_cost=current_cost,
+            pending_shares=pending_shares,
+            pending_cost=pending_cost,
+            capital_available_usdc=capital_available_usdc,
+            probabilities_by_bucket=probabilities_by_bucket,
+            book_equity_usdc=float(book_equity_usdc),
+            quote_version=str(snapshot.quote_version),
+        )
+        if kelly_candidate is not None:
+            candidates.append(kelly_candidate)
     if centre_bucket:
         candidates.extend(_centre_anchored_candidates(
             snapshot=snapshot,
@@ -2351,6 +2380,90 @@ def _target_candidates(
         candidates, ordered_support=ordered
     )
 
+
+
+def _whole_basket_kelly_candidate(
+    *,
+    ordered: Sequence[str],
+    lane_levels: Mapping[str, Sequence[Any]],
+    lane_prices: Mapping[str, float],
+    pricing_basis: str,
+    current_shares: Mapping[str, float],
+    current_cost: Mapping[str, float],
+    pending_shares: Mapping[str, float],
+    pending_cost: Mapping[str, float],
+    capital_available_usdc: float,
+    probabilities_by_bucket: Mapping[str, float],
+    book_equity_usdc: float,
+    quote_version: str,
+) -> dict[str, Any] | None:
+    """Charter 72's candidate: the seat sized as the ledger sizes it.
+
+    One share of every support bucket costs ``cost_per_share``; the deflated
+    claim over the support against that cost gives the Kelly stake off the
+    whole book, bounded by what the scope may spend; the stake buys equal
+    shares of every leg, walked down the same ladder the grid prices on.
+    ``None`` when there is no edge, nothing to spend, no depth, or a leg
+    already holds its target: a complete basket must add to every support
+    leg (the 2026-08-12 atomicity ruling), so a chain at or above the Kelly
+    target on any leg stands pat rather than buying the others.
+    """
+
+    cost_per_share = sum(float(lane_prices.get(bucket, 0.0)) for bucket in ordered)
+    if cost_per_share <= EPS or cost_per_share >= 1.0 - EPS:
+        return None
+    claim = sum(
+        float(probabilities_by_bucket.get(bucket, 0.0) or 0.0) for bucket in ordered
+    )
+    fraction, stake = whole_basket_kelly_stake_v1(
+        win_probability=claim,
+        cost=cost_per_share,
+        book_equity_usdc=float(book_equity_usdc),
+    )
+    stake = min(float(stake), float(capital_available_usdc))
+    if stake <= EPS:
+        return None
+    want = stake / cost_per_share
+    shares = {
+        bucket: float(current_shares[bucket]) + float(pending_shares[bucket])
+        for bucket in current_shares
+    }
+    costs = {
+        bucket: float(current_cost[bucket]) + float(pending_cost[bucket])
+        for bucket in current_cost
+    }
+    for bucket in ordered:
+        increment = want - shares[bucket]
+        if increment <= EPS:
+            return None
+        leg_cash = increment * float(lane_prices[bucket])
+        got, spent = _ask_depth_purchase(
+            levels=lane_levels[bucket], cash_limit=leg_cash,
+        )
+        if got <= EPS:
+            return None
+        shares[bucket] += got
+        costs[bucket] += spent
+    return {
+        "candidate_id": "kelly-" + content_sha256({
+            "ordered_support": tuple(ordered),
+            "stake_usdc": round(stake, 6),
+            "quote_version": quote_version,
+        })[:24],
+        "shares_by_bucket": shares,
+        "cost_by_bucket": costs,
+        "pricing_basis": pricing_basis,
+        "candidate_kind": CANDIDATE_KIND_COMPLETE,
+        "candidate_origin": KELLY_CANDIDATE_ORIGIN,
+        "kelly": {
+            "win_probability": claim,
+            "cost_per_share": cost_per_share,
+            "fraction": fraction,
+            "stake_usdc": stake,
+            "book_equity_usdc": float(book_equity_usdc),
+            "shares_per_leg": want,
+        },
+    }
 
 
 def _centre_anchored_candidates(
@@ -2870,6 +2983,7 @@ def compile_delta_v2_runtime_plan(
     chain_consolidation_tilt: float | None = None,
     last_acted_probability_identity: str | None = None,
     chain_growth_frame_usdc: float | None = None,
+    book_equity_usdc: float | None = None,
 ) -> dict[str, Any]:
     """Compile the single-event q* and best no-live action under v2.
 
@@ -3032,8 +3146,16 @@ def compile_delta_v2_runtime_plan(
             ),
         )
     bankroll_usdc = float(basket_policy.total_budget_usdc)
+    # Charter 72: with the book known the size is the whole-basket Kelly
+    # stake and the curve keeps only its floor.  Without the book -- a
+    # caller that does not know its equity -- the curve form stands, and
+    # the audit names which law sized the plan.
     objective_form = (
-        CURVE_OBJECTIVE_FORM
+        KELLY_OBJECTIVE_FORM
+        if bankroll_usdc > 0.0
+        and book_equity_usdc is not None
+        and float(book_equity_usdc) > 0.0
+        else CURVE_OBJECTIVE_FORM
         if bankroll_usdc > 0.0
         else VALUE_OBJECTIVE_FORM
     )
@@ -3092,6 +3214,7 @@ def compile_delta_v2_runtime_plan(
             probability_identity=probability_identity,
             last_acted_probability_identity=last_acted_probability_identity,
             chain_growth_frame_usdc=chain_growth_frame_usdc,
+            book_equity_usdc=book_equity_usdc,
         )
     )
     ordered_support = seated_support
@@ -3682,6 +3805,9 @@ def compile_delta_v2_runtime_plan(
         # the frame the growth gate read -- None means the gate could
         # not bind, which the reader must be able to tell from a pass.
         "served_probability_identity": probability_identity,
+        # Charter 72: which law sized this plan, and the book it read.
+        "sizing_law": objective_form,
+        "book_equity_usdc": book_equity_usdc,
         "charter_71": {
             "last_acted_probability_identity": (
                 last_acted_probability_identity

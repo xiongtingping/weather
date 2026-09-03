@@ -464,7 +464,19 @@ def evaluate_basket_value_v2(
 
 VALUE_OBJECTIVE_FORM = "value_v2"
 CURVE_OBJECTIVE_FORM = "fractional_log_wealth_curve_v1"
-OBJECTIVE_FORMS = frozenset({VALUE_OBJECTIVE_FORM, CURVE_OBJECTIVE_FORM})
+# Charter 72 (user ruling, 2026-09-03): the size is the whole-basket Kelly
+# stake the paper ledger has measured every charter under -- the seat as a
+# binary bet against the whole book, a quarter of full Kelly, capped at the
+# scope's share of the book.  The curve objective keeps only its legality
+# floor: under this form the solver's winner is the Kelly-sized candidate
+# when it clears the floor and the baseline (hold) when it does not; the
+# curve score is still computed, for the audit, and decides nothing.
+KELLY_OBJECTIVE_FORM = "whole_basket_kelly_v1"
+KELLY_CANDIDATE_ORIGIN = "WHOLE_BASKET_KELLY"
+PRODUCTION_SIZING_LAW = KELLY_OBJECTIVE_FORM
+OBJECTIVE_FORMS = frozenset({
+    VALUE_OBJECTIVE_FORM, CURVE_OBJECTIVE_FORM, KELLY_OBJECTIVE_FORM,
+})
 DEFAULT_KELLY_FRACTION = 0.25
 # How much of the whole book one station-day may put at risk, and how much of
 # that allowance each stage of its chain may reach.
@@ -804,6 +816,36 @@ def effective_edge_bucket_lambda_for_stage(
 CHARTER_71_TOPUP_GATE_VERSION = (
     "charter_71_probability_change_and_effective_growth_v1"
 )
+
+
+def whole_basket_kelly_stake_v1(
+    *,
+    win_probability: float,
+    cost: float,
+    book_equity_usdc: float,
+    kelly_fraction: float = DEFAULT_KELLY_FRACTION,
+    scope_fraction: float = MAX_STAKE_FRACTION_PER_SCOPE,
+) -> tuple[float, float]:
+    """Charter 72's size: fractional Kelly on the basket as a binary bet.
+
+    A basket costing ``cost`` all-in per share and paying 1 when the truth
+    lands inside it has Kelly fraction (p - c) / (1 - c); a quarter of that
+    is served, capped at the scope's share of the book, and the stake is
+    that fraction of the whole book -- never of a station's budget, which
+    is a cap and not a bankroll.  ``win_probability`` is the charter-68
+    deflated claim.  Returns (fraction, stake_usdc); both zero when the
+    claim does not clear the cost.  Lifted from the paper ledger, which
+    measured every charter since 2026-08-15 under it.
+    """
+
+    cost = float(cost)
+    if cost <= 0.0 or cost >= 1.0:
+        return 0.0, 0.0
+    full = (float(win_probability) - cost) / (1.0 - cost)
+    if full <= 0.0:
+        return 0.0, 0.0
+    fraction = min(float(kelly_fraction) * full, float(scope_fraction))
+    return fraction, max(0.0, fraction * float(book_equity_usdc))
 
 
 def probability_vector_identity_v1(probabilities: Mapping[str, float]) -> str:
@@ -1436,7 +1478,7 @@ def solve_target_inventory_v2(
     form = str(objective_form or "").strip()
     if form not in OBJECTIVE_FORMS:
         raise ContractError("delta_v2_objective_form_invalid")
-    if form == CURVE_OBJECTIVE_FORM and not (
+    if form in (CURVE_OBJECTIVE_FORM, KELLY_OBJECTIVE_FORM) and not (
         bankroll_usdc is not None and float(bankroll_usdc) > 0.0
     ):
         raise ContractError("delta_v2_curve_bankroll_required")
@@ -1469,6 +1511,7 @@ def solve_target_inventory_v2(
             "candidate_kind": str(
                 raw.get("candidate_kind") or "UNSPECIFIED"
             ),
+            "candidate_origin": str(raw.get("candidate_origin") or ""),
             "audit": audit,
             "curve_score": (
                 curve_score(
@@ -1476,7 +1519,7 @@ def solve_target_inventory_v2(
                     bankroll_usdc=float(bankroll_usdc),
                     kelly_fraction=kelly_fraction,
                 )
-                if form == CURVE_OBJECTIVE_FORM
+                if form in (CURVE_OBJECTIVE_FORM, KELLY_OBJECTIVE_FORM)
                 else None
             ),
         })
@@ -1507,25 +1550,54 @@ def solve_target_inventory_v2(
     legal = [row for row in evaluations if _floor_legal(row)]
     if not legal:
         raise ContractError("delta_v2_no_floor_legal_candidate")
-    winner = max(
-        legal,
-        key=lambda row: (
-            float(
-                row["curve_score"]
-                if form == CURVE_OBJECTIVE_FORM
-                else row["audit"]["value"]
+    if form == KELLY_OBJECTIVE_FORM:
+        # Charter 72: the Kelly-sized candidate is the answer when it is
+        # legal; when the floor refuses it, or none was offered (no
+        # edge, no book, a leg already at its target), the answer is the
+        # baseline -- hold.  The curve ranks nothing here.
+        kelly_rows = [
+            row for row in legal
+            if row["candidate_origin"] == KELLY_CANDIDATE_ORIGIN
+        ]
+        if kelly_rows:
+            winner = max(
+                kelly_rows,
+                key=lambda row: (
+                    -sum(row["audit"]["cost_by_bucket"].values()),
+                    row["candidate_id"],
+                ),
+            )
+        else:
+            baseline_rows = [
+                row for row in legal
+                if row["candidate_kind"] == CANDIDATE_KIND_BASELINE
+            ]
+            if not baseline_rows:
+                raise ContractError("delta_v2_no_floor_legal_candidate")
+            winner = baseline_rows[0]
+    else:
+        winner = max(
+            legal,
+            key=lambda row: (
+                float(
+                    row["curve_score"]
+                    if form == CURVE_OBJECTIVE_FORM
+                    else row["audit"]["value"]
+                ),
+                -sum(row["audit"]["cost_by_bucket"].values()),
+                row["candidate_id"],
             ),
-            -sum(row["audit"]["cost_by_bucket"].values()),
-            row["candidate_id"],
-        ),
-    )
+        )
     identity = {
         "schema": TARGET_SOLUTION_SCHEMA,
         "kernel_version": KERNEL_VERSION,
         "objective_form": form,
         "kelly_fraction": (
-            kelly_fraction if form == CURVE_OBJECTIVE_FORM else None
+            kelly_fraction
+            if form in (CURVE_OBJECTIVE_FORM, KELLY_OBJECTIVE_FORM)
+            else None
         ),
+        "winner_candidate_origin": winner["candidate_origin"],
         "candidate_count": len(evaluations),
         "winner_candidate_id": winner["candidate_id"],
         "winner_candidate_index": winner["candidate_index"],

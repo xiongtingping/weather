@@ -140,7 +140,9 @@ from bayes_basket_target.basket_kernel.contracts import (  # noqa: E402
 )
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     CURVE_OBJECTIVE_FORM as _CURVE_OBJECTIVE_FORM,
+    KELLY_OBJECTIVE_FORM as _KELLY_OBJECTIVE_FORM,
     VALUE_OBJECTIVE_FORM as _VALUE_OBJECTIVE_FORM,
+    whole_basket_kelly_stake_v1,
 )
 from bayes_basket_target.basket_kernel.support import (  # noqa: E402
     _derive_dual_risk_scope,
@@ -3405,8 +3407,11 @@ def _production_judge(
         bankroll = max(float(capital), 1e-6)
     elif JUDGE_BANKROLL == "book":
         bankroll = max(float(equity), 1e-6)
+    # Charter 72: production sizes by the whole-basket Kelly stake off the
+    # book; the curve keeps its floor.  The judge arm passes what the
+    # runtime passes.
     objective_form = (
-        _CURVE_OBJECTIVE_FORM if bankroll > 0.0 else _VALUE_OBJECTIVE_FORM
+        _KELLY_OBJECTIVE_FORM if bankroll > 0.0 else _VALUE_OBJECTIVE_FORM
     )
     live_buckets = tuple(
         row.bucket for row in snapshot.buckets
@@ -3426,6 +3431,7 @@ def _production_judge(
             capital_available_usdc=capital,
             objective_form=objective_form,
             bankroll_usdc=bankroll,
+            book_equity_usdc=float(equity),
         )
     except (ContractError, _KernelContractError) as exc:
         return {
@@ -5431,17 +5437,18 @@ def _effective_growth_partition(
 def _kelly_stake(
     *, win_probability: float, cost: float, equity: float
 ) -> tuple[float, float]:
-    """Fractional Kelly for a basket paying 1 when the truth lands inside."""
+    """Fractional Kelly for a basket paying 1 when the truth lands inside.
 
-    if cost <= 0.0 or cost >= 1.0:
-        return 0.0, 0.0
-    full = (win_probability - cost) / (1.0 - cost)
-    if full <= 0.0:
-        return 0.0, 0.0
-    fraction = min(
-        KELLY_FRACTION * full, MAX_STAKE_FRACTION_PER_SCOPE
+    Charter 72: the kernel's function, which production sizes with too.
+    """
+
+    return whole_basket_kelly_stake_v1(
+        win_probability=win_probability,
+        cost=cost,
+        book_equity_usdc=equity,
+        kelly_fraction=KELLY_FRACTION,
+        scope_fraction=MAX_STAKE_FRACTION_PER_SCOPE,
     )
-    return fraction, max(0.0, fraction * equity)
 
 
 def _walk_ask(
@@ -6684,6 +6691,38 @@ def backfill(
                                 cycles, payload["decision_at_utc"],
                             ))
                             continue
+                        if (
+                            JUDGE == "production"
+                            and float(verdict["delta_cost_usdc"]) <= 0.0
+                            and CHAIN_TICKET_MODE == "on"
+                            and stage == "P0"
+                            and not held
+                            and float(_row["all_in_price"]) < 1.0
+                        ):
+                            # The chain ticket, this lane's bookkeeping
+                            # device, handed to the production judge too:
+                            # under one book only P0 opens, so a P0 the
+                            # judge holds would forfeit every later stage.
+                            # Production itself needs no ticket -- its P1
+                            # opens alone -- so this measures production's
+                            # sizing on the same footing as the ledger's.
+                            _ticket_cash = max(
+                                _tilt_minimum_clip(conn) * len(_row["buckets"]),
+                                DUST_COST_FLOOR * 2.0,
+                            )
+                            _ticket_shares = _ticket_cash / float(
+                                _row["all_in_price"]
+                            )
+                            verdict = {
+                                **verdict,
+                                "target_shares": {
+                                    str(b): _ticket_shares
+                                    for b in _row["buckets"]
+                                },
+                                "delta_cost_usdc": _ticket_cash,
+                                "ticket": True,
+                            }
+                            counts["production_judge_cycles_ticket"] += 1
                         if (
                             JUDGE == "production"
                             and float(verdict["delta_cost_usdc"]) <= 0.0

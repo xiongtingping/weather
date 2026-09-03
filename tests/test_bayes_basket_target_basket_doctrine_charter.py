@@ -70,7 +70,11 @@ def test_clause_35_objective_form_matches_the_running_kernel() -> None:
     clause = _clause(35)
     assert CURVE_OBJECTIVE_FORM in clause
     assert VALUE_OBJECTIVE_FORM in clause
-    assert OBJECTIVE_FORMS == {VALUE_OBJECTIVE_FORM, CURVE_OBJECTIVE_FORM}
+    # Charter 72 (2026-09-03) added the whole-basket Kelly form, which is
+    # what production sizes with; the curve keeps its floor.
+    assert OBJECTIVE_FORMS == {
+        VALUE_OBJECTIVE_FORM, CURVE_OBJECTIVE_FORM, "whole_basket_kelly_v1",
+    }
     assert f"f={DEFAULT_KELLY_FRACTION}" in clause
     # The bankroll is the stable risk capital, never the depleting balance:
     # as remaining budget approaches zero the penalty diverges and a
@@ -2419,3 +2423,91 @@ def test_clause_71_top_ups_wait_for_a_new_probability_and_read_deflated_growth()
     ).read_text(encoding="utf-8")
     assert "_record_chain_last_action_for_bundle(" in atomic_source
     assert delta_v2_runtime._solve_over_support_windows is not None
+
+
+def test_clause_72_production_sizes_by_the_whole_basket_kelly_and_the_curve_keeps_its_floor() -> None:
+    """Charter 72: one stake law on both sides, the curve demoted to a floor."""
+    import sys
+    from pathlib import Path
+
+    from bayes_basket_target import delta_v2_runtime
+    from bayes_basket_target.basket_kernel import delta_v2 as kernel
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    import paper_trading_ledger as ledger  # noqa: PLC0415
+
+    assert kernel.PRODUCTION_SIZING_LAW == kernel.KELLY_OBJECTIVE_FORM
+    assert kernel.KELLY_OBJECTIVE_FORM in kernel.OBJECTIVE_FORMS
+    # The stake law: a quarter of full Kelly off the book, capped at 2%.
+    fraction, stake = kernel.whole_basket_kelly_stake_v1(
+        win_probability=0.36, cost=0.31, book_equity_usdc=1000.0,
+    )
+    assert abs(fraction - 0.25 * (0.05 / 0.69)) < 1e-9
+    assert abs(stake - fraction * 1000.0) < 1e-9
+    assert kernel.whole_basket_kelly_stake_v1(
+        win_probability=0.30, cost=0.31, book_equity_usdc=1000.0,
+    ) == (0.0, 0.0)
+    assert kernel.whole_basket_kelly_stake_v1(
+        win_probability=0.9, cost=0.1, book_equity_usdc=1000.0,
+    )[0] == kernel.MAX_STAKE_FRACTION_PER_SCOPE
+    # The ledger's stake is the kernel's.
+    assert ledger._kelly_stake(win_probability=0.36, cost=0.31, equity=1000.0) == (
+        kernel.whole_basket_kelly_stake_v1(
+            win_probability=0.36, cost=0.31, book_equity_usdc=1000.0,
+        )
+    )
+    # Under the Kelly form the solver's winner is the Kelly candidate when it
+    # clears the floor, and the baseline when none is offered.
+    probabilities = {"a": 0.2, "b": 0.5, "c": 0.3}
+    baseline = {
+        "candidate_id": "base", "shares_by_bucket": {"a": 0.0, "b": 0.0, "c": 0.0},
+        "cost_by_bucket": {"a": 0.0, "b": 0.0, "c": 0.0},
+        "candidate_kind": kernel.CANDIDATE_KIND_BASELINE,
+        "candidate_origin": "CLIP_GRID_PRODUCT",
+    }
+    grid = {
+        "candidate_id": "grid", "shares_by_bucket": {"a": 10.0, "b": 10.0, "c": 10.0},
+        "cost_by_bucket": {"a": 2.0, "b": 4.0, "c": 2.0},
+        "candidate_kind": kernel.CANDIDATE_KIND_COMPLETE,
+        "candidate_origin": "CLIP_GRID_PRODUCT",
+    }
+    kelly = {
+        "candidate_id": "kelly", "shares_by_bucket": {"a": 4.0, "b": 4.0, "c": 4.0},
+        "cost_by_bucket": {"a": 0.8, "b": 1.6, "c": 0.8},
+        "candidate_kind": kernel.CANDIDATE_KIND_COMPLETE,
+        "candidate_origin": kernel.KELLY_CANDIDATE_ORIGIN,
+    }
+    weights = kernel.ValueWeightsV2.from_mapping({
+        "lambda_profit_floor": 0.0, "lambda_cvar": 0.0, "lambda_shortfall": 0.0,
+        "lambda_breakthrough": 0.0, "lambda_overfill": 0.0, "lambda_excess_hhi": 0.0,
+        "cvar_alpha": 0.25, "hhi_max": 0.75, "expected_pnl_scale": 1.0,
+        "profit_floor_scale": 1.0, "cvar_scale": 1.0, "coverage_scale": 1.0,
+        "overfill_scale": 1.0, "excess_hhi_scale": 1.0,
+    })
+    kwargs = dict(
+        probabilities=probabilities, protected_buckets=("a", "b", "c"),
+        shortfall_buckets=(), breakthrough_buckets=(), weights=weights,
+        objective_form=kernel.KELLY_OBJECTIVE_FORM, bankroll_usdc=15.0,
+    )
+    picked = kernel.solve_target_inventory_v2(
+        feasible_inventory_candidates=[baseline, grid, kelly], **kwargs
+    )
+    assert picked["winner_candidate_origin"] == kernel.KELLY_CANDIDATE_ORIGIN
+    held = kernel.solve_target_inventory_v2(
+        feasible_inventory_candidates=[baseline, grid], **kwargs
+    )
+    assert held["winner_candidate_kind"] == kernel.CANDIDATE_KIND_BASELINE
+    # Production's runtime hands the book down, and the candidate builder
+    # offers the Kelly seat.
+    solver_source = (
+        root / "bayes_basket_target" / "delta_v2_runtime.py"
+    ).read_text(encoding="utf-8")
+    assert "_whole_basket_kelly_candidate(" in solver_source
+    assert "KELLY_OBJECTIVE_FORM" in solver_source
+    runtime_source = (root / "bayes_basket_target" / "runtime.py").read_text(
+        encoding="utf-8"
+    )
+    assert "book_equity_usdc=(" in runtime_source
+    assert delta_v2_runtime._whole_basket_kelly_candidate is not None
