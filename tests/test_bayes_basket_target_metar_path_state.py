@@ -155,3 +155,84 @@ def test_physical_parser_fails_closed_on_temperature_mismatch() -> None:
             "METAR RKPK 011200Z 18005KT CAVOK 30/18 Q1008",
             expected_temperature_c=32.0,
         )
+
+
+def test_a_report_missing_one_group_carries_the_last_stated_vector() -> None:
+    """An omitted group is silence about the vector, not a broken path.
+
+    KDAL 2026-09-02: the 19:53Z report was filed without its wind group, the
+    COR two minutes later supplied it, and a COR is reference-only by review
+    so the P1 reader drops it.  The walk stopped at the windless report,
+    ``complete`` went false, and the whole station-day's P1 chain stopped
+    there -- P1 froze at a 35.0 high while the station went on to 37.8.
+    Fifteen such reports on twelve station-days in the fleet's week from
+    2026-08-27, nine missing wind and six the cloud amount.
+
+    The sky does not change report to report any more than it changes
+    carrier to carrier, which is the rule this module already applied to
+    bodyless rows.  One report supplies the whole vector; present weather
+    still comes from the newest parsable body, which is where it read from.
+    """
+
+    state = compile_conditional_metar_path_state(
+        [
+            _row(
+                "2026-09-02T17:53:00Z",
+                34.4,
+                "METAR KDAL 021753Z 09008KT 10SM FEW050 34/20 A2997",
+            ),
+            _row(
+                "2026-09-02T18:53:00Z",
+                35.0,
+                "METAR KDAL 021853Z VRB03KT 10SM FEW060 35/19 A2994",
+            ),
+            _row(
+                "2026-09-02T19:53:00Z",
+                36.7,
+                "METAR KDAL 021953Z 10SM -RA FEW060 37/19 A2990",
+            ),
+        ],
+        as_of_utc="2026-09-02T19:55:00Z",
+        settlement_timezone="America/Chicago",
+        root_probabilities={"36C": 0.4, "37C": 0.6},
+        bucket_centers_c={"36C": 36.0, "37C": 37.0},
+    )
+
+    assert state.complete is True
+    assert state.running_high_c == 36.7
+    # The vector is 18:53's, whole and from one report.
+    assert state.wind_speed_mps == pytest.approx(3 * 0.514444)
+    assert state.cloud_cover_fraction == 0.25
+    assert state.pressure_hpa == pytest.approx(1013.9, abs=0.1)
+    assert state.dewpoint_depression_c == pytest.approx(36.7 - 19.0)
+    # Present weather is the current report's own statement, not the
+    # carried one's: 19:53 says -RA and 18:53 said nothing.
+    assert state.precipitation_present is True
+
+
+def test_a_vector_older_than_the_carry_window_is_incomplete_again() -> None:
+    state = compile_conditional_metar_path_state(
+        [
+            _row(
+                "2026-09-02T16:00:00Z",
+                33.0,
+                "METAR KDAL 021600Z 09008KT 10SM FEW050 33/20 A2997",
+            ),
+            _row(
+                "2026-09-02T16:30:00Z",
+                34.0,
+                "METAR KDAL 021630Z 09008KT 10SM FEW050 34/20 A2997",
+            ),
+            _row(
+                "2026-09-02T19:53:00Z",
+                36.7,
+                "METAR KDAL 021953Z 10SM FEW060 37/19 A2990",
+            ),
+        ],
+        as_of_utc="2026-09-02T19:55:00Z",
+        settlement_timezone="America/Chicago",
+        root_probabilities={"36C": 0.4, "37C": 0.6},
+        bucket_centers_c={"36C": 36.0, "37C": 37.0},
+    )
+
+    assert state.complete is False

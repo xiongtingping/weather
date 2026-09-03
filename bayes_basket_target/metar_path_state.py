@@ -23,6 +23,11 @@ from .future_temperature_curve import (
 PATH_STATE_SCHEMA = "bayes_basket_metar_conditional_path_state_v1"
 PHYSICAL_STATE_SCHEMA = "bayes_basket_metar_physical_state_v1"
 MAX_RAW_METAR_BYTES = 16_384
+# How long one report's physical vector speaks for the rows after it.  The
+# sky does not change carrier to carrier, and a report that omits a group
+# states no more of the vector than a carrier row does; past this the carried
+# state is honestly stale and the path is incomplete again.
+_PHYSICAL_STATE_CARRY_SECONDS = 7200.0
 PATH_MODEL_COEFFICIENT_KEYS = frozenset({
     "base_distribution_mean",
     "root_expected_remaining_warming",
@@ -368,25 +373,46 @@ def compile_conditional_metar_path_state(
             expected_temperature_c=temperature,
         ))
     # The current physical state (clouds, wind, pressure, dewpoint) comes
-    # from the most recent row that carries a parsable METAR body.  Soft
-    # carrier rows (madis_hfmetar / asos_1min) have no METAR text by
-    # construction, so ``states[-1]`` went None the moment one of them ended
-    # the prefix and the whole physical method fail-closed
+    # from the most recent row that states a whole one.  Soft carrier rows
+    # (madis_hfmetar / asos_1min) have no METAR text by construction, so
+    # ``states[-1]`` went None the moment one of them ended the prefix and
+    # the whole physical method fail-closed
     # (``metar_path_state_incomplete``, 17 of 41 standing samples in the
-    # 2026-08-29 uplift replay).  The sky does not change carrier to
-    # carrier; the last METAR's state speaks for it -- bounded at two hours,
-    # past which a stale state is honestly incomplete again.
+    # 2026-08-29 uplift replay).
+    #
+    # A report that parses but omits a group states no more of the vector
+    # than a carrier row does, and until 2026-09-03 it was treated as the
+    # opposite: the walk stopped at it, ``complete`` went false, and the
+    # station-day's whole P1 chain stopped there -- not for that one step,
+    # for every step after it, the compile being a single prefix walk.
+    # Measured over the fleet's 12,021 loader-admitted AWC reports from
+    # 2026-08-27: fifteen such reports on twelve station-days, nine missing
+    # the wind group and six the cloud amount (an AUTO station's ``///CB``,
+    # one ``STC017CB`` typo).  KDAL 2026-09-02 is the shape -- 19:53Z filed
+    # without wind, the COR two minutes later supplied it, and a COR is
+    # reference-only by review so the P1 reader drops it.  P1 froze at a
+    # 35.0 high while the station went on to 37.8, holding a lower bound the
+    # day had already passed; KAUS 2026-08-31 froze at 31.7 against 37.2.
+    #
+    # So the walk keeps looking back for a report that states the vector,
+    # under the same two-hour bound.  One report supplies the whole vector,
+    # never a field-by-field blend of several.  Present weather stays with
+    # the newest parsable body, which is where it already read from.
     latest = None
-    latest_index = None
+    latest_complete = None
     for index in range(len(states) - 1, -1, -1):
-        if states[index] is not None:
-            latest, latest_index = states[index], index
+        state = states[index]
+        if state is None:
+            continue
+        if (
+            times[-1] - times[index]
+        ).total_seconds() > _PHYSICAL_STATE_CARRY_SECONDS:
             break
-    if (
-        latest is not None
-        and (times[-1] - times[latest_index]).total_seconds() > 7200.0
-    ):
-        latest = None
+        if latest is None:
+            latest = state
+        if state.complete:
+            latest_complete = state
+            break
     # Two carriers may legally share a minute (a METAR and the MADIS row of
     # the same reading, or a SPECI on a five-minute mark).  Sorted input
     # makes a genuine rewind impossible; an equal timestamp is not one.  For
@@ -429,7 +455,7 @@ def compile_conditional_metar_path_state(
         * _finite("metar_path_bucket_center_c", bucket_centers_c[bucket])
         for bucket, probability in root_probabilities.items()
     )
-    physical_complete = latest is not None and latest.complete
+    physical_complete = latest_complete is not None
     complete = physical_complete and len(rows) >= 3
     curve_features: dict[str, Any] | None = None
     if future_curve is not None:
@@ -453,8 +479,9 @@ def compile_conditional_metar_path_state(
             running_high_c=running_high,
         )
     dewpoint_depression = (
-        temperatures[-1] - float(latest.dewpoint_c)
-        if latest is not None and latest.dewpoint_c is not None
+        temperatures[-1] - float(latest_complete.dewpoint_c)
+        if latest_complete is not None
+        and latest_complete.dewpoint_c is not None
         else 0.0
     )
     body = {
@@ -467,11 +494,11 @@ def compile_conditional_metar_path_state(
         "momentum_c_per_hour": momentum,
         "acceleration_c_per_hour2": acceleration,
         "dewpoint_depression_c": dewpoint_depression,
-        "cloud_cover_fraction": float(latest.cloud_cover_fraction) if physical_complete else 0.0,
+        "cloud_cover_fraction": float(latest_complete.cloud_cover_fraction) if physical_complete else 0.0,
         "precipitation_present": bool(latest.precipitation_present) if latest is not None else False,
-        "wind_speed_mps": float(latest.wind_speed_mps) if physical_complete else 0.0,
-        "wind_gust_mps": float(latest.wind_gust_mps or latest.wind_speed_mps) if physical_complete else 0.0,
-        "pressure_hpa": float(latest.pressure_hpa) if physical_complete else 0.0,
+        "wind_speed_mps": float(latest_complete.wind_speed_mps) if physical_complete else 0.0,
+        "wind_gust_mps": float(latest_complete.wind_gust_mps or latest_complete.wind_speed_mps) if physical_complete else 0.0,
+        "pressure_hpa": float(latest_complete.pressure_hpa) if physical_complete else 0.0,
         "root_expected_tmax_c": expected_tmax,
         "root_expected_remaining_warming_c": max(0.0, expected_tmax - running_high),
         "future_curve_sha256": (
