@@ -233,6 +233,9 @@ LEDGER_ONLY = {
     # Whether P0-M/P1 may open an empty chain; off is the book's rule and the
     # user's (only P0 opens), on is the replay arm that measures the other.
     "STAGE_SELF_OPEN": "replay arm: later stages opening an empty chain, off by default",
+    # Whether a top-up must add to every leg; production's atomicity ruling
+    # as a replay arm, off by default (the book buys the legs it is short of).
+    "TOPUP_ATOMIC": "replay arm: production's atomic top-up, off by default",
     # Charter 63 retired (2026-09-03): production no longer defines a
     # per-leg value clamp, so the maker_resting research arm's lambdas are
     # this lane's alone.  They move nothing under the taker family.

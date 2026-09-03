@@ -592,6 +592,8 @@ REFUSAL_DEPTH = {
     "production_judge_hold": 6,
     "no_depth": 7,
     "no_top_up_needed": 7,
+    # The atomic top-up arm: the chain is short of some legs but not all.
+    "topup_not_complete_basket": 7,
     # One layer: the order was posted and bought nothing.  Which of the two
     # is reported turns on whether we cancelled it or the book never came.
     "resting_unfilled": 8,
@@ -1267,6 +1269,17 @@ STAGE_SELF_OPEN = (
 )
 if STAGE_SELF_OPEN not in {"off", "on"}:
     raise SystemExit(f"unknown stage self-open arm: {STAGE_SELF_OPEN}")
+# Whether a top-up must add to every leg of the seat (replay arm, 2026-09-03).
+# ``off`` is this book's rule: a top-up buys the legs the chain is short of
+# and leaves the rest.  ``on`` is production's atomicity ruling (2026-08-12,
+# a complete basket gives every support bucket a positive increment): a
+# top-up that would touch only some legs is refused instead.  Measured so
+# the two can be ruled between.
+TOPUP_ATOMIC = (
+    os.environ.get("PAPER_LEDGER_TOPUP_ATOMIC", "").strip().lower() or "off"
+)
+if TOPUP_ATOMIC not in {"off", "on"}:
+    raise SystemExit(f"unknown top-up atomic arm: {TOPUP_ATOMIC}")
 # The chain ticket, and it is deliberately ledger-only.  Under charter 68 the
 # shrink sizes most opening seats to nothing, and under THIS book's rule --
 # one book per station-day, only P0 opens -- a seat sized to nothing forfeits
@@ -1704,6 +1717,7 @@ SELECTION_RULE_SHA256 = content_sha256({
         {"stage_self_open": STAGE_SELF_OPEN}
         if STAGE_SELF_OPEN != "off" else {}
     ),
+    **({"topup_atomic": TOPUP_ATOMIC} if TOPUP_ATOMIC != "off" else {}),
     "window_strategy": WINDOW_STRATEGY,
     "execution_mode": EXECUTION_MODE,
     # Which price the Kelly stake and the payout test are struck against.
@@ -1988,6 +2002,7 @@ REFUSAL_REASONS = (
     # what P0 already bought" is not a refusal to trade -- it is the chain
     # standing pat, and it has to read as that rather than as no seat.
     "no_top_up_needed",
+    "topup_not_complete_basket",
     # A later stage whose station-day never opened.  Only P0 opens a
     # position; a top-up with nothing to top up is not a position of its own.
     # The declining-probability clamp's two refusals (arm-gated; the "off"
@@ -7468,6 +7483,22 @@ def backfill(
                             topped.append(got)
                             topped_cash.append(paid * (1.0 + FEE_RATE))
                             spend += paid
+                        if (
+                            TOPUP_ATOMIC == "on"
+                            and sum(topped) > 0.0
+                            and any(q <= 0.0 for q in topped)
+                        ):
+                            refusal = _deeper_refusal(refusal, (
+                                "topup_not_complete_basket",
+                                "篮子完整性：目标 %s 只有 %d/%d 条腿需要加，整篮不动"
+                                % (
+                                    "+".join(seat["buckets"]),
+                                    sum(1 for q in topped if q > 0.0),
+                                    len(topped),
+                                ),
+                                cycles, payload["decision_at_utc"],
+                            ))
+                            continue
                         if sum(topped) <= 0.0:
                             refusal = _deeper_refusal(refusal, (
                                 "no_top_up_needed",
