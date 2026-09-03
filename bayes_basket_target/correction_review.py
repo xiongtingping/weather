@@ -21,11 +21,12 @@ CLEAR_REFERENCE_ONLY = "CLEAR_REFERENCE_ONLY"
 # opposite and states it explicitly: the corrected report stands in for what it
 # corrected and is counted normally.
 #
-# It may only be recorded when nothing at that valid time contradicts it, which
-# is checked against the stored reports at append time rather than asserted by
-# the reviewer.  The downstream contradiction guard is unchanged and remains
-# the last word: two reports disagreeing on temperature for one valid time
-# still fail closed as settlement_truth_hourly_revision_ambiguous.
+# It carries no peer-agreement precondition since 2026-09-03, and the guard it
+# used to defer to is gone with it: a same-slot disagreement is settled by
+# publication order, the later report superseding the earlier (2026-09-02),
+# rather than fail-closed as settlement_truth_hourly_revision_ambiguous.  The
+# receipt says the correction stands in the slot; which reading settles is the
+# lane's own call.  QUARANTINE_STATION_DAY is how a person stops a station-day.
 CLEAR_WITH_REPLACEMENT = "CLEAR_WITH_REPLACEMENT"
 QUARANTINE_STATION_DAY = "QUARANTINE_STATION_DAY"
 DECISIONS = frozenset({
@@ -373,18 +374,17 @@ def append_correction_review(
 
 AUTOMATIC_REVIEWER = "policy.correction_auto_clear.v1"
 AUTOMATIC_RATIONALE = (
-    "Automatic CLEAR_REFERENCE_ONLY: a corrected report is admitted as "
-    "reference evidence and never moves settled truth by itself. The "
-    "contradiction guard downstream is unchanged -- two reports that disagree "
-    "on temperature for one valid time still fail closed as "
-    "settlement_truth_hourly_revision_ambiguous."
+    "Automatic CLEAR_REFERENCE_ONLY: the correction is admitted and the "
+    "station-day proceeds. Which report settles its own slot is decided "
+    "downstream by publication order, the later transmission superseding the "
+    "earlier."
 )
 AUTOMATIC_REPLACEMENT_RATIONALE = (
     "Automatic CLEAR_WITH_REPLACEMENT: an on-hour corrected report is eligible "
     "truth input, so it stands in for the report it corrected rather than "
-    "being demoted to reference. Recorded only where nothing else at that "
-    "valid time disagrees on temperature, checked against the stored reports. "
-    "The contradiction guard downstream is unchanged."
+    "being demoted to reference. No peer-agreement precondition since "
+    "2026-09-03: a disagreement at one valid time is settled downstream by "
+    "publication order."
 )
 
 

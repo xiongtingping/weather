@@ -6,11 +6,15 @@ resolved`` will not clear without a review receipt.  With nobody reviewing,
 those halts accumulate: sixteen station-days were holding the settled-truth
 batch, which stopped truth for all 45 stations and P1 with it.
 
-What this removes is the wait, not the check.  Each correction is recorded as
-``CLEAR_REFERENCE_ONLY`` -- admitted as reference evidence, never moving settled
-truth on its own -- and the contradiction guard downstream is untouched: two
-reports that disagree on temperature for one valid time still fail closed as
-``settlement_truth_hourly_revision_ambiguous``.
+What this removes is the wait, not the check.  Each correction gets the
+contract its own report is entitled to -- ``CLEAR_WITH_REPLACEMENT`` for an
+on-hour report, ``CLEAR_REFERENCE_ONLY`` otherwise -- and the receipt says the
+correction is admitted, not that it agrees with anything.  Which report settles
+its own slot is decided downstream by publication order, the later transmission
+superseding the earlier (ruling 2026-09-02); the peer-agreement precondition
+that used to gate the replacement, and the
+``settlement_truth_hourly_revision_ambiguous`` guard it deferred to, are both
+retired.  A person can still stop a station-day with ``QUARANTINE_STATION_DAY``.
 
 Receipts are ordinary review rows carrying the policy id as their reviewer, so
 the ledger records what was decided and a later human decision can supersede
