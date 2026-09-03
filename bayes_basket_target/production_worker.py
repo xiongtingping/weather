@@ -2500,6 +2500,42 @@ def _native_forward_packet_is_stale(
     return age_seconds >= NATIVE_P0_COMPILE_FRESH_SECONDS
 
 
+def _official_inbox_packets_all_stale(
+    inbox_path: Path,
+    *,
+    event_date: str,
+    as_of_utc: str,
+) -> bool:
+    """Whether every official packet this inbox holds for the day is stale.
+
+    True only on a positive reading: the inbox has packets for the day and
+    the compiler would refuse each of them for age.  No inbox, or no packet
+    for the day, is not "stale" -- it is the held-run guard's ordinary case,
+    and re-downloading on it would undo what that guard exists for.
+    """
+
+    if not inbox_path.is_file():
+        return False
+    try:
+        root = load_bounded_json(inbox_path)
+    except Exception:  # noqa: BLE001 -- the compiler names an unreadable inbox
+        return False
+    packets = root.get("packets") if isinstance(root, Mapping) else root
+    if not isinstance(packets, list):
+        return False
+    same_day = [
+        packet for packet in packets
+        if isinstance(packet, Mapping)
+        and str(packet.get("event_date") or "") == str(event_date)
+    ]
+    if not same_day:
+        return False
+    return all(
+        _native_forward_packet_is_stale(packet, as_of_utc=as_of_utc)
+        for packet in same_day
+    )
+
+
 def _packet_taf_superseded(
     conn: sqlite3.Connection,
     packet: Mapping[str, Any],
@@ -3314,7 +3350,24 @@ class TargetProductionWorker:
         newest_run_init = (
             run_ladder[0][2].isoformat().replace("+00:00", "Z")
         )
-        if captured_runs.get(event_date) == newest_run_init:
+        # A held run is retired for good only while the packets built from
+        # it are still usable.  The packet's freshness window runs from the
+        # *capture*, not from the run, and the next contracted run lands
+        # hours after the window closes -- 2026-09-02: 09-03's packets were
+        # received 08:11Z, every one of the 62 in the inbox was refused as
+        # native_ensemble_snapshot_stale from mid-afternoon on, the 00Z run
+        # was not ready until 08Z, the republisher fallback had spent its
+        # daily quota, and no P0 was minted fleet-wide for the whole night.
+        # Re-reading the same run is cheap (the archives are retained) and
+        # a new capture is a new arrival receipt, which is exactly what the
+        # compiler's window was written to require.
+        stale_for_day = _official_inbox_packets_all_stale(
+            inbox_path, event_date=event_date, as_of_utc=as_of_utc
+        )
+        if (
+            captured_runs.get(event_date) == newest_run_init
+            and not stale_for_day
+        ):
             return {
                 "state": "RUN_ALREADY_CAPTURED",
                 "station_id": station_id,
@@ -3331,7 +3384,7 @@ class TargetProductionWorker:
         # to nothing is the correct outcome: the date keeps what it has and
         # retries after its floor.
         held_run_init = captured_runs.get(event_date)
-        if held_run_init:
+        if held_run_init and not stale_for_day:
             try:
                 held = datetime.fromisoformat(
                     held_run_init.replace("Z", "+00:00")

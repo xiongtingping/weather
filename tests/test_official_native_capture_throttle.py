@@ -298,3 +298,66 @@ def test_packet_run_identity_is_read_from_its_systems() -> None:
     })
     assert newest is not None
     assert newest.isoformat().replace("+00:00", "Z") == "2026-08-13T06:00:00Z"
+
+
+def _inbox_with_packet(path: Path, *, event_date: str, received_at_utc: str) -> None:
+    import json
+
+    path.write_text(json.dumps({
+        "packets": [{
+            "schema": "official_native_forward_packet_v1",
+            "station_id": "KMIA",
+            "event_date": event_date,
+            "received_at_utc": received_at_utc,
+        }],
+    }), encoding="utf-8")
+
+
+def _held_newest_run(worker) -> None:
+    class _Finished:
+        def done(self):
+            return True
+
+        def result(self):
+            return {
+                "state": "CAPTURED",
+                "inbox_packet_count": 7,
+                "captured_run_init_utc": "2026-08-06T12:00:00Z",
+            }
+
+    worker._official_native_capture_inflight = {("2026-08-07",): _Finished()}
+
+
+def test_stale_packets_reopen_a_held_run(worker, tmp_path: Path) -> None:
+    """A held run is retired only while its packets are still usable.
+
+    2026-09-02: the day's packets aged past the compile window at
+    mid-afternoon, the next run was eight hours away, the fallback quota
+    was spent, and the held-run guard refused to re-read the run whose
+    archives it already had -- no P0 fleet-wide all night.
+    """
+
+    _held_newest_run(worker)
+    _inbox_with_packet(
+        tmp_path / "inbox.json",
+        event_date="2026-08-07",
+        received_at_utc="2026-08-05T15:00:00Z",
+    )
+
+    result = _capture(worker, tmp_path=tmp_path)
+
+    assert result["state"] != "RUN_ALREADY_CAPTURED"
+
+
+def test_fresh_packets_keep_the_held_run_retired(worker, tmp_path: Path) -> None:
+    _held_newest_run(worker)
+    _inbox_with_packet(
+        tmp_path / "inbox.json",
+        event_date="2026-08-07",
+        received_at_utc="2026-08-06T14:50:00Z",
+    )
+
+    result = _capture(worker, tmp_path=tmp_path)
+
+    assert result["state"] == "RUN_ALREADY_CAPTURED"
+
