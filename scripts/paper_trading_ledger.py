@@ -1230,7 +1230,13 @@ if LEG_VETO not in {"off", "on"}:
 # ``production_seat`` splits the gap: production's solver chooses the window,
 # this lane's gate and Kelly then size it -- so seat choice and sizing can
 # be told apart in the measurement.
-JUDGE = os.environ.get("PAPER_LEDGER_JUDGE", "").strip().lower() or "ledger"
+# Since 2026-09-04 (user ruling) the standing book is judged by production's
+# own solver: ``production`` is the default and ``ledger`` -- this lane's
+# original head-seat-plus-Kelly judge -- is kept as a research arm.  On the
+# replay book the two read +49.8% and +44.2%; the book is here to measure
+# what production runs, and since charters 72-74 that is the production
+# judge with the ticket and atomic top-ups.
+JUDGE = os.environ.get("PAPER_LEDGER_JUDGE", "").strip().lower() or "production"
 if JUDGE not in {"ledger", "production", "production_seat"}:
     raise SystemExit(f"unknown judge: {JUDGE}")
 # Charter 71(b) tightening, replay arm (2026-09-03): ``on`` refuses a top-up
@@ -1275,8 +1281,11 @@ if STAGE_SELF_OPEN not in {"off", "on"}:
 # a complete basket gives every support bucket a positive increment): a
 # top-up that would touch only some legs is refused instead.  Measured so
 # the two can be ruled between.
+# ``on`` since 2026-09-04: the standing book mirrors production's atomicity
+# (charter 74 measured it at +49.8% against +48.7% for deficit-leg top-ups
+# under the production judge); ``off`` is the research arm.
 TOPUP_ATOMIC = (
-    os.environ.get("PAPER_LEDGER_TOPUP_ATOMIC", "").strip().lower() or "off"
+    os.environ.get("PAPER_LEDGER_TOPUP_ATOMIC", "").strip().lower() or "on"
 )
 if TOPUP_ATOMIC not in {"off", "on"}:
     raise SystemExit(f"unknown top-up atomic arm: {TOPUP_ATOMIC}")
@@ -1648,6 +1657,10 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     None
     if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_CRASH_TICKS <= 0
     else f"砸穿{MAKER_RESTING_CRASH_TICKS:g}跳撤腿(对照)",
+    "生产裁判" if JUDGE == "production" else (
+        "生产选窗" if JUDGE == "production_seat" else "账本裁判"
+    ),
+    "整篮加仓" if TOPUP_ATOMIC == "on" else "只买缺腿",
     "一本账·只加不减",
 )))
 SELECTION_RULE_SHA256 = content_sha256({
@@ -1708,7 +1721,9 @@ SELECTION_RULE_SHA256 = content_sha256({
         if EFFECTIVE_EDGE_SCOPE != "window" else {}
     ),
     **({"leg_veto": LEG_VETO} if LEG_VETO != "off" else {}),
-    **({"judge": JUDGE} if JUDGE != "ledger" else {}),
+    # The judge and the top-up shape are the book's identity now, not arms:
+    # hashed unconditionally so a flip either way re-derives the book.
+    "judge": JUDGE,
     **(
         {"judge_bankroll": JUDGE_BANKROLL}
         if JUDGE_BANKROLL != "station" else {}
@@ -1717,7 +1732,7 @@ SELECTION_RULE_SHA256 = content_sha256({
         {"stage_self_open": STAGE_SELF_OPEN}
         if STAGE_SELF_OPEN != "off" else {}
     ),
-    **({"topup_atomic": TOPUP_ATOMIC} if TOPUP_ATOMIC != "off" else {}),
+    "topup_atomic": TOPUP_ATOMIC,
     "window_strategy": WINDOW_STRATEGY,
     "execution_mode": EXECUTION_MODE,
     # Which price the Kelly stake and the payout test are struck against.

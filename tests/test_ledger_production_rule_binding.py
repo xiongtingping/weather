@@ -638,7 +638,9 @@ def test_the_production_judge_arm_calls_productions_own_solver() -> None:
     import bayes_basket_target.production_io as IO
     import bayes_basket_target.runtime as R
 
-    assert L.JUDGE == "ledger"
+    # The standing book is judged by production's solver since 2026-09-04.
+    assert L.JUDGE == "production"
+    assert L.TOPUP_ATOMIC == "on"
     assert L._solve_over_support_windows is P._solve_over_support_windows
     assert L._support_windows is P._support_windows
     assert L.resolve_delta_v2_policy is A.resolve_delta_v2_policy
@@ -647,9 +649,9 @@ def test_the_production_judge_arm_calls_productions_own_solver() -> None:
     assert L.derive_policy_maturity_bin is IO.derive_policy_maturity_bin
     assert L._PRODUCTION_DEFAULT_POLICY is R._DEFAULT_POLICY
     assert L.CONSOLIDATION_TILT_FLOOR_LEGS == P.CONSOLIDATION_TILT_FLOOR_LEGS
-    # Only the non-default arm is hashed, so the standing book keeps its
-    # identity: the fingerprint source names the key under a guard.
+    # The judge is the book's identity: hashed unconditionally.
     source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
         encoding="utf-8"
     )
-    assert '**({"judge": JUDGE} if JUDGE != "ledger" else {})' in source
+    assert '"judge": JUDGE,' in source
+    assert '"topup_atomic": TOPUP_ATOMIC,' in source
