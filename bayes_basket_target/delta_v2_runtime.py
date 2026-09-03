@@ -63,6 +63,8 @@ from .basket_kernel.delta_v2 import (
     solve_target_inventory_v2,
 )
 from .basket_kernel.support import (
+    mean_center_bucket_v1,
+    mean_mode_skew_sign_v1,
     _choose_support,
     _derive_dual_risk_scope,
     probability_center_diagnostics,
@@ -976,40 +978,17 @@ def _skew_extension_sign(
 ) -> int:
     """The distribution's skew direction: +1 hot-tailed, -1 cold, 0 none.
 
-    Read from the full served distribution -- mass on buckets the book
-    declined to price still describes the day -- as the signed gap between
-    the weighted mean ordinal and the heaviest bucket's ordinal, gated at
-    half the vocabulary's own bucket step so a °F station is not read as
-    twice as skewed as a °C one.
+    Charter 75: the kernel's ``mean_mode_skew_sign_v1``, read with this
+    lane's signal definition and gap threshold, which are the same numbers
+    the seed's direction is read with.
     """
 
-    weighted = [
-        (float(probabilities[bucket]), int(ordinals[bucket]))
-        for bucket in probabilities
-        if bucket in ordinals and float(probabilities[bucket]) > 0.0
-    ]
-    total = sum(mass for mass, _ in weighted)
-    if not weighted or total <= 0.0:
-        return 0
-    if SKEW_SIGNAL_DEFINITION == "mean_median":
-        running = 0.0
-        anchor_ordinal = weighted[-1][1]
-        for mass, ordinal in sorted(weighted, key=lambda row: row[1]):
-            running += mass
-            if running >= total / 2.0:
-                anchor_ordinal = ordinal
-                break
-        mode_ordinal = anchor_ordinal
-    else:
-        mode_ordinal = max(weighted, key=lambda row: row[0])[1]
-    mean_ordinal = sum(mass * o for mass, o in weighted) / total
-    steps = sorted({o for _, o in weighted})
-    diffs = [b - a for a, b in zip(steps, steps[1:]) if b > a]
-    step = min(diffs) if diffs else 1
-    gap = mean_ordinal - mode_ordinal
-    if abs(gap) < SKEW_GAP_THRESHOLD_BUCKETS * step:
-        return 0
-    return 1 if gap > 0 else -1
+    return mean_mode_skew_sign_v1(
+        probabilities,
+        ordinals,
+        signal=SKEW_SIGNAL_DEFINITION,
+        threshold_buckets=SKEW_GAP_THRESHOLD_BUCKETS,
+    )
 
 
 def _alternate_ladder_center(
@@ -1042,7 +1021,10 @@ def _alternate_ladder_center(
     if not weighted or total <= 0.0 or not admitted:
         return None
     if definition == "mean":
-        target = sum(mass * ordinal for mass, ordinal, _ in weighted) / total
+        # Charter 75: one definition of the mean centre, the kernel's.
+        return mean_center_bucket_v1(
+            probabilities, ordinals, admitted=list(admitted)
+        )
     elif definition == "median":
         target = None
         running = 0.0
@@ -3176,20 +3158,22 @@ def compile_delta_v2_runtime_plan(
         {row.bucket: row.ordinal for row in snapshot.buckets},
         basket_policy,
     )
-    # The diagnostic center is the probability argmax.  It is the anchor only
-    # for stages that publish no point estimate of their own; when one exists
-    # the anchor is deliberately not the argmax, because an open-ended edge
-    # bucket spans an unbounded interval and outranks the 1°C buckets it is
-    # compared against without the forecast pointing anywhere near it.  Keeping
-    # the equality unconditional would reject exactly the cases the anchor was
-    # introduced to fix (ZUUU: anchor 33°C, argmax "35°C or higher").  The
-    # runner-up/lead/stability diagnostics below remain informative either way.
-    if (
-        snapshot.evidence.model_center_ordinal is None
-        and diagnosed_center != center.bucket
-    ):
-        raise ContractError("delta_v2_center_diagnostic_mismatch")
+    # The diagnostic center is the probability argmax; the runner-up, lead and
+    # stability it reports stay informative.  The anchor itself is no longer
+    # the argmax under any stage: charter 75 makes it the mean bucket of the
+    # served distribution (the model centre and the argmax are only the
+    # fallbacks for a vector with no mass), so the consistency this guards
+    # is that the seed's centre is the kernel's mean bucket -- an open-ended
+    # edge bucket outranking the 1°C buckets it is compared against (ZUUU:
+    # argmax "35°C or higher") is exactly what the mean does not follow.
     probabilities = {row.bucket: row.probability for row in snapshot.buckets}
+    expected_center = mean_center_bucket_v1(
+        probabilities, {row.bucket: row.ordinal for row in snapshot.buckets}
+    )
+    if expected_center is None and snapshot.evidence.model_center_ordinal is None:
+        expected_center = diagnosed_center
+    if expected_center is not None and expected_center != center.bucket:
+        raise ContractError("delta_v2_center_diagnostic_mismatch")
     # Charter 71(a): the identity of the belief this compile is served,
     # recorded at commit when it buys and compared here when it holds.
     probability_identity = probability_vector_identity_v1(probabilities)

@@ -99,10 +99,20 @@ def test_unadmitted_anchor_grows_the_incumbent_from_the_heaviest_bucket() -> Non
     assert transition["center_not_admitted_reason"] == "anchor_outside_admitted_support"
 
 
-def test_admitted_anchor_leaves_the_record_byte_identical() -> None:
-    *_rest, transition = _choose_support(
-        _snapshot(anchor_ordinal=4), _policy()
-    )
+def test_model_centre_no_longer_moves_the_anchor() -> None:
+    """Charter 75: the anchor is the mean bucket, whatever the model centre.
 
-    assert "center_admitted" not in transition
-    assert "incumbent_anchor_bucket" not in transition
+    On this shape the weighted mean ordinal is 4.72, so the anchor is 20°C
+    with the model centre at 19°C exactly as with it at 20°C -- the model
+    centre is only the fallback for a vector with no mass -- and the degrade
+    record reads the same either way.
+    """
+
+    anchored_on_mode = _choose_support(_snapshot(anchor_ordinal=4), _policy())
+    anchored_on_mean = _choose_support(_snapshot(anchor_ordinal=5), _policy())
+
+    assert anchored_on_mode[0].bucket == "20°C"
+    assert anchored_on_mode[5] == anchored_on_mean[5] == {"19°C"}
+    assert anchored_on_mode[-1] == anchored_on_mean[-1]
+    assert anchored_on_mode[-1]["center_bucket"] == "20°C"
+    assert anchored_on_mode[-1]["incumbent_anchor_bucket"] == "19°C"

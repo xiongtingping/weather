@@ -67,6 +67,104 @@ def _validated_probability_vector(
     return parsed
 
 
+# Charter 75 (user ruling, 2026-09-03): the centre bucket is where the served
+# distribution's probability-weighted mean falls, and the direction bias is
+# read by comparing that mean with the mode, gated at half a bucket:
+#   left-skewed   mean < median < mode   -> DOWN (the tail is on the cold side)
+#   symmetric     mean ~ median ~ mode   -> NEUTRAL
+#   right-skewed  mode < median < mean   -> UP
+# One definition for the seed (``_choose_support``), the ladder centre
+# (charter 54) and the skew extension sign (charter 55), and the paper ledger
+# imports the same two functions.
+MEAN_MODE_SKEW_THRESHOLD_BUCKETS = 0.5
+
+
+def mean_center_bucket_v1(
+    probabilities: Mapping[str, Any],
+    ordinals: Mapping[str, Any],
+    *,
+    admitted: Sequence[str] | None = None,
+) -> str | None:
+    """The bucket nearest the probability-weighted mean ordinal.
+
+    Read off the whole served distribution -- a bucket the book declined to
+    price still carries mass -- and snapped onto ``admitted`` (every bucket
+    when None), ties to the heavier bucket.  None on empty mass, so a
+    caller can fall back to its own anchor.
+    """
+
+    weighted = [
+        (float(probabilities[bucket]), int(ordinals[bucket]), str(bucket))
+        for bucket in probabilities
+        if bucket in ordinals and float(probabilities[bucket]) > 0.0
+    ]
+    total = sum(mass for mass, _, _ in weighted)
+    if not weighted or total <= 0.0:
+        return None
+    target = sum(mass * ordinal for mass, ordinal, _ in weighted) / total
+    pool = [
+        str(bucket)
+        for bucket in (admitted if admitted is not None else ordinals)
+        if bucket in ordinals
+    ]
+    if not pool:
+        return None
+    return min(
+        pool,
+        key=lambda bucket: (
+            abs(int(ordinals[bucket]) - target),
+            -float(probabilities.get(bucket, 0.0) or 0.0),
+            int(ordinals[bucket]),
+            bucket,
+        ),
+    )
+
+
+def mean_mode_skew_sign_v1(
+    probabilities: Mapping[str, Any],
+    ordinals: Mapping[str, Any],
+    *,
+    signal: str = "mean_mode",
+    threshold_buckets: float = MEAN_MODE_SKEW_THRESHOLD_BUCKETS,
+) -> int:
+    """The distribution's skew: +1 mean above the mode, -1 below, 0 within.
+
+    The gap is the weighted mean ordinal minus the heaviest bucket's ordinal
+    (``mean_median``: minus the median's), gated at ``threshold_buckets``
+    times the vocabulary's own bucket step so a Fahrenheit station is not
+    read as twice as skewed as a Celsius one.  Lifted from charter 55's
+    ``_skew_extension_sign`` so the seed's direction reads the same number.
+    """
+
+    weighted = [
+        (float(probabilities[bucket]), int(ordinals[bucket]))
+        for bucket in probabilities
+        if bucket in ordinals and float(probabilities[bucket]) > 0.0
+    ]
+    total = sum(mass for mass, _ in weighted)
+    if not weighted or total <= 0.0:
+        return 0
+    if signal == "mean_median":
+        running = 0.0
+        anchor_ordinal = weighted[-1][1]
+        for mass, ordinal in sorted(weighted, key=lambda row: row[1]):
+            running += mass
+            if running >= total / 2.0:
+                anchor_ordinal = ordinal
+                break
+        mode_ordinal = anchor_ordinal
+    else:
+        mode_ordinal = max(weighted, key=lambda row: row[0])[1]
+    mean_ordinal = sum(mass * o for mass, o in weighted) / total
+    steps = sorted({o for _, o in weighted})
+    diffs = [b - a for a, b in zip(steps, steps[1:]) if b > a]
+    step = min(diffs) if diffs else 1
+    gap = mean_ordinal - mode_ordinal
+    if abs(gap) < float(threshold_buckets) * step:
+        return 0
+    return 1 if gap > 0 else -1
+
+
 def expected_direction_from_probability_vector(
     probabilities: Mapping[str, float],
     ordinals: Mapping[str, int],
@@ -74,55 +172,30 @@ def expected_direction_from_probability_vector(
     *,
     evidence_fresh: bool = True,
 ) -> Direction:
-    """Resolve the lean from the current stage probability vector only.
+    """Charter 75: the direction bias is the distribution's skew.
 
-    The market is intentionally absent here: direction is which side of the
-    centre the calibrated mass sits on, and nothing else votes.  A stale
-    stage yields no direction, since it has nothing current to lean with.
+    Mean below the mode by at least half a bucket is left-skewed and leans
+    DOWN; mean above the mode leans UP; within half a bucket the shape is
+    symmetric and there is no lean.  The market is intentionally absent
+    here, as before, and a stale stage yields no direction.  ``policy`` is
+    kept on the signature for the callers that pass it; the deadband and
+    entropy dials it carried are superseded by the half-bucket gate.
     """
 
+    del policy
     parsed = _validated_probability_vector(
         probabilities,
         ordinals,
         contract="direction",
     )
-    center_bucket, _runner_up, _lead, center_stable = probability_center_diagnostics(
-        parsed,
-        ordinals,
-        policy,
-    )
-    # A centre whose lead is thin is not a day without direction -- it is a
-    # day whose mass is spread, and the spread itself is the lean.  The
-    # stability test used to blank the direction here (charter 52c, extended
-    # 2026-08-16); it is the same "is this big enough to believe" question
-    # the three thresholds below asked, and the objective answers it with
-    # prices in hand.  ``center_stable`` remains a diagnostic elsewhere.
-    center = int(ordinals[center_bucket])
-    lower = sum(
-        float(value)
-        for bucket, value in parsed.items()
-        if int(ordinals[bucket]) < center
-    )
-    upper = sum(
-        float(value)
-        for bucket, value in parsed.items()
-        if int(ordinals[bucket]) > center
-    )
-    skew = upper - lower
-    # Direction is the mass, with nothing between (charter 52c, extended
-    # 2026-08-16).  The three thresholds that used to sit here -- a skew
-    # deadband, an entropy ceiling and a floor on the leaning side's mass --
-    # each answered "is this lean big enough to believe", which is a question
-    # the objective already answers better and with the prices in hand: a
-    # thin lean produces a thin bias and the curve score sizes it
-    # accordingly, whereas a threshold discards it and calls the day neutral.
-    # They were also a second opinion on p(t) inside the strategy layer, the
-    # same defect as the regime gate.  What survives is not a threshold: a
-    # stale stage cannot speak to direction at all, and an exactly balanced
-    # distribution has no side to lean to.
-    if not evidence_fresh or skew == 0.0:
+    if not evidence_fresh:
         return Direction.NEUTRAL
-    return Direction.UP if skew > 0.0 else Direction.DOWN
+    sign = mean_mode_skew_sign_v1(parsed, ordinals)
+    if sign > 0:
+        return Direction.UP
+    if sign < 0:
+        return Direction.DOWN
+    return Direction.NEUTRAL
 
 
 def probability_center_diagnostics(
@@ -292,23 +365,24 @@ def _center(
     *,
     model_center_ordinal: int | None = None,
 ) -> BucketObservation:
-    """Anchor the basket where the stage's data points.
+    """Anchor the basket where the served distribution's mean falls.
 
-    Highest probability is the wrong anchor when an open-ended edge bucket is
-    in play.  "35°C or higher" spans an unbounded interval, so it collects the
-    whole upper tail of every ensemble member and is not commensurable with the
-    1°C buckets it is ranked against.  ZUUU showed this exactly: system centers
-    of 30.87°C and 34.39°C, a model envelope of 31°C..34°C, and yet the edge
-    bucket won the argmax at 0.3344 and anchored the basket outside the
-    envelope.
-
-    ``model_center_ordinal`` is the bucket containing this stage's own point
-    estimate -- for P0 the weight-averaged calibrated system centers.  An edge
-    bucket remains a legitimate anchor whenever that estimate genuinely falls
-    inside it (centers of 36/37 do).  The probability argmax stays as the
-    fallback for stages that publish no anchor.
+    Charter 75: the centre bucket is the one nearest the probability-weighted
+    mean ordinal (charter 54's ladder centre, now the seed's too).  Reading
+    the mean rather than the argmax keeps an open-ended edge bucket from
+    anchoring the basket on its unbounded tail, which is what the model
+    centre existed to prevent; the model centre remains the fallback for a
+    vector with no mass, and the argmax the fallback after that.
     """
 
+    mean_bucket = mean_center_bucket_v1(
+        {item.bucket: item.probability for item in buckets},
+        {item.bucket: item.ordinal for item in buckets},
+    )
+    if mean_bucket is not None:
+        for item in buckets:
+            if item.bucket == mean_bucket:
+                return item
     if model_center_ordinal is not None:
         anchored = [
             item for item in buckets if item.ordinal == model_center_ordinal

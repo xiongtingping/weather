@@ -1258,9 +1258,21 @@ def test_b06_direction_gate_uses_probability_only_and_fails_closed() -> None:
         "direction_min_side_mass": 0.10,
     })
     ordinals = {"37": 37, "38": 38, "39": 39}
+    # Charter 75: the lean is the skew, mean against mode at half a bucket.
+    # 0.10/0.50/0.40 puts the mean at 38.3 against a mode of 38 -- inside the
+    # half-bucket band, so symmetric -- where the old side-mass rule read UP.
     assert expected_direction_from_probability_vector(
         {"37": 0.10, "38": 0.50, "39": 0.40}, ordinals, policy
+    ) is Direction.NEUTRAL
+    wide = {"37": 37, "38": 38, "39": 39, "40": 40}
+    # Mode 38, mean 38.75: right-skewed by three quarters of a bucket.
+    assert expected_direction_from_probability_vector(
+        {"37": 0.05, "38": 0.40, "39": 0.30, "40": 0.25}, wide, policy
     ) is Direction.UP
+    # Mode 39, mean 38.25: the mirror image leans DOWN.
+    assert expected_direction_from_probability_vector(
+        {"37": 0.25, "38": 0.30, "39": 0.40, "40": 0.05}, wide, policy
+    ) is Direction.DOWN
     assert expected_direction_from_probability_vector(
         {"37": 0.33, "38": 0.34, "39": 0.33}, ordinals, policy
     ) is Direction.NEUTRAL

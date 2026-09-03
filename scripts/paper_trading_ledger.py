@@ -147,8 +147,11 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     chain_ticket_cash_v1,
 )
 from bayes_basket_target.basket_kernel.support import (  # noqa: E402
+    _choose_support,
     _derive_dual_risk_scope,
+    mean_center_bucket_v1,
 )
+from bayes_basket_target.contracts import ProbabilityEnvelope  # noqa: E402
 from bayes_basket_target.contracts import ContractError  # noqa: E402
 from bayes_basket_target.delta_v2_artifact import (  # noqa: E402
     resolve_delta_v2_policy,
@@ -161,6 +164,7 @@ from bayes_basket_target.production_io import (  # noqa: E402
 from bayes_basket_target.runtime import (  # noqa: E402
     _DEFAULT_POLICY as _PRODUCTION_DEFAULT_POLICY,
     _station_cap_override,
+    snapshot_from_probability_envelope,
 )
 from bayes_basket_target.station_season import station_season_bin  # noqa: E402
 from bayes_basket_target.center_width_calibration import (  # noqa: E402
@@ -1661,6 +1665,8 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
         "生产选窗" if JUDGE == "production_seat" else "账本裁判"
     ),
     "整篮加仓" if TOPUP_ATOMIC == "on" else "只买缺腿",
+    "均值中心",
+    "生产种子" if JUDGE != "ledger" else None,
     "一本账·只加不减",
 )))
 SELECTION_RULE_SHA256 = content_sha256({
@@ -1733,6 +1739,12 @@ SELECTION_RULE_SHA256 = content_sha256({
         if STAGE_SELF_OPEN != "off" else {}
     ),
     "topup_atomic": TOPUP_ATOMIC,
+    # Charter 75: the centre and, under the production judge, the seed.
+    "centre": "mean_bucket_v1",
+    "seed": (
+        "production_choose_support_v1"
+        if JUDGE != "ledger" else "entry_support_core_v1"
+    ),
     "window_strategy": WINDOW_STRATEGY,
     "execution_mode": EXECUTION_MODE,
     # Which price the Kelly stake and the payout test are struck against.
@@ -2883,6 +2895,9 @@ def _stage_entry_candidates(
             "observed_at": observed_at,
             "buckets": buckets,
             "center_bucket": str(lineage.get("model_center_bucket") or ""),
+            # Charter 75: the production judge rebuilds production's own
+            # snapshot from this body, so the seed is production's.
+            "envelope_payload": envelope_json,
             "center_c": lineage.get("model_center_c"),
             "probability_identity": served_identity,
             # The day's reported high the P1 envelope stood on, for the
@@ -3062,7 +3077,7 @@ def _entry_support_core(
     )
 
 
-def _build_snapshot(
+def _paper_snapshot_mapping(
     *,
     station_id: str,
     event_date: str,
@@ -3160,7 +3175,7 @@ def _build_snapshot(
             "maker_queue_ahead_shares": 2.0,
             "maker_queue_known": True,
         })
-    snapshot = TargetBasketSnapshot.from_mapping({
+    mapping = {
         "schema": "target_basket_snapshot_v6",
         "snapshot_id": "paper-" + content_sha256({
             "s": station_id, "e": event_date, "o": observed_at
@@ -3199,8 +3214,56 @@ def _build_snapshot(
         "order_state_known": True,
         "risk_inputs_complete": True,
         "time_left_minutes": 1440.0,
-    })
-    return snapshot, probabilities, prices, depth
+    }
+    return mapping, probabilities, prices, depth
+
+
+def _build_snapshot(**kwargs: Any) -> tuple[
+    Any, dict[str, float], dict[str, float],
+    dict[str, list[dict[str, float]]]
+] | None:
+    """The paper snapshot, as this lane's own judge reads it."""
+
+    built = _paper_snapshot_mapping(**kwargs)
+    if built is None:
+        return None
+    mapping, probabilities, prices, depth = built
+    return (
+        TargetBasketSnapshot.from_mapping(mapping),
+        probabilities, prices, depth,
+    )
+
+
+def _production_envelope_for(
+    conn: sqlite3.Connection,
+    payload: Mapping[str, Any],
+) -> ProbabilityEnvelope:
+    """The committed envelope production compiled this checkpoint from.
+
+    The decision walk already carries the body (``envelope_payload``,
+    lineage rehydrated by ``history_envelope_payload``); a payload
+    without it is resolved through that same function, keyed by the
+    checkpoint, so ``_choose_support`` and
+    ``snapshot_from_probability_envelope`` read exactly the evidence
+    production read: model centre, dispersion, rung width, formal
+    members, per-bucket reliability.
+    """
+
+    body = payload.get("envelope_payload")
+    if not isinstance(body, Mapping):
+        from bayes_basket_target.probability_bridge import (  # noqa: PLC0415
+            history_envelope_payload,
+        )
+
+        body = history_envelope_payload(
+            conn,
+            checkpoint_id=str(payload.get("checkpoint_id") or ""),
+            envelope_content_sha256=str(
+                payload.get("envelope_content_sha256") or ""
+            ),
+            stored=None,
+        )
+    return ProbabilityEnvelope.from_mapping(dict(body))
 
 
 _PRODUCTION_POLICY_SCOPE_CACHE: dict[int, dict[str, str]] = {}
@@ -3279,10 +3342,10 @@ def _production_judge(
 
     * the regime concentration multiplier -- the regime lane is dark in all
       three stages (fleet-regime-next-day-shift), so it is 1.0 here too;
-    * production's ``desired`` seed for the shortlist is its own ladder from
-      centre and direction; this lane seeds with ``_entry_support_core``
-      as its ``live`` strategy always has.  The enumeration itself is the
-      one function.
+    * nothing of the seed, since charter 75: the snapshot is production's
+      ``snapshot_from_probability_envelope`` over the envelope production
+      compiled, the centre, direction and admitted set are production's
+      ``_choose_support``, and the enumeration is the one function.
     """
 
     fee_rate = FEE_RATE
@@ -3373,18 +3436,30 @@ def _production_judge(
                 ):
                     reported_high = (str(bucket), int(ordinal))
                     break
+    # Charter 75: the snapshot production builds, from the envelope it
+    # compiled, over this lane's book; then production's own support
+    # resolver for the centre, the direction and the seed.  Nothing of the
+    # seat's shape is this lane's any more.
+    built = _paper_snapshot_mapping(
+        station_id=station_id,
+        event_date=event_date,
+        observed_at=str(payload["observed_at"]),
+        buckets=payload["buckets"],
+        quotes=quotes,
+        stage=stage,
+        held=held,
+        held_cost=held_cost,
+        reported_high=reported_high,
+    )
+    if built is None:
+        return {
+            "refusal": ("incomplete_book", "生产裁判：快照缺腿"),
+        }
+    mapping, _probabilities, _prices, _depth = built
     try:
-        built = _build_snapshot(
-            station_id=station_id,
-            event_date=event_date,
-            observed_at=str(payload["observed_at"]),
-            buckets=payload["buckets"],
-            quotes=quotes,
-            stage=stage,
-            held=held,
-            held_cost=held_cost,
-            reported_high=reported_high,
-        )
+        envelope = _production_envelope_for(conn, payload)
+        mapping["settlement_timezone"] = envelope.settlement_timezone
+        snapshot = snapshot_from_probability_envelope(envelope, mapping)
     except (ContractError, _KernelContractError) as exc:
         return {
             "refusal": (
@@ -3392,16 +3467,22 @@ def _production_judge(
                 "生产裁判快照不成立：%s" % exc,
             ),
         }
-    if built is None:
-        return {
-            "refusal": ("incomplete_book", "生产裁判：快照缺腿"),
-        }
-    snapshot, _probabilities, _prices, _depth = built
+    probabilities = {row.bucket: float(row.probability) for row in snapshot.buckets}
     by_bucket = {row.bucket: row for row in snapshot.buckets}
-    centre_row = by_bucket.get(str(center))
-    if centre_row is None:
+    try:
+        resolved = _choose_support(snapshot, basket_policy)
+    except (ContractError, _KernelContractError) as exc:
         return {
-            "refusal": ("selection_failed", "生产裁判：中心桶不在快照内"),
+            "refusal": (
+                "production_judge_blocked",
+                "生产裁判种子失败：%s" % exc,
+            ),
+        }
+    centre_row = resolved[0]
+    desired = set(resolved[5])
+    if not desired:
+        return {
+            "refusal": ("selection_failed", "生产裁判：支持集为空"),
         }
     try:
         shortfall, breakthrough = _derive_dual_risk_scope(snapshot, centre_row)
@@ -3412,15 +3493,17 @@ def _production_judge(
                 "生产裁判风险族解析失败：%s" % exc,
             ),
         }
+    shortfall &= desired
+    breakthrough &= desired
     try:
         windows, audit = _support_windows(
             snapshot=snapshot,
-            desired=set(core) or {center},
+            desired=desired,
             probabilities=probabilities,
             fee_rate=basket_policy.fee_rate,
             maximum_support_buckets=basket_policy.maximum_support_buckets,
             minimum_support_buckets=basket_policy.minimum_support_buckets,
-            center_bucket=center,
+            center_bucket=centre_row.bucket,
             probability_stage=stage,
         )
     except Exception as exc:  # noqa: BLE001
@@ -6416,17 +6499,22 @@ def backfill(
                         str(bucket): float(value)
                         for bucket, value in probabilities.items()
                     }
-                    center = payload["center_bucket"] or max(
-                        probabilities, key=lambda b: probabilities[b]
+                    ordinals = {
+                        row.bucket: int(row.ordinal)
+                        for row in snapshot.buckets
+                    }
+                    # Charter 75: the centre is the mean bucket of the
+                    # served distribution; the envelope's model centre
+                    # and the argmax are fallbacks for an empty vector.
+                    center = (
+                        mean_center_bucket_v1(probabilities, ordinals)
+                        or payload["center_bucket"]
+                        or max(probabilities, key=lambda b: probabilities[b])
                     )
                     if center not in probabilities:
                         center = max(
                             probabilities, key=lambda b: probabilities[b]
                         )
-                    ordinals = {
-                        row.bucket: int(row.ordinal)
-                        for row in snapshot.buckets
-                    }
                     core = _entry_support_core(
                         probabilities=probabilities,
                         ordinals=ordinals,
@@ -6476,7 +6564,7 @@ def backfill(
                             center=center,
                             ordinals=ordinals,
                         )
-                    if not priced_windows:
+                    if not priced_windows and JUDGE == "ledger":
                         # Name every gate that turned windows away, or the
                         # page reports a refusal whose stated causes do not
                         # add up to it.  The leg floor landed on 2026-08-17
@@ -6520,7 +6608,10 @@ def backfill(
                             cycles, payload["decision_at_utc"],
                         ))
                         continue
-                    seat = priced_windows[0]
+                    # Under the production judge the seat below is only
+                    # provisional -- production's own resolver replaces
+                    # it -- so an empty shortlist here is not a refusal.
+                    seat = priced_windows[0] if priced_windows else None
                     # Two prices for the seated basket, and they are not the
                     # same question.  ``seat_crossing_cost`` is what lifting
                     # it off the offers would take -- production's number,
@@ -6528,15 +6619,20 @@ def backfill(
                     # ``seat_cost`` is what THIS lane pays, which is the one
                     # the stake rule and the refusal copy have to be built
                     # on.  Under taker they are the same number.
-                    seat_crossing_cost = float(seat["all_in_price"])
-                    seat_cost = _seat_execution_price(
-                        seat,
-                        snapshot=snapshot,
-                        probabilities=probabilities,
-                        centre_bucket=str(
-                            audit.get("ladder_center_bucket") or center
-                        ),
-                        stage=stage,
+                    seat_crossing_cost = (
+                        float(seat["all_in_price"]) if seat is not None else 0.0
+                    )
+                    seat_cost = (
+                        _seat_execution_price(
+                            seat,
+                            snapshot=snapshot,
+                            probabilities=probabilities,
+                            centre_bucket=str(
+                                audit.get("ladder_center_bucket") or center
+                            ),
+                            stage=stage,
+                        )
+                        if seat is not None else 0.0
                     )
                     # Sized off the book as it stood when the day opened, and
                     # never beyond what the per-scope cap leaves this chain.

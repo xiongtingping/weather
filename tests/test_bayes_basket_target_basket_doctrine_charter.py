@@ -2624,3 +2624,61 @@ def test_clause_74_only_p0_opens_and_a_no_edge_p0_opens_with_a_ticket() -> None:
         root / "bayes_basket_target" / "basket_kernel" / "delta_v2.py"
     ).read_text(encoding="utf-8")
     assert "rule == EXECUTION_AUTHORIZATION_CHAIN_TICKET" in kernel_source
+
+
+def test_clause_75_mean_bucket_centre_and_mean_mode_skew_direction() -> None:
+    """Charter 75: centre = mean bucket, direction = mean vs mode at half a bucket."""
+    import sys
+    from pathlib import Path
+
+    from bayes_basket_target.basket_kernel import support as kernel_support
+    from bayes_basket_target.basket_kernel.contracts import Direction
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    import paper_trading_ledger as ledger  # noqa: PLC0415
+
+    ordinals = {"20": 0, "21": 1, "22": 2, "23": 3, "24": 4, "25": 5}
+    # Right-skewed: mode at 21, mean pulled above it by the warm tail.
+    right = {"20": 0.05, "21": 0.40, "22": 0.20, "23": 0.15, "24": 0.12, "25": 0.08}
+    assert kernel_support.mean_mode_skew_sign_v1(right, ordinals) == 1
+    assert kernel_support.mean_center_bucket_v1(right, ordinals) == "22"
+    # Left-skewed: mirror image.
+    left = {"20": 0.08, "21": 0.12, "22": 0.15, "23": 0.20, "24": 0.40, "25": 0.05}
+    assert kernel_support.mean_mode_skew_sign_v1(left, ordinals) == -1
+    # Symmetric: mean within half a bucket of the mode.
+    sym = {"20": 0.05, "21": 0.15, "22": 0.60, "23": 0.15, "24": 0.05, "25": 0.0}
+    assert kernel_support.mean_mode_skew_sign_v1(sym, ordinals) == 0
+    assert kernel_support.mean_center_bucket_v1(sym, ordinals) == "22"
+    # The direction rule reads the same sign.
+    policy = None
+    assert kernel_support.expected_direction_from_probability_vector(
+        right, ordinals, policy
+    ) is Direction.UP
+    assert kernel_support.expected_direction_from_probability_vector(
+        left, ordinals, policy
+    ) is Direction.DOWN
+    assert kernel_support.expected_direction_from_probability_vector(
+        sym, ordinals, policy
+    ) is Direction.NEUTRAL
+    assert kernel_support.expected_direction_from_probability_vector(
+        right, ordinals, policy, evidence_fresh=False
+    ) is Direction.NEUTRAL
+    # One implementation: the ledger's centre and production's ladder centre
+    # and skew sign all import the kernel's.
+    assert ledger.mean_center_bucket_v1 is kernel_support.mean_center_bucket_v1
+    runtime_source = (
+        root / "bayes_basket_target" / "delta_v2_runtime.py"
+    ).read_text(encoding="utf-8")
+    assert "return mean_center_bucket_v1(" in runtime_source
+    assert "return mean_mode_skew_sign_v1(" in runtime_source
+    support_source = (
+        root / "bayes_basket_target" / "basket_kernel" / "support.py"
+    ).read_text(encoding="utf-8")
+    assert "mean_bucket = mean_center_bucket_v1(" in support_source
+    ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    assert "resolved = _choose_support(snapshot, basket_policy)" in ledger_source
+    assert "snapshot = snapshot_from_probability_envelope(envelope, mapping)" in ledger_source
