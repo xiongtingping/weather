@@ -2450,6 +2450,48 @@ def _utc_date(value: str) -> date:
     ).date()
 
 
+# The two families the capture fails closed without; see
+# ``_served_run_init_utc``.
+REQUIRED_CAPTURE_FAMILIES = ("NOAA_GEFS_PDS_S3", "ECMWF_OPEN_DATA_S3")
+
+
+def _served_run_init_utc(receipt: Mapping[str, Any]) -> str | None:
+    """The run a capture pass actually advanced the date to.
+
+    A pass succeeds as long as every required family produced an archive,
+    and a family that cannot serve the requested cycle keeps the run it
+    already holds (``_advance_or_hold``).  So "the pass exited zero" and
+    "the date now holds the rung that was asked for" are different claims,
+    and the worker was recording the second.  On 2026-09-03 that cost the
+    whole 2026-09-04 fleet: the 12Z rung was attempted at 15:4xZ, no family
+    could serve it, all four held 2026-09-03T00Z, and the date was recorded
+    as holding 12Z -- which retired every rung at or below it, so the 06Z
+    run that was published and working (the 2026-09-03 scopes were already
+    reading it) could never be asked for.  Thirty-two station-days blocked
+    on a P0 that expired at 15:29Z.
+
+    The rung means something only to the two families the capture requires.
+    ECCC and ICON resolve their own run from their per-lead contracts and
+    ignore the cycle asked for, so a rung their publishers do not serve
+    costs them nothing -- and reading them here would let one of them speak
+    for a rung nobody fetched.  Among the two that do answer it, the date
+    has advanced only as far as the slower one: at 2026-09-03T15:5xZ GEFS
+    could serve 12Z and ECMWF could not (its 12Z was 404 while its 06Z was
+    200), so calling the date 12Z would strand ECMWF -- 51 of the
+    ensemble's members -- on 00Z until 18Z published.
+    """
+
+    by_family = receipt.get("run_init_utc_by_family")
+    if not isinstance(by_family, Mapping):
+        return None
+    served = [
+        str(by_family[family])
+        for family in REQUIRED_CAPTURE_FAMILIES
+        if str(by_family.get(family) or "").strip()
+    ]
+    return min(served) if served else None
+
+
 def _official_native_run_ladder(
     *, event_date: str, as_of_utc: str
 ) -> list[tuple[int, int | None, datetime]]:
@@ -3575,6 +3617,7 @@ class TargetProductionWorker:
         def _run_capture() -> dict[str, Any]:
             captured_run_init: str | None = None
             ingress_blocked = ""
+            families_held: dict[str, str] = {}
             try:
                 completed = None
                 for rung_lead, rung_cycle, rung_run_init in run_ladder:
@@ -3613,7 +3656,7 @@ class TargetProductionWorker:
                         env=capture_env,
                     )
                     if completed.returncode == 0:
-                        captured_run_init = (
+                        rung_run_init_utc = (
                             rung_run_init.isoformat().replace("+00:00", "Z")
                         )
                         # The capture writes the training history itself and
@@ -3630,6 +3673,35 @@ class TargetProductionWorker:
                                     "historical_ingress_blocked_reason"
                                 ) or ""
                             )
+                            held_by_family = receipt.get(
+                                "family_held_on_earlier_run"
+                            )
+                            if isinstance(held_by_family, Mapping):
+                                families_held = {
+                                    str(name): str(value)
+                                    for name, value in held_by_family.items()
+                                }
+                            served = _served_run_init_utc(receipt)
+                        else:
+                            served = None
+                        # What the families served, not what was asked for.
+                        candidate = served or rung_run_init_utc
+                        if (
+                            captured_run_init is None
+                            or candidate > captured_run_init
+                        ):
+                            captured_run_init = candidate
+                        # A rung every family had to hold on an earlier run
+                        # advanced nothing.  Walk down to one the publishers
+                        # do serve, and stop at the run this date already
+                        # holds -- re-reading that is the fallback the stale
+                        # branch above asks for, not a rung to skip past.
+                        if (
+                            held_run_init
+                            and candidate <= held_run_init
+                            and rung_run_init_utc > held_run_init
+                        ):
+                            continue
                         break
                 if completed is None or completed.returncode != 0:
                     # The tail, not the head.  A child that dies on an
@@ -3703,6 +3775,10 @@ class TargetProductionWorker:
                 # Which run this scope actually got, so a reader can tell a
                 # fresh rung from a fallback without re-deriving the ladder.
                 "captured_run_init_utc": captured_run_init,
+                # Which families could not serve the rung and kept what they
+                # had.  A pass where this is full and the run did not move is
+                # a pass that refreshed the packet clock and nothing else.
+                "families_held_on_earlier_run": families_held,
                 # Served, but not archived: the runs above are merged and will
                 # be compiled, while the training history stayed where it was.
                 "historical_ingress_blocked_reason": ingress_blocked,

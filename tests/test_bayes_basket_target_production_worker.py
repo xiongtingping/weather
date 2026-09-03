@@ -18,6 +18,7 @@ from bayes_basket_target.production_worker import (
     DEFAULT_TARGET_MARKET_MANIFEST,
     MAX_RESIDENT_WS_SCOPES,
     COMMITTED_SCOPE_STATES,
+    _served_run_init_utc,
     MAX_PREPARED_CYCLES_PER_SCOPE,
     TargetProductionWorker,
     _scope_verdict_tally,
@@ -3338,6 +3339,73 @@ def test_multiple_unsettled_candidates_are_a_retention_violation(tmp_path: Path)
     assert result is not None
     assert result["state"] == "blocked_fail_closed"
     assert result["reason"] == "target_prepared_cycle_retention_violation"
+
+
+def test_a_capture_records_the_run_the_families_served_not_the_rung_asked_for() -> None:
+    """A pass exits zero on held archives; the date did not get that rung.
+
+    2026-09-03T15:4xZ: the 12Z rung was attempted for event 2026-09-04, no
+    family could serve it, all four held 2026-09-03T00Z, and the worker
+    recorded the date as holding 12Z.  That retired every rung at or below
+    it, so the published and working 06Z run -- the 2026-09-03 scopes were
+    already reading it -- could never be asked for, and thirty-two
+    station-days blocked on a P0 that expired at 15:29Z.
+    """
+
+    held = {
+        "run_init_utc_by_family": {
+            "DWD_ICON_EPS": "2026-09-03T00:00:00Z",
+            "ECCC_DD_WEATHER": "2026-09-03T00:00:00Z",
+            "ECMWF_OPEN_DATA_S3": "2026-09-03T00:00:00Z",
+            "NOAA_GEFS_PDS_S3": "2026-09-03T00:00:00Z",
+        },
+    }
+    assert _served_run_init_utc(held) == "2026-09-03T00:00:00Z"
+    # Only the two required families answer the rung, and the date has
+    # advanced only as far as the slower of them: GEFS serving 12Z while
+    # ECMWF still holds 00Z is a date on 00Z, or ECMWF is stranded there.
+    mixed = {
+        "run_init_utc_by_family": {
+            "ECCC_DD_WEATHER": "2026-09-02T00:00:00Z",
+            "DWD_ICON_EPS": "2026-09-02T00:00:00Z",
+            "ECMWF_OPEN_DATA_S3": "2026-09-03T00:00:00Z",
+            "NOAA_GEFS_PDS_S3": "2026-09-03T12:00:00Z",
+        },
+    }
+    assert _served_run_init_utc(mixed) == "2026-09-03T00:00:00Z"
+    both = {
+        "run_init_utc_by_family": {
+            "ECCC_DD_WEATHER": "2026-09-02T00:00:00Z",
+            "ECMWF_OPEN_DATA_S3": "2026-09-03T06:00:00Z",
+            "NOAA_GEFS_PDS_S3": "2026-09-03T06:00:00Z",
+        },
+    }
+    assert _served_run_init_utc(both) == "2026-09-03T06:00:00Z"
+    # An unreadable or absent map is not a claim; the caller keeps the rung.
+    assert _served_run_init_utc({}) is None
+    assert _served_run_init_utc({"run_init_utc_by_family": {}}) is None
+    assert _served_run_init_utc({"run_init_utc_by_family": "12Z"}) is None
+
+
+def test_capture_walks_past_a_rung_that_advanced_nothing() -> None:
+    """The loop's own rule, stated where it can be read.
+
+    Continue only while a newer rung remains: a rung at or below the run
+    already held is the re-read the stale branch asks for, not a rung to
+    skip past.
+    """
+
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "production_worker.py"
+    ).read_text(encoding="utf-8")
+    assert "candidate = served or rung_run_init_utc" in source
+    assert (
+        "            held_run_init\n"
+        "                            and candidate <= held_run_init\n"
+        "                            and rung_run_init_utc > held_run_init"
+    ) in source
 
 
 def _guard_db_with_decisions() -> sqlite3.Connection:
