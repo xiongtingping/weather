@@ -7919,6 +7919,22 @@ class TargetProductionWorker:
             raise ContractError(
                 "resident_current_scope_probability_stage_invalid"
             )
+        # A plan the compile already refused carries no lineage -- that is
+        # added on the success path -- so handing it to the stage-zero
+        # commit only earns ``stage_zero_execution_plan_lineage_missing``,
+        # and the blocked decision then gets written under that name while
+        # the compile's own reason is lost.  Fourteen listed-day scopes on
+        # 2026-09-03 read as a lineage defect that way; every one was
+        # ``delta_v2_support_empty``, a book with nothing priced yet.  Name
+        # the refusal after what refused it, and let the caller's blocked
+        # path record it exactly as it records a compile that raised.
+        if str(candidate.get("status") or "").strip().lower() == "blocked":
+            codes = [
+                str(code).strip()
+                for code in (candidate.get("reason_codes") or ())
+                if str(code).strip()
+            ]
+            raise ContractError(codes[0] if codes else "compiled_plan_blocked")
         # Stage-zero is intentionally limited to pre-final P0/P0-M.  Once
         # official METAR/SPECI materializes P1, the final-authority path must
         # atomically persist the canonical observation/bound together with

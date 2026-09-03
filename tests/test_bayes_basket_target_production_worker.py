@@ -214,6 +214,60 @@ def test_current_stage_routes_p1_to_final_atomic_candidate_and_pre_p1_to_stage_z
     assert calls == ["stage_zero", "final_candidate"]
 
 
+def test_current_stage_names_a_blocked_plan_after_its_own_compile_reason() -> None:
+    """A refused plan has no lineage; stage-zero must not be asked to anchor it.
+
+    Fourteen listed-day scopes on 2026-09-03 were recorded as
+    ``stage_zero_execution_plan_lineage_missing`` when every one of them was
+    ``delta_v2_support_empty``.  The refusal carries the compile's reason so
+    the caller's blocked path records that, and a ``hold`` plan still takes
+    the stage-zero path it always did.
+    """
+
+    worker = object.__new__(TargetProductionWorker)
+    calls: list[str] = []
+
+    def stage_zero(*_args, **_kwargs):
+        calls.append("stage_zero")
+        return {"state": "stage_zero"}
+
+    worker._commit_stage_zero_execution_candidate = stage_zero
+    worker._commit_candidate = stage_zero
+
+    with pytest.raises(ContractError, match="^delta_v2_support_empty$"):
+        worker._commit_current_stage_no_execution_candidate(
+            {
+                "probability_envelope": {"stage": "P0"},
+                "status": "blocked",
+                "reason_codes": ["delta_v2_support_empty"],
+            },
+            station_id="KLAX",
+            event_date="2026-09-04",
+            created_at_utc="2026-09-03T07:00:00Z",
+        )
+    with pytest.raises(ContractError, match="^compiled_plan_blocked$"):
+        worker._commit_current_stage_no_execution_candidate(
+            {"probability_envelope": {"stage": "P0-M"}, "status": "blocked"},
+            station_id="KLAX",
+            event_date="2026-09-04",
+            created_at_utc="2026-09-03T07:00:00Z",
+        )
+    assert calls == []
+
+    held = worker._commit_current_stage_no_execution_candidate(
+        {
+            "probability_envelope": {"stage": "P0"},
+            "status": "hold",
+            "reason_codes": ["complete_basket_target_not_activated"],
+        },
+        station_id="KLAX",
+        event_date="2026-09-04",
+        created_at_utc="2026-09-03T07:00:00Z",
+    )
+    assert held["state"] == "stage_zero"
+    assert calls == ["stage_zero"]
+
+
 def _selected_native_p0_provider(path: Path) -> str:
     inbox = json.loads(path.read_text(encoding="utf-8"))
     packet = inbox["packets"][0]["packet"]
