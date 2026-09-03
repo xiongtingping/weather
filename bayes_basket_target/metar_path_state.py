@@ -390,9 +390,14 @@ def compile_conditional_metar_path_state(
     # the wind group and six the cloud amount (an AUTO station's ``///CB``,
     # one ``STC017CB`` typo).  KDAL 2026-09-02 is the shape -- 19:53Z filed
     # without wind, the COR two minutes later supplied it, and a COR is
-    # reference-only by review so the P1 reader drops it.  P1 froze at a
-    # 35.0 high while the station went on to 37.8, holding a lower bound the
-    # day had already passed; KAUS 2026-08-31 froze at 31.7 against 37.2.
+    # reference-only by review so the P1 reader drops it, leaving the
+    # windless original to end the prefix.  That step was the standing
+    # ``resident_p1_ingress`` blocker for the station-day; replayed against
+    # the archive it is incomplete under the old rule and complete under
+    # this one, carrying 18:53Z's vector one hour forward.  How long any
+    # station-day actually stood down is not claimed here: the envelope
+    # table is append-only and a later cycle can reach the same step by a
+    # route this comment did not reconstruct.
     #
     # So the walk keeps looking back for a report that states the vector,
     # under the same two-hour bound.  One report supplies the whole vector,
