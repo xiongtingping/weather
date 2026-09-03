@@ -2342,3 +2342,80 @@ def test_clause_53_expansion_layers_convert_at_the_station_rung_width() -> None:
             "clip_max_notional_usdc": 30.0,
             "dispersion_c_per_expansion_layer": 1.0,
         })
+
+
+def test_clause_71_top_ups_wait_for_a_new_probability_and_read_deflated_growth() -> None:
+    """Charter 71: the two hard gates on a top-up, one implementation.
+
+    (a) A held chain adds only after the served probability changed since it
+    last bought; (b) the chain-growth number reads the charter-68 partition.
+    Both live in the kernel; production's solver and the paper ledger import
+    them rather than spelling their own.
+    """
+    import sys
+    from pathlib import Path
+
+    from bayes_basket_target import consolidation_chain, delta_v2_runtime
+    from bayes_basket_target.basket_kernel import delta_v2 as kernel
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    import paper_trading_ledger as ledger  # noqa: PLC0415
+
+    # The partition keeps its shape and deflates only the window.
+    probabilities = {"a": 0.1, "b": 0.5, "c": 0.3, "d": 0.1}
+    deflated = kernel.deflate_window_partition_v1(
+        probabilities, ["b", "c"], claim_factor=0.5
+    )
+    assert abs(sum(deflated.values()) - 1.0) < 1e-9
+    assert deflated["b"] < probabilities["b"] and deflated["c"] < probabilities["c"]
+    assert deflated["a"] > probabilities["a"] and deflated["d"] > probabilities["d"]
+    assert kernel.deflate_window_partition_v1(probabilities, ["b"]) == probabilities
+
+    # The growth number: a buy on a bucket the partition gives no mass is a
+    # loss, the same buy under mass is a gain.
+    held = {"b": 10.0}
+    bought = {"c": 10.0}
+    empty = kernel.chain_topup_growth_v1(
+        held=held, bought=bought, probabilities={"b": 0.6, "c": 0.0},
+        spend=2.0, bankroll=20.0,
+    )
+    full = kernel.chain_topup_growth_v1(
+        held=held, bought=bought, probabilities={"b": 0.3, "c": 0.6},
+        spend=2.0, bankroll=20.0,
+    )
+    assert empty < 0.0 < full
+
+    # One implementation on both sides, and the version is in the ledger's
+    # fingerprint.
+    assert ledger.chain_topup_growth_v1 is kernel.chain_topup_growth_v1
+    assert ledger.deflate_window_partition_v1 is kernel.deflate_window_partition_v1
+    ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    assert "chain_topup_growth_v1(" in ledger_source
+    assert "\"topup_gates\": CHARTER_71_TOPUP_GATE_VERSION" in ledger_source
+    assert "topup_requires_probability_change" in ledger.REFUSAL_DEPTH
+    solver_source = (
+        root / "bayes_basket_target" / "delta_v2_runtime.py"
+    ).read_text(encoding="utf-8")
+    assert "topup_requires_probability_change" in solver_source
+    assert "chain_topup_growth_v1(" in solver_source
+    assert "deflate_window_partition_v1(" in solver_source
+    assert hasattr(consolidation_chain, "load_last_acted_probability_identity")
+    assert hasattr(consolidation_chain, "record_chain_last_action")
+    assert "last_acted_probability_identity" in solver_source
+    # The identity is the served vector, rounded, on both sides -- an
+    # envelope sha churns on the clock and would never bind.
+    same = kernel.probability_vector_identity_v1({"a": 0.1234567, "b": 0.5})
+    assert same == kernel.probability_vector_identity_v1({"b": 0.5, "a": 0.1234568})
+    assert same != kernel.probability_vector_identity_v1({"a": 0.2, "b": 0.5})
+    assert ledger.probability_vector_identity_v1 is kernel.probability_vector_identity_v1
+    assert "served_probability_identity" in solver_source
+    # Recorded at commit, in the atomic ledger, when the bundle buys.
+    atomic_source = (
+        root / "bayes_basket_target" / "atomic_ledger.py"
+    ).read_text(encoding="utf-8")
+    assert "_record_chain_last_action_for_bundle(" in atomic_source
+    assert delta_v2_runtime._solve_over_support_windows is not None

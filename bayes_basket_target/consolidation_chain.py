@@ -110,3 +110,76 @@ def record_chain_opener_tilt(
         ),
     )
     return cursor.rowcount > 0
+
+
+
+LAST_ACTION_SCHEMA_SQL = (
+    "CREATE TABLE IF NOT EXISTS basket_target_chain_last_action ("
+    " station_id TEXT NOT NULL,"
+    " event_date TEXT NOT NULL,"
+    " probability_identity TEXT NOT NULL,"
+    " decision_id TEXT NOT NULL DEFAULT '',"
+    " decided_at_utc TEXT NOT NULL,"
+    " PRIMARY KEY(station_id, event_date))"
+)
+
+
+def record_chain_last_action(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    probability_identity: str,
+    decided_at_utc: str,
+    decision_id: str = "",
+) -> bool:
+    """Record the belief a station-day last bought under (charter 71(a)).
+
+    Written in the same transaction as the BUY intents it describes, by the
+    atomic ledger; the newest act wins (INSERT OR REPLACE), because the
+    question the gate asks is "has the probability moved since the chain
+    last acted", not since it opened.  Returns whether a row was written.
+    """
+
+    identity = str(probability_identity or "").strip()
+    if not identity:
+        return False
+    conn.execute(LAST_ACTION_SCHEMA_SQL)
+    conn.execute(
+        "INSERT OR REPLACE INTO basket_target_chain_last_action("
+        "station_id,event_date,probability_identity,decision_id,decided_at_utc)"
+        " VALUES(?,?,?,?,?)",
+        (
+            str(station_id), str(event_date), identity,
+            str(decision_id or ""), str(decided_at_utc),
+        ),
+    )
+    return True
+
+
+def load_last_acted_probability_identity(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+) -> str | None:
+    """The served-vector identity the chain last bought under, or None.
+
+    Charter 71(a) asks whether the probability has moved since the chain
+    last acted.  The identity is ``probability_vector_identity_v1`` of the
+    served distribution -- not an envelope or posterior sha, which churn on
+    the clock -- recorded by ``record_chain_last_action`` when BUY intents
+    are committed.  A missing table and an empty history both answer None,
+    which the gate treats as "cannot bind" rather than as a reason to
+    refuse.
+    """
+
+    try:
+        row = conn.execute(
+            "SELECT probability_identity FROM basket_target_chain_last_action"
+            " WHERE station_id=? AND event_date=?",
+            (str(station_id), str(event_date)),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    return str(row[0]) if row and row[0] else None

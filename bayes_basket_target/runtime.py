@@ -26,6 +26,7 @@ from .basket_kernel.contracts import (
 from .basket_kernel.delta_v2 import (
     BUNDLE_RESCORE_SCHEMA,
     DEFAULT_P1_ENTRY_LOCAL_HOUR,
+    MAX_STAKE_FRACTION_PER_SCOPE,
     rescore_maker_bundle_v2,
     scope_stake_cap_usdc,
 )
@@ -810,6 +811,7 @@ def _compile_target_plan(
     require_regime_ssot: bool = True,
     expected_source_lane: str | None = None,
     chain_consolidation_tilt: float | None = None,
+    last_acted_probability_identity: str | None = None,
 ) -> dict[str, Any]:
     """Compile one full stage → policy → v2 delta plan, no-live boundary."""
 
@@ -1125,6 +1127,15 @@ def _compile_target_plan(
             resource_probe_ok=resource_probe_ok,
             previous_probabilities=previous_probabilities,
             chain_consolidation_tilt=chain_consolidation_tilt,
+            last_acted_probability_identity=last_acted_probability_identity,
+            # Charter 71: the identity this compile is served under, and the
+            # frame the growth gate reads -- the scope's share of the whole
+            # book, the same number the paper ledger frames it in.
+            chain_growth_frame_usdc=(
+                book_equity_usdc * MAX_STAKE_FRACTION_PER_SCOPE
+                if market_snapshot.get("book_equity_usdc") not in (None, "")
+                else None
+            ),
             # Newest first: the certainty gate asks whether the mass centre
             # has held still, and the answer is read off the same envelope
             # chain the previous-probabilities comparison already walks.
@@ -1618,6 +1629,7 @@ class DeltaBasketScoreV2Optimizer:
         require_regime_ssot: bool = True,
         expected_source_lane: str | None = None,
     chain_consolidation_tilt: float | None = None,
+    last_acted_probability_identity: str | None = None,
     ) -> dict[str, Any]:
         result = _compile_target_plan(
             station_policy_stage=station_policy_stage,
@@ -1645,6 +1657,7 @@ class DeltaBasketScoreV2Optimizer:
             require_regime_ssot=require_regime_ssot,
             expected_source_lane=expected_source_lane,
             chain_consolidation_tilt=chain_consolidation_tilt,
+            last_acted_probability_identity=last_acted_probability_identity,
         )
         boundary = dict(result.get("boundary") or {})
         boundary.update({
@@ -1695,12 +1708,14 @@ def compile_target_plan(
     require_regime_ssot: bool = True,
     expected_source_lane: str | None = None,
     chain_consolidation_tilt: float | None = None,
+    last_acted_probability_identity: str | None = None,
 ) -> dict[str, Any]:
     """Compatibility-free public facade for the one optimizer boundary."""
 
     return DeltaBasketScoreV2Optimizer().compile(
         station_policy_stage=station_policy_stage,
         chain_consolidation_tilt=chain_consolidation_tilt,
+        last_acted_probability_identity=last_acted_probability_identity,
         probability_envelopes=probability_envelopes,
         market_snapshot=market_snapshot,
         policy_activations=policy_activations,

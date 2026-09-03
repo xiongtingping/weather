@@ -788,6 +788,168 @@ def effective_edge_bucket_lambda_for_stage(
             agreement, tuple(p1_table) if p1_table else EFFECTIVE_EDGE_P1_LAMBDA
         )
     return 1.0
+# Charter 71 (user ruling, 2026-09-03): the two hard gates on a top-up.
+# (a) A stage may add to a held chain only after the probability it is
+#     served has changed since the chain last bought -- the trigger is the
+#     model, never the book.  Measured on the replay book with production's
+#     own judge: 77% of its 545 P0 top-ups fired on cycles where the
+#     probability had not moved, only the offer or the room had.
+# (b) The chain-growth gate (charter 66 clause B) reads the charter-68
+#     partition, lambda*p, not the served claim: 61% of those top-ups had a
+#     deflated increment edge at or below zero and still passed a gate that
+#     read the undeflated claim.
+# The partition and the growth number are one implementation here, imported
+# by production's solver and by the paper ledger; the ledger hashes the
+# version into its rule fingerprint.
+CHARTER_71_TOPUP_GATE_VERSION = (
+    "charter_71_probability_change_and_effective_growth_v1"
+)
+
+
+def probability_vector_identity_v1(probabilities: Mapping[str, float]) -> str:
+    """The identity charter 71(a) compares: the served vector itself.
+
+    Not the envelope's content sha and not the posterior sha -- both
+    churn on the clock (ZGGG 2026-09-01 P0: 64 checkpoints, 64 shas,
+    7 distinct vectors), so a gate keyed on them never binds.  Each
+    bucket's probability rounded to six places, sorted by bucket, then
+    content-hashed; the same rounding on both sides.
+    """
+
+    return content_sha256([
+        [str(bucket), round(float(value), 6)]
+        for bucket, value in sorted(
+            probabilities.items(), key=lambda item: str(item[0])
+        )
+    ])
+
+
+def deflate_window_partition_v1(
+    probabilities: Mapping[str, float],
+    window: Sequence[str],
+    *,
+    bucket_factors: Mapping[str, float] | None = None,
+    claim_factor: float = 1.0,
+) -> dict[str, float]:
+    """Deflate a window's claim and keep the distribution a partition.
+
+    Bucket scope (``bucket_factors``): each rung keeps its own corrected
+    mass and the mass the window gives up, or takes, is balanced against
+    the rest so the scenario space stays a partition.  Window scope
+    (``claim_factor``): the window's buckets are deflated by one factor and
+    the mass they give up returns to the buckets outside it.  Either way
+    the result is renormalised, so the ranking, the sizing and the
+    charter-71 growth gate read one belief.  Lifted from production's
+    solver on 2026-09-03 so the paper ledger reads the same partition.
+    """
+
+    inside_set = {str(bucket) for bucket in window}
+    factors = {
+        str(bucket): float(factor)
+        for bucket, factor in (bucket_factors or {}).items()
+    }
+    if factors and any(abs(factor - 1.0) > EPS for factor in factors.values()):
+        inside = sum(
+            float(probabilities.get(bucket, 0.0)) for bucket in inside_set
+        )
+        outside = max(0.0, 1.0 - inside)
+        corrected_inside = sum(
+            float(probabilities.get(bucket, 0.0)) * factors.get(bucket, 1.0)
+            for bucket in inside_set
+        )
+        if corrected_inside > 1.0 - EPS:
+            shrink = (1.0 - EPS) / corrected_inside
+            factors = {
+                bucket: factor * shrink for bucket, factor in factors.items()
+            }
+            corrected_inside = 1.0 - EPS
+        outside_scale = (
+            (1.0 - corrected_inside) / outside if outside > EPS else 0.0
+        )
+        corrected = {
+            str(bucket): (
+                float(value) * factors.get(str(bucket), 1.0)
+                if str(bucket) in inside_set
+                else float(value) * outside_scale
+            )
+            for bucket, value in probabilities.items()
+        }
+    elif abs(float(claim_factor) - 1.0) > EPS:
+        inside = sum(
+            float(probabilities.get(bucket, 0.0)) for bucket in inside_set
+        )
+        outside = max(0.0, 1.0 - inside)
+        corrected_inside = min(1.0 - EPS, inside * float(claim_factor))
+        outside_scale = (
+            (1.0 - corrected_inside) / outside if outside > EPS else 0.0
+        )
+        corrected = {
+            str(bucket): (
+                float(value) * float(claim_factor)
+                if str(bucket) in inside_set
+                else float(value) * outside_scale
+            )
+            for bucket, value in probabilities.items()
+        }
+    else:
+        return {
+            str(bucket): float(value) for bucket, value in probabilities.items()
+        }
+    total = sum(corrected.values())
+    if total <= EPS:
+        return {
+            str(bucket): float(value) for bucket, value in probabilities.items()
+        }
+    return {bucket: value / total for bucket, value in corrected.items()}
+
+
+def chain_topup_growth_v1(
+    *,
+    held: Mapping[str, float],
+    bought: Mapping[str, float],
+    probabilities: Mapping[str, float],
+    spend: float,
+    bankroll: float,
+    miss_floor: float = 0.0,
+) -> float:
+    """Charter 66 clause B's number: what a buy does to expected log wealth.
+
+    From here, not from flat: the chain's held payout curve is the initial
+    condition and its past spend is sunk.  The frame is the scope's own
+    risk capital; a buy that consumes the whole frame is minus infinity by
+    construction, which is the right answer for a log bettor.  Under
+    charter 71(b) ``probabilities`` is the charter-68 partition (lambda*p,
+    renormalised), never the served claim.  ``miss_floor`` is the ledger's
+    replay arm (off by default): reserve at least that much mass for "none
+    of ours settles", deflating the in-mass proportionally.
+    """
+
+    frame = float(bankroll)
+    cost = float(spend)
+    if frame <= 0.0 or frame - cost <= 1e-9:
+        return float("-inf")
+    buckets = set(held) | set(bought)
+    mass_in = sum(float(probabilities.get(bucket, 0.0)) for bucket in buckets)
+    deflate = 1.0
+    if miss_floor > 0.0 and mass_in > 1.0 - miss_floor:
+        deflate = (1.0 - miss_floor) / mass_in
+        mass_in *= deflate
+    p_out = max(0.0, 1.0 - mass_in)
+    growth = p_out * (math.log(frame - cost) - math.log(frame))
+    for bucket in buckets:
+        mass = float(probabilities.get(bucket, 0.0)) * deflate
+        if mass <= 0.0:
+            continue
+        before = frame + float(held.get(bucket, 0.0))
+        after = (
+            frame - cost
+            + float(held.get(bucket, 0.0))
+            + float(bought.get(bucket, 0.0))
+        )
+        growth += mass * (math.log(after) - math.log(before))
+    return growth
+
+
 # Charter 67 (user ruling, 2026-08-30): the local hour before which P1 may
 # not take a seat.  The P1 lane starts compiling at local midnight, and both
 # lanes' entry rules were spending the stage's budget on a midnight book with

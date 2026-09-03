@@ -123,6 +123,12 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
     raise_sub_lot_targets_v2,
     scope_stake_cap_usdc,
+    # Charter 71: the top-up gates' partition and growth number are the
+    # kernel's, and the version is hashed into the rule fingerprint.
+    CHARTER_71_TOPUP_GATE_VERSION,
+    chain_topup_growth_v1,
+    deflate_window_partition_v1,
+    probability_vector_identity_v1,
 )
 # What the production judge arm resolves the way production's compile does:
 # the station's basket policy, the delta-v2 policy artifact, and the scope
@@ -593,6 +599,9 @@ REFUSAL_DEPTH = {
     # two is reported turns on which clause fired.
     "no_chain_growth": 8,
     "chain_cost_at_par": 8,
+    # Charter 71(a): the chain's own law too -- everything was known,
+    # and the reason it stood pat is that nothing had changed.
+    "topup_requires_probability_change": 8,
     # The declining-probability clamp, when it is armed.  Sits at the
     # top-up layer because everything was known when it fired: the basket
     # was assembled, priced, sized against real depth, and then held back
@@ -1626,6 +1635,8 @@ SELECTION_RULE_SHA256 = content_sha256({
         CHAIN_TOPUP_BANKROLL_USDC or "scope_allowance"
     ),
     "chain_topup_miss_floor": CHAIN_TOPUP_MISS_FLOOR,
+    # Charter 71: both top-up gates, versioned in the kernel.
+    "topup_gates": CHARTER_71_TOPUP_GATE_VERSION,
     "p1_entry_local_hour": P1_ENTRY_LOCAL_HOUR,
     # Charter 69 (v5): the clamp arm, its threshold and the seat cadence.
     "decline_clamp": DECLINE_CLAMP,
@@ -1948,6 +1959,7 @@ REFUSAL_REASONS = (
     # basket's price and this one is the book the chain has been building;
     # the stage's own basket usually passes every stage-level gate.
     "chain_cost_at_par",
+    "topup_requires_probability_change",
 )
 # Which refusal each gate of the enumeration funnel is.  Keyed by the gate
 # names ``_support_windows`` publishes, so adding a gate there without a
@@ -2739,6 +2751,12 @@ def _stage_entry_candidates(
         ).fetchall()
         if not buckets:
             continue
+        # Charter 71(a): the identity of the served belief, before any
+        # ceiling or centre-width correction -- those move with the
+        # clock, the served vector moves only with the model.
+        served_identity = probability_vector_identity_v1({
+            str(row[0]): float(row[4]) for row in buckets
+        })
         if stage == "P1":
             ceiling_p = _ceiling_corrected(
                 conn,
@@ -2781,6 +2799,7 @@ def _stage_entry_candidates(
             "buckets": buckets,
             "center_bucket": str(lineage.get("model_center_bucket") or ""),
             "center_c": lineage.get("model_center_c"),
+            "probability_identity": served_identity,
             # The day's reported high the P1 envelope stood on, for the
             # production-judge arm: production's P1 snapshot contract
             # requires it, and its risk families are read off it.
@@ -5291,51 +5310,82 @@ def _chain_topup_growth(
     spend: float,
     bankroll: float,
 ) -> float:
-    """Charter 66 clause B's number: what the buy does to expected log wealth.
-
-    From here, not from flat: the chain's held payout curve is the initial
-    condition and its past spend is sunk.  The frame is the scope's own risk
-    capital; a buy that consumes the whole frame is minus infinity by
-    construction, which is the right answer for a log bettor.
+    """Charter 66 clause B's number, the kernel's since charter 71.
 
     Deliberately a *gate* on the sizing production's tilt rule proposes, not
     a sizer of its own: the full log-optimal increment was tried on the
-    2026-08-29 rebuild and bought its way from -3.3%% to -18.1%% ROI --
-    claimed edge, sized to the claim, on a model measured 0.47 buckets
-    worse than the market.  The tilt delta stays the size; this only asks
-    whether that buy improves the chain's curve at all.
+    2026-08-29 rebuild and bought its way from -3.3% to -18.1% ROI.  The
+    miss-floor replay arm stays this lane's knob and is handed through.
     """
 
-    frame = float(bankroll)
-    cost = float(spend)
-    if frame <= 0.0 or frame - cost <= 1e-9:
-        return float("-inf")
-    buckets = set(held) | set(bought)
-    mass_in = sum(
-        float(probabilities.get(bucket, 0.0)) for bucket in buckets
+    return chain_topup_growth_v1(
+        held=held,
+        bought=bought,
+        probabilities=probabilities,
+        spend=spend,
+        bankroll=bankroll,
+        miss_floor=CHAIN_TOPUP_MISS_FLOOR,
     )
-    # Replay arm, off by default: reserve at least this much mass for
-    # "none of ours settles", deflating the in-mass proportionally.  The
-    # near-1 claims are the ones this gate is most exposed to being wrong
-    # about (the par class claimed ~0.99 and realized 0.974).
-    deflate = 1.0
-    if CHAIN_TOPUP_MISS_FLOOR > 0.0 and mass_in > 1.0 - CHAIN_TOPUP_MISS_FLOOR:
-        deflate = (1.0 - CHAIN_TOPUP_MISS_FLOOR) / mass_in
-        mass_in *= deflate
-    p_out = max(0.0, 1.0 - mass_in)
-    growth = p_out * (math.log(frame - cost) - math.log(frame))
+
+
+def _effective_growth_partition(
+    *,
+    stage: str,
+    event_date: str,
+    probabilities: Mapping[str, float],
+    buckets: Sequence[str],
+    snapshot: Any,
+) -> dict[str, float]:
+    """Charter 71(b): the lambda*p partition the growth gate reads.
+
+    The same dispatch the seat gate uses -- window scope deflates the seat by
+    the window's agreement, bucket scope by each rung's own -- fed to the
+    kernel's partition helper, which is the function production's solver
+    hands its own growth gate.  Off-mode and unlisted stages read the served
+    claim unchanged, exactly as the seat gate does.
+    """
+
+    if EFFECTIVE_EDGE_MODE != "on" or (
+        stage not in EFFECTIVE_EDGE_STAGES
+        and stage not in EFFECTIVE_EDGE_P1_STAGES
+    ):
+        return {str(b): float(v) for b, v in probabilities.items()}
+    p1_day_table = (
+        P1_EFFECTIVE_EDGE_TABLE.get(str(event_date))
+        if P1_EFFECTIVE_EDGE_TABLE else None
+    )
+    rows = {str(item.bucket): item for item in snapshot.buckets}
+    prices: dict[str, float] = {}
     for bucket in buckets:
-        mass = float(probabilities.get(bucket, 0.0)) * deflate
-        if mass <= 0.0:
-            continue
-        before = frame + float(held.get(bucket, 0.0))
-        after = (
-            frame - cost
-            + float(held.get(bucket, 0.0))
-            + float(bought.get(bucket, 0.0))
+        row = rows.get(str(bucket))
+        price = _execution_price(row) if row is not None else None
+        if price is not None:
+            prices[str(bucket)] = float(price)
+    if EFFECTIVE_EDGE_SCOPE == "bucket":
+        factors = {}
+        for bucket in buckets:
+            claim = float(probabilities.get(str(bucket), 0.0) or 0.0)
+            price = prices.get(str(bucket))
+            factors[str(bucket)] = (
+                effective_edge_bucket_lambda_for_stage(
+                    stage, price / claim, p1_table=p1_day_table
+                )
+                if price is not None and claim > 0 else 1.0
+            )
+        return deflate_window_partition_v1(
+            probabilities, list(buckets), bucket_factors=factors
         )
-        growth += mass * (math.log(after) - math.log(before))
-    return growth
+    claimed = sum(
+        float(probabilities.get(str(bucket), 0.0) or 0.0) for bucket in buckets
+    )
+    if claimed <= 0 or len(prices) < len(list(buckets)):
+        return {str(b): float(v) for b, v in probabilities.items()}
+    lam = effective_edge_lambda_for_stage(
+        stage, sum(prices.values()) / claimed, p1_table=p1_day_table
+    )
+    return deflate_window_partition_v1(
+        probabilities, list(buckets), claim_factor=lam
+    )
 
 
 def _kelly_stake(
@@ -6115,6 +6165,7 @@ def backfill(
             chain_tilt = 1.0
             chain_consolidation: dict | None = None
             chain_probabilities: dict[str, float] = {}
+            chain_probability_identity = ""
             chain_ladder: list = []
             chain_center_c: float | None = None
             chain_win_probability = 0.0
@@ -7282,6 +7333,26 @@ def backfill(
                                 ))
                                 continue
                     if held:
+                        # Charter 71(a): the probability must have moved
+                        # since the chain last bought.  A refreshed book or
+                        # refreshed room is not a reason to add.
+                        _identity = str(
+                            payload.get("probability_identity") or ""
+                        )
+                        if (
+                            chain_probability_identity
+                            and _identity
+                            and _identity == chain_probability_identity
+                        ):
+                            refusal = _deeper_refusal(refusal, (
+                                "topup_requires_probability_change",
+                                "宪章 71(a)：概率身份 %s 自上次买入未变，不加仓"
+                                "（本链已投 %.2f）" % (
+                                    _identity[:12], chain_stake,
+                                ),
+                                cycles, payload["decision_at_utc"],
+                            ))
+                            continue
                         topped: list[float] = []
                         topped_cash: list[float] = []
                         spend = 0.0
@@ -7332,7 +7403,14 @@ def backfill(
                         growth = _chain_topup_growth(
                             held=held,
                             bought=bought_by_bucket,
-                            probabilities=probabilities,
+                            # Charter 71(b): the lambda*p partition.
+                            probabilities=_effective_growth_partition(
+                                stage=stage,
+                                event_date=event_date,
+                                probabilities=probabilities,
+                                buckets=seat["buckets"],
+                                snapshot=snapshot,
+                            ),
                             spend=spend,
                             bankroll=growth_frame,
                         )
@@ -7606,6 +7684,9 @@ def backfill(
                         )
                     chain_stake += stake
                     chain_probabilities = probabilities
+                    chain_probability_identity = str(
+                        payload.get("probability_identity") or ""
+                    )
                     chain_ladder = payload["buckets"]
                     chain_center_c = payload.get("center_c")
                     chain_last_stage = stage

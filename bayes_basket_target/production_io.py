@@ -56,7 +56,10 @@ from .policy import (
     resolve_station_policy,
 )
 from .production import compile_production_plan
-from .consolidation_chain import load_chain_tilt
+from .consolidation_chain import (
+    load_chain_tilt,
+    load_last_acted_probability_identity,
+)
 from .probability_bridge import load_current_probability_bridge
 from .native_ensemble_contract import (
     P0_PROBABILITY_PATHWAY,
@@ -2324,6 +2327,12 @@ def compile_production_cycle_from_ssot(
         # module inside its never-writes contract.
         chain_consolidation_tilt=load_chain_tilt(
             conn, station_id=station_id, event_date=event_date,
+        ),
+        # Charter 71(a): the probability the chain last bought under.
+        last_acted_probability_identity=(
+            load_last_acted_probability_identity(
+                conn, station_id=station_id, event_date=event_date,
+            )
         ),
         probability_envelopes=envelopes,
         market_snapshot=market_snapshot,

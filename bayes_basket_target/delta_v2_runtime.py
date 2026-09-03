@@ -40,8 +40,11 @@ from .basket_kernel.delta_v2 import (
     DEFAULT_KELLY_FRACTION,
     EXCHANGE_LOT_TOP_UP,
     VALUE_OBJECTIVE_FORM,
+    chain_topup_growth_v1,
     clamp_declining_gaps_v2,
     contiguous_edge_clamp_v2,
+    deflate_window_partition_v1,
+    probability_vector_identity_v1,
     evaluate_action_v2,
     evaluate_basket_value_v2,
     raise_sub_lot_targets_v2,
@@ -1824,6 +1827,9 @@ def _solve_over_support_windows(
     capital_available_usdc: float,
     objective_form: str,
     bankroll_usdc: float,
+    probability_identity: str | None = None,
+    last_acted_probability_identity: str | None = None,
+    chain_growth_frame_usdc: float | None = None,
 ) -> tuple[tuple[str, ...], dict[str, Any], dict[str, Any]]:
     """Run the objective on each shortlisted window; the head one is seated.
 
@@ -1899,72 +1905,16 @@ def _solve_over_support_windows(
                 claim_factor *= effective_edge_lambda_for_stage(
                     stage, float(priced) / claimed
                 )
-        if bucket_factors and any(
-            abs(factor - 1.0) > EPS for factor in bucket_factors.values()
-        ):
-            # Bucket scope: each rung keeps its own corrected mass; the mass
-            # the window gives up (or takes) is balanced against the rest so
-            # the scenario space stays a partition.
-            inside = sum(
-                float(probabilities[bucket]) for bucket in window
-            )
-            outside = max(0.0, 1.0 - inside)
-            corrected_inside = sum(
-                float(probabilities[bucket]) * bucket_factors[str(bucket)]
-                for bucket in window
-            )
-            if corrected_inside > 1.0 - EPS:
-                shrink = (1.0 - EPS) / corrected_inside
-                bucket_factors = {
-                    bucket: factor * shrink
-                    for bucket, factor in bucket_factors.items()
-                }
-                corrected_inside = 1.0 - EPS
-            outside_scale = (
-                (1.0 - corrected_inside) / outside if outside > EPS else 0.0
-            )
-            window_probabilities = {
-                bucket: (
-                    float(value) * bucket_factors[str(bucket)]
-                    if bucket in set(window)
-                    else float(value) * outside_scale
-                )
-                for bucket, value in probabilities.items()
-            }
-            total = sum(window_probabilities.values())
-            window_probabilities = {
-                bucket: value / total
-                for bucket, value in window_probabilities.items()
-            }
-        elif abs(claim_factor - 1.0) > EPS:
-            # The same correction the ranking used, expressed on the
-            # distribution this window is solved against: the window's own
-            # buckets are deflated and the mass they give up returns to the
-            # buckets outside it, so the scenario space stays a partition and
-            # the curve score is computed on one consistent belief.
-            inside = sum(
-                float(probabilities[bucket]) for bucket in window
-            )
-            outside = max(0.0, 1.0 - inside)
-            corrected_inside = min(1.0 - EPS, inside * claim_factor)
-            outside_scale = (
-                (1.0 - corrected_inside) / outside if outside > EPS else 0.0
-            )
-            window_probabilities = {
-                bucket: (
-                    float(value) * claim_factor
-                    if bucket in set(window)
-                    else float(value) * outside_scale
-                )
-                for bucket, value in probabilities.items()
-            }
-            total = sum(window_probabilities.values())
-            window_probabilities = {
-                bucket: value / total
-                for bucket, value in window_probabilities.items()
-            }
-        else:
-            window_probabilities = dict(probabilities)
+        # The partition is one kernel helper (charter 71): the same
+        # deflated belief feeds the candidate generator, the curve score
+        # and the chain-growth gate below, and the paper ledger reads the
+        # identical function.
+        window_probabilities = deflate_window_partition_v1(
+            probabilities,
+            window,
+            bucket_factors=bucket_factors or None,
+            claim_factor=claim_factor,
+        )
         try:
             solution = solve_target_inventory_v2(
                 probabilities=window_probabilities,
@@ -2079,6 +2029,65 @@ def _solve_over_support_windows(
                     ),
                 })
                 continue
+        # Charter 71 (user ruling, 2026-09-03): two hard gates on a
+        # top-up, judged on the increment.  (a) The probability this
+        # window is served must differ from the one the chain last
+        # bought under -- the book moving is not a reason to buy.  (b)
+        # The buy must improve the chain's expected log wealth read on
+        # the charter-68 partition, lambda*p, from the held curve.  An
+        # unknown last-acted identity cannot bind (a): the gate refuses
+        # on evidence, never on its absence, and the audit names it.
+        if holds_anything and planned_total > inventory_cost + EPS:
+            if (
+                last_acted_probability_identity
+                and probability_identity
+                and str(last_acted_probability_identity)
+                == str(probability_identity)
+            ):
+                failures.append({
+                    "buckets": list(window),
+                    "reason": "topup_requires_probability_change",
+                })
+                continue
+            inventory_by_bucket: dict[str, float] = {}
+            for bucket_row in snapshot.buckets:
+                inventory = (
+                    float(bucket_row.filled_shares)
+                    + float(bucket_row.pending_shares)
+                )
+                if inventory > EPS:
+                    inventory_by_bucket[str(bucket_row.bucket)] = inventory
+            bought_by_bucket: dict[str, float] = {}
+            for bucket, quantity in target_shares.items():
+                increment = float(quantity) - inventory_by_bucket.get(
+                    str(bucket), 0.0
+                )
+                if increment > EPS:
+                    bought_by_bucket[str(bucket)] = increment
+            # (b) binds on the scope's own frame -- the book's 2%, the
+            # number the ledger frames it in -- which the caller knows
+            # only when it knows the book.  Without it the gate cannot
+            # bind, and the audit says so.
+            if (
+                chain_growth_frame_usdc is not None
+                and float(chain_growth_frame_usdc) > 0.0
+            ):
+                growth = chain_topup_growth_v1(
+                    held=inventory_by_bucket,
+                    bought=bought_by_bucket,
+                    probabilities=window_probabilities,
+                    spend=planned_total - inventory_cost,
+                    bankroll=float(chain_growth_frame_usdc),
+                )
+                if not growth > 0.0:
+                    failures.append({
+                        "buckets": list(window),
+                        "reason": "no_chain_growth:%s" % (
+                            "%.4f" % growth
+                            if math.isfinite(growth) else "-inf"
+                        ),
+                    })
+                    continue
         score = (
             solution["target_curve_score"]
             if objective_form == CURVE_OBJECTIVE_FORM
@@ -2859,6 +2868,8 @@ def compile_delta_v2_runtime_plan(
     previous_probabilities: Mapping[str, float] | None = None,
     prior_centre_buckets: Sequence[str] = (),
     chain_consolidation_tilt: float | None = None,
+    last_acted_probability_identity: str | None = None,
+    chain_growth_frame_usdc: float | None = None,
 ) -> dict[str, Any]:
     """Compile the single-event q* and best no-live action under v2.
 
@@ -2950,6 +2961,9 @@ def compile_delta_v2_runtime_plan(
     ):
         raise ContractError("delta_v2_center_diagnostic_mismatch")
     probabilities = {row.bucket: row.probability for row in snapshot.buckets}
+    # Charter 71(a): the identity of the belief this compile is served,
+    # recorded at commit when it buys and compared here when it holds.
+    probability_identity = probability_vector_identity_v1(probabilities)
     by_bucket = {row.bucket: row for row in snapshot.buckets}
     ordered_support = tuple(
         sorted(desired, key=lambda bucket: (by_bucket[bucket].ordinal, bucket))
@@ -3075,6 +3089,9 @@ def compile_delta_v2_runtime_plan(
             capital_available_usdc=capital_available_usdc,
             objective_form=objective_form,
             bankroll_usdc=bankroll_usdc,
+            probability_identity=probability_identity,
+            last_acted_probability_identity=last_acted_probability_identity,
+            chain_growth_frame_usdc=chain_growth_frame_usdc,
         )
     )
     ordered_support = seated_support
@@ -3660,6 +3677,17 @@ def compile_delta_v2_runtime_plan(
             selection.get("selected_score", 0.0)
         ),
         "policy_artifact_id": delta_policy.artifact_id,
+        # Charter 71: the belief this compile was served (recorded at
+        # commit when it buys), the one the chain last bought under, and
+        # the frame the growth gate read -- None means the gate could
+        # not bind, which the reader must be able to tell from a pass.
+        "served_probability_identity": probability_identity,
+        "charter_71": {
+            "last_acted_probability_identity": (
+                last_acted_probability_identity
+            ),
+            "chain_growth_frame_usdc": chain_growth_frame_usdc,
+        },
         "policy_artifact_sha256": delta_policy.content_sha256,
         "fill_distribution_artifact_sha256": (
             delta_policy.fill_distribution_artifact_sha256

@@ -38,6 +38,7 @@ from .awc_observation_contract import (
     CanonicalAWCObservationRevisionFact,
 )
 from .contracts import ContractError, canonical_json, content_sha256
+from .consolidation_chain import record_chain_last_action
 from .basket_kernel.state_machine import basket_lifecycle_projection
 from .et_history import assert_event_day_started, event_day_window
 from .execution_deadline import (
@@ -2225,6 +2226,49 @@ def _stage_canonical_target_projections(
         )
 
 
+def _record_chain_last_action_for_bundle(
+    conn: sqlite3.Connection,
+    *,
+    bundle: Mapping[str, Any],
+    decision: Mapping[str, Any],
+    intents: Sequence[Mapping[str, Any]],
+    created_at: str,
+) -> bool:
+    """Write the charter-71 last-action row when this bundle buys."""
+
+    buys = [
+        item for item in intents
+        if str(item.get("order_action") or "").upper() == "BUY"
+        and float(item.get("requested_size") or 0.0) > 0.0
+    ]
+    if not buys:
+        return False
+    plan_json = bundle.get("plan", {}).get("plan_json") or {}
+    if isinstance(plan_json, str):
+        try:
+            plan_json = json.loads(plan_json)
+        except (TypeError, ValueError):
+            plan_json = {}
+    audit = plan_json.get("delta_v2_audit") if isinstance(plan_json, Mapping) else None
+    identity = (
+        audit.get("served_probability_identity")
+        if isinstance(audit, Mapping) else None
+    ) or (
+        plan_json.get("served_probability_identity")
+        if isinstance(plan_json, Mapping) else None
+    )
+    if not identity:
+        return False
+    return record_chain_last_action(
+        conn,
+        station_id=str(decision["station_id"]),
+        event_date=str(decision["event_date"]),
+        probability_identity=str(identity),
+        decided_at_utc=str(created_at),
+        decision_id=str(decision.get("decision_id") or ""),
+    )
+
+
 def commit_target_atomic_bundle(
     conn: sqlite3.Connection,
     *,
@@ -2826,6 +2870,13 @@ def commit_target_atomic_bundle(
                 (item["order_intent_id"], decision["decision_id"], cycle["cycle_id"], item["bucket"], item["token_id"], item["side"], item["order_action"], item["limit_price"], item["requested_size"], item["requested_notional_usdc"], item["state"], intent_live_submit_authorized, item["target_execution_hard_deadline_at"], item["idempotency_key"], canonical_json(item["intent_json"]), item["intent_sha256"], created_at),
             )
         _fault(fault_after, "intent")
+        # Charter 71(a): a decision that buys records the belief it
+        # bought under, in this same transaction, so the next compile
+        # for the station-day can refuse to add until it has moved.
+        _record_chain_last_action_for_bundle(
+            conn, bundle=bundle, decision=decision, intents=intents,
+            created_at=created_at,
+        )
         for row in vector_rows:
             conn.execute(
                 "INSERT INTO basket_target_execution_version_vectors("
