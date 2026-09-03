@@ -602,6 +602,8 @@ REFUSAL_DEPTH = {
     # Charter 71(a): the chain's own law too -- everything was known,
     # and the reason it stood pat is that nothing had changed.
     "topup_requires_probability_change": 8,
+    # Charter 71(b) tightening arm: the increment itself does not pay.
+    "topup_increment_edge_negative": 8,
     # The declining-probability clamp, when it is armed.  Sits at the
     # top-up layer because everything was known when it fired: the basket
     # was assembled, priced, sized against real depth, and then held back
@@ -1225,6 +1227,18 @@ if LEG_VETO not in {"off", "on"}:
 JUDGE = os.environ.get("PAPER_LEDGER_JUDGE", "").strip().lower() or "ledger"
 if JUDGE not in {"ledger", "production", "production_seat"}:
     raise SystemExit(f"unknown judge: {JUDGE}")
+# Charter 71(b) tightening, replay arm (2026-09-03): ``on`` refuses a top-up
+# whose own increment does not pay -- its expected payout on the lambda*p
+# partition must exceed what it costs -- on top of the chain-growth gate.
+# The growth gate is a portfolio criterion and let 75 of 118 P0 top-ups
+# through with a window-level deflated edge at or below zero; this asks the
+# increment itself.  Production spells nothing until it is ruled.
+TOPUP_INCREMENT_EDGE = (
+    os.environ.get("PAPER_LEDGER_TOPUP_INCREMENT_EDGE", "").strip().lower()
+    or "off"
+)
+if TOPUP_INCREMENT_EDGE not in {"off", "on"}:
+    raise SystemExit(f"unknown top-up increment edge arm: {TOPUP_INCREMENT_EDGE}")
 # The chain ticket, and it is deliberately ledger-only.  Under charter 68 the
 # shrink sizes most opening seats to nothing, and under THIS book's rule --
 # one book per station-day, only P0 opens -- a seat sized to nothing forfeits
@@ -1637,6 +1651,10 @@ SELECTION_RULE_SHA256 = content_sha256({
     "chain_topup_miss_floor": CHAIN_TOPUP_MISS_FLOOR,
     # Charter 71: both top-up gates, versioned in the kernel.
     "topup_gates": CHARTER_71_TOPUP_GATE_VERSION,
+    **(
+        {"topup_increment_edge": TOPUP_INCREMENT_EDGE}
+        if TOPUP_INCREMENT_EDGE != "off" else {}
+    ),
     "p1_entry_local_hour": P1_ENTRY_LOCAL_HOUR,
     # Charter 69 (v5): the clamp arm, its threshold and the seat cadence.
     "decline_clamp": DECLINE_CLAMP,
@@ -1960,6 +1978,7 @@ REFUSAL_REASONS = (
     # the stage's own basket usually passes every stage-level gate.
     "chain_cost_at_par",
     "topup_requires_probability_change",
+    "topup_increment_edge_negative",
 )
 # Which refusal each gate of the enumeration funnel is.  Keyed by the gate
 # names ``_support_windows`` publishes, so adding a gate there without a
@@ -7397,20 +7416,37 @@ def backfill(
                             )
                             if quantity > 0.0
                         }
+                        # Charter 71(b): the lambda*p partition, read once
+                        # for the growth gate and the increment-edge arm.
+                        _partition = _effective_growth_partition(
+                            stage=stage,
+                            event_date=event_date,
+                            probabilities=probabilities,
+                            buckets=seat["buckets"],
+                            snapshot=snapshot,
+                        )
+                        if TOPUP_INCREMENT_EDGE == "on":
+                            _increment_payout = sum(
+                                float(_partition.get(str(b), 0.0)) * float(q)
+                                for b, q in bought_by_bucket.items()
+                            )
+                            if not _increment_payout > spend:
+                                refusal = _deeper_refusal(refusal, (
+                                    "topup_increment_edge_negative",
+                                    "宪章 71 乙款(增量)：增量折后期望赔付 %.3f"
+                                    " ≤ 本笔成本 %.3f · 本链已投 %.2f" % (
+                                        _increment_payout, spend, chain_stake,
+                                    ),
+                                    cycles, payload["decision_at_utc"],
+                                ))
+                                continue
                         growth_frame = CHAIN_TOPUP_BANKROLL_USDC or (
                             equity_at_open * MAX_STAKE_FRACTION_PER_SCOPE
                         )
                         growth = _chain_topup_growth(
                             held=held,
                             bought=bought_by_bucket,
-                            # Charter 71(b): the lambda*p partition.
-                            probabilities=_effective_growth_partition(
-                                stage=stage,
-                                event_date=event_date,
-                                probabilities=probabilities,
-                                buckets=seat["buckets"],
-                                snapshot=snapshot,
-                            ),
+                            probabilities=_partition,
                             spend=spend,
                             bankroll=growth_frame,
                         )

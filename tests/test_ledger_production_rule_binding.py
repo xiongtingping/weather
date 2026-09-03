@@ -224,6 +224,9 @@ LEDGER_ONLY = {
     # it IS the second judge.  What the arm shares is asserted below --
     # the solver it calls is production's own function.
     "JUDGE": "which judge seats and sizes; production is the solver itself",
+    # Charter 71(b) tightening, replay arm: production spells nothing until
+    # the increment-edge rule is ruled in.
+    "TOPUP_INCREMENT_EDGE": "charter 71(b) tightening replay arm, off by default",
     # Charter 63 retired (2026-09-03): production no longer defines a
     # per-leg value clamp, so the maker_resting research arm's lambdas are
     # this lane's alone.  They move nothing under the taker family.
