@@ -11122,6 +11122,55 @@ class TargetProductionWorker:
         return excluded, running_high
 
     @staticmethod
+    def _p0_root_latest_run_init_utc(root: ProbabilityEnvelope) -> datetime | None:
+        """The newest model run a P0 root is built on, or None if unknown.
+
+        ``run_init_utc_by_system_json`` names one run per family; the root
+        knows everything its newest member knows, so that is the instant a
+        forecast must postdate to bring information the root lacks.
+        """
+
+        raw = root.lineage.get("run_init_utc_by_system_json")
+        if not raw:
+            return None
+        try:
+            by_system = json.loads(str(raw))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+        if not isinstance(by_system, Mapping) or not by_system:
+            return None
+        latest: datetime | None = None
+        for value in by_system.values():
+            try:
+                parsed = datetime.fromisoformat(
+                    str(value).replace("Z", "+00:00")
+                )
+            except (TypeError, ValueError):
+                return None
+            if parsed.tzinfo is None:
+                return None
+            parsed = parsed.astimezone(timezone.utc)
+            if latest is None or parsed > latest:
+                latest = parsed
+        return latest
+
+    @staticmethod
+    def _taf_issued_after(
+        capture: Mapping[str, Any], instant: datetime
+    ) -> bool:
+        issued_raw = str(
+            (capture.get("forecast_revision") or {}).get("issued_at_utc")
+            or ""
+        )
+        try:
+            issued = datetime.fromisoformat(issued_raw.replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return False
+        if issued.tzinfo is None:
+            return False
+        return issued.astimezone(timezone.utc) > instant
+
+    @staticmethod
     def _p0m_scope_shape(
         envelopes: Sequence[ProbabilityEnvelope],
         captures: Sequence[Mapping[str, Any]],
@@ -11142,15 +11191,44 @@ class TargetProductionWorker:
             ),
             default="",
         )
-        seatable = [
-            capture for capture in captures
-            if first_root_at
-            and str(
-                (capture.get("forecast_revision") or {}).get(
-                    "received_at_utc"
-                ) or ""
-            ) >= first_root_at
-        ]
+        # Seatability is an information question, not a delivery one.  A
+        # TAF adjusts a root when the forecaster issued it after the model
+        # run the root is built on; when it was carried into our inbox, and
+        # when we happened to mint the root, are our clocks and say nothing
+        # about which knows more.  Judged by our clocks, the five TX
+        # stations of 2026-09-04 lost their only TAF: issued 21:04Z on the
+        # 2nd, three hours after the 18Z run the root reads, received 01Z,
+        # while the root itself was minted 05:56Z after a night of capture
+        # starvation -- and ZBAA answered forecast_revision_chain_empty on
+        # every cycle.  The receipt rule remains for roots that carry no
+        # run identity (the aggregator fallback), so nothing they admitted
+        # before is lost.  (User ruling 2026-09-03.)
+        gate_root = max(
+            (item for item in envelopes if item.stage == "P0"),
+            key=lambda item: item.decision_at_utc,
+            default=None,
+        )
+        gate_run_init = (
+            TargetProductionWorker._p0_root_latest_run_init_utc(gate_root)
+            if gate_root is not None else None
+        )
+        if gate_run_init is not None:
+            seatable = [
+                capture for capture in captures
+                if TargetProductionWorker._taf_issued_after(
+                    capture, gate_run_init
+                )
+            ]
+        else:
+            seatable = [
+                capture for capture in captures
+                if first_root_at
+                and str(
+                    (capture.get("forecast_revision") or {}).get(
+                        "received_at_utc"
+                    ) or ""
+                ) >= first_root_at
+            ]
         earliest_taf = min(
             (
                 str(
@@ -11862,9 +11940,32 @@ class TargetProductionWorker:
                         # of them on the replay's first live cycle -- and
                         # would also backdate a decision made on evidence
                         # that did not exist then.
-                        decision_at = (
-                            as_of_utc if replay_only else revision.received_at_utc
-                        )
+                        if replay_only:
+                            decision_at = as_of_utc
+                        else:
+                            # A revision that was in hand before its
+                            # predecessor was minted is seated at the
+                            # predecessor's clock plus a second, as the
+                            # artifact path already does; the chain only
+                            # needs its order, and the information order
+                            # was settled by the seatability gate above.
+                            previous_time = datetime.fromisoformat(
+                                observed_predecessor.decision_at_utc.replace(
+                                    "Z", "+00:00"
+                                )
+                            ).astimezone(timezone.utc)
+                            received_time = datetime.fromisoformat(
+                                revision.received_at_utc.replace("Z", "+00:00")
+                            ).astimezone(timezone.utc)
+                            decision_time = max(previous_time, received_time)
+                            decision_time = decision_time.replace(microsecond=0)
+                            if decision_time <= previous_time:
+                                decision_time = previous_time.replace(
+                                    microsecond=0
+                                ) + timedelta(seconds=1)
+                            decision_at = decision_time.isoformat().replace(
+                                "+00:00", "Z"
+                            )
                         if (
                             decision_at
                             <= observed_predecessor.decision_at_utc

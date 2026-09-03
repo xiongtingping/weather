@@ -5927,6 +5927,69 @@ def test_p0m_scope_shape_runs_without_an_instance(tmp_path: Path) -> None:
     assert isinstance(shape["seen_revisions"], set)
 
 
+def test_p0m_seatability_is_judged_by_information_time_not_our_clocks() -> None:
+    """A TAF issued after the root's newest run seats, whenever we received it.
+
+    2026-09-04 ZBAA: TAF issued 21:04Z on the 2nd (received 01Z on the
+    3rd), root on the 18Z run minted 05:56Z after a night of capture
+    starvation.  Received-before-minted dropped it and the lane answered
+    forecast_revision_chain_empty.  The forecaster wrote three hours after
+    the model ran: that is the order that matters.  (User ruling 09-03.)
+    """
+    from bayes_basket_target.contracts import ProbabilityEnvelope
+
+    def _root(decision_at: str, checkpoint: str, *, run_init: str | None) -> ProbabilityEnvelope:
+        lineage = {"p0_root_checkpoint_id": checkpoint}
+        if run_init is not None:
+            lineage["run_init_utc_by_system_json"] = json.dumps({
+                "ECMWF_IFS_ENS_OPEN_PF50": run_init,
+                "NOAA_GEFS_05": "2099-08-04T12:00:00Z",
+            })
+        return ProbabilityEnvelope.from_mapping({
+            "schema": "bayes_basket_probability_envelope_v1",
+            "stage": "P0",
+            "checkpoint_id": checkpoint,
+            "station_id": "ZBAA",
+            "event_date": "2099-08-05",
+            "settlement_timezone": "Asia/Shanghai",
+            "decision_at_utc": decision_at,
+            "fresh_until_utc": "2099-08-05T23:00:00Z",
+            "bucket_ordinals": {"31°C": 31, "32°C": 32},
+            "probabilities": {"31°C": 0.4, "32°C": 0.6},
+            "posterior_version": "p0_nwp_v1",
+            "posterior_sha256": "a" * 64,
+            "bridge_sha256": "b" * 64,
+            "lineage": lineage,
+        })
+
+    def _capture(issued: str, received: str) -> dict:
+        return {"forecast_revision": {
+            "revision_id": f"rev-{issued}",
+            "issued_at_utc": issued,
+            "received_at_utc": received,
+        }}
+
+    shape_fn = production_worker_module.TargetProductionWorker._p0m_scope_shape
+    # Root on the 18Z run, minted hours later; the TAF arrived in between.
+    roots = [_root("2099-08-05T05:56:00Z", "p0-native-18z", run_init="2099-08-04T18:00:00Z")]
+    newer_taf = _capture("2099-08-04T21:04:00Z", "2099-08-05T00:56:00Z")
+    older_taf = _capture("2099-08-04T15:00:00Z", "2099-08-05T07:00:00Z")
+    shape = shape_fn(roots, [newer_taf, older_taf])
+    assert [c["forecast_revision"]["revision_id"] for c in shape["seatable"]] == [
+        "rev-2099-08-04T21:04:00Z"
+    ]
+    assert shape["dropped_pre_root"] == 1
+    # The newest root governs: a second root on 00Z retires the 21Z TAF.
+    roots.append(_root("2099-08-05T08:00:00Z", "p0-native-00z", run_init="2099-08-05T00:00:00Z"))
+    assert shape_fn(roots, [newer_taf, older_taf])["seatable"] == []
+    # A root that names no run keeps the receipt rule it always had.
+    legacy = [_root("2099-08-05T05:56:00Z", "p0-agg", run_init=None)]
+    shape = shape_fn(legacy, [newer_taf, older_taf])
+    assert [c["forecast_revision"]["revision_id"] for c in shape["seatable"]] == [
+        "rev-2099-08-04T15:00:00Z"
+    ]
+
+
 def _ws_snapshot_row(
     conn: sqlite3.Connection,
     *,
