@@ -1357,8 +1357,9 @@ def test_the_selection_discount_shades_the_gate_and_only_the_gate() -> None:
     # The shaded number feeds the Kelly stake and the refusal detail...
     assert "win_probability=gate_win," in source
     # ...and nowhere else: the recorded row keeps the raw claim.
-    assert source.count("gate_win") == 7  # define, kelly, refusal detail,
-        # plus the effective-edge shrink (2026-09-01) re-reading it twice
+    assert source.count("gate_win") == 8  # define, kelly, refusal detail,
+        # plus the effective-edge shrink (2026-09-01) re-reading it twice,
+        # plus the bucket-scope arm's own sum (2026-09-03, charter 68 scope)
 
 
 def test_the_consolidation_tilt_scales_stakes_and_never_selects() -> None:

@@ -220,6 +220,10 @@ LEDGER_ONLY = {
     # Production's per-leg reservation veto (TAKER_LEG_VETO), replayed here
     # as an arm; the two are asserted equivalent below.
     "LEG_VETO": "production's TAKER_LEG_VETO, asserted equivalent",
+    # The whole-basket judge arm (2026-09-03).  Production has no switch:
+    # it IS the second judge.  What the arm shares is asserted below --
+    # the solver it calls is production's own function.
+    "JUDGE": "which judge seats and sizes; production is the solver itself",
     # Charter 63 retired (2026-09-03): production no longer defines a
     # per-leg value clamp, so the maker_resting research arm's lambdas are
     # this lane's alone.  They move nothing under the taker family.
@@ -606,3 +610,34 @@ def test_charter_68_scope_and_the_taker_leg_veto_move_together() -> None:
     assert K.effective_edge_bucket_lambda_for_stage("P0", 1.27) == 1.38
     assert K.effective_edge_bucket_lambda_for_stage("P1", 1.27) == 1.0
 
+
+
+def test_the_production_judge_arm_calls_productions_own_solver() -> None:
+    """The arm's whole point is that nothing is re-implemented.
+
+    ``PAPER_LEDGER_JUDGE=production`` must hand the book to the very function
+    production seats and sizes with, resolve its policies with production's
+    resolvers, and default to this lane's own judge so the standing book
+    keeps its fingerprint.
+    """
+    import bayes_basket_target.delta_v2_artifact as A
+    import bayes_basket_target.delta_v2_runtime as P
+    import bayes_basket_target.policy as POL
+    import bayes_basket_target.production_io as IO
+    import bayes_basket_target.runtime as R
+
+    assert L.JUDGE == "ledger"
+    assert L._solve_over_support_windows is P._solve_over_support_windows
+    assert L._support_windows is P._support_windows
+    assert L.resolve_delta_v2_policy is A.resolve_delta_v2_policy
+    assert L.resolve_station_policy is POL.resolve_station_policy
+    assert L.load_production_artifacts is IO.load_production_artifacts
+    assert L.derive_policy_maturity_bin is IO.derive_policy_maturity_bin
+    assert L._PRODUCTION_DEFAULT_POLICY is R._DEFAULT_POLICY
+    assert L.CONSOLIDATION_TILT_FLOOR_LEGS == P.CONSOLIDATION_TILT_FLOOR_LEGS
+    # Only the non-default arm is hashed, so the standing book keeps its
+    # identity: the fingerprint source names the key under a guard.
+    source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    assert '**({"judge": JUDGE} if JUDGE != "ledger" else {})' in source

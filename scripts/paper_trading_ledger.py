@@ -107,6 +107,10 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     _floor_to_tick,
     _maker_ladder,
     _support_windows,
+    # The production judge arm (2026-09-03): the objective that seats a
+    # window and sizes it in one pass, and the tilt floor it spends under.
+    _solve_over_support_windows,
+    CONSOLIDATION_TILT_FLOOR_LEGS,
 )
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     DEFAULT_KELLY_FRACTION,
@@ -120,6 +124,35 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     raise_sub_lot_targets_v2,
     scope_stake_cap_usdc,
 )
+# What the production judge arm resolves the way production's compile does:
+# the station's basket policy, the delta-v2 policy artifact, and the scope
+# bins both are keyed by.  Every name here is production's own resolver.
+from bayes_basket_target.basket_kernel.contracts import (  # noqa: E402
+    ContractError as _KernelContractError,
+    EPS as _KERNEL_EPS,
+    TargetBasketPolicy,
+)
+from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
+    CURVE_OBJECTIVE_FORM as _CURVE_OBJECTIVE_FORM,
+    VALUE_OBJECTIVE_FORM as _VALUE_OBJECTIVE_FORM,
+)
+from bayes_basket_target.basket_kernel.support import (  # noqa: E402
+    _derive_dual_risk_scope,
+)
+from bayes_basket_target.contracts import ContractError  # noqa: E402
+from bayes_basket_target.delta_v2_artifact import (  # noqa: E402
+    resolve_delta_v2_policy,
+)
+from bayes_basket_target.policy import resolve_station_policy  # noqa: E402
+from bayes_basket_target.production_io import (  # noqa: E402
+    derive_policy_maturity_bin,
+    load_production_artifacts,
+)
+from bayes_basket_target.runtime import (  # noqa: E402
+    _DEFAULT_POLICY as _PRODUCTION_DEFAULT_POLICY,
+    _station_cap_override,
+)
+from bayes_basket_target.station_season import station_season_bin  # noqa: E402
 from bayes_basket_target.center_width_calibration import (  # noqa: E402
     apply_center_width_calibration,
     bucket_centers_from_intervals,
@@ -496,6 +529,10 @@ REFUSAL_DEPTH = {
     "no_book_at_decision": 0,
     "incomplete_book": 1,
     "selection_failed": 2,
+    # The production judge arm could not run production's resolvers on
+    # this book -- no policy for the scope, or the solver failed closed.
+    # Same layer as ``selection_failed``: nothing was priced.
+    "production_judge_blocked": 2,
     # Charter 67's clock refusal is NOT on the certainty gate's layer,
     # though both are "our own clock".  The certainty gate fires INSTEAD of
     # judging on its cycle, so it can honestly be the day's deepest event.
@@ -540,6 +577,9 @@ REFUSAL_DEPTH = {
     # price left the objective anything to judge.
     "no_positive_kelly": 6,
     "cost_exceeds_payout": 6,
+    # The production judge arm seated a window and sized it to nothing the
+    # chain does not already hold.  The objective's own layer.
+    "production_judge_hold": 6,
     "no_depth": 7,
     "no_top_up_needed": 7,
     # One layer: the order was posted and bought nothing.  Which of the two
@@ -1159,6 +1199,23 @@ LEG_VETO = (
 )
 if LEG_VETO not in {"off", "on"}:
     raise SystemExit(f"unknown leg veto: {LEG_VETO}")
+# The whole-basket judge (research arm, 2026-09-03).  ``ledger`` is this
+# lane's standing rule: production's window shortlist, its head seat priced
+# at the offer, charter 68 applied as a gate on the whole claim, and Kelly
+# sizing the stake.  ``production`` hands the same book, holdings and
+# capital to production's own solver -- the objective that seats a window
+# by its curve score and sizes it in one pass, charter 68 folded into the
+# claim it optimises -- and books what that returns.  The two are not
+# hypotheses about each other: production runs the second, the ledger has
+# always measured under the first, and until this arm nothing had put the
+# two judges on one book.  What the arm cannot carry over is written on
+# ``_production_judge``.
+# ``production_seat`` splits the gap: production's solver chooses the window,
+# this lane's gate and Kelly then size it -- so seat choice and sizing can
+# be told apart in the measurement.
+JUDGE = os.environ.get("PAPER_LEDGER_JUDGE", "").strip().lower() or "ledger"
+if JUDGE not in {"ledger", "production", "production_seat"}:
+    raise SystemExit(f"unknown judge: {JUDGE}")
 # The chain ticket, and it is deliberately ledger-only.  Under charter 68 the
 # shrink sizes most opening seats to nothing, and under THIS book's rule --
 # one book per station-day, only P0 opens -- a seat sized to nothing forfeits
@@ -1581,6 +1638,7 @@ SELECTION_RULE_SHA256 = content_sha256({
         if EFFECTIVE_EDGE_SCOPE != "window" else {}
     ),
     **({"leg_veto": LEG_VETO} if LEG_VETO != "off" else {}),
+    **({"judge": JUDGE} if JUDGE != "ledger" else {}),
     "window_strategy": WINDOW_STRATEGY,
     "execution_mode": EXECUTION_MODE,
     # Which price the Kelly stake and the payout test are struck against.
@@ -1794,6 +1852,7 @@ REFUSAL_REASONS = (
     "no_book_at_decision",
     "incomplete_book",
     "selection_failed",
+    "production_judge_blocked",
     # No window survived long enough to be shown a price: the structural
     # floors -- contiguity, the charter-49 centre rung, the length floor --
     # took the whole enumeration.  Split out of ``no_priced_window`` on
@@ -1829,6 +1888,7 @@ REFUSAL_REASONS = (
     # to reach us, which points at execution when the cause was evidence.
     "belief_withdrew_order",
     "no_positive_kelly",
+    "production_judge_hold",
     # We declined to act because the market had finished pricing the day --
     # the centre had held for three decisions, or the top two buckets already
     # carried 60% of the mass.  Folded into ``no_positive_kelly`` this read as
@@ -2721,6 +2781,10 @@ def _stage_entry_candidates(
             "buckets": buckets,
             "center_bucket": str(lineage.get("model_center_bucket") or ""),
             "center_c": lineage.get("model_center_c"),
+            # The day's reported high the P1 envelope stood on, for the
+            # production-judge arm: production's P1 snapshot contract
+            # requires it, and its risk families are read off it.
+            "running_high_c": lineage.get("metar_trajectory_running_high_c"),
             # The probability leg of the economic identity (user ruling,
             # 2026-09-02): envelope content hash + posterior hash + the
             # exclusion mask.  Queried all along -- the SELECT above reads
@@ -2901,6 +2965,10 @@ def _build_snapshot(
     observed_at: str,
     buckets: list[tuple],
     quotes: dict[str, dict[str, Any]],
+    stage: str = "P0",
+    held: Mapping[str, float] | None = None,
+    held_cost: Mapping[str, float] | None = None,
+    reported_high: tuple[str, int] | None = None,
 ) -> tuple[
     Any, dict[str, float], dict[str, float],
     dict[str, list[dict[str, float]]]
@@ -2973,6 +3041,13 @@ def _build_snapshot(
             "bucket": str(bucket),
             "ordinal": int(ordinal),
             "probability": float(probability),
+            # What the chain already holds here.  Production's objective
+            # treats held shares as sunk and solves for the target on top
+            # of them; the ledger's own path never reads these two.
+            "filled_shares": float((held or {}).get(str(bucket), 0.0)),
+            "filled_cost_usdc": float(
+                (held_cost or {}).get(str(bucket), 0.0)
+            ),
             "bid_price": bid,
             "bid_levels": bid_levels,
             "ask_levels": levels,
@@ -2997,7 +3072,16 @@ def _build_snapshot(
         "inventory_version": "paper",
         "order_state_version": "paper",
         "evidence": {
-            "probability_stage": "P0",
+            "probability_stage": str(stage or "P0"),
+            **(
+                {
+                    "reported_high_bucket": str(reported_high[0]),
+                    "reported_high_ordinal": int(reported_high[1]),
+                    "reported_high_observation_id": "paper-running-high",
+                    "hard_bound_id": "paper-running-high",
+                }
+                if reported_high is not None else {}
+            ),
             "posterior_version": "paper",
             "posterior_sha256": "a" * 64,
         },
@@ -3013,6 +3097,345 @@ def _build_snapshot(
         "time_left_minutes": 1440.0,
     })
     return snapshot, probabilities, prices, depth
+
+
+_PRODUCTION_POLICY_SCOPE_CACHE: dict[int, dict[str, str]] = {}
+
+
+def _production_policy_scope(conn: sqlite3.Connection) -> dict[str, str]:
+    """The scope bins production's compile loop hands its resolvers.
+
+    Read from the strategy activation's ``target_scope`` -- the same row the
+    worker reads -- and cached per connection.  A store without the row
+    (a replay database cut before it was carried) falls back to the values
+    that row has held since the delta-v2 lane opened.
+    """
+
+    key = id(conn)
+    cached = _PRODUCTION_POLICY_SCOPE_CACHE.get(key)
+    if cached is not None:
+        return cached
+    scope = {
+        "season_bin": "summer",
+        "liquidity_bin": "liquid",
+        "strategy_version": "target-v2",
+    }
+    try:
+        row = conn.execute(
+            "SELECT activation_json FROM basket_strategy_activation_state"
+            " ORDER BY generation DESC LIMIT 1"
+        ).fetchone()
+    except sqlite3.OperationalError:
+        row = None
+    if row is not None:
+        try:
+            target = (json.loads(row[0]) or {}).get("target_scope") or {}
+        except (TypeError, ValueError):
+            target = {}
+        for name in scope:
+            if target.get(name):
+                scope[name] = str(target[name])
+    _PRODUCTION_POLICY_SCOPE_CACHE[key] = scope
+    return scope
+
+
+def _production_judge(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    stage: str,
+    decision_at_utc: str,
+    payload: Mapping[str, Any],
+    quotes: dict[str, dict[str, Any]],
+    probabilities: Mapping[str, float],
+    center: str,
+    core: Sequence[str],
+    held: Mapping[str, float],
+    held_cost: Mapping[str, float],
+    equity: float,
+    chain_stake: float,
+    tilt: float,
+) -> dict[str, Any]:
+    """Production's whole-basket judge, run on this lane's book.
+
+    Everything here is production's own: the scope bins are derived the way
+    ``compile_production_cycle_from_ssot`` derives them, the station policy
+    and the delta-v2 policy are resolved by the same resolvers against the
+    same tables as of the same clock, the window shortlist is
+    ``_support_windows`` and the seat and its size come out of
+    ``_solve_over_support_windows`` -- the objective production seats and
+    sizes with, charter 68 folded into the claim it optimises.  The ledger
+    then books the target it returns exactly as it books its own seat: the
+    same fills, the same chain law (charters 66, 69, 70), the same
+    settlement.
+
+    What this arm does not carry over, so a reader knows what the gap it
+    measures is made of:
+
+    * the regime concentration multiplier -- the regime lane is dark in all
+      three stages (fleet-regime-next-day-shift), so it is 1.0 here too;
+    * production's ``desired`` seed for the shortlist is its own ladder from
+      centre and direction; this lane seeds with ``_entry_support_core``
+      as its ``live`` strategy always has.  The enumeration itself is the
+      one function.
+    """
+
+    fee_rate = FEE_RATE
+    try:
+        # The policy scope production compiles under: the strategy
+        # activation's ``target_scope`` names the season, liquidity and
+        # strategy version (the policy layer still speaks the fleet-wide
+        # ``summer`` vocabulary; charter 62's station-local season is the
+        # calibration layer's, not this one's), and the maturity is the
+        # calendar distance from this decision's own clock.
+        scope = _production_policy_scope(conn)
+        season_bin = str(scope["season_bin"])
+        liquidity_bin = str(scope["liquidity_bin"])
+        strategy_version = str(scope["strategy_version"])
+        maturity_bin = derive_policy_maturity_bin(
+            # The label only chooses the vocabulary; the distance is computed
+            # from the decision clock, which is what production does too.
+            "h00_12",
+            event_date=event_date,
+            settlement_timezone=_settlement_timezone(
+                conn, station_id, event_date
+            ),
+            evaluation_at_utc=decision_at_utc,
+        )
+        delta_policy = resolve_delta_v2_policy(
+            conn,
+            station_id=station_id,
+            stage=stage,
+            season_bin=season_bin,
+            maturity_bin=maturity_bin,
+            liquidity_bin=liquidity_bin,
+            strategy_version=strategy_version,
+            evaluation_at_utc=decision_at_utc,
+            required_authority_scope="PRODUCTION_NO_LIVE",
+        )
+        bundle = load_production_artifacts(
+            conn,
+            station_id=station_id,
+            evaluation_at_utc=decision_at_utc,
+            require_calibration=False,
+            require_policy=True,
+        )
+        resolved = resolve_station_policy(
+            activations=bundle.policy_activations,
+            global_priors=bundle.global_priors,
+            artifacts=bundle.policy_artifacts,
+            station_id=station_id,
+            stage=stage,
+            season_bin=season_bin,
+            maturity_bin=maturity_bin,
+            liquidity_bin=liquidity_bin,
+            strategy_version=strategy_version,
+            decision_at_utc=decision_at_utc,
+            required_authority_scope="PRODUCTION_NO_LIVE_CANDIDATE",
+        )
+    except Exception as exc:  # noqa: BLE001 -- reported, never swallowed
+        return {
+            "refusal": (
+                "production_judge_blocked",
+                "生产裁判无法解析政策：%s:%s" % (type(exc).__name__, exc),
+            ),
+        }
+    policy_config = dict(_PRODUCTION_DEFAULT_POLICY)
+    policy_config.update(_station_cap_override())
+    policy_config.update(resolved.to_adaptive_policy_overrides())
+    try:
+        basket_policy = TargetBasketPolicy.from_mapping(policy_config)
+        basket_policy.validate()
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "refusal": (
+                "production_judge_blocked",
+                "生产裁判篮子政策无效：%s:%s" % (type(exc).__name__, exc),
+            ),
+        }
+    fee_rate = float(basket_policy.fee_rate)
+    reported_high = None
+    running_high_c = payload.get("running_high_c")
+    if running_high_c not in (None, ""):
+        try:
+            running = float(running_high_c)
+        except (TypeError, ValueError):
+            running = None
+        if running is not None:
+            for bucket, ordinal, lower, upper, _probability in payload["buckets"]:
+                if (lower is None or running >= float(lower)) and (
+                    upper is None or running < float(upper)
+                ):
+                    reported_high = (str(bucket), int(ordinal))
+                    break
+    try:
+        built = _build_snapshot(
+            station_id=station_id,
+            event_date=event_date,
+            observed_at=str(payload["observed_at"]),
+            buckets=payload["buckets"],
+            quotes=quotes,
+            stage=stage,
+            held=held,
+            held_cost=held_cost,
+            reported_high=reported_high,
+        )
+    except (ContractError, _KernelContractError) as exc:
+        return {
+            "refusal": (
+                "production_judge_blocked",
+                "生产裁判快照不成立：%s" % exc,
+            ),
+        }
+    if built is None:
+        return {
+            "refusal": ("incomplete_book", "生产裁判：快照缺腿"),
+        }
+    snapshot, _probabilities, _prices, _depth = built
+    by_bucket = {row.bucket: row for row in snapshot.buckets}
+    centre_row = by_bucket.get(str(center))
+    if centre_row is None:
+        return {
+            "refusal": ("selection_failed", "生产裁判：中心桶不在快照内"),
+        }
+    try:
+        shortfall, breakthrough = _derive_dual_risk_scope(snapshot, centre_row)
+    except (ContractError, _KernelContractError) as exc:
+        return {
+            "refusal": (
+                "production_judge_blocked",
+                "生产裁判风险族解析失败：%s" % exc,
+            ),
+        }
+    try:
+        windows, audit = _support_windows(
+            snapshot=snapshot,
+            desired=set(core) or {center},
+            probabilities=probabilities,
+            fee_rate=basket_policy.fee_rate,
+            maximum_support_buckets=basket_policy.maximum_support_buckets,
+            minimum_support_buckets=basket_policy.minimum_support_buckets,
+            center_bucket=center,
+            probability_stage=stage,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "refusal": (
+                "selection_failed",
+                "生产裁判枚举失败：%s" % type(exc).__name__,
+            ),
+        }
+    # Capital the way production hands it to the solver: the scope's share
+    # of the book less what the chain has spent, bounded by the station's
+    # own cap, then the consolidation tilt on what is left -- floored at a
+    # few minimum clips so a tilted opener can still form a basket.
+    scope_cap = scope_stake_cap_usdc(
+        book_equity_usdc=float(equity),
+        stage=stage,
+        committed_usdc=float(chain_stake),
+    )
+    station_room = max(
+        0.0, float(basket_policy.total_budget_usdc) - float(chain_stake)
+    )
+    capital = min(scope_cap, station_room)
+    if 0.0 < tilt < 1.0 and capital > 0.0:
+        tilt_floor = (
+            min(delta_policy.cash_clip_grid) * CONSOLIDATION_TILT_FLOOR_LEGS
+            if delta_policy.cash_clip_grid else 0.0
+        )
+        capital = min(capital, max(capital * float(tilt), tilt_floor))
+    bankroll = float(basket_policy.total_budget_usdc)
+    objective_form = (
+        _CURVE_OBJECTIVE_FORM if bankroll > 0.0 else _VALUE_OBJECTIVE_FORM
+    )
+    live_buckets = tuple(
+        row.bucket for row in snapshot.buckets
+        if row.probability > _KERNEL_EPS
+    )
+    try:
+        seated, solution, selection = _solve_over_support_windows(
+            windows=windows,
+            window_audit=audit,
+            live_buckets=live_buckets,
+            snapshot=snapshot,
+            probabilities=probabilities,
+            shortfall=set(shortfall),
+            breakthrough=set(breakthrough),
+            delta_policy=delta_policy,
+            basket_policy=basket_policy,
+            capital_available_usdc=capital,
+            objective_form=objective_form,
+            bankroll_usdc=bankroll,
+        )
+    except (ContractError, _KernelContractError) as exc:
+        return {
+            "refusal": (
+                "production_judge_blocked",
+                "生产裁判求解失败：%s" % exc,
+            ),
+        }
+    target = {
+        str(bucket): float(quantity)
+        for bucket, quantity in (
+            solution.get("target_shares_by_bucket") or {}
+        ).items()
+    }
+    delta_cost = 0.0
+    for bucket in seated:
+        delta = max(
+            0.0, target.get(str(bucket), 0.0) - float(held.get(bucket, 0.0))
+        )
+        row = by_bucket.get(str(bucket))
+        if delta <= 0.0 or row is None or not row.ask_available:
+            continue
+        delta_cost += delta * float(row.ask_price) * (1.0 + fee_rate)
+    return {
+        "buckets": tuple(str(bucket) for bucket in seated),
+        "target_shares": target,
+        "delta_cost_usdc": delta_cost,
+        "capital_usdc": capital,
+        "curve_score": float(
+            (selection.get("seated") or {}).get("curve_score") or 0.0
+        ),
+        "delta_policy_id": str(delta_policy.artifact_id),
+        "scope": (season_bin, maturity_bin, liquidity_bin, strategy_version),
+    }
+
+
+def _production_sized_legs(
+    *,
+    legs: list[list[dict[str, float]]],
+    buckets: Sequence[str],
+    target: Mapping[str, float],
+    held: Mapping[str, float],
+    fee_rate: float,
+) -> tuple[list[float], float, list[float]] | None:
+    """Walk the book for the production judge's target on top of the held.
+
+    Returns the wanted totals per leg (what the chain should hold after
+    this buy), the cash the increments cost, and the per-leg cash -- the
+    same three the ledger's own sizers return, so everything downstream
+    reads them unchanged.  ``None`` when a leg's increment cannot be filled
+    from the depth on the book.
+    """
+
+    shares: list[float] = []
+    cash: list[float] = []
+    for leg, bucket in zip(legs, buckets):
+        want_total = float(target.get(str(bucket), 0.0))
+        have = float(held.get(str(bucket), 0.0))
+        delta = max(0.0, want_total - have)
+        if delta <= 0.0:
+            shares.append(max(want_total, have))
+            cash.append(0.0)
+            continue
+        got, paid = _walk_ask_shares(leg, delta)
+        if got <= 0.0 or got + 1e-9 < delta:
+            return None
+        shares.append(have + got)
+        cash.append(paid * (1.0 + fee_rate))
+    return shares, sum(cash), cash
 
 
 # The strategies the comparison sweep can put in production's place.  Each
@@ -5686,6 +6109,7 @@ def backfill(
             # Shares per bucket, what they cost, and the ladder the last
             # stage to act was working from -- settlement reads all three.
             held: dict[str, float] = {}
+            held_cost: dict[str, float] = {}
             chain_stake = 0.0
             # The whole chain spends under the tilt its opener earned.
             chain_tilt = 1.0
@@ -6120,12 +6544,93 @@ def backfill(
                     else:
                         tilt = chain_tilt
                     tilt = tilt * shape_tilt
+                    # The production judge arm.  It runs here, after the
+                    # tilt is known, because production tilts the capital
+                    # it hands the solver; the seat chosen above was this
+                    # lane's and is replaced by production's, priced the
+                    # same way so every later number reads unchanged.
+                    production_verdict = None
+                    if JUDGE in ("production", "production_seat"):
+                        verdict = _production_judge(
+                            conn,
+                            station_id=station_id,
+                            event_date=event_date,
+                            stage=stage,
+                            decision_at_utc=payload["decision_at_utc"],
+                            payload=payload,
+                            quotes=quotes,
+                            probabilities=probabilities,
+                            center=center,
+                            core=core,
+                            held=held,
+                            held_cost=held_cost,
+                            equity=equity_at_open,
+                            chain_stake=chain_stake,
+                            tilt=tilt,
+                        )
+                        counts["production_judge_cycles"] += 1
+                        if verdict.get("refusal"):
+                            _reason, _detail = verdict["refusal"]
+                            counts["production_judge_cycles_" + _reason] += 1
+                            refusal = _deeper_refusal(refusal, (
+                                _reason, _detail,
+                                cycles, payload["decision_at_utc"],
+                            ))
+                            continue
+                        _row = _window_row(
+                            verdict["buckets"],
+                            snapshot=snapshot,
+                            probabilities=probabilities,
+                            centre_bucket=str(
+                                audit.get("ladder_center_bucket") or center
+                            ),
+                        )
+                        if _row is None:
+                            refusal = _deeper_refusal(refusal, (
+                                "no_priced_window",
+                                "生产裁判入座 %s，本簿无法定价"
+                                % "+".join(verdict["buckets"]),
+                                cycles, payload["decision_at_utc"],
+                            ))
+                            continue
+                        if (
+                            JUDGE == "production"
+                            and float(verdict["delta_cost_usdc"]) <= 0.0
+                        ):
+                            refusal = _deeper_refusal(refusal, (
+                                "production_judge_hold",
+                                "生产裁判：目标篮 %s · 曲线分 %.4f ·"
+                                " 目标份额不高于持仓（资本 %.2f · 本链已投 %.2f）"
+                                % (
+                                    "+".join(verdict["buckets"]),
+                                    verdict["curve_score"],
+                                    verdict["capital_usdc"],
+                                    chain_stake,
+                                ),
+                                cycles, payload["decision_at_utc"],
+                            ))
+                            continue
+                        counts["production_judge_cycles_seated"] += 1
+                        seat = _row
+                        seat_crossing_cost = float(seat["all_in_price"])
+                        seat_cost = _seat_execution_price(
+                            seat,
+                            snapshot=snapshot,
+                            probabilities=probabilities,
+                            centre_bucket=str(
+                                audit.get("ladder_center_bucket") or center
+                            ),
+                            stage=stage,
+                        )
+                        if JUDGE == "production":
+                            production_verdict = verdict
                     gate_win = float(seat["win_probability"]) * (
                         SELECTION_DISCOUNT if SELECTION_DISCOUNT > 0 else 1.0
                     )
                     leg_veto_hit = None
                     if (
-                        EFFECTIVE_EDGE_MODE == "on"
+                        production_verdict is None
+                        and EFFECTIVE_EDGE_MODE == "on"
                         and (
                             stage in EFFECTIVE_EDGE_STAGES
                             or stage in EFFECTIVE_EDGE_P1_STAGES
@@ -6213,50 +6718,67 @@ def backfill(
                             payload["decision_at_utc"],
                         ))
                         continue
-                    fraction, wanted_stake = _kelly_stake(
-                        win_probability=gate_win,
-                        cost=seat_cost,
-                        equity=equity_at_open,
-                    )
-                    stage_budget = (
-                        equity_at_open
-                        * MAX_STAKE_FRACTION_PER_SCOPE
-                        * STAGE_BUDGET_SHARE.get(stage, 1.0)
-                    )
-                    stage_room = stage_budget * tilt - chain_stake
-                    stake = min(wanted_stake, max(0.0, stage_room))
-                    # A tilted stake floors at one minimum clip per leg:
-                    # below that the venue refuses the order and the tilt
-                    # becomes a gate.  The floor never lifts the stake
-                    # above the untilted budget or the Kelly ask -- it
-                    # only stops the cut from cutting past executability.
-                    if 0.0 < tilt < 1.0 and stake > 0.0:
-                        stake = min(
-                            wanted_stake,
-                            max(0.0, stage_budget - chain_stake),
-                            max(
-                                stake,
-                                _tilt_minimum_clip(conn)
-                                * len(seat["buckets"]),
-                            ),
+                    if production_verdict is not None:
+                        # Production sized it: the increment's cost at
+                        # the offer, inside the capital the solver was
+                        # handed.  No Kelly and no second clamp -- both
+                        # are inside the objective that chose it.
+                        fraction = 0.0
+                        wanted_stake = float(
+                            production_verdict["delta_cost_usdc"]
                         )
-                    if (
-                        stake <= 0.0
-                        and CHAIN_TICKET_MODE == "on"
-                        and stage == "P0"
-                        and not held
-                        and float(seat_cost) < 1.0
-                        and wanted_stake <= 0.0
-                    ):
-                        # The ticket: the objective judged this opener
-                        # worthless, but worthless and skippable are not the
-                        # same thing under one-book chains.  Floor at one
-                        # executable clip per leg, above the dust floor so
-                        # the chain it opens still counts as credible.
-                        stake = max(
-                            _tilt_minimum_clip(conn) * len(seat["buckets"]),
-                            DUST_COST_FLOOR * 2.0,
+                        stage_budget = (
+                            equity_at_open
+                            * MAX_STAKE_FRACTION_PER_SCOPE
+                            * STAGE_BUDGET_SHARE.get(stage, 1.0)
                         )
+                        stage_room = float(production_verdict["capital_usdc"])
+                        stake = wanted_stake
+                    else:
+                        fraction, wanted_stake = _kelly_stake(
+                            win_probability=gate_win,
+                            cost=seat_cost,
+                            equity=equity_at_open,
+                        )
+                        stage_budget = (
+                            equity_at_open
+                            * MAX_STAKE_FRACTION_PER_SCOPE
+                            * STAGE_BUDGET_SHARE.get(stage, 1.0)
+                        )
+                        stage_room = stage_budget * tilt - chain_stake
+                        stake = min(wanted_stake, max(0.0, stage_room))
+                        # A tilted stake floors at one minimum clip per leg:
+                        # below that the venue refuses the order and the tilt
+                        # becomes a gate.  The floor never lifts the stake
+                        # above the untilted budget or the Kelly ask -- it
+                        # only stops the cut from cutting past executability.
+                        if 0.0 < tilt < 1.0 and stake > 0.0:
+                            stake = min(
+                                wanted_stake,
+                                max(0.0, stage_budget - chain_stake),
+                                max(
+                                    stake,
+                                    _tilt_minimum_clip(conn)
+                                    * len(seat["buckets"]),
+                                ),
+                            )
+                        if (
+                            stake <= 0.0
+                            and CHAIN_TICKET_MODE == "on"
+                            and stage == "P0"
+                            and not held
+                            and float(seat_cost) < 1.0
+                            and wanted_stake <= 0.0
+                        ):
+                            # The ticket: the objective judged this opener
+                            # worthless, but worthless and skippable are not the
+                            # same thing under one-book chains.  Floor at one
+                            # executable clip per leg, above the dust floor so
+                            # the chain it opens still counts as credible.
+                            stake = max(
+                                _tilt_minimum_clip(conn) * len(seat["buckets"]),
+                                DUST_COST_FLOOR * 2.0,
+                            )
                     if stake <= 0.0:
                         # Whichever price the stage's basis judged on, the
                         # OTHER one is the context the reader needs.  Under
@@ -6600,7 +7122,24 @@ def backfill(
                             ),
                             default=0.0,
                         )
-                    if weights is None:
+                    if production_verdict is not None:
+                        sized = _production_sized_legs(
+                            legs=legs,
+                            buckets=seat["buckets"],
+                            target=production_verdict["target_shares"],
+                            held=held,
+                            fee_rate=FEE_RATE,
+                        )
+                        if sized is None:
+                            refusal = _deeper_refusal(refusal, (
+                                "no_depth",
+                                "生产裁判目标 %s 在本簿深度内买不齐"
+                                % "+".join(seat["buckets"]),
+                                cycles, payload["decision_at_utc"],
+                            ))
+                            continue
+                        leg_shares, stake, leg_cash = sized
+                    elif weights is None:
                         filled = _fillable_size(
                             legs=legs,
                             win_probability=float(
@@ -7061,6 +7600,10 @@ def backfill(
                     # that happened to act last.
                     for bucket, quantity in per_leg.items():
                         held[bucket] = held.get(bucket, 0.0) + float(quantity)
+                    for bucket, cash in leg_stake.items():
+                        held_cost[bucket] = (
+                            held_cost.get(bucket, 0.0) + float(cash)
+                        )
                     chain_stake += stake
                     chain_probabilities = probabilities
                     chain_ladder = payload["buckets"]

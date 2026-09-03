@@ -1005,6 +1005,20 @@ REFUSAL_LABELS = {
         "转负就把还挂着的档全撤且不再挂。这是策略在保护自己，"
         "该查的是模型为什么改主意，不是执行。",
     ),
+    # The ledger's production-judge arm (2026-09-03): production's own solver
+    # run on the replay book.  Two codes, one per layer it can stop at.
+    "production_judge_blocked": (
+        "生产裁判无法运行",
+        "账本的研究臂把同一本簿交给生产的求解器，但生产的政策解析在这个"
+        "scope 上失败（没有该站该成熟度的 delta-v2 政策，或求解器 fail-closed）。"
+        "生产在同一站日也会被同一原因挡住，这不是账本的故障。",
+    ),
+    "production_judge_hold": (
+        "生产裁判：不加仓",
+        "生产的目标函数入座了一个窗口，但给出的目标份额不高于已持仓——"
+        "开仓日就是零仓位，加仓日就是按兵不动。与 Kelly 的\"赔率不划算\"同层：篮子"
+        "凑齐、定了价、被目标函数看过，然后没有下注。",
+    ),
     "no_positive_kelly": (
         "目标函数看过，不下注",
         "篮子凑出来了、价也定了，赢面还是低于要价，买下去会亏对数财富。"

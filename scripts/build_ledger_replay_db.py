@@ -62,6 +62,22 @@ INPUT_TABLES = (
     ("basket_official_ws_snapshot", "event_date"),
     ("calibration_station_daily_high_truth", "local_date"),
     ("calibration_station_market_timezone_binding", None),
+    # What production's compile resolves on top of the evidence: the station
+    # basket policy, the delta-v2 policy and their activations, the global
+    # priors and cash phases, and the strategy activation that names the
+    # authority scope.  All small and undated, copied whole.  Added for the
+    # ledger's production-judge arm (2026-09-03), which resolves them with
+    # production's own resolvers as of each decision clock.
+    ("basket_policy_activation", None),
+    ("basket_station_policy_artifact", None),
+    ("basket_global_prior_artifact", None),
+    ("basket_cash_phase_policy_artifact", None),
+    ("basket_delta_v2_policy_activation", None),
+    ("basket_delta_v2_policy_artifact", None),
+    # The resolver refuses an artifact whose promotion row is absent
+    # (``delta_v2_artifact_not_promoted``), so the promotions travel too.
+    ("basket_delta_v2_policy_promotion", None),
+    ("basket_strategy_activation_state", None),
 )
 # Carried by join rather than by date: it has no date of its own and is
 # meaningless without the history rows it hangs from.
@@ -71,9 +87,12 @@ JOINED_TABLE = "basket_probability_bridge_bucket_probability"
 def _schema_of(conn: sqlite3.Connection, table: str) -> list[str]:
     """Every CREATE the table needs, table first then its indexes.
 
-    Triggers are deliberately left behind.  The append-only guards on the
-    production tables exist to protect production evidence; a replay database
-    is rebuilt from scratch every time and would only be blocked by them.
+    Triggers are not part of a table's schema here: they are copied in one
+    pass at the end, after every row is in, because production's schema gate
+    counts them (``trigger_set_mismatch``) and the ledger's production-judge
+    arm has to pass that gate to load production's policy artifacts.  Rows
+    go in before the guards exist, so the append-only guards on the
+    production tables cost the copy nothing.
     """
 
     rows = conn.execute(
@@ -153,6 +172,42 @@ def main() -> int:
         statements = _schema_of(src, JOINED_TABLE)
         for statement in statements:
             out.execute(statement)
+        # Every other production table, schema only.  Production's artifact
+        # loader refuses a store whose schema is incomplete before it reads
+        # a row (``production_ssot_schema_status``), and an empty table is
+        # what "no rows in the window" looks like anyway.
+        copied = {table for table, _ in INPUT_TABLES} | {JOINED_TABLE}
+        schema_only = 0
+        names = [
+            str(name) for (name,) in src.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+                " AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            )
+        ]
+        for name in names:
+            if name in copied:
+                continue
+            for statement in _schema_of(src, name):
+                out.execute(statement)
+            schema_only += 1
+        out.commit()
+        print(f"  schema-only tables: {schema_only}")
+        # Production's schema gate also counts the triggers
+        # (``trigger_set_mismatch``), so they come across last -- after every
+        # row is in, where the append-only guards cost nothing and block
+        # nothing the ledger does, since it only writes its own tables.
+        triggers = 0
+        trigger_sql = [
+            str(sql) for _name, _table, sql in src.execute(
+                "SELECT name, tbl_name, sql FROM sqlite_master"
+                " WHERE type='trigger' AND sql IS NOT NULL ORDER BY name"
+            )
+        ]
+        for sql in trigger_sql:
+            out.execute(sql)
+            triggers += 1
+        out.commit()
+        print(f"  triggers: {triggers}")
         history_ids = [
             row[0] for row in out.execute(
                 "SELECT history_id FROM basket_probability_bridge_history"
