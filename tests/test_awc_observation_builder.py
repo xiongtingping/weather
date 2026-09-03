@@ -305,7 +305,6 @@ def test_missing_metar_is_blocked_even_with_speci_in_same_hour() -> None:
     (
         ("origin", "LINEAGE_MISMATCH"),
         ("correction", "REVISION_REVIEW_REQUIRED"),
-        ("conflict", "REVISION_LINEAGE_MISSING"),
         ("halt", "REVISION_REVIEW_REQUIRED"),
     ),
 )
@@ -316,11 +315,6 @@ def test_lineage_revision_and_halt_fail_closed(mutation: str, expected: str) -> 
     elif mutation == "correction":
         evidence["rows"][0]["correction_kind"] = "COR"
         evidence["rows"][0]["correction_suspected"] = 1
-    elif mutation == "conflict":
-        duplicate = deepcopy(evidence["rows"][0])
-        duplicate["observation_id"] = "conflict"
-        duplicate["raw_object_sha256"] = "f" * 64
-        evidence["rows"].append(duplicate)
     else:
         # An unreviewed correction with its halt still standing: the shape
         # every corrected report has for the minutes before the standing
@@ -383,9 +377,13 @@ def test_reviewed_correction_emits_revision_facts_while_the_halt_row_stays_activ
     evidence["station_day_reviews"] = [_review(decision)]
     contract, receipt = build_awc_observation_contract(_reseal(evidence))
 
-    # Every report but the corrected one itself is identified; the corrected
-    # report is carried by supersession, not by a revision fact of its own.
-    assert len(contract["revision_facts"]) == len(evidence["rows"]) - 1
+    # Every slot is identified.  The correction stands in its own slot here
+    # (nothing else was filed for that hour), so it becomes the fact.
+    assert len(contract["revision_facts"]) == len(evidence["rows"])
+    assert any(
+        fact["observation_id"] == evidence["rows"][0]["observation_id"]
+        for fact in contract["revision_facts"]
+    )
     assert all(
         "REVISION_REVIEW_REQUIRED" not in gap.get("failure_codes", ())
         for gap in receipt["terminal_gaps"]
@@ -438,3 +436,31 @@ def test_dst_day_uses_actual_local_day_hour_count(day: str, expected_count: int)
     contract, receipt = build_awc_observation_contract(evidence)
     assert len(contract["revision_facts"]) == expected_count
     assert receipt["coverage_receipts"][0]["expected_hourly_metar_count"] == expected_count
+
+
+def test_two_bodies_in_one_slot_are_a_supersession_not_a_defect() -> None:
+    """The later transmission stands in the slot; the earlier is named.
+
+    Publishers re-transmit: a COR restating the observation, a spacing typo
+    fixed in place.  Both bodies used to survive into the slot-hash check and
+    the day was refused ``REVISION_LINEAGE_MISSING`` -- the ordinary life of a
+    METAR read as a broken revision chain.  Since the 2026-09-03 ruling the
+    slot resolves by publication order and the superseded report is recorded
+    rather than counted against the day.
+    """
+
+    evidence = _evidence()
+    later = deepcopy(evidence["rows"][0])
+    later["observation_id"] = "obs-0-restated"
+    later["raw_object_sha256"] = "f" * 64
+    later["canonical_committed_at_utc"] = "2026-08-01T05:03:00.000Z"
+    evidence["rows"].append(later)
+
+    contract, receipt = build_awc_observation_contract(_reseal(evidence))
+
+    assert receipt["terminal_gaps"] == []
+    identified = {fact["observation_id"] for fact in contract["revision_facts"]}
+    assert "obs-0-restated" in identified
+    assert "obs-0" not in identified
+    assert len(contract["revision_facts"]) == len(evidence["rows"]) - 1
+

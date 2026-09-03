@@ -1261,7 +1261,17 @@ def test_truth_batch_rejects_invalid_cursor() -> None:
         )
 
 
-def test_reviewed_nonhourly_correction_allows_hourly_truth_with_review_lineage() -> None:
+def test_a_cleared_correction_enters_the_truth_evidence_it_states() -> None:
+    """A cleared correction is admitted, not dropped (ruling 2026-09-03).
+
+    It used to be skipped, so this lane settled on the report the observer
+    withdrew -- and where the correction was the only report of its hour, on
+    nothing at all: seventeen hours in the archive from 2026-08-20 counted as
+    unobserved for exactly that reason, and their station-days never closed.
+    Here the corrected SPECI reads below the day's high, so it changes no
+    truth value; what it changes is that the evidence names it.
+    """
+
     target = _target()
     source = sqlite3.connect(":memory:")
     apply_weather_basket_yes_schema(source)
@@ -1343,7 +1353,7 @@ def test_reviewed_nonhourly_correction_allows_hourly_truth_with_review_lineage()
         "FROM calibration_station_daily_high_truth"
     ).fetchone()[0]
     assert review["review_id"] in lineage
-    assert "cor-0315" not in [
+    assert "cor-0315" in [
         item["observation_id"]
         for item in json.loads(lineage)["observations"]
     ]

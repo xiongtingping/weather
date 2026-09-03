@@ -628,12 +628,16 @@ def compile_station_p1_packets(
     # the replayed steps behind it, where today's clock would cut above a
     # high the day has already beaten.  Same eligibility filters as the walk;
     # an unparsable temperature is left for the walk to raise on.
+    # A correction is no longer skipped (operator ruling 2026-09-03, "discard
+    # becomes replace").  It reaches here only as the survivor of its slot --
+    # the reader resolves each instant to one report by publication order --
+    # so skipping it would drop the restated reading and, where the
+    # correction was the only report of its instant, the instant itself.
     day_running_high_c: float | None = None
     for observation in ordered:
         if (
             str(observation.get("qc_status") or "").upper() != "ACCEPTED"
             or str(observation.get("evidence_role") or "").upper() != "FORMAL"
-            or bool(observation.get("correction_suspected"))
             or str(observation.get("station_id") or "") != previous.station_id
             or str(observation.get("event_date_local") or "")
             != previous.event_date
@@ -657,7 +661,6 @@ def compile_station_p1_packets(
             str(observation.get("qc_status") or "").upper() != "ACCEPTED"
             or str(observation.get("evidence_role") or "").upper()
             not in {"FORMAL", "SOFT_PATH"}
-            or bool(observation.get("correction_suspected"))
         ):
             continue
         if (

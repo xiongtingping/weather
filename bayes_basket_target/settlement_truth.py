@@ -298,8 +298,21 @@ def materialize_settled_station_truth(
             or valid_at - committed_at > _MAX_TRANSMISSION_LEAD
         ):
             raise ContractError("settlement_truth_observation_time_invalid")
-        if int(row[6] or 0) != 0:
-            continue
+        # A correction is not discarded here (operator ruling 2026-09-03,
+        # "discard becomes replace").  A COR/AMD is the observer withdrawing
+        # a report and restating it, so it belongs in the same slot as the
+        # report it corrects and the slot resolver below decides between
+        # them by publication order -- the same rule this lane already
+        # applies to AWC's unmarked re-issues.
+        #
+        # Skipping it kept the withdrawn reading and dropped the restated
+        # one.  Measured over the archive from 2026-08-20: 304 AWC
+        # corrections, 270 of the 272 paired ones agreeing with their twin
+        # on temperature, two disagreeing by 1C (VILK), and -- the live
+        # damage -- 17 whose hour held no other METAR at all, so skipping
+        # them left the hour empty, the day short of its hourly coverage and
+        # the station-day unsettleable (KMIA 2026-08-31 missing 20:00 and
+        # 22:00, KDAL 2026-08-30 missing 16:00).
         # The formal AWC lane is the same source-policy contract used by the
         # realtime ingress: every routine report at the provider's own
         # official minute is formal, and effective SPECI keeps its official

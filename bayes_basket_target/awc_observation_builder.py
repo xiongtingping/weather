@@ -631,6 +631,38 @@ def build_awc_observation_contract(
     for (station, event_date, zone_name), day_rows in sorted(grouped.items()):
         day_scope = {"station_id": station, "event_date": event_date, "settlement_timezone": zone_name}
         formal = [x for x in day_rows if not x["policy_excluded"]]
+        # One slot, one report (operator ruling 2026-09-03, "discard becomes
+        # replace").  A COR/AMD is the observer withdrawing a report and
+        # restating it, so it stands in the slot of the report it corrects
+        # and publication order decides between them.  Both used to survive
+        # here and the correction was then excluded from everything below,
+        # which cost this lane twice: two bodies in one slot tripped
+        # ``REVISION_LINEAGE_MISSING``, and an hour whose only METAR was a
+        # correction counted as unobserved -- ``DATA_MISSING``, so the day
+        # never closed.  Seventeen such hours in the archive from 2026-08-20
+        # (KMIA six, KLGA three, KDAL two, FACT two).
+        by_slot: dict[tuple[str, str], dict[str, Any]] = {}
+        superseded_observation_ids: list[str] = []
+        for row in sorted(
+            formal,
+            key=lambda x: (
+                x["observed_at_utc"],
+                x["report_type"],
+                x["canonical_committed_at_utc"],
+                x["observation_id"],
+            ),
+        ):
+            slot = (str(row["report_type"]), str(row["observed_at_utc"]))
+            held = by_slot.get(slot)
+            if held is not None:
+                superseded_observation_ids.append(str(held["observation_id"]))
+            by_slot[slot] = row
+        formal = sorted(
+            by_slot.values(),
+            key=lambda x: (
+                x["observed_at_utc"], x["report_type"], x["observation_id"]
+            ),
+        )
         reasons: set[str] = set()
         registry_row = registry.get(station)
         authority_row = projection_rows.get(station)
@@ -690,6 +722,10 @@ def build_awc_observation_contract(
             slot_hashes[(row["report_type"], row["observed_at_utc"])].add(
                 row["raw_object_sha256"]
             )
+        # A structural invariant now rather than a data condition: the slot
+        # resolver above leaves one report per slot, so two bodies here would
+        # mean it failed to collapse one.  Before that resolver this fired on
+        # every correction, which is the ordinary life of a METAR.
         if any(len(values) > 1 for values in slot_hashes.values()):
             reasons.add("REVISION_LINEAGE_MISSING")
         correction_rows = [
@@ -758,7 +794,7 @@ def build_awc_observation_contract(
                     )
                 )
                 for x in formal
-                if x["report_type"] == "METAR" and x not in correction_rows
+                if x["report_type"] == "METAR"
             }
         )
         missing_slots = sorted(set(expected_slots) - set(observed_slots))
@@ -800,6 +836,7 @@ def build_awc_observation_contract(
                     "observed_hourly_metar_count": len(observed_slots),
                     "missing_hourly_slots": missing_slots,
                     "extra_hourly_slots": extra_slots,
+                    "superseded_observation_ids": superseded_observation_ids,
                     "revision_facts_emitted": not review_blocked,
                 }
             )
@@ -807,7 +844,7 @@ def build_awc_observation_contract(
             continue
 
         usable = sorted(
-            (x for x in formal if x not in correction_rows),
+            formal,
             key=lambda x: (x["observed_at_utc"], x["report_type"], x["observation_id"]),
         )
         day_revisions: list[dict[str, Any]] = []

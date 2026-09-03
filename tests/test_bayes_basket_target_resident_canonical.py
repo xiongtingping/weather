@@ -10,6 +10,7 @@ from bayes_basket_target.resident_canonical import (
 )
 from bayes_basket_target.correction_review import (
     CLEAR_REFERENCE_ONLY,
+    CLEAR_WITH_REPLACEMENT,
     append_correction_review,
 )
 from weather_basket_yes_schema import (
@@ -176,7 +177,16 @@ def test_non_hourly_cor_speci_halts_before_hourly_truth_filter() -> None:
         )
 
 
-def test_reviewed_nonhourly_cor_remains_reference_only_and_releases_p1() -> None:
+def test_reviewed_cor_reaches_p1_and_supersedes_the_report_it_corrects() -> None:
+    """A cleared correction is admitted, not dropped (ruling 2026-09-03).
+
+    It used to be skipped here whatever its review said, so P1 read the
+    report the observer withdrew -- and where the correction was the only
+    report of its slot, as this SPECI is, P1 read nothing at all for that
+    instant.  Seventeen hours in the archive from 2026-08-20 were empty for
+    exactly that reason.
+    """
+
     conn = sqlite3.connect(":memory:")
     apply_weather_basket_yes_schema(conn)
     conn.execute(
@@ -199,14 +209,20 @@ def test_reviewed_nonhourly_cor_remains_reference_only_and_releases_p1() -> None
     values = [
         (
             "new-hourly-high", "METAR", "2026-07-26T15:00:00Z",
-            35, "a" * 64, "METAR RKPK", 0,
+            35, "a" * 64, "METAR RKPK", 0, "2026-07-26T15:25:02Z",
         ),
+        # The same slot, restated two minutes later: KDAL 2026-09-02's shape.
+        (
+            "cor-hourly-high", "METAR", "2026-07-26T15:00:00Z",
+            35, "c" * 64, "METAR RKPK COR", 1, "2026-07-26T15:27:02Z",
+        ),
+        # A slot of its own, with nothing else filed for it.
         (
             "cor-speci", "SPECI", "2026-07-26T15:15:00Z",
-            34, "b" * 64, "SPECI RKPK COR", 1,
+            34, "b" * 64, "SPECI RKPK COR", 1, "2026-07-26T15:25:02Z",
         ),
     ]
-    for observation_id, report_type, valid_at, temperature, raw_sha, raw, correction in values:
+    for observation_id, report_type, valid_at, temperature, raw_sha, raw, correction, committed_at in values:
         conn.execute(
             """
             INSERT INTO reported_trajectory_observations(
@@ -221,12 +237,23 @@ def test_reviewed_nonhourly_cor_remains_reference_only_and_releases_p1() -> None
                 temperature, raw_sha, raw,
                 "2026-07-26T15:25:00Z",
                 "2026-07-26T15:25:01Z",
-                "2026-07-26T15:25:02Z",
+                committed_at,
                 "2026-07-26T15:24:59Z",
                 "2026-07-26T15:25:00Z",
                 "poll-1", correction,
             ),
         )
+    append_correction_review(
+        conn,
+        source_lane="awc",
+        station_id="RKPK",
+        event_date="2026-07-27",
+        triggering_observation_id="cor-hourly-high",
+        decision=CLEAR_WITH_REPLACEMENT,
+        reviewer="operator-xiong",
+        rationale="The on-hour correction replaces what it corrected.",
+        reviewed_at="2026-07-26T15:30:00Z",
+    )
     review = append_correction_review(
         conn,
         source_lane="awc",
@@ -247,10 +274,15 @@ def test_reviewed_nonhourly_cor_remains_reference_only_and_releases_p1() -> None
         as_of_utc="2026-07-27T16:00:00Z",
     )
 
+    # One slot, one report: the 15:00 METAR resolves to the restatement, and
+    # the SPECI -- the only report of its own slot -- is admitted.
     assert [item["observation_id"] for item in rows] == [
-        "new-hourly-high"
+        "cor-hourly-high", "cor-speci"
     ]
-    assert rows[0]["correction_review_ids"] == [review["review_id"]]
+    assert all(item["correction_suspected"] is True for item in rows)
+    # Both corrections are cleared in scope, so both receipts ride along.
+    assert review["review_id"] in rows[0]["correction_review_ids"]
+    assert len(rows[0]["correction_review_ids"]) == 2
 
 
 def test_resident_adapter_rejects_retired_or_mixed_amsc_registry_lane() -> None:

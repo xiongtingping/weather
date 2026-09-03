@@ -220,11 +220,14 @@ def load_resident_formal_observations(
         # the minute first would silently discard a COR SPECI and let later
         # probability/decision writes continue through a mandatory manual-
         # review boundary.
-        if int(row[9] or 0) != 0:
-            # The scope-level gate above proved an append-only clear receipt
-            # for this exact non-hourly correction.  It remains reference-only
-            # and can never become a formal P1 observation.
-            continue
+        # A correction is admitted (operator ruling 2026-09-03, "discard
+        # becomes replace").  The scope-level gate above still proves an
+        # append-only clear receipt for it; what changed is what a cleared
+        # correction then does.  It used to be dropped here, which left P1
+        # reading the report the observer withdrew -- and when the
+        # correction was the only report of its slot, reading nothing at
+        # all.  The slot resolution below keeps one report per slot, so
+        # nothing downstream sees two versions of one instant.
         # P1 must read the same physical evidence settlement will read.
         # Every routine report at the provider's own official minute is
         # formal -- station cadences range from :00 through :20/:50 to
@@ -272,13 +275,41 @@ def load_resident_formal_observations(
                 "FORMAL" if row_lane == source_lane else "SOFT_PATH"
             ),
             "qc_status": "ACCEPTED",
-            "correction_suspected": False,
+            "correction_suspected": bool(int(row[9] or 0)),
             "settlement_timezone": timezone_name,
             "correction_review_ids": list(
                 correction_review.get("review_ids") or []
             ),
         })
-    return result
+    # One slot, one report.  A correction and the report it corrects share a
+    # valid time, and only one of them may reach the compiler: the trajectory
+    # walk keys its running high and its packets on the instant, and two rows
+    # for one instant would be two steps for one reading.  Publication order
+    # decides -- the later commit is the restatement -- which is the same rule
+    # settlement applies on its side, so both lanes admit the same physical
+    # set (the LFPB 2026-07-31 divergence this reader exists to prevent).
+    #
+    # Only the formal lane collapses.  The intra-hour carrier lanes publish
+    # one row per five-minute mark and carry no corrections; keying them here
+    # would risk folding two genuine carrier readings into one.
+    resolved: dict[tuple[str, str], dict[str, Any]] = {}
+    superseded_ids: set[str] = set()
+    for item in result:
+        if str(item.get("source_lane") or "") != source_lane:
+            continue
+        slot = (str(item["valid_at_utc"]), str(item["report_type"]))
+        held = resolved.get(slot)
+        if held is not None:
+            # ``rows`` was sorted by (valid_at, canonical_committed_at,
+            # observation_id), so the later commit arrives second.
+            superseded_ids.add(str(held["observation_id"]))
+        resolved[slot] = item
+    return [
+        item
+        for item in result
+        if str(item.get("source_lane") or "") != source_lane
+        or str(item["observation_id"]) not in superseded_ids
+    ]
 
 
 def attach_truth_observation_revisions(
