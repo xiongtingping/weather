@@ -227,6 +227,9 @@ LEDGER_ONLY = {
     # Charter 71(b) tightening, replay arm: production spells nothing until
     # the increment-edge rule is ruled in.
     "TOPUP_INCREMENT_EDGE": "charter 71(b) tightening replay arm, off by default",
+    # Which bankroll the production judge's curve reads; production spells
+    # the station cap and this arm measures the alternatives.
+    "JUDGE_BANKROLL": "production judge replay arm: station (production's) / scope / book",
     # Charter 63 retired (2026-09-03): production no longer defines a
     # per-leg value clamp, so the maker_resting research arm's lambdas are
     # this lane's alone.  They move nothing under the taker family.

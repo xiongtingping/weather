@@ -1239,6 +1239,19 @@ TOPUP_INCREMENT_EDGE = (
 )
 if TOPUP_INCREMENT_EDGE not in {"off", "on"}:
     raise SystemExit(f"unknown top-up increment edge arm: {TOPUP_INCREMENT_EDGE}")
+# The bankroll the production judge's curve reads (replay arm, 2026-09-03).
+# ``station`` is production's rule: the station cap (15 USDC), which the
+# kernel widens by 1/f to 60, so at stakes under 6 the curve is a line and
+# the objective is expected value.  ``scope`` is the scope's own allowance
+# (what the solver may spend), where the curve bends; ``book`` is the whole
+# book, where it is flatter still.  Which bankroll the curve should read is
+# the question this arm measures.
+JUDGE_BANKROLL = (
+    os.environ.get("PAPER_LEDGER_JUDGE_BANKROLL", "").strip().lower()
+    or "station"
+)
+if JUDGE_BANKROLL not in {"station", "scope", "book"}:
+    raise SystemExit(f"unknown judge bankroll: {JUDGE_BANKROLL}")
 # The chain ticket, and it is deliberately ledger-only.  Under charter 68 the
 # shrink sizes most opening seats to nothing, and under THIS book's rule --
 # one book per station-day, only P0 opens -- a seat sized to nothing forfeits
@@ -1668,6 +1681,10 @@ SELECTION_RULE_SHA256 = content_sha256({
     ),
     **({"leg_veto": LEG_VETO} if LEG_VETO != "off" else {}),
     **({"judge": JUDGE} if JUDGE != "ledger" else {}),
+    **(
+        {"judge_bankroll": JUDGE_BANKROLL}
+        if JUDGE_BANKROLL != "station" else {}
+    ),
     "window_strategy": WINDOW_STRATEGY,
     "execution_mode": EXECUTION_MODE,
     # Which price the Kelly stake and the payout test are struck against.
@@ -3384,6 +3401,10 @@ def _production_judge(
         )
         capital = min(capital, max(capital * float(tilt), tilt_floor))
     bankroll = float(basket_policy.total_budget_usdc)
+    if JUDGE_BANKROLL == "scope":
+        bankroll = max(float(capital), 1e-6)
+    elif JUDGE_BANKROLL == "book":
+        bankroll = max(float(equity), 1e-6)
     objective_form = (
         _CURVE_OBJECTIVE_FORM if bankroll > 0.0 else _VALUE_OBJECTIVE_FORM
     )
