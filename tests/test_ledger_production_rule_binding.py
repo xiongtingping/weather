@@ -751,7 +751,6 @@ def test_the_exchange_lot_and_the_station_dial_bind_where_production_binds() -> 
     """
 
     import inspect
-    import re
 
     from bayes_basket_target import cash_phase as CP
     from bayes_basket_target.basket_kernel import delta_v2 as K2
@@ -773,13 +772,19 @@ def test_the_exchange_lot_and_the_station_dial_bind_where_production_binds() -> 
     )
     assert "clip > capital_available + EPS" in kernel
     assert "total_budget_usdc" not in kernel
-    # And nothing on the live path calls the per-leg execution gate.
-    live = "".join(
-        (ROOT / "bayes_basket_target" / name).read_text(encoding="utf-8")
-        for name in ("runtime.py", "delta_v2_runtime.py",
-                     "production.py", "production_worker.py")
-    )
-    assert not re.search(r"evaluate_execution_gate\s*\(", live)
+    # And the per-leg execution gate is gone: it had no caller on the live
+    # path, and a dead rule that reads a live dial gets mirrored as though
+    # it ran (user ruling 2026-09-04: dead code is retired on sight).
+    assert not (
+        ROOT / "bayes_basket_target" / "basket_kernel" / "execution_gates.py"
+    ).exists()
+    from bayes_basket_target import basket_kernel as BK
+
+    for name in (
+        "evaluate_execution_gate", "evaluate_urgency",
+        "expected_version_vector",
+    ):
+        assert not hasattr(BK, name), name
     assert "station_loss_floor_exceeded" in L.REFUSAL_REASONS
     assert "station_budget_exceeded" not in L.REFUSAL_REASONS
     # A leg still under its lot after the raise refuses the basket.
@@ -802,7 +807,7 @@ def test_the_exchange_lot_and_the_station_dial_bind_where_production_binds() -> 
     # carries it: rows sized as if there were no lot are not comparable.
     assert L.EXCHANGE_MINIMUM_LOT_SHARES_FALLBACK == 5.0
     assert (
-        '"production_judge": "solver_chain_gates_exchange_lot_centre_v5",'
+        '"production_judge": "solver_chain_gates_exchange_lot_centre_v6",'
         in source
     )
     assert "补足一手" in L.SELECTION_RULE_LABEL
@@ -900,6 +905,46 @@ def test_the_walk_carries_the_belief_the_solver_judged_on() -> None:
         runtime
     )
     assert "taf_tx_bucket=_taf_tx_bucket(envelope, stage)," in source
+
+
+def test_a_stage_is_judged_only_while_it_holds_the_days_authority() -> None:
+    """One stage per cycle, and it is the highest one the day has reached.
+
+    ``stages.select_current_stage`` walks ``reversed(STAGES)`` and returns
+    the newest servable checkpoint of the highest stage present at or
+    before the clock; a higher stage that is present but stale fails the
+    cycle closed rather than falling back.  So from the first P0-M
+    checkpoint onward production cannot compile P0 again.
+
+    This lane walks a stage at a time and kept offering P0 books after
+    that: 141 of 393 P0 seats on the standing book of 2026-09-04, against
+    6 of 306 P0 compiles in production over the same days.  Under charter
+    74 those are chains production never opened at all, and they settled
+    at -25.1% against -17.1% for the seats taken inside authority.
+    """
+
+    import inspect
+
+    horizon = inspect.getsource(L._stage_authority_horizon)
+    # The horizon is the first checkpoint of any HIGHER stage, and the
+    # comparison is strict because production takes the higher stage on a
+    # tie.
+    assert "LEDGER_STAGES.index(str(stage)) + 1" in horizon
+    assert "MIN(decision_at_utc)" in horizon
+    candidates = inspect.getsource(L._stage_entry_candidates)
+    assert "AND (?4 IS NULL OR decision_at_utc < ?4)" in candidates
+    assert "_stage_authority_horizon(conn, station_id, event_date, stage)" in (
+        candidates
+    )
+    # P1 is the highest stage, so it is never bounded.
+    from bayes_basket_target.stages import STAGES as PRODUCTION_STAGES
+
+    assert tuple(L.LEDGER_STAGES) == tuple(PRODUCTION_STAGES)
+    assert '"stage_authority": "highest_committed_stage_v1",' in (
+        (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
+            encoding="utf-8"
+        )
+    )
 
 
 def test_a_rebuild_can_be_taken_oldest_first_in_slices() -> None:

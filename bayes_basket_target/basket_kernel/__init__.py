@@ -32,7 +32,6 @@ from .contracts import (
     UrgencyEvaluation,
     content_sha256,
 )
-from .execution_gates import evaluate_execution_gate, evaluate_urgency, expected_version_vector
 from .delta_v2 import (
     ExecutionWeightsV2,
     ValueWeightsV2,
@@ -106,9 +105,6 @@ __all__ = [
     "solve_maker_price_and_wait",
     "solve_maker_reservation",
     "content_sha256",
-    "evaluate_execution_gate",
-    "evaluate_urgency",
-    "expected_version_vector",
     "hold_action_v2",
     "simulate_maker_lifecycle",
     "select_action_v2",

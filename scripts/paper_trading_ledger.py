@@ -1827,10 +1827,11 @@ SELECTION_RULE_SHA256 = content_sha256({
     # production judge, the consolidation lookback and the clamp's previous
     # checkpoint span every stage.  Rows before it recorded a claim the
     # solver never saw.
-    # v5 (2026-09-04): the station dial is mirrored where production reads
-    # it -- the kernel's profit floor on the worst supported outcome -- not
-    # as the per-leg budget gate of a function nothing live calls.
-    "production_judge": "solver_chain_gates_exchange_lot_centre_v5",
+    # v6 (2026-09-04): a checkpoint is judged only while its stage holds
+    # the day's authority, as ``stages.select_current_stage`` defines it.
+    # Rows before it include 141 P0 seats production could not have taken.
+    "production_judge": "solver_chain_gates_exchange_lot_centre_v6",
+    "stage_authority": "highest_committed_stage_v1",
     **(
         {"lot_lift_budget": LOT_LIFT_BUDGET}
         if LOT_LIFT_BUDGET != "untilted" else {}
@@ -2937,13 +2938,55 @@ def _deeper_refusal(current: tuple, candidate: tuple) -> tuple:
     return current
 
 
+def _stage_authority_horizon(
+    conn: sqlite3.Connection, station_id: str, event_date: str, stage: str
+) -> str | None:
+    """When this stage stopped being the day's authority, or None.
+
+    Production compiles exactly one stage per cycle and picks it with
+    ``stages.select_current_stage``, which walks ``reversed(STAGES)`` and
+    returns the newest servable checkpoint of the *highest* stage that has
+    one at or before the clock.  A higher stage that is present but stale
+    fails the cycle closed; it never falls back.  So a stage is the day's
+    authority only until the first checkpoint of a higher stage exists,
+    and from that instant production cannot compile it again.
+
+    This lane walks one stage at a time, oldest first, and so kept
+    offering P0 books long after the day's TAF had taken over: measured
+    2026-09-04 on the standing book, 141 of 393 P0 seats (36%, 489.87
+    USDC) were taken at a clock where a P0-M or P1 checkpoint already
+    existed, against 6 of 306 P0 compiles in production over the same
+    days.  Those seats are not a version of production's book -- charter
+    74 says only P0 opens a chain, so a day whose P0 never seated inside
+    its own authority is a day production never opened at all.  They also
+    settled worse: ROI -25.1% over 110 chains against -17.1% over the 179
+    seated inside authority.
+
+    Strict ``<``: production picks the higher stage on a tie, because
+    ``select_current_stage`` tries the higher stage first and admits any
+    checkpoint at or before the clock.
+    """
+
+    higher = LEDGER_STAGES[LEDGER_STAGES.index(str(stage)) + 1:]
+    if not higher:
+        return None
+    row = conn.execute(
+        "SELECT MIN(decision_at_utc)"
+        " FROM basket_probability_bridge_history"
+        " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+        "   AND stage IN (%s)" % ",".join("?" for _ in higher),
+        (station_id, event_date, *higher),
+    ).fetchone()
+    return str(row[0]) if row and row[0] else None
+
+
 def _stage_entry_candidates(
     conn: sqlite3.Connection,
     station_id: str,
     event_date: str,
     stage: str,
 ):
-    """Every book this stage was offered, oldest first.
+    """Every book this stage was offered while it held authority, oldest first.
 
     A stage is entered the first moment it *can* be, and the earliest decision
     with a book is only the first thing that could count as that moment -- not
@@ -2986,8 +3029,14 @@ def _stage_entry_candidates(
         # covering (station_id,event_date,state,...) index answers directly.
         " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
         "   AND stage=?"
+        # Only while this stage is the day's authority; see
+        # ``_stage_authority_horizon``.
+        "   AND (?4 IS NULL OR decision_at_utc < ?4)"
         " ORDER BY decision_at_utc ASC",
-        (station_id, event_date, stage),
+        (
+            station_id, event_date, stage,
+            _stage_authority_horizon(conn, station_id, event_date, stage),
+        ),
     ).fetchall():
         envelope_json = history_envelope_payload(
             conn,
