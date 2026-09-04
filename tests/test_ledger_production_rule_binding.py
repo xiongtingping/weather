@@ -209,6 +209,10 @@ SHARED_WITH_PRODUCTION = {
     # Charter 70: the lot top-up mode is the kernel's; both lanes import it
     # and the raise itself is one kernel function both call.
     "EXCHANGE_LOT_TOP_UP",
+    # Charter 74's ticket switch (2026-09-05): spelled in production as
+    # PM_CHAIN_TICKET, the ledger defaults to production's value and the
+    # two are asserted equal below.
+    "CHAIN_TICKET_MODE",
     "CERTAINTY_GATE", "FEE_RATE", "KELLY_FRACTION",
     "MAKER_RESTING_IMPROVE_TICKS", "MAKER_RESTING_LADDER_STEPS",
     "MAXIMUM_SUPPORT_BUCKETS", "MINIMUM_SUPPORT_BUCKETS",
@@ -360,15 +364,6 @@ LEDGER_ONLY = {
     ),
     "PAPER_LEDGER_FLEET_REGIME_STAGES": "same",
     "SELECTION_DISCOUNT": "measurement lane; must not become a gate",
-    "CHAIN_TICKET_MODE": (
-        "ledger-only by design: it compensates for THIS book's one-book rule"
-        " (only P0 opens), which production does not have -- its three stages"
-        " compile independently, so a production P1 needs no ticket to act"
-    ),
-    "CHAIN_TICKET_MODE": (
-        "replay arm; keeps a minimum-clip P0 opener when the shrunk claim"
-        " sizes it at zero, so the chain survives for its P1 top-ups"
-    ),
     "SHAPE_GAP_TILT": (
         "replay arm; scales the split-day opening stake instead of refusing,"
         " keeping the chain alive for its P1 top-ups; default 0"
@@ -632,6 +627,12 @@ def test_charter_68_scope_and_the_taker_leg_veto_move_together() -> None:
     """
 
     assert L.EFFECTIVE_EDGE_SCOPE == P.EFFECTIVE_EDGE_SCOPE
+    # Charter 74's ticket is one switch on both sides; the solver offers
+    # the candidate only while it is on.
+    assert L.CHAIN_TICKET_MODE == P.CHAIN_TICKET_MODE == "on"
+    import inspect as _inspect
+
+    assert 'CHAIN_TICKET_MODE == "on"' in _inspect.getsource(P._target_candidates)
     assert (L.LEG_VETO == "on") == (P.TAKER_LEG_VETO == "reservation")
     assert P.TAKER_LEG_VETO == "joint"
     assert K.EFFECTIVE_EDGE_BUCKET_LAMBDA == (

@@ -102,6 +102,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     SKEW_SEAT_MODE,
     P0M_TAF_MODE,
     CHAIN_OPENING_STAGES,
+    CHAIN_TICKET_MODE as _PRODUCTION_CHAIN_TICKET_MODE,
     WINDOW_REFUSAL_FUNNEL,
     # The pieces of arithmetic the two sides must not each own a copy of.
     # Every one of them used to be duplicated here, and the ladder copy had
@@ -1354,7 +1355,8 @@ if TOPUP_ATOMIC not in {"off", "on"}:
 # ticket and gets none.  This keeps the ledger measuring the strategy
 # production would run rather than an artefact of the ledger's own bookkeeping.
 CHAIN_TICKET_MODE = (
-    os.environ.get("PAPER_LEDGER_CHAIN_TICKET", "").strip().lower() or "on"
+    os.environ.get("PAPER_LEDGER_CHAIN_TICKET", "").strip().lower()
+    or _PRODUCTION_CHAIN_TICKET_MODE
 )
 # A P1-specific effective-edge table, for the replay arms only.  Charter 68
 # exempts P1 from the kernel's lambda on purpose -- its edge is the

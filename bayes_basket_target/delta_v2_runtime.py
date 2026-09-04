@@ -903,8 +903,20 @@ CHAIN_OPENING_STAGES = frozenset(
     for part in (os.environ.get("PM_CHAIN_OPENING_STAGES", "") or CHAIN_OPENING_STAGE).split(",")
     if part.strip()
 )
-if not CHAIN_OPENING_STAGES <= {"P0", "P0-M"}:
+if not CHAIN_OPENING_STAGES <= {"P0", "P0-M", "P1"}:
     raise RuntimeError(f"unknown chain opening stages: {sorted(CHAIN_OPENING_STAGES)}")
+# Charter 74's ticket, as a research switch (2026-09-05).  ``on`` is the
+# charter and production; ``off`` is the replay arm that asks what the book
+# is worth when a P0 with no edge opens nothing -- the arm charter 74 was
+# ruled on was measured before the ledger paired checkpoints with the books
+# production compiled them on, so it is re-measured on that footing.  The
+# paper ledger spells the same switch (PAPER_LEDGER_CHAIN_TICKET) and the
+# binding test holds the two equal.
+CHAIN_TICKET_MODE = (
+    os.environ.get("PM_CHAIN_TICKET", "").strip().lower() or "on"
+)
+if CHAIN_TICKET_MODE not in {"on", "off"}:
+    raise RuntimeError(f"unknown chain ticket mode: {CHAIN_TICKET_MODE}")
 SKEW_PLACEMENT_MODE = (
     os.environ.get("DELTA_V2_SKEW_PLACEMENT", "").strip().lower()
     or "free"
@@ -2611,7 +2623,11 @@ def _target_candidates(
             )
         if kelly_candidate is not None:
             candidates.append(kelly_candidate)
-        elif chain_empty and stage_name in CHAIN_OPENING_STAGES:
+        elif (
+            CHAIN_TICKET_MODE == "on"
+            and chain_empty
+            and stage_name in CHAIN_OPENING_STAGES
+        ):
             # Charter 74: the ticket.  No edge at P0 is not a reason to
             # leave the day unopened -- P1 would have nothing to add to.
             ticket_candidate = _chain_ticket_candidate(
