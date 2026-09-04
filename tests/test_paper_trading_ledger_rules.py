@@ -1048,6 +1048,7 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
     )
     from paper_trading_ledger import (  # noqa: PLC0415
         FEE_RATE,
+        JUDGE,
         MAXIMUM_SUPPORT_BUCKETS,
         MINIMUM_SUPPORT_BUCKETS,
         SELECTION_RULE_SHA256,
@@ -1063,7 +1064,8 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
                 "SELECT station_id, event_date, stage, decision_at_utc,"
                 " posted_buckets_json, window_buckets_json,"
                 " ladder_center_bucket, win_probability, all_in_cost,"
-                " prices_json, probabilities_json, held_before_json"
+                " prices_json, probabilities_json, held_before_json,"
+                " chain_stake_usdc, stake_usdc"
                 " FROM paper_trade_position"
                 " WHERE selection_rule_sha256=?",
                 (SELECTION_RULE_SHA256,),
@@ -1074,7 +1076,8 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
             return
 
         for (st, day, stage, at, posted_js, filled_js, centre, win, cost,
-             prices_js, probs_js, held_js) in positions:
+             prices_js, probs_js, held_js, chain_stake,
+             stake) in positions:
             posted = json.loads(posted_js) if posted_js else json.loads(
                 filled_js
             )
@@ -1115,7 +1118,16 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
                     assert float(quote) >= MINIMUM_LEG_ALL_IN_ASK - 1e-9, (
                         f"{scope}: leg {bucket} quoted {quote} under floor"
                     )
-            if len(filled) == len(posted) and not held:
+            # Opening means the chain was empty, not that this window's
+            # own rungs were.  ``held_before_json`` records only the legs
+            # of THIS seat that the chain already held, so a later stage
+            # seating a different window reads as a fresh seat under it --
+            # SBGR 2026-08-17 P1 bought 30-31C onto a chain holding
+            # 27-29C and was held to the opening gate.  A top-up answers
+            # to the chain (charter 66), whichever rungs it picks, so the
+            # opening is the row whose stake is the whole chain's.
+            opening = float(chain_stake or 0.0) <= float(stake or 0.0) + 1e-9
+            if len(filled) == len(posted) and not held and opening:
                 # A fresh seat must clear the whole-basket EV gate.  A
                 # top-up answers to the chain instead (charter 66): its
                 # blended cost after the buy stays under par and the buy
@@ -1127,6 +1139,20 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
                     f"({win} vs {cost}) -- the entry gate cannot have run"
                 )
 
+            # The replay below re-implements the seat rule, which is only
+            # this lane's rule while this lane is the judge.  Since
+            # 2026-09-03 the standing book is judged by production's own
+            # solver: the seed is production's ``_choose_support`` over
+            # the envelope it compiled, so its shortlist head is not the
+            # head of an enumeration seeded from ``_entry_support_core``,
+            # and holding a production seat to this replay would fail a
+            # row that followed the rule exactly.  Re-implementing the
+            # production judge here to compare would be the same mistake
+            # one layer down -- an audit that hand-copies the rule
+            # manufactures its own findings.  The structural assertions
+            # above stay: they are charter clauses, not one judge's.
+            if JUDGE != "ledger":
+                continue
             replayed = None
             for payload in _stage_entry_candidates(
                 conn, str(st), str(day), str(stage)

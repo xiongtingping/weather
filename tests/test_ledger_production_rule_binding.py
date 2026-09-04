@@ -305,6 +305,15 @@ LEDGER_ONLY = {
     "CONSOLIDATION_QUOTED_FRACTION": "annotation only",
     "CONSOLIDATION_SHARP_TOP2": "annotation only",
     "CONSOLIDATION_STABLE_LOOKBACK": "annotation only",
+    # The exchange's stated lot for a snapshot taken before the official WS
+    # feed carried ``min_order_size`` (user ruling 2026-09-04).  Production
+    # fails closed on an unstated lot and never replays those days, so it
+    # has no counterpart to bind to; the value is the registry's own, and
+    # the assertion below pins it against the market ingress contract.
+    "EXCHANGE_MINIMUM_LOT_SHARES_FALLBACK": (
+        "replay-only fallback for pre-2026-08-31 snapshots; production"
+        " fails closed instead, and the registry states 5.0 on every row"
+    ),
     # Book-keeping for a paper book.  Production has a real capital pool.
     "INITIAL_CAPITAL_USDC": "paper book's opening equity",
     "BOOK_MODEL": "one book per station-day, a replay concept",
@@ -655,3 +664,161 @@ def test_the_production_judge_arm_calls_productions_own_solver() -> None:
     )
     assert '"judge": JUDGE,' in source
     assert '"topup_atomic": TOPUP_ATOMIC,' in source
+
+
+def test_the_chain_law_and_the_ticket_live_inside_the_solver() -> None:
+    """Charters 66(A), 71 and 74 bind where production binds them.
+
+    The arm called production's solver without the four inputs those
+    clauses read -- the served identity, the chain's last-acted identity,
+    the growth frame and the last decision signature -- so inside the
+    solver they could not bind at all, and this lane re-judged the seated
+    window afterwards.  The two are not the same rule: production tests
+    every shortlisted window and seats the first that clears, so a head
+    window refused on chain growth hands the seat to the next one, while
+    a post-seat copy refuses the cycle outright.  Measured 2026-09-04 on
+    the standing book: 105 P0-M/P1 cycles refused after the seat.
+
+    The ticket is the same shape of error in the other direction.  It is
+    charter 74's candidate *inside* the solver, offered only when the
+    chain is empty at an opening stage, Kelly sized the seat to nothing,
+    and the ticket's cash fits the capital the solver was handed.  This
+    lane added a ticket of its own whenever the solver held -- capital or
+    not -- so on a tilted day, where the capital floors at 0.75 and a
+    four-rung ticket costs 1.00, it opened chains production does not.
+    """
+
+    source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    # Every input the chain clauses read is handed to the solver.
+    for argument in (
+        "probability_identity=probability_identity or None,",
+        "chain_growth_frame_usdc=growth_frame,",
+        "last_decision_signature=last_decision_signature,",
+    ):
+        assert argument in source, argument
+    assert "last_acted_probability_identity=(" in source
+    # And the solver's own verdict is read back rather than recomputed.
+    assert 'moment = dict(selection.get("decision_moment") or {})' in source
+    assert 'moment.get("is_decision_moment") is False' in source
+    # The ticket is the solver's winner, not a hold this lane pays for.
+    assert 'if JUDGE == "production" and verdict.get("ticket"):' in source
+    assert 'str(solution.get("winner_candidate_origin") or "")' in source
+    # The post-seat chain law is skipped for a production verdict.
+    assert "chain_law_here = production_verdict is None" in source
+    assert "if chain_law_here and not growth > 0.0:" in source
+    assert "if chain_law_here and (" in source
+
+
+def test_the_exchange_lot_and_the_station_dial_bind_where_production_binds() -> None:
+    """Two venue rules, judged at production's own layer.
+
+    Charter 70's raise is all-or-none: a leg the raise cannot lift to one
+    lot cannot fill at any price, and production's ``cash_phase`` stands
+    the whole basket down under ``exchange_minimum_lot_unaffordable``.
+    This book recorded the fraction as filled instead -- 134 of the 209
+    rows standing on 2026-09-04 were orders no exchange takes.
+
+    The lift's budget is likewise production's: ``cash_phase`` sizes
+    against ``remaining_budget``, which the consolidation tilt never
+    touches, so a rung the tilted capital could not lift is lifted there
+    anyway when the untilted allowance can pay.
+
+    And the operator's station dial is an execution gate, not a sizing
+    bound.  ``_compile_target_plan`` hands the solver the scope's share of
+    the book; ``station_cap_v1.json`` binds per leg at ``budget_ok``.
+    Folded into the solver's capital here, it sized P1 five USDC short of
+    production on a 1000 book.
+    """
+
+    import inspect
+
+    from bayes_basket_target import cash_phase as CP
+    from bayes_basket_target.basket_kernel import execution_gates as G
+
+    source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    # The two reasons production spells, spelled here by the same names.
+    assert "exchange_minimum_lot_unaffordable" in inspect.getsource(
+        CP.OrderSizingDecision.compute
+    )
+    assert "budget_ok" in inspect.getsource(G.evaluate_execution_gate)
+    assert "exchange_minimum_lot_unaffordable" in L.REFUSAL_REASONS
+    assert "station_budget_exceeded" in L.REFUSAL_REASONS
+    # A leg still under its lot after the raise refuses the basket.
+    assert "if _under_lot:" in source
+    assert '"exchange_minimum_lot_unaffordable",' in source
+    # The lift's budget is the untilted allowance under a production
+    # verdict, and the dial is judged per leg on the cash that would go.
+    assert 'float(production_verdict["lot_room_usdc"])' in source
+    assert "_worst_leg = max(float(c) for c in leg_cash)" in source
+    assert "float(chain_stake) + _worst_leg > _dial + 1e-9" in source
+    # The dial is no longer folded into the capital the solver is handed.
+    assert "capital = scope_cap" in source
+    assert "station_room = min(" not in source
+    assert "capital = min(scope_cap, station_room)" not in source
+    # The lot fallback is the exchange's stated minimum, and the identity
+    # carries it: rows sized as if there were no lot are not comparable.
+    assert L.EXCHANGE_MINIMUM_LOT_SHARES_FALLBACK == 5.0
+    assert (
+        '"production_judge": "solver_chain_gates_exchange_lot_centre_v3",'
+        in source
+    )
+    assert "补足一手" in L.SELECTION_RULE_LABEL
+    assert "不足一手不入座" in L.SELECTION_RULE_LABEL
+
+
+def test_the_recorded_centre_comes_from_the_enumeration_that_seated() -> None:
+    """A seat's centre is the centre of the run that chose it.
+
+    Production's ``_choose_support`` reads the probability envelope --
+    model centre, dispersion, rung width, formal members -- which this
+    lane's own core resolver never opens, so the two centres disagree on
+    real books.  The row recorded this lane's while the seat was
+    production's, and every number derived from a centre went with it:
+    the off-centre claim factor that prices the window, the centre-tilt
+    weights, charter 69's guard on which rungs may be clamped, and the
+    charter-49 audit itself.  Seven P1 rows of the rebuilt 2026-08-15
+    book named a centre outside their own window -- EFHK 2026-08-16 sat
+    22-23C against a recorded centre of 20C.
+
+    One name, bound where the seat is chosen, read by all of them.
+    """
+
+    source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    # The judge returns the centre its own enumeration used.
+    assert '"ladder_center_bucket": str(' in source
+    assert "or centre_row.bucket" in source
+    # The walk binds one name and the judge reassigns it when it seats.
+    assert 'seat_center = str(\n                        audit.get(' in source
+    assert 'verdict.get("ladder_center_bucket") or center' in source
+    # And nothing derived from a seat reads the ledger's centre directly:
+    # one read is left, the default binding itself.
+    assert source.count('audit.get("ladder_center_bucket")') == 1
+    for consumer in (
+        "centre_bucket=seat_center,",
+        "seat_centre = seat_center",
+    ):
+        assert consumer in source, consumer
+
+
+def test_a_rebuild_can_be_taken_oldest_first_in_slices() -> None:
+    """A seat is sized off the book the days before it left behind.
+
+    So a rebuild that will not finish in one sitting has to advance a date
+    bound upward: taken newest-first, the recent slice is sized off rows
+    the older slice then re-derives, and the equity path is wrong in a way
+    nothing downstream can see.  The bound only restricts which days the
+    walk visits; rows above it keep whatever they carry.
+    """
+
+    source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    assert "through_date: str | None = None," in source
+    assert "AND (?3 IS NULL OR event_date <= ?3)" in source
+    assert '"--through-date",' in source

@@ -149,6 +149,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     VALUE_OBJECTIVE_FORM as _VALUE_OBJECTIVE_FORM,
     whole_basket_kelly_stake_v1,
     CHAIN_TICKET_DUST_FLOOR_USDC,
+    CHAIN_TICKET_CANDIDATE_ORIGIN,
     chain_ticket_cash_v1,
     DECISION_MOMENT_RULE_VERSION,
     edge_state_v1,
@@ -198,6 +199,16 @@ EXCHANGE_LOT_TOP_UP = (
     os.environ.get("PAPER_LEDGER_EXCHANGE_LOT_TOP_UP", "").strip()
     or _KERNEL_EXCHANGE_LOT_TOP_UP
 )
+# The exchange's stated minimum order, in shares, for a snapshot that does
+# not carry ``min_order_size`` (user ruling 2026-09-04).  No official WS
+# snapshot carried the field before 2026-08-31; the market registry has
+# stated 5.0 on every one of its 602,756 rows since the sizing rule landed
+# on 2026-08-30, and the venue enforced the same five shares on the days
+# before it.  Production fails closed on an unstated lot; a replay of
+# those days must not read them as lot-free, which is what a zero here
+# would do (the kernel leaves an unstated rung alone).  The snapshot's own
+# value wins whenever it is present.
+EXCHANGE_MINIMUM_LOT_SHARES_FALLBACK = 5.0
 if EXCHANGE_LOT_TOP_UP not in EXCHANGE_LOT_TOP_UP_MODES:
     raise ValueError(f"unknown exchange lot top-up mode: {EXCHANGE_LOT_TOP_UP}")
 # Charter 66 (user ruling, 2026-08-29): a top-up is sized and admitted on
@@ -607,6 +618,12 @@ REFUSAL_DEPTH = {
     "no_top_up_needed": 7,
     # The atomic top-up arm: the chain is short of some legs but not all.
     "topup_not_complete_basket": 7,
+    # The exchange's lot and production's station dial: the basket was
+    # assembled, priced and sized, and the venue's own rules -- not ours
+    # and not the model's -- would not take the order.  Same layer as
+    # ``no_depth``, which is the same kind of answer.
+    "exchange_minimum_lot_unaffordable": 7,
+    "station_budget_exceeded": 7,
     # One layer: the order was posted and bought nothing.  Which of the two
     # is reported turns on whether we cancelled it or the book never came.
     "resting_unfilled": 8,
@@ -1675,6 +1692,7 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
         "生产选窗" if JUDGE == "production_seat" else "账本裁判"
     ),
     "整篮加仓" if TOPUP_ATOMIC == "on" else "只买缺腿",
+    "不足一手不入座",
     "均值中心",
     "按checkpoint决策",
     "在任窗不免检",
@@ -1767,6 +1785,14 @@ SELECTION_RULE_SHA256 = content_sha256({
         if STAGE_SELF_OPEN != "off" else {}
     ),
     "topup_atomic": TOPUP_ATOMIC,
+    # 2026-09-04 (user ruling): the solver carries the chain law and the
+    # ticket, the exchange lot refuses a fraction, and the station dial is
+    # a per-leg execution gate.  Hashed unconditionally: every row before
+    # it was sized and filled under rules production does not run.
+    "production_judge": "solver_chain_gates_exchange_lot_centre_v3",
+    "exchange_minimum_lot_fallback_shares": (
+        EXCHANGE_MINIMUM_LOT_SHARES_FALLBACK
+    ),
     # Charter 75: the centre and, under the production judge, the seed.
     "centre": "mean_bucket_v1",
     # Charter 77/78: decision moments and the incumbent's (absent)
@@ -2062,6 +2088,16 @@ REFUSAL_REASONS = (
     # standing pat, and it has to read as that rather than as no seat.
     "no_top_up_needed",
     "topup_not_complete_basket",
+    # The exchange's own floor, under production's ``cash_phase`` name for
+    # it: a leg sized under one lot that neither the untilted allowance
+    # nor the depth can lift.  Production stands the whole basket down;
+    # this book recorded the fraction as filled until 2026-09-04.
+    "exchange_minimum_lot_unaffordable",
+    # Production's execution gate ``budget_ok``: the operator's station
+    # dial binds per leg on top of what the station already holds.  It
+    # was folded into the solver's capital here, which production never
+    # does, so P1 was sized five USDC short of production on a 1000 book.
+    "station_budget_exceeded",
     # A later stage whose station-day never opened.  Only P0 opens a
     # position; a top-up with nothing to top up is not a position of its own.
     # The declining-probability clamp's two refusals (arm-gated; the "off"
@@ -3388,6 +3424,7 @@ def _production_judge(
     chain_stake: float,
     tilt: float,
     last_decision_signature: Mapping[str, Any] | None = None,
+    last_acted_probability_identity: str | None = None,
 ) -> dict[str, Any]:
     """Production's whole-basket judge, run on this lane's book.
 
@@ -3411,6 +3448,31 @@ def _production_judge(
       ``snapshot_from_probability_envelope`` over the envelope production
       compiled, the centre, direction and admitted set are production's
       ``_choose_support``, and the enumeration is the one function.
+
+    The chain law is the solver's, not this lane's (2026-09-04).  Until
+    then the solver was called without the served identity, the chain's
+    last-acted identity, the growth frame and the last decision
+    signature, so charters 66(A), 71 and 77 could not bind inside it; the
+    ledger re-applied them on the seated window afterwards and refused the
+    cycle when they failed.  Production applies them per window inside the
+    solver and seats the first window that clears them -- a head window
+    refused on chain growth hands the seat to the next one, which this
+    lane never did.  Every one of those inputs is now handed through, the
+    solver's own decision-moment audit is read back, and the ledger's
+    post-seat copies are skipped for a production verdict.
+
+    Charter 74's ticket is likewise the solver's candidate: offered only
+    when the chain is empty at an opening stage, the Kelly law sized the
+    seat to nothing, and the ticket fits the capital.  The ledger used to
+    add its own ticket whenever the solver held -- including when the
+    solver had refused the ticket as unaffordable under the tilt -- which
+    opened chains production never opens.
+
+    Capital is production's: the scope's share of the book less what the
+    chain has spent, tilted.  The station's ``total_budget_usdc`` is not a
+    sizing bound in production -- it is the execution gate's per-leg
+    ``budget_ok`` -- so it is no longer folded into the capital here and
+    is judged per leg at the same place instead.
     """
 
     fee_rate = FEE_RATE
@@ -3579,46 +3641,59 @@ def _production_judge(
                 "生产裁判枚举失败：%s" % type(exc).__name__,
             ),
         }
-    # Charter 77: a decision moment is a new served identity or a change
-    # in whether any window clears the positive-EV gate; a quote-only
-    # refresh is judged once and then held until one of those moves.
+    # Charter 77's signature, recorded per stage by the walk.  Whether this
+    # cycle is a decision moment is the solver's own verdict, read back
+    # from its audit after the solve -- one implementation, not a copy.
+    probability_identity = str(payload.get("probability_identity") or "")
     decision_signature = {
-        "probability_identity": str(
-            payload.get("probability_identity") or ""
-        ),
+        "probability_identity": probability_identity,
         "edge_state": edge_state_v1(windows),
         "stage": str(stage),
     }
-    last_signature = dict(last_decision_signature or {})
-    if not is_decision_moment_v1(
-        probability_identity=decision_signature["probability_identity"],
-        edge_state=decision_signature["edge_state"],
-        last_probability_identity=(
-            str(last_signature.get("probability_identity") or "") or None
-        ),
-        last_edge_state=str(last_signature.get("edge_state") or "") or None,
+    holds_anything = any(float(v or 0.0) > 0.0 for v in held.values())
+    # Charter 71(a) is window-independent, so it is answered here under its
+    # own name.  Inside the solver every spending window fails it
+    # identically and the seat falls to a window that stands pat, which
+    # the walk could only report as a hold.
+    if (
+        holds_anything
+        and last_acted_probability_identity
+        and probability_identity
+        and str(last_acted_probability_identity) == probability_identity
     ):
         return {
             "refusal": (
-                "no_decision_moment",
-                "宪章 77：概率身份与可入座状态（%s）都没变，只是盘口动了"
-                % decision_signature["edge_state"],
+                "topup_requires_probability_change",
+                "宪章 71(a)：概率身份 %s 自上次买入未变，不加仓"
+                "（本链已投 %.2f）" % (probability_identity[:12], chain_stake),
             ),
             "decision_signature": decision_signature,
         }
     # Capital the way production hands it to the solver: the scope's share
-    # of the book less what the chain has spent, bounded by the station's
-    # own cap, then the consolidation tilt on what is left -- floored at a
-    # few minimum clips so a tilted opener can still form a basket.
+    # of the book less what the chain has spent, then the consolidation
+    # tilt on what is left -- floored at a few minimum clips so a tilted
+    # opener can still form a basket.
     scope_cap = scope_stake_cap_usdc(
         book_equity_usdc=float(equity),
         stage=stage,
         committed_usdc=float(chain_stake),
     )
-    station_room = max(
-        0.0, float(basket_policy.total_budget_usdc) - float(chain_stake)
+    # The station's ``total_budget_usdc`` is not a sizing bound in
+    # production: ``_compile_target_plan`` hands the solver the scope's
+    # share of the book less what the station has committed, and the
+    # operator's dial binds only at the execution gate, per leg
+    # (``budget_ok``).  The walk applies that gate at the same place.
+    capital = scope_cap
+    # Charter 70 as production runs it: ``cash_phase`` lifts each leg to
+    # one exchange lot against the *untilted* remaining scope allowance,
+    # so a rung the tilted capital could not lift is lifted there anyway
+    # when the allowance can pay.  Handed back for the walk's lot raise.
+    lot_room = scope_cap
+    # Charter 71(b)'s frame: the scope's share of the whole book, the
+    # number production passes as ``chain_growth_frame_usdc``.
+    growth_frame = CHAIN_TOPUP_BANKROLL_USDC or (
+        float(equity) * MAX_STAKE_FRACTION_PER_SCOPE
     )
-    capital = min(scope_cap, station_room)
     if 0.0 < tilt < 1.0 and capital > 0.0:
         tilt_floor = (
             min(delta_policy.cash_clip_grid) * CONSOLIDATION_TILT_FLOOR_LEGS
@@ -3655,13 +3730,51 @@ def _production_judge(
             objective_form=objective_form,
             bankroll_usdc=bankroll,
             book_equity_usdc=float(equity),
+            # Charters 66(A), 71 and 77 bind inside the solver, per
+            # window, exactly as production's compile hands them in.  A
+            # head window refused on chain growth hands the seat to the
+            # next one there; without these the solver never refused
+            # anything and this lane re-judged the seat afterwards.
+            probability_identity=probability_identity or None,
+            last_acted_probability_identity=(
+                str(last_acted_probability_identity)
+                if last_acted_probability_identity else None
+            ),
+            chain_growth_frame_usdc=growth_frame,
+            last_decision_signature=last_decision_signature,
         )
     except (ContractError, _KernelContractError) as exc:
+        if holds_anything and str(exc) == (
+            "delta_v2_no_solvable_support_window"
+        ):
+            # Every window that would spend was refused by the chain law
+            # -- charter 66(A) par or 71(b) growth -- and none stood pat.
+            return {
+                "refusal": (
+                    "no_chain_growth",
+                    "生产求解器：每个窗口都被链法则拒绝"
+                    "（66甲款 par 或 71乙款增益）· 本链已投 %.2f"
+                    % chain_stake,
+                ),
+                "decision_signature": decision_signature,
+            }
         return {
             "refusal": (
                 "production_judge_blocked",
                 "生产裁判求解失败：%s" % exc,
             ),
+        }
+    moment = dict(selection.get("decision_moment") or {})
+    if moment.get("is_decision_moment") is False:
+        # Charter 77, as the solver ruled it: same served identity, same
+        # admissibility as the last recorded decision of this stage.
+        return {
+            "refusal": (
+                "no_decision_moment",
+                "宪章 77：概率身份与可入座状态（%s）都没变，只是盘口动了"
+                % decision_signature["edge_state"],
+            ),
+            "decision_signature": decision_signature,
         }
     target = {
         str(bucket): float(quantity)
@@ -3689,6 +3802,25 @@ def _production_judge(
         ),
         "delta_policy_id": str(delta_policy.artifact_id),
         "scope": (season_bin, maturity_bin, liquidity_bin, strategy_version),
+        # The centre the seat was actually chosen around.  Production's
+        # ``_choose_support`` reads the envelope this lane never opens --
+        # model centre, dispersion, rung width -- so its mean bucket is
+        # not always the one this lane's own enumeration names, and the
+        # row has to describe the enumeration that seated it.  Recorded
+        # against the ledger's instead, seven P1 rows in the 2026-08-15
+        # book named a centre outside their own window.
+        "ladder_center_bucket": str(
+            (audit or {}).get("ladder_center_bucket") or centre_row.bucket
+        ),
+        # Charter 74: whether the solver's winner was its own ticket.
+        "ticket": (
+            str(solution.get("winner_candidate_origin") or "")
+            == CHAIN_TICKET_CANDIDATE_ORIGIN
+        ),
+        # Production's execution-gate dial and its lot-lift allowance, for
+        # the two checks the walk applies where production applies them.
+        "total_budget_usdc": float(basket_policy.total_budget_usdc),
+        "lot_room_usdc": float(lot_room),
     }
 
 
@@ -6271,6 +6403,7 @@ def backfill(
     *,
     verbose: bool = False,
     recent_days: int | None = None,
+    through_date: str | None = None,
 ) -> dict:
     refusal_rebuilt = ensure_schema(conn)
     # Rows below the floor are not re-derived, so nothing else would ever remove
@@ -6317,6 +6450,12 @@ def backfill(
     # incremental pass to the window that can still change; a rebuild leaves
     # it None and walks everything, because that is the pass whose equity
     # actually compounds day over day.
+    # ``through_date`` bounds the walk from above so a rebuild that cannot
+    # finish in one sitting can be taken oldest-first, one slice at a
+    # time.  The order matters: every seat is sized off the equity the
+    # days before it left behind, so a slice taken newest-first would be
+    # sized off rows the next slice then re-derives.  Rows above the bound
+    # are left exactly as they are.
     scopes = conn.execute(
         "SELECT DISTINCT station_id, event_date"
         " FROM basket_probability_bridge_history"
@@ -6324,8 +6463,9 @@ def backfill(
         "   AND (?1 IS NULL OR event_date >= date("
         "   (SELECT max(event_date) FROM basket_probability_bridge_history),"
         "   '-' || ?1 || ' days'))"
+        "   AND (?3 IS NULL OR event_date <= ?3)"
         " ORDER BY event_date, station_id",
-        (recent_days, LEDGER_EVENT_DATE_FLOOR),
+        (recent_days, LEDGER_EVENT_DATE_FLOOR, through_date),
     ).fetchall()
     counts: dict[str, int] = defaultdict(int)
     if refusal_rebuilt:
@@ -6647,6 +6787,15 @@ def backfill(
                             cycles, payload["decision_at_utc"],
                         ))
                         continue
+                    # The centre of whichever enumeration ends up seating
+                    # this cycle.  This lane's own to begin with; the
+                    # production judge reassigns it to production's when
+                    # it seats, because the two do not always agree and
+                    # every number recorded about a seat has to come from
+                    # the enumeration that chose it.
+                    seat_center = str(
+                        audit.get("ladder_center_bucket") or center
+                    )
                     priced_windows = [
                         row for row in windows
                         if row.get("all_in_price") is not None
@@ -6723,9 +6872,7 @@ def backfill(
                             seat,
                             snapshot=snapshot,
                             probabilities=probabilities,
-                            centre_bucket=str(
-                                audit.get("ladder_center_bucket") or center
-                            ),
+                            centre_bucket=seat_center,
                             stage=stage,
                         )
                         if seat is not None else 0.0
@@ -6907,6 +7054,12 @@ def backfill(
                             last_decision_signature=(
                                 chain_decision_signatures.get(stage)
                             ),
+                            # Charter 71(a): the identity the chain last
+                            # bought under, as production reads it off
+                            # its last acted decision.
+                            last_acted_probability_identity=(
+                                chain_probability_identity or None
+                            ),
                         )
                         counts["production_judge_cycles"] += 1
                         _signature = verdict.get("decision_signature")
@@ -6923,13 +7076,24 @@ def backfill(
                                 cycles, payload["decision_at_utc"],
                             ))
                             continue
+                        # The centre of the enumeration that chose this
+                        # seat, which under the production judge is
+                        # production's own and not always this lane's:
+                        # ``_choose_support`` reads the envelope (model
+                        # centre, dispersion, rung width) that this lane
+                        # never opens.  Every consumer below -- the
+                        # off-centre pricing, the clamp's guard, the
+                        # recorded row -- reads it rather than the
+                        # ledger's, which named a centre outside its own
+                        # window on seven P1 rows of the 2026-08-15 book.
+                        seat_center = str(
+                            verdict.get("ladder_center_bucket") or center
+                        )
                         _row = _window_row(
                             verdict["buckets"],
                             snapshot=snapshot,
                             probabilities=probabilities,
-                            centre_bucket=str(
-                                audit.get("ladder_center_bucket") or center
-                            ),
+                            centre_bucket=seat_center,
                         )
                         if _row is None:
                             refusal = _deeper_refusal(refusal, (
@@ -6939,37 +7103,17 @@ def backfill(
                                 cycles, payload["decision_at_utc"],
                             ))
                             continue
-                        if (
-                            JUDGE == "production"
-                            and float(verdict["delta_cost_usdc"]) <= 0.0
-                            and CHAIN_TICKET_MODE == "on"
-                            and stage == "P0"
-                            and not held
-                            and float(_row["all_in_price"]) < 1.0
-                        ):
-                            # The chain ticket, this lane's bookkeeping
-                            # device, handed to the production judge too:
-                            # under one book only P0 opens, so a P0 the
-                            # judge holds would forfeit every later stage.
-                            # Production itself needs no ticket -- its P1
-                            # opens alone -- so this measures production's
-                            # sizing on the same footing as the ledger's.
-                            _ticket_cash = chain_ticket_cash_v1(
-                                minimum_clip_usdc=_tilt_minimum_clip(conn),
-                                legs=len(_row["buckets"]),
-                            )
-                            _ticket_shares = _ticket_cash / float(
-                                _row["all_in_price"]
-                            )
-                            verdict = {
-                                **verdict,
-                                "target_shares": {
-                                    str(b): _ticket_shares
-                                    for b in _row["buckets"]
-                                },
-                                "delta_cost_usdc": _ticket_cash,
-                                "ticket": True,
-                            }
+                        if JUDGE == "production" and verdict.get("ticket"):
+                            # Charter 74's ticket is the solver's own
+                            # candidate, offered under production's
+                            # conditions: empty chain, opening stage,
+                            # Kelly sized to nothing, and the ticket's
+                            # cash within the (tilted) capital.  This
+                            # lane used to add a ticket of its own
+                            # whenever the solver held, capital or not,
+                            # and so opened chains production never
+                            # opens -- nine four-rung seats on tilted
+                            # days in the 2026-09-01..05 book.
                             counts["production_judge_cycles_ticket"] += 1
                         if (
                             JUDGE == "production"
@@ -6995,9 +7139,7 @@ def backfill(
                             seat,
                             snapshot=snapshot,
                             probabilities=probabilities,
-                            centre_bucket=str(
-                                audit.get("ladder_center_bucket") or center
-                            ),
+                            centre_bucket=seat_center,
                             stage=stage,
                         )
                         if JUDGE == "production":
@@ -7178,10 +7320,7 @@ def backfill(
                                 snapshot,
                                 seat["buckets"],
                                 probabilities,
-                                centre_bucket=str(
-                                    audit.get("ladder_center_bucket")
-                                    or center
-                                ),
+                                centre_bucket=seat_center,
                             ))
                             crossing_note = (
                                 ""
@@ -7304,10 +7443,7 @@ def backfill(
                                     snapshot,
                                     seat["buckets"],
                                     probabilities,
-                                    centre_bucket=str(
-                                        audit.get("ladder_center_bucket")
-                                        or center
-                                    ),
+                                    centre_bucket=seat_center,
                                 ),
                             )
                         ]
@@ -7323,9 +7459,7 @@ def backfill(
                     if ALLOCATION_SHAPE == "centre_tilt":
                         weights = _centre_tilt_weights(
                             seat["buckets"],
-                            centre_bucket=str(
-                                audit.get("ladder_center_bucket") or center
-                            ),
+                            centre_bucket=seat_center,
                             probabilities=probabilities,
                             prices=[
                                 float(quotes[b]["best_ask"] or 0.0)
@@ -7345,9 +7479,7 @@ def backfill(
                     resting_fills: dict[str, str] = {}
                     if EXECUTION_MODE == "maker_resting":
                         by_row = {r.bucket: r for r in snapshot.buckets}
-                        seat_centre = str(
-                            audit.get("ladder_center_bucket") or center
-                        )
+                        seat_centre = seat_center
                         ladders = []
                         for b in seat["buckets"]:
                             if str(b) not in by_row:
@@ -7599,10 +7731,7 @@ def backfill(
                             _declined = contiguous_edge_clamp_v2(
                                 declining=_declined,
                                 support=tuple(seat["buckets"]),
-                                centre_bucket=str(
-                                    audit.get("ladder_center_bucket")
-                                    or center
-                                ),
+                                centre_bucket=seat_center,
                             )
                         if DECLINE_CLAMP == "after_open" and _declined:
                             # Production's ``after_open``: the opening
@@ -7742,6 +7871,15 @@ def backfill(
                             )
                             if quantity > 0.0
                         }
+                        # Under the production judge the chain law was
+                        # applied inside the solver, per window, on the
+                        # partition it scored (charters 66(A), 71(b)):
+                        # the seated window already cleared it, so this
+                        # lane's copies below are computed for the record
+                        # and refuse nothing.  Re-judging here refused
+                        # seats production takes whenever the two
+                        # partitions disagreed.
+                        chain_law_here = production_verdict is None
                         # Charter 71(b): the lambda*p partition, read once
                         # for the growth gate and the increment-edge arm.
                         _partition = _effective_growth_partition(
@@ -7751,7 +7889,7 @@ def backfill(
                             buckets=seat["buckets"],
                             snapshot=snapshot,
                         )
-                        if TOPUP_INCREMENT_EDGE == "on":
+                        if TOPUP_INCREMENT_EDGE == "on" and chain_law_here:
                             _increment_payout = sum(
                                 float(_partition.get(str(b), 0.0)) * float(q)
                                 for b, q in bought_by_bucket.items()
@@ -7776,7 +7914,7 @@ def backfill(
                             spend=spend,
                             bankroll=growth_frame,
                         )
-                        if not growth > 0.0:
+                        if chain_law_here and not growth > 0.0:
                             refusal = _deeper_refusal(refusal, (
                                 "no_chain_growth",
                                 "目标篮 %s · 本笔 %.2f 不改善整链对数增长"
@@ -7799,7 +7937,7 @@ def backfill(
                             probabilities=probabilities,
                             total_stake=chain_stake + spend,
                         )
-                        if (
+                        if chain_law_here and (
                             chain_cost_after is None
                             or chain_cost_after >= CHAIN_COST_PAR_BOUND
                         ):
@@ -7846,10 +7984,18 @@ def backfill(
                     # exchange would judge.
                     lot_top_up_record = None
                     if EXCHANGE_LOT_TOP_UP != "off" and legs:
+                        # The lot the market states, or the exchange's
+                        # standing minimum when the snapshot predates the
+                        # field (before 2026-08-31 no snapshot carried
+                        # it; the registry has stated 5.0 on every row
+                        # since).  Production fails closed on an unstated
+                        # lot; a replay of days the exchange enforced the
+                        # same five shares on must not treat them as
+                        # lot-free.
                         _seat_lots = {
                             str(b): float(
                                 (quotes.get(str(b)) or {}).get("min_order_size")
-                                or 0.0
+                                or EXCHANGE_MINIMUM_LOT_SHARES_FALLBACK
                             )
                             for b in seat["buckets"]
                         }
@@ -7860,7 +8006,19 @@ def backfill(
                             )
                             for b in seat["buckets"]
                         }
-                        _room = max(0.0, float(stage_room) - float(stake))
+                        if production_verdict is not None:
+                            # Production's lift budget is the untilted
+                            # remaining scope allowance (``cash_phase``
+                            # sizes against ``remaining_budget``, which
+                            # the tilt never touches), not the tilted
+                            # capital the solver was handed.
+                            _room = max(
+                                0.0,
+                                float(production_verdict["lot_room_usdc"])
+                                - float(stake),
+                            )
+                        else:
+                            _room = max(0.0, float(stage_room) - float(stake))
                         _decision = raise_sub_lot_targets_v2(
                             target_shares_by_bucket={
                                 str(b): float(q)
@@ -7917,6 +8075,65 @@ def backfill(
                                     float(_decision["requested_lot_raise_usdc"]), 6
                                 ),
                             }
+                        # The exchange refuses any order under its lot, so
+                        # a leg still under it after the raise cannot fill
+                        # at any price.  Production's ``cash_phase`` names
+                        # this ``exchange_minimum_lot_unaffordable`` and
+                        # the whole basket stands down; this book used to
+                        # record the fraction as filled -- 134 of the 209
+                        # standing rows on 2026-09-04 were orders no
+                        # exchange takes.
+                        _under_lot = [
+                            (str(b), float(q), _seat_lots[str(b)])
+                            for b, q in zip(seat["buckets"], leg_shares)
+                            if _seat_lots[str(b)] > 0.0
+                            and 0.0 < float(q) + 1e-9 < _seat_lots[str(b)]
+                        ]
+                        if _under_lot:
+                            refusal = _deeper_refusal(refusal, (
+                                "exchange_minimum_lot_unaffordable",
+                                "不足一手：%s · 抬到一手%s · 本笔 %.2f · 额度 %.2f"
+                                % (
+                                    "、".join(
+                                        "%s %.2f股<%g" % item
+                                        for item in _under_lot
+                                    ),
+                                    (
+                                        "需再花 %.2f" % float(
+                                            lot_top_up_record.get(
+                                                "requested_lot_raise_usdc", 0.0
+                                            )
+                                        )
+                                        if isinstance(lot_top_up_record, dict)
+                                        and "requested_lot_raise_usdc"
+                                        in lot_top_up_record
+                                        else "盘口深度不够"
+                                    ),
+                                    float(stake), float(stake) + _room,
+                                ),
+                                cycles, payload["decision_at_utc"],
+                            ))
+                            continue
+                    if production_verdict is not None and leg_cash:
+                        # Production's execution gate, ``budget_ok``: the
+                        # operator's station dial binds per leg on top of
+                        # what the station already holds.  Applied here,
+                        # after the lot raise, on the cash each leg would
+                        # actually send -- the same place production
+                        # judges it -- rather than folded into the
+                        # solver's capital, which it never is there.
+                        _dial = float(production_verdict["total_budget_usdc"])
+                        _worst_leg = max(float(c) for c in leg_cash)
+                        if float(chain_stake) + _worst_leg > _dial + 1e-9:
+                            refusal = _deeper_refusal(refusal, (
+                                "station_budget_exceeded",
+                                "生产执行闸 budget_ok：已投 %.2f + 最大一腿 %.2f"
+                                " > 站上限 %.2f" % (
+                                    float(chain_stake), _worst_leg, _dial,
+                                ),
+                                cycles, payload["decision_at_utc"],
+                            ))
+                            continue
                     intended_legs = {
                         str(bucket): float(quantity)
                         for bucket, quantity in zip(
@@ -8138,7 +8355,7 @@ def backfill(
                         (
                             position_id, station_id, event_date, stage,
                             payload["decision_at_utc"], observed_at,
-                            str(audit.get("ladder_center_bucket") or center),
+                            seat_center,
                             json.dumps(
                                 list(seat["buckets"]), ensure_ascii=False
                             ),
@@ -8616,6 +8833,17 @@ def main() -> int:
             " lock.  0 means no bound.  --rebuild always walks everything."
         ),
     )
+    parser.add_argument(
+        "--through-date",
+        default=None,
+        help=(
+            "walk only event days at or before this date (YYYY-MM-DD)."
+            "  For a rebuild that will not finish inside one sitting:"
+            " take it oldest-first, raising this bound each pass, so every"
+            " seat is sized off a book whose earlier days are already"
+            " re-derived.  Rows above the bound are left untouched."
+        ),
+    )
     parser.add_argument("--report", action="store_true")
     args = parser.parse_args()
     if args.recent_days is not None and args.recent_days <= 0:
@@ -8632,6 +8860,7 @@ def main() -> int:
         counts = backfill(
             conn,
             recent_days=None if args.rebuild else args.recent_days,
+            through_date=(args.through_date or "").strip() or None,
         )
         print(json.dumps(
             {"schema": "paper_trading_backfill_v1", "counts": counts},
