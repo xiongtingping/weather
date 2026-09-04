@@ -874,6 +874,22 @@ SYMMETRIC_SEAT_MODE = (
 )
 if SYMMETRIC_SEAT_MODE not in {"off", "center_pm1", "center_pm1_p0"}:
     raise RuntimeError(f"unknown symmetric seat mode: {SYMMETRIC_SEAT_MODE}")
+# Research arms (2026-09-04, user): (1) P0 seat by skew -- symmetric day
+# centre+-1; right-skewed day the 3-4 rungs from the mean bucket toward the
+# hot tail; left-skewed the mirror.  (2) P0-M and the TAF TX: ``tx_anchor``
+# (the seat must hold the TX bucket), ``confirm_hold`` (TAF direction against
+# the skew -> hold), ``confirm_override`` (against -> the 3-4 rungs from the
+# mean bucket toward the TAF side).  Both default off.
+SKEW_SEAT_MODE = (
+    os.environ.get("PM_SKEW_SEAT_MODE", "").strip().lower() or "off"
+)
+if SKEW_SEAT_MODE not in {"off", "p0_tail"}:
+    raise RuntimeError(f"unknown skew seat mode: {SKEW_SEAT_MODE}")
+P0M_TAF_MODE = (
+    os.environ.get("PM_P0M_TAF_MODE", "").strip().lower() or "off"
+)
+if P0M_TAF_MODE not in {"off", "tx_anchor", "confirm_hold", "confirm_override"}:
+    raise RuntimeError(f"unknown P0-M TAF mode: {P0M_TAF_MODE}")
 SKEW_PLACEMENT_MODE = (
     os.environ.get("DELTA_V2_SKEW_PLACEMENT", "").strip().lower()
     or "free"
@@ -1111,6 +1127,7 @@ def _support_windows(
     maximum_support_buckets: int,
     center_bucket: str,
     minimum_support_buckets: int = 1,
+    taf_tx_bucket: str | None = None,
     probability_stage: str = "",
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Contiguous windows admissible as a support, ranked by belief divergence.
@@ -1761,8 +1778,76 @@ def _support_windows(
                 if not (_is_symmetric_seat(row) and row.get("admissible", True))
             ]
             symmetric_seat_forced = True
+    def _ordinal_set(row: Mapping[str, Any]) -> frozenset[int]:
+        return frozenset(int(by_bucket[b].ordinal) for b in row["buckets"])
+    def _sanction(rows: list, wanted: list) -> list:
+        wanted_sets = [frozenset(w) for w in wanted]
+        keep = [
+            row for row in rows
+            if _ordinal_set(row) in wanted_sets and row.get("admissible", True)
+        ]
+        rest = [
+            dict(row, admissible=False) for row in rows
+            if not (_ordinal_set(row) in wanted_sets and row.get("admissible", True))
+        ]
+        return keep + rest
+    def _tail_windows(centre: int, direction: int) -> list:
+        if direction > 0:
+            return [{centre, centre + 1, centre + 2}, {centre, centre + 1, centre + 2, centre + 3}]
+        if direction < 0:
+            return [{centre - 2, centre - 1, centre}, {centre - 3, centre - 2, centre - 1, centre}]
+        return [{centre - 1, centre, centre + 1}]
+    skew_seat_forced = False
+    if (
+        SKEW_SEAT_MODE == "p0_tail"
+        and str(probability_stage or "") == "P0"
+        and ladder_center in by_bucket
+    ):
+        raw_skew = _skew_extension_sign(
+            probabilities,
+            {bucket: int(row.ordinal) for bucket, row in by_bucket.items()},
+        )
+        windows = _sanction(
+            windows, _tail_windows(int(by_bucket[ladder_center].ordinal), raw_skew)
+        )
+        skew_seat_forced = True
+    p0m_taf_audit: dict[str, Any] = {}
+    if (
+        P0M_TAF_MODE != "off"
+        and str(probability_stage or "") == "P0-M"
+        and taf_tx_bucket in by_bucket
+        and ladder_center in by_bucket
+    ):
+        centre_ordinal = int(by_bucket[ladder_center].ordinal)
+        tx_ordinal = int(by_bucket[taf_tx_bucket].ordinal)
+        taf_direction = 0 if abs(tx_ordinal - centre_ordinal) < 1 else (
+            1 if tx_ordinal > centre_ordinal else -1
+        )
+        raw_skew = _skew_extension_sign(
+            probabilities,
+            {bucket: int(row.ordinal) for bucket, row in by_bucket.items()},
+        )
+        disagree = bool(taf_direction and raw_skew and taf_direction != raw_skew)
+        if P0M_TAF_MODE == "tx_anchor":
+            windows = [
+                row for row in windows
+                if taf_tx_bucket in row["buckets"] and row.get("admissible", True)
+            ] + [
+                dict(row, admissible=False) for row in windows
+                if not (taf_tx_bucket in row["buckets"] and row.get("admissible", True))
+            ]
+        elif P0M_TAF_MODE == "confirm_hold" and disagree:
+            windows = [dict(row, admissible=False) for row in windows]
+        elif P0M_TAF_MODE == "confirm_override" and disagree:
+            windows = _sanction(windows, _tail_windows(centre_ordinal, taf_direction))
+        p0m_taf_audit = {
+            "mode": P0M_TAF_MODE, "tx_bucket": taf_tx_bucket,
+            "taf_direction": taf_direction, "skew": raw_skew, "disagree": disagree,
+        }
     audit = {
         "symmetric_seat_forced": symmetric_seat_forced,
+        "skew_seat_forced": skew_seat_forced,
+        "p0m_taf": p0m_taf_audit,
         "probability_core": sorted(
             core, key=lambda bucket: (by_bucket[bucket].ordinal, bucket)
         ),

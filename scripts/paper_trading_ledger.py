@@ -99,6 +99,8 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     SUPPORT_EDGE_MARGIN,
     P0_SIZING_MODE,
     SYMMETRIC_SEAT_MODE,
+    SKEW_SEAT_MODE,
+    P0M_TAF_MODE,
     WINDOW_REFUSAL_FUNNEL,
     # The pieces of arithmetic the two sides must not each own a copy of.
     # Every one of them used to be duplicated here, and the ladder copy had
@@ -1731,6 +1733,8 @@ SELECTION_RULE_SHA256 = content_sha256({
         {"symmetric_seat": SYMMETRIC_SEAT_MODE}
         if SYMMETRIC_SEAT_MODE != "off" else {}
     ),
+    **({"skew_seat": SKEW_SEAT_MODE} if SKEW_SEAT_MODE != "off" else {}),
+    **({"p0m_taf": P0M_TAF_MODE} if P0M_TAF_MODE != "off" else {}),
     **(
         {"effective_edge_lambda_p0": EFFECTIVE_EDGE_LAMBDA_P0_OVERRIDE}
         if EFFECTIVE_EDGE_LAMBDA_P0_OVERRIDE else {}
@@ -3261,6 +3265,35 @@ def _build_snapshot(**kwargs: Any) -> tuple[
     )
 
 
+def _taf_tx_bucket(envelope: Any, stage: str) -> str | None:
+    """The bucket the P0-M lineage's TAF TX falls in, or None.
+
+    Research arms only (``PM_P0M_TAF_MODE``): the TX in Celsius is mapped
+    through the envelope's own bucket intervals; a TAF without a TX, or any
+    other stage, hands the enumerator nothing.
+    """
+
+    if str(stage) != "P0-M":
+        return None
+    lineage = getattr(envelope, "lineage", None) or {}
+    try:
+        tx = float(lineage.get("taf_observed_tx_c"))
+    except (TypeError, ValueError):
+        return None
+    try:
+        intervals = json.loads(lineage.get("bucket_intervals_c_json") or "{}")
+    except (TypeError, ValueError):
+        return None
+    for bucket, bounds in intervals.items():
+        try:
+            lower, upper = bounds
+        except (TypeError, ValueError):
+            continue
+        if (lower is None or tx >= float(lower)) and (upper is None or tx < float(upper)):
+            return str(bucket)
+    return None
+
+
 def _production_envelope_for(
     conn: sqlite3.Connection,
     payload: Mapping[str, Any],
@@ -3533,6 +3566,7 @@ def _production_judge(
             minimum_support_buckets=basket_policy.minimum_support_buckets,
             center_bucket=centre_row.bucket,
             probability_stage=stage,
+            taf_tx_bucket=_taf_tx_bucket(envelope, stage),
         )
     except Exception as exc:  # noqa: BLE001
         return {
