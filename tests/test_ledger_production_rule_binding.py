@@ -807,7 +807,7 @@ def test_the_exchange_lot_and_the_station_dial_bind_where_production_binds() -> 
     # carries it: rows sized as if there were no lot are not comparable.
     assert L.EXCHANGE_MINIMUM_LOT_SHARES_FALLBACK == 5.0
     assert (
-        '"production_judge": "solver_chain_gates_exchange_lot_centre_v6",'
+        '"production_judge": "solver_chain_gates_exchange_lot_centre_v7",'
         in source
     )
     assert "补足一手" in L.SELECTION_RULE_LABEL
@@ -945,6 +945,94 @@ def test_a_stage_is_judged_only_while_it_holds_the_days_authority() -> None:
             encoding="utf-8"
         )
     )
+
+
+def test_a_taker_fills_at_the_top_of_the_offer_and_is_cut_to_depth() -> None:
+    """One order, one price: the FOK's limit is the best ask.
+
+    Production's taker candidate carries ``limit_price = row.ask_price``
+    and sizes the leg against ``_executable_depth_cash``, which for a FOK
+    counts only the offer at or below that limit; a thin top level cuts
+    the leg (``sizing_clamped_below_authorized_clip``, then the bundle is
+    re-scored at the cut sizes) and an empty one refuses it.  This lane's
+    walker descended the book for the whole increment instead: 120 of 861
+    legs on the 2026-09-04 book, 29.16 USDC paid above the top of book.
+    """
+
+    import inspect
+
+    production = inspect.getsource(P)
+    assert '(bucket, action_clip, row.ask_price, "FOK:0")' in production
+    from bayes_basket_target import runtime as R
+
+    depth = inspect.getsource(R._executable_depth_cash)
+    assert "if float(level.price) <= float(limit_price) + 1e-9" in depth
+    sized = inspect.getsource(L._production_sized_legs)
+    assert "_walk_ask_shares_at_limit(leg, delta)" in sized
+    assert "got + 1e-9 < delta" not in sized, "a short top level cuts, not refuses"
+    # And the walker takes the best ask as its limit.
+    levels = [
+        {"price": 0.20, "shares": 3.0},
+        {"price": 0.20, "shares": 2.0},
+        {"price": 0.25, "shares": 50.0},
+    ]
+    got, paid = L._walk_ask_shares_at_limit(levels, 10.0)
+    assert got == pytest.approx(5.0)
+    assert paid == pytest.approx(1.0)
+    assert L._walk_ask_shares_at_limit([], 10.0) == (0.0, 0.0)
+
+
+def test_a_pre_listing_checkpoint_is_not_paired_with_a_book_a_newer_one_owns() -> None:
+    """Charter 48 opens at listing on the newest checkpoint, not every one.
+
+    A decision before the market lists may use the first book that appears
+    after it; but at that book's clock production compiles the newest
+    checkpoint at or before it, of the highest stage present.  A checkpoint
+    replaced before the book appeared is never paired with that book, and
+    this lane paired 28 of 251 P0 seats that way on the 2026-09-04 book.
+    """
+
+    import inspect
+
+    source = inspect.getsource(L._stage_entry_candidates)
+    assert 'if str(observed_at) > str(decided) and conn.execute(' in source
+    assert "AND decision_at_utc>? AND decision_at_utc<=?" in source
+    # Same-or-higher stages, because a higher stage arriving before the
+    # book takes the day's authority (see _stage_authority_horizon).
+    assert "LEDGER_STAGES[LEDGER_STAGES.index(str(stage)):]" in source
+
+
+def test_charter_73_authorizes_the_increment_on_the_seated_belief() -> None:
+    """The execution layer's number is the kernel's, read on the seat's belief.
+
+    Production's bundle re-score authorizes on ``whole_basket_edge_delta_v1``
+    over ``seated.window_probabilities`` -- the charter-68 partition the
+    solver judged the window on -- above ``execution_weights.epsilon_score``,
+    with a ticket authorized on structure alone (charter 74).  The walk now
+    applies the same function, on the same belief, to the increment it is
+    about to book; 0 of 47 P1 top-ups on the 2026-09-04 book were refused by
+    it, which is the point of carrying it: a rule that is dormant today and
+    binding tomorrow must already be on both sides.
+    """
+
+    import inspect
+
+    assert L.whole_basket_edge_delta_v1 is K.whole_basket_edge_delta_v1
+    kernel = inspect.getsource(K)
+    assert "score > execution_weights.epsilon_score + EPS" in kernel
+    assert 'rule == EXECUTION_AUTHORIZATION_CHAIN_TICKET' in kernel
+    judge = inspect.getsource(L._production_judge)
+    assert '.get("window_probabilities")' in judge
+    assert "delta_policy.execution_weights.epsilon_score" in judge
+    source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'if not production_verdict.get("ticket"):' in source
+    assert "_edge = whole_basket_edge_delta_v1(" in source
+    assert "if not _edge > _epsilon + 1e-9:" in source
+    assert "execution_edge_not_authorized" in L.REFUSAL_REASONS
+    assert '"execution_authorization": "whole_basket_edge_v1",' in source
+    assert '"taker_fill": "top_of_offer_cut_to_depth_v1",' in source
 
 
 def test_a_rebuild_can_be_taken_oldest_first_in_slices() -> None:

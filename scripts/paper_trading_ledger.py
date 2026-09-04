@@ -157,6 +157,9 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     DECISION_MOMENT_RULE_VERSION,
     edge_state_v1,
     is_decision_moment_v1,
+    # Charter 73: the increment's edge on the belief the seat was judged
+    # on, the number production's bundle re-score authorizes on.
+    whole_basket_edge_delta_v1,
     EFFECTIVE_EDGE_LAMBDA_P0_OVERRIDE,
 )
 from bayes_basket_target.basket_kernel.support import (  # noqa: E402
@@ -658,6 +661,9 @@ REFUSAL_DEPTH = {
     # and the reason it stood pat is that nothing had changed.
     "topup_requires_probability_change": 8,
     "no_decision_moment": 8,
+    # Charter 73 at the execution layer: sized, walked, and refused on the
+    # increment's edge.  The chain-law layer.
+    "execution_edge_not_authorized": 8,
     # Charter 71(b) tightening arm: the increment itself does not pay.
     "topup_increment_edge_negative": 8,
     # The declining-probability clamp, when it is armed.  Sits at the
@@ -1830,8 +1836,13 @@ SELECTION_RULE_SHA256 = content_sha256({
     # v6 (2026-09-04): a checkpoint is judged only while its stage holds
     # the day's authority, as ``stages.select_current_stage`` defines it.
     # Rows before it include 141 P0 seats production could not have taken.
-    "production_judge": "solver_chain_gates_exchange_lot_centre_v6",
+    # v7 (2026-09-04): a taker fills only at the top of the offer and is
+    # cut to what is there; a pre-listing checkpoint is not paired with a
+    # book a newer checkpoint owns; charter 73 authorizes the increment.
+    "production_judge": "solver_chain_gates_exchange_lot_centre_v7",
     "stage_authority": "highest_committed_stage_v1",
+    "taker_fill": "top_of_offer_cut_to_depth_v1",
+    "execution_authorization": "whole_basket_edge_v1",
     **(
         {"lot_lift_budget": LOT_LIFT_BUDGET}
         if LOT_LIFT_BUDGET != "untilted" else {}
@@ -2151,6 +2162,10 @@ REFUSAL_REASONS = (
     # nothing on the live path calls it; the live ``budget_ok`` reads the
     # 2% capital the solver sized inside.  Corrected 2026-09-04.)
     "station_loss_floor_exceeded",
+    # Charter 73: production's bundle re-score refused the increment on
+    # its edge over the belief the seat was judged on.  A ticket is
+    # exempt (charter 74).
+    "execution_edge_not_authorized",
     # A later stage whose station-day never opened.  Only P0 opens a
     # position; a top-up with nothing to top up is not a position of its own.
     # The declining-probability clamp's two refusals (arm-gated; the "off"
@@ -3051,6 +3066,28 @@ def _stage_entry_candidates(
         if priced is None:
             continue
         quotes, observed_at = priced
+        if str(observed_at) > str(decided) and conn.execute(
+            # Charter 48 lets a pre-listing decision use the first book
+            # that appears after it.  But at that book's clock production
+            # compiles the *newest* checkpoint at or before it, of the
+            # highest stage present -- so a checkpoint that a newer one
+            # has already replaced by the time the book appears is not
+            # one production ever paired with that book.  Measured
+            # 2026-09-04: 28 of 251 P0 seats were such pairings.
+            "SELECT 1 FROM basket_probability_bridge_history"
+            " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+            "   AND stage IN (%s)"
+            "   AND decision_at_utc>? AND decision_at_utc<=?"
+            " LIMIT 1" % ",".join(
+                "?" for _ in LEDGER_STAGES[LEDGER_STAGES.index(str(stage)):]
+            ),
+            (
+                station_id, event_date,
+                *LEDGER_STAGES[LEDGER_STAGES.index(str(stage)):],
+                str(decided), str(observed_at),
+            ),
+        ).fetchone():
+            continue
         buckets = conn.execute(
             "SELECT bucket, ordinal, lower_c, upper_c, probability"
             " FROM basket_probability_bridge_bucket_probability"
@@ -3934,6 +3971,15 @@ def _production_judge(
         # the two checks the walk applies where production applies them.
         "total_budget_usdc": float(basket_policy.total_budget_usdc),
         "lot_room_usdc": float(lot_room),
+        # Charter 73: the belief the seat was judged on and the policy's
+        # authorization epsilon, for the walk's execution-layer check.
+        "edge_probabilities": dict(
+            (selection.get("seated") or {}).get("window_probabilities")
+            or {}
+        ),
+        "edge_epsilon": float(
+            delta_policy.execution_weights.epsilon_score
+        ),
     }
 
 
@@ -3964,12 +4010,42 @@ def _production_sized_legs(
             shares.append(max(want_total, have))
             cash.append(0.0)
             continue
-        got, paid = _walk_ask_shares(leg, delta)
-        if got <= 0.0 or got + 1e-9 < delta:
+        # A taker is a FOK at the top of the offer: production's candidate
+        # carries ``limit_price = row.ask_price`` and sizes the leg against
+        # ``_executable_depth_cash``, which counts only the offer at or
+        # below that limit.  A thin top level cuts the leg to what is
+        # there (``sizing_clamped_below_authorized_clip``, then the bundle
+        # is re-scored at the cut sizes); an empty one refuses it
+        # (``executable_depth_empty``).  This walker used to descend the
+        # book for the full increment instead, paying deeper levels for
+        # shares production would not have bought: 120 of 861 legs on the
+        # 2026-09-04 book, 29.16 USDC above the top of book, one leg 137%
+        # over it.
+        got, paid = _walk_ask_shares_at_limit(leg, delta)
+        if got <= 0.0:
             return None
         shares.append(have + got)
         cash.append(paid * (1.0 + fee_rate))
     return shares, sum(cash), cash
+
+
+def _walk_ask_shares_at_limit(
+    levels: Sequence[Mapping[str, float]], want: float
+) -> tuple[float, float]:
+    """Shares bought and cash spent lifting only the top of the offer.
+
+    The limit is the best ask itself, as production's FOK carries it, so
+    only levels at that price fill; the rest of the book is what the
+    order would have walked into and does not.
+    """
+
+    if not levels:
+        return 0.0, 0.0
+    limit = float(levels[0]["price"])
+    return _walk_ask_shares(
+        [level for level in levels if float(level["price"]) <= limit + 1e-9],
+        want,
+    )
 
 
 # The strategies the comparison sweep can put in production's place.  Each
@@ -8178,8 +8254,14 @@ def backfill(
                             ):
                                 if str(_b) not in _decision["raised_buckets"]:
                                     continue
-                                _got, _paid = _walk_ask_shares(
-                                    _leg, _seat_lots[str(_b)]
+                                _got, _paid = (
+                                    _walk_ask_shares_at_limit(
+                                        _leg, _seat_lots[str(_b)]
+                                    )
+                                    if production_verdict is not None
+                                    else _walk_ask_shares(
+                                        _leg, _seat_lots[str(_b)]
+                                    )
                                 )
                                 if _got + 1e-9 < _seat_lots[str(_b)]:
                                     _walked = False
@@ -8291,6 +8373,41 @@ def backfill(
                                 cycles, payload["decision_at_utc"],
                             ))
                             continue
+                        # Charter 73: production's bundle re-score
+                        # authorizes on the increment's edge -- its
+                        # expected payout on the belief the seat was
+                        # judged on, less its cash -- above the policy's
+                        # epsilon.  A ticket is authorized on structure
+                        # alone (charter 74).  The kernel's own number.
+                        if not production_verdict.get("ticket"):
+                            _held_cost_after = dict(held_cost)
+                            for _b, _c in zip(seat["buckets"], leg_cash):
+                                _held_cost_after[str(_b)] = (
+                                    _held_cost_after.get(str(_b), 0.0)
+                                    + float(_c)
+                                )
+                            _edge = whole_basket_edge_delta_v1(
+                                edge_probabilities=production_verdict[
+                                    "edge_probabilities"
+                                ],
+                                current_shares=held,
+                                current_cost=held_cost,
+                                resulting_shares=_held_after,
+                                resulting_cost=_held_cost_after,
+                            )
+                            _epsilon = float(
+                                production_verdict["edge_epsilon"]
+                            )
+                            if not _edge > _epsilon + 1e-9:
+                                refusal = _deeper_refusal(refusal, (
+                                    "execution_edge_not_authorized",
+                                    "宪章 73：增量在入座信念上的边际 %.4f"
+                                    " ≤ ε %.4f（本笔 %.2f）" % (
+                                        _edge, _epsilon, float(stake),
+                                    ),
+                                    cycles, payload["decision_at_utc"],
+                                ))
+                                continue
                     intended_legs = {
                         str(bucket): float(quantity)
                         for bucket, quantity in zip(

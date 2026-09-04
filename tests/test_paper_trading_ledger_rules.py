@@ -2343,5 +2343,9 @@ def test_charter_70_the_book_lifts_sub_lot_rungs_with_productions_rule() -> None
     assert "补足一手" in L.SELECTION_RULE_LABEL
     # The raise walks the real ladder for the lot rather than pricing it at
     # the top ask, and rides on the seat's consolidation record.
-    assert "_walk_ask_shares(\n                                    _leg, _seat_lots[str(_b)]" in source
+    # Under the production judge the lot is walked the way production's
+    # FOK fills -- at the top of the offer only (2026-09-04); the ledger
+    # judge's research arm keeps the full walk.
+    assert "_walk_ask_shares_at_limit(\n                                        _leg, _seat_lots[str(_b)]" in source
+    assert "else _walk_ask_shares(\n                                        _leg, _seat_lots[str(_b)]" in source
     assert '"exchange_lot_top_up": lot_top_up_record' in source
