@@ -549,12 +549,6 @@ FEE_RATE = 0.0  # all-in asks in the snapshot already carry the fee
 # Below this all-in cost a basket is almost certainly a dust offer on an
 # empty side rather than a price anyone would fill.
 DUST_COST_FLOOR = 0.01
-# How many distinct books one stage may be offered before the pass gives up on
-# it for this sweep.  Production re-decides on every model update and opens the
-# moment its objective says yes, so the ledger walks the same sequence; the cap
-# only bounds the read for a scope that will refuse all day, and the next sweep
-# starts the walk again from the top.
-MAX_ENTRY_CYCLES_PER_STAGE = 240
 # How far down the funnel each refusal got.  The walk keeps the DEEPEST answer
 # it reached, not the last one, because the last cycle is almost always the
 # converged end-of-day book and says nothing about the day.
@@ -1832,9 +1826,11 @@ SELECTION_RULE_SHA256 = content_sha256({
     # book a newer checkpoint owns; charter 73 authorizes the increment.
     # v8 (2026-09-04): a checkpoint is priced on the book production
     # compiled it on -- the first at or after it -- never on one before it.
-    "production_judge": "solver_chain_gates_exchange_lot_centre_v8",
+    # v9 (2026-09-04): every book while the checkpoint is current is a
+    # cycle, as production runs them; charter 77 picks the decisions.
+    "production_judge": "solver_chain_gates_exchange_lot_centre_v9",
     "stage_authority": "highest_committed_stage_v1",
-    "checkpoint_book": "first_committed_book_at_or_after_checkpoint_v1",
+    "checkpoint_books": "every_committed_book_while_current_v1",
     "taker_fill": "top_of_offer_cut_to_depth_v1",
     "execution_authorization": "whole_basket_edge_v1",
     **(
@@ -2988,7 +2984,7 @@ def _stage_authority_horizon(
     return str(row[0]) if row and row[0] else None
 
 
-def _book_for_checkpoint(
+def _books_for_checkpoint(
     conn: sqlite3.Connection,
     *,
     station_id: str,
@@ -2996,8 +2992,8 @@ def _book_for_checkpoint(
     stage: str,
     decision_at_utc: str,
     envelope: Any,
-) -> tuple[dict[str, dict[str, Any]], str] | None:
-    """The book production paired this checkpoint with, or None.
+) -> list[tuple[dict[str, dict[str, Any]], str]]:
+    """Every book production compiled this checkpoint on, oldest first.
 
     A checkpoint lands at its decision clock and production compiles it at
     its *next* cycle, on the quote that cycle holds -- fresh, and later
@@ -3012,10 +3008,14 @@ def _book_for_checkpoint(
     -- a quote production had paired with the previous checkpoint's
     cycles, up to thirty minutes older than the belief it was priced
     against -- every P1 seat on the 2026-09-04 book and 127 of 229 P0
-    seats.  Now: the first committed book at or after the checkpoint,
-    before the next same-or-higher checkpoint, while the envelope is
-    still servable at that book's clock.  Nothing before the checkpoint
-    is ever used.
+    seats.  Now: every committed book at or after the checkpoint, before
+    the next same-or-higher checkpoint, while the envelope is still
+    servable at that book's clock -- production judges each of those
+    cycles, and charter 77 in the judge decides which is a decision
+    moment.  Nothing before the checkpoint is ever used.  Pairing only the
+    first such book (the 2026-09-04 v8 book) under-sampled P1 by a third
+    against production, and the judgments it made were not the ones
+    production's later cycles acted on.
     """
 
     higher_or_same = LEDGER_STAGES[LEDGER_STAGES.index(str(stage)):]
@@ -3026,24 +3026,26 @@ def _book_for_checkpoint(
         % ",".join("?" for _ in higher_or_same),
         (station_id, event_date, *higher_or_same, decision_at_utc),
     ).fetchone()[0]
-    row = conn.execute(
+    books: list[tuple[dict[str, dict[str, Any]], str]] = []
+    for observed_at, buckets_json in conn.execute(
         "SELECT observed_at, buckets_json FROM basket_official_ws_snapshot"
         " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
         "   AND observed_at >= ?"
         "   AND (?4 IS NULL OR observed_at < ?4)"
-        " ORDER BY observed_at ASC LIMIT 1",
+        " ORDER BY observed_at ASC",
         (station_id, event_date, decision_at_utc, next_at),
-    ).fetchone()
-    if row is None:
-        return None
-    observed_at = str(row[0])
-    try:
-        if not envelope.is_servable(observed_at):
-            return None
-    except (AttributeError, ValueError):
-        return None
-    quotes = _decode_quotes(row[1])
-    return (quotes, observed_at) if quotes else None
+    ):
+        observed_at = str(observed_at)
+        try:
+            if not envelope.is_servable(observed_at):
+                # Servability only lapses; once it has, no later book is.
+                break
+        except (AttributeError, ValueError):
+            break
+        quotes = _decode_quotes(buckets_json)
+        if quotes:
+            books.append((quotes, observed_at))
+    return books
 
 
 def _stage_entry_candidates(
@@ -3113,12 +3115,12 @@ def _stage_entry_candidates(
         # The seat is chosen off this ladder, so it has to be the ladder
         # production would have shown -- ceiling included on the P1 stage.
         ceiling_p = None
-        # The book production paired this checkpoint with: the first one at
+        # The books production compiled this checkpoint on: every one at
         # or after it, before a newer same-or-higher checkpoint takes over,
-        # while the envelope is still servable.  See _book_for_checkpoint.
+        # while the envelope is still servable.  See _books_for_checkpoint.
         # (This subsumes the charter-48 pre-listing rule and the 2026-09-04
         # "a newer checkpoint owns the book" rule alike.)
-        priced = _book_for_checkpoint(
+        books = _books_for_checkpoint(
             conn,
             station_id=station_id,
             event_date=event_date,
@@ -3126,9 +3128,8 @@ def _stage_entry_candidates(
             decision_at_utc=str(decided),
             envelope=ProbabilityEnvelope.from_mapping(dict(envelope_json)),
         )
-        if priced is None:
+        if not books:
             continue
-        quotes, observed_at = priced
         buckets = conn.execute(
             "SELECT bucket, ordinal, lower_c, upper_c, probability"
             " FROM basket_probability_bridge_bucket_probability"
@@ -3170,77 +3171,76 @@ def _stage_entry_candidates(
                  cw_p.get(str(row[0]), row[4]))
                 for row in buckets
             ]
-        signature = (
-            observed_at,
-            tuple(
-                (str(row[0]), round(float(row[4]), 6)) for row in buckets
-            ),
-        )
-        if signature in seen:
-            continue
-        seen.add(signature)
-        lineage = envelope_json.get("lineage") or {}
-        yield {
-            "decision_at_utc": str(decided),
-            "quotes": quotes,
-            "observed_at": observed_at,
-            "buckets": buckets,
-            "center_bucket": str(lineage.get("model_center_bucket") or ""),
-            # Charter 75: the production judge rebuilds production's own
-            # snapshot from this body, so the seed is production's.
-            "envelope_payload": envelope_json,
-            "center_c": lineage.get("model_center_c"),
-            "probability_identity": served_identity,
-            # The day's reported high the P1 envelope stood on, for the
-            # production-judge arm: production's P1 snapshot contract
-            # requires it, and its risk families are read off it.
-            "running_high_c": lineage.get("metar_trajectory_running_high_c"),
-            # The probability leg of the economic identity (user ruling,
-            # 2026-09-02): envelope content hash + posterior hash + the
-            # exclusion mask.  Queried all along -- the SELECT above reads
-            # both shas -- and simply never carried out of here, which is
-            # why a seat could not be told apart by what it believed.
-            "envelope_content_sha256": str(sha or ""),
-            "checkpoint_id": str(checkpoint or ""),
-            "posterior_sha256": str(
-                envelope_json.get("posterior_sha256") or ""
-            ),
-            "exclusion_mask": json.dumps(
-                {
-                    "excluded_systems": lineage.get(
-                        "excluded_observed_system_ids_json"
-                    ),
-                    "reason": lineage.get("excluded_observed_system_reason"),
-                    "hard_excluded_buckets": envelope_json.get(
-                        "hard_excluded_buckets"
-                    ),
-                },
-                sort_keys=True, ensure_ascii=False,
-            ),
-            # The policy artefacts the compile stood on (identity leg 4).
-            "policy_artifacts": json.dumps(
-                {
-                    "posterior_version": envelope_json.get(
-                        "posterior_version"
-                    ),
-                    "cross_activation": lineage.get(
-                        "native_cross_activation_sha256"
-                    ),
-                    "cross_artifact": lineage.get(
-                        "native_cross_ensemble_artifact_sha256"
-                    ),
-                    "system_activations": lineage.get(
-                        "system_activation_shas_json"
-                    ),
-                    "system_artifacts": lineage.get(
-                        "system_artifact_shas_json"
-                    ),
-                },
-                sort_keys=True, ensure_ascii=False,
-            ),
-        }
-        if len(seen) >= MAX_ENTRY_CYCLES_PER_STAGE:
-            return
+        for quotes, observed_at in books:
+            signature = (
+                observed_at,
+                tuple(
+                    (str(row[0]), round(float(row[4]), 6)) for row in buckets
+                ),
+            )
+            if signature in seen:
+                continue
+            seen.add(signature)
+            lineage = envelope_json.get("lineage") or {}
+            yield {
+                "decision_at_utc": str(decided),
+                "quotes": quotes,
+                "observed_at": observed_at,
+                "buckets": buckets,
+                "center_bucket": str(lineage.get("model_center_bucket") or ""),
+                # Charter 75: the production judge rebuilds production's own
+                # snapshot from this body, so the seed is production's.
+                "envelope_payload": envelope_json,
+                "center_c": lineage.get("model_center_c"),
+                "probability_identity": served_identity,
+                # The day's reported high the P1 envelope stood on, for the
+                # production-judge arm: production's P1 snapshot contract
+                # requires it, and its risk families are read off it.
+                "running_high_c": lineage.get("metar_trajectory_running_high_c"),
+                # The probability leg of the economic identity (user ruling,
+                # 2026-09-02): envelope content hash + posterior hash + the
+                # exclusion mask.  Queried all along -- the SELECT above reads
+                # both shas -- and simply never carried out of here, which is
+                # why a seat could not be told apart by what it believed.
+                "envelope_content_sha256": str(sha or ""),
+                "checkpoint_id": str(checkpoint or ""),
+                "posterior_sha256": str(
+                    envelope_json.get("posterior_sha256") or ""
+                ),
+                "exclusion_mask": json.dumps(
+                    {
+                        "excluded_systems": lineage.get(
+                            "excluded_observed_system_ids_json"
+                        ),
+                        "reason": lineage.get("excluded_observed_system_reason"),
+                        "hard_excluded_buckets": envelope_json.get(
+                            "hard_excluded_buckets"
+                        ),
+                    },
+                    sort_keys=True, ensure_ascii=False,
+                ),
+                # The policy artefacts the compile stood on (identity leg 4).
+                "policy_artifacts": json.dumps(
+                    {
+                        "posterior_version": envelope_json.get(
+                            "posterior_version"
+                        ),
+                        "cross_activation": lineage.get(
+                            "native_cross_activation_sha256"
+                        ),
+                        "cross_artifact": lineage.get(
+                            "native_cross_ensemble_artifact_sha256"
+                        ),
+                        "system_activations": lineage.get(
+                            "system_activation_shas_json"
+                        ),
+                        "system_artifacts": lineage.get(
+                            "system_artifact_shas_json"
+                        ),
+                    },
+                    sort_keys=True, ensure_ascii=False,
+                ),
+            }
 
 
 def _decode_quotes(payload: Any) -> dict[str, dict[str, Any]]:

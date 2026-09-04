@@ -334,7 +334,6 @@ LEDGER_ONLY = {
     "DUST_COST_FLOOR": "excludes dust fills from the paper equity curve",
     "LEDGER_EVENT_DATE_FLOOR": "which history this book admits",
     "LEDGER_STAGES": "replay bookkeeping",
-    "MAX_ENTRY_CYCLES_PER_STAGE": "replay walk bound",
     "SELECTION_RULE_LABEL": "fingerprint of this book's rule set",
     "SELECTION_RULE_SHA256": "same",
     "REFUSAL_DEPTH": "how the page reports a refusal",
@@ -806,7 +805,7 @@ def test_the_exchange_lot_and_the_station_dial_bind_where_production_binds() -> 
     # carries it: rows sized as if there were no lot are not comparable.
     assert L.EXCHANGE_MINIMUM_LOT_SHARES_FALLBACK == 5.0
     assert (
-        '"production_judge": "solver_chain_gates_exchange_lot_centre_v8",'
+        '"production_judge": "solver_chain_gates_exchange_lot_centre_v9",'
         in source
     )
     assert "补足一手" in L.SELECTION_RULE_LABEL
@@ -997,10 +996,13 @@ def test_a_checkpoint_is_priced_on_the_book_production_compiled_it_on() -> None:
 
     import inspect
 
-    pairing = inspect.getsource(L._book_for_checkpoint)
+    pairing = inspect.getsource(L._books_for_checkpoint)
     assert "AND observed_at >= ?" in pairing
     assert "AND (?4 IS NULL OR observed_at < ?4)" in pairing
-    assert "ORDER BY observed_at ASC LIMIT 1" in pairing
+    # Every book while the checkpoint is current, not the first alone:
+    # production judges each cycle and charter 77 picks the decisions.
+    assert "LIMIT 1" not in pairing
+    assert not hasattr(L, "MAX_ENTRY_CYCLES_PER_STAGE")
     # Bounded by the next same-or-higher checkpoint, which takes the book.
     assert "LEDGER_STAGES[LEDGER_STAGES.index(str(stage)):]" in pairing
     # And by the envelope's own servability, production's rule.
@@ -1009,7 +1011,8 @@ def test_a_checkpoint_is_priced_on_the_book_production_compiled_it_on() -> None:
 
     assert callable(getattr(ProbabilityEnvelope, "is_servable"))
     candidates = inspect.getsource(L._stage_entry_candidates)
-    assert "_book_for_checkpoint(" in candidates
+    assert "_books_for_checkpoint(" in candidates
+    assert "for quotes, observed_at in books:" in candidates
     assert not hasattr(L, "_quotes_at")
     assert not hasattr(L, "MAX_QUOTE_STALENESS_MINUTES")
     source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
@@ -1018,7 +1021,7 @@ def test_a_checkpoint_is_priced_on_the_book_production_compiled_it_on() -> None:
     # The P1 window is judged on the book's clock, as production judges it.
     assert 'str(payload["observed_at"])' in source
     assert "On the book's clock, which is the compile's clock" in source
-    assert '"checkpoint_book": "first_committed_book_at_or_after_checkpoint_v1",' in source
+    assert '"checkpoint_books": "every_committed_book_while_current_v1",' in source
 
 
 def test_charter_73_authorizes_the_increment_on_the_seated_belief() -> None:
