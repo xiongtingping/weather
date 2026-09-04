@@ -546,15 +546,6 @@ MINIMUM_SUPPORT_BUCKETS = int(
     os.environ.get("PAPER_LEDGER_MIN_SUPPORT_BUCKETS", "3") or 3
 )
 FEE_RATE = 0.0  # all-in asks in the snapshot already carry the fee
-# A fill must be priced against a book that existed around the decision.
-# Without this the ledger reaches back to the hours just after listing, when
-# a market is quoted at a cent with no size behind it, and manufactures an
-# edge no live book ever offered: measured on the first run, quotes averaged
-# 6.1 hours stale (max 17.8) and produced a 0.158 average cost against a
-# 0.539 claimed win -- a 3.4x mispricing that does not exist.
-MAX_QUOTE_STALENESS_MINUTES = float(
-    os.environ.get("PAPER_LEDGER_MAX_QUOTE_STALENESS_MINUTES", "") or 30.0
-)
 # Below this all-in cost a basket is almost certainly a dust offer on an
 # empty side rather than a price anyone would fill.
 DUST_COST_FLOOR = 0.01
@@ -1839,8 +1830,11 @@ SELECTION_RULE_SHA256 = content_sha256({
     # v7 (2026-09-04): a taker fills only at the top of the offer and is
     # cut to what is there; a pre-listing checkpoint is not paired with a
     # book a newer checkpoint owns; charter 73 authorizes the increment.
-    "production_judge": "solver_chain_gates_exchange_lot_centre_v7",
+    # v8 (2026-09-04): a checkpoint is priced on the book production
+    # compiled it on -- the first at or after it -- never on one before it.
+    "production_judge": "solver_chain_gates_exchange_lot_centre_v8",
     "stage_authority": "highest_committed_stage_v1",
+    "checkpoint_book": "first_committed_book_at_or_after_checkpoint_v1",
     "taker_fill": "top_of_offer_cut_to_depth_v1",
     "execution_authorization": "whole_basket_edge_v1",
     **(
@@ -2043,7 +2037,6 @@ SELECTION_RULE_SHA256 = content_sha256({
     "minimum_leg_all_in_ask": MINIMUM_LEG_ALL_IN_ASK,
     "initial_capital_usdc": INITIAL_CAPITAL_USDC,
     "kelly_fraction": KELLY_FRACTION,
-    "max_quote_staleness_minutes": MAX_QUOTE_STALENESS_MINUTES,
     "max_stake_fraction_per_scope": MAX_STAKE_FRACTION_PER_SCOPE,
     # Which share of that cap each stage may have committed by its
     # end.  It changes what every seat after the first may be.
@@ -2995,6 +2988,64 @@ def _stage_authority_horizon(
     return str(row[0]) if row and row[0] else None
 
 
+def _book_for_checkpoint(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    stage: str,
+    decision_at_utc: str,
+    envelope: Any,
+) -> tuple[dict[str, dict[str, Any]], str] | None:
+    """The book production paired this checkpoint with, or None.
+
+    A checkpoint lands at its decision clock and production compiles it at
+    its *next* cycle, on the quote that cycle holds -- fresh, and later
+    than the checkpoint by the cycle's cadence (measured 2026-09-04: p50
+    six to seven minutes, p90 25-38).  It keeps compiling it, cycle after
+    cycle, until a newer checkpoint of the same or a higher stage lands
+    and takes the book from it, or until the envelope stops being
+    servable (``ProbabilityEnvelope.is_servable``: inside ``fresh_until``,
+    or for P1 within the stale allowance past it).
+
+    This lane paired a checkpoint with the *last* book before it instead
+    -- a quote production had paired with the previous checkpoint's
+    cycles, up to thirty minutes older than the belief it was priced
+    against -- every P1 seat on the 2026-09-04 book and 127 of 229 P0
+    seats.  Now: the first committed book at or after the checkpoint,
+    before the next same-or-higher checkpoint, while the envelope is
+    still servable at that book's clock.  Nothing before the checkpoint
+    is ever used.
+    """
+
+    higher_or_same = LEDGER_STAGES[LEDGER_STAGES.index(str(stage)):]
+    next_at = conn.execute(
+        "SELECT MIN(decision_at_utc) FROM basket_probability_bridge_history"
+        " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+        "   AND stage IN (%s) AND decision_at_utc>?"
+        % ",".join("?" for _ in higher_or_same),
+        (station_id, event_date, *higher_or_same, decision_at_utc),
+    ).fetchone()[0]
+    row = conn.execute(
+        "SELECT observed_at, buckets_json FROM basket_official_ws_snapshot"
+        " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+        "   AND observed_at >= ?"
+        "   AND (?4 IS NULL OR observed_at < ?4)"
+        " ORDER BY observed_at ASC LIMIT 1",
+        (station_id, event_date, decision_at_utc, next_at),
+    ).fetchone()
+    if row is None:
+        return None
+    observed_at = str(row[0])
+    try:
+        if not envelope.is_servable(observed_at):
+            return None
+    except (AttributeError, ValueError):
+        return None
+    quotes = _decode_quotes(row[1])
+    return (quotes, observed_at) if quotes else None
+
+
 def _stage_entry_candidates(
     conn: sqlite3.Connection,
     station_id: str,
@@ -3062,32 +3113,22 @@ def _stage_entry_candidates(
         # The seat is chosen off this ladder, so it has to be the ladder
         # production would have shown -- ceiling included on the P1 stage.
         ceiling_p = None
-        priced = _quotes_at(conn, station_id, event_date, str(decided))
+        # The book production paired this checkpoint with: the first one at
+        # or after it, before a newer same-or-higher checkpoint takes over,
+        # while the envelope is still servable.  See _book_for_checkpoint.
+        # (This subsumes the charter-48 pre-listing rule and the 2026-09-04
+        # "a newer checkpoint owns the book" rule alike.)
+        priced = _book_for_checkpoint(
+            conn,
+            station_id=station_id,
+            event_date=event_date,
+            stage=stage,
+            decision_at_utc=str(decided),
+            envelope=ProbabilityEnvelope.from_mapping(dict(envelope_json)),
+        )
         if priced is None:
             continue
         quotes, observed_at = priced
-        if str(observed_at) > str(decided) and conn.execute(
-            # Charter 48 lets a pre-listing decision use the first book
-            # that appears after it.  But at that book's clock production
-            # compiles the *newest* checkpoint at or before it, of the
-            # highest stage present -- so a checkpoint that a newer one
-            # has already replaced by the time the book appears is not
-            # one production ever paired with that book.  Measured
-            # 2026-09-04: 28 of 251 P0 seats were such pairings.
-            "SELECT 1 FROM basket_probability_bridge_history"
-            " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-            "   AND stage IN (%s)"
-            "   AND decision_at_utc>? AND decision_at_utc<=?"
-            " LIMIT 1" % ",".join(
-                "?" for _ in LEDGER_STAGES[LEDGER_STAGES.index(str(stage)):]
-            ),
-            (
-                station_id, event_date,
-                *LEDGER_STAGES[LEDGER_STAGES.index(str(stage)):],
-                str(decided), str(observed_at),
-            ),
-        ).fetchone():
-            continue
         buckets = conn.execute(
             "SELECT bucket, ordinal, lower_c, upper_c, probability"
             " FROM basket_probability_bridge_bucket_probability"
@@ -3215,68 +3256,6 @@ def _decode_quotes(payload: Any) -> dict[str, dict[str, Any]]:
         if bucket:
             quotes[bucket] = item
     return quotes
-
-
-def _quotes_at(
-    conn: sqlite3.Connection,
-    station_id: str,
-    event_date: str,
-    decision_at_utc: str,
-) -> tuple[dict[str, dict[str, Any]], str] | None:
-    """The last market snapshot at or before the decision.
-
-    Pricing a decision on a book that did not exist yet is the one way a
-    paper ledger flatters itself, so the cutoff is strict.
-
-    With one exception, and it is the opening stage's whole point.  P0
-    decides before the market lists -- that is what an opening stage is --
-    and charter 48 seats it at listing.  Requiring a book that predates the
-    decision made those scopes permanently unseatable: of 227 P0 refusals
-    for "no book at decision", 153 had a book, just minutes later.  EPWA
-    2026-07-31 decided at 22:24 against a market that opened at 22:26 and
-    was recorded as having no market at all.
-
-    So a decision with nothing behind it may use the *first* book that
-    appears after it.  Not any later book -- the first, and only when
-    nothing earlier exists.  Waiting for a better price is the cheat this
-    guard exists to stop; waiting for the market to open is not, and the
-    entry walk still has to find a cycle whose objective actually seats.
-    """
-
-    row = conn.execute(
-        "SELECT observed_at, buckets_json FROM basket_official_ws_snapshot"
-        " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-        "   AND observed_at <= ?"
-        " ORDER BY observed_at DESC LIMIT 1",
-        (station_id, event_date, decision_at_utc),
-    ).fetchone()
-    if row is None:
-        row = conn.execute(
-            "SELECT observed_at, buckets_json"
-            " FROM basket_official_ws_snapshot"
-            " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-            "   AND observed_at > ?"
-            " ORDER BY observed_at ASC LIMIT 1",
-            (station_id, event_date, decision_at_utc),
-        ).fetchone()
-        if row is None:
-            return None
-        quotes = _decode_quotes(row[1])
-        return (quotes, str(row[0])) if quotes else None
-    try:
-        quoted = datetime.fromisoformat(
-            str(row[0]).replace("Z", "+00:00")
-        )
-        decided = datetime.fromisoformat(
-            str(decision_at_utc).replace("Z", "+00:00")
-        )
-    except ValueError:
-        return None
-    age_minutes = (decided - quoted).total_seconds() / 60.0
-    if age_minutes > MAX_QUOTE_STALENESS_MINUTES:
-        return None
-    quotes = _decode_quotes(row[1])
-    return (quotes, str(row[0])) if quotes else None
 
 
 def _entry_support_core(
@@ -6851,9 +6830,11 @@ def backfill(
                     # not judged at all -- the walk keeps going, so a stage
                     # with an afternoon cycle still seats there.
                     if stage == "P1" and P1_ENTRY_LOCAL_HOUR > 0:
+                        # On the book's clock, which is the compile's clock
+                        # (production reads ``snapshot.observed_at``).
                         local_hour = (
                             datetime.fromisoformat(
-                                str(payload["decision_at_utc"])
+                                str(payload["observed_at"])
                                 .replace("Z", "+00:00")
                             )
                             .astimezone(ZoneInfo(

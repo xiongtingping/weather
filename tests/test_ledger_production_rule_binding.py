@@ -335,7 +335,6 @@ LEDGER_ONLY = {
     "LEDGER_EVENT_DATE_FLOOR": "which history this book admits",
     "LEDGER_STAGES": "replay bookkeeping",
     "MAX_ENTRY_CYCLES_PER_STAGE": "replay walk bound",
-    "MAX_QUOTE_STALENESS_MINUTES": "replay freshness bound",
     "SELECTION_RULE_LABEL": "fingerprint of this book's rule set",
     "SELECTION_RULE_SHA256": "same",
     "REFUSAL_DEPTH": "how the page reports a refusal",
@@ -807,7 +806,7 @@ def test_the_exchange_lot_and_the_station_dial_bind_where_production_binds() -> 
     # carries it: rows sized as if there were no lot are not comparable.
     assert L.EXCHANGE_MINIMUM_LOT_SHARES_FALLBACK == 5.0
     assert (
-        '"production_judge": "solver_chain_gates_exchange_lot_centre_v7",'
+        '"production_judge": "solver_chain_gates_exchange_lot_centre_v8",'
         in source
     )
     assert "补足一手" in L.SELECTION_RULE_LABEL
@@ -982,24 +981,44 @@ def test_a_taker_fills_at_the_top_of_the_offer_and_is_cut_to_depth() -> None:
     assert L._walk_ask_shares_at_limit([], 10.0) == (0.0, 0.0)
 
 
-def test_a_pre_listing_checkpoint_is_not_paired_with_a_book_a_newer_one_owns() -> None:
-    """Charter 48 opens at listing on the newest checkpoint, not every one.
+def test_a_checkpoint_is_priced_on_the_book_production_compiled_it_on() -> None:
+    """The first book at or after the checkpoint, never one before it.
 
-    A decision before the market lists may use the first book that appears
-    after it; but at that book's clock production compiles the newest
-    checkpoint at or before it, of the highest stage present.  A checkpoint
-    replaced before the book appeared is never paired with that book, and
-    this lane paired 28 of 251 P0 seats that way on the 2026-09-04 book.
+    A checkpoint lands at its decision clock and production compiles it at
+    its next cycle on that cycle's quote (p50 six to seven minutes later),
+    and keeps compiling it until a newer same-or-higher checkpoint takes
+    the book or the envelope stops being servable.  This lane priced a
+    checkpoint on the last book *before* it -- a quote production had
+    paired with the previous checkpoint -- on every P1 seat and 127 of 229
+    P0 seats of the 2026-09-04 book.  The thirty-minute staleness bound
+    that governed that choice is gone with it: nothing before the
+    checkpoint is used, so there is nothing to bound.
     """
 
     import inspect
 
-    source = inspect.getsource(L._stage_entry_candidates)
-    assert 'if str(observed_at) > str(decided) and conn.execute(' in source
-    assert "AND decision_at_utc>? AND decision_at_utc<=?" in source
-    # Same-or-higher stages, because a higher stage arriving before the
-    # book takes the day's authority (see _stage_authority_horizon).
-    assert "LEDGER_STAGES[LEDGER_STAGES.index(str(stage)):]" in source
+    pairing = inspect.getsource(L._book_for_checkpoint)
+    assert "AND observed_at >= ?" in pairing
+    assert "AND (?4 IS NULL OR observed_at < ?4)" in pairing
+    assert "ORDER BY observed_at ASC LIMIT 1" in pairing
+    # Bounded by the next same-or-higher checkpoint, which takes the book.
+    assert "LEDGER_STAGES[LEDGER_STAGES.index(str(stage)):]" in pairing
+    # And by the envelope's own servability, production's rule.
+    assert "envelope.is_servable(observed_at)" in pairing
+    from bayes_basket_target.contracts import ProbabilityEnvelope
+
+    assert callable(getattr(ProbabilityEnvelope, "is_servable"))
+    candidates = inspect.getsource(L._stage_entry_candidates)
+    assert "_book_for_checkpoint(" in candidates
+    assert not hasattr(L, "_quotes_at")
+    assert not hasattr(L, "MAX_QUOTE_STALENESS_MINUTES")
+    source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    # The P1 window is judged on the book's clock, as production judges it.
+    assert 'str(payload["observed_at"])' in source
+    assert "On the book's clock, which is the compile's clock" in source
+    assert '"checkpoint_book": "first_committed_book_at_or_after_checkpoint_v1",' in source
 
 
 def test_charter_73_authorizes_the_increment_on_the_seated_belief() -> None:
