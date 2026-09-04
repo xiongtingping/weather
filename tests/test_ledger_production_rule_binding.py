@@ -739,36 +739,61 @@ def test_the_exchange_lot_and_the_station_dial_bind_where_production_binds() -> 
     touches, so a rung the tilted capital could not lift is lifted there
     anyway when the untilted allowance can pay.
 
-    And the operator's station dial is an execution gate, not a sizing
-    bound.  ``_compile_target_plan`` hands the solver the scope's share of
-    the book; ``station_cap_v1.json`` binds per leg at ``budget_ok``.
-    Folded into the solver's capital here, it sized P1 five USDC short of
-    production on a 1000 book.
+    And the operator's station dial is not a sizing bound.
+    ``_compile_target_plan`` hands the solver the scope's share of the
+    book; folded into the solver's capital here, the dial sized P1 five
+    USDC short of production on a 1000 book.  Where it *does* bind in
+    production is the kernel's ``profit_floor_ok``: the worst settled
+    outcome inside the seated support may not lose more than the dial.
+    Not ``execution_gates.evaluate_execution_gate``'s per-leg ``budget_ok``
+    -- that function has no caller on the live path, and the mirror this
+    book carried for a few hours on 2026-09-04 copied it.
     """
 
     import inspect
+    import re
 
     from bayes_basket_target import cash_phase as CP
-    from bayes_basket_target.basket_kernel import execution_gates as G
+    from bayes_basket_target.basket_kernel import delta_v2 as K2
 
     source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
         encoding="utf-8"
     )
-    # The two reasons production spells, spelled here by the same names.
+    # The reason production spells, spelled here by the same name.
     assert "exchange_minimum_lot_unaffordable" in inspect.getsource(
         CP.OrderSizingDecision.compute
     )
-    assert "budget_ok" in inspect.getsource(G.evaluate_execution_gate)
     assert "exchange_minimum_lot_unaffordable" in L.REFUSAL_REASONS
-    assert "station_budget_exceeded" in L.REFUSAL_REASONS
+    # The dial's live gate is the kernel's profit floor on the worst
+    # supported outcome, and the live budget gate reads the solver's
+    # capital -- not the policy dial.
+    kernel = inspect.getsource(K2.evaluate_action_v2)
+    assert 'row["resulting_profit_floor"] + EPS < required_profit_floor' in (
+        kernel
+    )
+    assert "clip > capital_available + EPS" in kernel
+    assert "total_budget_usdc" not in kernel
+    # And nothing on the live path calls the per-leg execution gate.
+    live = "".join(
+        (ROOT / "bayes_basket_target" / name).read_text(encoding="utf-8")
+        for name in ("runtime.py", "delta_v2_runtime.py",
+                     "production.py", "production_worker.py")
+    )
+    assert not re.search(r"evaluate_execution_gate\s*\(", live)
+    assert "station_loss_floor_exceeded" in L.REFUSAL_REASONS
+    assert "station_budget_exceeded" not in L.REFUSAL_REASONS
     # A leg still under its lot after the raise refuses the basket.
     assert "if _under_lot:" in source
     assert '"exchange_minimum_lot_unaffordable",' in source
     # The lift's budget is the untilted allowance under a production
-    # verdict, and the dial is judged per leg on the cash that would go.
+    # verdict, and the dial is the floor on the worst supported outcome
+    # after the buy: shares on the thinnest seated rung minus everything
+    # the chain has paid.
     assert 'float(production_verdict["lot_room_usdc"])' in source
-    assert "_worst_leg = max(float(c) for c in leg_cash)" in source
-    assert "float(chain_stake) + _worst_leg > _dial + 1e-9" in source
+    assert '_floor = -float(production_verdict["total_budget_usdc"])' in (
+        source
+    )
+    assert "if _worst + 1e-9 < _floor:" in source
     # The dial is no longer folded into the capital the solver is handed.
     assert "capital = scope_cap" in source
     assert "station_room = min(" not in source
@@ -777,7 +802,7 @@ def test_the_exchange_lot_and_the_station_dial_bind_where_production_binds() -> 
     # carries it: rows sized as if there were no lot are not comparable.
     assert L.EXCHANGE_MINIMUM_LOT_SHARES_FALLBACK == 5.0
     assert (
-        '"production_judge": "solver_chain_gates_exchange_lot_centre_v4",'
+        '"production_judge": "solver_chain_gates_exchange_lot_centre_v5",'
         in source
     )
     assert "补足一手" in L.SELECTION_RULE_LABEL

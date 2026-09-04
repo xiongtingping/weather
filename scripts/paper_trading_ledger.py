@@ -642,7 +642,7 @@ REFUSAL_DEPTH = {
     # and not the model's -- would not take the order.  Same layer as
     # ``no_depth``, which is the same kind of answer.
     "exchange_minimum_lot_unaffordable": 7,
-    "station_budget_exceeded": 7,
+    "station_loss_floor_exceeded": 7,
     # One layer: the order was posted and bought nothing.  Which of the two
     # is reported turns on whether we cancelled it or the book never came.
     "resting_unfilled": 8,
@@ -1827,7 +1827,10 @@ SELECTION_RULE_SHA256 = content_sha256({
     # production judge, the consolidation lookback and the clamp's previous
     # checkpoint span every stage.  Rows before it recorded a claim the
     # solver never saw.
-    "production_judge": "solver_chain_gates_exchange_lot_centre_v4",
+    # v5 (2026-09-04): the station dial is mirrored where production reads
+    # it -- the kernel's profit floor on the worst supported outcome -- not
+    # as the per-leg budget gate of a function nothing live calls.
+    "production_judge": "solver_chain_gates_exchange_lot_centre_v5",
     **(
         {"lot_lift_budget": LOT_LIFT_BUDGET}
         if LOT_LIFT_BUDGET != "untilted" else {}
@@ -2140,11 +2143,13 @@ REFUSAL_REASONS = (
     # nor the depth can lift.  Production stands the whole basket down;
     # this book recorded the fraction as filled until 2026-09-04.
     "exchange_minimum_lot_unaffordable",
-    # Production's execution gate ``budget_ok``: the operator's station
-    # dial binds per leg on top of what the station already holds.  It
-    # was folded into the solver's capital here, which production never
-    # does, so P1 was sized five USDC short of production on a 1000 book.
-    "station_budget_exceeded",
+    # Where the operator's station dial binds in production: the kernel's
+    # ``profit_floor_ok`` -- the worst settled outcome inside the seated
+    # support may not lose more than the dial.  (Not a per-leg budget
+    # gate: ``execution_gates.evaluate_execution_gate`` spells one, and
+    # nothing on the live path calls it; the live ``budget_ok`` reads the
+    # 2% capital the solver sized inside.  Corrected 2026-09-04.)
+    "station_loss_floor_exceeded",
     # A later stage whose station-day never opened.  Only P0 opens a
     # position; a top-up with nothing to top up is not a position of its own.
     # The declining-probability clamp's two refusals (arm-gated; the "off"
@@ -8201,22 +8206,39 @@ def backfill(
                             ))
                             continue
                     if production_verdict is not None and leg_cash:
-                        # Production's execution gate, ``budget_ok``: the
-                        # operator's station dial binds per leg on top of
-                        # what the station already holds.  Applied here,
-                        # after the lot raise, on the cash each leg would
-                        # actually send -- the same place production
-                        # judges it -- rather than folded into the
-                        # solver's capital, which it never is there.
-                        _dial = float(production_verdict["total_budget_usdc"])
-                        _worst_leg = max(float(c) for c in leg_cash)
-                        if float(chain_stake) + _worst_leg > _dial + 1e-9:
+                        # Where the operator's station dial actually binds
+                        # in production: the kernel's ``profit_floor_ok``
+                        # (``evaluate_action_v2`` per leg, then
+                        # ``rescore_maker_bundle_v2`` on the bundle).  The
+                        # worst settled outcome inside the seated support
+                        # -- shares held on that rung minus everything the
+                        # chain has paid -- may not fall below
+                        # ``minimum_expected_pnl_after_usdc``, which the
+                        # dial sets to minus itself.  Corrected 2026-09-04:
+                        # the mirror here used to copy
+                        # ``execution_gates.evaluate_execution_gate``'s
+                        # per-leg ``budget_ok``, and that function has no
+                        # caller on the live path; the live ``budget_ok``
+                        # reads the tilted 2% capital the solver already
+                        # sized inside.
+                        _floor = -float(production_verdict["total_budget_usdc"])
+                        _held_after = dict(held)
+                        for _b, _q in zip(seat["buckets"], leg_shares):
+                            _held_after[str(_b)] = (
+                                _held_after.get(str(_b), 0.0) + float(_q)
+                            )
+                        _cost_after = float(chain_stake) + float(stake)
+                        _worst = min(
+                            _held_after.get(str(_b), 0.0)
+                            for _b in seat["buckets"]
+                        ) - _cost_after
+                        if _worst + 1e-9 < _floor:
                             refusal = _deeper_refusal(refusal, (
-                                "station_budget_exceeded",
-                                "生产执行闸 budget_ok：已投 %.2f + 最大一腿 %.2f"
-                                " > 站上限 %.2f" % (
-                                    float(chain_stake), _worst_leg, _dial,
-                                ),
+                                "station_loss_floor_exceeded",
+                                "生产 profit_floor_ok：支持集内最坏结算 %.2f"
+                                " < 站亏损下限 %.2f（链已投 %.2f + 本笔 %.2f）"
+                                % (_worst, _floor, float(chain_stake),
+                                   float(stake)),
                                 cycles, payload["decision_at_utc"],
                             ))
                             continue
