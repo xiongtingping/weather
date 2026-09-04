@@ -2831,3 +2831,87 @@ def test_clause_78_the_incumbent_has_no_exemption_from_the_positive_ev_gate() ->
         / "bayes_basket_target" / "delta_v2_runtime.py"
     ).read_text(encoding="utf-8")
     assert "admissible = is_incumbent or (" not in source
+
+
+@pytest.fixture(autouse=True)
+def _symmetric_seat_rule_off(monkeypatch):
+    """Charter 79 seats symmetric-day P0/P0-M windows on the mean bucket +-1.
+
+    The fixtures in this module exercise other mechanisms on symmetric
+    shapes; the rule is switched off here and tested on its own in the
+    doctrine suite (clause 79).
+    """
+
+    monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_MODE", "off")
+
+
+def test_clause_79_symmetric_day_seat_is_the_mean_bucket_plus_minus_one(monkeypatch) -> None:
+    """Charter 79: on a symmetric day P0/P0-M seat centre-1, centre, centre+1; P1 untouched."""
+    from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
+    from bayes_basket_target.delta_v2_runtime import _support_windows
+
+    monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_MODE", "center_pm1_p0")
+    assert (
+        delta_v2_runtime.os.environ.get("PM_SYMMETRIC_SEAT_MODE", "").strip().lower()
+        or "center_pm1_p0"
+    ) == "center_pm1_p0"
+    labels = ["29°C", "30°C", "31°C", "32°C", "33°C", "34°C"]
+    probs = [0.06, 0.20, 0.40, 0.20, 0.10, 0.04]
+    asks = [0.05, 0.15, 0.30, 0.15, 0.08, 0.03]
+
+    def snapshot(stage: str) -> TargetBasketSnapshot:
+        rows = [
+            {
+                "bucket": b, "ordinal": i + 2, "probability": p,
+                "bid_price": max(0.0, a - 0.01),
+                "bid_levels": [{"price": max(0.001, a - 0.01), "shares": 50.0}],
+                "ask_levels": [{"price": a, "shares": 100.0}],
+                "price_tick_size": 0.01,
+                "maker_queue_ahead_shares": 0.0, "maker_queue_known": True,
+            }
+            for i, (b, p, a) in enumerate(zip(labels, probs, asks))
+        ]
+        evidence = {"probability_stage": stage, "posterior_version": "p", "posterior_sha256": "a" * 64}
+        if stage == "P1":
+            evidence.update({
+                "reported_high_bucket": "30°C", "reported_high_ordinal": 3,
+                "reported_high_observation_id": "obs", "hard_bound_id": "hb",
+            })
+        return TargetBasketSnapshot.from_mapping({
+            "schema": "target_basket_snapshot_v6", "snapshot_id": "c79", "sequence": 1,
+            "observed_at": "2026-09-04T00:00:00Z", "market_id": "m", "station_id": "X",
+            "event_date": "2026-09-05", "quote_version": "q",
+            "quote_observed_at": "2026-09-04T00:00:00Z", "quote_source": "OFFICIAL_CLOB_WS",
+            "inventory_version": "i", "order_state_version": "o", "evidence": evidence,
+            "buckets": rows, "checkpoint_changed": True, "quote_changed": True,
+            "fill_changed": True, "time_gate_changed": True, "evidence_fresh": True,
+            "contract_matches": True, "order_state_known": True, "risk_inputs_complete": True,
+            "time_left_minutes": 600.0,
+        })
+
+    prob = dict(zip(labels, probs))
+    for stage in ("P0", "P0-M"):
+        windows, audit = _support_windows(
+            snapshot=snapshot(stage), desired={"30°C", "31°C", "32°C", "33°C"},
+            probabilities=prob, fee_rate=0.0, maximum_support_buckets=4,
+            minimum_support_buckets=3, center_bucket="31°C", probability_stage=stage,
+        )
+        assert audit["symmetric_seat_forced"] is True
+        admissible = [tuple(w["buckets"]) for w in windows if w["admissible"]]
+        assert admissible == [("30°C", "31°C", "32°C")]
+    windows, audit = _support_windows(
+        snapshot=snapshot("P1"), desired={"30°C", "31°C", "32°C", "33°C"},
+        probabilities=prob, fee_rate=0.0, maximum_support_buckets=4,
+        minimum_support_buckets=3, center_bucket="31°C", probability_stage="P1",
+    )
+    assert audit["symmetric_seat_forced"] is False
+    assert len([w for w in windows if w["admissible"]]) > 1
+    # The ledger hashes the rule unconditionally.
+    import sys
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
+    assert '"symmetric_seat": SYMMETRIC_SEAT_MODE,' in ledger_source

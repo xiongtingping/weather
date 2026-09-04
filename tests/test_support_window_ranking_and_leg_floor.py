@@ -4,6 +4,9 @@ Both were measured on the settled book over 2026-07-28..08-15, and both
 replace something that looked principled and lost money.
 """
 
+import pytest
+
+from bayes_basket_target import delta_v2_runtime
 from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
 
 
@@ -361,3 +364,15 @@ def test_the_last_gate_names_the_refusal_not_the_loudest_counter() -> None:
         "fixture no longer reproduces the outvoted-leg-floor shape"
     )
     assert audit["last_refusing_gate"] == "leg_floor"
+
+
+@pytest.fixture(autouse=True)
+def _symmetric_seat_rule_off(monkeypatch):
+    """Charter 79 seats symmetric-day P0/P0-M windows on the mean bucket +-1.
+
+    The fixtures in this module exercise other mechanisms on symmetric
+    shapes; the rule is switched off here and tested on its own in the
+    doctrine suite (clause 79).
+    """
+
+    monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_MODE", "off")

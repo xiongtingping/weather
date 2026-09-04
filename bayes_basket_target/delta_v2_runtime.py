@@ -865,12 +865,17 @@ SKEW_SIGNAL_DEFINITION = (
 # into the tail (left-skew: centre is the hottest rung, [34,35,36] around
 # a 36 centre) -- which forbids balanced windows too, not just opposed
 # ones.  Symmetric days are untouched under both.
-# Research arm (2026-09-04, user): on a symmetric day -- mean within half a
-# bucket of the mode, no direction -- the seat is the mean bucket and one
-# rung each side, nothing else; skewed days keep the standing rule.  ``off``
-# is the shipped rule; ``center_pm1`` is the arm the ledger replays.
+# Charter 79 (user ruling, 2026-09-04): on a symmetric day -- mean within
+# half a bucket of the mode, no direction -- the P0/P0-M seat is the mean
+# bucket and one rung each side, nothing else; skewed days keep the standing
+# rule, and P1 (whose late-day ladder rarely has three rungs) is untouched.
+# ``center_pm1_p0`` is the shipped rule; ``off`` and ``center_pm1`` (every
+# stage) are research arms.  Measured on the same book 08-15..09-03: -2.8%
+# -> +0.5%, symmetric station-days -124 -> -45, skewed days unchanged;
+# every-stage starves P1 (-9.7%).
 SYMMETRIC_SEAT_MODE = (
-    os.environ.get("PM_SYMMETRIC_SEAT_MODE", "").strip().lower() or "off"
+    os.environ.get("PM_SYMMETRIC_SEAT_MODE", "").strip().lower()
+    or "center_pm1_p0"
 )
 if SYMMETRIC_SEAT_MODE not in {"off", "center_pm1", "center_pm1_p0"}:
     raise RuntimeError(f"unknown symmetric seat mode: {SYMMETRIC_SEAT_MODE}")
@@ -890,6 +895,16 @@ P0M_TAF_MODE = (
 )
 if P0M_TAF_MODE not in {"off", "tx_anchor", "confirm_hold", "confirm_override"}:
     raise RuntimeError(f"unknown P0-M TAF mode: {P0M_TAF_MODE}")
+# Research arm (2026-09-04, user): which stages may open an empty chain.
+# Charter 74 ships P0 alone; ``P0,P0-M`` is the arm that lets P0-M open (and
+# so take a ticket) for the TAF-confirmation replays.  P1 never opens.
+CHAIN_OPENING_STAGES = frozenset(
+    part.strip().upper()
+    for part in (os.environ.get("PM_CHAIN_OPENING_STAGES", "") or CHAIN_OPENING_STAGE).split(",")
+    if part.strip()
+)
+if not CHAIN_OPENING_STAGES <= {"P0", "P0-M"}:
+    raise RuntimeError(f"unknown chain opening stages: {sorted(CHAIN_OPENING_STAGES)}")
 SKEW_PLACEMENT_MODE = (
     os.environ.get("DELTA_V2_SKEW_PLACEMENT", "").strip().lower()
     or "free"
@@ -2528,7 +2543,7 @@ def _target_candidates(
     )
     stage_name = str(snapshot.evidence.probability_stage or "")
     later_stage_on_empty_chain = (
-        chain_empty and stage_name != CHAIN_OPENING_STAGE
+        chain_empty and stage_name not in CHAIN_OPENING_STAGES
     )
     if (
         book_equity_usdc is not None
@@ -2560,7 +2575,7 @@ def _target_candidates(
             )
         if kelly_candidate is not None:
             candidates.append(kelly_candidate)
-        elif chain_empty and stage_name == CHAIN_OPENING_STAGE:
+        elif chain_empty and stage_name in CHAIN_OPENING_STAGES:
             # Charter 74: the ticket.  No edge at P0 is not a reason to
             # leave the day unopened -- P1 would have nothing to add to.
             ticket_candidate = _chain_ticket_candidate(
@@ -4121,7 +4136,7 @@ def compile_delta_v2_runtime_plan(
     if (
         objective_form == KELLY_OBJECTIVE_FORM
         and chain_empty
-        and str(snapshot.evidence.probability_stage or "") != CHAIN_OPENING_STAGE
+        and str(snapshot.evidence.probability_stage or "") not in CHAIN_OPENING_STAGES
     ):
         # Charter 74: the day was never opened by P0; this stage adds
         # to a position and there is none.

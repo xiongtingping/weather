@@ -101,6 +101,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     SYMMETRIC_SEAT_MODE,
     SKEW_SEAT_MODE,
     P0M_TAF_MODE,
+    CHAIN_OPENING_STAGES,
     WINDOW_REFUSAL_FUNNEL,
     # The pieces of arithmetic the two sides must not each own a copy of.
     # Every one of them used to be duplicated here, and the ladder copy had
@@ -1677,6 +1678,7 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     "均值中心",
     "按checkpoint决策",
     "在任窗不免检",
+    "对称日中心±1" if SYMMETRIC_SEAT_MODE == "center_pm1_p0" else None,
     "生产种子" if JUDGE != "ledger" else None,
     "一本账·只加不减",
 )))
@@ -1729,12 +1731,14 @@ SELECTION_RULE_SHA256 = content_sha256({
     # Research arms of 2026-09-04 (P0 sizing / P0 lambda table), hashed only
     # away from their defaults.
     **({"p0_sizing_mode": P0_SIZING_MODE} if P0_SIZING_MODE != "kelly" else {}),
-    **(
-        {"symmetric_seat": SYMMETRIC_SEAT_MODE}
-        if SYMMETRIC_SEAT_MODE != "off" else {}
-    ),
+    # Charter 79: the symmetric-day seat rule, hashed unconditionally.
+    "symmetric_seat": SYMMETRIC_SEAT_MODE,
     **({"skew_seat": SKEW_SEAT_MODE} if SKEW_SEAT_MODE != "off" else {}),
     **({"p0m_taf": P0M_TAF_MODE} if P0M_TAF_MODE != "off" else {}),
+    **(
+        {"chain_opening_stages": sorted(CHAIN_OPENING_STAGES)}
+        if CHAIN_OPENING_STAGES != {"P0"} else {}
+    ),
     **(
         {"effective_edge_lambda_p0": EFFECTIVE_EDGE_LAMBDA_P0_OVERRIDE}
         if EFFECTIVE_EDGE_LAMBDA_P0_OVERRIDE else {}

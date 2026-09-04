@@ -1941,3 +1941,14 @@ def test_after_open_holds_every_falling_rung_once_the_book_is_open() -> None:
     assert result["probability_clamped_buckets"] == ("35", "36")
     assert result["execution_gap_support"] == []
 
+
+@pytest.fixture(autouse=True)
+def _symmetric_seat_rule_off(monkeypatch):
+    """Charter 79 seats symmetric-day P0/P0-M windows on the mean bucket +-1.
+
+    The fixtures in this module exercise other mechanisms on symmetric
+    shapes; the rule is switched off here and tested on its own in the
+    doctrine suite (clause 79).
+    """
+
+    monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_MODE", "off")
