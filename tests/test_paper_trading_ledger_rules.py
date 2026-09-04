@@ -1065,7 +1065,7 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
                 " posted_buckets_json, window_buckets_json,"
                 " ladder_center_bucket, win_probability, all_in_cost,"
                 " prices_json, probabilities_json, held_before_json,"
-                " chain_stake_usdc, stake_usdc"
+                " chain_stake_usdc, stake_usdc, consolidation_json"
                 " FROM paper_trade_position"
                 " WHERE selection_rule_sha256=?",
                 (SELECTION_RULE_SHA256,),
@@ -1077,7 +1077,13 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
 
         for (st, day, stage, at, posted_js, filled_js, centre, win, cost,
              prices_js, probs_js, held_js, chain_stake,
-             stake) in positions:
+             stake, consolidation_js) in positions:
+            try:
+                ticket = bool(
+                    (json.loads(consolidation_js) or {}).get("ticket")
+                ) if consolidation_js else False
+            except (TypeError, ValueError):
+                ticket = False
             posted = json.loads(posted_js) if posted_js else json.loads(
                 filled_js
             )
@@ -1127,7 +1133,10 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
             # to the chain (charter 66), whichever rungs it picks, so the
             # opening is the row whose stake is the whole chain's.
             opening = float(chain_stake or 0.0) <= float(stake or 0.0) + 1e-9
-            if len(filled) == len(posted) and not held and opening:
+            # Charter 74: a ticket opens the chain with no edge by design
+            # (ZSQD 2026-08-17: claim 0.488 against 0.490), so the gate it
+            # must clear is structural, not the EV gate.
+            if len(filled) == len(posted) and not held and opening and not ticket:
                 # A fresh seat must clear the whole-basket EV gate.  A
                 # top-up answers to the chain instead (charter 66): its
                 # blended cost after the buy stays under par and the buy
@@ -1322,7 +1331,9 @@ def test_consolidation_is_an_annotation_and_measures_what_it_says() -> None:
     source = (root / "scripts" / "paper_trading_ledger.py").read_text(
         encoding="utf-8"
     )
-    assert 'if stage == "P0":\n                        seat_consolidation' in source
+    # The opener alone earns the tilt (2026-09-04: production records the
+    # opener's factor once and every later seat inherits it).
+    assert 'if stage == "P0" and not held:' in source
     # Since 2026-08-28 (commit 10395c56) the tilt reads the named lights,
     # not the three-light count; ``count`` is written on the row and read
     # by nothing.  Zero consumers, not one, is now the annotation contract.
@@ -1336,7 +1347,7 @@ def test_consolidation_is_an_annotation_and_measures_what_it_says() -> None:
     # condition, so a ledger that gated only the opener scored a narrower
     # strategy than the one that runs.  Aligned 2026-08-24.
     gate_at = source.index("if CERTAINTY_GATE and any(")
-    opener_at = source.index('if stage == "P0":\n                        seat_consolidation')
+    opener_at = source.index('if stage == "P0" and not held:')
     assert gate_at < opener_at, "the gate must be judged before the P0-only tilt"
     assert "certainty_gate_scope" in source
 

@@ -805,7 +805,7 @@ def test_the_exchange_lot_and_the_station_dial_bind_where_production_binds() -> 
     # carries it: rows sized as if there were no lot are not comparable.
     assert L.EXCHANGE_MINIMUM_LOT_SHARES_FALLBACK == 5.0
     assert (
-        '"production_judge": "solver_chain_gates_exchange_lot_centre_v10",'
+        '"production_judge": "solver_chain_gates_exchange_lot_centre_v11",'
         in source
     )
     assert "补足一手" in L.SELECTION_RULE_LABEL

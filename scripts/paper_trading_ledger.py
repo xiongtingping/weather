@@ -1830,7 +1830,8 @@ SELECTION_RULE_SHA256 = content_sha256({
     # cycle, as production runs them; charter 77 picks the decisions.
     # v10 (2026-09-04): the chain's tilt is the opener's, recorded once and
     # inherited by every later seat, P0 reseats included.
-    "production_judge": "solver_chain_gates_exchange_lot_centre_v10",
+    # v11 (2026-09-04): the row says whether it is the solver's ticket.
+    "production_judge": "solver_chain_gates_exchange_lot_centre_v11",
     "stage_authority": "highest_committed_stage_v1",
     "checkpoint_books": "every_committed_book_while_current_v1",
     "taker_fill": "top_of_offer_cut_to_depth_v1",
@@ -8656,18 +8657,32 @@ def backfill(
                             # raise, when one happened, rides on the same
                             # record.
                             json.dumps(
-                                (
-                                    {
-                                        **(
-                                            dict(stage_consolidation)
-                                            if isinstance(stage_consolidation, Mapping)
-                                            else {"value": stage_consolidation}
-                                        ),
-                                        "exchange_lot_top_up": lot_top_up_record,
-                                    }
-                                    if lot_top_up_record is not None
-                                    else stage_consolidation
-                                ),
+                                {
+                                    **(
+                                        dict(stage_consolidation)
+                                        if isinstance(stage_consolidation, Mapping)
+                                        else {"value": stage_consolidation}
+                                    ),
+                                    **(
+                                        {"exchange_lot_top_up": lot_top_up_record}
+                                        if lot_top_up_record is not None
+                                        else {}
+                                    ),
+                                    # Charter 74: whether this seat is the
+                                    # solver's ticket -- authorized on
+                                    # structure, its edge known to be
+                                    # nothing.  Production carries it as
+                                    # winner_candidate_origin; a row that
+                                    # cannot say so reads as a seat the
+                                    # entry gate never judged.
+                                    **(
+                                        {"ticket": bool(
+                                            production_verdict.get("ticket")
+                                        )}
+                                        if production_verdict is not None
+                                        else {}
+                                    ),
+                                },
                                 sort_keys=True,
                             ),
                         )
