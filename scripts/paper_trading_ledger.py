@@ -1828,7 +1828,9 @@ SELECTION_RULE_SHA256 = content_sha256({
     # compiled it on -- the first at or after it -- never on one before it.
     # v9 (2026-09-04): every book while the checkpoint is current is a
     # cycle, as production runs them; charter 77 picks the decisions.
-    "production_judge": "solver_chain_gates_exchange_lot_centre_v9",
+    # v10 (2026-09-04): the chain's tilt is the opener's, recorded once and
+    # inherited by every later seat, P0 reseats included.
+    "production_judge": "solver_chain_gates_exchange_lot_centre_v10",
     "stage_authority": "highest_committed_stage_v1",
     "checkpoint_books": "every_committed_book_while_current_v1",
     "taker_fill": "top_of_offer_cut_to_depth_v1",
@@ -7198,7 +7200,17 @@ def backfill(
                     # Unlike the gate above, this stays P0-scoped: it is a
                     # measured stake tilt, not production's rule.
                     seat_consolidation = None
-                    if stage == "P0":
+                    if stage == "P0" and not held:
+                        # The opener earns its own tilt.  Production records
+                        # that factor once (``record_chain_opener_tilt``,
+                        # INSERT OR IGNORE at the first authorized P0
+                        # decision) and every later compile on the day --
+                        # a P0 reseat as much as P0-M or P1 -- inherits it
+                        # outright (``load_chain_tilt``).  This lane re-read
+                        # each P0 cycle's own lights and then let the reseat
+                        # overwrite the chain's factor, so a chain that
+                        # opened untilted could be tilted by its own third
+                        # P0 seat and hand that to P1 (aligned 2026-09-04).
                         seat_consolidation = stage_consolidation
                         lit = sum(
                             1 for name in CONSOLIDATION_TILT_SIGNALS
@@ -8661,9 +8673,10 @@ def backfill(
                         )
                     )
                     # The chain spends the rest of its day under the tilt
-                    # its opener earned.
-                    chain_tilt = tilt
+                    # its opener earned -- recorded at the opening seat
+                    # only, as production's INSERT OR IGNORE records it.
                     if seat_consolidation is not None:
+                        chain_tilt = tilt
                         chain_consolidation = seat_consolidation
                     counts["positions"] += 1
                     counts["entry_cycle_%s" % (

@@ -805,7 +805,7 @@ def test_the_exchange_lot_and_the_station_dial_bind_where_production_binds() -> 
     # carries it: rows sized as if there were no lot are not comparable.
     assert L.EXCHANGE_MINIMUM_LOT_SHARES_FALLBACK == 5.0
     assert (
-        '"production_judge": "solver_chain_gates_exchange_lot_centre_v9",'
+        '"production_judge": "solver_chain_gates_exchange_lot_centre_v10",'
         in source
     )
     assert "补足一手" in L.SELECTION_RULE_LABEL
@@ -1055,6 +1055,37 @@ def test_charter_73_authorizes_the_increment_on_the_seated_belief() -> None:
     assert "execution_edge_not_authorized" in L.REFUSAL_REASONS
     assert '"execution_authorization": "whole_basket_edge_v1",' in source
     assert '"taker_fill": "top_of_offer_cut_to_depth_v1",' in source
+
+
+def test_the_chains_tilt_is_the_openers_recorded_once() -> None:
+    """One factor per chain, earned at the opening seat and inherited after.
+
+    Production records the opener's consolidation tilt once
+    (``record_chain_opener_tilt``: INSERT OR IGNORE at the first authorized
+    P0 decision) and every later compile on the station-day inherits it
+    outright through ``load_chain_tilt`` -- a P0 reseat as much as P0-M
+    or P1.  This lane re-read each P0 cycle's own lights and overwrote the
+    chain's factor at every seat, so the factor P1 inherited was the last
+    P0 seat's, not the opener's.
+    """
+
+    import inspect
+
+    from bayes_basket_target import consolidation_chain as CC
+
+    record = inspect.getsource(CC.record_chain_opener_tilt)
+    assert "INSERT OR IGNORE" in record
+    load = inspect.getsource(CC.load_chain_tilt)
+    assert "opener" in load
+    source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'if stage == "P0" and not held:' in source
+    assert (
+        "                    if seat_consolidation is not None:\n"
+        "                        chain_tilt = tilt\n"
+    ) in source
+    assert "                    chain_tilt = tilt\n                    if seat_consolidation" not in source
 
 
 def test_a_rebuild_can_be_taken_oldest_first_in_slices() -> None:
