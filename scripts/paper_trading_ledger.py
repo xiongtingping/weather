@@ -98,6 +98,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     SKEW_SIGNAL_DEFINITION,
     SUPPORT_EDGE_MARGIN,
     P0_SIZING_MODE,
+    SYMMETRIC_SEAT_MODE,
     WINDOW_REFUSAL_FUNNEL,
     # The pieces of arithmetic the two sides must not each own a copy of.
     # Every one of them used to be duplicated here, and the ladder copy had
@@ -1726,6 +1727,10 @@ SELECTION_RULE_SHA256 = content_sha256({
     # Research arms of 2026-09-04 (P0 sizing / P0 lambda table), hashed only
     # away from their defaults.
     **({"p0_sizing_mode": P0_SIZING_MODE} if P0_SIZING_MODE != "kelly" else {}),
+    **(
+        {"symmetric_seat": SYMMETRIC_SEAT_MODE}
+        if SYMMETRIC_SEAT_MODE != "off" else {}
+    ),
     **(
         {"effective_edge_lambda_p0": EFFECTIVE_EDGE_LAMBDA_P0_OVERRIDE}
         if EFFECTIVE_EDGE_LAMBDA_P0_OVERRIDE else {}

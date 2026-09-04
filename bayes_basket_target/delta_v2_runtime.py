@@ -865,6 +865,15 @@ SKEW_SIGNAL_DEFINITION = (
 # into the tail (left-skew: centre is the hottest rung, [34,35,36] around
 # a 36 centre) -- which forbids balanced windows too, not just opposed
 # ones.  Symmetric days are untouched under both.
+# Research arm (2026-09-04, user): on a symmetric day -- mean within half a
+# bucket of the mode, no direction -- the seat is the mean bucket and one
+# rung each side, nothing else; skewed days keep the standing rule.  ``off``
+# is the shipped rule; ``center_pm1`` is the arm the ledger replays.
+SYMMETRIC_SEAT_MODE = (
+    os.environ.get("PM_SYMMETRIC_SEAT_MODE", "").strip().lower() or "off"
+)
+if SYMMETRIC_SEAT_MODE not in {"off", "center_pm1", "center_pm1_p0"}:
+    raise RuntimeError(f"unknown symmetric seat mode: {SYMMETRIC_SEAT_MODE}")
 SKEW_PLACEMENT_MODE = (
     os.environ.get("DELTA_V2_SKEW_PLACEMENT", "").strip().lower()
     or "free"
@@ -1718,7 +1727,42 @@ def _support_windows(
             row["buckets"],
         )
     )
+    # Research arm: symmetric day -> the seat is centre-1, centre, centre+1
+    # and nothing else.  The shape is read raw (not through the extension
+    # rule's switches); every other window is left listed but inadmissible
+    # so the solver holds when the sanctioned window is not on offer.
+    symmetric_seat_forced = False
+    symmetric_arm_applies = (
+        SYMMETRIC_SEAT_MODE == "center_pm1"
+        or (
+            SYMMETRIC_SEAT_MODE == "center_pm1_p0"
+            and str(probability_stage or "") != "P1"
+        )
+    )
+    if symmetric_arm_applies and ladder_center in by_bucket:
+        raw_skew = _skew_extension_sign(
+            probabilities,
+            {bucket: int(row.ordinal) for bucket, row in by_bucket.items()},
+        )
+        if raw_skew == 0:
+            centre_ordinal = int(by_bucket[ladder_center].ordinal)
+            wanted = {centre_ordinal - 1, centre_ordinal, centre_ordinal + 1}
+            def _is_symmetric_seat(row: Mapping[str, Any]) -> bool:
+                return {
+                    int(by_bucket[bucket].ordinal) for bucket in row["buckets"]
+                } == wanted
+            sanctioned = [
+                row for row in windows
+                if _is_symmetric_seat(row) and row.get("admissible", True)
+            ]
+            windows = sanctioned + [
+                dict(row, admissible=False)
+                for row in windows
+                if not (_is_symmetric_seat(row) and row.get("admissible", True))
+            ]
+            symmetric_seat_forced = True
     audit = {
+        "symmetric_seat_forced": symmetric_seat_forced,
         "probability_core": sorted(
             core, key=lambda bucket: (by_bucket[bucket].ordinal, bucket)
         ),
