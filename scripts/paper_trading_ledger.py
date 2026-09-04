@@ -97,6 +97,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     SKEW_PLACEMENT_MODE,
     SKEW_SIGNAL_DEFINITION,
     SUPPORT_EDGE_MARGIN,
+    P0_SIZING_MODE,
     WINDOW_REFUSAL_FUNNEL,
     # The pieces of arithmetic the two sides must not each own a copy of.
     # Every one of them used to be duplicated here, and the ladder copy had
@@ -148,6 +149,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     DECISION_MOMENT_RULE_VERSION,
     edge_state_v1,
     is_decision_moment_v1,
+    EFFECTIVE_EDGE_LAMBDA_P0_OVERRIDE,
 )
 from bayes_basket_target.basket_kernel.support import (  # noqa: E402
     _choose_support,
@@ -1720,6 +1722,13 @@ SELECTION_RULE_SHA256 = content_sha256({
     **(
         {"topup_increment_edge": TOPUP_INCREMENT_EDGE}
         if TOPUP_INCREMENT_EDGE != "off" else {}
+    ),
+    # Research arms of 2026-09-04 (P0 sizing / P0 lambda table), hashed only
+    # away from their defaults.
+    **({"p0_sizing_mode": P0_SIZING_MODE} if P0_SIZING_MODE != "kelly" else {}),
+    **(
+        {"effective_edge_lambda_p0": EFFECTIVE_EDGE_LAMBDA_P0_OVERRIDE}
+        if EFFECTIVE_EDGE_LAMBDA_P0_OVERRIDE else {}
     ),
     "p1_entry_local_hour": P1_ENTRY_LOCAL_HOUR,
     # Charter 69 (v5): the clamp arm, its threshold and the seat cadence.

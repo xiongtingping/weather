@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from itertools import combinations, product
+import json
 import math
 import os
 from typing import Any, Mapping, Sequence
@@ -700,6 +701,17 @@ EFFECTIVE_EDGE_LAMBDA = (
     (0.85, 0.87),
     (float("inf"), 0.82),
 )
+# Research arm (2026-09-04): a P0-specific table handed in by env as JSON
+# [[bound, lambda], ...].  Production never sets it; the paper ledger hashes
+# it into its rule fingerprint when set, so an arm cannot pass for the book.
+EFFECTIVE_EDGE_LAMBDA_P0_OVERRIDE = os.environ.get(
+    "PM_EFFECTIVE_EDGE_LAMBDA_P0_JSON", ""
+).strip()
+if EFFECTIVE_EDGE_LAMBDA_P0_OVERRIDE:
+    EFFECTIVE_EDGE_LAMBDA = tuple(
+        (float(bound), float(lam))
+        for bound, lam in json.loads(EFFECTIVE_EDGE_LAMBDA_P0_OVERRIDE)
+    )
 EFFECTIVE_EDGE_STAGES = frozenset({"P0", "P0-M"})
 # P1's own table (user ruling, 2026-09-02).  The exemption above was a
 # statement about a stage; this makes it a table about that stage, so the

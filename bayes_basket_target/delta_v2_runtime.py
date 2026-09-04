@@ -108,6 +108,14 @@ P1_MINIMUM_SUPPORT_BUCKETS = 2
 # buying a degraded shape there buys the wrong side of that knowledge.
 # OFF by default; the env flag keeps the arm re-measurable.
 OPENING_FALLBACK_MIN_BUCKETS = 2
+# Research arm (2026-09-04): how P0 sizes -- ``kelly`` (charter 72/74: Kelly,
+# ticket when Kelly is zero) or ``ticket_only`` (P0 issues one ticket and
+# never a Kelly stake, so it neither sizes the opener nor tops up).
+P0_SIZING_MODE = (
+    os.environ.get("PM_P0_SIZING_MODE", "").strip().lower() or "kelly"
+)
+if P0_SIZING_MODE not in {"kelly", "ticket_only"}:
+    raise RuntimeError(f"unknown P0 sizing mode: {P0_SIZING_MODE}")
 OPENING_WIDTH_FALLBACK_ENABLED = (
     os.environ.get("DELTA_V2_OPENING_WIDTH_FALLBACK", "").strip().lower()
     in {"1", "true", "yes", "on"}
@@ -2402,20 +2410,25 @@ def _target_candidates(
     ):
         # Charter 72: the Kelly-sized seat, offered beside the grid.  Under
         # the whole-basket Kelly form it is the winner when legal.
-        kelly_candidate = _whole_basket_kelly_candidate(
-            ordered=ordered,
-            lane_levels=lane_levels,
-            lane_prices=lane_prices,
-            pricing_basis=pricing_basis,
-            current_shares=current_shares,
-            current_cost=current_cost,
-            pending_shares=pending_shares,
-            pending_cost=pending_cost,
-            capital_available_usdc=capital_available_usdc,
-            probabilities_by_bucket=probabilities_by_bucket,
-            book_equity_usdc=float(book_equity_usdc),
-            quote_version=str(snapshot.quote_version),
-        )
+        kelly_candidate = None
+        if not (
+            stage_name == CHAIN_OPENING_STAGE
+            and P0_SIZING_MODE == "ticket_only"
+        ):
+            kelly_candidate = _whole_basket_kelly_candidate(
+                ordered=ordered,
+                lane_levels=lane_levels,
+                lane_prices=lane_prices,
+                pricing_basis=pricing_basis,
+                current_shares=current_shares,
+                current_cost=current_cost,
+                pending_shares=pending_shares,
+                pending_cost=pending_cost,
+                capital_available_usdc=capital_available_usdc,
+                probabilities_by_bucket=probabilities_by_bucket,
+                book_equity_usdc=float(book_equity_usdc),
+                quote_version=str(snapshot.quote_version),
+            )
         if kelly_candidate is not None:
             candidates.append(kelly_candidate)
         elif chain_empty and stage_name == CHAIN_OPENING_STAGE:
