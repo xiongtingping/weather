@@ -1133,6 +1133,42 @@ def _chain_blended_cost(
     return float(cost_total) / (expected / win)
 
 
+def taf_tx_bucket_for(envelope: Any, stage: str) -> str | None:
+    """The bucket the P0-M lineage's TAF TX falls in, or None.
+
+    Read by the enumerator's ``PM_P0M_TAF_MODE`` arms.  One implementation
+    on both sides (user ruling 2026-09-04): the paper ledger derived this
+    for itself and handed it to ``_support_windows`` while production's
+    own compile never did, so the arm could only ever act in the replay
+    -- switched on live it would have changed nothing.  A TAF without a
+    TX, or any stage but P0-M, hands the enumerator nothing.
+    """
+
+    import json  # noqa: PLC0415 -- the only reader of lineage JSON here
+
+    if str(stage) != "P0-M":
+        return None
+    lineage = getattr(envelope, "lineage", None) or {}
+    try:
+        tx = float(lineage.get("taf_observed_tx_c"))
+    except (TypeError, ValueError):
+        return None
+    try:
+        intervals = json.loads(lineage.get("bucket_intervals_c_json") or "{}")
+    except (TypeError, ValueError):
+        return None
+    for bucket, bounds in intervals.items():
+        try:
+            lower, upper = bounds
+        except (TypeError, ValueError):
+            continue
+        if (lower is None or tx >= float(lower)) and (
+            upper is None or tx < float(upper)
+        ):
+            return str(bucket)
+    return None
+
+
 def _support_windows(
     *,
     snapshot: TargetBasketSnapshot,
@@ -3314,6 +3350,7 @@ def compile_delta_v2_runtime_plan(
     chain_growth_frame_usdc: float | None = None,
     book_equity_usdc: float | None = None,
     last_decision_signature: Mapping[str, Any] | None = None,
+    taf_tx_bucket: str | None = None,
 ) -> dict[str, Any]:
     """Compile the single-event q* and best no-live action under v2.
 
@@ -3519,6 +3556,10 @@ def compile_delta_v2_runtime_plan(
         minimum_support_buckets=basket_policy.minimum_support_buckets,
         center_bucket=center.bucket,
         probability_stage=str(snapshot.evidence.probability_stage or ""),
+        # The P0-M TAF TX bucket, for the enumerator's TAF arms.  Handed in
+        # by the caller that holds the envelope; the paper ledger hands the
+        # same value from the same function.
+        taf_tx_bucket=taf_tx_bucket,
     )
     # The floor's live set is the evidence's, not the candidate support's.
     # ``ordered_support`` here is the continuous-core candidate boundary --

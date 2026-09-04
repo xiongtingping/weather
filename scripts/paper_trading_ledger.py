@@ -116,6 +116,9 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     # window and sizes it in one pass, and the tilt floor it spends under.
     _solve_over_support_windows,
     CONSOLIDATION_TILT_FLOOR_LEGS,
+    # The P0-M TAF TX bucket the enumerator's TAF arms read: one function,
+    # handed to ``_support_windows`` by both compiles (2026-09-04).
+    taf_tx_bucket_for as _taf_tx_bucket,
 )
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     DEFAULT_KELLY_FRACTION,
@@ -184,7 +187,9 @@ from bayes_basket_target.center_width_calibration import (  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 STAGES = ("P0", "P0-M", "P1")
-INITIAL_CAPITAL_USDC = 1000.0
+INITIAL_CAPITAL_USDC = float(
+    os.environ.get("PAPER_LEDGER_INITIAL_CAPITAL", "") or 1000.0
+)
 # The live objective's fractional Kelly.  A quarter of full Kelly is the
 # stake that made the curve score concave enough to price variance without
 # refusing bets that cannot hurt the book.  Taken from the kernel rather
@@ -209,6 +214,18 @@ EXCHANGE_LOT_TOP_UP = (
 # would do (the kernel leaves an unstated rung alone).  The snapshot's own
 # value wins whenever it is present.
 EXCHANGE_MINIMUM_LOT_SHARES_FALLBACK = 5.0
+# Which allowance charter 70's lift reads under the production judge.
+# ``untilted`` is production: ``cash_phase`` lifts a sub-lot leg against the
+# scope's remaining allowance, which the consolidation tilt never touches
+# -- so a ticket the tilt cut to 0.75 is lifted to ~3.5 anyway.  ``tilted``
+# is the replay arm that asks what the tilt would be worth if the lift
+# respected it; measured, not run (open ruling P1, 2026-09-04).
+LOT_LIFT_BUDGET = (
+    os.environ.get("PAPER_LEDGER_LOT_LIFT_BUDGET", "").strip().lower()
+    or "untilted"
+)
+if LOT_LIFT_BUDGET not in {"untilted", "tilted"}:
+    raise SystemExit(f"unknown lot lift budget arm: {LOT_LIFT_BUDGET}")
 if EXCHANGE_LOT_TOP_UP not in EXCHANGE_LOT_TOP_UP_MODES:
     raise ValueError(f"unknown exchange lot top-up mode: {EXCHANGE_LOT_TOP_UP}")
 # Charter 66 (user ruling, 2026-08-29): a top-up is sized and admitted on
@@ -532,7 +549,9 @@ FEE_RATE = 0.0  # all-in asks in the snapshot already carry the fee
 # edge no live book ever offered: measured on the first run, quotes averaged
 # 6.1 hours stale (max 17.8) and produced a 0.158 average cost against a
 # 0.539 claimed win -- a 3.4x mispricing that does not exist.
-MAX_QUOTE_STALENESS_MINUTES = 30.0
+MAX_QUOTE_STALENESS_MINUTES = float(
+    os.environ.get("PAPER_LEDGER_MAX_QUOTE_STALENESS_MINUTES", "") or 30.0
+)
 # Below this all-in cost a basket is almost certainly a dust offer on an
 # empty side rather than a price anyone would fill.
 DUST_COST_FLOOR = 0.01
@@ -1270,6 +1289,21 @@ if LEG_VETO not in {"off", "on"}:
 JUDGE = os.environ.get("PAPER_LEDGER_JUDGE", "").strip().lower() or "production"
 if JUDGE not in {"ledger", "production", "production_seat"}:
     raise SystemExit(f"unknown judge: {JUDGE}")
+# Whether this lane's leak-free replay layers -- the P1 cooling ceiling and
+# the centre/width correction, both read from per-event-date tables fitted
+# only on earlier days -- reach the belief that seats.  They can only when
+# this lane is the judge: production's ``snapshot_from_probability_envelope``
+# takes every bucket's probability from the envelope itself, so under the
+# production judge a corrected vector handed in as the market mapping is
+# overwritten before the solver reads it.  Until 2026-09-04 the layers were
+# applied anyway, so the row recorded a corrected claim the solver had never
+# seen (SBGR 2026-08-17 P1: 0.1995 recorded against a 0.52 cost) and the
+# two arms measured nothing.  Under the production judge the walk now
+# carries the envelope's own vector everywhere -- row, clamp, consolidation,
+# settlement -- which is what production judged on.  Feeding the layers
+# into the solver would mean writing them into the envelope, a deliberate
+# departure from production that has to be ruled on, not slipped in.
+REPLAY_LAYERS_APPLIED = JUDGE == "ledger"
 # Charter 71(b) tightening, replay arm (2026-09-03): ``on`` refuses a top-up
 # whose own increment does not pay -- its expected payout on the lambda*p
 # partition must exceed what it costs -- on top of the chain-growth gate.
@@ -1789,7 +1823,15 @@ SELECTION_RULE_SHA256 = content_sha256({
     # ticket, the exchange lot refuses a fraction, and the station dial is
     # a per-leg execution gate.  Hashed unconditionally: every row before
     # it was sized and filled under rules production does not run.
-    "production_judge": "solver_chain_gates_exchange_lot_centre_v3",
+    # v4 (2026-09-04): the walk carries the envelope's own vector under the
+    # production judge, the consolidation lookback and the clamp's previous
+    # checkpoint span every stage.  Rows before it recorded a claim the
+    # solver never saw.
+    "production_judge": "solver_chain_gates_exchange_lot_centre_v4",
+    **(
+        {"lot_lift_budget": LOT_LIFT_BUDGET}
+        if LOT_LIFT_BUDGET != "untilted" else {}
+    ),
     "exchange_minimum_lot_fallback_shares": (
         EXCHANGE_MINIMUM_LOT_SHARES_FALLBACK
     ),
@@ -1936,12 +1978,17 @@ SELECTION_RULE_SHA256 = content_sha256({
     # A row priced against the raw posterior describes a red line the live
     # engine no longer draws, so it cannot share a fingerprint with these.
     "metar_ceiling": (
-        "replay_table_oos_by_event_date" if PAPER_LEDGER_CEILING else "off"
+        "replay_table_oos_by_event_date"
+        if PAPER_LEDGER_CEILING and REPLAY_LAYERS_APPLIED
+        else "off:judge_reads_envelope" if PAPER_LEDGER_CEILING
+        else "off"
     ),
     "center_width": (
         "replay_table_oos_by_event_date:"
         + ",".join(sorted(PAPER_LEDGER_CENTER_WIDTH_STAGES))
-        if PAPER_LEDGER_CENTER_WIDTH else "off"
+        if PAPER_LEDGER_CENTER_WIDTH and REPLAY_LAYERS_APPLIED
+        else "off:judge_reads_envelope" if PAPER_LEDGER_CENTER_WIDTH
+        else "off"
     ),
     # Same axis, different clock.  A book built on posteriors that reacted to
     # yesterday is not the book built on ones that did not, so the two must
@@ -2827,6 +2874,45 @@ def _truth(conn: sqlite3.Connection) -> dict[tuple[str, str], _Truth]:
     return out
 
 
+def _previous_checkpoint_probabilities(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    decision_at_utc: str,
+) -> dict[str, float] | None:
+    """The served vector of the checkpoint just before this one, any stage.
+
+    Charter 69's clamp compares this cycle's distribution with the one
+    before it, and production's "before" is the previous committed
+    envelope on the station-day whatever stage served it
+    (``_compile_target_plan``: ``_earlier[-1]``).  This lane walked one
+    stage at a time and reset the carry at each, so the first cycle of
+    P0-M and P1 compared against nothing and the clamp could not bind
+    there (aligned 2026-09-04).  None when nothing precedes it, which the
+    kernel reads as "unmeasured, leave alone".
+    """
+
+    row = conn.execute(
+        "SELECT history_id FROM basket_probability_bridge_history"
+        " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+        "   AND decision_at_utc<?"
+        " ORDER BY decision_at_utc DESC LIMIT 1",
+        (station_id, event_date, decision_at_utc),
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        str(bucket): float(probability)
+        for bucket, probability in conn.execute(
+            "SELECT bucket, probability"
+            " FROM basket_probability_bridge_bucket_probability"
+            " WHERE history_id=?",
+            (row[0],),
+        )
+    } or None
+
+
 def _deeper_refusal(current: tuple, candidate: tuple) -> tuple:
     """Keep whichever refusal got further down the funnel.
 
@@ -2925,7 +3011,7 @@ def _stage_entry_candidates(
         served_identity = probability_vector_identity_v1({
             str(row[0]): float(row[4]) for row in buckets
         })
-        if stage == "P1":
+        if stage == "P1" and REPLAY_LAYERS_APPLIED:
             ceiling_p = _ceiling_corrected(
                 conn,
                 {str(row[0]): float(row[4]) for row in buckets},
@@ -2940,16 +3026,18 @@ def _stage_entry_candidates(
                  ceiling_p.get(str(row[0]), row[4]))
                 for row in buckets
             ]
-        cw_p = _center_width_corrected(
-            {str(row[0]): float(row[4]) for row in buckets},
-            stage=stage,
-            envelope_json=envelope_json,
-            event_date=str(event_date),
-        )
-        buckets = [
-            (row[0], row[1], row[2], row[3], cw_p.get(str(row[0]), row[4]))
-            for row in buckets
-        ]
+        if REPLAY_LAYERS_APPLIED:
+            cw_p = _center_width_corrected(
+                {str(row[0]): float(row[4]) for row in buckets},
+                stage=stage,
+                envelope_json=envelope_json,
+                event_date=str(event_date),
+            )
+            buckets = [
+                (row[0], row[1], row[2], row[3],
+                 cw_p.get(str(row[0]), row[4]))
+                for row in buckets
+            ]
         signature = (
             observed_at,
             tuple(
@@ -3303,35 +3391,6 @@ def _build_snapshot(**kwargs: Any) -> tuple[
         TargetBasketSnapshot.from_mapping(mapping),
         probabilities, prices, depth,
     )
-
-
-def _taf_tx_bucket(envelope: Any, stage: str) -> str | None:
-    """The bucket the P0-M lineage's TAF TX falls in, or None.
-
-    Research arms only (``PM_P0M_TAF_MODE``): the TX in Celsius is mapped
-    through the envelope's own bucket intervals; a TAF without a TX, or any
-    other stage, hands the enumerator nothing.
-    """
-
-    if str(stage) != "P0-M":
-        return None
-    lineage = getattr(envelope, "lineage", None) or {}
-    try:
-        tx = float(lineage.get("taf_observed_tx_c"))
-    except (TypeError, ValueError):
-        return None
-    try:
-        intervals = json.loads(lineage.get("bucket_intervals_c_json") or "{}")
-    except (TypeError, ValueError):
-        return None
-    for bucket, bounds in intervals.items():
-        try:
-            lower, upper = bounds
-        except (TypeError, ValueError):
-            continue
-        if (lower is None or tx >= float(lower)) and (upper is None or tx < float(upper)):
-            return str(bucket)
-    return None
 
 
 def _production_envelope_for(
@@ -3961,7 +4020,8 @@ def _consolidation_signals(
 
     Three booleans and their count, recorded on the position row and never
     consulted by any decision.  ``stable``: the mass centre unchanged over
-    the prior CONSOLIDATION_STABLE_LOOKBACK P0 decisions.  ``sharp``: the
+    the prior CONSOLIDATION_STABLE_LOOKBACK committed checkpoints of the
+    station-day, any stage (production's chain).  ``sharp``: the
     entry distribution's top-two mass at or above the sharpness line.
     ``quoted``: the ideal centre+-1 window carries at least
     CONSOLIDATION_QUOTED_FRACTION of its mass on buckets asked at or above
@@ -3973,10 +4033,16 @@ def _consolidation_signals(
     centres: list[str] = []
     if probabilities:
         centres.append(max(probabilities, key=lambda b: probabilities[b]))
+    # Every stage, not P0 alone: production's ``prior_centre_buckets`` are
+    # the argmax of each earlier committed envelope on the station-day,
+    # whatever stage served it (``_compile_target_plan``'s ``_earlier``
+    # walks the chain unfiltered).  A P0-M checkpoint between two P0 ones
+    # can therefore break the run there; filtered to P0 it could not here,
+    # and the two lights disagreed on exactly those days (aligned
+    # 2026-09-04).
     for (hid,) in conn.execute(
         "SELECT history_id FROM basket_probability_bridge_history"
         " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-        "   AND stage='P0'"
         "   AND decision_at_utc<?"
         " ORDER BY decision_at_utc DESC LIMIT ?",
         (station_id, event_date, entry_decision_at_utc,
@@ -6735,6 +6801,23 @@ def backfill(
                         str(bucket): float(value)
                         for bucket, value in probabilities.items()
                     }
+                    if JUDGE != "ledger":
+                        # Production's "previous" is the previous committed
+                        # checkpoint on the station-day, any stage; the
+                        # per-stage carry above is this lane's own walk
+                        # order and only serves the ledger judge, whose
+                        # corrected vectors the raw checkpoint would not
+                        # match.
+                        previous_cycle_probabilities = (
+                            _previous_checkpoint_probabilities(
+                                conn,
+                                station_id=station_id,
+                                event_date=event_date,
+                                decision_at_utc=str(
+                                    payload["decision_at_utc"]
+                                ),
+                            )
+                        )
                     ordinals = {
                         row.bucket: int(row.ordinal)
                         for row in snapshot.buckets
@@ -8006,7 +8089,10 @@ def backfill(
                             )
                             for b in seat["buckets"]
                         }
-                        if production_verdict is not None:
+                        if (
+                            production_verdict is not None
+                            and LOT_LIFT_BUDGET == "untilted"
+                        ):
                             # Production's lift budget is the untilted
                             # remaining scope allowance (``cash_phase``
                             # sizes against ``remaining_budget``, which

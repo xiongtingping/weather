@@ -314,6 +314,20 @@ LEDGER_ONLY = {
         "replay-only fallback for pre-2026-08-31 snapshots; production"
         " fails closed instead, and the registry states 5.0 on every row"
     ),
+    # Whether the leak-free replay layers reach the belief that seats.  Only
+    # this lane's own judge can read them; production's snapshot builder
+    # overwrites every bucket's probability with the envelope's.  Derived
+    # from JUDGE, and pinned below.
+    "REPLAY_LAYERS_APPLIED": (
+        "derived: the replay ceiling/centre-width layers reach the solver"
+        " only under the ledger judge; production reads its envelope"
+    ),
+    # Open ruling P1 (2026-09-04): whether charter 70's lift reads the
+    # untilted allowance (production) or the tilted capital (the arm).
+    "LOT_LIFT_BUDGET": (
+        "replay arm: production lifts against the untilted allowance;"
+        " 'tilted' measures the tilt the lift currently undoes"
+    ),
     # Book-keeping for a paper book.  Production has a real capital pool.
     "INITIAL_CAPITAL_USDC": "paper book's opening equity",
     "BOOK_MODEL": "one book per station-day, a replay concept",
@@ -763,7 +777,7 @@ def test_the_exchange_lot_and_the_station_dial_bind_where_production_binds() -> 
     # carries it: rows sized as if there were no lot are not comparable.
     assert L.EXCHANGE_MINIMUM_LOT_SHARES_FALLBACK == 5.0
     assert (
-        '"production_judge": "solver_chain_gates_exchange_lot_centre_v3",'
+        '"production_judge": "solver_chain_gates_exchange_lot_centre_v4",'
         in source
     )
     assert "补足一手" in L.SELECTION_RULE_LABEL
@@ -804,6 +818,63 @@ def test_the_recorded_centre_comes_from_the_enumeration_that_seated() -> None:
         "seat_centre = seat_center",
     ):
         assert consumer in source, consumer
+
+
+def test_the_walk_carries_the_belief_the_solver_judged_on() -> None:
+    """Row, clamp and lights read the same vector the solver did.
+
+    Production's ``snapshot_from_probability_envelope`` sets every bucket's
+    probability from the envelope, so a corrected vector handed in as the
+    market mapping never reaches the solver.  This lane applied its
+    leak-free ceiling and centre-width replays to the vector it *recorded*
+    while the solver judged the envelope's -- SBGR 2026-08-17 P1 recorded a
+    0.1995 claim against a 0.52 cost for a seat the solver had found
+    positive.  The layers are applied only when this lane is the judge, and
+    the fingerprint says which it was.
+
+    Two more places read "the checkpoints before this one" and read them
+    the way production does: the consolidation lookback (every stage, not
+    P0 alone) and charter 69's previous vector (the previous committed
+    checkpoint, any stage, not the previous cycle of this stage's walk).
+
+    And the P0-M TAF TX bucket the enumerator's arms read is one function
+    on both sides, handed to ``_support_windows`` by both compiles -- until
+    2026-09-04 production's own compile never passed it, so the arm could
+    only ever act in the replay.
+    """
+
+    import inspect
+
+    source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    assert L.REPLAY_LAYERS_APPLIED == (L.JUDGE == "ledger")
+    assert 'if stage == "P1" and REPLAY_LAYERS_APPLIED:' in source
+    assert "        if REPLAY_LAYERS_APPLIED:\n            cw_p = " in source
+    assert '"off:judge_reads_envelope"' in source
+    # The lookback walks every stage.
+    lookback = inspect.getsource(L._consolidation_signals)
+    assert "stage='P0'" not in lookback
+    assert "AND decision_at_utc<?" in lookback
+    # The clamp's previous vector is the previous checkpoint, any stage.
+    assert "_previous_checkpoint_probabilities(" in source
+    previous = inspect.getsource(L._previous_checkpoint_probabilities)
+    assert "stage" not in previous.split('"""')[2], (
+        "the previous checkpoint must not be filtered by stage"
+    )
+    # One TAF helper, passed by both compiles.
+    assert L._taf_tx_bucket is P.taf_tx_bucket_for
+    production = (
+        ROOT / "bayes_basket_target" / "delta_v2_runtime.py"
+    ).read_text(encoding="utf-8")
+    assert "taf_tx_bucket=taf_tx_bucket," in production
+    runtime = (ROOT / "bayes_basket_target" / "runtime.py").read_text(
+        encoding="utf-8"
+    )
+    assert "taf_tx_bucket=taf_tx_bucket_for(envelope, str(envelope.stage))," in (
+        runtime
+    )
+    assert "taf_tx_bucket=_taf_tx_bucket(envelope, stage)," in source
 
 
 def test_a_rebuild_can_be_taken_oldest_first_in_slices() -> None:

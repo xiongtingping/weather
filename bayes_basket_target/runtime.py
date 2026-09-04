@@ -60,7 +60,7 @@ from .settlement_time import assert_probability_timezone_matches_market
 from .regime_artifact import RegimeArtifact, resolve_regime_artifact
 from .regime_materialization import evaluate_regime_gate
 from .delta_v2_artifact import DeltaV2PolicyArtifact
-from .delta_v2_runtime import compile_delta_v2_runtime_plan
+from .delta_v2_runtime import compile_delta_v2_runtime_plan, taf_tx_bucket_for
 
 
 DELTA_V2_OPTIMIZER_SCHEMA = "bayes_basket_target_delta_v2_optimizer_v2"
@@ -1152,6 +1152,10 @@ def _compile_target_plan(
             chain_consolidation_tilt=chain_consolidation_tilt,
             last_acted_probability_identity=last_acted_probability_identity,
             last_decision_signature=last_decision_signature,
+            # The P0-M TAF TX bucket the enumerator's TAF arms read.  Off
+            # by default (PM_P0M_TAF_MODE); until 2026-09-04 only the paper
+            # ledger passed it, so the arm could not have acted live.
+            taf_tx_bucket=taf_tx_bucket_for(envelope, str(envelope.stage)),
             # Charter 71: the identity this compile is served under, and the
             # frame the growth gate reads -- the scope's share of the whole
             # book, the same number the paper ledger frames it in.
