@@ -429,3 +429,88 @@ def test_pr12_expected_basis_rejects_tampered_builder_receipt() -> None:
         build_pr12_expected_scope_bases(
             packet, receipt, release_as_of_utc="2026-08-02T05:00:00Z"
         )
+
+
+def _revision_two(base: dict[str, object] | None = None, *, link: str | None) -> dict[str, object]:
+    """A report re-issued as revision two, linked (or not) to its stored fact."""
+
+    fact = dict(base or _revision())
+    # Its place in the day is still the first slot: a lone re-issued report
+    # is the whole exported day, and the day numbers from one.
+    fact.update(revision_no=2, sequence=1, supersedes_observation_fact_sha256=link)
+    return _seal({k: v for k, v in fact.items() if k != "content_sha256"})
+
+
+def test_a_packet_may_carry_a_later_revision_alone_when_it_links_to_the_stored_one() -> None:
+    """2026-09-04 ruling: a late insertion re-issues the shifted reports as the
+    next revision of their stored facts, and the packet carries those alone."""
+
+    packet = _contract(_revision_two(link=SHA_A))
+    parsed = CanonicalAWCObservationContract.from_mapping(packet)
+    assert [x.raw["revision_no"] for x in parsed.revision_facts] == [2]
+    with pytest.raises(ContractError, match="revision_supersession_missing"):
+        CanonicalAWCObservationContract.from_mapping(_contract(_revision_two(link=None)))
+    first_with_link = _revision()
+    first_with_link["supersedes_observation_fact_sha256"] = SHA_A
+    first_with_link = _seal({k: v for k, v in first_with_link.items() if k != "content_sha256"})
+    # The per-fact rule fires first: a first revision carrying a link is
+    # review lineage it has no business carrying.
+    with pytest.raises(
+        ContractError, match="unexpected_review_lineage|first_revision_supersedes"
+    ):
+        CanonicalAWCObservationContract.from_mapping(_contract(first_with_link))
+
+
+def test_consecutive_revisions_in_one_packet_chain_by_content_sha() -> None:
+    two = _revision_two(link=SHA_A)
+    three = dict(two)
+    # Two revisions of one report in one packet is a contract-level fixture
+    # (the builder emits one revision per report); each takes a slot.
+    three.update(revision_no=3, sequence=2, supersedes_observation_fact_sha256=SHA_B)
+    three = _seal({k: v for k, v in three.items() if k != "content_sha256"})
+    broken = _contract(two)
+    broken["revision_facts"].append(three)
+    broken = _seal({k: v for k, v in broken.items() if k != "content_sha256"})
+    with pytest.raises(ContractError, match="revision_supersession_mismatch"):
+        CanonicalAWCObservationContract.from_mapping(broken)
+    three["supersedes_observation_fact_sha256"] = two["content_sha256"]
+    three = _seal({k: v for k, v in three.items() if k != "content_sha256"})
+    chained = _contract(two)
+    chained["revision_facts"].append(three)
+    chained["day_bounds_facts"] = []
+    chained = _seal({k: v for k, v in chained.items() if k != "content_sha256"})
+    parsed = CanonicalAWCObservationContract.from_mapping(chained)
+    assert [x.raw["revision_no"] for x in parsed.revision_facts] == [2, 3]
+
+
+def _open_day_contract(revision: dict[str, object]) -> dict[str, object]:
+    """A re-issued report reaches ingress on an open day: revisions, no bounds."""
+
+    packet = _contract(revision)
+    packet["day_bounds_facts"] = []
+    return _seal({k: v for k, v in packet.items() if k != "content_sha256"})
+
+
+def test_ingress_resolves_a_revision_link_to_the_stored_revision_below_it() -> None:
+    conn = _ingress_db()
+    first = _revision()
+    ingest_canonical_contract(conn, _contract(first), commit=True, ingested_at_utc="2026-08-02T05:00:00Z")
+    linked = _open_day_contract(_revision_two(first, link=first["content_sha256"]))
+    receipt = ingest_canonical_contract(conn, linked, commit=True, ingested_at_utc="2026-08-02T05:01:00Z")
+    assert receipt["inserted_count"] == 1
+    assert conn.execute(
+        "SELECT COUNT(*) FROM canonical_ssot_fact WHERE fact_type='truth_observation_revision'"
+    ).fetchone()[0] == 2
+    # A link that names no stored fact is refused, on a store holding only
+    # the first revision (the same scope as above would conflict first).
+    fresh = _ingress_db()
+    ingest_canonical_contract(fresh, _contract(first), commit=True, ingested_at_utc="2026-08-02T05:00:00Z")
+    dangling = _open_day_contract(_revision_two(first, link=SHA_C))
+    with pytest.raises(ContractError, match="revision_supersession_unresolved"):
+        ingest_canonical_contract(fresh, dangling, commit=True, ingested_at_utc="2026-08-02T05:02:00Z")
+    # Revision three cannot point past two at one: the chain, not a pointer.
+    skipped = dict(_revision_two(first, link=first["content_sha256"]))
+    skipped.update(revision_no=3, sequence=1)
+    skipped = _seal({k: v for k, v in skipped.items() if k != "content_sha256"})
+    with pytest.raises(ContractError, match="revision_supersession_mismatch"):
+        ingest_canonical_contract(fresh, _open_day_contract(skipped), commit=True, ingested_at_utc="2026-08-02T05:03:00Z")

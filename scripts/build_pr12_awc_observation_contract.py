@@ -78,6 +78,56 @@ def _station_registry(target_db: Path) -> dict[str, dict[str, object]]:
     }
 
 
+def _attach_stored_revision_facts(
+    target_db: Path, evidence: dict[str, object], projection_sha: str
+) -> dict[str, object]:
+    """Carry the stored revision of every report in the window into the packet.
+
+    The builder never opens a database, so what is already on file reaches
+    it the same way the archive does: as sealed evidence.  With it the build
+    can re-emit an unchanged report as its stored revision and re-issue a
+    report a late insertion moved as the next revision of its stored fact
+    (see ``_resolve_against_stored_revision``); without it every such day
+    was quarantined whole and its later reports never identified -- SBGR
+    2026-09-03 lost every P1 revision hash from 12:34Z, when a 10:30Z SPECI
+    landed after the day had been identified through 12:00Z.
+    """
+
+    stations = {
+        str(row.get("station_id") or "").upper() for row in evidence.get("rows", [])
+    }
+    days = {str(row.get("event_date") or "") for row in evidence.get("rows", [])}
+    stored: list[dict[str, object]] = []
+    if stations and days:
+        with sqlite3.connect(f"file:{target_db}?mode=ro", uri=True) as conn:
+            conn.execute("PRAGMA query_only=ON")
+            rows = conn.execute(
+                "SELECT fact_json FROM canonical_ssot_fact "
+                "WHERE fact_type='truth_observation_revision' "
+                "  AND json_extract(fact_json,"
+                "'$.authority_scope_projection_content_sha256')=?",
+                (str(projection_sha),),
+            ).fetchall()
+        for (raw_json,) in rows:
+            raw = json.loads(str(raw_json))
+            if (
+                str(raw.get("station_id") or "").upper() in stations
+                and str(raw.get("event_date") or "") in days
+            ):
+                stored.append(raw)
+    stored.sort(
+        key=lambda raw: (
+            str(raw.get("station_id")),
+            str(raw.get("observation_id")),
+            int(raw.get("revision_no") or 0),
+        )
+    )
+    value = dict(evidence)
+    value["stored_revision_facts"] = stored
+    identity = {key: item for key, item in value.items() if key != "receipt_sha256"}
+    return {**identity, "receipt_sha256": content_sha256(identity)}
+
+
 def _parse_as_of_date(as_of_utc: str) -> date:
     return datetime.fromisoformat(
         str(as_of_utc).replace("Z", "+00:00")
@@ -313,6 +363,9 @@ def main() -> int:
         since_valid_at_utc=since_valid_at,
     )
     evidence = _exclude_materialized_day_scopes(
+        target, evidence, projection["content_sha256"]
+    )
+    evidence = _attach_stored_revision_facts(
         target, evidence, projection["content_sha256"]
     )
     # Build once to learn which days the store already identifies differently,

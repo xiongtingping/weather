@@ -464,3 +464,99 @@ def test_two_bodies_in_one_slot_are_a_supersession_not_a_defect() -> None:
     assert "obs-0" not in identified
     assert len(contract["revision_facts"]) == len(evidence["rows"]) - 1
 
+
+
+def _late_speci(day: str, zone: str, *, hour: int, minute: int = 30) -> dict[str, object]:
+    slot = _slots(day, zone)[hour] + timedelta(minutes=minute)
+    row = _row(slot, 100, day=day, zone=zone, report_type="SPECI", temperature=24.0)
+    # Landed two hours after the reports around it were already on file.
+    late = slot + timedelta(hours=2)
+    row["received_at_utc"] = _stamp(late)
+    row["first_seen_at_utc"] = _stamp(late)
+    row["parsed_at_utc"] = _stamp(late + timedelta(milliseconds=100))
+    row["fetch_started_at_utc"] = _stamp(late - timedelta(seconds=30))
+    row["fetch_completed_at_utc"] = _stamp(late)
+    row["origin_committed_at_utc"] = _stamp(late + timedelta(milliseconds=500))
+    row["canonical_committed_at_utc"] = _stamp(late + timedelta(seconds=1))
+    row["raw_text"] = "SPECI KJFK 1030Z 00000KT CAVOK 24/10 A3000"
+    return row
+
+
+def test_a_late_insertion_reissues_the_shifted_reports_as_the_next_revision() -> None:
+    """SBGR 2026-09-03: a 10:30Z SPECI landed at 12:34Z, after the day had been
+    identified through 12:00Z.  Rebuilt, every later report moved one place,
+    the stored facts no longer matched, and the whole day was quarantined --
+    so the reports that followed were never identified and P1 lost its
+    revision hash for the rest of the day.  With the stored revisions in the
+    packet, unchanged reports re-emit their stored fact byte for byte, the
+    shifted ones are re-issued as revision two linked to their stored fact,
+    and the SPECI itself is a first revision."""
+
+    evidence = _evidence()
+    first_contract, _ = build_awc_observation_contract(evidence)
+    stored = list(first_contract["revision_facts"])
+    assert len(stored) == 24
+    by_obs = {fact["observation_id"]: fact for fact in stored}
+
+    later = deepcopy(evidence)
+    later["rows"].append(_late_speci("2026-08-01", "America/New_York", hour=10))
+    later["stored_revision_facts"] = stored
+    contract, receipt = build_awc_observation_contract(_reseal(later))
+    parsed = CanonicalAWCObservationContract.from_mapping(contract)
+    facts = {x.raw["observation_id"]: x.raw for x in parsed.revision_facts}
+    assert len(facts) == 25
+    for index in range(0, 11):
+        fact = facts[f"obs-{index}"]
+        assert fact["revision_no"] == 1
+        assert fact["content_sha256"] == by_obs[f"obs-{index}"]["content_sha256"]
+    speci = facts["obs-100"]
+    assert speci["report_type"] == "SPECI"
+    assert speci["revision_no"] == 1 and speci["sequence"] == 12
+    assert speci["supersedes_observation_fact_sha256"] is None
+    for index in range(11, 24):
+        fact = facts[f"obs-{index}"]
+        old = by_obs[f"obs-{index}"]
+        assert fact["revision_no"] == 2
+        assert fact["sequence"] == old["sequence"] + 1
+        assert fact["supersedes_observation_fact_sha256"] == old["content_sha256"]
+        assert fact["reported_temperature_c"] == old["reported_temperature_c"]
+    assert receipt["late_insertion_supersession_count"] == 13
+    assert {x["observation_id"] for x in receipt["late_insertion_supersessions"]} == {
+        f"obs-{index}" for index in range(11, 24)
+    }
+    assert receipt["late_insertion_supersessions"][0]["reason"] == "LATE_INSERTION_RENUMBERED"
+    # The day still closes: one bounds fact over the re-issued vector.
+    assert len(parsed.day_bounds_facts) == 1
+
+
+def test_stored_revisions_only_absorb_a_change_of_place_not_of_content() -> None:
+    """Any other difference is the quarantine's to name, never the build's to
+    paper over with a revision."""
+
+    evidence = _evidence()
+    first_contract, _ = build_awc_observation_contract(evidence)
+    stored = list(first_contract["revision_facts"])
+    drifted = deepcopy(stored)
+    drifted[5]["reported_temperature_c"] = 99.0
+    drifted[5] = {
+        **{k: v for k, v in drifted[5].items() if k != "content_sha256"},
+        "content_sha256": content_sha256(
+            {k: v for k, v in drifted[5].items() if k != "content_sha256"}
+        ),
+    }
+    again = deepcopy(evidence)
+    again["stored_revision_facts"] = drifted
+    contract, receipt = build_awc_observation_contract(_reseal(again))
+    fact = next(x for x in contract["revision_facts"] if x["observation_id"] == "obs-5")
+    assert fact["revision_no"] == 1
+    assert fact["supersedes_observation_fact_sha256"] is None
+    assert fact["content_sha256"] != drifted[5]["content_sha256"]
+    assert receipt["late_insertion_supersession_count"] == 0
+    # And an unchanged stored set is re-emitted byte for byte.
+    same = deepcopy(evidence)
+    same["stored_revision_facts"] = stored
+    contract, receipt = build_awc_observation_contract(_reseal(same))
+    assert [x["content_sha256"] for x in contract["revision_facts"]] == [
+        x["content_sha256"] for x in stored
+    ]
+    assert receipt["late_insertion_supersession_count"] == 0

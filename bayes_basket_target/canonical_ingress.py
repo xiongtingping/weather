@@ -786,6 +786,49 @@ def _utc_now() -> str:
     )
 
 
+def _assert_revision_supersession_link(
+    conn: sqlite3.Connection, fact_json: str
+) -> None:
+    """A revision above one supersedes exactly the stored revision below it.
+
+    The contract demands the link; this resolves it.  The named fact must be
+    on file, be a revision of the same report by the same station, and be
+    the revision immediately before -- a chain, not a pointer.
+    """
+
+    try:
+        fact = json.loads(str(fact_json))
+    except (TypeError, ValueError) as exc:
+        raise ContractError("canonical_revision_fact_json_invalid") from exc
+    try:
+        revision_no = int(fact.get("revision_no") or 0)
+    except (TypeError, ValueError) as exc:
+        raise ContractError("canonical_revision_number_invalid") from exc
+    link = fact.get("supersedes_observation_fact_sha256")
+    if revision_no <= 1:
+        if link is not None:
+            raise ContractError("canonical_first_revision_supersedes")
+        return
+    link_sha = str(link or "").strip().lower()
+    if not link_sha:
+        raise ContractError("canonical_revision_supersession_missing")
+    prior = conn.execute(
+        "SELECT fact_json FROM canonical_ssot_fact WHERE fact_id=?",
+        (f"truth_observation_revision:{link_sha}",),
+    ).fetchone()
+    if prior is None:
+        raise ContractError("canonical_revision_supersession_unresolved")
+    prior_fact = json.loads(str(prior[0]))
+    if (
+        str(prior_fact.get("station_id") or "").upper()
+        != str(fact.get("station_id") or "").upper()
+        or str(prior_fact.get("observation_id") or "")
+        != str(fact.get("observation_id") or "")
+        or int(prior_fact.get("revision_no") or 0) != revision_no - 1
+    ):
+        raise ContractError("canonical_revision_supersession_mismatch")
+
+
 def _fact_rows(contract: CanonicalContract) -> list[tuple[str, str, str, str, str]]:
     rows: list[tuple[str, str, str, str, str]] = []
     for fact_type, facts in (
@@ -3175,6 +3218,8 @@ def ingest_canonical_contract(
             ).fetchone()
             if scope_existing is not None:
                 raise ContractError("canonical_scope_content_conflict")
+            if fact_type == "truth_observation_revision":
+                _assert_revision_supersession_link(conn, fact_json)
             # A preview must be a genuinely read-only validation, not a
             # temporary INSERT followed by rollback.  This keeps the same
             # contract/reference/idempotency/scope checks usable through a

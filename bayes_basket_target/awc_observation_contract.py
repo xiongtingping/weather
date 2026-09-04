@@ -197,16 +197,24 @@ class CanonicalAWCObservationRevisionFact:
             if value[field] is not None:
                 value[field] = _sha(value[field], field)
         if value["correction_kind"] == "NONE":
+            # A report that is not a correction carries no review lineage.
+            # It may still supersede: a later revision of an uncorrected
+            # report is the same observation re-issued at a new place in the
+            # day's numbering after a late insertion (2026-09-04 ruling), and
+            # the link is what ties it to the fact it replaces.  A first
+            # revision has nothing to supersede.
+            placement_reissue = (
+                value["revision_no"] > 1
+                and value["supersedes_observation_fact_sha256"] is not None
+            )
             if (
                 value["correction_state"] != "NO_CORRECTION"
                 or value["qc_state"] != "ACCEPTED"
                 or value["halt_state"] != "CLEAR"
-                or any(
-                    value[field] is not None
-                    for field in (
-                        "supersedes_observation_fact_sha256",
-                        "review_receipt_sha256",
-                    )
+                or value["review_receipt_sha256"] is not None
+                or (
+                    value["supersedes_observation_fact_sha256"] is not None
+                    and not placement_reissue
                 )
             ):
                 raise ContractError("awc_observation_revision_unexpected_review_lineage")
@@ -475,10 +483,38 @@ class CanonicalAWCObservationContract:
                         "awc_observation_contract_correction_review_unbound"
                     )
             for observation_revisions in by_observation.values():
-                if sorted(item.raw["revision_no"] for item in observation_revisions) != list(
-                    range(1, len(observation_revisions) + 1)
-                ):
+                # Revisions in a packet are contiguous, but need not start at
+                # one: a report shifted by a late insertion is re-issued as
+                # the next revision of a fact already on file, and the packet
+                # carries that revision alone, linked by
+                # ``supersedes_observation_fact_sha256`` to the stored one.
+                # Ingress resolves the link; the contract only demands it.
+                # (2026-09-04 ruling: SBGR lost every P1 revision hash from
+                # 12:34Z when a 10:30Z SPECI landed after the day had been
+                # identified through 12:00Z.)
+                chain = sorted(
+                    observation_revisions, key=lambda item: item.raw["revision_no"]
+                )
+                numbers = [item.raw["revision_no"] for item in chain]
+                if numbers != list(range(numbers[0], numbers[0] + len(numbers))):
                     raise ContractError("awc_observation_contract_revision_number_gap")
+                for index, item in enumerate(chain):
+                    link = item.raw["supersedes_observation_fact_sha256"]
+                    if item.raw["revision_no"] == 1:
+                        if link is not None:
+                            raise ContractError(
+                                "awc_observation_contract_first_revision_supersedes"
+                            )
+                        continue
+                    if link is None:
+                        raise ContractError(
+                            "awc_observation_contract_revision_supersession_missing"
+                        )
+                    _sha(link, "supersedes_observation_fact_sha256")
+                    if index > 0 and link != chain[index - 1].content_sha256:
+                        raise ContractError(
+                            "awc_observation_contract_revision_supersession_mismatch"
+                        )
         for bound in bounds:
             day_key = (
                 bound.raw["station_id"],

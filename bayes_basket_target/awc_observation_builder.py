@@ -577,6 +577,86 @@ def export_awc_ingress_evidence_v4(
     return {**identity, "receipt_sha256": content_sha256(identity)}
 
 
+# Fields a report's fact may differ in between two builds without being a
+# different observation of the world: its place in the day's numbering, and
+# the revision bookkeeping that place is carried by.
+_REVISION_PLACEMENT_FIELDS = frozenset({
+    "sequence", "revision_no", "supersedes_observation_fact_sha256",
+    "content_sha256",
+})
+
+
+def _stored_revisions_by_report(
+    stored: Sequence[Mapping[str, Any]],
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """The newest stored revision of each report, keyed by station and id."""
+
+    latest: dict[tuple[str, str], dict[str, Any]] = {}
+    for raw in stored:
+        if not isinstance(raw, Mapping):
+            raise ContractError("pr12_stored_revision_fact_invalid")
+        try:
+            key = (
+                str(raw["station_id"]).strip().upper(),
+                str(raw["observation_id"]).strip(),
+            )
+            revision_no = int(raw["revision_no"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ContractError("pr12_stored_revision_fact_invalid") from exc
+        current = latest.get(key)
+        if current is None or revision_no > int(current["revision_no"]):
+            latest[key] = dict(raw)
+    return latest
+
+
+def _resolve_against_stored_revision(
+    fresh: Mapping[str, Any], stored: Mapping[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Reconcile a freshly numbered fact with the revision already on file.
+
+    A report identical to its stored revision is re-emitted as that revision,
+    byte for byte, which is what keeps a rebuild idempotent.  A report whose
+    only difference is its place in the day's numbering -- a late insertion
+    moved it -- is re-issued as the next revision, linked to the stored one:
+    the doctrine's supersession, done by the build and named on the receipt,
+    rather than a whole day withheld for as long as the day lasts.  Any
+    other difference is left as it is, for the quarantine to name: what
+    changed there is a review's to decide, not a build's.
+    """
+
+    fresh_identity = {
+        key: value for key, value in fresh.items()
+        if key not in _REVISION_PLACEMENT_FIELDS
+    }
+    stored_identity = {
+        key: value for key, value in stored.items()
+        if key not in _REVISION_PLACEMENT_FIELDS
+    }
+    if fresh_identity != stored_identity:
+        return dict(fresh), None
+    if int(fresh["sequence"]) == int(stored["sequence"]):
+        return dict(stored), None
+    stored_sha = _sha(stored.get("content_sha256"), "stored_revision_content_sha256")
+    reissued = _seal({
+        **fresh_identity,
+        "sequence": int(fresh["sequence"]),
+        "revision_no": int(stored["revision_no"]) + 1,
+        "supersedes_observation_fact_sha256": stored_sha,
+    })
+    return reissued, {
+        "station_id": str(fresh["station_id"]),
+        "event_date": str(fresh["event_date"]),
+        "observation_id": str(fresh["observation_id"]),
+        "observed_at_utc": str(fresh["observed_at_utc"]),
+        "revision_no_before": int(stored["revision_no"]),
+        "revision_no_after": int(reissued["revision_no"]),
+        "sequence_before": int(stored["sequence"]),
+        "sequence_after": int(fresh["sequence"]),
+        "supersedes_observation_fact_sha256": stored_sha,
+        "reason": "LATE_INSERTION_RENUMBERED",
+    }
+
+
 def _expected_hourly_slots(event_date: str, zone_name: str) -> list[str]:
     zone = ZoneInfo(zone_name)
     local_start = datetime.combine(date.fromisoformat(event_date), datetime.min.time(), zone)
@@ -620,6 +700,10 @@ def build_awc_observation_contract(
     day_bounds_facts: list[dict[str, Any]] = []
     coverage_receipts: list[dict[str, Any]] = []
     terminal_gaps: list[dict[str, Any]] = [dict(x) for x in evidence.get("extraction_gaps") or ()]
+    stored_revisions = _stored_revisions_by_report(
+        evidence.get("stored_revision_facts") or ()
+    )
+    late_insertion_supersessions: list[dict[str, Any]] = []
     registry = evidence.get("station_registry")
     if not isinstance(registry, Mapping):
         raise ContractError("pr12_evidence_station_registry_missing")
@@ -895,6 +979,11 @@ def build_awc_observation_contract(
                     "halt_state": "CLEAR",
                 }
             )
+            prior = stored_revisions.get((station, str(row["observation_id"])))
+            if prior is not None:
+                fact, supersession = _resolve_against_stored_revision(fact, prior)
+                if supersession is not None:
+                    late_insertion_supersessions.append(supersession)
             day_revisions.append(fact)
         if day_bounds_blocked:
             # The reports are identified; the day's maximum is not yet a fact.
@@ -1001,6 +1090,8 @@ def build_awc_observation_contract(
         "day_bounds_fact_count": len(day_bounds_facts),
         "coverage_receipts": coverage_receipts,
         "terminal_gaps": terminal_gaps,
+        "late_insertion_supersessions": late_insertion_supersessions,
+        "late_insertion_supersession_count": len(late_insertion_supersessions),
         "calls_order_gateway": False,
         "orders_submitted": 0,
         "publishes_pr04_pointer": False,
