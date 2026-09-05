@@ -27,6 +27,7 @@ from .basket_kernel.delta_v2 import (
     BUNDLE_RESCORE_SCHEMA,
     DEFAULT_P1_ENTRY_LOCAL_HOUR,
     CHAIN_TICKET_CANDIDATE_ORIGIN,
+    EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
     EXECUTION_AUTHORIZATION_CHAIN_TICKET,
     EXECUTION_AUTHORIZATION_JOINT_VALUE,
     KELLY_OBJECTIVE_FORM,
@@ -34,6 +35,7 @@ from .basket_kernel.delta_v2 import (
     PRODUCTION_EXECUTION_AUTHORIZATION,
     rescore_maker_bundle_v2,
     scope_stake_cap_usdc,
+    venue_minimum_shares_v1,
 )
 from .cash_phase import (
     BasketCashPhaseInput,
@@ -60,7 +62,38 @@ from .settlement_time import assert_probability_timezone_matches_market
 from .regime_artifact import RegimeArtifact, resolve_regime_artifact
 from .regime_materialization import evaluate_regime_gate
 from .delta_v2_artifact import DeltaV2PolicyArtifact
-from .delta_v2_runtime import compile_delta_v2_runtime_plan, taf_tx_bucket_for
+from .delta_v2_runtime import (
+    CHARTER_83_MIN_NOTIONAL,
+    compile_delta_v2_runtime_plan,
+    taf_tx_bucket_for,
+)
+
+
+def execution_minimum_lot_shares(
+    *,
+    min_order_size: Any,
+    limit_price: Any,
+) -> float:
+    """The fewest shares the venue takes for one leg: its lot or its dollar.
+
+    Charter 83 was written into the plan-level lift alone, and that lift
+    judges affordability against the capital the consolidation tilt leaves
+    (0.75 USDC on every lit P0 day), so it refused on the first live morning
+    and on every plan since -- while the sizing below raised each leg to the
+    market's lot regardless, which is how 0.862-share targets became the
+    five-share orders the exchange then refused under a dollar (ZGSZ 32°C,
+    $0.95).  The venue's rule is one rule with two floors, so the sizing
+    reads both through the kernel's one function; ``off`` is the lot alone.
+    """
+
+    return venue_minimum_shares_v1(
+        min_lot_shares=float(min_order_size or 0.0),
+        ask=float(limit_price or 0.0),
+        minimum_notional_usdc=(
+            EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC
+            if CHARTER_83_MIN_NOTIONAL == "on" else 0.0
+        ),
+    )
 
 
 DELTA_V2_OPTIMIZER_SCHEMA = "bayes_basket_target_delta_v2_optimizer_v2"
@@ -1399,7 +1432,10 @@ def _compile_target_plan(
                 # lot is the same five shares either way.  A NONE candidate
                 # has no order to size and keeps 0.
                 minimum_lot_shares=(
-                    float(snap_row.min_order_size or 0.0)
+                    execution_minimum_lot_shares(
+                        min_order_size=snap_row.min_order_size,
+                        limit_price=candidate_price,
+                    )
                     if execution_candidate in ("MAKER", "TAKER_FOK")
                     else 0.0
                 ),

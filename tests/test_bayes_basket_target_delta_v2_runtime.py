@@ -1513,7 +1513,19 @@ def test_a_station_that_holds_something_can_still_compile() -> None:
         if row["candidate_kind"] == "COMPLETE_BASKET_TARGET"
     ]
     assert complete
+    # Charter 84 (2026-09-05): one complete candidate may leave a held leg
+    # alone -- the completion, which brings the short leg up to the held
+    # level and touches nothing else.  Every other complete candidate still
+    # adds to every seated leg.
+    completion = [
+        row for row in complete if row["candidate_origin"] == "LADDER_BALANCE"
+    ]
+    assert len(completion) == 1
+    assert completion[0]["shares_by_bucket"]["35"] == pytest.approx(14.0)
+    assert completion[0]["shares_by_bucket"]["36"] == pytest.approx(14.0)
     for row in complete:
+        if row["candidate_origin"] == "LADDER_BALANCE":
+            continue
         for bucket in ("35", "36"):
             assert (
                 row["shares_by_bucket"][bucket]

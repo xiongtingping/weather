@@ -115,6 +115,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     CHARTER_66A_CHAIN_PAR,
     CHARTER_70_EXCHANGE_LOT,
     CHARTER_83_MIN_NOTIONAL,
+    CHARTER_84_LADDER_BALANCE,
     CHARTER_71A_TOPUP_IDENTITY,
     CHARTER_71B_CHAIN_GROWTH,
     CHARTER_72_KELLY_SIZING,
@@ -1911,6 +1912,10 @@ SELECTION_RULE_SHA256 = content_sha256({
             ("charter_66a_chain_par", CHARTER_66A_CHAIN_PAR),
             ("charter_70_exchange_lot", CHARTER_70_EXCHANGE_LOT),
             ("charter_83_min_notional", CHARTER_83_MIN_NOTIONAL),
+            # Charter 84 never binds on this book -- its fills are whole,
+            # so no seat is ever venue-short -- but the switch is read from
+            # production so an arm that flips it flips it on both sides.
+            ("charter_84_ladder_balance", CHARTER_84_LADDER_BALANCE),
             ("charter_71a_topup_identity", CHARTER_71A_TOPUP_IDENTITY),
             ("charter_71b_chain_growth", CHARTER_71B_CHAIN_GROWTH),
             ("charter_72_kelly_sizing", CHARTER_72_KELLY_SIZING),

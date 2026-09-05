@@ -474,6 +474,14 @@ CURVE_OBJECTIVE_FORM = "fractional_log_wealth_curve_v1"
 # curve score is still computed, for the audit, and decides nothing.
 KELLY_OBJECTIVE_FORM = "whole_basket_kelly_v1"
 KELLY_CANDIDATE_ORIGIN = "WHOLE_BASKET_KELLY"
+# Charter 84 (user ruling, 2026-09-05): the completion of a basket the venue
+# broke.  A seat whose legs were partly refused -- the gateway's dropped
+# collateral reading, the dollar minimum -- holds some rungs and not others;
+# the Kelly law then sizes the seat below what is already held and offers
+# nothing, and the grid's slivers fail the scenario floor, so the ladder
+# stays broken.  This candidate brings every short rung of the seated window
+# up to the level the held rungs sit at, and nothing else.
+LADDER_BALANCE_CANDIDATE_ORIGIN = "LADDER_BALANCE"
 PRODUCTION_SIZING_LAW = KELLY_OBJECTIVE_FORM
 # Charter 73 (user ruling, 2026-09-03): what authorizes a bundle at the
 # execution layer.  ``joint_value_v2`` is the penalized value_v2 delta over
@@ -652,8 +660,18 @@ def raise_sub_lot_targets_v2(
     capital_available_usdc: Any,
     mode: str = EXCHANGE_LOT_TOP_UP,
     minimum_notional_usdc: Any = EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
+    held_shares_by_bucket: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Raise every seated rung under the venue minimum to exactly that minimum.
+
+    ``held_shares_by_bucket`` (charter 84, 2026-09-05) is what the chain
+    already holds per rung; the venue's minimum is a rule about *orders*, so
+    it binds on the increment a rung would buy, not on the target that
+    includes what is held.  A rung with no increment is not an order and is
+    not raised; a rung whose increment is under the minimum is raised to
+    held plus the minimum; and only the increments are charged against the
+    capital.  Absent (the paper ledger hands in increments already), every
+    target is read as an increment, which is the pre-charter-84 reading.
 
     Pure and deterministic.  ``min_lot_by_bucket`` is the exchange's stated
     minimum per market (0 when unstated); ``minimum_notional_usdc`` is the
@@ -690,6 +708,10 @@ def raise_sub_lot_targets_v2(
     if mode == "off":
         return unchanged
     capital = _nonnegative("delta_v2_capital_available", capital_available_usdc)
+    held = {
+        str(bucket): _nonnegative("delta_v2_held_shares", value or 0.0)
+        for bucket, value in (held_shares_by_bucket or {}).items()
+    }
     raised: list[str] = []
     by_notional: list[str] = []
     lots: dict[str, float] = {}
@@ -698,13 +720,14 @@ def raise_sub_lot_targets_v2(
     for raw_bucket in support:
         bucket = str(raw_bucket)
         target = targets.get(bucket, 0.0)
+        increment = max(0.0, target - held.get(bucket, 0.0))
         lot = _nonnegative(
             "delta_v2_min_lot", min_lot_by_bucket.get(bucket, 0.0) or 0.0
         )
         ask = _nonnegative(
             "delta_v2_ask", ask_by_bucket.get(bucket, 0.0) or 0.0
         )
-        committed += target * ask
+        committed += increment * ask
         floor_shares = venue_minimum_shares_v1(
             min_lot_shares=lot,
             ask=ask,
@@ -713,15 +736,15 @@ def raise_sub_lot_targets_v2(
         if (
             floor_shares <= EPS
             or ask <= EPS
-            or target <= EPS
-            or target + EPS >= floor_shares
+            or increment <= EPS
+            or increment + EPS >= floor_shares
         ):
             continue
         raised.append(bucket)
         if floor_shares > lot + EPS:
             by_notional.append(bucket)
-        lots[bucket] = floor_shares
-        extra += (floor_shares - target) * ask
+        lots[bucket] = held.get(bucket, 0.0) + floor_shares
+        extra += (floor_shares - increment) * ask
     if not raised:
         return unchanged
     if committed + extra > capital + EPS:
@@ -1055,6 +1078,42 @@ def whole_basket_kelly_stake_v1(
         return 0.0, 0.0
     fraction = min(float(kelly_fraction) * full, float(scope_fraction))
     return fraction, max(0.0, fraction * float(book_equity_usdc))
+
+
+def ladder_balance_targets_v1(
+    *,
+    held_by_bucket: Mapping[str, Any],
+    support: Sequence[str],
+) -> dict[str, float]:
+    """Charter 84's shape: every short rung of the seat raised to the held level.
+
+    ``held_by_bucket`` is what the chain holds (filled plus pending) per
+    bucket; ``support`` is the seated window.  The level is the most shares
+    any rung of the window holds; a rung below it is a short rung and its
+    target is the level, a rung at it keeps what it has.  Empty when the
+    window holds nothing (there is no level to balance to) or nothing is
+    short (the ladder is whole).  Sized to the held rungs, not to a new
+    Kelly stake: the seat was sized when it opened, and completing it is
+    restoring that seat, not resizing it.
+    """
+
+    window = tuple(_text("delta_v2_balance_bucket", bucket) for bucket in support)
+    if len(set(window)) != len(window):
+        raise ContractError("delta_v2_balance_support_duplicate")
+    held = {
+        bucket: _nonnegative("delta_v2_balance_held", held_by_bucket.get(bucket, 0.0) or 0.0)
+        for bucket in window
+    }
+    level = max(held.values(), default=0.0)
+    if level <= EPS:
+        return {}
+    short = {bucket for bucket, shares in held.items() if shares + EPS < level}
+    if not short:
+        return {}
+    return {
+        bucket: (level if bucket in short else held[bucket])
+        for bucket in window
+    }
 
 
 def whole_basket_edge_delta_v1(
@@ -1849,6 +1908,10 @@ def solve_target_inventory_v2(
             row for row in legal
             if row["candidate_origin"] == KELLY_CANDIDATE_ORIGIN
         ]
+        balance_rows = [
+            row for row in legal
+            if row["candidate_origin"] == LADDER_BALANCE_CANDIDATE_ORIGIN
+        ]
         ticket_rows = [
             row for row in legal
             if row["candidate_origin"] == CHAIN_TICKET_CANDIDATE_ORIGIN
@@ -1858,6 +1921,19 @@ def solve_target_inventory_v2(
                 kelly_rows,
                 key=lambda row: (
                     -sum(row["audit"]["cost_by_bucket"].values()),
+                    row["candidate_id"],
+                ),
+            )
+        elif balance_rows:
+            # Charter 84: the Kelly law offered nothing because the seat
+            # already holds more than it would size today; a seat the venue
+            # left short is completed to its held level when that completion
+            # is floor-legal.  Never beside a Kelly row -- a Kelly row adds to
+            # every leg and completes the ladder on its own terms.
+            winner = min(
+                balance_rows,
+                key=lambda row: (
+                    sum(row["audit"]["cost_by_bucket"].values()),
                     row["candidate_id"],
                 ),
             )
@@ -3318,4 +3394,6 @@ __all__ = [
     "select_complete_maker_bundle_v2",
     "solve_reservation_price_v2",
     "solve_target_inventory_v2",
+    "LADDER_BALANCE_CANDIDATE_ORIGIN",
+    "ladder_balance_targets_v1",
 ]

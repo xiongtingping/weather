@@ -55,6 +55,7 @@ from .basket_kernel.delta_v2 import (
     is_decision_moment_v1,
     EXECUTION_AUTHORIZATION_JOINT_VALUE,
     KELLY_CANDIDATE_ORIGIN,
+    LADDER_BALANCE_CANDIDATE_ORIGIN,
     KELLY_OBJECTIVE_FORM,
     PRODUCTION_EXECUTION_AUTHORIZATION,
     chain_ticket_cash_v1,
@@ -65,6 +66,7 @@ from .basket_kernel.delta_v2 import (
     deflate_window_partition_v1,
     probability_vector_identity_v1,
     whole_basket_kelly_stake_v1,
+    ladder_balance_targets_v1,
     evaluate_action_v2,
     evaluate_basket_value_v2,
     raise_sub_lot_targets_v2,
@@ -1198,6 +1200,20 @@ CHARTER_70_EXCHANGE_LOT = (
 CHARTER_83_MIN_NOTIONAL = (
     os.environ.get("PM_CHARTER_83_MIN_NOTIONAL", "").strip().lower() or "on"
 )
+# Charter 84 (2026-09-05): a seat the venue left short is completed to the
+# level its held rungs sit at -- offered as a candidate beside the Kelly
+# seat, judged by the same floor, the same increment edge and the same lot
+# and dollar lift.  ``off`` is the pre-ruling arm, under which the first
+# live morning's four half-baskets stayed half (the Kelly law sized the seat
+# below what was held and offered nothing; the grid's slivers failed the
+# floor).
+CHARTER_84_LADDER_BALANCE = (
+    os.environ.get("PM_CHARTER_84_LADDER_BALANCE", "").strip().lower() or "on"
+)
+if CHARTER_84_LADDER_BALANCE not in {"on", "off"}:
+    raise RuntimeError(
+        f"unknown charter 84 ladder balance mode: {CHARTER_84_LADDER_BALANCE}"
+    )
 for _name, _value in (
     ("PM_CHARTER_83_MIN_NOTIONAL", CHARTER_83_MIN_NOTIONAL),
     ("PM_CHARTER_77_DECISION_MOMENTS", CHARTER_77_DECISION_MOMENTS),
@@ -2915,6 +2931,28 @@ def _target_candidates(
             )
             if ticket_candidate is not None:
                 candidates.append(ticket_candidate)
+    if CHARTER_84_LADDER_BALANCE == "on" and not chain_empty:
+        # Charter 84: a seat the venue left short.  The Kelly candidate above
+        # is None whenever any rung already holds its target, and the grid
+        # buys a clip of every rung or nothing -- so a ladder holding two
+        # rungs of three had no candidate that simply bought the third at
+        # the size the other two were bought at.  Any stage: completing the
+        # seat is not opening one (charter 74) and not adding to a whole one
+        # (charter 71).
+        balance_candidate = _ladder_balance_candidate(
+            ordered=ordered,
+            lane_levels=lane_levels,
+            lane_prices=lane_prices,
+            pricing_basis=pricing_basis,
+            current_shares=current_shares,
+            current_cost=current_cost,
+            pending_shares=pending_shares,
+            pending_cost=pending_cost,
+            capital_available_usdc=capital_available_usdc,
+            quote_version=str(snapshot.quote_version),
+        )
+        if balance_candidate is not None:
+            candidates.append(balance_candidate)
     if centre_bucket:
         candidates.extend(_centre_anchored_candidates(
             snapshot=snapshot,
@@ -3110,6 +3148,110 @@ def _chain_ticket_candidate(
             "cost_per_share": cost_per_share,
             "shares_per_leg": want,
             "minimum_clip_usdc": float(minimum_clip_usdc),
+        },
+    }
+
+
+def _ladder_balance_candidate(
+    *,
+    ordered: Sequence[str],
+    lane_levels: Mapping[str, Sequence[Any]],
+    lane_prices: Mapping[str, float],
+    pricing_basis: str,
+    current_shares: Mapping[str, float],
+    current_cost: Mapping[str, float],
+    pending_shares: Mapping[str, float],
+    pending_cost: Mapping[str, float],
+    capital_available_usdc: float,
+    quote_version: str,
+) -> dict[str, Any] | None:
+    """Charter 84's candidate: the seat's short rungs raised to its held level.
+
+    The level is the kernel's (``ladder_balance_targets_v1``): the most
+    shares any rung of the window holds.  Each short rung buys the
+    difference down the same ladder the grid prices on; a held rung is left
+    exactly as it is.  ``None`` when the window holds nothing, nothing is
+    short, a short rung has no depth, or the completion does not fit the
+    capital -- all-or-none, because a ladder completed on one rung and not
+    the other is still broken.
+
+    First live morning, 2026-09-05: ZGSZ 2026-09-06 held 30°C and 31°C at
+    five shares each after the venue refused 32°C ($0.95 under the dollar
+    minimum); with the holdings finally visible the Kelly law sized the seat
+    at 0.75 USDC against 3.4 held and offered nothing, four grid slivers
+    failed the floor, and the plan read ``target_inventory_satisfied``.
+    """
+
+    held = {
+        bucket: float(current_shares[bucket]) + float(pending_shares[bucket])
+        for bucket in ordered
+    }
+    targets = ladder_balance_targets_v1(held_by_bucket=held, support=ordered)
+    if not targets:
+        return None
+    shares = {
+        bucket: float(current_shares[bucket]) + float(pending_shares[bucket])
+        for bucket in current_shares
+    }
+    costs = {
+        bucket: float(current_cost[bucket]) + float(pending_cost[bucket])
+        for bucket in current_cost
+    }
+    short_buckets: list[str] = []
+    wanted: dict[str, float] = {}
+    for bucket in ordered:
+        increment = float(targets[bucket]) - held[bucket]
+        if increment <= EPS:
+            continue
+        price = float(lane_prices.get(bucket, 0.0) or 0.0)
+        if price <= EPS:
+            return None
+        wanted[bucket] = increment * price
+        short_buckets.append(bucket)
+    if not short_buckets:
+        return None
+    # The plan proposes within the capital the sizing law left it, exactly as
+    # the opener's legs did (ZGSZ's three legs were planned at 0.862 shares
+    # inside a tilted 0.75 USDC); the execution sizing then raises each leg
+    # to the venue's minimum against the scope's budget.  A completion that
+    # does not fit whole is scaled, not refused: every short rung still gets
+    # its share of what fits, and the rung nothing fits for refuses the lot.
+    full_spend = sum(wanted.values())
+    capital = max(0.0, float(capital_available_usdc))
+    if capital <= EPS:
+        return None
+    scale = min(1.0, capital / full_spend) if full_spend > EPS else 0.0
+    if scale <= EPS:
+        return None
+    spend = 0.0
+    for bucket in short_buckets:
+        got, spent = _ask_depth_purchase(
+            levels=lane_levels[bucket], cash_limit=wanted[bucket] * scale,
+        )
+        if got <= EPS:
+            return None
+        shares[bucket] += got
+        costs[bucket] += spent
+        spend += spent
+    level = max(held.values())
+    return {
+        "candidate_id": "balance-" + content_sha256({
+            "ordered_support": tuple(ordered),
+            "level_shares": round(level, 6),
+            "short_buckets": tuple(short_buckets),
+            "quote_version": quote_version,
+        })[:24],
+        "shares_by_bucket": shares,
+        "cost_by_bucket": costs,
+        "pricing_basis": pricing_basis,
+        "candidate_kind": CANDIDATE_KIND_COMPLETE,
+        "candidate_origin": LADDER_BALANCE_CANDIDATE_ORIGIN,
+        "ladder_balance": {
+            "level_shares": level,
+            "short_buckets": short_buckets,
+            "spend_usdc": spend,
+            "full_spend_usdc": full_spend,
+            "capital_scale": scale,
         },
     }
 
@@ -3495,8 +3637,11 @@ def _assert_candidate_support_contract(
     the three invariants the rest of the pipeline relies on are checked here,
     at the boundary where a new generator is introduced, rather than assumed:
 
-    - a complete basket gives every support bucket a positive increment,
-      because activation is atomic;
+    - a complete basket leaves every support bucket held and adds to at
+      least one, and every bucket it leaves unbought was already held:
+      activation is atomic at the *result* (charter 84, 2026-09-05 -- the
+      2026-08-12 reading, "a positive increment on every bucket", refused the
+      one candidate that completes a ladder the venue left short);
     - no candidate moves a bucket outside the support, because the gap is
       only ever computed over the support and anything bought outside it
       would never be reconciled;
@@ -3529,15 +3674,23 @@ def _assert_candidate_support_contract(
                 raise ContractError(
                     "delta_v2_candidate_moves_bucket_outside_support"
                 )
-        if kind == CANDIDATE_KIND_COMPLETE and any(
-            float(shares.get(bucket, 0.0))
-            - float(baseline_shares.get(bucket, 0.0))
-            <= EPS
-            for bucket in support
-        ):
-            raise ContractError(
-                "delta_v2_candidate_complete_basket_incomplete"
-            )
+        if kind == CANDIDATE_KIND_COMPLETE:
+            increments = {
+                bucket: float(shares.get(bucket, 0.0))
+                - float(baseline_shares.get(bucket, 0.0))
+                for bucket in support
+            }
+            if (
+                not any(value > EPS for value in increments.values())
+                or any(
+                    increments[bucket] <= EPS
+                    and float(baseline_shares.get(bucket, 0.0)) <= EPS
+                    for bucket in support
+                )
+            ):
+                raise ContractError(
+                    "delta_v2_candidate_complete_basket_incomplete"
+                )
         if kind == CANDIDATE_KIND_BASELINE and any(
             abs(
                 float(shares.get(bucket, 0.0))
@@ -3927,6 +4080,16 @@ def compile_delta_v2_runtime_plan(
             EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC
             if CHARTER_83_MIN_NOTIONAL == "on" else 0.0
         ),
+        # Charter 84: the minimum binds on what a rung would *buy*.  A held
+        # rung at its target is not an order and is not raised, and the
+        # held rungs are not charged against the capital a second time.
+        held_shares_by_bucket={
+            bucket: (
+                float(by_bucket[bucket].filled_shares)
+                + float(by_bucket[bucket].pending_shares)
+            )
+            for bucket in seated_support
+        },
     )
     target_shares = dict(lot_top_up["target_shares_by_bucket"])
     current_shares = {row.bucket: row.filled_shares for row in snapshot.buckets}
