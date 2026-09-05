@@ -1307,8 +1307,15 @@ def test_clause_69_the_decline_clamp_waits_for_the_book_to_open() -> None:
     from bayes_basket_target.basket_kernel import delta_v2 as kernel
 
     ledger = importlib.import_module("scripts.paper_trading_ledger")
-    assert runtime.DECLINE_CLAMP_MODE == "after_open"
-    assert ledger.DECLINE_CLAMP == "after_open"
+    # Retired 2026-09-05 (user ruling): the clause was measured on a book
+    # that priced each checkpoint on the book before it, and cost seven
+    # points once that advantage was gone.  ``after_open`` stays an arm on
+    # both sides, and the two still read one value.
+    assert runtime.DECLINE_CLAMP_MODE == ledger.DECLINE_CLAMP == "off"
+    assert "after_open" in runtime.DECLINE_CLAMP_MODES if hasattr(
+        runtime, "DECLINE_CLAMP_MODES"
+    ) else True
+    assert "after_open" in ledger.DECLINE_CLAMP_MODES
     assert callable(kernel.clamp_declining_gaps_v2)
     assert callable(kernel.contiguous_edge_clamp_v2)
 

@@ -111,8 +111,14 @@ OPENING_FALLBACK_MIN_BUCKETS = 2
 # Research arm (2026-09-04): how P0 sizes -- ``kelly`` (charter 72/74: Kelly,
 # ticket when Kelly is zero) or ``ticket_only`` (P0 issues one ticket and
 # never a Kelly stake, so it neither sizes the opener nor tops up).
+# **Ruled 2026-09-05**: default ``ticket_only``.  Charter 72 sizes every
+# stage by the whole-basket Kelly stake; on the honest pairing P0's Kelly
+# seats are its loss centre (P0 -21.8% against P1 +11.4%) and sizing the
+# opener at a ticket alone is +2.3 points on its own, +11 from 08-23, and
+# part of the best combination (X3/X8, 2026-09-05).  P0 still opens every
+# chain (charter 74); it just no longer sizes one.
 P0_SIZING_MODE = (
-    os.environ.get("PM_P0_SIZING_MODE", "").strip().lower() or "kelly"
+    os.environ.get("PM_P0_SIZING_MODE", "").strip().lower() or "ticket_only"
 )
 if P0_SIZING_MODE not in {"kelly", "ticket_only"}:
     raise RuntimeError(f"unknown P0 sizing mode: {P0_SIZING_MODE}")
@@ -806,9 +812,16 @@ if TAKER_LEG_VETO not in {"joint", "reservation"}:
 # (after_open and leg one station-day apart; after_open's openings are
 # row-for-row off's).  ``guarded`` was that day's interim reading and stays
 # as an arm.
+# **Retired 2026-09-05 (user ruling)**: default ``off``.  The clamp was
+# ruled in on 2026-09-02 against a paper book that priced every checkpoint
+# on the book *before* it -- the ledger's own information-timing advantage,
+# worth about sixteen points and removed on 2026-09-04.  Re-measured on the
+# honest pairing the clamp costs: turning it off is +3.4 points alone and
+# +7.3 inside the best combination (X8/X9, 2026-09-05).  ``after_open`` and
+# the other arms stay switchable so the old book can be re-derived.
 DECLINE_CLAMP_MODE = (
     os.environ.get("DELTA_V2_DECLINE_CLAMP", "").strip().lower()
-    or "after_open"
+    or "off"
 )
 # ``held_only`` (user semantics, 2026-09-02: "首次建仓如何评判概率下降？
 # 没有对比啊"): the clamp's subject is a rung the book already holds or has
@@ -823,7 +836,11 @@ DECLINE_CLAMP_MODE = (
 # opening seat, where nothing is committed yet, is never clamped; every
 # later seat is, whether the falling rung is one the book holds or one
 # the re-centred window has just brought in.  Replay arm, 2026-09-02.
-if DECLINE_CLAMP_MODE not in {"leg", "guarded", "held_only", "after_open"}:
+# ``off``: no clamp at all -- the shipped rule since 2026-09-05, and the
+# state the paper book was in for every measurement before 2026-09-01.
+if DECLINE_CLAMP_MODE not in {
+    "off", "leg", "guarded", "held_only", "after_open",
+}:
     raise ValueError(f"unknown decline clamp mode: {DECLINE_CLAMP_MODE}")
 SKEW_EXTENSION_RULE = (
     os.environ.get("DELTA_V2_SKEW_EXTENSION_RULE", "").strip().lower()
@@ -951,8 +968,13 @@ SKEW_GAP_THRESHOLD_BUCKETS = float(
 #
 # ``shadow`` counts what it would refuse without refusing (the wiring
 # default until a ledger replay prices the on-arm); ``on`` refuses.
+# **Promoted 2026-09-05 (user ruling)**: default ``on``.  The 2026-08-28
+# ruling held it in shadow until a ledger replay priced the on-arm; on the
+# v11 honest pairing it is +0.9 points alone, +12.4 from 08-23, and +4.3
+# inside the best combination with the clamp retirement and the ticket-only
+# opener (X8/X10, 2026-09-05).  ``shadow`` counts without refusing.
 MARKET_LEAN_GATE_MODE = (
-    os.environ.get("PM_MARKET_LEAN_GATE", "").strip().lower() or "shadow"
+    os.environ.get("PM_MARKET_LEAN_GATE", "").strip().lower() or "on"
 )
 # Same half-bucket convention as the skew threshold: below this the book
 # and the model agree and the gate stays out of the way.
@@ -1119,6 +1141,43 @@ def _alternate_ladder_center(
 # it is an arithmetic honesty bound, not a preference, and deflating the
 # claim would only make it stricter in the direction it already errs.
 CHAIN_COST_PAR_BOUND = 1.0
+# Research switches for the gates that had none (2026-09-05).  Each is on
+# by default -- the shipped rule -- and ``off`` is a replay arm, so the
+# gate audit can price a charter clause the way it prices every other one.
+# The paper ledger reads the same names through the binding test.
+CHARTER_77_DECISION_MOMENTS = (
+    os.environ.get("PM_CHARTER_77_DECISION_MOMENTS", "").strip().lower()
+    or "on"
+)
+CHARTER_78_INCUMBENT_NO_EXEMPTION = (
+    os.environ.get("PM_CHARTER_78_NO_EXEMPTION", "").strip().lower() or "on"
+)
+CHARTER_66A_CHAIN_PAR = (
+    os.environ.get("PM_CHARTER_66A_CHAIN_PAR", "").strip().lower() or "on"
+)
+CHARTER_71A_TOPUP_IDENTITY = (
+    os.environ.get("PM_CHARTER_71A_IDENTITY", "").strip().lower() or "on"
+)
+CHARTER_71B_CHAIN_GROWTH = (
+    os.environ.get("PM_CHARTER_71B_GROWTH", "").strip().lower() or "on"
+)
+CHARTER_72_KELLY_SIZING = (
+    os.environ.get("PM_CHARTER_72_KELLY", "").strip().lower() or "on"
+)
+CHARTER_70_EXCHANGE_LOT = (
+    os.environ.get("PM_CHARTER_70_LOT", "").strip().lower() or "on"
+)
+for _name, _value in (
+    ("PM_CHARTER_77_DECISION_MOMENTS", CHARTER_77_DECISION_MOMENTS),
+    ("PM_CHARTER_78_NO_EXEMPTION", CHARTER_78_INCUMBENT_NO_EXEMPTION),
+    ("PM_CHARTER_66A_CHAIN_PAR", CHARTER_66A_CHAIN_PAR),
+    ("PM_CHARTER_71A_IDENTITY", CHARTER_71A_TOPUP_IDENTITY),
+    ("PM_CHARTER_71B_GROWTH", CHARTER_71B_CHAIN_GROWTH),
+    ("PM_CHARTER_72_KELLY", CHARTER_72_KELLY_SIZING),
+    ("PM_CHARTER_70_LOT", CHARTER_70_EXCHANGE_LOT),
+):
+    if _value not in {"on", "off"}:
+        raise RuntimeError(f"unknown {_name}: {_value}")
 
 
 def _chain_blended_cost(
@@ -1663,6 +1722,11 @@ def _support_windows(
             # candidate (charter 37), not a seat the price refuses.
             admissible = (
                 priced and edge is not None and edge > friction + EPS
+            ) or (
+                # Charter 78 off: the pre-2026-09-04 waiver, where an
+                # incumbent window was admissible whatever the price.
+                CHARTER_78_INCUMBENT_NO_EXEMPTION == "off"
+                and is_incumbent
             )
             if not admissible:
                 # Name which of the three ways this branch can refuse actually
@@ -2078,16 +2142,18 @@ def _solve_over_support_windows(
     # quote refresh that changed neither offers no buying candidate.
     edge_state = edge_state_v1(windows)
     last_signature = dict(last_decision_signature or {})
-    decision_moment = is_decision_moment_v1(
-        probability_identity=probability_identity,
-        edge_state=edge_state,
-        last_probability_identity=(
-            str(last_signature.get("probability_identity") or "")
-            or None
-        ),
-        last_edge_state=(
-            str(last_signature.get("edge_state") or "") or None
-        ),
+    decision_moment = CHARTER_77_DECISION_MOMENTS == "off" or (
+        is_decision_moment_v1(
+            probability_identity=probability_identity,
+            edge_state=edge_state,
+            last_probability_identity=(
+                str(last_signature.get("probability_identity") or "")
+                or None
+            ),
+            last_edge_state=(
+                str(last_signature.get("edge_state") or "") or None
+            ),
+        )
     )
     decision_moment_audit = {
         "rule": DECISION_MOMENT_RULE_VERSION,
@@ -2273,7 +2339,11 @@ def _solve_over_support_windows(
                     target_shares[bucket_row.bucket] = inventory
                     target_cost[bucket_row.bucket] = sunk_here
         planned_total = sum(target_cost.values())
-        if holds_anything and planned_total > inventory_cost + EPS:
+        if (
+            CHARTER_66A_CHAIN_PAR == "on"
+            and holds_anything
+            and planned_total > inventory_cost + EPS
+        ):
             chain_cost = _chain_blended_cost(
                 shares_by_bucket=target_shares,
                 cost_total=planned_total,
@@ -2298,7 +2368,8 @@ def _solve_over_support_windows(
         # on evidence, never on its absence, and the audit names it.
         if holds_anything and planned_total > inventory_cost + EPS:
             if (
-                last_acted_probability_identity
+                CHARTER_71A_TOPUP_IDENTITY == "on"
+                and last_acted_probability_identity
                 and probability_identity
                 and str(last_acted_probability_identity)
                 == str(probability_identity)
@@ -2328,7 +2399,8 @@ def _solve_over_support_windows(
             # only when it knows the book.  Without it the gate cannot
             # bind, and the audit says so.
             if (
-                chain_growth_frame_usdc is not None
+                CHARTER_71B_CHAIN_GROWTH == "on"
+                and chain_growth_frame_usdc is not None
                 and float(chain_growth_frame_usdc) > 0.0
             ):
                 growth = chain_topup_growth_v1(
@@ -3541,9 +3613,12 @@ def compile_delta_v2_runtime_plan(
     # the audit names which law sized the plan.
     objective_form = (
         KELLY_OBJECTIVE_FORM
-        if bankroll_usdc > 0.0
+        if CHARTER_72_KELLY_SIZING == "on"
+        and bankroll_usdc > 0.0
         and book_equity_usdc is not None
         and float(book_equity_usdc) > 0.0
+        # Charter 72 off: the pre-2026-09-03 curve, which sized by the
+        # log-wealth score rather than the whole-basket Kelly stake.
         else CURVE_OBJECTIVE_FORM
         if bankroll_usdc > 0.0
         else VALUE_OBJECTIVE_FORM
@@ -3630,6 +3705,7 @@ def compile_delta_v2_runtime_plan(
     # see the same lifted number; raising only the clip would trip
     # ``clip_exceeds_inventory_gap`` and refuse the very leg being raised.
     lot_top_up = raise_sub_lot_targets_v2(
+        mode=EXCHANGE_LOT_TOP_UP if CHARTER_70_EXCHANGE_LOT == "on" else "off",
         target_shares_by_bucket=target_shares,
         support=seated_support,
         min_lot_by_bucket={
@@ -3677,11 +3753,15 @@ def compile_delta_v2_runtime_plan(
     # rather than a second copy of it -- it was inline here until
     # 2026-09-01, which is why the ledger never ran it at all.
     raw_gap_by_bucket = dict(gap_by_bucket)
-    gap_by_bucket, declining_tuple = clamp_declining_gaps_v2(
-        gap_by_bucket=gap_by_bucket,
-        support=final_support,
-        probabilities=probabilities,
-        previous_probabilities=previous_probabilities,
+    gap_by_bucket, declining_tuple = (
+        clamp_declining_gaps_v2(
+            gap_by_bucket=gap_by_bucket,
+            support=final_support,
+            probabilities=probabilities,
+            previous_probabilities=previous_probabilities,
+        )
+        if DECLINE_CLAMP_MODE != "off"
+        else (gap_by_bucket, ())
     )
     declining_buckets = list(declining_tuple)
     # Charter 69: under ``guarded`` only the falling rungs at the ends of

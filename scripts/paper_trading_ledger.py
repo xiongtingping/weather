@@ -103,6 +103,16 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     P0M_TAF_MODE,
     CHAIN_OPENING_STAGES,
     CHAIN_TICKET_MODE as _PRODUCTION_CHAIN_TICKET_MODE,
+    DECLINE_CLAMP_MODE as _PRODUCTION_DECLINE_CLAMP_MODE,
+    # The charter clauses that gained a research switch on 2026-09-05.
+    # Read from production so a replay arm flips one rule on both sides.
+    CHARTER_66A_CHAIN_PAR,
+    CHARTER_70_EXCHANGE_LOT,
+    CHARTER_71A_TOPUP_IDENTITY,
+    CHARTER_71B_CHAIN_GROWTH,
+    CHARTER_72_KELLY_SIZING,
+    CHARTER_77_DECISION_MOMENTS,
+    CHARTER_78_INCUMBENT_NO_EXEMPTION,
     WINDOW_REFUSAL_FUNNEL,
     # The pieces of arithmetic the two sides must not each own a copy of.
     # Every one of them used to be duplicated here, and the ladder copy had
@@ -488,8 +498,8 @@ DECLINE_MIN_DROP = float(
 # way.  "leg" is charter 51 as first shipped, "guarded" the day's interim
 # reading, "off" reproduces the pre-09-02 book.
 DECLINE_CLAMP = (
-    os.environ.get("PAPER_LEDGER_DECLINE_CLAMP", "after_open").strip().lower()
-    or "after_open"
+    os.environ.get("PAPER_LEDGER_DECLINE_CLAMP", "").strip().lower()
+    or _PRODUCTION_DECLINE_CLAMP_MODE
 )
 if DECLINE_CLAMP in {"1", "on", "true", "yes"}:
     DECLINE_CLAMP = "leg"
@@ -1833,7 +1843,25 @@ SELECTION_RULE_SHA256 = content_sha256({
     # v10 (2026-09-04): the chain's tilt is the opener's, recorded once and
     # inherited by every later seat, P0 reseats included.
     # v11 (2026-09-04): the row says whether it is the solver's ticket.
-    "production_judge": "solver_chain_gates_exchange_lot_centre_v11",
+    # v12 (2026-09-05): the gate audit's three rulings -- the clamp
+    # retired, the market-lean gate promoted, P0 sized at a ticket -- plus
+    # the seven charter clauses that gained a research switch.  Each
+    # clause is hashed only away from its shipped value, so the standing
+    # book keeps its digest when nothing is flipped.
+    "production_judge": "solver_chain_gates_exchange_lot_centre_v12",
+    **{
+        key: value
+        for key, value in (
+            ("charter_66a_chain_par", CHARTER_66A_CHAIN_PAR),
+            ("charter_70_exchange_lot", CHARTER_70_EXCHANGE_LOT),
+            ("charter_71a_topup_identity", CHARTER_71A_TOPUP_IDENTITY),
+            ("charter_71b_chain_growth", CHARTER_71B_CHAIN_GROWTH),
+            ("charter_72_kelly_sizing", CHARTER_72_KELLY_SIZING),
+            ("charter_77_decision_moments", CHARTER_77_DECISION_MOMENTS),
+            ("charter_78_no_exemption", CHARTER_78_INCUMBENT_NO_EXEMPTION),
+        )
+        if value != "on"
+    },
     "stage_authority": "highest_committed_stage_v1",
     "checkpoint_books": "every_committed_book_while_current_v1",
     "taker_fill": "top_of_offer_cut_to_depth_v1",

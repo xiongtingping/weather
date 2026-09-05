@@ -1901,17 +1901,28 @@ def test_held_only_clamps_every_falling_rung_the_book_has_committed_to(
 
 
 def test_after_open_is_the_default_and_buys_the_opening_ladder_whole() -> None:
-    """Charter 69 as finally ruled (2026-09-02): "开仓时什么都没持有，一律
-    不钳；梯子要整个买齐".  Both rungs fell since the previous run and the
-    book holds nothing: nothing is clamped, the opening buys 35 and 36."""
+    """The clamp is retired (2026-09-05); an opening was never clamped anyway.
+
+    Charter 69 was ruled on 2026-09-02 against a paper book that priced
+    every checkpoint on the book *before* it -- an information-timing
+    advantage worth about sixteen points, removed on 2026-09-04.  Re-priced
+    on the honest pairing the clamp costs 3.4 points alone and 7.3 inside
+    the best combination, and the user retired it.  ``off`` is the shipped
+    default; the arms stay switchable so the old book re-derives.
+
+    Under both the retired default and the ``after_open`` arm an opening
+    that holds nothing buys its whole ladder -- 35 and 36 -- so this
+    fixture reads the same either way, which is what it asserts.
+    """
 
     import bayes_basket_target.delta_v2_runtime as runtime_module
 
-    assert runtime_module.DECLINE_CLAMP_MODE == "after_open"
+    assert runtime_module.DECLINE_CLAMP_MODE == "off"
     both_fell = {"35": 0.35, "36": 0.75}
     result = _compile_with_previous(both_fell)
-    assert result["probability_clamp_mode"] == "after_open"
-    assert result["probability_declined_buckets"] == ("35", "36")
+    assert result["probability_clamp_mode"] == "off"
+    # Nothing is measured as falling, because nothing is compared.
+    assert result["probability_declined_buckets"] == ()
     assert result["probability_clamped_buckets"] == ()
     assert result["execution_gap_support"] == ["35", "36"]
 
@@ -1924,7 +1935,10 @@ def test_after_open_holds_every_falling_rung_once_the_book_is_open() -> None:
 
     import bayes_basket_target.delta_v2_runtime as runtime_module
 
-    assert runtime_module.DECLINE_CLAMP_MODE == "after_open"
+    # The arm, not the default: the clamp was retired on 2026-09-05 and
+    # this pins what ``after_open`` does when somebody runs it.
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(runtime_module, "DECLINE_CLAMP_MODE", "after_open")
     both_fell = {"35": 0.35, "36": 0.75}
     result = compile_delta_v2_runtime_plan(
         snapshot=_snapshot(pending_shares=0.01),
@@ -1940,6 +1954,7 @@ def test_after_open_holds_every_falling_rung_once_the_book_is_open() -> None:
     assert result["probability_declined_buckets"] == ("35", "36")
     assert result["probability_clamped_buckets"] == ("35", "36")
     assert result["execution_gap_support"] == []
+    monkey.undo()
 
 
 @pytest.fixture(autouse=True)

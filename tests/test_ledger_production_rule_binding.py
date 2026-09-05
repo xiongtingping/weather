@@ -538,7 +538,9 @@ def test_the_clamp_is_one_implementation_that_both_sides_import() -> None:
     # two lanes default to the same mode.
     assert L.contiguous_edge_clamp_v2 is kernel.contiguous_edge_clamp_v2
     assert P.contiguous_edge_clamp_v2 is kernel.contiguous_edge_clamp_v2
-    assert L.DECLINE_CLAMP == P.DECLINE_CLAMP_MODE == "after_open"
+    # Retired 2026-09-05: the clamp defaults off on both sides, and the
+    # ledger reads production's value rather than spelling its own.
+    assert L.DECLINE_CLAMP == P.DECLINE_CLAMP_MODE == "off"
 
 
 def test_charter_69_the_guarded_clamp_never_drops_the_centre_or_opens_a_hole() -> None:
@@ -806,7 +808,7 @@ def test_the_exchange_lot_and_the_station_dial_bind_where_production_binds() -> 
     # carries it: rows sized as if there were no lot are not comparable.
     assert L.EXCHANGE_MINIMUM_LOT_SHARES_FALLBACK == 5.0
     assert (
-        '"production_judge": "solver_chain_gates_exchange_lot_centre_v11",'
+        '"production_judge": "solver_chain_gates_exchange_lot_centre_v12",'
         in source
     )
     assert "补足一手" in L.SELECTION_RULE_LABEL
@@ -1087,6 +1089,46 @@ def test_the_chains_tilt_is_the_openers_recorded_once() -> None:
         "                        chain_tilt = tilt\n"
     ) in source
     assert "                    chain_tilt = tilt\n                    if seat_consolidation" not in source
+
+
+def test_every_charter_clause_the_audit_prices_has_one_switch() -> None:
+    """A clause that cannot be turned off cannot be measured.
+
+    The 2026-09-05 gate audit priced every gate that had a switch and had
+    to leave 77, 78, 66A, 71a, 71b, 72 and 70 unmeasured -- which is how a
+    clause outlives the evidence it was ruled in on.  The clamp did: ruled
+    in on 2026-09-02 against a book that priced every checkpoint on the
+    book before it, and worth minus seven points once that advantage was
+    removed.  Each clause now has a production switch defaulting to the
+    shipped rule, and the ledger imports it, so an arm flips one rule on
+    both sides at once.
+    """
+
+    import inspect
+
+    for name in (
+        "CHARTER_66A_CHAIN_PAR", "CHARTER_70_EXCHANGE_LOT",
+        "CHARTER_71A_TOPUP_IDENTITY", "CHARTER_71B_CHAIN_GROWTH",
+        "CHARTER_72_KELLY_SIZING", "CHARTER_77_DECISION_MOMENTS",
+        "CHARTER_78_INCUMBENT_NO_EXEMPTION",
+    ):
+        assert getattr(P, name) == "on", name
+        assert getattr(L, name) is getattr(P, name), name
+    # And each is read where its clause is applied.
+    solver = inspect.getsource(P._solve_over_support_windows)
+    assert 'CHARTER_77_DECISION_MOMENTS == "off"' in solver
+    assert 'CHARTER_66A_CHAIN_PAR == "on"' in solver
+    assert 'CHARTER_71A_TOPUP_IDENTITY == "on"' in solver
+    assert 'CHARTER_71B_CHAIN_GROWTH == "on"' in solver
+    windows = inspect.getsource(P._support_windows)
+    assert 'CHARTER_78_INCUMBENT_NO_EXEMPTION == "off"' in windows
+    compile_plan = inspect.getsource(P.compile_delta_v2_runtime_plan)
+    assert 'CHARTER_72_KELLY_SIZING == "on"' in compile_plan
+    assert 'CHARTER_70_EXCHANGE_LOT == "on"' in compile_plan
+    # The three rulings of 2026-09-05 are the shipped defaults.
+    assert P.DECLINE_CLAMP_MODE == "off"
+    assert P.MARKET_LEAN_GATE_MODE == "on"
+    assert P.P0_SIZING_MODE == "ticket_only"
 
 
 def test_a_rebuild_can_be_taken_oldest_first_in_slices() -> None:
