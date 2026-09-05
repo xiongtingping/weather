@@ -23,6 +23,7 @@ from .basket_kernel.contracts import (
     TargetBasketSnapshot,
     content_sha256,
 )
+from .basket_kernel import delta_v2 as _kernel_delta_v2
 from .basket_kernel.delta_v2 import (
     CENTER_WINDOW_CLAIM_BANDS,
     SIZING_CLAIM_BANDS,
@@ -31,6 +32,16 @@ from .basket_kernel.delta_v2 import (
     CENTER_WINDOW_CLAIM_DEFAULT,
     _parse_claim_bands,
     center_window_claim_factor,
+    convergence_claim_factor,
+    convergence_state_v1,
+    CONVERGENCE_CLAIM_MODE,
+    CONVERGENCE_CLAIM_FACTOR,
+    CONVERGENCE_CLAIM_HORIZON_HOURS,
+    CONVERGENCE_CLAIM_RULE_VERSION,
+    CONVERGENCE_CLAIM_STAGES,
+    CONVERGENCE_CLAIM_MIN_AGREEMENT,
+    CONVERGENCE_CLAIM_MIN_CLAIM_RISE,
+    CONVERGENCE_CLAIM_MIN_PRICE_FALL,
     dispersion_support_size,
     EFFECTIVE_EDGE_P0M_STAGES,
     EFFECTIVE_EDGE_P1_STAGES,
@@ -1301,6 +1312,7 @@ def _support_windows(
     minimum_support_buckets: int = 1,
     taf_tx_bucket: str | None = None,
     probability_stage: str = "",
+    convergence_evidence: Mapping[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Contiguous windows admissible as a support, ranked by belief divergence.
 
@@ -1395,6 +1407,18 @@ def _support_windows(
         if not row.ask_available:
             return None
         return float(row.ask_price) * (1.0 + float(fee_rate))
+
+    def _best_ask_sum(window: Sequence[str]) -> float | None:
+        """Best-ask sum, fee-free: the basis the convergence evidence's
+        earlier book is read on, so the move compares like with like."""
+
+        total = 0.0
+        for bucket in window:
+            row = by_bucket[bucket]
+            if not row.ask_available:
+                return None
+            total += float(row.ask_price)
+        return total
 
     def _completion_increment(
         window: Sequence[str],
@@ -1581,6 +1605,11 @@ def _support_windows(
     # near-miss, it has an illegal shape -- and only as a diagnostic: it is
     # a window that was refused, and nothing downstream may seat it.
     best_refused: dict[str, Any] | None = None
+    # Arm B (2026-09-06): the convergence claim lift's shadow ledger.
+    convergence_candidates = 0
+    convergence_would_admit = 0
+    convergence_admitted_by_lift = 0
+    convergence_rows: list[dict[str, Any]] = []
 
     windows: list[dict[str, Any]] = []
     seen: set[tuple[str, ...]] = set()
@@ -1707,10 +1736,42 @@ def _support_windows(
                 # the deflation above; identity unless the arm is on.
                 center_lift = center_window_claim_factor(raw_win)
                 claim_factor *= center_lift
-            win = min(1.0 - EPS, raw_win * claim_factor)
             quotes = [_all_in(bucket) for bucket in window]
             priced = all(quote is not None for quote in quotes)
             price = sum(quote for quote in quotes if quote is not None)
+            # Arm B (2026-09-06): the convergence claim lift.  The state is
+            # read off the served mass before any lift and the best-ask sum
+            # at both ends; in shadow it is journaled and the factor stays
+            # 1.0, on the arm it multiplies the claim ahead of the gate.
+            convergence: dict[str, Any] | None = None
+            convergence_lift = 1.0
+            convergence_shadow_lift = 1.0
+            if (
+                convergence_evidence
+                and priced
+                and raw_win > EPS
+                and _kernel_delta_v2.CONVERGENCE_CLAIM_MODE != "off"
+            ):
+                convergence = convergence_state_v1(
+                    stage=probability_stage,
+                    claim_now=raw_win,
+                    claim_prev=_evidence_window_sum(
+                        convergence_evidence.get("prior_probabilities"), window
+                    ),
+                    price_now=_best_ask_sum(window),
+                    price_prev=_evidence_window_sum(
+                        convergence_evidence.get("prior_asks"), window
+                    ),
+                    agreement_now=price / raw_win,
+                )
+                if convergence["converging"]:
+                    convergence_shadow_lift = convergence_claim_factor(convergence)
+                    if _kernel_delta_v2.CONVERGENCE_CLAIM_MODE == "on":
+                        convergence_lift = convergence_shadow_lift
+                        claim_factor *= convergence_lift
+                convergence["shadow_factor"] = convergence_shadow_lift
+                convergence["applied_factor"] = convergence_lift
+            win = min(1.0 - EPS, raw_win * claim_factor)
             edge = win - price if priced else None
             is_incumbent = window == incumbent
             # The incumbent has no exemption left.  It used to be waived past
@@ -1871,6 +1932,38 @@ def _support_windows(
                 CHARTER_78_INCUMBENT_NO_EXEMPTION == "off"
                 and is_incumbent
             )
+            if convergence is not None and convergence["converging"] and priced:
+                # Counted here, past the structural gates, so a candidate
+                # is a window the price gate actually judged.  What the
+                # lift changes at that gate: the edge without it and with
+                # it, on the same friction.  Journaled in both modes so the
+                # shadow and the arm read one column.
+                convergence_candidates += 1
+                unlifted_edge = raw_win * claim_factor / convergence_lift - price
+                lifted_edge = (
+                    raw_win * claim_factor / convergence_lift
+                    * convergence_shadow_lift - price
+                )
+                flips = (
+                    unlifted_edge <= friction + EPS
+                    and lifted_edge > friction + EPS
+                )
+                if flips:
+                    convergence_would_admit += 1
+                    if convergence_lift != 1.0:
+                        convergence_admitted_by_lift += 1
+                if len(convergence_rows) < 8:
+                    convergence_rows.append({
+                        "buckets": list(window),
+                        "claim": round(float(raw_win), 4),
+                        "all_in_price": round(float(price), 4),
+                        "agreement": round(float(convergence["agreement"]), 3),
+                        "claim_rise": convergence["claim_rise"],
+                        "price_fall": convergence["price_fall"],
+                        "unlifted_edge": round(float(unlifted_edge), 4),
+                        "lifted_edge": round(float(lifted_edge), 4),
+                        "flips_gate": bool(flips),
+                    })
             # Charter 84 (八): a window the book already holds part of is
             # admitted on what completing it would buy, not on the whole
             # window re-priced today.  The held rungs are sunk -- LTAC 32°C
@@ -1945,6 +2038,9 @@ def _support_windows(
                 # Charter 81's own component of the line above, kept apart so
                 # the sizing lane can swap it without re-deriving the rest.
                 "center_window_claim_factor": center_lift,
+                # Arm B: the lift applied (1.0 in shadow) and the state.
+                "convergence_claim_factor": convergence_lift,
+                "convergence": convergence,
                 "center_gap_buckets": center_gap,
                 "holds_probability_core": holds_core,
                 "all_in_price": price if priced else None,
@@ -2010,6 +2106,10 @@ def _support_windows(
         windows.append({
             "buckets": incumbent,
             "win_probability": win,
+            # Arm B: an inherited support is never lifted; keys kept so every
+            # row reads alike.
+            "convergence_claim_factor": 1.0,
+            "convergence": None,
             "holds_probability_core": bool(core) and bool(set(incumbent) & core),
             "all_in_price": price if priced else None,
             "edge": (win - price) if priced else None,
@@ -2260,6 +2360,26 @@ def _support_windows(
         "center_window_claim_bands": [
             [bound, factor] for bound, factor in CENTER_WINDOW_CLAIM_BANDS
         ],
+        # Arm B (2026-09-06): the convergence claim lift's shadow receipt.
+        "convergence_claim": {
+            "rule": _kernel_delta_v2.CONVERGENCE_CLAIM_RULE_VERSION,
+            "mode": _kernel_delta_v2.CONVERGENCE_CLAIM_MODE,
+            "factor": _kernel_delta_v2.CONVERGENCE_CLAIM_FACTOR,
+            "horizon_hours": _kernel_delta_v2.CONVERGENCE_CLAIM_HORIZON_HOURS,
+            "evidence_present": bool(convergence_evidence),
+            "prior_stage": (
+                str(convergence_evidence.get("prior_stage"))
+                if convergence_evidence else None
+            ),
+            "prior_decision_at_utc": (
+                str(convergence_evidence.get("prior_decision_at_utc"))
+                if convergence_evidence else None
+            ),
+            "candidate_count": convergence_candidates,
+            "would_admit_count": convergence_would_admit,
+            "admitted_by_lift_count": convergence_admitted_by_lift,
+            "candidates": convergence_rows,
+        },
         **(
             {"sizing_claim_bands": [
                 [bound, factor] for bound, factor in SIZING_CLAIM_BANDS
@@ -2309,6 +2429,7 @@ def _support_windows(
             center_bucket=center_bucket,
             minimum_support_buckets=OPENING_FALLBACK_MIN_BUCKETS,
             probability_stage=probability_stage,
+            convergence_evidence=convergence_evidence,
         )
         if fallback_windows:
             fallback_audit["opening_width_fallback"] = True
@@ -2330,6 +2451,20 @@ def _support_windows(
 # capped at 4096) while letting the first depth-feasible alternatives reach
 # the solver.
 MAX_SUPPORT_WINDOWS_SOLVED = 12
+
+
+def _evidence_window_sum(table: Any, window: Sequence[str]) -> float | None:
+    """Sum a per-bucket evidence table over a window; None if any bucket is absent."""
+
+    if not table:
+        return None
+    total = 0.0
+    for bucket in window:
+        value = table.get(str(bucket)) if hasattr(table, "get") else None
+        if value is None:
+            return None
+        total += float(value)
+    return total
 
 
 def window_gate_counts_v1(window_audit: Mapping[str, Any]) -> dict[str, Any]:
@@ -2371,6 +2506,11 @@ def window_gate_counts_v1(window_audit: Mapping[str, Any]) -> dict[str, Any]:
         ),
         "edge_best_refused_window": (
             dict(best) if isinstance(best, Mapping) else None
+        ),
+        # Arm B: the convergence lift's shadow receipt rides the funnel.
+        "convergence_claim": (
+            dict(audit["convergence_claim"])
+            if isinstance(audit.get("convergence_claim"), Mapping) else None
         ),
     }
 
@@ -3969,6 +4109,7 @@ def compile_delta_v2_runtime_plan(
     last_decision_signature: Mapping[str, Any] | None = None,
     taf_tx_bucket: str | None = None,
     effective_edge_tables: Mapping[str, Any] | None = None,
+    convergence_evidence: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compile the single-event q* and best no-live action under v2.
 
@@ -4181,6 +4322,10 @@ def compile_delta_v2_runtime_plan(
         # by the caller that holds the envelope; the paper ledger hands the
         # same value from the same function.
         taf_tx_bucket=taf_tx_bucket,
+        # Arm B: the belief and book H hours earlier, handed in by the
+        # caller that holds the database; the paper ledger hands the same
+        # loader's output.
+        convergence_evidence=convergence_evidence,
     )
     # The floor's live set is the evidence's, not the candidate support's.
     # ``ordered_support`` here is the continuous-core candidate boundary --
@@ -4893,6 +5038,10 @@ def compile_delta_v2_runtime_plan(
         # scope; None where the kernel constant still bootstraps.
         "effective_edge_tables": dict(
             support_selection.get("effective_edge_tables") or {}
+        ),
+        # Arm B: the convergence lift's receipt for this compile.
+        "convergence_claim": dict(
+            support_window_audit.get("convergence_claim") or {}
         ),
         "charter_71": {
             "last_acted_probability_identity": (

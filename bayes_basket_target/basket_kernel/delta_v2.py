@@ -1487,6 +1487,101 @@ def center_window_claim_factor(claimed_mass: float) -> float:
     return 1.0
 
 
+# Arm B (user ruling 2026-09-06, "做 B 臂。先影子"): the convergence claim
+# lift.  Measured that day on the probability layer (P0-M and P1 stages,
+# 852 station-days with truth): a window whose served claim ROSE by 0.02 or
+# more over the prior 12 hours while the market's best-ask sum FELL by 0.05
+# or more, and which the market still prices at 1.1x the claim or above,
+# realises 1.31-1.44 of its claim (n=50/47, 30/25 stations, hit 82-89%,
+# drop-3 winners +10% at 12h) -- while the same market move against an
+# UNCHANGED claim realises 1.00-1.13 and loses (-15%/-27%, every week
+# negative).  So the factor is conditioned on both sides moving toward each
+# other, never on the market's move alone.  It multiplies the claim before
+# the positive-EV gate, like charter 81, because the gate is what refuses
+# these windows today: 46 of 50 sit at claim 0.63 against price 0.80.
+#
+# ``shadow`` (default) computes the state and the factor on every window,
+# journals candidates and what the lift would have admitted, and changes
+# nothing; ``on`` is the ledger arm and, only after the ledger prices it,
+# production.  P0 is excluded: an opening seat has no prior belief or book
+# (charter 48 opens at listing), and the measurement was P0-M/P1.  This
+# collides with charter 68's P1 ceiling ("trust it, not more than it
+# trusts itself") by construction -- the factor is exactly "more than the
+# claim" -- which is why it ships in shadow and must be ruled on by name.
+CONVERGENCE_CLAIM_MODE = (
+    os.environ.get("PM_CONVERGENCE_CLAIM", "").strip().lower() or "shadow"
+)
+if CONVERGENCE_CLAIM_MODE not in {"off", "shadow", "on"}:
+    raise RuntimeError(f"unknown convergence claim mode: {CONVERGENCE_CLAIM_MODE}")
+CONVERGENCE_CLAIM_HORIZON_HOURS = float(
+    os.environ.get("PM_CONVERGENCE_CLAIM_HORIZON_HOURS", "") or 12.0
+)
+CONVERGENCE_CLAIM_FACTOR = float(
+    os.environ.get("PM_CONVERGENCE_CLAIM_FACTOR", "") or 1.30
+)
+CONVERGENCE_CLAIM_STAGES: frozenset[str] = frozenset({"P0-M", "P1"})
+CONVERGENCE_CLAIM_MIN_AGREEMENT = 1.10
+CONVERGENCE_CLAIM_MIN_CLAIM_RISE = 0.02
+CONVERGENCE_CLAIM_MIN_PRICE_FALL = 0.05
+CONVERGENCE_CLAIM_RULE_VERSION = "convergence_claim_v1"
+
+
+def convergence_state_v1(
+    *,
+    stage: str,
+    claim_now: float,
+    claim_prev: float | None,
+    price_now: float | None,
+    price_prev: float | None,
+    agreement_now: float | None,
+) -> dict[str, Any]:
+    """Whether a window is converging from both sides and still dear.
+
+    ``claim`` is the served window mass before any lift, ``price`` the
+    window's best-ask sum on the same basis at both ends, ``agreement`` the
+    all-in price over the served claim -- the a charter 68 reads.  A
+    missing prior (None) is "not converging" with the reason recorded;
+    the state never invents a move.
+    """
+
+    state: dict[str, Any] = {
+        "rule": CONVERGENCE_CLAIM_RULE_VERSION,
+        "stage_eligible": str(stage) in CONVERGENCE_CLAIM_STAGES,
+        "claim_rise": None,
+        "price_fall": None,
+        "agreement": None if agreement_now is None else float(agreement_now),
+        "converging": False,
+        "reason": None,
+    }
+    if not state["stage_eligible"]:
+        state["reason"] = "stage"
+        return state
+    if claim_prev is None or price_now is None or price_prev is None:
+        state["reason"] = "no_prior"
+        return state
+    rise = float(claim_now) - float(claim_prev)
+    fall = float(price_prev) - float(price_now)
+    state["claim_rise"] = round(rise, 4)
+    state["price_fall"] = round(fall, 4)
+    if agreement_now is None or float(agreement_now) < CONVERGENCE_CLAIM_MIN_AGREEMENT:
+        state["reason"] = "not_dear"
+        return state
+    if rise < CONVERGENCE_CLAIM_MIN_CLAIM_RISE:
+        state["reason"] = "claim_not_rising"
+        return state
+    if fall < CONVERGENCE_CLAIM_MIN_PRICE_FALL:
+        state["reason"] = "price_not_falling"
+        return state
+    state["converging"] = True
+    return state
+
+
+def convergence_claim_factor(state: Mapping[str, Any]) -> float:
+    """The lift a converging window earns; 1.0 for every other window."""
+
+    return float(CONVERGENCE_CLAIM_FACTOR) if state.get("converging") else 1.0
+
+
 # The ladder's length is a property of the day, not a constant.  A model
 # that has made up its mind puts its mass on two or three buckets and a
 # wider basket only buys tails it does not believe in; a model that has not

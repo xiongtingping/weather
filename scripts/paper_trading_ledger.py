@@ -59,6 +59,9 @@ from bayes_basket_target.center_width_calibration import (  # noqa: E402
     bucket_centers_from_intervals,
 )
 from bayes_basket_target.center_width_store import EDGE_WIDTH_C  # noqa: E402
+from bayes_basket_target.convergence_evidence import (  # noqa: E402
+    load_convergence_evidence,
+)
 from bayes_basket_target.effective_edge_store import (  # noqa: E402
     load_effective_edge_tables,
 )
@@ -108,6 +111,14 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     P0M_TAF_MODE,
     CENTER_WINDOW_CLAIM_BANDS,
     SIZING_CLAIM_BANDS,
+    CONVERGENCE_CLAIM_MODE,
+    CONVERGENCE_CLAIM_FACTOR,
+    CONVERGENCE_CLAIM_HORIZON_HOURS,
+    CONVERGENCE_CLAIM_RULE_VERSION,
+    CONVERGENCE_CLAIM_STAGES,
+    CONVERGENCE_CLAIM_MIN_AGREEMENT,
+    CONVERGENCE_CLAIM_MIN_CLAIM_RISE,
+    CONVERGENCE_CLAIM_MIN_PRICE_FALL,
     CHAIN_OPENING_STAGES,
     CHAIN_TICKET_MODE as _PRODUCTION_CHAIN_TICKET_MODE,
     DECLINE_CLAMP_MODE as _PRODUCTION_DECLINE_CLAMP_MODE,
@@ -1787,6 +1798,7 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     "在任窗不免检",
     "对称日中心±1" if SYMMETRIC_SEAT_MODE == "center_pm1_p0" else None,
     "含中心窗抬价" if CENTER_WINDOW_CLAIM_BANDS else None,
+    "双向收敛抬价" if CONVERGENCE_CLAIM_MODE == "on" else None,
     "定注另读校准曲线" if SIZING_CLAIM_BANDS else None,
     "生产种子" if JUDGE != "ledger" else None,
     "一本账·只加不减",
@@ -1854,6 +1866,20 @@ SELECTION_RULE_SHA256 = content_sha256({
             [bound, factor] for bound, factor in SIZING_CLAIM_BANDS
         ]}
         if SIZING_CLAIM_BANDS else {}
+    ),
+    # Arm B (2026-09-06): the convergence claim lift, hashed only when on --
+    # shadow changes no decision and must not re-address the book.
+    **(
+        {"convergence_claim": {
+            "rule": CONVERGENCE_CLAIM_RULE_VERSION,
+            "factor": CONVERGENCE_CLAIM_FACTOR,
+            "horizon_hours": CONVERGENCE_CLAIM_HORIZON_HOURS,
+            "stages": sorted(CONVERGENCE_CLAIM_STAGES),
+            "min_agreement": CONVERGENCE_CLAIM_MIN_AGREEMENT,
+            "min_claim_rise": CONVERGENCE_CLAIM_MIN_CLAIM_RISE,
+            "min_price_fall": CONVERGENCE_CLAIM_MIN_PRICE_FALL,
+        }}
+        if CONVERGENCE_CLAIM_MODE == "on" else {}
     ),
     **({"p0m_taf": P0M_TAF_MODE} if P0M_TAF_MODE != "off" else {}),
     **(
@@ -3935,6 +3961,12 @@ def _production_judge(
             center_bucket=centre_row.bucket,
             probability_stage=stage,
             taf_tx_bucket=_taf_tx_bucket(envelope, stage),
+            # Arm B (2026-09-06): the same loader production's entries read,
+            # as of this decision's own clock.
+            convergence_evidence=load_convergence_evidence(
+                conn, station_id=station_id, event_date=event_date,
+                as_of_utc=decision_at_utc,
+            ),
         )
     except Exception as exc:  # noqa: BLE001
         return {

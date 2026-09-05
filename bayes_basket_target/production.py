@@ -359,6 +359,7 @@ def compile_production_plan(
     last_acted_probability_identity: str | None = None,
     last_decision_signature: Mapping[str, Any] | None = None,
     effective_edge_tables: Mapping[str, Any] | None = None,
+    convergence_evidence: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compile one v2-only production decision, and deliver it when authorised.
 
@@ -376,6 +377,7 @@ def compile_production_plan(
         last_acted_probability_identity=last_acted_probability_identity,
         last_decision_signature=last_decision_signature,
         effective_edge_tables=effective_edge_tables,
+        convergence_evidence=convergence_evidence,
         probability_envelopes=probability_envelopes,
         market_snapshot=market_snapshot,
         policy_activations=policy_activations,
@@ -1030,6 +1032,13 @@ def commit_production_candidate_atomic(
             # so "did production read the store" is answerable from the row.
             "effective_edge_tables": (
                 dict(delta_v2_audit.get("effective_edge_tables") or {})
+                if isinstance(delta_v2_audit, Mapping)
+                else None
+            ),
+            # Arm B (2026-09-06): the convergence lift's shadow receipt, so
+            # the page can show what the lift would have admitted.
+            "convergence_claim": (
+                dict(delta_v2_audit.get("convergence_claim") or {})
                 if isinstance(delta_v2_audit, Mapping)
                 else None
             ),

@@ -5285,6 +5285,200 @@ def collect_risk_metrics(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def collect_convergence_claim(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Arm B (2026-09-06): the convergence claim lift, in shadow.
+
+    Two halves.  The receipts are production's own: every basket decision
+    row carries the enumeration's ``convergence_claim`` receipt -- how many
+    windows the price gate judged were converging, how many the lift would
+    have admitted -- read straight off ``auto_trade_decisions``.  The
+    evidence is the measurement the arm rests on, recomputed on this book
+    with the kernel's own state function and the same evidence loader
+    production hands in: at sampled P0-M/P1 checkpoints of settled
+    station-days, the max-mass three-rung window (a stand-in for the seat,
+    not the seat rule) is classified converging or not and scored against
+    truth.  Nothing here re-derives the rule; the rule is called.
+    """
+
+    from bayes_basket_target.basket_kernel import delta_v2 as K
+    from bayes_basket_target.convergence_evidence import (
+        best_asks,
+        load_convergence_evidence,
+        window_sum,
+    )
+
+    out: dict[str, Any] = {
+        "mode": K.CONVERGENCE_CLAIM_MODE,
+        "factor": K.CONVERGENCE_CLAIM_FACTOR,
+        "horizon_hours": K.CONVERGENCE_CLAIM_HORIZON_HOURS,
+        "stages": sorted(K.CONVERGENCE_CLAIM_STAGES),
+        "min_agreement": K.CONVERGENCE_CLAIM_MIN_AGREEMENT,
+        "min_claim_rise": K.CONVERGENCE_CLAIM_MIN_CLAIM_RISE,
+        "min_price_fall": K.CONVERGENCE_CLAIM_MIN_PRICE_FALL,
+        "receipts": [],
+        "examples": [],
+        "evidence": [],
+        "evidence_days": 14,
+    }
+
+    # --- receipts: production's decisions over the last seven days ---
+    since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat(timespec="seconds")
+    tally: dict[str, dict[str, int]] = {}
+    examples: list[dict[str, Any]] = []
+    try:
+        rows = conn.execute(
+            "SELECT station_id, event_date, created_at, details_json"
+            " FROM auto_trade_decisions"
+            " WHERE strategy_lane='basket' AND created_at>=?"
+            " ORDER BY created_at DESC LIMIT 6000",
+            (since,),
+        ).fetchall()
+    except sqlite3.Error:
+        rows = []
+    for station_id, event_date, created_at, details_json in rows:
+        try:
+            details = json.loads(details_json or "{}")
+        except (TypeError, ValueError):
+            continue
+        receipt = details.get("convergence_claim")
+        if not isinstance(receipt, Mapping) or not receipt:
+            continue
+        signature = details.get("decision_signature") or {}
+        stage = str(signature.get("stage") or "?")
+        slot = tally.setdefault(stage, {
+            "decisions": 0, "with_evidence": 0, "candidates": 0,
+            "would_admit": 0, "admitted_by_lift": 0,
+        })
+        slot["decisions"] += 1
+        slot["with_evidence"] += int(bool(receipt.get("evidence_present")))
+        slot["candidates"] += int(receipt.get("candidate_count") or 0)
+        slot["would_admit"] += int(receipt.get("would_admit_count") or 0)
+        slot["admitted_by_lift"] += int(receipt.get("admitted_by_lift_count") or 0)
+        if len(examples) < 12:
+            for row in receipt.get("candidates") or []:
+                if len(examples) >= 12:
+                    break
+                examples.append({
+                    "station_id": str(station_id), "event_date": str(event_date),
+                    "stage": stage, "at": str(created_at)[:16],
+                    "buckets": list(row.get("buckets") or []),
+                    "claim": row.get("claim"), "price": row.get("all_in_price"),
+                    "agreement": row.get("agreement"),
+                    "claim_rise": row.get("claim_rise"),
+                    "price_fall": row.get("price_fall"),
+                    "lifted_edge": row.get("lifted_edge"),
+                    "flips_gate": bool(row.get("flips_gate")),
+                })
+    out["receipts"] = [{"stage": stage, **slot} for stage, slot in sorted(tally.items())]
+    out["examples"] = examples
+
+    # --- evidence: settled station-days, sampled P0-M/P1 checkpoints ---
+    try:
+        truth: dict[tuple[str, str], float] = {}
+        floor_day = (datetime.now(timezone.utc) - timedelta(days=out["evidence_days"])).date().isoformat()
+        for st, ld, t in conn.execute(
+            "SELECT station_id, local_date, official_tmax_c"
+            " FROM calibration_station_daily_high_truth"
+            " WHERE official_tmax_c IS NOT NULL AND local_date>=?"
+            " ORDER BY revision_no",
+            (floor_day,),
+        ):
+            truth[(str(st), str(ld))] = float(t)
+    except sqlite3.Error:
+        truth = {}
+    cells: dict[str, dict[str, Any]] = {}
+
+    def _cell(name: str) -> dict[str, Any]:
+        return cells.setdefault(name, {"n": 0, "hits": 0, "claim": 0.0, "unit": 0.0, "stations": set()})
+
+    for (st, ed), t_true in sorted(truth.items()):
+        try:
+            cps = conn.execute(
+                "SELECT history_id, stage, decision_at_utc"
+                " FROM basket_probability_bridge_history"
+                " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+                "   AND stage IN ('P0-M','P1') ORDER BY decision_at_utc",
+                (st, ed),
+            ).fetchall()
+        except sqlite3.Error:
+            break
+        if not cps:
+            continue
+        last_slot = None
+        for history_id, stage, decided in cps:
+            slot = str(decided)[:13]  # one sample per station-day-hour
+            hour = int(str(decided)[11:13] or 0)
+            if slot == last_slot or hour % 4:
+                continue
+            last_slot = slot
+            try:
+                buckets = sorted(conn.execute(
+                    "SELECT ordinal, bucket, lower_c, upper_c, probability"
+                    " FROM basket_probability_bridge_bucket_probability WHERE history_id=?",
+                    (history_id,),
+                ).fetchall())
+                book = conn.execute(
+                    "SELECT buckets_json FROM basket_official_ws_snapshot"
+                    " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+                    "   AND observed_at>=? ORDER BY observed_at ASC LIMIT 1",
+                    (st, ed, str(decided)),
+                ).fetchone()
+            except sqlite3.Error:
+                break
+            if len(buckets) < 3 or book is None:
+                continue
+            best, best_i = -1.0, 0
+            for i in range(len(buckets) - 2):
+                mass = sum(float(b[4]) for b in buckets[i:i + 3])
+                if mass > best:
+                    best, best_i = mass, i
+            run = buckets[best_i:best_i + 3]
+            names = [str(b[1]) for b in run]
+            asks = best_asks(book[0])
+            price_now = window_sum(asks, names)
+            if price_now is None or best <= 0:
+                continue
+            evidence = load_convergence_evidence(
+                conn, station_id=st, event_date=ed, as_of_utc=str(decided),
+            )
+            state = K.convergence_state_v1(
+                stage=str(stage), claim_now=best,
+                claim_prev=window_sum((evidence or {}).get("prior_probabilities"), names),
+                price_now=price_now,
+                price_prev=window_sum((evidence or {}).get("prior_asks"), names),
+                agreement_now=price_now / best,
+            )
+            lo, hi = run[0][2], run[-1][3]
+            hit = int((lo is None or t_true >= lo) and (hi is None or t_true < hi))
+            if state["converging"]:
+                name = "双向收敛（会被抬价）"
+            elif state["reason"] == "claim_not_rising" and (state.get("price_fall") or 0) >= K.CONVERGENCE_CLAIM_MIN_PRICE_FALL:
+                name = "模型没动、市场跌（不抬）"
+            elif state["reason"] == "no_prior":
+                name = "无先验"
+            elif state["reason"] == "not_dear":
+                name = "不贵（a<1.1）"
+            else:
+                name = "贵但未收敛"
+            cell = _cell(f"{stage} / {name}")
+            cell["n"] += 1
+            cell["hits"] += hit
+            cell["claim"] += best
+            cell["unit"] += (1.0 / price_now - 1.0) if hit else -1.0
+            cell["stations"].add(st)
+    out["evidence"] = [
+        {
+            "cell": name, "n": c["n"], "stations": len(c["stations"]),
+            "hit_pct": round(100.0 * c["hits"] / c["n"], 1) if c["n"] else None,
+            "claimed_pct": round(100.0 * c["claim"] / c["n"], 1) if c["n"] else None,
+            "realised_over_claimed": round(c["hits"] / c["claim"], 2) if c["claim"] else None,
+            "unit_return_pct": round(100.0 * c["unit"] / c["n"], 1) if c["n"] else None,
+        }
+        for name, c in sorted(cells.items())
+    ]
+    return out
+
+
 def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
     """What fraction of a claim arrives, per stage and per agreement band.
 
@@ -6062,6 +6256,7 @@ SECTION_CACHE_TTL_SEC = {
     "h5_bias_accuracy": 225 * 60,
     "band_residual_audit": 240 * 60,
     "center_landing": 255 * 60,
+    "convergence_claim": 270 * 60,
 }
 # Set by ``--no-section-cache`` so a reader who needs every number computed
 # against this instant can have it, at the price of the long build.
@@ -6295,6 +6490,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         ),
         "edge_band_health": collect_edge_band_health(conn),
         "effective_edge_lambda": collect_effective_edge_lambda(conn),
+        "convergence_claim": _cached_section(
+            "convergence_claim", collect_convergence_claim, conn
+        ),
         "risk_metrics": collect_risk_metrics(conn),
         "regional": collect_regional_lanes(conn),
         "worker": worker,
@@ -7008,7 +7206,8 @@ function bandTable(){
   // (user ruling, 2026-09-01): the band table audits claimed probability,
   // the thermometer audits claimed edge, and they are one reading.
   return stages() + bandShadow() + edgeBandHealth()
-    + effectiveEdgeLambda();
+    + effectiveEdgeLambda()
+    + convergenceClaim();
 }
 
 
@@ -7632,6 +7831,47 @@ function effectiveEdgeLambda(){
       前后半以 ${E.split_at_event_date||"—"} 为界。
     </div>
     ${scopes.map(block).join("")}`;
+}
+
+
+// Arm B (2026-09-06): the convergence claim lift, in shadow.  Left half is
+// what production's enumeration journaled; right half is the measurement
+// the arm rests on, recomputed on this book through the kernel's own state
+// function.  Nothing is served by it until a person promotes the arm.
+function convergenceClaim(){
+  const C=D.convergence_claim||{};
+  const num=(v,d)=>v==null?"—":Number(v).toFixed(d==null?2:d);
+  const pct=v=>v==null?"—":Number(v).toFixed(0)+"%";
+  const receipts=(C.receipts||[]).map(r=>`<tr>
+      <td class="mono">${r.stage}</td><td>${r.decisions}</td><td>${r.with_evidence}</td>
+      <td>${r.candidates}</td><td class="${r.would_admit?"up":""}">${r.would_admit}</td><td>${r.admitted_by_lift}</td></tr>`).join("");
+  const examples=(C.examples||[]).map(e=>`<tr>
+      <td class="mono">${e.station_id} ${e.event_date} ${e.stage}</td><td class="mono">${e.at}</td>
+      <td class="mono">${(e.buckets||[]).join(" · ")}</td><td class="mono">${num(e.claim)}</td>
+      <td class="mono">${num(e.price)}</td><td class="mono">${num(e.agreement)}</td>
+      <td class="mono">${e.claim_rise==null?"—":(e.claim_rise>=0?"+":"")+num(e.claim_rise)} / ${e.price_fall==null?"—":"−"+num(e.price_fall)}</td>
+      <td class="mono ${e.lifted_edge>0?"up":""}">${num(e.lifted_edge,3)}</td><td>${e.flips_gate?"会放行":"仍拒"}</td></tr>`).join("");
+  const evidence=(C.evidence||[]).map(e=>`<tr>
+      <td>${e.cell}</td><td>${e.n}</td><td>${e.stations}</td><td class="mono">${pct(e.hit_pct)}</td>
+      <td class="mono">${pct(e.claimed_pct)}</td>
+      <td class="mono ${e.realised_over_claimed>1.15?"up":(e.realised_over_claimed<0.9?"down":"")}">${num(e.realised_over_claimed)}</td>
+      <td class="mono ${e.unit_return_pct>0?"up":"down"}">${e.unit_return_pct==null?"—":(e.unit_return_pct>=0?"+":"")+num(e.unit_return_pct,0)+"%"}</td></tr>`).join("");
+  return `<h2 style="margin-top:30px">双向收敛系数（B 臂，影子）</h2>
+    <div class="card">
+      模型把窗口调高 ≥${num(C.min_claim_rise)}、市场把同一窗口的卖一合计压低 ≥${num(C.min_price_fall)}（视野 ${C.horizon_hours}h），
+      而市场仍比模型贵（a=价/声称 ≥${num(C.min_agreement)}）——这样的窗口实测兑现 1.3–1.4 倍声称，却被正 EV 闸挡住。
+      本臂在闸门前把这种窗口的声称乘 <span class="mono">${num(C.factor)}</span>。当前模式 <span class="mono">${C.mode}</span>：
+      影子只记账不放行；阶段限 ${(C.stages||[]).join("/")}，P0 开仓无先验不参与。
+      与宪章 68 的 P1 封顶（信它不比它更信它）正面冲突，转正须点名裁定。
+    </div>
+    <h3 style="margin-top:12px">生产回执（近 7 天决策行）</h3>
+    <table><thead><tr><th>阶段</th><th>决策</th><th>有先验</th><th>收敛候选窗</th><th>抬价会放行</th><th>已因抬价放行</th></tr></thead>
+    <tbody>${receipts||'<tr><td colspan="6" class="muted">尚无带回执的决策行（常驻重启后开始记录）。</td></tr>'}</tbody></table>
+    ${examples?`<h3 style="margin-top:12px">最近候选窗</h3>
+    <table><thead><tr><th>站日/阶段</th><th>时刻</th><th>窗口</th><th>声称</th><th>价</th><th>a</th><th>Δ声称 / Δ价</th><th>抬后 edge</th><th>闸门</th></tr></thead><tbody>${examples}</tbody></table>`:""}
+    <h3 style="margin-top:12px">证据格（近 ${C.evidence_days} 天已结算站日，P0-M/P1 每 4 小时抽样，最大质量三桶窗，研究口径）</h3>
+    <table><thead><tr><th>阶段 / 格</th><th>n</th><th>站</th><th>命中</th><th>声称</th><th>实现÷声称</th><th>按卖一全买</th></tr></thead>
+    <tbody>${evidence||'<tr><td colspan="7" class="muted">无样本。</td></tr>'}</tbody></table>`;
 }
 
 // Rendered inside the band-table module, not as its own section (user

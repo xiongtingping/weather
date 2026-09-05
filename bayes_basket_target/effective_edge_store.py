@@ -556,43 +556,28 @@ def window_price_move(
 ) -> dict[str, Any]:
     """How the market moved this window over the hours before a decision.
 
-    The earlier end is the latest committed checkpoint at least
-    ``horizon_hours`` before the decision -- any stage, since it is the
-    belief the system held then -- priced on the first committed book at
-    or after it, which is the book production compiled that checkpoint on
-    (the same pairing the ledger's ``_books_for_checkpoint`` uses).  Nothing
-    after the decision is read.  ``no_prior`` when no such checkpoint or
-    book exists, which is every opening seat under charter 48.
+    The earlier end is ``convergence_evidence.load_convergence_evidence``'s
+    pairing -- the one loader every reader of "what did the system hold H
+    hours ago" shares -- so this lane and the convergence arm cannot drift
+    apart on which checkpoint or which book counts.  ``no_prior`` when no
+    such checkpoint or book exists, which is every opening seat under
+    charter 48.
     """
 
-    try:
-        earlier = (
-            datetime.fromisoformat(str(decision_at_utc).replace("Z", "+00:00"))
-            - timedelta(hours=float(horizon_hours))
-        ).astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-        prior = conn.execute(
-            "SELECT stage, decision_at_utc FROM basket_probability_bridge_history"
-            " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-            "   AND decision_at_utc<=?"
-            " ORDER BY decision_at_utc DESC LIMIT 1",
-            (station_id, event_date, earlier),
-        ).fetchone()
-        if prior is None:
-            return {"tier": "no_prior", "dq": None, "prior_stage": None}
-        book = conn.execute(
-            "SELECT observed_at, buckets_json FROM basket_official_ws_snapshot"
-            " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-            "   AND observed_at>=? AND observed_at<?"
-            " ORDER BY observed_at ASC LIMIT 1",
-            (station_id, event_date, str(prior[1]), str(decision_at_utc)),
-        ).fetchone()
-    except sqlite3.Error:
+    from .convergence_evidence import load_convergence_evidence, window_sum
+
+    evidence = load_convergence_evidence(
+        conn, station_id=station_id, event_date=event_date,
+        as_of_utc=decision_at_utc, horizon_hours=horizon_hours,
+    )
+    if evidence is None:
         return {"tier": "no_prior", "dq": None, "prior_stage": None}
-    if book is None:
-        return {"tier": "no_prior", "dq": None, "prior_stage": str(prior[0])}
-    price_then = _window_best_ask_sum(book[1], window)
+    price_then = window_sum(evidence.get("prior_asks"), window)
     if price_then is None:
-        return {"tier": "no_prior", "dq": None, "prior_stage": str(prior[0])}
+        return {
+            "tier": "no_prior", "dq": None,
+            "prior_stage": evidence.get("prior_stage"),
+        }
     dq = float(price_now) - float(price_then)
     if dq <= -float(threshold):
         tier = "down"
@@ -601,8 +586,10 @@ def window_price_move(
     else:
         tier = "steady"
     return {
-        "tier": tier, "dq": round(dq, 4), "prior_stage": str(prior[0]),
-        "prior_at": str(prior[1]), "book_at": str(book[0]),
+        "tier": tier, "dq": round(dq, 4),
+        "prior_stage": str(evidence.get("prior_stage")),
+        "prior_at": str(evidence.get("prior_decision_at_utc")),
+        "book_at": str(evidence.get("prior_book_observed_at")),
     }
 
 

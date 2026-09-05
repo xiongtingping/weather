@@ -49,6 +49,10 @@ def _book(path: Path) -> sqlite3.Connection:
         " station_id TEXT, event_date TEXT, observed_at TEXT, state TEXT,"
         " buckets_json TEXT)"
     )
+    conn.execute(
+        "CREATE TABLE basket_probability_bridge_bucket_probability ("
+        " history_id TEXT, bucket TEXT, probability REAL)"
+    )
     return conn
 
 
@@ -72,11 +76,16 @@ def _seat(conn, pid, *, station, day, decided, claim, asks, hit, stage="P0"):
 
 
 def _prior(conn, station, day, decided_prior, book_at, asks):
+    history_id = f"h-{station}-{decided_prior}"
     conn.execute(
         "INSERT INTO basket_probability_bridge_history VALUES(?,?,?,?,?,?,?)",
-        (f"h-{station}-{decided_prior}", station, day, "P0", decided_prior,
-         "COMMITTED", "cp"),
+        (history_id, station, day, "P0", decided_prior, "COMMITTED", "cp"),
     )
+    for bucket in WINDOW:
+        conn.execute(
+            "INSERT INTO basket_probability_bridge_bucket_probability VALUES(?,?,?)",
+            (history_id, bucket, 0.2),
+        )
     conn.execute(
         "INSERT INTO basket_official_ws_snapshot VALUES(?,?,?,?,?)",
         (station, day, book_at, "COMMITTED", _quotes(asks)),

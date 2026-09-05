@@ -22,6 +22,7 @@ from .market_ingress import (
 )
 from .market_registry import load_market_registry_snapshot
 from .effective_edge_store import load_effective_edge_tables
+from .convergence_evidence import load_convergence_evidence
 from .inventory_producer import ledger_holdings_by_token
 from .consolidation_chain import load_last_acted_probability_identity
 from .production import compile_production_plan
@@ -1005,6 +1006,12 @@ def compile_p0_preselection(
         # decisions after the store went live carried an empty receipt
         # from exactly this omission.
         effective_edge_tables=load_effective_edge_tables(conn),
+        # Arm B (2026-09-06): the belief and book H hours before this
+        # compile, for the convergence claim lift (shadow by default).
+        convergence_evidence=load_convergence_evidence(
+            conn, station_id=station_id, event_date=event_date,
+            as_of_utc=evaluation_at_utc,
+        ),
         # Charters 71(a) and 77, by the same omission (found 2026-09-05):
         # the chain's last-acted identity and the scope's last decision
         # signature were never handed in here, so on this lane 71(a) could
