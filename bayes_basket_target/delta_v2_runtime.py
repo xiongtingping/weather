@@ -909,8 +909,12 @@ SYMMETRIC_SEAT_MODE = (
     os.environ.get("PM_SYMMETRIC_SEAT_MODE", "").strip().lower()
     or "center_pm1_p0"
 )
+# Research arm ``mode_only_p0`` (user, 2026-09-05): on a symmetric day the
+# P0/P0-M seat is the single mean bucket -- the mode, since the two coincide
+# on every symmetric day measured.  The width floor drops to one for that
+# seat only; skewed days and P1 are untouched.
 if SYMMETRIC_SEAT_MODE not in {
-    "off", "center_pm1", "center_pm1_p0", "mean_mode_pair_p0",
+    "off", "center_pm1", "center_pm1_p0", "mean_mode_pair_p0", "mode_only_p0",
 }:
     raise RuntimeError(f"unknown symmetric seat mode: {SYMMETRIC_SEAT_MODE}")
 # Research arms (2026-09-04, user): (1) P0 seat by skew -- symmetric day
@@ -1520,8 +1524,8 @@ def _support_windows(
     # Research arm (2026-09-05): the two-rung symmetric seat needs the
     # two-rung windows enumerated at all; the floor drops to two for a
     # symmetric P0/P0-M day under that arm only.
-    pair_arm_symmetric = (
-        SYMMETRIC_SEAT_MODE == "mean_mode_pair_p0"
+    narrow_arm_symmetric = (
+        SYMMETRIC_SEAT_MODE in {"mean_mode_pair_p0", "mode_only_p0"}
         and str(probability_stage or "") != "P1"
         and ladder_center in by_bucket
         and _skew_extension_sign(
@@ -1529,8 +1533,10 @@ def _support_windows(
             {bucket: int(row.ordinal) for bucket, row in by_bucket.items()},
         ) == 0
     )
-    if pair_arm_symmetric:
-        stage_min = min(stage_min, 2)
+    if narrow_arm_symmetric:
+        stage_min = min(
+            stage_min, 1 if SYMMETRIC_SEAT_MODE == "mode_only_p0" else 2
+        )
     # The floor cannot ask for more rungs than the day still has.  Late in P1
     # the hard bound prunes every bucket the reported high has passed, and a
     # station can arrive here with one live outcome left; demanding two then
@@ -1926,7 +1932,9 @@ def _support_windows(
     symmetric_arm_applies = (
         SYMMETRIC_SEAT_MODE == "center_pm1"
         or (
-            SYMMETRIC_SEAT_MODE in {"center_pm1_p0", "mean_mode_pair_p0"}
+            SYMMETRIC_SEAT_MODE in {
+                "center_pm1_p0", "mean_mode_pair_p0", "mode_only_p0",
+            }
             and str(probability_stage or "") != "P1"
         )
     )
@@ -1937,7 +1945,12 @@ def _support_windows(
         )
         if raw_skew == 0:
             centre_ordinal = int(by_bucket[ladder_center].ordinal)
-            if SYMMETRIC_SEAT_MODE == "mean_mode_pair_p0":
+            if SYMMETRIC_SEAT_MODE == "mode_only_p0":
+                # One rung: the mean bucket, which is the mode on a
+                # symmetric day.
+                wanted = {centre_ordinal}
+                symmetric_seat_pair = (ladder_center,)
+            elif SYMMETRIC_SEAT_MODE == "mean_mode_pair_p0":
                 # The pair: the centre and the neighbour the fractional
                 # mean leans toward; a dead tie takes the heavier one; a
                 # neighbour the day cannot reach yields to the other side.

@@ -3060,6 +3060,54 @@ def test_symmetric_pair_arm_seats_the_mean_bucket_and_the_leaning_neighbour(monk
     ) == "center_pm1_p0"
 
 
+def test_symmetric_single_rung_arm_seats_only_the_mean_bucket(monkeypatch) -> None:
+    """Research arm (2026-09-05): symmetric day -> one rung, the mean (= mode) bucket."""
+    from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
+    from bayes_basket_target.delta_v2_runtime import _support_windows
+
+    monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_MODE", "mode_only_p0")
+    labels = ["29°C", "30°C", "31°C", "32°C", "33°C", "34°C"]
+    probs = [0.06, 0.20, 0.40, 0.20, 0.10, 0.04]
+    asks = [0.05, 0.15, 0.30, 0.15, 0.08, 0.03]
+
+    def snapshot(stage: str) -> TargetBasketSnapshot:
+        rows = [
+            {
+                "bucket": b, "ordinal": i + 2, "probability": p,
+                "bid_price": max(0.0, a - 0.01),
+                "bid_levels": [{"price": max(0.001, a - 0.01), "shares": 50.0}],
+                "ask_levels": [{"price": a, "shares": 100.0}],
+                "price_tick_size": 0.01,
+                "maker_queue_ahead_shares": 0.0, "maker_queue_known": True,
+            }
+            for i, (b, p, a) in enumerate(zip(labels, probs, asks))
+        ]
+        evidence = {"probability_stage": stage, "posterior_version": "p", "posterior_sha256": "a" * 64}
+        return TargetBasketSnapshot.from_mapping({
+            "schema": "target_basket_snapshot_v6", "snapshot_id": "one", "sequence": 1,
+            "observed_at": "2026-09-04T00:00:00Z", "market_id": "m", "station_id": "X",
+            "event_date": "2026-09-05", "quote_version": "q",
+            "quote_observed_at": "2026-09-04T00:00:00Z", "quote_source": "OFFICIAL_CLOB_WS",
+            "inventory_version": "i", "order_state_version": "o", "evidence": evidence,
+            "buckets": rows, "checkpoint_changed": True, "quote_changed": True,
+            "fill_changed": True, "time_gate_changed": True, "evidence_fresh": True,
+            "contract_matches": True, "order_state_known": True, "risk_inputs_complete": True,
+            "time_left_minutes": 600.0,
+        })
+
+    prob = dict(zip(labels, probs))
+    for stage in ("P0", "P0-M"):
+        windows, audit = _support_windows(
+            snapshot=snapshot(stage), desired={"30°C", "31°C", "32°C", "33°C"},
+            probabilities=prob, fee_rate=0.0, maximum_support_buckets=4,
+            minimum_support_buckets=3, center_bucket="31°C", probability_stage=stage,
+        )
+        assert audit["symmetric_seat_forced"] is True
+        assert audit["symmetric_seat_pair"] == ("31°C",)
+        admissible = [tuple(w["buckets"]) for w in windows if w["admissible"]]
+        assert admissible == [("31°C",)]
+
+
 def test_clause_81_centre_holding_windows_claim_is_lifted() -> None:
     """Charter 81: a window holding the mean centre claims 1.21x in [0.35,0.55), 1.08x above."""
     from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
