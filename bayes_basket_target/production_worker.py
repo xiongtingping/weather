@@ -2026,10 +2026,42 @@ def _forward_market_evidence_rows(
 
     quote_raw = dict(market_snapshot)
     quote_raw["quote_freshness_policy_sha256"] = quote_freshness_policy_sha256
+    buckets = tuple(market_snapshot.get("buckets") or ())
     zero_by_bucket = {
         str(entry.get("bucket") or ""): 0.0
-        for entry in (market_snapshot.get("buckets") or ())
+        for entry in buckets
     }
+    # The inventory the snapshot was priced on (charter 83: the ledger's
+    # settled live fills, read by the preselection builder).  Until
+    # 2026-09-05 this row was written held-zero whatever the ledger said,
+    # so a forward day that had filled two legs of three compiled its next
+    # decision against nothing.  The empty case keeps its exact bytes: the
+    # bundle deduplicates by snapshot id and refuses a second row whose
+    # content disagrees, and a book unchanged across this change must still
+    # match the row it already wrote.
+    filled_by_bucket = {
+        str(entry.get("bucket") or ""): float(entry.get("filled_shares") or 0.0)
+        for entry in buckets
+    }
+    filled_cost_by_bucket = {
+        str(entry.get("bucket") or ""): float(
+            entry.get("filled_cost_usdc") or 0.0
+        )
+        for entry in buckets
+    }
+    holds_anything = any(value > 1e-9 for value in filled_by_bucket.values())
+    inventory_json = (
+        {
+            "filled_by_bucket": filled_by_bucket,
+            "filled_cost_by_bucket": filled_cost_by_bucket,
+            "source": "target_reconciliation_ledger_fills",
+            "ledger_holdings_sha256": str(
+                market_snapshot.get("ledger_holdings_sha256") or ""
+            ),
+        }
+        if holds_anything
+        else {"filled_by_bucket": zero_by_bucket}
+    )
     evidence_scope = {
         "station_id": str(market_snapshot.get("station_id") or ""),
         "event_date": str(market_snapshot.get("event_date") or ""),
@@ -2052,9 +2084,7 @@ def _forward_market_evidence_rows(
         # move with the observation it names.
         "inventory_version": _p0_preselection_scope_version(market_snapshot),
         "complete": 1,
-        "inventory_json": {
-            "filled_by_bucket": zero_by_bucket,
-        },
+        "inventory_json": inventory_json,
     }
     order_state_raw = {
         **evidence_scope,

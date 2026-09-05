@@ -22,6 +22,7 @@ from .market_ingress import (
 )
 from .market_registry import load_market_registry_snapshot
 from .effective_edge_store import load_effective_edge_tables
+from .inventory_producer import ledger_holdings_by_token
 from .production import compile_production_plan
 from .regime_materialization import load_regime_artifact
 from .production_io import (
@@ -293,6 +294,7 @@ def _market_snapshot(
     evaluation_at_utc: str,
     planning_budget_usdc: float = 0.0,
     book_equity_usdc: float | None = None,
+    ledger_holdings: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     evaluation = _utc(
         evaluation_at_utc,
@@ -378,6 +380,64 @@ def _market_snapshot(
     by_bucket = {str(row.get("outcome") or ""): row for row in registry_rows}
     if set(by_bucket) != set(envelope.probabilities):
         raise ContractError("p0_preselection_registry_probability_support_mismatch")
+    # What the reconciliation ledger says this scope already holds (charter
+    # 83: a settled live fill is inventory).  A forward day has no resident
+    # ingress, so this snapshot is the only place its holdings can enter the
+    # kernel; until 2026-09-05 it wrote every bucket held-zero, and the four
+    # baskets the venue had half-refused that morning (LTAC, LFPB, SAEZ,
+    # ZGSZ) were re-judged as fresh three-leg baskets at the moved prices
+    # -- HOLD -- instead of as the legs they were missing.  The holdings
+    # enter the evidence identity: the same book held differently is a
+    # different quote row, because the bundle deduplicates by snapshot id
+    # and refuses a second row whose bytes disagree.
+    holdings_by_token: dict[str, dict[str, float]] = {}
+    if ledger_holdings is not None:
+        raw_holdings = ledger_holdings.get("holdings")
+        if not isinstance(raw_holdings, Mapping):
+            raise ContractError("p0_preselection_ledger_holdings_invalid")
+        registry_tokens = {
+            str(row.get("yes_token") or "") for row in by_bucket.values()
+        }
+        for token_id, entry in raw_holdings.items():
+            if not isinstance(entry, Mapping):
+                raise ContractError("p0_preselection_ledger_holdings_invalid")
+            try:
+                held_shares = float(entry.get("shares", 0.0))
+                held_cost = float(entry.get("cost_usdc", 0.0))
+            except (TypeError, ValueError) as exc:
+                raise ContractError(
+                    "p0_preselection_ledger_holdings_invalid"
+                ) from exc
+            if (
+                not math.isfinite(held_shares)
+                or not math.isfinite(held_cost)
+                or held_shares < 0.0
+                or held_cost < 0.0
+            ):
+                raise ContractError("p0_preselection_ledger_holdings_invalid")
+            if held_shares <= 0.0:
+                continue
+            if str(token_id) not in registry_tokens:
+                # A settled fill on a token this scope's registry no longer
+                # names is a scope conflict, the same one the resident
+                # inventory producer refuses; pricing the day without it
+                # would silently drop a position.
+                raise ContractError(
+                    "p0_preselection_ledger_holdings_token_unknown"
+                )
+            holdings_by_token[str(token_id)] = {
+                "shares": held_shares,
+                "cost_usdc": held_cost,
+            }
+    holdings_sha256 = (
+        content_sha256({
+            "schema": "bayes_basket_target_p0_ledger_holdings_v1",
+            "holdings": holdings_by_token,
+        })
+        if holdings_by_token
+        else ""
+    )
+    _no_holding = {"shares": 0.0, "cost_usdc": 0.0}
     buckets = []
     quote_times = []
     market_labels = set()
@@ -437,8 +497,13 @@ def _market_snapshot(
                 "min_order_size": 0.0,
                 "maker_queue_ahead_shares": 0.0,
                 "maker_queue_known": False,
-                "filled_shares": 0.0,
-                "filled_cost_usdc": 0.0,
+                # Held is held, book or no book.
+                "filled_shares": holdings_by_token.get(
+                    token_id, _no_holding
+                )["shares"],
+                "filled_cost_usdc": holdings_by_token.get(
+                    token_id, _no_holding
+                )["cost_usdc"],
                 "pending_shares": 0.0,
                 "pending_notional_usdc": 0.0,
                 "active_before": False,
@@ -560,8 +625,12 @@ def _market_snapshot(
             "min_order_size": _forward_min_order_size(registry_row, raw_registry),
             "maker_queue_ahead_shares": 0.0,
             "maker_queue_known": False,
-            "filled_shares": 0.0,
-            "filled_cost_usdc": 0.0,
+            "filled_shares": holdings_by_token.get(
+                token_id, _no_holding
+            )["shares"],
+            "filled_cost_usdc": holdings_by_token.get(
+                token_id, _no_holding
+            )["cost_usdc"],
             "pending_shares": 0.0,
             "pending_notional_usdc": 0.0,
             "active_before": False,
@@ -605,15 +674,21 @@ def _market_snapshot(
             for bucket in buckets
         ],
     })
+    # The quote identity is the book's economic bytes (transport clocks and
+    # ids stay out of it); the holdings ride beside it, so a fill makes a
+    # new evidence row for an unchanged book rather than a conflicting one.
+    quote_version = "p0_ws_" + economic_quote_sha256[:32]
+    if holdings_by_token:
+        quote_version += "_h" + holdings_sha256[:12]
     return {
-        "snapshot_id": "p0_ws_" + economic_quote_sha256[:32],
+        "snapshot_id": quote_version,
         "sequence": 0,
         "observed_at": quote_observed,
         "market_id": market_id,
         "station_id": envelope.station_id,
         "event_date": envelope.event_date,
         "settlement_timezone": registry_timezone,
-        "quote_version": "p0_ws_" + economic_quote_sha256[:32],
+        "quote_version": quote_version,
         "official_ws_quote_sha256": economic_quote_sha256,
         "economic_quote_sha256": economic_quote_sha256,
         "quote_observed_at": quote_observed,
@@ -631,8 +706,23 @@ def _market_snapshot(
             + timedelta(seconds=maximum_age)
         ).isoformat().replace("+00:00", "Z"),
         "quote_source": "OFFICIAL_CLOB_WS",
-        "inventory_version": "p0_preselection_q0",
+        # q0 is the empty book; a scope the ledger says is held names the
+        # holdings it was priced on, and the forward evidence trio writes
+        # that inventory row under this version.
+        "inventory_version": (
+            "p0_preselection_ledger_" + holdings_sha256[:16]
+            if holdings_by_token
+            else "p0_preselection_q0"
+        ),
         "order_state_version": "p0_preselection_known_zero",
+        **(
+            {
+                "ledger_holdings": holdings_by_token,
+                "ledger_holdings_sha256": holdings_sha256,
+            }
+            if holdings_by_token
+            else {}
+        ),
         # This is a no-live planning ceiling, not reserved or executable
         # capital.  Keeping it distinct from capital_authorized allows P0
         # and P0-M to compute a real DeltaBasketScore target before P1
@@ -711,6 +801,13 @@ def _bind_scope_market_evidence(
         evaluation_at_utc=evaluation_at_utc,
         planning_budget_usdc=planning_budget_usdc,
         book_equity_usdc=book_equity_usdc,
+        # Charter 83: what the reconciliation ledger has settled for this
+        # scope is inventory, on a forward day as on a started one.
+        ledger_holdings=ledger_holdings_by_token(
+            conn,
+            station_id=station_id,
+            event_date=event_date,
+        ),
     )
     phase_input = BasketCashPhaseInput.from_mapping({
         "policy_version": cash_policy.policy_version,

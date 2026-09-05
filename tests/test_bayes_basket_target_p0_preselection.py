@@ -844,6 +844,7 @@ def _forward_market_snapshot(
     event_date: str = "2026-07-24",
     observed_at: str = "2026-07-23T12:00:10Z",
     planning_budget_usdc: float = 0.0,
+    ledger_holdings: dict | None = None,
 ) -> dict[str, object]:
     """One forward scope's book, built by the builder the compile uses."""
 
@@ -861,6 +862,7 @@ def _forward_market_snapshot(
         manifest=manifest,
         evaluation_at_utc="2026-07-23T12:01:00Z",
         planning_budget_usdc=planning_budget_usdc,
+        ledger_holdings=ledger_holdings,
     )
     market["cash_phase_input"] = {
         "policy_version": "cash-phase-test",
@@ -1122,6 +1124,127 @@ def test_forward_evidence_rows_have_one_builder() -> None:
         "one definition, one call from the compiled path, one from the "
         "refused path"
     )
+
+
+def test_p0_snapshot_carries_the_ledgers_settled_fills_as_inventory() -> None:
+    """Charter 83 on a forward day: a settled live fill is inventory.
+
+    ZGSZ 2026-09-06, 2026-09-05 10:13Z: 30°C and 31°C filled, 32°C refused
+    by the venue.  The next P0 compile (10:47Z) read this snapshot with
+    every bucket held-zero and judged a fresh three-leg basket -- HOLD --
+    instead of the leg the basket was missing.  The holdings enter the
+    bucket rows and the evidence identity; the book's economic identity
+    is untouched, and an empty ledger leaves every byte as before.
+    """
+
+    envelope, registry_rows, quotes, manifest = _ws_inputs(
+        observed_at="2026-07-23T12:00:10Z"
+    )
+    envelope.decision_at_utc = "2026-07-23T12:00:09Z"
+    common = dict(
+        envelope=envelope,
+        registry_rows=registry_rows,
+        quotes=quotes,
+        manifest=manifest,
+        evaluation_at_utc="2026-07-23T12:01:00Z",
+    )
+    empty = _market_snapshot(**common)
+    unheld = _market_snapshot(**common, ledger_holdings={"holdings": {}})
+    held = _market_snapshot(
+        **common,
+        ledger_holdings={
+            "holdings": {"yes-38": {"shares": 5.0, "cost_usdc": 2.15}},
+        },
+    )
+
+    assert unheld == empty
+    assert empty["buckets"][0]["filled_shares"] == 0.0
+    assert empty["inventory_version"] == "p0_preselection_q0"
+    assert "ledger_holdings" not in empty
+    bucket = held["buckets"][0]
+    assert bucket["filled_shares"] == 5.0
+    assert bucket["filled_cost_usdc"] == 2.15
+    assert held["economic_quote_sha256"] == empty["economic_quote_sha256"]
+    assert held["snapshot_id"] != empty["snapshot_id"]
+    assert held["snapshot_id"].startswith(empty["snapshot_id"] + "_h")
+    assert held["quote_version"] == held["snapshot_id"]
+    assert held["inventory_version"].startswith("p0_preselection_ledger_")
+    assert held["ledger_holdings"] == {
+        "yes-38": {"shares": 5.0, "cost_usdc": 2.15}
+    }
+    # A different holding is a different evidence row.
+    more = _market_snapshot(
+        **common,
+        ledger_holdings={
+            "holdings": {"yes-38": {"shares": 10.0, "cost_usdc": 4.3}},
+        },
+    )
+    assert more["snapshot_id"] != held["snapshot_id"]
+    assert more["inventory_version"] != held["inventory_version"]
+    # A holding on a token the scope's registry does not name is a scope
+    # conflict, not a silent drop.
+    with pytest.raises(
+        ContractError, match="p0_preselection_ledger_holdings_token_unknown"
+    ):
+        _market_snapshot(
+            **common,
+            ledger_holdings={
+                "holdings": {"yes-99": {"shares": 5.0, "cost_usdc": 1.0}},
+            },
+        )
+    with pytest.raises(
+        ContractError, match="p0_preselection_ledger_holdings_invalid"
+    ):
+        _market_snapshot(
+            **common,
+            ledger_holdings={
+                "holdings": {"yes-38": {"shares": -1.0, "cost_usdc": 1.0}},
+            },
+        )
+
+
+def test_forward_evidence_rows_carry_the_held_legs() -> None:
+    """The trio the forward lane persists names the inventory it priced on.
+
+    Empty ledger: byte-identical to the row it always wrote, so a book
+    unchanged across the change still matches its earlier row.  Held:
+    the inventory row carries shares and cost under the holdings-keyed
+    version the quote row names.
+    """
+
+    from bayes_basket_target.production_worker import (
+        _forward_market_evidence_rows,
+    )
+
+    quote_raw, inventory_raw, order_raw = _forward_market_evidence_rows(
+        _forward_market_snapshot(), quote_freshness_policy_sha256="c" * 64
+    )
+    assert inventory_raw["inventory_json"] == {"filled_by_bucket": {"38": 0.0}}
+    assert inventory_raw["inventory_version"] == quote_raw["inventory_version"]
+
+    held_quote, held_inventory, held_order = _forward_market_evidence_rows(
+        _forward_market_snapshot(
+            ledger_holdings={
+                "holdings": {"yes-38": {"shares": 5.0, "cost_usdc": 2.15}},
+            },
+        ),
+        quote_freshness_policy_sha256="c" * 64,
+    )
+    assert held_inventory["inventory_json"]["filled_by_bucket"] == {"38": 5.0}
+    assert held_inventory["inventory_json"]["filled_cost_by_bucket"] == {
+        "38": 2.15
+    }
+    assert held_inventory["inventory_json"]["source"] == (
+        "target_reconciliation_ledger_fills"
+    )
+    assert held_inventory["inventory_version"] == held_quote["inventory_version"]
+    assert held_inventory["inventory_version"] != inventory_raw["inventory_version"]
+    assert held_inventory["inventory_snapshot_id"] != (
+        inventory_raw["inventory_snapshot_id"]
+    )
+    assert held_quote["snapshot_id"] != quote_raw["snapshot_id"]
+    assert held_order["order_state_json"] == {"pending_by_bucket": {"38": 0.0}}
+    assert held_order["order_state_version"] == held_quote["order_state_version"]
 
 
 def test_p0_snapshot_carries_the_books_equity_beside_the_scopes_budget() -> None:

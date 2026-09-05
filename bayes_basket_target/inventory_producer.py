@@ -370,6 +370,71 @@ def _ledger_fill_rows(
     return result
 
 
+def ledger_holdings_by_token(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+) -> dict[str, Any]:
+    """What the reconciliation ledger says one scope holds, per token.
+
+    Charter 83 (2026-09-05) made a settled live fill inventory, and the
+    resident ingress above folds it into a started day's snapshot.  A
+    forward day has no resident ingress: the P0 preselection writes its own
+    evidence trio, and it wrote every bucket as held-zero.  So the first
+    partial baskets (2026-09-05 10:12Z: LTAC, LFPB, SAEZ, ZGSZ -- one or two
+    legs filled, the rest refused by the venue) were re-evaluated as if
+    nothing were held, and the kernel judged a fresh three-leg basket at
+    the moved prices (HOLD) instead of the legs the basket was missing.
+
+    The same ledger read as ``_ledger_fill_rows``, aggregated per token:
+    a BUY adds what a SELL removes.  No as-of clock -- the holdings are
+    what the ledger has settled at read time -- and the caller keys the
+    evidence identity on them, so the same book held differently is a
+    different evidence row.  Fails closed on a token that has sold more
+    shares than it bought.
+    """
+
+    fills = _ledger_fill_rows(
+        conn,
+        station_id=_text("ledger_holdings_station_id", station_id),
+        event_date=_text("ledger_holdings_event_date", event_date),
+    )
+    totals: dict[str, dict[str, Any]] = {}
+    for fill in fills:
+        entry = totals.setdefault(
+            fill["token_id"],
+            {"shares": 0.0, "cost_usdc": 0.0, "fill_count": 0},
+        )
+        sign = 1.0 if fill["order_action"] == "BUY" else -1.0
+        entry["shares"] += sign * float(fill["filled_size"])
+        entry["cost_usdc"] += sign * float(fill["filled_notional_usdc"])
+        entry["fill_count"] += 1
+    holdings: dict[str, dict[str, Any]] = {}
+    for token_id, entry in sorted(totals.items()):
+        # Shares cannot go negative -- that is a ledger contradiction.  Cost
+        # can: a token sold for more than it was bought has a negative
+        # basis, and what remains held is carried at zero.
+        if entry["shares"] < -EPS:
+            raise ContractError("ledger_holdings_negative:" + token_id)
+        if entry["shares"] <= EPS:
+            continue
+        holdings[token_id] = {
+            "shares": float(entry["shares"]),
+            "cost_usdc": max(0.0, float(entry["cost_usdc"])),
+            "fill_count": int(entry["fill_count"]),
+        }
+    return {
+        "schema": "bayes_basket_ledger_holdings_v1",
+        "station_id": station_id,
+        "event_date": event_date,
+        "holdings": holdings,
+        "fill_content_sha256": sorted(
+            fill["content_sha256"] for fill in fills
+        ),
+    }
+
+
 def has_execution_transition_versions(
     conn: sqlite3.Connection,
     *,
@@ -724,4 +789,5 @@ __all__ = [
     "build_confirmed_inventory_ingress",
     "has_execution_transition_versions",
     "build_no_live_inventory_ingress",
+    "ledger_holdings_by_token",
 ]

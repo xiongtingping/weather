@@ -295,6 +295,66 @@ def test_live_fills_settled_in_the_ledger_are_inventory() -> None:
     assert market["inventory_version"].startswith("invrec_ingress_")
 
 
+def test_ledger_holdings_by_token_are_the_settled_fills_per_token() -> None:
+    """The forward lane's read of charter 83: per token, BUY less SELL.
+
+    2026-09-05: ZGSZ 2026-09-06 filled 30°C and 31°C, the venue refused
+    32°C, and the P0 preselection re-judged the day as unheld.  A held
+    token reports its shares and cost; a refused or cancelled leg is not a
+    holding; a token sold flat drops out.
+    """
+
+    from bayes_basket_target.inventory_producer import ledger_holdings_by_token
+
+    with _ledger_db() as conn:
+        _insert_ledger_fill(
+            conn, intent="live-30", bucket="30°C", token="yes-30", size=5, notional=1.25
+        )
+        _insert_ledger_fill(
+            conn, intent="live-31", bucket="31°C", token="yes-31", size=5, notional=2.15
+        )
+        _insert_ledger_fill(
+            conn, intent="live-32", bucket="32°C", token="yes-32", size=0,
+            notional=0.0, state="resolved_not_placed",
+        )
+        _insert_ledger_fill(
+            conn, intent="live-33", bucket="33°C", token="yes-33", size=5, notional=1.0
+        )
+        _insert_ledger_fill(
+            conn, intent="live-33-out", bucket="33°C", token="yes-33", size=5,
+            notional=1.1, action="SELL",
+        )
+        packet = ledger_holdings_by_token(
+            conn, station_id="TEST", event_date="2026-07-23"
+        )
+        other = ledger_holdings_by_token(
+            conn, station_id="TEST", event_date="2026-07-24"
+        )
+    assert packet["holdings"] == {
+        "yes-30": {"shares": 5.0, "cost_usdc": 1.25, "fill_count": 1},
+        "yes-31": {"shares": 5.0, "cost_usdc": 2.15, "fill_count": 1},
+    }
+    assert len(packet["fill_content_sha256"]) == 4
+    assert other["holdings"] == {}
+
+
+def test_ledger_holdings_refuse_a_token_sold_more_than_it_bought() -> None:
+    from bayes_basket_target.inventory_producer import ledger_holdings_by_token
+
+    with _ledger_db() as conn:
+        _insert_ledger_fill(
+            conn, intent="live-1", bucket="39°C", token="yes-39", size=5, notional=2.0
+        )
+        _insert_ledger_fill(
+            conn, intent="live-2", bucket="39°C", token="yes-39", size=6,
+            notional=2.4, action="SELL",
+        )
+        with pytest.raises(ContractError, match="ledger_holdings_negative"):
+            ledger_holdings_by_token(
+                conn, station_id="TEST", event_date="2026-07-23"
+            )
+
+
 def test_a_ledger_sell_fill_removes_what_a_buy_added() -> None:
     with _ledger_db() as conn:
         _insert_ledger_fill(
