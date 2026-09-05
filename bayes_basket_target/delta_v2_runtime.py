@@ -25,6 +25,8 @@ from .basket_kernel.contracts import (
 )
 from .basket_kernel.delta_v2 import (
     CENTER_WINDOW_CLAIM_BANDS,
+    SIZING_CLAIM_BANDS,
+    sizing_claim_factor,
     EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
     CENTER_WINDOW_CLAIM_DEFAULT,
     _parse_claim_bands,
@@ -1699,10 +1701,12 @@ def _support_windows(
                 else 1
             )
             claim_factor = off_center_claim_factor(raw_win, gap_buckets=center_gap)
+            center_lift = 1.0
             if holds_center:
                 # Research arm (2026-09-05): the centre-holding mirror of
                 # the deflation above; identity unless the arm is on.
-                claim_factor *= center_window_claim_factor(raw_win)
+                center_lift = center_window_claim_factor(raw_win)
+                claim_factor *= center_lift
             win = min(1.0 - EPS, raw_win * claim_factor)
             quotes = [_all_in(bucket) for bucket in window]
             priced = all(quote is not None for quote in quotes)
@@ -1938,6 +1942,9 @@ def _support_windows(
                 "win_probability": win,
                 "raw_win_probability": raw_win,
                 "off_center_claim_factor": claim_factor,
+                # Charter 81's own component of the line above, kept apart so
+                # the sizing lane can swap it without re-deriving the rest.
+                "center_window_claim_factor": center_lift,
                 "center_gap_buckets": center_gap,
                 "holds_probability_core": holds_core,
                 "all_in_price": price if priced else None,
@@ -2253,6 +2260,12 @@ def _support_windows(
         "center_window_claim_bands": [
             [bound, factor] for bound, factor in CENTER_WINDOW_CLAIM_BANDS
         ],
+        **(
+            {"sizing_claim_bands": [
+                [bound, factor] for bound, factor in SIZING_CLAIM_BANDS
+            ]}
+            if SIZING_CLAIM_BANDS else {}
+        ),
         # Retained name from the touch-the-core era so existing readers keep
         # working; it now counts refusals under the stronger rung.
         "core_refused_window_count": center_refused,
@@ -2525,6 +2538,29 @@ def _solve_over_support_windows(
             bucket_factors=bucket_factors or None,
             claim_factor=claim_factor,
         )
+        # The admission/sizing split (user ruling, 2026-09-06).  Charter 81's
+        # lift is an admission knob and stays exactly where it is; the stake
+        # may read the claim's own reliability curve instead.  Only that one
+        # component is swapped -- the off-centre deflation and charter 68's
+        # lambda(a), including the agreement it was looked up at, are the
+        # admission lane's, so the arm isolates the one variable it names.
+        # Empty table: this is ``None`` and the Kelly stake reads the same
+        # belief as everything else, which is charter 68's "one belief".
+        sizing_probabilities = None
+        if SIZING_CLAIM_BANDS and float(row.get("center_gap_buckets") or 0.0) <= 0.0:
+            seated_lift = float(row.get("center_window_claim_factor") or 1.0)
+            if seated_lift > EPS:
+                sizing_probabilities = deflate_window_partition_v1(
+                    probabilities,
+                    window,
+                    bucket_factors=bucket_factors or None,
+                    claim_factor=(
+                        claim_factor / seated_lift
+                        * sizing_claim_factor(
+                            float(row.get("raw_win_probability") or 0.0)
+                        )
+                    ),
+                )
         try:
             solution = solve_target_inventory_v2(
                 probabilities=window_probabilities,
@@ -2545,6 +2581,7 @@ def _solve_over_support_windows(
                     # must propose against the distribution the ranking on
                     # the next line scores.
                     probabilities_by_bucket=window_probabilities,
+                    sizing_probabilities_by_bucket=sizing_probabilities,
                     centre_bucket=str(
                         window_audit.get("ladder_center_bucket") or ""
                     ),
@@ -2838,6 +2875,7 @@ def _target_candidates(
     minimum_clip_notional_usdc: float,
     bankroll_usdc: float,
     probabilities_by_bucket: Mapping[str, float],
+    sizing_probabilities_by_bucket: Mapping[str, float] | None = None,
     centre_bucket: str = "",
     book_equity_usdc: float | None = None,
     decision_moment: bool = True,
@@ -3011,7 +3049,14 @@ def _target_candidates(
                 pending_shares=pending_shares,
                 pending_cost=pending_cost,
                 capital_available_usdc=capital_available_usdc,
-                probabilities_by_bucket=probabilities_by_bucket,
+                # The one place the split is spent: the stake formula.  The
+                # candidate's shape, the grid, the ranking and every gate
+                # still read ``probabilities_by_bucket``.
+                probabilities_by_bucket=(
+                    sizing_probabilities_by_bucket
+                    if sizing_probabilities_by_bucket is not None
+                    else probabilities_by_bucket
+                ),
                 book_equity_usdc=float(book_equity_usdc),
                 quote_version=str(snapshot.quote_version),
             )

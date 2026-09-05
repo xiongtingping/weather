@@ -1427,11 +1427,13 @@ def off_center_claim_factor(
 CENTER_WINDOW_CLAIM_DEFAULT = "[[0.35, 1.0], [0.55, 1.21], [1.01, 1.08]]"
 
 
-def _parse_claim_bands(text: str) -> tuple[tuple[float, float], ...]:
+def _parse_claim_bands(
+    text: str, *, default: str = CENTER_WINDOW_CLAIM_DEFAULT
+) -> tuple[tuple[float, float], ...]:
     cleaned = (text or "").strip()
     if cleaned.lower() == "off":
         return ()
-    raw = json.loads(cleaned or CENTER_WINDOW_CLAIM_DEFAULT)
+    raw = json.loads(cleaned or default)
     bands = tuple((float(bound), float(factor)) for bound, factor in raw)
     if any(bound <= 0.0 or factor <= 0.0 for bound, factor in bands):
         raise RuntimeError(f"invalid centre-window claim bands: {text}")
@@ -1443,6 +1445,34 @@ def _parse_claim_bands(text: str) -> tuple[tuple[float, float], ...]:
 CENTER_WINDOW_CLAIM_BANDS: tuple[tuple[float, float], ...] = _parse_claim_bands(
     os.environ.get("PM_CENTER_WINDOW_CLAIM_BANDS", "")
 )
+
+
+# The admission/sizing split (user ruling, 2026-09-06: "拆").  Charter 81's
+# lift decides who is seated: measured on the ledger, its coarse three-band
+# table beats the reliability curve by five points, because a factor at the
+# gate is an admission knob and matching it to the curve admits marginal
+# windows the market has priced richer for a reason.  The claim IS
+# calibratable all the same -- on the windows the gate enumerates, realised
+# over claimed runs 1.44/1.31/1.18/1.05 by claim band on P0, the same shape
+# on P0-M and P1 and on both widths.  This table is where that curve may be
+# spent without touching admission: the whole-basket Kelly stake, and
+# nothing else.  Empty (the default) means sizing reads exactly what
+# admission reads, which is charter 68's "one belief" and the shipped rule.
+SIZING_CLAIM_BANDS: tuple[tuple[float, float], ...] = _parse_claim_bands(
+    os.environ.get("PM_SIZING_CLAIM_BANDS", ""), default="[]",
+)
+
+
+def sizing_claim_factor(claimed_mass: float) -> float:
+    """The stake's own lift for a centre-holding window; 1.0 when off."""
+
+    if not SIZING_CLAIM_BANDS:
+        return 1.0
+    mass = float(claimed_mass)
+    for bound, factor in SIZING_CLAIM_BANDS:
+        if mass < bound:
+            return float(factor)
+    return 1.0
 
 
 def center_window_claim_factor(claimed_mass: float) -> float:
