@@ -296,3 +296,131 @@ def test_only_seats_banded_under_the_current_partition_are_fitted() -> None:
     # Only the twelve current-partition seats were counted.
     assert fit["evidence"][0]["seats"] == 12
     assert fit["table"]["band_partition_cells"] == store.BAND_PARTITION_CELLS
+
+
+# ---------------------------------------------------------------------------
+# Charter 68(c), 2026-09-05: the rolling fit promotes itself.
+# ---------------------------------------------------------------------------
+
+
+def test_the_dispatch_reads_the_served_tables_and_falls_back_per_scope() -> None:
+    """One unpacking for both lanes: a scope's table when it has one, the
+    kernel constant when it does not."""
+
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        effective_edge_lambda_from_tables,
+    )
+
+    served = {
+        "P0": ((0.5, 0.3), (0.7, 0.4), (0.85, 0.5), (float("inf"), 0.6)),
+        "P0-M": None,
+        "P1": ((float("inf"), 0.9),),
+    }
+    assert effective_edge_lambda_from_tables("P0", 0.3, served) == 0.3
+    assert effective_edge_lambda_from_tables("P0", 0.9, served) == 0.6
+    assert effective_edge_lambda_from_tables("P1", 0.3, served) == 0.9
+    # P0-M has no table yet: the kernel constant, which equals P0's.
+    assert effective_edge_lambda_from_tables("P0-M", 0.3, served) == (
+        effective_edge_lambda(0.3)
+    )
+    # No tables at all is the bootstrap for every scope.
+    assert effective_edge_lambda_from_tables("P0", 0.3, None) == (
+        effective_edge_lambda(0.3)
+    )
+
+
+def _store_with_journal() -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    store.ensure_schema(conn)
+    return conn
+
+
+def _journal(conn, *, scope, sha, fitted_at, lambdas) -> None:
+    conn.execute(
+        "INSERT OR IGNORE INTO calibration_effective_edge_lambda("
+        " lambda_table_sha256, bands_json, evidence_json, fitted_at_utc,"
+        " window_days, seat_count, activated, activated_at_utc, stage_scope)"
+        " VALUES(?,?,?,?,28,10,0,?,?)",
+        (
+            sha,
+            json.dumps({"bands": [
+                {"upper_bound": b, "lambda": l}
+                for b, l in zip((0.5, 0.7, 0.85, None), lambdas)
+            ]}),
+            "[]", fitted_at, fitted_at, scope,
+        ),
+    )
+    conn.execute(
+        "INSERT INTO calibration_effective_edge_fit_journal("
+        " lambda_table_sha256, fitted_at_utc, admitted, accumulating_bands,"
+        " evidence_json, stage_scope) VALUES(?,?,4,'[]','[]',?)",
+        (sha, fitted_at, scope),
+    )
+
+
+def test_as_of_reads_the_journal_so_a_reactivated_sha_keeps_its_history() -> None:
+    """The table's activated_at is bumped every time the same sha is
+    re-activated; the journal keeps the sequence.  A decision on the 2nd
+    must read the 1st's table, and one before any fit reads nothing."""
+
+    conn = _store_with_journal()
+    _journal(conn, scope="P0", sha="a" * 64, fitted_at="2026-09-01T01:00:00",
+             lambdas=(0.1, 0.2, 0.3, 0.4))
+    _journal(conn, scope="P0", sha="b" * 64, fitted_at="2026-09-03T01:00:00",
+             lambdas=(0.5, 0.6, 0.7, 0.8))
+    # The same first sha re-journaled later, as a re-activation would be.
+    _journal(conn, scope="P0", sha="a" * 64, fitted_at="2026-09-05T01:00:00",
+             lambdas=(0.1, 0.2, 0.3, 0.4))
+    conn.execute(
+        "UPDATE calibration_effective_edge_lambda SET activated=1,"
+        " activated_at_utc='2026-09-05T01:00:00'"
+        " WHERE lambda_table_sha256=?", ("a" * 64,),
+    )
+    as_of = lambda t: store.load_lambda_as_of(conn, stage_scope="P0", as_of_utc=t)
+    assert as_of("2026-08-31T00:00:00") is None
+    assert [l for _, l in as_of("2026-09-02T00:00:00")] == [0.1, 0.2, 0.3, 0.4]
+    assert [l for _, l in as_of("2026-09-04T00:00:00")] == [0.5, 0.6, 0.7, 0.8]
+    assert [l for _, l in as_of("2026-09-06T00:00:00")] == [0.1, 0.2, 0.3, 0.4]
+    # The mapping the dispatch reads, per scope; P1 has no fit here.
+    tables = store.load_effective_edge_tables(conn, as_of_utc="2026-09-04T00:00:00")
+    assert set(tables) == {"P0", "P0-M", "P1"}
+    assert tables["P1"] is None and tables["P0-M"] is None
+
+
+def test_a_thin_band_keeps_the_last_activated_value_not_the_constant() -> None:
+    """Self-promotion has to be sticky: a band that cleared the hurdle
+    yesterday and is thin today serves yesterday's number, not the
+    hand-fitted bootstrap it was promoted away from."""
+
+    conn = _store_with_journal()
+    conn.execute(
+        "CREATE TABLE paper_trade_position("
+        "position_id TEXT PRIMARY KEY, win_probability REAL, all_in_cost REAL)"
+    )
+    conn.execute(
+        "CREATE TABLE paper_trade_settlement("
+        "settlement_id TEXT PRIMARY KEY, position_id TEXT, stage TEXT,"
+        " event_date TEXT, hit INTEGER)"
+    )
+    # An activated table whose first band was promoted to 0.33.
+    _journal(conn, scope="P0", sha="c" * 64, fitted_at="2026-09-01T01:00:00",
+             lambdas=(0.33, 0.6, 0.87, 0.82))
+    conn.execute(
+        "UPDATE calibration_effective_edge_lambda SET activated=1"
+        " WHERE lambda_table_sha256=?", ("c" * 64,),
+    )
+    # Three seats in the first band today: below the hurdle.
+    for index in range(3):
+        conn.execute("INSERT INTO paper_trade_position VALUES(?,?,?)",
+                     (f"p{index}", 0.5, 0.15))
+        conn.execute("INSERT INTO paper_trade_settlement VALUES(?,?,?,?,?)",
+                     (f"s{index}", f"p{index}", "P0", "2026-09-02", 1))
+    fit = store.fit_lambda_table(conn, stage_scope="P0")
+    assert fit["evidence"][0]["accumulating"] is True
+    assert fit["bands"][0][1] == 0.33
+    assert fit["evidence"][0]["incumbent_lambda"] == 0.33
+    # And before any activation the bootstrap is the constant.
+    fresh = _store_with_journal()
+    assert store._incumbent_bands(fresh, "P0") == [
+        (float(b), float(l)) for b, l in EFFECTIVE_EDGE_LAMBDA
+    ]

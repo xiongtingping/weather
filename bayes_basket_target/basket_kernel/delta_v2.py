@@ -852,6 +852,26 @@ def effective_edge_lambda_for_stage(
     return 1.0
 
 
+def effective_edge_lambda_from_tables(
+    stage: str,
+    agreement: float,
+    tables: "Mapping[str, Sequence[tuple[float, float]] | None] | None",
+) -> float:
+    """The stage's lambda read off the served tables, one unpacking for both
+    lanes.  ``tables`` is the store's scope->bands mapping; a missing or None
+    scope reads the kernel constant, which is the bootstrap before a scope's
+    first activation."""
+
+    tables = tables or {}
+    return effective_edge_lambda_for_stage(
+        stage,
+        agreement,
+        table=tables.get("P0") or None,
+        p0m_table=tables.get("P0-M") or None,
+        p1_table=tables.get("P1") or None,
+    )
+
+
 def effective_edge_bucket_lambda_for_stage(
     stage: str,
     agreement: float,

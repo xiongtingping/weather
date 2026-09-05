@@ -22,6 +22,7 @@ from .cash_phase import (
     BasketCashPhasePolicyArtifact,
     BasketCashPhaseInput,
 )
+from .effective_edge_store import load_effective_edge_tables
 from .cash_phase_authority import (
     CashPhaseAuthorityManifest,
     load_cash_phase_authority_manifest,
@@ -2380,6 +2381,9 @@ def compile_production_cycle_from_ssot(
             event_date=event_date,
             stage=current_envelope.stage,
         ),
+        # Charter 68(c): the lambda tables the store activated, one per
+        # stage, as of now.  None per scope until its first activation.
+        effective_edge_tables=load_effective_edge_tables(conn),
         probability_envelopes=envelopes,
         market_snapshot=market_snapshot,
         policy_activations=bundle.policy_activations,

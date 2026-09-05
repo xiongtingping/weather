@@ -59,6 +59,9 @@ from bayes_basket_target.center_width_calibration import (  # noqa: E402
     bucket_centers_from_intervals,
 )
 from bayes_basket_target.center_width_store import EDGE_WIDTH_C  # noqa: E402
+from bayes_basket_target.effective_edge_store import (  # noqa: E402
+    load_effective_edge_tables,
+)
 from bayes_basket_target.basket_kernel.contracts import (  # noqa: E402
     TargetBasketSnapshot,
 )
@@ -70,6 +73,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     contiguous_edge_clamp_v2,
     effective_edge_lambda,
     effective_edge_lambda_for_stage,
+    effective_edge_lambda_from_tables,
     effective_edge_bucket_lambda_for_stage,
     probability_core,
 )
@@ -935,6 +939,37 @@ PAPER_LEDGER_FLEET_REGIME_STAGES = (
     )
 )
 _FR_REPLAY: dict[str, Any] | None = None
+# Charter 68(c): the lambda tables production served, read as of each
+# decision's own moment so a promotion never rewrites the book behind it.
+# Preloaded once per backfill from the store's journal; None per scope
+# before its first fit, which the kernel constant covers in the dispatch --
+# the same fallback production has.
+_EE_CONN: sqlite3.Connection | None = None
+_EE_AS_OF_CACHE: dict[str, dict[str, Any]] = {}
+
+
+# Research arm: ``off`` reads the kernel constants for every decision, which
+# is what the book priced before charter 68(c); the default reads the store
+# as of each decision, which is what production serves now.
+EFFECTIVE_EDGE_TABLES_MODE = (
+    os.environ.get("PAPER_LEDGER_EFFECTIVE_EDGE_TABLES", "").strip().lower()
+    or "as_of"
+)
+if EFFECTIVE_EDGE_TABLES_MODE not in {"as_of", "off"}:
+    raise SystemExit(
+        f"paper_ledger_effective_edge_tables_mode_invalid: {EFFECTIVE_EDGE_TABLES_MODE}"
+    )
+
+
+def _effective_edge_tables_as_of(as_of_utc: str | None) -> dict[str, Any]:
+    if _EE_CONN is None or EFFECTIVE_EDGE_TABLES_MODE == "off":
+        return {}
+    key = str(as_of_utc or "")
+    if key not in _EE_AS_OF_CACHE:
+        _EE_AS_OF_CACHE[key] = load_effective_edge_tables(
+            _EE_CONN, as_of_utc=as_of_utc
+        )
+    return _EE_AS_OF_CACHE[key]
 
 # Which stages may add a leg to a chain.  Defaults to all three, because all
 # three are one book.  It exists because they have not always been one book in
@@ -6071,6 +6106,7 @@ def _effective_growth_partition(
     probabilities: Mapping[str, float],
     buckets: Sequence[str],
     snapshot: Any,
+    decision_at_utc: str | None = None,
 ) -> dict[str, float]:
     """Charter 71(b): the lambda*p partition the growth gate reads.
 
@@ -6091,6 +6127,9 @@ def _effective_growth_partition(
         P1_EFFECTIVE_EDGE_TABLE.get(str(event_date))
         if P1_EFFECTIVE_EDGE_TABLE else None
     )
+    served = dict(_effective_edge_tables_as_of(decision_at_utc))
+    if p1_day_table:
+        served["P1"] = p1_day_table
     rows = {str(item.bucket): item for item in snapshot.buckets}
     prices: dict[str, float] = {}
     for bucket in buckets:
@@ -6105,7 +6144,7 @@ def _effective_growth_partition(
             price = prices.get(str(bucket))
             factors[str(bucket)] = (
                 effective_edge_bucket_lambda_for_stage(
-                    stage, price / claim, p1_table=p1_day_table
+                    stage, price / claim, p1_table=served.get("P1")
                 )
                 if price is not None and claim > 0 else 1.0
             )
@@ -6117,8 +6156,8 @@ def _effective_growth_partition(
     )
     if claimed <= 0 or len(prices) < len(list(buckets)):
         return {str(b): float(v) for b, v in probabilities.items()}
-    lam = effective_edge_lambda_for_stage(
-        stage, sum(prices.values()) / claimed, p1_table=p1_day_table
+    lam = effective_edge_lambda_from_tables(
+        stage, sum(prices.values()) / claimed, served
     )
     return deflate_window_partition_v1(
         probabilities, list(buckets), claim_factor=lam
@@ -6757,6 +6796,10 @@ def backfill(
         recent_days = None
     superseded = _drop_superseded_positions(conn, recent_days=recent_days)
     truth = _truth(conn)
+    # Charter 68(c): bind the store for as-of lambda lookups this pass.
+    global _EE_CONN
+    _EE_CONN = conn
+    _EE_AS_OF_CACHE.clear()
     # The market day a resting order lives inside.  Charter 44 binds the
     # settlement timezone per station in its own table rather than the
     # registry, whose raw column is wrong for 33 of 45 stations.
@@ -7570,10 +7613,17 @@ def backfill(
                             # arm may hand P1 a per-day table by path;
                             # production and the default run read the
                             # kernel's P1 constant.
-                            lam_window = effective_edge_lambda_for_stage(
+                            served_tables = dict(
+                                _effective_edge_tables_as_of(
+                                    payload["decision_at_utc"]
+                                )
+                            )
+                            if p1_day_table:
+                                served_tables["P1"] = p1_day_table
+                            lam_window = effective_edge_lambda_from_tables(
                                 stage,
                                 float(seat_cost) / gate_win,
-                                p1_table=p1_day_table,
+                                served_tables,
                             )
                             gate_win = gate_win * lam_window
                             deflated = {
@@ -8254,6 +8304,7 @@ def backfill(
                             probabilities=probabilities,
                             buckets=seat["buckets"],
                             snapshot=snapshot,
+                            decision_at_utc=payload["decision_at_utc"],
                         )
                         if TOPUP_INCREMENT_EDGE == "on" and chain_law_here:
                             _increment_payout = sum(

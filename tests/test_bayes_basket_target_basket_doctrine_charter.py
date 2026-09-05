@@ -1284,6 +1284,12 @@ def test_clause_68_the_objective_reads_effective_edge() -> None:
     assert kernel.EFFECTIVE_EDGE_P0M_STAGES == frozenset({"P0-M"})
     assert kernel.EFFECTIVE_EDGE_P0M_LAMBDA == kernel.EFFECTIVE_EDGE_LAMBDA
     assert "各阶段各自一张 λ 表" in clause
+    # (c) 2026-09-05: the rolling fit promotes itself; the constants are
+    # the bootstrap before a scope's first activation, nothing more.
+    assert "机器算候选、机器晋升" in clause
+    # The original, unquoted sentence is gone; the phrase survives only
+    # inside the retirement note and (c)'s reference to it.
+    assert "钳 [0.05,1.50]），机器算候选、人晋升常量" not in clause
     assert kernel.EFFECTIVE_EDGE_LAMBDA == (
         (0.50, 0.14),
         (0.70, 0.60),

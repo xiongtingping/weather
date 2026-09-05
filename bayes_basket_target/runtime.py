@@ -835,6 +835,7 @@ def _compile_target_plan(
     chain_consolidation_tilt: float | None = None,
     last_acted_probability_identity: str | None = None,
     last_decision_signature: Mapping[str, Any] | None = None,
+    effective_edge_tables: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compile one full stage → policy → v2 delta plan, no-live boundary."""
 
@@ -1152,6 +1153,7 @@ def _compile_target_plan(
             chain_consolidation_tilt=chain_consolidation_tilt,
             last_acted_probability_identity=last_acted_probability_identity,
             last_decision_signature=last_decision_signature,
+            effective_edge_tables=effective_edge_tables,
             # The P0-M TAF TX bucket the enumerator's TAF arms read.  Off
             # by default (PM_P0M_TAF_MODE); until 2026-09-04 only the paper
             # ledger passed it, so the arm could not have acted live.
@@ -1665,6 +1667,7 @@ class DeltaBasketScoreV2Optimizer:
     chain_consolidation_tilt: float | None = None,
     last_acted_probability_identity: str | None = None,
     last_decision_signature: Mapping[str, Any] | None = None,
+    effective_edge_tables: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         result = _compile_target_plan(
             station_policy_stage=station_policy_stage,
@@ -1694,6 +1697,7 @@ class DeltaBasketScoreV2Optimizer:
             chain_consolidation_tilt=chain_consolidation_tilt,
             last_acted_probability_identity=last_acted_probability_identity,
             last_decision_signature=last_decision_signature,
+            effective_edge_tables=effective_edge_tables,
         )
         boundary = dict(result.get("boundary") or {})
         boundary.update({
@@ -1746,6 +1750,7 @@ def compile_target_plan(
     chain_consolidation_tilt: float | None = None,
     last_acted_probability_identity: str | None = None,
     last_decision_signature: Mapping[str, Any] | None = None,
+    effective_edge_tables: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compatibility-free public facade for the one optimizer boundary."""
 
@@ -1754,6 +1759,7 @@ def compile_target_plan(
         chain_consolidation_tilt=chain_consolidation_tilt,
         last_acted_probability_identity=last_acted_probability_identity,
             last_decision_signature=last_decision_signature,
+            effective_edge_tables=effective_edge_tables,
         probability_envelopes=probability_envelopes,
         market_snapshot=market_snapshot,
         policy_activations=policy_activations,

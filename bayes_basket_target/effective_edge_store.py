@@ -139,12 +139,37 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             )
 
 
-def _incumbent_bands(stage_scope: str = "P0") -> list[tuple[float, float]]:
+EFFECTIVE_EDGE_SCOPES_SERVED = ("P0", "P0-M", "P1")
+
+
+def _bootstrap_bands(stage_scope: str = "P0") -> list[tuple[float, float]]:
+    """The kernel constant a scope starts from before any fit is activated."""
+
     source = {
         "P1": EFFECTIVE_EDGE_P1_LAMBDA,
         "P0-M": EFFECTIVE_EDGE_P0M_LAMBDA,
     }.get(stage_scope, EFFECTIVE_EDGE_LAMBDA)
     return [(float(bound), float(lam)) for bound, lam in source]
+
+
+def _incumbent_bands(
+    conn: sqlite3.Connection | None = None, stage_scope: str = "P0"
+) -> list[tuple[float, float]]:
+    """What a band keeps when this fit cannot measure it.
+
+    The last activated table for the scope (user ruling, 2026-09-05: the
+    lane promotes itself, so what it last promoted is what a thin band
+    holds), and the kernel constant only before anything was ever
+    activated.  Reading the constant every time would snap a thin band
+    back to the hand-fitted bootstrap each morning and un-promote the
+    fit that had cleared the hurdle the day before.
+    """
+
+    if conn is not None:
+        active = load_active_lambda(conn, stage_scope=stage_scope)
+        if active:
+            return [(float(bound), float(lam)) for bound, lam in active]
+    return _bootstrap_bands(stage_scope)
 
 
 def _band_partition_by_position(
@@ -227,7 +252,7 @@ def fit_lambda_table(
         raise ValueError(f"effective_edge_fit_scope_invalid:{stage_scope}")
     stages = STAGE_SCOPES[stage_scope]
     ceiling = P1_LAMBDA_CEILING if stage_scope == "P1" else LAMBDA_CEILING
-    incumbent = _incumbent_bands(stage_scope)
+    incumbent = _incumbent_bands(conn, stage_scope)
     newest = conn.execute(
         "SELECT MAX(event_date) FROM paper_trade_settlement"
     ).fetchone()
@@ -467,3 +492,75 @@ __all__ = [
     "load_active_lambda",
     "persist_and_activate",
 ]
+
+
+def load_lambda_as_of(
+    conn: sqlite3.Connection,
+    *,
+    stage_scope: str = "P0",
+    as_of_utc: str | None = None,
+) -> tuple[tuple[float, float], ...] | None:
+    """The table this scope was serving at ``as_of_utc``; the active one when
+    None.
+
+    Read off the fit journal, not the table: every daily fit journals its
+    sha whether or not the sha changed, while the table's ``activated_at``
+    is bumped to today each time the same sha is re-activated -- so the
+    table remembers only the latest re-activation and the journal remembers
+    the sequence.  The row serving at a moment is the latest journaled fit
+    at or before it, since each fit is activated the instant it is
+    journaled.  This is what lets the paper ledger price a historical
+    decision on the table production served that day rather than on
+    today's, and what keeps a promotion from rewriting the book behind it.
+    None before the scope's first fit, which the kernel constant covers.
+    """
+
+    if as_of_utc is None:
+        return load_active_lambda(conn, stage_scope=stage_scope)
+    try:
+        row = conn.execute(
+            "SELECT t.bands_json"
+            " FROM calibration_effective_edge_fit_journal j"
+            " JOIN calibration_effective_edge_lambda t"
+            "   ON t.lambda_table_sha256 = j.lambda_table_sha256"
+            " WHERE j.stage_scope=? AND j.fitted_at_utc<=?"
+            " ORDER BY j.fitted_at_utc DESC, j.fit_id DESC LIMIT 1",
+            (str(stage_scope), str(as_of_utc)),
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    if row is None:
+        return None
+    try:
+        bands = json.loads(str(row[0]))["bands"]
+    except (ValueError, KeyError, TypeError):
+        return None
+    out = [
+        (
+            float("inf") if band.get("upper_bound") is None
+            else float(band["upper_bound"]),
+            float(band["lambda"]),
+        )
+        for band in bands
+    ]
+    return tuple(out) or None
+
+
+def load_effective_edge_tables(
+    conn: sqlite3.Connection,
+    *,
+    as_of_utc: str | None = None,
+) -> dict[str, tuple[tuple[float, float], ...] | None]:
+    """One table per served scope, as of a moment -- what the dispatch reads.
+
+    Charter 68(c), user ruling 2026-09-05: the rolling fit promotes itself.
+    Production hands this to the solver with ``as_of_utc`` None, the paper
+    ledger with the decision's own timestamp; a scope with no activation yet
+    is None here and the kernel constant in the dispatch, which is the
+    bootstrap and nothing more.
+    """
+
+    return {
+        scope: load_lambda_as_of(conn, stage_scope=scope, as_of_utc=as_of_utc)
+        for scope in EFFECTIVE_EDGE_SCOPES_SERVED
+    }

@@ -358,6 +358,7 @@ def compile_production_plan(
     chain_consolidation_tilt: float | None = None,
     last_acted_probability_identity: str | None = None,
     last_decision_signature: Mapping[str, Any] | None = None,
+    effective_edge_tables: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compile one v2-only production decision, and deliver it when authorised.
 
@@ -374,6 +375,7 @@ def compile_production_plan(
         chain_consolidation_tilt=chain_consolidation_tilt,
         last_acted_probability_identity=last_acted_probability_identity,
         last_decision_signature=last_decision_signature,
+        effective_edge_tables=effective_edge_tables,
         probability_envelopes=probability_envelopes,
         market_snapshot=market_snapshot,
         policy_activations=policy_activations,

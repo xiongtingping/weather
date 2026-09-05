@@ -279,6 +279,14 @@ LEDGER_ONLY = {
     "P1_EFFECTIVE_EDGE_TABLE": (
         "the loaded form of P1_EFFECTIVE_EDGE_TABLE_PATH; empty when unset"
     ),
+    # Charter 68(c) replay arm: ``off`` reads the kernel constants for every
+    # decision (the book as priced before the rolling fit promoted itself),
+    # ``as_of`` reads the store as of each decision's own moment, which is
+    # production's read and the default.
+    "EFFECTIVE_EDGE_TABLES_MODE": (
+        "replay arm; off = kernel constants throughout, as_of = the store as"
+        " of each decision, exactly as production reads it now"
+    ),
     # Charter 66 replay arms: the bankroll frame and the miss-mass floor a
     # replay may vary; production's frame is its own capital plumbing.
     "CHAIN_TOPUP_BANKROLL_USDC": "replay arm; 0 = scope allowance",
@@ -504,6 +512,21 @@ def test_the_support_width_bounds_match_productions_policy_defaults() -> None:
     # 2026-09-05: each stage reads its own table; P0-M's set is the
     # kernel's in both lanes, like P0's and P1's.
     assert L.EFFECTIVE_EDGE_P0M_STAGES is K2.EFFECTIVE_EDGE_P0M_STAGES
+    # Charter 68(c), 2026-09-05: both lanes read the store's rolling tables
+    # through one unpacking, production as of now and the ledger as of each
+    # decision's own moment.  Source-level, like the pairs above: which
+    # names the call sites use is the whole contract.
+    from pathlib import Path as _P  # noqa: PLC0415
+    _root = _P(__file__).resolve().parents[1]
+    _io = (_root / "bayes_basket_target" / "production_io.py").read_text()
+    _rt = (_root / "bayes_basket_target" / "delta_v2_runtime.py").read_text()
+    _lg = (_root / "scripts" / "paper_trading_ledger.py").read_text()
+    assert "effective_edge_tables=load_effective_edge_tables(conn)" in _io
+    assert "effective_edge_lambda_from_tables(" in _rt
+    assert "_effective_edge_tables_as_of(" in _lg
+    assert L.effective_edge_lambda_from_tables is (
+        K2.effective_edge_lambda_from_tables
+    )
     # 2026-09-02: P1 flows through the same dispatch with its own table.  Both
     # lanes must call the one function and read the one stage set, or P1 is
     # exempt in one lane and shrunk in the other while both claim one book.
