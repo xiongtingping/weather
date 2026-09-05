@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import os
 from typing import Any, Callable, Mapping, Sequence
 
 from .atomic_ledger import (
@@ -71,6 +72,36 @@ PRODUCTION_PLAN_SCHEMA = "bayes_basket_production_plan_v1"
 # split here would have the worker and the submission path each believing a
 # different thing about what they are allowed to do.
 PRODUCTION_EXECUTION_MODE = "production_live"
+# Charter 82 (2026-09-05): the model-envelope soft bound beside a P0/P0-M
+# open is an audit fact, not a gate.  It was the last place the "model
+# envelope as an admissibility boundary" idea survived after charters 42, 45,
+# 56 and 76 retired it from every other layer, and it never had a clause of
+# its own.  Under charters 50/59/79 a legal opening window is 2-3 rungs wide
+# while 71% of P0 envelopes (08-28..09-06, 450 station-days) span 1-2 rungs,
+# so it refused every legal window on those days regardless of edge.  ``gate``
+# is the retired arm, kept so the audit can price it (charter 80 (8)).
+ENVELOPE_SOFT_BOUND_MODE = (
+    os.environ.get("PM_CHARTER_82_ENVELOPE_SOFT_BOUND", "").strip().lower()
+    or "audit"
+)
+if ENVELOPE_SOFT_BOUND_MODE not in {"audit", "gate"}:
+    raise RuntimeError(
+        f"unknown PM_CHARTER_82_ENVELOPE_SOFT_BOUND: {ENVELOPE_SOFT_BOUND_MODE}"
+    )
+
+
+def _apply_envelope_soft_bound(
+    stage_soft_bound: Mapping[str, Any] | None,
+    intents: Sequence[Mapping[str, Any]],
+) -> None:
+    """Charter 82: refuse on the soft bound only under the retired ``gate`` arm."""
+
+    if ENVELOPE_SOFT_BOUND_MODE != "gate" or stage_soft_bound is None:
+        return
+    assert_intent_buckets_within_bound(
+        bound=stage_soft_bound,
+        intent_buckets=[str(item["bucket"]) for item in intents],
+    )
 STAGE_ZERO_EXECUTION_ANCHOR_SCHEMA = (
     "basket_target_stage_zero_execution_anchor_v1"
 )
@@ -1052,15 +1083,14 @@ def commit_production_candidate_atomic(
         target_execution_hard_deadline_at=target_deadline,
     )
     if stage_root is not None:
-        # A stage-rooted basket must not open outside the envelope its own
-        # evidence admits, and the evidence itself is persisted in the same
-        # transaction so the committed cycle can never cite a root that was
-        # not written.  Both are idempotent under replay: same evidence,
-        # same content hash, no new position.
-        assert_intent_buckets_within_bound(
-            bound=stage_soft_bound,
-            intent_buckets=[str(item["bucket"]) for item in intents],
-        )
+        # The root and the model-envelope soft bound are persisted in the
+        # same transaction so the committed cycle can never cite a root that
+        # was not written; both are idempotent under replay.  The bound is an
+        # audit fact beside the open, not a gate on it (charter 82): the
+        # windows charters 49/58/79 admit are the opening's whole structural
+        # constraint, and the retired ``gate`` arm lives in
+        # ``_apply_envelope_soft_bound``.
+        _apply_envelope_soft_bound(stage_soft_bound, intents)
         persist_stage_evidence(
             conn,
             evidence_root=stage_root,

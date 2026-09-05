@@ -2,8 +2,8 @@
 
 P0 opens on models, P0-M re-confirms on TAF, P1 adjusts on observed METAR.
 The ledger was built for the last of those alone, so these pin what the two
-earlier stages are entitled to stand on -- and what stops a stage that has
-observed nothing from opening anywhere it likes.
+earlier stages are entitled to stand on.  The model-envelope soft bound they
+record is an audit fact since charter 82, not a gate on the open.
 """
 
 from __future__ import annotations
@@ -201,7 +201,9 @@ def test_p1_is_not_offered_a_soft_bound() -> None:
         )
 
 
-def test_a_basket_reaching_outside_the_bound_is_refused() -> None:
+def test_the_retired_gate_arm_still_refuses_outside_the_bound() -> None:
+    # Kept as the research arm charter 80 (8) requires every clause to have;
+    # production reaches it only under PM_CHARTER_82_ENVELOPE_SOFT_BOUND=gate.
     bound = build_model_envelope_soft_bound(
         probability_stage="P0",
         lineage=P0_LINEAGE,
@@ -217,6 +219,49 @@ def test_a_basket_reaching_outside_the_bound_is_refused() -> None:
         assert_intent_buckets_within_bound(
             bound=bound, intent_buckets=["35", "37"]
         )
+
+
+def test_clause_82_the_soft_bound_is_an_audit_fact_not_a_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A P0/P0-M open is not refused for reaching outside the model envelope.
+
+    The gate never had a charter clause; the same idea was retired from the
+    seed, seat and capital layers by charters 42, 45, 56 and 76, and under
+    charters 50/59/79 a legal window is 2-3 rungs while 71% of P0 envelopes
+    (450 station-days, 2026-08-28..09-06) span 1-2 rungs -- so it refused
+    every legal window on those days regardless of edge.  Measured
+    2026-09-05: SAEZ's 2026-09-06 plan (envelope {11°C}, legs 11/12/13°C) and
+    three more tradable opens were refused on it the first cycle the evidence
+    could be written at all.
+    """
+
+    from pathlib import Path
+
+    from bayes_basket_target import production
+
+    bound = build_model_envelope_soft_bound(
+        probability_stage="P0",
+        lineage=P0_LINEAGE,
+        bucket_ordinals=ORDINALS,
+    )
+    outside = [{"bucket": "35"}, {"bucket": "37"}]
+
+    assert production.ENVELOPE_SOFT_BOUND_MODE == "audit"
+    production._apply_envelope_soft_bound(bound, outside)  # opens
+
+    monkeypatch.setattr(production, "ENVELOPE_SOFT_BOUND_MODE", "gate")
+    with pytest.raises(StageEvidenceError, match="intent_outside_bound:37"):
+        production._apply_envelope_soft_bound(bound, outside)
+
+    # The assertion has exactly one production call site, inside the arm.
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "production.py"
+    ).read_text(encoding="utf-8")
+    assert source.count("assert_intent_buckets_within_bound(") == 1
+    assert "persist_stage_evidence(" in source
 
 
 def test_a_committed_envelope_naming_only_buckets_still_gets_a_bound() -> None:

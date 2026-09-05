@@ -14067,8 +14067,8 @@ class TargetProductionWorker:
                     # opens all refuse then has no book at all.  Measured
                     # 2026-08-16: KORD, KSEA and ZUUU each refused every
                     # 2026-08-17 open on
-                    # ``stage_evidence_intent_outside_bound`` -- a legitimate
-                    # refusal, the intent sat outside the hard bound -- and
+                    # ``stage_evidence_intent_outside_bound`` -- the soft-bound
+                    # gate of the day, an audit fact since charter 82 -- and
                     # between them wrote zero rows to
                     # basket_official_ws_snapshot for that day while the
                     # publisher held all 11 tokens of each live.  The forward

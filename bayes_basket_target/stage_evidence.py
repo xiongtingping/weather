@@ -9,11 +9,14 @@ had no way to express their own evidence at all.
 
 Each stage names the lineage its envelope must already carry, and the bucket
 floor it is entitled to.  P1 keeps the hard bound: an observed high has ruled
-those buckets out and no forecast can put them back.  P0 and P0-M get a soft
-bound from the model envelope instead -- the interval the calibrated member
-centers actually span.  It is weaker on purpose, because nothing has been
-observed yet; it is not nothing, because a basket opened outside the range its
-own models point at is not a position anyone chose.
+those buckets out and no forecast can put them back.  P0 and P0-M record a
+soft bound from the model envelope instead -- the interval the calibrated
+member centers actually span.  Since charter 82 (2026-09-05) that soft bound
+is an audit fact persisted beside the open, not a gate on it: the "model
+envelope as an admissibility boundary" idea was retired from every other layer
+by charters 42, 45, 56 and 76, and under charters 50/59/79 a legal window is
+wider than most envelopes.  ``assert_intent_buckets_within_bound`` is the
+retired gate arm, reachable only through ``PM_CHARTER_82_ENVELOPE_SOFT_BOUND=gate``.
 """
 
 from __future__ import annotations
@@ -202,13 +205,13 @@ def build_model_envelope_soft_bound(
     lineage: Mapping[str, Any],
     bucket_ordinals: Mapping[str, int],
 ) -> dict[str, Any]:
-    """Derive the pre-observation bucket floor from the model envelope.
+    """Describe the model envelope beside a pre-observation open.
 
     The envelope is the interval the calibrated member centers span, so a
-    bucket outside it is one no member pointed at.  Refusing to open there is
-    the only structural constraint available before anything is observed --
-    a stage with no envelope published has no such constraint and is refused
-    outright rather than allowed to open unbounded.
+    bucket outside it is one no member pointed at.  It is persisted as an
+    audit fact with the stage root (charter 82); a stage with no envelope
+    published still cannot describe one and is refused here, because an
+    absent envelope must not read as an empty description.
     """
 
     stage = _stage(probability_stage)
@@ -386,7 +389,12 @@ def assert_intent_buckets_within_bound(
     bound: Mapping[str, Any],
     intent_buckets: Sequence[str],
 ) -> None:
-    """Refuse a basket that opens outside the range its own evidence allows."""
+    """The retired gate arm (charter 82): refuse a basket outside the soft bound.
+
+    Production calls this only under ``PM_CHARTER_82_ENVELOPE_SOFT_BOUND=gate``;
+    the default ``audit`` persists the bound and opens on the windows charters
+    49/58/79 admit.
+    """
 
     admitted = {str(bucket) for bucket in (bound.get("admitted_buckets") or ())}
     if not admitted:
