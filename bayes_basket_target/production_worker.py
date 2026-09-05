@@ -29,7 +29,7 @@ from datetime import date, datetime, timedelta, timezone
 from datetime import time as dt_time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Iterator, Mapping, Sequence
+from typing import Any, Collection, Iterator, Mapping, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .fleet import expected_station_count
@@ -10314,6 +10314,7 @@ class TargetProductionWorker:
         scope_keys: Sequence[str],
         *,
         resume_at: str,
+        priority: Collection[str] = (),
     ) -> list[str]:
         """The catalog's own order, rotated to where the last pass stopped.
 
@@ -10322,13 +10323,58 @@ class TargetProductionWorker:
         reach the end: without it the survivors are always the same head of
         the alphabet, and the stations behind the truncation point are
         starved every cycle rather than served on the next one.
+
+        ``priority`` (user ruling, 2026-09-05: the rotation serves the
+        station-days that hold live positions first) is lifted to the head
+        of the pass in its rotated order; the cursor still walks the whole
+        list, so nothing behind it is starved for longer than before.
         """
 
         order = list(scope_keys)
         if resume_at in order:
             start = order.index(resume_at)
             order = order[start:] + order[:start]
-        return order
+        wanted = {str(key) for key in priority}
+        if not wanted:
+            return order
+        return (
+            [key for key in order if key in wanted]
+            + [key for key in order if key not in wanted]
+        )
+
+    def _ledger_held_scope_keys(self) -> frozenset[str]:
+        """The station-days the reconciliation ledger says the book holds.
+
+        ``STATION|EVENT_DATE`` keys, the forward catalog's spelling: every
+        scope with a settled live BUY not yet sold flat.  These are the
+        scopes where money is already at risk, and the rotation serves them
+        first (user ruling, 2026-09-05) -- a half-filled basket waiting
+        behind forty flat scopes is the one place a truncated pass costs
+        real money.  Empty when the ledger tables are absent or the read
+        fails: the rotation then falls back to its own order.
+        """
+
+        conn = self.commit_conn if self.commit_conn is not None else self.conn
+        try:
+            rows = conn.execute(
+                "SELECT c.station_id, c.event_date,"
+                " SUM(CASE WHEN upper(i.order_action)='SELL'"
+                "          THEN -r.filled_size ELSE r.filled_size END) AS net"
+                " FROM basket_target_order_reconciliations r"
+                " JOIN basket_target_order_intents i"
+                "   ON i.order_intent_id=r.order_intent_id"
+                " JOIN basket_target_execution_cycles c"
+                "   ON c.cycle_id=i.cycle_id"
+                " WHERE r.state IN ('resolved_filled','resolved_partial')"
+                " GROUP BY c.station_id, c.event_date"
+            ).fetchall()
+        except sqlite3.Error:
+            return frozenset()
+        return frozenset(
+            f"{str(station).strip().upper()}|{str(day).strip()}"
+            for station, day, net in rows
+            if float(net or 0.0) > 1e-9
+        )
 
     @staticmethod
     def _forward_preselection_scope_skipped(scope: Any) -> bool:
@@ -10425,8 +10471,13 @@ class TargetProductionWorker:
         as_of_utc: str,
         last_served: Mapping[str, Any] | None,
         quota_usdc: float | None,
-    ) -> tuple[int, float, float, str]:
+        held: bool = False,
+    ) -> tuple[int, int, float, float, str]:
         """Order scopes by what recompiling one now is actually worth.
+
+        ``held`` -- the station-day holds a live position in the
+        reconciliation ledger -- leads everything (user ruling, 2026-09-05:
+        the rotation serves the scopes with money at risk first).
 
         The rotation hands out scarce compute, and every serve costs a
         compile plus the SQLite writes behind it -- the store crossed its
@@ -10526,7 +10577,13 @@ class TargetProductionWorker:
         # Ascending sort: lower tier first, then higher score.  The scope key
         # only ever settles an exact tie, so the ordering stays deterministic
         # without the alphabet deciding anything that matters.
-        return (tier, -score, 0.0, str(scope.get("scope_key") or ""))
+        return (
+            0 if held else 1,
+            tier,
+            -score,
+            0.0,
+            str(scope.get("scope_key") or ""),
+        )
 
     @staticmethod
     def _starved_event_dates(
@@ -10606,6 +10663,7 @@ class TargetProductionWorker:
             day
             for _station, day in self._listing_entry_scopes(as_of_utc=as_of_utc)
         }
+        held_scopes = self._ledger_held_scope_keys()
         for scope in sorted(
             (dict(item) for item in open_scopes),
             key=lambda item: self._scope_rotation_key(
@@ -10617,6 +10675,7 @@ class TargetProductionWorker:
                     if isinstance(quotas, Mapping)
                     else None
                 ),
+                held=str(item.get("scope_key") or "") in held_scopes,
             ),
         ):
             key = str(scope.get("scope_key") or "")
@@ -10741,6 +10800,7 @@ class TargetProductionWorker:
             item for item in candidates
             if str(item.get("event_date") or "") in overdue
         ] or candidates
+        held_scopes = self._ledger_held_scope_keys()
         selected = min(
             eligible,
             key=lambda item: self._scope_rotation_key(
@@ -10752,6 +10812,7 @@ class TargetProductionWorker:
                     if isinstance(quotas, Mapping)
                     else None
                 ),
+                held=str(item.get("scope_key") or "") in held_scopes,
             ),
         )
         envelope_id, observed_at = self._scope_input_fingerprint(selected)
@@ -15975,6 +16036,8 @@ class TargetProductionWorker:
             preselection_order = self._forward_preselection_order(
                 [item["scope_key"] for item in ws_scope_catalog],
                 resume_at=self._forward_p0_rotation_cursor,
+                # The station-days holding live positions lead the pass.
+                priority=self._ledger_held_scope_keys(),
             )
             for position, scope_key in enumerate(preselection_order):
                 # Advance before the work, not after: whatever ends this pass

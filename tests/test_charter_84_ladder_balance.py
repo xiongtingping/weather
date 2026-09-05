@@ -505,3 +505,89 @@ def test_station_edge_evidence_reads_the_increment_not_the_sunk_basket() -> None
         for b in probabilities
     )
     assert whole < 0.0
+
+
+# --- the rotation serves the station-days holding live positions first ----
+
+def test_the_forward_pass_leads_with_the_held_station_days() -> None:
+    from bayes_basket_target.production_worker import TargetProductionWorker
+
+    keys = [f"S{index:02d}|d" for index in range(10)]
+    order = TargetProductionWorker._forward_preselection_order(
+        keys, resume_at="S06|d", priority={"S02|d", "S08|d"}
+    )
+    # Rotated to the cursor, then the held scopes lifted in that order.
+    assert order[:2] == ["S08|d", "S02|d"]
+    assert order[2] == "S06|d"
+    assert sorted(order) == sorted(keys) and len(set(order)) == len(keys)
+    # No priority: exactly the old rotation.
+    assert TargetProductionWorker._forward_preselection_order(
+        keys, resume_at="S06|d"
+    )[0] == "S06|d"
+
+
+def test_the_resident_rotation_key_puts_a_held_scope_before_everything() -> None:
+    from bayes_basket_target.production_worker import TargetProductionWorker as W
+
+    as_of = "2026-08-12T06:20:00Z"
+    served = {
+        "served_at_utc": "2026-08-12T06:00:00Z",
+        "envelope_id": "env-1",
+        "book_observed_at": "2026-08-12T06:00:00Z",
+    }
+    def scope(station, tz, day_state="open"):
+        return {
+            "scope_key": f"{station}|2026-08-12",
+            "station_id": station,
+            "event_date": "2026-08-12",
+            "settlement_timezone": tz,
+            "event_day_state": day_state,
+            "manifest": {"as_of_utc": as_of, "connection_observed_at": as_of},
+        }
+    open_warm = scope("ZUUU", "Asia/Shanghai")
+    held_future = scope("KORD", "America/Chicago", day_state="not_started")
+    plain = W._scope_rotation_key(open_warm, as_of_utc=as_of, last_served=served, quota_usdc=4.0)
+    held = W._scope_rotation_key(
+        held_future, as_of_utc=as_of, last_served=served, quota_usdc=4.0, held=True
+    )
+    unheld_future = W._scope_rotation_key(
+        held_future, as_of_utc=as_of, last_served=served, quota_usdc=4.0
+    )
+    assert held < plain < unheld_future
+
+
+def test_the_ledger_names_the_station_days_the_book_holds() -> None:
+    from types import SimpleNamespace
+
+    from bayes_basket_target.production_worker import TargetProductionWorker
+    from tests.test_bayes_basket_target_inventory_producer import (
+        _insert_ledger_fill,
+        _ledger_db,
+    )
+
+    with _ledger_db() as conn:
+        conn.execute(
+            "INSERT INTO basket_target_execution_cycles VALUES"
+            "('cycle-flat','FLAT','2026-07-23','America/New_York')"
+        )
+        _insert_ledger_fill(conn, intent="a", bucket="30°C", token="t30", size=5, notional=1.25)
+        _insert_ledger_fill(conn, intent="b", bucket="31°C", token="t31", size=5, notional=2.15)
+        conn.execute(
+            "INSERT INTO basket_target_order_intents VALUES('c','cycle-flat','20°C','t20','BUY')"
+        )
+        conn.execute(
+            "INSERT INTO basket_target_order_reconciliations VALUES"
+            "('c','resolved_filled',5,1.0,'0xc','2026-07-23T04:00:00Z')"
+        )
+        conn.execute(
+            "INSERT INTO basket_target_order_intents VALUES('d','cycle-flat','20°C','t20','SELL')"
+        )
+        conn.execute(
+            "INSERT INTO basket_target_order_reconciliations VALUES"
+            "('d','resolved_filled',5,1.1,'0xd','2026-07-23T05:00:00Z')"
+        )
+        held = TargetProductionWorker._ledger_held_scope_keys(
+            SimpleNamespace(commit_conn=conn, conn=conn)
+        )
+    # TEST holds two rungs; FLAT bought and sold flat; nothing else.
+    assert held == frozenset({"TEST|2026-07-23"})
