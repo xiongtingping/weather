@@ -114,6 +114,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     # Read from production so a replay arm flips one rule on both sides.
     CHARTER_66A_CHAIN_PAR,
     CHARTER_70_EXCHANGE_LOT,
+    CHARTER_83_MIN_NOTIONAL,
     CHARTER_71A_TOPUP_IDENTITY,
     CHARTER_71B_CHAIN_GROWTH,
     CHARTER_72_KELLY_SIZING,
@@ -146,6 +147,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     OFF_CENTER_CLAIM_RAMP_BUCKETS,
     STAGE_BUDGET_SHARE,
     SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
+    EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
     raise_sub_lot_targets_v2,
     scope_stake_cap_usdc,
     # Charter 71: the top-up gates' partition and growth number are the
@@ -1908,6 +1910,7 @@ SELECTION_RULE_SHA256 = content_sha256({
         for key, value in (
             ("charter_66a_chain_par", CHARTER_66A_CHAIN_PAR),
             ("charter_70_exchange_lot", CHARTER_70_EXCHANGE_LOT),
+            ("charter_83_min_notional", CHARTER_83_MIN_NOTIONAL),
             ("charter_71a_topup_identity", CHARTER_71A_TOPUP_IDENTITY),
             ("charter_71b_chain_growth", CHARTER_71B_CHAIN_GROWTH),
             ("charter_72_kelly_sizing", CHARTER_72_KELLY_SIZING),
@@ -1926,6 +1929,11 @@ SELECTION_RULE_SHA256 = content_sha256({
     ),
     "exchange_minimum_lot_fallback_shares": (
         EXCHANGE_MINIMUM_LOT_SHARES_FALLBACK
+    ),
+    # Charter 83 (2026-09-05): the venue's dollar floor changes how every
+    # cheap rung is sized, so the standing book re-keys on it.
+    "exchange_minimum_order_notional_usdc": (
+        EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC
     ),
     # Charter 75: the centre and, under the production judge, the seed.
     "centre": "mean_bucket_v1",
@@ -8448,6 +8456,13 @@ def backfill(
                             min_lot_by_bucket=_seat_lots,
                             ask_by_bucket=_seat_asks,
                             capital_available_usdc=float(stake) + _room,
+                            # Charter 83: the venue's dollar floor, read
+                            # from production's switch so one arm flips
+                            # both sides.
+                            minimum_notional_usdc=(
+                                EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC
+                                if CHARTER_83_MIN_NOTIONAL == "on" else 0.0
+                            ),
                         )
                         if _decision["raised_buckets"]:
                             _new_shares = list(leg_shares)

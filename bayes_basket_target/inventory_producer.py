@@ -275,6 +275,101 @@ def _execution_transition_rows(
     return result
 
 
+_LEDGER_FILL_STATES = ("resolved_filled", "resolved_partial")
+MAX_LEDGER_FILL_ROWS = 20000
+
+
+def _ledger_fill_rows(
+    conn: sqlite3.Connection,
+    *,
+    observed_at_utc: str | None = None,
+    station_id: str = "",
+    event_date: str = "",
+) -> list[dict[str, Any]]:
+    """Authoritative fills the reconciliation ledger holds for live orders.
+
+    The transition runtime above is the no-live simulator's fill source and
+    never ran on a live order: on 2026-09-05 the first five real fills sat in
+    ``basket_target_order_reconciliations`` as ``resolved_filled`` while
+    every inventory snapshot for their scopes read zero, so the stages that
+    top up a chain would have priced the day as if nothing were held.  A
+    reconciliation the exchange settled is the live book's inventory fact;
+    it is read here beside the transitions, by the same scope, with the same
+    as-of rule, and a BUY adds what a SELL removes.
+    """
+
+    for table in (
+        "basket_target_order_reconciliations",
+        "basket_target_order_intents",
+        "basket_target_execution_cycles",
+    ):
+        if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (table,),
+        ).fetchone() is None:
+            return []
+    where = ["r.state IN (?,?)", "r.filled_size>?"]
+    params: list[Any] = [*_LEDGER_FILL_STATES, EPS]
+    if station_id:
+        where.append("c.station_id=?")
+        params.append(station_id)
+    if event_date:
+        where.append("c.event_date=?")
+        params.append(event_date)
+    rows = conn.execute(
+        "SELECT i.order_intent_id,c.station_id,c.event_date,"
+        "c.settlement_timezone,i.bucket,i.token_id,i.order_action,r.state,"
+        "r.filled_size,r.filled_notional_usdc,r.exchange_order_id,r.updated_at"
+        " FROM basket_target_order_reconciliations r"
+        " JOIN basket_target_order_intents i"
+        " ON i.order_intent_id=r.order_intent_id"
+        " JOIN basket_target_execution_cycles c ON c.cycle_id=i.cycle_id"
+        " WHERE " + " AND ".join(where)
+        + " ORDER BY c.station_id,c.event_date,i.bucket,r.updated_at,"
+        "i.order_intent_id LIMIT ?",
+        (*params, MAX_LEDGER_FILL_ROWS + 1),
+    ).fetchall()
+    if len(rows) > MAX_LEDGER_FILL_ROWS:
+        raise ContractError("ledger_fill_row_limit_exceeded")
+    as_of = None if observed_at_utc is None else _timestamp_utc(
+        "observed_at_utc", observed_at_utc
+    )
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        updated_at = _timestamp("ledger_fill_updated_at", row[11])
+        if as_of is not None and _timestamp_utc(
+            "ledger_fill_updated_at", updated_at
+        ) > as_of:
+            # Same rule as a transition: evidence newer than the quote is
+            # not rewound into it, the next quote will carry it.
+            raise ContractError("ledger_fill_after_quote_asof")
+        action = str(row[6] or "").strip().upper()
+        if action not in {"BUY", "SELL"}:
+            raise ContractError("ledger_fill_order_action_invalid")
+        entry = {
+            "order_intent_id": _text("ledger_fill_order_intent_id", row[0]),
+            "station_id": _text("ledger_fill_station_id", row[1]),
+            "event_date": _text("ledger_fill_event_date", row[2]),
+            "settlement_timezone": _text(
+                "ledger_fill_settlement_timezone", row[3]
+            ),
+            "bucket": _text("ledger_fill_bucket", row[4]),
+            "token_id": _text("ledger_fill_token_id", row[5]),
+            "order_action": action,
+            "state": _text("ledger_fill_state", row[7]),
+            "filled_size": _number("ledger_fill_size", row[8]),
+            "filled_notional_usdc": _number("ledger_fill_notional", row[9]),
+            "exchange_order_id": str(row[10] or ""),
+            "updated_at": updated_at,
+        }
+        entry["content_sha256"] = content_sha256({
+            "schema": "bayes_basket_ledger_fill_v1",
+            **entry,
+        })
+        result.append(entry)
+    return result
+
+
 def has_execution_transition_versions(
     conn: sqlite3.Connection,
     *,
@@ -421,24 +516,54 @@ def build_no_live_inventory_ingress(
         by_scope.setdefault(
             (transition["station_id"], transition["event_date"]), []
         ).append(transition)
+    # Live fills the reconciliation ledger settled.  An intent the transition
+    # runtime already carries is not counted twice.
+    transition_intents = {
+        transition["order_intent_id"] for transition in transitions
+    }
+    ledger_fills = [
+        fill for fill in _ledger_fill_rows(
+            conn,
+            observed_at_utc=observed,
+            station_id=station_id,
+            event_date=event_date,
+        )
+        if fill["order_intent_id"] not in transition_intents
+    ]
+    fills_by_scope: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for fill in ledger_fills:
+        fills_by_scope.setdefault(
+            (fill["station_id"], fill["event_date"]), []
+        ).append(fill)
     confirmed_cost = sum(
         transition["filled_notional_usdc"]
         for transition in transitions
         if transition["state"] in {"FULL_FILLED", "PARTIAL_FILLED"}
+    ) + sum(
+        (fill["filled_notional_usdc"] if fill["order_action"] == "BUY"
+         else -fill["filled_notional_usdc"])
+        for fill in ledger_fills
     )
     if not math.isfinite(confirmed_cost) or confirmed_cost > budget + EPS:
         raise ContractError("execution_transition_remaining_budget_negative")
-    remaining_budget = max(0.0, budget - confirmed_cost)
+    remaining_budget = max(0.0, budget - max(0.0, confirmed_cost))
     transition_hashes = sorted(
         transition["content_sha256"] for transition in transitions
     )
-    version = ("invrec_ingress_" if transitions else "inv_no_live_") + content_sha256({
+    ledger_fill_hashes = sorted(fill["content_sha256"] for fill in ledger_fills)
+    version = (
+        "invrec_ingress_" if (transitions or ledger_fills) else "inv_no_live_"
+    ) + content_sha256({
         "schema": "bayes_basket_no_live_inventory_v1",
         "observed_at_utc": observed,
         "remaining_budget_usdc": budget,
         "confirmed_cost_usdc": confirmed_cost,
         "scopes": sorted(f"{station}|{day}" for station, day in scopes),
         "transition_content_sha256": transition_hashes,
+        **(
+            {"ledger_fill_content_sha256": ledger_fill_hashes}
+            if ledger_fill_hashes else {}
+        ),
     })[:40]
     markets: list[dict[str, Any]] = []
     for (scope_station, scope_date), buckets in sorted(scopes.items()):
@@ -465,6 +590,13 @@ def build_no_live_inventory_ingress(
                 raise ContractError("execution_transition_bucket_token_scope_conflict")
             if registry_row["settlement_timezone"] != transition["settlement_timezone"]:
                 raise ContractError("execution_transition_settlement_timezone_mismatch")
+        scope_fills = fills_by_scope.get((scope_station, scope_date), [])
+        for fill in scope_fills:
+            registry_row = registry_by_bucket.get(fill["bucket"])
+            if registry_row is None or registry_row["yes_token"] != fill["token_id"]:
+                raise ContractError("ledger_fill_bucket_token_scope_conflict")
+            if registry_row["settlement_timezone"] != fill["settlement_timezone"]:
+                raise ContractError("ledger_fill_settlement_timezone_mismatch")
         filled_by_bucket = {bucket: 0.0 for bucket in bucket_names}
         filled_cost_by_bucket = {bucket: 0.0 for bucket in bucket_names}
         position_counts_by_bucket = {bucket: 0 for bucket in bucket_names}
@@ -491,6 +623,28 @@ def build_no_live_inventory_ingress(
                 "order_state_version": transition["order_state_version"],
                 "updated_at": transition["updated_at"],
             })
+        for fill in scope_fills:
+            bucket = fill["bucket"]
+            sign = 1.0 if fill["order_action"] == "BUY" else -1.0
+            filled_by_bucket[bucket] += sign * fill["filled_size"]
+            filled_cost_by_bucket[bucket] += sign * fill["filled_notional_usdc"]
+            position_counts_by_bucket[bucket] += 1
+            lineage.append({
+                "source": "target_reconciliation_ledger",
+                "order_intent_id": fill["order_intent_id"],
+                "order_action": fill["order_action"],
+                "state": fill["state"],
+                "filled_size": fill["filled_size"],
+                "filled_notional_usdc": fill["filled_notional_usdc"],
+                "exchange_order_id": fill["exchange_order_id"],
+                "ledger_fill_content_sha256": fill["content_sha256"],
+                "updated_at": fill["updated_at"],
+            })
+        for bucket in bucket_names:
+            if filled_by_bucket[bucket] < -EPS:
+                raise ContractError("ledger_fill_negative_inventory")
+            filled_by_bucket[bucket] = max(0.0, filled_by_bucket[bucket])
+            filled_cost_by_bucket[bucket] = max(0.0, filled_cost_by_bucket[bucket])
         snapshot_id = "inv_snapshot_" + content_sha256({
             "inventory_version": version,
             "station_id": scope_station,
@@ -510,18 +664,31 @@ def build_no_live_inventory_ingress(
                 "filled_cost_by_bucket": filled_cost_by_bucket,
                 "token_ids_by_bucket": (
                     {bucket: str(item["yes_token"]) for bucket, item in registry_by_bucket.items()}
-                    if scope_transitions else {}
+                    if (scope_transitions or scope_fills) else {}
                 ),
                 "position_counts_by_bucket": position_counts_by_bucket,
                 "source": (
-                    "target_execution_transition_runtime_no_live"
-                    if scope_transitions else "target_lane_no_live_q0"
+                    "target_execution_transition_runtime_and_ledger_fills"
+                    if (scope_transitions and scope_fills)
+                    else "target_execution_transition_runtime_no_live"
+                    if scope_transitions
+                    else "target_reconciliation_ledger_fills"
+                    if scope_fills
+                    else "target_lane_no_live_q0"
                 ),
                 "exchange_position_read": False,
                 "production_no_live": True,
                 "confirmed_fill_cost_usdc": sum(filled_cost_by_bucket.values()),
                 "transition_content_sha256": sorted(
                     transition["content_sha256"] for transition in scope_transitions
+                ),
+                **(
+                    {
+                        "ledger_fill_content_sha256": sorted(
+                            fill["content_sha256"] for fill in scope_fills
+                        ),
+                    }
+                    if scope_fills else {}
                 ),
                 "lineage": lineage,
             },
@@ -530,16 +697,21 @@ def build_no_live_inventory_ingress(
         "schema": INGRESS_SCHEMA,
         "producer_schema": (
             "bayes_basket_execution_transition_inventory_v1"
-            if transitions else "bayes_basket_no_live_inventory_v1"
+            if (transitions or ledger_fills)
+            else "bayes_basket_no_live_inventory_v1"
         ),
         "source_schema": (
             "target_execution_transition_runtime_no_live"
-            if transitions else "target_lane_no_live_q0"
+            if transitions
+            else "target_reconciliation_ledger_fills"
+            if ledger_fills
+            else "target_lane_no_live_q0"
         ),
         "observed_at": observed,
         "complete": True,
         "confirmed_fill_cost_usdc": confirmed_cost,
         "transition_content_sha256": transition_hashes,
+        "ledger_fill_content_sha256": ledger_fill_hashes,
         "markets": markets,
         "places_orders": False,
         "calls_order_gateway": False,

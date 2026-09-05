@@ -1332,6 +1332,58 @@ def test_clause_69_the_decline_clamp_waits_for_the_book_to_open() -> None:
     assert callable(kernel.contiguous_edge_clamp_v2)
 
 
+def test_clause_83_a_sub_dollar_rung_is_lifted_to_the_venue_minimum() -> None:
+    """The exchange's second lot: a marketable BUY must be worth a dollar.
+
+    "invalid amount for a marketable BUY order ($0.95), min size: $1" refused
+    9 of the first live morning's 18 legs; five shares of a rung under 0.20
+    are a lot and still not an order.  Same function, same all-or-none, same
+    affordability as clause 70; the dollar floor is a kernel constant both
+    sides read, and ``off`` is the pre-ruling arm.
+    """
+
+    clause = _clause(83)
+    assert "全有或全无" in clause and "一美元" in clause
+
+    from bayes_basket_target.basket_kernel import delta_v2 as kernel
+    from bayes_basket_target import delta_v2_runtime as production
+
+    assert kernel.EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC == 1.0
+    assert production.CHARTER_83_MIN_NOTIONAL == "on"
+    # A lot of five at 0.13 is 0.65; eight shares reach the dollar.
+    assert kernel.venue_minimum_shares_v1(min_lot_shares=5.0, ask=0.13) == 8.0
+    # At 0.25 the lot already clears the dollar.
+    assert kernel.venue_minimum_shares_v1(min_lot_shares=5.0, ask=0.25) == 5.0
+    # No dollar floor: the lot alone (clause 70's arm).
+    assert kernel.venue_minimum_shares_v1(
+        min_lot_shares=5.0, ask=0.13, minimum_notional_usdc=0.0
+    ) == 5.0
+
+    base = dict(
+        target_shares_by_bucket={"a": 5.0, "b": 5.0, "c": 5.0},
+        support=("a", "b", "c"),
+        min_lot_by_bucket={"a": 5.0, "b": 5.0, "c": 5.0},
+        ask_by_bucket={"a": 0.54, "b": 0.13, "c": 0.04},
+    )
+    # committed = 2.70 + 0.65 + 0.20 = 3.55; raises = 3*0.13 + 20*0.04 = 1.19
+    lifted = kernel.raise_sub_lot_targets_v2(**base, capital_available_usdc=6.0)
+    assert lifted["raised_buckets"] == ("b", "c")
+    assert lifted["notional_raised_buckets"] == ("b", "c")
+    assert lifted["target_shares_by_bucket"] == {"a": 5.0, "b": 8.0, "c": 25.0}
+    assert lifted["target_shares_by_bucket"]["b"] * 0.13 >= 1.0
+    assert lifted["target_shares_by_bucket"]["c"] * 0.04 >= 1.0
+    assert lifted["lot_raise_usdc"] == pytest.approx(1.19)
+    # All or none: lifting only one wing is not a basket.
+    refused = kernel.raise_sub_lot_targets_v2(**base, capital_available_usdc=4.0)
+    assert refused["refused_reason"] == "exchange_lot_top_up_unaffordable"
+    assert refused["target_shares_by_bucket"] == base["target_shares_by_bucket"]
+    # The arm: no dollar floor, and five shares are a lot.
+    off = kernel.raise_sub_lot_targets_v2(
+        **base, capital_available_usdc=6.0, minimum_notional_usdc=0.0
+    )
+    assert off["raised_buckets"] == ()
+
+
 def test_clause_70_a_sub_lot_rung_is_lifted_to_one_lot_all_or_none() -> None:
     clause = _clause(70)
     assert "全有或全无" in clause
@@ -1345,6 +1397,9 @@ def test_clause_70_a_sub_lot_rung_is_lifted_to_one_lot_all_or_none() -> None:
         min_lot_by_bucket={"a": 5.0, "b": 5.0, "c": 5.0},
         ask_by_bucket={"a": 0.40, "b": 0.30, "c": 0.10},
     )
+    # The lot rule alone (charter 83 layers the dollar floor on top and is
+    # pinned in its own test); c at 0.10 x 6 is under a dollar but a lot.
+    base["minimum_notional_usdc"] = 0.0
     # committed = 0.8 + 0.9 + 0.6 = 2.3; raises = 3*0.40 + 2*0.30 = 1.8
     lifted = kernel.raise_sub_lot_targets_v2(**base, capital_available_usdc=5.0)
     assert lifted["raised_buckets"] == ("a", "b")

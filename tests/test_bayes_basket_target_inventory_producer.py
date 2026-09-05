@@ -219,6 +219,122 @@ def test_no_live_inventory_projects_terminal_partial_fill_actuals() -> None:
     )
 
 
+def _ledger_db() -> sqlite3.Connection:
+    conn = _db()
+    conn.execute(
+        "CREATE TABLE basket_target_order_intents("
+        "order_intent_id TEXT PRIMARY KEY, cycle_id TEXT, bucket TEXT,"
+        " token_id TEXT, order_action TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE basket_target_execution_cycles("
+        "cycle_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
+        " settlement_timezone TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE basket_target_order_reconciliations("
+        "order_intent_id TEXT PRIMARY KEY, state TEXT, filled_size REAL,"
+        " filled_notional_usdc REAL, exchange_order_id TEXT, updated_at TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO basket_target_execution_cycles VALUES"
+        "('cycle-live','TEST','2026-07-23','America/New_York')"
+    )
+    return conn
+
+
+def _insert_ledger_fill(
+    conn: sqlite3.Connection,
+    *,
+    intent: str,
+    bucket: str,
+    token: str,
+    size: float,
+    notional: float,
+    action: str = "BUY",
+    state: str = "resolved_filled",
+    updated_at: str = "2026-07-23T04:00:00Z",
+) -> None:
+    conn.execute(
+        "INSERT INTO basket_target_order_intents VALUES(?,?,?,?,?)",
+        (intent, "cycle-live", bucket, token, action),
+    )
+    conn.execute(
+        "INSERT INTO basket_target_order_reconciliations VALUES(?,?,?,?,?,?)",
+        (intent, state, size, notional, "0x" + intent, updated_at),
+    )
+
+
+def test_live_fills_settled_in_the_ledger_are_inventory() -> None:
+    """A fill the exchange settled is a position, even with no transition.
+
+    The transition runtime is the no-live simulator's fill source and never
+    ran on a live order; on 2026-09-05 the first five real fills sat in the
+    reconciliation ledger while every inventory snapshot read zero.
+    """
+
+    with _ledger_db() as conn:
+        _insert_ledger_fill(
+            conn, intent="live-1", bucket="39°C", token="yes-39", size=5, notional=2.15
+        )
+        assert not has_execution_transition_versions(conn)
+        packet = build_no_live_inventory_ingress(
+            conn, remaining_budget_usdc=10.0, observed_at_utc="2026-07-23T05:00:00Z"
+        )
+    market = packet["markets"][0]
+    data = market["inventory_json"]
+    assert data["filled_by_bucket"] == {"38°C": 0.0, "39°C": 5.0}
+    assert data["filled_cost_by_bucket"]["39°C"] == pytest.approx(2.15)
+    assert data["token_ids_by_bucket"] == {"38°C": "yes-38", "39°C": "yes-39"}
+    assert market["remaining_budget_usdc"] == pytest.approx(7.85)
+    assert data["source"] == "target_reconciliation_ledger_fills"
+    assert data["lineage"][0]["source"] == "target_reconciliation_ledger"
+    assert data["lineage"][0]["exchange_order_id"] == "0xlive-1"
+    assert len(data["ledger_fill_content_sha256"]) == 1
+    assert packet["source_schema"] == "target_reconciliation_ledger_fills"
+    assert market["inventory_version"].startswith("invrec_ingress_")
+
+
+def test_a_ledger_sell_fill_removes_what_a_buy_added() -> None:
+    with _ledger_db() as conn:
+        _insert_ledger_fill(
+            conn, intent="buy-1", bucket="39°C", token="yes-39", size=5, notional=2.15
+        )
+        _insert_ledger_fill(
+            conn, intent="sell-1", bucket="39°C", token="yes-39", size=2,
+            notional=1.00, action="SELL", updated_at="2026-07-23T04:30:00Z",
+        )
+        packet = build_no_live_inventory_ingress(
+            conn, remaining_budget_usdc=10.0, observed_at_utc="2026-07-23T05:00:00Z"
+        )
+    data = packet["markets"][0]["inventory_json"]
+    assert data["filled_by_bucket"]["39°C"] == pytest.approx(3.0)
+    assert data["filled_cost_by_bucket"]["39°C"] == pytest.approx(1.15)
+
+
+def test_a_ledger_fill_after_the_quote_asof_fails_closed() -> None:
+    with _ledger_db() as conn:
+        _insert_ledger_fill(
+            conn, intent="late", bucket="39°C", token="yes-39", size=5,
+            notional=2.15, updated_at="2026-07-23T05:01:00Z",
+        )
+        with pytest.raises(ContractError, match="ledger_fill_after_quote_asof"):
+            build_no_live_inventory_ingress(
+                conn, remaining_budget_usdc=10.0, observed_at_utc="2026-07-23T05:00:00Z"
+            )
+
+
+def test_a_ledger_fill_off_the_registry_token_is_refused() -> None:
+    with _ledger_db() as conn:
+        _insert_ledger_fill(
+            conn, intent="wrong", bucket="39°C", token="yes-38", size=5, notional=2.15
+        )
+        with pytest.raises(ContractError, match="ledger_fill_bucket_token_scope_conflict"):
+            build_no_live_inventory_ingress(
+                conn, remaining_budget_usdc=10.0, observed_at_utc="2026-07-23T05:00:00Z"
+            )
+
+
 def test_transition_reconcile_state_never_becomes_known_inventory() -> None:
     with _transition_db() as conn:
         _insert_transition(conn, intent="bad", bucket="38°C", token="yes-38", state="RECONCILE_REQUIRED", size=2, notional=0.60)

@@ -877,6 +877,10 @@ def test_charter_70_sub_lot_rungs_are_raised_to_one_lot_when_the_basket_can_pay(
     neither leg had an order the exchange would fill and the whole ladder
     held.  The raise lifts both to exactly one lot -- 0.60 USDC more -- and
     leaves the rung already over a lot alone.
+
+    Pinned with the dollar floor off: charter 83 (2026-09-05) layers the
+    venue's one-dollar minimum on the same function, and at 0.06 a lot of
+    five is 0.30 -- its own test covers that arm.
     """
     from bayes_basket_target.basket_kernel.delta_v2 import (
         EXCHANGE_LOT_TOP_UP,
@@ -893,6 +897,8 @@ def test_charter_70_sub_lot_rungs_are_raised_to_one_lot_when_the_basket_can_pay(
         target_shares_by_bucket=targets, support=("16", "17", "18"),
         min_lot_by_bucket=lots, ask_by_bucket=asks,
         capital_available_usdc=6.17,
+
+        minimum_notional_usdc=0.0,
     )
     assert raised["raised_buckets"] == ("16", "18")
     assert raised["target_shares_by_bucket"] == {"16": 5.0, "17": 39.1, "18": 5.0}
@@ -905,6 +911,8 @@ def test_charter_70_sub_lot_rungs_are_raised_to_one_lot_when_the_basket_can_pay(
         target_shares_by_bucket={"16": 4.17, "18": 1.56}, support=("16", "18"),
         min_lot_by_bucket={"16": 5.0, "18": 5.0}, ask_by_bucket={"16": 0.06, "18": 0.16},
         capital_available_usdc=0.9,
+
+        minimum_notional_usdc=0.0,
     )
     assert short["raised_buckets"] == ()
     assert short["target_shares_by_bucket"] == {"16": 4.17, "18": 1.56}
@@ -916,6 +924,8 @@ def test_charter_70_sub_lot_rungs_are_raised_to_one_lot_when_the_basket_can_pay(
         target_shares_by_bucket=targets, support=("16", "17", "18"),
         min_lot_by_bucket={"16": 0.0, "17": 0.0, "18": 0.0}, ask_by_bucket=asks,
         capital_available_usdc=6.17,
+
+        minimum_notional_usdc=0.0,
     )
     assert unstated["raised_buckets"] == ()
     assert unstated["target_shares_by_bucket"] == targets
@@ -925,6 +935,8 @@ def test_charter_70_sub_lot_rungs_are_raised_to_one_lot_when_the_basket_can_pay(
         target_shares_by_bucket=targets, support=("16", "17", "18"),
         min_lot_by_bucket=lots, ask_by_bucket=asks,
         capital_available_usdc=6.17, mode="off",
+
+        minimum_notional_usdc=0.0,
     )
     assert off["raised_buckets"] == () and off["target_shares_by_bucket"] == targets
 
@@ -933,4 +945,6 @@ def test_charter_70_sub_lot_rungs_are_raised_to_one_lot_when_the_basket_can_pay(
             target_shares_by_bucket=targets, support=("16",),
             min_lot_by_bucket=lots, ask_by_bucket=asks,
             capital_available_usdc=6.17, mode="round_up",
+
+            minimum_notional_usdc=0.0,
         )

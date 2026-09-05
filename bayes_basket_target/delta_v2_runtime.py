@@ -25,6 +25,7 @@ from .basket_kernel.contracts import (
 )
 from .basket_kernel.delta_v2 import (
     CENTER_WINDOW_CLAIM_BANDS,
+    EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
     CENTER_WINDOW_CLAIM_DEFAULT,
     _parse_claim_bands,
     center_window_claim_factor,
@@ -1179,7 +1180,13 @@ CHARTER_72_KELLY_SIZING = (
 CHARTER_70_EXCHANGE_LOT = (
     os.environ.get("PM_CHARTER_70_LOT", "").strip().lower() or "on"
 )
+# Charter 83 (2026-09-05): the venue's one-dollar marketable minimum, lifted
+# through the same function as the lot; ``off`` sizes as before the ruling.
+CHARTER_83_MIN_NOTIONAL = (
+    os.environ.get("PM_CHARTER_83_MIN_NOTIONAL", "").strip().lower() or "on"
+)
 for _name, _value in (
+    ("PM_CHARTER_83_MIN_NOTIONAL", CHARTER_83_MIN_NOTIONAL),
     ("PM_CHARTER_77_DECISION_MOMENTS", CHARTER_77_DECISION_MOMENTS),
     ("PM_CHARTER_78_NO_EXEMPTION", CHARTER_78_INCUMBENT_NO_EXEMPTION),
     ("PM_CHARTER_66A_CHAIN_PAR", CHARTER_66A_CHAIN_PAR),
@@ -3838,6 +3845,12 @@ def compile_delta_v2_runtime_plan(
             for bucket in seated_support
         },
         capital_available_usdc=capital_available_usdc,
+        # Charter 83: the dollar floor rides with the lot; ``off`` is the
+        # pre-ruling arm.
+        minimum_notional_usdc=(
+            EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC
+            if CHARTER_83_MIN_NOTIONAL == "on" else 0.0
+        ),
     )
     target_shares = dict(lot_top_up["target_shares_by_bucket"])
     current_shares = {row.bucket: row.filled_shares for row in snapshot.buckets}
@@ -4606,6 +4619,14 @@ def compile_delta_v2_runtime_plan(
         "lot_raised_buckets": tuple(lot_top_up["raised_buckets"]),
         "lot_raise_usdc": float(lot_top_up["lot_raise_usdc"]),
         "lot_raise_refused": lot_top_up["refused_reason"],
+        # Charter 83: the dollar floor the lift read, and which rungs it
+        # (rather than the lot) lifted.
+        "exchange_minimum_order_notional_usdc": float(
+            lot_top_up.get("minimum_notional_usdc", 0.0)
+        ),
+        "notional_raised_buckets": tuple(
+            lot_top_up.get("notional_raised_buckets", ())
+        ),
         "probability_direction_source": (
             "previous_checkpoint" if previous_probabilities else "absent"
         ),

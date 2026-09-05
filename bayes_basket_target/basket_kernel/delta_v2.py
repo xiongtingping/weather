@@ -595,6 +595,52 @@ def scope_stake_cap_usdc(
 # pre-charter-70 book, kept so a replay can re-derive it.
 EXCHANGE_LOT_TOP_UP_MODES = ("off", "smallest_leg")
 EXCHANGE_LOT_TOP_UP = "smallest_leg"
+# Charter 83 (user ruling, 2026-09-05): the exchange's second lot.  A
+# marketable BUY must be worth at least one dollar -- "invalid amount for a
+# marketable BUY order ($0.95), min size: $1" -- so five shares of a rung
+# priced under 0.20 are refused however many lots they are.  On the first
+# live morning 9 of 18 legs sat under a dollar (42% of every planned BUY leg
+# since 08-28), and every basket lost its cheap wing to it.  A rung under the
+# dollar is raised to the fewest whole shares that reach it, all-or-none with
+# the lot raise above, through the same function and the same affordability
+# check; 0 turns the rule off (the pre-charter-83 arm).
+EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC = float(
+    os.environ.get("PM_EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC", "").strip()
+    or "1.0"
+)
+if not math.isfinite(EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC) or (
+    EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC < 0.0
+):
+    raise RuntimeError(
+        "unknown PM_EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC: "
+        f"{EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC}"
+    )
+
+
+def venue_minimum_shares_v1(
+    *,
+    min_lot_shares: Any,
+    ask: Any,
+    minimum_notional_usdc: Any = EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
+) -> float:
+    """The fewest shares the exchange will take at this ask: lot and dollar.
+
+    The lot is the market's stated ``orderMinSize`` (charter 70); the dollar
+    is the venue's marketable-order minimum (charter 83).  Whole shares,
+    because a fractional share cannot be bought; zero when neither bound is
+    stated or the rung has no ask, which the caller reads as "not known to
+    be under anything".
+    """
+
+    lot = _nonnegative("delta_v2_min_lot", min_lot_shares or 0.0)
+    price = _nonnegative("delta_v2_ask", ask or 0.0)
+    notional = _nonnegative(
+        "delta_v2_minimum_notional", minimum_notional_usdc or 0.0
+    )
+    if price <= EPS or notional <= EPS:
+        return lot
+    by_notional = float(math.ceil(notional / price - 1e-9))
+    return max(lot, by_notional)
 
 
 def raise_sub_lot_targets_v2(
@@ -605,16 +651,19 @@ def raise_sub_lot_targets_v2(
     ask_by_bucket: Mapping[str, Any],
     capital_available_usdc: Any,
     mode: str = EXCHANGE_LOT_TOP_UP,
+    minimum_notional_usdc: Any = EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
 ) -> dict[str, Any]:
-    """Raise every seated rung under one exchange lot to exactly one lot.
+    """Raise every seated rung under the venue minimum to exactly that minimum.
 
     Pure and deterministic.  ``min_lot_by_bucket`` is the exchange's stated
-    minimum per market (0 when unstated -- such a rung is left alone, it is
-    not known to be under anything); ``ask_by_bucket`` prices the raise.  The
-    raise is all-or-none over the support: a basket that can afford to lift
-    only some of its short rungs to a lot still cannot be bought, so nothing
-    is changed and the refusal is named.  Affordability is the whole basket's
-    -- the solved targets at their asks plus the raises -- against
+    minimum per market (0 when unstated); ``minimum_notional_usdc`` is the
+    venue's marketable-order floor in dollars (charter 83; 0 turns it off);
+    ``ask_by_bucket`` prices the raise.  A rung under neither bound, or with
+    no ask, is left alone -- it is not known to be under anything.  The raise
+    is all-or-none over the support: a basket that can afford to lift only
+    some of its short rungs still cannot be bought, so nothing is changed and
+    the refusal is named.  Affordability is the whole basket's -- the solved
+    targets at their asks plus the raises -- against
     ``capital_available_usdc``, which is what the scope may still spend.
     """
 
@@ -624,11 +673,16 @@ def raise_sub_lot_targets_v2(
         str(bucket): _nonnegative("delta_v2_target_shares", value)
         for bucket, value in target_shares_by_bucket.items()
     }
+    notional_floor = _nonnegative(
+        "delta_v2_minimum_notional", minimum_notional_usdc or 0.0
+    )
     unchanged = {
         "schema": "delta_v2_exchange_lot_top_up_v1",
         "mode": mode,
+        "minimum_notional_usdc": notional_floor,
         "target_shares_by_bucket": dict(targets),
         "raised_buckets": (),
+        "notional_raised_buckets": (),
         "lot_raise_usdc": 0.0,
         "requested_lot_raise_usdc": 0.0,
         "refused_reason": None,
@@ -637,6 +691,7 @@ def raise_sub_lot_targets_v2(
         return unchanged
     capital = _nonnegative("delta_v2_capital_available", capital_available_usdc)
     raised: list[str] = []
+    by_notional: list[str] = []
     lots: dict[str, float] = {}
     extra = 0.0
     committed = 0.0
@@ -650,11 +705,23 @@ def raise_sub_lot_targets_v2(
             "delta_v2_ask", ask_by_bucket.get(bucket, 0.0) or 0.0
         )
         committed += target * ask
-        if lot <= EPS or ask <= EPS or target <= EPS or target + EPS >= lot:
+        floor_shares = venue_minimum_shares_v1(
+            min_lot_shares=lot,
+            ask=ask,
+            minimum_notional_usdc=notional_floor,
+        )
+        if (
+            floor_shares <= EPS
+            or ask <= EPS
+            or target <= EPS
+            or target + EPS >= floor_shares
+        ):
             continue
         raised.append(bucket)
-        lots[bucket] = lot
-        extra += (lot - target) * ask
+        if floor_shares > lot + EPS:
+            by_notional.append(bucket)
+        lots[bucket] = floor_shares
+        extra += (floor_shares - target) * ask
     if not raised:
         return unchanged
     if committed + extra > capital + EPS:
@@ -669,6 +736,7 @@ def raise_sub_lot_targets_v2(
         **unchanged,
         "target_shares_by_bucket": targets,
         "raised_buckets": tuple(raised),
+        "notional_raised_buckets": tuple(by_notional),
         "lot_raise_usdc": extra,
         "requested_lot_raise_usdc": extra,
     }
@@ -3241,8 +3309,10 @@ __all__ = [
     "evaluate_action_v2",
     "evaluate_basket_value_v2",
     "EXCHANGE_LOT_TOP_UP",
+    "EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC",
     "EXCHANGE_LOT_TOP_UP_MODES",
     "raise_sub_lot_targets_v2",
+    "venue_minimum_shares_v1",
     "hold_action_v2",
     "select_action_v2",
     "select_complete_maker_bundle_v2",

@@ -1142,7 +1142,7 @@ def test_every_charter_clause_the_audit_prices_has_one_switch() -> None:
         "CHARTER_66A_CHAIN_PAR", "CHARTER_70_EXCHANGE_LOT",
         "CHARTER_71A_TOPUP_IDENTITY", "CHARTER_71B_CHAIN_GROWTH",
         "CHARTER_72_KELLY_SIZING", "CHARTER_77_DECISION_MOMENTS",
-        "CHARTER_78_INCUMBENT_NO_EXEMPTION",
+        "CHARTER_78_INCUMBENT_NO_EXEMPTION", "CHARTER_83_MIN_NOTIONAL",
     ):
         assert getattr(P, name) == "on", name
         assert getattr(L, name) is getattr(P, name), name
@@ -1157,6 +1157,7 @@ def test_every_charter_clause_the_audit_prices_has_one_switch() -> None:
     compile_plan = inspect.getsource(P.compile_delta_v2_runtime_plan)
     assert 'CHARTER_72_KELLY_SIZING == "on"' in compile_plan
     assert 'CHARTER_70_EXCHANGE_LOT == "on"' in compile_plan
+    assert 'CHARTER_83_MIN_NOTIONAL == "on"' in compile_plan
     # The three rulings of 2026-09-05 are the shipped defaults.
     assert P.DECLINE_CLAMP_MODE == "off"
     assert P.MARKET_LEAN_GATE_MODE == "on"
