@@ -5021,6 +5021,8 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
     from bayes_basket_target import effective_edge_store as _store
     from bayes_basket_target.basket_kernel.delta_v2 import (
         EFFECTIVE_EDGE_LAMBDA,
+        EFFECTIVE_EDGE_P0M_LAMBDA,
+        EFFECTIVE_EDGE_P0M_STAGES,
         EFFECTIVE_EDGE_P1_LAMBDA,
         EFFECTIVE_EDGE_P1_STAGES,
         EFFECTIVE_EDGE_STAGES,
@@ -5128,6 +5130,8 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
     for scope, stages, served, ceiling in (
         ("P0", tuple(sorted(EFFECTIVE_EDGE_STAGES)),
          EFFECTIVE_EDGE_LAMBDA, _store.LAMBDA_CEILING),
+        ("P0-M", tuple(sorted(EFFECTIVE_EDGE_P0M_STAGES)),
+         EFFECTIVE_EDGE_P0M_LAMBDA, _store.LAMBDA_CEILING),
         ("P1", tuple(sorted(EFFECTIVE_EDGE_P1_STAGES)),
          EFFECTIVE_EDGE_P1_LAMBDA, _store.P1_LAMBDA_CEILING),
     ):

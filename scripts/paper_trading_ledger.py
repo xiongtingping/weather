@@ -64,6 +64,7 @@ from bayes_basket_target.basket_kernel.contracts import (  # noqa: E402
 )
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     EFFECTIVE_EDGE_P1_STAGES,
+    EFFECTIVE_EDGE_P0M_STAGES,
     EFFECTIVE_EDGE_STAGES,
     clamp_declining_gaps_v2,
     contiguous_edge_clamp_v2,
@@ -6085,6 +6086,7 @@ def _effective_growth_partition(
 
     if EFFECTIVE_EDGE_MODE != "on" or (
         stage not in EFFECTIVE_EDGE_STAGES
+        and stage not in EFFECTIVE_EDGE_P0M_STAGES
         and stage not in EFFECTIVE_EDGE_P1_STAGES
     ):
         return {str(b): float(v) for b, v in probabilities.items()}
@@ -7519,6 +7521,7 @@ def backfill(
                         and EFFECTIVE_EDGE_MODE == "on"
                         and (
                             stage in EFFECTIVE_EDGE_STAGES
+                            or stage in EFFECTIVE_EDGE_P0M_STAGES
                             or stage in EFFECTIVE_EDGE_P1_STAGES
                         )
                         and gate_win > 0

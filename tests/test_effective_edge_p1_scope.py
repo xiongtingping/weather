@@ -24,6 +24,7 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     EFFECTIVE_EDGE_LAMBDA,
+    EFFECTIVE_EDGE_P0M_LAMBDA,
     EFFECTIVE_EDGE_P1_LAMBDA,
     effective_edge_lambda,
     effective_edge_lambda_for_stage,
@@ -40,11 +41,14 @@ def test_p1_table_is_identity_today_so_nothing_p1_sizes_moves() -> None:
 
 
 def test_p0_and_p0m_read_the_charter_68_table_exactly_as_before() -> None:
+    """P0-M's own table starts equal to P0's (user ruling, 2026-09-05), so
+    the split changes no served number until P0-M earns its own bands."""
     for stage in ("P0", "P0-M"):
         for agreement in (0.1, 0.45, 0.6, 0.8, 0.95, 3.0):
             assert effective_edge_lambda_for_stage(stage, agreement) == (
                 effective_edge_lambda(agreement)
             )
+    assert EFFECTIVE_EDGE_P0M_LAMBDA == EFFECTIVE_EDGE_LAMBDA
     # Handing P1's table to a P0 seat must not reach it.
     assert effective_edge_lambda_for_stage(
         "P0", 0.3, p1_table=((float("inf"), 0.5),)
@@ -105,7 +109,7 @@ def test_the_store_fits_p1_on_p1_rows_alone() -> None:
     p1 = store.fit_lambda_table(conn, stage_scope="P1")
     p0 = store.fit_lambda_table(conn, stage_scope="P0")
     assert p1["table"]["stages"] == ["P1"]
-    assert p0["table"]["stages"] == ["P0", "P0-M"]
+    assert p0["table"]["stages"] == ["P0"]
     # P1's first band: 20 hits on claim mass 10 -> raw 2.0, capped at one.
     assert p1["bands"][0][1] == 1.0
     assert p1["evidence"][0]["raw_lambda"] == pytest.approx(2.0)
@@ -172,3 +176,123 @@ def test_rows_written_before_scopes_existed_read_as_p0() -> None:
         (float("inf"), 0.7),
     )
     assert store.load_active_lambda(conn, stage_scope="P1") is None
+
+
+def test_a_p0m_table_handed_in_governs_p0m_only() -> None:
+    """Each stage reads its own table (user ruling, 2026-09-05)."""
+    banded = ((0.5, 0.3), (0.7, 0.4), (0.85, 0.5), (float("inf"), 0.6))
+    assert effective_edge_lambda_for_stage("P0-M", 0.3, p0m_table=banded) == 0.3
+    assert effective_edge_lambda_for_stage("P0-M", 0.9, p0m_table=banded) == 0.6
+    # P0-M's table reaches neither P0 nor P1.
+    assert effective_edge_lambda_for_stage("P0", 0.3, p0m_table=banded) == (
+        effective_edge_lambda(0.3)
+    )
+    assert effective_edge_lambda_for_stage("P1", 0.3, p0m_table=banded) == 1.0
+    # And P0's override does not reach P0-M.
+    assert effective_edge_lambda_for_stage(
+        "P0-M", 0.3, table=((float("inf"), 0.01),)
+    ) == effective_edge_lambda(0.3)
+
+
+def test_the_store_fits_p0m_on_p0m_rows_alone() -> None:
+    """Twenty P0-M misses at a = 0.3 floor P0-M's first band and leave P0's
+    fit -- twenty hits in the same band -- untouched."""
+    conn = _book(
+        [("P0-M", 0.5, 0.15, 0) for _ in range(20)]
+        + [("P0", 0.5, 0.15, 1) for _ in range(20)]
+    )
+    p0m = store.fit_lambda_table(conn, stage_scope="P0-M")
+    p0 = store.fit_lambda_table(conn, stage_scope="P0")
+    assert p0m["table"]["stages"] == ["P0-M"]
+    assert p0["table"]["stages"] == ["P0"]
+    assert p0m["bands"][0][1] == store.LAMBDA_FLOOR
+    assert p0["bands"][0][1] == store.LAMBDA_CEILING
+    assert p0m["evidence"][0]["incumbent_lambda"] == EFFECTIVE_EDGE_P0M_LAMBDA[0][1]
+
+
+def test_a_fixture_without_receipts_counts_every_seat_and_says_so() -> None:
+    """A book with no envelopes cannot be filtered by band partition; the
+    fit counts all of it and records that the filter did not apply."""
+    conn = _book([("P0", 0.5, 0.15, 1) for _ in range(20)])
+    fit = store.fit_lambda_table(conn, stage_scope="P0")
+    assert fit["band_filter"]["applied"] is False
+    assert fit["evidence"][0]["seats"] == 20
+
+
+def test_only_seats_banded_under_the_current_partition_are_fitted() -> None:
+    """Lambda is fitted on the served claim, and the served claim is what the
+    band table made of it (user ruling, 2026-09-05).  A seat banded by the
+    retired five-cell table, or never banded, is a residual of arithmetic
+    nobody serves and is left out -- and counted, so the exclusion is
+    visible rather than silent."""
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE paper_trade_position("
+        "position_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
+        " stage TEXT, decision_at_utc TEXT, win_probability REAL,"
+        " all_in_cost REAL)"
+    )
+    conn.execute(
+        "CREATE TABLE paper_trade_settlement("
+        "settlement_id TEXT PRIMARY KEY, position_id TEXT, stage TEXT,"
+        " event_date TEXT, hit INTEGER)"
+    )
+    conn.execute(
+        "CREATE TABLE calibration_band_reliability_table("
+        "band_table_sha256 TEXT PRIMARY KEY, factors_json TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE basket_probability_bridge_history("
+        "history_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
+        " stage TEXT, decision_at_utc TEXT, checkpoint_id TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE basket_probability_envelope("
+        "envelope_id TEXT PRIMARY KEY, lineage_json TEXT)"
+    )
+    eleven = json.dumps([[[i * 0.05, i * 0.05 + 0.05], 1.0] for i in range(11)])
+    five = json.dumps([[[0, 0.02], 1.0]] * 5)
+    conn.execute(
+        "INSERT INTO calibration_band_reliability_table VALUES('new', ?)",
+        (eleven,),
+    )
+    conn.execute(
+        "INSERT INTO calibration_band_reliability_table VALUES('old', ?)",
+        (five,),
+    )
+    rows = []
+    for index in range(36):
+        kind = ("new", "old", None)[index % 3]
+        pid, hid, eid = f"pos-{index}", f"hist-{index}", f"env-{index}"
+        rows.append(kind)
+        conn.execute(
+            "INSERT INTO paper_trade_position VALUES(?,?,?,?,?,?,?)",
+            (pid, "ZUUU", "2026-09-01", "P0", f"t{index}", 0.5, 0.15),
+        )
+        conn.execute(
+            "INSERT INTO paper_trade_settlement VALUES(?,?,?,?,?)",
+            (f"set-{index}", pid, "P0", "2026-09-01", 1),
+        )
+        conn.execute(
+            "INSERT INTO basket_probability_bridge_history VALUES(?,?,?,?,?,?)",
+            (hid, "ZUUU", "2026-09-01", "P0", f"t{index}", eid),
+        )
+        receipt = (
+            json.dumps({"band_reliability_json": json.dumps(
+                {"band_table_sha256": kind, "state": "APPLIED"}
+            )}) if kind else json.dumps({})
+        )
+        conn.execute(
+            "INSERT INTO basket_probability_envelope VALUES(?,?)",
+            (eid, receipt),
+        )
+    fit = store.fit_lambda_table(conn, stage_scope="P0")
+    assert fit["band_filter"] == {
+        "cells": store.BAND_PARTITION_CELLS,
+        "applied": True,
+        "excluded_old_partition": 12,
+        "excluded_no_receipt": 12,
+    }
+    # Only the twelve current-partition seats were counted.
+    assert fit["evidence"][0]["seats"] == 12
+    assert fit["table"]["band_partition_cells"] == store.BAND_PARTITION_CELLS

@@ -54,8 +54,10 @@ import sqlite3
 from datetime import UTC, datetime
 from typing import Any, Sequence
 
+from .band_reliability_store import BAND_TABLE_CELLS
 from .basket_kernel.delta_v2 import (
     EFFECTIVE_EDGE_LAMBDA,
+    EFFECTIVE_EDGE_P0M_LAMBDA,
     EFFECTIVE_EDGE_P1_LAMBDA,
 )
 from .contracts import content_sha256
@@ -68,7 +70,13 @@ MIN_SEATS_PER_BAND = 12
 MIN_CLAIM_MASS = 4.0
 LAMBDA_FLOOR = 0.05
 LAMBDA_CEILING = 1.50
-FIT_STAGES = ("P0", "P0-M")
+# One scope per stage (user ruling, 2026-09-05).  P0-M used to be pooled
+# into P0's scope and, measured on the live book, contributed zero seats to
+# it in the 28-day window: the pool was P0's table under two names.  Fitting
+# it alone makes its scarcity visible -- every band accumulating, served at
+# the incumbent -- instead of hiding it inside P0's numbers.
+FIT_STAGES = ("P0",)
+FIT_STAGES_P0M = ("P0-M",)
 # P1 is fitted as its own scope, never pooled with the two above (user
 # ruling, 2026-09-02).  Pooling would let P1's over-delivering bands lift the
 # P0 numbers and P0's cliff drag P1's, and each would then size on a mixture
@@ -77,7 +85,19 @@ FIT_STAGES = ("P0", "P0-M")
 # band where P1 under-claims is served at par, not inflated.
 FIT_STAGES_P1 = ("P1",)
 P1_LAMBDA_CEILING = 1.00
-STAGE_SCOPES = {"P0": FIT_STAGES, "P1": FIT_STAGES_P1}
+STAGE_SCOPES = {
+    "P0": FIT_STAGES,
+    "P0-M": FIT_STAGES_P0M,
+    "P1": FIT_STAGES_P1,
+}
+# Only seats whose claim went through the current band partition count
+# (user ruling, 2026-09-05).  Lambda is fitted on the served claim, and the
+# served claim is what the band table made of it; a seat banded under the
+# retired five-cell table is a residual of arithmetic nobody serves.  The
+# partition is identified by the receipt's table sha, never by date: charter
+# 60 keeps old tables serving the artifacts pinned to them, so a calendar
+# cutover would admit exactly the rows it means to exclude.
+BAND_PARTITION_CELLS = len(BAND_TABLE_CELLS)
 
 TABLE_DDL = (
     "CREATE TABLE IF NOT EXISTS calibration_effective_edge_lambda ("
@@ -120,10 +140,64 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
 
 
 def _incumbent_bands(stage_scope: str = "P0") -> list[tuple[float, float]]:
-    source = (
-        EFFECTIVE_EDGE_P1_LAMBDA if stage_scope == "P1" else EFFECTIVE_EDGE_LAMBDA
-    )
+    source = {
+        "P1": EFFECTIVE_EDGE_P1_LAMBDA,
+        "P0-M": EFFECTIVE_EDGE_P0M_LAMBDA,
+    }.get(stage_scope, EFFECTIVE_EDGE_LAMBDA)
     return [(float(bound), float(lam)) for bound, lam in source]
+
+
+def _band_partition_by_position(
+    conn: sqlite3.Connection, position_ids: Sequence[str]
+) -> dict[str, int | None] | None:
+    """Which band partition each seat's claim was served under.
+
+    Read off the envelope receipt the seat's decision moment carries, then
+    the partition size of the table that receipt names.  None for the whole
+    lookup when the database has no envelopes or band tables -- a replay
+    fixture, or a book built before receipts existed -- in which case the
+    caller counts every seat and says so, rather than silently fitting on
+    nothing.  Per seat, None means no receipt: an unbanded claim, which is
+    not a claim under the current partition either.
+    """
+
+    if not position_ids:
+        return {}
+    try:
+        sizes = {
+            str(row[0]): int(row[1])
+            for row in conn.execute(
+                "SELECT band_table_sha256, json_array_length(factors_json)"
+                " FROM calibration_band_reliability_table"
+            )
+        }
+        rows = conn.execute(
+            "SELECT p.position_id,"
+            " (SELECT json_extract(e.lineage_json,'$.band_reliability_json')"
+            "    FROM basket_probability_bridge_history h"
+            "    JOIN basket_probability_envelope e"
+            "      ON e.envelope_id = h.checkpoint_id"
+            "   WHERE h.station_id = p.station_id"
+            "     AND h.event_date = p.event_date"
+            "     AND h.stage = p.stage"
+            "     AND h.decision_at_utc = p.decision_at_utc"
+            "   LIMIT 1)"
+            " FROM paper_trade_position p"
+            f" WHERE p.position_id IN ({','.join('?' for _ in position_ids)})",
+            tuple(position_ids),
+        ).fetchall()
+    except sqlite3.Error:
+        return None
+    out: dict[str, int | None] = {}
+    for position_id, raw in rows:
+        sha = None
+        if raw:
+            try:
+                sha = json.loads(str(raw)).get("band_table_sha256")
+            except (ValueError, AttributeError):
+                sha = None
+        out[str(position_id)] = sizes.get(str(sha)) if sha else None
+    return out
 
 
 def _band_index(agreement: float, bands: Sequence[tuple[float, float]]) -> int:
@@ -167,21 +241,38 @@ def fit_lambda_table(
 
     placeholders = ",".join("?" for _ in stages)
     rows = conn.execute(
-        "SELECT p.win_probability, p.all_in_cost, s.hit"
+        "SELECT p.win_probability, p.all_in_cost, s.hit, p.position_id"
         " FROM paper_trade_settlement s"
         " JOIN paper_trade_position p USING(position_id)"
         f" WHERE s.stage IN ({placeholders}) AND s.event_date >= ?",
         (*stages, floor_day),
     ).fetchall()
+    partition = _band_partition_by_position(
+        conn, [str(row[3]) for row in rows]
+    )
+    band_filter: dict[str, Any] = {
+        "cells": BAND_PARTITION_CELLS,
+        "applied": partition is not None,
+        "excluded_old_partition": 0,
+        "excluded_no_receipt": 0,
+    }
 
     tally = [
         {"seats": 0, "claim": 0.0, "hits": 0} for _ in incumbent
     ]
-    for win, cost, hit in rows:
+    for win, cost, hit, position_id in rows:
         claim = float(win or 0.0)
         price = float(cost or 0.0)
         if claim <= 0.0 or price <= 0.0:
             continue
+        if partition is not None:
+            cells = partition.get(str(position_id))
+            if cells is None:
+                band_filter["excluded_no_receipt"] += 1
+                continue
+            if cells != BAND_PARTITION_CELLS:
+                band_filter["excluded_old_partition"] += 1
+                continue
         slot = tally[_band_index(price / claim, incumbent)]
         slot["seats"] += 1
         slot["claim"] += claim
@@ -228,9 +319,11 @@ def fit_lambda_table(
         "window_days": int(window_days),
         "as_of_event_date": latest,
         "fit_floor_event_date": floor_day,
+        "band_partition_cells": BAND_PARTITION_CELLS,
     }
     return {
         "table": payload,
+        "band_filter": band_filter,
         "stage_scope": stage_scope,
         "content_sha256": content_sha256(payload),
         "bands": bands,

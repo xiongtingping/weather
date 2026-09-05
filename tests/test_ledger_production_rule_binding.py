@@ -501,6 +501,9 @@ def test_the_support_width_bounds_match_productions_policy_defaults() -> None:
     assert L.effective_edge_lambda is K2.effective_edge_lambda
     assert PROD.effective_edge_lambda is K2.effective_edge_lambda
     assert L.EFFECTIVE_EDGE_STAGES is K2.EFFECTIVE_EDGE_STAGES
+    # 2026-09-05: each stage reads its own table; P0-M's set is the
+    # kernel's in both lanes, like P0's and P1's.
+    assert L.EFFECTIVE_EDGE_P0M_STAGES is K2.EFFECTIVE_EDGE_P0M_STAGES
     # 2026-09-02: P1 flows through the same dispatch with its own table.  Both
     # lanes must call the one function and read the one stage set, or P1 is
     # exempt in one lane and shrunk in the other while both claim one book.

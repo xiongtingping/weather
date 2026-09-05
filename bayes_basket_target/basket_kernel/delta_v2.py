@@ -712,7 +712,28 @@ if EFFECTIVE_EDGE_LAMBDA_P0_OVERRIDE:
         (float(bound), float(lam))
         for bound, lam in json.loads(EFFECTIVE_EDGE_LAMBDA_P0_OVERRIDE)
     )
-EFFECTIVE_EDGE_STAGES = frozenset({"P0", "P0-M"})
+# Each stage reads its own table (user ruling, 2026-09-05).  P0-M shared P0's
+# for three days and contributed no seat to the pooled fit in any 28-day
+# window measured -- the shared table was P0's table wearing two names.  Its
+# own constant starts equal to P0's so nothing served moves today, and the
+# store fits its scope on its own seats from here; a band without twelve of
+# them keeps this incumbent, which is exactly what it was served before.
+EFFECTIVE_EDGE_STAGES = frozenset({"P0"})
+EFFECTIVE_EDGE_P0M_LAMBDA = (
+    (0.50, 0.14),
+    (0.70, 0.60),
+    (0.85, 0.87),
+    (float("inf"), 0.82),
+)
+EFFECTIVE_EDGE_P0M_LAMBDA_OVERRIDE = os.environ.get(
+    "PM_EFFECTIVE_EDGE_LAMBDA_P0M_JSON", ""
+).strip()
+if EFFECTIVE_EDGE_P0M_LAMBDA_OVERRIDE:
+    EFFECTIVE_EDGE_P0M_LAMBDA = tuple(
+        (float(bound), float(lam))
+        for bound, lam in json.loads(EFFECTIVE_EDGE_P0M_LAMBDA_OVERRIDE)
+    )
+EFFECTIVE_EDGE_P0M_STAGES = frozenset({"P0-M"})
 # P1's own table (user ruling, 2026-09-02).  The exemption above was a
 # statement about a stage; this makes it a table about that stage, so the
 # same machinery -- one function, one rolling fit, one journal -- covers all
@@ -804,6 +825,7 @@ def effective_edge_lambda_for_stage(
     *,
     table: Sequence[tuple[float, float]] | None = None,
     p1_table: Sequence[tuple[float, float]] | None = None,
+    p0m_table: Sequence[tuple[float, float]] | None = None,
 ) -> float:
     """The realized fraction of a claim, for the stage that made it.
 
@@ -818,6 +840,11 @@ def effective_edge_lambda_for_stage(
     name = str(stage or "").strip().upper()
     if name in EFFECTIVE_EDGE_STAGES:
         return effective_edge_lambda(agreement, table)
+    if name in EFFECTIVE_EDGE_P0M_STAGES:
+        return effective_edge_lambda(
+            agreement,
+            tuple(p0m_table) if p0m_table else EFFECTIVE_EDGE_P0M_LAMBDA,
+        )
     if name in EFFECTIVE_EDGE_P1_STAGES:
         return effective_edge_lambda(
             agreement, tuple(p1_table) if p1_table else EFFECTIVE_EDGE_P1_LAMBDA
@@ -840,7 +867,9 @@ def effective_edge_bucket_lambda_for_stage(
     """
 
     name = str(stage or "").strip().upper()
-    if name in EFFECTIVE_EDGE_STAGES:
+    # The bucket arm's table was fitted on P0 and P0-M pooled and is a
+    # research arm; both keep reading it until a per-stage bucket fit exists.
+    if name in EFFECTIVE_EDGE_STAGES or name in EFFECTIVE_EDGE_P0M_STAGES:
         return effective_edge_lambda(agreement, EFFECTIVE_EDGE_BUCKET_LAMBDA)
     if name in EFFECTIVE_EDGE_P1_STAGES:
         return effective_edge_lambda(

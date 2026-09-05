@@ -1277,7 +1277,13 @@ def test_clause_68_the_objective_reads_effective_edge() -> None:
     from bayes_basket_target.basket_kernel import delta_v2 as kernel
 
     assert runtime.EFFECTIVE_EDGE_MODE == "on"
-    assert kernel.EFFECTIVE_EDGE_STAGES == frozenset({"P0", "P0-M"})
+    # (b) 2026-09-05: one table per stage.  P0-M's starts equal to P0's so
+    # nothing served moved on the day of the split; the store fits its
+    # scope on its own seats from here.
+    assert kernel.EFFECTIVE_EDGE_STAGES == frozenset({"P0"})
+    assert kernel.EFFECTIVE_EDGE_P0M_STAGES == frozenset({"P0-M"})
+    assert kernel.EFFECTIVE_EDGE_P0M_LAMBDA == kernel.EFFECTIVE_EDGE_LAMBDA
+    assert "各阶段各自一张 λ 表" in clause
     assert kernel.EFFECTIVE_EDGE_LAMBDA == (
         (0.50, 0.14),
         (0.70, 0.60),

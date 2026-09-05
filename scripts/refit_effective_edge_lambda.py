@@ -54,7 +54,7 @@ def main() -> int:
         # other.
         receipts = []
         blind = False
-        for scope in ("P0", "P1"):
+        for scope in ("P0", "P0-M", "P1"):
             fit = fit_lambda_table(
                 conn, window_days=args.window_days, stage_scope=scope
             )
