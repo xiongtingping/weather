@@ -4,7 +4,7 @@
   "production_route_policy": {
     "formal_provider_id": "global_noaa_awc_relay",
     "formal_source_lane": "awc",
-    "all_45_station_routes_required": true,
+    "every_listed_station_route_required": true,
     "allows_cross_source_fallback": false,
     "amsc_role": "retired_history_only"
   },
@@ -235,7 +235,9 @@
     "LEMD": "global_noaa_awc_relay",
     "LFPB": "global_noaa_awc_relay",
     "LIMC": "global_noaa_awc_relay",
+    "LLBG": "global_noaa_awc_relay",
     "LTAC": "global_noaa_awc_relay",
+    "LTFM": "global_noaa_awc_relay",
     "MMMX": "global_noaa_awc_relay",
     "MPMG": "global_noaa_awc_relay",
     "NZWN": "global_noaa_awc_relay",
@@ -248,6 +250,7 @@
     "RPLL": "global_noaa_awc_relay",
     "SAEZ": "global_noaa_awc_relay",
     "SBGR": "global_noaa_awc_relay",
+    "UUWW": "global_noaa_awc_relay",
     "VILK": "global_noaa_awc_relay",
     "WMKK": "global_noaa_awc_relay",
     "WSSS": "global_noaa_awc_relay",

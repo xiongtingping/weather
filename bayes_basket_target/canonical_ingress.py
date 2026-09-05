@@ -52,7 +52,11 @@ from .asos_substitute_observation_contract import (
     CanonicalSubstituteObservationContract,
 )
 from .band_reliability_store import load_band_table
-from .center_width_store import load_center_width, load_station_width
+from .center_width_store import (
+    load_center_width,
+    load_center_width_floor,
+    load_station_width,
+)
 from .fleet_regime_shift import load_regime_shift
 from .contracts import (
     MAX_REPORT_TRANSMISSION_LEAD_SECONDS,
@@ -366,6 +370,7 @@ def materialize_p1_from_canonical_observation(
         # None until its own forward window admits one, which leaves the
         # posterior byte-identical.
         center_width=load_center_width(conn, stage="P1"),
+        center_width_floor_rungs=load_center_width_floor(conn, stage="P1"),
         station_width=load_station_width(conn, stage="P1"),
         # The unfitted half of the same axis: how far the fleet settled from
         # what P1 served on the most recent day whose truth was already

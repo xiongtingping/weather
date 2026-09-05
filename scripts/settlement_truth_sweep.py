@@ -64,6 +64,7 @@ from bayes_basket_target.contracts import ContractError  # noqa: E402
 from bayes_basket_target.settlement_truth import (  # noqa: E402
     blocker_class,
     materialize_settled_station_truth,
+    registry_scope_still_eligible,
 )
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
@@ -92,7 +93,19 @@ REASON_LABELS = {
     "settlement_truth_hourly_revision_ambiguous": "同一整点有两份互不相同的报文",
     "settlement_truth_source_timestamp_order_invalid": "报文的时间戳先后矛盾",
     "settlement_truth_daytime_coverage_insufficient": "白天时段的报文不足以定最高温",
+    "settlement_truth_correction_requires_manual_review": "更正报文等人工裁定",
 }
+# How far back AWC will still answer for.  Past it the endpoint returns 400 for
+# the date, so a missing report is missing for good and no amount of sweeping
+# or backfilling will produce one -- measured 2026-09-02: 08-04 answered with
+# 120 reports, 07-30 answered 400.
+#
+# The page needs this because "the evidence is incomplete" and "the evidence
+# will fill in" are not the same claim.  Every availability blocker used to be
+# reported as the second, which sends a reader to wait for a backfill that
+# cannot happen: the nine 2026-07-30 Asian scopes predate their own AWC capture
+# by a day and have been outside the retention window since late August.
+AWC_RETENTION_DAYS = 30
 
 
 def _now() -> str:
@@ -114,7 +127,7 @@ def _backlog(
     observation for it were present.
     """
 
-    return [
+    candidates = [
         (str(station), str(day))
         for station, day in conn.execute(
             "SELECT DISTINCT r.station_id, r.event_date"
@@ -126,6 +139,18 @@ def _backlog(
             "   AND t.source_lane='AWC' AND t.qc_status='ACCEPTED')"
             " ORDER BY r.event_date, r.station_id",
             (window_start,),
+        )
+    ]
+    # "Was eligible once" is not "is owed a truth row".  The scan above finds
+    # any row that ever said eligible, which keeps asking about a station-day
+    # whose market the fleet has had no source route for ever since -- the
+    # eligible rows stay in the registry, and nothing later contradicts them
+    # because nothing later mentions the scope at all.  The second read costs
+    # about 2.5s over a 112-scope backlog and is indexed on (station,event).
+    return [
+        scope for scope in candidates
+        if registry_scope_still_eligible(
+            conn, station_id=scope[0], event_date=scope[1]
         )
     ]
 
@@ -197,6 +222,18 @@ def sweep(
         outcomes: Counter[str] = Counter()
         refusals: Counter[str] = Counter()
         refusal_class: dict[str, str] = {}
+        # Per reason, how many of its scopes fall inside AWC's retention and
+        # how many are past it.  A count alone cannot say whether waiting is
+        # the right response, and the same reason legitimately holds both:
+        # "no eligible hourly report" is a backfill away on a recent day and
+        # permanent on one AWC no longer answers for.
+        refusal_recoverable: Counter[str] = Counter()
+        refusal_expired: Counter[str] = Counter()
+        retention_start = str(
+            (
+                datetime.now(timezone.utc) - timedelta(days=AWC_RETENTION_DAYS)
+            ).date()
+        )
         examples: dict[str, str] = {}
         committed_days: dict[str, int] = defaultdict(int)
         open_days: dict[str, int] = defaultdict(int)
@@ -233,6 +270,10 @@ def sweep(
                 reason = _reason_of(exc)
                 refusals[reason] += 1
                 refusal_class[reason] = blocker_class(str(exc))
+                if day >= retention_start:
+                    refusal_recoverable[reason] += 1
+                else:
+                    refusal_expired[reason] += 1
                 examples.setdefault(reason, f"{station} {day}")
                 outcomes["refused"] += 1
                 # A refusal is this scope's answer, not the sweep's.  The
@@ -284,10 +325,17 @@ def sweep(
                     "label": REASON_LABELS.get(reason, ""),
                     "count": count,
                     "blocker_class": refusal_class.get(reason, "CONSISTENCY"),
+                    # Split so the page can say which of these a backfill
+                    # could still reach.  Both counts are reported even when
+                    # one is zero: "0 past retention" is the sentence that
+                    # makes "waiting will fix this" true.
+                    "recoverable_count": int(refusal_recoverable.get(reason, 0)),
+                    "expired_count": int(refusal_expired.get(reason, 0)),
                     "example": examples.get(reason, ""),
                 }
                 for reason, count in refusals.most_common()
             ],
+            "awc_retention_start": retention_start,
             "elapsed_seconds": round(time.time() - started, 2),
         }
         # Coverage is read after the writes so the receipt describes the

@@ -1899,7 +1899,19 @@ def collect_truth_materialization(conn: sqlite3.Connection) -> dict[str, Any]:
     elif deferred:
         health, note = "green", f"{deferred} 个站日让给了常驻写入，下一轮再问"
     elif refused:
-        health, note = "green", f"已结算的都已物化；{refused} 个站日被证据本身挡住"
+        # Naming the permanent share keeps this line from reading as a backlog
+        # that is about to clear.  Nine of these predate their own AWC capture
+        # and sit outside the endpoint's thirty-day retention: they are the
+        # answer, not a queue.
+        expired = sum(
+            int(item.get("expired_count") or 0)
+            for item in (sweep.get("refusals") or [])
+            if isinstance(item, dict)
+        )
+        health, note = "green", (
+            f"已结算的都已物化；{refused} 个站日被证据本身挡住"
+            + (f"，其中 {expired} 个源头已过期、补不回来" if expired else "")
+        )
     else:
         health, note = "green", "已结算的站日全部有真值行"
     return {
@@ -9004,14 +9016,31 @@ function materialization(){
     <td class="mono ${c.settling ? "" : "down"}">${c.missing}</td>
     <td class="muted">${c.settling ? "当天还在结算中" : "缺口"}</td>
   </tr>`).join("");
-  const why = (T.refusals || []).map(r => `<tr>
+  // Three answers, not two.  "Incomplete" and "will fill in on its own" were
+  // being said as one word, and for the nine 2026-07-30 scopes the second
+  // half is false: their day predates their own AWC capture and AWC stopped
+  // answering for that date in late August, so a reader told to wait for a
+  // backfill waits forever.  The sweep now counts each reason's scopes on
+  // both sides of the retention window and this shows whichever apply.
+  const expiredTotal = (T.refusals || [])
+    .reduce((sum, r) => sum + (r.expired_count || 0), 0);
+  const why = (T.refusals || []).map(r => {
+    const consistency = r.blocker_class !== "AVAILABILITY";
+    const expired = r.expired_count || 0;
+    const live = consistency ? 0 : (r.recoverable_count || 0);
+    const pills = [];
+    if (consistency) pills.push(`<span class="pill red">证据矛盾</span>`);
+    if (live) pills.push(`<span class="pill amber">证据不全${
+      expired ? " " + live : ""}</span>`);
+    if (expired) pills.push(`<span class="pill">源头已过期${
+      live || consistency ? " " + expired : ""}</span>`);
+    return `<tr>
     <td>${h(r.label || r.reason)}</td>
     <td class="mono">${r.count}</td>
-    <td><span class="pill ${r.blocker_class === "AVAILABILITY" ?
-      "amber" : "red"}">${r.blocker_class === "AVAILABILITY" ?
-      "证据不全" : "证据矛盾"}</span></td>
+    <td>${pills.join(" ")}</td>
     <td class="mono muted">${h(r.example)}</td>
-  </tr>`).join("");
+  </tr>`;
+  }).join("");
   return `<h2>真值物化健康度</h2>
   <p class="sub">观测进来只是第一步：还要把一整天的报文收敛成"这个站这天的最高温"
   一行，才有东西给预报打分。这一节看的是这一步有没有落下。</p>
@@ -9042,7 +9071,11 @@ function materialization(){
       <th>卡在什么上</th><th>站日数</th><th>类型</th><th>例</th>
     </tr></thead><tbody>${why}</tbody></table>
     <div class="muted" style="margin-top:8px">「证据不全」会随补采自愈；
-      「证据矛盾」要人看一眼，不会自己好。</div>
+      「证据矛盾」要人看一眼，不会自己好；${expiredTotal
+        ? `「源头已过期」是 AWC 已经不再回答那一天了（保留窗 30 天，${
+          h(s.awc_retention_start || "")} 之前的日子问不到），
+          ${expiredTotal} 个站日既补不上也不用再等。`
+        : "「源头已过期」没有，被挡住的日子都还在 AWC 的 30 天保留窗内。"}</div>
   </div>` : ""}
   ${rows ? `<table style="margin-top:12px"><thead><tr>
     <th>事件日</th><th>在册站数</th><th>已物化</th><th>缺口</th><th>状态</th>

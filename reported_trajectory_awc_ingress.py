@@ -15,6 +15,9 @@ from datetime import datetime, timezone
 from typing import Any, Mapping
 from zoneinfo import ZoneInfo
 
+from bayes_basket_target.contracts import (
+    MAX_REPORT_TRANSMISSION_LEAD_SECONDS,
+)
 from bayes_basket_target.source_policy import source_policy_reason
 from weather_basket_yes_runtime import identity, parse_metar_temperature
 from reported_trajectory_sources import infer_ddhhmm_time, utc_now
@@ -156,6 +159,24 @@ class ReportedTrajectoryAwcIngress:
             parsed.minute,
         ):
             raise ValueError("source_report_time_header_mismatch")
+        # A report cannot state a time this poll has not reached.  The bare
+        # METAR header carries only DDHHMM, so a raw-format read of a day deep
+        # in AWC's retention infers the month from the reading clock and lands
+        # a month ahead: a 2026-08-04 backfill wrote 171 observations stamped
+        # 09-03 through 09-05 on 2026-09-02, and they reached the station-day
+        # bounds and the canonical bounds before anyone looked.
+        #
+        # Nothing downstream would have called those rows wrong -- they are
+        # well-formed reports for a day that has not happened -- so the check
+        # belongs at the only place that knows when the bytes were read.  The
+        # allowance is the transmission lead the rest of the lane already
+        # admits: a station may stamp the hour and go on the wire seconds
+        # early.  Measured 2026-09-02 over all 79,876 archived observations,
+        # the largest genuine lead is 38.8s (SBGR and MPMG on the hour).
+        if (
+            valid_at - _parse_utc(fetch_completed_at)
+        ).total_seconds() > MAX_REPORT_TRANSMISSION_LEAD_SECONDS:
+            raise ValueError("source_report_time_after_fetch")
         expected_lane = str(formal_station_lanes.get(parsed.station_id) or "")
         if expected_lane != "awc":
             raise ValueError("station_authority_lane_mismatch")

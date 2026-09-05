@@ -26,6 +26,8 @@ from pathlib import Path
 import sqlite3
 import sys
 import time
+from datetime import datetime, timezone
+from typing import Mapping, Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -37,8 +39,10 @@ from reported_trajectory_awc_ingress import (  # noqa: E402
 from reported_trajectory_market_registry import load_config  # noqa: E402
 from reported_trajectory_sources import (  # noqa: E402
     fetch_awc_temperature_reports,
+    infer_ddhhmm_time,
     utc_now,
 )
+from weather_basket_yes_runtime import parse_metar_temperature  # noqa: E402
 
 # The endpoint's own per-response ceiling.  Asking for more simply returns the
 # same 400 newest reports, so a larger value would only misreport coverage.
@@ -56,6 +60,59 @@ def _active_awc_stations(conn: sqlite3.Connection) -> list[str]:
                 ORDER BY station_id"""
         )
     ]
+
+
+
+def _anchor_instant(date_anchor: str) -> datetime:
+    """The ``YYYYMMDD_HHMM`` anchor as an instant, for dating its reports."""
+
+    return datetime.strptime(
+        str(date_anchor).strip(), "%Y%m%d_%H%M"
+    ).replace(tzinfo=timezone.utc)
+
+
+def _date_reports_against_anchor(
+    reports: Sequence[Mapping[str, object]], anchor: datetime
+) -> list[dict[str, object]]:
+    """Stamp each report's own instant, read against the anchor not the clock.
+
+    A raw-format METAR header carries only ``DDHHMM``, so the ingress infers
+    the month from when the bytes were read.  That is right for the live lane
+    and wrong for every anchored read: fetching 2026-08-04 on 2026-09-02 makes
+    "04" the nearest 04, which is 2026-09-04.  Measured on 2026-09-02, that
+    wrote 171 observations dated three to five days into the future across
+    LEMD, NZWN and ZSQD, and they reached the station-day and canonical bounds
+    before the mistake was visible anywhere.
+
+    The anchor is the window's own end instant, so it is the honest reference:
+    the reports this request returned are the twenty-four hours before it.  A
+    report this cannot parse is passed through untouched -- the ingress rejects
+    it on its own terms rather than on a guess made here.
+    """
+
+    dated: list[dict[str, object]] = []
+    for report in reports:
+        row = dict(report)
+        if not row.get("source_report_time"):
+            try:
+                parsed = parse_metar_temperature(
+                    str(row.get("raw_text") or ""),
+                    expected_station=str(row.get("station_id") or ""),
+                )
+                row["source_report_time"] = (
+                    infer_ddhhmm_time(
+                        day=parsed.day,
+                        hour=parsed.hour,
+                        minute=parsed.minute,
+                        reference=anchor,
+                    )
+                    .isoformat(timespec="milliseconds")
+                    .replace("+00:00", "Z")
+                )
+            except Exception:
+                pass
+        dated.append(row)
+    return dated
 
 
 def main() -> int:
@@ -104,6 +161,15 @@ def main() -> int:
                 )
             )
             poll["source_lane"] = "awc"
+            if args.date_anchor:
+                poll["reports"] = _date_reports_against_anchor(
+                    [
+                        report
+                        for report in (poll.get("reports") or [])
+                        if isinstance(report, Mapping)
+                    ],
+                    _anchor_instant(args.date_anchor),
+                )
             response_completed_at = utc_now()
             report_count = len(poll.get("reports") or [])
             if args.dry_run:

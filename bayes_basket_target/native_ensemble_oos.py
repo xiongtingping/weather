@@ -25,6 +25,7 @@ from .center_width_store import (
     CENTER_WIDTH_METHOD_TAG,
     STATION_WIDTH_METHOD_TAG,
     load_center_width,
+    load_center_width_floor,
     load_station_width,
 )
 from .contracts import ContractError, content_sha256
@@ -3433,6 +3434,14 @@ def build_native_ensemble_oos(
     center_width_sha = (
         active_center_width[2] if active_center_width is not None else None
     )
+    # The floor those scalars were fitted under.  It rides on the same row
+    # and therefore on the same sha, so the holdout scores the pair under the
+    # floor serving will apply and the artifact needs no second pin.
+    center_width_floor = (
+        load_center_width_floor(conn, stage="P0")
+        if active_center_width is not None
+        else 0.0
+    )
     # The per-station width scale, under the same contract as the stage
     # scalars: whatever is active now is what this build's holdout scores,
     # and its sha rides into every candidate.  This build is one station's,
@@ -4061,7 +4070,9 @@ def build_native_ensemble_oos(
                 # scored.  ``None`` is the ordinary case until the layer has
                 # fitted something its own forward window admits.
                 if skip != "center_width" and (
-                    center_width is not None or station_width_scale != 1.0
+                    center_width is not None
+                    or station_width_scale != 1.0
+                    or center_width_floor
                 ):
                     shaped, _cw_receipt = apply_center_width_calibration(
                         shaped,
@@ -4072,6 +4083,7 @@ def build_native_ensemble_oos(
                             center_width[1] if center_width else 1.0
                         ),
                         station_width_scale=station_width_scale,
+                        sigma_floor_rungs=center_width_floor,
                         ordered_keys=grid,
                         key_centers_c=[
                             float(int(key)) for key in grid

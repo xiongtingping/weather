@@ -73,7 +73,9 @@ _SEASON_ANCHOR_MONTH: dict[str, int | None] = {
     "LEMD": 7,  # amplitude 23.8C
     "LFPB": 7,  # amplitude 18.2C
     "LIMC": 7,  # amplitude 20.9C
+    "LLBG": 8,  # amplitude 14.9C
     "LTAC": 8,  # amplitude 25.5C
+    "LTFM": 7,  # amplitude 18.7C
     "MMMX": 4,  # amplitude 5.6C
     "MPMG": 3,  # amplitude 3.6C
     "NZWN": 2,  # amplitude 7.5C
@@ -86,6 +88,7 @@ _SEASON_ANCHOR_MONTH: dict[str, int | None] = {
     "RPLL": 4,  # amplitude 4.2C
     "SAEZ": 1,  # amplitude 15.1C
     "SBGR": 2,  # amplitude 5.3C
+    "UUWW": 7,  # amplitude 27.5C
     "VILK": 5,  # amplitude 17.8C
     "WMKK": None,  # amplitude 1.6C
     "WSSS": None,  # amplitude 1.4C

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -121,6 +122,57 @@ def _hourly_observation(
             "2026-07-28T03:05:00Z", "poll-1", correction,
         ),
     )
+
+
+def test_a_fully_reviewed_day_settles_at_the_cadence_a_station_actually_has() -> None:
+    """The two cap checks count different sets, so sixteen stranded a day the
+    standing policy had already cleared in full.
+
+    ``auto_clear_station_day_corrections`` counts corrections still lacking a
+    receipt, so it cleared all of KMIA's without ever reaching the cap; then
+    ``assert_station_day_corrections_resolved`` counted every correction in the
+    window, reviewed or not, and refused the day anyway.  Measured 2026-09-02,
+    KMIA had issued a COR for nearly every hourly report since 08-29 -- 23 on
+    08-30, 31 on 08-31, 17 on 09-01, none of them touching the temperature --
+    and 08-30 and 08-31 were unsettleable no matter what anyone reviewed.
+    """
+
+    conn = _db()
+    try:
+        # Twenty-four half-hourly corrections inside the settlement window and
+        # ahead of the as-of instant: past the old cap of sixteen, and an
+        # ordinary day at a station that corrects what it publishes.
+        start = datetime(2026, 7, 27, 15, 20, tzinfo=timezone.utc)
+        for index in range(24):
+            _observation(
+                conn,
+                observation_id=f"obs-cor-{index:02d}",
+                valid_at=(
+                    (start + timedelta(minutes=30 * index))
+                    .isoformat()
+                    .replace("+00:00", "Z")
+                ),
+                correction=1,
+            )
+
+        cleared = auto_clear_station_day_corrections(
+            conn,
+            source_lane="awc",
+            station_id="RKPK",
+            event_date="2026-07-28",
+            window_start_utc=START,
+            window_end_utc=END,
+            as_of_utc=AS_OF,
+        )
+
+        # Every off-hour correction is reference-only, so none of them can move
+        # the day's maximum -- the cap was never what kept them honest.
+        assert cleared["cleared_count"] == 24
+        state = _state(conn)
+        assert state["correction_count"] == 24
+        assert len(state["review_ids"]) == 24
+    finally:
+        conn.close()
 
 
 def test_on_hour_correction_clears_only_under_the_replacement_contract() -> None:

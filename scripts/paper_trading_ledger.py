@@ -2021,8 +2021,11 @@ SELECTION_RULE_SHA256 = content_sha256({
         else "off:judge_reads_envelope" if PAPER_LEDGER_CEILING
         else "off"
     ),
+    # The lane name carries the width floor unconditionally.  A book priced
+    # on floored posteriors is not the book priced on unfloored ones, and
+    # two books that disagree about that must not share a fingerprint.
     "center_width": (
-        "replay_table_oos_by_event_date:"
+        "replay_table_oos_by_event_date_floored_v2:"
         + ",".join(sorted(PAPER_LEDGER_CENTER_WIDTH_STAGES))
         if PAPER_LEDGER_CENTER_WIDTH and REPLAY_LAYERS_APPLIED
         else "off:judge_reads_envelope" if PAPER_LEDGER_CENTER_WIDTH
@@ -5133,6 +5136,11 @@ def _center_width_corrected(
         regime_delta_c=regime_delta,
         delta_c=float(entry["delta_c"]),
         width_lambda=float(entry["width_lambda"]),
+        # The floor the day's scalars were fitted under, carried on the same
+        # replay entry.  Production serves the pair and the floor together,
+        # so the ledger applies them together or it is pricing a rule
+        # production does not run.
+        sigma_floor_rungs=float(entry.get("sigma_floor_rungs") or 0.0),
         ordered_keys=keys,
         key_centers_c=centers,
         excluded_buckets=() if excluded == "NONE" else tuple(excluded.split(",")),

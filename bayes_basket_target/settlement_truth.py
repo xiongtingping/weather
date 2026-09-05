@@ -146,6 +146,48 @@ def _current_canonical_awc_truths(
     return facts
 
 
+def registry_scope_still_eligible(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+) -> bool:
+    """Whether the registry's *latest* word on this scope still admits it.
+
+    Backlog discovery asks whether any registry row ever called a station-day
+    eligible, which is not the same question as whether it is one.  A market
+    the fleet does not have an official source route for is written ineligible
+    on every refresh, and a scope that was eligible for two hours and
+    ineligible ever since is owed nothing.
+
+    Measured 2026-09-02: LLBG, LTFM and UUWW were admitted at 03:51Z on 08-31
+    and blocked again at 05:49Z as ``official_source_route_unmapped`` -- they
+    are not in the coordinate registry, so nothing captures them -- and those
+    two hours left six station-days permanently on the board as gaps a
+    backfill would fix.  It would not: their capture was never onboarded.  The
+    same probe over the whole forty-five-day backlog drops exactly those six
+    and nothing else.
+
+    This is deliberately not folded into ``_registry_scope``.  That contract
+    decides what a truth row may be written *from* and every archived truth
+    row was written under it; this only decides who is worth asking.
+    """
+
+    station = str(station_id or "").strip().upper()
+    day = str(event_date or "").strip()
+    if not station or not day:
+        return False
+    row = conn.execute(
+        "SELECT source_eligible,MAX(refreshed_at) "
+        "FROM basket_target_market_registry "
+        "WHERE station_id=? AND event_date=?",
+        (station, day),
+    ).fetchone()
+    if row is None or row[1] is None:
+        return False
+    return int(row[0] or 0) == 1
+
+
 def _registry_scope(
     conn: sqlite3.Connection,
     *,
@@ -282,7 +324,9 @@ def materialize_settled_station_truth(
     if len(rows) > MAX_OBSERVATIONS_PER_SCOPE:
         raise ContractError("settlement_truth_observation_scope_cap_exceeded")
     hourly: list[dict[str, Any]] = []
-    hourly_by_valid_at: dict[str, dict[str, Any]] = {}
+    # Position in ``hourly`` rather than the item, so a later report can
+    # replace an earlier one in place and keep the day in publication order.
+    hourly_by_valid_at: dict[str, int] = {}
     for row in rows:
         report_type = str(row[1] or "").strip().upper()
         if report_type not in {"METAR", "SPECI"}:
@@ -385,8 +429,9 @@ def materialize_settled_station_truth(
             # after, so one field name would mean two different things.  The
             # report's bytes are pinned by ``raw_sha256`` and state both.
             item["temperature_resolution_c"] = resolution_c
-        previous = hourly_by_valid_at.get(item["valid_at_utc"])
-        if previous is not None:
+        previous_index = hourly_by_valid_at.get(item["valid_at_utc"])
+        if previous_index is not None:
+            previous = hourly[previous_index]
             # The settled fact is the temperature: `official_tmax_c` below is
             # `max(reported_temperature_c)`, and `raw_sha256` only ever reaches
             # the audit payload.  Two reports for one valid time that agree on
@@ -402,17 +447,35 @@ def materialize_settled_station_truth(
             # 46-to-4 station collapse -- while exactly one scope disagreed on
             # temperature.
             #
-            # A genuine disagreement still fails closed: the truth is not
-            # guessable when two reports claim different temperatures.
+            # A disagreement is resolved by publication order: the later
+            # report supersedes the earlier one (operator ruling 2026-09-02).
+            # This lane already says that for a report that marks itself COR
+            # -- ``CLEAR_WITH_REPLACEMENT`` -- and AWC also re-issues a report
+            # under its own valid time with no marker at all, which is the
+            # same act stated less clearly.  Refusing those stranded the day
+            # instead of settling it, and the refusal did not preserve any
+            # truth: it discarded both readings.
+            #
+            # Measured over the whole 48-day archive on 2026-09-02: nine
+            # disagreeing pairs (VILK 5, MMMX 2, RPLL 1, SAEZ 1), every one of
+            # them exactly 1C apart, the later report warmer four times and
+            # cooler five.  Publication order therefore carries no directional
+            # bias into the ledger -- it is not a rule that quietly buys or
+            # sells.  Ordering is by ``canonical_committed_at`` (the SELECT
+            # above sorts on it), which is when this archive accepted the
+            # bytes, not a claim the report makes about itself.
+            #
+            # The audit payload keeps the winner only.  A superseded reading
+            # is still pinned by its own row in the canonical archive, and
+            # naming it here would put two temperatures for one instant into
+            # the evidence a truth revision is hashed over.
             if (
                 previous["reported_temperature_c"]
-                == item["reported_temperature_c"]
+                != item["reported_temperature_c"]
             ):
-                continue
-            raise ContractError(
-                "settlement_truth_hourly_revision_ambiguous"
-            )
-        hourly_by_valid_at[item["valid_at_utc"]] = item
+                hourly[previous_index] = item
+            continue
+        hourly_by_valid_at[item["valid_at_utc"]] = len(hourly)
         hourly.append(item)
     if not hourly or any(not item["observation_id"] for item in hourly):
         raise ContractError("settlement_truth_hourly_observation_missing")
@@ -665,6 +728,23 @@ AVAILABILITY_BLOCKER_REASONS = frozenset({
     "settlement_truth_hourly_observation_missing",
     "settlement_truth_canonical_ssot_fact_missing",
     "settlement_truth_scope_missing",
+    # A day whose warm hours hold fewer than three reports is the same fault
+    # one step further in: the reports that would decide the maximum are
+    # absent, not contradictory.  Nothing about it disagrees with anything, so
+    # walking past it leaves nothing unresolved behind.  It was classed as a
+    # contradiction, which put five station-days on the board under "someone
+    # has to look at this, it will not fix itself" -- three of them the new
+    # stations nobody was capturing yet, whose whole afternoon is simply
+    # missing -- and held the batch cursor on scopes no review could move.
+    "settlement_truth_daytime_coverage_insufficient",
+    # The registry snapshot for this station-day names a lane other than AWC,
+    # which means this writer does not own the day at all rather than that the
+    # day contradicts itself.  The nine 2026-07-30 Asian scopes are the case:
+    # AWC capture for them begins 2026-07-31, so their only snapshot is the
+    # retired AMSC one and the AWC feed has nothing to offer either -- the
+    # endpoint answers 400 for that date now.  Refusing is right; stopping the
+    # batch over it is not.
+    "settlement_truth_formal_source_lane_must_be_awc",
 })
 
 
@@ -858,6 +938,7 @@ __all__ = [
     "MAX_TRUTH_SCOPES",
     "SCHEMA",
     "blocker_class",
+    "registry_scope_still_eligible",
     "materialize_settled_station_truth",
     "materialize_settled_training_truths",
 ]

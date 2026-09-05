@@ -5,12 +5,32 @@
   "armed_by": null,
   "armed_at_utc": null,
   "station_allowlist": [],
-  "allowlist_note": "Default deny. Operator ruling 2026-08-31: a station is not live until it has earned it. Three states, derived on every read and never enumerated -- LIVE (judged, survived, not barred), PROBATION (fewer than minimum_settlements_to_qualify settlements, so nothing can be said about it yet), BARRED (judged and found wanting; capped at fifteen). Probation is deliberately not the bar: a station with two settlements is not bad, and putting it on the bar list would also spend one of the fifteen capped places. The threshold is the same one the automatic layer needs before it may judge a station at all -- admitting on less evidence than that would admit something nothing could ever bar for cause. Probation costs nothing to sit in: the paper ledger keeps seating and settling these stations, which is how they accumulate the evidence that graduates them. Membership stays derived rather than listed, for the reasons of the 2026-08-30 ruling that did not change: the fleet only grows, the eight-station batch went stale in two days, and any frozen enumeration is wrong by the time it is read. station_allowlist is read only in scope=explicit.",
-  "updated_at_utc": "2026-08-31T13:29:04Z",
+  "allowlist_note": "Default deny. Operator ruling 2026-08-31: a station is not live until it has earned it. Three states, derived on every read and never enumerated -- LIVE (judged, survived, not barred), PROBATION (fewer than minimum_settlements_to_qualify settlements, so nothing can be said about it yet), BARRED (judged and found wanting; uncapped since 2026-09-02). Probation is deliberately not the bar: a station with two settlements is not bad, and the bar is a verdict. The threshold is the same one the automatic layer needs before it may judge a station at all -- admitting on less evidence than that would admit something nothing could ever bar for cause. Probation costs nothing to sit in: the paper ledger keeps seating and settling these stations, which is how they accumulate the evidence that graduates them. Membership stays derived rather than listed, for the reasons of the 2026-08-30 ruling that did not change: the fleet only grows, the eight-station batch went stale in two days, and any frozen enumeration is wrong by the time it is read. station_allowlist is read only in scope=explicit. Operator switches (2026-09-02): the three states are all clickable on the board and written through scripts/live_control_server.py, one station per click, every move audited. station_probation_waivers admits a station the settlement count has not graduated yet; station_probation_holds keeps a qualified station out of the batch without calling it bad; the bar itself lives in live_station_exclusions_v1.json. The three are mutually exclusive at the write boundary, and all three count as operator rulings, so the automatic exclusion layer never touches a station carrying one.",
+  "updated_at_utc": "2026-09-04T16:03:34Z",
   "allowlist_basis_utc": "2026-08-30",
   "station_scope": "qualified_and_not_barred",
   "minimum_settlements_to_qualify": 5,
   "station_probation_waivers": [
-    "LIMC"
-  ]
+    "EDDM",
+    "EFHK",
+    "KATL",
+    "KHOU",
+    "KLGA",
+    "KMIA",
+    "KORD",
+    "KSFO",
+    "LIMC",
+    "OEJN",
+    "SAEZ",
+    "VILK",
+    "ZGGG",
+    "ZGSZ",
+    "ZSQD",
+    "ZUUU"
+  ],
+  "station_probation_holds": [
+    "MPMG",
+    "NZWN"
+  ],
+  "station_probation_holds_note": "Qualified stations the operator is holding out of the live batch by hand. Probation was arithmetic only until 2026-09-02, so an operator who wanted a station recorded but not traded had the bar as the only tool -- and the bar is a verdict that reads as 'found wanting'. A hold says the opposite: nothing is wrong with it, it is not trading yet. The paper ledger keeps seating and settling a held station, which is how the hold ends."
 }

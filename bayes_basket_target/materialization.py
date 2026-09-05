@@ -696,6 +696,7 @@ def _posterior(
         Sequence[tuple[tuple[float, float], float]], str
     ] | None = None,
     center_width: tuple[float, float, str] | None = None,
+    center_width_floor_rungs: float = 0.0,
     station_width: tuple[Mapping[str, float], str] | None = None,
     fleet_regime: Mapping[str, Any] | None = None,
     ceiling: Mapping[str, Any] | None = None,
@@ -750,7 +751,12 @@ def _posterior(
     # than read from an activated table: it is a reading of yesterday, not a
     # fitted artifact, and it has no version for a pointer to name.
     regime_delta = float((fleet_regime or {}).get("regime_delta_c") or 0.0)
-    if center_width is not None or station_scale != 1.0 or regime_delta != 0.0:
+    if (
+        center_width is not None
+        or station_scale != 1.0
+        or regime_delta != 0.0
+        or center_width_floor_rungs
+    ):
         shift_c, width_lambda, center_width_sha = (
             center_width
             if center_width is not None
@@ -779,6 +785,9 @@ def _posterior(
                 width_lambda=width_lambda,
                 station_width_scale=station_scale,
                 regime_delta_c=regime_delta,
+                # The floor the pinned pair was fitted under, carried on the
+                # same row and therefore on the same sha.
+                sigma_floor_rungs=center_width_floor_rungs,
                 ordered_keys=ordered_keys,
                 key_centers_c=key_centers_c,
                 excluded_buckets=sorted(excluded),
@@ -944,6 +953,7 @@ def materialize_p0m_observed(
         Sequence[tuple[tuple[float, float], float]], str
     ] | None = None,
     center_width: tuple[float, float, str] | None = None,
+    center_width_floor_rungs: float = 0.0,
     center_width_taf_cells: Mapping[str, Sequence[float]] | None = None,
     fleet_regime: Mapping[str, Any] | None = None,
     station_width: tuple[Mapping[str, float], str] | None = None,
@@ -1064,6 +1074,7 @@ def materialize_p0m_observed(
         bridge_sha256=bridge_sha256,
         band_table=band_table,
         center_width=center_width,
+        center_width_floor_rungs=center_width_floor_rungs,
         station_width=station_width,
         fleet_regime=fleet_regime,
     )
@@ -1087,6 +1098,7 @@ def materialize_p0m(
         Sequence[tuple[tuple[float, float], float]], str
     ] | None = None,
     center_width: tuple[float, float, str] | None = None,
+    center_width_floor_rungs: float = 0.0,
     center_width_taf_cells: Mapping[str, Sequence[float]] | None = None,
     fleet_regime: Mapping[str, Any] | None = None,
     station_width: tuple[Mapping[str, float], str] | None = None,
@@ -1235,6 +1247,7 @@ def materialize_p0m(
         bridge_sha256=bridge_sha256,
         band_table=band_table,
         center_width=center_width,
+        center_width_floor_rungs=center_width_floor_rungs,
         station_width=station_width,
         fleet_regime=fleet_regime,
     )
@@ -1310,6 +1323,7 @@ def materialize_p1(
         Sequence[tuple[tuple[float, float], float]], str
     ] | None = None,
     center_width: tuple[float, float, str] | None = None,
+    center_width_floor_rungs: float = 0.0,
     station_width: tuple[Mapping[str, float], str] | None = None,
     fleet_regime: Mapping[str, Any] | None = None,
     # What the four layers would have served, carried beside what was served.
@@ -1607,6 +1621,7 @@ def materialize_p1(
         bridge_sha256=bridge_sha256,
         band_table=band_table,
         center_width=center_width,
+        center_width_floor_rungs=center_width_floor_rungs,
         station_width=station_width,
         fleet_regime=fleet_regime,
         # The proof already decided both of the ceiling's preconditions: which

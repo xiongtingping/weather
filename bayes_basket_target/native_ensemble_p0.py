@@ -31,6 +31,7 @@ from .center_width_store import (
     CENTER_WIDTH_METHOD_TAG,
     STATION_WIDTH_METHOD_TAG,
     load_center_width,
+    load_center_width_floor,
     load_station_width,
     pinned_center_width_sha,
     pinned_station_width_sha,
@@ -2640,6 +2641,7 @@ def compile_native_ensemble_p0(
     # loader rather than serving an approximation of it.
     center_width_receipt = None
     scalars = None
+    sigma_floor_rungs = 0.0
     pinned_center_width = None
     if CENTER_WIDTH_METHOD_TAG in artifact_combination_method:
         pinned_center_width = pinned_center_width_sha(
@@ -2647,6 +2649,12 @@ def compile_native_ensemble_p0(
         )
         if pinned_center_width is not None:
             scalars = load_center_width(
+                conn, stage="P0", table_sha256=pinned_center_width
+            )
+            # The floor the pinned scalars were fitted under, read from the
+            # same row.  A pair served without the floor it was chosen under
+            # is a different arithmetic wearing the same two numbers.
+            sigma_floor_rungs = load_center_width_floor(
                 conn, stage="P0", table_sha256=pinned_center_width
             )
     # The per-station width scale, exactly the version the artifact's
@@ -2682,7 +2690,12 @@ def compile_native_ensemble_p0(
         as_of_utc=decision_at_utc,
     )
     regime_delta = float(regime.get("regime_delta_c") or 0.0)
-    if scalars is not None or station_scale != 1.0 or regime_delta != 0.0:
+    if (
+        scalars is not None
+        or station_scale != 1.0
+        or regime_delta != 0.0
+        or sigma_floor_rungs
+    ):
         probability, center_width_receipt = (
             apply_center_width_calibration(
                 probability,
@@ -2690,6 +2703,7 @@ def compile_native_ensemble_p0(
                 width_lambda=scalars[1] if scalars else 1.0,
                 station_width_scale=station_scale,
                 regime_delta_c=regime_delta,
+                sigma_floor_rungs=sigma_floor_rungs,
                 ordered_keys=ordered,
                 key_centers_c=_bucket_centers(
                     intervals_raw, ordered

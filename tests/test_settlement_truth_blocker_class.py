@@ -27,6 +27,16 @@ from bayes_basket_target.settlement_truth import (
         "ContractError:settlement_truth_hourly_observation_missing",
         "ContractError:settlement_truth_canonical_ssot_fact_missing",
         "ContractError:settlement_truth_scope_missing",
+        # The warm hours are absent, not disputed.  Classed as a
+        # contradiction, five station-days sat on the board under "someone has
+        # to look at this" -- three of them stations nobody was capturing yet,
+        # whose whole afternoon is simply missing.
+        "ContractError:settlement_truth_daytime_coverage_insufficient"
+        ":warm_window_reports=0",
+        # The registry snapshot names a lane this writer does not own, so
+        # there is nothing here for it to disbelieve.  The nine 2026-07-30
+        # Asian scopes predate their own AWC capture by a day.
+        "ContractError:settlement_truth_formal_source_lane_must_be_awc",
     ],
 )
 def test_an_absent_source_is_an_availability_blocker(reason: str) -> None:

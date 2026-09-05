@@ -130,6 +130,59 @@ def test_awc_ingress_writes_truth_and_running_max_without_any_execution_surface(
         conn.close()
 
 
+def test_a_report_dated_past_the_read_is_refused_rather_than_archived() -> None:
+    """A bare METAR header dates itself from the reading clock, so a deep
+    historical read lands a month ahead.
+
+    Measured 2026-09-02: an anchored backfill of 2026-08-04 wrote 171
+    observations stamped 09-03 to 09-05 for LEMD, NZWN and ZSQD, and they
+    reached the station-day bounds and the canonical bounds before anyone
+    noticed.  Every one of them is a well-formed report -- nothing downstream
+    had grounds to reject it -- so the check has to live where the reading
+    instant is known.
+    """
+
+    conn = _conn()
+    try:
+        ingress = ReportedTrajectoryAwcIngress(conn, config=load_config())
+        result = ingress.process_source_poll(
+            # 20:02Z on the 20th, read on the 18th: two days in the future.
+            _poll("METAR ZBAA 202002Z 18004MPS CAVOK 31/20 Q1000"),
+            request_started_at="2026-07-18T02:00:00Z",
+            response_completed_at="2026-07-18T02:00:00.100Z",
+        )
+
+        assert result["new_observation_count"] == 0
+        assert result["nonformal_or_malformed_report_count"] == 1
+        assert conn.execute(
+            "SELECT COUNT(*) FROM reported_trajectory_observations"
+        ).fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM reported_trajectory_station_day_bounds"
+        ).fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def test_a_station_stamping_the_hour_seconds_early_is_still_admitted() -> None:
+    # The guard above must not refuse the ordinary transmission lead.  SBGR and
+    # MPMG stamp the hour and go on the wire up to 38.8s before it; measured
+    # 2026-09-02 across all 79,876 archived observations, that is the largest
+    # genuine lead in the lane.
+    conn = _conn()
+    try:
+        ingress = ReportedTrajectoryAwcIngress(conn, config=load_config())
+        result = ingress.process_source_poll(
+            _poll("METAR ZBAA 180200Z 18004MPS CAVOK 31/20 Q1000"),
+            request_started_at="2026-07-18T01:59:00Z",
+            response_completed_at="2026-07-18T01:59:21.200Z",
+        )
+
+        assert result["new_observation_count"] == 1
+    finally:
+        conn.close()
+
+
 def test_awc_correction_halts_station_day_without_creating_a_decision_or_order() -> None:
     conn = _conn()
     try:

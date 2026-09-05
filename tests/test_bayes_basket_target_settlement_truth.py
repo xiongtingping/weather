@@ -885,7 +885,50 @@ def test_nonhourly_corrected_speci_blocks_entire_station_day() -> None:
     ).fetchone()[0] == 0
 
 
-def test_conflicting_hourly_revision_is_zero_write() -> None:
+def _settled_observation_ids(target: sqlite3.Connection) -> list[str]:
+    """The observation ids the latest truth revision was computed from."""
+
+    row = target.execute(
+        "SELECT observation_ids_json FROM calibration_station_daily_high_truth"
+        " ORDER BY revision_no DESC LIMIT 1"
+    ).fetchone()
+    evidence = json.loads(row[0])
+    return [
+        str(item["observation_id"])
+        for item in evidence["observations"]
+    ]
+
+
+def _warm_afternoon(source: sqlite3.Connection) -> None:
+    """Two more warm-window reports, so the day clears the coverage gate."""
+
+    _observation(
+        source,
+        observation_id="c-warm",
+        valid_at="2026-07-28T04:00:00Z",
+        temperature_c=30,
+        committed_at="2026-07-28T04:05:00Z",
+    )
+    _observation(
+        source,
+        observation_id="d-warm",
+        valid_at="2026-07-28T05:00:00Z",
+        temperature_c=31,
+        committed_at="2026-07-28T05:05:00Z",
+    )
+
+
+def test_a_later_report_supersedes_the_one_it_re_issues() -> None:
+    """Operator ruling 2026-09-02: publication order decides a disagreement.
+
+    AWC re-issues a report under its own valid time with no COR marker, which
+    is the same act ``CLEAR_WITH_REPLACEMENT`` already recognises when the
+    publisher does mark it.  Refusing the pair stranded the station-day and
+    preserved no truth -- it discarded both readings.  Five station-days were
+    held this way on 2026-09-02 (MMMX 08-13 and 08-16, RPLL 08-17, VILK 08-18
+    and 08-30).
+    """
+
     target = _target()
     source = _canonical()
     _observation(
@@ -897,26 +940,104 @@ def test_conflicting_hourly_revision_is_zero_write() -> None:
     )
     _observation(
         source,
-        observation_id="b-conflict",
+        observation_id="b-reissue",
         valid_at="2026-07-28T03:00:00Z",
         temperature_c=35,
         committed_at="2026-07-28T03:06:00Z",
     )
+    _warm_afternoon(source)
 
-    with pytest.raises(
-        ContractError,
-        match="settlement_truth_hourly_revision_ambiguous",
-    ):
-        materialize_settled_station_truth(
-            target,
-            source,
-            station_id="RKPK",
-            event_date="2026-07-28",
-            as_of_utc="2026-07-28T15:00:00Z",
-        )
-    assert target.execute(
-        "SELECT COUNT(*) FROM calibration_station_daily_high_truth"
-    ).fetchone()[0] == 0
+    result = materialize_settled_station_truth(
+        target,
+        source,
+        station_id="RKPK",
+        event_date="2026-07-28",
+        as_of_utc="2026-07-28T15:00:00Z",
+    )
+
+    assert result["wrote"] is True
+    assert result["official_tmax_c"] == 35
+    # The superseded reading is not carried in the audit payload: two
+    # temperatures for one instant in the evidence a revision is hashed over
+    # would be the contradiction this rule exists to resolve.
+    kept = _settled_observation_ids(target)
+    assert "b-reissue" in kept
+    assert "a-first" not in kept
+
+
+def test_the_later_report_wins_even_when_it_is_the_cooler_one() -> None:
+    """Publication order, not the warmer reading.
+
+    Measured over the whole archive on 2026-09-02, the later report was
+    warmer four times and cooler five -- so a rule that quietly took the
+    maximum would be buying on half of them.  Here the re-issue is 3C colder
+    than what it replaces and is still the day's maximum.
+    """
+
+    target = _target()
+    source = _canonical()
+    _observation(
+        source,
+        observation_id="a-first",
+        valid_at="2026-07-28T03:00:00Z",
+        temperature_c=36,
+        committed_at="2026-07-28T03:05:00Z",
+    )
+    _observation(
+        source,
+        observation_id="b-reissue",
+        valid_at="2026-07-28T03:00:00Z",
+        temperature_c=33,
+        committed_at="2026-07-28T03:06:00Z",
+    )
+    _warm_afternoon(source)
+
+    result = materialize_settled_station_truth(
+        target,
+        source,
+        station_id="RKPK",
+        event_date="2026-07-28",
+        as_of_utc="2026-07-28T15:00:00Z",
+    )
+
+    assert result["wrote"] is True
+    assert result["official_tmax_c"] == 33
+
+
+def test_two_reports_agreeing_on_temperature_keep_the_first() -> None:
+    # Same fact stated twice.  Whichever is kept, the truth is identical, and
+    # keeping the first means an ordinary COR that only touches wind or cloud
+    # does not append a revision saying nothing changed.
+    target = _target()
+    source = _canonical()
+    _observation(
+        source,
+        observation_id="a-first",
+        valid_at="2026-07-28T03:00:00Z",
+        temperature_c=34,
+        committed_at="2026-07-28T03:05:00Z",
+    )
+    _observation(
+        source,
+        observation_id="b-same",
+        valid_at="2026-07-28T03:00:00Z",
+        temperature_c=34,
+        committed_at="2026-07-28T03:06:00Z",
+    )
+    _warm_afternoon(source)
+
+    result = materialize_settled_station_truth(
+        target,
+        source,
+        station_id="RKPK",
+        event_date="2026-07-28",
+        as_of_utc="2026-07-28T15:00:00Z",
+    )
+
+    assert result["wrote"] is True
+    kept = _settled_observation_ids(target)
+    assert "a-first" in kept
+    assert "b-same" not in kept
 
 
 def test_identical_replay_is_idempotent_and_late_hourly_observation_revises() -> None:

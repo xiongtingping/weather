@@ -34,7 +34,24 @@ DECISIONS = frozenset({
     CLEAR_WITH_REPLACEMENT,
     QUARANTINE_STATION_DAY,
 })
-MAX_CORRECTIONS_PER_SCOPE = 16
+# A station-day cannot hold more corrections than it holds reports, so this
+# bounds the scope at the same 256 the settled-truth reader bounds its own
+# observation scan at.  It was 16, which is not a bound on anything real: a
+# station's cadence is its provider's business, and KMIA began issuing a COR
+# for nearly every hourly report on 2026-08-29 -- 23 corrections that day, 31
+# on 08-31, 17 on 09-01, none of them touching the temperature.
+#
+# Sixteen stranded those days rather than merely refusing them, because the
+# two places that check the cap do not count the same set.
+# ``auto_clear_station_day_corrections`` counts corrections still lacking a
+# review receipt, so the standing policy cleared all 23 and 31 of them without
+# ever reaching the cap; ``assert_station_day_corrections_resolved`` counts
+# every correction in the window, reviewed or not, and refused the day anyway.
+# A fully reviewed station-day was therefore unsettleable, and nothing about
+# reviewing it further would have changed that.  Measured 2026-09-02: KMIA
+# 08-30 and 08-31 were the only two scopes in the sweep's forty-five-day
+# backlog held by this, and both settle once the cap admits the real cadence.
+MAX_CORRECTIONS_PER_SCOPE = 256
 MAX_REVIEWS_PER_SCOPE = 64
 MAX_EVIDENCE_JSON_BYTES = 65_536
 

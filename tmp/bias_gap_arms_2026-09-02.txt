@@ -1,0 +1,40 @@
+scored scope-days: 13431 (2026-08/09, all six arms present)
+
+== 全部 n=13431 ==  (MAE °C | RMSE | signed bias)
+  h5g0     MAE 1.0900  RMSE 1.4959  bias -0.017
+  h15g0    MAE 1.1097  RMSE 1.5230  bias -0.024
+  h5g3     MAE 1.1492  RMSE 1.5702  bias -0.027
+  h15g3    MAE 1.1454  RMSE 1.5688  bias -0.029
+  h5g6     MAE 1.1805  RMSE 1.6105  bias -0.023
+  h15g6    MAE 1.1699  RMSE 1.5996  bias -0.027
+  vs served regime h5g6: h5g0 -7.7%  h15g6 -0.9%  h15g0 -6.0%  h5g3 -2.7%
+
+== 留出后半段 >= 08-14 n=8347 ==  (MAE °C | RMSE | signed bias)
+  h5g0     MAE 1.0757  RMSE 1.4479  bias -0.023
+  h15g0    MAE 1.0989  RMSE 1.4743  bias -0.024
+  h5g3     MAE 1.1321  RMSE 1.5136  bias -0.026
+  h15g3    MAE 1.1324  RMSE 1.5151  bias -0.026
+  h5g6     MAE 1.1546  RMSE 1.5423  bias -0.017
+  h15g6    MAE 1.1518  RMSE 1.5408  bias -0.021
+  vs served regime h5g6: h5g0 -6.8%  h15g6 -0.2%  h15g0 -4.8%  h5g3 -1.9%
+
+== 账本四天 08-29..09-01 n=2452 ==  (MAE °C | RMSE | signed bias)
+  h5g0     MAE 1.1196  RMSE 1.5121  bias -0.164
+  h15g0    MAE 1.1376  RMSE 1.5226  bias -0.151
+  h5g3     MAE 1.1718  RMSE 1.5630  bias -0.177
+  h15g3    MAE 1.1688  RMSE 1.5564  bias -0.153
+  h5g6     MAE 1.1726  RMSE 1.5621  bias -0.189
+  h15g6    MAE 1.1736  RMSE 1.5645  bias -0.153
+  vs served regime h5g6: h5g0 -4.5%  h15g6 +0.1%  h15g0 -3.0%  h5g3 -0.1%
+
+== by system: h5g0 vs h5g6 (MAE change from removing the gap) | h15g6 vs h5g6 ==
+  DWD_ICON_GLOBAL_EPS          n=  936  gap0 -4.0%  h15g6 -0.9%
+  ECCC_GEM_GLOBAL_ENS          n= 4253  gap0 -9.3%  h15g6 -0.9%
+  ECMWF_IFS_ENS_OPEN_PF50      n= 3709  gap0 -7.7%  h15g6 -2.0%
+  GOOGLE_WEATHERNEXT2_ENS      n=  299  gap0 -1.4%  h15g6 -1.1%
+  NOAA_AIGEFS_025              n=  299  gap0 -2.1%  h15g6 -0.2%
+  NOAA_GEFS_05                 n= 3636  gap0 -7.3%  h15g6 +0.2%
+  UKMO_GLOBAL_ENS              n=  299  gap0 -8.7%  h15g6 -1.6%
+
+stations where gap0 beats gap6 (H5): 39/45
+stations where H15 beats H5 under the served gap 6: 28/45

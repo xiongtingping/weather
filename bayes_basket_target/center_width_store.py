@@ -252,6 +252,16 @@ def ensure_center_width_schema(conn: sqlite3.Connection) -> None:
         )
     except sqlite3.OperationalError:
         pass
+    # The width floor rides on the same row as the scalars it qualifies.
+    # Nullable, and read as zero, so every row written before the floor
+    # existed keeps describing exactly the arithmetic it described.
+    try:
+        conn.execute(
+            "ALTER TABLE calibration_center_width_table"
+            " ADD COLUMN sigma_floor_rungs REAL"
+        )
+    except sqlite3.OperationalError:
+        pass
     # ``CREATE TABLE IF NOT EXISTS`` will not widen the CHECK constraint on a
     # journal that already exists, so a new outcome value fails at insert with
     # a constraint error rather than being recorded.  Rebuild in place when
@@ -295,6 +305,7 @@ def _check_stage(stage: str) -> str:
 def center_width_sha256(
     *, stage: str, delta_c: float, width_lambda: float,
     taf_cells: Mapping[str, Sequence[float]] | None = None,
+    sigma_floor_rungs: float = 0.0,
 ) -> str:
     payload: dict[str, Any] = {
         "schema": "center_width_table_v1",
@@ -312,6 +323,12 @@ def center_width_sha256(
             ]
             for name, pair in sorted(taf_cells.items())
         }
+    # Conditional for the same reason, and it is the floor that makes the
+    # scalars mean what they mean: 0.725 under a floor is a different
+    # arithmetic from 0.725 without one, and an artifact pinning the digest
+    # must be served the pair it was scored with.
+    if sigma_floor_rungs:
+        payload["sigma_floor_rungs"] = round(float(sigma_floor_rungs), 6)
     return content_sha256(payload)
 
 
@@ -370,6 +387,45 @@ def load_center_width(
             raise ContractError("center_width_pinned_table_missing")
         return None
     return float(row[0]), float(row[1]), str(row[2])
+
+
+def load_center_width_floor(
+    conn: sqlite3.Connection,
+    *,
+    stage: str,
+    table_sha256: str | None = None,
+) -> float:
+    """The width floor the active -- or pinned -- scalars were fitted under.
+
+    Zero is the honest answer for every row written before the floor existed
+    and for every stage whose floor did not clear the forward gate, and zero
+    makes ``apply_center_width_calibration`` an identity in this factor.  A
+    separate reader rather than a wider return from ``load_center_width``:
+    that tuple is unpacked at a dozen call sites, and widening it would make
+    a serving change out of a lookup.
+    """
+
+    stage_id = _check_stage(stage)
+    try:
+        if table_sha256 is None:
+            row = conn.execute(
+                "SELECT sigma_floor_rungs"
+                " FROM calibration_center_width_table"
+                " WHERE activated=1 AND stage=?",
+                (stage_id,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT sigma_floor_rungs"
+                " FROM calibration_center_width_table"
+                " WHERE center_width_sha256=?",
+                (str(table_sha256),),
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return 0.0
+    if row is None or row[0] is None:
+        return 0.0
+    return float(row[0])
 
 
 def load_center_width_cells(
@@ -1183,33 +1239,15 @@ def _evidence_floor(
     return _memoised(("evidence_floor", stage, caller_bound), _resolve)
 
 
-def _sigma_floor_shadow(
-    *,
-    train: Sequence[Mapping[str, Any]],
-    forward: Sequence[Mapping[str, Any]],
-    incumbent: tuple[float, float],
-    pooled: tuple[float, float],
-    pooled_admitted: bool,
+def _forward_lift_census(
+    forward: Sequence[Mapping[str, Any]], *, floor_rungs: float
 ) -> dict[str, Any]:
-    """What a floored fit would have served, and whether it beats today's.
+    """How much of the forward window the floor actually reaches.
 
-    Two comparisons, both on the held-out forward window.  Against the
-    incumbent, because that is the distribution the stage serves and the only
-    thing an activation would replace.  Against the pooled candidate, because
-    a floor that only wins by carrying the pooled refit along with it has not
-    earned a lane of its own.
+    A lane that lifts nothing and a lane that lifts everything can post the
+    same NLL gain for very different reasons, and only this says which.
     """
 
-    out: dict[str, Any] = {
-        "schema": "center_width_sigma_floor_shadow_v1",
-        "sigma_floor_rungs": SIGMA_FLOOR_RUNGS,
-        "max_lift": MAX_SIGMA_FLOOR_LIFT,
-        "served": False,
-        "state": "NOT_MEASURED",
-    }
-    if not train or not forward:
-        return out
-    lifted = 0
     lifts: list[float] = []
     for cell in forward:
         try:
@@ -1217,55 +1255,61 @@ def _sigma_floor_shadow(
                 cell["probabilities"],
                 ordered_keys=cell["ordered_keys"],
                 key_centers_c=cell["key_centers_c"],
-                floor_rungs=SIGMA_FLOOR_RUNGS,
+                floor_rungs=floor_rungs,
             )
         except ValueError:
             continue
         lifts.append(lift)
-        lifted += lift > 1.0
-    out["forward_cell_count"] = len(forward)
-    out["forward_lifted_count"] = lifted
-    out["forward_lifted_share"] = (
-        lifted / len(lifts) if lifts else 0.0
-    )
-    out["forward_mean_lift"] = (
-        sum(lifts) / len(lifts) if lifts else 1.0
-    )
-    floor_delta, floor_lambda, floor_train_nll = _search(
-        train, sigma_floor_rungs=SIGMA_FLOOR_RUNGS
-    )
-    incumbent_nll = _mean_nll(
-        forward, delta_c=incumbent[0], width_lambda=incumbent[1]
-    )
-    pooled_nll = _mean_nll(
-        forward, delta_c=pooled[0], width_lambda=pooled[1]
-    )
-    floor_nll = _mean_nll(
-        forward,
-        delta_c=floor_delta,
-        width_lambda=floor_lambda,
-        sigma_floor_rungs=SIGMA_FLOOR_RUNGS,
-    )
-    gain_incumbent = incumbent_nll - floor_nll
-    gain_pooled = pooled_nll - floor_nll
-    out.update({
-        "candidate_delta_c": floor_delta,
-        "candidate_width_lambda": floor_lambda,
-        "train_nll": floor_train_nll,
+    lifted = sum(1 for lift in lifts if lift > 1.0)
+    return {
+        "forward_cell_count": len(forward),
+        "forward_lifted_count": lifted,
+        "forward_lifted_share": lifted / len(lifts) if lifts else 0.0,
+        "forward_mean_lift": sum(lifts) / len(lifts) if lifts else 1.0,
+    }
+
+
+def _sigma_floor_lane(
+    *,
+    forward: Sequence[Mapping[str, Any]],
+    pooled: tuple[float, float],
+    floored: tuple[float, float],
+    pooled_nll: float,
+    floored_nll: float,
+    incumbent_nll: float,
+    incumbent_floor_rungs: float,
+) -> dict[str, Any]:
+    """Whether the floor earned its place, and the numbers that say so.
+
+    Admitted only where it beats the *pooled* candidate on the held-out
+    forward window by the layer's own hurdle.  Beating the incumbent is not
+    enough on its own: the floored fit carries a refitted lambda with it, and
+    a lane that only wins by dragging that refit along has not shown that the
+    floor is what did the work.  The pair as a whole then faces the incumbent
+    at the usual gate, one rung up.
+    """
+
+    gain_pooled = pooled_nll - floored_nll
+    admitted = gain_pooled > MIN_FORWARD_NLL_GAIN
+    out: dict[str, Any] = {
+        "schema": "center_width_sigma_floor_lane_v1",
+        "sigma_floor_rungs": SIGMA_FLOOR_RUNGS,
+        "max_lift": MAX_SIGMA_FLOOR_LIFT,
+        "incumbent_floor_rungs": float(incumbent_floor_rungs),
+        "pooled_delta_c": pooled[0],
+        "pooled_width_lambda": pooled[1],
+        "candidate_delta_c": floored[0],
+        "candidate_width_lambda": floored[1],
         "forward_nll_incumbent": incumbent_nll,
         "forward_nll_pooled_candidate": pooled_nll,
-        "forward_nll_floor_candidate": floor_nll,
-        "forward_nll_gain_vs_incumbent": gain_incumbent,
+        "forward_nll_floor_candidate": floored_nll,
         "forward_nll_gain_vs_pooled": gain_pooled,
+        "forward_nll_gain_vs_incumbent": incumbent_nll - floored_nll,
         "min_forward_nll_gain": MIN_FORWARD_NLL_GAIN,
-        "pooled_admitted": bool(pooled_admitted),
-        "state": (
-            "ADMITTED"
-            if gain_incumbent > MIN_FORWARD_NLL_GAIN
-            and gain_pooled > MIN_FORWARD_NLL_GAIN
-            else "REFUSED_FORWARD"
-        ),
-    })
+        "admitted": admitted,
+        "state": "ADMITTED" if admitted else "REFUSED_FORWARD",
+    }
+    out.update(_forward_lift_census(forward, floor_rungs=SIGMA_FLOOR_RUNGS))
     return out
 
 
@@ -1300,6 +1344,9 @@ def fit_center_width(
     cells = [cell for day in days for cell in by_day[day]]
     active = load_center_width(conn, stage=stage_id)
     base = (0.0, 1.0) if active is None else (active[0], active[1])
+    base_floor = (
+        0.0 if active is None else load_center_width_floor(conn, stage=stage_id)
+    )
     accumulating = (
         len(days) < MIN_QUALIFYING_DAYS or len(cells) < MIN_QUALIFYING_CELLS
     )
@@ -1325,16 +1372,18 @@ def fit_center_width(
     if accumulating:
         evidence["basis"] = "ACCUMULATING"
         evidence["sigma_floor"] = {
-            "schema": "center_width_sigma_floor_shadow_v1",
+            "schema": "center_width_sigma_floor_lane_v1",
             "sigma_floor_rungs": SIGMA_FLOOR_RUNGS,
             "max_lift": MAX_SIGMA_FLOOR_LIFT,
-            "served": False,
+            "incumbent_floor_rungs": base_floor,
+            "admitted": False,
             "state": "ACCUMULATING",
         }
         return {
             "stage": stage_id,
             "delta_c": base[0],
             "width_lambda": base[1],
+            "sigma_floor_rungs": base_floor,
             "forward_nll_gain": 0.0,
             "accumulating": True,
             "serving_day_count": len(days),
@@ -1345,13 +1394,46 @@ def fit_center_width(
     train_days, forward_days = days[:cut], days[cut:] or days[-1:]
     train = [cell for day in train_days for cell in by_day[day]]
     forward = [cell for day in forward_days for cell in by_day[day]]
-    delta, lam, train_nll = _search(train)
+    pooled_delta, pooled_lam, pooled_train_nll = _search(train)
+    floor_delta, floor_lam, floor_train_nll = _search(
+        train, sigma_floor_rungs=SIGMA_FLOOR_RUNGS
+    )
+    # The incumbent is scored under its own floor.  Scored without it, an
+    # already-floored stage would be compared against arithmetic nobody
+    # serves and would churn its artifact every refit.
     forward_base = _mean_nll(
-        forward, delta_c=base[0], width_lambda=base[1]
+        forward,
+        delta_c=base[0],
+        width_lambda=base[1],
+        sigma_floor_rungs=base_floor,
     )
-    forward_candidate = _mean_nll(
-        forward, delta_c=delta, width_lambda=lam
+    forward_pooled = _mean_nll(
+        forward, delta_c=pooled_delta, width_lambda=pooled_lam
     )
+    forward_floored = _mean_nll(
+        forward,
+        delta_c=floor_delta,
+        width_lambda=floor_lam,
+        sigma_floor_rungs=SIGMA_FLOOR_RUNGS,
+    )
+    sigma_floor = _sigma_floor_lane(
+        forward=forward,
+        pooled=(pooled_delta, pooled_lam),
+        floored=(floor_delta, floor_lam),
+        pooled_nll=forward_pooled,
+        floored_nll=forward_floored,
+        incumbent_nll=forward_base,
+        incumbent_floor_rungs=base_floor,
+    )
+    evidence["sigma_floor"] = sigma_floor
+    if sigma_floor["admitted"]:
+        delta, lam = floor_delta, floor_lam
+        train_nll, forward_candidate = floor_train_nll, forward_floored
+        candidate_floor = SIGMA_FLOOR_RUNGS
+    else:
+        delta, lam = pooled_delta, pooled_lam
+        train_nll, forward_candidate = pooled_train_nll, forward_pooled
+        candidate_floor = 0.0
     gain = forward_base - forward_candidate
     evidence.update({
         "basis": "FORWARD_WINDOW",
@@ -1360,12 +1442,19 @@ def fit_center_width(
         "train_cell_count": len(train),
         "forward_cell_count": len(forward),
         "train_nll": train_nll,
+        "candidate_sigma_floor_rungs": candidate_floor,
+        "incumbent_sigma_floor_rungs": base_floor,
         "forward_nll_incumbent": forward_base,
         "forward_nll_candidate": forward_candidate,
         "forward_nll_gain": gain,
         "min_forward_nll_gain": MIN_FORWARD_NLL_GAIN,
         "identity_nll_all": _mean_nll(cells, delta_c=0.0, width_lambda=1.0),
-        "candidate_nll_all": _mean_nll(cells, delta_c=delta, width_lambda=lam),
+        "candidate_nll_all": _mean_nll(
+            cells,
+            delta_c=delta,
+            width_lambda=lam,
+            sigma_floor_rungs=candidate_floor,
+        ),
     })
     admitted = gain > MIN_FORWARD_NLL_GAIN
     # The TAF-conditional lane (charter 57): each direction fits its own
@@ -1379,6 +1468,11 @@ def fit_center_width(
     _annotate_taf_directions(conn, cells)
     served_delta = delta if admitted else base[0]
     served_lambda = lam if admitted else base[1]
+    # The cells refine the pair that would serve, so they are fitted and
+    # scored under the floor that would serve with it.  A cell searched
+    # without the floor and then served under one would be a scalar chosen
+    # against arithmetic it never saw.
+    served_floor = candidate_floor if admitted else base_floor
     taf_cells: dict[str, list[float]] = {}
     taf_evidence: dict[str, Any] = {}
     for name in TAF_CELL_NAMES:
@@ -1404,12 +1498,16 @@ def fit_center_width(
         ):
             entry["state"] = "ACCUMULATING"
             continue
-        cell_delta, cell_lambda, _ = _search(group_train)
+        cell_delta, cell_lambda, _ = _search(
+            group_train, sigma_floor_rungs=served_floor
+        )
         pooled_nll = _mean_nll(
-            group_forward, delta_c=served_delta, width_lambda=served_lambda
+            group_forward, delta_c=served_delta, width_lambda=served_lambda,
+            sigma_floor_rungs=served_floor,
         )
         cell_nll = _mean_nll(
-            group_forward, delta_c=cell_delta, width_lambda=cell_lambda
+            group_forward, delta_c=cell_delta, width_lambda=cell_lambda,
+            sigma_floor_rungs=served_floor,
         )
         cell_gain = pooled_nll - cell_nll
         entry.update({
@@ -1423,28 +1521,17 @@ def fit_center_width(
         else:
             entry["state"] = "REFUSED_FORWARD"
     evidence["taf_cells"] = taf_evidence
-    # The width floor, fitted as a shadow: measured here, served
-    # nowhere.  Scored against the incumbent on the same forward window and
-    # by the same hurdle as the pooled scalars, because the question it has
-    # to answer is the one that decides whether it is wired at all -- would
-    # this stage serve a better distribution under a floor than it serves
-    # today.  Reported per stage rather than judged once for the fleet: the
-    # break is a property of how a stage's own claims are shaped, and P1's
-    # afternoon distributions -- already cut on one side by the hard bound --
-    # are not P0's.
-    evidence["sigma_floor"] = _sigma_floor_shadow(
-        train=train,
-        forward=forward,
-        incumbent=base,
-        pooled=(delta, lam),
-        pooled_admitted=admitted,
-    )
     return {
         "stage": stage_id,
         "delta_c": delta if admitted else base[0],
         "width_lambda": lam if admitted else base[1],
+        # The floor travels with the pair it qualifies.  A refused candidate
+        # leaves the incumbent's floor in place for the same reason it leaves
+        # the incumbent's scalars: nothing was shown to be better.
+        "sigma_floor_rungs": candidate_floor if admitted else base_floor,
         "candidate_delta_c": delta,
         "candidate_width_lambda": lam,
+        "candidate_sigma_floor_rungs": candidate_floor,
         "forward_nll_gain": gain,
         "admitted": admitted,
         "accumulating": False,
@@ -1465,12 +1552,13 @@ def persist_and_activate_center_width(
     serving_day_count: int,
     fitted_at_utc: str | None = None,
     taf_cells: Mapping[str, Sequence[float]] | None = None,
+    sigma_floor_rungs: float = 0.0,
 ) -> dict[str, Any]:
     stage_id = _check_stage(stage)
     ensure_center_width_schema(conn)
     digest = center_width_sha256(
         stage=stage_id, delta_c=delta_c, width_lambda=width_lambda,
-        taf_cells=taf_cells,
+        taf_cells=taf_cells, sigma_floor_rungs=sigma_floor_rungs,
     )
     active = load_center_width(conn, stage=stage_id)
     if active is not None and active[2] == digest:
@@ -1497,19 +1585,21 @@ def persist_and_activate_center_width(
             " center_width_sha256, stage, delta_c, width_lambda,"
             " evidence_json,"
             " fitted_at_utc, serving_day_count, activated, activated_at_utc,"
-            " taf_cells_json"
-            ") VALUES (?,?,?,?,?,?,?,0,NULL,?)"
+            " taf_cells_json, sigma_floor_rungs"
+            ") VALUES (?,?,?,?,?,?,?,0,NULL,?,?)"
             " ON CONFLICT(center_width_sha256) DO UPDATE SET"
             "  evidence_json=excluded.evidence_json,"
             "  fitted_at_utc=excluded.fitted_at_utc,"
             "  serving_day_count=excluded.serving_day_count,"
-            "  taf_cells_json=excluded.taf_cells_json",
+            "  taf_cells_json=excluded.taf_cells_json,"
+            "  sigma_floor_rungs=excluded.sigma_floor_rungs",
             (
                 digest, stage_id, float(delta_c), float(width_lambda),
                 json.dumps(
                     dict(evidence), ensure_ascii=False, sort_keys=True
                 ),
                 now, int(serving_day_count), cells_json,
+                float(sigma_floor_rungs) or None,
             ),
         )
         conn.execute(
@@ -1543,13 +1633,15 @@ def journal_center_width_fit(
     stage_id = _check_stage(stage)
     ensure_center_width_schema(conn)
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    # The activated row hashes the TAF cells too, so a journal digest that
-    # omits them can never match the row it is evidence for.
+    # The activated row hashes the TAF cells and the width floor too, so a
+    # journal digest that omits either can never match the row it is
+    # evidence for.
     digest = center_width_sha256(
         stage=stage_id,
         delta_c=fitted["delta_c"],
         width_lambda=fitted["width_lambda"],
         taf_cells=fitted.get("taf_cells") or None,
+        sigma_floor_rungs=float(fitted.get("sigma_floor_rungs") or 0.0),
     )
     fit_id = "cwfit-" + content_sha256({
         "stage": stage_id,
@@ -1723,10 +1815,10 @@ def _refit_stages(
                         fitted["evidence"].get("taf_cells") or {}
                     ).items()
                 },
-                # The shadow rides on the report so the daily run shows it
-                # accumulating or clearing without anyone reading the
-                # journal's evidence blob by hand.  It serves nothing; the
-                # numbers are here to be watched.
+                # The floor rides on the report so the daily run shows it
+                # admitted, refused or accumulating without anyone reading
+                # the journal's evidence blob by hand.
+                "sigma_floor_rungs": fitted.get("sigma_floor_rungs") or 0.0,
                 "sigma_floor": fitted["evidence"].get("sigma_floor") or {},
             })
             if commit:
@@ -1745,6 +1837,9 @@ def _refit_stages(
                         evidence=fitted["evidence"],
                         serving_day_count=fitted["serving_day_count"],
                         taf_cells=fitted.get("taf_cells") or None,
+                        sigma_floor_rungs=float(
+                            fitted.get("sigma_floor_rungs") or 0.0
+                        ),
                     )
                     entry["commit"] = committed
                     outcome = str(committed["state"])

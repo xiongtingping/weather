@@ -467,6 +467,7 @@ def compile_station_p1_packets(
         Sequence[tuple[tuple[float, float], float]], str
     ] | None = None,
     center_width: tuple[float, float, str] | None = None,
+    center_width_floor_rungs: float = 0.0,
     station_width: tuple[Mapping[str, float], str] | None = None,
     fleet_regime: Mapping[str, Any] | None = None,
     ceiling_artifact: Mapping[str, Any] | None = None,
@@ -941,6 +942,7 @@ def compile_station_p1_packets(
             ),
             band_table=band_table,
             center_width=center_width,
+            center_width_floor_rungs=center_width_floor_rungs,
             station_width=station_width,
             fleet_regime=fleet_regime,
             ceiling_artifact=ceiling_artifact,

@@ -248,37 +248,136 @@ def test_the_search_scores_the_floor_it_would_serve() -> None:
     assert score < unfloored
 
 
-def test_the_shadow_reports_but_serves_nothing() -> None:
-    """Fit-only, by the user's ruling of 2026-09-05.
+def _cell(weights: list[float], settled: str) -> dict[str, object]:
+    return {
+        "probabilities": _dist(KEYS_C, weights),
+        "ordered_keys": KEYS_C,
+        "key_centers_c": CENTERS_C,
+        "excluded_buckets": (),
+        "settled_bucket": settled,
+    }
 
-    The shadow may say ADMITTED without a single served number moving; what
-    it must never do is reach into the scalars the stage is serving.
+
+def test_the_floor_must_beat_the_pooled_candidate_not_just_the_incumbent(
+) -> None:
+    """The floored fit carries a refitted lambda with it.
+
+    A lane admitted for beating the incumbent alone could be winning on that
+    refit rather than on the floor, so the hurdle is against the pooled
+    candidate -- what would serve that day otherwise.
     """
 
-    from bayes_basket_target.center_width_store import _sigma_floor_shadow
+    from bayes_basket_target.center_width_store import _sigma_floor_lane
 
-    def cell(weights: list[float], settled: str) -> dict[str, object]:
-        return {
-            "probabilities": _dist(KEYS_C, weights),
-            "ordered_keys": KEYS_C,
-            "key_centers_c": CENTERS_C,
-            "excluded_buckets": (),
-            "settled_bucket": settled,
-        }
-
-    train = [cell(NARROW, KEYS_C[5]), cell(WIDE, KEYS_C[2])]
-    forward = [cell(NARROW, KEYS_C[1]), cell(WIDE, KEYS_C[4])]
-    out = _sigma_floor_shadow(
-        train=train, forward=forward, incumbent=(0.0, 0.75),
-        pooled=(0.0, 0.75), pooled_admitted=False,
+    forward = [_cell(NARROW, KEYS_C[1]), _cell(WIDE, KEYS_C[4])]
+    lane = _sigma_floor_lane(
+        forward=forward,
+        pooled=(0.0, 0.75), floored=(0.0, 0.725),
+        pooled_nll=1.60, floored_nll=1.50, incumbent_nll=1.61,
+        incumbent_floor_rungs=0.0,
     )
-    assert out["served"] is False
-    assert out["sigma_floor_rungs"] == SIGMA_FLOOR_RUNGS
-    assert out["state"] in {"ADMITTED", "REFUSED_FORWARD"}
-    assert out["forward_lifted_count"] == 1
-    assert out["forward_cell_count"] == 2
-    # Empty windows say so rather than inventing a verdict.
-    assert _sigma_floor_shadow(
-        train=[], forward=forward, incumbent=(0.0, 1.0),
-        pooled=(0.0, 1.0), pooled_admitted=False,
-    )["state"] == "NOT_MEASURED"
+    assert lane["admitted"] is True
+    assert lane["state"] == "ADMITTED"
+    assert lane["sigma_floor_rungs"] == SIGMA_FLOOR_RUNGS
+    assert lane["forward_lifted_count"] == 1
+    assert lane["forward_cell_count"] == 2
+    # Beating the incumbent while losing to the pooled candidate is a refusal.
+    refused = _sigma_floor_lane(
+        forward=forward,
+        pooled=(0.0, 0.75), floored=(0.0, 0.725),
+        pooled_nll=1.50, floored_nll=1.55, incumbent_nll=1.61,
+        incumbent_floor_rungs=0.0,
+    )
+    assert refused["admitted"] is False
+    assert refused["forward_nll_gain_vs_incumbent"] > 0.0
+
+
+def test_the_digest_carries_the_floor_and_legacy_digests_do_not_move() -> None:
+    """The floor is part of what the scalars mean, so it is part of the sha.
+
+    0.725 under a floor and 0.725 without one are different arithmetic, and an
+    artifact pinning the digest must be served the one its holdout scored.
+    Rows written before the floor existed keep their digest exactly, or the
+    pinned-version contract stops resolving them.
+    """
+
+    from bayes_basket_target.center_width_store import center_width_sha256
+
+    legacy = center_width_sha256(stage="P0", delta_c=0.0, width_lambda=0.725)
+    unchanged = center_width_sha256(
+        stage="P0", delta_c=0.0, width_lambda=0.725, sigma_floor_rungs=0.0,
+    )
+    floored = center_width_sha256(
+        stage="P0", delta_c=0.0, width_lambda=0.725,
+        sigma_floor_rungs=SIGMA_FLOOR_RUNGS,
+    )
+    assert legacy == unchanged
+    assert floored != legacy
+
+
+def test_the_floor_reader_is_zero_for_a_row_that_predates_it() -> None:
+    """Absence reads as no floor, which is an identity in this factor."""
+
+    import sqlite3
+
+    from bayes_basket_target.center_width_store import (
+        center_width_sha256,
+        ensure_center_width_schema,
+        load_center_width_floor,
+        persist_and_activate_center_width,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    ensure_center_width_schema(conn)
+    # Nothing fitted at all.
+    assert load_center_width_floor(conn, stage="P0") == 0.0
+    persist_and_activate_center_width(
+        conn, stage="P0", delta_c=0.0, width_lambda=0.75,
+        evidence={}, serving_day_count=9,
+    )
+    assert load_center_width_floor(conn, stage="P0") == 0.0
+    persist_and_activate_center_width(
+        conn, stage="P0", delta_c=0.0, width_lambda=0.725,
+        evidence={}, serving_day_count=9,
+        sigma_floor_rungs=SIGMA_FLOOR_RUNGS,
+    )
+    assert load_center_width_floor(conn, stage="P0") == SIGMA_FLOOR_RUNGS
+    # And by pin, which is how serving actually asks.
+    digest = center_width_sha256(
+        stage="P0", delta_c=0.0, width_lambda=0.725,
+        sigma_floor_rungs=SIGMA_FLOOR_RUNGS,
+    )
+    assert load_center_width_floor(
+        conn, stage="P0", table_sha256=digest
+    ) == SIGMA_FLOOR_RUNGS
+
+
+def test_serving_and_the_ledger_both_read_the_floor() -> None:
+    """Production and the paper book must price the same distribution.
+
+    Measured once before: changing one side alone leaves the ledger scoring a
+    strategy production does not run.
+    """
+
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parents[1]
+
+    def source(relative: str) -> str:
+        return (root / relative).read_text(encoding="utf-8")
+
+    # P0 serves it from the pinned row.
+    p0 = source("bayes_basket_target/native_ensemble_p0.py")
+    assert "load_center_width_floor(" in p0
+    assert "sigma_floor_rungs=sigma_floor_rungs," in p0
+    # The holdout that gates the artifact scores it under the same floor.
+    oos = source("bayes_basket_target/native_ensemble_oos.py")
+    assert "sigma_floor_rungs=center_width_floor," in oos
+    # The other two stages reach it through materialization.
+    materialization = source("bayes_basket_target/materialization.py")
+    assert "sigma_floor_rungs=center_width_floor_rungs," in materialization
+    # And the ledger applies the floor its replay table recorded.
+    ledger = source("scripts/paper_trading_ledger.py")
+    assert 'entry.get("sigma_floor_rungs")' in ledger
+    builder = source("scripts/fit_center_width_replay_table.py")
+    assert '"sigma_floor_rungs": floor_rungs,' in builder

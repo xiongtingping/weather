@@ -4,20 +4,6 @@
   "why_not_automatic": "Walk-forward over the 332 settlements of 2026-08-15..29, warming up on six days and testing on the remaining nine: fourteen automatic rules were swept (ROI thresholds -8%/-25%/-50% crossed with minimum samples 3/5/8, plus both-halves-negative persistence at 4/6/8, plus their intersections). Every one landed between -6.8 and +1.8 points against a +5.6% baseline, and the best of the fourteen (ROI<=-25%, n>=5) is p=0.346 against randomly excluding the same number of stations -- so even that is a multiple-comparison artifact. The persistence rules were the worst of all: the stations they barred went on to return +26% to +44%, because a station that just lost is disproportionately about to mean-revert. The same nine-station hand list held fixed across the whole test returned +15.3 points at p=0.001, and with RKSI/KAUS/FACT added, +17.0 points at p=0.002. Judgement about the stations beats any statistic about their recent returns, so this file does not compute itself.",
   "excluded_stations": [
     {
-      "station": "EDDM",
-      "city": "慕尼黑",
-      "both_halves_negative": true,
-      "full_sample_roi": -0.527,
-      "added_utc": "2026-08-30"
-    },
-    {
-      "station": "EHAM",
-      "city": "阿姆斯特丹",
-      "both_halves_negative": true,
-      "full_sample_roi": -0.86,
-      "added_utc": "2026-08-30"
-    },
-    {
       "station": "EPWA",
       "city": "华沙",
       "both_halves_negative": false,
@@ -26,20 +12,6 @@
       "released_utc": "2026-08-30",
       "rebarred_utc": "2026-08-30",
       "note": "Released and re-barred the same day (2026-08-30). The release was made over a contrary reading and the re-bar restores it: EPWA's six forward seats all lost 100% and its three wins were P1 near-certainties at claims 0.93-0.99 with the model running 1.62C cold and delivering 0.46 of what it claims; LTAC is the same shape at bias -0.83 and ratio 0.35. Recorded as a round trip rather than smoothed away, because a list that hides its own reversals cannot be scored later."
-    },
-    {
-      "station": "FACT",
-      "city": "开普敦",
-      "both_halves_negative": true,
-      "full_sample_roi": -0.669,
-      "added_utc": "2026-08-30"
-    },
-    {
-      "station": "KMIA",
-      "city": "迈阿密",
-      "both_halves_negative": true,
-      "full_sample_roi": -0.864,
-      "added_utc": "2026-08-30"
     },
     {
       "station": "LTAC",
@@ -59,25 +31,244 @@
       "added_utc": "2026-08-30"
     },
     {
-      "station": "RPLL",
-      "city": "马尼拉",
-      "both_halves_negative": true,
-      "full_sample_roi": -0.706,
-      "added_utc": "2026-08-30"
+      "station": "ZBAA",
+      "city": "北京",
+      "full_sample_roi": -0.612,
+      "settlements": 15,
+      "added_utc": "2026-09-02",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch."
+    },
+    {
+      "station": "CYYZ",
+      "city": "多伦多",
+      "full_sample_roi": -0.436,
+      "settlements": 9,
+      "added_utc": "2026-09-02",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch. Re-barred after an earlier release.",
+      "released_utc": "2026-08-30",
+      "rebarred_utc": "2026-09-02"
+    },
+    {
+      "station": "KSEA",
+      "city": "西雅图",
+      "full_sample_roi": -1.0,
+      "settlements": 2,
+      "added_utc": "2026-09-03",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch."
+    },
+    {
+      "station": "WMKK",
+      "city": "吉隆坡",
+      "full_sample_roi": -1.0,
+      "settlements": 1,
+      "added_utc": "2026-09-03",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch."
+    },
+    {
+      "station": "KLAX",
+      "city": "洛杉矶",
+      "full_sample_roi": -0.569,
+      "settlements": 3,
+      "added_utc": "2026-09-03",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch. Re-barred after an earlier release.",
+      "released_utc": "2026-08-30",
+      "rebarred_utc": "2026-09-03"
+    },
+    {
+      "station": "ZHHH",
+      "city": "武汉",
+      "full_sample_roi": -0.391,
+      "settlements": 14,
+      "added_utc": "2026-09-03",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch."
+    },
+    {
+      "station": "MMMX",
+      "city": "墨西哥城",
+      "full_sample_roi": -0.568,
+      "settlements": 14,
+      "added_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch."
+    },
+    {
+      "station": "KBKF",
+      "city": "丹佛",
+      "full_sample_roi": -0.215,
+      "settlements": 12,
+      "added_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch."
+    },
+    {
+      "station": "RKPK",
+      "city": "釜山",
+      "full_sample_roi": -0.468,
+      "settlements": 15,
+      "added_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch."
+    },
+    {
+      "station": "KDAL",
+      "city": "达拉斯",
+      "full_sample_roi": -0.122,
+      "settlements": 5,
+      "added_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch."
+    },
+    {
+      "station": "OPKC",
+      "city": "卡拉奇",
+      "full_sample_roi": -0.132,
+      "settlements": 3,
+      "added_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch."
     },
     {
       "station": "SBGR",
       "city": "圣保罗",
-      "both_halves_negative": true,
-      "full_sample_roi": -0.606,
-      "added_utc": "2026-08-30"
+      "full_sample_roi": -0.197,
+      "settlements": 11,
+      "added_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch. Re-barred after an earlier release.",
+      "released_utc": "2026-09-03",
+      "rebarred_utc": "2026-09-04"
+    },
+    {
+      "station": "LFPB",
+      "city": "巴黎",
+      "full_sample_roi": -0.292,
+      "settlements": 5,
+      "added_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch. Re-barred after an earlier release.",
+      "released_utc": "2026-09-04",
+      "rebarred_utc": "2026-09-04"
+    },
+    {
+      "station": "ZSPD",
+      "city": "上海",
+      "full_sample_roi": -0.365,
+      "settlements": 4,
+      "added_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch."
+    },
+    {
+      "station": "EGLC",
+      "city": "伦敦",
+      "full_sample_roi": -0.449,
+      "settlements": 4,
+      "added_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch. Re-barred after an earlier release.",
+      "released_utc": "2026-09-03",
+      "rebarred_utc": "2026-09-04"
+    },
+    {
+      "station": "RKSI",
+      "city": "首尔",
+      "full_sample_roi": -0.553,
+      "settlements": 4,
+      "added_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch. Re-barred after an earlier release.",
+      "released_utc": "2026-09-03",
+      "rebarred_utc": "2026-09-04"
     },
     {
       "station": "ZUCK",
       "city": "重庆",
-      "both_halves_negative": false,
-      "full_sample_roi": -0.547,
-      "added_utc": "2026-08-30"
+      "full_sample_roi": -0.555,
+      "settlements": 11,
+      "added_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch. Re-barred after an earlier release.",
+      "released_utc": "2026-09-03",
+      "rebarred_utc": "2026-09-04"
+    },
+    {
+      "station": "WSSS",
+      "city": "新加坡",
+      "full_sample_roi": -0.593,
+      "settlements": 6,
+      "added_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch."
+    },
+    {
+      "station": "EHAM",
+      "city": "阿姆斯特丹",
+      "full_sample_roi": -0.605,
+      "settlements": 4,
+      "added_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch. Re-barred after an earlier release.",
+      "released_utc": "2026-09-02",
+      "rebarred_utc": "2026-09-04"
+    },
+    {
+      "station": "RJTT",
+      "city": "东京",
+      "full_sample_roi": -0.764,
+      "settlements": 7,
+      "added_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch. Re-barred after an earlier release.",
+      "released_utc": "2026-09-04",
+      "rebarred_utc": "2026-09-04"
+    },
+    {
+      "station": "RPLL",
+      "city": "马尼拉",
+      "full_sample_roi": -0.818,
+      "settlements": 8,
+      "added_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch. Re-barred after an earlier release.",
+      "released_utc": "2026-09-04",
+      "rebarred_utc": "2026-09-04"
+    },
+    {
+      "station": "KAUS",
+      "city": "奥斯汀",
+      "full_sample_roi": null,
+      "settlements": 0,
+      "added_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch. Re-barred after an earlier release.",
+      "released_utc": "2026-09-03",
+      "rebarred_utc": "2026-09-04"
+    },
+    {
+      "station": "FACT",
+      "city": "开普敦",
+      "full_sample_roi": null,
+      "settlements": 0,
+      "added_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch. Re-barred after an earlier release.",
+      "released_utc": "2026-09-02",
+      "rebarred_utc": "2026-09-04"
+    },
+    {
+      "station": "LEMD",
+      "city": "马德里",
+      "full_sample_roi": null,
+      "settlements": 0,
+      "added_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Barred from the board's station switch."
     }
   ],
   "review_policy": {
@@ -94,43 +285,12 @@
   },
   "watchlist_not_excluded": {
     "rationale": "Persistently negative in both halves and not barred. Kept so a review starts from evidence rather than memory.",
-    "stations": [
-      "KDAL",
-      "KHOU",
-      "RKPK"
-    ]
+    "stations": []
   },
   "authority": "operator rulings 2026-08-30 for the 2026-09-01 live open; the list moved four times in the day and each row carries its own dates",
   "valid_from_utc": "2026-08-30T00:00:00Z",
-  "updated_at_utc": "2026-08-30T15:00:00Z",
+  "updated_at_utc": "2026-09-04T16:03:18Z",
   "released_stations": [
-    {
-      "station": "CYYZ",
-      "city": "多伦多",
-      "both_halves_negative": false,
-      "full_sample_roi": -0.253,
-      "added_utc": "2026-08-30",
-      "released_utc": "2026-08-30",
-      "note": "Released on the operator's ruling 2026-08-30 (second release round)."
-    },
-    {
-      "station": "KAUS",
-      "city": "奥斯汀",
-      "both_halves_negative": true,
-      "full_sample_roi": -0.744,
-      "added_utc": "2026-08-30",
-      "released_utc": "2026-08-30",
-      "note": "Released on the operator's ruling 2026-08-30 (second release round)."
-    },
-    {
-      "station": "KLAX",
-      "city": "洛杉矶",
-      "both_halves_negative": false,
-      "full_sample_roi": -0.315,
-      "added_utc": "2026-08-30",
-      "released_utc": "2026-08-30",
-      "note": "Released on the operator's ruling 2026-08-30 (second release round)."
-    },
     {
       "station": "NZWN",
       "city": "惠灵顿",
@@ -141,52 +301,97 @@
       "note": "Released on the operator's ruling 2026-08-30 (second release round)."
     },
     {
-      "station": "RKSI",
-      "city": "首尔",
-      "both_halves_negative": true,
-      "full_sample_roi": -0.709,
-      "added_utc": "2026-08-30",
-      "released_utc": "2026-08-30",
-      "note": "Released on the operator's ruling 2026-08-30 (second release round)."
-    }
-  ],
-  "auto_excluded_stations": [
-    {
-      "station": "EFHK",
-      "barred_on": "fulfilment_ratio",
-      "value": -0.448,
-      "settlements": 10,
-      "auto_barred_utc": "2026-08-31"
+      "station": "EDDM",
+      "city": "慕尼黑",
+      "full_sample_roi": -0.448,
+      "settlements": 6,
+      "released_utc": "2026-09-02",
+      "by": "dashboard",
+      "note": "Released from the board's station switch."
     },
     {
-      "station": "KSEA",
-      "barred_on": "fulfilment_ratio",
-      "value": -0.611,
-      "settlements": 8,
-      "auto_barred_utc": "2026-08-30"
-    },
-    {
-      "station": "LFPB",
-      "barred_on": "fulfilment_ratio",
-      "value": -0.335,
-      "settlements": 10,
-      "auto_barred_utc": "2026-08-30"
+      "station": "VILK",
+      "city": "勒克瑙",
+      "full_sample_roi": -0.539,
+      "settlements": 13,
+      "released_utc": "2026-09-02",
+      "by": "dashboard",
+      "note": "Released from the board's station switch."
     },
     {
       "station": "SAEZ",
-      "barred_on": "fulfilment_ratio",
-      "value": -0.818,
-      "settlements": 5,
-      "auto_barred_utc": "2026-08-30"
+      "city": "布宜诺斯艾利斯",
+      "full_sample_roi": 0.213,
+      "settlements": 16,
+      "released_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Released from the board's station switch."
     },
     {
-      "station": "WMKK",
-      "barred_on": "fulfilment_ratio",
-      "value": -0.489,
+      "station": "LIMC",
+      "city": "米兰",
+      "full_sample_roi": 0.098,
+      "settlements": 10,
+      "released_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Released from the board's station switch."
+    },
+    {
+      "station": "KMIA",
+      "city": "迈阿密",
+      "full_sample_roi": -0.716,
+      "settlements": 7,
+      "released_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Released from the board's station switch."
+    },
+    {
+      "station": "KORD",
+      "city": "芝加哥",
+      "full_sample_roi": 0.301,
+      "settlements": 4,
+      "released_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Released from the board's station switch."
+    },
+    {
+      "station": "ZUUU",
+      "city": "成都",
+      "full_sample_roi": 0.626,
+      "settlements": 9,
+      "released_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Released from the board's station switch."
+    },
+    {
+      "station": "KHOU",
+      "city": "休斯敦",
+      "full_sample_roi": 0.449,
+      "settlements": 1,
+      "released_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Released from the board's station switch."
+    },
+    {
+      "station": "KLGA",
+      "city": "纽约",
+      "full_sample_roi": 0.157,
+      "settlements": 2,
+      "released_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Released from the board's station switch."
+    },
+    {
+      "station": "ZSQD",
+      "city": "青岛",
+      "full_sample_roi": 0.023,
       "settlements": 6,
-      "auto_barred_utc": "2026-08-30"
+      "released_utc": "2026-09-04",
+      "by": "dashboard",
+      "note": "Released from the board's station switch."
     }
   ],
+  "auto_excluded_stations": [],
   "auto_policy": {
     "keys": "第一看 兑现比差 (realized/expected), 第二看 实得差 (realized-expected)",
     "bar_ratio_below": 0.5,
@@ -196,9 +401,9 @@
     "minimum_settlements": 5,
     "ratio_denominator_floor_usdc": 3.0,
     "operator_rows_are_never_auto_managed": true,
-    "max_barred_stations": 15,
-    "cap_applies_to": "the automatic layer only; operator rows are never trimmed",
+    "max_barred_stations": null,
+    "cap_applies_to": "nothing -- the cap was lifted by operator ruling 2026-09-02. It bound this layer only, and what it did in practice was hide the layer's own verdicts: six stations it had barred were being dropped every pass, so the stored list was not the list the criterion produced. Barring costs one skipped market and the board's switch retracts any row in one click.",
     "measured": "Walk-forward on 332 settlements over 2026-08-15..29, warming on six days and scoring on nine: the best of sixteen automatic rules returned +2.4 points at p=0.356 against excluding the same number of stations at random. The operator's own ten-station list held fixed returned +15.6 points at p=0.001. This layer runs because it was asked for and because barring a station only costs a skipped market -- not because it was shown to pay.",
-    "updated_utc": "2026-08-31"
+    "updated_utc": "2026-09-05"
   }
 }

@@ -54,6 +54,7 @@ from .band_reliability_store import load_band_table
 from .center_width_store import (
     load_center_width,
     load_center_width_cells,
+    load_center_width_floor,
     load_station_width,
 )
 from .fleet_regime_shift import (
@@ -230,6 +231,7 @@ from .ssot import production_ssot_schema_status
 from .settlement_truth import (
     materialize_settled_station_truth,
     materialize_settled_training_truths,
+    registry_scope_still_eligible,
 )
 from .settlement_time import settlement_day_window
 from .station_registry import coordinate_registry_manifest, station_coordinates
@@ -4304,6 +4306,26 @@ class TargetProductionWorker:
                 " ORDER BY r.event_date, r.station_id LIMIT ?",
                 (window_start, TRUTH_INCREMENT_MAX_SCOPES),
             ).fetchall()
+        except sqlite3.OperationalError as exc:
+            return {
+                "state": "PROBE_FAILED",
+                "reason": f"{type(exc).__name__}:{str(exc)[:160]}",
+                **boundary,
+            }
+        # The probe above finds any registry row that ever said eligible.  The
+        # sweep asks the same question and has to get the same answer, or the
+        # two engines disagree about who is owed a truth row: a scope the
+        # registry has since stopped admitting would leave the sweep and come
+        # straight back here.  See ``registry_scope_still_eligible``.
+        try:
+            pending = [
+                scope for scope in pending
+                if registry_scope_still_eligible(
+                    self.commit_conn,
+                    station_id=str(scope[0]),
+                    event_date=str(scope[1]),
+                )
+            ]
         except sqlite3.OperationalError as exc:
             return {
                 "state": "PROBE_FAILED",
@@ -10921,6 +10943,9 @@ class TargetProductionWorker:
                     center_width=load_center_width(
                         self.commit_conn, stage="P1"
                     ),
+                    center_width_floor_rungs=load_center_width_floor(
+                        self.commit_conn, stage="P1"
+                    ),
                     station_width=load_station_width(
                         self.commit_conn, stage="P1"
                     ),
@@ -12204,6 +12229,11 @@ class TargetProductionWorker:
                                 center_width=load_center_width(
                                     self.commit_conn, stage="P0-M"
                                 ),
+                                center_width_floor_rungs=(
+                                    load_center_width_floor(
+                                        self.commit_conn, stage="P0-M"
+                                    )
+                                ),
                                 center_width_taf_cells=(
                                     load_center_width_cells(
                                         self.commit_conn, stage="P0-M"
@@ -12566,6 +12596,9 @@ class TargetProductionWorker:
                             self.commit_conn, stage="P0-M"
                         ),
                         center_width=load_center_width(
+                            self.commit_conn, stage="P0-M"
+                        ),
+                        center_width_floor_rungs=load_center_width_floor(
                             self.commit_conn, stage="P0-M"
                         ),
                         center_width_taf_cells=load_center_width_cells(
