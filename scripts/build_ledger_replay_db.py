@@ -78,6 +78,13 @@ INPUT_TABLES = (
     # (``delta_v2_artifact_not_promoted``), so the promotions travel too.
     ("basket_delta_v2_policy_promotion", None),
     ("basket_strategy_activation_state", None),
+    # Charter 68(c): the lambda store the ledger reads as of each decision.
+    # Two small tables, copied whole; without them every replay reads the
+    # kernel constants and an as-of arm is silently identical to a
+    # constants arm -- measured 2026-09-05 on a database that had the
+    # tables' schema and none of their rows.
+    ("calibration_effective_edge_lambda", None),
+    ("calibration_effective_edge_fit_journal", None),
 )
 # Carried by join rather than by date: it has no date of its own and is
 # meaningless without the history rows it hangs from.

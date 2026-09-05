@@ -21,6 +21,7 @@ from .market_ingress import (
     load_official_ws_quotes,
 )
 from .market_registry import load_market_registry_snapshot
+from .effective_edge_store import load_effective_edge_tables
 from .production import compile_production_plan
 from .regime_materialization import load_regime_artifact
 from .production_io import (
@@ -899,6 +900,12 @@ def compile_p0_preselection(
         # of an opening, not an opening of its own, and has no execution
         # policy of its own under this strategy version.
         station_policy_stage="P0",
+        # Charter 68(c): the lambda tables the store activated, as of now.
+        # This lane compiles the opening plan and bypasses production_io's
+        # entry, so it has to hand the tables in itself -- the first
+        # decisions after the store went live carried an empty receipt
+        # from exactly this omission.
+        effective_edge_tables=load_effective_edge_tables(conn),
         probability_envelopes=envelopes,
         market_snapshot=market,
         policy_activations=artifacts.policy_activations,
