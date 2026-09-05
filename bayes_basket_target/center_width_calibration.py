@@ -54,6 +54,25 @@ MAX_WIDTH_LAMBDA = 1.5
 # 0.25, which no single layer would be entitled to claim alone.
 MIN_STATION_WIDTH_SCALE = 0.5
 MAX_STATION_WIDTH_SCALE = 1.5
+# The width floor.  One lambda cannot serve a fleet whose own
+# claimed spread means different things at different sizes.  Measured
+# 2026-09-05 on this stage's own serving cells, the standardised error's
+# standard deviation runs 0.95 where the served distribution calls itself
+# narrower than 1.44 rungs and 0.67 where it calls itself wider: the pooled
+# 0.75 shrinks the first group that is already too narrow and fails to shrink
+# the second enough.  The correction is not a second lambda -- fitting one per
+# tier was measured and is worse (forward NLL +0.0101 against +0.0132 for the
+# floor) -- because the heterogeneity is inside the narrow tier, not between
+# the tiers: within it, the narrower the claim the worse it is.  So the claim
+# is floored rather than tiered, and the single pooled lambda is refitted
+# under the floor.
+#
+# The lift is bounded for the same reason the shrink is.  Halving a width is
+# the most this layer may claim downward; doubling is the mirror of it, and
+# beyond that the fit is describing a distribution so degenerate that bending
+# it here would hide the fault it should be reporting.
+MAX_SIGMA_FLOOR_LIFT = 2.0
+MAX_SIGMA_FLOOR_RUNGS = 4.0
 # The next-day fleet regime shift composes onto the same axis as ``delta_c``
 # -- two shifts along one line add -- and carries its own entitlement bound,
 # checked separately for the same reason the station width scale is.  The two
@@ -62,6 +81,88 @@ MAX_STATION_WIDTH_SCALE = 1.5
 # the fleet settled yesterday.  Keeping the bounds apart keeps a fast layer
 # from ever spending a slow layer's entitlement.
 MAX_ABS_REGIME_SHIFT_C = 1.0
+
+
+def bucket_rung_width_c(centers: Sequence[float]) -> float:
+    """The vocabulary's own rung, read off the axis it is serving.
+
+    The smallest adjacent gap.  Every interior gap is exactly the rung, and
+    each of the two edge gaps is strictly larger: an open-ended bucket is
+    placed half of ``edge_width_c`` beyond its finite side, putting it half a
+    rung plus half that width from its neighbour, which exceeds a rung for
+    every rung narrower than ``edge_width_c`` -- 1.0 and 10/9 are the only two
+    in production.  The minimum therefore reads the rung exactly, on ladders
+    of any length.
+
+    The median was tried first and is wrong on short ladders: a five-bucket
+    market has four gaps, two of them edges, and the median of an even count
+    lands on an edge gap and reads the rung half again too wide.  The minimum
+    has no such length dependence, and its one failure direction -- a
+    pathologically narrow gap -- reads the rung too small, which makes every
+    rule counted in rungs more conservative rather than less.
+
+    Charter 53 forbids deriving this from the unit: a Fahrenheit market's rung
+    is 10/9 C, and reading it off the axis gets that right without anyone
+    writing the constant down.
+    """
+
+    gaps = [
+        upper - lower
+        for lower, upper in zip(centers, centers[1:])
+        if upper > lower
+    ]
+    if not gaps:
+        raise ValueError("center_width_bucket_axis_invalid")
+    return min(gaps)
+
+
+def sigma_floor_lift_v1(
+    probability: Mapping[str, float],
+    *,
+    ordered_keys: Sequence[str],
+    key_centers_c: Sequence[float],
+    floor_rungs: float,
+) -> tuple[float, float, float]:
+    """How far a distribution's own spread must be lifted to reach the floor.
+
+    Returns ``(lift, sigma_c, rung_c)``.  The lift is what the width scale is
+    multiplied by, so it is 1.0 for every distribution already at or above the
+    floor -- the wide tier is not a separate case, it is the case where this
+    returns one.
+
+    One implementation, called by the fit and by serving alike.  A floor
+    computed two ways would train against one shape and serve another, which
+    is the split the spread cap already taught this codebase once.
+    """
+
+    keys, centers = _axis(ordered_keys, key_centers_c)
+    if set(keys) != set(probability):
+        raise ValueError("center_width_bucket_mismatch")
+    floor = float(floor_rungs)
+    if not math.isfinite(floor) or not 0.0 <= floor <= MAX_SIGMA_FLOOR_RUNGS:
+        raise ValueError("center_width_sigma_floor_out_of_range")
+    index = {key: position for position, key in enumerate(keys)}
+    total = sum(float(value) for value in probability.values())
+    if total <= 0.0 or not math.isfinite(total):
+        raise ValueError("center_width_probability_empty")
+    mean_c = sum(
+        centers[index[str(key)]] * float(value) / total
+        for key, value in probability.items()
+    )
+    variance = sum(
+        float(value) / total * (centers[index[str(key)]] - mean_c) ** 2
+        for key, value in probability.items()
+    )
+    sigma_c = math.sqrt(max(variance, 0.0))
+    rung_c = bucket_rung_width_c(centers)
+    if floor <= 0.0:
+        return 1.0, sigma_c, rung_c
+    if sigma_c <= 0.0:
+        # A point mass claims certainty this layer has never been able to
+        # justify; it takes the whole entitlement rather than dividing by zero.
+        return MAX_SIGMA_FLOOR_LIFT, sigma_c, rung_c
+    lift = (floor * rung_c) / sigma_c
+    return min(MAX_SIGMA_FLOOR_LIFT, max(1.0, lift)), sigma_c, rung_c
 
 
 def _axis(
@@ -88,6 +189,7 @@ def apply_center_width_calibration(
     excluded_buckets: Sequence[str] = (),
     station_width_scale: float = 1.0,
     regime_delta_c: float = 0.0,
+    sigma_floor_rungs: float = 0.0,
 ) -> tuple[dict[str, float], dict[str, Any]]:
     """Shift by ``delta_c`` and scale about the mean by ``width_lambda``.
 
@@ -134,10 +236,24 @@ def apply_center_width_calibration(
         MIN_STATION_WIDTH_SCALE <= scale <= MAX_STATION_WIDTH_SCALE
     ):
         raise ValueError("center_width_station_scale_out_of_range")
+    # The floor is read off the input distribution, before anything moves it:
+    # it answers "is this claim narrow enough to disbelieve", and the answer
+    # must not depend on the correction being decided.  Zero is the whole
+    # history of this layer, and returns a lift of exactly one.
+    lift, sigma_c, rung_c = sigma_floor_lift_v1(
+        probability,
+        ordered_keys=ordered_keys,
+        key_centers_c=key_centers_c,
+        floor_rungs=sigma_floor_rungs,
+    )
+    if not math.isfinite(lift) or not (
+        1.0 <= lift <= MAX_SIGMA_FLOOR_LIFT
+    ):
+        raise ValueError("center_width_sigma_floor_lift_out_of_range")
     # Composed after each factor passed its own bounds: the product is what a
     # point's deviation from the mean is multiplied by, and the sum is how far
     # along the axis the whole distribution travels.
-    lam = lam * scale
+    lam = lam * scale * lift
     fitted_shift = shift
     shift = shift + regime
 
@@ -194,6 +310,10 @@ def apply_center_width_calibration(
             "regime_delta_c": regime,
             "width_lambda": lam,
             "distribution_mean_c": mean_c,
+            "sigma_floor_rungs": float(sigma_floor_rungs),
+            "sigma_floor_lift": lift,
+            "distribution_sigma_c": sigma_c,
+            "bucket_rung_c": rung_c,
         }
     adjusted = {key: value / total for key, value in moved.items()}
     return adjusted, {
@@ -213,6 +333,14 @@ def apply_center_width_calibration(
         "regime_delta_c": regime,
         "width_lambda": lam,
         "distribution_mean_c": mean_c,
+        # The floor's three numbers travel together: the parameter, the lift
+        # it produced, and the spread it was judged against.  A receipt
+        # carrying only the composed lambda could not say whether a wide
+        # correction was the fitted scalar or a disbelieved claim.
+        "sigma_floor_rungs": float(sigma_floor_rungs),
+        "sigma_floor_lift": lift,
+        "distribution_sigma_c": sigma_c,
+        "bucket_rung_c": rung_c,
         "mass_returned_to_hard_bound": restored,
         "pre_normalisation_mass": total,
     }

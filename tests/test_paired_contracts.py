@@ -148,25 +148,52 @@ PAIRED_CONTRACTS: tuple[tuple[str, Callable[[], Any], Callable[[], Any]], ...] =
             "def serving_cells_by_day",
             "decision_at_utc>=?",
         ),
+        # The hand-maintained ``CW_SINCE`` this half used to read was retired
+        # when the refits moved into the resident's own sweep and the floor
+        # became ``served_arithmetic_anchor``.  The contract is unchanged and
+        # still worth both halves: the anchor must also be a decision
+        # timestamp, or the automatic bound would reintroduce the event-date
+        # reach the manual one was fixed to avoid.  Retargeted 2026-09-05.
         lambda: _reads_key(
-            "scripts/daily_calibration_training.sh",
-            "CW_SINCE=",
-            "T",  # a timestamp, not a bare date
+            "bayes_basket_target/center_width_store.py",
+            "def served_arithmetic_anchor",
+            "MIN(h.decision_at_utc)",
         ),
     ),
     (
         "The evaluator and the server centre a distribution identically. "
         "An evaluator that centres differently hands out certificates it "
         "did not earn.",
+        # Both halves now name the shared resolver rather than restating its
+        # arithmetic.  The register asked for the old literal expression long
+        # after ``_corrected_center`` was routed through ``_resolved_bias_c``,
+        # so the pair failed while the contract it guards was being kept --
+        # a stale assertion, corrected 2026-09-05.
         lambda: _reads_key(
             "bayes_basket_target/native_ensemble_oos.py",
             "def _corrected_center",
-            'mean + float(parameters["bias_c"])',
+            "mean + _resolved_bias_c(mean, parameters)",
         ),
         lambda: _reads_key(
             "bayes_basket_target/native_ensemble_p0.py",
             "_calibrated_system_probability",
-            "bias_c",
+            "_resolved_bias_c",
+        ),
+    ),
+    (
+        "The width floor is read off the served claim by one function, and "
+        "the fit scores under the same floor it would serve.  A floor "
+        "computed one way and served another is the serve/train split the "
+        "spread cap already cost this codebase once.",
+        lambda: _reads_key(
+            "bayes_basket_target/center_width_store.py",
+            "def _search",
+            "sigma_floor_rungs=sigma_floor_rungs",
+        ),
+        lambda: _reads_key(
+            "bayes_basket_target/center_width_calibration.py",
+            "def apply_center_width_calibration",
+            "lift, sigma_c, rung_c = sigma_floor_lift_v1(",
         ),
     ),
 )

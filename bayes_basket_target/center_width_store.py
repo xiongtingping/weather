@@ -28,10 +28,12 @@ from zoneinfo import ZoneInfo
 from .band_reliability_store import _invert_band_receipt, _begin_immediate
 from .center_width_calibration import (
     MAX_ABS_SHIFT_C,
+    MAX_SIGMA_FLOOR_LIFT,
     MAX_WIDTH_LAMBDA,
     MIN_WIDTH_LAMBDA,
     apply_center_width_calibration,
     bucket_centers_from_intervals,
+    sigma_floor_lift_v1,
 )
 from . import serving_arithmetic
 from .contracts import ContractError, content_sha256
@@ -96,6 +98,20 @@ EDGE_WIDTH_C = 2.0
 # a regime of its own, not a missing value.
 TAF_CELL_NAMES = ("warm", "agree", "cold", "none")
 TAF_GAP_THRESHOLD_C = 0.5
+# The width floor, in rungs of the station's own vocabulary (charter 53(b):
+# a rule counted in rungs is synonymous across units and is not converted).
+# 1.44 is where the measurement puts the break -- below it the served claim's
+# standardised error has standard deviation 0.95, above it 0.67 -- and it is
+# one number doing two jobs, the tier boundary and the floor itself, because
+# a distribution is disbelieved exactly as far as it falls short.
+SIGMA_FLOOR_RUNGS = 1.44
+# The shadow arm's own hurdle.  It is fitted and journalled but not served
+# (user ruling, 2026-09-05: fit first, serve after the gate speaks), so this
+# is the number that decides whether it is worth wiring, and it is the same
+# one the pooled scalars answer to.
+SIGMA_FLOOR_SHADOW_STATES = (
+    "ADMITTED", "REFUSED_FORWARD", "ACCUMULATING", "NOT_MEASURED",
+)
 
 
 def taf_direction_for_gap(gap_c: float | None) -> str:
@@ -937,9 +953,13 @@ def serving_cells_by_day(
 
 
 def _cell_nll(
-    cell: Mapping[str, Any], *, delta_c: float, width_lambda: float
+    cell: Mapping[str, Any],
+    *,
+    delta_c: float,
+    width_lambda: float,
+    sigma_floor_rungs: float = 0.0,
 ) -> float:
-    if delta_c == 0.0 and width_lambda == 1.0:
+    if delta_c == 0.0 and width_lambda == 1.0 and not sigma_floor_rungs:
         adjusted = cell["probabilities"]
     else:
         adjusted, _ = apply_center_width_calibration(
@@ -949,6 +969,7 @@ def _cell_nll(
             ordered_keys=cell["ordered_keys"],
             key_centers_c=cell["key_centers_c"],
             excluded_buckets=cell["excluded_buckets"],
+            sigma_floor_rungs=sigma_floor_rungs,
         )
     total = sum(adjusted.values())
     if total <= 0.0:
@@ -957,17 +978,38 @@ def _cell_nll(
 
 
 def _mean_nll(
-    cells: Sequence[Mapping[str, Any]], *, delta_c: float, width_lambda: float
+    cells: Sequence[Mapping[str, Any]],
+    *,
+    delta_c: float,
+    width_lambda: float,
+    sigma_floor_rungs: float = 0.0,
 ) -> float:
     if not cells:
         return 0.0
     return sum(
-        _cell_nll(cell, delta_c=delta_c, width_lambda=width_lambda)
+        _cell_nll(
+            cell,
+            delta_c=delta_c,
+            width_lambda=width_lambda,
+            sigma_floor_rungs=sigma_floor_rungs,
+        )
         for cell in cells
     ) / len(cells)
 
 
-def _search(cells: Sequence[Mapping[str, Any]]) -> tuple[float, float, float]:
+def _search(
+    cells: Sequence[Mapping[str, Any]],
+    *,
+    sigma_floor_rungs: float = 0.0,
+) -> tuple[float, float, float]:
+    """The grid's best pair, optionally searched under a width floor.
+
+    The floor is not a third grid axis.  It is fixed by the measurement that
+    proposed it, and the pair is refitted underneath it, so what the search
+    returns is the best scalars *given* the floor -- which is the arithmetic
+    the arm would serve, scored the way it would serve it.
+    """
+
     best: tuple[float, float, float] | None = None
     for delta in SHIFT_GRID_C:
         if abs(delta) > MAX_ABS_SHIFT_C:
@@ -975,7 +1017,12 @@ def _search(cells: Sequence[Mapping[str, Any]]) -> tuple[float, float, float]:
         for lam in LAMBDA_GRID:
             if not MIN_WIDTH_LAMBDA <= lam <= MAX_WIDTH_LAMBDA:
                 continue
-            value = _mean_nll(cells, delta_c=delta, width_lambda=lam)
+            value = _mean_nll(
+                cells,
+                delta_c=delta,
+                width_lambda=lam,
+                sigma_floor_rungs=sigma_floor_rungs,
+            )
             if best is None or value < best[2]:
                 best = (delta, lam, value)
     if best is None:
@@ -1136,6 +1183,92 @@ def _evidence_floor(
     return _memoised(("evidence_floor", stage, caller_bound), _resolve)
 
 
+def _sigma_floor_shadow(
+    *,
+    train: Sequence[Mapping[str, Any]],
+    forward: Sequence[Mapping[str, Any]],
+    incumbent: tuple[float, float],
+    pooled: tuple[float, float],
+    pooled_admitted: bool,
+) -> dict[str, Any]:
+    """What a floored fit would have served, and whether it beats today's.
+
+    Two comparisons, both on the held-out forward window.  Against the
+    incumbent, because that is the distribution the stage serves and the only
+    thing an activation would replace.  Against the pooled candidate, because
+    a floor that only wins by carrying the pooled refit along with it has not
+    earned a lane of its own.
+    """
+
+    out: dict[str, Any] = {
+        "schema": "center_width_sigma_floor_shadow_v1",
+        "sigma_floor_rungs": SIGMA_FLOOR_RUNGS,
+        "max_lift": MAX_SIGMA_FLOOR_LIFT,
+        "served": False,
+        "state": "NOT_MEASURED",
+    }
+    if not train or not forward:
+        return out
+    lifted = 0
+    lifts: list[float] = []
+    for cell in forward:
+        try:
+            lift, _sigma, _rung = sigma_floor_lift_v1(
+                cell["probabilities"],
+                ordered_keys=cell["ordered_keys"],
+                key_centers_c=cell["key_centers_c"],
+                floor_rungs=SIGMA_FLOOR_RUNGS,
+            )
+        except ValueError:
+            continue
+        lifts.append(lift)
+        lifted += lift > 1.0
+    out["forward_cell_count"] = len(forward)
+    out["forward_lifted_count"] = lifted
+    out["forward_lifted_share"] = (
+        lifted / len(lifts) if lifts else 0.0
+    )
+    out["forward_mean_lift"] = (
+        sum(lifts) / len(lifts) if lifts else 1.0
+    )
+    floor_delta, floor_lambda, floor_train_nll = _search(
+        train, sigma_floor_rungs=SIGMA_FLOOR_RUNGS
+    )
+    incumbent_nll = _mean_nll(
+        forward, delta_c=incumbent[0], width_lambda=incumbent[1]
+    )
+    pooled_nll = _mean_nll(
+        forward, delta_c=pooled[0], width_lambda=pooled[1]
+    )
+    floor_nll = _mean_nll(
+        forward,
+        delta_c=floor_delta,
+        width_lambda=floor_lambda,
+        sigma_floor_rungs=SIGMA_FLOOR_RUNGS,
+    )
+    gain_incumbent = incumbent_nll - floor_nll
+    gain_pooled = pooled_nll - floor_nll
+    out.update({
+        "candidate_delta_c": floor_delta,
+        "candidate_width_lambda": floor_lambda,
+        "train_nll": floor_train_nll,
+        "forward_nll_incumbent": incumbent_nll,
+        "forward_nll_pooled_candidate": pooled_nll,
+        "forward_nll_floor_candidate": floor_nll,
+        "forward_nll_gain_vs_incumbent": gain_incumbent,
+        "forward_nll_gain_vs_pooled": gain_pooled,
+        "min_forward_nll_gain": MIN_FORWARD_NLL_GAIN,
+        "pooled_admitted": bool(pooled_admitted),
+        "state": (
+            "ADMITTED"
+            if gain_incumbent > MIN_FORWARD_NLL_GAIN
+            and gain_pooled > MIN_FORWARD_NLL_GAIN
+            else "REFUSED_FORWARD"
+        ),
+    })
+    return out
+
+
 def fit_center_width(
     conn: sqlite3.Connection,
     *,
@@ -1191,6 +1324,13 @@ def fit_center_width(
     }
     if accumulating:
         evidence["basis"] = "ACCUMULATING"
+        evidence["sigma_floor"] = {
+            "schema": "center_width_sigma_floor_shadow_v1",
+            "sigma_floor_rungs": SIGMA_FLOOR_RUNGS,
+            "max_lift": MAX_SIGMA_FLOOR_LIFT,
+            "served": False,
+            "state": "ACCUMULATING",
+        }
         return {
             "stage": stage_id,
             "delta_c": base[0],
@@ -1283,6 +1423,22 @@ def fit_center_width(
         else:
             entry["state"] = "REFUSED_FORWARD"
     evidence["taf_cells"] = taf_evidence
+    # The width floor, fitted as a shadow: measured here, served
+    # nowhere.  Scored against the incumbent on the same forward window and
+    # by the same hurdle as the pooled scalars, because the question it has
+    # to answer is the one that decides whether it is wired at all -- would
+    # this stage serve a better distribution under a floor than it serves
+    # today.  Reported per stage rather than judged once for the fleet: the
+    # break is a property of how a stage's own claims are shaped, and P1's
+    # afternoon distributions -- already cut on one side by the hard bound --
+    # are not P0's.
+    evidence["sigma_floor"] = _sigma_floor_shadow(
+        train=train,
+        forward=forward,
+        incumbent=base,
+        pooled=(delta, lam),
+        pooled_admitted=admitted,
+    )
     return {
         "stage": stage_id,
         "delta_c": delta if admitted else base[0],
@@ -1567,6 +1723,11 @@ def _refit_stages(
                         fitted["evidence"].get("taf_cells") or {}
                     ).items()
                 },
+                # The shadow rides on the report so the daily run shows it
+                # accumulating or clearing without anyone reading the
+                # journal's evidence blob by hand.  It serves nothing; the
+                # numbers are here to be watched.
+                "sigma_floor": fitted["evidence"].get("sigma_floor") or {},
             })
             if commit:
                 if stage not in CENTER_WIDTH_SERVED_STAGES:
