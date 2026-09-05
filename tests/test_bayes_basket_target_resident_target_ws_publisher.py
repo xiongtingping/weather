@@ -530,9 +530,9 @@ def test_only_future_probability_expiry_requires_catalog_refresh() -> None:
     future_scope = {
         "event_day_state": "not_started",
         "probability_fresh_until_utc": "2026-07-28T02:00:01Z",
+        "probability_evidence_fresh": True,
     }
     catalog = {"scopes": [open_scope, future_scope]}
-
     assert _future_probability_expired(
         catalog,
         observed_at_utc="2026-07-28T02:00:00Z",
@@ -545,7 +545,13 @@ def test_only_future_probability_expiry_requires_catalog_refresh() -> None:
         {"scopes": [open_scope]},
         observed_at_utc="2026-07-28T03:00:00Z",
     ) is False
-
+    # Once the catalog carries the scope as stale, expiry is behind it and
+    # must not be raised again on every frame (the 2026-08-14 freeze).
+    already_stale = {**future_scope, "probability_evidence_fresh": False}
+    assert _future_probability_expired(
+        {"scopes": [open_scope, already_stale]},
+        observed_at_utc="2026-07-28T03:00:00Z",
+    ) is False
 
 def test_station_carries_two_listed_days_and_cannot_rotate_through_a_third(
     tmp_path: Path,
@@ -620,10 +626,14 @@ def test_scope_excludes_closed_and_stale_probability_days(
         db_path=db,
         as_of_utc="2026-07-28T02:00:00Z",
     )
+    # The closed day is gone; the not-started day whose probability went
+    # stale keeps its book (user ruling, 2026-09-06) and says so.
     assert [scope["scope_key"] for scope in catalog["scopes"]] == [
-        "RKPK|2026-07-28"
+        "RKPK|2026-07-28", "RKPK|2026-07-29",
     ]
-
+    stale = catalog["scopes"][1]
+    assert stale["event_day_state"] == "not_started"
+    assert stale["probability_evidence_fresh"] is False
 
 def _quote(token: str, observed_at: str) -> dict[str, object]:
     return {

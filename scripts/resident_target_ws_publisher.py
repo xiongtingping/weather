@@ -275,10 +275,13 @@ def _future_probability_expired(
         str(scope.get("event_day_state") or "") == "not_started"
         # A listing-day scope carries no probability claim at all; an empty
         # fresh-until is absence, not expiry, and must not churn the
-        # connection.  Stale-rooted future scopes never reach this gate --
-        # the catalog admission skips them -- so this remains a no-op in
-        # steady state either way.
+        # connection.
         and str(scope.get("probability_fresh_until_utc") or "").strip()
+        # Fires on the transition, not on the state: a scope the catalog
+        # already carries as stale (user ruling, 2026-09-06: a not-started
+        # day keeps its book) has nothing left to refresh, and re-raising
+        # on every frame for it is the 2026-08-14 freeze.
+        and bool(scope.get("probability_evidence_fresh", True))
         and observed >= _parse_utc(
             str(scope["probability_fresh_until_utc"])
         )
@@ -479,19 +482,18 @@ def _scope(
                 continue
             if state == "not_started" and stage not in {"P0", "P0-M", ""}:
                 continue
-            if (
-                state == "not_started"
-                and probability is not None
-                and not probability_evidence_fresh
-            ):
-                # This admission line doubles as the safety for the
-                # ``_future_probability_expired`` gate downstream: with
-                # stale-future scopes excluded here, that gate is a no-op in
-                # steady state.  Removing this line (2026-08-14, listing-day
-                # subscription attempt) made one expired overnight American
-                # scope raise ScopeCatalogChanged on every frame and froze
-                # the entire publisher output for all scopes.
-                continue
+            # A not-started day keeps its book while its P0 is stale (user
+            # ruling, 2026-09-06).  Until then a stale future scope was
+            # dropped here, so at any instant only the stations whose P0
+            # had refreshed inside its six-hour window were subscribed --
+            # 20 of 45 for 2026-09-06 on the evening of 09-05 -- and when
+            # the rest came back the forward lane had no book to compile
+            # against.  The scope stays, flagged ``probability_evidence_
+            # fresh=False``; the compile still refuses a stale probability.
+            # The 2026-08-14 freeze this line once guarded against (an
+            # expired overnight scope raising ScopeCatalogChanged on every
+            # frame) is closed in ``_future_probability_expired`` itself,
+            # which now fires once per expiry rather than while expired.
             if state not in {"not_started", "open"}:
                 continue
             tokens = sorted({

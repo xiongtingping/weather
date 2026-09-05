@@ -1406,3 +1406,19 @@ def test_blocked_compile_without_a_plan_projects_by_status_and_reasons() -> None
         ):
             _decision_semantic_projection({**blocked, "status": status})
 
+
+
+def test_the_opening_compile_hands_in_the_chains_last_acted_identity() -> None:
+    """Charters 71(a) and 77 on the forward lane (2026-09-05): the opening
+    compile bypassed production_io's entry and never passed the chain's
+    last-acted identity or the last decision signature, so the top-up
+    identity gate could not bind and every compile was a decision moment."""
+
+    import inspect
+
+    from bayes_basket_target import p0_preselection
+
+    source = inspect.getsource(p0_preselection.compile_p0_preselection)
+    assert "last_acted_probability_identity=load_last_acted_probability_identity(" in source
+    assert "last_decision_signature=load_last_decision_signature(" in source
+    assert 'stage="P0"' in source

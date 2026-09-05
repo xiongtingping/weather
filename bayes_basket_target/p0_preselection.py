@@ -23,6 +23,7 @@ from .market_ingress import (
 from .market_registry import load_market_registry_snapshot
 from .effective_edge_store import load_effective_edge_tables
 from .inventory_producer import ledger_holdings_by_token
+from .consolidation_chain import load_last_acted_probability_identity
 from .production import compile_production_plan
 from .regime_materialization import load_regime_artifact
 from .production_io import (
@@ -33,6 +34,7 @@ from .production_io import (
     load_production_artifacts,
     resolve_delta_v2_runtime_authority,
     target_registry_source_lane,
+    load_last_decision_signature,
 )
 from .performance_budget import load_performance_budget
 from .resource_bounds import assert_connection_target_capacity
@@ -1003,6 +1005,22 @@ def compile_p0_preselection(
         # decisions after the store went live carried an empty receipt
         # from exactly this omission.
         effective_edge_tables=load_effective_edge_tables(conn),
+        # Charters 71(a) and 77, by the same omission (found 2026-09-05):
+        # the chain's last-acted identity and the scope's last decision
+        # signature were never handed in here, so on this lane 71(a) could
+        # never bind and every compile was a decision moment.  The same
+        # loaders production_io's entry uses.
+        last_acted_probability_identity=load_last_acted_probability_identity(
+            conn,
+            station_id=station_id,
+            event_date=event_date,
+        ),
+        last_decision_signature=load_last_decision_signature(
+            conn,
+            station_id=station_id,
+            event_date=event_date,
+            stage="P0",
+        ),
         probability_envelopes=envelopes,
         market_snapshot=market,
         policy_activations=artifacts.policy_activations,
