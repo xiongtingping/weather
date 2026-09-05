@@ -1954,6 +1954,59 @@ def _p0_preselection_scope_version(market_snapshot: Mapping[str, Any]) -> str:
     return f"{base}:{quote_version}" if base else quote_version
 
 
+def _forward_quote_sequence(
+    conn: sqlite3.Connection,
+    quote_raw: dict[str, Any],
+) -> int:
+    """Give the forward quote its place in the scope's snapshot sequence.
+
+    ``compile_p0_market_evidence`` stamps every forward quote ``sequence=0``.
+    That held while the forward lane was the only writer of a not-started
+    day: the evidence bundle refuses a quote whose sequence is below the
+    latest row for the scope, and every forward row was 0, so 0 never fell
+    behind 0.  Since 2026-09-02 18:27Z the resident ingress persists listed
+    days too (05ab1abc..c2615579), numbering them 1, 2, 3 ..., and from the
+    first such row every forward insert for the scope was refused as
+    ``official_ws_sequence_rewind``.  Measured 2026-09-05: the forward lane
+    wrote 2,000-2,900 snapshot rows per event day through 2026-09-03 and
+    31, 31 and 60 for the three days after; SAEZ's 2026-09-06 plan compiled
+    ``ready_no_live`` on every cycle from 20:19Z on 09-04 and was never
+    opened, because the evidence the stage open binds to could not be
+    written.  With the live flag armed that is the whole order flow: no
+    stage open, no chain, no ticket for P1 (charter 74), no intent, no
+    order.
+
+    Same rule the resident ingress applies to its own rows
+    (``market_ingress._next_sequence`` / ``_reuse_sequence_for_replay``): a
+    quote already persisted under this snapshot id keeps the sequence it was
+    given -- the bundle deduplicates by snapshot id and rejects a second row
+    whose bytes disagree, and the sequence is in the bytes -- and a new one
+    takes the next number for the scope.  Assigned on the writer connection
+    at insert time, so it cannot go stale between compile and write.
+    """
+
+    snapshot_id = str(quote_raw.get("snapshot_id") or "")
+    row = conn.execute(
+        "SELECT sequence FROM basket_official_ws_snapshot WHERE snapshot_id=?",
+        (snapshot_id,),
+    ).fetchone()
+    if row is not None:
+        sequence = int(row[0])
+    else:
+        row = conn.execute(
+            "SELECT COALESCE(MAX(sequence),-1)+1 "
+            "FROM basket_official_ws_snapshot "
+            "WHERE station_id=? AND event_date=?",
+            (
+                str(quote_raw.get("station_id") or ""),
+                str(quote_raw.get("event_date") or ""),
+            ),
+        ).fetchone()
+        sequence = max(0, int(row[0] or 0))
+    quote_raw["sequence"] = sequence
+    return sequence
+
+
 def _forward_market_evidence_rows(
     market_snapshot: Mapping[str, Any],
     *,
@@ -13656,6 +13709,7 @@ class TargetProductionWorker:
                     ).content_sha256
                 ),
             )
+            _forward_quote_sequence(self.commit_conn, quote_raw)
             assert_connection_target_capacity(
                 self.commit_conn,
                 recover_oversized_wal=True,
@@ -14044,6 +14098,7 @@ class TargetProductionWorker:
                             ).content_sha256
                         ),
                     )
+                    _forward_quote_sequence(self.commit_conn, quote_raw)
                     # Evidence first, in a savepoint of its own.  Set before
                     # the bundle is written, not after: the bundle refuses a
                     # quote whose version does not match the inventory row

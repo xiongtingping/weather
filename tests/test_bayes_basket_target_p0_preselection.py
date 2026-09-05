@@ -986,6 +986,103 @@ def test_recording_a_refused_book_never_replaces_the_refusal() -> None:
         )
 
 
+def test_forward_evidence_takes_the_next_sequence_after_resident_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forward quote is numbered after whatever the resident lane wrote.
+
+    The compile stamps every forward quote ``sequence=0``.  While the forward
+    lane was the only writer of a not-started day that was harmless; once the
+    resident ingress began persisting listed days (2026-09-02 18:27Z), every
+    scope carried rows numbered 1, 2, 3 ... and the forward insert was
+    refused as ``official_ws_sequence_rewind`` on every cycle -- 2,000-2,900
+    forward rows per event day fell to 31, and a plan that compiled
+    ``ready_no_live`` for twelve hours (SAEZ 2026-09-06) was never opened.
+    The forward quote takes the next number for the scope, and the same
+    quote re-inserted keeps the number it was given.
+    """
+
+    from bayes_basket_target import production_worker
+
+    market = _forward_market_snapshot()
+    monkeypatch.setattr(
+        production_worker,
+        "compile_p0_market_evidence",
+        lambda *args, **kwargs: market,
+    )
+    worker = production_worker.TargetProductionWorker.__new__(
+        production_worker.TargetProductionWorker
+    )
+    with sqlite3.connect(":memory:") as conn:
+        _forward_evidence_schema(conn)
+        worker.conn = conn
+        worker.commit_conn = conn
+        worker._forward_market_evidence_last = None
+        # A resident-lane row for the same scope, numbered well past zero
+        # and observed before the forward quote.
+        conn.execute(
+            "INSERT INTO basket_official_ws_snapshot("
+            "snapshot_id,market_id,station_id,event_date,settlement_timezone,"
+            "sequence,observed_at,quote_version,quote_observed_at,"
+            "quote_expires_at,quote_freshness_policy_sha256,quote_source,"
+            "inventory_version,order_state_version,remaining_budget_usdc,"
+            "buckets_json,cash_phase_input_json,content_sha256,state,"
+            "created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "resident-7",
+                "market-zuuu",
+                "ZUUU",
+                "2026-07-24",
+                "America/New_York",
+                7,
+                "2026-07-23T11:59:00Z",
+                "resident-version",
+                "2026-07-23T11:59:00Z",
+                "2026-07-23T12:05:00Z",
+                "c" * 64,
+                "OFFICIAL_CLOB_WS",
+                "resident-inventory",
+                "resident-order-state",
+                0.0,
+                "[]",
+                "{}",
+                "r" * 64,
+                "COMMITTED",
+                "2026-07-23T11:59:00Z",
+            ),
+        )
+        kwargs = dict(
+            station_id="ZUUU",
+            event_date="2026-07-24",
+            evaluation_at_utc="2026-07-23T12:01:00Z",
+            registry_snapshot={},
+            ws_manifest={},
+            ws_quotes={},
+            planning_budget_usdc=0.0,
+            activation=_activation(),
+            compile_blocker="ContractError:regime_direction_mismatch",
+        )
+
+        first = worker._record_refused_compile_market_evidence(**kwargs)
+
+        assert first["state"] == "COMMITTED", first
+        assert first["wrote_quote"] is True
+        assert "market_evidence_blocker" not in first
+        assert conn.execute(
+            "SELECT sequence FROM basket_official_ws_snapshot "
+            "WHERE quote_version LIKE 'p0_ws_%'"
+        ).fetchall() == [(8,)]
+
+        # The same quote again: the row it already has, no second one.
+        second = worker._record_refused_compile_market_evidence(**kwargs)
+
+        assert second["state"] == "COMMITTED", second
+        assert second["wrote_quote"] is False
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_official_ws_snapshot"
+        ).fetchone()[0] == 2
+
+
 def test_forward_evidence_rows_have_one_builder() -> None:
     """Both paths write the same bytes for the same quote, or neither can.
 
