@@ -137,9 +137,10 @@ def test_finished_captures_free_their_slot_and_surface_the_outcome(
     _capture(worker, tmp_path=tmp_path)
 
     assert ("2026-08-07",) not in worker._official_native_capture_inflight
-    last = worker._official_native_capture_last_result
+    last = worker._official_native_capture_last_result_by_date["2026-08-07"]
     assert last["state"] == "CAPTURED"
     assert last["event_date"] == "2026-08-07"
+    assert last["completed_at_utc"] == "2026-08-06T15:00:00Z"
 
 
 def test_a_run_already_captured_is_not_downloaded_again(
@@ -214,7 +215,86 @@ def test_a_failed_capture_does_not_wedge_its_slot(worker, tmp_path: Path) -> Non
     _capture(worker, tmp_path=tmp_path)
 
     assert ("2026-08-07",) not in worker._official_native_capture_inflight
-    assert worker._official_native_capture_last_result["state"] == "FAILED"
+    assert (
+        worker._official_native_capture_last_result_by_date["2026-08-07"]["state"]
+        == "FAILED"
+    )
+
+
+def test_a_throttled_scope_reports_its_own_dates_outcome_not_the_last_one(
+    worker, tmp_path: Path
+) -> None:
+    """One outcome per event date, so a date's failure cannot be overwritten.
+
+    The worker used to keep a single slot for the newest outcome of any
+    capture.  On 2026-09-05 the 2026-09-07 pass exited after two minutes with
+    no staging inbox, and before any receipt could be read the slot already
+    held 2026-09-06's and then 2026-09-05's outcome -- the one date whose
+    failure mattered was the one date with no record.  A THROTTLED receipt
+    now carries the attempt it is holding down; another date finishing later
+    does not displace it.
+    """
+    class _Finished:
+        def __init__(self, outcome):
+            self._outcome = outcome
+
+        def done(self):
+            return True
+
+        def result(self):
+            return self._outcome
+
+    # Attempt 08-07 (no registry in this root, so it is throttled and nothing
+    # is submitted), then let two passes finish: 08-07 failed, 08-08 captured
+    # afterwards.
+    _capture(worker, tmp_path=tmp_path)
+    worker._official_native_capture_inflight = {
+        ("2026-08-07",): _Finished({
+            "state": "FAILED",
+            "reason": "run_ladder_exhausted:capture_exit_1:404",
+        }),
+        ("2026-08-08",): _Finished({
+            "state": "CAPTURED",
+            "inbox_packet_count": 45,
+            "captured_run_init_utc": "2026-08-06T06:00:00Z",
+        }),
+    }
+
+    throttled = _capture(worker, tmp_path=tmp_path)
+
+    assert throttled["state"] == "THROTTLED"
+    assert throttled["last_completed"]["event_date"] == "2026-08-07"
+    assert throttled["last_completed"]["state"] == "FAILED"
+    assert throttled["last_completed"]["reason"].endswith(":404")
+    by_date = worker._official_native_capture_last_result_by_date
+    assert set(by_date) == {"2026-08-07", "2026-08-08"}
+    assert by_date["2026-08-08"]["state"] == "CAPTURED"
+    assert not hasattr(worker, "_official_native_capture_last_result")
+
+
+def test_outcomes_older_than_the_open_window_are_not_retained(
+    worker, tmp_path: Path
+) -> None:
+    class _Finished:
+        def done(self):
+            return True
+
+        def result(self):
+            return {"state": "FAILED", "reason": "late"}
+
+    worker._official_native_capture_inflight = {
+        ("2026-07-01",): _Finished(),
+        ("2026-08-03",): _Finished(),
+        ("2026-08-07",): _Finished(),
+    }
+
+    _capture(worker, tmp_path=tmp_path)
+
+    # The clock is 2026-08-06: three days back is 08-03, which stays; July
+    # is closed everywhere and answers nothing.
+    assert set(worker._official_native_capture_last_result_by_date) == {
+        "2026-08-03", "2026-08-07",
+    }
 
 
 def test_a_failed_fresh_rung_does_not_redownload_the_held_run(

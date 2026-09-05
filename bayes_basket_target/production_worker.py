@@ -3490,6 +3490,22 @@ class TargetProductionWorker:
         if captured_runs is None:
             captured_runs = {}
             self._official_native_capture_runs = captured_runs
+        # The newest outcome per event date, not one slot for all of them.
+        # A single slot was overwritten by whichever capture finished last:
+        # on 2026-09-05 the 2026-09-07 pass exited after two minutes with no
+        # staging inbox, and by the time any receipt could be read the slot
+        # held 2026-06's and then 2026-05's outcome -- the one question worth
+        # asking about that date had no answer anywhere.  Keyed by date, a
+        # scope's THROTTLED receipt carries the attempt it is actually
+        # holding down, and the status publisher can show every open date.
+        results_by_date: dict[str, dict[str, Any]] = getattr(
+            self, "_official_native_capture_last_result_by_date", None
+        )
+        if results_by_date is None:
+            results_by_date = {}
+            self._official_native_capture_last_result_by_date = (
+                results_by_date
+            )
         if getattr(self, "_official_native_capture_pool", None) is None:
             # Small, bounded, and lazily created so a worker that never
             # captures (tests, --once paths) starts no threads at all.  The
@@ -3524,14 +3540,28 @@ class TargetProductionWorker:
                     "state": "FAILED",
                     "reason": f"{type(exc).__name__}:{str(exc)[:200]}",
                 }
-            self._official_native_capture_last_result = {
+            results_by_date[key[0]] = {
                 "event_date": key[0],
+                "completed_at_utc": as_of_utc,
                 **outcome,
             }
             if str(outcome.get("state") or "") == "CAPTURED":
                 captured_runs[key[0]] = str(
                     outcome.get("captured_run_init_utc") or ""
                 )
+        # Bounded by the open window: a date more than three days behind the
+        # clock is closed everywhere and its outcome answers nothing.
+        try:
+            retention_floor = (
+                _utc_date(as_of_utc) - timedelta(days=3)
+            ).isoformat()
+        except (TypeError, ValueError):
+            retention_floor = None
+        if retention_floor is not None:
+            for stale_date in [
+                day for day in results_by_date if day < retention_floor
+            ]:
+                results_by_date.pop(stale_date, None)
 
         if scope_key in inflight:
             return {
@@ -3639,11 +3669,10 @@ class TargetProductionWorker:
                 # actually returned.  Without it a scope sitting on a
                 # twelve-hour-old run reports only that it is waiting, and
                 # the reason it is waiting -- the run it did or did not come
-                # back with -- is exactly the question being asked.
+                # back with -- is exactly the question being asked.  This
+                # date's attempt, not whichever date finished last.
                 "last_completed": dict(
-                    getattr(
-                        self, "_official_native_capture_last_result", {}
-                    ) or {}
+                    results_by_date.get(event_date) or {}
                 ),
                 "calls_order_gateway": False,
                 "places_orders": False,
@@ -3911,9 +3940,7 @@ class TargetProductionWorker:
             "station_id": station_id,
             "event_date": event_date,
             "in_flight": len(inflight),
-            "last_completed": dict(
-                getattr(self, "_official_native_capture_last_result", {}) or {}
-            ),
+            "last_completed": dict(results_by_date.get(event_date) or {}),
             "calls_order_gateway": False,
             "places_orders": False,
             "live_submit_authorized": False,

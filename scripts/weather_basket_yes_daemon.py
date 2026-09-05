@@ -3908,6 +3908,29 @@ def main() -> int:
                     )
                     if key in nwp_cycle
                 }
+            # Every open date's newest capture outcome, not only the scope
+            # the last poll happened to end on.  ``official_nwp_cycle`` above
+            # is one receipt per poll, and the worker used to keep one slot
+            # for all dates, so a pass that died for one date was invisible
+            # the moment another date's pass finished (2026-09-05, the
+            # 2026-09-07 d2 pass).  Read under a copy: the rotation thread
+            # mutates the mapping while this thread publishes it.
+            try:
+                capture_by_date = dict(
+                    getattr(
+                        forecast_worker,
+                        "_official_native_capture_last_result_by_date",
+                        None,
+                    ) or {}
+                )
+            except RuntimeError:
+                capture_by_date = {}
+            if capture_by_date:
+                state["official_native_capture_by_date"] = {
+                    str(day): dict(result)
+                    for day, result in sorted(capture_by_date.items())
+                    if isinstance(result, Mapping)
+                }
             if production_future is not None and production_future.done():
                 try:
                     production_result = production_future.result()
