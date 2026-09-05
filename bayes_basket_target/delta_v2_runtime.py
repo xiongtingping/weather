@@ -2101,6 +2101,70 @@ def _support_windows(
 MAX_SUPPORT_WINDOWS_SOLVED = 12
 
 
+def window_gate_counts_v1(window_audit: Mapping[str, Any]) -> dict[str, Any]:
+    """The enumeration funnel, keyed by the gate names the page speaks.
+
+    Read off ``_support_windows``' audit.  Attached to the two errors the
+    solver raises when the window list is empty or nothing on it solves
+    (2026-09-05): until then a blocked compile recorded only the error's
+    name, so a day whose seed window a structural gate threw out and whose
+    every other shape the price refused was indistinguishable from a
+    solver fault -- 28 P0 station-days in 2026-09-02..06 on the ledger,
+    and every ``delta_v2_support_empty`` blocked scope in production.
+    """
+
+    audit = dict(window_audit or {})
+
+    def _count(key: str) -> int:
+        try:
+            return int(audit.get(key) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    best = audit.get("edge_best_refused_window")
+    return {
+        "enumerated": _count("enumerated_window_count"),
+        "shortlisted": _count("shortlisted_window_count"),
+        "refused": {
+            "gapped": _count("gapped_window_refused_count"),
+            "center": _count("center_refused_window_count"),
+            "short": _count("short_refused_window_count"),
+            "skew": _count("skew_refused_window_count"),
+            "market_lean": _count("market_lean_refused_window_count"),
+            "leg_floor": _count("leg_floor_refused_window_count"),
+            "unpriced": _count("unpriced_refused_window_count"),
+            "edge": _count("edge_refused_window_count"),
+        },
+        "last_refusing_gate": (
+            str(audit.get("last_refusing_gate") or "") or None
+        ),
+        "edge_best_refused_window": (
+            dict(best) if isinstance(best, Mapping) else None
+        ),
+    }
+
+
+def _support_window_error(
+    reason: str,
+    *,
+    window_audit: Mapping[str, Any],
+    failures: Sequence[Mapping[str, Any]] | None = None,
+) -> ContractError:
+    """The solver's empty-list error, carrying the funnel that emptied it.
+
+    The message stays the bare reason -- every consumer compares it by
+    string -- and the diagnosis rides as attributes: ``window_gate_counts``
+    always, ``window_failures`` (one row per window whose solve threw)
+    when there were windows and none solved.
+    """
+
+    error = ContractError(reason)
+    error.window_gate_counts = window_gate_counts_v1(window_audit)
+    if failures is not None:
+        error.window_failures = [dict(row) for row in failures]
+    return error
+
+
 def _solve_over_support_windows(
     *,
     windows: Sequence[Mapping[str, Any]],
@@ -2136,7 +2200,9 @@ def _solve_over_support_windows(
     if incumbent is not None and incumbent not in shortlist:
         shortlist.append(incumbent)
     if not shortlist:
-        raise ContractError("delta_v2_support_empty")
+        raise _support_window_error(
+            "delta_v2_support_empty", window_audit=window_audit,
+        )
     # Charter 77: is this a decision moment at all?  The model changed
     # (a new served identity) or the day's admissibility changed; a
     # quote refresh that changed neither offers no buying candidate.
@@ -2436,7 +2502,10 @@ def _solve_over_support_windows(
             },
         })
     if not scored:
-        raise ContractError("delta_v2_no_solvable_support_window")
+        raise _support_window_error(
+            "delta_v2_no_solvable_support_window",
+            window_audit=window_audit, failures=failures,
+        )
     # Seat the head of the shortlist, not the best score on it.
     #
     # The shortlist is ordered by probability mass on purpose -- the ladder

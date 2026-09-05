@@ -3933,11 +3933,30 @@ def _production_judge(
                 ),
                 "decision_signature": decision_signature,
             }
+        detail = "生产裁判求解失败：%s" % exc
+        if str(exc) in (
+            "delta_v2_support_empty",
+            "delta_v2_no_solvable_support_window",
+        ):
+            # Which gate emptied the list (2026-09-05).  The funnel the
+            # enumeration published, in the page's own gate vocabulary,
+            # so a reader can tell "the seed window was structurally
+            # refused and nothing else cleared the price" from a solver
+            # fault; and, when windows existed and none solved, what
+            # each window's solve threw.
+            detail += " · " + _window_refusal_detail(audit)
+            by_reason: dict[str, int] = {}
+            for row in getattr(exc, "window_failures", None) or ():
+                key = str(row.get("reason") or "") if isinstance(
+                    row, Mapping
+                ) else str(row)
+                by_reason[key] = by_reason.get(key, 0) + 1
+            if by_reason:
+                detail += " · 逐窗求解失败 " + "、".join(
+                    "%s×%d" % item for item in sorted(by_reason.items())
+                )
         return {
-            "refusal": (
-                "production_judge_blocked",
-                "生产裁判求解失败：%s" % exc,
-            ),
+            "refusal": ("production_judge_blocked", detail),
         }
     moment = dict(selection.get("decision_moment") or {})
     if moment.get("is_decision_moment") is False:

@@ -16444,6 +16444,17 @@ class TargetProductionWorker:
                             "blocked_scope_decision_version": 1,
                             "exception_type": type(exc).__name__,
                             "exception_reason": str(exc),
+                            # Which gate emptied the window list, when
+                            # the compile died there (2026-09-05): the
+                            # funnel the solver attached to its error,
+                            # and the per-window solve failures when the
+                            # list was not empty but nothing on it solved.
+                            "window_gate_counts": getattr(
+                                exc, "window_gate_counts", None
+                            ),
+                            "window_failures": getattr(
+                                exc, "window_failures", None
+                            ),
                             "no_market_snapshot_written": True,
                             "no_intents_written": True,
                             "no_capital_reserved": True,
