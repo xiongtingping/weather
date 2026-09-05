@@ -8388,7 +8388,7 @@ function roster(){
   // no P0 basket looked identical whether the market was never quoted or the
   // objective priced it and declined.  The refusal goes in the cell it
   // belongs to.
-  // The funnel enumeration ("枚举 26 = 断桶 0 + 中心桶 16 + …") is the same
+  // The funnel enumeration ("枚举 26 = 断桶 0 + 不含中心桶 16 + …") is the same
   // eight terms on every station of every day, and when the ledger names the
   // basket the objective actually wanted, that clause is the only part of
   // the line that is about THIS station.  So the target leads in the cell and
