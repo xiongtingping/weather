@@ -164,6 +164,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     whole_basket_kelly_stake_v1,
     CHAIN_TICKET_DUST_FLOOR_USDC,
     CHAIN_TICKET_CANDIDATE_ORIGIN,
+    EDGE_STATE_ADMISSIBLE,
     chain_ticket_cash_v1,
     DECISION_MOMENT_RULE_VERSION,
     edge_state_v1,
@@ -3581,6 +3582,64 @@ def _production_policy_scope(conn: sqlite3.Connection) -> dict[str, str]:
     return scope
 
 
+def _production_hold_refusal(
+    verdict: Mapping[str, Any],
+    *,
+    held: Mapping[str, float],
+    chain_stake: float,
+) -> tuple[str, str]:
+    """What the solver's hold means for this chain, in the day's own words.
+
+    ``delta_cost <= 0`` is one verdict -- target shares not above what is
+    held -- with two readings.  On a chain that holds, it is the top-up the
+    objective declined.  On an empty chain at the opening stage it was
+    reported the same way, "不加仓" on a day nothing had been bought (user,
+    2026-09-05), when the verdict can tell two things apart: no window
+    cleared the whole-basket positive-EV gate, so charter 74's ticket was
+    never offered -- the market is dearer than the model, named by the gate
+    that took the last window, with the basket that came closest -- or a
+    window did clear it and the ticket still did not stand, because its
+    cash was over the (tilted) capital or a leg had no depth at the ask.
+    """
+
+    buckets = "+".join(str(b) for b in verdict.get("buckets") or ())
+    capital = float(verdict.get("capital_usdc") or 0.0)
+    holds_anything = any(float(v or 0.0) > 0.0 for v in held.values())
+    if holds_anything:
+        return (
+            "production_judge_hold",
+            "生产裁判：目标篮 %s · 曲线分 %.4f ·"
+            " 目标份额不高于持仓（资本 %.2f · 本链已投 %.2f）"
+            % (
+                buckets,
+                float(verdict.get("curve_score") or 0.0),
+                capital,
+                chain_stake,
+            ),
+        )
+    signature = dict(verdict.get("decision_signature") or {})
+    audit = dict(verdict.get("window_audit") or {})
+    if str(signature.get("edge_state") or "") != EDGE_STATE_ADMISSIBLE:
+        return (
+            _refusal_reason_for_gate(audit) if audit else "negative_edge_window",
+            "生产裁判：没有窗口过整篮正EV闸，宪章 74 的门票不发，P0 不开 · "
+            + (_window_refusal_detail(audit) if audit else "漏斗未记录"),
+        )
+    ticket = float(verdict.get("ticket_cash_usdc") or 0.0)
+    if ticket > capital + 1e-9:
+        why = "门票 %.2f 超出资本 %.2f（固化减仓）" % (ticket, capital)
+    else:
+        why = (
+            "门票 %.2f 在资本 %.2f 之内仍没成：某腿卖一档无量，或整篮成本≥1"
+            % (ticket, capital)
+        )
+    return (
+        "production_judge_hold",
+        "生产裁判：可入座窗 %s 但开仓门票没成 · %s · 本链已投 %.2f"
+        % (buckets, why, chain_stake),
+    )
+
+
 def _production_judge(
     conn: sqlite3.Connection,
     *,
@@ -3993,6 +4052,18 @@ def _production_judge(
         "capital_usdc": capital,
         "curve_score": float(
             (selection.get("seated") or {}).get("curve_score") or 0.0
+        ),
+        # For the walk's reading of a hold on an empty chain (2026-09-05):
+        # the funnel the seat came out of, and what charter 74's ticket
+        # would have cost at one clip per leg.
+        "window_audit": dict(audit or {}),
+        "ticket_cash_usdc": chain_ticket_cash_v1(
+            minimum_clip_usdc=(
+                min(delta_policy.cash_clip_grid)
+                if delta_policy.cash_clip_grid
+                else float(basket_policy.clip_min_notional_usdc)
+            ),
+            legs=len(seated),
         ),
         "delta_policy_id": str(delta_policy.artifact_id),
         "scope": (season_bin, maturity_bin, liquidity_bin, strategy_version),
@@ -7400,14 +7471,9 @@ def backfill(
                             and float(verdict["delta_cost_usdc"]) <= 0.0
                         ):
                             refusal = _deeper_refusal(refusal, (
-                                "production_judge_hold",
-                                "生产裁判：目标篮 %s · 曲线分 %.4f ·"
-                                " 目标份额不高于持仓（资本 %.2f · 本链已投 %.2f）"
-                                % (
-                                    "+".join(verdict["buckets"]),
-                                    verdict["curve_score"],
-                                    verdict["capital_usdc"],
-                                    chain_stake,
+                                *_production_hold_refusal(
+                                    verdict, held=held,
+                                    chain_stake=chain_stake,
                                 ),
                                 cycles, payload["decision_at_utc"],
                             ))
