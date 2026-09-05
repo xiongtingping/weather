@@ -55,6 +55,7 @@ from .center_width_store import (
     load_center_width,
     load_center_width_cells,
     load_center_width_floor,
+    load_center_width_tiers,
     load_station_width,
 )
 from .fleet_regime_shift import (
@@ -11037,6 +11038,9 @@ class TargetProductionWorker:
                     center_width_floor_rungs=load_center_width_floor(
                         self.commit_conn, stage="P1"
                     ),
+                    center_width_tiers=load_center_width_tiers(
+                        self.commit_conn, stage="P1"
+                    ),
                     station_width=load_station_width(
                         self.commit_conn, stage="P1"
                     ),
@@ -12325,6 +12329,11 @@ class TargetProductionWorker:
                                         self.commit_conn, stage="P0-M"
                                     )
                                 ),
+                                center_width_tiers=(
+                                    load_center_width_tiers(
+                                        self.commit_conn, stage="P0-M"
+                                    )
+                                ),
                                 center_width_taf_cells=(
                                     load_center_width_cells(
                                         self.commit_conn, stage="P0-M"
@@ -12690,6 +12699,9 @@ class TargetProductionWorker:
                             self.commit_conn, stage="P0-M"
                         ),
                         center_width_floor_rungs=load_center_width_floor(
+                            self.commit_conn, stage="P0-M"
+                        ),
+                        center_width_tiers=load_center_width_tiers(
                             self.commit_conn, stage="P0-M"
                         ),
                         center_width_taf_cells=load_center_width_cells(

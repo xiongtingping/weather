@@ -32,6 +32,7 @@ from .center_width_store import (
     STATION_WIDTH_METHOD_TAG,
     load_center_width,
     load_center_width_floor,
+    load_center_width_tiers,
     load_station_width,
     pinned_center_width_sha,
     pinned_station_width_sha,
@@ -2642,6 +2643,7 @@ def compile_native_ensemble_p0(
     center_width_receipt = None
     scalars = None
     sigma_floor_rungs = 0.0
+    width_tiers = None
     pinned_center_width = None
     if CENTER_WIDTH_METHOD_TAG in artifact_combination_method:
         pinned_center_width = pinned_center_width_sha(
@@ -2655,6 +2657,9 @@ def compile_native_ensemble_p0(
             # same row.  A pair served without the floor it was chosen under
             # is a different arithmetic wearing the same two numbers.
             sigma_floor_rungs = load_center_width_floor(
+                conn, stage="P0", table_sha256=pinned_center_width
+            )
+            width_tiers = load_center_width_tiers(
                 conn, stage="P0", table_sha256=pinned_center_width
             )
     # The per-station width scale, exactly the version the artifact's
@@ -2695,6 +2700,7 @@ def compile_native_ensemble_p0(
         or station_scale != 1.0
         or regime_delta != 0.0
         or sigma_floor_rungs
+        or width_tiers
     ):
         probability, center_width_receipt = (
             apply_center_width_calibration(
@@ -2704,6 +2710,10 @@ def compile_native_ensemble_p0(
                 station_width_scale=station_scale,
                 regime_delta_c=regime_delta,
                 sigma_floor_rungs=sigma_floor_rungs,
+                width_tier_lambdas=(width_tiers or {}).get("lambdas") or None,
+                width_tier_boundaries=(
+                    (width_tiers or {}).get("boundaries_rungs") or None
+                ),
                 ordered_keys=ordered,
                 key_centers_c=_bucket_centers(
                     intervals_raw, ordered

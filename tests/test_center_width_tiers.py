@@ -159,3 +159,32 @@ def test_tiers_are_content_addressed_persisted_and_loaded(tmp_path) -> None:
     assert store.load_center_width_tiers(conn, stage="P0", table_sha256=tiered) == tiers
     assert store.load_center_width_tiers(conn, stage="P1") is None
     assert store.WIDTH_TIER_MODE == "shadow"
+
+
+def test_every_serving_face_carries_the_tiers() -> None:
+    """The floor's plumbing, mirrored: a face that applies the pair without
+    the tiers would serve a distribution the fit never scored."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    read = lambda rel: (root / rel).read_text(encoding="utf-8")
+    mat = read("bayes_basket_target/materialization.py")
+    assert mat.count("center_width_tiers: Mapping[str, Any] | None = None,") == 4
+    assert mat.count("center_width_tiers=center_width_tiers,") == 3
+    assert '(center_width_tiers or {}).get("lambdas") or None' in mat
+    assert "or center_width_tiers\n" in mat
+    p1 = read("bayes_basket_target/p1_compiler.py")
+    assert "center_width_tiers: Mapping[str, Any] | None = None," in p1
+    assert "center_width_tiers=center_width_tiers," in p1
+    worker = read("bayes_basket_target/production_worker.py")
+    assert worker.count("load_center_width_tiers(") == 3
+    ingress = read("bayes_basket_target/canonical_ingress.py")
+    assert 'center_width_tiers=load_center_width_tiers(conn, stage="P1"),' in ingress
+    p0 = read("bayes_basket_target/native_ensemble_p0.py")
+    assert 'width_tiers = load_center_width_tiers(' in p0
+    assert '(width_tiers or {}).get("lambdas") or None' in p0
+    oos = read("bayes_basket_target/native_ensemble_oos.py")
+    assert 'load_center_width_tiers(conn, stage="P0")' in oos
+    assert '(center_width_tiers or {}).get("lambdas") or None' in oos
+    ledger = read("scripts/paper_trading_ledger.py")
+    assert '(entry.get("width_tiers") or {}).get("lambdas") or None' in ledger

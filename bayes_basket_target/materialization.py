@@ -697,6 +697,7 @@ def _posterior(
     ] | None = None,
     center_width: tuple[float, float, str] | None = None,
     center_width_floor_rungs: float = 0.0,
+    center_width_tiers: Mapping[str, Any] | None = None,
     station_width: tuple[Mapping[str, float], str] | None = None,
     fleet_regime: Mapping[str, Any] | None = None,
     ceiling: Mapping[str, Any] | None = None,
@@ -756,6 +757,7 @@ def _posterior(
         or station_scale != 1.0
         or regime_delta != 0.0
         or center_width_floor_rungs
+        or center_width_tiers
     ):
         shift_c, width_lambda, center_width_sha = (
             center_width
@@ -788,6 +790,12 @@ def _posterior(
                 # The floor the pinned pair was fitted under, carried on the
                 # same row and therefore on the same sha.
                 sigma_floor_rungs=center_width_floor_rungs,
+                width_tier_lambdas=(
+                    (center_width_tiers or {}).get("lambdas") or None
+                ),
+                width_tier_boundaries=(
+                    (center_width_tiers or {}).get("boundaries_rungs") or None
+                ),
                 ordered_keys=ordered_keys,
                 key_centers_c=key_centers_c,
                 excluded_buckets=sorted(excluded),
@@ -954,6 +962,7 @@ def materialize_p0m_observed(
     ] | None = None,
     center_width: tuple[float, float, str] | None = None,
     center_width_floor_rungs: float = 0.0,
+    center_width_tiers: Mapping[str, Any] | None = None,
     center_width_taf_cells: Mapping[str, Sequence[float]] | None = None,
     fleet_regime: Mapping[str, Any] | None = None,
     station_width: tuple[Mapping[str, float], str] | None = None,
@@ -1075,6 +1084,7 @@ def materialize_p0m_observed(
         band_table=band_table,
         center_width=center_width,
         center_width_floor_rungs=center_width_floor_rungs,
+        center_width_tiers=center_width_tiers,
         station_width=station_width,
         fleet_regime=fleet_regime,
     )
@@ -1099,6 +1109,7 @@ def materialize_p0m(
     ] | None = None,
     center_width: tuple[float, float, str] | None = None,
     center_width_floor_rungs: float = 0.0,
+    center_width_tiers: Mapping[str, Any] | None = None,
     center_width_taf_cells: Mapping[str, Sequence[float]] | None = None,
     fleet_regime: Mapping[str, Any] | None = None,
     station_width: tuple[Mapping[str, float], str] | None = None,
@@ -1248,6 +1259,7 @@ def materialize_p0m(
         band_table=band_table,
         center_width=center_width,
         center_width_floor_rungs=center_width_floor_rungs,
+        center_width_tiers=center_width_tiers,
         station_width=station_width,
         fleet_regime=fleet_regime,
     )
@@ -1324,6 +1336,7 @@ def materialize_p1(
     ] | None = None,
     center_width: tuple[float, float, str] | None = None,
     center_width_floor_rungs: float = 0.0,
+    center_width_tiers: Mapping[str, Any] | None = None,
     station_width: tuple[Mapping[str, float], str] | None = None,
     fleet_regime: Mapping[str, Any] | None = None,
     # What the four layers would have served, carried beside what was served.
@@ -1622,6 +1635,7 @@ def materialize_p1(
         band_table=band_table,
         center_width=center_width,
         center_width_floor_rungs=center_width_floor_rungs,
+        center_width_tiers=center_width_tiers,
         station_width=station_width,
         fleet_regime=fleet_regime,
         # The proof already decided both of the ceiling's preconditions: which

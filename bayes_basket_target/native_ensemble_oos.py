@@ -26,6 +26,7 @@ from .center_width_store import (
     STATION_WIDTH_METHOD_TAG,
     load_center_width,
     load_center_width_floor,
+    load_center_width_tiers,
     load_station_width,
 )
 from .contracts import ContractError, content_sha256
@@ -3442,6 +3443,13 @@ def build_native_ensemble_oos(
         if active_center_width is not None
         else 0.0
     )
+    # The width tiers, under the same contract: on the active sha, so the
+    # holdout scores what serving applies.
+    center_width_tiers = (
+        load_center_width_tiers(conn, stage="P0")
+        if active_center_width is not None
+        else None
+    )
     # The per-station width scale, under the same contract as the stage
     # scalars: whatever is active now is what this build's holdout scores,
     # and its sha rides into every candidate.  This build is one station's,
@@ -4073,6 +4081,7 @@ def build_native_ensemble_oos(
                     center_width is not None
                     or station_width_scale != 1.0
                     or center_width_floor
+                    or center_width_tiers
                 ):
                     shaped, _cw_receipt = apply_center_width_calibration(
                         shaped,
@@ -4084,6 +4093,13 @@ def build_native_ensemble_oos(
                         ),
                         station_width_scale=station_width_scale,
                         sigma_floor_rungs=center_width_floor,
+                        width_tier_lambdas=(
+                            (center_width_tiers or {}).get("lambdas") or None
+                        ),
+                        width_tier_boundaries=(
+                            (center_width_tiers or {}).get("boundaries_rungs")
+                            or None
+                        ),
                         ordered_keys=grid,
                         key_centers_c=[
                             float(int(key)) for key in grid

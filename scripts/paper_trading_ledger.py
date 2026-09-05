@@ -5302,6 +5302,14 @@ def _center_width_corrected(
         # so the ledger applies them together or it is pricing a rule
         # production does not run.
         sigma_floor_rungs=float(entry.get("sigma_floor_rungs") or 0.0),
+        # Width tiers (2026-09-05), carried on the same entry when the
+        # replay table records them; absent means one lambda, as served.
+        width_tier_lambdas=(
+            (entry.get("width_tiers") or {}).get("lambdas") or None
+        ),
+        width_tier_boundaries=(
+            (entry.get("width_tiers") or {}).get("boundaries_rungs") or None
+        ),
         ordered_keys=keys,
         key_centers_c=centers,
         excluded_buckets=() if excluded == "NONE" else tuple(excluded.split(",")),
