@@ -5184,7 +5184,14 @@ def _center_width_corrected(
     if not probabilities or (not center_width_on and regime_delta == 0.0):
         return probabilities
     if _CW_REPLAY is None:
+        # An arm points this at its own table rather than swapping the one
+        # production's own refit writes.  Swapping that file leaves a restore
+        # step for someone to forget, and the file is read by more than this.
+        override = os.environ.get(
+            "PAPER_LEDGER_CW_REPLAY_TABLE", ""
+        ).strip()
         path = (
+            Path(override) if override else
             Path(__file__).resolve().parents[1] / "data" / "runtime"
             / "bayes_basket_target_nwp" / "center_width_replay_table.json"
         )
