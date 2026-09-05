@@ -3493,6 +3493,216 @@ SCORECARD_THRESHOLDS = {
 }
 
 
+# Where the truth lands relative to the distribution the seat is built on,
+# split by how wide that distribution called itself (2026-09-05, user asked
+# for the sigma-tier landing table on the page).  The centre/width section
+# above says what the layer *does*; this says whether what it serves is
+# where the day actually went, which is the question the seat rule and the
+# positive-EV gate both read through the mean+-1 window.
+CENTER_LANDING_TIERS = (
+    (0.0, 1.44, "narrow", "\u5c16 <1.44"),
+    (1.44, 2.0, "mid", "\u4e2d 1.44-2.0"),
+    (2.0, 2.5, "wide", "\u5bbd 2.0-2.5"),
+    (2.5, 3.0, "flat", "\u5e73 2.5-3.0"),
+    (3.0, 99.0, "flattest", "\u6700\u5e73 \u22653.0"),
+)
+CENTER_LANDING_FLAT_RUNGS = 2.5
+CENTER_LANDING_STAGE_MEANING = {
+    "P0": "\u5f00\u4ed3\uff1a\u6a21\u578b\u878d\u5408\u51fa\u7684\u7b2c\u4e00\u7248\u6982\u7387",
+    "P0-M": "\u786e\u8ba4\uff1a\u65e9\u4e0a\u7684 TAF \u5bf9 P0 \u7684\u4fee\u6b63",
+    "P1": "\u76ef\u76d8\uff1a\u5f53\u5929\u5b9e\u6d4b\u8fdb\u6765\u540e\u7684\u6eda\u52a8\u66f4\u65b0",
+}
+
+
+def _center_landing_bootstrap(
+    by_day: dict[str, list[float]], draws: int = 600, seed: int = 11
+) -> tuple[float | None, float | None]:
+    """A 95% interval for the mean, resampling whole days.
+
+    The day is the unit because one weather day is shared across stations:
+    resampling cells would call a fleet-wide warm day forty-five
+    independent observations and shrink the interval to nothing.
+    """
+
+    days = list(by_day)
+    if not days:
+        return None, None
+    rng = random.Random(seed)
+    means = []
+    for _ in range(draws):
+        pick = [rng.choice(days) for _ in days]
+        values = [value for day in pick for value in by_day[day]]
+        if values:
+            means.append(sum(values) / len(values))
+    if not means:
+        return None, None
+    means.sort()
+    return (
+        means[int(0.025 * (len(means) - 1))],
+        means[int(0.975 * (len(means) - 1))],
+    )
+
+
+def collect_center_landing(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Truth minus the served mean, in rungs, by how wide the day claimed to be.
+
+    Read off the centre/width layer's own serving cells (one decision per
+    station-day-stage-hourblock, anchored at the served-arithmetic
+    boundary) and the official truth, so the population is the one that
+    layer fits on and nothing here re-derives a rule.  Distances are in
+    rungs of each station's own ladder (charter 53(b)), which is what makes
+    a Celsius and a Fahrenheit market comparable in one column.
+    """
+
+    try:
+        from bayes_basket_target.center_width_calibration import (
+            sigma_floor_lift_v1,
+        )
+        from bayes_basket_target.center_width_store import (
+            _evidence_floor,
+            _truth,
+            serving_cells_by_day,
+        )
+    except ImportError:
+        return {}
+    if not _table_exists(conn, "basket_probability_bridge_history"):
+        return {}
+    truth = _truth(conn)
+    stages_out: list[dict[str, Any]] = []
+    for stage in ("P0", "P0-M", "P1"):
+        try:
+            floor = _evidence_floor(conn, stage=stage, caller_bound=None)
+            by_day = serving_cells_by_day(
+                conn, truth, stage=stage, min_decision_at_utc=floor,
+            )
+        except Exception:  # noqa: BLE001 -- a panel must not blank the page
+            continue
+        landings: list[tuple[float, float, float, str, str]] = []
+        for day in sorted(by_day):
+            for cell in by_day[day]:
+                probabilities = cell["probabilities"]
+                keys = cell["ordered_keys"]
+                centers = cell["key_centers_c"]
+                actual = truth.get((cell["station_id"], cell["event_date"]))
+                if actual is None:
+                    continue
+                try:
+                    _lift, sigma_c, rung_c = sigma_floor_lift_v1(
+                        probabilities,
+                        ordered_keys=keys,
+                        key_centers_c=centers,
+                        floor_rungs=0.0,
+                    )
+                except (ValueError, KeyError):
+                    continue
+                if rung_c <= 0.0:
+                    continue
+                total = sum(probabilities.values())
+                if total <= 0.0:
+                    continue
+                mean_c = sum(
+                    centers[index] * probabilities[key]
+                    for index, key in enumerate(keys)
+                ) / total
+                peak = max(
+                    range(len(keys)),
+                    key=lambda index: (probabilities[keys[index]], -index),
+                )
+                landings.append((
+                    sigma_c / rung_c,
+                    (float(actual) - mean_c) / rung_c,
+                    (float(actual) - centers[peak]) / rung_c,
+                    cell["station_id"],
+                    cell["event_date"],
+                ))
+        if not landings:
+            continue
+        rows = []
+        for lower, upper, key, label in CENTER_LANDING_TIERS:
+            members = [row for row in landings if lower <= row[0] < upper]
+            if not members:
+                continue
+            errors = [row[1] for row in members]
+            count = len(errors)
+            mean_error = sum(errors) / count
+            spread = (
+                math.sqrt(
+                    sum((value - mean_error) ** 2 for value in errors)
+                    / (count - 1)
+                )
+                if count > 1 else None
+            )
+            by_event: dict[str, list[float]] = {}
+            for row in members:
+                by_event.setdefault(row[4], []).append(row[1])
+            low, high = _center_landing_bootstrap(by_event)
+            rows.append({
+                "tier": key,
+                "label": label,
+                "cells": count,
+                "bias_rungs": mean_error,
+                "ci_low": low,
+                "ci_high": high,
+                "median_rungs": sorted(errors)[count // 2],
+                "sd_rungs": spread,
+                "warm_share": sum(
+                    1 for value in errors if value > 0.0
+                ) / count,
+                "within_mean": sum(
+                    1 for value in errors if abs(value) <= 1.0
+                ) / count,
+                "within_mode": sum(
+                    1 for row in members if abs(row[2]) <= 1.0
+                ) / count,
+                "significant": bool(
+                    low is not None and high is not None
+                    and (low > 0.0 or high < 0.0)
+                ),
+            })
+        flat = [
+            row for row in landings
+            if row[0] >= CENTER_LANDING_FLAT_RUNGS
+        ]
+        by_station: dict[str, list[float]] = {}
+        for row in flat:
+            by_station.setdefault(row[3], []).append(row[1])
+        flat_stations = sorted(
+            (
+                {
+                    "station": station,
+                    "cells": len(values),
+                    "bias_rungs": sum(values) / len(values),
+                    "warm_share": sum(
+                        1 for value in values if value > 0.0
+                    ) / len(values),
+                    "days": len({
+                        row[4] for row in flat if row[3] == station
+                    }),
+                }
+                for station, values in by_station.items()
+                if len(values) >= 8
+            ),
+            key=lambda entry: -abs(entry["bias_rungs"]),
+        )[:10]
+        stages_out.append({
+            "stage": stage,
+            "meaning": CENTER_LANDING_STAGE_MEANING.get(stage, ""),
+            "cells": len(landings),
+            "days": len(by_day),
+            "since": (floor or "")[:10],
+            "rows": rows,
+            "flat_stations": flat_stations,
+            "flat_cells": len(flat),
+        })
+    if not stages_out:
+        return {}
+    return {
+        "schema": "center_landing_v1",
+        "flat_threshold_rungs": CENTER_LANDING_FLAT_RUNGS,
+        "stages": stages_out,
+    }
+
+
 def _grade(value: float | None, key: str, *, higher_better: bool = False) -> str:
     """Green / amber / red for one metric, or grey when it is not measurable."""
 
@@ -5765,6 +5975,7 @@ SECTION_CACHE_TTL_SEC = {
     "skill": 210 * 60,
     "h5_bias_accuracy": 225 * 60,
     "band_residual_audit": 240 * 60,
+    "center_landing": 255 * 60,
 }
 # Set by ``--no-section-cache`` so a reader who needs every number computed
 # against this instant can have it, at the price of the long build.
@@ -5882,6 +6093,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     scores = collect_oos_scores(conn)
     serving_weights = collect_serving_weights(conn)
     center_width = collect_center_width(conn)
+    center_landing = _cached_section(
+        "center_landing", collect_center_landing, conn
+    )
     scorecard = _cached_section(
         "scorecard", collect_calibration_scorecard, conn
     )
@@ -5982,6 +6196,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "scores": scores,
         "serving_weights": serving_weights,
         "center_width": center_width,
+        "center_landing": center_landing,
         "scorecard": scorecard,
         "h5_readiness": _cached_section(
             "h5_readiness", collect_h5_readiness, conn
@@ -9264,6 +9479,85 @@ function centerWidth(){
   <div class="grid g3" style="margin-top:12px">${cards}</div>`;
 }
 
+// Does the distribution the seat is built on actually cover the day?  The
+// section above says what the centre/width layer serves; this one scores it
+// against the truth, split by how wide the served distribution called
+// itself.  Added 2026-09-05 because the answer decided a charter: the core
+// of a flat day under-claims, the seat gate refuses windows that really do
+// have edge, and the fix went in at the window layer (clause 81) only after
+// this table showed the misses are scatter rather than a direction the
+// width layer could correct.
+function centreLanding(){
+  const L = D.center_landing || {};
+  const stages = L.stages || [];
+  if(!stages.length) return "";
+  const sign2 = (v) => v == null ? "\u2014" :
+    (v > 0 ? "+" : "") + v.toFixed(2);
+  const blocks = stages.map(st => {
+    const body = (st.rows || []).map(r => `<tr>
+      <td>${h(r.label)}</td>
+      <td class="mono">${r.cells.toLocaleString()}</td>
+      <td class="mono ${r.significant ? (r.bias_rungs > 0 ? "up" : "down")
+        : "muted"}">${sign2(r.bias_rungs)}</td>
+      <td class="mono muted">${r.ci_low == null ? "\u2014" :
+        "[" + sign2(r.ci_low) + ", " + sign2(r.ci_high) + "]"}</td>
+      <td class="mono muted">${sign2(r.median_rungs)}</td>
+      <td class="mono">${r.sd_rungs == null ? "\u2014" :
+        r.sd_rungs.toFixed(2)}</td>
+      <td class="mono muted">${pct1(r.warm_share)}</td>
+      <td class="mono ${r.within_mean >= 0.7 ? "up" :
+        (r.within_mean < 0.5 ? "down" : "")}">${pct1(r.within_mean)}</td>
+      <td class="mono muted">${pct1(r.within_mode)}</td>
+    </tr>`).join("");
+    const flat = (st.flat_stations || []).map(f => `<span class="pill ${
+      Math.abs(f.bias_rungs) >= 1 ? (f.bias_rungs > 0 ? "red" : "blue")
+      : "muted"}" style="font-size:10.5px" title="${h(f.station)}\uff1a${
+      f.cells} \u4e2a\u683c\u5b50\u3001${f.days} \u4e2a\u7ad9\u65e5">${
+      h(f.station)} ${sign2(f.bias_rungs)}</span>`).join(" ");
+    return `<div style="margin-top:16px">
+      <div style="display:flex;align-items:baseline;gap:10px">
+        <b>${h(st.stage)}</b>
+        <span class="muted">${h(st.meaning)}</span>
+        <span style="flex:1"></span>
+        <span class="muted">${st.cells.toLocaleString()} \u4e2a\u683c\u5b50
+          \u00b7 ${st.days} \u5929\u00b7 ${h(st.since)} \u8d77</span>
+      </div>
+      <table style="margin-top:8px"><thead><tr>
+        <th>\u670d\u52a1\u5206\u5e03\u81ea\u79f0\u7684\u5bbd\u5ea6\uff08\u6876\uff09</th>
+        <th>\u683c\u5b50</th><th>\u504f\u5dee</th><th>95% \u533a\u95f4</th>
+        <th>\u4e2d\u4f4d</th><th>\u6563\u5ea6</th><th>\u504f\u6696</th>
+        <th>\u843d\u5728\u5747\u503c\u00b11</th><th>\u843d\u5728\u4f17\u6570\u00b11</th>
+      </tr></thead><tbody>${body}</tbody></table>
+      ${flat ? `<div class="muted" style="margin-top:6px">
+        \u5e73\u65e5\u5b50\uff08\u81ea\u79f0\u5bbd\u5ea6 \u2265${
+        L.flat_threshold_rungs} \u6876\uff0c\u5171 ${st.flat_cells}
+        \u4e2a\u683c\u5b50\uff09\u6309\u7ad9\u7684\u504f\u5dee\uff0c
+        \u53d6\u6837\u672c\u81f3\u5c11 8 \u683c\u7684\u524d\u5341\uff1a
+        ${flat}</div>` : ""}
+    </div>`;
+  }).join("");
+  return `<h2>\u771f\u503c\u843d\u5728\u79bb\u670d\u52a1\u5747\u503c\u591a\u8fdc</h2>
+  <p class="sub">\u4e0a\u4e00\u8282\u8bf4\u4e2d\u5fc3/\u5bbd\u5ea6\u5c42<b>\u505a\u4e86\u4ec0\u4e48</b>\uff0c
+  \u8fd9\u4e00\u8282\u8bf4\u5b83\u670d\u52a1\u51fa\u53bb\u7684\u5206\u5e03<b>\u5bf9\u4e0d\u5bf9</b>\uff1a
+  \u5f53\u5929\u7684\u771f\u5b9e\u6700\u9ad8\u6e29\uff0c\u843d\u5728\u5206\u5e03\u5747\u503c\u7684\u54ea\u4e00\u4fa7\u3001\u5dee\u51e0\u4e2a\u6876\u3002
+  \u5355\u4f4d\u662f<b>\u6876</b>\u4e0d\u662f\u5ea6\uff1a\u6444\u6c0f\u5e02\u573a\u4e00\u6876 1\u00b0C\u3001\u534e\u6c0f\u5e02\u573a 2\u00b0F\uff0c
+  \u6362\u6210\u6876\u4e24\u8fb9\u624d\u80fd\u653e\u5728\u4e00\u5217\u91cc\u6bd4\u3002</p>
+  <div class="why"><b>\u4e3a\u4ec0\u4e48\u91cf\u8fd9\u4e2a\uff1a</b>\u5e2d\u4f4d\u5c31\u5efa\u5728\u5747\u503c\u00b11
+  \u8fd9\u4e09\u4e2a\u6876\u4e0a\uff08\u5baa\u7ae0 49/79\uff09\uff0c\u6574\u7bee\u6b63 EV \u95f8\u62ff\u6765\u548c\u4ef7\u683c\u6bd4\u7684\u4e5f\u662f\u8fd9\u4e2a\u7a97\u53e3\u7684\u6982\u7387\u548c\u3002
+  \u6240\u4ee5\u201c\u771f\u503c\u80fd\u4e0d\u80fd\u88ab\u5747\u503c\u00b11 \u517c\u4f4f\u201d\u76f4\u63a5\u51b3\u5b9a\u4e86\u8fd9\u4e00\u5929\u7684\u5e2d\u4f4d\u503c\u4e0d\u503c\u3002<br>
+  <b>\u600e\u4e48\u8bfb\uff1a</b>\u504f\u5dee\u662f\u5e73\u5747\u843d\u70b9\u51cf\u5747\u503c\uff0c\u6b63\u6570\u8868\u793a\u5b9e\u9645\u6bd4\u6a21\u578b\u8bf4\u7684\u70ed\uff1b
+  95% \u533a\u95f4\u6309<b>\u5929</b>\u91cd\u91c7\u6837\uff08\u540c\u4e00\u5929\u7684\u5929\u6c14\u5168\u961f\u5171\u4eab\uff0c\u6309\u683c\u5b50\u91cd\u91c7\u6837\u4f1a\u628a\u533a\u95f4\u7f29\u6210\u5047\u7684\uff09\uff0c
+  <b>\u533a\u95f4\u542b 0 \u5c31\u662f\u6ca1\u6709\u7cfb\u7edf\u6027\u504f\u5411\u54ea\u4e00\u8fb9</b>\uff1b
+  \u6700\u540e\u4e24\u5217\u662f\u771f\u6b63\u88ab\u5175\u4f4d\u517c\u4f4f\u7684\u6bd4\u4f8b\u3002<br>
+  <b>\u5b83\u8bfb\u51fa\u6765\u7684\u4e8b\uff08\u4e5f\u662f\u5baa\u7ae0 81 \u7684\u6765\u5386\uff09\uff1a</b>\u5206\u5e03\u8d8a\u5bbd\uff0c
+  \u5747\u503c\u00b11 \u517c\u4f4f\u7684\u6bd4\u4f8b\u8d8a\u4f4e\uff08\u5c16\u65e5\u5b50\u7ea6 3/4\uff0c\u6700\u5e73\u7684\u65e5\u5b50\u4e0d\u5230 1/2\uff09\uff0c
+  \u4f46<b>\u504f\u5dee\u51e0\u4e4e\u4e3a\u96f6\u3001\u533a\u95f4\u542b 0</b>\u2014\u2014\u9519\u662f\u201c\u6563\u201d\u4e0d\u662f\u201c\u504f\u201d\u3002
+  \u6563\u4e0d\u80fd\u9760\u628a\u5206\u5e03\u6536\u7a84\u6765\u6cbb\uff08\u5bbd\u5ea6\u5206\u6863 \u03bb \u5b9e\u6d4b\u5df2\u8bc1\uff09\uff0c
+  \u53ea\u80fd\u5148\u5728\u7a97\u53e3\u5c42\u628a\u88ab\u4f4e\u62a5\u7684\u58f0\u79f0\u62ac\u56de\u6765\uff08\u5baa\u7ae0 81\uff09\u3002
+  \u5e73\u65e5\u5b50\u6309\u7ad9\u786e\u5b9e\u6709\u53f7\uff0c\u4f46\u6bcf\u7ad9\u53ea\u6709\u51e0\u4e2a\u7ad9\u65e5\uff0c\u73b0\u5728\u62df\u4e0d\u4e86\u3002</div>
+  ${blocks}`;
+}
+
 
 // The live flag belongs where the reader's eye already is (user ruling,
 // 2026-08-29): it is the one control on this page that changes what the
@@ -10220,6 +10514,7 @@ const GROUPS = [
      [servingWeights,"四大模型权重"],[regional,"区域模型"],
      [dispersion,"模型离散度"],[hitRate,"模型命中率"],
      [oosScores,"OOS 打分"],[centerWidth,"中心/宽度"],
+     [centreLanding,"真值离均值多远"],
      [scorecard,"模型校准总检"],[h5Readiness,"H5 换代进度"],[h5BiasAccuracy,"H5 订正准度"]]},
   {id:"shape", label:"概率与持仓形状", tone:"#7ee787",
    note:"概率怎么被分档修正、声称的便宜兑不兑现、注码怎么被固化减仓、分布和实际持仓差在哪",
@@ -10301,7 +10596,8 @@ function sectionCacheNote(){
   const c=D.section_cache||{};
   const NAME={truth_landing:"真值落点",window_divergence:"窗口分歧",
     scorecard:"校准计分卡",h5_readiness:"H5 就绪",skill:"模型技巧",
-    h5_bias_accuracy:"H5 偏差准确度",band_residual_audit:"band 残差审计"};
+    h5_bias_accuracy:"H5 偏差准确度",band_residual_audit:"band 残差审计",
+    center_landing:"真值离均值多远"};
   const reused=Object.entries(c).filter(([,v])=>v&&v.reused);
   if(!reused.length){
     const built=Object.keys(c).length;
