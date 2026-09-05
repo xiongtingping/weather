@@ -3332,7 +3332,31 @@ export class ClobOrderService {
     if (!response || !response.orderID) {
       throw errorWithMeta(`missing_order_id:${JSON.stringify(response || {})}`);
     }
-    this.cachedCollateral = null;
+    // The balance moved, so the cached reading is no longer the account's
+    // state.  Dropping it, as this did until 2026-09-05, refused the very
+    // next leg of the same basket: the BUY guard fails closed on a missing
+    // reading and the prefetch loop needs about a second to read it back,
+    // while legs are posted back to back -- five legs across four baskets
+    // were refused as clob_collateral_evidence_unavailable on the first live
+    // morning and every basket was left standing on one leg.  Spend the fill
+    // against the cached reading instead: conservative (it only ever goes
+    // down), and replaced by the next real read within the same second.
+    if (side === Side.BUY && this.cachedCollateral
+        && /^\d+$/.test(String(this.cachedCollateral.value?.balance ?? ""))) {
+      const spentUsdc = Number(
+        response.makingAmount ?? response.making_amount ?? (price * size),
+      );
+      if (Number.isFinite(spentUsdc) && spentUsdc > 0) {
+        const balanceMicro = Number(this.cachedCollateral.value.balance);
+        this.cachedCollateral = {
+          ...this.cachedCollateral,
+          value: {
+            ...this.cachedCollateral.value,
+            balance: String(Math.max(0, Math.round(balanceMicro - spentUsdc * 1e6))),
+          },
+        };
+      }
+    }
     this.cachedConditional.delete(tokenID);
     if (side === Side.BUY) this.registeredPositionTokens.add(tokenID);
     return {

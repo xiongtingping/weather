@@ -95,6 +95,7 @@ from .execution_reconciliation import (
     record_order_event,
     validate_persisted_candidate_consumption_cas,
 )
+from .order_submission import fill_from_gateway_response, fill_quantities
 from .execution_version_vector import (
     SCHEMA as EXECUTION_VERSION_VECTOR_SCHEMA,
     VERSION_FIELDS as EXECUTION_VERSION_FIELDS,
@@ -7454,7 +7455,8 @@ class TargetProductionWorker:
             return receipt
         try:
             rows = self.commit_conn.execute(
-                "SELECT order_intent_id, idempotency_key"
+                "SELECT order_intent_id, idempotency_key,"
+                " order_action, limit_price"
                 " FROM basket_target_order_intents"
                 " WHERE state='reconcile_required'"
                 " ORDER BY created_at LIMIT ?",
@@ -7477,7 +7479,8 @@ class TargetProductionWorker:
             receipt["reason"] = f"{type(exc).__name__}:{exc}"[:160]
             return receipt
         receipt["examined"] = len(rows)
-        for intent_id, idempotency_key in rows:
+        receipt["filled"] = 0
+        for intent_id, idempotency_key, order_action, limit_price in rows:
             try:
                 answer = client._post(
                     "/reconcile-order",
@@ -7489,12 +7492,59 @@ class TargetProductionWorker:
                     "reason": f"{type(exc).__name__}:{exc}"[:120],
                 })
                 continue
-            # The verdict reads the same whether this is the first time the
-            # gateway asked or a replay of an answer it already has -- both
-            # carry order_never_reached_exchange, once the stored record
-            # keeps its shape.  Anything else, including a lookup that could
-            # not reach the exchange, leaves the intent alone.
-            if str(answer.get("error") or "") != "order_never_reached_exchange":
+            # Two verdicts are acted on.  "Never reached" reads the same
+            # whether this is the first time the gateway asked or a replay of
+            # an answer it already has.  "Accepted and matched" is the
+            # gateway's stored success reply for the key -- the fill the
+            # submit pass did not get to see, because the first five live
+            # fills (2026-09-05) came back without the ``accepted`` flag the
+            # classifier wanted and were written as UNKNOWN_POST; nothing
+            # then ever moved them, and five ``reconcile_required`` rows read
+            # as a non-quiescent book that froze every quote refresh.
+            # Anything else -- a resting order, a lookup that could not reach
+            # the exchange -- leaves the intent alone.
+            error = str(answer.get("error") or "")
+            event: dict[str, Any] | None = None
+            if error == "order_never_reached_exchange":
+                event = {
+                    "event_type": "NEVER_REACHED_EXCHANGE",
+                    "exchange_order_id": None,
+                    "observed_at": as_of_utc,
+                    "matched_size": 0.0,
+                    "matched_notional_usdc": 0.0,
+                    "event_payload": {
+                        "expected_order_id": str(
+                            answer.get("expected_order_id") or ""
+                        ),
+                        "exchange_status": str(answer.get("status") or ""),
+                    },
+                }
+            elif answer.get("ok") is True and not error:
+                fill = fill_from_gateway_response(answer)
+                matched_size, matched_notional = fill_quantities(
+                    fill,
+                    event_type="FILL",
+                    order_action=str(order_action or ""),
+                    limit_price=float(limit_price or 0.0),
+                )
+                if (
+                    fill["exchange_order_id"]
+                    and fill["status"] == "matched"
+                    and matched_size > 0.0
+                ):
+                    event = {
+                        "event_type": "FILL",
+                        "exchange_order_id": fill["exchange_order_id"],
+                        "observed_at": as_of_utc,
+                        "matched_size": matched_size,
+                        "matched_notional_usdc": matched_notional,
+                        "event_payload": {
+                            "idempotency_key": str(idempotency_key or ""),
+                            "exchange_status": fill["status"],
+                            "recovered_by": "intent_reconcile",
+                        },
+                    }
+            if event is None:
                 receipt["still_unresolved"] += 1
                 continue
             try:
@@ -7505,23 +7555,11 @@ class TargetProductionWorker:
                     record_order_event(
                         self.commit_conn,
                         order_intent_id=str(intent_id),
-                        event={
-                            "event_type": "NEVER_REACHED_EXCHANGE",
-                            "exchange_order_id": None,
-                            "observed_at": as_of_utc,
-                            "matched_size": 0.0,
-                            "matched_notional_usdc": 0.0,
-                            "event_payload": {
-                                "expected_order_id": str(
-                                    answer.get("expected_order_id") or ""
-                                ),
-                                "exchange_status": str(
-                                    answer.get("status") or ""
-                                ),
-                            },
-                        },
+                        event=event,
                     )
                 receipt["closed"] += 1
+                if event["event_type"] == "FILL":
+                    receipt["filled"] += 1
             except Exception as exc:  # noqa: BLE001 -- one scope's problem
                 receipt["failures"].append({
                     "order_intent_id": str(intent_id),

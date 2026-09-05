@@ -149,6 +149,177 @@ def test_an_accepted_reply_is_a_post_ack() -> None:
     assert outcome["submitted"] is True
 
 
+def _matched(_path=None, _payload=None) -> dict:
+    """The gateway's synchronous success reply, as it is actually shaped.
+
+    No ``accepted`` flag: ``ok`` plus the exchange's ``orderID``, ``status``
+    and matched quantities.  Recorded from the first live fills, 2026-09-05.
+    """
+
+    return {
+        "ok": True, "orderID": "0xfill", "expected_order_id": "0xfill",
+        "expected_order_id_matches": True, "status": "matched",
+        "original_size": 40, "size_matched": "40", "shares_matched": "40",
+        "exchange_response": {
+            "errorMsg": "", "orderID": "0xfill", "takingAmount": "40",
+            "makingAmount": "4.8", "status": "matched", "success": True,
+        },
+        "exchange_post_started": True, "source": "clob_order_service",
+    }
+
+
+def test_a_matched_reply_is_a_fill_with_the_exchanges_size_and_cost() -> None:
+    # The gateway never spelled ``accepted`` on its success reply, so the
+    # first five live fills were classified UNKNOWN_POST and sat in
+    # reconcile_required, which the order-state producer reads as a
+    # non-quiescent book.  ``ok`` plus an orderID is an acceptance, and a
+    # matched one is a FILL carrying what the exchange said it did.
+    outcome = classify_submission_response(_matched())
+
+    assert outcome["event_type"] == "FILL"
+    assert outcome["submitted"] is True
+    assert outcome["fill"]["exchange_order_id"] == "0xfill"
+    assert outcome["fill"]["shares_matched"] == 40.0
+    assert outcome["fill"]["making_amount"] == 4.8
+
+
+def test_an_ok_reply_not_yet_matched_is_a_post_ack() -> None:
+    reply = {**_matched(), "status": "live", "size_matched": "0",
+             "shares_matched": "0", "exchange_response": {"status": "live"}}
+
+    outcome = classify_submission_response(reply)
+
+    assert outcome["event_type"] == "POST_ACK"
+    assert outcome["submitted"] is True
+
+
+def test_a_filled_submission_is_recorded_as_filled_not_unknown() -> None:
+    conn = _conn([_intent()])
+    with conn:
+        receipt = submit_prepared_intents(
+            conn,
+            cycle_id="cycle-1",
+            transport=_matched,
+            live_submit_authorized=True,
+            observed_at_utc=OBSERVED,
+        )
+
+    assert receipt["orders_submitted"] == 1
+    assert receipt["submissions"][0]["event_type"] == "FILL"
+    event = conn.execute(
+        "SELECT event_type,exchange_order_id,matched_size,matched_notional_usdc "
+        "FROM basket_target_order_events"
+    ).fetchall()
+    assert event == [("FILL", "0xfill", 40.0, 4.8)]
+    assert conn.execute(
+        "SELECT state,filled_size FROM basket_target_order_reconciliations"
+    ).fetchall() == [("resolved_filled", 40.0)]
+    assert conn.execute(
+        "SELECT state FROM basket_target_order_intents "
+        "WHERE order_intent_id='intent-a'"
+    ).fetchone()[0] == "filled"
+
+
+def test_reconciliation_recovers_a_fill_the_submit_pass_missed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A reconcile_required intent whose stored gateway reply is a match is closed as filled.
+
+    This is the 2026-09-05 10:11Z state of the book: five orders matched on
+    the exchange, five UNKNOWN_POST rows in the ledger, and a reconcile lane
+    that only knew how to close "never reached".
+    """
+
+    import clob_order_service_client
+    from bayes_basket_target import production_worker
+
+    conn = _conn([_intent()])
+    with conn:
+        record_order_event(
+            conn,
+            order_intent_id="intent-a",
+            event={
+                "event_type": "UNKNOWN_POST", "exchange_order_id": None,
+                "observed_at": OBSERVED, "matched_size": 0.0,
+                "matched_notional_usdc": 0.0,
+                "event_payload": {"reason": "exchange_state_unknown"},
+            },
+        )
+    assert conn.execute(
+        "SELECT state FROM basket_target_order_intents"
+    ).fetchone()[0] == "reconcile_required"
+
+    class _Client:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def _post(self, path, payload):
+            assert path == "/reconcile-order"
+            assert payload == {"idempotency_key": "idem-a"}
+            return {**_matched(), "found": True, "idempotent_replay": True}
+
+    monkeypatch.setattr(clob_order_service_client, "ClobOrderServiceClient", _Client)
+    worker = production_worker.TargetProductionWorker.__new__(
+        production_worker.TargetProductionWorker
+    )
+    worker.commit_conn = conn
+
+    receipt = worker._reconcile_unresolved_intents(as_of_utc="2026-08-11T09:40:00Z")
+
+    assert receipt["examined"] == 1
+    assert receipt["closed"] == 1
+    assert receipt["filled"] == 1
+    assert conn.execute(
+        "SELECT state FROM basket_target_order_intents"
+    ).fetchone()[0] == "filled"
+    assert conn.execute(
+        "SELECT state,exchange_order_id,filled_size,filled_notional_usdc "
+        "FROM basket_target_order_reconciliations"
+    ).fetchall() == [("resolved_filled", "0xfill", 40.0, 4.8)]
+
+
+def test_reconciliation_leaves_a_resting_order_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import clob_order_service_client
+    from bayes_basket_target import production_worker
+
+    conn = _conn([_intent()])
+    with conn:
+        record_order_event(
+            conn,
+            order_intent_id="intent-a",
+            event={
+                "event_type": "UNKNOWN_POST", "exchange_order_id": None,
+                "observed_at": OBSERVED, "matched_size": 0.0,
+                "matched_notional_usdc": 0.0, "event_payload": {},
+            },
+        )
+
+    class _Client:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def _post(self, path, payload):
+            return {**_matched(), "status": "live", "size_matched": "0",
+                    "shares_matched": "0",
+                    "exchange_response": {"status": "live"}}
+
+    monkeypatch.setattr(clob_order_service_client, "ClobOrderServiceClient", _Client)
+    worker = production_worker.TargetProductionWorker.__new__(
+        production_worker.TargetProductionWorker
+    )
+    worker.commit_conn = conn
+
+    receipt = worker._reconcile_unresolved_intents(as_of_utc="2026-08-11T09:40:00Z")
+
+    assert receipt["closed"] == 0
+    assert receipt["still_unresolved"] == 1
+    assert conn.execute(
+        "SELECT state FROM basket_target_order_intents"
+    ).fetchone()[0] == "reconcile_required"
+
+
 def test_a_reply_that_reached_the_exchange_is_unknown_not_refused() -> None:
     # The request left the process and the reply will not say whether the
     # exchange took it.  Calling that a refusal is how the same order gets

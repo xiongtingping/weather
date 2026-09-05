@@ -43,6 +43,7 @@ SUBMITTABLE_INTENT_STATE = "prepared"
 # the reply did not say whether the exchange took it, so the bucket must stay
 # blocked until a reconciliation resolves it rather than be retried blind.
 _ACCEPTED_EVENT = "POST_ACK"
+_FILL_EVENT = "FILL"
 _UNKNOWN_EVENT = "UNKNOWN_POST"
 # The gateway answered and declined to forward the order.  Recorded as an
 # event like every other outcome: until 2026-09-01 this branch wrote
@@ -116,6 +117,86 @@ def build_place_order_payload(
     }
 
 
+def _number_or_zero(*values: Any) -> float:
+    for value in values:
+        if value in (None, ""):
+            continue
+        try:
+            result = float(value)
+        except (TypeError, ValueError):
+            continue
+        if result == result:  # not NaN
+            return result
+    return 0.0
+
+
+def fill_from_gateway_response(response: Mapping[str, Any]) -> dict[str, Any]:
+    """What the gateway says the exchange did with the order, if anything.
+
+    The gateway's synchronous success reply carries ``ok``, ``orderID`` and
+    the exchange's own ``status``/``size_matched``; its stored reply for a
+    settled idempotency key carries the same fields.  Read both the same
+    way, so a fill looks identical whether it was seen at submit time or
+    recovered by reconciliation.  For a BUY the exchange's ``makingAmount``
+    is the USDC paid and ``takingAmount`` the shares received; a SELL is the
+    mirror.
+    """
+
+    exchange = response.get("exchange_response")
+    exchange = exchange if isinstance(exchange, Mapping) else {}
+    exchange_order_id = str(
+        response.get("exchange_order_id")
+        or response.get("orderID")
+        or exchange.get("orderID")
+        or ""
+    ).strip()
+    status = str(response.get("status") or exchange.get("status") or "")
+    return {
+        "exchange_order_id": exchange_order_id,
+        "status": status.strip().lower(),
+        "shares_matched": _number_or_zero(
+            response.get("shares_matched"),
+            response.get("size_matched"),
+            exchange.get("size_matched"),
+        ),
+        "making_amount": _number_or_zero(
+            exchange.get("makingAmount"), exchange.get("making_amount"),
+        ),
+        "taking_amount": _number_or_zero(
+            exchange.get("takingAmount"), exchange.get("taking_amount"),
+        ),
+    }
+
+
+def fill_quantities(
+    fill: Mapping[str, Any],
+    *,
+    event_type: str,
+    order_action: str,
+    limit_price: float,
+) -> tuple[float, float]:
+    """Matched shares and matched USDC for a fill event, zero for any other.
+
+    The cost comes from the exchange's own amounts (USDC paid for a BUY,
+    USDC received for a SELL); when the reply carries shares but no amount,
+    the limit price bounds it.
+    """
+
+    if event_type != _FILL_EVENT:
+        return 0.0, 0.0
+    shares = float(fill.get("shares_matched") or 0.0)
+    if shares <= 0.0:
+        return 0.0, 0.0
+    direction = str(order_action or "").upper()
+    notional = float(
+        (fill.get("making_amount") if direction == "BUY" else fill.get("taking_amount"))
+        or 0.0
+    )
+    if notional <= 0.0:
+        notional = shares * float(limit_price)
+    return shares, notional
+
+
 def classify_submission_response(
     response: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -125,11 +206,24 @@ def classify_submission_response(
     or that asks for reconciliation, is not a rejection: the order may be
     live.  Treating that as "nothing happened" is how a duplicate gets sent,
     so it becomes ``UNKNOWN_POST`` and the bucket stays blocked.
+
+    A reply the exchange answered is an acceptance whether or not the
+    gateway spelled ``accepted``: its synchronous success reply says ``ok``
+    and names the ``orderID`` and never carried that flag, so the first five
+    live fills (2026-09-05 10:11Z, all ``status: matched``) were recorded as
+    ``UNKNOWN_POST`` and sat in ``reconcile_required`` -- which the order
+    state producer reads as the whole book being non-quiescent, and which
+    froze every quote refresh.  A matched reply is a ``FILL`` with the
+    exchange's own size and cost; an accepted reply not yet matched is a
+    ``POST_ACK``.
     """
 
     if not isinstance(response, Mapping):
         raise OrderSubmissionError("order_submission_response_invalid")
-    accepted = response.get("accepted") is True
+    fill = fill_from_gateway_response(response)
+    accepted = response.get("accepted") is True or (
+        response.get("ok") is True and bool(fill["exchange_order_id"])
+    )
     started = response.get("exchange_post_started") is True
     reconcile = response.get("reconcile_required") is True
     pending = response.get("pending") is True
@@ -142,10 +236,12 @@ def classify_submission_response(
     ambiguous = response.get("transport_ambiguous") is True
     error = str(response.get("error") or "").strip()
     if accepted:
+        matched = fill["status"] == "matched" and fill["shares_matched"] > 0.0
         return {
-            "event_type": _ACCEPTED_EVENT,
+            "event_type": _FILL_EVENT if matched else _ACCEPTED_EVENT,
             "submitted": True,
             "reason": "",
+            "fill": fill,
         }
     if reconcile or started or pending or ambiguous:
         return {
@@ -370,19 +466,29 @@ def submit_prepared_intents(
                 "payload_sha256": content_sha256(payload),
             })
             continue
+        fill = outcome.get("fill") or {}
+        matched_size, matched_notional = fill_quantities(
+            fill,
+            event_type=outcome["event_type"],
+            order_action=str(intent["order_action"]),
+            limit_price=float(intent["limit_price"]),
+        )
         event = {
             "event_type": outcome["event_type"],
             "exchange_order_id": str(
-                response.get("exchange_order_id") or ""
+                fill.get("exchange_order_id")
+                or response.get("exchange_order_id")
+                or ""
             ),
             "observed_at": observed_at,
-            "matched_size": 0.0,
-            "matched_notional_usdc": 0.0,
+            "matched_size": matched_size,
+            "matched_notional_usdc": matched_notional,
             "event_payload": {
                 "idempotency_key": payload["idempotency_key"],
                 "payload_sha256": content_sha256(payload),
                 "reason": outcome["reason"],
                 "source": str(response.get("source") or ""),
+                "exchange_status": str(fill.get("status") or ""),
             },
         }
         receipt = record_order_event(
@@ -425,5 +531,7 @@ __all__ = [
     "SCHEMA",
     "build_place_order_payload",
     "classify_submission_response",
+    "fill_from_gateway_response",
+    "fill_quantities",
     "submit_prepared_intents",
 ]
