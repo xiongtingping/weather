@@ -2360,3 +2360,55 @@ def test_charter_70_the_book_lifts_sub_lot_rungs_with_productions_rule() -> None
     assert "_walk_ask_shares_at_limit(\n                                        _leg, _seat_lots[str(_b)]" in source
     assert "else _walk_ask_shares(\n                                        _leg, _seat_lots[str(_b)]" in source
     assert '"exchange_lot_top_up": lot_top_up_record' in source
+
+
+def test_charter_77_a_non_moment_cycle_never_names_the_day() -> None:
+    """Charter 77 defers; it does not refuse.
+
+    A cycle that is not a decision moment stands on the stage's last
+    recorded decision, so the day's reason is that decision's refusal.  At
+    depth 8 the deferral outranked every judged refusal below the chain law,
+    and from 2026-09-02 some twenty P0 station-days a day were filed as
+    不是决策时刻 -- to a reader asking why P0 never opened (2026-09-05).
+    """
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    from paper_trading_ledger import (  # noqa: PLC0415
+        REFUSAL_DEPTH,
+        _deeper_refusal,
+    )
+
+    # Shallowest of all: only the empty starting slot shares its rung.
+    assert REFUSAL_DEPTH["no_decision_moment"] == 0
+    for reason, depth in REFUSAL_DEPTH.items():
+        if reason in ("no_book_at_decision", "no_decision_moment"):
+            continue
+        assert depth > REFUSAL_DEPTH["no_decision_moment"], reason
+
+    later = ("no_decision_moment", "宪章 77：概率身份与可入座状态（none）都没变", 40, "T15:00Z")
+    for judged in (
+        ("negative_edge_window", "", 1, "T08:00Z"),
+        ("no_positive_kelly", "", 2, "T09:00Z"),
+        ("production_judge_hold", "", 3, "T10:00Z"),
+        ("exchange_minimum_lot_unaffordable", "", 4, "T11:00Z"),
+    ):
+        assert _deeper_refusal(judged, later) == judged
+        assert _deeper_refusal(later, judged) == judged
+    # An empty slot stays empty rather than taking the deferral.
+    start = ("no_book_at_decision", "", 0, "")
+    assert _deeper_refusal(start, later) == start
+
+    # And the walk does not even offer it to the slot: counted per cycle,
+    # never reported as the day's reason.
+    source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'if _reason == "no_decision_moment":' in source
+    assert source.index('if _reason == "no_decision_moment":') < source.index(
+        'refusal = _deeper_refusal(refusal, (\n'
+        '                                _reason, _detail,'
+    )

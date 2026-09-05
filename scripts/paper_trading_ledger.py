@@ -656,7 +656,17 @@ REFUSAL_DEPTH = {
     # Charter 71(a): the chain's own law too -- everything was known,
     # and the reason it stood pat is that nothing had changed.
     "topup_requires_probability_change": 8,
-    "no_decision_moment": 8,
+    # Charter 77 is NOT a refusal of the day.  A cycle that is not a
+    # decision moment stands on the stage's last recorded decision, and
+    # that decision's own refusal is why the day has no seat.  Ranked at
+    # 8 it outranked every judged refusal below the chain law --
+    # ``negative_edge_window``, ``no_positive_kelly``,
+    # ``production_judge_hold`` -- so from 2026-09-02 some twenty P0
+    # station-days a day were filed as "不是决策时刻", on a page whose
+    # reader had just asked why P0 never opened (2026-09-05).  Depth 0
+    # keeps it out of the slot for good; the walk also skips it before
+    # ``_deeper_refusal`` and only counts it per cycle.
+    "no_decision_moment": 0,
     # Charter 73 at the execution layer: sized, walked, and refused on the
     # increment's edge.  The chain-law layer.
     "execution_edge_not_authorized": 8,
@@ -7316,6 +7326,12 @@ def backfill(
                         if verdict.get("refusal"):
                             _reason, _detail = verdict["refusal"]
                             counts["production_judge_cycles_" + _reason] += 1
+                            if _reason == "no_decision_moment":
+                                # Charter 77: this cycle decided nothing
+                                # and stands on the stage's last recorded
+                                # decision, whose refusal is already in
+                                # the slot.  Counted, never reported.
+                                continue
                             refusal = _deeper_refusal(refusal, (
                                 _reason, _detail,
                                 cycles, payload["decision_at_utc"],
