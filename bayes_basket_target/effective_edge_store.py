@@ -50,8 +50,9 @@ disagrees, because its edge is the observation and not the shape.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Sequence
 
 from .band_reliability_store import BAND_TABLE_CELLS
@@ -100,6 +101,26 @@ STAGE_SCOPES = {
 # cutover would admit exactly the rows it means to exclude.
 BAND_PARTITION_CELLS = len(BAND_TABLE_CELLS)
 
+# Shadow lane, user ruling 2026-09-06 ("开影子"): the same table with one more
+# axis -- which way the market moved the seat's window over the hours before
+# the decision.  Measured that day on 5,922 checkpoints (852 station-days,
+# 45 stations): unstratified, the move's direction separates realised/claimed
+# by 40-50 hit points; stratified by the CURRENT agreement a, eight to nine
+# points survive.  So the move is four fifths the level this table already
+# reads, and the question the lane accumulates evidence for is whether the
+# remaining fifth prices anything -- on real seats, per band.  It measures
+# and journals; nothing serves it, and the ledger's fingerprint does not
+# know it exists.  A P0 opening seat has no prior belief by construction
+# (charter 48 opens at listing; the first book and the first belief land in
+# the same minute), so its tier is ``no_prior`` and the lane says so rather
+# than inventing a move.
+DQ_SHADOW_MODE = str(
+    os.environ.get("PM_EFFECTIVE_EDGE_DQ_SHADOW", "shadow") or "shadow"
+).strip().lower()
+DQ_SHADOW_HORIZON_HOURS = 6.0
+DQ_SHADOW_THRESHOLD = 0.05
+DQ_TIERS = ("down", "steady", "up", "no_prior")
+
 TABLE_DDL = (
     "CREATE TABLE IF NOT EXISTS calibration_effective_edge_lambda ("
     " lambda_table_sha256 TEXT PRIMARY KEY,"
@@ -110,6 +131,18 @@ TABLE_DDL = (
     " seat_count INTEGER NOT NULL,"
     " activated INTEGER NOT NULL CHECK(activated IN (0,1)),"
     " activated_at_utc TEXT)"
+)
+SHADOW_DQ_DDL = (
+    "CREATE TABLE IF NOT EXISTS calibration_effective_edge_lambda_dq_shadow ("
+    " shadow_sha256 TEXT PRIMARY KEY,"
+    " stage_scope TEXT NOT NULL,"
+    " tiers_json TEXT NOT NULL,"
+    " evidence_json TEXT NOT NULL,"
+    " fitted_at_utc TEXT NOT NULL,"
+    " window_days INTEGER NOT NULL,"
+    " seat_count INTEGER NOT NULL,"
+    " horizon_hours REAL NOT NULL,"
+    " threshold REAL NOT NULL)"
 )
 JOURNAL_DDL = (
     "CREATE TABLE IF NOT EXISTS calibration_effective_edge_fit_journal ("
@@ -125,6 +158,7 @@ JOURNAL_DDL = (
 def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.execute(TABLE_DDL)
     conn.execute(JOURNAL_DDL)
+    conn.execute(SHADOW_DQ_DDL)
     # Rows written before P1 had a scope are P0 rows; the default says so.
     for table in (
         "calibration_effective_edge_lambda",
@@ -484,7 +518,296 @@ def load_active_lambda(
     return tuple(out) or None
 
 
+def _window_best_ask_sum(buckets_json: str, window: Sequence[str]) -> float | None:
+    """The window's best-ask sum on one committed book; None if any leg is unquoted.
+
+    Best ask, deliberately: the ledger's ``prices_json`` is the best ask per
+    bucket (measured identical on the 2026-08-15 ZGSZ seat), so the move is
+    read on the same basis at both ends.
+    """
+
+    try:
+        entries = json.loads(str(buckets_json))
+    except (ValueError, TypeError):
+        return None
+    asks: dict[str, float] = {}
+    for entry in entries or []:
+        levels = entry.get("ask_levels") or []
+        if levels:
+            asks[str(entry.get("bucket"))] = float(levels[0]["price"])
+    total = 0.0
+    for bucket in window:
+        if bucket not in asks:
+            return None
+        total += asks[bucket]
+    return total
+
+
+def window_price_move(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    decision_at_utc: str,
+    window: Sequence[str],
+    price_now: float,
+    horizon_hours: float = DQ_SHADOW_HORIZON_HOURS,
+    threshold: float = DQ_SHADOW_THRESHOLD,
+) -> dict[str, Any]:
+    """How the market moved this window over the hours before a decision.
+
+    The earlier end is the latest committed checkpoint at least
+    ``horizon_hours`` before the decision -- any stage, since it is the
+    belief the system held then -- priced on the first committed book at
+    or after it, which is the book production compiled that checkpoint on
+    (the same pairing the ledger's ``_books_for_checkpoint`` uses).  Nothing
+    after the decision is read.  ``no_prior`` when no such checkpoint or
+    book exists, which is every opening seat under charter 48.
+    """
+
+    try:
+        earlier = (
+            datetime.fromisoformat(str(decision_at_utc).replace("Z", "+00:00"))
+            - timedelta(hours=float(horizon_hours))
+        ).astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        prior = conn.execute(
+            "SELECT stage, decision_at_utc FROM basket_probability_bridge_history"
+            " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+            "   AND decision_at_utc<=?"
+            " ORDER BY decision_at_utc DESC LIMIT 1",
+            (station_id, event_date, earlier),
+        ).fetchone()
+        if prior is None:
+            return {"tier": "no_prior", "dq": None, "prior_stage": None}
+        book = conn.execute(
+            "SELECT observed_at, buckets_json FROM basket_official_ws_snapshot"
+            " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+            "   AND observed_at>=? AND observed_at<?"
+            " ORDER BY observed_at ASC LIMIT 1",
+            (station_id, event_date, str(prior[1]), str(decision_at_utc)),
+        ).fetchone()
+    except sqlite3.Error:
+        return {"tier": "no_prior", "dq": None, "prior_stage": None}
+    if book is None:
+        return {"tier": "no_prior", "dq": None, "prior_stage": str(prior[0])}
+    price_then = _window_best_ask_sum(book[1], window)
+    if price_then is None:
+        return {"tier": "no_prior", "dq": None, "prior_stage": str(prior[0])}
+    dq = float(price_now) - float(price_then)
+    if dq <= -float(threshold):
+        tier = "down"
+    elif dq >= float(threshold):
+        tier = "up"
+    else:
+        tier = "steady"
+    return {
+        "tier": tier, "dq": round(dq, 4), "prior_stage": str(prior[0]),
+        "prior_at": str(prior[1]), "book_at": str(book[0]),
+    }
+
+
+def fit_lambda_table_dq_shadow(
+    conn: sqlite3.Connection,
+    *,
+    window_days: int = WINDOW_DAYS,
+    as_of: str | None = None,
+    stage_scope: str = "P0",
+    horizon_hours: float = DQ_SHADOW_HORIZON_HOURS,
+    threshold: float = DQ_SHADOW_THRESHOLD,
+) -> dict[str, Any]:
+    """The served table split by the market's move; measured, never served.
+
+    Same rolling window, same seats, same admission rule per cell as
+    ``fit_lambda_table`` -- a (band, tier) cell short of seats or claim mass
+    reports None and the band's served lambda stands in.  Cells are what a
+    person reads to decide whether the axis earns a place in the table.
+    """
+
+    if stage_scope not in STAGE_SCOPES:
+        raise ValueError(f"effective_edge_fit_scope_invalid:{stage_scope}")
+    stages = STAGE_SCOPES[stage_scope]
+    ceiling = P1_LAMBDA_CEILING if stage_scope == "P1" else LAMBDA_CEILING
+    incumbent = _incumbent_bands(conn, stage_scope)
+    newest = conn.execute(
+        "SELECT MAX(event_date) FROM paper_trade_settlement"
+    ).fetchone()
+    latest = str(as_of or (newest[0] if newest else "") or "")
+    if not latest:
+        raise ValueError("effective_edge_fit_no_settlements")
+    floor_day = (
+        datetime.fromisoformat(latest).date() - timedelta(days=int(window_days))
+    ).isoformat()
+    placeholders = ",".join("?" for _ in stages)
+    rows = conn.execute(
+        "SELECT p.win_probability, p.all_in_cost, s.hit, p.position_id,"
+        "       p.station_id, p.event_date, p.decision_at_utc,"
+        "       p.window_buckets_json, p.prices_json"
+        " FROM paper_trade_settlement s"
+        " JOIN paper_trade_position p USING(position_id)"
+        f" WHERE s.stage IN ({placeholders}) AND s.event_date >= ?",
+        (*stages, floor_day),
+    ).fetchall()
+    partition = _band_partition_by_position(
+        conn, [str(row[3]) for row in rows]
+    )
+    tally = [
+        {tier: {"seats": 0, "claim": 0.0, "hits": 0} for tier in DQ_TIERS}
+        for _ in incumbent
+    ]
+    excluded = 0
+    for (win, cost, hit, position_id, station_id, event_date, decision_at,
+         window_json, prices_json) in rows:
+        raw_claim = float(win or 0.0)
+        claim = raw_claim * center_window_claim_factor(raw_claim)
+        price = float(cost or 0.0)
+        if claim <= 0.0 or price <= 0.0:
+            continue
+        if partition is not None and partition.get(str(position_id)) != BAND_PARTITION_CELLS:
+            excluded += 1
+            continue
+        try:
+            window = [str(b) for b in json.loads(str(window_json or "[]"))]
+            asks = json.loads(str(prices_json or "{}"))
+            price_now = sum(float(asks[b]) for b in window)
+        except (ValueError, TypeError, KeyError):
+            window, price_now = [], price
+        move = window_price_move(
+            conn, station_id=str(station_id), event_date=str(event_date),
+            decision_at_utc=str(decision_at), window=window, price_now=price_now,
+            horizon_hours=horizon_hours, threshold=threshold,
+        ) if window else {"tier": "no_prior"}
+        slot = tally[_band_index(price / claim, incumbent)][move["tier"]]
+        slot["seats"] += 1
+        slot["claim"] += claim
+        slot["hits"] += int(hit or 0)
+
+    bands: list[dict[str, Any]] = []
+    evidence: list[dict[str, Any]] = []
+    for index, ((bound, served), slots) in enumerate(zip(incumbent, tally)):
+        tiers: dict[str, Any] = {}
+        detail: dict[str, Any] = {}
+        for tier in DQ_TIERS:
+            slot = slots[tier]
+            raw = (slot["hits"] / slot["claim"]) if slot["claim"] > 0 else None
+            enough = (
+                slot["seats"] >= MIN_SEATS_PER_BAND
+                and slot["claim"] >= MIN_CLAIM_MASS
+                and raw is not None
+            )
+            fitted = (
+                round(min(ceiling, max(LAMBDA_FLOOR, raw)), 4) if enough else None
+            )
+            tiers[tier] = fitted
+            detail[tier] = {
+                "seats": slot["seats"],
+                "claim_mass": round(slot["claim"], 3),
+                "hits": slot["hits"],
+                "raw_lambda": None if raw is None else round(raw, 4),
+                "fitted_lambda": fitted,
+                "admissible": bool(enough),
+            }
+        bands.append({
+            "upper_bound": None if bound == float("inf") else bound,
+            "served_lambda": round(float(served), 4),
+            "tiers": tiers,
+        })
+        evidence.append({
+            "band_index": index,
+            "band_upper_bound": None if bound == float("inf") else bound,
+            "served_lambda": round(float(served), 4),
+            "tiers": detail,
+        })
+    payload = {
+        "schema": "effective_edge_lambda_dq_shadow_v1",
+        "stage_scope": stage_scope,
+        "stages": list(stages),
+        "horizon_hours": float(horizon_hours),
+        "threshold": float(threshold),
+        "window_days": int(window_days),
+        "as_of_event_date": latest,
+        "fit_floor_event_date": floor_day,
+        "band_partition_cells": BAND_PARTITION_CELLS,
+        "bands": bands,
+    }
+    return {
+        "table": payload,
+        "stage_scope": stage_scope,
+        "content_sha256": content_sha256(payload),
+        "evidence": evidence,
+        "seat_count": sum(
+            slot["seats"] for slots in tally for slot in slots.values()
+        ),
+        "excluded_old_partition": excluded,
+        "admitted_cells": [
+            (item["band_index"], tier)
+            for item in evidence for tier, cell in item["tiers"].items()
+            if cell["admissible"]
+        ],
+    }
+
+
+def persist_dq_shadow(conn: sqlite3.Connection, fit: dict[str, Any]) -> dict[str, Any]:
+    """Journal the shadow fit.  No activation column exists: nothing serves it."""
+
+    ensure_schema(conn)
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    sha = str(fit["content_sha256"])
+    table = fit["table"]
+    conn.execute(
+        "INSERT INTO calibration_effective_edge_lambda_dq_shadow("
+        " shadow_sha256, stage_scope, tiers_json, evidence_json, fitted_at_utc,"
+        " window_days, seat_count, horizon_hours, threshold)"
+        " VALUES(?,?,?,?,?,?,?,?,?)"
+        " ON CONFLICT(shadow_sha256) DO UPDATE SET"
+        "  fitted_at_utc=excluded.fitted_at_utc,"
+        "  evidence_json=excluded.evidence_json",
+        (
+            sha, str(fit["stage_scope"]),
+            json.dumps(table, ensure_ascii=False, sort_keys=True),
+            json.dumps(fit["evidence"], ensure_ascii=False),
+            now, int(table["window_days"]), int(fit["seat_count"]),
+            float(table["horizon_hours"]), float(table["threshold"]),
+        ),
+    )
+    conn.commit()
+    return {"shadow_sha256": sha, "fitted_at_utc": now, "stage_scope": fit["stage_scope"]}
+
+
+def load_dq_shadow(
+    conn: sqlite3.Connection, *, stage_scope: str = "P0"
+) -> dict[str, Any] | None:
+    """The latest shadow fit for a scope, with its evidence; None before the first."""
+
+    try:
+        row = conn.execute(
+            "SELECT shadow_sha256, tiers_json, evidence_json, fitted_at_utc,"
+            " seat_count FROM calibration_effective_edge_lambda_dq_shadow"
+            " WHERE stage_scope=? ORDER BY fitted_at_utc DESC LIMIT 1",
+            (str(stage_scope),),
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    if row is None:
+        return None
+    try:
+        table = json.loads(str(row[1]))
+        evidence = json.loads(str(row[2]))
+    except ValueError:
+        return None
+    return {
+        "shadow_sha256": str(row[0]),
+        "table": table,
+        "evidence": evidence,
+        "fitted_at_utc": str(row[3]),
+        "seat_count": int(row[4] or 0),
+    }
+
+
 __all__ = [
+    "DQ_SHADOW_HORIZON_HOURS",
+    "DQ_SHADOW_MODE",
+    "DQ_SHADOW_THRESHOLD",
+    "DQ_TIERS",
     "FIT_STAGES",
     "FIT_STAGES_P1",
     "P1_LAMBDA_CEILING",
@@ -496,8 +819,12 @@ __all__ = [
     "WINDOW_DAYS",
     "ensure_schema",
     "fit_lambda_table",
+    "fit_lambda_table_dq_shadow",
     "load_active_lambda",
+    "load_dq_shadow",
     "persist_and_activate",
+    "persist_dq_shadow",
+    "window_price_move",
 ]
 
 

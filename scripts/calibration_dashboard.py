@@ -5465,9 +5465,16 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
             "ceiling": float(ceiling),
             "bands": whole,
             "store": activated(scope),
+            # Shadow axis (2026-09-06): the same bands split by which way the
+            # market moved the window in the hours before the seat.  Read
+            # from the shadow journal the daily refit writes; served by nothing.
+            "dq_shadow": _store.load_dq_shadow(conn, stage_scope=scope),
         })
     return {
         "mode": EFFECTIVE_EDGE_MODE,
+        "dq_shadow_mode": _store.DQ_SHADOW_MODE,
+        "dq_shadow_horizon_hours": _store.DQ_SHADOW_HORIZON_HOURS,
+        "dq_shadow_threshold": _store.DQ_SHADOW_THRESHOLD,
         "minimum_seats_per_band": _store.MIN_SEATS_PER_BAND,
         "split_at_event_date": midpoint,
         "scopes": scopes,
@@ -7591,7 +7598,30 @@ function effectiveEdgeLambda(){
       <div class="muted mono" style="margin-top:4px">${
         st?`store 已激活 ${st.sha256} · ${st.fitted_at_utc} · ${st.seat_count} 座`
           :"store 尚无该档的激活行（明日 refit 起逐日记录）"
-      }</div>`;
+      }</div>
+      ${dqShadow(sc)}`;
+  };
+  // The shadow axis: same band, split by the market's own move on the
+  // window over the hours before the seat.  A cell shows its fitted λ only
+  // when it clears the store's admission rule; otherwise the seat count
+  // alone, so a thin cell reads as thin rather than as a number.
+  const dqShadow=sc=>{
+    const sh=sc.dq_shadow;
+    if(!sh) return `<div class="muted" style="margin-top:6px">Δq 影子：尚无拟合行（下一轮 refit 起记录）。</div>`;
+    const tiers=[["down","跌 ≤−"+E.dq_shadow_threshold],["steady","平"],["up","涨 ≥+"+E.dq_shadow_threshold],["no_prior","无先验"]];
+    const rows=(sh.evidence||[]).map(b=>{
+      const cells=tiers.map(([t])=>{
+        const c=(b.tiers||{})[t]||{};
+        if(!c.seats) return `<td class="mono muted">—</td>`;
+        const lam=c.fitted_lambda;
+        const cls=lam==null?"":(lam<b.served_lambda-0.1?"down":(lam>b.served_lambda+0.1?"up":""));
+        return `<td class="mono ${cls}">${lam==null?`<span class="muted">(${c.seats}座 raw ${num(c.raw_lambda)})</span>`:`${num(lam)} <span class="muted">(${c.seats}座)</span>`}</td>`;
+      }).join("");
+      const bound=b.band_upper_bound==null?"≥0.85":"<"+b.band_upper_bound;
+      return `<tr><td class="mono">${bound}</td><td class="mono">${num(b.served_lambda)}</td>${cells}</tr>`;
+    }).join("");
+    return `<div class="muted" style="margin-top:10px">Δq 影子轴（视野 ${E.dq_shadow_horizon_hours}h，同一带按席位前市场对该窗口的移动分格；只记账不服务；拟合 ${sh.fitted_at_utc} · ${sh.seat_count} 座）</div>
+      <table><thead><tr><th>一致度带</th><th>服务 λ</th>${tiers.map(([,l])=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`;
   };
   return `<h2 style="margin-top:30px">有效边际 λ 表（按阶段）</h2>
     <div class="card">

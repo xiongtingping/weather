@@ -122,7 +122,7 @@ def test_p1_never_enters_the_fit(tmp_path) -> None:
     try:
         fit = store.fit_lambda_table(conn)
         assert fit["seat_count"] == 0
-        assert store.FIT_STAGES == ("P0", "P0-M")
+        assert store.FIT_STAGES == ("P0",)  # one scope per stage since 2026-09-05
     finally:
         conn.close()
 

@@ -25,9 +25,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.effective_edge_store import (  # noqa: E402
+    DQ_SHADOW_MODE,
     WINDOW_DAYS,
     fit_lambda_table,
+    fit_lambda_table_dq_shadow,
     persist_and_activate,
+    persist_dq_shadow,
 )
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
@@ -71,6 +74,22 @@ def main() -> int:
             if args.commit:
                 receipt.update(persist_and_activate(conn, fit))
                 receipt["committed"] = True
+            # The market-move axis rides the same fit, in shadow: journaled
+            # next to the served table, read by nobody who sizes a seat.
+            if DQ_SHADOW_MODE != "off":
+                shadow = fit_lambda_table_dq_shadow(
+                    conn, window_days=args.window_days, stage_scope=scope
+                )
+                receipt["dq_shadow"] = {
+                    "content_sha256": shadow["content_sha256"],
+                    "seat_count": shadow["seat_count"],
+                    "admitted_cells": shadow["admitted_cells"],
+                    "evidence": shadow["evidence"],
+                    "committed": False,
+                }
+                if args.commit:
+                    receipt["dq_shadow"].update(persist_dq_shadow(conn, shadow))
+                    receipt["dq_shadow"]["committed"] = True
             receipts.append(receipt)
             blind = blind or bool(fit["blind_bands"])
         print(json.dumps(receipts, ensure_ascii=False, indent=1))

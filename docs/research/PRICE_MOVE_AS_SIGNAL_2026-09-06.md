@@ -45,3 +45,11 @@ MH 加权（a_now × p 分层内）命中率差 up−down：6h **+8.0 点**、12
 2. "概率下降不加仓"已是宪章 69/71（Δp 规则）；概率层数据显示 Δp 方向本身不预测实现/声称，规则的钱来自它拦住了"刚降的桶=市场更便宜的桶"。
 3. 用户所言"edge 折扣表也是对抗逆选择的方法"成立：λ(a) 是本系统对市场信息的唯一在产读法，本表是它的校准证据。
 4. 增量 8–9 点能否变钱未测；账本席位样本太薄（<100），若做只能开影子车道攒。
+
+## 6. 影子车道已开（09-06 用户裁定"开影子"）
+- 落点：`effective_edge_store.fit_lambda_table_dq_shadow` / `persist_dq_shadow` / `load_dq_shadow`，表 `calibration_effective_edge_lambda_dq_shadow`（无 activated 列，结构上不可服务）。
+- 分格：同一致度带 × Δq 档（跌 ≤−0.05 / 平 / 涨 ≥+0.05 / 无先验），视野 6h，两端都读系统当时持有的信念与盘口（与账本 `_books_for_checkpoint` 同一配对）。准入门槛与服务表相同（12 座、声称质量 4.0）。
+- 挂在每日 `refit_effective_edge_lambda.py` 上（常驻托管的 calibration_refit sweep），开关 `PM_EFFECTIVE_EDGE_DQ_SHADOW=shadow|off`。
+- 首轮（28 天窗）：P0 77 座，其中 68 座无先验（开仓），有移动的只 9 座；P1 18 座；P0-M 0 座。全部格子未过门。
+- 看板：有效边际 λ 表每档下方多一张"Δq 影子轴"。
+- 晋级条件：某带的"跌"格过门且与该带服务 λ 差 >0.1、前后半同号，再走账本臂（只对加仓/后阶段）。
