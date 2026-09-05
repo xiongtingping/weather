@@ -2570,8 +2570,50 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
     except sqlite3.Error:
         return out
     out["intent_count"] = len(rows)
+    # Why a leg ended the way it did, from its latest event: the venue's
+    # refusal text, the gateway's, or the submission gate's (held, barred,
+    # disarmed).  A state alone -- failed, cancelled -- was the whole story
+    # the board told on 2026-09-05, and it was not enough to act on.
+    latest_event: dict[str, tuple[str, str]] = {}
+    if _table_exists(conn, "basket_target_order_events"):
+        try:
+            for intent_id, event_type, event_json in conn.execute(
+                "SELECT e.order_intent_id, e.event_type, e.event_json"
+                " FROM basket_target_order_events e"
+                " JOIN basket_target_order_intents i"
+                "   ON i.order_intent_id=e.order_intent_id"
+                " WHERE i.live_submit_authorized=1"
+                " ORDER BY e.observed_at ASC, e.event_id ASC"
+            ):
+                try:
+                    reason = str(
+                        (json.loads(str(event_json or "{}")) or {}).get("reason")
+                        or ""
+                    )
+                except (TypeError, ValueError):
+                    reason = ""
+                latest_event[str(intent_id)] = (str(event_type), reason)
+        except sqlite3.Error:
+            latest_event = {}
+    # Which station-days have settled, and on which bucket -- the same
+    # settlement rows the PnL reads, so a date the board collapses is a
+    # date whose money is already counted.
+    settled_bucket: dict[tuple[str, str], str] = {}
+    if _table_exists(conn, "paper_trade_settlement"):
+        try:
+            for station, day, bucket in conn.execute(
+                "SELECT station_id, event_date, MAX(settled_bucket)"
+                " FROM paper_trade_settlement WHERE settled_bucket IS NOT NULL"
+                " GROUP BY station_id, event_date"
+            ):
+                settled_bucket[(str(station), str(day))] = str(bucket)
+        except sqlite3.Error:
+            settled_bucket = {}
     for row in rows:
         out["notional_usdc"] += float(row[6] or 0.0)
+        station = str(row[9] or "")
+        day = str(row[10] or "")
+        event_type, reason = latest_event.get(str(row[0]), ("", ""))
         out["rows"].append({
             "order_intent_id": str(row[0]), "decision_id": str(row[1]),
             "bucket": str(row[2]), "side": str(row[3]),
@@ -2583,10 +2625,13 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
             # legs of one basket back together -- read as five unrelated
             # single-bucket orders, this table says the system buys buckets
             # one at a time, which is the opposite of what it does.
-            "station_id": str(row[9] or ""),
-            "event_date": str(row[10] or ""),
+            "station_id": station,
+            "event_date": day,
             "execution_deadline_at": str(row[11] or ""),
             "execution_window_seconds": _window_seconds(row[8], row[11]),
+            "event_type": event_type,
+            "reason": reason,
+            "settled_bucket": settled_bucket.get((station, day), ""),
         })
     if _table_exists(conn, "basket_target_order_events"):
         try:
@@ -9663,38 +9708,77 @@ function liveOrderCard(L){
     const w = g.legs.map(l=>l.execution_window_seconds).filter(v=>v!=null);
     g.window = w.length ? Math.min(...w) : null;
   }
-  const shown = groups.slice(0, 20);
-  const rows = shown.map(g=>{
-    const legs = g.legs.map(r=>`<tr>
-      <td></td>
-      <td class="mono">${r.bucket}</td><td>${r.side}</td>
-      <td class="mono">${r.limit_price}</td><td class="mono">${r.requested_size}</td>
-      <td class="mono">${(r.requested_notional_usdc??0).toFixed(2)}</td>
-      <td>${r.state}</td>
-      <td class="mono" title="${r.order_intent_id}">${r.created_at}</td></tr>`).join("");
-    const who = (g.station_id||g.event_date)
-      ? h(g.station_id||"?")+" · "+h(g.event_date||"?")
-      : "<span class='muted'>决策行缺失</span>";
-    // The window is the whole reason this panel needed grouping: a basket
-    // whose legs go out one at a time over the network cannot finish
-    // inside a window narrower than one round trip, and that fact is
-    // invisible when the legs are not shown as one thing.
-    const win = g.window==null ? ""
-      : `<span class="mono ${g.window<10?"down":"muted"}"
-           title="从铸出到硬期限，逐腿串行发单共享这一个窗口">
-           窗口 ${g.window}s</span>`;
-    return `<tr><td colspan="8" style="padding-top:10px">
-      <span class="pill red" style="font-size:10px">LIVE</span>
-      <b class="mono">${who}</b>
-      <span class="muted" style="font-size:11.5px">篮子 · ${g.legs.length} 腿 ·
-      ${g.notional.toFixed(2)} U</span> ${win}
-      <span class="muted mono" style="font-size:10.5px"
-        title="${h(g.decision_id)}">${h(String(g.decision_id).slice(0,22))}…</span>
-      </td></tr>${legs}`;
+  // One line per basket, one <details> per event date, settled dates
+  // closed by default (user ruling, 2026-09-05: the leg table grew with
+  // every order and took the viewport).  A leg is a chip: bucket, price x
+  // shares, its end state, and -- when the state alone says nothing --
+  // the reason its latest event carried.  A settled date shows the bucket
+  // the day landed in and each basket's money.
+  const short = (r)=>{
+    const v = String(r||"");
+    if(!v) return "";
+    if(v.startsWith("invalid amount")) return "低于$1";
+    if(v==="clob_collateral_evidence_unavailable") return "网关抵押读数缺失";
+    if(v==="live_station_held") return "站被暂扣";
+    if(v==="live_station_barred") return "站被禁入";
+    if(v==="live_station_probation") return "站在考察期";
+    if(v==="live_intent_disarmed") return "实盘旗未举";
+    if(v==="live_submit_not_authorized") return "合同未授权";
+    return v.length>28 ? v.slice(0,26)+"…" : v;
+  };
+  const legChip = (r, truth)=>{
+    const st = String(r.state||"");
+    const hit = truth && String(r.bucket)===truth;
+    const cls = st==="filled" ? (truth ? (hit?"up":"down") : "") : "muted";
+    const mark = st==="filled" ? (truth ? (hit?"✓中":"✗") : "●")
+      : st==="failed" ? "✗" : st==="cancelled" ? "—" : "…";
+    const why = (st==="failed"||st==="cancelled") ? short(r.reason) : "";
+    return `<span class="mono ${cls}" style="display:inline-block;padding:1px 6px;margin:1px 3px 1px 0;border:1px solid var(--line,#ddd);border-radius:5px;font-size:11.5px;white-space:nowrap"
+      title="${h(r.order_intent_id)} · ${h(st)}${r.reason?" · "+h(r.reason):""} · ${h(r.created_at)}">${h(r.bucket)} ${r.limit_price}×${r.requested_size} <b>${mark}</b>${why?" <span class='muted'>"+h(why)+"</span>":""}</span>`;
+  };
+  const byDate = new Map();
+  for (const g of groups){
+    const key = g.event_date || "?";
+    if(!byDate.has(key)) byDate.set(key, []);
+    byDate.get(key).push(g);
+  }
+  const truthOf = (g)=> (g.legs.find(l=>l.settled_bucket)||{}).settled_bucket || "";
+  const dates = [...byDate.keys()].sort().reverse();
+  // A date folds once its money is counted, or once it is behind us: a
+  // past day the paper settler never seated (a held station's refused
+  // basket) has no settlement row and would otherwise stay open forever.
+  const today = new Date().toISOString().slice(0,10);
+  const rows = dates.map(day=>{
+    const gs = byDate.get(day).slice().sort((a,b)=>String(a.station_id).localeCompare(String(b.station_id)));
+    const daySettled = gs.length>0 && gs.every(g=>truthOf(g));
+    const folded = daySettled || (day < today);
+    let legsN=0, filledN=0, cost=0, payout=0;
+    const basketLines = gs.map(g=>{
+      const truth = truthOf(g);
+      const gFilled = g.legs.filter(l=>l.state==="filled");
+      const gCost = gFilled.reduce((a,l)=>a+(l.requested_notional_usdc||0),0);
+      const gPay = truth ? gFilled.reduce((a,l)=>a+(String(l.bucket)===truth?(l.requested_size||0):0),0) : null;
+      legsN += g.legs.length; filledN += gFilled.length; cost += gCost; payout += (gPay||0);
+      const money = gPay==null
+        ? `<span class="muted mono" style="font-size:11px">投入 ${gCost.toFixed(2)} U</span>`
+        : `<span class="mono ${gPay-gCost>=0?"up":"down"}" style="font-size:11px">${(gPay-gCost>=0?"+":"")+(gPay-gCost).toFixed(2)} U</span>
+           <span class="muted mono" style="font-size:11px">投入 ${gCost.toFixed(2)} · 赔付 ${gPay.toFixed(2)} · 落在 ${h(truth)}</span>`;
+      return `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:5px 0;border-top:1px dashed var(--line,#eee)">
+        <span class="pill red" style="font-size:10px">LIVE</span>
+        <b class="mono" title="${h(g.decision_id)}">${h(g.station_id||"?")}</b>
+        <span class="muted" style="font-size:11px">${g.legs.length} 腿 · ${gFilled.length} 成交</span>
+        <span>${g.legs.map(l=>legChip(l, truth)).join("")}</span>
+        ${money}</div>`;
+    }).join("");
+    const pnl = daySettled ? payout - cost : null;
+    const head = `${h(day)} · ${gs.length} 篮 · ${legsN} 腿 · ${filledN} 成交 · 投入 ${cost.toFixed(2)} U` + (pnl==null
+        ? ` · <span class="muted">未结算</span>`
+        : ` · <span class="${pnl>=0?"up":"down"}">${(pnl>=0?"+":"")+pnl.toFixed(2)} U</span> · 已结算`);
+    return `<details ${folded?"":"open"} style="margin-top:6px">
+      <summary class="mono" style="cursor:pointer;font-size:12.5px">${head}</summary>
+      <div style="margin-left:4px">${basketLines}</div></details>`;
   }).join("");
-  const moreGroups = groups.length > shown.length
-    ? `<div class="muted" style="font-size:11.5px;margin-top:6px">另有
-       ${groups.length - shown.length} 个更早的篮子未列出。</div>` : "";
+  const moreGroups = "";
   // Everything above is counted off our own tables.  This one row is not:
   // it is what the exchange says is resting on the account right now.  On
   // 2026-08-31 an order this machine placed and then lost track of rested
@@ -9777,9 +9861,7 @@ function liveOrderCard(L){
       差一条腿整篮子 HOLD。逐腿下单是交易所那一侧的形状：每个温度桶是独立
       token、独立订单簿，没有「篮子」这个下单原语。同一行标题下的腿是同一个
       决策的腿，同生共死。</div>
-      <div style="overflow-x:auto;margin-top:6px"><table data-grouped="1"><thead><tr>
-      <th></th><th>桶</th><th>侧</th><th>价</th><th>股数</th><th>名义u</th>
-      <th>状态</th><th>时间</th></tr></thead><tbody>${rows}</tbody></table></div>${moreGroups}`
+      <div style="margin-top:4px">${rows}</div>${moreGroups}`
       :`<div class="muted" style="margin-top:9px">尚无实盘意向。第一条出现时此表自动列出。</div>`}
     ${(X.blocking||[]).length?`<div class="muted" style="margin-top:8px;font-size:11.5px">
       对账阻断：${(X.blocking||[]).map(b=>h(b.reason)+" ×"+b.count).join(" · ")}</div>`:""}

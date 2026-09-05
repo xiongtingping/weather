@@ -554,3 +554,61 @@ def test_authority_without_a_transport_fails_rather_than_reads_as_refused() -> N
         ContractError, match="production_order_transport_missing"
     ):
         _no_transport("/place-order", {})
+
+
+def test_a_live_intent_the_station_gate_stops_is_recorded_not_stranded(monkeypatch) -> None:
+    """VILK, EPWA and MMMX on 2026-09-05: nine live legs refused at the gate
+    (held, barred) sat ``prepared`` until the stranded sweep retired them,
+    and the board showed cancellations with no cause.  A person's stop is an
+    outcome: the intent ends ``failed`` with the reason on its event."""
+
+    def _forbidden(_path, _payload):
+        raise AssertionError("transport must not be called for a held station")
+
+    monkeypatch.setattr(
+        _submission, "live_station_admission",
+        lambda station, **_kw: {
+            "admitted": False, "reason": "live_station_held",
+            "station": station, "scope": "test",
+        },
+    )
+    conn = _conn([_intent()])
+    with conn:
+        conn.execute(
+            "INSERT INTO basket_target_execution_cycles(cycle_id,plan_id,"
+            "station_id,event_date,settlement_timezone,strategy_lane,plan_sha256,"
+            "requested_reserve_usdc,state,created_at,updated_at) VALUES("
+            "'cycle-1','plan-1','VILK','2026-09-06','Asia/Kolkata','basket',?,"
+            "4.15,'prepared',?,?)",
+            ("0" * 64, OBSERVED, OBSERVED),
+        )
+        receipt = submit_prepared_intents(
+            conn,
+            cycle_id="cycle-1",
+            transport=_forbidden,
+            live_submit_authorized=True,
+            observed_at_utc=OBSERVED,
+        )
+
+    assert receipt["orders_submitted"] == 0
+    row = receipt["submissions"][0]
+    assert row["state"] == "not_authorized"
+    assert row["reason"] == "live_station_held"
+    assert row["event_type"] == "NEVER_REACHED_EXCHANGE"
+    assert row["intent_state"] == "failed"
+    assert row["reconciliation_state"] == "resolved_not_placed"
+    import json as _json
+
+    event = conn.execute(
+        "SELECT event_type, event_json FROM basket_target_order_events"
+    ).fetchone()
+    assert event[0] == "NEVER_REACHED_EXCHANGE"
+    assert _json.loads(event[1])["reason"] == "live_station_held"
+    assert conn.execute(
+        "SELECT state FROM basket_target_order_intents WHERE order_intent_id='intent-a'"
+    ).fetchone()[0] == "failed"
+    # The bucket is free for the next cycle: nothing is pending on it.
+    from bayes_basket_target.execution_reconciliation import can_submit_next_order
+    assert can_submit_next_order(
+        conn, bucket=_intent()["bucket"], token_id=_intent()["token_id"]
+    )["allowed"] is True

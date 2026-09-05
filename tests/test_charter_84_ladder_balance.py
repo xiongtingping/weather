@@ -760,3 +760,81 @@ def test_lfpb_a_missing_rung_under_the_leg_floor_is_dead_not_a_refusal(
     targets = {row["bucket"]: row for row in result["targets"]}
     assert targets["28"]["delta_shares"] > 0.0
     assert result["state"] != "HOLD"
+
+
+def test_a_cycle_whose_orders_were_all_refused_is_released_not_stranded() -> None:
+    """Refusals leave reconciliation facts, which supersession will not
+    retire; the cycle is over with nothing spent, and its reservation goes
+    back to the pool."""
+
+    from types import SimpleNamespace
+
+    from bayes_basket_target.atomic_ledger import (
+        AtomicLedgerError,
+        settle_live_cycle_after_terminal_intents,
+    )
+    from bayes_basket_target.production_worker import TargetProductionWorker
+    from tests.test_bayes_basket_target_atomic_ledger import _committed_intent, _db
+
+    with _db() as conn:
+        bundle, intent_id = _committed_intent(conn, index=80)
+        refused = bundle["cycle"]["cycle_id"]
+        conn.execute(
+            "UPDATE basket_target_order_intents SET state='failed' WHERE order_intent_id=?",
+            (intent_id,),
+        )
+        conn.execute(
+            "INSERT INTO basket_target_order_reconciliations("
+            "order_intent_id,exchange_order_id,state,filled_size,"
+            "filled_notional_usdc,last_event_id,blocking_reason,updated_at)"
+            " VALUES(?,?,?,?,?,?,?,?)",
+            (intent_id, None, "resolved_not_placed", 0.0, 0.0, None,
+             "gateway_refused_submission", "2026-07-23T04:10:00Z"),
+        )
+        # An inert cycle -- failed with no reconciliation fact -- stays the
+        # supersession path's.
+        inert_bundle, inert_intent = _committed_intent(conn, index=81)
+        conn.execute(
+            "UPDATE basket_target_order_intents SET state='cancelled' WHERE order_intent_id=?",
+            (inert_intent,),
+        )
+        conn.commit()
+        balance_before, reserved_before = _pool(conn)
+        settled = settle_live_cycle_after_terminal_intents(
+            conn, cycle_id=refused, settled_at_utc="2026-07-23T04:20:00Z"
+        )
+        assert settled["outcome"] == "released"
+        assert settled["consumed_usdc"] == 0.0
+        assert settled["refused_intent_ids"] == [intent_id]
+        balance_after, reserved_after = _pool(conn)
+        assert balance_after == pytest.approx(balance_before)
+        assert reserved_after == pytest.approx(reserved_before - 3.0)
+        assert conn.execute(
+            "SELECT state, release_reason FROM basket_target_capital_reservations WHERE cycle_id=?",
+            (refused,),
+        ).fetchone() == ("released", "live_orders_all_refused")
+        with pytest.raises(AtomicLedgerError, match="nothing_filled"):
+            settle_live_cycle_after_terminal_intents(
+                conn, cycle_id=inert_bundle["cycle"]["cycle_id"],
+                settled_at_utc="2026-07-23T04:21:00Z",
+            )
+        # The sweep selects the refused cycle and leaves the inert one.
+        again_bundle, again_intent = _committed_intent(conn, index=82)
+        conn.execute(
+            "UPDATE basket_target_order_intents SET state='failed' WHERE order_intent_id=?",
+            (again_intent,),
+        )
+        conn.execute(
+            "INSERT INTO basket_target_order_reconciliations("
+            "order_intent_id,exchange_order_id,state,filled_size,"
+            "filled_notional_usdc,last_event_id,blocking_reason,updated_at)"
+            " VALUES(?,?,?,?,?,?,?,?)",
+            (again_intent, None, "resolved_not_placed", 0.0, 0.0, None,
+             "order_never_reached_exchange", "2026-07-23T04:30:00Z"),
+        )
+        conn.commit()
+        receipt = TargetProductionWorker._settle_live_cycles(
+            SimpleNamespace(commit_conn=conn), as_of_utc="2026-07-23T04:40:00Z"
+        )
+        assert receipt["settled"] == 1
+        assert receipt["settled_scopes"][0]["cycle_id"] == again_bundle["cycle"]["cycle_id"]

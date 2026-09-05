@@ -404,25 +404,64 @@ def submit_prepared_intents(
             # The whole path runs except the send.  The payload hash is on the
             # receipt so a no-live run can be compared byte for byte against
             # the live one it is standing in for.
-            submissions.append({
+            # Told apart on purpose: one says the contract never
+            # authorised this lane, the other says a person stopped it.
+            # Reading a hand on the switch as a missing contract is how
+            # an operator's stop gets diagnosed as a plumbing fault.
+            gate_reason = (
+                "live_submit_not_authorized"
+                if not live_submit_authorized
+                else "live_intent_disarmed" if not armed
+                # barred / held / still earning its way in -- three
+                # different follow-ups, so three different reasons.
+                else str(admitted["reason"])
+            )
+            entry: dict[str, Any] = {
                 "order_intent_id": intent_id,
                 "state": "not_authorized",
-                # Told apart on purpose: one says the contract never
-                # authorised this lane, the other says a person stopped it.
-                # Reading a hand on the switch as a missing contract is how
-                # an operator's stop gets diagnosed as a plumbing fault.
-                "reason": (
-                    "live_submit_not_authorized"
-                    if not live_submit_authorized
-                    else "live_intent_disarmed" if not armed
-                    # barred / held / still earning its way in -- three
-                    # different follow-ups, so three different reasons.
-                    else str(admitted["reason"])
-                ),
+                "reason": gate_reason,
                 "station_id": station,
                 "exchange_post_started": False,
                 "payload_sha256": content_sha256(payload),
-            })
+            }
+            if live_submit_authorized:
+                # A live intent a person stopped -- the flag lowered, the
+                # station barred or held -- is an outcome, and it is recorded
+                # like the gateway's refusal below: the intent ends
+                # ``failed`` with the reason on its event, instead of sitting
+                # ``prepared`` until the stranded sweep retires it and the
+                # board shows a cancellation with no cause (VILK, EPWA and
+                # MMMX on 2026-09-05: nine legs, no reason anywhere).  A
+                # no-live contract writes nothing: its intents belong to the
+                # simulator's transition runtime.
+                gate = {
+                    "event_type": "NEVER_REACHED_EXCHANGE",
+                    "exchange_order_id": "",
+                    "observed_at": observed_at,
+                    "matched_size": 0.0,
+                    "matched_notional_usdc": 0.0,
+                    "event_payload": {
+                        "idempotency_key": payload["idempotency_key"],
+                        "payload_sha256": content_sha256(payload),
+                        "reason": gate_reason,
+                        "source": "order_submission_gate",
+                        "station_id": station,
+                    },
+                }
+                receipt = record_order_event(
+                    conn,
+                    order_intent_id=intent_id,
+                    event=gate,
+                )
+                entry.update({
+                    "intent_state": receipt.get("state"),
+                    "reconciliation_state": receipt.get(
+                        "reconciliation_state"
+                    ),
+                    "event_type": "NEVER_REACHED_EXCHANGE",
+                    "event_id": receipt.get("event_id"),
+                })
+            submissions.append(entry)
             continue
         response = transport(PLACE_ORDER_PATH, payload)
         outcome = classify_submission_response(response)

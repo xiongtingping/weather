@@ -4129,6 +4129,7 @@ def settle_live_cycle_after_terminal_intents(
             raise AtomicLedgerError("live_cycle_settle_no_intents")
         consumed = 0.0
         filled_intents: list[str] = []
+        refused_intents: list[str] = []
         for intent_id, intent_state, recon_state, notional in intents:
             if str(intent_state) not in LIVE_TERMINAL_INTENT_STATES:
                 raise AtomicLedgerError(
@@ -4145,8 +4146,17 @@ def settle_live_cycle_after_terminal_intents(
                     )
                 consumed += float(notional or 0.0)
                 filled_intents.append(str(intent_id))
-        if not filled_intents:
+            elif str(recon_state or "") in {"resolved_not_placed", "resolved_cancelled"}:
+                refused_intents.append(str(intent_id))
+        if not filled_intents and len(refused_intents) != len(intents):
+            # Nothing reached the exchange and nothing says so on the
+            # ledger: an inert candidate, which supersession retires.
             raise AtomicLedgerError("live_cycle_settle_nothing_filled")
+        # A cycle whose orders were all refused -- by the gateway, the venue
+        # or the submission gate -- carries reconciliation facts, which is
+        # exactly what supersession refuses to retire; it is over the same
+        # way a filled one is, with nothing spent.
+        outcome = "consumed" if filled_intents else "released"
         reservation = conn.execute(
             "SELECT reservation_id,amount_usdc,state"
             " FROM basket_target_capital_reservations WHERE cycle_id=?",
@@ -4172,10 +4182,15 @@ def settle_live_cycle_after_terminal_intents(
             )
             conn.execute(
                 "UPDATE basket_target_capital_reservations"
-                " SET state='consumed',release_reason=?,updated_at=?"
+                " SET state=?,release_reason=?,updated_at=?"
                 " WHERE reservation_id=? AND state='active'",
                 (
-                    "live_terminal_fills_actual_usdc=" + format(consumed, ".8f"),
+                    outcome,
+                    (
+                        "live_terminal_fills_actual_usdc=" + format(consumed, ".8f")
+                        if filled_intents
+                        else "live_orders_all_refused"
+                    ),
                     settled_at,
                     reservation_id,
                 ),
@@ -4195,9 +4210,11 @@ def settle_live_cycle_after_terminal_intents(
         "schema": SCHEMA,
         "state": "settled",
         "cycle_id": cycle,
+        "outcome": outcome,
         "consumed_usdc": consumed,
         "reservation_released_usdc": released,
         "filled_intent_ids": filled_intents,
+        "refused_intent_ids": refused_intents,
     }
 
 
