@@ -321,3 +321,128 @@ def test_execution_sizing_reads_the_venue_minimum_as_lot_or_dollar(
     assert production_runtime.execution_minimum_lot_shares(
         min_order_size=5.0, limit_price=0.04
     ) == 5.0
+
+
+# --- the live cycle that traded is over, not still the day's candidate ----
+
+def _live_cycle_with_fill(conn, *, index: int, fill_notional: float | None = 2.4,
+                          intent_state: str = "filled", reconciled: bool = True):
+    """One committed cycle (reservation 3.0) whose single intent ended."""
+
+    from tests.test_bayes_basket_target_atomic_ledger import _committed_intent
+
+    bundle, intent_id = _committed_intent(conn, index=index)
+    cycle_id = bundle["cycle"]["cycle_id"]
+    conn.execute(
+        "UPDATE basket_target_order_intents SET state=? WHERE order_intent_id=?",
+        (intent_state, intent_id),
+    )
+    if reconciled and fill_notional is not None:
+        conn.execute(
+            "INSERT INTO basket_target_order_reconciliations("
+            "order_intent_id,exchange_order_id,state,filled_size,"
+            "filled_notional_usdc,last_event_id,blocking_reason,updated_at)"
+            " VALUES(?,?,?,?,?,?,?,?)",
+            (intent_id, "0x" + intent_id, "resolved_filled", 5.0,
+             fill_notional, None, None, "2026-07-23T04:10:00Z"),
+        )
+    conn.commit()
+    return cycle_id, intent_id
+
+
+def _pool(conn) -> tuple[float, float]:
+    row = conn.execute(
+        "SELECT balance_usdc,reserved_usdc FROM basket_target_capital_pool"
+    ).fetchone()
+    return float(row[0]), float(row[1])
+
+
+def test_a_live_cycle_whose_orders_all_ended_is_settled_by_what_it_spent() -> None:
+    from bayes_basket_target.atomic_ledger import (
+        AtomicLedgerError,
+        settle_live_cycle_after_terminal_intents,
+    )
+    from tests.test_bayes_basket_target_atomic_ledger import _db
+
+    with _db() as conn:
+        cycle_id, _intent = _live_cycle_with_fill(conn, index=60)
+        balance_before, reserved_before = _pool(conn)
+        settled = settle_live_cycle_after_terminal_intents(
+            conn, cycle_id=cycle_id, settled_at_utc="2026-07-23T04:20:00Z"
+        )
+        assert settled["state"] == "settled"
+        assert settled["consumed_usdc"] == pytest.approx(2.4)
+        assert settled["reservation_released_usdc"] == pytest.approx(3.0)
+        assert conn.execute(
+            "SELECT state FROM basket_target_execution_cycles WHERE cycle_id=?",
+            (cycle_id,),
+        ).fetchone()[0] == "settled"
+        reservation = conn.execute(
+            "SELECT state,release_reason FROM basket_target_capital_reservations"
+            " WHERE cycle_id=?", (cycle_id,),
+        ).fetchone()
+        assert reservation[0] == "consumed"
+        assert reservation[1].startswith("live_terminal_fills_actual_usdc=2.4")
+        balance_after, reserved_after = _pool(conn)
+        assert balance_after == pytest.approx(balance_before - 2.4)
+        assert reserved_after == pytest.approx(reserved_before - 3.0)
+        # Idempotent, and the guards refuse what is not over yet.
+        assert settle_live_cycle_after_terminal_intents(
+            conn, cycle_id=cycle_id, settled_at_utc="2026-07-23T04:21:00Z"
+        )["state"] == "already_settled"
+
+        still_live, _ = _live_cycle_with_fill(
+            conn, index=61, intent_state="submitted", reconciled=False
+        )
+        with pytest.raises(AtomicLedgerError, match="intent_not_terminal"):
+            settle_live_cycle_after_terminal_intents(
+                conn, cycle_id=still_live, settled_at_utc="2026-07-23T04:22:00Z"
+            )
+        unreconciled, _ = _live_cycle_with_fill(conn, index=62, reconciled=False)
+        with pytest.raises(AtomicLedgerError, match="fill_unreconciled"):
+            settle_live_cycle_after_terminal_intents(
+                conn, cycle_id=unreconciled, settled_at_utc="2026-07-23T04:23:00Z"
+            )
+        inert, _ = _live_cycle_with_fill(
+            conn, index=63, intent_state="failed", reconciled=False
+        )
+        with pytest.raises(AtomicLedgerError, match="nothing_filled"):
+            settle_live_cycle_after_terminal_intents(
+                conn, cycle_id=inert, settled_at_utc="2026-07-23T04:24:00Z"
+            )
+
+
+def test_the_resident_sweep_settles_exactly_the_cycles_that_traded_and_ended() -> None:
+    from types import SimpleNamespace
+
+    from bayes_basket_target.production_worker import TargetProductionWorker
+    from tests.test_bayes_basket_target_atomic_ledger import _db
+
+    with _db() as conn:
+        done, _ = _live_cycle_with_fill(conn, index=70)
+        live, _ = _live_cycle_with_fill(
+            conn, index=71, intent_state="submitted", reconciled=False
+        )
+        inert, _ = _live_cycle_with_fill(
+            conn, index=72, intent_state="failed", reconciled=False
+        )
+        receipt = TargetProductionWorker._settle_live_cycles(
+            SimpleNamespace(commit_conn=conn), as_of_utc="2026-07-23T04:30:00Z"
+        )
+        assert receipt["state"] == "committed"
+        assert receipt["examined"] == 1
+        assert receipt["settled"] == 1
+        assert receipt["settled_scopes"][0]["cycle_id"] == done
+        states = {
+            row[0]: row[1] for row in conn.execute(
+                "SELECT cycle_id,state FROM basket_target_execution_cycles"
+            )
+        }
+        assert states[done] == "settled"
+        assert states[live] == "prepared"
+        assert states[inert] == "prepared"
+        # Nothing left to do on the next pass.
+        again = TargetProductionWorker._settle_live_cycles(
+            SimpleNamespace(commit_conn=conn), as_of_utc="2026-07-23T04:31:00Z"
+        )
+        assert again["state"] == "no_settleable_cycles"

@@ -45,6 +45,7 @@ from .atomic_ledger import (
     ledger_span,
     ledger_span_profile,
     note_ledger_span,
+    settle_live_cycle_after_terminal_intents,
     note_writer_lock_sample,
     reset_ledger_spans,
     reset_writer_lock_profile,
@@ -7443,6 +7444,101 @@ class TargetProductionWorker:
         except Exception as exc:  # noqa: BLE001 -- observational lane
             receipt["state"] = "blocked_fail_closed"
             receipt["reason"] = f"{type(exc).__name__}:{exc}"[:160]
+        return receipt
+
+    def _settle_live_cycles(
+        self,
+        *,
+        as_of_utc: str,
+        limit: int = 40,
+    ) -> dict[str, Any]:
+        """Settle live cycles whose orders have all ended and reconciled.
+
+        The counterpart of the no-live runtime's terminal transition for a
+        real order: a cycle is a batch of orders, and once every order in
+        it has ended (filled, refused, cancelled) with every fill resolved
+        by the reconciliation ledger, the batch is over -- its reservation
+        is consumed by what was spent and the cycle is ``settled``.  Left
+        ``prepared``, such a cycle counts as the station-day's active
+        candidate and the atomic commit refuses every later trade decision
+        on the day as ``target_active_candidate_supersession_required``,
+        which is how the first live half-baskets could not be completed
+        (2026-09-05).  Only cycles that filled something: an inert cycle is
+        the supersession path's.
+        """
+
+        receipt: dict[str, Any] = {
+            "schema": "bayes_basket_target_live_cycle_settle_v1",
+            "state": "no_settleable_cycles",
+            "examined": 0,
+            "settled": 0,
+            "settled_scopes": [],
+            "failures": [],
+            "places_orders": False,
+            "calls_order_gateway": False,
+            "orders_submitted": 0,
+        }
+        if self.commit_conn is None:
+            receipt["state"] = "not_attempted"
+            return receipt
+        try:
+            rows = self.commit_conn.execute(
+                "SELECT c.cycle_id, c.station_id, c.event_date"
+                " FROM basket_target_execution_cycles c"
+                " WHERE c.state='prepared'"
+                "   AND EXISTS ("
+                "     SELECT 1 FROM basket_target_order_intents i"
+                "     JOIN basket_target_order_reconciliations r"
+                "       ON r.order_intent_id=i.order_intent_id"
+                "     WHERE i.cycle_id=c.cycle_id AND i.state='filled'"
+                "       AND r.state IN ('resolved_filled','resolved_partial'))"
+                "   AND NOT EXISTS ("
+                "     SELECT 1 FROM basket_target_order_intents i"
+                "     WHERE i.cycle_id=c.cycle_id"
+                "       AND i.state NOT IN ('filled','failed','cancelled'))"
+                "   AND NOT EXISTS ("
+                "     SELECT 1 FROM basket_target_order_intents i"
+                "     JOIN basket_target_order_reconciliations r"
+                "       ON r.order_intent_id=i.order_intent_id"
+                "     WHERE i.cycle_id=c.cycle_id"
+                "       AND r.state IN ('pending','unknown'))"
+                " ORDER BY c.created_at LIMIT ?",
+                (int(limit),),
+            ).fetchall()
+        except sqlite3.Error as exc:
+            receipt["state"] = "blocked_fail_closed"
+            receipt["reason"] = f"{type(exc).__name__}:{exc}"
+            return receipt
+        if not rows:
+            return receipt
+        receipt["examined"] = len(rows)
+        for cycle_id, station, day in rows:
+            try:
+                with _writer_transaction(
+                    self.commit_conn,
+                    savepoint="basket_target_live_cycle_settle",
+                ):
+                    settled = settle_live_cycle_after_terminal_intents(
+                        self.commit_conn,
+                        cycle_id=str(cycle_id),
+                        settled_at_utc=as_of_utc,
+                    )
+            except Exception as exc:  # noqa: BLE001 -- observational lane
+                receipt["failures"].append({
+                    "cycle_id": str(cycle_id),
+                    "scope": f"{station}|{day}",
+                    "reason": f"{type(exc).__name__}:{exc}"[:160],
+                })
+                continue
+            receipt["settled"] += 1
+            receipt["settled_scopes"].append({
+                "scope": f"{station}|{day}",
+                "cycle_id": str(cycle_id),
+                "consumed_usdc": settled.get("consumed_usdc"),
+            })
+        receipt["state"] = (
+            "committed" if receipt["settled"] else "blocked_fail_closed"
+        )
         return receipt
 
     def _reconcile_unresolved_intents(
@@ -15093,6 +15189,18 @@ class TargetProductionWorker:
                 "reason": f"{type(exc).__name__}:{exc}"[:160],
                 "retired": 0,
             }
+        # And settle the live cycles whose orders have all ended: a batch
+        # that traded and is over must stop standing as the station-day's
+        # active candidate, or nothing after it can be committed.
+        try:
+            live_cycle_settle = self._settle_live_cycles(as_of_utc=utc_now())
+        except Exception as exc:  # noqa: BLE001 -- observational lane
+            live_cycle_settle = {
+                "schema": "bayes_basket_target_live_cycle_settle_v1",
+                "state": "blocked_fail_closed",
+                "reason": f"{type(exc).__name__}:{exc}"[:160],
+                "settled": 0,
+            }
         self._mark("intent_reconcile")
         scope = activation.get("target_scope")
         if not isinstance(scope, Mapping):
@@ -16705,6 +16813,7 @@ class TargetProductionWorker:
                 "listing_scope_turn": serve_listing,
                 "intent_reconcile": intent_reconcile,
                 "intent_retire": intent_retire,
+                "live_cycle_settle": live_cycle_settle,
                 "quote_evidence_refresh": {
                     "interval_seconds": QUOTE_EVIDENCE_REFRESH_SECONDS,
                     # Counted, not inferred.  A refresh loop reports how many

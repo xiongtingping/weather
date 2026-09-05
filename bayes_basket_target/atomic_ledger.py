@@ -4057,6 +4057,150 @@ def close_target_cycle(
     return {"schema": SCHEMA, "state": "settled", "cycle_id": cycle, "outcome": outcome_value, "released_or_consumed_usdc": float(settled_amount)}
 
 
+LIVE_TERMINAL_INTENT_STATES = frozenset({"filled", "failed", "cancelled"})
+
+
+def settle_live_cycle_after_terminal_intents(
+    conn: sqlite3.Connection,
+    *,
+    cycle_id: str,
+    settled_at_utc: str,
+) -> dict[str, Any]:
+    """Settle a live cycle whose orders have all ended and whose fills the
+    reconciliation ledger has resolved.
+
+    The no-live simulator does this for its own fills: an authoritative
+    terminal transition consumes the reservation by what was actually spent
+    and marks the cycle ``settled`` (execution_transition_runtime), which is
+    what lets the next candidate on the station-day be committed at all --
+    the atomic commit refuses a new prepared decision while a prepared
+    cycle with a non-blocked decision still stands
+    (``target_active_candidate_supersession_required``), and supersession
+    is only for candidates that never reached the exchange.
+
+    A live order never ran through that runtime.  On 2026-09-05 the first
+    live cycles (LTAC, LFPB, SAEZ, ZGSZ 2026-09-06: each one or two legs
+    matched, the rest refused by the venue) stayed ``prepared`` with their
+    reservations active, so once charter 84 seated the completion of those
+    baskets the stage open was refused as a supersession of a candidate
+    that had, in fact, traded.  The chain is not the cycle: what was bought
+    lives in the reconciliation ledger and reaches every later compile as
+    inventory (charter 83); the cycle is a batch of orders, and a batch
+    whose orders have all ended is over.
+
+    Refuses while any intent is still live (prepared / submitting /
+    submitted / reconcile_required), while any reconciliation is pending or
+    unknown, when a filled intent has no resolved reconciliation, and when
+    nothing filled at all -- an inert cycle is superseded, not settled here.
+    Consumes the reservation by the reconciled fill notional (which may
+    exceed the reservation: the venue's lot and dollar minimums lift a leg
+    past its planned clip) and releases the rest.
+    """
+
+    cycle = _text("cycle_id", cycle_id)
+    settled_at = _timestamp("settled_at_utc", settled_at_utc)
+    with _atomic_transaction(
+        conn, operation="settle_live_cycle_after_terminal_intents"
+    ):
+        row = conn.execute(
+            "SELECT state FROM basket_target_execution_cycles WHERE cycle_id=?",
+            (cycle,),
+        ).fetchone()
+        if row is None:
+            raise AtomicLedgerError("cycle_missing")
+        if str(row[0]) == "settled":
+            return {
+                "schema": SCHEMA,
+                "state": "already_settled",
+                "cycle_id": cycle,
+                "consumed_usdc": 0.0,
+            }
+        if str(row[0]) != "prepared":
+            raise AtomicLedgerError("live_cycle_settle_state_invalid")
+        intents = conn.execute(
+            "SELECT i.order_intent_id,i.state,r.state,r.filled_notional_usdc"
+            " FROM basket_target_order_intents i"
+            " LEFT JOIN basket_target_order_reconciliations r"
+            "   ON r.order_intent_id=i.order_intent_id"
+            " WHERE i.cycle_id=? ORDER BY i.order_intent_id",
+            (cycle,),
+        ).fetchall()
+        if not intents:
+            raise AtomicLedgerError("live_cycle_settle_no_intents")
+        consumed = 0.0
+        filled_intents: list[str] = []
+        for intent_id, intent_state, recon_state, notional in intents:
+            if str(intent_state) not in LIVE_TERMINAL_INTENT_STATES:
+                raise AtomicLedgerError(
+                    "live_cycle_settle_intent_not_terminal:" + str(intent_id)
+                )
+            if recon_state is not None and str(recon_state) in {"pending", "unknown"}:
+                raise AtomicLedgerError(
+                    "live_cycle_settle_reconciliation_open:" + str(intent_id)
+                )
+            if str(intent_state) == "filled":
+                if str(recon_state or "") not in {"resolved_filled", "resolved_partial"}:
+                    raise AtomicLedgerError(
+                        "live_cycle_settle_fill_unreconciled:" + str(intent_id)
+                    )
+                consumed += float(notional or 0.0)
+                filled_intents.append(str(intent_id))
+        if not filled_intents:
+            raise AtomicLedgerError("live_cycle_settle_nothing_filled")
+        reservation = conn.execute(
+            "SELECT reservation_id,amount_usdc,state"
+            " FROM basket_target_capital_reservations WHERE cycle_id=?",
+            (cycle,),
+        ).fetchone()
+        if reservation is None:
+            raise AtomicLedgerError("reservation_missing")
+        reservation_id = str(reservation[0])
+        amount = float(reservation[1])
+        reservation_state = str(reservation[2])
+        released = 0.0
+        if reservation_state == "active":
+            balance, reserved, _epoch, _version = _ensure_pool(conn)
+            if consumed > balance + 1e-9:
+                raise AtomicLedgerError("live_cycle_settle_pool_balance_drift")
+            released = min(amount, reserved)
+            conn.execute(
+                "UPDATE basket_target_capital_pool SET"
+                " balance_usdc=MAX(0.0,balance_usdc-?),"
+                " reserved_usdc=MAX(0.0,reserved_usdc-?),"
+                " version=version+1,updated_at=? WHERE pool_id=1",
+                (consumed, released, settled_at),
+            )
+            conn.execute(
+                "UPDATE basket_target_capital_reservations"
+                " SET state='consumed',release_reason=?,updated_at=?"
+                " WHERE reservation_id=? AND state='active'",
+                (
+                    "live_terminal_fills_actual_usdc=" + format(consumed, ".8f"),
+                    settled_at,
+                    reservation_id,
+                ),
+            )
+            if conn.execute("SELECT changes()").fetchone()[0] != 1:
+                raise AtomicLedgerError("live_cycle_settle_reservation_cas_conflict")
+        elif reservation_state not in {"released", "consumed", "expired"}:
+            raise AtomicLedgerError("reservation_state_invalid")
+        conn.execute(
+            "UPDATE basket_target_execution_cycles SET state='settled',updated_at=?"
+            " WHERE cycle_id=? AND state='prepared'",
+            (settled_at, cycle),
+        )
+        if conn.execute("SELECT changes()").fetchone()[0] != 1:
+            raise AtomicLedgerError("live_cycle_settle_cycle_cas_conflict")
+    return {
+        "schema": SCHEMA,
+        "state": "settled",
+        "cycle_id": cycle,
+        "consumed_usdc": consumed,
+        "reservation_released_usdc": released,
+        "filled_intent_ids": filled_intents,
+    }
+
+
 def close_settled_day_cycle(
     conn: sqlite3.Connection,
     *,
@@ -4545,6 +4689,7 @@ __all__ = [
     "close_settled_day_cycle",
     "close_target_cycle",
     "supersede_prepared_cycle_and_commit_bundle",
+    "settle_live_cycle_after_terminal_intents",
     "commit_blocked_scope_decision",
     "commit_preliminary_scope_decision",
     "commit_stage_zero_execution_scope_decision",
