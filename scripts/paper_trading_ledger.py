@@ -2257,7 +2257,10 @@ GATE_REFUSAL_REASON = {
 # What to call each gate on the page.  Same keys, same reason.
 GATE_LABEL = {
     "gapped": "断桶",
-    "center": "中心桶",
+    # The windows this gate refuses are the ones that do NOT hold the
+    # ladder centre (the mean bucket, charter 54); the label says so
+    # (user, 2026-09-05) -- "中心桶 6" read as six windows that did.
+    "center": "不含中心桶",
     "short": "桶数不足",
     "skew": "逆偏斜扩边",
     "market_lean": "逆市场方向",
