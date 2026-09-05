@@ -24,6 +24,10 @@ from .basket_kernel.contracts import (
     content_sha256,
 )
 from .basket_kernel.delta_v2 import (
+    CENTER_WINDOW_CLAIM_BANDS,
+    CENTER_WINDOW_CLAIM_DEFAULT,
+    _parse_claim_bands,
+    center_window_claim_factor,
     dispersion_support_size,
     EFFECTIVE_EDGE_P0M_STAGES,
     EFFECTIVE_EDGE_P1_STAGES,
@@ -915,55 +919,11 @@ P0M_TAF_MODE = (
 )
 if P0M_TAF_MODE not in {"off", "tx_anchor", "confirm_hold", "confirm_override"}:
     raise RuntimeError(f"unknown P0-M TAF mode: {P0M_TAF_MODE}")
-# Charter 81 (user ruling, 2026-09-05): a claim multiplier for windows that
-# HOLD the centre -- the mirror of ``off_center_claim_factor``.  Re-measured
-# on the served (post-band) claims that day (``scripts/measure_off_center_
-# claim.py``, P0, 1,287 station-days, mean centre): centre-holding windows
-# realise 1.30 [1.23,1.37] of their claim in [0.35,0.55) and 1.12
-# [1.09,1.15] at 0.55 and above, so the whole-basket positive-EV gate was
-# systematically too strict there.  The shipped table is those ratios
-# shrunk 30% toward one; the ledger priced it at +3.11% against the
-# charter-80 baseline's -2.08% (same book, production judge, drop-the-
-# winners lead steady at +8 points).  JSON list of [claimed-mass upper
-# bound, factor], read like the off-centre table (the first bound the claim
-# falls below); ``PM_CENTER_WINDOW_CLAIM_BANDS=off`` (or ``[]``) is the
-# research arm that turns it off.  Applied to the window's claim inside
-# ``_support_windows`` so the gate, the ranking, the solver's partition and
-# charter 68's agreement all read one belief -- and hashed into the
-# ledger's rule fingerprint unconditionally.
-CENTER_WINDOW_CLAIM_DEFAULT = "[[0.35, 1.0], [0.55, 1.21], [1.01, 1.08]]"
-
-
-def _parse_claim_bands(text: str) -> tuple[tuple[float, float], ...]:
-    cleaned = (text or "").strip()
-    if cleaned.lower() == "off":
-        return ()
-    raw = json.loads(cleaned or CENTER_WINDOW_CLAIM_DEFAULT)
-    bands = tuple((float(bound), float(factor)) for bound, factor in raw)
-    if any(bound <= 0.0 or factor <= 0.0 for bound, factor in bands):
-        raise RuntimeError(f"invalid centre-window claim bands: {text}")
-    if list(bound for bound, _ in bands) != sorted(bound for bound, _ in bands):
-        raise RuntimeError(f"centre-window claim bands must ascend: {text}")
-    return bands
-
-
-CENTER_WINDOW_CLAIM_BANDS: tuple[tuple[float, float], ...] = _parse_claim_bands(
-    os.environ.get("PM_CENTER_WINDOW_CLAIM_BANDS", "")
-)
-
-
-def center_window_claim_factor(claimed_mass: float) -> float:
-    """The arm's multiplier for a window holding the centre; 1.0 when off."""
-
-    if not CENTER_WINDOW_CLAIM_BANDS:
-        return 1.0
-    mass = float(claimed_mass)
-    for bound, factor in CENTER_WINDOW_CLAIM_BANDS:
-        if mass < bound:
-            return float(factor)
-    return 1.0
-
-
+# Charter 81 (user ruling, 2026-09-05): the centre-holding claim lift.  One
+# implementation in the kernel, read here, by the paper ledger and by the
+# charter-68 lambda store (whose agreement must be computed on the same
+# lifted claim the solver reads).  ``PM_CENTER_WINDOW_CLAIM_BANDS=off`` is
+# the research arm; the shipped table is CENTER_WINDOW_CLAIM_DEFAULT.
 # Research arm (2026-09-04, user): which stages may open an empty chain.
 # Charter 74 ships P0 alone; ``P0,P0-M`` is the arm that lets P0-M open (and
 # so take a ticket) for the TAF-confirmation replays.  P1 never opens.

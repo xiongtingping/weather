@@ -56,6 +56,7 @@ from typing import Any, Sequence
 
 from .band_reliability_store import BAND_TABLE_CELLS
 from .basket_kernel.delta_v2 import (
+    center_window_claim_factor,
     EFFECTIVE_EDGE_LAMBDA,
     EFFECTIVE_EDGE_P0M_LAMBDA,
     EFFECTIVE_EDGE_P1_LAMBDA,
@@ -286,7 +287,13 @@ def fit_lambda_table(
         {"seats": 0, "claim": 0.0, "hits": 0} for _ in incumbent
     ]
     for win, cost, hit, position_id in rows:
-        claim = float(win or 0.0)
+        # Charter 81: the solver's agreement is price over the LIFTED claim
+        # (every seat holds the centre since charter 49, and the ledger
+        # records the served window mass before the lift), so the fit reads
+        # the same basis -- else lambda(a) is looked up at an a the table
+        # never saw.  Identity when the lift is off.
+        raw_claim = float(win or 0.0)
+        claim = raw_claim * center_window_claim_factor(raw_claim)
         price = float(cost or 0.0)
         if claim <= 0.0 or price <= 0.0:
             continue

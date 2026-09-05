@@ -99,10 +99,12 @@ def _book(rows) -> sqlite3.Connection:
     return conn
 
 
-def test_the_store_fits_p1_on_p1_rows_alone() -> None:
+def test_the_store_fits_p1_on_p1_rows_alone(monkeypatch) -> None:
     """Twenty P1 seats that all hit at a = 0.3 read 1.0 for P1 and change
     nothing in P0's fit, however loudly they would have voted in a pool."""
 
+    import bayes_basket_target.basket_kernel.delta_v2 as K
+    monkeypatch.setattr(K, "CENTER_WINDOW_CLAIM_BANDS", ())  # charter 81 off: raw arithmetic
     p1_rows = [("P1", 0.5, 0.15, 1) for _ in range(20)]      # a = 0.30
     p0_rows = [("P0", 0.5, 0.15, 0) for _ in range(20)]      # a = 0.30, all miss
     conn = _book(p1_rows + p0_rows)

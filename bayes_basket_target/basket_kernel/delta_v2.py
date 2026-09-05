@@ -1282,6 +1282,54 @@ def off_center_claim_factor(
     return 1.0 - (1.0 - full) * reach
 
 
+# Charter 81 (user ruling, 2026-09-05): the mirror of the deflation above --
+# a claim multiplier for windows that HOLD the centre.  Re-measured on the
+# served (post-band) claims that day (``scripts/measure_off_center_claim.py``,
+# P0, 1,287 station-days, mean centre): centre-holding windows realise 1.30
+# [1.23,1.37] of their claim in [0.35,0.55) and 1.12 [1.09,1.15] at 0.55 and
+# above, so the whole-basket positive-EV gate was systematically too strict
+# there.  The shipped table is those ratios shrunk 30% toward one; the ledger
+# priced it at +3.11% against the charter-80 baseline's -2.08% (same book,
+# production judge, drop-the-winners lead steady at +8 points).  JSON list of
+# [claimed-mass upper bound, factor], read like the off-centre table (the
+# first bound the claim falls below); ``PM_CENTER_WINDOW_CLAIM_BANDS=off`` (or
+# ``[]``) is the research arm that turns it off.  Lives in the kernel because
+# three readers must agree on it: the enumeration (gate, ranking, partition,
+# charter 68's agreement), the paper ledger's fingerprint, and the charter-68
+# lambda store, which fits agreement on the claim the solver actually reads.
+CENTER_WINDOW_CLAIM_DEFAULT = "[[0.35, 1.0], [0.55, 1.21], [1.01, 1.08]]"
+
+
+def _parse_claim_bands(text: str) -> tuple[tuple[float, float], ...]:
+    cleaned = (text or "").strip()
+    if cleaned.lower() == "off":
+        return ()
+    raw = json.loads(cleaned or CENTER_WINDOW_CLAIM_DEFAULT)
+    bands = tuple((float(bound), float(factor)) for bound, factor in raw)
+    if any(bound <= 0.0 or factor <= 0.0 for bound, factor in bands):
+        raise RuntimeError(f"invalid centre-window claim bands: {text}")
+    if list(bound for bound, _ in bands) != sorted(bound for bound, _ in bands):
+        raise RuntimeError(f"centre-window claim bands must ascend: {text}")
+    return bands
+
+
+CENTER_WINDOW_CLAIM_BANDS: tuple[tuple[float, float], ...] = _parse_claim_bands(
+    os.environ.get("PM_CENTER_WINDOW_CLAIM_BANDS", "")
+)
+
+
+def center_window_claim_factor(claimed_mass: float) -> float:
+    """Charter 81's multiplier for a window holding the centre; 1.0 when off."""
+
+    if not CENTER_WINDOW_CLAIM_BANDS:
+        return 1.0
+    mass = float(claimed_mass)
+    for bound, factor in CENTER_WINDOW_CLAIM_BANDS:
+        if mass < bound:
+            return float(factor)
+    return 1.0
+
+
 # The ladder's length is a property of the day, not a constant.  A model
 # that has made up its mind puts its mass on two or three buckets and a
 # wider basket only buys tails it does not believe in; a model that has not

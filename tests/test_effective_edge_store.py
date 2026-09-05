@@ -77,7 +77,11 @@ def test_a_band_without_evidence_keeps_the_incumbent(tmp_path) -> None:
         conn.close()
 
 
-def test_a_measured_band_moves_off_the_bootstrap(tmp_path) -> None:
+def test_a_measured_band_moves_off_the_bootstrap(tmp_path, monkeypatch) -> None:
+    # The store's arithmetic on the claim it is handed; charter 81's lift
+    # of that claim is pinned off here and covered by its own test.
+    import bayes_basket_target.basket_kernel.delta_v2 as K
+    monkeypatch.setattr(K, "CENTER_WINDOW_CLAIM_BANDS", ())
     seats = [
         ("P0", "2026-09-01", 0.60, 0.18, 1 if i < 12 else 0)
         for i in range(24)
