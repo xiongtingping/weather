@@ -13792,14 +13792,39 @@ class TargetProductionWorker:
             probabilities = (
                 compiled.get("probability_envelope") or {}
             ).get("probabilities") or {}
-            shares = solution.get("target_shares_by_bucket") or {}
             support = plan.get("final_support") or []
-            cost = sum(
-                float(value)
-                for value in (
-                    solution.get("target_cost_by_bucket") or {}
-                ).values()
-            )
+            # What a dollar bought is the *increment* the plan decided --
+            # its gap rows and their cost -- not the whole inventory
+            # re-judged at today's prices with its sunk cost.  Read whole,
+            # a completion (charter 84) looks like a losing basket: ZGSZ
+            # 2026-09-06 held 30°C and 31°C bought at 0.25 and 0.43, its
+            # 12:51Z plan completed 32°C for 0.95, and the whole-basket
+            # reading (payout 5 a rung against 4.35 sunk-plus-new, in-window
+            # mass 0.77) came out at -0.51 -- so the allocator gave the
+            # station a zero quota, the next compile had zero capital, and
+            # the completion it had just seated could not be offered again.
+            # For a fresh basket the increment is the whole basket, and the
+            # reading is unchanged.
+            gap = {
+                str(bucket) for bucket in (plan.get("execution_gap_support") or [])
+            }
+            shares = {}
+            for row in plan.get("targets") or ():
+                if not isinstance(row, Mapping):
+                    continue
+                bucket = str(row.get("bucket") or "")
+                quantity = float(row.get("delta_shares") or 0.0)
+                if bucket and quantity > 0.0 and (not gap or bucket in gap):
+                    shares[bucket] = quantity
+            cost = float(plan.get("total_delta_notional_usdc") or 0.0)
+            if cost <= 0.0:
+                cost = sum(
+                    float(row.get("delta_shares") or 0.0)
+                    * float(row.get("candidate_price") or 0.0)
+                    for row in (plan.get("targets") or ())
+                    if isinstance(row, Mapping)
+                    and str(row.get("bucket") or "") in shares
+                )
             if not shares or not probabilities or not support or cost <= 0.0:
                 continue
             scenario = {

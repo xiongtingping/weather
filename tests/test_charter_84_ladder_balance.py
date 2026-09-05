@@ -446,3 +446,62 @@ def test_the_resident_sweep_settles_exactly_the_cycles_that_traded_and_ended() -
             SimpleNamespace(commit_conn=conn), as_of_utc="2026-07-23T04:31:00Z"
         )
         assert again["state"] == "no_settleable_cycles"
+
+
+def test_station_edge_evidence_reads_the_increment_not_the_sunk_basket() -> None:
+    """The allocator's evidence is what a dollar buys *now*.
+
+    ZGSZ 2026-09-06, 13:12Z: the 12:51Z completion plan, read whole (five
+    shares a rung against 4.35 of sunk-plus-new cost, in-window mass 0.77),
+    scored -0.51 per basket, the allocator gave the station a zero quota,
+    and the next compile had no capital to seat the completion again.
+    """
+
+    import sqlite3
+    from types import SimpleNamespace
+
+    from bayes_basket_target.p0_preselection import commit_p0_preselection
+    from bayes_basket_target.production_worker import TargetProductionWorker
+    from bayes_basket_target.ssot import apply_production_ssot_schema
+    from tests.test_bayes_basket_target_p0_preselection import _value
+
+    probabilities = {"30": 0.20, "31": 0.357, "32": 0.21, "33": 0.233}
+    value = {
+        **_value(),
+        "station_id": "ZGSZ",
+        "event_date": "2026-09-06",
+        "compiled_plan": {
+            "probability_envelope": {"probabilities": probabilities},
+            "plan": {
+                "final_support": ["30", "31", "32"],
+                "execution_gap_support": ["32"],
+                "total_delta_notional_usdc": 0.95,
+                "targets": [
+                    {"bucket": "30", "delta_shares": 0.0, "candidate_price": 0.0},
+                    {"bucket": "31", "delta_shares": 0.0, "candidate_price": 0.0},
+                    {"bucket": "32", "delta_shares": 5.0, "candidate_price": 0.19},
+                ],
+                "target_solution": {
+                    "target_shares_by_bucket": {"30": 5.0, "31": 5.0, "32": 5.0},
+                    "target_cost_by_bucket": {"30": 1.25, "31": 2.15, "32": 0.95},
+                },
+            },
+        },
+    }
+    with sqlite3.connect(":memory:") as conn:
+        apply_production_ssot_schema(conn)
+        commit_p0_preselection(conn, value, created_at_utc="2026-09-05T12:51:33Z")
+        rows = TargetProductionWorker._station_edge_evidence(
+            SimpleNamespace(conn=conn), stations=["ZGSZ"], minimum_clip_usdc=0.25
+        )
+    assert len(rows) == 1
+    # The increment: 5 shares of 32°C for 0.95 -- +0.10 expected on 0.95.
+    assert rows[0]["edge_per_usdc"] == pytest.approx((0.21 * 5.0 - 0.95) / 0.95)
+    assert rows[0]["minimum_basket_usdc"] == pytest.approx(0.75)
+    # The whole-basket reading this replaces was negative.
+    whole_cost = 4.35
+    whole = sum(
+        probabilities[b] * ((5.0 if b in ("30", "31", "32") else 0.0) - whole_cost)
+        for b in probabilities
+    )
+    assert whole < 0.0
