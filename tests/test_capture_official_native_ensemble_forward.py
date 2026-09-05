@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 
 import pytest
 
@@ -185,6 +186,105 @@ def test_a_family_is_banked_before_the_next_family_is_fetched(
         )
     assert seen == {"gefs_on_disk_when_ecmwf_ran": True}
     assert json.loads(gefs_output.read_text(encoding="utf-8")) == banked
+
+
+def test_eccc_publication_lag_holds_the_family_and_the_pair_packet_still_builds(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """A d2 rung is not lost because ECCC's 12Z run is not uploaded yet.
+
+    ECCC reads its own cycle for the lead -- 12Z at d2 -- and uploads it
+    around 17:10Z, ten hours after ECMWF's and GEFS's 00Z runs are readable.
+    Its refusal used to propagate unhandled after both required families had
+    been banked, so on 2026-09-05 every rung for 2026-09-07 died on
+    ``2026090512_P0xx ... 404`` from 00Z until the afternoon and the date had
+    no P0 until the evening.  The family is held like the other two: the
+    pass goes on to build the ECMWF+GEFS pair packet, passes no ECCC archive
+    to the builder, and names the hold on its receipt.
+    """
+    _install_station_registry(monkeypatch)
+    monkeypatch.setattr(
+        capture, "load_market_registry_snapshot", lambda _path: _registry()
+    )
+    gefs_output = tmp_path / "gefs.json"
+    ecmwf_output = tmp_path / "ecmwf.json"
+    eccc_output = tmp_path / "eccc.json"
+    monkeypatch.setattr(
+        capture,
+        "capture_gefs_station_days",
+        lambda **_kw: {
+            "schema": "noaa_gefs_official_historical_multistation_members_v2",
+            "run_init_utc": "2026-07-30T00:00:00Z",
+            "captures": [],
+        },
+    )
+    monkeypatch.setattr(
+        capture,
+        "capture_ecmwf_station_days",
+        lambda **_kw: {
+            "schema": "ecmwf_ifs_open_pf50_historical_multistation_members_v1",
+            "run_init_utc": "2026-07-30T00:00:00Z",
+            "captures": [],
+        },
+    )
+
+    def eccc_not_uploaded_yet(**_kw):
+        raise RuntimeError(
+            "Client error '404 Not Found' for url 'https://dd.weather.gc.ca/"
+            "20260730/WXO-DD/ensemble/geps/grib2/raw/12/036/"
+            "CMC_geps-raw_TMP_TGL_2m_latlon0p5x0p5_2026073012_P036_allmbrs.grib2'"
+        )
+
+    monkeypatch.setattr(
+        capture, "capture_geps_station_days", eccc_not_uploaded_yet
+    )
+    monkeypatch.setattr(
+        capture,
+        "_capture_taf_point_archives",
+        lambda **_kw: {"archives_by_station": {}},
+    )
+    builder_commands: list[list[str]] = []
+
+    def fake_builder(command, **_kw):
+        builder_commands.append([str(item) for item in command])
+        return subprocess.CompletedProcess(command, 0, stdout="built", stderr="")
+
+    monkeypatch.setattr(capture.subprocess, "run", fake_builder)
+    monkeypatch.setattr(
+        capture,
+        "_verify_official_inbox",
+        lambda *_a, **_kw: {"content_sha256": "0" * 64, "packets": []},
+    )
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text("{}", encoding="utf-8")
+
+    receipt = capture.capture_official_native_forward(
+        registry_path=registry_path,
+        event_date="2026-08-01",
+        gefs_output=gefs_output,
+        ecmwf_output=ecmwf_output,
+        eccc_output=eccc_output,
+        inbox_output=tmp_path / "inbox.json",
+        timeout_seconds=30.0,
+        lead_days=2,
+        run_cycle_hour=0,
+    )
+
+    assert receipt["state"] == "COMMITTED_NO_LIVE"
+    assert gefs_output.is_file() and ecmwf_output.is_file()
+    assert not eccc_output.exists()
+    held = receipt["family_held_on_earlier_run"]
+    assert set(held) == {"ECCC_DD_WEATHER"}
+    assert held["ECCC_DD_WEATHER"].startswith("RuntimeError:Client error '404")
+    assert receipt["archive_reused_retained"] == {
+        "NOAA_GEFS_PDS_S3": False,
+        "ECMWF_OPEN_DATA_S3": False,
+        "ECCC_DD_WEATHER": False,
+    }
+    assert "ECCC_DD_WEATHER" not in receipt["run_init_utc_by_family"]
+    assert len(builder_commands) == 1
+    assert "--eccc-geps-archive" not in builder_commands[0]
+    assert builder_commands[0].count("--archive") == 2
 
 
 def test_d1_18z_run_covers_eastern_stations_under_station_local_same_day_relief() -> None:

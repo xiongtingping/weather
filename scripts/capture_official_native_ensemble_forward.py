@@ -716,19 +716,39 @@ def capture_official_native_forward(
             )
         )
     if eccc_output is not None and eccc is None:
-        assert_process_memory_budget()
-        eccc = capture_geps_station_days(
-            event_date=event_date,
-            station_scopes=scopes,
-            archive_query_at_utc=capture_at,
-            timeout_seconds=float(timeout_seconds),
-            lead_days=int(lead_days),
-            # ECCC's own cycle for this lead, not the caller's.  ``run_cycle_hour``
-            # carries the ECMWF/GEFS ladder's answer -- 18Z at d2 -- which ECCC
-            # does not publish, and passing nothing silently took 00Z at every
-            # lead.  That is how this family's d2 history accumulated for weeks
-            # in a lead-hour bucket no other family occupies.
-            run_cycle_hour=ECCC_RUN_CYCLE_HOUR_BY_LEAD[int(lead_days)],
+        # Held like the two required families, not fatal like nothing else
+        # is.  ECCC reads its own cycle for the lead -- 12Z at d2 -- and its
+        # 12Z run uploads around 17:10Z, some ten hours after ECMWF's and
+        # GEFS's 00Z runs are readable.  An unhandled refusal here killed the
+        # whole pass after both of those had already been banked, so no d2
+        # rung could produce a packet before ECCC did: measured 2026-09-05,
+        # every rung for 2026-09-07 died on ``2026090512_P0xx ... 404`` from
+        # 00Z until the afternoon, the worker throttled each death for thirty
+        # minutes, and the date had no P0 until the evening.  A family that
+        # cannot serve yet keeps whatever run it holds (nothing, at d2) and
+        # the packet goes out as the ECMWF+GEFS pair this lane already
+        # speaks; the stale re-read or the next rung picks ECCC up once it
+        # is published, and the receipt names the hold either way.
+        eccc = _advance_or_hold(
+            "ECCC_DD_WEATHER",
+            eccc_output.expanduser().resolve(),
+            expected_schema=(
+                "eccc_geps_official_historical_multistation_members_v1"
+            ),
+            capture=lambda: capture_geps_station_days(
+                event_date=event_date,
+                station_scopes=scopes,
+                archive_query_at_utc=capture_at,
+                timeout_seconds=float(timeout_seconds),
+                lead_days=int(lead_days),
+                # ECCC's own cycle for this lead, not the caller's.
+                # ``run_cycle_hour`` carries the ECMWF/GEFS ladder's answer
+                # -- 18Z at d2 -- which ECCC does not publish, and passing
+                # nothing silently took 00Z at every lead.  That is how this
+                # family's d2 history accumulated for weeks in a lead-hour
+                # bucket no other family occupies.
+                run_cycle_hour=ECCC_RUN_CYCLE_HOUR_BY_LEAD[int(lead_days)],
+            ),
         )
         if eccc is not None:
             write_bounded_json_if_changed(
@@ -859,6 +879,8 @@ def capture_official_native_forward(
         "archive_reused_retained": {
             "NOAA_GEFS_PDS_S3": reused_gefs,
             "ECMWF_OPEN_DATA_S3": reused_ecmwf,
+            **({"ECCC_DD_WEATHER": reused_eccc}
+               if eccc_output is not None else {}),
         },
         # Which families could not serve this rung and are therefore still on
         # an older run.  A pass that advanced two of four is the ordinary
