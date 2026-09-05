@@ -527,6 +527,12 @@ def test_the_support_width_bounds_match_productions_policy_defaults() -> None:
     assert L.effective_edge_lambda_from_tables is (
         K2.effective_edge_lambda_from_tables
     )
+    # And the served tables leave a receipt on the decision row, so the
+    # question "did production read the store" has an answer.
+    _pr = (_root / "bayes_basket_target" / "production.py").read_text()
+    assert '"effective_edge_tables": served_lambda_tables' in _rt
+    assert 'support_selection.get("effective_edge_tables")' in _rt
+    assert 'delta_v2_audit.get("effective_edge_tables")' in _pr
     # 2026-09-02: P1 flows through the same dispatch with its own table.  Both
     # lanes must call the one function and read the one stage set, or P1 is
     # exempt in one lane and shrunk in the other while both claim one book.

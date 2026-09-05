@@ -1026,6 +1026,13 @@ def commit_production_candidate_atomic(
                 if isinstance(delta_v2_audit, Mapping)
                 else None
             ),
+            # Charter 68(c): the lambda tables this decision was sized under,
+            # so "did production read the store" is answerable from the row.
+            "effective_edge_tables": (
+                dict(delta_v2_audit.get("effective_edge_tables") or {})
+                if isinstance(delta_v2_audit, Mapping)
+                else None
+            ),
             "delta_v2_content_sha256": (
                 delta_v2_audit.get("content_sha256")
                 if isinstance(delta_v2_audit, Mapping)

@@ -2601,8 +2601,24 @@ def _solve_over_support_windows(
     # was not, so the rule measured at -20% kept running live while the one
     # measured at +9.7% existed only in the replay.  This closes that gap.
     best = scored[0]
+    # Charter 68(c): which lambda table each scope was served from this
+    # round -- the store's bands when one is activated, ``None`` where the
+    # kernel constant still bootstraps.  Without this the dispatch leaves
+    # no trace, and "did production read the table" cannot be answered from
+    # a decision row.
+    served_lambda_tables = {
+        scope: (
+            None if not bands
+            else [
+                [None if b == float("inf") else float(b), float(lam)]
+                for b, lam in bands
+            ]
+        )
+        for scope, bands in (effective_edge_tables or {}).items()
+    }
     selection = {
         "decision_moment": decision_moment_audit,
+        "effective_edge_tables": served_lambda_tables,
         "rule": "PROBABILITY_MASS_SHORTLIST_HEAD_CURVE_SOLVED_QUANTITIES_V3",
         "seat_rule_superseded": (
             "MAX_CURVE_SCORE_OVER_CONTIGUOUS_SUPPORT_WINDOWS_V2"
@@ -4462,6 +4478,11 @@ def compile_delta_v2_runtime_plan(
             **decision_moment_audit,
             "stage": str(snapshot.evidence.probability_stage or ""),
         },
+        # Charter 68(c): the lambda tables this plan was sized under, per
+        # scope; None where the kernel constant still bootstraps.
+        "effective_edge_tables": dict(
+            support_selection.get("effective_edge_tables") or {}
+        ),
         "charter_71": {
             "last_acted_probability_identity": (
                 last_acted_probability_identity
