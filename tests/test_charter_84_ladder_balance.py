@@ -229,12 +229,11 @@ def test_the_support_contract_is_atomic_at_the_result() -> None:
             )
 
 
-def test_the_half_basket_compiles_to_its_missing_rung_within_the_tilted_capital() -> None:
+def test_the_half_basket_compiles_to_its_missing_rung_at_the_seats_capital() -> None:
     """The whole chain on the ZGSZ shape: the solver seats the completion
     under the Kelly form, the floor accepts it, the increment edge authorizes
-    it, and only the missing rung carries a gap.  The plan proposes inside
-    the capital the consolidation tilt leaves (0.75 USDC here, as on the
-    live day); the execution sizing lifts the leg to the venue minimum."""
+    it, and only the missing rung carries a gap, sized against the capital
+    the seat was opened with rather than the tilt-cut capital of the day."""
 
     result = compile_delta_v2_runtime_plan(
         snapshot=_held_snapshot(),
@@ -255,8 +254,14 @@ def test_the_half_basket_compiles_to_its_missing_rung_within_the_tilted_capital(
     assert result["delta_v2_action_selection"]["authorized"] is True
     targets = {row["bucket"]: row for row in result["targets"]}
     assert set(result["execution_gap_support"]) == {"32"}
-    assert targets["32"]["delta_shares"] == pytest.approx(5.0)
-    assert result["delta_v2_audit"]["consolidation_tilt"]["capital_after_usdc"] == pytest.approx(0.75)
+    # (八): the completion is sized against the capital the seat was opened
+    # with, so the plan-level dollar lift (charter 83) can afford the rung:
+    # five shares at 0.15 is $0.75, raised to seven for $1.05.
+    assert targets["32"]["delta_shares"] == pytest.approx(7.0)
+    assert "32" in result["notional_raised_buckets"]
+    tilt = result["delta_v2_audit"]["consolidation_tilt"]
+    assert tilt["completion_exempt"] is True
+    assert tilt["capital_after_usdc"] == pytest.approx(10.0)
 
 
 def test_the_plan_level_lift_binds_on_the_increment_not_on_what_is_held() -> None:
@@ -591,3 +596,167 @@ def test_the_ledger_names_the_station_days_the_book_holds() -> None:
         )
     # TEST holds two rungs; FLAT bought and sold flat; nothing else.
     assert held == frozenset({"TEST|2026-07-23"})
+
+
+# --- (八) a partly held window is admitted on its increment ---------------
+
+def _partly_held(*, rungs, held, cost, station="RKPK") -> TargetBasketSnapshot:
+    """``rungs``: (bucket, ordinal, probability, ask); ``held``/``cost`` per bucket."""
+
+    def bucket(name, ordinal, probability, ask):
+        return {
+            "bucket": name, "ordinal": ordinal, "probability": probability,
+            "bid_price": max(0.001, ask - 0.01),
+            "bid_levels": [{"price": max(0.001, ask - 0.01), "shares": 50.0}],
+            "ask_levels": [{"price": ask, "shares": 100.0}],
+            "price_tick_size": 0.01, "maker_queue_ahead_shares": 0.0,
+            "maker_queue_known": True, "min_order_size": 5.0,
+            "filled_shares": held.get(name, 0.0),
+            "filled_cost_usdc": cost.get(name, 0.0),
+        }
+    return TargetBasketSnapshot.from_mapping({
+        "schema": "target_basket_snapshot_v6", "snapshot_id": "partly-held",
+        "sequence": 1, "observed_at": "2026-07-28T03:00:00Z",
+        "market_id": "rkpk-market", "station_id": station, "event_date": "2026-07-28",
+        "quote_version": "quote-v1", "quote_observed_at": "2026-07-28T03:00:00Z",
+        "quote_source": "OFFICIAL_CLOB_WS", "inventory_version": "inv-v1",
+        "order_state_version": "order-v1",
+        "evidence": {"probability_stage": "P0", "posterior_version": "p0-v1",
+                     "posterior_sha256": "a" * 64},
+        "buckets": [bucket(*r) for r in rungs],
+        "checkpoint_changed": True, "quote_changed": True, "fill_changed": True,
+        "time_gate_changed": True, "evidence_fresh": True, "contract_matches": True,
+        "order_state_known": True, "risk_inputs_complete": True,
+        "time_left_minutes": 1440.0,
+    })
+
+
+def _compile(snapshot, *, minimum_support_buckets: int = 3):
+    """Production's three-rung P0 floor, so a lone rung cannot take the seat."""
+
+    from bayes_basket_target.basket_kernel.contracts import TargetBasketPolicy
+
+    policy = TargetBasketPolicy.from_mapping({
+        **_basket_policy().to_dict(),
+        "minimum_support_buckets": minimum_support_buckets,
+    })
+    return compile_delta_v2_runtime_plan(
+        snapshot=snapshot, basket_policy=policy, delta_policy=_delta_policy(),
+        fill_resolver=_fill_resolver, capital_available_usdc=10.0,
+        minimum_profit_floor=-5.0, resource_probe_ok=True, book_equity_usdc=514.29,
+    )
+
+
+def _production_arms(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the shipped arms: other suites flip seat and gate switches on the
+    module and the compile below must be judged under production's."""
+
+    for name, value in (
+        ("SYMMETRIC_SEAT_MODE", "center_pm1_p0"), ("SKEW_SEAT_MODE", "off"),
+        ("SKEW_PLACEMENT_MODE", "free"), ("MARKET_LEAN_GATE_MODE", "on"),
+        ("CHARTER_78_INCUMBENT_NO_EXEMPTION", "on"), ("CHARTER_77_DECISION_MOMENTS", "on"),
+        ("CHARTER_84_LADDER_BALANCE", "on"), ("P0_SIZING_MODE", "ticket_only"),
+        ("TARGET_PRICING_BASIS", "ask_depth"), ("DECLINE_CLAMP_MODE", "off"),
+        ("CHARTER_66A_CHAIN_PAR", "on"), ("CHARTER_71A_TOPUP_IDENTITY", "on"),
+        ("CHARTER_71B_CHAIN_GROWTH", "on"), ("CHARTER_72_KELLY_SIZING", "on"),
+        ("CHARTER_70_EXCHANGE_LOT", "on"), ("CHARTER_83_MIN_NOTIONAL", "on"),
+    ):
+        monkeypatch.setattr(delta_v2_runtime, name, value)
+
+
+def _ltac(*, ask_31: float, ask_33: float) -> TargetBasketSnapshot:
+    """LTAC 2026-09-06: 32°C held at 0.57, offered at 0.59 against a claim of
+    0.40; the symmetric seat (charter 79) is 31/32/33."""
+
+    return _partly_held(
+        rungs=[("28", 28, 0.02, 0.02), ("29", 29, 0.02, 0.02), ("30", 30, 0.061, 0.04),
+               ("31", 31, 0.319, ask_31), ("32", 32, 0.398, 0.59), ("33", 33, 0.157, ask_33),
+               ("34", 34, 0.025, 0.02)],
+        held={"32": 5.0}, cost={"32": 2.85},
+    )
+
+
+def test_ltac_the_held_rung_priced_above_its_claim_no_longer_refuses_the_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every window holding 32°C prices above its claim as a whole (31/32/33
+    at 1.02 against 0.87), so the day compiled support_empty.  On the
+    increment -- 31°C and 33°C, what a completion would buy -- the seat is
+    admissible.  What still refuses it at the live prices is charter 66 A:
+    0.57 sunk plus 0.34 plus 0.09 is a chain at par, a dollar for a dollar
+    of payout, and no completion is allowed to build that.  A cent or two
+    cheaper on the two rungs and the same completion trades."""
+
+    _production_arms(monkeypatch)
+    # At the live prices the only sanctioned window is refused by charter
+    # 66 A -- a chain at par -- and with nothing else admitted the compile
+    # has no window: support_empty, which is what LTAC's plans said all
+    # afternoon.
+    # (Whether the day compiles to a HOLD on an inadmissible wider window or
+    # to support_empty depends on which seat arms the surrounding tests left
+    # switched; both are the same refusal, and neither buys.)
+    try:
+        at_par = _compile(_ltac(ask_31=0.34, ask_33=0.09))
+    except ContractError as exc:
+        assert "delta_v2_support_empty" in str(exc)
+    else:
+        assert at_par["state"] == "HOLD"
+        assert any(
+            row["buckets"] == ["31", "32", "33"]
+            and str(row["reason"]).startswith("chain_cost_at_par")
+            for row in at_par["basket_support_selection"]["unsolvable_windows"]
+        )
+
+    cheaper = _compile(_ltac(ask_31=0.30, ask_33=0.07))
+    seated = cheaper["basket_support_selection"]["seated"]
+    assert seated["buckets"] == ["31", "32", "33"]
+    assert seated["admissible"] is True
+    assert seated["completion"]["held_buckets"] == ["32"]
+    assert seated["completion"]["buyable_buckets"] == ["31", "33"]
+    assert cheaper["target_solution"]["winner_candidate_origin"] == LADDER_BALANCE_CANDIDATE_ORIGIN
+    assert set(cheaper["execution_gap_support"]) == {"31", "33"}
+    assert cheaper["state"] != "HOLD"
+    assert cheaper["delta_v2_action_selection"]["authorized"] is True
+    # The completion is sized against the capital the seat was opened with,
+    # not the tilt-cut capital of this compile.
+    tilt = cheaper["delta_v2_audit"]["consolidation_tilt"]
+    assert tilt["completion_exempt"] is True
+    assert tilt["capital_after_usdc"] == pytest.approx(tilt["capital_before_usdc"])
+
+    # With the ruling off the seat is judged whole again: every window
+    # holding 32°C prices above its claim, and the day has no window --
+    # support_empty, LTAC's afternoon -- or at best a HOLD.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_84_LADDER_BALANCE", "off")
+    try:
+        before = _compile(_ltac(ask_31=0.30, ask_33=0.07))
+    except ContractError as exc:
+        assert "delta_v2_support_empty" in str(exc)
+    else:
+        assert before["state"] == "HOLD"
+
+
+def test_lfpb_a_missing_rung_under_the_leg_floor_is_dead_not_a_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LFPB 2026-09-06: 29°C held; the basket's 27°C is offered at 0.02, under
+    the leg floor the market ruling set at 0.03.  It is not bought, and it
+    does not stop 28°C from being bought at 0.18 against a claim of 0.22."""
+
+    _production_arms(monkeypatch)
+    lfpb = _partly_held(
+        rungs=[("26", 26, 0.057, 0.02), ("27", 27, 0.206, 0.02), ("28", 28, 0.222, 0.18),
+               ("29", 29, 0.311, 0.50), ("30", 30, 0.156, 0.28), ("31", 31, 0.048, 0.07)],
+        held={"29": 5.0}, cost={"29": 2.20},
+    )
+    result = _compile(lfpb)
+    seated = result["basket_support_selection"]["seated"]
+    assert seated["admissible"] is True
+    completion = seated["completion"]
+    assert completion["held_buckets"] == ["29"]
+    assert "27" not in completion["buyable_buckets"]
+    assert result["target_solution"]["winner_candidate_origin"] == LADDER_BALANCE_CANDIDATE_ORIGIN
+    gap = set(result["execution_gap_support"])
+    assert "28" in gap and "27" not in gap and "29" not in gap
+    targets = {row["bucket"]: row for row in result["targets"]}
+    assert targets["28"]["delta_shares"] > 0.0
+    assert result["state"] != "HOLD"

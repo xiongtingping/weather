@@ -13,7 +13,7 @@ import os
 from itertools import product
 import json
 import math
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Collection, Mapping, Sequence
 
 from .basket_kernel.contracts import (
     EPS,
@@ -1394,6 +1394,77 @@ def _support_windows(
             return None
         return float(row.ask_price) * (1.0 + float(fee_rate))
 
+    def _completion_increment(
+        window: Sequence[str],
+        *,
+        quotes: Sequence[float | None],
+        claim_factor: float,
+    ) -> dict[str, Any] | None:
+        """Charter 84 (八): what completing a partly held window would buy.
+
+        ``None`` when the window holds nothing, holds everything, or the
+        ruling is off -- the whole-window rule then stands.  Otherwise the
+        missing rungs split into the market-dead (an offer under the leg
+        floor: not bought, not a refusal) and the buyable; the increment is
+        admissible when the buyable rungs' claim clears their all-in offer
+        by the same friction the whole-window rule charges.  No buyable
+        rung is an increment of nothing, which is inadmissible: the
+        baseline is the only answer then.
+        """
+
+        if CHARTER_84_LADDER_BALANCE != "on":
+            return None
+        quote_by_bucket = dict(zip(window, quotes))
+        held = [
+            bucket for bucket in window
+            if float(by_bucket[bucket].filled_shares)
+            + float(by_bucket[bucket].pending_shares) > EPS
+        ]
+        if not held or len(held) == len(window):
+            return None
+        missing = [bucket for bucket in window if bucket not in held]
+        dead = [
+            bucket for bucket in missing
+            if quote_by_bucket.get(bucket) is not None
+            and float(quote_by_bucket[bucket]) < MINIMUM_LEG_ALL_IN_ASK
+        ]
+        buyable = [bucket for bucket in missing if bucket not in dead]
+        increment_quotes = [quote_by_bucket.get(bucket) for bucket in buyable]
+        increment_priced = bool(buyable) and all(
+            quote is not None for quote in increment_quotes
+        )
+        increment_price = (
+            sum(float(quote) for quote in increment_quotes)
+            if increment_priced else None
+        )
+        increment_win = min(
+            1.0 - EPS,
+            sum(float(probabilities[bucket]) for bucket in buyable)
+            * float(claim_factor),
+        )
+        increment_friction = SUPPORT_EDGE_FRICTION_TICKS_PER_LEG * sum(
+            float(by_bucket[bucket].price_tick_size) for bucket in buyable
+        ) + SUPPORT_EDGE_MARGIN
+        increment_edge = (
+            increment_win - increment_price
+            if increment_price is not None else None
+        )
+        return {
+            "held_buckets": held,
+            "missing_buckets": missing,
+            "market_dead_buckets": dead,
+            "buyable_buckets": buyable,
+            "increment_all_in_price": increment_price,
+            "increment_win_probability": increment_win,
+            "increment_edge": increment_edge,
+            "increment_friction": increment_friction,
+            "admissible": bool(
+                increment_priced
+                and increment_edge is not None
+                and increment_edge > increment_friction + EPS
+            ),
+        }
+
     # The domain stays the whole day (above); what the seat must do is hold
     # the rung the whole ladder hangs from.  Ladder ruling (2026-08-15,
     # charter 49): the seat window must CONTAIN the core's centre bucket,
@@ -1796,6 +1867,22 @@ def _support_windows(
                 CHARTER_78_INCUMBENT_NO_EXEMPTION == "off"
                 and is_incumbent
             )
+            # Charter 84 (八): a window the book already holds part of is
+            # admitted on what completing it would buy, not on the whole
+            # window re-priced today.  The held rungs are sunk -- LTAC 32°C
+            # at 0.59 against a claim of 0.40 is not a price anyone pays
+            # again -- and a missing rung the market prices under the leg
+            # floor is dead, not a refusal of its neighbours: it stays
+            # unbought and the completion covers the rest.  The increment's
+            # claim, its all-in offer and its friction are the three
+            # quantities the whole-window rule reads, over the rungs being
+            # bought.
+            completion = _completion_increment(
+                window, quotes=quotes, claim_factor=claim_factor,
+            )
+            if completion is not None:
+                leg_floor_hit = False
+                admissible = bool(completion["admissible"])
             if not admissible:
                 # Name which of the three ways this branch can refuse actually
                 # refused.  Until 2026-08-20 it had no counter at all, so the
@@ -1858,6 +1945,7 @@ def _support_windows(
                 "log_growth_rank": kl,
                 "is_incumbent": is_incumbent,
                 "admissible": bool(admissible),
+                **({"completion": completion} if completion is not None else {}),
             })
     if incumbent not in seen:
         # Enumeration can miss the incumbent outright: it is bounded to
@@ -1890,6 +1978,14 @@ def _support_windows(
         incumbent_admissible = (
             priced and (win - price) > incumbent_friction + EPS
         )
+        # Charter 84 (八): the increment is recorded for the audit, but an
+        # incumbent that failed the enumeration failed it on the ladder's
+        # own rules -- centre, width, skew (clauses 49/50) -- and a
+        # completion does not waive those; only a window the loop admitted
+        # is completed.
+        incumbent_completion = _completion_increment(
+            incumbent, quotes=quotes, claim_factor=1.0,
+        )
         if not incumbent_admissible:
             if not priced:
                 unpriced_refused += 1
@@ -1913,6 +2009,10 @@ def _support_windows(
             "log_growth_rank": incumbent_kl,
             "is_incumbent": True,
             "admissible": bool(incumbent_admissible),
+            **(
+                {"completion": incumbent_completion}
+                if incumbent_completion is not None else {}
+            ),
         })
     # Rank by belief alone.  KL replaced raw edge here because raw edge
     # over-ranks penny lotteries, and it does price the whole win/lose
@@ -2302,6 +2402,7 @@ def _solve_over_support_windows(
     chain_growth_frame_usdc: float | None = None,
     book_equity_usdc: float | None = None,
     last_decision_signature: Mapping[str, Any] | None = None,
+    completion_capital_usdc: float | None = None,
     effective_edge_tables: Mapping[str, Any] | None = None,
 ) -> tuple[tuple[str, ...], dict[str, Any], dict[str, Any]]:
     """Run the objective on each shortlisted window; the head one is seated.
@@ -2435,6 +2536,7 @@ def _solve_over_support_windows(
                     desired=window,
                     artifact=delta_policy,
                     capital_available_usdc=capital_available_usdc,
+                    completion_capital_usdc=completion_capital_usdc,
                     minimum_clip_notional_usdc=(
                         basket_policy.clip_min_notional_usdc
                     ),
@@ -2478,6 +2580,13 @@ def _solve_over_support_windows(
                     if len(live_buckets)
                     <= max(1, int(basket_policy.maximum_support_buckets))
                     else window
+                ),
+                # Charter 84 (八): a rung the market prices under the leg
+                # floor cannot be bought, so the floor cannot demand it be
+                # covered; the ruling that forbids the leg forbids the demand.
+                unbuyable_buckets=tuple(
+                    (row.get("completion") or {}).get("market_dead_buckets")
+                    or ()
                 ),
                 shortfall_buckets=tuple(sorted(shortfall & set(window))),
                 breakthrough_buckets=tuple(
@@ -2702,6 +2811,7 @@ def _solve_over_support_windows(
             # gate; an inadmissible incumbent is held on, never bought.
             "admissible": bool(best["window"].get("admissible", True)),
             "window_probabilities": dict(best["window_probabilities"]),
+            "completion": best["window"].get("completion"),
         },
         "considered": [
             {
@@ -2731,6 +2841,7 @@ def _target_candidates(
     centre_bucket: str = "",
     book_equity_usdc: float | None = None,
     decision_moment: bool = True,
+    completion_capital_usdc: float | None = None,
 ) -> list[dict[str, Any]]:
     """Build a bounded q-grid priced from official WS ask depth.
 
@@ -2931,6 +3042,14 @@ def _target_candidates(
             )
             if ticket_candidate is not None:
                 candidates.append(ticket_candidate)
+    # Charter 84 (八): a missing rung the market prices under the leg floor
+    # is dead -- not bought, and not a reason to leave its neighbours
+    # short.  Read off the posted offer, the floor the window rule reads.
+    market_dead = frozenset(
+        bucket for bucket in ordered
+        if float(current_shares[bucket]) + float(pending_shares[bucket]) <= EPS
+        and 0.0 < float(lane_prices.get(bucket, 0.0) or 0.0) < MINIMUM_LEG_ALL_IN_ASK
+    )
     if CHARTER_84_LADDER_BALANCE == "on" and not chain_empty:
         # Charter 84: a seat the venue left short.  The Kelly candidate above
         # is None whenever any rung already holds its target, and the grid
@@ -2948,8 +3067,15 @@ def _target_candidates(
             current_cost=current_cost,
             pending_shares=pending_shares,
             pending_cost=pending_cost,
-            capital_available_usdc=capital_available_usdc,
+            # Charter 84 (八): sized against the capital the seat was
+            # opened with, not the tilt-cut capital of this compile.
+            capital_available_usdc=(
+                float(completion_capital_usdc)
+                if completion_capital_usdc is not None
+                else capital_available_usdc
+            ),
             quote_version=str(snapshot.quote_version),
+            unbuyable=market_dead,
         )
         if balance_candidate is not None:
             candidates.append(balance_candidate)
@@ -2996,7 +3122,7 @@ def _target_candidates(
     if not candidates:
         raise ContractError("delta_v2_target_candidate_set_empty")
     return _assert_candidate_support_contract(
-        candidates, ordered_support=ordered
+        candidates, ordered_support=ordered, unbuyable=market_dead
     )
 
 
@@ -3164,8 +3290,13 @@ def _ladder_balance_candidate(
     pending_cost: Mapping[str, float],
     capital_available_usdc: float,
     quote_version: str,
+    unbuyable: Collection[str] = (),
 ) -> dict[str, Any] | None:
     """Charter 84's candidate: the seat's short rungs raised to its held level.
+
+    ``unbuyable`` (charter 84 八) names the short rungs the market prices
+    under the leg floor: left as they are, the completion covers the rest;
+    a completion with nothing buyable is no candidate.
 
     The level is the kernel's (``ladder_balance_targets_v1``): the most
     shares any rung of the window holds.  Each short rung buys the
@@ -3199,9 +3330,10 @@ def _ladder_balance_candidate(
     }
     short_buckets: list[str] = []
     wanted: dict[str, float] = {}
+    dead = {str(bucket) for bucket in unbuyable}
     for bucket in ordered:
         increment = float(targets[bucket]) - held[bucket]
-        if increment <= EPS:
+        if increment <= EPS or bucket in dead:
             continue
         price = float(lane_prices.get(bucket, 0.0) or 0.0)
         if price <= EPS:
@@ -3621,6 +3753,7 @@ def _assert_candidate_support_contract(
     candidates: Sequence[Mapping[str, Any]],
     *,
     ordered_support: Sequence[str],
+    unbuyable: Collection[str] = (),
 ) -> list[dict[str, Any]]:
     """Hold every candidate to what the stages downstream assume of it.
 
@@ -3685,6 +3818,9 @@ def _assert_candidate_support_contract(
                 or any(
                     increments[bucket] <= EPS
                     and float(baseline_shares.get(bucket, 0.0)) <= EPS
+                    # Charter 84 (八): a rung the market prices under the
+                    # leg floor is dead and may stay unbought.
+                    and bucket not in {str(item) for item in unbuyable}
                     for bucket in support
                 )
             ):
@@ -4034,8 +4170,25 @@ def compile_delta_v2_runtime_plan(
             book_equity_usdc=book_equity_usdc,
             last_decision_signature=last_decision_signature,
             effective_edge_tables=effective_edge_tables,
+            # Charter 84 (八): a completion is sized against the capital the
+            # seat was opened with, before the consolidation tilt.
+            completion_capital_usdc=capital_before_tilt_usdc,
         )
     )
+    # Charter 84 (八): the consolidation tilt cut this seat once, when it
+    # opened, and the venue's lot lifted the opener's legs past the cut
+    # anyway; cutting the completion again leaves a sliver that cannot
+    # cover the sunk rungs (LTAC 31°C and 33°C at 1.7 shares each against
+    # 5 held, floor-refused).  The seat the tilt sized is restored at the
+    # capital it was sized from.
+    completion_tilt_exempt = (
+        CHARTER_84_LADDER_BALANCE == "on"
+        and str(target_solution.get("winner_candidate_origin") or "")
+        == LADDER_BALANCE_CANDIDATE_ORIGIN
+        and capital_before_tilt_usdc > float(capital_available_usdc)
+    )
+    if completion_tilt_exempt:
+        capital_available_usdc = capital_before_tilt_usdc
     ordered_support = seated_support
     desired = set(seated_support)
     # The risk scopes as intersected with the *seated* support -- the exact
@@ -4665,6 +4818,7 @@ def compile_delta_v2_runtime_plan(
             "signals_lit": consolidation_tilt_lit,
             "capital_before_usdc": capital_before_tilt_usdc,
             "capital_after_usdc": float(capital_available_usdc),
+            "completion_exempt": bool(completion_tilt_exempt),
         },
         "selected_actions": selected_evaluations,
         "selected_bundle_sha256": selection.get("selected_bundle_sha256"),

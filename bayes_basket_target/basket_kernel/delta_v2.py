@@ -1812,8 +1812,15 @@ def solve_target_inventory_v2(
     objective_form: str = VALUE_OBJECTIVE_FORM,
     bankroll_usdc: float | None = None,
     kelly_fraction: float = DEFAULT_KELLY_FRACTION,
+    unbuyable_buckets: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Return the exact argmax over a caller-provided bounded feasible set.
+
+    ``unbuyable_buckets`` (charter 84 八, 2026-09-05): rungs of the support
+    the market prices under the leg floor.  The ruling that forbids buying
+    them forbids the scenario floor from demanding they be covered, so they
+    are left out of the protected set here; everything else about them --
+    their probability, their place in the ladder -- is untouched.
 
     ``objective_form`` selects what the argmax reads.  ``value_v2`` is the
     original weighted value function.  ``mean_variance_curve_v1`` ranks by
@@ -1841,6 +1848,10 @@ def solve_target_inventory_v2(
         raise ContractError("delta_v2_target_candidate_bound_invalid")
     if len(feasible_inventory_candidates) > maximum_candidates:
         raise ContractError("delta_v2_target_candidate_bound_exceeded")
+    unbuyable = {_text("delta_v2_unbuyable_bucket", b) for b in unbuyable_buckets}
+    protected_buckets = tuple(
+        bucket for bucket in protected_buckets if str(bucket) not in unbuyable
+    )
     evaluations: list[dict[str, Any]] = []
     for index, raw in enumerate(feasible_inventory_candidates):
         if not isinstance(raw, Mapping):
