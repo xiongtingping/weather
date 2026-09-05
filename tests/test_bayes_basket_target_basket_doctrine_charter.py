@@ -2991,6 +2991,75 @@ def test_clause_79_symmetric_day_seat_is_the_mean_bucket_plus_minus_one(monkeypa
     assert '"symmetric_seat": SYMMETRIC_SEAT_MODE,' in ledger_source
 
 
+def test_symmetric_pair_arm_seats_the_mean_bucket_and_the_leaning_neighbour(monkeypatch) -> None:
+    """Research arm (2026-09-05): symmetric day -> two rungs, centre plus the side the mean leans to."""
+    from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
+    from bayes_basket_target.delta_v2_runtime import _support_windows
+
+    monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_MODE", "mean_mode_pair_p0")
+    labels = ["29°C", "30°C", "31°C", "32°C", "33°C", "34°C"]
+    # Mean leans warm of the 31 mode (32 heavier than 30) but under half a bucket.
+    probs = [0.04, 0.16, 0.40, 0.24, 0.12, 0.04]
+    asks = [0.05, 0.15, 0.30, 0.20, 0.08, 0.03]
+
+    def snapshot(stage: str) -> TargetBasketSnapshot:
+        rows = [
+            {
+                "bucket": b, "ordinal": i + 2, "probability": p,
+                "bid_price": max(0.0, a - 0.01),
+                "bid_levels": [{"price": max(0.001, a - 0.01), "shares": 50.0}],
+                "ask_levels": [{"price": a, "shares": 100.0}],
+                "price_tick_size": 0.01,
+                "maker_queue_ahead_shares": 0.0, "maker_queue_known": True,
+            }
+            for i, (b, p, a) in enumerate(zip(labels, probs, asks))
+        ]
+        evidence = {"probability_stage": stage, "posterior_version": "p", "posterior_sha256": "a" * 64}
+        if stage == "P1":
+            evidence.update({
+                "reported_high_bucket": "30°C", "reported_high_ordinal": 3,
+                "reported_high_observation_id": "obs", "hard_bound_id": "hb",
+            })
+        return TargetBasketSnapshot.from_mapping({
+            "schema": "target_basket_snapshot_v6", "snapshot_id": "pair", "sequence": 1,
+            "observed_at": "2026-09-04T00:00:00Z", "market_id": "m", "station_id": "X",
+            "event_date": "2026-09-05", "quote_version": "q",
+            "quote_observed_at": "2026-09-04T00:00:00Z", "quote_source": "OFFICIAL_CLOB_WS",
+            "inventory_version": "i", "order_state_version": "o", "evidence": evidence,
+            "buckets": rows, "checkpoint_changed": True, "quote_changed": True,
+            "fill_changed": True, "time_gate_changed": True, "evidence_fresh": True,
+            "contract_matches": True, "order_state_known": True, "risk_inputs_complete": True,
+            "time_left_minutes": 600.0,
+        })
+
+    prob = dict(zip(labels, probs))
+    for stage in ("P0", "P0-M"):
+        windows, audit = _support_windows(
+            snapshot=snapshot(stage), desired={"30°C", "31°C", "32°C", "33°C"},
+            probabilities=prob, fee_rate=0.0, maximum_support_buckets=4,
+            minimum_support_buckets=3, center_bucket="31°C", probability_stage=stage,
+        )
+        assert audit["symmetric_seat_forced"] is True
+        assert audit["symmetric_seat_mode"] == "mean_mode_pair_p0"
+        assert audit["symmetric_seat_pair"] == ("31°C", "32°C")
+        admissible = [tuple(w["buckets"]) for w in windows if w["admissible"]]
+        # Two rungs, enumerated despite the policy floor of three.
+        assert admissible == [("31°C", "32°C")]
+    # P1 is untouched by the arm.
+    windows, audit = _support_windows(
+        snapshot=snapshot("P1"), desired={"30°C", "31°C", "32°C", "33°C"},
+        probabilities=prob, fee_rate=0.0, maximum_support_buckets=4,
+        minimum_support_buckets=3, center_bucket="31°C", probability_stage="P1",
+    )
+    assert audit["symmetric_seat_forced"] is False
+    assert audit["symmetric_seat_pair"] is None
+    # The shipped rule is not the arm.
+    assert (
+        delta_v2_runtime.os.environ.get("PM_SYMMETRIC_SEAT_MODE", "").strip().lower()
+        or "center_pm1_p0"
+    ) == "center_pm1_p0"
+
+
 def test_clause_81_centre_holding_windows_claim_is_lifted() -> None:
     """Charter 81: a window holding the mean centre claims 1.21x in [0.35,0.55), 1.08x above."""
     from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot

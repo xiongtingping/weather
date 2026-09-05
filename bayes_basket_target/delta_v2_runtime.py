@@ -898,11 +898,20 @@ SKEW_SIGNAL_DEFINITION = (
 # stage) are research arms.  Measured on the same book 08-15..09-03: -2.8%
 # -> +0.5%, symmetric station-days -124 -> -45, skewed days unchanged;
 # every-stage starves P1 (-9.7%).
+# Research arm ``mean_mode_pair_p0`` (user, 2026-09-05): on a symmetric day
+# the P0/P0-M seat is two rungs -- the mean bucket and the neighbour the
+# mean leans toward (the mode and mean buckets coincide on every symmetric
+# day measured: 503 of 503 latest P0 envelopes 08-15..09-04, so "mode plus
+# mean" is read as the pair the fractional mean sits between; an exact tie
+# takes the heavier neighbour).  The width floor drops to two for that seat
+# only; skewed days and P1 are untouched.
 SYMMETRIC_SEAT_MODE = (
     os.environ.get("PM_SYMMETRIC_SEAT_MODE", "").strip().lower()
     or "center_pm1_p0"
 )
-if SYMMETRIC_SEAT_MODE not in {"off", "center_pm1", "center_pm1_p0"}:
+if SYMMETRIC_SEAT_MODE not in {
+    "off", "center_pm1", "center_pm1_p0", "mean_mode_pair_p0",
+}:
     raise RuntimeError(f"unknown symmetric seat mode: {SYMMETRIC_SEAT_MODE}")
 # Research arms (2026-09-04, user): (1) P0 seat by skew -- symmetric day
 # centre+-1; right-skewed day the 3-4 rungs from the mean bucket toward the
@@ -1508,6 +1517,20 @@ def _support_windows(
         if str(probability_stage) == "P1"
         else int(minimum_support_buckets)
     )
+    # Research arm (2026-09-05): the two-rung symmetric seat needs the
+    # two-rung windows enumerated at all; the floor drops to two for a
+    # symmetric P0/P0-M day under that arm only.
+    pair_arm_symmetric = (
+        SYMMETRIC_SEAT_MODE == "mean_mode_pair_p0"
+        and str(probability_stage or "") != "P1"
+        and ladder_center in by_bucket
+        and _skew_extension_sign(
+            probabilities,
+            {bucket: int(row.ordinal) for bucket, row in by_bucket.items()},
+        ) == 0
+    )
+    if pair_arm_symmetric:
+        stage_min = min(stage_min, 2)
     # The floor cannot ask for more rungs than the day still has.  Late in P1
     # the hard bound prunes every bucket the reported high has passed, and a
     # station can arrive here with one live outcome left; demanding two then
@@ -1899,10 +1922,11 @@ def _support_windows(
     # rule's switches); every other window is left listed but inadmissible
     # so the solver holds when the sanctioned window is not on offer.
     symmetric_seat_forced = False
+    symmetric_seat_pair: tuple[str, ...] | None = None
     symmetric_arm_applies = (
         SYMMETRIC_SEAT_MODE == "center_pm1"
         or (
-            SYMMETRIC_SEAT_MODE == "center_pm1_p0"
+            SYMMETRIC_SEAT_MODE in {"center_pm1_p0", "mean_mode_pair_p0"}
             and str(probability_stage or "") != "P1"
         )
     )
@@ -1913,9 +1937,46 @@ def _support_windows(
         )
         if raw_skew == 0:
             centre_ordinal = int(by_bucket[ladder_center].ordinal)
-            wanted = {centre_ordinal - 1, centre_ordinal, centre_ordinal + 1}
+            if SYMMETRIC_SEAT_MODE == "mean_mode_pair_p0":
+                # The pair: the centre and the neighbour the fractional
+                # mean leans toward; a dead tie takes the heavier one; a
+                # neighbour the day cannot reach yields to the other side.
+                by_ordinal = {
+                    int(row.ordinal): bucket for bucket, row in by_bucket.items()
+                }
+                weighted = [
+                    (float(probabilities[bucket]), int(by_bucket[bucket].ordinal))
+                    for bucket in probabilities
+                    if bucket in by_bucket and float(probabilities[bucket]) > 0.0
+                ]
+                total = sum(mass for mass, _ in weighted)
+                mean_ordinal = (
+                    sum(mass * ordinal for mass, ordinal in weighted) / total
+                    if total > 0.0 else float(centre_ordinal)
+                )
+                gap = mean_ordinal - centre_ordinal
+                up = by_ordinal.get(centre_ordinal + 1)
+                down = by_ordinal.get(centre_ordinal - 1)
+                if abs(gap) > 1e-9:
+                    lean_first, lean_second = (up, down) if gap > 0 else (down, up)
+                else:
+                    heavier_up = float(probabilities.get(up, 0.0) or 0.0) >= float(
+                        probabilities.get(down, 0.0) or 0.0
+                    )
+                    lean_first, lean_second = (up, down) if heavier_up else (down, up)
+                partner = lean_first if lean_first is not None else lean_second
+                if partner is None:
+                    wanted = set()
+                else:
+                    wanted = {centre_ordinal, int(by_bucket[partner].ordinal)}
+                    symmetric_seat_pair = tuple(sorted(
+                        (ladder_center, partner),
+                        key=lambda bucket: int(by_bucket[bucket].ordinal),
+                    ))
+            else:
+                wanted = {centre_ordinal - 1, centre_ordinal, centre_ordinal + 1}
             def _is_symmetric_seat(row: Mapping[str, Any]) -> bool:
-                return {
+                return bool(wanted) and {
                     int(by_bucket[bucket].ordinal) for bucket in row["buckets"]
                 } == wanted
             sanctioned = [
@@ -1996,6 +2057,8 @@ def _support_windows(
         }
     audit = {
         "symmetric_seat_forced": symmetric_seat_forced,
+        "symmetric_seat_mode": SYMMETRIC_SEAT_MODE,
+        "symmetric_seat_pair": symmetric_seat_pair,
         "skew_seat_forced": skew_seat_forced,
         "p0m_taf": p0m_taf_audit,
         "probability_core": sorted(
