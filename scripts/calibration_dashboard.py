@@ -3653,10 +3653,34 @@ def collect_center_landing(conn: sqlite3.Connection) -> dict[str, Any]:
                     range(len(keys)),
                     key=lambda index: (probabilities[keys[index]], -index),
                 )
+                # The seat window itself (charter 49/79): the centre bucket
+                # and one rung either side.  Not "within one rung of the
+                # mean point" -- that is a different, narrower set, and
+                # reporting it under the seat's name is how a reader
+                # concludes the seat covers 40% of flat days when it
+                # covers 55%.
+                centre = min(
+                    range(len(keys)),
+                    key=lambda index: (abs(centers[index] - mean_c), index),
+                )
+
+                def _window(anchor: int) -> tuple[float, int]:
+                    names = keys[max(0, anchor - 1):anchor + 2]
+                    return (
+                        sum(probabilities[name] for name in names) / total,
+                        1 if cell["settled_bucket"] in names else 0,
+                    )
+
+                mean_claim, mean_hit = _window(centre)
+                mode_claim, mode_hit = _window(peak)
                 landings.append((
                     sigma_c / rung_c,
                     (float(actual) - mean_c) / rung_c,
-                    (float(actual) - centers[peak]) / rung_c,
+                    mean_claim,
+                    mean_hit,
+                    mode_claim,
+                    mode_hit,
+                    peak - centre,
                     cell["station_id"],
                     cell["event_date"],
                 ))
@@ -3679,8 +3703,12 @@ def collect_center_landing(conn: sqlite3.Connection) -> dict[str, Any]:
             )
             by_event: dict[str, list[float]] = {}
             for row in members:
-                by_event.setdefault(row[4], []).append(row[1])
+                by_event.setdefault(row[8], []).append(row[1])
             low, high = _center_landing_bootstrap(by_event)
+            seat_claim = sum(row[2] for row in members) / count
+            seat_cover = sum(row[3] for row in members) / count
+            mode_claim = sum(row[4] for row in members) / count
+            mode_cover = sum(row[5] for row in members) / count
             rows.append({
                 "tier": key,
                 "label": label,
@@ -3693,11 +3721,17 @@ def collect_center_landing(conn: sqlite3.Connection) -> dict[str, Any]:
                 "warm_share": sum(
                     1 for value in errors if value > 0.0
                 ) / count,
-                "within_mean": sum(
-                    1 for value in errors if abs(value) <= 1.0
-                ) / count,
-                "within_mode": sum(
-                    1 for row in members if abs(row[2]) <= 1.0
+                "seat_claim": seat_claim,
+                "seat_cover": seat_cover,
+                "seat_ratio": (
+                    seat_cover / seat_claim if seat_claim > 0.0 else None
+                ),
+                "mode_cover": mode_cover,
+                "mode_ratio": (
+                    mode_cover / mode_claim if mode_claim > 0.0 else None
+                ),
+                "same_window_share": sum(
+                    1 for row in members if row[6] == 0
                 ) / count,
                 "significant": bool(
                     low is not None and high is not None
@@ -3710,7 +3744,7 @@ def collect_center_landing(conn: sqlite3.Connection) -> dict[str, Any]:
         ]
         by_station: dict[str, list[float]] = {}
         for row in flat:
-            by_station.setdefault(row[3], []).append(row[1])
+            by_station.setdefault(row[7], []).append(row[1])
         flat_stations = sorted(
             (
                 {
@@ -3721,7 +3755,7 @@ def collect_center_landing(conn: sqlite3.Connection) -> dict[str, Any]:
                         1 for value in values if value > 0.0
                     ) / len(values),
                     "days": len({
-                        row[4] for row in flat if row[3] == station
+                        row[8] for row in flat if row[7] == station
                     }),
                 }
                 for station, values in by_station.items()
@@ -9550,9 +9584,14 @@ function centreLanding(){
       <td class="mono">${r.sd_rungs == null ? "—" :
         r.sd_rungs.toFixed(2)}</td>
       <td class="mono muted">${pct1(r.warm_share)}</td>
-      <td class="mono ${r.within_mean >= 0.7 ? "up" :
-        (r.within_mean < 0.5 ? "down" : "")}">${pct1(r.within_mean)}</td>
-      <td class="mono muted">${pct1(r.within_mode)}</td>
+      <td class="mono muted">${pct1(r.seat_claim)}</td>
+      <td class="mono">${pct1(r.seat_cover)}</td>
+      <td class="mono ${r.seat_ratio == null ? "" :
+        (r.seat_ratio >= 1.15 ? "up" :
+         (r.seat_ratio < 0.95 ? "down" : ""))}">${
+        r.seat_ratio == null ? "—" : r.seat_ratio.toFixed(2)}</td>
+      <td class="mono muted">${pct1(r.mode_cover)}<span
+        style="font-size:10px"> ·${pct1(r.same_window_share)}同窗</span></td>
     </tr>`).join("");
     const flat = (st.flat_stations || []).map(f => `<span class="pill ${
       Math.abs(f.bias_rungs) >= 1 ? (f.bias_rungs > 0 ? "red" : "blue")
@@ -9571,7 +9610,8 @@ function centreLanding(){
         <th>服务分布自称的宽度（桶）</th>
         <th>格子</th><th>偏差</th><th>95% 区间</th>
         <th>中位</th><th>散度</th><th>偏暖</th>
-        <th>落在均值±1</th><th>落在众数±1</th>
+        <th>席位窗声称</th><th>席位窗实际</th><th>实际/声称</th>
+        <th>众数窗实际</th>
       </tr></thead><tbody>${body}</tbody></table>
       ${flat ? `<div class="muted" style="margin-top:6px">
         平日子（自称宽度 ≥${
@@ -9593,13 +9633,22 @@ function centreLanding(){
   <b>怎么读：</b>偏差是平均落点减均值，正数表示实际比模型说的热；
   95% 区间按<b>天</b>重采样（同一天的天气全队共享，按格子重采样会把区间缩成假的），
   <b>区间含 0 就是没有系统性偏向哪一边</b>；
-  最后两列是真正被兵位兼住的比例。<br>
-  <b>它读出来的事（也是宪章 81 的来历）：</b>分布越宽，
-  均值±1 兼住的比例越低（尖日子约 3/4，最平的日子不到 1/2），
-  但<b>偏差几乎为零、区间含 0</b>——错是“散”不是“偏”。
-  散不能靠把分布收窄来治（宽度分档 λ 实测已证），
-  只能先在窗口层把被低报的声称抬回来（宪章 81）。
-  平日子按站确实有号，但每站只有几个站日，现在拟不了。</div>
+  右边四列是席位那三个桶的账。<br>
+  <b>席位窗三列是这一节的正题：</b>「声称」＝均值桶±1 这三个桶的概率和，
+  也就是整篮正 EV 闸拿去和价格比的那个数；「实际」＝真值真的落在这三个桶里的比例；
+  再右边是两者之比。<b>分布越宽，声称和实际都在降，但实际降得慢</b>——
+  比值从 1.0 一路涨到 1.7，越平的日子核心被低报得越狠。这就是宪章 81 抬价的证据：
+  闸拿一个偏低的声称去比价格，把本来有边际的窗口拒掉了。<br>
+  <b>别把「实际」下降读成模型在平日子更差：</b>宽分布把质量摊到更多桶上，
+  固定三桶窗必然覆盖更少，这大半是算术。真正的判据是那个比值，
+  而它反过来说：平日子模型比它自己声称的更准。<br>
+  <b>偏差几乎为零、区间含 0</b>——错是“散”不是“偏”。散不能靠把分布收窄来治
+  （宽度分档 λ 实测已证），只能先在窗口层把被低报的声称抬回来。
+  平日子按站确实有号，但每站只有几个站日，现在拟不了。<br>
+  <b>末列的众数窗</b>是同样三个桶、但以最高的那个桶为心，后面小字是两个窗完全重合的比例。
+  中间几档它覆盖得多一点（均值被尾巴拉偏），最平那档反过来——
+  峰值在一堆几乎等高的桶里是噪声，均值更稳。覆盖多不等于赚钱：
+  市场把峰值桶定价最贵，账本已裁定席位以均值为心（宪章 54/75）。</div>
   ${blocks}`;
 }
 
