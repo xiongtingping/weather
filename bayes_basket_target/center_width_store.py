@@ -28,6 +28,10 @@ from zoneinfo import ZoneInfo
 # up to 45s) and the bounded retry that answers them.
 from .band_reliability_store import _invert_band_receipt, _begin_immediate
 from .center_width_calibration import (
+    WIDTH_TIER_BOUNDARIES_RUNGS,
+    WIDTH_TIER_NAMES,
+    distribution_sigma_rungs_v1,
+    width_tier_index_v1,
     MAX_ABS_SHIFT_C,
     MAX_SIGMA_FLOOR_LIFT,
     MAX_WIDTH_LAMBDA,
@@ -121,6 +125,24 @@ if SIGMA_FLOOR_MODE not in {"shadow", "serve"}:
     raise RuntimeError(
         f"unknown center-width sigma floor mode: {SIGMA_FLOOR_MODE}"
     )
+# Width tiers (user ruling, 2026-09-05: "上新设计").  A lambda per tier of the
+# served sigma (boundaries in ``center_width_calibration``), fitted on an
+# objective that scores the mean+-1 window the seat rule reads as well as the
+# bucket -- the flat-day core under-claim this lane exists for moves the
+# bucket NLL by thousandths while moving window containment from 1.7 to 1.0,
+# so a bucket-only fit cannot see what it is asked to fix.  Same promotion
+# contract as the floor: ``shadow`` fits, scores and journals; ``serve`` lets
+# an admitted tier table reach the activated row.  A tier candidate must beat
+# the pooled candidate on the combined forward objective by the layer's
+# hurdle without regressing the bucket NLL by more than a noise margin.
+WIDTH_TIER_MODE = (
+    os.environ.get("PM_CENTER_WIDTH_TIERS", "").strip().lower() or "shadow"
+)
+if WIDTH_TIER_MODE not in {"shadow", "serve"}:
+    raise RuntimeError(f"unknown center-width tier mode: {WIDTH_TIER_MODE}")
+WIDTH_TIER_LAMBDA_GRID = tuple(round(0.50 + 0.025 * step, 3) for step in range(21))
+WINDOW_TERM_WEIGHT = 1.0
+MAX_BUCKET_NLL_REGRESSION = 0.002
 
 
 def taf_direction_for_gap(gap_c: float | None) -> str:
@@ -271,6 +293,13 @@ def ensure_center_width_schema(conn: sqlite3.Connection) -> None:
         )
     except sqlite3.OperationalError:
         pass
+    try:
+        conn.execute(
+            "ALTER TABLE calibration_center_width_table"
+            " ADD COLUMN width_tiers_json TEXT"
+        )
+    except sqlite3.OperationalError:
+        pass
     # ``CREATE TABLE IF NOT EXISTS`` will not widen the CHECK constraint on a
     # journal that already exists, so a new outcome value fails at insert with
     # a constraint error rather than being recorded.  Rebuild in place when
@@ -315,6 +344,7 @@ def center_width_sha256(
     *, stage: str, delta_c: float, width_lambda: float,
     taf_cells: Mapping[str, Sequence[float]] | None = None,
     sigma_floor_rungs: float = 0.0,
+    width_tiers: Mapping[str, Any] | None = None,
 ) -> str:
     payload: dict[str, Any] = {
         "schema": "center_width_table_v1",
@@ -338,6 +368,13 @@ def center_width_sha256(
     # must be served the pair it was scored with.
     if sigma_floor_rungs:
         payload["sigma_floor_rungs"] = round(float(sigma_floor_rungs), 6)
+    if width_tiers:
+        payload["width_tiers"] = {
+            "boundaries_rungs": [
+                round(float(b), 6) for b in width_tiers["boundaries_rungs"]
+            ],
+            "lambdas": [round(float(v), 6) for v in width_tiers["lambdas"]],
+        }
     return content_sha256(payload)
 
 
@@ -435,6 +472,48 @@ def load_center_width_floor(
     if row is None or row[0] is None:
         return 0.0
     return float(row[0])
+
+
+def load_center_width_tiers(
+    conn: sqlite3.Connection,
+    *,
+    stage: str,
+    table_sha256: str | None = None,
+) -> dict[str, Any] | None:
+    """The active (or pinned) table's width tiers, if any -- None means the
+    table serves one lambda, which is every row written before the tier
+    lane existed and every fit whose tiers were not admitted to serve."""
+
+    stage_id = _check_stage(stage)
+    try:
+        if table_sha256 is None:
+            row = conn.execute(
+                "SELECT width_tiers_json"
+                " FROM calibration_center_width_table"
+                " WHERE activated=1 AND stage=?",
+                (stage_id,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT width_tiers_json"
+                " FROM calibration_center_width_table"
+                " WHERE center_width_sha256=?",
+                (str(table_sha256),),
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if row is None or not row[0]:
+        return None
+    try:
+        tiers = json.loads(str(row[0]))
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(tiers, Mapping) or not tiers.get("lambdas"):
+        return None
+    return {
+        "boundaries_rungs": [float(b) for b in tiers.get("boundaries_rungs") or WIDTH_TIER_BOUNDARIES_RUNGS],
+        "lambdas": [float(v) for v in tiers["lambdas"]],
+    }
 
 
 def load_center_width_cells(
@@ -1096,6 +1175,249 @@ def _search(
 
 
 
+def _cell_tier(cell: Mapping[str, Any]) -> int:
+    """The tier the cell's distribution is served in -- read off the input
+    the same way ``apply_center_width_calibration`` reads it."""
+
+    return width_tier_index_v1(distribution_sigma_rungs_v1(
+        cell["probabilities"],
+        ordered_keys=cell["ordered_keys"],
+        key_centers_c=cell["key_centers_c"],
+    ))
+
+
+def _cell_scores(
+    cell: Mapping[str, Any],
+    *,
+    delta_c: float,
+    width_lambda: float,
+    sigma_floor_rungs: float = 0.0,
+    width_tier_lambdas: Sequence[float] | None = None,
+) -> tuple[float, float, float, int]:
+    """(bucket NLL, window NLL, window claim, window hit) for one cell.
+
+    The window is the mean bucket +-1 of the *transformed* distribution,
+    which is the shape the seat rule (charter 79) reads; its claim is what
+    the positive-EV gate compares with price, so its binary NLL is the
+    term the flat-day under-claim shows up in.
+    """
+
+    if (
+        delta_c == 0.0 and width_lambda == 1.0 and not sigma_floor_rungs
+        and not width_tier_lambdas
+    ):
+        adjusted = dict(cell["probabilities"])
+    else:
+        adjusted, _ = apply_center_width_calibration(
+            cell["probabilities"],
+            delta_c=delta_c,
+            width_lambda=width_lambda,
+            ordered_keys=cell["ordered_keys"],
+            key_centers_c=cell["key_centers_c"],
+            excluded_buckets=cell["excluded_buckets"],
+            sigma_floor_rungs=sigma_floor_rungs,
+            width_tier_lambdas=width_tier_lambdas,
+        )
+    total = sum(adjusted.values())
+    if total <= 0.0:
+        return -math.log(1e-6), -math.log(1e-6), 0.0, 0
+    keys = list(cell["ordered_keys"])
+    centers = list(cell["key_centers_c"])
+    mean_c = sum(
+        centers[i] * float(adjusted.get(k, 0.0)) for i, k in enumerate(keys)
+    ) / total
+    mean_index = min(
+        range(len(keys)), key=lambda i: (abs(centers[i] - mean_c), i)
+    )
+    window = keys[max(0, mean_index - 1):mean_index + 2]
+    claim = sum(float(adjusted.get(k, 0.0)) for k in window) / total
+    hit = 1 if cell["settled_bucket"] in window else 0
+    q = min(max(claim, 1e-6), 1.0 - 1e-6)
+    window_nll = -math.log(q) if hit else -math.log(1.0 - q)
+    bucket_nll = -math.log(max(adjusted[cell["settled_bucket"]] / total, 1e-6))
+    return bucket_nll, window_nll, claim, hit
+
+
+def _mean_scores(
+    cells: Sequence[Mapping[str, Any]],
+    *,
+    delta_c: float,
+    width_lambda: float,
+    sigma_floor_rungs: float = 0.0,
+    width_tier_lambdas: Sequence[float] | None = None,
+) -> dict[str, float]:
+    """Mean bucket NLL, mean window NLL, the combined objective and the
+    window containment ratio (hits over claims) over ``cells``."""
+
+    if not cells:
+        return {"bucket": 0.0, "window": 0.0, "objective": 0.0, "containment": 0.0, "cells": 0}
+    bucket = window = claims = 0.0
+    hits = 0
+    for cell in cells:
+        b, w, c, h = _cell_scores(
+            cell, delta_c=delta_c, width_lambda=width_lambda,
+            sigma_floor_rungs=sigma_floor_rungs,
+            width_tier_lambdas=width_tier_lambdas,
+        )
+        bucket += b
+        window += w
+        claims += c
+        hits += h
+    n = len(cells)
+    return {
+        "bucket": bucket / n,
+        "window": window / n,
+        "objective": (bucket + WINDOW_TERM_WEIGHT * window) / n,
+        "containment": (hits / claims) if claims > 0 else 0.0,
+        "cells": n,
+    }
+
+
+def _search_tiers(
+    cells: Sequence[Mapping[str, Any]],
+    *,
+    sigma_floor_rungs: float = 0.0,
+    pooled_lambda: float = 1.0,
+) -> tuple[float, tuple[float, ...], float]:
+    """The best shared shift and one lambda per width tier.
+
+    Tiers partition the cells, so for a fixed shift each tier's lambda is
+    chosen on its own cells alone and the objective adds up; the shift is
+    then the one whose sum is smallest.  A tier with no cells keeps the
+    pooled lambda.  Scored on the combined objective (bucket + window).
+    """
+
+    by_tier: dict[int, list[Mapping[str, Any]]] = {}
+    for cell in cells:
+        by_tier.setdefault(_cell_tier(cell), []).append(cell)
+    tier_count = len(WIDTH_TIER_BOUNDARIES_RUNGS) + 1
+    best: tuple[float, tuple[float, ...], float] | None = None
+    for delta in SHIFT_GRID_C:
+        if abs(delta) > MAX_ABS_SHIFT_C:
+            continue
+        lambdas: list[float] = []
+        total = 0.0
+        for tier in range(tier_count):
+            members = by_tier.get(tier, [])
+            if not members:
+                lambdas.append(float(pooled_lambda))
+                continue
+            tier_best: tuple[float, float] | None = None
+            for lam in WIDTH_TIER_LAMBDA_GRID:
+                if not MIN_WIDTH_LAMBDA <= lam <= MAX_WIDTH_LAMBDA:
+                    continue
+                scores = _mean_scores(
+                    members, delta_c=delta, width_lambda=lam,
+                    sigma_floor_rungs=sigma_floor_rungs,
+                )
+                value = scores["objective"] * len(members)
+                if tier_best is None or value < tier_best[1]:
+                    tier_best = (lam, value)
+            lambdas.append(tier_best[0])
+            total += tier_best[1]
+        objective = total / max(1, len(cells))
+        if best is None or objective < best[2]:
+            best = (delta, tuple(lambdas), objective)
+    if best is None:
+        return 0.0, tuple([float(pooled_lambda)] * tier_count), 0.0
+    return best
+
+
+def _width_tier_lane(
+    *,
+    forward: Sequence[Mapping[str, Any]],
+    incumbent: tuple[float, float],
+    incumbent_floor: float,
+    incumbent_tiers: Mapping[str, Any] | None,
+    pooled: tuple[float, float],
+    pooled_floor: float,
+    tiered: tuple[float, tuple[float, ...]],
+) -> dict[str, Any]:
+    """Whether the tiers earned their place, and the numbers that say so.
+
+    Admitted where the tiered candidate beats the pooled candidate on the
+    combined forward objective by the layer's hurdle without regressing the
+    bucket NLL by more than a noise margin -- the window term is what the
+    lane is for, but it may not buy it by making the bucket read worse.
+    """
+
+    inc = _mean_scores(
+        forward, delta_c=incumbent[0], width_lambda=incumbent[1],
+        sigma_floor_rungs=incumbent_floor,
+        width_tier_lambdas=(incumbent_tiers or {}).get("lambdas") or None,
+    )
+    pool = _mean_scores(
+        forward, delta_c=pooled[0], width_lambda=pooled[1],
+        sigma_floor_rungs=pooled_floor,
+    )
+    tier = _mean_scores(
+        forward, delta_c=tiered[0], width_lambda=pooled[1],
+        sigma_floor_rungs=pooled_floor, width_tier_lambdas=tiered[1],
+    )
+    by_tier: dict[int, list[Mapping[str, Any]]] = {}
+    for cell in forward:
+        by_tier.setdefault(_cell_tier(cell), []).append(cell)
+    per_tier = []
+    for index in range(len(WIDTH_TIER_BOUNDARIES_RUNGS) + 1):
+        members = by_tier.get(index, [])
+        entry: dict[str, Any] = {
+            "tier": WIDTH_TIER_NAMES[index],
+            "forward_cells": len(members),
+            "candidate_lambda": tiered[1][index],
+        }
+        if members:
+            p = _mean_scores(
+                members, delta_c=pooled[0], width_lambda=pooled[1],
+                sigma_floor_rungs=pooled_floor,
+            )
+            t = _mean_scores(
+                members, delta_c=tiered[0], width_lambda=pooled[1],
+                sigma_floor_rungs=pooled_floor, width_tier_lambdas=tiered[1],
+            )
+            entry.update({
+                "containment_pooled": p["containment"],
+                "containment_tiered": t["containment"],
+                "bucket_nll_pooled": p["bucket"],
+                "bucket_nll_tiered": t["bucket"],
+            })
+        per_tier.append(entry)
+    gain_objective = pool["objective"] - tier["objective"]
+    bucket_regression = tier["bucket"] - pool["bucket"]
+    measured = (
+        gain_objective > MIN_FORWARD_NLL_GAIN
+        and bucket_regression <= MAX_BUCKET_NLL_REGRESSION
+    )
+    admitted = measured and WIDTH_TIER_MODE == "serve"
+    return {
+        "schema": "center_width_tier_lane_v1",
+        "mode": WIDTH_TIER_MODE,
+        "boundaries_rungs": list(WIDTH_TIER_BOUNDARIES_RUNGS),
+        "tier_names": list(WIDTH_TIER_NAMES),
+        "window_term_weight": WINDOW_TERM_WEIGHT,
+        "candidate_delta_c": tiered[0],
+        "candidate_lambdas": list(tiered[1]),
+        "pooled_delta_c": pooled[0],
+        "pooled_width_lambda": pooled[1],
+        "forward_incumbent": inc,
+        "forward_pooled_candidate": pool,
+        "forward_tier_candidate": tier,
+        "forward_objective_gain_vs_pooled": gain_objective,
+        "forward_objective_gain_vs_incumbent": inc["objective"] - tier["objective"],
+        "forward_bucket_nll_regression_vs_pooled": bucket_regression,
+        "forward_window_nll_gain_vs_pooled": pool["window"] - tier["window"],
+        "min_forward_nll_gain": MIN_FORWARD_NLL_GAIN,
+        "max_bucket_nll_regression": MAX_BUCKET_NLL_REGRESSION,
+        "per_tier": per_tier,
+        "measured_admitted": measured,
+        "admitted": admitted,
+        "state": (
+            "ADMITTED" if admitted
+            else "SHADOW_ADMITTED" if measured
+            else "REFUSED_FORWARD"
+        ),
+    }
+
+
 def served_arithmetic_anchor(
     conn: sqlite3.Connection, *, stage: str, known_floor: str | None = None
 ) -> str | None:
@@ -1365,6 +1687,9 @@ def fit_center_width(
     base_floor = (
         0.0 if active is None else load_center_width_floor(conn, stage=stage_id)
     )
+    base_tiers = (
+        None if active is None else load_center_width_tiers(conn, stage=stage_id)
+    )
     accumulating = (
         len(days) < MIN_QUALIFYING_DAYS or len(cells) < MIN_QUALIFYING_CELLS
     )
@@ -1397,11 +1722,18 @@ def fit_center_width(
             "admitted": False,
             "state": "ACCUMULATING",
         }
+        evidence["width_tiers"] = {
+            "schema": "center_width_tier_lane_v1",
+            "mode": WIDTH_TIER_MODE,
+            "admitted": False,
+            "state": "ACCUMULATING",
+        }
         return {
             "stage": stage_id,
             "delta_c": base[0],
             "width_lambda": base[1],
             "sigma_floor_rungs": base_floor,
+            "width_tiers": base_tiers,
             "forward_nll_gain": 0.0,
             "accumulating": True,
             "serving_day_count": len(days),
@@ -1452,6 +1784,29 @@ def fit_center_width(
         delta, lam = pooled_delta, pooled_lam
         train_nll, forward_candidate = pooled_train_nll, forward_pooled
         candidate_floor = 0.0
+    # Width tiers: fitted under the floor the pair will serve, judged against
+    # the pooled/floored candidate on the combined forward objective.
+    tier_delta, tier_lambdas, _tier_train = _search_tiers(
+        train, sigma_floor_rungs=candidate_floor, pooled_lambda=lam,
+    )
+    width_tier_lane = _width_tier_lane(
+        forward=forward,
+        incumbent=base,
+        incumbent_floor=base_floor,
+        incumbent_tiers=base_tiers,
+        pooled=(delta, lam),
+        pooled_floor=candidate_floor,
+        tiered=(tier_delta, tier_lambdas),
+    )
+    evidence["width_tiers"] = width_tier_lane
+    candidate_tiers: dict[str, Any] | None = None
+    if width_tier_lane["admitted"]:
+        candidate_tiers = {
+            "boundaries_rungs": list(WIDTH_TIER_BOUNDARIES_RUNGS),
+            "lambdas": list(tier_lambdas),
+        }
+        delta = tier_delta
+        forward_candidate = width_tier_lane["forward_tier_candidate"]["bucket"]
     gain = forward_base - forward_candidate
     evidence.update({
         "basis": "FORWARD_WINDOW",
@@ -1475,6 +1830,14 @@ def fit_center_width(
         ),
     })
     admitted = gain > MIN_FORWARD_NLL_GAIN
+    if candidate_tiers is not None:
+        # The tier lane's own gate already held the bucket NLL to within
+        # a noise margin of the pooled candidate; what it must beat at this
+        # rung is the incumbent on the objective it was fitted on.
+        admitted = (
+            width_tier_lane["forward_objective_gain_vs_incumbent"]
+            > MIN_FORWARD_NLL_GAIN
+        )
     # The TAF-conditional lane (charter 57): each direction fits its own
     # scalars from its own slice of the same train/forward split, and is
     # admitted only where it beats the POOLED candidate on its own forward
@@ -1547,6 +1910,11 @@ def fit_center_width(
         # leaves the incumbent's floor in place for the same reason it leaves
         # the incumbent's scalars: nothing was shown to be better.
         "sigma_floor_rungs": candidate_floor if admitted else base_floor,
+        "width_tiers": candidate_tiers if admitted else base_tiers,
+        "candidate_width_tiers": {
+            "boundaries_rungs": list(WIDTH_TIER_BOUNDARIES_RUNGS),
+            "lambdas": list(tier_lambdas),
+        },
         "candidate_delta_c": delta,
         "candidate_width_lambda": lam,
         "candidate_sigma_floor_rungs": candidate_floor,
@@ -1571,12 +1939,24 @@ def persist_and_activate_center_width(
     fitted_at_utc: str | None = None,
     taf_cells: Mapping[str, Sequence[float]] | None = None,
     sigma_floor_rungs: float = 0.0,
+    width_tiers: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     stage_id = _check_stage(stage)
     ensure_center_width_schema(conn)
     digest = center_width_sha256(
         stage=stage_id, delta_c=delta_c, width_lambda=width_lambda,
         taf_cells=taf_cells, sigma_floor_rungs=sigma_floor_rungs,
+        width_tiers=width_tiers,
+    )
+    tiers_json = (
+        json.dumps(
+            {
+                "boundaries_rungs": [float(b) for b in width_tiers["boundaries_rungs"]],
+                "lambdas": [float(v) for v in width_tiers["lambdas"]],
+            },
+            sort_keys=True,
+        )
+        if width_tiers else None
     )
     active = load_center_width(conn, stage=stage_id)
     if active is not None and active[2] == digest:
@@ -1603,21 +1983,22 @@ def persist_and_activate_center_width(
             " center_width_sha256, stage, delta_c, width_lambda,"
             " evidence_json,"
             " fitted_at_utc, serving_day_count, activated, activated_at_utc,"
-            " taf_cells_json, sigma_floor_rungs"
-            ") VALUES (?,?,?,?,?,?,?,0,NULL,?,?)"
+            " taf_cells_json, sigma_floor_rungs, width_tiers_json"
+            ") VALUES (?,?,?,?,?,?,?,0,NULL,?,?,?)"
             " ON CONFLICT(center_width_sha256) DO UPDATE SET"
             "  evidence_json=excluded.evidence_json,"
             "  fitted_at_utc=excluded.fitted_at_utc,"
             "  serving_day_count=excluded.serving_day_count,"
             "  taf_cells_json=excluded.taf_cells_json,"
-            "  sigma_floor_rungs=excluded.sigma_floor_rungs",
+            "  sigma_floor_rungs=excluded.sigma_floor_rungs,"
+            "  width_tiers_json=excluded.width_tiers_json",
             (
                 digest, stage_id, float(delta_c), float(width_lambda),
                 json.dumps(
                     dict(evidence), ensure_ascii=False, sort_keys=True
                 ),
                 now, int(serving_day_count), cells_json,
-                float(sigma_floor_rungs) or None,
+                float(sigma_floor_rungs) or None, tiers_json,
             ),
         )
         conn.execute(
@@ -1660,6 +2041,7 @@ def journal_center_width_fit(
         width_lambda=fitted["width_lambda"],
         taf_cells=fitted.get("taf_cells") or None,
         sigma_floor_rungs=float(fitted.get("sigma_floor_rungs") or 0.0),
+        width_tiers=fitted.get("width_tiers") or None,
     )
     fit_id = "cwfit-" + content_sha256({
         "stage": stage_id,
@@ -1838,6 +2220,9 @@ def _refit_stages(
                 # the journal's evidence blob by hand.
                 "sigma_floor_rungs": fitted.get("sigma_floor_rungs") or 0.0,
                 "sigma_floor": fitted["evidence"].get("sigma_floor") or {},
+                "width_tiers": fitted.get("width_tiers"),
+                "candidate_width_tiers": fitted.get("candidate_width_tiers"),
+                "width_tier_lane": fitted["evidence"].get("width_tiers") or {},
             })
             if commit:
                 if stage not in CENTER_WIDTH_SERVED_STAGES:
@@ -1858,6 +2243,7 @@ def _refit_stages(
                         sigma_floor_rungs=float(
                             fitted.get("sigma_floor_rungs") or 0.0
                         ),
+                        width_tiers=fitted.get("width_tiers") or None,
                     )
                     entry["commit"] = committed
                     outcome = str(committed["state"])

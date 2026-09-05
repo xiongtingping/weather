@@ -81,6 +81,20 @@ MAX_SIGMA_FLOOR_RUNGS = 4.0
 # the fleet settled yesterday.  Keeping the bounds apart keeps a fast layer
 # from ever spending a slow layer's entitlement.
 MAX_ABS_REGIME_SHIFT_C = 1.0
+# Width tiers (user ruling, 2026-09-05: "上新设计").  One lambda cannot serve
+# days whose served spread means different things: measured on P0's own
+# serving cells (3,789 cells, 2026-08-27..09-04, under the served 0.75), the
+# mean+-1 window realises 0.81 of its claim where the served sigma is under
+# one rung, 1.06 at 1.0-1.44, 1.25 at 1.44-2.0, 1.34 at 2.0-2.5 and 1.76
+# above three -- the wider the distribution calls itself, the more its core
+# under-claims.  The floor above handles the narrow end by lifting; this
+# gives each tier of served sigma (in rungs, charter 53(b)) its own lambda,
+# fitted on an objective that scores the window the seat rule reads as well
+# as the bucket.  The tier is read off the distribution before the transform,
+# by one function the fit and serving share, so no distribution is tiered
+# one way and served another.
+WIDTH_TIER_BOUNDARIES_RUNGS = (1.44, 2.0)
+WIDTH_TIER_NAMES = ("narrow", "mid", "wide")
 
 
 def bucket_rung_width_c(centers: Sequence[float]) -> float:
@@ -165,6 +179,39 @@ def sigma_floor_lift_v1(
     return min(MAX_SIGMA_FLOOR_LIFT, max(1.0, lift)), sigma_c, rung_c
 
 
+def width_tier_index_v1(
+    sigma_rungs: float,
+    boundaries: Sequence[float] = WIDTH_TIER_BOUNDARIES_RUNGS,
+) -> int:
+    """Which width tier a served sigma (in rungs) falls in: the first
+    boundary it is below, else the last tier."""
+
+    value = float(sigma_rungs)
+    if not math.isfinite(value):
+        return 0
+    for index, bound in enumerate(boundaries):
+        if value < float(bound):
+            return index
+    return len(boundaries)
+
+
+def distribution_sigma_rungs_v1(
+    probability: Mapping[str, float],
+    *,
+    ordered_keys: Sequence[str],
+    key_centers_c: Sequence[float],
+) -> float:
+    """The served distribution's own spread in rungs of its vocabulary."""
+
+    _lift, sigma_c, rung_c = sigma_floor_lift_v1(
+        probability,
+        ordered_keys=ordered_keys,
+        key_centers_c=key_centers_c,
+        floor_rungs=0.0,
+    )
+    return sigma_c / rung_c if rung_c > 0.0 else 0.0
+
+
 def _axis(
     ordered_keys: Sequence[str], key_centers_c: Sequence[float]
 ) -> tuple[list[str], list[float]]:
@@ -190,8 +237,15 @@ def apply_center_width_calibration(
     station_width_scale: float = 1.0,
     regime_delta_c: float = 0.0,
     sigma_floor_rungs: float = 0.0,
+    width_tier_lambdas: Sequence[float] | None = None,
+    width_tier_boundaries: Sequence[float] | None = None,
 ) -> tuple[dict[str, float], dict[str, Any]]:
     """Shift by ``delta_c`` and scale about the mean by ``width_lambda``.
+
+    ``width_tier_lambdas`` (width tiers, 2026-09-05) replaces the scalar
+    ``width_lambda`` with the lambda of the tier the distribution's own
+    served sigma falls in; ``width_lambda`` is then recorded as the pooled
+    value the tiers were measured against.
 
     Mass is carried on bucket centres and split linearly between the two
     centres its new position falls between, the same convention the consensus
@@ -253,6 +307,25 @@ def apply_center_width_calibration(
     # Composed after each factor passed its own bounds: the product is what a
     # point's deviation from the mean is multiplied by, and the sum is how far
     # along the axis the whole distribution travels.
+    tier_index: int | None = None
+    tier_lambda: float | None = None
+    sigma_rungs = sigma_c / rung_c if rung_c > 0.0 else 0.0
+    if width_tier_lambdas:
+        boundaries = tuple(
+            float(b) for b in (width_tier_boundaries or WIDTH_TIER_BOUNDARIES_RUNGS)
+        )
+        lambdas = [float(value) for value in width_tier_lambdas]
+        if len(lambdas) != len(boundaries) + 1:
+            raise ValueError("center_width_tier_lambdas_invalid")
+        if any(
+            not math.isfinite(value)
+            or not (MIN_WIDTH_LAMBDA <= value <= MAX_WIDTH_LAMBDA)
+            for value in lambdas
+        ):
+            raise ValueError("center_width_lambda_out_of_range")
+        tier_index = width_tier_index_v1(sigma_rungs, boundaries)
+        tier_lambda = lambdas[tier_index]
+        lam = tier_lambda
     lam = lam * scale * lift
     fitted_shift = shift
     shift = shift + regime
@@ -314,6 +387,10 @@ def apply_center_width_calibration(
             "sigma_floor_lift": lift,
             "distribution_sigma_c": sigma_c,
             "bucket_rung_c": rung_c,
+            "distribution_sigma_rungs": sigma_rungs,
+            "width_tier": tier_index,
+            "width_tier_lambda": tier_lambda,
+            "pooled_width_lambda": float(width_lambda),
         }
     adjusted = {key: value / total for key, value in moved.items()}
     return adjusted, {
@@ -341,6 +418,10 @@ def apply_center_width_calibration(
         "sigma_floor_lift": lift,
         "distribution_sigma_c": sigma_c,
         "bucket_rung_c": rung_c,
+        "distribution_sigma_rungs": sigma_rungs,
+        "width_tier": tier_index,
+        "width_tier_lambda": tier_lambda,
+        "pooled_width_lambda": float(width_lambda),
         "mass_returned_to_hard_bound": restored,
         "pre_normalisation_mass": total,
     }
