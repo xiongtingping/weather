@@ -28,12 +28,45 @@ from bayes_basket_target.center_width_store import (  # noqa: E402
 )
 
 MIN_TRAIN_CELLS = 300
+# How many days before a date may train it.  The unbounded version made every
+# later date pay for the whole history: one grid point transforms every
+# training cell, the grid is 627 points, and a single search over 3,662 cells
+# measured 54 seconds.  It is also the discipline the store already keeps --
+# a fit must not reach back past arithmetic nobody serves -- applied to a
+# table whose whole purpose is to say what could have been known that morning.
+DEFAULT_TRAIN_DAYS = 10
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", type=Path,
                         default=ROOT / "data" / "bayes_basket_target_ssot.db")
+    parser.add_argument(
+        "--since",
+        help=(
+            "Earliest decision timestamp to build cells from.  Every date "
+            "still trains only on days earlier than itself, so the table "
+            "stays as-of correct; this bounds how far back the warm-up "
+            "reaches and is what keeps the build affordable."
+        ),
+    )
+    parser.add_argument(
+        "--train-days", type=int, default=DEFAULT_TRAIN_DAYS,
+        help="Days of history each date may train on (0 = every earlier day).",
+    )
+    parser.add_argument(
+        "--stages", default="P0,P0-M,P1",
+        help="Comma-separated stages to fit (default all three).",
+    )
+    parser.add_argument(
+        "--out-control", type=Path, default=None,
+        help=(
+            "Where to write the unfloored control arm.  One walk produces "
+            "both tables, because both arms need the same cells and the same "
+            "as-of ordering; building them separately would pay for that "
+            "twice and risk them disagreeing about anything but the floor."
+        ),
+    )
     parser.add_argument("--out", type=Path,
                         default=ROOT / "data" / "runtime"
                         / "bayes_basket_target_nwp"
@@ -41,69 +74,105 @@ def main() -> int:
     args = parser.parse_args()
     conn = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True, timeout=120.0)
     truth = _truth(conn)
-    table: dict[str, dict[str, dict[str, float]]] = {}
-    for stage in ("P0", "P0-M", "P1"):
-        by_day = serving_cells_by_day(conn, truth, stage=stage)
+    floored_table: dict[str, dict[str, dict[str, float]]] = {}
+    control_table: dict[str, dict[str, dict[str, float]]] = {}
+    for stage in [s.strip() for s in args.stages.split(",") if s.strip()]:
+        by_day = serving_cells_by_day(
+            conn, truth, stage=stage, min_decision_at_utc=args.since,
+        )
         days = sorted(by_day)
-        per_date: dict[str, dict[str, float]] = {}
-        for day in days:
-            train = [c for d in days if d < day for c in by_day[d]]
+        floored_dates: dict[str, dict[str, float]] = {}
+        control_dates: dict[str, dict[str, float]] = {}
+        # The floor's verdict walks forward one day at a time.  Each date is
+        # judged by how the two arms fitted on *earlier* days scored on the
+        # days after them -- a prequential comparison, so the verdict a date
+        # gets could have been computed that morning and never sees itself.
+        # The alternative, re-splitting the prior days and refitting both arms
+        # for every date, is two extra grid searches a day for the same
+        # answer.
+        preq_pooled = 0.0
+        preq_floored = 0.0
+        preq_cells = 0
+        for index, day in enumerate(days):
+            prior = days[:index]
+            if args.train_days > 0:
+                prior = prior[-args.train_days:]
+            train = [c for d in prior for c in by_day[d]]
             if len(train) < MIN_TRAIN_CELLS:
                 continue
-            # The width floor is admitted by the same rule production uses
-            # and on the same shape of evidence: the prior days are split
-            # train/forward, both arms are fitted on the earlier part, and
-            # the floor is taken only where it beats the pooled candidate on
-            # the held-out part.  A replay day therefore gets the floor if
-            # and only if the layer would have admitted it that morning.
-            prior = [d for d in days if d < day]
-            cut = max(1, int(len(prior) * (1.0 - FORWARD_WINDOW_FRACTION)))
-            inner_train = [c for d in prior[:cut] for c in by_day[d]]
-            inner_forward = [
-                c for d in (prior[cut:] or prior[-1:]) for c in by_day[d]
-            ]
-            floor_rungs = 0.0
-            if inner_train and inner_forward:
-                pooled = _search(inner_train)
-                floored = _search(
-                    inner_train, sigma_floor_rungs=SIGMA_FLOOR_RUNGS
-                )
-                gain = _mean_nll(
-                    inner_forward,
-                    delta_c=pooled[0], width_lambda=pooled[1],
-                ) - _mean_nll(
-                    inner_forward,
-                    delta_c=floored[0], width_lambda=floored[1],
-                    sigma_floor_rungs=SIGMA_FLOOR_RUNGS,
-                )
-                if gain > MIN_FORWARD_NLL_GAIN:
-                    floor_rungs = SIGMA_FLOOR_RUNGS
-            delta, lam, _ = _search(train, sigma_floor_rungs=floor_rungs)
-            per_date[day] = {
-                "delta_c": delta,
-                "width_lambda": lam,
-                "sigma_floor_rungs": floor_rungs,
+            pooled_delta, pooled_lam, _ = _search(train)
+            floor_delta, floor_lam, _ = _search(
+                train, sigma_floor_rungs=SIGMA_FLOOR_RUNGS
+            )
+            today = by_day[day]
+            # The verdict in force this morning, from days already walked.
+            admitted = (
+                preq_cells > 0
+                and (preq_pooled - preq_floored) / preq_cells
+                > MIN_FORWARD_NLL_GAIN
+            )
+            identity_nll = _mean_nll(today, delta_c=0.0, width_lambda=1.0)
+            pooled_nll = _mean_nll(
+                today, delta_c=pooled_delta, width_lambda=pooled_lam
+            )
+            floored_nll = _mean_nll(
+                today, delta_c=floor_delta, width_lambda=floor_lam,
+                sigma_floor_rungs=SIGMA_FLOOR_RUNGS,
+            )
+            control_dates[day] = {
+                "delta_c": pooled_delta,
+                "width_lambda": pooled_lam,
+                "sigma_floor_rungs": 0.0,
                 "train_cells": len(train),
-                "identity_nll": _mean_nll(
-                    by_day[day], delta_c=0.0, width_lambda=1.0),
-                "fitted_nll": _mean_nll(
-                    by_day[day], delta_c=delta, width_lambda=lam,
-                    sigma_floor_rungs=floor_rungs),
+                "identity_nll": identity_nll,
+                "fitted_nll": pooled_nll,
             }
-        table[stage] = per_date
-        print("%-5s %d 个日期有标量" % (stage, len(per_date)))
-        for day in sorted(per_date)[-3:]:
-            e = per_date[day]
-            print("   %s  Δ=%+.2f λ=%.3f 地板=%.2f  训练 cell %5d"
-                  "  当日 NLL %.4f→%.4f"
-                  % (day, e["delta_c"], e["width_lambda"],
-                     e["sigma_floor_rungs"], e["train_cells"],
-                     e["identity_nll"], e["fitted_nll"]))
+            floored_dates[day] = {
+                "delta_c": floor_delta if admitted else pooled_delta,
+                "width_lambda": floor_lam if admitted else pooled_lam,
+                "sigma_floor_rungs": SIGMA_FLOOR_RUNGS if admitted else 0.0,
+                "train_cells": len(train),
+                "identity_nll": identity_nll,
+                "fitted_nll": floored_nll if admitted else pooled_nll,
+                "sigma_floor_admitted": admitted,
+            }
+            preq_pooled += pooled_nll * len(today)
+            preq_floored += floored_nll * len(today)
+            preq_cells += len(today)
+            print(
+                "   %s  pooled Δ=%+.2f λ=%.3f  floored Δ=%+.2f λ=%.3f"
+                "  地板=%s  train %5d  当日 NLL 恒等 %.4f / 池化 %.4f / 地板 %.4f"
+                % (day, pooled_delta, pooled_lam, floor_delta, floor_lam,
+                   "on" if admitted else "off", len(train),
+                   identity_nll, pooled_nll, floored_nll),
+                flush=True,
+            )
+        floored_table[stage] = floored_dates
+        control_table[stage] = control_dates
+        preq = (
+            (preq_pooled - preq_floored) / preq_cells if preq_cells else 0.0
+        )
+        print("%-5s %d 个日期有标量；前推累计 地板−池化 NLL %+.4f (%d cells)"
+              % (stage, len(floored_dates), preq, preq_cells), flush=True)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(
-        json.dumps({"schema": "center_width_replay_table_v1", "stages": table},
+        json.dumps({"schema": "center_width_replay_table_v1",
+                    "sigma_floor_arm": "on",
+                    "train_days": args.train_days,
+                    "since": args.since,
+                    "stages": floored_table},
                    indent=2, sort_keys=True), encoding="utf-8")
     print("\n写入", args.out)
+    if args.out_control is not None:
+        args.out_control.parent.mkdir(parents=True, exist_ok=True)
+        args.out_control.write_text(
+            json.dumps({"schema": "center_width_replay_table_v1",
+                        "sigma_floor_arm": "off",
+                        "train_days": args.train_days,
+                        "since": args.since,
+                        "stages": control_table},
+                       indent=2, sort_keys=True), encoding="utf-8")
+        print("写入", args.out_control)
     return 0
 
 

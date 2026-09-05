@@ -271,12 +271,14 @@ def test_serving_layer_is_wired_ahead_of_the_band_table() -> None:
         / "materialization.py"
     ).read_text(encoding="utf-8")
     # The condition widened when the per-station width scale joined the
-    # layer, and again when the next-day fleet regime shift did: any one of
-    # the three may be present without the others, and each on its own is
-    # enough to move the distribution before the band table sees the claim.
+    # layer, again when the next-day fleet regime shift did, and again when
+    # the width floor did: any one of the four may be present without the
+    # others, and each on its own is enough to move the distribution before
+    # the band table sees the claim.  Anchored on the call rather than on the
+    # condition's text, which has now been reflowed twice for the same
+    # reason and says nothing about ordering when it is.
     centre_at = source.index(
-        "if center_width is not None or station_scale != 1.0"
-        " or regime_delta != 0.0:"
+        "probabilities, center_receipt = apply_center_width_calibration("
     )
     band_at = source.index("if band_table is not None:", centre_at)
     assert centre_at < band_at

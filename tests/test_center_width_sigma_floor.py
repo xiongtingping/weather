@@ -276,8 +276,11 @@ def test_the_floor_must_beat_the_pooled_candidate_not_just_the_incumbent(
         pooled_nll=1.60, floored_nll=1.50, incumbent_nll=1.61,
         incumbent_floor_rungs=0.0,
     )
-    assert lane["admitted"] is True
-    assert lane["state"] == "ADMITTED"
+    # Measured on its own evidence, and served only once the paper ledger
+    # promotes it -- the default mode is shadow.
+    assert lane["measured_admitted"] is True
+    assert lane["state"] in {"ADMITTED", "SHADOW_ADMITTED"}
+    assert lane["admitted"] is (lane["mode"] == "serve")
     assert lane["sigma_floor_rungs"] == SIGMA_FLOOR_RUNGS
     assert lane["forward_lifted_count"] == 1
     assert lane["forward_cell_count"] == 2
@@ -289,7 +292,35 @@ def test_the_floor_must_beat_the_pooled_candidate_not_just_the_incumbent(
         incumbent_floor_rungs=0.0,
     )
     assert refused["admitted"] is False
+    assert refused["measured_admitted"] is False
+    assert refused["state"] == "REFUSED_FORWARD"
     assert refused["forward_nll_gain_vs_incumbent"] > 0.0
+
+
+def test_the_floor_is_shadow_until_the_ledger_promotes_it() -> None:
+    """Default mode serves nothing, whatever the forward gate measured.
+
+    The lane's hurdle is a probability argument.  This repository has been
+    taught twice that a probability argument is not a book argument -- the
+    fleet-mean layer improved the claim by 24% and cost the book 7.3 points --
+    so promotion waits for the replay.
+    """
+
+    from bayes_basket_target.center_width_store import (
+        SIGMA_FLOOR_MODE,
+        _sigma_floor_lane,
+    )
+
+    assert SIGMA_FLOOR_MODE == "shadow"
+    lane = _sigma_floor_lane(
+        forward=[_cell(NARROW, KEYS_C[1])],
+        pooled=(0.0, 0.75), floored=(0.0, 0.725),
+        pooled_nll=1.60, floored_nll=1.50, incumbent_nll=1.61,
+        incumbent_floor_rungs=0.0,
+    )
+    assert lane["measured_admitted"] is True
+    assert lane["admitted"] is False
+    assert lane["state"] == "SHADOW_ADMITTED"
 
 
 def test_the_digest_carries_the_floor_and_legacy_digests_do_not_move() -> None:
@@ -370,6 +401,7 @@ def test_serving_and_the_ledger_both_read_the_floor() -> None:
     p0 = source("bayes_basket_target/native_ensemble_p0.py")
     assert "load_center_width_floor(" in p0
     assert "sigma_floor_rungs=sigma_floor_rungs," in p0
+    assert "load_center_width_floor" in p0
     # The holdout that gates the artifact scores it under the same floor.
     oos = source("bayes_basket_target/native_ensemble_oos.py")
     assert "sigma_floor_rungs=center_width_floor," in oos
@@ -380,4 +412,5 @@ def test_serving_and_the_ledger_both_read_the_floor() -> None:
     ledger = source("scripts/paper_trading_ledger.py")
     assert 'entry.get("sigma_floor_rungs")' in ledger
     builder = source("scripts/fit_center_width_replay_table.py")
-    assert '"sigma_floor_rungs": floor_rungs,' in builder
+    assert "SIGMA_FLOOR_RUNGS if admitted else 0.0," in builder
+    assert "sigma_floor_rungs=SIGMA_FLOOR_RUNGS," in builder

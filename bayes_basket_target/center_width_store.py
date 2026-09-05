@@ -12,6 +12,7 @@ fitted independently and applied in that order.
 from __future__ import annotations
 
 import json
+import os
 import math
 import sqlite3
 from collections.abc import Mapping, Sequence
@@ -105,13 +106,21 @@ TAF_GAP_THRESHOLD_C = 0.5
 # one number doing two jobs, the tier boundary and the floor itself, because
 # a distribution is disbelieved exactly as far as it falls short.
 SIGMA_FLOOR_RUNGS = 1.44
-# The shadow arm's own hurdle.  It is fitted and journalled but not served
-# (user ruling, 2026-09-05: fit first, serve after the gate speaks), so this
-# is the number that decides whether it is worth wiring, and it is the same
-# one the pooled scalars answer to.
-SIGMA_FLOOR_SHADOW_STATES = (
-    "ADMITTED", "REFUSED_FORWARD", "ACCUMULATING", "NOT_MEASURED",
+# Whether an admitted floor is actually served.  ``shadow`` fits it, scores
+# it and journals the verdict while the stage keeps serving the pooled pair;
+# ``serve`` lets the verdict reach the activated row.  Default shadow, by the
+# user's plan of 2026-09-05: the lane's own forward gate is a probability
+# argument, and this repository has been taught more than once that a
+# probability argument is not a book argument.  Promotion is the paper
+# ledger's to grant, and this switch is what it grants.
+SIGMA_FLOOR_MODE = (
+    os.environ.get("PM_CENTER_WIDTH_SIGMA_FLOOR", "").strip().lower()
+    or "shadow"
 )
+if SIGMA_FLOOR_MODE not in {"shadow", "serve"}:
+    raise RuntimeError(
+        f"unknown center-width sigma floor mode: {SIGMA_FLOOR_MODE}"
+    )
 
 
 def taf_direction_for_gap(gap_c: float | None) -> str:
@@ -1290,9 +1299,14 @@ def _sigma_floor_lane(
     """
 
     gain_pooled = pooled_nll - floored_nll
-    admitted = gain_pooled > MIN_FORWARD_NLL_GAIN
+    measured = gain_pooled > MIN_FORWARD_NLL_GAIN
+    # The verdict is recorded whatever the mode; only serving is switched.
+    # A shadow that stopped measuring would have nothing to promote on.
+    admitted = measured and SIGMA_FLOOR_MODE == "serve"
     out: dict[str, Any] = {
         "schema": "center_width_sigma_floor_lane_v1",
+        "mode": SIGMA_FLOOR_MODE,
+        "measured_admitted": measured,
         "sigma_floor_rungs": SIGMA_FLOOR_RUNGS,
         "max_lift": MAX_SIGMA_FLOOR_LIFT,
         "incumbent_floor_rungs": float(incumbent_floor_rungs),
@@ -1307,7 +1321,11 @@ def _sigma_floor_lane(
         "forward_nll_gain_vs_incumbent": incumbent_nll - floored_nll,
         "min_forward_nll_gain": MIN_FORWARD_NLL_GAIN,
         "admitted": admitted,
-        "state": "ADMITTED" if admitted else "REFUSED_FORWARD",
+        "state": (
+            "ADMITTED" if admitted
+            else "SHADOW_ADMITTED" if measured
+            else "REFUSED_FORWARD"
+        ),
     }
     out.update(_forward_lift_census(forward, floor_rungs=SIGMA_FLOOR_RUNGS))
     return out
