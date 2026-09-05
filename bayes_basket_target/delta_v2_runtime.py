@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 from itertools import product
+import json
 import math
 from typing import Any, Callable, Mapping, Sequence
 
@@ -912,6 +913,45 @@ P0M_TAF_MODE = (
 )
 if P0M_TAF_MODE not in {"off", "tx_anchor", "confirm_hold", "confirm_override"}:
     raise RuntimeError(f"unknown P0-M TAF mode: {P0M_TAF_MODE}")
+# Research arm (2026-09-05, user): a claim multiplier for windows that HOLD
+# the centre -- the mirror of ``off_center_claim_factor``.  Re-measured on
+# the served (post-band) claims that day (``scripts/measure_off_center_
+# claim.py``, P0, 1,287 station-days, mean centre): centre-holding windows
+# realise 1.30 [1.23,1.37] of their claim in [0.35,0.55) and 1.12
+# [1.09,1.15] at 0.55 and above, so the whole-basket positive-EV gate is
+# systematically too strict there.  JSON list of [claimed-mass upper bound,
+# factor], read like the off-centre table (the first bound the claim falls
+# below); empty = off, which is the shipped rule.  Applied to the window's
+# claim inside ``_support_windows`` so the gate, the ranking, the solver's
+# partition and charter 68's agreement all read one belief -- and hashed
+# into the ledger's rule fingerprint, so an arm flips it on both sides.
+def _parse_claim_bands(text: str) -> tuple[tuple[float, float], ...]:
+    raw = json.loads(text or "[]")
+    bands = tuple((float(bound), float(factor)) for bound, factor in raw)
+    if any(bound <= 0.0 or factor <= 0.0 for bound, factor in bands):
+        raise RuntimeError(f"invalid centre-window claim bands: {text}")
+    if list(bound for bound, _ in bands) != sorted(bound for bound, _ in bands):
+        raise RuntimeError(f"centre-window claim bands must ascend: {text}")
+    return bands
+
+
+CENTER_WINDOW_CLAIM_BANDS: tuple[tuple[float, float], ...] = _parse_claim_bands(
+    os.environ.get("PM_CENTER_WINDOW_CLAIM_BANDS", "")
+)
+
+
+def center_window_claim_factor(claimed_mass: float) -> float:
+    """The arm's multiplier for a window holding the centre; 1.0 when off."""
+
+    if not CENTER_WINDOW_CLAIM_BANDS:
+        return 1.0
+    mass = float(claimed_mass)
+    for bound, factor in CENTER_WINDOW_CLAIM_BANDS:
+        if mass < bound:
+            return float(factor)
+    return 1.0
+
+
 # Research arm (2026-09-04, user): which stages may open an empty chain.
 # Charter 74 ships P0 alone; ``P0,P0-M`` is the arm that lets P0-M open (and
 # so take a ticket) for the TAF-confirmation replays.  P1 never opens.
@@ -1564,6 +1604,10 @@ def _support_windows(
                 else 1
             )
             claim_factor = off_center_claim_factor(raw_win, gap_buckets=center_gap)
+            if holds_center:
+                # Research arm (2026-09-05): the centre-holding mirror of
+                # the deflation above; identity unless the arm is on.
+                claim_factor *= center_window_claim_factor(raw_win)
             win = min(1.0 - EPS, raw_win * claim_factor)
             quotes = [_all_in(bucket) for bucket in window]
             priced = all(quote is not None for quote in quotes)
@@ -2035,6 +2079,9 @@ def _support_windows(
             edge=edge_refused,
         ),
         "minimum_leg_all_in_ask": MINIMUM_LEG_ALL_IN_ASK,
+        "center_window_claim_bands": [
+            [bound, factor] for bound, factor in CENTER_WINDOW_CLAIM_BANDS
+        ],
         # Retained name from the touch-the-core era so existing readers keep
         # working; it now counts refusals under the stronger rung.
         "core_refused_window_count": center_refused,

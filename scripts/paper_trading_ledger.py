@@ -101,6 +101,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     SYMMETRIC_SEAT_MODE,
     SKEW_SEAT_MODE,
     P0M_TAF_MODE,
+    CENTER_WINDOW_CLAIM_BANDS,
     CHAIN_OPENING_STAGES,
     CHAIN_TICKET_MODE as _PRODUCTION_CHAIN_TICKET_MODE,
     DECLINE_CLAMP_MODE as _PRODUCTION_DECLINE_CLAMP_MODE,
@@ -1745,6 +1746,7 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     "按checkpoint决策",
     "在任窗不免检",
     "对称日中心±1" if SYMMETRIC_SEAT_MODE == "center_pm1_p0" else None,
+    "含中心窗抬价" if CENTER_WINDOW_CLAIM_BANDS else None,
     "生产种子" if JUDGE != "ledger" else None,
     "一本账·只加不减",
 )))
@@ -1800,6 +1802,14 @@ SELECTION_RULE_SHA256 = content_sha256({
     # Charter 79: the symmetric-day seat rule, hashed unconditionally.
     "symmetric_seat": SYMMETRIC_SEAT_MODE,
     **({"skew_seat": SKEW_SEAT_MODE} if SKEW_SEAT_MODE != "off" else {}),
+    # Research arm (2026-09-05): centre-holding claim multiplier, hashed
+    # only when on -- production's constant, read from production.
+    **(
+        {"center_window_claim_bands": [
+            [bound, factor] for bound, factor in CENTER_WINDOW_CLAIM_BANDS
+        ]}
+        if CENTER_WINDOW_CLAIM_BANDS else {}
+    ),
     **({"p0m_taf": P0M_TAF_MODE} if P0M_TAF_MODE != "off" else {}),
     **(
         {"chain_opening_stages": sorted(CHAIN_OPENING_STAGES)}
