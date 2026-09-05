@@ -20,13 +20,17 @@ if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
 
-def test_off_by_default_and_the_factor_reads_the_bands(monkeypatch) -> None:
+def test_charter_81_is_the_default_and_off_is_the_arm(monkeypatch) -> None:
     import bayes_basket_target.delta_v2_runtime as R
 
-    assert R.CENTER_WINDOW_CLAIM_BANDS == ()
+    bands = ((0.35, 1.0), (0.55, 1.21), (1.01, 1.08))
+    assert R.CENTER_WINDOW_CLAIM_BANDS == bands
+    assert R._parse_claim_bands("") == bands
+    assert R._parse_claim_bands("off") == ()
+    assert R._parse_claim_bands("[]") == ()
+    assert R._parse_claim_bands("[[0.35, 1.0], [0.55, 1.21], [1.01, 1.08]]") == bands
+    monkeypatch.setattr(R, "CENTER_WINDOW_CLAIM_BANDS", ())
     assert R.center_window_claim_factor(0.45) == 1.0
-    bands = R._parse_claim_bands("[[0.35, 1.0], [0.55, 1.21], [1.01, 1.08]]")
-    assert bands == ((0.35, 1.0), (0.55, 1.21), (1.01, 1.08))
     monkeypatch.setattr(R, "CENTER_WINDOW_CLAIM_BANDS", bands)
     assert R.center_window_claim_factor(0.30) == 1.0
     assert R.center_window_claim_factor(0.45) == pytest.approx(1.21)
@@ -55,5 +59,6 @@ def test_the_ledger_reads_productions_constant_and_hashes_it() -> None:
 
     assert L.CENTER_WINDOW_CLAIM_BANDS is R.CENTER_WINDOW_CLAIM_BANDS
     ledger = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
-    assert '"center_window_claim_bands"' in ledger
+    # Hashed unconditionally, like the other shipped seat rules.
+    assert '"center_window_claim": [' in ledger
     assert '"含中心窗抬价" if CENTER_WINDOW_CLAIM_BANDS else None' in ledger

@@ -1803,14 +1803,11 @@ SELECTION_RULE_SHA256 = content_sha256({
     # Charter 79: the symmetric-day seat rule, hashed unconditionally.
     "symmetric_seat": SYMMETRIC_SEAT_MODE,
     **({"skew_seat": SKEW_SEAT_MODE} if SKEW_SEAT_MODE != "off" else {}),
-    # Research arm (2026-09-05): centre-holding claim multiplier, hashed
-    # only when on -- production's constant, read from production.
-    **(
-        {"center_window_claim_bands": [
-            [bound, factor] for bound, factor in CENTER_WINDOW_CLAIM_BANDS
-        ]}
-        if CENTER_WINDOW_CLAIM_BANDS else {}
-    ),
+    # Charter 81: the centre-holding claim lift, hashed unconditionally --
+    # production's constant, read from production; [] is the off arm.
+    "center_window_claim": [
+        [bound, factor] for bound, factor in CENTER_WINDOW_CLAIM_BANDS
+    ],
     **({"p0m_taf": P0M_TAF_MODE} if P0M_TAF_MODE != "off" else {}),
     **(
         {"chain_opening_stages": sorted(CHAIN_OPENING_STAGES)}

@@ -30,6 +30,7 @@ from .basket_kernel.delta_v2 import (
     EFFECTIVE_EDGE_STAGES,
     effective_edge_lambda,
     effective_edge_lambda_for_stage,
+    effective_edge_lambda_from_tables,
     effective_edge_bucket_lambda_for_stage,
     off_center_claim_factor,
     probability_core,
@@ -914,20 +915,30 @@ P0M_TAF_MODE = (
 )
 if P0M_TAF_MODE not in {"off", "tx_anchor", "confirm_hold", "confirm_override"}:
     raise RuntimeError(f"unknown P0-M TAF mode: {P0M_TAF_MODE}")
-# Research arm (2026-09-05, user): a claim multiplier for windows that HOLD
-# the centre -- the mirror of ``off_center_claim_factor``.  Re-measured on
-# the served (post-band) claims that day (``scripts/measure_off_center_
+# Charter 81 (user ruling, 2026-09-05): a claim multiplier for windows that
+# HOLD the centre -- the mirror of ``off_center_claim_factor``.  Re-measured
+# on the served (post-band) claims that day (``scripts/measure_off_center_
 # claim.py``, P0, 1,287 station-days, mean centre): centre-holding windows
 # realise 1.30 [1.23,1.37] of their claim in [0.35,0.55) and 1.12
-# [1.09,1.15] at 0.55 and above, so the whole-basket positive-EV gate is
-# systematically too strict there.  JSON list of [claimed-mass upper bound,
-# factor], read like the off-centre table (the first bound the claim falls
-# below); empty = off, which is the shipped rule.  Applied to the window's
-# claim inside ``_support_windows`` so the gate, the ranking, the solver's
-# partition and charter 68's agreement all read one belief -- and hashed
-# into the ledger's rule fingerprint, so an arm flips it on both sides.
+# [1.09,1.15] at 0.55 and above, so the whole-basket positive-EV gate was
+# systematically too strict there.  The shipped table is those ratios
+# shrunk 30% toward one; the ledger priced it at +3.11% against the
+# charter-80 baseline's -2.08% (same book, production judge, drop-the-
+# winners lead steady at +8 points).  JSON list of [claimed-mass upper
+# bound, factor], read like the off-centre table (the first bound the claim
+# falls below); ``PM_CENTER_WINDOW_CLAIM_BANDS=off`` (or ``[]``) is the
+# research arm that turns it off.  Applied to the window's claim inside
+# ``_support_windows`` so the gate, the ranking, the solver's partition and
+# charter 68's agreement all read one belief -- and hashed into the
+# ledger's rule fingerprint unconditionally.
+CENTER_WINDOW_CLAIM_DEFAULT = "[[0.35, 1.0], [0.55, 1.21], [1.01, 1.08]]"
+
+
 def _parse_claim_bands(text: str) -> tuple[tuple[float, float], ...]:
-    raw = json.loads(text or "[]")
+    cleaned = (text or "").strip()
+    if cleaned.lower() == "off":
+        return ()
+    raw = json.loads(cleaned or CENTER_WINDOW_CLAIM_DEFAULT)
     bands = tuple((float(bound), float(factor)) for bound, factor in raw)
     if any(bound <= 0.0 or factor <= 0.0 for bound, factor in bands):
         raise RuntimeError(f"invalid centre-window claim bands: {text}")
@@ -2232,6 +2243,7 @@ def _solve_over_support_windows(
     chain_growth_frame_usdc: float | None = None,
     book_equity_usdc: float | None = None,
     last_decision_signature: Mapping[str, Any] | None = None,
+    effective_edge_tables: Mapping[str, Any] | None = None,
 ) -> tuple[tuple[str, ...], dict[str, Any], dict[str, Any]]:
     """Run the objective on each shortlisted window; the head one is seated.
 
@@ -2336,8 +2348,12 @@ def _solve_over_support_windows(
             priced = row.get("all_in_price")
             claimed = float(row.get("win_probability") or 0.0)
             if priced is not None and claimed > EPS:
-                claim_factor *= effective_edge_lambda_for_stage(
-                    stage, float(priced) / claimed
+                # Charter 68(c): the served table is the store's rolling
+                # fit, handed in by the caller as of its own moment; the
+                # kernel constant is only the bootstrap before a scope's
+                # first activation.
+                claim_factor *= effective_edge_lambda_from_tables(
+                    stage, float(priced) / claimed, effective_edge_tables
                 )
         # The partition is one kernel helper (charter 71): the same
         # deflated belief feeds the candidate generator, the curve score
@@ -3559,6 +3575,7 @@ def compile_delta_v2_runtime_plan(
     book_equity_usdc: float | None = None,
     last_decision_signature: Mapping[str, Any] | None = None,
     taf_tx_bucket: str | None = None,
+    effective_edge_tables: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compile the single-event q* and best no-live action under v2.
 
@@ -3804,6 +3821,7 @@ def compile_delta_v2_runtime_plan(
             chain_growth_frame_usdc=chain_growth_frame_usdc,
             book_equity_usdc=book_equity_usdc,
             last_decision_signature=last_decision_signature,
+            effective_edge_tables=effective_edge_tables,
         )
     )
     ordered_support = seated_support

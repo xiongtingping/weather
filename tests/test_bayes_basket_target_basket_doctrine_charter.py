@@ -2928,3 +2928,63 @@ def test_clause_79_symmetric_day_seat_is_the_mean_bucket_plus_minus_one(monkeypa
         sys.path.insert(0, str(root / "scripts"))
     ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
     assert '"symmetric_seat": SYMMETRIC_SEAT_MODE,' in ledger_source
+
+
+def test_clause_81_centre_holding_windows_claim_is_lifted() -> None:
+    """Charter 81: a window holding the mean centre claims 1.21x in [0.35,0.55), 1.08x above."""
+    from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
+    from bayes_basket_target.delta_v2_runtime import _support_windows
+
+    clause = _clause(81)
+    for needle in ("×1.21", "×1.08", "PM_CENTER_WINDOW_CLAIM_BANDS", "center_window_claim", "+3.11%"):
+        assert needle in clause, needle
+    assert delta_v2_runtime.CENTER_WINDOW_CLAIM_BANDS == (
+        (0.35, 1.0), (0.55, 1.21), (1.01, 1.08)
+    )
+    labels = ["29°C", "30°C", "31°C", "32°C", "33°C", "34°C"]
+    probs = [0.06, 0.20, 0.30, 0.20, 0.16, 0.08]
+    asks = [0.05, 0.15, 0.30, 0.15, 0.10, 0.05]
+    rows = [
+        {
+            "bucket": b, "ordinal": i + 2, "probability": p,
+            "bid_price": max(0.0, a - 0.01),
+            "bid_levels": [{"price": max(0.001, a - 0.01), "shares": 50.0}],
+            "ask_levels": [{"price": a, "shares": 100.0}],
+            "price_tick_size": 0.01,
+            "maker_queue_ahead_shares": 0.0, "maker_queue_known": True,
+        }
+        for i, (b, p, a) in enumerate(zip(labels, probs, asks))
+    ]
+    snapshot = TargetBasketSnapshot.from_mapping({
+        "schema": "target_basket_snapshot_v6", "snapshot_id": "c81", "sequence": 1,
+        "observed_at": "2026-09-05T00:00:00Z", "market_id": "m", "station_id": "X",
+        "event_date": "2026-09-06", "quote_version": "q",
+        "quote_observed_at": "2026-09-05T00:00:00Z", "quote_source": "OFFICIAL_CLOB_WS",
+        "inventory_version": "i", "order_state_version": "o",
+        "evidence": {"probability_stage": "P0", "posterior_version": "p", "posterior_sha256": "a" * 64},
+        "buckets": rows, "checkpoint_changed": True, "quote_changed": True,
+        "fill_changed": True, "time_gate_changed": True, "evidence_fresh": True,
+        "contract_matches": True, "order_state_known": True, "risk_inputs_complete": True,
+        "time_left_minutes": 600.0,
+    })
+    windows, audit = _support_windows(
+        snapshot=snapshot, desired={"30°C", "31°C", "32°C"},
+        probabilities=dict(zip(labels, probs)), fee_rate=0.0,
+        maximum_support_buckets=4, minimum_support_buckets=3,
+        center_bucket="31°C", probability_stage="P0",
+    )
+    assert audit["center_window_claim_bands"] == [[0.35, 1.0], [0.55, 1.21], [1.01, 1.08]]
+    by_window = {tuple(w["buckets"]): w for w in windows}
+    core = by_window[("30°C", "31°C", "32°C")]          # raw 0.70 -> x1.08
+    assert core["raw_win_probability"] == pytest.approx(0.70)
+    assert core["off_center_claim_factor"] == pytest.approx(1.08)
+    assert core["win_probability"] == pytest.approx(0.70 * 1.08)
+    wide = by_window[("31°C", "32°C", "33°C")]          # raw 0.66 -> x1.08, holds centre
+    assert wide["off_center_claim_factor"] == pytest.approx(1.08)
+    # The ledger hashes the rule unconditionally.
+    import sys
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[1]
+    ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
+    assert '"center_window_claim": [' in ledger_source
