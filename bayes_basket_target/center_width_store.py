@@ -141,7 +141,11 @@ WIDTH_TIER_MODE = (
 if WIDTH_TIER_MODE not in {"shadow", "serve"}:
     raise RuntimeError(f"unknown center-width tier mode: {WIDTH_TIER_MODE}")
 WIDTH_TIER_LAMBDA_GRID = tuple(round(0.50 + 0.025 * step, 3) for step in range(21))
-WINDOW_TERM_WEIGHT = 1.0
+WINDOW_TERM_WEIGHT = float(
+    os.environ.get("PM_CENTER_WIDTH_WINDOW_TERM_WEIGHT", "") or 1.0
+)
+if not WINDOW_TERM_WEIGHT >= 0.0:
+    raise RuntimeError(f"invalid centre-width window term weight: {WINDOW_TERM_WEIGHT}")
 MAX_BUCKET_NLL_REGRESSION = 0.002
 
 

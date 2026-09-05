@@ -188,3 +188,14 @@ def test_every_serving_face_carries_the_tiers() -> None:
     assert '(center_width_tiers or {}).get("lambdas") or None' in oos
     ledger = read("scripts/paper_trading_ledger.py")
     assert '(entry.get("width_tiers") or {}).get("lambdas") or None' in ledger
+
+
+def test_the_two_research_switches_default_to_the_shipped_values() -> None:
+    from bayes_basket_target.center_width_calibration import _parse_tier_boundaries
+
+    assert WIDTH_TIER_BOUNDARIES_RUNGS == (1.44, 2.0)
+    assert store.WINDOW_TERM_WEIGHT == 1.0
+    assert _parse_tier_boundaries("") == (1.44, 2.0)
+    assert _parse_tier_boundaries("[1.44, 2.5]") == (1.44, 2.5)
+    with pytest.raises(RuntimeError):
+        _parse_tier_boundaries("[2.5, 1.44]")

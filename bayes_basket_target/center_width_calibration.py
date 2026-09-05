@@ -32,6 +32,8 @@ the model any closer to knowing something the market does not.
 from __future__ import annotations
 
 import math
+import os
+import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -93,8 +95,29 @@ MAX_ABS_REGIME_SHIFT_C = 1.0
 # as the bucket.  The tier is read off the distribution before the transform,
 # by one function the fit and serving share, so no distribution is tiered
 # one way and served another.
-WIDTH_TIER_BOUNDARIES_RUNGS = (1.44, 2.0)
-WIDTH_TIER_NAMES = ("narrow", "mid", "wide")
+def _parse_tier_boundaries(text: str) -> tuple[float, ...]:
+    """Research switch: ascending positive boundaries as a JSON list."""
+
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return (1.44, 2.0)
+    raw = json.loads(cleaned)
+    bounds = tuple(float(value) for value in raw)
+    if not bounds or any(b <= 0.0 or not math.isfinite(b) for b in bounds):
+        raise RuntimeError(f"invalid centre-width tier boundaries: {text}")
+    if list(bounds) != sorted(bounds) or len(set(bounds)) != len(bounds):
+        raise RuntimeError(f"centre-width tier boundaries must ascend: {text}")
+    return bounds
+
+
+WIDTH_TIER_BOUNDARIES_RUNGS = _parse_tier_boundaries(
+    os.environ.get("PM_CENTER_WIDTH_TIER_BOUNDARIES", "")
+)
+WIDTH_TIER_NAMES = (
+    ("narrow", "mid", "wide")
+    if len(WIDTH_TIER_BOUNDARIES_RUNGS) == 2
+    else tuple(f"tier{i}" for i in range(len(WIDTH_TIER_BOUNDARIES_RUNGS) + 1))
+)
 
 
 def bucket_rung_width_c(centers: Sequence[float]) -> float:
