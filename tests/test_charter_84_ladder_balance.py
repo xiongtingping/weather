@@ -701,11 +701,29 @@ def test_ltac_the_held_rung_priced_above_its_claim_no_longer_refuses_the_window(
         assert "delta_v2_support_empty" in str(exc)
     else:
         assert at_par["state"] == "HOLD"
+        # Charter 87 (2026-09-06): the gate reads the increment's claim
+        # through charter 68's lambda at the window's agreement (a = 1.08,
+        # lambda 0.82): 0.514 x 0.82 = 0.42 against an offer of 0.43, so
+        # the completion is refused at the gate, before the chain law sees
+        # it.  Either refusal is the same answer: nothing is bought.
+        selection = at_par["basket_support_selection"]
+        assert selection["seated"]["admissible"] is False
+        assert selection["effective_edge_gate_refused_window_count"] >= 1
+    # The pre-87 gate: the increment is admitted on the lifted claim alone
+    # and it is charter 66 A -- a chain at par -- that refuses it.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
+    try:
+        at_par = _compile(_ltac(ask_31=0.34, ask_33=0.09))
+    except ContractError as exc:
+        assert "delta_v2_support_empty" in str(exc)
+    else:
+        assert at_par["state"] == "HOLD"
         assert any(
             row["buckets"] == ["31", "32", "33"]
             and str(row["reason"]).startswith("chain_cost_at_par")
             for row in at_par["basket_support_selection"]["unsolvable_windows"]
         )
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "on")
 
     cheaper = _compile(_ltac(ask_31=0.30, ask_33=0.07))
     seated = cheaper["basket_support_selection"]["seated"]

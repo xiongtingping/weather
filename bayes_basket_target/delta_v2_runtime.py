@@ -1278,7 +1278,28 @@ if CHARTER_84_LADDER_BALANCE not in {"on", "off"}:
     raise RuntimeError(
         f"unknown charter 84 ladder balance mode: {CHARTER_84_LADDER_BALANCE}"
     )
+# Charter 87 (user ruling, 2026-09-06: "落正确形态是一个信念"): the
+# whole-basket positive-EV gate reads the belief the solver sizes on -- the
+# lifted claim (charter 81) times charter 68's lambda(a) at the window's
+# agreement -- and charter 74's ticket is issued only past that gate.
+# Before this the gate read the lifted claim alone and lambda entered at the
+# solver: a window the book priced between lambda(a) and the lift (a in
+# (0.89, 1.08) on the 2026-09-06 tables) cleared the gate, sized to nothing
+# under Kelly, and was bought as a ticket regardless -- 8 of the 13 live
+# tickets since go-live (52.03 staked, -7.0% at the solver's own belief;
+# KDAL 2026-09-07: gate 0.9999 vs 0.99, solver 0.905 vs 0.99).  ``off`` is
+# the pre-ruling gate, kept as a replay arm.  The lifted claim stays in the
+# row's ``win_probability`` (the lambda store fits on it; the ledger's own
+# judge deflates it itself); the deflated belief is
+# ``effective_win_probability`` and the gate's ``edge`` reads it.
+CHARTER_87_GATE_EFFECTIVE_EDGE = (
+    os.environ.get("PM_CHARTER_87_GATE_LAMBDA", "").strip().lower() or "on"
+)
+_EFFECTIVE_EDGE_GATE_STAGES = frozenset(
+    EFFECTIVE_EDGE_STAGES | EFFECTIVE_EDGE_P0M_STAGES | EFFECTIVE_EDGE_P1_STAGES
+)
 for _name, _value in (
+    ("PM_CHARTER_87_GATE_LAMBDA", CHARTER_87_GATE_EFFECTIVE_EDGE),
     ("PM_CHARTER_83_MIN_NOTIONAL", CHARTER_83_MIN_NOTIONAL),
     ("PM_CHARTER_77_DECISION_MOMENTS", CHARTER_77_DECISION_MOMENTS),
     ("PM_CHARTER_78_NO_EXEMPTION", CHARTER_78_INCUMBENT_NO_EXEMPTION),
@@ -1364,6 +1385,7 @@ def _support_windows(
     taf_tx_bucket: str | None = None,
     probability_stage: str = "",
     convergence_evidence: Mapping[str, Any] | None = None,
+    effective_edge_tables: Mapping[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Contiguous windows admissible as a support, ranked by belief divergence.
 
@@ -1646,6 +1668,7 @@ def _support_windows(
     gapped_refused = 0
     unpriced_refused = 0
     edge_refused = 0
+    lambda_refused = 0
     enumerated = 0
     shortlisted = 0
     # The window the price gate came closest to admitting.  The counters
@@ -1823,7 +1846,33 @@ def _support_windows(
                 convergence["shadow_factor"] = convergence_shadow_lift
                 convergence["applied_factor"] = convergence_lift
             win = min(1.0 - EPS, raw_win * claim_factor)
-            edge = win - price if priced else None
+            # Charter 87: one belief.  The gate reads what the solver sizes
+            # on -- the lifted claim times charter 68's lambda at this
+            # window's agreement (price over the lifted claim, the a the
+            # solver looked up) -- so a window the book prices above what
+            # lambda says arrives is refused here, instead of being
+            # admitted, sized to nothing and bought as a ticket.  P1's
+            # table is identity, so P1 reads as before; the bucket-scope
+            # research arm deflates per rung at the solver and leaves the
+            # gate alone.  ``win_probability`` stays the lifted claim.
+            gate_lambda = None
+            gate_agreement = None
+            if (
+                CHARTER_87_GATE_EFFECTIVE_EDGE == "on"
+                and EFFECTIVE_EDGE_MODE == "on"
+                and EFFECTIVE_EDGE_SCOPE == "window"
+                and str(probability_stage or "") in _EFFECTIVE_EDGE_GATE_STAGES
+                and priced
+                and win > EPS
+            ):
+                gate_agreement = price / win
+                gate_lambda = float(effective_edge_lambda_from_tables(
+                    str(probability_stage or ""),
+                    gate_agreement,
+                    effective_edge_tables,
+                ))
+            effective_win = win * (gate_lambda if gate_lambda is not None else 1.0)
+            edge = effective_win - price if priced else None
             is_incumbent = window == incumbent
             # The incumbent has no exemption left.  It used to be waived past
             # both floors on the reasoning that the continuous-core resolver
@@ -1990,10 +2039,13 @@ def _support_windows(
                 # it, on the same friction.  Journaled in both modes so the
                 # shadow and the arm read one column.
                 convergence_candidates += 1
-                unlifted_edge = raw_win * claim_factor / convergence_lift - price
+                _gate_lam = gate_lambda if gate_lambda is not None else 1.0
+                unlifted_edge = (
+                    raw_win * claim_factor / convergence_lift * _gate_lam - price
+                )
                 lifted_edge = (
                     raw_win * claim_factor / convergence_lift
-                    * convergence_shadow_lift - price
+                    * convergence_shadow_lift * _gate_lam - price
                 )
                 flips = (
                     unlifted_edge <= friction + EPS
@@ -2026,11 +2078,23 @@ def _support_windows(
             # quantities the whole-window rule reads, over the rungs being
             # bought.
             completion = _completion_increment(
-                window, quotes=quotes, claim_factor=claim_factor,
+                window, quotes=quotes,
+                claim_factor=claim_factor * (
+                    gate_lambda if gate_lambda is not None else 1.0
+                ),
             )
             if completion is not None:
                 leg_floor_hit = False
                 admissible = bool(completion["admissible"])
+                if gate_lambda is not None and not admissible:
+                    # Charter 87's count covers completions too: the
+                    # increment that cleared its offer on the lifted claim
+                    # and fell to lambda.
+                    pre_lambda = _completion_increment(
+                        window, quotes=quotes, claim_factor=claim_factor,
+                    )
+                    if pre_lambda is not None and bool(pre_lambda["admissible"]):
+                        lambda_refused += 1
             if not admissible:
                 # Name which of the three ways this branch can refuse actually
                 # refused.  Until 2026-08-20 it had no counter at all, so the
@@ -2050,6 +2114,13 @@ def _support_windows(
                     unpriced_refused += 1
                 else:
                     edge_refused += 1
+                    # Charter 87: cleared the pre-lambda price test and
+                    # fell to lambda -- the seats the ruling removes.
+                    if (
+                        gate_lambda is not None
+                        and (win - price) > friction + EPS
+                    ):
+                        lambda_refused += 1
                     if edge is not None and (
                         best_refused is None
                         or float(edge) > float(best_refused["edge"])
@@ -2058,6 +2129,9 @@ def _support_windows(
                             "buckets": list(window),
                             "edge": float(edge),
                             "win_probability": float(win),
+                            "effective_win_probability": float(effective_win),
+                            "effective_edge_lambda": gate_lambda,
+                            "effective_edge_agreement": gate_agreement,
                             "all_in_cost": float(price),
                             "friction": float(friction),
                         }
@@ -2084,6 +2158,13 @@ def _support_windows(
             windows.append({
                 "buckets": window,
                 "win_probability": win,
+                # Charter 87: the belief the gate judged and the solver
+                # sizes on, and the lambda it was read through (None when
+                # the gate did not apply one: arm off, unpriced, a stage
+                # without a table, or the bucket-scope arm).
+                "effective_win_probability": effective_win,
+                "effective_edge_lambda": gate_lambda,
+                "effective_edge_agreement": gate_agreement,
                 "raw_win_probability": raw_win,
                 "off_center_claim_factor": claim_factor,
                 # Charter 81's own component of the line above, kept apart so
@@ -2129,16 +2210,49 @@ def _support_windows(
         incumbent_friction = SUPPORT_EDGE_FRICTION_TICKS_PER_LEG * sum(
             float(by_bucket[bucket].price_tick_size) for bucket in incumbent
         ) + SUPPORT_EDGE_MARGIN
-        incumbent_admissible = (
-            priced and (win - price) > incumbent_friction + EPS
+        # Charter 87: the same belief as the loop's gate.  An inherited
+        # support is not lifted (it never was), but it is deflated by the
+        # lambda its own agreement earns.
+        incumbent_lambda = None
+        incumbent_agreement = None
+        if (
+            CHARTER_87_GATE_EFFECTIVE_EDGE == "on"
+            and EFFECTIVE_EDGE_MODE == "on"
+            and EFFECTIVE_EDGE_SCOPE == "window"
+            and str(probability_stage or "") in _EFFECTIVE_EDGE_GATE_STAGES
+            and priced
+            and win > EPS
+        ):
+            incumbent_agreement = price / win
+            incumbent_lambda = float(effective_edge_lambda_from_tables(
+                str(probability_stage or ""),
+                incumbent_agreement,
+                effective_edge_tables,
+            ))
+        incumbent_effective_win = win * (
+            incumbent_lambda if incumbent_lambda is not None else 1.0
         )
+        incumbent_admissible = (
+            priced
+            and (incumbent_effective_win - price) > incumbent_friction + EPS
+        )
+        if (
+            priced
+            and incumbent_lambda is not None
+            and not incumbent_admissible
+            and (win - price) > incumbent_friction + EPS
+        ):
+            lambda_refused += 1
         # Charter 84 (八): the increment is recorded for the audit, but an
         # incumbent that failed the enumeration failed it on the ladder's
         # own rules -- centre, width, skew (clauses 49/50) -- and a
         # completion does not waive those; only a window the loop admitted
         # is completed.
         incumbent_completion = _completion_increment(
-            incumbent, quotes=quotes, claim_factor=1.0,
+            incumbent, quotes=quotes,
+            claim_factor=(
+                incumbent_lambda if incumbent_lambda is not None else 1.0
+            ),
         )
         if not incumbent_admissible:
             if not priced:
@@ -2157,13 +2271,16 @@ def _support_windows(
         windows.append({
             "buckets": incumbent,
             "win_probability": win,
+            "effective_win_probability": incumbent_effective_win,
+            "effective_edge_lambda": incumbent_lambda,
+            "effective_edge_agreement": incumbent_agreement,
             # Arm B: an inherited support is never lifted; keys kept so every
             # row reads alike.
             "convergence_claim_factor": 1.0,
             "convergence": None,
             "holds_probability_core": bool(core) and bool(set(incumbent) & core),
             "all_in_price": price if priced else None,
-            "edge": (win - price) if priced else None,
+            "edge": (incumbent_effective_win - price) if priced else None,
             "log_growth_rank": incumbent_kl,
             "is_incumbent": True,
             "admissible": bool(incumbent_admissible),
@@ -2381,6 +2498,11 @@ def _support_windows(
         # gate, which is itself the answer -- the refusal was structural,
         # and there was no target to miss.
         "edge_best_refused_window": best_refused,
+        # Charter 87: the gate reads the lifted claim times lambda(a).  This
+        # counts the windows that cleared the pre-lambda price test and
+        # fell to lambda -- the seats the ruling removes.
+        "gate_reads_effective_edge": CHARTER_87_GATE_EFFECTIVE_EDGE,
+        "effective_edge_gate_refused_window_count": lambda_refused,
         "unpriced_refused_window_count": unpriced_refused,
         # The friction the edge gate measured against is not repeated here:
         # ``_solve_over_support_windows`` already publishes it into the same
@@ -2481,6 +2603,7 @@ def _support_windows(
             minimum_support_buckets=OPENING_FALLBACK_MIN_BUCKETS,
             probability_stage=probability_stage,
             convergence_evidence=convergence_evidence,
+            effective_edge_tables=effective_edge_tables,
         )
         if fallback_windows:
             fallback_audit["opening_width_fallback"] = True
@@ -2709,16 +2832,26 @@ def _solve_over_support_windows(
             or stage in EFFECTIVE_EDGE_P0M_STAGES
             or stage in EFFECTIVE_EDGE_P1_STAGES
         ):
-            priced = row.get("all_in_price")
-            claimed = float(row.get("win_probability") or 0.0)
-            if priced is not None and claimed > EPS:
-                # Charter 68(c): the served table is the store's rolling
-                # fit, handed in by the caller as of its own moment; the
-                # kernel constant is only the bootstrap before a scope's
-                # first activation.
-                claim_factor *= effective_edge_lambda_from_tables(
-                    stage, float(priced) / claimed, effective_edge_tables
-                )
+            gate_lambda = row.get("effective_edge_lambda")
+            if gate_lambda is not None:
+                # Charter 87: the gate looked lambda up at this window's
+                # agreement and recorded it; the solver reads that value
+                # rather than making a second lookup, so admission and
+                # sizing cannot drift apart.
+                claim_factor *= float(gate_lambda)
+            else:
+                priced = row.get("all_in_price")
+                claimed = float(row.get("win_probability") or 0.0)
+                if priced is not None and claimed > EPS:
+                    # Charter 68(c): the served table is the store's
+                    # rolling fit, handed in by the caller as of its own
+                    # moment; the kernel constant is only the bootstrap
+                    # before a scope's first activation.  Reached when the
+                    # gate applied no lambda (charter 87 off, or a row the
+                    # gate did not price).
+                    claim_factor *= effective_edge_lambda_from_tables(
+                        stage, float(priced) / claimed, effective_edge_tables
+                    )
         # The partition is one kernel helper (charter 71): the same
         # deflated belief feeds the candidate generator, the curve score
         # and the chain-growth gate below, and the paper ledger reads the
@@ -3031,6 +3164,10 @@ def _solve_over_support_windows(
         "seated": {
             "buckets": list(best["window"]["buckets"]),
             "win_probability": best["window"]["win_probability"],
+            "effective_win_probability": best["window"].get(
+                "effective_win_probability"
+            ),
+            "effective_edge_lambda": best["window"].get("effective_edge_lambda"),
             "all_in_price": best["window"]["all_in_price"],
             "edge": best["window"]["edge"],
             "curve_score": best["score"],
@@ -3045,6 +3182,12 @@ def _solve_over_support_windows(
             {
                 "buckets": list(item["window"]["buckets"]),
                 "win_probability": item["window"]["win_probability"],
+                "effective_win_probability": item["window"].get(
+                    "effective_win_probability"
+                ),
+                "effective_edge_lambda": item["window"].get(
+                    "effective_edge_lambda"
+                ),
                 "all_in_price": item["window"]["all_in_price"],
                 "edge": item["window"]["edge"],
                 "curve_score": item["score"],
@@ -4514,6 +4657,9 @@ def compile_delta_v2_runtime_plan(
         # caller that holds the database; the paper ledger hands the same
         # loader's output.
         convergence_evidence=convergence_evidence,
+        # Charter 87: the gate reads lambda off the same served tables the
+        # solver used to read it off, as of the same moment.
+        effective_edge_tables=effective_edge_tables,
     )
     # The floor's live set is the evidence's, not the candidate support's.
     # ``ordered_support`` here is the continuous-core candidate boundary --

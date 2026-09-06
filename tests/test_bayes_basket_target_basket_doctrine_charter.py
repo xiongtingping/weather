@@ -742,7 +742,7 @@ def test_clause_37_incumbent_survives_a_domain_it_cannot_be_enumerated_in() -> N
     ), "only the incumbent may exceed the cap, and only because it already does"
 
 
-def test_clause_45_market_center_outside_envelope_is_diagnostic_only() -> None:
+def test_clause_45_market_center_outside_envelope_is_diagnostic_only(monkeypatch: pytest.MonkeyPatch) -> None:
     """The disagreement is recorded; it no longer locks new money.
 
     The capital gate this once was (2026-08-13, the ZUUU starved-root
@@ -754,6 +754,11 @@ def test_clause_45_market_center_outside_envelope_is_diagnostic_only() -> None:
     measured.  Same snapshot, same probabilities: when the market center
     walks out of the envelope the diagnostic flips and nothing else does.
     """
+    # Charter 87 (2026-09-06): this fixture's book prices the seat where
+    # charter 68's lambda(a) says most of the claim never arrives, so the
+    # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
+    # The gate itself is pinned in test_clause_87_*.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
 
     clause = _clause(45)
     assert "退役" in clause
@@ -960,7 +965,7 @@ def test_clause_42_envelope_compiler_source_is_price_blind() -> None:
         )
 
 
-def test_clause_35_objective_owns_seat_quantity_price_and_dials() -> None:
+def test_clause_35_objective_owns_seat_quantity_price_and_dials(monkeypatch: pytest.MonkeyPatch) -> None:
     """The model nominates; the objective decides all five powers.
 
     Fixture: the inherited core is {36} but both buckets offer at 0.20
@@ -971,6 +976,11 @@ def test_clause_35_objective_owns_seat_quantity_price_and_dials() -> None:
     price is a legal post bounded by the book, and the clause-40 dials are
     published for the seated basket.
     """
+    # Charter 87 (2026-09-06): this fixture's book prices the seat where
+    # charter 68's lambda(a) says most of the claim never arrives, so the
+    # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
+    # The gate itself is pinned in test_clause_87_*.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
 
     clause = _clause(35)
     assert "模型选桶仅是参考与提名" in clause
@@ -2921,6 +2931,11 @@ def _symmetric_seat_rule_off(monkeypatch):
 
 def test_clause_79_symmetric_day_seat_is_the_mean_bucket_plus_minus_one(monkeypatch) -> None:
     """Charter 79: on a symmetric day P0/P0-M seat centre-1, centre, centre+1; P1 untouched."""
+    # Charter 87 (2026-09-06): this fixture's book prices the seat where
+    # charter 68's lambda(a) says most of the claim never arrives, so the
+    # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
+    # The gate itself is pinned in test_clause_87_*.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
     from bayes_basket_target.delta_v2_runtime import _support_windows
 
@@ -3062,6 +3077,11 @@ def test_symmetric_pair_arm_seats_the_mean_bucket_and_the_leaning_neighbour(monk
 
 def test_symmetric_single_rung_arm_seats_only_the_mean_bucket(monkeypatch) -> None:
     """Research arm (2026-09-05): symmetric day -> one rung, the mean (= mode) bucket."""
+    # Charter 87 (2026-09-06): this fixture's book prices the seat where
+    # charter 68's lambda(a) says most of the claim never arrives, so the
+    # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
+    # The gate itself is pinned in test_clause_87_*.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
     from bayes_basket_target.delta_v2_runtime import _support_windows
 
@@ -3166,3 +3186,112 @@ def test_clause_81_centre_holding_windows_claim_is_lifted() -> None:
     root = _Path(__file__).resolve().parents[1]
     ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
     assert '"center_window_claim": [' in ledger_source
+
+
+def test_clause_87_the_gate_reads_effective_edge_and_the_ticket_waits_for_it(monkeypatch) -> None:
+    """Charter 87: the positive-EV gate reads the lifted claim times lambda(a).
+
+    A window the book prices above what lambda says arrives is refused at the
+    gate, so it is offered the baseline only and charter 74's ticket is never
+    issued on it; the pre-ruling arm admits it as before.
+    """
+    from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
+    from bayes_basket_target.delta_v2_runtime import _support_windows
+
+    clause = _clause(87)
+    for needle in (
+        "λ(a)", "PM_CHARTER_87_GATE_LAMBDA", "门票只在闸后发",
+        "effective_win_probability", "gate_belief", "effective_edge_lambda",
+    ):
+        assert needle in clause, needle
+    # The old clauses carry the rewrite.
+    assert "第 87 条起" in _clause(58)
+    assert "第 87 条起" in _clause(68)
+    assert "第 87 条起" in _clause(74)
+    assert "第 87 条起" in _clause(81)
+    assert delta_v2_runtime.CHARTER_87_GATE_EFFECTIVE_EDGE == "on"
+    assert delta_v2_runtime.EFFECTIVE_EDGE_MODE == "on"
+    assert delta_v2_runtime.EFFECTIVE_EDGE_SCOPE == "window"
+
+    labels = ["29°C", "30°C", "31°C", "32°C", "33°C", "34°C"]
+    probs = [0.02, 0.10, 0.50, 0.30, 0.06, 0.02]
+    asks = [0.02, 0.12, 0.52, 0.31, 0.05, 0.02]
+    rows = [
+        {
+            "bucket": b, "ordinal": i + 2, "probability": p,
+            "bid_price": max(0.0, a - 0.01),
+            "bid_levels": [{"price": max(0.001, a - 0.01), "shares": 50.0}],
+            "ask_levels": [{"price": a, "shares": 100.0}],
+            "price_tick_size": 0.01,
+            "maker_queue_ahead_shares": 0.0, "maker_queue_known": True,
+        }
+        for i, (b, p, a) in enumerate(zip(labels, probs, asks))
+    ]
+    snapshot = TargetBasketSnapshot.from_mapping({
+        "schema": "target_basket_snapshot_v6", "snapshot_id": "c87", "sequence": 1,
+        "observed_at": "2026-09-06T00:00:00Z", "market_id": "m", "station_id": "X",
+        "event_date": "2026-09-07", "quote_version": "q",
+        "quote_observed_at": "2026-09-06T00:00:00Z", "quote_source": "OFFICIAL_CLOB_WS",
+        "inventory_version": "i", "order_state_version": "o",
+        "evidence": {"probability_stage": "P0", "posterior_version": "p", "posterior_sha256": "a" * 64},
+        "buckets": rows, "checkpoint_changed": True, "quote_changed": True,
+        "fill_changed": True, "time_gate_changed": True, "evidence_fresh": True,
+        "contract_matches": True, "order_state_known": True, "risk_inputs_complete": True,
+        "time_left_minutes": 600.0,
+    })
+    seat_key = ("30°C", "31°C", "32°C")
+    kwargs = dict(
+        snapshot=snapshot, desired=set(seat_key),
+        probabilities=dict(zip(labels, probs)), fee_rate=0.0,
+        maximum_support_buckets=4, minimum_support_buckets=3,
+        center_bucket="31°C", probability_stage="P0",
+    )
+    windows, audit = _support_windows(**kwargs)
+    seat = {tuple(w["buckets"]): w for w in windows}[seat_key]
+    # The lifted claim, 0.90 x 1.08 = 0.972, clears the 0.95 offer: the old
+    # gate admitted this window.  Charter 68's top band (a = 0.977) says
+    # 0.82 of the claim arrives, so the gate now reads 0.797 and refuses.
+    assert seat["win_probability"] == pytest.approx(0.972)
+    assert seat["win_probability"] - seat["all_in_price"] > 0
+    assert seat["effective_edge_agreement"] == pytest.approx(0.95 / 0.972)
+    assert seat["effective_edge_lambda"] == pytest.approx(0.82)
+    assert seat["effective_win_probability"] == pytest.approx(0.972 * 0.82)
+    assert seat["edge"] == pytest.approx(0.972 * 0.82 - 0.95)
+    assert seat["admissible"] is False
+    assert audit["gate_reads_effective_edge"] == "on"
+    assert audit["effective_edge_gate_refused_window_count"] >= 1
+    # Nothing seats: the solver is offered the baseline only, so no Kelly
+    # seat and no ticket -- the ticket waits for the gate.
+    assert not any(w["admissible"] for w in windows)
+
+    # The pre-ruling arm: the same window, admitted on the lifted claim.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
+    windows_off, audit_off = _support_windows(**kwargs)
+    seat_off = {tuple(w["buckets"]): w for w in windows_off}[seat_key]
+    assert seat_off["effective_edge_lambda"] is None
+    assert seat_off["effective_win_probability"] == pytest.approx(0.972)
+    assert seat_off["edge"] == pytest.approx(0.972 - 0.95)
+    assert seat_off["admissible"] is True
+    assert audit_off["effective_edge_gate_refused_window_count"] == 0
+
+    # The served tables travel with the gate: a table that trusts the top
+    # band in full admits the window again, through the same lookup the
+    # solver reads.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "on")
+    windows_tbl, _ = _support_windows(
+        **kwargs,
+        effective_edge_tables={
+            "P0": ((0.5, 0.14), (0.7, 0.60), (0.85, 0.87), (float("inf"), 1.0)),
+        },
+    )
+    seat_tbl = {tuple(w["buckets"]): w for w in windows_tbl}[seat_key]
+    assert seat_tbl["effective_edge_lambda"] == pytest.approx(1.0)
+    assert seat_tbl["admissible"] is True
+
+    # The ledger reads the same switch, hands the gate the same served
+    # tables, and hashes the belief the gate reads.
+    root = Path(__file__).resolve().parents[1]
+    ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
+    assert "CHARTER_87_GATE_EFFECTIVE_EDGE," in ledger_source
+    assert '"gate_belief": (' in ledger_source
+    assert ledger_source.count("effective_edge_tables=_effective_edge_tables_as_of(") >= 3

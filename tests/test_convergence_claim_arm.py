@@ -164,6 +164,12 @@ def test_shadow_journals_the_lift_and_changes_no_window(monkeypatch):
 
 def test_the_arm_lifts_the_claim_ahead_of_the_gate(monkeypatch):
     monkeypatch.setattr(K, "CONVERGENCE_CLAIM_MODE", "on")
+    # Charter 87 (2026-09-06): the gate also reads charter 68's lambda(a),
+    # which at P0-M's constant table takes these cheap windows back under
+    # their offer.  This test isolates the lift's effect at the gate, so it
+    # runs the pre-87 arm; the lambda gate is pinned in test_clause_87_*.
+    from bayes_basket_target import delta_v2_runtime as _runtime
+    monkeypatch.setattr(_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     windows, audit = _windows()
     receipt = audit["convergence_claim"]
     assert receipt["mode"] == "on"

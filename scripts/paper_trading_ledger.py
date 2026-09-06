@@ -139,6 +139,9 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     CHARTER_72_KELLY_SIZING,
     CHARTER_77_DECISION_MOMENTS,
     CHARTER_78_INCUMBENT_NO_EXEMPTION,
+    # Charter 87 (2026-09-06): the gate reads the lifted claim times
+    # lambda(a); read from production so an arm flips it on both sides.
+    CHARTER_87_GATE_EFFECTIVE_EDGE,
     WINDOW_REFUSAL_FUNNEL,
     # The pieces of arithmetic the two sides must not each own a copy of.
     # Every one of them used to be duplicated here, and the ladder copy had
@@ -1991,6 +1994,15 @@ SELECTION_RULE_SHA256 = content_sha256({
         )
         if value != "on"
     },
+    # Charter 87 (2026-09-06): the whole-basket positive-EV gate reads the
+    # lifted claim times lambda(a), and charter 74's ticket waits for it.  A
+    # change to the standing rule, so the key is unconditional -- rows
+    # judged under the old gate must not share a book with rows judged
+    # under this one; ``off`` is the pre-ruling gate and hashes away.
+    "gate_belief": (
+        "lifted_claim_times_lambda_v1"
+        if CHARTER_87_GATE_EFFECTIVE_EDGE == "on" else "lifted_claim_v0"
+    ),
     "stage_authority": "highest_committed_stage_v1",
     "checkpoint_books": "every_committed_book_while_current_v1",
     "taker_fill": "top_of_offer_cut_to_depth_v1",
@@ -3999,6 +4011,9 @@ def _production_judge(
                 conn, station_id=station_id, event_date=event_date,
                 as_of_utc=decision_at_utc,
             ),
+            # Charter 87: the gate reads lambda off the tables served as of
+            # this decision, the same ones the solver below is handed.
+            effective_edge_tables=_effective_edge_tables_as_of(decision_at_utc),
         )
     except Exception as exc:  # noqa: BLE001
         return {
@@ -4125,6 +4140,11 @@ def _production_judge(
             ),
             chain_growth_frame_usdc=growth_frame,
             last_decision_signature=last_decision_signature,
+            # Charter 68(c)/87: production's solver reads the store's
+            # activated tables as of the decision; this judge read the
+            # kernel bootstrap until 2026-09-06, which is a belief
+            # production stopped serving on 2026-09-05.
+            effective_edge_tables=_effective_edge_tables_as_of(decision_at_utc),
         )
     except (ContractError, _KernelContractError) as exc:
         if holds_anything and str(exc) == (
@@ -7288,6 +7308,11 @@ def backfill(
                             # does not run -- the ledger would report a stage
                             # refusing seats the live system takes.
                             probability_stage=stage,
+                            # Charter 87: the gate deflates by lambda(a) as
+                            # served at this decision's clock.
+                            effective_edge_tables=_effective_edge_tables_as_of(
+                                payload["decision_at_utc"]
+                            ),
                         )
                     except Exception as exc:  # noqa: BLE001 -- scope skipped
                         refusal = _deeper_refusal(refusal, (
