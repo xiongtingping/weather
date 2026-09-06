@@ -117,8 +117,20 @@ def main():
     )]
     truth = {}
     for st, ld, t in conn.execute(
-        "SELECT station_id, local_date, official_tmax_c FROM calibration_station_daily_high_truth"
-        " WHERE qc_status='ACCEPTED' ORDER BY revision_no"
+        # Ask the truth table the same question the ledger's settlement asks.
+        # This used to read every revision and let dict-overwrite ordering
+        # pick the last one -- correct only because ``ORDER BY revision_no``
+        # happened to leave the highest last.  285 station-days carry two
+        # revisions with different values (revision 0 the METAR body group's
+        # whole degree, 1 the remarks group's tenth), so a rebuild or a
+        # vacuum could have changed this probe's answer without changing a
+        # line of it.  Same defect the band store carried until 2026-09-06.
+        "SELECT station_id, local_date, official_tmax_c"
+        " FROM calibration_station_daily_high_truth t"
+        " WHERE qc_status='ACCEPTED' AND revision_no = ("
+        "   SELECT MAX(revision_no) FROM calibration_station_daily_high_truth x"
+        "   WHERE x.station_id=t.station_id AND x.local_date=t.local_date"
+        "     AND x.qc_status='ACCEPTED')"
     ):
         truth[(st, ld)] = float(t)
 
