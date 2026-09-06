@@ -38,12 +38,24 @@ DWD_ICON_EPS_MULTISTATION_SCHEMA = (
 OFFICIAL_TAF_TX_MULTISTATION_SCHEMA = (
     "official_airport_taf_tx_point_members_v1"
 )
+# Charter 95 (2026-09-06): the regional deterministic models' forward runs
+# reach the packet through the same point-archive shape the TAF uses, one
+# schema per system so the transport is read off the archive as for every
+# other family.
+JMA_MSM_POINT_SCHEMA = "official_jma_msm_point_members_v1"
+NCEP_HRRR_POINT_SCHEMA = "official_ncep_hrrr_point_members_v1"
+NCEP_NBM_POINT_SCHEMA = "official_ncep_nbm_point_members_v1"
+DWD_ICON_EU_POINT_SCHEMA = "official_dwd_icon_eu_point_members_v1"
 SUPPORTED_ARCHIVE_SCHEMAS = {
     NOAA_GEFS_MULTISTATION_SCHEMA: "NOAA_GEFS_PDS_S3",
     ECMWF_MULTISTATION_SCHEMA: "ECMWF_OPEN_DATA_S3",
     ECCC_GEPS_MULTISTATION_SCHEMA: "ECCC_DD_WEATHER",
     DWD_ICON_EPS_MULTISTATION_SCHEMA: "DWD_OPENDATA_ICON_EPS",
     OFFICIAL_TAF_TX_MULTISTATION_SCHEMA: "AWC_TAF_DATA_API",
+    JMA_MSM_POINT_SCHEMA: "RISH_KYOTO_JMA_ARCHIVE",
+    NCEP_HRRR_POINT_SCHEMA: "NOAA_HRRR_PDS_S3",
+    NCEP_NBM_POINT_SCHEMA: "NOAA_NBM_PDS_S3",
+    DWD_ICON_EU_POINT_SCHEMA: "DWD_OPENDATA_ICON_EU",
 }
 # The forecaster's TAF TX as a single-member point system.  Registered here --
 # the shared upstream of both the OOS admission and the live compile -- so one
@@ -221,6 +233,55 @@ POINT_FORECAST_SYSTEMS = {
 ARCHIVE_LEAD_BY_SCHEMA = {
     schema: "d2" for schema in SUPPORTED_ARCHIVE_SCHEMAS
 }
+# Charter 95 (user ruling, 2026-09-06: "接入"): the regional deterministic
+# models -- JMA MSM, NCEP HRRR, NCEP NBM, DWD ICON-EU -- are numerical models
+# and may contest a P0 seat once they win the OOS gate, served as
+# single-member systems whose bandwidth is their fitted residual sigma.  The
+# 2026-08-15 exclusion of point forecasts from the P0 combination was written
+# for the forecaster's TAF TX and the METAR physical path, which are not
+# model runs; those two stay out.  ``is_fusion_excluded_point_system`` is the
+# one predicate every fusion site reads.
+REGIONAL_DETERMINISTIC_SYSTEM_IDS = frozenset({
+    JMA_MSM_POINT_SYSTEM_ID,
+    NCEP_HRRR_POINT_SYSTEM_ID,
+    NCEP_NBM_POINT_SYSTEM_ID,
+    DWD_ICON_EU_POINT_SYSTEM_ID,
+})
+REGIONAL_POINT_ARCHIVE_SCHEMA_BY_SYSTEM = {
+    JMA_MSM_POINT_SYSTEM_ID: JMA_MSM_POINT_SCHEMA,
+    NCEP_HRRR_POINT_SYSTEM_ID: NCEP_HRRR_POINT_SCHEMA,
+    NCEP_NBM_POINT_SYSTEM_ID: NCEP_NBM_POINT_SCHEMA,
+    DWD_ICON_EU_POINT_SYSTEM_ID: DWD_ICON_EU_POINT_SCHEMA,
+}
+REGIONAL_POINT_CONTRACT_VERSIONS = {
+    JMA_MSM_POINT_SYSTEM_ID: (
+        "jma_msm_surface_single_cell_v1",
+        "three_hourly_run_grid_nearest_cell_v1",
+    ),
+    NCEP_HRRR_POINT_SYSTEM_ID: (
+        "ncep_hrrr_surface_nearest_cell_v1",
+        "hourly_run_grid_idx_byte_range_v1",
+    ),
+    NCEP_NBM_POINT_SYSTEM_ID: (
+        "ncep_nbm_core_nearest_cell_v1",
+        "hourly_run_grid_idx_byte_range_v1",
+    ),
+    DWD_ICON_EU_POINT_SYSTEM_ID: (
+        "dwd_icon_eu_surface_nearest_cell_v1",
+        "six_hourly_run_grid_whole_domain_no_history_v1",
+    ),
+}
+
+
+def is_fusion_excluded_point_system(system_id: str) -> bool:
+    """A point system that may never be a P0 fusion member.
+
+    True for the forecaster's TAF TX and the METAR physical path; false for
+    the regional deterministic models (charter 95) and for every ensemble.
+    """
+
+    key = str(system_id or "").strip()
+    return key in POINT_FORECAST_SYSTEMS and key not in REGIONAL_DETERMINISTIC_SYSTEM_IDS
 # P0 is recomputed as the models update, so the same station-day is captured at
 # d2, again at d1, and again at d0.  This builder used to accept d2 alone: the
 # collectors were parameterised, the scheduler emitted all three leads, the

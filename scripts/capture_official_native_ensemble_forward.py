@@ -291,6 +291,71 @@ def _capture_taf_point_archives(
     }
 
 
+def _capture_regional_point_archives(
+    *,
+    event_date: str,
+    scopes: Sequence[dict[str, Any]],
+    capture_at: str,
+    lead_days: int,
+) -> dict[str, Any]:
+    """Charter 95: the regional deterministic models' freshest runs per station.
+
+    Read-only against the SSOT, like the TAF projection: the regional capture
+    lanes persisted the runs as train-only facts; this projects each
+    station's newest admissible run per system into the packet archive shape.
+    """
+
+    from bayes_basket_target.native_ensemble_training_facts import (
+        build_regional_point_forward_archives_for_station,
+    )
+    from bayes_basket_target.p0_producer import (
+        bucket_intervals_from_registry_rows,
+    )
+
+    archives_by_station: dict[str, list[dict[str, Any]]] = {}
+    conn = sqlite3.connect(
+        f"file:{DEFAULT_TARGET_DB}?mode=ro", uri=True, timeout=30.0
+    )
+    try:
+        for scope in scopes:
+            station_id = str(scope["station_id"])
+            registry_rows = list(scope.get("registry_rows") or [])
+            timezone_name = str(
+                scope.get("settlement_timezone")
+                or (registry_rows[0].get("settlement_timezone") if registry_rows else "")
+                or ""
+            ).strip()
+            if not timezone_name:
+                continue
+            intervals = bucket_intervals_from_registry_rows(registry_rows)
+            frozen = {
+                bucket: [
+                    None if lower is None else float(lower),
+                    None if upper is None else float(upper),
+                ]
+                for bucket, (lower, upper) in intervals.items()
+            }
+            archives = build_regional_point_forward_archives_for_station(
+                conn,
+                station_id=station_id,
+                event_date=event_date,
+                settlement_timezone=timezone_name,
+                as_of_utc=capture_at,
+                bucket_intervals=frozen,
+            )
+            if archives:
+                archives_by_station[station_id] = archives
+    finally:
+        conn.close()
+    return {
+        "schema": "official_regional_point_forward_archives_v1",
+        "event_date": event_date,
+        "archive_lead_bucket": f"d{int(lead_days)}",
+        "captured_at_utc": capture_at,
+        "archives_by_station": archives_by_station,
+    }
+
+
 def build_station_scopes(
     registry: dict[str, Any],
     *,
@@ -814,6 +879,20 @@ def capture_official_native_forward(
         if taf_point["archives_by_station"]
         else False
     )
+    regional_point = _capture_regional_point_archives(
+        event_date=event_date,
+        scopes=scopes,
+        capture_at=capture_at,
+        lead_days=int(lead_days),
+    )
+    regional_point_path = inbox_path.parent / (
+        f"official_regional_point_{event_date}_d{int(lead_days)}.json"
+    )
+    wrote_regional_point = (
+        write_bounded_json_if_changed(regional_point_path, regional_point)
+        if regional_point["archives_by_station"]
+        else False
+    )
     command = [
         sys.executable,
         str(ROOT / "scripts" / "build_official_native_forward_inbox.py"),
@@ -824,6 +903,8 @@ def capture_official_native_forward(
     ]
     if taf_point["archives_by_station"]:
         command.extend(["--taf-point-archive", str(taf_point_path)])
+    if regional_point["archives_by_station"]:
+        command.extend(["--regional-point-archive", str(regional_point_path)])
     # An actively captured ECCC archive is preferred over a supplied one; both
     # carry the same GEPS native 00Z lineage, so the builder treats them alike.
     resolved_eccc = (

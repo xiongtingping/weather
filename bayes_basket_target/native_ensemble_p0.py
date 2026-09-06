@@ -83,6 +83,7 @@ from .official_native_forward_packet import (
     MIXED_NATIVE_CYCLES,
     POINT_FORECAST_SYSTEMS,
     SCHEMA as OFFICIAL_FORWARD_PACKET_SCHEMA,
+    is_fusion_excluded_point_system,
 )
 from .ssot import native_ensemble_foundation_schema_status
 
@@ -1919,7 +1920,9 @@ def compile_native_ensemble_p0(
     system_ids = [
         system_id
         for system_id in activation_member_ids
-        if system_id not in POINT_FORECAST_SYSTEMS
+        # Charter 95: only the TAF and the METAR path are stripped; a
+        # regional deterministic model the activation seats is served.
+        if not is_fusion_excluded_point_system(system_id)
     ]
     if len(system_ids) < 2:
         raise ContractError(
@@ -2123,7 +2126,10 @@ def compile_native_ensemble_p0(
     # lineage rather than inferred.  New fits exclude point forecasts from
     # candidacy, so this path decays to a no-op as rows regenerate.
     p0_membership_demotions: dict[str, float] = {}
-    for demoted_id in sorted(POINT_FORECAST_SYSTEMS):
+    for demoted_id in sorted(
+        system_id for system_id in POINT_FORECAST_SYSTEMS
+        if is_fusion_excluded_point_system(system_id)
+    ):
         if demoted_id not in system_weights:
             continue
         # Popped, not zeroed: membership was already stripped from

@@ -29,9 +29,12 @@ def test_ready_rows_exclude_point_forecasts_from_the_contest() -> None:
     # The exclusion must sit in the cohort assembly itself, before the
     # minimum-two check, so a point forecast can never even pad the count.
     source = inspect.getsource(oos.build_native_ensemble_oos)
-    ready = source.split("ready_rows = [", 1)[1][:600]
+    ready = source.split("ready_rows = [", 1)[1][:900]
     assert "OOS_READY" in ready
-    assert "POINT_FORECAST_SYSTEMS" in ready
+    # Charter 95 (2026-09-06): the exclusion is the one predicate that keeps
+    # the TAF TX and the METAR path out while the regional deterministic
+    # models may contest.
+    assert "is_fusion_excluded_point_system(system_id)" in ready
 
 
 def test_certified_weights_are_the_served_weights() -> None:

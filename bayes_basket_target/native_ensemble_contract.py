@@ -39,6 +39,18 @@ OFFICIAL_NATIVE_TRANSPORT_BY_PROVIDER = {
     "DWD": "DWD_OPENDATA_ICON_EPS",
     "ICAO_MET_OFFICE": "AWC_TAF_DATA_API",
     "AWC_METAR_PHYSICAL_PATH": "AWC_METAR_PHYSICAL_PATH",
+    # Charter 95: the regional deterministic lanes' providers.
+    "JMA_RJTD": "RISH_KYOTO_JMA_ARCHIVE",
+    "NCEP_NOAA": "NOAA_HRRR_PDS_S3",
+}
+# A provider that publishes more than one product on more than one transport
+# (NCEP: HRRR and NBM; DWD: the EPS and ICON-EU) is resolved per system here
+# first; the provider table stays the default for everything else.
+OFFICIAL_NATIVE_TRANSPORT_BY_SYSTEM = {
+    "JMA_MSM_POINT": "RISH_KYOTO_JMA_ARCHIVE",
+    "NCEP_HRRR_POINT": "NOAA_HRRR_PDS_S3",
+    "NCEP_NBM_POINT": "NOAA_NBM_PDS_S3",
+    "DWD_ICON_EU_POINT": "DWD_OPENDATA_ICON_EU",
 }
 
 
@@ -96,9 +108,9 @@ def validate_native_ensemble_transport_gate(
     resolved: dict[str, str] = {}
     for system_id, system in zip(selected, systems):
         provider_id = str(system["provider_id"]).strip()
-        expected_transport = OFFICIAL_NATIVE_TRANSPORT_BY_PROVIDER[
-            provider_id
-        ]
+        expected_transport = OFFICIAL_NATIVE_TRANSPORT_BY_SYSTEM.get(
+            system_id
+        ) or OFFICIAL_NATIVE_TRANSPORT_BY_PROVIDER[provider_id]
         observed_transport = str(
             transport_provider_by_system.get(system_id) or ""
         ).strip()

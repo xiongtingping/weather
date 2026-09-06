@@ -1553,6 +1553,157 @@ def project_taf_point_member_runs(
     }
 
 
+REGIONAL_POINT_SYSTEM_VALID_FROM_UTC = "2026-08-25T00:00:00Z"
+
+
+def register_regional_point_systems(conn: sqlite3.Connection) -> int:
+    """Charter 95: the regional deterministic models as registry rows.
+
+    The compiler resolves a served system's family and member count from
+    ``calibration_native_ensemble_system``; the point systems were registered
+    in code only, which was enough for the OOS lane but fails closed at
+    compile.  Idempotent: rows already present are left alone.
+    """
+
+    from .contracts import content_sha256 as _content_sha256
+    from .official_native_forward_packet import (
+        POINT_FORECAST_SYSTEMS,
+        REGIONAL_DETERMINISTIC_SYSTEM_IDS,
+        REGIONAL_POINT_CONTRACT_VERSIONS,
+    )
+
+    inserted = 0
+    for system_id in sorted(REGIONAL_DETERMINISTIC_SYSTEM_IDS):
+        registration = POINT_FORECAST_SYSTEMS[system_id]
+        member_contract, publication_contract = REGIONAL_POINT_CONTRACT_VERSIONS[
+            system_id
+        ]
+        identity = {
+            "ensemble_system_id": system_id,
+            "canonical_name": str(registration["canonical_name"]),
+            "independence_family_id": str(
+                registration["independence_family_id"]
+            ),
+            "provider_id": str(registration["provider_id"]),
+            "source_class": "NATIVE_ENSEMBLE_PROVIDER",
+            "aggregator_or_republisher": 0,
+            "expected_member_count": 1,
+            "member_identity_contract_version": member_contract,
+            "publication_contract_version": publication_contract,
+            "valid_from_utc": REGIONAL_POINT_SYSTEM_VALID_FROM_UTC,
+            "valid_until_utc": "9999-12-31T23:59:59Z",
+        }
+        cursor = conn.execute(
+            "INSERT OR IGNORE INTO calibration_native_ensemble_system("
+            "ensemble_system_id,canonical_name,independence_family_id,"
+            "provider_id,source_class,aggregator_or_republisher,"
+            "expected_member_count,member_identity_contract_version,"
+            "publication_contract_version,valid_from_utc,valid_until_utc,"
+            "content_sha256) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            (*identity.values(), _content_sha256(identity)),
+        )
+        inserted += int(cursor.rowcount or 0)
+    return inserted
+
+
+def build_regional_point_forward_archives_for_station(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    settlement_timezone: str,
+    as_of_utc: str,
+    bucket_intervals: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Charter 95: each regional model's freshest run for this station-day.
+
+    The serving rule is the training rule: the capture lane already wrote the
+    run as a train-only fact; this projects the newest run whose archive
+    query precedes ``as_of_utc`` into the packet's point-archive shape, one
+    archive per regional system.  No run, no archive -- the packet then
+    serves the set it would have served anyway.
+    """
+
+    from .contracts import content_sha256 as _content_sha256
+    from .official_native_forward_packet import (
+        POINT_FORECAST_SYSTEMS,
+        REGIONAL_DETERMINISTIC_SYSTEM_IDS,
+        REGIONAL_POINT_ARCHIVE_SCHEMA_BY_SYSTEM,
+    )
+
+    station = str(station_id).strip().upper()
+    placeholders = ",".join("?" * len(REGIONAL_DETERMINISTIC_SYSTEM_IDS))
+    rows = conn.execute(
+        "SELECT ensemble_system_id,run_cycle,archive_lead_bucket,member_id,"
+        "raw_tmax_c,native_run_init_utc,archive_query_at_utc,content_sha256 "
+        "FROM calibration_native_ensemble_historical_member_run "
+        "WHERE station_id=? AND target_local_date=? AND qc_status='ACCEPTED' "
+        f"AND ensemble_system_id IN ({placeholders}) "
+        "AND archive_query_at_utc<=? "
+        "ORDER BY native_run_init_utc DESC, archive_query_at_utc DESC",
+        (station, str(event_date), *sorted(REGIONAL_DETERMINISTIC_SYSTEM_IDS), str(as_of_utc)),
+    ).fetchall()
+    frozen_intervals = {
+        str(bucket): [
+            None if bounds[0] is None else float(bounds[0]),
+            None if bounds[1] is None else float(bounds[1]),
+        ]
+        for bucket, bounds in dict(bucket_intervals).items()
+    }
+    archives: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in rows:
+        system_id = str(row[0])
+        if system_id in seen or not str(row[5] or "").strip():
+            continue
+        seen.add(system_id)
+        registration = POINT_FORECAST_SYSTEMS[system_id]
+        family = str(registration["independence_family_id"])
+        member = {
+            "member_id": str(row[3]),
+            "member_role": "CONTROL",
+            "raw_tmax_c": float(row[4]),
+        }
+        capture_identity = {
+            "station_id": station,
+            "ensemble_system_id": system_id,
+            "independence_family_id": family,
+            "event_date": str(event_date),
+            "settlement_timezone": str(settlement_timezone),
+            "run_cycle": str(row[1]),
+            "archive_lead_bucket": str(row[2]),
+            "member_count": 1,
+            "members": [member],
+            "member_set_sha256": _content_sha256([member]),
+            "bucket_intervals": frozen_intervals,
+            "bucket_contract_sha256": _content_sha256(frozen_intervals),
+            "source_capture_content_sha256": str(row[7] or ""),
+        }
+        capture = {
+            **capture_identity,
+            "content_sha256": _content_sha256(capture_identity),
+        }
+        archive_identity = {
+            "schema": REGIONAL_POINT_ARCHIVE_SCHEMA_BY_SYSTEM[system_id],
+            "ensemble_system_id": system_id,
+            "independence_family_id": family,
+            "event_date": str(event_date),
+            "archive_lead_bucket": str(row[2]),
+            "run_cycle": str(row[1]),
+            "run_init_utc": str(row[5]),
+            "archive_query_at_utc": str(row[6]),
+            "member_count": 1,
+            "training_only": True,
+            "holdout_eligible": False,
+            "captures": [capture],
+        }
+        archives.append({
+            **archive_identity,
+            "content_sha256": _content_sha256(archive_identity),
+        })
+    return archives
+
+
 def build_taf_point_forward_archive_for_station(
     conn: sqlite3.Connection,
     *,

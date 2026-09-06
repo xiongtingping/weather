@@ -105,6 +105,12 @@ def main() -> int:
 
     now = datetime.now(timezone.utc)
     conn = sqlite3.connect(str(DB), timeout=120.0)
+    # Charter 95: the registry row the compiler resolves this system from.
+    from bayes_basket_target.native_ensemble_training_facts import (  # noqa: PLC0415
+        register_regional_point_systems,
+    )
+    register_regional_point_systems(conn)
+    conn.commit()
     conn.execute("PRAGMA busy_timeout=60000")
     writable, reason = _transport_is_writable(conn)
     if not writable and not args.dry_run:

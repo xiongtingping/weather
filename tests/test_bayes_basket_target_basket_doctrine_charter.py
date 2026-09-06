@@ -2086,8 +2086,10 @@ def test_clause_42_p0_membership_is_won_never_granted() -> None:
     # Fit side: no graft, and point forecasts never reach the contest.
     assert not hasattr(oos, "_provisional_family_share_admission")
     fit_source = inspect.getsource(oos.build_native_ensemble_oos)
-    ready = fit_source.split("ready_rows = [", 1)[1][:600]
-    assert "POINT_FORECAST_SYSTEMS" in ready
+    ready = fit_source.split("ready_rows = [", 1)[1][:900]
+    # Charter 95 narrows the 08-15 exclusion to the TAF and the METAR path;
+    # the predicate, not the raw registry, is what the contest reads.
+    assert "is_fusion_excluded_point_system(system_id)" in ready
 
     # Serve side: a point-forecast weight in an old selection row is demoted
     # to a rider and named in the lineage, not silently served.

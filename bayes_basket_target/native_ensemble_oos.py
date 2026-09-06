@@ -91,6 +91,7 @@ from .official_native_forward_packet import (
     NCEP_HRRR_POINT_SYSTEM_ID,
     NCEP_NBM_POINT_SYSTEM_ID,
     POINT_FORECAST_SYSTEMS,
+    is_fusion_excluded_point_system,
 )
 from .ssot import native_ensemble_foundation_schema_status
 from .truth_exclusions import is_excluded
@@ -3724,7 +3725,9 @@ def build_native_ensemble_oos(
         # on 2026-08-15).
         if evaluation["state"] != "OOS_READY":
             continue
-        if system_id in POINT_FORECAST_SYSTEMS:
+        # Charter 95: the regional deterministic models contest seats; the
+        # TAF TX and the METAR path keep their evaluation lane only.
+        if is_fusion_excluded_point_system(system_id):
             continue
         scope_groups[(season_bin, lead_bucket)][system_id].append((
             run_cycle,
@@ -3747,8 +3750,10 @@ def build_native_ensemble_oos(
             # The 2026-08-15 stage ruling: the P0 combination is numerical
             # models only.  The forecaster's TX keeps its per-system
             # evaluation lane -- P0-M and the envelope witness read it --
-            # but never contests a P0 seat.
-            and system_id not in POINT_FORECAST_SYSTEMS
+            # but never contests a P0 seat.  Charter 95 (2026-09-06)
+            # narrows that to the TAF and the METAR path: a regional
+            # deterministic model is a numerical model and may compete.
+            and not is_fusion_excluded_point_system(system_id)
         ]
         if len(ready_rows) < 2:
             continue

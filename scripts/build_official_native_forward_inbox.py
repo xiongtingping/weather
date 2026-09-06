@@ -223,6 +223,15 @@ def main() -> int:
             "keep the model-only set."
         ),
     )
+    parser.add_argument(
+        "--regional-point-archive",
+        type=Path,
+        help=(
+            "Per-station regional deterministic point archives (charter 95); "
+            "each station present gets its regional models as further packet "
+            "systems, absent stations keep the set they had."
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if (
@@ -470,6 +479,27 @@ def main() -> int:
             taf_payload["archives_by_station"]
         )
 
+    regional_archives_by_station: dict[str, list] = {}
+    if args.regional_point_archive is not None:
+        regional_payload = load_bounded_json(
+            args.regional_point_archive.expanduser().resolve(strict=True)
+        )
+        if (
+            not isinstance(regional_payload, dict)
+            or regional_payload.get("schema")
+            != "official_regional_point_forward_archives_v1"
+            or not isinstance(
+                regional_payload.get("archives_by_station"), dict
+            )
+        ):
+            raise RuntimeError("regional_point_archive_payload_invalid")
+        regional_archives_by_station = {
+            str(station): list(archives)
+            for station, archives in regional_payload[
+                "archives_by_station"
+            ].items()
+        }
+
     def _station_archives(station: str) -> list:
         archives = list(base_archives)
         if eccc_archive is not None and station in (
@@ -485,6 +515,7 @@ def main() -> int:
         taf_archive = taf_archives_by_station.get(station)
         if taf_archive is not None:
             archives.append(taf_archive)
+        archives.extend(regional_archives_by_station.get(station, []))
         return archives
 
     packets = [
