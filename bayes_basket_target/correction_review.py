@@ -29,6 +29,8 @@ CLEAR_REFERENCE_ONLY = "CLEAR_REFERENCE_ONLY"
 # lane's own call.  QUARANTINE_STATION_DAY is how a person stops a station-day.
 CLEAR_WITH_REPLACEMENT = "CLEAR_WITH_REPLACEMENT"
 QUARANTINE_STATION_DAY = "QUARANTINE_STATION_DAY"
+# The two decisions that let a station-day proceed; the third stops it.
+CLEARING_DECISIONS = frozenset({CLEAR_REFERENCE_ONLY, CLEAR_WITH_REPLACEMENT})
 DECISIONS = frozenset({
     CLEAR_REFERENCE_ONLY,
     CLEAR_WITH_REPLACEMENT,
@@ -379,12 +381,36 @@ def append_correction_review(
             identity["evidence_sha256"], content_sha,
         ),
     )
+    # Charter 97 (2026-09-06): the halt row follows the review.  The rest of
+    # the system asks ``assert_station_day_corrections_resolved``, which reads
+    # these receipts, so a station-day whose corrections are all reviewed is
+    # clear -- but the AWC ingress asks the halts table instead, and nothing
+    # wrote back to it.  387 of 389 live halts already carried a clearing
+    # receipt, and each one froze its station-day's running maximum at
+    # whatever it held when the corrected report arrived: KAUS 2026-08-23
+    # stayed at 28C while its own reports reached 40C.  A clearing decision
+    # now clears the halt; a quarantine re-raises it.
+    halt_state = (
+        "cleared" if resolved_decision in CLEARING_DECISIONS else "active"
+    )
+    conn.execute(
+        "UPDATE reported_trajectory_station_halts "
+        "SET state=?, cleared_at=? "
+        "WHERE source_lane=? AND station_id=? AND event_date=? "
+        "AND triggering_observation_id=?",
+        (
+            halt_state,
+            identity["reviewed_at"] if halt_state == "cleared" else None,
+            lane, station, day, observation_id,
+        ),
+    )
     assert_process_memory_budget()
     return {
         "schema": SCHEMA,
         "state": "committed",
         "review_id": review_id,
         "content_sha256": content_sha,
+        "halt_state": halt_state,
         "wrote": True,
     }
 

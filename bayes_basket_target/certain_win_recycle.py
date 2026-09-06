@@ -103,16 +103,38 @@ def plan_certain_win_recycles(
         }
         if not held:
             continue
-        bound = canonical_conn.execute(
-            "SELECT observed_max_c, settlement_timezone, max_observation_id"
-            " FROM reported_trajectory_canonical_station_day_bounds"
-            " WHERE station_id=? AND event_date=?",
+        # Charter 97 (2026-09-06): the settled truth, not the trajectory
+        # lane's running bound.  The bound froze on 87 station-days -- KAUS
+        # 2026-08-23 held 28.0C against a day its own reports took to 40.0C
+        # -- because a correction halt stopped it advancing, and a recycle
+        # decided on that number would pay out the wrong bucket.  The
+        # calibration lane's settled high is the number the ledger and the
+        # OOS gates already settle on, and it was clean across every
+        # station-day checked.  No settled truth, no recycle: capital left
+        # in place costs nothing, capital recycled off a wrong bucket does.
+        truth = target_conn.execute(
+            "SELECT t.official_tmax_c, t.settlement_timezone,"
+            " t.observation_ids_json"
+            " FROM calibration_station_daily_high_truth AS t"
+            " WHERE t.station_id=? AND t.local_date=? AND t.source_lane='AWC'"
+            " AND t.qc_status='ACCEPTED'"
+            " AND t.authority_scope IN"
+            " ('FORMAL_NATIVE_ELIGIBLE','NO_LIVE_REPLAY_CANDIDATE')"
+            " ORDER BY t.revision_no DESC LIMIT 1",
             (str(station_id), str(event_date)),
         ).fetchone()
-        if bound is None or bound[0] is None:
+        if truth is None or truth[0] is None:
             continue
-        high_c = float(bound[0])
-        timezone_name = str(bound[1] or "")
+        high_c = float(truth[0])
+        timezone_name = str(truth[1] or "")
+        if not timezone_name:
+            bound = canonical_conn.execute(
+                "SELECT settlement_timezone"
+                " FROM reported_trajectory_canonical_station_day_bounds"
+                " WHERE station_id=? AND event_date=?",
+                (str(station_id), str(event_date)),
+            ).fetchone()
+            timezone_name = str((bound or [""])[0] or "")
         if not timezone_name:
             continue
         try:
@@ -169,7 +191,7 @@ def plan_certain_win_recycles(
                 "shares": round(float(shares), 6),
                 "limit_price": RECYCLE_PRICE,
                 "observed_max_c": high_c,
-                "max_observation_id": str(bound[2] or ""),
+                "truth_observation_ids_json": str(truth[2] or ""),
             })
     return plans
 

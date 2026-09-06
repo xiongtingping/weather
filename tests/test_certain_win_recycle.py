@@ -26,6 +26,13 @@ NOW = "2026-08-30T18:00:00Z"
 def _target_db(tmp_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(tmp_path / "target.db")
     conn.execute(
+        "CREATE TABLE calibration_station_daily_high_truth("
+        " station_id TEXT, local_date TEXT, settlement_timezone TEXT,"
+        " official_tmax_c REAL, source_lane TEXT, qc_status TEXT,"
+        " authority_scope TEXT, revision_no INTEGER,"
+        " observation_ids_json TEXT)"
+    )
+    conn.execute(
         "CREATE TABLE basket_confirmed_inventory_snapshot("
         " inventory_snapshot_id TEXT, station_id TEXT, event_date TEXT,"
         " inventory_version TEXT, observed_at TEXT, complete INTEGER,"
@@ -86,6 +93,16 @@ def _seed(
             station, event_date, held_bucket, "777777",
             json.dumps({"lower": lower, "upper": upper}),
         ),
+    )
+    # Charter 97: the settled high is what the recycler reads; the trajectory
+    # bound stays in the fixture because the timezone still falls back to it.
+    target.execute(
+        "INSERT INTO calibration_station_daily_high_truth"
+        "(station_id,local_date,settlement_timezone,official_tmax_c,"
+        " source_lane,qc_status,authority_scope,revision_no,"
+        " observation_ids_json)"
+        " VALUES(?,?,?,?,'AWC','ACCEPTED','FORMAL_NATIVE_ELIGIBLE',1,'[\"obs1\"]')",
+        (station, event_date, timezone_name, high_c),
     )
     canonical.execute(
         "INSERT INTO reported_trajectory_canonical_station_day_bounds"

@@ -895,7 +895,10 @@ CORRECTION_AUTO_CLEAR_RETRY_SEC = 6 * 3600.0
 CORRECTION_AUTO_CLEAR_DEADLINE_SEC = 900.0
 # Far enough back to pick up a halt raised while the pass was down, without
 # reopening months of settled history on every run.
-CORRECTION_AUTO_CLEAR_WINDOW_DAYS = 21
+# Charter 97 (2026-09-06): wide enough that a halt cannot age out of reach.
+# At 21 days the 2026-07-17 halts were unreachable for good, and a halt the
+# pass never sees is a station-day whose running maximum never advances again.
+CORRECTION_AUTO_CLEAR_WINDOW_DAYS = 120
 
 
 # How far back the in-cycle pre-clear looks for unreviewed corrections.

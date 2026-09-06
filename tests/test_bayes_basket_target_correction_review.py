@@ -578,3 +578,38 @@ def test_unflagged_observation_without_conflict_still_refused() -> None:
             rationale="no conflict, no flag -- must be refused",
             reviewed_at="2026-07-28T04:00:00Z",
         )
+
+
+# --- Charter 97 (2026-09-06): the halt row follows the review -----------------
+
+def test_the_halt_write_back_is_in_the_appender() -> None:
+    """Pinned on the source: the update lives beside the review insert, so a
+    receipt and a halt can never disagree again."""
+
+    from pathlib import Path
+
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target" / "correction_review.py"
+    ).read_text(encoding="utf-8")
+    assert "UPDATE reported_trajectory_station_halts" in source
+    assert 'halt_state = (\n        "cleared" if resolved_decision in CLEARING_DECISIONS else "active"' in source
+    assert "CLEARING_DECISIONS = frozenset({CLEAR_REFERENCE_ONLY, CLEAR_WITH_REPLACEMENT})" in source
+    worker = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target" / "production_worker.py"
+    ).read_text(encoding="utf-8")
+    assert "CORRECTION_AUTO_CLEAR_WINDOW_DAYS = 120" in worker, (
+        "a halt that ages out of the pass is a station-day frozen for good"
+    )
+    recycler = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target" / "certain_win_recycle.py"
+    ).read_text(encoding="utf-8")
+    assert "calibration_station_daily_high_truth" in recycler
+    assert "reported_trajectory_canonical_station_day_bounds" in recycler, (
+        "the bound is still read, but only for the timezone fallback"
+    )
+    assert "SELECT observed_max_c" not in recycler, (
+        "the money path reads the settled truth, not the running bound"
+    )
