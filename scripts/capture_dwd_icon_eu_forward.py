@@ -44,6 +44,7 @@ MEMBER_ROLE = "CONTROL"
 # pairs were ruled in reads the same tuple this capture walks.
 STATIONS = CAPTURE_STATIONS
 RUN_CYCLES = (0, 12)
+P1_MAX_RUNS_PER_PASS = 2
 # Runs per pass.  Two is every run the archive can currently hold for the
 # captured cycles.
 MAX_RUNS_PER_PASS = 2
@@ -111,6 +112,21 @@ def main() -> int:
     )
     register_regional_point_systems(conn)
     conn.commit()
+    # Charter 95 (re-ruled 2026-09-06): the P1 lane -- every ICON-EU cycle.
+    from bayes_basket_target.regional_point_lane import (  # noqa: PLC0415
+        capture_p1, ensure_schema,
+    )
+    ensure_schema(conn)
+    _receipt = capture_p1(
+        conn, product="ICON_EU", now=now, stations=STATIONS,
+        max_runs=P1_MAX_RUNS_PER_PASS, dry_run=args.dry_run,
+    )
+    print(
+        f"P1 ICON_EU: 计划 {_receipt['runs_planned']} run，写入 {_receipt['written']}，"
+        f"已有 {_receipt['existed']}，空 {_receipt['empty']}，失败 {len(_receipt['failed'])}"
+    )
+    for _line in _receipt["failed"][:4]:
+        print(f"  {_line}")
     conn.execute("PRAGMA busy_timeout=60000")
     writable, reason = _transport_is_writable(conn)
     if not writable and not args.dry_run:

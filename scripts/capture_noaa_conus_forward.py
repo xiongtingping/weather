@@ -53,6 +53,7 @@ STATIONS = CAPTURE_STATIONS
 # formed here has peers to pair with.  The peak pre-filter prunes what a
 # product cannot serve (NBM's 00Z never covers a US afternoon).
 RUN_CYCLES = (0, 12)
+P1_MAX_RUNS_PER_PASS = 3
 BACKFILL_DAYS = 3
 LOOKAHEAD_DAYS = 2
 # An NBM station-day is about 50 MB of ranged reads and an HRRR one about
@@ -220,6 +221,25 @@ def main() -> int:
     )
     register_regional_point_systems(conn)
     conn.commit()
+    # Charter 95 (re-ruled 2026-09-06): the P1 lane -- every HRRR and NBM
+    # cycle, run-scoped, into the lane's own table.  Runs before the P0
+    # pass so a slow archive cannot starve it.
+    from bayes_basket_target.regional_point_lane import (  # noqa: PLC0415
+        capture_p1, ensure_schema,
+    )
+    ensure_schema(conn)
+    for _product in ("HRRR", "NBM"):
+        _receipt = capture_p1(
+            conn, product=_product, now=now,
+            stations=STATIONS[_product], max_runs=P1_MAX_RUNS_PER_PASS,
+            dry_run=args.dry_run,
+        )
+        print(
+            f"P1 {_product}: 计划 {_receipt['runs_planned']} run，写入 {_receipt['written']}，"
+            f"已有 {_receipt['existed']}，空 {_receipt['empty']}，失败 {len(_receipt['failed'])}"
+        )
+        for _line in _receipt["failed"][:4]:
+            print(f"  {_line}")
     conn.execute("PRAGMA busy_timeout=60000")
 
     written = 0

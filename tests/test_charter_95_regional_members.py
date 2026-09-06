@@ -34,12 +34,25 @@ from bayes_basket_target.official_native_forward_packet import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_only_the_taf_and_the_metar_path_are_excluded_from_fusion() -> None:
+def test_every_point_system_stays_out_of_p0_fusion_while_the_regional_stage_is_p1() -> None:
+    from bayes_basket_target import official_native_forward_packet as M
+
+    assert M.REGIONAL_MODELS_STAGE == "P1"
     assert is_fusion_excluded_point_system("OFFICIAL_AIRPORT_TAF_TX") is True
     assert is_fusion_excluded_point_system("METAR_PHYSICAL_PATH_TMAX") is True
     for system_id in REGIONAL_DETERMINISTIC_SYSTEM_IDS:
-        assert is_fusion_excluded_point_system(system_id) is False
+        assert is_fusion_excluded_point_system(system_id) is True, (
+            "re-ruled the same day: regional models are P1 evidence, not P0 members"
+        )
     assert is_fusion_excluded_point_system("ECMWF_IFS_ENS_OPEN_PF50") is False
+
+
+def test_the_p0_door_reopens_only_if_the_stage_is_moved_back(monkeypatch) -> None:
+    from bayes_basket_target import official_native_forward_packet as M
+
+    monkeypatch.setattr(M, "REGIONAL_MODELS_STAGE", "P0")
+    assert M.is_fusion_excluded_point_system("NCEP_NBM_POINT") is False
+    assert M.is_fusion_excluded_point_system("OFFICIAL_AIRPORT_TAF_TX") is True
     assert REGIONAL_DETERMINISTIC_SYSTEM_IDS == {
         "JMA_MSM_POINT", "NCEP_HRRR_POINT", "NCEP_NBM_POINT", "DWD_ICON_EU_POINT",
     }

@@ -879,11 +879,21 @@ def capture_official_native_forward(
         if taf_point["archives_by_station"]
         else False
     )
-    regional_point = _capture_regional_point_archives(
-        event_date=event_date,
-        scopes=scopes,
-        capture_at=capture_at,
-        lead_days=int(lead_days),
+    # Charter 95 (re-ruled 2026-09-06): the regional models are P1 evidence,
+    # not P0 members; their runs are projected into the packet only if the
+    # stage is ever moved back to P0.
+    from bayes_basket_target.official_native_forward_packet import (  # noqa: PLC0415
+        REGIONAL_MODELS_STAGE,
+    )
+    regional_point = (
+        _capture_regional_point_archives(
+            event_date=event_date,
+            scopes=scopes,
+            capture_at=capture_at,
+            lead_days=int(lead_days),
+        )
+        if REGIONAL_MODELS_STAGE == "P0"
+        else {"archives_by_station": {}}
     )
     regional_point_path = inbox_path.parent / (
         f"official_regional_point_{event_date}_d{int(lead_days)}.json"

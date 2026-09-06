@@ -543,6 +543,8 @@ def fetch_day_maximum(
         .isoformat().replace("+00:00", "Z"),
         "event_date": event_date.isoformat(),
         "forecast_tmax_c": max(values.values()),
+        # Charter 95 (P1 lane): the curve itself, forecast hour -> °C.
+        "hourly_c": dict(sorted(values.items())),
         "hours_covered": sorted(values),
         "hours_wanted": sorted(wanted),
         "complete": set(values) == wanted,

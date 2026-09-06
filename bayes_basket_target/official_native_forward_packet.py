@@ -273,15 +273,26 @@ REGIONAL_POINT_CONTRACT_VERSIONS = {
 }
 
 
+# Charter 95 as re-ruled the same day ("把区域模型移动到 P1，不是 P0…不要和 P0
+# 的全球模型混淆"): the regional deterministic models are P1-stage evidence,
+# fused with the observed temperature path, never P0 fusion members.  The
+# stage is named here so the P0 side stays a global-model combination and the
+# P1 lane reads its own table.
+REGIONAL_MODELS_STAGE = "P1"
+
+
 def is_fusion_excluded_point_system(system_id: str) -> bool:
     """A point system that may never be a P0 fusion member.
 
-    True for the forecaster's TAF TX and the METAR physical path; false for
-    the regional deterministic models (charter 95) and for every ensemble.
+    True for every point system: the forecaster's TAF TX, the METAR physical
+    path, and -- by the 2026-09-06 re-ruling -- the regional deterministic
+    models, which belong to the P1 stage.  False for every ensemble.
     """
 
     key = str(system_id or "").strip()
-    return key in POINT_FORECAST_SYSTEMS and key not in REGIONAL_DETERMINISTIC_SYSTEM_IDS
+    if key in REGIONAL_DETERMINISTIC_SYSTEM_IDS:
+        return REGIONAL_MODELS_STAGE != "P0"
+    return key in POINT_FORECAST_SYSTEMS
 # P0 is recomputed as the models update, so the same station-day is captured at
 # d2, again at d1, and again at d0.  This builder used to accept d2 alone: the
 # collectors were parameterised, the scheduler emitted all three leads, the

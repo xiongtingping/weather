@@ -397,6 +397,8 @@ def fetch_day_maximum(
         "hours_wanted": wanted,
         "hours_covered": sorted(values),
         "forecast_tmax_c": max(values.values()) if values else None,
+        # Charter 95 (P1 lane): the curve itself, forecast hour -> °C.
+        "hourly_c": dict(sorted(values.items())),
         "bytes_downloaded": downloaded,
         "source_urls": urls,
         # The Lambert grid has no row/column arithmetic worth citing; the

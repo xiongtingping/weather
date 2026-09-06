@@ -184,6 +184,8 @@ def fetch_run_day_maxima(
             "hours_wanted": wanted,
             "hours_covered": sorted(values),
             "forecast_tmax_c": max(values.values()) if values else None,
+            # Charter 95 (P1 lane): the curve itself, forecast hour -> °C.
+            "hourly_c": dict(sorted(values.items())),
             # The run's download is shared; attributing the full cost to
             # each station would overcount it sevenfold in any audit that
             # sums rows.  Attributed to the first station, zero after.

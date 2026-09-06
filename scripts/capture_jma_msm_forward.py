@@ -59,6 +59,7 @@ STATIONS = CAPTURE_STATIONS
 # ladder, so a scope formed here has peers to pair with rather than sitting
 # alone in a cycle nobody else fits.
 RUN_CYCLES = (0, 12)
+P1_MAX_RUNS_PER_PASS = 1
 # How far back to keep filling.  The archive holds far more, but a capture
 # lane that reaches back indefinitely re-reads a settled corpus every pass.
 BACKFILL_DAYS = 3
@@ -165,6 +166,21 @@ def main() -> int:
     )
     register_regional_point_systems(conn)
     conn.commit()
+    # Charter 95 (re-ruled 2026-09-06): the P1 lane -- every MSM cycle.
+    from bayes_basket_target.regional_point_lane import (  # noqa: PLC0415
+        capture_p1, ensure_schema,
+    )
+    ensure_schema(conn)
+    _receipt = capture_p1(
+        conn, product="MSM", now=now, stations=STATIONS,
+        max_runs=P1_MAX_RUNS_PER_PASS, dry_run=args.dry_run,
+    )
+    print(
+        f"P1 MSM: 计划 {_receipt['runs_planned']} run，写入 {_receipt['written']}，"
+        f"已有 {_receipt['existed']}，空 {_receipt['empty']}，失败 {len(_receipt['failed'])}"
+    )
+    for _line in _receipt["failed"][:4]:
+        print(f"  {_line}")
     conn.execute("PRAGMA busy_timeout=60000")
     writable, reason = _transport_is_writable(conn)
     if not writable and not args.dry_run:
