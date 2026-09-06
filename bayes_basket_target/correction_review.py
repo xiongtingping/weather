@@ -381,7 +381,7 @@ def append_correction_review(
             identity["evidence_sha256"], content_sha,
         ),
     )
-    # Charter 97 (2026-09-06): the halt row follows the review.  The rest of
+    # Charter 100 (2026-09-06): the halt row follows the review.  The rest of
     # the system asks ``assert_station_day_corrections_resolved``, which reads
     # these receipts, so a station-day whose corrections are all reviewed is
     # clear -- but the AWC ingress asks the halts table instead, and nothing

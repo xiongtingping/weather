@@ -103,7 +103,7 @@ def plan_certain_win_recycles(
         }
         if not held:
             continue
-        # Charter 97 (2026-09-06): the settled truth, not the trajectory
+        # Charter 100 (2026-09-06): the settled truth, not the trajectory
         # lane's running bound.  The bound froze on 87 station-days -- KAUS
         # 2026-08-23 held 28.0C against a day its own reports took to 40.0C
         # -- because a correction halt stopped it advancing, and a recycle

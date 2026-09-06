@@ -848,7 +848,7 @@ def _posterior(
     # does: a replay must be able to rebuild this exact envelope, and a layer
     # that reads its own fitted file would rebuild a different one as soon as
     # the file was refitted.
-    # Charter 96 (user ruling, 2026-09-06): a regional run issued during the
+    # Charter 99 (user ruling, 2026-09-06): a regional run issued during the
     # local day answers both halves of the ceiling's question -- how much
     # mass belongs above the bucket already holding the high, and how far
     # above -- from today's curve rather than a pooled rate and a dawn
@@ -1389,7 +1389,7 @@ def materialize_p1(
     # so the version moves too.
     posterior_version: str = "p1_metar_trajectory_target_v8",
     ceiling_artifact: Mapping[str, Any] | None = None,
-    # Charter 96: {"remaining_peak_c", "cell", "lineage"} for the freshest
+    # Charter 99: {"remaining_peak_c", "cell", "lineage"} for the freshest
     # admissible regional run, or None.  Handed in by the caller for the
     # same reason the ceiling artifact is: a replay must rebuild this
     # envelope, and a layer that read its own store would rebuild another.

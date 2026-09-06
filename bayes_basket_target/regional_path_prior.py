@@ -1,4 +1,4 @@
-"""Charter 96: the regional model's curve as P1's remaining-warming prior.
+"""Charter 99: the regional model's curve as P1's remaining-warming prior.
 
 Operator ruling 2026-09-06 ("跳过度量直接接进 P1", after "把区域模型移动到
 P1…尝试和温度路径融合").  The cooling-side ceiling answers half the P1

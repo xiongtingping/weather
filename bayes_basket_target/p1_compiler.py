@@ -475,7 +475,7 @@ def compile_station_p1_packets(
     station_width: tuple[Mapping[str, float], str] | None = None,
     fleet_regime: Mapping[str, Any] | None = None,
     ceiling_artifact: Mapping[str, Any] | None = None,
-    # Charter 96: the lane's runs for this station-day, read once by the
+    # Charter 99: the lane's runs for this station-day, read once by the
     # caller, plus the fitted artifact.  Each prefix resolves its own run on
     # its own decision clock, so a replay rebuilds every envelope exactly.
     regional_runs: Sequence[Mapping[str, Any]] | None = None,

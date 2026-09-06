@@ -580,7 +580,7 @@ def test_unflagged_observation_without_conflict_still_refused() -> None:
         )
 
 
-# --- Charter 97 (2026-09-06): the halt row follows the review -----------------
+# --- Charter 100 (2026-09-06): the halt row follows the review -----------------
 
 def test_the_halt_write_back_is_in_the_appender() -> None:
     """Pinned on the source: the update lives beside the review insert, so a

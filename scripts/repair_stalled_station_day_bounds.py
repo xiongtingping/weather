@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Charter 97: clear reviewed correction halts and rebuild the bounds they froze.
+"""Charter 100: clear reviewed correction halts and rebuild the bounds they froze.
 
 A corrected report raises a halt on its station-day, and the AWC ingress will
 not advance that day's running maximum while the halt stands.  The review lane

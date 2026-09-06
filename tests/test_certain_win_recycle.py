@@ -94,7 +94,7 @@ def _seed(
             json.dumps({"lower": lower, "upper": upper}),
         ),
     )
-    # Charter 97: the settled high is what the recycler reads; the trajectory
+    # Charter 100: the settled high is what the recycler reads; the trajectory
     # bound stays in the fixture because the timezone still falls back to it.
     target.execute(
         "INSERT INTO calibration_station_daily_high_truth"

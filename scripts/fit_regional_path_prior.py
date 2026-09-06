@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fit charter 96's regional path prior: how wrong the curve's remaining peak is.
+"""Fit charter 99's regional path prior: how wrong the curve's remaining peak is.
 
 At a decision instant the layer serves ``max(H, N(peak + bias, sigma))``.  This
 fits that ``bias`` and ``sigma`` from settled days: for every regional run, at
@@ -42,7 +42,7 @@ def _parse(stamp: str) -> datetime:
 def collect(target_db: Path, archive_db: Path) -> list[dict]:
     target = sqlite3.connect(f"file:{target_db}?mode=ro", uri=True, timeout=120.0)
     archive = sqlite3.connect(f"file:{archive_db}?mode=ro", uri=True, timeout=120.0)
-    # Charter 96 (2026-09-06): the truth is the calibration lane's settled
+    # Charter 99 (2026-09-06): the truth is the calibration lane's settled
     # daily high, not the trajectory lane's station-day bounds.  The bounds
     # row is wrong on 87 station-days since 2026-08-20 -- KAUS 2026-08-23
     # records 28.0C against a day whose own METAR series reached 40.0C,

@@ -2280,7 +2280,7 @@ SELECTION_RULE_SHA256 = content_sha256({
     # Production applies the cooling-side ceiling inside P1 as of 2026-08-23.
     # A row priced against the raw posterior describes a red line the live
     # engine no longer draws, so it cannot share a fingerprint with these.
-    # Charter 96 (2026-09-06): the regional curve stands in the ceiling's
+    # Charter 99 (2026-09-06): the regional curve stands in the ceiling's
     # place when it speaks.  A book priced with it may not share a
     # fingerprint with one priced without.
     "regional_path_prior": (
@@ -5689,7 +5689,7 @@ def _ceiling_corrected(
     zone = _settlement_timezone(conn, station_id, event_date)
     if not zone:
         return probabilities
-    # Charter 96: the regional curve answers both halves of the ceiling's
+    # Charter 99: the regional curve answers both halves of the ceiling's
     # question from today's run, and stands in its place when it speaks.
     # The replay reads the as-of table, fitted only on earlier days.
     regional = regional_path_prior.build_serving_input(

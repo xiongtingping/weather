@@ -1,4 +1,4 @@
-"""Charter 96: the regional curve stands in the ceiling's place at P1.
+"""Charter 99: the regional curve stands in the ceiling's place at P1.
 
 Operator ruling 2026-09-06 ("跳过度量直接接进 P1").  The ceiling answers "how
 much mass belongs above the bucket already holding the high" from a pooled

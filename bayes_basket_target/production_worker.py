@@ -895,7 +895,7 @@ CORRECTION_AUTO_CLEAR_RETRY_SEC = 6 * 3600.0
 CORRECTION_AUTO_CLEAR_DEADLINE_SEC = 900.0
 # Far enough back to pick up a halt raised while the pass was down, without
 # reopening months of settled history on every run.
-# Charter 97 (2026-09-06): wide enough that a halt cannot age out of reach.
+# Charter 100 (2026-09-06): wide enough that a halt cannot age out of reach.
 # At 21 days the 2026-07-17 halts were unreachable for good, and a halt the
 # pass never sees is a station-day whose running maximum never advances again.
 CORRECTION_AUTO_CLEAR_WINDOW_DAYS = 120
@@ -11454,7 +11454,7 @@ class TargetProductionWorker:
                     # same envelope; the module's own env switch still decides
                     # whether the layer speaks at all.
                     ceiling_artifact=load_metar_ceiling_artifact(),
-                    # Charter 96: the regional lane's runs for this
+                    # Charter 99: the regional lane's runs for this
                     # station-day, read once here; the compiler resolves
                     # which one each prefix may read on its own clock.
                     regional_runs=load_regional_runs_for_station_day(
