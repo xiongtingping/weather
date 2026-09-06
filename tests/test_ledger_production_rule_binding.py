@@ -777,7 +777,9 @@ def test_charter_68_scope_and_the_taker_leg_veto_move_together() -> None:
     # three served scopes must carry the same boundaries -- the store fits
     # per scope but ``_band_index`` is one partition, so a scope on the old
     # bounds would look its lambda up in a band nobody fitted.
-    assert K.EFFECTIVE_EDGE_BAND_BOUNDS == (0.50, 0.70, 0.85, 0.95, float("inf"))
+    assert K.EFFECTIVE_EDGE_BAND_BOUNDS == (
+        0.50, 0.70, 0.80, 0.85, 0.95, float("inf")
+    )
     for _table in (
         K.EFFECTIVE_EDGE_LAMBDA,
         K.EFFECTIVE_EDGE_P0M_LAMBDA,

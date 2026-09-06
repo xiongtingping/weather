@@ -1323,11 +1323,12 @@ def test_clause_68_the_objective_reads_effective_edge() -> None:
     # carries the same value either side, so the constant still describes
     # the table charter 68 shipped -- it just names one more boundary.
     assert kernel.EFFECTIVE_EDGE_BAND_BOUNDS == (
-        0.50, 0.70, 0.85, 0.95, float("inf")
+        0.50, 0.70, 0.80, 0.85, 0.95, float("inf")
     )
     assert kernel.EFFECTIVE_EDGE_LAMBDA == (
         (0.50, 0.14),
         (0.70, 0.60),
+        (0.80, 0.87),
         (0.85, 0.87),
         (0.95, 0.82),
         (float("inf"), 0.82),
