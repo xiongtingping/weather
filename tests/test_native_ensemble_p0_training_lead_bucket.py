@@ -16,6 +16,7 @@ one replacing the other.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 
 import pytest
@@ -44,7 +45,8 @@ def _conn() -> sqlite3.Connection:
           authority_scope TEXT NOT NULL,
           generation INTEGER NOT NULL,
           valid_from_utc TEXT NOT NULL,
-          valid_until_utc TEXT NOT NULL
+          valid_until_utc TEXT NOT NULL,
+          run_cycle_by_system_json TEXT
         );
         CREATE TABLE calibration_cross_native_ensemble_artifact (
           cross_ensemble_artifact_id TEXT PRIMARY KEY,
@@ -63,6 +65,7 @@ def _activate(
     system_ids: list[str],
     station_id: str = "KLGA",
     valid_until_utc: str = "2026-09-08T00:00:00.000Z",
+    cycles: dict[str, str] | None = None,
 ) -> None:
     artifact_id = f"artifact-{activation_id}"
     conn.execute(
@@ -71,7 +74,7 @@ def _activate(
     )
     conn.execute(
         "INSERT INTO calibration_native_ensemble_activation VALUES "
-        "(?,?,?,?,?,?,?,?,?,?)",
+        "(?,?,?,?,?,?,?,?,?,?,?)",
         (
             activation_id,
             "CROSS_NATIVE_ENSEMBLE",
@@ -83,6 +86,11 @@ def _activate(
             1,
             "2026-08-09T00:00:00.000Z",
             valid_until_utc,
+            json.dumps(
+                cycles if cycles is not None
+                else {system_id: "00Z" for system_id in system_ids},
+                sort_keys=True,
+            ),
         ),
     )
 
@@ -92,6 +100,8 @@ def _resolve(
     candidates: tuple[str, ...],
     *,
     observed: list[str] | None = None,
+    cycles: dict[str, str] | None = None,
+    fresh: list[str] | None = None,
 ) -> str:
     return _activated_lead_bucket(
         conn,
@@ -100,6 +110,8 @@ def _resolve(
         decision_at_utc=DECISION_AT,
         observed_system_ids=SYSTEMS if observed is None else observed,
         candidates=candidates,
+        packet_cycle_by_system=cycles,
+        freshest_bucket_system_ids=fresh or (),
     )
 
 
@@ -272,3 +284,82 @@ def test_a_real_straddle_is_reported_whole_when_a_bystander_is_present() -> None
     )
     assert buckets == ("h12_24", "h24_48")
     assert "ECCC_GEM_GLOBAL_ENS" not in by_system
+
+
+# Charter 88 (2026-09-06): h00_12 may borrow the h12_24 activation of the
+# same run cycle.  The ZGSZ 2026-09-06 shape: ICON/ECCC ride the 00Z run of
+# the day before (h12_24 by the hour), ECMWF/GEFS the 18Z run issued two
+# hours into the local day (h00_12); h00_12 was only ever fitted at 00Z.
+ICON, ECCC = "DWD_ICON_GLOBAL_EPS", "ECCC_GEM_GLOBAL_ENS"
+ECMWF, GEFS = SYSTEMS
+FOUR = [ICON, ECCC, ECMWF, GEFS]
+PACKET_CYCLES = {ICON: "00Z", ECCC: "00Z", ECMWF: "18Z", GEFS: "18Z"}
+
+
+def test_h00_12_chain_borrows_h12_24_by_ruling() -> None:
+    from bayes_basket_target.native_ensemble_p0 import HOUR_LEAD_FALLBACK_CHAIN
+
+    assert HOUR_LEAD_FALLBACK_CHAIN["h00_12"] == ("h00_12", "h12_24")
+
+
+def test_the_borrow_is_taken_when_only_h12_24_seats_the_last_run() -> None:
+    """h00_12 seats yesterday's riders only; h12_24 seats ECMWF/GEFS at 18Z."""
+
+    conn = _conn()
+    _activate(conn, activation_id="h0-old", lead_bucket="h00_12",
+              system_ids=[ICON, ECCC], cycles={ICON: "00Z", ECCC: "00Z"})
+    _activate(conn, activation_id="h12-18z", lead_bucket="h12_24",
+              system_ids=[ECMWF, GEFS], cycles={ECMWF: "18Z", GEFS: "18Z"})
+    assert _resolve(
+        conn, ("h00_12", "h12_24"), observed=FOUR,
+        cycles=PACKET_CYCLES, fresh=[ECMWF, GEFS],
+    ) == "h12_24"
+
+
+def test_the_exact_bucket_takes_over_once_it_seats_the_last_run() -> None:
+    conn = _conn()
+    _activate(conn, activation_id="h0-old", lead_bucket="h00_12",
+              system_ids=[ICON, ECCC], cycles={ICON: "00Z", ECCC: "00Z"})
+    _activate(conn, activation_id="h0-18z", lead_bucket="h00_12",
+              system_ids=[ECMWF, GEFS], cycles={ECMWF: "18Z", GEFS: "18Z"})
+    _activate(conn, activation_id="h12-18z", lead_bucket="h12_24",
+              system_ids=[ECMWF, GEFS], cycles={ECMWF: "18Z", GEFS: "18Z"})
+    assert _resolve(
+        conn, ("h00_12", "h12_24"), observed=FOUR,
+        cycles=PACKET_CYCLES, fresh=[ECMWF, GEFS],
+    ) == "h00_12"
+
+
+def test_a_borrow_must_be_the_same_run_cycle() -> None:
+    """An h12_24 fit at 00Z for ECMWF/GEFS is another run: no borrow."""
+
+    conn = _conn()
+    _activate(conn, activation_id="h0-old", lead_bucket="h00_12",
+              system_ids=[ICON, ECCC], cycles={ICON: "00Z", ECCC: "00Z"})
+    _activate(conn, activation_id="h12-00z", lead_bucket="h12_24",
+              system_ids=[ECMWF, GEFS], cycles={ECMWF: "00Z", GEFS: "00Z"})
+    assert _resolve(
+        conn, ("h00_12", "h12_24"), observed=FOUR,
+        cycles=PACKET_CYCLES, fresh=[ECMWF, GEFS],
+    ) == "h00_12"
+
+
+def test_without_a_cycle_map_the_old_rule_stands() -> None:
+    conn = _conn()
+    _activate(conn, activation_id="h0-old", lead_bucket="h00_12",
+              system_ids=[ICON, ECCC])
+    _activate(conn, activation_id="h12-18z", lead_bucket="h12_24",
+              system_ids=[ECMWF, GEFS], cycles={ECMWF: "18Z", GEFS: "18Z"})
+    assert _resolve(conn, ("h00_12", "h12_24"), observed=FOUR) == "h00_12"
+
+
+def test_the_tie_break_counts_only_freshest_systems_at_their_own_run() -> None:
+    from bayes_basket_target.native_ensemble_p0 import _same_run_fresh_count
+
+    fitted = {ICON: "00Z", ECMWF: "18Z", GEFS: "00Z"}
+    assert _same_run_fresh_count(
+        [ICON, ECMWF, GEFS], fitted, PACKET_CYCLES, [ECMWF, GEFS]
+    ) == 1
+    assert _same_run_fresh_count([ICON, ECCC], fitted, PACKET_CYCLES, [ECMWF, GEFS]) == 0
+    assert _same_run_fresh_count([ECMWF], fitted, PACKET_CYCLES, []) == 0
+

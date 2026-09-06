@@ -29,7 +29,11 @@ from .center_width_calibration import (
 from .center_width_store import EDGE_WIDTH_C, taf_direction_for_gap
 from .cross_consensus import apply_band_reliability
 from .et_history import assert_event_day_started
-from .metar_ceiling import apply_ceiling as apply_metar_ceiling
+from .metar_ceiling import (
+    apply_ceiling as apply_metar_ceiling,
+    current_gap_c as ceiling_current_gap_c,
+    latest_temperature_c as ceiling_latest_temperature_c,
+)
 from .settlement_time import settlement_day_window
 from .ssot import production_ssot_schema_status
 from .resource_bounds import assert_connection_target_capacity
@@ -40,6 +44,7 @@ from .metar_trajectory import (
     METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION,
     P1_SOFT_LR_SUSPENDED_LIKELIHOOD_MODE,
     SOFT_LIKELIHOOD_POLICY_SUSPENDED,
+    SOFT_PATH_SOURCE_LANES,
     MetarTrajectoryLikelihoodArtifact,
     MetarTrajectoryObservation,
     MetarTrajectoryUpdateProof,
@@ -848,6 +853,9 @@ def _posterior(
             settlement_timezone=predecessor.settlement_timezone,
             as_of_utc=decision_at_utc,
             artifact=ceiling.get("artifact"),
+            # v2 (2026-09-06): how far the newest formal report sits below
+            # the running high; None serves the hour marginal.
+            current_gap_c=ceiling.get("current_gap_c"),
         )
         # A rate may not revive what an observation killed, and it may not be
         # the thing that empties the support either.
@@ -1329,7 +1337,11 @@ def materialize_p1(
     # local hour; see ``SOFT_LIKELIHOOD_POLICY``.  The version moves because
     # the served shape moved: the centre/width evidence clock reads this
     # string to know where the currently served distribution begins.
-    posterior_version: str = "p1_metar_trajectory_target_v6",
+    # v7 (2026-09-06, operator ruling): the clock ceiling reads a second axis
+    # -- how far the newest formal report sits below the running high -- and
+    # speaks from 14 hours out (10:00 local) instead of 10.  Both move the
+    # served shape, so the version moves with them.
+    posterior_version: str = "p1_metar_trajectory_target_v7",
     ceiling_artifact: Mapping[str, Any] | None = None,
     band_table: tuple[
         Sequence[tuple[tuple[float, float], float]], str
@@ -1476,6 +1488,16 @@ def materialize_p1(
             "p1_canonical_observation_identity_ambiguous"
         )
     last_observation = last_matches[0]
+    # The ceiling's second axis (v2, 2026-09-06): the newest formal report
+    # against the running high.  Formal lanes only, as the running high is.
+    latest_formal_temperature_c = ceiling_latest_temperature_c(
+        (item.event.observed_at_utc, item.temperature_c)
+        for item in normalized_observations
+        if item.event.source_lane not in SOFT_PATH_SOURCE_LANES
+    )
+    ceiling_gap_c = ceiling_current_gap_c(
+        proof.running_high_c, latest_formal_temperature_c
+    )
     surviving_buckets = [
         bucket
         for bucket in root.probabilities
@@ -1550,6 +1572,10 @@ def materialize_p1(
             ),
             "metar_trajectory_running_high_c": (
                 f"{proof.running_high_c:.17g}"
+            ),
+            "metar_trajectory_latest_formal_temperature_c": (
+                "NONE" if latest_formal_temperature_c is None
+                else f"{float(latest_formal_temperature_c):.17g}"
             ),
             "reported_high_c": f"{proof.running_high_c:.17g}",
             "reported_high_bucket": reported_high_bucket,
@@ -1649,6 +1675,7 @@ def materialize_p1(
                 "running_high_bucket": reported_high_bucket,
                 "artifact": ceiling_artifact,
                 "artifact_sha256": content_sha256(dict(ceiling_artifact)),
+                "current_gap_c": ceiling_gap_c,
             }
             if proof.prefix_is_current
             else None

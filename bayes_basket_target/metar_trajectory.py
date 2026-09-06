@@ -26,7 +26,11 @@ from .contracts import (
     timestamp_lt,
 )
 from .event_contracts import CanonicalObservationEvent
-from .metar_ceiling import apply_ceiling as apply_metar_ceiling
+from .metar_ceiling import (
+    apply_ceiling as apply_metar_ceiling,
+    current_gap_c as ceiling_current_gap_c,
+    latest_temperature_c as ceiling_latest_temperature_c,
+)
 from .metar_path_state import (
     HOURLY_CURVE_PATH_MODEL_COEFFICIENT_KEYS,
     PATH_MODEL_COEFFICIENT_KEYS,
@@ -1932,6 +1936,16 @@ def compile_metar_trajectory_update_proof(
             event_date=root.event_date,
             settlement_timezone=root.settlement_timezone,
             as_of_utc=as_of_utc,
+            # v2 (2026-09-06): the newest formal report against the running
+            # high, the same pairing the served envelope computes.
+            current_gap_c=ceiling_current_gap_c(
+                running_high,
+                ceiling_latest_temperature_c(
+                    (item.event.observed_at_utc, item.temperature_c)
+                    for item in ordered
+                    if item.event.source_lane not in SOFT_PATH_SOURCE_LANES
+                ),
+            ),
         )
         # A rate must never resurrect a bucket the observation killed.
         posterior = {

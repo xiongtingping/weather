@@ -25,7 +25,7 @@ import json
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,7 +33,19 @@ DEFAULT_ARTIFACT = (
     ROOT / "data" / "runtime" / "bayes_basket_target_nwp"
     / "metar_ceiling_artifact.json"
 )
-SCHEMA = "bayes_basket_target_metar_ceiling_v1"
+# v2 (operator ruling 2026-09-06): the rate is fitted on two axes -- hours
+# left, and how far the current temperature sits below the day's running high
+# -- because a day that has fallen two degrees off its high at noon is not the
+# day the hour-only rate describes.  A v1 table (hour axis only) still loads
+# and serves the hour marginal, so a serving side and a fitted file may move
+# on different days without a gap.
+SCHEMA = "bayes_basket_target_metar_ceiling_v2"
+LEGACY_SCHEMAS = frozenset({"bayes_basket_target_metar_ceiling_v1"})
+CEILING_GAP_DIMENSION_VERSION = "hours_left_x_high_minus_current_v1"
+# Cell edges on the gap axis, in degrees C below the running high: at the
+# high, one degree under, two under, three or more.  METAR temperatures are
+# whole degrees, so the half-degree edges split the integers cleanly.
+GAP_EDGES_C = (0.5, 1.5, 2.5)
 
 # Off until switched on deliberately: with it off this module cannot alter a
 # single posterior, so every content hash downstream is byte-identical.
@@ -79,10 +91,71 @@ def load_artifact(path: Path | None = None) -> dict[str, Any] | None:
             payload = json.loads(target.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             payload = None
-        if payload is not None and payload.get("schema") != SCHEMA:
+        if payload is not None and payload.get("schema") not in (
+            {SCHEMA} | LEGACY_SCHEMAS
+        ):
             payload = None
         _CACHE[key] = payload
     return _CACHE[key]
+
+
+def gap_bin(gap_c: float) -> int:
+    """Index of the gap cell holding ``gap_c`` degrees below the high."""
+
+    for index, edge in enumerate(GAP_EDGES_C):
+        if float(gap_c) < float(edge):
+            return index
+    return len(GAP_EDGES_C)
+
+
+def gap_cell_bounds(index: int) -> tuple[float, float]:
+    edges = (float("-inf"),) + tuple(float(e) for e in GAP_EDGES_C) + (1e9,)
+    return edges[index], edges[index + 1]
+
+
+def latest_temperature_c(
+    points: Iterable[tuple[Any, Any]], as_of_utc: str | None = None
+) -> float | None:
+    """The temperature of the newest observation at or before ``as_of_utc``.
+
+    ``points`` are (observed_at_utc, temperature_c) pairs from the formal
+    report series -- the caller decides which lanes count, the same way the
+    running high is taken from formal reports only.
+    """
+
+    limit = None
+    if as_of_utc:
+        try:
+            limit = datetime.fromisoformat(
+                str(as_of_utc).replace("Z", "+00:00")
+            )
+        except ValueError:
+            limit = None
+    best: tuple[datetime, float] | None = None
+    for stamp, temperature in points:
+        try:
+            when = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+            value = float(temperature)
+        except (TypeError, ValueError):
+            continue
+        if limit is not None and when > limit:
+            continue
+        if best is None or when >= best[0]:
+            best = (when, value)
+    return None if best is None else best[1]
+
+
+def current_gap_c(
+    running_high_c: Any, latest_temperature: Any
+) -> float | None:
+    """Degrees the current temperature sits below the day's running high."""
+
+    try:
+        high = float(running_high_c)
+        latest = float(latest_temperature)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, high - latest)
 
 
 def hours_left(event_date: str, settlement_timezone: str, as_of_utc: str) -> float | None:
@@ -98,22 +171,64 @@ def hours_left(event_date: str, settlement_timezone: str, as_of_utc: str) -> flo
     return (close - now).total_seconds() / 3600.0
 
 
-def probability_still_rising(
-    artifact: Mapping[str, Any], remaining_hours: float
-) -> float | None:
-    """P(the day ends above the bucket already holding its high)."""
+def resolve_rate(
+    artifact: Mapping[str, Any],
+    remaining_hours: float,
+    gap_c: float | None = None,
+) -> dict[str, Any] | None:
+    """The fitted rate for this hour and gap, and where it came from.
+
+    The hour bin is found first; a bin that fell back to the pooled rate is
+    describing every hour at once, which is the one thing this layer must not
+    do, so it yields None.  Inside the bin the gap cell serves when the fit
+    holds one for this gap; a thin cell, a table without cells (v1) or a
+    caller without a gap all fall back to the bin's own hour marginal --
+    never to the pooled rate.
+    """
 
     bins = artifact.get("bins") or {}
     for entry in bins.values():
         low = float(entry.get("hours_from", 0.0))
         high = float(entry.get("hours_to", 0.0))
-        if low <= remaining_hours < high:
-            # A bin that fell back to the pooled rate is describing every hour
-            # at once, which is the one thing this layer must not do.
-            if entry.get("backed_off"):
-                return None
-            return float(entry["p_still_rose"])
+        if not (low <= remaining_hours < high):
+            continue
+        if entry.get("backed_off"):
+            return None
+        marginal = float(entry["p_still_rose"])
+        cells = entry.get("by_gap") or {}
+        if gap_c is None:
+            return {"rate": marginal, "source": "hours_marginal"}
+        if not cells:
+            return {"rate": marginal, "source": "hours_marginal_no_gap_cells"}
+        gap = float(gap_c)
+        for cell in cells.values():
+            cell_low = float(cell.get("gap_from", float("-inf")))
+            cell_high = float(cell.get("gap_to", 1e9))
+            if cell_low <= gap < cell_high:
+                if cell.get("backed_off"):
+                    return {
+                        "rate": marginal,
+                        "source": "hours_marginal_gap_cell_backed_off",
+                        "gap_from": cell_low, "gap_to": cell_high,
+                    }
+                return {
+                    "rate": float(cell["p_still_rose"]),
+                    "source": "hours_x_gap",
+                    "gap_from": cell_low, "gap_to": cell_high,
+                }
+        return {"rate": marginal, "source": "hours_marginal_gap_cell_missing"}
     return None
+
+
+def probability_still_rising(
+    artifact: Mapping[str, Any],
+    remaining_hours: float,
+    gap_c: float | None = None,
+) -> float | None:
+    """P(the day ends above the bucket already holding its high)."""
+
+    resolved = resolve_rate(artifact, remaining_hours, gap_c)
+    return None if resolved is None else float(resolved["rate"])
 
 
 def apply_ceiling(
@@ -126,6 +241,7 @@ def apply_ceiling(
     as_of_utc: str,
     artifact: Mapping[str, Any] | None = None,
     enabled: bool | None = None,
+    current_gap_c: float | None = None,
 ) -> tuple[dict[str, float], dict[str, str]]:
     """Rescale the above/below split to the fitted rate; keep both shapes.
 
@@ -133,6 +249,10 @@ def apply_ceiling(
     the layer declines to speak -- no artifact, a backed-off bin, too much of
     the day still ahead, or a split already at 0 or 1 that no rescaling can
     move without inventing support.
+
+    ``current_gap_c`` is how far the newest formal report sits below the
+    running high (v2, 2026-09-06).  With it the fitted cell for this hour and
+    gap serves; without it, or on a v1 table, the hour marginal does.
     """
 
     base = {str(k): float(v) for k, v in posterior.items()}
@@ -162,10 +282,11 @@ def apply_ceiling(
     if running_high_bucket not in ordinals:
         note["metar_ceiling_skip_reason"] = "RUNNING_HIGH_BUCKET_UNKNOWN"
         return base, note
-    target = probability_still_rising(payload, remaining)
-    if target is None:
+    resolved = resolve_rate(payload, remaining, current_gap_c)
+    if resolved is None:
         note["metar_ceiling_skip_reason"] = "BIN_BACKED_OFF"
         return base, note
+    target = float(resolved["rate"])
     floor_ordinal = int(ordinals[running_high_bucket])
     above = sum(v for k, v in base.items()
                 if int(ordinals.get(k, floor_ordinal)) > floor_ordinal)
@@ -193,6 +314,11 @@ def apply_ceiling(
         "metar_ceiling_mass_above_after": f"{target:.6f}",
         "metar_ceiling_artifact_trained_through": str(
             payload.get("trained_through") or ""),
+        "metar_ceiling_rate_source": str(resolved["source"]),
+        "metar_ceiling_gap_c": (
+            "NONE" if current_gap_c is None else f"{float(current_gap_c):.4f}"
+        ),
+        "metar_ceiling_gap_dimension": CEILING_GAP_DIMENSION_VERSION,
     }
     return {k: v / total for k, v in scaled.items()}, note
 
@@ -215,7 +341,9 @@ def load_replay_table(path: Path | None = None) -> dict[str, Any] | None:
             payload = json.loads(target.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             payload = None
-        if payload is not None and payload.get("schema") != SCHEMA + "_replay":
+        if payload is not None and payload.get("schema") not in (
+            {SCHEMA + "_replay"} | {legacy + "_replay" for legacy in LEGACY_SCHEMAS}
+        ):
             payload = None
         _CACHE[key] = payload
     return _CACHE[key]

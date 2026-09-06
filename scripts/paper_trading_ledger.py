@@ -1921,7 +1921,10 @@ SELECTION_RULE_SHA256 = content_sha256({
         }}
         if CONVERGENCE_CLAIM_MODE == "on" else {}
     ),
-    **({"p0m_taf": P0M_TAF_MODE} if P0M_TAF_MODE != "off" else {}),
+    # Charter 90 (2026-09-06): the P0-M seat holds the TAF TX bucket.  A rule
+    # of the standing book, hashed unconditionally -- a book seated without
+    # it may not share a fingerprint with one seated under it.
+    "p0m_taf": P0M_TAF_MODE,
     **(
         {"chain_opening_stages": sorted(CHAIN_OPENING_STAGES)}
         if CHAIN_OPENING_STAGES != {"P0"} else {}
@@ -2171,8 +2174,13 @@ SELECTION_RULE_SHA256 = content_sha256({
         # priced with the ceiling from 10:00 local (14h left, 2026-09-06)
         # is not the book priced with it from 14:00 (10h), and the two must
         # not share a fingerprint.
-        "replay_table_oos_by_event_date:max_hours_left=%g"
-        % metar_ceiling.CEILING_MAX_HOURS_LEFT
+        # v2 (2026-09-06): the rate also reads how far the newest formal
+        # report sits below the running high; the axis version rides here.
+        "replay_table_oos_by_event_date:max_hours_left=%g:%s"
+        % (
+            metar_ceiling.CEILING_MAX_HOURS_LEFT,
+            metar_ceiling.CEILING_GAP_DIMENSION_VERSION,
+        )
         if PAPER_LEDGER_CEILING and REPLAY_LAYERS_APPLIED
         else "off:judge_reads_envelope" if PAPER_LEDGER_CEILING
         else "off"
@@ -5442,6 +5450,51 @@ def _center_width_corrected(
     return corrected
 
 
+# Formal reports per station-day, for the ceiling's gap axis (v2, 2026-09-06):
+# the same archive series production's P1 chain consumes, read once per
+# station-day and kept for the pass.
+_FORMAL_OBSERVATION_POINTS: dict[tuple[str, str], list[tuple[str, float]]] = {}
+
+
+def _formal_observation_points(
+    station_id: str, event_date: str, zone_name: str
+) -> list[tuple[str, float]]:
+    """(valid_at, temperature) of the day's formal METAR/SPECI reports."""
+
+    key = (str(station_id), str(event_date))
+    cached = _FORMAL_OBSERVATION_POINTS.get(key)
+    if cached is not None:
+        return cached
+    points: list[tuple[str, float]] = []
+    try:
+        start = datetime.fromisoformat(str(event_date)).replace(
+            tzinfo=ZoneInfo(str(zone_name))
+        )
+        end = start + timedelta(days=1)
+        stamp = "%Y-%m-%dT%H:%M:%S.000Z"
+        observations = sqlite3.connect(
+            f"file:{OBSERVATION_DB}?mode=ro", uri=True, timeout=30.0
+        )
+        rows = observations.execute(
+            "SELECT valid_at, reported_temperature_c"
+            " FROM reported_trajectory_observations"
+            " WHERE station_id=? AND reported_temperature_c IS NOT NULL"
+            " AND report_type IN ('METAR','SPECI')"
+            " AND valid_at>=? AND valid_at<? ORDER BY valid_at",
+            (
+                str(station_id),
+                start.astimezone(timezone.utc).strftime(stamp),
+                end.astimezone(timezone.utc).strftime(stamp),
+            ),
+        ).fetchall()
+        observations.close()
+        points = [(str(valid_at), float(temperature)) for valid_at, temperature in rows]
+    except (sqlite3.Error, ValueError, KeyError, TypeError):
+        points = []
+    _FORMAL_OBSERVATION_POINTS[key] = points
+    return points
+
+
 def _ceiling_corrected(
     conn,
     probabilities: dict[str, float],
@@ -5494,6 +5547,12 @@ def _ceiling_corrected(
     zone = _settlement_timezone(conn, station_id, event_date)
     if not zone:
         return probabilities
+    # v2: the newest formal report at this decision clock, against the
+    # running high -- the same pairing production computes from its prefix.
+    latest_formal = metar_ceiling.latest_temperature_c(
+        _formal_observation_points(station_id, event_date, zone),
+        as_of_utc=as_of_utc,
+    )
     corrected, _ = metar_ceiling.apply_ceiling(
         probabilities,
         ordinals=ordinals,
@@ -5503,6 +5562,7 @@ def _ceiling_corrected(
         as_of_utc=as_of_utc,
         artifact=curve,
         enabled=True,
+        current_gap_c=metar_ceiling.current_gap_c(running_c, latest_formal),
     )
     return corrected
 

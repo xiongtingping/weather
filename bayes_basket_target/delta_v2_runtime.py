@@ -995,11 +995,25 @@ SKEW_SEAT_MODE = (
 )
 if SKEW_SEAT_MODE not in {"off", "p0_tail"}:
     raise RuntimeError(f"unknown skew seat mode: {SKEW_SEAT_MODE}")
+# Charter 90 (user ruling, 2026-09-06: "TAF 不和模型争权重，但可以在 P0-M
+# 阶段进篮子选桶包络"): ``tx_envelope`` is the shipped rule.  The TAF TX is
+# not a probability update -- it never touches the served vector -- but on
+# the P0-M stage it is part of the selection envelope the seat must cover:
+# every admissible P0-M window holds the TX bucket, and the charter-79
+# symmetric seat widens from centre+-1 to the contiguous span that also
+# holds the TX bucket (union only expands, the clause-42 wording), up to the
+# policy's width cap.  A TX the cap cannot reach leaves no admissible window,
+# which is the "second confirmation" failing: the model and the forecaster
+# disagree by more than a ladder can straddle, and the stage holds.  The
+# 2026-09-04 research arms stay selectable; ``off`` is the pre-ruling arm.
 P0M_TAF_MODE = (
-    os.environ.get("PM_P0M_TAF_MODE", "").strip().lower() or "off"
+    os.environ.get("PM_P0M_TAF_MODE", "").strip().lower() or "tx_envelope"
 )
-if P0M_TAF_MODE not in {"off", "tx_anchor", "confirm_hold", "confirm_override"}:
+if P0M_TAF_MODE not in {
+    "off", "tx_envelope", "tx_anchor", "confirm_hold", "confirm_override",
+}:
     raise RuntimeError(f"unknown P0-M TAF mode: {P0M_TAF_MODE}")
+P0M_TAF_ENVELOPE_RULE_VERSION = "p0m_seat_holds_taf_tx_union_v1"
 # Charter 81 (user ruling, 2026-09-05): the centre-holding claim lift.  One
 # implementation in the kernel, read here, by the paper ledger and by the
 # charter-68 lambda store (whose agreement must be computed on the same
@@ -2330,6 +2344,8 @@ def _support_windows(
     # so the solver holds when the sanctioned window is not on offer.
     symmetric_seat_forced = False
     symmetric_seat_pair: tuple[str, ...] | None = None
+    taf_envelope_expanded_seat = False
+    taf_envelope_unreachable = False
     symmetric_arm_applies = (
         SYMMETRIC_SEAT_MODE == "center_pm1"
         or (
@@ -2389,6 +2405,27 @@ def _support_windows(
                     ))
             else:
                 wanted = {centre_ordinal - 1, centre_ordinal, centre_ordinal + 1}
+            # Charter 90: on the P0-M stage the seat must also hold the TAF
+            # TX bucket.  The union only expands the fixed seat -- it never
+            # drops a rung of it -- and stops at the width cap; a TX beyond
+            # the cap sanctions nothing, so the stage holds.
+            if (
+                P0M_TAF_MODE == "tx_envelope"
+                and str(probability_stage or "") == "P0-M"
+                and taf_tx_bucket in by_bucket
+                and wanted
+            ):
+                tx_ordinal = int(by_bucket[taf_tx_bucket].ordinal)
+                if tx_ordinal not in wanted:
+                    span = set(range(
+                        min(wanted | {tx_ordinal}), max(wanted | {tx_ordinal}) + 1
+                    ))
+                    if len(span) <= max_size:
+                        wanted = span
+                        taf_envelope_expanded_seat = True
+                    else:
+                        wanted = set()
+                        taf_envelope_unreachable = True
             def _is_symmetric_seat(row: Mapping[str, Any]) -> bool:
                 return bool(wanted) and {
                     int(by_bucket[bucket].ordinal) for bucket in row["buckets"]
@@ -2453,7 +2490,10 @@ def _support_windows(
             {bucket: int(row.ordinal) for bucket, row in by_bucket.items()},
         )
         disagree = bool(taf_direction and raw_skew and taf_direction != raw_skew)
-        if P0M_TAF_MODE == "tx_anchor":
+        if P0M_TAF_MODE in {"tx_anchor", "tx_envelope"}:
+            # The seat holds the TX bucket (charter 90 ships this as
+            # ``tx_envelope``; ``tx_anchor`` is the 2026-09-04 arm it grew
+            # from).  Windows that do not are listed but cannot seat.
             windows = [
                 row for row in windows
                 if taf_tx_bucket in row["buckets"] and row.get("admissible", True)
@@ -2468,6 +2508,13 @@ def _support_windows(
         p0m_taf_audit = {
             "mode": P0M_TAF_MODE, "tx_bucket": taf_tx_bucket,
             "taf_direction": taf_direction, "skew": raw_skew, "disagree": disagree,
+            "envelope_rule": P0M_TAF_ENVELOPE_RULE_VERSION,
+            "seat_expanded_to_tx": taf_envelope_expanded_seat,
+            "tx_unreachable": taf_envelope_unreachable,
+            "seat_holds_tx": any(
+                taf_tx_bucket in row["buckets"] and row.get("admissible", True)
+                for row in windows
+            ),
         }
     audit = {
         "symmetric_seat_forced": symmetric_seat_forced,

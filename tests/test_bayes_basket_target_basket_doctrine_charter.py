@@ -1142,13 +1142,18 @@ def test_clause_48_listing_window_opens_positions() -> None:
     )
 
     # Every chain starts at its own bucket (exact bucket auto-takes-over)
-    # and borrows only strictly shorter trained groups.
+    # and borrows only strictly shorter trained groups -- with the one
+    # ruled exception: h00_12, which has nothing shorter, may borrow the
+    # h12_24 activation of the same run cycle (charter 88, 2026-09-06).
     order = {
         bucket: index
         for index, bucket in enumerate(HOUR_LEAD_BUCKET_FRESHNESS_ORDER)
     }
     for bucket, chain in HOUR_LEAD_FALLBACK_CHAIN.items():
         assert chain[0] == bucket
+        if bucket == "h00_12":
+            assert chain == ("h00_12", "h12_24")
+            continue
         assert all(
             order[candidate] <= order[bucket] for candidate in chain
         )
@@ -1162,6 +1167,7 @@ def test_clause_48_listing_window_opens_positions() -> None:
         "provisional_lead_fallback_json",
         "hour_bucket_split_riders_json",
         "activation_cycle_riders_json",
+        "same_run_lead_borrow_json",
     ):
         assert lineage_key in source, (
             "every borrow must be named in lineage: " + lineage_key

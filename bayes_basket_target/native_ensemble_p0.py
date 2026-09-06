@@ -112,8 +112,21 @@ DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 HOUR_LEAD_BUCKET_FRESHNESS_ORDER = (
     "h00_12", "h12_24", "h24_48", "h48_plus",
 )
+# Charter 88 (user ruling, 2026-09-06: "h00_12 允许借 h12_24 同 run 的激活"):
+# the shortest bucket has no shorter group to borrow from, and the day's
+# last ECMWF/GEFS run (18Z, initialised after an Asian station's local
+# midnight) lands in it with no activation fitted at that cycle -- the
+# (h00_12, 18Z) facts only started accumulating on 2026-09-03, while the same
+# cycle has weeks of fitted h12_24 activations.  So h00_12 may borrow the
+# h12_24 activation *of the same run cycle*: the borrow is taken only when
+# the exact bucket seats none of the packet's h00_12 systems at their own
+# cycle and h12_24 does (``_activated_lead_bucket``), it is named in lineage
+# (``same_run_lead_borrow_json``), and the exact bucket takes over the moment
+# its own same-cycle activation exists because it is first in the chain.
+# Unlike the cold-start borrows below this one reads a *longer* lead, so it
+# overstates spread rather than understating it.
 HOUR_LEAD_FALLBACK_CHAIN = {
-    "h00_12": ("h00_12",),
+    "h00_12": ("h00_12", "h12_24"),
     "h12_24": ("h12_24",),
     "h24_48": ("h24_48", "h12_24"),
     "h48_plus": ("h48_plus", "h24_48", "h12_24"),
@@ -122,6 +135,32 @@ NON_RUN_LEAD_BYSTANDER_SYSTEMS = frozenset({
     "OFFICIAL_AIRPORT_TAF_TX",
     "METAR_PHYSICAL_PATH_TMAX",
 })
+SAME_RUN_LEAD_BORROW_RULE = "h00_12_borrows_h12_24_same_run_v1"
+
+
+def _same_run_fresh_count(
+    selected_ids: Sequence[str],
+    fitted_cycle_mapping: Mapping[str, str],
+    packet_cycle_mapping: Mapping[str, str],
+    freshest_bucket_system_ids: Sequence[str],
+) -> int:
+    """How many of the packet's freshest-bucket systems this fit seats at their own run.
+
+    Charter 88's tie-break: between activations the packet can be served
+    under, the one that seats the systems carrying the day's freshest run --
+    at the cycle they were actually fitted under -- outranks one seating only
+    the older split riders.  Zero when the fit seats none of them.
+    """
+
+    fresh = set(freshest_bucket_system_ids)
+    return sum(
+        1
+        for system_id in selected_ids
+        if system_id in fresh
+        and str(packet_cycle_mapping.get(system_id) or "")
+        and str(fitted_cycle_mapping.get(system_id) or "")
+        == str(packet_cycle_mapping.get(system_id) or "")
+    )
 
 
 def _json(value: Any) -> str:
@@ -264,6 +303,8 @@ def _activated_lead_bucket(
     decision_at_utc: str,
     observed_system_ids: Sequence[str],
     candidates: Sequence[str],
+    packet_cycle_by_system: Mapping[str, str] | None = None,
+    freshest_bucket_system_ids: Sequence[str] = (),
 ) -> str:
     """The first candidate lead bucket with an admissible cross activation.
 
@@ -280,12 +321,22 @@ def _activated_lead_bucket(
     systems are among those observed.  The OOS-pass and lineage checks stay
     where they were: this chooses which grouping to ask under, not whether the
     answer is usable.
+
+    Charter 88 (2026-09-06) adds one preference on top of chain order: a
+    candidate whose admissible activation seats at least one of the packet's
+    freshest-bucket systems *at that system's own run cycle* wins over an
+    earlier candidate that seats none of them.  That is what lets an h00_12
+    packet be served under h12_24 when only h12_24 was fitted at the day's
+    last cycle; with no cycle map handed in the rule reduces to the old one.
     """
 
     observed = set(observed_system_ids)
+    cycles = dict(packet_cycle_by_system or {})
+    fresh = tuple(freshest_bucket_system_ids or ())
+    first_admissible: str | None = None
     for candidate in candidates:
         rows = conn.execute(
-            "SELECT r.ensemble_system_ids_json "
+            "SELECT r.ensemble_system_ids_json,a.run_cycle_by_system_json "
             "FROM calibration_native_ensemble_activation a "
             "JOIN calibration_cross_native_ensemble_artifact r "
             "ON r.cross_ensemble_artifact_id=a.artifact_id "
@@ -307,8 +358,24 @@ def _activated_lead_bucket(
                 selected = {str(value) for value in json.loads(str(row[0]))}
             except (TypeError, ValueError):
                 continue
-            if selected and selected.issubset(observed):
+            if not (selected and selected.issubset(observed)):
+                continue
+            if first_admissible is None:
+                first_admissible = candidate
+            if not (fresh and cycles):
+                # No cycle map: the pre-ruling rule, first admissible wins.
                 return candidate
+            try:
+                fitted = {
+                    str(key): str(value)
+                    for key, value in json.loads(str(row[1] or "{}")).items()
+                }
+            except (TypeError, ValueError, AttributeError):
+                fitted = {}
+            if _same_run_fresh_count(sorted(selected), fitted, cycles, fresh) > 0:
+                return candidate
+    if first_admissible is not None:
+        return first_admissible
     return candidates[-1]
 
 
@@ -1498,6 +1565,13 @@ def compile_native_ensemble_p0(
         lead_candidates: tuple[str, ...] = tuple(seen)
     else:
         lead_candidates = (lead_bucket,)
+    # The systems carrying the packet's freshest run, by hour bucket; charter
+    # 88's borrow and tie-break are about seating these at their own cycle.
+    freshest_bucket_system_ids = sorted(
+        system_id
+        for system_id, bucket in hour_bucket_by_system.items()
+        if hour_lead_bucket is not None and bucket == hour_lead_bucket
+    )
     training_lead_bucket = _activated_lead_bucket(
         conn,
         station_id=station_id,
@@ -1505,6 +1579,11 @@ def compile_native_ensemble_p0(
         decision_at_utc=decision_at_utc,
         observed_system_ids=observed_system_ids,
         candidates=lead_candidates,
+        packet_cycle_by_system={
+            str(k): str(v or "")
+            for k, v in official_lineage["run_cycle_by_system"].items()
+        },
+        freshest_bucket_system_ids=freshest_bucket_system_ids,
     )
     provisional_lead_fallback = bool(
         hour_bucket_candidates
@@ -1697,7 +1776,17 @@ def compile_native_ensemble_p0(
             rejected_or_unproven_activation_seen = True
             continue
         compatible_activations.append(
-            (row, selected_ids, activation_cycle_riders)
+            (
+                row,
+                selected_ids,
+                activation_cycle_riders,
+                _same_run_fresh_count(
+                    selected_ids,
+                    fitted_cycle_mapping,
+                    packet_cycle_mapping,
+                    freshest_bucket_system_ids,
+                ),
+            )
         )
     # Exact packet match, then least tolerated mismatch, then freshest fit,
     # and only then breadth.
@@ -1717,10 +1806,15 @@ def compile_native_ensemble_p0(
     # calibration of its own and no candidacy).  Breadth can never age out
     # on its own: a row that seated a system before that system was
     # eliminated will always seat more of them.
+    # Charter 88 (2026-09-06): after the rider count and before the fit's
+    # freshness, prefer the fit that seats the packet's freshest-run systems
+    # at their own cycle -- the day's last ECMWF/GEFS run over yesterday's
+    # split riders when both are zero-rider fits.
     compatible_activations.sort(
         key=lambda item: (
             set(item[1]) == observed_set,
             -len(item[2]),
+            int(item[3]),
             str(item[0][4] or ""),
             len(item[1]),
             int(item[0][3]),
@@ -1772,8 +1866,44 @@ def compile_native_ensemble_p0(
             "FAIL_CLOSED_NO_P0:"
             "native_cross_ensemble_activation_not_exact"
         )
-    selected_activation, activation_member_ids, activation_cycle_riders = (
-        activations[0]
+    (
+        selected_activation,
+        activation_member_ids,
+        activation_cycle_riders,
+        _selected_same_run_fresh_count,
+    ) = activations[0]
+    # Charter 88: name the borrow.  Set only when the packet is served under
+    # a bucket other than its freshest one *and* the fit seats freshest-run
+    # systems at their own cycle -- a split packet served under its older
+    # bucket for its older systems is the pre-ruling grouping, not a borrow.
+    try:
+        _selected_fitted_cycles = {
+            str(key): str(value)
+            for key, value in json.loads(
+                str(selected_activation[9] or "{}")
+            ).items()
+        }
+    except (TypeError, ValueError, AttributeError):
+        _selected_fitted_cycles = {}
+    _borrowed_system_ids = sorted(
+        system_id
+        for system_id in activation_member_ids
+        if system_id in set(freshest_bucket_system_ids)
+        and str(_selected_fitted_cycles.get(system_id) or "")
+        and str(_selected_fitted_cycles.get(system_id) or "")
+        == str(official_lineage["run_cycle_by_system"].get(system_id) or "")
+    )
+    same_run_lead_borrow = (
+        {
+            "packet_freshest_bucket": hour_lead_bucket,
+            "served_bucket": training_lead_bucket,
+            "borrowed_system_ids": _borrowed_system_ids,
+            "rule": SAME_RUN_LEAD_BORROW_RULE,
+        }
+        if hour_lead_bucket is not None
+        and training_lead_bucket != hour_lead_bucket
+        and _borrowed_system_ids
+        else None
     )
     # Clause 42 (2026-08-15): point forecasts are never P0 members.  Legacy
     # activations fitted before the ruling still name them in the membership
@@ -3159,6 +3289,7 @@ def compile_native_ensemble_p0(
             {"packet_hour_bucket": hour_lead_bucket, "served_bucket": training_lead_bucket}
             if provisional_lead_fallback else None
         ),
+        "same_run_lead_borrow_json": _json(same_run_lead_borrow),
         "synoptic_cooling_json": _json(synoptic_cooling_receipt),
         "neighbour_direction_json": _json(neighbour_direction_receipt),
         "hour_lead_bucket_by_system_json": _json(hour_bucket_by_system),
@@ -3401,6 +3532,7 @@ def compile_native_ensemble_p0(
             {"packet_hour_bucket": hour_lead_bucket, "served_bucket": training_lead_bucket}
             if provisional_lead_fallback else None
         ),
+        "same_run_lead_borrow_json": _json(same_run_lead_borrow),
         "synoptic_cooling_json": _json(synoptic_cooling_receipt),
         "neighbour_direction_json": _json(neighbour_direction_receipt),
         "hour_lead_bucket_by_system_json": _json(hour_bucket_by_system),
