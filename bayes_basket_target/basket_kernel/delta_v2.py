@@ -2516,7 +2516,36 @@ def solve_target_inventory_v2(
             row["audit"]["content_sha256"] for row in evaluations
         ],
     }
-    return {**identity, "content_sha256": content_sha256(identity)}
+    # Audit only, and deliberately OUTSIDE ``identity`` so no plan's content
+    # sha churns: which origins were on the table, how many of each, and
+    # which of them the floor refused.  A solution says only who won and how
+    # many ran, so a completion candidate that was offered and then shadowed
+    # by a Kelly row is invisible from a plan -- which is how the charter-84
+    # loss (this function's winner chain is kelly > balance > ticket with no
+    # stage in it, and charter 93 may then refuse that Kelly row after the
+    # lift, leaving the ladder short and the day held) has gone unseen on
+    # P0-M and P1 since charter 84 landed.  Two sessions hunting it on
+    # 2026-09-06 could not screen for it from a plan at all.
+    origin_counts: dict[str, int] = {}
+    floor_refused: dict[str, int] = {}
+    legal_ids = {id(row) for row in legal}
+    for row in evaluations:
+        key = str(row.get("candidate_origin") or "")
+        origin_counts[key] = origin_counts.get(key, 0) + 1
+        if id(row) not in legal_ids:
+            floor_refused[key] = floor_refused.get(key, 0) + 1
+    return {
+        **identity,
+        "content_sha256": content_sha256(identity),
+        "candidate_origin_counts": dict(sorted(origin_counts.items())),
+        "floor_refused_origin_counts": dict(sorted(floor_refused.items())),
+        # The one question the charter-84 hunt asks: was a completion
+        # offered that the winner is not?
+        "shadowed_completion": bool(
+            origin_counts.get(LADDER_BALANCE_CANDIDATE_ORIGIN)
+            and winner["candidate_origin"] != LADDER_BALANCE_CANDIDATE_ORIGIN
+        ),
+    }
 
 
 def _fill_distribution(

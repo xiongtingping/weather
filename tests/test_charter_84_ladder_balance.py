@@ -226,6 +226,43 @@ def test_the_completion_is_all_or_none_and_switchable(monkeypatch: pytest.Monkey
     ]
 
 
+def test_the_solution_says_a_completion_was_offered_and_does_not_hash_it() -> None:
+    """The instrument the charter-84 hunt needs, and the churn it must avoid.
+
+    A plan used to say only who won and how many candidates ran, so a
+    completion that was offered and then shadowed by a Kelly row could not be
+    screened for at all -- which is why the loss went unseen on P0-M and P1.
+    The counts are audit only and must stay OUTSIDE the hashed identity: put
+    them in and every plan on the book re-shas for a field no rule reads.
+    """
+
+    from bayes_basket_target.contracts import content_sha256
+
+    solution = compile_delta_v2_runtime_plan(
+        snapshot=_held_snapshot(), basket_policy=_basket_policy(),
+        delta_policy=_delta_policy(), fill_resolver=_fill_resolver,
+        capital_available_usdc=10.0, minimum_profit_floor=-5.0,
+        resource_probe_ok=True, book_equity_usdc=514.29,
+    )["target_solution"]
+
+    audit_only = {
+        "candidate_origin_counts",
+        "floor_refused_origin_counts",
+        "shadowed_completion",
+        "content_sha256",
+    }
+    assert solution["candidate_origin_counts"][
+        LADDER_BALANCE_CANDIDATE_ORIGIN
+    ] == 1
+    # Under the shipped arm the Kelly row takes the seat, so the completion
+    # was offered and lost -- the exact case that had no name until now.
+    assert solution["shadowed_completion"] is (
+        delta_v2_runtime.P0_SIZING_MODE != "ticket_only"
+    )
+    identity = {k: v for k, v in solution.items() if k not in audit_only}
+    assert content_sha256(identity) == solution["content_sha256"]
+
+
 def test_the_support_contract_is_atomic_at_the_result() -> None:
     baseline = {
         "candidate_id": "base", "candidate_kind": CANDIDATE_KIND_BASELINE,
