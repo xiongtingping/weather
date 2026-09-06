@@ -38,7 +38,28 @@ assert_system_absent() {
 
 stop_user_services() {
   local label
-  touch "$PAUSE"
+  # This function used to create the pause file before stopping anything,
+  # which reads as
+  # prudent -- do not leave submission open while the services go down -- and
+  # was the first link in the 2026-09-06 cascade.  Nothing here ever lowered
+  # it again.  A restart that completed left submission shut, and a restart
+  # that did NOT complete left it shut with the services down too: the stop
+  # below times out non-zero, ``set -e`` skips the install that follows, and
+  # the remedy a person then reaches for is the installer, which used to arm
+  # the same flag a second time.  Measured that day: two services down, the
+  # flag set at 12:07:51Z, and at 13:36:22Z EGLC's first complete 2026-09-08
+  # basket -- three legs, 5.202 USDC, the 0.031 leg lifted to 33 shares by
+  # charter 98 -- refused three times with clob_order_service_live_paused.
+  #
+  # The safety this was reaching for is real but belongs to the boundary that
+  # already enforces it: the order service reads the flag per order and fails
+  # closed on an unreadable one, and a stopped service submits nothing at all.
+  # What the touch added was not safety, it was a switch thrown on the way
+  # past that nobody could see.
+  #
+  # User ruling 2026-09-06 ("取消暂停旗标,我自己开关" / "拆"): the flag is the
+  # operator's alone.  Stop reports it, sets it never.
+  printf 'live_pause_present=%s\n' "$([ -f "$PAUSE" ] && echo true || echo false)"
   /bin/launchctl disable "${DOMAIN}/${LEGACY_LABEL}" >/dev/null 2>&1 || true
   /bin/launchctl bootout "${DOMAIN}/${LEGACY_LABEL}" >/dev/null 2>&1 || true
   /bin/rm -f "$HOME/Library/LaunchAgents/${LEGACY_LABEL}.plist"
@@ -138,6 +159,9 @@ restart)
     assert_system_absent
     stop_user_services
     ensure_clob_port_free
+    # The installer reports the pause state again on the way out; this is the
+    # last line before exec replaces the process, so the state is said on both
+    # sides of the restart.
     exec /bin/bash "$ROOT/scripts/install_weather_basket_yes_user_services.sh"
     ;;
   status)
