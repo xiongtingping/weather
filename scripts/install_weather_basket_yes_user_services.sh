@@ -24,7 +24,29 @@ if [ "$(id -u)" -eq 0 ]; then
 fi
 
 mkdir -p "$ROOT/data" "$ROOT/data/logs" "$ROOT/output/audits"
-touch "$PAUSE"
+# This used to be ``touch "$PAUSE"``: installing the services also stopped
+# live submission until someone armed it again on the board.  A safe default,
+# and wrong in practice for the reason the day below shows -- an install is
+# not a decision to stop trading, and the switch it threw was invisible until
+# an order was refused by it.
+#
+# Measured 2026-09-06.  A targetctl restart failed at its stop step (times out
+# non-zero, and set -e then skips the install that follows), which is exactly
+# the failure whose remedy is to run THIS script by hand -- so the recovery
+# path armed the trap.  It ran at 12:07:51Z.  At 13:36:22Z EGLC produced the
+# day's first complete 2026-09-08 basket: three legs, 5.202 USDC, the 0.031
+# leg lifted to 33 shares by charter 98, live_submit_authorized on every
+# intent -- and all three came back SUBMIT_REFUSED with
+# clob_order_service_live_paused.  Every gate had opened; the counter was shut,
+# and nothing said so.
+#
+# User ruling 2026-09-06 ("取消暂停旗标,我自己开关"): no install or restart
+# path sets the flag.  The board raises and lowers it.  The runtime boundary
+# is untouched -- the order service still reads the file per order and still
+# fails closed on an unreadable one
+# (tests/test_clob_gateway_live_pause_boundary.py).  What replaces the touch
+# is the report at the end of this script: the state is always said out loud,
+# which the silent touch never was.
 
 # The renamed service is a replacement, never a fourth production owner.
 # Make the user-domain old label absent before the new plist is installed.
@@ -78,12 +100,14 @@ while [ "$SECONDS" -lt "$deadline" ]; do
       | /usr/bin/python3 -c '
 import json,sys
 x=json.load(sys.stdin)
-raise SystemExit(0 if (
-    x.get("ready") is True
-    and x.get("read_only") is True
-    and x.get("live_pause_present") is True
-    and x.get("order_submission_enabled") is False
-) else 1)
+# Confirm the service is UP.  This used to also require read_only and
+# live_pause_present -- it asserted the install had left submission shut.
+# With the touch gone (user ruling 2026-09-06) that can never hold, and the
+# loop would burn its whole 45s deadline and fall through silently every
+# time, which is what it already did whenever PM_CLOB_ORDER_SERVICE_READ_ONLY
+# was 0.  The pause state is reported at the end of this script instead of
+# being asserted here.
+raise SystemExit(0 if x.get("ready") is True else 1)
 '; then
       break
     fi
@@ -142,7 +166,9 @@ identity = {
     "single_domain_owner": True,
     "passwordless_future_control": True,
     "production_no_live": True,
-    "live_pause_retained": True,
+    # Measured, not asserted: the installer no longer sets the flag, so this
+    # records the operator's standing state at install time.
+    "live_pause_present": (Path.cwd() / "data" / "live_paused.flag").is_file(),
     "calls_order_gateway": False,
     "live_submit_authorized": False,
     "orders_submitted": 0,
@@ -161,9 +187,19 @@ print(json.dumps({
     "state": payload["state"],
     "domain": domain,
     "service_count": len(labels),
-    "live_pause_retained": True,
+    "live_pause_present": identity["live_pause_present"],
     "calls_order_gateway": False,
 }, sort_keys=True))
 PY
+
+# Say the pause state rather than set it.  A flag that is on after an install
+# is now the operator's standing choice, and it is read here instead of being
+# discovered by a refused order.
+if [ -f "$PAUSE" ]; then
+  echo "!! live submission is PAUSED -- $PAUSE present since $(stat -f '%Sm' -t '%Y-%m-%dT%H:%M:%SZ' "$PAUSE" 2>/dev/null || echo unknown)"
+  echo "   every order returns clob_order_service_live_paused until the board lowers it"
+else
+  echo "live submission: not paused (no $PAUSE)"
+fi
 
 echo "weather_basket_yes_user_domain_install_ok"
