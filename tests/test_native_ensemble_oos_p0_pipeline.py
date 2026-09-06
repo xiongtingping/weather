@@ -1887,7 +1887,13 @@ def test_forward_taf_is_observational_and_never_enters_p0m_oos() -> None:
     facts = target_atomic_facts_from_cycle({
         "probability_envelope": p1.to_dict(),
     })
-    assert facts["observation"]["observation_id"] == "metar-test-1"
+    # The chain names the revision fact it roots on and lets the ledger
+    # verify the store holds it; the observation document itself is no
+    # longer restated here (it stopped reaching a commit when it was).
+    assert facts["truth_observation_revision_content_sha256"] == (
+        p1.lineage["truth_observation_revision_content_sha256"]
+    )
+    assert facts["awc_observation_contract"] is None
     assert facts["bound"]["bound_id"] == p1.lineage["hard_bound_id"]
 
     older_packet = json.loads(json.dumps(compiled["packet"]))
@@ -2411,6 +2417,14 @@ def test_open_meteo_fallback_p0_uses_republisher_authority_lane() -> None:
     )
     assert first["counts"]["activations"] == 4
     assert second["counts"]["activations"] == 0
+    # The same evaluation a minute later is the same artifact: the system
+    # layer reuses a still-valid artifact carrying identical evidence, so a
+    # re-persist mints nothing (it minted three, once, and advanced three
+    # generations, because the clock rode inside the content address).
+    assert second["counts"]["system_artifacts"] == 0
+    assert conn.execute(
+        "SELECT COUNT(*) FROM calibration_native_ensemble_system_artifact"
+    ).fetchone()[0] == 3
     assert second["receipts"][0]["reused_existing"] is True
     assert conn.execute(
         "SELECT COUNT(*) FROM calibration_native_ensemble_activation"

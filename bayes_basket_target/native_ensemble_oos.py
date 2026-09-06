@@ -5164,6 +5164,85 @@ def _system_artifact_identity(
     return system_identity
 
 
+_SYSTEM_ARTIFACT_CLOCK_FIELDS = ("valid_from_utc", "valid_until_utc")
+
+
+def _reusable_system_artifact_id(
+    conn: sqlite3.Connection,
+    identity: Mapping[str, Any],
+    *,
+    activated_at_utc: str,
+) -> str | None:
+    """The scope's newest system artifact, when it says what ``identity`` says.
+
+    ``_system_artifact_identity`` carries ``valid_from_utc`` and
+    ``valid_until_utc`` inside the content it is addressed by, so two persists
+    of the same evaluation a minute apart minted two artifacts, and
+    ``_activate_system_artifact`` -- which advances the generation only when
+    the artifact id changes -- advanced it every time.  Measured on the
+    production store 2026-09-06: 2,600-3,900 system artifacts a day, 70-190
+    an hour around the clock, 60,132 rows, while the evaluation behind them
+    changes once a day when the rolling window moves.  The cross artifact
+    already reuses on identical selection evidence; this is the same rule for
+    the system layer.
+
+    Reusable when the newest artifact for the same system and scope carries
+    the same evidence -- every identity field but the two clock fields -- and
+    is still valid at ``activated_at_utc``.  An expired one is not reused, so
+    a served artifact is never left to run out under an activation that still
+    points at it; the next persist mints afresh, exactly as before.
+    """
+
+    evidence_columns = [
+        key for key in identity if key not in _SYSTEM_ARTIFACT_CLOCK_FIELDS
+    ]
+    row = conn.execute(
+        "SELECT system_artifact_id,valid_until_utc,"
+        + ",".join(evidence_columns)
+        + " FROM calibration_native_ensemble_system_artifact"
+        " WHERE ensemble_system_id=? AND station_id=? AND season_bin=?"
+        " AND lead_bucket=? AND run_cycle=? AND settlement_definition=?"
+        " ORDER BY valid_from_utc DESC, system_artifact_id LIMIT 1",
+        (
+            str(identity["ensemble_system_id"]),
+            str(identity["station_id"]),
+            str(identity["season_bin"]),
+            str(identity["lead_bucket"]),
+            str(identity["run_cycle"]),
+            str(identity["settlement_definition"]),
+        ),
+    ).fetchone()
+    if row is None:
+        return None
+    try:
+        still_valid = datetime.fromisoformat(
+            str(row[1]).replace("Z", "+00:00")
+        ) > datetime.fromisoformat(
+            str(activated_at_utc).replace("Z", "+00:00")
+        )
+    except ValueError:
+        return None
+    if not still_valid:
+        return None
+    for column, stored in zip(evidence_columns, row[2:]):
+        wanted = identity[column]
+        if isinstance(wanted, float):
+            try:
+                if not math.isclose(float(stored), wanted, rel_tol=0.0, abs_tol=1e-9):
+                    return None
+            except (TypeError, ValueError):
+                return None
+        elif isinstance(wanted, bool) or isinstance(wanted, int):
+            try:
+                if int(stored) != int(wanted):
+                    return None
+            except (TypeError, ValueError):
+                return None
+        elif str(stored) != str(wanted):
+            return None
+    return str(row[0])
+
+
 def _activate_system_artifact(
     conn: sqlite3.Connection,
     *,
@@ -5327,17 +5406,23 @@ def persist_native_ensemble_oos(
                 valid_until=valid_until,
             )
             ready_sha = content_sha256(ready_identity)
-            ready_artifact_id = "native-system-artifact-" + ready_sha[:24]
-            counts["system_artifacts"] += _insert_content_row(
-                conn,
-                table="calibration_native_ensemble_system_artifact",
-                primary_key="system_artifact_id",
-                row={
-                    "system_artifact_id": ready_artifact_id,
-                    **ready_identity,
-                    "content_sha256": ready_sha,
-                },
+            reused_ready_id = _reusable_system_artifact_id(
+                conn, ready_identity, activated_at_utc=activated_at_utc,
             )
+            if reused_ready_id is not None:
+                ready_artifact_id = reused_ready_id
+            else:
+                ready_artifact_id = "native-system-artifact-" + ready_sha[:24]
+                counts["system_artifacts"] += _insert_content_row(
+                    conn,
+                    table="calibration_native_ensemble_system_artifact",
+                    primary_key="system_artifact_id",
+                    row={
+                        "system_artifact_id": ready_artifact_id,
+                        **ready_identity,
+                        "content_sha256": ready_sha,
+                    },
+                )
             counts["activations"] += _activate_system_artifact(
                 conn,
                 artifact_id=ready_artifact_id,
@@ -5439,19 +5524,25 @@ def persist_native_ensemble_oos(
                     valid_until=valid_until,
                 )
                 system_sha = content_sha256(system_identity)
+                reused_system_id = _reusable_system_artifact_id(
+                    conn, system_identity, activated_at_utc=activated_at_utc,
+                )
                 system_row = {
                     "system_artifact_id": (
-                        "native-system-artifact-" + system_sha[:24]
+                        reused_system_id
+                        if reused_system_id is not None
+                        else "native-system-artifact-" + system_sha[:24]
                     ),
                     **system_identity,
                     "content_sha256": system_sha,
                 }
-                counts["system_artifacts"] += _insert_content_row(
-                    conn,
-                    table="calibration_native_ensemble_system_artifact",
-                    primary_key="system_artifact_id",
-                    row=system_row,
-                )
+                if reused_system_id is None:
+                    counts["system_artifacts"] += _insert_content_row(
+                        conn,
+                        table="calibration_native_ensemble_system_artifact",
+                        primary_key="system_artifact_id",
+                        row=system_row,
+                    )
                 system_artifact_ids[system_id] = str(
                     system_row["system_artifact_id"]
                 )
