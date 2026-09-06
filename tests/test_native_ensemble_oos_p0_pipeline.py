@@ -259,11 +259,17 @@ def test_hour_vocabulary_capture_is_admitted_by_extraction_identity() -> None:
             # The other dimensions stay load-bearing under the new label:
             # a cycle nobody registers, and a superseded extraction, are
             # refused exactly as they were for calendar labels.
+            #
+            # The example moved from 06Z to 09Z on 2026-09-06 (charter 101):
+            # 06Z used to be nobody's cycle, and the training contracts now
+            # enumerate every cycle the collectors may serve, so it names a
+            # real variant.  09Z is published by no collector in this fleet,
+            # which is the property this assertion was always testing.
             assert not _historical_transport_scope_allowed(
                 system_id=system_id,
                 transport_provider_id=contract["transport_provider_id"],
                 lead_bucket="h24_48",
-                run_cycle="06Z",
+                run_cycle="09Z",
                 extraction_version=contract["extraction_version"],
             )
     icon = _scope_contract("DWD_ICON_GLOBAL_EPS")

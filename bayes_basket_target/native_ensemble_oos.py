@@ -61,6 +61,7 @@ from .eccc_geps_archive import (
 )
 from .ecmwf_ifs_archive import (
     RUN_CYCLE_HOUR_BY_LEAD as _IFS_CYCLE_BY_LEAD,
+    SUPPORTED_RUN_CYCLE_HOURS as _IFS_SUPPORTED_CYCLES,
     SUPPORTED_LEAD_DAYS as _IFS_LEADS,
     extraction_version_for_lead as _ifs_extraction_version,
 )
@@ -76,6 +77,7 @@ from .native_ensemble_contract import (
 )
 from .noaa_gefs_archive import (
     RUN_CYCLE_HOUR_BY_LEAD as _GEFS_CYCLE_BY_LEAD,
+    SUPPORTED_RUN_CYCLE_HOURS as _GEFS_SUPPORTED_CYCLES,
     SUPPORTED_LEAD_DAYS as _GEFS_LEADS,
     extraction_version_for_lead as _gefs_extraction_version,
 )
@@ -288,6 +290,41 @@ DEFAULT_FAMILY_WEIGHT_CAPS: dict[str, float] = {}
 # only; that makes the wait real, and it does not change who awards seats.
 
 
+def _every_supported_cycle(
+    *, supported_lead_days, supported_cycle_hours, default_by_lead,
+) -> dict[int, tuple[int, ...]]:
+    """Charter 101 (2026-09-06 ruling "training catches up"): contract every
+    cycle the collector may serve, not the one it serves by default.
+
+    The two lanes each carried a constant and they stopped agreeing.  Capture
+    widened to ``SUPPORTED_RUN_CYCLE_HOURS`` on 2026-08-14 and began serving
+    06Z and 12Z in earnest in early September; the archive contracts kept
+    reading ``RUN_CYCLE_HOUR_BY_LEAD``, one cycle per lead, so those cycles
+    could never be fitted -- 111 of 111 06Z members went provisional, and 95%
+    of those were then served a raw centre for want of three certified peers.
+    ECCC was the control: its two constants agree, and it appears twelve times
+    in the provisional receipts against the 229 of the two families whose do
+    not.
+
+    Nothing is loosened by this.  The cycle stays part of the extraction
+    identity and of the training scope key, so each (lead, cycle) remains its
+    own candidate that cohort selection either partners or leaves unused, and
+    the grid coverage check downstream still refuses outright a cycle that
+    genuinely comes up short for a station -- which is what keeps a contracted
+    cycle from becoming a served one on its own.  A pair that is never
+    captured simply never fits, which is exactly the state it is in today; the
+    difference is that it is now named rather than invisible.
+
+    ``default_by_lead`` is kept as the collector's own default and as the
+    answer for a family that exports no supported set.
+    """
+
+    return {
+        lead: tuple(sorted(supported_cycle_hours))
+        for lead in supported_lead_days
+    } if supported_cycle_hours else dict(default_by_lead)
+
+
 def _lead_contracts(
     *,
     supported_lead_days,
@@ -344,7 +381,11 @@ OFFICIAL_ARCHIVE_SCOPE_CONTRACTS = {
         "transport_provider_id": "NOAA_GEFS_PDS_S3",
         "leads": _lead_contracts(
             supported_lead_days=_GEFS_LEADS,
-            cycle_hour_by_lead=_GEFS_CYCLE_BY_LEAD,
+            cycle_hour_by_lead=_every_supported_cycle(
+                supported_lead_days=_GEFS_LEADS,
+                supported_cycle_hours=_GEFS_SUPPORTED_CYCLES,
+                default_by_lead=_GEFS_CYCLE_BY_LEAD,
+            ),
             extraction_version_for_lead=_gefs_extraction_version,
         ),
     },
@@ -352,7 +393,11 @@ OFFICIAL_ARCHIVE_SCOPE_CONTRACTS = {
         "transport_provider_id": "ECMWF_OPEN_DATA_S3",
         "leads": _lead_contracts(
             supported_lead_days=_IFS_LEADS,
-            cycle_hour_by_lead=_IFS_CYCLE_BY_LEAD,
+            cycle_hour_by_lead=_every_supported_cycle(
+                supported_lead_days=_IFS_LEADS,
+                supported_cycle_hours=_IFS_SUPPORTED_CYCLES,
+                default_by_lead=_IFS_CYCLE_BY_LEAD,
+            ),
             extraction_version_for_lead=_ifs_extraction_version,
         ),
     },
