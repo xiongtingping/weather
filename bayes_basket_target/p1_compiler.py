@@ -16,6 +16,9 @@ from .contracts import (
 )
 from .four_layer_shadow import compile_p1_four_layer_shadow
 from .materialization import materialize_p1
+from .regional_path_prior import (
+    resolve_serving_input as resolve_regional_serving_input,
+)
 from .metar_four_layer import (
     curve_points,
     curve_shape_realized,
@@ -472,6 +475,11 @@ def compile_station_p1_packets(
     station_width: tuple[Mapping[str, float], str] | None = None,
     fleet_regime: Mapping[str, Any] | None = None,
     ceiling_artifact: Mapping[str, Any] | None = None,
+    # Charter 96: the lane's runs for this station-day, read once by the
+    # caller, plus the fitted artifact.  Each prefix resolves its own run on
+    # its own decision clock, so a replay rebuilds every envelope exactly.
+    regional_runs: Sequence[Mapping[str, Any]] | None = None,
+    regional_artifact: Mapping[str, Any] | None = None,
     soft_likelihood_policy: str | None = None,
     # {"hazard": ..., "reanchor": ...}.  Absent means no shadow is recorded
     # and the lineage is exactly what it was before the four layers existed.
@@ -965,6 +973,18 @@ def compile_station_p1_packets(
             station_width=station_width,
             fleet_regime=fleet_regime,
             ceiling_artifact=ceiling_artifact,
+            regional_prior=(
+                None
+                if not regional_runs
+                else resolve_regional_serving_input(
+                    regional_runs,
+                    station_id=root.station_id,
+                    event_date=root.event_date,
+                    as_of_utc=decision_text,
+                    settlement_timezone=root.settlement_timezone,
+                    artifact=regional_artifact,
+                )
+            ),
             four_layer_shadow=four_layer_shadow,
         )
         packets.append({

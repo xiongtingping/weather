@@ -29,6 +29,9 @@ from .center_width_calibration import (
 from .center_width_store import EDGE_WIDTH_C, taf_direction_for_gap
 from .cross_consensus import apply_band_reliability
 from .et_history import assert_event_day_started
+from .regional_path_prior import (
+    apply_regional_path_prior,
+)
 from .metar_ceiling import (
     apply_ceiling as apply_metar_ceiling,
     current_gap_c as ceiling_current_gap_c,
@@ -706,6 +709,7 @@ def _posterior(
     station_width: tuple[Mapping[str, float], str] | None = None,
     fleet_regime: Mapping[str, Any] | None = None,
     ceiling: Mapping[str, Any] | None = None,
+    regional_prior: Mapping[str, Any] | None = None,
 ) -> ProbabilityEnvelope:
     if predecessor.stage not in {"P0", "P0-M", "P1"}:
         raise ContractError("probability_predecessor_stage_invalid")
@@ -844,7 +848,45 @@ def _posterior(
     # does: a replay must be able to rebuild this exact envelope, and a layer
     # that reads its own fitted file would rebuild a different one as soon as
     # the file was refitted.
-    if ceiling is not None:
+    # Charter 96 (user ruling, 2026-09-06): a regional run issued during the
+    # local day answers both halves of the ceiling's question -- how much
+    # mass belongs above the bucket already holding the high, and how far
+    # above -- from today's curve rather than a pooled rate and a dawn
+    # shape.  It therefore stands in the ceiling's place when it speaks, and
+    # the ceiling serves untouched whenever it does not.
+    regional_spoke = False
+    if regional_prior is not None and ceiling is not None:
+        regional_probabilities, regional_receipt = apply_regional_path_prior(
+            probabilities,
+            ordinals=predecessor.bucket_ordinals,
+            upper_bounds_c=regional_prior["upper_bounds_c"],
+            running_high_bucket=str(ceiling["running_high_bucket"]),
+            running_high_c=float(regional_prior["running_high_c"]),
+            remaining_peak_c=float(regional_prior["remaining_peak_c"]),
+            cell=regional_prior["cell"],
+            lineage=regional_prior.get("lineage"),
+        )
+        if regional_receipt.get("regional_path_prior_applied") == "true":
+            regional_probabilities = {
+                bucket: (0.0 if bucket in excluded else value)
+                for bucket, value in regional_probabilities.items()
+            }
+            residual = sum(regional_probabilities.values())
+            if not math.isfinite(residual) or residual <= 0.0:
+                raise ContractError(
+                    "probability_posterior_empty_after_regional_prior"
+                )
+            probabilities = {
+                bucket: value / residual
+                for bucket, value in regional_probabilities.items()
+            }
+            regional_spoke = True
+        regional_receipt = dict(regional_receipt)
+        regional_receipt["schema"] = "regional_path_prior_receipt_v1"
+        lineage["regional_path_prior_json"] = json.dumps(
+            regional_receipt, sort_keys=True
+        )
+    if ceiling is not None and not regional_spoke:
         ceiling_probabilities, ceiling_receipt = apply_metar_ceiling(
             probabilities,
             ordinals=predecessor.bucket_ordinals,
@@ -1341,8 +1383,17 @@ def materialize_p1(
     # -- how far the newest formal report sits below the running high -- and
     # speaks from 14 hours out (10:00 local) instead of 10.  Both move the
     # served shape, so the version moves with them.
-    posterior_version: str = "p1_metar_trajectory_target_v7",
+    # v8 (2026-09-06, operator ruling): a regional model's curve, when one
+    # was issued during the local day, states where the day tops out and
+    # stands in the clock ceiling's place.  The served shape moves with it,
+    # so the version moves too.
+    posterior_version: str = "p1_metar_trajectory_target_v8",
     ceiling_artifact: Mapping[str, Any] | None = None,
+    # Charter 96: {"remaining_peak_c", "cell", "lineage"} for the freshest
+    # admissible regional run, or None.  Handed in by the caller for the
+    # same reason the ceiling artifact is: a replay must rebuild this
+    # envelope, and a layer that read its own store would rebuild another.
+    regional_prior: Mapping[str, Any] | None = None,
     band_table: tuple[
         Sequence[tuple[tuple[float, float], float]], str
     ] | None = None,
@@ -1679,6 +1730,15 @@ def materialize_p1(
             }
             if proof.prefix_is_current
             else None
+        ),
+        regional_prior=(
+            None
+            if regional_prior is None or not proof.prefix_is_current
+            else {
+                **dict(regional_prior),
+                "running_high_c": float(proof.running_high_c),
+                "upper_bounds_c": dict(bucket_upper_bounds_c),
+            }
         ),
     )
 

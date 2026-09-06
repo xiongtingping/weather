@@ -54,6 +54,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target import metar_ceiling  # noqa: E402
+from bayes_basket_target import regional_path_prior  # noqa: E402
 from bayes_basket_target.center_width_calibration import (  # noqa: E402
     apply_center_width_calibration,
     bucket_centers_from_intervals,
@@ -2279,6 +2280,16 @@ SELECTION_RULE_SHA256 = content_sha256({
     # Production applies the cooling-side ceiling inside P1 as of 2026-08-23.
     # A row priced against the raw posterior describes a red line the live
     # engine no longer draws, so it cannot share a fingerprint with these.
+    # Charter 96 (2026-09-06): the regional curve stands in the ceiling's
+    # place when it speaks.  A book priced with it may not share a
+    # fingerprint with one priced without.
+    "regional_path_prior": (
+        "%s:w=%g" % (
+            regional_path_prior.RULE_VERSION, regional_path_prior.WEIGHT
+        )
+        if regional_path_prior.ENABLED and REPLAY_LAYERS_APPLIED
+        else "off"
+    ),
     "metar_ceiling": (
         # The window the ceiling may speak in rides in the label: a book
         # priced with the ceiling from 10:00 local (14h left, 2026-09-06)
@@ -5678,6 +5689,27 @@ def _ceiling_corrected(
     zone = _settlement_timezone(conn, station_id, event_date)
     if not zone:
         return probabilities
+    # Charter 96: the regional curve answers both halves of the ceiling's
+    # question from today's run, and stands in its place when it speaks.
+    # The replay reads the as-of table, fitted only on earlier days.
+    regional = regional_path_prior.build_serving_input(
+        conn, station_id=station_id, event_date=event_date,
+        as_of_utc=as_of_utc, settlement_timezone=zone,
+        artifact=regional_path_prior.replay_curve(event_date),
+    ) if regional_path_prior.ENABLED else None
+    if regional is not None:
+        upper_bounds = {
+            bucket: (None if bounds[1] is None else float(bounds[1]))
+            for bucket, bounds in intervals.items()
+        }
+        blended, note = regional_path_prior.apply_regional_path_prior(
+            probabilities, ordinals=ordinals, upper_bounds_c=upper_bounds,
+            running_high_bucket=running_bucket, running_high_c=running_c,
+            remaining_peak_c=float(regional["remaining_peak_c"]),
+            cell=regional["cell"], lineage=regional.get("lineage"),
+        )
+        if note.get("regional_path_prior_applied") == "true":
+            return blended
     # v2: the newest formal report at this decision clock, against the
     # running high -- the same pairing production computes from its prefix.
     latest_formal = metar_ceiling.latest_temperature_c(

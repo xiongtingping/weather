@@ -83,12 +83,25 @@ def _latest_formal_temperature(
 def collect(target_db: Path, archive_db: Path) -> list[dict]:
     target = sqlite3.connect(f"file:{target_db}?mode=ro", uri=True, timeout=120.0)
     archive = sqlite3.connect(f"file:{archive_db}?mode=ro", uri=True, timeout=120.0)
+    # Charter 96 (2026-09-06): the truth is the calibration lane's settled
+    # daily high, not the trajectory lane's station-day bounds.  The bounds
+    # row is wrong on 87 station-days since 2026-08-20 -- KAUS 2026-08-23
+    # records 28.0C against a day whose own METAR series reached 40.0C,
+    # because the row keeps the maximum as of an early-morning report and
+    # never advances -- and a fit trained on it learns that days do not warm.
     truth = {
         (str(r[0]), str(r[1])): float(r[2])
-        for r in archive.execute(
-            "SELECT station_id,event_date,observed_max_c FROM"
-            " reported_trajectory_canonical_station_day_bounds"
-            " WHERE observed_max_c IS NOT NULL")
+        for r in target.execute(
+            "SELECT t.station_id,t.local_date,t.official_tmax_c "
+            "FROM calibration_station_daily_high_truth AS t "
+            "WHERE t.source_lane='AWC' AND t.qc_status='ACCEPTED' "
+            "AND t.authority_scope IN "
+            "('FORMAL_NATIVE_ELIGIBLE','NO_LIVE_REPLAY_CANDIDATE') "
+            "AND t.revision_no=("
+            "  SELECT MAX(t2.revision_no) FROM calibration_station_daily_high_truth AS t2 "
+            "  WHERE t2.station_id=t.station_id AND t2.local_date=t.local_date "
+            "  AND t2.source_lane='AWC' AND t2.qc_status='ACCEPTED')"
+        )
     }
     # The formal report series per station, for the gap axis (v2): how far
     # the newest report at decision time sat below the running high.

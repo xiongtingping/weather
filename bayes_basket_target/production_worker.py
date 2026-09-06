@@ -121,6 +121,10 @@ from .four_layer_shadow import (
     load_shadow_artifacts as load_four_layer_shadow_artifacts,
 )
 from .metar_ceiling import load_artifact as load_metar_ceiling_artifact
+from .regional_path_prior import (
+    load_artifact as load_regional_path_prior_artifact,
+    load_runs_for_station_day as load_regional_runs_for_station_day,
+)
 from .metar_trajectory import (
     SOFT_LIKELIHOOD_POLICY,
     METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
@@ -11447,6 +11451,16 @@ class TargetProductionWorker:
                     # same envelope; the module's own env switch still decides
                     # whether the layer speaks at all.
                     ceiling_artifact=load_metar_ceiling_artifact(),
+                    # Charter 96: the regional lane's runs for this
+                    # station-day, read once here; the compiler resolves
+                    # which one each prefix may read on its own clock.
+                    regional_runs=load_regional_runs_for_station_day(
+                        self.commit_conn if self.commit_conn is not None else self.conn,
+                        station_id=str(predecessor.station_id),
+                        event_date=str(predecessor.event_date),
+                        as_of_utc=as_of_utc,
+                    ),
+                    regional_artifact=load_regional_path_prior_artifact(),
                     # Measured beside what is served and multiplied into
                     # nothing.  Empty until the shadow is switched on, and
                     # empty is the lineage this compiled before it existed.
