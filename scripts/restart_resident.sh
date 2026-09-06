@@ -41,8 +41,20 @@ set -euo pipefail
 
 ROOT="/Users/xiong/weather"
 cd "$ROOT"
+# All three services a change can land in.  The resident was the only one
+# here until 2026-09-06, and that day showed why it was not enough: the order
+# service was reinstalled at 12:07:51Z outside this queue, which under the
+# installer of the day set data/live_paused.flag, and every submission after
+# that was refused by a switch nobody knew was thrown.  One entry point, all
+# three services, and the pause flag reported on the way out.
+LABELS=(
+  "com.weather.weather_basket_yes"
+  "com.weather.market_ws"
+  "com.weather.clob_order_service"
+)
 LABEL="com.weather.weather_basket_yes"
 DOMAIN="gui/$(id -u)"
+PAUSE_FLAG="$ROOT/data/live_paused.flag"
 STATE_DIR="$ROOT/data/runtime/resident_restart"
 JOURNAL="$STATE_DIR/requests.jsonl"
 LAST="$STATE_DIR/last_restart_utc"
@@ -61,6 +73,7 @@ while [ $# -gt 0 ]; do
     --force)      FORCE=1; shift ;;
     --queue-only) QUEUE_ONLY=1; shift ;;
     --who)        WHO="${2:-unknown}"; shift 2 ;;
+    --only)       LABELS=("com.weather.${2#com.weather.}"); shift 2 ;;
     *)            REASON="$1"; shift ;;
   esac
 done
@@ -70,6 +83,18 @@ if [ "$FORCE" = "1" ] && [ "$QUEUE_ONLY" = "1" ]; then
 fi
 
 last_epoch() { [ -f "$LAST" ] && cat "$LAST" || echo 0; }
+report_pause_flag() {
+  # Nothing here ever sets or clears it -- it is the operator's switch (user
+  # ruling 2026-09-06, "取消暂停旗标，我自己开关").  Reporting it is the whole
+  # job: a set flag means the order service refuses every submission, and the
+  # only way that used to surface was an order coming back SUBMIT_REFUSED.
+  if [ -f "$PAUSE_FLAG" ]; then
+    echo "!! live submission is PAUSED -- $PAUSE_FLAG present since $(stat -f '%Sm' -t '%Y-%m-%dT%H:%M:%SZ' "$PAUSE_FLAG" 2>/dev/null || echo unknown)"
+    echo "   every order returns clob_order_service_live_paused until the board lowers it"
+  else
+    echo "live submission: not paused (no $PAUSE_FLAG)"
+  fi
+}
 pending_rows() {
   [ -f "$JOURNAL" ] || { echo "  (none)"; return 0; }
   python3 - "$JOURNAL" <<'PYPEND'
@@ -87,6 +112,7 @@ if [ "$PENDING_ONLY" = "1" ]; then
   echo "last_restart_utc: $([ -f "$LAST.iso" ] && cat "$LAST.iso" || echo none)"
   if [ "$DUE" -gt 0 ]; then echo "cooldown: ${DUE}s remaining"; else echo "cooldown: elapsed, a restart may be taken now"; fi
   echo "pending requests:"; pending_rows
+  report_pause_flag
   exit 0
 fi
 
@@ -132,12 +158,33 @@ try: print(json.load(open(sys.argv[1])).get("pid") or 0)
 except Exception: print(0)
 PY
 )"
-echo "restarting $LABEL (was pid $BEFORE) -- serving every queued request"
+echo "restarting ${LABELS[*]} -- serving every queued request"
 # kickstart -k is the primitive that works; targetctl.sh restart is not used
 # here because its stop step times out non-zero under set -e and leaves the
-# other two services down (measured twice, 2026-09-06).
-launchctl kickstart -k "$DOMAIN/$LABEL"
+# other two services down (measured twice, 2026-09-06).  It also reinstalls,
+# which is how the pause flag used to get set behind the operator's back.
+for lbl in "${LABELS[@]}"; do
+  pid_before="$(launchctl print "$DOMAIN/$lbl" 2>/dev/null | awk '/^\tpid = /{print $3}')"
+  if [ -z "$pid_before" ]; then
+    echo "  $lbl: not loaded in $DOMAIN -- skipped (install it first)" >&2
+    continue
+  fi
+  launchctl kickstart -k "$DOMAIN/$lbl"
+  pid_after=""
+  for _ in $(seq 1 30); do
+    sleep 2
+    pid_after="$(launchctl print "$DOMAIN/$lbl" 2>/dev/null | awk '/^\tpid = /{print $3}')"
+    [ -n "$pid_after" ] && [ "$pid_after" != "$pid_before" ] && break
+  done
+  if [ -n "$pid_after" ] && [ "$pid_after" != "$pid_before" ]; then
+    echo "  $lbl: pid $pid_before -> $pid_after"
+  else
+    echo "  $lbl: did not report a new pid within 60s (was $pid_before)" >&2
+    RESTART_INCOMPLETE=1
+  fi
+done
 
+case " ${LABELS[*]} " in *" com.weather.weather_basket_yes "*)
 python3 - "$STATUS" "$BEFORE" <<'PY'
 import json,sys,time
 status,before=sys.argv[1],int(sys.argv[2])
@@ -148,9 +195,10 @@ for _ in range(60):
     if int(d.get("pid") or 0) not in (0,before):
         print("up: pid %s started %s" % (d.get("pid"), d.get("started_at")))
         raise SystemExit(0)
-print("restart did not report a new pid within 120s", file=sys.stderr)
+print("resident status did not report a new pid within 120s", file=sys.stderr)
 raise SystemExit(1)
 PY
+;; esac
 
 epoch > "$LAST"; now_utc > "$LAST.iso"
 python3 - "$JOURNAL" "$(now_utc)" <<'PY'
@@ -163,3 +211,7 @@ for r in rows:
 open(path,"w").write("".join(json.dumps(r,ensure_ascii=False)+"\n" for r in rows))
 print("served %d queued request(s)" % n)
 PY
+
+report_pause_flag
+[ "${RESTART_INCOMPLETE:-0}" = "1" ] && exit 1
+exit 0

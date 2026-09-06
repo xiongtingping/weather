@@ -81,8 +81,9 @@
 
 同一棵树上常有多个 Claude 会话并行改动，今天三个会话各自落宪章条款时踩了三类坑，都不是任何一方的错，只是**没有见面的地方**。以下是见面的地方。
 
-- **重启常驻只走 `scripts/restart_resident.sh "理由"`。** 直接 `launchctl kickstart` 或 `targetctl.sh restart` 都不要再用。
+- **重启任何常驻服务只走 `scripts/restart_resident.sh "理由"`。** 覆盖三个服务（`weather_basket_yes` / `market_ws` / `clob_order_service`），`--only <label>` 可只重启一个。直接 `launchctl kickstart` 或 `targetctl.sh restart` 都不要再用。
   重启会把官方采集轮转游标归零，D+2 的 scope 排在目录约 192 位、每 10 分钟推进 20 个，**一次重启等于那个事件日八到十六分钟没人服务**。实测 2026-09-06：三个会话在 12:07／12:30／12:44／12:51Z 各自重启一次，2026-09-08 整个窗口只被判过一轮，而那一轮抽到的六个站没有一个能触发刚落地的改动。
+  **它每次退出都报 `data/live_paused.flag` 的状态。** 那面旗是操作者的开关，脚本永不设置也永不清除（熊先生裁决 2026-09-06「取消暂停旗标，我自己开关」）；旗在时下单服务拒收每一笔提交，而这件事以前只能靠一笔订单被拒才发现——2026-09-06 12:07:51Z 一次下单服务重装把它置上，13:36:22Z EGLC 当天第一个完整 09-08 篮子（三腿 5.202 U，0.031 那条腿被宪章 98 抬到 33 股）三条意图全部 `SUBMIT_REFUSED`。装机路径的自动置旗已经删掉。
   脚本用 10 分钟合并窗（`PM_RESIDENT_RESTART_COOLDOWN_SEC`）：窗内的请求**记账不执行**，下一次重启（无论谁触发）一次性服务所有排队请求。`--pending` 看队列，`--force` 只在等不了时用且会留痕。**排队不是失败，退出码是 0。**
 - **归属只能按文件足迹判。** 全仓共用同一个 git author（`xiongtingping`），`git log --author` 分不出人；用 `git show --stat <sha>` 看改了哪些文件。今天有一次把第三方的提交认成对方的，据此提出的改号请求整个落错人。**"正在跟我说话的人"不等于"拥有那些提交的人"。**
 - **立宪章条款前先占号。** `grep -o "^[0-9]\+\. " docs/constitution/SYSTEM_CHARTER.md | sort -n | uniq -c` 查重号，**然后立刻只提交编号占位那一行**，再去写正文。并行会话之间没有别的占号机制——今天 96 与 97 各撞了一次，都是因为两边都写完整条才提交，谁也没看见对方。撞号后**不要跨会话去重写别人的引用**（那是本仓吃过亏的坑），改号由拥有那些提交的会话各自执行，或由熊先生统一裁。
@@ -91,7 +92,7 @@
 ## 常用运行（本地）
 - 一次性用户域迁移：`bash scripts/migrate_weather_basket_yes_to_user_domain.sh --confirm-user-domain-production-no-live`
 - 用户域安装/刷新：`bash scripts/targetctl.sh restart`（**仅安装用；重启常驻一律走 `scripts/restart_resident.sh`，见「多会话同时开工」**。`targetctl.sh restart` 的 stop 步骤超时返回非零，`set -e` 会让后续安装不执行，实测掉过 `market_ws` 与 `clob_order_service` 两个服务）
-- 重启常驻（唯一入口）：`bash scripts/restart_resident.sh "理由" --who <会话名>`；看队列 `--pending`
+- 重启常驻（唯一入口，覆盖三服务）：`bash scripts/restart_resident.sh "理由" --who <会话名>`；看队列与暂停旗标 `--pending`；只重启一个 `--only clob_order_service`
 - target-only概率切换：`bash scripts/cutover_bayes_basket_target_probability_evidence_no_live.sh --confirm-target-probability-evidence-production-no-live`
 - 服务状态：`bash scripts/targetctl.sh status`
 - 只读验收：`python3 scripts/weather_basket_yes_production_acceptance.py`
