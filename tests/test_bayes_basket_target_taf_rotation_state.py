@@ -1,10 +1,16 @@
 from bayes_basket_target.taf_rotation_state import (
+    PRIORITY_D1_TX,
+    PRIORITY_GENERAL,
+    PRIORITY_HELD,
     build_catalog,
     build_rotation_state,
+    held_scope_prefixes,
     load_rotation_state,
     persist_rotation_state,
     scope_key,
+    scope_priority_class,
     select_scopes,
+    tx_bearing_station_ids,
 )
 
 
@@ -298,3 +304,116 @@ def test_taf_rotation_defers_rather_than_skips_an_unattempted_scope() -> None:
     assert [scope["station_id"] for scope in next_selected][:7] == [
         f"RK{index:02d}" for index in range(5, 12)
     ]
+
+
+# --- Charter 85 (b), 2026-09-06: held station-days first, then d1 at the TX
+# stations, then the general least-recently-served queue -----------------------
+
+def _scope(station: str, day: str, tz: str = "Asia/Shanghai", state: str = "not_started"):
+    return {"station_id": station, "event_date": day, "settlement_timezone": tz,
+            "day_state": state}
+
+
+AS_OF = "2026-09-06T06:30:00Z"  # 14:30 in Shanghai: 09-07 is tomorrow there
+
+
+def test_priority_classes() -> None:
+    held = {"ZGSZ|2026-09-06"}
+    tx = {"ZGSZ", "ZGGG"}
+    assert scope_priority_class(_scope("ZGSZ", "2026-09-06"), held_prefixes=held,
+                                tx_station_ids=tx, as_of_utc=AS_OF) == PRIORITY_HELD
+    assert scope_priority_class(_scope("ZGSZ", "2026-09-07"), held_prefixes=held,
+                                tx_station_ids=tx, as_of_utc=AS_OF) == PRIORITY_D1_TX
+    # d2 at a TX station and d1 at a non-TX station are general.
+    assert scope_priority_class(_scope("ZGSZ", "2026-09-08"), held_prefixes=held,
+                                tx_station_ids=tx, as_of_utc=AS_OF) == PRIORITY_GENERAL
+    assert scope_priority_class(_scope("KMIA", "2026-09-07", "America/New_York"),
+                                held_prefixes=held, tx_station_ids=tx,
+                                as_of_utc=AS_OF) == PRIORITY_GENERAL
+    # Without a clock the d1 class cannot be decided and is not claimed.
+    assert scope_priority_class(_scope("ZGSZ", "2026-09-07"), tx_station_ids=tx) == PRIORITY_GENERAL
+
+
+def test_held_then_d1_tx_then_general_and_the_general_queue_still_moves() -> None:
+    # Eight alphabetically-early general scopes, then the priority ones at the
+    # tail -- the shape that starved ZGSZ.
+    catalog = [_scope(f"AA0{i}", "2026-09-07", "UTC") for i in range(8)]
+    catalog += [_scope("ZGSZ", "2026-09-06", state="open"),   # held
+                _scope("ZGSZ", "2026-09-07"),                  # d1 TX
+                _scope("ZGGG", "2026-09-07"),                  # d1 TX
+                _scope("ZGSZ", "2026-09-08")]                  # d2 TX -> general
+    selected, _, _ = select_scopes(
+        catalog, previous=None, limit=6, priority_slots=3,
+        held_scope_prefixes={"ZGSZ|2026-09-06"}, tx_station_ids={"ZGSZ", "ZGGG"},
+        as_of_utc=AS_OF,
+    )
+    keys = [scope_key(s) for s in selected]
+    assert keys[:3] == ["ZGSZ|2026-09-06|Asia/Shanghai", "ZGSZ|2026-09-07|Asia/Shanghai",
+                        "ZGGG|2026-09-07|Asia/Shanghai"], "held first, then d1 TX by catalogue order"
+    assert keys[3:] == ["AA00|2026-09-07|UTC", "AA01|2026-09-07|UTC", "AA02|2026-09-07|UTC"], (
+        "the remaining slots walk the general queue"
+    )
+    assert [s["rotation_priority_class"] for s in selected] == [0, 1, 1, 2, 2, 2]
+
+
+def test_priority_scopes_rotate_among_themselves_and_never_freeze_the_tail(tmp_path) -> None:
+    catalog = [_scope(f"AA0{i}", "2026-09-07", "UTC") for i in range(4)]
+    held = {f"HH0{i}|2026-09-07" for i in range(4)}
+    catalog += [_scope(f"HH0{i}", "2026-09-07", "UTC") for i in range(4)]
+    previous = None
+    laps = []
+    for gen in range(4):
+        selected, cursor, sha = select_scopes(
+            catalog, previous=previous, limit=4, priority_slots=2,
+            held_scope_prefixes=held, as_of_utc=AS_OF,
+        )
+        laps.append([s["station_id"] for s in selected])
+        outcomes = [{"scope_key": scope_key(s), "state": "captured", "reason": ""} for s in selected]
+        previous = build_rotation_state(
+            catalog=catalog, selected=selected, next_cursor=cursor, catalog_sha256=sha,
+            outcomes=outcomes, previous=previous, updated_at_utc=f"2026-09-06T06:0{gen}:00Z",
+        )
+    # Two held per lap, least-recently-served among the held; two general per
+    # lap walking AA00..AA03 -- every scope is reached inside two laps.
+    assert laps[0] == ["HH00", "HH01", "AA00", "AA01"]
+    assert laps[1] == ["HH02", "HH03", "AA02", "AA03"]
+    assert laps[2] == ["HH00", "HH01", "AA00", "AA01"]
+    assert laps[3] == ["HH02", "HH03", "AA02", "AA03"]
+    assert previous["latest_selected_priority_classes"] == {
+        "HH02|2026-09-07|UTC": 0, "HH03|2026-09-07|UTC": 0,
+        "AA02|2026-09-07|UTC": 2, "AA03|2026-09-07|UTC": 2,
+    }
+    assert load_rotation_state is not None
+
+
+def test_without_priority_inputs_the_plain_rotation_is_unchanged() -> None:
+    catalog = [_scope(f"RK0{i}", "2026-08-01", "Asia/Seoul") for i in range(6)]
+    plain, _, _ = select_scopes(catalog, previous=None, limit=4)
+    assert [s["station_id"] for s in plain] == ["RK00", "RK01", "RK02", "RK03"]
+    assert all(s["rotation_priority_class"] == PRIORITY_GENERAL for s in plain)
+
+
+def test_the_ledger_and_capture_reads_behind_the_priority() -> None:
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(
+        """
+        CREATE TABLE basket_target_execution_cycles (cycle_id TEXT, station_id TEXT, event_date TEXT);
+        CREATE TABLE basket_target_order_intents (order_intent_id TEXT, cycle_id TEXT, order_action TEXT);
+        CREATE TABLE basket_target_order_reconciliations (order_intent_id TEXT, state TEXT, filled_size REAL);
+        CREATE TABLE calibration_forward_taf_capture (station_id TEXT, tx_available INTEGER, received_at_utc TEXT);
+        INSERT INTO basket_target_execution_cycles VALUES ('c1','ZGSZ','2026-09-06'),('c2','KMIA','2026-09-06');
+        INSERT INTO basket_target_order_intents VALUES ('i1','c1','BUY'),('i2','c2','BUY'),('i3','c2','SELL');
+        INSERT INTO basket_target_order_reconciliations VALUES ('i1','resolved_filled',5.0),('i2','resolved_filled',5.0),('i3','resolved_filled',5.0);
+        INSERT INTO calibration_forward_taf_capture VALUES ('ZGSZ',1,'2026-09-03T02:00:00Z'),('KMIA',0,'2026-09-06T03:50:00Z'),('OLD1',1,'2026-07-01T00:00:00Z');
+        """
+    )
+    assert held_scope_prefixes(conn) == frozenset({"ZGSZ|2026-09-06"}), "KMIA is sold flat"
+    assert tx_bearing_station_ids(conn, as_of_utc=AS_OF) == frozenset({"ZGSZ"}), (
+        "US TAFs carry no TX; a TX seen 60 days ago is out of the cohort"
+    )
+    # Missing tables read as no priority, never as a failure.
+    assert held_scope_prefixes(sqlite3.connect(":memory:")) == frozenset()
+    assert tx_bearing_station_ids(sqlite3.connect(":memory:"), as_of_utc=AS_OF) == frozenset()
+

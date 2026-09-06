@@ -127,7 +127,9 @@ from bayes_basket_target.taf_rotation_state import (
     MAX_SELECTED_SCOPES as MAX_TAF_SCOPES_PER_POLL,
     build_catalog as build_taf_rotation_catalog,
     build_rotation_state as build_taf_rotation_state,
+    held_scope_prefixes as taf_rotation_held_scope_prefixes,
     load_rotation_state as load_taf_rotation_state,
+    tx_bearing_station_ids as taf_rotation_tx_station_ids,
     persist_rotation_state as persist_taf_rotation_state,
     scope_key as taf_rotation_scope_key,
     select_scopes as select_taf_rotation_scopes,
@@ -1792,11 +1794,21 @@ def run_target_forecast_refresh_cycle(
                 previous_rotation = load_taf_rotation_state(
                     rotation_path
                 )
+                # Charter 85 (b) (2026-09-06): the station-days the book
+                # holds first, then tomorrow at the TX-issuing stations, then
+                # the general least-recently-served queue.
+                rotation_held = taf_rotation_held_scope_prefixes(taf_scope_conn)
+                rotation_tx_stations = taf_rotation_tx_station_ids(
+                    taf_scope_conn, as_of_utc=now
+                )
                 selected, next_cursor, catalog_sha = (
                     select_taf_rotation_scopes(
                         catalog,
                         previous=previous_rotation,
                         limit=MAX_TAF_SCOPES_PER_POLL,
+                        held_scope_prefixes=rotation_held,
+                        tx_station_ids=rotation_tx_stations,
+                        as_of_utc=now,
                     )
                 )
                 captures: list[dict[str, Any]] = []
@@ -1893,6 +1905,15 @@ def run_target_forecast_refresh_cycle(
                     ],
                     "nominated_scope_count": len(selected),
                     "deferred_scope_count": len(selected) - len(attempted),
+                    # Charter 85 (b): how this lap was filled.
+                    "priority_classes": {
+                        taf_rotation_scope_key(scope): int(
+                            scope.get("rotation_priority_class", 2)
+                        )
+                        for scope in attempted
+                    },
+                    "held_scope_count": len(rotation_held),
+                    "tx_station_count": len(rotation_tx_stations),
                     "round_budget_sec": TARGET_TAF_ROUND_BUDGET_SEC,
                     "capture_count": len(captures),
                     "failure_count": len(capture_failures),

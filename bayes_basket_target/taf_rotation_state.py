@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Mapping, Sequence
-from datetime import datetime, time, timezone
+from typing import Any, Collection, Mapping, Sequence
+from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from .contracts import ContractError, content_sha256
@@ -32,6 +32,21 @@ MAX_CATALOG_SCOPES = expected_station_count() * 3
 # The cost is bounded: capture_forward_awc_taf times out at 12s, and the caller
 # stops the round on its own budget before the writer turn stretches.
 MAX_SELECTED_SCOPES = 12
+# Charter 85 (b) (user ruling, 2026-09-06: "TAF 轮询改成已持仓站日优先、d1 带
+# TX 的 17 站优先"): each lap fills its priority slots first -- station-days
+# the book holds, then tomorrow's scope at the stations whose TAFs carry a TX
+# group -- and only then the general least-recently-served queue.  The cap
+# keeps the rest of the catalogue moving: with ~14 held station-days and ~18
+# TX stations the priority pool alone is larger than a lap, and a queue that
+# never reaches the general block is the ZUUU starvation with a new head.
+PRIORITY_SLOTS_PER_LAP = 8
+# A station is in the TX cohort while one of its captured TAFs in this many
+# trailing days carried a TX group; US TAFs never do, and the cohort is read
+# off the capture table rather than hard-coded so it follows the bulletins.
+TX_COHORT_LOOKBACK_DAYS = 30
+PRIORITY_HELD = 0
+PRIORITY_D1_TX = 1
+PRIORITY_GENERAL = 2
 # The served ledger outlives the catalogue on purpose (see build_rotation_state),
 # so it is bounded on its own terms rather than by today's scope count.
 MAX_SERVED_LEDGER_SCOPES = MAX_CATALOG_SCOPES * 2
@@ -137,6 +152,89 @@ def build_catalog(
     )
 
 
+def held_scope_prefixes(conn: Any) -> frozenset[str]:
+    """``STATION|EVENT_DATE`` for every station-day the ledger says is held.
+
+    The same read charter 85's forward rotation uses: a settled live BUY not
+    yet sold flat.  Empty when the tables are absent or the read fails, and
+    the rotation then falls back to its plain least-recently-served order.
+    """
+
+    try:
+        rows = conn.execute(
+            "SELECT c.station_id, c.event_date,"
+            " SUM(CASE WHEN upper(i.order_action)='SELL'"
+            "          THEN -r.filled_size ELSE r.filled_size END) AS net"
+            " FROM basket_target_order_reconciliations r"
+            " JOIN basket_target_order_intents i"
+            "   ON i.order_intent_id=r.order_intent_id"
+            " JOIN basket_target_execution_cycles c"
+            "   ON c.cycle_id=i.cycle_id"
+            " WHERE r.state IN ('resolved_filled','resolved_partial')"
+            " GROUP BY c.station_id, c.event_date"
+        ).fetchall()
+    except Exception:  # noqa: BLE001 - a scheduling hint, never a blocker
+        return frozenset()
+    return frozenset(
+        f"{str(station).strip().upper()}|{str(day).strip()}"
+        for station, day, net in rows
+        if float(net or 0.0) > 1e-9
+    )
+
+
+def tx_bearing_station_ids(conn: Any, *, as_of_utc: str) -> frozenset[str]:
+    """Stations whose captured forward TAFs carried a TX group recently."""
+
+    try:
+        since = (
+            datetime.fromisoformat(str(as_of_utc).replace("Z", "+00:00"))
+            - timedelta(days=TX_COHORT_LOOKBACK_DAYS)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        rows = conn.execute(
+            "SELECT DISTINCT station_id FROM calibration_forward_taf_capture"
+            " WHERE tx_available=1 AND received_at_utc>=?",
+            (since,),
+        ).fetchall()
+    except Exception:  # noqa: BLE001 - a scheduling hint, never a blocker
+        return frozenset()
+    return frozenset(
+        str(row[0]).strip().upper() for row in rows if str(row[0] or "").strip()
+    )
+
+
+def _local_date_after(as_of_utc: str, timezone_name: str, days: int) -> str | None:
+    try:
+        as_of = datetime.fromisoformat(str(as_of_utc).replace("Z", "+00:00"))
+        if as_of.tzinfo is None:
+            return None
+        local = as_of.astimezone(ZoneInfo(timezone_name))
+    except Exception:  # noqa: BLE001
+        return None
+    return (local.date() + timedelta(days=days)).isoformat()
+
+
+def scope_priority_class(
+    scope: Mapping[str, Any],
+    *,
+    held_prefixes: Collection[str] = (),
+    tx_station_ids: Collection[str] = (),
+    as_of_utc: str | None = None,
+) -> int:
+    """0 = the book holds this station-day; 1 = tomorrow at a TX station; 2 = rest."""
+
+    station = str(scope.get("station_id") or "").strip().upper()
+    event_date = str(scope.get("event_date") or "").strip()
+    if f"{station}|{event_date}" in set(held_prefixes):
+        return PRIORITY_HELD
+    if station in {str(v).strip().upper() for v in tx_station_ids} and as_of_utc:
+        tomorrow = _local_date_after(
+            as_of_utc, str(scope.get("settlement_timezone") or ""), 1
+        )
+        if tomorrow is not None and event_date == tomorrow:
+            return PRIORITY_D1_TX
+    return PRIORITY_GENERAL
+
+
 def _without_hash(value: Mapping[str, Any]) -> dict[str, Any]:
     return {
         str(key): child
@@ -237,6 +335,10 @@ def select_scopes(
     *,
     previous: Mapping[str, Any] | None,
     limit: int = MAX_SELECTED_SCOPES,
+    held_scope_prefixes: Collection[str] = (),
+    tx_station_ids: Collection[str] = (),
+    as_of_utc: str | None = None,
+    priority_slots: int = PRIORITY_SLOTS_PER_LAP,
 ) -> tuple[list[dict[str, Any]], int, str]:
     keys = [scope_key(scope) for scope in catalog]
     catalog_sha = content_sha256(keys)
@@ -246,15 +348,44 @@ def select_scopes(
         raise ContractError("taf_rotation_selection_limit_invalid")
     served = _served_sequence_by_scope_key(previous)
     count = min(limit, len(keys))
+    classes = [
+        scope_priority_class(
+            scope,
+            held_prefixes=held_scope_prefixes,
+            tx_station_ids=tx_station_ids,
+            as_of_utc=as_of_utc,
+        )
+        for scope in catalog
+    ]
+    # Charter 85 (b): the priority pool -- held station-days, then tomorrow
+    # at the TX stations -- fills up to ``priority_slots`` first, each class
+    # least-recently-served within itself.  The remaining slots come from the
+    # general least-recently-served queue over the whole catalogue, so the
+    # priority pool can never freeze the tail the way the old head did.
+    priority_order = sorted(
+        (
+            index for index in range(len(keys))
+            if classes[index] != PRIORITY_GENERAL
+        ),
+        key=lambda index: (classes[index], served.get(keys[index], 0), index),
+    )[:max(0, min(int(priority_slots), count))]
+    taken = set(priority_order)
     # Never-served scopes sort first (sequence 0), then the longest-waiting.
     # Catalogue position only breaks ties, which is what keeps the declared
-    # priority -- ASOS stations, then days that have not started -- meaningful
+    # order -- ASOS stations, then days that have not started -- meaningful
     # without letting it monopolise the poll.
-    order = sorted(
-        range(len(keys)),
-        key=lambda index: (served.get(keys[index], 0), index),
-    )[:count]
-    selected = [dict(catalog[index]) for index in order]
+    general_order = [
+        index for index in sorted(
+            range(len(keys)),
+            key=lambda index: (served.get(keys[index], 0), index),
+        )
+        if index not in taken
+    ][:count - len(priority_order)]
+    order = priority_order + general_order
+    selected = [
+        dict(catalog[index], rotation_priority_class=classes[index])
+        for index in order
+    ]
     # Retained as telemetry only: where in the catalogue this round's last
     # selection landed.  Nothing schedules off it any more.
     return selected, (order[-1] + 1) % len(keys), catalog_sha
@@ -318,6 +449,12 @@ def build_rotation_state(
         "cursor": int(next_cursor),
         "served_sequence_by_scope_key": served,
         "latest_selected_scope_keys": selected_keys,
+        # Charter 85 (b): which priority class each selected scope came in
+        # under -- telemetry, so a lap can be read as "held / d1 TX / general".
+        "latest_selected_priority_classes": {
+            scope_key(scope): int(scope.get("rotation_priority_class", PRIORITY_GENERAL))
+            for scope in selected
+        },
         "latest_outcomes": outcome_rows,
         "production_no_live": True,
         "calls_order_gateway": False,
@@ -341,6 +478,14 @@ def persist_rotation_state(path: Path, value: Mapping[str, Any]) -> bool:
 
 __all__ = [
     "MAX_SELECTED_SCOPES",
+    "PRIORITY_SLOTS_PER_LAP",
+    "PRIORITY_HELD",
+    "PRIORITY_D1_TX",
+    "PRIORITY_GENERAL",
+    "TX_COHORT_LOOKBACK_DAYS",
+    "held_scope_prefixes",
+    "tx_bearing_station_ids",
+    "scope_priority_class",
     "MAX_SERVED_LEDGER_SCOPES",
     "TAF_PHYSICAL_PEAK_WINDOW_START_HOUR_LOCAL",
     "TAF_PHYSICAL_PEAK_WINDOW_END_HOUR_LOCAL",
