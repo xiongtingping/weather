@@ -261,7 +261,13 @@ def test_discrete_clip_closes_target_gap_budget_depth_and_promotion_caps() -> No
     )
     assert sized.eligible is True
     assert sized.raw_c_order == pytest.approx(4.10)
-    assert sized.q_order == pytest.approx(13.60)
+    # 4.10 USDC at 0.30 buys 13.66 shares.  The venue quantum offered here
+    # is 0.10 of a share and the clip would have paid for 13.60 of them, but
+    # the grid an order is written on is whole shares (user ruling,
+    # 2026-09-06), so the leg is thirteen and the sixty-sixth of a share is
+    # not spent.  Flooring, never rounding: the clip, the depth and the gap
+    # above are all ceilings.
+    assert sized.q_order == pytest.approx(13.0)
     assert sized.c_order == pytest.approx(sized.q_order * sized.r_limit)
     assert sized.c_order <= 4.10 + 1e-9
     assert sized.q_order <= sized.delta_shares + 1e-9
@@ -311,8 +317,11 @@ def test_delta_v2_target_clip_is_not_replaced_by_legacy_cash_template() -> None:
     assert sized.cash_template_caps_target is False
     assert sized.c_base == pytest.approx(0.25)
     assert sized.raw_c_order == pytest.approx(0.9288888888)
-    assert sized.c_order == pytest.approx(0.92888)
-    assert sized.q_order == pytest.approx(232.22)
+    # 232.22 hundredths of a share was the old grid's answer; a share count
+    # is whole, so the leg is 232 of them and the cash follows the shares
+    # rather than the shares following the cash.
+    assert sized.q_order == pytest.approx(232.0)
+    assert sized.c_order == pytest.approx(232.0 * 0.004)
     assert sized.eligible is True
     assert sized.reason_code == "sized_discrete"
 
@@ -407,15 +416,17 @@ def test_a_leg_cut_below_its_authorized_clip_is_refused_not_shrunk() -> None:
     assert clamped.c_order == 0.0
     assert clamped.remaining_budget_after == pytest.approx(20.0)
 
-    # Share-quantum rounding is the one permitted difference: it is bounded
-    # by a quantum and cannot re-shape a basket.
+    # Grid rounding is the one permitted difference: it is bounded by a
+    # single step and cannot re-shape a basket.  The step is a whole share
+    # since 2026-09-06, so the bound it is checked against is a share's
+    # worth of cash rather than a venue quantum's.
     rounded = OrderSizingDecision.compute(
         remaining_budget=20.0, executable_depth_cash=99.0, **common
     )
     assert rounded.eligible is True
     assert rounded.reason_code == "sized_discrete"
     assert rounded.c_order < 4.10
-    assert rounded.c_order > 4.10 - 0.10 * 0.30 - 1e-9
+    assert rounded.c_order > 4.10 - 1.0 * 0.30 - 1e-9
 
     # The legacy cadence path keeps capping by its cash template.
     legacy = OrderSizingDecision.compute(
@@ -573,8 +584,14 @@ def test_leg_under_the_exchange_minimum_lot_is_raised_to_one_lot() -> None:
     assert raised.c_order == pytest.approx(4.70)
     # The gap was 1.05 shares; buying a legal lot overshoots it, and that
     # overshoot is the "more" the ruling asks for.
+    #
+    # The raise is measured from what sizing would otherwise have bought,
+    # and since 2026-09-06 that is a whole share -- one, not 1.05.  The
+    # recorded ``lot_raise_usdc`` therefore grew by the fraction that was
+    # never buyable in the first place; an arm pricing the raise is pricing
+    # it against a baseline the exchange would actually have taken.
     assert raised.delta_shares == pytest.approx(1.05)
-    assert raised.lot_raise_usdc == pytest.approx(4.70 - 1.05 * 0.94)
+    assert raised.lot_raise_usdc == pytest.approx(4.70 - 1.0 * 0.94)
     assert raised.remaining_budget_after == pytest.approx(10.0 - 4.70)
 
     # The clip the objective authorized is exceeded on purpose.  Nothing else
@@ -610,7 +627,9 @@ def test_leg_under_the_exchange_minimum_lot_is_raised_to_one_lot() -> None:
     # being raised for some other reason.
     no_floor = sized(minimum_lot_shares=0.0)
     assert no_floor.eligible is True
-    assert no_floor.q_order == pytest.approx(1.05)
+    # The 1.05-share gap without a lot floor is one share, not 1.05: the
+    # grid is whole shares whether or not a lot is stated.
+    assert no_floor.q_order == pytest.approx(1.0)
     assert no_floor.lot_raise_usdc == 0.0
 
     # The floor is shares, so the cash it demands moves with the price: the
@@ -621,6 +640,92 @@ def test_leg_under_the_exchange_minimum_lot_is_raised_to_one_lot() -> None:
 
     assert "lot_raise_usdc" in raised.to_dict()
     assert raised.content_sha256 != no_floor.content_sha256
+
+
+def test_a_sub_share_leg_still_reaches_the_charter_70_raise() -> None:
+    """The whole-share grid must not eat the legs charter 70 exists to lift.
+
+    Sizing floors to a whole share, so a rung the objective wanted 0.862 of
+    floors to zero -- and the branch that refuses a zero-share leg sits
+    ABOVE the lot raise.  Left alone, the guard would drop exactly the legs
+    the charter lifts: the ZGSZ 32°C rung whose 0.862-share target became a
+    five-share order is the case, and dropping it takes the bucket carrying
+    the mass off the ladder.
+
+    So the zero refusal stands only where there is no lot to raise to.
+    """
+
+    policy = _policy(cash_by_phase={"HEAVY": 10.0, "STANDARD": 10.0, "TAIL": 10.0})
+    phase = evaluate_cash_phase(policy, _input(policy))
+
+    def sized(**overrides):
+        kwargs = {
+            "bucket": "32°C",
+            "phase_decision": phase,
+            "delta_shares": 0.862,
+            "r_limit": 0.19,
+            "remaining_budget": 10.0,
+            "executable_depth_cash": 12.0,
+            "candidate_present": True,
+            "minimum_lot_shares": 5.0,
+        }
+        kwargs.update(overrides)
+        return OrderSizingDecision.compute(**kwargs)
+
+    raised = sized()
+    assert raised.eligible is True
+    assert raised.reason_code == "raised_to_exchange_minimum_lot"
+    assert raised.q_order == pytest.approx(5.0)
+    # Nothing was buyable before the raise, so the whole lot is the raise.
+    assert raised.lot_raise_usdc == pytest.approx(5.0 * 0.19)
+
+    # With no lot stated there is nothing to raise to, and a leg that cannot
+    # reach one share is refused in its own words.
+    no_lot = sized(minimum_lot_shares=0.0)
+    assert no_lot.eligible is False
+    assert no_lot.reason_code == "share_quantum_rounds_to_zero"
+    assert no_lot.q_order == 0.0
+    assert no_lot.c_order == 0.0
+
+    # An empty clip is still the other refusal: nothing to buy is not the
+    # same as too little to buy.
+    nothing = sized(delta_shares=0.0)
+    assert nothing.eligible is False
+    assert nothing.reason_code == "no_positive_inventory_gap"
+
+
+def test_every_persisted_share_size_is_a_whole_share() -> None:
+    """The grid holds across the branches, not just the happy one.
+
+    ``requested_size`` is written to ``basket_target_order_intents`` from
+    this number, and the board printed it raw: 0.15x7.000000000000001 and
+    0.47x4.999999999999999 were both on the page.  The residue is the
+    restatement's, fixed separately; this is the ruling underneath it
+    (2026-09-06) -- a share count is whole, on every path out of sizing.
+    """
+
+    policy = _policy(cash_by_phase={"HEAVY": 10.0, "STANDARD": 10.0, "TAIL": 10.0})
+    phase = evaluate_cash_phase(policy, _input(policy))
+    for delta, limit, lot in (
+        (13.66, 0.30, 0.0), (0.862, 0.19, 5.0), (232.22, 0.004, 0.0),
+        (5.0, 0.47, 5.0), (7.83, 0.15, 5.0), (1.05, 0.94, 5.0),
+    ):
+        sized = OrderSizingDecision.compute(
+            bucket="38",
+            phase_decision=phase,
+            delta_shares=delta,
+            r_limit=limit,
+            remaining_budget=1000.0,
+            executable_depth_cash=1000.0,
+            candidate_present=True,
+            minimum_lot_shares=lot,
+        )
+        assert sized.q_order == pytest.approx(round(sized.q_order)), (
+            delta, limit, lot, sized.q_order
+        )
+        # And the cash still agrees with the shares to the identity's own
+        # tolerance -- the restatement runs after the grid, not instead.
+        assert sized.c_order == pytest.approx(sized.q_order * limit)
 
 
 def test_the_restated_share_size_sits_on_the_grid_it_was_sized_on() -> None:

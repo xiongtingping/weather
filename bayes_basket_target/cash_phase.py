@@ -15,6 +15,7 @@ from enum import Enum
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .basket_kernel.delta_v2 import floor_to_order_share_grid_v1
 from .contracts import ContractError, content_sha256
 
 
@@ -495,9 +496,20 @@ class OrderSizingDecision:
                 caps.append(target_clip)
             raw_c_order = min(caps)
             raw_q_order = min(delta, depth_shares_cap, raw_c_order / limit) if limit > EPS else 0.0
-            q_order = _floor_step(raw_q_order, quantum)
+            # Charter 70 already said a fractional share cannot be bought;
+            # it only said it about the legs sitting on the venue minimum.
+            # The grid every leg is floored to is the kernel's, read by the
+            # paper ledger from the same place, and it is never finer than a
+            # whole share (user ruling, 2026-09-06).
+            q_order = floor_to_order_share_grid_v1(raw_q_order, quantum)
             c_order = q_order * limit
-            if raw_c_order <= EPS or q_order <= EPS:
+            # A leg the grid floors to zero is not refused here when a lot
+            # floor is stated: charter 70's raise is exactly the rule for a
+            # leg too small to buy, and refusing above it would drop the
+            # legs the charter exists to lift -- the 0.862-share ZGSZ rung
+            # that became a five-share order is one of them.  The refusal
+            # stands only when there is no lot to raise to.
+            if raw_c_order <= EPS or (q_order <= EPS and minimum_lot <= EPS):
                 eligible = False
                 reason = "share_quantum_rounds_to_zero" if raw_c_order > EPS else "cash_clip_zero_after_constraints"
                 c_order = 0.0

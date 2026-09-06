@@ -2510,6 +2510,15 @@ def _read_chain_probe() -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
+# Charter 75 reads the plan's direction straight off the skew sign, so a
+# plan minted before the shape was recorded still says which way the day
+# leaned -- with one caveat the label carries: evidence that was not fresh
+# reads NEUTRAL whatever the distribution looked like.
+_SKEW_BY_DIRECTION = {
+    "UP": "RIGHT_SKEWED", "DOWN": "LEFT_SKEWED", "NEUTRAL": "SYMMETRIC",
+}
+
+
 def _window_seconds(created_at: Any, deadline_at: Any) -> float | None:
     """Seconds a basket had to reach the exchange, or None if unreadable.
 
@@ -2527,25 +2536,30 @@ def _window_seconds(created_at: Any, deadline_at: Any) -> float | None:
     return round((end - start).total_seconds(), 3)
 
 
-def _live_ladder_centers(
+def _live_basket_plan_state(
     conn: sqlite3.Connection, rows: list[dict[str, Any]]
-) -> dict[str, str]:
-    """Which rung each live basket centred on, keyed by decision.
+) -> dict[str, dict[str, Any]]:
+    """What each live basket's own plan recorded about the day, by decision.
 
-    The centre is the compiled plan's own ``center_bucket`` -- the rung the
-    optimiser seated the ladder on (charter 75: the mean landing bucket,
-    moved by the skew rule, which is why it is not simply the middle of the
-    window).  The decision names its plan by ``production_plan_sha256`` and
-    the plan store keeps the compiled plan under that same hash, so the
-    board reads back the number that actually placed the order.
+    Two readings, both read back rather than derived.  ``center_bucket`` is
+    the rung the optimiser seated the ladder on (charter 75: the mean
+    landing bucket, moved by the skew rule, which is why it is not simply
+    the middle of the window).  ``skew_reading`` is the shape that placed it
+    -- symmetric, right-skewed, left-skewed -- with the mean-minus-mode gap
+    in bucket steps and the threshold it was judged against.
 
-    It is read, never recomputed.  Deriving a centre here would mean
-    re-implementing the per-station grid rule the plan already applied, and
-    the ledger's seat row is not a stand-in for it: measured across the whole
-    live book on 2026-09-06, 15 of 53 baskets carry a ledger seat from a
-    different decision moment, and 6 of those name a centre that is not even
-    one of the basket's legs.  A basket whose plan is not in the store gets
-    no centre, and the panel marks nothing rather than marking a guess.
+    Deriving either here would mean re-implementing the per-station grid and
+    skew rules the plan already applied, and the ledger's seat row is not a
+    stand-in: measured across the whole live order book on 2026-09-06, 15 of
+    53 baskets carry a ledger seat decided at another moment, and 6 of those
+    name a centre that is not even one of the basket's legs.
+
+    ``skew_reading`` exists only on plans compiled from 2026-09-06.  Older
+    plans fall back to the plan's own ``direction``, which is the same skew
+    sign under charter 75 with one difference worth naming: a day whose
+    evidence was not fresh reads NEUTRAL whatever its shape.  So the two are
+    labelled apart -- the fallback says it is the lean the plan acted on,
+    not the shape it read.
     """
 
     ids = sorted({
@@ -2577,27 +2591,48 @@ def _live_ladder_centers(
             continue
         scope = wanted.setdefault((str(station), str(day)), {})
         scope.setdefault(plan_sha, []).append(str(decision_id))
-    centers: dict[str, str] = {}
+    state: dict[str, dict[str, Any]] = {}
     for (station, day), by_plan in wanted.items():
         try:
             plans = conn.execute(
                 "SELECT"
                 " json_extract(plan_json,"
                 "'$.compiled_plan.production_plan_sha256'),"
-                " json_extract(plan_json,'$.compiled_plan.plan.center_bucket')"
+                " json_extract(plan_json,'$.compiled_plan.plan.center_bucket'),"
+                " json_extract(plan_json,'$.compiled_plan.plan.direction'),"
+                " json_extract(plan_json,"
+                "'$.compiled_plan.plan.skew_reading.state'),"
+                " json_extract(plan_json,"
+                "'$.compiled_plan.plan.skew_reading.gap_buckets'),"
+                " json_extract(plan_json,"
+                "'$.compiled_plan.plan.skew_reading.threshold_buckets')"
                 " FROM basket_p0_preselection_plan"
                 " WHERE station_id=? AND event_date=?",
                 (station, day),
             ).fetchall()
         except sqlite3.Error:
             continue
-        for plan_sha, center in plans:
-            bucket = str(center or "")
-            if not bucket:
+        for plan_sha, center, direction, skew, gap, threshold in plans:
+            targets = by_plan.get(str(plan_sha or ""), ())
+            if not targets:
                 continue
-            for decision_id in by_plan.get(str(plan_sha or ""), ()):
-                centers[decision_id] = bucket
-    return centers
+            recorded = str(skew or "")
+            reading = {
+                "center": str(center or ""),
+                # SYMMETRIC / RIGHT_SKEWED / LEFT_SKEWED, or the direction
+                # the plan acted on when the shape was not written down.
+                "skew": recorded or _SKEW_BY_DIRECTION.get(
+                    str(direction or "").upper(), ""
+                ),
+                "skew_source": "reading" if recorded else (
+                    "direction" if direction else ""
+                ),
+                "gap_buckets": gap,
+                "threshold_buckets": threshold,
+            }
+            for decision_id in targets:
+                state[decision_id] = reading
+    return state
 
 
 def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -2625,7 +2660,7 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
     out: dict[str, Any] = {
         "intent_count": 0, "submitted_count": 0, "accepted_count": 0,
         "notional_usdc": 0.0, "matched_notional_usdc": 0.0, "rows": [],
-        "book": {}, "exchange": {}, "pnl": {}, "centers": {},
+        "book": {}, "exchange": {}, "pnl": {}, "plan_state": {},
     }
     if not _table_exists(conn, "basket_target_order_intents"):
         return out
@@ -2706,11 +2741,10 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
             "reason": reason,
             "settled_bucket": settled_bucket.get((station, day), ""),
         })
-    # Which rung each basket centred on, read back from the plan the
-    # decision was compiled from.  Keyed by decision, because the decision
-    # is the basket: a station-day carries several, and they do not share a
-    # centre.
-    out["centers"] = _live_ladder_centers(conn, out["rows"])
+    # What each basket's own plan recorded -- the centre rung and the day's
+    # shape.  Keyed by decision, because the decision is the basket: a
+    # station-day carries several and they share neither.
+    out["plan_state"] = _live_basket_plan_state(conn, out["rows"])
     if _table_exists(conn, "basket_target_order_events"):
         try:
             for kind, count, matched in conn.execute(
@@ -10152,12 +10186,39 @@ function liveOrderCard(L){
     if(v==="live_submit_not_authorized") return "合同未授权";
     return v.length>28 ? v.slice(0,26)+"…" : v;
   };
-  // The basket's centre rung, keyed by the decision that is the basket --
-  // the compiled plan's own centre, not one derived here.  A basket whose
-  // plan is no longer in the store gets no ring; an unmarked basket is
-  // better than a guessed centre.
-  const SEATS = O.centers || {};
-  const centerOf = (g)=>String(SEATS[g.decision_id]||"");
+  // What the basket's own plan recorded, keyed by the decision that is the
+  // basket.  Nothing here is derived: a basket whose plan is no longer in
+  // the store gets no ring and no state, because an unmarked basket beats a
+  // guessed one.
+  const SEATS = O.plan_state || {};
+  const planOf = (g)=>SEATS[g.decision_id] || null;
+  const centerOf = (g)=>String((planOf(g)||{}).center||"");
+  // The day's shape, in the words charter 75 places the window with.  Left
+  // is the cold tail, right the warm one -- named by where the tail runs,
+  // not by which way the page happens to draw the ladder.
+  const SKEW_LABEL = {
+    SYMMETRIC: ["对称日", "均值与众数相差不到半格 —— 宪章 79 把 P0 席位定为均值桶±1"],
+    RIGHT_SKEWED: ["右偏 · 暖尾", "均值在众数之上超过半格：尾巴拖向偏热的一侧"],
+    LEFT_SKEWED: ["左偏 · 冷尾", "均值在众数之下超过半格：尾巴拖向偏冷的一侧"],
+  };
+  const skewChip = (g)=>{
+    const plan = planOf(g);
+    if(!plan || !plan.skew) return "";
+    const label = SKEW_LABEL[String(plan.skew)];
+    if(!label) return "";
+    const gap = plan.gap_buckets;
+    const read = plan.skew_source === "reading";
+    const detail = read
+      ? `均值−众数 = ${gap==null?"—":(gap>0?"+":"")+Number(gap).toFixed(2)} 格`
+        + `（判定阈 ±${plan.threshold_buckets==null?"0.50":Number(plan.threshold_buckets).toFixed(2)} 格）`
+        + " · 取自该决策自己的计划所记形态读数"
+      : "取自该计划记下的方向（宪章 75 下方向就是偏态符号）。"
+        + "证据不新鲜的那天一律记 NEUTRAL，所以这一路读数可能把当天读成对称——"
+        + "形态读数是 2026-09-06 起才写进计划的。";
+    const tone = String(plan.skew)==="SYMMETRIC" ? "" : "down";
+    return `<span class="pill ${tone}" style="font-size:10px"
+      title="${h(label[1])} · ${h(detail)}">${h(label[0])}${read?"":"*"}</span>`;
+  };
   const legChip = (r, truth, center)=>{
     const st = String(r.state||"");
     const hit = truth && String(r.bucket)===truth;
@@ -10188,8 +10249,18 @@ function liveOrderCard(L){
   // past day the paper settler never seated (a held station's refused
   // basket) has no settlement row and would otherwise stay open forever.
   const today = new Date().toISOString().slice(0,10);
+  // A basket every leg of which the station bar refused never reached the
+  // exchange: no fill, no cost, no payout.  Six of the ten lines on the
+  // book this morning were these, and they crowded out the four that
+  // bought something (user ruling, 2026-09-06: do not list barred
+  // stations).  Dropped from the listing, counted on the date line -- a
+  // silently shorter list reads as "this is everything".
+  const barred = (g)=> g.legs.length > 0
+    && g.legs.every(l=>String(l.reason||"")==="live_station_barred");
   const rows = dates.map(day=>{
-    const gs = byDate.get(day).slice().sort((a,b)=>String(a.station_id).localeCompare(String(b.station_id)));
+    const all = byDate.get(day).slice().sort((a,b)=>String(a.station_id).localeCompare(String(b.station_id)));
+    const hidden = all.filter(barred);
+    const gs = all.filter(g=>!barred(g));
     const daySettled = gs.length>0 && gs.every(g=>truthOf(g));
     const folded = daySettled || (day < today);
     let legsN=0, filledN=0, cost=0, payout=0;
@@ -10218,16 +10289,28 @@ function liveOrderCard(L){
         <span class="pill red" style="font-size:10px">LIVE</span>
         <b class="mono" title="${h(g.decision_id)}">${h(g.station_id||"?")}</b>
         <span class="muted" style="font-size:11px">${g.legs.length} 腿 · ${gFilled.length} 成交</span>
+        ${skewChip(g)}
         <span>${g.legs.map(l=>legChip(l, truth, mid)).join("")}</span>
         ${offCenter}${money}</div>`;
     }).join("");
     const pnl = daySettled ? payout - cost : null;
+    const barredNote = hidden.length
+      ? ` · <span class="muted" title="${h(hidden.map(g=>g.station_id).join("、"))}"
+          >禁入 ${hidden.length} 篮未列</span>`
+      : "";
     const head = `${h(day)} · ${gs.length} 篮 · ${legsN} 腿 · ${filledN} 成交 · 投入 ${cost.toFixed(2)} U` + (pnl==null
         ? ` · <span class="muted">未结算</span>`
-        : ` · <span class="${pnl>=0?"up":"down"}">${(pnl>=0?"+":"")+pnl.toFixed(2)} U</span> · 已结算`);
+        : ` · <span class="${pnl>=0?"up":"down"}">${(pnl>=0?"+":"")+pnl.toFixed(2)} U</span> · 已结算`)
+      + barredNote;
+    // A date whose every basket was barred still gets a line: the day had
+    // intents, and a missing date answers a different question than an
+    // empty one.
+    const body = gs.length ? basketLines
+      : `<div class="muted" style="font-size:12px;padding:5px 0">
+         这一天铸出的 ${hidden.length} 篮全部被站级禁入挡在交易所之外，未列出。</div>`;
     return `<details ${folded?"":"open"} style="margin-top:6px">
       <summary class="mono" style="cursor:pointer;font-size:12.5px">${head}</summary>
-      <div style="margin-left:4px">${basketLines}</div></details>`;
+      <div style="margin-left:4px">${body}</div></details>`;
   }).join("");
   const moreGroups = "";
   // Everything above is counted off our own tables.  This one row is not:
@@ -10318,7 +10401,13 @@ function liveOrderCard(L){
       计划，读它记下的 <span class="mono">center_bucket</span>，<b>不在这里重推</b>：
       重推等于把各站自己的档位规则和偏斜规则手抄一遍。中心桶不一定是窗口的正中
       （宪章 55 允许顺/逆偏斜扩边），所以「中间那格」不能当中心看。
-      计划已不在库里的旧篮子不画框，宁可不标也不猜。</div>
+      计划已不在库里的旧篮子不画框，宁可不标也不猜。<br>
+      篮子旁的<b>形态标签</b>（对称日 / 右偏·暖尾 / 左偏·冷尾）同样读自该计划：
+      均值与众数差不到半格算对称日，宪章 79 把这种日子的 P0 席位定为均值桶±1；
+      差得更多就按尾巴的方向偏。带 <b>*</b> 的是旧计划，只留了方向没留形态读数
+      （宪章 75 下方向就是偏态符号，但证据不新鲜的那天一律记对称），鼠标悬停有说明。<br>
+      <b>被站级禁入挡下的篮子不列出</b>——它们没到过交易所，没有成交也没有花钱，
+      六条这样的行会把当天真正买了东西的四条挤没。数目记在日期行上，不是悄悄少几行。</div>
       <div style="margin-top:4px">${rows}</div>${moreGroups}`
       :`<div class="muted" style="margin-top:9px">尚无实盘意向。第一条出现时此表自动列出。</div>`}
     ${(X.blocking||[]).length?`<div class="muted" style="margin-top:8px;font-size:11.5px">

@@ -111,20 +111,40 @@ def mean_center_bucket_v1(
     )
 
 
-def mean_mode_skew_sign_v1(
+# What the shape reading is called when it is written down.  The sign is
+# what the gates consume; these are what a reader is shown, and they are
+# fixed here so the board, the plan and any audit spell one vocabulary.
+SKEW_STATE_SYMMETRIC = "SYMMETRIC"
+SKEW_STATE_RIGHT = "RIGHT_SKEWED"
+SKEW_STATE_LEFT = "LEFT_SKEWED"
+SKEW_STATE_BY_SIGN = {
+    0: SKEW_STATE_SYMMETRIC,
+    1: SKEW_STATE_RIGHT,
+    -1: SKEW_STATE_LEFT,
+}
+
+
+def mean_mode_skew_reading_v1(
     probabilities: Mapping[str, Any],
     ordinals: Mapping[str, Any],
     *,
     signal: str = "mean_mode",
     threshold_buckets: float = MEAN_MODE_SKEW_THRESHOLD_BUCKETS,
-) -> int:
-    """The distribution's skew: +1 mean above the mode, -1 below, 0 within.
+) -> dict[str, Any]:
+    """The whole shape reading, not just the sign it reduces to.
 
     The gap is the weighted mean ordinal minus the heaviest bucket's ordinal
     (``mean_median``: minus the median's), gated at ``threshold_buckets``
     times the vocabulary's own bucket step so a Fahrenheit station is not
     read as twice as skewed as a Celsius one.  Lifted from charter 55's
     ``_skew_extension_sign`` so the seed's direction reads the same number.
+
+    ``mean_mode_skew_sign_v1`` is this function's sign and nothing else, so
+    a reading shown to a reader and a gate acting on it can never be two
+    different numbers.  The gap and the threshold travel with it because a
+    state alone cannot be checked: "symmetric" at 0.49 buckets and
+    "symmetric" at 0.01 are the same word about very different days, and
+    the first is one hair from seating differently under charter 79.
     """
 
     weighted = [
@@ -133,8 +153,20 @@ def mean_mode_skew_sign_v1(
         if bucket in ordinals and float(probabilities[bucket]) > 0.0
     ]
     total = sum(mass for mass, _ in weighted)
+    empty = {
+        "schema": "mean_mode_skew_reading_v1",
+        "signal": str(signal),
+        "sign": 0,
+        "state": SKEW_STATE_SYMMETRIC,
+        "gap_buckets": None,
+        "mean_ordinal": None,
+        "mode_ordinal": None,
+        "bucket_step": None,
+        "threshold_buckets": float(threshold_buckets),
+        "readable": False,
+    }
     if not weighted or total <= 0.0:
-        return 0
+        return empty
     if signal == "mean_median":
         running = 0.0
         anchor_ordinal = weighted[-1][1]
@@ -151,9 +183,43 @@ def mean_mode_skew_sign_v1(
     diffs = [b - a for a, b in zip(steps, steps[1:]) if b > a]
     step = min(diffs) if diffs else 1
     gap = mean_ordinal - mode_ordinal
-    if abs(gap) < float(threshold_buckets) * step:
-        return 0
-    return 1 if gap > 0 else -1
+    sign = 0 if abs(gap) < float(threshold_buckets) * step else (
+        1 if gap > 0 else -1
+    )
+    return {
+        "schema": "mean_mode_skew_reading_v1",
+        "signal": str(signal),
+        "sign": sign,
+        "state": SKEW_STATE_BY_SIGN[sign],
+        # In bucket steps, so a 2°F station and a 1°C station are read on
+        # one scale -- the same normalisation the threshold uses.
+        "gap_buckets": round(gap / step, 6),
+        "mean_ordinal": round(mean_ordinal, 6),
+        "mode_ordinal": int(mode_ordinal),
+        "bucket_step": int(step),
+        "threshold_buckets": float(threshold_buckets),
+        "readable": True,
+    }
+
+
+def mean_mode_skew_sign_v1(
+    probabilities: Mapping[str, Any],
+    ordinals: Mapping[str, Any],
+    *,
+    signal: str = "mean_mode",
+    threshold_buckets: float = MEAN_MODE_SKEW_THRESHOLD_BUCKETS,
+) -> int:
+    """The distribution's skew: +1 mean above the mode, -1 below, 0 within.
+
+    One implementation, in ``mean_mode_skew_reading_v1``.
+    """
+
+    return int(mean_mode_skew_reading_v1(
+        probabilities,
+        ordinals,
+        signal=signal,
+        threshold_buckets=threshold_buckets,
+    )["sign"])
 
 
 def expected_direction_from_probability_vector(

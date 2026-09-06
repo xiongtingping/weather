@@ -90,6 +90,7 @@ from .basket_kernel.delta_v2 import (
 )
 from .basket_kernel.support import (
     mean_center_bucket_v1,
+    mean_mode_skew_reading_v1,
     mean_mode_skew_sign_v1,
     _choose_support,
     _derive_dual_risk_scope,
@@ -5101,6 +5102,24 @@ def compile_delta_v2_runtime_plan(
         ),
         "center_stable": center_stable,
         "direction": direction.value if isinstance(direction, Direction) else str(direction),
+        # The day's shape, written down (user ruling, 2026-09-06).  Charter
+        # 75 reads it to place the window and charter 79 seats a symmetric
+        # day at centre+-1, so it already governs; it just left no trace,
+        # and a board that wanted to show it would have had to recompute the
+        # mean and the mode from the served vector -- re-deriving a rule the
+        # plan applied, which is how an audit invents its own findings.  The
+        # sign is the same number the gates consume: one implementation in
+        # the kernel, read here through its reading form.
+        #
+        # Audit only.  Nothing downstream branches on this field, and the
+        # economic decision key is a projection of named fields that does
+        # not include it, so recording it cannot move a decision.
+        "skew_reading": mean_mode_skew_reading_v1(
+            probabilities,
+            {row.bucket: int(row.ordinal) for row in snapshot.buckets},
+            signal=SKEW_SIGNAL_DEFINITION,
+            threshold_buckets=SKEW_GAP_THRESHOLD_BUCKETS,
+        ),
         "diagnostic_lower_ordinal": snapshot.evidence.model_envelope_lower_ordinal,
         "diagnostic_upper_ordinal": snapshot.evidence.model_envelope_upper_ordinal,
         "candidate_lower_ordinal": candidate_lower,

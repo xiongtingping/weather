@@ -67,11 +67,16 @@ def _events() -> list[dict[str, object]]:
         # 19:53 EDT, before the D-1 cutoff: HEAVY.
         _event("e1", 1, "2026-10-31T23:53:00Z", "HEAVY", "P0"),
         # After the 2026 fall-back transition: STANDARD, with UTC monotonicity.
-        _event("e2", 2, "2026-11-01T06:05:00Z", "HEAVY", "P0-M", remaining_budget=15.0),
-        _event("e3", 3, "2026-11-01T14:00:00Z", "STANDARD", "P0-M", remaining_budget=12.0),
-        _event("e4", 4, "2026-11-01T15:00:00Z", "STANDARD", "P1", remaining_budget=9.0),
+        # Each event declares the budget the previous one left, and the
+        # chain refuses any other number.  These moved on 2026-09-06 when
+        # sizing began flooring to a whole share: 12.5 shares at 0.40 was
+        # 5.00 USDC and twelve of them are 4.80, so every step down the
+        # chain now leaves a little more behind.
+        _event("e2", 2, "2026-11-01T06:05:00Z", "HEAVY", "P0-M", remaining_budget=15.2),
+        _event("e3", 3, "2026-11-01T14:00:00Z", "STANDARD", "P0-M", remaining_budget=12.4),
+        _event("e4", 4, "2026-11-01T15:00:00Z", "STANDARD", "P1", remaining_budget=9.6),
         # UTC crosses into the next day while the settlement date rolls too.
-        _event("e5", 5, "2026-11-02T01:00:00Z", "TAIL", "P1", event_date_local="2026-11-02", remaining_budget=8.0),
+        _event("e5", 5, "2026-11-02T01:00:00Z", "TAIL", "P1", event_date_local="2026-11-02", remaining_budget=8.8),
     ]
 
 

@@ -625,6 +625,61 @@ if not math.isfinite(EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC) or (
     )
 
 
+# The grid an order's size is written on (user ruling, 2026-09-06: round
+# the size to whole lots before it is persisted).  ``venue_minimum_shares_v1``
+# below has always returned whole shares -- "a fractional share cannot be
+# bought" -- but that statement only reached the legs sitting ON the
+# minimum.  A leg the objective sized above it kept whatever the cash
+# divided out to, and the sizing grid it was floored to was 0.01 shares:
+# an unexamined default that no market snapshot has ever overridden.
+#
+# Measured before shipping, over all 1,581 order intents in the book: 1,206
+# carry a fractional size, but none since 2026-09-04 -- charter 70's lot and
+# charter 83's dollar already land every current leg on a whole share, so
+# this is a guard rather than a change.  It stops being one the day a leg
+# sizes above the venue minimum, which is any day the book or the bankroll
+# grows.
+#
+# In the kernel because production's ``cash_phase`` and the paper ledger
+# must size one station-day the same way and both read it from here.
+# ``venue`` is the pre-ruling arm, kept so a replay can re-derive the book
+# as it was sized.
+ORDER_SHARE_GRID_MODES = ("whole", "venue")
+ORDER_SHARE_GRID = (
+    os.environ.get("PM_ORDER_SHARE_GRID", "").strip().lower() or "whole"
+)
+if ORDER_SHARE_GRID not in ORDER_SHARE_GRID_MODES:
+    raise RuntimeError(f"unknown PM_ORDER_SHARE_GRID: {ORDER_SHARE_GRID}")
+ORDER_SHARE_STEP_SHARES = 1.0
+
+
+def order_share_step_v1(venue_quantum: Any = 0.0) -> float:
+    """The step an order's share count is floored to.
+
+    The venue's own quantum is a floor on how fine the grid can be, never a
+    licence to go finer than a whole share: under ``whole`` the step is the
+    coarser of the two, so a venue that one day states a five-share tick
+    still governs.
+    """
+
+    quantum = float(venue_quantum or 0.0)
+    if ORDER_SHARE_GRID != "whole":
+        return quantum if quantum > 0.0 else ORDER_SHARE_STEP_SHARES
+    return max(ORDER_SHARE_STEP_SHARES, quantum)
+
+
+def floor_to_order_share_grid_v1(shares: Any, venue_quantum: Any = 0.0) -> float:
+    """Floor a share count onto that grid, never up: the caps above it --
+    depth, budget, the authorised clip -- are all upper bounds, so rounding
+    up would breach whichever one was binding."""
+
+    step = order_share_step_v1(venue_quantum)
+    value = float(shares or 0.0)
+    if value <= EPS or step <= 0.0:
+        return 0.0
+    return round(max(0.0, math.floor((value + EPS) / step) * step), 10)
+
+
 def venue_minimum_shares_v1(
     *,
     min_lot_shares: Any,

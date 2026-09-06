@@ -648,6 +648,62 @@ def test_a_production_only_rule_has_no_constant_to_catch() -> None:
     )
 
 
+def test_the_whole_share_order_grid_is_productions_and_the_ledgers_gap() -> None:
+    """An order's size is a whole share; the ledger's legs are not yet.
+
+    User ruling, 2026-09-06: ``requested_size`` is rounded to whole lots
+    before it is persisted.  The grid lives in the kernel next to the lot
+    and the dollar, because those are the other two venue floors and all
+    three answer "what will the exchange take".  Production's ``cash_phase``
+    floors every leg onto it.
+
+    The ledger does not, and this test says so rather than letting the
+    completeness scan report silence as agreement.  Its opening path sizes
+    by a sixty-step bisection on a continuous share scale
+    (``_fillable_weighted``), whose feasibility probe walks a 1e-3 scale --
+    under a whole-share floor that probe wants zero shares, fails, and
+    every seat is refused.  Flooring there is a redesign of the search, not
+    a floor on its answer.
+
+    Measured before deciding, over the 977 ledger legs since 2026-08-15:
+    127 of them (13%) carry a fraction, the median leg is 5.00 shares
+    (charter 70's lot, already whole), and flooring would shed 0.061 shares
+    per leg on average -- about 1.2% of the median leg.  So the two lanes
+    disagree, by a little, on days the lot raise does not already decide.
+    That is the size of the job, and pricing it needs a ledger re-run
+    rather than a simulation.
+    """
+
+    import inspect
+
+    from bayes_basket_target import cash_phase as CP
+    from bayes_basket_target.basket_kernel import delta_v2 as K2
+
+    # Production floors onto the kernel's grid, and the grid is never finer
+    # than a whole share.
+    assert K2.ORDER_SHARE_STEP_SHARES == 1.0
+    assert K2.ORDER_SHARE_GRID in K2.ORDER_SHARE_GRID_MODES
+    assert K2.order_share_step_v1(0.01) == 1.0
+    assert K2.floor_to_order_share_grid_v1(13.66, 0.01) == 13.0
+    sizing = inspect.getsource(CP.OrderSizingDecision.compute)
+    assert "floor_to_order_share_grid_v1(raw_q_order, quantum)" in sizing
+    # And charter 70's raise stays reachable underneath it: a leg the grid
+    # floors to zero is refused only where no lot is stated.
+    assert "q_order <= EPS and minimum_lot <= EPS" in sizing
+
+    # The gap, named.  The ledger neither imports the grid nor spells a
+    # switch for it, which is precisely what the constant scan cannot see.
+    assigned, imported = _ledger_rule_constants()
+    assert "ORDER_SHARE_GRID" not in assigned
+    assert "ORDER_SHARE_GRID" not in imported
+    assert "floor_to_order_share_grid_v1" not in (
+        ROOT / "scripts" / "paper_trading_ledger.py"
+    ).read_text(encoding="utf-8"), (
+        "if the ledger now floors onto the grid, this test is stale --"
+        " classify the constant and price the change on a re-run"
+    )
+
+
 def test_charter_68_scope_and_the_taker_leg_veto_move_together() -> None:
     """One belief on both sides (2026-09-03).
 
