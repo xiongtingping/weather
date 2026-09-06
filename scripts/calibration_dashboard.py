@@ -2527,6 +2527,79 @@ def _window_seconds(created_at: Any, deadline_at: Any) -> float | None:
     return round((end - start).total_seconds(), 3)
 
 
+def _live_ladder_centers(
+    conn: sqlite3.Connection, rows: list[dict[str, Any]]
+) -> dict[str, str]:
+    """Which rung each live basket centred on, keyed by decision.
+
+    The centre is the compiled plan's own ``center_bucket`` -- the rung the
+    optimiser seated the ladder on (charter 75: the mean landing bucket,
+    moved by the skew rule, which is why it is not simply the middle of the
+    window).  The decision names its plan by ``production_plan_sha256`` and
+    the plan store keeps the compiled plan under that same hash, so the
+    board reads back the number that actually placed the order.
+
+    It is read, never recomputed.  Deriving a centre here would mean
+    re-implementing the per-station grid rule the plan already applied, and
+    the ledger's seat row is not a stand-in for it: measured across the whole
+    live book on 2026-09-06, 15 of 53 baskets carry a ledger seat from a
+    different decision moment, and 6 of those name a centre that is not even
+    one of the basket's legs.  A basket whose plan is not in the store gets
+    no centre, and the panel marks nothing rather than marking a guess.
+    """
+
+    ids = sorted({
+        str(row["decision_id"]) for row in rows if row.get("decision_id")
+    })
+    if not ids or not _table_exists(conn, "basket_p0_preselection_plan"):
+        return {}
+    # decision -> the plan it was compiled from, and the scope to look in.
+    wanted: dict[tuple[str, str], dict[str, list[str]]] = {}
+    try:
+        query = conn.execute(
+            "SELECT decision_id, station_id, event_date, details_json"
+            " FROM auto_trade_decisions WHERE decision_id IN (%s)"
+            % ",".join("?" * len(ids)),
+            ids,
+        )
+    except sqlite3.Error:
+        return {}
+    for decision_id, station, day, details in query:
+        try:
+            plan_sha = str(
+                (json.loads(details or "{}") or {}).get(
+                    "production_plan_sha256"
+                ) or ""
+            )
+        except (TypeError, ValueError):
+            plan_sha = ""
+        if not plan_sha:
+            continue
+        scope = wanted.setdefault((str(station), str(day)), {})
+        scope.setdefault(plan_sha, []).append(str(decision_id))
+    centers: dict[str, str] = {}
+    for (station, day), by_plan in wanted.items():
+        try:
+            plans = conn.execute(
+                "SELECT"
+                " json_extract(plan_json,"
+                "'$.compiled_plan.production_plan_sha256'),"
+                " json_extract(plan_json,'$.compiled_plan.plan.center_bucket')"
+                " FROM basket_p0_preselection_plan"
+                " WHERE station_id=? AND event_date=?",
+                (station, day),
+            ).fetchall()
+        except sqlite3.Error:
+            continue
+        for plan_sha, center in plans:
+            bucket = str(center or "")
+            if not bucket:
+                continue
+            for decision_id in by_plan.get(str(plan_sha or ""), ()):
+                centers[decision_id] = bucket
+    return centers
+
+
 def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
     """The order book: how many, worth how much, and what came back.
 
@@ -2552,7 +2625,7 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
     out: dict[str, Any] = {
         "intent_count": 0, "submitted_count": 0, "accepted_count": 0,
         "notional_usdc": 0.0, "matched_notional_usdc": 0.0, "rows": [],
-        "book": {}, "exchange": {}, "pnl": {},
+        "book": {}, "exchange": {}, "pnl": {}, "centers": {},
     }
     if not _table_exists(conn, "basket_target_order_intents"):
         return out
@@ -2633,6 +2706,11 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
             "reason": reason,
             "settled_bucket": settled_bucket.get((station, day), ""),
         })
+    # Which rung each basket centred on, read back from the plan the
+    # decision was compiled from.  Keyed by decision, because the decision
+    # is the basket: a station-day carries several, and they do not share a
+    # centre.
+    out["centers"] = _live_ladder_centers(conn, out["rows"])
     if _table_exists(conn, "basket_target_order_events"):
         try:
             for kind, count, matched in conn.execute(
@@ -6780,6 +6858,19 @@ const h = (s) => String(s == null ? "" : s);
 const hours = (v) => v == null ? "—" :
   (v < 1 ? Math.round(v * 60) + " 分钟前" :
    v < 48 ? v.toFixed(1) + " 小时前" : (v / 24).toFixed(1) + " 天前");
+// Shares are whole lots: the exchange's minimum is five and the grid steps
+// by one.  But sizing divides a notional by a price, so the stored REAL
+// keeps the division's float residue -- 0.15×7.000000000000001 and
+// 0.47×4.999999999999999 were both on the board, reading as precision the
+// number does not have.  Print the integer when the value is one, to
+// within that residue; a size that is genuinely fractional still shows its
+// fraction rather than being silently rounded to a lot it is not.
+const shares = (v) => {
+  const n = Number(v);
+  if (!isFinite(n)) return h(v);
+  return Math.abs(n - Math.round(n)) < 1e-6
+    ? String(Math.round(n)) : String(Number(n.toFixed(4)));
+};
 const OVERALL = {green:["运转正常","所有环节都在按预期更新"],
   amber:["有需要留意的地方","不影响出数，但有环节慢了或在攒数据"],
   red:["有环节断了","下面标红的环节需要处理"]};
@@ -9041,7 +9132,7 @@ function roster(){
     // number per leg, so the columns held a duplicate and a dash.
     const rows=e.legs.map(l=>`<tr${l.empty?' class="muted"':''}>
       <td>${h(l.bucket)}</td>
-      <td>${l.empty?"<b>0</b>":l.filled_shares.toFixed(1)}</td>
+      <td>${l.empty?"<b>0</b>":shares(l.filled_shares)}</td>
       <td>${legPrice(l)}</td>
       <td>${legCash(l)}</td></tr>`).join("");
     // A derived column that does not add up to the recorded stake says so
@@ -10061,15 +10152,29 @@ function liveOrderCard(L){
     if(v==="live_submit_not_authorized") return "合同未授权";
     return v.length>28 ? v.slice(0,26)+"…" : v;
   };
-  const legChip = (r, truth)=>{
+  // The basket's centre rung, keyed by the decision that is the basket --
+  // the compiled plan's own centre, not one derived here.  A basket whose
+  // plan is no longer in the store gets no ring; an unmarked basket is
+  // better than a guessed centre.
+  const SEATS = O.centers || {};
+  const centerOf = (g)=>String(SEATS[g.decision_id]||"");
+  const legChip = (r, truth, center)=>{
     const st = String(r.state||"");
     const hit = truth && String(r.bucket)===truth;
     const cls = st==="filled" ? (truth ? (hit?"up":"down") : "") : "muted";
     const mark = st==="filled" ? (truth ? (hit?"✓中":"✗") : "●")
       : st==="failed" ? "✗" : st==="cancelled" ? "—" : "…";
     const why = (st==="failed"||st==="cancelled") ? short(r.reason) : "";
-    return `<span class="mono ${cls}" style="display:inline-block;padding:1px 6px;margin:1px 3px 1px 0;border:1px solid var(--line,#ddd);border-radius:5px;font-size:11.5px;white-space:nowrap"
-      title="${h(r.order_intent_id)} · ${h(st)}${r.reason?" · "+h(r.reason):""} · ${h(r.created_at)}">${h(r.bucket)} ${r.limit_price}×${r.requested_size} <b>${mark}</b>${why?" <span class='muted'>"+h(why)+"</span>":""}</span>`;
+    // The centre is marked on the frame, not on the text: the text colour
+    // already carries the leg's own outcome (filled, hit, refused), and
+    // painting the centre green there would make one colour answer two
+    // different questions.
+    const mid = center && String(r.bucket)===String(center);
+    const ring = mid
+      ? "border-color:var(--up);box-shadow:inset 0 0 0 1px var(--up)"
+      : "border-color:var(--line,#ddd)";
+    return `<span class="mono ${cls}" style="display:inline-block;padding:1px 6px;margin:1px 3px 1px 0;border:1px solid;${ring};border-radius:5px;font-size:11.5px;white-space:nowrap"
+      title="${h(r.bucket)}${mid?" · 均值中心桶":""} · ${h(r.order_intent_id)} · ${h(st)}${r.reason?" · "+h(r.reason):""} · ${h(r.created_at)}">${h(r.bucket)} ${r.limit_price}×${shares(r.requested_size)} <b>${mark}</b>${why?" <span class='muted'>"+h(why)+"</span>":""}</span>`;
   };
   const byDate = new Map();
   for (const g of groups){
@@ -10094,6 +10199,17 @@ function liveOrderCard(L){
       const gCost = gFilled.reduce((a,l)=>a+(l.requested_notional_usdc||0),0);
       const gPay = truth ? gFilled.reduce((a,l)=>a+(String(l.bucket)===truth?(l.requested_size||0):0),0) : null;
       legsN += g.legs.length; filledN += gFilled.length; cost += gCost; payout += (gPay||0);
+      // A basket whose centre it does not itself hold has no green rung,
+      // and an unmarked line is indistinguishable from a line whose plan
+      // is missing.  Two of the fifty-three baskets on the book are this:
+      // gap fills and top-ups that bought a shoulder without the centre.
+      // Say which rung is missing rather than leaving the reader to guess
+      // whether the mark is broken.
+      const mid = centerOf(g);
+      const offCenter = mid && !g.legs.some(l=>String(l.bucket)===mid)
+        ? `<span class="muted mono" style="font-size:11px"
+            title="中心桶取自该决策自己的计划">中心 ${h(mid)} 不在本篮</span>`
+        : "";
       const money = gPay==null
         ? `<span class="muted mono" style="font-size:11px">投入 ${gCost.toFixed(2)} U</span>`
         : `<span class="mono ${gPay-gCost>=0?"up":"down"}" style="font-size:11px">${(gPay-gCost>=0?"+":"")+(gPay-gCost).toFixed(2)} U</span>
@@ -10102,8 +10218,8 @@ function liveOrderCard(L){
         <span class="pill red" style="font-size:10px">LIVE</span>
         <b class="mono" title="${h(g.decision_id)}">${h(g.station_id||"?")}</b>
         <span class="muted" style="font-size:11px">${g.legs.length} 腿 · ${gFilled.length} 成交</span>
-        <span>${g.legs.map(l=>legChip(l, truth)).join("")}</span>
-        ${money}</div>`;
+        <span>${g.legs.map(l=>legChip(l, truth, mid)).join("")}</span>
+        ${offCenter}${money}</div>`;
     }).join("");
     const pnl = daySettled ? payout - cost : null;
     const head = `${h(day)} · ${gs.length} 篮 · ${legsN} 腿 · ${filledN} 成交 · 投入 ${cost.toFixed(2)} U` + (pnl==null
@@ -10125,7 +10241,8 @@ function liveOrderCard(L){
     <td><span class="pill red" style="font-size:10px">挂单中</span></td>
     <td class="mono">${o.outcome||"—"}</td><td>${o.side||""}</td>
     <td class="mono">${o.price??"—"}</td>
-    <td class="mono">${(o.size_matched??"?")+"/"+(o.original_size??"?")}</td>
+    <td class="mono">${(o.size_matched==null?"?":shares(o.size_matched))
+      +"/"+(o.original_size==null?"?":shares(o.original_size))}</td>
     <td class="mono" title="${o.id}">${String(o.id||"").slice(0,14)}…</td>
     <td class="mono">${o.created_at??""}</td></tr>`).join("");
   const openCard = !O2.available
@@ -10195,7 +10312,13 @@ function liveOrderCard(L){
       <span class="mono">select_complete_maker_bundle_v2</span> 拒绝它的任何真子集——
       差一条腿整篮子 HOLD。逐腿下单是交易所那一侧的形状：每个温度桶是独立
       token、独立订单簿，没有「篮子」这个下单原语。同一行标题下的腿是同一个
-      决策的腿，同生共死。</div>
+      决策的腿，同生共死。<br>
+      <b style="color:var(--up)">绿框</b>标出的是该篮的<b>均值中心桶</b>——
+      按 <span class="mono">production_plan_sha256</span> 回到该决策自己编出的
+      计划，读它记下的 <span class="mono">center_bucket</span>，<b>不在这里重推</b>：
+      重推等于把各站自己的档位规则和偏斜规则手抄一遍。中心桶不一定是窗口的正中
+      （宪章 55 允许顺/逆偏斜扩边），所以「中间那格」不能当中心看。
+      计划已不在库里的旧篮子不画框，宁可不标也不猜。</div>
       <div style="margin-top:4px">${rows}</div>${moreGroups}`
       :`<div class="muted" style="margin-top:9px">尚无实盘意向。第一条出现时此表自动列出。</div>`}
     ${(X.blocking||[]).length?`<div class="muted" style="margin-top:8px;font-size:11.5px">
