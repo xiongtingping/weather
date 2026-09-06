@@ -11,6 +11,7 @@ from __future__ import annotations
 import copy
 import json
 import math
+import os
 import sqlite3
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
@@ -191,7 +192,35 @@ BIAS_BIN_SHRINKAGE_CASES = 10.0
 # value that blend was calibrated under while the bias half-life moved.  See
 # the note beside ``reliability_weight``: these answer different questions and
 # were only ever the same number by accident of sharing one weight vector.
+# Retired as a serving quantity by charter 86 (the blend share is zero, so
+# nothing is priced at this half-life any more); the decay is still computed
+# and persisted as ``train_n_effective``, which is evidence, not a share.
 RELIABILITY_HALF_LIFE_DAYS = 15.0
+# Charter 86 (user ruling, 2026-09-06): the served distribution is the
+# calibrated members and nothing else.  This is the pseudo-count that used to
+# decide how much of each system's own training-window OUTCOMES were mixed
+# into its forecast -- ``n_eff / (n_eff + K)`` model, the rest climatology --
+# and it was a literal 10 written in 2026-07-31 (c7213176) with no ruling, no
+# fit and no measurement behind it.  Measured 2026-09-06 by rebuilding every
+# served P0 vector from its own members and lineage receipts
+# (``scripts/measure_climate_blend.py``, 946 station-days, 45 stations,
+# 08-15..09-05, 1,646 of 1,745 envelopes reproduced bucket-exact): dropping
+# the blend improves NLL by 0.070 [95% 0.061, 0.080], Brier by 0.0125 and
+# CRPS by 0.020, and is the better arm at 39 of 45 stations.  The harm is
+# concentrated exactly where the design meant to help -- thin history, where
+# the pseudo-count dominates: the share-under-0.72 slice improves by 0.153 of
+# NLL.  Zero means no blend; the old behaviour is reachable as a research arm
+# (charter 80 (8)) by setting the environment variable to 10.
+CLIMATE_BLEND_PSEUDO_DAYS = float(
+    os.environ.get("PM_CLIMATE_BLEND_PSEUDO_DAYS", "").strip() or 0.0
+)
+if not math.isfinite(CLIMATE_BLEND_PSEUDO_DAYS) or (
+    CLIMATE_BLEND_PSEUDO_DAYS < 0.0
+):
+    raise RuntimeError(
+        "invalid climate blend pseudo-count: "
+        f"{CLIMATE_BLEND_PSEUDO_DAYS}"
+    )
 # A ready scope whose newest settled case is older than this stops being
 # emitted and re-activated.  Sized above the observed truth lag (2-4 days)
 # plus the worst routine capture stall (2-7 days, the IEM one-minute lane),
@@ -1026,23 +1055,24 @@ def _fit_parameters(
     train_n_effective = weight_total ** 2 / sum(
         weight * weight for weight in weights
     )
-    # The blend between this scope's model and raw climatology is deliberately
-    # NOT taken from the decay above, and the parenthetical in the comment is
-    # why: charter 62 adopted Kish having checked that it left the climate
-    # blend alone, and that check was a condition of adopting it, not an
-    # observation about it.  It holds at a fifteen-day half-life and fails at
-    # five -- measured on the artifacts themselves, the median effective
-    # sample falls 31.1 -> 11.3 days and the served climatology share would
-    # rise from 24% to 47%.  Nearly doubling how much climatology every
-    # station serves is a large change to the distribution, and it is not the
-    # change the half-life sweep measured: that sweep scored the centre and
-    # nothing else.
+    # Charter 86: the share of this scope's own training-window outcomes that
+    # is mixed into its forecast.  Zero by default, which is to say the served
+    # distribution is the calibrated members and nothing else; see
+    # ``CLIMATE_BLEND_PSEUDO_DAYS`` for what the mixture cost when measured.
     #
-    # So the two questions are separated.  How fast does this scope's bias
-    # drift -- that is ``BIAS_HALF_LIFE_DAYS``, and it moved.  How much
-    # history does this scope have before its model outranks climatology --
-    # that is this, and it is held at the reference the blend was calibrated
-    # under.  Changing it is its own ruling and needs its own measurement.
+    # Two things the retired blend was standing in for, both of which already
+    # have an owner, which is why nothing replaces it here.  A model too new
+    # to trust is refused a certificate by the OOS gate and served through the
+    # provisional path, which borrows its peers' parameters and has never
+    # blended.  A model whose width is understated is widened by
+    # ``spread_factor`` against its own residual, and again downstream by the
+    # centre/width layer.  Mixing in a second distribution was a third answer
+    # to the same question, and the only one that could move mass to a bucket
+    # no member named -- which on an open-ended edge bucket means the whole
+    # of a warm spell landing on tomorrow.
+    #
+    # The decay itself stays: ``train_n_effective`` is how much evidence this
+    # fit rests on, which readers and gates use, and it is not a share.
     reliability_weights = [
         0.5 ** ((anchor_day - event_day).days / RELIABILITY_HALF_LIFE_DAYS)
         for event_day in event_days
@@ -1052,8 +1082,8 @@ def _fit_parameters(
         weight * weight for weight in reliability_weights
     )
     reliability_weight = reliability_n_effective / (
-        reliability_n_effective + 10.0
-    )
+        reliability_n_effective + CLIMATE_BLEND_PSEUDO_DAYS
+    ) if CLIMATE_BLEND_PSEUDO_DAYS > 0.0 else 1.0
     # Every key returned here has to reach an artifact column, or serving
     # silently runs a different fit from the one the OOS gate scored.  That is
     # not hypothetical: the removed affine form was fitted, gated and folded
