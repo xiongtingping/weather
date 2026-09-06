@@ -995,17 +995,20 @@ SKEW_SEAT_MODE = (
 )
 if SKEW_SEAT_MODE not in {"off", "p0_tail"}:
     raise RuntimeError(f"unknown skew seat mode: {SKEW_SEAT_MODE}")
-# Charter 90 (user ruling, 2026-09-06: "TAF 不和模型争权重，但可以在 P0-M
-# 阶段进篮子选桶包络"): ``tx_envelope`` is the shipped rule.  The TAF TX is
-# not a probability update -- it never touches the served vector -- but on
-# the P0-M stage it is part of the selection envelope the seat must cover:
-# every admissible P0-M window holds the TX bucket, and the charter-79
-# symmetric seat widens from centre+-1 to the contiguous span that also
-# holds the TX bucket (union only expands, the clause-42 wording), up to the
-# policy's width cap.  A TX the cap cannot reach leaves no admissible window,
-# which is the "second confirmation" failing: the model and the forecaster
-# disagree by more than a ladder can straddle, and the stage holds.  The
-# 2026-09-04 research arms stay selectable; ``off`` is the pre-ruling arm.
+# Charter 90 (user rulings, 2026-09-06): the TAF TX is a point forecast, not
+# a bucket distribution, but it carries information the models do not have,
+# so it enters exactly once -- on the P0-M stage, as the P0 basket's second
+# confirmation -- and never touches the served vector.  ``tx_envelope`` is
+# the shipped rule: if the basket P0 holds already contains the TX bucket the
+# TAF changes nothing (the standing rules seat as before); if it does not,
+# the TX bucket must enter the basket -- the P0-M seat becomes the contiguous
+# span from the centre bucket to the TX bucket, keeping as many held rungs as
+# the width cap allows and padded to the seating floor, and P0-M may buy that
+# leg (the charter-71 identity gate yields to it) or open the day on it when
+# P0 left the chain empty.  A TX the cap cannot reach from the centre leaves
+# no admissible window: the model and the forecaster disagree by more than a
+# ladder can straddle, and the stage holds.  The 2026-09-04 research arms
+# stay selectable; ``off`` is the pre-ruling arm.
 P0M_TAF_MODE = (
     os.environ.get("PM_P0M_TAF_MODE", "").strip().lower() or "tx_envelope"
 )
@@ -1013,7 +1016,7 @@ if P0M_TAF_MODE not in {
     "off", "tx_envelope", "tx_anchor", "confirm_hold", "confirm_override",
 }:
     raise RuntimeError(f"unknown P0-M TAF mode: {P0M_TAF_MODE}")
-P0M_TAF_ENVELOPE_RULE_VERSION = "p0m_seat_holds_taf_tx_union_v1"
+P0M_TAF_ENVELOPE_RULE_VERSION = "p0m_taf_second_confirmation_v2"
 # Charter 81 (user ruling, 2026-09-05): the centre-holding claim lift.  One
 # implementation in the kernel, read here, by the paper ledger and by the
 # charter-68 lambda store (whose agreement must be computed on the same
@@ -1766,6 +1769,82 @@ def _support_windows(
     # what clause 50 made a hard requirement.
     min_size = policy_min
     max_size = max(policy_min, min(max_size, wanted_size))
+    # Charter 90 reads the policy's cap, not the dispersion-tightened one:
+    # the TX entering the basket is the ruling, a sharp day does not veto it.
+    policy_cap = max(1, int(maximum_support_buckets))
+    # Charter 90: the TAF TX as the P0 basket's second confirmation.  Held
+    # rungs are what P0 (or an earlier P0-M) actually bought; the TX bucket
+    # inside them confirms the basket and the TAF constrains nothing.  Outside
+    # them the TX must enter: the seat becomes the span from the centre to the
+    # TX, keeps as many held rungs as the cap allows, and is padded to the
+    # floor with the ladder's own rungs -- toward the heavier side.
+    taf_confirmed = False
+    taf_entry_required = False
+    taf_entry_window: frozenset[int] | None = None
+    taf_unreachable = False
+    taf_held_buckets: list[str] = []
+    if (
+        P0M_TAF_MODE == "tx_envelope"
+        and str(probability_stage or "") == "P0-M"
+        and taf_tx_bucket in by_bucket
+        and ladder_center in by_bucket
+    ):
+        ordinal_of = {
+            bucket: int(row.ordinal) for bucket, row in by_bucket.items()
+        }
+        held_ordinals = {
+            ordinal_of[bucket]
+            for bucket, row in by_bucket.items()
+            if float(getattr(row, "filled_shares", 0.0) or 0.0)
+            + float(getattr(row, "pending_shares", 0.0) or 0.0) > EPS
+        }
+        taf_held_buckets = sorted(
+            (bucket for bucket in by_bucket if ordinal_of[bucket] in held_ordinals),
+            key=lambda bucket: ordinal_of[bucket],
+        )
+        tx_ordinal = ordinal_of[taf_tx_bucket]
+        centre_ordinal = ordinal_of[ladder_center]
+        if tx_ordinal in held_ordinals:
+            taf_confirmed = True
+        else:
+            taf_entry_required = True
+            span = set(range(
+                min(centre_ordinal, tx_ordinal), max(centre_ordinal, tx_ordinal) + 1
+            ))
+            if len(span) > policy_cap or taf_tx_bucket not in admitted:
+                # Wider than the policy's cap, or a TX the observations
+                # have already ruled out (charter 61): nothing to seat.
+                taf_unreachable = True
+            else:
+                mass_of = {
+                    ordinal_of[bucket]: float(probabilities.get(bucket, 0.0) or 0.0)
+                    for bucket in by_bucket
+                }
+                ladder_ordinals = set(ordinal_of.values())
+
+                def _grow(pool: set[int]) -> bool:
+                    edges = [
+                        ordinal for ordinal in (min(span) - 1, max(span) + 1)
+                        if ordinal in pool
+                    ]
+                    if not edges:
+                        return False
+                    span.add(max(
+                        edges,
+                        key=lambda ordinal: (
+                            mass_of.get(ordinal, 0.0), -abs(ordinal - centre_ordinal)
+                        ),
+                    ))
+                    return True
+
+                while len(span) < policy_cap and _grow(held_ordinals):
+                    pass
+                while len(span) < policy_min and _grow(ladder_ordinals):
+                    pass
+                taf_entry_window = frozenset(span)
+    if taf_entry_window is not None and len(taf_entry_window) > max_size:
+        # The entry seat has to be enumerated to be sanctioned.
+        max_size = len(taf_entry_window)
     for size in range(1, min(max_size, len(admitted)) + 1):
         for start in range(0, len(admitted) - size + 1):
             window = tuple(admitted[start:start + size])
@@ -2106,6 +2185,18 @@ def _support_windows(
                     gate_lambda if gate_lambda is not None else 1.0
                 ),
             )
+            # Charter 90: the TX-entry seat is bought on TAF authority --
+            # information the served vector does not carry -- so the
+            # increment is not judged on the model's claim for the TX rung;
+            # the whole-basket gate above still has to have passed.
+            if (
+                completion is not None
+                and taf_entry_window is not None
+                and frozenset(int(by_bucket[b].ordinal) for b in window)
+                == taf_entry_window
+            ):
+                completion = dict(completion, taf_tx_entry=True,
+                                  admissible=bool(admissible))
             if completion is not None:
                 leg_floor_hit = False
                 admissible = bool(completion["admissible"])
@@ -2344,8 +2435,6 @@ def _support_windows(
     # so the solver holds when the sanctioned window is not on offer.
     symmetric_seat_forced = False
     symmetric_seat_pair: tuple[str, ...] | None = None
-    taf_envelope_expanded_seat = False
-    taf_envelope_unreachable = False
     symmetric_arm_applies = (
         SYMMETRIC_SEAT_MODE == "center_pm1"
         or (
@@ -2354,7 +2443,7 @@ def _support_windows(
             }
             and str(probability_stage or "") != "P1"
         )
-    )
+    ) and not taf_entry_required
     if symmetric_arm_applies and ladder_center in by_bucket:
         raw_skew = _skew_extension_sign(
             probabilities,
@@ -2405,27 +2494,6 @@ def _support_windows(
                     ))
             else:
                 wanted = {centre_ordinal - 1, centre_ordinal, centre_ordinal + 1}
-            # Charter 90: on the P0-M stage the seat must also hold the TAF
-            # TX bucket.  The union only expands the fixed seat -- it never
-            # drops a rung of it -- and stops at the width cap; a TX beyond
-            # the cap sanctions nothing, so the stage holds.
-            if (
-                P0M_TAF_MODE == "tx_envelope"
-                and str(probability_stage or "") == "P0-M"
-                and taf_tx_bucket in by_bucket
-                and wanted
-            ):
-                tx_ordinal = int(by_bucket[taf_tx_bucket].ordinal)
-                if tx_ordinal not in wanted:
-                    span = set(range(
-                        min(wanted | {tx_ordinal}), max(wanted | {tx_ordinal}) + 1
-                    ))
-                    if len(span) <= max_size:
-                        wanted = span
-                        taf_envelope_expanded_seat = True
-                    else:
-                        wanted = set()
-                        taf_envelope_unreachable = True
             def _is_symmetric_seat(row: Mapping[str, Any]) -> bool:
                 return bool(wanted) and {
                     int(by_bucket[bucket].ordinal) for bucket in row["buckets"]
@@ -2473,6 +2541,17 @@ def _support_windows(
             windows, _tail_windows(int(by_bucket[ladder_center].ordinal), raw_skew)
         )
         skew_seat_forced = True
+    if taf_entry_required:
+        if taf_entry_window is None:
+            windows = [dict(row, admissible=False) for row in windows]
+        else:
+            windows = _sanction(windows, [taf_entry_window])
+            windows = [
+                dict(row, taf_tx_entry=True)
+                if _ordinal_set(row) == taf_entry_window and row.get("admissible", True)
+                else row
+                for row in windows
+            ]
     p0m_taf_audit: dict[str, Any] = {}
     if (
         P0M_TAF_MODE != "off"
@@ -2490,10 +2569,9 @@ def _support_windows(
             {bucket: int(row.ordinal) for bucket, row in by_bucket.items()},
         )
         disagree = bool(taf_direction and raw_skew and taf_direction != raw_skew)
-        if P0M_TAF_MODE in {"tx_anchor", "tx_envelope"}:
-            # The seat holds the TX bucket (charter 90 ships this as
-            # ``tx_envelope``; ``tx_anchor`` is the 2026-09-04 arm it grew
-            # from).  Windows that do not are listed but cannot seat.
+        if P0M_TAF_MODE == "tx_anchor":
+            # The 2026-09-04 research arm: every seat holds the TX bucket,
+            # held or not.  Charter 90's ``tx_envelope`` is applied above.
             windows = [
                 row for row in windows
                 if taf_tx_bucket in row["buckets"] and row.get("admissible", True)
@@ -2509,8 +2587,16 @@ def _support_windows(
             "mode": P0M_TAF_MODE, "tx_bucket": taf_tx_bucket,
             "taf_direction": taf_direction, "skew": raw_skew, "disagree": disagree,
             "envelope_rule": P0M_TAF_ENVELOPE_RULE_VERSION,
-            "seat_expanded_to_tx": taf_envelope_expanded_seat,
-            "tx_unreachable": taf_envelope_unreachable,
+            "held_buckets": taf_held_buckets,
+            "confirmed": taf_confirmed,
+            "entry_required": taf_entry_required,
+            "entry_window": (
+                None if taf_entry_window is None else sorted(
+                    (b for b in by_bucket if int(by_bucket[b].ordinal) in taf_entry_window),
+                    key=lambda b: int(by_bucket[b].ordinal),
+                )
+            ),
+            "tx_unreachable": taf_unreachable,
             "seat_holds_tx": any(
                 taf_tx_bucket in row["buckets"] and row.get("admissible", True)
                 for row in windows
@@ -2812,7 +2898,13 @@ def _solve_over_support_windows(
     # quote refresh that changed neither offers no buying candidate.
     edge_state = edge_state_v1(windows)
     last_signature = dict(last_decision_signature or {})
-    decision_moment = CHARTER_77_DECISION_MOMENTS == "off" or (
+    # Charter 90: a TAF TX outside the held basket is new evidence the
+    # served vector does not carry, so it is a decision moment of its own
+    # until the TX leg is held.
+    taf_tx_entry = bool(
+        ((window_audit or {}).get("p0m_taf") or {}).get("entry_required")
+    )
+    decision_moment = CHARTER_77_DECISION_MOMENTS == "off" or taf_tx_entry or (
         is_decision_moment_v1(
             probability_identity=probability_identity,
             edge_state=edge_state,
@@ -2833,6 +2925,7 @@ def _solve_over_support_windows(
             last_signature.get("probability_identity") or None
         ),
         "last_edge_state": last_signature.get("edge_state") or None,
+        "taf_tx_entry": taf_tx_entry,
         "is_decision_moment": bool(decision_moment),
     }
     scored: list[dict[str, Any]] = []
@@ -2950,6 +3043,8 @@ def _solve_over_support_windows(
                     decision_moment=(
                         decision_moment and bool(row.get("admissible", True))
                     ),
+                    # Charter 90: the TX-entry seat may open the day at P0-M.
+                    taf_tx_entry=taf_tx_entry and bool(row.get("taf_tx_entry")),
                     desired=window,
                     artifact=delta_policy,
                     capital_available_usdc=capital_available_usdc,
@@ -3086,8 +3181,11 @@ def _solve_over_support_windows(
         # unknown last-acted identity cannot bind (a): the gate refuses
         # on evidence, never on its absence, and the audit names it.
         if holds_anything and planned_total > inventory_cost + EPS:
+            # Charter 90: the TX leg entering the basket is bought on TAF
+            # evidence the vector does not carry; gate (a) yields to it.
             if (
                 CHARTER_71A_TOPUP_IDENTITY == "on"
+                and not bool(row.get("taf_tx_entry"))
                 and last_acted_probability_identity
                 and probability_identity
                 and str(last_acted_probability_identity)
@@ -3271,6 +3369,7 @@ def _target_candidates(
     book_equity_usdc: float | None = None,
     decision_moment: bool = True,
     completion_capital_usdc: float | None = None,
+    taf_tx_entry: bool = False,
 ) -> list[dict[str, Any]]:
     """Build a bounded q-grid priced from official WS ask depth.
 
@@ -3413,8 +3512,13 @@ def _target_candidates(
         for bucket in current_shares
     )
     stage_name = str(snapshot.evidence.probability_stage or "")
+    # Charter 90: P0-M may open the day on a TAF TX the empty chain does not
+    # hold -- the one later-stage opening the ruling allows.
+    taf_opening = bool(taf_tx_entry) and stage_name == "P0-M"
     later_stage_on_empty_chain = (
-        chain_empty and stage_name not in CHAIN_OPENING_STAGES
+        chain_empty
+        and stage_name not in CHAIN_OPENING_STAGES
+        and not taf_opening
     )
     if (
         book_equity_usdc is not None
@@ -3461,7 +3565,7 @@ def _target_candidates(
         elif (
             CHAIN_TICKET_MODE == "on"
             and chain_empty
-            and stage_name in CHAIN_OPENING_STAGES
+            and (stage_name in CHAIN_OPENING_STAGES or taf_opening)
         ):
             # Charter 74: the ticket.  No edge at P0 is not a reason to
             # leave the day unopened -- P1 would have nothing to add to.
@@ -5374,6 +5478,10 @@ def compile_delta_v2_runtime_plan(
         objective_form == KELLY_OBJECTIVE_FORM
         and chain_empty
         and str(snapshot.evidence.probability_stage or "") not in CHAIN_OPENING_STAGES
+        # Charter 90: P0-M opening on a TAF TX the chain does not hold.
+        and not bool(
+            ((support_window_audit or {}).get("p0m_taf") or {}).get("entry_required")
+        )
     ):
         # Charter 74: the day was never opened by P0; this stage adds
         # to a position and there is none.

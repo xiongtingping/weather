@@ -114,6 +114,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     KELLY_SHAPE_TOPUP,
     SYMMETRIC_SEAT_MODE,
     SKEW_SEAT_MODE,
+    P0M_TAF_ENVELOPE_RULE_VERSION,
     P0M_TAF_MODE,
     CENTER_WINDOW_CLAIM_BANDS,
     SIZING_CLAIM_BANDS,
@@ -1925,6 +1926,7 @@ SELECTION_RULE_SHA256 = content_sha256({
     # of the standing book, hashed unconditionally -- a book seated without
     # it may not share a fingerprint with one seated under it.
     "p0m_taf": P0M_TAF_MODE,
+    "p0m_taf_rule": P0M_TAF_ENVELOPE_RULE_VERSION,
     **(
         {"chain_opening_stages": sorted(CHAIN_OPENING_STAGES)}
         if CHAIN_OPENING_STAGES != {"P0"} else {}
