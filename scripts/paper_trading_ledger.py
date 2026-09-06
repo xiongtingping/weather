@@ -163,7 +163,10 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
 )
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     CONSOLIDATION_TILT_FLOOR_VERSION,
+    LEG_FLOOR_BELIEF_ANCHOR,
+    LEG_FLOOR_RULE_VERSION,
     consolidation_tilt_floor_usdc,
+    leg_floor_all_in_ask,
     venue_minimum_shares_v1,
     DEFAULT_KELLY_FRACTION,
     DEFAULT_P1_ENTRY_LOCAL_HOUR,
@@ -1685,7 +1688,7 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     if CHAIN_TOPUP_BANKROLL_USDC <= 0
     else "加仓本金%g" % CHAIN_TOPUP_BANKROLL_USDC,
     "中心底仓",
-    f"腿≥{MINIMUM_LEG_ALL_IN_ASK:g}",
+    f"腿≥{MINIMUM_LEG_ALL_IN_ASK:g}×min(1,{LEG_FLOOR_BELIEF_ANCHOR:g}/p)",
     None if EXCHANGE_LOT_TOP_UP == "off" else "补足一手",
     None if WINDOW_STRATEGY == "live" else WINDOW_STRATEGY,
     None if EXECUTION_MODE == "taker" else EXECUTION_MODE,
@@ -2233,6 +2236,10 @@ SELECTION_RULE_SHA256 = content_sha256({
     # It changes what every resting row *is*, not merely its price.
     "resting_entry": "progressive_per_leg",
     "minimum_leg_all_in_ask": MINIMUM_LEG_ALL_IN_ASK,
+    # Charter 91 (2026-09-06): the floor falls with belief; a book priced
+    # under the fixed floor may not share a fingerprint with one under this.
+    "leg_floor_rule": LEG_FLOOR_RULE_VERSION,
+    "leg_floor_belief_anchor": LEG_FLOOR_BELIEF_ANCHOR,
     "initial_capital_usdc": INITIAL_CAPITAL_USDC,
     "kelly_fraction": KELLY_FRACTION,
     "max_stake_fraction_per_scope": MAX_STAKE_FRACTION_PER_SCOPE,
@@ -4514,7 +4521,9 @@ def _consolidation_signals(
             best = quote.get("best_ask")
             if best is None and asks:
                 best = (asks[0] or {}).get("price")
-            if best is not None and float(best) >= MINIMUM_LEG_ALL_IN_ASK:
+            if best is not None and float(best) >= leg_floor_all_in_ask(
+                MINIMUM_LEG_ALL_IN_ASK, probabilities.get(bucket)
+            ):
                 ok_mass += probabilities[bucket]
         quoted = (
             ideal_mass > 0
@@ -4873,7 +4882,10 @@ def _window_row(
                 ),
             ),
         )
-        if quote is None or quote < MINIMUM_LEG_ALL_IN_ASK:
+        # Charter 91: the floor a leg faces falls with our belief in it.
+        if quote is None or quote < leg_floor_all_in_ask(
+            MINIMUM_LEG_ALL_IN_ASK, probabilities.get(bucket)
+        ):
             return None
         quotes.append(quote)
     win = sum(float(probabilities.get(b, 0.0)) for b in ordered)
@@ -4965,7 +4977,9 @@ def _strategy_windows(
                 if row is None:
                     continue
                 price = _execution_price(row)
-                if price is None or price < MINIMUM_LEG_ALL_IN_ASK:
+                if price is None or price < leg_floor_all_in_ask(
+                    MINIMUM_LEG_ALL_IN_ASK, probabilities.get(bucket)
+                ):
                     continue
                 ranked.append(
                     (float(probabilities.get(bucket, 0.0)) / price, bucket)
@@ -4982,7 +4996,9 @@ def _strategy_windows(
             if bucket in by_bucket
             and by_bucket[bucket].ask_available
             and (_execution_price(by_bucket[bucket]) or 9.9)
-            >= MINIMUM_LEG_ALL_IN_ASK
+            >= leg_floor_all_in_ask(
+                MINIMUM_LEG_ALL_IN_ASK, probabilities.get(bucket)
+            )
             and float(probabilities.get(bucket, 0.0))
             > (_execution_price(by_bucket[bucket]) or 9.9)
         ]

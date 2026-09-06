@@ -719,6 +719,62 @@ def venue_minimum_shares_v1(
 # production and by the paper ledger.
 CONSOLIDATION_TILT_FLOOR_VERSION = "venue_minimum_per_leg_v1"
 
+# Charter 91 (user ruling, 2026-09-06: "腿地板 0.03 不是固定不变，随着概率调整
+# 而调整").  The 2026-08-24 floor -- a rung asking under three cents is a
+# lottery the market has ruled out, never bought -- was measured on tail
+# rungs, where our own claim was small too.  It was never about rungs we
+# believe in: ZGSZ 2026-09-06 held the day's high at 27°C, the P1 belief in
+# 27°C was 61.5% and the market asked 2.3 cents, and the fixed floor refused
+# the one rung the observations had already confirmed.  The floor now falls
+# with belief: three cents up to the anchor, then in proportion -- at 45%
+# belief 2 cents, at 60% 1.5 cents, at 90% 1 cent -- so a cheap rung is a
+# lottery only while our claim is a tail claim as well.  One implementation,
+# read by production's enumerator and the paper ledger alike.
+LEG_FLOOR_RULE_VERSION = "belief_scaled_v1"
+LEG_FLOOR_BELIEF_ANCHOR = float(
+    os.environ.get("PM_LEG_FLOOR_BELIEF_ANCHOR", "0.30") or 0.30
+)
+
+
+def leg_floor_all_in_ask(
+    minimum_all_in_ask: float,
+    probability: float | None,
+    *,
+    anchor: float = LEG_FLOOR_BELIEF_ANCHOR,
+) -> float:
+    """The all-in ask below which a rung is a dead lottery, given our belief.
+
+    ``minimum_all_in_ask`` is the ruled floor (0.03).  A claim at or under
+    ``anchor`` keeps it whole; above the anchor the floor scales as
+    ``anchor / probability``.  An unknown or non-positive belief keeps the
+    whole floor: the rule relaxes on evidence, never on its absence.
+    """
+
+    floor = float(minimum_all_in_ask)
+    try:
+        belief = float(probability) if probability is not None else 0.0
+    except (TypeError, ValueError):
+        belief = 0.0
+    if not math.isfinite(belief) or belief <= float(anchor) or float(anchor) <= 0.0:
+        return floor
+    return floor * float(anchor) / belief
+
+
+def leg_below_floor(
+    all_in_ask: float | None,
+    probability: float | None,
+    minimum_all_in_ask: float,
+    *,
+    anchor: float = LEG_FLOOR_BELIEF_ANCHOR,
+) -> bool:
+    """Whether a quoted rung sits under its belief-scaled floor."""
+
+    if all_in_ask is None:
+        return False
+    return float(all_in_ask) < leg_floor_all_in_ask(
+        minimum_all_in_ask, probability, anchor=anchor
+    )
+
 
 def consolidation_tilt_floor_usdc(
     *,

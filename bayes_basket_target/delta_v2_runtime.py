@@ -26,7 +26,10 @@ from .basket_kernel.contracts import (
 from .basket_kernel import delta_v2 as _kernel_delta_v2
 from .basket_kernel.delta_v2 import (
     CONSOLIDATION_TILT_FLOOR_VERSION,
+    LEG_FLOOR_BELIEF_ANCHOR,
+    LEG_FLOOR_RULE_VERSION,
     consolidation_tilt_floor_usdc,
+    leg_floor_all_in_ask,
     venue_minimum_shares_v1,
     CENTER_WINDOW_CLAIM_BANDS,
     SIZING_CLAIM_BANDS,
@@ -1458,9 +1461,13 @@ def _support_windows(
 
         if not row.ask_available:
             return True
+        # Charter 91: the floor falls with our belief in the rung.
         return (
             float(row.ask_price) * (1.0 + float(fee_rate))
-            >= MINIMUM_LEG_ALL_IN_ASK
+            >= leg_floor_all_in_ask(
+                MINIMUM_LEG_ALL_IN_ASK,
+                probabilities.get(row.bucket, float(row.probability)),
+            )
         )
 
     leg_floor_excluded = sorted(
@@ -1543,7 +1550,9 @@ def _support_windows(
         dead = [
             bucket for bucket in missing
             if quote_by_bucket.get(bucket) is not None
-            and float(quote_by_bucket[bucket]) < MINIMUM_LEG_ALL_IN_ASK
+            and float(quote_by_bucket[bucket]) < leg_floor_all_in_ask(
+                MINIMUM_LEG_ALL_IN_ASK, probabilities.get(bucket)
+            )
         ]
         buyable = [bucket for bucket in missing if bucket not in dead]
         increment_quotes = [quote_by_bucket.get(bucket) for bucket in buyable]
@@ -2107,7 +2116,10 @@ def _support_windows(
             # "keep what we hold" off the menu for a scope that holds one.
             leg_floor_hit = False
             if priced and any(
-                quote < MINIMUM_LEG_ALL_IN_ASK for quote in quotes
+                quote < leg_floor_all_in_ask(
+                    MINIMUM_LEG_ALL_IN_ASK, probabilities.get(bucket)
+                )
+                for bucket, quote in zip(window, quotes)
             ):
                 leg_floor_hit = True
                 priced = False
@@ -2313,7 +2325,10 @@ def _support_windows(
         # window earned its place -- an inherited support resting on a penny
         # leg is the same lottery as a freshly enumerated one.
         if priced and any(
-            quote < MINIMUM_LEG_ALL_IN_ASK for quote in quotes
+            quote < leg_floor_all_in_ask(
+                MINIMUM_LEG_ALL_IN_ASK, probabilities.get(bucket)
+            )
+            for bucket, quote in zip(incumbent, quotes)
         ):
             priced = False
         price = sum(quote for quote in quotes if quote is not None)
@@ -2673,6 +2688,10 @@ def _support_windows(
             edge=edge_refused,
         ),
         "minimum_leg_all_in_ask": MINIMUM_LEG_ALL_IN_ASK,
+        # Charter 91: the floor a rung actually faces is this constant scaled
+        # by min(1, anchor / belief); the anchor and rule ride here.
+        "leg_floor_rule": LEG_FLOOR_RULE_VERSION,
+        "leg_floor_belief_anchor": LEG_FLOOR_BELIEF_ANCHOR,
         "center_window_claim_bands": [
             [bound, factor] for bound, factor in CENTER_WINDOW_CLAIM_BANDS
         ],
@@ -3593,7 +3612,9 @@ def _target_candidates(
     market_dead = frozenset(
         bucket for bucket in ordered
         if float(current_shares[bucket]) + float(pending_shares[bucket]) <= EPS
-        and 0.0 < float(lane_prices.get(bucket, 0.0) or 0.0) < MINIMUM_LEG_ALL_IN_ASK
+        and 0.0 < float(lane_prices.get(bucket, 0.0) or 0.0) < leg_floor_all_in_ask(
+            MINIMUM_LEG_ALL_IN_ASK, probabilities_by_bucket.get(bucket)
+        )
     )
     if CHARTER_84_LADDER_BALANCE == "on" and not chain_empty:
         # Charter 84: a seat the venue left short.  The Kelly candidate above
