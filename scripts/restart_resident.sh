@@ -21,8 +21,18 @@
 #
 # Usage:
 #   scripts/restart_resident.sh "why" [--who NAME]   request a restart
+#   scripts/restart_resident.sh "why" --queue-only   record it, never restart
 #   scripts/restart_resident.sh --pending            what is queued, when due
 #   scripts/restart_resident.sh "why" --force        restart now, records why
+#
+# ``--queue-only`` exists because the cooldown cannot express "this is not
+# urgent".  The clock starts empty -- no restart has ever been taken through
+# this script -- so the first request finds the cooldown elapsed and restarts
+# at once, which is the opposite of what a session with an audit-only change
+# wants when another session is mid-measurement.  Measured 2026-09-06 22:15Z:
+# an audit-only field committed at 22:13 could not be registered as pending
+# without costing the 09-08 lane another cursor reset.  With this flag the
+# journal takes the intent and the next restart anyone makes serves it.
 #
 # Exit 0 when the restart happened AND when it was queued: a queued change is
 # not an error, it is a change that lands on the next restart.  Exit non-zero
@@ -44,15 +54,20 @@ mkdir -p "$STATE_DIR"
 now_utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 epoch()   { date -u +%s; }
 
-REASON=""; WHO="${PM_SESSION_NAME:-unknown}"; FORCE=0; PENDING_ONLY=0
+REASON=""; WHO="${PM_SESSION_NAME:-unknown}"; FORCE=0; PENDING_ONLY=0; QUEUE_ONLY=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --pending) PENDING_ONLY=1; shift ;;
-    --force)   FORCE=1; shift ;;
-    --who)     WHO="${2:-unknown}"; shift 2 ;;
-    *)         REASON="$1"; shift ;;
+    --pending)    PENDING_ONLY=1; shift ;;
+    --force)      FORCE=1; shift ;;
+    --queue-only) QUEUE_ONLY=1; shift ;;
+    --who)        WHO="${2:-unknown}"; shift 2 ;;
+    *)            REASON="$1"; shift ;;
   esac
 done
+if [ "$FORCE" = "1" ] && [ "$QUEUE_ONLY" = "1" ]; then
+  echo "restart_resident: --force and --queue-only contradict each other" >&2
+  exit 2
+fi
 
 last_epoch() { [ -f "$LAST" ] && cat "$LAST" || echo 0; }
 pending_rows() {
@@ -94,6 +109,13 @@ REQ_AT="$(now_utc)"
 printf '{"requested_at_utc": "%s", "who": "%s", "reason": %s, "served_at_utc": null}\n' \
   "$REQ_AT" "$WHO" "$(printf '%s' "$REASON" | python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))')" \
   >> "$JOURNAL"
+
+if [ "$QUEUE_ONLY" = "1" ]; then
+  echo "queued (not urgent): recorded without restarting."
+  echo "Whoever takes the next restart serves this request too."
+  echo "  scripts/restart_resident.sh --pending      # see the queue"
+  exit 0
+fi
 
 LE="$(last_epoch)"; NOW="$(epoch)"; ELAPSED=$(( NOW - LE ))
 if [ "$FORCE" != "1" ] && [ "$ELAPSED" -lt "$COOLDOWN_SEC" ]; then
