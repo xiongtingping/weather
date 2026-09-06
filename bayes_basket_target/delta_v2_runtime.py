@@ -3473,6 +3473,18 @@ def _solve_over_support_windows(
                 "effective_win_probability"
             ),
             "effective_edge_lambda": best["window"].get("effective_edge_lambda"),
+            # Charter 97: which axis served that lambda.  The gate stamps it
+            # on the row; this projection is a key-by-key whitelist, so
+            # omitting it here dropped it on the way out and the clause's
+            # own retirement condition -- seats whose lambda came from the
+            # claim-edge band -- could never have accumulated a single seat.
+            # Reported by the session reading the plans, 2026-09-06.
+            "effective_edge_lambda_source": best["window"].get(
+                "effective_edge_lambda_source"
+            ),
+            "effective_edge_agreement": best["window"].get(
+                "effective_edge_agreement"
+            ),
             "all_in_price": best["window"]["all_in_price"],
             "edge": best["window"]["edge"],
             "curve_score": best["score"],
@@ -3492,6 +3504,12 @@ def _solve_over_support_windows(
                 ),
                 "effective_edge_lambda": item["window"].get(
                     "effective_edge_lambda"
+                ),
+                "effective_edge_lambda_source": item["window"].get(
+                    "effective_edge_lambda_source"
+                ),
+                "effective_edge_agreement": item["window"].get(
+                    "effective_edge_agreement"
                 ),
                 "all_in_price": item["window"]["all_in_price"],
                 "edge": item["window"]["edge"],

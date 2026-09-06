@@ -263,6 +263,58 @@ def test_the_solution_says_a_completion_was_offered_and_does_not_hash_it() -> No
     assert content_sha256(identity) == solution["content_sha256"]
 
 
+def test_the_seated_projection_carries_the_lambda_axis_it_was_priced_on() -> None:
+    """Charter 97's retirement condition depends on a field a whitelist ate.
+
+    The gate stamps ``effective_edge_lambda_source`` on every priced row, but
+    ``_solve_over_support_windows`` projects seated and considered key by key,
+    and the field was not on the list -- so every plan reported a lambda with
+    no axis beside it.  The clause retires itself when the seats the
+    claim-edge band opened realise under one; with the source dropped, that
+    set could never have gained a member and the condition could never have
+    fired.  Reported from the plan side, 2026-09-06.
+
+    Pinned on both projections because they are two separate whitelists and
+    fixing one is what left the other broken in the first place.
+    """
+
+    result = compile_delta_v2_runtime_plan(
+        snapshot=_held_snapshot(), basket_policy=_basket_policy(),
+        delta_policy=_delta_policy(), fill_resolver=_fill_resolver,
+        capital_available_usdc=10.0, minimum_profit_floor=-5.0,
+        resource_probe_ok=True, book_equity_usdc=514.29,
+    )
+
+    def find(node):
+        if isinstance(node, dict):
+            if "basket_support_selection" in node:
+                return node["basket_support_selection"]
+            for value in node.values():
+                found = find(value)
+                if found is not None:
+                    return found
+        elif isinstance(node, list):
+            for value in node:
+                found = find(value)
+                if found is not None:
+                    return found
+        return None
+
+    selection = find(result)
+    assert selection is not None
+    seated = selection["seated"]
+    assert seated["effective_edge_lambda"] is not None
+    assert seated["effective_edge_lambda_source"] in {
+        "agreement_band", "claim_edge_thin_band",
+    }
+    for row in selection["considered"]:
+        if row.get("effective_edge_lambda") is None:
+            continue
+        assert row["effective_edge_lambda_source"] in {
+            "agreement_band", "claim_edge_thin_band",
+        }
+
+
 def test_the_support_contract_is_atomic_at_the_result() -> None:
     baseline = {
         "candidate_id": "base", "candidate_kind": CANDIDATE_KIND_BASELINE,
