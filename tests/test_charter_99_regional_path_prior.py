@@ -171,9 +171,12 @@ def test_a_systems_own_cell_beats_the_pool_and_a_borrow_says_so() -> None:
 
 
 def test_the_resolver_refuses_a_run_the_clock_could_not_know() -> None:
+    # systems: this test is about the clock, not about admission, and the
+    # fixture run belongs to a system the 2026-09-07 measurement refused.
     kwargs = dict(
         station_id="KATL", event_date="2026-08-23",
         settlement_timezone="America/New_York", artifact=ARTIFACT,
+        systems={"NCEP_HRRR_POINT"},
     )
     early = R.resolve_serving_input([RUN], as_of_utc="2026-08-23T18:30:00Z", **kwargs)
     assert early is None, "archived at 19:00Z, not knowable at 18:30Z"
@@ -200,7 +203,7 @@ def test_a_day_inside_the_fit_is_refused_but_the_asof_replay_is_not() -> None:
 
     kwargs = dict(
         station_id="KATL", settlement_timezone="America/New_York",
-        as_of_utc="2026-08-23T20:30:00Z",
+        as_of_utc="2026-08-23T20:30:00Z", systems={"NCEP_HRRR_POINT"},
     )
     inside = dict(ARTIFACT, trained_through="2026-08-23")
     assert R.resolve_serving_input(
@@ -249,21 +252,27 @@ def test_production_and_the_ledger_read_one_layer() -> None:
 
 
 def test_the_defaults_are_the_arms_the_measurement_chose() -> None:
-    """2026-09-07: both layers default to what measured better.
+    """2026-09-07: admission is per system, and by measurement.
 
-    The regional prior is off.  On 2,190 committed P1 prefixes whose
-    ceiling receipt read TOO_EARLY -- so the served vector was this
-    layer's own input and nothing was reconstructed -- it cost 0.0733 nat
-    of log loss and moved argmax accuracy from 40.0% to 35.7%.  Every
-    lighter weight was at or above the baseline too.
+    The layer serves, but only for systems scored on the clean window --
+    prefixes whose ceiling receipt read TOO_EARLY, where the served vector
+    IS the layer's input -- and clustered by station-day, because a
+    station-day contributes about thirty correlated prefixes.
 
-    The ceiling speaks from ten hours left, not fourteen.  In the 10-14h
-    band the 2026-09-06 widening admitted, it cost 0.136 nat over 4,232
-    prefixes, made 72.3% of them worse, and left the share of prefixes
-    giving truth under 5% unchanged at 3.4%.
+      JMA_MSM_POINT   -0.634 nat over 46 station-days, 95% CI -0.946 to
+                      -0.322, bootstrap P(worse) 0.000, argmax 35.1% to
+                      61.8%, and all four of its stations improve.
+      NCEP_NBM_POINT  -0.006 over 110 station-days, CI -0.062 to +0.051.
+      NCEP_HRRR_POINT +0.045 over 90 station-days, CI -0.050 to +0.141.
+      DWD_ICON_EU     no comparable prefix; unmeasured is not admitted.
 
-    Pinned because both are one environment variable away from coming
-    back, and a default that quietly flips is a measurement thrown away.
+    The ceiling speaks from ten hours left, not fourteen: in the 10-14h
+    band the 2026-09-06 widening admitted, it cost 0.117 nat over 497
+    station-days (CI +0.076 to +0.157, bootstrap P(worse) 1.000) and six
+    points of argmax accuracy, with no reduction in catastrophic misses.
+
+    Pinned because each is one environment variable away from moving, and
+    a default that flips quietly is a measurement thrown away.
     """
 
     import os
@@ -271,6 +280,31 @@ def test_the_defaults_are_the_arms_the_measurement_chose() -> None:
     from bayes_basket_target import metar_ceiling
 
     assert os.environ.get("PM_REGIONAL_PATH_PRIOR") is None
+    assert os.environ.get("PM_REGIONAL_PATH_PRIOR_SYSTEMS") is None
     assert os.environ.get("PM_METAR_CEILING_MAX_HOURS_LEFT") is None
-    assert R.ENABLED is False
+    assert R.ENABLED is True
+    assert R.SERVING_SYSTEMS == frozenset({"JMA_MSM_POINT"})
     assert metar_ceiling.CEILING_MAX_HOURS_LEFT == 10.0
+
+
+def test_a_system_off_the_admission_list_never_reaches_the_served_vector() -> None:
+    """Capture is not admission: a lane may collect without serving.
+
+    HRRR is the case this exists for.  It is captured hourly, so it wins
+    the freshest-run race against every three-hourly lane, and on 90
+    station-days it scored +0.045 nat with its own daily maximum at MAE
+    1.461C against the incumbent posterior's 0.798C.  Before admission was
+    per system, that race is what decided who spoke.
+    """
+
+    kwargs = dict(
+        station_id="KATL", event_date="2026-08-23",
+        settlement_timezone="America/New_York",
+        as_of_utc="2026-08-23T20:30:00Z", artifact=ARTIFACT,
+    )
+    assert R.resolve_serving_input([RUN], **kwargs) is None, (
+        "NCEP_HRRR_POINT is captured but not admitted"
+    )
+    assert R.resolve_serving_input(
+        [RUN], systems={"NCEP_HRRR_POINT"}, **kwargs
+    ) is not None, "the admission gate must still be able to score it"

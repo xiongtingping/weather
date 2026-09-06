@@ -33,6 +33,7 @@ import collections
 import json
 import math
 import sqlite3
+import random
 import statistics
 import sys
 from pathlib import Path
@@ -115,6 +116,7 @@ def main() -> int:
     point = collections.defaultdict(list)
     seen = collections.Counter()
     paired = collections.defaultdict(list)
+    by_station = collections.defaultdict(list)
 
     prefixes = list(conn.execute(
         "SELECT station_id,event_date,decision_at_utc,probabilities_json,"
@@ -160,9 +162,13 @@ def main() -> int:
                     and str(r["knowable_at_utc"]) <= str(at)]
             if not rows:
                 continue
+            # The candidate is passed explicitly: this gate exists to score
+            # systems that are not admitted yet, and the admission list
+            # would otherwise refuse exactly the question being asked.
             resolved = R.resolve_serving_input(
                 rows, station_id=station, event_date=day, as_of_utc=str(at),
-                settlement_timezone=str(zone), artifact=artifact)
+                settlement_timezone=str(zone), artifact=artifact,
+                systems={system})
             if resolved is None:
                 continue
             upper = {b: (None if hi is None else float(hi))
@@ -200,6 +206,7 @@ def main() -> int:
             # nowhere near independent, so the block bootstrap resamples
             # station-days, not rows.
             paired[system].append((key, scored["layer"] - scored["none"]))
+            by_station[(system, station)].append(scored["layer"] - scored["none"])
 
     print(f"区域系统的服务价值 · {args.start}..{args.through} · "
           f"窗口＝天花板报 TOO_EARLY 的 P1 前缀（无任何重建）")
@@ -235,8 +242,22 @@ def main() -> int:
             spread = (statistics.pstdev(means) / math.sqrt(len(means))) if len(means) > 1 else 0.0
             lo, hi = centre_est - 1.96 * spread, centre_est + 1.96 * spread
             verdict2 = ("显著更好" if hi < 0 else "显著更差" if lo > 0 else "与零无区别")
+            rng = random.Random(11)
+            boot = sorted(
+                statistics.mean([means[rng.randrange(len(means))] for _ in means])
+                for _ in range(4000)
+            )
+            p_worse = sum(1 for b in boot if b > 0) / len(boot)
             print(f"    按站日聚类（{len(days)} 个站日）：站日均值差 {centre_est:+.4f}"
                   f" · 95% 区间 [{lo:+.4f}, {hi:+.4f}] → {verdict2}")
+            print(f"    自助法（重抽站日 4000 次）区间 [{boot[100]:+.4f}, {boot[3900]:+.4f}]"
+                  f" · P(接入后更差)={p_worse:.3f}")
+        stations_here = sorted(k[1] for k in by_station if k[0] == system)
+        if len(stations_here) > 1:
+            print(f"    逐站 Δ对数损失（负＝更好）：", end="")
+            print("  ".join(
+                f"{st} {statistics.mean(by_station[(system, st)]):+.3f}(n={len(by_station[(system, st)])})"
+                for st in stations_here))
         pts = point.get(system) or []
         if pts:
             cand = [x for x, _ in pts]

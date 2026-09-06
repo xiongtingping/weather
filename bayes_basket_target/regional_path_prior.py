@@ -44,42 +44,22 @@ DEFAULT_REPLAY_TABLE = (
     ROOT / "data" / "runtime" / "bayes_basket_target_nwp"
     / "regional_path_prior_replay_table.json"
 )
-# Off by measurement (2026-09-07).  The 2026-09-06 ruling put this layer
-# into service without a measurement gate.  The measurement has since been
-# run and shows no gain; the default is now the arm that does nothing and
-# ``on`` is the way back in.
+# On, but the admission list below decides which systems may actually
+# reach the served distribution, and today that is one of the four lanes.
 #
-# Two findings, and they carry different weight.
-#
-# What is robust: these models are materially less accurate than what P1
-# already holds.  Read straight off the lane's own stored daily maximum
-# against settled truth, bypassing every line of serving code and
-# clustered by station-day because a station-day's runs are not
-# independent -- HRRR is at MAE 1.557C over 90 station-days (95% CI
-# 1.343-1.771) and the NBM 1.239C over 99 (1.084-1.393), against the
-# incumbent P1 posterior's own 0.778C over 98 (0.670-0.886).  The
-# intervals do not overlap.  An oracle per-station debias, which is not
-# obtainable out of sample, only takes the NBM to 0.885C -- level with
-# the P0 root and still behind P1.
-#
-# What is NOT established is harm to the served distribution.  On the
-# clean window -- prefixes whose ceiling receipt read TOO_EARLY, where
-# the served vector IS this layer's input and nothing is reconstructed --
-# the per-prefix log loss moves by +0.0733 nat, but that pools two
-# systems and counts ~33 correlated prefixes per station-day as
-# independent.  Clustered properly the effect vanishes into the noise:
-# the NBM alone is -0.0449 nat over 66 station-days (95% CI -0.126 to
-# +0.036) and HRRR alone +0.0196 over 60 (-0.112 to +0.151).  Both
-# straddle zero.  So this default rests on "no gain demonstrated, and a
-# demonstrated accuracy deficit behind it", not on "measured harmful".
-#
-# One design fault the split did expose: resolve_serving_input picks the
-# freshest run across systems, so hourly HRRR almost always wins the race
-# against the NBM -- and HRRR is the weaker of the two.  Whatever serves
-# here next should choose its system by measured value, not by clock.
-# scripts/measure_regional_serving_value.py is that gate.
+# History worth keeping: this layer shipped on 2026-09-06 with its
+# measurement gate explicitly waived, and served every system whose run
+# happened to be freshest.  Measured on 2026-09-07 that arrangement showed
+# no gain -- the pooled reading was dominated by hourly HRRR, the weakest
+# lane, which won the freshness race almost every time -- so the layer was
+# defaulted off.  A wider backfill then let each system be scored on its
+# own, and JMA's MSM turned out to be strongly positive while the two
+# NOAA lanes stayed indistinguishable from zero.  The layer is on again
+# with admission moved from "whichever run is newest" to "whichever
+# system has been measured to help".  See SERVING_SYSTEMS for the
+# readings; ``PM_REGIONAL_PATH_PRIOR=off`` is still the way out entirely.
 ENABLED = (
-    os.environ.get("PM_REGIONAL_PATH_PRIOR", "off").strip().lower()
+    os.environ.get("PM_REGIONAL_PATH_PRIOR", "on").strip().lower()
     not in {"0", "off", "false", "no"}
 )
 # How much of the served shape the curve takes.  Half is the neutral choice
@@ -103,6 +83,50 @@ MIN_SIGMA_C = 0.35
 #: What ``cell["fit_system_id"]`` says when the parameters came from the
 #: cross-system pool rather than the serving system's own history.
 POOLED_FIT_SYSTEM_ID = "POOLED_CROSS_SYSTEM"
+
+
+#: Which regional systems may reach the served distribution.  Admission is
+#: per system and by measurement, not by whether a lane exists.
+#:
+#: 2026-09-07, on the clean window (prefixes whose ceiling receipt read
+#: TOO_EARLY, where the served vector IS this layer's input so the two
+#: arms differ by exactly the layer under test), clustered by station-day
+#: because a station-day contributes ~30 correlated prefixes:
+#:
+#:   JMA_MSM_POINT   -0.634 nat over 46 station-days, 95% CI -0.946 to
+#:                   -0.322, station-day bootstrap P(worse) 0.000; argmax
+#:                   35.1% -> 61.8%, within-one 71.9% -> 89.5%.  All four
+#:                   stations improve (RCSS -1.28, RJTT -0.66, RKPK -0.45,
+#:                   RKSI -0.08).  Its own daily maximum has MAE 0.621C
+#:                   against the incumbent posterior's 1.395C at those
+#:                   stations, and it is near unbiased (-0.097C).
+#:   NCEP_NBM_POINT  -0.006 nat over 110 station-days, CI -0.062 to
+#:                   +0.051.  Straddles zero.  Refused.
+#:   NCEP_HRRR_POINT +0.045 over 90 station-days, CI -0.050 to +0.141.
+#:                   Straddles zero, and its own daily maximum is 1.461C
+#:                   against the incumbent's 0.798C.  Refused.
+#:   DWD_ICON_EU     no comparable prefix yet -- the DWD archive keeps no
+#:                   history, so this lane only accumulates forward.
+#:                   Unmeasured is not admitted.
+#:
+#: The MSM result has a physical reading rather than only a statistical
+#: one: it is largest at RCSS, the station where the global bias layer has
+#: failed all month because a 25 km cell cannot resolve the Taipei basin,
+#: and a 5 km cell can.  It helps most where the incumbent is weakest --
+#: the East Asian stations, where P1's own point error is 1.395C against
+#: 0.798C at the US stations.
+#:
+#: This list also settles a design fault the pooled measurement hid:
+#: ``resolve_serving_input`` takes the freshest admissible run, and hourly
+#: HRRR won that race against the three-hourly systems almost every time
+#: while being the weakest of them.  Admission by measurement removes the
+#: race rather than tuning it.
+SERVING_SYSTEMS = frozenset(
+    part for part in (
+        os.environ.get("PM_REGIONAL_PATH_PRIOR_SYSTEMS", "JMA_MSM_POINT")
+        .replace(",", " ").split()
+    ) if part
+)
 
 _CACHE: dict[str, Any] = {}
 
@@ -385,8 +409,14 @@ def resolve_serving_input(
     as_of_utc: str,
     settlement_timezone: str,
     artifact: Mapping[str, Any] | None = None,
+    systems: "frozenset[str] | set[str] | None" = None,
 ) -> dict[str, Any] | None:
     """The freshest regional run this decision may read, with its fitted cell.
+
+    ``systems`` overrides the admission list.  Serving never passes it --
+    that is the whole point of the list -- but the admission gate must, or
+    a candidate could never be scored: it would be refused for not being
+    admitted, which is the question being asked.
 
     Pure over ``rows`` -- the lane's runs for this station-day, freshest
     first -- so one read serves every prefix of a replay and each prefix
@@ -423,6 +453,13 @@ def resolve_serving_input(
     if hours_left < 0:
         return None
     for row in rows:
+        admitted = SERVING_SYSTEMS if systems is None else systems
+        if str(row.get("ensemble_system_id") or "") not in admitted:
+            # A lane may capture without serving: admission is per system
+            # and by measurement.  Refusing here rather than after the
+            # curve is read also keeps a freshest-run race from handing
+            # the slot to a system that is not allowed to have it.
+            continue
         if str(row.get("archive_query_at_utc") or "") > str(as_of_utc):
             # Not knowable at this prefix's clock.
             continue
@@ -506,7 +543,7 @@ __all__ = [
     "load_runs_for_station_day", "resolve_serving_input",
     "SCHEMA", "RULE_VERSION", "ENABLED", "WEIGHT", "HOURS_EDGES",
     "MIN_CELL_SAMPLES", "MIN_STATION_SAMPLES", "MAX_RUN_AGE_HOURS",
-    "POOLED_FIT_SYSTEM_ID",
+    "POOLED_FIT_SYSTEM_ID", "SERVING_SYSTEMS",
     "apply_regional_path_prior", "build_serving_input", "hours_bin",
     "load_artifact", "load_replay_table", "predictive_probabilities",
     "remaining_peak_from_curve", "replay_curve", "resolve_cell",

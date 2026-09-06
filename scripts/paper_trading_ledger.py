@@ -2283,9 +2283,14 @@ SELECTION_RULE_SHA256 = content_sha256({
     # Charter 99 (2026-09-06): the regional curve stands in the ceiling's
     # place when it speaks.  A book priced with it may not share a
     # fingerprint with one priced without.
+    # Charter 99 (2026-09-07): admission is per system and by measurement,
+    # so the admitted set belongs in the label.  A book priced with the
+    # layer serving every lane and one priced with it serving only the MSM
+    # are different rules, and before this they shared a fingerprint.
     "regional_path_prior": (
-        "%s:w=%g" % (
-            regional_path_prior.RULE_VERSION, regional_path_prior.WEIGHT
+        "%s:w=%g:sys=%s" % (
+            regional_path_prior.RULE_VERSION, regional_path_prior.WEIGHT,
+            "+".join(sorted(regional_path_prior.SERVING_SYSTEMS)) or "none",
         )
         if regional_path_prior.ENABLED and REPLAY_LAYERS_APPLIED
         # Under the production judge the ledger scores the envelope production
