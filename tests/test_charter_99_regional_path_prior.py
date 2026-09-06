@@ -188,6 +188,36 @@ def test_the_resolver_refuses_a_run_the_clock_could_not_know() -> None:
     assert exhausted is None, "a curve with nothing left says nothing"
 
 
+def test_a_day_inside_the_fit_is_refused_but_the_asof_replay_is_not() -> None:
+    """Charter 99, 2026-09-06: the guard the ceiling has always had.
+
+    Production serves from one fitted artifact.  Once a refit reaches an
+    event date, serving that date reads a curve calibrated on its own
+    outcome.  The ledger is unaffected: it reads the per-date as-of table,
+    fitted only on strictly earlier days, which declares an empty
+    trained_through precisely so this check cannot silence it.
+    """
+
+    kwargs = dict(
+        station_id="KATL", settlement_timezone="America/New_York",
+        as_of_utc="2026-08-23T20:30:00Z",
+    )
+    inside = dict(ARTIFACT, trained_through="2026-08-23")
+    assert R.resolve_serving_input(
+        [RUN], event_date="2026-08-23", artifact=inside, **kwargs
+    ) is None, "the fit already saw this day's outcome"
+
+    after = dict(ARTIFACT, trained_through="2026-08-22")
+    assert R.resolve_serving_input(
+        [RUN], event_date="2026-08-23", artifact=after, **kwargs
+    ) is not None, "a day after the fit is what the artifact is for"
+
+    replay = dict(ARTIFACT, trained_through="")
+    assert R.resolve_serving_input(
+        [RUN], event_date="2026-08-23", artifact=replay, **kwargs
+    ) is not None, "the as-of table is leak-free by construction"
+
+
 def test_an_old_run_is_not_todays_curve() -> None:
     stale = dict(RUN, run_init_utc="2026-08-22T18:00:00Z",
                  archive_query_at_utc="2026-08-22T19:00:00Z")

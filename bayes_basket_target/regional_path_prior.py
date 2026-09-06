@@ -359,12 +359,24 @@ def resolve_serving_input(
     first -- so one read serves every prefix of a replay and each prefix
     still resolves on its own decision clock.  ``None`` when the station has
     no regional coverage, no run knowable yet, a run too old to describe
-    today, a curve already exhausted, or no fitted cell for the hour: every
-    one of which leaves the ceiling serving alone.
+    today, a curve already exhausted, no fitted cell for the hour, or an
+    event date inside the artifact's own training window: every one of
+    which leaves the ceiling serving alone.
     """
 
     payload = artifact if artifact is not None else load_artifact()
     if not payload:
+        return None
+    # Charter 99, 2026-09-06: the same guard the ceiling has carried since
+    # it shipped.  Production serves from the single fitted artifact, and a
+    # day inside that fit would be priced by a curve calibrated on its own
+    # outcome; the ledger already reads the per-date as-of table, which is
+    # leak-free by construction and declares an empty trained_through, so
+    # this refuses exactly the production path and leaves replay untouched.
+    # Harmless today -- the live artifact is trained through 2026-08-26 --
+    # and it is the next refit that would otherwise open the leak.
+    trained_through = str(payload.get("trained_through") or "")
+    if trained_through and str(event_date) <= trained_through:
         return None
     try:
         as_of = datetime.fromisoformat(str(as_of_utc).replace("Z", "+00:00"))
