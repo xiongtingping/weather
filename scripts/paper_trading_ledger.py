@@ -72,9 +72,12 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     EFFECTIVE_EDGE_P1_STAGES,
     EFFECTIVE_EDGE_P0M_STAGES,
     EFFECTIVE_EDGE_STAGES,
+    ORDER_SHARE_GRID,
+    ORDER_SHARE_STEP_SHARES,
     clamp_declining_gaps_v2,
     contiguous_edge_clamp_v2,
     effective_edge_lambda,
+    floor_to_order_share_grid_v1,
     effective_edge_lambda_for_stage,
     effective_edge_lambda_from_tables,
     effective_edge_bucket_lambda_for_stage,
@@ -1797,6 +1800,7 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     "按checkpoint决策",
     "在任窗不免检",
     "对称日中心±1" if SYMMETRIC_SEAT_MODE == "center_pm1_p0" else None,
+    "整股下单" if ORDER_SHARE_GRID == "whole" else None,
     "含中心窗抬价" if CENTER_WINDOW_CLAIM_BANDS else None,
     "双向收敛抬价" if CONVERGENCE_CLAIM_MODE == "on" else None,
     "定注另读校准曲线" if SIZING_CLAIM_BANDS else None,
@@ -1852,6 +1856,13 @@ SELECTION_RULE_SHA256 = content_sha256({
     # Research arms of 2026-09-04 (P0 sizing / P0 lambda table), hashed only
     # away from their defaults.
     **({"p0_sizing_mode": P0_SIZING_MODE} if P0_SIZING_MODE != "kelly" else {}),
+    # The share grid an order is written on (user ruling, 2026-09-06),
+    # hashed unconditionally like charter 79's seat: it is not a research
+    # arm sitting on the standing behaviour, it changes what every seat
+    # buys.  Rows sized on the old continuous grid and rows sized on whole
+    # shares are not the same book, and a digest that could not tell them
+    # apart is a digest that lets them be summed.
+    "order_share_grid": ORDER_SHARE_GRID,
     # Charter 79: the symmetric-day seat rule, hashed unconditionally.
     "symmetric_seat": SYMMETRIC_SEAT_MODE,
     **({"skew_seat": SKEW_SEAT_MODE} if SKEW_SEAT_MODE != "off" else {}),
@@ -8461,6 +8472,59 @@ def backfill(
                     # ask.  ``leg_shares`` here are the shares this seat buys
                     # -- on a top-up seat the deltas -- which is the order the
                     # exchange would judge.
+                    # An order's size is a whole share (user ruling,
+                    # 2026-09-06), on the kernel's grid -- the same one
+                    # production's ``cash_phase`` floors onto.  Floored
+                    # here, where the comment above says these are the
+                    # shares the exchange would judge: after the seat is
+                    # sized, before the venue's lot and dollar.  That is
+                    # production's order too -- the solver picks a clip and
+                    # sizing floors its answer -- and it is why the floor
+                    # is not pushed inside ``_fillable_weighted``: that
+                    # search probes a thousandth of a share for
+                    # feasibility, so a floor inside it refuses every seat.
+                    #
+                    # Two rungs are left alone.  One under a whole share,
+                    # because charter 70 lifts it to the venue minimum and
+                    # the kernel's raise skips a zero increment ("a rung
+                    # with no increment is not an order") -- flooring it to
+                    # zero would stand down the basket production buys, the
+                    # 0.862-share ZGSZ rung being the case.  And one that
+                    # bought nothing this cycle: no cash, no order, nothing
+                    # to floor -- the production-judge sizer records the
+                    # chain's total on such a leg rather than an increment,
+                    # and re-walking it would charge for shares nobody is
+                    # buying.
+                    _grid = [
+                        floor_to_order_share_grid_v1(q)
+                        if float(q) >= ORDER_SHARE_STEP_SHARES
+                        and float(c) > 0.0
+                        else float(q)
+                        for q, c in zip(leg_shares, leg_cash)
+                    ]
+                    if any(
+                        abs(float(a) - float(b)) > 1e-9
+                        for a, b in zip(_grid, leg_shares)
+                    ):
+                        _gs: list[float] = []
+                        _gc: list[float] = []
+                        for _leg, _want, _was_cash in zip(
+                            legs, _grid, leg_cash
+                        ):
+                            if float(_was_cash) <= 0.0:
+                                _gs.append(float(_want))
+                                _gc.append(float(_was_cash))
+                                continue
+                            _got, _paid = (
+                                _walk_ask_shares_at_limit(_leg, _want)
+                                if production_verdict is not None
+                                else _walk_ask_shares(_leg, _want)
+                            )
+                            _gs.append(_got)
+                            _gc.append(_paid * (1.0 + FEE_RATE))
+                        leg_shares = _gs
+                        leg_cash = _gc
+                        stake = sum(_gc)
                     lot_top_up_record = None
                     if EXCHANGE_LOT_TOP_UP != "off" and legs:
                         # The lot the market states, or the exchange's

@@ -648,30 +648,28 @@ def test_a_production_only_rule_has_no_constant_to_catch() -> None:
     )
 
 
-def test_the_whole_share_order_grid_is_productions_and_the_ledgers_gap() -> None:
-    """An order's size is a whole share; the ledger's legs are not yet.
+def test_the_whole_share_order_grid_is_read_from_the_kernel_by_both(
+) -> None:
+    """An order's size is a whole share, on both sides, from one place.
 
-    User ruling, 2026-09-06: ``requested_size`` is rounded to whole lots
-    before it is persisted.  The grid lives in the kernel next to the lot
+    User ruling, 2026-09-06.  The grid lives in the kernel next to the lot
     and the dollar, because those are the other two venue floors and all
     three answer "what will the exchange take".  Production's ``cash_phase``
-    floors every leg onto it.
+    floors onto it; this book imports the same function and floors at the
+    point its own comment already calls the order the exchange would judge
+    -- after the seat is sized, before the lot and the dollar, which is
+    production's order too.
 
-    The ledger does not, and this test says so rather than letting the
-    completeness scan report silence as agreement.  Its opening path sizes
-    by a sixty-step bisection on a continuous share scale
-    (``_fillable_weighted``), whose feasibility probe walks a 1e-3 scale --
-    under a whole-share floor that probe wants zero shares, fails, and
-    every seat is refused.  Flooring there is a redesign of the search, not
-    a floor on its answer.
+    Not inside ``_fillable_weighted``.  That search probes a thousandth of
+    a share for feasibility, so a floor there refuses every seat; production
+    likewise floors the solver's answer rather than its search, and the grid
+    is exempt from re-score because a single step cannot re-shape a basket.
 
-    Measured before deciding, over the 977 ledger legs since 2026-08-15:
-    127 of them (13%) carry a fraction, the median leg is 5.00 shares
-    (charter 70's lot, already whole), and flooring would shed 0.061 shares
-    per leg on average -- about 1.2% of the median leg.  So the two lanes
-    disagree, by a little, on days the lot raise does not already decide.
-    That is the size of the job, and pricing it needs a ledger re-run
-    rather than a simulation.
+    And not down to zero.  The kernel's raise skips a zero increment -- "a
+    rung with no increment is not an order" -- so a rung floored to nothing
+    would stand the basket down instead of being lifted to the venue
+    minimum, which is the opposite of what charter 70 does with the same
+    0.862-share rung on the production side.
     """
 
     import inspect
@@ -679,29 +677,53 @@ def test_the_whole_share_order_grid_is_productions_and_the_ledgers_gap() -> None
     from bayes_basket_target import cash_phase as CP
     from bayes_basket_target.basket_kernel import delta_v2 as K2
 
-    # Production floors onto the kernel's grid, and the grid is never finer
-    # than a whole share.
     assert K2.ORDER_SHARE_STEP_SHARES == 1.0
     assert K2.ORDER_SHARE_GRID in K2.ORDER_SHARE_GRID_MODES
     assert K2.order_share_step_v1(0.01) == 1.0
     assert K2.floor_to_order_share_grid_v1(13.66, 0.01) == 13.0
+
+    # Production floors onto it, and charter 70's raise stays reachable
+    # underneath: a leg the grid floors to zero is refused only where no
+    # lot is stated.
     sizing = inspect.getsource(CP.OrderSizingDecision.compute)
     assert "floor_to_order_share_grid_v1(raw_q_order, quantum)" in sizing
-    # And charter 70's raise stays reachable underneath it: a leg the grid
-    # floors to zero is refused only where no lot is stated.
     assert "q_order <= EPS and minimum_lot <= EPS" in sizing
 
-    # The gap, named.  The ledger neither imports the grid nor spells a
-    # switch for it, which is precisely what the constant scan cannot see.
-    assigned, imported = _ledger_rule_constants()
-    assert "ORDER_SHARE_GRID" not in assigned
-    assert "ORDER_SHARE_GRID" not in imported
-    assert "floor_to_order_share_grid_v1" not in (
-        ROOT / "scripts" / "paper_trading_ledger.py"
-    ).read_text(encoding="utf-8"), (
-        "if the ledger now floors onto the grid, this test is stale --"
-        " classify the constant and price the change on a re-run"
+    # The ledger imports the same function and the same step, so neither
+    # can drift; the classification scan sees them as production's.
+    _assigned, imported = _ledger_rule_constants()
+    assert imported.get("ORDER_SHARE_GRID", "").startswith(
+        "bayes_basket_target"
+    ), imported.get("ORDER_SHARE_GRID")
+    assert imported.get("ORDER_SHARE_STEP_SHARES", "").startswith(
+        "bayes_basket_target"
     )
+    source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    assert "floor_to_order_share_grid_v1(q)" in source
+    # Floored before the venue's rules, which is production's order.
+    assert source.index("floor_to_order_share_grid_v1(q)") < source.index(
+        'if EXCHANGE_LOT_TOP_UP != "off" and legs:'
+    )
+    # A rung under one share is left for charter 70, and a rung that bought
+    # nothing has no order to floor.
+    assert 'if float(q) >= ORDER_SHARE_STEP_SHARES' in source
+    assert "and float(c) > 0.0" in source
+    # The grid is not inside the bisection.
+    assert "floor_to_order_share_grid_v1" not in inspect.getsource(
+        L._fillable_weighted
+    )
+    assert "floor_to_order_share_grid_v1" not in inspect.getsource(
+        L._fillable_size
+    )
+
+    # And the book knows it changed.  Hashed unconditionally, like charter
+    # 79's seat: rows sized on the old continuous grid and rows sized on
+    # whole shares are not one book, and a digest that cannot tell them
+    # apart is a digest that lets them be summed.
+    assert "整股下单" in L.SELECTION_RULE_LABEL
+    assert "order_share_grid" in source
 
 
 def test_charter_68_scope_and_the_taker_leg_veto_move_together() -> None:
