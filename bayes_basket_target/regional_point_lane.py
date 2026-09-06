@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS {TABLE} (
   transport_provider_id TEXT NOT NULL,
   extraction_version TEXT NOT NULL,
   archive_query_at_utc TEXT NOT NULL,
+  knowable_at_utc TEXT NOT NULL,
   source_url TEXT NOT NULL,
   schema_version TEXT NOT NULL,
   content_sha256 TEXT NOT NULL UNIQUE CHECK(length(content_sha256)=64),
@@ -76,18 +77,81 @@ RUN_CYCLE_HOURS = {
 PUBLICATION_LAG_HOURS = {"MSM": 3.0, "HRRR": 1.5, "NBM": 2.0, "ICON_EU": 4.0}
 # The local afternoon window the P1 question is about.
 PEAK_LOCAL_HOURS = tuple(range(11, 19))
+# A live sweep fetches runs issued within the last day or so; a fetch further
+# behind its own run is a backfill, whatever clock it ran on.  Used only to
+# repair rows written before ``knowable_at_utc`` existed -- new rows are
+# stamped by the writer, which knows which pass it is.
+BACKFILL_FETCH_LAG_HOURS = 36.0
+DEFAULT_PUBLICATION_LAG_HOURS = 2.0
 
 
 def ensure_schema(conn: sqlite3.Connection) -> bool:
-    """Create the lane's table once; True when it was created now."""
+    """Create the lane's table once; True when it was created now.
+
+    Also adds ``knowable_at_utc`` to a table created before it existed: the
+    column is when the archive first held this run, which is what an as-of
+    replay must filter on.  ``archive_query_at_utc`` stays what it always
+    was, the instant this process fetched it -- for a live sweep the two are
+    minutes apart, for a backfill they are weeks, and filtering a replay on
+    the fetch time hides every backfilled run behind its own repair date.
+    """
 
     present = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (TABLE,)
     ).fetchone()
-    if present:
-        return False
-    conn.executescript(DDL)
-    return True
+    if not present:
+        conn.executescript(DDL)
+        return True
+    columns = {
+        str(row[1]) for row in conn.execute(f"PRAGMA table_info({TABLE})")
+    }
+    if "knowable_at_utc" not in columns:
+        conn.execute(
+            f"ALTER TABLE {TABLE} ADD COLUMN knowable_at_utc TEXT NOT NULL DEFAULT ''"
+        )
+        repair_knowable_at(conn)
+    return False
+
+
+def repair_knowable_at(conn: sqlite3.Connection, *, only_missing: bool = True) -> int:
+    """Fill ``knowable_at_utc`` on rows written before the column existed.
+
+    A row fetched more than ``BACKFILL_FETCH_LAG_HOURS`` after its own run was
+    issued came from a backfill: the archive held that run one publication lag
+    after its nominal hour, whatever day this process got around to reading
+    it.  Everything else is a live sweep, whose fetch time is the honest
+    answer to "when could this have been read".
+    """
+
+    where = " WHERE knowable_at_utc=''" if only_missing else ""
+    rows = conn.execute(
+        f"SELECT regional_point_run_id, ensemble_system_id, run_init_utc,"
+        f" archive_query_at_utc FROM {TABLE}{where}"
+    ).fetchall()
+    lag_by_system = {
+        SYSTEM_IDS[product]: hours
+        for product, hours in PUBLICATION_LAG_HOURS.items()
+    }
+    repaired = 0
+    for run_id, system_id, run_init_utc, archive_query_utc in rows:
+        try:
+            run_init = _parse(run_init_utc)
+            fetched = _parse(archive_query_utc)
+        except ValueError:
+            continue
+        behind = (fetched - run_init).total_seconds() / 3600.0
+        knowable = (
+            run_init + timedelta(
+                hours=lag_by_system.get(str(system_id), DEFAULT_PUBLICATION_LAG_HOURS)
+            )
+            if behind > BACKFILL_FETCH_LAG_HOURS else fetched
+        )
+        conn.execute(
+            f"UPDATE {TABLE} SET knowable_at_utc=? WHERE regional_point_run_id=?",
+            (_iso(knowable), str(run_id)),
+        )
+        repaired += 1
+    return repaired
 
 
 def _iso(stamp: datetime) -> str:
@@ -170,6 +234,7 @@ def write_run(
     hours_wanted: int,
     archive_query_at: datetime,
     source_url: str,
+    backfill: bool = False,
 ) -> bool:
     """Persist one run of one model for one station-day; False if it was there."""
 
@@ -177,6 +242,13 @@ def write_run(
         raise ContractError("regional_point_run_curve_empty")
     system_id = SYSTEM_IDS[product]
     valid_map = hourly_valid_map(run_init, hourly_c)
+    # When the archive first held this run.  A live sweep answers with its own
+    # fetch; a backfill must answer with the run's publication time, or every
+    # row it writes reads as "not knowable until the day I repaired it".
+    knowable_at = (
+        run_init + timedelta(hours=PUBLICATION_LAG_HOURS[product])
+        if backfill else archive_query_at
+    )
     identity = {
         "schema_version": SCHEMA_VERSION,
         "ensemble_system_id": system_id,
@@ -193,8 +265,8 @@ def write_run(
         " settlement_timezone, run_init_utc, run_cycle_hour,"
         " lead_hours_to_local_day_start, forecast_tmax_c, remaining_peak_complete,"
         " hours_wanted, hours_covered, hourly_c_json, transport_provider_id,"
-        " extraction_version, archive_query_at_utc, source_url, schema_version,"
-        " content_sha256) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        " extraction_version, archive_query_at_utc, knowable_at_utc, source_url,"
+        " schema_version, content_sha256) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (
             f"{product.lower()}-{digest[:32]}", system_id, str(station_id).upper(),
             event_date.isoformat(), settlement_timezone, _iso(run_init),
@@ -204,7 +276,7 @@ def write_run(
             int(remaining_peak_complete(run_init, event_date, settlement_timezone, hourly_c)),
             int(hours_wanted), len(valid_map), json.dumps(valid_map, sort_keys=True),
             TRANSPORTS[product], EXTRACTION_VERSIONS[product], _iso(archive_query_at),
-            str(source_url), SCHEMA_VERSION, digest,
+            _iso(knowable_at), str(source_url), SCHEMA_VERSION, digest,
         ),
     )
     return int(cursor.rowcount or 0) > 0
@@ -222,8 +294,8 @@ def runs_for(
 
     sql = (
         f"SELECT ensemble_system_id, run_init_utc, lead_hours_to_local_day_start,"
-        f" forecast_tmax_c, remaining_peak_complete, hourly_c_json, archive_query_at_utc"
-        f" FROM {TABLE} WHERE station_id=? AND target_local_date=? AND archive_query_at_utc<=?"
+        f" forecast_tmax_c, remaining_peak_complete, hourly_c_json, knowable_at_utc"
+        f" FROM {TABLE} WHERE station_id=? AND target_local_date=? AND knowable_at_utc<=?"
     )
     params: list[Any] = [str(station_id).upper(), str(event_date), str(as_of_utc)]
     if system_id:
@@ -234,7 +306,7 @@ def runs_for(
             "ensemble_system_id": str(r[0]), "run_init_utc": str(r[1]),
             "lead_hours_to_local_day_start": float(r[2]), "forecast_tmax_c": float(r[3]),
             "remaining_peak_complete": bool(r[4]), "hourly_c": json.loads(r[5]),
-            "archive_query_at_utc": str(r[6]),
+            "archive_query_at_utc": str(r[6]), "knowable_at_utc": str(r[6]),
         }
         for r in conn.execute(sql, params)
     ]
@@ -363,8 +435,14 @@ def capture_p1(
     day_offsets: Sequence[int] = (-1, 0, 1),
     max_runs: int = 4,
     dry_run: bool = False,
+    backfill: bool = False,
 ) -> dict[str, Any]:
-    """Plan, fetch and persist this pass's runs for one product."""
+    """Plan, fetch and persist this pass's runs for one product.
+
+    ``backfill`` stamps each row knowable at its run's publication time
+    rather than at this pass's clock, which is what a pass reaching weeks
+    back is actually asserting.
+    """
 
     plan = plan_p1(conn, product=product, now=now, stations=stations, day_offsets=day_offsets, max_runs=max_runs)
     written = 0
@@ -425,6 +503,7 @@ def capture_p1(
                 settlement_timezone=str(target["settlement_timezone"]), run_init=run_init,
                 hourly_c=captured["hourly_c"], hours_wanted=int(captured["hours_wanted"]),
                 archive_query_at=now, source_url=str(captured["source_url"]),
+                backfill=backfill,
             ):
                 written += 1
             else:
@@ -440,7 +519,7 @@ def capture_p1(
 
 __all__ = [
     "TABLE", "SCHEMA_VERSION", "SYSTEM_IDS", "RUN_CYCLE_HOURS", "PEAK_LOCAL_HOURS",
-    "ensure_schema", "write_run", "runs_for", "plan_p1", "capture_p1",
+    "ensure_schema", "repair_knowable_at", "write_run", "runs_for", "plan_p1", "capture_p1",
     "fetch_noaa_run_for_targets", "lead_hours_to_local_day_start",
     "hourly_valid_map", "remaining_peak_complete", "stored_run_inits",
 ]

@@ -115,3 +115,65 @@ def test_remaining_peak_completeness_is_judged_from_the_run_hour() -> None:
     assert L.remaining_peak_complete(run, date(2026, 9, 6), zone, {0: 1, 1: 1}) is False
     late = datetime(2026, 9, 7, 0, tzinfo=timezone.utc)  # 20:00 local: nothing of the peak remains
     assert L.remaining_peak_complete(late, date(2026, 9, 6), zone, {0: 1}) is False
+
+
+def test_a_backfilled_run_is_knowable_when_the_archive_held_it() -> None:
+    """A pass reaching weeks back asserts the run was on the archive then.
+
+    Stamping such a row at the fetch time hides every backfilled run behind
+    its own repair date: the first replay after the backfill resolved nothing
+    at all, because 2026-08-25's runs read as knowable on 2026-09-06.
+    """
+    conn = _conn()
+    run = datetime(2026, 8, 25, 18, tzinfo=timezone.utc)
+    fetched = datetime(2026, 9, 6, 13, 34, tzinfo=timezone.utc)
+    L.write_run(
+        conn, product="HRRR", station_id="KATL", event_date=date(2026, 8, 25),
+        settlement_timezone="America/New_York", run_init=run, hourly_c={0: 30.0, 1: 31.0},
+        hours_wanted=2, archive_query_at=fetched, source_url="s3://hrrr", backfill=True,
+    )
+    row = conn.execute(
+        f"SELECT archive_query_at_utc, knowable_at_utc FROM {L.TABLE}"
+    ).fetchone()
+    assert row[0].startswith("2026-09-06"), "the fetch is recorded as it happened"
+    assert row[1] == "2026-08-25T19:30:00Z", "HRRR is on the bucket 90 minutes after its hour"
+    assert L.runs_for(conn, station_id="KATL", event_date="2026-08-25", as_of_utc="2026-08-25T20:00:00Z")
+    assert not L.runs_for(conn, station_id="KATL", event_date="2026-08-25", as_of_utc="2026-08-25T19:00:00Z")
+
+
+def test_a_live_capture_is_knowable_when_it_was_fetched() -> None:
+    conn = _conn()
+    run = datetime(2026, 9, 6, 6, tzinfo=timezone.utc)
+    fetched = datetime(2026, 9, 6, 11, 35, tzinfo=timezone.utc)
+    L.write_run(
+        conn, product="ICON_EU", station_id="LTAC", event_date=date(2026, 9, 6),
+        settlement_timezone="Europe/Istanbul", run_init=run, hourly_c={5: 28.0},
+        hours_wanted=1, archive_query_at=fetched, source_url="dwd",
+    )
+    row = conn.execute(f"SELECT archive_query_at_utc, knowable_at_utc FROM {L.TABLE}").fetchone()
+    assert row[0] == row[1], "a live sweep's fetch time is the honest answer"
+
+
+def test_the_repair_reads_how_far_behind_the_fetch_was() -> None:
+    """No wall-clock boundary: the backfill ran at 12:03Z and a live sweep at
+    11:35Z the same morning, so only the gap to the run tells them apart."""
+    conn = _conn()
+    for product, run_hour, fetch_day, fetch_hour in (
+        ("HRRR", 18, 25, 19), ("NBM", 6, 6, 12),
+    ):
+        L.write_run(
+            conn, product=product, station_id="KATL",
+            event_date=date(2026, 8, 25) if fetch_day == 25 else date(2026, 9, 6),
+            settlement_timezone="America/New_York",
+            run_init=datetime(2026, 8 if fetch_day == 25 else 9, 25 if fetch_day == 25 else 6, run_hour, tzinfo=timezone.utc),
+            hourly_c={0: 30.0}, hours_wanted=1,
+            archive_query_at=datetime(2026, 8 if fetch_day == 25 else 9, fetch_day, fetch_hour, tzinfo=timezone.utc),
+            source_url="s3",
+        )
+    conn.execute(f"UPDATE {L.TABLE} SET knowable_at_utc=''")
+    assert L.repair_knowable_at(conn) == 2
+    rows = dict(conn.execute(
+        f"SELECT ensemble_system_id, knowable_at_utc FROM {L.TABLE}"
+    ).fetchall())
+    assert rows["NCEP_HRRR_POINT"] == "2026-08-25T19:00:00Z", "fetched an hour later: a live sweep"
+    assert rows["NCEP_NBM_POINT"] == "2026-09-06T12:00:00Z", "six hours behind is still a live sweep, so the fetch is the answer"

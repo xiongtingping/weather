@@ -62,6 +62,9 @@ def main() -> int:
                 receipt = capture_p1(
                     conn, product=product, now=now, stations=stations[product],
                     day_offsets=(-back,), max_runs=args.max_runs_per_day, dry_run=args.dry_run,
+                    # Charter 99: a pass reaching weeks back asserts the run was
+                    # on the archive then, not that it became readable today.
+                    backfill=True,
                 )
                 for key in ("written", "existed", "empty"):
                     totals[key] += int(receipt[key])
