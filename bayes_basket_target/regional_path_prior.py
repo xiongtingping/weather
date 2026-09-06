@@ -45,30 +45,39 @@ DEFAULT_REPLAY_TABLE = (
     / "regional_path_prior_replay_table.json"
 )
 # Off by measurement (2026-09-07).  The 2026-09-06 ruling put this layer
-# into service without a measurement gate; the measurement has since been
-# run and is negative at every setting tried, so the default is the arm
-# that does nothing and ``on`` is the way back in.
+# into service without a measurement gate.  The measurement has since been
+# run and shows no gain; the default is now the arm that does nothing and
+# ``on`` is the way back in.
 #
-# Morning window, 2,190 committed P1 prefixes over 2026-08-24..08-29 whose
-# ceiling receipt read TOO_EARLY -- so the served vector IS this layer's
-# input and nothing is reconstructed: log loss 1.4419 without the layer
-# against 1.5152 with it, argmax hit 40.0% against 35.7%, within one
-# bucket 85.0% against 72.3%.  Weight 0.5 is the shipped value; 0.3, 0.2
-# and 0.1 are all at or above the baseline too, and a lighter variant that
-# keeps the incumbent's shape and lets the curve set only the above/below
-# split is worse still (+0.130 nat).  The loss grows monotonically with
-# the weight, which is what a term carrying no information looks like.
+# Two findings, and they carry different weight.
 #
-# The cause is not the blending rule.  The curve's own point forecast of
-# the day's maximum has MAE 1.533C against the incumbent posterior's
-# 0.826C on the same prefixes, and beats it on 34.4% of them; with a
-# perfect per-hour bias -- an oracle, not obtainable out of sample -- it
-# reaches 1.411C, still far behind.  Read straight off the lane's own
-# stored daily maximum, bypassing every line of serving code, NBM is at
-# MAE 1.217C and HRRR 1.605C against settled truth, both about 0.7C cold;
-# even a perfect per-station debias only takes NBM to 0.885C, which ties
-# the P0 root's 0.887C and still loses to P1's 0.826C.  These models are
-# not being used badly, they are less accurate than what P1 already holds.
+# What is robust: these models are materially less accurate than what P1
+# already holds.  Read straight off the lane's own stored daily maximum
+# against settled truth, bypassing every line of serving code and
+# clustered by station-day because a station-day's runs are not
+# independent -- HRRR is at MAE 1.557C over 90 station-days (95% CI
+# 1.343-1.771) and the NBM 1.239C over 99 (1.084-1.393), against the
+# incumbent P1 posterior's own 0.778C over 98 (0.670-0.886).  The
+# intervals do not overlap.  An oracle per-station debias, which is not
+# obtainable out of sample, only takes the NBM to 0.885C -- level with
+# the P0 root and still behind P1.
+#
+# What is NOT established is harm to the served distribution.  On the
+# clean window -- prefixes whose ceiling receipt read TOO_EARLY, where
+# the served vector IS this layer's input and nothing is reconstructed --
+# the per-prefix log loss moves by +0.0733 nat, but that pools two
+# systems and counts ~33 correlated prefixes per station-day as
+# independent.  Clustered properly the effect vanishes into the noise:
+# the NBM alone is -0.0449 nat over 66 station-days (95% CI -0.126 to
+# +0.036) and HRRR alone +0.0196 over 60 (-0.112 to +0.151).  Both
+# straddle zero.  So this default rests on "no gain demonstrated, and a
+# demonstrated accuracy deficit behind it", not on "measured harmful".
+#
+# One design fault the split did expose: resolve_serving_input picks the
+# freshest run across systems, so hourly HRRR almost always wins the race
+# against the NBM -- and HRRR is the weaker of the two.  Whatever serves
+# here next should choose its system by measured value, not by clock.
+# scripts/measure_regional_serving_value.py is that gate.
 ENABLED = (
     os.environ.get("PM_REGIONAL_PATH_PRIOR", "off").strip().lower()
     not in {"0", "off", "false", "no"}
