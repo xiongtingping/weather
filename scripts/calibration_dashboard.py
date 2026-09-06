@@ -5623,9 +5623,32 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
         EFFECTIVE_EDGE_STAGES,
     )
     from bayes_basket_target.delta_v2_runtime import EFFECTIVE_EDGE_MODE
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        CLAIM_EDGE_THERMOMETER_MODE,
+        CLAIM_EDGE_THIN_BAND_LAMBDA,
+        CLAIM_EDGE_THIN_BAND_MAX,
+        EFFECTIVE_EDGE_BAND_BOUNDS,
+    )
 
-    def band_label(bound: float) -> str:
-        return "≥0.85" if bound == float("inf") else f"<{bound:g}"
+    def band_label(bound: float, lower: float) -> str:
+        # Charter 96 moved the top boundary twice; a hardcoded "≥0.85" here
+        # went on printing the retired partition after the split.  Derive it.
+        return f"≥{lower:g}" if bound == float("inf") else f"<{bound:g}"
+
+    def admits(lower: float, upper: float, lam: float) -> list[float] | None:
+        """What this band can actually buy.
+
+        Charter 96: the gate reduces to ``lambda(a) > a``, so a band admits
+        exactly ``[its lower bound, its own lambda)`` -- its served value is
+        its own cut point, and a band whose lambda falls under its floor buys
+        nothing at all no matter how right the model is.  Showing the served
+        number without this interval is what let two bands sit blind on the
+        page for days looking like ordinary rows.
+        """
+
+        if lam <= lower:
+            return None
+        return [round(lower, 4), round(min(lam, upper), 4)]
 
     def measure(stages: tuple[str, ...], served, since: str | None,
                 until: str | None) -> list[dict[str, Any]]:
@@ -5666,10 +5689,14 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
             slot["pnl"] += float(pnl or 0.0)
             slot["stake"] += float(stake or 0.0)
         out = []
+        lower_bound = 0.0
         for (bound, lam), slot in zip(served, tally):
             raw = (slot["hits"] / slot["claim"]) if slot["claim"] > 0 else None
             out.append({
-                "band": band_label(bound),
+                "band": band_label(bound, lower_bound),
+                "lower": round(lower_bound, 4),
+                "upper": None if bound == float("inf") else round(bound, 4),
+                "admits": admits(lower_bound, float(bound), float(lam)),
                 "served": round(float(lam), 4),
                 "seats": slot["seats"],
                 "claim_mass": round(slot["claim"], 2),
@@ -5684,6 +5711,8 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
                     and slot["claim"] >= _store.MIN_CLAIM_MASS
                 ),
             })
+            if bound != float("inf"):
+                lower_bound = float(bound)
         return out
 
     def activated(scope: str) -> dict[str, Any] | None:
@@ -5721,14 +5750,30 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
     ]
     midpoint = days[len(days) // 2] if days else None
 
+    def serving(scope: str, bootstrap) -> tuple[tuple[float, float], ...]:
+        """The table production is actually serving for this scope.
+
+        Charter 68(c) (2026-09-05) made the rolling fit promote itself, so the
+        kernel constant became the bootstrap and nothing more -- but this
+        section went on reading the constant and calling the column "the
+        constant the compile chain is running right now".  It was wrong for a
+        day: on 2026-09-06 the page printed P0's top band as 0.82 while the
+        store served 1.0112, and the split at 0.80 that opened a band did not
+        appear at all.  Read what the dispatch reads, and fall back to the
+        constant on exactly its own condition -- no activation yet.
+        """
+
+        active = _store.load_active_lambda(conn, stage_scope=scope)
+        return tuple(active) if active else tuple(bootstrap)
+
     scopes = []
     for scope, stages, served, ceiling in (
         ("P0", tuple(sorted(EFFECTIVE_EDGE_STAGES)),
-         EFFECTIVE_EDGE_LAMBDA, _store.LAMBDA_CEILING),
+         serving("P0", EFFECTIVE_EDGE_LAMBDA), _store.LAMBDA_CEILING),
         ("P0-M", tuple(sorted(EFFECTIVE_EDGE_P0M_STAGES)),
-         EFFECTIVE_EDGE_P0M_LAMBDA, _store.LAMBDA_CEILING),
+         serving("P0-M", EFFECTIVE_EDGE_P0M_LAMBDA), _store.LAMBDA_CEILING),
         ("P1", tuple(sorted(EFFECTIVE_EDGE_P1_STAGES)),
-         EFFECTIVE_EDGE_P1_LAMBDA, _store.P1_LAMBDA_CEILING),
+         serving("P1", EFFECTIVE_EDGE_P1_LAMBDA), _store.P1_LAMBDA_CEILING),
     ):
         whole = measure(stages, served, None, None)
         early = measure(stages, served, None, midpoint)
@@ -5778,12 +5823,92 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
         })
     return {
         "mode": EFFECTIVE_EDGE_MODE,
+        # Charter 96/97: the partition is a rule in the kernel, and the
+        # claim-edge axis is a second one.  Both belong on the page, since a
+        # reader cannot otherwise tell why a band with a healthy lambda still
+        # buys nothing, or why a thin-edge window was bought at all.
+        "band_bounds": [
+            None if b == float("inf") else float(b)
+            for b in EFFECTIVE_EDGE_BAND_BOUNDS
+        ],
+        "claim_edge_thermometer": CLAIM_EDGE_THERMOMETER_MODE,
+        "claim_edge_thin_band_max": CLAIM_EDGE_THIN_BAND_MAX,
+        "claim_edge_thin_band_lambda": CLAIM_EDGE_THIN_BAND_LAMBDA,
         "dq_shadow_mode": _store.DQ_SHADOW_MODE,
         "dq_shadow_horizon_hours": _store.DQ_SHADOW_HORIZON_HOURS,
         "dq_shadow_threshold": _store.DQ_SHADOW_THRESHOLD,
         "minimum_seats_per_band": _store.MIN_SEATS_PER_BAND,
         "split_at_event_date": midpoint,
         "scopes": scopes,
+    }
+
+
+def collect_lambda_axis_usage(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Which axis bought each seat, so charter 97 can be retired on evidence.
+
+    Charter 97 serves the claim-edge thermometer as lambda's second axis and
+    sets its own retirement condition: once the seats that axis opened clear
+    charter 68's hurdle, retire it if their realisation falls under one.
+    Nothing could evaluate that without knowing which axis admitted a window,
+    which is why the gate now stamps ``effective_edge_lambda_source`` on every
+    priced row.  This counts them.
+
+    Deliberately cheap and deliberately honest about being young: the field
+    was added 2026-09-06 and rows written before that carry none, so the
+    reading starts empty and fills as cycles run.  An empty panel here means
+    "not measured yet", never "the axis bought nothing".
+    """
+
+    since = (
+        date.today() - timedelta(days=3)
+    ).isoformat()
+    seated: dict[str, int] = {}
+    considered: dict[str, int] = {}
+    scanned = 0
+    try:
+        rows = conn.execute(
+            "SELECT details_json FROM auto_trade_decisions"
+            " WHERE created_at >= ?"
+            "   AND details_json LIKE '%effective_edge_lambda_source%'"
+            " ORDER BY created_at DESC LIMIT 400",
+            (since,),
+        ).fetchall()
+    except sqlite3.Error:
+        return {"available": False, "since": since}
+
+    def walk(node: Any) -> "Iterator[dict[str, Any]]":
+        if isinstance(node, dict):
+            if "basket_support_selection" in node:
+                yield node["basket_support_selection"]
+            for value in node.values():
+                yield from walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from walk(value)
+
+    for (payload,) in rows:
+        try:
+            detail = json.loads(payload or "{}")
+        except ValueError:
+            continue
+        scanned += 1
+        for selection in walk(detail):
+            seat = selection.get("seated")
+            if isinstance(seat, dict) and seat.get("effective_edge_lambda_source"):
+                key = str(seat["effective_edge_lambda_source"])
+                seated[key] = seated.get(key, 0) + 1
+            for row in selection.get("considered") or []:
+                if isinstance(row, dict) and row.get(
+                    "effective_edge_lambda_source"
+                ):
+                    key = str(row["effective_edge_lambda_source"])
+                    considered[key] = considered.get(key, 0) + 1
+    return {
+        "available": True,
+        "since": since,
+        "scanned_decisions": scanned,
+        "seated_by_source": seated,
+        "considered_by_source": considered,
     }
 
 
@@ -6602,6 +6727,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         ),
         "edge_band_health": collect_edge_band_health(conn),
         "effective_edge_lambda": collect_effective_edge_lambda(conn),
+        "lambda_axis_usage": collect_lambda_axis_usage(conn),
         "convergence_claim": _cached_section(
             "convergence_claim", collect_convergence_claim, conn
         ),
@@ -7898,9 +8024,13 @@ function effectiveEdgeLambda(){
       const mark=!b.candidate?["—",""]
         :b.stable?["可晋级","up"]
         :["证据不稳",""];
+      const win=b.admits
+        ? `<span class="mono">[${b.admits[0].toFixed(3)}, ${b.admits[1].toFixed(3)})</span>`
+        : `<span class="down">空窗</span>`;
       return `<tr>
         <td class="mono">${b.band}</td>
         <td class="mono">${num(b.served)}</td>
+        <td>${win}</td>
         <td class="mono ${gap==null?"":(gap<0?"down":"up")}">${num(b.raw_lambda)}</td>
         <td class="mono">${num(b.fitted_capped)}</td>
         <td>${b.seats}${b.admissible?"":" ⚠"}</td>
@@ -7912,11 +8042,17 @@ function effectiveEdgeLambda(){
     const note=isP1
       ? `P1 的形状是 P0 的镜像：市场越不同意，兑现越超过声称、回报越高，因为 P1 的边际是<b>观测</b>不是形状。
          服务值封顶 1.00 —— 豁免的意思是「信它」，不是「比它自己还信它」。`
-      : `P0 / P0-M 是倒 U：市场最不同意的那一带，五分之四的声称从未到账；正边际只有 a∈[0.70,0.85] 一条窄带。`;
+      : `P0 / P0-M 是倒 U：市场最不同意的那一带，五分之四的声称从未到账。
+         <b>能买的不是"λ 高的档"，是"λ 高过自己下界的档"</b> —— 见可买区间列，
+         本档实际放行的是 ${(sc.bands||[]).filter(b=>b.admits).map(
+           b=>`<span class="mono">[${b.admits[0].toFixed(3)},${b.admits[1].toFixed(3)})</span>`
+         ).join(" ∪ ")||"（无）"}。`;
     return `<h3 style="margin-top:16px">${sc.scope} 档（阶段 ${sc.stages.join(" / ")}，封顶 ${sc.ceiling.toFixed(2)}）</h3>
       <div class="card" style="margin-bottom:6px">${note}</div>
       <table><thead><tr>
-        <th>一致度带 a=价/声称</th><th>当前服务 λ</th><th>本账本 raw λ</th>
+        <th>一致度带 a=价/声称</th><th>当前服务 λ</th>
+        <th title="闸的判据化简后是 λ(a)>a，所以这一档只放行 [档下界, 该档自己的 λ)">可买区间</th>
+        <th>本账本 raw λ</th>
         <th>封顶后</th><th>座位</th><th>前半 / 后半</th><th>该带回报</th><th>状态</th>
       </tr></thead><tbody>${rows}</tbody></table>
       <div class="muted mono" style="margin-top:4px">${
@@ -7947,13 +8083,50 @@ function effectiveEdgeLambda(){
     return `<div class="muted" style="margin-top:10px">Δq 影子轴（视野 ${E.dq_shadow_horizon_hours}h，同一带按席位前市场对该窗口的移动分格；只记账不服务；拟合 ${sh.fitted_at_utc} · ${sh.seat_count} 座）</div>
       <table><thead><tr><th>一致度带</th><th>服务 λ</th>${tiers.map(([,l])=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`;
   };
+  // Charter 97's own instrument.  The clause retires itself when the seats
+  // this axis opened clear the hurdle and realise under one; that can only
+  // be judged if the seats are attributable, so the gate stamps the source
+  // and this counts it.  Empty means not yet measured, never "bought none".
+  const axisUsage=()=>{
+    const U=D.lambda_axis_usage||{};
+    if(!U.available) return "";
+    const seated=U.seated_by_source||{};
+    const total=Object.values(seated).reduce((a,b)=>a+b,0);
+    const label={agreement_band:"一致度轴", claim_edge_thin_band:"体温计薄档轴"};
+    if(!total) return `<p class="note" style="margin-top:10px">
+      <b>λ 来源分布</b>（宪章 97 回收条件的仪表）：${U.since} 起扫到
+      ${U.scanned_decisions} 份带来源字段的计划，<b>尚无入座记录</b>。
+      来源字段 2026-09-06 才加，此前的计划不带；空＝还没量到，<b>不是</b>该轴没买到东西。</p>`;
+    const rows=Object.entries(seated).sort((a,b)=>b[1]-a[1]).map(
+      ([k,v])=>`<li><b>${label[k]||k}</b> 入座 ${v} 次（${(v/total*100).toFixed(0)}%）</li>`
+    ).join("");
+    return `<p class="note" style="margin-top:10px"><b>λ 来源分布</b>（宪章 97 回收条件的仪表，
+      ${U.since} 起 ${U.scanned_decisions} 份计划）：<ul style="margin:4px 0 0 18px">${rows}</ul>
+      体温计轴的席位攒够 ${E.minimum_seats_per_band} 座后若兑现跌破 1.0，按宪章 97 应收回该轴。</p>`;
+  };
   return `<h2 style="margin-top:30px">有效边际 λ 表（按阶段）</h2>
     <div class="card">
       目标函数读的是 <span class="mono">λ(a)·p</span> 而不是 p（宪章 68）。a = 篮子价格 / 声称胜率，
-      λ = 历史上这声称真正到账的比例。<b>服务列是编译链此刻在用的常量</b>，raw 列是本账本说它该是多少，
-      两者的差就是待晋级的量；能不能晋级由前半/后半那一列决定 —— 两半不一致的带还没挣到一个常量。
+      λ = 历史上这声称真正到账的比例。<b>服务列＝库里此刻激活的那张表</b>（宪章 68(c) 起机器自晋级，
+      内核常量只在某 scope 从未激活过时兜底）；raw 列是本账本说它该是多少，两者的差就是待晋级的量，
+      能不能晋级由前半/后半那一列决定 —— 两半不一致的带还没挣到一个常量。
+      <p class="note" style="margin-top:10px"><b>为什么"λ 不低"的档也可能一张票都发不出</b>（宪章 96）：
+      闸判的是折后声称减价格为正，化简后就是 <span class="mono">λ(a) &gt; a</span>。λ 是阶梯函数，
+      所以<b>每一档只放行 <span class="mono">[档下界, 该档自己的 λ)</span></b> —— 服务值就是自己的切点。
+      λ 落在本档下界以下的档整段空窗，模型再准也买不到。2026-09-06 按这条在
+      <span class="mono">0.80</span> 与 <span class="mono">0.95</span> 两处拆档，救回被平均掉的半档，
+      并把顶档那把"用自己平均值切自己"的刀换成常量边界。当前分档边界
+      <span class="mono">${(E.band_bounds||[]).map(b=>b==null?"∞":b).join(" / ")}</span>。</p>
+      ${E.claim_edge_thermometer==="on"?`<p class="note"><b>λ 有第二根轴</b>（宪章 97，2026-09-06 起服务）：
+      当<b>绝对</b>声称边际 <span class="mono">e = 抬后声称 − 全含价</span> 落在
+      <span class="mono">(0, ${E.claim_edge_thin_band_max}]</span> 时，λ 直接服务
+      <span class="mono">${E.claim_edge_thin_band_lambda.toFixed(2)}</span>（体温计在该档实测兑现 1.036，
+      封顶 1.00 —— 信它，但不比它信自己更多），<b>只准抬不准压</b>：一致度轴已更信任的档不被它压低。
+      行上记 <span class="mono">effective_edge_lambda_source</span> 说明是哪根轴买的这一单。
+      注意 <span class="mono">1−a</span> 是<b>相对</b>边际、是本表这根轴的补，<b>不是</b>体温计那根轴，两者不可混引。</p>`:""}
       开关 <span class="mono">${E.mode||"?"}</span>，入选门槛 ${E.minimum_seats_per_band} 座，
       前后半以 ${E.split_at_event_date||"—"} 为界。
+      ${axisUsage()}
     </div>
     ${scopes.map(block).join("")}`;
 }
@@ -8185,8 +8358,18 @@ function edgeBandHealth(){
   按大小分七档。"兑现"列＝买到后真值实际落桶的比例是声称的几成：×1.0 说得准，
   ×0.45 自估打了四五折，×0.07 声称基本是错的。规律从上往下一眼可见：
   <b>自认便宜越大，市场越乐意卖，兑现越崩——"太好的价格"本身是警报</b>。
-  这是体温计不是门（门的版本已被账本否决）："近7天"两列是宪章62校准修复的疗效仪表，
-  起效的样子＝发烧行（黄）占比缩小、兑现回升。样本&lt;10 显 —。
+  <b>2026-09-06 起这张表不再只是体温计</b>（宪章 97）：最薄那一档
+  <span class="mono">e ≤ 0.05</span>（实测兑现 ×1.036）已<b>转正服务</b>，
+  作有效边际 λ 的<b>第二根轴</b> —— 落在该档的窗口 λ 直接服务 1.00（封顶，不用实测的 1.036），
+  且<b>只准抬不准压</b>。它不是第二道闸：闸仍只有"折后声称 &gt; 价格"一个判据，
+  变的是薄档窗口的 λ 由这根轴给出。<b>其余各档仍只是仪表</b>，
+  早先"按 edge≥0.30 拒窗"的硬闸版本已被账本否决（剔 2 条即翻号），不要再提。
+  <b>三条代价照原样记在这里，不软化</b>：①闸的 λ 不再是一致度的一元函数；
+  ②回测增量只 2 席、优势基本由 08-27 SBGR 单张票决定，对 9/8 在盘口移动前增量为零；
+  ③回测人口是删失的 —— 那 20 席全是被一致度轴放进来才结算的，
+  上线后会放行历史上从没开过的窗口，影响面大于 +2 席、方向未知。
+  回收条件：该轴自己的席位攒够 12 席后若兑现跌破 1.0 即收回（尚未自动化，需人工复核）。
+  "近7天"两列仍是宪章62校准修复的疗效仪表，起效的样子＝发烧行（黄）占比缩小、兑现回升。样本&lt;10 显 —。
   <b>按阶段分开看</b>（用户裁定 2026-09-02）：同一个"声称占 30% 便宜"，
   P0 只有模型，P1 已经看过当天几小时实测气温——不是同一种声称。
   合并后 ≥30% 档兑现 ×0.25，拆开是 P0 ×0.07 与 P1 ×0.35，
