@@ -58,6 +58,19 @@ def _observation(
     settlement_timezone: str = "America/New_York",
     canonical_committed_at: str = "2026-07-23T05:10:00Z",
 ) -> None:
+    # The facts table is append-only and, since 2026-08-06, accepts an
+    # insert only while the canonical projection ingress holds the
+    # authorization function high (``canonical_projection_ingress_required``
+    # otherwise).  These tests are about what P1 does with a committed
+    # observation, not about the gate -- the gate has its own tests in
+    # test_bayes_basket_target_atomic_ledger -- so the fixture stands in for
+    # the ingress exactly as the ingress does, for this one insert.
+    conn.create_function(
+        "target_canonical_projection_ingress_authorized",
+        0,
+        lambda: 1,
+        deterministic=True,
+    )
     conn.execute(
         "INSERT INTO basket_target_observation_facts("
         "observation_fact_id,observation_id,station_id,event_date,"

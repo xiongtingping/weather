@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -137,6 +138,7 @@ def _observation(observation_id: str, temperature_c: float, valid_at: str):
         "observation_id": observation_id,
         "station_id": "KATL",
         "event_date_local": "2026-07-26",
+        "settlement_timezone": "America/New_York",
         "reported_temperature_c": temperature_c,
         "valid_at_utc": valid_at,
         "canonical_committed_at_utc": valid_at,
@@ -221,9 +223,37 @@ def test_future_canonical_commit_is_rejected_not_silently_skipped() -> None:
 
 
 def test_canonical_valid_time_cannot_follow_its_commit() -> None:
-    observation = {
-        **_observation("time-reversed", 24.0, "2026-07-26T07:00:00Z"),
+    """A report may lead its own commit by a transmission lead, no more.
+
+    The local-midnight report commits ahead of its nominal minute on some
+    stations (OEJN -6.4s, SBGR ~-30s, measured 2026-08-30), so a lead within
+    ``MAX_REPORT_TRANSMISSION_LEAD_SECONDS`` is a real report and compiles;
+    a valid time further ahead of its commit than any transmission lead is
+    time reversal and is refused.
+    """
+
+    from bayes_basket_target.contracts import (
+        MAX_REPORT_TRANSMISSION_LEAD_SECONDS,
+    )
+
+    within_lead = {
+        **_observation("early-commit", 24.0, "2026-07-26T07:00:00Z"),
         "canonical_committed_at_utc": "2026-07-26T06:59:59Z",
+    }
+    packets = compile_station_p1_packets(
+        predecessor=_predecessor(),
+        observations=[within_lead],
+        registry_rows=_registry(),
+        compilation_at_utc="2026-07-26T08:00:00Z",
+    )
+    assert [packet["observation_id"] for packet in packets] == ["early-commit"]
+
+    reversed_time = {
+        **_observation("time-reversed", 24.0, "2026-07-26T07:00:00Z"),
+        "canonical_committed_at_utc": (
+            datetime.fromisoformat("2026-07-26T07:00:00+00:00")
+            - timedelta(seconds=MAX_REPORT_TRANSMISSION_LEAD_SECONDS + 1)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     with pytest.raises(
         ContractError,
@@ -231,7 +261,7 @@ def test_canonical_valid_time_cannot_follow_its_commit() -> None:
     ):
         compile_station_p1_packets(
             predecessor=_predecessor(),
-            observations=[observation],
+            observations=[reversed_time],
             registry_rows=_registry(),
             compilation_at_utc="2026-07-26T08:00:00Z",
         )

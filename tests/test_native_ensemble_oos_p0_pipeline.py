@@ -81,6 +81,19 @@ from bayes_basket_target.taf_revision import (
     TafRevisionArtifact,
     compile_taf_revision_proof,
 )
+
+
+@pytest.fixture(autouse=True)
+def _map_the_fixture_station_season(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The fixtures compile station ``TEST``; station-local seasons (charter
+    62, 2026-08-25) fail closed on an unmapped station, which turned every
+    compile in this file into ``station_season_station_unmapped``.  Map it
+    like a northern mid-latitude station for the duration of each test --
+    the same seam test_native_ensemble_p0.py already uses."""
+
+    from bayes_basket_target import station_season
+
+    monkeypatch.setitem(station_season._SEASON_ANCHOR_MONTH, "TEST", 7)
 from bayes_basket_target.taf_native_ensemble_oos import (
     EXACT_JOIN_SCHEMA,
     evaluate_taf_native_ensemble_oos,
@@ -313,12 +326,21 @@ def test_cross_oos_uses_largest_exact_shared_holdout_cohort() -> None:
         min_holdout_days=8,
     )
 
-    assert selected is not None
-    holdout, rows = selected
+    # Since 2026-08-15 (1a65cdc3) every eligible cohort is returned, widest
+    # first, so a cycle can no longer be deduped away; the widest is the
+    # exact shared holdout the two 18Z systems have in common.
+    assert selected
+    holdout, rows = selected[0]
     assert holdout == tuple(
         f"2026-07-{day:02d}" for day in range(22, 30)
     )
     assert [row[0] for row in rows] == ["ECMWF", "NOAA"]
+    # ECCC's shifted window shares no exact holdout with anyone and forms no
+    # cohort of its own: one family is below the two-family floor.
+    assert all(
+        "ECCC" not in {row[0] for row in cohort_rows}
+        for _holdout, cohort_rows in selected
+    )
 
 
 def test_cross_oos_includes_available_official_third_family() -> None:
@@ -344,8 +366,9 @@ def test_cross_oos_includes_available_official_third_family() -> None:
         min_holdout_days=8,
     )
 
-    assert selected is not None
-    assert {row[0] for row in selected[1]} == set(systems)
+    assert selected
+    # The widest cohort carries all three official families.
+    assert {row[0] for row in selected[0][1]} == set(systems)
 
 
 def test_historical_cutoff_drops_scopes_with_no_remaining_cases() -> None:
@@ -2430,15 +2453,30 @@ def test_open_meteo_fallback_p0_capture_freshness_is_bounded() -> None:
         captured_at_utc="2026-07-01T12:00:00Z",
     )
 
+    # A packet is usable while at least MIN_USABLE_FRESHNESS_SECONDS of its
+    # window remain (2026-08-28, 6e9f7b59: a window nothing can act on is
+    # not minted), so the bound is one minute inside the TTL, not at it.
+    from bayes_basket_target.contracts import MIN_USABLE_FRESHNESS_SECONDS
+
     fresh = compile_native_ensemble_p0(
         conn,
         forward_packet=forward_packet,
         decision_at_utc="2026-07-01T12:00:59Z",
-        fresh_seconds=60,
+        fresh_seconds=3600,
     )
     assert fresh["packet"]["native_probability_envelope"][
         "fresh_until_utc"
-    ] == "2026-07-01T12:01:00Z"
+    ] == "2026-07-01T13:00:00Z"
+    last_usable = (
+        datetime.fromisoformat("2026-07-01T13:00:00+00:00")
+        - timedelta(seconds=MIN_USABLE_FRESHNESS_SECONDS)
+    )
+    compile_native_ensemble_p0(
+        conn,
+        forward_packet=forward_packet,
+        decision_at_utc=last_usable.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        fresh_seconds=3600,
+    )
     with pytest.raises(
         ContractError,
         match="native_ensemble_snapshot_stale",
@@ -2446,18 +2484,23 @@ def test_open_meteo_fallback_p0_capture_freshness_is_bounded() -> None:
         compile_native_ensemble_p0(
             conn,
             forward_packet=forward_packet,
-            decision_at_utc="2026-07-01T12:01:00Z",
-            fresh_seconds=60,
+            decision_at_utc=(
+                last_usable + timedelta(seconds=1)
+            ).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            fresh_seconds=3600,
         )
 
 
 def test_p0_router_retries_governed_open_meteo_after_stale_native() -> None:
-    """Real compiler loop: stale official → OM; stale both → no P0.
+    """The republisher is not forward P0 authority: stale official -> no P0.
 
-    The official fixture needs only a valid immutable receipt because the
-    capture-age gate must fire before any later model-field decoding.  The OM
-    packet, on the other hand, exercises the real closed-AWC strict-OOS
-    activation and republisher lineage checks before it is accepted.
+    This test used to pin the opposite -- stale official, fresh Open-Meteo,
+    compile on the republisher.  The fallback was retired: republisher
+    cross-selection is historical no-live evidence, never a native forward
+    packet (``_compile_native_p0_with_republisher_fallback`` discards the
+    republisher argument and says so in its failure reason).  What the loop
+    still guarantees is that a stale official packet is attempted and
+    recorded, and that nothing else is compiled in its place.
     """
 
     conn = sqlite3.connect(":memory:")
@@ -2501,41 +2544,31 @@ def test_p0_router_retries_governed_open_meteo_after_stale_native() -> None:
             decision_at_utc="2026-07-01T18:00:00Z",
         )
     )
-
-    assert source_class == "aggregator_republisher"
-    assert compiled is not None
-    lineage = compiled["packet"]["native_probability_envelope"]["lineage"]
-    assert lineage["transport_lineage_class"] == "aggregator_republisher"
-    assert lineage["native_arrival_index_eligible"] == "false"
-    assert failures[0]["source_class"] == "official_native"
+    assert compiled is None
+    assert source_class == ""
+    assert [failure["source_class"] for failure in failures] == [
+        "official_native"
+    ]
     assert "native_ensemble_snapshot_stale" in failures[0]["reason"]
 
-    stale_republisher = _native_p0_forward_packet(
-        event_date=scope[1],
-        captured_at_utc="2026-07-01T12:00:00Z",
-    )
+    # No official packet at all, an Open-Meteo packet offered as preferred:
+    # refused by name, and nothing compiled.
     compiled, failures, source_class = (
         _compile_native_p0_with_republisher_fallback(
             conn,
             scope=scope,
-            preferred_packet=stale_official,
-            official_packet=stale_official,
-            republisher_packet=stale_republisher,
+            preferred_packet=fresh_republisher,
+            official_packet=None,
+            republisher_packet=fresh_republisher,
             decision_at_utc="2026-07-01T18:00:00Z",
         )
     )
-
     assert compiled is None
     assert source_class == ""
-    assert [failure["source_class"] for failure in failures] == [
-        "official_native",
-        "aggregator_republisher",
-    ]
-    assert all(
-        "native_ensemble_snapshot_stale" in failure["reason"]
-        for failure in failures
+    assert failures[0]["source_class"] == "aggregator_republisher"
+    assert failures[0]["reason"] == (
+        "republisher_no_live_selection_not_forward_p0_authority"
     )
-
 
 def test_open_meteo_fallback_p0_requires_strict_oos_proof() -> None:
     conn = sqlite3.connect(":memory:")
