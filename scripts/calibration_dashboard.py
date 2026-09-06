@@ -9148,8 +9148,24 @@ function roster(){
       >${SKEW_LAB[String(any.skew_sign)]}</span>`:"";
     const note=e.seated_stage_count?"":
       `<span class="muted">${(REASON[e.absent_reason]||["—",""])[0]}</span>`;
-    const taf=e.taf_tx_c==null?`<div class="muted">TAF 无温度组</div>`:
-      `<div class="muted">TAF 最高 <span class="mono" style="color:var(--up)">${
+    // "No TX" used to cover both an aerodrome that never publishes one and a
+    // station-day the rotation never polled.  The first is a fact about the
+    // airport and closes the question; the second is an outage and opens it.
+    // ZUUU sat unpolled from 2026-09-02 to 2026-09-06 -- AWC publishing TX35
+    // the whole time -- reading as though Chengdu simply did not issue one.
+    const TAF_ABSENCE={
+      station_issues_no_tx:["该站不发温度组",
+        "该机场的 TAF 从不带 TX 组（45 站里有 28 站如此），P0-M 结构上无法服务该站"],
+      never_captured:["TAF 未采到",
+        "该站会发 TX 组，但这个站日一条前向采集都没有——是采集缺口，不是报文属性"],
+      captured_without_tx:["TAF 无温度组",
+        "该站日采到了 TAF，但报文里没有覆盖当地峰值的 TX 组"],
+    };
+    const tafGap=TAF_ABSENCE[e.taf_state]||TAF_ABSENCE.captured_without_tx;
+    const taf=e.taf_tx_c==null
+      ?`<div class="muted ${e.taf_state==="never_captured"?"down":""}"
+         title="${h(tafGap[1])}">${h(tafGap[0])}</div>`
+      :`<div class="muted">TAF 最高 <span class="mono" style="color:var(--up)">${
         asUnit(e.taf_tx_c,e.settlement_unit||"C").toFixed(1)
       }°${h(e.settlement_unit||"C")}</span></div>`;
     // Recomputations and rung moves are different counts; conflating them

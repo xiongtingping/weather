@@ -16,6 +16,9 @@ from .fleet import expected_station_count
 SCHEMA = "bayes_basket_target_taf_rotation_state_v1"
 MAX_CATALOG_SCOPES = expected_station_count() * 3
 MAX_SELECTED_SCOPES = 4
+# The served ledger outlives the catalogue on purpose (see build_rotation_state),
+# so it is bounded on its own terms rather than by today's scope count.
+MAX_SERVED_LEDGER_SCOPES = MAX_CATALOG_SCOPES * 2
 MAX_BYTES = 1024 * 1024
 # The forward TAF physical summary uses this shared local window.  It is not a
 # temperature threshold; it merely prevents a post-peak bulletin from being
@@ -126,6 +129,47 @@ def _without_hash(value: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _served_sequence_by_scope_key(
+    previous: Mapping[str, Any] | None,
+) -> dict[str, int]:
+    """When each catalogued scope was last handed a poll slot.
+
+    The rotation used to be an integer index into the catalogue, resumed only
+    when the catalogue hashed the same as last round.  A fleet spanning
+    twenty-odd timezones rehashes its catalogue continuously -- every station
+    crossing local midnight moves between the ``not_started`` and ``open``
+    blocks, and every station passing its local peak hour drops out -- so the
+    index reset to zero roughly a hundred times a day and the rotation only
+    ever replayed the head of the list.
+
+    That is not a slow tail, it is an unreachable one.  On 2026-09-06 the
+    catalogue held ninety scopes and ``ZUUU|2026-09-06`` sat at index 89: last
+    of the alphabet, inside the lower-priority ``open`` block.  Reaching it
+    needed twenty-three uninterrupted rounds, which had not happened since the
+    cycle time doubled on 2026-08-26.  ZUUU's last forward TAF was captured
+    2026-09-02T02:47Z while AWC was publishing ``TX35/0608Z`` for the day, and
+    the whole TX-issuing cohort had fallen from 17/17 daily coverage to 5/17.
+
+    Least-recently-served is the same round robin with a resume rule that does
+    not depend on the catalogue holding still.  On a stable catalogue it is
+    indistinguishable from the old cursor; under churn no scope waits longer
+    than one lap, whatever moves around it.
+    """
+
+    raw = (previous or {}).get("served_sequence_by_scope_key")
+    if not isinstance(raw, Mapping):
+        return {}
+    served: dict[str, int] = {}
+    for key, value in raw.items():
+        try:
+            sequence = int(value)
+        except (TypeError, ValueError):
+            continue
+        if sequence > 0:
+            served[str(key)] = sequence
+    return served
+
+
 def load_rotation_state(path: Path) -> dict[str, Any] | None:
     candidate = path.expanduser()
     if candidate.is_symlink():
@@ -145,6 +189,15 @@ def load_rotation_state(path: Path) -> dict[str, Any] | None:
         or int(result.get("generation") or 0) < 1
         or not isinstance(result.get("catalog_scope_keys"), list)
         or len(result["catalog_scope_keys"]) > MAX_CATALOG_SCOPES
+        # Absent on state written before least-recently-served scheduling.
+        # An empty ledger reads as "nothing served yet", so the first round
+        # after the upgrade walks the catalogue in order and the rotation is
+        # converged one lap later -- no migration, no fail-closed window.
+        or not isinstance(
+            result.get("served_sequence_by_scope_key") or {}, Mapping
+        )
+        or len(result.get("served_sequence_by_scope_key") or {})
+        > MAX_SERVED_LEDGER_SCOPES
         or not isinstance(result.get("latest_selected_scope_keys"), list)
         or len(result["latest_selected_scope_keys"])
         > MAX_SELECTED_SCOPES
@@ -169,18 +222,20 @@ def select_scopes(
         return [], 0, catalog_sha
     if limit < 1 or limit > MAX_SELECTED_SCOPES:
         raise ContractError("taf_rotation_selection_limit_invalid")
-    cursor = (
-        int(previous.get("cursor") or 0)
-        if isinstance(previous, Mapping)
-        and previous.get("catalog_sha256") == catalog_sha
-        else 0
-    ) % len(keys)
+    served = _served_sequence_by_scope_key(previous)
     count = min(limit, len(keys))
-    selected = [
-        dict(catalog[(cursor + offset) % len(catalog)])
-        for offset in range(count)
-    ]
-    return selected, (cursor + count) % len(keys), catalog_sha
+    # Never-served scopes sort first (sequence 0), then the longest-waiting.
+    # Catalogue position only breaks ties, which is what keeps the declared
+    # priority -- ASOS stations, then days that have not started -- meaningful
+    # without letting it monopolise the poll.
+    order = sorted(
+        range(len(keys)),
+        key=lambda index: (served.get(keys[index], 0), index),
+    )[:count]
+    selected = [dict(catalog[index]) for index in order]
+    # Retained as telemetry only: where in the catalogue this round's last
+    # selection landed.  Nothing schedules off it any more.
+    return selected, (order[-1] + 1) % len(keys), catalog_sha
 
 
 def build_rotation_state(
@@ -206,14 +261,40 @@ def build_rotation_state(
     ]
     if {row["scope_key"] for row in outcome_rows} != set(selected_keys):
         raise ContractError("taf_rotation_outcome_scope_mismatch")
+    catalog_keys = [scope_key(scope) for scope in catalog]
+    # A slot spent is a slot spent: a scope that failed its fetch is stamped
+    # exactly like one that captured.  Stamping only successes would hand a
+    # permanently broken scope -- EGLC has answered
+    # ``awc_taf_history_row_missing`` on every attempt for days -- the front of
+    # the queue every round, which is the starvation this replaced.
+    served = dict(_served_sequence_by_scope_key(previous))
+    sequence = max([0, *served.values()])
+    for key in selected_keys:
+        sequence += 1
+        served[key] = sequence
+    # Bounded by age, not by catalogue membership.  Dropping the entries for
+    # scopes that are not in today's catalogue would reset a scope that left
+    # for one round -- a registry read that briefly came back short, say -- and
+    # an unstamped scope outranks every waiting one, so it would jump the queue
+    # each time it flickered.  Keeping the most recently served instead means
+    # only a scope genuinely absent for a full ledger's worth of slots is
+    # forgotten, and forgetting it then costs nothing: it was next anyway.
+    if len(served) > MAX_SERVED_LEDGER_SCOPES:
+        served = dict(
+            sorted(
+                served.items(),
+                key=lambda item: (-item[1], item[0]),
+            )[:MAX_SERVED_LEDGER_SCOPES]
+        )
     identity = {
         "schema": SCHEMA,
         "generation": int((previous or {}).get("generation") or 0) + 1,
         "updated_at_utc": str(updated_at_utc),
         "catalog_sha256": str(catalog_sha256),
-        "catalog_scope_keys": [scope_key(scope) for scope in catalog],
+        "catalog_scope_keys": catalog_keys,
         "catalog_scope_count": len(catalog),
         "cursor": int(next_cursor),
+        "served_sequence_by_scope_key": served,
         "latest_selected_scope_keys": selected_keys,
         "latest_outcomes": outcome_rows,
         "production_no_live": True,
@@ -238,6 +319,7 @@ def persist_rotation_state(path: Path, value: Mapping[str, Any]) -> bool:
 
 __all__ = [
     "MAX_SELECTED_SCOPES",
+    "MAX_SERVED_LEDGER_SCOPES",
     "TAF_PHYSICAL_PEAK_WINDOW_START_HOUR_LOCAL",
     "TAF_PHYSICAL_PEAK_WINDOW_END_HOUR_LOCAL",
     "SCHEMA",

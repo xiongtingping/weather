@@ -1571,6 +1571,31 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         (STATS_START_EVENT_DATE,),
     ):
         taf_tx[(str(station), str(day))] = float(value)
+    # A missing TX has two causes the page must not merge.  Twenty-eight of the
+    # forty-five aerodromes never publish a TX group at all, which is a
+    # property of the station and nothing to chase.  The other seventeen do,
+    # and a blank there means the rotation never asked -- ZUUU went from
+    # 2026-09-02 to 2026-09-06 with no forward capture while AWC was publishing
+    # TX35 for it.  Reported as one sentence, the second was invisible for four
+    # days behind the wording of the first.
+    taf_tx_stations = _taf_temperature_stations(conn)
+    taf_polled: set[tuple[str, str]] = {
+        (str(station), str(day))
+        for station, day in conn.execute(
+            "SELECT DISTINCT station_id, event_date"
+            " FROM calibration_forward_taf_capture WHERE event_date >= ?",
+            (STATS_START_EVENT_DATE,),
+        )
+    }
+
+    def _taf_state(station: str, day: str) -> str:
+        if (station, day) in taf_tx:
+            return "tx"
+        if taf_tx_stations and station not in taf_tx_stations:
+            return "station_issues_no_tx"
+        if (station, day) not in taf_polled:
+            return "never_captured"
+        return "captured_without_tx"
     # Why the ledger did not seat, in its own words rather than the page's
     # guess.  Absence used to be read off two existence checks, so every scope
     # with a probability and a book was reported as "the objective looked and
@@ -1736,6 +1761,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
             "event_date": day,
             "market_slug": market_slug.get((station, day)) or "",
             "taf_tx_c": taf_tx.get((station, day)),
+            "taf_state": _taf_state(station, day),
             "p1_history": p1_history.get((station, day), []),
             "stages": {},
         }
