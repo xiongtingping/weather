@@ -22,15 +22,26 @@ from .contracts import ContractError, content_sha256
 
 EPS = 1e-9
 # How far the lot raise may exceed the leg's authorized cash.  Charter 70/83
-# left this open on purpose and their own worked case is a sub-share leg
+# left this unbounded, and the bound is set ABOVE every case either of them
+# has ruled or that has been observed, on purpose: it is a guardrail against
+# the shape nobody has ruled on, not a narrowing of the clause.
+#
+# What it must not refuse: charter 70's own worked case is a sub-share leg
 # lifted to a whole lot -- 0.862 shares at 0.19 reaching a five-share lot is
-# 5.8x, so any cap tight enough to be interesting refuses the case the clause
-# was written for.  Default off (unbounded, exactly the ruled behaviour); the
-# knob exists so an arm can price a bound before one is ruled.  Measured
-# 2026-09-06 on the 09-08 book: ZUCK 36C 2.02x, VILK 29C 4.86x, VILK 30C
-# 1.02x, KATL 84-85F 1.40x.
+# 5.800x.  Any cap under that refuses the case the clause exists for.
+# Measured 2026-09-06 on the 09-08 book, the four legs that needed a raise
+# were 1.02x (VILK 30C), 1.40x (KATL 84-85F), 2.02x (ZUCK 36C) and 4.86x
+# (VILK 29C, a three-cent rung).
+#
+# What it does refuse: the raise scales as 1/price, so a one-cent rung needs
+# a hundred shares to reach the venue dollar and would hold ten to fifty
+# times the target the objective solved for -- at which point the basket
+# being bought is no longer the basket that was scored.  8.0 sits clear of
+# the ruled 5.800x and of everything measured, so it binds nothing today and
+# stops that.  ``lot_raise_multiple`` is recorded on every sized leg so the
+# distribution can tighten this with evidence instead of judgement.
 LOT_RAISE_MAX_MULTIPLE = float(
-    os.environ.get("PM_LOT_RAISE_MAX_MULTIPLE", "inf")
+    os.environ.get("PM_LOT_RAISE_MAX_MULTIPLE", "8.0")
 )
 PHASES = ("HEAVY", "STANDARD", "TAIL")
 PHASE_RANK = {name: index for index, name in enumerate(PHASES)}
