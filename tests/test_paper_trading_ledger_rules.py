@@ -1445,9 +1445,10 @@ def test_the_consolidation_tilt_scales_stakes_and_never_selects() -> None:
     # It reshapes the book, so it must reshape the fingerprint.
     assert "固化≥1减仓0.05" in SELECTION_RULE_LABEL
     assert "灯stable+sharp" in SELECTION_RULE_LABEL
-    # The tilted stake floors at one minimum clip per leg, or the cut
-    # becomes a gate the venue enforces (commit e4dac184).
-    assert "钳最低单" in SELECTION_RULE_LABEL
+    # The tilted stake floors at the venue's minimum order per leg (one
+    # exchange lot, at least a dollar), or the cut becomes a gate the venue
+    # enforces -- as it had, at three clips, until 2026-09-06.
+    assert "钳交易所最小单×3腿" in SELECTION_RULE_LABEL
 
     source = (root / "scripts" / "paper_trading_ledger.py").read_text(
         encoding="utf-8"

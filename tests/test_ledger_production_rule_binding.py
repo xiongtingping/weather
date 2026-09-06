@@ -783,6 +783,11 @@ def test_the_production_judge_arm_calls_productions_own_solver() -> None:
     assert L.derive_policy_maturity_bin is IO.derive_policy_maturity_bin
     assert L._PRODUCTION_DEFAULT_POLICY is R._DEFAULT_POLICY
     assert L.CONSOLIDATION_TILT_FLOOR_LEGS == P.CONSOLIDATION_TILT_FLOOR_LEGS
+    # The tilt floor is the kernel's venue-minimum rule on both sides
+    # (2026-09-06), and its version rides in the ledger's label.
+    assert L.consolidation_tilt_floor_usdc is K.consolidation_tilt_floor_usdc
+    assert L.venue_minimum_shares_v1 is K.venue_minimum_shares_v1
+    assert L.CONSOLIDATION_TILT_FLOOR_VERSION == K.CONSOLIDATION_TILT_FLOOR_VERSION
     # The judge is the book's identity: hashed unconditionally.
     source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
         encoding="utf-8"

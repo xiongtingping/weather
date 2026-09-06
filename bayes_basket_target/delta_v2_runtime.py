@@ -25,6 +25,9 @@ from .basket_kernel.contracts import (
 )
 from .basket_kernel import delta_v2 as _kernel_delta_v2
 from .basket_kernel.delta_v2 import (
+    CONSOLIDATION_TILT_FLOOR_VERSION,
+    consolidation_tilt_floor_usdc,
+    venue_minimum_shares_v1,
     CENTER_WINDOW_CLAIM_BANDS,
     SIZING_CLAIM_BANDS,
     sizing_claim_factor,
@@ -146,6 +149,49 @@ P0_SIZING_MODE = (
 )
 if P0_SIZING_MODE not in {"kelly", "ticket_only"}:
     raise RuntimeError(f"unknown P0 sizing mode: {P0_SIZING_MODE}")
+# Research arm (2026-09-06, user: "edge 折扣后 edge 越大份额越多，先量"): how
+# the charter-72 Kelly stake is split across the seat's legs.  ``equal`` is
+# the shipped rule -- one share count for every rung, so the seat pays the
+# same whichever rung settles.  ``centre_tilt`` is the 2026-08-17 shape
+# (``_centre_anchored_candidates``: distance decay from the centre, leaned
+# by positive edge, far rungs floored) that charter 72 left generated but
+# never winning.  ``edge_weighted`` sizes each rung's share count by its
+# own positive deflated edge -- the charter-68 claim less the lane's offer
+# -- over the seat's best edge, floored at ``KELLY_EDGE_MIN_RUNG_SHARE`` so
+# the basket stays complete; a seat with no positive edge on any rung
+# splits equally.  The stake is the same number under every shape, only
+# the split changes, so an arm measures the shape and nothing else.  The
+# paper ledger imports the switch and hashes it into its rule fingerprint
+# away from ``equal``.
+KELLY_SHARE_SHAPES = ("equal", "centre_tilt", "edge_weighted")
+KELLY_SHARE_SHAPE = (
+    os.environ.get("PM_KELLY_SHARE_SHAPE", "").strip().lower() or "equal"
+)
+if KELLY_SHARE_SHAPE not in KELLY_SHARE_SHAPES:
+    raise RuntimeError(f"unknown Kelly share shape: {KELLY_SHARE_SHAPE}")
+KELLY_EDGE_MIN_RUNG_SHARE = float(
+    os.environ.get("PM_KELLY_EDGE_MIN_RUNG_SHARE", "").strip() or 0.15
+)
+if not (0.0 < KELLY_EDGE_MIN_RUNG_SHARE <= 1.0):
+    raise RuntimeError(
+        f"Kelly edge floor out of range: {KELLY_EDGE_MIN_RUNG_SHARE}"
+    )
+# Companion research switch: what a *shaped* top-up does with a rung the
+# chain already holds above its shaped target.  ``atomic`` is charter 72 as
+# shipped -- any rung at or above target and the whole basket stands pat.
+# ``short_legs`` buys only the rungs below their target and leaves the held
+# ones alone, which the candidate contract admits since charter 84 (a
+# complete basket adds to at least one rung and leaves nothing unheld).
+# Measured 2026-09-06 because the atomic rule refuses roughly half the P1
+# top-ups under any tilt: the ticket bought equal shares, so a tilt that
+# wants fewer on a wing than the ticket already holds stands the whole
+# basket down.  Unread under ``equal``.
+KELLY_SHAPE_TOPUP_MODES = ("atomic", "short_legs")
+KELLY_SHAPE_TOPUP = (
+    os.environ.get("PM_KELLY_SHAPE_TOPUP", "").strip().lower() or "atomic"
+)
+if KELLY_SHAPE_TOPUP not in KELLY_SHAPE_TOPUP_MODES:
+    raise RuntimeError(f"unknown Kelly shape top-up mode: {KELLY_SHAPE_TOPUP}")
 OPENING_WIDTH_FALLBACK_ENABLED = (
     os.environ.get("DELTA_V2_OPENING_WIDTH_FALLBACK", "").strip().lower()
     in {"1", "true", "yes", "on"}
@@ -279,9 +325,13 @@ CONSOLIDATION_TILT_SIGNALS = tuple(
 CONSOLIDATION_TILT_MIN_SIGNALS = int(
     os.environ.get("PM_CONSOLIDATION_TILT_MIN_SIGNALS", "1") or 1
 )
-# The floor is sized for the three-rung target opening width (clause 50 /
-# charter 59): a tilted decision can always still afford one minimum clip
-# on each of three legs, so the tilt reduces and never quietly refuses.
+# The floor covers the three-rung target opening width (clause 50 / charter
+# 59): a tilted decision can always still afford the venue's minimum order on
+# each of three legs, so the tilt reduces and never quietly refuses.  What
+# "minimum" means is the kernel's (``consolidation_tilt_floor_usdc``): one
+# exchange lot and at least a dollar per leg (charters 70/83), not the one
+# minimum clip it was until 2026-09-06 -- 0.75 USDC against legs that cost
+# 1.05 held every tilted chain at P0-M and P1 by arithmetic.
 CONSOLIDATION_TILT_FLOOR_LEGS = 3
 
 
@@ -3200,6 +3250,11 @@ def _target_candidates(
                 ),
                 book_equity_usdc=float(book_equity_usdc),
                 quote_version=str(snapshot.quote_version),
+                # The share-shape arm's inputs; unread under ``equal``.
+                centre_bucket=str(centre_bucket or ""),
+                ordinals={
+                    bucket: int(by_bucket[bucket].ordinal) for bucket in ordered
+                },
             )
         if kelly_candidate is not None:
             candidates.append(kelly_candidate)
@@ -3327,6 +3382,9 @@ def _whole_basket_kelly_candidate(
     probabilities_by_bucket: Mapping[str, float],
     book_equity_usdc: float,
     quote_version: str,
+    centre_bucket: str = "",
+    ordinals: Mapping[str, int] | None = None,
+    share_shape: str = KELLY_SHARE_SHAPE,
 ) -> dict[str, Any] | None:
     """Charter 72's candidate: the seat sized as the ledger sizes it.
 
@@ -3354,7 +3412,25 @@ def _whole_basket_kelly_candidate(
     stake = min(float(stake), float(capital_available_usdc))
     if stake <= EPS:
         return None
-    want = stake / cost_per_share
+    # The split (research arm; ``equal`` is charter 72 as shipped and
+    # reproduces the pre-arm arithmetic exactly: every weight is 1.0, the
+    # unit cost is the per-share cost, and multiplying by 1.0 is exact).
+    weights = _kelly_share_weights(
+        ordered=ordered,
+        lane_prices=lane_prices,
+        probabilities_by_bucket=probabilities_by_bucket,
+        centre_bucket=centre_bucket,
+        ordinals=ordinals or {},
+        shape=share_shape,
+    )
+    unit_cost = sum(
+        weights[bucket] * float(lane_prices.get(bucket, 0.0))
+        for bucket in ordered
+    )
+    if unit_cost <= EPS:
+        return None
+    want = stake / unit_cost
+    want_by_bucket = {bucket: want * weights[bucket] for bucket in ordered}
     shares = {
         bucket: float(current_shares[bucket]) + float(pending_shares[bucket])
         for bucket in current_shares
@@ -3363,9 +3439,19 @@ def _whole_basket_kelly_candidate(
         bucket: float(current_cost[bucket]) + float(pending_cost[bucket])
         for bucket in current_cost
     }
+    shaped = share_shape != "equal"
+    added_legs = 0
     for bucket in ordered:
-        increment = want - shares[bucket]
+        increment = want_by_bucket[bucket] - shares[bucket]
         if increment <= EPS:
+            if (
+                shaped
+                and KELLY_SHAPE_TOPUP == "short_legs"
+                and shares[bucket] > EPS
+            ):
+                # Research arm: a held rung above its shaped target is
+                # left as it is; the short rungs are still bought.
+                continue
             return None
         leg_cash = increment * float(lane_prices[bucket])
         got, spent = _ask_depth_purchase(
@@ -3375,11 +3461,23 @@ def _whole_basket_kelly_candidate(
             return None
         shares[bucket] += got
         costs[bucket] += spent
+        added_legs += 1
+    if added_legs == 0:
+        return None
     return {
         "candidate_id": "kelly-" + content_sha256({
             "ordered_support": tuple(ordered),
             "stake_usdc": round(stake, 6),
             "quote_version": quote_version,
+            **(
+                {
+                    "share_shape": share_shape,
+                    "share_weights": [
+                        round(weights[bucket], 6) for bucket in ordered
+                    ],
+                }
+                if shaped else {}
+            ),
         })[:24],
         "shares_by_bucket": shares,
         "cost_by_bucket": costs,
@@ -3393,8 +3491,79 @@ def _whole_basket_kelly_candidate(
             "stake_usdc": stake,
             "book_equity_usdc": float(book_equity_usdc),
             "shares_per_leg": want,
+            **(
+                {
+                    "share_shape": share_shape,
+                    "share_weights": {
+                        bucket: weights[bucket] for bucket in ordered
+                    },
+                    "shares_by_leg": want_by_bucket,
+                }
+                if shaped else {}
+            ),
         },
     }
+
+
+def _kelly_share_weights(
+    *,
+    ordered: Sequence[str],
+    lane_prices: Mapping[str, float],
+    probabilities_by_bucket: Mapping[str, float],
+    centre_bucket: str,
+    ordinals: Mapping[str, int],
+    shape: str = KELLY_SHARE_SHAPE,
+) -> dict[str, float]:
+    """Relative share count per rung under the Kelly share-shape arm.
+
+    ``equal``: 1.0 on every rung.  ``edge_weighted``: each rung's positive
+    deflated edge (the belief handed in, less the lane's offer) over the
+    seat's best, floored at ``KELLY_EDGE_MIN_RUNG_SHARE``; no positive edge
+    anywhere splits equally.  ``centre_tilt``: the 2026-08-17 shape --
+    ``CENTRE_ANCHOR_DISTANCE_DECAY`` to the power of the rung's distance
+    from the centre, times one plus ``CENTRE_ANCHOR_EDGE_TILT`` scaled by
+    the same edge ratio, floored at ``CENTRE_ANCHOR_MIN_RUNG_SHARE``, the
+    centre never below 1; without a seated centre it splits equally.  The
+    weights are relative: the candidate scales them so the seat costs the
+    Kelly stake.
+    """
+
+    if shape not in KELLY_SHARE_SHAPES:
+        raise ContractError("delta_v2_kelly_share_shape_invalid")
+    equal = {bucket: 1.0 for bucket in ordered}
+    if shape == "equal":
+        return equal
+    edges = {
+        bucket: (
+            float(probabilities_by_bucket.get(bucket, 0.0) or 0.0)
+            - float(lane_prices.get(bucket, 0.0) or 0.0)
+        )
+        for bucket in ordered
+    }
+    best = max((max(edge, 0.0) for edge in edges.values()), default=0.0)
+    if shape == "edge_weighted":
+        if best <= EPS:
+            return equal
+        return {
+            bucket: max(
+                KELLY_EDGE_MIN_RUNG_SHARE, max(edges[bucket], 0.0) / best
+            )
+            for bucket in ordered
+        }
+    if centre_bucket not in ordered or centre_bucket not in ordinals:
+        return equal
+    if any(bucket not in ordinals for bucket in ordered):
+        return equal
+    centre = int(ordinals[centre_bucket])
+    weights: dict[str, float] = {}
+    for bucket in ordered:
+        decay = CENTRE_ANCHOR_DISTANCE_DECAY ** abs(int(ordinals[bucket]) - centre)
+        lean = 1.0 + CENTRE_ANCHOR_EDGE_TILT * (
+            max(edges[bucket], 0.0) / best if best > EPS else 0.0
+        )
+        weights[bucket] = max(decay * lean, CENTRE_ANCHOR_MIN_RUNG_SHARE)
+    weights[centre_bucket] = max(weights[centre_bucket], 1.0)
+    return weights
 
 
 def _chain_ticket_candidate(
@@ -4266,10 +4435,28 @@ def compile_delta_v2_runtime_plan(
         consolidation_tilt = 1.0
         consolidation_tilt_basis = "no_opener_record"
     capital_before_tilt_usdc = float(capital_available_usdc)
+    tilt_floor_usdc: float | None = None
     if consolidation_tilt < 1.0 and capital_before_tilt_usdc > 0.0:
-        tilt_floor_usdc = (
-            min(delta_policy.cash_clip_grid) * CONSOLIDATION_TILT_FLOOR_LEGS
-            if delta_policy.cash_clip_grid else 0.0
+        # The venue's smallest order on each candidate leg, priced at its
+        # ask; a leg without an ask is not a leg the seat can buy.
+        tilt_floor_usdc = consolidation_tilt_floor_usdc(
+            minimum_clip_usdc=(
+                min(delta_policy.cash_clip_grid)
+                if delta_policy.cash_clip_grid else 0.0
+            ),
+            legs=CONSOLIDATION_TILT_FLOOR_LEGS,
+            leg_minimum_costs_usdc=[
+                venue_minimum_shares_v1(
+                    min_lot_shares=by_bucket[bucket].min_order_size,
+                    ask=by_bucket[bucket].ask_price,
+                    minimum_notional_usdc=(
+                        EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC
+                        if CHARTER_83_MIN_NOTIONAL == "on" else 0.0
+                    ),
+                ) * float(by_bucket[bucket].ask_price)
+                for bucket in desired
+                if by_bucket[bucket].ask_available
+            ],
         )
         capital_available_usdc = min(
             capital_before_tilt_usdc,
@@ -5010,6 +5197,8 @@ def compile_delta_v2_runtime_plan(
             "capital_before_usdc": capital_before_tilt_usdc,
             "capital_after_usdc": float(capital_available_usdc),
             "completion_exempt": bool(completion_tilt_exempt),
+            "floor_usdc": tilt_floor_usdc,
+            "floor_rule": CONSOLIDATION_TILT_FLOOR_VERSION,
         },
         "selected_actions": selected_evaluations,
         "selected_bundle_sha256": selection.get("selected_bundle_sha256"),

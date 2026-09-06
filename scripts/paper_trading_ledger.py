@@ -109,6 +109,9 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     SKEW_SIGNAL_DEFINITION,
     SUPPORT_EDGE_MARGIN,
     P0_SIZING_MODE,
+    KELLY_SHARE_SHAPE,
+    KELLY_EDGE_MIN_RUNG_SHARE,
+    KELLY_SHAPE_TOPUP,
     SYMMETRIC_SEAT_MODE,
     SKEW_SEAT_MODE,
     P0M_TAF_MODE,
@@ -155,6 +158,9 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     taf_tx_bucket_for as _taf_tx_bucket,
 )
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
+    CONSOLIDATION_TILT_FLOOR_VERSION,
+    consolidation_tilt_floor_usdc,
+    venue_minimum_shares_v1,
     DEFAULT_KELLY_FRACTION,
     DEFAULT_P1_ENTRY_LOCAL_HOUR,
     EXCHANGE_LOT_TOP_UP as _KERNEL_EXCHANGE_LOT_TOP_UP,
@@ -1746,7 +1752,7 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
         ""
         if CONSOLIDATION_TILT_SIGNALS == ("stable", "sharp", "quoted")
         else "·灯" + "+".join(CONSOLIDATION_TILT_SIGNALS)
-    ) + "·钳最低单" + (
+    ) + "·钳交易所最小单×%d腿" % CONSOLIDATION_TILT_FLOOR_LEGS + (
         "" if CONSOLIDATION_TILT_SCOPE == "opener" else "·逐段灯"
     ),
     None
@@ -1804,6 +1810,10 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     "含中心窗抬价" if CENTER_WINDOW_CLAIM_BANDS else None,
     "双向收敛抬价" if CONVERGENCE_CLAIM_MODE == "on" else None,
     "定注另读校准曲线" if SIZING_CLAIM_BANDS else None,
+    (
+        "Kelly份额·%s" % KELLY_SHARE_SHAPE
+        if KELLY_SHARE_SHAPE != "equal" else None
+    ),
     "生产种子" if JUDGE != "ledger" else None,
     "一本账·只加不减",
 )))
@@ -1856,6 +1866,17 @@ SELECTION_RULE_SHA256 = content_sha256({
     # Research arms of 2026-09-04 (P0 sizing / P0 lambda table), hashed only
     # away from their defaults.
     **({"p0_sizing_mode": P0_SIZING_MODE} if P0_SIZING_MODE != "kelly" else {}),
+    # Research arm of 2026-09-06: how the Kelly stake is split across the
+    # seat's rungs.  Production's switch, read from production; hashed only
+    # away from ``equal`` so the standing book keeps its digest.
+    **(
+        {
+            "kelly_share_shape": KELLY_SHARE_SHAPE,
+            "kelly_edge_min_rung_share": KELLY_EDGE_MIN_RUNG_SHARE,
+            "kelly_shape_topup": KELLY_SHAPE_TOPUP,
+        }
+        if KELLY_SHARE_SHAPE != "equal" else {}
+    ),
     # The share grid an order is written on (user ruling, 2026-09-06),
     # hashed unconditionally like charter 79's seat: it is not a research
     # arm sitting on the standing behaviour, it changes what every seat
@@ -4040,9 +4061,26 @@ def _production_judge(
         float(equity) * MAX_STAKE_FRACTION_PER_SCOPE
     )
     if 0.0 < tilt < 1.0 and capital > 0.0:
-        tilt_floor = (
-            min(delta_policy.cash_clip_grid) * CONSOLIDATION_TILT_FLOOR_LEGS
-            if delta_policy.cash_clip_grid else 0.0
+        # The kernel's floor (2026-09-06): the venue's minimum order on each
+        # of three candidate legs, as production reads it.
+        tilt_floor = consolidation_tilt_floor_usdc(
+            minimum_clip_usdc=(
+                min(delta_policy.cash_clip_grid)
+                if delta_policy.cash_clip_grid else 0.0
+            ),
+            legs=CONSOLIDATION_TILT_FLOOR_LEGS,
+            leg_minimum_costs_usdc=[
+                venue_minimum_shares_v1(
+                    min_lot_shares=row.min_order_size,
+                    ask=row.ask_price,
+                    minimum_notional_usdc=(
+                        EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC
+                        if CHARTER_83_MIN_NOTIONAL == "on" else 0.0
+                    ),
+                ) * float(row.ask_price)
+                for row in snapshot.buckets
+                if row.bucket in desired and row.ask_available
+            ],
         )
         capital = min(capital, max(capital * float(tilt), tilt_floor))
     bankroll = float(basket_policy.total_budget_usdc)

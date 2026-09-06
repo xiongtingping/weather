@@ -706,6 +706,56 @@ def venue_minimum_shares_v1(
     return max(lot, by_notional)
 
 
+# The consolidation tilt's floor (operator ruling 2026-09-06: "改").  The
+# tilt cuts a lit chain's capital to a twentieth, and the floor is what keeps
+# the cut from becoming a refusal.  It was three minimum clips (0.75 USDC),
+# sized before charter 70 made a leg at least one exchange lot and charter
+# 83 made it at least a dollar: on 2026-09-06 a tilted ZGSZ chain reached its
+# P1 window with 0.75 USDC against legs that cost 1.05 each, so every later
+# stage on a tilted chain -- 42 of 90 chains that week -- held by
+# arithmetic.  The floor is now the venue's minimum on each of the legs the
+# seat may take: the largest ``legs`` per-leg minimums among the candidate
+# support, each at least one minimum clip.  One implementation, read by
+# production and by the paper ledger.
+CONSOLIDATION_TILT_FLOOR_VERSION = "venue_minimum_per_leg_v1"
+
+
+def consolidation_tilt_floor_usdc(
+    *,
+    minimum_clip_usdc: Any,
+    legs: int,
+    leg_minimum_costs_usdc: Sequence[Any],
+) -> float:
+    """The least a tilted decision may keep: ``legs`` venue minimums.
+
+    ``leg_minimum_costs_usdc`` is, per candidate bucket, what the smallest
+    order the venue will take there costs (``venue_minimum_shares_v1`` times
+    the ask).  Each is raised to at least ``minimum_clip_usdc``; the largest
+    ``legs`` of them are summed, and when fewer buckets are priced the
+    largest is repeated, so the floor covers the widest seat the enumerator
+    may choose rather than the cheapest.  No priced bucket at all falls back
+    to ``legs`` minimum clips, which is the floor it replaced.
+    """
+
+    clip = _nonnegative("consolidation_tilt_minimum_clip", minimum_clip_usdc)
+    count = int(legs)
+    if count <= 0:
+        return 0.0
+    costs = sorted(
+        (
+            max(clip, _nonnegative("consolidation_tilt_leg_cost", value))
+            for value in leg_minimum_costs_usdc
+        ),
+        reverse=True,
+    )
+    if not costs:
+        return clip * count
+    top = costs[:count]
+    while len(top) < count:
+        top.append(costs[0])
+    return float(sum(top))
+
+
 def raise_sub_lot_targets_v2(
     *,
     target_shares_by_bucket: Mapping[str, Any],

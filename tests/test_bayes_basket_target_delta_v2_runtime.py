@@ -1722,10 +1722,29 @@ def test_consolidation_tilt_scales_capital_floored_and_recorded() -> None:
     assert audit["factor"] == runtime.CONSOLIDATION_TILT_FACTOR
     assert "sharp" in audit["signals_lit"]
     assert audit["capital_before_usdc"] == 5.0
-    floor = (
-        min(_delta_policy().cash_clip_grid)
-        * runtime.CONSOLIDATION_TILT_FLOOR_LEGS
+    # The floor is the venue's minimum order on each of three candidate
+    # legs (2026-09-06): both fixture rungs ask 0.20 with no stated lot, so
+    # the dollar minimum makes each five shares for 1.00, and the third leg
+    # repeats the largest.
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        consolidation_tilt_floor_usdc,
+        venue_minimum_shares_v1,
     )
+
+    snapshot = _snapshot()
+    floor = consolidation_tilt_floor_usdc(
+        minimum_clip_usdc=min(_delta_policy().cash_clip_grid),
+        legs=runtime.CONSOLIDATION_TILT_FLOOR_LEGS,
+        leg_minimum_costs_usdc=[
+            venue_minimum_shares_v1(
+                min_lot_shares=row.min_order_size, ask=row.ask_price
+            ) * row.ask_price
+            for row in snapshot.buckets
+        ],
+    )
+    assert floor == 3.0
+    assert audit["floor_usdc"] == floor
+    assert audit["floor_rule"] == "venue_minimum_per_leg_v1"
     assert audit["capital_after_usdc"] == max(
         5.0 * runtime.CONSOLIDATION_TILT_FACTOR, floor
     )
@@ -1979,3 +1998,46 @@ def _symmetric_seat_rule_off(monkeypatch):
     """
 
     monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_MODE", "off")
+
+
+def test_the_tilt_floor_is_three_venue_minimums_not_three_clips() -> None:
+    """Operator ruling 2026-09-06: the floor keeps one exchange-minimum order
+    per leg affordable, so a tilted chain can still add at P0-M and P1.
+
+    ZGSZ 2026-09-06 reached its P1 window tilted to 0.75 USDC (three 0.25
+    clips) against legs that cost 1.05 each -- a cut that had become a
+    refusal.  The floor sums the largest ``legs`` per-leg venue minimums,
+    each at least a clip, repeats the largest when fewer legs are priced,
+    and falls back to ``legs`` clips when nothing is priced.
+    """
+
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        consolidation_tilt_floor_usdc,
+    )
+
+    # Three legs at 1.05 / 2.15 / 1.00: the sum of the three.
+    assert consolidation_tilt_floor_usdc(
+        minimum_clip_usdc=0.25, legs=3, leg_minimum_costs_usdc=[1.05, 2.15, 1.0]
+    ) == pytest.approx(4.20)
+    # Four candidate legs: the three dearest.
+    assert consolidation_tilt_floor_usdc(
+        minimum_clip_usdc=0.25, legs=3,
+        leg_minimum_costs_usdc=[1.05, 2.15, 1.0, 0.5],
+    ) == pytest.approx(4.20)
+    # A leg under a clip is raised to the clip.
+    assert consolidation_tilt_floor_usdc(
+        minimum_clip_usdc=0.25, legs=3, leg_minimum_costs_usdc=[0.1, 0.1, 0.1]
+    ) == pytest.approx(0.75)
+    # Fewer priced legs than the floor spans: the largest repeats
+    # (2.0 + 1.0, then 2.0 again for the third leg).
+    assert consolidation_tilt_floor_usdc(
+        minimum_clip_usdc=0.25, legs=3, leg_minimum_costs_usdc=[1.0, 2.0]
+    ) == pytest.approx(5.0)
+    # Nothing priced: the floor it replaced.
+    assert consolidation_tilt_floor_usdc(
+        minimum_clip_usdc=0.25, legs=3, leg_minimum_costs_usdc=[]
+    ) == pytest.approx(0.75)
+    assert consolidation_tilt_floor_usdc(
+        minimum_clip_usdc=0.25, legs=0, leg_minimum_costs_usdc=[1.0]
+    ) == 0.0
+
