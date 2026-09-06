@@ -55,6 +55,9 @@ from .basket_kernel.delta_v2 import (
     effective_edge_lambda,
     effective_edge_lambda_for_stage,
     effective_edge_lambda_from_tables,
+    effective_edge_lambda_resolved,
+    CLAIM_EDGE_THERMOMETER_MODE,
+    CLAIM_EDGE_THIN_BAND_MAX,
     effective_edge_bucket_lambda_for_stage,
     off_center_claim_factor,
     probability_core,
@@ -2066,6 +2069,7 @@ def _support_windows(
             # gate alone.  ``win_probability`` stays the lifted claim.
             gate_lambda = None
             gate_agreement = None
+            gate_lambda_source = None
             if (
                 CHARTER_87_GATE_EFFECTIVE_EDGE == "on"
                 and EFFECTIVE_EDGE_MODE == "on"
@@ -2075,11 +2079,18 @@ def _support_windows(
                 and win > EPS
             ):
                 gate_agreement = price / win
-                gate_lambda = float(effective_edge_lambda_from_tables(
-                    str(probability_stage or ""),
-                    gate_agreement,
-                    effective_edge_tables,
-                ))
+                # Charter 97: two axes, one lambda.  The thin claim-edge band
+                # serves its own measurement; everywhere else this is charter
+                # 68's agreement lookup unchanged.
+                gate_lambda, gate_lambda_source = (
+                    effective_edge_lambda_resolved(
+                        str(probability_stage or ""),
+                        claim=win,
+                        price=price,
+                        tables=effective_edge_tables,
+                    )
+                )
+                gate_lambda = float(gate_lambda)
             # Multiply, then clamp -- the order the solver's partition uses
             # (``deflate_window_partition_v1`` clamps the corrected mass),
             # so a lifted claim the clamp had capped at one reads the same
@@ -2364,6 +2375,7 @@ def _support_windows(
                             "effective_win_probability": float(effective_win),
                             "effective_edge_lambda": gate_lambda,
                             "effective_edge_agreement": gate_agreement,
+                            "effective_edge_lambda_source": gate_lambda_source,
                             "all_in_cost": float(price),
                             "friction": float(friction),
                         }
@@ -2397,6 +2409,7 @@ def _support_windows(
                 "effective_win_probability": effective_win,
                 "effective_edge_lambda": gate_lambda,
                 "effective_edge_agreement": gate_agreement,
+                "effective_edge_lambda_source": gate_lambda_source,
                 "raw_win_probability": raw_win,
                 "off_center_claim_factor": claim_factor,
                 # Charter 81's own component of the line above, kept apart so
@@ -2450,6 +2463,7 @@ def _support_windows(
         # lambda its own agreement earns.
         incumbent_lambda = None
         incumbent_agreement = None
+        incumbent_lambda_source = None
         if (
             CHARTER_87_GATE_EFFECTIVE_EDGE == "on"
             and EFFECTIVE_EDGE_MODE == "on"
@@ -2459,11 +2473,16 @@ def _support_windows(
             and win > EPS
         ):
             incumbent_agreement = price / win
-            incumbent_lambda = float(effective_edge_lambda_from_tables(
-                str(probability_stage or ""),
-                incumbent_agreement,
-                effective_edge_tables,
-            ))
+            # Charter 97: the incumbent reads the same two axes as the loop.
+            incumbent_lambda, incumbent_lambda_source = (
+                effective_edge_lambda_resolved(
+                    str(probability_stage or ""),
+                    claim=win,
+                    price=price,
+                    tables=effective_edge_tables,
+                )
+            )
+            incumbent_lambda = float(incumbent_lambda)
         incumbent_effective_win = (
             min(1.0 - EPS, win * incumbent_lambda)
             if incumbent_lambda is not None else win
@@ -2510,6 +2529,7 @@ def _support_windows(
             "effective_win_probability": incumbent_effective_win,
             "effective_edge_lambda": incumbent_lambda,
             "effective_edge_agreement": incumbent_agreement,
+            "effective_edge_lambda_source": incumbent_lambda_source,
             # Arm B: an inherited support is never lifted; keys kept so every
             # row reads alike.
             "convergence_claim_factor": 1.0,
@@ -2766,6 +2786,11 @@ def _support_windows(
         # counts the windows that cleared the pre-lambda price test and
         # fell to lambda -- the seats the ruling removes.
         "gate_reads_effective_edge": CHARTER_87_GATE_EFFECTIVE_EDGE,
+        # Charter 97: which axis served lambda, and how wide the thin band
+        # is.  The per-window source is on each row; this is the audit's
+        # header so a plan says whether the second axis was live at all.
+        "claim_edge_thermometer": CLAIM_EDGE_THERMOMETER_MODE,
+        "claim_edge_thin_band_max": CLAIM_EDGE_THIN_BAND_MAX,
         "effective_edge_gate_refused_window_count": lambda_refused,
         "unpriced_refused_window_count": unpriced_refused,
         # The friction the edge gate measured against is not repeated here:

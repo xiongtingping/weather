@@ -780,6 +780,39 @@ def test_charter_68_scope_and_the_taker_leg_veto_move_together() -> None:
     assert K.EFFECTIVE_EDGE_BAND_BOUNDS == (
         0.50, 0.70, 0.80, 0.85, 0.95, float("inf")
     )
+    # Charter 97: the claim-edge axis is one constant on both sides, and both
+    # lanes resolve lambda through the same function -- the ledger judging a
+    # seat on one axis while production gated it on two is the split this
+    # test exists to stop.
+    assert L.CLAIM_EDGE_THERMOMETER_MODE == P.CLAIM_EDGE_THERMOMETER_MODE == "on"
+    assert K.CLAIM_EDGE_THIN_BAND_MAX == 0.05
+    assert K.CLAIM_EDGE_THIN_BAND_LAMBDA == 1.00
+    import inspect as _i
+    assert "effective_edge_lambda_resolved" in _i.getsource(P._support_windows)
+    _ledger_src = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    assert "effective_edge_lambda_resolved" in _ledger_src
+    _dear = {"P0": [(0.5, 0.10), (float("inf"), 1.20)], "P0-M": None, "P1": None}
+    _cheap = {"P0": [(0.5, 0.10), (float("inf"), 0.80)], "P0-M": None, "P1": None}
+    # Inside the thin band the thermometer serves its own value ...
+    assert K.effective_edge_lambda_resolved(
+        "P0", claim=0.30, price=0.28, tables=_cheap
+    ) == (1.00, K.LAMBDA_SOURCE_CLAIM_EDGE)
+    # ... but only to lift.  An agreement band that already trusts the claim
+    # more keeps its number: the thermometer is evidence a claim arrives, not
+    # evidence it does not.
+    assert K.effective_edge_lambda_resolved(
+        "P0", claim=1.0, price=0.97, tables=_dear
+    ) == (1.20, K.LAMBDA_SOURCE_AGREEMENT)
+    # Outside the band, and on a claim the book prices above, charter 68 is
+    # the whole rule.
+    assert K.effective_edge_lambda_resolved(
+        "P0", claim=1.0, price=0.80, tables=_cheap
+    ) == (0.80, K.LAMBDA_SOURCE_AGREEMENT)
+    assert K.effective_edge_lambda_resolved(
+        "P0", claim=0.30, price=0.33, tables=_cheap
+    ) == (0.80, K.LAMBDA_SOURCE_AGREEMENT)
     for _table in (
         K.EFFECTIVE_EDGE_LAMBDA,
         K.EFFECTIVE_EDGE_P0M_LAMBDA,

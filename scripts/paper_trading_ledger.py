@@ -80,6 +80,10 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     floor_to_order_share_grid_v1,
     effective_edge_lambda_for_stage,
     effective_edge_lambda_from_tables,
+    effective_edge_lambda_resolved,
+    CLAIM_EDGE_THERMOMETER_MODE,
+    CLAIM_EDGE_THIN_BAND_MAX,
+    CLAIM_EDGE_THIN_BAND_LAMBDA,
     effective_edge_bucket_lambda_for_stage,
     probability_core,
 )
@@ -1805,6 +1809,8 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     None if LEG_VETO != "on" else "逐腿否决",
     # Charter 96: the label names whichever opening rule is in force, so a
     # book that stopped issuing tickets says so rather than going quiet.
+    None if CLAIM_EDGE_THERMOMETER_MODE != "on"
+    else "薄声称边际≤%g直服" % CLAIM_EDGE_THIN_BAND_MAX,
     "开链保底票" if CHAIN_TICKET_MODE == "on"
     else ("P0整篮EV按Kelly定注" if P0_SIZING_MODE == "kelly" else "P0只发票不定注"),
     None
@@ -2091,6 +2097,14 @@ SELECTION_RULE_SHA256 = content_sha256({
     # opens were flat tickets is not the same book as one whose opens were
     # sized on the deflated edge, and the lambda partition the stake reads
     # gained a boundary the same day.
+    # Charter 97 (2026-09-06): the claim-edge thermometer serves as lambda's
+    # second axis.  Unconditional -- a book judged on the agreement axis
+    # alone is not the same book, and the thin band's width and served value
+    # are the rule, not a tuning knob.
+    "claim_edge_thermometer": CLAIM_EDGE_THERMOMETER_MODE,
+    "claim_edge_thin_band": "%g|%g" % (
+        CLAIM_EDGE_THIN_BAND_MAX, CLAIM_EDGE_THIN_BAND_LAMBDA
+    ),
     "chain_ticket": CHAIN_TICKET_MODE,
     "p0_opening_sizing": P0_SIZING_MODE,
     "effective_edge_band_bounds": "|".join(
@@ -6474,8 +6488,9 @@ def _effective_growth_partition(
     )
     if claimed <= 0 or len(prices) < len(list(buckets)):
         return {str(b): float(v) for b, v in probabilities.items()}
-    lam = effective_edge_lambda_from_tables(
-        stage, sum(prices.values()) / claimed, served
+    # Charter 97: both axes, same resolver the production gate calls.
+    lam, _lam_source = effective_edge_lambda_resolved(
+        stage, claim=claimed, price=sum(prices.values()), tables=served
     )
     return deflate_window_partition_v1(
         probabilities, list(buckets), claim_factor=lam
@@ -7950,10 +7965,13 @@ def backfill(
                             )
                             if p1_day_table:
                                 served_tables["P1"] = p1_day_table
-                            lam_window = effective_edge_lambda_from_tables(
-                                stage,
-                                float(seat_cost) / gate_win,
-                                served_tables,
+                            lam_window, _lam_src = (
+                                effective_edge_lambda_resolved(
+                                    stage,
+                                    claim=gate_win,
+                                    price=float(seat_cost),
+                                    tables=served_tables,
+                                )
                             )
                             gate_win = gate_win * lam_window
                             deflated = {

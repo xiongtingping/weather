@@ -1237,6 +1237,90 @@ def effective_edge_lambda_for_stage(
     return 1.0
 
 
+# Charter 97 (user ruling, 2026-09-06, relayed via the 9/8 book session):
+# the claim-edge thermometer stops being a monitor and serves.  Measured on
+# the same 89 settled P0 seats the lambda table is fitted on, banded by the
+# claim edge ``e = lifted claim - all-in price`` rather than by agreement:
+#
+#     (0, 0.05]   20 seats   realised 1.036   ROI +6.52%
+#     (0.05,0.10] 17 seats            0.731       -17.96%
+#     (0.10,0.20] 35 seats            0.674       -15.48%
+#     (0.20, inf) 17 seats            0.304       -40.27%
+#
+# The ruling was written as a second admission path -- admit when
+# ``lambda(a) > a`` OR when ``0 < e <= 0.05``.  Implemented literally that is
+# inert and would have shipped as a silent no-op: under charter 96 P0 sizes
+# on the deflated claim, so a window admitted with a negative deflated edge
+# yields a zero Kelly stake, and the ticket that used to catch that case was
+# retired in the same charter.  Both seats the ruling's own backtest rests on
+# -- SBGR 2026-08-27 and ZGGG 2026-09-04 -- size to exactly zero that way.
+# That is the shape charter 87 exists to remove: "闸放行、Kelly 按 λ 归零、HOLD".
+#
+# So the thermometer is served as what it actually is: a second axis of the
+# same lambda, not a second gate.  Inside the thin band the served value is
+# the thermometer's own measurement, and admission stays ``lambda > a``.  The
+# admission SET is identical to the ruling as written -- in the thin band
+# ``lambda = 1 > a`` reduces to ``price < claim``, which is ``e > 0``, the
+# ruling's own condition -- and the difference is only that a window admitted
+# this way can now be sized, which is what the backtest assumed all along.
+#
+# Capped at one rather than served at the measured 1.036, for the reason
+# charter 68 caps P1: trust the observation, never more than it trusts
+# itself.  A band that over-delivers is not a licence to buy above the claim.
+CLAIM_EDGE_THERMOMETER_MODE = (
+    os.environ.get("PM_CLAIM_EDGE_THERMOMETER", "").strip().lower() or "on"
+)
+if CLAIM_EDGE_THERMOMETER_MODE not in {"on", "off"}:
+    raise RuntimeError(
+        f"unknown claim edge thermometer mode: {CLAIM_EDGE_THERMOMETER_MODE}"
+    )
+# The thin band's upper edge, and what it serves inside it.  Boundary in the
+# kernel like the agreement partition (charter 96); unlike that partition the
+# VALUE here is a constant too, because no fit lane measures this axis yet --
+# see charter 97's "未建" note.
+CLAIM_EDGE_THIN_BAND_MAX = 0.05
+CLAIM_EDGE_THIN_BAND_LAMBDA = 1.00
+LAMBDA_SOURCE_AGREEMENT = "agreement_band"
+LAMBDA_SOURCE_CLAIM_EDGE = "claim_edge_thin_band"
+
+
+def effective_edge_lambda_resolved(
+    stage: str,
+    *,
+    claim: float,
+    price: float,
+    tables: "Mapping[str, Sequence[tuple[float, float]] | None] | None",
+) -> tuple[float, str]:
+    """The served lambda and which axis produced it.
+
+    Charter 97: the claim-edge axis wins inside its thin band; everywhere
+    else the agreement axis is the whole rule, exactly as charter 68 left
+    it.  P1 is unaffected in practice -- its table is identity, so both
+    axes serve one.
+
+    Returns ``(lambda, source)`` so the gate can record which axis bought
+    the window; without that, the seats this path opens are unattributable
+    and the retirement condition charter 97 sets could never be evaluated.
+    """
+
+    claim = float(claim)
+    price = float(price)
+    agreement_lambda = effective_edge_lambda_from_tables(
+        stage, (price / claim) if claim > 0.0 else 0.0, tables
+    )
+    if CLAIM_EDGE_THERMOMETER_MODE != "on" or claim <= 0.0:
+        return agreement_lambda, LAMBDA_SOURCE_AGREEMENT
+    edge = claim - price
+    if 0.0 < edge <= CLAIM_EDGE_THIN_BAND_MAX:
+        # Never below what the agreement axis already grants: the thermometer
+        # is evidence that this claim arrives, so it may lift a band the
+        # agreement axis deflated -- it may not deflate one the agreement
+        # axis trusted more.
+        if CLAIM_EDGE_THIN_BAND_LAMBDA > agreement_lambda:
+            return float(CLAIM_EDGE_THIN_BAND_LAMBDA), LAMBDA_SOURCE_CLAIM_EDGE
+    return agreement_lambda, LAMBDA_SOURCE_AGREEMENT
+
+
 def effective_edge_lambda_from_tables(
     stage: str,
     agreement: float,

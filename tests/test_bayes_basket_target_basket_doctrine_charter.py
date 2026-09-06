@@ -3283,19 +3283,44 @@ def test_clause_87_the_gate_reads_effective_edge_and_the_ticket_waits_for_it(mon
     seat = {tuple(w["buckets"]): w for w in windows}[seat_key]
     # The lifted claim, 0.90 x 1.08 = 0.972, clears the 0.95 offer: the old
     # gate admitted this window.  Charter 68's top band (a = 0.977) says
-    # 0.82 of the claim arrives, so the gate now reads 0.797 and refuses.
+    # 0.82 of the claim arrives, so the agreement axis reads 0.797.
     assert seat["win_probability"] == pytest.approx(0.972)
     assert seat["win_probability"] - seat["all_in_price"] > 0
     assert seat["effective_edge_agreement"] == pytest.approx(0.95 / 0.972)
-    assert seat["effective_edge_lambda"] == pytest.approx(0.82)
-    assert seat["effective_win_probability"] == pytest.approx(0.972 * 0.82)
-    assert seat["edge"] == pytest.approx(0.972 * 0.82 - 0.95)
-    assert seat["admissible"] is False
     assert audit["gate_reads_effective_edge"] == "on"
-    assert audit["effective_edge_gate_refused_window_count"] >= 1
-    # Nothing seats: the solver is offered the baseline only, so no Kelly
-    # seat and no ticket -- the ticket waits for the gate.
-    assert not any(w["admissible"] for w in windows)
+    # Charter 97 (2026-09-06) changes what happens next, and this window is
+    # exactly the case it changes: its claim edge is 0.972 - 0.95 = 0.022,
+    # inside the thin band the thermometer measured at 1.036 realisation, so
+    # the second axis serves one and the window is admitted after all.  The
+    # charter-87 mechanism is unchanged and is asserted on the thick-edge
+    # window below; what moved is which windows the mechanism refuses.
+    assert seat["effective_edge_lambda"] == pytest.approx(1.0)
+    assert seat["effective_edge_lambda_source"] == "claim_edge_thin_band"
+    assert seat["admissible"] is True
+    with_thermometer = {tuple(w["buckets"]): w for w in windows}
+
+    # Charter 87 on a window the thin band does not reach: turn the second
+    # axis off and the same seat is refused on 0.82, which is the reading the
+    # ruling shipped with.
+    import bayes_basket_target.basket_kernel.delta_v2 as _k
+    _saved = _k.CLAIM_EDGE_THERMOMETER_MODE
+    _k.CLAIM_EDGE_THERMOMETER_MODE = "off"
+    try:
+        windows_off, audit_off = _support_windows(**kwargs)
+    finally:
+        _k.CLAIM_EDGE_THERMOMETER_MODE = _saved
+    seat_off = {tuple(w["buckets"]): w for w in windows_off}[seat_key]
+    assert seat_off["effective_edge_lambda"] == pytest.approx(0.82)
+    assert seat_off["effective_win_probability"] == pytest.approx(0.972 * 0.82)
+    assert seat_off["edge"] == pytest.approx(0.972 * 0.82 - 0.95)
+    assert seat_off["admissible"] is False
+    assert audit_off["effective_edge_gate_refused_window_count"] >= 1
+    # Nothing seats under the charter-87 arm: the solver is offered the
+    # baseline only, so no Kelly seat and no ticket.
+    assert not any(w["admissible"] for w in windows_off)
+    windows, audit = windows_off, audit_off
+    seat = seat_off
+    assert with_thermometer[seat_key]["admissible"] is True
 
     # The pre-ruling arm: the same window, admitted on the lifted claim.
     monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
