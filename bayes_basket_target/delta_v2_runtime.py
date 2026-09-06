@@ -430,6 +430,80 @@ MAKER_LADDER_STEPS = int(
 MAKER_LADDER_IMPROVE_TICKS = int(
     os.environ.get("PM_MAKER_LADDER_IMPROVE_TICKS", "1") or 1
 )
+# Charter 94 (user ruling, 2026-09-06: "把吃单改为：best 买一价+1、best 买一价、
+# best 买一价-1 这种阶梯性挂单，不主动按照卖一价吃单"): the resting ladder is
+# anchored on the best bid -- one tick inside it, on it, one tick under it --
+# and never crosses.  ``band`` is the pre-ruling shape (the charter-63-era
+# five-to-eight rung band between bid+1t and ask-1t), kept as the arm.
+MAKER_LADDER_SHAPES = ("bid_anchored", "band")
+MAKER_LADDER_SHAPE = (
+    os.environ.get("PM_MAKER_LADDER_SHAPE", "").strip() or "bid_anchored"
+)
+if MAKER_LADDER_SHAPE not in MAKER_LADDER_SHAPES:
+    raise ValueError(f"unknown maker ladder shape: {MAKER_LADDER_SHAPE}")
+MAKER_LADDER_ANCHOR_OFFSETS = (1, 0, -1)
+# The horizon a resting rung's fill is priced at.  The fill artifacts are
+# fitted at 300/900/1800/3600 s from the maker shadow book; a rung posted at
+# listing rests until the day resolves, and an hour is the longest horizon
+# measured.  A station whose artifact has no row at this horizon falls back
+# to the policy's own grid rather than failing the compile.
+MAKER_RESTING_TIMEOUT_SECONDS = float(
+    os.environ.get("PM_MAKER_RESTING_TIMEOUT_SECONDS", "") or 3600.0
+)
+
+
+def bid_anchored_ladder(*, bid: float, ask: float, tick: float) -> list[float]:
+    """Charter 94's rungs, cheapest first: bid-1t, bid, bid+1t.
+
+    Each rung is floored to the tick, must be above zero and must sit
+    strictly under the ask (a rung on the ask is a take).  On a one-tick
+    spread the inside rung is the ask and is dropped; at a one-tick bid the
+    rung under it is zero and is dropped; with no bid there is no anchor
+    and no ladder.
+    """
+
+    if bid <= 0.0 or ask <= 0.0 or tick <= 0.0:
+        return []
+    highest = _floor_to_tick(ask - tick, tick)
+    rungs = set()
+    for offset in MAKER_LADDER_ANCHOR_OFFSETS:
+        price = _floor_to_tick(bid + offset * tick, tick)
+        if price > EPS and price <= highest + EPS:
+            rungs.add(price)
+    return sorted(rungs)
+
+
+def bid_anchored_rungs_for_gap(
+    *,
+    rungs: Sequence[float],
+    gap_shares: float,
+    min_lot_shares: float,
+    minimum_notional_usdc: float,
+) -> list[float]:
+    """As many rungs, dearest first, as the gap holds whole venue lots for.
+
+    Every rung is its own order and the venue takes no order under its lot
+    (charter 70) or under a dollar (charter 83), so a five-share gap posts
+    one rung -- the one inside the bid, the likeliest to fill -- a ten-share
+    gap two, fifteen or more all three.  The lot is read at the cheapest
+    rung, where the dollar floor asks the most shares.
+    """
+
+    ordered = sorted((float(rung) for rung in rungs), reverse=True)
+    if not ordered:
+        return []
+    lot = max(
+        venue_minimum_shares_v1(
+            min_lot_shares=min_lot_shares,
+            ask=price,
+            minimum_notional_usdc=minimum_notional_usdc,
+        )
+        for price in ordered
+    )
+    if lot <= EPS:
+        return ordered
+    count = int(math.floor(float(gap_shares) / lot + 1e-9))
+    return ordered[:max(1, min(len(ordered), count))]
 
 
 def _rung_offset_ticks(*, price: float, bid: float, tick: float) -> float:
@@ -473,6 +547,10 @@ def _maker_ladder(
     constant and production never passes the argument.
     """
 
+    if MAKER_LADDER_SHAPE == "bid_anchored":
+        # Charter 94: the shape is the anchor's, whatever band the caller
+        # asked for; ``steps`` and ``improve_ticks`` belong to the arm.
+        return bid_anchored_ladder(bid=bid, ask=ask, tick=tick)
     if bid <= 0.0 or ask <= 0.0 or tick <= 0.0:
         return []
     high = _floor_to_tick(ask - tick, tick)
@@ -712,11 +790,18 @@ def _reservation_grid(*, row: Any, artifact: DeltaV2PolicyArtifact) -> tuple[flo
 # resting modes, and the two sides now declare this constant under the same
 # name so the binding test can equate them.
 EXECUTION_MODES = ("taker", "maker")
+# Charter 94 (user ruling, 2026-09-06): the order family is the resting
+# ladder anchored on the best bid -- one tick inside it, on it, one tick
+# under it -- and nothing crosses to the ask.  Taker (charter 65) stays as
+# the research arm under the same switch.
 EXECUTION_MODE = (
-    os.environ.get("PM_EXECUTION_MODE", "taker").strip() or "taker"
+    os.environ.get("PM_EXECUTION_MODE", "maker").strip() or "maker"
 )
 if EXECUTION_MODE not in EXECUTION_MODES:
     raise ValueError(f"unknown execution mode: {EXECUTION_MODE}")
+# The family name the paper ledger is held equal to (its own vocabulary has
+# several resting arms; production has one).
+EXECUTION_FAMILY = EXECUTION_MODE
 
 
 MINIMUM_LEG_ALL_IN_ASK = float(
@@ -5124,9 +5209,37 @@ def compile_delta_v2_runtime_plan(
             maker_candidate_diagnostics[bucket] = (
                 "maker_reservation_grid_empty"
             )
+        if (
+            EXECUTION_MODE == "maker"
+            and reservation_grid
+            and maker_anchor is not None
+            and MAKER_LADDER_SHAPE == "bid_anchored"
+        ):
+            # Charter 94: as many rungs as the gap holds whole lots for,
+            # the one inside the bid first, each an equal share of the gap,
+            # each priced at the resting horizon.  One order per rung and
+            # nothing else: the clip grid is the band arm's.
+            anchored = bid_anchored_rungs_for_gap(
+                rungs=maker_rungs,
+                gap_shares=gap,
+                min_lot_shares=row.min_order_size,
+                minimum_notional_usdc=(
+                    EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC
+                    if CHARTER_83_MIN_NOTIONAL == "on" else 0.0
+                ),
+            )
+            for rung in anchored:
+                action_clip = (gap / len(anchored)) * rung
+                if action_clip <= EPS or action_clip > capital_available_usdc + EPS:
+                    continue
+                candidate_descriptors.append(
+                    (bucket, action_clip, rung,
+                     f"MAKER:{MAKER_RESTING_TIMEOUT_SECONDS:g}")
+                )
         for clip in delta_policy.cash_clip_grid:
             if (
                 EXECUTION_MODE != "maker"
+                or MAKER_LADDER_SHAPE == "bid_anchored"
                 or clip > capital_available_usdc + EPS
                 or not reservation_grid
                 or maker_anchor is None
@@ -5198,7 +5311,25 @@ def compile_delta_v2_runtime_plan(
         ))
         cached = resolved_fills.get(key)
         if cached is None:
-            cached = fill_resolver(**kwargs)
+            try:
+                cached = fill_resolver(**kwargs)
+            except Exception as exc:  # noqa: BLE001 -- retried once below
+                # Charter 94: a resting rung is priced at the resting
+                # horizon; an artifact with no row there falls back to the
+                # policy's own grid rather than failing the compile.  Any
+                # other failure, or a failure of the fallback, is raised.
+                fallback = float(delta_policy.timeout_grid_seconds[0])
+                if (
+                    str(kwargs.get("order_mode") or "").upper() != "MAKER"
+                    or abs(float(kwargs.get("timeout_seconds") or 0.0) - fallback) < 1e-9
+                ):
+                    raise
+                try:
+                    cached = fill_resolver(
+                        **{**kwargs, "timeout_seconds": fallback}
+                    )
+                except Exception:  # noqa: BLE001
+                    raise exc
             resolved_fills[key] = cached
         return cached
 
@@ -5304,14 +5435,23 @@ def compile_delta_v2_runtime_plan(
             float(reserve) if reserve is not None else float(price)
         )
         if mode == "MAKER":
-            maker_limit = min(
-                float(price),
-                _floor_to_tick(reservation_price, row.price_tick_size),
-            )
+            if MAKER_LADDER_SHAPE == "bid_anchored":
+                # Charter 94: the rung is the price.  The reservation solve
+                # rides along for the audit; charters 65/92 make the
+                # whole-basket edge the only law at this layer, and the
+                # rung under the bid is a legal deep resting bid.
+                maker_limit = _floor_to_tick(float(price), row.price_tick_size)
+                bid_floor = row.bid_price - row.price_tick_size
+            else:
+                maker_limit = min(
+                    float(price),
+                    _floor_to_tick(reservation_price, row.price_tick_size),
+                )
+                bid_floor = row.bid_price
             clip = min(float(clip), gap * maker_limit)
             if (
                 clip <= EPS
-                or maker_limit + EPS < row.bid_price
+                or maker_limit + EPS < bid_floor
                 or maker_limit >= row.ask_price - EPS
             ):
                 continue
@@ -5824,6 +5964,9 @@ def compile_delta_v2_runtime_plan(
             "previous_checkpoint" if previous_probabilities else "absent"
         ),
         "execution_mode": EXECUTION_MODE,
+        # Charter 94: the ladder's shape and the horizon its fills are priced at.
+        "maker_ladder_shape": MAKER_LADDER_SHAPE,
+        "maker_resting_timeout_seconds": MAKER_RESTING_TIMEOUT_SECONDS,
         "target_only": True,
         "places_orders": False,
         "writes_production_db": False,

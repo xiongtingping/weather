@@ -1200,7 +1200,9 @@ def test_clause_63_is_retired_and_the_clamp_is_gone_from_production() -> None:
 
     from bayes_basket_target import delta_v2_runtime as runtime
 
-    assert runtime.EXECUTION_MODE == "taker"
+    # Charter 94: the family is the resting ladder; gates still price at
+    # the ask depth.
+    assert runtime.EXECUTION_MODE == "maker"
     assert runtime.TARGET_PRICING_BASIS == "ask_depth"
     for name in (
         "MAKER_HEDGE_VALUE_LAMBDA",
@@ -1233,11 +1235,16 @@ def test_clause_63_is_retired_and_the_clamp_is_gone_from_production() -> None:
 def test_clause_65_taker_is_the_only_execution_family() -> None:
     clause = _clause(65)
     assert "吃单为唯一执行族" in clause
+    # Charter 94 (2026-09-06) took the family back to the resting ladder;
+    # taker stays as the arm under the same switch, and the rest of clause
+    # 65 -- the whole-basket EV as the execution layer's only law -- holds.
+    assert "第 94 条起" in clause
 
     from bayes_basket_target import delta_v2_runtime as runtime
     from bayes_basket_target.basket_kernel import delta_v2 as kernel
 
-    assert runtime.EXECUTION_MODE == "taker"
+    assert runtime.EXECUTION_MODE == "maker"
+    assert "taker" in runtime.EXECUTION_MODES
     assert kernel.EXECUTION_FAMILIES == frozenset({"MAKER", "FOK"})
     source = (
         Path(__file__).resolve().parents[1]
@@ -3426,3 +3433,52 @@ def test_clause_93_the_support_floor_is_zero_and_re_read_after_the_lift() -> Non
     assert "support_scenario_floor_v1(" in ledger_source
     assert '"support_floor_after_lift",' in ledger_source
     assert '"support_scenario_floor": (' in ledger_source
+
+
+def test_clause_94_the_ladder_is_anchored_on_the_bid_and_never_crosses() -> None:
+    """Charter 94: bid+1t, bid, bid-1t; as many rungs as the gap holds lots for."""
+    from bayes_basket_target import delta_v2_runtime as runtime
+
+    clause = _clause(94)
+    for needle in (
+        "bid_anchored", "bid_anchored_ladder", "bid_anchored_rungs_for_gap",
+        "MAKER_RESTING_TIMEOUT_SECONDS", "MAKER_RESTING_SINGLE_SHOT",
+        "execution_family", "ladder_shape", "不主动按卖一价吃单",
+    ):
+        assert needle in clause, needle
+    assert "第 94 条起" in _clause(65)
+    assert runtime.EXECUTION_MODE == "maker"
+    assert runtime.EXECUTION_FAMILY == "maker"
+    assert runtime.MAKER_LADDER_SHAPE == "bid_anchored"
+    assert runtime.MAKER_LADDER_ANCHOR_OFFSETS == (1, 0, -1)
+    ladder = runtime.bid_anchored_ladder
+    # A wide book: all three rungs, cheapest first.
+    assert ladder(bid=0.30, ask=0.35, tick=0.01) == pytest.approx([0.29, 0.30, 0.31])
+    # A one-tick spread: the inside rung would be the ask -- a take -- and
+    # is dropped.
+    assert ladder(bid=0.30, ask=0.31, tick=0.01) == pytest.approx([0.29, 0.30])
+    # A bid at one tick: the rung under it is zero and is dropped.
+    assert ladder(bid=0.01, ask=0.05, tick=0.01) == pytest.approx([0.01, 0.02])
+    # No bid, no anchor.
+    assert ladder(bid=0.0, ask=0.05, tick=0.01) == []
+    # The shared ladder is the anchor's under the shape, whatever band is asked for.
+    assert runtime._maker_ladder(bid=0.30, ask=0.35, tick=0.01, steps=8) == pytest.approx([0.29, 0.30, 0.31])
+    # Rung count follows the lots the gap holds: five shares, one rung (the
+    # inside one); ten, two; fifteen, three.
+    rungs = [0.29, 0.30, 0.31]
+    count = runtime.bid_anchored_rungs_for_gap
+    assert count(rungs=rungs, gap_shares=5.0, min_lot_shares=5.0, minimum_notional_usdc=0.0) == [0.31]
+    assert count(rungs=rungs, gap_shares=12.0, min_lot_shares=5.0, minimum_notional_usdc=0.0) == [0.31, 0.30]
+    assert count(rungs=rungs, gap_shares=15.0, min_lot_shares=5.0, minimum_notional_usdc=0.0) == [0.31, 0.30, 0.29]
+    # The dollar floor asks more shares than the lot at a cheap rung: at
+    # 0.29 a dollar is four shares, so two lots need eight shares of gap.
+    assert count(rungs=rungs, gap_shares=7.0, min_lot_shares=1.0, minimum_notional_usdc=1.0) == [0.31]
+    assert count(rungs=rungs, gap_shares=8.0, min_lot_shares=1.0, minimum_notional_usdc=1.0) == [0.31, 0.30]
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "bayes_basket_target" / "delta_v2_runtime.py").read_text(encoding="utf-8")
+    assert 'f"MAKER:{MAKER_RESTING_TIMEOUT_SECONDS:g}"' in source
+    assert "bid_floor = row.bid_price - row.price_tick_size" in source
+    ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
+    assert "MAKER_RESTING_SINGLE_SHOT = MAKER_LADDER_SHAPE == \"bid_anchored\"" in ledger_source
+    assert '"execution_family": EXECUTION_FAMILY,' in ledger_source
+    assert '"ladder_shape": MAKER_LADDER_SHAPE,' in ledger_source

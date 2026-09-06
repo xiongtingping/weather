@@ -97,6 +97,10 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     LADDER_CENTER_DEFINITION,
     MAKER_LADDER_IMPROVE_TICKS,
     MAKER_LADDER_STEPS,
+    # Charter 94: the ladder's shape and its two builders are production's.
+    MAKER_LADDER_SHAPE,
+    bid_anchored_ladder,
+    bid_anchored_rungs_for_gap,
     CERTAINTY_GATE_SIGNALS,
     MINIMUM_LEG_ALL_IN_ASK,
     OPENING_FALLBACK_MIN_BUCKETS,
@@ -770,13 +774,18 @@ WINDOW_STRATEGY = (
 # pay a leg more than the model claims and buy the winners.  The per-leg
 # value line retires from execution constraint to maker-arm pricing
 # reference; the resting machinery below stays as research arms.
+# Charter 94 (2026-09-06): production posts the bid-anchored resting ladder,
+# and this book scores it as ``maker_resting`` with the same ladder; taker
+# (charter 65) is the arm on both sides.
 EXECUTION_MODE = (
-    os.environ.get("PAPER_LEDGER_EXECUTION", "taker").strip()
-    or "taker"
+    os.environ.get("PAPER_LEDGER_EXECUTION", "maker_resting").strip()
+    or "maker_resting"
 )
 EXECUTION_MODES = (
     "taker", "maker_bid", "maker_improve", "mid", "maker_resting",
 )
+# The family production is held equal to: one taker, one maker.
+EXECUTION_FAMILY = "taker" if EXECUTION_MODE == "taker" else "maker"
 # How long a resting order is left on the book before the basket gives up
 # on it.  The probe's four horizons top out at an hour because it is
 # measuring how fill rate grows; a basket entering at listing has until the
@@ -1606,6 +1615,37 @@ MAKER_RESTING_CUTOFF_MIN_DAYS = int(
 MAKER_RESTING_CRASH_TICKS = float(
     os.environ.get("PAPER_LEDGER_MAKER_CRASH_TICKS", "0") or 0.0
 )
+# Charter 94 (2026-09-06): under the bid-anchored ladder the resting order is
+# what production posts and nothing more -- rungs on the bid, rested until
+# the day resolves.  Production has no re-post, no escalation, no value cap
+# on the rungs and never crosses; the arms that do those things are switched
+# off here so this book scores the order production actually forms.
+MAKER_RESTING_SINGLE_SHOT = MAKER_LADDER_SHAPE == "bid_anchored"
+# The band arm's own values, kept so a test (or a research run flipping the
+# shape in-process) can put the arm back exactly as the environment set it.
+MAKER_RESTING_BAND_ARM_DEFAULTS = {
+    "MAKER_RESTING_REPRICE_MINUTES": MAKER_RESTING_REPRICE_MINUTES,
+    "MAKER_RESTING_ESCALATE_SHARE": MAKER_RESTING_ESCALATE_SHARE,
+    "MAKER_RESTING_VALUE_LAMBDA": MAKER_RESTING_VALUE_LAMBDA,
+    "MAKER_RESTING_BELIEF_GATE": MAKER_RESTING_BELIEF_GATE,
+    "MAKER_RESTING_GAP_LATE": MAKER_RESTING_GAP_LATE,
+    "MAKER_RESTING_CONFIRM_TAKE_TICKS": MAKER_RESTING_CONFIRM_TAKE_TICKS,
+    "MAKER_RESTING_COVERAGE_BUDGET": MAKER_RESTING_COVERAGE_BUDGET,
+    "MAKER_RESTING_CRASH_TICKS": MAKER_RESTING_CRASH_TICKS,
+    "MAKER_RESTING_CUTOFF_PERCENTILE": MAKER_RESTING_CUTOFF_PERCENTILE,
+    "MAKER_CENTRE_TAKER": MAKER_CENTRE_TAKER,
+}
+if MAKER_RESTING_SINGLE_SHOT:
+    MAKER_RESTING_REPRICE_MINUTES = 0.0
+    MAKER_RESTING_ESCALATE_SHARE = 0.0
+    MAKER_RESTING_VALUE_LAMBDA = 0.0
+    MAKER_RESTING_BELIEF_GATE = 0
+    MAKER_RESTING_GAP_LATE = 2.0
+    MAKER_RESTING_CONFIRM_TAKE_TICKS = 0.0
+    MAKER_RESTING_COVERAGE_BUDGET = -1.0
+    MAKER_RESTING_CRASH_TICKS = 0.0
+    MAKER_RESTING_CUTOFF_PERCENTILE = 0.0
+    MAKER_CENTRE_TAKER = False
 # How the stake is split across the basket's rungs.  ``equal_shares`` is
 # what the ledger has always done -- one share count for the whole basket,
 # which is what atomicity means for a complete basket and is why allocation
@@ -1702,7 +1742,10 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     None if WINDOW_STRATEGY == "live" else WINDOW_STRATEGY,
     None if EXECUTION_MODE == "taker" else EXECUTION_MODE,
     None
-    if EXECUTION_MODE != "maker_resting"
+    if not MAKER_RESTING_SINGLE_SHOT
+    else "买一±1跳三档挂单·不吃单·挂到结算",
+    None
+    if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_SINGLE_SHOT
     else f"阶梯{MAKER_RESTING_LADDER_STEPS}档·逐步建仓",
     None
     if EXECUTION_MODE != "maker_resting"
@@ -2029,6 +2072,10 @@ SELECTION_RULE_SHA256 = content_sha256({
     "checkpoint_books": "every_committed_book_while_current_v1",
     "taker_fill": "top_of_offer_cut_to_depth_v1",
     "execution_authorization": "whole_basket_edge_v1",
+    # Charter 94 (2026-09-06): the order family and the ladder's shape.
+    # Unconditional: the standing family changed.
+    "execution_family": EXECUTION_FAMILY,
+    "ladder_shape": MAKER_LADDER_SHAPE,
     # Charter 92 (2026-09-06): the ticket is authorized on the same
     # whole-basket edge as every other increment.  Unconditional: the
     # standing rule changed, and rows judged under the structural rule must
@@ -4453,6 +4500,9 @@ def _resting_ladder(
     # The cap is this lane's research-arm ceiling; production's ladder no
     # longer takes one, so it is folded into the ask before the call and the
     # arithmetic stays production's.
+    if MAKER_RESTING_SINGLE_SHOT:
+        # Charter 94: the anchor's shape, and no cap on the rungs.
+        return bid_anchored_ladder(bid=bid, ask=ask, tick=tick)
     ceiling = ask if value_cap is None else min(ask, float(value_cap))
     if MAKER_RESTING_BAND_TOP == "ask":
         return _maker_ladder(
@@ -5086,6 +5136,9 @@ def _ladder_from_quote(
     tick = float(quote.get("price_tick_size") or 0.001)
     if bid <= 0.0 or ask <= 0.0:
         return []
+    if MAKER_RESTING_SINGLE_SHOT:
+        # Charter 94: a re-post, were one ever made, stands on the anchor.
+        return bid_anchored_ladder(bid=bid, ask=ask, tick=tick)
     capped = ask if ceiling is None else min(ask, float(ceiling))
     high = _floor_to_tick(
         capped if MAKER_RESTING_BAND_TOP == "ask" else capped - tick, tick
@@ -8173,6 +8226,28 @@ def backfill(
                                 ),
                             )
                             rungs = _resting_ladder(row_b, value_cap=cap_b)
+                            if MAKER_RESTING_SINGLE_SHOT and rungs:
+                                # Charter 94: as many rungs as the leg's
+                                # planned shares hold whole lots for, the
+                                # way production's candidate loop counts
+                                # them off the gap.
+                                _planned = (
+                                    float(stake) / float(seat_cost)
+                                    if float(seat_cost) > 0.0 else 0.0
+                                )
+                                rungs = bid_anchored_rungs_for_gap(
+                                    rungs=rungs,
+                                    gap_shares=_planned,
+                                    min_lot_shares=float(
+                                        getattr(row_b, "min_order_size", 0.0)
+                                        or EXCHANGE_MINIMUM_LOT_SHARES_FALLBACK
+                                    ),
+                                    minimum_notional_usdc=(
+                                        EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC
+                                        if CHARTER_83_MIN_NOTIONAL == "on"
+                                        else 0.0
+                                    ),
+                                )
                             # The hybrid arm: the centre's whole ladder
                             # posts at min(entry ask, its value cap) --
                             # taking inside value, resting at the red

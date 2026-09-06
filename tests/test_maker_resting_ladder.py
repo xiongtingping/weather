@@ -18,6 +18,24 @@ from scripts.paper_trading_ledger import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _band_arm(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests are about the band arm (charter 63 era: a five-rung
+    band between bid+1t and ask-1t with re-posts, escalation, the value
+    clamp and the belief gate).  Charter 94 (2026-09-06) made the
+    bid-anchored, single-shot ladder the family both lanes form and switches
+    those arms off at import; put the arm back for the duration of a test."""
+
+    import scripts.paper_trading_ledger as ledger
+    from bayes_basket_target import delta_v2_runtime as runtime
+
+    monkeypatch.setattr(runtime, "MAKER_LADDER_SHAPE", "band")
+    monkeypatch.setattr(ledger, "MAKER_LADDER_SHAPE", "band")
+    monkeypatch.setattr(ledger, "MAKER_RESTING_SINGLE_SHOT", False)
+    for name, value in ledger.MAKER_RESTING_BAND_ARM_DEFAULTS.items():
+        monkeypatch.setattr(ledger, name, value)
+
+
 def _row(ask: float, bid: float, tick: float = 0.01) -> object:
     return type(
         "Row",

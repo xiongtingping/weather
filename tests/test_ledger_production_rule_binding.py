@@ -105,11 +105,16 @@ def test_the_resting_ladder_is_productions_maker_ladder() -> None:
                 # The ledger folds its research-arm cap into the ceiling
                 # before calling production's ladder, which no longer takes
                 # one (charter 63 retired, 2026-09-03).
+                # Charter 94: under the bid-anchored shape the cap is not
+                # read at all -- the ladder is the anchor's on both sides.
                 assert L._resting_ladder(
                     _Row(bid, ask, tick), value_cap=cap
                 ) == P._maker_ladder(
                     bid=bid,
-                    ask=ask if cap is None else min(ask, cap),
+                    ask=(
+                        ask if cap is None or P.MAKER_LADDER_SHAPE == "bid_anchored"
+                        else min(ask, cap)
+                    ),
                     tick=tick,
                 ), (tick, bid, ask, cap)
 
@@ -142,13 +147,20 @@ def test_charter_63_is_retired_the_clamp_has_no_production_definition() -> None:
     # The ledger's research-arm cap still computes, but the family this
     # lane scores production under never reads it: a taker leg is priced
     # at the fee-adjusted ask whatever cap is handed in.
-    assert L.EXECUTION_MODE == "taker"
-    for bid, ask in _BOOKS:
-        row = _Row(bid, ask, 0.001)
-        for cap in _CAPS:
-            assert L._execution_price(row, value_cap=cap) == pytest.approx(
-                ask * (1.0 + L.FEE_RATE)
-            ), (bid, ask, cap)
+    # Charter 94 moved the family to the resting ladder; the taker arm is
+    # still priced at the ask whatever cap is handed in.
+    assert L.EXECUTION_FAMILY == P.EXECUTION_FAMILY == "maker"
+    previous = L.EXECUTION_MODE
+    L.EXECUTION_MODE = "taker"
+    try:
+        for bid, ask in _BOOKS:
+            row = _Row(bid, ask, 0.001)
+            for cap in _CAPS:
+                assert L._execution_price(row, value_cap=cap) == pytest.approx(
+                    ask * (1.0 + L.FEE_RATE)
+                ), (bid, ask, cap)
+    finally:
+        L.EXECUTION_MODE = previous
 
 
 def test_the_scope_stake_cap_is_the_kernels_on_both_sides() -> None:
@@ -192,6 +204,8 @@ def test_the_scope_stake_cap_is_the_kernels_on_both_sides() -> None:
 # to import.  Weaker than an import, so each is pinned by an assertion above
 # or below rather than by construction.
 SHARED_WITH_PRODUCTION = {
+    # Charter 94: one order family, spelled in each lane and asserted equal.
+    "EXECUTION_FAMILY",
     # Charter 66 clause A: the same par bound is spelled in
     # delta_v2_runtime, asserted identical by the charter-66 binding test.
     "CHAIN_COST_PAR_BOUND",
@@ -360,8 +374,14 @@ LEDGER_ONLY = {
     # run, not a rule change, and the fingerprint records it.
     "ALLOCATION_SHAPE": "research arm (default follows production's switch)",
     "ALLOCATION_SHAPES": "research arm",
-    "EXECUTION_MODE": "taker by charter 65; the maker modes stay as arms",
+    "EXECUTION_MODE": "maker_resting by charter 94; taker stays as the arm",
     "EXECUTION_MODES": "same",
+    "MAKER_RESTING_SINGLE_SHOT": (
+        "charter 94: this lane's lifecycle arms off under production's shape"
+    ),
+    "MAKER_RESTING_BAND_ARM_DEFAULTS": (
+        "charter 94: the band arm's own values, restorable in-process"
+    ),
     "WINDOW_STRATEGY": "research arm",
     "WINDOW_STRATEGIES": "research arm",
     "SEAT_PRICING_BASIS": "crossing-priced gates, the 2026-08-27 ruling",
@@ -453,7 +473,10 @@ def test_the_two_sides_form_the_same_order_family() -> None:
     force whoever closed it back here.
     """
     assert L.EXECUTION_MODES[:1] == P.EXECUTION_MODES[:1]
-    assert L.EXECUTION_MODE == P.EXECUTION_MODE
+    # Charter 94: the ledger spells several resting arms, production one;
+    # the family is what the two are held equal on.
+    assert L.EXECUTION_FAMILY == P.EXECUTION_FAMILY == "maker"
+    assert L.EXECUTION_MODE == "maker_resting" and P.EXECUTION_MODE == "maker"
 
 
 def test_every_ledger_rule_constant_is_classified() -> None:
