@@ -1417,10 +1417,9 @@ def test_forward_taf_is_observational_and_never_enters_p0m_oos() -> None:
         "oos_predictions": 8,
         "activations": 4,
     }
-    same_cycle_mapping = {
-        system_id: "AGGREGATOR_UNKNOWN_NATIVE_CYCLE"
-        for system_id in sorted(SYSTEMS)
-    }
+    same_cycle_mapping = dict(
+        report["cross_candidates"][0]["run_cycle_by_system"]
+    )
     same_cycle_mapping_json = json.dumps(
         same_cycle_mapping,
         sort_keys=True,
@@ -1509,7 +1508,7 @@ def test_forward_taf_is_observational_and_never_enters_p0m_oos() -> None:
     exact_join = build_taf_native_exact_join(
         conn,
         station_id="TEST",
-        season_bin="JJA",
+        season_bin=candidate["season_bin"],
         lead_bucket=candidate["lead_bucket"],
         run_cycle="AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
         settlement_definition="official_daily_tmax_c",
@@ -1541,7 +1540,7 @@ def test_forward_taf_is_observational_and_never_enters_p0m_oos() -> None:
         exact_join["settlement_timezone"],
     } == {
         "TEST",
-        "JJA",
+        candidate["season_bin"],
         "d0",
         "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
         "official_daily_tmax_c",
@@ -1611,7 +1610,9 @@ def test_forward_taf_is_observational_and_never_enters_p0m_oos() -> None:
     quarantined_join = build_taf_native_exact_join(
         conn,
         station_id="TEST",
-        season_bin="JJA",
+        # Station-local season vocabulary (charter 62): the join is keyed on
+        # the candidate's own bin, not the calendar season it replaced.
+        season_bin=candidate["season_bin"],
         lead_bucket=candidate["lead_bucket"],
         run_cycle="AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
         settlement_definition="official_daily_tmax_c",
@@ -1714,7 +1715,7 @@ def test_forward_taf_is_observational_and_never_enters_p0m_oos() -> None:
     assert len(json.loads(
         envelope.lineage["independence_family_ids_json"]
     )) == 2
-    assert sum(envelope.probabilities.values()) == 1.0
+    assert sum(envelope.probabilities.values()) == pytest.approx(1.0)
     fingerprint_sha = envelope.lineage[
         "taf_nwp_live_compatibility_fingerprint_sha256"
     ]
@@ -1723,7 +1724,7 @@ def test_forward_taf_is_observational_and_never_enters_p0m_oos() -> None:
         "artifact_id": "taf-test-native-v1",
         "activation_id": "taf-test-native-activation-v1",
         "station_id": "TEST",
-        "season_bin": "JJA",
+        "season_bin": candidate["season_bin"],
         "lead_bucket": "d0",
         "run_cycle": "AGGREGATOR_UNKNOWN_NATIVE_CYCLE",
         "settlement_definition": "official_daily_tmax_c",
@@ -2055,9 +2056,14 @@ def test_republisher_oos_persists_unknown_cycle_mapping_at_every_cross_layer() -
     candidate = report["cross_candidates"][0]
     assert candidate["run_cycle"] == "AGGREGATOR_UNKNOWN_NATIVE_CYCLE"
     assert candidate["run_cycle_scope"] == "SAME_NATIVE_CYCLE"
-    assert candidate["run_cycle_by_system"] == {
-        system_id: "AGGREGATOR_UNKNOWN_NATIVE_CYCLE"
-        for system_id in sorted(SYSTEMS)
+    # The cross layer scores subsets spanning two independence families and
+    # keeps the best; the two ECMWF systems share one family, so the seated
+    # subset carries one of them beside GEFS.  Every seated system maps to
+    # the aggregator's unknown cycle.
+    assert set(candidate["run_cycle_by_system"]) <= set(SYSTEMS)
+    assert len(candidate["run_cycle_by_system"]) >= 2
+    assert set(candidate["run_cycle_by_system"].values()) == {
+        "AGGREGATOR_UNKNOWN_NATIVE_CYCLE"
     }
     assert candidate["run_cycle_by_system_sha256"] == content_sha256(
         candidate["run_cycle_by_system"]
