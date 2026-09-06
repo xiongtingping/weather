@@ -60,6 +60,9 @@ from .basket_kernel.delta_v2 import (
     probability_core,
     PROBABILITY_CORE_MASS,
     SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
+    CHARTER_93_SUPPORT_FLOOR,
+    SUPPORT_SCENARIO_FLOOR_RULE_VERSION,
+    support_scenario_floor_v1,
     CANDIDATE_KIND_BASELINE,
     CANDIDATE_KIND_COMPLETE,
     CANDIDATE_KINDS,
@@ -4959,9 +4962,58 @@ def compile_delta_v2_runtime_plan(
     pending_cost = {
         row.bucket: row.pending_notional_usdc for row in snapshot.buckets
     }
+    # Charter 93: the floor is re-read on the lifted targets.  The solver
+    # judged the equal-share candidate; charters 70/83 then raise rungs to
+    # the venue's lot and dollar floor one at a time, and the shape that
+    # results was never judged -- KDAL 2026-09-07 went out at 5 / 5 / 6
+    # shares for 5.12 and would have lost 0.12 on two of its three rungs
+    # while winning.  Judged here on the lifted totals -- the solver's own
+    # costs plus each raise at its ask -- and a basket that fails holds by
+    # name rather than buying a shape no gate has seen.
+    solved_targets = dict(target_solution["target_shares_by_bucket"])
+    lifted_cost = dict(target_solution.get("target_cost_by_bucket") or {})
+    support_floor_after_lift = None
+    # Charter 84 (八): a rung the market prices under the leg floor is dead
+    # -- unbought and outside the floor's protected set, exactly as the
+    # solver read it.  Read off the seated window, which carries them.
+    floor_support = tuple(
+        bucket for bucket in seated_support
+        if bucket not in set(
+            ((support_selection.get("seated") or {}).get("completion") or {})
+            .get("market_dead_buckets") or ()
+        )
+    )
+    if CHARTER_93_SUPPORT_FLOOR == "on" and floor_support:
+        for bucket in seated_support:
+            extra = max(
+                0.0,
+                float(target_shares[bucket])
+                - float(solved_targets.get(bucket, 0.0)),
+            )
+            if extra <= EPS:
+                continue
+            ask = (
+                by_bucket[bucket].ask_price
+                if by_bucket[bucket].ask_available else 0.0
+            )
+            lifted_cost[bucket] = (
+                float(lifted_cost.get(bucket, 0.0))
+                + extra * float(ask) * (1.0 + float(basket_policy.fee_rate))
+            )
+        support_floor_after_lift = support_scenario_floor_v1(
+            shares_by_bucket={
+                bucket: float(target_shares[bucket]) for bucket in floor_support
+            },
+            cost_by_bucket=lifted_cost,
+            support=floor_support,
+        )
     basket_target_activated = (
         target_solution.get("winner_candidate_kind")
         == "COMPLETE_BASKET_TARGET"
+        and (
+            support_floor_after_lift is None
+            or bool(support_floor_after_lift["legal"])
+        )
     )
     final_support = ordered_support if basket_target_activated else ()
     # The positive gap is a per-bucket quantity and every consumer below must
@@ -5500,6 +5552,12 @@ def compile_delta_v2_runtime_plan(
         )
         reason_codes.append("delta_v2_complete_basket_hold_selected")
     if (
+        support_floor_after_lift is not None
+        and not support_floor_after_lift["legal"]
+    ):
+        # Charter 93: the lifted basket would lose inside its own window.
+        reason_codes.append("support_floor_after_lift")
+    if (
         objective_form == KELLY_OBJECTIVE_FORM
         and chain_empty
         and str(snapshot.evidence.probability_stage or "") not in CHAIN_OPENING_STAGES
@@ -5750,6 +5808,10 @@ def compile_delta_v2_runtime_plan(
         "lot_raised_buckets": tuple(lot_top_up["raised_buckets"]),
         "lot_raise_usdc": float(lot_top_up["lot_raise_usdc"]),
         "lot_raise_refused": lot_top_up["refused_reason"],
+        # Charter 93: the floor read again on the lifted targets, and the
+        # verdict that held the plan when it failed.
+        "support_scenario_floor_rule": SUPPORT_SCENARIO_FLOOR_RULE_VERSION,
+        "support_scenario_floor_after_lift": support_floor_after_lift,
         # Charter 83: the dollar floor the lift read, and which rungs it
         # (rather than the lot) lifted.
         "exchange_minimum_order_notional_usdc": float(

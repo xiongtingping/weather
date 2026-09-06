@@ -100,7 +100,8 @@ def test_clause_37_floor_is_a_legality_gate_not_a_preference() -> None:
     clause = _clause(37)
     assert "SUPPORT_SCENARIO_FLOOR_FRACTION" in clause
     assert "_floor_legal" in clause
-    assert SUPPORT_SCENARIO_FLOOR_FRACTION == -0.10
+    # Charter 93: the tolerance is retired -- zero of the premium.
+    assert SUPPORT_SCENARIO_FLOOR_FRACTION == 0.0
 
     lottery = {
         "candidate_id": "lottery",
@@ -273,12 +274,16 @@ def test_clause_40_dials_are_reported_on_every_solution() -> None:
         assert symbol in clause
 
     result = solve_target_inventory_v2(
-        probabilities={"a": 0.2, "b": 0.8},
+        probabilities={"a": 0.2, "b": 0.7, "c": 0.1},
         feasible_inventory_candidates=[
             {
                 "candidate_id": "flat",
-                "shares_by_bucket": {"a": 1.0, "b": 1.4},
-                "cost_by_bucket": {"a": 0.55, "b": 0.55},
+                # Charter 93: a rung inside the support may not lose.  At
+                # 0.45 a leg the worst in-support settlement is 1.0 - 0.9
+                # = +0.1; the unheld bucket c outside the support carries
+                # the loss the odds dial reads.
+                "shares_by_bucket": {"a": 1.0, "b": 1.4, "c": 0.0},
+                "cost_by_bucket": {"a": 0.45, "b": 0.45, "c": 0.0},
             },
         ],
         protected_buckets=["a", "b"],
@@ -286,10 +291,11 @@ def test_clause_40_dials_are_reported_on_every_solution() -> None:
         breakthrough_buckets=[],
         weights=_value_weights(),
     )
-    assert result["target_win_probability"] == pytest.approx(0.8)
-    assert result["target_odds_ratio"] == pytest.approx(3.0)
-    assert result["target_support_floor_pnl"] == pytest.approx(-0.1)
-    assert result["support_scenario_floor_fraction"] == -0.10
+    assert result["target_win_probability"] == pytest.approx(0.9)
+    # Mean win (0.1 x 0.2 + 0.5 x 0.7) / 0.9 over mean loss 0.9 on c.
+    assert result["target_odds_ratio"] == pytest.approx((0.37 / 0.9) / 0.9)
+    assert result["target_support_floor_pnl"] == pytest.approx(0.1)
+    assert result["support_scenario_floor_fraction"] == 0.0
     # Clause 40's break-even arithmetic, stated so a future edit to the win
     # target cannot silently leave the odds floor behind: at w the blend is
     # break-even when mean-win/mean-loss equals (1-w)/w.
@@ -3369,3 +3375,54 @@ def test_clause_92_every_buy_reads_the_deflated_belief(monkeypatch) -> None:
     assert 'or CHARTER_92_TICKET_EDGE == "on"' in ledger_source
     assert '"ticket_authorization": (' in ledger_source
     assert 'and row.get("admissible", True)' in ledger_source
+
+
+def test_clause_93_the_support_floor_is_zero_and_re_read_after_the_lift() -> None:
+    """Charter 93: a basket may not lose inside its own window, lifted or not."""
+    from bayes_basket_target.basket_kernel import delta_v2 as kernel
+
+    clause = _clause(93)
+    for needle in (
+        "PM_CHARTER_93_SUPPORT_FLOOR", "support_scenario_floor_v1",
+        "support_floor_after_lift", "KDAL", "support_scenario_floor",
+    ):
+        assert needle in clause, needle
+    assert "第 93 条起" in _clause(37)
+    assert "第 93 条起" in _clause(41)
+    assert kernel.CHARTER_93_SUPPORT_FLOOR == "on"
+    assert kernel.SUPPORT_SCENARIO_FLOOR_FRACTION == 0.0
+    assert delta_v2_runtime.support_scenario_floor_v1 is kernel.support_scenario_floor_v1
+    # KDAL 2026-09-07 as it went out: 5 @ 0.30, 5 @ 0.52, 6 @ 0.17 for 5.12.
+    lifted = kernel.support_scenario_floor_v1(
+        shares_by_bucket={"a": 5.0, "b": 5.0, "c": 6.0},
+        cost_by_bucket={"a": 1.50, "b": 2.60, "c": 1.02},
+        support=("a", "b", "c"),
+    )
+    assert lifted["worst_in_support_pnl"] == pytest.approx(5.0 - 5.12)
+    assert lifted["legal"] is False
+    # The retired tolerance let exactly this shape through.
+    assert kernel.support_scenario_floor_v1(
+        shares_by_bucket={"a": 5.0, "b": 5.0, "c": 6.0},
+        cost_by_bucket={"a": 1.50, "b": 2.60, "c": 1.02},
+        support=("a", "b", "c"), fraction=-0.10,
+    )["legal"] is True
+    # Equal shares never bind: each rung pays s against s x c < s.
+    equal = kernel.support_scenario_floor_v1(
+        shares_by_bucket={"a": 0.76, "b": 0.76, "c": 0.76},
+        cost_by_bucket={"a": 0.228, "b": 0.395, "c": 0.129},
+        support=("a", "b", "c"),
+    )
+    assert equal["legal"] is True
+    root = Path(__file__).resolve().parents[1]
+    compile_source = (
+        root / "bayes_basket_target" / "delta_v2_runtime.py"
+    ).read_text(encoding="utf-8")
+    assert "support_floor_after_lift = support_scenario_floor_v1(" in compile_source
+    assert 'reason_codes.append("support_floor_after_lift")' in compile_source
+    assert '"support_scenario_floor_after_lift": support_floor_after_lift,' in compile_source
+    ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    assert "support_scenario_floor_v1(" in ledger_source
+    assert '"support_floor_after_lift",' in ledger_source
+    assert '"support_scenario_floor": (' in ledger_source

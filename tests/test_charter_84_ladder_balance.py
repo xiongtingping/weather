@@ -732,6 +732,17 @@ def test_ltac_the_held_rung_priced_above_its_claim_no_longer_refuses_the_window(
     assert seated["completion"]["held_buckets"] == ["32"]
     assert seated["completion"]["buyable_buckets"] == ["31", "33"]
     assert cheaper["target_solution"]["winner_candidate_origin"] == LADDER_BALANCE_CANDIDATE_ORIGIN
+    # Charter 93 (2026-09-06): the completion is seated, and then the
+    # dollar floor lifts 33°C at 0.07 from five shares to fifteen.  The
+    # basket that would go out -- 5 / 5 / 15 for 5.40 -- loses 0.40 when
+    # the truth lands on 31°C or 32°C, and a basket that loses inside its
+    # own window is not bought: the plan holds by name.
+    assert cheaper["state"] == "HOLD"
+    assert cheaper["execution_gap_support"] == []
+    assert "support_floor_after_lift" in cheaper["reason_codes"]
+    # The pre-ruling arm buys the lifted shape, as production did.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_93_SUPPORT_FLOOR", "off")
+    cheaper = _compile(_ltac(ask_31=0.30, ask_33=0.07))
     assert set(cheaper["execution_gap_support"]) == {"31", "33"}
     assert cheaper["state"] != "HOLD"
     assert cheaper["delta_v2_action_selection"]["authorized"] is True
@@ -740,6 +751,7 @@ def test_ltac_the_held_rung_priced_above_its_claim_no_longer_refuses_the_window(
     tilt = cheaper["delta_v2_audit"]["consolidation_tilt"]
     assert tilt["completion_exempt"] is True
     assert tilt["capital_after_usdc"] == pytest.approx(tilt["capital_before_usdc"])
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_93_SUPPORT_FLOOR", "on")
 
     # With the ruling off the seat is judged whole again: every window
     # holding 32°C prices above its claim, and the day has no window --

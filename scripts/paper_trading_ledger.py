@@ -212,6 +212,11 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     # Charter 92: the ticket is authorized on that same edge; ``off`` is
     # charter 74's structural authorization, the replay arm.
     CHARTER_92_TICKET_EDGE,
+    # Charter 93: the in-support floor, re-read on the lifted legs with the
+    # kernel's own function, and the fraction it reads.
+    CHARTER_93_SUPPORT_FLOOR,
+    SUPPORT_SCENARIO_FLOOR_FRACTION,
+    support_scenario_floor_v1,
     EFFECTIVE_EDGE_LAMBDA_P0_OVERRIDE,
 )
 from bayes_basket_target.basket_kernel.support import (  # noqa: E402
@@ -711,6 +716,7 @@ REFUSAL_DEPTH = {
     # Charter 73 at the execution layer: sized, walked, and refused on the
     # increment's edge.  The chain-law layer.
     "execution_edge_not_authorized": 8,
+    "support_floor_after_lift": 8,
     # Charter 71(b) tightening arm: the increment itself does not pay.
     "topup_increment_edge_negative": 8,
     # The declining-probability clamp, when it is armed.  Sits at the
@@ -2031,6 +2037,13 @@ SELECTION_RULE_SHA256 = content_sha256({
         "whole_basket_edge_v1" if CHARTER_92_TICKET_EDGE == "on"
         else "chain_ticket_v1"
     ),
+    # Charter 93 (2026-09-06): the in-support floor is zero of the premium
+    # and re-read on the lifted legs.  Unconditional, since the standing
+    # rule changed.
+    "support_scenario_floor": (
+        "%g|after_lift:%s"
+        % (SUPPORT_SCENARIO_FLOOR_FRACTION, CHARTER_93_SUPPORT_FLOOR)
+    ),
     **(
         {"lot_lift_budget": LOT_LIFT_BUDGET}
         if LOT_LIFT_BUDGET != "untilted" else {}
@@ -2375,6 +2388,8 @@ REFUSAL_REASONS = (
     # its edge over the belief the seat was judged on.  A ticket is
     # exempt (charter 74).
     "execution_edge_not_authorized",
+    # Charter 93: the lifted legs would lose inside their own window.
+    "support_floor_after_lift",
     # A later stage whose station-day never opened.  Only P0 opens a
     # position; a top-up with nothing to top up is not a position of its own.
     # The declining-probability clamp's two refusals (arm-gated; the "off"
@@ -8803,6 +8818,51 @@ def backfill(
                                     float(_decision["requested_lot_raise_usdc"]), 6
                                 ),
                             }
+                        # Charter 93: the floor is re-read on the lifted
+                        # legs -- held plus this increment -- the way
+                        # production re-reads it on its lifted targets.  A
+                        # basket that would lose inside its own window is
+                        # refused by name, whatever the edge said.
+                        if CHARTER_93_SUPPORT_FLOOR == "on":
+                            _floor_shares = {
+                                str(b): float(held.get(str(b), 0.0)) + float(q)
+                                for b, q in zip(seat["buckets"], leg_shares)
+                            }
+                            _floor_cost = {
+                                str(b): float(c) for b, c in held_cost.items()
+                            }
+                            for _b, _c in zip(seat["buckets"], leg_cash):
+                                _floor_cost[str(_b)] = (
+                                    _floor_cost.get(str(_b), 0.0) + float(_c)
+                                )
+                            # Charter 84 (八): a market-dead rung is
+                            # outside the protected set, as the solver
+                            # reads it.
+                            _floor_dead = set(
+                                (seat.get("completion") or {})
+                                .get("market_dead_buckets") or ()
+                            )
+                            _floor_verdict = support_scenario_floor_v1(
+                                shares_by_bucket=_floor_shares,
+                                cost_by_bucket=_floor_cost,
+                                support=tuple(
+                                    str(b) for b in seat["buckets"]
+                                    if str(b) not in _floor_dead
+                                ),
+                            )
+                            if not _floor_verdict["legal"]:
+                                refusal = _deeper_refusal(refusal, (
+                                    "support_floor_after_lift",
+                                    "宪章 93：抬手后支持集内最坏结算 %.2f"
+                                    " < 地板 %.2f（成本 %.2f，本笔 %.2f）" % (
+                                        _floor_verdict["worst_in_support_pnl"],
+                                        _floor_verdict["floor"],
+                                        _floor_verdict["cost"],
+                                        float(stake),
+                                    ),
+                                    cycles, payload["decision_at_utc"],
+                                ))
+                                continue
                         # The exchange refuses any order under its lot, so
                         # a leg still under it after the raise cannot fill
                         # at any price.  Production's ``cash_phase`` names

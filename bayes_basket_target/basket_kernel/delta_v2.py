@@ -968,7 +968,74 @@ def raise_sub_lot_targets_v2(
     }
 
 
-SUPPORT_SCENARIO_FLOOR_FRACTION = -0.10
+# Charter 93 (user ruling, 2026-09-06: "把另外一个缺口也堵死，即 10% 地板亏损，
+# 下线"): the in-support loss tolerance is retired.  Charter 37's floor let a
+# basket lose a tenth of its premium when the truth landed inside its own
+# window; from here the worst in-support settlement is floored at zero of
+# the premium.  And the floor is re-read on the lifted targets: the solver
+# judged the equal-share candidate, then charters 70/83 raised rungs to the
+# venue's lot and dollar floor one at a time, and the shape that went out
+# was never judged -- KDAL 2026-09-07 left at 5 / 5 / 6 shares for 5.12 and
+# would have lost 0.12 on two of its three rungs while winning.  ``off`` is
+# the pre-ruling arm (minus a tenth, no re-read); the fraction itself can
+# be overridden for a research arm.
+CHARTER_93_SUPPORT_FLOOR = (
+    os.environ.get("PM_CHARTER_93_SUPPORT_FLOOR", "").strip().lower() or "on"
+)
+if CHARTER_93_SUPPORT_FLOOR not in {"on", "off"}:
+    raise RuntimeError(
+        f"unknown charter 93 support floor mode: {CHARTER_93_SUPPORT_FLOOR}"
+    )
+_SUPPORT_FLOOR_OVERRIDE = os.environ.get(
+    "PM_SUPPORT_SCENARIO_FLOOR_FRACTION", ""
+).strip()
+SUPPORT_SCENARIO_FLOOR_FRACTION = (
+    float(_SUPPORT_FLOOR_OVERRIDE) if _SUPPORT_FLOOR_OVERRIDE
+    else (0.0 if CHARTER_93_SUPPORT_FLOOR == "on" else -0.10)
+)
+if not (-1.0 <= SUPPORT_SCENARIO_FLOOR_FRACTION <= 0.0):
+    raise RuntimeError(
+        f"support scenario floor fraction out of range: {SUPPORT_SCENARIO_FLOOR_FRACTION}"
+    )
+SUPPORT_SCENARIO_FLOOR_RULE_VERSION = "support_floor_after_lift_v1"
+
+
+def support_scenario_floor_v1(
+    *,
+    shares_by_bucket: Mapping[str, Any],
+    cost_by_bucket: Mapping[str, Any],
+    support: Sequence[str],
+    fraction: float | None = None,
+) -> dict[str, Any]:
+    """Charter 37's floor, readable on any basket shape (charter 93).
+
+    The worst settlement inside ``support`` -- that rung's shares paying one
+    each, less the whole premium ``cost_by_bucket`` sums to -- against
+    ``fraction`` of that premium.  The solver reads the same inequality on
+    its candidates; this is the form the lifted targets and the paper
+    ledger's lifted legs are judged by, so the two cannot drift.
+    """
+
+    frac = (
+        SUPPORT_SCENARIO_FLOOR_FRACTION if fraction is None else float(fraction)
+    )
+    cost = sum(float(value or 0.0) for value in cost_by_bucket.values())
+    rungs = [str(bucket) for bucket in support]
+    worst = (
+        min(
+            float(shares_by_bucket.get(bucket, 0.0) or 0.0) - cost
+            for bucket in rungs
+        )
+        if rungs else 0.0
+    )
+    floor = frac * cost
+    return {
+        "worst_in_support_pnl": worst,
+        "cost": cost,
+        "floor": floor,
+        "fraction": frac,
+        "legal": bool(worst >= floor - EPS),
+    }
 # Effective edge (user ruling, charter 68, 2026-09-01).  Nominal edge --
 # claim minus price -- realizes as an inverted U in the market's agreement
 # with us, a = price / claim.  Measured on the 189 settled opening seats

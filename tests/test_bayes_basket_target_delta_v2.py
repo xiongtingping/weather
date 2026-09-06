@@ -201,12 +201,12 @@ def test_target_inventory_is_exact_argmax_not_second_target_objective() -> None:
 
 
 def test_support_floor_outlaws_lottery_shapes_and_reports_the_dials() -> None:
-    """The basket promise (user ruling): a support settlement may lose at
-    most 10% of the premium.  A single-leg candidate over a two-bucket
-    support settles the unheld bucket at minus the whole premium -- the
-    measured production shape this ruling exists to kill (median win rate
-    29%, spike ratio 0.92) -- so however large its score, it must lose to
-    the flat basket or, failing that, to HOLD.
+    """The basket promise (user ruling; charter 93 tightened it to zero): a
+    support settlement may not lose.  A single-leg candidate over a
+    two-bucket support settles the unheld bucket at minus the whole premium
+    -- the measured production shape this ruling exists to kill (median win
+    rate 29%, spike ratio 0.92) -- so however large its score, it must lose
+    to the flat basket or, failing that, to HOLD.
     """
 
     lottery = {
@@ -216,11 +216,11 @@ def test_support_floor_outlaws_lottery_shapes_and_reports_the_dials() -> None:
     }
     flat = {
         "candidate_id": "flat",
-        # Worst support settlement: 1.0 - 1.1 = -0.1, within the -10%-of-cost
-        # boundary (-0.11); leaning toward the likely bucket keeps EV positive
-        # so the floor, not the score, is what separates it from the lottery.
+        # Worst support settlement: 1.0 - 0.9 = +0.1, on the right side of
+        # charter 93's zero floor; leaning toward the likely bucket keeps EV
+        # positive so the floor, not the score, separates it from the lottery.
         "shares_by_bucket": {"a": 1.0, "b": 1.4},
-        "cost_by_bucket": {"a": 0.55, "b": 0.55},
+        "cost_by_bucket": {"a": 0.45, "b": 0.45},
     }
     hold = {
         "candidate_id": "hold",
@@ -237,11 +237,12 @@ def test_support_floor_outlaws_lottery_shapes_and_reports_the_dials() -> None:
     )
     assert result["winner_candidate_id"] == "flat"
     assert result["floor_rejected_candidate_count"] == 1
-    assert result["target_support_floor_pnl"] == pytest.approx(-0.1)
-    assert result["support_scenario_floor_fraction"] == -0.10
-    # The dials: win probability and mean-win/mean-loss odds.
-    assert result["target_win_probability"] == pytest.approx(0.8)
-    assert result["target_odds_ratio"] == pytest.approx(0.3 / 0.1)
+    assert result["target_support_floor_pnl"] == pytest.approx(0.1)
+    assert result["support_scenario_floor_fraction"] == 0.0
+    # The dials: both rungs now pay, so the win probability is the whole
+    # mass and the odds ratio has no loss side to divide by.
+    assert result["target_win_probability"] == pytest.approx(1.0)
+    assert result["target_odds_ratio"] is None
 
     # A book that only offers the lottery resolves to HOLD, not the lottery.
     held = solve_target_inventory_v2(
