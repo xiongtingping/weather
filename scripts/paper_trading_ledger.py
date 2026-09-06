@@ -1876,9 +1876,14 @@ SELECTION_RULE_SHA256 = content_sha256({
         {
             "kelly_share_shape": KELLY_SHARE_SHAPE,
             "kelly_edge_min_rung_share": KELLY_EDGE_MIN_RUNG_SHARE,
-            "kelly_shape_topup": KELLY_SHAPE_TOPUP,
         }
         if KELLY_SHARE_SHAPE != "equal" else {}
+    ),
+    # The per-leg top-up gap applies to every shape, equal included, so it
+    # is hashed on its own whenever it leaves charter 72's atomic rule.
+    **(
+        {"kelly_shape_topup": KELLY_SHAPE_TOPUP}
+        if KELLY_SHAPE_TOPUP != "atomic" else {}
     ),
     # The share grid an order is written on (user ruling, 2026-09-06),
     # hashed unconditionally like charter 79's seat: it is not a research
