@@ -213,6 +213,13 @@ def _exchange_view(lookup: Mapping[str, Any]) -> dict[str, Any]:
         "status": status,
         "size_matched": max(0.0, matched),
         "error": str(lookup.get("error") or ""),
+        # The gateway maps a not-found lookup to "cancelled" because that is
+        # how the authenticated endpoint represents an order someone has just
+        # cancelled.  This lane cancels nothing before it syncs, so for it the
+        # same reply means only "the exchange did not answer with the order".
+        "status_inferred_from_not_found": bool(
+            lookup.get("status_inferred_from_not_found")
+        ),
     }
 
 
@@ -261,6 +268,22 @@ def sync_resting_intent(
                 },
             })
         return {"state": "filled", "increment": increment}
+    if status in _CANCELLED and view.get("status_inferred_from_not_found"):
+        # Absence read as cancellation ends a live order in the ledger, and
+        # the ledger is what frees the capital and the bucket for a re-post.
+        # Measured 2026-09-06 15:06:39Z: two rungs were written cancelled off
+        # one such read -- LIMC 33C at 0.131 and KATL 84-85F at 0.121 -- and
+        # both were still resting on the exchange when it was asked again
+        # eight minutes later.  This lane issues no cancel, so it has no
+        # cancel of its own to corroborate the inference with; it declines it
+        # and leaves the rung resting.  A rung the exchange really did cancel
+        # keeps its intent open one more pass and is settled by the
+        # reconciliation lane, which reads /data/order and answers not_found
+        # honestly rather than inferring.
+        return {
+            "state": "unknown",
+            "reason": "cancel_inferred_from_not_found_declined",
+        }
     if status in _CANCELLED:
         with write():
             record_order_event(conn, order_intent_id=intent_id, event={

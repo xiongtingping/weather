@@ -3478,7 +3478,23 @@ export class ClobOrderService {
       // cancelled order as not found.  Return explicit evidence; the Python
       // coordinator still requires the prior cancel POST identity.
       const notFound = /404|not.?found/i.test(message);
-      return { ok: notFound, orderID, status: notFound ? "cancelled" : "unknown", error: notFound ? "" : message, source: SERVICE_NAME };
+      // Absence is not cancellation, and this reply cannot tell them apart.
+      // The mapping holds only for a caller that just posted a cancel and is
+      // asking whether it landed; ``status_inferred_from_not_found`` says so
+      // out loud, so a caller that never cancelled can refuse the inference
+      // instead of taking it at face value.  Measured 2026-09-06: the
+      // charter-94 resting lane polls this endpoint and issues no cancels,
+      // and two live resting orders (LIMC 33C 1.05 USDC, KATL 84-85F 1.09)
+      // were written into the ledger as cancelled off one bad read.  Both
+      // were still working on the exchange when it was checked afterwards.
+      return {
+        ok: notFound,
+        orderID,
+        status: notFound ? "cancelled" : "unknown",
+        status_inferred_from_not_found: notFound,
+        error: notFound ? "" : message,
+        source: SERVICE_NAME,
+      };
     }
   }
 

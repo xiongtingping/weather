@@ -175,3 +175,48 @@ def test_the_ledger_re_anchors_on_the_same_cadence() -> None:
         lane.RESTING_REPRICE_DWELL_SECONDS / 60.0
     )
     assert ledger.RESTING_REPRICE_DWELL_SECONDS == lane.RESTING_REPRICE_DWELL_SECONDS
+
+
+def test_inferred_cancel_from_not_found_is_declined_not_written(tmp_path) -> None:
+    """A live order must not be ended by absence.
+
+    2026-09-06 15:06:39Z: the gateway maps a not-found lookup to "cancelled"
+    -- correct for a caller asking whether its own cancel landed, and wrong
+    for this lane, which cancels nothing before it syncs.  Two rungs were
+    written cancelled off one such read, LIMC 33C at 0.131 and KATL 84-85F at
+    0.121, and both were still resting on the exchange eight minutes later.
+    """
+
+    view = lane._exchange_view({
+        "ok": True,
+        "status": "cancelled",
+        "status_inferred_from_not_found": True,
+    })
+    assert view["status_inferred_from_not_found"] is True
+
+    written: list[object] = []
+    out = lane.sync_resting_intent(
+        None,
+        intent={
+            "order_intent_id": "intent_x",
+            "requested_size": 8.0,
+            "filled_size": 0.0,
+            "filled_notional_usdc": 0.0,
+            "limit_price": 0.131,
+            "exchange_order_id": "0xdead",
+        },
+        view=view,
+        as_of_utc="2026-09-06T15:06:39Z",
+        write=lambda: written.append(1),
+    )
+    assert out["state"] == "unknown"
+    assert out["reason"] == "cancel_inferred_from_not_found_declined"
+    assert written == [], "declining must not open a write transaction"
+
+
+def test_exchange_reported_cancel_is_still_recorded() -> None:
+    """Only the inference is refused.  A status the exchange actually said is
+    evidence and is still written, or the lane could never close a rung."""
+
+    view = lane._exchange_view({"ok": True, "status": "canceled"})
+    assert view["status_inferred_from_not_found"] is False
