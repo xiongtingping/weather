@@ -9,6 +9,7 @@ policy data fails closed.
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from enum import Enum
@@ -20,6 +21,17 @@ from .contracts import ContractError, content_sha256
 
 
 EPS = 1e-9
+# How far the lot raise may exceed the leg's authorized cash.  Charter 70/83
+# left this open on purpose and their own worked case is a sub-share leg
+# lifted to a whole lot -- 0.862 shares at 0.19 reaching a five-share lot is
+# 5.8x, so any cap tight enough to be interesting refuses the case the clause
+# was written for.  Default off (unbounded, exactly the ruled behaviour); the
+# knob exists so an arm can price a bound before one is ruled.  Measured
+# 2026-09-06 on the 09-08 book: ZUCK 36C 2.02x, VILK 29C 4.86x, VILK 30C
+# 1.02x, KATL 84-85F 1.40x.
+LOT_RAISE_MAX_MULTIPLE = float(
+    os.environ.get("PM_LOT_RAISE_MAX_MULTIPLE", "inf")
+)
 PHASES = ("HEAVY", "STANDARD", "TAIL")
 PHASE_RANK = {name: index for index, name in enumerate(PHASES)}
 EVIDENCE_STATUSES = {"DESIGN_CANDIDATE", "OFFLINE_VALIDATED", "PROMOTED"}
@@ -425,6 +437,8 @@ class OrderSizingDecision:
     candidate_present: bool
     eligible: bool
     reason_code: str
+    depth_is_market_bound: bool
+    lot_raise_multiple: float
     content_sha256: str
 
     @classmethod
@@ -444,6 +458,8 @@ class OrderSizingDecision:
         cash_template_caps_target: bool = True,
         share_quantum: float = 0.01,
         clamped_clip_authorized: bool = False,
+        depth_is_market_bound: bool = True,
+        lot_raise_max_multiple: float | None = None,
     ) -> "OrderSizingDecision":
         bucket = _text("bucket", bucket)
         delta = _nonnegative("delta_shares", delta_shares)
@@ -487,6 +503,14 @@ class OrderSizingDecision:
         raw_c_order = 0.0
         c_order = 0.0
         lot_raise = 0.0
+        lot_raise_multiple = 0.0
+        if not isinstance(depth_is_market_bound, bool):
+            raise ContractError("depth_is_market_bound_invalid")
+        max_multiple = (
+            LOT_RAISE_MAX_MULTIPLE
+            if lot_raise_max_multiple is None
+            else _nonnegative("lot_raise_max_multiple", lot_raise_max_multiple)
+        )
         depth_shares_cap = depth / limit if limit > EPS else 0.0
         if eligible:
             caps = [limit * delta, budget, depth]
@@ -577,9 +601,50 @@ class OrderSizingDecision:
                 if minimum_lot > EPS and q_order + EPS < minimum_lot:
                     lot_q = _ceil_step(minimum_lot, quantum)
                     lot_c = lot_q * limit
-                    if lot_c > budget + EPS or lot_q > depth_shares_cap + EPS:
+                    # Against the cash this leg was authorized before the
+                    # share grid floored it: a sub-share leg orders zero and
+                    # would read as an infinite raise off ``c_order``.
+                    lot_base = (
+                        raw_c_order if raw_c_order > EPS else limit * delta
+                    )
+                    lot_raise_multiple = (
+                        lot_c / lot_base if lot_base > EPS else math.inf
+                    )
+                    # Charter 98: the depth term bounds the raise only when it
+                    # is a market bound.  A post-only Maker rests on the bid
+                    # and takes nothing off the offer, so its
+                    # ``executable_depth_cash`` is its own clip echoed back by
+                    # ``runtime._executable_depth_cash`` -- deliberately, and
+                    # documented there as non-binding.  Reading that echo as
+                    # depth here re-imposed the clip the block above says the
+                    # raise may exceed, so a Maker leg needing a top-up was
+                    # refused by its own target every time the top-up was
+                    # needed at all.  Measured 2026-09-06 on the 09-08 book:
+                    # four legs (ZUCK 36C, VILK 29C and 30C, KATL 84-85F), all
+                    # four MAKER, all four with the dollar in hand -- VILK 30C
+                    # missed by 0.13 shares.  A Taker does lift the offer, so
+                    # for it the bound is real and stays.
+                    if lot_c > budget + EPS:
                         eligible = False
                         reason = "exchange_minimum_lot_unaffordable"
+                        c_order = 0.0
+                        q_order = 0.0
+                    elif (
+                        depth_is_market_bound
+                        and lot_q > depth_shares_cap + EPS
+                    ):
+                        eligible = False
+                        reason = "exchange_minimum_lot_unaffordable"
+                        c_order = 0.0
+                        q_order = 0.0
+                    elif lot_raise_multiple > max_multiple + EPS:
+                        # How far the raise may exceed the clip is the part
+                        # charter 70/83 left open.  A three-cent rung wants 33
+                        # shares to reach the venue dollar and would hold
+                        # nearly five times this leg's solved target, which
+                        # unbalances the basket the objective just scored.
+                        eligible = False
+                        reason = "exchange_lot_raise_exceeds_multiple"
                         c_order = 0.0
                         q_order = 0.0
                     else:
@@ -642,6 +707,10 @@ class OrderSizingDecision:
             "candidate_present": bool(candidate_present),
             "eligible": eligible,
             "reason_code": reason,
+            "depth_is_market_bound": bool(depth_is_market_bound),
+            "lot_raise_multiple": (
+                0.0 if math.isinf(lot_raise_multiple) else lot_raise_multiple
+            ),
         }
         content_identity = {"schema": "basket_order_sizing_decision_v1", **identity}
         return cls(

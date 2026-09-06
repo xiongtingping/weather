@@ -1409,6 +1409,14 @@ def _compile_target_plan(
                 r_limit=candidate_price,
                 remaining_budget=remaining,
                 executable_depth_cash=executable_depth_cash,
+                # Charter 98: only a Taker's depth term is a market bound.
+                # The Maker branch of ``_executable_depth_cash`` returns the
+                # leg's own clip so the term is present and auditable; saying
+                # so here keeps the lot raise from being refused by the clip
+                # the raise is allowed to exceed.
+                depth_is_market_bound=(
+                    str(execution_candidate) == "TAKER_FOK"
+                ),
                 candidate_present=candidate_present,
                 target_clip_notional_usdc=(
                     float(clip_notional)
