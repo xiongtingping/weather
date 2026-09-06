@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import sqlite3
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime, timedelta, timezone
@@ -702,6 +703,43 @@ def _distribution_sigma_c(
 # temperate constant was itself a 1.5-3.8C cold error.
 PROVISIONAL_BIAS_MIN_PEERS = 3
 PROVISIONAL_BIAS_ABS_CAP_C = 2.0
+# Charter 101: before borrowing a peer's parameters, ask the system for its
+# own, fitted at the same station, season and lead bucket under a different
+# run cycle.
+#
+# The provisional path was written for a system too young to have a fit.
+# Measured 2026-09-06, that is not who walks it: the four incumbent global
+# ensembles do, on 06Z and 12Z packets, because the training lane has fitted
+# only 00Z and 18Z -- ECMWF and GEFS hold 14,178 and 14,373 artifacts each
+# across all 45 stations and NOT ONE for 06Z or 12Z, while the serving lane
+# began serving those cycles in early September (provisional envelopes rose
+# 3% -> 10% between 09-02 and 09-04).  Every 06Z member went provisional,
+# 111 of 111.  The scope is young; the model is not.
+#
+# And the peer borrow refuses far more often than it lends: 90 of ECMWF's 95
+# provisional envelopes and 128 of GEFS's 134 fell to bias 0.0 for want of
+# three certified peers, which serves the raw centre of a family measured to
+# run 0.8C cold.  Widening cannot cover a centre offset; spread says how
+# unsure a member is, bias says where it aims.
+#
+# The borrow is safe because it was measured, not assumed.  Across the 114
+# (system, station, season, lead) combinations holding both a 00Z and an 18Z
+# fit, the two run cycles' bias differs by a median of 0.198C (p90 0.552,
+# max 1.255, signed mean +0.013 -- no systematic offset).  That is four to
+# six times smaller than the 0.7-1.2C error the zero it replaces carries.
+#
+# No cap on this borrow, deliberately: the number is the system's own
+# measurement, and the 2026-08-25 note above records what capping a borrow
+# to a fleet constant cost when the station genuinely needed more.
+CROSS_CYCLE_PARAMETER_BORROW = (
+    os.environ.get("PM_CROSS_CYCLE_PARAMETER_BORROW", "").strip().lower()
+    or "on"
+)
+if CROSS_CYCLE_PARAMETER_BORROW not in {"on", "off"}:
+    raise RuntimeError(
+        f"unknown cross cycle parameter borrow mode: "
+        f"{CROSS_CYCLE_PARAMETER_BORROW}"
+    )
 SAME_DAY_CLIMATOLOGY_WINDOW_DAYS = 7
 SAME_DAY_CLIMATOLOGY_MIN_SAMPLES = 8
 
@@ -2286,8 +2324,61 @@ def compile_native_ensemble_p0(
                 # only complete once every certified system has loaded its
                 # own.  Republisher packets keep the hard failure: their
                 # members only enter with a strict proof.
+                # Charter 101: ask this system for its own fit at another
+                # run cycle before asking its peers for theirs.  Same
+                # station, same season, same lead bucket -- only the cycle
+                # differs, and that difference was measured at 0.198C median
+                # against the 0.7-1.2C the peer path's zero costs.  Highest
+                # generation, valid at this decision, and it borrows
+                # parameters only: the member stays uncertified, keeps its
+                # provisional weight, and its own cycle's fit replaces this
+                # the moment the training lane produces one.
+                borrowed_own: dict[str, Any] | None = None
+                if CROSS_CYCLE_PARAMETER_BORROW == "on":
+                    own_row = conn.execute(
+                        "SELECT a.run_cycle, f.bias_parameters_json,"
+                        " f.spread_parameters_json, f.content_sha256"
+                        " FROM calibration_native_ensemble_activation a"
+                        " JOIN calibration_native_ensemble_system_artifact f"
+                        "   ON f.system_artifact_id = a.artifact_id"
+                        "  AND f.ensemble_system_id = a.ensemble_system_id_or_star"
+                        " WHERE a.artifact_kind="
+                        "'NATIVE_ENSEMBLE_SYSTEM_CALIBRATION'"
+                        "   AND a.station_id=? AND a.ensemble_system_id_or_star=?"
+                        "   AND a.season_bin=? AND a.lead_bucket=?"
+                        "   AND a.run_cycle<>?"
+                        "   AND a.available_system_set_hash_or_star='*'"
+                        "   AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY'"
+                        "   AND a.valid_from_utc<=? AND a.valid_until_utc>?"
+                        "   AND f.valid_from_utc<=? AND f.valid_until_utc>?"
+                        " ORDER BY a.generation DESC, a.valid_from_utc DESC"
+                        " LIMIT 1",
+                        (
+                            station_id,
+                            system_id,
+                            season_bin,
+                            training_lead_bucket,
+                            system_run_cycle,
+                            decision_at_utc,
+                            decision_at_utc,
+                            decision_at_utc,
+                            decision_at_utc,
+                        ),
+                    ).fetchone()
+                    if own_row is not None:
+                        try:
+                            borrowed_own = {
+                                "from_run_cycle": str(own_row[0]),
+                                "bias_parameters": json.loads(str(own_row[1])),
+                                "spread_parameters": json.loads(
+                                    str(own_row[2])
+                                ),
+                                "artifact_sha256": str(own_row[3]),
+                            }
+                        except (ValueError, TypeError):
+                            borrowed_own = None
                 deferred_provisional.append(
-                    (system_id, members, system_run_cycle)
+                    (system_id, members, system_run_cycle, borrowed_own)
                 )
                 continue
             raise ContractError(
@@ -2450,7 +2541,9 @@ def compile_native_ensemble_p0(
             default=0.0,
         ),
     )
-    for system_id, members, system_run_cycle in deferred_provisional:
+    for (
+        system_id, members, system_run_cycle, borrowed_own,
+    ) in deferred_provisional:
         # An uncalibrated member served with identity parameters is not
         # neutral, it is confidently wrong.  Measured 2026-08-14: ICON served
         # that way ran z-sd 2.88 with its 95% interval covering 61% of
@@ -2486,7 +2579,26 @@ def compile_native_ensemble_p0(
         # safe error: it stays near its raw centre while its borrowed spread
         # covers the difference.  Over-correcting is not.
         borrow_notes: list[str] = []
-        if len(peer_biases) >= PROVISIONAL_BIAS_MIN_PEERS:
+        # Charter 101: the system's own fit at another cycle outranks the
+        # peer median, and outranks it for the reason the ZUUU 2026-08-14
+        # specimen above gives -- two peers handed ICON +3.09C where ICON's
+        # own measurement was +1.29C.  A borrow from oneself cannot make
+        # that error.  Uncapped: it is this system's own number.
+        if borrowed_own is not None:
+            provisional_bias_c = float(
+                borrowed_own["bias_parameters"].get("bias_c") or 0.0
+            )
+            provisional_spread_factor = max(
+                1.0,
+                float(
+                    borrowed_own["spread_parameters"].get("spread_factor")
+                    or 1.0
+                ),
+            )
+            borrow_notes.append(
+                f"own_fit_from_run_{borrowed_own['from_run_cycle']}"
+            )
+        elif len(peer_biases) >= PROVISIONAL_BIAS_MIN_PEERS:
             median_bias = peer_biases[len(peer_biases) // 2]
             provisional_bias_c = max(
                 -provisional_bias_cap_c,
@@ -2501,10 +2613,11 @@ def compile_native_ensemble_p0(
             borrow_notes.append(
                 f"bias_refused_peer_count_{len(peer_biases)}"
             )
-        provisional_spread_factor = max(
-            1.0,
-            peer_spreads[len(peer_spreads) // 2] if peer_spreads else 1.0,
-        )
+        if borrowed_own is None:
+            provisional_spread_factor = max(
+                1.0,
+                peer_spreads[len(peer_spreads) // 2] if peer_spreads else 1.0,
+            )
         # reliability 1.0 zeroes the climate blend term, but the kernel still
         # demands sample shape; the members themselves satisfy it without
         # contributing anything.
@@ -2537,7 +2650,16 @@ def compile_native_ensemble_p0(
         system_activation_shas[system_id] = provisional_marker
         provisional_uncalibrated_system_ids.append(system_id)
         provisional_parameter_sources[system_id] = {
-            "source": "PEER_MEDIAN_STATION_LOCAL",
+            "source": (
+                "OWN_FIT_OTHER_RUN_CYCLE" if borrowed_own is not None
+                else "PEER_MEDIAN_STATION_LOCAL"
+            ),
+            "borrowed_from_run_cycle": (
+                borrowed_own["from_run_cycle"] if borrowed_own else None
+            ),
+            "borrowed_artifact_sha256": (
+                borrowed_own["artifact_sha256"] if borrowed_own else None
+            ),
             "bias_c": provisional_bias_c,
             "spread_factor": provisional_spread_factor,
             "peer_count": len(peer_spreads),

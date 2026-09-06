@@ -422,6 +422,102 @@ def test_mixed_native_cycles_use_per_system_oos_lineage_and_family_gate() -> Non
     )
 
 
+def test_a_cycle_without_its_own_fit_borrows_the_systems_own_not_a_peers() -> None:
+    """Charter 101: the provisional path asks the system before its peers.
+
+    Measured 2026-09-06: the four incumbent global ensembles walk this path
+    on 06Z and 12Z packets because the training lane has fitted only 00Z and
+    18Z -- ECMWF holds 14,178 artifacts across all 45 stations and not one
+    for those cycles -- and the peer borrow then refuses bias in 95% of
+    cases for want of three certified peers, serving the raw centre of a
+    family measured to run 0.8C cold.  The system's own fit at another cycle
+    differs by 0.198C median, four to six times less than that zero costs.
+    """
+
+    conn = sqlite3.connect(":memory:")
+    _install_mixed_cycle_calibrations(conn)
+
+    packet = copy.deepcopy(_mixed_packet())
+    # The one change: this system is served on a cycle nobody fitted.
+    starved = "NOAA_GEFS_TEST"
+    donor_cycle = packet["run_cycle_by_system"]["ECMWF_AIFS_TEST"]
+    packet["run_cycle_by_system"][starved] = donor_cycle
+    packet["run_init_utc_by_system"][starved] = packet[
+        "run_init_utc_by_system"
+    ]["ECMWF_AIFS_TEST"]
+    packet["archive_query_at_utc_by_system"][starved] = packet[
+        "archive_query_at_utc_by_system"
+    ]["ECMWF_AIFS_TEST"]
+    receipt = packet["availability_evidence"]["by_system"][starved]
+    receipt["run_cycle"] = donor_cycle
+    receipt["run_init_utc"] = packet["run_init_utc_by_system"][starved]
+    receipt["archive_query_at_utc"] = packet[
+        "archive_query_at_utc_by_system"
+    ][starved]
+    for system in packet.get("systems") or []:
+        if system.get("ensemble_system_id") == starved:
+            system["run_cycle"] = donor_cycle
+            system["run_init_utc"] = packet["run_init_utc_by_system"][starved]
+    # Every layer of this fixture attests to itself, so a mutated one has to
+    # re-attest at each level or the compile refuses it long before reaching
+    # what is under test.
+    availability = packet["availability_evidence"]
+    availability["content_sha256"] = content_sha256({
+        key: value for key, value in availability.items()
+        if key != "content_sha256"
+    })
+    packet["snapshot_content_sha256"] = content_sha256({
+        key: value for key, value in packet.items()
+        if key != "snapshot_content_sha256"
+    })
+
+    compiled = compile_native_ensemble_p0(
+        conn,
+        forward_packet=packet,
+        decision_at_utc="2026-07-01T13:00:00Z",
+    )
+    lineage = compiled["packet"]["native_probability_envelope"]["lineage"]
+    sources = json.loads(lineage["provisional_parameter_sources_json"])
+    assert starved in sources, (
+        "the starved cycle should have taken the provisional path"
+    )
+    entry = sources[starved]
+    assert entry["source"] == "OWN_FIT_OTHER_RUN_CYCLE"
+    assert entry["borrowed_from_run_cycle"] == "18Z"  # its own fitted cycle
+    assert entry["borrowed_artifact_sha256"]
+    # Its own number, not a peer median and not the zero the peer path
+    # returns when three certified peers are not available.
+    assert any(
+        str(note).startswith("own_fit_from_run_") for note in entry["notes"]
+    )
+    assert not any("bias_refused" in str(note) for note in entry["notes"])
+
+    # The off arm is the behaviour this replaces, pinned so the difference
+    # stays visible: two certified peers is one short of the three the peer
+    # median needs, so the borrow refuses and the member is served at its
+    # raw centre -- the 0.8C cold error the measurement above names.
+    off = sqlite3.connect(":memory:")
+    _install_mixed_cycle_calibrations(off)
+    import bayes_basket_target.native_ensemble_p0 as _p0
+    saved = _p0.CROSS_CYCLE_PARAMETER_BORROW
+    _p0.CROSS_CYCLE_PARAMETER_BORROW = "off"
+    try:
+        compiled_off = compile_native_ensemble_p0(
+            off, forward_packet=packet, decision_at_utc="2026-07-01T13:00:00Z",
+        )
+    finally:
+        _p0.CROSS_CYCLE_PARAMETER_BORROW = saved
+    off_sources = json.loads(
+        compiled_off["packet"]["native_probability_envelope"]["lineage"][
+            "provisional_parameter_sources_json"
+        ]
+    )
+    off_entry = off_sources[starved]
+    assert off_entry["source"] == "PEER_MEDIAN_STATION_LOCAL"
+    assert off_entry["borrowed_from_run_cycle"] is None
+    assert off_entry["bias_c"] != entry["bias_c"]
+
+
 def test_native_p0_publishes_per_bucket_model_reliability() -> None:
     """The support kernel's peripheral gate reads this key; until 2026-09-02
     no native envelope carried it, so every peripheral candidate read 0.0
