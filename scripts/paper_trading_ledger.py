@@ -165,6 +165,10 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     # handed to ``_support_windows`` by both compiles (2026-09-04).
     taf_tx_bucket_for as _taf_tx_bucket,
 )
+from bayes_basket_target.resting_ladder_lifecycle import (  # noqa: E402
+    # Charter 94: the cadence production re-anchors resting rungs on.
+    RESTING_REPRICE_DWELL_SECONDS,
+)
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     CONSOLIDATION_TILT_FLOOR_VERSION,
     LEG_FLOOR_BELIEF_ANCHOR,
@@ -1616,11 +1620,14 @@ MAKER_RESTING_CRASH_TICKS = float(
     os.environ.get("PAPER_LEDGER_MAKER_CRASH_TICKS", "0") or 0.0
 )
 # Charter 94 (2026-09-06): under the bid-anchored ladder the resting order is
-# what production posts and nothing more -- rungs on the bid, rested until
-# the day resolves.  Production has no re-post, no escalation, no value cap
-# on the rungs and never crosses; the arms that do those things are switched
-# off here so this book scores the order production actually forms.
-MAKER_RESTING_SINGLE_SHOT = MAKER_LADDER_SHAPE == "bid_anchored"
+# what production posts -- rungs on the bid, re-anchored as the bid moves.
+# Production's lifecycle (``resting_ladder_lifecycle``) cancels a rung that
+# fell out of the ladder after the dwell and the next compile re-posts the
+# ladder that stands; this book re-posts every open rung at the current
+# anchored ladder on the same cadence.  No escalation, no value cap on the
+# rungs, no belief withdrawal and never a take: those arms are switched off
+# here so this book scores the order production actually forms.
+MAKER_RESTING_ANCHORED = MAKER_LADDER_SHAPE == "bid_anchored"
 # The band arm's own values, kept so a test (or a research run flipping the
 # shape in-process) can put the arm back exactly as the environment set it.
 MAKER_RESTING_BAND_ARM_DEFAULTS = {
@@ -1635,8 +1642,8 @@ MAKER_RESTING_BAND_ARM_DEFAULTS = {
     "MAKER_RESTING_CUTOFF_PERCENTILE": MAKER_RESTING_CUTOFF_PERCENTILE,
     "MAKER_CENTRE_TAKER": MAKER_CENTRE_TAKER,
 }
-if MAKER_RESTING_SINGLE_SHOT:
-    MAKER_RESTING_REPRICE_MINUTES = 0.0
+if MAKER_RESTING_ANCHORED:
+    MAKER_RESTING_REPRICE_MINUTES = RESTING_REPRICE_DWELL_SECONDS / 60.0
     MAKER_RESTING_ESCALATE_SHARE = 0.0
     MAKER_RESTING_VALUE_LAMBDA = 0.0
     MAKER_RESTING_BELIEF_GATE = 0
@@ -1742,10 +1749,12 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     None if WINDOW_STRATEGY == "live" else WINDOW_STRATEGY,
     None if EXECUTION_MODE == "taker" else EXECUTION_MODE,
     None
-    if not MAKER_RESTING_SINGLE_SHOT
-    else "买一±1跳三档挂单·不吃单·挂到结算",
+    if not MAKER_RESTING_ANCHORED
+    else "买一±1跳三档挂单·不吃单·每%g分钟随买一重挂" % (
+        RESTING_REPRICE_DWELL_SECONDS / 60.0
+    ),
     None
-    if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_SINGLE_SHOT
+    if EXECUTION_MODE != "maker_resting" or MAKER_RESTING_ANCHORED
     else f"阶梯{MAKER_RESTING_LADDER_STEPS}档·逐步建仓",
     None
     if EXECUTION_MODE != "maker_resting"
@@ -4500,7 +4509,7 @@ def _resting_ladder(
     # The cap is this lane's research-arm ceiling; production's ladder no
     # longer takes one, so it is folded into the ask before the call and the
     # arithmetic stays production's.
-    if MAKER_RESTING_SINGLE_SHOT:
+    if MAKER_RESTING_ANCHORED:
         # Charter 94: the anchor's shape, and no cap on the rungs.
         return bid_anchored_ladder(bid=bid, ask=ask, tick=tick)
     ceiling = ask if value_cap is None else min(ask, float(value_cap))
@@ -5136,7 +5145,7 @@ def _ladder_from_quote(
     tick = float(quote.get("price_tick_size") or 0.001)
     if bid <= 0.0 or ask <= 0.0:
         return []
-    if MAKER_RESTING_SINGLE_SHOT:
+    if MAKER_RESTING_ANCHORED:
         # Charter 94: a re-post, were one ever made, stands on the anchor.
         return bid_anchored_ladder(bid=bid, ask=ask, tick=tick)
     capped = ask if ceiling is None else min(ask, float(ceiling))
@@ -8226,7 +8235,7 @@ def backfill(
                                 ),
                             )
                             rungs = _resting_ladder(row_b, value_cap=cap_b)
-                            if MAKER_RESTING_SINGLE_SHOT and rungs:
+                            if MAKER_RESTING_ANCHORED and rungs:
                                 # Charter 94: as many rungs as the leg's
                                 # planned shares hold whole lots for, the
                                 # way production's candidate loop counts

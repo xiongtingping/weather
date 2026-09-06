@@ -512,6 +512,52 @@ def resolve_reconciliation(
     return {"schema": SCHEMA, "state": intent_state, "reconciliation_state": recon_state, "order_intent_id": intent_id, "filled_size": filled, "places_orders": False, "calls_order_gateway": False}
 
 
+def resolve_cancelled_after_partial_fill(
+    conn: sqlite3.Connection,
+    *,
+    order_intent_id: str,
+    filled_size: float,
+    filled_notional_usdc: float,
+    resolved_at_utc: str,
+) -> dict[str, Any]:
+    """Close an order the exchange has cancelled after filling part of it.
+
+    Charter 94's resting ladder cancels rungs whenever the bid moves, and a
+    rung cancelled after two of its five shares filled is the ordinary
+    case, not a race to be closed by hand: the exchange has confirmed
+    nothing rests any more and reported the cumulative fill.  The fill
+    stays on the reconciliation row as ``resolved_partial`` -- which the
+    inventory readers already count -- and the intent ends as
+    ``cancelled``, so the sequential gate frees the bucket for the next
+    rung.  Only for an order the exchange reports as cancelled with a
+    fill strictly inside the request; anything else keeps its state.
+    """
+
+    _schema_guard(conn)
+    intent_id = _text("order_intent_id", order_intent_id)
+    filled = _number("filled_size", filled_size)
+    notional = _number("filled_notional_usdc", filled_notional_usdc)
+    resolved_at = _timestamp("resolved_at_utc", resolved_at_utc)
+    with _transaction(conn):
+        _intent_state, _bucket, requested_size, _token_id, _action = _intent_row(conn, intent_id)
+        if not (EPS < filled and not fill_is_complete(filled, requested_size)):
+            raise ReconciliationError("cancelled_partial_size_invalid")
+        prior_order = conn.execute(
+            "SELECT exchange_order_id FROM basket_target_order_reconciliations"
+            " WHERE order_intent_id=?",
+            (intent_id,),
+        ).fetchone()
+        exchange_order_id = (
+            str(prior_order[0]) if prior_order is not None and prior_order[0] else None
+        )
+        conn.execute(
+            "INSERT INTO basket_target_order_reconciliations(order_intent_id,exchange_order_id,state,filled_size,filled_notional_usdc,last_event_id,blocking_reason,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(order_intent_id) DO UPDATE SET exchange_order_id=excluded.exchange_order_id,state=excluded.state,filled_size=excluded.filled_size,filled_notional_usdc=excluded.filled_notional_usdc,last_event_id=excluded.last_event_id,blocking_reason=excluded.blocking_reason,updated_at=excluded.updated_at",
+            (intent_id, exchange_order_id, "resolved_partial", filled, notional, None, None, resolved_at),
+        )
+        conn.execute("UPDATE basket_target_order_intents SET state=? WHERE order_intent_id=?", ("cancelled", intent_id))
+    return {"schema": SCHEMA, "state": "cancelled", "reconciliation_state": "resolved_partial", "order_intent_id": intent_id, "filled_size": filled, "places_orders": False, "calls_order_gateway": False}
+
+
 def can_submit_next_order(
     conn: sqlite3.Connection,
     *,
@@ -623,6 +669,7 @@ __all__ = [
     "can_submit_fok",
     "can_submit_next_order",
     "record_order_event",
+    "resolve_cancelled_after_partial_fill",
     "resolve_reconciliation",
     "ReconciliationError",
     "validate_persisted_candidate_consumption_cas",

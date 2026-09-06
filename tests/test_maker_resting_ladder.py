@@ -31,7 +31,7 @@ def _band_arm(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(runtime, "MAKER_LADDER_SHAPE", "band")
     monkeypatch.setattr(ledger, "MAKER_LADDER_SHAPE", "band")
-    monkeypatch.setattr(ledger, "MAKER_RESTING_SINGLE_SHOT", False)
+    monkeypatch.setattr(ledger, "MAKER_RESTING_ANCHORED", False)
     for name, value in ledger.MAKER_RESTING_BAND_ARM_DEFAULTS.items():
         monkeypatch.setattr(ledger, name, value)
 

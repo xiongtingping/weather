@@ -3442,8 +3442,10 @@ def test_clause_94_the_ladder_is_anchored_on_the_bid_and_never_crosses() -> None
     clause = _clause(94)
     for needle in (
         "bid_anchored", "bid_anchored_ladder", "bid_anchored_rungs_for_gap",
-        "MAKER_RESTING_TIMEOUT_SECONDS", "MAKER_RESTING_SINGLE_SHOT",
+        "MAKER_RESTING_TIMEOUT_SECONDS", "MAKER_RESTING_ANCHORED",
         "execution_family", "ladder_shape", "不主动按卖一价吃单",
+        "resting_ladder_lifecycle", "动态调整", "RESTING_REPRICE_DWELL_SECONDS",
+        "resolve_cancelled_after_partial_fill",
     ):
         assert needle in clause, needle
     assert "第 94 条起" in _clause(65)
@@ -3479,6 +3481,6 @@ def test_clause_94_the_ladder_is_anchored_on_the_bid_and_never_crosses() -> None
     assert 'f"MAKER:{MAKER_RESTING_TIMEOUT_SECONDS:g}"' in source
     assert "bid_floor = row.bid_price - row.price_tick_size" in source
     ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
-    assert "MAKER_RESTING_SINGLE_SHOT = MAKER_LADDER_SHAPE == \"bid_anchored\"" in ledger_source
+    assert "MAKER_RESTING_ANCHORED = MAKER_LADDER_SHAPE == \"bid_anchored\"" in ledger_source
     assert '"execution_family": EXECUTION_FAMILY,' in ledger_source
     assert '"ladder_shape": MAKER_LADDER_SHAPE,' in ledger_source

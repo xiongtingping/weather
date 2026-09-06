@@ -376,7 +376,7 @@ LEDGER_ONLY = {
     "ALLOCATION_SHAPES": "research arm",
     "EXECUTION_MODE": "maker_resting by charter 94; taker stays as the arm",
     "EXECUTION_MODES": "same",
-    "MAKER_RESTING_SINGLE_SHOT": (
+    "MAKER_RESTING_ANCHORED": (
         "charter 94: this lane's lifecycle arms off under production's shape"
     ),
     "MAKER_RESTING_BAND_ARM_DEFAULTS": (

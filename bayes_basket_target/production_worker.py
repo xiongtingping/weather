@@ -7598,6 +7598,67 @@ class TargetProductionWorker:
         )
         return receipt
 
+    def _reprice_resting_rungs(
+        self,
+        *,
+        as_of_utc: str,
+        limit: int = 200,
+    ) -> dict[str, Any]:
+        """Charter 94: sync every resting rung with the exchange, then cancel
+        the ones that have fallen out of the bid-anchored ladder so the next
+        compile re-posts at the ladder that stands.  Reads the exchange
+        through the gateway (lookup, cancel), writes only the
+        reconciliation ledger; never places an order."""
+
+        receipt: dict[str, Any] = {
+            "schema": "bayes_basket_target_resting_reprice_v1",
+            "state": "not_applicable",
+            "examined": 0,
+            "places_orders": False,
+            "calls_order_gateway": False,
+            "orders_submitted": 0,
+        }
+        if self.commit_conn is None:
+            receipt["state"] = "not_attempted"
+            return receipt
+        from .delta_v2_runtime import (  # noqa: PLC0415
+            EXECUTION_MODE as _order_family,
+            MAKER_LADDER_SHAPE as _ladder_shape,
+        )
+        if (
+            PRODUCTION_EXECUTION_MODE != "production_live"
+            or _order_family != "maker"
+            or _ladder_shape != "bid_anchored"
+        ):
+            receipt["reason"] = (
+                f"mode={PRODUCTION_EXECUTION_MODE};family={_order_family};"
+                f"shape={_ladder_shape}"
+            )
+            return receipt
+        try:
+            from clob_order_service_client import (  # noqa: PLC0415
+                ClobOrderServiceClient,
+            )
+            from .resting_ladder_lifecycle import (  # noqa: PLC0415
+                reprice_resting_rungs,
+            )
+
+            client = ClobOrderServiceClient(timeout_seconds=20.0)
+        except Exception as exc:  # noqa: BLE001 -- observational lane
+            receipt["state"] = "blocked_fail_closed"
+            receipt["reason"] = f"{type(exc).__name__}:{exc}"[:160]
+            return receipt
+        conn = self.commit_conn
+        return reprice_resting_rungs(
+            conn,
+            as_of_utc=as_of_utc,
+            client=client,
+            write=lambda: _writer_transaction(
+                conn, savepoint="basket_target_resting_reprice"
+            ),
+            limit=limit,
+        )
+
     def _reconcile_unresolved_intents(
         self,
         *,
@@ -15384,6 +15445,20 @@ class TargetProductionWorker:
                 "reason": f"{type(exc).__name__}:{exc}"[:160],
                 "closed": 0,
             }
+        # Charter 94: the resting ladder follows the bid.  Every resting
+        # rung is synced with the exchange (a resting order is polled by
+        # nothing else) and a rung off the ladder that stands is cancelled,
+        # which frees its bucket for the re-post the next compile makes.
+        try:
+            resting_reprice = self._reprice_resting_rungs(
+                as_of_utc=utc_now(),
+            )
+        except Exception as exc:  # noqa: BLE001 -- observational lane
+            resting_reprice = {
+                "schema": "bayes_basket_target_resting_reprice_v1",
+                "state": "blocked_fail_closed",
+                "reason": f"{type(exc).__name__}:{exc}"[:160],
+            }
         # And retire the ones no cycle will ever submit, which would
         # otherwise hold their buckets shut indefinitely.
         try:
@@ -17022,6 +17097,7 @@ class TargetProductionWorker:
                 "candidates": results,
                 "listing_scope_turn": serve_listing,
                 "intent_reconcile": intent_reconcile,
+                "resting_reprice": resting_reprice,
                 "intent_retire": intent_retire,
                 "live_cycle_settle": live_cycle_settle,
                 "quote_evidence_refresh": {
