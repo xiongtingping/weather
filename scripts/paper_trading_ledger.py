@@ -2288,6 +2288,11 @@ SELECTION_RULE_SHA256 = content_sha256({
             regional_path_prior.RULE_VERSION, regional_path_prior.WEIGHT
         )
         if regional_path_prior.ENABLED and REPLAY_LAYERS_APPLIED
+        # Under the production judge the ledger scores the envelope production
+        # committed, which already carries this layer; the replay does not
+        # apply it a second time and does not claim it as its own rule.  The
+        # ceiling's entry above says the same thing in the same words.
+        else "off:judge_reads_envelope" if regional_path_prior.ENABLED
         else "off"
     ),
     "metar_ceiling": (
