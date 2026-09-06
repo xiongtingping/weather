@@ -25,9 +25,12 @@ export PM_TARGET_PRODUCTION_WRITER=1
 # or before the artifact's trained_through, so this is inert until the
 # curve has been fitted past it.
 export PM_METAR_CEILING=1
-# 14 hours left is 10:00 local (operator ruling 2026-09-06; was 10.0, about
-# 14:00 local).  The module default says the same; this export only pins it.
-export PM_METAR_CEILING_MAX_HOURS_LEFT=14.0
+# 10 hours left is about 14:00 local.  Widened to 14 by the 2026-09-06
+# ruling and reverted on 2026-09-07 by measurement: in the 10-14h band the
+# widening admitted, the ceiling cost 0.136 nat and made 72.3% of 4,232
+# prefixes worse with no reduction in catastrophic misses.  The module
+# default says the same; this export only pins it.
+export PM_METAR_CEILING_MAX_HOURS_LEFT=10.0
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 PY="$ROOT/.venv/bin/python"
 if [ ! -x "$PY" ]; then

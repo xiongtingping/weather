@@ -164,7 +164,7 @@ def test_a_systems_own_cell_beats_the_pool_and_a_borrow_says_so() -> None:
         ordinals={"30°C": 0, "31°C": 1, "32°C+": 2},
         upper_bounds_c={"30°C": 30.9, "31°C": 31.9, "32°C+": None},
         running_high_bucket="30°C", running_high_c=30.4,
-        remaining_peak_c=31.2, cell=borrowed,
+        remaining_peak_c=31.2, cell=borrowed, enabled=True,
     )
     assert note["regional_path_prior_applied"] == "true"
     assert note["regional_path_prior_cell_fit_system_id"] == R.POOLED_FIT_SYSTEM_ID
@@ -246,3 +246,31 @@ def test_production_and_the_ledger_read_one_layer() -> None:
     assert "if ceiling is not None and not regional_spoke:" in materialization, (
         "the curve stands in the ceiling's place, it does not double-correct"
     )
+
+
+def test_the_defaults_are_the_arms_the_measurement_chose() -> None:
+    """2026-09-07: both layers default to what measured better.
+
+    The regional prior is off.  On 2,190 committed P1 prefixes whose
+    ceiling receipt read TOO_EARLY -- so the served vector was this
+    layer's own input and nothing was reconstructed -- it cost 0.0733 nat
+    of log loss and moved argmax accuracy from 40.0% to 35.7%.  Every
+    lighter weight was at or above the baseline too.
+
+    The ceiling speaks from ten hours left, not fourteen.  In the 10-14h
+    band the 2026-09-06 widening admitted, it cost 0.136 nat over 4,232
+    prefixes, made 72.3% of them worse, and left the share of prefixes
+    giving truth under 5% unchanged at 3.4%.
+
+    Pinned because both are one environment variable away from coming
+    back, and a default that quietly flips is a measurement thrown away.
+    """
+
+    import os
+
+    from bayes_basket_target import metar_ceiling
+
+    assert os.environ.get("PM_REGIONAL_PATH_PRIOR") is None
+    assert os.environ.get("PM_METAR_CEILING_MAX_HOURS_LEFT") is None
+    assert R.ENABLED is False
+    assert metar_ceiling.CEILING_MAX_HOURS_LEFT == 10.0

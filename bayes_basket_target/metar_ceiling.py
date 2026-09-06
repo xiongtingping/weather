@@ -68,8 +68,17 @@ CEILING_ENABLED = (
 # nothing is extrapolated; what the earlier hours cost or buy on the ledger
 # is the measurement this ruling asks for, and PAPER_LEDGER_METAR_CEILING
 # reads this same constant so both sides move together.
+# Reverted to 10 by measurement (2026-09-07).  On the 4,232 committed P1
+# prefixes over 2026-08-24..09-04 that fall in the 10-14h band this
+# widening newly admits -- production's own apply_ceiling, its own as-of
+# replay curve, only the window constant lifted -- the ceiling costs
+# 0.136 nat of log loss, makes 72.3% of prefixes worse against 27.7%
+# better, and buys no tail protection: the share of prefixes where truth
+# is given under 5% stays at 3.4%, with 36 catastrophic misses rescued
+# and 38 created.  The ZGSZ 2026-09-06 case the widening was ruled on is
+# real, and this says the fleet pays more for it than it is worth.
 CEILING_MAX_HOURS_LEFT = float(
-    os.environ.get("PM_METAR_CEILING_MAX_HOURS_LEFT", "14.0") or 14.0
+    os.environ.get("PM_METAR_CEILING_MAX_HOURS_LEFT", "10.0") or 10.0
 )
 
 DEFAULT_REPLAY_TABLE = (

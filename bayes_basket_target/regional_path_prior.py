@@ -44,9 +44,33 @@ DEFAULT_REPLAY_TABLE = (
     ROOT / "data" / "runtime" / "bayes_basket_target_nwp"
     / "regional_path_prior_replay_table.json"
 )
-# On by the ruling; ``off`` is the pre-ruling arm and the way back out.
+# Off by measurement (2026-09-07).  The 2026-09-06 ruling put this layer
+# into service without a measurement gate; the measurement has since been
+# run and is negative at every setting tried, so the default is the arm
+# that does nothing and ``on`` is the way back in.
+#
+# Morning window, 2,190 committed P1 prefixes over 2026-08-24..08-29 whose
+# ceiling receipt read TOO_EARLY -- so the served vector IS this layer's
+# input and nothing is reconstructed: log loss 1.4419 without the layer
+# against 1.5152 with it, argmax hit 40.0% against 35.7%, within one
+# bucket 85.0% against 72.3%.  Weight 0.5 is the shipped value; 0.3, 0.2
+# and 0.1 are all at or above the baseline too, and a lighter variant that
+# keeps the incumbent's shape and lets the curve set only the above/below
+# split is worse still (+0.130 nat).  The loss grows monotonically with
+# the weight, which is what a term carrying no information looks like.
+#
+# The cause is not the blending rule.  The curve's own point forecast of
+# the day's maximum has MAE 1.533C against the incumbent posterior's
+# 0.826C on the same prefixes, and beats it on 34.4% of them; with a
+# perfect per-hour bias -- an oracle, not obtainable out of sample -- it
+# reaches 1.411C, still far behind.  Read straight off the lane's own
+# stored daily maximum, bypassing every line of serving code, NBM is at
+# MAE 1.217C and HRRR 1.605C against settled truth, both about 0.7C cold;
+# even a perfect per-station debias only takes NBM to 0.885C, which ties
+# the P0 root's 0.887C and still loses to P1's 0.826C.  These models are
+# not being used badly, they are less accurate than what P1 already holds.
 ENABLED = (
-    os.environ.get("PM_REGIONAL_PATH_PRIOR", "on").strip().lower()
+    os.environ.get("PM_REGIONAL_PATH_PRIOR", "off").strip().lower()
     not in {"0", "off", "false", "no"}
 )
 # How much of the served shape the curve takes.  Half is the neutral choice
