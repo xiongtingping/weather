@@ -215,7 +215,9 @@ BAND = (0.10, 0.15)
 def _lane_tables(conn: sqlite3.Connection) -> None:
     conn.executescript(
         "CREATE TABLE calibration_station_daily_high_truth ("
-        " station_id TEXT, local_date TEXT, official_tmax_c REAL);"
+        " station_id TEXT, local_date TEXT, official_tmax_c REAL,"
+        " revision_no INTEGER DEFAULT 0, source_lane TEXT DEFAULT 'AWC',"
+        " settlement_definition TEXT DEFAULT 'official_daily_tmax_c');"
         "CREATE TABLE basket_probability_bridge_history ("
         " station_id TEXT, event_date TEXT, history_id TEXT,"
         " envelope_json TEXT, decision_at_utc TEXT, stage TEXT,"
@@ -240,7 +242,8 @@ def _write_station_day(
 
     history_id = f"{station}-{day}-{stage}"
     conn.execute(
-        "INSERT INTO calibration_station_daily_high_truth VALUES (?,?,?)",
+        "INSERT INTO calibration_station_daily_high_truth"
+        "(station_id,local_date,official_tmax_c) VALUES (?,?,?)",
         (station, day, actual),
     )
     conn.execute(

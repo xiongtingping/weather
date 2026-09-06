@@ -453,11 +453,29 @@ def pinned_band_table_sha(combination_method: str) -> str | None:
 
 
 def _truth(conn: sqlite3.Connection) -> dict[tuple[str, str], float]:
+    """The settled high per station-day, at its latest revision.
+
+    The revision filter is not cosmetic: 285 station-days carry two rows,
+    revision 0 stating the METAR body group's whole degree and revision 1 the
+    tenths from the remark group (KATL 2026-07-14 reads 29.0 then 28.9), and
+    which of the two a band fit sees decides which bucket it scores against
+    on a day whose truth sits near an edge.  Unfiltered, this took whichever
+    row the scan returned last -- today that happens to be the newest, and
+    nothing guarantees it stays so.  The ledger's settlement query has always
+    taken MAX(revision_no); this now asks the same question.
+    """
+
     return {
         (str(station), str(day)): float(value)
         for station, day, value in conn.execute(
-            "SELECT station_id, local_date, official_tmax_c"
-            " FROM calibration_station_daily_high_truth"
+            "SELECT t.station_id, t.local_date, t.official_tmax_c"
+            " FROM calibration_station_daily_high_truth AS t"
+            " WHERE t.revision_no=("
+            "  SELECT MAX(x.revision_no)"
+            "  FROM calibration_station_daily_high_truth AS x"
+            "  WHERE x.station_id=t.station_id AND x.local_date=t.local_date"
+            "  AND x.source_lane=t.source_lane"
+            "  AND x.settlement_definition=t.settlement_definition)"
         )
     }
 
