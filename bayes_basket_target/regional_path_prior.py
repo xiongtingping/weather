@@ -35,7 +35,7 @@ from .contracts import ContractError
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = "bayes_basket_target_regional_path_prior_v1"
-RULE_VERSION = "regional_curve_remaining_peak_v1"
+RULE_VERSION = "regional_curve_remaining_peak_v2_per_system_cell"
 DEFAULT_ARTIFACT = (
     ROOT / "data" / "runtime" / "bayes_basket_target_nwp"
     / "regional_path_prior_artifact.json"
@@ -66,6 +66,10 @@ MAX_RUN_AGE_HOURS = float(
     os.environ.get("PM_REGIONAL_PATH_PRIOR_MAX_RUN_AGE_HOURS", "12.0") or 12.0
 )
 MIN_SIGMA_C = 0.35
+
+#: What ``cell["fit_system_id"]`` says when the parameters came from the
+#: cross-system pool rather than the serving system's own history.
+POOLED_FIT_SYSTEM_ID = "POOLED_CROSS_SYSTEM"
 
 _CACHE: dict[str, Any] = {}
 
@@ -118,7 +122,45 @@ def replay_curve(
     if not entry:
         return None
     return {"schema": SCHEMA, "cells": entry.get("cells") or {},
-            "stations": entry.get("stations") or {}, "trained_through": ""}
+            "stations": entry.get("stations") or {},
+            "systems": entry.get("systems") or {}, "trained_through": ""}
+
+
+def _cell_from_scope(
+    scope: Mapping[str, Any] | None,
+    *,
+    hours_left: float,
+    station_id: str,
+    source_prefix: str,
+    fit_system_id: str,
+) -> dict[str, Any] | None:
+    """One scope's fitted (bias, sigma) for this hour, or ``None``.
+
+    A scope is either one system's own fit or the cross-system pool.  The
+    station bias is only taken from the same scope that supplied the cell:
+    a per-station number is a correction to one model's own error, and
+    reading it off a different model's residuals is the borrow this
+    function exists to make visible.
+    """
+
+    cells = (scope or {}).get("cells") or {}
+    cell = cells.get(str(hours_bin(hours_left)))
+    if not cell or cell.get("backed_off"):
+        return None
+    bias = float(cell["bias_c"])
+    sigma = max(MIN_SIGMA_C, float(cell["sigma_c"]))
+    source = f"{source_prefix}hours_cell"
+    station = ((scope or {}).get("stations") or {}).get(str(station_id).upper())
+    if station and int(station.get("sample_n") or 0) >= MIN_STATION_SAMPLES:
+        bias = float(station["bias_c"])
+        source = f"{source_prefix}hours_cell_station_bias"
+    return {
+        "bias_c": bias, "sigma_c": sigma, "source": source,
+        "fit_system_id": fit_system_id,
+        "sample_n": int(cell.get("sample_n") or 0),
+        "hours_from": float(cell.get("hours_from", 0.0)),
+        "hours_to": float(cell.get("hours_to", 0.0)),
+    }
 
 
 def resolve_cell(
@@ -126,27 +168,35 @@ def resolve_cell(
     *,
     hours_left: float,
     station_id: str,
+    system_id: str | None = None,
 ) -> dict[str, Any] | None:
     """The fitted (bias, sigma) for this hour, with the station's own bias
-    where it has earned one.  ``None`` when the hour has no fitted cell."""
+    where it has earned one.  ``None`` when the hour has no fitted cell.
 
-    cells = artifact.get("cells") or {}
-    cell = cells.get(str(hours_bin(hours_left)))
-    if not cell or cell.get("backed_off"):
-        return None
-    bias = float(cell["bias_c"])
-    sigma = max(MIN_SIGMA_C, float(cell["sigma_c"]))
-    source = "hours_cell"
-    station = (artifact.get("stations") or {}).get(str(station_id).upper())
-    if station and int(station.get("sample_n") or 0) >= MIN_STATION_SAMPLES:
-        bias = float(station["bias_c"])
-        source = "hours_cell_station_bias"
-    return {
-        "bias_c": bias, "sigma_c": sigma, "source": source,
-        "sample_n": int(cell.get("sample_n") or 0),
-        "hours_from": float(cell.get("hours_from", 0.0)),
-        "hours_to": float(cell.get("hours_to", 0.0)),
-    }
+    Charter 99, 2026-09-06: the fit carries a system dimension because the
+    first artifact did not, and on 2026-09-06 it served seven European
+    ICON-EU station-days from cells fitted entirely on ten US HRRR/NBM
+    stations -- a sigma of 0.90C that sets how much mass the layer puts
+    above the running high, borrowed from a different model on a different
+    continent.  A system's own cell is preferred; the pooled cell still
+    serves when that system has no history, because ICON-EU's archive
+    keeps none and a strict rule would silence it forever.  Either way the
+    cell now says whose errors it was fitted on, and the receipt carries
+    that into the envelope, so a borrow is legible rather than silent.
+    """
+
+    scoped = ((artifact.get("systems") or {}).get(str(system_id))
+              if system_id else None)
+    own = _cell_from_scope(
+        scoped, hours_left=hours_left, station_id=station_id,
+        source_prefix="", fit_system_id=str(system_id),
+    )
+    if own is not None:
+        return own
+    return _cell_from_scope(
+        artifact, hours_left=hours_left, station_id=station_id,
+        source_prefix="pooled_", fit_system_id=POOLED_FIT_SYSTEM_ID,
+    )
 
 
 def _phi(value: float) -> float:
@@ -256,6 +306,9 @@ def apply_regional_path_prior(
         "regional_path_prior_sigma_c": f"{float(cell['sigma_c']):.4f}",
         "regional_path_prior_bias_c": f"{float(cell['bias_c']):.4f}",
         "regional_path_prior_cell_source": str(cell.get("source") or ""),
+        "regional_path_prior_cell_fit_system_id": str(
+            cell.get("fit_system_id") or POOLED_FIT_SYSTEM_ID
+        ),
         "regional_path_prior_cell_sample_n": str(cell.get("sample_n") or 0),
         "regional_path_prior_mass_above_before": f"{above_before:.6f}",
         "regional_path_prior_mass_above_after": f"{above_after:.6f}",
@@ -324,11 +377,6 @@ def resolve_serving_input(
     hours_left = (close - as_of).total_seconds() / 3600.0
     if hours_left < 0:
         return None
-    cell = resolve_cell(
-        payload, hours_left=hours_left, station_id=station_id
-    )
-    if cell is None:
-        return None
     for row in rows:
         if str(row.get("archive_query_at_utc") or "") > str(as_of_utc):
             # Not knowable at this prefix's clock.
@@ -342,6 +390,15 @@ def resolve_serving_input(
             row["hourly_c"], as_of_utc=as_of_utc
         )
         if peak is None or width == 0:
+            continue
+        # The cell is resolved per candidate run, not once per station-day:
+        # which system is about to serve decides whose fitted bias and
+        # dispersion apply, and that is only known here.
+        cell = resolve_cell(
+            payload, hours_left=hours_left, station_id=station_id,
+            system_id=str(row["ensemble_system_id"]),
+        )
+        if cell is None:
             continue
         return {
             "remaining_peak_c": float(peak),
@@ -404,6 +461,7 @@ __all__ = [
     "load_runs_for_station_day", "resolve_serving_input",
     "SCHEMA", "RULE_VERSION", "ENABLED", "WEIGHT", "HOURS_EDGES",
     "MIN_CELL_SAMPLES", "MIN_STATION_SAMPLES", "MAX_RUN_AGE_HOURS",
+    "POOLED_FIT_SYSTEM_ID",
     "apply_regional_path_prior", "build_serving_input", "hours_bin",
     "load_artifact", "load_replay_table", "predictive_probabilities",
     "remaining_peak_from_curve", "replay_curve", "resolve_cell",

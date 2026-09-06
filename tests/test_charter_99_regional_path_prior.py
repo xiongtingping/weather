@@ -54,7 +54,7 @@ def test_the_curve_takes_mass_off_a_dawn_peak_it_cannot_reach() -> None:
     assert blended["30°C"] > POSTERIOR["30°C"]
     assert blended["32°C"] < POSTERIOR["32°C"]
     assert sum(blended.values()) == pytest.approx(1.0)
-    assert note["regional_path_prior_rule"] == "regional_curve_remaining_peak_v1"
+    assert note["regional_path_prior_rule"] == "regional_curve_remaining_peak_v2_per_system_cell"
 
 
 def test_a_curve_that_says_it_will_climb_moves_mass_up() -> None:
@@ -104,6 +104,17 @@ ARTIFACT = {
               "sample_n": 2, "backed_off": True},
     },
     "stations": {"KATL": {"bias_c": -0.4, "sample_n": 90}},
+    # Charter 99, 2026-09-06: one system carries its own fit, the other does
+    # not, so both halves of the borrow rule are visible in one fixture.
+    "systems": {
+        "NCEP_HRRR_POINT": {
+            "cells": {
+                "3": {"hours_from": 6.0, "hours_to": 8.0, "bias_c": -0.7,
+                      "sigma_c": 0.61, "sample_n": 140, "backed_off": False},
+            },
+            "stations": {"KATL": {"bias_c": -0.9, "sample_n": 95}},
+        },
+    },
 }
 RUN = {
     "ensemble_system_id": "NCEP_HRRR_POINT", "run_init_utc": "2026-08-23T18:00:00Z",
@@ -114,12 +125,49 @@ RUN = {
 
 def test_the_station_bias_serves_where_the_station_earned_one() -> None:
     cell = R.resolve_cell(ARTIFACT, hours_left=7.0, station_id="KATL")
-    assert cell["bias_c"] == -0.4 and cell["source"] == "hours_cell_station_bias"
+    assert cell["bias_c"] == -0.4 and cell["source"] == "pooled_hours_cell_station_bias"
     other = R.resolve_cell(ARTIFACT, hours_left=7.0, station_id="KMIA")
-    assert other["bias_c"] == -0.1 and other["source"] == "hours_cell"
+    assert other["bias_c"] == -0.1 and other["source"] == "pooled_hours_cell"
     assert R.resolve_cell(ARTIFACT, hours_left=30.0, station_id="KATL") is None, (
         "a backed-off cell is silence, not a pooled guess"
     )
+
+
+def test_a_systems_own_cell_beats_the_pool_and_a_borrow_says_so() -> None:
+    """Charter 99, 2026-09-06: whose errors the parameters were fitted on.
+
+    The first artifact had no system dimension, and on 2026-09-06 it served
+    seven European ICON-EU station-days from cells fitted on ten US
+    HRRR/NBM stations -- a borrowed sigma is exactly the number that
+    decides how much mass sits above the running high.  The borrow is
+    still allowed, because ICON-EU keeps no archive to fit; what changed
+    is that it can no longer happen silently.
+    """
+
+    own = R.resolve_cell(
+        ARTIFACT, hours_left=7.0, station_id="KATL", system_id="NCEP_HRRR_POINT"
+    )
+    assert own["sigma_c"] == 0.61 and own["bias_c"] == -0.9
+    assert own["source"] == "hours_cell_station_bias"
+    assert own["fit_system_id"] == "NCEP_HRRR_POINT"
+
+    borrowed = R.resolve_cell(
+        ARTIFACT, hours_left=7.0, station_id="KATL", system_id="DWD_ICON_EU_POINT"
+    )
+    assert borrowed["sigma_c"] == 0.44, "no ICON-EU history: the pool serves"
+    assert borrowed["source"] == "pooled_hours_cell_station_bias"
+    assert borrowed["fit_system_id"] == R.POOLED_FIT_SYSTEM_ID
+
+    # And the borrow reaches the envelope, not just the resolver.
+    _, note = R.apply_regional_path_prior(
+        {"30°C": 0.5, "31°C": 0.3, "32°C+": 0.2},
+        ordinals={"30°C": 0, "31°C": 1, "32°C+": 2},
+        upper_bounds_c={"30°C": 30.9, "31°C": 31.9, "32°C+": None},
+        running_high_bucket="30°C", running_high_c=30.4,
+        remaining_peak_c=31.2, cell=borrowed,
+    )
+    assert note["regional_path_prior_applied"] == "true"
+    assert note["regional_path_prior_cell_fit_system_id"] == R.POOLED_FIT_SYSTEM_ID
 
 
 def test_the_resolver_refuses_a_run_the_clock_could_not_know() -> None:
@@ -132,6 +180,9 @@ def test_the_resolver_refuses_a_run_the_clock_could_not_know() -> None:
     served = R.resolve_serving_input([RUN], as_of_utc="2026-08-23T20:30:00Z", **kwargs)
     assert served["remaining_peak_c"] == 31.0, "only the curve after the clock counts"
     assert served["cell"]["source"] == "hours_cell_station_bias"
+    assert served["cell"]["fit_system_id"] == "NCEP_HRRR_POINT", (
+        "the serving run's own system decides whose cell applies"
+    )
     assert served["lineage"]["regional_path_prior_system_id"] == "NCEP_HRRR_POINT"
     exhausted = R.resolve_serving_input([RUN], as_of_utc="2026-08-23T23:00:00Z", **kwargs)
     assert exhausted is None, "a curve with nothing left says nothing"

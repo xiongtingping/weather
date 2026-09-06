@@ -119,7 +119,19 @@ def collect(target_db: Path, archive_db: Path) -> list[dict]:
     return samples
 
 
-def fit(samples: list[dict]) -> dict:
+def _scope(samples: list[dict]) -> dict:
+    """Cells and station biases over one set of samples.
+
+    Called once for the cross-system pool and once per system.  Charter 99,
+    2026-09-06: the first artifact had no system dimension, so cells fitted
+    on ten US HRRR/NBM stations served seven European ICON-EU station-days
+    -- the dispersion that decides how much mass sits above the running
+    high, taken from a different model on a different continent.  Fitting
+    each system separately does not by itself forbid the borrow (ICON-EU's
+    archive keeps no history, so it has none to fit); it makes the borrow
+    something the serving side can see and declare.
+    """
+
     per_cell: dict[int, list[float]] = defaultdict(list)
     per_station: dict[str, list[float]] = defaultdict(list)
     for sample in samples:
@@ -153,18 +165,33 @@ def fit(samples: list[dict]) -> dict:
         if len(values) >= MIN_STATION_SAMPLES
     }
     return {
-        "schema": SCHEMA,
         "sample_n": len(samples),
         "station_n": len({s["station_id"] for s in samples}),
         "station_day_n": len({(s["station_id"], s["event_date"]) for s in samples}),
         "trained_from": min(s["event_date"] for s in samples),
         "trained_through": max(s["event_date"] for s in samples),
-        "hours_edges": list(HOURS_EDGES),
-        "minimum_cell_samples": MIN_CELL_SAMPLES,
-        "minimum_station_samples": MIN_STATION_SAMPLES,
         "pooled_sigma_c": pooled_sigma,
         "cells": cells,
         "stations": stations,
+    }
+
+
+def fit(samples: list[dict]) -> dict:
+    by_system: dict[str, list[dict]] = defaultdict(list)
+    for sample in samples:
+        by_system[str(sample["system_id"])].append(sample)
+    return {
+        "schema": SCHEMA,
+        "hours_edges": list(HOURS_EDGES),
+        "minimum_cell_samples": MIN_CELL_SAMPLES,
+        "minimum_station_samples": MIN_STATION_SAMPLES,
+        # The cross-system pool stays at the top level, unchanged in shape
+        # and meaning: it is the fallback a system without its own history
+        # serves from, and an older artifact that has only this still loads.
+        **_scope(samples),
+        "systems": {
+            system: _scope(rows) for system, rows in sorted(by_system.items())
+        },
     }
 
 
@@ -222,6 +249,17 @@ def main() -> int:
         )
     if artifact["stations"]:
         print("  站偏差:", {k: round(v["bias_c"], 2) for k, v in artifact["stations"].items()})
+    print("  分系统（服务时优先用自家格子，没有才退回上面的池化格子）：")
+    for system, scope in sorted(artifact["systems"].items()):
+        live = [
+            k for k in sorted(scope["cells"], key=int)
+            if not scope["cells"][k]["backed_off"]
+        ]
+        print(
+            f"    {system:22s} 样本 {scope['sample_n']:6d} · {scope['station_n']:3d} 站 · "
+            f"{scope['trained_from']}..{scope['trained_through']} · "
+            f"可服务格子 {len(live)}/{len(scope['cells'])} · 池化 σ {scope['pooled_sigma_c']:.2f}"
+        )
     return 0
 
 
