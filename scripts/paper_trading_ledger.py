@@ -2162,7 +2162,12 @@ SELECTION_RULE_SHA256 = content_sha256({
     # A row priced against the raw posterior describes a red line the live
     # engine no longer draws, so it cannot share a fingerprint with these.
     "metar_ceiling": (
-        "replay_table_oos_by_event_date"
+        # The window the ceiling may speak in rides in the label: a book
+        # priced with the ceiling from 10:00 local (14h left, 2026-09-06)
+        # is not the book priced with it from 14:00 (10h), and the two must
+        # not share a fingerprint.
+        "replay_table_oos_by_event_date:max_hours_left=%g"
+        % metar_ceiling.CEILING_MAX_HOURS_LEFT
         if PAPER_LEDGER_CEILING and REPLAY_LAYERS_APPLIED
         else "off:judge_reads_envelope" if PAPER_LEDGER_CEILING
         else "off"

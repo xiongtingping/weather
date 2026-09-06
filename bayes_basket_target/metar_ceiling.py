@@ -41,11 +41,23 @@ CEILING_ENABLED = (
     os.environ.get("PM_METAR_CEILING", "0").strip()
     not in {"0", "false", "FALSE", "no", ""}
 )
-# Beyond this the day still has an afternoon in it and the prior is the better
-# answer; measured, applying the correction there costs hit rate rather than
-# buying any.  Inside it the correction is worth 10 points of argmax accuracy.
+# How early in the day the ceiling may speak, in hours left before local
+# midnight.  It was 10 (about 14:00 local): beyond that the day still had an
+# afternoon in it, and the 2026-08-23 measurement found the correction there
+# cost hit rate while inside it bought 10 points of argmax accuracy.
+#
+# Operator ruling 2026-09-06: widened to 14, which is 10:00 local.  ZGSZ
+# 2026-09-06 -- 27°C at midnight, heavy showers from 05:00, 25°C at noon --
+# served 80% on 30-32°C all morning with the receipt reading TOO_EARLY, and
+# nothing else in P1 reads the observations before the peak (the soft
+# likelihood is suspended by the 2026-09-02 ruling, the hard bound only cuts
+# from below).  The fitted bins the window now reaches are populated
+# (10-13h: p_still_rose 0.668 on 5,663 samples; 13-16h: 0.859 on 3,402), so
+# nothing is extrapolated; what the earlier hours cost or buy on the ledger
+# is the measurement this ruling asks for, and PAPER_LEDGER_METAR_CEILING
+# reads this same constant so both sides move together.
 CEILING_MAX_HOURS_LEFT = float(
-    os.environ.get("PM_METAR_CEILING_MAX_HOURS_LEFT", "10.0") or 10.0
+    os.environ.get("PM_METAR_CEILING_MAX_HOURS_LEFT", "14.0") or 14.0
 )
 
 DEFAULT_REPLAY_TABLE = (

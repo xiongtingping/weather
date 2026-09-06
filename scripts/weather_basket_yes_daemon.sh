@@ -25,7 +25,9 @@ export PM_TARGET_PRODUCTION_WRITER=1
 # or before the artifact's trained_through, so this is inert until the
 # curve has been fitted past it.
 export PM_METAR_CEILING=1
-export PM_METAR_CEILING_MAX_HOURS_LEFT=10.0
+# 14 hours left is 10:00 local (operator ruling 2026-09-06; was 10.0, about
+# 14:00 local).  The module default says the same; this export only pins it.
+export PM_METAR_CEILING_MAX_HOURS_LEFT=14.0
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 PY="$ROOT/.venv/bin/python"
 if [ ! -x "$PY" ]; then

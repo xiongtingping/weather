@@ -98,3 +98,48 @@ def test_no_side_is_ever_driven_to_exactly_zero(monkeypatch) -> None:
     out, _ = _apply(monkeypatch, "2026-08-20T22:00:00.000Z")
     assert all(value > 0.0 for value in (out["23°C"], out["24°C"]))
     assert sum(out.values()) == pytest.approx(1.0)
+
+
+def test_the_ceiling_speaks_from_ten_local_by_ruling(monkeypatch) -> None:
+    """Operator ruling 2026-09-06: the window opens at 14 hours left.
+
+    ZGSZ 2026-09-06 held 80% on 30-32°C through a rainy morning at 25°C with
+    the receipt reading TOO_EARLY under the 10-hour window.  The default is
+    now 14 (10:00 local); the fitted artifact's 13-16h bin is populated, so
+    the layer rescales on it rather than declining.
+    """
+
+    importlib.reload(metar_ceiling)
+    assert metar_ceiling.CEILING_MAX_HOURS_LEFT == 14.0
+    artifact = {
+        "schema": metar_ceiling.SCHEMA,
+        "trained_through": "2026-08-01",
+        "bins": {
+            "0": {"hours_from": 0.0, "hours_to": 10.0,
+                  "p_still_rose": 0.20, "sample_n": 5280, "backed_off": False},
+            "1": {"hours_from": 10.0, "hours_to": 13.0,
+                  "p_still_rose": 0.668, "sample_n": 5663, "backed_off": False},
+            "2": {"hours_from": 13.0, "hours_to": 16.0,
+                  "p_still_rose": 0.859, "sample_n": 3402, "backed_off": False},
+            "3": {"hours_from": 16.0, "hours_to": 1e9,
+                  "p_still_rose": 0.90, "sample_n": 3918, "backed_off": False},
+        },
+    }
+    monkeypatch.setattr(metar_ceiling, "CEILING_ENABLED", True)
+    # 10:30 local on a UTC station: 13.5 hours left -- inside the new window.
+    out, note = metar_ceiling.apply_ceiling(
+        POSTERIOR, ordinals=ORDINALS, running_high_bucket="22°C",
+        event_date="2026-08-20", settlement_timezone="UTC",
+        as_of_utc="2026-08-20T10:30:00.000Z", artifact=artifact,
+    )
+    assert note["metar_ceiling_applied"] == "true"
+    assert out["23°C"] + out["24°C"] == pytest.approx(0.859, abs=1e-6)
+    # 09:30 local: 14.5 hours left -- still too early.
+    out, note = metar_ceiling.apply_ceiling(
+        POSTERIOR, ordinals=ORDINALS, running_high_bucket="22°C",
+        event_date="2026-08-20", settlement_timezone="UTC",
+        as_of_utc="2026-08-20T09:30:00.000Z", artifact=artifact,
+    )
+    assert note["metar_ceiling_skip_reason"] == "TOO_EARLY"
+    assert out == POSTERIOR
+
