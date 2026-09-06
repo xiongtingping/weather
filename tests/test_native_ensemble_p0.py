@@ -350,18 +350,30 @@ def test_mixed_native_cycles_use_per_system_oos_lineage_and_family_gate() -> Non
     lineage = compiled["packet"]["native_probability_envelope"]["lineage"]
     assert lineage["run_cycle"] == "MIXED_NATIVE_CYCLES"
     assert lineage["run_cycle_scope"] == "PER_SYSTEM_NATIVE_CYCLE"
-    assert json.loads(lineage["run_cycle_by_system_json"]) == packet[
-        "run_cycle_by_system"
-    ]
-    assert json.loads(lineage["run_init_utc_by_system_json"]) == packet[
-        "run_init_utc_by_system"
-    ]
+    # The cross layer seats the best subset spanning two independence
+    # families; the two ECMWF fixture systems share one, so the seated set
+    # is a subset of the packet's.  Every per-system lineage map is keyed on
+    # the seated systems and agrees with the packet on each of them.
+    seated = set(json.loads(lineage["ensemble_system_ids_json"]))
+    assert 2 <= len(seated) <= len(packet["run_cycle_by_system"])
+    assert seated <= set(packet["run_cycle_by_system"])
+    assert json.loads(lineage["run_cycle_by_system_json"]) == {
+        system: packet["run_cycle_by_system"][system] for system in seated
+    }
+    assert json.loads(lineage["run_init_utc_by_system_json"]) == {
+        system: packet["run_init_utc_by_system"][system] for system in seated
+    }
     assert json.loads(
         lineage["archive_query_at_utc_by_system_json"]
-    ) == packet["archive_query_at_utc_by_system"]
+    ) == {
+        system: packet["archive_query_at_utc_by_system"][system]
+        for system in seated
+    }
     taf = json.loads(lineage["taf_nwp_live_compatibility_json"])
     assert taf["run_cycle"] == "MIXED_NATIVE_CYCLES"
-    assert taf["run_cycle_by_system"] == packet["run_cycle_by_system"]
+    assert taf["run_cycle_by_system"] == {
+        system: packet["run_cycle_by_system"][system] for system in seated
+    }
     assert taf["availability_evidence"] == packet[
         "availability_evidence"
     ]
@@ -382,7 +394,9 @@ def test_mixed_native_cycles_use_per_system_oos_lineage_and_family_gate() -> Non
     assert compiled["forward_prediction"]["run_cycle_by_system_json"]
     assert compiled["forward_prediction"][
         "run_cycle_by_system_sha256"
-    ] == content_sha256(packet["run_cycle_by_system"])
+    ] == content_sha256({
+        system: packet["run_cycle_by_system"][system] for system in seated
+    })
     assert persist_native_ensemble_forward_prediction(
         conn,
         compiled,
@@ -395,11 +409,16 @@ def test_mixed_native_cycles_use_per_system_oos_lineage_and_family_gate() -> Non
     ).fetchone() == (
         "MIXED_NATIVE_CYCLES",
         json.dumps(
-            packet["run_cycle_by_system"],
+            {
+                system: packet["run_cycle_by_system"][system]
+                for system in seated
+            },
             sort_keys=True,
             separators=(",", ":"),
         ),
-        content_sha256(packet["run_cycle_by_system"]),
+        content_sha256({
+            system: packet["run_cycle_by_system"][system] for system in seated
+        }),
     )
 
 
@@ -445,22 +464,28 @@ def test_native_p0_capture_freshness_is_not_restarted_by_compilation() -> None:
     conn = sqlite3.connect(":memory:")
     _install_mixed_cycle_calibrations(conn)
     packet = _mixed_packet()
+    # A packet is usable while at least MIN_USABLE_FRESHNESS_SECONDS of its
+    # window remain (2026-08-28, 6e9f7b59), so the boundary sits one minute
+    # inside the TTL, and the TTL itself has to be longer than that minute.
+    from bayes_basket_target.contracts import MIN_USABLE_FRESHNESS_SECONDS
+
     captured = datetime.fromisoformat(
         str(packet["received_at_utc"]).replace("Z", "+00:00")
     ).astimezone(timezone.utc)
-    still_fresh_decision = captured + timedelta(seconds=59)
+    ttl = 3600
+    last_usable = captured + timedelta(
+        seconds=ttl - MIN_USABLE_FRESHNESS_SECONDS
+    )
 
     still_fresh = compile_native_ensemble_p0(
         conn,
         forward_packet=packet,
-        decision_at_utc=(
-            still_fresh_decision.isoformat().replace("+00:00", "Z")
-        ),
-        fresh_seconds=60,
+        decision_at_utc=last_usable.isoformat().replace("+00:00", "Z"),
+        fresh_seconds=ttl,
     )
     assert (
         still_fresh["packet"]["native_probability_envelope"]["fresh_until_utc"]
-        == (captured + timedelta(seconds=60)).isoformat().replace(
+        == (captured + timedelta(seconds=ttl)).isoformat().replace(
             "+00:00", "Z"
         )
     )
@@ -472,10 +497,10 @@ def test_native_p0_capture_freshness_is_not_restarted_by_compilation() -> None:
         compile_native_ensemble_p0(
             conn,
             forward_packet=packet,
-            decision_at_utc=(captured + timedelta(seconds=60)).isoformat().replace(
-                "+00:00", "Z"
-            ),
-            fresh_seconds=60,
+            decision_at_utc=(
+                last_usable + timedelta(seconds=1)
+            ).isoformat().replace("+00:00", "Z"),
+            fresh_seconds=ttl,
         )
 
     with pytest.raises(
@@ -485,10 +510,10 @@ def test_native_p0_capture_freshness_is_not_restarted_by_compilation() -> None:
         compile_native_ensemble_p0(
             conn,
             forward_packet=packet,
-            decision_at_utc=(captured + timedelta(seconds=61)).isoformat().replace(
-                "+00:00", "Z"
-            ),
-            fresh_seconds=60,
+            decision_at_utc=(
+                captured + timedelta(seconds=ttl + 1)
+            ).isoformat().replace("+00:00", "Z"),
+            fresh_seconds=ttl,
         )
 
 
