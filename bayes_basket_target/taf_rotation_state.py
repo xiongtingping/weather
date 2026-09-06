@@ -15,7 +15,23 @@ from .fleet import expected_station_count
 
 SCHEMA = "bayes_basket_target_taf_rotation_state_v1"
 MAX_CATALOG_SCOPES = expected_station_count() * 3
-MAX_SELECTED_SCOPES = 4
+# Twelve, from the lap arithmetic rather than a preference.  The poll does not
+# run on its own clock: the resident serialised its three writers on
+# 2026-08-26 (af0e5084) because the forecast prefetch and the production cycle
+# were writing calibration_forward_taf_capture at the same time and every
+# ingress came back "database is locked".  Correct, and it halved this lane:
+# measured over rounds clustered at a 120s gap, the poll went from one every
+# 11-13 minutes before that commit to one every 19-33 minutes after, 44-46 a
+# day now.  Round frequency is therefore not ours to raise -- the serialisation
+# is load-bearing -- so the lap is set by what one round covers.  At four
+# scopes a round that is 180 slots a day against a ninety-scope catalogue: a
+# twelve-hour lap, against a TAF window only ten hours wide (the bulletin
+# carrying the day's TX is issued about 21Z the evening before, and the scope
+# leaves the catalogue at 15:00 local).  Twelve scopes a round makes the lap
+# four hours, so that window holds two or three polls instead of most of one.
+# The cost is bounded: capture_forward_awc_taf times out at 12s, and the caller
+# stops the round on its own budget before the writer turn stretches.
+MAX_SELECTED_SCOPES = 12
 # The served ledger outlives the catalogue on purpose (see build_rotation_state),
 # so it is bounded on its own terms rather than by today's scope count.
 MAX_SERVED_LEDGER_SCOPES = MAX_CATALOG_SCOPES * 2
@@ -199,8 +215,14 @@ def load_rotation_state(path: Path) -> dict[str, Any] | None:
         or len(result.get("served_sequence_by_scope_key") or {})
         > MAX_SERVED_LEDGER_SCOPES
         or not isinstance(result.get("latest_selected_scope_keys"), list)
+        # Bounded by the catalogue, not by the batch.  The batch is a tuning
+        # knob -- it went 4 to 12 on 2026-09-06 -- and a shape guard keyed to
+        # it would turn any later reduction into a fail-closed lane: every
+        # state file written under the wider batch would read as malformed
+        # until someone deleted it.  A selection can never exceed the
+        # catalogue, which bounds the file just as well and survives retuning.
         or len(result["latest_selected_scope_keys"])
-        > MAX_SELECTED_SCOPES
+        > MAX_CATALOG_SCOPES
         or result.get("production_no_live") is not True
         or result.get("calls_order_gateway") is not False
         or result.get("places_orders") is not False

@@ -202,6 +202,23 @@ TARGET_RESOURCE_REOPEN_REASONS = (
     "target_database_bytes_exceeded",
 )
 TARGET_TAF_POLL_INTERVAL_SEC = 60.0
+# How long one TAF round may hold the shared writer turn.
+#
+# The interval above is a floor, not a cadence: the poll runs inside the
+# forecast prefetch, which takes its turn behind the production cycle and the
+# hosted sweeps, so a round actually comes round every twenty-odd minutes.  The
+# lap is therefore paid for in scopes per round, and the round was widened from
+# four to twelve to bring a ninety-scope lap from twelve hours down to four.
+#
+# Ninety seconds bounds what that widening can cost the other two writers.
+# Each capture is already bounded at 12s by capture_forward_awc_taf, but the
+# measured per-capture spend is long-tailed -- 2s median, 9s at p90, 89s at p99
+# over 858 samples since 2026-08-28 -- so twelve at the tail is minutes, not
+# the seventy the mean predicts.  Past the budget the round returns what it
+# has; the unattempted scopes are never stamped as served and so lead the next
+# round.  A wide round on a good day, a short one on a bad day, and the writer
+# turn stays bounded either way.
+TARGET_TAF_ROUND_BUDGET_SEC = 90.0
 TARGET_NWP_POLL_INTERVAL_SEC = 600.0
 
 # How long a writer lane stands down after finishing, before its own gate can
@@ -1785,7 +1802,22 @@ def run_target_forecast_refresh_cycle(
                 captures: list[dict[str, Any]] = []
                 capture_failures: list[dict[str, str]] = []
                 outcomes: list[dict[str, str]] = []
+                # Only the scopes actually attempted get stamped as served, so
+                # a round cut short by the budget leaves its remainder at the
+                # front of the next one rather than skipping it.  Selecting
+                # twelve and attempting four would otherwise be the old
+                # starvation wearing a bigger number.
+                attempted: list[Mapping[str, Any]] = []
+                round_deadline = (
+                    time.monotonic() + TARGET_TAF_ROUND_BUDGET_SEC
+                )
                 for scope in selected:
+                    # Always attempt the first, whatever the clock says: a
+                    # budget that can refuse every scope makes no progress at
+                    # all, which is worse than a long turn.
+                    if attempted and time.monotonic() >= round_deadline:
+                        break
+                    attempted.append(scope)
                     station = scope["station_id"]
                     event_date = scope["event_date"]
                     settlement_timezone = scope[
@@ -1828,7 +1860,7 @@ def run_target_forecast_refresh_cycle(
                 )
                 rotation = build_taf_rotation_state(
                     catalog=catalog,
-                    selected=selected,
+                    selected=attempted,
                     next_cursor=next_cursor,
                     catalog_sha256=catalog_sha,
                     outcomes=outcomes,
@@ -1851,11 +1883,17 @@ def run_target_forecast_refresh_cycle(
                     ),
                     "scope_source": scope_source,
                     "catalog_scope_count": len(catalog),
-                    "selected_scope_count": len(selected),
+                    # What the round did, then what it was offered.  A round
+                    # the budget cut short says so here rather than reporting
+                    # a full sweep it did not run.
+                    "selected_scope_count": len(attempted),
                     "selected_scope_keys": [
                         taf_rotation_scope_key(scope)
-                        for scope in selected
+                        for scope in attempted
                     ],
+                    "nominated_scope_count": len(selected),
+                    "deferred_scope_count": len(selected) - len(attempted),
+                    "round_budget_sec": TARGET_TAF_ROUND_BUDGET_SEC,
                     "capture_count": len(captures),
                     "failure_count": len(capture_failures),
                     "failures": capture_failures,

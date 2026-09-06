@@ -71,9 +71,12 @@ def test_taf_rotation_crosses_end_and_wraps_repeatedly(tmp_path) -> None:
     selected_history: list[list[str]] = []
 
     for generation in range(3):
+        # Pinned to four rather than the production batch: this asserts the
+        # resume arithmetic, which must not change when the batch is retuned.
         selected, cursor, catalog_sha = select_scopes(
             catalog,
             previous=previous,
+            limit=4,
         )
         outcomes = [
             {
@@ -124,6 +127,7 @@ def test_taf_rotation_does_not_replay_head_when_catalog_changes() -> None:
     selected, cursor, catalog_sha = select_scopes(
         original,
         previous=None,
+        limit=4,
     )
     state = build_rotation_state(
         catalog=original,
@@ -149,6 +153,7 @@ def test_taf_rotation_does_not_replay_head_when_catalog_changes() -> None:
     next_selected, next_cursor, _ = select_scopes(
         changed,
         previous=state,
+        limit=4,
     )
 
     # RK00..RK03 were served a moment ago; NEW0 and RK04 never were.  The two
@@ -192,7 +197,9 @@ def test_taf_rotation_reaches_catalog_tail_under_continuous_churn() -> None:
             if index != generation % len(head)
         ]
         catalog = [*churned, tail]
-        selected, cursor, catalog_sha = select_scopes(catalog, previous=previous)
+        selected, cursor, catalog_sha = select_scopes(
+            catalog, previous=previous, limit=4
+        )
         if any(scope["station_id"] == "ZUUU" for scope in selected):
             served_tail_at_round = generation
             break
@@ -251,3 +258,43 @@ def test_taf_rotation_stamps_failed_scopes_as_served() -> None:
 
     assert [scope["station_id"] for scope in selected] == ["RK00", "RK01"]
     assert [scope["station_id"] for scope in next_selected] == ["RK02", "RK03"]
+
+
+def test_taf_rotation_defers_rather_than_skips_an_unattempted_scope() -> None:
+    """A round cut short by its budget leaves its remainder at the front.
+
+    The round is widened to twelve scopes but bounded by wall clock, so a slow
+    round attempts fewer than it selected.  Only the attempted ones are handed
+    to ``build_rotation_state``; stamping the whole selection would skip the
+    unattempted tail every round, which is the starvation this lane was just
+    dug out of, wearing a bigger batch size.
+    """
+
+    catalog = [
+        {**_row(f"RK{index:02d}", "2026-08-01"), "day_state": "not_started"}
+        for index in range(12)
+    ]
+    selected, cursor, catalog_sha = select_scopes(catalog, previous=None)
+    assert len(selected) == 12
+
+    # The round ran out of time after five.
+    attempted = selected[:5]
+    state = build_rotation_state(
+        catalog=catalog,
+        selected=attempted,
+        next_cursor=cursor,
+        catalog_sha256=catalog_sha,
+        outcomes=[
+            {"scope_key": scope_key(scope), "state": "captured", "reason": ""}
+            for scope in attempted
+        ],
+        previous=None,
+        updated_at_utc="2026-07-31T00:00:00Z",
+    )
+
+    assert len(state["served_sequence_by_scope_key"]) == 5
+    next_selected, _, _ = select_scopes(catalog, previous=state)
+    # The seven it never reached lead, and only then does it lap back.
+    assert [scope["station_id"] for scope in next_selected][:7] == [
+        f"RK{index:02d}" for index in range(5, 12)
+    ]
