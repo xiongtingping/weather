@@ -2623,7 +2623,11 @@ def test_clause_73_the_execution_layer_authorizes_on_the_whole_basket_edge() -> 
     solver_source = (
         root / "bayes_basket_target" / "delta_v2_runtime.py"
     ).read_text(encoding="utf-8")
-    assert "execution_authorization_rule = (" in solver_source
+    # Charter 92: the rule is read off one kernel function at both sites.
+    assert (
+        "execution_authorization_rule = execution_authorization_rule_v1("
+        in solver_source
+    )
     assert "\"window_probabilities\": dict(best[\"window_probabilities\"])" in solver_source
     runtime_source = (root / "bayes_basket_target" / "runtime.py").read_text(
         encoding="utf-8"
@@ -3301,3 +3305,67 @@ def test_clause_87_the_gate_reads_effective_edge_and_the_ticket_waits_for_it(mon
     assert "CHARTER_87_GATE_EFFECTIVE_EDGE," in ledger_source
     assert '"gate_belief": (' in ledger_source
     assert ledger_source.count("effective_edge_tables=_effective_edge_tables_as_of(") >= 3
+
+
+def test_clause_92_every_buy_reads_the_deflated_belief(monkeypatch) -> None:
+    """Charter 92: one deflated belief for every buy; the ticket is not exempt.
+
+    The execution layer authorizes the ticket on ``whole_basket_edge_v1``
+    like any increment, both lanes read the rule off one kernel function,
+    and nothing at that layer falls back to the snapshot vector.
+    """
+    from bayes_basket_target.basket_kernel import delta_v2 as kernel
+
+    clause = _clause(92)
+    for needle in (
+        "PM_CHARTER_92_TICKET_EDGE", "execution_authorization_rule_v1",
+        "edge_belief_missing", "ticket_authorization", "不允许用原始概率",
+        "whole_basket_edge_v1",
+    ):
+        assert needle in clause, needle
+    for old in (73, 74, 87):
+        assert "第 92 条起" in _clause(old), old
+    assert kernel.CHARTER_92_TICKET_EDGE == "on"
+    rule = kernel.execution_authorization_rule_v1
+    assert delta_v2_runtime.execution_authorization_rule_v1 is rule
+    kelly, curve = kernel.KELLY_OBJECTIVE_FORM, kernel.CURVE_OBJECTIVE_FORM
+    ticket, seat = kernel.CHAIN_TICKET_CANDIDATE_ORIGIN, kernel.KELLY_CANDIDATE_ORIGIN
+    edge = kernel.EXECUTION_AUTHORIZATION_WHOLE_BASKET_EDGE
+    assert rule(winner_candidate_origin=ticket, objective_form=kelly) == edge
+    assert rule(winner_candidate_origin=seat, objective_form=kelly) == edge
+    assert rule(winner_candidate_origin=ticket, objective_form=curve) == edge
+    assert rule(winner_candidate_origin=seat, objective_form=curve) == (
+        kernel.EXECUTION_AUTHORIZATION_JOINT_VALUE
+    )
+    # The pre-ruling arm hands the ticket charter 74's structural rule.
+    monkeypatch.setattr(kernel, "CHARTER_92_TICKET_EDGE", "off")
+    assert rule(winner_candidate_origin=ticket, objective_form=kelly) == (
+        kernel.EXECUTION_AUTHORIZATION_CHAIN_TICKET
+    )
+    monkeypatch.setattr(kernel, "CHARTER_92_TICKET_EDGE", "on")
+    root = Path(__file__).resolve().parents[1]
+    compile_source = (
+        root / "bayes_basket_target" / "delta_v2_runtime.py"
+    ).read_text(encoding="utf-8")
+    assert compile_source.count("execution_authorization_rule_v1(") == 1
+    after = compile_source.split("execution_authorization_rule_v1(")[1][:800]
+    assert '.get("window_probabilities")\n        or {}' in after
+    assert "or probabilities" not in after
+    reprice_source = (
+        root / "bayes_basket_target" / "runtime.py"
+    ).read_text(encoding="utf-8")
+    assert reprice_source.count("execution_authorization_rule_v1(") == 1
+    kernel_source = (
+        root / "bayes_basket_target" / "basket_kernel" / "delta_v2.py"
+    ).read_text(encoding="utf-8")
+    assert "structural_blockers.add(EXECUTION_EDGE_BELIEF_MISSING)" in kernel_source
+    assert kernel.EXECUTION_EDGE_BELIEF_MISSING == "edge_belief_missing"
+    # The ledger: the ticket is no longer exempt, its own judge seats only
+    # admitted windows, and the fingerprint names the rule.
+    ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    assert "CHARTER_92_TICKET_EDGE," in ledger_source
+    assert 'or CHARTER_92_TICKET_EDGE == "on"' in ledger_source
+    assert '"ticket_authorization": (' in ledger_source
+    assert 'and row.get("admissible", True)' in ledger_source

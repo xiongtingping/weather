@@ -1167,7 +1167,10 @@ def test_charter_73_authorizes_the_increment_on_the_seated_belief() -> None:
     source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
         encoding="utf-8"
     )
-    assert 'if not production_verdict.get("ticket"):' in source
+    # Charter 92: the ticket is no longer exempt from that check.
+    assert 'or CHARTER_92_TICKET_EDGE == "on"' in source
+    assert L.CHARTER_92_TICKET_EDGE == K.CHARTER_92_TICKET_EDGE == "on"
+    assert '"ticket_authorization": (' in source
     assert "_edge = whole_basket_edge_delta_v1(" in source
     assert "if not _edge > _epsilon + 1e-9:" in source
     assert "execution_edge_not_authorized" in L.REFUSAL_REASONS

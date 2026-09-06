@@ -69,6 +69,8 @@ from .basket_kernel.delta_v2 import (
     CHAIN_OPENING_STAGE,
     CHAIN_TICKET_CANDIDATE_ORIGIN,
     EXECUTION_AUTHORIZATION_CHAIN_TICKET,
+    CHARTER_92_TICKET_EDGE,
+    execution_authorization_rule_v1,
     DECISION_MOMENT_RULE_VERSION,
     edge_state_v1,
     is_decision_moment_v1,
@@ -5323,16 +5325,18 @@ def compile_delta_v2_runtime_plan(
     winner_candidate_origin = str(
         target_solution.get("winner_candidate_origin") or ""
     )
-    execution_authorization_rule = (
-        EXECUTION_AUTHORIZATION_CHAIN_TICKET
-        if winner_candidate_origin == CHAIN_TICKET_CANDIDATE_ORIGIN
-        else PRODUCTION_EXECUTION_AUTHORIZATION
-        if objective_form == KELLY_OBJECTIVE_FORM
-        else EXECUTION_AUTHORIZATION_JOINT_VALUE
+    # Charter 92: one rule for every increment, the ticket included, read
+    # off the kernel so the re-price (``runtime.py``) cannot drift from the
+    # compile; and the belief it reads is the seated partition alone.  No
+    # fallback to the snapshot vector, which no gate has deflated: a plan
+    # without a seated partition is refused at the kernel by name.
+    execution_authorization_rule = execution_authorization_rule_v1(
+        winner_candidate_origin=winner_candidate_origin,
+        objective_form=objective_form,
     )
     edge_probabilities = dict(
         (support_selection.get("seated") or {}).get("window_probabilities")
-        or probabilities
+        or {}
     )
     selection = select_complete_maker_bundle_v2(
         actions,

@@ -209,6 +209,9 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     # Charter 73: the increment's edge on the belief the seat was judged
     # on, the number production's bundle re-score authorizes on.
     whole_basket_edge_delta_v1,
+    # Charter 92: the ticket is authorized on that same edge; ``off`` is
+    # charter 74's structural authorization, the replay arm.
+    CHARTER_92_TICKET_EDGE,
     EFFECTIVE_EDGE_LAMBDA_P0_OVERRIDE,
 )
 from bayes_basket_target.basket_kernel.support import (  # noqa: E402
@@ -2020,6 +2023,14 @@ SELECTION_RULE_SHA256 = content_sha256({
     "checkpoint_books": "every_committed_book_while_current_v1",
     "taker_fill": "top_of_offer_cut_to_depth_v1",
     "execution_authorization": "whole_basket_edge_v1",
+    # Charter 92 (2026-09-06): the ticket is authorized on the same
+    # whole-basket edge as every other increment.  Unconditional: the
+    # standing rule changed, and rows judged under the structural rule must
+    # not share a book with these.
+    "ticket_authorization": (
+        "whole_basket_edge_v1" if CHARTER_92_TICKET_EDGE == "on"
+        else "chain_ticket_v1"
+    ),
     **(
         {"lot_lift_budget": LOT_LIFT_BUDGET}
         if LOT_LIFT_BUDGET != "untilted" else {}
@@ -7421,6 +7432,13 @@ def backfill(
                         row for row in windows
                         if row.get("all_in_price") is not None
                         and row.get("edge") is not None
+                        # Charter 92: this lane's own judge seats only a
+                        # window the gate admitted on the deflated belief.
+                        # The enumeration keeps a refused incumbent on the
+                        # list flagged inadmissible (charter 78) so the
+                        # solver has a window to hold on; seating it here
+                        # and ticketing it was a buy no gate had passed.
+                        and row.get("admissible", True)
                     ]
                     if WINDOW_STRATEGY != "live":
                         priced_windows = _strategy_windows(
@@ -8865,9 +8883,16 @@ def backfill(
                         # authorizes on the increment's edge -- its
                         # expected payout on the belief the seat was
                         # judged on, less its cash -- above the policy's
-                        # epsilon.  A ticket is authorized on structure
-                        # alone (charter 74).  The kernel's own number.
-                        if not production_verdict.get("ticket"):
+                        # epsilon.  The kernel's own number.  Charter 92:
+                        # the ticket is no longer exempt -- it passed the
+                        # gate on the deflated belief, and the lot it
+                        # becomes is authorized on that belief like any
+                        # increment; ``off`` keeps charter 74's structural
+                        # authorization as the replay arm.
+                        if (
+                            not production_verdict.get("ticket")
+                            or CHARTER_92_TICKET_EDGE == "on"
+                        ):
                             _held_cost_after = dict(held_cost)
                             for _b, _c in zip(seat["buckets"], leg_cash):
                                 _held_cost_after[str(_b)] = (

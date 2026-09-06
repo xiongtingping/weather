@@ -30,6 +30,7 @@ from .basket_kernel.delta_v2 import (
     EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
     EXECUTION_AUTHORIZATION_CHAIN_TICKET,
     EXECUTION_AUTHORIZATION_JOINT_VALUE,
+    execution_authorization_rule_v1,
     KELLY_OBJECTIVE_FORM,
     MAX_STAKE_FRACTION_PER_SCOPE,
     PRODUCTION_EXECUTION_AUTHORIZATION,
@@ -797,14 +798,13 @@ def _rescore_clamped_bundle(
             ),
             # Charter 73: the re-score authorizes on the rule and the
             # belief the plan was authorized on.
-            authorization_rule=(
-                EXECUTION_AUTHORIZATION_CHAIN_TICKET
-                if str(delta_plan.get("basket_winner_candidate_origin") or "")
-                == CHAIN_TICKET_CANDIDATE_ORIGIN
-                else PRODUCTION_EXECUTION_AUTHORIZATION
-                if str(delta_plan.get("basket_objective_form") or "")
-                == KELLY_OBJECTIVE_FORM
-                else EXECUTION_AUTHORIZATION_JOINT_VALUE
+            # Charter 92: the same rule function the compile used, so a
+            # ticket re-prices on the whole-basket edge it was seated on.
+            authorization_rule=execution_authorization_rule_v1(
+                winner_candidate_origin=delta_plan.get(
+                    "basket_winner_candidate_origin"
+                ),
+                objective_form=delta_plan.get("basket_objective_form"),
             ),
             edge_probabilities=(
                 (

@@ -518,6 +518,48 @@ def chain_ticket_cash_v1(*, minimum_clip_usdc: float, legs: int) -> float:
         CHAIN_TICKET_DUST_FLOOR_USDC * 2.0,
     )
 PRODUCTION_EXECUTION_AUTHORIZATION = EXECUTION_AUTHORIZATION_WHOLE_BASKET_EDGE
+# Charter 92 (user ruling, 2026-09-06): every buy -- the opening ticket, a
+# top-up, a completion, the P0-M TAF entry -- is judged on the one deflated
+# belief (charter 81's lift times charter 68's lambda(a)), and nothing reads
+# the raw vector, the raw claim or the raw edge.  At the execution layer that
+# retires charter 74's structural authorization of the ticket: the ticket
+# passed charter 87's gate on the deflated belief, so its edge is no longer
+# "known to be nothing", and the lot it becomes under charters 70/83 (0.75 U
+# lifted to 2-5 U down the ask ladder) is authorized exactly as a Kelly
+# seat's increment is, on ``whole_basket_edge_v1`` over the seated
+# partition.  ``off`` is the pre-ruling arm.
+CHARTER_92_TICKET_EDGE = (
+    os.environ.get("PM_CHARTER_92_TICKET_EDGE", "").strip().lower() or "on"
+)
+if CHARTER_92_TICKET_EDGE not in {"on", "off"}:
+    raise RuntimeError(
+        f"unknown charter 92 ticket edge mode: {CHARTER_92_TICKET_EDGE}"
+    )
+# The blocker a bundle carries when the whole-basket edge rule is asked to
+# authorize without a seated partition: refused by name, never authorized
+# on a belief no gate has deflated.
+EXECUTION_EDGE_BELIEF_MISSING = "edge_belief_missing"
+
+
+def execution_authorization_rule_v1(
+    *, winner_candidate_origin: Any, objective_form: Any
+) -> str:
+    """The execution layer's rule for a plan, one answer for both lanes.
+
+    Charter 92: the ticket is authorized like every other increment.  Only
+    the ``off`` arm hands it charter 74's structural rule; the curve form
+    keeps ``joint_value_v2`` for its Kelly-less seats.
+    """
+
+    origin = str(winner_candidate_origin or "")
+    form = str(objective_form or "")
+    if origin == CHAIN_TICKET_CANDIDATE_ORIGIN:
+        if CHARTER_92_TICKET_EDGE == "off":
+            return EXECUTION_AUTHORIZATION_CHAIN_TICKET
+        return EXECUTION_AUTHORIZATION_WHOLE_BASKET_EDGE
+    if form == KELLY_OBJECTIVE_FORM:
+        return EXECUTION_AUTHORIZATION_WHOLE_BASKET_EDGE
+    return EXECUTION_AUTHORIZATION_JOINT_VALUE
 OBJECTIVE_FORMS = frozenset({
     VALUE_OBJECTIVE_FORM, CURVE_OBJECTIVE_FORM, KELLY_OBJECTIVE_FORM,
 })
@@ -2901,6 +2943,14 @@ def _evaluate_maker_bundle_combo(
     rule = str(authorization_rule or "").strip()
     if rule not in EXECUTION_AUTHORIZATION_RULES:
         raise ContractError("delta_v2_execution_authorization_rule_invalid")
+    # Charter 92: under the whole-basket edge rule the belief is the seated
+    # partition the solver judged on, never the snapshot vector.  A plan
+    # that reaches this layer without one is refused by name.
+    if (
+        rule == EXECUTION_AUTHORIZATION_WHOLE_BASKET_EDGE
+        and not edge_probabilities
+    ):
+        structural_blockers.add(EXECUTION_EDGE_BELIEF_MISSING)
     edge_belief = edge_probabilities if edge_probabilities else probabilities
     joint_rows: list[dict[str, Any]] = []
     expected_delta = 0.0
@@ -2999,8 +3049,9 @@ def _evaluate_maker_bundle_combo(
         max(0.0, target[bucket] - expected_shares[bucket]) ** 2
         for bucket in required
     )
-    # Charter 74: a ticket is authorized on structure alone -- it exists
-    # to open the chain, and its edge is known to be nothing.
+    # Charter 74's structural authorization of the ticket survives only as
+    # charter 92's ``off`` arm: the compile hands this function the chain
+    # ticket rule solely when ``CHARTER_92_TICKET_EDGE == "off"``.
     authorized = (
         not structural_blockers
         and (
