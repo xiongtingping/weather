@@ -843,6 +843,23 @@ def compile_station_p1_packets(
         # artifact, so it only applies on the steps that artifact actually
         # governs; on a fallback step it would skip an observation the
         # identity update was ready to consume.
+        #
+        # An artifact that cannot speak yet governs nothing: the step falls
+        # to the identity fallback, exactly as an out-of-bucket or
+        # curve-exhausted step does, and the observation is consumed.  It
+        # used to skip the observation outright, which was harmless on the
+        # live walk (the third report arrives an hour later and the packet
+        # with it) and fatal on a root rebase: the replay re-clocks every
+        # step to now, so the day's midnight report -- consumed at 00:05
+        # local under the night's identity fallback -- was re-stepped at
+        # 06:07 local under the promoted MORNING artifact, skipped as the
+        # first of fewer than three, and no later report beat it.  ZGSZ
+        # 2026-09-06: P0 rerooted at 22:07Z and 01:28Z with 25-27°C
+        # overnight, both replays emitted nothing, the 21:46Z P1 on the
+        # old root aged past its grace at 01:46Z, and the stage would have
+        # opened its entry window fail-closed until the afternoon's first
+        # new high.  Operator ruling 2026-09-06: a reroot with no new high
+        # still writes a P1 -- the one this now emits.
         if (
             artifact_in_bucket
             and explicit_artifact.method_version
@@ -853,7 +870,7 @@ def compile_station_p1_packets(
             }
             and len(trajectory_prefix) < 3
         ):
-            continue
+            artifact_in_bucket = False
         generation += 1
         governed_artifact = (
             explicit_artifact

@@ -252,7 +252,15 @@ MAX_JSON_NODES = 500_000
 # of that at a measured 33.9x duplication) and more disk, which is also the
 # only way to make a VACUUM possible again -- it needs ~31 GB of scratch
 # against 12 GB free, so nothing deleted in-store can give this file back.
-MAX_TARGET_DB_BYTES = 35840 * MIB
+#
+# 2026-09-06, third raise, operator ruling "40g".  The store stood at
+# 36.75 GiB with 831 MB of headroom against 35 GiB while the first live
+# baskets were open, and the ceiling stops the whole pipeline when it binds
+# (every model run reads stale the moment the guard refuses the write).
+# 40 GiB permits ~3.9 GB of growth against 11.5 GB of free disk on the same
+# volume, leaving ~7.6 GB; MIN_TARGET_FREE_BYTES below is still the hard
+# floor the guard enforces on the volume itself.
+MAX_TARGET_DB_BYTES = 40960 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.

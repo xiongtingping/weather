@@ -346,3 +346,153 @@ def test_fallback_p1_still_hard_excludes_what_observations_ruled_out() -> None:
         "ARTIFACT_NOT_PROMOTED"
         in final["lineage"]["metar_trajectory_degradation_reasons"]
     )
+
+
+# --- a promoted artifact that cannot speak yet governs nothing -------------
+
+def _physical_artifact(local_time_bucket: str):
+    """A promoted artifact under the three-observation minimum, in KLGA's scope."""
+
+    from bayes_basket_target.metar_path_state import PATH_STATE_SCHEMA
+    from bayes_basket_target.metar_trajectory import (
+        METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION,
+    )
+
+    payload = _promoted_artifact(local_time_bucket).to_dict()
+    payload.pop("artifact_id")
+    payload.pop("content_sha256")
+    payload.update({
+        "path_feature_schema": PATH_STATE_SCHEMA,
+        "path_model_coefficients": {
+            "base_distribution_mean": 0.3,
+            "momentum_c_per_hour": 0.35,
+            "acceleration_c_per_hour2": 0.1,
+            "drawdown_from_high_c": -0.5,
+            "dewpoint_depression_c": 0.01,
+            "cloud_cover_fraction": -0.8,
+            "precipitation_present": -1.0,
+            "wind_speed_mps": -0.02,
+            "remaining_hours": 0.02,
+        },
+        "path_model_sigma_c": 0.8,
+        "method_version": METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION,
+    })
+    return build_metar_trajectory_likelihood_artifact(payload)
+
+
+def _cooling_night() -> list[dict]:
+    """The midnight report is the day's high; the next two sit under it."""
+
+    rows = []
+    for index, (suffix, temperature, hour) in enumerate((
+        ("midnight", 20.0, "04"), ("one", 19.0, "05"), ("two", 18.5, "06"),
+    ), start=1):
+        rows.append({
+            "observation_id": f"o-{suffix}",
+            "station_id": "KLGA",
+            "event_date_local": "2026-08-09",
+            "settlement_timezone": "America/New_York",
+            "reported_temperature_c": temperature,
+            "valid_at_utc": f"2026-08-09T{hour}:00:00Z",
+            "canonical_committed_at_utc": f"2026-08-09T{hour}:05:00Z",
+            "raw_sha256": str(index) * 64,
+            "source_lane": "AWC",
+            "report_type": "METAR",
+            "evidence_role": "FORMAL",
+            "qc_status": "ACCEPTED",
+            "correction_suspected": False,
+        })
+    return rows
+
+
+def test_a_root_rebase_with_no_new_high_still_writes_a_p1() -> None:
+    """Operator ruling 2026-09-06: 换根后零新高也写一条 P1.
+
+    ZGSZ 2026-09-06: the 00:00-local report (27°C) was the day's high and
+    the night cooled.  P0 rerooted at 22:07Z and again at 01:28Z; the replay
+    under each new root re-clocks every step to now, so the midnight report
+    -- consumed at 00:05 local under the night's identity fallback -- was
+    re-stepped at 06:07 local under the promoted MORNING artifact, which
+    needs three observations before it may speak, and the step was skipped.
+    No later report beat the high, both replays emitted nothing, and the
+    21:46Z P1 on the old root aged past its grace at 01:46Z.
+
+    The minimum belongs to the artifact, not to the observation: a step the
+    artifact cannot govern falls to the identity fallback and is consumed.
+    """
+
+    # 10:10Z is 06:10 local -- MORNING -- the clock the rebase re-steps at.
+    packets = compile_station_p1_packets(
+        predecessor=_p0_root(),
+        observations=_cooling_night(),
+        registry_rows=_REGISTRY,
+        soft_likelihood_policy="ACTIVE",
+        compilation_at_utc="2026-08-09T10:15:00Z",
+        decision_floor_at_utc="2026-08-09T10:10:00Z",
+        trajectory_artifact=_physical_artifact("MORNING"),
+        trajectory_artifact_by_local_time_bucket={
+            "MORNING": _physical_artifact("MORNING"),
+        },
+    )
+    assert [packet["observation_id"] for packet in packets] == ["o-midnight"]
+    packet = packets[0]
+    assert packet["reported_high_advanced"] is True
+    # Re-clocked strictly after the old branch, as every rebase step is.
+    assert packet["decision_at_utc"] == "2026-08-09T10:10:00.000001Z"
+    # Governed by the identity fallback: the promoted artifact had one
+    # observation behind it and nothing fitted to say.
+    assert _strengths(packets) == [0.0]
+    assert packet["expected_envelope"]["lineage"]["reported_high_bucket"] == (
+        "75°F or below"
+    )
+    assert packet["hard_excluded_buckets"] == []
+
+
+def test_the_minimum_still_hands_the_third_step_to_the_promoted_artifact() -> None:
+    """The rule moved, it did not vanish: steps one and two fall to the
+    fallback, the third is the artifact's.
+
+    The physical conditioner demands a complete path state (dew point,
+    cloud, wind) that these bare temperature rows do not carry, so the
+    proof it raises on the third step is the evidence that the third step
+    was handed to it -- the first two, under the same artifact, compiled
+    on the fallback in the test above.
+    """
+
+    import pytest
+
+    from bayes_basket_target.contracts import ContractError
+
+    warming = _cooling_night()
+    warming[1]["reported_temperature_c"] = 21.0
+    warming[2]["reported_temperature_c"] = 22.0
+    with pytest.raises(ContractError, match="metar_path_state_incomplete"):
+        compile_station_p1_packets(
+            predecessor=_p0_root(),
+            observations=warming,
+            registry_rows=_REGISTRY,
+            soft_likelihood_policy="ACTIVE",
+            compilation_at_utc="2026-08-09T10:15:00Z",
+            decision_floor_at_utc="2026-08-09T10:10:00Z",
+            trajectory_artifact=_physical_artifact("MORNING"),
+            trajectory_artifact_by_local_time_bucket={
+                "MORNING": _physical_artifact("MORNING"),
+            },
+        )
+    # Two steps in, the same artifact still governs nothing: both compile.
+    packets = compile_station_p1_packets(
+        predecessor=_p0_root(),
+        observations=warming[:2],
+        registry_rows=_REGISTRY,
+        soft_likelihood_policy="ACTIVE",
+        compilation_at_utc="2026-08-09T10:15:00Z",
+        decision_floor_at_utc="2026-08-09T10:10:00Z",
+        trajectory_artifact=_physical_artifact("MORNING"),
+        trajectory_artifact_by_local_time_bucket={
+            "MORNING": _physical_artifact("MORNING"),
+        },
+    )
+    assert [packet["observation_id"] for packet in packets] == [
+        "o-midnight", "o-one",
+    ]
+    assert _strengths(packets) == [0.0, 0.0]
