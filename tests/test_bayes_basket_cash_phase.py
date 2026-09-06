@@ -621,3 +621,29 @@ def test_leg_under_the_exchange_minimum_lot_is_raised_to_one_lot() -> None:
 
     assert "lot_raise_usdc" in raised.to_dict()
     assert raised.content_sha256 != no_floor.content_sha256
+
+
+def test_the_restated_share_size_sits_on_the_grid_it_was_sized_on() -> None:
+    """5 shares at 0.47 must leave as 5.0, not 4.999999999999999.
+
+    The cash/share identity restates shares off the cash; 5.0 * 0.47 is
+    2.3499999999999996 and dividing that back gave the venue a request it
+    floored to 4.99 (KAUS 98-99°F, 2026-09-05), which the ledger then read as
+    a partial fill of a five-share request.
+    """
+
+    policy = _policy(cash_by_phase={"HEAVY": 10.0, "STANDARD": 10.0, "TAIL": 10.0})
+    phase = evaluate_cash_phase(policy, _input(policy))
+    sized = OrderSizingDecision.compute(
+        bucket="98-99°F",
+        phase_decision=phase,
+        delta_shares=5.0,
+        r_limit=0.47,
+        remaining_budget=10.0,
+        executable_depth_cash=12.0,
+        candidate_present=True,
+        minimum_lot_shares=5.0,
+    )
+    assert sized.eligible is True
+    assert repr(sized.q_order) == "5.0"
+    assert sized.c_order == pytest.approx(2.35)

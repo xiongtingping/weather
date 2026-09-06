@@ -594,7 +594,15 @@ class OrderSizingDecision:
                         reason = "sized_discrete"
         else:
             q_order = 0.0
-        q_order = c_order / limit if limit > EPS else 0.0
+        # Restated off the cash so the two agree to the identity below, and
+        # rounded back to the share grid the branches above sized on:
+        # 5.0 shares at 0.47 is 2.3499999999999996 USDC, and dividing that
+        # back out gives 4.999999999999999, which is what left this function
+        # as ``requested_size`` for KAUS 98-99°F on 2026-09-05 (the venue
+        # floors to its two-decimal quantum, and the ledger compared the
+        # matched 4.99 against a request it read as five).  Ten places is
+        # the same grid ``_floor_step`` and ``_ceil_step`` already round to.
+        q_order = round(c_order / limit, 10) if limit > EPS else 0.0
         if abs(c_order - q_order * limit) > 1e-8:
             raise ContractError("cash_share_identity_broken")
         after = max(0.0, budget - c_order)

@@ -29,6 +29,21 @@ SCHEMA = "bayes_basket_target_execution_reconciliation_v1"
 EVENT_TYPES = frozenset({"POST_ACK", "FILL", "PARTIAL_FILL", "CANCEL_ACK", "UNKNOWN_POST", "LATE_FILL", "EXPIRED", "NEVER_REACHED_EXCHANGE", "SUBMIT_REFUSED"})
 RECONCILIATION_STATES = frozenset({"pending", "unknown", "resolved_filled", "resolved_cancelled", "resolved_partial"})
 EPS = 1e-9
+# The venue's share quantum.  A marketable BUY is sized in whole cents of
+# USDC and the exchange reports the shares it actually matched to two
+# decimals, so a 5.0-share request can come back matched at 4.99 (KAUS
+# 98-99°F, 2026-09-05 19:49Z: 2.3453 USDC at 0.47).  A fill within one
+# quantum of the request is the whole order, not a partial one: the first
+# live morning classified that fill as partial, sent the intent to
+# reconciliation, and the reconciler re-applied the same matched order as
+# a second fill -- 9.98 shares on the ledger for 4.99 bought.
+VENUE_SHARE_QUANTUM = 0.01
+
+
+def fill_is_complete(filled_size: float, requested_size: float) -> bool:
+    """Whether ``filled_size`` covers the request to within one venue quantum."""
+
+    return float(filled_size) + VENUE_SHARE_QUANTUM + EPS >= float(requested_size)
 
 
 class ExecutionCasError(ContractError):
@@ -368,15 +383,15 @@ def _state_after_event(event_type: str, filled_size: float, requested_size: floa
             return "unknown", "reconcile_required", "refused_with_fill"
         return "resolved_not_placed", "failed", "gateway_refused_submission"
     if event_type in {"PARTIAL_FILL", "LATE_FILL"}:
-        if filled_size >= requested_size - EPS:
+        if fill_is_complete(filled_size, requested_size):
             return "resolved_filled", "filled", "full_fill_authoritative"
         return "unknown" if event_type == "LATE_FILL" else "pending", "reconcile_required", "partial_or_late_fill"
     if event_type == "FILL":
-        if filled_size >= requested_size - EPS:
+        if fill_is_complete(filled_size, requested_size):
             return "resolved_filled", "filled", "full_fill"
         return "pending", "reconcile_required", "partial_fill_requires_reconcile"
     if event_type == "CANCEL_ACK":
-        if filled_size >= requested_size - EPS:
+        if fill_is_complete(filled_size, requested_size):
             return "resolved_filled", "filled", "fill_cancel_race_resolved_by_fill"
         if filled_size > EPS:
             return "unknown", "reconcile_required", "cancel_fill_race"
@@ -479,11 +494,13 @@ def resolve_reconciliation(
             if prior_order is not None and prior_order[0]
             else None
         )
-        if state == "filled" and filled + EPS < requested_size:
+        if state == "filled" and not fill_is_complete(filled, requested_size):
             raise ReconciliationError("authoritative_filled_size_incomplete")
         if state == "cancelled" and filled > EPS:
             raise ReconciliationError("authoritative_cancelled_with_fill")
-        if state == "partial" and not EPS < filled < requested_size - EPS:
+        if state == "partial" and not (
+            EPS < filled and not fill_is_complete(filled, requested_size)
+        ):
             raise ReconciliationError("authoritative_partial_size_invalid")
         recon_state = {"filled": "resolved_filled", "cancelled": "resolved_cancelled", "partial": "resolved_partial"}[state]
         intent_state = {"filled": "filled", "cancelled": "cancelled", "partial": "reconcile_required"}[state]
@@ -595,7 +612,9 @@ __all__ = [
     "ExecutionCasError",
     "RECONCILIATION_STATES",
     "SCHEMA",
+    "VENUE_SHARE_QUANTUM",
     "VERSION_FIELDS",
+    "fill_is_complete",
     "assert_basket_hold_only",
     "assert_execution_version_cas",
     "apply_execution_receipt",

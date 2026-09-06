@@ -838,3 +838,55 @@ def test_a_cycle_whose_orders_were_all_refused_is_released_not_stranded() -> Non
         )
         assert receipt["settled"] == 1
         assert receipt["settled_scopes"][0]["cycle_id"] == again_bundle["cycle"]["cycle_id"]
+
+
+def test_the_sweep_is_not_blocked_by_orphan_cycles_that_never_held_an_intent() -> None:
+    """A prepared cycle with no intent is not a live cycle and is not examined.
+
+    2026-09-05 17:34Z restart: the all-refused branch of the settle query is
+    vacuously true for a cycle with zero intents, so the forty oldest of the
+    ~55,000 orphan cycles the identity migration left ``prepared`` filled the
+    batch every pass and failed ``live_cycle_settle_no_intents``, while the
+    eight cycles that had really filled that evening stayed prepared for
+    seven hours -- reservations unconsumed, and every later top-up on those
+    station-days due to be refused as supersession-required.
+    """
+
+    from types import SimpleNamespace
+
+    from bayes_basket_target.production_worker import TargetProductionWorker
+    from tests.test_bayes_basket_target_atomic_ledger import _db
+
+    with _db() as conn:
+        # Forty-one orphans, all older than the cycle that traded.
+        for index in range(41):
+            conn.execute(
+                "INSERT INTO basket_target_execution_cycles("
+                "cycle_id,plan_id,station_id,event_date,settlement_timezone,"
+                "strategy_lane,plan_sha256,requested_reserve_usdc,state,"
+                "created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    f"cycle_orphan_{index}", f"plan_orphan_{index}", "RKPK",
+                    "2026-07-27", "Asia/Seoul", "basket", "0" * 64, 0.0,
+                    "prepared", f"2026-07-27T00:{index:02d}:00Z",
+                    f"2026-07-27T00:{index:02d}:00Z",
+                ),
+            )
+        conn.commit()
+        done, _ = _live_cycle_with_fill(conn, index=90)
+        receipt = TargetProductionWorker._settle_live_cycles(
+            SimpleNamespace(commit_conn=conn), as_of_utc="2026-07-23T04:30:00Z"
+        )
+        assert receipt["examined"] == 1
+        assert receipt["settled"] == 1
+        assert receipt["failures"] == []
+        assert receipt["settled_scopes"][0]["cycle_id"] == done
+        assert conn.execute(
+            "SELECT state FROM basket_target_execution_cycles WHERE cycle_id=?",
+            (done,),
+        ).fetchone()[0] == "settled"
+        # The orphans are left exactly as they were: not this lane's.
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_target_execution_cycles"
+            " WHERE cycle_id LIKE 'cycle_orphan_%' AND state='prepared'"
+        ).fetchone()[0] == 41

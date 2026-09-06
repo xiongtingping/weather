@@ -612,3 +612,171 @@ def test_a_live_intent_the_station_gate_stops_is_recorded_not_stranded(monkeypat
     assert can_submit_next_order(
         conn, bucket=_intent()["bucket"], token_id=_intent()["token_id"]
     )["allowed"] is True
+
+
+# --- a fill within one venue quantum is the order, and the reconciler's
+# --- answer is cumulative ------------------------------------------------
+
+def test_a_fill_one_quantum_short_of_the_request_is_the_whole_order() -> None:
+    """KAUS 98-99°F, 2026-09-05 19:49Z: 5 requested, 4.99 matched at 0.47.
+
+    The venue sizes a marketable BUY in whole cents and reports matched
+    shares to two decimals, so the whole order can come back one quantum
+    short of the request.  That is a full fill, not a partial one; calling
+    it partial sent the intent to reconciliation, which re-applied the same
+    matched order and doubled the position.
+    """
+
+    from bayes_basket_target.execution_reconciliation import (
+        _state_after_event,
+        fill_is_complete,
+        resolve_reconciliation,
+    )
+
+    assert fill_is_complete(4.99, 5.0)
+    assert fill_is_complete(4.99, 4.999999999999999)
+    assert fill_is_complete(6.0, 6.000000000000001)
+    assert not fill_is_complete(4.98, 5.0)
+    assert not fill_is_complete(3.0, 5.0)
+    assert _state_after_event("FILL", 4.99, 5.0) == (
+        "resolved_filled", "filled", "full_fill",
+    )
+    assert _state_after_event("FILL", 3.0, 5.0) == (
+        "pending", "reconcile_required", "partial_fill_requires_reconcile",
+    )
+
+    conn = _conn([_intent(requested_size=4.999999999999999, limit_price=0.47)])
+    with conn:
+        result = record_order_event(
+            conn,
+            order_intent_id="intent-a",
+            event={
+                "event_type": "FILL", "exchange_order_id": "0x653c",
+                "observed_at": OBSERVED, "matched_size": 4.99,
+                "matched_notional_usdc": 2.3453,
+                "event_payload": {"exchange_status": "matched"},
+            },
+        )
+    assert result["state"] == "filled"
+    assert result["reconciliation_state"] == "resolved_filled"
+    # And the authoritative path accepts the same quantity as complete.
+    conn2 = _conn([_intent(requested_size=5.0, limit_price=0.47)])
+    with conn2:
+        resolved = resolve_reconciliation(
+            conn2, order_intent_id="intent-a", authoritative_state="filled",
+            filled_size=4.99, filled_notional_usdc=2.3453,
+            resolved_at_utc=OBSERVED,
+        )
+    assert resolved["state"] == "filled"
+
+
+def test_reconciliation_reads_the_gateway_reply_as_the_orders_cumulative_fill(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The stored reply is the exchange's whole account of the one order.
+
+    An intent already carrying a fill from the same order gains only what
+    the exchange reports beyond it; a reply that reports nothing beyond the
+    recorded fill closes the intent on what it holds when that covers the
+    request, and adds no second fill.
+    """
+
+    import clob_order_service_client
+    from bayes_basket_target import production_worker
+
+    # (a) A genuine partial the submit pass saw (3 of 40), then the exchange
+    # reports 40 matched in total: the increment is 37, the book holds 40.
+    conn = _conn([_intent()])
+    with conn:
+        record_order_event(
+            conn,
+            order_intent_id="intent-a",
+            event={
+                "event_type": "PARTIAL_FILL", "exchange_order_id": "0xfill",
+                "observed_at": OBSERVED, "matched_size": 3.0,
+                "matched_notional_usdc": 0.36,
+                "event_payload": {"exchange_status": "matched"},
+            },
+        )
+    assert conn.execute(
+        "SELECT state FROM basket_target_order_intents"
+    ).fetchone()[0] == "reconcile_required"
+
+    class _Client:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def _post(self, path, payload):
+            return {**_matched(), "found": True, "idempotent_replay": True}
+
+    monkeypatch.setattr(clob_order_service_client, "ClobOrderServiceClient", _Client)
+    worker = production_worker.TargetProductionWorker.__new__(
+        production_worker.TargetProductionWorker
+    )
+    worker.commit_conn = conn
+    receipt = worker._reconcile_unresolved_intents(as_of_utc="2026-08-11T09:40:00Z")
+    assert receipt["closed"] == 1
+    assert receipt["filled"] == 1
+    assert conn.execute(
+        "SELECT state,filled_size,filled_notional_usdc"
+        " FROM basket_target_order_reconciliations"
+    ).fetchall() == [("resolved_filled", 40.0, pytest.approx(4.8))]
+    events = conn.execute(
+        "SELECT event_type,matched_size FROM basket_target_order_events"
+        " ORDER BY observed_at"
+    ).fetchall()
+    assert events == [("PARTIAL_FILL", 3.0), ("FILL", 37.0)]
+
+    # (b) The KAUS shape under the pre-fix classification: the whole fill
+    # already recorded, the intent parked in reconcile_required, the gateway
+    # reporting the same order matched at the same size.  Nothing is added;
+    # the intent closes on the fill it holds.
+    conn = _conn([_intent(requested_size=5.0, limit_price=0.47)])
+    with conn:
+        record_order_event(
+            conn,
+            order_intent_id="intent-a",
+            event={
+                "event_type": "FILL", "exchange_order_id": "0xfill",
+                "observed_at": OBSERVED, "matched_size": 4.99,
+                "matched_notional_usdc": 2.3453,
+                "event_payload": {"exchange_status": "matched"},
+            },
+        )
+        # Force the parked state the old classifier produced.
+        conn.execute(
+            "UPDATE basket_target_order_intents SET state='reconcile_required'"
+        )
+        conn.execute(
+            "UPDATE basket_target_order_reconciliations SET state='pending'"
+        )
+
+    class _KausClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def _post(self, path, payload):
+            return {
+                **_matched(), "size_matched": "4.99", "shares_matched": "4.99",
+                "exchange_response": {
+                    "orderID": "0xfill", "takingAmount": "4.99",
+                    "makingAmount": "2.3453", "status": "matched",
+                },
+            }
+
+    monkeypatch.setattr(clob_order_service_client, "ClobOrderServiceClient", _KausClient)
+    worker.commit_conn = conn
+    receipt = worker._reconcile_unresolved_intents(as_of_utc="2026-08-11T09:41:00Z")
+    assert receipt["closed"] == 1
+    assert receipt["already_recorded"] == 1
+    assert receipt["filled"] == 0
+    assert conn.execute(
+        "SELECT state FROM basket_target_order_intents"
+    ).fetchone()[0] == "filled"
+    assert conn.execute(
+        "SELECT state,filled_size,filled_notional_usdc"
+        " FROM basket_target_order_reconciliations"
+    ).fetchall() == [("resolved_filled", 4.99, 2.3453)]
+    assert conn.execute(
+        "SELECT COUNT(*) FROM basket_target_order_events WHERE event_type='FILL'"
+    ).fetchone()[0] == 1

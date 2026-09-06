@@ -94,7 +94,9 @@ from .production import (
     commit_production_stage_zero_execution_atomic,
 )
 from .execution_reconciliation import (
+    fill_is_complete,
     record_order_event,
+    resolve_reconciliation,
     validate_persisted_candidate_consumption_cas,
 )
 from .order_submission import fill_from_gateway_response, fill_quantities
@@ -7541,6 +7543,22 @@ class TargetProductionWorker:
                 "       ON r.order_intent_id=i.order_intent_id"
                 "     WHERE i.cycle_id=c.cycle_id"
                 "       AND r.state IN ('pending','unknown'))"
+                # A cycle with no intent at all is not a live cycle: it
+                # is one of the ~55,000 prepared rows the identity
+                # migration orphaned, and it can never settle.  The
+                # all-refused branch above admitted them (NOT EXISTS
+                # over zero intents is vacuously true), so from the
+                # 2026-09-05 17:34Z restart the forty oldest -- all from
+                # 2026-07-26 -- filled the batch every pass and failed
+                # ``live_cycle_settle_no_intents``, while eight cycles
+                # that had really filled (KAUS/KATL/KORD/ZUUU/ZGGG/ZGSZ/
+                # ZSQD/SAEZ 2026-09-07) stayed prepared for seven hours:
+                # reservations unconsumed, and every later top-up on
+                # those station-days due to be refused as
+                # ``target_active_candidate_supersession_required``.
+                "   AND EXISTS ("
+                "     SELECT 1 FROM basket_target_order_intents i"
+                "     WHERE i.cycle_id=c.cycle_id)"
                 " ORDER BY c.created_at LIMIT ?",
                 (int(limit),),
             ).fetchall()
@@ -7646,6 +7664,7 @@ class TargetProductionWorker:
             return receipt
         receipt["examined"] = len(rows)
         receipt["filled"] = 0
+        receipt["already_recorded"] = 0
         for intent_id, idempotency_key, order_action, limit_price in rows:
             try:
                 answer = client._post(
@@ -7658,6 +7677,23 @@ class TargetProductionWorker:
                     "reason": f"{type(exc).__name__}:{exc}"[:120],
                 })
                 continue
+            # What the ledger already holds for this intent.  The gateway's
+            # stored reply is the exchange's *cumulative* account of the one
+            # order the key names, so a fill it reports is the whole fill,
+            # not an increment on top of one the submit pass already wrote.
+            # KAUS 98-99°F, 2026-09-05 19:49Z: the submit pass recorded the
+            # matched 4.99 shares, the ledger read 4.99 against a 4.999...
+            # request as partial, and this lane added the same 4.99 again --
+            # 9.98 shares on the book for one order of five.
+            prior = self.commit_conn.execute(
+                "SELECT exchange_order_id, filled_size, filled_notional_usdc"
+                " FROM basket_target_order_reconciliations"
+                " WHERE order_intent_id=?",
+                (str(intent_id),),
+            ).fetchone()
+            prior_order_id = str(prior[0] or "") if prior else ""
+            prior_filled = float(prior[1] or 0.0) if prior else 0.0
+            prior_notional = float(prior[2] or 0.0) if prior else 0.0
             # Two verdicts are acted on.  "Never reached" reads the same
             # whether this is the first time the gateway asked or a replay of
             # an answer it already has.  "Accepted and matched" is the
@@ -7698,6 +7734,47 @@ class TargetProductionWorker:
                     and fill["status"] == "matched"
                     and matched_size > 0.0
                 ):
+                    if prior_order_id and prior_order_id == fill["exchange_order_id"]:
+                        # Same order the ledger already carries: only what
+                        # the exchange reports beyond the recorded fill is
+                        # new.  Nothing beyond it means the recorded fill
+                        # is the order, and the question left is whether
+                        # it covers the request.
+                        matched_size = max(0.0, matched_size - prior_filled)
+                        matched_notional = max(
+                            0.0, matched_notional - prior_notional
+                        )
+                        if matched_size <= 1e-9:
+                            requested = float(self.commit_conn.execute(
+                                "SELECT requested_size FROM"
+                                " basket_target_order_intents"
+                                " WHERE order_intent_id=?",
+                                (str(intent_id),),
+                            ).fetchone()[0])
+                            if fill_is_complete(prior_filled, requested):
+                                try:
+                                    with _writer_transaction(
+                                        self.commit_conn,
+                                        savepoint="basket_target_intent_reconcile",
+                                    ):
+                                        resolve_reconciliation(
+                                            self.commit_conn,
+                                            order_intent_id=str(intent_id),
+                                            authoritative_state="filled",
+                                            filled_size=prior_filled,
+                                            filled_notional_usdc=prior_notional,
+                                            resolved_at_utc=as_of_utc,
+                                        )
+                                    receipt["closed"] += 1
+                                    receipt["already_recorded"] += 1
+                                except Exception as exc:  # noqa: BLE001
+                                    receipt["failures"].append({
+                                        "order_intent_id": str(intent_id),
+                                        "reason": f"{type(exc).__name__}:{exc}"[:120],
+                                    })
+                            else:
+                                receipt["still_unresolved"] += 1
+                            continue
                     event = {
                         "event_type": "FILL",
                         "exchange_order_id": fill["exchange_order_id"],
@@ -7708,6 +7785,12 @@ class TargetProductionWorker:
                             "idempotency_key": str(idempotency_key or ""),
                             "exchange_status": fill["status"],
                             "recovered_by": "intent_reconcile",
+                            **(
+                                {"cumulative_size_matched": float(
+                                    fill.get("shares_matched") or 0.0
+                                )}
+                                if prior_filled > 0.0 else {}
+                            ),
                         },
                     }
             if event is None:
