@@ -176,16 +176,17 @@ if not (0.0 < KELLY_EDGE_MIN_RUNG_SHARE <= 1.0):
     raise RuntimeError(
         f"Kelly edge floor out of range: {KELLY_EDGE_MIN_RUNG_SHARE}"
     )
-# Companion research switch: what a *shaped* top-up does with a rung the
-# chain already holds above its shaped target.  ``atomic`` is charter 72 as
-# shipped -- any rung at or above target and the whole basket stands pat.
-# ``short_legs`` buys only the rungs below their target and leaves the held
-# ones alone, which the candidate contract admits since charter 84 (a
-# complete basket adds to at least one rung and leaves nothing unheld).
-# Measured 2026-09-06 because the atomic rule refuses roughly half the P1
-# top-ups under any tilt: the ticket bought equal shares, so a tilt that
-# wants fewer on a wing than the ticket already holds stands the whole
-# basket down.  Unread under ``equal``.
+# Companion research switch: what the Kelly candidate does with a rung the
+# chain already holds at or above its target.  ``atomic`` is charter 72 as
+# shipped -- any such rung and the whole basket stands pat (the 2026-08-12
+# atomicity ruling).  ``short_legs`` keeps the whole-basket stake but judges
+# each rung on its own gap: rungs below target are bought up to it, rungs at
+# or above are left alone -- which the candidate contract admits since
+# charter 84 (a complete basket adds to at least one rung and leaves nothing
+# unheld).  First measured 2026-09-06 on the tilt arms, where the atomic
+# rule refused roughly half the P1 top-ups; generalised to every shape the
+# same day when the user asked for the whole-basket stake *and* the target
+# leg to be read together.  Applies to every share shape, ``equal`` included.
 KELLY_SHAPE_TOPUP_MODES = ("atomic", "short_legs")
 KELLY_SHAPE_TOPUP = (
     os.environ.get("PM_KELLY_SHAPE_TOPUP", "").strip().lower() or "atomic"
@@ -1871,7 +1872,15 @@ def _support_windows(
                     gate_agreement,
                     effective_edge_tables,
                 ))
-            effective_win = win * (gate_lambda if gate_lambda is not None else 1.0)
+            # Multiply, then clamp -- the order the solver's partition uses
+            # (``deflate_window_partition_v1`` clamps the corrected mass),
+            # so a lifted claim the clamp had capped at one reads the same
+            # number here as there: KDAL 2026-09-07 is 0.905 on both, not
+            # 0.893 at the gate and 0.905 at the solver.
+            effective_win = (
+                min(1.0 - EPS, raw_win * claim_factor * gate_lambda)
+                if gate_lambda is not None else win
+            )
             edge = effective_win - price if priced else None
             is_incumbent = window == incumbent
             # The incumbent has no exemption left.  It used to be waived past
@@ -2229,8 +2238,9 @@ def _support_windows(
                 incumbent_agreement,
                 effective_edge_tables,
             ))
-        incumbent_effective_win = win * (
-            incumbent_lambda if incumbent_lambda is not None else 1.0
+        incumbent_effective_win = (
+            min(1.0 - EPS, win * incumbent_lambda)
+            if incumbent_lambda is not None else win
         )
         incumbent_admissible = (
             priced
@@ -3587,13 +3597,13 @@ def _whole_basket_kelly_candidate(
     for bucket in ordered:
         increment = want_by_bucket[bucket] - shares[bucket]
         if increment <= EPS:
-            if (
-                shaped
-                and KELLY_SHAPE_TOPUP == "short_legs"
-                and shares[bucket] > EPS
-            ):
-                # Research arm: a held rung above its shaped target is
-                # left as it is; the short rungs are still bought.
+            if KELLY_SHAPE_TOPUP == "short_legs" and shares[bucket] > EPS:
+                # Research arm (user, 2026-09-06: "既要看整篮，也要看目标
+                # 腿"): the stake is still the whole basket's, but a held
+                # rung already at or above its target is left as it is and
+                # the rungs below theirs are bought up to theirs.  Under
+                # ``atomic`` (charter 72 as shipped) any such rung stands
+                # the whole basket down.  Applies to every share shape.
                 continue
             return None
         leg_cash = increment * float(lane_prices[bucket])
