@@ -203,8 +203,45 @@ def _incumbent_bands(
     if conn is not None:
         active = load_active_lambda(conn, stage_scope=stage_scope)
         if active:
-            return [(float(bound), float(lam)) for bound, lam in active]
+            return _project_onto_partition(
+                [(float(bound), float(lam)) for bound, lam in active],
+                _bootstrap_bands(stage_scope),
+            )
     return _bootstrap_bands(stage_scope)
+
+
+def _project_onto_partition(
+    stored: Sequence[tuple[float, float]],
+    partition: Sequence[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    """Carry a stored table onto the partition the code now serves.
+
+    The band VALUES are evidence and live in the database; the band
+    BOUNDARIES are a rule and live in the kernel constant.  When the rule
+    changes -- charter 96 splitting the top band at 0.95 -- the stored
+    values still describe the seats they were fitted on, so each new band
+    inherits the stored value of whichever old band contained it and then
+    fits itself from its own seats as they settle.  Nothing served moves on
+    the day of a split, which is the same migration charter 68(b) used when
+    P0-M left P0's scope.
+
+    Identity when the boundaries already agree, so the ordinary day pays
+    one tuple comparison.
+    """
+
+    stored = [(float(bound), float(lam)) for bound, lam in stored]
+    bounds = [float(bound) for bound, _lam in partition]
+    if [bound for bound, _lam in stored] == bounds:
+        return stored
+    out: list[tuple[float, float]] = []
+    lower = 0.0
+    for bound in bounds:
+        # The new band's own lower edge names the old band that held it --
+        # every point of the new band lies inside one old band, because a
+        # split only adds boundaries and never moves one.
+        out.append((bound, float(stored[_band_index(lower, stored)][1])))
+        lower = bound
+    return out
 
 
 def _band_partition_by_position(

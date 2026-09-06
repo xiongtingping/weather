@@ -143,17 +143,21 @@ P1_MINIMUM_SUPPORT_BUCKETS = 2
 # buying a degraded shape there buys the wrong side of that knowledge.
 # OFF by default; the env flag keeps the arm re-measurable.
 OPENING_FALLBACK_MIN_BUCKETS = 2
-# Research arm (2026-09-04): how P0 sizes -- ``kelly`` (charter 72/74: Kelly,
-# ticket when Kelly is zero) or ``ticket_only`` (P0 issues one ticket and
-# never a Kelly stake, so it neither sizes the opener nor tops up).
-# **Ruled 2026-09-05**: default ``ticket_only``.  Charter 72 sizes every
-# stage by the whole-basket Kelly stake; on the honest pairing P0's Kelly
-# seats are its loss centre (P0 -21.8% against P1 +11.4%) and sizing the
-# opener at a ticket alone is +2.3 points on its own, +11 from 08-23, and
-# part of the best combination (X3/X8, 2026-09-05).  P0 still opens every
-# chain (charter 74); it just no longer sizes one.
+# How P0 sizes -- ``kelly`` (charter 72: the whole-basket Kelly stake) or
+# ``ticket_only`` (P0 issues one ticket and never a Kelly stake, so it
+# neither sizes the opener nor tops up).
+# **Ruled 2026-09-06, charter 96**: default ``kelly``.  The 2026-09-05
+# ruling that made ``ticket_only`` the default was measured under the gate
+# of its own day, where P0 had no lambda at all: charter 87 landed the
+# following afternoon, and charter 87's own text says that with
+# ``ticket_only`` on, "lambda 在 P0 完全退出决策，P0 唯一的边际条件退化为
+# 全含价 < 1.08 x 声称".  The -21.8% that condemned P0's Kelly seats was
+# therefore measured on seats no edge rule had filtered.  Under charters
+# 87/92/93 P0 buys only what clears the deflated whole-basket edge, and the
+# ruling is that what clears it should be sized on it rather than handed a
+# flat ticket.  ``ticket_only`` stays as the replay arm.
 P0_SIZING_MODE = (
-    os.environ.get("PM_P0_SIZING_MODE", "").strip().lower() or "ticket_only"
+    os.environ.get("PM_P0_SIZING_MODE", "").strip().lower() or "kelly"
 )
 if P0_SIZING_MODE not in {"kelly", "ticket_only"}:
     raise RuntimeError(f"unknown P0 sizing mode: {P0_SIZING_MODE}")
@@ -1125,15 +1129,27 @@ CHAIN_OPENING_STAGES = frozenset(
 )
 if not CHAIN_OPENING_STAGES <= {"P0", "P0-M", "P1"}:
     raise RuntimeError(f"unknown chain opening stages: {sorted(CHAIN_OPENING_STAGES)}")
-# Charter 74's ticket, as a research switch (2026-09-05).  ``on`` is the
-# charter and production; ``off`` is the replay arm that asks what the book
-# is worth when a P0 with no edge opens nothing -- the arm charter 74 was
-# ruled on was measured before the ledger paired checkpoints with the books
-# production compiled them on, so it is re-measured on that footing.  The
-# paper ledger spells the same switch (PAPER_LEDGER_CHAIN_TICKET) and the
-# binding test holds the two equal.
+# Charter 74's ticket.  **Retired as the default 2026-09-06 (charter 96,
+# user ruling "把门票去掉")**: ``off`` is production, ``on`` is the replay
+# arm that restores it.  The ticket existed so a P0 with no edge still
+# opened the day and P1 had something to add to; the ruling is that a day
+# with no deflated whole-basket edge is a day nobody should be paying to
+# enter, and the 2026-09-06 measurement is what turned the argument: the
+# 13 live P0 opens since go-live were all tickets, they cost 52.03 U, and
+# at the solver's own belief they were worth -3.66 U (-7.0%).
+#
+# **Known cost, stated rather than discovered later**: the ticket was also
+# the structural answer to the blindness ``effective_edge_store`` is built
+# around -- it kept a settled seat in every agreement band, so no band's
+# lambda could freeze for want of observations.  Without it, the bands the
+# gate refuses stop being measured, and the refit's exit code 3 (a band
+# with no seats at all) becomes the alarm that matters rather than an
+# edge case.  Charter 96 accepts that cost explicitly.
+#
+# The paper ledger spells the same switch (PAPER_LEDGER_CHAIN_TICKET) and
+# the binding test holds the two equal.
 CHAIN_TICKET_MODE = (
-    os.environ.get("PM_CHAIN_TICKET", "").strip().lower() or "on"
+    os.environ.get("PM_CHAIN_TICKET", "").strip().lower() or "off"
 )
 if CHAIN_TICKET_MODE not in {"on", "off"}:
     raise RuntimeError(f"unknown chain ticket mode: {CHAIN_TICKET_MODE}")

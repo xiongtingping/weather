@@ -764,12 +764,26 @@ def test_charter_68_scope_and_the_taker_leg_veto_move_together() -> None:
     assert L.EFFECTIVE_EDGE_SCOPE == P.EFFECTIVE_EDGE_SCOPE
     # Charter 74's ticket is one switch on both sides; the solver offers
     # the candidate only while it is on.
-    assert L.CHAIN_TICKET_MODE == P.CHAIN_TICKET_MODE == "on"
+    # Charter 96 (2026-09-06): the ticket is retired on both sides.  The
+    # switch stays -- it is the replay arm -- and the two sides must still
+    # read one value, which is what this assertion is for.
+    assert L.CHAIN_TICKET_MODE == P.CHAIN_TICKET_MODE == "off"
     import inspect as _inspect
 
     assert 'CHAIN_TICKET_MODE == "on"' in _inspect.getsource(P._target_candidates)
     assert (L.LEG_VETO == "on") == (P.TAKER_LEG_VETO == "reservation")
     assert P.TAKER_LEG_VETO == "joint"
+    # Charter 96: the lambda partition gained a boundary at 0.95, and the
+    # three served scopes must carry the same boundaries -- the store fits
+    # per scope but ``_band_index`` is one partition, so a scope on the old
+    # bounds would look its lambda up in a band nobody fitted.
+    assert K.EFFECTIVE_EDGE_BAND_BOUNDS == (0.50, 0.70, 0.85, 0.95, float("inf"))
+    for _table in (
+        K.EFFECTIVE_EDGE_LAMBDA,
+        K.EFFECTIVE_EDGE_P0M_LAMBDA,
+        K.EFFECTIVE_EDGE_P1_LAMBDA,
+    ):
+        assert tuple(b for b, _ in _table) == K.EFFECTIVE_EDGE_BAND_BOUNDS
     assert K.EFFECTIVE_EDGE_BUCKET_LAMBDA == (
         (0.50, 0.22),
         (0.70, 0.43),
@@ -1270,10 +1284,13 @@ def test_every_charter_clause_the_audit_prices_has_one_switch() -> None:
     assert 'CHARTER_83_MIN_NOTIONAL == "on"' in compile_plan
     candidates = inspect.getsource(P._target_candidates)
     assert 'CHARTER_84_LADDER_BALANCE == "on"' in candidates
-    # The three rulings of 2026-09-05 are the shipped defaults.
+    # The rulings of 2026-09-05/06 are the shipped defaults.
     assert P.DECLINE_CLAMP_MODE == "off"
     assert P.MARKET_LEAN_GATE_MODE == "on"
-    assert P.P0_SIZING_MODE == "ticket_only"
+    # Charter 96 supersedes the 2026-09-05 ``ticket_only`` default: P0
+    # sizes the seat it just proved an edge on.
+    assert P.P0_SIZING_MODE == "kelly"
+    assert P.CHAIN_TICKET_MODE == "off"
 
 
 def test_a_rebuild_can_be_taken_oldest_first_in_slices() -> None:

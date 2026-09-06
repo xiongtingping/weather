@@ -148,23 +148,34 @@ def test_a_cell_is_fitted_only_past_the_served_tables_own_hurdle(tmp_path):
         _seat(conn, f"d{index}", station=station, day=day,
               decided="2026-08-31T12:00:00.000Z", claim=0.60,
               asks={"31°C": 0.17, "32°C": 0.26, "33°C": 0.17}, hit=index % 2)
+    # Charter 96 split the top band at 0.95, so the steady group's old
+    # a = 1.08 would now land in a different band from the down group and
+    # this test would stop comparing two tiers of ONE band, which is what
+    # it is for.  Its prior and its book are both 0.60 -- unmoved, so the
+    # tier is still steady -- and a = 0.926 puts it beside the down group.
+    steady_then = {"31°C": 0.17, "32°C": 0.26, "33°C": 0.17}  # 0.60 then
     for index in range(3):
         station = f"T{index:02d}"
-        _prior(conn, station, day, prior_at, book_at, then)
-        # Same price as then: tier steady, a = 1.08, top band.
+        _prior(conn, station, day, prior_at, book_at, steady_then)
+        # Same price as then: tier steady, a = 0.926, band [0.85, 0.95).
         _seat(conn, f"s{index}", station=station, day=day,
               decided="2026-08-31T12:00:00.000Z", claim=0.60,
-              asks={"31°C": 0.23, "32°C": 0.25, "33°C": 0.22}, hit=1)
+              asks={"31°C": 0.17, "32°C": 0.26, "33°C": 0.17}, hit=1)
     fit = store.fit_lambda_table_dq_shadow(conn, stage_scope="P0")
-    top = fit["evidence"][-1]
+    # By bound, not by position: the partition is a rule that has moved
+    # once and may move again, and a positional read would go quiet
+    # instead of failing when it does.
+    top = next(
+        cell for cell in fit["evidence"] if cell["band_upper_bound"] == 0.95
+    )
     down, steady = top["tiers"]["down"], top["tiers"]["steady"]
     assert down["seats"] == 14 and down["admissible"]
     assert abs(down["raw_lambda"] - (7 / (14 * 0.60 * 1.08))) < 1e-3  # charter 81 lift on the claim
     assert down["fitted_lambda"] is not None
     assert steady["seats"] == 3 and not steady["admissible"]
     assert steady["fitted_lambda"] is None
-    assert fit["table"]["bands"][-1]["tiers"]["steady"] is None
-    assert (3, "down") in fit["admitted_cells"]
+    assert fit["table"]["bands"][top["band_index"]]["tiers"]["steady"] is None
+    assert (top["band_index"], "down") in fit["admitted_cells"]
     assert fit["seat_count"] == 17
     conn.close()
 
@@ -191,7 +202,10 @@ def test_nothing_the_shadow_writes_can_reach_a_seat(tmp_path):
     loaded = store.load_dq_shadow(conn, stage_scope="P0")
     assert loaded["shadow_sha256"] == shadow["content_sha256"]
     # Every seat here is an opening seat: the lane says no_prior, not a move.
-    assert loaded["evidence"][-1]["tiers"]["no_prior"]["seats"] == 13
+    banded = next(
+        cell for cell in loaded["evidence"] if cell["band_upper_bound"] == 0.95
+    )
+    assert banded["tiers"]["no_prior"]["seats"] == 13
     assert store.fit_lambda_table(conn, stage_scope="P0")["content_sha256"] == served_before
     columns = {
         row[1] for row in conn.execute(

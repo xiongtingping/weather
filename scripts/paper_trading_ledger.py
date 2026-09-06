@@ -211,6 +211,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     CHAIN_TICKET_CANDIDATE_ORIGIN,
     EDGE_STATE_ADMISSIBLE,
     chain_ticket_cash_v1,
+    EFFECTIVE_EDGE_BAND_BOUNDS,
     DECISION_MOMENT_RULE_VERSION,
     edge_state_v1,
     is_decision_moment_v1,
@@ -1802,9 +1803,10 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     if EFFECTIVE_EDGE_MODE != "on" or EFFECTIVE_EDGE_SCOPE == "window"
     else "有效边际按桶",
     None if LEG_VETO != "on" else "逐腿否决",
-    None
-    if CHAIN_TICKET_MODE != "on"
-    else "开链保底票",
+    # Charter 96: the label names whichever opening rule is in force, so a
+    # book that stopped issuing tickets says so rather than going quiet.
+    "开链保底票" if CHAIN_TICKET_MODE == "on"
+    else ("P0整篮EV按Kelly定注" if P0_SIZING_MODE == "kelly" else "P0只发票不定注"),
     None
     if SHAPE_GAP_LIMIT_BUCKETS <= 0
     else (
@@ -1931,9 +1933,8 @@ SELECTION_RULE_SHA256 = content_sha256({
         {"topup_increment_edge": TOPUP_INCREMENT_EDGE}
         if TOPUP_INCREMENT_EDGE != "off" else {}
     ),
-    # Research arms of 2026-09-04 (P0 sizing / P0 lambda table), hashed only
-    # away from their defaults.
-    **({"p0_sizing_mode": P0_SIZING_MODE} if P0_SIZING_MODE != "kelly" else {}),
+    # P0 sizing is hashed unconditionally above (charter 96); the old
+    # conditional entry named the same switch and is retired with it.
     # Research arm of 2026-09-06: how the Kelly stake is split across the
     # seat's rungs.  Production's switch, read from production; hashed only
     # away from ``equal`` so the standing book keeps its digest.
@@ -2085,6 +2086,16 @@ SELECTION_RULE_SHA256 = content_sha256({
     # Unconditional: the standing family changed.
     "execution_family": EXECUTION_FAMILY,
     "ladder_shape": MAKER_LADDER_SHAPE,
+    # Charter 96 (2026-09-06): the ticket is retired and P0 sizes by the
+    # whole-basket Kelly stake.  Unconditional on both counts: a book whose
+    # opens were flat tickets is not the same book as one whose opens were
+    # sized on the deflated edge, and the lambda partition the stake reads
+    # gained a boundary the same day.
+    "chain_ticket": CHAIN_TICKET_MODE,
+    "p0_opening_sizing": P0_SIZING_MODE,
+    "effective_edge_band_bounds": "|".join(
+        "%g" % bound for bound in EFFECTIVE_EDGE_BAND_BOUNDS
+    ),
     # Charter 92 (2026-09-06): the ticket is authorized on the same
     # whole-basket edge as every other increment.  Unconditional: the
     # standing rule changed, and rows judged under the structural rule must

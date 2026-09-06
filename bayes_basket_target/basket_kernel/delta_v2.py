@@ -1056,10 +1056,20 @@ def support_scenario_floor_v1(
 # P1 is exempt and the exemption is the point: its ratio runs 1.09-1.23
 # exactly where the market disagrees, because its edge is the observation
 # rather than the shape.  Shrinking it would gut the one stage that earns.
+# Charter 96 (user ruling, 2026-09-06): the top band is split at 0.95.
+# The gate's admission test reduces to ``lambda(a) > a``, so a band admits
+# only ``[its lower bound, its own lambda)`` -- which made the served value
+# of the top band its own cut point.  Measured on the 28-day book, that cut
+# fell inside the band and on the wrong side: the 32 seats it admitted
+# realised 0.864 against the 33 it refused at 0.909.  Split at 0.95 the two
+# halves separate on their own evidence (47 seats 0.838, 18 seats 1.011) and
+# the boundary is a constant rather than the number the fit is producing.
+EFFECTIVE_EDGE_BAND_BOUNDS = (0.50, 0.70, 0.85, 0.95, float("inf"))
 EFFECTIVE_EDGE_LAMBDA = (
     (0.50, 0.14),
     (0.70, 0.60),
     (0.85, 0.87),
+    (0.95, 0.82),
     (float("inf"), 0.82),
 )
 # Research arm (2026-09-04): a P0-specific table handed in by env as JSON
@@ -1084,6 +1094,7 @@ EFFECTIVE_EDGE_P0M_LAMBDA = (
     (0.50, 0.14),
     (0.70, 0.60),
     (0.85, 0.87),
+    (0.95, 0.82),
     (float("inf"), 0.82),
 )
 EFFECTIVE_EDGE_P0M_LAMBDA_OVERRIDE = os.environ.get(
@@ -1127,6 +1138,7 @@ EFFECTIVE_EDGE_P1_LAMBDA = (
     (0.50, 1.00),
     (0.70, 1.00),
     (0.85, 1.00),
+    (0.95, 1.00),
     (float("inf"), 1.00),
 )
 EFFECTIVE_EDGE_P1_STAGES = frozenset({"P1"})

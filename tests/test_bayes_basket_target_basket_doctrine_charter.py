@@ -1319,10 +1319,17 @@ def test_clause_68_the_objective_reads_effective_edge() -> None:
     # The original, unquoted sentence is gone; the phrase survives only
     # inside the retirement note and (c)'s reference to it.
     assert "钳 [0.05,1.50]），机器算候选、人晋升常量" not in clause
+    # Charter 96 (2026-09-06) split the top band at 0.95.  The bootstrap
+    # carries the same value either side, so the constant still describes
+    # the table charter 68 shipped -- it just names one more boundary.
+    assert kernel.EFFECTIVE_EDGE_BAND_BOUNDS == (
+        0.50, 0.70, 0.85, 0.95, float("inf")
+    )
     assert kernel.EFFECTIVE_EDGE_LAMBDA == (
         (0.50, 0.14),
         (0.70, 0.60),
         (0.85, 0.87),
+        (0.95, 0.82),
         (float("inf"), 0.82),
     )
     # P1's own table is served capped at one: the exemption was "trust
