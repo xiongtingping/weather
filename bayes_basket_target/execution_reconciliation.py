@@ -564,15 +564,27 @@ def can_submit_next_order(
     bucket: str,
     token_id: str,
     exclude_order_intent_id: str = "",
+    same_cycle_id: str = "",
 ) -> dict[str, Any]:
-    """Return false while any same-bucket/token action is unknown or pending."""
+    """Return false while any same-bucket/token action is unknown or pending.
+
+    ``same_cycle_id`` exempts the rungs of one leg's own ladder.  This gate
+    exists to stop a later compile posting a second order into a bucket that
+    already holds one (charter 94 (六)4), and under one order per leg the two
+    were the same thing.  Charter 94 (一) posts up to three rungs per leg, all
+    written by one compile in one transaction, and read as duplicates they
+    would block each other: the first rung posts, and by the time the second
+    is offered the first is ``submitted`` and blocks it.  A different cycle
+    still blocks, which is the case the gate was built for.
+    """
 
     _schema_guard(conn)
     bucket_value = _text("bucket", bucket)
     token = _text("token_id", token_id)
     exclude = str(exclude_order_intent_id or "").strip()
+    sibling_cycle = str(same_cycle_id or "").strip()
     rows = conn.execute(
-        "SELECT i.order_intent_id,i.state,r.state FROM basket_target_order_intents i LEFT JOIN basket_target_order_reconciliations r ON r.order_intent_id=i.order_intent_id WHERE i.bucket=? AND i.token_id=? AND i.order_intent_id<>?",
+        "SELECT i.order_intent_id,i.state,r.state,i.cycle_id FROM basket_target_order_intents i LEFT JOIN basket_target_order_reconciliations r ON r.order_intent_id=i.order_intent_id WHERE i.bucket=? AND i.token_id=? AND i.order_intent_id<>?",
         (bucket_value, token, exclude),
     ).fetchall()
     # A missing reconciliation row means the intent never reached the
@@ -588,8 +600,17 @@ def can_submit_next_order(
             "reconciliation_state": "none" if row[2] is None else str(row[2]),
         }
         for row in rows
-        if str(row[1]) in {"prepared", "submitting", "submitted", "reconcile_required"}
-        or (row[2] is not None and str(row[2]) in {"pending", "unknown"})
+        # An ambiguous sibling blocks whoever wrote it.  The exemption is for
+        # rungs of one ladder, which are known: they were written together and
+        # each says plainly whether it reached the exchange.  A reconciliation
+        # that is pending or unknown says the opposite -- that nobody knows
+        # whether money moved -- and posting another rung against that is the
+        # double the gate exists to prevent, sibling or not.
+        if (row[2] is not None and str(row[2]) in {"pending", "unknown"})
+        or (
+            str(row[1]) in {"prepared", "submitting", "submitted", "reconcile_required"}
+            and not (sibling_cycle and str(row[3]) == sibling_cycle)
+        )
     ]
     return {"schema": SCHEMA, "allowed": not blockers, "blockers": blockers, "reason": "same_bucket_unknown_or_pending" if blockers else "no_same_bucket_pending", "places_orders": False, "calls_order_gateway": False}
 

@@ -378,6 +378,9 @@ def submit_prepared_intents(
             bucket=str(intent["bucket"]),
             token_id=str(intent["token_id"]),
             exclude_order_intent_id=intent_id,
+            # Charter 94: the rungs of one leg's ladder are written by one
+            # compile and are not duplicates of each other.
+            same_cycle_id=str(cycle_id or ""),
         )
         if gate.get("allowed") is not True:
             submissions.append({

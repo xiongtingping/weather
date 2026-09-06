@@ -51,6 +51,30 @@ from .delta_v2_training import build_delta_v2_training_fact
 from .delta_v2_training import committed_scope_fact_id
 from .regime_artifact import RegimeArtifact
 from .runtime import DeltaBasketScoreV2Optimizer
+from .basket_kernel.delta_v2 import floor_to_order_share_grid_v1
+from .delta_v2_runtime import (
+    CHARTER_83_MIN_NOTIONAL,
+    EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
+    MAKER_LADDER_SHAPE,
+    bid_anchored_ladder,
+    bid_anchored_rungs_for_gap,
+)
+
+# Charter 94 (一)(二): each leg posts one order per rung of the bid-anchored
+# ladder, as many rungs as the gap holds whole venue lots for, each an equal
+# share of the gap.  Ruled 2026-09-06 and generated in the optimizer since,
+# but never posted: every structure below the selection is keyed one-per-
+# bucket, so of the rungs offered only one could ever reach the exchange.
+# Measured that day: 1668 (cycle, bucket) pairs in the whole ledger, every
+# one of them a single order, and on the 09-08 book two legs that the rule
+# asks two rungs for -- EGLC 20C with an 8-share gap and LIMC 32C with 6 --
+# posted one.  User ruling ("先补档（1-3档），部分跌破一美元底线的用1档"):
+# post the rungs, and let the venue floors degrade the count, which is what
+# ``bid_anchored_rungs_for_gap`` already computes.
+# ``off`` restores the single rung this replaces.
+MAKER_LADDER_RUNGS = (
+    os.environ.get("PM_MAKER_LADDER_RUNGS", "").strip().lower() or "on"
+)
 from .execution_deadline import (
     TargetExecutionDeadlineError,
     TargetExecutionHardDeadline,
@@ -124,6 +148,68 @@ def _required_sha(name: str, value: Any) -> str:
     if len(result) != 64 or any(char not in "0123456789abcdef" for char in result):
         raise ContractError(f"{name}_invalid")
     return result
+
+
+def _ladder_rung_prices(
+    *,
+    execution_candidate: str,
+    quote: Mapping[str, Any],
+    q_order: float,
+    r_limit: float,
+    share_quantum: float,
+) -> list[float]:
+    """The prices this leg posts at, dearest first (charter 94 (一)(二)).
+
+    One rung is the floor, not a failure: ``bid_anchored_rungs_for_gap``
+    returns as many as the gap holds whole venue lots for, and a gap that
+    holds one returns one -- which is the single order this replaced, at the
+    same price, so a leg too small to split is untouched.  A Taker crosses
+    and has no ladder; anything the book cannot anchor (no bid, no ask, no
+    tick) falls back the same way, because a rung with no book behind it is
+    a price this layer invented.
+    """
+
+    if (
+        execution_candidate != "MAKER"
+        or MAKER_LADDER_RUNGS != "on"
+        or MAKER_LADDER_SHAPE != "bid_anchored"
+    ):
+        return [r_limit]
+    try:
+        bid = float(quote.get("bid_price") or 0.0)
+        asks = quote.get("ask_levels") or []
+        ask = float(dict(asks[0]).get("price") or 0.0) if asks else 0.0
+        tick = float(quote.get("price_tick_size") or 0.0)
+    except (TypeError, ValueError, IndexError):
+        return [r_limit]
+    if bid <= 0.0 or ask <= 0.0 or tick <= 0.0:
+        return [r_limit]
+    ladder = bid_anchored_ladder(bid=bid, ask=ask, tick=tick)
+    if not ladder:
+        return [r_limit]
+    rungs = bid_anchored_rungs_for_gap(
+        rungs=ladder,
+        gap_shares=float(q_order),
+        min_lot_shares=float(quote.get("min_order_size") or 0.0),
+        minimum_notional_usdc=(
+            EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC
+            if CHARTER_83_MIN_NOTIONAL == "on" else 0.0
+        ),
+    )
+    if len(rungs) <= 1:
+        return [r_limit]
+    # The split is only worth making if every rung still clears the venue's
+    # dollar after the share grid rounds it down.  The count came from the
+    # cheapest rung, so this can only bite through the rounding; when it does,
+    # post the one order this leg would have posted before.
+    floor_usdc = (
+        EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC
+        if CHARTER_83_MIN_NOTIONAL == "on" else 0.0
+    )
+    per = floor_to_order_share_grid_v1(float(q_order) / len(rungs), share_quantum)
+    if per <= 0.0 or (floor_usdc > 0.0 and per * min(rungs) + 1e-9 < floor_usdc):
+        return [r_limit]
+    return [float(rung) for rung in rungs]
 
 
 def _build_forward_evidence_binding(
@@ -937,43 +1023,82 @@ def commit_production_candidate_atomic(
             raise ContractError(
                 "production_candidate_execution_type_invalid"
             )
-        intents.append({
-            "bucket": bucket,
-            "token_id": token_id,
-            "side": "YES",
-            "order_action": "BUY",
-            "limit_price": r_limit,
-            "requested_size": q_order,
-            "requested_notional_usdc": c_order,
-            "intent_json": {
-                "schema": "bayes_basket_production_candidate_intent_v1",
-                "candidate_will_order": True,
-                # Execution type is an optimizer/B13 decision.  Official WS
-                # quote rows carry market evidence only and must never own or
-                # override the Maker/FOK strategy choice.
-                "execution_candidate": execution_candidate,
-                "post_only": execution_candidate == "MAKER",
-                "cancel_acknowledged": bool(
-                    target.get("cancel_acknowledged", False)
-                ),
-                "sizing_content_sha256": row.get("content_sha256"),
-                "target_price_id": target_price_id,
-                # The compile's own authority, not a literal.  Fifth and
-                # sixth of the family that began with the plan's hard-coded
-                # False: the intent row already carries this correctly, so
-                # written as False here the decision's own JSON contradicted
-                # the row it describes, and an auditor reading the decision
-                # concluded no live intent existed while the ledger held one.
-                "live_submit_authorized": bool(live_mode),
-                "target_execution_hard_deadline_at": target_deadline,
-            },
-        })
+        # Charter 94 (一)(二): one order per rung, dearest first, each an
+        # equal share of the gap.  The count degrades to what the venue
+        # floors allow -- a gap that holds one whole lot posts one rung, and
+        # that single rung is today's behaviour exactly, so a leg too small
+        # to split is unchanged rather than refused.
+        rung_prices = _ladder_rung_prices(
+            execution_candidate=execution_candidate,
+            quote=quote,
+            q_order=q_order,
+            r_limit=r_limit,
+            share_quantum=float(row.get("share_quantum") or 0.0),
+        )
+        rung_count = len(rung_prices)
+        rung_shares = floor_to_order_share_grid_v1(
+            q_order / rung_count, float(row.get("share_quantum") or 0.0)
+        ) if rung_count > 1 else q_order
+        for rung_index, rung_price in enumerate(rung_prices):
+            # The last rung carries what the grid rounding left over, so the
+            # posted total is the gap the optimizer authorised and not a
+            # sliver less of it.
+            shares = (
+                rung_shares
+                if rung_index < rung_count - 1
+                else floor_to_order_share_grid_v1(
+                    q_order - rung_shares * (rung_count - 1),
+                    float(row.get("share_quantum") or 0.0),
+                )
+            )
+            if shares <= 0.0:
+                continue
+            notional = shares * rung_price
+            intents.append({
+                "bucket": bucket,
+                "token_id": token_id,
+                "side": "YES",
+                "order_action": "BUY",
+                "limit_price": rung_price,
+                "requested_size": shares,
+                "requested_notional_usdc": notional,
+                "intent_json": {
+                    "schema": "bayes_basket_production_candidate_intent_v1",
+                    "candidate_will_order": True,
+                    # Execution type is an optimizer/B13 decision.  Official WS
+                    # quote rows carry market evidence only and must never own or
+                    # override the Maker/FOK strategy choice.
+                    "execution_candidate": execution_candidate,
+                    "post_only": execution_candidate == "MAKER",
+                    "cancel_acknowledged": bool(
+                        target.get("cancel_acknowledged", False)
+                    ),
+                    "sizing_content_sha256": row.get("content_sha256"),
+                    "target_price_id": target_price_id,
+                    # The compile's own authority, not a literal.  Fifth and
+                    # sixth of the family that began with the plan's hard-coded
+                    # False: the intent row already carries this correctly, so
+                    # written as False here the decision's own JSON contradicted
+                    # the row it describes, and an auditor reading the decision
+                    # concluded no live intent existed while the ledger held one.
+                    "live_submit_authorized": bool(live_mode),
+                    "target_execution_hard_deadline_at": target_deadline,
+                },
+            })
         execution_version_vectors.append(vector.to_dict())
     intent_buckets = [
         str(item.get("bucket") or "").strip() for item in intents
     ]
+    # Charter 94: a leg may post more than one order -- one per ladder rung --
+    # so a repeated bucket is no longer a duplicate.  What must still hold is
+    # that every support leg is present and that no two orders of one leg sit
+    # at the same price, which is the duplicate this check was written for.
+    intent_rungs = [
+        (str(item.get("bucket") or "").strip(), round(float(item.get("limit_price") or 0.0), 6))
+        for item in intents
+    ]
     if compile_ready and (
-        len(intent_buckets) != len(set(intent_buckets))
+        len(intent_rungs) != len(set(intent_rungs))
         or set(intent_buckets) != required_gap_support
     ):
         raise ContractError(

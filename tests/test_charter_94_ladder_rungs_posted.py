@@ -1,0 +1,133 @@
+"""Charter 94 (一)(二): a leg posts one order per rung it can afford.
+
+Ruled 2026-09-06 and generated in the optimizer from that day, but never
+posted: every structure below the selection was keyed one-per-bucket, so of
+the rungs offered only one reached the exchange.  Measured then: 1668
+(cycle, bucket) pairs in the whole ledger, every one a single order.
+"""
+from __future__ import annotations
+
+import sqlite3
+
+from bayes_basket_target.production import _ladder_rung_prices
+from bayes_basket_target.execution_reconciliation import can_submit_next_order
+from bayes_basket_target.atomic_ledger import apply_target_ledger_schema
+
+
+def _quote(bid: float, ask: float, tick: float = 0.001) -> dict:
+    return {
+        "bid_price": bid,
+        "ask_levels": [{"price": ask, "shares": 500.0}],
+        "price_tick_size": tick,
+        "min_order_size": 0.0,
+    }
+
+
+def test_gap_holding_two_lots_posts_two_rungs() -> None:
+    """EGLC 20C on the 2026-09-08 book: 8 shares, bid 0.310, ask 0.330.
+
+    One lot at the cheapest rung is 1.00/0.309 = 3.24 shares, so the gap
+    holds two.  Before this it posted one order for all eight.
+    """
+    rungs = _ladder_rung_prices(
+        execution_candidate="MAKER", quote=_quote(0.310, 0.330),
+        q_order=8.0, r_limit=0.311, share_quantum=0.01,
+    )
+    assert rungs == [0.311, 0.310], rungs
+    # Dearest first, and each rung still clears the venue dollar at 4 shares.
+    assert all(4.0 * price >= 1.0 for price in rungs)
+
+
+def test_gap_holding_one_lot_posts_the_single_order_unchanged() -> None:
+    """EGLC 18C: 25 shares at 0.041.  A lot at the cheapest rung (0.039) is
+    25.6 shares, so the gap holds one -- and the one it posts must be the
+    order this replaced, at the same price, or a leg too small to split would
+    change behaviour for no reason."""
+    rungs = _ladder_rung_prices(
+        execution_candidate="MAKER", quote=_quote(0.040, 0.060),
+        q_order=25.0, r_limit=0.041, share_quantum=0.01,
+    )
+    assert rungs == [0.041]
+
+
+def test_split_that_would_break_the_dollar_floor_falls_back_to_one() -> None:
+    """The count is read at the cheapest rung, so only the share grid can
+    push a rung under the dollar.  When it does, post one."""
+    rungs = _ladder_rung_prices(
+        execution_candidate="MAKER", quote=_quote(0.500, 0.520),
+        q_order=4.0, r_limit=0.501, share_quantum=1.0,
+    )
+    assert len(rungs) == 1
+
+
+def test_taker_has_no_ladder() -> None:
+    assert _ladder_rung_prices(
+        execution_candidate="TAKER_FOK", quote=_quote(0.310, 0.330),
+        q_order=8.0, r_limit=0.311, share_quantum=0.01,
+    ) == [0.311]
+
+
+def test_unanchorable_book_falls_back_rather_than_inventing_a_price() -> None:
+    for quote in (_quote(0.0, 0.330), _quote(0.310, 0.0), _quote(0.310, 0.330, 0.0)):
+        assert _ladder_rung_prices(
+            execution_candidate="MAKER", quote=quote,
+            q_order=8.0, r_limit=0.311, share_quantum=0.01,
+        ) == [0.311]
+
+
+def _seed(conn: sqlite3.Connection, *, intent_id: str, cycle_id: str, state: str) -> None:
+    conn.execute(
+        "INSERT INTO basket_target_order_intents(order_intent_id,decision_id,cycle_id,bucket,"
+        "token_id,side,order_action,limit_price,requested_size,requested_notional_usdc,state,"
+        "live_submit_authorized,idempotency_key,intent_json,intent_sha256,created_at)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (intent_id, "d", cycle_id, "20C", "tok", "YES", "BUY", 0.311, 4.0, 1.24,
+         state, 1, "idem_" + intent_id, "{}", "a" * 64, "2026-09-06T15:00:00Z"),
+    )
+
+
+def test_same_cycle_rungs_do_not_block_each_other(tmp_path) -> None:
+    """The gate stops a later compile posting into a bucket that already
+    holds an order.  Under one order per leg those were the same thing; with
+    a ladder they are not, and read as duplicates the rungs of one leg would
+    block each other -- the first posts, and the second sees it submitted."""
+    conn = sqlite3.connect(":memory:")
+    apply_target_ledger_schema(conn)
+    _seed(conn, intent_id="rung_a", cycle_id="cycle_1", state="submitted")
+
+    same = can_submit_next_order(
+        conn, bucket="20C", token_id="tok",
+        exclude_order_intent_id="rung_b", same_cycle_id="cycle_1",
+    )
+    assert same["allowed"] is True, same
+
+    other = can_submit_next_order(
+        conn, bucket="20C", token_id="tok",
+        exclude_order_intent_id="rung_b", same_cycle_id="cycle_2",
+    )
+    assert other["allowed"] is False, other
+
+    unscoped = can_submit_next_order(
+        conn, bucket="20C", token_id="tok", exclude_order_intent_id="rung_b",
+    )
+    assert unscoped["allowed"] is False, "no cycle named still blocks"
+
+
+def test_an_ambiguous_sibling_blocks_even_inside_one_ladder(tmp_path) -> None:
+    """The exemption is for rungs that say plainly whether they reached the
+    exchange.  A reconciliation that is pending or unknown says nobody knows
+    whether money moved, and posting another rung against that is the double
+    the gate exists to prevent -- sibling or not."""
+    conn = sqlite3.connect(":memory:")
+    apply_target_ledger_schema(conn)
+    _seed(conn, intent_id="rung_a", cycle_id="cycle_1", state="submitted")
+    conn.execute(
+        "INSERT INTO basket_target_order_reconciliations(order_intent_id,state,"
+        "filled_size,filled_notional_usdc,updated_at) VALUES(?,?,?,?,?)",
+        ("rung_a", "unknown", 0.0, 0.0, "2026-09-06T15:00:00Z"),
+    )
+    gate = can_submit_next_order(
+        conn, bucket="20C", token_id="tok",
+        exclude_order_intent_id="rung_b", same_cycle_id="cycle_1",
+    )
+    assert gate["allowed"] is False, gate
