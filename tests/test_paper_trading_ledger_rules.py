@@ -2456,3 +2456,158 @@ def test_charter_77_a_non_moment_cycle_never_names_the_day() -> None:
         'refusal = _deeper_refusal(refusal, (\n'
         '                                _reason, _detail,'
     )
+
+
+def test_the_chain_tail_is_the_row_the_settlement_points_at() -> None:
+    """A stage that seated twice must not settle twice on the page.
+
+    The dashboard joins the settlement onto every stage row of its
+    station-day so each cell can print the outcome, and marks exactly one
+    of them ``chain_tail`` -- the row the aggregates are allowed to sum.
+    That mark used to be a stage-label match, written while
+    ``UNIQUE(station_id, event_date, stage)`` still made the label unique.
+    The constraint was rebuilt away on 2026-09-02 (a stage adds to itself on
+    later cycles, see the rebuild test above) and the label stopped
+    identifying a row: a station-day that opened P0 twice had both rows
+    called the tail, so its stake, its P&L and its settlement count were
+    each counted once per seat while only one of the rows carried the
+    chain's closing stake.  Measured 2026-09-08, that read 220 settled
+    chains staking 435.12 USDC where the ledger holds 200 staking 396.93,
+    and the headline return as -61.7% against a true -64.1%.
+
+    The settlement's own ``position_id`` is the only thing that says which
+    row it settled.
+    """
+
+    import json
+    import sqlite3
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    import paper_trading_ledger as ledger  # noqa: PLC0415
+    import selection_market_dashboard as smd  # noqa: PLC0415
+
+    conn = sqlite3.connect(":memory:")
+    ledger.ensure_schema(conn)
+
+    day = smd.STATS_START_EVENT_DATE
+    probabilities = json.dumps({"20°C": 0.3, "21°C": 0.4, "22°C": 0.3})
+    prices = json.dumps({"20°C": 0.2, "21°C": 0.3, "22°C": 0.2})
+
+    # Fill every NOT NULL column off the live schema rather than by hand, so
+    # the fixture does not have to be re-taught each time the table grows.
+    info = conn.execute("PRAGMA table_info(paper_trade_position)").fetchall()
+    required = [r[1] for r in info if r[3] and r[4] is None]
+    numeric = {
+        r[1] for r in info if r[2].upper() in ("INTEGER", "REAL")
+    }
+
+    def seat(pid: str, stake: float, chain_stake: float, hour: str) -> None:
+        named = {
+            "position_id": pid,
+            "station_id": "KLGA",
+            "event_date": day,
+            "stage": "P0",
+            "decision_at_utc": f"{day}T{hour}:00:00Z",
+            "quote_observed_at_utc": f"{day}T{hour}:00:00Z",
+            "ladder_center_bucket": "21°C",
+            "window_buckets_json": json.dumps(["21°C"]),
+            "window_size": 1,
+            "win_probability": 0.4,
+            "all_in_cost": 0.3,
+            "edge": 0.1,
+            "stake_usdc": stake,
+            "shares": stake / 0.3,
+            "probabilities_json": probabilities,
+            "prices_json": prices,
+            "chain_stake_usdc": chain_stake,
+            "chain_shares_json": json.dumps({"21°C": chain_stake / 0.3}),
+            "intended_legs_json": json.dumps({"21°C": 1}),
+            "leg_shares_json": json.dumps({"21°C": stake / 0.3}),
+        }
+        columns = list(dict.fromkeys(required + list(named)))
+        values = [
+            named[c] if c in named else (0 if c in numeric else "x")
+            for c in columns
+        ]
+        conn.execute(
+            f"INSERT INTO paper_trade_position({','.join(columns)})"
+            f" VALUES({','.join('?' for _ in columns)})",
+            values,
+        )
+
+    # The opening seat and the same stage adding to itself on a later cycle.
+    # Only the second one carries the chain's closing stake.
+    seat("pos-open", 1.0, 1.0, "12")
+    seat("pos-topup", 2.0, 3.0, "18")
+    conn.execute(
+        "INSERT INTO paper_trade_settlement("
+        " settlement_id, position_id, station_id, event_date, stage,"
+        " settled_tmax_c, settled_bucket, hit, stake_usdc, payout_usdc,"
+        " pnl_usdc, claimed_win_probability, settled_at_utc)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            "set-1", "pos-topup", "KLGA", day, "P0",
+            23.0, "23°C", 0, 3.0, 0.0, -3.0, 0.4, f"{day}T23:59:00Z",
+        ),
+    )
+
+    rows = [r for r in smd._rows(conn) if r["station_id"] == "KLGA"]
+    assert len(rows) == 2, "both seats must still be drawn"
+    tails = [r for r in rows if r["chain_tail"]]
+    assert len(tails) == 1, (
+        "a station-day settles once, so exactly one row is its tail; "
+        f"got {len(tails)}"
+    )
+    # And it is the settled row, whose chain stake is the chain's, not the
+    # opening seat's.
+    assert tails[0]["chain_stake_usdc"] == 3.0
+    settled_tail = [r for r in rows if r["settled"] and r["chain_tail"]]
+    assert sum(r["chain_stake_usdc"] for r in settled_tail) == 3.0
+    assert sum(float(r["pnl_usdc"] or 0.0) for r in settled_tail) == -3.0
+    conn.close()
+
+
+def test_the_page_counts_one_settled_chain_per_settlement() -> None:
+    """The same rule read against the live ledger, not a fixture.
+
+    ``settled_count`` is how many chains the headline return divides by, and
+    it can never exceed the number of settlements the ledger wrote.
+    """
+
+    import sqlite3
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    import selection_market_dashboard as smd  # noqa: PLC0415
+
+    db = (
+        Path(__file__).resolve().parents[1]
+        / "data"
+        / "bayes_basket_target_ssot.db"
+    )
+    if not db.is_file():
+        return
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
+    try:
+        settlements = conn.execute(
+            "SELECT COUNT(*) FROM paper_trade_settlement WHERE event_date >= ?",
+            (smd.STATS_START_EVENT_DATE,),
+        ).fetchone()[0]
+        rows = smd._rows(conn)
+    except sqlite3.DatabaseError:
+        return
+    finally:
+        conn.close()
+    tails = [r for r in rows if r["settled"] and r["chain_tail"]]
+    assert len(tails) <= settlements, (
+        f"{len(tails)} settled chains drawn against {settlements} settlements"
+    )
+    keys = {(r["station_id"], r["event_date"]) for r in tails}
+    assert len(keys) == len(tails), "a station-day was counted twice"

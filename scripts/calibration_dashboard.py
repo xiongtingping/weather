@@ -5059,7 +5059,14 @@ def _intended_cover_by_day(
         " FROM paper_trade_position p"
         " LEFT JOIN paper_trade_settlement s"
         " ON s.station_id = p.station_id AND s.event_date = p.event_date"
-        " WHERE p.stage = 'P0' AND p.event_date >= ?",
+        " WHERE p.stage = 'P0' AND p.event_date >= ?"
+        # One reading per station-day, and the ``seen`` set below keeps the
+        # first row it meets.  P0 may seat twice on one day since the
+        # one-seat constraint was rebuilt away (2026-09-02), so without an
+        # order that "first" is whatever the query planner hands back and
+        # the cover rate can move without the ledger moving.  The opening
+        # decision is the one this reading has always taken; name it.
+        " ORDER BY p.event_date, p.station_id, p.decision_at_utc",
         (STATS_START_EVENT_DATE,),
     )
     rows: list[dict[str, Any]] = []
@@ -5693,16 +5700,29 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
                 # already the lifted claim; nothing lifts it again.
                 #
                 # P&L and stake come from the seats and only from the
-                # seats, joined per station-day: money follows the basket
-                # that was held, and a window nobody bought has none.  The
-                # two halves of this row answer two different questions on
-                # purpose, and the money half is NULL for most rows.
+                # seats: money follows the basket that was held, and a
+                # window nobody bought has none.  The two halves of this
+                # row answer two different questions on purpose, and the
+                # money half is NULL for most rows.
+                #
+                # Joined per station-day-and-stage, not per station-day.  A
+                # chain seats at P0 and is topped up at P0-M and P1, and a
+                # station-day join handed the same settlement to each of
+                # those seated candidates: 53 of them, carrying the chain's
+                # whole P&L and stake once per stage.  That put 548 USDC of
+                # stake and -373 of P&L on this panel against a ledger
+                # holding 414 and -257, and moved the band returns with it
+                # (measured 2026-09-08).  The settlement names the stage
+                # that closed the chain; that seat, and only it, is where
+                # the chain's money belongs -- the same one-book rule the
+                # rest of the page reads.
                 "SELECT c.win_probability, c.all_in_price, c.hit,"
                 " s.pnl_usdc, s.stake_usdc"
                 " FROM paper_trade_candidate_window c"
                 " LEFT JOIN paper_trade_settlement s"
                 "   ON s.station_id = c.station_id"
                 "  AND s.event_date = c.event_date"
+                "  AND s.stage = c.stage"
                 "  AND c.seated = 1"
                 f" WHERE c.stage IN ({placeholders}){clause}"
                 "   AND c.hit IS NOT NULL",

@@ -279,7 +279,8 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         " p.resting_fill_json, p.intended_stake_usdc,"
         " p.chain_shares_json, p.chain_stake_usdc, s.stage,"
         " s.basket_all_in_cost,"
-        " p.intended_leg_stake_json, p.leg_stake_json"
+        " p.intended_leg_stake_json, p.leg_stake_json,"
+        " p.position_id, s.position_id"
         " FROM paper_trade_position p"
         # Joined on the station-day, not the position: the three stages are
         # one position and settle once, so every top-up in a chain reads the
@@ -414,7 +415,17 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             # one settled position two or three times.  That double count is
             # the three-book reading this ledger was corrected out of, and it
             # would come straight back through a page that sums stage rows.
-            "chain_tail": bool(r[27]) and str(r[27]) == str(r[2]),
+            #
+            # The tail is the row the settlement actually points at, not the
+            # row whose stage label matches it.  A station-day that bought
+            # twice at one stage -- a second P0 basket, a charter 84
+            # completion leg -- writes two position rows carrying that same
+            # stage, and a stage-label match calls both of them the tail:
+            # the chain's stake and P&L are then counted once per row while
+            # only one of those rows carries the chain's closing stake.
+            # ``position_id`` is the settlement's own answer to which row it
+            # settled (user ruling, 2026-09-08).
+            "chain_tail": r[32] is not None and str(r[32]) == str(r[31]),
             "chain_stake_usdc": (
                 float(r[26]) if r[26] is not None else stake
             ),
