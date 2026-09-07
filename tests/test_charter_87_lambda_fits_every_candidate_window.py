@@ -380,3 +380,45 @@ def test_a_rule_change_replaces_a_candidate_row_instead_of_aborting(tmp_path):
     assert '"buckets": buckets,' in walk[:2000]
     assert '"selection_rule_sha256": SELECTION_RULE_SHA256,' not in walk[:2000]
     conn.close()
+
+
+def test_the_population_is_the_enumeration_that_decided():
+    """Two ways the recorded shortlist can be the wrong one.
+
+    The ledger runs its own ``_support_windows`` and then, since 2026-09-03,
+    hands the seat to production's judge -- which enumerates again, off
+    production's own centre and admitted set.  When that judge is in force
+    the ledger's shortlist decides nothing, so recording it would put a list
+    in the fit that no gate ever looked at.  The judge therefore returns the
+    windows it judged, on every path that has them, refusals included: a
+    refused stage's enumeration is exactly what this population exists for.
+
+    And the cycle recorded has to be the one that ACTED.  Recording "the
+    cycle the walk stopped on" loses the seating cycle whenever the stage
+    re-seats -- the walk keeps going, and a later cycle whose book has gone
+    unpriced overwrites the one that bought.  EFHK 2026-08-16 seated twice
+    and left no candidate row at all that way.
+    """
+
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in _sys.path:
+        _sys.path.insert(0, str(root / "scripts"))
+    source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    # Every return of the judge that has an enumeration carries it out.
+    import re as _re
+    start = source.index("def _production_judge(")
+    end = _re.search(r"\n(?=def )", source[start + 1:])
+    judge = source[start:start + 1 + (end.start() if end else len(source))]
+    after = judge[judge.index("windows, audit = _support_windows("):]
+    assert after.count("return {") == after.count(
+        '"enumerated_windows": windows,'
+    ), "a judged path that drops its shortlist"
+    # The walk prefers the judge's list, and prefers the seating cycle.
+    assert 'verdict.get("enumerated_windows")' in source
+    assert "stage_candidates_seated = stage_candidates" in source
+    assert "recorded = stage_candidates_seated or stage_candidates" in source

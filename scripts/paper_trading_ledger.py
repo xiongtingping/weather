@@ -4362,6 +4362,7 @@ def _production_judge(
         )
     except Exception as exc:  # noqa: BLE001
         return {
+            "enumerated_windows": windows,
             "refusal": (
                 "selection_failed",
                 "生产裁判枚举失败：%s" % type(exc).__name__,
@@ -4388,6 +4389,7 @@ def _production_judge(
         and str(last_acted_probability_identity) == probability_identity
     ):
         return {
+            "enumerated_windows": windows,
             "refusal": (
                 "topup_requires_probability_change",
                 "宪章 71(a)：概率身份 %s 自上次买入未变，不加仓"
@@ -4498,6 +4500,7 @@ def _production_judge(
             # Every window that would spend was refused by the chain law
             # -- charter 66(A) par or 71(b) growth -- and none stood pat.
             return {
+                "enumerated_windows": windows,
                 "refusal": (
                     "no_chain_growth",
                     "生产求解器：每个窗口都被链法则拒绝"
@@ -4529,6 +4532,7 @@ def _production_judge(
                     "%s×%d" % item for item in sorted(by_reason.items())
                 )
         return {
+            "enumerated_windows": windows,
             "refusal": ("production_judge_blocked", detail),
         }
     moment = dict(selection.get("decision_moment") or {})
@@ -4536,6 +4540,7 @@ def _production_judge(
         # Charter 77, as the solver ruled it: same served identity, same
         # admissibility as the last recorded decision of this stage.
         return {
+            "enumerated_windows": windows,
             "refusal": (
                 "no_decision_moment",
                 "宪章 77：概率身份与可入座状态（%s）都没变，只是盘口动了"
@@ -4559,6 +4564,7 @@ def _production_judge(
             continue
         delta_cost += delta * float(row.ask_price) * (1.0 + fee_rate)
     return {
+        "enumerated_windows": windows,
         "decision_signature": decision_signature,
         "buckets": tuple(str(bucket) for bucket in seated),
         "target_shares": target,
@@ -7727,6 +7733,7 @@ def backfill(
                 cycles = 0
                 opened = False
                 stage_candidates: tuple[str, list] | None = None
+                stage_candidates_seated: tuple[str, list] | None = None
                 stage_seated_buckets: tuple[str, ...] | None = None
                 lane_opened_at: datetime | None = None
                 # Production's clamp compares this cycle's distribution with
@@ -8223,6 +8230,19 @@ def backfill(
                             ),
                         )
                         counts["production_judge_cycles"] += 1
+                        # Charter 104: the enumeration that DECIDED.  The
+                        # ledger lane ran its own a few hundred lines up and
+                        # that one is recorded until this point; when this
+                        # judge is in force it decides nothing, and a fit
+                        # reading it would be reading a shortlist the gate
+                        # never saw.  Taken before the refusal branches
+                        # below, because a refused stage's enumeration is
+                        # exactly the evidence this population exists for.
+                        _judged = verdict.get("enumerated_windows")
+                        if _judged:
+                            stage_candidates = (
+                                payload["decision_at_utc"], _judged,
+                            )
                         _signature = verdict.get("decision_signature")
                         if isinstance(_signature, dict) and (
                             (verdict.get("refusal") or ("", ""))[0]
@@ -9533,6 +9553,13 @@ def backfill(
                     # filled, and a narrowed window matches no row in the
                     # enumeration it came from.
                     stage_seated_buckets = tuple(str(b) for b in seat["buckets"])
+                    # And the enumeration this stage ACTED on.  Recording
+                    # only "the cycle the walk stopped on" lost it whenever
+                    # the stage re-seated: the walk keeps going, and a later
+                    # cycle whose book has gone unpriced overwrites the one
+                    # that bought.  EFHK 2026-08-16 seated twice and left no
+                    # candidate row at all that way.
+                    stage_candidates_seated = stage_candidates
                     if EXECUTION_MODE == "maker_resting":
                         # The sizing above is the order that was posted.
                         # This is the position that came back.
@@ -9858,8 +9885,9 @@ def backfill(
                 # too -- most of the book is refused, and a fit that only
                 # ever sees what the gate let through is the gate reading
                 # its own decisions back as though they were outcomes.
-                if stage_candidates is not None:
-                    decided_at, enumerated = stage_candidates
+                recorded = stage_candidates_seated or stage_candidates
+                if recorded is not None:
+                    decided_at, enumerated = recorded
                     seated_key = stage_seated_buckets
                     for row in enumerated:
                         if row.get("all_in_price") is None:
