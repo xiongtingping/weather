@@ -5413,7 +5413,24 @@ def _ladder_from_quote(
         return []
     if MAKER_RESTING_ANCHORED:
         # Charter 94: a re-post, were one ever made, stands on the anchor.
-        return bid_anchored_ladder(bid=bid, ask=ask, tick=tick)
+        #
+        # Truncated to the rungs still owed, like every other branch of this
+        # function and like production.  The early return skipped the
+        # ``steps`` cap below, so a leg whose ladder was one rung deep --
+        # charter 94(二)'s degeneration, which is most legs -- was re-posted
+        # three rungs wide every five minutes and could buy three times the
+        # position it was sized for.  Measured 2026-09-07 on the rebuilt
+        # book: 218 of 273 positions bought more shares than they intended,
+        # RPLL 2026-09-03 read "3/1" on two legs and staked 14.40 against a
+        # 13.08 per-scope cap.  Production never had it -- its re-mint sizes
+        # the ladder from the gap (``bid_anchored_rungs_for_gap``) and the
+        # sequential gate holds the bucket until the open order resolves; on
+        # the live book 0 of 262 authorised legs ever filled past their
+        # requested size.  So this was the ledger measuring a strategy
+        # production does not run, on every arm fitted since charter 94.
+        return sorted(
+            bid_anchored_ladder(bid=bid, ask=ask, tick=tick), reverse=True
+        )[:max(1, int(steps))]
     capped = ask if ceiling is None else min(ask, float(ceiling))
     high = _floor_to_tick(
         capped if MAKER_RESTING_BAND_TOP == "ask" else capped - tick, tick

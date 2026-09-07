@@ -777,8 +777,15 @@ def test_charter_68_scope_and_the_taker_leg_veto_move_together() -> None:
     # three served scopes must carry the same boundaries -- the store fits
     # per scope but ``_band_index`` is one partition, so a scope on the old
     # bounds would look its lambda up in a band nobody fitted.
+    #
+    # Charter 87, second reading (2026-09-07): 1.00 and 1.10 join them.  The
+    # open top band was measured on the enumerated windows and found
+    # internally heterogeneous in the one way that makes a band average
+    # unusable as a threshold -- lambda tracks ``a`` almost one for one
+    # inside it, so the pooled 1.217 it fitted to would have admitted the
+    # 1.00-1.22 slice, whose windows returned -2.3% and -2.7% when bought.
     assert K.EFFECTIVE_EDGE_BAND_BOUNDS == (
-        0.50, 0.70, 0.80, 0.85, 0.95, float("inf")
+        0.50, 0.70, 0.80, 0.85, 0.95, 1.00, 1.10, float("inf")
     )
     # Charter 97: the claim-edge axis is one constant on both sides, and both
     # lanes resolve lambda through the same function -- the ledger judging a

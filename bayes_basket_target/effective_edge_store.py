@@ -562,44 +562,157 @@ def fit_lambda_table(
     }
 
 
+def admitted_return(
+    conn: sqlite3.Connection,
+    bands: Sequence[tuple[float, float]],
+    stages: Sequence[str],
+    floor_day: str,
+) -> dict[str, Any]:
+    """What a table would have bought, and what that would have returned.
+
+    One share of every candidate window the table admits -- ``lambda(a) >
+    a``, the gate's own rule -- against the price it was quoted and the
+    outcome it settled to.  This number cannot be computed from seats: a
+    seat exists only where some table already admitted it, so the seated
+    book has no opinion about what a different table would have bought.
+    The candidate population is what makes the counterfactual exist, and
+    the counterfactual is the only thing that says whether a fit is an
+    improvement.
+    """
+
+    placeholders = ",".join("?" for _ in stages)
+    try:
+        rows = conn.execute(
+            "SELECT win_probability, all_in_price, hit"
+            " FROM paper_trade_candidate_window"
+            f" WHERE stage IN ({placeholders}) AND event_date >= ?"
+            "   AND hit IS NOT NULL",
+            (*stages, floor_day),
+        ).fetchall()
+    except sqlite3.Error:
+        return {"available": False, "windows": 0}
+    cost = payout = 0.0
+    admitted = 0
+    for claim, price, hit in rows:
+        claim = float(claim or 0.0)
+        price = float(price or 0.0)
+        if claim <= 0.0 or price <= 0.0:
+            continue
+        agreement = price / claim
+        if bands[_band_index(agreement, bands)][1] <= agreement:
+            continue
+        admitted += 1
+        cost += price
+        payout += float(hit or 0)
+    return {
+        "available": bool(rows),
+        "windows": len(rows),
+        "admitted": admitted,
+        "cost": round(cost, 4),
+        "payout": round(payout, 4),
+        # No trades is a return of zero, not an undefined one: a table that
+        # admits nothing earns nothing, and that is a real comparison.
+        "roi": round((payout - cost) / cost, 6) if cost > 0 else 0.0,
+    }
+
+
+# The guard the 2026-09-07 fit needed and did not have.  Default on; the
+# switch exists so a deliberate promotion against the back-test stays
+# possible and has to be typed.
+ACTIVATION_RETURN_GUARD = str(
+    os.environ.get("PM_EFFECTIVE_EDGE_ACTIVATION_GUARD", "on") or "on"
+).strip().lower()
+
+
 def persist_and_activate(
     conn: sqlite3.Connection, fit: dict[str, Any]
 ) -> dict[str, Any]:
-    """Store the fit and make it the served table.
+    """Store the fit and make it the served table -- if it beats the one it
+    would replace on the only question that matters.
 
-    Activation is unconditional once the fit exists, because the admission
-    rule already ran band by band inside the fit: a band without evidence
-    carries the incumbent value, so activating cannot serve a number the
-    hurdles did not clear.  What activation buys is that the bands which DID
-    clear stop being stale.
+    Activation used to be unconditional, on the reasoning that the per-band
+    admission rule had already run: a band without evidence keeps the
+    incumbent, so activating could not serve a number the hurdles had not
+    cleared.  That reasoning is sound about each band and wrong about the
+    table, because the quantity the hurdles clear is not the quantity the
+    gate uses.  ``lambda`` is a band AVERAGE and the gate uses it as a
+    THRESHOLD, so a table admits precisely the members of each band whose
+    own agreement sits closest to the average -- the dearest ones, whose
+    own realisation is furthest below it.  The fit can improve every band's
+    estimate and make every purchase worse.
+
+    Measured 2026-09-07, the first day the candidate population existed to
+    measure it on: the newly fitted P0 table read better evidence in every
+    band (12 windows where there had been none at 0.80, 22 at 0.95, 148 at
+    the top against 58 seats for the whole table) and would have taken the
+    book from 64 windows at +9.2% to 130 at +0.4%.  Every band it moved, it
+    moved the wrong way: 0.795 -> 0.648 gave up a band returning +12.2%,
+    0.650 -> 0.919 bought one returning -12.3%, 0.979 -> 1.217 diluted
+    +7.9% to +1.7%.
+
+    So the fit is journalled always and served only when the windows it
+    would have bought beat the windows the incumbent bought, over the same
+    population and the same rolling floor.
     """
 
     ensure_schema(conn)
     now = datetime.now(UTC).isoformat(timespec="seconds")
     sha = str(fit["content_sha256"])
     scope = str(fit.get("stage_scope") or "P0")
-    # Deactivation is per scope: activating P1's table must not retire P0's.
-    conn.execute(
-        "UPDATE calibration_effective_edge_lambda SET activated=0"
-        " WHERE activated=1 AND stage_scope=?",
-        (scope,),
+    stages = list(fit["table"].get("stages") or STAGE_SCOPES[scope])
+    floor_day = str(fit["table"].get("fit_floor_event_date") or "")
+    candidate_bands = [
+        (float(bound), float(lam)) for bound, lam in fit["bands"]
+    ]
+    incumbent_bands = _incumbent_bands(conn, scope)
+    proposed = admitted_return(conn, candidate_bands, stages, floor_day)
+    standing = admitted_return(conn, incumbent_bands, stages, floor_day)
+    guard = {
+        "mode": ACTIVATION_RETURN_GUARD,
+        "proposed": proposed,
+        "incumbent": standing,
+        "bands_unchanged": candidate_bands == incumbent_bands,
+    }
+    # An unchanged table is a refresh of the evidence, not a promotion, and
+    # nothing it could buy differs -- it activates so the journal keeps
+    # moving.  A changed one has to earn it.
+    blocked = bool(
+        ACTIVATION_RETURN_GUARD == "on"
+        and not guard["bands_unchanged"]
+        and proposed.get("available")
+        and standing.get("available")
+        and float(proposed["roi"]) < float(standing["roi"]) - 1e-9
     )
+    guard["blocked"] = blocked
+    if not blocked:
+        # Deactivation is per scope: activating P1's table must not retire
+        # P0's.
+        conn.execute(
+            "UPDATE calibration_effective_edge_lambda SET activated=0"
+            " WHERE activated=1 AND stage_scope=?",
+            (scope,),
+        )
     conn.execute(
         "INSERT INTO calibration_effective_edge_lambda("
         " lambda_table_sha256, bands_json, evidence_json, fitted_at_utc,"
         " window_days, seat_count, activated, activated_at_utc, stage_scope)"
-        " VALUES(?,?,?,?,?,?,1,?,?)"
+        " VALUES(?,?,?,?,?,?,?,?,?)"
         " ON CONFLICT(lambda_table_sha256) DO UPDATE SET"
-        "  activated=1, activated_at_utc=excluded.activated_at_utc,"
+        "  activated=excluded.activated,"
+        "  activated_at_utc=excluded.activated_at_utc,"
         "  evidence_json=excluded.evidence_json",
         (
             sha,
             json.dumps(fit["table"], ensure_ascii=False, sort_keys=True),
-            json.dumps(fit["evidence"], ensure_ascii=False),
+            json.dumps(
+                {"bands": fit["evidence"], "activation_guard": guard},
+                ensure_ascii=False,
+            ),
             now,
             int(fit["table"]["window_days"]),
             int(fit["seat_count"]),
-            now,
+            0 if blocked else 1,
+            None if blocked else now,
             scope,
         ),
     )
@@ -611,14 +724,19 @@ def persist_and_activate(
             sha, now,
             len(fit["bands"]) - len(fit["accumulating_bands"]),
             json.dumps(fit["accumulating_bands"]),
-            json.dumps(fit["evidence"], ensure_ascii=False),
+            json.dumps(
+                {"bands": fit["evidence"], "activation_guard": guard},
+                ensure_ascii=False,
+            ),
             scope,
         ),
     )
     conn.commit()
     return {
-        "lambda_table_sha256": sha, "activated_at_utc": now,
+        "lambda_table_sha256": sha,
+        "activated_at_utc": None if blocked else now,
         "stage_scope": scope,
+        "activation_guard": guard,
     }
 
 

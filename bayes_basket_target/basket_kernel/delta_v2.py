@@ -1132,13 +1132,30 @@ def support_scenario_floor_v1(
 # half admits [0.700, 0.795) on 20 seats and 12.583 of claim mass, over
 # both of charter 68's hurdles; the upper half keeps its incumbent on ten
 # seats and stays shut, which is what the evidence there says.
-EFFECTIVE_EDGE_BAND_BOUNDS = (0.50, 0.70, 0.80, 0.85, 0.95, float("inf"))
+EFFECTIVE_EDGE_BAND_BOUNDS = (
+    0.50, 0.70, 0.80, 0.85, 0.95, 1.00, 1.10, float("inf"),
+)
+# The bounds above 0.95 (user ruling, 2026-09-07: "lambda 顶档拆细").  The
+# open top band was measured on the enumerated windows and found internally
+# heterogeneous in exactly the way that makes a band average unusable as a
+# threshold: lambda tracks ``a`` almost one for one inside it -- sub-bands
+# (0.95,1.00] / (1.00,1.10] / (1.10,1.25] / (1.25,1.50] / (1.50,2.00] read
+# 0.985 / 1.031 / 1.154 / 1.321 / 1.486 against their own mean agreements of
+# roughly 0.98 / 1.05 / 1.17 / 1.37 / 1.70.  ``lambda - a`` is therefore
+# positive only below about 1.00, and the pooled 1.217 the whole band fitted
+# to would have admitted the 1.00-1.22 slice, whose windows each returned
+# -2.3% and -2.7% when bought.  Splitting is what makes the band average
+# mean something again; the split itself moves nothing, because
+# ``_project_onto_partition`` gives every new band the value of the old one
+# that contained it.
 EFFECTIVE_EDGE_LAMBDA = (
     (0.50, 0.14),
     (0.70, 0.60),
     (0.80, 0.87),
     (0.85, 0.87),
     (0.95, 0.82),
+    (1.00, 0.82),
+    (1.10, 0.82),
     (float("inf"), 0.82),
 )
 # Research arm (2026-09-04): a P0-specific table handed in by env as JSON
@@ -1165,6 +1182,8 @@ EFFECTIVE_EDGE_P0M_LAMBDA = (
     (0.80, 0.87),
     (0.85, 0.87),
     (0.95, 0.82),
+    (1.00, 0.82),
+    (1.10, 0.82),
     (float("inf"), 0.82),
 )
 EFFECTIVE_EDGE_P0M_LAMBDA_OVERRIDE = os.environ.get(
@@ -1210,6 +1229,8 @@ EFFECTIVE_EDGE_P1_LAMBDA = (
     (0.80, 1.00),
     (0.85, 1.00),
     (0.95, 1.00),
+    (1.00, 1.00),
+    (1.10, 1.00),
     (float("inf"), 1.00),
 )
 EFFECTIVE_EDGE_P1_STAGES = frozenset({"P1"})

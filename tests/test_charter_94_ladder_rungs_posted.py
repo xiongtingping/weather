@@ -194,3 +194,45 @@ def test_a_row_whose_scope_is_unknown_blocks_every_scope() -> None:
     )
     for station, day in (("CYYZ", "2026-09-06"), ("KMIA", "2026-09-08"), ("", "")):
         assert conn.execute(sql, (*states, station, station, day, day)).fetchone() is not None
+
+
+def test_a_repost_may_only_replenish_the_rungs_the_leg_still_owes():
+    """Charter 94's anchored re-post is capped by the gap, like the open.
+
+    The anchored branch returned before the ``steps`` cap, so a leg whose
+    ladder had degenerated to one rung -- charter 94(二), which is most legs
+    -- was re-posted three rungs wide every five minutes and could buy three
+    times the position it was sized for.  Measured on the rebuilt book,
+    218 of 273 positions had a leg that filled past its intended shares.
+    Production never had it: its re-mint sizes the ladder from the gap and
+    the sequential gate holds the bucket until the open order resolves, and
+    0 of 262 authorised live legs ever filled past their requested size.
+    """
+
+    import importlib.util
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in _sys.path:
+        _sys.path.insert(0, str(root / "scripts"))
+    import paper_trading_ledger as ledger
+
+    quote = {
+        "bid_price": 0.20,
+        "best_ask": 0.26,
+        "price_tick_size": 0.01,
+        "ask_levels": [{"price": 0.26, "shares": 100.0}],
+    }
+    assert ledger.MAKER_RESTING_ANCHORED, "this is the anchored branch"
+    owed_one = ledger._ladder_from_quote(quote, 1)
+    owed_two = ledger._ladder_from_quote(quote, 2)
+    owed_three = ledger._ladder_from_quote(quote, 3)
+    assert len(owed_one) == 1
+    assert len(owed_two) == 2
+    assert len(owed_three) <= 3
+    # The rungs it does post are the dearest ones it is entitled to --
+    # charter 94(二)'s order is bid+1 tick, bid, bid-1 tick.
+    assert owed_one == owed_three[:1]
+    assert owed_two == owed_three[:2]
+    assert owed_three == sorted(owed_three, reverse=True)
