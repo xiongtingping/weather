@@ -503,6 +503,14 @@ def main() -> int:
         help="charter 95 step two: score the covered and +regional arms, on "
              "the rows a regional run actually reaches",
     )
+    parser.add_argument(
+        "--score-all", action="store_true",
+        help="with --regional, score every row instead of only the covered "
+             "ones.  The covered/+regional pair is fitted on covered rows and "
+             "is the ablation; +regional_full is fitted on the whole fleet "
+             "and is the arm a promotion would actually ship, so it has to be "
+             "scored where it would actually serve",
+    )
     parser.add_argument("--min-train-days", type=int, default=7)
     parser.add_argument("--out", default=None)
     args = parser.parse_args()
@@ -533,7 +541,7 @@ def main() -> int:
             continue
         hazard, reanchor = fitted
         train = [row for row in all_rows if str(row["event_date"]) < day]
-        covered = regional = None
+        covered = regional = regional_full = None
         day_samples = by_day[day]
         if args.regional:
             pair = regional_artifacts(all_rows, day)
@@ -545,10 +553,11 @@ def main() -> int:
             # rest would dilute both arms with samples where they are
             # identical by construction and make any difference look smaller
             # than it is.
-            day_samples = [
-                row for row in day_samples
-                if row["regional_headroom_c"] is not None
-            ]
+            if not args.score_all:
+                day_samples = [
+                    row for row in day_samples
+                    if row["regional_headroom_c"] is not None
+                ]
             if not day_samples:
                 continue
         scored.extend(evaluate_day(

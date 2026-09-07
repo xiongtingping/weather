@@ -56,6 +56,7 @@ if str(ROOT) not in sys.path:
 from bayes_basket_target import metar_ceiling  # noqa: E402
 from bayes_basket_target import regional_path_prior  # noqa: E402
 from bayes_basket_target import regional_point_debias  # noqa: E402
+from bayes_basket_target import metar_four_layer  # noqa: E402
 from bayes_basket_target.center_width_calibration import (  # noqa: E402
     apply_center_width_calibration,
     bucket_centers_from_intervals,
@@ -2313,6 +2314,17 @@ SELECTION_RULE_SHA256 = content_sha256({
         # apply it a second time and does not claim it as its own rule.  The
         # ceiling's entry above says the same thing in the same words.
         else "off:judge_reads_envelope" if regional_path_prior.ENABLED
+        else "off"
+    ),
+    # Charter 95 step two (2026-09-07): the four-layer chain now stands in the
+    # ceiling's place at P1's outermost point, so a book priced with it may
+    # not share a fingerprint with one priced by the clock rate.  As with the
+    # ceiling and the curve, under the production judge the ledger scores the
+    # envelope production committed, which already carries this layer.
+    "p1_four_layer_serving": (
+        "regression_phase_remaining_no_reanchor_v1"
+        if metar_four_layer.SERVE_ENABLED and REPLAY_LAYERS_APPLIED
+        else "off:judge_reads_envelope" if metar_four_layer.SERVE_ENABLED
         else "off"
     ),
     "metar_ceiling": (

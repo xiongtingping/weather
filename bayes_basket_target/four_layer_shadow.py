@@ -40,10 +40,23 @@ _ROOT = Path(__file__).resolve().parents[1]
 _RUNTIME = _ROOT / "data" / "runtime" / "bayes_basket_target_nwp"
 HAZARD_ARTIFACT_PATH = _RUNTIME / "metar_phase_hazard_artifact.json"
 REANCHOR_ARTIFACT_PATH = _RUNTIME / "metar_reanchor_artifact.json"
-# Off until switched on deliberately.  With it off the loader returns nothing,
-# the compiler adds no keys, and every lineage is the one it was before.
+# On since 2026-09-07 (operator ruling "开"), which is the first time this lane
+# has ever recorded anything: no envelope before that date carries either key.
+# What changed is that the chain now has a reason to be scored -- charter 95
+# step two put the regional curve's two features into the regression, and on
+# the walk-forward gate that moved the chain's centre MAE from 0.513 to 0.477C
+# over 2948 covered samples, and from 0.877 to 0.785 in the ten-hours-and-more
+# band where the morning is decided.  Recording is how that becomes evidence a
+# ledger can score rather than a number in a research file.
+#
+# Switching it on adds two lineage keys and moves no probability: the shadow is
+# multiplied into nothing by construction, and the test that pins the served
+# distribution byte-for-byte across the switch is the reason that claim is
+# checkable rather than asserted.  ``PM_P1_FOUR_LAYER_SHADOW=0`` is the way
+# back, and with it off the loader returns nothing and every lineage is the one
+# it was before.
 SHADOW_ENABLED = (
-    os.environ.get("PM_P1_FOUR_LAYER_SHADOW", "0").strip()
+    os.environ.get("PM_P1_FOUR_LAYER_SHADOW", "1").strip()
     not in {"0", "false", "FALSE", "no", ""}
 )
 _CACHE: dict[str, Any] = {}

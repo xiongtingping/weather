@@ -29,6 +29,10 @@ from .center_width_calibration import (
 from .center_width_store import EDGE_WIDTH_C, taf_direction_for_gap
 from .cross_consensus import apply_band_reliability
 from .et_history import assert_event_day_started
+from .metar_four_layer import (
+    SERVE_ENABLED as FOUR_LAYER_SERVE_ENABLED,
+    compile_four_layer_posterior,
+)
 from .regional_path_prior import (
     apply_regional_path_prior,
 )
@@ -710,6 +714,7 @@ def _posterior(
     fleet_regime: Mapping[str, Any] | None = None,
     ceiling: Mapping[str, Any] | None = None,
     regional_prior: Mapping[str, Any] | None = None,
+    four_layer_serving: Mapping[str, Any] | None = None,
 ) -> ProbabilityEnvelope:
     if predecessor.stage not in {"P0", "P0-M", "P1"}:
         raise ContractError("probability_predecessor_stage_invalid")
@@ -854,8 +859,65 @@ def _posterior(
     # above -- from today's curve rather than a pooled rate and a dawn
     # shape.  It therefore stands in the ceiling's place when it speaks, and
     # the ceiling serves untouched whenever it does not.
+    # Charter 95 step two, served (operator ruling 2026-09-07 "别影子了,直接上线").
+    # The chain answers the ceiling's question -- how much mass belongs above
+    # the bucket already holding the day's high, and how the buckets above it
+    # are shaped -- from a regression over the clock, the reports and the
+    # regional curve, instead of from a rate per hours-left bin.  It therefore
+    # stands in the ceiling's place, and the ceiling and the regional path
+    # prior serve untouched whenever it cannot speak.
+    #
+    # The translation is off.  It corrects the model's level, and production
+    # already corrects that twice above -- the centre/width scalars and the
+    # band table -- so serving it here would ship a third correction nobody
+    # measured against the two that are already there.  ``-reanchor`` is also
+    # the arm that measured best: 0.644 hit and -0.900 nat over 18096
+    # walk-forward samples against production's 0.632 and -0.962.
+    four_layer_spoke = False
+    if (
+        FOUR_LAYER_SERVE_ENABLED
+        and four_layer_serving is not None
+        and ceiling is not None
+    ):
+        chain, chain_receipts = compile_four_layer_posterior(
+            root_probabilities=probabilities,
+            bucket_ordinals=predecessor.bucket_ordinals,
+            bucket_centers_c=four_layer_serving["bucket_centers_c"],
+            bucket_intervals_c=four_layer_serving["bucket_intervals_c"],
+            hard_excluded_buckets=sorted(excluded),
+            running_high_c=float(four_layer_serving["running_high_c"]),
+            running_high_bucket=str(ceiling["running_high_bucket"]),
+            features=four_layer_serving["features"],
+            hazard_artifact=four_layer_serving["hazard_artifact"],
+            reanchor_artifact=None,
+            bias_recent_c=four_layer_serving["bias_recent_c"],
+            bias_report_count=int(four_layer_serving["bias_report_count"]),
+            reanchor_enabled=False,
+        )
+        residual = sum(chain.values())
+        if math.isfinite(residual) and residual > 0.0:
+            probabilities = {
+                bucket: value / residual for bucket, value in chain.items()
+            }
+            four_layer_spoke = True
+        lineage["p1_four_layer_serving_json"] = json.dumps(
+            {
+                "schema": "p1_four_layer_serving_receipt_v1",
+                "applied": "true" if four_layer_spoke else "false",
+                "reanchor_enabled": "false",
+                **{
+                    str(key): value
+                    for key, value in dict(chain_receipts).items()
+                },
+            },
+            sort_keys=True,
+        )
     regional_spoke = False
-    if regional_prior is not None and ceiling is not None:
+    if (
+        not four_layer_spoke
+        and regional_prior is not None
+        and ceiling is not None
+    ):
         regional_probabilities, regional_receipt = apply_regional_path_prior(
             probabilities,
             ordinals=predecessor.bucket_ordinals,
@@ -886,7 +948,7 @@ def _posterior(
         lineage["regional_path_prior_json"] = json.dumps(
             regional_receipt, sort_keys=True
         )
-    if ceiling is not None and not regional_spoke:
+    if ceiling is not None and not regional_spoke and not four_layer_spoke:
         ceiling_probabilities, ceiling_receipt = apply_metar_ceiling(
             probabilities,
             ordinals=predecessor.bucket_ordinals,
@@ -1387,13 +1449,22 @@ def materialize_p1(
     # was issued during the local day, states where the day tops out and
     # stands in the clock ceiling's place.  The served shape moves with it,
     # so the version moves too.
-    posterior_version: str = "p1_metar_trajectory_target_v8",
+    # v9 (2026-09-07, operator ruling "别影子了,直接上线"): charter 95 step
+    # two's chain stands in the ceiling's place -- the split above the running
+    # high and the shape of the buckets above it now come from a regression
+    # over the clock, the reports and the regional curve rather than a rate
+    # per hours-left bin.  The served shape moves with it, so the version does.
+    posterior_version: str = "p1_metar_trajectory_target_v9",
     ceiling_artifact: Mapping[str, Any] | None = None,
     # Charter 99: {"remaining_peak_c", "cell", "lineage"} for the freshest
     # admissible regional run, or None.  Handed in by the caller for the
     # same reason the ceiling artifact is: a replay must rebuild this
     # envelope, and a layer that read its own store would rebuild another.
     regional_prior: Mapping[str, Any] | None = None,
+    # Charter 95 step two, served: the feature row, the hazard artifact and
+    # the geometry the chain reads, handed in for the reason every fitted
+    # table is -- a replay must rebuild this exact envelope.
+    four_layer_serving: Mapping[str, Any] | None = None,
     band_table: tuple[
         Sequence[tuple[tuple[float, float], float]], str
     ] | None = None,
@@ -1738,6 +1809,14 @@ def materialize_p1(
                 **dict(regional_prior),
                 "running_high_c": float(proof.running_high_c),
                 "upper_bounds_c": dict(bucket_upper_bounds_c),
+            }
+        ),
+        four_layer_serving=(
+            None
+            if four_layer_serving is None or not proof.prefix_is_current
+            else {
+                **dict(four_layer_serving),
+                "running_high_c": float(proof.running_high_c),
             }
         ),
     )

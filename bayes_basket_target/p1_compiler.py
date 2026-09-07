@@ -15,6 +15,7 @@ from .contracts import (
     content_sha256,
 )
 from .four_layer_shadow import compile_p1_four_layer_shadow
+from .metar_four_layer import feature_row
 from .materialization import materialize_p1
 from .regional_path_prior import (
     regional_features_at,
@@ -374,11 +375,116 @@ def _four_layer_shadow_for_step(
     parsed, paid only where a caller supplied artifacts.
     """
 
+    inputs = _four_layer_inputs_for_step(
+        root=root, proof=proof, trajectory_prefix=trajectory_prefix,
+        bucket_centers_c=bucket_centers_c, decision_at_utc=decision_at_utc,
+        regional_runs=regional_runs,
+    )
+    if inputs is None:
+        return {}
     try:
-        # The promoted set needs no intervals: only the translation reads
-        # them, and the translation is the layer that is not promoted.  Gating
-        # the whole shadow on them would have silenced it on every root that
-        # publishes its geometry some other way.
+        return compile_p1_four_layer_shadow(
+            root_probabilities=root.probabilities,
+            bucket_ordinals=root.bucket_ordinals,
+            bucket_centers_c=bucket_centers_c,
+            bucket_intervals_c=inputs["bucket_intervals_c"],
+            hard_excluded_buckets=proof.hard_excluded_buckets,
+            running_high_c=proof.running_high_c,
+            running_high_bucket=reported_high_bucket,
+            remaining_hours=inputs["remaining_hours"],
+            path_state=inputs["path_state"],
+            warming_so_far_c=inputs["warming_so_far_c"],
+            curve_shape_realized=inputs["curve_shape_realized"],
+            regional_headroom_c=inputs["regional_headroom_c"],
+            regional_live_gap_c=inputs["regional_live_gap_c"],
+            bias_recent_c=inputs["bias_recent_c"],
+            bias_report_count=inputs["bias_report_count"],
+            hazard_artifact=artifacts.get("hazard"),
+            # No intervals, no translation: the reanchor document is skipped
+            # rather than fabricated from a geometry the root did not state.
+            reanchor_artifact=(
+                artifacts.get("reanchor")
+                if inputs["bucket_intervals_c"] else None
+            ),
+        )
+    except Exception:  # noqa: BLE001 - a measurement lane may never stop a P1
+        return {}
+
+
+def _four_layer_serving_bundle(
+    *,
+    root: ProbabilityEnvelope,
+    proof: Any,
+    trajectory_prefix: Sequence[Any],
+    bucket_centers_c: Mapping[str, float],
+    decision_at_utc: str,
+    artifacts: Mapping[str, Any],
+    regional_runs: Sequence[Mapping[str, Any]] | None = None,
+) -> dict[str, Any] | None:
+    """What ``materialize_p1`` needs to run the chain at the ceiling's point.
+
+    Built from the same inputs the shadow reads, so the served chain and the
+    recorded one cannot be fed different features.  ``None`` whenever the step
+    cannot supply them -- no hazard artifact, an incomplete path state, a root
+    that publishes no geometry -- and the ceiling then serves exactly as it
+    did before the chain existed.
+    """
+
+    if not artifacts.get("hazard"):
+        return None
+    inputs = _four_layer_inputs_for_step(
+        root=root, proof=proof, trajectory_prefix=trajectory_prefix,
+        bucket_centers_c=bucket_centers_c, decision_at_utc=decision_at_utc,
+        regional_runs=regional_runs,
+    )
+    if inputs is None or not inputs["bucket_intervals_c"]:
+        return None
+    state = inputs["path_state"]
+    try:
+        features = feature_row(
+            remaining_hours=inputs["remaining_hours"],
+            drawdown_from_high_c=state.drawdown_from_high_c,
+            momentum_c_per_hour=state.momentum_c_per_hour,
+            cloud_cover_fraction=state.cloud_cover_fraction,
+            precipitation_present=state.precipitation_present,
+            dewpoint_depression_c=state.dewpoint_depression_c,
+            wind_speed_mps=state.wind_speed_mps,
+            warming_so_far_c=inputs["warming_so_far_c"],
+            curve_shape_realized=inputs["curve_shape_realized"],
+            regional_headroom_c=inputs["regional_headroom_c"],
+            regional_live_gap_c=inputs["regional_live_gap_c"],
+        )
+    except ContractError:
+        return None
+    return {
+        "features": features,
+        "hazard_artifact": artifacts.get("hazard"),
+        "bucket_intervals_c": inputs["bucket_intervals_c"],
+        "bucket_centers_c": dict(bucket_centers_c),
+        "bias_recent_c": inputs["bias_recent_c"],
+        "bias_report_count": inputs["bias_report_count"],
+    }
+
+
+def _four_layer_inputs_for_step(
+    *,
+    root: ProbabilityEnvelope,
+    proof: Any,
+    trajectory_prefix: Sequence[Any],
+    bucket_centers_c: Mapping[str, float],
+    decision_at_utc: str,
+    regional_runs: Sequence[Mapping[str, Any]] | None = None,
+) -> dict[str, Any] | None:
+    """Everything the four layers read, or ``None`` when the step cannot supply it.
+
+    One builder for the shadow and for serving.  The two used to be the same
+    function only because the shadow was the only consumer; now that the chain
+    can reach the served distribution, a second copy of this would be a second
+    definition of the features -- which is the fault ``feature_row`` exists to
+    prevent, one level up.
+    """
+
+    try:
         intervals = json.loads(
             str(root.lineage.get("bucket_intervals_c_json") or "{}")
         )
@@ -412,7 +518,7 @@ def _four_layer_shadow_for_step(
             bucket_centers_c=bucket_centers_c,
         )
         if not path_state.complete:
-            return {}
+            return None
         observed = [
             (_parse_utc(row["observed_at_utc"]), float(row["temperature_c"]))
             for row in rows
@@ -421,23 +527,17 @@ def _four_layer_shadow_for_step(
         bias, bias_count = recent_curve_bias(
             points, observed, as_of=decision
         )
-        return compile_p1_four_layer_shadow(
-            root_probabilities=root.probabilities,
-            bucket_ordinals=root.bucket_ordinals,
-            bucket_centers_c=bucket_centers_c,
-            bucket_intervals_c=intervals,
-            hard_excluded_buckets=proof.hard_excluded_buckets,
-            running_high_c=proof.running_high_c,
-            running_high_bucket=reported_high_bucket,
-            remaining_hours=max(
+        return {
+            "bucket_intervals_c": intervals,
+            "remaining_hours": max(
                 0.0, (day_end - decision).total_seconds() / 3600.0
             ),
-            path_state=path_state,
-            warming_so_far_c=(
+            "path_state": path_state,
+            "warming_so_far_c": (
                 float(proof.running_high_c) - observed[0][1]
                 if observed else 0.0
             ),
-            curve_shape_realized=curve_shape_realized(points, decision),
+            "curve_shape_realized": curve_shape_realized(points, decision),
             # Charter 95 step two.  Same function the sample builder calls, on
             # the same rows, so a feature cannot disagree between the fit and
             # the shadow that is trying to earn its way in on that fit.
@@ -451,15 +551,11 @@ def _four_layer_shadow_for_step(
                 ).items()
                 if key in ("regional_headroom_c", "regional_live_gap_c")
             },
-            bias_recent_c=bias,
-            bias_report_count=bias_count,
-            hazard_artifact=artifacts.get("hazard"),
-            # No intervals, no translation: the reanchor document is skipped
-            # rather than fabricated from a geometry the root did not state.
-            reanchor_artifact=artifacts.get("reanchor") if intervals else None,
-        )
-    except Exception:  # noqa: BLE001 - a shadow may not stop a compile
-        return {}
+            "bias_recent_c": bias,
+            "bias_report_count": bias_count,
+        }
+    except Exception:  # noqa: BLE001 - neither lane may stop a compile
+        return None
 
 
 def compile_station_p1_packets(
@@ -1005,6 +1101,22 @@ def compile_station_p1_packets(
                     settlement_timezone=root.settlement_timezone,
                     artifact=regional_artifact,
                     debias_artifact=regional_debias_artifact,
+                )
+            ),
+            # Charter 95 step two, served: the chain stands in the ceiling's
+            # place when it can speak, and the ceiling serves untouched when
+            # it cannot.  Built here because only the compiler holds the
+            # prefix, the root and the lane's runs at once.
+            four_layer_serving=(
+                None
+                if not four_layer_artifacts
+                else _four_layer_serving_bundle(
+                    root=root, proof=proof,
+                    trajectory_prefix=trajectory_prefix,
+                    bucket_centers_c=bucket_centers_c,
+                    decision_at_utc=decision_text,
+                    artifacts=four_layer_artifacts,
+                    regional_runs=regional_runs,
                 )
             ),
             four_layer_shadow=four_layer_shadow,

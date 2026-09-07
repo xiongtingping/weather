@@ -36,12 +36,27 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from datetime import datetime
 from typing import Any, Mapping, Sequence
 
 from .contracts import ContractError
 
 SCHEMA = "bayes_basket_target_metar_four_layer_v1"
+# Serving since 2026-09-07 (operator ruling "别影子了，直接上线").  The chain
+# stands in the ceiling's place at P1's outermost composition point, and it
+# runs with the translation OFF: charter 95's step-two measurement scored the
+# chain against a bare clock rate, while production's own stack already
+# carries a level correction in the centre/width scalars and the band table,
+# so promoting the reanchor as well would be shipping a correction nobody
+# measured on top of one that is already there.  ``-reanchor`` is also the
+# best-measured arm: 0.644 hit, -0.900 nat, 0.430 Brier, 0.577C centre MAE
+# over 18096 walk-forward samples, against production's 0.632 / -0.962 /
+# 0.448 / 0.616.  ``PM_P1_FOUR_LAYER_SERVE=0`` restores the ceiling.
+SERVE_ENABLED = (
+    os.environ.get("PM_P1_FOUR_LAYER_SERVE", "1").strip()
+    not in {"0", "false", "FALSE", "no", ""}
+)
 PHASE_RECEIPT_SCHEMA = "metar_phase_receipt_v1"
 REANCHOR_RECEIPT_SCHEMA = "metar_reanchor_receipt_v1"
 REMAINING_RECEIPT_SCHEMA = "metar_remaining_warming_receipt_v1"
@@ -652,6 +667,7 @@ __all__ = [
     "SCHEMA",
     "apply_phase_split",
     "compile_four_layer_posterior",
+    "SERVE_ENABLED",
     "feature_row",
     "phase_rise_probability",
     "reanchor_shift_c",

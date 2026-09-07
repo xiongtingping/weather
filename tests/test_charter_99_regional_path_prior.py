@@ -245,9 +245,15 @@ def test_production_and_the_ledger_read_one_layer() -> None:
     assert '"regional_path_prior": (' in source, "the layer is a rule of the book"
     materialization = (root / "bayes_basket_target" / "materialization.py").read_text(encoding="utf-8")
     assert "apply_regional_path_prior(" in materialization
-    assert 'posterior_version: str = "p1_metar_trajectory_target_v8"' in materialization
-    assert "if ceiling is not None and not regional_spoke:" in materialization, (
-        "the curve stands in the ceiling's place, it does not double-correct"
+    assert 'posterior_version: str = "p1_metar_trajectory_target_v9"' in materialization
+    assert (
+        "if ceiling is not None and not regional_spoke and not four_layer_spoke:"
+        in materialization
+    ), (
+        "the curve stands in the ceiling's place, it does not double-correct."
+        "  Charter 95 step two (2026-09-07) put a third claimant at the same "
+        "point -- the four-layer chain -- and the same rule holds for all "
+        "three: exactly one of them speaks, and the ceiling is the fallback."
     )
 
 

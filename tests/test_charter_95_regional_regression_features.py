@@ -165,11 +165,25 @@ def test_the_shadow_computes_the_features_from_the_same_function() -> None:
     )
 
 
-def test_the_served_distribution_is_unchanged_until_the_shadow_is_switched_on() -> None:
+def test_the_shadow_records_and_still_moves_no_probability() -> None:
+    """On since 2026-09-07, and on is not the same as promoted.
+
+    The chain now writes two lineage keys on every P1 it can compile, which is
+    how thirty event days of evidence get made; it still multiplies into
+    nothing, and the served distribution is what it was.  Promoting it to the
+    distribution anyone trades is a separate ruling.
+    """
+
     from bayes_basket_target import four_layer_shadow as S  # noqa: PLC0415
 
-    assert S.SHADOW_ENABLED is False, (
-        "step two lands in the measurement lane; promoting the chain to the "
-        "served distribution is a separate ruling with its own evidence bar"
+    assert S.SHADOW_ENABLED is True
+    assert set(S.load_shadow_artifacts()) == {"hazard", "reanchor"}, (
+        "a shadow swallows its own failures, so an artifact that will not "
+        "load shows up only as a key that never appears"
     )
-    assert S.load_shadow_artifacts() == {}
+    materialization = (
+        ROOT / "bayes_basket_target" / "materialization.py"
+    ).read_text(encoding="utf-8")
+    assert "p1_shadow" not in materialization, (
+        "the shadow reaches the lineage, never the distribution"
+    )
