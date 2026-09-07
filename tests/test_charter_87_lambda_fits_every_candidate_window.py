@@ -320,3 +320,63 @@ def test_splitting_the_top_band_moves_nothing_the_day_it_lands():
             == stored[store._band_index(agreement, stored)][1]
         ), agreement
     assert effective_edge_lambda(0.97) == effective_edge_lambda(1.3)
+
+
+def test_a_rule_change_replaces_a_candidate_row_instead_of_aborting(tmp_path):
+    """The identity of a candidate row is the decision and the window.
+
+    It carried the selection-rule fingerprint too, which put the primary key
+    on one set of columns and the UNIQUE constraint on another: under a new
+    fingerprint the same enumeration hashed to a new id, missed the
+    ON CONFLICT target, and hit the UNIQUE.  That aborted the whole rebuild
+    -- and the walk buffers its writes into one burst at the end, so the
+    abort left the position and settlement tables EMPTY, which is the one
+    failure mode a rebuild must not have.  The fingerprint is recorded
+    beside the row; the row is the enumeration.
+    """
+
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in _sys.path:
+        _sys.path.insert(0, str(root / "scripts"))
+    import paper_trading_ledger as ledger
+
+    conn = sqlite3.connect(tmp_path / "book.db")
+    ledger.ensure_schema(conn)
+    fields = (
+        " candidate_id, station_id, event_date, stage, decision_at_utc,"
+        " buckets_json, window_size, win_probability, raw_win_probability,"
+        " all_in_price, gate_agreement, admissible, seated,"
+        " selection_rule_sha256"
+    )
+    upsert = (
+        f"INSERT INTO paper_trade_candidate_window ({fields})"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        " ON CONFLICT(station_id, event_date, stage, decision_at_utc,"
+        "             buckets_json) DO UPDATE SET"
+        "  win_probability=excluded.win_probability,"
+        "  all_in_price=excluded.all_in_price,"
+        "  selection_rule_sha256=excluded.selection_rule_sha256"
+    )
+    scope = ("ZSQD", "2026-09-06", "P0", "2026-09-05T00:00:00Z", '["b"]')
+    conn.execute(upsert, ("id-old", *scope, 1, 0.50, 0.45, 0.40, 0.80, 1, 0,
+                          "rule-one"))
+    # Same enumeration, new fingerprint: one row, replaced, not an error.
+    conn.execute(upsert, ("id-new", *scope, 1, 0.60, 0.55, 0.42, 0.70, 1, 1,
+                          "rule-two"))
+    rows = conn.execute(
+        "SELECT win_probability, selection_rule_sha256"
+        " FROM paper_trade_candidate_window"
+    ).fetchall()
+    assert rows == [(0.60, "rule-two")]
+    # And the identity the walk builds no longer carries the fingerprint,
+    # so the primary key and the UNIQUE agree on what a duplicate is.
+    source = (root / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    walk = source[source.index('"paper-cand-"') - 2000:]
+    assert '"buckets": buckets,' in walk[:2000]
+    assert '"selection_rule_sha256": SELECTION_RULE_SHA256,' not in walk[:2000]
+    conn.close()

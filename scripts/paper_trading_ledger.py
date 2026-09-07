@@ -55,6 +55,7 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target import metar_ceiling  # noqa: E402
 from bayes_basket_target import regional_path_prior  # noqa: E402
+from bayes_basket_target import regional_point_debias  # noqa: E402
 from bayes_basket_target.center_width_calibration import (  # noqa: E402
     apply_center_width_calibration,
     bucket_centers_from_intervals,
@@ -2289,10 +2290,22 @@ SELECTION_RULE_SHA256 = content_sha256({
     # so the admitted set belongs in the label.  A book priced with the
     # layer serving every lane and one priced with it serving only the MSM
     # are different rules, and before this they shared a fingerprint.
+    # Charter 95 (2026-09-07): the curve is debiased before it is fused, so
+    # the correction's rule, strength and admitted set ride in the same
+    # label.  A book priced on a debiased curve is not the book priced on
+    # the raw one, and the two must not share a fingerprint.
     "regional_path_prior": (
-        "%s:w=%g:sys=%s" % (
+        "%s:w=%g:sys=%s:debias=%s" % (
             regional_path_prior.RULE_VERSION, regional_path_prior.WEIGHT,
             "+".join(sorted(regional_path_prior.SERVING_SYSTEMS)) or "none",
+            (
+                "%s:x=%g:%s" % (
+                    regional_point_debias.RULE_VERSION,
+                    regional_point_debias.SCALE,
+                    "+".join(sorted(regional_point_debias.DEBIAS_SYSTEMS)) or "none",
+                )
+                if regional_point_debias.ENABLED else "off"
+            ),
         )
         if regional_path_prior.ENABLED and REPLAY_LAYERS_APPLIED
         # Under the production judge the ledger scores the envelope production
@@ -5943,6 +5956,9 @@ def _ceiling_corrected(
         conn, station_id=station_id, event_date=event_date,
         as_of_utc=as_of_utc, settlement_timezone=zone,
         artifact=regional_path_prior.replay_curve(event_date),
+        # Charter 95: the same as-of discipline as the residual table --
+        # the offsets a morning could have known, not today's.
+        debias_artifact=regional_point_debias.replay_curve(event_date),
     ) if regional_path_prior.ENABLED else None
     if regional is not None:
         upper_bounds = {
@@ -9851,13 +9867,21 @@ def backfill(
                         buckets = [str(b) for b in row.get("buckets") or ()]
                         if not buckets:
                             continue
+                        # The row IS the enumeration at that decision
+                        # moment, so the rule fingerprint is recorded beside
+                        # it and is deliberately NOT part of its identity.
+                        # With the sha in here the primary key moved every
+                        # time a rule changed while the UNIQUE below did
+                        # not, and a rebuild under a new fingerprint aborted
+                        # on the second row it wrote -- taking the whole
+                        # book with it, because the walk buffers its writes
+                        # to one burst at the end.
                         identity = {
                             "station_id": str(station_id),
                             "event_date": str(event_date),
                             "stage": str(stage),
                             "decision_at_utc": str(decided_at),
                             "buckets": buckets,
-                            "selection_rule_sha256": SELECTION_RULE_SHA256,
                         }
                         pending_candidates.append((
                             "paper-cand-" + content_sha256(identity)[:24],
@@ -10055,13 +10079,15 @@ def backfill(
             " raw_win_probability, all_in_price, gate_agreement,"
             " admissible, seated, selection_rule_sha256"
             ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
-            " ON CONFLICT(candidate_id) DO UPDATE SET"
+            " ON CONFLICT(station_id, event_date, stage, decision_at_utc,"
+            "             buckets_json) DO UPDATE SET"
             "  win_probability=excluded.win_probability,"
             "  raw_win_probability=excluded.raw_win_probability,"
             "  all_in_price=excluded.all_in_price,"
             "  gate_agreement=excluded.gate_agreement,"
             "  admissible=excluded.admissible,"
-            "  seated=excluded.seated",
+            "  seated=excluded.seated,"
+            "  selection_rule_sha256=excluded.selection_rule_sha256",
             pending_candidates,
         )
     if pending_settlements:
