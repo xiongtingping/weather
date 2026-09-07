@@ -262,3 +262,20 @@ def test_a_cached_timezone_is_not_shared_across_scopes() -> None:
     assert [tuple(row) for row in rows] == sorted(
         (station, day) for station in STATIONS for day in DAYS
     )
+
+
+def test_the_ingest_reports_where_its_own_time_went() -> None:
+    """One name covered three phases, and the first fix chosen by reading
+    the code was wrong about which one was expensive.
+
+    ``p0m_taf_fact_ingress`` measured 68.0s of a 620s cycle on 2026-09-07
+    and the profile could say no more than that.  A receipt that splits
+    its own time costs one clock read per phase and ends the guessing.
+    """
+
+    conn = _conn()
+    receipt = ingest_forward_taf_inbox(conn, _wide_inbox())
+    phases = receipt["phase_ms"]
+    assert set(phases) == {"validate", "capture_insert", "point_projection"}
+    assert all(isinstance(value, float) for value in phases.values()), phases
+    assert all(value >= 0.0 for value in phases.values()), phases

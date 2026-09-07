@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import sqlite3
+import time
 from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -142,6 +143,14 @@ def ingest_forward_taf_inbox(
         or len(captures) > MAX_TAF_CAPTURES
     ):
         raise ContractError("forward_taf_capture_count_invalid")
+    # Three phases under one name.  ``p0m_taf_fact_ingress`` measured
+    # 68.0s of a 620s cycle on 2026-09-07 and the profile could say no
+    # more than that, so the first fix was chosen by reading the code and
+    # was wrong about the magnitude -- the phase that looked expensive is
+    # 100ms on a warm copy.  A receipt that splits its own time costs one
+    # clock read per phase and ends that guessing.
+    phase_ms: dict[str, float] = {}
+    _validate_started = time.perf_counter()
     rows: list[dict[str, Any]] = []
     rejected_timestamp_captures: list[dict[str, str]] = []
     seen: set[tuple[str, str, str]] = set()
@@ -344,6 +353,10 @@ def ingest_forward_taf_inbox(
             "tx_available": int(tx_c is not None),
             "content_sha256": row_sha,
         })
+    phase_ms["validate"] = round(
+        (time.perf_counter() - _validate_started) * 1000.0, 1
+    )
+    _capture_started = time.perf_counter()
     wrote = 0
     fresh_scopes: set[tuple[str, str]] = set()
     conn.execute("SAVEPOINT forward_taf_capture_ingress")
@@ -362,6 +375,10 @@ def ingest_forward_taf_inbox(
         conn.execute("RELEASE forward_taf_capture_ingress")
         raise
     conn.execute("RELEASE forward_taf_capture_ingress")
+    phase_ms["capture_insert"] = round(
+        (time.perf_counter() - _capture_started) * 1000.0, 1
+    )
+    _projection_started = time.perf_counter()
     # Projection into the cross-OOS member archive rides behind every capture
     # ingest so the TAF candidate's day coverage stays as dense as capture
     # itself.  Its own savepoint: a projection defect must not cost captures.
@@ -377,8 +394,12 @@ def ingest_forward_taf_inbox(
             "state": "PROJECTION_FAILED",
             "error": f"{type(exc).__name__}:{exc}",
         }
+    phase_ms["point_projection"] = round(
+        (time.perf_counter() - _projection_started) * 1000.0, 1
+    )
     return {
         "schema": "forward_taf_capture_ingress_v1",
+        "phase_ms": phase_ms,
         "member_run_projection": projection,
         "fresh_scopes": [
             {"station_id": station, "event_date": day}
@@ -1519,7 +1540,24 @@ def project_taf_point_member_runs(
     for (station, _day, lead), (cycle, _cap) in latest.items():
         counts = modal_counts.setdefault((station, lead), {})
         counts[cycle] = counts.get(cycle, 0) + 1
-    inserted = 0
+    # Built first, written once.
+    #
+    # This was a per-candidate ``INSERT OR IGNORE`` followed by a
+    # ``SELECT changes()`` to see whether it took -- and it runs behind
+    # every TAF capture ingest, which is every production cycle.  Measured
+    # 2026-09-07: 1,960 candidates and 1,960 rows already present, so the
+    # loop issued 3,920 statements to write nothing, inside the write
+    # lock's savepoint, while ``p0m_taf_fact_ingress`` cost 68.0s of a
+    # 620s cycle.
+    #
+    # ``INSERT OR IGNORE`` is kept exactly as it was: this table has a
+    # primary key, a UNIQUE on content_sha256 and a third UNIQUE besides,
+    # so "already there" is not only a primary-key collision and
+    # pre-filtering on the id would change which rows are attempted.  What
+    # changes is that the attempts go through one ``executemany`` instead
+    # of a Python round trip apiece, and the count comes from the
+    # connection's own change counter instead of a statement per row.
+    pending: list[tuple[Any, ...]] = []
     for (station, day, lead), (_cycle, cap) in sorted(latest.items()):
         label = sticky.get((station, lead))
         if label is None:
@@ -1538,7 +1576,78 @@ def project_taf_point_member_runs(
             "extraction_version": TAF_POINT_EXTRACTION_VERSION,
         }
         sha = _content_sha256(identity)
-        conn.execute(
+        pending.append((
+            "tafpt-" + sha[:32], TAF_POINT_SYSTEM_ID, station, day,
+            lead, label, TAF_POINT_MEMBER_ID, "CONTROL",
+            float(cap["tx_c"]),
+            settlement_by_station[station],
+            TAF_POINT_EXTRACTION_VERSION,
+            "ICAO_MET_OFFICE", TAF_POINT_TRANSPORT_PROVIDER_ID,
+            str(cap["issued_at_utc"]), 1,
+            str(cap["query_at_utc"] or cap["issued_at_utc"]),
+            "", "", str(cap["source_sha"]) or "0" * 64,
+            "ACCEPTED", "CALIBRATION_TRAIN_ONLY", 0, sha,
+        ))
+    # Which of them the archive already holds, in one indexed read.
+    #
+    # Batching the attempts removed 3,920 Python round trips but not the
+    # work behind them: this table carries a primary key, a UNIQUE on
+    # content_sha256 and a third UNIQUE, so every attempted row probes
+    # three B-trees over 1,485,727 rows -- and on 2026-09-07 all 1,960
+    # candidates were already present, so every one of those probes was
+    # spent to insert nothing.  On a warm isolated copy that is 100ms and
+    # invisible; against a 38GB database where those pages are cold it is
+    # not, and this projection runs behind every capture ingest.
+    #
+    # An accelerator, not a filter: a candidate whose primary key is
+    # already stored is one ``INSERT OR IGNORE`` would have ignored, so
+    # skipping it cannot change what the archive holds.  Rows that survive
+    # this still go through ``OR IGNORE``, which is what keeps the other
+    # two constraints deciding for themselves.
+    # Both of the keys that can refuse a row, read once.
+    #
+    # The primary key is content-addressed, so an amended issuance for a
+    # scope already archived produces a *new* id and clears that filter --
+    # and is then refused by the natural-key UNIQUE
+    # (ensemble_system_id, station_id, target_local_date,
+    # archive_lead_bucket, member_id, extraction_version), which is the
+    # append-only rule this projection's docstring states: one row per
+    # (station, day, lead), written once the anchor has passed, and the
+    # amendment after that must not rewrite it.  Measured 2026-09-07,
+    # 1,558 of 1,960 candidates were refused by the id and the remaining
+    # 402 by the natural key, every cycle, forever.
+    #
+    # So a nonzero attempt count with wrote_count 0 is this rule working,
+    # not a lane refusing its own writes -- the receipt reports both
+    # counts so the next reader does not have to chase it, which is what
+    # this one nearly did.
+    stored_ids: set[str] = set()
+    stored_scopes: set[tuple[str, str, str, str]] = set()
+    for row in conn.execute(
+        "SELECT historical_member_run_id, station_id, target_local_date,"
+        " archive_lead_bucket, member_id"
+        " FROM calibration_native_ensemble_historical_member_run"
+        " WHERE ensemble_system_id=? AND extraction_version=?",
+        (TAF_POINT_SYSTEM_ID, TAF_POINT_EXTRACTION_VERSION),
+    ):
+        stored_ids.add(str(row[0]))
+        stored_scopes.add((
+            str(row[1]), str(row[2]), str(row[3]), str(row[4])
+        ))
+    candidate_total = len(pending)
+    pending = [
+        row for row in pending
+        if str(row[0]) not in stored_ids
+        and (str(row[2]), str(row[3]), str(row[4]), str(row[6]))
+        not in stored_scopes
+    ]
+    inserted = 0
+    if pending:
+        # The connection's counter, not a statement per row: it counts rows
+        # actually inserted across the batch, which is what the receipt has
+        # always reported, and an ignored row does not move it.
+        before = conn.total_changes
+        conn.executemany(
             "INSERT OR IGNORE INTO "
             "calibration_native_ensemble_historical_member_run("
             "historical_member_run_id,ensemble_system_id,station_id,"
@@ -1550,24 +1659,19 @@ def project_taf_point_member_runs(
             "source_object_sha256,qc_status,authority_scope,"
             "holdout_eligible,content_sha256) "
             "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (
-                "tafpt-" + sha[:32], TAF_POINT_SYSTEM_ID, station, day,
-                lead, label, TAF_POINT_MEMBER_ID, "CONTROL",
-                float(cap["tx_c"]),
-                settlement_by_station[station],
-                TAF_POINT_EXTRACTION_VERSION,
-                "ICAO_MET_OFFICE", TAF_POINT_TRANSPORT_PROVIDER_ID,
-                str(cap["issued_at_utc"]), 1,
-                str(cap["query_at_utc"] or cap["issued_at_utc"]),
-                "", "", str(cap["source_sha"]) or "0" * 64,
-                "ACCEPTED", "CALIBRATION_TRAIN_ONLY", 0, sha,
-            ),
+            pending,
         )
-        inserted += int(conn.execute("SELECT changes()").fetchone()[0])
+        inserted = conn.total_changes - before
     return {
         "schema": "taf_point_member_run_projection_v1",
         "candidate_count": len(latest),
         "wrote_count": inserted,
+        # How many of the candidates the archive already held.  Without it
+        # "wrote_count: 0" reads the same whether the projection had
+        # nothing to do or was refusing everything, and the first of those
+        # is a lane doing its job while the second is an outage.
+        "already_stored_count": candidate_total - len(pending),
+        "attempted_count": len(pending),
         "skipped": skipped,
         "calls_order_gateway": False,
         "orders_submitted": 0,
