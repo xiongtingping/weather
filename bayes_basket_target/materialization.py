@@ -33,6 +33,10 @@ from .metar_four_layer import (
     SERVE_ENABLED as FOUR_LAYER_SERVE_ENABLED,
     compile_four_layer_posterior,
 )
+
+#: What the receipt says when no regional run reached this step and the
+#: feature was filled in from the fleet mean.
+POOLED_REGIONAL_FALLBACK = "POOLED_FALLBACK"
 from .regional_path_prior import (
     apply_regional_path_prior,
 )
@@ -924,6 +928,27 @@ def _posterior(
                 "schema": "p1_four_layer_serving_receipt_v1",
                 "applied": "true" if four_layer_spoke else "false",
                 "reanchor_enabled": "false",
+                # Charter 99's rule, applied to this layer: a borrow is not
+                # forbidden, it is declared.  Without these three a served
+                # step cannot be told from one where no regional run reached
+                # and the fleet mean filled the feature in -- and the only way
+                # to find out afterwards would be to recompute the feature,
+                # which is an audit reimplementing the rule it audits.
+                "regional_system_id": str(
+                    four_layer_serving.get("regional_system_id")
+                    or POOLED_REGIONAL_FALLBACK
+                ),
+                **{
+                    name: (
+                        "NONE" if value is None else f"{float(value):.4f}"
+                    )
+                    for name, value in (
+                        (key, four_layer_serving["features"].get(key))
+                        for key in (
+                            "regional_headroom_c", "regional_live_gap_c"
+                        )
+                    )
+                },
                 **({"refused": chain_refused} if chain_refused else {}),
                 **{
                     str(key): value

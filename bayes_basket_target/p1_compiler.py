@@ -463,6 +463,10 @@ def _four_layer_serving_bundle(
         "bucket_centers_c": dict(bucket_centers_c),
         "bias_recent_c": inputs["bias_recent_c"],
         "bias_report_count": inputs["bias_report_count"],
+        # Carried for the receipt, not for the model: the chain reads the two
+        # values out of ``features``, and this says which lane they came from
+        # so a served step can be told apart from one the fleet mean filled in.
+        "regional_system_id": inputs["regional_system_id"],
     }
 
 
@@ -549,7 +553,10 @@ def _four_layer_inputs_for_step(
                     running_high_c=proof.running_high_c,
                     latest_observed_c=observed[-1][1] if observed else None,
                 ).items()
-                if key in ("regional_headroom_c", "regional_live_gap_c")
+                if key in (
+                    "regional_headroom_c", "regional_live_gap_c",
+                    "regional_system_id",
+                )
             },
             "bias_recent_c": bias,
             "bias_report_count": bias_count,

@@ -166,3 +166,86 @@ def test_a_broken_artifact_costs_the_chain_and_never_the_compile() -> None:
     assert any(r.get("refused") for r in receipts if r), (
         "the refusal is recorded, not swallowed"
     )
+
+
+# A run over the fixture's own afternoon, knowable before its first decision.
+KLGA_RUN = {
+    "ensemble_system_id": "NCEP_NBM_POINT",
+    "run_init_utc": "2026-08-09T12:00:00Z",
+    "archive_query_at_utc": "2026-08-09T13:00:00Z",
+    "knowable_at_utc": "2026-08-09T13:00:00Z",
+    "hourly_c": {
+        "2026-08-09T15:00:00Z": 22.0, "2026-08-09T16:00:00Z": 24.0,
+        "2026-08-09T17:00:00Z": 25.5, "2026-08-09T18:00:00Z": 26.0,
+        "2026-08-09T19:00:00Z": 25.0, "2026-08-09T20:00:00Z": 23.5,
+    },
+}
+
+
+def _receipts(packets):
+    out = []
+    for packet in packets:
+        raw = packet["expected_envelope"]["lineage"].get(
+            "p1_four_layer_serving_json")
+        if raw:
+            out.append(json.loads(raw))
+    return out
+
+
+def test_the_receipt_says_which_lane_spoke_and_what_it_said() -> None:
+    """Charter 99's rule, applied to this layer: a borrow is declared.
+
+    Without these three fields a step the regional curve informed cannot be
+    told from one where the fleet mean filled the feature in, and the only way
+    to find out afterwards is to recompute the feature -- an audit
+    reimplementing the rule it audits.
+    """
+
+    covered = _compile(
+        four_layer_artifacts={"hazard": HAZARD, "reanchor": REANCHOR},
+        regional_runs=[KLGA_RUN],
+    )
+    spoke = [r for r in _receipts(covered) if r.get("applied") == "true"]
+    assert spoke, "the chain never spoke on any step"
+    receipt = spoke[0]
+    assert receipt["regional_system_id"] == "NCEP_NBM_POINT"
+    assert receipt["regional_headroom_c"] != "NONE"
+    # Headroom is the curve's remaining peak against what the day has
+    # reported, so it is a signed number of degrees, not a temperature.
+    assert -30.0 < float(receipt["regional_headroom_c"]) < 30.0
+
+
+def test_a_step_no_regional_run_reached_says_so_rather_than_looking_served() -> None:
+    plain = _compile(
+        four_layer_artifacts={"hazard": HAZARD, "reanchor": REANCHOR})
+    spoke = [r for r in _receipts(plain) if r.get("applied") == "true"]
+    assert spoke
+    for receipt in spoke:
+        assert receipt["regional_system_id"] == "POOLED_FALLBACK"
+        assert receipt["regional_headroom_c"] == "NONE"
+        assert receipt["regional_live_gap_c"] == "NONE"
+
+
+def test_declaring_the_provenance_moves_no_probability() -> None:
+    """A receipt field is a receipt field; it may not price anything."""
+
+    without = _compile(
+        four_layer_artifacts={"hazard": HAZARD, "reanchor": REANCHOR})
+    with_lane = _compile(
+        four_layer_artifacts={"hazard": HAZARD, "reanchor": REANCHOR},
+        regional_runs=[KLGA_RUN],
+    )
+    # The lane does move the served distribution -- that is the feature doing
+    # its job -- so what is pinned here is the narrower claim: the receipt
+    # keys are additions, and every other lineage value is what it was.
+    assert len(without) == len(with_lane)
+    for plain, laned in zip(without, with_lane):
+        left = plain["expected_envelope"]["lineage"]
+        right = laned["expected_envelope"]["lineage"]
+        assert set(left) == set(right), "no new lineage keys, only new fields"
+        for key in set(left) - {
+            "p1_four_layer_serving_json", "p1_shadow_four_layer_json",
+            "p1_shadow_reanchor_json", "predecessor_content_sha256",
+            "predecessor_checkpoint_id",
+        }:
+            assert left[key] == right[key], key
