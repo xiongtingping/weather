@@ -279,3 +279,83 @@ def test_the_shadow_lane_refuses_a_pooled_table_it_cannot_read():
     assert source.index("pooled_table_axis_not_claim") < source.index(
         "base_table"
     )
+
+
+def test_every_lookup_in_the_module_follows_the_axis():
+    """The defect this file exists to stop, found the second time.
+
+    ``_day_aggregates`` was made axis-aware and ``_forward_nll_delta`` was
+    not, and it holds the module's OTHER copy of the same lookup.  A distance
+    table scored there against distance-shaped bounds using claim values puts
+    every bucket in the first cell -- all claims are under 1 and the cells run
+    0-1, 1-2, 2-3, 3-4, 4+ -- so the other four are never reached and changing
+    any one of them moves the total by exactly zero.
+
+    Measured on the live sample 2026-09-08: every qualified cell of both
+    stages that run this check read +-0.0000, which is not "did not improve
+    enough" but "was not being measured".  Keyed correctly, P1 admits five of
+    five and P0-M two.  It went unnoticed because P0 -- the stage that moved
+    first -- is exempt from this check by ``requires_forward_check``.
+
+    So the property is asserted over the module rather than over one
+    function: every place that walks a factor table looks up the key
+    ``_record_keys`` produced, and no place walks it against a raw claim.
+    """
+
+    import inspect
+
+    from bayes_basket_target import band_reliability_store as store
+
+    for name in ("_day_aggregates", "_forward_nll_delta"):
+        source = inspect.getsource(getattr(store, name))
+        assert "_record_keys(" in source, name
+        assert "axis" in inspect.signature(getattr(store, name)).parameters, name
+        # The give-away shape of the old bug: comparing a cell bound to the
+        # claim itself rather than to the axis's key.
+        assert "<= probability <" not in source, name
+
+    # And every caller inside the fit hands its own axis down; a default
+    # would silently reinstate the claim lookup for a distance table.
+    fit = inspect.getsource(store.fit_band_reliability_table)
+    assert fit.count("_forward_nll_delta(") == 2
+    assert fit.count("axis=axis_id,") >= 4
+
+
+def test_the_forward_check_can_actually_separate_distance_cells():
+    """A behavioural check, because the assertions above are structural.
+
+    Two synthetic days where the far cell is badly over-claimed: keyed on
+    distance the far factor improves the window, keyed on the claim it cannot
+    move at all because every bucket sits in the first cell.
+    """
+
+    from bayes_basket_target.band_reliability_store import (
+        _forward_nll_delta,
+    )
+
+    # Nine rungs with the peak at one end, so distances run 0..8 and the
+    # far cell is actually reachable -- five rungs peaked in the middle only
+    # reach distance two, which is how the first draft of this test passed
+    # for the wrong reason.  The centre wins every day; the far rungs claim
+    # mass they never realise.
+    day = [[
+        (0.40, 1), (0.20, 0), (0.12, 0), (0.08, 0),
+        (0.05, 0), (0.05, 0), (0.04, 0), (0.03, 0), (0.03, 0),
+    ]]
+    by_day = {f"2026-09-{d:02d}": list(day) for d in range(1, 11)}
+    base = {c: 1.0 for c in BAND_DISTANCE_CELLS}
+    cut = dict(base)
+    cut[(4.0, 99.0)] = 0.5
+
+    on_axis = _forward_nll_delta(
+        by_day, base_factors=base, candidate_factors=cut,
+        axis=BAND_AXIS_CENTRE_DISTANCE,
+    )
+    on_claim = _forward_nll_delta(
+        by_day, base_factors=base, candidate_factors=cut,
+        axis=BAND_AXIS_CLAIM,
+    )
+    assert on_axis > 0.0, "cutting the far cell has to help, keyed correctly"
+    assert on_claim == pytest.approx(0.0), (
+        "keyed on the claim the far cell is unreachable and the check is blind"
+    )

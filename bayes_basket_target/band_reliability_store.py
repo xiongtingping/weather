@@ -908,8 +908,26 @@ def _forward_nll_delta(
     *,
     base_factors: Mapping[tuple[float, float], float],
     candidate_factors: Mapping[tuple[float, float], float],
+    axis: str = BAND_AXIS_CLAIM,
 ) -> float:
-    """NLL improvement of candidate over base on the trailing window."""
+    """NLL improvement of candidate over base on the trailing window.
+
+    The lookup follows the AXIS, and this is the second copy of that lookup
+    in this module -- ``_day_aggregates`` is the other.  Charter 105 moved
+    the first and left this one keyed on the claim, so a distance table was
+    scored here against distance-shaped bounds using claim values: every
+    bucket falls in the first cell (all claims are under 1, and the cells
+    run 0-1, 1-2, 2-3, 3-4, 4+), the other four are never reached, and
+    changing any one of them moves the total by exactly zero.
+
+    Measured 2026-09-08 on the live sample, every qualified cell of both
+    stages that run this check: the deltas read +-0.0000 across the board,
+    which is not "did not improve enough" but "was not being measured".
+    Keyed correctly, P1 admits five cells of five (+2.18, +1.02, +0.16,
+    +0.58, +7.12) and P0-M two (+0.07, +6.12).  P0 never reached this
+    because ``requires_forward_check`` exempts it, which is why the defect
+    surfaced only on the two stages that do.
+    """
 
     days = sorted(by_day)
     if not days:
@@ -923,11 +941,12 @@ def _forward_nll_delta(
             for records in by_day[day]:
                 mass = 0.0
                 corrected = []
-                for probability, hit in records:
+                keys = _record_keys(records, axis)
+                for (probability, hit), value in zip(records, keys):
                     factor = 1.0
-                    for band, value in factors.items():
-                        if band[0] <= probability < band[1]:
-                            factor = value
+                    for band, band_factor in factors.items():
+                        if band[0] <= value < band[1]:
+                            factor = band_factor
                             break
                     corrected.append((probability * factor, hit))
                     mass += probability * factor
@@ -1018,6 +1037,7 @@ def fit_band_reliability_table(
                 serving,
                 base_factors=factors,
                 candidate_factors=candidate,
+                axis=axis_id,
             ) <= 0:
                 basis[key] = "identity:forward_window_not_improved"
                 continue
@@ -1047,6 +1067,7 @@ def fit_band_reliability_table(
             serving,
             base_factors=factors,
             candidate_factors=candidate,
+            axis=axis_id,
         ) > 0:
             factors[band] = gate_cell["conservative_factor"]
             basis[str(list(band))] = "gate_transfer"
