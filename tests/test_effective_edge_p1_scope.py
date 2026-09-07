@@ -79,12 +79,12 @@ def _book(rows) -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.execute(
         "CREATE TABLE paper_trade_position("
-        "position_id TEXT PRIMARY KEY, win_probability REAL, all_in_cost REAL)"
+        "position_id TEXT PRIMARY KEY, intended_win_probability REAL, intended_all_in_cost REAL)"
     )
     conn.execute(
         "CREATE TABLE paper_trade_settlement("
         "settlement_id TEXT PRIMARY KEY, position_id TEXT, stage TEXT,"
-        " event_date TEXT, hit INTEGER)"
+        " event_date TEXT, intended_hit INTEGER)"
     )
     for index, (stage, claim, cost, hit) in enumerate(rows):
         pid = f"pos-{index}"
@@ -231,13 +231,13 @@ def test_only_seats_banded_under_the_current_partition_are_fitted() -> None:
     conn.execute(
         "CREATE TABLE paper_trade_position("
         "position_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
-        " stage TEXT, decision_at_utc TEXT, win_probability REAL,"
-        " all_in_cost REAL)"
+        " stage TEXT, decision_at_utc TEXT, intended_win_probability REAL,"
+        " intended_all_in_cost REAL)"
     )
     conn.execute(
         "CREATE TABLE paper_trade_settlement("
         "settlement_id TEXT PRIMARY KEY, position_id TEXT, stage TEXT,"
-        " event_date TEXT, hit INTEGER)"
+        " event_date TEXT, intended_hit INTEGER)"
     )
     conn.execute(
         "CREATE TABLE calibration_band_reliability_table("
@@ -294,6 +294,7 @@ def test_only_seats_banded_under_the_current_partition_are_fitted() -> None:
         "applied": True,
         "excluded_old_partition": 12,
         "excluded_no_receipt": 12,
+        "excluded_no_intended_basis": 0,
     }
     # Only the twelve current-partition seats were counted.
     assert fit["evidence"][0]["seats"] == 12
@@ -397,12 +398,12 @@ def test_a_thin_band_keeps_the_last_activated_value_not_the_constant() -> None:
     conn = _store_with_journal()
     conn.execute(
         "CREATE TABLE paper_trade_position("
-        "position_id TEXT PRIMARY KEY, win_probability REAL, all_in_cost REAL)"
+        "position_id TEXT PRIMARY KEY, intended_win_probability REAL, intended_all_in_cost REAL)"
     )
     conn.execute(
         "CREATE TABLE paper_trade_settlement("
         "settlement_id TEXT PRIMARY KEY, position_id TEXT, stage TEXT,"
-        " event_date TEXT, hit INTEGER)"
+        " event_date TEXT, intended_hit INTEGER)"
     )
     # An activated table whose first band was promoted to 0.33.
     _journal(conn, scope="P0", sha="c" * 64, fitted_at="2026-09-01T01:00:00",

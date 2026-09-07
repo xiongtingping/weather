@@ -31,13 +31,13 @@ def _book(path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(path, isolation_level=None)
     conn.execute(
         "CREATE TABLE paper_trade_position ("
-        " position_id TEXT PRIMARY KEY, win_probability REAL, all_in_cost REAL,"
+        " position_id TEXT PRIMARY KEY, intended_win_probability REAL, intended_all_in_cost REAL,"
         " station_id TEXT, event_date TEXT, decision_at_utc TEXT,"
-        " window_buckets_json TEXT, prices_json TEXT)"
+        " intended_legs_json TEXT, prices_json TEXT)"
     )
     conn.execute(
         "CREATE TABLE paper_trade_settlement ("
-        " position_id TEXT, stage TEXT, event_date TEXT, hit INTEGER)"
+        " position_id TEXT, stage TEXT, event_date TEXT, intended_hit INTEGER)"
     )
     conn.execute(
         "CREATE TABLE basket_probability_bridge_history ("

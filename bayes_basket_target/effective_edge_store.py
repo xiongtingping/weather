@@ -337,8 +337,23 @@ def fit_lambda_table(
     ).isoformat()
 
     placeholders = ",".join("?" for _ in stages)
+    # The CHOSEN basket, not the one that filled.  Lambda(a) is read by a
+    # gate that has authorised nothing yet: at that moment the basket is
+    # three posted legs, and which of them the book will sell us is not part
+    # of the question.  Under charter 65's taker FOK the distinction was
+    # empty -- a FOK basket fills whole or not at all -- so this fit read
+    # ``win_probability``/``all_in_cost``/``hit`` and was right.  Charter 94
+    # made the order a resting ladder on the bid, and those three columns
+    # became the post-execution basket: measured 2026-09-07 on the 97 settled
+    # seats, the legs that went on to win filled 18% of the time and the legs
+    # that went on to lose filled 88%, so a fit on them reads maker adverse
+    # selection and serves it as the honesty of a claim.  It did: the
+    # 23:02Z P0 fit put 40 seats with zero fills-that-won into the a<=0.50
+    # band and clamped lambda to the 0.05 floor, while every other band lost
+    # four fifths of its evidence and went back to accumulating.
     rows = conn.execute(
-        "SELECT p.win_probability, p.all_in_cost, s.hit, p.position_id"
+        "SELECT p.intended_win_probability, p.intended_all_in_cost,"
+        " s.intended_hit, p.position_id"
         " FROM paper_trade_settlement s"
         " JOIN paper_trade_position p USING(position_id)"
         f" WHERE s.stage IN ({placeholders}) AND s.event_date >= ?",
@@ -352,12 +367,19 @@ def fit_lambda_table(
         "applied": partition is not None,
         "excluded_old_partition": 0,
         "excluded_no_receipt": 0,
+        # Seats recorded before the ledger carried the chosen basket.  Named
+        # and counted rather than silently dropped: a band fitted on nine
+        # rows because forty had no basis is the same failure in a new place.
+        "excluded_no_intended_basis": 0,
     }
 
     tally = [
         {"seats": 0, "claim": 0.0, "hits": 0} for _ in incumbent
     ]
     for win, cost, hit, position_id in rows:
+        if win is None or cost is None or hit is None:
+            band_filter["excluded_no_intended_basis"] += 1
+            continue
         # Charter 81: the solver's agreement is price over the LIFTED claim
         # (every seat holds the centre since charter 49, and the ledger
         # records the served window mass before the lift), so the fit reads
@@ -663,9 +685,16 @@ def fit_lambda_table_dq_shadow(
     ).isoformat()
     placeholders = ",".join("?" for _ in stages)
     rows = conn.execute(
-        "SELECT p.win_probability, p.all_in_cost, s.hit, p.position_id,"
+        # Chosen basket, for the reason the served fit gives above -- the
+        # shadow axis is only meaningful stratified by the same ``a`` the
+        # served table bands on, so the two must be measured on one basis.
+        # ``intended_legs_json`` is also the window the move is priced over:
+        # asking how the market moved the legs it later refused to sell is
+        # the question, not a defect.
+        "SELECT p.intended_win_probability, p.intended_all_in_cost,"
+        "       s.intended_hit, p.position_id,"
         "       p.station_id, p.event_date, p.decision_at_utc,"
-        "       p.window_buckets_json, p.prices_json"
+        "       p.intended_legs_json, p.prices_json"
         " FROM paper_trade_settlement s"
         " JOIN paper_trade_position p USING(position_id)"
         f" WHERE s.stage IN ({placeholders}) AND s.event_date >= ?",
@@ -681,6 +710,9 @@ def fit_lambda_table_dq_shadow(
     excluded = 0
     for (win, cost, hit, position_id, station_id, event_date, decision_at,
          window_json, prices_json) in rows:
+        if win is None or cost is None or hit is None:
+            excluded += 1
+            continue
         raw_claim = float(win or 0.0)
         claim = raw_claim * center_window_claim_factor(raw_claim)
         price = float(cost or 0.0)
@@ -690,7 +722,10 @@ def fit_lambda_table_dq_shadow(
             excluded += 1
             continue
         try:
-            window = [str(b) for b in json.loads(str(window_json or "[]"))]
+            # ``intended_legs_json`` is an object keyed by bucket, where the
+            # retired ``window_buckets_json`` was an array; iterating either
+            # yields the bucket labels, which is all this needs.
+            window = [str(b) for b in json.loads(str(window_json or "{}"))]
             asks = json.loads(str(prices_json or "{}"))
             price_now = sum(float(asks[b]) for b in window)
         except (ValueError, TypeError, KeyError):

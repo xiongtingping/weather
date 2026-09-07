@@ -5663,7 +5663,15 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
             params.append(until)
         try:
             rows = conn.execute(
-                "SELECT p.win_probability, p.all_in_cost, s.hit,"
+                # Claim, price and realisation come off the CHOSEN basket,
+                # because that is what lambda(a) is banded on and what the
+                # gate looks the band up with -- see the note over the fit
+                # in ``effective_edge_store``.  P&L and stake stay on the
+                # filled basket: those are money, and money is what was
+                # held.  The two halves of this row answer two different
+                # questions on purpose.
+                "SELECT p.intended_win_probability, p.intended_all_in_cost,"
+                " s.intended_hit,"
                 " s.pnl_usdc, s.stake_usdc"
                 " FROM paper_trade_settlement s"
                 " JOIN paper_trade_position p USING(position_id)"
@@ -5677,6 +5685,8 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
             for _ in served
         ]
         for claim, cost, hit, pnl, stake in rows:
+            if claim is None or cost is None or hit is None:
+                continue
             claimed = float(claim or 0.0)
             price = float(cost or 0.0)
             if claimed <= 0.0 or price <= 0.0:
@@ -5956,45 +5966,54 @@ def collect_edge_band_health(conn: sqlite3.Connection) -> dict[str, Any]:
     }
     latest_day = ""
     legs: list[dict[str, Any]] = []
-    # The legs come from ``leg_shares_json`` -- what the position actually
-    # holds -- not from ``resting_fill_json``, which was the resting lane's
-    # per-rung fill record and has been empty on every row since charter 65
-    # made taker the execution law.  Read from there, this whole section
-    # found zero legs and printed "无腿级数据" while the book traded every
-    # day (2026-08-29).  Crossing fills a leg or refuses it, so ``filled``
-    # is true for every leg that carries shares and the filled/unfilled
-    # split the resting lane made -- its sharpest reading -- has no taker
-    # analogue; the cells below say so rather than printing an empty half.
+    # Every leg that was POSTED (``intended_legs_json``), with ``filled``
+    # read off ``leg_shares_json`` -- what came back.  Two earlier versions
+    # of this loop were each right for the execution family in force and
+    # wrong for the next one.  It first read ``resting_fill_json``, which
+    # charter 65's taker law left empty on every row, so the section printed
+    # "无腿级数据" while the book traded daily (2026-08-29).  It was then
+    # moved to ``leg_shares_json`` with ``filled`` hard-coded true, which is
+    # exactly right for crossing -- a FOK leg fills or is refused -- and
+    # became a lie the day charter 94 made the order a resting ladder: an
+    # unfilled leg simply vanished from the sample, so every band reported a
+    # 100% fill rate and a realisation computed only over the legs the
+    # market agreed to sell.  The filled/unfilled split is the sharpest
+    # reading this panel has and it is the one the resting lane produces, so
+    # the loop now takes the posted leg as the unit and lets the fill be an
+    # observation about it rather than a precondition for seeing it.
     for row in conn.execute(
         "SELECT station_id, event_date, probabilities_json, prices_json,"
-        " leg_shares_json, stage FROM paper_trade_position"
+        " leg_shares_json, stage, intended_legs_json"
+        " FROM paper_trade_position"
     ):
         try:
             probs = json.loads(row[2] or "{}")
             prices = json.loads(row[3] or "{}")
             held = json.loads(row[4] or "{}")
+            posted = json.loads(row[6] or "{}")
         except ValueError:
             continue
         key = (str(row[0]), str(row[1]))
         truth = settled.get(key)
         latest_day = max(latest_day, str(row[1]))
-        for bucket, shares in held.items():
+        # A row written before the ledger recorded its posted legs can still
+        # be read for the legs it holds; it just cannot say what it asked
+        # for, so it contributes no unfilled side.
+        for bucket in (posted or held):
             claim = probs.get(bucket)
             ask = prices.get(bucket)
             if claim is None or ask is None:
                 continue
             try:
-                bought = float(shares) > 0.0
+                bought = float(held.get(bucket, 0.0) or 0.0) > 0.0
             except (TypeError, ValueError):
-                continue
-            if not bought:
                 continue
             legs.append({
                 "day": str(row[1]),
                 "stage": str(row[5]),
                 "band": band_of(float(claim) - float(ask)),
                 "claim": float(claim),
-                "filled": True,
+                "filled": bought,
                 "win": (
                     None if truth is None
                     else (1 if str(bucket) == truth else 0)

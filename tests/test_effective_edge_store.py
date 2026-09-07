@@ -34,12 +34,12 @@ def _book(path: Path, seats) -> sqlite3.Connection:
     conn = sqlite3.connect(path, isolation_level=None)
     conn.execute(
         "CREATE TABLE paper_trade_position ("
-        " position_id TEXT PRIMARY KEY, win_probability REAL,"
-        " all_in_cost REAL)"
+        " position_id TEXT PRIMARY KEY, intended_win_probability REAL,"
+        " intended_all_in_cost REAL)"
     )
     conn.execute(
         "CREATE TABLE paper_trade_settlement ("
-        " position_id TEXT, stage TEXT, event_date TEXT, hit INTEGER)"
+        " position_id TEXT, stage TEXT, event_date TEXT, intended_hit INTEGER)"
     )
     for index, (stage, day, claim, cost, hit) in enumerate(seats):
         pid = f"p{index}"

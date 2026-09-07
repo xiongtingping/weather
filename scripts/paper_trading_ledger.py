@@ -177,9 +177,10 @@ from bayes_basket_target.resting_ladder_lifecycle import (  # noqa: E402
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     CONSOLIDATION_TILT_FLOOR_VERSION,
     LEG_FLOOR_BELIEF_ANCHOR,
+    LEG_FLOOR_PRICE_BASIS,
     LEG_FLOOR_RULE_VERSION,
     consolidation_tilt_floor_usdc,
-    leg_floor_all_in_ask,
+    leg_below_floor,
     venue_minimum_shares_v1,
     DEFAULT_KELLY_FRACTION,
     DEFAULT_P1_ENTRY_LOCAL_HOUR,
@@ -1750,7 +1751,8 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     if CHAIN_TOPUP_BANKROLL_USDC <= 0
     else "加仓本金%g" % CHAIN_TOPUP_BANKROLL_USDC,
     "中心底仓",
-    f"腿≥{MINIMUM_LEG_ALL_IN_ASK:g}×min(1,{LEG_FLOOR_BELIEF_ANCHOR:g}/p)",
+    f"腿({LEG_FLOOR_PRICE_BASIS})≥{MINIMUM_LEG_ALL_IN_ASK:g}"
+    f"×min(1,{LEG_FLOOR_BELIEF_ANCHOR:g}/p)",
     None if EXCHANGE_LOT_TOP_UP == "off" else "补足一手",
     None if WINDOW_STRATEGY == "live" else WINDOW_STRATEGY,
     None if EXECUTION_MODE == "taker" else EXECUTION_MODE,
@@ -2362,6 +2364,7 @@ SELECTION_RULE_SHA256 = content_sha256({
     # It changes what every resting row *is*, not merely its price.
     "resting_entry": "progressive_per_leg",
     "minimum_leg_all_in_ask": MINIMUM_LEG_ALL_IN_ASK,
+    "leg_floor_price_basis": LEG_FLOOR_PRICE_BASIS,
     # Charter 91 (2026-09-06): the floor falls with belief; a book priced
     # under the fixed floor may not share a fingerprint with one under this.
     "leg_floor_rule": LEG_FLOOR_RULE_VERSION,
@@ -2694,6 +2697,19 @@ CREATE TABLE IF NOT EXISTS paper_trade_position (
   posted_buckets_json TEXT NOT NULL DEFAULT '',
   intended_legs_json TEXT NOT NULL DEFAULT '',
   intended_stake_usdc REAL,
+  -- The two numbers the entry gate actually judged, recorded before the
+  -- book narrowed the seat.  ``win_probability``/``all_in_cost`` above are
+  -- what SETTLED -- the served mass over the legs that filled, and the cash
+  -- that position cost per unit of payout -- and under charter 65's taker
+  -- FOK the two pairs were the same number, so nothing downstream had to
+  -- say which it meant.  Charter 94 made the order a resting ladder and
+  -- they came apart: a basket can post three legs and keep two.  Anything
+  -- fitted for a decision that has not executed yet -- lambda(a) above all
+  -- -- must read the pair below, or it is answering "what did the legs the
+  -- market sold us realise" when it was asked "what does a claim of this
+  -- size realise".
+  intended_win_probability REAL,
+  intended_all_in_cost REAL,
   intended_leg_stake_json TEXT NOT NULL DEFAULT '',
   leg_stake_json TEXT NOT NULL DEFAULT '',
   held_before_json TEXT NOT NULL DEFAULT '',
@@ -2734,6 +2750,14 @@ CREATE TABLE IF NOT EXISTS paper_trade_settlement (
   settled_tmax_c REAL NOT NULL,
   settled_bucket TEXT NOT NULL,
   hit INTEGER NOT NULL CHECK(hit IN (0,1)),
+  -- Did the truth land in the basket that was CHOSEN, as opposed to the one
+  -- that filled.  ``hit`` answers the money question and must keep reading
+  -- the position, because that is what pays; this answers the claim
+  -- question, and a claim is made before any of it fills.  Under taker FOK
+  -- the two are identical by construction.  Under charter 94's resting
+  -- ladder they are not, and a fit that wants one and reads the other is
+  -- measuring execution while calling it calibration.
+  intended_hit INTEGER,
   stake_usdc REAL NOT NULL,
   payout_usdc REAL NOT NULL,
   pnl_usdc REAL NOT NULL,
@@ -2972,6 +2996,16 @@ def ensure_schema(conn: sqlite3.Connection) -> bool:
             "ALTER TABLE paper_trade_position"
             " ADD COLUMN intended_stake_usdc REAL"
         )
+    if "intended_win_probability" not in columns:
+        conn.execute(
+            "ALTER TABLE paper_trade_position"
+            " ADD COLUMN intended_win_probability REAL"
+        )
+    if "intended_all_in_cost" not in columns:
+        conn.execute(
+            "ALTER TABLE paper_trade_position"
+            " ADD COLUMN intended_all_in_cost REAL"
+        )
     if "intended_leg_stake_json" not in columns:
         # What each posted leg was priced to cost, and what each leg the
         # book answered actually cost.  Share counts alone cannot answer
@@ -3075,7 +3109,97 @@ def ensure_schema(conn: sqlite3.Connection) -> bool:
             "ALTER TABLE paper_trade_settlement"
             " ADD COLUMN truth_content_sha256 TEXT NOT NULL DEFAULT ''"
         )
+    if "intended_hit" not in settlement_columns:
+        conn.execute(
+            "ALTER TABLE paper_trade_settlement"
+            " ADD COLUMN intended_hit INTEGER"
+        )
+    _backfill_intended_basis(conn)
     return refusal_rebuilt
+
+
+def _backfill_intended_basis(conn: sqlite3.Connection) -> dict[str, int]:
+    """Give the rows written before the columns existed their chosen basis.
+
+    Not a re-derivation: ``intended_legs_json`` already records which legs
+    were posted, and ``probabilities_json``/``prices_json`` already record
+    the served vector and the all-in ask ladder the seat was priced against.
+    The chosen basket's claim and price are those two ladders summed over
+    those legs, which is the same arithmetic ``_priced_window`` did when it
+    built the candidate -- so the backfilled value equals the recorded one
+    for every row written from here on, and a test pins that.
+
+    A row whose posted legs were never recorded is left NULL rather than
+    guessed at, and every consumer must exclude it and say how many it
+    excluded: a lambda band quietly fitted on nine rows because forty had no
+    basis is exactly the failure this whole column exists to end.
+    """
+
+    counts = {"positions": 0, "settlements": 0}
+    rows = conn.execute(
+        "SELECT position_id, intended_legs_json, probabilities_json,"
+        " prices_json FROM paper_trade_position"
+        " WHERE intended_win_probability IS NULL"
+        "   AND intended_legs_json NOT IN ('', '{}')"
+    ).fetchall()
+    updates: list[tuple[float, float, str]] = []
+    for position_id, legs_json, probabilities_json, prices_json in rows:
+        try:
+            legs = json.loads(legs_json or "{}") or {}
+            probabilities = json.loads(probabilities_json or "{}") or {}
+            prices = json.loads(prices_json or "{}") or {}
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(legs, dict) or not legs:
+            continue
+        claim = sum(float(probabilities.get(b, 0.0) or 0.0) for b in legs)
+        price = sum(float(prices.get(b, 0.0) or 0.0) for b in legs)
+        if price <= 0.0:
+            # A posted leg the price ladder does not carry cannot be summed
+            # into a basket price, and a partial sum is worse than none.
+            continue
+        updates.append((claim, price, str(position_id)))
+    if updates:
+        conn.executemany(
+            "UPDATE paper_trade_position"
+            " SET intended_win_probability=?, intended_all_in_cost=?"
+            " WHERE position_id=?",
+            updates,
+        )
+        counts["positions"] = len(updates)
+    # The chain's chosen basket is what it already held plus what this stage
+    # posted -- identical to ``held_before | intended`` because the fills
+    # this stage kept are a subset of what it posted.
+    settled = conn.execute(
+        "SELECT s.settlement_id, s.settled_bucket, p.intended_legs_json,"
+        " p.chain_shares_json FROM paper_trade_settlement s"
+        " JOIN paper_trade_position p USING(position_id)"
+        " WHERE s.intended_hit IS NULL"
+        "   AND p.intended_legs_json NOT IN ('', '{}')"
+    ).fetchall()
+    hits: list[tuple[int, str]] = []
+    for settlement_id, settled_bucket, legs_json, chain_json in settled:
+        try:
+            legs = json.loads(legs_json or "{}") or {}
+            chain = json.loads(chain_json or "{}") or {}
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(legs, dict) or not legs:
+            continue
+        window = set(map(str, legs)) | set(map(str, chain or {}))
+        hits.append((
+            1 if str(settled_bucket) in window else 0, str(settlement_id),
+        ))
+    if hits:
+        conn.executemany(
+            "UPDATE paper_trade_settlement SET intended_hit=?"
+            " WHERE settlement_id=?",
+            hits,
+        )
+        counts["settlements"] = len(hits)
+    if updates or hits:
+        conn.commit()
+    return counts
 
 
 def _window_floor(
@@ -4652,8 +4776,10 @@ def _consolidation_signals(
             best = quote.get("best_ask")
             if best is None and asks:
                 best = (asks[0] or {}).get("price")
-            if best is not None and float(best) >= leg_floor_all_in_ask(
-                MINIMUM_LEG_ALL_IN_ASK, probabilities.get(bucket)
+            if best is not None and not _leg_below_floor(
+                ask=best,
+                bid=quote.get("bid_price", quote.get("best_bid")),
+                probability=probabilities.get(bucket),
             ):
                 ok_mass += probabilities[bucket]
         quoted = (
@@ -4846,6 +4972,33 @@ def _leg_value_cap(
     return _value_cap((probabilities or {}).get(str(bucket)))
 
 
+def _leg_below_floor(
+    *,
+    ask: float | None,
+    bid: float | None,
+    probability: float | None,
+    fee_rate: float = 0.0,
+) -> bool:
+    """Charter 91 + 103, the ledger's read point for the leg floor.
+
+    Production's is ``delta_v2_runtime._leg_below_floor`` and both call the
+    same kernel on the same side of the book: the mid where the rung is
+    two-sided, the ask where nobody bids.  Deliberately not the execution
+    price -- this book prices a maker leg at the resting band and
+    production prices it at the offer, and a floor that followed those
+    would be screening two different things in the two books.
+    """
+
+    if ask is None:
+        return False
+    return leg_below_floor(
+        float(ask) * (1.0 + float(fee_rate)),
+        probability,
+        MINIMUM_LEG_ALL_IN_ASK,
+        bid=float(bid or 0.0),
+    )
+
+
 def _execution_price(row: Any, *, value_cap: float | None = None) -> float | None:
     """The per-share price this run assumes for one leg."""
 
@@ -5014,8 +5167,15 @@ def _window_row(
             ),
         )
         # Charter 91: the floor a leg faces falls with our belief in it.
-        if quote is None or quote < leg_floor_all_in_ask(
-            MINIMUM_LEG_ALL_IN_ASK, probabilities.get(bucket)
+        # Charter 103: and it is read off that leg's mid, not its offer.
+        if quote is None or _leg_below_floor(
+            ask=(
+                float(by_bucket[bucket].ask_price)
+                if by_bucket[bucket].ask_available else None
+            ),
+            bid=getattr(by_bucket[bucket], "bid_price", 0.0),
+            probability=probabilities.get(bucket),
+            fee_rate=FEE_RATE,
         ):
             return None
         quotes.append(quote)
@@ -5108,8 +5268,13 @@ def _strategy_windows(
                 if row is None:
                     continue
                 price = _execution_price(row)
-                if price is None or price < leg_floor_all_in_ask(
-                    MINIMUM_LEG_ALL_IN_ASK, probabilities.get(bucket)
+                if price is None or _leg_below_floor(
+                    ask=(
+                        float(row.ask_price) if row.ask_available else None
+                    ),
+                    bid=getattr(row, "bid_price", 0.0),
+                    probability=probabilities.get(bucket),
+                    fee_rate=FEE_RATE,
                 ):
                     continue
                 ranked.append(
@@ -5126,9 +5291,11 @@ def _strategy_windows(
             bucket for bucket in by_ordinal
             if bucket in by_bucket
             and by_bucket[bucket].ask_available
-            and (_execution_price(by_bucket[bucket]) or 9.9)
-            >= leg_floor_all_in_ask(
-                MINIMUM_LEG_ALL_IN_ASK, probabilities.get(bucket)
+            and not _leg_below_floor(
+                ask=float(by_bucket[bucket].ask_price),
+                bid=getattr(by_bucket[bucket], "bid_price", 0.0),
+                probability=probabilities.get(bucket),
+                fee_rate=FEE_RATE,
             )
             and float(probabilities.get(bucket, 0.0))
             > (_execution_price(by_bucket[bucket]) or 9.9)
@@ -6798,6 +6965,9 @@ class _Score(NamedTuple):
     pnl_usdc: float
     center_error_c: float | None
     bucket_distance: int
+    # ``None`` when the seat never recorded which legs it posted, which is
+    # the only honest answer for a row written before the column existed.
+    intended_hit: int | None = None
 
 
 def _score_settlement(
@@ -6809,6 +6979,7 @@ def _score_settlement(
     per_leg: Mapping[str, float],
     center_c: float | None,
     truth_c: float,
+    intended_window: Sequence[str] | None = None,
 ) -> _Score | None:
     """Score one seat against one settled value.
 
@@ -6840,6 +7011,11 @@ def _score_settlement(
     )
     ordinals = {str(b): int(o) for b, o, _l, _u, _p in ladder}
     distance = min(abs(ordinals[b] - settled_ordinal) for b in seated)
+    # The same membership test against the basket that was chosen rather
+    # than the one that filled.  Scored here beside ``hit`` for the reason
+    # the docstring gives: two answers derived twice will disagree the first
+    # time either side is touched, and these two have to be comparable.
+    chosen = {str(bucket) for bucket in (intended_window or ())}
     return _Score(
         settled_bucket=settled_bucket,
         hit=hit,
@@ -6849,6 +7025,7 @@ def _score_settlement(
             None if center_c is None else float(center_c) - truth_c
         ),
         bucket_distance=distance,
+        intended_hit=(1 if settled_bucket in chosen else 0) if chosen else None,
     )
 
 
@@ -6933,7 +7110,7 @@ def _rescore_settlements(
         "SELECT p.position_id, p.station_id, p.event_date, p.stage,"
         " p.decision_at_utc, p.chain_shares_json, p.leg_shares_json,"
         " p.chain_stake_usdc, p.stake_usdc, p.shares, p.probabilities_json,"
-        " p.win_probability, p.center_c,"
+        " p.win_probability, p.center_c, p.intended_legs_json,"
         " s.settlement_id, s.truth_content_sha256, s.settled_tmax_c"
         " FROM paper_trade_position p"
         # The terminal row is the last row the chain ACCUMULATED, which is
@@ -6958,7 +7135,8 @@ def _rescore_settlements(
             position_id, station_id, event_date, stage, decision_at_utc,
             chain_shares_json, leg_shares_json, chain_stake, stage_stake,
             stage_shares, probabilities_json, stage_win_probability,
-            center_c, settlement_id, bound_sha, settled_tmax_c,
+            center_c, intended_legs_json,
+            settlement_id, bound_sha, settled_tmax_c,
         ) = row
         standing = truth.get((str(station_id), str(event_date)))
         if standing is None:
@@ -7023,6 +7201,10 @@ def _rescore_settlements(
             if expected_payout > 0
             else float(stage_shares)
         )
+        try:
+            intended_legs = json.loads(intended_legs_json or "{}") or {}
+        except (TypeError, ValueError):
+            intended_legs = {}
         scored = _score_settlement(
             ladder=ladder,
             window=window,
@@ -7031,6 +7213,14 @@ def _rescore_settlements(
             per_leg=per_leg,
             center_c=center_c,
             truth_c=standing.tmax_c,
+            # Same union as the entry walk: what the chain holds plus what
+            # its last stage posted.  A row with no recorded intent scores
+            # ``None`` here rather than borrowing ``window``, which would
+            # make an unmeasurable seat look like a perfectly filled one.
+            intended_window=(
+                sorted(set(window) | set(map(str, intended_legs)))
+                if intended_legs else None
+            ),
         )
         if scored is None:
             # The corrected value left the ladder the seat was priced
@@ -7056,6 +7246,7 @@ def _rescore_settlements(
             )[:24],
             position_id, station_id, event_date, stage,
             standing.tmax_c, scored.settled_bucket, scored.hit,
+            scored.intended_hit,
             float(stake), scored.payout_usdc, scored.pnl_usdc,
             float(win_probability), scored.center_error_c,
             scored.bucket_distance,
@@ -7096,12 +7287,13 @@ def _rescore_settlements(
         conn.executemany(
             "INSERT INTO paper_trade_settlement ("
             " settlement_id, position_id, station_id, event_date, stage,"
-            " settled_tmax_c, settled_bucket, hit, stake_usdc,"
+            " settled_tmax_c, settled_bucket, hit, intended_hit,"
+            " stake_usdc,"
             " payout_usdc, pnl_usdc, claimed_win_probability,"
             " center_error_c, bucket_distance, settled_at_utc,"
             " truth_revision_no, truth_content_sha256,"
             " basket_all_in_cost"
-            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             write,
         )
     conn.commit()
@@ -7329,6 +7521,11 @@ def backfill(
             chain_tilt = 1.0
             chain_consolidation: dict | None = None
             chain_probabilities: dict[str, float] = {}
+            # Every leg the chain POSTED, across its stages.  ``held`` keeps
+            # what came back; this keeps what was asked for, so the two can
+            # be compared at settlement instead of only the survivor being
+            # recorded.
+            chain_intended: set[str] = set()
             chain_probability_identity = ""
             # Charter 77: the last recorded decision per stage.
             chain_decision_signatures: dict[str, dict] = {}
@@ -9152,6 +9349,14 @@ def backfill(
                         for bucket, cash in zip(seat["buckets"], leg_cash)
                     }
                     intended_stake = float(stake)
+                    # Read here, above the narrowing, because this is the
+                    # last line where ``seat`` is still the basket the gate
+                    # judged.  Charter 94(五) keeps the gate and Kelly on the
+                    # crossing ask, so ``all_in_price`` -- not the maker
+                    # posting price -- is the denominator lambda(a) was
+                    # looked up at, and the one it has to be fitted at.
+                    intended_win_probability = float(seat["win_probability"])
+                    intended_all_in_cost = float(seat["all_in_price"])
                     if EXECUTION_MODE == "maker_resting":
                         # The sizing above is the order that was posted.
                         # This is the position that came back.
@@ -9264,6 +9469,7 @@ def backfill(
                             held_cost.get(bucket, 0.0) + float(cash)
                         )
                     chain_stake += stake
+                    chain_intended.update(str(b) for b in intended_legs)
                     chain_probabilities = probabilities
                     chain_probability_identity = str(
                         payload.get("probability_identity") or ""
@@ -9379,6 +9585,8 @@ def backfill(
                             json.dumps(posted_buckets, ensure_ascii=False),
                             json.dumps(intended_legs, sort_keys=True),
                             intended_stake,
+                            intended_win_probability,
+                            intended_all_in_cost,
                             json.dumps(intended_leg_stake, sort_keys=True),
                             json.dumps(leg_stake, sort_keys=True),
                             json.dumps(held_before, sort_keys=True),
@@ -9507,6 +9715,7 @@ def backfill(
                 per_leg=held,
                 center_c=chain_center_c,
                 truth_c=standing.tmax_c,
+                intended_window=sorted(set(chain_window) | chain_intended),
             )
             if scored is None:
                 counts["truth_outside_book"] += 1
@@ -9528,7 +9737,8 @@ def backfill(
                     # to.
                     chain_last_stage or "P0",
                     standing.tmax_c, scored.settled_bucket,
-                    scored.hit, chain_stake, scored.payout_usdc,
+                    scored.hit, scored.intended_hit,
+                    chain_stake, scored.payout_usdc,
                     scored.pnl_usdc,
                     chain_win_probability,
                     scored.center_error_c, scored.bucket_distance,
@@ -9618,23 +9828,25 @@ def backfill(
             " refused_window_count, content_sha256, selection_rule_sha256,"
             " selection_rule_label, leg_shares_json, resting_fill_json,"
             " posted_buckets_json, intended_legs_json, intended_stake_usdc,"
+            " intended_win_probability, intended_all_in_cost,"
             " intended_leg_stake_json, leg_stake_json,"
             " held_before_json, chain_shares_json, chain_stake_usdc,"
             " consolidation_json"
             ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
-            "?,?,?,?,?,?,?,?)",
+            "?,?,?,?,?,?,?,?,?,?)",
             pending_positions,
         )
     if pending_settlements:
         conn.executemany(
             "INSERT OR IGNORE INTO paper_trade_settlement ("
             " settlement_id, position_id, station_id, event_date, stage,"
-            " settled_tmax_c, settled_bucket, hit, stake_usdc,"
+            " settled_tmax_c, settled_bucket, hit, intended_hit,"
+            " stake_usdc,"
             " payout_usdc, pnl_usdc, claimed_win_probability,"
             " center_error_c, bucket_distance, settled_at_utc,"
             " truth_revision_no, truth_content_sha256,"
             " basket_all_in_cost"
-            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             pending_settlements,
         )
     # A refusal is the current answer for a scope, not an event log: the next
