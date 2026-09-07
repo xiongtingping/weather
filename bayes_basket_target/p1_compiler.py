@@ -17,6 +17,7 @@ from .contracts import (
 from .four_layer_shadow import compile_p1_four_layer_shadow
 from .materialization import materialize_p1
 from .regional_path_prior import (
+    regional_features_at,
     resolve_serving_input as resolve_regional_serving_input,
 )
 from .metar_four_layer import (
@@ -362,6 +363,7 @@ def _four_layer_shadow_for_step(
     decision_at_utc: str,
     reported_high_bucket: str,
     artifacts: Mapping[str, Any],
+    regional_runs: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, str]:
     """Build one step's shadow, or nothing, never an exception.
 
@@ -436,6 +438,19 @@ def _four_layer_shadow_for_step(
                 if observed else 0.0
             ),
             curve_shape_realized=curve_shape_realized(points, decision),
+            # Charter 95 step two.  Same function the sample builder calls, on
+            # the same rows, so a feature cannot disagree between the fit and
+            # the shadow that is trying to earn its way in on that fit.
+            **{
+                key: value
+                for key, value in regional_features_at(
+                    regional_runs or (),
+                    as_of_utc=decision_at_utc,
+                    running_high_c=proof.running_high_c,
+                    latest_observed_c=observed[-1][1] if observed else None,
+                ).items()
+                if key in ("regional_headroom_c", "regional_live_gap_c")
+            },
             bias_recent_c=bias,
             bias_report_count=bias_count,
             hazard_artifact=artifacts.get("hazard"),
@@ -955,6 +970,7 @@ def compile_station_p1_packets(
                 decision_at_utc=decision_text,
                 reported_high_bucket=reported_high_bucket,
                 artifacts=four_layer_artifacts,
+                regional_runs=regional_runs,
             )
         envelope = materialize_p1(
             previous,

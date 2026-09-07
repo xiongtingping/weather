@@ -188,8 +188,15 @@ def feature_row(
     wind_speed_mps: float,
     warming_so_far_c: float,
     curve_shape_realized: float | None,
+    regional_headroom_c: float | None,
+    regional_live_gap_c: float | None,
 ) -> dict[str, float | None]:
     """The feature vector, named exactly as the sample table names its columns.
+
+    Every argument is keyword-required, including the nullable ones: a caller
+    that has not thought about a feature must say ``None`` rather than inherit
+    a default, because a default is how a feature goes quietly missing on one
+    side of the fit.
 
     One function for both sides.  The retired layer's training packet and its
     serving path each built their own view of the same state, and the two
@@ -219,6 +226,23 @@ def feature_row(
             None
             if curve_shape_realized is None
             else _finite("curve_shape_realized", curve_shape_realized)
+        ),
+        # Charter 95's step two: the regional curve joins the regression here
+        # rather than being blended into the finished distribution outside it.
+        # Both are keyword-required and nullable for the same reason
+        # ``curve_shape_realized`` is -- most of the 45-station fleet has no
+        # regional lane at all, and absent has to mean "nothing known here"
+        # (the fleet mean) rather than "the model promises nothing more"
+        # (a zero, which is a strong and wrong claim about the day).
+        "regional_headroom_c": (
+            None
+            if regional_headroom_c is None
+            else _finite("regional_headroom_c", regional_headroom_c)
+        ),
+        "regional_live_gap_c": (
+            None
+            if regional_live_gap_c is None
+            else _finite("regional_live_gap_c", regional_live_gap_c)
         ),
     }
 

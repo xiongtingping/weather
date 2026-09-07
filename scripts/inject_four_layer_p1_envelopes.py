@@ -213,6 +213,8 @@ def main() -> int:
             wind_speed_mps=float(sample["wind_speed_mps"]),
             warming_so_far_c=float(sample["warming_so_far_c"]),
             curve_shape_realized=sample["curve_shape_realized"],
+            regional_headroom_c=sample["regional_headroom_c"],
+            regional_live_gap_c=sample["regional_live_gap_c"],
         )
         try:
             counterfactual, _ = compile_four_layer_posterior(

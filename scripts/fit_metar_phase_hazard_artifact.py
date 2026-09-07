@@ -100,6 +100,17 @@ FULL_FEATURES = PHASE_FEATURES + (
     "curve_shape_realized",
     "remaining_hours",
 )
+# Charter 95 step two: the regional curve's two features, joined to the
+# regression rather than blended into the finished distribution outside it.
+# Headroom is what the model still claims above the reported high -- the phase
+# layer's own question in degrees rather than as a rate off a clock -- and the
+# live gap is how much of that claim today's reports say to believe.  Added by
+# --regional, and the artifact publishes its own feature list, so a serving
+# side reads whatever the file it was handed was fitted with.
+REGIONAL_FEATURES = (
+    "regional_headroom_c",
+    "regional_live_gap_c",
+)
 
 
 def hours_bin(hours: float) -> int:
@@ -259,7 +270,8 @@ def fleet_means(
 
 
 def fit_phase_rung(
-    samples: Sequence[Mapping[str, Any]], fallbacks: Mapping[str, float]
+    samples: Sequence[Mapping[str, Any]], fallbacks: Mapping[str, float],
+    names: Sequence[str] = PHASE_FEATURES,
 ) -> dict[str, Any]:
     """Rung one: will the day rise at all from here.  Model-free by contract."""
 
@@ -277,14 +289,14 @@ def fit_phase_rung(
     bin_count = len(occupied)
     dummies = np.zeros((len(samples), bin_count))
     dummies[np.arange(len(samples)), bins] = 1.0
-    covariates = feature_matrix(samples, PHASE_FEATURES, fallbacks=fallbacks)
+    covariates = feature_matrix(samples, names, fallbacks=fallbacks)
     design = np.hstack([dummies, covariates])
     outcome = np.array(
         [1.0 if int(sample["delta_c"]) >= 1 else 0.0 for sample in samples]
     )
     weight = np.array([float(sample["station_day_weight"]) for sample in samples])
     penalise = np.concatenate([
-        np.zeros(bin_count), np.ones(len(PHASE_FEATURES))
+        np.zeros(bin_count), np.ones(len(names))
     ])
     beta = fit_logistic(design, outcome, weight, penalise=penalise)
     fitted_weight = [
@@ -316,7 +328,7 @@ def fit_phase_rung(
         "bin_weight": full_weight,
         "coefficients": {
             name: float(value)
-            for name, value in zip(PHASE_FEATURES, beta[bin_count:])
+            for name, value in zip(names, beta[bin_count:])
         },
         "sample_n": len(samples),
         "positive_rate": float(
@@ -409,18 +421,37 @@ def main() -> int:
     parser.add_argument("--since", default=None)
     parser.add_argument("--out", required=True)
     parser.add_argument("--fitted-at-utc", default=None)
+    parser.add_argument(
+        "--regional", action="store_true",
+        help="charter 95 step two: add the regional curve's two features",
+    )
+    parser.add_argument(
+        "--covered-only", action="store_true",
+        help="fit only on rows a regional run reaches.  Independent of "
+             "--regional so the clean ablation (same rows, features on and "
+             "off) can be run; measured 2026-09-07 the shipping choice is "
+             "--regional alone, because restricting the training set costs "
+             "more on the pre-peak rows than the features gain",
+    )
     args = parser.parse_args()
 
     samples = load_samples(
         Path(args.samples), through=args.through, since=args.since
     )
+    if args.covered_only:
+        samples = [
+            sample for sample in samples
+            if sample.get("regional_headroom_c") is not None
+        ]
+    phase_names = PHASE_FEATURES + (REGIONAL_FEATURES if args.regional else ())
+    full_names = FULL_FEATURES + (REGIONAL_FEATURES if args.regional else ())
     if len(samples) < 500:
         raise SystemExit(f"only {len(samples)} samples; refusing to fit")
-    fallbacks = fleet_means(samples, FULL_FEATURES)
-    phase = fit_phase_rung(samples, fallbacks)
+    fallbacks = fleet_means(samples, full_names)
+    phase = fit_phase_rung(samples, fallbacks, phase_names)
     risers = [sample for sample in samples if int(sample["delta_c"]) >= 1]
-    full = fit_continuation(risers, FULL_FEATURES, fallbacks)
-    phase_only = fit_continuation(risers, PHASE_FEATURES, fallbacks)
+    full = fit_continuation(risers, full_names, fallbacks)
+    phase_only = fit_continuation(risers, phase_names, fallbacks)
 
     body = {
         "schema": SCHEMA,
@@ -434,8 +465,10 @@ def main() -> int:
         "sample_n": len(samples),
         "riser_sample_n": len(risers),
         "feature_fallbacks": fallbacks,
-        "phase_features": list(PHASE_FEATURES),
-        "full_features": list(FULL_FEATURES),
+        "phase_features": list(phase_names),
+        "full_features": list(full_names),
+        "regional_features": bool(args.regional),
+        "covered_only": bool(args.covered_only),
         "phase": phase,
         "continuation_full": full,
         "continuation_phase_only": phase_only,

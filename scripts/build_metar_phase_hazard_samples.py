@@ -78,6 +78,10 @@ from bayes_basket_target.metar_path_state import (  # noqa: E402
     compile_conditional_metar_path_state,
 )
 from bayes_basket_target.p1_compiler import _bucket_geometry_c  # noqa: E402
+from bayes_basket_target.regional_path_prior import (  # noqa: E402
+    load_runs_for_station_day as load_regional_runs,
+    regional_features_at,
+)
 from bayes_basket_target.settlement_time import (  # noqa: E402
     settlement_day_window,
 )
@@ -117,6 +121,9 @@ CREATE TABLE IF NOT EXISTS metar_phase_hazard_sample (
   warming_so_far_c REAL NOT NULL,
   curve_shape_realized REAL,
   curve_complete INTEGER NOT NULL,
+  regional_headroom_c REAL,
+  regional_live_gap_c REAL,
+  regional_system_id TEXT,
   root_bias_recent_c REAL,
   root_bias_report_count INTEGER NOT NULL,
   root_center_c REAL,
@@ -395,6 +402,14 @@ def build_station_day(
     """Every sample of one settled station-day, plus its exclusions."""
 
     window = settlement_day_window(event_date, settlement_timezone)
+    # Charter 95 step two.  Read once per station-day and resolved per
+    # instant, the way the serving side does it: one query, and every sample
+    # still picks the freshest run its own clock could have seen.  Empty for
+    # the fleet's majority, which has no regional lane at all.
+    regional_runs = load_regional_runs(
+        target, station_id=station_id, event_date=event_date,
+        as_of_utc="2100-01-01T00:00:00Z",
+    )
     observations = load_day_observations(
         archive,
         station_id=station_id,
@@ -546,6 +561,11 @@ def build_station_day(
             "warming_so_far_c": running_high - prefix[0]["temperature_c"],
             "curve_shape_realized": view.shape_realized(instant),
             "curve_complete": int(bool(state.future_curve_complete)),
+            **regional_features_at(
+                regional_runs, as_of_utc=_iso(instant),
+                running_high_c=running_high,
+                latest_observed_c=prefix[-1]["temperature_c"],
+            ),
             "root_bias_recent_c": bias_recent_c,
             "root_bias_report_count": bias_report_count,
             "root_center_c": view.center_c,
@@ -639,7 +659,9 @@ def main() -> int:
                 "momentum_c_per_hour,acceleration_c_per_hour2,"
                 "cloud_cover_fraction,precipitation_present,"
                 "dewpoint_depression_c,wind_speed_mps,warming_so_far_c,"
-                "curve_shape_realized,curve_complete,root_bias_recent_c,"
+                "curve_shape_realized,curve_complete,"
+                "regional_headroom_c,regional_live_gap_c,regional_system_id,"
+                "root_bias_recent_c,"
                 "root_bias_report_count,root_center_c,root_checkpoint_id,"
                 "running_high_c,truth_tmax_c,delta_c,station_day_weight)"
                 " VALUES(:sample_id,:station_id,:event_date,"
@@ -649,7 +671,8 @@ def main() -> int:
                 ":acceleration_c_per_hour2,:cloud_cover_fraction,"
                 ":precipitation_present,:dewpoint_depression_c,"
                 ":wind_speed_mps,:warming_so_far_c,:curve_shape_realized,"
-                ":curve_complete,:root_bias_recent_c,"
+                ":curve_complete,:regional_headroom_c,:regional_live_gap_c,"
+                ":regional_system_id,:root_bias_recent_c,"
                 ":root_bias_report_count,:root_center_c,"
                 ":root_checkpoint_id,:running_high_c,:truth_tmax_c,"
                 ":delta_c,:station_day_weight)",

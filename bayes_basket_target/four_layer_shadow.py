@@ -116,6 +116,8 @@ def compile_p1_four_layer_shadow(
     path_state: Any,
     warming_so_far_c: float,
     curve_shape_realized: float | None,
+    regional_headroom_c: float | None,
+    regional_live_gap_c: float | None,
     bias_recent_c: float | None,
     bias_report_count: int,
     hazard_artifact: Mapping[str, Any] | None,
@@ -142,6 +144,14 @@ def compile_p1_four_layer_shadow(
             wind_speed_mps=path_state.wind_speed_mps,
             warming_so_far_c=warming_so_far_c,
             curve_shape_realized=curve_shape_realized,
+            # Charter 95 step two: measured 2026-09-07 on the walk-forward
+            # gate, the two curve features cut the chain's centre MAE from
+            # 0.513 to 0.477C over 2948 covered samples and from 0.851 to
+            # 0.785 in the ten-hours-and-more band, where the morning is
+            # decided.  ``None`` wherever no regional run reaches, which is
+            # most of the fleet, and the fleet mean serves there.
+            regional_headroom_c=regional_headroom_c,
+            regional_live_gap_c=regional_live_gap_c,
         )
         common: dict[str, Any] = {
             "root_probabilities": root_probabilities,

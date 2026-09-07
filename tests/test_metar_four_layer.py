@@ -55,6 +55,8 @@ def _features(**overrides):
         "wind_speed_mps": 3.0,
         "warming_so_far_c": 4.0,
         "curve_shape_realized": 0.6,
+        "regional_headroom_c": None,
+        "regional_live_gap_c": None,
     }
     values.update(overrides)
     return feature_row(**values)

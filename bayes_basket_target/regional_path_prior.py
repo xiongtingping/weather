@@ -472,6 +472,89 @@ def curve_value_at(
     return parsed.get(hour + timedelta(hours=1))
 
 
+def regional_features_at(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    as_of_utc: str,
+    running_high_c: Any,
+    latest_observed_c: Any,
+    systems: "frozenset[str] | set[str] | None" = None,
+) -> dict[str, Any]:
+    """Charter 95's two regional features for the temperature path's regression.
+
+    ``regional_headroom_c`` is "剩余小时预报最高 − 已报最高": how much more
+    warming this run still claims, measured against what the station has
+    already reported.  It is the model's answer to the phase layer's question
+    -- will the day rise at all from here -- stated in degrees rather than as
+    a rate off a clock.
+
+    ``regional_live_gap_c`` is the live gap, observed minus this run's value
+    for the hour in progress, positive when the model is running cold today.
+    It is what says how much of the headroom to believe.
+
+    One definition, used by the sample builder and by serving alike, for the
+    reason ``metar_four_layer.feature_row`` exists at all: a feature computed
+    twice is a feature that will disagree.  Both are ``None`` when the station
+    has no admissible run, and the live gap is ``None`` on its own when the
+    curve does not cover the hour in progress -- the fallback is the fleet
+    mean, which says "nothing known here", not zero, which would say "the
+    model promises nothing more today".
+
+    Admission is the serving admission minus the serving list: any captured
+    lane may inform the regression, because being evidence in a fit is not the
+    same authority as replacing the ceiling.  ``system_id`` comes back so a
+    later fit can split on it rather than rebuild the samples.
+    """
+
+    absent = {
+        "regional_headroom_c": None,
+        "regional_live_gap_c": None,
+        "regional_system_id": None,
+        "regional_run_init_utc": None,
+    }
+    try:
+        as_of = datetime.fromisoformat(str(as_of_utc).replace("Z", "+00:00"))
+        high = float(running_high_c)
+    except (TypeError, ValueError):
+        return absent
+    for row in rows:
+        if systems is not None and str(
+            row.get("ensemble_system_id") or ""
+        ) not in systems:
+            continue
+        if str(row.get("knowable_at_utc") or "") > str(as_of_utc):
+            continue
+        try:
+            run_init = datetime.fromisoformat(
+                str(row["run_init_utc"]).replace("Z", "+00:00")
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+        age_hours = (as_of - run_init).total_seconds() / 3600.0
+        if age_hours < 0.0 or age_hours > MAX_RUN_AGE_HOURS:
+            continue
+        peak, width = remaining_peak_from_curve(
+            row["hourly_c"], as_of_utc=as_of_utc
+        )
+        if peak is None or width == 0:
+            continue
+        now_c = curve_value_at(row["hourly_c"], as_of_utc=as_of_utc)
+        try:
+            observed = float(latest_observed_c)
+        except (TypeError, ValueError):
+            observed = None
+        return {
+            "regional_headroom_c": float(peak) - high,
+            "regional_live_gap_c": (
+                None if (now_c is None or observed is None)
+                else observed - float(now_c)
+            ),
+            "regional_system_id": str(row["ensemble_system_id"]),
+            "regional_run_init_utc": str(row["run_init_utc"]),
+        }
+    return absent
+
+
 def resolve_serving_input(
     rows: Sequence[Mapping[str, Any]],
     *,
@@ -673,7 +756,7 @@ __all__ = [
     "MIN_CELL_SAMPLES", "MIN_STATION_SAMPLES", "MAX_RUN_AGE_HOURS",
     "POOLED_FIT_SYSTEM_ID", "SERVING_SYSTEMS",
     "apply_regional_path_prior", "build_serving_input", "curve_value_at",
-    "hours_bin",
+    "hours_bin", "regional_features_at",
     "load_artifact", "load_replay_table", "predictive_probabilities",
     "remaining_peak_from_curve", "replay_curve", "resolve_cell",
 ]

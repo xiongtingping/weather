@@ -225,12 +225,16 @@ def test_the_layer_is_built_and_fitted_and_not_served() -> None:
     source = (ROOT / "bayes_basket_target" / "regional_live_gap.py").read_text(
         encoding="utf-8")
     assert "+0.294" in source, "the reading that motivated it rides with it"
-    # Not wired into production: a layer the gate refused does not get a seat
-    # in the compiler, and the ledger fingerprint stays honest about what the
-    # book was priced with.
+    # Not wired into production as a *serving layer*: the gate refused it, so
+    # this module gets no seat in the compiler and no line in the ledger
+    # fingerprint.  The distinction that matters after charter 95 step two:
+    # ``regional_live_gap_c`` is a feature name inside the temperature path's
+    # regression and does appear in the compiler; ``regional_live_gap`` the
+    # module, which multiplies a correction into a served anchor, does not.
     compiler = (ROOT / "bayes_basket_target" / "p1_compiler.py").read_text(
         encoding="utf-8")
-    assert "regional_live_gap" not in compiler
+    assert "regional_live_gap import" not in compiler
+    assert "regional_live_gap." not in compiler
     ledger = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
         encoding="utf-8")
     assert "regional_live_gap" not in ledger

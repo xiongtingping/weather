@@ -70,6 +70,17 @@ ARMS = (
     "root", "hard", "hard+clock", "four_layer",
     "-reanchor", "-remaining", "-phase",
 )
+# Charter 95 step two, added by --regional.  Two extra arms, because the
+# question has two halves that must not be confused: ``covered`` is the same
+# chain refitted on only the rows a regional run reaches, and ``+regional``
+# adds the two curve features to that same subset.  ``four_layer`` vs
+# ``covered`` is what the smaller training set costs; ``covered`` vs
+# ``+regional`` is what the features are worth.
+# ``+regional_full`` is the one that could actually ship: the whole fleet's
+# training set, with the two features imputed to the fleet mean wherever no
+# regional run reaches -- the same treatment ``curve_shape_realized`` has
+# always had.  The covered pair stays because it is the clean ablation.
+REGIONAL_ARMS = ("covered", "+regional", "+regional_full")
 
 
 def _parse(stamp: str) -> datetime:
@@ -182,6 +193,71 @@ def score(distribution: Mapping[str, float], *, truth_bucket: str,
     }
 
 
+def hazard_artifact(
+    train: Sequence[Mapping[str, Any]],
+    *,
+    phase_names: Sequence[str] = hazard_fit.PHASE_FEATURES,
+    full_names: Sequence[str] = hazard_fit.FULL_FEATURES,
+) -> dict[str, Any]:
+    """One hazard fit over one training window and one feature list."""
+
+    fallbacks = hazard_fit.fleet_means(train, full_names)
+    risers = [row for row in train if int(row["delta_c"]) >= 1]
+    return {
+        "schema": hazard_fit.SCHEMA,
+        "trained_through": max(str(row["event_date"]) for row in train),
+        "feature_fallbacks": fallbacks,
+        "phase": hazard_fit.fit_phase_rung(train, fallbacks, phase_names),
+        "continuation_full": hazard_fit.fit_continuation(
+            risers, full_names, fallbacks
+        ),
+        "continuation_phase_only": hazard_fit.fit_continuation(
+            risers, phase_names, fallbacks
+        ),
+        "content_sha256": "walkforward",
+    }
+
+
+def regional_artifacts(
+    all_rows: Sequence[Mapping[str, Any]], day: str, *, minimum: int = 400
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]] | None:
+    """``(covered, +regional, +regional_full)``, all fitted on earlier days.
+
+    Both are fitted on exactly the same rows, so the only difference between
+    them is the two features.  ``None`` when the covered history is too thin
+    to fit at all -- the regional lane only starts on 2026-08-23, so the early
+    evaluation days have nothing to train on and are honestly skipped rather
+    than scored against a fit that could not have existed.
+    """
+
+    train = [
+        row for row in all_rows
+        if str(row["event_date"]) < day
+        and row["regional_headroom_c"] is not None
+    ]
+    if len(train) < minimum or len({r["event_date"] for r in train}) < 3:
+        return None
+    if sum(1 for row in train if int(row["delta_c"]) >= 1) < 100:
+        return None
+    everything = [row for row in all_rows if str(row["event_date"]) < day]
+    try:
+        return (
+            hazard_artifact(train),
+            hazard_artifact(
+                train,
+                phase_names=hazard_fit.PHASE_FEATURES + hazard_fit.REGIONAL_FEATURES,
+                full_names=hazard_fit.FULL_FEATURES + hazard_fit.REGIONAL_FEATURES,
+            ),
+            hazard_artifact(
+                everything,
+                phase_names=hazard_fit.PHASE_FEATURES + hazard_fit.REGIONAL_FEATURES,
+                full_names=hazard_fit.FULL_FEATURES + hazard_fit.REGIONAL_FEATURES,
+            ),
+        )
+    except (SystemExit, ValueError):
+        return None
+
+
 def walk_forward_artifacts(
     all_rows: Sequence[Mapping[str, Any]], day: str
 ) -> tuple[dict[str, Any], dict[str, Any]] | None:
@@ -195,22 +271,8 @@ def walk_forward_artifacts(
     train = [row for row in all_rows if str(row["event_date"]) < day]
     if len(train) < 500:
         return None
-    fallbacks = hazard_fit.fleet_means(train, hazard_fit.FULL_FEATURES)
-    risers = [row for row in train if int(row["delta_c"]) >= 1]
     try:
-        hazard = {
-            "schema": hazard_fit.SCHEMA,
-            "trained_through": max(str(row["event_date"]) for row in train),
-            "feature_fallbacks": fallbacks,
-            "phase": hazard_fit.fit_phase_rung(train, fallbacks),
-            "continuation_full": hazard_fit.fit_continuation(
-                risers, hazard_fit.FULL_FEATURES, fallbacks
-            ),
-            "continuation_phase_only": hazard_fit.fit_continuation(
-                risers, hazard_fit.PHASE_FEATURES, fallbacks
-            ),
-            "content_sha256": "walkforward",
-        }
+        hazard = hazard_artifact(train)
     except SystemExit:
         return None
     bias_rows = [
@@ -253,6 +315,9 @@ def evaluate_day(
     hazard: Mapping[str, Any],
     hazard_clock: Mapping[str, Any],
     reanchor: Mapping[str, Any],
+    hazard_covered: Mapping[str, Any] | None = None,
+    hazard_regional: Mapping[str, Any] | None = None,
+    hazard_regional_full: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for sample in samples:
@@ -292,6 +357,8 @@ def evaluate_day(
             wind_speed_mps=float(sample["wind_speed_mps"]),
             warming_so_far_c=float(sample["warming_so_far_c"]),
             curve_shape_realized=sample["curve_shape_realized"],
+            regional_headroom_c=sample["regional_headroom_c"],
+            regional_live_gap_c=sample["regional_live_gap_c"],
         )
         common = {
             "root_probabilities": view["probabilities"],
@@ -333,6 +400,19 @@ def evaluate_day(
                 **common, hazard_artifact=hazard, reanchor_artifact=reanchor,
                 phase_enabled=False,
             )
+            if hazard_covered is not None and hazard_regional is not None:
+                arms["covered"], _ = compile_four_layer_posterior(
+                    **common, hazard_artifact=hazard_covered,
+                    reanchor_artifact=reanchor,
+                )
+                arms["+regional"], _ = compile_four_layer_posterior(
+                    **common, hazard_artifact=hazard_regional,
+                    reanchor_artifact=reanchor,
+                )
+                arms["+regional_full"], _ = compile_four_layer_posterior(
+                    **common, hazard_artifact=hazard_regional_full,
+                    reanchor_artifact=reanchor,
+                )
         except ContractError:
             continue
         rows.append({
@@ -357,10 +437,26 @@ def evaluate_day(
     return rows
 
 
+def _arms(rows: Sequence[Mapping[str, Any]]) -> tuple[str, ...]:
+    """The arms these rows actually carry, in the declared order.
+
+    ``--regional`` adds two, and every row of a run either has them or the run
+    did not ask for them; taking the intersection rather than the union keeps
+    a partially-scored day from producing a column of blanks.
+    """
+
+    if not rows:
+        return ARMS
+    present = set(rows[0]["scores"])
+    for row in rows[1:]:
+        present &= set(row["scores"])
+    return tuple(arm for arm in ARMS + REGIONAL_ARMS if arm in present)
+
+
 def summarise(rows: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, float]]:
     out: dict[str, dict[str, float]] = {}
     total = sum(row["weight"] for row in rows) or 1.0
-    for arm in ARMS:
+    for arm in _arms(rows):
         out[arm] = {
             metric: sum(
                 row["weight"] * row["scores"][arm][metric] for row in rows
@@ -384,7 +480,7 @@ def print_block(title: str, rows: Sequence[Mapping[str, Any]]) -> None:
     print(f"\n{title}  n={len(rows)}")
     print(f"  {'arm':<12}{'命中':>8}{'±1桶':>8}{'对数分':>9}{'Brier':>8}"
           f"{'中心MAE':>9}{'中心RMSE':>9}{'中心偏':>8}{'vs今天':>8}")
-    for arm in ARMS:
+    for arm in _arms(rows):
         value = summary[arm]
         delta = value["hit"] - base["hit"]
         print(
@@ -402,6 +498,11 @@ def main() -> int:
     parser.add_argument("--target-db", default=str(
         ROOT / "data" / "bayes_basket_target_ssot.db"
     ))
+    parser.add_argument(
+        "--regional", action="store_true",
+        help="charter 95 step two: score the covered and +regional arms, on "
+             "the rows a regional run actually reaches",
+    )
     parser.add_argument("--min-train-days", type=int, default=7)
     parser.add_argument("--out", default=None)
     args = parser.parse_args()
@@ -432,16 +533,37 @@ def main() -> int:
             continue
         hazard, reanchor = fitted
         train = [row for row in all_rows if str(row["event_date"]) < day]
+        covered = regional = None
+        day_samples = by_day[day]
+        if args.regional:
+            pair = regional_artifacts(all_rows, day)
+            if pair is None:
+                print(f"  {day}: no covered history to fit yet", file=sys.stderr)
+                continue
+            covered, regional, regional_full = pair
+            # Scored on the rows the features actually reach.  Scoring the
+            # rest would dilute both arms with samples where they are
+            # identical by construction and make any difference look smaller
+            # than it is.
+            day_samples = [
+                row for row in day_samples
+                if row["regional_headroom_c"] is not None
+            ]
+            if not day_samples:
+                continue
         scored.extend(evaluate_day(
-            samples=by_day[day],
+            samples=day_samples,
             roots=roots,
             hazard=hazard,
             hazard_clock=clock_only_artifact(hazard),
             reanchor=reanchor,
+            hazard_covered=covered,
+            hazard_regional=regional,
+            hazard_regional_full=regional_full,
         ))
         print(
             f"  {day}: trained on {len(train)} samples through"
-            f" {days[index - 1]}, scored {len(by_day[day])}",
+            f" {days[index - 1]}, scored {len(day_samples)}",
             file=sys.stderr,
         )
 
