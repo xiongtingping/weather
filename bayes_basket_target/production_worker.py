@@ -1074,6 +1074,43 @@ def _probe_slot() -> dict[str, Any]:
     return slot
 
 
+RESTING_REPRICE_RECEIPT_PATH = Path(
+    os.environ.get("PM_RESTING_REPRICE_RECEIPT_PATH", "")
+    or (Path(__file__).resolve().parents[1] / "data" / "resting_reprice_latest.json")
+)
+
+
+def _publish_resting_reprice_receipt(
+    receipt: Mapping[str, Any], *, as_of_utc: str
+) -> None:
+    """Put the resting-ladder verdict somewhere a reader can find it now.
+
+    The cycle's own receipt carries this lane already, but it only reaches
+    ``state["production"]`` when the WHOLE cycle returns -- and on 2026-09-07
+    a cycle ran 3,912 seconds against a 720-second overdue threshold, so
+    every stage result inside it was invisible for over an hour while the
+    daemon's status file showed only ``production_inflight``.  A lane that
+    cancels real orders at an exchange must not be observable only on the
+    other side of that.  Errors here are swallowed on purpose: an
+    observability write may never be the reason a trading cycle fails.
+    """
+
+    try:
+        payload = dict(receipt)
+        payload["published_at_utc"] = as_of_utc
+        path = RESTING_REPRICE_RECEIPT_PATH
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f".{path.name}.tmp.{os.getpid()}")
+        tmp.write_text(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+            + "\n",
+            encoding="utf-8",
+        )
+        os.replace(tmp, path)
+    except Exception:  # noqa: BLE001 -- observability never blocks the cycle
+        pass
+
+
 class _ProbedCursor(sqlite3.Cursor):
     """A cursor that says which statement it is inside while it is inside."""
 
@@ -7659,7 +7696,7 @@ class TargetProductionWorker:
             receipt["reason"] = f"{type(exc).__name__}:{exc}"[:160]
             return receipt
         conn = self.commit_conn
-        return reprice_resting_rungs(
+        receipt = reprice_resting_rungs(
             conn,
             as_of_utc=as_of_utc,
             client=client,
@@ -7668,6 +7705,8 @@ class TargetProductionWorker:
             ),
             limit=limit,
         )
+        _publish_resting_reprice_receipt(receipt, as_of_utc=as_of_utc)
+        return receipt
 
     def _reconcile_unresolved_intents(
         self,

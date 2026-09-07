@@ -103,5 +103,26 @@ class ClobOrderServiceClient:
             {"order_id": request.get("order_id") or request.get("orderID") or request.get("exchange_order_id")},
         )
 
+    def lookup_open_orders(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        """Every live order the exchange holds, scoped to one token.
+
+        The point lookup above answers about ONE order and returns an empty
+        body for an order the venue no longer holds -- which is silence, not
+        an answer, and charter 110 refuses to read it as one.  This is the
+        other question: enumerate what IS live.  An order missing from a
+        list the exchange itself completed is positively not live.
+        """
+
+        payload: dict[str, Any] = {
+            "max_pages": int(request.get("max_pages") or 3),
+        }
+        token = request.get("token_id") or request.get("asset_id")
+        if token:
+            payload["token_id"] = str(token)
+        market = request.get("market")
+        if market:
+            payload["market"] = str(market)
+        return self._post("/lookup-open-orders", payload)
+
 
 __all__ = ["ClobOrderServiceClient", "SCHEMA_VERSION"]

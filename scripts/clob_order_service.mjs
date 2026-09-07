@@ -3506,6 +3506,13 @@ export class ClobOrderService {
     const requestedMarket = String(rawPayload?.market || "").trim();
     const collected = [];
     let cursor = "MA==";
+    // Whether the cursor chain actually ran out, as opposed to stopping
+    // because it hit ``maxPages``.  Absence from a COMPLETE enumeration is
+    // evidence that an order is not live; absence from a truncated one is
+    // nothing at all, and a caller cannot tell the two apart without being
+    // told.  Charter 110's reconciliation refuses to conclude anything from
+    // an incomplete list, so this flag is the whole contract.
+    let complete = false;
     try {
       for (let page = 0; page < maxPages && cursor !== "LTE="; page += 1) {
         // The account-wide /data/orders page can become very slow behind a
@@ -3520,6 +3527,7 @@ export class ClobOrderService {
           : await this.client.getOpenOrders(undefined, true, cursor);
         if (Array.isArray(response)) {
           collected.push(...response);
+          complete = true;
           break;
         }
         if (!response || typeof response !== "object" || Array.isArray(response)) {
@@ -3537,9 +3545,13 @@ export class ClobOrderService {
         }
         collected.push(...rows);
         const next = String(response.next_cursor || response.nextCursor || "LTE=").trim();
-        if (!next || next === cursor || rows.length === 0) break;
+        if (!next || next === cursor || rows.length === 0 || next === "LTE=") {
+          complete = true;
+          break;
+        }
         cursor = next;
       }
+      if (cursor === "LTE=") complete = true;
       const openOrders = collected.filter((row) => {
         if (!row || typeof row !== "object") return false;
         const asset = String(row.asset_id || row.assetId || row.token_id || row.tokenId || "").trim();
@@ -3552,6 +3564,7 @@ export class ClobOrderService {
         open_orders: openOrders,
         total_open_orders: collected.length,
         pages_checked: maxPages,
+        complete,
         source: SERVICE_NAME,
       };
     } catch (err) {
