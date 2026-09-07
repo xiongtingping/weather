@@ -612,17 +612,90 @@ BAND_RELIABILITY_FACTORS = (
 )
 
 
+BAND_RELIABILITY_METHOD_TAG_V2 = "band_reliability_v2"
+# The axis (user ruling, 2026-09-07: "band 表换轴").  A band table is a
+# recalibration map on a distribution over an ORDERED axis, and the disease
+# it treats is over-dispersion -- too little mass on the centre, too much
+# four buckets out.  That is a statement about POSITION, and keying the
+# cells by the claimed probability instead has two costs that were measured
+# rather than argued:
+#
+# * the key is not invariant under the map.  A bucket is put in the
+#   [0.40,0.45) cell because it claims 0.44; multiply by 1.05, renormalise,
+#   and it claims 0.46 and belongs to a cell whose factor it never got.
+#   Fitted on 1204 day-ahead station-days, applied once and re-measured,
+#   the cell ratios land at 0.79-1.10 -- a table fitted to make them 1.0
+#   does not make them 1.0.  Distance from the centre does not move when
+#   the centre's own factor is the largest, so the distance table is a
+#   fixed point of itself.
+#
+# * it pools things that behave differently.  On 2026-09-05 the [5-10%)
+#   cell held VILK's bucket one step off centre (7.0%), ZHHH's three steps
+#   off (7.2%) and ZHHH's five steps off (6.1%); those three realise
+#   1.151, 0.783 and 0.490 of their claims.  Three-fold cross-validation by
+#   day: the distance axis scores +1.64% NLL against +1.10% for the claim
+#   axis, with five cells against eleven, and stacking the two is WORSE
+#   than distance alone (+1.26%) -- once position is conditioned on, the
+#   level carries nothing.  A single global temperature p^k, k=1.35, buys
+#   +1.05%, which is what eleven claim-level parameters were spending
+#   themselves on.
+#
+# Charter 43's ``neighbour_direction_v1`` is untouched and stays upstream:
+# it is SIGNED and fixes asymmetry, this is UNSIGNED and fixes width, and
+# the factors below were measured on vectors that already carry it, so the
+# two stack rather than double-count.  The corroboration is that the signed
+# version of this table scores WORSE out of sample (+1.33%): the direction
+# signal has already been taken, and what is left is symmetric.
+BAND_RELIABILITY_AXIS_CLAIM = "claim"
+BAND_RELIABILITY_AXIS_CENTRE_DISTANCE = "centre_distance"
+
+
+def _centre_distances(
+    probability: "Mapping[str, float]",
+    ordinals: "Mapping[str, int]",
+) -> dict[str, float]:
+    """How many buckets each key sits from the distribution's own peak.
+
+    The peak, not the mean: the mean moves under the map and the argmax
+    does not, which is the whole reason this axis is stable.  Ties break on
+    the ordinal so two runs of the same vector agree.
+    """
+
+    ranked = [
+        (float(value), -int(ordinals[key]), str(key))
+        for key, value in probability.items()
+        if key in ordinals
+    ]
+    if not ranked:
+        raise ValueError("band_reliability_ordinals_missing")
+    centre = max(ranked)[2]
+    centre_ordinal = int(ordinals[centre])
+    return {
+        str(key): float(abs(int(ordinals[key]) - centre_ordinal))
+        for key in probability
+        if key in ordinals
+    }
+
+
 def apply_band_reliability(
     probability: "Mapping[str, float]",
     *,
     factors: "Sequence[tuple[tuple[float, float], float]] | None" = None,
+    ordinals: "Mapping[str, int] | None" = None,
 ) -> tuple[dict[str, float], dict[str, Any]]:
-    """Rescale each bucket by its claimed-probability band's factor.
+    """Rescale each bucket by its cell's factor.
 
-    The band is read from the claim as it stands when this layer runs, so
-    this must stay the outermost transform: the factors were measured on
-    served distributions, and moving the layer inward would rescale claims
-    the measurement never saw.
+    Two axes, one lookup.  With ``ordinals`` the cell is read from the
+    bucket's distance from the distribution's peak (the axis the table is
+    fitted on since 2026-09-07); without them it is read from the claim
+    itself, which is what every artifact pinned to a ``band_reliability_v1``
+    table was gated against and must keep being served.  Charter 60: an
+    artifact is served with the exact table its evidence was scored
+    against, and that now includes which axis the table was scored on.
+
+    This must stay the outermost transform either way: the factors were
+    measured on served distributions, and moving the layer inward would
+    rescale claims the measurement never saw.
 
     ``factors`` defaults to the static bootstrap table below; production
     passes the DB-resident table the artifact was gated against (see
@@ -635,24 +708,37 @@ def apply_band_reliability(
     table = (
         BAND_RELIABILITY_FACTORS if factors is None else tuple(factors)
     )
+    if ordinals is None:
+        axis = BAND_RELIABILITY_AXIS_CLAIM
+        keyed = {str(key): float(raw) for key, raw in probability.items()}
+        tag = BAND_RELIABILITY_METHOD_TAG
+    else:
+        axis = BAND_RELIABILITY_AXIS_CENTRE_DISTANCE
+        keyed = _centre_distances(probability, ordinals)
+        tag = BAND_RELIABILITY_METHOD_TAG_V2
     adjusted: dict[str, float] = {}
     applied: dict[str, float] = {}
     for key, raw in probability.items():
-        value = float(raw)
+        value = keyed.get(str(key))
         factor = 1.0
-        for (lower, upper), band_factor in table:
-            if lower <= value < upper:
-                factor = band_factor
-                break
+        if value is not None:
+            for (lower, upper), band_factor in table:
+                if lower <= value < upper:
+                    factor = band_factor
+                    break
         if factor != 1.0:
             applied[str(key)] = factor
-        adjusted[str(key)] = value * factor
+        adjusted[str(key)] = float(raw) * factor
     total = sum(adjusted.values())
     if total <= 0:
         raise ValueError("band_reliability_probability_empty")
     return {key: value / total for key, value in adjusted.items()}, {
+        # The inverse reads ``applied_factors`` and
+        # ``pre_normalisation_mass`` only, so it is axis-blind by
+        # construction and one function keeps serving both vintages.
         "schema": "band_reliability_receipt_v1",
-        "method_tag": BAND_RELIABILITY_METHOD_TAG,
+        "method_tag": tag,
+        "axis": axis,
         "state": "APPLIED" if applied else "NO_BAND_IN_SUPPORT",
         "applied_factors": applied,
         "pre_normalisation_mass": total,

@@ -176,6 +176,19 @@ def ensure_band_table_schema(conn: sqlite3.Connection) -> None:
             "ALTER TABLE calibration_band_reliability_table"
             " ADD COLUMN stage TEXT NOT NULL DEFAULT 'P0'"
         )
+    if "axis" not in columns:
+        # Which quantity the cells are read from (user ruling, 2026-09-07:
+        # "band 表换轴").  Rows written before the column existed were all
+        # fitted on the claim, so that is the default and no stored table
+        # changes meaning.  It travels with the table rather than with the
+        # artifact because charter 60 already pins the table by sha: a
+        # pinned table that could not say which axis it was scored on would
+        # be served through the wrong lookup, which is the one way this
+        # change could reach an artifact it was never gated against.
+        conn.execute(
+            "ALTER TABLE calibration_band_reliability_table"
+            " ADD COLUMN axis TEXT NOT NULL DEFAULT 'claim'"
+        )
     # SQLite cannot ALTER a CHECK, so a journal built before an outcome
     # existed is rebuilt in place around the widened one -- by migration,
     # every row crossing, because this table IS the record and dropping it
@@ -313,6 +326,37 @@ def load_band_table(
         for cell in json.loads(row[1])
     )
     return factors, str(row[0])
+
+
+def band_table_axis(
+    conn: sqlite3.Connection,
+    *,
+    stage: str = "P0",
+    table_sha256: str | None = None,
+) -> str:
+    """Which quantity a table's cells are read from.
+
+    ``claim`` for everything fitted before 2026-09-07 and for a database
+    that has never carried the column; ``centre_distance`` for a table
+    fitted on the bucket's distance from the distribution's own peak.  A
+    caller that cannot answer this must not apply the table: the two
+    lookups take the same shape and would both run.
+    """
+
+    ensure_band_table_schema(conn)
+    if table_sha256 is None:
+        row = conn.execute(
+            "SELECT axis FROM calibration_band_reliability_table"
+            " WHERE activated=1 AND stage=?",
+            (_check_stage(stage),),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT axis FROM calibration_band_reliability_table"
+            " WHERE band_table_sha256=?",
+            (str(table_sha256),),
+        ).fetchone()
+    return str((row or ["claim"])[0] or "claim")
 
 
 def persist_and_activate_band_table(
