@@ -269,24 +269,25 @@ def test_v6_inspector_requires_exact_ordered_fact_types(
     assert inspection["state"] == state
 
 
-def test_installers_create_v10_and_reject_unmigrated_v5(tmp_path: Path) -> None:
+def test_the_retired_v10_installer_fails_closed_on_every_call(tmp_path: Path) -> None:
+    """The tombstone's own contract, which is the only one it still has.
+
+    This test used to prove the installer created a V10 fact table and
+    refused an unmigrated V5.  That command could create a V10 table
+    outside the receipted V13-to-V14 migration, so it was retired and kept
+    only as a fail-closed tombstone: it does not resolve, open, inspect or
+    mutate the path it is given, it raises.  Proving it still raises --
+    preview and apply alike -- is what keeps old automation from becoming
+    a second ingress; proving it installs anything is testing a command
+    that no longer exists.
+    """
+
     path = tmp_path / "installer.db"
     with sqlite3.connect(path):
         pass
-    receipt = install_schema(path, apply=True)
-    assert receipt["state"] == "APPLIED"
-    assert receipt["canonical_contract_schema_ok"] is True
-    with sqlite3.connect(path) as conn:
-        assert inspect_canonical_ssot_schema(conn)["state"] == "V10"
-        assert apply_production_ssot_schema(conn)[
-            "canonical_contract_schema_ok"
-        ] is True
-        assert production_ssot_schema_status(conn)[
-            "canonical_contract_schema_ok"
-        ] is True
-
-    v5_path = _v5_db(tmp_path, name="installer-v5.db")
-    with pytest.raises(
-        RuntimeError, match="canonical_contract_schema_v10_migration_required"
-    ):
-        install_schema(v5_path, apply=True)
+    for apply in (False, True):
+        with pytest.raises(
+            RuntimeError,
+            match="canonical_contract_schema_legacy_apply_retired",
+        ):
+            install_schema(path, apply=apply)

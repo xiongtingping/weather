@@ -230,7 +230,7 @@ def test_production_schema_apply_rejects_v2_before_any_other_ddl(
         )
         with pytest.raises(
             RuntimeError,
-            match="canonical_contract_schema_v11_migration_required",
+            match="canonical_contract_schema_v14_migration_required",
         ):
             apply_production_ssot_schema(conn)
         assert conn.execute("PRAGMA schema_version").fetchone()[0] == before_schema_version
@@ -244,17 +244,25 @@ def test_production_schema_apply_rejects_v2_before_any_other_ddl(
         ] is False
 
 
-def test_one_shot_schema_entry_reports_migration_required(tmp_path: Path) -> None:
-    path = _db(tmp_path)
-    preview = apply_contract_schema(path, apply=False)
-    assert preview["state"] == "MIGRATION_REQUIRED"
-    assert preview["canonical_contract_schema_ok"] is False
-    with pytest.raises(
-        RuntimeError,
-        match="canonical_contract_schema_v10_migration_required",
-    ):
-        apply_contract_schema(path, apply=True)
+def test_the_retired_one_shot_schema_entry_fails_closed(tmp_path: Path) -> None:
+    """The tombstone raises on preview as well as on apply.
 
+    This used to read a MIGRATION_REQUIRED preview off the one-shot entry
+    and then check that applying refused.  The command could create a V10
+    fact table outside the receipted V13-to-V14 migration, so it was
+    retired to a fail-closed tombstone that does not resolve, open or
+    inspect the path at all -- preview included, deliberately, because a
+    preview that opened the database would already be the ingress the
+    retirement exists to close.
+    """
+
+    path = _db(tmp_path)
+    for apply in (False, True):
+        with pytest.raises(
+            RuntimeError,
+            match="canonical_contract_schema_legacy_apply_retired",
+        ):
+            apply_contract_schema(path, apply=apply)
 
 def test_symlink_database_is_rejected(tmp_path: Path) -> None:
     path = _db(tmp_path)
