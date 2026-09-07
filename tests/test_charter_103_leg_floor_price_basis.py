@@ -56,3 +56,29 @@ def test_both_books_read_the_same_side() -> None:
     # production prices it at the offer.
     ledger = (root / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
     assert "_execution_price(row)\n                if price is None or price <" not in ledger
+
+
+def test_the_plan_receipt_carries_the_floor_it_screened_with() -> None:
+    """A rule nobody can read off a receipt is a rule nobody can audit.
+
+    Measured 2026-09-07: 0 of the 400 most recent preselection plans carried
+    ``leg_floor_rule``, and ``window_gate_counts`` was null in all 253 rows
+    that had the key -- so charter 91's belief scaling and charter 103's
+    price basis were both unprovable on the production side while the
+    ledger's fingerprint recorded them.
+    """
+
+    root = Path(__file__).resolve().parents[1]
+    runtime = (root / "bayes_basket_target" / "delta_v2_runtime.py").read_text(
+        encoding="utf-8"
+    )
+    # The persisted audit -- the one the plan stores -- names the floor.
+    marker = '"schema": "delta_basket_score_authorization_v2",'
+    assert marker in runtime
+    persisted = runtime[runtime.index(marker):]
+    persisted = persisted[: persisted.index('delta_v2_audit["content_sha256"]')]
+    assert '"price_basis": LEG_FLOOR_PRICE_BASIS,' in persisted
+    assert '"rule": LEG_FLOOR_RULE_VERSION,' in persisted
+    assert '"belief_anchor": LEG_FLOOR_BELIEF_ANCHOR,' in persisted
+    assert '"refused_window_count"' in persisted
+    assert '"window_gate_counts": window_gate_counts_v1(' in persisted

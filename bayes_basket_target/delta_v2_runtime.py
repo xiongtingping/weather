@@ -5858,6 +5858,33 @@ def compile_delta_v2_runtime_plan(
         "convergence_claim": dict(
             support_window_audit.get("convergence_claim") or {}
         ),
+        # Charter 91/103: the floor this compile screened its legs with,
+        # and the funnel saying how many windows each gate refused.
+        #
+        # Both already existed -- in ``_support_windows``' own audit, which
+        # the plan does not persist.  Measured 2026-09-07 while trying to
+        # prove charter 103 was live: 0 of the 400 most recent preselection
+        # plans carry ``leg_floor_rule``, and the ``window_gate_counts``
+        # written beside a blocked scope is null in all 253 rows that have
+        # the key, because it is read off an exception the audit-blocker
+        # path never raises.  So the belief scaling (charter 91), the price
+        # basis (charter 103) and the count of what they refused were all
+        # unprovable from a production receipt; the ledger's fingerprint
+        # carried them and production's did not, which is exactly the
+        # asymmetry the two books are supposed to not have.
+        "leg_floor": {
+            "rule": LEG_FLOOR_RULE_VERSION,
+            "belief_anchor": LEG_FLOOR_BELIEF_ANCHOR,
+            "price_basis": LEG_FLOOR_PRICE_BASIS,
+            "minimum_all_in_ask": MINIMUM_LEG_ALL_IN_ASK,
+            "refused_window_count": int(
+                support_window_audit.get("leg_floor_refused_window_count") or 0
+            ),
+            "excluded_buckets": list(
+                support_window_audit.get("leg_floor_excluded_buckets") or ()
+            ),
+        },
+        "window_gate_counts": window_gate_counts_v1(support_window_audit),
         "charter_71": {
             "last_acted_probability_identity": (
                 last_acted_probability_identity
