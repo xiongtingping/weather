@@ -332,6 +332,22 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
         3600.0,
         900.0,
     ),
+    # The registry is rewritten whole on every refresh and nothing removed
+    # the previous copy: 1,176 copies by 2026-09-07, 1,471,712 rows for
+    # about 2,810 markets, 2.58 GB, 270-320 MB a day -- the largest single
+    # consumer of a database that was 6.1 days from its ceiling, where
+    # every writer fail-closes.
+    #
+    # Hourly, and bounded to 120k rows a pass (2.8 seconds measured), so
+    # the retention can never be the thing holding the single write lock.
+    # A pass with nothing stale plans and returns without opening a
+    # transaction at all.
+    (
+        "market_registry_retention",
+        "scripts/market_registry_retention_sweep.sh",
+        3600.0,
+        900.0,
+    ),
     # A corrected report halts its station's P1 until a review receipt exists,
     # and the policy that writes one only ever ran by hand.  Measured
     # 2026-08-26: an on-hour COR for RKPK at 08:00Z left P1 fail-closed on
@@ -488,6 +504,7 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     "capture_cma_grapes_forward": "ssot",
     # Writes station_registry.py and the two SSOT identity rows.
     "station_onboarding": "ssot",
+    "market_registry_retention": "ssot",
 }
 # Domains that name a database hold one sweep at a time; "none" writes nothing
 # and is bounded only by the total cap below.
@@ -1087,6 +1104,79 @@ def archive_storage_guard(db_path: Path) -> dict[str, Any]:
     }
 
 
+#: How few days of headroom is a warning, whatever the byte count says.
+#:
+#: Two days is a working day plus a night: long enough that the alarm is
+#: not noise, short enough that someone can still choose what to retire
+#: rather than having every writer fail closed on them.
+TARGET_SSOT_WARN_DAYS_TO_CEILING = 2.0
+#: Where the last size reading is kept, so the rate survives a restart.
+#: Held in memory it would be unknown for the first pass after every
+#: restart, and this process is restarted several times an hour.
+TARGET_SSOT_GROWTH_PATH = ROOT / "data" / "runtime" / "target_ssot_growth.json"
+#: Where the writer lanes' turn is kept, so a restart does not hand every
+#: lane back its tie.  See the seeding comment in the run loop.
+WRITER_TURN_PATH = ROOT / "data" / "runtime" / "writer_turn.json"
+
+
+def _target_ssot_growth(db_bytes: int) -> dict[str, Any]:
+    """Bytes per day, and the days that leaves, from two readings.
+
+    Deliberately the crudest possible estimator: this reading against the
+    last one on record.  A smoothed rate would be steadier and would also
+    have hidden 2026-09-07, when the growth was ordinary for weeks and the
+    headroom was not -- what matters is the answer being present at all,
+    not its third digit.
+    """
+
+    now = datetime.now(timezone.utc)
+    previous: dict[str, Any] = {}
+    try:
+        previous = json.loads(TARGET_SSOT_GROWTH_PATH.read_text())
+        if not isinstance(previous, dict):
+            previous = {}
+    except (OSError, ValueError):
+        previous = {}
+    bytes_per_day: float | None = None
+    try:
+        then = datetime.fromisoformat(
+            str(previous["observed_at_utc"]).replace("Z", "+00:00")
+        )
+        elapsed_days = (now - then).total_seconds() / 86400.0
+        grew = db_bytes - int(previous["database_bytes"])
+        # Under an hour is not a measurement, it is rounding; a shrinking
+        # file is a retention pass, not a rate to extrapolate from.
+        if elapsed_days >= 1.0 / 24.0 and grew > 0:
+            bytes_per_day = grew / elapsed_days
+    except (KeyError, TypeError, ValueError):
+        bytes_per_day = None
+    remaining = MAX_TARGET_DB_BYTES - db_bytes
+    days_to_ceiling = (
+        round(remaining / bytes_per_day, 2)
+        if bytes_per_day and bytes_per_day > 0 and remaining > 0
+        else None
+    )
+    if bytes_per_day is not None or not previous:
+        try:
+            TARGET_SSOT_GROWTH_PATH.parent.mkdir(parents=True, exist_ok=True)
+            TARGET_SSOT_GROWTH_PATH.write_text(json.dumps({
+                "schema": "target_ssot_growth_v1",
+                "observed_at_utc": now.isoformat(
+                    timespec="seconds"
+                ).replace("+00:00", "Z"),
+                "database_bytes": int(db_bytes),
+            }))
+        except OSError:  # noqa: PERF203 -- telemetry, never a blocker
+            pass
+    return {
+        "growth_bytes_per_day": (
+            round(bytes_per_day, 1) if bytes_per_day is not None else None
+        ),
+        "days_to_ceiling": days_to_ceiling,
+        "growth_measured_from_utc": previous.get("observed_at_utc"),
+    }
+
+
 def target_ssot_capacity_guard(db_path: Path) -> dict[str, Any]:
     """Headroom against the target SSOT's own size ceiling.
 
@@ -1099,6 +1189,15 @@ def target_ssot_capacity_guard(db_path: Path) -> dict[str, Any]:
     A ceiling that gates ingest has to be visible while there is still room
     to act, so this reports remaining bytes on every probe and warns before
     the limit rather than after.
+
+    Bytes were not enough.  On 2026-09-07 this card read
+    ``within_budget``, 4.78 GB remaining, no warning -- and the database
+    was growing 780 MB a day, which is 6.1 days from the ceiling and about
+    two days from the warning line.  "Remaining" answers how much room is
+    left; nobody can act on that without also knowing how fast it is
+    going, and the growth rate was not published anywhere.  So the probe
+    remembers its own last reading and reports the rate and the days it
+    implies.  A budget with no time axis is a fuel gauge with no speed.
     """
 
     database = db_path.expanduser().resolve()
@@ -1112,6 +1211,14 @@ def target_ssot_capacity_guard(db_path: Path) -> dict[str, Any]:
         violations.append("target_database_bytes_exceeded")
     elif remaining < TARGET_SSOT_WARN_REMAINING_BYTES:
         warnings.append("target_database_headroom_low")
+    growth = _target_ssot_growth(db_bytes)
+    days_left = growth["days_to_ceiling"]
+    if (
+        days_left is not None
+        and days_left <= TARGET_SSOT_WARN_DAYS_TO_CEILING
+        and not violations
+    ):
+        warnings.append("target_database_days_to_ceiling_low")
     if violations:
         state = "blocked_fail_closed"
     elif warnings:
@@ -1126,6 +1233,8 @@ def target_ssot_capacity_guard(db_path: Path) -> dict[str, Any]:
         "remaining_bytes": remaining,
         "warn_remaining_bytes": TARGET_SSOT_WARN_REMAINING_BYTES,
         "wal_bytes": wal_bytes,
+        **growth,
+        "warn_days_to_ceiling": TARGET_SSOT_WARN_DAYS_TO_CEILING,
         "violations": violations,
         "warnings": warnings,
         "state": state,
@@ -3573,13 +3682,63 @@ def main() -> int:
         next_production = now_mono
         next_forecast = now_mono
         # Last time each writer lane finished, which is what decides whose
-        # turn it is when more than one is due.  All equal at boot, so the
-        # first round follows the deterministic tie order.
+        # turn it is when more than one is due.
+        #
+        # Seeded from disk, not from the clock.  All-equal-at-boot meant
+        # every restart handed the lanes back their tie, and a lane that
+        # had been waiting hours started level with the one that had just
+        # run.  Measured 2026-09-07: ten of fifteen hosted sweeps had not
+        # completed for 17 to 32 hours, across six restarts in an
+        # afternoon -- the sweeps' *clocks* were persisted in 2026-08-30
+        # for exactly this reason, but their *turn* was not, so the fix
+        # only ever covered which member ran, never whether the lane got
+        # a slot.  Same judgement as the listing turn (charter 48).
+        #
+        # Kept as an age in seconds rather than a monotonic stamp, because
+        # monotonic clocks do not survive a process.
         writer_last_served = {
             "forecast": now_mono,
             "production": now_mono,
             "sweeps": now_mono,
         }
+        try:
+            _turn_ages = json.loads(WRITER_TURN_PATH.read_text())
+            _served_at = datetime.fromisoformat(
+                str(_turn_ages["observed_at_utc"]).replace("Z", "+00:00")
+            )
+            _off = (
+                datetime.now(timezone.utc) - _served_at
+            ).total_seconds()
+            for _lane, _age in (_turn_ages.get("age_seconds") or {}).items():
+                if _lane in writer_last_served:
+                    # A lane last served N seconds before the file was
+                    # written is now N + (time since) seconds ago.  Bounded
+                    # to a day so a long outage cannot make one lane
+                    # infinitely privileged forever after.
+                    writer_last_served[_lane] = now_mono - min(
+                        86_400.0, max(0.0, float(_age) + _off)
+                    )
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+
+        def _persist_writer_turn() -> None:
+            """Record how long ago each lane ran, so a restart resumes."""
+
+            reference = time.monotonic()
+            try:
+                WRITER_TURN_PATH.parent.mkdir(parents=True, exist_ok=True)
+                WRITER_TURN_PATH.write_text(json.dumps({
+                    "schema": "writer_turn_v1",
+                    "observed_at_utc": datetime.now(timezone.utc).isoformat(
+                        timespec="seconds"
+                    ).replace("+00:00", "Z"),
+                    "age_seconds": {
+                        lane: round(reference - served, 1)
+                        for lane, served in writer_last_served.items()
+                    },
+                }))
+            except OSError:  # noqa: PERF203 -- a turn, not a fact
+                pass
         # Which lane took the most recent writer slot, for the production
         # floor below: a maintenance lane may not take two in a row while
         # production is due.
@@ -4086,6 +4245,7 @@ def main() -> int:
                     next_production, time.monotonic() + WRITER_YIELD_SEC
                 )
                 writer_last_served["production"] = time.monotonic()
+                _persist_writer_turn()
             if forecast_future is not None and forecast_future.done():
                 try:
                     forecast_result = forecast_future.result()
@@ -4135,6 +4295,7 @@ def main() -> int:
                     next_forecast, time.monotonic() + WRITER_YIELD_SEC
                 )
                 writer_last_served["forecast"] = time.monotonic()
+                _persist_writer_turn()
             storage_ok = storage_guard.get("ok") is True
             # Whose turn it is at the single writer.
             #
@@ -4283,6 +4444,7 @@ def main() -> int:
                 # per finisher keeps the sweeps lane from claiming a fresh
                 # turn while its own slower members are still running.
                 writer_last_served["sweeps"] = time.monotonic()
+                _persist_writer_turn()
             state["hosted_sweeps"]["running"] = sorted(hosted_sweep_futures)
             if (
                 storage_ok
