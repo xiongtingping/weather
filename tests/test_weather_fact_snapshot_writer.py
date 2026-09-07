@@ -50,8 +50,72 @@ def _source_trace(source_class="hard_observation_candidate", hard_eligible=True)
     }
 
 
+def _posterior_ssot_fields(distribution):
+    """The posterior SSOT block the apply contract requires.
+
+    Derived from the same {label: probability} mapping the prior fields
+    are, so the two cannot disagree.  Spread before any key a test sets
+    for itself, which is how the negative cases below still install their
+    own invalid block and still get blocked.
+
+    Added 2026-09-07: the contract grew and these payloads did not, so
+    nineteen tests here were blocked on posterior_ssot_apply_contract_failed
+    before their own assertion ran.
+    """
+
+    rows = [
+        {"bucket": str(label), "probability": float(probability)}
+        for label, probability in dict(distribution).items()
+    ]
+    if not rows:
+        return {}
+    total = sum(row["probability"] for row in rows) or 1.0
+    rows = [
+        {"bucket": row["bucket"], "probability": row["probability"] / total}
+        for row in rows
+    ]
+    top = max(rows, key=lambda row: row["probability"])
+    selection = {
+        "target_bucket": top["bucket"],
+        "target_probability": top["probability"],
+        "target_probability_field": "posterior_ssot_fact.target_probability",
+        "ssot_source": "posterior_ssot_fact",
+        "selection_runtime_recomputed": False,
+        "fact_snapshot_id": "unit_fact_snapshot",
+        "posterior_run_id": "unit_posterior_run",
+    }
+    return {
+        "fact_snapshot_id": "unit_fact_snapshot",
+        "posterior_run_id": "unit_posterior_run",
+        "phase": "D0_unit_test",
+        "phase_reason": "unit_test_ssot_contract",
+        "beta_weak": 0.0,
+        "beta_strong": 1.0,
+        "hard_mask_reason": "unit_test_no_hard_mask",
+        "posterior_ssot_fact": {
+            "schema": "bayes_posterior_ssot_fact_v1",
+            "state": "available",
+            "fact_snapshot_id": "unit_fact_snapshot",
+            "posterior_run_id": "unit_posterior_run",
+            "target_bucket": top["bucket"],
+            "target_probability": top["probability"],
+            "target_probability_field": "posterior_ssot_fact.target_probability",
+            "bucket_probabilities": rows,
+            "boundaries": {
+                "frontend_recompute_allowed": False,
+                "decision_recompute_allowed": False,
+                "hard_mask_is_constraint_not_weight": True,
+            },
+            "layer_chain": {"formula": "prior*likelihood/normalizer"},
+        },
+        "posterior_target_bucket_selection": dict(selection),
+        "target_bucket_selection": dict(selection),
+    }
+
+
 def _prior_fields(distribution):
     return {
+        **_posterior_ssot_fields(distribution),
         "prior_distribution": dict(distribution),
         "prior_na_reason": "",
         "prior_meta": {
