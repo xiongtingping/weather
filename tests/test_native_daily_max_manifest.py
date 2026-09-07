@@ -61,6 +61,21 @@ def _points() -> list[dict]:
     return result
 
 
+from tests.ephemeral_audit_support import requires_audit_artifacts
+
+# output/audits is untracked and pruned by age (commit 10f91279), so these
+# decode-evidence and coverage receipts are present only until the pruner
+# next runs.  Scoped per test: four of the eight here need them, and a
+# module-level marker would take the other four with it.
+_NEEDS_DECODE_EVIDENCE = requires_audit_artifacts(
+    *REAL_EVIDENCE,
+    ROOT / "output/audits/pr05_pr09_model_coverage_v5_20260804.json",
+    ROOT / "output/audits/bayes_basket_target_current_et_20260726/native_decode_evidence.json",
+    ROOT / "output/audits/bayes_basket_target_current_et_20260726/model_arrival_evidence.json",
+)
+
+
+@_NEEDS_DECODE_EVIDENCE
 def test_complete_et_hourly_manifest_recomputes_max_and_sets() -> None:
     manifest = build_native_daily_max_manifest(
         identity_receipt=_identity(), event_date="2026-07-25",
@@ -73,6 +88,7 @@ def test_complete_et_hourly_manifest_recomputes_max_and_sets() -> None:
     assert manifest["consumable"] is False
 
 
+@_NEEDS_DECODE_EVIDENCE
 def test_manifest_rejects_missing_slot_and_uses_latest_component_decision() -> None:
     with pytest.raises(ContractError, match="hourly_coverage_incomplete"):
         build_native_daily_max_manifest(
@@ -88,6 +104,7 @@ def test_manifest_rejects_missing_slot_and_uses_latest_component_decision() -> N
     assert manifest["forecast_decision_at_utc"] == "2026-07-25T01:03:00.000Z"
 
 
+@_NEEDS_DECODE_EVIDENCE
 def test_manifest_rejects_republisher_and_clock_reversal() -> None:
     identity = _identity("ECMWF_AIFS_OPEN_METEO_REPUBLISHER")
     with pytest.raises(ContractError, match="native_source_required"):
@@ -104,6 +121,7 @@ def test_manifest_rejects_republisher_and_clock_reversal() -> None:
         )
 
 
+@_NEEDS_DECODE_EVIDENCE
 def test_real_three_model_evidence_yields_135_exact_terminals() -> None:
     evidences = [json.loads(path.read_text(encoding="utf-8")) for path in REAL_EVIDENCE]
     bundle = build_decode_evidence_terminal_bundle(
@@ -126,6 +144,7 @@ def test_real_three_model_evidence_yields_135_exact_terminals() -> None:
     assert bundle["consumable"] is False
 
 
+@_NEEDS_DECODE_EVIDENCE
 def test_decode_evidence_tamper_is_rejected_even_if_payload_still_parses() -> None:
     evidence = json.loads(REAL_EVIDENCE[0].read_text(encoding="utf-8"))
     tampered = deepcopy(evidence)
@@ -136,6 +155,7 @@ def test_decode_evidence_tamper_is_rejected_even_if_payload_still_parses() -> No
         )
 
 
+@_NEEDS_DECODE_EVIDENCE
 def test_current_et_arrival_join_closes_decision_but_not_identity_or_truth() -> None:
     decode = json.loads(
         (ROOT / "output/audits/bayes_basket_target_current_et_20260726/native_decode_evidence.json").read_text()
@@ -168,6 +188,7 @@ def test_current_et_arrival_join_closes_decision_but_not_identity_or_truth() -> 
     )
 
 
+@_NEEDS_DECODE_EVIDENCE
 def test_current_et_native_identity_materializes_45_icon_manifests() -> None:
     decode = json.loads(
         (ROOT / "output/audits/bayes_basket_target_current_et_20260726/native_decode_evidence.json").read_text()
