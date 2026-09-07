@@ -88,6 +88,10 @@ REGIONAL_ARMS = ("covered", "+regional", "+regional_full")
 # layer owns the total above the running high and whose remaining-warming
 # layer already reshapes the buckets above it.
 SOFT_ARMS = ("hard+clock+soft", "+soft")
+# The temperature path's second derivative: collected since the sample builder
+# shipped, never fitted, and the only physical predictor the suspended soft
+# layer carried that the chain does not.  --acceleration scores it.
+ACCEL_ARMS = ("+accel",)
 
 
 def _parse(stamp: str) -> datetime:
@@ -325,6 +329,7 @@ def evaluate_day(
     hazard_covered: Mapping[str, Any] | None = None,
     hazard_regional: Mapping[str, Any] | None = None,
     hazard_regional_full: Mapping[str, Any] | None = None,
+    hazard_accel: Mapping[str, Any] | None = None,
     soft: bool = False,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
@@ -408,6 +413,11 @@ def evaluate_day(
                 **common, hazard_artifact=hazard, reanchor_artifact=reanchor,
                 phase_enabled=False,
             )
+            if hazard_accel is not None:
+                arms["+accel"], _ = compile_four_layer_posterior(
+                    **common, hazard_artifact=hazard_accel,
+                    reanchor_artifact=reanchor,
+                )
             if soft:
                 ratios = json.loads(str(sample["soft_lr_json"]))
                 soft_root = soft_multiplied(view["probabilities"], ratios)
@@ -499,7 +509,8 @@ def _arms(rows: Sequence[Mapping[str, Any]]) -> tuple[str, ...]:
     for row in rows[1:]:
         present &= set(row["scores"])
     return tuple(
-        arm for arm in ARMS + REGIONAL_ARMS + SOFT_ARMS if arm in present
+        arm for arm in ARMS + REGIONAL_ARMS + SOFT_ARMS + ACCEL_ARMS
+        if arm in present
     )
 
 
@@ -562,6 +573,10 @@ def main() -> int:
              "scored where it would actually serve",
     )
     parser.add_argument(
+        "--acceleration", action="store_true",
+        help="score the temperature path's second derivative as a feature",
+    )
+    parser.add_argument(
         "--soft", action="store_true",
         help="score the suspended soft likelihood, on the rows where a "
              "trajectory artifact resolved and it would have had something "
@@ -597,7 +612,19 @@ def main() -> int:
             continue
         hazard, reanchor = fitted
         train = [row for row in all_rows if str(row["event_date"]) < day]
-        covered = regional = regional_full = None
+        covered = regional = regional_full = accel = None
+        if args.acceleration:
+            train = [row for row in all_rows if str(row["event_date"]) < day]
+            try:
+                accel = hazard_artifact(
+                    train,
+                    phase_names=hazard_fit.PHASE_FEATURES
+                    + hazard_fit.ACCELERATION_FEATURES,
+                    full_names=hazard_fit.FULL_FEATURES
+                    + hazard_fit.ACCELERATION_FEATURES,
+                )
+            except (SystemExit, ValueError):
+                accel = None
         day_samples = by_day[day]
         if args.soft:
             # Where no artifact resolved the two arms are the incumbent by
@@ -634,6 +661,7 @@ def main() -> int:
             hazard_covered=covered,
             hazard_regional=regional,
             hazard_regional_full=regional_full,
+            hazard_accel=accel,
             soft=bool(args.soft),
         ))
         print(

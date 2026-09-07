@@ -111,6 +111,31 @@ REGIONAL_FEATURES = (
     "regional_headroom_c",
     "regional_live_gap_c",
 )
+# The one physical predictor the suspended soft layer had that this fit does
+# not.  Collected by the sample builder since it shipped and never used: the
+# old conditioner's coefficient set is base_distribution_mean, momentum,
+# **acceleration**, drawdown, dewpoint, cloud, precipitation, wind and
+# remaining hours, and every one of those but the first two is already here.
+# Added by --acceleration so the ablation is one run against another.
+#
+# Measured 2026-09-07 and worth nothing.  Walk-forward over 31575 samples,
+# every day fitted on strictly earlier days:
+#
+#   four_layer  hit 0.631  +-1 0.879  log -0.948  Brier 0.444  centre 0.590
+#   +accel      hit 0.630  +-1 0.879  log -0.948  Brier 0.444  centre 0.590
+#
+# Identical to three decimals on every metric.  The reading is kept because
+# the proposal is a natural one to make twice: the suspended soft layer
+# conditioned on nine predictors and this fit carries seven of them, so the
+# missing two look like an obvious gap.  They are not.  The second derivative
+# is what momentum already says one difference later, on a path sampled every
+# half hour, and ``base_distribution_mean`` is a property of the old form's
+# prior rather than of the day.  There is no physics left in that layer to
+# port: cloud, dewpoint, wind and precipitation are all here already, read
+# from the same ``compile_conditional_metar_path_state`` the old conditioner
+# read them from, and fitted per report instead of one anchor report per
+# six-hour bucket.
+ACCELERATION_FEATURES = ("acceleration_c_per_hour2",)
 
 
 def hours_bin(hours: float) -> int:
@@ -422,6 +447,12 @@ def main() -> int:
     parser.add_argument("--out", required=True)
     parser.add_argument("--fitted-at-utc", default=None)
     parser.add_argument(
+        "--acceleration", action="store_true",
+        help="add the second derivative of the temperature path, the one "
+             "physical predictor the suspended soft layer had and this fit "
+             "does not",
+    )
+    parser.add_argument(
         "--regional", action="store_true",
         help="charter 95 step two: add the regional curve's two features",
     )
@@ -443,8 +474,11 @@ def main() -> int:
             sample for sample in samples
             if sample.get("regional_headroom_c") is not None
         ]
-    phase_names = PHASE_FEATURES + (REGIONAL_FEATURES if args.regional else ())
-    full_names = FULL_FEATURES + (REGIONAL_FEATURES if args.regional else ())
+    extra = (REGIONAL_FEATURES if args.regional else ()) + (
+        ACCELERATION_FEATURES if args.acceleration else ()
+    )
+    phase_names = PHASE_FEATURES + extra
+    full_names = FULL_FEATURES + extra
     if len(samples) < 500:
         raise SystemExit(f"only {len(samples)} samples; refusing to fit")
     fallbacks = fleet_means(samples, full_names)
