@@ -83,6 +83,34 @@ BAND_TABLE_CELLS = tuple(
     (round(step * 0.05, 2), round(step * 0.05 + 0.05, 2))
     for step in range(10)
 ) + ((0.50, 1.01),)
+# Charter 105's axis.  The disease this table treats is over-dispersion --
+# too little mass on the centre, too much four buckets out -- and that is a
+# statement about POSITION.  Keying the cells on the claim costs two things:
+# the key is not invariant under the map (a bucket claiming 0.44 lands in
+# [0.40,0.45), gets multiplied, renormalises to 0.46 and belongs to a cell
+# whose factor it was never scored under), and it pools rungs that behave
+# differently (on 2026-09-05 the [5-10%) cell held VILK one step off centre,
+# ZHHH three off and ZHHH five off; they realised 1.151, 0.783 and 0.490).
+# Distance from the peak is a fixed point of the map and separates them.
+BAND_DISTANCE_CELLS = (
+    (0.0, 1.0), (1.0, 2.0), (2.0, 3.0), (3.0, 4.0), (4.0, 99.0),
+)
+BAND_AXIS_CLAIM = "claim"
+BAND_AXIS_CENTRE_DISTANCE = "centre_distance"
+BAND_AXES = (BAND_AXIS_CLAIM, BAND_AXIS_CENTRE_DISTANCE)
+
+
+def cells_for_axis(axis: str) -> tuple[tuple[float, float], ...]:
+    """The partition an axis is fitted on.  One place, so a fit and a serve
+    cannot disagree about how many cells a table has."""
+
+    return (
+        BAND_DISTANCE_CELLS
+        if str(axis) == BAND_AXIS_CENTRE_DISTANCE
+        else BAND_TABLE_CELLS
+    )
+
+
 # The diagnostics grid is the fitting grid now that the fitting grid is
 # fine enough to diagnose with.
 FINE_BANDS = BAND_TABLE_CELLS
@@ -275,6 +303,7 @@ def band_table_sha256(
     factors: Sequence[tuple[tuple[float, float], float]],
     *,
     stage: str = "P0",
+    axis: str = BAND_AXIS_CLAIM,
 ) -> str:
     """Identity of a table.
 
@@ -283,11 +312,22 @@ def band_table_sha256(
     distributions and their evidence is not interchangeable.
     """
 
-    return content_sha256({
+    axis_id = str(axis)
+    if axis_id not in BAND_AXES:
+        raise ValueError(f"unknown band axis: {axis_id}")
+    identity: dict[str, Any] = {
         "schema": "band_reliability_table_v1",
         "stage": _check_stage(stage),
         "factors": _canonical_factors(factors),
-    })
+    }
+    # The axis enters the identity only when it is not the shipped one, so
+    # every table already on the book keeps the sha the artifacts pinned to
+    # it were gated against.  Without this a distance table whose factors
+    # happen to match a claim table would collide with it and re-activate
+    # the wrong lookup under the right hash.
+    if axis_id != BAND_AXIS_CLAIM:
+        identity["axis"] = axis_id
+    return content_sha256(identity)
 
 
 def load_band_table(
@@ -367,6 +407,7 @@ def persist_and_activate_band_table(
     evidence: Mapping[str, Any],
     fitted_at_utc: str | None = None,
     serving_day_count: int,
+    axis: str = BAND_AXIS_CLAIM,
 ) -> dict[str, Any]:
     """Insert the fitted table and make it this stage's active one.
 
@@ -376,7 +417,10 @@ def persist_and_activate_band_table(
 
     ensure_band_table_schema(conn)
     stage_id = _check_stage(stage)
-    sha = band_table_sha256(factors, stage=stage_id)
+    axis_id = str(axis)
+    if axis_id not in BAND_AXES:
+        raise ValueError(f"unknown band axis: {axis_id}")
+    sha = band_table_sha256(factors, stage=stage_id, axis=axis_id)
     now = fitted_at_utc or (
         datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     )
@@ -389,6 +433,7 @@ def persist_and_activate_band_table(
         return {
             "stage": stage_id,
             "band_table_sha256": sha,
+            "axis": axis_id,
             "state": "UNCHANGED",
         }
     attempts = _begin_immediate(conn)
@@ -402,8 +447,8 @@ def persist_and_activate_band_table(
             "INSERT INTO calibration_band_reliability_table"
             " (band_table_sha256, stage, factors_json, evidence_json,"
             "  fitted_at_utc, serving_day_count, activated,"
-            "  activated_at_utc)"
-            " VALUES (?,?,?,?,?,?,1,?)"
+            "  activated_at_utc, axis)"
+            " VALUES (?,?,?,?,?,?,1,?,?)"
             " ON CONFLICT(band_table_sha256) DO UPDATE SET"
             "  activated=1, activated_at_utc=excluded.activated_at_utc",
             (
@@ -416,6 +461,7 @@ def persist_and_activate_band_table(
                 now,
                 int(serving_day_count),
                 now,
+                axis_id,
             ),
         )
         conn.commit()
@@ -425,6 +471,7 @@ def persist_and_activate_band_table(
     return {
         "stage": stage_id,
         "band_table_sha256": sha,
+        "axis": axis_id,
         "state": "ACTIVATED",
         "previous": None if active is None else str(active[0]),
         "write_lock_attempts": attempts,
@@ -705,19 +752,48 @@ def gate_lane_by_day(
     return dict(by_day)
 
 
+def _record_keys(
+    records: Sequence[tuple[float, int]], axis: str
+) -> list[float]:
+    """The quantity each record's cell is read from.
+
+    ``records`` is one station-day's rungs in bucket order -- that ordering
+    is the ordinal, which is why the distance axis needs nothing the fit
+    does not already carry.  The peak is the argmax, ties breaking on the
+    ordinal, exactly as ``cross_consensus._centre_distances`` does it at
+    serving time; the two must agree or the table is fitted on one axis and
+    applied on another.
+    """
+
+    if str(axis) != BAND_AXIS_CENTRE_DISTANCE:
+        return [float(probability) for probability, _hit in records]
+    if not records:
+        return []
+    peak = max(
+        range(len(records)),
+        key=lambda index: (float(records[index][0]), -index),
+    )
+    return [float(abs(index - peak)) for index in range(len(records))]
+
+
 def _day_aggregates(
     by_day: Mapping[str, list[list[tuple[float, int]]]],
     bands: Sequence[tuple[float, float]],
+    axis: str = BAND_AXIS_CLAIM,
 ) -> dict[str, dict[tuple[float, float], list[float]]]:
     aggregates: dict[str, dict[tuple[float, float], list[float]]] = {}
     for day, rows in by_day.items():
         cells = {band: [0.0, 0.0] for band in bands}
         for records in rows:
-            for probability, hit in records:
+            keys = _record_keys(records, axis)
+            for (probability, hit), value in zip(records, keys):
                 for band in bands:
-                    if band[0] <= probability < band[1]:
+                    if band[0] <= value < band[1]:
+                        # The claimed mass and the realised count are always
+                        # the rung's own; only which cell they land in moves.
                         cells[band][0] += probability
                         cells[band][1] += hit
+                        break
         aggregates[day] = cells
     return aggregates
 
@@ -728,11 +804,12 @@ def band_lane_report(
     bands: Sequence[tuple[float, float]] = FINE_BANDS,
     bootstrap_samples: int = 1000,
     seed: int = 17,
+    axis: str = BAND_AXIS_CLAIM,
 ) -> dict[tuple[float, float], dict[str, Any]]:
     days = sorted(by_day)
     if not days:
         return {}
-    aggregates = _day_aggregates(by_day, bands)
+    aggregates = _day_aggregates(by_day, bands, axis)
 
     def ratios(
         sample: Sequence[str],
@@ -838,6 +915,7 @@ def fit_band_reliability_table(
     *,
     stage: str = "P0",
     bootstrap_samples: int = 1000,
+    axis: str = BAND_AXIS_CLAIM,
 ) -> dict[str, Any]:
     """Fit one stage's table under the fixed admission rule.
 
@@ -847,6 +925,12 @@ def fit_band_reliability_table(
     """
 
     stage_id = _check_stage(stage)
+    axis_id = str(axis)
+    if axis_id not in BAND_AXES:
+        raise ValueError(f"unknown band axis: {axis_id}")
+    # Charter 105: the partition follows the axis, so a distance fit cannot
+    # be scored on claim cells or the other way round.
+    cells = cells_for_axis(axis_id)
     truth = _truth(conn)
     serving = serving_lane_by_day(conn, truth, stage=stage_id)
     station_days = sum(len(rows) for rows in serving.values())
@@ -865,24 +949,26 @@ def fit_band_reliability_table(
         if accumulating
         else band_lane_report(
             serving,
-            bands=BAND_TABLE_CELLS,
+            bands=cells,
             bootstrap_samples=bootstrap_samples,
+            axis=axis_id,
         )
     )
     gate_report = (
         band_lane_report(
             gate,
-            bands=BAND_TABLE_CELLS,
+            bands=cells,
             bootstrap_samples=bootstrap_samples,
+            axis=axis_id,
         )
         if gate
         else {}
     )
     factors: dict[tuple[float, float], float] = {
-        band: 1.0 for band in BAND_TABLE_CELLS
+        band: 1.0 for band in cells
     }
     basis: dict[str, str] = {}
-    for band in BAND_TABLE_CELLS:
+    for band in cells:
         key = str(list(band))
         if accumulating:
             basis[key] = "accumulating_evidence"
@@ -906,7 +992,7 @@ def fit_band_reliability_table(
                 continue
         factors[band] = cell["conservative_factor"]
         basis[key] = "serving_lane"
-    for band in BAND_TABLE_CELLS:
+    for band in cells:
         if factors[band] != 1.0 or accumulating:
             continue
         serving_cell = serving_report.get(band)
