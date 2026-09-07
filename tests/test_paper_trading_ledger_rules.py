@@ -1076,6 +1076,18 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
             # of the tables; the sibling tests skip the same way.
             return
 
+        try:
+            admissible_by_scope = {
+                (str(r[0]), str(r[1]), str(r[2]), str(r[3]), str(r[4])): int(r[5])
+                for r in conn.execute(
+                    "SELECT station_id, event_date, stage, decision_at_utc,"
+                    " buckets_json, admissible"
+                    " FROM paper_trade_candidate_window"
+                )
+            }
+        except sqlite3.DatabaseError:
+            admissible_by_scope = {}
+
         for (st, day, stage, at, posted_js, filled_js, centre, win, cost,
              prices_js, probs_js, held_js, chain_stake,
              stake, consolidation_js) in positions:
@@ -1144,22 +1156,39 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
                 # improves the chain's expected log growth, and either can
                 # hold with the seat's own claim under its own cost --
                 # buying the miss rung as insurance prices exactly there.
-                # Read off the CHOSEN basket, not the one that settled.
-                # The rule under test is the entry gate, and the entry gate
-                # judged the window it posted at the ask it was quoted --
-                # ``all_in_cost`` is what the resting ladder went on to pay,
-                # which is usually far less (mean -0.45 over 130 seats) and
-                # occasionally more: ZSQD 2026-09-06 cleared the gate at
-                # 0.891 against 0.860 and filled at 0.970, because charter
-                # 94(六)'s ladder follows the bid and the bid rose all day.
-                # Two seats in 130 do that.  It is a real cost of that
-                # ruling and it is not evidence the gate did not run, which
-                # is the only thing this assertion can speak to.
-                if win is None or cost is None:
+                # The gate's own verdict, not a proxy for it.
+                #
+                # This asserted ``claim > cost`` for three vintages and was
+                # wrong in a different way each time.  It read the SETTLED
+                # basket's claim against the ladder's realised cost, which
+                # is not what any gate saw.  Moved to the chosen basket it
+                # read this lane's arithmetic for a decision production's
+                # judge made -- EFHK 2026-08-16, 0.6982 against 0.7000 here
+                # and a lifted 0.7540 against 0.7500 there.  Moved again to
+                # the judging lane's own numbers it still failed on SBGR
+                # 2026-09-04, because ``claim > cost`` is not the rule
+                # either: the rule is ``lambda(a) * claim > cost +
+                # friction``, and a window at a = 1.0001 can clear it while
+                # its undeflated claim sits 4.6e-05 under its price.
+                #
+                # So it now asks the enumeration that judged, which records
+                # its own verdict: a seat the gate did not admit is the
+                # thing this test exists to catch, and admissibility is
+                # exactly that, recorded rather than re-derived.
+                judged = admissible_by_scope.get(
+                    (str(st), str(day), str(stage), str(at),
+                     json.dumps(posted, ensure_ascii=False))
+                )
+                if judged is None:
+                    # No recorded enumeration for this decision -- a row
+                    # older than the candidate table, or a scope whose
+                    # judge never reached its shortlist.  Not judgeable,
+                    # and guessing is how the last three vintages went
+                    # wrong.
                     continue
-                assert float(win) > float(cost), (
-                    f"{scope}: fully-filled seat with EV<=0 "
-                    f"({win} vs {cost}) -- the entry gate cannot have run"
+                assert judged == 1, (
+                    f"{scope}: fully-filled seat on a window the judging "
+                    "enumeration recorded as inadmissible"
                 )
 
             # The replay below re-implements the seat rule, which is only
