@@ -488,6 +488,37 @@ MAX_QUOTE_EVIDENCE_REFRESHES_PER_DAY = 6
 # Charter 48: a listed day not served for this long takes the next cycle
 # regardless of the alternation -- the guard against a restart storm.
 LISTING_SCOPE_TURN_STARVATION_SEC = 900.0
+# The stages that are not inputs to the current action.
+#
+# Each already says so at its own call site -- closed-day truth, an OOS
+# evaluation that is "isolated_from_probability_and_execution", settlement
+# labels the code calls "maintenance work, not inputs to the current
+# action" -- and the answer so far has been to move them later in the
+# cycle.  That fixes the order and not the arithmetic: the decision path
+# compiles against a book with ``max_quote_age_seconds`` of life, so what
+# it is racing is the length of the whole cycle, not its own position in
+# it.  Measured 2026-09-07: 1436.6s of stages ran before the books were
+# even read, and 86 of 90 scopes then died on ``production_quote_expired``.
+#
+# So they keep their writer, their heartbeat and their watchdog -- the
+# reasons they were brought inside the cycle in the first place -- and give
+# up only the right to take unbounded time from a decision.  Naming them
+# here rather than judging each call site separately is the point: what a
+# cycle pays for maintenance is one number.
+MAINTENANCE_STAGES: tuple[str, ...] = (
+    "truth_increment",
+    "native_ensemble_oos",
+    "delta_v2_settlement",
+)
+# What one cycle may spend on all of them together.  Sized against the
+# quote lease rather than against the stages: 60s of books cannot survive
+# a maintenance pass that costs more than the compile it delays.
+MAINTENANCE_BUDGET_SEC = 60.0
+# ...and how long one stage may go unserved before it takes a cycle
+# regardless of the budget.  Without this the fixed order starves the tail,
+# which is the failure LISTING_SCOPE_TURN_STARVATION_SEC exists for and the
+# one the rotation cursor alone does not close.
+MAINTENANCE_STARVATION_SEC = 1800.0
 MAX_RESIDENT_NWP_SCOPES_PER_CYCLE = 4
 MAX_NATIVE_ENSEMBLE_TRUTH_CASES_PER_STATION = 64
 MAX_RESIDENT_CANDIDATE_PREFETCH_SCOPES_PER_CYCLE = 1
@@ -7352,6 +7383,212 @@ class TargetProductionWorker:
 
     def _listing_scope_turn_path(self) -> Path:
         return self.nwp_runtime_root / "listing_scope_turn.json"
+
+    # ------------------------------------------------------------------
+    # The maintenance lane: same writer, same cycle, its own budget.
+    # ------------------------------------------------------------------
+
+    def _maintenance_turn_path(self) -> Path:
+        return self.nwp_runtime_root / "maintenance_lane_turn.json"
+
+    def _load_maintenance_turn(self) -> dict[str, Any]:
+        """When each maintenance stage was last served.
+
+        Persisted beside the listing turn and the NWP cursor, for the same
+        reason: held in memory, every restart would reseed the rotation to
+        its head, and restarts here are not rare -- nineteen on 2026-09-02.
+        A stage at the tail would then be served almost never, which is the
+        starvation this budget must not introduce while removing the
+        overrun.
+        """
+
+        recorded = getattr(self, "_maintenance_turn_cache", None)
+        if recorded is not None:
+            return recorded
+        self._maintenance_cost_cache = {}
+        loaded: dict[str, Any] = {}
+        try:
+            raw = load_bounded_json(self._maintenance_turn_path())
+            if isinstance(raw, Mapping):
+                served = raw.get("served_at_utc")
+                if isinstance(served, Mapping):
+                    loaded = {
+                        str(key): str(value)
+                        for key, value in served.items()
+                        if str(value or "").strip()
+                    }
+                costs = raw.get("last_elapsed_sec")
+                if isinstance(costs, Mapping):
+                    self._maintenance_cost_cache = {
+                        str(key): float(value)
+                        for key, value in costs.items()
+                        if isinstance(value, (int, float))
+                    }
+        except Exception:  # noqa: BLE001 -- a turn, not a fact
+            loaded = {}
+        self._maintenance_turn_cache = loaded
+        return loaded
+
+    def _maintenance_unserved_seconds(
+        self, stage: str, *, now_utc: str
+    ) -> float | None:
+        """How long since this stage last ran, or None if it never has."""
+
+        served = self._load_maintenance_turn().get(stage)
+        if not served:
+            return None
+        try:
+            return (
+                datetime.fromisoformat(now_utc.replace("Z", "+00:00"))
+                - datetime.fromisoformat(str(served).replace("Z", "+00:00"))
+            ).total_seconds()
+        except ValueError:
+            return None
+
+    def _maintenance_admits(self, stage: str) -> bool:
+        """Whether this cycle can afford to run ``stage``.
+
+        Two ways in.  The budget, while the cycle has not yet spent what a
+        decision can afford to wait for; and starvation, which overrides the
+        budget outright -- a stage unserved for MAINTENANCE_STARVATION_SEC
+        runs even in a cycle that has already spent its allowance, because a
+        lane that is never served is a worse failure than one cycle that
+        runs long.  A stage that has never run is starved by definition, so
+        a fresh worker serves every one of them on its first cycle.
+        """
+
+        if stage not in MAINTENANCE_STAGES:
+            return True
+        admissions = self._maintenance_admissions_map()
+        unserved = self._maintenance_unserved_seconds(
+            stage, now_utc=utc_now()
+        )
+        if unserved is None or unserved >= MAINTENANCE_STARVATION_SEC:
+            admissions[stage] = "starved"
+            return True
+        # What it is about to spend, not what has already been spent.
+        # Checking only the running total admits a stage that costs three
+        # times the whole allowance, because at the moment it is asked the
+        # total is still zero -- which is how a budget becomes decorative.
+        # The cost is the stage's own last measured one; a stage with no
+        # record has never run and is admitted by the starvation arm above.
+        expected = self._maintenance_last_cost(stage)
+        if self._maintenance_spent() + expected <= MAINTENANCE_BUDGET_SEC:
+            admissions[stage] = "budget"
+            return True
+        admissions[stage] = "deferred"
+        return False
+
+    def _maintenance_last_cost(self, stage: str) -> float:
+        costs = getattr(self, "_maintenance_cost_cache", None)
+        if costs is None:
+            # The two caches are filled by the same read, so an unfilled
+            # cost cache means the read has not happened -- or was skipped
+            # because the turn cache was already warm, which would leave the
+            # costs empty and every stage looking free.
+            self._maintenance_turn_cache = None
+            self._load_maintenance_turn()
+            costs = getattr(self, "_maintenance_cost_cache", None) or {}
+            self._maintenance_cost_cache = costs
+        return float(costs.get(stage, 0.0) or 0.0)
+
+    def _maintenance_admissions_map(self) -> dict[str, str]:
+        admissions = getattr(self, "_maintenance_admissions", None)
+        if admissions is None:
+            admissions = {}
+            self._maintenance_admissions = admissions
+        return admissions
+
+    def _maintenance_spent(self) -> float:
+        return float(getattr(self, "_maintenance_spent_sec", 0.0) or 0.0)
+
+    def _record_maintenance_served(
+        self, stage: str, elapsed_sec: float
+    ) -> None:
+        """Charge a served stage to the budget and persist its turn."""
+
+        self._maintenance_spent_sec = self._maintenance_spent() + max(
+            0.0, float(elapsed_sec)
+        )
+        self._add_span(
+            "maintenance_lane", max(0.0, float(elapsed_sec)) * 1000.0,
+            label=stage,
+        )
+        served = dict(self._load_maintenance_turn())
+        served[stage] = utc_now()
+        self._maintenance_turn_cache = served
+        costs = dict(getattr(self, "_maintenance_cost_cache", None) or {})
+        costs[stage] = round(max(0.0, float(elapsed_sec)), 1)
+        self._maintenance_cost_cache = costs
+        try:
+            write_bounded_json_if_changed(
+                self._maintenance_turn_path(),
+                {
+                    "schema": "bayes_basket_target_maintenance_lane_turn_v1",
+                    "served_at_utc": served,
+                    "last_elapsed_sec": costs,
+                    "budget_seconds": MAINTENANCE_BUDGET_SEC,
+                    "starvation_seconds": MAINTENANCE_STARVATION_SEC,
+                },
+            )
+        except Exception:  # noqa: BLE001 -- telemetry and a restart hint
+            pass
+
+    def _maintenance_deferred(self, stage: str) -> dict[str, Any]:
+        """The receipt a deferred stage leaves behind.
+
+        The state word carries neither BLOCK nor FAIL on purpose: the board
+        reads lane states by substring, and a deferred maintenance pass is
+        the lane working as designed, not an outage.  It still reports how
+        long the stage has gone unserved, so a lane that stops being
+        scheduled at all stays visible rather than merely quiet.
+        """
+
+        unserved = self._maintenance_unserved_seconds(
+            stage, now_utc=utc_now()
+        )
+        return {
+            "schema": "bayes_basket_target_maintenance_deferred_v1",
+            "state": "DEFERRED_MAINTENANCE_BUDGET",
+            "stage": stage,
+            "reason": "maintenance_budget_spent",
+            "budget_seconds": MAINTENANCE_BUDGET_SEC,
+            "spent_seconds": round(self._maintenance_spent(), 1),
+            "unserved_seconds": (
+                round(unserved, 1) if unserved is not None else None
+            ),
+            "starvation_seconds": MAINTENANCE_STARVATION_SEC,
+            "written_count": 0,
+            "appended_count": 0,
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "orders_submitted": 0,
+            "live_submit_authorized": False,
+        }
+
+    def _maintenance_lane_report(self) -> dict[str, Any]:
+        """What this cycle spent on maintenance, and what it put off."""
+
+        now = utc_now()
+        stages: dict[str, Any] = {}
+        for stage in MAINTENANCE_STAGES:
+            unserved = self._maintenance_unserved_seconds(stage, now_utc=now)
+            stages[stage] = {
+                "admitted": self._maintenance_admissions_map().get(
+                    stage, ""
+                ),
+                "unserved_seconds": (
+                    round(unserved, 1) if unserved is not None else None
+                ),
+                "last_elapsed_sec": self._maintenance_last_cost(stage),
+            }
+        return {
+            "schema": "bayes_basket_target_maintenance_lane_v1",
+            "budget_seconds": MAINTENANCE_BUDGET_SEC,
+            "spent_seconds": round(self._maintenance_spent(), 1),
+            "starvation_seconds": MAINTENANCE_STARVATION_SEC,
+            "stages": stages,
+        }
 
     def _take_listing_scope_turn(self, *, now_utc: str | None = None) -> bool:
         """Whether this cycle serves the listed days.
@@ -15374,6 +15611,10 @@ class TargetProductionWorker:
         self._stage_timings_ms = {}
         self._stage_spans = {}
         self._stage_mark_at = time.perf_counter()
+        # The maintenance allowance is per cycle; the turns it charges
+        # against outlive the process.
+        self._maintenance_spent_sec = 0.0
+        self._maintenance_admissions = {}
         started = time.perf_counter()
         reset_writer_lock_profile()
         reset_ledger_spans()
@@ -15400,6 +15641,9 @@ class TargetProductionWorker:
         if isinstance(result, dict):
             result.setdefault("stage_timings_ms", dict(self._stage_timings_ms))
             result.setdefault("stage_span_ms", self._stage_span_summary())
+            result.setdefault(
+                "maintenance_lane", self._maintenance_lane_report()
+            )
             result.setdefault("writer_lock_profile", writer_lock_profile())
             if self.stop_requested:
                 result["cycle_interrupted"] = True
@@ -15882,12 +16126,24 @@ class TargetProductionWorker:
                 # clock.  The real floor is the production cycle it rides
                 # inside (~175s), so this bound stops being the binding
                 # constraint and the sweep lands near 2 hours.
-                oos_due = (
+                # The interval below stopped binding once truth began
+                # landing fleet-wide daily: ``new_oos_stations`` is then
+                # non-empty on nearly every cycle, so "due" meant "always"
+                # and the sweep took 70.8s out of every decision.  It is
+                # measurement -- the receipt says so itself -- so it is due
+                # when the budget can carry it, or when it has been starved.
+                oos_admitted = self._maintenance_admits("native_ensemble_oos")
+                oos_due = oos_admitted and (
                     bool(new_oos_stations)
                     or last_oos_scan is None
                     or now_mono - float(last_oos_scan)
                     >= NATIVE_ENSEMBLE_OOS_SCAN_MIN_INTERVAL_SEC
                 )
+                if not oos_admitted:
+                    native_ensemble_oos_ingress = self._maintenance_deferred(
+                        "native_ensemble_oos"
+                    )
+                _oos_started = time.perf_counter()
                 if oos_due and all_oos_stations:
                     if new_oos_stations:
                         # Stalest artifact first, never the alphabet.  Truth
@@ -16101,7 +16357,7 @@ class TargetProductionWorker:
                             "orders_submitted": 0,
                             "live_submit_authorized": False,
                         }
-                else:
+                elif oos_admitted:
                     native_ensemble_oos_ingress = {
                         "state": "throttled",
                         "reason": "native_ensemble_oos_scan_interval",
@@ -16109,6 +16365,11 @@ class TargetProductionWorker:
                         "orders_submitted": 0,
                         "live_submit_authorized": False,
                     }
+                if oos_due:
+                    self._record_maintenance_served(
+                        "native_ensemble_oos",
+                        time.perf_counter() - _oos_started,
+                    )
             else:
                 native_ensemble_ingress = {
                     "state": "not_available",
@@ -16175,9 +16436,19 @@ class TargetProductionWorker:
                 self._correction_auto_clear_last_mono = None
             regime_ingress = self._materialize_regime_ssot(as_of_utc=now)
             self._mark("regime")
-            truth_materialization = self._materialize_truth_increment(
-                as_of_utc=now,
-            )
+            if self._maintenance_admits("truth_increment"):
+                _truth_started = time.perf_counter()
+                truth_materialization = self._materialize_truth_increment(
+                    as_of_utc=now,
+                )
+                self._record_maintenance_served(
+                    "truth_increment",
+                    time.perf_counter() - _truth_started,
+                )
+            else:
+                truth_materialization = self._maintenance_deferred(
+                    "truth_increment"
+                )
             self._mark("truth_increment")
             ws_scope_catalog = (
                 self._resident_ws_scope_catalog()
@@ -17069,12 +17340,25 @@ class TargetProductionWorker:
             # WS generation stale before DeltaBasketScore compiled.  Keep the
             # settlement lane independent and non-blocking after every current
             # scope has completed its current-stage -> JIT WS -> decision path.
-            (
-                delta_v2_truth_ingress,
-                delta_v2_label_ingress,
-            ) = self._run_delta_v2_settlement_maintenance(
-                as_of_utc=utc_now(),
-            )
+            if self._maintenance_admits("delta_v2_settlement"):
+                _settlement_started = time.perf_counter()
+                (
+                    delta_v2_truth_ingress,
+                    delta_v2_label_ingress,
+                ) = self._run_delta_v2_settlement_maintenance(
+                    as_of_utc=utc_now(),
+                )
+                self._record_maintenance_served(
+                    "delta_v2_settlement",
+                    time.perf_counter() - _settlement_started,
+                )
+            else:
+                delta_v2_truth_ingress = self._maintenance_deferred(
+                    "delta_v2_settlement"
+                )
+                delta_v2_label_ingress = self._maintenance_deferred(
+                    "delta_v2_settlement"
+                )
             try:
                 cash_phase_forward_observations = (
                     self._flush_cash_phase_forward_observations()
@@ -17198,6 +17482,7 @@ class TargetProductionWorker:
                 "regime_ingress": regime_ingress,
                 "live_observation_identity": live_observation_identity,
                 "truth_materialization": truth_materialization,
+                "maintenance_lane": self._maintenance_lane_report(),
                 "delta_v2_truth_ingress": delta_v2_truth_ingress,
                 "delta_v2_label_ingress": delta_v2_label_ingress,
                 "post_fill_recompute": post_fill_recompute,
@@ -17213,12 +17498,25 @@ class TargetProductionWorker:
                 delta_v2_truth_ingress is None
                 and delta_v2_label_ingress is None
             ):
-                (
-                    delta_v2_truth_ingress,
-                    delta_v2_label_ingress,
-                ) = self._run_delta_v2_settlement_maintenance(
-                    as_of_utc=utc_now(),
-                )
+                if self._maintenance_admits("delta_v2_settlement"):
+                    _settlement_started = time.perf_counter()
+                    (
+                        delta_v2_truth_ingress,
+                        delta_v2_label_ingress,
+                    ) = self._run_delta_v2_settlement_maintenance(
+                        as_of_utc=utc_now(),
+                    )
+                    self._record_maintenance_served(
+                        "delta_v2_settlement",
+                        time.perf_counter() - _settlement_started,
+                    )
+                else:
+                    delta_v2_truth_ingress = self._maintenance_deferred(
+                        "delta_v2_settlement"
+                    )
+                    delta_v2_label_ingress = self._maintenance_deferred(
+                        "delta_v2_settlement"
+                    )
             try:
                 cash_phase_forward_observations = (
                     self._flush_cash_phase_forward_observations()
