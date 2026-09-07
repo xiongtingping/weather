@@ -266,17 +266,234 @@ def rebaseline() -> dict[str, object]:
     }
 
 
+
+# ---------------------------------------------------------------------------
+# auto: the same stages, driven, so a new market does not wait for a person
+# ---------------------------------------------------------------------------
+
+#: Blockers ``auto`` is allowed to clear by itself.  Everything else is
+#: evidence the station has to earn, and a sweep that "cleared" it would be
+#: writing a claim rather than a fact.
+_SELF_CLEARABLE = frozenset({"coordinate_registry_missing"})
+
+
+def _assess_blockers() -> dict[str, list[str]]:
+    """Per-station blockers, from the audit that owns the admission rule."""
+
+    result = subprocess.run(
+        [sys.executable, str(AUDIT)],
+        capture_output=True, text=True, cwd=str(ROOT),
+    )
+    out: dict[str, list[str]] = {}
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) < 3 or parts[0] not in ("BLOCKED", "ADMISSIBLE"):
+            continue
+        station = parts[1].upper()
+        reasons = parts[-1]
+        out[station] = (
+            [] if parts[0] == "ADMISSIBLE" or reasons == "-"
+            else [r for r in reasons.split(",") if r]
+        )
+    return out
+
+
+def _stationinfo(station_ids) -> tuple[dict[str, tuple[float, float]], str]:
+    """One AWC call for the whole fleet, and that response's own digest.
+
+    The registry carries a single snapshot hash for every coordinate in it,
+    so adding a station means re-taking the snapshot -- and the honest way
+    to re-take it is to ask for the whole set at once.  The digest returned
+    is of the bytes actually received, and the caller checks the stations
+    already in the registry still read the same, which turns a provenance
+    chore into a check on what is already there.
+    """
+
+    import hashlib
+
+    import httpx
+
+    wanted = sorted({str(value).strip().upper() for value in station_ids})
+    with httpx.Client(timeout=60.0) as client:
+        response = client.get(
+            "https://aviationweather.gov/api/data/stationinfo",
+            params={"ids": ",".join(wanted), "format": "json"},
+        )
+        response.raise_for_status()
+        body = response.content
+    digest = hashlib.sha256(body).hexdigest()
+    coordinates: dict[str, tuple[float, float]] = {}
+    for entry in json.loads(body.decode("utf-8")):
+        station = str(entry.get("icaoId") or entry.get("id") or "").strip().upper()
+        latitude, longitude = entry.get("lat"), entry.get("lon")
+        if not station or latitude is None or longitude is None:
+            continue
+        coordinates[station] = (round(float(latitude), 3), round(float(longitude), 3))
+    return coordinates, digest
+
+
+def _write_registry(new_rows, snapshot_sha256: str) -> list[str]:
+    """Append coordinates to the registry and move its snapshot hash.
+
+    This is the step that changes the fleet, because the registry IS the
+    fleet -- ``fleet.expected_station_count`` reads its length.  Guards
+    that compare against the count follow automatically; the manifests that
+    WRITE the count into content-addressed bytes do not, and every artifact
+    pinned to one of them unbinds here.  Nothing on the serving path reads
+    those manifests (checked 2026-09-07 by walking the import graph from
+    the daemon, the production worker, the materializer and the P0
+    compiler: none of the six writers is reachable), so what this costs is
+    offline rebuilds and the fixtures that construct a fleet-sized manifest.
+    """
+
+    source = REGISTRY_SOURCE.read_text()
+    marker = "}\n\n\ndef _canonical"
+    if marker not in source:
+        raise SystemExit("registry layout changed; refusing to patch blindly")
+    lines = "".join(
+        f'    "{station}": ({latitude}, {longitude}),\n'
+        for station, (latitude, longitude) in sorted(new_rows.items())
+    )
+    source = source.replace(marker, lines + marker, 1)
+    old_sha = [
+        line for line in source.splitlines()
+        if line.startswith("SOURCE_SNAPSHOT_SHA256 = ")
+    ]
+    if len(old_sha) != 1:
+        raise SystemExit("registry snapshot line not found; refusing to patch")
+    source = source.replace(
+        old_sha[0], f'SOURCE_SNAPSHOT_SHA256 = "{snapshot_sha256}"'
+    )
+    REGISTRY_SOURCE.write_text(source)
+    return sorted(new_rows)
+
+
+def _run(script: Path, *args: str) -> tuple[int, str]:
+    result = subprocess.run(
+        [sys.executable, str(script), *args],
+        capture_output=True, text=True, cwd=str(ROOT),
+    )
+    tail = (result.stdout or result.stderr or "").strip().splitlines()
+    return result.returncode, " | ".join(tail[-3:])
+
+
+def auto(*, commit: bool) -> dict[str, object]:
+    """Discover, admit what is ready, and say what the rest is waiting for.
+
+    The operator ruling this exists for (2026-09-07): "新市场自动发现、自动
+    接入，而不是每次人工".  Every stage below is idempotent, so the sweep
+    that calls this can run on a clock and do nothing on the days there is
+    nothing to do.
+
+    What it will not do is clear a blocker it cannot honestly clear.  A
+    station with no observations is not onboarded by writing a row that
+    says it has some; it is left in the report with its reason, and picked
+    up by whichever pass runs after the observations arrive.
+    """
+
+    known = {
+        str(value).upper()
+        for value in coordinate_registry_manifest()["station_ids"]
+    }
+    candidates = [
+        item for item in discover()
+        if item["state"] == "CANDIDATE" and item["station_id"]
+    ]
+    blockers = _assess_blockers()
+    ready, waiting = [], []
+    for item in candidates:
+        station = str(item["station_id"]).upper()
+        reasons = [
+            reason for reason in blockers.get(station, ["unassessed"])
+            if reason not in _SELF_CLEARABLE
+        ]
+        if reasons:
+            waiting.append({"station_id": station, "blockers": reasons,
+                            "city_slug": item["city_slug"]})
+        else:
+            ready.append(station)
+    report: dict[str, object] = {
+        "fleet_before": len(known),
+        "ready": sorted(ready),
+        "waiting": waiting,
+        "committed": False,
+    }
+    if not ready:
+        report["note"] = "nothing admissible this pass"
+        return report
+    coordinates_by_station, snapshot = _stationinfo(sorted(known | set(ready)))
+    missing = [s for s in ready if s not in coordinates_by_station]
+    if missing:
+        report["stationinfo_incomplete"] = missing
+        ready = [s for s in ready if s not in missing]
+        report["ready"] = sorted(ready)
+        if not ready:
+            return report
+    # The re-take doubles as a check on what is already registered.
+    from bayes_basket_target.station_registry import _COORDINATES
+
+    drifted = {
+        station: {"registry": list(current),
+                  "stationinfo": list(coordinates_by_station[station])}
+        for station, current in _COORDINATES.items()
+        if station in coordinates_by_station
+        and coordinates_by_station[station] != tuple(round(v, 3) for v in current)
+    }
+    if drifted:
+        # Not this pipeline's call to make: a moved coordinate is either a
+        # source correction or a source error, and both want a person.
+        report["registry_drift"] = drifted
+        report["note"] = "existing coordinates disagree with stationinfo; not patching"
+        return report
+    if not commit:
+        report["note"] = "dry run; pass --commit to write"
+        report["would_add"] = {s: list(coordinates_by_station[s]) for s in ready}
+        report["snapshot_sha256"] = snapshot
+        return report
+    added = _write_registry(
+        {s: coordinates_by_station[s] for s in ready}, snapshot
+    )
+    report["committed"] = True
+    report["added"] = added
+    report["fleet_after"] = len(known) + len(added)
+    report["snapshot_sha256"] = snapshot
+    stages: dict[str, object] = {}
+    for station in added:
+        code_rows, note_rows = _run(
+            ROOT / "scripts" / "commit_station_onboarding_rows.py",
+            "--station", station, "--commit",
+        )
+        code_clim, note_clim = _run(
+            ROOT / "scripts" / "capture_station_same_day_climatology.py",
+            "--station", station,
+        )
+        stages[station] = {
+            "ssot_rows": {"rc": code_rows, "note": note_rows},
+            "climatology": {"rc": code_clim, "note": note_clim},
+            "season_anchor": season(station)["state"],
+        }
+    report["stages"] = stages
+    return report
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--stage",
         choices=("discover", "assess", "coordinates", "season", "rebaseline",
-                 "all"),
+                 "auto", "all"),
         default="all",
     )
     parser.add_argument("--station", default="")
+    parser.add_argument(
+        "--commit", action="store_true",
+        help="auto: actually write; without it the pass reports only",
+    )
     args = parser.parse_args()
     report: dict[str, object] = {"schema": "station_onboarding_report_v1"}
+    if args.stage == "auto":
+        report["auto"] = auto(commit=bool(args.commit))
+        print(json.dumps(report, ensure_ascii=False, indent=1, sort_keys=True))
+        return 0
     if args.stage in ("discover", "all"):
         report["discover"] = discover()
     if args.stage in ("assess", "all"):

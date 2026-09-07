@@ -413,6 +413,19 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
         3600.0,
         1800.0,
     ),
+    # New markets are listed days before anyone notices them, and the join
+    # between discovery and onboarding used to be a person: Istanbul,
+    # Moscow and Tel Aviv were listed with resolved stations and full
+    # timezones from 2026-08-22 and the fleet stayed at forty-five.  Daily
+    # because listings arrive days ahead and every stage is idempotent; the
+    # pass reports unless PM_STATION_ONBOARDING_COMMIT is set, because the
+    # write it would make changes the fleet's own identity.
+    (
+        "station_onboarding",
+        "scripts/station_onboarding_sweep.sh",
+        86_400.0,
+        900.0,
+    ),
     # CMA GRAPES Global for the eight mainland Chinese stations, which had
     # no regional coverage of any kind: HRRR and the NBM are CONUS, ICON-EU
     # stops far to their west, and MSM's domain begins at 120E.  Hourly
@@ -473,6 +486,8 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     "capture_noaa_conus_forward": "ssot",
     "capture_dwd_icon_eu_forward": "ssot",
     "capture_cma_grapes_forward": "ssot",
+    # Writes station_registry.py and the two SSOT identity rows.
+    "station_onboarding": "ssot",
 }
 # Domains that name a database hold one sweep at a time; "none" writes nothing
 # and is bounded only by the total cap below.

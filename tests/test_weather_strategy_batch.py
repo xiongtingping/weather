@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 import json
 import sqlite3
 from pathlib import Path
@@ -14,6 +16,23 @@ from scripts.weather_strategy_batch import (
     build_strategy_batch,
     compact_batch_payload,
 )
+
+
+
+
+@pytest.fixture(autouse=True)
+def _pin_reference_today(monkeypatch):
+    """Pin the day these fixtures were written for.
+
+    Every row below is dated 2026-05-31, and the stage a row gets when it
+    carries none of its own falls out of comparing that date to today.
+    Left on the wall clock this whole file goes red the moment the
+    calendar walks past its fixtures -- which is exactly what had happened
+    by 2026-09-07, with twenty-two tests failing because every fixture row
+    had quietly become "settled_or_past".
+    """
+
+    monkeypatch.setenv("WEATHER_STRATEGY_REFERENCE_TODAY", "2026-05-31")
 
 
 def _init_db(path: Path) -> None:

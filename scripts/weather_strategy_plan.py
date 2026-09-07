@@ -8,6 +8,8 @@ write back to trading tables.
 
 from __future__ import annotations
 
+import os
+
 import argparse
 import json
 import math
@@ -204,6 +206,28 @@ def _season_size_scale(season: str) -> float:
     return 1.0
 
 
+#: The day "today" means when a row carries no stage of its own.
+#:
+#: Read through a function rather than inline so it can be pinned.  Every
+#: fixture in this lane's suite dates its rows to a fixed day, and the
+#: stage falls out of comparing that day to the wall clock -- so on
+#: 2026-09-07 twenty-two of its tests were red for no reason except that
+#: the calendar had walked past 2026-05-31 and every fixture row now read
+#: "settled_or_past".  The override exists for that: production reads the
+#: clock, the suite reads the day its fixtures were written for.
+REFERENCE_TODAY_ENV = "WEATHER_STRATEGY_REFERENCE_TODAY"
+
+
+def reference_today() -> str:
+    """Today in the market's own timezone, or the pinned override."""
+
+    pinned = str(os.environ.get(REFERENCE_TODAY_ENV, "")).strip()
+    if pinned:
+        return pinned
+    zone = ZoneInfo("America/New_York") if ZoneInfo is not None else timezone.utc
+    return datetime.now(zone).date().isoformat()
+
+
 def _stage_from_details(details: Mapping[str, Any], event_date: str) -> str:
     stage = str(
         details.get("weather_strategy_stage")
@@ -217,8 +241,7 @@ def _stage_from_details(details: Mapping[str, Any], event_date: str) -> str:
     if stage in {"d2_plus", "d1", "d0_morning", "d0_afternoon_or_locked", "settled_or_past"}:
         return stage
     event_day = _normalize_event_date(event_date)
-    tz = ZoneInfo("America/New_York") if ZoneInfo is not None else timezone.utc
-    today = datetime.now(tz).date().isoformat()
+    today = reference_today()
     if event_day and event_day < today:
         return "settled_or_past"
     if event_day == today:
