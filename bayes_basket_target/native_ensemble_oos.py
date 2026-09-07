@@ -20,7 +20,12 @@ from itertools import product
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from .band_reliability_store import load_band_table
+from .band_reliability_store import (
+    BAND_AXIS_CENTRE_DISTANCE,
+    BAND_AXIS_CLAIM,
+    load_band_table,
+    load_band_table_with_axis,
+)
 from .center_width_calibration import apply_center_width_calibration
 from .center_width_store import (
     CENTER_WIDTH_METHOD_TAG,
@@ -1633,6 +1638,10 @@ def _select_minimum_crps_subset(
     conditioning_by_day: Mapping[str, Mapping[str, float | None]] = {},
     station_latitude: float | None = None,
     band_factors: Sequence[tuple[tuple[float, float], float]] | None = None,
+    # Charter 105: the axis travels with the factors.  A holdout that scores
+    # a distance-fitted table through the claim lookup gates it on math
+    # production will not serve.
+    band_axis: str = BAND_AXIS_CLAIM,
 ) -> tuple[dict[str, float], dict[str, Any]]:
     """Choose the subset of ready systems whose blend scores best out of sample.
 
@@ -1749,8 +1758,19 @@ def _select_minimum_crps_subset(
                     latitude=station_latitude,
                 )
             )
+            # Charter 105: the lookup follows the table's own axis, and the
+            # holdout must score it through the same lookup production will
+            # serve it through -- otherwise the table is gated on one axis
+            # and applied on another.  ``ordinal_map`` is the grid this lane
+            # already hands the neighbour-direction layer.
             probability, _band_receipt = apply_band_reliability(
-                probability, factors=band_factors
+                probability,
+                factors=band_factors,
+                ordinals=(
+                    ordinal_map
+                    if band_axis == BAND_AXIS_CENTRE_DISTANCE
+                    else None
+                ),
             )
             actual = float(
                 predictions_by_system[subset[0]][day]["actual_tmax_c"]
@@ -3491,11 +3511,11 @@ def build_native_ensemble_oos(
     # The active DB-resident band table, or the static bootstrap constants
     # when none is activated yet.  The sha rides into every candidate so
     # each artifact pins the exact table its holdout was scored against.
-    active_band_table = load_band_table(conn, stage="P0")
-    band_factors, band_table_sha = (
+    active_band_table = load_band_table_with_axis(conn, stage="P0")
+    band_factors, band_table_sha, band_table_axis_id = (
         active_band_table
         if active_band_table is not None
-        else (None, None)
+        else (None, None, BAND_AXIS_CLAIM)
     )
     # Same contract for the stage scalars: whatever is active now is what
     # this build's holdout scores, and its sha rides into every candidate so
@@ -3948,6 +3968,7 @@ def build_native_ensemble_oos(
             family_by_system=family_by_system,
             configured_caps=configured_caps,
             band_factors=band_factors,
+            band_axis=band_table_axis_id,
             train_error_scale=train_error_scale,
             train_n_by_system={
                 system_id: int(evaluation.get("train_n") or 0)
@@ -4150,7 +4171,13 @@ def build_native_ensemble_oos(
                 # every inner layer has already finished with.
                 if skip != "band_reliability":
                     shaped, _band_receipt = apply_band_reliability(
-                        shaped, factors=band_factors
+                        shaped,
+                        factors=band_factors,
+                        ordinals=(
+                            grid_ordinals
+                            if band_table_axis_id == BAND_AXIS_CENTRE_DISTANCE
+                            else None
+                        ),
                     )
                 # Last of all, and only because the pin now exists: the
                 # stage scalars are part of the gated math, so the holdout

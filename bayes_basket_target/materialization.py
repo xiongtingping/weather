@@ -27,6 +27,10 @@ from .center_width_calibration import (
     bucket_centers_from_intervals,
 )
 from .center_width_store import EDGE_WIDTH_C, taf_direction_for_gap
+from .band_reliability_store import (
+    BAND_AXIS_CENTRE_DISTANCE,
+    BAND_AXIS_CLAIM,
+)
 from .cross_consensus import apply_band_reliability
 from .et_history import assert_event_day_started
 from .metar_four_layer import (
@@ -835,14 +839,38 @@ def _posterior(
     # or all-identity table means the distribution and its content hash stay
     # byte-identical to the pre-store behaviour.
     if band_table is not None:
-        band_factors, band_sha = band_table
-        probabilities, band_receipt = apply_band_reliability(
-            probabilities, factors=band_factors
+        band_factors, band_sha, band_axis = (
+            band_table if len(band_table) == 3
+            else (band_table[0], band_table[1], BAND_AXIS_CLAIM)
         )
-        band_receipt["band_table_sha256"] = str(band_sha)
-        lineage["band_reliability_json"] = json.dumps(
-            band_receipt, sort_keys=True
+        # Charter 105: the lookup follows the TABLE's axis.  A distance-fitted
+        # table read through the claim lookup is the one way this change could
+        # reach an artifact it was never gated against, so a table whose axis
+        # this lane cannot key -- no bucket geometry to order the rungs by --
+        # is SKIPPED rather than applied through the wrong one.
+        band_ordinals = (
+            dict(predecessor.bucket_ordinals)
+            if band_axis == BAND_AXIS_CENTRE_DISTANCE
+            else None
         )
+        if band_axis == BAND_AXIS_CENTRE_DISTANCE and not band_ordinals:
+            lineage["band_reliability_json"] = json.dumps(
+                {
+                    "schema": "band_reliability_receipt_v1",
+                    "state": "SKIPPED_NO_BUCKET_ORDINALS",
+                    "axis": band_axis,
+                    "band_table_sha256": str(band_sha),
+                },
+                sort_keys=True,
+            )
+        else:
+            probabilities, band_receipt = apply_band_reliability(
+                probabilities, factors=band_factors, ordinals=band_ordinals,
+            )
+            band_receipt["band_table_sha256"] = str(band_sha)
+            lineage["band_reliability_json"] = json.dumps(
+                band_receipt, sort_keys=True
+            )
     # The clock, last of all.  Every layer above rescales a claim about which
     # bucket settles; this one answers a different question -- whether the day
     # has any room left above the high it has already reached -- and it must

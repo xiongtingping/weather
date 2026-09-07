@@ -340,24 +340,29 @@ def load_band_table(
 
     A pinned sha that is missing fails closed: the artifact's scored math
     cannot be reproduced, so it must not be served an approximation.
+
+    Two elements, as it has always returned: this function has nine callers
+    and widening it broke four of them the first time it was tried.  A
+    serving lane that must know which lookup to apply the table through
+    calls ``load_band_table_with_axis`` instead.
     """
 
     ensure_band_table_schema(conn)
     if table_sha256 is None:
         row = conn.execute(
-            "SELECT band_table_sha256, factors_json"
+            "SELECT band_table_sha256, factors_json, COALESCE(axis, ?)"
             " FROM calibration_band_reliability_table"
             " WHERE activated=1 AND stage=?",
-            (_check_stage(stage),),
+            (BAND_AXIS_CLAIM, _check_stage(stage)),
         ).fetchone()
         if row is None:
             return None
     else:
         row = conn.execute(
-            "SELECT band_table_sha256, factors_json"
+            "SELECT band_table_sha256, factors_json, COALESCE(axis, ?)"
             " FROM calibration_band_reliability_table"
             " WHERE band_table_sha256=?",
-            (str(table_sha256),),
+            (BAND_AXIS_CLAIM, str(table_sha256)),
         ).fetchone()
         if row is None:
             raise ContractError("band_reliability_pinned_table_missing")
@@ -366,6 +371,32 @@ def load_band_table(
         for cell in json.loads(row[1])
     )
     return factors, str(row[0])
+
+
+def load_band_table_with_axis(
+    conn: sqlite3.Connection,
+    *,
+    stage: str = "P0",
+    table_sha256: str | None = None,
+) -> tuple[
+    tuple[tuple[tuple[float, float], float], ...], str, str
+] | None:
+    """``load_band_table`` plus the axis its cells are keyed on.
+
+    The axis rides out WITH the table because it is a property of the table
+    and not of whoever is serving it (charter 105, extending charter 60's
+    pinning).  A lane that reads the factors and decides the lookup for
+    itself can apply a distance-fitted table through the claim lookup, which
+    is the one way this change reaches an artifact it was never gated
+    against.  ``claim`` for every row written before the column existed, so
+    no stored table changes meaning.
+    """
+
+    loaded = load_band_table(conn, stage=stage, table_sha256=table_sha256)
+    if loaded is None:
+        return None
+    factors, sha = loaded
+    return factors, sha, band_table_axis(conn, table_sha256=sha)
 
 
 def band_table_axis(

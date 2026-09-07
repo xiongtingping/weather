@@ -167,3 +167,64 @@ def test_the_report_is_axis_agnostic_below_the_cell_key():
     # Every day's peak settles here in this fixture, so the centre realises
     # 1/0.40 of its claim and the fit is being asked to lift it.
     assert centre["ratio"] == pytest.approx(2.5)
+
+
+def test_the_axis_travels_with_the_table_to_the_serving_lanes():
+    """Charter 105, the serving half.
+
+    ``load_band_table`` keeps its two elements -- it has nine callers and
+    widening it broke four of them the first time -- and a lane that must
+    know which lookup to apply the table through asks for the axis with it.
+    A lane that reads the factors and picks the lookup itself is a lane that
+    can apply a distance-fitted table through the claim lookup, which is the
+    one way this reaches an artifact it was never gated against.
+    """
+
+    from bayes_basket_target.band_reliability_store import (
+        load_band_table,
+        load_band_table_with_axis,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    ensure_band_table_schema(conn)
+    factors = [
+        ((0.0, 1.0), 1.20), ((1.0, 2.0), 1.05), ((2.0, 3.0), 0.90),
+        ((3.0, 4.0), 0.80), ((4.0, 99.0), 0.60),
+    ]
+    receipt = persist_and_activate_band_table(
+        conn, stage="P0", factors=factors, evidence={"schema": "t"},
+        serving_day_count=20, axis=BAND_AXIS_CENTRE_DISTANCE,
+    )
+    assert len(load_band_table(conn, stage="P0")) == 2
+    loaded = load_band_table_with_axis(conn, stage="P0")
+    assert loaded is not None and len(loaded) == 3
+    assert loaded[1] == receipt["band_table_sha256"]
+    assert loaded[2] == BAND_AXIS_CENTRE_DISTANCE
+    assert load_band_table_with_axis(conn, stage="P0-M") is None
+
+
+def test_every_serving_lane_reads_the_tables_axis_not_its_own_preference():
+    """Four apply sites, one rule.  Each passes ordinals if and only if the
+    table it loaded says its cells are keyed on distance."""
+
+    sources = {
+        name: (ROOT / "bayes_basket_target" / name).read_text(encoding="utf-8")
+        for name in (
+            "materialization.py",
+            "native_ensemble_p0.py",
+            "native_ensemble_oos.py",
+        )
+    }
+    for name, source in sources.items():
+        assert "BAND_AXIS_CENTRE_DISTANCE" in source, name
+        # The gate is on the TABLE's axis, and it is spelled the same way at
+        # every site so a reader can grep for all four at once.
+        assert "== BAND_AXIS_CENTRE_DISTANCE" in source, name
+    # The production serving path skips rather than guessing when it has a
+    # distance table and no ordering to key it by.
+    assert "SKIPPED_NO_BUCKET_ORDINALS" in sources["materialization.py"]
+    # And the holdout scores through the same lookup production will serve
+    # through, or the table is gated on math nobody runs.
+    assert sources["native_ensemble_oos.py"].count(
+        "== BAND_AXIS_CENTRE_DISTANCE"
+    ) == 2

@@ -51,7 +51,10 @@ from .asos_substitute_observation_contract import (
     FACT_TYPE as SUBSTITUTE_OBSERVATION_FACT_TYPE,
     CanonicalSubstituteObservationContract,
 )
-from .band_reliability_store import load_band_table
+from .band_reliability_store import (
+    load_band_table,
+    load_band_table_with_axis,
+)
 from .center_width_store import (
     load_center_width,
     load_center_width_floor,
@@ -366,7 +369,7 @@ def materialize_p1_from_canonical_observation(
         # P1's own residual table -- P0's correction already rode in through
         # the root, and an identity table (which is what P1 serves until its
         # evidence clears the hurdles) leaves the posterior byte-identical.
-        band_table=load_band_table(conn, stage="P1"),
+        band_table=load_band_table_with_axis(conn, stage="P1"),
         # The temperature-axis correction, fitted and gated the same way.
         # None until its own forward window admits one, which leaves the
         # posterior byte-identical.

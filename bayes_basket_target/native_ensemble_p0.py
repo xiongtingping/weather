@@ -24,7 +24,10 @@ EPS = 1e-9
 from .station_registry import station_coordinates
 from .station_season import station_season_bin
 from .band_reliability_store import (
+    BAND_AXIS_CENTRE_DISTANCE,
+    BAND_AXIS_CLAIM,
     load_band_table,
+    load_band_table_with_axis,
     pinned_band_table_sha,
 )
 from .center_width_calibration import apply_center_width_calibration
@@ -3004,12 +3007,23 @@ def compile_native_ensemble_p0(
     if BAND_RELIABILITY_METHOD_TAG in artifact_combination_method:
         pinned_sha = pinned_band_table_sha(artifact_combination_method)
         pinned_factors = None
+        pinned_axis = BAND_AXIS_CLAIM
         if pinned_sha is not None:
-            pinned_factors, _sha = load_band_table(
+            pinned_factors, _sha, pinned_axis = load_band_table_with_axis(
                 conn, table_sha256=pinned_sha
             )
+        # Charter 105: the lookup follows the TABLE's axis, never the
+        # caller's preference.  ``ordered`` is this stage's bucket axis and
+        # is the same map the packet publishes as ``bucket_ordinals`` below,
+        # so the fit and the serve read one ordering.
         probability, band_reliability_receipt = apply_band_reliability(
-            probability, factors=pinned_factors
+            probability,
+            factors=pinned_factors,
+            ordinals=(
+                {bucket: index for index, bucket in enumerate(ordered)}
+                if pinned_axis == BAND_AXIS_CENTRE_DISTANCE
+                else None
+            ),
         )
         if pinned_sha is not None:
             band_reliability_receipt["band_table_sha256"] = pinned_sha
