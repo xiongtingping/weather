@@ -2564,6 +2564,47 @@ CREATE TABLE IF NOT EXISTS basket_target_writer_lock_wait_telemetry (
 
 CREATE INDEX IF NOT EXISTS basket_target_decision_blocker_idx
 ON auto_trade_decisions(decided_state,will_order,created_at);
+-- The quiescence guard is asked once per station, and its two heaviest
+-- questions were the two that could not be answered from an index.
+--
+-- The guard runs inside ``materialize_resident_no_live_market_evidence``,
+-- which the evidence pass calls per station: forty-five times for a fleet
+-- pass, and again for every mid-loop quote refresh.  Measured 2026-09-07,
+-- one refresh cost 173.6s and a cycle spent 2083.3s across twelve of them
+-- -- 99.1% of its decision loop -- while the decisions those refreshes
+-- were for took 12.0s.
+--
+-- ``will_order<>0`` is an inequality on the second column of
+-- basket_target_decision_blocker_idx, so it could use neither that index
+-- nor the scope one beside it, and the station predicate is written
+-- ``(?='' OR station_id=?)`` -- a disjunction with a parameter, which no
+-- index can seek.  So the guard scanned all 33,074 rows of a table living
+-- in a 38GB database: 22.6ms warm on an isolated copy, 1,065ms warm and
+-- 1.5-2.1s cold against production, where the rows are spread across cold
+-- pages.  Per station.
+--
+-- The predicate is a literal, so a partial index can carry it, and in
+-- production_no_live the answer set is empty by construction -- the column
+-- is constrained to zero -- so the index holds no rows at all and the scan
+-- becomes an empty probe: 22.58ms -> 0.010ms measured on that copy.
+--
+-- The cycles guard is the same shape one table over: ``state IN (?,?,?)``
+-- over 73,205 rows, all three states empty in production_no_live.  That
+-- one takes a plain index because the state list arrives as parameters and
+-- a partial index cannot match them: 11.68ms -> 0.012ms, covering.
+CREATE INDEX IF NOT EXISTS auto_trade_decisions_live_authority_idx
+ON auto_trade_decisions(station_id,event_date) WHERE will_order<>0;
+CREATE INDEX IF NOT EXISTS basket_target_execution_cycles_state_scope_idx
+ON basket_target_execution_cycles(state,station_id,event_date);
+-- Third of the family, found by the test rather than by a stall: the
+-- intents guard seeks its LEFT JOIN by cycle_id but scans the intents
+-- themselves.  1,928 rows today against 33k and 73k for the two above, so
+-- it costs 1.4ms rather than a second -- but it is append-only, it is read
+-- per station on the same path, and every one of the other six instances
+-- of this bug class started small.  Indexed now, at the price of an index
+-- on a table this size, rather than after it grows into the profile.
+CREATE INDEX IF NOT EXISTS basket_target_order_intents_state_cycle_idx
+ON basket_target_order_intents(state,cycle_id);
 CREATE UNIQUE INDEX IF NOT EXISTS basket_target_no_execution_vector_cycle_idx
 ON basket_target_execution_version_vectors(cycle_id)
 WHERE vector_policy='NO_EXECUTION';
