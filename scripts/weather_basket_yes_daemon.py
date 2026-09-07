@@ -413,6 +413,19 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
         3600.0,
         1800.0,
     ),
+    # CMA GRAPES Global for the eight mainland Chinese stations, which had
+    # no regional coverage of any kind: HRRR and the NBM are CONUS, ICON-EU
+    # stops far to their west, and MSM's domain begins at 120E.  Hourly
+    # against a six-hourly product for the ICON-EU lane's reason -- the
+    # transport serves only the run it currently holds, so a missed cycle
+    # is gone, and an idle pass is eight small JSON reads.  Capture only:
+    # regional_path_prior.SERVING_SYSTEMS decides what actually serves.
+    (
+        "capture_cma_grapes_forward",
+        "scripts/capture_cma_grapes_forward_sweep.sh",
+        3600.0,
+        900.0,
+    ),
     # ICON-EU deterministic, run-scoped: one whole-domain download serves
     # seven European stations and two event days.  Hourly against a
     # six-hourly product because the DWD archive keeps no history -- a
@@ -459,6 +472,7 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     "capture_jma_msm_forward": "ssot",
     "capture_noaa_conus_forward": "ssot",
     "capture_dwd_icon_eu_forward": "ssot",
+    "capture_cma_grapes_forward": "ssot",
 }
 # Domains that name a database hold one sweep at a time; "none" writes nothing
 # and is bounded only by the total cap below.

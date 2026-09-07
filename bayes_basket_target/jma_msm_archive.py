@@ -60,6 +60,15 @@ CAPTURE_STATIONS = (
     ("RJTT", 35.553, 139.781, "Asia/Tokyo"),
     ("RKPK", 35.179, 128.938, "Asia/Seoul"),
     ("RKSI", 37.469, 126.451, "Asia/Seoul"),
+    # Added 2026-09-07.  These two were never in the 46-pair sweep, and are
+    # captured on the newer criterion: this is the only regional system
+    # measured to help P1 (-0.634 nat over 46 station-days, charter 99),
+    # its domain begins at 120E, and both of these fall inside it -- the
+    # real GRIB transport returns a full local day for each.  Capture is
+    # not admission; the serving gate decides separately, per system, and
+    # a station never captured can never be measured at all.
+    ("ZSPD", 31.146, 121.800, "Asia/Shanghai"),
+    ("ZSQD", 36.362, 120.087, "Asia/Shanghai"),
 )
 ARCHIVE_ROOT = (
     "http://database.rish.kyoto-u.ac.jp/arch/jmadata/data/gpv/original"

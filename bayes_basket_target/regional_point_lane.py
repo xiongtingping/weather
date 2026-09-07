@@ -50,18 +50,25 @@ CREATE INDEX IF NOT EXISTS {TABLE}_scope_idx
 """
 SYSTEM_IDS = {
     "MSM": "JMA_MSM_POINT",
+    "CMA": "CMA_GRAPES_GLOBAL_POINT",
     "HRRR": "NCEP_HRRR_POINT",
     "NBM": "NCEP_NBM_POINT",
     "ICON_EU": "DWD_ICON_EU_POINT",
 }
 TRANSPORTS = {
     "MSM": "RISH_KYOTO_JMA_ARCHIVE",
+    "CMA": "OPEN_METEO_CMA_GRAPES_GLOBAL",
     "HRRR": "NOAA_HRRR_PDS_S3",
     "NBM": "NOAA_NBM_PDS_S3",
     "ICON_EU": "DWD_OPENDATA_ICON_EU",
 }
 EXTRACTION_VERSIONS = {
     "MSM": "jma_msm_surface_nearest_cell_v1",
+    # "derived_cycle" is the contract, not a caveat: the aggregator serving
+    # this product publishes no run stamp, so the row's cycle label is
+    # inferred from the product's own cadence.  What the replay actually
+    # filters on -- knowable_at_utc -- is the fetch clock and is exact.
+    "CMA": "cma_grapes_global_open_meteo_derived_cycle_v1",
     "HRRR": "ncep_hrrr_surface_nearest_cell_v1",
     "NBM": "ncep_nbm_core_nearest_cell_v1",
     "ICON_EU": "dwd_icon_eu_surface_nearest_cell_v1",
@@ -69,12 +76,15 @@ EXTRACTION_VERSIONS = {
 # Every cycle the model actually issues.
 RUN_CYCLE_HOURS = {
     "MSM": tuple(range(0, 24, 3)),
+    "CMA": (0, 6, 12, 18),
     "HRRR": tuple(range(0, 24)),
     "NBM": tuple(range(0, 24)),
     "ICON_EU": tuple(range(0, 24, 3)),
 }
 # How long after its nominal hour a run is normally on the archive.
-PUBLICATION_LAG_HOURS = {"MSM": 3.0, "HRRR": 1.5, "NBM": 2.0, "ICON_EU": 4.0}
+PUBLICATION_LAG_HOURS = {
+    "MSM": 3.0, "HRRR": 1.5, "NBM": 2.0, "ICON_EU": 4.0, "CMA": 4.0,
+}
 # The local afternoon window the P1 question is about.
 PEAK_LOCAL_HOURS = tuple(range(11, 19))
 # A live sweep fetches runs issued within the last day or so; a fetch further
@@ -444,6 +454,12 @@ def capture_p1(
     back is actually asserting.
     """
 
+    if backfill and product == "CMA":
+        # A backfilled row has to say when it became knowable, and this
+        # product's archive is not resolved by run: an early stamp leaks the
+        # afternoon into the morning, and a stamp late enough to be safe
+        # makes the row useless for the same-day question.  Forward only.
+        raise ContractError("regional_point_backfill_unsupported_for_product")
     plan = plan_p1(conn, product=product, now=now, stations=stations, day_offsets=day_offsets, max_runs=max_runs)
     written = 0
     existed = 0
@@ -470,6 +486,25 @@ def capture_p1(
                     results[(str(target["station_id"]), target["event_date"].isoformat())] = {
                         "hourly_c": captured["hourly_c"], "hours_wanted": len(captured["hours_wanted"]),
                         "source_url": msm_file_url(run_init, "FH00-15"),
+                    }
+            elif product == "CMA":
+                from .cma_grapes_point_archive import (  # noqa: PLC0415
+                    fetch_day_maximum as cma_fetch, source_url as cma_source_url,
+                )
+                results = {}
+                for target in item["targets"]:
+                    captured = cma_fetch(
+                        run_init=run_init, event_date=target["event_date"],
+                        utc_offset_hours=int(target["utc_offset_hours"]),
+                        latitude=float(target["latitude"]),
+                        longitude=float(target["longitude"]),
+                    )
+                    results[(str(target["station_id"]), target["event_date"].isoformat())] = {
+                        "hourly_c": captured["hourly_c"],
+                        "hours_wanted": len(captured["hours_wanted"]),
+                        "source_url": cma_source_url(
+                            float(target["latitude"]), float(target["longitude"])
+                        ),
                     }
             elif product == "ICON_EU":
                 from .dwd_icon_eu_point_archive import fetch_run_day_maxima, file_url as icon_file_url

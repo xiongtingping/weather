@@ -54,7 +54,12 @@ def test_the_p0_door_reopens_only_if_the_stage_is_moved_back(monkeypatch) -> Non
     assert M.is_fusion_excluded_point_system("NCEP_NBM_POINT") is False
     assert M.is_fusion_excluded_point_system("OFFICIAL_AIRPORT_TAF_TX") is True
     assert REGIONAL_DETERMINISTIC_SYSTEM_IDS == {
-        "JMA_MSM_POINT", "NCEP_HRRR_POINT", "NCEP_NBM_POINT", "DWD_ICON_EU_POINT",
+        "JMA_MSM_POINT", "NCEP_HRRR_POINT", "NCEP_NBM_POINT",
+        "DWD_ICON_EU_POINT",
+        # 2026-09-07: the eight mainland Chinese stations' first regional
+        # model.  Stage stays P1 -- joining this set is what keeps it out
+        # of P0 fusion, which is the property this test guards.
+        "CMA_GRAPES_GLOBAL_POINT",
     }
 
 
@@ -125,13 +130,18 @@ CREATE TABLE calibration_native_ensemble_historical_member_run (
 def test_the_registry_rows_are_written_once() -> None:
     conn = sqlite3.connect(":memory:")
     conn.executescript(REGISTRY_DDL)
-    assert register_regional_point_systems(conn) == 4
+    # Five since 2026-09-07: CMA GRAPES Global joined for the eight
+    # mainland Chinese stations, which had no regional model of any kind.
+    assert register_regional_point_systems(conn) == 5
     assert register_regional_point_systems(conn) == 0
     rows = conn.execute(
         "SELECT ensemble_system_id, independence_family_id, provider_id, expected_member_count"
         " FROM calibration_native_ensemble_system ORDER BY 1"
     ).fetchall()
-    assert [r[0] for r in rows] == ["DWD_ICON_EU_POINT", "JMA_MSM_POINT", "NCEP_HRRR_POINT", "NCEP_NBM_POINT"]
+    assert [r[0] for r in rows] == [
+        "CMA_GRAPES_GLOBAL_POINT", "DWD_ICON_EU_POINT", "JMA_MSM_POINT",
+        "NCEP_HRRR_POINT", "NCEP_NBM_POINT",
+    ]
     assert all(r[3] == 1 for r in rows)
     assert dict((r[0], r[1]) for r in rows)["DWD_ICON_EU_POINT"] == "DWD_ICON_EPS", (
         "ICON-EU shares the ICON physics family, it does not open a second one"

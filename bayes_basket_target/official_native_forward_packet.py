@@ -46,6 +46,7 @@ JMA_MSM_POINT_SCHEMA = "official_jma_msm_point_members_v1"
 NCEP_HRRR_POINT_SCHEMA = "official_ncep_hrrr_point_members_v1"
 NCEP_NBM_POINT_SCHEMA = "official_ncep_nbm_point_members_v1"
 DWD_ICON_EU_POINT_SCHEMA = "official_dwd_icon_eu_point_members_v1"
+CMA_GRAPES_GLOBAL_POINT_SCHEMA = "official_cma_grapes_global_point_members_v1"
 SUPPORTED_ARCHIVE_SCHEMAS = {
     NOAA_GEFS_MULTISTATION_SCHEMA: "NOAA_GEFS_PDS_S3",
     ECMWF_MULTISTATION_SCHEMA: "ECMWF_OPEN_DATA_S3",
@@ -115,6 +116,8 @@ NCEP_NBM_FAMILY_ID = "NCEP_NBM"
 # the same centre that already seats three EPS systems, and a second
 # family for one model's physics would let it spend two families' caps.
 DWD_ICON_EU_POINT_SYSTEM_ID = "DWD_ICON_EU_POINT"
+CMA_GRAPES_GLOBAL_POINT_SYSTEM_ID = "CMA_GRAPES_GLOBAL_POINT"
+CMA_GRAPES_FAMILY_ID = "CMA_GRAPES"
 
 POINT_FORECAST_SYSTEMS = {
     JMA_MSM_POINT_SYSTEM_ID: {
@@ -185,6 +188,25 @@ POINT_FORECAST_SYSTEMS = {
             ),
         }),
     },
+    CMA_GRAPES_GLOBAL_POINT_SYSTEM_ID: {
+        "ensemble_system_id": CMA_GRAPES_GLOBAL_POINT_SYSTEM_ID,
+        "canonical_name": "CMA GRAPES Global 12km Deterministic Point",
+        # Its own family: no seated system carries CMA physics.  CMA has
+        # been a declared P0 candidate since the pool was written and has
+        # never served an envelope, so nothing here shares a cap with it.
+        "independence_family_id": CMA_GRAPES_FAMILY_ID,
+        "provider_id": "CMA",
+        "expected_member_count": 1,
+        "content_sha256": content_sha256({
+            "ensemble_system_id": CMA_GRAPES_GLOBAL_POINT_SYSTEM_ID,
+            "member_identity_contract_version": (
+                "cma_grapes_global_open_meteo_derived_cycle_v1"
+            ),
+            "publication_contract_version": (
+                "six_hourly_cycle_aggregator_no_run_stamp_v1"
+            ),
+        }),
+    },
     "OFFICIAL_AIRPORT_TAF_TX": {
         "ensemble_system_id": "OFFICIAL_AIRPORT_TAF_TX",
         "canonical_name": "Official Airport TAF TX Point",
@@ -243,17 +265,26 @@ ARCHIVE_LEAD_BY_SCHEMA = {
 # one predicate every fusion site reads.
 REGIONAL_DETERMINISTIC_SYSTEM_IDS = frozenset({
     JMA_MSM_POINT_SYSTEM_ID,
+    CMA_GRAPES_GLOBAL_POINT_SYSTEM_ID,
     NCEP_HRRR_POINT_SYSTEM_ID,
     NCEP_NBM_POINT_SYSTEM_ID,
     DWD_ICON_EU_POINT_SYSTEM_ID,
 })
 REGIONAL_POINT_ARCHIVE_SCHEMA_BY_SYSTEM = {
     JMA_MSM_POINT_SYSTEM_ID: JMA_MSM_POINT_SCHEMA,
+    CMA_GRAPES_GLOBAL_POINT_SYSTEM_ID: CMA_GRAPES_GLOBAL_POINT_SCHEMA,
     NCEP_HRRR_POINT_SYSTEM_ID: NCEP_HRRR_POINT_SCHEMA,
     NCEP_NBM_POINT_SYSTEM_ID: NCEP_NBM_POINT_SCHEMA,
     DWD_ICON_EU_POINT_SYSTEM_ID: DWD_ICON_EU_POINT_SCHEMA,
 }
 REGIONAL_POINT_CONTRACT_VERSIONS = {
+    CMA_GRAPES_GLOBAL_POINT_SYSTEM_ID: (
+        "cma_grapes_global_open_meteo_derived_cycle_v1",
+        # The publication contract names what this transport cannot do:
+        # the aggregator serves the newest run without stamping which run
+        # it is, so the cycle is derived and only knowable_at_utc is read.
+        "six_hourly_cycle_aggregator_no_run_stamp_v1",
+    ),
     JMA_MSM_POINT_SYSTEM_ID: (
         "jma_msm_surface_single_cell_v1",
         "three_hourly_run_grid_nearest_cell_v1",
