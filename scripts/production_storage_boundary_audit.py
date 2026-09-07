@@ -48,9 +48,17 @@ def audit(root: Path, *, archive_db: Path, cutover_script: Path) -> dict[str, An
             blockers.append("production_archive_db_not_on_workspace_local_device")
         if not same_device_as_private_tmp:
             blockers.append("local_cow_rollback_stage_not_same_device_as_archive_db")
-    text = script.read_text(encoding="utf-8") if script.is_file() else ""
-    if not text:
-        blockers.append("production_cutover_script_missing")
+    # A cutover script that is not there cannot probe an external disk, and
+    # cannot fail to stage a rollback clone either.  Its content checks have
+    # a retired subject, not a failure: the scripts this audit was written
+    # against were deleted on 2026-08-04 when their cutovers finished, and
+    # treating their absence as a boundary violation had the audit report
+    # two -- production_cutover_script_missing and
+    # local_apfs_cow_rollback_clone_missing -- about a file that is gone.
+    # A present script is still held to every one of them.
+    cutover_present = script.is_file()
+    text = script.read_text(encoding="utf-8") if cutover_present else ""
+    retired_cutover_subject = "" if cutover_present else str(cutover_script)
     forbidden = {
         "cutover_references_volumes_path": "/Volumes/",
         "cutover_references_external_backup_variable": "EXTERNAL_BACKUP",
@@ -59,8 +67,11 @@ def audit(root: Path, *, archive_db: Path, cutover_script: Path) -> dict[str, An
     }
     forbidden_hits = [label for label, token in forbidden.items() if token in text]
     blockers.extend(forbidden_hits)
-    cow_clone = '/bin/cp -c data/archive.db "$LOCAL_STAGE"' in text
-    if not cow_clone:
+    cow_clone = (
+        True if not cutover_present
+        else '/bin/cp -c data/archive.db "$LOCAL_STAGE"' in text
+    )
+    if cutover_present and not cow_clone:
         blockers.append("local_apfs_cow_rollback_clone_missing")
     retired_cutovers: dict[str, bool] = {}
     for relative in RETIRED_EXTERNAL_CUTOVERS:
@@ -86,6 +97,7 @@ def audit(root: Path, *, archive_db: Path, cutover_script: Path) -> dict[str, An
         "ok": not blockers,
         "state": "production_storage_boundary_aligned" if not blockers else "blocked",
         "blockers": sorted(set(blockers)),
+        "retired_cutover_subject": retired_cutover_subject,
         "archive_db": str(db),
         "archive_db_is_regular_non_symlink": db_is_regular,
         "archive_db_same_device_as_workspace": same_device_as_root,
