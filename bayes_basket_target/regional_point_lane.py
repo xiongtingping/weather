@@ -119,6 +119,17 @@ def ensure_schema(conn: sqlite3.Connection) -> bool:
         conn.execute(
             f"ALTER TABLE {TABLE} ADD COLUMN knowable_at_utc TEXT NOT NULL DEFAULT ''"
         )
+    # Self-healing rather than once-at-migration.  Repairing only at the
+    # moment the column was added left 550 of 880 NBM rows and 354 of 700
+    # HRRR rows empty -- written by a backfill on 2026-09-06 that raced the
+    # column's arrival -- and an empty string sorts before every timestamp,
+    # so ``runs_for``'s as-of filter treated every one of them as knowable at
+    # every instant.  Measured 2026-09-07: 74.1% of NBM and 78.0% of HRRR
+    # serving decisions in the admission window were reading a run from their
+    # own future.  The cost of asking every time is one indexed count.
+    if conn.execute(
+        f"SELECT 1 FROM {TABLE} WHERE knowable_at_utc='' LIMIT 1"
+    ).fetchone():
         repair_knowable_at(conn)
     return False
 

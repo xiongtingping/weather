@@ -29,6 +29,7 @@ serving, whatever an admission sweep said about it.
 from __future__ import annotations
 
 import argparse
+import bisect
 import collections
 import json
 import math
@@ -43,6 +44,7 @@ sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target import regional_path_prior as R  # noqa: E402
 from bayes_basket_target import regional_point_debias as D  # noqa: E402
+from bayes_basket_target import regional_live_gap as G  # noqa: E402
 
 DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 
@@ -92,6 +94,15 @@ def main() -> int:
     parser.add_argument("--weight", type=float, default=None,
                         help="blend weight to test (default: the module's)")
     parser.add_argument(
+        "--archive", type=Path, default=ROOT / "data" / "archive.db",
+        help="observation archive, for the live-gap arm only",
+    )
+    parser.add_argument(
+        "--live-gap", action="store_true",
+        help="add charter 95's live-gap arm: the served configuration plus "
+             "today's own model error, everything else held fixed",
+    )
+    parser.add_argument(
         "--other-side-replay-table", type=Path, default=None,
         help="path prior replay table fitted with charter 95's debias set the "
              "other way; supplying it adds that arm, each arm scored against "
@@ -126,6 +137,36 @@ def main() -> int:
         raw_table = json.loads(
             args.other_side_replay_table.read_text(encoding="utf-8"))
     arms = ("none", "layer") if raw_table is None else ("none", "other", "layer")
+    if args.live_gap:
+        arms = arms + ("livegap",)
+    live_gap_cache: dict[str, dict] = {}
+    # The newest formal report at each prefix's clock.  Production reads it
+    # off the trajectory it just compiled, and since 2026-09-05 it also rides
+    # in the lineage as ``metar_trajectory_latest_formal_temperature_c`` --
+    # but every event date before that has no such key, which is the whole
+    # measurement window.  So this one input is rebuilt from the observation
+    # archive, filtered strictly to reports at or before the decision instant.
+    # It is the only rebuilt quantity here: the posterior, the runs and the
+    # fitted tables are all read as they were.
+    formal_by_station: dict[str, list] = {}
+    if args.live_gap:
+        archive = sqlite3.connect(
+            f"file:{args.archive}?mode=ro", uri=True, timeout=300)
+        for st_id, valid_at, temp in archive.execute(
+            "SELECT station_id,valid_at,reported_temperature_c"
+            " FROM reported_trajectory_observations"
+            " WHERE reported_temperature_c IS NOT NULL"
+            " AND report_type IN ('METAR','SPECI')"
+        ):
+            formal_by_station.setdefault(str(st_id), []).append(
+                (str(valid_at), float(temp)))
+        for series in formal_by_station.values():
+            series.sort()
+
+    def latest_formal_at(station_id: str, as_of: str):
+        series = formal_by_station.get(str(station_id)) or []
+        index = bisect.bisect_right(series, (str(as_of), float("inf")))
+        return series[index - 1][1] if index else None
     # The layer arm is production's own configuration; the other arm is
     # charter 95's switch flipped.  A gate whose headline arm is not what
     # production serves is measuring a system nobody is running.
@@ -159,6 +200,8 @@ def main() -> int:
             intervals = {str(k): (v[0], v[1]) for k, v in
                          json.loads(lineage["bucket_intervals_c_json"]).items()}
             running_c = float(lineage["metar_trajectory_running_high_c"])
+            latest_c = lineage.get(
+                "metar_trajectory_latest_formal_temperature_c")
         except (KeyError, TypeError, ValueError):
             continue
         running_bucket = bucket_of(intervals, running_c)
@@ -172,6 +215,7 @@ def main() -> int:
         if day not in replay_cache:
             replay_cache[day] = R.replay_curve(day) or {}
             debias_cache[day] = D.replay_curve(day) or {}
+            live_gap_cache[day] = G.replay_curve(day) or {}
             raw_replay_cache[day] = (
                 R.replay_curve(day, table=raw_table) or {}
             ) if raw_table is not None else {}
@@ -195,7 +239,7 @@ def main() -> int:
             # comparison is between two mismatched halves.
             upper = {b: (None if hi is None else float(hi))
                      for b, (lo, hi) in intervals.items()}
-            def _blend(art, admit_debias):
+            def _blend(art, admit_debias, live_gap=False):
                 if not art:
                     return None, None, {}
                 got = R.resolve_serving_input(
@@ -210,18 +254,41 @@ def main() -> int:
                     debias_enabled=admit_debias)
                 if got is None:
                     return None, None, {}
+                correction, gap_note = (0.0, {})
+                if live_gap:
+                    correction, gap_note = G.resolve_correction_for(
+                        live_gap_cache.get(day),
+                        system_id=system, latest_observed_c=latest_c,
+                        curve_now_c=got.get("curve_now_c"),
+                        systems={system}, enabled=True)
                 vec, receipt = R.apply_regional_path_prior(
                     served, ordinals=ordinals, upper_bounds_c=upper,
                     running_high_bucket=running_bucket, running_high_c=running_c,
                     remaining_peak_c=float(got["remaining_peak_c"]),
                     cell=got["cell"], lineage=got.get("lineage"),
-                    weight=args.weight, enabled=True)
+                    weight=args.weight, enabled=True,
+                    live_gap_correction_c=correction, live_gap_note=gap_note)
                 return got, vec, receipt
             resolved, blended, note = _blend(artifact, None)
             if resolved is None or note.get("regional_path_prior_applied") != "true":
                 seen[f"{system}:{note.get('regional_path_prior_skip_reason') or '?'}"] += 1
                 continue
             vectors = {"none": served, "layer": blended}
+            if "livegap" in arms:
+                if latest_c is None:
+                    latest_c = latest_formal_at(station, str(at))
+                lg_got, lg_vec, lg_note = _blend(artifact, None, live_gap=True)
+                if lg_got is None or lg_note.get(
+                        "regional_path_prior_applied") != "true":
+                    continue
+                vectors["livegap"] = lg_vec
+                seen[f"{system}:livegap:"
+                     f"{lg_note.get('regional_live_gap_skip_reason') or 'APPLIED'}"] += 1
+                point[f"{system}::livegap"].append((
+                    max(running_c, float(lg_got["remaining_peak_c"]))
+                    + float(lg_got["cell"]["bias_c"])
+                    + float(lg_note.get("regional_live_gap_correction_c") or 0.0)
+                    - actual, 0.0))
             if "other" in arms:
                 raw_got, raw_vec, raw_note = _blend(
                     raw_replay_cache.get(day), other_debias)
@@ -259,6 +326,9 @@ def main() -> int:
             # nowhere near independent, so the block bootstrap resamples
             # station-days, not rows.
             paired[system].append((key, scored["layer"] - scored["none"]))
+            if "livegap" in arms:
+                paired[f"{system}::livegap"].append(
+                    (key, scored["livegap"] - scored["layer"]))
             by_station[(system, station)].append(scored["layer"] - scored["none"])
             if "other" in arms:
                 paired[f"{system}::other"].append(
@@ -282,7 +352,7 @@ def main() -> int:
         served_label = "去偏后融合" if D.ENABLED else "生偏融合"
         other_label = "生偏融合" if D.ENABLED else "去偏后融合"
         for arm, label in (("none", "无层"), ("other", other_label),
-                           ("layer", served_label)):
+                           ("layer", served_label), ("livegap", "＋今日活偏差")):
             a = arms.get(arm)
             if not a or not a["n"]:
                 continue
@@ -319,6 +389,36 @@ def main() -> int:
             print("  ".join(
                 f"{st} {statistics.mean(by_station[(system, st)]):+.3f}(n={len(by_station[(system, st)])})"
                 for st in stations_here))
+        lg_pairs = paired.get(f"{system}::livegap") or []
+        if lg_pairs:
+            by_day_g = collections.defaultdict(list)
+            for k, d in lg_pairs:
+                by_day_g[k].append(d)
+            means_g = [statistics.mean(by_day_g[k]) for k in sorted(by_day_g)]
+            centre_g = statistics.mean(means_g)
+            spread_g = (statistics.pstdev(means_g) / math.sqrt(len(means_g))
+                        if len(means_g) > 1 else 0.0)
+            lo_g, hi_g = centre_g - 1.96 * spread_g, centre_g + 1.96 * spread_g
+            verdict_g = ("显著更好" if hi_g < 0 else "显著更差" if lo_g > 0
+                         else "与零无区别")
+            rng_g = random.Random(29)
+            boot_g = sorted(
+                statistics.mean(
+                    [means_g[rng_g.randrange(len(means_g))] for _ in means_g])
+                for _ in range(4000)
+            )
+            worse_g = sum(1 for b in boot_g if b > 0) / len(boot_g)
+            print(f"    活偏差层本身（＋今日活偏差 − {served_label}）：站日均值差 "
+                  f"{centre_g:+.4f} · 95% 区间 [{lo_g:+.4f}, {hi_g:+.4f}]"
+                  f" → {verdict_g}")
+            print(f"    自助法（重抽 {len(means_g)} 个站日 4000 次）区间 "
+                  f"[{boot_g[100]:+.4f}, {boot_g[3900]:+.4f}]"
+                  f" · P(加了更差)={worse_g:.3f}")
+            lg_pts = point.get(f"{system}::livegap") or []
+            if lg_pts:
+                gc = [x for x, _ in lg_pts]
+                print(f"    锚点 MAE：＋活偏差 {sum(map(abs, gc))/len(gc):.3f}°C"
+                      f"（偏差 {statistics.mean(gc):+.3f}）")
         raw_pairs = paired.get(f"{system}::other") or []
         if raw_pairs:
             by_day_r = collections.defaultdict(list)

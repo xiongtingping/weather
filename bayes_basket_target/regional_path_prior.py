@@ -32,6 +32,7 @@ from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 from .contracts import ContractError
+from .regional_live_gap import FORM as LIVE_GAP_FORM
 from .regional_point_debias import (
     apply_remaining_peak_debias,
     resolve_correction as resolve_debias_correction,
@@ -315,6 +316,8 @@ def apply_regional_path_prior(
     weight: float | None = None,
     enabled: bool | None = None,
     lineage: Mapping[str, Any] | None = None,
+    live_gap_correction_c: float = 0.0,
+    live_gap_note: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, float], dict[str, str]]:
     """Blend the curve's predictive shape into the posterior.
 
@@ -336,7 +339,20 @@ def apply_regional_path_prior(
         note["regional_path_prior_skip_reason"] = "ZERO_WEIGHT"
         return base, note
     # The day cannot end below what it has already reached.
-    peak = max(float(remaining_peak_c), float(running_high_c)) + float(cell["bias_c"])
+    #
+    # Charter 95, 2026-09-07: today's own error joins the level here.  The
+    # ``anchor`` form adds it after the max, which is the quantity the slope
+    # was fitted against; the ``curve`` form displaces the curve before the
+    # max, which reads better physically but cannot act at all once the
+    # running high dominates.  Zero when the layer is silent, and then this
+    # line is what it always was.
+    live = float(live_gap_correction_c or 0.0)
+    if LIVE_GAP_FORM == "curve":
+        peak = max(float(remaining_peak_c) + live, float(running_high_c))
+        peak += float(cell["bias_c"])
+    else:
+        peak = max(float(remaining_peak_c), float(running_high_c))
+        peak += float(cell["bias_c"]) + live
     predictive = predictive_probabilities(
         peak_c=peak, sigma_c=float(cell["sigma_c"]), ordinals=ordinals,
         upper_bounds_c=upper_bounds_c, running_high_bucket=running_high_bucket,
@@ -377,6 +393,12 @@ def apply_regional_path_prior(
             str(key): str(value)
             for key, value in dict(lineage or {}).items()
         },
+        **{
+            str(key): str(value)
+            for key, value in dict(live_gap_note or {}).items()
+            if str(dict(live_gap_note or {}).get(
+                "regional_live_gap_skip_reason")) != "DISABLED"
+        },
     }
     return blended, note
 
@@ -403,6 +425,39 @@ def remaining_peak_from_curve(
         if when > cutoff:
             values.append(float(value))
     return (max(values) if values else None), len(values)
+
+
+def curve_value_at(
+    hourly_c: Mapping[str, Any], *, as_of_utc: str,
+) -> float | None:
+    """The curve's value for the hour this instant falls in.
+
+    The curve is keyed on the hour it is valid for, so a report at 14:23 is
+    answered by the 14:00 value; a curve that only starts later answers with
+    its first hour after this instant, and one that has ended answers None.
+    """
+
+    try:
+        now = datetime.fromisoformat(str(as_of_utc).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    hour = now.replace(minute=0, second=0, microsecond=0)
+    parsed: dict[datetime, float] = {}
+    for stamp, value in dict(hourly_c).items():
+        try:
+            parsed[datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))] = float(value)
+        except (TypeError, ValueError):
+            continue
+    # This hour, or the next one, and nothing further.  The lane stores the
+    # local peak window rather than the whole day, so a wider fallback hands a
+    # pre-dawn report the curve's midday value and calls the difference a live
+    # gap: measured 2026-09-07, that fabricated a mean gap near -2C where the
+    # honest one is +0.1 to +0.5, and drove the anchor 0.47C cold.  The fitter
+    # takes exactly these two and skips the instant otherwise, and serving
+    # must not be able to see a sample the fit would have thrown away.
+    if hour in parsed:
+        return parsed[hour]
+    return parsed.get(hour + timedelta(hours=1))
 
 
 def resolve_serving_input(
@@ -479,7 +534,22 @@ def resolve_serving_input(
         run_init = datetime.fromisoformat(
             str(row["run_init_utc"]).replace("Z", "+00:00")
         )
-        if (as_of - run_init).total_seconds() / 3600.0 > MAX_RUN_AGE_HOURS:
+        age_hours = (as_of - run_init).total_seconds() / 3600.0
+        if age_hours < 0.0:
+            # A run issued after this instant is not a forecast this decision
+            # could have read.  The age test above is one-sided and lets a
+            # negative age through, and ``knowable_at_utc`` -- the guard that
+            # should have caught it -- is an empty string on 550 of 880 NBM
+            # rows and 354 of 700 HRRR rows, backfills the column's repair
+            # never reached; the empty string sorts before every timestamp, so
+            # those runs read as knowable at every instant.  Measured
+            # 2026-09-07 on the admission window: 74.1% of NBM and 78.0% of
+            # HRRR serving decisions were reading a run from their own future,
+            # some of them thirteen hours ahead.  MSM was clean at 0.0%, which
+            # is why the reading that admitted it stands.  This guard is
+            # structural and holds whatever the column says.
+            continue
+        if age_hours > MAX_RUN_AGE_HOURS:
             continue
         peak, width = remaining_peak_from_curve(
             row["hourly_c"], as_of_utc=as_of_utc
@@ -516,6 +586,11 @@ def resolve_serving_input(
             continue
         return {
             "remaining_peak_c": float(peak),
+            # Charter 95's live-gap feature needs the run's own value for the
+            # hour now in progress; only this function has the curve.  The
+            # other half -- what the station just reported -- belongs to the
+            # trajectory, so the two are joined by the caller.
+            "curve_now_c": curve_value_at(row["hourly_c"], as_of_utc=as_of_utc),
             "remaining_hours_on_curve": int(width),
             "cell": cell,
             "hours_left": round(hours_left, 4),
@@ -585,7 +660,8 @@ __all__ = [
     "SCHEMA", "RULE_VERSION", "ENABLED", "WEIGHT", "HOURS_EDGES",
     "MIN_CELL_SAMPLES", "MIN_STATION_SAMPLES", "MAX_RUN_AGE_HOURS",
     "POOLED_FIT_SYSTEM_ID", "SERVING_SYSTEMS",
-    "apply_regional_path_prior", "build_serving_input", "hours_bin",
+    "apply_regional_path_prior", "build_serving_input", "curve_value_at",
+    "hours_bin",
     "load_artifact", "load_replay_table", "predictive_probabilities",
     "remaining_peak_from_curve", "replay_curve", "resolve_cell",
 ]
