@@ -62,6 +62,12 @@ LADDER_RULE = "bid+1t"
 # about.  Absent from every order written before 2026-09-07T07:27Z, so this
 # reads as "accumulating" until a day of them has settled.
 CHASE_RULE = "bid+1t@chase"
+# Charter 109's arm: rest at bid+1t for the horizon, pay the ask if the book
+# never came.  What it answers is the one assumption the paired analysis
+# rested on -- that crossing later costs no more than crossing now -- so the
+# reading that matters is the price its crossed half paid against what the
+# plain taker paid at placement.
+TAKE_AFTER_RULE = "bid+1t@then_take"
 LEAD_BANDS = (
     ("D-2 (>=24h)", 24.0, 1e9),
     ("12-24h", 12.0, 24.0),
@@ -148,6 +154,32 @@ def shadow_reading(conn: sqlite3.Connection) -> dict:
     chase_orders = sum(
         cell["orders"] for cell in by_rule if cell["price_rule"] == CHASE_RULE
     )
+    take_after = {"maker": [0, 0.0], "crossed": [0, 0.0], "taker": [0, 0.0]}
+    for row in conn.execute(
+        "SELECT o.price_rule rule, o.fill_kind kind,"
+        " COALESCE(o.fill_limit_price, o.limit_price) paid"
+        " FROM maker_shadow_order o"
+        " WHERE o.state='FILLED' AND o.horizon_minutes=60"
+        "   AND o.price_rule IN (?, 'ask')",
+        (TAKE_AFTER_RULE,),
+    ):
+        key = (
+            "taker" if str(row["rule"]) == "ask"
+            else str(row["kind"] or "maker")
+        )
+        if key not in take_after:
+            continue
+        take_after[key][0] += 1
+        take_after[key][1] += float(row["paid"] or 0.0)
+    take_reading = {
+        key: {
+            "fills": cell[0],
+            "mean_price_paid": (
+                round(cell[1] / cell[0], 4) if cell[0] else None
+            ),
+        }
+        for key, cell in take_after.items()
+    }
     ladder = [
         cell for cell in by_rule
         if cell["price_rule"] == LADDER_RULE and cell["horizon_minutes"] == 60
@@ -162,6 +194,10 @@ def shadow_reading(conn: sqlite3.Connection) -> dict:
         # and not a zero.
         "chase_asymmetry_60min": _asymmetry(CHASE_RULE),
         "chase_orders_settled": chase_orders,
+        "take_after_rule": TAKE_AFTER_RULE,
+        # ``crossed`` against ``taker`` is the whole question: what a cross
+        # deferred by one horizon costs against a cross taken at once.
+        "take_after": take_reading,
         "by_rule_and_horizon": sorted(
             by_rule, key=lambda c: (c["price_rule"], c["horizon_minutes"])
         ),
@@ -295,6 +331,16 @@ def main() -> int:
               f"赢/输 {shadow['chase_asymmetry_60min']}")
     else:
         print(f"追价臂 {CHASE_RULE}：仍在积累（0 条已判）")
+    ta = shadow["take_after"]
+    if ta["crossed"]["fills"] or ta["maker"]["fills"]:
+        print(
+            f"先挂后吃臂 {TAKE_AFTER_RULE}："
+            f"挂到 {ta['maker']['fills']} 单均价 {ta['maker']['mean_price_paid']}，"
+            f"改吃 {ta['crossed']['fills']} 单均价 {ta['crossed']['mean_price_paid']}，"
+            f"对照直接吃单均价 {ta['taker']['mean_price_paid']}"
+        )
+    else:
+        print(f"先挂后吃臂 {TAKE_AFTER_RULE}：仍在积累（0 单成交）")
     if verdict:
         print(
             f"影子观测区间 {verdict['shadow_asymmetry_range']}；"
