@@ -118,6 +118,56 @@ def _unit_prior_contract_covers_payload(payload: dict) -> bool:
     return required.issubset(available)
 
 
+def _posterior_ssot_contract_covers_payload(payload: dict) -> bool:
+    ssot = payload.get("posterior_ssot_fact")
+    return isinstance(ssot, dict) and str(ssot.get("state") or "") == "available"
+
+
+def attach_posterior_ssot_contract(payload: dict) -> dict:
+    """Give a minimal fixture the posterior SSOT block the writer demands.
+
+    Delegates the shape to ``attach_unit_posterior_ssot_fact`` -- which
+    already knows it, and knowing it twice is how two answers start -- and
+    only derives the target the block has to agree with, from the
+    payload's own distribution.
+
+    It exists because the writer's contract is production's while the
+    fixtures below are minimal by design, and every one of them predates
+    the contract's current shape.  On 2026-09-07 that gap was eighty-one
+    red tests in this file, failing inside the writer on a dozen
+    ``posterior_ssot_fact_*`` issues rather than on anything they assert.
+    A payload that already carries an available block is left alone: the
+    tests that exercise the contract itself build their own.
+    """
+
+    best_label, best_probability = "", None
+    for row in payload.get("distribution") or []:
+        if not isinstance(row, dict):
+            continue
+        label = str(row.get("outcome") or row.get("bucket") or row.get("label") or "").strip()
+        if not label:
+            continue
+        for key in ("q_bayes_posterior", "q_temperature_bucket_posterior",
+                    "posterior", "probability", "p"):
+            value = row.get(key)
+            if value is None:
+                continue
+            try:
+                probability = float(value)
+            except (TypeError, ValueError):
+                break
+            if best_probability is None or probability > best_probability:
+                best_label, best_probability = label, probability
+            break
+    if not best_label or best_probability is None:
+        return payload
+    return attach_unit_posterior_ssot_fact(
+        payload,
+        target_bucket=best_label,
+        target_probability=best_probability,
+    )
+
+
 def insert_event_fact_history_with_unit_prior(*args, **kwargs) -> int:
     item = kwargs.get("item")
     if isinstance(item, dict):
@@ -126,6 +176,8 @@ def insert_event_fact_history_with_unit_prior(*args, **kwargs) -> int:
         )
         if not pending_model and not _unit_prior_contract_covers_payload(item):
             attach_unit_prior_contract(item)
+        if not pending_model and not _posterior_ssot_contract_covers_payload(item):
+            attach_posterior_ssot_contract(item)
     return getattr(server, "_insert_event_fact_history")(*args, **kwargs)
 
 
@@ -170,6 +222,8 @@ def build_ui_event_fact_write_compat_plan_with_unit_prior(*args, **kwargs) -> di
     if isinstance(item, dict):
         if not _unit_prior_contract_covers_payload(item):
             attach_unit_prior_contract(item)
+        if not _posterior_ssot_contract_covers_payload(item):
+            attach_posterior_ssot_contract(item)
     return getattr(server, "build_ui_event_fact_write_compat_plan")(*args, **kwargs)
 
 
