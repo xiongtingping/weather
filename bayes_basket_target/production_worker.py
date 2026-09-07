@@ -15342,6 +15342,21 @@ class TargetProductionWorker:
             result = self._run_stages()
         finally:
             total_ms = round((time.perf_counter() - started) * 1000.0, 1)
+            # Marks tile a timeline, so what they do not name is arithmetic,
+            # not a mystery -- but only if someone does the arithmetic.  For
+            # three weeks nobody did, and every overrun was read off a
+            # profile that silently covered a minority of the cycle.  Publish
+            # the residual: a stage added after the last mark, or an early
+            # return that skips one, now shows up as ``unattributed`` growing
+            # rather than as a timeline that quietly stops accounting.
+            named_ms = sum(
+                float(value)
+                for key, value in self._stage_timings_ms.items()
+                if key != "cycle_total" and isinstance(value, (int, float))
+            )
+            self._stage_timings_ms["unattributed"] = round(
+                max(0.0, total_ms - named_ms), 1
+            )
             self._stage_timings_ms["cycle_total"] = total_ms
         if isinstance(result, dict):
             result.setdefault("stage_timings_ms", dict(self._stage_timings_ms))
@@ -16748,8 +16763,14 @@ class TargetProductionWorker:
                 if (station, day) in recomputed_scopes:
                     continue
                 if (station, day) not in scope_quote_expiry:
+                    _probe_started = time.perf_counter()
                     scope_quote_expiry[(station, day)] = (
                         self._scope_day_quote_expiry(day, station)
+                    )
+                    self._add_span(
+                        "decision_loop_lease_probe",
+                        (time.perf_counter() - _probe_started) * 1000.0,
+                        label=f"{station}|{day}",
                     )
                 expiry = scope_quote_expiry[(station, day)]
                 lease_left = (
@@ -16784,11 +16805,17 @@ class TargetProductionWorker:
                         # with a reason, or committed_with_skipped_scopes --
                         # and throwing it away left the cycle reporting an
                         # ineffective day with no way to tell those apart.
+                        _refresh_started = time.perf_counter()
                         refresh_receipt = self._refresh_scope_day_evidence(
                             activation,
                             event_date=day,
                             as_of_utc=utc_now(),
                         )  # writes the snapshot the compile reads
+                        self._add_span(
+                            "decision_loop_quote_refresh",
+                            (time.perf_counter() - _refresh_started) * 1000.0,
+                            label=day,
+                        )
                         quote_refresh_receipts.append({
                             "event_date": day,
                             "state": str(
@@ -16878,6 +16905,7 @@ class TargetProductionWorker:
                     )
                     if replay_blocker is not None:
                         raise ContractError(replay_blocker)
+                    _compile_started = time.perf_counter()
                     candidate = compile_production_cycle_from_ssot(
                         self.conn,
                         station_id=station,
@@ -16890,18 +16918,32 @@ class TargetProductionWorker:
                         policy_authority_scope=str(activation["policy_authority_scope"]),
                         base_policy=scope.get("base_policy") if isinstance(scope.get("base_policy"), Mapping) else None,
                     )
+                    self._add_span(
+                        "decision_loop_compile",
+                        (time.perf_counter() - _compile_started) * 1000.0,
+                        label=f"{station}|{day}",
+                    )
                     # A complete current-stage + WS compile is a valid
                     # no-live decision point. Every stage commits only the
                     # content-addressed NO_EXECUTION authority; dry-run must
                     # not materialize P1 observation/bound/training facts.
-                    candidate = {
-                        **candidate,
-                        "atomic_commit": self._commit_current_stage_no_execution_candidate(
+                    _commit_started = time.perf_counter()
+                    _atomic_commit = (
+                        self._commit_current_stage_no_execution_candidate(
                             candidate,
                             station_id=station,
                             event_date=day,
                             created_at_utc=now,
-                        ),
+                        )
+                    )
+                    self._add_span(
+                        "decision_loop_commit",
+                        (time.perf_counter() - _commit_started) * 1000.0,
+                        label=f"{station}|{day}",
+                    )
+                    candidate = {
+                        **candidate,
+                        "atomic_commit": _atomic_commit,
                     }
                     # The chain's stake factor is the opener's, forever:
                     # the first authorized P0 plan writes one row and every
@@ -16917,6 +16959,7 @@ class TargetProductionWorker:
                     results.append(candidate)
                 except Exception as exc:
                     reason = f"{type(exc).__name__}:{exc}"
+                    _blocked_started = time.perf_counter()
                     blocked_commit = self._commit_blocked_scope(
                         station_id=station,
                         event_date=day,
@@ -16944,6 +16987,11 @@ class TargetProductionWorker:
                         },
                         created_at_utc=now,
                     )
+                    self._add_span(
+                        "decision_loop_blocked_commit",
+                        (time.perf_counter() - _blocked_started) * 1000.0,
+                        label=f"{station}|{day}",
+                    )
                     wrapper = {
                         **_blocked(reason, station_id=station, event_date=day),
                         "atomic_commit": blocked_commit,
@@ -16967,6 +17015,15 @@ class TargetProductionWorker:
                     else:
                         wrapper["failed_in"] = "compile"
                     results.append(wrapper)
+            # The loop above ran unnamed until 2026-09-07.  Every stall since
+            # the timeline was introduced was diagnosed from a profile that
+            # covered 41% of the cycle: measured that morning, 1768s of named
+            # stages inside a 4285s cycle, with the other 2517s -- 90 scopes,
+            # 86 of them dying on ``production_quote_expired`` -- attributed
+            # to nothing at all.  That blind spot is why the same overrun has
+            # been "fixed" repeatedly from whichever statement the point-in-
+            # time probe happened to catch.
+            self._mark("decision_loop")
             # Closed-day truth and labels are maintenance work, not inputs to
             # the current action.  Running their scans before market ingress
             # consumed the strict quote lease and could turn a fresh official
@@ -17007,6 +17064,7 @@ class TargetProductionWorker:
             # produced nothing at all -- no results, or results and not one
             # of them committed -- which is also exactly the shape of the
             # worker-level failures the except arm below already reports.
+            self._mark("settlement_lane")
             committed_scopes, blocked_scope_reasons = _scope_verdict_tally(
                 results
             )

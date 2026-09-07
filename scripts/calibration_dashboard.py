@@ -365,9 +365,32 @@ def _production_health(status: Mapping[str, Any]) -> dict[str, Any]:
         # That drift happened on 2026-09-01 and took 21 of 28 scopes with it:
         # the compile loop outran a sixty-second quote lease.
         health = "amber" if health == "green" else health
+        # Name where the seconds went, on the same line that says there were
+        # too many of them.  An overrun used to report only its total, so
+        # every diagnosis started by asking the status file a question it had
+        # already answered -- and the answer was usually read instead off the
+        # point-in-time statement probe, which names whichever query happened
+        # to be running, not whichever stage owns the cycle.  Three weeks of
+        # "fixed again" came out of that gap.  ``unattributed`` is in the
+        # ranking on purpose: a stage added after the last mark shows up here
+        # as the biggest consumer rather than as silence.
+        stages = production.get("stage_timings_ms") or {}
+        top_stages = "、".join(
+            f"{name} {float(value) / 1000:.0f}s"
+            for name, value in sorted(
+                (
+                    (str(k), float(v))
+                    for k, v in stages.items()
+                    if k != "cycle_total" and isinstance(v, (int, float))
+                ),
+                key=lambda item: -item[1],
+            )[:3]
+            if value >= 1000.0
+        )
         notes.append(
             f"单轮 {cycle_ms / 1000:.0f} 秒"
             f"（目标 {target_sec:.0f}，告警 {warn_sec:.0f}）"
+            + (f"：{top_stages}" if top_stages else "")
         )
     return {
         "production_health": health,
