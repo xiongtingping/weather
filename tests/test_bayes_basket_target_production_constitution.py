@@ -20,6 +20,17 @@ DOCTRINE = (
 )
 
 
+from pathlib import Path as _Path
+from tests.ephemeral_audit_support import requires_audit_artifacts
+
+# Scoped to the two tests that read the pruned artifact -- a module-level
+# marker would also skip four that pass without it.
+_NEEDS_ZERO_WRITE_RECEIPT = requires_audit_artifacts(
+    _Path(__file__).resolve().parents[1]
+    / "output/audits/bayes_basket_target_runtime_zero_write_generation_21.json",
+)
+
+
 def _json(path: Path) -> dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -122,6 +133,7 @@ def test_current_change_has_complete_impact_matrix() -> None:
     assert impact["calls_order_gateway"] is False
 
 
+@_NEEDS_ZERO_WRITE_RECEIPT
 def test_generation_21_zero_write_runtime_receipt_is_authoritative() -> None:
     roadmap = _json(DOCTRINE / "bayes_basket_development_roadmap_v1_6.json")
     runtime = roadmap["ws_decision_zero_write_v1"]

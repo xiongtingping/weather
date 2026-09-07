@@ -25,6 +25,11 @@ CURRENT_PACKET = (
 )
 
 
+from tests.ephemeral_audit_support import requires_audit_artifacts
+
+pytestmark = requires_audit_artifacts(PACKET, CURRENT_PACKET)
+
+
 def test_stale_rkpk_vertical_slice_packet_is_rejected_zero_write(
     tmp_path: Path,
 ) -> None:

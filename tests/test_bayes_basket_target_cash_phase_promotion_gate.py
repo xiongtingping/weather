@@ -3,6 +3,14 @@ from __future__ import annotations
 from scripts.audit_cash_phase_promotion_gate import build_gate
 
 
+from pathlib import Path as _Path
+from tests.ephemeral_audit_support import requires_audit_artifacts
+
+pytestmark = requires_audit_artifacts(
+    _Path(__file__).resolve().parents[1] / "output/audits/bayes_basket_target_production_no_live_acceptance.json",
+)
+
+
 def test_m8_13_separates_source_replay_from_own_forward_promotion() -> None:
     receipt = build_gate()
     assert receipt["status"] == "BLOCKED_EVIDENCE"

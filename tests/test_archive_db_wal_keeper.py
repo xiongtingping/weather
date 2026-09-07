@@ -78,14 +78,16 @@ def test_read_only_keeper_prevents_last_writer_close_from_removing_wal(tmp_path:
         process.wait(timeout=5)
 
 
-def test_monitor_supervises_keeper_before_amsc_children_and_cleans_it_up() -> None:
-    monitor = (ROOT / "scripts" / "polymarket_monitor_daemon.sh").read_text(encoding="utf-8")
-    assert "start_archive_wal_keeper()" in monitor
-    loop = monitor[monitor.index('while true; do', monitor.index('log "daemon_loop_start')):]
-    assert loop.index("start_archive_wal_keeper") < loop.index("start_amsc_zuuu_speci_watch")
-    cleanup = monitor[monitor.index("cleanup() {"):monitor.index("terminate() {")]
-    assert 'kill "$ARCHIVE_WAL_KEEPER_PID"' in cleanup
-    assert "archive_db_wal_keeper.py" in monitor
+# Retired 2026-09-07 with the script it asserted on.
+#
+# test_monitor_supervises_keeper_before_amsc_children_and_cleans_it_up read
+# scripts/polymarket_monitor_daemon.sh and checked the keeper was started
+# before the AMSC watchers and killed in cleanup.  That script was deleted
+# on 2026-08-04 and nothing supervises the keeper from a shell any more --
+# no .sh in the tree mentions start_archive_wal_keeper, and no launch agent
+# runs the monitor.  The test could only ever raise FileNotFoundError, which
+# is a red that says nothing about the code, so it goes with the component
+# rather than being kept as a monument to it.
 
 
 def test_audit_reports_cross_user_inspection_permission_without_claiming_pid_died(

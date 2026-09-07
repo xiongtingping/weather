@@ -13,6 +13,14 @@ from scripts.apply_bayes_basket_target_strict_delta_candidate import (
 )
 
 
+from pathlib import Path as _Path
+from tests.ephemeral_audit_support import requires_audit_artifacts
+
+pytestmark = requires_audit_artifacts(
+    _Path(__file__).resolve().parents[1] / "output/audits/bayes_basket_target_strict_delta_proxy_quality_v1.json",
+)
+
+
 def _protocol() -> dict[str, object]:
     path = (
         ROOT
