@@ -5772,12 +5772,24 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
             evidence = json.loads(str(row[3]))
         except ValueError:
             evidence = []
+        # Two shapes live in this column.  The store wrapped the band list
+        # in {"bands": [...], "activation_guard": {...}} when the guard was
+        # added; rows written before that are still the bare list, and P0's
+        # activated row is one of them.  Iterating the wrapper yielded its
+        # keys -- strings -- and the render died on
+        # ``'str' object has no attribute 'get'`` after 516 seconds of work,
+        # every render, producing nothing.  Read whichever shape is there.
+        if isinstance(evidence, Mapping):
+            evidence = evidence.get("bands") or []
+        if not isinstance(evidence, list):
+            evidence = []
+        bands = [item for item in evidence if isinstance(item, Mapping)]
         return {
             "sha256": str(row[0])[:12],
             "fitted_at_utc": str(row[1]),
             "seat_count": int(row[2] or 0),
             "blind_bands": [
-                item.get("band_upper_bound") for item in evidence
+                item.get("band_upper_bound") for item in bands
                 if item.get("accumulating") and not item.get("seats")
             ],
         }
