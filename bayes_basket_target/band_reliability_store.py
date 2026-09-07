@@ -1060,12 +1060,15 @@ def fit_band_reliability_table(
 
     return {
         "stage": stage_id,
-        "factors": tuple(
-            (band, factors[band]) for band in BAND_TABLE_CELLS
-        ),
+        # The partition follows the axis.  This read ``BAND_TABLE_CELLS``
+        # literally and would KeyError on a distance fit, whose factors are
+        # keyed on the five distance cells and not the eleven claim ones.
+        "factors": tuple((band, factors[band]) for band in cells),
+        "axis": axis_id,
         "evidence": {
             "schema": "band_reliability_fit_evidence_v2",
             "stage": stage_id,
+            "axis": axis_id,
             "serving_day_count": len(serving),
             "serving_station_day_count": station_days,
             "gate_day_count": len(gate),
