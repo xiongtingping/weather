@@ -65,6 +65,16 @@ _US_STATIONS = (
     ("KSEA", 47.44467, -122.31442, "America/Los_Angeles"),
     ("KSFO", 37.61961, -122.36561, "America/Los_Angeles"),
 )
+# Not in the United States, and inside the CONUS grid anyway: the HRRR and
+# NBM domains both run well north of the border, and Toronto is the only
+# station in the live roster that sits under them without being in
+# ``_US_STATIONS``.  Kept in its own tuple so the name of the one above stays
+# true.  Whether the transport actually returns a local day for it is a
+# question for the transport, not for this list -- the capture answers it, and
+# the serving gate rules on admission separately.
+_IN_DOMAIN_NON_US_STATIONS = (
+    ("CYYZ", 43.679, -79.629, "America/Toronto"),
+)
 # The roster each product is captured at, which is the sweep's verdict and
 # not a progress report.  It lives here rather than in the capture script
 # because two readers need the same answer: the capture, and the board
@@ -74,8 +84,11 @@ _US_STATIONS = (
 CAPTURE_STATIONS = {
     # KLAX/HRRR measured reversed in the 46-pair sweep (the served
     # posterior beat it); it stays in NBM, where it did not.
-    "HRRR": tuple(s for s in _US_STATIONS if s[0] != "KLAX"),
-    "NBM": _US_STATIONS,
+    "HRRR": (
+        tuple(s for s in _US_STATIONS if s[0] != "KLAX")
+        + _IN_DOMAIN_NON_US_STATIONS
+    ),
+    "NBM": _US_STATIONS + _IN_DOMAIN_NON_US_STATIONS,
 }
 # The idx line that names the 2m temperature field.  NBM carries a second
 # TMP 2m line for the ensemble standard deviation; the trailing colon on

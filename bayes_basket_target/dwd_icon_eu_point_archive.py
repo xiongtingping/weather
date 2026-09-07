@@ -60,6 +60,15 @@ CAPTURE_STATIONS = (
     ("EFHK", 60.327, 24.957, "Europe/Helsinki"),
     ("LFPB", 48.967, 2.428, "Europe/Paris"),
     ("LEMD", 40.466, -3.555, "Europe/Madrid"),
+    # Added 2026-09-07 on the criterion charter 95's lane has used since the
+    # MSM took ZSPD and ZSQD: both fall inside the model's own domain, and
+    # capture is not admission -- the serving gate decides separately, per
+    # system, and a station never captured can never be measured at all.
+    # These two are the whole of the ICON-EU gap in the live roster: fifteen
+    # stations carry no regional lane, and only these two sit inside the
+    # domain of a lane already running.
+    ("EGLC", 51.505, 0.055, "Europe/London"),
+    ("LIMC", 45.631, 8.728, "Europe/Rome"),
 )
 _TIMEOUT = httpx.Timeout(60.0, connect=15.0)
 _ATTEMPTS = 3
