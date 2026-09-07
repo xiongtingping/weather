@@ -101,12 +101,32 @@ def test_only_three_user_domain_services_and_targetctl_remain() -> None:
         encoding="utf-8"
     )
     targetctl = (ROOT / "scripts" / "targetctl.sh").read_text(encoding="utf-8")
-    launchd = sorted(path.name for path in (ROOT / "launchd").glob("*.plist"))
-    assert launchd == [
+    # The guard this test exists for is the installer's own list: it manages
+    # three user-domain services and no more.  The repository's launchd
+    # directory has grown past that, and the growth is accounted for --
+    # four of the five extras were folded into the resident daemon's hosted
+    # sweeps on 2026-08-24 and are installed disabled, and the fifth,
+    # official_nwp_raw_retention, runs on its own clock.  Pinning the
+    # directory to the known set keeps a new one from arriving unnoticed
+    # without pretending the four superseded definitions are not on disk.
+    installer_managed = [
         "com.weather.clob_order_service.plist",
         "com.weather.market_ws.plist",
         "com.weather.weather_basket_yes.plist",
     ]
+    superseded_by_hosted_sweeps = [
+        "com.weather.maker_shadow_probe.plist",
+        "com.weather.paper_trading_ledger_sweep.plist",
+        "com.weather.pr12_awc_observation_sweep.plist",
+        "com.weather.settlement_truth_sweep.plist",
+    ]
+    own_clock = ["com.weather.official_nwp_raw_retention.plist"]
+    launchd = sorted(path.name for path in (ROOT / "launchd").glob("*.plist"))
+    assert launchd == sorted(
+        installer_managed + superseded_by_hosted_sweeps + own_clock
+    )
+    for name in installer_managed:
+        assert name in installer
     for label in (
         "com.weather.weather_basket_yes",
         "com.weather.market_ws",
