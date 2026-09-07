@@ -1090,8 +1090,18 @@ def refit_all_stages(
     *,
     bootstrap_samples: int = 1000,
     commit: bool = False,
+    axis: str | None = None,
 ) -> dict[str, Any]:
     """Fit every stage, journal every fit, activate when committing.
+
+    ``axis=None`` refits each stage on the axis it is ALREADY serving, which
+    is the only safe default once a stage can be on either.  Defaulting to
+    ``claim`` instead would have silently reverted P0 on the next nightly
+    sweep -- charter 105's switch landed at 2026-09-08T00:44Z and this sweep
+    runs every 24 hours, so it had about seven hours to live.  The axis is a
+    property of the table, and moving it is a decision somebody makes on
+    purpose; an explicit ``axis`` here is that decision, applied to every
+    stage.
 
     The stages are isolated from one another.  They share nothing but the
     connection: three distributions, three tables, three journal rows, and
@@ -1113,8 +1123,14 @@ def refit_all_stages(
         entry: dict[str, Any] = {"stage": stage}
         results[stage] = entry
         try:
+            stage_axis = (
+                str(axis) if axis is not None
+                else band_table_axis(conn, stage=stage)
+            )
+            entry["axis"] = stage_axis
             fitted = fit_band_reliability_table(
-                conn, stage=stage, bootstrap_samples=bootstrap_samples
+                conn, stage=stage, bootstrap_samples=bootstrap_samples,
+                axis=stage_axis,
             )
             active = load_band_table(conn, stage=stage)
             entry.update({
@@ -1123,7 +1139,7 @@ def refit_all_stages(
                     for band, factor in fitted["factors"]
                 ],
                 "fitted_table_sha256": band_table_sha256(
-                    fitted["factors"], stage=stage
+                    fitted["factors"], stage=stage, axis=stage_axis,
                 ),
                 "active_table_sha256": (
                     None if active is None else active[1]
@@ -1140,6 +1156,7 @@ def refit_all_stages(
                     outcome = persist_and_activate_band_table(
                         conn,
                         stage=stage,
+                        axis=stage_axis,
                         factors=fitted["factors"],
                         evidence=fitted["evidence"],
                         serving_day_count=fitted["serving_day_count"],

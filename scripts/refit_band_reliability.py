@@ -39,6 +39,17 @@ DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--axis",
+        choices=("claim", "centre_distance"),
+        help=(
+            "refit every stage on this axis (charter 105).  Omit to refit"
+            " each stage on the axis it is already serving, which is what"
+            " the nightly sweep does -- moving a table's axis is a decision"
+            " somebody makes on purpose, not something a refit does by"
+            " defaulting."
+        ),
+    )
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument("--bootstrap-samples", type=int, default=1000)
     parser.add_argument(
@@ -64,6 +75,7 @@ def main() -> int:
         conn,
         bootstrap_samples=args.bootstrap_samples,
         commit=args.commit,
+        axis=args.axis,
     )
     activated = [
         stage

@@ -228,3 +228,54 @@ def test_every_serving_lane_reads_the_tables_axis_not_its_own_preference():
     assert sources["native_ensemble_oos.py"].count(
         "== BAND_AXIS_CENTRE_DISTANCE"
     ) == 2
+
+
+def test_the_nightly_refit_keeps_each_stage_on_its_own_axis():
+    """The gap that would have undone the switch on its own.
+
+    ``refit_all_stages`` had no axis and fitted everything on the claim
+    partition.  P0 moved to the distance axis at 2026-09-08T00:44Z and the
+    calibration sweep runs every 24 hours, so the switch had about seven
+    hours to live -- it would have been reverted by a scheduled job with no
+    ruling, no journal entry saying so, and nothing to grep for afterwards.
+
+    ``axis=None`` now means "each stage keeps the axis it is already
+    serving".  Moving one is a decision somebody makes on purpose, and an
+    explicit ``axis=`` is that decision.
+    """
+
+    import inspect
+
+    from bayes_basket_target.band_reliability_store import refit_all_stages
+
+    parameter = inspect.signature(refit_all_stages).parameters["axis"]
+    assert parameter.default is None
+    source = inspect.getsource(refit_all_stages)
+    # Read per stage from the store, not chosen by the caller's default.
+    assert "band_table_axis(conn, stage=stage)" in source
+    # And carried into all three places that would otherwise silently
+    # disagree: the fit, the identity, and the activation.
+    assert "axis=stage_axis," in source
+    assert source.count("axis=stage_axis") >= 3
+    assert '"axis": stage_axis' in source or 'entry["axis"] = stage_axis' in source
+
+
+def test_the_shadow_lane_refuses_a_pooled_table_it_cannot_read():
+    """The shadow lane's cells are (position, claim band), so its base has to
+    be a claim-band table.  A distance table's bounds are distances; read as
+    claims every bucket falls in the first cell and the other four are never
+    reached -- 0.00929 per bucket on a real vector, quietly wrong.  It stops
+    by name instead."""
+
+    import inspect
+
+    from bayes_basket_target.band_shadow_store import fit_band_shadow_table
+
+    source = inspect.getsource(fit_band_shadow_table)
+    assert "load_band_table_with_axis" in source
+    assert "pooled_table_axis_not_claim" in source
+    # The refusal comes before the base is built, or it would be built from
+    # the table it just refused.
+    assert source.index("pooled_table_axis_not_claim") < source.index(
+        "base_table"
+    )

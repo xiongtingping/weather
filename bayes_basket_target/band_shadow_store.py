@@ -109,6 +109,8 @@ from typing import Any
 import numpy as np
 
 from .band_reliability_store import (
+    BAND_AXIS_CLAIM,
+    load_band_table_with_axis,
     BAND_STAGES,
     BAND_TABLE_CELLS,
     FACTOR_CEILING,
@@ -586,7 +588,36 @@ def fit_band_shadow_table(
     sample = collect_shadow_sample(conn, truth, stage=stage_id)
     days = sample["days"]
     finest = sample["cells"]
-    pooled_loaded = load_band_table(conn, stage=stage_id)
+    # Charter 105: the pooled table is this lane's BASE, and this lane's
+    # cells are (position, claim band) -- so it can only read a pooled table
+    # whose own cells are claim bands.  A distance-axis table's bounds are
+    # distances; read as claims they all fall in the first cell, which would
+    # hand every bucket that cell's factor and never reach the other four.
+    # Measured on a real serving vector the day P0 moved: 0.00929 per bucket,
+    # quietly wrong rather than loudly.  So the axis is checked, and a
+    # mismatch stops the fit by name instead of scoring against a base the
+    # lane misread.
+    pooled_loaded = load_band_table_with_axis(conn, stage=stage_id)
+    pooled_axis = (
+        BAND_AXIS_CLAIM if pooled_loaded is None else pooled_loaded[2]
+    )
+    if pooled_axis != BAND_AXIS_CLAIM:
+        return {
+            "stage": stage_id,
+            "cells": [],
+            "evidence": {
+                "schema": "band_shadow_fit_evidence_v1",
+                "stage": stage_id,
+                "serving_day_count": 0,
+                "serving_station_day_count": 0,
+                "accumulating": True,
+                "blocked_by": "pooled_table_axis_not_claim",
+                "pooled_table_axis": pooled_axis,
+                "pooled_table_sha256": (
+                    None if pooled_loaded is None else pooled_loaded[1]
+                ),
+            },
+        }
     pooled = (
         {band: float(factor) for band, factor in pooled_loaded[0]}
         if pooled_loaded is not None
