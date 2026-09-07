@@ -311,6 +311,81 @@ COMMITTED_SCOPE_STATES = frozenset({
 })
 
 
+#: Refusals that mean the system did not manage, not that it declined.
+#:
+#: A scope refused because its book expired, because a replay had not been
+#: compiled, or because the database was locked, is a scope the objective
+#: never got to judge -- rerun it with nothing about the market changed and
+#: it should go through.  A scope refused on ``delta_v2_support_empty`` or
+#: ``p1_entry_window_not_open`` is the objective answering; rerunning it
+#: changes nothing.
+#:
+#: They shared one counter, and that is how 2026-09-07 read as "90
+#: candidates, 88 blocked" -- a sentence that sounds like a fleet with
+#: nothing to trade, when in fact 83 of the 88 were books that went stale
+#: while the cycle was busy.  One of those numbers belongs in an SLO and
+#: the other belongs in a business report, so they are counted apart.
+#:
+#: Matched as substrings, because reason codes carry scope suffixes.
+INCAPACITY_REASON_MARKERS: tuple[str, ...] = (
+    "quote_expired",
+    "replay_required",
+    "database is locked",
+    "_locked",
+    "stale_fail_closed",
+    "manifest_stale",
+    "timeout",
+    "not_materialized",
+    "envelope_missing",
+    "scope_missing",
+    "unavailable",
+    "budget_spent",
+)
+
+
+def classify_scope_refusal(reason_code: str) -> str:
+    """``incapacity`` when the system did not manage, else ``verdict``."""
+
+    text = str(reason_code or "").strip().lower()
+    if not text:
+        return "verdict"
+    return (
+        "incapacity"
+        if any(marker in text for marker in INCAPACITY_REASON_MARKERS)
+        else "verdict"
+    )
+
+
+def split_refusals_by_capability(
+    reasons: Mapping[str, int],
+) -> dict[str, Any]:
+    """Split a refusal tally into what was declined and what was missed."""
+
+    incapacity: dict[str, int] = {}
+    verdict: dict[str, int] = {}
+    for code, count in (reasons or {}).items():
+        bucket = (
+            incapacity if classify_scope_refusal(code) == "incapacity"
+            else verdict
+        )
+        bucket[str(code)] = int(count)
+    incapacity_total = sum(incapacity.values())
+    verdict_total = sum(verdict.values())
+    total = incapacity_total + verdict_total
+    return {
+        "schema": "bayes_basket_target_refusal_split_v1",
+        "incapacity_count": incapacity_total,
+        "incapacity_reasons": dict(sorted(incapacity.items())),
+        "verdict_count": verdict_total,
+        "verdict_reasons": dict(sorted(verdict.items())),
+        # The SLO number.  "Of the scopes we refused, how many did we
+        # never actually judge?"
+        "incapacity_share": (
+            round(incapacity_total / total, 4) if total else 0.0
+        ),
+    }
+
+
 def _scope_verdict_tally(
     results: Sequence[Mapping[str, Any]],
 ) -> tuple[int, dict[str, int]]:
@@ -513,9 +588,85 @@ MAINTENANCE_STAGES: tuple[str, ...] = (
     "native_ensemble_oos",
     "delta_v2_settlement",
 )
-# What one cycle may spend on all of them together.  Sized against the
-# quote lease rather than against the stages: 60s of books cannot survive
-# a maintenance pass that costs more than the compile it delays.
+# Every stage's deadline tier, declared rather than implied.
+#
+# The rule the whole cycle turns on is one sentence -- **a tier may never
+# make a tighter tier late** -- and until now it was expressed nowhere.  It
+# was approximated instead, over and over, by reordering stages inside one
+# serial body and by tuning constants: settlement was moved after the
+# decision loop, the quote-refresh cap went 44 -> 1 -> 6, the dashboard
+# render was moved to its own process.  Each of those fixed the case in
+# front of it and left the rule unstated, so the next stage added inherited
+# nothing.
+#
+# The tiers are deadlines, not module boundaries:
+#
+#   R0  the quote lease.  Books have ``max_quote_age_seconds`` of life and
+#       a decision compiled against an expired one is thrown away, so
+#       everything between reading the book and committing is R0 -- plus
+#       the stages a commit is not allowed to happen without.
+#   R1  an arrival.  Model runs, TAF issuances and observations land on
+#       someone else's clock and some of their windows are not refetchable;
+#       late by a cycle is a cost, late by an hour is a loss.
+#   R2  a period.  Closed-day truth, OOS evaluation, settlement labels:
+#       nothing downstream of the current action reads them, so they may be
+#       deferred, and MAINTENANCE_STAGES is exactly this tier's gated set.
+#   R3  a day.  Retraining, retention, rendering -- these already live
+#       outside the cycle entirely and are named here so the table is the
+#       whole picture rather than the part that happens to be in one file.
+#
+# A stage absent from this table is treated as R0, which is the safe
+# default: it means a new stage delays a decision until someone classifies
+# it, rather than being silently deferrable.
+STAGE_TIER_R0_DECISION = 0
+STAGE_TIER_R1_ARRIVAL = 1
+STAGE_TIER_R2_PERIODIC = 2
+STAGE_TIER_R3_DAILY = 3
+STAGE_TIER: dict[str, int] = {
+    # R0 -- between reading the book and committing against it.
+    "activation": STAGE_TIER_R0_DECISION,
+    # Four lanes under one mark, and one of them -- settling live cycles --
+    # is a precondition for committing anything at all.
+    "intent_reconcile": STAGE_TIER_R0_DECISION,
+    "cash_phase_flush": STAGE_TIER_R0_DECISION,
+    "registry_ingress": STAGE_TIER_R0_DECISION,
+    # P1 resolves each observation's truth-revision hash at compile time,
+    # and the envelope table is append-only: a report identified after that
+    # compile is one this cycle can never carry.
+    "live_observation_identity": STAGE_TIER_R0_DECISION,
+    "probability_p0": STAGE_TIER_R0_DECISION,
+    "probability_p0m": STAGE_TIER_R0_DECISION,
+    "probability_p1": STAGE_TIER_R0_DECISION,
+    "regime": STAGE_TIER_R0_DECISION,
+    "ws_scope_catalog": STAGE_TIER_R0_DECISION,
+    "market_ingress": STAGE_TIER_R0_DECISION,
+    "post_fill_recompute": STAGE_TIER_R0_DECISION,
+    "committed_scope_sweep": STAGE_TIER_R0_DECISION,
+    "decision_loop": STAGE_TIER_R0_DECISION,
+    # R1 -- arrivals.  The forward loop is here because a forward book
+    # missed is not refetchable, and the replay compile because it writes
+    # the inbox P0 reads on the same pass.
+    "native_inbox_ingest": STAGE_TIER_R1_ARRIVAL,
+    "native_p0_replay_compile": STAGE_TIER_R1_ARRIVAL,
+    "forward_p0_loop": STAGE_TIER_R1_ARRIVAL,
+    # R2 -- periodic, and the only tier the cycle currently defers.
+    "oos_candidate_scan": STAGE_TIER_R2_PERIODIC,
+    "native_ensemble_oos": STAGE_TIER_R2_PERIODIC,
+    "truth_increment": STAGE_TIER_R2_PERIODIC,
+    "delta_v2_settlement": STAGE_TIER_R2_PERIODIC,
+    "settlement_lane": STAGE_TIER_R2_PERIODIC,
+}
+# What one cycle may spend on all of them together, when the activation
+# cannot be read for the real figure.
+#
+# The live budget is the R0 deadline itself -- ``max_quote_age_seconds``
+# off the activation's quote freshness policy -- because that is the whole
+# statement of the rule: a tier may spend, at most, the life of the thing
+# the tighter tier is racing.  Writing 60.0 here and 60.0 in the policy
+# would be two copies of one number that must agree, and the copy in the
+# policy is the one production enforces.  This is only the fallback for a
+# cycle whose activation did not parse, where deferring more rather than
+# less is the safe direction.
 MAINTENANCE_BUDGET_SEC = 60.0
 # ...and how long one stage may go unserved before it takes a cycle
 # regardless of the budget.  Without this the fixed order starves the tail,
@@ -7476,7 +7627,7 @@ class TargetProductionWorker:
         # The cost is the stage's own last measured one; a stage with no
         # record has never run and is admitted by the starvation arm above.
         expected = self._maintenance_last_cost(stage)
-        if self._maintenance_spent() + expected <= MAINTENANCE_BUDGET_SEC:
+        if self._maintenance_spent() + expected <= self._maintenance_budget():
             admissions[stage] = "budget"
             return True
         admissions[stage] = "deferred"
@@ -7505,6 +7656,31 @@ class TargetProductionWorker:
     def _maintenance_spent(self) -> float:
         return float(getattr(self, "_maintenance_spent_sec", 0.0) or 0.0)
 
+    def _maintenance_budget(self) -> float:
+        """The R0 deadline, which is what a lower tier may spend.
+
+        Read from the activation the cycle is running under, not typed
+        here: the quote lease is the deadline R0 is racing, so it is also
+        the most a deferrable tier may take from it.  Two copies of one
+        number would drift, and the copy in the policy is the one
+        production enforces.
+        """
+
+        budget = getattr(self, "_quote_lease_seconds", None)
+        if isinstance(budget, (int, float)) and budget > 0:
+            return float(budget)
+        return MAINTENANCE_BUDGET_SEC
+
+    def _record_quote_lease_seconds(self, activation: Mapping[str, Any]) -> None:
+        """Remember this cycle's R0 deadline for the tiers below it."""
+
+        try:
+            policy = activation.get("quote_freshness_policy")
+            age = float((policy or {}).get("max_quote_age_seconds"))
+            self._quote_lease_seconds = age if age > 0 else None
+        except (AttributeError, TypeError, ValueError):
+            self._quote_lease_seconds = None
+
     def _record_maintenance_served(
         self, stage: str, elapsed_sec: float
     ) -> None:
@@ -7530,7 +7706,7 @@ class TargetProductionWorker:
                     "schema": "bayes_basket_target_maintenance_lane_turn_v1",
                     "served_at_utc": served,
                     "last_elapsed_sec": costs,
-                    "budget_seconds": MAINTENANCE_BUDGET_SEC,
+                    "budget_seconds": self._maintenance_budget(),
                     "starvation_seconds": MAINTENANCE_STARVATION_SEC,
                 },
             )
@@ -7555,7 +7731,7 @@ class TargetProductionWorker:
             "state": "DEFERRED_MAINTENANCE_BUDGET",
             "stage": stage,
             "reason": "maintenance_budget_spent",
-            "budget_seconds": MAINTENANCE_BUDGET_SEC,
+            "budget_seconds": self._maintenance_budget(),
             "spent_seconds": round(self._maintenance_spent(), 1),
             "unserved_seconds": (
                 round(unserved, 1) if unserved is not None else None
@@ -7587,10 +7763,51 @@ class TargetProductionWorker:
             }
         return {
             "schema": "bayes_basket_target_maintenance_lane_v1",
-            "budget_seconds": MAINTENANCE_BUDGET_SEC,
+            "budget_seconds": self._maintenance_budget(),
+            "budget_source": (
+                "quote_lease"
+                if getattr(self, "_quote_lease_seconds", None)
+                else "fallback_constant"
+            ),
             "spent_seconds": round(self._maintenance_spent(), 1),
             "starvation_seconds": MAINTENANCE_STARVATION_SEC,
             "stages": stages,
+            "tiers": self._tier_spend_report(),
+        }
+
+    def _tier_spend_report(self) -> dict[str, Any]:
+        """What each deadline tier cost this cycle.
+
+        The rule is that a tier may not make a tighter tier late, and until
+        this existed the rule could only be argued from the code.  Now the
+        receipt answers it: R0's own total is the number the quote lease is
+        racing, and every tier below it is a claim on that total.
+
+        Read from the marks, so a stage that is never classified shows up
+        as R0 -- the safe default, and a visible one.
+        """
+
+        timings = getattr(self, "_stage_timings_ms", None) or {}
+        spend: dict[int, float] = {}
+        unclassified: list[str] = []
+        for stage, value in timings.items():
+            if stage in {"cycle_total", "unattributed"}:
+                continue
+            if not isinstance(value, (int, float)):
+                continue
+            tier = STAGE_TIER.get(stage)
+            if tier is None:
+                tier = STAGE_TIER_R0_DECISION
+                unclassified.append(stage)
+            spend[tier] = spend.get(tier, 0.0) + float(value)
+        return {
+            "seconds_by_tier": {
+                f"R{tier}": round(value / 1000.0, 1)
+                for tier, value in sorted(spend.items())
+            },
+            # A stage nobody classified is charged to the decision path,
+            # because that is what an unclassified stage does to it.
+            "unclassified_stages": sorted(unclassified),
         }
 
     def _take_listing_scope_turn(self, *, now_utc: str | None = None) -> bool:
@@ -15644,6 +15861,7 @@ class TargetProductionWorker:
         # against outlive the process.
         self._maintenance_spent_sec = 0.0
         self._maintenance_admissions = {}
+        self._quote_lease_seconds = None
         started = time.perf_counter()
         reset_writer_lock_profile()
         reset_ledger_spans()
@@ -15702,6 +15920,7 @@ class TargetProductionWorker:
             self._assert_db_activation(activation)
         except Exception as exc:
             return _blocked(f"target_activation_invalid:{type(exc).__name__}:{exc}")
+        self._record_quote_lease_seconds(activation)
         self._mark("activation")
         # Close intents the exchange has already answered about, before the
         # cycle spends anything on anything else.
@@ -17455,6 +17674,9 @@ class TargetProductionWorker:
                 "committed_scope_count": committed_scopes,
                 "blocked_scope_count": blocked_scopes,
                 "blocked_scope_reasons": blocked_scope_reasons,
+                "refusal_split": split_refusals_by_capability(
+                    blocked_scope_reasons
+                ),
                 "execution_mode": PRODUCTION_EXECUTION_MODE,
                 "candidate_count": len(results),
                 "candidates": results,
