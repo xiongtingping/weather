@@ -1291,6 +1291,9 @@ def compile_native_ensemble_p0(
     artifact_parameter_override: (
         Mapping[str, Mapping[str, Any]] | None
     ) = None,
+    band_table_override: (
+        tuple[Sequence[tuple[tuple[float, float], float]], str, str] | None
+    ) = None,
 ) -> dict[str, Any]:
     """Compile one station-day, or fail closed with ``NO_P0``.
 
@@ -1309,7 +1312,25 @@ def compile_native_ensemble_p0(
     naming a system this station is not serving is ignored rather than
     seated, for the same reason.
 
-    Production never passes it.  ``None`` leaves this function byte-identical.
+    ``band_table_override`` is the same idea for charter 105's axis.  The
+    band table is not a constant either: it is loaded from the database by
+    the sha the artifact's combination method pins, so a replay that varies
+    the table cannot reach it by setting a constant and cannot reach it by
+    writing a different table either -- the pin would still name the old
+    one.  It is handed in as ``(factors, sha, axis)``, the same triple
+    ``load_band_table_with_axis`` returns, and it replaces the pinned lookup
+    entirely: the axis rides with it, so a distance-fitted counterfactual is
+    applied through the distance lookup and not through the claim one.
+
+    Both are deliberately narrow, and both are applied AFTER the activation
+    has been resolved and its run cycle checked.  Every gate the compile
+    normally passes still runs and still fails closed; what these can change
+    is the numbers, never whether a system was entitled to be seated.  An
+    override naming a system this station is not serving is ignored rather
+    than seated, for the same reason.
+
+    Production never passes either.  ``None`` leaves this function
+    byte-identical.
     """
 
     if native_ensemble_foundation_schema_status(conn)["ok"] is not True:
@@ -3012,6 +3033,25 @@ def compile_native_ensemble_p0(
             pinned_factors, _sha, pinned_axis = load_band_table_with_axis(
                 conn, table_sha256=pinned_sha
             )
+        if band_table_override is not None:
+            # The counterfactual arm.  Replaces the pinned lookup outright,
+            # axis included -- a table handed in without its axis would be
+            # applied through whichever one the pin happened to name, which
+            # is the failure this triple exists to make impossible.  The
+            # receipt records the substitution so a replayed envelope can
+            # never be mistaken for a served one.
+            pinned_factors = tuple(
+                ((float(lo), float(hi)), float(factor))
+                for (lo, hi), factor in band_table_override[0]
+            )
+            pinned_sha = str(band_table_override[1])
+            pinned_axis = str(band_table_override[2])
+            if pinned_axis not in {
+                BAND_AXIS_CLAIM, BAND_AXIS_CENTRE_DISTANCE
+            }:
+                raise ContractError(
+                    "FAIL_CLOSED_NO_P0:band_table_override_axis_unknown"
+                )
         # Charter 105: the lookup follows the TABLE's axis, never the
         # caller's preference.  ``ordered`` is this stage's bucket axis and
         # is the same map the packet publishes as ``bucket_ordinals`` below,
@@ -3027,6 +3067,9 @@ def compile_native_ensemble_p0(
         )
         if pinned_sha is not None:
             band_reliability_receipt["band_table_sha256"] = pinned_sha
+        if band_table_override is not None:
+            band_reliability_receipt["band_table_counterfactual"] = True
+            band_reliability_receipt["band_table_axis"] = pinned_axis
     model_envelope_lower_bucket = _bucket_for_value(
         envelope_lower_c,
         intervals_raw,
