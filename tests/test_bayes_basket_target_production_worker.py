@@ -79,6 +79,15 @@ from scripts.initialize_bayes_basket_target_ssot import initialize
 from bayes_basket_target.fleet import expected_station_count
 
 
+# The activation in force, not the file these fixtures were written
+# against: since the 2026-08-30 go-live DEFAULT_TARGET_ACTIVATION points
+# at the live contract, and the guards these tests exercise require the
+# database row and the lane to carry the same one.
+from bayes_basket_target.production_worker import (
+    DEFAULT_TARGET_ACTIVATION as _DEFAULT_TARGET_ACTIVATION,
+)
+
+
 def _seed_target_registry_source_lane(
     conn: sqlite3.Connection,
     *,
@@ -3846,7 +3855,7 @@ def test_current_p1_supersedes_stale_optional_p0m_replay_blocker(
 def test_writer_flag_cannot_open_in_live_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PM_TARGET_PRODUCTION_WRITER", "1")
     monkeypatch.setenv("PM_TARGET_EXECUTION_MODE", "production_live")
-    activation = Path(__file__).parents[1] / "config/trading/bayes_basket_target_production_no_live_activation_v1.json"
+    activation = Path(_DEFAULT_TARGET_ACTIVATION)
 
     with pytest.raises(RuntimeError, match="execution_mode_not_production_no_live"):
         open_target_writer_if_enabled(tmp_path / "target.db", activation_path=activation)
@@ -4630,8 +4639,7 @@ def test_run_keeps_truth_and_labels_outside_official_ws_quote_lease(
 ) -> None:
     target_db = tmp_path / "target.db"
     activation = (
-        Path(__file__).parents[1]
-        / "config/trading/bayes_basket_target_production_no_live_activation_v1.json"
+        Path(_DEFAULT_TARGET_ACTIVATION)
     )
     initialize(db=target_db, activation_path=activation)
     commit_conn = sqlite3.connect(target_db)
@@ -4708,8 +4716,7 @@ def test_run_scoped_p1_blocker_allows_truth_label_and_does_not_global_block_mark
 ) -> None:
     target_db = tmp_path / "target.db"
     activation = (
-        Path(__file__).parents[1]
-        / "config/trading/bayes_basket_target_production_no_live_activation_v1.json"
+        Path(_DEFAULT_TARGET_ACTIVATION)
     )
     initialize(db=target_db, activation_path=activation)
     commit_conn = sqlite3.connect(target_db)
@@ -4781,8 +4788,7 @@ def test_run_truth_blocker_still_prevents_labels_and_market(
 ) -> None:
     target_db = tmp_path / "target.db"
     activation = (
-        Path(__file__).parents[1]
-        / "config/trading/bayes_basket_target_production_no_live_activation_v1.json"
+        Path(_DEFAULT_TARGET_ACTIVATION)
     )
     initialize(db=target_db, activation_path=activation)
     commit_conn = sqlite3.connect(target_db)

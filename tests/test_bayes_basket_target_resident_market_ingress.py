@@ -80,7 +80,20 @@ def _activation(
     *,
     authority_scope: str = "PRODUCTION_NO_LIVE_CANDIDATE",
 ) -> Path:
-    source = Path(__file__).parents[1] / "config" / "trading" / "bayes_basket_target_production_no_live_activation_v1.json"
+    # The activation in force, not the file this fixture was written
+    # against.  The lane's name is historical: production passes
+    # self.activation_path straight into it, and since the 2026-08-30
+    # go-live DEFAULT_TARGET_ACTIVATION points at the live contract.  A
+    # fixture pinned to the no-live file made order_state_producer refuse
+    # the row it later reads -- first as target_activation_state_mode_drift
+    # and then, once only the database row was moved, as
+    # target_activation_state_drift, because that guard requires the row
+    # and the lane to carry the same contract.  Deriving it keeps them one.
+    from bayes_basket_target.production_worker import (  # noqa: PLC0415
+        DEFAULT_TARGET_ACTIVATION,
+    )
+
+    source = Path(DEFAULT_TARGET_ACTIVATION)
     value = json.loads(source.read_text(encoding="utf-8"))
     value["policy_authority_scope"] = authority_scope
     quote_policy = dict(value["quote_freshness_policy"])
