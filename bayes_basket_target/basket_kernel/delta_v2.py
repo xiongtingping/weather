@@ -1107,12 +1107,16 @@ COMPLETION_CUTOFF_HOURS = float(
     os.environ.get("PM_COMPLETION_CUTOFF_HOURS", "") or 3.0
 )
 
-# The system emits BUY and nothing else (production ``order_action`` is the
-# literal "BUY"; the only SELL lane is ``certain_win_recycle``, which sells
-# buckets whose day has already settled in our favour).  A basket that is
-# short a leg therefore has exactly two futures -- completed, or carried
-# broken to settlement.  There is no third branch, and no rule in this
-# module may be written as though there were.
+# The action set is {BUY, CANCEL}.  Cancelling is always available and this
+# module leans on it heavily; what is missing is SELL (production's
+# ``order_action`` is the literal "BUY", and the only SELL lane is
+# ``certain_win_recycle``, which sells buckets whose day has already settled
+# in our favour).  A cancel removes an order that has not filled, not a leg
+# that has -- so it can take away the half of the exposure that has not
+# happened yet and not the half that has.  A basket short a leg therefore
+# has exactly two futures: completed, or carried broken to settlement.
+# There is no third branch, and no rule here may be written as though there
+# were.
 ONE_WAY_ACTION_SET = True
 
 LEG_ACTION_NONE = "none"
@@ -1151,6 +1155,17 @@ def resting_rung_action_v1(
     book with no bid has no anchor at all: the shipped rule kept the rung
     standing there, which is precisely the state in which a collapsing ask
     runs through a stale limit.
+
+    The no-bid cancel is not new law.  Charter 94(六)② already said a rung
+    that has fallen off the recomputed ladder is cancelled after its dwell,
+    and with no bid the ladder is EMPTY, so every rung has fallen off it.
+    What kept those rungs standing was the implementation: the shipped
+    ``resting_rung_verdict`` opened with ``if not ladder: keep``, ahead of
+    the off-ladder test, and the distance rule could not reach them either
+    because distance-from-bid is undefined with no bid.  Live case,
+    2026-09-07 11:47Z: LFPB 21C had rested 18.8 hours at 0.061 with the bid
+    gone and the ask down to 0.020.  Cancelled immediately here rather than
+    after the dwell -- there is no anchor to wait for.
 
     Pure, and the single implementation: ``execution_completion_verdict_v1``
     calls this for its resting legs and the production lifecycle calls it for
