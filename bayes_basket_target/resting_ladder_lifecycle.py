@@ -40,6 +40,7 @@ from .execution_reconciliation import (
 
 SCHEMA = "bayes_basket_target_resting_reprice_v1"
 RESTING_REPRICE_RULE_VERSION = RESTING_RUNG_ACTION_RULE_VERSION
+DEPARTED_RECONCILE_RULE_VERSION = "departed_order_two_fact_v1"
 # How long a rung that has fallen out of the ladder is left standing before
 # it is cancelled.  The ledger measured that re-posting every 15 minutes
 # lost queue position for nothing; a one-tick flicker of the bid should not
@@ -346,6 +347,160 @@ def sync_resting_intent(
     return {"state": "unknown", "reason": f"exchange_status:{status}"}
 
 
+
+def recorded_fills_for_token(conn: sqlite3.Connection, token_id: str) -> float:
+    """Every share this ledger has already booked on one token."""
+
+    row = conn.execute(
+        "SELECT COALESCE(SUM(r.filled_size), 0) FROM basket_target_order_intents i"
+        " JOIN basket_target_order_reconciliations r"
+        "   ON r.order_intent_id = i.order_intent_id"
+        " WHERE i.token_id = ?",
+        (str(token_id),),
+    ).fetchone()
+    return float((row[0] if row else 0.0) or 0.0)
+
+
+def reconcile_departed_intent(
+    conn: sqlite3.Connection,
+    *,
+    intent: Mapping[str, Any],
+    client: Any,
+    as_of_utc: str,
+    write: Callable[[], Any],
+    attributed: dict[str, float] | None = None,
+) -> dict[str, Any]:
+    """Close an intent the venue will not answer a point query about.
+
+    Charter 110.  ``/lookup-exchange-order`` returns an empty body for an
+    order the venue no longer holds, and ``sync_resting_intent`` reads that
+    as ``unknown`` and keeps -- so the intent rests forever and holds its
+    bucket shut through ``can_submit_next_order``.  Measured 2026-09-07:
+    twelve of fourteen live rungs were in that state, the oldest since
+    2026-09-06T15:53, and eleven of them had FILLED IN FULL while the ledger
+    recorded zero -- 87.40 shares, about 18.30 USDC, owned and unknown.
+
+    Nothing here is inferred from the silence.  Two facts decide it:
+
+    * the exchange's own COMPLETE enumeration of what is live on this token
+      (``/lookup-open-orders``); absence from a finished list is a fact,
+      absence from a truncated one is nothing, which is why an incomplete
+      enumeration refuses rather than concludes; and
+    * the account's actual position in the token (``/lookup-position``),
+      because a point lookup's answer expires -- OEJN 35C read MATCHED
+      25.00/25 at 12:10Z and empty at 12:22Z -- and a position does not.
+
+    The shares this order may claim are what the position holds beyond what
+    the ledger has already booked on that token, capped at what this order
+    still owes.  ``attributed`` carries what earlier orders took in the SAME
+    pass, so two departed orders on one token cannot both claim the same
+    shares.  A departed order with nothing left to claim is recorded EXPIRED,
+    which says the order existed and stopped existing and does not claim to
+    know why.
+    """
+
+    seen = attributed if attributed is not None else {}
+    token = str(intent["token_id"])
+    order_id = str(intent["exchange_order_id"])
+    out: dict[str, Any] = {"rule": DEPARTED_RECONCILE_RULE_VERSION, "token_id": token}
+
+    listing = client.lookup_open_orders({"token_id": token})
+    out["enumeration"] = {
+        "ok": bool(listing.get("ok")),
+        "complete": listing.get("complete"),
+        "total_open_orders": listing.get("total_open_orders"),
+        "error": str(listing.get("error") or ""),
+    }
+    if not listing.get("ok") or listing.get("complete") is not True:
+        return {**out, "state": "unknown", "reason": "enumeration_incomplete"}
+    live_ids = {
+        str(row.get("id") or row.get("orderID") or "").strip().lower()
+        for row in (listing.get("open_orders") or [])
+        if isinstance(row, Mapping)
+    }
+    if order_id.strip().lower() in live_ids:
+        return {**out, "state": "live", "reason": "present_in_open_orders"}
+
+    position = client.lookup_position({"token_id": token})
+    out["position"] = {
+        "ok": bool(position.get("ok")),
+        "shares": position.get("shares"),
+        "balance_raw": position.get("balance_raw"),
+        "error": str(position.get("error") or ""),
+    }
+    if not position.get("ok"):
+        return {**out, "state": "unknown", "reason": "position_unavailable"}
+
+    held = float(position.get("shares") or 0.0)
+    recorded = recorded_fills_for_token(conn, token)
+    claimed_this_pass = float(seen.get(token, 0.0))
+    unattributed = max(0.0, held - recorded - claimed_this_pass)
+    requested = float(intent["requested_size"])
+    prior = float(intent["filled_size"])
+    owed = max(0.0, requested - prior)
+    take = min(unattributed, owed)
+    price = float(intent["limit_price"])
+    out.update({
+        "held_shares": held,
+        "recorded_shares": recorded,
+        "claimed_earlier_this_pass": claimed_this_pass,
+        "unattributed_shares": unattributed,
+        "owed_shares": owed,
+        "attributed_shares": take,
+    })
+    evidence = {
+        "recovered_by": "resting_ladder_lifecycle.reconcile_departed_intent",
+        "rule": DEPARTED_RECONCILE_RULE_VERSION,
+        "enumeration": out["enumeration"],
+        "position": out["position"],
+        "recorded_shares_on_token": recorded,
+        "claimed_earlier_this_pass": claimed_this_pass,
+    }
+    if take <= EPS:
+        with write():
+            record_order_event(conn, order_intent_id=str(intent["order_intent_id"]), event={
+                "event_type": "EXPIRED",
+                "exchange_order_id": order_id,
+                "observed_at": as_of_utc,
+                "matched_size": 0.0,
+                "matched_notional_usdc": 0.0,
+                "event_payload": evidence,
+            })
+        return {**out, "state": "departed_unfilled", "reason": "no_unattributed_shares"}
+
+    cumulative = prior + take
+    with write():
+        record_order_event(conn, order_intent_id=str(intent["order_intent_id"]), event={
+            "event_type": "FILL",
+            "exchange_order_id": order_id,
+            "observed_at": as_of_utc,
+            "matched_size": take,
+            "matched_notional_usdc": take * price,
+            "event_payload": evidence,
+        })
+        if not fill_is_complete(cumulative, requested):
+            # Booked short of what it asked for and gone from the venue, so
+            # it is the partial the reconciliation ledger already knows how
+            # to close -- otherwise it stays ``pending`` and goes on holding
+            # its bucket, which is the state this whole function exists to
+            # end.
+            resolve_cancelled_after_partial_fill(
+                conn,
+                order_intent_id=str(intent["order_intent_id"]),
+                filled_size=cumulative,
+                filled_notional_usdc=float(intent["filled_notional_usdc"]) + take * price,
+                resolved_at_utc=as_of_utc,
+            )
+    seen[token] = claimed_this_pass + take
+    return {
+        **out,
+        "state": "departed_filled" if fill_is_complete(cumulative, requested)
+        else "departed_partial",
+        "reason": "position_beyond_recorded_fills",
+        "increment": take,
+    }
+
+
 def reprice_resting_rungs(
     conn: sqlite3.Connection,
     *,
@@ -371,6 +526,10 @@ def reprice_resting_rungs(
         "synced_partial": 0,
         "synced_cancelled": 0,
         "kept": 0,
+        "departed_filled": 0,
+        "departed_partial": 0,
+        "departed_unfilled": 0,
+        "departed_shares": 0.0,
         "cancel_requested": 0,
         "cancel_confirmed": 0,
         "failures": [],
@@ -384,6 +543,9 @@ def reprice_resting_rungs(
     if not intents:
         return receipt
     book_cache: dict[tuple[str, str], Mapping[str, Mapping[str, float]]] = {}
+    # Shares this pass has already handed to a departed order, per token, so
+    # two orders on one token cannot both claim the same position.
+    attributed: dict[str, float] = {}
     for intent in intents:
         intent_id = intent["order_intent_id"]
         entry: dict[str, Any] = {
@@ -418,6 +580,36 @@ def reprice_resting_rungs(
             continue
         if synced["state"] == "resting_partial":
             receipt["synced_partial"] += 1
+        if synced["state"] == "unknown":
+            # The venue will not answer a point query about this order.
+            # Charter 110: do not read that as "still resting" -- ask what IS
+            # live, and ask what the account actually holds.
+            try:
+                departed = reconcile_departed_intent(
+                    conn, intent=intent, client=client,
+                    as_of_utc=as_of_utc, write=write, attributed=attributed,
+                )
+            except Exception as exc:  # noqa: BLE001 -- one rung's problem
+                receipt["failures"].append({
+                    "order_intent_id": intent_id,
+                    "reason": f"departed_reconcile:{type(exc).__name__}:{exc}"[:160],
+                })
+                departed = {"state": "unknown", "reason": "reconcile_raised"}
+            entry["departed"] = departed
+            if departed["state"] == "departed_filled":
+                receipt["departed_filled"] += 1
+                receipt["departed_shares"] += float(departed.get("increment") or 0.0)
+            elif departed["state"] == "departed_partial":
+                receipt["departed_partial"] += 1
+                receipt["departed_shares"] += float(departed.get("increment") or 0.0)
+            elif departed["state"] == "departed_unfilled":
+                receipt["departed_unfilled"] += 1
+            if departed["state"].startswith("departed"):
+                entry["verdict"] = {
+                    "action": "resolved", "reason": departed["reason"],
+                }
+                receipt["rungs"].append(entry)
+                continue
         if synced["state"] not in {"resting", "resting_partial"}:
             entry["verdict"] = {"action": "keep", "reason": synced.get("reason", synced["state"])}
             receipt["kept"] += 1
@@ -481,7 +673,9 @@ def reprice_resting_rungs(
     receipt["state"] = (
         "committed"
         if (receipt["cancel_confirmed"] or receipt["synced_filled"]
-            or receipt["synced_cancelled"] or receipt["synced_partial"])
+            or receipt["synced_cancelled"] or receipt["synced_partial"]
+            or receipt["departed_filled"] or receipt["departed_partial"]
+            or receipt["departed_unfilled"])
         else "no_change"
     )
     return receipt
