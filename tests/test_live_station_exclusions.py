@@ -125,6 +125,25 @@ def test_a_profitable_station_is_never_auto_barred() -> None:
     assert [row["station"] for row in verdict["bar"]] == ["LOSER"]
 
 
+def _an_unbarred_station() -> str:
+    """A station the live config does not currently bar.
+
+    These tests used to name LEMD, and broke the day the operator barred
+    it: a test that needs an admissible station must not depend on which
+    stations happen to be admissible today.
+    """
+
+    from bayes_basket_target.station_registry import (  # noqa: PLC0415
+        coordinate_registry_manifest,
+    )
+
+    barred = set(control.excluded_stations())
+    return sorted(
+        str(station) for station in coordinate_registry_manifest()["station_ids"]
+        if str(station) not in barred
+    )[0]
+
+
 def test_a_waiver_can_be_granted_and_revoked_through_the_panel(
     tmp_path, monkeypatch,
 ) -> None:
@@ -143,8 +162,14 @@ def test_a_waiver_can_be_granted_and_revoked_through_the_panel(
     monkeypatch.setattr(control, "INTENT_PATH", work)
     monkeypatch.setattr(control, "AUDIT_PATH", audit)
 
-    state = control.set_probation_waivers(["LEMD"])
-    assert state["live"]["station_probation_waivers"] == ["LEMD"]
+    # Derived, not named.  This was "LEMD" until the operator barred it,
+    # and the test then asserted a waiver on a barred station succeeds --
+    # the opposite of the rule three lines down.  Which stations are barred
+    # is live configuration and moves; that a waiver works on one that is
+    # not barred does not.
+    admissible = _an_unbarred_station()
+    state = control.set_probation_waivers([admissible])
+    assert state["live"]["station_probation_waivers"] == [admissible]
     # Revoking is an empty list, not a file edit.
     state = control.set_probation_waivers([])
     assert state["live"]["station_probation_waivers"] == []
@@ -753,7 +778,7 @@ def test_waiver_and_hold_are_switches_and_exclude_each_other(
     """
 
     intent, exclusions, audit = _config_copies(tmp_path, monkeypatch)
-    station = "LEMD"
+    station = _an_unbarred_station()
 
     state = control.set_station_waiver(station, True, by="test")
     assert station in state["live"]["station_probation_waivers"]
@@ -794,7 +819,7 @@ def test_a_barred_station_takes_neither_of_the_other_two_switches(
     with pytest.raises(ValueError, match=barred):
         control.set_station_hold(barred, True)
     # And barring a station takes back whatever it was carrying.
-    station = "LEMD"
+    station = _an_unbarred_station()
     control.set_station_waiver(station, True)
     control.set_station_bar(station, True)
     state = control.state()

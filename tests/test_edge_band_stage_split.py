@@ -30,16 +30,23 @@ import calibration_dashboard as C  # noqa: E402
 def _book(tmp_path: Path, rows, settlements) -> sqlite3.Connection:
     conn = sqlite3.connect(tmp_path / "book.db")
     conn.execute(
+        # intended_legs_json is what the ledger adds by migration and what
+        # the panel reads to take the posted leg as its unit rather than
+        # the filled one.  A fixture table built without it fails the read
+        # with "no such column", which says nothing about the split this
+        # test is for.
         "CREATE TABLE paper_trade_position (station_id TEXT, event_date TEXT,"
         " probabilities_json TEXT, prices_json TEXT, leg_shares_json TEXT,"
-        " stage TEXT)"
+        " stage TEXT, intended_legs_json TEXT NOT NULL DEFAULT '')"
     )
     conn.execute(
         "CREATE TABLE paper_trade_settlement (station_id TEXT,"
         " event_date TEXT, settled_bucket TEXT)"
     )
     conn.executemany(
-        "INSERT INTO paper_trade_position VALUES(?,?,?,?,?,?)", rows
+        "INSERT INTO paper_trade_position(station_id,event_date,"
+        "probabilities_json,prices_json,leg_shares_json,stage)"
+        " VALUES(?,?,?,?,?,?)", rows
     )
     conn.executemany(
         "INSERT INTO paper_trade_settlement VALUES(?,?,?)", settlements
