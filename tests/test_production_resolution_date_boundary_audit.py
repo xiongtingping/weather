@@ -18,30 +18,13 @@ def test_production_resolution_date_boundary_is_aligned() -> None:
     assert result["places_orders"] is False
 
 
-def test_hotfix_cannot_silently_switch_to_operations_date(tmp_path: Path) -> None:
-    for relative in (
-        "docs/constitution/SYSTEM_CHARTER.md",
-        "scripts/cutover_physical_state_bayes_v6_runtime_hotfix.sh",
-        "scripts/amsc_zuuu_metar_taf_poll_once.sh",
-        "scripts/polymarket_monitor_daemon.sh",
-        "scripts/cutover_v6_probability_and_soft_market_projection.sh",
-    ):
-        source = ROOT / relative
-        target = tmp_path / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
-
-    hotfix = tmp_path / "scripts/cutover_physical_state_bayes_v6_runtime_hotfix.sh"
-    hotfix.write_text(
-        hotfix.read_text(encoding="utf-8").replace(
-            "TZ=Asia/Shanghai date +%F", "TZ=America/New_York date +%F"
-        ),
-        encoding="utf-8",
-    )
-
-    result = audit(tmp_path)
-    assert result["ok"] is False
-    assert (
-        "resolution_date_boundary_failed:hotfix_uses_zuuu_resolution_local_date"
-        in result["blockers"]
-    )
+# Retired 2026-09-07 with its subject.
+#
+# test_hotfix_cannot_silently_switch_to_operations_date copied the runtime
+# hotfix cutover script into a temp tree, rewrote its timezone to New York,
+# and checked the audit caught the switch.  That script was deleted on
+# 2026-08-04 when the cutover finished; the test could only raise
+# FileNotFoundError.  The audit itself now names the check as a retired
+# subject rather than silently failing it, which is the property this test
+# was protecting -- and the surviving test above asserts the audit is
+# aligned, retired subjects and all.

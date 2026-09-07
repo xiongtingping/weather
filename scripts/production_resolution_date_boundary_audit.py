@@ -51,13 +51,41 @@ def audit(root: Path) -> dict[str, Any]:
             and "substr(target_identity,-10)" in texts["combined_cutover"]
         ),
     }
-    blockers = [f"resolution_date_boundary_failed:{name}" for name, ok in checks.items() if not ok]
+    # A check whose subject no longer exists has not failed; its subject is
+    # gone.  Three of these read one-shot cutover and poller scripts that
+    # were deleted on 2026-08-04 when the work they carried finished, and
+    # because a missing file reads as empty text every one of them turned
+    # silently false -- an audit reporting a boundary violation about a file
+    # that is not there.  Retired subjects are named and excluded; the
+    # living checks still decide the verdict, and a subject that comes back
+    # is checked again without any edit here.
+    subject_by_check = {
+        "hotfix_uses_zuuu_resolution_local_date": "hotfix",
+        "amsc_pending_queue_uses_current_resolution_local_date": "amsc",
+        "market_context_refresh_uses_resolution_local_date": "monitor",
+        "combined_cutover_binds_latest_committed_target_date": "combined_cutover",
+    }
+    retired = sorted(
+        name for name, subject in subject_by_check.items()
+        if not paths[subject].is_file()
+    )
+    live_checks = {
+        name: value for name, value in checks.items() if name not in set(retired)
+    }
+    blockers = [
+        f"resolution_date_boundary_failed:{name}"
+        for name, ok in live_checks.items() if not ok
+    ]
     return {
         "schema": SCHEMA_VERSION,
         "ok": not blockers,
         "state": "resolution_date_boundary_aligned" if not blockers else "blocked",
         "blockers": blockers,
-        "checks": checks,
+        "checks": live_checks,
+        "retired_subjects": {
+            name: str(paths[subject_by_check[name]].relative_to(root))
+            for name in retired
+        },
         "resolution_local_timezone": "Asia/Shanghai",
         "operations_timezone": "America/New_York",
         "read_only": True,
