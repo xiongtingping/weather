@@ -208,6 +208,59 @@ BEGIN SELECT RAISE(ABORT,'append_only'); END;
 """
 
 
+LOCAL_TIME_BUCKET_EDGES = ((6, "NIGHT"), (12, "MORNING"), (18, "AFTERNOON"))
+
+
+def local_time_bucket_for_hour(local_hour: int) -> str:
+    """The bucket a trajectory artifact is fitted for, from the local hour."""
+
+    for edge, name in LOCAL_TIME_BUCKET_EDGES:
+        if int(local_hour) < edge:
+            return name
+    return "EVENING"
+
+
+def resolve_metar_trajectory_artifact_row(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    source_lane: str,
+    season_bin: str,
+    local_time_bucket: str,
+    maturity_bin: str,
+    settlement_definition: str,
+    as_of_utc: str,
+) -> dict[str, Any] | None:
+    """One scope's active trajectory artifact: promoted, else the candidate.
+
+    Lifted out of the production worker so a measurement can resolve exactly
+    what production would have served.  The fallback to the candidate is the
+    2026-08-18 ruling -- the promotion gate became a label rather than the
+    switch on the layer -- and a counterfactual that resolved only promoted
+    artifacts would be scoring a rule production does not run.
+    """
+
+    scope_key = metar_trajectory_scope_key(
+        source_lane=source_lane,
+        season_bin=season_bin,
+        local_time_bucket=local_time_bucket,
+        maturity_bin=maturity_bin,
+        settlement_definition=settlement_definition,
+    )
+    for authority in ("FORMAL_PROMOTED", "PRODUCTION_NO_LIVE_CANDIDATE"):
+        row = resolve_active_probability_evidence_artifact(
+            conn,
+            artifact_kind="METAR_TRAJECTORY_LIKELIHOOD",
+            station_id=station_id,
+            scope_key=scope_key,
+            as_of_utc=as_of_utc,
+            required_authority_scope=authority,
+        )
+        if row is not None:
+            return row
+    return None
+
+
 def _execute_transactional(
     conn: sqlite3.Connection,
     script: str,

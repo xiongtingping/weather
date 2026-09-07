@@ -233,7 +233,7 @@ from .probability_packet import build_probability_envelope
 from .probability_evidence_store import (
     insert_probability_update_proof,
     metar_trajectory_scope_key,
-    resolve_active_probability_evidence_artifact,
+    resolve_metar_trajectory_artifact_row,
 )
 from .regime_materialization import (
     build_regime_artifact,
@@ -11225,13 +11225,27 @@ class TargetProductionWorker:
                     fitted for a single local-time bucket, so a morning step
                     handed the afternoon's artifact falls to the identity
                     fallback with its own bucket's activation sitting unused.
+
+                    The resolution itself lives in the evidence store now, so
+                    a measurement can resolve exactly what production would
+                    have served rather than a copy of it that drifts.  The
+                    fallback to the candidate is the 2026-08-18 ruling: the
+                    promotion gate is a label, not the switch on the layer --
+                    refusing to resolve a candidate left 301 of 350 P1
+                    station-days with no trajectory evidence, and P1 without
+                    it finds the settled bucket 45.7% of the time against
+                    75.8% with it.  Strength still rides on the artifact's own
+                    sample size.
+
+                    Artifact scopes are fitted per registry lane; a mixed
+                    observation set (AWC plus scheduled ASOS substitutes) must
+                    not let set iteration order pick a lane no artifact was
+                    ever fitted for.
                     """
 
-                    # Artifact scopes are fitted per registry lane; a mixed
-                    # observation set (AWC plus scheduled ASOS substitutes)
-                    # must not let set iteration order pick a lane no
-                    # artifact was ever fitted for.
-                    scope_key = metar_trajectory_scope_key(
+                    return resolve_metar_trajectory_artifact_row(
+                        self.commit_conn,
+                        station_id=station,
                         source_lane=expected_source_lane,
                         season_bin=str(
                             prediction_root.lineage.get("season_bin") or ""
@@ -11244,94 +11258,10 @@ class TargetProductionWorker:
                             )
                             or ""
                         ),
-                    )
-                    resolved = resolve_active_probability_evidence_artifact(
-                        self.commit_conn,
-                        artifact_kind="METAR_TRAJECTORY_LIKELIHOOD",
-                        station_id=station,
-                        scope_key=scope_key,
                         as_of_utc=as_of_utc,
-                        required_authority_scope="FORMAL_PROMOTED",
-                    )
-                    if resolved is not None:
-                        return resolved
-                    return resolve_active_probability_evidence_artifact(
-                        self.commit_conn,
-                        artifact_kind="METAR_TRAJECTORY_LIKELIHOOD",
-                        station_id=station,
-                        scope_key=scope_key,
-                        as_of_utc=as_of_utc,
-                        required_authority_scope=(
-                            "PRODUCTION_NO_LIVE_CANDIDATE"
-                        ),
                     )
 
-                trajectory_row = (
-                    resolve_active_probability_evidence_artifact(
-                        self.commit_conn,
-                        artifact_kind=(
-                            "METAR_TRAJECTORY_LIKELIHOOD"
-                        ),
-                        station_id=station,
-                        scope_key=metar_trajectory_scope_key(
-                            source_lane=expected_source_lane,
-                            season_bin=str(
-                                prediction_root.lineage.get(
-                                    "season_bin"
-                                )
-                                or ""
-                            ),
-                            local_time_bucket=local_time_bucket,
-                            maturity_bin=maturity_bin,
-                            settlement_definition=str(
-                                prediction_root.lineage.get(
-                                    "settlement_definition"
-                                )
-                                or ""
-                            ),
-                        ),
-                        as_of_utc=as_of_utc,
-                        required_authority_scope="FORMAL_PROMOTED",
-                    )
-                )
-                if trajectory_row is None:
-                    # Fall back to the candidate the gate refused (user
-                    # ruling, 2026-08-18).  The gate is a label now, not the
-                    # switch on the layer: refusing to resolve a candidate is
-                    # what left 301 of 350 P1 station-days with no trajectory
-                    # evidence, and P1 without it finds the settled bucket
-                    # 45.7% of the time against 75.8% with it.  Strength
-                    # still rides on the artifact's own sample size.
-                    trajectory_row = (
-                        resolve_active_probability_evidence_artifact(
-                            self.commit_conn,
-                            artifact_kind=(
-                                "METAR_TRAJECTORY_LIKELIHOOD"
-                            ),
-                            station_id=station,
-                            scope_key=metar_trajectory_scope_key(
-                                source_lane=expected_source_lane,
-                                season_bin=str(
-                                    prediction_root.lineage.get(
-                                        "season_bin"
-                                    )
-                                    or ""
-                                ),
-                                local_time_bucket=local_time_bucket,
-                                maturity_bin=maturity_bin,
-                                settlement_definition=str(
-                                    prediction_root.lineage.get(
-                                        "settlement_definition"
-                                    )
-                                    or ""
-                                ),
-                            ),
-                            as_of_utc=as_of_utc,
-                            required_authority_scope=(
-                                "PRODUCTION_NO_LIVE_CANDIDATE"
-                            ),
-                        )
-                    )
+                trajectory_row = _resolve_trajectory_scope(local_time_bucket)
                 trajectory_artifact = (
                     None
                     if trajectory_row is None
