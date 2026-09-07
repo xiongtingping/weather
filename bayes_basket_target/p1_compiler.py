@@ -364,7 +364,7 @@ def _four_layer_shadow_for_step(
     decision_at_utc: str,
     reported_high_bucket: str,
     artifacts: Mapping[str, Any],
-    regional_runs: Sequence[Mapping[str, Any]] | None = None,
+    inputs: Mapping[str, Any] | None,
 ) -> dict[str, str]:
     """Build one step's shadow, or nothing, never an exception.
 
@@ -375,11 +375,6 @@ def _four_layer_shadow_for_step(
     parsed, paid only where a caller supplied artifacts.
     """
 
-    inputs = _four_layer_inputs_for_step(
-        root=root, proof=proof, trajectory_prefix=trajectory_prefix,
-        bucket_centers_c=bucket_centers_c, decision_at_utc=decision_at_utc,
-        regional_runs=regional_runs,
-    )
     if inputs is None:
         return {}
     try:
@@ -413,13 +408,9 @@ def _four_layer_shadow_for_step(
 
 def _four_layer_serving_bundle(
     *,
-    root: ProbabilityEnvelope,
-    proof: Any,
-    trajectory_prefix: Sequence[Any],
     bucket_centers_c: Mapping[str, float],
-    decision_at_utc: str,
     artifacts: Mapping[str, Any],
-    regional_runs: Sequence[Mapping[str, Any]] | None = None,
+    inputs: Mapping[str, Any] | None,
 ) -> dict[str, Any] | None:
     """What ``materialize_p1`` needs to run the chain at the ceiling's point.
 
@@ -432,11 +423,6 @@ def _four_layer_serving_bundle(
 
     if not artifacts.get("hazard"):
         return None
-    inputs = _four_layer_inputs_for_step(
-        root=root, proof=proof, trajectory_prefix=trajectory_prefix,
-        bucket_centers_c=bucket_centers_c, decision_at_utc=decision_at_utc,
-        regional_runs=regional_runs,
-    )
     if inputs is None or not inputs["bucket_intervals_c"]:
         return None
     state = inputs["path_state"]
@@ -1063,6 +1049,24 @@ def compile_station_p1_packets(
         # and multiplied into nothing; the ledger scores it out of lineage.
         # Its own failures are swallowed inside the shadow compiler, so a
         # measurement lane can never be the reason a P1 does not compile.
+        #
+        # Built once per step and handed to both consumers.  Building it in
+        # each of them re-parsed the prefix a second time, and the production
+        # cycle went from under ten minutes to fifteen and forty seconds --
+        # past its own 720s overdue alarm -- on 2026-09-07, the first cycle
+        # after the chain started serving beside the shadow.  The path state
+        # is the expensive part and neither lane needs its own copy.
+        four_layer_inputs = (
+            _four_layer_inputs_for_step(
+                root=root,
+                proof=proof,
+                trajectory_prefix=trajectory_prefix,
+                bucket_centers_c=bucket_centers_c,
+                decision_at_utc=decision_text,
+                regional_runs=regional_runs,
+            )
+            if four_layer_artifacts else None
+        )
         four_layer_shadow: dict[str, str] = {}
         if four_layer_artifacts:
             four_layer_shadow = _four_layer_shadow_for_step(
@@ -1073,7 +1077,7 @@ def compile_station_p1_packets(
                 decision_at_utc=decision_text,
                 reported_high_bucket=reported_high_bucket,
                 artifacts=four_layer_artifacts,
-                regional_runs=regional_runs,
+                inputs=four_layer_inputs,
             )
         envelope = materialize_p1(
             previous,
@@ -1118,12 +1122,9 @@ def compile_station_p1_packets(
                 None
                 if not four_layer_artifacts
                 else _four_layer_serving_bundle(
-                    root=root, proof=proof,
-                    trajectory_prefix=trajectory_prefix,
                     bucket_centers_c=bucket_centers_c,
-                    decision_at_utc=decision_text,
                     artifacts=four_layer_artifacts,
-                    regional_runs=regional_runs,
+                    inputs=four_layer_inputs,
                 )
             ),
             four_layer_shadow=four_layer_shadow,

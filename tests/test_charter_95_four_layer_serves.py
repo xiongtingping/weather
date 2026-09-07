@@ -249,3 +249,34 @@ def test_declaring_the_provenance_moves_no_probability() -> None:
             "predecessor_checkpoint_id",
         }:
             assert left[key] == right[key], key
+
+
+def test_the_step_state_is_built_once_and_shared(monkeypatch) -> None:
+    """Serving and the shadow read one path state, not one each.
+
+    Building it in both re-parsed the prefix a second time and took the
+    production cycle from under ten minutes to fifteen and forty seconds --
+    past its own 720-second overdue alarm -- on the first cycle after the
+    chain started serving beside the shadow.  The expensive part is the path
+    state, and neither lane needs its own copy.
+    """
+
+    import bayes_basket_target.p1_compiler as C  # noqa: PLC0415
+
+    original = C._four_layer_inputs_for_step
+    calls: list[str] = []
+
+    def counted(**kwargs):
+        calls.append(str(kwargs["decision_at_utc"]))
+        return original(**kwargs)
+
+    monkeypatch.setattr(C, "_four_layer_inputs_for_step", counted)
+    packets = _compile(
+        four_layer_artifacts={"hazard": HAZARD, "reanchor": REANCHOR},
+        regional_runs=[KLGA_RUN],
+    )
+    assert packets
+    assert len(calls) == len(set(calls)), (
+        f"one build per decision instant, got {len(calls)} for "
+        f"{len(set(calls))} instants"
+    )
