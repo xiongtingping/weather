@@ -227,6 +227,33 @@ def build_ui_event_fact_write_compat_plan_with_unit_prior(*args, **kwargs) -> di
     return getattr(server, "build_ui_event_fact_write_compat_plan")(*args, **kwargs)
 
 
+#: The bucket a residual row is filed under.  Deliberately not a
+#: temperature label: it exists so the SSOT block sums to one and must not
+#: be mistaken for a bucket any test is reasoning about.
+UNIT_SSOT_RESIDUAL_BUCKET = "unit_test_residual_mass"
+
+
+def _rows_topped_up_to_one(rows):
+    """The same rows plus a residual, so they sum to one."""
+
+    values = []
+    for row in rows:
+        try:
+            values.append(float(row.get("probability")))
+        except (TypeError, ValueError):
+            return rows
+    total = sum(values)
+    if total < 0 or total > 1.0 + 1e-9 or abs(total - 1.0) <= 1e-9:
+        return rows
+    return list(rows) + [
+        {
+            "outcome": UNIT_SSOT_RESIDUAL_BUCKET,
+            "bucket": UNIT_SSOT_RESIDUAL_BUCKET,
+            "probability": 1.0 - total,
+        }
+    ]
+
+
 def attach_unit_posterior_ssot_fact(
     payload: dict,
     *,
@@ -298,7 +325,17 @@ def attach_unit_posterior_ssot_fact(
         "beta_strong": payload.get("beta_strong"),
         "phase_reason": payload.get("phase_reason"),
         "hard_mask_reason": payload.get("hard_mask_reason"),
-        "bucket_probabilities": rows,
+        # Topped up to one, not rescaled.  The apply contract checks the
+        # SSOT rows sum to 1 within 1e-6, and separately that the SSOT's
+        # declared target equals the payload distribution's top -- the
+        # declared value, not the argmax of these rows.  These fixtures
+        # carry whatever partial distribution the test is about (two
+        # buckets summing to 0.16, one at 0.4) and many of them assert on
+        # those exact numbers, so scaling them trades
+        # posterior_ssot_fact_bucket_probabilities_not_normalized for a
+        # broken assertion.  A residual row carries the difference and
+        # leaves every stated probability untouched.
+        "bucket_probabilities": _rows_topped_up_to_one(rows),
         "layer_chain": {
             "schema": "bayes_layer_chain_summary_v1",
             "formula": "P_prior * L_forecast_weak^beta_weak * L_metar_strong^beta_strong * hard_mask",
@@ -309,6 +346,24 @@ def attach_unit_posterior_ssot_fact(
             "hard_mask_is_constraint_not_weight": True,
         },
     }
+    # The apply contract requires both selection blocks beside the SSOT
+    # fact, each naming where it read the target and stating it did not
+    # recompute at runtime.  Sixteen tests here carried the fact and not
+    # these, and were refused on target_bucket_selection_missing before
+    # their own assertion ran.  Built from the same target the block
+    # above declares, so the three cannot disagree; a payload that sets
+    # its own is left alone, which is how the negative cases still fail.
+    selection = {
+        "target_bucket": target_bucket,
+        "target_probability": float(target_probability),
+        "target_probability_field": "posterior_ssot_fact.target_probability",
+        "ssot_source": "posterior_ssot_fact",
+        "selection_runtime_recomputed": False,
+        "fact_snapshot_id": payload["fact_snapshot_id"],
+        "posterior_run_id": payload["posterior_run_id"],
+    }
+    payload.setdefault("posterior_target_bucket_selection", dict(selection))
+    payload.setdefault("target_bucket_selection", dict(selection))
     return payload
 
 
