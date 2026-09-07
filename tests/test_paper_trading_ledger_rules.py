@@ -1063,7 +1063,8 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
             positions = conn.execute(
                 "SELECT station_id, event_date, stage, decision_at_utc,"
                 " posted_buckets_json, window_buckets_json,"
-                " ladder_center_bucket, win_probability, all_in_cost,"
+                " ladder_center_bucket, intended_win_probability,"
+                " intended_all_in_cost,"
                 " prices_json, probabilities_json, held_before_json,"
                 " chain_stake_usdc, stake_usdc, consolidation_json"
                 " FROM paper_trade_position"
@@ -1143,6 +1144,19 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
                 # improves the chain's expected log growth, and either can
                 # hold with the seat's own claim under its own cost --
                 # buying the miss rung as insurance prices exactly there.
+                # Read off the CHOSEN basket, not the one that settled.
+                # The rule under test is the entry gate, and the entry gate
+                # judged the window it posted at the ask it was quoted --
+                # ``all_in_cost`` is what the resting ladder went on to pay,
+                # which is usually far less (mean -0.45 over 130 seats) and
+                # occasionally more: ZSQD 2026-09-06 cleared the gate at
+                # 0.891 against 0.860 and filled at 0.970, because charter
+                # 94(六)'s ladder follows the bid and the bid rose all day.
+                # Two seats in 130 do that.  It is a real cost of that
+                # ruling and it is not evidence the gate did not run, which
+                # is the only thing this assertion can speak to.
+                if win is None or cost is None:
+                    continue
                 assert float(win) > float(cost), (
                     f"{scope}: fully-filled seat with EV<=0 "
                     f"({win} vs {cost}) -- the entry gate cannot have run"

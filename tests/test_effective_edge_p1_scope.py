@@ -26,6 +26,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     EFFECTIVE_EDGE_LAMBDA,
     EFFECTIVE_EDGE_P0M_LAMBDA,
     EFFECTIVE_EDGE_P1_LAMBDA,
+    center_window_claim_factor,
     effective_edge_lambda,
     effective_edge_lambda_for_stage,
 )
@@ -73,28 +74,46 @@ def test_an_unfitted_stage_reads_one() -> None:
     assert effective_edge_lambda_for_stage("", 0.3) == 1.0
 
 
+
+def _candidate_table(conn: sqlite3.Connection) -> None:
+    """The population the fit reads: one row per enumerated window."""
+
+    conn.execute(
+        "CREATE TABLE paper_trade_candidate_window("
+        "candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
+        " stage TEXT, decision_at_utc TEXT, buckets_json TEXT,"
+        " win_probability REAL, all_in_price REAL, hit INTEGER)"
+    )
+
+
+def _candidate(conn, index, stage, day, claim, cost, hit, station=None):
+    """One scored window.  ``claim`` raw in, lifted on disk -- the
+    enumeration lifts before the gate divides, so the fit must not."""
+
+    conn.execute(
+        "INSERT INTO paper_trade_candidate_window VALUES(?,?,?,?,?,?,?,?,?)",
+        (
+            f"cand-{index}", station or f"S{index}", day, stage,
+            f"{day}T00:00:00Z", '["b"]',
+            claim * center_window_claim_factor(claim), cost, hit,
+        ),
+    )
+
 def _book(rows) -> sqlite3.Connection:
     """The two ledger tables the store reads, with one seat per row."""
 
     conn = sqlite3.connect(":memory:")
-    conn.execute(
-        "CREATE TABLE paper_trade_position("
-        "position_id TEXT PRIMARY KEY, intended_win_probability REAL, intended_all_in_cost REAL)"
-    )
+    _candidate_table(conn)
     conn.execute(
         "CREATE TABLE paper_trade_settlement("
         "settlement_id TEXT PRIMARY KEY, position_id TEXT, stage TEXT,"
-        " event_date TEXT, intended_hit INTEGER)"
+        " event_date TEXT, hit INTEGER)"
     )
     for index, (stage, claim, cost, hit) in enumerate(rows):
-        pid = f"pos-{index}"
-        conn.execute(
-            "INSERT INTO paper_trade_position VALUES(?,?,?)",
-            (pid, claim, cost),
-        )
+        _candidate(conn, index, stage, "2026-09-01", claim, cost, hit)
         conn.execute(
             "INSERT INTO paper_trade_settlement VALUES(?,?,?,?,?)",
-            (f"set-{index}", pid, stage, "2026-09-01", hit),
+            (f"set-{index}", f"pos-{index}", stage, "2026-09-01", hit),
         )
     return conn
 
@@ -228,16 +247,11 @@ def test_only_seats_banded_under_the_current_partition_are_fitted() -> None:
     nobody serves and is left out -- and counted, so the exclusion is
     visible rather than silent."""
     conn = sqlite3.connect(":memory:")
-    conn.execute(
-        "CREATE TABLE paper_trade_position("
-        "position_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
-        " stage TEXT, decision_at_utc TEXT, intended_win_probability REAL,"
-        " intended_all_in_cost REAL)"
-    )
+    _candidate_table(conn)
     conn.execute(
         "CREATE TABLE paper_trade_settlement("
         "settlement_id TEXT PRIMARY KEY, position_id TEXT, stage TEXT,"
-        " event_date TEXT, intended_hit INTEGER)"
+        " event_date TEXT, hit INTEGER)"
     )
     conn.execute(
         "CREATE TABLE calibration_band_reliability_table("
@@ -267,9 +281,12 @@ def test_only_seats_banded_under_the_current_partition_are_fitted() -> None:
         kind = ("new", "old", None)[index % 3]
         pid, hid, eid = f"pos-{index}", f"hist-{index}", f"env-{index}"
         rows.append(kind)
+        _candidate(
+            conn, index, "P0", "2026-09-01", 0.5, 0.15, 1, station="ZUUU",
+        )
         conn.execute(
-            "INSERT INTO paper_trade_position VALUES(?,?,?,?,?,?,?)",
-            (pid, "ZUUU", "2026-09-01", "P0", f"t{index}", 0.5, 0.15),
+            "UPDATE paper_trade_candidate_window SET decision_at_utc=?"
+            " WHERE candidate_id=?", (f"t{index}", f"cand-{index}"),
         )
         conn.execute(
             "INSERT INTO paper_trade_settlement VALUES(?,?,?,?,?)",
@@ -294,7 +311,6 @@ def test_only_seats_banded_under_the_current_partition_are_fitted() -> None:
         "applied": True,
         "excluded_old_partition": 12,
         "excluded_no_receipt": 12,
-        "excluded_no_intended_basis": 0,
     }
     # Only the twelve current-partition seats were counted.
     assert fit["evidence"][0]["seats"] == 12
@@ -396,14 +412,11 @@ def test_a_thin_band_keeps_the_last_activated_value_not_the_constant() -> None:
     hand-fitted bootstrap it was promoted away from."""
 
     conn = _store_with_journal()
-    conn.execute(
-        "CREATE TABLE paper_trade_position("
-        "position_id TEXT PRIMARY KEY, intended_win_probability REAL, intended_all_in_cost REAL)"
-    )
+    _candidate_table(conn)
     conn.execute(
         "CREATE TABLE paper_trade_settlement("
         "settlement_id TEXT PRIMARY KEY, position_id TEXT, stage TEXT,"
-        " event_date TEXT, intended_hit INTEGER)"
+        " event_date TEXT, hit INTEGER)"
     )
     # An activated table whose first band was promoted to 0.33.
     _journal(conn, scope="P0", sha="c" * 64, fitted_at="2026-09-01T01:00:00",
@@ -414,8 +427,7 @@ def test_a_thin_band_keeps_the_last_activated_value_not_the_constant() -> None:
     )
     # Three seats in the first band today: below the hurdle.
     for index in range(3):
-        conn.execute("INSERT INTO paper_trade_position VALUES(?,?,?)",
-                     (f"p{index}", 0.5, 0.15))
+        _candidate(conn, index, "P0", "2026-09-02", 0.5, 0.15, 1)
         conn.execute("INSERT INTO paper_trade_settlement VALUES(?,?,?,?,?)",
                      (f"s{index}", f"p{index}", "P0", "2026-09-02", 1))
     fit = store.fit_lambda_table(conn, stage_scope="P0")

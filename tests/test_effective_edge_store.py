@@ -24,32 +24,49 @@ if str(ROOT) not in sys.path:
 from bayes_basket_target import effective_edge_store as store  # noqa: E402
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     EFFECTIVE_EDGE_LAMBDA,
+    center_window_claim_factor,
     effective_edge_lambda,
 )
 
 
 def _book(path: Path, seats) -> sqlite3.Connection:
-    """A minimal settled book: one position and one settlement per seat."""
+    """A minimal scored book: one candidate window per row.
+
+    Each row gets its own station so the station-day hurdle reads the way
+    the row count used to.  These fixtures vary one thing at a time, and
+    collapsing forty rows onto one station-day would make every band
+    accumulate for a reason none of them is about.
+
+    ``claim`` is passed raw and stored lifted, because the enumeration
+    lifts before the gate divides and the fit therefore must not lift
+    again: storing it lifted keeps every agreement in this file at the
+    value it was written for.
+    """
 
     conn = sqlite3.connect(path, isolation_level=None)
     conn.execute(
-        "CREATE TABLE paper_trade_position ("
-        " position_id TEXT PRIMARY KEY, intended_win_probability REAL,"
-        " intended_all_in_cost REAL)"
+        "CREATE TABLE paper_trade_candidate_window ("
+        " candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
+        " stage TEXT, decision_at_utc TEXT, buckets_json TEXT,"
+        " win_probability REAL, all_in_price REAL, hit INTEGER)"
     )
+    # Still read for the as-of day, and for nothing else.
     conn.execute(
         "CREATE TABLE paper_trade_settlement ("
-        " position_id TEXT, stage TEXT, event_date TEXT, intended_hit INTEGER)"
+        " position_id TEXT, stage TEXT, event_date TEXT, hit INTEGER)"
     )
     for index, (stage, day, claim, cost, hit) in enumerate(seats):
-        pid = f"p{index}"
         conn.execute(
-            "INSERT INTO paper_trade_position VALUES(?,?,?)",
-            (pid, claim, cost),
+            "INSERT INTO paper_trade_candidate_window"
+            " VALUES(?,?,?,?,?,?,?,?,?)",
+            (
+                f"c{index}", f"S{index}", day, stage, f"{day}T00:00:00Z",
+                '["b"]', claim * center_window_claim_factor(claim), cost, hit,
+            ),
         )
         conn.execute(
             "INSERT INTO paper_trade_settlement VALUES(?,?,?,?)",
-            (pid, stage, day, hit),
+            (f"p{index}", stage, day, hit),
         )
     return conn
 

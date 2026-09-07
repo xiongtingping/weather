@@ -5656,26 +5656,33 @@ def collect_effective_edge_lambda(conn: sqlite3.Connection) -> dict[str, Any]:
         clause = ""
         params: list[Any] = list(stages)
         if since:
-            clause += " AND s.event_date >= ?"
+            clause += " AND c.event_date >= ?"
             params.append(since)
         if until:
-            clause += " AND s.event_date < ?"
+            clause += " AND c.event_date < ?"
             params.append(until)
         try:
             rows = conn.execute(
-                # Claim, price and realisation come off the CHOSEN basket,
-                # because that is what lambda(a) is banded on and what the
-                # gate looks the band up with -- see the note over the fit
-                # in ``effective_edge_store``.  P&L and stake stay on the
-                # filled basket: those are money, and money is what was
-                # held.  The two halves of this row answer two different
-                # questions on purpose.
-                "SELECT p.intended_win_probability, p.intended_all_in_cost,"
-                " s.intended_hit,"
+                # Every candidate window, which is the population the
+                # served table is fitted on -- a panel that reads a
+                # different sample than the fit is a panel that cannot be
+                # used to check the fit.  ``win_probability`` here is
+                # already the lifted claim; nothing lifts it again.
+                #
+                # P&L and stake come from the seats and only from the
+                # seats, joined per station-day: money follows the basket
+                # that was held, and a window nobody bought has none.  The
+                # two halves of this row answer two different questions on
+                # purpose, and the money half is NULL for most rows.
+                "SELECT c.win_probability, c.all_in_price, c.hit,"
                 " s.pnl_usdc, s.stake_usdc"
-                " FROM paper_trade_settlement s"
-                " JOIN paper_trade_position p USING(position_id)"
-                f" WHERE s.stage IN ({placeholders}){clause}",
+                " FROM paper_trade_candidate_window c"
+                " LEFT JOIN paper_trade_settlement s"
+                "   ON s.station_id = c.station_id"
+                "  AND s.event_date = c.event_date"
+                "  AND c.seated = 1"
+                f" WHERE c.stage IN ({placeholders}){clause}"
+                "   AND c.hit IS NOT NULL",
                 params,
             ).fetchall()
         except sqlite3.Error:

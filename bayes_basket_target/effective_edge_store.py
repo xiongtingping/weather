@@ -15,28 +15,49 @@ than drift -- it is blindness.  A rule that refuses the seats it distrusts
 stops observing exactly the band it most needs to keep measuring, and the
 stalest number in the table becomes the one nobody can refresh.
 
-That failure is closed structurally rather than statistically, and not by
-anything in this file: the chain ticket keeps the seat when the shrink
-sizes it to nothing.  Measured on the book the day charter 68 landed,
-79-99% of opening seats are tickets and they still span all four agreement
-bands -- 19 seats below 0.50, 52, 102, and 118 above 0.85.  The observation
-stream survives the rule that would otherwise have cut it.  Should that
-stop being true, ``fit_lambda_table`` says so per band rather than quietly
-serving a number nobody can support any more.
+That failure was first answered structurally -- the chain ticket kept the
+seat when the shrink sized it to nothing -- and charter 96 then retired the
+ticket, which took the answer with it.  It is answered properly now, by the
+population this module fits on (user ruling, 2026-09-07): **every window the
+enumeration offered, not the ones the gate admitted.**  A seat exists
+because ``lambda(a) > a`` held, so fitting lambda on seats conditions the
+sample on the estimate.  Within a band the admitted windows are the cheapest
+ones; cheap is where the market disagrees with us most; and that is
+measurably where this model is worst -- so the estimate comes out low, the
+gate tightens, and the next window's sample is drawn from a cheaper slice
+still.  A ratchet, and it had turned: over 923 day-ahead station-days the
+seated basis reads 0.159/0.368/0.795/0.686/0.650/0.979 -- not even monotone
+-- against 0.237/0.599/0.764/0.812/0.925/1.231 on the same days' enumerated
+windows, low in every band and by 40-50% in two.  A refused window still
+resolves, and it still says what a claim of that size at that agreement was
+worth; there is no longer any band the rule can blind itself to.
 
-Measured at the basket, deliberately.  Per-bucket agreement is the tempting
-basis -- every priced bucket is an observation, and no selection touches it
--- but it answers a different question: on this book the top band reads
-1.82 per bucket against 0.89 per basket, because a basket's agreement is a
-cost-over-claim ratio across buckets whose individual agreements scatter
-around it.  The rule shrinks baskets, so the estimator measures baskets.
+Measured at the basket, deliberately, and now with the test to show for it.
+Per-bucket agreement is the tempting basis -- every priced bucket is an
+observation, no selection touches it, and the aggregation is *exact* in
+expectation: a window's agreement is precisely the claim-weighted mean of
+its legs' agreements, and so is its lambda.  Measured out of sample it is
+nonetheless worse (2026-09-07, 923 station-days split by day into two folds,
+each fitted on one and scored on the other): the basket table lands on the
+realised hit rate to three decimals (0.706 predicted against 0.706 actual,
+0.697 against 0.697) while the per-bucket aggregation over-predicts by 8-9
+points and loses 12-14% of Brier, at every claim floor from 0 to 0.05.  The
+reason is that ``a_bucket`` alone does not distinguish the market's
+favourite from a shoulder, and a window's legs are not a random draw from
+their band -- they cluster on the centre, where the favourite lives, so the
+top band's 1.69 gets applied to all three legs at once.  The window-level
+``a`` encodes that distinction implicitly.  The rule shrinks baskets, the
+estimator measures baskets, and the per-bucket reading stays a diagnostic.
 
 Admission rule per band (fixed; the table changes, the rule does not):
 
-* at least ``MIN_SEATS_PER_BAND`` settled opening seats inside the rolling
-  window, and claim mass above ``MIN_CLAIM_MASS`` -- below either, the band
-  keeps the incumbent value and is reported as accumulating rather than
-  fitted to whatever three seats happened to land there;
+* at least ``MIN_SEATS_PER_BAND`` scored candidate windows inside the
+  rolling window, spanning ``MIN_STATION_DAYS_PER_BAND`` distinct
+  station-days, and claim mass above ``MIN_CLAIM_MASS`` -- below any of the
+  three, the band keeps the incumbent value and is reported as accumulating.
+  The station-day threshold is not decoration: windows nest, one book cut
+  six ways against one outcome is one observation wearing six hats, and
+  without it twelve rows can be two days;
 * the fitted value is clamped to ``[LAMBDA_FLOOR, LAMBDA_CEILING]``, which
   is not a statistical statement but a blast radius: a band that reads 0.02
   on a bad fortnight would zero every basket in it, and one that reads 3.0
@@ -70,6 +91,12 @@ from .contracts import content_sha256
 WINDOW_DAYS = 28
 MIN_SEATS_PER_BAND = 12
 MIN_CLAIM_MASS = 4.0
+# Windows nest.  A station-day offers six or so overlapping candidates cut
+# from one book against one outcome, so twelve rows can be two days and the
+# seat threshold above stops meaning what it meant when a row was a seat.
+# The independent unit is the station-day; this is the threshold that keeps
+# "a fortnight rewrites the rule" from coming back through the new door.
+MIN_STATION_DAYS_PER_BAND = 8
 LAMBDA_FLOOR = 0.05
 LAMBDA_CEILING = 1.50
 # One scope per stage (user ruling, 2026-09-05).  P0-M used to be pooled
@@ -297,6 +324,69 @@ def _band_partition_by_position(
     return out
 
 
+def _band_partition_by_decision(
+    conn: sqlite3.Connection,
+    stages: Sequence[str],
+    floor_day: str,
+) -> dict[tuple[str, str, str, str], int | None] | None:
+    """The same lookup as above, keyed by the decision rather than the seat.
+
+    A candidate window is not a seat and has no ``position_id``, but it does
+    carry the four columns the envelope receipt is found by -- which is what
+    the seat lookup was using ``position_id`` to reach anyway.  Same rule,
+    same ``None`` semantics: ``None`` for the whole lookup on a fixture with
+    no receipts, ``None`` per key for a decision whose envelope names no
+    band table.
+
+    Driven from the candidate table rather than from the history: the
+    history is four hundred thousand rows and the candidates are a few
+    thousand, and scanning the big side of that join took the fit from a
+    second to past ten minutes.
+    """
+
+    try:
+        sizes = {
+            str(row[0]): int(row[1])
+            for row in conn.execute(
+                "SELECT band_table_sha256, json_array_length(factors_json)"
+                " FROM calibration_band_reliability_table"
+            )
+        }
+        placeholders = ",".join("?" for _ in stages)
+        rows = conn.execute(
+            "SELECT c.station_id, c.event_date, c.stage, c.decision_at_utc,"
+            " json_extract(e.lineage_json,'$.band_reliability_json')"
+            " FROM paper_trade_candidate_window c"
+            " JOIN basket_probability_bridge_history h"
+            "   ON h.station_id = c.station_id"
+            "  AND h.event_date = c.event_date"
+            "  AND h.stage = c.stage"
+            "  AND h.decision_at_utc = c.decision_at_utc"
+            " JOIN basket_probability_envelope e"
+            "   ON e.envelope_id = h.checkpoint_id"
+            f" WHERE c.stage IN ({placeholders}) AND c.event_date >= ?"
+            "   AND c.hit IS NOT NULL"
+            " GROUP BY 1, 2, 3, 4",
+            (*stages, floor_day),
+        ).fetchall()
+    except sqlite3.Error:
+        return None
+    if not sizes:
+        return None
+    out: dict[tuple[str, str, str, str], int | None] = {}
+    for station_id, event_date, stage, decided, raw in rows:
+        sha = None
+        if raw:
+            try:
+                sha = json.loads(str(raw)).get("band_table_sha256")
+            except (ValueError, AttributeError):
+                sha = None
+        out[(str(station_id), str(event_date), str(stage), str(decided))] = (
+            sizes.get(str(sha)) if sha else None
+        )
+    return out
+
+
 def _band_index(agreement: float, bands: Sequence[tuple[float, float]]) -> int:
     for index, (bound, _lam) in enumerate(bands):
         if agreement < bound:
@@ -337,61 +427,64 @@ def fit_lambda_table(
     ).isoformat()
 
     placeholders = ",".join("?" for _ in stages)
-    # The CHOSEN basket, not the one that filled.  Lambda(a) is read by a
-    # gate that has authorised nothing yet: at that moment the basket is
-    # three posted legs, and which of them the book will sell us is not part
-    # of the question.  Under charter 65's taker FOK the distinction was
-    # empty -- a FOK basket fills whole or not at all -- so this fit read
-    # ``win_probability``/``all_in_cost``/``hit`` and was right.  Charter 94
-    # made the order a resting ladder on the bid, and those three columns
-    # became the post-execution basket: measured 2026-09-07 on the 97 settled
-    # seats, the legs that went on to win filled 18% of the time and the legs
-    # that went on to lose filled 88%, so a fit on them reads maker adverse
-    # selection and serves it as the honesty of a claim.  It did: the
-    # 23:02Z P0 fit put 40 seats with zero fills-that-won into the a<=0.50
-    # band and clamped lambda to the 0.05 floor, while every other band lost
-    # four fifths of its evidence and went back to accumulating.
+    # EVERY window the enumeration offered, not the one the walk seated.
+    #
+    # Two corrections live in this one query, and they were found a day
+    # apart.  The first: charter 94 made the order a resting ladder, so the
+    # seat's own columns became the basket that FILLED -- and on the 97
+    # settled seats the legs that went on to win filled 18% of the time
+    # against 88% for the legs that went on to lose, because a resting bid
+    # is lifted exactly when the market has decided that bucket is not
+    # happening.  A fit on those columns reads maker adverse selection and
+    # serves it as the honesty of a claim.
+    #
+    # The second is larger and is what this query is (user ruling
+    # 2026-09-07, "lambda 改拟在全部候选窗口上").  A seat exists because the
+    # gate admitted it, and the gate admits on lambda(a) > a -- so fitting
+    # lambda on seats conditions the sample on the quantity being
+    # estimated.  Within a band the admitted windows are the cheapest ones,
+    # cheap is where the market disagrees with us most, and that is
+    # measurably where this model is worst; so the estimate comes out low,
+    # the gate tightens, and the next fortnight's sample is drawn from an
+    # even cheaper slice.  A ratchet, and it had turned: measured over 923
+    # day-ahead station-days, the seated basis reads 0.159/0.368/0.795/
+    # 0.686/0.650/0.979 -- not even monotone -- while the same days'
+    # enumerated windows read 0.237/0.599/0.764/0.812/0.925/1.231, low in
+    # every band and by 40-50% in two of them.
+    #
+    # ``win_probability`` here is the LIFTED claim: ``_support_windows``
+    # already multiplied by charter 81's centre lift and the off-centre
+    # deflation, because that is the number the gate divides the price by.
+    # Nothing may lift it again.
     rows = conn.execute(
-        "SELECT p.intended_win_probability, p.intended_all_in_cost,"
-        " s.intended_hit, p.position_id"
-        " FROM paper_trade_settlement s"
-        " JOIN paper_trade_position p USING(position_id)"
-        f" WHERE s.stage IN ({placeholders}) AND s.event_date >= ?",
+        "SELECT win_probability, all_in_price, hit, station_id, event_date,"
+        " stage, decision_at_utc"
+        " FROM paper_trade_candidate_window"
+        f" WHERE stage IN ({placeholders}) AND event_date >= ?"
+        "   AND hit IS NOT NULL",
         (*stages, floor_day),
     ).fetchall()
-    partition = _band_partition_by_position(
-        conn, [str(row[3]) for row in rows]
-    )
+    partition = _band_partition_by_decision(conn, stages, floor_day)
     band_filter: dict[str, Any] = {
         "cells": BAND_PARTITION_CELLS,
         "applied": partition is not None,
         "excluded_old_partition": 0,
         "excluded_no_receipt": 0,
-        # Seats recorded before the ledger carried the chosen basket.  Named
-        # and counted rather than silently dropped: a band fitted on nine
-        # rows because forty had no basis is the same failure in a new place.
-        "excluded_no_intended_basis": 0,
     }
 
     tally = [
-        {"seats": 0, "claim": 0.0, "hits": 0} for _ in incumbent
+        {"seats": 0, "claim": 0.0, "hits": 0, "days": set()}
+        for _ in incumbent
     ]
-    for win, cost, hit, position_id in rows:
-        if win is None or cost is None or hit is None:
-            band_filter["excluded_no_intended_basis"] += 1
-            continue
-        # Charter 81: the solver's agreement is price over the LIFTED claim
-        # (every seat holds the centre since charter 49, and the ledger
-        # records the served window mass before the lift), so the fit reads
-        # the same basis -- else lambda(a) is looked up at an a the table
-        # never saw.  Identity when the lift is off.
-        raw_claim = float(win or 0.0)
-        claim = raw_claim * center_window_claim_factor(raw_claim)
-        price = float(cost or 0.0)
+    for win, price, hit, station_id, event_date, stage, decided in rows:
+        claim = float(win or 0.0)
+        price = float(price or 0.0)
         if claim <= 0.0 or price <= 0.0:
             continue
         if partition is not None:
-            cells = partition.get(str(position_id))
+            cells = partition.get(
+                (str(station_id), str(event_date), str(stage), str(decided))
+            )
             if cells is None:
                 band_filter["excluded_no_receipt"] += 1
                 continue
@@ -402,6 +495,7 @@ def fit_lambda_table(
         slot["seats"] += 1
         slot["claim"] += claim
         slot["hits"] += int(hit or 0)
+        slot["days"].add((str(station_id), str(event_date)))
 
     bands: list[tuple[float, float]] = []
     evidence: list[dict[str, Any]] = []
@@ -411,6 +505,7 @@ def fit_lambda_table(
         enough = (
             slot["seats"] >= MIN_SEATS_PER_BAND
             and slot["claim"] >= MIN_CLAIM_MASS
+            and len(slot["days"]) >= MIN_STATION_DAYS_PER_BAND
         )
         raw = (slot["hits"] / slot["claim"]) if slot["claim"] > 0 else None
         if enough and raw is not None:
@@ -422,6 +517,9 @@ def fit_lambda_table(
         evidence.append({
             "band_upper_bound": bound if bound != float("inf") else None,
             "seats": slot["seats"],
+            # The independent unit behind the row count, printed beside it
+            # so a band that looks well-evidenced and is not can be seen.
+            "station_days": len(slot["days"]),
             "claim_mass": round(slot["claim"], 3),
             "hits": slot["hits"],
             "raw_lambda": None if raw is None else round(raw, 4),
@@ -685,51 +783,42 @@ def fit_lambda_table_dq_shadow(
     ).isoformat()
     placeholders = ",".join("?" for _ in stages)
     rows = conn.execute(
-        # Chosen basket, for the reason the served fit gives above -- the
-        # shadow axis is only meaningful stratified by the same ``a`` the
-        # served table bands on, so the two must be measured on one basis.
-        # ``intended_legs_json`` is also the window the move is priced over:
-        # asking how the market moved the legs it later refused to sell is
-        # the question, not a defect.
-        "SELECT p.intended_win_probability, p.intended_all_in_cost,"
-        "       s.intended_hit, p.position_id,"
-        "       p.station_id, p.event_date, p.decision_at_utc,"
-        "       p.intended_legs_json, p.prices_json"
-        " FROM paper_trade_settlement s"
-        " JOIN paper_trade_position p USING(position_id)"
-        f" WHERE s.stage IN ({placeholders}) AND s.event_date >= ?",
+        # The same population as the served fit, for the same two reasons,
+        # and it has to be the same one: this axis is only meaningful
+        # stratified by the ``a`` the served table bands on, so measuring
+        # the two on different samples compares nothing.  The window the
+        # move is priced over is the candidate's own leg list, and
+        # ``all_in_price`` is that window's price at the decision -- the
+        # shadow's ``price_now`` by construction, with no ladder to re-sum.
+        "SELECT win_probability, all_in_price, hit, buckets_json,"
+        "       station_id, event_date, stage, decision_at_utc"
+        " FROM paper_trade_candidate_window"
+        f" WHERE stage IN ({placeholders}) AND event_date >= ?"
+        "   AND hit IS NOT NULL",
         (*stages, floor_day),
     ).fetchall()
-    partition = _band_partition_by_position(
-        conn, [str(row[3]) for row in rows]
-    )
+    partition = _band_partition_by_decision(conn, stages, floor_day)
     tally = [
         {tier: {"seats": 0, "claim": 0.0, "hits": 0} for tier in DQ_TIERS}
         for _ in incumbent
     ]
     excluded = 0
-    for (win, cost, hit, position_id, station_id, event_date, decision_at,
-         window_json, prices_json) in rows:
-        if win is None or cost is None or hit is None:
-            excluded += 1
-            continue
-        raw_claim = float(win or 0.0)
-        claim = raw_claim * center_window_claim_factor(raw_claim)
+    for (win, cost, hit, window_json, station_id, event_date, stage,
+         decision_at) in rows:
+        claim = float(win or 0.0)
         price = float(cost or 0.0)
         if claim <= 0.0 or price <= 0.0:
             continue
-        if partition is not None and partition.get(str(position_id)) != BAND_PARTITION_CELLS:
+        if partition is not None and partition.get(
+            (str(station_id), str(event_date), str(stage), str(decision_at))
+        ) != BAND_PARTITION_CELLS:
             excluded += 1
             continue
         try:
-            # ``intended_legs_json`` is an object keyed by bucket, where the
-            # retired ``window_buckets_json`` was an array; iterating either
-            # yields the bucket labels, which is all this needs.
-            window = [str(b) for b in json.loads(str(window_json or "{}"))]
-            asks = json.loads(str(prices_json or "{}"))
-            price_now = sum(float(asks[b]) for b in window)
-        except (ValueError, TypeError, KeyError):
-            window, price_now = [], price
+            window = [str(b) for b in json.loads(str(window_json or "[]"))]
+        except (ValueError, TypeError):
+            window = []
+        price_now = price
         move = window_price_move(
             conn, station_id=str(station_id), event_date=str(event_date),
             decision_at_utc=str(decision_at), window=window, price_now=price_now,

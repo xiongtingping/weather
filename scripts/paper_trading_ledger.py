@@ -2740,6 +2740,54 @@ CREATE TABLE IF NOT EXISTS paper_trade_refusal (
   PRIMARY KEY(station_id, event_date, stage)
 )
 """ % ",".join("'%s'" % reason for reason in REFUSAL_REASONS)
+_CANDIDATE_WINDOW_DDL = """
+CREATE TABLE IF NOT EXISTS paper_trade_candidate_window (
+  candidate_id TEXT PRIMARY KEY,
+  station_id TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  stage TEXT NOT NULL CHECK(stage IN ('P0','P0-M','P1')),
+  decision_at_utc TEXT NOT NULL,
+  buckets_json TEXT NOT NULL,
+  window_size INTEGER NOT NULL,
+  -- The enumeration's own two numbers, straight off ``_support_windows``:
+  -- production's function, not a copy of it.  ``all_in_price`` is the
+  -- crossing ask total, which is the denominator charter 94(五) keeps the
+  -- gate and Kelly on and therefore the one lambda(a) is looked up at.
+  -- ``win_probability`` is the LIFTED claim -- ``raw_win * claim_factor``,
+  -- charter 81's centre lift and the off-centre deflation already in it --
+  -- because that is the number the gate divides the price by.  The seated
+  -- path recorded the raw mass and the fit applied the lift itself; here
+  -- the enumeration has already done it, so a fit reading this column must
+  -- NOT lift again.  The raw mass rides along so the two can be compared
+  -- without re-deriving either.
+  win_probability REAL NOT NULL,
+  raw_win_probability REAL,
+  all_in_price REAL NOT NULL,
+  -- The agreement the gate itself computed, when it computed one.  Not the
+  -- fit's input -- price over claim above is -- but the cheapest possible
+  -- check that the two agree.
+  gate_agreement REAL,
+  -- Whether the gate would have taken it, and whether the walk did.  Both
+  -- recorded and NEITHER used to filter the fit: a window is evidence about
+  -- what a claim of its size realises whether or not we bought it, and
+  -- fitting only on the ones we bought is how the gate came to grade its
+  -- own homework.
+  admissible INTEGER NOT NULL,
+  seated INTEGER NOT NULL,
+  settled_bucket TEXT,
+  hit INTEGER,
+  settled_at_utc TEXT,
+  truth_revision_no INTEGER,
+  truth_content_sha256 TEXT NOT NULL DEFAULT '',
+  selection_rule_sha256 TEXT NOT NULL DEFAULT '',
+  -- One enumeration per stage per station-day: the cycle the walk stopped
+  -- on, which is the seating cycle when it seated and the last one it
+  -- looked at when it did not.  Recording every cycle would multiply the
+  -- rows by ten and the information by nothing -- consecutive cycles on one
+  -- station-day are the same book an hour apart.
+  UNIQUE(station_id, event_date, stage, decision_at_utc, buckets_json)
+)
+"""
 _SETTLEMENT_DDL = """
 CREATE TABLE IF NOT EXISTS paper_trade_settlement (
   settlement_id TEXT PRIMARY KEY,
@@ -2919,6 +2967,11 @@ def ensure_schema(conn: sqlite3.Connection) -> bool:
     if _position_scope_unique_present(conn):
         _rebuild_position_without_scope_unique(conn)
     conn.execute(_SETTLEMENT_DDL)
+    conn.execute(_CANDIDATE_WINDOW_DDL)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_candidate_window_scope"
+        " ON paper_trade_candidate_window(stage, event_date)"
+    )
     conn.execute(_REFUSAL_DDL)
     # A new reason cannot be recorded through an existing CHECK, and
     # ``CREATE TABLE IF NOT EXISTS`` will not widen one.  Rebuild in place
@@ -7057,6 +7110,80 @@ def _settlement_ladder(
     ).fetchall()
 
 
+def _score_candidate_windows(
+    conn: sqlite3.Connection, truth: dict[tuple[str, str], _Truth]
+) -> dict[str, int]:
+    """Grade every recorded candidate window against the truth that stands.
+
+    The same two production functions the settlement uses -- the ladder the
+    decision was priced against and the bucket a value lands in -- so a
+    window and the seat beside it can never disagree about which bucket won.
+    Bound to ``truth_content_sha256`` for the same reason settlements are:
+    truth is revisable by design, and a row that does not say which revision
+    it read cannot know it has gone stale.
+
+    A window with no truth yet is simply not scored.  It is not evidence of
+    anything and the fit skips it -- which is the entire difference between
+    this table and the seats: a station-day the gate refused still resolves,
+    and its windows still say what a claim of that size and that agreement
+    was worth.
+    """
+
+    rows = conn.execute(
+        "SELECT candidate_id, station_id, event_date, stage,"
+        " decision_at_utc, buckets_json, truth_content_sha256"
+        " FROM paper_trade_candidate_window"
+    ).fetchall()
+    counts: dict[str, int] = defaultdict(int)
+    ladders: dict[tuple, list] = {}
+    write: list[tuple] = []
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    for (candidate_id, station_id, event_date, stage, decided,
+         buckets_json, bound_sha) in rows:
+        standing = truth.get((str(station_id), str(event_date)))
+        if standing is None:
+            counts["candidate_open"] += 1
+            continue
+        if str(bound_sha or "") == standing.content_sha256:
+            counts["candidate_current"] += 1
+            continue
+        key = (station_id, event_date, stage, decided)
+        if key not in ladders:
+            ladders[key] = _settlement_ladder(
+                conn, str(station_id), str(event_date), str(stage),
+                str(decided),
+            )
+        ladder = ladders[key]
+        if not ladder:
+            counts["candidate_no_ladder"] += 1
+            continue
+        landed = _settled_bucket(list(ladder), standing.tmax_c)
+        if landed is None:
+            counts["candidate_truth_outside_book"] += 1
+            continue
+        settled_bucket, _ordinal = landed
+        try:
+            buckets = [str(b) for b in json.loads(buckets_json or "[]")]
+        except (TypeError, ValueError):
+            counts["candidate_unreadable"] += 1
+            continue
+        write.append((
+            settled_bucket, 1 if settled_bucket in buckets else 0, now,
+            standing.revision_no, standing.content_sha256, candidate_id,
+        ))
+        counts["candidate_scored"] += 1
+    if write:
+        conn.executemany(
+            "UPDATE paper_trade_candidate_window"
+            " SET settled_bucket=?, hit=?, settled_at_utc=?,"
+            "     truth_revision_no=?, truth_content_sha256=?"
+            " WHERE candidate_id=?",
+            write,
+        )
+        conn.commit()
+    return dict(counts)
+
+
 def _rescore_settlements(
     conn: sqlite3.Connection, truth: dict[tuple[str, str], _Truth]
 ) -> dict[str, int]:
@@ -7449,6 +7576,7 @@ def backfill(
     )
     pending_positions: list[tuple] = []
     pending_settlements: list[tuple] = []
+    pending_candidates: list[tuple] = []
     pending_refusals: list[tuple] = []
     pending_chain_resets: list[tuple[str, str]] = []
     by_day: dict[str, list[str]] = defaultdict(list)
@@ -7565,6 +7693,8 @@ def backfill(
                 refusal = ("no_book_at_decision", "", 0, "")
                 cycles = 0
                 opened = False
+                stage_candidates: tuple[str, list] | None = None
+                stage_seated_buckets: tuple[str, ...] | None = None
                 lane_opened_at: datetime | None = None
                 # Production's clamp compares this cycle's distribution with
                 # the one before it, so the walk has to carry the previous
@@ -7761,6 +7891,13 @@ def backfill(
                             cycles, payload["decision_at_utc"],
                         ))
                         continue
+                    # Every window this cycle enumerated, kept until the
+                    # stage stops walking and then recorded.  Overwritten
+                    # each cycle on purpose: what is wanted is one book per
+                    # station-day-stage, and the cycle the walk stops on is
+                    # the one that decided -- the seating cycle when it
+                    # seated, the last one it looked at when it did not.
+                    stage_candidates = (payload["decision_at_utc"], windows)
                     # The centre of whichever enumeration ends up seating
                     # this cycle.  This lane's own to begin with; the
                     # production judge reassigns it to production's when
@@ -9357,6 +9494,12 @@ def backfill(
                     # looked up at, and the one it has to be fitted at.
                     intended_win_probability = float(seat["win_probability"])
                     intended_all_in_cost = float(seat["all_in_price"])
+                    # Which enumerated window this stage actually took, kept
+                    # here rather than read back off ``seat`` at the flush:
+                    # the resting lane narrows ``seat["buckets"]`` to what
+                    # filled, and a narrowed window matches no row in the
+                    # enumeration it came from.
+                    stage_seated_buckets = tuple(str(b) for b in seat["buckets"])
                     if EXECUTION_MODE == "maker_resting":
                         # The sizing above is the order that was posted.
                         # This is the position that came back.
@@ -9676,6 +9819,50 @@ def backfill(
                             .isoformat().replace("+00:00", "Z"),
                         )
                     )
+                # Charter 87, second reading (user ruling 2026-09-07,
+                # "lambda 改拟在全部候选窗口上"): the enumeration is the
+                # evidence, not the seat.  Recorded for the refused stages
+                # too -- most of the book is refused, and a fit that only
+                # ever sees what the gate let through is the gate reading
+                # its own decisions back as though they were outcomes.
+                if stage_candidates is not None:
+                    decided_at, enumerated = stage_candidates
+                    seated_key = stage_seated_buckets
+                    for row in enumerated:
+                        if row.get("all_in_price") is None:
+                            continue
+                        buckets = [str(b) for b in row.get("buckets") or ()]
+                        if not buckets:
+                            continue
+                        identity = {
+                            "station_id": str(station_id),
+                            "event_date": str(event_date),
+                            "stage": str(stage),
+                            "decision_at_utc": str(decided_at),
+                            "buckets": buckets,
+                            "selection_rule_sha256": SELECTION_RULE_SHA256,
+                        }
+                        pending_candidates.append((
+                            "paper-cand-" + content_sha256(identity)[:24],
+                            station_id, event_date, stage, decided_at,
+                            json.dumps(buckets, ensure_ascii=False),
+                            len(buckets),
+                            float(row.get("win_probability") or 0.0),
+                            (
+                                None
+                                if row.get("raw_win_probability") is None
+                                else float(row["raw_win_probability"])
+                            ),
+                            float(row.get("all_in_price") or 0.0),
+                            (
+                                None
+                                if row.get("effective_edge_agreement") is None
+                                else float(row["effective_edge_agreement"])
+                            ),
+                            1 if row.get("admissible", True) else 0,
+                            1 if tuple(buckets) == seated_key else 0,
+                            SELECTION_RULE_SHA256,
+                        ))
             # The chain is done adding.  One position, one settlement: the
             # truth lands once, and scoring each stage against it separately
             # is what charged 40 of 152 settled station-days two and three
@@ -9836,6 +10023,30 @@ def backfill(
             "?,?,?,?,?,?,?,?,?,?)",
             pending_positions,
         )
+    if pending_candidates:
+        # Replace rather than ignore: an incremental pass re-walks the same
+        # station-day and may stop on a different cycle than the last one
+        # did, and the row is the answer for that scope, not an event log.
+        # The truth columns are left out of the write so a re-walk does not
+        # blank a scoring the sweep already did; when the walk moves to a
+        # different decision moment the old rows are stale by key and the
+        # sweep re-scores whatever it finds unscored.
+        conn.executemany(
+            "INSERT INTO paper_trade_candidate_window ("
+            " candidate_id, station_id, event_date, stage, decision_at_utc,"
+            " buckets_json, window_size, win_probability,"
+            " raw_win_probability, all_in_price, gate_agreement,"
+            " admissible, seated, selection_rule_sha256"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            " ON CONFLICT(candidate_id) DO UPDATE SET"
+            "  win_probability=excluded.win_probability,"
+            "  raw_win_probability=excluded.raw_win_probability,"
+            "  all_in_price=excluded.all_in_price,"
+            "  gate_agreement=excluded.gate_agreement,"
+            "  admissible=excluded.admissible,"
+            "  seated=excluded.seated",
+            pending_candidates,
+        )
     if pending_settlements:
         conn.executemany(
             "INSERT OR IGNORE INTO paper_trade_settlement ("
@@ -9873,6 +10084,14 @@ def backfill(
             [(row[1], row[2], row[3]) for row in pending_positions],
         )
     conn.commit()
+    # Scored after the write, not before it.  The settlement sweep runs at
+    # the top of this pass because settlements are re-derived from rows that
+    # already exist; candidate windows are written by the walk that just
+    # finished, so grading them up there scores the previous pass's rows and
+    # leaves this pass's unscored until the next one -- which on a
+    # once-a-day cadence is a day of blind bands for no reason.
+    for key, value in _score_candidate_windows(conn, truth).items():
+        counts[key] += value
     return dict(counts)
 
 

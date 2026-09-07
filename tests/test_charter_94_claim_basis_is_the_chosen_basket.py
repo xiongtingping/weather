@@ -179,24 +179,29 @@ def test_the_backfill_sums_the_recorded_ladders_over_the_posted_legs(tmp_path):
         conn.close()
 
 
-def test_a_row_without_recorded_intent_is_excluded_and_counted(tmp_path):
+def test_a_row_without_recorded_intent_stays_null_rather_than_guessed(
+    tmp_path,
+):
     """No basis is not zero basis.
 
-    A seat that cannot say what it posted contributes nothing to the fit and
-    appears in ``band_filter`` by name, so a band fitted on a handful of
-    rows can be seen to have been fitted on a handful of rows.
+    A seat that cannot say what it posted gets NULL, not a value borrowed
+    off the legs that happened to fill -- which would read as a basket that
+    filled perfectly, the single most flattering wrong answer available
+    here.
     """
 
     conn = _book(tmp_path / "book.db")
     try:
         ledger._backfill_intended_basis(conn)
+        claim, cost = conn.execute(
+            "SELECT intended_win_probability, intended_all_in_cost"
+            " FROM paper_trade_position WHERE position_id='legacy'"
+        ).fetchone()
+        assert claim is None and cost is None
         assert conn.execute(
-            "SELECT intended_win_probability FROM paper_trade_position"
+            "SELECT intended_hit FROM paper_trade_settlement"
             " WHERE position_id='legacy'"
         ).fetchone()[0] is None
-        fit = store.fit_lambda_table(conn, as_of="2026-09-06")
-        assert fit["band_filter"]["excluded_no_intended_basis"] == 1
-        assert fit["seat_count"] == 1
     finally:
         conn.close()
 
@@ -223,9 +228,14 @@ def test_no_claims_layer_query_reads_the_post_execution_columns():
         assert "p.win_probability" not in text, name
         assert "p.all_in_cost" not in text, name
         assert "s.hit," not in text, name
+    # The claims layer moved on again a day later (charter 87, second
+    # reading): its population is now every enumerated window, and the
+    # ledger columns above are what each seat recorded about its own
+    # choice.  Both readings are still one word from the filled basket.
     edge = sources["effective_edge_store"]
-    assert edge.count("p.intended_win_probability") == 2, "served fit + shadow"
-    assert edge.count("s.intended_hit") == 2, "served fit + shadow"
+    assert edge.count("FROM paper_trade_candidate_window") == 3, (
+        "served fit, shadow fit, and the band-partition lookup"
+    )
     # The thermometer's unit is the posted leg, with the fill an
     # observation about it -- not a precondition for counting it.
     dashboard = sources["calibration_dashboard"]
