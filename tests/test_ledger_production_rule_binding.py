@@ -1351,3 +1351,35 @@ def test_a_rebuild_can_be_taken_oldest_first_in_slices() -> None:
     assert "through_date: str | None = None," in source
     assert "AND (?3 IS NULL OR event_date <= ?3)" in source
     assert '"--through-date",' in source
+
+def test_charter_110_both_lanes_read_one_ladder_and_one_rung_rule() -> None:
+    """The ledger does not own a ladder.  It imports production's, so a
+    charter-110 narrowing cannot land on one side only -- which is the
+    failure charter 94(九) recorded when the ledger spent days scoring a
+    strategy production does not run.
+    """
+
+    from bayes_basket_target.basket_kernel import delta_v2 as kernel
+
+    assert L.bid_anchored_ladder is P.bid_anchored_ladder
+    assert L.bid_anchored_rungs_for_gap is P.bid_anchored_rungs_for_gap
+    assert P.MAKER_LADDER_ANCHOR_OFFSETS == (1,)
+    # And the per-rung decision is the kernel's single implementation, which
+    # both the production lifecycle and the whole-basket verdict call.
+    assert callable(kernel.resting_rung_action_v1)
+    verdict = kernel.execution_completion_verdict_v1(
+        window=("a", "b"),
+        target_shares={"a": 5.0, "b": 5.0},
+        held_shares={"a": 5.0, "b": 0.0},
+        held_cost_usdc={"a": 1.0, "b": 0.0},
+        claim_by_bucket={"a": 0.40, "b": 0.20},
+        book_by_bucket={
+            "a": {"bid": 0.20, "ask": 0.22, "tick": 0.01},
+            "b": {"bid": 0.28, "ask": 0.30, "tick": 0.01},
+        },
+        rung_by_bucket={"b": {"limit": 0.29, "age_seconds": 1200.0}},
+        hours_to_cutoff=8.0,
+    )
+    assert verdict["legs"]["b"]["action"] == kernel.LEG_ACTION_CROSS
+    assert verdict["basket_state"] == kernel.BASKET_STATE_PARTIAL
+

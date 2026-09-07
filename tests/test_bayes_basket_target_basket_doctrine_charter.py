@@ -3471,7 +3471,8 @@ def test_clause_93_the_support_floor_is_zero_and_re_read_after_the_lift() -> Non
 
 
 def test_clause_94_the_ladder_is_anchored_on_the_bid_and_never_crosses() -> None:
-    """Charter 94: bid+1t, bid, bid-1t; as many rungs as the gap holds lots for."""
+    """Charter 94 as charter 110 leaves it: one rung, bid+1t, still no cross
+    at entry.  The three-rung shape and the equal split are retired."""
     from bayes_basket_target import delta_v2_runtime as runtime
 
     clause = _clause(94)
@@ -3487,30 +3488,37 @@ def test_clause_94_the_ladder_is_anchored_on_the_bid_and_never_crosses() -> None
     assert runtime.EXECUTION_MODE == "maker"
     assert runtime.EXECUTION_FAMILY == "maker"
     assert runtime.MAKER_LADDER_SHAPE == "bid_anchored"
-    assert runtime.MAKER_LADDER_ANCHOR_OFFSETS == (1, 0, -1)
+    # Charter 110 (一) narrows this clause from three rungs to one.  The
+    # rung count is what the measurement was about: the marginal population
+    # bid+1t buys is -0.0067 a share, the rung the ask must fall to the bid
+    # to reach is -0.0234, and 94 (二) routed two thirds of every leg into
+    # the second one by splitting the gap equally across the three.
+    assert runtime.MAKER_LADDER_ANCHOR_OFFSETS == (1,)
+    assert "第 110 条起" in clause
     ladder = runtime.bid_anchored_ladder
-    # A wide book: all three rungs, cheapest first.
-    assert ladder(bid=0.30, ask=0.35, tick=0.01) == pytest.approx([0.29, 0.30, 0.31])
-    # A one-tick spread: the inside rung would be the ask -- a take -- and
-    # is dropped.
-    assert ladder(bid=0.30, ask=0.31, tick=0.01) == pytest.approx([0.29, 0.30])
-    # A bid at one tick: the rung under it is zero and is dropped.
-    assert ladder(bid=0.01, ask=0.05, tick=0.01) == pytest.approx([0.01, 0.02])
+    # A wide book: the one rung, one tick over the bid.
+    assert ladder(bid=0.30, ask=0.35, tick=0.01) == pytest.approx([0.31])
+    # A one-tick spread: bid+1t IS the ask, so the rung is CLAMPED to the
+    # highest post-only price rather than dropped.  Dropping it was safe
+    # under three rungs (two legal ones remained) and loses the whole leg
+    # under one -- the compile would report no maker anchor at all.
+    assert ladder(bid=0.30, ask=0.31, tick=0.01) == pytest.approx([0.30])
+    # A bid at one tick, a wide book: one tick over it.
+    assert ladder(bid=0.01, ask=0.05, tick=0.01) == pytest.approx([0.02])
     # No bid, no anchor.
     assert ladder(bid=0.0, ask=0.05, tick=0.01) == []
+    # An ask at one tick has no post-only price under it at all.
+    assert ladder(bid=0.005, ask=0.01, tick=0.01) == []
     # The shared ladder is the anchor's under the shape, whatever band is asked for.
-    assert runtime._maker_ladder(bid=0.30, ask=0.35, tick=0.01, steps=8) == pytest.approx([0.29, 0.30, 0.31])
-    # Rung count follows the lots the gap holds: five shares, one rung (the
-    # inside one); ten, two; fifteen, three.
-    rungs = [0.29, 0.30, 0.31]
+    assert runtime._maker_ladder(bid=0.30, ask=0.35, tick=0.01, steps=8) == pytest.approx([0.31])
+    # One rung takes the whole gap, at every size the lot allows.
     count = runtime.bid_anchored_rungs_for_gap
-    assert count(rungs=rungs, gap_shares=5.0, min_lot_shares=5.0, minimum_notional_usdc=0.0) == [0.31]
-    assert count(rungs=rungs, gap_shares=12.0, min_lot_shares=5.0, minimum_notional_usdc=0.0) == [0.31, 0.30]
-    assert count(rungs=rungs, gap_shares=15.0, min_lot_shares=5.0, minimum_notional_usdc=0.0) == [0.31, 0.30, 0.29]
-    # The dollar floor asks more shares than the lot at a cheap rung: at
-    # 0.29 a dollar is four shares, so two lots need eight shares of gap.
-    assert count(rungs=rungs, gap_shares=7.0, min_lot_shares=1.0, minimum_notional_usdc=1.0) == [0.31]
-    assert count(rungs=rungs, gap_shares=8.0, min_lot_shares=1.0, minimum_notional_usdc=1.0) == [0.31, 0.30]
+    for gap in (5.0, 12.0, 15.0):
+        assert count(rungs=[0.31], gap_shares=gap, min_lot_shares=5.0,
+                     minimum_notional_usdc=0.0) == [0.31]
+    # A gap too small for one lot still posts the rung: one is the floor.
+    assert count(rungs=[0.31], gap_shares=1.0, min_lot_shares=5.0,
+                 minimum_notional_usdc=0.0) == [0.31]
     root = Path(__file__).resolve().parents[1]
     source = (root / "bayes_basket_target" / "delta_v2_runtime.py").read_text(encoding="utf-8")
     assert 'f"MAKER:{MAKER_RESTING_TIMEOUT_SECONDS:g}"' in source
@@ -3519,3 +3527,53 @@ def test_clause_94_the_ladder_is_anchored_on_the_bid_and_never_crosses() -> None
     assert "MAKER_RESTING_ANCHORED = MAKER_LADDER_SHAPE == \"bid_anchored\"" in ledger_source
     assert '"execution_family": EXECUTION_FAMILY,' in ledger_source
     assert '"ladder_shape": MAKER_LADDER_SHAPE,' in ledger_source
+
+def test_clause_110_the_execution_layer_answers_to_the_objective() -> None:
+    """Charter 110: one objective, three arrivals of information, and an
+    action set that only buys."""
+    from bayes_basket_target import delta_v2_runtime as runtime
+    from bayes_basket_target.basket_kernel import delta_v2 as kernel
+    from bayes_basket_target import resting_ladder_lifecycle as lifecycle
+
+    clause = _clause(110)
+    for needle in (
+        "ONE_WAY_ACTION_SET", "MAKER_LADDER_ANCHOR_OFFSETS",
+        "completion_claim_shape_factor_v1", "completion_conditioned_claim_v1",
+        "resting_rung_action_v1", "execution_completion_verdict_v1",
+        "support_scenario_floor_v1", "chain_topup_growth_v1",
+        "只跟涨不跟跌", "无买一即撤", "lead_hours >= 0",
+        "basket_target_post_fill_recompute_requests",
+    ):
+        assert needle in clause, needle
+    # The two corrections the ruling asked for by name.
+    assert "撤不掉已经买进的腿" in clause
+    assert "门票是第 72 条 Kelly 定注为零时 P0 仍开链的方式" in clause
+    # The clause it narrows says so, and the quarantine it does not lift
+    # still stands.
+    assert "第 110 条起，收窄" in _clause(94)
+    assert "不动第 109 条的隔离" in clause
+
+    # One rung, and the kernel is the single implementation of what happens
+    # to it -- the lifecycle adapts, it does not re-derive.
+    assert runtime.MAKER_LADDER_ANCHOR_OFFSETS == (1,)
+    assert kernel.ONE_WAY_ACTION_SET is True
+    assert lifecycle.RESTING_REPRICE_RULE_VERSION == (
+        kernel.RESTING_RUNG_ACTION_RULE_VERSION
+    )
+    root = Path(__file__).resolve().parents[1]
+    source = (
+        root / "bayes_basket_target" / "resting_ladder_lifecycle.py"
+    ).read_text(encoding="utf-8")
+    assert "resting_rung_action_v1(" in source
+    kernel_source = (
+        root / "bayes_basket_target" / "basket_kernel" / "delta_v2.py"
+    ).read_text(encoding="utf-8")
+    assert kernel_source.count("def resting_rung_action_v1") == 1
+
+    # The completion ceiling is inverted from what charter 94 shipped: the
+    # leg the market bids ABOVE our claim is the one worth completing.
+    took_away = kernel.completion_conditioned_claim_v1(claim=0.20, ask=0.30)
+    handed_us = kernel.completion_conditioned_claim_v1(claim=0.40, ask=0.12)
+    assert took_away["buys"] is True and handed_us["buys"] is False
+    assert kernel.COMPLETION_CUTOFF_HOURS == 3.0
+

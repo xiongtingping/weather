@@ -25,6 +25,12 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
 
+from .basket_kernel.delta_v2 import (
+    LEG_ACTION_CANCEL,
+    LEG_ACTION_REPRICE_UP,
+    RESTING_RUNG_ACTION_RULE_VERSION,
+    resting_rung_action_v1,
+)
 from .delta_v2_runtime import MAKER_LADDER_SHAPE, bid_anchored_ladder
 from .execution_reconciliation import (
     fill_is_complete,
@@ -33,7 +39,7 @@ from .execution_reconciliation import (
 )
 
 SCHEMA = "bayes_basket_target_resting_reprice_v1"
-RESTING_REPRICE_RULE_VERSION = "bid_anchored_membership_v1"
+RESTING_REPRICE_RULE_VERSION = RESTING_RUNG_ACTION_RULE_VERSION
 # How long a rung that has fallen out of the ladder is left standing before
 # it is cancelled.  The ledger measured that re-posting every 15 minutes
 # lost queue position for nothing; a one-tick flicker of the bid should not
@@ -68,13 +74,20 @@ def resting_rung_verdict(
     dwell_seconds: float | None = None,
     far_ticks: float | None = None,
 ) -> dict[str, Any]:
-    """Keep or cancel one resting rung against the ladder that stands.
+    """Keep or cancel one resting rung against the anchor that stands.
 
-    Pure.  ``keep`` when the rung is on the current bid-anchored ladder,
-    when the book has no bid to anchor on, or when it fell out of the
-    ladder less than the dwell ago and is still near the bid; ``cancel``
-    when it is off the ladder past the dwell, or ``far_ticks`` or more from
-    the bid whatever its age.
+    Pure, and a thin adapter over the kernel's ``resting_rung_action_v1``
+    (charter 110): ``keep`` while the rung is on the anchor or its bid has
+    only fallen a little; ``cancel`` with no bid at all, when the bid has
+    run ``far_ticks`` away, and when the bid has RISEN past the dwell -- the
+    last of those being the follow-up, which this lane expresses as a cancel
+    because it places no orders of its own.
+
+    What charter 110 changed here: the shipped rule kept a rung standing on
+    a book with no bid (``no_anchor``), and that is exactly the state a
+    collapsing ask sweeps a stale limit in; and it treated a bid that rose
+    and a bid that fell alike, so the ladder chased a leaving market down
+    while never following an arriving one up.
     """
 
     dwell = RESTING_REPRICE_DWELL_SECONDS if dwell_seconds is None else float(dwell_seconds)
@@ -94,15 +107,21 @@ def resting_rung_verdict(
         "dwell_seconds": dwell,
         "far_ticks": far,
     }
-    if not ladder:
-        return {**verdict, "action": "keep", "reason": "no_anchor"}
-    if any(abs(price - rung) <= float(tick) / 2.0 + EPS for rung in ladder):
-        return {**verdict, "action": "keep", "reason": "on_ladder"}
-    if distance + EPS >= far:
-        return {**verdict, "action": "cancel", "reason": "bid_ran_far"}
-    if age + EPS >= dwell:
-        return {**verdict, "action": "cancel", "reason": "off_ladder_past_dwell"}
-    return {**verdict, "action": "keep", "reason": "off_ladder_within_dwell"}
+    # Charter 110: the decision is the kernel's, so this lane and
+    # ``execution_completion_verdict_v1`` cannot answer the same book two
+    # ways.  This lane issues cancels and does not place orders, so a
+    # ``reprice_up`` is a cancel here -- the next compile re-mints the rung
+    # on the new anchor through the ordinary candidate path -- and it is
+    # reported under its own reason so a receipt says which of the two it
+    # was.
+    action = resting_rung_action_v1(
+        limit_price=price, bid=float(bid), ask=float(ask), tick=float(tick),
+        age_seconds=age, dwell_seconds=dwell, far_ticks=far,
+    )
+    verdict["kernel_action"] = action["action"]
+    if action["action"] in {LEG_ACTION_CANCEL, LEG_ACTION_REPRICE_UP}:
+        return {**verdict, "action": "cancel", "reason": action["reason"]}
+    return {**verdict, "action": "keep", "reason": action["reason"]}
 
 
 def latest_book_by_bucket(

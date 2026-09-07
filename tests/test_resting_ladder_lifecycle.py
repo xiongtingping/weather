@@ -83,22 +83,41 @@ def _state(conn) -> tuple[str, str, float]:
 
 
 def test_the_verdict_keeps_rungs_on_the_ladder_and_cancels_the_ones_off_it() -> None:
+    # Charter 110 replaced ladder MEMBERSHIP with an anchor and a direction.
+    # Under charter 94's three rungs a limit could sit on bid-1t and be "on
+    # the ladder" while the bid walked up past it; there is one rung now, so
+    # the only question about a standing limit is which way its bid moved.
     kw = dict(limit_price=0.30, ask=0.40, tick=0.01, posted_at_utc=POSTED,
               dwell_seconds=300.0, far_ticks=3.0)
-    # bid 0.29: the rung is bid+1t, on the ladder, whatever its age.
-    assert lane.resting_rung_verdict(bid=0.29, as_of_utc="2026-09-06T12:00:00Z", **kw)["action"] == "keep"
-    # bid 0.31: the rung is bid-1t, still on the ladder.
-    assert lane.resting_rung_verdict(bid=0.31, as_of_utc="2026-09-06T12:00:00Z", **kw)["reason"] == "on_ladder"
-    # bid 0.32: two ticks off, within the dwell -> keep; past it -> cancel.
-    early = lane.resting_rung_verdict(bid=0.32, as_of_utc="2026-09-06T10:02:00Z", **kw)
-    late = lane.resting_rung_verdict(bid=0.32, as_of_utc="2026-09-06T10:10:00Z", **kw)
-    assert (early["action"], early["reason"]) == ("keep", "off_ladder_within_dwell")
-    assert (late["action"], late["reason"]) == ("cancel", "off_ladder_past_dwell")
-    # bid 0.34: four ticks off -> cancelled at once.
-    far = lane.resting_rung_verdict(bid=0.34, as_of_utc="2026-09-06T10:00:30Z", **kw)
-    assert (far["action"], far["reason"]) == ("cancel", "bid_ran_far")
-    # No bid, no anchor: the rung is left where it is.
-    assert lane.resting_rung_verdict(bid=0.0, as_of_utc="2026-09-06T12:00:00Z", **kw)["reason"] == "no_anchor"
+    # bid 0.29: the rung IS the anchor, kept whatever its age.
+    on = lane.resting_rung_verdict(bid=0.29, as_of_utc="2026-09-06T12:00:00Z", **kw)
+    assert (on["action"], on["reason"]) == ("keep", "on_anchor")
+    # bid 0.31: the bid has risen past the rung.  Within the dwell it keeps
+    # its queue place; past the dwell the rung follows the bid up, which
+    # this lane spells as a cancel because it places no orders itself.
+    early_up = lane.resting_rung_verdict(bid=0.31, as_of_utc="2026-09-06T10:02:00Z", **kw)
+    late_up = lane.resting_rung_verdict(bid=0.31, as_of_utc="2026-09-06T12:00:00Z", **kw)
+    assert (early_up["action"], early_up["reason"]) == ("keep", "bid_rose_within_dwell")
+    assert (late_up["action"], late_up["reason"]) == ("cancel", "bid_rose_past_dwell")
+    assert late_up["kernel_action"] == "reprice_up"
+    # bid 0.28: the bid has FALLEN under the rung but is still near it.  The
+    # rung does not follow it down -- that is how a limit is walked into the
+    # population a collapsing ask sweeps -- so it simply waits.
+    down = lane.resting_rung_verdict(bid=0.28, as_of_utc="2026-09-06T12:00:00Z", **kw)
+    assert (down["action"], down["reason"]) == ("keep", "on_anchor")
+    # bid 0.27: three ticks below, stale, and the direction says do not
+    # re-post -- cancel outright.
+    far_down = lane.resting_rung_verdict(bid=0.27, as_of_utc="2026-09-06T10:00:30Z", **kw)
+    assert (far_down["action"], far_down["reason"]) == ("cancel", "bid_ran_far")
+    # bid 0.34: four ticks above, stale the other way -- still a cancel here,
+    # but recorded as the follow-up it is.
+    far_up = lane.resting_rung_verdict(bid=0.34, as_of_utc="2026-09-06T10:00:30Z", **kw)
+    assert (far_up["action"], far_up["reason"]) == ("cancel", "bid_rose_far")
+    assert far_up["kernel_action"] == "reprice_up"
+    # No bid, no anchor: charter 94 left the rung standing here, which is the
+    # one state a collapsing ask sweeps a stale limit in.  It comes down.
+    gone = lane.resting_rung_verdict(bid=0.0, as_of_utc="2026-09-06T12:00:00Z", **kw)
+    assert (gone["action"], gone["reason"]) == ("cancel", "no_anchor")
 
 
 def test_a_rung_on_the_ladder_is_synced_and_kept() -> None:

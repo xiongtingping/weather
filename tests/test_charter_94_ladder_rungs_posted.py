@@ -25,19 +25,24 @@ def _quote(bid: float, ask: float, tick: float = 0.001) -> dict:
     }
 
 
-def test_gap_holding_two_lots_posts_two_rungs() -> None:
+def test_a_gap_that_used_to_split_now_goes_whole_onto_the_anchor() -> None:
     """EGLC 20C on the 2026-09-08 book: 8 shares, bid 0.310, ask 0.330.
 
-    One lot at the cheapest rung is 1.00/0.309 = 3.24 shares, so the gap
-    holds two.  Before this it posted one order for all eight.
+    A lot at the cheapest rung is 1.00/0.309 = 3.24 shares, so charter 94 (二)
+    split this gap across two rungs.  Charter 110 leaves one rung, so the
+    whole gap rests on it: the split was routing the second half into the
+    population an ask has to fall to the bid to reach, measured at -0.0234
+    a share against -0.0067 for the rung inside the bid.
     """
     rungs = _ladder_rung_prices(
         execution_candidate="MAKER", quote=_quote(0.310, 0.330),
         q_order=8.0, r_limit=0.311, share_quantum=0.01,
     )
-    assert rungs == [0.311, 0.310], rungs
-    # Dearest first, and each rung still clears the venue dollar at 4 shares.
-    assert all(4.0 * price >= 1.0 for price in rungs)
+    assert rungs == [0.311], rungs
+    # The plumbing this module was written for is untouched: the count comes
+    # from the ladder, not from one-order-per-bucket, and it still clears
+    # the venue dollar.
+    assert 8.0 * rungs[0] >= 1.0
 
 
 def test_gap_holding_one_lot_posts_the_single_order_unchanged() -> None:
@@ -228,11 +233,12 @@ def test_a_repost_may_only_replenish_the_rungs_the_leg_still_owes():
     owed_one = ledger._ladder_from_quote(quote, 1)
     owed_two = ledger._ladder_from_quote(quote, 2)
     owed_three = ledger._ladder_from_quote(quote, 3)
+    # Charter 110 leaves one rung, so the cap can never bind -- which is the
+    # strongest possible form of the property this test was written for: the
+    # re-post cannot exceed what the leg owes because there is only ever one
+    # rung to re-post.  The cap stays in the code for the band arm, which
+    # still has a multi-rung ladder.
     assert len(owed_one) == 1
-    assert len(owed_two) == 2
-    assert len(owed_three) <= 3
-    # The rungs it does post are the dearest ones it is entitled to --
-    # charter 94(二)'s order is bid+1 tick, bid, bid-1 tick.
-    assert owed_one == owed_three[:1]
-    assert owed_two == owed_three[:2]
+    assert owed_one == owed_two == owed_three
     assert owed_three == sorted(owed_three, reverse=True)
+    assert owed_one == ledger.bid_anchored_ladder(bid=0.20, ask=0.26, tick=0.01)

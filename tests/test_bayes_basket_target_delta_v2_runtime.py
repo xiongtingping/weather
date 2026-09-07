@@ -688,14 +688,16 @@ def test_target_grid_can_still_be_priced_at_the_resting_lane_arm(
         and row["shares_by_bucket"]["36"] > 0.0
     )
 
-    # Charter 94: the lane's band is the bid-anchored ladder.  Bucket 35
-    # (bid 0.04) rests at 0.03/0.04/0.05, mean 0.04; bucket 36 (bid 0.05)
-    # at 0.04/0.05/0.06, mean 0.05.
+    # Charter 110 narrowed the anchored ladder to one rung, so the lane's
+    # band is that rung alone: bucket 35 (bid 0.04) rests at 0.05, bucket 36
+    # (bid 0.05) at 0.06.  Under charter 94's three rungs the lane paid the
+    # three-rung mean (0.04 and 0.05), which is the arithmetic this pair of
+    # assertions pins -- the lane price IS the ladder, whatever the ladder is.
     assert both["pricing_basis"] == "maker_resting_band"
     assert both["cost_by_bucket"]["35"] == pytest.approx(0.25)
     assert both["cost_by_bucket"]["36"] == pytest.approx(0.25)
-    assert both["shares_by_bucket"]["35"] == pytest.approx(0.25 / 0.04)
-    assert both["shares_by_bucket"]["36"] == pytest.approx(0.25 / 0.05)
+    assert both["shares_by_bucket"]["35"] == pytest.approx(0.25 / 0.05)
+    assert both["shares_by_bucket"]["36"] == pytest.approx(0.25 / 0.06)
 
     # The band arm still prices the old band: 35's is 0.05-0.09 (mean
     # 0.07), 36's 0.06-0.24 (mean 0.14625).

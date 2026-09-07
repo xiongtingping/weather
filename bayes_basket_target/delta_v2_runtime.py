@@ -449,7 +449,26 @@ MAKER_LADDER_SHAPE = (
 )
 if MAKER_LADDER_SHAPE not in MAKER_LADDER_SHAPES:
     raise ValueError(f"unknown maker ladder shape: {MAKER_LADDER_SHAPE}")
-MAKER_LADDER_ANCHOR_OFFSETS = (1, 0, -1)
+# Charter 110 narrows charter 94(一) from three rungs to one.  Measured
+# 2026-09-07 on the shadow book, the marginal population each rung buys:
+# the rung inside the bid, reached because the ask merely came to it,
+# -0.0067 a share; the rung the ask had to fall to the bid to reach,
+# -0.0234; and the deepest rung is that population one tick further in.
+# Charter 94(二) then split the gap equally across whatever rungs the lot
+# allowed, so two thirds of every leg was routed into the swept population
+# and the leg's own fill was fractional on top of the basket's being
+# partial.  ``PM_MAKER_LADDER_ANCHOR_OFFSETS`` restores the old shape as
+# the research arm.
+_ANCHOR_OFFSETS_RAW = os.environ.get("PM_MAKER_LADDER_ANCHOR_OFFSETS", "").strip()
+MAKER_LADDER_ANCHOR_OFFSETS = (
+    tuple(
+        int(part.strip())
+        for part in _ANCHOR_OFFSETS_RAW.split(",")
+        if part.strip()
+    )
+    if _ANCHOR_OFFSETS_RAW
+    else (1,)
+)
 # The horizon a resting rung's fill is priced at.  The fill artifacts are
 # fitted at 300/900/1800/3600 s from the maker shadow book; a rung posted at
 # listing rests until the day resolves, and an hour is the longest horizon
@@ -461,22 +480,35 @@ MAKER_RESTING_TIMEOUT_SECONDS = float(
 
 
 def bid_anchored_ladder(*, bid: float, ask: float, tick: float) -> list[float]:
-    """Charter 94's rungs, cheapest first: bid-1t, bid, bid+1t.
+    """Charter 94's rungs, cheapest first; charter 110 leaves one, bid+1t.
 
     Each rung is floored to the tick, must be above zero and must sit
-    strictly under the ask (a rung on the ask is a take).  On a one-tick
-    spread the inside rung is the ask and is dropped; at a one-tick bid the
-    rung under it is zero and is dropped; with no bid there is no anchor
+    strictly under the ask (a rung on the ask is a take).  At a one-tick bid
+    the rung under it is zero and is dropped; with no bid there is no anchor
     and no ladder.
+
+    A rung over the highest post-only price is CLAMPED to it, not dropped
+    (charter 110).  Under the three-rung shape a one-tick spread still left
+    two legal rungs, so dropping the inside one cost nothing; with one rung
+    it drops the leg -- the compile then reports
+    ``maker_post_only_market_anchor_unavailable`` and the basket cannot be
+    opened at all on a book whose spread is one tick.  Clamped, the single
+    rung reads "as close to the ask as post-only allows, never more than one
+    tick over the bid", which is what the measurement is about: the loss sits
+    in rungs a WIDE book's ask has to collapse to reach, not in a rung that
+    is one tick under the ask because the whole spread is one tick.
     """
 
     if bid <= 0.0 or ask <= 0.0 or tick <= 0.0:
         return []
     highest = _floor_to_tick(ask - tick, tick)
+    if highest <= EPS:
+        return []
     rungs = set()
     for offset in MAKER_LADDER_ANCHOR_OFFSETS:
         price = _floor_to_tick(bid + offset * tick, tick)
-        if price > EPS and price <= highest + EPS:
+        price = min(price, highest)
+        if price > EPS:
             rungs.add(price)
     return sorted(rungs)
 

@@ -1058,6 +1058,457 @@ if not (-1.0 <= SUPPORT_SCENARIO_FLOOR_FRACTION <= 0.0):
     )
 SUPPORT_SCENARIO_FLOOR_RULE_VERSION = "support_floor_after_lift_v1"
 
+# --------------------------------------------------------------------------
+# Charter 110: one objective, three arrivals of information, a one-way action
+# set.  The execution layer answers to the objective every round instead of
+# being handed a target and left alone.
+# --------------------------------------------------------------------------
+
+COMPLETION_VERDICT_SCHEMA = "delta_basket_completion_verdict_v1"
+COMPLETION_CLAIM_SHAPE_RULE_VERSION = "completion_claim_shape_v1"
+RESTING_RUNG_ACTION_RULE_VERSION = "bid_anchored_up_only_v1"
+
+# The fill-shape correction.  Cells are keyed on ``ask / claim`` for the leg
+# that did NOT fill, and hold the measured realized-over-claimed ratio.
+#
+# The market's refusal to sell us a leg is information about that leg, and it
+# is information our claim does not carry -- the same shape charter 68's
+# lambda(a) reads at the whole-basket level, read here per missing leg.
+# Measured 2026-09-07 on 2,575 missing legs of three-leg windows the system
+# claimed edge on (maker_shadow_order, bid+1t rested 900s, positive lead):
+#
+#     ask <= claim   1,971 legs   claim 0.183  ask 0.089  hit  5.1%  -> 0.28
+#     ask >  claim     604 legs   claim 0.168  ask 0.242  hit 27.0%  -> 1.60
+#
+# So a leg the market discounts relative to us realizes a quarter of what we
+# claim for it, and a leg the market bids above us realizes more than we
+# claim.  Seventy-one percent of the second group is the market's own modal
+# bucket.  The old completion ceiling -- buy only where ``ask <= claim`` --
+# bought exactly the first group and refused exactly the second.
+#
+# Confidence, stated because the two directions do not have the same
+# strength (station-day clustered bootstrap, 90%): the first group's
+# completion edge is -0.038 [-0.053, -0.021], which does not cross zero --
+# completing a leg the market discounts loses money.  The second group's is
+# +0.028 [-0.029, +0.087], which does cross zero -- completing a leg the
+# market bids up is indistinguishable from break-even, and what breaks the
+# tie is the support floor, not the edge.
+COMPLETION_CLAIM_SHAPE_V1 = (
+    (1.0, 0.28),
+    (None, 1.60),
+)
+
+# Past this point the completion is measurably negative in every zone
+# (measured 2026-09-07: -0.026 at 1-3h, -0.075 inside the last hour) and the
+# residual can no longer be undone -- see ``ONE_WAY_ACTION_SET`` below.  So
+# this is the last hour at which completing is worth doing, not a moment at
+# which a broken basket can be handed back.
+COMPLETION_CUTOFF_HOURS = float(
+    os.environ.get("PM_COMPLETION_CUTOFF_HOURS", "") or 3.0
+)
+
+# The system emits BUY and nothing else (production ``order_action`` is the
+# literal "BUY"; the only SELL lane is ``certain_win_recycle``, which sells
+# buckets whose day has already settled in our favour).  A basket that is
+# short a leg therefore has exactly two futures -- completed, or carried
+# broken to settlement.  There is no third branch, and no rule in this
+# module may be written as though there were.
+ONE_WAY_ACTION_SET = True
+
+LEG_ACTION_NONE = "none"
+LEG_ACTION_POST = "post"
+LEG_ACTION_REST = "rest"
+LEG_ACTION_REPRICE_UP = "reprice_up"
+LEG_ACTION_CANCEL = "cancel"
+LEG_ACTION_CROSS = "cross"
+LEG_ACTIONS = frozenset({
+    LEG_ACTION_NONE, LEG_ACTION_POST, LEG_ACTION_REST,
+    LEG_ACTION_REPRICE_UP, LEG_ACTION_CANCEL, LEG_ACTION_CROSS,
+})
+
+BASKET_STATE_COMPLETE = "complete"
+BASKET_STATE_PARTIAL = "partial"
+BASKET_STATE_EMPTY = "empty"
+
+
+def resting_rung_action_v1(
+    *,
+    limit_price: float,
+    bid: float,
+    ask: float,
+    tick: float,
+    age_seconds: float,
+    dwell_seconds: float = 300.0,
+    far_ticks: float = 3.0,
+) -> dict[str, Any]:
+    """Keep, follow up, or cancel one resting rung.  Charter 110(四).
+
+    The asymmetry is the whole rule.  A bid that RISES is the market coming
+    to a leg, and the rung follows it up; a bid that FALLS is the market
+    leaving, and the rung does not follow it down -- walking a limit down
+    behind a falling bid re-mints it into the swept population by hand,
+    which is the -0.0234-a-share cell charter 110 is built around.  And a
+    book with no bid has no anchor at all: the shipped rule kept the rung
+    standing there, which is precisely the state in which a collapsing ask
+    runs through a stale limit.
+
+    Pure, and the single implementation: ``execution_completion_verdict_v1``
+    calls this for its resting legs and the production lifecycle calls it for
+    each rung, so the two cannot drift.
+    """
+
+    price = float(limit_price)
+    bid_value = float(bid)
+    tick_value = float(tick)
+    age = max(0.0, float(age_seconds))
+    out: dict[str, Any] = {
+        "rule": RESTING_RUNG_ACTION_RULE_VERSION,
+        "limit_price": price,
+        "bid": bid_value,
+        "ask": float(ask),
+        "tick": tick_value,
+        "age_seconds": age,
+        "dwell_seconds": float(dwell_seconds),
+        "far_ticks": float(far_ticks),
+    }
+    if bid_value <= EPS or tick_value <= EPS:
+        return {**out, "action": LEG_ACTION_CANCEL, "reason": "no_anchor"}
+    anchor = bid_value + tick_value
+    out["anchor"] = anchor
+    distance = abs(price - bid_value) / tick_value
+    out["distance_ticks"] = distance
+    rose = anchor > price + tick_value / 2.0
+    far = distance + EPS >= float(far_ticks)
+    # Distance says the rung has been left behind by the book, and it is
+    # measured unsigned because both directions are stale -- a rung far
+    # BELOW the bid will never be reached and is only holding its bucket
+    # shut, a rung far ABOVE it is the limit a collapsing ask runs through.
+    # What the direction decides is what comes next, not whether to keep it:
+    # a bid that ran up is a leg the market is coming to and the rung
+    # follows without waiting out its dwell, a bid that ran down is a leg
+    # the market is leaving and the rung does not follow it at all.
+    if far:
+        if rose:
+            return {**out, "action": LEG_ACTION_REPRICE_UP,
+                    "reason": "bid_rose_far", "post_at": anchor}
+        return {**out, "action": LEG_ACTION_CANCEL, "reason": "bid_ran_far"}
+    if rose:
+        past = age + EPS >= float(dwell_seconds)
+        return {
+            **out,
+            "action": LEG_ACTION_REPRICE_UP if past else LEG_ACTION_REST,
+            "reason": "bid_rose_past_dwell" if past else "bid_rose_within_dwell",
+            "post_at": anchor,
+        }
+    return {**out, "action": LEG_ACTION_REST, "reason": "on_anchor"}
+
+
+def completion_claim_shape_factor_v1(
+    *, claim: float, ask: float, factors: Sequence[Any] | None = None
+) -> float:
+    """The realized-over-claimed factor for a leg the market would not sell.
+
+    Keyed on ``ask / claim``: how far the market's price for this leg stands
+    from our own claim for it.  A claim at zero has no ratio and takes the
+    dearest cell, which is the conservative end for a buy decision (the
+    conditioned claim is zero either way).
+    """
+
+    table = tuple(factors or COMPLETION_CLAIM_SHAPE_V1)
+    if not table:
+        return 1.0
+    claim_value = float(claim)
+    ask_value = float(ask)
+    if claim_value <= EPS:
+        return float(table[-1][1])
+    ratio = ask_value / claim_value
+    for upper, factor in table:
+        if upper is None or ratio <= float(upper) + EPS:
+            return float(factor)
+    return float(table[-1][1])
+
+
+def completion_conditioned_claim_v1(
+    *, claim: float, ask: float, factors: Sequence[Any] | None = None
+) -> dict[str, Any]:
+    """Our claim for a missing leg, conditioned on the market's refusal.
+
+    The claim is never rewritten (user ruling, 2026-08-26: the market does
+    not define value, it provides information).  This is a separate quantity
+    the execution layer reads, and only for legs it does not hold.
+    """
+
+    factor = completion_claim_shape_factor_v1(
+        claim=claim, ask=ask, factors=factors
+    )
+    raw = max(0.0, float(claim))
+    conditioned = min(1.0, raw * factor)
+    return {
+        "rule": COMPLETION_CLAIM_SHAPE_RULE_VERSION,
+        "claim": raw,
+        "ask": float(ask),
+        "ratio": (float(ask) / raw) if raw > EPS else None,
+        "factor": factor,
+        "conditioned_claim": conditioned,
+        "buys": bool(conditioned > float(ask) + EPS),
+    }
+
+
+def execution_completion_verdict_v1(
+    *,
+    window: Sequence[str],
+    target_shares: Mapping[str, Any],
+    held_shares: Mapping[str, Any],
+    held_cost_usdc: Mapping[str, Any],
+    claim_by_bucket: Mapping[str, Any],
+    book_by_bucket: Mapping[str, Mapping[str, Any]],
+    rung_by_bucket: Mapping[str, Any] | None = None,
+    hours_to_cutoff: float | None = None,
+    dwell_seconds: float = 900.0,
+    far_ticks: float = 3.0,
+    cutoff_hours: float | None = None,
+    shape_factors: Sequence[Any] | None = None,
+) -> dict[str, Any]:
+    """What the objective says to do with this basket, this round.
+
+    Pure.  ``claim_by_bucket`` is the seated charter-68 partition (lambda*p),
+    never a raw served vector.  ``book_by_bucket`` carries ``bid``/``ask``/
+    ``tick`` per bucket; ``rung_by_bucket`` carries the resting rung's
+    ``limit``/``age_seconds`` where one stands.
+
+    The basket numbers are the four the objective needs to judge a position
+    rather than a target: the support floor read on what is actually HELD,
+    the claim mass sitting on legs we do not hold, the premium that mass puts
+    at risk, and what completing at the current asks would cost and be worth.
+
+    Note the identity worth not re-deriving at each call site: for a basket
+    held level at ``n`` shares a leg, ``support_scenario_floor_v1`` is legal
+    exactly when total premium <= n, which is the same inequality as charter
+    74's "whole-basket per-share cost < 1".  Completion and the floor are one
+    condition, not two.
+    """
+
+    rungs = dict(rung_by_bucket or {})
+    cutoff = (
+        COMPLETION_CUTOFF_HOURS if cutoff_hours is None else float(cutoff_hours)
+    )
+    ordered = tuple(str(bucket) for bucket in window)
+    if len(set(ordered)) != len(ordered):
+        raise ContractError("delta_v2_completion_window_duplicate")
+    if not ordered:
+        raise ContractError("delta_v2_completion_window_empty")
+
+    held = {b: max(0.0, float(held_shares.get(b, 0.0) or 0.0)) for b in ordered}
+    target = {
+        b: max(0.0, float(target_shares.get(b, 0.0) or 0.0)) for b in ordered
+    }
+    gap = {b: max(0.0, target[b] - held[b]) for b in ordered}
+    paid = sum(
+        max(0.0, float(held_cost_usdc.get(b, 0.0) or 0.0)) for b in ordered
+    )
+    level = max(target.values(), default=0.0)
+    missing = tuple(b for b in ordered if gap[b] > EPS)
+    holds = tuple(b for b in ordered if held[b] > EPS)
+
+    state = (
+        BASKET_STATE_EMPTY if not holds
+        else BASKET_STATE_COMPLETE if not missing
+        else BASKET_STATE_PARTIAL
+    )
+
+    floor = support_scenario_floor_v1(
+        shares_by_bucket=held,
+        cost_by_bucket={
+            b: max(0.0, float(held_cost_usdc.get(b, 0.0) or 0.0))
+            for b in ordered
+        },
+        support=ordered,
+    )
+
+    def _book(bucket: str) -> dict[str, float]:
+        raw = dict(book_by_bucket.get(bucket) or {})
+        try:
+            return {
+                "bid": float(raw.get("bid") or 0.0),
+                "ask": float(raw.get("ask") or 0.0),
+                "tick": float(raw.get("tick") or 0.0),
+            }
+        except (TypeError, ValueError):
+            return {"bid": 0.0, "ask": 0.0, "tick": 0.0}
+
+    # The claim mass sitting on legs we do not hold in full, and the premium
+    # already paid that it puts at risk.
+    uncovered_mass = 0.0
+    for bucket in ordered:
+        if target[bucket] <= EPS:
+            continue
+        share_missing = min(1.0, gap[bucket] / target[bucket])
+        uncovered_mass += (
+            max(0.0, float(claim_by_bucket.get(bucket, 0.0) or 0.0))
+            * share_missing
+        )
+    exposure = paid * uncovered_mass
+
+    # What completing at the current asks would cost, and what our
+    # conditioned belief says it is worth.
+    completion_cost = 0.0
+    completion_priced = True
+    conditioned: dict[str, dict[str, Any]] = {}
+    for bucket in missing:
+        book = _book(bucket)
+        if book["ask"] <= EPS:
+            completion_priced = False
+            continue
+        completion_cost += gap[bucket] * book["ask"]
+        conditioned[bucket] = completion_conditioned_claim_v1(
+            claim=float(claim_by_bucket.get(bucket, 0.0) or 0.0),
+            ask=book["ask"],
+            factors=shape_factors,
+        )
+    cost_after = paid + completion_cost
+    per_share_cost_after = (cost_after / level) if level > EPS else None
+    cost_ceiling_ok = bool(
+        completion_priced
+        and per_share_cost_after is not None
+        and per_share_cost_after < 1.0 - EPS
+    )
+    # The whole-basket edge of the completed position, on the conditioned
+    # belief for the legs we would be buying and the seated claim for the
+    # legs we already hold.
+    edge_after = -cost_after
+    for bucket in ordered:
+        claim = max(0.0, float(claim_by_bucket.get(bucket, 0.0) or 0.0))
+        if bucket in conditioned:
+            claim = float(conditioned[bucket]["conditioned_claim"])
+        edge_after += claim * target[bucket]
+
+    in_completion_window = (
+        hours_to_cutoff is None or float(hours_to_cutoff) > cutoff
+    )
+
+    legs: dict[str, dict[str, Any]] = {}
+    for bucket in ordered:
+        book = _book(bucket)
+        rung = dict(rungs.get(bucket) or {})
+        limit = float(rung.get("limit") or 0.0)
+        age = float(rung.get("age_seconds") or 0.0)
+        standing = limit > EPS
+        entry: dict[str, Any] = {
+            "gap_shares": gap[bucket],
+            "bid": book["bid"],
+            "ask": book["ask"],
+            "tick": book["tick"],
+            "limit_price": limit if standing else None,
+        }
+        if gap[bucket] <= EPS:
+            legs[bucket] = {**entry, "action": LEG_ACTION_NONE,
+                            "reason": "leg_at_target"}
+            continue
+        if bucket in conditioned:
+            entry["conditioned"] = conditioned[bucket]
+        # No anchor: the bid has gone.  A rung left standing here is the one
+        # a collapsing ask sweeps -- the loss concentrator, measured at
+        # -0.0234 a share against -0.0067 for a rung the ask merely reaches.
+        if book["bid"] <= EPS or book["tick"] <= EPS:
+            legs[bucket] = {
+                **entry,
+                "action": LEG_ACTION_CANCEL if standing else LEG_ACTION_NONE,
+                "reason": "no_anchor",
+            }
+            continue
+        anchor = book["bid"] + book["tick"]
+        # Completion: cross to buy the leg the market would not sell us, but
+        # only where the conditioned claim clears the ask, the completed
+        # basket still costs under a share, and there is time for it to be
+        # worth doing.
+        # Two refusals stop this leg buying at any price, so they are read
+        # before the resting rules rather than inside the crossing branch:
+        # a basket that would cost a whole share can never pay, and past the
+        # cutoff the market is pricing in an outcome we are on the wrong
+        # side of.  Everything else only ever decides whether to CROSS --
+        # declining to pay the ask is not a reason to stop offering to buy
+        # the leg cheaply, and conflating the two cancels rungs that are
+        # still the basket's best chance of completing.
+        if standing and state != BASKET_STATE_EMPTY and gap[bucket] > EPS:
+            if not in_completion_window:
+                legs[bucket] = {**entry, "action": LEG_ACTION_CANCEL,
+                                "reason": "past_completion_cutoff"}
+                continue
+            if bucket in conditioned and not cost_ceiling_ok:
+                legs[bucket] = {**entry, "action": LEG_ACTION_CANCEL,
+                                "reason": "completed_basket_costs_a_share"}
+                continue
+        verdict = conditioned.get(bucket)
+        if (
+            standing
+            and age + EPS >= dwell_seconds
+            and state != BASKET_STATE_EMPTY
+            and verdict is not None
+            and book["ask"] > EPS
+            and verdict["buys"]
+        ):
+            legs[bucket] = {**entry, "action": LEG_ACTION_CROSS,
+                            "reason": "completion_clears_the_ask"}
+            continue
+        if verdict is not None and not verdict["buys"]:
+            # Recorded, not acted on: the market prices this leg below our
+            # claim and legs in that zone realize 0.28 of what we claim, so
+            # we will not pay its ask.  The rung stays where it is -- if the
+            # market comes down to the anchor the leg is still wanted.
+            entry["completion_declined"] = "market_discounts_this_leg"
+        if not standing:
+            legs[bucket] = {**entry, "action": LEG_ACTION_POST,
+                            "reason": "no_rung_standing", "post_at": anchor}
+            continue
+        rung_action = resting_rung_action_v1(
+            limit_price=limit, bid=book["bid"], ask=book["ask"],
+            tick=book["tick"], age_seconds=age,
+            dwell_seconds=dwell_seconds, far_ticks=far_ticks,
+        )
+        legs[bucket] = {
+            **entry,
+            "action": rung_action["action"],
+            "reason": rung_action["reason"],
+            **(
+                {"post_at": rung_action["post_at"]}
+                if "post_at" in rung_action else {}
+            ),
+            **(
+                {"distance_ticks": rung_action["distance_ticks"]}
+                if "distance_ticks" in rung_action else {}
+            ),
+        }
+
+    return {
+        "schema": COMPLETION_VERDICT_SCHEMA,
+        "rule": COMPLETION_CLAIM_SHAPE_RULE_VERSION,
+        "one_way_action_set": ONE_WAY_ACTION_SET,
+        "window": list(ordered),
+        "basket_state": state,
+        "level_shares": level,
+        "held_shares": held,
+        "gap_shares": gap,
+        "premium_paid_usdc": paid,
+        "support_floor": floor,
+        "uncovered_mass": uncovered_mass,
+        "exposure_usdc": exposure,
+        "completion": {
+            "priced": completion_priced,
+            "cost_usdc": completion_cost,
+            "cost_after_usdc": cost_after,
+            "per_share_cost_after": per_share_cost_after,
+            "cost_ceiling_ok": cost_ceiling_ok,
+            "edge_after": edge_after,
+            "in_completion_window": in_completion_window,
+            "cutoff_hours": cutoff,
+            "hours_to_cutoff": (
+                None if hours_to_cutoff is None else float(hours_to_cutoff)
+            ),
+        },
+        "legs": legs,
+    }
+
+
 
 def support_scenario_floor_v1(
     *,
