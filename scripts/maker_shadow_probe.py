@@ -46,7 +46,21 @@ DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 # when the intent is written.  ``ask`` is not a maker order at all -- it is
 # the crossing trade, carried as the control so every comparison is between
 # two orders written at the same instant against the same book.
-PRICE_RULES = ("bid", "bid+1t", "bid+2t", "mid", "ask")
+PRICE_RULES = ("bid", "bid+1t", "bid+2t", "mid", "ask", "bid+1t@chase")
+# The arm charter 108 asked for.  Every rule above rests at the price it was
+# written at; charter 94(六) does not -- production cancels a rung that has
+# fallen out of the bid-anchored ladder and re-mints it at the current bid,
+# every few minutes, all day.  Replayed in the ledger that difference is
+# enormous: one switch takes the winning leg's fill rate from 74.6% to 20.7%
+# and the winner/loser asymmetry from 0.76 to 0.23, and 0.23 is 2.7x outside
+# anything the fixed-limit rules above have ever measured.  Whether a real
+# chased order behaves like the ledger's model of one has never been
+# measured, and this is the rule that measures it: same placement, same fill
+# test, same settlement, and a limit that re-derives from the current bid on
+# the same cadence production re-mints at.
+CHASING_RULES = frozenset({"bid+1t@chase"})
+CHASE_BASE_RULE = {"bid+1t@chase": "bid+1t"}
+CHASE_REPRICE_MINUTES = 5.0
 # How long the order rests.  Measured on stored books the spread saved grows
 # with the horizon and so does the adverse selection, and the two cross
 # somewhere in here; a live probe should not assume where.
@@ -91,6 +105,11 @@ CREATE TABLE IF NOT EXISTS maker_shadow_order (
   state TEXT NOT NULL CHECK(state IN ('OPEN','FILLED','EXPIRED')),
   filled_at_utc TEXT,
   fill_observed_ask REAL,
+  -- What a chasing order's limit had become by the time it filled.  A
+  -- fixed-limit order fills at ``limit_price`` and this stays NULL; a
+  -- chasing one re-derives its limit all day, so settling it at the price
+  -- it was WRITTEN at would score a trade nobody made.
+  fill_limit_price REAL,
   content_sha256 TEXT NOT NULL,
   UNIQUE(station_id, event_date, bucket, price_rule,
          horizon_minutes, placed_at_utc)
@@ -134,6 +153,17 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.execute(_SETTLEMENT_DDL)
     for statement in _INDEXES:
         conn.execute(statement)
+    columns = {
+        str(row[1])
+        for row in conn.execute("PRAGMA table_info(maker_shadow_order)")
+    }
+    if "fill_limit_price" not in columns:
+        # NULL on every row written before the chasing arm existed, and on
+        # every fixed-limit row after it: those fill at the price they were
+        # written at, which ``limit_price`` already says.
+        conn.execute(
+            "ALTER TABLE maker_shadow_order ADD COLUMN fill_limit_price REAL"
+        )
 
 
 def _latest_books(
@@ -213,6 +243,7 @@ def _model_probabilities(
 
 
 def _limit_price(rule: str, quote: dict[str, Any]) -> float | None:
+    rule = CHASE_BASE_RULE.get(rule, rule)
     bid, ask, tick = quote["bid"], quote["ask"], quote["tick"]
     if ask <= 0.0 or ask >= 1.0:
         return None
@@ -350,7 +381,8 @@ def resolve(conn: sqlite3.Connection) -> dict[str, int]:
     now = _stamp(_now())
     open_rows = conn.execute(
         "SELECT order_id, station_id, event_date, bucket, limit_price,"
-        " placed_at_utc, expires_at_utc FROM maker_shadow_order"
+        " placed_at_utc, expires_at_utc, price_rule"
+        " FROM maker_shadow_order"
         " WHERE state='OPEN'"
     ).fetchall()
     if not open_rows:
@@ -375,37 +407,75 @@ def resolve(conn: sqlite3.Connection) -> dict[str, int]:
                 entries = json.loads(payload)
             except (TypeError, ValueError, json.JSONDecodeError):
                 continue
-            snapshot: dict[str, float] = {}
+            snapshot: dict[str, dict[str, Any]] = {}
             for entry in entries:
                 bucket = str(entry.get("bucket") or "")
                 levels = entry.get("ask_levels") or []
                 ask = entry.get("best_ask")
                 if ask is None and levels:
                     ask = levels[0].get("price")
-                if bucket and ask is not None:
-                    snapshot[bucket] = float(ask)
+                if not bucket or ask is None:
+                    continue
+                # The bid and tick ride along for the chasing arm only; the
+                # fixed rules read ``ask`` and nothing else, exactly as
+                # before.
+                snapshot[bucket] = {
+                    "ask": float(ask),
+                    "bid": float(entry.get("bid_price") or 0.0),
+                    "tick": float(entry.get("price_tick_size") or 0.001),
+                }
             if snapshot:
                 book_path.append((str(observed), snapshot))
-        for order_id, _s, _d, bucket, limit, placed, expires in rows:
+        for (order_id, _s, _d, bucket, limit, placed, expires,
+             rule) in rows:
             hit_at = None
             observed_ask = None
+            fill_limit = None
+            chasing = str(rule) in CHASING_RULES
+            live_limit = float(limit)
+            next_reprice = (
+                _parse(str(placed))
+                + timedelta(minutes=CHASE_REPRICE_MINUTES)
+                if chasing else None
+            )
             for observed, snapshot in book_path:
                 if observed <= placed:
                     continue
                 if observed > expires:
                     break
-                ask = snapshot.get(str(bucket))
-                if ask is not None and ask <= float(limit) + 1e-9:
-                    hit_at, observed_ask = observed, ask
+                quote = snapshot.get(str(bucket))
+                if quote is None:
+                    continue
+                if chasing and next_reprice is not None:
+                    at = _parse(str(observed))
+                    while at >= next_reprice:
+                        # Re-anchor before testing this tick, for the same
+                        # reason the ledger does: an order moved to a new
+                        # price is live at that price from the moment it is
+                        # moved, and testing the old one first would credit
+                        # a fill to a price already cancelled.
+                        repriced = _limit_price(str(rule), quote)
+                        if (
+                            repriced is not None
+                            and repriced >= MINIMUM_LIMIT_PRICE
+                        ):
+                            live_limit = repriced
+                        next_reprice = next_reprice + timedelta(
+                            minutes=CHASE_REPRICE_MINUTES
+                        )
+                if quote["ask"] <= live_limit + 1e-9:
+                    hit_at, observed_ask = observed, quote["ask"]
+                    fill_limit = live_limit if chasing else None
                     break
             if hit_at is not None:
-                filled.append((hit_at, observed_ask, order_id))
+                filled.append((hit_at, observed_ask, fill_limit, order_id))
             elif str(expires) < now:
                 expired.append((order_id,))
     if filled:
         conn.executemany(
             "UPDATE maker_shadow_order SET state='FILLED',"
-            " filled_at_utc=?, fill_observed_ask=? WHERE order_id=?",
+            " filled_at_utc=?, fill_observed_ask=?, fill_limit_price=?"
+            " WHERE order_id=?",
             filled,
         )
         counts["filled"] = len(filled)
@@ -428,7 +498,8 @@ def settle(conn: sqlite3.Connection) -> dict[str, int]:
     counts: dict[str, int] = defaultdict(int)
     rows = conn.execute(
         "SELECT o.order_id, o.station_id, o.event_date, o.bucket,"
-        " o.limit_price FROM maker_shadow_order o"
+        " COALESCE(o.fill_limit_price, o.limit_price)"
+        " FROM maker_shadow_order o"
         " LEFT JOIN maker_shadow_settlement s USING(order_id)"
         " WHERE o.state='FILLED' AND s.order_id IS NULL"
     ).fetchall()

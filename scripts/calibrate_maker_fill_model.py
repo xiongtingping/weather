@@ -22,11 +22,17 @@ reaching 0.63 only inside the final hour.  Nothing in four million orders is
 within a factor of three of 0.17.
 
 The difference the two lanes have is the re-post.  A shadow order rests at a
-fixed limit; the ledger re-anchors to the current bid every five minutes, so
-its limit chases a collapsing bucket downward while the ask collapses with
-it -- and ``ask <= limit`` is then trivially satisfied on exactly the buckets
-that lose.  That is a hypothesis this script does not test; what it does is
-publish both readings side by side so the gap cannot go unnoticed again.
+fixed limit; the ledger re-anchors to the current bid every five minutes.
+Charter 108 tested that in the ledger -- one switch, one replay window --
+and the asymmetry moved from 0.76 to 0.23, so the re-post is the mechanism.
+What it is NOT is measured on a real book: nothing here chased.
+
+Charter 108's arm closes that.  ``bid+1t@chase`` is written at the same
+instant, off the same book, at the same price as its fixed twin, and
+re-anchors on production's own five-minute cadence; the two settle through
+the same code.  It starts empty on 2026-09-07 and this receipt reports it as
+accumulating until it has settled orders, which is the honest reading and
+not a zero.
 
 Usage:
     python3 scripts/calibrate_maker_fill_model.py            # print + receipt
@@ -50,6 +56,12 @@ RECEIPT = ROOT / "output" / "audits" / "maker_fill_model_calibration_latest.json
 # carries the first two of those three by name; ``bid+1t`` is the rung the
 # ledger posts first and fills first, so it is the comparison rule.
 LADDER_RULE = "bid+1t"
+# Its chasing twin (charter 108).  Placed at the same instant off the same
+# book at the same price, and re-anchored on production's own cadence -- so
+# the pair isolates the one thing the ledger and the fixed rules disagree
+# about.  Absent from every order written before 2026-09-07T07:27Z, so this
+# reads as "accumulating" until a day of them has settled.
+CHASE_RULE = "bid+1t@chase"
 LEAD_BANDS = (
     ("D-2 (>=24h)", 24.0, 1e9),
     ("12-24h", 12.0, 24.0),
@@ -122,6 +134,20 @@ def shadow_reading(conn: sqlite3.Connection) -> dict:
             "loser_fill_rate": round(lose, 4),
             "asymmetry": round(win / lose, 4) if lose > 0 else None,
         })
+    def _asymmetry(rule: str) -> float | None:
+        cells = [
+            cell for cell in by_rule
+            if cell["price_rule"] == rule and cell["horizon_minutes"] == 60
+        ]
+        w = next((c for c in cells if c["bucket"] == "winner"), None)
+        l = next((c for c in cells if c["bucket"] == "loser"), None)
+        if not w or not l or l["fill_rate"] <= 0:
+            return None
+        return round(w["fill_rate"] / l["fill_rate"], 4)
+
+    chase_orders = sum(
+        cell["orders"] for cell in by_rule if cell["price_rule"] == CHASE_RULE
+    )
     ladder = [
         cell for cell in by_rule
         if cell["price_rule"] == LADDER_RULE and cell["horizon_minutes"] == 60
@@ -130,6 +156,12 @@ def shadow_reading(conn: sqlite3.Connection) -> dict:
     lose = next((c for c in ladder if c["bucket"] == "loser"), None)
     return {
         "price_rule": LADDER_RULE,
+        "chase_rule": CHASE_RULE,
+        # The number charter 108 said had never been measured.  ``None``
+        # while the arm is still accumulating, which is the honest reading
+        # and not a zero.
+        "chase_asymmetry_60min": _asymmetry(CHASE_RULE),
+        "chase_orders_settled": chase_orders,
         "by_rule_and_horizon": sorted(
             by_rule, key=lambda c: (c["price_rule"], c["horizon_minutes"])
         ),
@@ -258,6 +290,11 @@ def main() -> int:
           f"{ledger['loser_legs']} 条 成交 "
           f"{100*(ledger['loser_fill_rate'] or 0):.1f}%，"
           f"赢/输 {ledger['asymmetry']}")
+    if shadow["chase_orders_settled"]:
+        print(f"追价臂 {CHASE_RULE}：{shadow['chase_orders_settled']} 条已判，"
+              f"赢/输 {shadow['chase_asymmetry_60min']}")
+    else:
+        print(f"追价臂 {CHASE_RULE}：仍在积累（0 条已判）")
     if verdict:
         print(
             f"影子观测区间 {verdict['shadow_asymmetry_range']}；"
