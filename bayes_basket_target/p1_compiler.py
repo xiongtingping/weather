@@ -480,6 +480,11 @@ def compile_station_p1_packets(
     # its own decision clock, so a replay rebuilds every envelope exactly.
     regional_runs: Sequence[Mapping[str, Any]] | None = None,
     regional_artifact: Mapping[str, Any] | None = None,
+    # Charter 95: the single-system correction applied to the curve before
+    # the fusion reads it.  Handed in for the same reason as every other
+    # fitted table -- a layer that opens its own file rebuilds a different
+    # envelope the moment the file is refitted.
+    regional_debias_artifact: Mapping[str, Any] | None = None,
     soft_likelihood_policy: str | None = None,
     # {"hazard": ..., "reanchor": ...}.  Absent means no shadow is recorded
     # and the lineage is exactly what it was before the four layers existed.
@@ -983,6 +988,7 @@ def compile_station_p1_packets(
                     as_of_utc=decision_text,
                     settlement_timezone=root.settlement_timezone,
                     artifact=regional_artifact,
+                    debias_artifact=regional_debias_artifact,
                 )
             ),
             four_layer_shadow=four_layer_shadow,

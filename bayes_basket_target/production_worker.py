@@ -121,6 +121,9 @@ from .four_layer_shadow import (
     load_shadow_artifacts as load_four_layer_shadow_artifacts,
 )
 from .metar_ceiling import load_artifact as load_metar_ceiling_artifact
+from .regional_point_debias import (
+    load_artifact as load_regional_point_debias_artifact,
+)
 from .regional_path_prior import (
     load_artifact as load_regional_path_prior_artifact,
     load_runs_for_station_day as load_regional_runs_for_station_day,
@@ -11464,6 +11467,9 @@ class TargetProductionWorker:
                         as_of_utc=as_of_utc,
                     ),
                     regional_artifact=load_regional_path_prior_artifact(),
+                    regional_debias_artifact=(
+                        load_regional_point_debias_artifact()
+                    ),
                     # Measured beside what is served and multiplied into
                     # nothing.  Empty until the shadow is switched on, and
                     # empty is the lineage this compiled before it existed.

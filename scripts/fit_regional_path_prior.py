@@ -8,6 +8,12 @@ maximum minus the greater of the running high and the curve's remaining peak.
 Binned by hours left to local midnight -- the ceiling's axis, so the two layers
 are read on one clock -- with a per-station bias where a station has earned one.
 
+The peak this residual is taken against is the *debiased* one (charter 95,
+2026-09-07): serving corrects the curve before it fuses, so a residual fitted
+on the raw curve would be measuring an input production no longer has, and the
+two layers would each remove a share of the same cold offset.  The order is
+debias, then fit the residual of what is left.
+
 ``--replay-table`` emits one artifact per event date fitted only on strictly
 earlier dates, the discipline the ceiling replay uses, so the paper ledger can
 score a rule that could actually have been run that morning.
@@ -27,10 +33,17 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
 from bayes_basket_target.regional_path_prior import (  # noqa: E402
     HOURS_EDGES, MIN_CELL_SAMPLES, MIN_STATION_SAMPLES, MIN_SIGMA_C,
     MAX_RUN_AGE_HOURS, SCHEMA, hours_bin,
 )
+from bayes_basket_target.regional_point_debias import (  # noqa: E402
+    ENABLED as DEBIAS_ENABLED,
+    apply_remaining_peak_debias, resolve_correction as resolve_debias,
+)
+import fit_regional_point_debias as debias_fit  # noqa: E402
 
 FORMAL = ("METAR", "SPECI")
 
@@ -100,23 +113,59 @@ def collect(target_db: Path, archive_db: Path) -> list[dict]:
         points = [p for p in formal.get(station, []) if day_start <= p[0] < close]
         if not points:
             continue
+        curve_peak = max(curve.values()) if curve else None
+        if curve_peak is None:
+            continue
         running = None
         for when, value in points:
             running = value if running is None else max(running, value)
             if when <= run_init:
                 continue
-            if (when - run_init).total_seconds() / 3600.0 > MAX_RUN_AGE_HOURS:
+            age = (when - run_init).total_seconds() / 3600.0
+            if age > MAX_RUN_AGE_HOURS:
                 continue
             remaining = [v for stamp, v in curve.items() if stamp > when]
             if not remaining:
                 continue
-            anchor = max(float(running), max(remaining))
+            # The anchor is finished later, once the debias artifact for this
+            # sample's own cutoff is known: a replay table fits one path prior
+            # per event date, and each must see the curve corrected by what was
+            # knowable that morning, not by today's offsets.
             samples.append({
                 "system_id": system_id, "station_id": station, "event_date": day,
                 "hours_left": (close - when).total_seconds() / 3600.0,
-                "error_c": actual - anchor,
+                "raw_peak_c": max(remaining), "curve_peak_c": float(curve_peak),
+                "running_c": float(running), "actual_c": actual,
+                "run_age_hours": age,
             })
     return samples
+
+
+def anchored(samples: list[dict], debias_artifact: dict | None) -> list[dict]:
+    """Attach ``error_c`` -- the residual of the anchor production serves.
+
+    ``debias_artifact`` of ``None`` means the raw curve, which is what the
+    serving side hands the fusion whenever charter 95's correction is off.
+    The residual has to be fitted on the input production actually has: a
+    table fitted on debiased peaks and served against raw ones is a
+    correction applied to a quantity it never saw.
+    """
+
+    out = []
+    for sample in samples:
+        peak, _note = apply_remaining_peak_debias(
+            float(sample["raw_peak_c"]),
+            curve_peak_c=float(sample["curve_peak_c"]),
+            correction=resolve_debias(
+                debias_artifact, system_id=str(sample["system_id"]),
+                station_id=str(sample["station_id"]),
+                run_age_hours=float(sample["run_age_hours"]),
+            ),
+            enabled=True,
+        )
+        anchor = max(float(sample["running_c"]), peak)
+        out.append({**sample, "error_c": sample["actual_c"] - anchor})
+    return out
 
 
 def _scope(samples: list[dict]) -> dict:
@@ -202,6 +251,10 @@ def main() -> int:
     parser.add_argument("--through", type=str, default=None)
     parser.add_argument("--replay-table", action="store_true")
     parser.add_argument(
+        "--no-debias", action="store_true",
+        help="force the raw curve even where PM_REGIONAL_POINT_DEBIAS is on",
+    )
+    parser.add_argument(
         "--out", type=Path,
         default=ROOT / "data" / "runtime" / "bayes_basket_target_nwp"
         / "regional_path_prior_artifact.json",
@@ -212,6 +265,12 @@ def main() -> int:
         samples = [s for s in samples if s["event_date"] <= args.through]
     if not samples:
         raise SystemExit("no samples")
+    # The debias the serving side will have applied, fitted on the same rows.
+    debias_samples = debias_fit.collect(args.db, args.archive)
+    if args.through:
+        debias_samples = [
+            s for s in debias_samples if s["event_date"] <= args.through
+        ]
     args.out.parent.mkdir(parents=True, exist_ok=True)
     if args.replay_table:
         dates = sorted({s["event_date"] for s in samples})
@@ -220,7 +279,16 @@ def main() -> int:
             earlier = [s for s in samples if s["event_date"] < date]
             if len(earlier) < MIN_CELL_SAMPLES:
                 continue
-            table[date] = fit(earlier)
+            earlier_debias = [
+                s for s in debias_samples if s["event_date"] < date
+            ]
+            as_of_debias = (
+                None if (args.no_debias or not DEBIAS_ENABLED) else
+                debias_fit.fit(earlier_debias)
+                if len(earlier_debias) >= debias_fit.MIN_POOL_SAMPLES
+                else None
+            )
+            table[date] = fit(anchored(earlier, as_of_debias))
         payload = {
             "schema": SCHEMA + "_replay", "dates": table,
             "covered_from": min(table) if table else None,
@@ -229,7 +297,12 @@ def main() -> int:
         args.out.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
         print(f"{args.out}\n  {len(table)} 个事件日各一条只用更早日期拟合的表")
         return 0
-    artifact = fit(samples)
+    artifact = fit(anchored(
+        samples,
+        None if (args.no_debias or not DEBIAS_ENABLED) else
+        debias_fit.fit(debias_samples)
+        if len(debias_samples) >= debias_fit.MIN_POOL_SAMPLES else None,
+    ))
     args.out.write_text(json.dumps(artifact, indent=2, sort_keys=True), encoding="utf-8")
     print(f"{args.out}")
     print(

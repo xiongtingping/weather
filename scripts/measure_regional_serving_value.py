@@ -42,6 +42,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target import regional_path_prior as R  # noqa: E402
+from bayes_basket_target import regional_point_debias as D  # noqa: E402
 
 DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 
@@ -90,6 +91,12 @@ def main() -> int:
     parser.add_argument("--through", default="2026-09-05")
     parser.add_argument("--weight", type=float, default=None,
                         help="blend weight to test (default: the module's)")
+    parser.add_argument(
+        "--other-side-replay-table", type=Path, default=None,
+        help="path prior replay table fitted with charter 95's debias set the "
+             "other way; supplying it adds that arm, each arm scored against "
+             "the residual table fitted on its own input",
+    )
     args = parser.parse_args()
 
     conn = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True, timeout=300)
@@ -112,7 +119,18 @@ def main() -> int:
 
     runs_cache: dict[tuple, list] = {}
     replay_cache: dict[str, dict] = {}
-    acc = collections.defaultdict(lambda: {a: collections.Counter() for a in ("none", "layer")})
+    debias_cache: dict[str, dict] = {}
+    raw_replay_cache: dict[str, dict] = {}
+    raw_table = None
+    if args.other_side_replay_table:
+        raw_table = json.loads(
+            args.other_side_replay_table.read_text(encoding="utf-8"))
+    arms = ("none", "layer") if raw_table is None else ("none", "other", "layer")
+    # The layer arm is production's own configuration; the other arm is
+    # charter 95's switch flipped.  A gate whose headline arm is not what
+    # production serves is measuring a system nobody is running.
+    other_debias = not D.ENABLED
+    acc = collections.defaultdict(lambda: collections.defaultdict(collections.Counter))
     point = collections.defaultdict(list)
     seen = collections.Counter()
     paired = collections.defaultdict(list)
@@ -153,6 +171,10 @@ def main() -> int:
                 conn, station_id=station, event_date=day, as_of_utc="2100-01-01T00:00:00Z")
         if day not in replay_cache:
             replay_cache[day] = R.replay_curve(day) or {}
+            debias_cache[day] = D.replay_curve(day) or {}
+            raw_replay_cache[day] = (
+                R.replay_curve(day, table=raw_table) or {}
+            ) if raw_table is not None else {}
         artifact = replay_cache[day]
         if not artifact:
             continue
@@ -165,23 +187,53 @@ def main() -> int:
             # The candidate is passed explicitly: this gate exists to score
             # systems that are not admitted yet, and the admission list
             # would otherwise refuse exactly the question being asked.
-            resolved = R.resolve_serving_input(
-                rows, station_id=station, event_date=day, as_of_utc=str(at),
-                settlement_timezone=str(zone), artifact=artifact,
-                systems={system})
-            if resolved is None:
-                continue
+            #
+            # Each arm resolves its own serving input and scores against the
+            # residual table fitted on that same input: charter 95 debiases
+            # the curve before charter 99 fuses it, so the raw arm has to
+            # carry the residual fit that belonged to the raw curve or the
+            # comparison is between two mismatched halves.
             upper = {b: (None if hi is None else float(hi))
                      for b, (lo, hi) in intervals.items()}
-            blended, note = R.apply_regional_path_prior(
-                served, ordinals=ordinals, upper_bounds_c=upper,
-                running_high_bucket=running_bucket, running_high_c=running_c,
-                remaining_peak_c=float(resolved["remaining_peak_c"]),
-                cell=resolved["cell"], lineage=resolved.get("lineage"),
-                weight=args.weight, enabled=True)
-            if note.get("regional_path_prior_applied") != "true":
+            def _blend(art, admit_debias):
+                if not art:
+                    return None, None, {}
+                got = R.resolve_serving_input(
+                    rows, station_id=station, event_date=day, as_of_utc=str(at),
+                    settlement_timezone=str(zone), artifact=art,
+                    systems={system},
+                    debias_artifact=debias_cache.get(day),
+                    # The gate must be able to ask about a layer production
+                    # has switched off -- that is the question it exists for.
+                    # ``None`` means "whatever production does".
+                    debias_systems={system},
+                    debias_enabled=admit_debias)
+                if got is None:
+                    return None, None, {}
+                vec, receipt = R.apply_regional_path_prior(
+                    served, ordinals=ordinals, upper_bounds_c=upper,
+                    running_high_bucket=running_bucket, running_high_c=running_c,
+                    remaining_peak_c=float(got["remaining_peak_c"]),
+                    cell=got["cell"], lineage=got.get("lineage"),
+                    weight=args.weight, enabled=True)
+                return got, vec, receipt
+            resolved, blended, note = _blend(artifact, None)
+            if resolved is None or note.get("regional_path_prior_applied") != "true":
                 seen[f"{system}:{note.get('regional_path_prior_skip_reason') or '?'}"] += 1
                 continue
+            vectors = {"none": served, "layer": blended}
+            if "other" in arms:
+                raw_got, raw_vec, raw_note = _blend(
+                    raw_replay_cache.get(day), other_debias)
+                if raw_got is None or raw_note.get(
+                        "regional_path_prior_applied") != "true":
+                    continue
+                vectors["other"] = raw_vec
+                raw_anchor = max(running_c, float(raw_got["remaining_peak_c"]))
+                point[f"{system}::other"].append((
+                    raw_anchor + float(raw_got["cell"]["bias_c"]) - actual,
+                    0.0,
+                ))
             anchor = max(running_c, float(resolved["remaining_peak_c"]))
             incumbent_mean = sum(centre(intervals, b, running_c) * p
                                  for b, p in served.items())
@@ -190,7 +242,8 @@ def main() -> int:
                 incumbent_mean - actual,
             ))
             scored = {}
-            for arm, vec in (("none", served), ("layer", blended)):
+            for arm in arms:
+                vec = vectors[arm]
                 lg, br, dist = score(floored(vec), ordinals, settled_bucket)
                 scored[arm] = lg
                 bucketed = acc[system][arm]
@@ -207,6 +260,9 @@ def main() -> int:
             # station-days, not rows.
             paired[system].append((key, scored["layer"] - scored["none"]))
             by_station[(system, station)].append(scored["layer"] - scored["none"])
+            if "other" in arms:
+                paired[f"{system}::other"].append(
+                    (key, scored["layer"] - scored["other"]))
 
     print(f"区域系统的服务价值 · {args.start}..{args.through} · "
           f"窗口＝天花板报 TOO_EARLY 的 P1 前缀（无任何重建）")
@@ -216,15 +272,20 @@ def main() -> int:
         return 1
     for system in systems:
         arms = acc.get(system)
-        if not arms or not arms["none"]["n"]:
+        if not arms or not arms.get("none", {}).get("n"):
             print(f"  {system}: 无可比前缀 "
                   f"{ {k.split(':',1)[1]: v for k, v in seen.items() if k.startswith(system)} }")
             continue
         n = arms["none"]["n"]
         print(f"  {system}  n={n}")
         print(f"    {'臂':8s} {'对数损失':>9s} {'Brier':>8s} {'命中':>7s} {'±1桶':>7s}")
-        for arm, label in (("none", "无层"), ("layer", "接入后")):
-            a = arms[arm]
+        served_label = "去偏后融合" if D.ENABLED else "生偏融合"
+        other_label = "生偏融合" if D.ENABLED else "去偏后融合"
+        for arm, label in (("none", "无层"), ("other", other_label),
+                           ("layer", served_label)):
+            a = arms.get(arm)
+            if not a or not a["n"]:
+                continue
             print(f"    {label:8s} {a['logloss']/n:9.4f} {a['brier']/n:8.4f}"
                   f" {100*a['hit']/n:6.1f}% {100*a['within1']/n:6.1f}%")
         delta = arms["layer"]["logloss"] / n - arms["none"]["logloss"] / n
@@ -258,6 +319,23 @@ def main() -> int:
             print("  ".join(
                 f"{st} {statistics.mean(by_station[(system, st)]):+.3f}(n={len(by_station[(system, st)])})"
                 for st in stations_here))
+        raw_pairs = paired.get(f"{system}::other") or []
+        if raw_pairs:
+            by_day_r = collections.defaultdict(list)
+            for k, d in raw_pairs:
+                by_day_r[k].append(d)
+            means_r = [statistics.mean(by_day_r[k]) for k in sorted(by_day_r)]
+            centre_r = statistics.mean(means_r)
+            spread_r = (statistics.pstdev(means_r) / math.sqrt(len(means_r))
+                        if len(means_r) > 1 else 0.0)
+            print(f"    开关本身（{served_label} − {other_label}）：站日均值差 {centre_r:+.4f}"
+                  f" · 95% 区间 [{centre_r - 1.96*spread_r:+.4f},"
+                  f" {centre_r + 1.96*spread_r:+.4f}]")
+            raw_pts = point.get(f"{system}::other") or []
+            if raw_pts:
+                rc = [x for x, _ in raw_pts]
+                print(f"    锚点 MAE：{other_label} {sum(map(abs, rc))/len(rc):.3f}°C"
+                      f"（偏差 {statistics.mean(rc):+.3f}）")
         pts = point.get(system) or []
         if pts:
             cand = [x for x, _ in pts]

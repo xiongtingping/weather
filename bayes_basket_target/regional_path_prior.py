@@ -32,6 +32,10 @@ from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 from .contracts import ContractError
+from .regional_point_debias import (
+    apply_remaining_peak_debias,
+    resolve_correction as resolve_debias_correction,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = "bayes_basket_target_regional_path_prior_v1"
@@ -410,8 +414,17 @@ def resolve_serving_input(
     settlement_timezone: str,
     artifact: Mapping[str, Any] | None = None,
     systems: "frozenset[str] | set[str] | None" = None,
+    debias_artifact: Mapping[str, Any] | None = None,
+    debias_systems: "frozenset[str] | set[str] | None" = None,
+    debias_enabled: bool | None = None,
 ) -> dict[str, Any] | None:
     """The freshest regional run this decision may read, with its fitted cell.
+
+    Charter 95, 2026-09-07: the curve is debiased before it is fused, here,
+    where every caller passes through -- production, the ledger and the
+    admission gate all reach the fusion by way of this one function, so the
+    correction cannot reach one of them and miss another.  ``remaining_peak_c``
+    comes back corrected and the raw value stays in the lineage.
 
     ``systems`` overrides the admission list.  Serving never passes it --
     that is the whole point of the list -- but the admission gate must, or
@@ -473,6 +486,25 @@ def resolve_serving_input(
         )
         if peak is None or width == 0:
             continue
+        # Charter 95's single-system correction, applied before the fusion
+        # rather than folded into it: the curve states where the day tops
+        # out, and every regional lane states it cold.  Silence leaves the
+        # raw peak, which is exactly what the fusion served before.
+        try:
+            curve_peak = max(float(v) for v in dict(row["hourly_c"]).values())
+        except (TypeError, ValueError):
+            continue
+        correction = resolve_debias_correction(
+            debias_artifact, system_id=str(row["ensemble_system_id"]),
+            station_id=station_id,
+            run_age_hours=(as_of - run_init).total_seconds() / 3600.0,
+            systems=debias_systems,
+        )
+        raw_peak = float(peak)
+        peak, debias_note = apply_remaining_peak_debias(
+            raw_peak, curve_peak_c=curve_peak, correction=correction,
+            enabled=debias_enabled,
+        )
         # The cell is resolved per candidate run, not once per station-day:
         # which system is about to serve decides whose fitted bias and
         # dispersion apply, and that is only known here.
@@ -490,8 +522,16 @@ def resolve_serving_input(
             "lineage": {
                 "regional_path_prior_system_id": str(row["ensemble_system_id"]),
                 "regional_path_prior_run_init_utc": str(row["run_init_utc"]),
-                "regional_path_prior_remaining_peak_raw_c": f"{float(peak):.4f}",
+                "regional_path_prior_remaining_peak_raw_c": f"{raw_peak:.4f}",
                 "regional_path_prior_hours_left": f"{hours_left:.4f}",
+                # A switched-off layer leaves no trace: with the debias off
+                # this lineage is byte-identical to the one this function
+                # produced before the layer existed, so the switch really is
+                # the way back rather than a different receipt saying so.
+                **(
+                    {} if debias_note.get("regional_point_debias_skip_reason")
+                    == "DISABLED" else debias_note
+                ),
             },
         }
     return None
@@ -505,6 +545,7 @@ def build_serving_input(
     as_of_utc: str,
     settlement_timezone: str,
     artifact: Mapping[str, Any] | None = None,
+    debias_artifact: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """``resolve_serving_input`` over the lane's own rows."""
 
@@ -520,7 +561,7 @@ def build_serving_input(
     return resolve_serving_input(
         rows, station_id=station_id, event_date=event_date,
         as_of_utc=as_of_utc, settlement_timezone=settlement_timezone,
-        artifact=artifact,
+        artifact=artifact, debias_artifact=debias_artifact,
     )
 
 
