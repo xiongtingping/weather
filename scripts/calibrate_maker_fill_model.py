@@ -155,14 +155,21 @@ def shadow_reading(conn: sqlite3.Connection) -> dict:
         cell["orders"] for cell in by_rule if cell["price_rule"] == CHASE_RULE
     )
     take_after = {"maker": [0, 0.0], "crossed": [0, 0.0], "taker": [0, 0.0]}
-    for row in conn.execute(
-        "SELECT o.price_rule rule, o.fill_kind kind,"
-        " COALESCE(o.fill_limit_price, o.limit_price) paid"
-        " FROM maker_shadow_order o"
-        " WHERE o.state='FILLED' AND o.horizon_minutes=60"
-        "   AND o.price_rule IN (?, 'ask')",
-        (TAKE_AFTER_RULE,),
-    ):
+    try:
+        take_rows = conn.execute(
+            "SELECT o.price_rule rule, o.fill_kind kind,"
+            " COALESCE(o.fill_limit_price, o.limit_price) paid"
+            " FROM maker_shadow_order o"
+            " WHERE o.state='FILLED' AND o.horizon_minutes=60"
+            "   AND o.price_rule IN (?, 'ask')",
+            (TAKE_AFTER_RULE,),
+        ).fetchall()
+    except sqlite3.Error:
+        # A database older than the arm, or a replay extract that carries
+        # the order table without it.  Reported as accumulating, which is
+        # what it is.
+        take_rows = []
+    for row in take_rows:
         key = (
             "taker" if str(row["rule"]) == "ask"
             else str(row["kind"] or "maker")

@@ -46,7 +46,8 @@ def _book(tmp_path: Path) -> sqlite3.Connection:
         "CREATE TABLE maker_shadow_order("
         " order_id TEXT, station_id TEXT, event_date TEXT, bucket TEXT,"
         " price_rule TEXT, horizon_minutes INTEGER, lead_hours REAL,"
-        " state TEXT)"
+        " state TEXT, limit_price REAL, fill_limit_price REAL,"
+        " fill_kind TEXT)"
     )
     conn.execute(
         "CREATE TABLE maker_shadow_settlement("
@@ -75,7 +76,10 @@ def _orders(conn, *, bucket, lead, filled, missed, rule="bid+1t"):
         for _ in range(count):
             n += 1
             conn.execute(
-                "INSERT INTO maker_shadow_order VALUES(?,?,?,?,?,?,?,?)",
+                "INSERT INTO maker_shadow_order("
+                " order_id, station_id, event_date, bucket, price_rule,"
+                " horizon_minutes, lead_hours, state)"
+                " VALUES(?,?,?,?,?,?,?,?)",
                 (
                     f"o{bucket}{lead}{state}{n}", "ZSQD", "2026-09-01",
                     bucket, rule, 60, lead, state,
@@ -120,6 +124,31 @@ def test_the_ledger_reading_counts_posted_legs_not_kept_ones(tmp_path):
     assert reading["winner_fill_rate"] == pytest.approx(0.0)
     assert reading["loser_fill_rate"] == pytest.approx(1.0)
     assert reading["asymmetry"] == pytest.approx(0.0)
+    conn.close()
+
+
+def test_an_older_database_reports_the_new_arms_as_accumulating(tmp_path):
+    """A replay extract or a copy taken before the arms existed carries the
+    order table without ``fill_kind``.  Reading it must not raise -- the
+    honest answer is that the arm has nothing yet, and a calibration that
+    crashes on an old database is a calibration nobody runs on one."""
+
+    conn = sqlite3.connect(tmp_path / "old.db")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE maker_shadow_order("
+        " order_id TEXT, station_id TEXT, event_date TEXT, bucket TEXT,"
+        " price_rule TEXT, horizon_minutes INTEGER, lead_hours REAL,"
+        " state TEXT, limit_price REAL)"
+    )
+    conn.execute(
+        "CREATE TABLE maker_shadow_settlement("
+        " order_id TEXT, station_id TEXT, event_date TEXT,"
+        " settled_bucket TEXT)"
+    )
+    reading = calib.shadow_reading(conn)
+    assert reading["take_after"]["crossed"]["fills"] == 0
+    assert reading["take_after"]["crossed"]["mean_price_paid"] is None
     conn.close()
 
 
