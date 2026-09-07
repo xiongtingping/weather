@@ -32,6 +32,17 @@ def _artifact(**overrides) -> dict:
         / "bayes_basket_target_taf_revision_active.json"
     )
     raw = json.loads(source.read_text(encoding="utf-8"))
+    # The shipped file became a registry envelope -- {schema, artifacts:[...],
+    # content_sha256} -- when bound artifacts started being kept beside the
+    # registry they assemble into.  This helper wants one artifact to use as
+    # a template, and handing the envelope to the single-artifact parser is
+    # what left twenty-five tests in this file failing on
+    # taf_revision_artifact_unknown_fields:artifacts rather than on anything
+    # they assert.  Production reads the same file through
+    # validate_taf_artifact_registry and was never affected.
+    members = raw.get("artifacts")
+    if isinstance(members, list) and members and isinstance(members[0], dict):
+        raw = dict(members[0])
     raw.update({
         "station_id": STATION,
         "settlement_timezone": TIMEZONE,

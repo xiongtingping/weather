@@ -755,6 +755,13 @@ def _bridged_taf_artifact(tmp_path: Path) -> Path:
         / "config/artifacts/bayes_basket_target_taf_revision_active.json"
     )
     raw = json.loads(source.read_text(encoding="utf-8"))
+    # The shipped file is a registry envelope; this wants one member of it
+    # as a template.  See the same unwrap in the resident TAF producer's
+    # suite -- handing the envelope to the single-artifact parser fails on
+    # taf_revision_artifact_unknown_fields:artifacts before any assertion.
+    _members = raw.get("artifacts")
+    if isinstance(_members, list) and _members and isinstance(_members[0], dict):
+        raw = dict(_members[0])
     fingerprint = _taf_live_compatibility_lineage()[
         "taf_nwp_live_compatibility_fingerprint_sha256"
     ]
@@ -1587,6 +1594,16 @@ def test_resident_taf_legacy_crossfit_hash_without_live_bridge_blocks(
         "bayes_basket_target_taf_revision_active.json"
     )
     legacy_raw = json.loads(active_path.read_text(encoding="utf-8"))
+    # The shipped file is a registry envelope; this wants one member of it
+    # as a template.  See the same unwrap in the resident TAF producer's
+    # suite -- handing the envelope to the single-artifact parser fails on
+    # taf_revision_artifact_unknown_fields:artifacts before any assertion.
+    _legacy_members = legacy_raw.get("artifacts")
+    if (
+        isinstance(_legacy_members, list) and _legacy_members
+        and isinstance(_legacy_members[0], dict)
+    ):
+        legacy_raw = dict(_legacy_members[0])
     for key in (
         "nwp_combination_artifact_kind",
         "nwp_live_compatibility_contract_version",
