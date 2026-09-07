@@ -105,5 +105,15 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] new market discovery"
 "$PY" scripts/onboard_station.py --stage discover \
   || echo "market discovery failed; refits above still committed" >&2
 
+# The ledger's fill simulation, against the only measurement of it there
+# is.  Read-only and deliberately not part of RC: a simulation drifting out
+# of the shadow lane's observed band is a fact about the ledger, not a
+# failure of this sweep, and making it fail the sweep would train the
+# receipt to be ignored -- the same reasoning as discovery above.  It is
+# here so the gap is re-measured daily instead of when someone remembers.
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] maker fill model calibration"
+"$PY" scripts/calibrate_maker_fill_model.py \
+  || echo "maker fill calibration failed; refits above still committed" >&2
+
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] calibration refit sweep done rc=$RC"
 exit "$RC"
