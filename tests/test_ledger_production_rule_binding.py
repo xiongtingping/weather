@@ -1360,6 +1360,7 @@ def test_charter_110_both_lanes_read_one_ladder_and_one_rung_rule() -> None:
     """
 
     from bayes_basket_target.basket_kernel import delta_v2 as kernel
+    from bayes_basket_target import resting_ladder_lifecycle as P_LIFECYCLE
 
     assert L.bid_anchored_ladder is P.bid_anchored_ladder
     assert L.bid_anchored_rungs_for_gap is P.bid_anchored_rungs_for_gap
@@ -1382,4 +1383,22 @@ def test_charter_110_both_lanes_read_one_ladder_and_one_rung_rule() -> None:
     )
     assert verdict["legs"]["b"]["action"] == kernel.LEG_ACTION_CROSS
     assert verdict["basket_state"] == kernel.BASKET_STATE_PARTIAL
+
+    # And the ledger's own re-post asks the same function.  Before charter
+    # 110 this lane re-derived the ladder from the current quote and
+    # REPLACED the standing rungs with it, which follows a falling bid down
+    # just as readily as a rising one up, and kept the standing rungs when
+    # the derivation came back empty -- the stranding a collapsing ask
+    # sweeps.  Production's lifecycle had the same two defects.  If only one
+    # lane were fixed the ledger would once again be scoring a strategy
+    # production does not run (charter 94(九)'s judgement).
+    import inspect
+
+    source = inspect.getsource(L)
+    assert "resting_rung_action_v1(" in source
+    assert source.count("if MAKER_RESTING_ANCHORED:\n                        # Charter 110") == 1
+    assert L.RESTING_REPRICE_FAR_TICKS == P_LIFECYCLE.RESTING_REPRICE_FAR_TICKS
+    assert L.RESTING_REPRICE_DWELL_SECONDS == (
+        P_LIFECYCLE.RESTING_REPRICE_DWELL_SECONDS
+    )
 

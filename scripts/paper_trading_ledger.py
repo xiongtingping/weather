@@ -175,8 +175,14 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
 from bayes_basket_target.resting_ladder_lifecycle import (  # noqa: E402
     # Charter 94: the cadence production re-anchors resting rungs on.
     RESTING_REPRICE_DWELL_SECONDS,
+    RESTING_REPRICE_FAR_TICKS,
 )
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
+    # Charter 110 (三): the per-rung decision is one kernel function, called
+    # by production's lifecycle and by this lane's re-post alike.
+    LEG_ACTION_CANCEL,
+    LEG_ACTION_REPRICE_UP,
+    resting_rung_action_v1,
     CONSOLIDATION_TILT_FLOOR_VERSION,
     LEG_FLOOR_BELIEF_ANCHOR,
     LEG_FLOOR_PRICE_BASIS,
@@ -6569,19 +6575,64 @@ def _resting_ladder_fill(
                                     if rung <= cap + 1e-9
                                 ]
                             continue
-                    fresh = _ladder_from_quote(
-                        item,
-                        open_rungs,
-                        floor_fraction=max(floor_time, floor_edge, floor_gap),
-                        ceiling=cap,
-                    )
-                    if fresh:
-                        pending[bucket] = sorted(fresh, reverse=True)
-                    elif cap is not None:
-                        pending[bucket] = [
-                            rung for rung in pending[bucket]
-                            if rung <= cap + 1e-9
-                        ]
+                    if MAKER_RESTING_ANCHORED:
+                        # Charter 110 (三): the re-post is asymmetric, and the
+                        # decision is the kernel's so this lane and production
+                        # cannot answer the same book two ways.
+                        #
+                        # What was here re-derived the ladder from the current
+                        # quote and REPLACED the standing rungs with it, which
+                        # follows the bid down as readily as up -- the ledger's
+                        # own version of production's symmetric re-mint; and
+                        # when the derivation came back empty (no bid) it kept
+                        # the standing rungs, which is the stranding the
+                        # collapsing ask sweeps.  Both are now decided by
+                        # ``resting_rung_action_v1``.
+                        #
+                        # The rung is exactly one dwell old at each round --
+                        # this loop steps on ``MAKER_RESTING_REPRICE_MINUTES``,
+                        # which is pinned equal to the dwell -- so that is the
+                        # age the kernel is asked about.
+                        standing = max(pending.get(bucket) or [0.0])
+                        r_bid = item.get("bid_price", item.get("best_bid"))
+                        r_ask = item.get("best_ask")
+                        if r_ask is None:
+                            _lv = item.get("ask_levels") or []
+                            r_ask = _lv[0].get("price") if _lv else None
+                        rung_verdict = resting_rung_action_v1(
+                            limit_price=float(standing or 0.0),
+                            bid=float(r_bid or 0.0),
+                            ask=float(r_ask or 0.0),
+                            tick=float(item.get("price_tick_size") or 0.0),
+                            age_seconds=RESTING_REPRICE_DWELL_SECONDS,
+                            dwell_seconds=RESTING_REPRICE_DWELL_SECONDS,
+                            far_ticks=RESTING_REPRICE_FAR_TICKS,
+                        )
+                        if rung_verdict["action"] == LEG_ACTION_CANCEL:
+                            pending[bucket] = []
+                        elif rung_verdict["action"] == LEG_ACTION_REPRICE_UP:
+                            fresh = _ladder_from_quote(
+                                item, open_rungs, ceiling=cap,
+                            )
+                            pending[bucket] = (
+                                sorted(fresh, reverse=True) if fresh else []
+                            )
+                        # REST keeps the rung exactly where it is, which is
+                        # the whole point: a bid that fell does not move it.
+                    else:
+                        fresh = _ladder_from_quote(
+                            item,
+                            open_rungs,
+                            floor_fraction=max(floor_time, floor_edge, floor_gap),
+                            ceiling=cap,
+                        )
+                        if fresh:
+                            pending[bucket] = sorted(fresh, reverse=True)
+                        elif cap is not None:
+                            pending[bucket] = [
+                                rung for rung in pending[bucket]
+                                if rung <= cap + 1e-9
+                            ]
                 next_reprice = next_reprice + timedelta(
                     minutes=MAKER_RESTING_REPRICE_MINUTES
                 )
