@@ -568,16 +568,28 @@ def admitted_return(
     stages: Sequence[str],
     floor_day: str,
 ) -> dict[str, Any]:
-    """What a table would have bought, and what that would have returned.
+    """What a table admits, and what that admission set is worth.
 
     One share of every candidate window the table admits -- ``lambda(a) >
     a``, the gate's own rule -- against the price it was quoted and the
-    outcome it settled to.  This number cannot be computed from seats: a
-    seat exists only where some table already admitted it, so the seated
-    book has no opinion about what a different table would have bought.
-    The candidate population is what makes the counterfactual exist, and
-    the counterfactual is the only thing that says whether a fit is an
-    improvement.
+    outcome it settled to.  This cannot be computed from seats: a seat
+    exists only where some table already admitted it, so the seated book
+    has no opinion about what a DIFFERENT table would have bought.  The
+    candidate population is what makes the counterfactual exist.
+
+    What it is NOT, and the distinction cost a wrong reading on the day it
+    landed: this is not the book's return.  The book seats the objective's
+    head window, one per station-day-stage; this buys the whole admission
+    set, which for a permissive table is most of the enumeration including
+    the windows the objective ranked last.  Read as a book return it makes
+    a wide table look catastrophic for being wide -- P1, whose identity
+    table admits every window under a = 1, reads -25.4% here while its
+    seats are a different question entirely.
+
+    It is a COMPARATOR: two tables scored on one counterfactual over one
+    population, where the only difference is which windows each admits.  A
+    table whose admission set is worth less is worse, and that is all this
+    is asked.
     """
 
     placeholders = ",".join("?" for _ in stages)
