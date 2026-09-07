@@ -124,5 +124,23 @@ class ClobOrderServiceClient:
             payload["market"] = str(market)
         return self._post("/lookup-open-orders", payload)
 
+    def lookup_position(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        """How many shares of one token the account actually holds.
+
+        Charter 110's second fact.  The enumeration above says whether an
+        order is still live; it cannot say what a departed one did, and the
+        point lookup's answer expires -- OEJN 35C read MATCHED 25.00/25 at
+        12:10Z on 2026-09-07 and returned an empty body twelve minutes
+        later.  A position does not expire.
+
+        ``shares`` is ``balance_raw`` over ``10 ** decimals``; both are
+        returned so the assumption is checkable rather than inherited.
+        """
+
+        token = request.get("token_id") or request.get("asset_id")
+        if not token:
+            raise ValueError("lookup_position requires token_id")
+        return self._post("/lookup-position", {"token_id": str(token)})
+
 
 __all__ = ["ClobOrderServiceClient", "SCHEMA_VERSION"]

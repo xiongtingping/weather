@@ -125,3 +125,58 @@ def test_publishing_never_breaks_the_cycle(tmp_path) -> None:
     worker._publish_resting_reprice_receipt(
         {"bad": _Unserializable()}, as_of_utc="2026-09-07T12:00:00Z"
     )
+
+
+def test_the_position_route_answers_what_the_point_lookup_no_longer_can() -> None:
+    """Charter 110's second fact.
+
+    The enumeration says whether an order is still live.  It cannot say what
+    a departed one DID, and the point lookup cannot be relied on for that
+    either: OEJN 35C read MATCHED 25.00/25 at 12:10Z on 2026-09-07 and
+    returned an empty body twelve minutes later.  A position does not
+    expire -- whatever the order did, the shares are on the account or they
+    are not.
+
+    Run against the thirteen departed rungs the moment the route existed:
+    eleven had filled in full with the ledger recording zero, one had filled
+    0.4 short of what was recorded, and one (EGLC 22C, 91 shares) genuinely
+    held nothing.  87.40 shares, about 18.30 USDC, that the book owned and
+    did not know it owned.
+    """
+
+    source = (ROOT / "scripts" / "clob_order_service.mjs").read_text(
+        encoding="utf-8"
+    )
+    assert 'pathname === "/lookup-position"' in source
+    assert "async lookupPosition(" in source
+    # Reuses the service's own rate-limited, de-duplicated balance fetch
+    # rather than opening a second path to the same endpoint.
+    body = source.split("async lookupPosition", 1)[1].split("\n  async ", 1)[0]
+    assert "getBalanceAllowanceForPrefetch" in body
+    assert "AssetType.CONDITIONAL" in body
+    assert "balanceEvidenceValid" in body
+    # The divisor is stated, not buried: this service had only ever read a
+    # CONDITIONAL balance as zero / non-zero, so the share conversion is this
+    # route's assumption and a caller has to be able to check it.  Confirmed
+    # on the live account the day it landed -- every one of the thirteen came
+    # back a whole number of shares against its own requested size.
+    assert "balance_raw" in body and "decimals: 6" in body and "shares:" in body
+
+
+def test_the_position_client_refuses_to_ask_about_nothing() -> None:
+    import pytest
+
+    from clob_order_service_client import ClobOrderServiceClient
+
+    class _Probe(ClobOrderServiceClient):
+        def __init__(self) -> None:  # noqa: D107
+            pass
+
+        def _post(self, path, payload):  # type: ignore[override]
+            return {"ok": True, "path": path, "payload": dict(payload)}
+
+    out = _Probe().lookup_position({"token_id": "tok-9"})
+    assert out["path"] == "/lookup-position"
+    assert out["payload"] == {"token_id": "tok-9"}
+    with pytest.raises(ValueError):
+        _Probe().lookup_position({})

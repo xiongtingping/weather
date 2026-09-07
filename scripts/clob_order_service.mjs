@@ -3498,6 +3498,64 @@ export class ClobOrderService {
     }
   }
 
+  async lookupPosition(rawPayload = {}) {
+    // Charter 110's second fact.  The open-orders enumeration says whether an
+    // order is still live; it cannot say what a departed one DID.  Reading
+    // that from the point lookup does not work either -- measured 2026-09-07,
+    // OEJN 35C answered MATCHED 25.00/25 at 12:10Z and returned an empty body
+    // twelve minutes later, so the evidence window closes and a lane that
+    // only asks about the order loses the fill for good.  The position does
+    // not close: whatever the order did, the shares are either on the account
+    // or they are not.
+    //
+    // The raw balance is returned beside the converted one on purpose.  This
+    // service has only ever read a CONDITIONAL balance as zero / non-zero
+    // (``conditionalBalanceIsZero``) and applies its 1e6 divisor only to
+    // COLLATERAL, so the share conversion is an assumption this route is
+    // making rather than one the codebase had already made.  Stating the
+    // divisor lets a caller check it instead of inheriting it silently.
+    const tokenID = String(rawPayload?.token_id || rawPayload?.asset_id || "").trim();
+    if (!tokenID) throw new Error("lookup_position_identity_missing");
+    if (!this.client) throw new Error(this.startError ? `service_not_ready:${this.startError}` : "service_not_ready");
+    const observedAt = new Date().toISOString();
+    try {
+      const value = await this.getBalanceAllowanceForPrefetch({
+        asset_type: AssetType.CONDITIONAL, token_id: tokenID,
+      });
+      if (!balanceEvidenceValid(value)) {
+        return {
+          ok: false,
+          token_id: tokenID,
+          status: "unknown",
+          error: "clob_position_evidence_invalid",
+          observed_at: observedAt,
+          source: SERVICE_NAME,
+        };
+      }
+      const raw = String(value.balance);
+      return {
+        ok: true,
+        token_id: tokenID,
+        status: "ok",
+        balance_raw: raw,
+        decimals: 6,
+        shares: Number(raw) / 1e6,
+        zero: conditionalBalanceIsZero(value),
+        observed_at: observedAt,
+        source: SERVICE_NAME,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        token_id: tokenID,
+        status: "unknown",
+        error: redactErrorText(err?.message || String(err || "lookup_position_failed")),
+        observed_at: observedAt,
+        source: SERVICE_NAME,
+      };
+    }
+  }
+
   async lookupOpenOrders(rawPayload = {}) {
     if (!this.client) throw new Error(this.startError ? `service_not_ready:${this.startError}` : "service_not_ready");
     const maxPagesRaw = Number(rawPayload?.max_pages ?? 3);
@@ -3628,6 +3686,11 @@ async function handle(req, res) {
     if (req.method === "POST" && parsedUrl.pathname === "/lookup-open-orders") {
       const payload = await readJsonBody(req);
       sendJson(res, 200, await service.lookupOpenOrders(payload));
+      return;
+    }
+    if (req.method === "POST" && parsedUrl.pathname === "/lookup-position") {
+      const payload = await readJsonBody(req);
+      sendJson(res, 200, await service.lookupPosition(payload));
       return;
     }
     sendJson(res, 404, { ok: false, error: "not_found" });
