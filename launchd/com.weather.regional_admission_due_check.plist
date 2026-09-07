@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.weather.regional_admission_due_check</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/xiong/weather/scripts/regional_admission_due_check.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/xiong/weather</string>
+  <!-- Once a day.  The thing being waited for is a lane accumulating settled
+       station-days, and a lane gains at most a handful a day, so asking more
+       often only repeats an answer.  What the interval has to guarantee is
+       that the day a lane first has enough is not missed by a week, which is
+       the failure this exists to end: ICON-EU and CMA GRAPES keep no history
+       and accumulate forward only, so on 2026-09-07 they carried seven and
+       eight settled station-days against the forty-six the MSM was admitted
+       on -- an empty docket, and one nobody would remember to re-open.
+       A pass below the threshold reads two tables and writes one line. -->
+  <key>StartInterval</key>
+  <integer>86400</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/xiong/weather/data/logs/regional_admission_due_check.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/xiong/weather/data/logs/regional_admission_due_check.err.log</string>
+</dict>
+</plist>
