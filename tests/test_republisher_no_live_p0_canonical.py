@@ -53,7 +53,12 @@ def _fixture() -> sqlite3.Connection:
         "('truth','republisher_oos_artifact','republisher_cross_selection',"
         "'republisher_no_live_activation') "
         "AND (fact_type!='republisher_no_live_activation' "
-        "OR json_extract(fact_json,'$.activation_generation')=1)"
+        "OR json_extract(fact_json,'$.activation_generation')=1) "
+        # As of AS_OF, and only as of it: seeded from the live SSOT, and a
+        # truth revision production committed later makes the selection this
+        # copies read stale.  Same repair as the sibling suites.
+        "AND ingested_at_utc <= ?",
+        (AS_OF,),
     ).fetchall()
     target.executemany("INSERT INTO canonical_ssot_fact VALUES(?,?,?,?,?,?,?)", rows)
     target.commit()

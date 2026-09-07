@@ -38,10 +38,20 @@ def _fixture(*, v9: bool = True) -> sqlite3.Connection:
     target.execute(V9_TABLE_DDL if v9 else V8_TABLE_DDL)
     for ddl in V9_TRIGGER_DDL if v9 else V8_TRIGGER_DDL:
         target.execute(ddl)
+    # As of AS_OF, and only as of it.  This fixture is seeded from the live
+    # SSOT, so every truth revision production has committed since then used
+    # to arrive here too -- and the builder refuses a selection whose truth
+    # reference is not the latest, which is exactly what a later revision
+    # makes it.  Twenty tests in this file were failing on
+    # republisher_cross_selection_truth_revision_stale for that reason
+    # alone: the world the fixture claims to reconstruct is the world at
+    # AS_OF, and a fact ingested after it was not in that world.
     rows = source.execute(
         "SELECT fact_id,fact_type,scope_key,content_sha256,fact_json,lineage_json,ingested_at_utc "
         "FROM canonical_ssot_fact WHERE fact_type IN "
-        "('truth','republisher_oos_artifact','republisher_cross_selection')"
+        "('truth','republisher_oos_artifact','republisher_cross_selection') "
+        "AND ingested_at_utc <= ?",
+        (AS_OF,),
     ).fetchall()
     assert sum(str(row[1]) == "republisher_cross_selection" for row in rows) == 2
     target.executemany("INSERT INTO canonical_ssot_fact VALUES(?,?,?,?,?,?,?)", rows)
