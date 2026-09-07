@@ -1,0 +1,58 @@
+"""Charter 103: the leg floor is read off the mid, not the offer.
+
+User ruling 2026-09-07 ("地板改读中间价").  The floor asks what the market
+thinks a bucket is worth; the ask is that question's upper bound, so on a
+0.01/0.03 book a bucket worth two cents cleared a three-cent floor.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+from bayes_basket_target.basket_kernel import delta_v2 as K
+
+
+def test_the_two_sided_book_is_measured_on_its_mid() -> None:
+    assert K.leg_floor_reference_price(0.03, 0.01) == 0.02
+    assert K.leg_floor_reference_price(0.04, 0.01) == 0.025
+
+
+def test_the_one_sided_book_keeps_the_ask() -> None:
+    # 174 of the 850 quoted legs on 2026-09-07 had no bid at all.  Reading a
+    # missing bid as zero would bar every one of them, which is a wider rule
+    # than the one that was given.
+    assert K.leg_floor_reference_price(0.03, 0.0) == 0.03
+    assert K.leg_floor_reference_price(0.03, None) == 0.03
+
+
+def test_the_old_basis_is_still_reachable_and_is_the_old_answer() -> None:
+    assert K.leg_floor_reference_price(0.03, 0.01, basis="ask") == 0.03
+
+
+def test_the_egll_rung_that_prompted_the_ruling_is_now_refused() -> None:
+    # EGLC 2026-09-07 22C: bid 0.01, ask 0.03, belief 1.57%, floor 0.03.
+    # The ask cleared the floor exactly; the mid does not.
+    assert not K.leg_below_floor(0.03, 0.0157, 0.03, bid=0.01, basis="ask")
+    assert K.leg_below_floor(0.03, 0.0157, 0.03, bid=0.01)
+
+
+def test_a_belief_above_the_anchor_still_lowers_the_floor_it_faces() -> None:
+    # Charter 91 is unchanged and composes with 103: a 61.5% claim faces
+    # 0.03 * 0.30 / 0.615 = 0.0146, which a 0.01/0.03 book's mid clears.
+    assert not K.leg_below_floor(0.03, 0.615, 0.03, bid=0.01)
+
+
+def test_both_books_read_the_same_side() -> None:
+    import sys
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    import paper_trading_ledger as L  # noqa: PLC0415
+    from bayes_basket_target import delta_v2_runtime as R  # noqa: PLC0415
+
+    assert L.LEG_FLOOR_PRICE_BASIS == R.LEG_FLOOR_PRICE_BASIS == K.LEG_FLOOR_PRICE_BASIS
+    # Neither book measures the floor on the price it happens to be paying:
+    # the ledger's maker mode prices a leg at the resting band and
+    # production prices it at the offer.
+    ledger = (root / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
+    assert "_execution_price(row)\n                if price is None or price <" not in ledger

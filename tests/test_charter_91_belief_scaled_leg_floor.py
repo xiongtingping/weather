@@ -96,13 +96,23 @@ def test_the_ledger_reads_the_kernels_floor_and_hashes_the_rule() -> None:
         sys.path.insert(0, str(root / "scripts"))
     import paper_trading_ledger as L  # noqa: PLC0415
 
-    assert L.leg_floor_all_in_ask is K.leg_floor_all_in_ask
+    # Charter 103 moved the read point: both books ask the kernel the whole
+    # question -- floor and the side of the book it is measured on -- rather
+    # than each computing the comparison against the scaled floor itself.
+    assert L.leg_below_floor is K.leg_below_floor
     assert L.LEG_FLOOR_BELIEF_ANCHOR == K.LEG_FLOOR_BELIEF_ANCHOR
     assert L.LEG_FLOOR_RULE_VERSION == K.LEG_FLOOR_RULE_VERSION
+    assert L.LEG_FLOOR_PRICE_BASIS == K.LEG_FLOOR_PRICE_BASIS
     source = (root / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
     assert '"leg_floor_rule": LEG_FLOOR_RULE_VERSION,' in source
     assert '"leg_floor_belief_anchor": LEG_FLOOR_BELIEF_ANCHOR,' in source
+    assert '"leg_floor_price_basis": LEG_FLOOR_PRICE_BASIS,' in source
     runtime = (root / "bayes_basket_target" / "delta_v2_runtime.py").read_text(encoding="utf-8")
     # No production site compares a quote to the bare constant any more.
     assert "< MINIMUM_LEG_ALL_IN_ASK" not in runtime
     assert ">= MINIMUM_LEG_ALL_IN_ASK" not in runtime
+    # And no site in either book reaches past the shared read point to the
+    # scaled floor on its own -- that is how the two drifted onto different
+    # sides of the book in the first place.
+    assert "leg_floor_all_in_ask(" not in source
+    assert "leg_floor_all_in_ask(" not in runtime

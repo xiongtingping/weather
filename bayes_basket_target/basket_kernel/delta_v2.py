@@ -778,6 +778,57 @@ LEG_FLOOR_BELIEF_ANCHOR = float(
 )
 
 
+LEG_FLOOR_PRICE_BASIS = (
+    os.environ.get("PM_LEG_FLOOR_PRICE_BASIS", "mid").strip().lower() or "mid"
+)
+if LEG_FLOOR_PRICE_BASIS not in {"mid", "ask"}:
+    raise ValueError(f"unknown leg floor price basis: {LEG_FLOOR_PRICE_BASIS}")
+
+
+def leg_floor_reference_price(
+    all_in_ask: float | None,
+    bid: float | None,
+    *,
+    basis: str = LEG_FLOOR_PRICE_BASIS,
+) -> float | None:
+    """The price the leg floor is measured on (charter 103, user ruling
+    2026-09-07: "地板改读中间价").
+
+    The floor asks what the market thinks a bucket is worth, and the ask is
+    that question's upper bound -- so on a 0.01/0.03 book the only number
+    the floor ever saw was 0.03, and a bucket the market values at two
+    cents cleared a three-cent floor.  EGLC 2026-09-07 22C is the case:
+    ask 0.03 admitted it against a floor of exactly 0.03, and the mid it
+    was actually worth was 0.02.  The mid is the two-sided answer.
+
+    The ask keeps whatever fee the caller already put on it and the bid
+    does not carry one, because the fee is what we would pay and nobody
+    pays it on the side we are not lifting; the reference is therefore a
+    hair above the raw mid, which is the strict direction.
+
+    A one-sided book keeps the ask.  There is no mid without a bid, and
+    reading the missing bid as zero would bar every bucket nobody is
+    bidding on -- 174 of the 850 quoted legs on 2026-09-07 -- which is a
+    wider rule than the one that was given.
+    """
+
+    if all_in_ask is None:
+        return None
+    try:
+        ask = float(all_in_ask)
+    except (TypeError, ValueError):
+        return None
+    if basis == "ask":
+        return ask
+    try:
+        best_bid = float(bid) if bid is not None else 0.0
+    except (TypeError, ValueError):
+        best_bid = 0.0
+    if not math.isfinite(best_bid) or best_bid <= 0.0 or best_bid >= ask:
+        return ask
+    return (ask + best_bid) / 2.0
+
+
 def leg_floor_all_in_ask(
     minimum_all_in_ask: float,
     probability: float | None,
@@ -808,12 +859,20 @@ def leg_below_floor(
     minimum_all_in_ask: float,
     *,
     anchor: float = LEG_FLOOR_BELIEF_ANCHOR,
+    bid: float | None = None,
+    basis: str = LEG_FLOOR_PRICE_BASIS,
 ) -> bool:
-    """Whether a quoted rung sits under its belief-scaled floor."""
+    """Whether a quoted rung sits under its belief-scaled floor.
 
-    if all_in_ask is None:
+    Charter 103: measured on the mid when the book is two-sided.  ``bid``
+    left None keeps the ask, which is what a caller with no book to hand
+    can honestly say.
+    """
+
+    reference = leg_floor_reference_price(all_in_ask, bid, basis=basis)
+    if reference is None:
         return False
-    return float(all_in_ask) < leg_floor_all_in_ask(
+    return float(reference) < leg_floor_all_in_ask(
         minimum_all_in_ask, probability, anchor=anchor
     )
 

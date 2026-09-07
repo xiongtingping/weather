@@ -27,9 +27,10 @@ from .basket_kernel import delta_v2 as _kernel_delta_v2
 from .basket_kernel.delta_v2 import (
     CONSOLIDATION_TILT_FLOOR_VERSION,
     LEG_FLOOR_BELIEF_ANCHOR,
+    LEG_FLOOR_PRICE_BASIS,
     LEG_FLOOR_RULE_VERSION,
     consolidation_tilt_floor_usdc,
-    leg_floor_all_in_ask,
+    leg_below_floor,
     venue_minimum_shares_v1,
     CENTER_WINDOW_CLAIM_BANDS,
     SIZING_CLAIM_BANDS,
@@ -814,6 +815,30 @@ EXECUTION_FAMILY = EXECUTION_MODE
 MINIMUM_LEG_ALL_IN_ASK = float(
     os.environ.get("PM_MINIMUM_LEG_ALL_IN_ASK", "0.03") or 0.03
 )
+
+
+def _leg_below_floor(
+    row: Any, probability: float | None, *, fee_rate: float = 0.0
+) -> bool:
+    """Charter 91 + 103: is this rung under its belief-scaled floor?
+
+    Measured on the rung's own book -- the mid where it is two-sided, the
+    ask where nobody is bidding -- and never on whatever price the call
+    site happens to be pricing the leg at.  That distinction is the whole
+    point: the ledger's maker mode prices a leg at the resting band and
+    production prices it at the offer, and if the floor followed the call
+    site the two books would be screening different things.  One read
+    point, one answer per rung.
+    """
+
+    if not getattr(row, "ask_available", False):
+        return False
+    return leg_below_floor(
+        float(row.ask_price) * (1.0 + float(fee_rate)),
+        probability,
+        MINIMUM_LEG_ALL_IN_ASK,
+        bid=float(getattr(row, "bid_price", 0.0) or 0.0),
+    )
 # The shape a basket is asked to take inside itself (user ruling,
 # 2026-08-17): a base holding on the centre rung, tilted toward legs whose
 # own edge is positive, with the far rungs held deliberately small.
@@ -1571,12 +1596,11 @@ def _support_windows(
         if not row.ask_available:
             return True
         # Charter 91: the floor falls with our belief in the rung.
-        return (
-            float(row.ask_price) * (1.0 + float(fee_rate))
-            >= leg_floor_all_in_ask(
-                MINIMUM_LEG_ALL_IN_ASK,
-                probabilities.get(row.bucket, float(row.probability)),
-            )
+        # Charter 103: and it is read off the mid, not the ask.
+        return not _leg_below_floor(
+            row,
+            probabilities.get(row.bucket, float(row.probability)),
+            fee_rate=float(fee_rate),
         )
 
     leg_floor_excluded = sorted(
@@ -1659,8 +1683,10 @@ def _support_windows(
         dead = [
             bucket for bucket in missing
             if quote_by_bucket.get(bucket) is not None
-            and float(quote_by_bucket[bucket]) < leg_floor_all_in_ask(
-                MINIMUM_LEG_ALL_IN_ASK, probabilities.get(bucket)
+            and _leg_below_floor(
+                by_bucket[bucket],
+                probabilities.get(bucket),
+                fee_rate=float(fee_rate),
             )
         ]
         buyable = [bucket for bucket in missing if bucket not in dead]
@@ -2233,8 +2259,10 @@ def _support_windows(
             # "keep what we hold" off the menu for a scope that holds one.
             leg_floor_hit = False
             if priced and any(
-                quote < leg_floor_all_in_ask(
-                    MINIMUM_LEG_ALL_IN_ASK, probabilities.get(bucket)
+                _leg_below_floor(
+                    by_bucket[bucket],
+                    probabilities.get(bucket),
+                    fee_rate=float(fee_rate),
                 )
                 for bucket, quote in zip(window, quotes)
             ):
@@ -2444,8 +2472,10 @@ def _support_windows(
         # window earned its place -- an inherited support resting on a penny
         # leg is the same lottery as a freshly enumerated one.
         if priced and any(
-            quote < leg_floor_all_in_ask(
-                MINIMUM_LEG_ALL_IN_ASK, probabilities.get(bucket)
+            _leg_below_floor(
+                by_bucket[bucket],
+                probabilities.get(bucket),
+                fee_rate=float(fee_rate),
             )
             for bucket, quote in zip(incumbent, quotes)
         ):
@@ -2822,6 +2852,7 @@ def _support_windows(
         # Charter 91: the floor a rung actually faces is this constant scaled
         # by min(1, anchor / belief); the anchor and rule ride here.
         "leg_floor_rule": LEG_FLOOR_RULE_VERSION,
+        "leg_floor_price_basis": LEG_FLOOR_PRICE_BASIS,
         "leg_floor_belief_anchor": LEG_FLOOR_BELIEF_ANCHOR,
         "center_window_claim_bands": [
             [bound, factor] for bound, factor in CENTER_WINDOW_CLAIM_BANDS
@@ -3761,8 +3792,9 @@ def _target_candidates(
     market_dead = frozenset(
         bucket for bucket in ordered
         if float(current_shares[bucket]) + float(pending_shares[bucket]) <= EPS
-        and 0.0 < float(lane_prices.get(bucket, 0.0) or 0.0) < leg_floor_all_in_ask(
-            MINIMUM_LEG_ALL_IN_ASK, probabilities_by_bucket.get(bucket)
+        and 0.0 < float(lane_prices.get(bucket, 0.0) or 0.0)
+        and _leg_below_floor(
+            by_bucket[bucket], probabilities_by_bucket.get(bucket)
         )
     )
     if CHARTER_84_LADDER_BALANCE == "on" and not chain_empty:
