@@ -46,7 +46,10 @@ DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 # when the intent is written.  ``ask`` is not a maker order at all -- it is
 # the crossing trade, carried as the control so every comparison is between
 # two orders written at the same instant against the same book.
-PRICE_RULES = ("bid", "bid+1t", "bid+2t", "mid", "ask", "bid+1t@chase")
+PRICE_RULES = (
+    "bid", "bid+1t", "bid+2t", "mid", "ask",
+    "bid+1t@chase", "bid+1t@then_take",
+)
 # The arm charter 108 asked for.  Every rule above rests at the price it was
 # written at; charter 94(六) does not -- production cancels a rung that has
 # fallen out of the bid-anchored ladder and re-mints it at the current bid,
@@ -59,8 +62,22 @@ PRICE_RULES = ("bid", "bid+1t", "bid+2t", "mid", "ask", "bid+1t@chase")
 # test, same settlement, and a limit that re-derives from the current bid on
 # the same cadence production re-mints at.
 CHASING_RULES = frozenset({"bid+1t@chase"})
-CHASE_BASE_RULE = {"bid+1t@chase": "bid+1t"}
 CHASE_REPRICE_MINUTES = 5.0
+# The arm the paired analysis needed and could not fake.  Measured on the
+# fixed rules, posting strictly dominates crossing on the orders it gets --
+# same bucket, same day, same outcome, 1.86 cents per share cheaper -- and
+# the orders it misses turned out to be no better than the ones it got
+# (24.0% hit against 23.3%).  That says "post, and cross if it does not
+# fill" beats crossing outright, but only if crossing LATER costs no more
+# than crossing now, and the taker's own average fill price moves from
+# 0.238 beyond twelve hours to 0.315 inside the last one.  Nothing measured
+# that, so this rule does: it rests at bid+1t for its horizon and, if the
+# book never came to it, pays whatever the ask is when the horizon ends.
+TAKE_AFTER_RULES = frozenset({"bid+1t@then_take"})
+BASE_RULE = {
+    "bid+1t@chase": "bid+1t",
+    "bid+1t@then_take": "bid+1t",
+}
 # How long the order rests.  Measured on stored books the spread saved grows
 # with the horizon and so does the adverse selection, and the two cross
 # somewhere in here; a live probe should not assume where.
@@ -110,6 +127,11 @@ CREATE TABLE IF NOT EXISTS maker_shadow_order (
   -- chasing one re-derives its limit all day, so settling it at the price
   -- it was WRITTEN at would score a trade nobody made.
   fill_limit_price REAL,
+  -- ``maker`` when the book came to the resting price, ``crossed`` when the
+  -- order gave up and paid the ask.  Inferring it from whether
+  -- ``fill_limit_price`` is set would work today and stop working the next
+  -- time a rule sets that column for its own reasons.
+  fill_kind TEXT,
   content_sha256 TEXT NOT NULL,
   UNIQUE(station_id, event_date, bucket, price_rule,
          horizon_minutes, placed_at_utc)
@@ -157,6 +179,10 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         str(row[1])
         for row in conn.execute("PRAGMA table_info(maker_shadow_order)")
     }
+    if "fill_kind" not in columns:
+        conn.execute(
+            "ALTER TABLE maker_shadow_order ADD COLUMN fill_kind TEXT"
+        )
     if "fill_limit_price" not in columns:
         # NULL on every row written before the chasing arm existed, and on
         # every fixed-limit row after it: those fill at the price they were
@@ -243,7 +269,7 @@ def _model_probabilities(
 
 
 def _limit_price(rule: str, quote: dict[str, Any]) -> float | None:
-    rule = CHASE_BASE_RULE.get(rule, rule)
+    rule = BASE_RULE.get(rule, rule)
     bid, ask, tick = quote["bid"], quote["ask"], quote["tick"]
     if ask <= 0.0 or ask >= 1.0:
         return None
@@ -468,14 +494,37 @@ def resolve(conn: sqlite3.Connection) -> dict[str, int]:
                     fill_limit = live_limit if chasing else None
                     break
             if hit_at is not None:
-                filled.append((hit_at, observed_ask, fill_limit, order_id))
-            elif str(expires) < now:
+                filled.append((
+                    hit_at, observed_ask, fill_limit, "maker", order_id,
+                ))
+                continue
+            if str(rule) in TAKE_AFTER_RULES:
+                # The horizon ran out and the book never came.  This rule
+                # does not walk away -- it pays the ask at that moment, and
+                # what it pays is the number the whole arm exists to
+                # measure.  Still OPEN while no book has arrived after the
+                # expiry: the crossing price is a fact about a book, and
+                # waiting for one is not the same as guessing it.
+                crossing = next(
+                    (
+                        snapshot[str(bucket)]["ask"]
+                        for observed, snapshot in book_path
+                        if observed >= expires and str(bucket) in snapshot
+                    ),
+                    None,
+                )
+                if crossing is not None:
+                    filled.append((
+                        str(expires), crossing, crossing, "crossed", order_id,
+                    ))
+                continue
+            if str(expires) < now:
                 expired.append((order_id,))
     if filled:
         conn.executemany(
             "UPDATE maker_shadow_order SET state='FILLED',"
-            " filled_at_utc=?, fill_observed_ask=?, fill_limit_price=?"
-            " WHERE order_id=?",
+            " filled_at_utc=?, fill_observed_ask=?, fill_limit_price=?,"
+            " fill_kind=? WHERE order_id=?",
             filled,
         )
         counts["filled"] = len(filled)

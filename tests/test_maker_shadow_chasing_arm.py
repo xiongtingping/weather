@@ -191,3 +191,79 @@ def test_the_reprice_cadence_is_the_one_production_re_mints_at():
         RESTING_REPRICE_DWELL_SECONDS,
     )
     assert probe.CHASE_REPRICE_MINUTES * 60 == RESTING_REPRICE_DWELL_SECONDS
+
+
+def test_the_then_take_arm_pays_the_ask_when_the_book_never_came(tmp_path):
+    """The arm the paired analysis needed and could not fake.
+
+    On the fixed rules posting strictly dominates crossing for the orders it
+    GETS -- same bucket, same day, same outcome, 1.86 cents per share
+    cheaper -- and the orders it misses are no better than the ones it gets
+    (24.0% hit against 23.3%).  That says "post, and cross if it does not
+    fill" beats crossing outright, but only if crossing LATER costs no more
+    than crossing now, and the taker's own fill price moves from 0.238
+    beyond twelve hours to 0.315 inside the last one.  Nothing measured the
+    later cross.  This rule does.
+    """
+
+    conn = _db(tmp_path)
+    placed, expires = "2026-09-01T00:00:00Z", "2026-09-01T00:30:00Z"
+    _order(conn, "bid+1t", 0.31, placed=placed, expires=expires)
+    _order(conn, "bid+1t@then_take", 0.31, placed=placed, expires=expires)
+    # The market walks away upward: neither resting order is ever reached.
+    _book(conn, "2026-09-01T00:10:00Z", bid=0.40, ask=0.50)
+    _book(conn, "2026-09-01T00:20:00Z", bid=0.55, ask=0.65)
+    # ...and this is the book at the horizon, where the arm pays up.
+    _book(conn, "2026-09-01T00:31:00Z", bid=0.60, ask=0.70)
+    conn.commit()
+    probe.resolve(conn)
+    rows = {
+        str(rule): row for rule, *row in conn.execute(
+            "SELECT price_rule, state, fill_limit_price, fill_kind"
+            " FROM maker_shadow_order"
+        )
+    }
+    assert rows["bid+1t"][0] == "EXPIRED", "the plain rule walks away"
+    took = rows["bid+1t@then_take"]
+    assert took[0] == "FILLED"
+    assert took[1] == pytest.approx(0.70), "paid the ask at the horizon"
+    assert took[2] == "crossed"
+    conn.close()
+
+
+def test_the_then_take_arm_records_a_maker_fill_as_a_maker_fill(tmp_path):
+    """When the book does come to it, it is an ordinary resting fill and
+    has to be counted as one -- otherwise the arm reports every order as a
+    cross and measures nothing."""
+
+    conn = _db(tmp_path)
+    placed, expires = "2026-09-01T00:00:00Z", "2026-09-01T00:30:00Z"
+    _order(conn, "bid+1t@then_take", 0.31, placed=placed, expires=expires)
+    _book(conn, "2026-09-01T00:10:00Z", bid=0.25, ask=0.30)
+    _book(conn, "2026-09-01T00:31:00Z", bid=0.10, ask=0.15)
+    conn.commit()
+    probe.resolve(conn)
+    row = conn.execute(
+        "SELECT state, fill_observed_ask, fill_limit_price, fill_kind"
+        " FROM maker_shadow_order"
+    ).fetchone()
+    assert row[0] == "FILLED"
+    assert row[1] == pytest.approx(0.30)
+    assert row[2] is None, "filled at the price it was written at"
+    assert row[3] == "maker"
+    conn.close()
+
+
+def test_the_then_take_arm_waits_for_a_book_rather_than_guessing_a_price():
+    """The crossing price is a fact about a book.  With no book after the
+    horizon there is no price, and inventing one -- the last seen ask, say
+    -- would be backtesting, which is the one thing this probe exists not
+    to do."""
+
+    source = (ROOT / "scripts" / "maker_shadow_probe.py").read_text(
+        encoding="utf-8"
+    )
+    assert "if observed >= expires" in source
+    assert "if crossing is not None:" in source
+    assert "bid+1t@then_take" in probe.PRICE_RULES
+    assert probe.BASE_RULE["bid+1t@then_take"] == "bid+1t"
