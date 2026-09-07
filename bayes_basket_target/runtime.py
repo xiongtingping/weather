@@ -880,12 +880,24 @@ def _compile_target_plan(
         regime_audit: Mapping[str, Any] | None = None,
         remaining_budget_before: float,
         extra_plan: Mapping[str, Any] | None = None,
+        window_gate_counts: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         delta_audit = {
             "schema": "delta_basket_score_authorization_v2",
             "authorized": False,
             "blockers": list(blockers),
         }
+        # Which gate emptied the window list, when the compile died there.
+        # This is what window_gate_counts_v1 was written for on 2026-09-05
+        # ("a blocked compile recorded only the error's name"), and it had
+        # never reached a stored row: the solver attaches the funnel to its
+        # exception, and the only reader was the blocked-scope decision
+        # path, which these holds do not take -- measured 2026-09-07, all
+        # 253 rows carrying the key had it null, and a support_empty scope
+        # wrote no decision row at all. Three of eight compiles in the
+        # 03:46Z batch blocked this way with nothing recorded about why.
+        if window_gate_counts is not None:
+            delta_audit["window_gate_counts"] = dict(window_gate_counts)
         return {
             "schema": "bayes_basket_target_plan_v1",
             "status": "blocked",
@@ -1257,6 +1269,7 @@ def _compile_target_plan(
             blockers=[str(exc)],
             remaining_budget_before=remaining_budget_before,
             station_policy=resolved.to_dict(),
+            window_gate_counts=getattr(exc, "window_gate_counts", None),
             extra_plan={
                 "hold": {
                     "reason": str(exc),

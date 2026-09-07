@@ -82,3 +82,21 @@ def test_the_plan_receipt_carries_the_floor_it_screened_with() -> None:
     assert '"belief_anchor": LEG_FLOOR_BELIEF_ANCHOR,' in persisted
     assert '"refused_window_count"' in persisted
     assert '"window_gate_counts": window_gate_counts_v1(' in persisted
+
+
+def test_a_support_empty_hold_records_which_gate_emptied_the_list() -> None:
+    """The funnel reaches the stored plan on the path that needs it most.
+
+    ``window_gate_counts_v1`` was added 2026-09-05 so a blocked compile
+    would record more than the error's name.  Measured 2026-09-07 it never
+    had: all 253 rows carrying the key had it null, a support_empty scope
+    wrote no decision row at all, and three of the eight compiles in the
+    03:46Z batch blocked this way with nothing recorded about why.
+    """
+
+    root = Path(__file__).resolve().parents[1]
+    runtime = (root / "bayes_basket_target" / "runtime.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'window_gate_counts=getattr(exc, "window_gate_counts", None),' in runtime
+    assert 'delta_audit["window_gate_counts"] = dict(window_gate_counts)' in runtime
