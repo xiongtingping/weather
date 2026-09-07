@@ -51,7 +51,10 @@ from .atomic_ledger import (
     reset_writer_lock_profile,
     writer_lock_profile,
 )
-from .band_reliability_store import load_band_table
+from .band_reliability_store import (
+    load_band_table,
+    load_band_table_with_axis,
+)
 from .center_width_store import (
     load_center_width,
     load_center_width_cells,
@@ -11617,7 +11620,7 @@ class TargetProductionWorker:
                     # correction layers have to reach this call -- wiring them
                     # into the single-event ingress path only left the
                     # resident's own P1 uncorrected.
-                    band_table=load_band_table(self.commit_conn, stage="P1"),
+                    band_table=load_band_table_with_axis(self.commit_conn, stage="P1"),
                     center_width=load_center_width(
                         self.commit_conn, stage="P1"
                     ),
@@ -12217,17 +12220,19 @@ class TargetProductionWorker:
                 "reason": "resident_taf_artifact_or_inbox_missing",
                 "writes_target_ssot": False,
             }
-        artifact_raw = load_bounded_json(self.taf_artifact_path)
-        inbox = load_bounded_json(self.taf_inbox_path)
+        with self._span("p0m_inputs_load"):
+            artifact_raw = load_bounded_json(self.taf_artifact_path)
+            inbox = load_bounded_json(self.taf_inbox_path)
         if not isinstance(artifact_raw, Mapping) or not isinstance(inbox, Mapping):
             raise ContractError("resident_taf_input_invalid")
         if inbox.get("schema") != "bayes_basket_target_taf_revision_inbox_v1":
             raise ContractError("resident_taf_inbox_schema_invalid")
         try:
-            taf_fact_ingress = ingest_forward_taf_inbox(
-                self.commit_conn,
-                inbox,
-            )
+            with self._span("p0m_taf_fact_ingress"):
+                taf_fact_ingress = ingest_forward_taf_inbox(
+                    self.commit_conn,
+                    inbox,
+                )
             # A genuinely new issuance should reach the basket now, not at
             # the next scheduled capture.  Clearing the capture throttle for
             # the named scopes lets the next production pass rebuild their
@@ -12287,15 +12292,16 @@ class TargetProductionWorker:
                             self.commit_conn,
                             savepoint="metar_physical_projection",
                         ):
-                            projection_receipt = {
-                                **projection_receipt,
-                                "wrote_count": (
-                                    apply_metar_physical_member_runs(
-                                        self.commit_conn,
-                                        pending_projection,
-                                    )
-                                ),
-                            }
+                            with self._span("metar_proj_apply"):
+                                projection_receipt = {
+                                    **projection_receipt,
+                                    "wrote_count": (
+                                        apply_metar_physical_member_runs(
+                                            self.commit_conn,
+                                            pending_projection,
+                                        )
+                                    ),
+                                }
             except Exception as exc:  # noqa: BLE001 - stage isolation
                 projection_receipt = {
                     "state": "failed",
@@ -12446,6 +12452,7 @@ class TargetProductionWorker:
         # Descending date puts the forward days first and the settled backlog
         # last, which is also where it belongs: those are skipped above
         # before anything is read.
+        _p0m_loop_started = time.perf_counter()
         for (station, day), captures in sorted(
             captures_by_scope.items(),
             key=lambda item: (
@@ -12917,7 +12924,7 @@ class TargetProductionWorker:
                                     root.fresh_until_utc,
                                 ),
                                 bridge_sha256=root.bridge_sha256,
-                                band_table=load_band_table(
+                                band_table=load_band_table_with_axis(
                                     self.commit_conn, stage="P0-M"
                                 ),
                                 center_width=load_center_width(
@@ -13291,7 +13298,7 @@ class TargetProductionWorker:
                         # cycle, so the line had never been reached to raise
                         # it -- which is also why no P0-M envelope has ever
                         # carried a band receipt.
-                        band_table=load_band_table(
+                        band_table=load_band_table_with_axis(
                             self.commit_conn, stage="P0-M"
                         ),
                         center_width=load_center_width(
@@ -13350,6 +13357,11 @@ class TargetProductionWorker:
                     "reason": f"{type(exc).__name__}:{exc}",
                 })
             assert_process_memory_budget()
+        self._add_span(
+            "p0m_scope_loop",
+            (time.perf_counter() - _p0m_loop_started) * 1000.0,
+            label=f"{len(captures_by_scope)} scopes",
+        )
         # Where the cheap verdict and the real receipt disagreed, and on what.
         # Reported rather than acted on: this is the evidence the switch is
         # waiting for.
@@ -13419,6 +13431,23 @@ class TargetProductionWorker:
             "ignored_no_artifact_scope_count":
                 ignored_no_artifact_scope_count,
             "skipped_no_tx_revision_count": skipped_no_tx_revision_count,
+            # The size and reach of the set this stage walks, because the
+            # stage's cost is a function of them and nothing reported either.
+            # This lane's cost went 168 scopes (2026-08-22) to 389
+            # (2026-09-01) to 498 (2026-09-07) while the inbox filled to its
+            # 2048-capture ceiling and came to span thirteen event days --
+            # and every profile in between reported only the seconds, so the
+            # growth read as a mystery regression instead of as a window
+            # that had stopped being forward-only.  Measured the same day:
+            # 447 of the 498 are closed days that skip before anything is
+            # read, so the count that matters is not the total.
+            "scope_count": len(captures_by_scope),
+            "inbox_capture_count": len(raw_captures),
+            "inbox_event_date_span": sorted({
+                str(day) for _station, day in captures_by_scope
+            })[:1] + sorted({
+                str(day) for _station, day in captures_by_scope
+            })[-1:],
             # Counted, not inferred.  A replay budget that silently drops
             # scopes reads exactly like a replay that never fired.
             "replays_this_cycle": replays_this_cycle,

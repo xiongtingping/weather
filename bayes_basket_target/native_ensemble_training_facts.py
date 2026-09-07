@@ -145,6 +145,29 @@ def ingest_forward_taf_inbox(
     rows: list[dict[str, Any]] = []
     rejected_timestamp_captures: list[dict[str, str]] = []
     seen: set[tuple[str, str, str]] = set()
+    # Asked once for the whole inbox, not once per capture.
+    #
+    # Three of the four lookups below do not vary with the capture at all --
+    # the registry's row count, whether the market registry table exists --
+    # and the fourth varies only by (station, event_date), of which 2048
+    # captures hold about 500 distinct pairs and about 45 distinct stations.
+    # Nothing in this loop writes, so none of the four answers can change
+    # while it runs.
+    #
+    # It matters because the inbox is a rolling window that has grown to its
+    # 2048 ceiling and now spans thirteen days: the per-capture form made
+    # this ingest's cost scale with the window rather than with the work,
+    # and the DISTINCT scan alone measured 5.4ms warm -- 11.1s a cycle,
+    # every cycle, for an answer it had already computed.
+    registry_station_count = int(conn.execute(
+        "SELECT COUNT(*) FROM calibration_station_registry"
+    ).fetchone()[0])
+    market_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' "
+        "AND name='basket_target_market_registry'"
+    ).fetchone()
+    registered_stations: dict[str, bool] = {}
+    scope_timezones: dict[tuple[str, str], list[Any]] = {}
     for capture in captures:
         if not isinstance(capture, Mapping):
             raise ContractError("forward_taf_capture_invalid")
@@ -191,29 +214,28 @@ def ingest_forward_taf_inbox(
         ):
             raise ContractError("forward_taf_capture_scope_invalid")
         seen.add(natural_key)
-        station_row = conn.execute(
-            "SELECT 1 FROM calibration_station_registry "
-            "WHERE station_id=?",
-            (station,),
-        ).fetchone()
-        station_count = int(conn.execute(
-            "SELECT COUNT(*) FROM calibration_station_registry"
-        ).fetchone()[0])
-        market_table = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' "
-            "AND name='basket_target_market_registry'"
-        ).fetchone()
-        timezone_rows = (
-            conn.execute(
-                "SELECT DISTINCT settlement_timezone "
-                "FROM basket_target_market_registry "
-                "WHERE station_id=? AND event_date=?",
-                (station, event_date),
-            ).fetchall()
-            if market_table is not None
-            else []
-        )
-        if station_count and station_row is None:
+        if station not in registered_stations:
+            registered_stations[station] = conn.execute(
+                "SELECT 1 FROM calibration_station_registry "
+                "WHERE station_id=?",
+                (station,),
+            ).fetchone() is not None
+        station_registered = registered_stations[station]
+        scope_key = (station, event_date)
+        if scope_key not in scope_timezones:
+            scope_timezones[scope_key] = (
+                conn.execute(
+                    "SELECT DISTINCT settlement_timezone "
+                    "FROM basket_target_market_registry "
+                    "WHERE station_id=? AND event_date=?",
+                    (station, event_date),
+                ).fetchall()
+                if market_table is not None
+                else []
+            )
+        timezone_rows = scope_timezones[scope_key]
+        station_count = registry_station_count
+        if station_count and not station_registered:
             raise ContractError("forward_taf_station_unregistered")
         if timezone_rows and (
             len(timezone_rows) != 1
