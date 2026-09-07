@@ -473,15 +473,6 @@ MAX_P0M_REPLAYS_PER_CYCLE = 4
 # read that answers it, so a day about to run out refreshes once, and a day
 # with room does not pay for a read it does not need.
 QUOTE_EVIDENCE_REFRESH_SECONDS = 12.0
-# How long a measured refresh cost stands before one attempt is allowed
-# through to re-measure it.
-#
-# The cost gate below can only lock a path out on what that path last cost,
-# so a path that got cheaper -- the fleet shrank, the scan got an index, the
-# page cache warmed -- would stay locked out forever on a number nobody
-# revisits.  Same shape as the maintenance lane's starvation arm: the bound
-# is what keeps a bound from becoming permanent.
-QUOTE_REFRESH_COST_REMEASURE_SEC = 1800.0
 # How many times one event day may restate its books inside one cycle.
 #
 # The bound exists because a day with nothing to restate used to ask on every
