@@ -240,3 +240,32 @@ def test_no_claims_layer_query_reads_the_post_execution_columns():
     # observation about it -- not a precondition for counting it.
     dashboard = sources["calibration_dashboard"]
     assert "intended_legs_json" in dashboard
+
+
+def test_the_gates_own_numbers_come_from_the_lane_that_gated():
+    """Third instance of one disease, found by chasing the other two.
+
+    The ledger runs its own enumeration and pricing and then, since
+    2026-09-03, hands the seat to production's judge.  When that judge
+    decides, this lane's claim and price describe a decision nobody made:
+    it prices the same window off its own snapshot and without the charter
+    81 lift the gate divides by.
+
+    EFHK 2026-08-16 is the whole argument.  This lane recorded claim 0.6982
+    against price 0.7000 -- a negative edge, which the D-rule audit reads as
+    "the entry gate cannot have run".  Production's own row for the same
+    three buckets, now recorded beside it, reads a LIFTED claim of 0.7540
+    against a price of 0.7500: agreement 0.9946, admitted, correctly.
+    Neither number was wrong.  The pairing was.
+    """
+
+    source = (SCRIPTS / "paper_trading_ledger.py").read_text(encoding="utf-8")
+    site = source[source.index("intended_win_probability = float("):][:2400]
+    # The judged row is preferred, matched by its own bucket tuple.
+    assert 'production_verdict.get("enumerated_windows")' in site
+    assert 'intended_win_probability = float(' in site
+    assert '_row["win_probability"]' in site
+    assert '_row["all_in_price"]' in site
+    # And it is matched, not taken positionally: the judge's shortlist is
+    # ordered by its own ranking, not by anything this lane knows.
+    assert 'tuple(\n                                str(b) for b in (_row.get("buckets") or ())' in site

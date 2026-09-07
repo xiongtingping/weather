@@ -9545,8 +9545,37 @@ def backfill(
                     # crossing ask, so ``all_in_price`` -- not the maker
                     # posting price -- is the denominator lambda(a) was
                     # looked up at, and the one it has to be fitted at.
+                    # The two numbers the gate judged -- from the lane that
+                    # judged.  ``seat`` is this lane's row, and when the
+                    # production judge is in force this lane decided
+                    # nothing: it prices the same window off its own
+                    # snapshot and, since charter 81, without the lift the
+                    # gate divides by.  EFHK 2026-08-16 is the whole
+                    # argument: this lane read claim 0.6982 against price
+                    # 0.7000 and the D-rule audit called the seat an
+                    # impossible one, while production's own row for the
+                    # same three buckets read a lifted claim of 0.7540
+                    # against 0.7500 and was admitted correctly.  Neither
+                    # number was wrong; the pairing was.
                     intended_win_probability = float(seat["win_probability"])
                     intended_all_in_cost = float(seat["all_in_price"])
+                    if production_verdict is not None:
+                        _judged_rows = (
+                            production_verdict.get("enumerated_windows") or ()
+                        )
+                        _wanted = tuple(str(b) for b in seat["buckets"])
+                        for _row in _judged_rows:
+                            if tuple(
+                                str(b) for b in (_row.get("buckets") or ())
+                            ) != _wanted:
+                                continue
+                            if _row.get("all_in_price") is None:
+                                continue
+                            intended_win_probability = float(
+                                _row["win_probability"]
+                            )
+                            intended_all_in_cost = float(_row["all_in_price"])
+                            break
                     # Which enumerated window this stage actually took, kept
                     # here rather than read back off ``seat`` at the flush:
                     # the resting lane narrows ``seat["buckets"]`` to what
