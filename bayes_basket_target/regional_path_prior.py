@@ -110,6 +110,18 @@ POOLED_FIT_SYSTEM_ID = "POOLED_CROSS_SYSTEM"
 #:   NCEP_HRRR_POINT +0.045 over 90 station-days, CI -0.050 to +0.141.
 #:                   Straddles zero, and its own daily maximum is 1.461C
 #:                   against the incumbent's 0.798C.  Refused.
+#:
+#: Re-measured 2026-09-07 with the as-of leak closed (a run issued after the
+#: decision instant was passing the one-sided age test, and 74.1% of NBM and
+#: 78.0% of HRRR serving decisions were reading one; see the guard below).
+#: The MSM was clean at 0.0% and its reading is unchanged to the digit.  The
+#: other two move, and both refusals get stronger:
+#:
+#:   NCEP_HRRR_POINT +0.0536 over 97 station-days, CI +0.0041 to +0.1031,
+#:                   P(worse) 0.978 -- significantly worse, not merely
+#:                   indistinguishable.  The leak had been flattering it.
+#:   NCEP_NBM_POINT  -0.0009 over 117 station-days, CI -0.041 to +0.039.
+#:                   Still zero, on a tighter interval.
 #:   DWD_ICON_EU     no comparable prefix yet -- the DWD archive keeps no
 #:                   history, so this lane only accumulates forward.
 #:                   Unmeasured is not admitted.
