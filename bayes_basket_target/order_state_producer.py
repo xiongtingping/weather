@@ -130,11 +130,73 @@ def _registry_scopes(
     return result
 
 
+# The scope-restricted form of each quiescence probe.  The snapshot this
+# guard protects is produced per (station, event day) -- both are arguments
+# to every builder below -- but the probes were fleet-wide, so one resting
+# order anywhere refused the zero-pending snapshot everywhere.
+#
+# It could not bite while the execution family was taker: an intent was
+# ``submitted`` for the moment between the POST and its fill, and nothing
+# rested.  Charter 94 (2026-09-06) made the resting maker ladder the only
+# order family production forms, and ``submitted`` became "on the book, for
+# as long as the bid holds".  Measured that evening: 10 resting orders for
+# 2026-09-07 and 2026-09-08 (13.07 USDC) refused the market ingress for ten
+# 2026-09-06 scopes that had no order of their own -- CYYZ, KATL, KAUS,
+# KBKF, KDAL, KHOU, KLAX, KLGA, KMIA, KORD -- so quotes stopped refreshing
+# and every scope died on production_quote_expired.  The stalest book was
+# 281 minutes old, and the charter-94 lifecycle that is supposed to follow
+# the bid was reading it.
+#
+# The claim is unchanged: a scope may not be called zero-pending while it
+# holds a pending order.  What changes is that the question is asked about
+# the scope being produced.
+_SCOPE_PREDICATES = {
+    "basket_target_execution_cycles": (
+        "SELECT 1 FROM basket_target_execution_cycles c"
+        " WHERE c.state IN ({states})"
+        " AND (?='' OR c.station_id=?) AND (?='' OR c.event_date=?) LIMIT 1"
+    ),
+    # LEFT JOIN, and a row whose scope cannot be established blocks every
+    # scope.  An inner join would have dropped it instead -- silently turning
+    # "I cannot tell whose this is" into "it is nobody's", which is the one
+    # answer this guard must never give.  Caught by
+    # test_no_live_order_state_rejects_nonterminal_target_reconciliation.
+    "basket_target_order_intents": (
+        "SELECT 1 FROM basket_target_order_intents i"
+        " LEFT JOIN basket_target_execution_cycles c ON c.cycle_id=i.cycle_id"
+        " WHERE i.state IN ({states})"
+        " AND (?='' OR c.station_id IS NULL OR c.station_id=?)"
+        " AND (?='' OR c.event_date IS NULL OR c.event_date=?) LIMIT 1"
+    ),
+    "basket_target_order_reconciliations": (
+        "SELECT 1 FROM basket_target_order_reconciliations r"
+        " LEFT JOIN basket_target_order_intents i ON i.order_intent_id=r.order_intent_id"
+        " LEFT JOIN basket_target_execution_cycles c ON c.cycle_id=i.cycle_id"
+        " WHERE r.state IN ({states})"
+        " AND (?='' OR c.station_id IS NULL OR c.station_id=?)"
+        " AND (?='' OR c.event_date IS NULL OR c.event_date=?) LIMIT 1"
+    ),
+    "auto_trade_decisions": (
+        "SELECT 1 FROM auto_trade_decisions d"
+        " WHERE d.decided_state IN ({states})"
+        " AND (?='' OR d.station_id=?) AND (?='' OR d.event_date=?) LIMIT 1"
+    ),
+}
+
+
 def _assert_target_activation_and_quiescence(
     conn: sqlite3.Connection,
     activation: Mapping[str, Any],
+    *,
+    station_id: str = "",
+    event_date: str = "",
 ) -> None:
-    """Reject stale activation or any target-owned pending cycle/order."""
+    """Reject stale activation, or a pending cycle/order in THIS scope.
+
+    An empty ``station_id``/``event_date`` keeps the fleet-wide question,
+    which is what a caller producing a fleet-wide snapshot is entitled to
+    ask.
+    """
 
     assert_target_database_owner(conn)
 
@@ -185,12 +247,17 @@ def _assert_target_activation_and_quiescence(
             "target_auto_trade_decisions_not_quiescent",
         ),
     )
-    for table, state_column, active_states, reason in state_checks:
+    scope_station = str(station_id or "")
+    scope_day = str(event_date or "")
+    for table, _state_column, active_states, reason in state_checks:
         try:
             placeholders = ",".join("?" for _ in active_states)
             found = conn.execute(
-                f"SELECT 1 FROM {table} WHERE {state_column} IN ({placeholders}) LIMIT 1",
-                tuple(sorted(active_states)),
+                _SCOPE_PREDICATES[table].format(states=placeholders),
+                (
+                    *sorted(active_states),
+                    scope_station, scope_station, scope_day, scope_day,
+                ),
             ).fetchone()
         except sqlite3.Error as exc:
             raise ContractError(f"{table}_state_unavailable") from exc
@@ -203,7 +270,9 @@ def _assert_target_activation_and_quiescence(
     # column to zero in production_no_live.
     try:
         live_authority = conn.execute(
-            "SELECT 1 FROM auto_trade_decisions WHERE will_order<>0 LIMIT 1"
+            "SELECT 1 FROM auto_trade_decisions WHERE will_order<>0"
+            " AND (?='' OR station_id=?) AND (?='' OR event_date=?) LIMIT 1",
+            (scope_station, scope_station, scope_day, scope_day),
         ).fetchone()
     except sqlite3.Error as exc:
         raise ContractError("auto_trade_decisions_authority_unavailable") from exc
@@ -224,7 +293,9 @@ def build_no_live_order_state_ingress(
 
     observed_at = _timestamp("observed_at_utc", observed_at_utc)
     activation = _activation(Path(activation_path))
-    _assert_target_activation_and_quiescence(conn, activation)
+    _assert_target_activation_and_quiescence(
+        conn, activation, station_id=station_id, event_date=event_date
+    )
     scopes = _registry_scopes(
         conn,
         station_id=station_id,

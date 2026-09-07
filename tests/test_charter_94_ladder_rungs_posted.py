@@ -7,6 +7,8 @@ the rungs offered only one reached the exchange.  Measured then: 1668
 """
 from __future__ import annotations
 
+import json
+
 import sqlite3
 
 from bayes_basket_target.production import _ladder_rung_prices
@@ -131,3 +133,64 @@ def test_an_ambiguous_sibling_blocks_even_inside_one_ladder(tmp_path) -> None:
         exclude_order_intent_id="rung_b", same_cycle_id="cycle_1",
     )
     assert gate["allowed"] is False, gate
+
+
+def test_quiescence_probes_ask_about_the_scope_they_protect() -> None:
+    """The zero-pending snapshot is produced per (station, event day), and the
+    probes that gate it must ask about that scope.
+
+    Measured 2026-09-06 23:50Z: ten resting orders for 2026-09-07 and
+    2026-09-08 refused the market ingress for ten 2026-09-06 scopes holding no
+    order of their own -- CYYZ, KATL, KAUS, KBKF, KDAL, KHOU, KLAX, KLGA,
+    KMIA, KORD -- so quotes stopped refreshing and every scope died on
+    production_quote_expired, while the charter-94 lifecycle that follows the
+    bid read a book 281 minutes old.  Fleet-wide probes could not bite under
+    the taker family, where an intent was ``submitted`` only between the POST
+    and its fill and nothing rested.
+    """
+    from bayes_basket_target.order_state_producer import (
+        _SCOPE_PREDICATES, TARGET_INTENT_BLOCKING_STATES,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    apply_target_ledger_schema(conn)
+    conn.execute(
+        "INSERT INTO basket_target_execution_cycles(cycle_id,plan_id,station_id,event_date,"
+        "settlement_timezone,strategy_lane,plan_sha256,requested_reserve_usdc,state,"
+        "created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        ("cyc_kmia", "plan_kmia", "KMIA", "2026-09-08", "America/New_York", "basket",
+         "b" * 64, 1.0, "prepared", "2026-09-06T20:00:00Z", "2026-09-06T20:00:00Z"),
+    )
+    _seed(conn, intent_id="resting_kmia", cycle_id="cyc_kmia", state="submitted")
+
+    states = sorted(TARGET_INTENT_BLOCKING_STATES)
+    sql = _SCOPE_PREDICATES["basket_target_order_intents"].format(
+        states=",".join("?" for _ in states)
+    )
+
+    def found(station: str, day: str) -> bool:
+        return conn.execute(sql, (*states, station, station, day, day)).fetchone() is not None
+
+    assert found("KMIA", "2026-09-08") is True, "its own scope must still be refused"
+    assert found("CYYZ", "2026-09-06") is False, "another scope must not be blinded by it"
+    assert found("KMIA", "2026-09-07") is False, "same station, other day, is another scope"
+    assert found("", "") is True, "the fleet-wide question keeps the fleet answer"
+
+
+def test_a_row_whose_scope_is_unknown_blocks_every_scope() -> None:
+    """An inner join would drop an intent with no cycle row, turning "I cannot
+    tell whose this is" into "it is nobody's" -- the one answer this guard must
+    never give.  Left join, and the orphan blocks everyone."""
+    from bayes_basket_target.order_state_producer import (
+        _SCOPE_PREDICATES, TARGET_INTENT_BLOCKING_STATES,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    apply_target_ledger_schema(conn)
+    _seed(conn, intent_id="orphan", cycle_id="cycle_that_does_not_exist", state="submitted")
+    states = sorted(TARGET_INTENT_BLOCKING_STATES)
+    sql = _SCOPE_PREDICATES["basket_target_order_intents"].format(
+        states=",".join("?" for _ in states)
+    )
+    for station, day in (("CYYZ", "2026-09-06"), ("KMIA", "2026-09-08"), ("", "")):
+        assert conn.execute(sql, (*states, station, station, day, day)).fetchone() is not None
