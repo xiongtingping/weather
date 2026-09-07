@@ -81,6 +81,13 @@ ARMS = (
 # regional run reaches -- the same treatment ``curve_shape_realized`` has
 # always had.  The covered pair stays because it is the clean ablation.
 REGIONAL_ARMS = ("covered", "+regional", "+regional_full")
+# The suspended soft likelihood, added by --soft.  ``hard+clock+soft`` is the
+# 2026-09-02 comparison rebuilt under this harness -- soft against the hard
+# bound and a clock rate, which is what it lost on -- and ``+soft`` is the
+# question that is actually open now: soft against the chain, whose phase
+# layer owns the total above the running high and whose remaining-warming
+# layer already reshapes the buckets above it.
+SOFT_ARMS = ("hard+clock+soft", "+soft")
 
 
 def _parse(stamp: str) -> datetime:
@@ -318,6 +325,7 @@ def evaluate_day(
     hazard_covered: Mapping[str, Any] | None = None,
     hazard_regional: Mapping[str, Any] | None = None,
     hazard_regional_full: Mapping[str, Any] | None = None,
+    soft: bool = False,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for sample in samples:
@@ -400,6 +408,26 @@ def evaluate_day(
                 **common, hazard_artifact=hazard, reanchor_artifact=reanchor,
                 phase_enabled=False,
             )
+            if soft:
+                ratios = json.loads(str(sample["soft_lr_json"]))
+                soft_root = soft_multiplied(view["probabilities"], ratios)
+                if soft_root is None:
+                    continue
+                soft_common = {**common, "root_probabilities": soft_root}
+                # The 2026-09-02 comparison, rebuilt here: soft against the
+                # hard bound and a clock rate, which is what it lost on.
+                arms["hard+clock+soft"], _ = compile_four_layer_posterior(
+                    **soft_common, hazard_artifact=hazard_clock,
+                    reanchor_artifact=None, reanchor_enabled=False,
+                    remaining_enabled=False, phase_enabled=True,
+                )
+                # The question that is open now: soft against the chain, whose
+                # phase layer owns the total above the running high and whose
+                # remaining-warming layer already reshapes what is up there.
+                arms["+soft"], _ = compile_four_layer_posterior(
+                    **soft_common, hazard_artifact=hazard,
+                    reanchor_artifact=reanchor,
+                )
             if hazard_covered is not None and hazard_regional is not None:
                 arms["covered"], _ = compile_four_layer_posterior(
                     **common, hazard_artifact=hazard_covered,
@@ -437,6 +465,26 @@ def evaluate_day(
     return rows
 
 
+def soft_multiplied(
+    root: Mapping[str, float], ratios: Mapping[str, float]
+) -> dict[str, float] | None:
+    """The root the soft layer would have handed the layers below it.
+
+    The ratio vector is production's own, recompiled by the production proof
+    compiler with ``soft_likelihood_policy`` moved and nothing else; all this
+    does is the multiply the suspended policy refuses to do.
+    """
+
+    scaled = {
+        bucket: float(value) * float(ratios.get(bucket, 1.0))
+        for bucket, value in root.items()
+    }
+    total = sum(scaled.values())
+    if not math.isfinite(total) or total <= 0.0:
+        return None
+    return {bucket: value / total for bucket, value in scaled.items()}
+
+
 def _arms(rows: Sequence[Mapping[str, Any]]) -> tuple[str, ...]:
     """The arms these rows actually carry, in the declared order.
 
@@ -450,7 +498,9 @@ def _arms(rows: Sequence[Mapping[str, Any]]) -> tuple[str, ...]:
     present = set(rows[0]["scores"])
     for row in rows[1:]:
         present &= set(row["scores"])
-    return tuple(arm for arm in ARMS + REGIONAL_ARMS if arm in present)
+    return tuple(
+        arm for arm in ARMS + REGIONAL_ARMS + SOFT_ARMS if arm in present
+    )
 
 
 def summarise(rows: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, float]]:
@@ -511,6 +561,12 @@ def main() -> int:
              "and is the arm a promotion would actually ship, so it has to be "
              "scored where it would actually serve",
     )
+    parser.add_argument(
+        "--soft", action="store_true",
+        help="score the suspended soft likelihood, on the rows where a "
+             "trajectory artifact resolved and it would have had something "
+             "to say",
+    )
     parser.add_argument("--min-train-days", type=int, default=7)
     parser.add_argument("--out", default=None)
     args = parser.parse_args()
@@ -543,6 +599,15 @@ def main() -> int:
         train = [row for row in all_rows if str(row["event_date"]) < day]
         covered = regional = regional_full = None
         day_samples = by_day[day]
+        if args.soft:
+            # Where no artifact resolved the two arms are the incumbent by
+            # construction, and scoring them would dilute the difference.
+            day_samples = [
+                row for row in day_samples if row["soft_lr_json"]
+            ]
+            if not day_samples:
+                print(f"  {day}: no soft-likelihood rows", file=sys.stderr)
+                continue
         if args.regional:
             pair = regional_artifacts(all_rows, day)
             if pair is None:
@@ -569,6 +634,7 @@ def main() -> int:
             hazard_covered=covered,
             hazard_regional=regional,
             hazard_regional_full=regional_full,
+            soft=bool(args.soft),
         ))
         print(
             f"  {day}: trained on {len(train)} samples through"

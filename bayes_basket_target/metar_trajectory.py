@@ -163,6 +163,49 @@ CANDIDATE_STRENGTH_FACTOR = float(
 # figures that once read as this layer's skill were the hard bound's and the
 # ceiling's; the layer had never passed a fair fixed-hour test.
 #
+# Re-measured 2026-09-07, after the four-layer chain took the ceiling's place
+# at P1's outermost point.  The question had changed: the 2026-09-02 reading
+# scored the soft layer against the hard bound and a clock rate, and by
+# 2026-09-07 its opponent was a chain whose phase layer owns the total above
+# the running high and whose remaining-warming layer already reshapes the
+# buckets up there.  A layer that had been beaten by a clock might still have
+# beaten a regression, or the regression might have made it redundant.
+#
+# It is worse against both.  Walk-forward, every day fitted on strictly
+# earlier days, over the 16132 samples where a trajectory artifact actually
+# resolved and this layer would have had something to say:
+#
+#   arm                 hit    +-1     log     Brier  centre MAE
+#   hard+clock         0.616  0.896  -1.018   0.473    0.644
+#   hard+clock+soft    0.611  0.893  -1.016   0.480    0.622
+#   four_layer         0.630  0.896  -0.937   0.450    0.578
+#   +soft              0.618  0.892  -0.946   0.455    0.583
+#
+# The 2026-09-02 verdict reproduces on the new yardstick, smaller but the same
+# sign: against the clock the soft layer costs half a point of argmax and
+# gains nothing but centre error.  Against the chain -- the clean ablation,
+# one multiply the only difference -- it costs 1.2 points of argmax, 0.009
+# nat, 0.005 Brier and 0.005C of centre error, every metric moving the wrong
+# way.  Pre-peak it costs 2.1 points of argmax.
+#
+# The reason is structural rather than statistical, and it is the same trap
+# the regional debias fell into on the same day: the chain already answers
+# both halves of what this layer was for.  Multiplying a ratio vector in
+# before phase cannot change the total above the running high -- phase
+# renormalises that to its own target -- so all the soft layer can still do
+# is reshape buckets remaining_warming is already reshaping, from an artifact
+# fitted one anchor report per six-hour bucket against one fitted per report
+# with the clock as a feature.  Two reshapers, and the older fit loses.
+#
+# The counterfactual is the production proof compiler with this policy moved
+# and nothing else.  It is reconstructible offline because the physics reads
+# only what the archive keeps: the temperature, the two clocks, and the raw
+# report text that condition_on_physical_state parses cloud, dewpoint, wind
+# and precipitation out of.  What it does not reproduce is the proof's own
+# identity hash -- ``sequence`` there is the row's position in the day rather
+# than the canonical event's -- and that is the honest boundary: the vectors
+# are production's, the identity is not, and only the vectors were measured.
+#
 # Suspension is a policy, not a missing artifact.  The artifact is still
 # resolved and its lineage still recorded, the conditional path state is
 # still computed, so the record shows what would have governed; what changes
