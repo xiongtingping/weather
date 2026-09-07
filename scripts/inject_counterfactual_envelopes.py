@@ -22,8 +22,17 @@ than serving quietly.  And the bucket projection is read separately by the
 ledger, so it has to move with the body or the two disagree.
 
 Only ever pointed at a replay database.  It rewrites committed evidence,
-which is a thing production's own tables forbid by trigger and this one
-permits only because the extractor deliberately leaves those triggers behind.
+which production's own tables forbid by trigger.
+
+The extractor does NOT leave those triggers behind -- this docstring said it
+did and was wrong, which is why the tool had never run against a database the
+current builder produced (``sqlite3.IntegrityError: append_only``, 2026-09-08).
+``build_ledger_replay_db`` copies every trigger deliberately, because the
+ledger's production judge checks the trigger set matches and reports
+``trigger_set_mismatch`` when it does not.  So the two append-only triggers on
+the envelope table are dropped around the swap and recreated from their own
+stored SQL afterwards, in a ``finally`` -- the set is identical before and
+after, and the schema gate still passes.
 """
 
 from __future__ import annotations
@@ -142,22 +151,97 @@ def main() -> int:
     parser.add_argument("--db", type=Path, required=True)
     parser.add_argument("--event-date", required=True)
     parser.add_argument(
-        "--bias-half-life", type=float, required=True,
+        "--band-axis",
+        choices=("claim", "centre_distance"),
+        help=(
+            "Charter 105's arm: recompile with a band table fitted on this"
+            " axis instead of the one the artifact pins.  The table is fitted"
+            " read-only from the SSOT sample and handed to the compiler as"
+            " (factors, sha, axis); nothing is persisted and nothing is"
+            " activated.  May be given with or without --bias-half-life --"
+            " they are independent counterfactuals on the same recompile."
+        ),
+    )
+    parser.add_argument(
+        "--bias-half-life", type=float,
         help="the counterfactual value to refit each system's bias under",
     )
     args = parser.parse_args()
+    if args.bias_half_life is None and args.band_axis is None:
+        parser.error(
+            "nothing to vary: give --bias-half-life, --band-axis, or both"
+        )
+
+    # Charter 105's arm, fitted once for the whole day rather than per
+    # station: it is a pooled table and refitting it per station would be a
+    # different counterfactual.  Read-only, and nothing is activated --
+    # persisting a table in order to score it is what this whole lane exists
+    # to avoid.
+    band_table_override = None
+    if args.band_axis:
+        from bayes_basket_target.band_reliability_store import (  # noqa: PLC0415
+            band_table_sha256,
+            fit_band_reliability_table,
+        )
+
+        _ro = sqlite3.connect(
+            f"file:{SSOT}?mode=ro", uri=True, timeout=60.0
+        )
+        try:
+            _fitted = fit_band_reliability_table(
+                _ro, stage="P0", axis=args.band_axis,
+            )
+        finally:
+            _ro.close()
+        band_table_override = (
+            _fitted["factors"],
+            band_table_sha256(
+                _fitted["factors"], stage="P0", axis=args.band_axis,
+            ),
+            args.band_axis,
+        )
+        _live = sum(
+            1 for _b, factor in _fitted["factors"]
+            if abs(factor - 1.0) > 1e-9
+        )
+        print(
+            f"band arm: axis={args.band_axis}"
+            f" cells={len(_fitted['factors'])} live={_live}"
+            f" sha={band_table_override[1][:12]}"
+        )
 
     day_dir = ARCHIVE / args.event_date
     if not day_dir.is_dir():
         raise SystemExit(f"no retained packets for {args.event_date}")
 
     replay = sqlite3.connect(str(args.db.resolve(strict=True)), timeout=120.0)
+    # The append-only guard on committed evidence, lifted for exactly the
+    # rows this tool exists to rewrite and put back from its own stored SQL.
+    # Read before anything is dropped so a failed restore cannot invent one.
+    # All three tables this tool rewrites, not just the envelope: the body,
+    # the history row's hash of it, and the bucket projection the ledger
+    # reads separately.  Each carries its own append-only guard and the
+    # first attempt only lifted the first, which failed one statement later.
+    _GUARDED_TABLES = (
+        "basket_probability_envelope",
+        "basket_probability_bridge_history",
+        "basket_probability_bridge_bucket_probability",
+    )
+    _guard_rows = replay.execute(
+        "SELECT name, sql FROM sqlite_master WHERE type='trigger'"
+        " AND tbl_name IN (?,?,?) AND sql IS NOT NULL ORDER BY name",
+        _GUARDED_TABLES,
+    ).fetchall()
+    _guards = [str(row[1]) for row in _guard_rows]
+    _guard_names = [str(row[0]) for row in _guard_rows]
     ssot = sqlite3.connect(f"file:{SSOT}?mode=ro", uri=True, timeout=120.0)
     ssot.execute("PRAGMA query_only=ON")
 
     swapped = 0
     skipped: dict[str, int] = {}
     try:
+        for _name in _guard_names:
+            replay.execute(f"DROP TRIGGER IF EXISTS {_name}")
         rows = replay.execute(
             "SELECT history_id, station_id, checkpoint_id, decision_at_utc"
             " FROM basket_probability_bridge_history"
@@ -183,13 +267,15 @@ def main() -> int:
                     skipped.get("no_retained_packet", 0) + 1
                 )
                 continue
-            override = _refit_parameters(
-                ssot, station=station, event_date=args.event_date,
-                as_of_utc=str(decided), half_life=args.bias_half_life,
-            )
-            if not override:
-                skipped["no_refit"] = skipped.get("no_refit", 0) + 1
-                continue
+            override = None
+            if args.bias_half_life is not None:
+                override = _refit_parameters(
+                    ssot, station=station, event_date=args.event_date,
+                    as_of_utc=str(decided), half_life=args.bias_half_life,
+                )
+                if not override:
+                    skipped["no_refit"] = skipped.get("no_refit", 0) + 1
+                    continue
             compiled = None
             for packet in candidates:
                 try:
@@ -198,6 +284,7 @@ def main() -> int:
                         forward_packet=packet,
                         decision_at_utc=str(decided),
                         artifact_parameter_override=override,
+                        band_table_override=band_table_override,
                     )
                     break
                 except Exception as exc:  # noqa: BLE001
@@ -288,8 +375,27 @@ def main() -> int:
             swapped += 1
         replay.commit()
     finally:
-        replay.close()
-        ssot.close()
+        # Restored whatever happened above, and verified: a replay database
+        # left without its guards would pass this tool and fail the ledger's
+        # schema gate a step later, which is the confusing way to find out.
+        try:
+            for sql in _guards:
+                replay.execute(sql)
+            replay.commit()
+            restored = {
+                str(row[0]) for row in replay.execute(
+                    "SELECT name FROM sqlite_master WHERE type='trigger'"
+                    " AND tbl_name IN (?,?,?)", _GUARDED_TABLES,
+                ).fetchall()
+            }
+            if restored != set(_guard_names):
+                raise SystemExit(
+                    "counterfactual_injection_left_the_guards_off:"
+                    f"{sorted(set(_guard_names) - restored)}"
+                )
+        finally:
+            replay.close()
+            ssot.close()
 
     print(f"  swapped {swapped} envelopes to the counterfactual")
     for reason, count in sorted(skipped.items(), key=lambda kv: -kv[1]):
