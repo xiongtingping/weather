@@ -190,8 +190,16 @@ def _append_hold(
             "prepared", decision_at, decision_at,
         ),
     )
+    # Columns named, not counted.  A positional insert breaks the day the
+    # table grows -- decision_scope_key was added between decision_sha256
+    # and created_at and this read "15 columns but 14 values were
+    # supplied", which says nothing about what the test is for.
     conn.execute(
-        "INSERT INTO auto_trade_decisions VALUES("
+        "INSERT INTO auto_trade_decisions("
+        "decision_id,cycle_id,plan_id,station_id,event_date,"
+        "settlement_timezone,strategy_lane,decided_state,will_order,"
+        "target_execution_hard_deadline_at,reason_codes_json,details_json,"
+        "decision_sha256,created_at) VALUES("
         + ",".join("?" for _ in range(14)) + ")",
         (
             decision_id, cycle_id, plan_id, STATION, DAY, TZ, "basket",
