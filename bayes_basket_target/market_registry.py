@@ -732,6 +732,12 @@ def load_active_registry_rows(
             # upstream by source_block_reasons, so an eligible row reaching
             # here without one can only be a pre-change snapshot.
             "order_min_size": raw.get("order_min_size"),
+            # And the exchange's own price increment for this token, carried
+            # the same way.  The venue states it per token, not per market,
+            # and moves one token to a finer grid when its price sinks into
+            # the tail; inferring it from book levels instead is what let a
+            # 0.01 rung be built on a 0.001 grid.
+            "order_price_min_tick_size": raw.get("order_price_min_tick_size"),
         }
         if (
             not item["station_id"]

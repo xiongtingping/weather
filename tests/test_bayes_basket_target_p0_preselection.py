@@ -439,13 +439,13 @@ def test_p0_preselection_derives_subcent_official_book_tick() -> None:
 
     bucket = market["buckets"][0]
     assert bucket["price_tick_size"] == 0.001
-    # Preselection now proves the grid against every book in the scope, so a
-    # bucket whose own levels happen to sit on whole cents still resolves the
-    # market's real tick.  The tick is unchanged here; only the provenance
-    # label records the wider evidence.
+    # Preselection proves the grid against this token's own levels only.
+    # Scope-wide pooling was removed 2026-09-07: the venue states a tick per
+    # token and mixes them inside one market, so a sibling's finer quote is
+    # not evidence about this bucket.
     assert (
         bucket["tick_size_source"]
-        == "OFFICIAL_WS_SCOPE_GRID_DERIVED"
+        == "OFFICIAL_WS_BOOK_GRID_DERIVED"
     )
     assert bucket["bid_levels"] == [
         {"price": 0.001, "shares": 30.0}

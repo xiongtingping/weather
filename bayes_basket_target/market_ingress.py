@@ -337,6 +337,7 @@ def _load_registry(
             "lower": row.get("lower"),
             "upper": row.get("upper"),
             "order_min_size": row.get("order_min_size"),
+            "order_price_min_tick_size": row.get("order_price_min_tick_size"),
         }
         if not item["station_id"] or not item["yes_token"] or not item["outcome"]:
             raise ContractError("market_registry_target_identity_missing")
@@ -365,6 +366,30 @@ def _exchange_min_lot(row: Mapping[str, Any]) -> float:
         raise ContractError("market_registry_order_min_size_invalid") from exc
     if not math.isfinite(value) or value <= 0:
         raise ContractError("market_registry_order_min_size_invalid")
+    return value
+
+
+def _exchange_tick_size(row: Mapping[str, Any]) -> float | None:
+    """The market's price increment for this token, or None when unstated.
+
+    Fail soft, unlike the minimum lot beside it.  An order under the lot is
+    signed and posted before the exchange refuses it, which burns a durable
+    idempotency record -- worth refusing the snapshot for.  A tick that has
+    to be inferred only costs a tick of maker competitiveness, and registry
+    snapshots taken before this field was collected still carry everything
+    else the scope needs, so an absent tick falls through to inference
+    rather than blocking the scope.
+    """
+
+    raw = row.get("order_price_min_tick_size")
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(value) or not 0.0 < value < 1.0:
+        return None
     return value
 
 
@@ -433,27 +458,38 @@ def derive_official_ws_price_tick_size(
     *,
     asks: list[dict[str, float]],
     bids: list[dict[str, float]],
-    scope_prices: Sequence[float] = (),
+    registry_tick: float | None = None,
 ) -> tuple[float, str]:
-    # The tick belongs to the market, not to one outcome.  Inferring it from a
-    # single book reads whatever that book happens to be quoting: a ZUUU
-    # outcome sitting on whole cents infers 0.01 while its neighbour quoting
-    # 0.004 proves the market is on 0.001, and the coarse answer then costs
-    # that outcome a tick of Maker competitiveness on every order.  Widening
-    # the evidence to every book in the same scope keeps the rule intact --
-    # still the coarsest grid *proved* by official levels -- while letting one
-    # sibling's finer quote speak for the market they share.
+    # The tick belongs to the token, not to the market it is listed in.
+    #
+    # Until 2026-09-07 this pooled every book in the scope, on the premise
+    # that "one sibling's finer quote speaks for the market they share".  The
+    # registry disproves the premise: EGLC 2026-09-07 states
+    # order_price_min_tick_size 0.01 for 22-26C and 0.001 for that same
+    # market's tail buckets, because the venue moves a token to the finer
+    # grid when its own price sinks into the tail, one token at a time.
+    # Pooling therefore resolved 22C at 0.001 -- and every rung the maker
+    # ladder built on that tick was floored by the exchange back onto the
+    # real grid: intent_1f31825f asked for bid+1t = 0.011 and order
+    # 0x3dc23c06 rests at 0.01, the very bid it meant to improve on, while
+    # the resting lane's far_ticks=3 became 0.003, under one real tick.
+    # Measured over the 4,400 bucket rows committed in the 12h before the
+    # fix: the stream stated a tick 0 times, so every one of them was
+    # inferred, and all 110 that went through the scope path resolved 0.001.
+    # Recorded as a reversal rather than smoothed away.
     prices = [
         float(level["price"])
         for level in [*asks, *bids]
     ]
-    evidence = [*prices, *(float(value) for value in scope_prices)]
+
+    def on_grid(tick: float) -> bool:
+        return all(
+            abs(price / tick - round(price / tick)) <= 1e-7
+            for price in prices
+        )
 
     def validate_grid(tick: float, *, source: str) -> tuple[float, str]:
-        if any(
-            abs(price / tick - round(price / tick)) > 1e-7
-            for price in prices
-        ):
+        if not on_grid(tick):
             raise ContractError("official_ws_price_tick_mismatch")
         return tick, source
 
@@ -466,22 +502,24 @@ def derive_official_ws_price_tick_size(
         if not math.isfinite(tick) or not 0.0 < tick < 1.0:
             raise ContractError("official_ws_tick_size_invalid")
         return validate_grid(tick, source="OFFICIAL_WS_TICK_SIZE")
-    # Older committed WS shards predate tick_size_change retention.  Infer
-    # only the coarsest exchange grid proved by every official book level;
-    # never select a finer, more permissive tick.
+    # Then the exchange's own answer for this token, off the registry.  It is
+    # a snapshot and can lag a tick_size_change, so it is accepted only while
+    # this token's own levels still sit on it; a stale one falls through to
+    # inference instead of refusing the scope, because the levels in hand are
+    # better evidence than a registry row the market has moved past.
+    if registry_tick is not None:
+        try:
+            tick = float(registry_tick)
+        except (TypeError, ValueError):
+            tick = 0.0
+        if math.isfinite(tick) and 0.0 < tick < 1.0 and on_grid(tick):
+            return tick, "OFFICIAL_REGISTRY_TICK_SIZE"
+    # Neither the stream nor the registry states one.  Infer the coarsest
+    # exchange grid proved by this token's own levels; never a finer, more
+    # permissive tick, and never one only a sibling's book proves.
     for tick in (0.1, 0.01, 0.001, 0.0001):
-        if all(
-            abs(price / tick - round(price / tick)) <= 1e-7
-            for price in evidence
-        ):
-            return validate_grid(
-                tick,
-                source=(
-                    "OFFICIAL_WS_SCOPE_GRID_DERIVED"
-                    if scope_prices
-                    else "OFFICIAL_WS_BOOK_GRID_DERIVED"
-                ),
-            )
+        if on_grid(tick):
+            return validate_grid(tick, source="OFFICIAL_WS_BOOK_GRID_DERIVED")
     raise ContractError("official_ws_tick_size_missing")
 
 
@@ -700,6 +738,7 @@ def _scope_quote_values(
             quote,
             asks=ask_levels,
             bids=bid_levels,
+            registry_tick=_exchange_tick_size(row),
             )
         )
         if (

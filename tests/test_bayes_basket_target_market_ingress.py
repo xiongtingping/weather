@@ -739,58 +739,80 @@ def test_real_book_low_high_low_appends_exactly_one_snapshot_per_event(
         ]
 
 
-def test_a_sibling_book_proves_the_market_tick_for_a_whole_cent_bucket() -> None:
-    # The live ZUUU shape: six outcomes quoting only whole cents infer 0.01
-    # while five siblings quote sub-cent prices that prove the market is on
-    # 0.001.  The coarse answer costs those six a tick of Maker
-    # competitiveness on every order they place.
+def test_a_sibling_book_no_longer_speaks_for_this_token_s_tick() -> None:
+    # The EGLC 2026-09-07 shape, and the reversal of the ZUUU-era rule that
+    # pooled a scope's levels.  22C is stated 0.01 by the registry while the
+    # same market's tail buckets are stated 0.001; a sibling quoting 0.004
+    # must not drag 22C onto the finer grid, because the exchange floors
+    # every rung it is built on back to 0.01.
     from bayes_basket_target.market_ingress import (
         derive_official_ws_price_tick_size,
     )
 
-    whole_cent_book = {
-        "asks": [{"price": 0.28, "size": 100.0}],
-        "bids": [{"price": 0.27, "size": 100.0}],
-    }
-    asks = [{"price": 0.28, "shares": 100.0}]
-    bids = [{"price": 0.27, "shares": 100.0}]
+    book = {"asks": [], "bids": []}
+    asks = [{"price": 0.03, "shares": 17.0}]
+    bids = [{"price": 0.01, "shares": 516.14}]
 
-    alone, alone_source = derive_official_ws_price_tick_size(
-        whole_cent_book, asks=asks, bids=bids
-    )
-    with_siblings, scope_source = derive_official_ws_price_tick_size(
-        whole_cent_book,
-        asks=asks,
-        bids=bids,
-        scope_prices=[0.28, 0.27, 0.004, 0.009],
-    )
-
-    assert alone == 0.01
-    assert alone_source == "OFFICIAL_WS_BOOK_GRID_DERIVED"
-    assert with_siblings == 0.001
-    assert scope_source == "OFFICIAL_WS_SCOPE_GRID_DERIVED"
-
-
-def test_scope_evidence_never_selects_a_tick_the_market_disproves() -> None:
-    # Widening the evidence may only ever refine, never permit: a scope whose
-    # every level is on whole cents still resolves 0.01.
-    from bayes_basket_target.market_ingress import (
-        derive_official_ws_price_tick_size,
-    )
-
-    book = {
-        "asks": [{"price": 0.28, "size": 100.0}],
-        "bids": [{"price": 0.27, "size": 100.0}],
-    }
-
-    tick, _ = derive_official_ws_price_tick_size(
-        book,
-        asks=[{"price": 0.28, "shares": 100.0}],
-        bids=[{"price": 0.27, "shares": 100.0}],
-        scope_prices=[0.28, 0.27, 0.05, 0.12],
+    tick, source = derive_official_ws_price_tick_size(
+        book, asks=asks, bids=bids, registry_tick=0.01
     )
 
     assert tick == 0.01
+    assert source == "OFFICIAL_REGISTRY_TICK_SIZE"
+
+
+def test_a_tail_bucket_keeps_the_finer_grid_the_registry_states_for_it() -> None:
+    # The other half of the same market: the venue moves one token to 0.001
+    # when its price sinks into the tail, and that token keeps it.
+    from bayes_basket_target.market_ingress import (
+        derive_official_ws_price_tick_size,
+    )
+
+    tick, source = derive_official_ws_price_tick_size(
+        {"asks": [], "bids": []},
+        asks=[{"price": 0.009, "shares": 40.0}],
+        bids=[{"price": 0.004, "shares": 60.0}],
+        registry_tick=0.001,
+    )
+
+    assert tick == 0.001
+    assert source == "OFFICIAL_REGISTRY_TICK_SIZE"
+
+
+def test_a_registry_tick_the_book_has_moved_past_falls_through() -> None:
+    # The registry is a snapshot and can lag a tick_size_change.  Levels the
+    # stated tick cannot express are better evidence than the stale row, and
+    # refusing the scope over it would be worse than inferring.
+    from bayes_basket_target.market_ingress import (
+        derive_official_ws_price_tick_size,
+    )
+
+    tick, source = derive_official_ws_price_tick_size(
+        {"asks": [], "bids": []},
+        asks=[{"price": 0.004, "shares": 40.0}],
+        bids=[{"price": 0.002, "shares": 60.0}],
+        registry_tick=0.01,
+    )
+
+    assert tick == 0.001
+    assert source == "OFFICIAL_WS_BOOK_GRID_DERIVED"
+
+
+def test_inference_never_selects_a_tick_this_token_disproves() -> None:
+    # With no stated tick at all, still the coarsest grid this token's own
+    # levels prove -- never a finer, more permissive one.
+    from bayes_basket_target.market_ingress import (
+        derive_official_ws_price_tick_size,
+    )
+
+    tick, source = derive_official_ws_price_tick_size(
+        {"asks": [], "bids": []},
+        asks=[{"price": 0.28, "shares": 100.0}],
+        bids=[{"price": 0.27, "shares": 100.0}],
+    )
+
+    assert tick == 0.01
+    assert source == "OFFICIAL_WS_BOOK_GRID_DERIVED"
 
 
 def test_an_explicit_exchange_tick_still_outranks_inference() -> None:
@@ -802,7 +824,7 @@ def test_an_explicit_exchange_tick_still_outranks_inference() -> None:
         {"tick_size": 0.01, "asks": [], "bids": []},
         asks=[{"price": 0.28, "shares": 100.0}],
         bids=[{"price": 0.27, "shares": 100.0}],
-        scope_prices=[0.004],
+        registry_tick=0.001,
     )
 
     assert tick == 0.01

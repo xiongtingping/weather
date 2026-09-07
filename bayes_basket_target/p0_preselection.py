@@ -288,6 +288,35 @@ def _forward_min_order_size(
     return value
 
 
+def _forward_tick_size(registry_row: Mapping[str, Any]) -> float | None:
+    """The market's stated price increment for this token, or None.
+
+    Read from the projected column, falling back to the raw registry blob
+    the same way the minimum lot beside it does, because a snapshot taken
+    before the field was projected still carries it in ``registry_json``.
+    """
+
+    raw = registry_row.get("order_price_min_tick_size")
+    if raw is None:
+        blob = registry_row.get("registry_json")
+        if isinstance(blob, str):
+            try:
+                blob = json.loads(blob)
+            except (TypeError, ValueError):
+                blob = None
+        if isinstance(blob, Mapping):
+            raw = blob.get("order_price_min_tick_size")
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(value) or not 0.0 < value < 1.0:
+        return None
+    return value
+
+
 def _market_snapshot(
     *,
     envelope: Any,
@@ -444,26 +473,11 @@ def _market_snapshot(
     buckets = []
     quote_times = []
     market_labels = set()
-    # Every official level in this scope, gathered before the per-bucket pass
-    # so the tick each bucket resolves is the market's, not whatever its own
-    # book happens to be quoting.  One sibling on a sub-cent price proves the
-    # finer grid for all of them.
-    scope_prices: list[float] = []
-    for registry_row in by_bucket.values():
-        quote = quotes.get(str(registry_row.get("yes_token") or ""))
-        if not isinstance(quote, Mapping):
-            continue
-        for side in ("asks", "bids"):
-            for level in quote.get(side) or []:
-                if not isinstance(level, Mapping):
-                    continue
-                try:
-                    price = float(level.get("price", 0.0))
-                    size = float(level.get("size", 0.0))
-                except (TypeError, ValueError):
-                    continue
-                if price > 0.0 and size > 0.0:
-                    scope_prices.append(price)
+    # No scope-wide price pooling here any more.  It resolved one token's
+    # tick off a sibling's book on the premise that a market has one grid;
+    # the registry states a grid per token and this venue really does mix
+    # them, so each bucket now asks the registry about itself and infers
+    # only from its own levels.  See derive_official_ws_price_tick_size.
     declared_unmaterialized = {
         str(value)
         for value in manifest.get("unmaterialized_tokens") or []
@@ -560,7 +574,7 @@ def _market_snapshot(
                 quote,
                 asks=ask_levels,
                 bids=bid_levels,
-                scope_prices=scope_prices,
+                registry_tick=_forward_tick_size(registry_row),
             )
         )
         observed = str(quote.get("book_observed_at") or quote.get("created_at") or "")
