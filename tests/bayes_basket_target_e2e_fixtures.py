@@ -97,14 +97,25 @@ def _policy_inputs() -> tuple[
         valid_from_utc=VALID_FROM,
         valid_until_utc=VALID_UNTIL,
     )
+    # Both maturities, because the scope match is exact equality on all five
+    # dimensions and the cycle's maturity is DERIVED from the probability
+    # rather than passed in -- deliberately, so a static config cannot
+    # override it.  A fixture seeded only at d1 therefore fails closed on
+    # every same-day cycle, which is what thirty-six tests in the
+    # production-io suite were doing: FAIL_CLOSED_NO_STATION_POLICY before
+    # any of them reached an assertion.  Seeding the other bin is additive;
+    # a test that wants d1 still resolves d1.
     artifacts = [
         PolicyArtifact.create(
-            artifact_id=f"e2e-policy-{family}",
+            artifact_id=(
+                f"e2e-policy-{family}" if maturity == "d1"
+                else f"e2e-policy-{family}-{maturity}"
+            ),
             family=family,
             station_id="ZUUU",
             stage="P1",
             season_bin="summer",
-            maturity_bin="d1",
+            maturity_bin=maturity,
             liquidity_bin="liquid",
             strategy_version="target-v1",
             theta_local=(
@@ -120,27 +131,43 @@ def _policy_inputs() -> tuple[
             valid_from_utc=VALID_FROM,
             valid_until_utc=VALID_UNTIL,
         )
+        for maturity in ("d1", "d0")
         for family in ("target", "reserve", "cadence")
     ]
-    activation = StationBasketPolicyActivation.create(
-        activation_id="e2e-policy-activation-v1",
-        station_id="ZUUU",
-        stage="P1",
-        season_bin="summer",
-        maturity_bin="d1",
-        liquidity_bin="liquid",
-        strategy_version="target-v1",
-        global_prior_id=prior.global_prior_id,
-        target_artifact_id="e2e-policy-target",
-        reserve_artifact_id="e2e-policy-reserve",
-        cadence_artifact_id="e2e-policy-cadence",
-        fallback_families=[],
-        generation=1,
-        valid_from_utc=VALID_FROM,
-        valid_until_utc=VALID_UNTIL,
-        activated_at_utc="2026-06-30T00:00:00Z",
-    )
-    return prior, artifacts, [activation]
+    activations = [
+        StationBasketPolicyActivation.create(
+            activation_id=(
+                "e2e-policy-activation-v1" if maturity == "d1"
+                else f"e2e-policy-activation-v1-{maturity}"
+            ),
+            station_id="ZUUU",
+            stage="P1",
+            season_bin="summer",
+            maturity_bin=maturity,
+            liquidity_bin="liquid",
+            strategy_version="target-v1",
+            global_prior_id=prior.global_prior_id,
+            target_artifact_id=(
+                "e2e-policy-target" if maturity == "d1"
+                else f"e2e-policy-target-{maturity}"
+            ),
+            reserve_artifact_id=(
+                "e2e-policy-reserve" if maturity == "d1"
+                else f"e2e-policy-reserve-{maturity}"
+            ),
+            cadence_artifact_id=(
+                "e2e-policy-cadence" if maturity == "d1"
+                else f"e2e-policy-cadence-{maturity}"
+            ),
+            fallback_families=[],
+            generation=1,
+            valid_from_utc=VALID_FROM,
+            valid_until_utc=VALID_UNTIL,
+            activated_at_utc="2026-06-30T00:00:00Z",
+        )
+        for maturity in ("d1", "d0")
+    ]
+    return prior, artifacts, activations
 
 
 def _cash_policy(version: str, cash: float) -> BasketCashPhasePolicyArtifact:
