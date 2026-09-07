@@ -879,23 +879,42 @@ def _posterior(
         and four_layer_serving is not None
         and ceiling is not None
     ):
-        chain, chain_receipts = compile_four_layer_posterior(
-            root_probabilities=probabilities,
-            bucket_ordinals=predecessor.bucket_ordinals,
-            bucket_centers_c=four_layer_serving["bucket_centers_c"],
-            bucket_intervals_c=four_layer_serving["bucket_intervals_c"],
-            hard_excluded_buckets=sorted(excluded),
-            running_high_c=float(four_layer_serving["running_high_c"]),
-            running_high_bucket=str(ceiling["running_high_bucket"]),
-            features=four_layer_serving["features"],
-            hazard_artifact=four_layer_serving["hazard_artifact"],
-            reanchor_artifact=None,
-            bias_recent_c=four_layer_serving["bias_recent_c"],
-            bias_report_count=int(four_layer_serving["bias_report_count"]),
-            reanchor_enabled=False,
-        )
-        residual = sum(chain.values())
-        if math.isfinite(residual) and residual > 0.0:
+        # Guarded, and the guard is the point.  A layer that may raise at this
+        # position is a layer that can stop a P1 from compiling, and a P1 that
+        # does not compile is an order chain with no head.  The shadow has
+        # carried this protection since it shipped; a layer that graduated to
+        # serving does not get to drop it.  On any refusal the chain simply
+        # does not speak and the ceiling serves, which is the pre-promotion
+        # path, and the receipt says which refusal it was.
+        chain: dict[str, float] | None = None
+        chain_receipts: dict[str, Any] = {}
+        chain_refused = ""
+        try:
+            chain, chain_receipts = compile_four_layer_posterior(
+                root_probabilities=probabilities,
+                bucket_ordinals=predecessor.bucket_ordinals,
+                bucket_centers_c=four_layer_serving["bucket_centers_c"],
+                bucket_intervals_c=four_layer_serving["bucket_intervals_c"],
+                hard_excluded_buckets=sorted(excluded),
+                running_high_c=float(four_layer_serving["running_high_c"]),
+                running_high_bucket=str(ceiling["running_high_bucket"]),
+                features=four_layer_serving["features"],
+                hazard_artifact=four_layer_serving["hazard_artifact"],
+                reanchor_artifact=None,
+                bias_recent_c=four_layer_serving["bias_recent_c"],
+                bias_report_count=int(four_layer_serving["bias_report_count"]),
+                reanchor_enabled=False,
+            )
+        except Exception as exc:  # noqa: BLE001 - see above
+            # Broad on purpose.  The first draft caught four named exception
+            # types and a malformed artifact raised a fifth (IndexError, off
+            # an empty intercept vector), which is precisely the shape of
+            # failure that must not reach the compile.  At this position the
+            # question is not which error it was but whether the day still
+            # gets a P1, and the answer has to be yes for every error.
+            chain_refused = f"{type(exc).__name__}:{exc}"[:120]
+        residual = sum(chain.values()) if chain else 0.0
+        if chain and math.isfinite(residual) and residual > 0.0:
             probabilities = {
                 bucket: value / residual for bucket, value in chain.items()
             }
@@ -905,6 +924,7 @@ def _posterior(
                 "schema": "p1_four_layer_serving_receipt_v1",
                 "applied": "true" if four_layer_spoke else "false",
                 "reanchor_enabled": "false",
+                **({"refused": chain_refused} if chain_refused else {}),
                 **{
                     str(key): value
                     for key, value in dict(chain_receipts).items()

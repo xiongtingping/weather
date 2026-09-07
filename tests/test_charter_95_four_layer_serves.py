@@ -135,3 +135,34 @@ def test_the_ruling_and_its_reading_ride_with_the_switch() -> None:
         "if ceiling is not None and not regional_spoke and not four_layer_spoke:"
         in materialization
     )
+
+
+def test_a_broken_artifact_costs_the_chain_and_never_the_compile() -> None:
+    """A layer that may raise at this point can stop the order chain.
+
+    The shadow has carried this protection since it shipped, on the grounds
+    that a measurement lane may not hold trading; a layer that graduated to
+    serving does not get to drop it.  On a refusal the chain simply does not
+    speak, the ceiling serves -- which is the pre-promotion path -- and the
+    receipt names the refusal instead of swallowing it.
+    """
+
+    broken = {**HAZARD, "phase": {"hours_edges": [0.0], "bin_intercepts": []}}
+    ceiling_only = _compile()
+    with_broken = _compile(
+        four_layer_artifacts={"hazard": broken, "reanchor": REANCHOR})
+    assert len(with_broken) == len(ceiling_only) >= 2, "the compile survives"
+    assert _served(with_broken) == _served(ceiling_only), (
+        "a refused chain leaves exactly the distribution the ceiling served"
+    )
+    receipts = [
+        json.loads(
+            packet["expected_envelope"]["lineage"].get(
+                "p1_four_layer_serving_json") or "{}")
+        for packet in with_broken
+    ]
+    spoke = [r for r in receipts if r.get("applied") == "true"]
+    assert not spoke, "a broken artifact must not price anything"
+    assert any(r.get("refused") for r in receipts if r), (
+        "the refusal is recorded, not swallowed"
+    )
