@@ -2794,6 +2794,26 @@ CREATE TABLE IF NOT EXISTS paper_trade_candidate_window (
   win_probability REAL NOT NULL,
   raw_win_probability REAL,
   all_in_price REAL NOT NULL,
+  -- Which band table produced this row's claim, and on which axis.
+  --
+  -- ``band_axis`` is the PARTITION key: lambda is fitted per axis, because
+  -- moving the band axis moves every claim and therefore moves ``a = price
+  -- / claim``, which is the axis lambda itself is keyed on.  Measured
+  -- 2026-09-08 on 757 live candidate windows, switching P0 to the distance
+  -- axis moved ``a`` on 100% of them and pushed 6.1% across a lambda band
+  -- boundary into a different lambda value.
+  --
+  -- ``band_table_sha256`` is AUDIT ONLY and deliberately not the partition
+  -- key.  Band tables are content-addressed and refitted daily, so the sha
+  -- changes whenever a factor moves in its third decimal: P0's 662 scored
+  -- windows carry 28 distinct shas, the largest holding 61 -- fewer than
+  -- the 8 lambda bands need at 12 seats each -- and P1's 77 windows carry
+  -- 21 shas of which exactly one clears the threshold.  Partitioning on it
+  -- would not make the fit purer, it would end the fit.  The axis has two
+  -- values and splits P0 into two usable heaps; the sha stays so drift
+  -- inside an axis is visible to an audit rather than invisible.
+  band_axis TEXT,
+  band_table_sha256 TEXT,
   -- The agreement the gate itself computed, when it computed one.  Not the
   -- fit's input -- price over claim above is -- but the cheapest possible
   -- check that the two agree.
@@ -2999,9 +3019,35 @@ def ensure_schema(conn: sqlite3.Connection) -> bool:
         _rebuild_position_without_scope_unique(conn)
     conn.execute(_SETTLEMENT_DDL)
     conn.execute(_CANDIDATE_WINDOW_DDL)
+    # ``CREATE TABLE IF NOT EXISTS`` will not widen an existing table, and
+    # every row already in one predates the band lineage columns.  They stay
+    # NULL rather than being guessed: a row whose band vintage is unknown is
+    # not a row from the current axis, and charter 104's rule against
+    # silently borrowing a basis applies to a partition key as much as to a
+    # claim.  ``_backfill_candidate_band_lineage`` fills what the envelopes
+    # can still answer for and counts what they cannot.
+    _candidate_cols = {
+        str(row[1])
+        for row in conn.execute(
+            "PRAGMA table_info(paper_trade_candidate_window)"
+        )
+    }
+    for _name in ("band_axis", "band_table_sha256"):
+        if _name not in _candidate_cols:
+            conn.execute(
+                "ALTER TABLE paper_trade_candidate_window"
+                f" ADD COLUMN {_name} TEXT"
+            )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_candidate_window_scope"
         " ON paper_trade_candidate_window(stage, event_date)"
+    )
+    # The fit reads (stage, axis, event_date); without this it reads the
+    # whole table and filters in Python, which is what made the first
+    # lambda refit take ten minutes.
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_candidate_window_axis"
+        " ON paper_trade_candidate_window(stage, band_axis, event_date)"
     )
     conn.execute(_REFUSAL_DDL)
     # A new reason cannot be recorded through an existing CHECK, and
@@ -3199,7 +3245,126 @@ def ensure_schema(conn: sqlite3.Connection) -> bool:
             " ADD COLUMN intended_hit INTEGER"
         )
     _backfill_intended_basis(conn)
+    # Charter 110: the lambda fit partitions on band_axis and excludes NULL,
+    # so a migration that adds the column without filling it hands the next
+    # fit an empty sample.  Runs beside the sibling backfill, in the same
+    # place and for the same reason.
+    _backfill_candidate_band_lineage(conn)
     return refusal_rebuilt
+
+
+
+def _backfill_candidate_band_lineage(
+    conn: sqlite3.Connection, *, limit: int = 20000
+) -> dict[str, int]:
+    """Give existing candidate rows the band vintage their claim came from.
+
+    Charter 110 partitions the lambda fit on ``band_axis``, and every row
+    written before the column existed carries NULL -- which the fit excludes,
+    so without this the first fit after the migration reads nothing at all.
+
+    Two hops, both facts.  The envelope the row was enumerated under names
+    its band table (``lineage.band_reliability_json``), and the store says
+    what axis that table's cells are keyed on.  The receipt itself only
+    started carrying ``axis`` on 2026-09-07, so every historical row has to
+    come by the second hop; a sha the store no longer holds leaves the row
+    NULL rather than guessing, and so does an envelope with no band receipt
+    at all.  Measured on the live book the day it landed: 774 of 827 scored
+    rows resolved (all to ``claim``), 53 carried no band receipt.
+    """
+
+    from bayes_basket_target.probability_bridge import (  # noqa: PLC0415
+        history_envelope_payload,
+    )
+
+    # A ledger-only database -- a replay extract, a fixture, a fresh file --
+    # has the candidate table and neither of the two this reads.  That is not
+    # an error and must not fail the schema step it runs inside: without both
+    # halves there is no vintage to resolve, so it resolves none and says so.
+    def _has(table: str) -> bool:
+        return conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (table,),
+        ).fetchone() is not None
+
+    if not (
+        _has("calibration_band_reliability_table")
+        and _has("basket_probability_bridge_history")
+    ):
+        return {
+            "examined": 0, "resolved": 0, "no_band_receipt": 0,
+            "sha_not_in_store": 0, "envelope_unreadable": 0,
+            "skipped": "band_lineage_sources_absent",
+        }
+    axis_by_sha = {
+        str(row[0]): str(row[1] or "claim")
+        for row in conn.execute(
+            "SELECT band_table_sha256, COALESCE(axis,'claim')"
+            " FROM calibration_band_reliability_table"
+        )
+    }
+    rows = conn.execute(
+        "SELECT candidate_id, station_id, event_date, stage, decision_at_utc"
+        " FROM paper_trade_candidate_window"
+        " WHERE band_axis IS NULL LIMIT ?",
+        (int(limit),),
+    ).fetchall()
+    counts = {
+        "examined": len(rows), "resolved": 0,
+        "no_band_receipt": 0, "sha_not_in_store": 0, "envelope_unreadable": 0,
+    }
+    cache: dict[tuple[str, str, str, str], str | None] = {}
+    updates: list[tuple[str, str, str]] = []
+    for candidate_id, station, event, stage, decided in rows:
+        key = (str(station), str(event), str(stage), str(decided))
+        if key not in cache:
+            found = conn.execute(
+                "SELECT checkpoint_id, envelope_content_sha256, envelope_json"
+                " FROM basket_probability_bridge_history"
+                " WHERE station_id=? AND event_date=? AND stage=?"
+                "   AND decision_at_utc=? LIMIT 1",
+                key,
+            ).fetchone()
+            sha = None
+            if found is not None:
+                try:
+                    envelope = history_envelope_payload(
+                        conn,
+                        checkpoint_id=str(found[0]),
+                        envelope_content_sha256=str(found[1]),
+                        stored=str(found[2]) if found[2] else None,
+                    )
+                    receipt = (envelope.get("lineage") or {}).get(
+                        "band_reliability_json"
+                    )
+                    if isinstance(receipt, str):
+                        receipt = json.loads(receipt)
+                    if isinstance(receipt, dict):
+                        sha = receipt.get("band_table_sha256")
+                except Exception:  # noqa: BLE001 -- unreadable stays unknown
+                    sha = "\0unreadable"
+            cache[key] = sha
+        sha = cache[key]
+        if sha == "\0unreadable":
+            counts["envelope_unreadable"] += 1
+            continue
+        if not sha:
+            counts["no_band_receipt"] += 1
+            continue
+        axis = axis_by_sha.get(str(sha))
+        if axis is None:
+            counts["sha_not_in_store"] += 1
+            continue
+        updates.append((axis, str(sha), str(candidate_id)))
+    if updates:
+        conn.executemany(
+            "UPDATE paper_trade_candidate_window"
+            " SET band_axis=?, band_table_sha256=? WHERE candidate_id=?",
+            updates,
+        )
+        conn.commit()
+        counts["resolved"] = len(updates)
+    return counts
 
 
 def _backfill_intended_basis(conn: sqlite3.Connection) -> dict[str, int]:
@@ -3730,8 +3895,28 @@ def _stage_entry_candidates(
                 continue
             seen.add(signature)
             lineage = envelope_json.get("lineage") or {}
+            # Charter 105/110: which band table shaped this claim, and on
+            # which axis.  Read here because this is where the envelope is
+            # already open; the axis becomes the lambda fit's partition key
+            # and the sha rides along for audit.  A body with no band
+            # receipt leaves both None -- charter 104's rule against
+            # silently borrowing a basis -- rather than defaulting to the
+            # axis that happens to be active now.
+            _band = lineage.get("band_reliability_json")
+            try:
+                _band = json.loads(_band) if isinstance(_band, str) else _band
+            except (TypeError, ValueError):
+                _band = None
+            _band = _band if isinstance(_band, dict) else {}
             yield {
                 "decision_at_utc": str(decided),
+                "band_axis": (
+                    str(_band.get("axis")) if _band.get("axis") else None
+                ),
+                "band_table_sha256": (
+                    str(_band["band_table_sha256"])
+                    if _band.get("band_table_sha256") else None
+                ),
                 "quotes": quotes,
                 "observed_at": observed_at,
                 "buckets": buckets,
@@ -7795,8 +7980,13 @@ def backfill(
                 refusal = ("no_book_at_decision", "", 0, "")
                 cycles = 0
                 opened = False
-                stage_candidates: tuple[str, list] | None = None
-                stage_candidates_seated: tuple[str, list] | None = None
+                # (decision_at_utc, windows, band_axis, band_table_sha256)
+                stage_candidates: (
+                    tuple[str, list, str | None, str | None] | None
+                ) = None
+                stage_candidates_seated: (
+                    tuple[str, list, str | None, str | None] | None
+                ) = None
                 stage_seated_buckets: tuple[str, ...] | None = None
                 lane_opened_at: datetime | None = None
                 # Production's clamp compares this cycle's distribution with
@@ -8000,7 +8190,11 @@ def backfill(
                     # station-day-stage, and the cycle the walk stops on is
                     # the one that decided -- the seating cycle when it
                     # seated, the last one it looked at when it did not.
-                    stage_candidates = (payload["decision_at_utc"], windows)
+                    stage_candidates = (
+                        payload["decision_at_utc"], windows,
+                        payload.get("band_axis"),
+                        payload.get("band_table_sha256"),
+                    )
                     # The centre of whichever enumeration ends up seating
                     # this cycle.  This lane's own to begin with; the
                     # production judge reassigns it to production's when
@@ -8305,6 +8499,8 @@ def backfill(
                         if _judged:
                             stage_candidates = (
                                 payload["decision_at_utc"], _judged,
+                                payload.get("band_axis"),
+                                payload.get("band_table_sha256"),
                             )
                         _signature = verdict.get("decision_signature")
                         if isinstance(_signature, dict) and (
@@ -9979,7 +10175,7 @@ def backfill(
                 # its own decisions back as though they were outcomes.
                 recorded = stage_candidates_seated or stage_candidates
                 if recorded is not None:
-                    decided_at, enumerated = recorded
+                    decided_at, enumerated, band_axis, band_sha = recorded
                     seated_key = stage_seated_buckets
                     for row in enumerated:
                         if row.get("all_in_price") is None:
@@ -10023,6 +10219,8 @@ def backfill(
                             1 if row.get("admissible", True) else 0,
                             1 if tuple(buckets) == seated_key else 0,
                             SELECTION_RULE_SHA256,
+                            band_axis,
+                            band_sha,
                         ))
             # The chain is done adding.  One position, one settlement: the
             # truth lands once, and scoring each stage against it separately
@@ -10197,8 +10395,9 @@ def backfill(
             " candidate_id, station_id, event_date, stage, decision_at_utc,"
             " buckets_json, window_size, win_probability,"
             " raw_win_probability, all_in_price, gate_agreement,"
-            " admissible, seated, selection_rule_sha256"
-            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            " admissible, seated, selection_rule_sha256,"
+            " band_axis, band_table_sha256"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT(station_id, event_date, stage, decision_at_utc,"
             "             buckets_json) DO UPDATE SET"
             "  win_probability=excluded.win_probability,"
@@ -10207,7 +10406,9 @@ def backfill(
             "  gate_agreement=excluded.gate_agreement,"
             "  admissible=excluded.admissible,"
             "  seated=excluded.seated,"
-            "  selection_rule_sha256=excluded.selection_rule_sha256",
+            "  selection_rule_sha256=excluded.selection_rule_sha256,"
+            "  band_axis=excluded.band_axis,"
+            "  band_table_sha256=excluded.band_table_sha256",
             pending_candidates,
         )
     if pending_settlements:

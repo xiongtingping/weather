@@ -324,6 +324,61 @@ def _band_partition_by_position(
     return out
 
 
+def _has_band_axis_column(conn: sqlite3.Connection) -> bool:
+    """Whether the candidate table carries charter 110's partition key."""
+
+    try:
+        return any(
+            str(row[1]) == "band_axis"
+            for row in conn.execute(
+                "PRAGMA table_info(paper_trade_candidate_window)"
+            )
+        )
+    except sqlite3.Error:
+        return False
+
+
+def _fit_axis(
+    conn: sqlite3.Connection, stages: Sequence[str]
+) -> str | None:
+    """The band axis this fit is for: the one those stages serve today.
+
+    ``None`` when no stage in the set has an activated band table, which is
+    also what a candidate row written before the column existed carries --
+    so a database with no band tables at all still fits on its whole
+    history rather than on nothing.
+    """
+
+    try:
+        from .band_reliability_store import (
+            band_table_axis,
+            load_band_table,
+        )
+    except Exception:  # noqa: BLE001 -- a lane without the store fits as before
+        return None
+    seen = []
+    for stage in stages:
+        try:
+            # Existence first.  ``band_table_axis`` answers ``claim`` for a
+            # database that has never held a table, because that is what
+            # every row written before the column meant -- but "no table at
+            # all" is not a vintage, and partitioning on it would exclude
+            # every candidate row in a fixture or a replay extract that
+            # never had band lineage to record.  No table, no partition.
+            if load_band_table(conn, stage=str(stage)) is None:
+                continue
+            seen.append(band_table_axis(conn, stage=str(stage)))
+        except Exception:  # noqa: BLE001 -- an absent table is not an error
+            continue
+    if not seen:
+        return None
+    # One axis per fit.  Stages on different axes cannot be pooled, and the
+    # caller groups stages that share one (EFFECTIVE_EDGE_STAGES and its
+    # siblings are already split that way).
+    distinct = sorted(set(seen))
+    return distinct[0] if len(distinct) == 1 else None
+
+
 def _band_partition_by_decision(
     conn: sqlite3.Connection,
     stages: Sequence[str],
@@ -456,14 +511,41 @@ def fit_lambda_table(
     # already multiplied by charter 81's centre lift and the off-centre
     # deflation, because that is the number the gate divides the price by.
     # Nothing may lift it again.
+    # Charter 110: one axis per fit.  The band axis moves every claim, and
+    # the claim is the denominator of ``a = price / claim`` -- the very axis
+    # lambda is keyed on.  Measured 2026-09-08 on 757 live candidate
+    # windows, switching P0 to the distance axis moved ``a`` on all of them
+    # and carried 6.1% across a band boundary into a different lambda value.
+    # A fit pooling both vintages is fitting one curve to two different x
+    # axes.
+    #
+    # Rows whose axis is unknown are OUT.  They predate the column and their
+    # envelopes no longer say; treating them as "probably the current axis"
+    # is the silent borrowing charter 104 forbids for a claim, and a
+    # partition key deserves the same rule.  They are counted, not hidden.
+    axis = _fit_axis(conn, stages)
+    # A candidate table without the column cannot be partitioned on it, and
+    # that is an ordinary state rather than an error: a replay extract, a
+    # fixture, any database whose ledger has not run the migration yet.  It
+    # fits on everything, exactly as it did before charter 110.
+    if axis is not None and not _has_band_axis_column(conn):
+        axis = None
+    axis_clause = "" if axis is None else " AND band_axis IS ?"
+    axis_args: tuple[Any, ...] = () if axis is None else (axis,)
     rows = conn.execute(
         "SELECT win_probability, all_in_price, hit, station_id, event_date,"
         " stage, decision_at_utc"
         " FROM paper_trade_candidate_window"
         f" WHERE stage IN ({placeholders}) AND event_date >= ?"
-        "   AND hit IS NOT NULL",
-        (*stages, floor_day),
+        "   AND hit IS NOT NULL" + axis_clause,
+        (*stages, floor_day, *axis_args),
     ).fetchall()
+    excluded_axis = 0 if axis is None else conn.execute(
+        "SELECT COUNT(*) FROM paper_trade_candidate_window"
+        f" WHERE stage IN ({placeholders}) AND event_date >= ?"
+        "   AND hit IS NOT NULL AND band_axis IS NOT ?",
+        (*stages, floor_day, axis),
+    ).fetchone()[0]
     partition = _band_partition_by_decision(conn, stages, floor_day)
     band_filter: dict[str, Any] = {
         "cells": BAND_PARTITION_CELLS,
@@ -548,6 +630,12 @@ def fit_lambda_table(
         "table": payload,
         "band_filter": band_filter,
         "stage_scope": stage_scope,
+        # Charter 110: which band vintage this fit is for, and how much of
+        # the sample the partition left out.  Displayed rather than
+        # swallowed -- a fit that quietly halved its own evidence looks
+        # exactly like a fit that had half as much.
+        "band_axis": axis,
+        "excluded_other_band_axis": int(excluded_axis),
         "content_sha256": content_sha256(payload),
         "bands": bands,
         "evidence": evidence,
