@@ -66,3 +66,28 @@ def test_the_latest_formal_report_is_the_newest_at_or_before_the_clock() -> None
     assert fitter._latest_formal_temperature(
         points, parse("2026-09-06T16:00:00Z"), parse("2026-09-06T17:00:00Z")
     ) is None
+
+
+def test_the_daily_job_runs_on_the_interpreter_the_package_imports_under() -> None:
+    """Bare ``python3`` is the wrong interpreter for this job, and the way
+    it was wrong is the way this kind of failure is always wrong: silently.
+
+    The launchd job's PATH puts ``/opt/homebrew/bin`` first, whose Python
+    3.13 has never carried ``httpx`` -- which ``bayes_basket_target``
+    imports at package import time.  Every scheduled run from 2026-08-26
+    echoed its start line, died on ModuleNotFoundError, and left the
+    artifact where it was; thirteen consecutive runs failed and the only
+    refit in that stretch was one somebody ran by hand on 09-06.  Nothing
+    reported it because the artifact does not expire -- it just keeps
+    serving the curve it was last fitted with.
+
+    So the script picks the interpreter the resident picks, and the
+    fallback stays for a checkout with no venv.
+    """
+
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "scripts" / "metar_ceiling_refit_daily.sh"
+    ).read_text(encoding="utf-8")
+    assert 'PY="${PYTHON:-$ROOT/.venv/bin/python}"' in script
+    assert 'PY="$(command -v python3)"' in script, "fallback for no venv"
