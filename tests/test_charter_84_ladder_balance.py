@@ -260,6 +260,7 @@ def test_the_solution_says_a_completion_was_offered_and_does_not_hash_it() -> No
         "candidate_origin_counts",
         "floor_refused_origin_counts",
         "shadowed_completion",
+        "completion_floor_refused",
         "content_sha256",
     }
     assert solution["candidate_origin_counts"][
@@ -268,8 +269,55 @@ def test_the_solution_says_a_completion_was_offered_and_does_not_hash_it() -> No
     # The Kelly row takes the seat, so the completion was offered and lost --
     # the exact case that had no name until now.
     assert solution["shadowed_completion"] is True
+    # ...and it was floor-legal when it lost, which is what makes it
+    # shadowing rather than a refusal.
+    assert solution["completion_floor_refused"] is False
     identity = {k: v for k, v in solution.items() if k not in audit_only}
     assert content_sha256(identity) == solution["content_sha256"]
+
+
+def test_a_completion_the_floor_refused_is_not_reported_as_shadowed() -> None:
+    """The two ways a completion fails to be bought are different defects.
+
+    Shadowed: the completion was floor-legal and the winner chain preferred
+    another row (charter 84's own loss, repaired by reordering the chain).
+    Refused: charter 93's in-support floor removed it before the chain ran
+    (repaired, if at all, by charter 116's exemption).  The first version of
+    this flag reported both as shadowing, and over 2026-09-06..08 that was
+    45 refusals against 3 real shadowings -- the screen the hunt runs on,
+    wrong by 15x.
+
+    The shape is production's own.  Charter 112's level search prices the
+    completion at the top of book, and the candidate then buys it with
+    ``_ask_depth_purchase`` against that cash: one share at 0.15 and the
+    rest walked into 0.90 buys 1.7 of the 5 shares the level asked for, so
+    the built basket is under-completed and the floor refuses what the
+    search certified.  Recorded here as the reproduction; the sizing law is
+    not changed by this test.
+    """
+
+    raw = _held_snapshot().to_dict()
+    raw["buckets"][3]["ask_levels"] = [
+        {"price": 0.15, "shares": 1.0},
+        {"price": 0.90, "shares": 100.0},
+    ]
+    snapshot = TargetBasketSnapshot.from_mapping(raw)
+
+    solution = compile_delta_v2_runtime_plan(
+        snapshot=snapshot, basket_policy=_basket_policy(),
+        delta_policy=_delta_policy(), fill_resolver=_fill_resolver,
+        capital_available_usdc=10.0, minimum_profit_floor=-5.0,
+        resource_probe_ok=True, book_equity_usdc=514.29,
+    )["target_solution"]
+
+    assert solution["candidate_origin_counts"][
+        LADDER_BALANCE_CANDIDATE_ORIGIN
+    ] == 1
+    assert solution["floor_refused_origin_counts"][
+        LADDER_BALANCE_CANDIDATE_ORIGIN
+    ] == 1
+    assert solution["completion_floor_refused"] is True
+    assert solution["shadowed_completion"] is False
 
 
 def test_the_seated_projection_carries_the_lambda_axis_it_was_priced_on() -> None:

@@ -3479,16 +3479,39 @@ def solve_target_inventory_v2(
         origin_counts[key] = origin_counts.get(key, 0) + 1
         if id(row) not in legal_ids:
             floor_refused[key] = floor_refused.get(key, 0) + 1
+    completion_offered = int(
+        origin_counts.get(LADDER_BALANCE_CANDIDATE_ORIGIN) or 0
+    )
+    completion_floor_refused = int(
+        floor_refused.get(LADDER_BALANCE_CANDIDATE_ORIGIN) or 0
+    )
     return {
         **identity,
         "content_sha256": content_sha256(identity),
         "candidate_origin_counts": dict(sorted(origin_counts.items())),
         "floor_refused_origin_counts": dict(sorted(floor_refused.items())),
         # The one question the charter-84 hunt asks: was a completion
-        # offered that the winner is not?
+        # offered, floor-legal, and then passed over for another row?
+        #
+        # The first version of this flag asked only "offered and did not
+        # win", and a completion the floor refused answers yes to that --
+        # it was offered, it is not the winner, and the winner chain never
+        # saw it because ``legal`` had already dropped it.  Measured over
+        # 2026-09-06..08, 78 compiles offered a completion: 45 of them were
+        # floor refusals reading as shadowing, and 3 were the real thing.
+        # A screen built on the old flag is wrong by 15x in the direction
+        # that matters, and it is the screen the charter-84 hunt uses; the
+        # refusal is a different defect with a different repair (charter
+        # 93's floor, and charter 116's exemption for a repair), so the two
+        # have to be separable from a plan.
         "shadowed_completion": bool(
-            origin_counts.get(LADDER_BALANCE_CANDIDATE_ORIGIN)
+            completion_offered > completion_floor_refused
             and winner["candidate_origin"] != LADDER_BALANCE_CANDIDATE_ORIGIN
+        ),
+        # Offered and refused before the winner chain ran.  Not shadowing:
+        # nothing passed it over, the floor removed it.
+        "completion_floor_refused": bool(
+            completion_offered and completion_offered == completion_floor_refused
         ),
     }
 
