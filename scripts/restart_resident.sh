@@ -184,18 +184,30 @@ for lbl in "${LABELS[@]}"; do
   fi
 done
 
+# The status file is a liveness confirmation, not the record of what
+# happened -- launchd above already reported a new pid for every label, and
+# that is the restart.  Measured 2026-09-08: the resident wrote its new pid
+# at 11:07:51Z, sixteen seconds after this wait gave up, and because the
+# wait ran under set -e the whole tail of this script never executed -- the
+# cooldown clock was never stamped and the queued request was never served.
+# The next session would then find a cooldown elapsed since the restart
+# BEFORE this one and restart again on a cursor that had just been reset:
+# the exact starvation this file exists to prevent, reintroduced by its own
+# health check.  So the wait is longer, and its failure warns rather than
+# discarding the record of a restart that demonstrably happened.
+STATUS_CONFIRMED=1
 case " ${LABELS[*]} " in *" com.weather.weather_basket_yes "*)
-python3 - "$STATUS" "$BEFORE" <<'PY'
+python3 - "$STATUS" "$BEFORE" <<'PY' || STATUS_CONFIRMED=0
 import json,sys,time
 status,before=sys.argv[1],int(sys.argv[2])
-for _ in range(60):
+for _ in range(150):
     time.sleep(2)
     try: d=json.load(open(status))
     except Exception: continue
     if int(d.get("pid") or 0) not in (0,before):
         print("up: pid %s started %s" % (d.get("pid"), d.get("started_at")))
         raise SystemExit(0)
-print("resident status did not report a new pid within 120s", file=sys.stderr)
+print("resident status did not report a new pid within 300s", file=sys.stderr)
 raise SystemExit(1)
 PY
 ;; esac
@@ -213,5 +225,11 @@ print("served %d queued request(s)" % n)
 PY
 
 report_pause_flag
+# A restart launchd did not take is a failure.  A restart it took whose
+# status file was slow to confirm is recorded above, and reported here.
+if [ "${STATUS_CONFIRMED:-1}" = "0" ]; then
+  echo "  (restart recorded: launchd reported new pids; status confirmation was slow --" >&2
+  echo "   check $STATUS before assuming the resident is wedged)" >&2
+fi
 [ "${RESTART_INCOMPLETE:-0}" = "1" ] && exit 1
 exit 0
