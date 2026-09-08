@@ -319,7 +319,7 @@ def _production_health(status: Mapping[str, Any]) -> dict[str, Any]:
     if blocked_scope_count and committed_scope_count:
         reasons = production.get("blocked_scope_reasons") or {}
         top = "、".join(
-            f"{name}×{count}"
+            f"{BLOCKED_SCOPE_REASON_LABELS.get(name, name)}×{count}"
             for name, count in sorted(
                 reasons.items(), key=lambda kv: -kv[1]
             )[:3]
@@ -4868,6 +4868,40 @@ def _station_breakdown(
             "live_barred": len(barred_seen.get(day) or ()),
         }
     return by_day
+
+
+# What a scope refusal means, for the one surface a person reads it on.
+#
+# The board printed these codes verbatim, and one of them is actively
+# misleading: ``complete_basket_target_not_activated`` reads as "a feature
+# is switched off" and means the opposite -- the target-inventory argmax
+# chose the no-new-action baseline, which is an economic HOLD by a working
+# engine.  On 2026-09-08 it was 11 of one batch's 15 refusals, and it cost
+# an hour of misdiagnosis: the code was read as a disabled completion path
+# while the engine was in fact declining to buy, on purpose, every time.
+#
+# Renamed nowhere.  The string is the charter's own spelling for clause 66
+# (乙), clause 96 cites it as evidence, a doctrine test binds it to the
+# kernel source, and 13,915 decision rows carry it -- so the identifier is
+# constitutional and this is a reading fix, not a rename.  The raw codes
+# stay untouched in ``blocked_scope_reasons`` for anything that greps.
+#
+# ``.get(name, name)`` on purpose: an unmapped code shows raw rather than
+# being hidden or guessed at.
+BLOCKED_SCOPE_REASON_LABELS = {
+    "complete_basket_target_not_activated": "经济性持有（不新建仓最优）",
+    "complete_basket_candidate_missing": "缺候选腿",
+    "complete_basket_delta_not_positive": "增量不为正",
+    "delta_v2_support_empty": "无可选支撑窗口",
+    "exchange_minimum_lot_unaffordable": "交易所最小手买不起",
+    "production_quote_expired": "报价过期",
+    "p1_entry_window_not_open": "P1 入场窗未开",
+    "preliminary_no_live_p1_pending": "P1 待定（初步）",
+    "sizing_clamped_below_authorized_clip": "定量被砍到授权额以下",
+    "bundle_rescore_refused": "重评拒绝",
+    "support_floor_after_lift": "抬手后支持集地板拒",
+    "no_decision_moment": "非决策时刻",
+}
 
 
 def _daily_table(
