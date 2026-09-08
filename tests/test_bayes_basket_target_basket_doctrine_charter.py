@@ -547,6 +547,21 @@ def test_clause_44_truth_exclusions_reach_every_scoring_path() -> None:
         assert "is_excluded" in source, f"{rel} does not apply exclusions"
 
 
+# A book cheap enough to make these clauses' point, but above the
+# belief-scaled leg floor (charter 91/103) -- derived from the floor rather
+# than typed, because typing it is how these went red.  79dba835 settled the
+# floor at three cents on 2026-08-24 and the fixtures kept their two-cent
+# books; charter 103 then moved the reading to the mid, so a 0.01/0.02 book
+# measured 0.015 against a 0.03 floor and EVERY bucket was excluded.  Seven
+# clause tests failed on a rule none of them is about.  ``_wide_snapshot``
+# quotes bid = ask - one tick, so the mid is ask - 0.005; one tick over the
+# floor clears it for every belief (the floor only ever scales DOWN, at
+# ``anchor / probability`` above the 0.30 anchor).
+_CHEAP_ASK_ABOVE_LEG_FLOOR = round(
+    delta_v2_runtime.MINIMUM_LEG_ALL_IN_ASK + 0.01, 4
+)
+
+
 def _wide_snapshot(probabilities: tuple[float, ...], ask: float) -> object:
     from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
 
@@ -666,7 +681,7 @@ def test_clause_37_window_enumeration_respects_the_four_bucket_cap() -> None:
         "max_outside_loss_usdc": 5.0,
     })
     probabilities = (0.16, 0.17, 0.17, 0.17, 0.17, 0.16)
-    snapshot = _wide_snapshot(probabilities, ask=0.02)
+    snapshot = _wide_snapshot(probabilities, ask=_CHEAP_ASK_ABOVE_LEG_FLOOR)
     by_bucket = {
         row.bucket: float(row.probability) for row in snapshot.buckets
     }
@@ -1319,11 +1334,16 @@ def test_clause_68_the_objective_reads_effective_edge() -> None:
     # The original, unquoted sentence is gone; the phrase survives only
     # inside the retirement note and (c)'s reference to it.
     assert "钳 [0.05,1.50]），机器算候选、人晋升常量" not in clause
-    # Charter 96 (2026-09-06) split the top band at 0.95.  The bootstrap
-    # carries the same value either side, so the constant still describes
-    # the table charter 68 shipped -- it just names one more boundary.
+    # Charter 96 (2026-09-06) split the top band at 0.95 and charter 104(四)
+    # (2026-09-07) split what was left of it at 1.00 and 1.10, because the
+    # open top band was heterogeneous in the one way that stops a band mean
+    # from working as a threshold: lambda tracks a almost one-for-one inside
+    # it, and lambda - a turns positive only under 1.00.  Every split carries
+    # the containing band's value into its halves (``_project_onto_partition``),
+    # so the bootstrap still describes the table charter 68 shipped -- it just
+    # names three more boundaries.
     assert kernel.EFFECTIVE_EDGE_BAND_BOUNDS == (
-        0.50, 0.70, 0.80, 0.85, 0.95, float("inf")
+        0.50, 0.70, 0.80, 0.85, 0.95, 1.00, 1.10, float("inf")
     )
     assert kernel.EFFECTIVE_EDGE_LAMBDA == (
         (0.50, 0.14),
@@ -1331,6 +1351,10 @@ def test_clause_68_the_objective_reads_effective_edge() -> None:
         (0.80, 0.87),
         (0.85, 0.87),
         (0.95, 0.82),
+        # The three heirs of the old open top band, all carrying its value:
+        # a split moves no served number on the day it lands.
+        (1.00, 0.82),
+        (1.10, 0.82),
         (float("inf"), 0.82),
     )
     # P1's own table is served capped at one: the exemption was "trust
@@ -1883,7 +1907,7 @@ def test_clause_49_ladder_seat_must_contain_the_centre_bucket() -> None:
     # Buckets 32..37.  The mass sits on 34/35; 37 is the penny tail, and the
     # book is cheap everywhere so price alone would happily seat it.
     probabilities = (0.04, 0.06, 0.32, 0.30, 0.17, 0.11)
-    snapshot = _wide_snapshot(probabilities, ask=0.02)
+    snapshot = _wide_snapshot(probabilities, ask=_CHEAP_ASK_ABOVE_LEG_FLOOR)
     by_bucket = {
         row.bucket: float(row.probability) for row in snapshot.buckets
     }
@@ -1903,7 +1927,17 @@ def test_clause_49_ladder_seat_must_contain_the_centre_bucket() -> None:
     )
     seats = [tuple(row["buckets"]) for row in windows]
     assert audit["probability_core"] == ["34", "35"]
-    assert audit["ladder_center_bucket"] == "34"
+    # The rung is READ, not asserted to be the argmax.  Charter 54
+    # (2026-08-25) made the ruling centre the mass-weighted mean and this
+    # fixture is exactly where the two definitions part: the argmax is 34,
+    # the mean ordinal is 34.83, so the rung is 35.  This line used to read
+    # "34" and passed for a reason that has nothing to do with clause 49 --
+    # the leg floor had emptied ``admitted``, and with nothing admitted the
+    # centre falls back to whatever the caller passed in.  Which bucket the
+    # centre IS belongs to clause 54's own test; what clause 49 says is that
+    # every seat must hold it.
+    centre = audit["ladder_center_bucket"]
+    assert centre == "35"
     assert audit["center_refused_window_count"] > 0, "the rule must have bitten"
     assert (
         audit["core_refused_window_count"]
@@ -1914,16 +1948,17 @@ def test_clause_49_ladder_seat_must_contain_the_centre_bucket() -> None:
     assert ("37",) not in seats
     assert ("36", "37") not in seats
     assert ("32",) not in seats
-    # ... and so is a lean that touches the core but lets go of the rung:
-    # under clause 42 {35,36,37} held, under the ladder it does not.
-    assert ("35", "36", "37") not in seats
-    # Every surviving window holds the rung; both flanks and the straddle
-    # are all on the menu, and the curve score alone picks among them.
-    assert ("34",) in seats
-    assert ("33", "34") in seats, "the lower flank is enumerated"
-    assert ("34", "35", "36") in seats, "the upper flank is enumerated"
-    assert ("33", "34", "35") in seats, "the straddle is enumerated"
-    assert all("34" in seat for seat in seats)
+    # ... and so is every lean that touches the core but lets go of the rung,
+    # which under this centre is the whole lower flank: under clause 42
+    # {34} and {33,34} held, under the ladder they do not.
+    assert ("34",) not in seats
+    assert ("33", "34") not in seats
+    # Every surviving window holds the rung; the singleton and both flanks
+    # are on the menu, and the curve score alone picks among them.
+    assert (centre,) in seats
+    assert ("34", "35", "36") in seats, "the lower flank is enumerated"
+    assert ("35", "36") in seats, "the upper flank is enumerated"
+    assert all(centre in seat for seat in seats)
 
 
 def test_clause_49_negative_ev_centre_is_still_the_anchor() -> None:
@@ -2047,7 +2082,7 @@ def test_clause_49_ladder_rule_evicts_an_off_rung_incumbent() -> None:
         "max_outside_loss_usdc": 5.0,
     })
     probabilities = (0.04, 0.06, 0.32, 0.30, 0.17, 0.11)
-    snapshot = _wide_snapshot(probabilities, ask=0.02)
+    snapshot = _wide_snapshot(probabilities, ask=_CHEAP_ASK_ABOVE_LEG_FLOOR)
     by_bucket = {
         row.bucket: float(row.probability) for row in snapshot.buckets
     }
@@ -2188,7 +2223,7 @@ def test_clause_50_a_seat_needs_at_least_three_rungs() -> None:
     assert policy.minimum_support_buckets == 3
 
     probabilities = (0.04, 0.06, 0.32, 0.30, 0.17, 0.11)
-    snapshot = _wide_snapshot(probabilities, ask=0.02)
+    snapshot = _wide_snapshot(probabilities, ask=_CHEAP_ASK_ABOVE_LEG_FLOOR)
     by_bucket = {
         row.bucket: float(row.probability) for row in snapshot.buckets
     }
@@ -2249,7 +2284,7 @@ def test_clause_50_floor_is_not_waived_for_an_inherited_two_rung_ladder() -> (
         "max_outside_loss_usdc": 5.0,
     })
     probabilities = (0.04, 0.06, 0.32, 0.30, 0.17, 0.11)
-    snapshot = _wide_snapshot(probabilities, ask=0.02)
+    snapshot = _wide_snapshot(probabilities, ask=_CHEAP_ASK_ABOVE_LEG_FLOOR)
     by_bucket = {
         row.bucket: float(row.probability) for row in snapshot.buckets
     }
@@ -2290,14 +2325,42 @@ def test_clause_51_a_fading_leg_is_held_never_topped_up_never_sold() -> None:
     import inspect
 
     source = inspect.getsource(compile_delta_v2_runtime_plan)
-    # The clamp exists, and it is a floor at the current size rather than a
-    # rewrite of the target: min() with zero can only remove a purchase.
+    # The clamp left this function on 2026-09-01 for the kernel, because a
+    # selection rule has to be one rule on both sides -- it had been inline
+    # here, which meant the paper ledger never ran it at all.  Asserting the
+    # inline source line kept this test red from that day onward, and a line
+    # of code was never what clause 51 says.  Assert the rule instead, on the
+    # kernel that now holds it, and assert only that production reaches it.
     assert "declining_buckets" in source
-    assert "gap_by_bucket[bucket] = min(0.0, gap_by_bucket[bucket])" in source
+    assert "clamp_declining_gaps_v2" in source, "production runs the kernel rule"
     # Selling stays impossible: the execution set is positive gaps only.
     assert "gap_by_bucket[bucket] > EPS" in source
+
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        clamp_declining_gaps_v2,
+    )
+
+    clamped, declining = clamp_declining_gaps_v2(
+        gap_by_bucket={"34": 5.0, "35": 3.0, "36": 2.0},
+        support=("34", "35", "36"),
+        probabilities={"34": 0.30, "35": 0.25, "36": 0.30},
+        previous_probabilities={"34": 0.40, "35": 0.25, "36": 0.20},
+    )
+    # 34 faded, so its purchase is clamped away -- and only to zero.  The
+    # size it already holds is untouched, which is the "held, never sold"
+    # half of the clause.
+    assert declining == ("34",)
+    assert clamped["34"] == 0.0
+    # 35 did not move and 36 rose; neither is a fading claim.
+    assert clamped["35"] == 3.0 and clamped["36"] == 2.0
     # No previous reading means no direction, and every bucket stays eligible.
-    assert "if previous_probabilities:" in source
+    unmeasured, none_declining = clamp_declining_gaps_v2(
+        gap_by_bucket={"34": 5.0},
+        support=("34",),
+        probabilities={"34": 0.30},
+        previous_probabilities=None,
+    )
+    assert none_declining == () and unmeasured["34"] == 5.0
 
     signature = inspect.signature(compile_delta_v2_runtime_plan)
     assert "previous_probabilities" in signature.parameters
