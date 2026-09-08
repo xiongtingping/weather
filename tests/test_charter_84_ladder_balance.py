@@ -25,6 +25,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (
     LADDER_BALANCE_CANDIDATE_ORIGIN,
     ladder_balance_targets_v1,
     support_scenario_floor_v1,
+    completion_floor_delta_v1,
 )
 from bayes_basket_target.delta_v2_runtime import (
     _assert_candidate_support_contract,
@@ -165,11 +166,19 @@ def test_a_venue_short_seat_gets_a_completion_candidate_and_nothing_else_does() 
     assert row["shares_by_bucket"]["32"] == pytest.approx(5.0)
     assert row["cost_by_bucket"]["30"] == pytest.approx(1.25)
     assert row["cost_by_bucket"]["32"] == pytest.approx(0.75)
-    assert row["ladder_balance"] == {
+    balance_audit = dict(row["ladder_balance"])
+    # Recorded alongside, never gated: the completion's other price.
+    floor_delta = balance_audit.pop("floor_delta")
+    assert balance_audit == {
         "level_shares": 5.0, "short_buckets": ["32"],
         "spend_usdc": pytest.approx(0.75), "full_spend_usdc": pytest.approx(0.75),
         "capital_scale": 1.0,
     }
+    assert floor_delta["schema"] == "completion_floor_delta_v1"
+    # Buying the short rung is what lifts the worst in-support settlement off
+    # minus-the-premium; that is the number no gate on this path reads.
+    assert floor_delta["floor_before"] < 0.0 < floor_delta["floor_after"]
+    assert floor_delta["floor_delta"] > 0.0
     # A completion that does not fit the plan's capital whole is scaled to
     # what fits, never refused: the execution sizing raises the leg to the
     # venue minimum against the scope's budget, as it did the opener's legs.
@@ -1140,3 +1149,64 @@ def test_whatever_level_it_picks_is_floor_legal(held, cost, ask) -> None:
     assert verdict["legal"], verdict
     # And never sells: every rung ends at or above what it held.
     assert all(targets[b] >= held[b] - 1e-9 for b in window)
+
+
+# --------------------------------------------------------------------------
+# User ruling 2026-09-08: the completion's two prices, recorded not gated.
+# --------------------------------------------------------------------------
+
+def test_the_floor_delta_reading_prices_the_completion_both_ways() -> None:
+    """SAEZ 2026-09-08: -0.0535 of edge buys +4.45 of floor.
+
+    Charter 73/92 sees only the first number and refuses; charter 93 sees
+    only the second and is what the completion is for.  The reading carries
+    both so the disagreement is measurable rather than arguable.
+    """
+
+    reading = completion_floor_delta_v1(
+        support=("17C", "18C", "19C"),
+        held_shares={"17C": 0.0, "18C": 5.0, "19C": 6.0},
+        held_cost_usdc={"17C": 0.0, "18C": 2.655, "19C": 1.146},
+        target_shares={"17C": 5.0, "18C": 5.0, "19C": 6.0},
+        ask_by_bucket={"17C": 0.11, "18C": 0.48, "19C": 0.35},
+        claim_by_bucket={"17C": 0.0993, "18C": 0.5268, "19C": 0.4414},
+    )
+    assert reading["floor_before"] == pytest.approx(-3.801)
+    assert reading["floor_after"] == pytest.approx(0.649)
+    assert reading["floor_delta"] == pytest.approx(4.45)
+    assert reading["increment_edge"] == pytest.approx(-0.0535, abs=1e-4)
+    assert reading["floor_per_edge_usdc"] == pytest.approx(4.45 / 0.0535, rel=1e-3)
+    assert reading["floor_legal_before"] is False
+    assert reading["floor_legal_after"] is True
+
+
+def test_the_rate_is_none_when_nothing_is_traded_away() -> None:
+    """A completion the increment gate already likes has no exchange rate."""
+
+    reading = completion_floor_delta_v1(
+        support=("a", "b"),
+        held_shares={"a": 5.0, "b": 0.0},
+        held_cost_usdc={"a": 1.0, "b": 0.0},
+        target_shares={"a": 5.0, "b": 5.0},
+        ask_by_bucket={"a": 0.20, "b": 0.10},
+        claim_by_bucket={"a": 0.30, "b": 0.40},
+    )
+    assert reading["increment_edge"] > 0
+    assert reading["floor_per_edge_usdc"] is None
+    # And with no claims at all there is no edge to compare against.
+    bare = completion_floor_delta_v1(
+        support=("a", "b"),
+        held_shares={"a": 5.0, "b": 0.0}, held_cost_usdc={"a": 1.0, "b": 0.0},
+        target_shares={"a": 5.0, "b": 5.0}, ask_by_bucket={"a": 0.20, "b": 0.10},
+    )
+    assert bare["increment_edge"] is None and bare["floor_per_edge_usdc"] is None
+
+
+def test_an_unpriced_short_rung_is_flagged_not_silently_costed() -> None:
+    reading = completion_floor_delta_v1(
+        support=("a", "b"),
+        held_shares={"a": 5.0, "b": 0.0}, held_cost_usdc={"a": 1.0, "b": 0.0},
+        target_shares={"a": 5.0, "b": 5.0}, ask_by_bucket={"a": 0.20, "b": 0.0},
+    )
+    assert reading["completion_priced"] is False
+

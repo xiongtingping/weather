@@ -97,6 +97,7 @@ from .basket_kernel.delta_v2 import (
     probability_vector_identity_v1,
     whole_basket_kelly_stake_v1,
     ladder_balance_targets_v1,
+    completion_floor_delta_v1,
     evaluate_action_v2,
     evaluate_basket_value_v2,
     raise_sub_lot_targets_v2,
@@ -3876,6 +3877,8 @@ def _target_candidates(
             ),
             quote_version=str(snapshot.quote_version),
             unbuyable=market_dead,
+            # For the recorded floor-delta reading only; no gate reads it.
+            probabilities_by_bucket=probabilities_by_bucket,
         )
         if balance_candidate is not None:
             candidates.append(balance_candidate)
@@ -4228,6 +4231,7 @@ def _ladder_balance_candidate(
     capital_available_usdc: float,
     quote_version: str,
     unbuyable: Collection[str] = (),
+    probabilities_by_bucket: Mapping[str, float] | None = None,
 ) -> dict[str, Any] | None:
     """Charter 84's candidate: the seat's short rungs raised to its held level.
 
@@ -4348,6 +4352,33 @@ def _ladder_balance_candidate(
             "spend_usdc": spend,
             "full_spend_usdc": full_spend,
             "capital_scale": scale,
+            # Recorded, never read by a gate (user ruling 2026-09-08:
+            # "先只记账不进闸").  Charter 73/92 authorizes this buy on the
+            # increment's own edge and charter 93 judges the shape on the
+            # in-support floor; a completion is where the two habitually
+            # disagree, and nobody can argue for an exemption without the
+            # joint distribution on the book's own settled history.
+            "floor_delta": completion_floor_delta_v1(
+                support=tuple(ordered),
+                held_shares=held,
+                held_cost_usdc={
+                    bucket: float(current_cost[bucket])
+                    + float(pending_cost[bucket])
+                    for bucket in ordered
+                },
+                target_shares=targets,
+                ask_by_bucket={
+                    bucket: float(lane_prices.get(bucket, 0.0) or 0.0)
+                    for bucket in ordered
+                },
+                claim_by_bucket={
+                    bucket: float(
+                        (probabilities_by_bucket or {}).get(bucket, 0.0) or 0.0
+                    )
+                    for bucket in ordered
+                },
+                fee_rate=0.0,
+            ),
         },
     }
 

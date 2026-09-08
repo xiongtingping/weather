@@ -2049,6 +2049,104 @@ def whole_basket_kelly_stake_v1(
     return fraction, max(0.0, fraction * float(book_equity_usdc))
 
 
+COMPLETION_FLOOR_DELTA_SCHEMA = "completion_floor_delta_v1"
+
+
+def completion_floor_delta_v1(
+    *,
+    support: Sequence[str],
+    held_shares: Mapping[str, Any],
+    held_cost_usdc: Mapping[str, Any],
+    target_shares: Mapping[str, Any],
+    ask_by_bucket: Mapping[str, Any],
+    claim_by_bucket: Mapping[str, Any] | None = None,
+    fee_rate: float = 0.0,
+) -> dict[str, Any]:
+    """What completing a broken seat buys, in both currencies at once.
+
+    Charter 73/92 authorizes a buy on one number -- the increment's own
+    whole-basket edge, ``sum(claim * added shares) - cash`` -- and charter 93
+    judges the shape on another -- the worst settlement inside the support.
+    A completion is the one action where the two habitually disagree: the leg
+    that is missing is missing because the book would not sell it at our
+    price, which is the same region where ``claim < ask``, so the increment
+    prices negative; and buying it is what lifts the seat's worst in-support
+    settlement off ``-premium``, which the increment does not price at all.
+
+    Recorded, not gated (user ruling, 2026-09-08: "先只记账不进闸").  Nothing
+    here refuses anything; it exists so the joint distribution of the two
+    numbers can be measured on the book's own history before anyone argues
+    for a floor exemption in charter 73/92.  ``floor_delta`` is the charter
+    93 reading before and after, ``increment_edge`` the charter 73/92 one,
+    and ``floor_per_edge_usdc`` how much floor a unit of forgone edge buys --
+    ``None`` where the increment is not negative, because the trade only has
+    a rate when there is something being traded away.
+    """
+
+    window = tuple(_text("delta_v2_floor_delta_bucket", b) for b in support)
+    if len(set(window)) != len(window):
+        raise ContractError("delta_v2_floor_delta_support_duplicate")
+    if not window:
+        raise ContractError("delta_v2_floor_delta_support_empty")
+    fee = _nonnegative("delta_v2_floor_delta_fee", fee_rate)
+    held = {
+        b: _nonnegative("delta_v2_floor_delta_held", held_shares.get(b, 0.0) or 0.0)
+        for b in window
+    }
+    paid = {
+        b: _nonnegative("delta_v2_floor_delta_cost", held_cost_usdc.get(b, 0.0) or 0.0)
+        for b in window
+    }
+    want = {
+        b: _nonnegative("delta_v2_floor_delta_target", target_shares.get(b, 0.0) or 0.0)
+        for b in window
+    }
+    ask = {
+        b: _nonnegative("delta_v2_floor_delta_ask", ask_by_bucket.get(b, 0.0) or 0.0)
+        for b in window
+    }
+    added = {b: max(0.0, want[b] - held[b]) for b in window}
+    priced = all(ask[b] > EPS for b in window if added[b] > EPS)
+    cash = sum(added[b] * ask[b] * (1.0 + fee) for b in window)
+    after_shares = {b: max(held[b], want[b]) for b in window}
+    after_cost = {b: paid[b] + added[b] * ask[b] * (1.0 + fee) for b in window}
+    before = support_scenario_floor_v1(
+        shares_by_bucket=held, cost_by_bucket=paid, support=window
+    )
+    after = support_scenario_floor_v1(
+        shares_by_bucket=after_shares, cost_by_bucket=after_cost, support=window
+    )
+    floor_delta = (
+        after["worst_in_support_pnl"] - before["worst_in_support_pnl"]
+    )
+    increment_edge: float | None = None
+    if claim_by_bucket is not None:
+        claim = {
+            b: _finite(f"delta_v2_floor_delta_claim_{b}", claim_by_bucket.get(b, 0.0))
+            for b in window
+        }
+        increment_edge = sum(claim[b] * added[b] for b in window) - cash
+    rate: float | None = None
+    if increment_edge is not None and increment_edge < -EPS:
+        rate = floor_delta / -increment_edge
+    identity = {
+        "schema": COMPLETION_FLOOR_DELTA_SCHEMA,
+        "support": list(window),
+        "completion_priced": priced,
+        "added_shares_by_bucket": added,
+        "completion_cash_usdc": cash,
+        "floor_before": before["worst_in_support_pnl"],
+        "floor_after": after["worst_in_support_pnl"],
+        "floor_delta": floor_delta,
+        "floor_legal_before": before["legal"],
+        "floor_legal_after": after["legal"],
+        "increment_edge": increment_edge,
+        "floor_per_edge_usdc": rate,
+    }
+    return {**identity, "content_sha256": content_sha256(identity)}
+
+
+
 LADDER_BALANCE_LEVEL_RULE_VERSION = "cheapest_floor_legal_held_level_v1"
 
 
