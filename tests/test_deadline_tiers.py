@@ -226,3 +226,17 @@ def test_the_reconcile_mark_is_split_into_its_four_lanes() -> None:
         "settle_live_cycles",
     ):
         assert f'self._span("{span}")' in SOURCE, span
+
+
+def test_the_evidence_pass_is_split_into_its_two_loops() -> None:
+    """The refresh calls straight into this and was 228.2s of a 547.6s
+    cycle -- 96% of the decision loop, 54% of R0.
+
+    Two per-station loops sit under one caller: the evidence cache, which
+    the compiler is explicitly forbidden to consume, and the snapshot,
+    which is the row the compile actually reads.  Neither had ever been
+    timed, so "the refresh is expensive" could not become "which half".
+    """
+
+    for span in ("market_evidence_cache_pass", "market_evidence_snapshot_pass"):
+        assert f'"{span}"' in SOURCE, span

@@ -10546,6 +10546,7 @@ class TargetProductionWorker:
                 for station_id in station_allowlist
             ]
             current_day_materialized = 0
+            _evidence_cache_started = time.perf_counter()
             for station_id, scope_event_date in evidence_scopes:
                 try:
                     evidence_cache_receipts.append(
@@ -10566,6 +10567,11 @@ class TargetProductionWorker:
                         "event_date": scope_event_date,
                         "reason": f"{type(exc).__name__}:{exc}",
                     })
+            self._add_span(
+                "market_evidence_cache_pass",
+                (time.perf_counter() - _evidence_cache_started) * 1000.0,
+                label=f"{len(evidence_scopes)} stations",
+            )
             # Counted in the loop, not inferred from the receipt: the
             # receipt does not have to carry an event_date, and reading one
             # off it turned every cycle fatal the moment listing scopes were
@@ -10653,6 +10659,7 @@ class TargetProductionWorker:
         try:
             if station_allowlist:
                 resident_receipts = []
+                _snapshot_started = time.perf_counter()
                 for station_id in station_allowlist:
                     try:
                         resident_receipts.append(
@@ -10678,6 +10685,11 @@ class TargetProductionWorker:
                             "event_date": manifest_event_date,
                             "reason": f"{type(exc).__name__}:{exc}"[:200],
                         })
+                self._add_span(
+                    "market_evidence_snapshot_pass",
+                    (time.perf_counter() - _snapshot_started) * 1000.0,
+                    label=f"{len(station_allowlist)} stations",
+                )
                 if not resident_receipts and first_snapshot_error is not None:
                     # Nothing written for any station: there is no partial
                     # pass to keep, so fail exactly as the whole-fleet form
