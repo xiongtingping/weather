@@ -384,3 +384,46 @@ def test_the_activation_guard_never_reads_the_replay_lane() -> None:
     source = inspect.getsource(admitted_return)
     assert "paper_trade_candidate_window_replay" not in source
     assert "FROM paper_trade_candidate_window" in source
+
+
+def test_the_replay_lane_is_actually_asked_for_by_the_sweep() -> None:
+    """A lane that exists and is never called is not a lane.
+
+    Every behaviour below this line was tested from the day the replay lane
+    landed -- off unless asked for, fitting when the served axis has none, a
+    served row beating its own replay, the activation guard refusing to read
+    it -- and the daily sweep asked for none of it.  Measured 2026-09-09:
+    ``fit_lambda_table`` ran with ``include_replayed`` at its default, so
+    841 recomputed rows sat unread while P0 fitted on ZERO served rows and
+    served a table frozen at a vintage its own axis change had made
+    unrefreshable.
+
+    Both halves are asserted, because either alone is a different kind of
+    stale.  Passing the flag without running the replay wires the daily fit
+    to whatever snapshot somebody last made by hand -- the table found that
+    day stopped at 2026-09-07.  Running the replay without the flag is what
+    was already happening.
+    """
+
+    sweep = (
+        Path(__file__).resolve().parents[1]
+        / "scripts" / "calibration_refit_sweep.sh"
+    ).read_text(encoding="utf-8")
+
+    assert "replay_candidate_windows_on_current_band.py" in sweep, (
+        "the sweep must refresh the recomputed claims it is about to fit on"
+    )
+    refit = next(
+        line for line in sweep.splitlines()
+        if "refit_effective_edge_lambda.py" in line
+    )
+    assert "--include-replayed" in refit, refit
+    # The replay has to run BEFORE the fit that reads it, or the fit reads
+    # yesterday's recomputation every day.
+    assert sweep.index("replay_candidate_windows_on_current_band.py") < (
+        sweep.index("refit_effective_edge_lambda.py")
+    )
+    # And it may never be fatal: a replay that cannot run leaves the fit on
+    # served rows, which is where it was before the lane existed.
+    tail = sweep[sweep.index("replay_candidate_windows_on_current_band.py"):]
+    assert "||" in tail[:400], "the replay must not fail the sweep"

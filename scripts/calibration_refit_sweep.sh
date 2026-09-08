@@ -95,8 +95,31 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] band_shadow refit (shadow, unserved)"
 # the number governing it is frozen and nothing on the book can refresh it.
 # That is a human's call (deliberately sample the band, or accept the
 # freeze), not a reason to fail the sweep the other refits ride on.
+# Charter 110: a band axis change mis-keys a settled window, it does not
+# kill it.  The price the book quoted and the bucket the day settled to do
+# not depend on our probabilities; only the claim does.  So the claim is
+# recomputed on the table that serves today and filed under the band it now
+# belongs to, and the fit below reads those rows.
+#
+# Both halves or neither.  The replay lane existed and the refit did not ask
+# for it, so 841 hand-run rows sat unread while P0's fit ran on zero served
+# rows -- its band axis moved to centre_distance on 2026-09-07 and every
+# claim-axis row it had went with it, leaving the served table frozen at a
+# vintage nothing could refresh.  Passing --include-replayed alone would
+# have wired the daily fit to a hand-made snapshot that stops the day
+# somebody last ran it (it stopped at 2026-09-07, two days before this was
+# found); running the replay alone changes nothing at all.
+#
+# Never fatal: a replay that cannot run leaves the fit on served rows, which
+# is exactly where it was before this lane existed.
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] candidate window replay on the current band"
+"$PY" scripts/replay_candidate_windows_on_current_band.py \
+  --commit --as-of "$(date -u +%Y-%m-%dT%H:%M:%SZ)" || {
+  echo "candidate window replay: skipped, fit falls back to served rows" >&2
+}
+
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] effective edge lambda refit"
-"$PY" scripts/refit_effective_edge_lambda.py --commit || {
+"$PY" scripts/refit_effective_edge_lambda.py --commit --include-replayed || {
   EE_RC=$?
   if [ "$EE_RC" = "3" ]; then
     echo "effective-edge refit: a band has no observations left" >&2
