@@ -1312,6 +1312,82 @@ def test_clause_67_p1_seats_only_after_local_eleven() -> None:
     assert 'blockers=["p1_entry_window_not_open"]' in runtime_source
 
 
+def test_clause_119_p1_evidence_is_a_hold_before_the_compile() -> None:
+    """The rule judges P1 now, and it judges it where charter 67 judges it.
+
+    Its only call site used to be the stage-zero anchor, which the worker
+    routes P1 away from, so it had never judged a P1 at all: the seven
+    P1-driven fills of 2026-09-07 were priced by envelopes it refused.  It
+    must be an explicit HOLD before the compile and never on the P1 commit
+    path, which persists the canonical observation and the hard bound.
+    """
+    clause = _clause(119)
+    assert "挂上 P1 下单路径" in clause
+    assert "绝不挂在 P1 的 commit 路上" in clause
+
+    import importlib
+
+    from pathlib import Path
+
+    from bayes_basket_target import metar_trajectory, production_io
+
+    # One rule, two importers -- the ledger's walk and production's compile
+    # must not drift into two spellings of it.
+    ledger = importlib.import_module("scripts.paper_trading_ledger")
+    assert (
+        production_io.assert_p1_execution_evidence
+        is metar_trajectory.assert_p1_execution_evidence
+        is ledger.assert_p1_execution_evidence
+    )
+
+    runtime_source = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "runtime.py"
+    ).read_text(encoding="utf-8")
+    assert "assert_p1_execution_evidence(envelope.lineage)" in runtime_source
+    # Before the compile, beside charter 67's window -- not after it.
+    assert runtime_source.index(
+        "assert_p1_execution_evidence(envelope.lineage)"
+    ) < runtime_source.index("delta_plan = compile_delta_v2_runtime_plan(")
+    assert (
+        runtime_source.index('blockers=["p1_entry_window_not_open"]')
+        < runtime_source.index("assert_p1_execution_evidence(envelope.lineage)")
+    )
+
+    # Charter 67's own boundary, inherited: the atomic path that writes the
+    # observation and bound facts does not consult this rule.
+    assert "assert_p1_execution_evidence" not in (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target"
+        / "production_worker.py"
+    ).read_text(encoding="utf-8")
+
+    # Same depth as charter 67 in the ledger, for the same reason.
+    assert ledger.REFUSAL_DEPTH["p1_execution_evidence"] == (
+        ledger.REFUSAL_DEPTH["entry_window_not_open"]
+    )
+
+
+def test_clause_119_the_refusal_codes_dropped_a_prefix_that_lied() -> None:
+    """A blocker code that names a call site the rule no longer only has is
+    the same naming drift this clause exists to repair.  Free to rename:
+    both old spellings fired 0 times in 34167 decisions."""
+
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    for name in (
+        "bayes_basket_target/metar_trajectory.py",
+        "bayes_basket_target/production_io.py",
+        "bayes_basket_target/runtime.py",
+        "scripts/paper_trading_ledger.py",
+    ):
+        source = (root / name).read_text(encoding="utf-8")
+        assert "stage_zero_execution_p1_hard_bound" not in source
+        assert "stage_zero_execution_p1_strong_likelihood" not in source
+
+
 def test_clause_68_the_objective_reads_effective_edge() -> None:
     clause = _clause(68)
     assert "λ(a)·p" in clause

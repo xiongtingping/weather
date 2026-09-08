@@ -60,6 +60,7 @@ from .stages import select_current_stage
 from .settlement_time import assert_probability_timezone_matches_market
 from .regime_artifact import RegimeArtifact, resolve_regime_artifact
 from .regime_materialization import evaluate_regime_gate
+from .metar_trajectory import assert_p1_execution_evidence
 from .delta_v2_artifact import DeltaV2PolicyArtifact
 from .delta_v2_runtime import (
     CHARTER_83_MIN_NOTIONAL,
@@ -1182,6 +1183,54 @@ def _compile_target_plan(
                         "opens_local_hour": DEFAULT_P1_ENTRY_LOCAL_HOUR,
                         "decision_local_time": _local.strftime("%H:%M"),
                         "charter": 67,
+                    }
+                },
+            )
+
+    # Charter 119: a P1 that does not carry its own evidence may not seat.
+    # Same shape as charter 67 above and for the same reason -- an explicit
+    # HOLD before the compile, never on the P1 commit path, which persists
+    # the canonical observation and the hard bound and must keep flowing.
+    #
+    # The rule existed since the suspension but had one call site the worker
+    # routes P1 away from, so it judged nothing: the seven P1-driven fills of
+    # 2026-09-07 were priced by envelopes it refused.  Replayed over every P1
+    # that reached this compile since the suspension settled on 09-03 it
+    # refuses none of 1948, because charter 67 already holds P1 to the local
+    # afternoon and by then one of the three outermost claimants has always
+    # spoken.  It is a floor under that coincidence, not a change to it.
+    if str(snapshot.evidence.probability_stage or "") == "P1":
+        try:
+            assert_p1_execution_evidence(envelope.lineage)
+        except ContractError as exc:
+            return _blocked(
+                blockers=[str(exc)],
+                remaining_budget_before=remaining_budget_before,
+                station_policy=resolved.to_dict(),
+                extra_plan={
+                    "p1_execution_evidence": {
+                        "charter": 119,
+                        "refusal": str(exc),
+                        "observation_likelihood_mode": str(
+                            envelope.lineage.get("observation_likelihood_mode")
+                            or ""
+                        ),
+                        "soft_likelihood_policy": str(
+                            envelope.lineage.get(
+                                "metar_trajectory_soft_likelihood_policy"
+                            ) or ""
+                        ),
+                        # Which of the three outermost claimants left a
+                        # receipt at all.  A refusal that names only itself
+                        # sends the next reader to re-derive this by hand.
+                        "receipts_present": sorted(
+                            key for key in (
+                                "p1_four_layer_serving_json",
+                                "regional_path_prior_json",
+                                "metar_ceiling_json",
+                            )
+                            if str(envelope.lineage.get(key) or "").strip()
+                        ),
                     }
                 },
             )

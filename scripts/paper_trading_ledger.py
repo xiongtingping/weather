@@ -251,6 +251,9 @@ from bayes_basket_target.basket_kernel.support import (  # noqa: E402
 )
 from bayes_basket_target.contracts import ProbabilityEnvelope  # noqa: E402
 from bayes_basket_target.contracts import ContractError  # noqa: E402
+from bayes_basket_target.metar_trajectory import (  # noqa: E402
+    assert_p1_execution_evidence,
+)
 from bayes_basket_target.delta_v2_artifact import (  # noqa: E402
     resolve_delta_v2_policy,
 )
@@ -666,6 +669,11 @@ REFUSAL_DEPTH = {
     # 14:50 local, because midnight's clock refusal outranked the
     # afternoon's economics.
     "entry_window_not_open": 2,
+    # Charter 119, and it sits here for charter 67's exact reason: a P1
+    # whose outermost layer left no receipt never entered the funnel, and
+    # a later cycle on the same day does get judged once one of the three
+    # claimants speaks.  Any judged refusal must outrank this one.
+    "p1_execution_evidence": 2,
     # One layer: all three mean the enumeration produced no basket to price.
     # Which of the three is reported is decided by the gate that took the
     # last window standing, not by depth -- the funnel order lives in
@@ -2450,6 +2458,11 @@ REFUSAL_REASONS = (
     "incomplete_book",
     "selection_failed",
     "production_judge_blocked",
+    # Charter 119: the P1 did not carry the evidence its own mode claims --
+    # the hard bound plus whichever of the three outermost claimants
+    # answered for the step.  Production refuses it before its compile and
+    # so does the walk, off the same function.
+    "p1_execution_evidence",
     # No window survived long enough to be shown a price: the structural
     # floors -- contiguity, the charter-49 centre rung, the length floor --
     # took the whole enumeration.  Split out of ``no_priced_window`` on
@@ -8089,6 +8102,25 @@ def backfill(
                                     local_hour.hour, local_hour.minute,
                                     P1_ENTRY_LOCAL_HOUR,
                                 ),
+                                cycles, payload["decision_at_utc"],
+                            ))
+                            continue
+                    # Charter 119: the same evidence rule production runs
+                    # before its compile, off the same function, so the
+                    # strategy measured is the strategy run.  Read from the
+                    # envelope body the payload already carries.
+                    if stage == "P1":
+                        _p1_lineage = (
+                            (payload.get("envelope_payload") or {}).get(
+                                "lineage"
+                            ) or {}
+                        )
+                        try:
+                            assert_p1_execution_evidence(_p1_lineage)
+                        except ContractError as _exc:
+                            refusal = _deeper_refusal(refusal, (
+                                "p1_execution_evidence",
+                                "P1 无自带证据：%s（宪章 119）" % (_exc,),
                                 cycles, payload["decision_at_utc"],
                             ))
                             continue

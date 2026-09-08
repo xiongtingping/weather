@@ -869,7 +869,7 @@ def test_stage_zero_anchor_rejects_p1_without_formal_strong_likelihood(
             lineage.pop(lineage_remove)
         with pytest.raises(
             ContractError,
-            match="stage_zero_execution_p1_strong_likelihood_missing",
+            match="p1_strong_likelihood_missing",
         ):
             target_stage_zero_execution_anchor_from_cycle(p1_cycle)
 
@@ -2057,7 +2057,7 @@ def test_p1_execution_evidence_rejects_suspended_p1_missing_its_evidence(
         lineage.pop(lineage_remove)
     with pytest.raises(
         ContractError,
-        match="stage_zero_execution_p1_hard_bound_ceiling_evidence_missing",
+        match="p1_execution_evidence_missing",
     ):
         assert_p1_execution_evidence(lineage)
 
@@ -2110,7 +2110,7 @@ def test_p1_execution_evidence_rejects_a_claimant_that_stood_down(
 ) -> None:
     with pytest.raises(
         ContractError,
-        match="stage_zero_execution_p1_hard_bound_ceiling_evidence_missing",
+        match="p1_execution_evidence_missing",
     ):
         assert_p1_execution_evidence(
             _suspended_p1_lineage(
@@ -2131,14 +2131,14 @@ def test_p1_execution_evidence_reads_the_chain_receipt_by_its_schema() -> None:
     )
     with pytest.raises(
         ContractError,
-        match="stage_zero_execution_p1_hard_bound_ceiling_evidence_missing",
+        match="p1_execution_evidence_missing",
     ):
         assert_p1_execution_evidence(lineage)
 
     lineage["p1_four_layer_serving_json"] = "{not json"
     with pytest.raises(
         ContractError,
-        match="stage_zero_execution_p1_hard_bound_ceiling_evidence_missing",
+        match="p1_execution_evidence_missing",
     ):
         assert_p1_execution_evidence(lineage)
 
@@ -2157,7 +2157,7 @@ def test_p1_execution_evidence_still_needs_the_hard_bound_under_a_chain(
         with pytest.raises(
             ContractError,
             match=(
-                "stage_zero_execution_p1_hard_bound_ceiling_evidence_missing"
+                "p1_execution_evidence_missing"
             ),
         ):
             assert_p1_execution_evidence({
@@ -2193,6 +2193,6 @@ def test_p1_execution_evidence_keeps_the_old_rule_for_the_old_modes() -> None:
     ):
         with pytest.raises(
             ContractError,
-            match="stage_zero_execution_p1_strong_likelihood_missing",
+            match="p1_strong_likelihood_missing",
         ):
             assert_p1_execution_evidence({**formal, **update})

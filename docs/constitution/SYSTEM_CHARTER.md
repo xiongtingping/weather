@@ -445,7 +445,7 @@ MSM 四站**全部**改善：RCSS −1.283、RJTT −0.658、RKPK −0.452、RKS
      * **按类分：交易决策 130 码（69.8% 次数）、证据/血统 98 码、新鲜度/时钟 5 码、资源/存储 10 码（含 `database is locked` 1179 次）、常驻/编排 3 码、未分类 52 码。**
 
      * **交易闸的准确计数（本条首版写「14 个」，算错，以此为准）**：交易类 130 码 = 115 个参数化实例 + 15 个非参数化；参数化归并为 2 个族，故 reason-code 层面共 **17 个**。**其中 7 个是已退役的闸——全名在现行代码里一处也搜不到，只存在于历史决策行**：`cash_phase_no_positive_order_candidate`／`target_plan_state_not_executable`／`strict_delta_not_authorized`／`strict_delta_policy_missing`／`no_positive_increment`（末次 2026-07-28）、`regime_direction_mismatch`（末次 2026-08-31）、`missing_maker_candidate:<桶>`（末次 2026-08-30）。**故 reason-code 层面活着的交易闸是 9 个**。上文「423 三码同频」的判定仍然成立，但那三个码同属这批已退役者（末次全在 2026-07-28），是史料而非待清理项。
-     * **加上不进 reason code 的两类**：窗口漏斗 8 道（`unpriced` 零触发，实活 7 道）与 `REQUIRED_HARD_GATES` 12 项中属于交易判据的 4 项（`positive_inventory_gap`／`budget_ok`／`profit_floor_ok`／`reservation_price_ok`；其余 8 项是数据前置条件，非交易闸）。**决策路径上活着的交易闸合计 20 道，分四层。**
+     * **加上不进 reason code 的两类**：窗口漏斗 8 道（`unpriced` 零触发，实活 7 道）与 `REQUIRED_HARD_GATES` 12 项中属于交易判据的 4 项（`positive_inventory_gap`／`budget_ok`／`profit_floor_ok`／`reservation_price_ok`；其余 8 项是数据前置条件，非交易闸）。**决策路径上活着的交易闸合计 20 道，分四层。**〔**2026-09-08 第 119 条**：P1 证据闸挂上下单路径后为 **21 道**——目标层之前新增一道 P1 专属的阶段准入 `p1_execution_evidence`。〕
      * **`regime_direction_*` 的补正（2026-09-08 二度更正，以此为准）**：本条首版说"同一判据在两个模块，一个执行一个只记录，这是待办"——**说过头了，现状是自洽的，无待表态项**。实测：`regime_direction_not_allowed`（执行者）**末次触发 2026-08-16，此后 23 天 0 次**；`regime_direction_recorded_not_enforced` 自同日接管，至今 4664 次。2026-08-16 正是第 52c 条裁定日（"方向只从概率质量与 EV 长出，其余方向来源一律去掉——regime 方向门首当其冲"）。代码侧 `regime_materialization.py` 注释写明"nothing passes `regime_direction_allowed` any more"，全库确认无任何调用方传过 `False`，故那两个分支自 08-16 起是不可达代码。**已清理（同日落地）**：（甲）删除 `compile_delta_v2_runtime_plan` 的 `regime_direction_allowed` 参数（恒 `True`）与两处不可达分支；（乙）**`regime_direction_recorded_not_enforced` 移出 `blockers`**——它已完整存在于 `regime_audit`（`direction_allowed`／`state`／`reasons` 及全部底层数字），追加进阻断码是纯重复，却使一个不阻断任何东西的回执成为全簿第二高频阻断码（4664 次，多于除一项外的所有真实拒绝），任何"为什么这天没交易"的统计都因此错了这么多。**阻断码是拒绝了什么的清单；一个不拒绝的分歧属于审计，且本就在那里。**
 
      * **`recorded_not_enforced` 立条的理由（保留）**：不是疏漏，是**有意为之且已写明理由**——第 43 条禁止策略层再投一次方向票，而 regime 层读的又是它随后要否决的那份计划，故该闸被摘除执行力、只留回执。但 `regime_direction_not_allowed`（998 次，`delta_v2_runtime` 内直接返回 `authorized: False`）**仍在执行**。**同一个判据在两个模块里，一个执行一个只记录**——这才是该条真正的待办。
@@ -464,3 +464,17 @@ MSM 四站**全部**改善：RCSS −1.283、RJTT −0.658、RKPK −0.452、RKS
      **证据等级（必须随裁决一同记录）**：（甲）(二) 的依据是**观察性分组，不是 A/B**。灯亮本身就意味着市场那天已经定价完，那些天本来就更容易赚；多少来自减仓、多少来自"那天本来就好"，这份数据分不出来。（乙）算术反事实同样不能定案：不减仓的臂要投入 3815–7717 USDC，而全簿只有 399，**执行不了**，故其量级不可信、**只有符号可用**。（丙）要真正定案需要一个**注码可行**的对照组（在 399 USDC 上限内比较），尚未跑。**裁决在证据不足的情况下作出，本条如实记录，后来的读者不得将其当作已验证结论。** (一) 的记录正是为了让这一类问题下次能被真正测量。
 
      **与既有条款的关系**：（一）承第 117 条(三)④"阻断码不得嵌参数"的同一精神——**一道闸的可审计性由它记下什么决定，不由它叫什么决定**；（二）不改 `CONSOLIDATION_TILT_FACTOR`（仍 0.05）、不改 `MIN_SIGNALS`（仍 1）、不改 scope（仍 opener）、不改第 84 条(八)的补齐豁免；（三）`market_lean` 的判据、阈值、在任豁免、只做减法一律不动，只增加记录。
+
+119. **P1 证据闸挂上下单路径（2026-09-08 裁决：「挂上 P1 下单路径」）**：**背景**：`assert_p1_execution_evidence` 自 09-02 软似然停用时立规——「P1 必须自带它那套模式声称的证据」——但它**唯一的调用点是 stage-zero 锚点**，而 `production_worker._commit_current_stage_no_execution_candidate` 把 P1 明确路由到原子路（注释写明「ledger rejects a P1 stage-zero anchor by contract」），下单路径 `target_atomic_facts_from_cycle` 里没有这道闸。**于是这条规则从立规起就没判过任何一个 P1**：09-07 由 P1 直接驱动的 7 笔成交（SAEZ／KORD／KSFO）逐条查过，包络全是四层链服务、无天花板回执，按当时的闸文一笔都不该有。同日先修了闸文本身（认四层链与区域先验的回执，见下（三）），本条把它挂上。
+
+     **（一）挂在哪**：`runtime._compile_target_plan` 里、**紧挨第 67 条入座窗**、`compile_delta_v2_runtime_plan` 之前，形式同为显式 HOLD。**绝不挂在 P1 的 commit 路上**——那条路原子持久化 canonical observation 与硬下界，拦了断数据链，这是第 67 条已经写明的同一条边界。阻断码 `p1_execution_evidence`，计划里同时落 `p1_execution_evidence` 结构块（`refusal`／`observation_likelihood_mode`／`soft_likelihood_policy`／`receipts_present`），因为一个只报自己名字的拒绝会让下一个读者重新手推一遍（第 117 条(三)④ 同精神）。
+
+     **（二）代价实测：零**。用生产函数对全部到达该编译点的 P1 逐行回放：软似然停用稳定后的 09-03..09-08 共 1948 行，**拒绝 0 行**；prepared 的 P1 决策 5 条全过。原因是第 67 条已经把 P1 压到本地午后，而那时三个最外层申请者（四层链／区域路径先验／时钟天花板）总有一个开口。09-01/09-02 有 7 条 prepared 会被拒，那是停用裁决落地之前的旧模式行。**本条是给这个巧合加一层地板，不是改变它。**
+
+     **（三）闸文当日的修正（同日先落地，提交 `076c6805`）**：原闸只认 `metar_ceiling_json`。09-07 四层链上服务面后，说话的申请者会压掉它下面的调用，故链服务的行**根本不写天花板回执**——回放当日 2916 行 P1，闸拒 2558 行（88%），其中 755 行正是链服务的行；逐日通过率 49.4%→49.6%→36.5%→**15.0%**。现按合成顺序逐层问：链 `applied=true`、先验 `regional_path_prior_applied=true`、天花板沿用原判据（`TOO_EARLY`／`SPLIT_DEGENERATE` 算说话，`DISABLED`／`NO_ARTIFACT`／`CLOCK_UNAVAILABLE` 不算）。**站下来的申请者不需要自己的条款**：它一站下来，下一个就会跑并写自己的回执。修后 09-07 通过 1166/2977，剩余拒绝全是三个申请者一份回执都没留的行（覆盖问题，不归本闸）。
+
+     **（四）位置与命名**：规则移入 `metar_trajectory.py`（`runtime` 在 `production_io` 上游，后者 re-export 保持原调用面）。两个阻断码去掉 `stage_zero_execution_` 前缀——`p1_execution_evidence_missing`／`p1_strong_likelihood_missing`，因为该前缀指的是一个它不再只有的调用点，而**一个说谎的阻断码正是本条在修的那类漂移**；全库 34167 条决策里两个旧拼写各 0 次触发，改名不丢任何历史。
+
+     **（五）账本同步**：`scripts/paper_trading_ledger.py` 的入场步行同点同函数调用，拒绝原因 `p1_execution_evidence`，深度 2——**与第 67 条入座窗同深度、同理由**：没进漏斗的一轮不得盖过同日更晚被真正判过的轮次。四处登记齐全（`REFUSAL_REASONS`／`REFUSAL_DEPTH`／两块看板文案）。
+
+     **与既有条款的关系**：（一）**第 67 条**：并列的第二道入座前 HOLD，沿用它「绝不拦 commit 路」的边界与账本同函数原则，第 67 条本身一字不改；（二）**第 117 条**：决策路径上活着的交易闸由 **20 道增为 21 道**（第②层"目标层"之前新增一道 P1 专属的阶段准入），该条(二)的计数据此更新；本条的阻断码不嵌参数，合(三)④；（三）**09-02 软似然停用裁决**：本条不重开它，只是把"停用之后 P1 还剩什么证据"写成可执行的判据；（四）**第 95/99 条**（四层链、区域路径先验）：本条只**读**它们的回执，不改三申请者的先后与各自的判据；（五）**第 61 条**硬下界不变，它仍是本闸要求的另一半证据。

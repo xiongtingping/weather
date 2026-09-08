@@ -619,20 +619,34 @@ def fit_lambda_table(
         (*stages, floor_day, *claim_vintages),
     ).fetchone()[0]
     # A band this fit cannot measure keeps the incumbent -- but only while
-    # the incumbent describes the same claim.  When the transform has moved,
+    # the incumbent describes the same claim.  When the transform has MOVED,
     # the served number was fitted on a quantity that no longer exists, and
     # carrying it forward is the silent borrowing charter 104 forbids.  The
-    # scope falls back to the kernel bootstrap and says so, which is the
-    # honest state: no evidence yet under this vintage.
+    # scope falls back to the kernel bootstrap and says so.
+    #
+    # "Moved" means the served table names a vintage and it is not this one.
+    # A table that names none predates the key and cannot be shown to have
+    # moved, so it is inherited and the fingerprint is recorded on the way
+    # past -- which is also the only way out of the deadlock this created
+    # when it read absence as change: the bootstrap fit scores worse than the
+    # incumbent, the activation guard refuses it, the incumbent is never
+    # rewritten, and so it never acquires the vintage that would settle the
+    # question.  Measured 2026-09-08: P0 and P0-M both sat in exactly that
+    # loop, while P1 escaped only because its bootstrap happened to score
+    # identically.
+    active_vintage = _active_claim_vintage(conn, stage_scope)
     claim_vintage_changed = bool(
         claim_vintages is not None
-        and _active_claim_vintage(conn, stage_scope) != list(claim_vintages)
+        and active_vintage is not None
+        and active_vintage != list(claim_vintages)
     )
     if claim_vintage_changed:
         incumbent = _project_onto_partition(
             _bootstrap_bands(stage_scope), _bootstrap_bands(stage_scope)
         )
         tally_incumbent_note = "bootstrap_after_claim_transform_change"
+    elif active_vintage is None:
+        tally_incumbent_note = "activated_table_vintage_unrecorded"
     else:
         tally_incumbent_note = "activated_table"
     partition = _band_partition_by_decision(conn, stages, floor_day)
