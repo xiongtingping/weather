@@ -4228,8 +4228,9 @@ def _ladder_balance_candidate(
     under the leg floor: left as they are, the completion covers the rest;
     a completion with nothing buyable is no candidate.
 
-    The level is the kernel's (``ladder_balance_targets_v1``): the most
-    shares any rung of the window holds.  Each short rung buys the
+    The level is the kernel's (``ladder_balance_targets_v1``): the cheapest
+    held rung size the completed basket still clears charter 93's floor at,
+    smallest first (user ruling 2026-09-08).  Each short rung buys the
     difference down the same ladder the grid prices on; a held rung is left
     exactly as it is.  ``None`` when the window holds nothing, nothing is
     short, a short rung has no depth, or the completion does not fit the
@@ -4247,7 +4248,31 @@ def _ladder_balance_candidate(
         bucket: float(current_shares[bucket]) + float(pending_shares[bucket])
         for bucket in ordered
     }
-    targets = ladder_balance_targets_v1(held_by_bucket=held, support=ordered)
+    # User ruling 2026-09-08: the level is the cheapest held rung size the
+    # completed basket is still floor-legal at, not the tallest rung -- the
+    # tallest is usually the one charter 70/83 lifted to a lot or a dollar,
+    # so completing to it buys the dear rungs at the cheap rung's count.
+    # The kernel prices the search, so it needs what the seat paid and what
+    # the short rungs are offered at; the lane price is the same one the
+    # increments below are bought down.
+    targets = ladder_balance_targets_v1(
+        held_by_bucket=held,
+        support=ordered,
+        held_cost_by_bucket={
+            bucket: float(current_cost[bucket]) + float(pending_cost[bucket])
+            for bucket in ordered
+        },
+        ask_by_bucket={
+            bucket: float(lane_prices.get(bucket, 0.0) or 0.0)
+            for bucket in ordered
+        },
+        # Zero, and deliberately: the increments below are priced by
+        # ``_ask_depth_purchase``, which returns the raw walk with no fee
+        # added.  A search that charged one would judge a level illegal that
+        # the candidate it sizes then builds as legal, and the two would
+        # disagree about the same basket.
+        fee_rate=0.0,
+    )
     if not targets:
         return None
     shares = {
@@ -4295,7 +4320,9 @@ def _ladder_balance_candidate(
         shares[bucket] += got
         costs[bucket] += spent
         spend += spent
-    level = max(held.values())
+    # The level the kernel actually chose, not ``max(held)``: the two differ
+    # whenever the search walked past a rung the venue had lifted.
+    level = max(float(targets[bucket]) for bucket in ordered)
     return {
         "candidate_id": "balance-" + content_sha256({
             "ordered_support": tuple(ordered),

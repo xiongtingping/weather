@@ -2049,21 +2049,52 @@ def whole_basket_kelly_stake_v1(
     return fraction, max(0.0, fraction * float(book_equity_usdc))
 
 
+LADDER_BALANCE_LEVEL_RULE_VERSION = "cheapest_floor_legal_held_level_v1"
+
+
 def ladder_balance_targets_v1(
     *,
     held_by_bucket: Mapping[str, Any],
     support: Sequence[str],
+    held_cost_by_bucket: Mapping[str, Any] | None = None,
+    ask_by_bucket: Mapping[str, Any] | None = None,
+    fee_rate: float = 0.0,
 ) -> dict[str, float]:
-    """Charter 84's shape: every short rung of the seat raised to the held level.
+    """Charter 84's shape: every short rung of the seat raised to a held level.
 
     ``held_by_bucket`` is what the chain holds (filled plus pending) per
-    bucket; ``support`` is the seated window.  The level is the most shares
-    any rung of the window holds; a rung below it is a short rung and its
-    target is the level, a rung at it keeps what it has.  Empty when the
-    window holds nothing (there is no level to balance to) or nothing is
-    short (the ladder is whole).  Sized to the held rungs, not to a new
-    Kelly stake: the seat was sized when it opened, and completing it is
-    restoring that seat, not resizing it.
+    bucket; ``support`` is the seated window.  A rung below the level is a
+    short rung and its target is the level, a rung at or above it keeps what
+    it has.  Empty when the window holds nothing (there is no level to
+    balance to) or nothing is short (the ladder is whole).  Sized to the held
+    rungs, not to a new Kelly stake: the seat was sized when it opened, and
+    completing it is restoring that seat, not resizing it.
+
+    **Which held level** (user ruling, 2026-09-08).  Charter 84 shipped with
+    "the most shares any rung holds", and that rung is usually the one the
+    venue lifted: charter 70/83 raise a sub-lot leg to a whole lot or a
+    dollar, so the tallest rung is an artefact of the exchange minimum, not
+    of what the objective wanted.  Completing to it buys the dear rungs at
+    the cheap rung's share count.  Measured on the 2026-09-08 book, four
+    seats read (whole-basket edge after completing to the tallest rung ->
+    to the shortest): KMIA +0.162 -> +0.162, SAEZ **-1.130 -> +1.205**,
+    KAUS -5.772 -> -2.848, KSFO -3.876 -> -2.221, at 35% to 50% of the cash.
+    Never worse, once decisive, and SAEZ crosses zero -- a completion the
+    tallest-rung level said not to make.
+
+    So the level is the **cheapest held rung size the completed basket is
+    still legal at**: the distinct held sizes are tried smallest first and
+    the first one whose completed shape clears charter 93's in-support floor
+    wins.  KAUS is why the search does not simply stop at the smallest --
+    completing it to 5 costs 5.256 against 5 shares and settles under water
+    (-0.256), so the level walks up to 11 and reproduces the shipped answer
+    exactly.  ``{}`` when no held size is legal: buying nothing is always
+    available and a basket that cannot be completed legally is not one.
+
+    Pricing the search needs ``held_cost_by_bucket`` and ``ask_by_bucket``;
+    without them the level is the shipped ``max`` and the floor is left to
+    the caller's after-lift recheck, which is what every pre-ruling caller
+    gets.
     """
 
     window = tuple(_text("delta_v2_balance_bucket", bucket) for bucket in support)
@@ -2073,16 +2104,52 @@ def ladder_balance_targets_v1(
         bucket: _nonnegative("delta_v2_balance_held", held_by_bucket.get(bucket, 0.0) or 0.0)
         for bucket in window
     }
-    level = max(held.values(), default=0.0)
-    if level <= EPS:
+    if max(held.values(), default=0.0) <= EPS:
         return {}
-    short = {bucket for bucket, shares in held.items() if shares + EPS < level}
-    if not short:
-        return {}
-    return {
-        bucket: (level if bucket in short else held[bucket])
-        for bucket in window
+
+    def _targets(level: float) -> dict[str, float] | None:
+        short = {b for b, shares in held.items() if shares + EPS < level}
+        if not short:
+            return None
+        return {b: (level if b in short else held[b]) for b in window}
+
+    if held_cost_by_bucket is None or ask_by_bucket is None:
+        return _targets(max(held.values())) or {}
+
+    fee = _nonnegative("delta_v2_balance_fee_rate", fee_rate)
+    paid = {
+        b: _nonnegative("delta_v2_balance_cost", held_cost_by_bucket.get(b, 0.0) or 0.0)
+        for b in window
     }
+    ask = {
+        b: _nonnegative("delta_v2_balance_ask", ask_by_bucket.get(b, 0.0) or 0.0)
+        for b in window
+    }
+    for level in sorted({shares for shares in held.values() if shares > EPS}):
+        targets = _targets(level)
+        if targets is None:
+            continue
+        cost = dict(paid)
+        priced = True
+        for bucket, want in targets.items():
+            gap = want - held[bucket]
+            if gap <= EPS:
+                continue
+            if ask[bucket] <= EPS:
+                # A short rung with no offer cannot be bought at any level;
+                # charter 84 (八) is all-or-none, so no level completes this
+                # seat and the search has nothing left to try.
+                priced = False
+                break
+            cost[bucket] += gap * ask[bucket] * (1.0 + fee)
+        if not priced:
+            return {}
+        verdict = support_scenario_floor_v1(
+            shares_by_bucket=targets, cost_by_bucket=cost, support=window
+        )
+        if verdict["legal"]:
+            return targets
+    return {}
 
 
 FLOOR_FIRST_EDGE_SHAPE_VERSION = "floor_first_edge_weights_v1"

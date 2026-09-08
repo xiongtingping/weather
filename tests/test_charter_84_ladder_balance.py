@@ -24,6 +24,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (
     KELLY_CANDIDATE_ORIGIN,
     LADDER_BALANCE_CANDIDATE_ORIGIN,
     ladder_balance_targets_v1,
+    support_scenario_floor_v1,
 )
 from bayes_basket_target.delta_v2_runtime import (
     _assert_candidate_support_contract,
@@ -1046,3 +1047,96 @@ def test_the_sweep_is_not_blocked_by_orphan_cycles_that_never_held_an_intent() -
             "SELECT COUNT(*) FROM basket_target_execution_cycles"
             " WHERE cycle_id LIKE 'cycle_orphan_%' AND state='prepared'"
         ).fetchone()[0] == 41
+
+
+# --------------------------------------------------------------------------
+# User ruling 2026-09-08: the level is the cheapest floor-legal held size.
+# --------------------------------------------------------------------------
+
+def test_unpriced_call_keeps_the_shipped_tallest_rung_level() -> None:
+    """Every pre-ruling caller gets exactly what it got before."""
+
+    assert ladder_balance_targets_v1(
+        held_by_bucket={"a": 5.0, "b": 11.0, "c": 0.0}, support=("a", "b", "c")
+    ) == {"a": 11.0, "b": 11.0, "c": 11.0}
+
+
+def test_priced_search_takes_the_shortest_rung_when_it_is_legal() -> None:
+    """SAEZ 2026-09-08: 18C held 5 @2.655, 19C held 6 @1.146, 17C missing.
+
+    The tallest rung is 19C at 6, and completing to it buys 17C six times
+    over.  Five is legal and is what the seat was actually sized at -- 19C
+    reached six because the venue lifted it, not because the objective asked.
+    """
+
+    targets = ladder_balance_targets_v1(
+        held_by_bucket={"17C": 0.0, "18C": 5.0, "19C": 6.0},
+        support=("17C", "18C", "19C"),
+        held_cost_by_bucket={"17C": 0.0, "18C": 2.655, "19C": 1.146},
+        ask_by_bucket={"17C": 0.12, "18C": 0.48, "19C": 0.35},
+    )
+    assert targets == {"17C": 5.0, "18C": 5.0, "19C": 6.0}
+    # A rung already above the level keeps what it holds; nothing is sold.
+    assert targets["19C"] == 6.0
+
+
+def test_priced_search_walks_up_when_the_shortest_rung_is_under_water() -> None:
+    """KAUS 2026-09-08: completing to 5 costs 5.256 against 5 shares.
+
+    -0.256 in support is exactly what charter 93 forbids, so the search walks
+    to the next held size and reproduces the shipped answer.
+    """
+
+    held = {"98F": 5.0, "100F": 0.0, "102F": 11.0}
+    cost = {"98F": 1.605, "100F": 0.0, "102F": 1.001}
+    ask = {"98F": 0.34, "100F": 0.53, "102F": 0.12}
+    assert ladder_balance_targets_v1(
+        held_by_bucket=held, support=("98F", "100F", "102F"),
+        held_cost_by_bucket=cost, ask_by_bucket=ask,
+    ) == {"98F": 11.0, "100F": 11.0, "102F": 11.0}
+
+
+def test_a_short_rung_with_no_offer_completes_at_no_level() -> None:
+    """Charter 84 (八) is all-or-none: an unpriced short rung ends the search."""
+
+    assert ladder_balance_targets_v1(
+        held_by_bucket={"a": 5.0, "b": 0.0, "c": 9.0},
+        support=("a", "b", "c"),
+        held_cost_by_bucket={"a": 1.0, "b": 0.0, "c": 2.0},
+        ask_by_bucket={"a": 0.20, "b": 0.0, "c": 0.25},
+    ) == {}
+
+
+@pytest.mark.parametrize(
+    "held,cost,ask",
+    [
+        ({"a": 5.0, "b": 0.0, "c": 6.0}, {"a": 2.655, "b": 0.0, "c": 1.146},
+         {"a": 0.48, "b": 0.12, "c": 0.35}),
+        ({"a": 15.0, "b": 6.0, "c": 0.0, "d": 0.0},
+         {"a": 1.050, "b": 1.020, "c": 0.0, "d": 0.0},
+         {"a": 0.04, "b": 0.12, "c": 0.26, "d": 0.31}),
+        ({"a": 5.0, "b": 5.0, "c": 0.0}, {"a": 1.155, "b": 2.555, "c": 0.0},
+         {"a": 0.18, "b": 0.56, "c": 0.24}),
+    ],
+)
+def test_whatever_level_it_picks_is_floor_legal(held, cost, ask) -> None:
+    """Checked with production's own floor function, not a copy of it."""
+
+    window = tuple(held)
+    targets = ladder_balance_targets_v1(
+        held_by_bucket=held, support=window,
+        held_cost_by_bucket=cost, ask_by_bucket=ask,
+    )
+    if not targets:
+        return
+    after = dict(cost)
+    for bucket, want in targets.items():
+        gap = want - held[bucket]
+        if gap > 0:
+            after[bucket] += gap * ask[bucket]
+    verdict = support_scenario_floor_v1(
+        shares_by_bucket=targets, cost_by_bucket=after, support=window
+    )
+    assert verdict["legal"], verdict
+    # And never sells: every rung ends at or above what it held.
+    assert all(targets[b] >= held[b] - 1e-9 for b in window)
