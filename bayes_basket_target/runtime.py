@@ -680,6 +680,29 @@ def _executable_depth_cash(
 
 
 CLAMPED_CLIP_REASON = "sizing_clamped_below_authorized_clip"
+# The other way execution changes the basket that was scored.  Charter 70/83
+# raise a sub-lot leg to one exchange lot, and the raise is allowed to exceed
+# the clip the objective authorized -- so the shares that go out are not the
+# shares that were judged, in the direction nothing was checking.
+#
+# Measured 2026-09-08 over 234 seated baskets: 96% had their share vector
+# changed by the lot, the two readings of the same basket differ by a median
+# 6.2 points and a range of -22.7 to +123.8, and 40 of them (17%) buy a
+# basket worse than the one authorized.  The mechanism is that the venue's
+# one-dollar floor asks ceil(1/price) shares, so the cheapest leg gets the
+# most shares -- and cheap is what the model calls unlikely.  Legs under
+# p=0.10 average 13.3 shares, legs over p=0.30 average 5.9.
+#
+# MPMG 2026-09-09 is the judicial case: 25 shares of a 0.001 bucket at 4c,
+# 8 of a 0.172 at 14c, 5 of a 0.44 at 35c.  Equal-share reading +15.7%,
+# actual-share reading -7.0%, and it went out -- only the 25-share leg
+# filled, so the book paid a dollar for a bucket it gives one chance in a
+# thousand.
+RAISED_LOT_REASON = "raised_to_exchange_minimum_lot"
+RESHAPED_SIZING_REASONS = frozenset({CLAMPED_CLIP_REASON, RAISED_LOT_REASON})
+# What a basket says when the shares that would go out do not pass the
+# evaluation the shares that were judged passed.
+RESHAPED_BUNDLE_REFUSED_REASON = "reshaped_bundle_rescore_refused"
 
 
 def _station_capital_usdc(
@@ -727,7 +750,7 @@ def _rescore_clamped_bundle(
     """
 
     if not any(
-        item.reason_code == CLAMPED_CLIP_REASON
+        item.reason_code in RESHAPED_SIZING_REASONS
         for item in sizing_decisions
         if item.candidate_present
     ):
@@ -1564,6 +1587,20 @@ def _compile_target_plan(
         order_sizing_decisions, remaining_after = _size_every_leg(
             clamped_clip_authorized=True
         )
+    elif bundle_rescore is not None:
+        # A refused re-score has to stop the basket, and for a CUT basket it
+        # already does: the legs the clip cut are sitting ineligible with
+        # ``sizing_clamped_below_authorized_clip`` and nothing can be sent.
+        # A RAISED basket is the opposite shape -- every leg is eligible and
+        # priced, the raise succeeded, and the only thing wrong with it is
+        # that the basket now going out is not the basket that was judged.
+        # So the refusal has to be applied rather than assumed.
+        order_sizing_decisions = [
+            item.refused(RESHAPED_BUNDLE_REFUSED_REASON)
+            if item.candidate_present else item
+            for item in order_sizing_decisions
+        ]
+        remaining_after = remaining_budget
 
     candidate_present_for_cadence = any(
         item.candidate_present for item in order_sizing_decisions

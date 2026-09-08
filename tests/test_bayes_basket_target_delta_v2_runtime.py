@@ -1362,6 +1362,7 @@ def _sizing(
     clip: float,
     limit: float,
     clamped_clip_authorized: bool = False,
+    minimum_lot_shares: float = 0.0,
 ):
     from bayes_basket_target.cash_phase import (
         BasketCashPhaseInput,
@@ -1406,6 +1407,7 @@ def _sizing(
         cash_template_caps_target=False,
         share_quantum=0.01,
         clamped_clip_authorized=clamped_clip_authorized,
+        minimum_lot_shares=minimum_lot_shares,
     )
 
 
@@ -1516,6 +1518,154 @@ def test_a_cut_bundle_is_re_authorized_before_it_is_sent() -> None:
     refused = _call(cut, permitted, policy=strict)
     assert refused["authorized"] is False
     assert "profit_floor_ok" in refused["blockers"]
+
+
+def test_a_raised_bundle_is_re_authorized_at_the_shares_the_lot_forced() -> None:
+    """The other direction execution reshapes a basket, and the one that
+    nothing was checking.
+
+    Charter 70/83 raise a sub-lot leg to one exchange lot and the raise is
+    allowed to exceed the clip the objective authorized, so the shares that
+    go out are not the shares that were judged -- upward.  A cut basket was
+    re-scored at what it would send since the clamp path was written; a
+    raised one went out on the score of a basket it was not.
+
+    Measured 2026-09-08 over 234 seated baskets: 96% were reshaped by the
+    lot, the equal-share and actual-share readings of the same basket differ
+    by a median 6.2 points over a range of -22.7 to +123.8, and 40 (17%)
+    bought worse than authorized.  The venue's one-dollar floor asks
+    ceil(1/price) shares, so the cheapest leg takes the most shares and
+    cheap is what the model calls unlikely: legs under p=0.10 averaged 13.3
+    shares, legs over p=0.30 averaged 5.9.
+
+    MPMG 2026-09-09 is the judicial case -- 25 shares of a 0.001 bucket at
+    4c beside 5 of a 0.44 at 35c, +15.7% read equal-share and -7.0% read on
+    the shares it actually bought, and it went out.
+    """
+
+    from bayes_basket_target.basket_kernel.delta_v2 import evaluate_action_v2
+    from bayes_basket_target.runtime import _rescore_clamped_bundle
+
+    snapshot = _snapshot()
+    policy = _basket_policy()
+    delta_policy = _delta_policy()
+    probabilities = {row.bucket: row.probability for row in snapshot.buckets}
+    actions = [
+        evaluate_action_v2(
+            event_id="RKPK-2026-07-28",
+            bucket=bucket,
+            cash_clip=1.0,
+            limit_price=0.10,
+            timeout_seconds=60.0,
+            order_mode="MAKER",
+            fill_distribution=[
+                {"fill_fraction": 0.0, "probability": 0.1},
+                {"fill_fraction": 0.5, "probability": 0.2},
+                {"fill_fraction": 1.0, "probability": 0.7},
+            ],
+            probabilities=probabilities,
+            current_shares_by_bucket={key: 0.0 for key in probabilities},
+            current_cost_by_bucket={key: 0.0 for key in probabilities},
+            target_shares_by_bucket={key: 12.0 for key in probabilities},
+            protected_buckets=("35", "36"),
+            shortfall_buckets=(),
+            breakthrough_buckets=(),
+            value_weights=delta_policy.value_weights,
+            execution_weights=delta_policy.execution_weights,
+            hard_gates={gate: True for gate in (
+                "unique_ssot", "lineage_complete", "registry_timezone_matches",
+                "bucket_contract_matches", "official_ws_fresh",
+                "inventory_known", "order_state_known",
+                "positive_inventory_gap", "budget_ok", "profit_floor_ok",
+                "resource_probe_ok", "reservation_price_ok",
+            )},
+            capital_available_usdc=12.0,
+            minimum_profit_floor=-12.0,
+            reservation_price=0.8,
+            wait_cost=0.0, queue_risk=0.0, adverse_selection=0.0,
+            reprice_risk=0.0, capital_lock_cost=0.0,
+        )
+        for bucket in ("35", "36")
+    ]
+    plan = {
+        "execution_gap_support": ["35", "36"],
+        "bundle_scored_scopes": {
+            "protected_buckets": ["35", "36"],
+            "shortfall_buckets": [],
+            "breakthrough_buckets": [],
+        },
+        "target_solution": {
+            "target_shares_by_bucket": {key: 12.0 for key in probabilities},
+        },
+    }
+
+    def _call(decisions, resized, **overrides):
+        return _rescore_clamped_bundle(
+            sizing_decisions=decisions,
+            resize=lambda *, clamped_clip_authorized: (resized, 12.0),
+            delta_plan=plan,
+            snapshot=snapshot,
+            delta_policy=delta_policy,
+            policy=overrides.get("policy", policy),
+            capital_available_usdc=12.0,
+            selected_action_evaluations=actions,
+        )
+
+    # One leg the lot lifts past the clip the objective authorized.
+    raised = [
+        _sizing(
+            bucket="35", depth_cash=99.0, clip=1.0, limit=0.10,
+            minimum_lot_shares=40.0,
+        ),
+        _sizing(bucket="36", depth_cash=99.0, clip=1.0, limit=0.10),
+    ]
+    assert raised[0].reason_code == "raised_to_exchange_minimum_lot"
+    assert raised[0].q_order > raised[1].q_order, "the lot really did lift it"
+
+    verdict = _call(raised, raised)
+    assert verdict is not None, "a raised basket is re-scored, not assumed"
+    # And it is re-scored at the shares that go out, not at the target.
+    assert verdict["sized_shares_by_bucket"]["35"] == pytest.approx(
+        raised[0].q_order
+    )
+
+    # A floor the authorized shape cleared, broken by the raise, refuses it.
+    strict = TargetBasketPolicy.from_mapping({
+        **_basket_policy().to_dict(),
+        "minimum_expected_pnl_after_usdc": -0.05,
+    })
+    assert _call(raised, raised, policy=strict)["authorized"] is False
+
+
+def test_a_refused_reshape_orders_nothing() -> None:
+    """A cut basket refuses itself; a raised one has to be refused.
+
+    Every leg of a raised basket is eligible and priced -- the raise
+    succeeded -- so leaving the sizing in place on a refused re-score sends
+    exactly the basket the re-score just rejected.  ``refused`` applies the
+    verdict to the leg: no shares, no cash, and the reason names the
+    judgement rather than restating a sizing rule.
+    """
+
+    from bayes_basket_target.runtime import RESHAPED_BUNDLE_REFUSED_REASON
+
+    leg = _sizing(
+        bucket="35", depth_cash=99.0, clip=1.0, limit=0.10,
+        minimum_lot_shares=40.0,
+    )
+    assert leg.eligible is True and leg.q_order > 0 and leg.c_order > 0
+
+    stopped = leg.refused(RESHAPED_BUNDLE_REFUSED_REASON)
+    assert stopped.eligible is False
+    assert stopped.q_order == 0.0 and stopped.c_order == 0.0
+    assert stopped.reason_code == RESHAPED_BUNDLE_REFUSED_REASON
+    # The cash it would have spent goes back.
+    assert stopped.remaining_budget_after == leg.remaining_budget_before
+    # Every input that produced the refused size is still on the record, and
+    # the identity moved with the verdict.
+    assert stopped.r_limit == leg.r_limit
+    assert stopped.minimum_lot_shares == leg.minimum_lot_shares
+    assert stopped.content_sha256 != leg.content_sha256
 
 
 def test_a_station_that_holds_something_can_still_compile() -> None:

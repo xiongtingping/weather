@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta, timezone
 from enum import Enum
 from typing import Any, Mapping, Sequence
@@ -451,6 +451,46 @@ class OrderSizingDecision:
     depth_is_market_bound: bool
     lot_raise_multiple: float
     content_sha256: str
+
+    def refused(self, reason_code: str) -> "OrderSizingDecision":
+        """This leg, sized as it was, refused by a judgement made above it.
+
+        The sizing arithmetic is not wrong -- the leg really does cost what
+        it costs at the lot the venue asks -- so the refusal is applied to
+        the result rather than folded back into the computation, and the
+        record keeps every input that produced the refused size.  What
+        changes is the verdict: nothing orders, no cash is committed, and
+        the reason names who refused rather than restating a sizing rule.
+
+        Charter 70's raise is the case this exists for.  A raised leg is
+        eligible and priced and the basket around it may still fail the
+        evaluation it was authorized under, and until 2026-09-08 there was
+        no way to say so: a cut basket refuses itself leg by leg, a raised
+        one had to be refused from outside.
+        """
+
+        reason = _text("reason_code", reason_code)
+        identity = {
+            **self.to_dict(),
+            "c_order": 0.0,
+            "q_order": 0.0,
+            "remaining_budget_after": self.remaining_budget_before,
+            "eligible": False,
+            "reason_code": reason,
+        }
+        identity.pop("content_sha256", None)
+        content_identity = {
+            "schema": "basket_order_sizing_decision_v1", **identity
+        }
+        return replace(
+            self,
+            c_order=0.0,
+            q_order=0.0,
+            remaining_budget_after=self.remaining_budget_before,
+            eligible=False,
+            reason_code=reason,
+            content_sha256=content_sha256(content_identity),
+        )
 
     @classmethod
     def compute(
