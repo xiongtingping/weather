@@ -616,7 +616,20 @@ def fit_band_shadow_table(
                 "pooled_table_sha256": (
                     None if pooled_loaded is None else pooled_loaded[1]
                 ),
+                "levels": {},
             },
+            # The same four keys every other return carries.  Without them
+            # the caller that reads this result raises KeyError and the
+            # stage is journalled as a crash, which is how a guard doing
+            # exactly its job read as a broken lane: P0's pooled table moved
+            # to the centre-distance axis on 2026-09-07 and this branch has
+            # fired -- correctly -- on every sweep since, each one exiting
+            # non-zero on an error whose text named a dictionary key rather
+            # than the axis mismatch the branch had already diagnosed.
+            "serving_day_count": 0,
+            "serving_station_day_count": 0,
+            "accumulating": True,
+            "forward_nll_gain": 0.0,
         }
     pooled = (
         {band: float(factor) for band, factor in pooled_loaded[0]}
@@ -1015,6 +1028,10 @@ def refit_shadow_all_stages(
                 ),
                 "cell_count": len(fitted["cells"]),
                 "promoted_cell_count": len(promoted),
+                # Carried up so an empty fit can say why it is empty.  A
+                # blocked lane and a lane with no settled samples both land
+                # here with zero cells, and only this key tells them apart.
+                "blocked_by": fitted["evidence"].get("blocked_by"),
                 "serving_day_count": fitted["serving_day_count"],
                 "serving_station_day_count": fitted[
                     "serving_station_day_count"

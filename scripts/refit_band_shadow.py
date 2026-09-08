@@ -77,7 +77,9 @@ def main() -> int:
             gain = entry["forward_nll_gain"]
             days = entry["serving_day_count"]
             keys = entry["promoted_keys_by_level"]
-            if not cells:
+            if entry.get("blocked_by"):
+                detail = f"未拟合，被 {entry['blocked_by']} 挡住"
+            elif not cells:
                 detail = "无已结算样本，影子表为空"
             elif not inherited:
                 detail = (

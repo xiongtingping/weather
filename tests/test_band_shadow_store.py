@@ -32,6 +32,7 @@ from bayes_basket_target.band_shadow_store import (
     shadow_sha256,
 )
 from bayes_basket_target.band_reliability_store import (
+    BAND_AXIS_CENTRE_DISTANCE,
     persist_and_activate_band_table,
 )
 
@@ -562,6 +563,53 @@ def test_empty_lane_is_an_accumulating_state_not_an_error() -> None:
     assert fitted["accumulating"] is True
     assert fitted["cells"] == []
     assert fitted["forward_nll_gain"] == 0.0
+
+
+def test_axis_block_is_reported_by_name_not_as_a_crash() -> None:
+    """A guard doing its job must not read as a broken lane.
+
+    P0's pooled table moved to the centre-distance axis on 2026-09-07 and
+    this branch has fired -- correctly -- on every sweep since.  It
+    returned a dict without the four top-level keys its own caller reads,
+    so ``refit_shadow_all_stages`` raised ``KeyError:
+    'serving_day_count'``, journalled the stage as an error and failed the
+    sweep the other refits ride on: the axis mismatch the branch had
+    already diagnosed never reached the receipt.  The block is a state,
+    and a state has to be nameable.
+    """
+
+    conn = sqlite3.connect(":memory:")
+    _synthetic_lane(conn, days=24, stations=6)
+    pooled = tuple(
+        (band, 1.0) for band in band_shadow_store.BAND_TABLE_CELLS
+    )
+    persist_and_activate_band_table(
+        conn, stage="P0", factors=pooled, evidence={},
+        serving_day_count=24, axis=BAND_AXIS_CENTRE_DISTANCE,
+    )
+    persist_and_activate_band_table(
+        conn, stage="P1", factors=pooled, evidence={}, serving_day_count=24
+    )
+    fitted = fit_band_shadow_table(conn, stage="P0")
+    assert fitted["evidence"]["blocked_by"] == "pooled_table_axis_not_claim"
+    # The shape contract with the caller, key by key: this is what was
+    # missing, so name each one rather than asserting the call survived.
+    for key in (
+        "serving_day_count",
+        "serving_station_day_count",
+        "accumulating",
+        "forward_nll_gain",
+    ):
+        assert key in fitted, key
+
+    report = refit_shadow_all_stages(conn, commit=True)
+    assert "error" not in report["P0"], report["P0"].get("error")
+    assert report["P0"]["blocked_by"] == "pooled_table_axis_not_claim"
+    assert report["P0"]["cell_count"] == 0
+    # The stage next to it still fits, and carries no blocker: a named
+    # block must not spread to a lane whose own axis is fine.
+    assert report["P1"].get("blocked_by") is None
+    assert report["P1"]["cell_count"] > 0
 
 
 def test_shadow_is_not_reachable_from_any_serving_path() -> None:
