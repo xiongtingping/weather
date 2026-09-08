@@ -36,6 +36,7 @@ from bayes_basket_target.delta_v2_runtime import (
     _target_candidates,
     compile_delta_v2_runtime_plan,
 )
+from tests.test_bayes_basket_target_delta_v2 import _value_weights
 from tests.test_bayes_basket_target_delta_v2_runtime import (
     _basket_policy,
     _delta_policy,
@@ -176,17 +177,22 @@ def test_a_venue_short_seat_gets_a_completion_candidate_and_nothing_else_does() 
     assert balance_audit == {
         "level_shares": 5.0, "short_buckets": ["32"],
         "spend_usdc": pytest.approx(0.75), "full_spend_usdc": pytest.approx(0.75),
+        # Constant from charter 120: all-or-none on depth and on cash, so
+        # what it spends is what the level costs and the scale is one.
         "capital_scale": 1.0,
+        "level_rule": "depth_priced_cheapest_floor_legal_held_level_v2",
     }
     assert floor_delta["schema"] == "completion_floor_delta_v1"
     # Buying the short rung is what lifts the worst in-support settlement off
     # minus-the-premium; that is the number no gate on this path reads.
     assert floor_delta["floor_before"] < 0.0 < floor_delta["floor_after"]
     assert floor_delta["floor_delta"] > 0.0
-    # A completion that does not fit the plan's capital whole is scaled to
-    # what fits, never refused: the execution sizing raises the leg to the
-    # venue minimum against the scope's budget, as it did the opener's legs.
-    scaled = next(
+    # Charter 120 (2026-09-08) reversed this.  A completion that does not fit
+    # the plan's capital whole used to be scaled to what fits; it is now
+    # refused, because a scaled completion is the short ladder it was meant
+    # to repair, and the floor refuses that shape anyway.  All-or-none, on
+    # cash exactly as on depth.
+    assert not [
         row for row in _target_candidates(
             snapshot=_held_snapshot(),
             desired=("30", "31", "32"),
@@ -200,9 +206,7 @@ def test_a_venue_short_seat_gets_a_completion_candidate_and_nothing_else_does() 
             book_equity_usdc=514.29,
         )
         if row["candidate_origin"] == LADDER_BALANCE_CANDIDATE_ORIGIN
-    )
-    assert scaled["shares_by_bucket"]["32"] == pytest.approx(2.0)
-    assert scaled["ladder_balance"]["capital_scale"] == pytest.approx(0.4)
+    ]
     # Charter 84's stated reason for this candidate -- "the Kelly law offered
     # nothing because the seat already holds more than it would size today" --
     # is FALSE on this shape, and only looked true while P0 could be sized
@@ -281,34 +285,42 @@ def test_a_completion_the_floor_refused_is_not_reported_as_shadowed() -> None:
 
     Shadowed: the completion was floor-legal and the winner chain preferred
     another row (charter 84's own loss, repaired by reordering the chain).
-    Refused: charter 93's in-support floor removed it before the chain ran
-    (repaired, if at all, by charter 116's exemption).  The first version of
-    this flag reported both as shadowing, and over 2026-09-06..08 that was
-    45 refusals against 3 real shadowings -- the screen the hunt runs on,
-    wrong by 15x.
+    Refused: charter 93's in-support floor removed it before the chain ran.
+    The first version of this flag reported both as shadowing, and over
+    2026-09-06..08 that was 45 refusals against 3 real shadowings -- the
+    screen the hunt runs on, wrong by 15x.
 
-    The shape is production's own.  Charter 112's level search prices the
-    completion at the top of book, and the candidate then buys it with
-    ``_ask_depth_purchase`` against that cash: one share at 0.15 and the
-    rest walked into 0.90 buys 1.7 of the 5 shares the level asked for, so
-    the built basket is under-completed and the floor refuses what the
-    search certified.  Recorded here as the reproduction; the sizing law is
-    not changed by this test.
+    Driven at the kernel, because the runtime can no longer produce the
+    refused arm: since charter 120 the level search prices the completion on
+    the same ladder the build walks, so a completion it offers is one the
+    floor has already cleared.  The flag still has to tell the two apart --
+    the kernel is a library and a caller may hand it any candidate set.
     """
 
-    raw = _held_snapshot().to_dict()
-    raw["buckets"][3]["ask_levels"] = [
-        {"price": 0.15, "shares": 1.0},
-        {"price": 0.90, "shares": 100.0},
-    ]
-    snapshot = TargetBasketSnapshot.from_mapping(raw)
-
-    solution = compile_delta_v2_runtime_plan(
-        snapshot=snapshot, basket_policy=_basket_policy(),
-        delta_policy=_delta_policy(), fill_resolver=_fill_resolver,
-        capital_available_usdc=10.0, minimum_profit_floor=-5.0,
-        resource_probe_ok=True, book_equity_usdc=514.29,
-    )["target_solution"]
+    completion = {
+        "candidate_id": "completion",
+        # In-support and losing: settle on "a" and the basket pays 1 against
+        # 4 spent, which is exactly what charter 93's floor is for.
+        "shares_by_bucket": {"a": 1.0, "b": 4.0},
+        "cost_by_bucket": {"a": 1.0, "b": 3.0},
+        "candidate_kind": CANDIDATE_KIND_COMPLETE,
+        "candidate_origin": LADDER_BALANCE_CANDIDATE_ORIGIN,
+    }
+    hold = {
+        "candidate_id": "hold",
+        "shares_by_bucket": {},
+        "cost_by_bucket": {},
+        "candidate_kind": CANDIDATE_KIND_BASELINE,
+        "candidate_origin": "CLIP_GRID_PRODUCT",
+    }
+    solution = K.solve_target_inventory_v2(
+        probabilities={"a": 0.2, "b": 0.8},
+        feasible_inventory_candidates=[hold, completion],
+        protected_buckets=["a", "b"],
+        shortfall_buckets=[],
+        breakthrough_buckets=[],
+        weights=_value_weights(),
+    )
 
     assert solution["candidate_origin_counts"][
         LADDER_BALANCE_CANDIDATE_ORIGIN
@@ -318,6 +330,96 @@ def test_a_completion_the_floor_refused_is_not_reported_as_shadowed() -> None:
     ] == 1
     assert solution["completion_floor_refused"] is True
     assert solution["shadowed_completion"] is False
+
+
+def test_the_search_prices_the_ladder_the_build_will_walk() -> None:
+    """Charter 120 (user ruling 2026-09-08: "B+A").
+
+    The level search used to price a gap at the first ask while the build
+    walked the book with the cash that price implied.  A rung offering one
+    share at 0.15 and the rest at 0.90 turned a certified five-share
+    completion into 1.7 shares, and charter 93's floor then refused the
+    under-completed basket the search had just cleared: 45 of the 78
+    completions offered over 2026-09-06..08 died exactly there.
+
+    Both halves are pinned.  B: the thin book is now judged on what five
+    shares really cost (3.75, not 0.75), finds no legal level and offers
+    nothing.  A: a book deep enough to fill the level still offers, at the
+    price the walk will charge -- which is the middle ground all-or-none
+    alone would have thrown away.
+    """
+
+    def _with_levels(levels: list[dict[str, float]]) -> TargetBasketSnapshot:
+        raw = _held_snapshot().to_dict()
+        raw["buckets"][3]["ask_levels"] = levels
+        return TargetBasketSnapshot.from_mapping(raw)
+
+    def _completion(snapshot: TargetBasketSnapshot) -> dict | None:
+        rows = [
+            row for row in _candidates(snapshot)
+            if row["candidate_origin"] == LADDER_BALANCE_CANDIDATE_ORIGIN
+        ]
+        assert len(rows) <= 1
+        return rows[0] if rows else None
+
+    # B: one share at the posted ask and the rest four times dearer.  Five
+    # shares cost 3.75, the completed basket costs 7.15 against a five-share
+    # payout, and no held level is legal -- so nothing is offered.
+    assert _completion(_with_levels([
+        {"price": 0.15, "shares": 1.0}, {"price": 0.90, "shares": 100.0},
+    ])) is None
+
+    # A: deep enough to fill the level, and priced on the walk rather than on
+    # the first ask -- 3 at 0.15 plus 2 at 0.20 is 0.85, not 5 x 0.15.
+    row = _completion(_with_levels([
+        {"price": 0.15, "shares": 3.0}, {"price": 0.20, "shares": 100.0},
+    ]))
+    assert row is not None
+    assert row["shares_by_bucket"]["32"] == pytest.approx(5.0)
+    assert sum(row["cost_by_bucket"].values()) == pytest.approx(4.25)
+    # All-or-none: what it spends is what the level costs, so the scale the
+    # receipt used to carry is now always one.
+    assert row["ladder_balance"]["capital_scale"] == 1.0
+    assert row["ladder_balance"]["spend_usdc"] == pytest.approx(0.85)
+    assert row["ladder_balance"]["full_spend_usdc"] == pytest.approx(0.85)
+
+    # A, on cash rather than depth: the same deep book with less money than
+    # the level costs is refused whole, not bought in part.
+    assert not [
+        row for row in _target_candidates(
+            snapshot=_with_levels([{"price": 0.15, "shares": 100.0}]),
+            desired=("30", "31", "32"),
+            artifact=_delta_policy(),
+            capital_available_usdc=0.10,
+            minimum_clip_notional_usdc=0.01,
+            bankroll_usdc=_basket_policy().total_budget_usdc,
+            probabilities_by_bucket={
+                row.bucket: row.probability
+                for row in _with_levels(
+                    [{"price": 0.15, "shares": 100.0}]
+                ).buckets
+            },
+            book_equity_usdc=514.29,
+        )
+        if row["candidate_origin"] == LADDER_BALANCE_CANDIDATE_ORIGIN
+    ]
+
+
+def test_the_depth_cost_walk_answers_none_when_the_book_is_short() -> None:
+    """The kernel half, on its own: a ladder that cannot supply the quantity
+    says so rather than returning what it can.  That distinction is the whole
+    repair -- the cash-limited walk had no way to say "short"."""
+
+    ladder = [{"price": 0.15, "shares": 1.0}, {"price": 0.90, "shares": 2.0}]
+    assert K.ask_depth_cost_v1(levels=ladder, shares=0.0) == 0.0
+    assert K.ask_depth_cost_v1(levels=ladder, shares=1.0) == pytest.approx(0.15)
+    assert K.ask_depth_cost_v1(levels=ladder, shares=3.0) == pytest.approx(1.95)
+    assert K.ask_depth_cost_v1(levels=ladder, shares=3.5) is None
+    # A level with no price or no size is skipped, not treated as free.
+    assert K.ask_depth_cost_v1(
+        levels=[{"price": 0.0, "shares": 5.0}, {"price": 0.20, "shares": 5.0}],
+        shares=2.0,
+    ) == pytest.approx(0.40)
 
 
 def test_the_seated_projection_carries_the_lambda_axis_it_was_priced_on() -> None:
