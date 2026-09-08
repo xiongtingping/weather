@@ -193,7 +193,20 @@ def _fill_resolver(**_kwargs: object) -> dict[str, object]:
 
 def test_p1_to_plan_to_multileg_atomic_ledger_is_deterministic_and_no_live(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # This test is the no-live boundary end to end, and the lane went live on
+    # 2026-08-30.  Pin the mode rather than rewrite the assertions: the
+    # no-live path is still live code (production_io still compiles under it)
+    # and a test of it must not drift with whichever mode production happens
+    # to run today.  Three separate stalenesses stacked here -- the mode, the
+    # lane flag it implies, and ``resource_probe_ok``, which gained a False
+    # default the caller is expected to override and this fixture never did.
+    import bayes_basket_target.production as _production
+
+    monkeypatch.setattr(
+        _production, "PRODUCTION_EXECUTION_MODE", "production_no_live"
+    )
     envelopes, priors, artifacts, activations, market, cash_policy = _inputs()
     delta_policy = _delta_v2_policy()
     compiled = compile_production_plan(
@@ -229,9 +242,20 @@ def test_p1_to_plan_to_multileg_atomic_ledger_is_deterministic_and_no_live(
         ),
         "delta_v2_resolution_blocker": None,
     }
-    assert compiled["status"] == "ready_no_live"
+    # The lane pin above restores these two.  What it does not restore is the
+    # seating: under the current rule set this fixture's plan holds with
+    # ``complete_basket_target_not_activated`` -- the winner is the baseline.
+    # That is a strategy change, not a lane change, and it means the multileg
+    # path below is no longer exercised by this fixture.  Asserting ``hold``
+    # here would make the test pass while covering nothing, so it is left
+    # failing on purpose with the cause named: the fixture needs re-tuning
+    # to a shape the current floor, level and edge rules will seat.
     assert compiled["execution_mode"] == "production_no_live"
     assert compiled["live_submit_authorized"] is False
+    assert compiled["status"] == "ready_no_live", (
+        "fixture no longer seats under current rules: %s"
+        % compiled.get("reason_codes")
+    )
     assert compiled["plan"]["delta_v2_audit"]["authorized"] is True
     eligible_count = len([
         row for row in compiled["order_sizing_decisions"]
@@ -659,8 +683,16 @@ def test_missing_delta_v2_policy_blocks_before_m5_intents() -> None:
     assert "delta_v2_policy_missing" in compiled["reason_codes"]
     assert "delta_v2_fill_resolver_missing" in compiled["reason_codes"]
     assert compiled["delta_v2_audit"]["authorized"] is False
-    assert compiled["live_submit_authorized"] is False
-    assert compiled["boundary"]["calls_order_gateway"] is False
+    # What must be true is that nothing was submitted, not that the lane is
+    # incapable of submitting.  Those were the same statement while the lane
+    # was no-live and stopped being the same on go-live; asserting the lane
+    # flag made this test read "we are safe because we cannot trade", which
+    # says nothing about the block under test.  The stronger claim, and the
+    # one this test is for: on a live lane, a blocked compile still sizes
+    # nothing, writes no intent and submits no order.
+    assert compiled["boundary"]["orders_submitted"] == 0
+    assert compiled["order_sizing_decisions"] == []
+    assert not (compiled.get("order_intents") or [])
 
 
 def test_sizing_failure_is_not_misreported_as_a_cadence_block() -> None:
