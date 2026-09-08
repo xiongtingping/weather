@@ -9,7 +9,7 @@ effective_date: 2026-08-26
 
 # 全局篮子先验 → 站点策略后验
 
-- version: 1.4.6
+- version: 1.4.7
 
 > **2026-08-05 策略冷启动当前有效覆盖**：正式策略父根必须来自至少两套官方原生集合的历史 OOS native P0；历史 archive availability proof 不授予实时 arrival 或 live authority。PR14 首次上线采用形式验证过的保守纯 YES baseline，真实 fill/settlement utility 只用于学习策略后续晋级，不再作为首批上线前置条件。P1_BASE 由官方实时 AWC METAR/SPECI 生成，历史轨迹增强不阻断基础 P1。
 - status: TARGET_PRODUCTION_NO_LIVE_RUNNING

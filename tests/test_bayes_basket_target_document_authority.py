@@ -59,3 +59,41 @@ def test_machine_authority_rejects_old_stage_and_taf_physical_drift() -> None:
         ]
         is False
     )
+
+
+def test_a_subordinate_json_trailing_its_markdown_is_reported_not_hidden() -> None:
+    """The pin is per file, and the gap between the two is a named state.
+
+    These four pairs have never carried one version: the markdown is prose
+    and the json is a machine contract an order of magnitude larger, written
+    by different passes.  e9d31583 pinned all four to the json's number on
+    2026-08-26 while the markdown beside it was already five patch versions
+    ahead, so the check was False from the day it was written -- and the only
+    way to make one number true would have been to type a version into the
+    json that its content does not correspond to.
+
+    So: each file answers for its own version, every safety check still runs
+    on both, and the drift is reported.  This test exists so that reporting
+    cannot quietly become collapsing.
+    """
+
+    result = build_audit(
+        Path(__file__).resolve().parents[1]
+        / "config/bayes_basket_target/document_authority_v1.json"
+    )
+    pairs = [
+        item for item in result["subordinate_contracts"]
+        if isinstance(item, dict) and "json_behind_markdown" in item
+    ]
+    assert pairs, "the paired subordinates are still audited as pairs"
+    for item in pairs:
+        assert item["version_matches"], item["path"]
+        assert item["does_not_authorize_live"], item["path"]
+        assert item["machine_forbids_p0f"], item["path"]
+        assert item["markdown_version"] and item["json_version"]
+    behind = [item for item in pairs if item["json_behind_markdown"]]
+    assert behind, (
+        "as of 2026-09-08 all four json twins trail their markdown; when one "
+        "is regenerated this narrows, and when the last one is this test is "
+        "what says so"
+    )

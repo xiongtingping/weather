@@ -9,7 +9,7 @@ effective_date: 2026-08-26
 
 # 45站统一可执行篮子公式
 
-- version: 1.3.14
+- version: 1.3.15
 
 > **2026-08-05 首批上线覆盖**：篮子只消费已发布的 durable native P0/P0-M/P1 roots；首批可按不少于 3 个合格站点 allowlist 上线，不以 45 站同时 READY 为门。历史 native P0 的 OOS 预约必须在读取 truth 前冻结无标签 input commitments；archive `Last-Modified` 仅为 no-live availability 上界，不是 arrival。未在 allowlist 的站点/lead 保持唯一 BLOCKED terminal，绝不跨 scope fallback。
 - status: TARGET_PRODUCTION_NO_LIVE

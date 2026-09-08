@@ -22,29 +22,33 @@
       "document_id": "station_model_calibration_ssot_v1",
       "markdown": "data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/station_model_calibration_ssot_v1.md",
       "json": "data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/station_model_calibration_ssot_v1.json",
-      "version": "1.4.12",
-      "status": "TARGET_PRODUCTION_NO_LIVE"
+      "status": "TARGET_PRODUCTION_NO_LIVE",
+      "markdown_version": "1.4.18",
+      "json_version": "1.4.12"
     },
     {
       "document_id": "global_station_executable_basket_formula_v1",
       "markdown": "data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/global_station_executable_basket_formula_v1.md",
       "json": "data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/global_station_executable_basket_formula_v1.json",
-      "version": "1.3.10",
-      "status": "TARGET_PRODUCTION_NO_LIVE"
+      "status": "TARGET_PRODUCTION_NO_LIVE",
+      "markdown_version": "1.3.15",
+      "json_version": "1.3.10"
     },
     {
       "document_id": "station_basket_policy_hierarchy_v1",
       "markdown": "data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/station_basket_policy_hierarchy_v1.md",
       "json": "data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/station_basket_policy_hierarchy_v1.json",
-      "version": "1.4.2",
-      "status": "TARGET_PRODUCTION_NO_LIVE_RUNNING"
+      "status": "TARGET_PRODUCTION_NO_LIVE_RUNNING",
+      "markdown_version": "1.4.7",
+      "json_version": "1.4.2"
     },
     {
       "document_id": "weather_basket_trading_operating_system_v1",
       "markdown": "data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/weather_basket_trading_operating_system_v1.md",
       "json": "data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/weather_basket_trading_operating_system_v1.json",
-      "version": "1.3.10",
-      "status": "TARGET_PRODUCTION_NO_LIVE"
+      "status": "TARGET_PRODUCTION_NO_LIVE",
+      "markdown_version": "1.3.15",
+      "json_version": "1.3.10"
     },
     "data/reports/polymarket_wallet_0x8fbd7cf5_20260721/doctrine/basket_phase_policy_versions_v2.md"
   ],

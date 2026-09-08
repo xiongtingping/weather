@@ -9,7 +9,7 @@ production_mutation: false
 
 # 统一站点模型校准 SSOT：数据合同、表结构与查询边界
 
-- version: 1.4.17
+- version: 1.4.18
 
 > **2026-08-05 原生集合历史 OOS 当前有效覆盖**：正式 P0 仍须至少两套独立官方原生集合系统。历史 no-live OOS 可使用官方 archive 的精确成员/message/object-id 证据；HTTP `Last-Modified` 只能登记为 `official_object_available_by_utc` 上界，证明对象不晚于冻结 decision 存在，绝不得改名为 publication、received 或 native arrival。该历史事实固定 `native_arrival_indexed=false / formal_live_authority=false / p1_eligible=false`；forward/live 仍须真实 publication/received/arrival。顺序唯一为 `capture/normalize（无 truth）→ reserve exact input mask 与 20+8 → 单次开放闭日 ET AWC truth → native ensemble event/cohort → frozen selection → activation`。首批允许不少于 3 站 READY 上线，45 站其余 `station × d0/d1/d2` 保持唯一 READY/BLOCKED terminal，不再要求同步 READY。
 - status: TARGET_PRODUCTION_NO_LIVE

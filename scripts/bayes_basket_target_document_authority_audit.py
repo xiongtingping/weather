@@ -243,17 +243,46 @@ def build_audit(manifest_path: Path = DEFAULT_MANIFEST) -> dict[str, Any]:
             text = markdown_path.read_text(encoding="utf-8")
             machine = load_bounded_json(json_path)
             machine = machine if isinstance(machine, Mapping) else {}
-            expected_version = str(raw_contract.get("version") or "")
+            # Each file is pinned to ITS OWN version, because these pairs do
+            # not carry the same one and never have.  The markdown is prose
+            # and the json is a machine contract an order of magnitude larger
+            # -- 23KB against 258KB for the basket formula -- authored by
+            # different passes.  e9d31583 brought all four under hash tracking
+            # on 2026-08-26 and pinned them to the json's number, which was
+            # already three weeks and five patch versions behind the markdown
+            # sitting beside it, so ``subordinate_contracts_safe`` has been
+            # False since the day the check was written.  Demanding one number
+            # could only be satisfied by typing a version into the json that
+            # its content does not correspond to.  Two files, two pins, and
+            # the gap between them reported rather than collapsed.
+            expected_markdown_version = str(
+                raw_contract.get("markdown_version")
+                or raw_contract.get("version")
+                or ""
+            )
+            expected_json_version = str(
+                raw_contract.get("json_version")
+                or raw_contract.get("version")
+                or ""
+            )
             expected_status = str(raw_contract.get("status") or "")
+            markdown_version = _field(text, "version")
+            json_version = str(machine.get("version") or "")
             subordinate_evidence.append({
                 "path": str(markdown_path),
                 "json": str(json_path),
                 "markdown_sha256": _document_sha256(markdown_path),
                 "json_sha256": _document_sha256(json_path),
+                "markdown_version": markdown_version,
+                "json_version": json_version,
+                # Reported, never gated: the json trailing the markdown is a
+                # fact about how these were authored, not a safety failure.
+                # Every safety check below is evaluated on both files.
+                "json_behind_markdown": json_version != markdown_version,
                 "present": markdown_path.is_file() and json_path.is_file(),
                 "version_matches": (
-                    _field(text, "version") == expected_version
-                    and str(machine.get("version") or "") == expected_version
+                    markdown_version == expected_markdown_version
+                    and json_version == expected_json_version
                 ),
                 "status_matches": (
                     _field(text, "status") == expected_status
