@@ -94,6 +94,7 @@ from .basket_kernel.delta_v2 import (
     whole_basket_kelly_stake_v1,
     ladder_balance_targets_v1,
     completion_floor_delta_v1,
+    completion_repair_exemption_v1,
     evaluate_action_v2,
     evaluate_basket_value_v2,
     raise_sub_lot_targets_v2,
@@ -5612,8 +5613,24 @@ def compile_delta_v2_runtime_plan(
         (support_selection.get("seated") or {}).get("window_probabilities")
         or {}
     )
+    # Charter 116: whether this bundle is a repair of an illegal floor rather
+    # than a buy.  Computed here because this is where the held shape, the
+    # lifted target and the lane's offers all exist; the kernel only reads
+    # the verdict.
+    completion_repair = completion_repair_exemption_v1(
+        support=tuple(ordered_support),
+        held_shares={b: float(current_shares.get(b, 0.0) or 0.0) for b in ordered_support},
+        held_cost_usdc={b: float(current_cost.get(b, 0.0) or 0.0) for b in ordered_support},
+        target_shares={b: float(target_shares.get(b, 0.0) or 0.0) for b in ordered_support},
+        ask_by_bucket={
+            b: (float(by_bucket[b].ask_price) if by_bucket[b].ask_available else 0.0)
+            for b in ordered_support if b in by_bucket
+        },
+        fee_rate=float(basket_policy.fee_rate),
+    ) if ordered_support else None
     selection = select_complete_maker_bundle_v2(
         actions,
+        completion_repair=completion_repair,
         required_buckets=execution_gap_support,
         probabilities=probabilities,
         authorization_rule=execution_authorization_rule,
@@ -5988,6 +6005,10 @@ def compile_delta_v2_runtime_plan(
             "shortfall_buckets": list(scored_shortfall),
             "breakthrough_buckets": list(scored_breakthrough),
         },
+        # Charter 116/73: the re-score authorizes on the state the compile
+        # authorized on, so the repair verdict travels with the plan rather
+        # than being recomputed against a book that has since moved.
+        "completion_repair": completion_repair,
         "basket_completion_required": True,
         "basket_target_activated": basket_target_activated,
         "execution_gap_support": list(execution_gap_support),

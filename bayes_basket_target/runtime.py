@@ -794,6 +794,10 @@ def _rescore_clamped_bundle(
             minimum_profit_floor=float(
                 policy.minimum_expected_pnl_after_usdc
             ),
+            # Charter 116: the compile's repair verdict, carried on the plan.
+            # Recomputing it here would judge the repair against a book that
+            # has moved since the target was struck.
+            completion_repair=delta_plan.get("completion_repair"),
             # Charter 73: the re-score authorizes on the rule and the
             # belief the plan was authorized on.
             # Charter 92: the same rule function the compile used, so a

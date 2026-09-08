@@ -11,7 +11,10 @@ lift as any other candidate.
 """
 from __future__ import annotations
 
+import inspect as _inspect
 import pytest
+
+from bayes_basket_target.basket_kernel import delta_v2 as K
 
 from bayes_basket_target import delta_v2_runtime
 from bayes_basket_target.basket_kernel.contracts import (
@@ -26,6 +29,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (
     ladder_balance_targets_v1,
     support_scenario_floor_v1,
     completion_floor_delta_v1,
+    completion_repair_exemption_v1,
 )
 from bayes_basket_target.delta_v2_runtime import (
     _assert_candidate_support_contract,
@@ -1205,3 +1209,69 @@ def test_an_unpriced_short_rung_is_flagged_not_silently_costed() -> None:
     )
     assert reading["completion_priced"] is False
 
+
+
+# --------------------------------------------------------------------------
+# Charter 116 (user ruling 2026-09-08): a completion that makes an illegal
+# floor legal is a repair, and is exempt from the increment-edge gate.
+# --------------------------------------------------------------------------
+
+def test_a_completion_that_makes_an_illegal_floor_legal_is_a_repair() -> None:
+    """SAEZ 2026-09-08: floor -3.801 illegal, +0.649 legal after 0.55 of buying."""
+
+    verdict = completion_repair_exemption_v1(
+        support=("17C", "18C", "19C"),
+        held_shares={"17C": 0.0, "18C": 5.0, "19C": 6.0},
+        held_cost_usdc={"17C": 0.0, "18C": 2.655, "19C": 1.146},
+        target_shares={"17C": 5.0, "18C": 5.0, "19C": 6.0},
+        ask_by_bucket={"17C": 0.11, "18C": 0.48, "19C": 0.35},
+    )
+    assert verdict["exempt"] is True
+    assert verdict["floor_delta"]["floor_legal_before"] is False
+    assert verdict["floor_delta"]["floor_legal_after"] is True
+    # The increment is edge-negative -- which is the whole reason the
+    # exemption has to exist -- and the reading says so rather than hiding it.
+    reading = completion_floor_delta_v1(
+        support=("17C", "18C", "19C"),
+        held_shares={"17C": 0.0, "18C": 5.0, "19C": 6.0},
+        held_cost_usdc={"17C": 0.0, "18C": 2.655, "19C": 1.146},
+        target_shares={"17C": 5.0, "18C": 5.0, "19C": 6.0},
+        ask_by_bucket={"17C": 0.11, "18C": 0.48, "19C": 0.35},
+        claim_by_bucket={"17C": 0.0993, "18C": 0.5268, "19C": 0.4414},
+    )
+    assert reading["increment_edge"] < 0.0
+
+
+@pytest.mark.parametrize(
+    "case,held,cost,target,ask",
+    [
+        # A legal seat has nothing to repair: judged on its edge like any buy.
+        ("already legal", {"a": 5.0, "b": 5.0}, {"a": 1.0, "b": 1.0},
+         {"a": 8.0, "b": 8.0}, {"a": 0.20, "b": 0.20}),
+        # A completion that leaves the seat illegal buys nothing this values.
+        ("still illegal after", {"a": 1.0, "b": 0.0}, {"a": 0.90, "b": 0.0},
+         {"a": 1.0, "b": 1.0}, {"a": 0.90, "b": 0.90}),
+        # Charter 84 (八) is all-or-none: an unpriced short rung is no repair.
+        ("short rung unpriced", {"a": 5.0, "b": 0.0}, {"a": 1.0, "b": 0.0},
+         {"a": 5.0, "b": 5.0}, {"a": 0.20, "b": 0.0}),
+    ],
+)
+def test_the_repair_exemption_refuses_everything_that_is_not_a_repair(
+    case, held, cost, target, ask
+) -> None:
+    verdict = completion_repair_exemption_v1(
+        support=tuple(held), held_shares=held, held_cost_usdc=cost,
+        target_shares=target, ask_by_bucket=ask,
+    )
+    assert verdict["exempt"] is False, case
+
+
+def test_the_exemption_waives_the_score_and_nothing_else() -> None:
+    """Structural blockers still bind; only the edge test is waived."""
+
+    source = _inspect.getsource(K._evaluate_maker_bundle_combo)
+    assert "not structural_blockers" in source
+    assert "bool(repair_exempt)" in source
+    # And the arm can be switched off, which restores the pre-ruling refusal.
+    assert K.CHARTER_116_COMPLETION_REPAIR == "on"
+    assert K.COMPLETION_REPAIR_RULE_VERSION == "completion_repairs_an_illegal_floor_v1"

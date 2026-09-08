@@ -2024,6 +2024,81 @@ def whole_basket_kelly_stake_v1(
     return fraction, max(0.0, fraction * float(book_equity_usdc))
 
 
+CHARTER_116_COMPLETION_REPAIR = (
+    os.environ.get("PM_CHARTER_116_COMPLETION_REPAIR", "").strip().lower() or "on"
+)
+if CHARTER_116_COMPLETION_REPAIR not in {"on", "off"}:
+    raise RuntimeError(
+        f"unknown charter 116 completion repair mode: {CHARTER_116_COMPLETION_REPAIR}"
+    )
+COMPLETION_REPAIR_RULE_VERSION = "completion_repairs_an_illegal_floor_v1"
+
+
+def completion_repair_exemption_v1(
+    *,
+    support: Sequence[str],
+    held_shares: Mapping[str, Any],
+    held_cost_usdc: Mapping[str, Any],
+    target_shares: Mapping[str, Any],
+    ask_by_bucket: Mapping[str, Any],
+    fee_rate: float = 0.0,
+) -> dict[str, Any]:
+    """Charter 116: a completion that makes an illegal floor legal is a repair.
+
+    Charter 93 forbids a basket that loses when the truth lands inside its own
+    support, and exempts what the seat already holds -- holdings cannot be
+    un-bought, so judging inherited shape by that floor would condemn the one
+    answer always available.  The 2026-09-08 ruling closes the other half of
+    that: the floor now also obliges the seat to *repair* an illegal holding,
+    not merely to refrain from creating one.
+
+    The reason it needs an exemption at all is that the two clauses read the
+    action differently.  Charter 73/92 asks "is this buy worth its cash in
+    expectation" and the answer for a missing leg is usually no -- the leg is
+    missing because the book would not sell it at our price, which is the same
+    region where ``claim < ask``.  Charter 93 asks "is the shape you are left
+    holding legal", and buying that leg is the only action that changes the
+    answer.  Both are right about their own question; the buy is not an
+    opening, it is a repair, and an expectation test is the wrong question to
+    put to a repair.
+
+    Deliberately narrow, so this cannot become a way to buy anything:
+
+    * the floor must be **illegal before** -- a legal seat has nothing to
+      repair and is judged on its edge like every other buy;
+    * it must be **legal after** -- a completion that leaves the seat illegal
+      buys nothing this clause values;
+    * every short rung must be **priced** -- charter 84 (八) is all-or-none;
+    * and the level is charter 112's cheapest floor-legal held size, so the
+      exemption can only ever pay for the smallest repair that works.
+
+    Returns the reading either way; ``exempt`` is the verdict and
+    ``floor_delta`` carries what it bought, so a refused repair is as
+    auditable as an authorized one.
+    """
+
+    reading = completion_floor_delta_v1(
+        support=support,
+        held_shares=held_shares,
+        held_cost_usdc=held_cost_usdc,
+        target_shares=target_shares,
+        ask_by_bucket=ask_by_bucket,
+        fee_rate=fee_rate,
+    )
+    exempt = bool(
+        CHARTER_116_COMPLETION_REPAIR == "on"
+        and reading["completion_priced"]
+        and not reading["floor_legal_before"]
+        and reading["floor_legal_after"]
+    )
+    return {
+        "rule": COMPLETION_REPAIR_RULE_VERSION,
+        "mode": CHARTER_116_COMPLETION_REPAIR,
+        "exempt": exempt,
+        "floor_delta": reading,
+    }
+
+
 COMPLETION_FLOOR_DELTA_SCHEMA = "completion_floor_delta_v1"
 
 
@@ -3936,6 +4011,7 @@ def _bounded_maker_bundle_candidates(
 def _evaluate_maker_bundle_combo(
     combo: Sequence[Mapping[str, Any]],
     *,
+    repair_exempt: bool = False,
     required: Sequence[str],
     probabilities: Mapping[str, Any],
     current_shares: Mapping[str, float],
@@ -4127,12 +4203,23 @@ def _evaluate_maker_bundle_combo(
     # authorization was the one exception and it went with the ticket (user
     # ruling 2026-09-08); ``rule`` now selects which score, never whether a
     # score is needed.
+    # Charter 116: a completion that turns an illegal floor legal is a
+    # repair, and an expectation test is the wrong question to put to a
+    # repair -- the missing leg is missing because ``claim < ask``, which is
+    # exactly the region the edge rule refuses.  Structural blockers still
+    # bind; only the score is waived, and only for a bundle the caller has
+    # already established repairs an illegal seat at charter 112's cheapest
+    # legal level.
     authorized = (
         not structural_blockers
-        and score > execution_weights.epsilon_score + EPS
+        and (
+            bool(repair_exempt)
+            or score > execution_weights.epsilon_score + EPS
+        )
     )
     identity = {
         "schema": BUNDLE_EVALUATION_SCHEMA,
+        "completion_repair_exempt": bool(repair_exempt),
         "kernel_version": KERNEL_VERSION,
         "required_buckets": list(required),
         "selected_action_sha256s": sorted(
@@ -4201,6 +4288,7 @@ def rescore_maker_bundle_v2(
     fee_rate: Any = 0.0,
     authorization_rule: str = EXECUTION_AUTHORIZATION_JOINT_VALUE,
     edge_probabilities: Mapping[str, Any] | None = None,
+    completion_repair: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Re-authorize the bundle at the sizes that will actually be sent.
 
@@ -4217,6 +4305,10 @@ def rescore_maker_bundle_v2(
     The verdict is a receipt, not an authority: the caller decides what to do
     with a refusal, and this writes nothing.
     """
+    # Charter 116: the re-score authorizes on the rule and the state the
+    # compile authorized on, so a repair that was exempt when it was chosen
+    # is still a repair at the size it will be sent.
+    repair_exempt = bool((completion_repair or {}).get("exempt"))
 
     required = tuple(sorted(
         set(_text("delta_v2_required_bucket", x) for x in required_buckets)
@@ -4296,6 +4388,7 @@ def rescore_maker_bundle_v2(
     )
     evaluation, _rows = _evaluate_maker_bundle_combo(
         combo,
+        repair_exempt=repair_exempt,
         required=required,
         probabilities=probabilities,
         current_shares=current_shares,
@@ -4385,6 +4478,7 @@ def select_complete_maker_bundle_v2(
     fee_rate: Any = 0.0,
     authorization_rule: str = EXECUTION_AUTHORIZATION_JOINT_VALUE,
     edge_probabilities: Mapping[str, Any] | None = None,
+    completion_repair: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Select one Maker leg per required bucket as one joint basket action.
 
@@ -4395,6 +4489,11 @@ def select_complete_maker_bundle_v2(
 
     if len(actions) > execution_weights.maximum_candidates:
         raise ContractError("delta_v2_action_candidate_bound_exceeded")
+    # Charter 116, decided by the caller and read here: the caller owns the
+    # held shape, the target and the offers, so it is the only place that can
+    # say whether this bundle repairs an illegal floor.  Absent or ``off``
+    # reads as "not a repair", which is what every pre-ruling caller gets.
+    repair_exempt = bool((completion_repair or {}).get("exempt"))
     required = tuple(sorted(set(_text("delta_v2_required_bucket", x) for x in required_buckets)))
     if len(required) != len(tuple(required_buckets)):
         raise ContractError("delta_v2_required_bucket_duplicate")
@@ -4506,6 +4605,7 @@ def select_complete_maker_bundle_v2(
                 raise ContractError("delta_v2_bundle_combination_bound_exceeded")
             evaluation, consumed = _evaluate_maker_bundle_combo(
                 combo,
+                repair_exempt=repair_exempt,
                 required=required,
                 probabilities=probabilities,
                 current_shares=current_shares,
