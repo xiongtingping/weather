@@ -11,6 +11,8 @@ it.  A clause that cannot be checked is a clause that will drift.
 
 from __future__ import annotations
 
+import importlib
+import inspect
 import re
 from pathlib import Path
 
@@ -1312,6 +1314,49 @@ def test_clause_67_p1_seats_only_after_local_eleven() -> None:
     assert 'blockers=["p1_entry_window_not_open"]' in runtime_source
 
 
+def test_clause_120_one_ruler_for_the_search_and_the_build() -> None:
+    """The completion's two steps priced the same basket two ways.
+
+    The level search read the top of book, the build walked the ladder with
+    the cash that price implied, and charter 93's floor then judged what the
+    build produced -- so a rung offering one share at 0.15 and the rest at
+    0.90 turned a certified five-share completion into 1.7 shares and was
+    refused.  45 of the 78 completions offered over 2026-09-06..08 died
+    there, against 3 lost to the winner chain.
+    """
+    clause = _clause(120)
+    assert "B+A" in clause
+    assert "整买或不买" in clause
+
+    from bayes_basket_target import delta_v2_runtime as runtime
+    from bayes_basket_target.basket_kernel import delta_v2 as kernel
+
+    assert kernel.LADDER_BALANCE_LEVEL_RULE_VERSION == (
+        "depth_priced_cheapest_floor_legal_held_level_v2"
+    )
+    assert kernel.LADDER_BALANCE_LEVEL_RULE_VERSION in clause
+
+    # B: the search prices the gap on the ladder the build will walk.
+    ladder = ({"price": 0.15, "shares": 1.0}, {"price": 0.90, "shares": 100.0})
+    assert kernel.ask_depth_cost_v1(levels=ladder, shares=5.0) == 3.75
+    # ...and says so when the book cannot supply the quantity at all.
+    assert kernel.ask_depth_cost_v1(
+        levels=({"price": 0.15, "shares": 1.0},), shares=5.0
+    ) is None
+
+    # A: the build asks for shares, not for cash, and refuses whole.
+    source = inspect.getsource(runtime._ladder_balance_candidate)
+    assert "ask_depth_cost_v1(" in source
+    assert "_ask_depth_purchase(" not in source
+    assert "capital_scale" in source
+
+    # The ledger needs no mirror: its default judge is production's own
+    # solver, so both sides run this one function (charter 84/112's rule).
+    ledger = importlib.import_module("scripts.paper_trading_ledger")
+    assert "ladder_balance_targets_v1" not in inspect.getsource(ledger)
+    assert "无需账本侧镜像" in clause
+
+
 def test_clause_119_p1_evidence_is_a_hold_before_the_compile() -> None:
     """The rule judges P1 now, and it judges it where charter 67 judges it.
 
@@ -1844,9 +1889,11 @@ def test_off_centre_windows_are_deflated_not_forbidden() -> None:
     ).read_text(encoding="utf-8")
     # Ranking and sizing must see the same corrected belief, or the seat and
     # the stake disagree about what is being bought.  The call carries the
-    # centre distance since 2026-08-27; the assertion is about which mass it
-    # corrects, which is still the window's own raw claim.
-    assert "off_center_claim_factor(raw_win, gap_buckets=" in source
+    # centre distance since 2026-08-27, and since 2026-09-08 it goes through
+    # one kernel helper so the band-axis replay computes the same number from
+    # the same implementation; the assertion is about which mass it corrects,
+    # which is still the window's own raw claim.
+    assert "window_claim_factor(raw_win, center_gap=center_gap)" in source
     # Containment is the zero of that distance, so the two-value rule is the
     # ramp's own default rather than a separate branch.
     assert "center_gap = (" in source

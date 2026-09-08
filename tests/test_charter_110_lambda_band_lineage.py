@@ -274,3 +274,113 @@ def test_the_fit_excludes_rows_from_another_claim_vintage() -> None:
     assert fit["claim_transform_sha256"] is not None
     assert fit["excluded_other_claim_transform"] == 6
     conn.close()
+
+
+# --- The band-axis replay: mis-keyed is not dead (2026-09-08) --------------
+
+
+def _replay_row(conn, cid, *, source, axis="centre_distance", stage="P0",
+                bucket="30°C", claim_sha="x" * 64):
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS paper_trade_candidate_window_replay ("
+        " replay_id TEXT PRIMARY KEY, source_candidate_id TEXT NOT NULL,"
+        " station_id TEXT NOT NULL, event_date TEXT NOT NULL,"
+        " stage TEXT NOT NULL, decision_at_utc TEXT NOT NULL,"
+        " buckets_json TEXT NOT NULL, window_size INTEGER NOT NULL,"
+        " win_probability REAL NOT NULL, raw_win_probability REAL NOT NULL,"
+        " all_in_price REAL NOT NULL, hit INTEGER, band_axis TEXT NOT NULL,"
+        " band_table_sha256 TEXT NOT NULL,"
+        " claim_transform_sha256 TEXT NOT NULL, source_band_axis TEXT,"
+        " replayed_at_utc TEXT NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO paper_trade_candidate_window_replay VALUES"
+        "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (cid, source, "ZSQD", "2026-09-05", stage, "2026-09-05T00:00:00Z",
+         json.dumps([bucket]), 1, 0.4, 0.42, 0.3, 1, axis, "b" * 64,
+         claim_sha, "claim", "2026-09-08T00:00:00Z"),
+    )
+
+
+def _one_settlement(conn) -> None:
+    conn.execute(
+        "INSERT INTO paper_trade_settlement("
+        " settlement_id, position_id, station_id, event_date, stage,"
+        " settled_tmax_c, settled_bucket, hit, stake_usdc, payout_usdc,"
+        " pnl_usdc, claimed_win_probability, settled_at_utc)"
+        " VALUES('s1','p1','ZSQD','2026-09-05','P0',30.0,'30°C',1,"
+        " 1.0,2.0,1.0,0.5,'2026-09-05T12:00:00Z')"
+    )
+
+
+def test_replayed_rows_are_off_unless_asked_for() -> None:
+    """The default reads served rows only, exactly as before."""
+    from bayes_basket_target.effective_edge_store import fit_lambda_table
+
+    conn = _db()
+    _one_settlement(conn)
+    for index in range(4):
+        _replay_row(conn, f"r-{index}", source=f"src-{index}",
+                    bucket=f"3{index}°C")
+    assert fit_lambda_table(conn, stage_scope="P0")["seat_count"] == 0
+    conn.close()
+
+
+def test_replayed_rows_fit_when_the_served_axis_has_none() -> None:
+    """The case this lane exists for: P0 after its band table changed axis."""
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        claim_transform_fingerprint,
+    )
+    from bayes_basket_target.effective_edge_store import fit_lambda_table
+
+    conn = _db()
+    _one_settlement(conn)
+    current = claim_transform_fingerprint(holds_centre=True)
+    for index in range(4):
+        _replay_row(conn, f"r-{index}", source=f"src-{index}",
+                    bucket=f"3{index}°C", claim_sha=current)
+    fit = fit_lambda_table(conn, stage_scope="P0", include_replayed=True)
+    assert fit["seat_count"] == 4
+    assert fit["served_row_count"] == 0
+    assert fit["replayed_row_count"] == 4
+    conn.close()
+
+
+def test_a_served_row_beats_its_own_replay() -> None:
+    """One scope, one row: the replay stands in, it does not double-count."""
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        claim_transform_fingerprint,
+    )
+    from bayes_basket_target.effective_edge_store import fit_lambda_table
+
+    conn = _db()
+    _one_settlement(conn)
+    current = claim_transform_fingerprint(holds_centre=True)
+    _candidate(conn, "served-1", bucket="30°C")
+    conn.execute(
+        "UPDATE paper_trade_candidate_window"
+        " SET claim_transform_sha256=? WHERE candidate_id=?",
+        (current, "served-1"),
+    )
+    _replay_row(conn, "r-1", source="served-1", bucket="30°C",
+                claim_sha=current)
+    fit = fit_lambda_table(conn, stage_scope="P0", include_replayed=True)
+    assert fit["seat_count"] == 1
+    assert fit["served_row_count"] == 1
+    assert fit["replayed_row_count"] == 0
+    conn.close()
+
+
+def test_the_activation_guard_never_reads_the_replay_lane() -> None:
+    """Fitting may use a claim that was never served; earning a seat may not.
+
+    ``admitted_return`` answers "what would this table have bought", and the
+    only honest population for that is the book that really existed.
+    """
+    import inspect
+
+    from bayes_basket_target.effective_edge_store import admitted_return
+
+    source = inspect.getsource(admitted_return)
+    assert "paper_trade_candidate_window_replay" not in source
+    assert "FROM paper_trade_candidate_window" in source

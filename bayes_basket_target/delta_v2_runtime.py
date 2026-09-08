@@ -62,6 +62,7 @@ from .basket_kernel.delta_v2 import (
     effective_edge_bucket_lambda_for_stage,
     floor_first_edge_weights_v1,
     off_center_claim_factor,
+    window_claim_factor,
     probability_core,
     PROBABILITY_CORE_MASS,
     SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
@@ -92,6 +93,8 @@ from .basket_kernel.delta_v2 import (
     deflate_window_partition_v1,
     probability_vector_identity_v1,
     whole_basket_kelly_stake_v1,
+    LADDER_BALANCE_LEVEL_RULE_VERSION,
+    ask_depth_cost_v1,
     ladder_balance_targets_v1,
     completion_floor_delta_v1,
     completion_repair_exemption_v1,
@@ -2064,13 +2067,15 @@ def _support_windows(
                 # than silently reading as "on centre".
                 else 1
             )
-            claim_factor = off_center_claim_factor(raw_win, gap_buckets=center_gap)
+            # One implementation, read here and by the band-axis replay:
+            # the off-centre deflation with charter 81's centre lift on top.
+            claim_factor = window_claim_factor(raw_win, center_gap=center_gap)
             center_lift = 1.0
             if holds_center:
                 # Research arm (2026-09-05): the centre-holding mirror of
-                # the deflation above; identity unless the arm is on.
+                # the deflation above; identity unless the arm is on.  Kept
+                # apart because the sizing lane swaps it on its own.
                 center_lift = center_window_claim_factor(raw_win)
-                claim_factor *= center_lift
             quotes = [_all_in(bucket) for bucket in window]
             priced = all(quote is not None for quote in quotes)
             price = sum(quote for quote in quotes if quote is not None)
@@ -4166,9 +4171,25 @@ def _ladder_balance_candidate(
     # completed basket is still floor-legal at, not the tallest rung -- the
     # tallest is usually the one charter 70/83 lifted to a lot or a dollar,
     # so completing to it buys the dear rungs at the cheap rung's count.
-    # The kernel prices the search, so it needs what the seat paid and what
-    # the short rungs are offered at; the lane price is the same one the
-    # increments below are bought down.
+    # The kernel prices the search, so it needs what the seat paid and the
+    # ladder the short rungs will actually be bought down.
+    #
+    # That ladder, not the top of it (user ruling 2026-09-08: "B+A").  The
+    # search used to price a gap at ``lane_prices`` -- the first ask -- while
+    # the build below walked the book with the cash that price implied, so a
+    # rung offering one share at 0.15 and the rest at 0.90 delivered 1.7 of
+    # the 5 shares the level asked for and the floor refused the
+    # under-completed basket the search had just certified.  45 of the 78
+    # completions offered over 2026-09-06..08 died that way.  The search now
+    # pays what the build will pay, and the build below buys shares rather
+    # than cash so the two cannot come apart again.
+    depth_by_bucket = {
+        bucket: tuple(
+            {"price": float(level.price), "shares": float(level.shares)}
+            for level in (lane_levels.get(bucket) or ())
+        )
+        for bucket in ordered
+    }
     targets = ladder_balance_targets_v1(
         held_by_bucket=held,
         support=ordered,
@@ -4176,15 +4197,20 @@ def _ladder_balance_candidate(
             bucket: float(current_cost[bucket]) + float(pending_cost[bucket])
             for bucket in ordered
         },
+        depth_by_bucket=depth_by_bucket,
         ask_by_bucket={
             bucket: float(lane_prices.get(bucket, 0.0) or 0.0)
             for bucket in ordered
         },
-        # Zero, and deliberately: the increments below are priced by
-        # ``_ask_depth_purchase``, which returns the raw walk with no fee
-        # added.  A search that charged one would judge a level illegal that
-        # the candidate it sizes then builds as legal, and the two would
-        # disagree about the same basket.
+        capital_available_usdc=max(0.0, float(capital_available_usdc)),
+        # Charter 84 (八)'s dead rungs: the build skips them, so the search
+        # must not charge for them either -- once the cash bound existed, a
+        # rung nobody buys could refuse a level the seat could afford.
+        unbuyable_buckets=tuple(str(bucket) for bucket in unbuyable),
+        # Zero, and deliberately: the increments below are priced by the same
+        # walk with no fee added.  A search that charged one would judge a
+        # level illegal that the candidate it sizes then builds as legal, and
+        # the two would disagree about the same basket.
         fee_rate=0.0,
     )
     if not targets:
@@ -4207,33 +4233,40 @@ def _ladder_balance_candidate(
         price = float(lane_prices.get(bucket, 0.0) or 0.0)
         if price <= EPS:
             return None
-        wanted[bucket] = increment * price
+        wanted[bucket] = increment
         short_buckets.append(bucket)
     if not short_buckets:
         return None
-    # The plan proposes within the capital the sizing law left it, exactly as
-    # the opener's legs did (ZGSZ's three legs were planned at 0.862 shares
-    # inside a tilted 0.75 USDC); the execution sizing then raises each leg
-    # to the venue's minimum against the scope's budget.  A completion that
-    # does not fit whole is scaled, not refused: every short rung still gets
-    # its share of what fits, and the rung nothing fits for refuses the lot.
-    full_spend = sum(wanted.values())
     capital = max(0.0, float(capital_available_usdc))
     if capital <= EPS:
         return None
-    scale = min(1.0, capital / full_spend) if full_spend > EPS else 0.0
-    if scale <= EPS:
-        return None
+    # Bought by shares, not by cash.  The old walk took a cash limit derived
+    # from the first ask and kept whatever the book gave for it, which is how
+    # a certified five-share completion became 1.7 shares; asking the ladder
+    # for the quantity makes "the book cannot supply this" an answer rather
+    # than a shortfall nobody looks at.  A completion that does not fit whole
+    # -- on depth or on cash -- is refused, not scaled: a scaled completion is
+    # the short ladder it was meant to repair (charter 84 (八), all-or-none).
     spend = 0.0
     for bucket in short_buckets:
-        got, spent = _ask_depth_purchase(
-            levels=lane_levels[bucket], cash_limit=wanted[bucket] * scale,
+        spent = ask_depth_cost_v1(
+            levels=depth_by_bucket[bucket], shares=wanted[bucket],
         )
-        if got <= EPS:
+        if spent is None or spent <= EPS:
             return None
-        shares[bucket] += got
+        shares[bucket] += wanted[bucket]
         costs[bucket] += spent
         spend += spent
+    if spend > capital + EPS:
+        return None
+    # The build has to be the thing the search certified.  The two price the
+    # same ladder now, so this can only fire on a defect -- which is exactly
+    # why it is here and not in a comment.
+    for bucket in ordered:
+        if bucket in dead:
+            continue
+        if shares[bucket] + EPS < float(targets[bucket]):
+            return None
     # The level the kernel actually chose, not ``max(held)``: the two differ
     # whenever the search walked past a rung the venue had lifted.
     level = max(float(targets[bucket]) for bucket in ordered)
@@ -4253,8 +4286,14 @@ def _ladder_balance_candidate(
             "level_shares": level,
             "short_buckets": short_buckets,
             "spend_usdc": spend,
-            "full_spend_usdc": full_spend,
-            "capital_scale": scale,
+            # The completion is all-or-none on depth and on cash from
+            # 2026-09-08, so what it spends IS what the level costs and the
+            # scale is always one.  Both kept, at their now-constant values,
+            # because a reader comparing this receipt across the cutover
+            # should see the scaling stop rather than see the field vanish.
+            "full_spend_usdc": spend,
+            "capital_scale": 1.0,
+            "level_rule": LADDER_BALANCE_LEVEL_RULE_VERSION,
             # Recorded, never read by a gate (user ruling 2026-09-08:
             # "先只记账不进闸").  Charter 73/92 authorizes this buy on the
             # increment's own edge and charter 93 judges the shape on the

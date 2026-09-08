@@ -492,6 +492,7 @@ def fit_lambda_table(
     window_days: int = WINDOW_DAYS,
     as_of: str | None = None,
     stage_scope: str = "P0",
+    include_replayed: bool = False,
 ) -> dict[str, Any]:
     """Fit one lambda per agreement band from the rolling settled window.
 
@@ -604,6 +605,43 @@ def fit_lambda_table(
         "   AND hit IS NOT NULL" + axis_clause + claim_clause,
         (*stages, floor_day, *axis_args, *claim_args),
     ).fetchall()
+    served_row_count = len(rows)
+    # A band axis change does not kill a settled window, it mis-keys it.  The
+    # price the book quoted and the outcome the day settled to do not depend
+    # on our probabilities at all; only the claim does.  So the replay lane
+    # recomputes the claim on the table that serves today and files the row
+    # under the axis it now belongs to, and the fit may read those -- how
+    # honest a claim is, is a property of the claim.  The ACTIVATION guard
+    # may not: whether a table earns its seat is a question about the book
+    # that was really bought, and ``admitted_return`` stays on the served
+    # table alone.  Off unless asked for.
+    replayed_row_count = 0
+    if include_replayed:
+        try:
+            replayed = conn.execute(
+                "SELECT win_probability, all_in_price, hit, station_id,"
+                " event_date, stage, decision_at_utc"
+                " FROM paper_trade_candidate_window_replay"
+                f" WHERE stage IN ({placeholders}) AND event_date >= ?"
+                "   AND hit IS NOT NULL" + axis_clause + claim_clause,
+                (*stages, floor_day, *axis_args, *claim_args),
+            ).fetchall()
+        except sqlite3.Error:
+            # No replay lane in this database: a fixture, an extract.  Not
+            # an error, and not silently the same as an empty one -- the
+            # receipt reports zero either way and the caller asked.
+            replayed = []
+        # A source row that is already current under this axis needs no
+        # stand-in; the replay carries its own key and the served row wins.
+        seen = {
+            (str(r[3]), str(r[4]), str(r[5]), str(r[6])) for r in rows
+        }
+        replayed = [
+            r for r in replayed
+            if (str(r[3]), str(r[4]), str(r[5]), str(r[6])) not in seen
+        ]
+        replayed_row_count = len(replayed)
+        rows = list(rows) + replayed
     excluded_axis = 0 if axis is None else conn.execute(
         "SELECT COUNT(*) FROM paper_trade_candidate_window"
         f" WHERE stage IN ({placeholders}) AND event_date >= ?"
@@ -751,6 +789,9 @@ def fit_lambda_table(
         "excluded_other_claim_transform": int(excluded_claim),
         "claim_transform_changed": claim_vintage_changed,
         "incumbent_basis": tally_incumbent_note,
+        "served_row_count": int(served_row_count),
+        "replayed_row_count": int(replayed_row_count),
+        "include_replayed": bool(include_replayed),
         "content_sha256": content_sha256(payload),
         "bands": bands,
         "evidence": evidence,

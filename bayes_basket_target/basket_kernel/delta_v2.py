@@ -2197,7 +2197,51 @@ def completion_floor_delta_v1(
 
 
 
-LADDER_BALANCE_LEVEL_RULE_VERSION = "cheapest_floor_legal_held_level_v1"
+LADDER_BALANCE_LEVEL_RULE_VERSION = "depth_priced_cheapest_floor_legal_held_level_v2"
+
+
+def ask_depth_cost_v1(
+    *,
+    levels: Sequence[Any],
+    shares: float,
+) -> float | None:
+    """Cash to buy ``shares`` walking an ask ladder, or ``None`` if it is short.
+
+    The inverse of the cash-limited walk the candidates are built with, and it
+    exists because the two directions were being mixed: charter 112's level
+    search priced a completion at the top of book and the candidate then bought
+    it with the cash that price implied, walking into whatever the book charged
+    above the first level.  A rung offering one share at 0.15 and the rest at
+    0.90 turned a certified five-share completion into 1.7 shares, and the
+    floor then refused the under-completed basket the search had called legal
+    (user ruling 2026-09-08: "B+A").
+
+    ``levels`` are the ask ladder in book order; each carries ``price`` and
+    ``shares`` (attributes or mapping keys).  ``None`` means the ladder cannot
+    supply the quantity at all -- which is charter 84 (八)'s all-or-none read
+    on depth, not a reason to buy what it can.
+    """
+
+    want = _nonnegative("delta_v2_depth_shares", shares)
+    if want <= EPS:
+        return 0.0
+    cash = 0.0
+    for level in levels:
+        price = float(
+            level["price"] if isinstance(level, Mapping) else level.price
+        )
+        available = float(
+            level["shares"] if isinstance(level, Mapping) else level.shares
+        )
+        if price <= EPS or available <= EPS:
+            continue
+        take = min(want, available)
+        cash += take * price
+        want -= take
+        if want <= EPS:
+            return cash
+    return None
+
 
 
 def ladder_balance_targets_v1(
@@ -2206,6 +2250,9 @@ def ladder_balance_targets_v1(
     support: Sequence[str],
     held_cost_by_bucket: Mapping[str, Any] | None = None,
     ask_by_bucket: Mapping[str, Any] | None = None,
+    depth_by_bucket: Mapping[str, Sequence[Any]] | None = None,
+    capital_available_usdc: float | None = None,
+    unbuyable_buckets: Sequence[str] = (),
     fee_rate: float = 0.0,
 ) -> dict[str, float]:
     """Charter 84's shape: every short rung of the seat raised to a held level.
@@ -2239,10 +2286,31 @@ def ladder_balance_targets_v1(
     exactly.  ``{}`` when no held size is legal: buying nothing is always
     available and a basket that cannot be completed legally is not one.
 
-    Pricing the search needs ``held_cost_by_bucket`` and ``ask_by_bucket``;
-    without them the level is the shipped ``max`` and the floor is left to
-    the caller's after-lift recheck, which is what every pre-ruling caller
-    gets.
+    **What the search prices with** (user ruling 2026-09-08: "B+A").  Give it
+    ``depth_by_bucket`` -- the ask ladder per bucket -- and each gap is priced
+    by walking that ladder, which is what the candidate will actually pay.
+    Priced at ``ask_by_bucket`` alone the search certifies a level the book
+    cannot deliver: measured 2026-09-06..08, 45 of 78 offered completions were
+    refused by the very floor this search had just cleared them against, and
+    the reproduction is a rung offering one share at 0.15 and the rest at
+    0.90.  A ladder that cannot supply the gap ends the search -- the gap only
+    grows with the level, so no larger level can be supplied either.
+
+    ``capital_available_usdc`` bounds it the same way and for the same reason:
+    a level the cash cannot buy whole would be bought in part, and a part is
+    the under-completed basket again.  Charter 84 (八) is all-or-none.
+
+    ``unbuyable_buckets`` are charter 84 (八)'s dead rungs -- priced under the
+    leg floor, "not bought, and not a reason to leave its neighbours short".
+    The caller will not buy them, so the search must not charge for them:
+    once the cash bound existed, pricing a rung nobody buys could refuse a
+    level the seat could afford.  Their target still rises with the level,
+    because the shape the floor judges is the ladder, not the purchase.
+
+    Pricing the search needs ``held_cost_by_bucket`` and one of
+    ``depth_by_bucket`` / ``ask_by_bucket``; without them the level is the
+    shipped ``max`` and the floor is left to the caller's after-lift recheck,
+    which is what every pre-ruling caller gets.
     """
 
     window = tuple(_text("delta_v2_balance_bucket", bucket) for bucket in support)
@@ -2261,7 +2329,9 @@ def ladder_balance_targets_v1(
             return None
         return {b: (level if b in short else held[b]) for b in window}
 
-    if held_cost_by_bucket is None or ask_by_bucket is None:
+    if held_cost_by_bucket is None or (
+        ask_by_bucket is None and depth_by_bucket is None
+    ):
         return _targets(max(held.values())) or {}
 
     fee = _nonnegative("delta_v2_balance_fee_rate", fee_rate)
@@ -2270,27 +2340,55 @@ def ladder_balance_targets_v1(
         for b in window
     }
     ask = {
-        b: _nonnegative("delta_v2_balance_ask", ask_by_bucket.get(b, 0.0) or 0.0)
+        b: _nonnegative(
+            "delta_v2_balance_ask", (ask_by_bucket or {}).get(b, 0.0) or 0.0
+        )
         for b in window
     }
+    dead = {
+        _text("delta_v2_balance_unbuyable", bucket)
+        for bucket in unbuyable_buckets
+    }
+    budget = (
+        None if capital_available_usdc is None
+        else _nonnegative(
+            "delta_v2_balance_capital", capital_available_usdc
+        )
+    )
     for level in sorted({shares for shares in held.values() if shares > EPS}):
         targets = _targets(level)
         if targets is None:
             continue
         cost = dict(paid)
+        spend = 0.0
         priced = True
         for bucket, want in targets.items():
             gap = want - held[bucket]
-            if gap <= EPS:
+            if gap <= EPS or bucket in dead:
                 continue
-            if ask[bucket] <= EPS:
-                # A short rung with no offer cannot be bought at any level;
-                # charter 84 (八) is all-or-none, so no level completes this
-                # seat and the search has nothing left to try.
+            if depth_by_bucket is not None:
+                gap_cash = ask_depth_cost_v1(
+                    levels=depth_by_bucket.get(bucket) or (), shares=gap
+                )
+            elif ask[bucket] > EPS:
+                gap_cash = gap * ask[bucket]
+            else:
+                gap_cash = None
+            if gap_cash is None:
+                # A short rung the book cannot supply at this level cannot be
+                # supplied at any larger one either -- the gap only grows --
+                # and charter 84 (八) is all-or-none, so the search is done.
                 priced = False
                 break
-            cost[bucket] += gap * ask[bucket] * (1.0 + fee)
+            gap_cash *= 1.0 + fee
+            cost[bucket] += gap_cash
+            spend += gap_cash
         if not priced:
+            return {}
+        if budget is not None and spend > budget + EPS:
+            # Too dear at this level, and dearer at every larger one.  A
+            # completion that does not fit whole is not scaled: a part of a
+            # completion is the short ladder it was meant to repair.
             return {}
         verdict = support_scenario_floor_v1(
             shares_by_bucket=targets, cost_by_bucket=cost, support=window
@@ -2916,6 +3014,28 @@ CONVERGENCE_CLAIM_RULE_VERSION = "convergence_claim_v1"
 # and when one does, it must cost the whole history, because the claims
 # behind those rows are no longer the claims the code now computes.
 CLAIM_TRANSFORM_RULE_VERSION = "claim_transform_v2"
+
+
+def window_claim_factor(raw_win: float, *, center_gap: float) -> float:
+    """The claim multiplier a window earns from its position alone.
+
+    The off-centre deflation with charter 81's centre lift on top, in that
+    order.  ``center_gap`` is the distance from the model centre in bucket
+    ordinals and is 0 for a window containing it, which is exactly what
+    ``off_center_claim_factor`` reads as "no correction" -- so one call
+    covers both sides and the lift is the only branch.
+
+    Extracted 2026-09-08 so the enumeration and the band-axis replay compute
+    it from one implementation rather than two.  The convergence lift is NOT
+    here: it needs a prior belief and a prior book, which is state this
+    function has no business holding.
+    """
+
+    factor = off_center_claim_factor(float(raw_win), gap_buckets=center_gap)
+    if float(center_gap) <= 0.0:
+        factor *= center_window_claim_factor(float(raw_win))
+    return factor
+
 
 
 def claim_transform_fingerprint(*, holds_centre: bool) -> str:
@@ -5042,5 +5162,6 @@ __all__ = [
     "solve_reservation_price_v2",
     "solve_target_inventory_v2",
     "LADDER_BALANCE_CANDIDATE_ORIGIN",
+    "ask_depth_cost_v1",
     "ladder_balance_targets_v1",
 ]

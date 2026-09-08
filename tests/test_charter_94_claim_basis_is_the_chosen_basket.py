@@ -233,7 +233,11 @@ def test_no_claims_layer_query_reads_the_post_execution_columns():
     # ledger columns above are what each seat recorded about its own
     # choice.  Both readings are still one word from the filled basket.
     edge = sources["effective_edge_store"]
-    assert edge.count("FROM paper_trade_candidate_window") == 6, (
+    # The replay lane (2026-09-08) shares the prefix, so it is counted out
+    # rather than counted in: six reads of the served table, one of its
+    # replay sibling, and that one is in the fit -- never in the guard.
+    assert edge.count("FROM paper_trade_candidate_window_replay") == 1
+    assert edge.count("FROM paper_trade_candidate_window") - 1 == 6, (
         "band-partition lookup, served fit, the fit's excluded-axis tally,"
         " its excluded-claim-vintage tally (charter 110 extended,"
         " 2026-09-08), activation guard, shadow fit"

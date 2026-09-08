@@ -50,15 +50,33 @@ def test_the_arm_multiplies_only_centre_holding_windows() -> None:
     import bayes_basket_target.delta_v2_runtime as R
 
     source = inspect.getsource(R._support_windows)
-    at = source.index("claim_factor = off_center_claim_factor(raw_win, gap_buckets=center_gap)")
-    after = source[at:at + 400]
+    at = source.index("claim_factor = window_claim_factor(raw_win, center_gap=center_gap)")
+    after = source[at:at + 700]
     assert "if holds_center:" in after
-    # Charter 81's factor is computed on its own line so the sizing lane can
-    # divide it back out (2026-09-06 split); the multiply is unconditional
-    # only inside the holds_center branch.
+    # Charter 81's factor is still computed on its own line, so the sizing
+    # lane can divide it back out (2026-09-06 split).
     assert "center_lift = center_window_claim_factor(raw_win)" in after
-    assert "claim_factor *= center_lift" in after
     assert '"center_window_claim_bands"' in source
+
+    # The multiply itself moved into the kernel on 2026-09-08, so the
+    # enumeration and the band-axis replay compute one number from one
+    # implementation.  It is still conditional on holding the centre -- the
+    # gap is what expresses that -- and the deflation is still applied first.
+    import inspect as _inspect
+
+    import bayes_basket_target.basket_kernel.delta_v2 as K
+
+    helper = _inspect.getsource(K.window_claim_factor)
+    assert "off_center_claim_factor(float(raw_win), gap_buckets=center_gap)" in helper
+    assert "if float(center_gap) <= 0.0:" in helper
+    assert "factor *= center_window_claim_factor(float(raw_win))" in helper
+    assert K.window_claim_factor(0.45, center_gap=0) == (
+        K.off_center_claim_factor(0.45, gap_buckets=0)
+        * K.center_window_claim_factor(0.45)
+    )
+    assert K.window_claim_factor(0.45, center_gap=2) == K.off_center_claim_factor(
+        0.45, gap_buckets=2
+    )
 
 
 def test_the_ledger_reads_productions_constant_and_hashes_it() -> None:
