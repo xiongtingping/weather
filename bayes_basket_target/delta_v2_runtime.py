@@ -1554,7 +1554,14 @@ def _support_windows(
         key=lambda bucket: (by_bucket[bucket].ordinal, bucket),
     )
     if not incumbent_buckets:
-        raise ContractError("delta_v2_support_empty")
+        # Named apart from the enumeration's own emptiness (2026-09-08): the
+        # incumbent window's buckets are not in this snapshot at all, which is
+        # a book or bucket-map problem and not a verdict on any window.  It
+        # carries no funnel audit because no window was ever enumerated to
+        # refuse, and reading it as "every window lost on the number" is the
+        # misattribution 495 rows of ``delta_v2_support_empty`` could not be
+        # told apart by.
+        raise ContractError("delta_v2_support_scope_unquoted")
     incumbent = tuple(incumbent_buckets)
     # The domain is every outcome the day can still reach, not the window
     # where the probability happens to pile up.
@@ -4844,7 +4851,10 @@ def compile_delta_v2_runtime_plan(
     shortfall &= desired
     breakthrough &= desired
     if not desired:
-        raise ContractError("delta_v2_support_empty")
+        # The caller handed no support at all, so there was nothing to
+        # enumerate, price or refuse.  Distinct from the enumeration finding
+        # nothing admissible (2026-09-08).
+        raise ContractError("delta_v2_support_desired_empty")
     (
         diagnosed_center,
         runner_up,

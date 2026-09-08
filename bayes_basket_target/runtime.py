@@ -1254,7 +1254,13 @@ def _compile_target_plan(
         if not str(exc).startswith("delta_v2_certainty_gate_lit") and str(
             exc
         ) not in {
+            # One verdict per cause (2026-09-08).  All three are the
+            # objective answering "nothing to buy here", so all three absorb
+            # into a named HOLD; splitting the names changed what the reader
+            # learns, not what the day does.
             "delta_v2_support_empty",
+            "delta_v2_support_scope_unquoted",
+            "delta_v2_support_desired_empty",
             "delta_v2_no_solvable_support_window",
         }:
             raise

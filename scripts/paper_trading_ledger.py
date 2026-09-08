@@ -4708,6 +4708,8 @@ def _production_judge(
         detail = "生产裁判求解失败：%s" % exc
         if str(exc) in (
             "delta_v2_support_empty",
+            "delta_v2_support_scope_unquoted",
+            "delta_v2_support_desired_empty",
             "delta_v2_no_solvable_support_window",
         ):
             # Which gate emptied the list (2026-09-05).  The funnel the
