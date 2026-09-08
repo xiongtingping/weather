@@ -10,6 +10,7 @@ the refusal names it, and a failed request leaves the file untouched.
 from __future__ import annotations
 
 import json
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -290,17 +291,23 @@ def test_a_new_station_is_not_live_until_it_has_earned_it() -> None:
     waived = set(scope.get("probation_waivers") or [])
     held = set(scope.get("probation_holds") or [])
     for station in scope["stations"]:
-        assert counts.get(station, 0) >= minimum or station in waived, station
+        # Live means waived, full stop (user ruling 2026-09-08:
+        # 只看首批站点闸门表即可).  This used to also accept a settlement
+        # count of its own, and the count is a read of a table the ledger
+        # rebuilds -- on 2026-09-08 the fleet stopped for 65 minutes with
+        # every switch on the board still set correctly.  Admitting is an
+        # act that should leave an audit row; a query leaves none.
+        assert station in waived, station
         # A held station never trades, whatever its count says.
         assert station not in held, station
     for station in scope["probation"]:
-        # Two ways to be on probation and they are different facts: the
-        # settlement count has not got there yet, or the operator is holding
-        # the station back by hand (2026-09-02 switch).
-        assert (
-            (counts.get(station, 0) < minimum and station not in waived)
-            or station in held
-        ), station
+        # Two ways to be off the batch and they are different facts: nobody
+        # has waived the station in, or the operator is holding it back by
+        # hand (2026-09-02 switch).
+        assert station not in waived or station in held, station
+    # The count is still derived and still reported -- the automatic bar
+    # layer judges on it -- it just does not admit anybody.
+    assert isinstance(counts, dict)
     # Every waiver has to be written down where an operator can revoke it.
     intent = json.loads(control.INTENT_PATH.read_text(encoding="utf-8"))
     assert waived == {
@@ -322,7 +329,15 @@ def test_the_three_states_are_disjoint_and_cover_what_trades() -> None:
     )
     assert not (live & probation) and not (live & barred)
     assert not (probation & barred)
-    assert live | probation == control.tradeable_stations() - barred
+    # The board draws every station it knows about: the ones production
+    # produces for, plus anyone the operator has named on the gate.  The
+    # roster is no longer a term in who trades -- it used to be the whole
+    # universe membership was intersected with, which is how an emptied
+    # table stopped the fleet on 2026-09-08 -- so the cover is the union.
+    waived = set(scope["probation_waivers"])
+    held = set(scope["probation_holds"])
+    roster = control.tradeable_stations()
+    assert live | probation == (roster | waived | held) - barred
 
 
 def test_probation_is_not_the_bar() -> None:
@@ -354,8 +369,10 @@ def test_the_live_batch_is_the_bars_complement_not_a_list() -> None:
         control.SCOPE_QUALIFIED, control.SCOPE_ALL_EXCEPT_BARRED
     )
     barred = control.excluded_stations()
-    tradeable = control.tradeable_stations()
-    assert set(scope["stations"]) <= tradeable - barred
+    # Still derived rather than enumerated, and still nobody's stored list
+    # -- but derived from the gate's own switches, not from a data table
+    # the batch was intersected with (user ruling 2026-09-08).
+    assert set(scope["stations"]) <= set(scope["probation_waivers"]) - barred
     # Disjointness by construction, asserted anyway: the migration refuses
     # to run on an overlap, and a precondition nobody checks is not one.
     assert not (set(scope["stations"]) & barred)
@@ -376,6 +393,10 @@ def test_a_station_the_model_never_computed_is_not_in_the_batch() -> None:
     scope = set(control.live_stations()["stations"])
     for station in ("LLBG", "LTFM", "UUWW"):
         assert station not in scope
+        # And the roster the board draws its probation column from does not
+        # carry them either: it reads production's own record of decisions
+        # that minted intents, which these three have never produced.
+        assert station not in control.tradeable_stations()
 
 
 def test_the_bar_has_no_ceiling() -> None:
@@ -433,11 +454,21 @@ def test_a_reversal_stays_visible_in_the_record() -> None:
     """
 
     parsed = json.loads(EXCLUSIONS.read_text(encoding="utf-8"))
-    rows = {row["station"]: row for row in parsed["excluded_stations"]}
-    for station in ("EPWA", "LTAC"):
-        row = rows[station]
-        assert row.get("released_utc") and row.get("rebarred_utc")
-        assert row.get("note")
+    rows = parsed["excluded_stations"]
+    # Derived, not named.  This used to assert on EPWA and LTAC by name and
+    # went red on 2026-09-08 when the operator released LTAC into the waiver
+    # list -- a switch working exactly as designed breaking a test is the
+    # test naming a fact that was never the rule.  The rule is that a row
+    # carrying a reversal carries the whole reversal.
+    reversed_rows = [
+        row for row in rows
+        if row.get("released_utc") or row.get("rebarred_utc")
+    ]
+    assert reversed_rows, "the file has always carried at least one reversal"
+    for row in reversed_rows:
+        assert row.get("released_utc"), row["station"]
+        assert row.get("rebarred_utc"), row["station"]
+        assert row.get("note"), row["station"]
     # Anything still sitting in released_stations must really be released.
     for row in parsed.get("released_stations") or []:
         assert row["station"] not in control.excluded_stations()
@@ -836,6 +867,37 @@ def test_a_switch_that_is_not_a_station_is_refused(
             control.set_station_bar(bad, True)
 
 
+def _seed_production_roster(conn, station: str, index: int) -> None:
+    """One production decision that minted intents, for the roster read."""
+
+    conn.execute(
+        "INSERT INTO basket_policy_training_fact("
+        "fact_id,station_id,event_date,settlement_timezone,decision_at_utc,"
+        "decision_scope_key,captured_at_utc,source_sequence,"
+        "quote_observed_at,quote_expires_at,quote_freshness_policy_sha256,"
+        "stage,probability_envelope_id,posterior_version,posterior_sha256,"
+        "official_exclusion_mask_sha256,ws_snapshot_id,quote_version,"
+        "quote_sha256,inventory_snapshot_id,inventory_version,"
+        "inventory_sha256,order_state_snapshot_id,order_state_version,"
+        "order_state_sha256,cycle_id,decision_id,decision_sha256,"
+        "plan_sha256,intent_count,intent_set_sha256,"
+        "policy_version_vector_json,feature_json,partition_key,"
+        "authority_scope,created_at_utc,content_sha256)"
+        " VALUES(" + ",".join("?" * 37) + ")",
+        (
+            f"fact-{station}-{index}", station, f"2026-08-2{index}", "UTC",
+            f"2026-08-2{index}T00:00:00Z", f"scope-{station}-{index}",
+            f"2026-08-2{index}T00:00:00Z", 0,
+            f"2026-08-2{index}T00:00:00Z", f"2026-08-2{index}T00:01:00Z",
+            "f" * 64, "P0", "env", "v1", "a" * 64, "b" * 64, "ws", "qv",
+            "c" * 64, "inv", "iv", "d" * 64, "os", "ov", "e" * 64,
+            f"cycle-{index}", f"decision-{index}", "0" * 64, "1" * 64,
+            3, "2" * 64, "{}", "{}", "p", "PRODUCTION_NO_LIVE_FORWARD",
+            f"2026-08-2{index}T00:00:00Z", f"{index:064d}",
+        ),
+    )
+
+
 def _submission_conn(station: str) -> "sqlite3.Connection":  # noqa: F821
     """A book with one prepared intent, and enough history to qualify.
 
@@ -867,6 +929,10 @@ def _submission_conn(station: str) -> "sqlite3.Connection":  # noqa: F821
             "INSERT INTO paper_trade_position VALUES(?,?,?)",
             (f"pos-{index}", station, f"2026-08-2{index}"),
         )
+        # The roster is read from production's own record, not the replay
+        # (2026-09-08).  A book that seeds only the ledger no longer says
+        # what it means to say: "the model produces for this station".
+        _seed_production_roster(conn, station, index)
         conn.execute(
             "INSERT INTO paper_trade_settlement VALUES(?,?,?,?,?,?)",
             (f"set-{index}", f"pos-{index}", station,
@@ -910,6 +976,11 @@ def test_the_bar_stops_the_send_and_not_only_the_screen(
 
     intent_path, exclusions, _audit = _config_copies(tmp_path, monkeypatch)
     station = "KLGA"
+    # One book per block.  Since 2026-09-05 (66b2de92) a live intent the
+    # gate stops is recorded with its reason and ends ``failed`` rather than
+    # sitting ``prepared`` -- which is the behaviour this file's sibling
+    # test asserts -- so a second pass over the same book has nothing left
+    # to submit and the block below read an empty receipt.
     conn = _submission_conn(station)
 
     armed = tmp_path / "armed.json"
@@ -939,6 +1010,7 @@ def test_the_bar_stops_the_send_and_not_only_the_screen(
     # station bad, it is being kept back.
     control.set_station_bar(station, False, by="test")
     control.set_station_hold(station, True, by="test")
+    conn = _submission_conn(station)
     with conn:
         receipt = submission.submit_prepared_intents(
             conn, cycle_id="cycle-1", transport=_never,
@@ -947,9 +1019,15 @@ def test_the_bar_stops_the_send_and_not_only_the_screen(
         )
     assert receipt["submissions"][0]["reason"] == "live_station_held"
 
-    # And with both switches off the same intent goes out: the gate refuses
-    # admissions, it does not invent them.
+    # And with the gate set to admit, the same intent goes out.  Turning the
+    # hold ON strips the waiver (the three switches are mutually exclusive at
+    # the write boundary) and turning it off does not put the waiver back, so
+    # the admitting act has to be named: under the 2026-09-08 ruling the
+    # thing that puts a station in is 豁免, and a settlement count -- this
+    # book seeds six -- no longer admits anybody on its own.
     control.set_station_hold(station, False, by="test")
+    control.set_station_waiver(station, True, by="test")
+    conn = _submission_conn(station)
     sent: list = []
 
     def _accept(_path, payload):
@@ -1010,3 +1088,144 @@ def test_a_bar_does_not_strand_an_open_position(tmp_path, monkeypatch) -> None:
             observed_at_utc="2026-08-30T09:30:00Z",
         )
     assert receipt["orders_submitted"] == 1 and len(sent) == 1
+
+
+def _roster_conn(*, production: tuple[str, ...], ledger: tuple[str, ...]):
+    """A book with the two roster sources set independently.
+
+    ``basket_policy_training_fact`` is production's own record of a decision
+    that minted intents; ``paper_trade_position`` is the research replay.
+    The incident is the state where the second is empty and the first is not.
+    """
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE basket_policy_training_fact("
+        "station_id TEXT, intent_count INTEGER)"
+    )
+    conn.execute(
+        "CREATE TABLE paper_trade_position(station_id TEXT, event_date TEXT)"
+    )
+    conn.execute("CREATE TABLE paper_trade_settlement(station_id TEXT)")
+    conn.executemany(
+        "INSERT INTO basket_policy_training_fact VALUES(?,3)",
+        [(station,) for station in production],
+    )
+    conn.executemany(
+        "INSERT INTO paper_trade_position VALUES(?,'2026-09-01')",
+        [(station,) for station in ledger],
+    )
+    conn.commit()
+    return conn
+
+
+def test_an_emptied_research_ledger_does_not_empty_the_live_batch(
+    tmp_path, monkeypatch,
+) -> None:
+    """Incident 2026-09-08: a rebuilt research table stopped the fleet.
+
+    ``paper_trade_position`` is dropped and re-derived whenever the paper
+    ledger's selection fingerprint moves, and the delete commits before
+    anything is seated.  A fingerprint change at 09:27:27Z left it empty;
+    every station's membership was intersected with that one set, so all 45
+    read as "has not earned its way in", the send gate refused every BUY
+    with ``live_station_probation``, and no order reached the exchange for
+    65 minutes while eighteen station-days held legs whose partners had been
+    cancelled.  The operator's 22-station waiver list did not save them --
+    waivers were intersected with a universe derived from the same table.
+
+    The ruling is that the gate answers alone (只看首批站点闸门表即可), so the
+    assertion is the strong one: with BOTH books gone, the live batch is
+    exactly what the operator's switches say.
+    """
+
+    import bayes_basket_target.live_station_scope as rules  # noqa: PLC0415
+
+    _config_copies(tmp_path, monkeypatch)
+    waived = sorted(
+        rules.operator_overrides()["waived"] - rules.barred_stations()
+    )
+    assert waived, "the fixture needs at least one waived, unbarred station"
+
+    for production, ledger in (
+        (tuple(waived), ()),      # the incident: research table emptied
+        ((), tuple(waived)),      # production's own record emptied
+        ((), ()),                 # both gone
+    ):
+        conn = _roster_conn(production=production, ledger=ledger)
+        assert set(rules.live_stations(conn=conn)["stations"]) == set(waived)
+        for station in waived:
+            assert rules.admission(station, conn=conn)["admitted"] is True
+
+
+def test_the_ledger_is_not_a_source_for_who_may_trade(
+    tmp_path, monkeypatch,
+) -> None:
+    """清单和账本解耦 (user ruling, 2026-09-08), in both directions.
+
+    The first fix for the incident unioned the ledger with production's own
+    record, which restored the fleet and left the coupling standing in the
+    direction that adds risk: a research replay could still put a station
+    INTO the live roster.  A switch a query can veto is not a switch, and
+    neither is one a query can flip on.
+    """
+
+    import bayes_basket_target.live_station_scope as rules  # noqa: PLC0415
+
+    _config_copies(tmp_path, monkeypatch)
+    # A station only the ledger knows is not in the roster the board draws.
+    conn = _roster_conn(production=(), ledger=("LLBG",))
+    assert rules.tradeable_stations(conn) == set()
+    # ...and it does not trade, whatever the ledger holds.
+    assert rules.admission("LLBG", conn=conn)["admitted"] is False
+    # The roster reads production's own append-only record instead.
+    conn = _roster_conn(production=("LLBG",), ledger=())
+    assert rules.tradeable_stations(conn) == {"LLBG"}
+    # Being in the roster is still not admission: the gate decides.
+    assert rules.admission("LLBG", conn=conn)["reason"] == (
+        "live_station_probation"
+    )
+
+
+def test_a_held_station_is_told_apart_from_one_nobody_waived(
+    tmp_path, monkeypatch,
+) -> None:
+    """Two ways to be off the batch, and the receipt has to say which.
+
+    The 2026-09-08 stoppage was invisible for 65 minutes because twenty
+    refusals all read ``live_station_probation`` on stations that had been
+    trading all week.  That reason is now only ever true of a station the
+    operator has not waived in -- there is no longer any way for a data
+    table to produce it on a station that is on the gate.
+    """
+
+    import bayes_basket_target.live_station_scope as rules  # noqa: PLC0415
+
+    _config_copies(tmp_path, monkeypatch)
+    overrides = rules.operator_overrides()
+    barred = rules.barred_stations()
+    waived = sorted(overrides["waived"] - barred)
+    held = sorted(overrides["held"] - barred)
+    assert waived and held and barred
+
+    conn = _roster_conn(production=(), ledger=())
+    for station in waived:
+        assert rules.admission(station, conn=conn)["reason"] == (
+            "live_station_admitted"
+        )
+    for station in held:
+        assert rules.admission(station, conn=conn)["reason"] == (
+            "live_station_held"
+        )
+    for station in sorted(barred):
+        assert rules.admission(station, conn=conn)["reason"] == (
+            "live_station_barred"
+        )
+    assert rules.admission("LLBG", conn=conn)["reason"] == (
+        "live_station_probation"
+    )
+    # The board can still say its display roster was unreadable; it just
+    # cannot change who trades any more.
+    scope = rules.live_stations(conn=conn)
+    assert scope["roster_available"] is False
+    assert scope["roster_source"] == "unavailable"

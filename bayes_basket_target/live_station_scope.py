@@ -150,6 +150,19 @@ def _connect(conn: sqlite3.Connection | None) -> tuple[sqlite3.Connection | None
     return opened, True
 
 
+def _distinct_stations(
+    handle: sqlite3.Connection, statement: str
+) -> set[str]:
+    try:
+        return {
+            str(row[0]).strip().upper()
+            for row in handle.execute(statement)
+            if row[0]
+        }
+    except sqlite3.Error:
+        return set()
+
+
 def tradeable_stations(conn: sqlite3.Connection | None = None) -> set[str]:
     """Every station the model actually produces for, read from the book.
 
@@ -158,21 +171,54 @@ def tradeable_stations(conn: sqlite3.Connection | None = None) -> set[str]:
     rather than the coordinate roster -- LLBG, LTFM and UUWW are on the
     roster and have never produced a position, and a live batch cannot
     contain a station the model has never computed.
+
+    The roster is production's own, and it is deliberately NOT the ledger's
+    (user ruling, 2026-09-08: 清单和账本解耦).  This read used to be
+    ``paper_trade_position`` -- a RESEARCH table the paper ledger drops and
+    re-derives whenever its selection fingerprint moves
+    (``_drop_superseded_positions``, which commits the delete before it
+    seats anything).  A fingerprint change at 09:27:27Z emptied it, and
+    because every station's membership was computed from that one set, the
+    empty table read as "no station has earned its way in": all 45 went to
+    probation, the send gate refused every BUY, and the fleet placed no
+    order for 65 minutes while eighteen station-days sat holding legs whose
+    partners had been cancelled.  Nothing was broken and nothing alarmed --
+    an empty research table is a perfectly well-formed answer to the
+    question this function used to ask.
+
+    Which is the whole point of the decoupling: a research artifact must not
+    be able to answer a production question at all, not even correctly.  The
+    union with the ledger was the first fix and it was the wrong one -- it
+    left the ledger able to put a station INTO the live roster, so the
+    coupling survived in the direction that adds risk rather than the one
+    that removes it.
+
+    ``basket_policy_training_fact`` is the production record of the
+    decisions that actually minted intents.  It carries no_update and
+    no_delete triggers, so no rebuild can empty it; it holds the same 45
+    stations; and it excludes LLBG, LTFM and UUWW, which are on the
+    coordinate roster and have never produced a seat.  It answers "which
+    stations does the model produce for" strictly better than a replay of
+    that production does.
     """
 
     handle, owned = _connect(conn)
     if handle is None:
         return set()
     try:
-        return {
-            str(row[0]).strip().upper()
-            for row in handle.execute(
-                "SELECT DISTINCT station_id FROM paper_trade_position"
-            )
-            if row[0]
-        }
-    except sqlite3.Error:
-        return set()
+        # No predicate on ``intent_count``: a training fact exists only
+        # because production made a decision for that station-day, so every
+        # row already answers the question, and the two readings are equal
+        # over the whole table (checked 2026-09-08, 45 == 45).  It is not a
+        # cosmetic simplification -- ``intent_count`` is not in the scope
+        # index, so asking for it turns an index-only walk into 20,534 row
+        # fetches on a read that runs on every submission pass and every
+        # board render.  With it: SCAN USING INDEX.  Without: SCAN USING
+        # COVERING INDEX.
+        return _distinct_stations(
+            handle,
+            "SELECT DISTINCT station_id FROM basket_policy_training_fact",
+        )
     finally:
         if owned:
             handle.close()
@@ -211,15 +257,28 @@ def live_stations(
     Order of precedence, and each layer is a different kind of statement:
 
     1. 禁入 wins.  A barred station does not trade, whatever else says.
-    2. 待观察 (hold) keeps a qualified station out without calling it bad.
-    3. 豁免 (waiver) admits a station the settlement count has not graduated
-       yet -- the operator graduating it by name.
-    4. Otherwise the evidence decides: ``MIN_SETTLEMENTS_TO_QUALIFY``
-       settlements and the station is live; fewer and it waits.
+    2. 待观察 (hold) keeps a station out without calling it bad.
+    3. 豁免 (waiver) is what puts a station in.  Nothing else does.
+
+    Point 3 used to read "admits a station the settlement count has not
+    graduated yet", with a fourth clause under it where the count admitted
+    on its own.  Both the count and the roster it was intersected with are
+    reads of a data table, and on 2026-09-08 one of those tables was
+    rebuilt: every switch on the board still said what the operator had set
+    it to, and the fleet placed no order for 65 minutes anyway.  Membership
+    is now the three hand-written lists and nothing else (user ruling:
+    只看首批站点闸门表即可), which is what the board has told its reader since
+    2026-09-02 -- 表里的五闸…不再自己决定谁上线.
+
+    The count has not gone anywhere: it is still derived, still reported,
+    and still what the automatic bar layer judges on.  It just does not
+    admit, because admitting is an act that should leave an audit row, and
+    a query does not leave one.
 
     Probation is not a punishment and costs nothing to sit in: the paper
     ledger keeps seating and settling these stations, which is precisely how
-    they accumulate the evidence that graduates them.  禁的是下单，不是记账.
+    they accumulate the evidence an operator reads before flipping 豁免.
+    禁的是下单，不是记账.
     """
 
     try:
@@ -235,6 +294,23 @@ def live_stations(
         or MIN_SETTLEMENTS_TO_QUALIFY
     )
 
+    # The first-batch station gate decides membership and nothing else does
+    # (user ruling 2026-09-08: 只看首批站点闸门表即可).  The board has said
+    # this in its own words since 2026-09-02 -- 三个开关全是人工的…下一轮生产
+    # 立刻照它执行；表里的五闸是给你看的评分，不再自己决定谁上线 -- and the
+    # send path had not caught up: it still intersected the operator's three
+    # switches with a universe derived from a data table, so a table that
+    # went away could overrule every switch on the board.  That is what
+    # happened on 2026-09-08, and no amount of choosing a better table fixes
+    # the shape: a switch that a query can silently veto is not a switch.
+    #
+    # So membership is now read from the two config files alone and the
+    # verdict is arithmetic on three hand-written lists.  The roster below
+    # is DISPLAY -- the probation column the board draws -- and it can no
+    # longer subtract from the gate.
+    roster = tradeable_stations(conn)
+    roster_available = bool(roster)
+
     def _pack(live: set[str], probation: set[str]) -> dict[str, Any]:
         return {
             "scope": scope,
@@ -247,20 +323,31 @@ def live_stations(
             "probation_holds": sorted(held),
             "barred": sorted(barred),
             "minimum_settlements": minimum,
+            # Display only, and named for what it is now that the gate
+            # decides alone: the board's probation column has a book behind
+            # it, or it does not.  Neither state can change who trades.
+            "roster_available": roster_available,
+            "roster_source": "book" if roster_available else "unavailable",
         }
 
     if scope == SCOPE_EXPLICIT:
         pinned = _stations(intent.get("station_allowlist")) - barred
         return _pack(pinned - held, pinned & held)
-    unbarred = tradeable_stations(conn) - barred
+    unbarred = roster - barred
     if scope == SCOPE_ALL_EXCEPT_BARRED:
         return _pack(unbarred - held, unbarred & held)
-    counts = settlement_counts(conn)
-    qualified = {
-        station for station in unbarred
-        if counts.get(station, 0) >= minimum or station in waived
-    }
-    return _pack(qualified - held, unbarred - (qualified - held))
+    # 豁免 minus 禁入 minus 待观察.  The settlement count is still derived and
+    # still reported -- the automatic layer judges on it and the board draws
+    # it -- but it no longer admits anybody: graduating a station is the
+    # operator flipping 豁免, which is the one act that leaves an audit row.
+    # Reading a count as an admission is how a research table came to hold a
+    # veto over the live book.
+    live = (waived - barred) - held
+    # Everything the board knows about and is not trading: the stations
+    # production produces for, plus anyone the operator has named, less the
+    # ones actually live.  Display only.
+    known = ((roster | waived | held) - barred)
+    return _pack(live, known - live)
 
 
 def admission(
@@ -283,20 +370,33 @@ def admission(
     scope = live_stations(
         intent_path=intent_path, exclusion_path=exclusion_path, conn=conn,
     )
+    # Carried on every verdict, admitted or not: a cycle that traded on the
+    # fallback roster has to be tellable afterwards from one that traded on
+    # the book, and the receipt is the only record that survives the cycle.
+    # Reported on every verdict so a receipt can still say whether the
+    # board's display roster was readable when this cycle ran.  It does not
+    # enter the verdict: the gate does.
+    source = str(scope.get("roster_source") or "book")
     if not wanted:
         return {"admitted": False, "reason": "live_station_unknown",
-                "station": wanted, "scope": scope["scope"]}
+                "station": wanted, "scope": scope["scope"],
+                "roster_source": source}
     if wanted in set(scope["barred"]):
         return {"admitted": False, "reason": "live_station_barred",
-                "station": wanted, "scope": scope["scope"]}
+                "station": wanted, "scope": scope["scope"],
+                "roster_source": source}
     if wanted in set(scope["stations"]):
         return {"admitted": True, "reason": "live_station_admitted",
-                "station": wanted, "scope": scope["scope"]}
+                "station": wanted, "scope": scope["scope"],
+                "roster_source": source}
     return {
         "admitted": False,
-        # Held by hand and merely unproven are both probation, and the
+        # Held by hand and not on the gate are both probation, and the
         # distinction belongs on the receipt: one of them is somebody's
-        # decision this cycle and the other is arithmetic.
+        # decision this cycle and the other is a station nobody has waived
+        # in yet.  There is no third reason any more -- the outage one this
+        # incident briefly needed died with the query that caused it, since
+        # a missing table can no longer refuse anybody.
         "reason": (
             "live_station_held"
             if wanted in set(scope["probation_holds"])
@@ -304,6 +404,7 @@ def admission(
         ),
         "station": wanted,
         "scope": scope["scope"],
+        "roster_source": source,
     }
 
 
