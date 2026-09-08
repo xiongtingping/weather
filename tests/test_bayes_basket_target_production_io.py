@@ -2062,6 +2062,110 @@ def test_p1_execution_evidence_rejects_suspended_p1_missing_its_evidence(
         assert_p1_execution_evidence(lineage)
 
 
+def test_p1_execution_evidence_admits_the_layer_that_replaced_the_ceiling(
+) -> None:
+    """The 2026-09-07 promotion put the four-layer chain at P1's outermost
+    composition point, and a chain that speaks suppresses the ceiling call --
+    so the served row carries a chain receipt and no ceiling receipt at all.
+    That row is the best-evidenced P1 production makes, and the gate has to
+    admit it.  Replaying the real rows of 2026-09-07 through this rule before
+    the fix refused 2558 of 2916, 755 of them chain-served."""
+
+    assert_p1_execution_evidence(
+        _suspended_p1_lineage(None, four_layer={"applied": "true"})
+    )
+
+
+def test_p1_execution_evidence_admits_the_regional_prior_when_it_serves(
+) -> None:
+    """Second claimant, same rule: when the chain cannot speak the regional
+    path prior answers for the step and the ceiling is not called."""
+
+    assert_p1_execution_evidence(
+        _suspended_p1_lineage(
+            None, regional={"regional_path_prior_applied": "true"}
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    ("four_layer", "regional"),
+    [
+        # A chain that stood down is not the chain speaking.  It needs no
+        # clause of its own: when it stands down the next claimant runs and
+        # writes its own receipt, and here neither did.
+        ({"applied": "false", "refused": "ValueError:empty intercept"}, None),
+        ({"applied": "false"}, None),
+        (None, {"regional_path_prior_applied": "false"}),
+        # Both stood down and nothing else answered.
+        (
+            {"applied": "false"},
+            {"regional_path_prior_applied": "false"},
+        ),
+    ],
+)
+def test_p1_execution_evidence_rejects_a_claimant_that_stood_down(
+    four_layer: dict[str, str] | None,
+    regional: dict[str, str] | None,
+) -> None:
+    with pytest.raises(
+        ContractError,
+        match="stage_zero_execution_p1_hard_bound_ceiling_evidence_missing",
+    ):
+        assert_p1_execution_evidence(
+            _suspended_p1_lineage(
+                None, four_layer=four_layer, regional=regional
+            )
+        )
+
+
+def test_p1_execution_evidence_reads_the_chain_receipt_by_its_schema() -> None:
+    """A payload that is not the receipt the materializer writes is not
+    evidence, however applied it claims to be -- the same rule the ceiling
+    branch has always applied to its own schema."""
+
+    lineage = _suspended_p1_lineage(None)
+    lineage["p1_four_layer_serving_json"] = json.dumps(
+        {"schema": "p1_four_layer_shadow_receipt_v1", "applied": "true"},
+        sort_keys=True,
+    )
+    with pytest.raises(
+        ContractError,
+        match="stage_zero_execution_p1_hard_bound_ceiling_evidence_missing",
+    ):
+        assert_p1_execution_evidence(lineage)
+
+    lineage["p1_four_layer_serving_json"] = "{not json"
+    with pytest.raises(
+        ContractError,
+        match="stage_zero_execution_p1_hard_bound_ceiling_evidence_missing",
+    ):
+        assert_p1_execution_evidence(lineage)
+
+
+def test_p1_execution_evidence_still_needs_the_hard_bound_under_a_chain(
+) -> None:
+    """The outermost layer is one half of the clause.  A chain receipt does
+    not excuse a P1 whose suspension is undeclared or whose proof is not
+    content-addressed."""
+
+    for update in (
+        {"metar_trajectory_soft_likelihood_policy": "ACTIVE"},
+        {"metar_trajectory_applied_strength": "0.4"},
+        {"metar_trajectory_proof_sha256": "not-a-sha"},
+    ):
+        with pytest.raises(
+            ContractError,
+            match=(
+                "stage_zero_execution_p1_hard_bound_ceiling_evidence_missing"
+            ),
+        ):
+            assert_p1_execution_evidence({
+                **_suspended_p1_lineage(None, four_layer={"applied": "true"}),
+                **update,
+            })
+
+
 def test_p1_execution_evidence_keeps_the_old_rule_for_the_old_modes() -> None:
     """Pre-suspension lineage is judged as before: a resolved promoted
     artifact at a strength in (0, 1] admits, a zero strength does not, and a
