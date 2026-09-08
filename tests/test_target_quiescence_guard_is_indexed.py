@@ -26,6 +26,14 @@ that holds up a decision.  The others were each found by measuring a
 stall.  This test is here so the eighth is found by a red test instead:
 it reads the query planner's own answer, not a timing, so it is
 deterministic and says which predicate regressed.
+
+The eighth was found by measuring a stall anyway, on 2026-09-08, before
+this file was read: the truth-increment probe scanning all 429k rows of
+basket_target_market_registry to find eligible station-days without truth,
+54.7 seconds in one statement, in a cycle whose decision loop was racing a
+quote lease it then lost -- 43 of 44 scopes died on production_quote_expired
+behind it.  Its plan is asserted below, so there is no ninth of this shape
+in this table.
 """
 
 from __future__ import annotations
@@ -232,3 +240,61 @@ def test_live_cycle_settlement_seeks_its_intents_by_cycle(
     ]
     assert not scans, f"settlement scans a base table: {steps}"
     assert any("basket_target_order_intents_cycle_idx" in s for s in steps), steps
+
+
+TRUTH_INCREMENT_PROBE_SQL = (
+    "SELECT r.station_id, r.event_date"
+    " FROM (SELECT DISTINCT station_id, event_date"
+    "       FROM basket_target_market_registry"
+    "       WHERE source_eligible=1 AND event_date>=?) r"
+    " LEFT JOIN (SELECT DISTINCT station_id, local_date"
+    "       FROM calibration_station_daily_high_truth"
+    "       WHERE qc_status='ACCEPTED') t"
+    "  ON t.station_id=r.station_id"
+    " AND t.local_date=r.event_date"
+    " WHERE t.station_id IS NULL"
+    " ORDER BY r.event_date, r.station_id LIMIT ?"
+)
+
+
+@pytest.fixture()
+def registry_conn() -> sqlite3.Connection:
+    """The registry lives in its own schema module, applied beside the SSOT."""
+
+    from bayes_basket_target.market_registry import (  # noqa: PLC0415
+        apply_target_market_registry_schema,
+    )
+
+    connection = sqlite3.connect(":memory:")
+    apply_production_ssot_schema(connection)
+    apply_target_market_registry_schema(connection)
+    return connection
+
+
+def test_the_truth_increment_probe_seeks_the_day_it_asks_about(
+    registry_conn: sqlite3.Connection,
+) -> None:
+    """The eighth instance: two unseekable predicates, 429k rows, per cycle.
+
+    ``source_eligible=1`` is on no index at all, and the scope index leads
+    with the station while this read knows only a date -- so the planner
+    scanned the whole table to build the DISTINCT.  Day-first and partial on
+    the eligible rows makes the date a seek and covers both columns.
+
+    Asserted on the plan, not a clock: an in-memory table with no rows is
+    fast whatever the planner does, which is how the previous seven of these
+    survived until somebody measured production.
+    """
+
+    steps = _plan(registry_conn, TRUTH_INCREMENT_PROBE_SQL, ("2026-08-25", 40))
+    assert steps, "the planner returned no steps"
+    registry_steps = [
+        step for step in steps
+        if "basket_target_market_registry" in step
+    ]
+    assert registry_steps, steps
+    assert all("SCAN" not in step for step in registry_steps), registry_steps
+    assert any(
+        "basket_target_market_registry_eligible_day_idx" in step
+        for step in registry_steps
+    ), registry_steps

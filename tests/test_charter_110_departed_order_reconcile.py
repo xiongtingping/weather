@@ -404,6 +404,41 @@ def test_a_departed_order_keeps_the_fill_it_got() -> None:
     assert verdict["resolve_partial"] == pytest.approx(24.969975)
 
 
+def test_retiring_a_partial_frees_the_bucket_it_was_holding() -> None:
+    """Settling the reconciliation is not settling the intent.
+
+    ``can_submit_next_order`` blocks on the INTENT state, and
+    ``reconcile_required`` is one of the four it blocks on -- so the first
+    version of this retirement wrote the fill correctly, left the intent
+    where it was, and the bucket stayed shut behind a row reading
+    ``authoritative_partial_requires_manual_close``.  There is no terminal
+    intent state called "partial"; an order that ended without completing
+    is cancelled, and the fill stays on the reconciliation row.
+    """
+
+    from bayes_basket_target.execution_reconciliation import (  # noqa: PLC0415
+        resolve_cancelled_after_partial_fill,
+    )
+
+    conn = _unresolved_ledger(requested=25.0, price=0.04, prior=24.969975)
+    resolve_cancelled_after_partial_fill(
+        conn,
+        order_intent_id="intent_u",
+        filled_size=24.969975,
+        filled_notional_usdc=24.969975 * 0.04,
+        resolved_at_utc="2026-09-08T12:00:00Z",
+    )
+    intent_state, recon_state, filled = _state(conn, "intent_u")
+    assert intent_state == "cancelled"
+    assert recon_state == "resolved_partial"
+    assert filled == pytest.approx(24.969975)
+    # The bucket is free: nothing the gate blocks on is left standing.
+    gate = can_submit_next_order(
+        conn, bucket="33C", token_id=TOKEN, exclude_order_intent_id="other",
+    )
+    assert gate["allowed"] is True, gate["blockers"]
+
+
 def test_an_incomplete_enumeration_concludes_nothing() -> None:
     """Silence stays silence: an enumeration that ran out of pages is not
     evidence that an order is absent from it."""

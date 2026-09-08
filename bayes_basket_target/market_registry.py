@@ -90,6 +90,18 @@ CREATE INDEX IF NOT EXISTS basket_target_market_registry_latest_idx
 CREATE INDEX IF NOT EXISTS basket_target_market_registry_scope_idx
   ON {TABLE}(station_id,event_date);
 
+-- The truth-increment probe asks the other question this table gets: which
+-- ELIGIBLE station-days since a date have no accepted truth row yet.  Both
+-- of its predicates were unseekable against the indexes above -- scope-first
+-- leads with the station, and the latest index leads with the snapshot hash
+-- -- so it scanned all 429k rows to build a DISTINCT, every cycle.  Measured
+-- 2026-09-08: 54.7 seconds in one statement on the live book, inside a stage
+-- that runs on the same cycle a decision races its quote lease on.
+-- Day-first and partial on the eligible rows: the date becomes a seek and
+-- the two columns cover the read.
+CREATE INDEX IF NOT EXISTS basket_target_market_registry_eligible_day_idx
+  ON {TABLE}(event_date, station_id) WHERE source_eligible=1;
+
 -- The newest snapshot is chosen by ordering the snapshot table and taking
 -- one row, and without an index on that order SQLite scanned every snapshot,
 -- ran the correlated existence check on each, then sorted the survivors in a

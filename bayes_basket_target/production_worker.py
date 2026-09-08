@@ -100,6 +100,7 @@ from .execution_reconciliation import (
     VENUE_SHARE_QUANTUM,
     fill_is_complete,
     record_order_event,
+    resolve_cancelled_after_partial_fill,
     resolve_reconciliation,
     validate_persisted_candidate_consumption_cas,
 )
@@ -8633,15 +8634,28 @@ class TargetProductionWorker:
                     # that stands; leaving it "not yet complete" is what kept
                     # ZSQD 23C unresolved for sixteen hours over 0.03 of a
                     # share the venue was never going to send.
+                    #
+                    # Closed through the ledger's own partial-close, not
+                    # through ``resolve_reconciliation(partial)``.  The
+                    # latter settles the RECONCILIATION and leaves the
+                    # INTENT at reconcile_required, which is one of the four
+                    # states ``can_submit_next_order`` blocks on -- so the
+                    # first version of this retirement got the books right
+                    # and left the bucket shut, with the row reading
+                    # ``authoritative_partial_requires_manual_close``.
+                    # There is no terminal intent state called "partial";
+                    # the order ended without completing, which is what
+                    # ``cancelled`` means here, and the fill lives on the
+                    # reconciliation row where the inventory readers
+                    # already count it.
                     try:
                         with _writer_transaction(
                             self.commit_conn,
                             savepoint="basket_target_intent_reconcile",
                         ):
-                            resolve_reconciliation(
+                            resolve_cancelled_after_partial_fill(
                                 self.commit_conn,
                                 order_intent_id=str(intent_id),
-                                authoritative_state="partial",
                                 filled_size=float(partial),
                                 filled_notional_usdc=float(partial)
                                 * float(limit_price or 0.0),
