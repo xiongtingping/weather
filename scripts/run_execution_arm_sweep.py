@@ -27,6 +27,22 @@ the arms are environment variables on a subprocess.
         --out /tmp/arm_replay.db
     python3 scripts/run_execution_arm_sweep.py --db /tmp/arm_replay.db
 
+WHICH ARMS THIS SWEEP CAN ACTUALLY SETTLE (2026-09-08, verified against the
+live book).  ``PAPER_LEDGER_FILL_MODEL`` defaults to ``through``: a resting
+rung fills when the book traded through it.  The live maker family filled
+46 of 494 posted legs -- 9.3% -- so the model is optimistic by about an
+order of magnitude, and whether that optimism is width-dependent is not
+measured.  Therefore:
+
+* ``W*-taker`` is the clean width comparison and the one that answers
+  charter 79.  Under taker there is no fill model at all: every leg is
+  bought at the ask.
+* ``G-dist2`` against ``base`` is clean -- same family, same fill model,
+  the gate is the only thing that moves.
+* ``W*-maker`` and ``G-taker`` both carry the fill model into the answer.
+  They are recorded, not adjudicated.  Maker against taker has to be
+  settled on the shadow book and the live arm instead.
+
 Foreground and serial on purpose.  A ledger rebuild holds the write lock on
 its database, so two arms at once would either block or interleave, and an
 interleaved book is not any arm's book.
