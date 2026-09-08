@@ -2208,6 +2208,130 @@ def completion_floor_delta_v1(
 
 
 
+BASKET_RETURN_STRUCTURE_SCHEMA = "basket_return_structure_v1"
+# The net return a basket is bought FOR (user ruling, 2026-09-09: "目标设置
+# 为5%").  Recorded, not gated: what a target admits on this book is a
+# measurement nobody has, and a threshold turned on before that reading is
+# a number chosen by whoever typed it.
+BASKET_TARGET_NET_ROI = 0.05
+
+
+def basket_return_structure_v1(
+    *,
+    shares_by_bucket: Mapping[str, Any],
+    price_by_bucket: Mapping[str, Any],
+    claim_by_bucket: Mapping[str, Any],
+    support: Sequence[str],
+    fee_rate: float = 0.0,
+    target_net_roi: float = BASKET_TARGET_NET_ROI,
+) -> dict[str, Any]:
+    """The odds structure of the basket that is actually bought.
+
+    One share of bucket k pays 1 if the day settles there, so a basket
+    holding ``n_k`` shares at an all-in premium of ``C`` returns ``n_k - C``
+    in scenario k and its gross multiple is ``n_k / C`` -- a property of the
+    WHOLE basket in that scenario, never the leg's own ``1 / a_k``.  A leg
+    bought at four cents does not pay twenty-five times; the basket holding
+    twenty-five of it pays ``25 / C``.
+
+    Three quantities that an equal basket lets people conflate and an
+    unequal one does not:
+
+    * ``coverage`` -- the claim inside the window, ``sum p_k``.  What the
+      market prices.
+    * ``net_expected_value`` -- ``sum p_k n_k - C``.  What the basket is
+      worth.  Only when every ``n_k`` is equal does this reduce to the
+      familiar ``P - Q`` on one share of each.
+    * ``net_profit_probability`` -- ``sum p_k [n_k > C]``.  How often the
+      basket ends AHEAD.  A leg with ``n_k <= C`` loses money on the day it
+      wins, and coverage counts that day as a hit.
+
+    The gap between the last two is the whole reason to compute this.  Since
+    charter 70/83 raise a sub-lot leg to ``ceil(1/price)`` shares, 96% of
+    seated baskets are unequal (measured 2026-09-08), and the venue's dollar
+    floor puts the MOST shares on the CHEAPEST leg -- which is the one the
+    model believes least.  So an unequal basket can cover 95% of the claim
+    and still hold a rung it loses on.
+
+    ``equal_basket`` is the one-share-of-each reading kept beside it, where
+    ``Q = sum price``, the gross multiple is ``1 / Q``, break-even is
+    ``P > Q`` and a target ``r`` needs ``Q <= P / (1 + r)``.  It is reported
+    so the two can be compared rather than substituted: it is the arithmetic
+    everyone reasons in, and it describes the bought basket only when the
+    lot left it alone.
+    """
+
+    window = tuple(_text("basket_return_bucket", b) for b in support)
+    if len(set(window)) != len(window):
+        raise ContractError("basket_return_support_duplicate")
+    if not window:
+        raise ContractError("basket_return_support_empty")
+    fee = _nonnegative("basket_return_fee", fee_rate)
+    roi_target = _finite("basket_return_target_roi", target_net_roi)
+    shares = {
+        b: _nonnegative("basket_return_shares", shares_by_bucket.get(b, 0.0) or 0.0)
+        for b in window
+    }
+    price = {
+        b: _nonnegative("basket_return_price", price_by_bucket.get(b, 0.0) or 0.0)
+        for b in window
+    }
+    claim = {
+        b: _finite(f"basket_return_claim_{b}", claim_by_bucket.get(b, 0.0) or 0.0)
+        for b in window
+    }
+    cost = sum(shares[b] * price[b] * (1.0 + fee) for b in window)
+    coverage = sum(claim[b] for b in window)
+    expected_payout = sum(claim[b] * shares[b] for b in window)
+    net_ev = expected_payout - cost
+    # A basket that cost nothing has no return structure; say so rather than
+    # divide.  Everything downstream reads None as "not applicable", which
+    # is what an empty basket is.
+    roi = (expected_payout / cost - 1.0) if cost > EPS else None
+    scenario_multiple = {
+        b: (shares[b] / cost if cost > EPS else None) for b in window
+    }
+    profitable = {b: bool(shares[b] > cost + EPS) for b in window}
+    net_profit_probability = sum(
+        claim[b] for b in window if profitable[b]
+    )
+    # One share of each leg: the reading the P - Q rule is true of.
+    equal_q = sum(price[b] * (1.0 + fee) for b in window)
+    equal = {
+        "all_in_cost": equal_q,
+        "coverage": coverage,
+        "gross_multiple": (1.0 / equal_q if equal_q > EPS else None),
+        "breaks_even": bool(coverage > equal_q + EPS),
+        # Q <= P / (1 + r)
+        "max_cost_for_target": (
+            coverage / (1.0 + roi_target) if (1.0 + roi_target) > EPS else None
+        ),
+        "meets_target": bool(
+            (1.0 + roi_target) > EPS
+            and equal_q <= coverage / (1.0 + roi_target) + EPS
+        ),
+    }
+    identity = {
+        "schema": BASKET_RETURN_STRUCTURE_SCHEMA,
+        "support": list(window),
+        "shares_by_bucket": shares,
+        "all_in_cost_usdc": cost,
+        "coverage": coverage,
+        "expected_payout_usdc": expected_payout,
+        "net_expected_value_usdc": net_ev,
+        "net_roi": roi,
+        "target_net_roi": roi_target,
+        "meets_target": bool(roi is not None and roi >= roi_target - EPS),
+        "net_profit_probability": net_profit_probability,
+        "loss_on_win_buckets": sorted(
+            b for b in window if not profitable[b] and shares[b] > EPS
+        ),
+        "scenario_gross_multiple": scenario_multiple,
+        "equal_basket": equal,
+    }
+    return {**identity, "content_sha256": content_sha256(identity)}
+
+
 LADDER_BALANCE_LEVEL_RULE_VERSION = "depth_priced_cheapest_floor_legal_held_level_v2"
 
 

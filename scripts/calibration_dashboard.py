@@ -4989,12 +4989,62 @@ def _daily_table(
             / len(latest)
             if latest else None
         )
+        # Coverage is not the chance of coming out ahead, and on an unequal
+        # basket the two are far apart (user ruling, 2026-09-09).  A seat
+        # holding ``n_k`` shares of bucket k against an all-in premium C
+        # profits by ``n_k - C`` when the day settles there, so a rung with
+        # ``n_k <= C`` LOSES on the day it wins -- and ``win_probability``
+        # counts that day as a hit.  Measured 2026-09-09 over 235 seated
+        # baskets, 26 carried such a rung: MMMX 2026-09-06 covered 0.789 of
+        # the claim and had a 0.107 chance of ending ahead.
+        #
+        # Unheld buckets contribute nothing by construction: they pay zero,
+        # so they are never profitable, which is why this is read off the
+        # legs rather than off the window.
+        def _net_profit_probability(row: Mapping[str, Any]) -> float | None:
+            try:
+                legs = json.loads(str(row.get("leg_shares_json") or "{}"))
+                claims = json.loads(str(row.get("probabilities_json") or "{}"))
+                cost = float(row.get("chain_stake_usdc") or 0.0)
+            except (TypeError, ValueError):
+                return None
+            if not isinstance(legs, dict) or not isinstance(claims, dict):
+                return None
+            if cost <= 0.0:
+                return None
+            return sum(
+                float(claims.get(bucket, 0.0) or 0.0)
+                for bucket, shares in legs.items()
+                if float(shares or 0.0) > cost
+            )
+
+        net_profit_open = [
+            value for value in (
+                _net_profit_probability(row) for row in latest.values()
+            ) if value is not None
+        ]
+        net_profit_settled = [
+            value for value in (
+                _net_profit_probability(row) for row in settled
+            ) if value is not None
+        ]
         table.append({
             "event_date": day,
             # The open claim is only shown where the settled one cannot be:
             # they are averaged over different populations and must never be
             # read as the same column.
             "claimed_open_mean": claimed_open,
+            # Beside the claim, never instead of it: the two answer
+            # different questions and a reader who sees only the first
+            # reads a covered day as a winning one.
+            "net_profit_probability_mean": (
+                sum(net_profit_settled) / len(net_profit_settled)
+                if net_profit_settled else None
+            ),
+            "net_profit_probability_open_mean": (
+                sum(net_profit_open) / len(net_profit_open)
+                if net_profit_open else None
+            ),
             "station_count": len({r["station_id"] for r in rows}),
             # The rest of the fleet, and the ledger's own word for why each
             # one is not in the count above.
@@ -9141,6 +9191,18 @@ function daily(){
           ?`<span class="muted" title="本日尚未结算：这是已入座各链最新阶段的声称胜率均值，没有结算样本可比"
             >${(r.claimed_open_mean*100).toFixed(0)}%*</span>`
           :"—"}</td>
+      <td title="净盈利概率 Σp·[n>C]：只数「持有的腿里，股数超过整篮成本的那些」。覆盖率把每个中了的桶都算成命中，但 n≤C 的腿中了照样亏 —— 2026-09-06 的 MMMX 覆盖 79%、净盈利概率 11%。">${
+        (()=>{const v=r.net_profit_probability_mean!=null
+          ?r.net_profit_probability_mean:r.net_profit_probability_open_mean;
+          if(v==null) return "—";
+          const c=r.claimed_win_probability_mean!=null
+            ?r.claimed_win_probability_mean:r.claimed_open_mean;
+          const star=r.net_profit_probability_mean==null?"*":"";
+          // Amber when the two readings disagree by more than a fifth of the
+          // claim: that gap is a basket holding a rung it loses on.
+          const wide=(c!=null&&c>0&&(c-v)/c>0.2);
+          return `<span class="${wide?"down":""}${star?" muted":""}"
+            >${(v*100).toFixed(0)}%${star}</span>`;})()}</td>
       <td class="factor ${calCls}">${cal==null?"—":cal.toFixed(2)+"×"}</td>
       <td>${r.odds_mean==null?"—":r.odds_mean.toFixed(1)+"x"}</td>
       <td class="mono">${r.staked_usdc.toFixed(2)}</td>
@@ -9178,7 +9240,9 @@ function daily(){
     <th>位置<br><span class="muted">均值桶 上/平/下</span></th>
     <th>意向窗盖住率<br><span class="muted">选桶概率和</span></th>
     <th>建仓桶<br><span class="muted">腿数 · 分阶段</span></th>
-    <th>已结算</th><th>命中率</th><th>声称</th><th>实现/声称</th>
+    <th>已结算</th><th>命中率</th><th>声称</th>
+    <th title="净盈利概率 Σp·[n>C]，与左侧的「声称」是两个量：声称数的是窗口盖住的概率，这一列只数「持有的腿里股数超过整篮成本的那些」。n≤C 的腿中了照样亏钱，而声称把那天算成命中。">净盈利<br><span class="muted">Σp·[n&gt;C]</span></th>
+    <th>实现/声称</th>
     <th>赔率</th><th>投入</th><th>盈亏</th>
     <th title="实盘意向（live_submit_authorized=1），与左侧纸面各列是两套账，不可相加">实盘<br><span class="muted">腿 · 名义</span></th>
   </tr></thead><tbody>${rows}</tbody></table></div>`;

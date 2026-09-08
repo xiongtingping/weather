@@ -24,6 +24,8 @@ from .basket_kernel.contracts import (
     TargetBasketSnapshot,
 )
 from .basket_kernel.delta_v2 import (
+    BASKET_TARGET_NET_ROI,
+    basket_return_structure_v1,
     BUNDLE_RESCORE_SCHEMA,
     DEFAULT_P1_ENTRY_LOCAL_HOUR,
     EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
@@ -703,6 +705,9 @@ RESHAPED_SIZING_REASONS = frozenset({CLAMPED_CLIP_REASON, RAISED_LOT_REASON})
 # What a basket says when the shares that would go out do not pass the
 # evaluation the shares that were judged passed.
 RESHAPED_BUNDLE_REFUSED_REASON = "reshaped_bundle_rescore_refused"
+# The basket that would go out does not clear the net return it is bought
+# for, read on the shares it would actually hold.
+BASKET_NET_ROI_REFUSED_REASON = "basket_net_roi_below_target"
 
 
 def _station_capital_usdc(
@@ -1602,6 +1607,72 @@ def _compile_target_plan(
         ]
         remaining_after = remaining_budget
 
+    # The odds structure of the basket that is actually bought, and the
+    # target it has to clear (user ruling 2026-09-09: "目标设置为5%",
+    # "把闸也上了").
+    #
+    # On the FINAL share vector, because that is the only vector this
+    # question has an answer for.  ``n_k`` shares of bucket k at an all-in
+    # premium C return ``n_k - C`` when the day settles there, so the
+    # basket's gross multiple in that scenario is ``n_k / C`` and its net
+    # expectation is ``sum p_k n_k - C``.  Only an equal basket collapses
+    # that to ``P - Q`` on one share of each, and charter 70/83's lot raise
+    # leaves 96% of seated baskets unequal.
+    #
+    # Measured 2026-09-09 over 235 seated baskets: nine pass the equal-share
+    # reading and lose money on the one that was bought, MPMG 2026-09-09
+    # worst at -7.0% against an equal-share Q of 0.530 that clears the
+    # target comfortably.  Twenty-seven (11%) carry a negative net ROI.
+    basket_return_structure: dict[str, Any] | None = None
+    priced_legs = [
+        item for item in order_sizing_decisions
+        if item.candidate_present and item.eligible and item.q_order > 0.0
+    ]
+    edge_belief = (
+        (delta_plan.get("basket_support_selection") or {}).get("seated") or {}
+    ).get("window_probabilities") if isinstance(delta_plan, Mapping) else None
+    if priced_legs and isinstance(edge_belief, Mapping):
+        support = tuple(str(item.bucket) for item in priced_legs)
+        try:
+            basket_return_structure = basket_return_structure_v1(
+                shares_by_bucket={
+                    str(item.bucket): item.q_order for item in priced_legs
+                },
+                price_by_bucket={
+                    str(item.bucket): item.r_limit for item in priced_legs
+                },
+                claim_by_bucket={
+                    bucket: float(edge_belief.get(bucket, 0.0) or 0.0)
+                    for bucket in support
+                },
+                support=support,
+                fee_rate=float(policy.fee_rate),
+            )
+        except (ContractError, KernelContractError):
+            # A structure that cannot be computed is not a pass.  The gate
+            # below reads ``meets_target``, which stays False.
+            basket_return_structure = None
+        # Charter 116 is not overruled here.  A completion that makes an
+        # illegal floor legal is a repair, and an expectation test is the
+        # wrong question to put to a repair -- the missing leg is missing
+        # precisely because ``claim < ask``, so a repair prices negative by
+        # construction and a net-ROI target would refuse every one of them.
+        # The repair still records both currencies (charter 116's own
+        # accounting); it just is not asked to clear a profit target.
+        repair_exempt = bool(
+            (delta_plan.get("completion_repair") or {}).get("exempt")
+            if isinstance(delta_plan, Mapping) else False
+        )
+        if not repair_exempt and not (
+            basket_return_structure or {}
+        ).get("meets_target"):
+            order_sizing_decisions = [
+                item.refused(BASKET_NET_ROI_REFUSED_REASON)
+                if item.candidate_present else item
+                for item in order_sizing_decisions
+            ]
+            remaining_after = remaining_budget
+
     candidate_present_for_cadence = any(
         item.candidate_present for item in order_sizing_decisions
     )
@@ -1752,6 +1823,10 @@ def _compile_target_plan(
         "plan": plan,
         "cash_phase_decision": cash_phase_decision.to_dict(),
         "order_sizing_decisions": [item.to_dict() for item in order_sizing_decisions],
+        # Recorded whether it passed or not: a refusal that does not say what
+        # it read is not auditable, and the coverage/net-profit gap is the
+        # number this exists to surface.
+        "basket_return_structure": basket_return_structure,
         # Present only when sizing cut a leg below its authorized clip; the
         # verdict that decided whether the cut basket could still be sent.
         "bundle_rescore": bundle_rescore,

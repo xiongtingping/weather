@@ -1590,3 +1590,107 @@ def test_the_exemption_call_site_supplies_the_belief() -> None:
     call = runtime[runtime.index("completion_repair = completion_repair_exemption_v1"):]
     call = call[:call.index("if ordered_support else None")]
     assert "claim_by_bucket=edge_probabilities" in call, call[-400:]
+
+
+# --------------------------------------------------------------------------
+# The odds structure of the basket that is actually bought (user ruling,
+# 2026-09-09).  Coverage, net EV and the chance of ending ahead are three
+# quantities; only an equal basket lets them be conflated.
+# --------------------------------------------------------------------------
+
+
+def test_the_scenario_multiple_belongs_to_the_basket_not_the_leg() -> None:
+    """A leg bought at four cents does not pay twenty-five times.
+
+    One share of bucket k pays 1 if the day settles there, so a basket
+    holding n_k shares against an all-in premium C returns ``n_k - C`` and
+    its gross multiple in that scenario is ``n_k / C`` -- a property of the
+    whole basket, never the leg's own ``1 / a_k``.
+    """
+
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        basket_return_structure_v1,
+    )
+
+    # The Kuala Lumpur basket of 2026-09-10, at the shares the lot left it.
+    r = basket_return_structure_v1(
+        shares_by_bucket={"32C": 5.0, "33C": 6.0, "34C": 25.0},
+        price_by_bucket={"32C": 0.27, "33C": 0.17, "34C": 0.04},
+        claim_by_bucket={"32C": 0.3141, "33C": 0.4395, "34C": 0.2011},
+        support=("32C", "33C", "34C"),
+    )
+    assert r["all_in_cost_usdc"] == pytest.approx(3.37)
+    # 25 shares at 4c is not 25x; it is 25/3.37.
+    assert r["scenario_gross_multiple"]["34C"] == pytest.approx(25 / 3.37)
+    assert r["scenario_gross_multiple"]["32C"] == pytest.approx(5 / 3.37)
+    assert r["net_expected_value_usdc"] == pytest.approx(5.865, abs=1e-3)
+
+
+def test_coverage_and_the_chance_of_ending_ahead_are_two_numbers() -> None:
+    """A rung with ``n_k <= C`` loses on the day it wins.
+
+    MMMX 2026-09-06 covered 0.789 of the claim and had a 0.107 chance of
+    ending ahead, because two of its rungs held fewer shares than the
+    basket cost.  Coverage counts those days as hits.
+    """
+
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        basket_return_structure_v1,
+    )
+
+    r = basket_return_structure_v1(
+        # The cheap rung carries the shares, the dear one does not, and the
+        # dear one is the one the model believes.
+        shares_by_bucket={"A": 30.0, "B": 2.0},
+        price_by_bucket={"A": 0.05, "B": 0.40},
+        claim_by_bucket={"A": 0.10, "B": 0.70},
+        support=("A", "B"),
+    )
+    cost = r["all_in_cost_usdc"]
+    assert cost == pytest.approx(30 * 0.05 + 2 * 0.40)
+    # Two shares against a 2.30 premium is the shape: the venue's dollar
+    # floor put thirty shares on the nickel rung and left the dear one at
+    # the lot.
+    assert r["coverage"] == pytest.approx(0.80)
+    # B holds two shares against a 2.30 premium: it wins and still loses.
+    assert r["loss_on_win_buckets"] == ["B"]
+    assert r["net_profit_probability"] == pytest.approx(0.10)
+    assert r["net_profit_probability"] < r["coverage"]
+
+
+def test_only_an_equal_basket_reduces_to_p_minus_q() -> None:
+    """MPMG 2026-09-09: the equal reading clears the target, the bought one
+    loses 7%.
+
+    Q = 0.53 against a coverage of 0.613 needs Q <= P / 1.05 = 0.584, which
+    it clears -- and the basket the lot actually built returns -6.95%.
+    """
+
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        basket_return_structure_v1,
+    )
+
+    shares = {"30C": 25.0, "31C": 8.0, "32C": 5.0}
+    price = {"30C": 0.04, "31C": 0.14, "32C": 0.35}
+    claim = {"30C": 0.001, "31C": 0.172, "32C": 0.44}
+    r = basket_return_structure_v1(
+        shares_by_bucket=shares, price_by_bucket=price,
+        claim_by_bucket=claim, support=tuple(shares),
+    )
+    equal = r["equal_basket"]
+    assert equal["all_in_cost"] == pytest.approx(0.53)
+    assert equal["max_cost_for_target"] == pytest.approx(0.613 / 1.05)
+    assert equal["meets_target"] is True, "the reading everyone reasons in"
+    assert r["net_roi"] == pytest.approx(-0.0695, abs=1e-3)
+    assert r["meets_target"] is False, "the basket that was bought"
+
+    # And where the lot left the basket alone the two agree, which is the
+    # only case P - Q was ever true of.
+    flat = basket_return_structure_v1(
+        shares_by_bucket={k: 1.0 for k in shares},
+        price_by_bucket=price, claim_by_bucket=claim, support=tuple(shares),
+    )
+    assert flat["meets_target"] == flat["equal_basket"]["meets_target"]
+    assert flat["net_roi"] == pytest.approx(
+        flat["coverage"] / flat["equal_basket"]["all_in_cost"] - 1.0
+    )
