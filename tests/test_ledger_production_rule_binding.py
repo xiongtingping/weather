@@ -227,10 +227,6 @@ SHARED_WITH_PRODUCTION = {
     # Charter 70: the lot top-up mode is the kernel's; both lanes import it
     # and the raise itself is one kernel function both call.
     "EXCHANGE_LOT_TOP_UP",
-    # Charter 74's ticket switch (2026-09-05): spelled in production as
-    # PM_CHAIN_TICKET, the ledger defaults to production's value and the
-    # two are asserted equal below.
-    "CHAIN_TICKET_MODE",
     "CERTAINTY_GATE", "FEE_RATE", "KELLY_FRACTION",
     "MAKER_RESTING_IMPROVE_TICKS", "MAKER_RESTING_LADDER_STEPS",
     "MAXIMUM_SUPPORT_BUCKETS", "MINIMUM_SUPPORT_BUCKETS",
@@ -771,10 +767,8 @@ def test_charter_68_scope_and_the_taker_leg_veto_move_together() -> None:
     # Charter 96 (2026-09-06): the ticket is retired on both sides.  The
     # switch stays -- it is the replay arm -- and the two sides must still
     # read one value, which is what this assertion is for.
-    assert L.CHAIN_TICKET_MODE == P.CHAIN_TICKET_MODE == "off"
     import inspect as _inspect
 
-    assert 'CHAIN_TICKET_MODE == "on"' in _inspect.getsource(P._target_candidates)
     assert (L.LEG_VETO == "on") == (P.TAKER_LEG_VETO == "reservation")
     assert P.TAKER_LEG_VETO == "joint"
     # Charter 96: the lambda partition gained a boundary at 0.95, and the
@@ -915,9 +909,10 @@ def test_the_chain_law_and_the_ticket_live_inside_the_solver() -> None:
     # And the solver's own verdict is read back rather than recomputed.
     assert 'moment = dict(selection.get("decision_moment") or {})' in source
     assert 'moment.get("is_decision_moment") is False' in source
-    # The ticket is the solver's winner, not a hold this lane pays for.
-    assert 'if JUDGE == "production" and verdict.get("ticket"):' in source
-    assert 'str(solution.get("winner_candidate_origin") or "")' in source
+    # The ticket is retired (2026-09-08): neither lane reads it, and the
+    # verdict no longer carries the flag that named it.
+    assert 'verdict.get("ticket")' not in source
+    assert "chain_ticket" not in source
     # The post-seat chain law is skipped for a production verdict.
     assert "chain_law_here = production_verdict is None" in source
     assert "if chain_law_here and not growth > 0.0:" in source
@@ -1243,7 +1238,8 @@ def test_charter_73_authorizes_the_increment_on_the_seated_belief() -> None:
     assert L.whole_basket_edge_delta_v1 is K.whole_basket_edge_delta_v1
     kernel = inspect.getsource(K)
     assert "score > execution_weights.epsilon_score + EPS" in kernel
-    assert 'rule == EXECUTION_AUTHORIZATION_CHAIN_TICKET' in kernel
+    # No candidate origin is exempt from the score any more.
+    assert "EXECUTION_AUTHORIZATION_CHAIN_TICKET" not in kernel
     judge = inspect.getsource(L._production_judge)
     assert '.get("window_probabilities")' in judge
     assert "delta_policy.execution_weights.epsilon_score" in judge
@@ -1251,8 +1247,7 @@ def test_charter_73_authorizes_the_increment_on_the_seated_belief() -> None:
         encoding="utf-8"
     )
     # Charter 92: the ticket is no longer exempt from that check.
-    assert 'or CHARTER_92_TICKET_EDGE == "on"' in source
-    assert L.CHARTER_92_TICKET_EDGE == K.CHARTER_92_TICKET_EDGE == "on"
+    assert "CHARTER_92_TICKET_EDGE" not in source
     assert '"ticket_authorization": (' in source
     assert "_edge = whole_basket_edge_delta_v1(" in source
     assert "if not _edge > _epsilon + 1e-9:" in source
@@ -1335,8 +1330,6 @@ def test_every_charter_clause_the_audit_prices_has_one_switch() -> None:
     assert P.MARKET_LEAN_GATE_MODE == "on"
     # Charter 96 supersedes the 2026-09-05 ``ticket_only`` default: P0
     # sizes the seat it just proved an edge on.
-    assert P.P0_SIZING_MODE == "kelly"
-    assert P.CHAIN_TICKET_MODE == "off"
 
 
 def test_a_rebuild_can_be_taken_oldest_first_in_slices() -> None:

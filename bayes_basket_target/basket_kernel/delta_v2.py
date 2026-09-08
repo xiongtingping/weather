@@ -493,48 +493,24 @@ PRODUCTION_SIZING_LAW = KELLY_OBJECTIVE_FORM
 # it costs.  The value delta is still computed, for the audit.
 EXECUTION_AUTHORIZATION_JOINT_VALUE = "joint_value_v2"
 EXECUTION_AUTHORIZATION_WHOLE_BASKET_EDGE = "whole_basket_edge_v1"
-# Charter 74 (user ruling, 2026-09-03): only P0 opens a station-day.  A P0
-# the Kelly law sizes to nothing still opens the chain with a ticket --
-# one minimum clip per support leg, above the dust floor -- so P0-M and
-# P1 have a position to add to; a later stage never opens an empty chain.
-# Measured with production's own judge on the replay book: ticket and
-# add-only +48.7% on 938 staked, P1 opening alone +15.7% on 3029.
-CHAIN_TICKET_CANDIDATE_ORIGIN = "CHAIN_TICKET"
-CHAIN_TICKET_DUST_FLOOR_USDC = 0.01
+# Charter 74 (user ruling, 2026-09-03): only P0 opens a station-day, so
+# P0-M and P1 have a position to add to and a later stage never opens an
+# empty chain.  The clause's other half -- a P0 the Kelly law sizes to
+# nothing still opens with a flat ticket -- is retired (user ruling
+# 2026-09-08, "已经没有门票这个语义了"); a P0 with no edge now opens nothing,
+# and the stages that follow find an empty chain and hold.
 CHAIN_OPENING_STAGE = "P0"
-EXECUTION_AUTHORIZATION_CHAIN_TICKET = "chain_ticket_v1"
+# The fill below which a buy is dust and is kept out of the equity curve.
+# It was named for the ticket and outlived it: the ticket is retired (user
+# ruling, 2026-09-08, "已经没有门票这个语义了"), a fill too small to compound
+# is still a fill too small to compound.  The paper ledger's DUST_COST_FLOOR
+# is this same number.
+DUST_FILL_FLOOR_USDC = 0.01
 EXECUTION_AUTHORIZATION_RULES = frozenset({
     EXECUTION_AUTHORIZATION_JOINT_VALUE,
     EXECUTION_AUTHORIZATION_WHOLE_BASKET_EDGE,
-    EXECUTION_AUTHORIZATION_CHAIN_TICKET,
 })
-
-
-def chain_ticket_cash_v1(*, minimum_clip_usdc: float, legs: int) -> float:
-    """Charter 74's ticket: one executable clip per leg, above dust."""
-
-    return max(
-        float(minimum_clip_usdc) * int(legs),
-        CHAIN_TICKET_DUST_FLOOR_USDC * 2.0,
-    )
 PRODUCTION_EXECUTION_AUTHORIZATION = EXECUTION_AUTHORIZATION_WHOLE_BASKET_EDGE
-# Charter 92 (user ruling, 2026-09-06): every buy -- the opening ticket, a
-# top-up, a completion, the P0-M TAF entry -- is judged on the one deflated
-# belief (charter 81's lift times charter 68's lambda(a)), and nothing reads
-# the raw vector, the raw claim or the raw edge.  At the execution layer that
-# retires charter 74's structural authorization of the ticket: the ticket
-# passed charter 87's gate on the deflated belief, so its edge is no longer
-# "known to be nothing", and the lot it becomes under charters 70/83 (0.75 U
-# lifted to 2-5 U down the ask ladder) is authorized exactly as a Kelly
-# seat's increment is, on ``whole_basket_edge_v1`` over the seated
-# partition.  ``off`` is the pre-ruling arm.
-CHARTER_92_TICKET_EDGE = (
-    os.environ.get("PM_CHARTER_92_TICKET_EDGE", "").strip().lower() or "on"
-)
-if CHARTER_92_TICKET_EDGE not in {"on", "off"}:
-    raise RuntimeError(
-        f"unknown charter 92 ticket edge mode: {CHARTER_92_TICKET_EDGE}"
-    )
 # The blocker a bundle carries when the whole-basket edge rule is asked to
 # authorize without a seated partition: refused by name, never authorized
 # on a belief no gate has deflated.
@@ -546,17 +522,16 @@ def execution_authorization_rule_v1(
 ) -> str:
     """The execution layer's rule for a plan, one answer for both lanes.
 
-    Charter 92: the ticket is authorized like every other increment.  Only
-    the ``off`` arm hands it charter 74's structural rule; the curve form
-    keeps ``joint_value_v2`` for its Kelly-less seats.
+    Charter 92: every increment is authorized on the whole-basket deflated
+    edge.  ``winner_candidate_origin`` no longer changes the answer -- the
+    one origin that used to, the chain ticket, is retired (user ruling
+    2026-09-08) -- and is kept in the signature because the plan records
+    which candidate the rule was struck for.  The curve form keeps
+    ``joint_value_v2`` for its Kelly-less seats.
     """
 
-    origin = str(winner_candidate_origin or "")
+    _ = str(winner_candidate_origin or "")
     form = str(objective_form or "")
-    if origin == CHAIN_TICKET_CANDIDATE_ORIGIN:
-        if CHARTER_92_TICKET_EDGE == "off":
-            return EXECUTION_AUTHORIZATION_CHAIN_TICKET
-        return EXECUTION_AUTHORIZATION_WHOLE_BASKET_EDGE
     if form == KELLY_OBJECTIVE_FORM:
         return EXECUTION_AUTHORIZATION_WHOLE_BASKET_EDGE
     return EXECUTION_AUTHORIZATION_JOINT_VALUE
@@ -3334,10 +3309,6 @@ def solve_target_inventory_v2(
             row for row in legal
             if row["candidate_origin"] == LADDER_BALANCE_CANDIDATE_ORIGIN
         ]
-        ticket_rows = [
-            row for row in legal
-            if row["candidate_origin"] == CHAIN_TICKET_CANDIDATE_ORIGIN
-        ]
         if kelly_rows:
             winner = max(
                 kelly_rows,
@@ -3354,15 +3325,6 @@ def solve_target_inventory_v2(
             # every leg and completes the ladder on its own terms.
             winner = min(
                 balance_rows,
-                key=lambda row: (
-                    sum(row["audit"]["cost_by_bucket"].values()),
-                    row["candidate_id"],
-                ),
-            )
-        elif ticket_rows:
-            # Charter 74: no edge at P0 still opens the chain, minimally.
-            winner = min(
-                ticket_rows,
                 key=lambda row: (
                     sum(row["audit"]["cost_by_bucket"].values()),
                     row["candidate_id"],
@@ -3429,7 +3391,7 @@ def solve_target_inventory_v2(
     # which of them the floor refused.  A solution says only who won and how
     # many ran, so a completion candidate that was offered and then shadowed
     # by a Kelly row is invisible from a plan -- which is how the charter-84
-    # loss (this function's winner chain is kelly > balance > ticket with no
+    # loss (this function's winner chain is kelly > balance, with no
     # stage in it, and charter 93 may then refuse that Kelly row after the
     # lift, leaving the ladder short and the day held) has gone unseen on
     # P0-M and P1 since charter 84 landed.  Two sessions hunting it on
@@ -4161,15 +4123,13 @@ def _evaluate_maker_bundle_combo(
         max(0.0, target[bucket] - expected_shares[bucket]) ** 2
         for bucket in required
     )
-    # Charter 74's structural authorization of the ticket survives only as
-    # charter 92's ``off`` arm: the compile hands this function the chain
-    # ticket rule solely when ``CHARTER_92_TICKET_EDGE == "off"``.
+    # Every bundle answers to its score.  Charter 74's structural
+    # authorization was the one exception and it went with the ticket (user
+    # ruling 2026-09-08); ``rule`` now selects which score, never whether a
+    # score is needed.
     authorized = (
         not structural_blockers
-        and (
-            rule == EXECUTION_AUTHORIZATION_CHAIN_TICKET
-            or score > execution_weights.epsilon_score + EPS
-        )
+        and score > execution_weights.epsilon_score + EPS
     )
     identity = {
         "schema": BUNDLE_EVALUATION_SCHEMA,

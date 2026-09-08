@@ -113,7 +113,6 @@ def test_the_admission_sizing_split_is_off_by_default_and_touches_only_the_stake
     for other in (
         "_continuous_optimum_candidates(",
         "_centre_anchored_candidates(",
-        "_chain_ticket_candidate(",
     ):
         start = runtime.index(other)
         assert "sizing_probabilities_by_bucket" not in runtime[start:start + 900], other

@@ -194,7 +194,13 @@ def test_the_solver_treats_the_entry_as_a_decision_moment_and_lets_the_leg_throu
     assert 'and not bool(row.get("taf_tx_entry"))' in source
     candidates = inspect.getsource(P._target_candidates)
     assert 'taf_opening = bool(taf_tx_entry) and stage_name == "P0-M"' in candidates
-    assert "(stage_name in CHAIN_OPENING_STAGES or taf_opening)" in candidates
+    # The entry opens the day by exempting P0-M from the empty-chain refusal,
+    # so the Kelly candidate is offered to it.  Until 2026-09-08 the same flag
+    # also let the ticket open the day; the ticket is retired and this is the
+    # one surviving path, which is what makes asserting it worth doing.
+    assert "and not taf_opening" in candidates
+    assert "later_stage_on_empty_chain = (" in candidates
+    assert "and not later_stage_on_empty_chain" in candidates
     plan = inspect.getsource(P.compile_delta_v2_runtime_plan)
     assert 'get("p0m_taf") or {}).get("entry_required")' in plan
 

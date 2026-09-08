@@ -2671,63 +2671,16 @@ def test_clause_72_production_sizes_by_the_whole_basket_kelly_and_the_curve_keep
     assert delta_v2_runtime._whole_basket_kelly_candidate is not None
 
 
-def test_clause_73_the_execution_layer_authorizes_on_the_whole_basket_edge() -> None:
-    """Charter 73: the bundle is authorized on the increment's edge, not on
-    the penalized value; the value stays in the audit."""
-    from pathlib import Path
+def test_clause_74_only_p0_opens_and_the_ticket_is_gone() -> None:
+    """Charter 74's first half stands; its ticket was retired 2026-09-08.
 
-    from bayes_basket_target.basket_kernel import delta_v2 as kernel
+    Only P0 opens a station-day -- a later stage on an empty chain is offered
+    nothing.  The other half, "a P0 the Kelly law sizes to nothing still opens
+    with a flat ticket", is gone: no candidate origin, no cash rule, no
+    structural authorization, no switch.  A P0 with no edge now opens nothing.
+    """
 
-    root = Path(__file__).resolve().parents[1]
-    assert kernel.PRODUCTION_EXECUTION_AUTHORIZATION == "whole_basket_edge_v1"
-    assert kernel.PRODUCTION_EXECUTION_AUTHORIZATION in kernel.EXECUTION_AUTHORIZATION_RULES
-    # The number: expected payout of the increment on the seat's belief,
-    # less the cash it spends.  Three legs, one share each, 0.6 of mass
-    # inside against 0.5 of cost: +0.1.
-    edge = kernel.whole_basket_edge_delta_v1(
-        edge_probabilities={"a": 0.2, "b": 0.3, "c": 0.1, "d": 0.4},
-        current_shares={"a": 0.0, "b": 0.0, "c": 0.0, "d": 0.0},
-        current_cost={"a": 0.0, "b": 0.0, "c": 0.0, "d": 0.0},
-        resulting_shares={"a": 1.0, "b": 1.0, "c": 1.0, "d": 0.0},
-        resulting_cost={"a": 0.15, "b": 0.25, "c": 0.10, "d": 0.0},
-    )
-    assert abs(edge - 0.1) < 1e-9
-    # Held inventory is sunk on both sides of the delta.
-    held = kernel.whole_basket_edge_delta_v1(
-        edge_probabilities={"a": 0.2, "b": 0.3},
-        current_shares={"a": 5.0, "b": 5.0},
-        current_cost={"a": 1.0, "b": 1.0},
-        resulting_shares={"a": 6.0, "b": 6.0},
-        resulting_cost={"a": 1.2, "b": 1.3},
-    )
-    assert abs(held - (0.5 - 0.5)) < 1e-9
-    # Both lanes of the execution layer carry the rule and the belief.
-    kernel_source = (
-        root / "bayes_basket_target" / "basket_kernel" / "delta_v2.py"
-    ).read_text(encoding="utf-8")
-    assert kernel_source.count("authorization_rule=authorization_rule,") == 2
-    solver_source = (
-        root / "bayes_basket_target" / "delta_v2_runtime.py"
-    ).read_text(encoding="utf-8")
-    # Charter 92: the rule is read off one kernel function at both sites.
-    assert (
-        "execution_authorization_rule = execution_authorization_rule_v1("
-        in solver_source
-    )
-    assert "\"window_probabilities\": dict(best[\"window_probabilities\"])" in solver_source
-    runtime_source = (root / "bayes_basket_target" / "runtime.py").read_text(
-        encoding="utf-8"
-    )
-    assert "PRODUCTION_EXECUTION_AUTHORIZATION" in runtime_source
-    assert "delta_plan.get(\"basket_support_selection\")" in runtime_source
-
-
-def test_clause_74_only_p0_opens_and_a_no_edge_p0_opens_with_a_ticket() -> None:
-    """Charter 74: the ticket opens the chain; later stages never open one."""
-    import sys
-    from pathlib import Path
-
-    from bayes_basket_target import delta_v2_runtime
+    import sys  # noqa: PLC0415
     from bayes_basket_target.basket_kernel import delta_v2 as kernel
 
     root = Path(__file__).resolve().parents[1]
@@ -2736,56 +2689,31 @@ def test_clause_74_only_p0_opens_and_a_no_edge_p0_opens_with_a_ticket() -> None:
     import paper_trading_ledger as ledger  # noqa: PLC0415
 
     assert kernel.CHAIN_OPENING_STAGE == "P0"
-    # The ticket: one clip per leg, never under twice the dust floor.
-    assert kernel.chain_ticket_cash_v1(minimum_clip_usdc=0.25, legs=3) == 0.75
-    assert kernel.chain_ticket_cash_v1(minimum_clip_usdc=0.001, legs=3) == (
-        kernel.CHAIN_TICKET_DUST_FLOOR_USDC * 2.0
-    )
-    assert ledger.DUST_COST_FLOOR == kernel.CHAIN_TICKET_DUST_FLOOR_USDC
-    assert ledger.chain_ticket_cash_v1 is kernel.chain_ticket_cash_v1
-    # Winner order under the Kelly form: Kelly, then the ticket, then hold.
-    probabilities = {"a": 0.2, "b": 0.5, "c": 0.3}
-    weights = kernel.ValueWeightsV2.from_mapping({
-        "lambda_profit_floor": 0.0, "lambda_cvar": 0.0, "lambda_shortfall": 0.0,
-        "lambda_breakthrough": 0.0, "lambda_overfill": 0.0, "lambda_excess_hhi": 0.0,
-        "cvar_alpha": 0.25, "hhi_max": 0.75, "expected_pnl_scale": 1.0,
-        "profit_floor_scale": 1.0, "cvar_scale": 1.0, "coverage_scale": 1.0,
-        "overfill_scale": 1.0, "excess_hhi_scale": 1.0,
+    # The dust floor outlived the ticket it was named for, under its own name,
+    # and both lanes still read the one value.
+    assert kernel.DUST_FILL_FLOOR_USDC == 0.01
+    assert ledger.DUST_COST_FLOOR == kernel.DUST_FILL_FLOOR_USDC
+    # Nothing of the ticket is left to import, in either lane.
+    for name in (
+        "CHAIN_TICKET_CANDIDATE_ORIGIN", "CHAIN_TICKET_DUST_FLOOR_USDC",
+        "EXECUTION_AUTHORIZATION_CHAIN_TICKET", "chain_ticket_cash_v1",
+        "CHARTER_92_TICKET_EDGE",
+    ):
+        assert not hasattr(kernel, name), name
+        assert not hasattr(ledger, name), name
+    for name in ("CHAIN_TICKET_MODE", "P0_SIZING_MODE", "_chain_ticket_candidate"):
+        assert not hasattr(delta_v2_runtime, name), name
+    assert kernel.EXECUTION_AUTHORIZATION_RULES == frozenset({
+        kernel.EXECUTION_AUTHORIZATION_JOINT_VALUE,
+        kernel.EXECUTION_AUTHORIZATION_WHOLE_BASKET_EDGE,
     })
-    baseline = {
-        "candidate_id": "base", "shares_by_bucket": {"a": 0.0, "b": 0.0, "c": 0.0},
-        "cost_by_bucket": {"a": 0.0, "b": 0.0, "c": 0.0},
-        "candidate_kind": kernel.CANDIDATE_KIND_BASELINE,
-        "candidate_origin": "CLIP_GRID_PRODUCT",
-    }
-    ticket = {
-        "candidate_id": "ticket", "shares_by_bucket": {"a": 1.0, "b": 1.0, "c": 1.0},
-        "cost_by_bucket": {"a": 0.25, "b": 0.25, "c": 0.25},
-        "candidate_kind": kernel.CANDIDATE_KIND_COMPLETE,
-        "candidate_origin": kernel.CHAIN_TICKET_CANDIDATE_ORIGIN,
-    }
-    kwargs = dict(
-        probabilities=probabilities, protected_buckets=("a", "b", "c"),
-        shortfall_buckets=(), breakthrough_buckets=(), weights=weights,
-        objective_form=kernel.KELLY_OBJECTIVE_FORM, bankroll_usdc=15.0,
-    )
-    picked = kernel.solve_target_inventory_v2(
-        feasible_inventory_candidates=[baseline, ticket], **kwargs
-    )
-    assert picked["winner_candidate_origin"] == kernel.CHAIN_TICKET_CANDIDATE_ORIGIN
-    # The runtime offers the ticket only at P0 on an empty chain, and offers a
-    # later stage nothing there.
+    # The half that stands: a later stage is offered nothing on an empty chain.
     source = (
         root / "bayes_basket_target" / "delta_v2_runtime.py"
     ).read_text(encoding="utf-8")
-    assert "_chain_ticket_candidate(" in source
     assert "later_stage_on_empty_chain" in source
     assert "chain_not_opened_by_p0" in source
-    assert delta_v2_runtime._chain_ticket_candidate is not None
-    kernel_source = (
-        root / "bayes_basket_target" / "basket_kernel" / "delta_v2.py"
-    ).read_text(encoding="utf-8")
-    assert "rule == EXECUTION_AUTHORIZATION_CHAIN_TICKET" in kernel_source
+    assert "_chain_ticket_candidate(" not in source
 
 
 def test_clause_75_mean_bucket_centre_and_mean_mode_skew_direction() -> None:
@@ -3435,31 +3363,25 @@ def test_clause_92_every_buy_reads_the_deflated_belief(monkeypatch) -> None:
 
     clause = _clause(92)
     for needle in (
-        "PM_CHARTER_92_TICKET_EDGE", "execution_authorization_rule_v1",
+        "execution_authorization_rule_v1",
         "edge_belief_missing", "ticket_authorization", "不允许用原始概率",
         "whole_basket_edge_v1",
     ):
         assert needle in clause, needle
     for old in (73, 74, 87):
         assert "第 92 条起" in _clause(old), old
-    assert kernel.CHARTER_92_TICKET_EDGE == "on"
     rule = kernel.execution_authorization_rule_v1
     assert delta_v2_runtime.execution_authorization_rule_v1 is rule
     kelly, curve = kernel.KELLY_OBJECTIVE_FORM, kernel.CURVE_OBJECTIVE_FORM
-    ticket, seat = kernel.CHAIN_TICKET_CANDIDATE_ORIGIN, kernel.KELLY_CANDIDATE_ORIGIN
+    seat = kernel.KELLY_CANDIDATE_ORIGIN
     edge = kernel.EXECUTION_AUTHORIZATION_WHOLE_BASKET_EDGE
-    assert rule(winner_candidate_origin=ticket, objective_form=kelly) == edge
+    # No origin is exempt any more: the ticket that was is retired
+    # (2026-09-08), so only the objective form selects the rule.
     assert rule(winner_candidate_origin=seat, objective_form=kelly) == edge
-    assert rule(winner_candidate_origin=ticket, objective_form=curve) == edge
+    assert rule(winner_candidate_origin="ANYTHING", objective_form=kelly) == edge
     assert rule(winner_candidate_origin=seat, objective_form=curve) == (
         kernel.EXECUTION_AUTHORIZATION_JOINT_VALUE
     )
-    # The pre-ruling arm hands the ticket charter 74's structural rule.
-    monkeypatch.setattr(kernel, "CHARTER_92_TICKET_EDGE", "off")
-    assert rule(winner_candidate_origin=ticket, objective_form=kelly) == (
-        kernel.EXECUTION_AUTHORIZATION_CHAIN_TICKET
-    )
-    monkeypatch.setattr(kernel, "CHARTER_92_TICKET_EDGE", "on")
     root = Path(__file__).resolve().parents[1]
     compile_source = (
         root / "bayes_basket_target" / "delta_v2_runtime.py"
@@ -3482,8 +3404,7 @@ def test_clause_92_every_buy_reads_the_deflated_belief(monkeypatch) -> None:
     ledger_source = (root / "scripts" / "paper_trading_ledger.py").read_text(
         encoding="utf-8"
     )
-    assert "CHARTER_92_TICKET_EDGE," in ledger_source
-    assert 'or CHARTER_92_TICKET_EDGE == "on"' in ledger_source
+    assert "CHARTER_92_TICKET_EDGE" not in ledger_source
     assert '"ticket_authorization": (' in ledger_source
     assert 'and row.get("admissible", True)' in ledger_source
 

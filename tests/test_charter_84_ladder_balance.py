@@ -136,7 +136,7 @@ def test_the_balance_shape_raises_every_short_rung_to_the_held_level() -> None:
 
 # Charter 96 (2026-09-06) turned P0's Kelly candidate back on, which exposed
 # a defect that is older than it and has nothing to do with P0: the kernel's
-# winner chain is ``kelly_rows`` > ``balance_rows`` > ``ticket_rows`` with no
+# winner chain is ``kelly_rows`` > ``balance_rows`` with no
 # stage in it, so a completion is discarded the moment ANY Kelly row is
 # offered -- and charter 93 (2026-09-06) then refuses that Kelly row after
 # the lift, leaving the day on HOLD with the ladder still short.  Measured on
@@ -201,18 +201,15 @@ def test_a_venue_short_seat_gets_a_completion_candidate_and_nothing_else_does() 
     assert scaled["ladder_balance"]["capital_scale"] == pytest.approx(0.4)
     # Charter 84's stated reason for this candidate -- "the Kelly law offered
     # nothing because the seat already holds more than it would size today" --
-    # is FALSE on this shape, and only looked true while P0 was ticket_only.
-    # Kelly offers 12.5 shares a rung here, well above the 5 held; what the
-    # completion actually covers is a Kelly row that charter 93 refuses after
-    # the lift.  Both arms are pinned so neither side can drift silently.
+    # is FALSE on this shape, and only looked true while P0 could be sized
+    # by a flat ticket instead of Kelly (retired 2026-09-08).  Kelly offers
+    # 12.5 shares a rung here, well above the 5 held; what the completion
+    # actually covers is a Kelly row that charter 93 refuses after the lift.
     kelly_rows = [
         row for row in candidates if row["candidate_origin"] == KELLY_CANDIDATE_ORIGIN
     ]
-    if delta_v2_runtime.P0_SIZING_MODE == "ticket_only":
-        assert not kelly_rows
-    else:
-        assert len(kelly_rows) == 1
-        assert kelly_rows[0]["shares_by_bucket"]["30"] == pytest.approx(12.5)
+    assert len(kelly_rows) == 1
+    assert kelly_rows[0]["shares_by_bucket"]["30"] == pytest.approx(12.5)
     # A whole ladder offers no completion.
     assert not [
         row for row in _candidates(_held_snapshot(held_32=5.0))
@@ -264,11 +261,9 @@ def test_the_solution_says_a_completion_was_offered_and_does_not_hash_it() -> No
     assert solution["candidate_origin_counts"][
         LADDER_BALANCE_CANDIDATE_ORIGIN
     ] == 1
-    # Under the shipped arm the Kelly row takes the seat, so the completion
-    # was offered and lost -- the exact case that had no name until now.
-    assert solution["shadowed_completion"] is (
-        delta_v2_runtime.P0_SIZING_MODE != "ticket_only"
-    )
+    # The Kelly row takes the seat, so the completion was offered and lost --
+    # the exact case that had no name until now.
+    assert solution["shadowed_completion"] is True
     identity = {k: v for k, v in solution.items() if k not in audit_only}
     assert content_sha256(identity) == solution["content_sha256"]
 
@@ -371,7 +366,7 @@ def test_the_half_basket_compiles_to_its_missing_rung_at_the_seats_capital() -> 
     )
 
     solution = result["target_solution"]
-    if delta_v2_runtime.P0_SIZING_MODE != "ticket_only":
+    if True:
         # The open defect, asserted rather than skipped: the Kelly row takes
         # the seat, charter 93 refuses it after the lift, and the completion
         # that would have traded for 0.75 USDC was dropped at ranking time.
@@ -791,7 +786,7 @@ def _production_arms(monkeypatch: pytest.MonkeyPatch) -> None:
         ("SYMMETRIC_SEAT_MODE", "center_pm1_p0"), ("SKEW_SEAT_MODE", "off"),
         ("SKEW_PLACEMENT_MODE", "free"), ("MARKET_LEAN_GATE_MODE", "on"),
         ("CHARTER_78_INCUMBENT_NO_EXEMPTION", "on"), ("CHARTER_77_DECISION_MOMENTS", "on"),
-        ("CHARTER_84_LADDER_BALANCE", "on"), ("P0_SIZING_MODE", "kelly"),
+        ("CHARTER_84_LADDER_BALANCE", "on"),
         ("TARGET_PRICING_BASIS", "ask_depth"), ("DECLINE_CLAMP_MODE", "off"),
         ("CHARTER_66A_CHAIN_PAR", "on"), ("CHARTER_71A_TOPUP_IDENTITY", "on"),
         ("CHARTER_71B_CHAIN_GROWTH", "on"), ("CHARTER_72_KELLY_SIZING", "on"),

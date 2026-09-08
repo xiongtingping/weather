@@ -75,9 +75,6 @@ from .basket_kernel.delta_v2 import (
     DEFAULT_KELLY_FRACTION,
     EXCHANGE_LOT_TOP_UP,
     CHAIN_OPENING_STAGE,
-    CHAIN_TICKET_CANDIDATE_ORIGIN,
-    EXECUTION_AUTHORIZATION_CHAIN_TICKET,
-    CHARTER_92_TICKET_EDGE,
     execution_authorization_rule_v1,
     DECISION_MOMENT_RULE_VERSION,
     edge_state_v1,
@@ -88,7 +85,6 @@ from .basket_kernel.delta_v2 import (
     LADDER_BALANCE_CANDIDATE_ORIGIN,
     KELLY_OBJECTIVE_FORM,
     PRODUCTION_EXECUTION_AUTHORIZATION,
-    chain_ticket_cash_v1,
     VALUE_OBJECTIVE_FORM,
     chain_topup_growth_v1,
     clamp_declining_gaps_v2,
@@ -150,24 +146,6 @@ P1_MINIMUM_SUPPORT_BUCKETS = 2
 # buying a degraded shape there buys the wrong side of that knowledge.
 # OFF by default; the env flag keeps the arm re-measurable.
 OPENING_FALLBACK_MIN_BUCKETS = 2
-# How P0 sizes -- ``kelly`` (charter 72: the whole-basket Kelly stake) or
-# ``ticket_only`` (P0 issues one ticket and never a Kelly stake, so it
-# neither sizes the opener nor tops up).
-# **Ruled 2026-09-06, charter 96**: default ``kelly``.  The 2026-09-05
-# ruling that made ``ticket_only`` the default was measured under the gate
-# of its own day, where P0 had no lambda at all: charter 87 landed the
-# following afternoon, and charter 87's own text says that with
-# ``ticket_only`` on, "lambda 在 P0 完全退出决策，P0 唯一的边际条件退化为
-# 全含价 < 1.08 x 声称".  The -21.8% that condemned P0's Kelly seats was
-# therefore measured on seats no edge rule had filtered.  Under charters
-# 87/92/93 P0 buys only what clears the deflated whole-basket edge, and the
-# ruling is that what clears it should be sized on it rather than handed a
-# flat ticket.  ``ticket_only`` stays as the replay arm.
-P0_SIZING_MODE = (
-    os.environ.get("PM_P0_SIZING_MODE", "").strip().lower() or "kelly"
-)
-if P0_SIZING_MODE not in {"kelly", "ticket_only"}:
-    raise RuntimeError(f"unknown P0 sizing mode: {P0_SIZING_MODE}")
 # Research arm (2026-09-06, user: "edge 折扣后 edge 越大份额越多，先量"): how
 # the charter-72 Kelly stake is split across the seat's legs.  ``equal`` is
 # the shipped rule -- one share count for every rung, so the seat pays the
@@ -1191,30 +1169,6 @@ CHAIN_OPENING_STAGES = frozenset(
 )
 if not CHAIN_OPENING_STAGES <= {"P0", "P0-M", "P1"}:
     raise RuntimeError(f"unknown chain opening stages: {sorted(CHAIN_OPENING_STAGES)}")
-# Charter 74's ticket.  **Retired as the default 2026-09-06 (charter 96,
-# user ruling "把门票去掉")**: ``off`` is production, ``on`` is the replay
-# arm that restores it.  The ticket existed so a P0 with no edge still
-# opened the day and P1 had something to add to; the ruling is that a day
-# with no deflated whole-basket edge is a day nobody should be paying to
-# enter, and the 2026-09-06 measurement is what turned the argument: the
-# 13 live P0 opens since go-live were all tickets, they cost 52.03 U, and
-# at the solver's own belief they were worth -3.66 U (-7.0%).
-#
-# **Known cost, stated rather than discovered later**: the ticket was also
-# the structural answer to the blindness ``effective_edge_store`` is built
-# around -- it kept a settled seat in every agreement band, so no band's
-# lambda could freeze for want of observations.  Without it, the bands the
-# gate refuses stop being measured, and the refit's exit code 3 (a band
-# with no seats at all) becomes the alarm that matters rather than an
-# edge case.  Charter 96 accepts that cost explicitly.
-#
-# The paper ledger spells the same switch (PAPER_LEDGER_CHAIN_TICKET) and
-# the binding test holds the two equal.
-CHAIN_TICKET_MODE = (
-    os.environ.get("PM_CHAIN_TICKET", "").strip().lower() or "off"
-)
-if CHAIN_TICKET_MODE not in {"on", "off"}:
-    raise RuntimeError(f"unknown chain ticket mode: {CHAIN_TICKET_MODE}")
 SKEW_PLACEMENT_MODE = (
     os.environ.get("DELTA_V2_SKEW_PLACEMENT", "").strip().lower()
     or "free"
@@ -3779,67 +3733,37 @@ def _target_candidates(
     ):
         # Charter 72: the Kelly-sized seat, offered beside the grid.  Under
         # the whole-basket Kelly form it is the winner when legal.
-        kelly_candidate = None
-        if not (
-            stage_name == CHAIN_OPENING_STAGE
-            and P0_SIZING_MODE == "ticket_only"
-        ):
-            kelly_candidate = _whole_basket_kelly_candidate(
-                ordered=ordered,
-                lane_levels=lane_levels,
-                lane_prices=lane_prices,
-                pricing_basis=pricing_basis,
-                current_shares=current_shares,
-                current_cost=current_cost,
-                pending_shares=pending_shares,
-                pending_cost=pending_cost,
-                capital_available_usdc=capital_available_usdc,
-                # The one place the split is spent: the stake formula.  The
-                # candidate's shape, the grid, the ranking and every gate
-                # still read ``probabilities_by_bucket``.
-                probabilities_by_bucket=(
-                    sizing_probabilities_by_bucket
-                    if sizing_probabilities_by_bucket is not None
-                    else probabilities_by_bucket
-                ),
-                book_equity_usdc=float(book_equity_usdc),
-                quote_version=str(snapshot.quote_version),
-                # The share-shape arm's inputs; unread under ``equal``.
-                centre_bucket=str(centre_bucket or ""),
-                ordinals={
-                    bucket: int(by_bucket[bucket].ordinal) for bucket in ordered
-                },
-                # The bucket arm reads a per-stage table; the seat's own
-                # stage is the one that will settle it.
-                stage=stage_name,
-            )
+        kelly_candidate = _whole_basket_kelly_candidate(
+            ordered=ordered,
+            lane_levels=lane_levels,
+            lane_prices=lane_prices,
+            pricing_basis=pricing_basis,
+            current_shares=current_shares,
+            current_cost=current_cost,
+            pending_shares=pending_shares,
+            pending_cost=pending_cost,
+            capital_available_usdc=capital_available_usdc,
+            # The one place the split is spent: the stake formula.  The
+            # candidate's shape, the grid, the ranking and every gate
+            # still read ``probabilities_by_bucket``.
+            probabilities_by_bucket=(
+                sizing_probabilities_by_bucket
+                if sizing_probabilities_by_bucket is not None
+                else probabilities_by_bucket
+            ),
+            book_equity_usdc=float(book_equity_usdc),
+            quote_version=str(snapshot.quote_version),
+            # The share-shape arm's inputs; unread under ``equal``.
+            centre_bucket=str(centre_bucket or ""),
+            ordinals={
+                bucket: int(by_bucket[bucket].ordinal) for bucket in ordered
+            },
+            # The bucket arm reads a per-stage table; the seat's own
+            # stage is the one that will settle it.
+            stage=stage_name,
+        )
         if kelly_candidate is not None:
             candidates.append(kelly_candidate)
-        elif (
-            CHAIN_TICKET_MODE == "on"
-            and chain_empty
-            and (stage_name in CHAIN_OPENING_STAGES or taf_opening)
-        ):
-            # Charter 74: the ticket.  No edge at P0 is not a reason to
-            # leave the day unopened -- P1 would have nothing to add to.
-            ticket_candidate = _chain_ticket_candidate(
-                ordered=ordered,
-                lane_levels=lane_levels,
-                lane_prices=lane_prices,
-                pricing_basis=pricing_basis,
-                current_shares=current_shares,
-                current_cost=current_cost,
-                pending_shares=pending_shares,
-                pending_cost=pending_cost,
-                capital_available_usdc=capital_available_usdc,
-                minimum_clip_usdc=(
-                    min(artifact.cash_clip_grid)
-                    if artifact.cash_clip_grid else minimum_clip_notional_usdc
-                ),
-                quote_version=str(snapshot.quote_version),
-            )
-            if ticket_candidate is not None:
-                candidates.append(ticket_candidate)
     # Charter 84 (八): a missing rung the market prices under the leg floor
     # is dead -- not bought, and not a reason to leave its neighbours
     # short.  Read off the posted offer, the floor the window rule reads.
@@ -4149,73 +4073,6 @@ def _kelly_share_weights(
         weights[bucket] = max(decay * lean, CENTRE_ANCHOR_MIN_RUNG_SHARE)
     weights[centre_bucket] = max(weights[centre_bucket], 1.0)
     return weights
-
-
-def _chain_ticket_candidate(
-    *,
-    ordered: Sequence[str],
-    lane_levels: Mapping[str, Sequence[Any]],
-    lane_prices: Mapping[str, float],
-    pricing_basis: str,
-    current_shares: Mapping[str, float],
-    current_cost: Mapping[str, float],
-    pending_shares: Mapping[str, float],
-    pending_cost: Mapping[str, float],
-    capital_available_usdc: float,
-    minimum_clip_usdc: float,
-    quote_version: str,
-) -> dict[str, Any] | None:
-    """Charter 74's ticket: the seat bought at one clip per leg, equal shares.
-
-    Offered only when the chain is empty at P0 and the Kelly law sized the
-    seat to nothing.  ``None`` when the seat costs a full payout or more,
-    the ticket does not fit the capital, or a leg has no depth.
-    """
-
-    cost_per_share = sum(float(lane_prices.get(bucket, 0.0)) for bucket in ordered)
-    if cost_per_share <= EPS or cost_per_share >= 1.0 - EPS:
-        return None
-    cash = chain_ticket_cash_v1(
-        minimum_clip_usdc=float(minimum_clip_usdc), legs=len(ordered),
-    )
-    if cash > float(capital_available_usdc) + EPS:
-        return None
-    want = cash / cost_per_share
-    shares = {
-        bucket: float(current_shares[bucket]) + float(pending_shares[bucket])
-        for bucket in current_shares
-    }
-    costs = {
-        bucket: float(current_cost[bucket]) + float(pending_cost[bucket])
-        for bucket in current_cost
-    }
-    for bucket in ordered:
-        got, spent = _ask_depth_purchase(
-            levels=lane_levels[bucket],
-            cash_limit=want * float(lane_prices[bucket]),
-        )
-        if got <= EPS:
-            return None
-        shares[bucket] += got
-        costs[bucket] += spent
-    return {
-        "candidate_id": "ticket-" + content_sha256({
-            "ordered_support": tuple(ordered),
-            "cash_usdc": round(cash, 6),
-            "quote_version": quote_version,
-        })[:24],
-        "shares_by_bucket": shares,
-        "cost_by_bucket": costs,
-        "pricing_basis": pricing_basis,
-        "candidate_kind": CANDIDATE_KIND_COMPLETE,
-        "candidate_origin": CHAIN_TICKET_CANDIDATE_ORIGIN,
-        "ticket": {
-            "cash_usdc": cash,
-            "cost_per_share": cost_per_share,
-            "shares_per_leg": want,
-            "minimum_clip_usdc": float(minimum_clip_usdc),
-        },
-    }
 
 
 def _ladder_balance_candidate(

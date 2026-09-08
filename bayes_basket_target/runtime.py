@@ -26,9 +26,7 @@ from .basket_kernel.contracts import (
 from .basket_kernel.delta_v2 import (
     BUNDLE_RESCORE_SCHEMA,
     DEFAULT_P1_ENTRY_LOCAL_HOUR,
-    CHAIN_TICKET_CANDIDATE_ORIGIN,
     EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
-    EXECUTION_AUTHORIZATION_CHAIN_TICKET,
     EXECUTION_AUTHORIZATION_JOINT_VALUE,
     execution_authorization_rule_v1,
     KELLY_OBJECTIVE_FORM,

@@ -119,7 +119,6 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     SKEW_PLACEMENT_MODE,
     SKEW_SIGNAL_DEFINITION,
     SUPPORT_EDGE_MARGIN,
-    P0_SIZING_MODE,
     KELLY_SHARE_SHAPE,
     KELLY_SHAPE_TOPUP,
     SYMMETRIC_SEAT_MODE,
@@ -137,7 +136,6 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     CONVERGENCE_CLAIM_MIN_CLAIM_RISE,
     CONVERGENCE_CLAIM_MIN_PRICE_FALL,
     CHAIN_OPENING_STAGES,
-    CHAIN_TICKET_MODE as _PRODUCTION_CHAIN_TICKET_MODE,
     DECLINE_CLAMP_MODE as _PRODUCTION_DECLINE_CLAMP_MODE,
     # The charter clauses that gained a research switch on 2026-09-05.
     # Read from production so a replay arm flips one rule on both sides.
@@ -220,10 +218,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     KELLY_OBJECTIVE_FORM as _KELLY_OBJECTIVE_FORM,
     VALUE_OBJECTIVE_FORM as _VALUE_OBJECTIVE_FORM,
     whole_basket_kelly_stake_v1,
-    CHAIN_TICKET_DUST_FLOOR_USDC,
-    CHAIN_TICKET_CANDIDATE_ORIGIN,
     EDGE_STATE_ADMISSIBLE,
-    chain_ticket_cash_v1,
     EFFECTIVE_EDGE_BAND_BOUNDS,
     DECISION_MOMENT_RULE_VERSION,
     basket_holding_signature_v1,
@@ -234,13 +229,13 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     whole_basket_edge_delta_v1,
     # Charter 92: the ticket is authorized on that same edge; ``off`` is
     # charter 74's structural authorization, the replay arm.
-    CHARTER_92_TICKET_EDGE,
     # Charter 93: the in-support floor, re-read on the lifted legs with the
     # kernel's own function, and the fraction it reads.
     CHARTER_93_SUPPORT_FLOOR,
     SUPPORT_SCENARIO_FLOOR_FRACTION,
     support_scenario_floor_v1,
     EFFECTIVE_EDGE_LAMBDA_P0_OVERRIDE,
+    DUST_FILL_FLOOR_USDC,
     # User ruling 2026-09-08: the two-段 share shape.  Imported, never
     # recomputed -- ``_centre_tilt_weights`` below is the standing example of
     # what a second copy costs.
@@ -634,7 +629,7 @@ MINIMUM_SUPPORT_BUCKETS = int(
 FEE_RATE = 0.0  # all-in asks in the snapshot already carry the fee
 # Below this all-in cost a basket is almost certainly a dust offer on an
 # empty side rather than a price anyone would fill.
-DUST_COST_FLOOR = 0.01
+DUST_COST_FLOOR = DUST_FILL_FLOOR_USDC
 # How far down the funnel each refusal got.  The walk keeps the DEEPEST answer
 # it reached, not the last one, because the last cycle is almost always the
 # converged end-of-day book and says nothing about the day.
@@ -1478,18 +1473,6 @@ TOPUP_ATOMIC = (
 )
 if TOPUP_ATOMIC not in {"off", "on"}:
     raise SystemExit(f"unknown top-up atomic arm: {TOPUP_ATOMIC}")
-# The chain ticket, and it is deliberately ledger-only.  Under charter 68 the
-# shrink sizes most opening seats to nothing, and under THIS book's rule --
-# one book per station-day, only P0 opens -- a seat sized to nothing forfeits
-# every later stage on that day: measured, 37 P1 seats and +186u dead of
-# ``chain_never_opened``.  Production has no such rule; its three stages
-# compile independently and a P1 there can open on its own, so it needs no
-# ticket and gets none.  This keeps the ledger measuring the strategy
-# production would run rather than an artefact of the ledger's own bookkeeping.
-CHAIN_TICKET_MODE = (
-    os.environ.get("PAPER_LEDGER_CHAIN_TICKET", "").strip().lower()
-    or _PRODUCTION_CHAIN_TICKET_MODE
-)
 # A P1-specific effective-edge table, for the replay arms only.  Charter 68
 # exempts P1 from the kernel's lambda on purpose -- its edge is the
 # observation, and where the market disagrees most the observation is right --
@@ -1826,12 +1809,12 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     if EFFECTIVE_EDGE_MODE != "on" or EFFECTIVE_EDGE_SCOPE == "window"
     else "有效边际按桶",
     None if LEG_VETO != "on" else "逐腿否决",
-    # Charter 96: the label names whichever opening rule is in force, so a
-    # book that stopped issuing tickets says so rather than going quiet.
     None if CLAIM_EDGE_THERMOMETER_MODE != "on"
     else "薄声称边际≤%g直服" % CLAIM_EDGE_THIN_BAND_MAX,
-    "开链保底票" if CHAIN_TICKET_MODE == "on"
-    else ("P0整篮EV按Kelly定注" if P0_SIZING_MODE == "kelly" else "P0只发票不定注"),
+    # The only opening rule there is, now that the ticket is retired (user
+    # ruling 2026-09-08): P0 sizes on the whole-basket Kelly stake or opens
+    # nothing at all.
+    "P0整篮EV按Kelly定注",
     None
     if SHAPE_GAP_LIMIT_BUCKETS <= 0
     else (
@@ -2124,8 +2107,7 @@ SELECTION_RULE_SHA256 = content_sha256({
     "claim_edge_thin_band": "%g|%g" % (
         CLAIM_EDGE_THIN_BAND_MAX, CLAIM_EDGE_THIN_BAND_LAMBDA
     ),
-    "chain_ticket": CHAIN_TICKET_MODE,
-    "p0_opening_sizing": P0_SIZING_MODE,
+    "p0_opening_sizing": "kelly",
     "effective_edge_band_bounds": "|".join(
         "%g" % bound for bound in EFFECTIVE_EDGE_BAND_BOUNDS
     ),
@@ -2134,8 +2116,7 @@ SELECTION_RULE_SHA256 = content_sha256({
     # standing rule changed, and rows judged under the structural rule must
     # not share a book with these.
     "ticket_authorization": (
-        "whole_basket_edge_v1" if CHARTER_92_TICKET_EDGE == "on"
-        else "chain_ticket_v1"
+        "whole_basket_edge_v1"
     ),
     # Charter 93 (2026-09-06): the in-support floor is zero of the premium
     # and re-read on the lifted legs.  Unconditional, since the standing
@@ -4793,17 +4774,8 @@ def _production_judge(
             (selection.get("seated") or {}).get("curve_score") or 0.0
         ),
         # For the walk's reading of a hold on an empty chain (2026-09-05):
-        # the funnel the seat came out of, and what charter 74's ticket
-        # would have cost at one clip per leg.
+        # the funnel the seat came out of.
         "window_audit": dict(audit or {}),
-        "ticket_cash_usdc": chain_ticket_cash_v1(
-            minimum_clip_usdc=(
-                min(delta_policy.cash_clip_grid)
-                if delta_policy.cash_clip_grid
-                else float(basket_policy.clip_min_notional_usdc)
-            ),
-            legs=len(seated),
-        ),
         "delta_policy_id": str(delta_policy.artifact_id),
         "scope": (season_bin, maturity_bin, liquidity_bin, strategy_version),
         # The centre the seat was actually chosen around.  Production's
@@ -4815,11 +4787,6 @@ def _production_judge(
         # book named a centre outside their own window.
         "ladder_center_bucket": str(
             (audit or {}).get("ladder_center_bucket") or centre_row.bucket
-        ),
-        # Charter 74: whether the solver's winner was its own ticket.
-        "ticket": (
-            str(solution.get("winner_candidate_origin") or "")
-            == CHAIN_TICKET_CANDIDATE_ORIGIN
         ),
         # Production's execution-gate dial and its lot-lift allowance, for
         # the two checks the walk applies where production applies them.
@@ -8579,18 +8546,6 @@ def backfill(
                                 cycles, payload["decision_at_utc"],
                             ))
                             continue
-                        if JUDGE == "production" and verdict.get("ticket"):
-                            # Charter 74's ticket is the solver's own
-                            # candidate, offered under production's
-                            # conditions: empty chain, opening stage,
-                            # Kelly sized to nothing, and the ticket's
-                            # cash within the (tilted) capital.  This
-                            # lane used to add a ticket of its own
-                            # whenever the solver held, capital or not,
-                            # and so opened chains production never
-                            # opens -- nine four-rung seats on tilted
-                            # days in the 2026-09-01..05 book.
-                            counts["production_judge_cycles_ticket"] += 1
                         if (
                             JUDGE == "production"
                             and float(verdict["delta_cost_usdc"]) <= 0.0
@@ -8763,25 +8718,6 @@ def backfill(
                                     _tilt_minimum_clip(conn)
                                     * len(seat["buckets"]),
                                 ),
-                            )
-                        if (
-                            stake <= 0.0
-                            and CHAIN_TICKET_MODE == "on"
-                            and stage == "P0"
-                            and not held
-                            and float(seat_cost) < 1.0
-                            and wanted_stake <= 0.0
-                        ):
-                            # The ticket: the objective judged this opener
-                            # worthless, but worthless and skippable are not the
-                            # same thing under one-book chains.  Floor at one
-                            # executable clip per leg, above the dust floor so
-                            # the chain it opens still counts as credible.
-                            # Charter 74: the kernel's ticket, which
-                            # production opens P0 with too.
-                            stake = chain_ticket_cash_v1(
-                                minimum_clip_usdc=_tilt_minimum_clip(conn),
-                                legs=len(seat["buckets"]),
                             )
                     if stake <= 0.0:
                         # Whichever price the stage's basis judged on, the
@@ -9797,15 +9733,11 @@ def backfill(
                         # expected payout on the belief the seat was
                         # judged on, less its cash -- above the policy's
                         # epsilon.  The kernel's own number.  Charter 92:
-                        # the ticket is no longer exempt -- it passed the
-                        # gate on the deflated belief, and the lot it
-                        # becomes is authorized on that belief like any
-                        # increment; ``off`` keeps charter 74's structural
-                        # authorization as the replay arm.
-                        if (
-                            not production_verdict.get("ticket")
-                            or CHARTER_92_TICKET_EDGE == "on"
-                        ):
+                        # every increment is authorized on the deflated
+                        # belief, with no exempt origin -- the one that was
+                        # exempt, charter 74's ticket, is retired (user
+                        # ruling 2026-09-08).
+                        if True:
                             _held_cost_after = dict(held_cost)
                             for _b, _c in zip(seat["buckets"], leg_cash):
                                 _held_cost_after[str(_b)] = (
@@ -10151,20 +10083,6 @@ def backfill(
                                     **(
                                         {"exchange_lot_top_up": lot_top_up_record}
                                         if lot_top_up_record is not None
-                                        else {}
-                                    ),
-                                    # Charter 74: whether this seat is the
-                                    # solver's ticket -- authorized on
-                                    # structure, its edge known to be
-                                    # nothing.  Production carries it as
-                                    # winner_candidate_origin; a row that
-                                    # cannot say so reads as a seat the
-                                    # entry gate never judged.
-                                    **(
-                                        {"ticket": bool(
-                                            production_verdict.get("ticket")
-                                        )}
-                                        if production_verdict is not None
                                         else {}
                                     ),
                                 },
