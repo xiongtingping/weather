@@ -7,6 +7,8 @@ base rate, and the cold side mirrored at 82%.  The signal lives in the
 consensus bridge's dead zone (0.5-1.5C gaps), so nothing else reads it.
 """
 
+import inspect
+
 import pytest
 
 from bayes_basket_target.delta_v2_runtime import (
@@ -111,11 +113,146 @@ def test_gate_is_registered_in_the_funnel_between_skew_and_leg_floor():
     assert funnel.index("market_lean") < funnel.index("leg_floor")
 
 
-def test_default_mode_is_shadow():
-    """Wired dark by default: counts, never refuses, until the ledger
-    replay prices the on-arm.  Flipping the default is a reviewed change.
+def test_default_mode_is_on_since_the_replay_priced_it():
+    """Promoted 2026-09-05 (user ruling); this test said ``shadow`` until
+    2026-09-08 and had been red for three days.
+
+    The 2026-08-28 ruling wired the gate dark on purpose -- ``shadow``
+    counts what it would refuse and refuses nothing -- and held it there
+    until a ledger replay priced the on-arm.  The replay read +0.9 points
+    alone, +12.4 from 08-23 and +4.3 inside the best combination, and the
+    default moved.  Production agrees: zero refusals through 09-04, then
+    17 / 27 / 15 / 1 on 09-05..08 against 1178 / 1328 / 617 / 53 windows
+    enumerated, while the shadow counter went 64 / 34 / 2 / 0 across the
+    handover.
     """
 
     import bayes_basket_target.delta_v2_runtime as runtime
 
-    assert runtime.MARKET_LEAN_GATE_MODE == "shadow"
+    assert runtime.MARKET_LEAN_GATE_MODE == "on"
+    # ``shadow`` and ``off`` both remain reachable: one measures, one
+    # retires.  The gate reads ``!= "off"`` to compute and ``== "on"`` to
+    # refuse, so shadow is exactly "compute, do not refuse".
+    source = inspect.getsource(runtime._support_windows)
+    assert 'MARKET_LEAN_GATE_MODE != "off"' in source
+    assert 'MARKET_LEAN_GATE_MODE == "on"' in source
+
+
+# --------------------------------------------------------------------------
+# The claims the design makes for itself, pinned (2026-09-08).  Every one of
+# these is written down in the constants block as a property of the gate; a
+# gate whose stated properties are untested is a gate nobody can refactor.
+# --------------------------------------------------------------------------
+
+def test_a_one_sided_quote_is_read_as_itself_not_dropped():
+    """The docstring's rule: mids where both sides exist, one-sided as itself.
+
+    A book quoting only asks on the warm tail still says the warm tail is
+    dear, and dropping those rungs would read the day as flatter than the
+    book does.
+    """
+
+    two_sided, ordinals = _book((0.10, 0.06), (0.20, 0.16), (0.40, 0.36))
+    ask_only, _ = _book(0.08, 0.18, 0.38)
+    probabilities = {"b0": 0.34, "b1": 0.33, "b2": 0.33}
+    assert market_lean_ordinal(two_sided, probabilities, ordinals) == pytest.approx(
+        market_lean_ordinal(ask_only, probabilities, ordinals), abs=1e-9
+    )
+
+
+def test_a_book_with_too_few_rungs_or_too_little_mass_states_nothing():
+    """Two independent floors, and ``None`` must never read as 'aligned'."""
+
+    from bayes_basket_target.delta_v2_runtime import MARKET_LEAN_MIN_QUOTED_MASS
+
+    probabilities = {"b0": 0.5, "b1": 0.5, "b2": 0.0}
+    # Fewer than three priced rungs: no mean to state.
+    thin, ordinals = _book(0.40, 0.40, None)
+    assert market_lean_ordinal(thin, probabilities, ordinals) is None
+    # Three rungs but summed mid mass under the floor: still nothing.
+    faint, ordinals2 = _book(0.02, 0.02, 0.02)
+    assert sum((0.02, 0.02, 0.02)) < MARKET_LEAN_MIN_QUOTED_MASS
+    assert market_lean_ordinal(faint, {"b0": 0.4, "b1": 0.3, "b2": 0.3}, ordinals2) is None
+    # And a ``None`` lean never opposes anything, which is the half of the
+    # contract a caller could get wrong.
+    assert market_lean_opposes(None, window_mid_ordinal=9.0, model_mean_ordinal=1.0) is False
+
+
+def test_the_incumbent_is_exempt_because_holding_is_not_leaning():
+    """The seat we already hold is not a bet on direction."""
+
+    source = inspect.getsource(
+        __import__(
+            "bayes_basket_target.delta_v2_runtime", fromlist=["_support_windows"]
+        )._support_windows
+    )
+    gate = source[source.index("The market-lean gate:"):]
+    gate = gate[:gate.index("market_lean_refused")]
+    assert "not is_incumbent" in gate
+
+
+def test_the_gate_only_subtracts():
+    """It refuses windows; it never seats, prices or sizes one.
+
+    A window it passes still faces the leg floor, the pricing and the edge
+    test, so the gate cannot be the reason anything is bought -- only the
+    reason something was not considered.
+    """
+
+    funnel = list(WINDOW_REFUSAL_FUNNEL)
+    for later in ("leg_floor", "unpriced", "edge"):
+        assert funnel.index("market_lean") < funnel.index(later), later
+    runtime = __import__(
+        "bayes_basket_target.delta_v2_runtime", fromlist=["_support_windows"]
+    )
+    source = inspect.getsource(runtime._support_windows)
+    start = source.index("The market-lean gate:")
+    gate = source[start:source.index("market_lean_refused += 1", start) + 200]
+    # The only thing the gate does on a refusal is count and continue: no
+    # seat, no price, no size.
+    assert "market_lean_refused += 1" in gate
+    assert "continue" in gate
+    for forbidden in ("target_shares", "stake", "clip", "authorized"):
+        assert forbidden not in gate, forbidden
+
+
+def test_the_funnel_arithmetic_still_closes_with_the_gate_counted():
+    """Every enumerated window is either shortlisted or refused by one gate.
+
+    ``_window_audit_closes`` is the invariant the ledger's refusal page
+    stands on; market_lean joining the funnel must not break it, in either
+    mode -- shadow counts zero refusals and the sum still has to add up.
+    """
+
+    runtime = __import__(
+        "bayes_basket_target.delta_v2_runtime", fromlist=["_window_audit_closes"]
+    )
+    audit = {"enumerated_window_count": 10, "shortlisted_window_count": 4}
+    for gate in WINDOW_REFUSAL_FUNNEL:
+        key = (
+            "gapped_window_refused_count" if gate == "gapped"
+            else "%s_refused_window_count" % gate
+        )
+        audit[key] = 0
+    audit["market_lean_refused_window_count"] = 6
+    assert runtime._window_audit_closes(audit)
+    # One window unaccounted for and the page would be stating causes that
+    # cannot produce the effect.
+    audit["market_lean_refused_window_count"] = 5
+    assert not runtime._window_audit_closes(audit)
+
+
+def test_opposition_is_symmetric_in_both_signs():
+    """Warm and cold are the same rule with the sign flipped.
+
+    The measurement is two-sided (94% warm, 82% cold) and the gate must not
+    quietly become a one-sided hot-tail rule.
+    """
+
+    far = MARKET_LEAN_MIN_BUCKETS + 0.5
+    # Book warm, window cold -> opposed.  Book cold, window warm -> opposed.
+    assert market_lean_opposes(+far, window_mid_ordinal=5.0 - far, model_mean_ordinal=5.0)
+    assert market_lean_opposes(-far, window_mid_ordinal=5.0 + far, model_mean_ordinal=5.0)
+    # Same side as the book -> never opposed, either sign.
+    assert not market_lean_opposes(+far, window_mid_ordinal=5.0 + far, model_mean_ordinal=5.0)
+    assert not market_lean_opposes(-far, window_mid_ordinal=5.0 - far, model_mean_ordinal=5.0)
