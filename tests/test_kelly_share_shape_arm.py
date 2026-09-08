@@ -14,6 +14,8 @@ import bayes_basket_target.delta_v2_runtime as R
 from bayes_basket_target.basket_kernel.contracts import ContractError
 import pytest
 
+from bayes_basket_target.basket_kernel import delta_v2 as K
+
 
 def _levels(price: float, shares: float = 1000.0):
     return [SimpleNamespace(price=price, shares=shares)]
@@ -78,28 +80,127 @@ def test_a_shaped_split_spends_the_same_stake_on_a_different_ladder(shape) -> No
     assert min(by.values()) > 0.0
 
 
-def test_edge_weighted_floors_a_rung_without_edge_and_falls_back_to_equal() -> None:
+def test_edge_weighted_keeps_the_basket_cost_and_never_breaks_the_floor() -> None:
+    """The two invariants charter 72 and charter 93 each need one of."""
+
+    prices = {"a": 0.12, "b": 0.47, "c": 0.38}
+    unit = sum(prices.values())
     weights = R._kelly_share_weights(
         ordered=("a", "b", "c"),
-        lane_prices={"a": 0.30, "b": 0.30, "c": 0.30},
-        # Edges: a -0.20 (no edge, floored), b +0.30 (best), c +0.10.
-        probabilities_by_bucket={"a": 0.10, "b": 0.60, "c": 0.40},
-        centre_bucket="b",
-        ordinals={"a": 1, "b": 2, "c": 3},
+        lane_prices=prices,
+        probabilities_by_bucket={"a": 0.0318, "b": 0.5268, "c": 0.4414},
+        centre_bucket="",
+        ordinals={},
         shape="edge_weighted",
+        stage="P0-M",
     )
-    assert weights["b"] == pytest.approx(1.0)
-    assert weights["a"] == pytest.approx(R.KELLY_EDGE_MIN_RUNG_SHARE)
-    assert weights["c"] == pytest.approx(max(R.KELLY_EDGE_MIN_RUNG_SHARE, 0.1 / 0.3))
-    flat = R._kelly_share_weights(
-        ordered=("a", "b"),
-        lane_prices={"a": 0.50, "b": 0.50},
-        probabilities_by_bucket={"a": 0.20, "b": 0.20},
-        centre_bucket="a",
-        ordinals={"a": 1, "b": 2},
-        shape="edge_weighted",
+    # Charter 72: the stake reads the same cost per share, so the sizing law
+    # needs no amendment to admit this shape.
+    assert sum(weights[b] * prices[b] for b in prices) == pytest.approx(unit)
+    # Charter 93: the in-support floor is the cushion the tilt did not spend.
+    cushion = 1.0 - unit
+    assert min(weights.values()) - unit == pytest.approx(
+        (1.0 - K.KELLY_EDGE_TILT_FRACTION) * cushion
     )
-    assert flat == {"a": 1.0, "b": 1.0}
+    assert min(weights.values()) > 0.0
+
+
+def test_edge_weighted_reads_the_realisable_claim_not_the_asserted_one() -> None:
+    """A rung the book prices at a third of our claim must not win the tilt.
+
+    ``d`` asserts the largest nominal edge on the ladder (0.45 claim against a
+    0.15 offer, +0.30).  Its agreement is 0.333, which the charter-68 bucket
+    arm reads at lambda 0.22, so its realisable claim is 0.099 -- under what
+    it costs.  Reading ``p - c`` hands it the whole cushion; reading
+    ``lambda(a)*p - c`` leaves it on the bed and tilts toward ``b``, whose
+    nominal edge is seven times smaller and whose realisable edge is the only
+    positive one on the ladder.
+    """
+
+    prices = {"b": 0.40, "d": 0.15}
+    claims = {"b": 0.55, "d": 0.45}
+    weights = R._kelly_share_weights(
+        ordered=("b", "d"), lane_prices=prices,
+        probabilities_by_bucket=claims,
+        centre_bucket="", ordinals={}, shape="edge_weighted", stage="P0",
+    )
+    assert claims["d"] - prices["d"] > claims["b"] - prices["b"]   # 名义上 d 最大
+    assert weights["b"] > weights["d"]                              # 可兑现口径下不是
+    # ``d`` sits exactly on the bed: it received none of the cushion.
+    assert weights["d"] == pytest.approx(min(weights.values()))
+    assert sum(weights[x] * prices[x] for x in prices) == pytest.approx(
+        sum(prices.values())
+    )
+
+
+def test_the_cushion_is_cash_proportional_to_edge() -> None:
+    """Cash in proportion to realisable edge; shares therefore to edge/price.
+
+    Two rungs with the same realisable edge split the freed cash evenly, so
+    the cheaper one comes away with more shares.  That is the density the
+    charter-35 objective ranks by, not an accident of the arithmetic.
+    """
+
+    prices = {"cheap": 0.10, "dear": 0.40}
+    claims = {"cheap": 0.20, "dear": 0.50}   # realisable edges equal by design
+    w = K.floor_first_edge_weights_v1(
+        ordered=("cheap", "dear"), prices=prices, effective_claims=claims,
+    )
+    # The bed is the formula's, not ``min(w)``: both rungs earned a tilt here,
+    # so the cheaper one's weight is no guide to where the bed sits.
+    unit = sum(prices.values())
+    bed = 1.0 - K.KELLY_EDGE_TILT_FRACTION * (1.0 - unit)
+    cash = {b: (w[b] - bed) * prices[b] for b in prices}
+    assert cash["cheap"] == pytest.approx(cash["dear"])
+    assert w["cheap"] > w["dear"]
+    assert sum(w[b] * prices[b] for b in prices) == pytest.approx(unit)
+
+
+@pytest.mark.parametrize(
+    "prices,claims",
+    [
+        ({"a": 0.30, "b": 0.30, "c": 0.30}, {"a": 0.10, "b": 0.60, "c": 0.40}),
+        ({"a": 0.05, "b": 0.90}, {"a": 0.40, "b": 0.55}),
+        ({"a": 0.33, "b": 0.33, "c": 0.33}, {"a": 0.33, "b": 0.34, "c": 0.33}),
+        ({"a": 0.01, "b": 0.02, "c": 0.03}, {"a": 0.30, "b": 0.30, "c": 0.40}),
+    ],
+)
+def test_the_shape_is_always_charter_93_legal(prices, claims) -> None:
+    """Run the production floor function over the shape, not a copy of it."""
+
+    ordered = tuple(prices)
+    weights = R._kelly_share_weights(
+        ordered=ordered, lane_prices=prices, probabilities_by_bucket=claims,
+        centre_bucket="", ordinals={}, shape="edge_weighted", stage="P0-M",
+    )
+    verdict = K.support_scenario_floor_v1(
+        shares_by_bucket=weights,
+        cost_by_bucket={b: weights[b] * prices[b] for b in ordered},
+        support=ordered,
+    )
+    assert verdict["legal"], verdict
+
+
+def test_zero_tilt_and_a_dead_ladder_both_reproduce_equal() -> None:
+    prices = {"a": 0.30, "b": 0.30, "c": 0.30}
+    claims = {"a": 0.10, "b": 0.60, "c": 0.40}
+    equal = {"a": 1.0, "b": 1.0, "c": 1.0}
+    # The rollback: t=0 is the shipped shape, exactly.
+    assert K.floor_first_edge_weights_v1(
+        ordered=tuple(prices), prices=prices,
+        effective_claims=claims, tilt_fraction=0.0,
+    ) == equal
+    # No positive realisable edge anywhere: nothing to tilt toward.
+    assert K.floor_first_edge_weights_v1(
+        ordered=tuple(prices), prices=prices,
+        effective_claims={"a": 0.10, "b": 0.20, "c": 0.10},
+    ) == equal
+    # A basket that already costs a share has no cushion to spend.
+    dear = {"a": 0.50, "b": 0.55}
+    assert K.floor_first_edge_weights_v1(
+        ordered=tuple(dear), prices=dear,
+        effective_claims={"a": 0.90, "b": 0.90},
+    ) == {"a": 1.0, "b": 1.0}
 
 
 def test_centre_tilt_reproduces_the_anchored_shape_and_needs_a_centre() -> None:

@@ -49,6 +49,10 @@ BOUND_CONSTANTS = [
     ("STAGE_BUDGET_SHARE", K, "STAGE_BUDGET_SHARE"),
     # Charter 70: one kernel constant, imported by both lanes.
     ("EXCHANGE_LOT_TOP_UP", K, "EXCHANGE_LOT_TOP_UP"),
+    # User ruling 2026-09-08: the two-段 share shape's one dial.  Bound
+    # explicitly because the ledger imports it rather than declaring it, and
+    # an import binds the name without proving the two lanes read one value.
+    ("KELLY_EDGE_TILT_FRACTION", K, "KELLY_EDGE_TILT_FRACTION"),
     ("MINIMUM_LEG_ALL_IN_ASK", P, "MINIMUM_LEG_ALL_IN_ASK"),
     ("MAKER_RESTING_LADDER_STEPS", P, "MAKER_LADDER_STEPS"),
     ("MAKER_RESTING_IMPROVE_TICKS", P, "MAKER_LADDER_IMPROVE_TICKS"),

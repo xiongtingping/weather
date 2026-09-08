@@ -121,7 +121,6 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     SUPPORT_EDGE_MARGIN,
     P0_SIZING_MODE,
     KELLY_SHARE_SHAPE,
-    KELLY_EDGE_MIN_RUNG_SHARE,
     KELLY_SHAPE_TOPUP,
     SYMMETRIC_SEAT_MODE,
     SKEW_SEAT_MODE,
@@ -242,6 +241,12 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     SUPPORT_SCENARIO_FLOOR_FRACTION,
     support_scenario_floor_v1,
     EFFECTIVE_EDGE_LAMBDA_P0_OVERRIDE,
+    # User ruling 2026-09-08: the two-段 share shape.  Imported, never
+    # recomputed -- ``_centre_tilt_weights`` below is the standing example of
+    # what a second copy costs.
+    floor_first_edge_weights_v1,
+    effective_edge_bucket_lambda_for_stage,
+    KELLY_EDGE_TILT_FRACTION,
 )
 from bayes_basket_target.basket_kernel.support import (  # noqa: E402
     _choose_support,
@@ -1685,7 +1690,9 @@ ALLOCATION_SHAPE = (
     os.environ.get("PAPER_LEDGER_ALLOCATION", "").strip()
     or ("curve_solved" if CONTINUOUS_OPTIMUM_CANDIDATES_ENABLED else "centre_tilt")
 )
-ALLOCATION_SHAPES = ("equal_shares", "centre_tilt", "curve_solved")
+ALLOCATION_SHAPES = (
+    "equal_shares", "centre_tilt", "curve_solved", "edge_weighted",
+)
 # Which price the stake rule and the payout test are struck against.
 #
 # ``crossing`` -- the standing rule again since 2026-08-27 (user ruling) --
@@ -1959,7 +1966,7 @@ SELECTION_RULE_SHA256 = content_sha256({
     **(
         {
             "kelly_share_shape": KELLY_SHARE_SHAPE,
-            "kelly_edge_min_rung_share": KELLY_EDGE_MIN_RUNG_SHARE,
+            "kelly_edge_tilt_fraction": KELLY_EDGE_TILT_FRACTION,
         }
         if KELLY_SHARE_SHAPE != "equal" else {}
     ),
@@ -7095,6 +7102,20 @@ def _walk_ask(
 
 
 
+def _leg_ask(quotes: Mapping[str, Any], bucket: str) -> float:
+    """One rung's offer, top of book, from this book's quote row.
+
+    Both share shapes price the same rung off the same number; writing the
+    fallback twice is how two shapes end up disagreeing about what a leg
+    costs on a book whose top level came in as a ladder rather than a scalar.
+    """
+
+    row = quotes.get(bucket) or {}
+    if row.get("best_ask") is not None:
+        return float(row["best_ask"] or 0.0)
+    return float((row.get("ask_levels") or [{}])[0].get("price") or 0.0)
+
+
 def _centre_tilt_weights(
     buckets: Sequence[str],
     *,
@@ -8917,20 +8938,42 @@ def backfill(
                     )
                     per_leg: dict[str, float] = {}
                     weights = None
-                    if ALLOCATION_SHAPE == "centre_tilt":
+                    if ALLOCATION_SHAPE == "edge_weighted":
+                        # Production's shape, run from production's kernel.
+                        # ``_leg_ask`` is the same offer the seat is priced
+                        # against, so the agreement this reads is the one the
+                        # live lane reads.
+                        _prices = {
+                            str(b): _leg_ask(quotes, b)
+                            for b in seat["buckets"]
+                        }
+                        _realisable = {}
+                        for b in seat["buckets"]:
+                            _claim = float(probabilities.get(b, 0.0) or 0.0)
+                            _a = (
+                                _prices[str(b)] / _claim if _claim > 1e-12
+                                else float("inf")
+                            )
+                            _realisable[str(b)] = (
+                                _claim
+                                * effective_edge_bucket_lambda_for_stage(
+                                    str(stage or ""), _a
+                                )
+                            )
+                        _w = floor_first_edge_weights_v1(
+                            ordered=[str(b) for b in seat["buckets"]],
+                            prices=_prices,
+                            effective_claims=_realisable,
+                        )
+                        weights = [str(b) for b in seat["buckets"]]
+                        weights = [_w[b] for b in weights]
+                    elif ALLOCATION_SHAPE == "centre_tilt":
                         weights = _centre_tilt_weights(
                             seat["buckets"],
                             centre_bucket=seat_center,
                             probabilities=probabilities,
                             prices=[
-                                float(quotes[b]["best_ask"] or 0.0)
-                                if quotes.get(b, {}).get("best_ask")
-                                is not None
-                                else float(
-                                    (quotes[b]["ask_levels"] or [{}])[0]
-                                    .get("price") or 0.0
-                                )
-                                for b in seat["buckets"]
+                                _leg_ask(quotes, b) for b in seat["buckets"]
                             ],
                             ordinals={
                                 str(row[0]): int(row[1])

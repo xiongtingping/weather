@@ -2085,6 +2085,116 @@ def ladder_balance_targets_v1(
     }
 
 
+FLOOR_FIRST_EDGE_SHAPE_VERSION = "floor_first_edge_weights_v1"
+# How much of a basket's floor cushion the tilt may spend (user ruling,
+# 2026-09-08: "按照你的方案来调整，即用 lambda").  An equal-share basket at
+# one share a leg costs ``K = sum(c)`` and its worst in-support settlement
+# pays ``1 - K``; that gap is the only room a tilt has, because charter 93
+# forbids spending past it.  ``0`` reproduces ``equal`` exactly and is the
+# rollback; ``1`` spends the whole cushion and lands the floor on zero --
+# legal, but "win and break even", which is the shape charter 93 was written
+# against.  Half by default: the cushion is measured value (KMIA/SAEZ/KLGA
+# read +0.05 to +0.16 a set on it) and the tilt's own gain was measured at
+# zero on every basket whose cost sits within 0.05 of a share.
+KELLY_EDGE_TILT_FRACTION = float(
+    os.environ.get("PM_KELLY_EDGE_TILT_FRACTION", "").strip() or 0.5
+)
+if not (0.0 <= KELLY_EDGE_TILT_FRACTION <= 1.0):
+    raise RuntimeError(
+        f"Kelly edge tilt fraction out of range: {KELLY_EDGE_TILT_FRACTION}"
+    )
+
+
+def floor_first_edge_weights_v1(
+    *,
+    ordered: Sequence[str],
+    prices: Mapping[str, Any],
+    effective_claims: Mapping[str, Any],
+    tilt_fraction: float | None = None,
+) -> dict[str, float]:
+    """Relative shares per rung: an equal bed first, the cushion tilted second.
+
+    ``prices`` is what one share of each rung costs on the lane the seat
+    buys from; ``effective_claims`` is that rung's *realisable* claim --
+    ``lambda(a) * p`` under the charter-68 bucket arm -- so a rung the book
+    prices far under our claim is read at what such rungs were measured to
+    return, not at what they assert.
+
+    The shape is the two-段 form and its arithmetic is forced, not chosen.
+    Write ``K = sum(prices)``, the per-share cost of the equal basket.  A
+    basket held level at one share a leg settles at ``1 - K`` inside its
+    support, and charter 93 admits a shape exactly while that number stays
+    at or above zero.  So ``1 - K`` is the entire budget any tilt has:
+
+    * every rung is floored at ``w_min = 1 - t*(1 - K)``, which leaves
+      ``(1 - t)*(1 - K)`` of guaranteed in-support profit standing;
+    * the cash that floor frees, ``(1 - w_min) * K``, is handed to the rungs
+      whose realisable edge ``lambda*p - c`` is positive, in proportion to
+      that edge -- so the *share* counts move as ``edge / price``, which is
+      the density the objective ranks by.  A rung whose realisable edge is
+      zero or negative keeps the bed and no more, however large its nominal
+      ``p - c`` is: that gap is exactly what the bucket arm was fitted to
+      say does not arrive.
+
+    Two invariants make this composable with the clauses around it.
+    ``sum(w_b * c_b) == K`` exactly, so charter 72's stake reads the same
+    ``cost_per_share`` it always did and needs no amendment.  And the
+    resulting floor is ``(1 - t)*(1 - K) >= 0`` by construction, so charter
+    93 cannot refuse the shape -- which is the whole difference from the
+    ``edge_weighted`` arm this replaces, whose floor was a fraction of the
+    *best rung's weight* and therefore said nothing about the basket's cost.
+    Measured on the 2026-09-08 book, every ``edge_weighted`` candidate was
+    refused by the floor (SAEZ read -0.246 against a 0.30 premium), which is
+    why the arm had never been able to trade.
+
+    Returns ``equal`` unchanged when no rung has a positive realisable edge,
+    when the basket already costs a share or more (no cushion to spend), or
+    when the tilt fraction is zero.
+    """
+
+    window = tuple(_text("delta_v2_shape_bucket", bucket) for bucket in ordered)
+    if len(set(window)) != len(window):
+        raise ContractError("delta_v2_shape_bucket_duplicate")
+    if not window:
+        raise ContractError("delta_v2_shape_window_empty")
+    equal = {bucket: 1.0 for bucket in window}
+    tilt = (
+        KELLY_EDGE_TILT_FRACTION if tilt_fraction is None else float(tilt_fraction)
+    )
+    if not (0.0 <= tilt <= 1.0):
+        raise ContractError("delta_v2_shape_tilt_fraction_invalid")
+    if tilt <= EPS:
+        return equal
+    cost = {
+        bucket: _nonnegative(f"delta_v2_shape_price_{bucket}", prices.get(bucket, 0.0))
+        for bucket in window
+    }
+    unit = sum(cost.values())
+    cushion = 1.0 - unit
+    if unit <= EPS or cushion <= EPS:
+        # A basket that already costs a share has no cushion, and charter 72
+        # does not size one anyway.
+        return equal
+    edges = {
+        bucket: (
+            _finite(f"delta_v2_shape_claim_{bucket}", effective_claims.get(bucket, 0.0))
+            - cost[bucket]
+        )
+        for bucket in window
+    }
+    positive = {b: e for b, e in edges.items() if e > EPS}
+    if not positive:
+        return equal
+    total_edge = sum(positive.values())
+    floor_weight = 1.0 - tilt * cushion
+    freed = (1.0 - floor_weight) * unit
+    weights = {bucket: floor_weight for bucket in window}
+    for bucket, edge in positive.items():
+        if cost[bucket] <= EPS:
+            continue
+        weights[bucket] += freed * (edge / total_edge) / cost[bucket]
+    return weights
+
 def whole_basket_edge_delta_v1(
     *,
     edge_probabilities: Mapping[str, Any],

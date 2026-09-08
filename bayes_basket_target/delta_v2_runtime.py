@@ -60,6 +60,7 @@ from .basket_kernel.delta_v2 import (
     CLAIM_EDGE_THERMOMETER_MODE,
     CLAIM_EDGE_THIN_BAND_MAX,
     effective_edge_bucket_lambda_for_stage,
+    floor_first_edge_weights_v1,
     off_center_claim_factor,
     probability_core,
     PROBABILITY_CORE_MASS,
@@ -172,11 +173,17 @@ if P0_SIZING_MODE not in {"kelly", "ticket_only"}:
 # same whichever rung settles.  ``centre_tilt`` is the 2026-08-17 shape
 # (``_centre_anchored_candidates``: distance decay from the centre, leaned
 # by positive edge, far rungs floored) that charter 72 left generated but
-# never winning.  ``edge_weighted`` sizes each rung's share count by its
-# own positive deflated edge -- the charter-68 claim less the lane's offer
-# -- over the seat's best edge, floored at ``KELLY_EDGE_MIN_RUNG_SHARE`` so
-# the basket stays complete; a seat with no positive edge on any rung
-# splits equally.  The stake is the same number under every shape, only
+# never winning.  ``edge_weighted`` is the two-段 shape (user ruling,
+# 2026-09-08): an equal bed on every rung first, then the basket's own floor
+# cushion ``1 - sum(c)`` tilted toward the rungs whose *realisable* edge
+# ``lambda(a)*p - c`` is positive, read on the charter-68 bucket arm.  The
+# kernel owns it (``floor_first_edge_weights_v1``) so both lanes run one
+# implementation.  Until 2026-09-08 this arm floored each rung at a fraction
+# of the best rung's weight, which says nothing about what the basket costs:
+# measured on that day's book every candidate it produced was refused by the
+# charter-93 floor (SAEZ -0.246 against a 0.30 premium), so the arm had never
+# been able to trade.  The floor is now the shape's own construction and the
+# refusal cannot recur.  The stake is the same number under every shape, only
 # the split changes, so an arm measures the shape and nothing else.  The
 # paper ledger imports the switch and hashes it into its rule fingerprint
 # away from ``equal``.
@@ -186,13 +193,6 @@ KELLY_SHARE_SHAPE = (
 )
 if KELLY_SHARE_SHAPE not in KELLY_SHARE_SHAPES:
     raise RuntimeError(f"unknown Kelly share shape: {KELLY_SHARE_SHAPE}")
-KELLY_EDGE_MIN_RUNG_SHARE = float(
-    os.environ.get("PM_KELLY_EDGE_MIN_RUNG_SHARE", "").strip() or 0.15
-)
-if not (0.0 < KELLY_EDGE_MIN_RUNG_SHARE <= 1.0):
-    raise RuntimeError(
-        f"Kelly edge floor out of range: {KELLY_EDGE_MIN_RUNG_SHARE}"
-    )
 # Companion research switch: what the Kelly candidate does with a rung the
 # chain already holds at or above its target.  ``atomic`` is charter 72 as
 # shipped -- any such rung and the whole basket stands pat (the 2026-08-12
@@ -3808,6 +3808,9 @@ def _target_candidates(
                 ordinals={
                     bucket: int(by_bucket[bucket].ordinal) for bucket in ordered
                 },
+                # The bucket arm reads a per-stage table; the seat's own
+                # stage is the one that will settle it.
+                stage=stage_name,
             )
         if kelly_candidate is not None:
             candidates.append(kelly_candidate)
@@ -3941,6 +3944,7 @@ def _whole_basket_kelly_candidate(
     centre_bucket: str = "",
     ordinals: Mapping[str, int] | None = None,
     share_shape: str = KELLY_SHARE_SHAPE,
+    stage: str = "",
 ) -> dict[str, Any] | None:
     """Charter 72's candidate: the seat sized as the ledger sizes it.
 
@@ -3978,6 +3982,7 @@ def _whole_basket_kelly_candidate(
         centre_bucket=centre_bucket,
         ordinals=ordinals or {},
         shape=share_shape,
+        stage=stage,
     )
     unit_cost = sum(
         weights[bucket] * float(lane_prices.get(bucket, 0.0))
@@ -4069,13 +4074,18 @@ def _kelly_share_weights(
     centre_bucket: str,
     ordinals: Mapping[str, int],
     shape: str = KELLY_SHARE_SHAPE,
+    stage: str = "",
 ) -> dict[str, float]:
     """Relative share count per rung under the Kelly share-shape arm.
 
-    ``equal``: 1.0 on every rung.  ``edge_weighted``: each rung's positive
-    deflated edge (the belief handed in, less the lane's offer) over the
-    seat's best, floored at ``KELLY_EDGE_MIN_RUNG_SHARE``; no positive edge
-    anywhere splits equally.  ``centre_tilt``: the 2026-08-17 shape --
+    ``equal``: 1.0 on every rung.  ``edge_weighted``: the kernel's two-段
+    shape -- an equal bed, then the basket's floor cushion tilted by each
+    rung's realisable edge ``lambda(a)*p - c`` on the charter-68 bucket arm;
+    ``sum(w*c)`` is unchanged so charter 72's stake reads the same cost, and
+    the resulting in-support floor is non-negative by construction so charter
+    93 cannot refuse it.  ``stage`` picks the lambda table; without one the
+    rung lambda is 1.0 and the edge is the nominal one.  ``centre_tilt``: the
+    2026-08-17 shape --
     ``CENTRE_ANCHOR_DISTANCE_DECAY`` to the power of the rung's distance
     from the centre, times one plus ``CENTRE_ANCHOR_EDGE_TILT`` scaled by
     the same edge ratio, floored at ``CENTRE_ANCHOR_MIN_RUNG_SHARE``, the
@@ -4098,14 +4108,23 @@ def _kelly_share_weights(
     }
     best = max((max(edge, 0.0) for edge in edges.values()), default=0.0)
     if shape == "edge_weighted":
-        if best <= EPS:
-            return equal
-        return {
-            bucket: max(
-                KELLY_EDGE_MIN_RUNG_SHARE, max(edges[bucket], 0.0) / best
+        # The realisable claim, not the asserted one: a rung the book prices
+        # far under our claim is read at what such rungs were measured to
+        # return.  ``a`` is that rung's own agreement, so this is the bucket
+        # arm of charter 68 and not the window one the seat was sized on.
+        realisable: dict[str, float] = {}
+        for bucket in ordered:
+            claim = float(probabilities_by_bucket.get(bucket, 0.0) or 0.0)
+            price = float(lane_prices.get(bucket, 0.0) or 0.0)
+            agreement = price / claim if claim > EPS else float("inf")
+            realisable[bucket] = claim * effective_edge_bucket_lambda_for_stage(
+                str(stage or ""), agreement
             )
-            for bucket in ordered
-        }
+        return floor_first_edge_weights_v1(
+            ordered=ordered,
+            prices={bucket: float(lane_prices.get(bucket, 0.0) or 0.0) for bucket in ordered},
+            effective_claims=realisable,
+        )
     if centre_bucket not in ordered or centre_bucket not in ordinals:
         return equal
     if any(bucket not in ordinals for bucket in ordered):
