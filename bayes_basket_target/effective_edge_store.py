@@ -146,6 +146,7 @@ DQ_SHADOW_MODE = str(
     os.environ.get("PM_EFFECTIVE_EDGE_DQ_SHADOW", "shadow") or "shadow"
 ).strip().lower()
 DQ_SHADOW_HORIZON_HOURS = 6.0
+FORWARD_SERVING_SCORE_SCHEMA = "effective_edge_forward_serving_score_v1"
 DQ_SHADOW_THRESHOLD = 0.05
 DQ_TIERS = ("down", "steady", "up", "no_prior")
 
@@ -172,6 +173,17 @@ SHADOW_DQ_DDL = (
     " horizon_hours REAL NOT NULL,"
     " threshold REAL NOT NULL)"
 )
+# When each table actually served, so a table can be scored on the seats it
+# was serving for rather than on the ones it was fitted on.
+SERVING_INTERVAL_DDL = (
+    "CREATE TABLE IF NOT EXISTS"
+    " calibration_effective_edge_serving_interval ("
+    " stage_scope TEXT NOT NULL,"
+    " lambda_table_sha256 TEXT NOT NULL,"
+    " served_from_utc TEXT NOT NULL,"
+    " served_until_utc TEXT,"
+    " PRIMARY KEY(stage_scope, served_from_utc))"
+)
 JOURNAL_DDL = (
     "CREATE TABLE IF NOT EXISTS calibration_effective_edge_fit_journal ("
     " fit_id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -187,6 +199,7 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.execute(TABLE_DDL)
     conn.execute(JOURNAL_DDL)
     conn.execute(SHADOW_DQ_DDL)
+    conn.execute(SERVING_INTERVAL_DDL)
     # Rows written before P1 had a scope are P0 rows; the default says so.
     for table in (
         "calibration_effective_edge_lambda",
@@ -806,6 +819,117 @@ def fit_lambda_table(
     }
 
 
+def forward_serving_score(
+    conn: sqlite3.Connection,
+    *,
+    stage_scope: str,
+) -> dict[str, Any]:
+    """What each table did on the seats it was serving for.
+
+    The one reading of a table that the table did not grade itself on.  A
+    table is fitted on a trailing window and then serves; the seats decided
+    WHILE it served are strictly after its fit, so they are out of sample
+    for it in the only sense that matters here -- it chose them, it did not
+    learn from them.
+
+    Every other number this module produces is in sample somewhere.  The
+    fit's own bands are the trailing window by construction.
+    ``admitted_return`` is a counterfactual over candidate windows and its
+    docstring is explicit that it is a comparator, not a book return: it
+    buys one share of every window a table admits, which for a permissive
+    table is most of the enumeration including the windows the objective
+    ranked last.  Neither answers "what happened to the money this table
+    actually caused to be spent".
+
+    So this reads the seats: claim against outcome for realization, stake
+    against pnl for return, per serving interval.  Realization and return
+    are reported side by side and neither substitutes for the other --
+    measured 2026-09-09 over the 200 settled bought baskets, P1 realized
+    1.315 of its claim and still returned -19.2%, because a claim arriving
+    more often than promised is not the same as a claim arriving cheaply
+    enough.
+
+    Read-only.  It reports; it does not gate.  Whether a forward record
+    should bind the activation guard is a policy question, and a lane with
+    no history cannot answer it yet.
+    """
+
+    scope = str(stage_scope or "").strip() or "P0"
+    # No ``ensure_schema`` here, and the docstring above is why: this
+    # reports and a reporter must be usable on a read-only handle.  Calling
+    # it would create the table as a side effect of asking a question, and
+    # would raise on the read-only connection a board or an audit opens.
+    # A missing table is answered below, as a database that has not run the
+    # migration rather than an error.
+    try:
+        intervals = conn.execute(
+            "SELECT lambda_table_sha256, served_from_utc, served_until_utc"
+            " FROM calibration_effective_edge_serving_interval"
+            " WHERE stage_scope=? ORDER BY served_from_utc",
+            (scope,),
+        ).fetchall()
+    except sqlite3.Error as exc:
+        return {
+            "schema": FORWARD_SERVING_SCORE_SCHEMA,
+            "stage_scope": scope,
+            "available": False,
+            "reason": f"{type(exc).__name__}:{exc}"[:120],
+            "intervals": [],
+        }
+    out: list[dict[str, Any]] = []
+    for sha, since, until in intervals:
+        # An open interval ends now, which is what "still serving" means.
+        clause = "" if until is None else " AND p.decision_at_utc < ?"
+        args: tuple[Any, ...] = (
+            (scope, str(since)) if until is None
+            else (scope, str(since), str(until))
+        )
+        try:
+            rows = conn.execute(
+                "SELECT p.win_probability, s.hit, s.stake_usdc, s.pnl_usdc"
+                " FROM paper_trade_settlement s"
+                " JOIN paper_trade_position p"
+                "   ON p.position_id=s.position_id"
+                " WHERE p.stage=? AND s.hit IS NOT NULL"
+                "   AND p.decision_at_utc >= ?" + clause,
+                args,
+            ).fetchall()
+        except sqlite3.Error:
+            rows = []
+        claimed = sum(float(r[0] or 0.0) for r in rows)
+        realized = sum(float(r[1] or 0.0) for r in rows)
+        stake = sum(float(r[2] or 0.0) for r in rows)
+        pnl = sum(float(r[3] or 0.0) for r in rows)
+        out.append({
+            "lambda_table_sha256": str(sha),
+            "served_from_utc": str(since),
+            "served_until_utc": None if until is None else str(until),
+            "still_serving": until is None,
+            "settled_seats": len(rows),
+            "claimed": round(claimed, 6),
+            "realized": round(realized, 6),
+            # None rather than a number nobody can read: a table that has
+            # served no settled seat has no record, and 0.0 would read as
+            # one.
+            "realized_over_claimed": (
+                round(realized / claimed, 6) if claimed > 0 else None
+            ),
+            "stake_usdc": round(stake, 6),
+            "pnl_usdc": round(pnl, 6),
+            "roi": round(pnl / stake, 6) if stake > 0 else None,
+        })
+    return {
+        "schema": FORWARD_SERVING_SCORE_SCHEMA,
+        "stage_scope": scope,
+        "available": True,
+        "interval_count": len(out),
+        "scored_interval_count": sum(
+            1 for row in out if row["settled_seats"] > 0
+        ),
+        "intervals": out,
+    }
+
+
 def admitted_return(
     conn: sqlite3.Connection,
     bands: Sequence[tuple[float, float]],
@@ -947,6 +1071,39 @@ def persist_and_activate(
             "UPDATE calibration_effective_edge_lambda SET activated=0"
             " WHERE activated=1 AND stage_scope=?",
             (scope,),
+        )
+        # Close the outgoing table's serving interval and open this one's.
+        #
+        # ``activated_at_utc`` on the table says when a table started; it
+        # never said when one STOPPED, because activation flips the old row
+        # off and writes nothing.  So there was no window to score a table
+        # over, and the only number anyone could put on a table was
+        # ``admitted_return`` -- a counterfactual over candidate windows,
+        # which its own docstring says is a comparator and not the book's
+        # return.  Measured 2026-09-09: 42 tables fitted, 3 carrying an
+        # activation stamp, all three stamped the same minute, and no
+        # history behind them at all.
+        #
+        # An interval is what makes a forward score possible: a table was
+        # fitted before it served, so the seats decided WHILE it served are
+        # out of sample for it, and that is the only reading of "did this
+        # table earn its seat" that the table did not grade itself on.
+        # Recorded here rather than derived later, because a derivation
+        # would have to guess at the gaps -- a scope with no admitted table
+        # serves nothing, and that is not the same as the incumbent
+        # continuing.
+        conn.execute(
+            "UPDATE calibration_effective_edge_serving_interval"
+            " SET served_until_utc=? WHERE stage_scope=? AND"
+            " served_until_utc IS NULL",
+            (now, scope),
+        )
+        conn.execute(
+            "INSERT INTO calibration_effective_edge_serving_interval("
+            " stage_scope, lambda_table_sha256, served_from_utc,"
+            " served_until_utc) VALUES(?,?,?,NULL)"
+            " ON CONFLICT(stage_scope, served_from_utc) DO NOTHING",
+            (scope, sha, now),
         )
     conn.execute(
         "INSERT INTO calibration_effective_edge_lambda("

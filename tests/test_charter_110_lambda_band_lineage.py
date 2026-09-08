@@ -427,3 +427,146 @@ def test_the_replay_lane_is_actually_asked_for_by_the_sweep() -> None:
     # served rows, which is where it was before the lane existed.
     tail = sweep[sweep.index("replay_candidate_windows_on_current_band.py"):]
     assert "||" in tail[:400], "the replay must not fail the sweep"
+
+
+def _seat(conn, *, stage, decided, claim, hit, stake, pnl, pid):
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS paper_trade_position("
+        " position_id TEXT PRIMARY KEY, stage TEXT, decision_at_utc TEXT,"
+        " win_probability REAL)"
+    )
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS paper_trade_settlement("
+        " settlement_id TEXT PRIMARY KEY, position_id TEXT, hit INTEGER,"
+        " stake_usdc REAL, pnl_usdc REAL)"
+    )
+    conn.execute(
+        "INSERT INTO paper_trade_position VALUES(?,?,?,?)",
+        (pid, stage, decided, claim),
+    )
+    conn.execute(
+        "INSERT INTO paper_trade_settlement VALUES(?,?,?,?,?)",
+        ("s-" + pid, pid, hit, stake, pnl),
+    )
+
+
+def test_a_table_is_scored_on_the_seats_it_was_serving_for() -> None:
+    """The one reading a table cannot grade itself on.
+
+    A table is fitted on a trailing window and then serves, so the seats
+    decided WHILE it served are after its fit: it chose them, it did not
+    learn from them.  Every other number here is in sample somewhere -- the
+    bands are the trailing window by construction, and ``admitted_return``
+    is a counterfactual over candidate windows that its own docstring calls
+    a comparator rather than a book return.
+    """
+
+    from bayes_basket_target.effective_edge_store import (
+        ensure_schema,
+        forward_serving_score,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    ensure_schema(conn)
+    conn.execute(
+        "INSERT INTO calibration_effective_edge_serving_interval VALUES"
+        " ('P0','aaa','2026-09-01T00:00:00+00:00','2026-09-03T00:00:00+00:00'),"
+        " ('P0','bbb','2026-09-03T00:00:00+00:00',NULL)"
+    )
+    # One seat under each table, and one decided before either served.
+    _seat(conn, stage="P0", decided="2026-08-31T12:00:00+00:00",
+          claim=0.9, hit=1, stake=10.0, pnl=1.0, pid="before")
+    _seat(conn, stage="P0", decided="2026-09-02T12:00:00+00:00",
+          claim=0.8, hit=0, stake=10.0, pnl=-10.0, pid="under-aaa")
+    _seat(conn, stage="P0", decided="2026-09-04T12:00:00+00:00",
+          claim=0.5, hit=1, stake=10.0, pnl=5.0, pid="under-bbb")
+    # A P1 seat inside the same clock belongs to P1's intervals, not P0's.
+    _seat(conn, stage="P1", decided="2026-09-04T13:00:00+00:00",
+          claim=0.5, hit=1, stake=99.0, pnl=99.0, pid="other-stage")
+    conn.commit()
+
+    score = forward_serving_score(conn, stage_scope="P0")
+    assert score["available"] is True
+    assert [row["lambda_table_sha256"] for row in score["intervals"]] == [
+        "aaa", "bbb"
+    ]
+    first, second = score["intervals"]
+    # The seat decided before either table served belongs to neither.
+    assert first["settled_seats"] == 1 and second["settled_seats"] == 1
+    assert first["realized_over_claimed"] == pytest.approx(0.0)
+    assert first["roi"] == pytest.approx(-1.0)
+    assert second["realized_over_claimed"] == pytest.approx(2.0)
+    assert second["roi"] == pytest.approx(0.5)
+    # An open interval is still serving and still scored.
+    assert first["still_serving"] is False
+    assert second["still_serving"] is True
+
+
+def test_a_table_that_has_settled_nothing_reports_no_record_not_a_zero() -> None:
+    """Zero would read as a verdict.  A table nobody has settled under has
+    no forward record at all, and saying so is the honest answer."""
+
+    from bayes_basket_target.effective_edge_store import (
+        ensure_schema,
+        forward_serving_score,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    ensure_schema(conn)
+    conn.execute(
+        "INSERT INTO calibration_effective_edge_serving_interval VALUES"
+        " ('P0','fresh','2026-09-09T00:00:00+00:00',NULL)"
+    )
+    conn.commit()
+    score = forward_serving_score(conn, stage_scope="P0")
+    row = score["intervals"][0]
+    assert row["settled_seats"] == 0
+    assert row["realized_over_claimed"] is None
+    assert row["roi"] is None
+    assert score["scored_interval_count"] == 0
+
+
+def test_activation_closes_the_outgoing_interval_and_opens_one() -> None:
+    """``activated_at_utc`` said when a table started and never when one
+    stopped, so there was no window to score anything over: 42 tables
+    fitted by 2026-09-09, three carrying a stamp, all three stamped the
+    same minute, no history behind them."""
+
+    from bayes_basket_target.effective_edge_store import ensure_schema
+
+    conn = sqlite3.connect(":memory:")
+    ensure_schema(conn)
+    # The shape the activation path writes: close the open one, open the new.
+    conn.execute(
+        "INSERT INTO calibration_effective_edge_serving_interval VALUES"
+        " ('P0','old','2026-09-01T00:00:00+00:00',NULL)"
+    )
+    now = "2026-09-05T00:00:00+00:00"
+    conn.execute(
+        "UPDATE calibration_effective_edge_serving_interval"
+        " SET served_until_utc=? WHERE stage_scope=? AND"
+        " served_until_utc IS NULL",
+        (now, "P0"),
+    )
+    conn.execute(
+        "INSERT INTO calibration_effective_edge_serving_interval("
+        " stage_scope, lambda_table_sha256, served_from_utc,"
+        " served_until_utc) VALUES(?,?,?,NULL)",
+        ("P0", "new", now),
+    )
+    # P1 activating must not close P0's interval.
+    conn.execute(
+        "INSERT INTO calibration_effective_edge_serving_interval VALUES"
+        " ('P1','p1a','2026-09-06T00:00:00+00:00',NULL)"
+    )
+    conn.commit()
+    rows = conn.execute(
+        "SELECT stage_scope, lambda_table_sha256, served_until_utc"
+        " FROM calibration_effective_edge_serving_interval"
+        " ORDER BY stage_scope, served_from_utc"
+    ).fetchall()
+    assert rows == [
+        ("P0", "old", now),
+        ("P0", "new", None),
+        ("P1", "p1a", None),
+    ]
