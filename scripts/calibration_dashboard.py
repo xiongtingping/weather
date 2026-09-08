@@ -2643,14 +2643,16 @@ def _live_basket_plan_state(
                 " json_extract(plan_json,"
                 "'$.compiled_plan.plan.skew_reading.gap_buckets'),"
                 " json_extract(plan_json,"
-                "'$.compiled_plan.plan.skew_reading.threshold_buckets')"
+                "'$.compiled_plan.plan.skew_reading.threshold_buckets'),"
+                " json_extract(plan_json,"
+                "'$.compiled_plan.plan.skew_reading.sigma_buckets')"
                 " FROM basket_p0_preselection_plan"
                 " WHERE station_id=? AND event_date=?",
                 (station, day),
             ).fetchall()
         except sqlite3.Error:
             continue
-        for plan_sha, center, direction, skew, gap, threshold in plans:
+        for plan_sha, center, direction, skew, gap, threshold, sigma in plans:
             targets = by_plan.get(str(plan_sha or ""), ())
             if not targets:
                 continue
@@ -2667,6 +2669,10 @@ def _live_basket_plan_state(
                 ),
                 "gap_buckets": gap,
                 "threshold_buckets": threshold,
+                # Charter 122: the served width the shape was read at, in
+                # the same bucket steps.  Written from 2026-09-08; older
+                # plans carry no width and the chip says nothing about it.
+                "sigma_buckets": sigma,
             }
             for decision_id in targets:
                 state[decision_id] = reading
@@ -10585,6 +10591,7 @@ function liveOrderCard(L){
     const detail = read
       ? `均值−众数 = ${gap==null?"—":(gap>0?"+":"")+Number(gap).toFixed(2)} 格`
         + `（判定阈 ±${plan.threshold_buckets==null?"0.50":Number(plan.threshold_buckets).toFixed(2)} 格）`
+        + (plan.sigma_buckets==null ? "" : ` · 服务宽度 σ ${Number(plan.sigma_buckets).toFixed(2)} 格（宪章 122：对称席位只在裁决时的宽度档内适用；σ<1 格时几乎每天都读成对称）`)
         + " · 取自该决策自己的计划所记形态读数"
       : "取自该计划记下的方向（宪章 75 下方向就是偏态符号）。"
         + "证据不新鲜的那天一律记 NEUTRAL，所以这一路读数可能把当天读成对称——"
