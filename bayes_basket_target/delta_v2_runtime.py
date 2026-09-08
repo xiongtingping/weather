@@ -80,6 +80,7 @@ from .basket_kernel.delta_v2 import (
     execution_authorization_rule_v1,
     DECISION_MOMENT_RULE_VERSION,
     edge_state_v1,
+    basket_holding_signature_v1,
     is_decision_moment_v1,
     EXECUTION_AUTHORIZATION_JOINT_VALUE,
     KELLY_CANDIDATE_ORIGIN,
@@ -3117,6 +3118,12 @@ def _solve_over_support_windows(
     taf_tx_entry = bool(
         ((window_audit or {}).get("p0m_taf") or {}).get("entry_required")
     )
+    # Charter 110(七): what the chain holds is the third arm.  Read off the
+    # snapshot's FILLED shares alone -- pending is our own unfilled order,
+    # and letting it in would make placing a rung a reason to re-solve.
+    basket_holding = basket_holding_signature_v1({
+        row.bucket: row.filled_shares for row in snapshot.buckets
+    })
     decision_moment = CHARTER_77_DECISION_MOMENTS == "off" or taf_tx_entry or (
         is_decision_moment_v1(
             probability_identity=probability_identity,
@@ -3127,6 +3134,15 @@ def _solve_over_support_windows(
             ),
             last_edge_state=(
                 str(last_signature.get("edge_state") or "") or None
+            ),
+            basket_holding=basket_holding,
+            # An older decision recorded no holding.  Reading its absence as
+            # "held nothing" would make the first cycle after this ships a
+            # moment for every scope that holds anything, so the empty string
+            # is what a signature written before the arm existed says, and
+            # it equals the holding of a chain that is in fact empty.
+            last_basket_holding=str(
+                last_signature.get("basket_holding") or ""
             ),
         )
     )
@@ -3139,6 +3155,8 @@ def _solve_over_support_windows(
         ),
         "last_edge_state": last_signature.get("edge_state") or None,
         "taf_tx_entry": taf_tx_entry,
+        "basket_holding": basket_holding,
+        "last_basket_holding": last_signature.get("basket_holding") or None,
         "is_decision_moment": bool(decision_moment),
     }
     scored: list[dict[str, Any]] = []

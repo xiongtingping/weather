@@ -227,6 +227,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     chain_ticket_cash_v1,
     EFFECTIVE_EDGE_BAND_BOUNDS,
     DECISION_MOMENT_RULE_VERSION,
+    basket_holding_signature_v1,
     edge_state_v1,
     is_decision_moment_v1,
     # Charter 73: the increment's edge on the belief the seat was judged
@@ -4579,6 +4580,10 @@ def _production_judge(
         "probability_identity": probability_identity,
         "edge_state": edge_state_v1(windows),
         "stage": str(stage),
+        # Charter 110(七): the third arm.  Same kernel function production
+        # calls, on this lane's own held shares, so the two sides cannot
+        # drift into two definitions of "the basket changed".
+        "basket_holding": basket_holding_signature_v1(held),
     }
     holds_anything = any(float(v or 0.0) > 0.0 for v in held.values())
     # Charter 71(a) is window-independent, so it is answered here under its
@@ -4746,8 +4751,12 @@ def _production_judge(
             "enumerated_windows": windows,
             "refusal": (
                 "no_decision_moment",
-                "宪章 77：概率身份与可入座状态（%s）都没变，只是盘口动了"
-                % decision_signature["edge_state"],
+                "宪章 77：概率身份、可入座状态（%s）与持仓（%s）都没变，"
+                "只是盘口动了"
+                % (
+                    decision_signature["edge_state"],
+                    decision_signature["basket_holding"] or "空",
+                ),
             ),
             "decision_signature": decision_signature,
         }

@@ -318,3 +318,103 @@ def test_the_cutoff_is_three_hours():
     -0.026 at 1-3h and -0.075 inside the last hour."""
 
     assert COMPLETION_CUTOFF_HOURS == 3.0
+
+
+# ---------------------------------------------------------------------------
+# 110(七): a fill is an event.
+
+
+def _moment(**kwargs):
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        is_decision_moment_v1,
+    )
+
+    base = {
+        "probability_identity": "p-1",
+        "edge_state": "admissible",
+        "last_probability_identity": "p-1",
+        "last_edge_state": "admissible",
+    }
+    return is_decision_moment_v1(**{**base, **kwargs})
+
+
+def test_a_leg_landing_is_a_decision_moment_on_its_own():
+    """Charter 110(七), and the defect it closes.
+
+    Charter 77 asked the solver only when the model moved or the day's
+    admissibility flipped.  A leg filling does neither, so a basket that got
+    one rung of three sat at one rung of three: charter 84's balance
+    candidate exists precisely to raise the short rungs to the held level,
+    and it is built inside a compile this rule had already refused to run.
+    """
+
+    assert not _moment(basket_holding="", last_basket_holding="")
+    assert _moment(basket_holding="34:5", last_basket_holding="")
+    assert _moment(basket_holding="34:5|35:5", last_basket_holding="34:5")
+
+
+def test_a_leg_growing_on_the_same_bucket_is_also_a_moment():
+    """Composition alone is not enough.  A leg that fills 2 of 5 and later
+    the other 3 leaves the seat uneven at 2 while charter 84 raises the
+    others to 2; the level has to be in the signature or the second half of
+    that fill is invisible."""
+
+    assert _moment(basket_holding="34:5", last_basket_holding="34:2")
+
+
+def test_our_own_unfilled_order_is_not_an_event():
+    """The signature is read off FILLED shares.  Letting pending in would
+    make placing a rung a reason to re-solve, which is a loop."""
+
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        basket_holding_signature_v1,
+    )
+
+    assert basket_holding_signature_v1({"34": 0.0, "35": 0.0}) == ""
+    assert basket_holding_signature_v1({"35": 5.0, "34": 2.0}) == "34:2|35:5"
+    # Dust is not a fill: whole shares are the venue's unit.
+    assert basket_holding_signature_v1({"34": 0.4}) == "34:0"
+    assert basket_holding_signature_v1({"34": 4.6}) == "34:5"
+
+
+def test_the_two_older_arms_still_decide_on_their_own():
+    """Narrowing is not what this clause does: a changed model or a changed
+    admissibility is still a moment with the holding untouched."""
+
+    assert _moment(probability_identity="p-2", basket_holding="34:5",
+                   last_basket_holding="34:5")
+    assert _moment(edge_state="none", basket_holding="34:5",
+                   last_basket_holding="34:5")
+    # And with no recorded decision at all, everything is a moment.
+    assert _moment(last_probability_identity=None, basket_holding="",
+                   last_basket_holding="")
+
+
+def test_a_caller_with_no_holdings_view_keeps_the_two_arm_rule():
+    """``basket_holding`` left None is what a caller that cannot see the
+    chain honestly says, and it must not become "held nothing" -- that
+    would make the first cycle a moment for every scope that holds
+    anything."""
+
+    assert not _moment()
+    assert not _moment(basket_holding=None, last_basket_holding="34:5")
+
+
+def test_production_and_the_ledger_call_one_implementation():
+    """Charter 110(七) lands in two places and they may not drift into two
+    definitions of "the basket changed"."""
+
+    runtime = (
+        ROOT / "bayes_basket_target" / "delta_v2_runtime.py"
+    ).read_text(encoding="utf-8")
+    ledger = (
+        ROOT / "scripts" / "paper_trading_ledger.py"
+    ).read_text(encoding="utf-8")
+    for name, source in (("production", runtime), ("ledger", ledger)):
+        assert "basket_holding_signature_v1(" in source, name
+    # Production feeds it the snapshot's FILLED shares.  ``pending_shares``
+    # is used elsewhere in that module and legitimately so -- charter 84
+    # sizes against it -- so what is pinned here is what reaches THIS call.
+    call = runtime.split("basket_holding = basket_holding_signature_v1(", 1)[1]
+    fed = call.split(")", 1)[0]
+    assert "filled_shares" in fed and "pending" not in fed, fed

@@ -1933,7 +1933,7 @@ CHARTER_71_TOPUP_GATE_VERSION = (
 # gate.  A quote refresh that changes neither is not a moment: the book
 # moving is not a reason to decide, the same way charter 71(a) made it
 # not a reason to top up.  The ledger walks the same moments.
-DECISION_MOMENT_RULE_VERSION = "checkpoint_or_admissibility_v1"
+DECISION_MOMENT_RULE_VERSION = "checkpoint_or_admissibility_or_holding_v1"
 EDGE_STATE_ADMISSIBLE = "admissible"
 EDGE_STATE_NONE = "none"
 
@@ -1957,21 +1957,66 @@ def edge_state_v1(windows: Sequence[Mapping[str, Any]]) -> str:
     return EDGE_STATE_NONE
 
 
+def basket_holding_signature_v1(shares_by_bucket: Mapping[str, Any]) -> str:
+    """What the chain HOLDS, as a value that changes only when a fill lands.
+
+    Charter 110(七).  Composition and level, because both decide whether the
+    basket is short: ``{"34": 5.0, "35": 2.0}`` reads ``34:5|35:2``.  The
+    level is rounded to whole shares -- the venue's own unit -- so dust does
+    not make every cycle a moment, and buckets are sorted so the string does
+    not depend on dict order.
+
+    HELD only, never pending.  Pending shares are our own unfilled orders,
+    and letting them into this would make placing a rung a reason to
+    re-solve, which is a loop rather than an event.
+    """
+
+    parts = []
+    for bucket in sorted(str(key) for key in shares_by_bucket):
+        try:
+            shares = float(shares_by_bucket.get(bucket, 0.0) or 0.0)
+        except (TypeError, ValueError):
+            shares = 0.0
+        if shares > EPS:
+            parts.append(f"{bucket}:{int(round(shares))}")
+    return "|".join(parts)
+
+
 def is_decision_moment_v1(
     *,
     probability_identity: str | None,
     edge_state: str,
     last_probability_identity: str | None,
     last_edge_state: str | None,
+    basket_holding: str | None = None,
+    last_basket_holding: str | None = None,
 ) -> bool:
-    """True when the model or the day's admissibility changed since the
-    last recorded decision; always true with no recorded decision."""
+    """True when the model, the day's admissibility, or what the chain holds
+    changed since the last recorded decision; always true with no recorded
+    decision.
+
+    The third arm is charter 110(七).  Until it existed, a fill was not an
+    event: the solver was asked when the model moved or the day's
+    admissibility flipped, and a leg landing did neither, so a basket that
+    got one rung of three sat at one rung of three -- charter 84's balance
+    candidate, which exists to raise the short rungs to the held level, was
+    only ever built inside a compile that this rule had already refused to
+    run.  Measured 2026-09-07: of 24 live baskets with any fill, 12 were
+    whole; of the 8 three-leg baskets, 8 held one leg.
+
+    ``basket_holding`` left None keeps the two-arm rule exactly, which is
+    what a caller with no holdings view can honestly say.
+    """
 
     if not last_probability_identity:
         return True
     if str(probability_identity or "") != str(last_probability_identity):
         return True
-    return str(edge_state) != str(last_edge_state or "")
+    if str(edge_state) != str(last_edge_state or ""):
+        return True
+    if basket_holding is None:
+        return False
+    return str(basket_holding) != str(last_basket_holding or "")
 
 
 def whole_basket_kelly_stake_v1(

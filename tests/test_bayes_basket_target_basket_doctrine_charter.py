@@ -2921,7 +2921,13 @@ def test_clause_77_a_decision_moment_is_a_checkpoint_or_admissibility_change() -
         is_decision_moment_v1,
     )
 
-    assert DECISION_MOMENT_RULE_VERSION == "checkpoint_or_admissibility_v1"
+    # Charter 110(七) added a third arm on 2026-09-08 -- what the chain
+    # holds -- so the version names three.  Clause 77's own two are
+    # unchanged and are what this test still pins; the holding arm has its
+    # own test in test_charter_110_execution_answers_to_the_objective.
+    assert DECISION_MOMENT_RULE_VERSION == (
+        "checkpoint_or_admissibility_or_holding_v1"
+    )
     priced = [{"all_in_price": 0.6, "edge": 0.1}]
     assert edge_state_v1(priced) == EDGE_STATE_ADMISSIBLE
     assert edge_state_v1([{"all_in_price": 0.9, "edge": -0.2}]) == EDGE_STATE_NONE
