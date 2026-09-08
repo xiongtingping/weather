@@ -1150,13 +1150,33 @@ def _target_ssot_growth(db_bytes: int) -> dict[str, Any]:
             bytes_per_day = grew / elapsed_days
     except (KeyError, TypeError, ValueError):
         bytes_per_day = None
+    fresh_rate = bytes_per_day
     remaining = MAX_TARGET_DB_BYTES - db_bytes
     days_to_ceiling = (
         round(remaining / bytes_per_day, 2)
         if bytes_per_day and bytes_per_day > 0 and remaining > 0
         else None
     )
-    if bytes_per_day is not None or not previous:
+    # Carry the last answer forward.
+    #
+    # The rate can only be computed against a reading an hour old, and
+    # computing it moves the baseline to now -- so the first version
+    # reported a number once an hour and ``null`` for the fifty-nine
+    # minutes between, which is a gauge that is blank almost always.  The
+    # last measurement stands, stamped, until a newer one replaces it: a
+    # rate from forty minutes ago is a usable answer and "unknown" is not.
+    measured_from = previous.get("observed_at_utc")
+    if bytes_per_day is None:
+        carried = previous.get("last_growth_bytes_per_day")
+        if isinstance(carried, (int, float)) and carried > 0:
+            bytes_per_day = float(carried)
+            measured_from = previous.get("last_growth_measured_at_utc")
+            remaining_now = MAX_TARGET_DB_BYTES - db_bytes
+            days_to_ceiling = (
+                round(remaining_now / bytes_per_day, 2)
+                if remaining_now > 0 else None
+            )
+    if fresh_rate is not None or not previous:
         try:
             TARGET_SSOT_GROWTH_PATH.parent.mkdir(parents=True, exist_ok=True)
             TARGET_SSOT_GROWTH_PATH.write_text(json.dumps({
@@ -1165,6 +1185,15 @@ def _target_ssot_growth(db_bytes: int) -> dict[str, Any]:
                     timespec="seconds"
                 ).replace("+00:00", "Z"),
                 "database_bytes": int(db_bytes),
+                "last_growth_bytes_per_day": (
+                    round(fresh_rate, 1) if fresh_rate is not None
+                    else previous.get("last_growth_bytes_per_day")
+                ),
+                "last_growth_measured_at_utc": (
+                    now.isoformat(timespec="seconds").replace("+00:00", "Z")
+                    if fresh_rate is not None
+                    else previous.get("last_growth_measured_at_utc")
+                ),
             }))
         except OSError:  # noqa: PERF203 -- telemetry, never a blocker
             pass
@@ -1173,7 +1202,7 @@ def _target_ssot_growth(db_bytes: int) -> dict[str, Any]:
             round(bytes_per_day, 1) if bytes_per_day is not None else None
         ),
         "days_to_ceiling": days_to_ceiling,
-        "growth_measured_from_utc": previous.get("observed_at_utc"),
+        "growth_measured_from_utc": measured_from,
     }
 
 

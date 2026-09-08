@@ -120,3 +120,27 @@ def test_a_reading_minutes_apart_is_rounding_not_a_rate(
     _seed(daemon, hours_ago=0.1, db_bytes=1_000_000)
     guard = daemon.target_ssot_capacity_guard(_database(tmp_path, 1_100_000))
     assert guard["growth_bytes_per_day"] is None
+
+
+def test_the_last_rate_stands_until_a_newer_one_replaces_it(
+    daemon, tmp_path: Path
+) -> None:
+    """The rate needs a reading an hour old, and computing it moves the
+    baseline to now -- so the first version reported a number once an hour
+    and null for the fifty-nine minutes between.  A gauge that is blank
+    almost always is not a gauge."""
+
+    size = 1_000_000
+    _seed(daemon, hours_ago=24.0, db_bytes=size - 100_000)
+    first = daemon.target_ssot_capacity_guard(_database(tmp_path, size))
+    assert first["growth_bytes_per_day"] == pytest.approx(100_000, rel=0.05)
+
+    # Immediately again: too soon to measure, but the answer is still known.
+    second = daemon.target_ssot_capacity_guard(_database(tmp_path, size))
+    assert second["growth_bytes_per_day"] == pytest.approx(100_000, rel=0.05)
+    assert second["days_to_ceiling"] == pytest.approx(
+        first["days_to_ceiling"], rel=0.05
+    )
+    assert second["growth_measured_from_utc"], (
+        "a carried rate has to say when it was measured"
+    )
