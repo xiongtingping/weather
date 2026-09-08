@@ -461,8 +461,8 @@ def test_a_table_is_scored_on_the_seats_it_was_serving_for() -> None:
     a comparator rather than a book return.
     """
 
-    from bayes_basket_target.effective_edge_store import (
-        ensure_schema,
+    from bayes_basket_target.effective_edge_store import ensure_schema
+    from bayes_basket_target.forward_serving_score import (
         forward_serving_score,
     )
 
@@ -506,8 +506,8 @@ def test_a_table_that_has_settled_nothing_reports_no_record_not_a_zero() -> None
     """Zero would read as a verdict.  A table nobody has settled under has
     no forward record at all, and saying so is the honest answer."""
 
-    from bayes_basket_target.effective_edge_store import (
-        ensure_schema,
+    from bayes_basket_target.effective_edge_store import ensure_schema
+    from bayes_basket_target.forward_serving_score import (
         forward_serving_score,
     )
 
