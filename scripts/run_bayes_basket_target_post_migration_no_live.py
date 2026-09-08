@@ -46,7 +46,7 @@ from bayes_basket_target.native_ensemble_authority import (  # noqa: E402
     NativeOosSnapshot,
     load_native_oos_snapshot_manifest,
     pointer_activation_mismatch_reasons,
-    pointer_for_station,
+    pointer_for_scope,
 )
 from bayes_basket_target.resource_bounds import (  # noqa: E402
     MAX_TARGET_PROCESS_RSS_BYTES,
@@ -1118,7 +1118,19 @@ def native_ensemble_authority_snapshot(
         observed_by_station[station].append(activation_id)
         failures: list[str] = []
         if native_oos_snapshot is not None:
-            binding = pointer_for_station(native_oos_snapshot, station)
+            # Charter: the pointer attests a SCOPE, not a station (179b8553).
+            # Asking by station alone returned whichever lead happened to be
+            # attested and then rejected every activation from any other,
+            # which reads as "no artifact".  The row already carries the
+            # scope it is being checked in -- the same three fields go to
+            # ``pointer_activation_mismatch_reasons`` just below.
+            binding = pointer_for_scope(
+                native_oos_snapshot,
+                station,
+                season_bin=str(row[3]),
+                lead_bucket=str(row[4]),
+                run_cycle=str(row[5]),
+            )
             if binding is None:
                 _native_authority_failure(
                     code="native_current_pointer_binding_missing",

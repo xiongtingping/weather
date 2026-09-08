@@ -233,8 +233,9 @@ def test_no_claims_layer_query_reads_the_post_execution_columns():
     # ledger columns above are what each seat recorded about its own
     # choice.  Both readings are still one word from the filled basket.
     edge = sources["effective_edge_store"]
-    assert edge.count("FROM paper_trade_candidate_window") == 4, (
-        "served fit, shadow fit, band-partition lookup, activation guard"
+    assert edge.count("FROM paper_trade_candidate_window") == 5, (
+        "band-partition lookup, served fit, the fit's excluded-axis tally,"
+        " activation guard, shadow fit"
     )
     # The thermometer's unit is the posted leg, with the fill an
     # observation about it -- not a precondition for counting it.
