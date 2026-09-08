@@ -3498,8 +3498,18 @@ def solve_target_inventory_v2(
     bankroll_usdc: float | None = None,
     kelly_fraction: float = DEFAULT_KELLY_FRACTION,
     unbuyable_buckets: Sequence[str] = (),
+    excluded_candidate_ids: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Return the exact argmax over a caller-provided bounded feasible set.
+
+    ``excluded_candidate_ids`` (charter 121, 2026-09-08) removes rows the
+    caller has already tried and had refused downstream -- today, by charter
+    93 (二)'s floor re-read on the lifted targets, which this function cannot
+    see because the venue's lot and dollar lifts are applied after it returns.
+    Excluded rows are dropped from the legal set, so the winner chain picks
+    among what is left rather than the caller collapsing the whole round to a
+    hold.  A baseline is never excluded: buying nothing is the fallback every
+    round must keep, and dropping it would make the solve unable to answer.
 
     ``unbuyable_buckets`` (charter 84 八, 2026-09-05): rungs of the support
     the market prices under the leg floor.  The ruling that forbids buying
@@ -3592,7 +3602,23 @@ def solve_target_inventory_v2(
             SUPPORT_SCENARIO_FLOOR_FRACTION * cost - EPS
         )
 
-    legal = [row for row in evaluations if _floor_legal(row)]
+    # Charter 121: a row the caller has already had refused downstream is out
+    # of the running, not out of the audit -- ``evaluations`` still carries it,
+    # so the origin counts and the floor-refusal counts below read the round as
+    # it really was.  The baseline is exempt by construction; see the argument
+    # in this function's docstring.
+    excluded_ids = {
+        str(candidate_id) for candidate_id in excluded_candidate_ids
+        if str(candidate_id or "")
+    }
+    legal = [
+        row for row in evaluations
+        if _floor_legal(row)
+        and (
+            str(row.get("candidate_kind") or "") == CANDIDATE_KIND_BASELINE
+            or str(row.get("candidate_id") or "") not in excluded_ids
+        )
+    ]
     if not legal:
         raise ContractError("delta_v2_no_floor_legal_candidate")
     if form == KELLY_OBJECTIVE_FORM:

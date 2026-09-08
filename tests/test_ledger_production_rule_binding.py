@@ -208,6 +208,12 @@ def test_the_scope_stake_cap_is_the_kernels_on_both_sides() -> None:
 # to import.  Weaker than an import, so each is pinned by an assertion above
 # or below rather than by construction.
 SHARED_WITH_PRODUCTION = {
+    # Charter 110 (extended 2026-09-08): not rules of this lane's own but
+    # the fingerprint OF production's claim transforms, read once from the
+    # kernel so a candidate window records which vintage priced it.  They
+    # move when production's tables move, which is the point.
+    "CLAIM_TRANSFORM_SHA256_CENTRE",
+    "CLAIM_TRANSFORM_SHA256_OFF_CENTRE",
     # Charter 94: one order family, spelled in each lane and asserted equal.
     "EXECUTION_FAMILY",
     # Charter 66 clause A: the same par bound is spelled in
@@ -412,6 +418,11 @@ LEDGER_ONLY = {
     ),
     "MAKER_RESTING_CENTRE_LAMBDA": "research arm",
     "MAKER_RESTING_TAIL_LAMBDA": "research arm (rejected, kept for replay)",
+    # Arm G (2026-09-08).  Production has no distance gate of any kind: its
+    # leg screen is charter 91/103's belief-scaled price floor and nothing
+    # reads the book's own centre.  Default 0 leaves this lane identical to
+    # production, which is why it is an arm and not a divergence.
+    "MARKET_DISTANCE_MAX": "research arm (rungs from the book's own centre)",
     "MAKER_RESTING_MAX_CLAIM_EDGE": "research arm (rejected)",
     "MAKER_MARKET_TOP_EXEMPT": "research arm",
     "MAKER_RESTING_PPOST": "research arm (archived)",

@@ -630,6 +630,25 @@ MAKER_MARKET_TOP_EXEMPT = (
 MINIMUM_SUPPORT_BUCKETS = int(
     os.environ.get("PAPER_LEDGER_MIN_SUPPORT_BUCKETS", "3") or 3
 )
+
+# Research arm G (2026-09-08): refuse a leg the market's own book has ruled
+# out, measured in rungs from the bucket the book prices highest.
+#
+# Measured over 45,393 two-sided quotes and 625,246 shadow orders
+# (docs/research/VENUE_PRICE_CALIBRATION_2026-09-08.md): a cheap leg ADJACENT
+# to the market's centre returns -21.7% bought at the ask, and the same price
+# three or four rungs out returns -66.7%.  The separating variable is the
+# distance, not the price -- which is why the earlier reading that keyed on
+# price alone (-30.9% for "the tail") was a mixture of the two populations
+# and could not be acted on.
+#
+# 0 disables the arm and leaves every recorded row byte-identical, which is
+# the default: the live book has 78 of 82 filled legs inside two rungs, so
+# this gate is worth about 4 USDC of notional there and its value has to be
+# measured rather than assumed.
+MARKET_DISTANCE_MAX = int(
+    os.environ.get("PAPER_LEDGER_MARKET_DISTANCE_MAX", "") or 0
+)
 FEE_RATE = 0.0  # all-in asks in the snapshot already carry the fee
 # Below this all-in cost a basket is almost certainly a dust offer on an
 # empty side rather than a price anyone would fill.
@@ -2440,7 +2459,11 @@ SELECTION_RULE_SHA256 = content_sha256({
     "stage_budget_share": STAGE_BUDGET_SHARE,
     "maximum_support_buckets": MAXIMUM_SUPPORT_BUCKETS,
     "minimum_support_buckets": MINIMUM_SUPPORT_BUCKETS,
-    "minimum_support_buckets": MINIMUM_SUPPORT_BUCKETS,
+    # Arm G: how many rungs from the book's own centre a leg may sit.  0 is
+    # off and is the default, so rows recorded before this key existed keep
+    # their fingerprint only while the arm is off -- which is the point of
+    # putting it here rather than leaving it silent.
+    "market_distance_max": MARKET_DISTANCE_MAX,
     "p1_minimum_support_buckets": P1_MINIMUM_SUPPORT_BUCKETS,
     "stage_floor": "per_stage",
     # One book, one position per station-day, settled once.  This changes
@@ -5285,12 +5308,55 @@ def _leg_value_cap(
     return _value_cap((probabilities or {}).get(str(bucket)))
 
 
+def _market_centre_ordinal(snapshot: Any) -> int | None:
+    """The ordinal of the bucket the BOOK prices highest, not the model.
+
+    Two-sided rungs only.  A one-sided quote has no mid, and the whole point
+    of this reading is to use the market's own opinion rather than ours --
+    the model's centre is the thing being checked against, so it cannot also
+    be the reference.
+    """
+
+    best: tuple[float, int] | None = None
+    for row in getattr(snapshot, "buckets", ()) or ():
+        if not getattr(row, "ask_available", False):
+            continue
+        bid = float(getattr(row, "bid_price", 0.0) or 0.0)
+        ask = float(getattr(row, "ask_price", 0.0) or 0.0)
+        if bid <= 0.0 or ask <= bid:
+            continue
+        mid = (bid + ask) / 2.0
+        ordinal = int(getattr(row, "ordinal", 0))
+        if best is None or mid > best[0]:
+            best = (mid, ordinal)
+    return None if best is None else best[1]
+
+
+def _beyond_market_distance(
+    ordinal: int | None, centre_ordinal: int | None
+) -> bool:
+    """Is this rung further from the book's centre than the arm allows?
+
+    Fail-open on a missing reading: a book with no two-sided quote at all
+    has no centre to measure from, and refusing every leg there would make
+    the arm a liquidity filter wearing a distance filter's name.
+    """
+
+    if MARKET_DISTANCE_MAX <= 0:
+        return False
+    if ordinal is None or centre_ordinal is None:
+        return False
+    return abs(int(ordinal) - int(centre_ordinal)) > MARKET_DISTANCE_MAX
+
+
 def _leg_below_floor(
     *,
     ask: float | None,
     bid: float | None,
     probability: float | None,
     fee_rate: float = 0.0,
+    ordinal: int | None = None,
+    market_centre_ordinal: int | None = None,
 ) -> bool:
     """Charter 91 + 103, the ledger's read point for the leg floor.
 
@@ -5302,6 +5368,8 @@ def _leg_below_floor(
     would be screening two different things in the two books.
     """
 
+    if _beyond_market_distance(ordinal, market_centre_ordinal):
+        return True
     if ask is None:
         return False
     return leg_below_floor(
@@ -5463,6 +5531,7 @@ def _window_row(
     ordered = [b for b in buckets if b in by_bucket]
     if not ordered:
         return None
+    market_centre = _market_centre_ordinal(snapshot)
     quotes = []
     for bucket in ordered:
         quote = _execution_price(
@@ -5489,6 +5558,8 @@ def _window_row(
             bid=getattr(by_bucket[bucket], "bid_price", 0.0),
             probability=probabilities.get(bucket),
             fee_rate=FEE_RATE,
+            ordinal=getattr(by_bucket[bucket], "ordinal", None),
+            market_centre_ordinal=market_centre,
         ):
             return None
         quotes.append(quote)
@@ -5588,6 +5659,8 @@ def _strategy_windows(
                     bid=getattr(row, "bid_price", 0.0),
                     probability=probabilities.get(bucket),
                     fee_rate=FEE_RATE,
+                    ordinal=getattr(row, "ordinal", None),
+                    market_centre_ordinal=_market_centre_ordinal(snapshot),
                 ):
                     continue
                 ranked.append(
@@ -5609,6 +5682,8 @@ def _strategy_windows(
                 bid=getattr(by_bucket[bucket], "bid_price", 0.0),
                 probability=probabilities.get(bucket),
                 fee_rate=FEE_RATE,
+                ordinal=getattr(by_bucket[bucket], "ordinal", None),
+                market_centre_ordinal=_market_centre_ordinal(snapshot),
             )
             and float(probabilities.get(bucket, 0.0))
             > (_execution_price(by_bucket[bucket]) or 9.9)

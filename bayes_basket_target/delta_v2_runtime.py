@@ -1442,6 +1442,20 @@ if CHARTER_84_LADDER_BALANCE not in {"on", "off"}:
     raise RuntimeError(
         f"unknown charter 84 ladder balance mode: {CHARTER_84_LADDER_BALANCE}"
     )
+# Charter 121 (2026-09-08): charter 93 (二)'s post-lift floor refuses the
+# candidate, not the round.  ``off`` is the pre-ruling arm -- one attempt, and
+# a refusal holds the day -- which is what the first three weeks of charter 84
+# on P0-M and P1 actually did.  Four attempts because the candidate domain is
+# baseline + clip grid + Kelly + balance and the baseline is never excluded, so
+# nothing is gained by a fifth.
+CHARTER_121_POST_LIFT_RERANK = (
+    os.environ.get("PM_CHARTER_121_POST_LIFT_RERANK", "").strip().lower() or "on"
+)
+if CHARTER_121_POST_LIFT_RERANK not in {"on", "off"}:
+    raise RuntimeError(
+        f"unknown charter 121 post-lift rerank mode: {CHARTER_121_POST_LIFT_RERANK}"
+    )
+CHARTER_121_POST_LIFT_ATTEMPTS = 4
 # Charter 87 (user ruling, 2026-09-06: "落正确形态是一个信念"): the
 # whole-basket positive-EV gate reads the belief the solver sizes on -- the
 # lifted claim (charter 81) times charter 68's lambda(a) at the window's
@@ -3094,8 +3108,16 @@ def _solve_over_support_windows(
     last_decision_signature: Mapping[str, Any] | None = None,
     completion_capital_usdc: float | None = None,
     effective_edge_tables: Mapping[str, Any] | None = None,
+    excluded_candidate_ids: Sequence[str] = (),
 ) -> tuple[tuple[str, ...], dict[str, Any], dict[str, Any]]:
     """Run the objective on each shortlisted window; the head one is seated.
+
+    ``excluded_candidate_ids`` (charter 121) is passed straight to the kernel
+    for every window.  The caller re-enters this function after charter 93
+    (二)'s post-lift floor has refused a winner, and the refused row has to be
+    out of the running in whichever window it is proposed in -- a window sweep
+    that kept it would hand the same refused shape back and the retry would
+    not terminate.
 
     Scores are comparable across windows because every candidate's scenario
     curve spans the whole bucket space -- an unheld bucket settles at minus the
@@ -3338,6 +3360,7 @@ def _solve_over_support_windows(
                     (row.get("completion") or {}).get("market_dead_buckets")
                     or ()
                 ),
+                excluded_candidate_ids=tuple(excluded_candidate_ids),
                 shortfall_buckets=tuple(sorted(shortfall & set(window))),
                 breakthrough_buckets=tuple(
                     sorted(breakthrough & set(window))
@@ -5115,160 +5138,222 @@ def compile_delta_v2_runtime_plan(
         for row in snapshot.buckets
         if row.probability > EPS
     )
-    seated_support, target_solution, support_selection = (
-        _solve_over_support_windows(
-            windows=support_windows,
-            window_audit=support_window_audit,
-            live_buckets=evidence_live_buckets,
-            snapshot=snapshot,
-            probabilities=probabilities,
-            shortfall=shortfall,
-            breakthrough=breakthrough,
-            delta_policy=delta_policy,
-            basket_policy=basket_policy,
-            capital_available_usdc=capital_available_usdc,
-            objective_form=objective_form,
-            bankroll_usdc=bankroll_usdc,
-            probability_identity=probability_identity,
-            last_acted_probability_identity=last_acted_probability_identity,
-            chain_growth_frame_usdc=chain_growth_frame_usdc,
-            book_equity_usdc=book_equity_usdc,
-            last_decision_signature=last_decision_signature,
-            effective_edge_tables=effective_edge_tables,
-            # Charter 84 (八): a completion is sized against the capital the
-            # seat was opened with, before the consolidation tilt.
-            completion_capital_usdc=capital_before_tilt_usdc,
+    # Charter 121 (user ruling, 2026-09-08): charter 93 (二)'s post-lift floor
+    # refuses a candidate, not the round.  The floor is re-read after charters
+    # 70/83 lift rungs to the venue's lot and dollar minimums, which is work
+    # the solver cannot do -- so a winner it certified can fail here, and until
+    # now that collapsed ``final_support`` to empty and the day held with the
+    # rest of the legal set never asked.  Measured 2026-09-06..08: of 78
+    # compiles that offered a completion, 3 were a Kelly row taking a seat a
+    # floor-legal completion had also asked for, and those 3 are exactly this
+    # shape -- the Kelly row wins the chain (kelly > balance, charter 72), the
+    # lifted shape fails the floor, and the completion that would have traded
+    # is never reached.
+    #
+    # The winner chain itself is not touched.  The refused row is excluded and
+    # the seat is solved again, so ``kelly_rows`` empties on its own and
+    # charter 84's ``elif balance_rows`` becomes reachable for the first time.
+    # Bounded, and every attempt re-enters from the same capital: the tilt
+    # exemption below mutates it, and a retry that inherited the mutation
+    # would size the next candidate against a number no ruling gave it.
+    capital_at_seat_entry = capital_available_usdc
+    excluded_candidate_ids: tuple[str, ...] = ()
+    restoring_first_post_lift_refusal = False
+    for _post_lift_attempt in range(CHARTER_121_POST_LIFT_ATTEMPTS + 1):
+        capital_available_usdc = capital_at_seat_entry
+        seated_support, target_solution, support_selection = (
+            _solve_over_support_windows(
+                windows=support_windows,
+                window_audit=support_window_audit,
+                live_buckets=evidence_live_buckets,
+                snapshot=snapshot,
+                probabilities=probabilities,
+                shortfall=shortfall,
+                breakthrough=breakthrough,
+                delta_policy=delta_policy,
+                basket_policy=basket_policy,
+                capital_available_usdc=capital_available_usdc,
+                objective_form=objective_form,
+                bankroll_usdc=bankroll_usdc,
+                probability_identity=probability_identity,
+                last_acted_probability_identity=last_acted_probability_identity,
+                chain_growth_frame_usdc=chain_growth_frame_usdc,
+                book_equity_usdc=book_equity_usdc,
+                last_decision_signature=last_decision_signature,
+                effective_edge_tables=effective_edge_tables,
+                # Charter 84 (八): a completion is sized against the capital the
+                # seat was opened with, before the consolidation tilt.
+                completion_capital_usdc=capital_before_tilt_usdc,
+                # Charter 121: rows this seat has already had refused by the
+                # post-lift floor, so the winner chain picks among the rest.
+                excluded_candidate_ids=excluded_candidate_ids,
+            )
         )
-    )
-    # Charter 84 (八): the consolidation tilt cut this seat once, when it
-    # opened, and the venue's lot lifted the opener's legs past the cut
-    # anyway; cutting the completion again leaves a sliver that cannot
-    # cover the sunk rungs (LTAC 31°C and 33°C at 1.7 shares each against
-    # 5 held, floor-refused).  The seat the tilt sized is restored at the
-    # capital it was sized from.
-    completion_tilt_exempt = (
-        CHARTER_84_LADDER_BALANCE == "on"
-        and str(target_solution.get("winner_candidate_origin") or "")
-        == LADDER_BALANCE_CANDIDATE_ORIGIN
-        and capital_before_tilt_usdc > float(capital_available_usdc)
-    )
-    if completion_tilt_exempt:
-        capital_available_usdc = capital_before_tilt_usdc
-    ordered_support = seated_support
-    desired = set(seated_support)
-    # The risk scopes as intersected with the *seated* support -- the exact
-    # tuples every action, the bundle and the realised value are scored
-    # against.  Derived once and published on the plan, because a re-score
-    # after execution sizing has to reproduce the authorization's inputs
-    # byte for byte, and the diagnostic ``underreach_risk_buckets`` below is
-    # the pre-seat intersection: close enough to look right in an audit and
-    # wrong enough to score a different basket.
-    scored_shortfall = tuple(sorted(shortfall & desired))
-    scored_breakthrough = tuple(sorted(breakthrough & desired))
-    target_shares = dict(target_solution["target_shares_by_bucket"])
-    # Charter 70: a seated rung solved to fewer shares than the exchange will
-    # fill is raised to one lot when the basket can afford it.  Applied to
-    # the *targets*, before any gap is derived from them, so the candidate
-    # loop, the kernel's inventory-gap gate and the emitted target rows all
-    # see the same lifted number; raising only the clip would trip
-    # ``clip_exceeds_inventory_gap`` and refuse the very leg being raised.
-    lot_top_up = raise_sub_lot_targets_v2(
-        mode=EXCHANGE_LOT_TOP_UP if CHARTER_70_EXCHANGE_LOT == "on" else "off",
-        target_shares_by_bucket=target_shares,
-        support=seated_support,
-        min_lot_by_bucket={
-            bucket: by_bucket[bucket].min_order_size
-            for bucket in seated_support
-        },
-        # A rung with no ask cannot be bought, so it cannot be lifted; the
-        # kernel leaves a zero-priced rung alone rather than pricing a lot
-        # nobody is offering.  ``ask_price`` raises on a bid-only book.
-        ask_by_bucket={
-            bucket: (
-                by_bucket[bucket].ask_price
-                if by_bucket[bucket].ask_available
-                else 0.0
-            )
-            for bucket in seated_support
-        },
-        capital_available_usdc=capital_available_usdc,
-        # Charter 83: the dollar floor rides with the lot; ``off`` is the
-        # pre-ruling arm.
-        minimum_notional_usdc=(
-            EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC
-            if CHARTER_83_MIN_NOTIONAL == "on" else 0.0
-        ),
-        # Charter 84: the minimum binds on what a rung would *buy*.  A held
-        # rung at its target is not an order and is not raised, and the
-        # held rungs are not charged against the capital a second time.
-        held_shares_by_bucket={
-            bucket: (
-                float(by_bucket[bucket].filled_shares)
-                + float(by_bucket[bucket].pending_shares)
-            )
-            for bucket in seated_support
-        },
-    )
-    target_shares = dict(lot_top_up["target_shares_by_bucket"])
-    current_shares = {row.bucket: row.filled_shares for row in snapshot.buckets}
-    current_cost = {row.bucket: row.filled_cost_usdc for row in snapshot.buckets}
-    pending_shares = {row.bucket: row.pending_shares for row in snapshot.buckets}
-    pending_cost = {
-        row.bucket: row.pending_notional_usdc for row in snapshot.buckets
-    }
-    # Charter 93: the floor is re-read on the lifted targets.  The solver
-    # judged the equal-share candidate; charters 70/83 then raise rungs to
-    # the venue's lot and dollar floor one at a time, and the shape that
-    # results was never judged -- KDAL 2026-09-07 went out at 5 / 5 / 6
-    # shares for 5.12 and would have lost 0.12 on two of its three rungs
-    # while winning.  Judged here on the lifted totals -- the solver's own
-    # costs plus each raise at its ask -- and a basket that fails holds by
-    # name rather than buying a shape no gate has seen.
-    solved_targets = dict(target_solution["target_shares_by_bucket"])
-    lifted_cost = dict(target_solution.get("target_cost_by_bucket") or {})
-    support_floor_after_lift = None
-    # Charter 84 (八): a rung the market prices under the leg floor is dead
-    # -- unbought and outside the floor's protected set, exactly as the
-    # solver read it.  Read off the seated window, which carries them.
-    floor_support = tuple(
-        bucket for bucket in seated_support
-        if bucket not in set(
-            ((support_selection.get("seated") or {}).get("completion") or {})
-            .get("market_dead_buckets") or ()
+        # Charter 84 (八): the consolidation tilt cut this seat once, when it
+        # opened, and the venue's lot lifted the opener's legs past the cut
+        # anyway; cutting the completion again leaves a sliver that cannot
+        # cover the sunk rungs (LTAC 31°C and 33°C at 1.7 shares each against
+        # 5 held, floor-refused).  The seat the tilt sized is restored at the
+        # capital it was sized from.
+        completion_tilt_exempt = (
+            CHARTER_84_LADDER_BALANCE == "on"
+            and str(target_solution.get("winner_candidate_origin") or "")
+            == LADDER_BALANCE_CANDIDATE_ORIGIN
+            and capital_before_tilt_usdc > float(capital_available_usdc)
         )
-    )
-    if CHARTER_93_SUPPORT_FLOOR == "on" and floor_support:
-        for bucket in seated_support:
-            extra = max(
-                0.0,
-                float(target_shares[bucket])
-                - float(solved_targets.get(bucket, 0.0)),
-            )
-            if extra <= EPS:
-                continue
-            ask = (
-                by_bucket[bucket].ask_price
-                if by_bucket[bucket].ask_available else 0.0
-            )
-            lifted_cost[bucket] = (
-                float(lifted_cost.get(bucket, 0.0))
-                + extra * float(ask) * (1.0 + float(basket_policy.fee_rate))
-            )
-        support_floor_after_lift = support_scenario_floor_v1(
-            shares_by_bucket={
-                bucket: float(target_shares[bucket]) for bucket in floor_support
+        if completion_tilt_exempt:
+            capital_available_usdc = capital_before_tilt_usdc
+        ordered_support = seated_support
+        desired = set(seated_support)
+        # The risk scopes as intersected with the *seated* support -- the exact
+        # tuples every action, the bundle and the realised value are scored
+        # against.  Derived once and published on the plan, because a re-score
+        # after execution sizing has to reproduce the authorization's inputs
+        # byte for byte, and the diagnostic ``underreach_risk_buckets`` below is
+        # the pre-seat intersection: close enough to look right in an audit and
+        # wrong enough to score a different basket.
+        scored_shortfall = tuple(sorted(shortfall & desired))
+        scored_breakthrough = tuple(sorted(breakthrough & desired))
+        target_shares = dict(target_solution["target_shares_by_bucket"])
+        # Charter 70: a seated rung solved to fewer shares than the exchange will
+        # fill is raised to one lot when the basket can afford it.  Applied to
+        # the *targets*, before any gap is derived from them, so the candidate
+        # loop, the kernel's inventory-gap gate and the emitted target rows all
+        # see the same lifted number; raising only the clip would trip
+        # ``clip_exceeds_inventory_gap`` and refuse the very leg being raised.
+        lot_top_up = raise_sub_lot_targets_v2(
+            mode=EXCHANGE_LOT_TOP_UP if CHARTER_70_EXCHANGE_LOT == "on" else "off",
+            target_shares_by_bucket=target_shares,
+            support=seated_support,
+            min_lot_by_bucket={
+                bucket: by_bucket[bucket].min_order_size
+                for bucket in seated_support
             },
-            cost_by_bucket=lifted_cost,
-            support=floor_support,
+            # A rung with no ask cannot be bought, so it cannot be lifted; the
+            # kernel leaves a zero-priced rung alone rather than pricing a lot
+            # nobody is offering.  ``ask_price`` raises on a bid-only book.
+            ask_by_bucket={
+                bucket: (
+                    by_bucket[bucket].ask_price
+                    if by_bucket[bucket].ask_available
+                    else 0.0
+                )
+                for bucket in seated_support
+            },
+            capital_available_usdc=capital_available_usdc,
+            # Charter 83: the dollar floor rides with the lot; ``off`` is the
+            # pre-ruling arm.
+            minimum_notional_usdc=(
+                EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC
+                if CHARTER_83_MIN_NOTIONAL == "on" else 0.0
+            ),
+            # Charter 84: the minimum binds on what a rung would *buy*.  A held
+            # rung at its target is not an order and is not raised, and the
+            # held rungs are not charged against the capital a second time.
+            held_shares_by_bucket={
+                bucket: (
+                    float(by_bucket[bucket].filled_shares)
+                    + float(by_bucket[bucket].pending_shares)
+                )
+                for bucket in seated_support
+            },
         )
-    basket_target_activated = (
-        target_solution.get("winner_candidate_kind")
-        == "COMPLETE_BASKET_TARGET"
-        and (
-            support_floor_after_lift is None
-            or bool(support_floor_after_lift["legal"])
+        target_shares = dict(lot_top_up["target_shares_by_bucket"])
+        current_shares = {row.bucket: row.filled_shares for row in snapshot.buckets}
+        current_cost = {row.bucket: row.filled_cost_usdc for row in snapshot.buckets}
+        pending_shares = {row.bucket: row.pending_shares for row in snapshot.buckets}
+        pending_cost = {
+            row.bucket: row.pending_notional_usdc for row in snapshot.buckets
+        }
+        # Charter 93: the floor is re-read on the lifted targets.  The solver
+        # judged the equal-share candidate; charters 70/83 then raise rungs to
+        # the venue's lot and dollar floor one at a time, and the shape that
+        # results was never judged -- KDAL 2026-09-07 went out at 5 / 5 / 6
+        # shares for 5.12 and would have lost 0.12 on two of its three rungs
+        # while winning.  Judged here on the lifted totals -- the solver's own
+        # costs plus each raise at its ask -- and a basket that fails holds by
+        # name rather than buying a shape no gate has seen.
+        solved_targets = dict(target_solution["target_shares_by_bucket"])
+        lifted_cost = dict(target_solution.get("target_cost_by_bucket") or {})
+        support_floor_after_lift = None
+        # Charter 84 (八): a rung the market prices under the leg floor is dead
+        # -- unbought and outside the floor's protected set, exactly as the
+        # solver read it.  Read off the seated window, which carries them.
+        floor_support = tuple(
+            bucket for bucket in seated_support
+            if bucket not in set(
+                ((support_selection.get("seated") or {}).get("completion") or {})
+                .get("market_dead_buckets") or ()
+            )
         )
-    )
+        if CHARTER_93_SUPPORT_FLOOR == "on" and floor_support:
+            for bucket in seated_support:
+                extra = max(
+                    0.0,
+                    float(target_shares[bucket])
+                    - float(solved_targets.get(bucket, 0.0)),
+                )
+                if extra <= EPS:
+                    continue
+                ask = (
+                    by_bucket[bucket].ask_price
+                    if by_bucket[bucket].ask_available else 0.0
+                )
+                lifted_cost[bucket] = (
+                    float(lifted_cost.get(bucket, 0.0))
+                    + extra * float(ask) * (1.0 + float(basket_policy.fee_rate))
+                )
+            support_floor_after_lift = support_scenario_floor_v1(
+                shares_by_bucket={
+                    bucket: float(target_shares[bucket]) for bucket in floor_support
+                },
+                cost_by_bucket=lifted_cost,
+                support=floor_support,
+            )
+        basket_target_activated = (
+            target_solution.get("winner_candidate_kind")
+            == "COMPLETE_BASKET_TARGET"
+            and (
+                support_floor_after_lift is None
+                or bool(support_floor_after_lift["legal"])
+            )
+        )
+        if basket_target_activated or CHARTER_121_POST_LIFT_RERANK != "on":
+            break
+        if restoring_first_post_lift_refusal:
+            break
+        refused_id = str(target_solution.get("winner_candidate_id") or "")
+        if (
+            # The baseline takes the seat on its own score; there is no
+            # refusal to re-rank around, and excluding a baseline is what
+            # charter 93's held-inventory exemption forbids.
+            target_solution.get("winner_candidate_kind")
+            == "COMPLETE_BASKET_TARGET"
+            # This clause answers the floor and nothing else.
+            and support_floor_after_lift is not None
+            and not bool(support_floor_after_lift["legal"])
+            and refused_id
+            and refused_id not in excluded_candidate_ids
+            and _post_lift_attempt + 1 < CHARTER_121_POST_LIFT_ATTEMPTS
+        ):
+            excluded_candidate_ids += (refused_id,)
+            continue
+        if excluded_candidate_ids:
+            # Nothing the exclusions reached could trade either, so the seat
+            # holds -- and the record has to be the refusal that started it,
+            # not a baseline no rule ever preferred.  Without this the plan
+            # would say a completion was never in the running on exactly the
+            # days one was offered and the floor turned it down, which is the
+            # reading charter 120's ``completion_floor_refused`` was separated
+            # out to make possible (LTAC 2026-09-06: 5 / 5 / 15 for 5.40,
+            # losing 0.40 inside its own window).  One extra pass, and it
+            # reproduces the first attempt exactly because nothing between
+            # here and the solve carries state.
+            excluded_candidate_ids = ()
+            restoring_first_post_lift_refusal = True
+            continue
+        break
+    post_lift_refused_candidate_ids = excluded_candidate_ids
     final_support = ordered_support if basket_target_activated else ()
     # The positive gap is a per-bucket quantity and every consumer below must
     # read the same one.  Deriving it once keeps candidate admission, Maker

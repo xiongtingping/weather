@@ -529,18 +529,14 @@ def test_the_half_basket_compiles_to_its_missing_rung_at_the_seats_capital(
     )
 
     solution = result["target_solution"]
-    if True:
-        # The open defect, asserted rather than skipped: the Kelly row takes
-        # the seat, charter 93 refuses it after the lift, and the completion
-        # that would have traded for 0.75 USDC was dropped at ranking time.
-        # The ladder stays short and the day holds.  Fixing this means
-        # re-ranking after the post-lift floor; until that is measured and
-        # ruled, this is what the code does and the test says so.
-        assert solution["winner_candidate_origin"] == KELLY_CANDIDATE_ORIGIN
-        assert result["state"] == "HOLD"
-        assert "support_floor_after_lift" in result["reason_codes"]
-        assert result["execution_gap_support"] == []
-        return
+    # Charter 121 (2026-09-08) closed the defect this test used to pin open.
+    # The Kelly row still takes the seat first and charter 93 still refuses it
+    # after the lift; what changed is that the refusal now excludes that row
+    # and the seat is solved again, so ``kelly_rows`` empties and charter 84's
+    # completion becomes reachable.  Traced on this fixture: attempt 1 seats
+    # WHOLE_BASKET_KELLY and the lifted shape fails the floor at -0.70 against
+    # a cost of 7.70; attempt 2, with that row excluded, seats LADDER_BALANCE
+    # and carries no reason code at all.
     assert solution["winner_candidate_origin"] == LADDER_BALANCE_CANDIDATE_ORIGIN
     assert solution["winner_candidate_kind"] == CANDIDATE_KIND_COMPLETE
     assert result["basket_target_activated"] is True
@@ -556,6 +552,87 @@ def test_the_half_basket_compiles_to_its_missing_rung_at_the_seats_capital(
     tilt = result["delta_v2_audit"]["consolidation_tilt"]
     assert tilt["completion_exempt"] is True
     assert tilt["capital_after_usdc"] == pytest.approx(10.0)
+
+
+def test_charter_121_off_reproduces_the_refusal_that_used_to_hold_the_day(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The pre-ruling arm, kept so the change has a rollback and a control.
+
+    Same fixture as the half-basket test above: with the re-solve off, the
+    Kelly row takes the seat, charter 93's post-lift floor refuses it, and the
+    day holds with the completion never asked -- which is what production did
+    on P0-M and P1 for the three weeks after charter 84 landed.
+    """
+
+    monkeypatch.setattr(
+        delta_v2_runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
+    )
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_121_POST_LIFT_RERANK", "off")
+    result = compile_delta_v2_runtime_plan(
+        snapshot=_held_snapshot(),
+        basket_policy=_basket_policy(),
+        delta_policy=_delta_policy(),
+        fill_resolver=_fill_resolver,
+        capital_available_usdc=10.0,
+        minimum_profit_floor=-5.0,
+        resource_probe_ok=True,
+        book_equity_usdc=514.29,
+    )
+    assert (
+        result["target_solution"]["winner_candidate_origin"]
+        == KELLY_CANDIDATE_ORIGIN
+    )
+    assert result["state"] == "HOLD"
+    assert "support_floor_after_lift" in result["reason_codes"]
+    assert result["execution_gap_support"] == []
+
+
+def test_charter_121_exclusions_reach_the_kernel_on_every_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The retry is only a retry if the exclusion actually travels.
+
+    Written because the first cut threaded ``excluded_candidate_ids`` into the
+    window sweep and into the kernel and then did not pass it at the one call
+    site inside the loop, so every attempt re-solved an identical problem and
+    the Kelly row won all four of them.  Nothing downstream could tell the
+    difference from the clause being off, which is precisely the class of
+    defect a behavioural assertion alone does not catch.
+    """
+
+    monkeypatch.setattr(
+        delta_v2_runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
+    )
+    seen: list[tuple[str, ...]] = []
+    original = delta_v2_runtime._solve_over_support_windows
+
+    def _spy(**kwargs):
+        seen.append(tuple(kwargs.get("excluded_candidate_ids") or ()))
+        return original(**kwargs)
+
+    monkeypatch.setattr(
+        delta_v2_runtime, "_solve_over_support_windows", _spy
+    )
+    result = compile_delta_v2_runtime_plan(
+        snapshot=_held_snapshot(),
+        basket_policy=_basket_policy(),
+        delta_policy=_delta_policy(),
+        fill_resolver=_fill_resolver,
+        capital_available_usdc=10.0,
+        minimum_profit_floor=-5.0,
+        resource_probe_ok=True,
+        book_equity_usdc=514.29,
+    )
+    assert len(seen) == 2, seen
+    assert seen[0] == ()
+    # The refused Kelly row, by id, on the second pass -- not merely a second
+    # pass that happens to land somewhere else.
+    assert len(seen[1]) == 1 and seen[1][0].startswith("kelly-")
+    assert (
+        result["target_solution"]["winner_candidate_origin"]
+        == LADDER_BALANCE_CANDIDATE_ORIGIN
+    )
 
 
 def test_the_plan_level_lift_binds_on_the_increment_not_on_what_is_held() -> None:
