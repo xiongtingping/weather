@@ -1,3 +1,10 @@
+---
+status: research
+authority: L2
+owner: weather-system
+effective_from: 2026-09-06
+---
+
 # 第一步：模型有没有市场没有的信息（对数得分，2026-09-06）
 
 脚本 `scripts/probe_model_vs_market_logscore.py`，只读 `data/bayes_basket_target_ssot.db`。

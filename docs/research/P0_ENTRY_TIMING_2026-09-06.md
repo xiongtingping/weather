@@ -1,3 +1,10 @@
+---
+status: research
+authority: L2
+owner: weather-system
+effective_from: 2026-09-06
+---
+
 # P0 开仓是不是太早了 — 2026-09-06
 
 > 用户问：P0 席位 195/203 坐在挂牌后 4 分钟内，是否太早？

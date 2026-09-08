@@ -1,3 +1,10 @@
+---
+status: research
+authority: L2
+owner: weather-system
+effective_from: 2026-09-06
+---
+
 # 市场价格变化作为信号（Δp × Δq 同向/异向）— 2026-09-06
 
 > 用户问：有没有把"市场价格变化方向"与"模型概率变化方向"合起来当信号的研究？

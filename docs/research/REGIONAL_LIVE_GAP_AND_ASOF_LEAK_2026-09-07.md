@@ -1,3 +1,10 @@
+---
+status: research
+authority: L2
+owner: weather-system
+effective_from: 2026-09-07
+---
+
 # 活偏差特征：方向对、幅度不够；以及量它时挖出的 as-of 泄漏
 
 2026-09-07 · 宪章第 95 条第二个特征（“当前小时预报−实况”）· 层已建、已量、不服务

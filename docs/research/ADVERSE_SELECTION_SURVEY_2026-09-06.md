@@ -1,3 +1,10 @@
+---
+status: research
+authority: L2
+owner: weather-system
+effective_from: 2026-09-06
+---
+
 # 逆向选择全案梳理（2026-09-06）
 
 > 用户指令：下一步主打逆选择，先全面梳理系统里有关逆选择的裁决、测试、结论。

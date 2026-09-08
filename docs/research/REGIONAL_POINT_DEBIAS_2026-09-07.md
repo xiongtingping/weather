@@ -1,3 +1,10 @@
+---
+status: research
+authority: L2
+owner: weather-system
+effective_from: 2026-09-07
+---
+
 # 区域点模型去偏：点预报上是真的，服务面上是负的
 
 2026-09-07 · 宪章第 95 条“待度量后落地”的单系统校正 · 层已建、已量、默认不服务

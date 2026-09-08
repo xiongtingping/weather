@@ -1,3 +1,10 @@
+---
+status: accepted
+authority: L3
+owner: weather-system
+effective_from: 2026-08-30
+---
+
 # Onboarding LLBG / LTFM / UUWW (fleet 45 → 48)
 
 Tel Aviv (LLBG), Istanbul (LTFM) and Moscow Vnukovo (UUWW) have had listed

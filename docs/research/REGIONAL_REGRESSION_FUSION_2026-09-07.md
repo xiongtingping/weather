@@ -1,3 +1,10 @@
+---
+status: research
+authority: L2
+owner: weather-system
+effective_from: 2026-09-07
+---
+
 # 第（二）步：区域曲线接进温度路径的回归——实测为正
 
 2026-09-07 · 宪章第 95 条第二半 · 已接入影子，不改变任何被交易的分布

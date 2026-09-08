@@ -1,3 +1,10 @@
+---
+status: research
+authority: L3
+owner: weather-system
+effective_from: 2026-08-27
+---
+
 # 高分辨率区域模型接入方案（针对 RCSS 类高偏差站点）
 
 2026-08-27 设计。动机：站级系统性失败诊断（看板第十一节）判定 RCSS/RPLL 五项全灭、

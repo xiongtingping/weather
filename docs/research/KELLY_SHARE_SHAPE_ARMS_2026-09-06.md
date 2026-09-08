@@ -1,3 +1,10 @@
+---
+status: research
+authority: L2
+owner: weather-system
+effective_from: 2026-09-06
+---
+
 # Kelly 份额形状：等份额 vs 中心倾斜 vs 按折后 edge 分份额（2026-09-06）
 
 > 用户问："目标函数追求整篮盈利吗？"答：是。第 72 条整篮 Kelly 把篮子当一个二元赌注，等份额买每条腿，篮内命中哪桶都赚 1−c。
