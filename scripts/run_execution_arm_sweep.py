@@ -94,6 +94,16 @@ ARMS: tuple[tuple[str, str, dict[str, str]], ...] = (
         "PAPER_LEDGER_EXECUTION": "taker",
         "PAPER_LEDGER_MIN_SUPPORT_BUCKETS": "4",
         "PAPER_LEDGER_MAX_SUPPORT_BUCKETS": "4"}),
+    # Fill-model calibration (2026-09-08).  The default ``through`` does not
+    # model the queue at all -- ``_queue_worked_off`` returns True for it by
+    # construction -- and the ledger fills 62.3% of intended legs against
+    # 36.1% for live maker legs that reached the exchange.  These two arms
+    # are the rules already implemented on the stricter side; the one whose
+    # leg fill rate lands nearest the live column is the calibrated model.
+    ("F-touch", "成交模型 touch（卖一触及即成交，更松）", {
+        "PAPER_LEDGER_FILL_MODEL": "touch"}),
+    ("F-queue", "成交模型 queue（要排完身前的量，更严）", {
+        "PAPER_LEDGER_FILL_MODEL": "queue"}),
 )
 
 
@@ -141,6 +151,23 @@ def _read(db: Path) -> dict[str, float]:
     ).fetchone()
     positions = conn.execute(
         "SELECT COUNT(*) FROM paper_trade_position").fetchone()[0]
+    # Leg level, not basket level: the fill model is a per-rung rule and a
+    # basket that seated one leg of three is not a filled basket.
+    intended = kept = 0
+    for il, ls in conn.execute(
+        "SELECT intended_legs_json, leg_shares_json FROM paper_trade_position"
+        " WHERE intended_legs_json NOT IN ('', '{}', '[]')"
+    ):
+        try:
+            legs = json.loads(il or "{}") or {}
+            held = json.loads(ls or "{}") or {}
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(held, dict):
+            held = {}
+        for bucket in legs:
+            intended += 1
+            kept += 1 if float(held.get(bucket, 0.0) or 0.0) > 0 else 0
     conn.close()
     settled, stake, pnl, hits, width = row
     return {
@@ -149,6 +176,8 @@ def _read(db: Path) -> dict[str, float]:
         "hit_rate": (hits / settled) if settled else 0.0,
         "roi": (pnl / stake) if stake else 0.0,
         "mean_width": float(width),
+        "intended_legs": intended, "kept_legs": kept,
+        "leg_fill_rate": (kept / intended) if intended else 0.0,
     }
 
 
@@ -185,18 +214,19 @@ def main() -> int:
         print(f"    仓位 {stats['positions']:4d}  已结算 {stats['settled']:4d}"
               f"  投入 {stats['stake']:8.2f}  盈亏 {stats['pnl']:+8.2f}"
               f"  ROI {stats['roi']:+7.2%}  命中 {stats['hit_rate']:6.1%}"
-              f"  均宽 {stats['mean_width']:.2f}", flush=True)
+              f"  均宽 {stats['mean_width']:.2f}"
+              f"  腿成交 {stats['leg_fill_rate']:.1%}", flush=True)
 
     # A sweep whose arms share a fingerprint measured one thing ten times.
     distinct = {r["rule_sha256"] for r in results}
     print()
     print(f"{'臂':11}{'规则指纹':14}{'仓位':>6}{'已结算':>7}{'投入':>10}"
-          f"{'盈亏':>10}{'ROI':>9}{'命中':>8}{'均宽':>7}  说明")
+          f"{'盈亏':>10}{'ROI':>9}{'命中':>8}{'均宽':>7}{'腿成交':>8}  说明")
     for r in results:
         print(f"{r['arm']:11}{r['rule_sha256']:14}{r['positions']:6d}"
               f"{r['settled']:7d}{r['stake']:10.2f}{r['pnl']:+10.2f}"
               f"{r['roi']:+9.2%}{r['hit_rate']:8.1%}{r['mean_width']:7.2f}"
-              f"  {r['label']}")
+              f"{r['leg_fill_rate']:8.1%}  {r['label']}")
     if len(distinct) < len(results):
         print("\n⚠ 有臂共享规则指纹——它们记的是同一本账，读数不可比。")
 

@@ -217,6 +217,112 @@ def shadow_reading(conn: sqlite3.Connection) -> dict:
     }
 
 
+def level_reading(conn: sqlite3.Connection) -> dict:
+    """Not the asymmetry -- the LEVEL.  How often a rung fills at all.
+
+    The asymmetry above answers "does the simulation pick the wrong legs".
+    It has been inside the shadow lane's range since charter 94.  This
+    answers the other half, which nothing was checking: does the simulation
+    fill too MANY legs.  Measured 2026-09-08 after the live maker family had
+    posted for three days, and the two numbers were not close.
+
+    The live column counts only legs that REACHED the exchange.  Three
+    quarters of the live maker legs never did -- the station gate refused
+    them as barred, held or on probation -- and those say nothing about
+    whether a resting order fills, so counting them would report a
+    permission fact as an execution fact.  (It did, in the first reading of
+    this: 9.3% instead of 35.9%.)
+
+    Horizons do not match and are reported rather than reconciled.  The
+    shadow lane's longest is sixty minutes; production and the ledger both
+    rest until the day resolves (charter 94, user ruling 2026-08-17).  So
+    the shadow column bounds the level from below and only the live column
+    is a like-for-like target.
+    """
+
+    intended = kept = 0
+    for il, ls in conn.execute(
+        "SELECT intended_legs_json, leg_shares_json FROM paper_trade_position"
+        " WHERE intended_legs_json NOT IN ('', '{}', '[]')"
+    ):
+        try:
+            legs = json.loads(il or "{}") or {}
+            held = json.loads(ls or "{}") or {}
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(held, dict):
+            held = {}
+        for bucket in legs:
+            intended += 1
+            kept += 1 if float(held.get(bucket, 0.0) or 0.0) > 0 else 0
+
+    # The live arm, keyed the way the execution ledger keys it.
+    reached = filled = posted = 0
+    gated: dict[str, int] = {}
+    try:
+        venue = {
+            str(order): set()
+            for (order,) in conn.execute(
+                "SELECT DISTINCT order_intent_id FROM basket_target_order_events")
+        }
+        for order, kind in conn.execute(
+            "SELECT order_intent_id, event_type FROM basket_target_order_events"
+        ):
+            venue[str(order)].add(str(kind))
+        AT_VENUE = {"POST_ACK", "FILL", "PARTIAL_FILL", "CANCEL_ACK",
+                    "LATE_FILL", "UNKNOWN_POST"}
+        for order, payload, size in conn.execute(
+            "SELECT i.order_intent_id, i.intent_json,"
+            " COALESCE(r.filled_size, 0) FROM basket_target_order_intents i"
+            " LEFT JOIN basket_target_order_reconciliations r"
+            "   ON r.order_intent_id = i.order_intent_id"
+            " WHERE i.live_submit_authorized = 1"
+        ):
+            try:
+                candidate = json.loads(payload).get("execution_candidate")
+            except (TypeError, ValueError):
+                continue
+            if candidate != "MAKER":
+                continue
+            posted += 1
+            events = venue.get(str(order), set())
+            if events & AT_VENUE:
+                reached += 1
+                filled += 1 if float(size or 0.0) > 0 else 0
+        for payload, in conn.execute(
+            "SELECT event_json FROM basket_target_order_events"
+            " WHERE event_type='NEVER_REACHED_EXCHANGE'"
+        ):
+            try:
+                reason = str(json.loads(payload).get("reason") or "?")
+            except (TypeError, ValueError):
+                reason = "?"
+            gated[reason] = gated.get(reason, 0) + 1
+    except sqlite3.Error:
+        pass
+
+    ledger_rate = (kept / intended) if intended else None
+    live_rate = (filled / reached) if reached else None
+    return {
+        "ledger_intended_legs": intended, "ledger_kept_legs": kept,
+        "ledger_fill_rate": (round(ledger_rate, 4)
+                             if ledger_rate is not None else None),
+        "live_posted_legs": posted, "live_reached_venue": reached,
+        "live_filled": filled,
+        "live_fill_rate": (round(live_rate, 4)
+                           if live_rate is not None else None),
+        "live_never_reached_by_reason": dict(
+            sorted(gated.items(), key=lambda kv: -kv[1])),
+        "ledger_over_live": (
+            round(ledger_rate / live_rate, 4)
+            if ledger_rate and live_rate else None),
+        "note": (
+            "horizons differ: shadow 60min, ledger and live rest to"
+            " resolution; only the live column is like-for-like"
+        ),
+    }
+
+
 def ledger_reading(conn: sqlite3.Connection) -> dict:
     """The same asymmetry, as the ledger's own simulation produced it."""
 
@@ -282,6 +388,7 @@ def main() -> int:
     try:
         shadow = shadow_reading(conn)
         ledger = ledger_reading(conn)
+        level = level_reading(conn)
     finally:
         conn.close()
 
@@ -311,6 +418,7 @@ def main() -> int:
         .isoformat().replace("+00:00", "Z"),
         "shadow": shadow,
         "ledger": ledger,
+        "level": level,
         "verdict": verdict,
     }
     RECEIPT.parent.mkdir(parents=True, exist_ok=True)
@@ -348,6 +456,23 @@ def main() -> int:
         )
     else:
         print(f"先挂后吃臂 {TAKE_AFTER_RULE}：仍在积累（0 单成交）")
+    print(
+        f"\n成交水平：账本想买 {level['ledger_intended_legs']} 腿、买到 "
+        f"{level['ledger_kept_legs']} = "
+        f"{100*(level['ledger_fill_rate'] or 0):.1f}%；"
+        f"实盘发出 {level['live_posted_legs']} 腿、到过交易所 "
+        f"{level['live_reached_venue']}、成交 {level['live_filled']} = "
+        f"{100*(level['live_fill_rate'] or 0):.1f}%"
+    )
+    if level["ledger_over_live"]:
+        print(f"        账本/实盘 = {level['ledger_over_live']}×"
+              f"（视界不同：影子 60 分钟，账本与实盘挂到结算）")
+    if level["live_never_reached_by_reason"]:
+        gated = "、".join(
+            f"{k} {v}" for k, v in
+            list(level["live_never_reached_by_reason"].items())[:4])
+        print(f"        实盘没到交易所的腿按原因：{gated}"
+              f"（站级门控，按设计工作，不计入上面的分母）")
     if verdict:
         print(
             f"影子观测区间 {verdict['shadow_asymmetry_range']}；"
