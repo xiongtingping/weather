@@ -218,126 +218,6 @@ def shadow_reading(conn: sqlite3.Connection) -> dict:
     }
 
 
-# Where the fitted model lives.  One file, read by the ledger's ``hazard``
-# fill model and rewritten by ``--fit`` here, so the shape and the thing
-# that consumes it cannot drift apart without the sha changing.
-HAZARD_ARTIFACT = ROOT / "config" / "artifacts" / "maker_fill_hazard_v1.json"
-HAZARD_LEAD_BANDS = (
-    (24.0, 1e9, "D-2"), (12.0, 24.0, "12-24h"), (6.0, 12.0, "6-12h"),
-    (3.0, 6.0, "3-6h"), (-1e9, 3.0, "<3h"),
-)
-
-
-def hazard_lead_band(lead_hours: float) -> str:
-    for low, high, label in HAZARD_LEAD_BANDS:
-        if low <= float(lead_hours) < high:
-            return label
-    return "<3h"
-
-
-def hazard_tier(mid: float) -> str:
-    return "tail" if mid < 0.15 else ("middle" if mid < 0.35 else "centre")
-
-
-def fit_hazard(conn: sqlite3.Connection, level: dict) -> dict:
-    """Shape from four million shadow orders, level from the live arm.
-
-    The two halves come from different places on purpose.
-
-    The SHAPE -- which rungs, at which lead, in which price tier fill more
-    often than others -- is what the shadow lane is for, and at a sixty
-    minute horizon every cell here has between three and forty-three
-    thousand orders behind it.
-
-    The LEVEL cannot come from there.  The shadow lane's longest horizon is
-    an hour and production rests until the day resolves, and the cumulative
-    hazard measured over 5/15/30/60 minutes does not extrapolate: it grows
-    sub-linearly (H/t falls 0.0046 -> 0.0035) but carrying it to forty
-    hours still gives a fill rate near one, against 36.1% actually
-    observed.  A resting order's hazard is not stationary -- the price it
-    was posted at stops being near the market -- and nothing in a
-    sixty-minute window measures that decay.
-
-    So the level is one scalar, fitted so the ledger's own leg fill rate
-    lands on the live arm's.  It is refitted every time this runs, and it
-    carries the sample size it was fitted on, because 130 live legs is not
-    a number to hide inside a model.
-    """
-
-    cells: dict[str, dict[str, dict[str, float]]] = {}
-    counts: dict[str, int] = {}
-    for rule, tier, band, n, filled in conn.execute(
-        "SELECT price_rule,"
-        " CASE WHEN (reference_bid+reference_ask)/2 < 0.15 THEN 'tail'"
-        "      WHEN (reference_bid+reference_ask)/2 < 0.35 THEN 'middle'"
-        "      ELSE 'centre' END,"
-        " CASE WHEN lead_hours>=24 THEN 'D-2' WHEN lead_hours>=12 THEN '12-24h'"
-        "      WHEN lead_hours>=6 THEN '6-12h' WHEN lead_hours>=3 THEN '3-6h'"
-        "      ELSE '<3h' END,"
-        " COUNT(*), SUM(CASE WHEN state='FILLED' THEN 1 ELSE 0 END)"
-        " FROM maker_shadow_order"
-        " WHERE horizon_minutes=60 AND price_rule IN ('bid','bid+1t')"
-        "   AND reference_ask>reference_bid AND reference_bid>0"
-        " GROUP BY 1,2,3"
-    ):
-        if int(n) < 500:
-            # Too thin to be a cell of its own; the reader falls back to the
-            # rule's pooled rate rather than to a number from 40 orders.
-            continue
-        cells.setdefault(str(rule), {}).setdefault(str(tier), {})[str(band)] = (
-            round(float(filled) / float(n), 6)
-        )
-        counts[f"{rule}|{tier}|{band}"] = int(n)
-    pooled = {}
-    for rule, n, filled in conn.execute(
-        "SELECT price_rule, COUNT(*),"
-        " SUM(CASE WHEN state='FILLED' THEN 1 ELSE 0 END)"
-        " FROM maker_shadow_order"
-        " WHERE horizon_minutes=60 AND price_rule IN ('bid','bid+1t')"
-        "   AND reference_ask>reference_bid AND reference_bid>0 GROUP BY 1"
-    ):
-        pooled[str(rule)] = round(float(filled) / float(n), 6)
-
-    ledger_rate = level.get("ledger_fill_rate")
-    # The like-for-like column: legs of live baskets that OPENED, which is
-    # the conditioning a paper_trade_position row already carries.
-    seated_rate = level.get("live_seated_fill_rate")
-    # The scalar the ledger's own rate has to be multiplied by to land on
-    # live's.  Applied to the shape, not to the outcome: a leg the depth
-    # walk never reached is not made to fill by it.
-    scalar = (
-        round(float(seated_rate) / float(ledger_rate), 6)
-        if ledger_rate and seated_rate else None
-    )
-    body = {
-        "schema": "maker_fill_hazard_v1",
-        "horizon_minutes": 60,
-        "shape_60min": cells,
-        "shape_pooled": pooled,
-        "shape_cell_orders": counts,
-        "level_scalar": scalar,
-        "level_fitted_against": {
-            "ledger_fill_rate": ledger_rate,
-            "live_fill_rate_opened_baskets": level.get("live_seated_fill_rate"),
-            "live_opened_baskets": level.get("live_opened_baskets"),
-            "live_attempted_baskets": level.get("live_attempted_baskets"),
-            "denominator": (
-                "legs of live baskets that opened -- the same conditioning a"
-                " paper_trade_position row carries"
-            ),
-        },
-        "note": (
-            "shape from maker_shadow_order at 60min; the level scalar is"
-            " fitted against the live arm because the shadow horizon does"
-            " not extrapolate to a rest-to-resolution order"
-        ),
-    }
-    body["content_sha256"] = hashlib.sha256(
-        json.dumps(body, sort_keys=True, ensure_ascii=False).encode("utf-8")
-    ).hexdigest()
-    return body
-
-
 def level_reading(conn: sqlite3.Connection) -> dict:
     """Not the asymmetry -- the LEVEL.  How often a rung fills at all.
 
@@ -548,8 +428,6 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", default=str(DEFAULT_DB))
     parser.add_argument("--json", action="store_true")
-    parser.add_argument("--fit", action="store_true",
-                        help="refit and write the hazard artifact")
     args = parser.parse_args()
 
     conn = _connect(Path(args.db))
@@ -557,7 +435,6 @@ def main() -> int:
         shadow = shadow_reading(conn)
         ledger = ledger_reading(conn)
         level = level_reading(conn)
-        hazard = fit_hazard(conn, level) if args.fit else None
     finally:
         conn.close()
 
@@ -653,14 +530,6 @@ def main() -> int:
             + ("区间内" if verdict["inside_observed_range"]
                else f"区间外 {verdict['factor_outside']}×")
         )
-    if hazard is not None:
-        HAZARD_ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
-        HAZARD_ARTIFACT.write_text(
-            json.dumps(hazard, ensure_ascii=False, indent=1) + "\n",
-            encoding="utf-8")
-        print(f"成交风险率工件 {HAZARD_ARTIFACT}"
-              f"  水平系数 {hazard['level_scalar']}"
-              f"  sha {hazard['content_sha256'][:12]}")
     print(f"回执 {RECEIPT}")
     return 0
 

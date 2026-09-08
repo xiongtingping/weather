@@ -423,12 +423,6 @@ LEDGER_ONLY = {
     # reads the book's own centre.  Default 0 leaves this lane identical to
     # production, which is why it is an arm and not a divergence.
     "MARKET_DISTANCE_MAX": "research arm (rungs from the book's own centre)",
-    # The fitted fill model's artifact path (2026-09-08).  Production has no
-    # fill model at all -- the exchange decides -- so there is nothing on
-    # the other side for this to drift from.  It is this lane's simulation
-    # of the venue, and the artifact's own hash enters the selection
-    # fingerprint only when the model that reads it is running.
-    "FILL_HAZARD_ARTIFACT": "research arm (this lane's simulation of the venue)",
     "MAKER_RESTING_MAX_CLAIM_EDGE": "research arm (rejected)",
     "MAKER_MARKET_TOP_EXEMPT": "research arm",
     "MAKER_RESTING_PPOST": "research arm (archived)",

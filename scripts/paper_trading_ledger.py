@@ -37,7 +37,6 @@ large bite of the book.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import math
 import os
@@ -653,35 +652,6 @@ MINIMUM_SUPPORT_BUCKETS = int(
 MARKET_DISTANCE_MAX = int(
     os.environ.get("PAPER_LEDGER_MARKET_DISTANCE_MAX", "") or 0
 )
-
-# The fitted fill model (2026-09-08).  ``through`` asks only whether the
-# book's ask came down to the rung; it never asks whether we were the one
-# filled when it did.  Measured: the ledger keeps 62.3% of intended legs
-# against 37.5% for live maker legs that reached the exchange.
-#
-# ``hazard`` keeps the depth walk as the necessary condition -- a rung the
-# market never reached still cannot fill -- and adds the sufficient one as a
-# draw against the shadow lane's measured shape, levelled on the live arm.
-# The draw is deterministic in the leg's own identity so a replay is
-# reproducible and two arms differ only by their switch.
-#
-# Refit with: python3 scripts/calibrate_maker_fill_model.py --fit
-FILL_HAZARD_ARTIFACT = ROOT / "config" / "artifacts" / "maker_fill_hazard_v1.json"
-_FILL_HAZARD: dict[str, Any] | None = None
-
-
-def _fill_hazard() -> dict[str, Any]:
-    """The fitted artifact, read once.  Absent means the arm is inert."""
-
-    global _FILL_HAZARD
-    if _FILL_HAZARD is None:
-        try:
-            _FILL_HAZARD = json.loads(
-                FILL_HAZARD_ARTIFACT.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            _FILL_HAZARD = {}
-    return _FILL_HAZARD
-
 
 FEE_RATE = 0.0  # all-in asks in the snapshot already carry the fee
 # Below this all-in cost a basket is almost certainly a dust offer on an
@@ -2527,14 +2497,6 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     # different strategies and must not share a fingerprint.
     "post_lift_rerank": CHARTER_121_POST_LIFT_RERANK,
 }
-if MAKER_FILL_MODEL == "hazard":
-    # Only when the model that reads it is the one running.  A refit moves
-    # the fill rate, so rows either side of one must not pool; but adding a
-    # key that is always present would change the fingerprint of every row
-    # already recorded under a model that never reads this artifact, which
-    # retires the whole book to say nothing.
-    _SELECTION_RULE_IDENTITY["maker_fill_hazard_sha256"] = str(
-        _fill_hazard().get("content_sha256") or "MISSING")
 SELECTION_RULE_SHA256 = content_sha256(_SELECTION_RULE_IDENTITY)
 # Why a station-day has no seat, in the ledger's own words.  The page used to
 # infer this from the absence of a row and could only ever say "the objective
@@ -5390,46 +5352,6 @@ def _leg_value_cap(
     return _value_cap((probabilities or {}).get(str(bucket)))
 
 
-def _hazard_keep_probability(
-    *, rule: str, mid: float | None, lead_hours: float | None
-) -> float:
-    """How much of the depth walk's answer survives, for this kind of rung.
-
-    The cell rate divided by its rule's pooled rate is the SHAPE -- one on
-    average by construction -- and the level scalar is what multiplies it.
-    Splitting them that way means a refit that only moves the level cannot
-    silently re-rank the cells, and a cell too thin to have been written
-    falls back to a tilt of exactly one rather than to a guess.
-    """
-
-    artifact = _fill_hazard()
-    scalar = artifact.get("level_scalar")
-    if not scalar:
-        return 1.0
-    pooled = (artifact.get("shape_pooled") or {}).get(rule)
-    tier = ("tail" if (mid or 0.0) < 0.15
-            else "middle" if (mid or 0.0) < 0.35 else "centre")
-    band = ("D-2" if (lead_hours or 0.0) >= 24 else
-            "12-24h" if (lead_hours or 0.0) >= 12 else
-            "6-12h" if (lead_hours or 0.0) >= 6 else
-            "3-6h" if (lead_hours or 0.0) >= 3 else "<3h")
-    cell = ((artifact.get("shape_60min") or {})
-            .get(rule, {}).get(tier, {}).get(band))
-    tilt = (float(cell) / float(pooled)) if cell and pooled else 1.0
-    return max(0.0, min(1.0, float(scalar) * tilt))
-
-
-def _hazard_admits(key: str, probability: float) -> bool:
-    """A draw that is a pure function of the leg it is drawn for."""
-
-    if probability >= 1.0:
-        return True
-    if probability <= 0.0:
-        return False
-    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
-    return (int(digest[:8], 16) / 4294967296.0) < probability
-
-
 def _market_centre_ordinal(snapshot: Any) -> int | None:
     """The ordinal of the bucket the BOOK prices highest, not the model.
 
@@ -6667,23 +6589,6 @@ def _resting_ladder_fill(
         bucket: len(prices) for bucket, prices in pending.items()
     }
     filled: dict[str, list[float]] = {b: [] for b in pending}
-    # How long this order has before the day it is betting on resolves.
-    # The hazard model conditions on it because the shadow lane measured
-    # fill rates tripling between D-2 and the last three hours, and a model
-    # blind to that would keep the same share of a listing-day rung as of
-    # one posted an hour before settlement.
-    try:
-        _close = (
-            datetime.fromisoformat(str(event_date))
-            .replace(tzinfo=ZoneInfo(str(settlement_timezone)))
-            + timedelta(days=1)
-        ).astimezone(timezone.utc)
-        lead_hours_at_post = (
-            _close - datetime.fromisoformat(
-                str(placed_at_utc).replace("Z", "+00:00"))
-        ).total_seconds() / 3600.0
-    except Exception:  # noqa: BLE001 -- an unreadable clock is not a fill fact
-        lead_hours_at_post = None
     queue_state: dict[str, dict[str, float]] = {}
     # The confirmation arm's baseline: the best ask each leg first re-priced
     # against.  Deliberately the first re-pricing round's book rather than
@@ -7110,40 +7015,6 @@ def _resting_ladder_fill(
                 )
                 while rungs and worked and price < rungs[0] - 1e-9:
                     filled[bucket].append(rungs.pop(0))
-    if MAKER_FILL_MODEL == "hazard":
-        # The depth walk said the market reached these rungs.  This asks
-        # whether we were filled when it did, which is the half nothing was
-        # answering.  Keyed on the leg's own identity, so the same replay
-        # gives the same book every time.
-        for bucket, prices in list(filled.items()):
-            if not prices:
-                continue
-            item = quotes.get(bucket) if isinstance(quotes, Mapping) else None
-            mid = None
-            if isinstance(item, Mapping):
-                bid = float(item.get("bid_price") or 0.0)
-                ask = item.get("best_ask")
-                levels = item.get("ask_levels") or []
-                if ask is None and levels:
-                    ask = levels[0].get("price")
-                if bid > 0 and ask:
-                    mid = (bid + float(ask)) / 2.0
-            kept = []
-            for rung in prices:
-                bid_now = (float(item.get("bid_price") or 0.0)
-                           if isinstance(item, Mapping) else 0.0)
-                tick = (float(item.get("price_tick_size") or 0.01)
-                        if isinstance(item, Mapping) else 0.01)
-                rule = ("bid" if bid_now <= 0 or rung <= bid_now + tick / 2
-                        else "bid+1t")
-                probability = _hazard_keep_probability(
-                    rule=rule, mid=mid, lead_hours=lead_hours_at_post,
-                )
-                key = (f"{station_id}|{event_date}|{bucket}|{placed_at_utc}"
-                       f"|{rung:.6f}")
-                if _hazard_admits(key, probability):
-                    kept.append(rung)
-            filled[bucket] = kept
     missing = next(
         (bucket for bucket, prices in filled.items() if not prices), None
     )
