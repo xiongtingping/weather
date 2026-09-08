@@ -114,17 +114,49 @@ def test_the_reprice_receipt_is_published_when_the_lane_runs(tmp_path) -> None:
 
 
 def test_publishing_never_breaks_the_cycle(tmp_path) -> None:
-    """An observability write may not be the reason a trading cycle fails."""
+    """An observability write may not be the reason a trading cycle fails.
 
+    Pointed at a path under ``tmp_path`` rather than at the module default.
+    As written before, this test called the publisher with the DEFAULT path
+    and a payload it believed json would refuse -- but the publisher passes
+    ``default=str``, so the object serialised fine and the write succeeded:
+    every run of this suite replaced production's live receipt at
+    ``data/resting_reprice_latest.json`` with ``{"bad": "<_Unserializable
+    object at 0x...>"}``.  Found on 2026-09-08 while reading that file for
+    the lane's cancel reasons; it held a test payload stamped 12:00:00Z.
+
+    The unwritable path is what actually exercises the guarantee: the
+    parent is a FILE, so ``mkdir`` raises and the publisher must swallow
+    it.  And the real receipt is asserted untouched.
+    """
+
+    import importlib
+    import os
+
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("", encoding="utf-8")
+    target = blocker / "resting_reprice_latest.json"
     from bayes_basket_target import production_worker as worker
 
-    class _Unserializable:
-        pass
-
-    # A path that cannot be created, and a payload json would refuse.
-    worker._publish_resting_reprice_receipt(
-        {"bad": _Unserializable()}, as_of_utc="2026-09-07T12:00:00Z"
-    )
+    live = worker.RESTING_REPRICE_RECEIPT_PATH
+    before = live.read_bytes() if live.exists() else None
+    os.environ["PM_RESTING_REPRICE_RECEIPT_PATH"] = str(target)
+    try:
+        reloaded = importlib.reload(
+            importlib.import_module("bayes_basket_target.production_worker")
+        )
+        assert reloaded.RESTING_REPRICE_RECEIPT_PATH == target
+        reloaded._publish_resting_reprice_receipt(
+            {"state": "committed"}, as_of_utc="2026-09-07T12:00:00Z"
+        )
+        assert not target.exists()
+    finally:
+        os.environ.pop("PM_RESTING_REPRICE_RECEIPT_PATH", None)
+        importlib.reload(
+            importlib.import_module("bayes_basket_target.production_worker")
+        )
+    after = live.read_bytes() if live.exists() else None
+    assert after == before, "the suite must not write production's receipt"
 
 
 def test_the_position_route_answers_what_the_point_lookup_no_longer_can() -> None:

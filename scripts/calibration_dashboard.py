@@ -7185,6 +7185,21 @@ function head(){
 // disagree, which is worse than not having the strip.
 function overview(){
   const S=D.selection||{};
+  // A ledger that is not there must not be read as a ledger that found
+  // nothing.  A rebuild wipes the three tables and commits before its
+  // forty-minute re-walk, and the render runs on its own timer, so a render
+  // inside that window used to publish every count and every hit rate at
+  // zero with nothing saying why (2026-09-08 10:20).  One banner, ahead of
+  // the strip, and the strip is suppressed rather than shown as zeros.
+  if(S.ledger_absent){
+    return `<div class="card red" style="margin:10px 0 4px">
+      <b>纸面账本此刻是空的——下面的仓位/命中率/回报率一律不要读。</b>
+      <div class="muted" style="margin-top:6px">
+        账本有历史可走却一条仓位都没有，这是「账本不在」而不是「一天都没入座」。
+        最常见的原因是 <span class="mono">paper_trading_ledger.py --rebuild</span>
+        正在跑：它先清空三张表并提交，再花约 40 分钟重走，这段时间任何读者
+        看到的都是零。等重建结束后本页会自行恢复，无需处理。</div></div>`;
+  }
   const pct0=(v)=>v==null?"—":(v*100).toFixed(0)+"%";
   const band=(v,good,ok)=>v==null?"muted"
     :(v>=good?"green":v>=ok?"amber":"red");

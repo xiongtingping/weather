@@ -2008,8 +2008,28 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     # none of them -- ZUUU's 08-16 fill was reported as its 08-17 ask total
     # on a day with no book.  The page reads the two collections apart.
     days = sorted({r["event_date"] for r in rows}, reverse=True)
+    # An empty ledger is not the same fact as a book with nothing in it, and
+    # the page cannot tell them apart from the row count alone.  A rebuild
+    # discards all three tables and commits before it re-walks, which takes
+    # about forty minutes; the render runs on its own half-hourly timer and
+    # neither lane excludes the other, so a render landing inside that window
+    # published position_count=0, day_count=0 and every hit rate at zero as
+    # though measured.  Seen 2026-09-08 10:20: the page shrank from 6.95MB to
+    # 4.25MB and read as "命中率都这么低".
+    #
+    # The bridge is the ledger's own input, so history without a single seat
+    # is the signature of a book that is not there rather than one that
+    # declined every day it saw.
+    absent = not rows and bool(conn.execute(
+        "SELECT 1 FROM basket_probability_bridge_history"
+        " WHERE event_date >= ? LIMIT 1",
+        (STATS_START_EVENT_DATE,),
+    ).fetchone())
     return {
         "schema": "selection_market_dashboard_v1",
+        # True only for "the ledger is mid-rebuild or was never built"; a
+        # genuinely empty window leaves it False and the zeros stand.
+        "ledger_absent": absent,
         # Stated once so the page can flag anything compiled under a
         # different rule instead of repeating the same string on every cell.
         "current_selection_rule_label": SELECTION_RULE_LABEL,

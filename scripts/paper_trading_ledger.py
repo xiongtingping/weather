@@ -10674,9 +10674,31 @@ def main() -> int:
         conn = _connect(database, writable=True)
         if args.rebuild:
             ensure_schema(conn)
-            conn.execute("DELETE FROM paper_trade_settlement")
-            conn.execute("DELETE FROM paper_trade_position")
-            conn.execute("DELETE FROM paper_trade_refusal")
+            # Bounded by the same date the walk is bounded by.  ``--through
+            # -date`` promises, in its own help text and in ``backfill``'s,
+            # that rows above the bound are left exactly as they are -- and
+            # this discard deleted the whole table regardless, so a rebuild
+            # taken oldest-first in slices (the workflow that option exists
+            # for) wiped every day it had no intention of re-deriving.  The
+            # rule is ``_drop_superseded_positions``' rule, written down
+            # there since the beginning: never delete outside the window
+            # this pass can re-derive, or the page ends up emptier than the
+            # ledger.
+            bound = (args.through_date or "").strip() or None
+            conn.execute(
+                "DELETE FROM paper_trade_settlement WHERE position_id IN ("
+                "  SELECT position_id FROM paper_trade_position"
+                "  WHERE ?1 IS NULL OR event_date <= ?1)",
+                (bound,),
+            )
+            for table in (
+                "paper_trade_position", "paper_trade_refusal",
+            ):
+                conn.execute(
+                    f"DELETE FROM {table}"
+                    " WHERE ?1 IS NULL OR event_date <= ?1",
+                    (bound,),
+                )
             conn.commit()
         counts = backfill(
             conn,
