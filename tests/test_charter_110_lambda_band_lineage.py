@@ -176,3 +176,101 @@ def test_the_backfill_resolves_a_vintage_through_the_store_not_a_guess():
     assert ledger._backfill_candidate_band_lineage(conn)["skipped"] == (
         "band_lineage_sources_absent"
     )
+
+
+# --- Charter 110 extended (2026-09-08): the claim transform is a second key --
+
+
+def test_the_two_claim_paths_carry_different_fingerprints() -> None:
+    """A centre-holding window and an off-centre one are not one vintage.
+
+    They go through different tables -- charter 81's lift or the off-centre
+    deflation -- so one fingerprint over the union would retire a row for a
+    change to a table it never read.
+    """
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        claim_transform_fingerprint,
+    )
+
+    assert claim_transform_fingerprint(
+        holds_centre=True
+    ) != claim_transform_fingerprint(holds_centre=False)
+
+
+def test_moving_the_off_centre_table_leaves_centre_holding_rows_current(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The reason the key is split, stated as a test.
+
+    Measured 2026-09-08: all 1,493 candidate windows in the book verify
+    against the centre-holding path and none against the off-centre one --
+    charter 49's ladder floor has left the fit no off-centre rows at all.  A
+    union key would therefore have taken the whole lambda sample to zero to
+    record a change to a table none of those rows read.
+    """
+    import bayes_basket_target.basket_kernel.delta_v2 as kernel
+
+    before_centre = kernel.claim_transform_fingerprint(holds_centre=True)
+    before_off = kernel.claim_transform_fingerprint(holds_centre=False)
+    monkeypatch.setattr(
+        kernel,
+        "OFF_CENTER_CLAIM_BANDS",
+        ((0.05, 1.15), (0.10, 0.85), (0.20, 0.88), (1.01, 0.5)),
+    )
+    assert kernel.claim_transform_fingerprint(holds_centre=True) == before_centre
+    assert kernel.claim_transform_fingerprint(holds_centre=False) != before_off
+
+
+def test_moving_charter_81_retires_the_centre_holding_sample(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """And it still fails closed where it must: 1,321 of those rows read
+    charter 81's lift, and moving it really does change their claims."""
+    import bayes_basket_target.basket_kernel.delta_v2 as kernel
+
+    before = kernel.claim_transform_fingerprint(holds_centre=True)
+    monkeypatch.setattr(
+        kernel, "CENTER_WINDOW_CLAIM_BANDS", ((0.35, 1.0), (1.01, 1.5)),
+    )
+    assert kernel.claim_transform_fingerprint(holds_centre=True) != before
+
+
+def test_the_fit_excludes_rows_from_another_claim_vintage() -> None:
+    """A row whose claim came from other tables is not evidence about a."""
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        claim_transform_fingerprint,
+    )
+    from bayes_basket_target.effective_edge_store import fit_lambda_table
+
+    conn = _db()
+    current = claim_transform_fingerprint(holds_centre=True)
+    for index in range(6):
+        _candidate(
+            conn, f"cand-current-{index}", bucket=f"3{index}°C",
+        )
+        conn.execute(
+            "UPDATE paper_trade_candidate_window"
+            " SET claim_transform_sha256=? WHERE candidate_id=?",
+            (current, f"cand-current-{index}"),
+        )
+    for index in range(6):
+        _candidate(
+            conn, f"cand-stale-{index}", bucket=f"4{index}°C",
+        )
+        conn.execute(
+            "UPDATE paper_trade_candidate_window"
+            " SET claim_transform_sha256=? WHERE candidate_id=?",
+            ("0" * 64, f"cand-stale-{index}"),
+        )
+    conn.execute(
+        "INSERT INTO paper_trade_settlement("
+        " settlement_id, position_id, station_id, event_date, stage,"
+        " settled_tmax_c, settled_bucket, hit, stake_usdc, payout_usdc,"
+        " pnl_usdc, claimed_win_probability, settled_at_utc)"
+        " VALUES('s1','p1','ZSQD','2026-09-05','P0',30.0,'30°C',1,"
+        " 1.0,2.0,1.0,0.5,'2026-09-05T12:00:00Z')"
+    )
+    fit = fit_lambda_table(conn, stage_scope="P0")
+    assert fit["claim_transform_sha256"] is not None
+    assert fit["excluded_other_claim_transform"] == 6
+    conn.close()

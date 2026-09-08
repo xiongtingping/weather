@@ -221,6 +221,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     EDGE_STATE_ADMISSIBLE,
     EFFECTIVE_EDGE_BAND_BOUNDS,
     DECISION_MOMENT_RULE_VERSION,
+    claim_transform_fingerprint,
     basket_holding_signature_v1,
     edge_state_v1,
     is_decision_moment_v1,
@@ -1907,6 +1908,17 @@ SELECTION_RULE_LABEL = "·".join(filter(None, (
     "生产种子" if JUDGE != "ledger" else None,
     "一本账·只加不减",
 )))
+# Charter 110 (extended 2026-09-08): the claim-transform vintage written
+# beside every candidate window so the lambda fit can partition on it.
+# Two fingerprints, not one: a window holding the centre goes through
+# charter 81's lift and never touches the off-centre table, and the
+# reverse, so a single union key would retire the whole sample whenever
+# either table moved.  Read once each -- kernel constants cannot move
+# mid-run.
+CLAIM_TRANSFORM_SHA256_CENTRE = claim_transform_fingerprint(holds_centre=True)
+CLAIM_TRANSFORM_SHA256_OFF_CENTRE = claim_transform_fingerprint(
+    holds_centre=False
+)
 SELECTION_RULE_SHA256 = content_sha256({
     "schema": "paper_trade_selection_rule_v6",
     "compounding": "credible_fills_only_from_settlements",
@@ -2815,6 +2827,15 @@ CREATE TABLE IF NOT EXISTS paper_trade_candidate_window (
   -- inside an axis is visible to an audit rather than invisible.
   band_axis TEXT,
   band_table_sha256 TEXT,
+  -- Charter 110 (extended 2026-09-08): the SECOND partition key.  The band
+  -- table is only the first layer that moves a claim; charter 81's centre
+  -- lift, the off-centre deflation and the convergence lift multiply the
+  -- same number after it, and ``a = price / claim`` is keyed on the result.
+  -- ``claim_transform_fingerprint()`` hashes all of them, so a fit never
+  -- pools rows whose claims were computed by different tables.  NULL means
+  -- "written before the column existed", which is not the current vintage
+  -- and is excluded exactly as a NULL band_axis is.
+  claim_transform_sha256 TEXT,
   -- The agreement the gate itself computed, when it computed one.  Not the
   -- fit's input -- price over claim above is -- but the cheapest possible
   -- check that the two agree.
@@ -3033,7 +3054,9 @@ def ensure_schema(conn: sqlite3.Connection) -> bool:
             "PRAGMA table_info(paper_trade_candidate_window)"
         )
     }
-    for _name in ("band_axis", "band_table_sha256"):
+    for _name in (
+        "band_axis", "band_table_sha256", "claim_transform_sha256",
+    ):
         if _name not in _candidate_cols:
             conn.execute(
                 "ALTER TABLE paper_trade_candidate_window"
@@ -3049,6 +3072,11 @@ def ensure_schema(conn: sqlite3.Connection) -> bool:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_candidate_window_axis"
         " ON paper_trade_candidate_window(stage, band_axis, event_date)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_candidate_window_claim_vintage"
+        " ON paper_trade_candidate_window("
+        "  stage, band_axis, claim_transform_sha256, event_date)"
     )
     conn.execute(_REFUSAL_DDL)
     # A new reason cannot be recorded through an existing CHECK, and
@@ -10205,6 +10233,13 @@ def backfill(
                             SELECTION_RULE_SHA256,
                             band_axis,
                             band_sha,
+                            (
+                                CLAIM_TRANSFORM_SHA256_CENTRE
+                                if float(
+                                    row.get("center_gap_buckets") or 0.0
+                                ) <= 0.0
+                                else CLAIM_TRANSFORM_SHA256_OFF_CENTRE
+                            ),
                         ))
             # The chain is done adding.  One position, one settlement: the
             # truth lands once, and scoring each stage against it separately
@@ -10380,8 +10415,8 @@ def backfill(
             " buckets_json, window_size, win_probability,"
             " raw_win_probability, all_in_price, gate_agreement,"
             " admissible, seated, selection_rule_sha256,"
-            " band_axis, band_table_sha256"
-            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            " band_axis, band_table_sha256, claim_transform_sha256"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT(station_id, event_date, stage, decision_at_utc,"
             "             buckets_json) DO UPDATE SET"
             "  win_probability=excluded.win_probability,"
@@ -10392,7 +10427,8 @@ def backfill(
             "  seated=excluded.seated,"
             "  selection_rule_sha256=excluded.selection_rule_sha256,"
             "  band_axis=excluded.band_axis,"
-            "  band_table_sha256=excluded.band_table_sha256",
+            "  band_table_sha256=excluded.band_table_sha256,"
+            "  claim_transform_sha256=excluded.claim_transform_sha256",
             pending_candidates,
         )
     if pending_settlements:

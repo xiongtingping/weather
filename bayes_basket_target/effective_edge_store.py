@@ -79,6 +79,7 @@ from typing import Any, Sequence
 from .band_reliability_store import BAND_TABLE_CELLS
 from .basket_kernel.delta_v2 import (
     center_window_claim_factor,
+    claim_transform_fingerprint,
     EFFECTIVE_EDGE_LAMBDA,
     EFFECTIVE_EDGE_P0M_LAMBDA,
     EFFECTIVE_EDGE_P1_LAMBDA,
@@ -324,18 +325,54 @@ def _band_partition_by_position(
     return out
 
 
-def _has_band_axis_column(conn: sqlite3.Connection) -> bool:
-    """Whether the candidate table carries charter 110's partition key."""
+def _has_candidate_column(conn: sqlite3.Connection, name: str) -> bool:
+    """Whether the candidate table carries one of charter 110's keys."""
 
     try:
         return any(
-            str(row[1]) == "band_axis"
+            str(row[1]) == name
             for row in conn.execute(
                 "PRAGMA table_info(paper_trade_candidate_window)"
             )
         )
     except sqlite3.Error:
         return False
+
+
+def _has_band_axis_column(conn: sqlite3.Connection) -> bool:
+    """Whether the candidate table carries charter 110's partition key."""
+
+    return _has_candidate_column(conn, "band_axis")
+
+
+def _active_claim_vintage(
+    conn: sqlite3.Connection, stage_scope: str
+) -> list[str] | None:
+    """The claim-transform fingerprint the served table was fitted under.
+
+    ``None`` for a table activated before the key existed, which is not the
+    current vintage: those rows were fitted on claims this code no longer
+    computes, and saying so is the whole point of the key.
+    """
+
+    try:
+        row = conn.execute(
+            "SELECT bands_json FROM calibration_effective_edge_lambda"
+            " WHERE activated=1 AND stage_scope=?",
+            (stage_scope,),
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    if not row:
+        return None
+    try:
+        payload = json.loads(str(row[0]))
+    except (TypeError, ValueError):
+        return None
+    value = payload.get("claim_transform_sha256")
+    if isinstance(value, list) and value:
+        return [str(item) for item in value]
+    return None
 
 
 def _fit_axis(
@@ -532,13 +569,40 @@ def fit_lambda_table(
         axis = None
     axis_clause = "" if axis is None else " AND band_axis IS ?"
     axis_args: tuple[Any, ...] = () if axis is None else (axis,)
+    # Charter 110 extended (2026-09-08): the same rule, one layer out.  The
+    # band table moves the claim; charter 81's lift, the off-centre
+    # deflation and the convergence lift move it again afterwards, and
+    # ``a = price / claim`` is keyed on what comes out.  A row written under
+    # a different version of those tables carries a claim this code would
+    # no longer compute, so it is not evidence about today's ``a``.
+    # Two fingerprints, one per path: a row is current if the tables ITS
+    # claim went through are the ones this code now serves.  Hashing both
+    # into one key would retire every centre-holding row whenever the
+    # off-centre table moved, and those rows never read it.
+    claim_vintages: tuple[str, ...] | None = (
+        claim_transform_fingerprint(holds_centre=True),
+        claim_transform_fingerprint(holds_centre=False),
+    )
+    if not _has_candidate_column(conn, "claim_transform_sha256"):
+        # A database whose ledger has not run the migration cannot be
+        # partitioned on a column it does not have, and that is ordinary --
+        # a fixture, a replay extract.  It fits on everything, as before.
+        claim_vintages = None
+    claim_clause = (
+        ""
+        if claim_vintages is None
+        else " AND claim_transform_sha256 IN (?,?)"
+    )
+    claim_args: tuple[Any, ...] = (
+        () if claim_vintages is None else claim_vintages
+    )
     rows = conn.execute(
         "SELECT win_probability, all_in_price, hit, station_id, event_date,"
         " stage, decision_at_utc"
         " FROM paper_trade_candidate_window"
         f" WHERE stage IN ({placeholders}) AND event_date >= ?"
-        "   AND hit IS NOT NULL" + axis_clause,
-        (*stages, floor_day, *axis_args),
+        "   AND hit IS NOT NULL" + axis_clause + claim_clause,
+        (*stages, floor_day, *axis_args, *claim_args),
     ).fetchall()
     excluded_axis = 0 if axis is None else conn.execute(
         "SELECT COUNT(*) FROM paper_trade_candidate_window"
@@ -546,6 +610,31 @@ def fit_lambda_table(
         "   AND hit IS NOT NULL AND band_axis IS NOT ?",
         (*stages, floor_day, axis),
     ).fetchone()[0]
+    excluded_claim = 0 if claim_vintages is None else conn.execute(
+        "SELECT COUNT(*) FROM paper_trade_candidate_window"
+        f" WHERE stage IN ({placeholders}) AND event_date >= ?"
+        "   AND hit IS NOT NULL"
+        "   AND (claim_transform_sha256 IS NULL"
+        "        OR claim_transform_sha256 NOT IN (?,?))",
+        (*stages, floor_day, *claim_vintages),
+    ).fetchone()[0]
+    # A band this fit cannot measure keeps the incumbent -- but only while
+    # the incumbent describes the same claim.  When the transform has moved,
+    # the served number was fitted on a quantity that no longer exists, and
+    # carrying it forward is the silent borrowing charter 104 forbids.  The
+    # scope falls back to the kernel bootstrap and says so, which is the
+    # honest state: no evidence yet under this vintage.
+    claim_vintage_changed = bool(
+        claim_vintages is not None
+        and _active_claim_vintage(conn, stage_scope) != list(claim_vintages)
+    )
+    if claim_vintage_changed:
+        incumbent = _project_onto_partition(
+            _bootstrap_bands(stage_scope), _bootstrap_bands(stage_scope)
+        )
+        tally_incumbent_note = "bootstrap_after_claim_transform_change"
+    else:
+        tally_incumbent_note = "activated_table"
     partition = _band_partition_by_decision(conn, stages, floor_day)
     band_filter: dict[str, Any] = {
         "cells": BAND_PARTITION_CELLS,
@@ -625,6 +714,12 @@ def fit_lambda_table(
         "as_of_event_date": latest,
         "fit_floor_event_date": floor_day,
         "band_partition_cells": BAND_PARTITION_CELLS,
+        # Charter 110 extended: the vintage this table's numbers describe.
+        # Stored on the payload because that is what ``_active_claim_vintage``
+        # reads back when the next fit asks whether it may inherit.
+        "claim_transform_sha256": (
+            None if claim_vintages is None else list(claim_vintages)
+        ),
     }
     return {
         "table": payload,
@@ -636,6 +731,12 @@ def fit_lambda_table(
         # exactly like a fit that had half as much.
         "band_axis": axis,
         "excluded_other_band_axis": int(excluded_axis),
+        "claim_transform_sha256": (
+            None if claim_vintages is None else list(claim_vintages)
+        ),
+        "excluded_other_claim_transform": int(excluded_claim),
+        "claim_transform_changed": claim_vintage_changed,
+        "incumbent_basis": tally_incumbent_note,
         "content_sha256": content_sha256(payload),
         "bands": bands,
         "evidence": evidence,

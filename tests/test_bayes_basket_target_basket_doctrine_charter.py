@@ -1724,30 +1724,42 @@ def test_clause_43_forecast_radiation_leads_the_cooling_shift() -> None:
 
 
 def test_off_centre_windows_are_deflated_not_forbidden() -> None:
-    """A window without the model's centre is over-claimed, not illegal.
+    """A window without the model's centre is corrected, not made illegal.
 
-    Measured over 5,230 station-days on four-bucket contiguous windows:
-    windows holding the centre realize 1.01 of their claimed mass on the
-    bulk band, windows without it run 0.78-0.85 across four adjacent bands
-    and 0.48 above 0.55 claimed.  The spread inflation that fixes the tails
-    moves mass outward faster than the truth does.
+    The correction's SIZE was re-measured on 2026-09-08 and three of its five
+    cells did not survive.  The 2026-08-14 fit left no code behind -- the
+    measuring script was not written until 2026-09-05 -- and it was taken the
+    day before charter 49 made centre containment a structural admission
+    floor, so it scored a population of off-centre windows the ladder ruling
+    then removed.  Two reproducible runs (2026-09-05, 2026-09-08; 1,419
+    station-days) put the low two cells where they were and the top three at
+    or above 1.0, every interval containing it:
 
-    The answer is a corrected probability, not a rail.  Rails were retired
-    because they price nothing: a cheap far window can be genuinely worth
-    buying and still wins after the correction, while a window claiming the
-    majority of the mass from off centre goes negative on its own arithmetic.
+        0.05-0.10  0.80   0.10-0.20  0.84   0.20-0.35  0.99
+        0.35-0.55  1.14   0.55-1.00  1.06 [0.90,1.19] n=120
+
+    So the top three serve 1.0.  What this test still guards is the SHAPE of
+    the rule -- a correction to the probability the objective reads, never an
+    admission branch -- because that is the part the 2026-08-14 ruling
+    decided and the re-measurement did not touch.
     """
 
     from bayes_basket_target.basket_kernel.delta_v2 import (
         off_center_claim_factor,
     )
 
-    # Deflation across the measured plateau, sharper where the over-claim is.
-    assert off_center_claim_factor(0.30) < 1.0
-    assert off_center_claim_factor(0.45) < 1.0
-    assert off_center_claim_factor(0.70) < off_center_claim_factor(0.30)
-    # Shrunk toward one rather than served at the point estimate.
-    assert off_center_claim_factor(0.70) > 0.48
+    # The two cells that reproduced still deflate.
+    assert off_center_claim_factor(0.07) < 1.0
+    assert off_center_claim_factor(0.15) < 1.0
+    # The three that did not are served at one: no correction is what an
+    # interval containing 1.0 supports, and this table never lifts a claim
+    # off centre.
+    assert off_center_claim_factor(0.30) == 1.0
+    assert off_center_claim_factor(0.45) == 1.0
+    assert off_center_claim_factor(0.70) == 1.0
+    # Containment is still the zero of the distance, on every cell.
+    assert off_center_claim_factor(0.70, gap_buckets=0) == 1.0
+    assert off_center_claim_factor(0.15, gap_buckets=0) == 1.0
 
     source = (
         Path(__file__).resolve().parents[1]

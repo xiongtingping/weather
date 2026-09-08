@@ -2684,14 +2684,51 @@ DEFAULT_P1_ENTRY_LOCAL_HOUR = 11.0
 # not have.
 #
 # Factors are shrunk 30% toward one rather than served at the point estimate.
+#
+# Re-measured 2026-09-08 (user asked where the 0.48 came from).  The
+# 2026-08-14 fit above left no code behind -- that commit shipped the kernel,
+# the runtime, the daemon and a doctrine test, and nothing that could re-run
+# the measurement; ``scripts/measure_off_center_claim.py`` was not written
+# until 2026-09-05.  So the numbers it reports cannot be reproduced, the
+# off-centre cells never recorded an n (only the centre-holding cell did,
+# n=16,981), and it was taken the day BEFORE charter 49 made centre
+# containment a structural admission floor -- so it measured a population of
+# off-centre windows that the ladder ruling then removed from the menu.
+#
+# When the script was finally written, its first run (2026-09-05) found the
+# other half of that same sentence had already failed: centre-holding windows
+# realise 1.10-1.30, not the 1.01 recorded here.  That produced charter 81's
+# lift.  The off-centre half of the same output was not acted on and stood
+# for three more days.
+#
+# Two reproducible runs now disagree with it, in the same direction, on the
+# same statistic (P0, four-bucket windows, argmax centre):
+#
+#   claimed      2026-08-14   2026-09-08 (1,419 station-days, 39 days)
+#   0.05 - 0.10     0.78       0.80 [0.54,1.08] n=627
+#   0.10 - 0.20     0.83       0.84 [0.74,0.96] n=1,304
+#   0.20 - 0.35     0.85       0.99 [0.92,1.06] n=1,916
+#   0.35 - 0.55     0.82       1.14 [1.08,1.19] n=1,533
+#   0.55 - 1.00     0.48       1.06 [0.90,1.19] n=120
+#
+# The bottom three cells are served at 1.0 rather than at their point
+# estimates: every one of their intervals contains 1, so "no correction" is
+# what the evidence supports and lifting an off-centre claim is not something
+# this table was ever asked to do.  The top two reproduce and are kept.
+#
+# The n on the last cell is the reason this is a correction and not a
+# rewrite: 120 windows against 3,973 centre-holding ones in the same band.
+# Charter 49 left the off-centre menu to the evidence-exempt incumbent alone,
+# so this whole table now governs a rare case -- which is also why it went
+# three weeks without anyone noticing it was wrong by a factor of two.
 OFF_CENTER_CLAIM_BANDS = (
     # (claimed-mass upper bound, realized-over-claimed factor)
     (0.05, 1.15),
     (0.10, 0.85),
     (0.20, 0.88),
-    (0.35, 0.90),
-    (0.55, 0.87),
-    (1.01, 0.64),
+    (0.35, 1.00),
+    (0.55, 1.00),
+    (1.01, 1.00),
 )
 
 
@@ -2860,6 +2897,73 @@ CONVERGENCE_CLAIM_MIN_AGREEMENT = 1.10
 CONVERGENCE_CLAIM_MIN_CLAIM_RISE = 0.02
 CONVERGENCE_CLAIM_MIN_PRICE_FALL = 0.05
 CONVERGENCE_CLAIM_RULE_VERSION = "convergence_claim_v1"
+
+
+# Charter 110 (extended 2026-09-08): the partition key for lambda is not the
+# band axis alone.  ``a = price / claim`` is keyed on the claim, and the band
+# table is only the first of several layers that move it -- charter 81's
+# centre lift, the off-centre deflation and the convergence lift all
+# multiply the same number afterwards.  A fit that pools rows written under
+# two different versions of THOSE tables is fitting one curve to two x axes,
+# exactly the failure the band-axis key was added to stop; the band axis
+# simply happened to be the layer that moved first.
+#
+# So this is the fingerprint of every table that turns a raw window mass
+# into the served claim.  It is a partition key, not an audit column: unlike
+# a band table (content-addressed, refitted daily, sha churning in the third
+# decimal) these are kernel constants that move only when a person changes
+# them, so partitioning on them costs nothing until one actually moves --
+# and when one does, it must cost the whole history, because the claims
+# behind those rows are no longer the claims the code now computes.
+CLAIM_TRANSFORM_RULE_VERSION = "claim_transform_v2"
+
+
+def claim_transform_fingerprint(*, holds_centre: bool) -> str:
+    """Content hash of the claim tables THIS window's claim actually went
+    through.
+
+    Keyed on the path, not on the union, and the distinction is the whole
+    value of the key.  A window holding the centre never touches the
+    off-centre table and a window without it never touches charter 81's
+    lift, so hashing both into one fingerprint would retire every row in
+    the sample whenever either table moved -- measured 2026-09-08: all
+    1,493 candidate windows in the book carry a factor at or above 1.0,
+    which is to say the ladder floor (charter 49) has left the fit with no
+    off-centre rows at all.  A union key would have taken the entire lambda
+    sample to zero to record a change to a table none of those rows read.
+
+    Split this way the key still fails closed where it must: charter 81's
+    lift is on 1,321 of those rows, and moving it does retire them, because
+    their claims really would no longer be the claims this code computes.
+    """
+
+    common = {
+        "rule": CLAIM_TRANSFORM_RULE_VERSION,
+        "convergence_mode": str(CONVERGENCE_CLAIM_MODE),
+        "convergence_factor": float(CONVERGENCE_CLAIM_FACTOR),
+        "convergence_stages": sorted(CONVERGENCE_CLAIM_STAGES),
+        "convergence_min_agreement": float(CONVERGENCE_CLAIM_MIN_AGREEMENT),
+        "convergence_min_claim_rise": float(CONVERGENCE_CLAIM_MIN_CLAIM_RISE),
+        "convergence_min_price_fall": float(CONVERGENCE_CLAIM_MIN_PRICE_FALL),
+    }
+    if holds_centre:
+        return content_sha256({
+            **common,
+            "path": "holds_centre",
+            "center_window_bands": [
+                [float(bound), float(factor)]
+                for bound, factor in CENTER_WINDOW_CLAIM_BANDS
+            ],
+        })
+    return content_sha256({
+        **common,
+        "path": "off_centre",
+        "off_center_bands": [
+            [float(bound), float(factor)]
+            for bound, factor in OFF_CENTER_CLAIM_BANDS
+        ],
+        "off_center_ramp_buckets": float(OFF_CENTER_CLAIM_RAMP_BUCKETS),
+    })
 
 
 def convergence_state_v1(
