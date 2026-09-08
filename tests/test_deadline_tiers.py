@@ -238,5 +238,8 @@ def test_the_evidence_pass_is_split_into_its_two_loops() -> None:
     timed, so "the refresh is expensive" could not become "which half".
     """
 
+    evidence_source = inspect.getsource(
+        TargetProductionWorker._materialize_market_evidence_from_manifest
+    )
     for span in ("market_evidence_cache_pass", "market_evidence_snapshot_pass"):
-        assert f'"{span}"' in SOURCE, span
+        assert f'"{span}"' in evidence_source, span
