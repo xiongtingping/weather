@@ -4774,7 +4774,6 @@ def compile_delta_v2_runtime_plan(
     capital_available_usdc: float,
     minimum_profit_floor: float,
     resource_probe_ok: bool,
-    regime_direction_allowed: bool = True,
     previous_probabilities: Mapping[str, float] | None = None,
     prior_centre_buckets: Sequence[str] = (),
     chain_consolidation_tilt: float | None = None,
@@ -5664,19 +5663,6 @@ def compile_delta_v2_runtime_plan(
     # answers to the same basket-level EV gate every other family does, so an
     # escape hatch that bypasses the complete-basket requirement is exactly
     # the thing that must not exist.
-    if not regime_direction_allowed and selection.get("authorized") is True:
-        selection = {
-            **selection,
-            "selected_actions": [],
-            "selected_bundle": None,
-            "selected_action_sha256s": [],
-            "selected_score": 0.0,
-            "capital_reserved_usdc": 0.0,
-            "basket_complete": False,
-            "authorized": False,
-            "blockers": ["regime_direction_not_allowed"],
-            "hold_selected": True,
-        }
     if snapshot.terminal and selection.get("authorized") is True:
         selection = {
             **selection,
@@ -5827,8 +5813,6 @@ def compile_delta_v2_runtime_plan(
         reason_codes.append("no_decision_moment")
     if not center_stable:
         reason_codes.append("center_probability_lead_unstable")
-    if not regime_direction_allowed:
-        reason_codes.append("regime_direction_not_allowed")
     delta_v2_audit = {
         "schema": "delta_basket_score_authorization_v2",
         # The stake tilt this decision compiled under, so the ledger and a

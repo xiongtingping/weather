@@ -1335,9 +1335,17 @@ def _compile_target_plan(
         # It also read the direction it was judging out of the plan it then
         # overruled, which makes it a veto on the objective rather than an
         # independent piece of evidence.  The receipt stays because the
-        # regime read is still worth seeing beside a decision.
-        if not regime_gate.direction_allowed:
-            blockers.append("regime_direction_recorded_not_enforced")
+        # regime read is still worth seeing beside a decision -- but it stays
+        # in ``regime_audit``, which already carries ``direction_allowed``
+        # alongside the state, the reasons and every number behind them.
+        #
+        # It used to be appended to ``blockers`` as well (user ruling
+        # 2026-09-08, "regime 生效了吗").  That made a receipt for something
+        # that blocks nothing the second most common blocker in the book --
+        # 4664 of them, more than every real refusal but one -- so any count
+        # of "why did this day not trade" was wrong by that much.  A blocker
+        # list is what refused; a disagreement that does not refuse belongs
+        # in the audit and is already there.
     else:
         regime_gate = None
 
