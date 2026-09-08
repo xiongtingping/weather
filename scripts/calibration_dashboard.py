@@ -634,11 +634,23 @@ def collect_band_stages(conn: sqlite3.Connection) -> list[dict[str, Any]]:
 
     if not _table_exists(conn, "calibration_band_reliability_table"):
         return []
+    # Charter 105: a table carries the axis its cells are keyed on, and a
+    # reader that cannot answer which one must not render it -- the two
+    # partitions take the same shape ([lo, hi) pairs) and both "work".
+    # The column is absent on a database written before 2026-09-07, where
+    # every table was fitted on the claim.
+    has_axis = any(
+        str(col[1]) == "axis"
+        for col in conn.execute(
+            "PRAGMA table_info(calibration_band_reliability_table)"
+        )
+    )
+    axis_column = "COALESCE(axis, 'claim')" if has_axis else "'claim'"
     stages = []
     for stage in BAND_STAGES:
         row = conn.execute(
             "SELECT band_table_sha256, factors_json, evidence_json,"
-            " fitted_at_utc, serving_day_count"
+            " fitted_at_utc, serving_day_count, " + axis_column +
             " FROM calibration_band_reliability_table"
             " WHERE activated=1 AND stage=?",
             (stage,),
@@ -659,6 +671,7 @@ def collect_band_stages(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 "meaning": STAGE_MEANING.get(stage, ""),
                 "state": "未建表",
                 "health": "amber",
+                "axis": "claim",
                 "bands": [],
                 "journal": [],
             })
@@ -667,6 +680,7 @@ def collect_band_stages(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         evidence = json.loads(row[2])
         fitted_at = row[3]
         days = int(row[4])
+        axis = str(row[5] or "claim")
         station_days = evidence.get("serving_station_day_count")
         # The active row is content-addressed by its factors and is only
         # rewritten when they change, so a stage that keeps re-fitting to
@@ -723,6 +737,7 @@ def collect_band_stages(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             "min_days": MIN_QUALIFYING_DAYS,
             "station_days": station_days,
             "accumulating": accumulating,
+            "axis": axis,
             "bands": bands,
             "journal": [
                 {
@@ -7438,18 +7453,16 @@ function stages(){
   const cards = D.stages.map(s => {
     const pct = s.accumulating && s.min_days ?
       Math.min(100, 100 * s.serving_days / s.min_days) : 100;
-    // Five-percent display grid capped at 50% (user ruling, 2026-08-25),
-    // the same rows the audit table below uses, so knob and audit line up.
-    // A display bin belongs to the fitted cell holding its midpoint; the
-    // fitted cells are wider than 5%, so consecutive rows sharing a cell
-    // repeat its factor and say which cell owns them.
-    const GRID = [];
-    for (let i = 0; i < 10; i++) GRID.push([i*5, i*5+5]);
-    GRID.push([50, 100]);
-    const bands = GRID.map(([lo, hi]) => {
-      const mid = (lo + hi) / 2 / 100;
-      const b = (s.bands || []).find(x => mid >= x.lower && mid < x.upper);
-      if (!b) return "";
+    // The rows are the TABLE's own axis, never the page's preference
+    // (charter 105).  A stage fitted on distance from the peak has five
+    // cells that are not probabilities at all, and reading them through
+    // the claim grid put the [0,1) cell -- which every claim midpoint
+    // falls into -- on all eleven rows: one factor, printed eleven times,
+    // beside a header that said "4 档生效".  That was the page lying
+    // about a table production was applying correctly.
+    const axis = s.axis || "claim";
+    const distance = axis === "centre_distance";
+    const cell = (b, rowLabel, cellNote) => {
       const f = b.factor;
       const cls = f > 1.001 ? "up" : (f < 0.999 ? "down" : "flat");
       const arrow = f > 1.001 ? "调高" : (f < 0.999 ? "调低" : "不动");
@@ -7465,17 +7478,44 @@ function stages(){
            basis.includes("accumulating") ? "样本还不够，先不动" :
            basis.includes("forward") ? "试算后反而变差，不采用" :
            basis.includes("no_sample") ? "这一档还没有样本" : "暂不修正");
-      const cellLabel = `${(b.lower*100).toFixed(0)}–${
-        Math.min(100, b.upper*100).toFixed(0)}%`;
-      const rowLabel = hi >= 100 ? "≥50%" : `${lo}–${hi}%`;
-      const cellNote = cellLabel === `${lo}–${hi}%` || (hi >= 100 && b.lower >= 0.5)
-        ? "" : ` <span class="muted">档 ${cellLabel}</span>`;
       return `<tr>
         <td class="mono">${rowLabel}</td>
         <td>${measured}${cellNote}</td>
         <td class="factor ${cls}">${f.toFixed(3)} <span class="muted">${arrow}</span></td>
         <td class="muted">${why}</td></tr>`;
+    };
+    // Distance axis: one row per fitted cell, no display grid to map onto
+    // -- the cells ARE the rungs.  The open top cell is every bucket four
+    // or more steps out from the peak.
+    const distanceRows = () => (s.bands || []).map(b => {
+      const lo = Math.round(b.lower);
+      const rowLabel = lo === 0 ? "峰值桶"
+        : (b.upper >= 90 ? `离峰 ≥${lo} 格` : `离峰 ${lo} 格`);
+      return cell(b, rowLabel, "");
     }).join("");
+    // Five-percent display grid capped at 50% (user ruling, 2026-08-25),
+    // the same rows the audit table below uses, so knob and audit line up.
+    // A display bin belongs to the fitted cell holding its midpoint; the
+    // fitted cells are wider than 5%, so consecutive rows sharing a cell
+    // repeat its factor and say which cell owns them.
+    const claimRows = () => {
+      const GRID = [];
+      for (let i = 0; i < 10; i++) GRID.push([i*5, i*5+5]);
+      GRID.push([50, 100]);
+      return GRID.map(([lo, hi]) => {
+        const mid = (lo + hi) / 2 / 100;
+        const b = (s.bands || []).find(x => mid >= x.lower && mid < x.upper);
+        if (!b) return "";
+        const cellLabel = `${(b.lower*100).toFixed(0)}–${
+          Math.min(100, b.upper*100).toFixed(0)}%`;
+        const rowLabel = hi >= 100 ? "≥50%" : `${lo}–${hi}%`;
+        const cellNote = cellLabel === `${lo}–${hi}%` ||
+          (hi >= 100 && b.lower >= 0.5)
+          ? "" : ` <span class="muted">档 ${cellLabel}</span>`;
+        return cell(b, rowLabel, cellNote);
+      }).join("");
+    };
+    const bands = distance ? distanceRows() : claimRows();
     const journal = (s.journal || []).slice(0, 5).map(j =>
       `<tr><td class="mono">${h(j.at).slice(0,16).replace("T"," ")}</td>
        <td>${j.outcome === "ACTIVATED" ? "换新版本" :
@@ -7487,6 +7527,7 @@ function stages(){
         <span class="dot ${s.health}"></span><b>${h(s.stage)}</b>
         <span class="muted">${h(s.meaning)}</span>
         <span style="flex:1"></span>
+        <span class="pill">${distance ? "按离峰距离分档" : "按声称概率分档"}</span>
         <span class="pill ${s.health}">${h(s.state)}</span>
       </div>
       <div class="muted" style="margin-top:8px">
@@ -7497,7 +7538,8 @@ function stages(){
         <div class="muted" style="margin-top:5px">攒够 ${s.min_days} 天就会
         自动开始尝试修正，不需要改代码</div>` : ""}
       <table style="margin-top:12px"><thead><tr>
-        <th>概率档</th><th>实际兑现</th><th>修正系数</th><th>为什么</th>
+        <th>${distance ? "桶离峰距离" : "概率档"}</th>
+        <th>实际兑现</th><th>修正系数</th><th>为什么</th>
       </tr></thead><tbody>${bands}</tbody></table>
       ${journal ? `<details style="margin-top:8px">
       <summary class="muted" style="cursor:pointer">最近几次自动拟合</summary>
@@ -7506,10 +7548,20 @@ function stages(){
       <tbody>${journal}</tbody></table></details>` : ""}
     </div>`;
   }).join("");
-  return `<h2>band 表：概率分档校准（三阶段各自的账）</h2>
+  const axisNote = D.stages.map(s => `${s.stage}＝${
+    (s.axis || "claim") === "centre_distance" ? "离峰距离" : "声称概率"}`)
+    .join("、");
+  const anyDistance = D.stages.some(s => s.axis === "centre_distance");
+  return `<h2>band 表：分档校准（三阶段各自的账）</h2>
   <p class="sub">系统会记录"凡是说过 X% 的地方，后来实际发生了多少次"。
   如果长期说 6% 只发生 4%，就把这一档的数字乘一个小于 1 的系数压回去。</p>
-  <div class="why"><b>怎么看这张表：</b>「实际兑现」是实测兑现率除以声称概率——
+  <div class="why"><b>三张卡不一定按同一个东西分档</b>（第 105 条）：
+  当前 ${h(axisNote)}。<b>声称概率</b>是按"这个桶报了几成"分；
+  <b>离峰距离</b>是按"这个桶离当天分布的最高点差几格"分——
+  这张表治的病是过度分散（峰上压得太薄、四格开外压得太厚），那是一句关于
+  <b>位置</b>的话，而位置在乘完系数、重新归一之后不会变，声称概率会变。
+  每张卡的行就是它自己那根轴，不再互相翻译。</div>
+  <div class="why" style="margin-top:8px"><b>怎么看这张表：</b>「实际兑现」是实测兑现率除以声称概率——
   1.00× 表示说得准，0.69× 表示说大话（只兑现了 69%），1.23× 表示说小话。
   「修正系数」是实际乘上去的那个数，只有证据足够扎实的档才会不等于 1.000，
   而且取的是保守值——宁可少改，不可改过头。</div>
@@ -7518,9 +7570,13 @@ function stages(){
   ② <b>拧旋钮</b>——证据过门的档拟出修正系数，乘进下一次服务的概率。
   这是全链<b>唯一改变数字</b>的一步；<br>
   ③ <b>体检</b>——下面「说了多少 vs 真发生了多少」量的是系数生效<b>之后</b>的
-  剩余偏差，<b>分 stage、与上表同一取样车道、同一证据起点、同一把 5% 尺</b>
+  剩余偏差，<b>分 stage、与上表同一取样车道、同一证据起点</b>
   （2026-08-25 起；此前它读的是训练端 OOS 预测，人群不同曾与上表互相矛盾）。
-  它只诊断、不回写。若某档残差持续变大，说明对应旋钮方向或粒度不对——回到 ②。</div>
+  它只诊断、不回写。${anyDistance ? `体检永远按<b>声称概率</b>的 5% 尺分档
+  ——问的是"报出去的数准不准"；上表按离峰距离分档的那一阶段，
+  和这张表<b>不能逐行对照</b>，只能看总体残差有没有变小。` :
+  "它与上表同一把 5% 尺，可以逐行对照。"}
+  若某档残差持续变大，说明对应旋钮方向或粒度不对——回到 ②。</div>
   <div class="grid g3" style="margin-top:8px">${cards}</div>
   ${reliabilityAudit()}`;
 }
@@ -7708,13 +7764,16 @@ function reliabilityAudit(){
     </tr></thead><tbody>${stationRows}</tbody></table></div></div>`;
   return `<div class="card" style="margin-top:12px">
   <div class="muted"><b>③ 体检：说了多少 vs 真发生了多少</b>（band 店同一车道 ·
-  每站日首个决策 · 同窗同 stage 同一把 5% 尺 · 唯一差别：上表读系数前的原始声称，
-  本表读系数后的实际服务值 · 只诊断，无下游消费）</div>
+  每站日首个决策 · 同窗同 stage · 本表恒按<b>声称概率</b>的 5% 尺分档，
+  与上表逐行对照仅在该 stage 也按声称概率分档时成立 · 唯一差别：上表读系数前的
+  原始声称，本表读系数后的实际服务值 · 只诊断，无下游消费）</div>
   ${stageBlocks}
   <div class="muted" style="margin-top:6px">
     「差」为正＝实际比声称更常发生（修完还保守）；为负＝修完仍吹头。
-    与上表逐行对照：某档上表刚给了压缩系数、本表仍显著为负，说明系数还没压够；
-    本表转正说明压过了头。只显示样本 ≥30 的档。</div>
+    与上表逐行对照（仅限同按声称概率分档的 stage）：某档上表刚给了压缩系数、
+    本表仍显著为负，说明系数还没压够；本表转正说明压过了头。
+    按离峰距离分档的 stage 看整列残差是否整体收窄，不做逐行对照。
+    只显示样本 ≥30 的档。</div>
   ${stationBlock}</div>`;
 }
 

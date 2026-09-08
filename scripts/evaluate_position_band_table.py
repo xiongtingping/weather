@@ -11,7 +11,7 @@ Scored per bucket (NLL, Brier, reliability near/far) and per window
 import json, math, random, sqlite3, sys
 from collections import defaultdict
 sys.path.insert(0, ".")
-from bayes_basket_target.band_reliability_store import _truth, serving_lane_by_station_day, load_band_table
+from bayes_basket_target.band_reliability_store import _truth, serving_lane_by_station_day, load_band_table_with_axis
 from bayes_basket_target.cross_consensus import apply_band_reliability
 from bayes_basket_target.basket_kernel.support import mean_center_bucket_v1
 
@@ -64,7 +64,13 @@ def boot(rows_by_day, draws=600, seed=7):
 for stage in ("P0", "P0-M", "P1"):
     pre = serving_lane_by_station_day(conn, truth, stage=stage, pre_band=True)
     post = serving_lane_by_station_day(conn, truth, stage=stage, pre_band=False)
-    table, sha = load_band_table(conn, stage=stage)
+    table, sha, axis = load_band_table_with_axis(conn, stage=stage)
+    # This study predates charter 105 and its lookup (``pooled_factor``,
+    # ``serve_position``) keys cells by the CLAIM.  P0 moved to the
+    # distance axis on 2026-09-07, where every claim under 50% falls in
+    # the first cell -- re-running it there would print a full scorecard
+    # off one factor.  Stop instead of scoring the wrong lookup.
+    assert axis == "claim", f"{stage} serves a {axis} table; this study is claim-keyed"
     cells = promoted_cells(stage)
     print(f"\n##### {stage}: {len(pre)} station-days, active pooled table {sha[:8]}, promoted position cells {len(cells)}")
     matched = total = 0
