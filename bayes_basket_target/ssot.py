@@ -2605,6 +2605,25 @@ ON basket_target_execution_cycles(state,station_id,event_date);
 -- on a table this size, rather than after it grows into the profile.
 CREATE INDEX IF NOT EXISTS basket_target_order_intents_state_cycle_idx
 ON basket_target_order_intents(state,cycle_id);
+-- Same table, the other way round, because the two callers ask opposite
+-- questions.  The quiescence guard asks "is any intent in a blocking
+-- state" and seeks by state; the live-cycle settlement asks, of one cycle
+-- at a time, "what are this cycle's intents" -- and two of its four
+-- correlated subqueries carry no state predicate at all, so a state-first
+-- index cannot serve them.
+--
+-- Measured 2026-09-07 on the production tables: 56,577 execution cycles
+-- sit in ``prepared``, and the settlement query ran four scans of the
+-- intents table per one of them -- about 436 million row visits to return
+-- a single row.  112.1s against production, 95.1s on an isolated copy;
+-- with this index the same query returns the same single row in 0.25s.
+--
+-- It was the largest stage in the cycle when it was found, at 139.1s of
+-- 400.8s, and the eighth instance of one bug class here: an unindexed
+-- predicate over a growing append-only ledger, read per scope, on a path
+-- that holds up a decision.
+CREATE INDEX IF NOT EXISTS basket_target_order_intents_cycle_idx
+ON basket_target_order_intents(cycle_id,state);
 CREATE UNIQUE INDEX IF NOT EXISTS basket_target_no_execution_vector_cycle_idx
 ON basket_target_execution_version_vectors(cycle_id)
 WHERE vector_policy='NO_EXECUTION';

@@ -205,3 +205,24 @@ def test_the_cycle_publishes_the_split() -> None:
     """Counted apart and reported apart, or the split changes nothing."""
 
     assert "split_refusals_by_capability(" in SOURCE
+
+
+def test_the_reconcile_mark_is_split_into_its_four_lanes() -> None:
+    """One mark over four lanes is how the largest stage in the cycle went
+    unexplained.
+
+    ``intent_reconcile`` times four separate lanes -- reconciling intents
+    the exchange has answered, repricing the resting ladder, retiring
+    stranded intents, settling live cycles -- and had no span inside any of
+    them.  Measured 2026-09-07 it was 139.1s of a 400.8s cycle, and the
+    profile could not say which lane that was.  It was one of them, at
+    112.1s.
+    """
+
+    for span in (
+        "reconcile_unresolved_intents",
+        "reprice_resting_rungs",
+        "retire_stranded_intents",
+        "settle_live_cycles",
+    ):
+        assert f'self._span("{span}")' in SOURCE, span

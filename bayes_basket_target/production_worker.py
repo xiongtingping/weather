@@ -15934,9 +15934,10 @@ class TargetProductionWorker:
         # not be answerable only when the market evidence happens to
         # materialize.  Nothing above this point can keep it from running.
         try:
-            intent_reconcile = self._reconcile_unresolved_intents(
-                as_of_utc=utc_now(),
-            )
+            with self._span("reconcile_unresolved_intents"):
+                intent_reconcile = self._reconcile_unresolved_intents(
+                    as_of_utc=utc_now(),
+                )
         except Exception as exc:  # noqa: BLE001 -- observational lane
             intent_reconcile = {
                 "schema": "bayes_basket_target_intent_reconcile_v1",
@@ -15949,9 +15950,10 @@ class TargetProductionWorker:
         # nothing else) and a rung off the ladder that stands is cancelled,
         # which frees its bucket for the re-post the next compile makes.
         try:
-            resting_reprice = self._reprice_resting_rungs(
-                as_of_utc=utc_now(),
-            )
+            with self._span("reprice_resting_rungs"):
+                resting_reprice = self._reprice_resting_rungs(
+                    as_of_utc=utc_now(),
+                )
         except Exception as exc:  # noqa: BLE001 -- observational lane
             resting_reprice = {
                 "schema": "bayes_basket_target_resting_reprice_v1",
@@ -15961,9 +15963,10 @@ class TargetProductionWorker:
         # And retire the ones no cycle will ever submit, which would
         # otherwise hold their buckets shut indefinitely.
         try:
-            intent_retire = self._retire_stranded_prepared_intents(
-                as_of_utc=utc_now(),
-            )
+            with self._span("retire_stranded_intents"):
+                intent_retire = self._retire_stranded_prepared_intents(
+                    as_of_utc=utc_now(),
+                )
         except Exception as exc:  # noqa: BLE001 -- observational lane
             intent_retire = {
                 "schema": "bayes_basket_target_intent_retire_v1",
@@ -15975,7 +15978,10 @@ class TargetProductionWorker:
         # that traded and is over must stop standing as the station-day's
         # active candidate, or nothing after it can be committed.
         try:
-            live_cycle_settle = self._settle_live_cycles(as_of_utc=utc_now())
+            with self._span("settle_live_cycles"):
+                live_cycle_settle = self._settle_live_cycles(
+                    as_of_utc=utc_now()
+                )
         except Exception as exc:  # noqa: BLE001 -- observational lane
             live_cycle_settle = {
                 "schema": "bayes_basket_target_live_cycle_settle_v1",

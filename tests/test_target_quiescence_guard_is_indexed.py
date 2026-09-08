@@ -31,6 +31,7 @@ deterministic and says which predicate regressed.
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -42,6 +43,8 @@ from bayes_basket_target.order_state_producer import (
     TARGET_RECONCILIATION_BLOCKING_STATES,
 )
 from bayes_basket_target.ssot import apply_production_ssot_schema
+
+ROOT = Path(__file__).resolve().parents[1]
 
 LIVE_AUTHORITY_SQL = (
     "SELECT 1 FROM auto_trade_decisions WHERE will_order<>0"
@@ -141,6 +144,7 @@ def test_both_indexes_are_declared_in_the_schema(
         "auto_trade_decisions_live_authority_idx",
         "basket_target_execution_cycles_state_scope_idx",
         "basket_target_order_intents_state_cycle_idx",
+        "basket_target_order_intents_cycle_idx",
     ):
         assert conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
@@ -185,3 +189,46 @@ def test_the_partial_index_still_finds_a_live_order_row(
     assert conn.execute(
         LIVE_AUTHORITY_SQL, ("KJFK", "KJFK", "2026-09-07", "2026-09-07")
     ).fetchone() is None
+
+
+# The settlement query, lifted from its call site rather than retyped, so a
+# change there cannot leave this test asserting a plan nobody runs.
+def _settle_live_cycles_sql() -> str:
+    import re
+
+    body = (ROOT / "bayes_basket_target" / "production_worker.py").read_text()
+    start = body.index("SELECT c.cycle_id, c.station_id, c.event_date")
+    match = re.search(
+        r"rows = self\.commit_conn\.execute\(\s*(.*?)\n\s*\)\.fetchall\(\)",
+        body[start - 200:start + 3000],
+        re.S,
+    )
+    assert match, "the settlement query moved; this test has to follow it"
+    return "".join(re.findall(r'"([^"]*)"', match.group(1))).replace(
+        "LIMIT ?", "LIMIT 200"
+    )
+
+
+def test_live_cycle_settlement_seeks_its_intents_by_cycle(
+    conn: sqlite3.Connection,
+) -> None:
+    """Four correlated subqueries, one cycle at a time.
+
+    Two of them carry no state predicate, so the state-first index cannot
+    serve them and they scanned the whole intents table once per candidate
+    cycle.  Measured 2026-09-07: 56,577 cycles in ``prepared``, about 436
+    million row visits, 112.1s against production to return one row -- the
+    largest stage in the cycle at the time, 139.1s of 400.8s.
+
+    A timing test would pass on this empty in-memory schema while
+    production scanned for two minutes, so the planner's answer is what is
+    asserted.
+    """
+
+    steps = _plan(conn, _settle_live_cycles_sql(), ())
+    scans = [
+        step for step in steps
+        if step.startswith("SCAN") and "USING" not in step
+    ]
+    assert not scans, f"settlement scans a base table: {steps}"
+    assert any("basket_target_order_intents_cycle_idx" in s for s in steps), steps
