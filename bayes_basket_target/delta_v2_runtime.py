@@ -5853,6 +5853,12 @@ def compile_delta_v2_runtime_plan(
             b: (float(by_bucket[b].ask_price) if by_bucket[b].ask_available else 0.0)
             for b in ordered_support if b in by_bucket
         },
+        # The same belief the authorization reads, six lines above.  Its
+        # absence is why every charter 116 exemption recorded a floor gain
+        # against a null edge: the clause exists because the increment
+        # prices negative where the floor gain is real, and "先只记账不进闸"
+        # cannot be honoured by an accounting that books one side.
+        claim_by_bucket=edge_probabilities,
         fee_rate=float(basket_policy.fee_rate),
     ) if ordered_support else None
     selection = select_complete_maker_bundle_v2(

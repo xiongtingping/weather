@@ -2041,6 +2041,7 @@ def completion_repair_exemption_v1(
     held_cost_usdc: Mapping[str, Any],
     target_shares: Mapping[str, Any],
     ask_by_bucket: Mapping[str, Any],
+    claim_by_bucket: Mapping[str, Any] | None = None,
     fee_rate: float = 0.0,
 ) -> dict[str, Any]:
     """Charter 116: a completion that makes an illegal floor legal is a repair.
@@ -2083,6 +2084,16 @@ def completion_repair_exemption_v1(
         held_cost_usdc=held_cost_usdc,
         target_shares=target_shares,
         ask_by_bucket=ask_by_bucket,
+        # The charter 73/92 belief, so the repair reports what it costs in
+        # EDGE beside what it buys in floor.  Optional here since 2026-09-08
+        # and never supplied, so every exemption this clause granted
+        # recorded ``increment_edge: null`` -- the exemption's whole premise
+        # is that the increment prices negative while the floor gain is
+        # real, and the number that would have shown it was the one not
+        # being computed.  Measured 2026-09-09: seven exemptions granted,
+        # all seven with a floor gain and none with an edge to weigh it
+        # against.
+        claim_by_bucket=claim_by_bucket,
         fee_rate=fee_rate,
     )
     exempt = bool(

@@ -1518,3 +1518,75 @@ def test_the_exemption_waives_the_score_and_nothing_else() -> None:
     # And the arm can be switched off, which restores the pre-ruling refusal.
     assert K.CHARTER_116_COMPLETION_REPAIR == "on"
     assert K.COMPLETION_REPAIR_RULE_VERSION == "completion_repairs_an_illegal_floor_v1"
+
+
+def test_the_repair_reports_what_it_costs_in_edge_beside_what_it_buys_in_floor() -> None:
+    """Charter 116's own premise, finally computed.
+
+    The clause exists because the two currencies habitually disagree on a
+    completion: the leg is missing because the book would not sell it at our
+    price, which is the region where ``claim < ask``, so the increment
+    prices NEGATIVE -- and buying it is what lifts the seat's worst
+    in-support settlement off ``-premium``, which the increment does not
+    price at all.  "先只记账不进闸" cannot be honoured by an accounting that
+    books one side of that.
+
+    ``claim_by_bucket`` was optional and the exemption's own call site never
+    passed it, though the charter 73 belief sat six lines above it.  So
+    every exemption granted recorded a floor gain against a null edge:
+    measured 2026-09-09 over the last 400 plans, seven exemptions, seven
+    floor gains, zero edges.  The number that would have shown what the
+    repair cost was the one not being computed.
+    """
+
+    kwargs = dict(
+        support=("31C", "32C", "33C"),
+        held_shares={"31C": 7.0, "32C": 0.0, "33C": 7.0},
+        held_cost_usdc={"31C": 1.68, "32C": 0.0, "33C": 1.75},
+        target_shares={"31C": 7.0, "32C": 7.0, "33C": 7.0},
+        ask_by_bucket={"31C": 0.24, "32C": 0.36, "33C": 0.25},
+    )
+    reading = completion_repair_exemption_v1(
+        **kwargs,
+        # The missing leg asks 0.36 against a claim of 0.30 -- the region
+        # the edge rule refuses, which is why it is still missing.
+        claim_by_bucket={"31C": 0.17, "32C": 0.30, "33C": 0.44},
+    )["floor_delta"]
+
+    assert reading["floor_legal_before"] is False
+    assert reading["floor_legal_after"] is True
+    # Both currencies, and they disagree, which is the whole point.
+    assert reading["increment_edge"] == pytest.approx(-0.42)
+    assert reading["floor_delta"] == pytest.approx(4.48)
+    assert reading["completion_cash_usdc"] == pytest.approx(2.52)
+    # The rate is the thing a ruling would have to argue about: how much
+    # worst case a unit of forgone edge buys.
+    assert reading["floor_per_edge_usdc"] == pytest.approx(4.48 / 0.42)
+    # The floor gain is NOT folded into the edge.  One number is what the
+    # repair costs in expectation, the other is what it buys in risk, and
+    # adding them would be counting the reason for the exemption as its
+    # justification.
+    assert reading["increment_edge"] < 0.0 < reading["floor_delta"]
+
+    # Without the belief the reading still stands, minus the edge column --
+    # a fixture or a replay that has no vector is not an error.
+    bare = completion_repair_exemption_v1(**kwargs)["floor_delta"]
+    assert bare["increment_edge"] is None
+    assert bare["floor_per_edge_usdc"] is None
+    assert bare["floor_delta"] == pytest.approx(reading["floor_delta"])
+
+
+def test_the_exemption_call_site_supplies_the_belief() -> None:
+    """The regression guard: the parameter is optional, so nothing but a
+    test stops it from silently going unpassed again -- which is exactly
+    how it stayed null from the day it was added."""
+
+    from pathlib import Path  # noqa: PLC0415
+
+    runtime = (
+        Path(__file__).resolve().parents[1]
+        / "bayes_basket_target" / "delta_v2_runtime.py"
+    ).read_text(encoding="utf-8")
+    call = runtime[runtime.index("completion_repair = completion_repair_exemption_v1"):]
+    call = call[:call.index("if ordered_support else None")]
+    assert "claim_by_bucket=edge_probabilities" in call, call[-400:]
