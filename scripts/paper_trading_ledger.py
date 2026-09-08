@@ -2473,6 +2473,12 @@ SELECTION_RULE_SHA256 = content_sha256({
     # standing position rather than a bet of its own -- so rows written
     # under the three-book reading describe a strategy that no longer runs.
     "book_model": BOOK_MODEL,
+    # Charter 121: whether a seat whose lifted shape the support floor refuses
+    # is re-asked with that row excluded, or the payload is dropped.  It
+    # selects a different seat on the station-days where it fires -- seven in
+    # the book as of 2026-09-08 -- so rows either side of it describe
+    # different strategies and must not share a fingerprint.
+    "post_lift_rerank": CHARTER_121_POST_LIFT_RERANK,
 })
 # Why a station-day has no seat, in the ledger's own words.  The page used to
 # infer this from the absence of a row and could only ever say "the objective
