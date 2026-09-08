@@ -26,6 +26,31 @@ from bayes_basket_target.native_daily_max_manifest import (
 from bayes_basket_target.native_daily_max_truth_binding import (
     build_native_daily_max_truth_binding_bundle,
 )
+from bayes_basket_target.model_product_identity import (
+    NATIVE_PRODUCT_IDS,
+)
+
+# This whole file exercises the native daily-max lane, and that lane cannot
+# run: every fixture here builds a registered product identity receipt, and
+# the receipt builder serves the native-decode ingress alone, which has no
+# members.  See ``test_native_decode_ingress_is_unpopulated`` for the fact
+# and the evidence -- both halves arrived in the 2026-08-06 bulk import
+# naming products the registry has never held, and nothing in the resident
+# cycle reaches them.
+#
+# Skipped at module level rather than deleted: the lane's contract tests are
+# the specification of what it would have to satisfy if a native-decode
+# product is ever registered, and the skip reason is what says why they are
+# not running.  It goes away by itself the day that ingress gains a member.
+if not NATIVE_PRODUCT_IDS:
+    import pytest as _pytest
+
+    _pytest.skip(
+        "native decode ingress registers no product; see"
+        " tests/test_native_decode_ingress_is_unpopulated.py",
+        allow_module_level=True,
+    )
+
 from bayes_basket_target.truth_authority_supersession import (
     REVIEW_AUDIT_SCHEMA,
     build_canonical_truth_authority_supersession_contract,
