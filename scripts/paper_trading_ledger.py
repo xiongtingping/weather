@@ -164,6 +164,8 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     # The production judge arm (2026-09-03): the objective that seats a
     # window and sizes it in one pass, and the tilt floor it spends under.
     _solve_over_support_windows,
+    CHARTER_121_POST_LIFT_RERANK,
+    CHARTER_121_POST_LIFT_ATTEMPTS,
     CONSOLIDATION_TILT_FLOOR_LEGS,
     # The P0-M TAF TX bucket the enumerator's TAF arms read: one function,
     # handed to ``_support_windows`` by both compiles (2026-09-04).
@@ -3701,6 +3703,13 @@ def _previous_checkpoint_probabilities(
     } or None
 
 
+# Charter 121: the marker that says a payload is being seen for the first
+# time, as opposed to a re-entry carrying a restored ``previous_probabilities``
+# -- which may legitimately be ``None`` on the first cycle of a stage, so the
+# sentinel cannot be ``None`` itself.
+_PAYLOAD_FIRST_ENTRY = object()
+
+
 def _deeper_refusal(current: tuple, candidate: tuple) -> tuple:
     """Keep whichever refusal got further down the funnel.
 
@@ -4410,6 +4419,7 @@ def _production_judge(
     tilt: float,
     last_decision_signature: Mapping[str, Any] | None = None,
     last_acted_probability_identity: str | None = None,
+    excluded_candidate_ids: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Production's whole-basket judge, run on this lane's book.
 
@@ -4757,6 +4767,10 @@ def _production_judge(
                 str(last_acted_probability_identity)
                 if last_acted_probability_identity else None
             ),
+            # Charter 121: rows this seat has already had refused by the
+            # post-lift floor downstream, so the winner chain picks among
+            # what is left rather than this lane holding the whole payload.
+            excluded_candidate_ids=tuple(excluded_candidate_ids),
             chain_growth_frame_usdc=growth_frame,
             last_decision_signature=last_decision_signature,
             # Charter 68(c)/87: production's solver reads the store's
@@ -4845,6 +4859,12 @@ def _production_judge(
         "enumerated_windows": windows,
         "decision_signature": decision_signature,
         "buckets": tuple(str(bucket) for bucket in seated),
+        # Charter 121: which row took the seat, so the caller can exclude it
+        # and ask again when its lifted shape fails charter 93's floor.
+        "winner_candidate_id": str(solution.get("winner_candidate_id") or ""),
+        "winner_candidate_kind": str(
+            solution.get("winner_candidate_kind") or ""
+        ),
         "target_shares": target,
         "delta_cost_usdc": delta_cost,
         "capital_usdc": capital,
@@ -8122,10 +8142,33 @@ def backfill(
                 # sees has nothing behind it, which is exactly the case the
                 # kernel treats as "unmeasured, leave alone".
                 previous_probabilities: dict[str, float] | None = None
-                for payload in _stage_entry_candidates(
-                    conn, station_id, event_date, stage
-                ):
-                    cycles += 1
+                # Charter 121 (2026-09-08): production re-solves a seat whose
+                # lifted shape charter 93 refuses, so this walk has to be able
+                # to ask the same payload a second question rather than drop
+                # it.  A queue rather than a plain iterator, because the two
+                # things the body carries across payloads -- the cycle counter
+                # and the previous cycle's distribution -- would otherwise be
+                # advanced twice for one payload and the clamp would compare a
+                # cycle with itself.  Both are restored on a re-entry, so a
+                # retry differs from the first pass in exactly one input.
+                _payload_queue: list[
+                    tuple[Mapping[str, Any], tuple[str, ...], Any]
+                ] = [
+                    (row, (), _PAYLOAD_FIRST_ENTRY)
+                    for row in _stage_entry_candidates(
+                        conn, station_id, event_date, stage
+                    )
+                ]
+                while _payload_queue:
+                    payload, _excluded_candidate_ids, _entry_prev = (
+                        _payload_queue.pop(0)
+                    )
+                    _payload_retry = _entry_prev is not _PAYLOAD_FIRST_ENTRY
+                    if _payload_retry:
+                        previous_probabilities = _entry_prev
+                    else:
+                        cycles += 1
+                    _payload_entry_prev = previous_probabilities
                     # Research arm: P0 waits out the young book.  Measured
                     # from the lane's own first cycle -- the listing proxy
                     # the ledger can see -- and skipping the cycle, never
@@ -8624,6 +8667,9 @@ def backfill(
                             tilt=tilt,
                             last_decision_signature=(
                                 chain_decision_signatures.get(stage)
+                            ),
+                            excluded_candidate_ids=(
+                                _excluded_candidate_ids
                             ),
                             # Charter 71(a): the identity the chain last
                             # bought under, as production reads it off
@@ -9789,6 +9835,25 @@ def backfill(
                                 ),
                             )
                             if not _floor_verdict["legal"]:
+                                # Charter 121: the floor refuses this
+                                # candidate, not the payload.  Re-ask with the
+                                # refused row excluded; the refusal is recorded
+                                # first either way, and ``_deeper_refusal``
+                                # keeps it -- depth 8 outranks anything a
+                                # shallower retry can report, and ties keep the
+                                # incumbent -- so a retry that finds nothing
+                                # leaves exactly the record this lane wrote
+                                # before the clause existed.
+                                _refused_id = str(
+                                    (production_verdict or {}).get(
+                                        "winner_candidate_id"
+                                    ) or ""
+                                )
+                                _refused_complete = str(
+                                    (production_verdict or {}).get(
+                                        "winner_candidate_kind"
+                                    ) or ""
+                                ) == "COMPLETE_BASKET_TARGET"
                                 refusal = _deeper_refusal(refusal, (
                                     "support_floor_after_lift",
                                     "宪章 93：抬手后支持集内最坏结算 %.2f"
@@ -9800,6 +9865,21 @@ def backfill(
                                     ),
                                     cycles, payload["decision_at_utc"],
                                 ))
+                                if (
+                                    CHARTER_121_POST_LIFT_RERANK == "on"
+                                    and _refused_complete
+                                    and _refused_id
+                                    and _refused_id
+                                    not in _excluded_candidate_ids
+                                    and len(_excluded_candidate_ids)
+                                    < CHARTER_121_POST_LIFT_ATTEMPTS - 1
+                                ):
+                                    _payload_queue.insert(0, (
+                                        payload,
+                                        _excluded_candidate_ids
+                                        + (_refused_id,),
+                                        _payload_entry_prev,
+                                    ))
                                 continue
                         # The exchange refuses any order under its lot, so
                         # a leg still under it after the raise cannot fill
