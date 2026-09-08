@@ -4124,6 +4124,13 @@ def _kelly_share_weights(
             ordered=ordered,
             prices={bucket: float(lane_prices.get(bucket, 0.0) or 0.0) for bucket in ordered},
             effective_claims=realisable,
+            # The belief the window was admitted on, so the shape cannot
+            # hand back a basket that expects less than the bed charter 78
+            # cleared.  Two deflations meet here -- the window scope is
+            # already inside ``probabilities_by_bucket`` and the bucket
+            # scope is applied above -- and they do not have to agree on
+            # the order of the rungs.
+            partition_by_bucket=probabilities_by_bucket,
         )
     if centre_bucket not in ordered or centre_bucket not in ordinals:
         return equal

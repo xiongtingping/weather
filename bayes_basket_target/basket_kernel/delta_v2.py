@@ -2158,13 +2158,27 @@ FLOOR_FIRST_EDGE_SHAPE_VERSION = "floor_first_edge_weights_v1"
 # one share a leg costs ``K = sum(c)`` and its worst in-support settlement
 # pays ``1 - K``; that gap is the only room a tilt has, because charter 93
 # forbids spending past it.  ``0`` reproduces ``equal`` exactly and is the
-# rollback; ``1`` spends the whole cushion and lands the floor on zero --
-# legal, but "win and break even", which is the shape charter 93 was written
-# against.  Half by default: the cushion is measured value (KMIA/SAEZ/KLGA
-# read +0.05 to +0.16 a set on it) and the tilt's own gain was measured at
-# zero on every basket whose cost sits within 0.05 of a share.
+# rollback; ``1`` spends the whole cushion.
+#
+# One by default (user ruling, 2026-09-08: "最优恒为 t=1：那先应用").  It
+# shipped at 0.5 on a guess, and the guess was made against a bankroll read
+# wrong: the stake is sized off the pool's ``balance_usdc`` (399.43 on
+# 2026-09-08), not off the 15 USDC station cap.  Scanned on that book at the
+# true equity, log wealth rises monotonically in ``t`` and the optimum is the
+# corner every time -- SAEZ 0.000319 -> 0.000335 across t=0..1 -- because a
+# 7.99 USDC stake against a 1597 USDC effective bankroll (W/f) leaves the
+# curve straight, which is charter 72's own "注 <= 6 时曲线是直线" read at
+# the right scale.  The half cushion was insurance against a curvature that
+# is not there.
+#
+# The cushion it spent was the other half of the guess: t=1 lands the
+# pre-lift floor on zero, and the fear was that charters 70/83 would lift a
+# leg and push it under.  Measured on the same book it does not -- SAEZ's
+# post-lift floor is +0.2064 at t=1, legal -- and charter 93(二)'s
+# after-lift recheck is the guard for that case anyway.  A second, weaker
+# guard that guesses at the lift is what this constant was.
 KELLY_EDGE_TILT_FRACTION = float(
-    os.environ.get("PM_KELLY_EDGE_TILT_FRACTION", "").strip() or 0.5
+    os.environ.get("PM_KELLY_EDGE_TILT_FRACTION", "").strip() or 1.0
 )
 if not (0.0 <= KELLY_EDGE_TILT_FRACTION <= 1.0):
     raise RuntimeError(
@@ -2178,6 +2192,7 @@ def floor_first_edge_weights_v1(
     prices: Mapping[str, Any],
     effective_claims: Mapping[str, Any],
     tilt_fraction: float | None = None,
+    partition_by_bucket: Mapping[str, Any] | None = None,
 ) -> dict[str, float]:
     """Relative shares per rung: an equal bed first, the cushion tilted second.
 
@@ -2260,7 +2275,34 @@ def floor_first_edge_weights_v1(
         if cost[bucket] <= EPS:
             continue
         weights[bucket] += freed * (edge / total_edge) / cost[bucket]
-    return weights
+    if partition_by_bucket is None:
+        return weights
+    # The floor is this shape's by construction; the whole-basket edge is
+    # not, and the two answer to different clauses.  ``sum(w*c) == K`` holds
+    # for the bed and the tilt alike, so at one stake they cost the same and
+    # their expected values differ only through ``sum(partition * w)`` --
+    # which makes "not worse than the bed" a one-line comparison rather than
+    # a re-evaluation.  It has to be compared at all because the tilt orders
+    # rungs by ``(lambda*p - c)/c`` while the expectation prices them at
+    # ``p``: two different orders, so a tilt can pay less than the bed it
+    # came from.
+    #
+    # Against the bed rather than against zero: the window this shape seats
+    # in has already cleared charter 78's whole-basket positive-EV gate on
+    # the equal shape, so a tilt at or above equal is positive by that
+    # gate's own arithmetic, and one comparison serves both.  What it makes
+    # impossible is the failure this is really here for -- the gate reading
+    # one basket while the book buys another.
+    share = {
+        bucket: _nonnegative(
+            f"delta_v2_shape_partition_{bucket}",
+            partition_by_bucket.get(bucket, 0.0),
+        )
+        for bucket in window
+    }
+    tilted = sum(share[b] * weights[b] for b in window)
+    bedded = sum(share[b] for b in window)
+    return weights if tilted + EPS >= bedded else equal
 
 def whole_basket_edge_delta_v1(
     *,

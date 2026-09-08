@@ -111,26 +111,39 @@ def test_edge_weighted_reads_the_realisable_claim_not_the_asserted_one() -> None
     ``d`` asserts the largest nominal edge on the ladder (0.45 claim against a
     0.15 offer, +0.30).  Its agreement is 0.333, which the charter-68 bucket
     arm reads at lambda 0.22, so its realisable claim is 0.099 -- under what
-    it costs.  Reading ``p - c`` hands it the whole cushion; reading
-    ``lambda(a)*p - c`` leaves it on the bed and tilts toward ``b``, whose
-    nominal edge is seven times smaller and whose realisable edge is the only
-    positive one on the ladder.
+    it costs.  Two facts are checked separately because the runtime applies
+    two rules here and they can each be right or wrong on their own: the
+    lambda the runtime reads per rung, and what the shape does with it.
     """
 
     prices = {"b": 0.40, "d": 0.15}
     claims = {"b": 0.55, "d": 0.45}
-    weights = R._kelly_share_weights(
+    assert claims["d"] - prices["d"] > claims["b"] - prices["b"]   # 名义上 d 最大
+    # 1. The lambdas the runtime reads: d falls in the left-cliff band.
+    lam = {
+        k: R.effective_edge_bucket_lambda_for_stage("P0", prices[k] / claims[k])
+        for k in prices
+    }
+    assert lam["d"] == pytest.approx(0.22)
+    realisable = {k: claims[k] * lam[k] for k in prices}
+    assert realisable["d"] < prices["d"]      # 可兑现后 d 是负边际
+    assert realisable["b"] > prices["b"]      # 只有 b 是正的
+    # 2. What the shape does with them: only b can receive the cushion.
+    tilted = K.floor_first_edge_weights_v1(
+        ordered=("b", "d"), prices=prices, effective_claims=realisable,
+    )
+    assert tilted["b"] > tilted["d"]
+    assert sum(tilted[x] * prices[x] for x in prices) == pytest.approx(
+        sum(prices.values())
+    )
+    # 3. And on this ladder the whole-basket guard then refuses that tilt --
+    #    the mass sits on ``d``, which the tilt trims -- so the runtime,
+    #    which passes the partition, hands back the bed.
+    assert R._kelly_share_weights(
         ordered=("b", "d"), lane_prices=prices,
         probabilities_by_bucket=claims,
         centre_bucket="", ordinals={}, shape="edge_weighted", stage="P0",
-    )
-    assert claims["d"] - prices["d"] > claims["b"] - prices["b"]   # 名义上 d 最大
-    assert weights["b"] > weights["d"]                              # 可兑现口径下不是
-    # ``d`` sits exactly on the bed: it received none of the cushion.
-    assert weights["d"] == pytest.approx(min(weights.values()))
-    assert sum(weights[x] * prices[x] for x in prices) == pytest.approx(
-        sum(prices.values())
-    )
+    ) == {"b": 1.0, "d": 1.0}
 
 
 def test_the_cushion_is_cash_proportional_to_edge() -> None:
@@ -244,3 +257,54 @@ def test_the_ledger_reads_productions_switch() -> None:
 
     assert L.KELLY_SHARE_SHAPE is R.KELLY_SHARE_SHAPE
     assert R.KELLY_SHARE_SHAPE == "equal"
+
+
+def test_the_tilt_never_expects_less_than_the_bed_it_came_from() -> None:
+    """The shape's floor is a theorem; its edge is not, so it is compared.
+
+    The tilt orders rungs by ``(lambda*p - c)/c`` and the expectation prices
+    them at ``p``.  Where the mass sits on a rung the tilt trims, the tilted
+    basket expects less than the equal one at the same cost -- and the window
+    was admitted on the equal one.  The shape hands back the bed instead.
+    """
+
+    prices = {"a": 0.12, "b": 0.47, "c": 0.38}
+    claims = {"a": 0.044, "b": 0.727, "c": 0.609}
+    tilted = K.floor_first_edge_weights_v1(
+        ordered=("a", "b", "c"), prices=prices, effective_claims=claims,
+    )
+    equal = {"a": 1.0, "b": 1.0, "c": 1.0}
+    # Mass on the rung the tilt trims: expecting less, so the bed comes back.
+    heavy_on_trimmed = {"a": 0.90, "b": 0.05, "c": 0.05}
+    assert sum(heavy_on_trimmed[b] * tilted[b] for b in prices) < 1.0
+    assert K.floor_first_edge_weights_v1(
+        ordered=("a", "b", "c"), prices=prices, effective_claims=claims,
+        partition_by_bucket=heavy_on_trimmed,
+    ) == equal
+    # Mass on the rungs it raises: the tilt is kept.
+    heavy_on_raised = {"a": 0.05, "b": 0.55, "c": 0.40}
+    assert K.floor_first_edge_weights_v1(
+        ordered=("a", "b", "c"), prices=prices, effective_claims=claims,
+        partition_by_bucket=heavy_on_raised,
+    ) == tilted
+    # Passing no partition keeps the unchecked shape, which is what every
+    # caller that has no belief to compare against gets.
+    assert K.floor_first_edge_weights_v1(
+        ordered=("a", "b", "c"), prices=prices, effective_claims=claims,
+    ) == tilted
+
+
+def test_the_tilt_fraction_defaults_to_the_measured_corner() -> None:
+    """t=1 by the 2026-09-08 scan; the floor is still non-negative there."""
+
+    assert K.KELLY_EDGE_TILT_FRACTION == 1.0
+    prices = {"a": 0.12, "b": 0.47, "c": 0.38}
+    unit = sum(prices.values())
+    w = K.floor_first_edge_weights_v1(
+        ordered=("a", "b", "c"), prices=prices,
+        effective_claims={"a": 0.044, "b": 0.727, "c": 0.609},
+    )
+    assert sum(w[b] * prices[b] for b in prices) == pytest.approx(unit)
+    # The whole cushion spent lands the floor exactly on zero -- legal, and
+    # charter 93(二) rechecks it after the lift.
+    assert min(w.values()) - unit == pytest.approx(0.0)
