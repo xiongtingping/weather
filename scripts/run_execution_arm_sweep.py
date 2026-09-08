@@ -104,6 +104,8 @@ ARMS: tuple[tuple[str, str, dict[str, str]], ...] = (
         "PAPER_LEDGER_FILL_MODEL": "touch"}),
     ("F-queue", "成交模型 queue（要排完身前的量，更严）", {
         "PAPER_LEDGER_FILL_MODEL": "queue"}),
+    ("F-hazard", "成交模型 hazard（深度重放 ∩ 影子形状抽签）", {
+        "PAPER_LEDGER_FILL_MODEL": "hazard"}),
 )
 
 
