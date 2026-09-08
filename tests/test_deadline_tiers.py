@@ -243,3 +243,98 @@ def test_the_evidence_pass_is_split_into_its_two_loops() -> None:
     )
     for span in ("market_evidence_cache_pass", "market_evidence_snapshot_pass"):
         assert f'"{span}"' in evidence_source, span
+
+
+# --------------------------------------------------------------------------
+# R0's own renewal.  The quote lease is the tightest tier, and the loop that
+# races it may renew -- but the renewal had a cap that could not tell a dead
+# publisher from a long loop.
+# --------------------------------------------------------------------------
+
+
+def test_a_renewing_refresh_is_never_capped() -> None:
+    """2026-09-08: six committed refreshes, then 43 scopes died behind them.
+
+    Every attempt renewed the lease, no failures, no ineffective day -- and
+    the cap counted attempts rather than unproductive ones, so a healthy
+    publisher on a long decision loop exhausted it and the rest of the day's
+    scopes compiled against a book that had already expired.  On the day
+    that settled that afternoon.
+    """
+
+    from bayes_basket_target.production_worker import (  # noqa: PLC0415
+        MAX_QUOTE_EVIDENCE_REFRESHES_PER_DAY,
+        quote_refresh_admitted_v1,
+    )
+
+    for attempt in range(MAX_QUOTE_EVIDENCE_REFRESHES_PER_DAY * 4):
+        assert quote_refresh_admitted_v1(
+            lease_left_seconds=1.0,
+            day_is_ineffective=False,
+            # Every one of them renewed, so none of them counts.
+            unproductive_attempts=0,
+        ), attempt
+
+
+def test_a_dead_publisher_still_stops_after_one_pass() -> None:
+    """The guard the 44-refreshes incident needed, unchanged.
+
+    A pass that writes nothing latches the day, and the latch fires after a
+    single attempt -- well before any count could.
+    """
+
+    from bayes_basket_target.production_worker import (  # noqa: PLC0415
+        quote_refresh_admitted_v1,
+    )
+
+    assert not quote_refresh_admitted_v1(
+        lease_left_seconds=1.0,
+        day_is_ineffective=True,
+        unproductive_attempts=0,
+    )
+
+
+def test_an_erroring_refresh_is_what_the_count_still_bounds() -> None:
+    """A refresh that throws renews nothing and the latch never sees it.
+
+    The latch asks whether a pass WROTE; an exception did not write and did
+    not answer.  That is the case a bounded number of tries is for, so those
+    attempts -- and only those -- count.
+    """
+
+    from bayes_basket_target.production_worker import (  # noqa: PLC0415
+        MAX_QUOTE_EVIDENCE_REFRESHES_PER_DAY,
+        quote_refresh_admitted_v1,
+    )
+
+    for attempt in range(MAX_QUOTE_EVIDENCE_REFRESHES_PER_DAY):
+        assert quote_refresh_admitted_v1(
+            lease_left_seconds=1.0,
+            day_is_ineffective=False,
+            unproductive_attempts=attempt,
+        ), attempt
+    assert not quote_refresh_admitted_v1(
+        lease_left_seconds=1.0,
+        day_is_ineffective=False,
+        unproductive_attempts=MAX_QUOTE_EVIDENCE_REFRESHES_PER_DAY,
+    )
+
+
+def test_a_lease_with_life_left_is_not_renewed() -> None:
+    """Renewal is for a lease about to expire, not for every scope."""
+
+    from bayes_basket_target.production_worker import (  # noqa: PLC0415
+        QUOTE_EVIDENCE_REFRESH_SECONDS,
+        quote_refresh_admitted_v1,
+    )
+
+    assert not quote_refresh_admitted_v1(
+        lease_left_seconds=QUOTE_EVIDENCE_REFRESH_SECONDS + 1.0,
+        day_is_ineffective=False,
+        unproductive_attempts=0,
+    )
+    assert quote_refresh_admitted_v1(
+        lease_left_seconds=QUOTE_EVIDENCE_REFRESH_SECONDS,
+        day_is_ineffective=False,
+        unproductive_attempts=0,
+    )

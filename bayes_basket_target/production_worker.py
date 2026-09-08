@@ -564,6 +564,44 @@ QUOTE_EVIDENCE_REFRESH_SECONDS = 12.0
 # loop at roughly one renewal per lease, and a day whose publisher has gone
 # silent still stops after six rather than after forty-four.
 MAX_QUOTE_EVIDENCE_REFRESHES_PER_DAY = 6
+
+
+def quote_refresh_admitted_v1(
+    *,
+    lease_left_seconds: float,
+    refresh_interval_seconds: float = QUOTE_EVIDENCE_REFRESH_SECONDS,
+    day_is_ineffective: bool,
+    unproductive_attempts: int,
+    max_unproductive: int = MAX_QUOTE_EVIDENCE_REFRESHES_PER_DAY,
+) -> bool:
+    """Whether this scope may renew its day's quote lease.
+
+    Three guards, and each answers a different failure (2026-09-08 ruling
+    that they must not be conflated):
+
+    * the lease has to be nearly spent, or there is nothing to renew;
+    * ``day_is_ineffective`` -- one pass that wrote nothing disables the
+      day.  This is the guard the 44-refreshes-in-one-cycle incident needed,
+      and it fires after a single attempt;
+    * ``unproductive_attempts`` -- attempts that renewed NOTHING, which is
+      what a bounded number of tries is still for: an erroring refresh
+      leaves the previous books in place and the latch above never sees it,
+      because the latch asks whether a pass wrote and an exception did not.
+
+    What it deliberately does NOT bound is a refresh that renews.  That
+    attempt is doing exactly its job, and the day it is done for is healthy.
+    The cap used to count every attempt, so a long decision loop on a live
+    publisher exhausted it: measured 2026-09-08, six attempts, all
+    committed, zero failures, zero ineffective days -- then 43 of the 44
+    remaining scopes died on ``production_quote_expired``, on the day that
+    settled that afternoon.
+    """
+
+    if float(lease_left_seconds) > float(refresh_interval_seconds):
+        return False
+    if day_is_ineffective:
+        return False
+    return int(unproductive_attempts) < int(max_unproductive)
 # Charter 48: a listed day not served for this long takes the next cycle
 # regardless of the alternation -- the guard against a restart storm.
 LISTING_SCOPE_TURN_STARVATION_SEC = 900.0
@@ -17583,6 +17621,10 @@ class TargetProductionWorker:
             scope_quote_expiry: dict[tuple[str, str], datetime | None] = {}
             refresh_ineffective_days: set[str] = set()
             day_refresh_counts: dict[str, int] = {}
+            # Attempts that did not renew the lease -- the ones the cap
+            # exists for.  Kept apart from the attempt count above, which
+            # stays whole so the receipt still reports what was tried.
+            day_unproductive_refreshes: dict[str, int] = {}
             for station_id, event_date in rows:
                 if self.stop_requested:
                     # SIGTERM: stop at the scope boundary.  The scopes not
@@ -17609,11 +17651,12 @@ class TargetProductionWorker:
                     if expiry is not None
                     else 0.0
                 )
-                if (
-                    lease_left <= QUOTE_EVIDENCE_REFRESH_SECONDS
-                    and day not in refresh_ineffective_days
-                    and day_refresh_counts.get(day, 0)
-                    < MAX_QUOTE_EVIDENCE_REFRESHES_PER_DAY
+                if quote_refresh_admitted_v1(
+                    lease_left_seconds=lease_left,
+                    day_is_ineffective=day in refresh_ineffective_days,
+                    unproductive_attempts=day_unproductive_refreshes.get(
+                        day, 0
+                    ),
                 ):
                     evidence_refreshed_at[day] = time.monotonic()
                     quote_refresh_attempts.append(day)
@@ -17703,6 +17746,15 @@ class TargetProductionWorker:
                         # attempt cap is what bounds a genuinely dead day
                         # now; this flag is for a pass that wrote nothing.
                         renewed_day = self._scope_day_quote_expiry(day)
+                        renewed = (
+                            day_expiry_before is not None
+                            and renewed_day is not None
+                            and renewed_day > day_expiry_before
+                        )
+                        if not renewed:
+                            day_unproductive_refreshes[day] = (
+                                day_unproductive_refreshes.get(day, 0) + 1
+                            )
                         if (
                             not refresh_wrote
                             and day_expiry_before is not None
@@ -17719,6 +17771,15 @@ class TargetProductionWorker:
                         # A failed refresh leaves the previous books in
                         # place; the scope then fails on its own expiry with
                         # its own reason, which is the honest outcome.
+                        #
+                        # It also renewed nothing, and the ineffective latch
+                        # does not catch it -- the latch asks whether a pass
+                        # WROTE, and this pass threw.  So it counts against
+                        # the cap: an erroring refresh is precisely the case
+                        # a bounded number of attempts is still for.
+                        day_unproductive_refreshes[day] = (
+                            day_unproductive_refreshes.get(day, 0) + 1
+                        )
                         quote_refresh_failures.append(
                             {"event_date": day, "reason": f"{type(exc).__name__}:{exc}"[:160]}
                         )
@@ -17969,6 +18030,11 @@ class TargetProductionWorker:
                         for day in sorted(set(quote_refresh_attempts))
                     },
                     "ineffective_days": sorted(refresh_ineffective_days),
+                    # What the cap actually counts since 2026-09-08: an
+                    # attempt that renewed nothing.  ``attempts_by_day``
+                    # below stays the whole count, so a reader can still see
+                    # a healthy day refreshing more than six times.
+                    "unproductive_by_day": dict(day_unproductive_refreshes),
                     # What each pass said about itself, so an ineffective day
                     # names its cause instead of only its verdict.
                     "receipts": quote_refresh_receipts[:10],
@@ -17979,8 +18045,15 @@ class TargetProductionWorker:
                     "max_refreshes_per_day": (
                         MAX_QUOTE_EVIDENCE_REFRESHES_PER_DAY
                     ),
+                    # Capped means the cap actually stopped the day, so it
+                    # reads the number the cap turns on.  Against the whole
+                    # attempt count it reported "capped" for a day that had
+                    # simply refreshed six productive times and was free to
+                    # refresh again -- which is how 2026-09-08 looked capped
+                    # while nothing was wrong with it.
                     "capped_days": sorted(
-                        day for day, count in day_refresh_counts.items()
+                        day
+                        for day, count in day_unproductive_refreshes.items()
                         if count >= MAX_QUOTE_EVIDENCE_REFRESHES_PER_DAY
                     ),
                     "failures": quote_refresh_failures[:10],
