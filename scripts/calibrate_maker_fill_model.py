@@ -299,13 +299,15 @@ def fit_hazard(conn: sqlite3.Connection, level: dict) -> dict:
         pooled[str(rule)] = round(float(filled) / float(n), 6)
 
     ledger_rate = level.get("ledger_fill_rate")
-    live_rate = level.get("live_fill_rate")
+    # The like-for-like column: legs of live baskets that OPENED, which is
+    # the conditioning a paper_trade_position row already carries.
+    seated_rate = level.get("live_seated_fill_rate")
     # The scalar the ledger's own rate has to be multiplied by to land on
     # live's.  Applied to the shape, not to the outcome: a leg the depth
     # walk never reached is not made to fill by it.
     scalar = (
-        round(float(live_rate) / float(ledger_rate), 6)
-        if ledger_rate and live_rate else None
+        round(float(seated_rate) / float(ledger_rate), 6)
+        if ledger_rate and seated_rate else None
     )
     body = {
         "schema": "maker_fill_hazard_v1",
@@ -316,8 +318,13 @@ def fit_hazard(conn: sqlite3.Connection, level: dict) -> dict:
         "level_scalar": scalar,
         "level_fitted_against": {
             "ledger_fill_rate": ledger_rate,
-            "live_fill_rate": live_rate,
-            "live_legs_at_venue": level.get("live_reached_venue"),
+            "live_fill_rate_opened_baskets": level.get("live_seated_fill_rate"),
+            "live_opened_baskets": level.get("live_opened_baskets"),
+            "live_attempted_baskets": level.get("live_attempted_baskets"),
+            "denominator": (
+                "legs of live baskets that opened -- the same conditioning a"
+                " paper_trade_position row carries"
+            ),
         },
         "note": (
             "shape from maker_shadow_order at 60min; the level scalar is"
@@ -370,7 +377,17 @@ def level_reading(conn: sqlite3.Connection) -> dict:
             intended += 1
             kept += 1 if float(held.get(bucket, 0.0) or 0.0) > 0 else 0
 
-    # The live arm, keyed the way the execution ledger keys it.
+    # The live arm, keyed the way the PAPER ledger keys it -- which is the
+    # correction that matters here.  A ``paper_trade_position`` row exists
+    # only when at least one leg filled, so its denominator is "legs of a
+    # basket that opened".  The first fit of this compared it against legs
+    # that merely reached the exchange, a set that includes every basket
+    # which filled nothing, and concluded the simulation was 1.7x too
+    # generous when on the right denominator it is 71.4% against 67.1%.
+    #
+    # Both are reported.  The gap that survives the correction is not the
+    # leg rate at all: live opens 27 of 73 attempted baskets and the ledger
+    # opens about 85%, and that is a different mechanism.
     reached = filled = posted = 0
     gated: dict[str, int] = {}
     try:
@@ -415,9 +432,44 @@ def level_reading(conn: sqlite3.Connection) -> dict:
     except sqlite3.Error:
         pass
 
+    # Legs of live baskets that opened, de-duplicated by station-day-bucket
+    # because a rung cancelled by the lifecycle and re-posted is one leg
+    # wanted, not two.
+    wanted: dict[tuple[str, str], set[str]] = {}
+    held: dict[tuple[str, str], set[str]] = {}
+    try:
+        for station, day, bucket, payload, size in conn.execute(
+            "SELECT d.station_id, d.event_date, i.bucket, i.intent_json,"
+            " COALESCE(r.filled_size, 0)"
+            " FROM basket_target_order_intents i"
+            " JOIN auto_trade_decisions d ON d.decision_id = i.decision_id"
+            " LEFT JOIN basket_target_order_reconciliations r"
+            "   ON r.order_intent_id = i.order_intent_id"
+            " WHERE i.live_submit_authorized = 1"
+        ):
+            try:
+                if json.loads(payload).get("execution_candidate") != "MAKER":
+                    continue
+            except (TypeError, ValueError):
+                continue
+            key = (str(station), str(day))
+            wanted.setdefault(key, set()).add(str(bucket))
+            if float(size or 0.0) > 0:
+                held.setdefault(key, set()).add(str(bucket))
+    except sqlite3.Error:
+        pass
+    opened = [k for k in wanted if held.get(k)]
+    seated_wanted = sum(len(wanted[k]) for k in opened)
+    seated_held = sum(len(held[k]) for k in opened)
+    seated_rate = (seated_held / seated_wanted) if seated_wanted else None
+
     ledger_rate = (kept / intended) if intended else None
     live_rate = (filled / reached) if reached else None
     return {
+        "live_seated_fill_rate": (round(seated_rate, 4)
+                                  if seated_rate is not None else None),
+        "live_opened_baskets": len(opened),
+        "live_attempted_baskets": len(wanted),
         "ledger_intended_legs": intended, "ledger_kept_legs": kept,
         "ledger_fill_rate": (round(ledger_rate, 4)
                              if ledger_rate is not None else None),
@@ -428,8 +480,8 @@ def level_reading(conn: sqlite3.Connection) -> dict:
         "live_never_reached_by_reason": dict(
             sorted(gated.items(), key=lambda kv: -kv[1])),
         "ledger_over_live": (
-            round(ledger_rate / live_rate, 4)
-            if ledger_rate and live_rate else None),
+            round(ledger_rate / seated_rate, 4)
+            if ledger_rate and seated_rate else None),
         "note": (
             "horizons differ: shadow 60min, ledger and live rest to"
             " resolution; only the live column is like-for-like"
@@ -580,6 +632,10 @@ def main() -> int:
         f"实盘发出 {level['live_posted_legs']} 腿、到过交易所 "
         f"{level['live_reached_venue']}、成交 {level['live_filled']} = "
         f"{100*(level['live_fill_rate'] or 0):.1f}%"
+        f"\n        同口径（只看开了仓的篮子）：实盘 "
+        f"{100*(level['live_seated_fill_rate'] or 0):.1f}%"
+        f"（{level['live_opened_baskets']}/{level['live_attempted_baskets']} 篮开仓）"
+        f" ← 这才是 position 的分母"
     )
     if level["ledger_over_live"]:
         print(f"        账本/实盘 = {level['ledger_over_live']}×"

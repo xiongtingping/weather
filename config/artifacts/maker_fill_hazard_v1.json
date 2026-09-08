@@ -85,12 +85,14 @@
   "bid+1t|tail|<3h": 26163,
   "bid+1t|tail|D-2": 17510
  },
- "level_scalar": 0.601733,
+ "level_scalar": 1.07654,
  "level_fitted_against": {
   "ledger_fill_rate": 0.6232,
-  "live_fill_rate": 0.375,
-  "live_legs_at_venue": 144
+  "live_fill_rate_opened_baskets": 0.6709,
+  "live_opened_baskets": 27,
+  "live_attempted_baskets": 73,
+  "denominator": "legs of live baskets that opened -- the same conditioning a paper_trade_position row carries"
  },
  "note": "shape from maker_shadow_order at 60min; the level scalar is fitted against the live arm because the shadow horizon does not extrapolate to a rest-to-resolution order",
- "content_sha256": "bdc1d0f2b42507bd09510c23cce3a2834597dd83fd749a5790532671ae2446a4"
+ "content_sha256": "856d65ac5b97373d4d1ec87f741d89d82dab65d40fc2e9df528152d5632eda6f"
 }
