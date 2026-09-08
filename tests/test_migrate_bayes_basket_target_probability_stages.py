@@ -74,7 +74,19 @@ def _insert_preserved_decision_and_cycle(conn: sqlite3.Connection) -> None:
         ),
     )
     conn.execute(
-        "INSERT INTO auto_trade_decisions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        # Named columns.  The positional form here had drifted by more than
+        # one column -- it fed None to reason_codes_json, which is NOT NULL --
+        # and stayed that way for the 40 days after the table grew
+        # decision_scope_key.  The two nullable trailing columns are left
+        # unset on purpose: this fixture is about the migration, not about
+        # them.
+        """
+        INSERT INTO auto_trade_decisions(
+          decision_id, cycle_id, plan_id, station_id, event_date,
+          settlement_timezone, strategy_lane, decided_state, will_order,
+          reason_codes_json, details_json, decision_sha256, created_at
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
         (
             "decision-1",
             "cycle-1",
@@ -85,7 +97,6 @@ def _insert_preserved_decision_and_cycle(conn: sqlite3.Connection) -> None:
             "basket",
             "blocked",
             0,
-            None,
             '["production_no_live"]',
             "{}",
             "c" * 64,

@@ -785,12 +785,19 @@ def test_final_label_waits_for_registry_close_and_accepted_truth() -> None:
     )
     conn.execute(
         """
-        INSERT INTO calibration_station_daily_high_truth VALUES(
-          ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+        INSERT INTO calibration_station_daily_high_truth(
+          truth_id, station_id, local_date, settlement_timezone,
+          official_tmax_c, source_lane, settlement_definition, revision_no,
+          published_at_utc, received_at_utc, canonical_committed_at_utc,
+          timestamps_complete, qc_status, source_role,
+          source_payload_sha256, observation_ids_json, authority_scope,
+          content_sha256
+        ) VALUES(
+          ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
         )
         """,
         (
-            "truth-1", STATION, EVENT_DATE, 38.2, "AMSC", "daily_high_c",
+            "truth-1", STATION, EVENT_DATE, TZ, 38.2, "AMSC", "daily_high_c",
             0, "2026-07-24T04:01:00Z", "2026-07-24T04:01:01Z",
             "2026-07-24T04:01:02Z", 1, "ACCEPTED", "formal_truth",
             SHA_B, "[]", "FORMAL_NATIVE_ELIGIBLE", SHA_C,
@@ -893,13 +900,24 @@ def test_latest_quarantined_truth_revision_blocks_older_accepted_truth() -> None
             "registry-v1", "formal_truth", SHA_A,
         ),
     )
+    # Named columns above, and the timezone the table has carried since
+    # 2026-07-30.  Positional inserts against this table broke silently for
+    # 40 days when it gained a column; the column list is the fix, the extra
+    # value is only what the column list then requires.
     base = (
-        STATION, EVENT_DATE, 38.2, "AMSC", "daily_high_c",
+        STATION, EVENT_DATE, TZ, 38.2, "AMSC", "daily_high_c",
     )
     conn.execute(
         """
-        INSERT INTO calibration_station_daily_high_truth VALUES(
-          ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+        INSERT INTO calibration_station_daily_high_truth(
+          truth_id, station_id, local_date, settlement_timezone,
+          official_tmax_c, source_lane, settlement_definition, revision_no,
+          published_at_utc, received_at_utc, canonical_committed_at_utc,
+          timestamps_complete, qc_status, source_role,
+          source_payload_sha256, observation_ids_json, authority_scope,
+          content_sha256
+        ) VALUES(
+          ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
         )
         """,
         (
@@ -911,8 +929,15 @@ def test_latest_quarantined_truth_revision_blocks_older_accepted_truth() -> None
     )
     conn.execute(
         """
-        INSERT INTO calibration_station_daily_high_truth VALUES(
-          ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+        INSERT INTO calibration_station_daily_high_truth(
+          truth_id, station_id, local_date, settlement_timezone,
+          official_tmax_c, source_lane, settlement_definition, revision_no,
+          published_at_utc, received_at_utc, canonical_committed_at_utc,
+          timestamps_complete, qc_status, source_role,
+          source_payload_sha256, observation_ids_json, authority_scope,
+          content_sha256
+        ) VALUES(
+          ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
         )
         """,
         (

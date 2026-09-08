@@ -1952,7 +1952,12 @@ def test_market_snapshot_reports_the_pools_equity_when_there_is_a_pool() -> None
         assert pooled["remaining_budget_usdc"] == bare["remaining_budget_usdc"]
 
 
-def _suspended_p1_lineage(receipt: dict[str, str] | None) -> dict[str, str]:
+def _suspended_p1_lineage(
+    receipt: dict[str, str] | None,
+    *,
+    four_layer: dict[str, str] | None = None,
+    regional: dict[str, str] | None = None,
+) -> dict[str, str]:
     """The served lineage of a P1 compiled under the 2026-09-02 suspension."""
 
     values = {
@@ -1982,6 +1987,16 @@ def _suspended_p1_lineage(receipt: dict[str, str] | None) -> dict[str, str]:
     if receipt is not None:
         values["metar_ceiling_json"] = json.dumps(
             {"schema": "metar_ceiling_receipt_v1", **receipt}, sort_keys=True
+        )
+    if four_layer is not None:
+        values["p1_four_layer_serving_json"] = json.dumps(
+            {"schema": "p1_four_layer_serving_receipt_v1", **four_layer},
+            sort_keys=True,
+        )
+    if regional is not None:
+        values["regional_path_prior_json"] = json.dumps(
+            {"schema": "regional_path_prior_receipt_v1", **regional},
+            sort_keys=True,
         )
     return values
 

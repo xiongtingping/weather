@@ -25,6 +25,21 @@ INPUTS = {
 }
 AS_OF = "2026-08-05T12:00:00Z"
 
+# ``output/audits/`` is gitignored (.gitignore:38), so these inputs exist
+# only on a machine that has run the audits that produce them.  Without the
+# skip this file is red on every clean checkout and on CI, and a permanent
+# red is a red nobody reads -- it sat inside the ten "baseline failures" this
+# week's work kept comparing against, and got counted as a known quantity
+# rather than as a missing input.  Skipping on the specific missing file
+# keeps the test real wherever the artefacts do exist.
+_MISSING = sorted(
+    path.name for path in INPUTS.values() if not path.exists()
+)
+requires_audit_inputs = pytest.mark.skipif(
+    bool(_MISSING),
+    reason="gitignored audit artefacts absent: %s" % ", ".join(_MISSING),
+)
+
 
 def _build(**overrides: Path) -> dict[str, object]:
     return build_pr05_pr09_model_oos_basis(
@@ -32,6 +47,7 @@ def _build(**overrides: Path) -> dict[str, object]:
     )
 
 
+@requires_audit_inputs
 def test_real_domain_inputs_materialize_only_the_unpublished_gap_ledger() -> None:
     result = _build()
 
@@ -112,6 +128,7 @@ def test_real_domain_inputs_materialize_only_the_unpublished_gap_ledger() -> Non
     )
 
 
+@requires_audit_inputs
 def test_content_addressed_source_tampering_fails_closed(tmp_path: Path) -> None:
     source = INPUTS["coverage_scope_path"]
     tampered = json.loads(source.read_text(encoding="utf-8"))
@@ -126,6 +143,7 @@ def test_content_addressed_source_tampering_fails_closed(tmp_path: Path) -> None
         _build(coverage_scope_path=target)
 
 
+@requires_audit_inputs
 def test_stale_product_registry_receipts_fail_closed() -> None:
     with pytest.raises(
         PR05PR09ModelOOSBasisError,
