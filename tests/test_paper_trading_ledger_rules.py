@@ -1484,10 +1484,17 @@ def test_the_consolidation_tilt_scales_stakes_and_never_selects() -> None:
     assert CONSOLIDATION_TILT_MIN_SIGNALS == 1
     assert 0.0 < CONSOLIDATION_TILT_FACTOR < 1.0
     assert CONSOLIDATION_TILT_FACTOR == 0.05
-    assert CONSOLIDATION_TILT_SIGNALS == ("stable", "sharp")
+    # Ruled 2026-09-08: ``sharp`` marks the days that made money (+8.7% on
+    # 264 settled positions against ``stable``'s -8.6%), and cutting the
+    # stake on those is self-harm.  ``sharp`` stays reachable as an arm.
+    assert CONSOLIDATION_TILT_SIGNALS == ("stable",)
     # It reshapes the book, so it must reshape the fingerprint.
     assert "固化≥1减仓0.05" in SELECTION_RULE_LABEL
-    assert "灯stable+sharp" in SELECTION_RULE_LABEL
+    # The label names the trigger, so moving it drops every row written
+    # under the old one -- which is the point: those rows describe a
+    # strategy that cuts the stake on days this one leaves alone.
+    assert "灯stable" in SELECTION_RULE_LABEL
+    assert "灯stable+sharp" not in SELECTION_RULE_LABEL
     # The tilted stake floors at the venue's minimum order per leg (one
     # exchange lot, at least a dollar), or the cut becomes a gate the venue
     # enforces -- as it had, at three clips, until 2026-09-06.

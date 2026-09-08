@@ -1739,18 +1739,25 @@ def test_the_centre_anchored_shape_sizes_shares_not_cash() -> None:
         assert shares["96-97"] > shares["94-95"], shares
 
 
-def test_consolidation_tilt_scales_capital_floored_and_recorded() -> None:
+def test_consolidation_tilt_scales_capital_floored_and_recorded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A lit light tilts the decision's capital, floored, and says so.
 
     The fixture book is two buckets, so the sharp light (top-two mass at
-    60%) is lit by construction -- which makes the default compile the
-    tilted arm.  The control pins the factor to one and must reproduce
+    60%) is lit by construction.  The trigger moved to ``stable`` alone on
+    2026-09-08, so the signal set is pinned here: this test is about what a
+    tilt does to capital, not about which lamp opens it, and it must not
+    re-break every time that ruling moves.  The control pins the factor to one and must reproduce
     the untilted capital exactly; the tilted arm must never fall under
     one minimum clip per target leg, and the audit must carry the basis
     either way, because the ledger proves alignment off that field.
     """
-
     import bayes_basket_target.delta_v2_runtime as runtime
+
+    monkeypatch.setattr(
+        runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
+    )
 
     tilted = compile_delta_v2_runtime_plan(
         snapshot=_snapshot(),

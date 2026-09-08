@@ -352,12 +352,21 @@ def test_the_support_contract_is_atomic_at_the_result() -> None:
             )
 
 
-def test_the_half_basket_compiles_to_its_missing_rung_at_the_seats_capital() -> None:
+def test_the_half_basket_compiles_to_its_missing_rung_at_the_seats_capital(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The whole chain on the ZGSZ shape: the solver seats the completion
     under the Kelly form, the floor accepts it, the increment edge authorizes
     it, and only the missing rung carries a gap, sized against the capital
     the seat was opened with rather than the tilt-cut capital of the day."""
 
+    # Charter 84 (八) is what this test is about, not which lamp triggers the
+    # tilt.  The trigger moved to ``stable`` alone on 2026-09-08 and these
+    # fixtures are ``sharp`` shapes, so pin the signal set here: a test of the
+    # completion exemption must not re-break every time the lamp ruling moves.
+    monkeypatch.setattr(
+        delta_v2_runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
+    )
     result = compile_delta_v2_runtime_plan(
         snapshot=_held_snapshot(),
         basket_policy=_basket_policy(),
@@ -821,6 +830,13 @@ def test_ltac_the_held_rung_priced_above_its_claim_no_longer_refuses_the_window(
     0.57 sunk plus 0.34 plus 0.09 is a chain at par, a dollar for a dollar
     of payout, and no completion is allowed to build that.  A cent or two
     cheaper on the two rungs and the same completion trades."""
+    # Charter 84 (八) is what this test is about, not which lamp triggers the
+    # tilt.  The trigger moved to ``stable`` alone on 2026-09-08 and these
+    # fixtures are ``sharp`` shapes, so pin the signal set here: a test of the
+    # completion exemption must not re-break every time the lamp ruling moves.
+    monkeypatch.setattr(
+        delta_v2_runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
+    )
 
     _production_arms(monkeypatch)
     # At the live prices the only sanctioned window is refused by charter

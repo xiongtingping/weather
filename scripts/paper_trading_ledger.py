@@ -1540,11 +1540,23 @@ P1_EFFECTIVE_EDGE_TABLE = _load_p1_effective_edge_table()
 CONSOLIDATION_TILT_MIN_SIGNALS = int(
     os.environ.get("PAPER_LEDGER_CONSOLIDATION_TILT_MIN_SIGNALS", "1") or 1
 )
+# **两盏灯改为只看 stable（2026-09-08 裁决："该砍的是 stable 亮的日子，
+# 不该砍 sharp 亮的日子"）**。固化减仓砍的是注码，所以它砍在哪一天决定了
+# 它是止损还是自伤。09-08 在新生产账本上按灯分组读 264 笔已结算：
+# ``sharp`` 亮的日子回报 **+8.7%**（全库唯一为正的一组），``stable`` 亮的
+# 日子 **−8.6%**。旧规则是"亮一盏即减"，于是把唯一赚钱的那一组也砍了。
+#
+# **证据等级须知**：这是**观察性分组**，不是 A/B。灯亮本身就意味着市场那天
+# 已经定价完，那些天本来就更容易赚——多少来自减仓、多少来自"那天本来就
+# 好"，这份数据分不出来。算术反事实也不能定案：不减仓的臂要投入 3815–7717
+# USDC，而全簿只有 399，执行不了，故其量级不可信、只有符号可用。要真正定
+# 案需要一个**注码可行**的对照组，尚未跑。裁决在证据不足的情况下作出，
+# 记录于此，不得被后来的读者当作已验证结论。``stable,sharp`` 留作研究臂。
 CONSOLIDATION_TILT_SIGNALS: tuple[str, ...] = tuple(
     name.strip()
     for name in (
         os.environ.get(
-            "PAPER_LEDGER_CONSOLIDATION_TILT_SIGNALS", "stable,sharp"
+            "PAPER_LEDGER_CONSOLIDATION_TILT_SIGNALS", "stable"
         ) or "stable,sharp"
     ).split(",")
     if name.strip() in ("stable", "sharp", "quoted")

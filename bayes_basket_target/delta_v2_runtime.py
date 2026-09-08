@@ -312,10 +312,22 @@ CERTAINTY_SHARP_TOP2 = 0.60
 CONSOLIDATION_TILT_FACTOR = min(1.0, float(
     os.environ.get("PM_CONSOLIDATION_TILT", "0.05") or 1.0
 ))
+# **两盏灯改为只看 stable（2026-09-08 裁决："该砍的是 stable 亮的日子，
+# 不该砍 sharp 亮的日子"）**。固化减仓砍的是注码，所以它砍在哪一天决定了
+# 它是止损还是自伤。09-08 在新生产账本上按灯分组读 264 笔已结算：
+# ``sharp`` 亮的日子回报 **+8.7%**（全库唯一为正的一组），``stable`` 亮的
+# 日子 **−8.6%**。旧规则是"亮一盏即减"，于是把唯一赚钱的那一组也砍了。
+#
+# **证据等级须知**：这是**观察性分组**，不是 A/B。灯亮本身就意味着市场那天
+# 已经定价完，那些天本来就更容易赚——多少来自减仓、多少来自"那天本来就
+# 好"，这份数据分不出来。算术反事实也不能定案：不减仓的臂要投入 3815–7717
+# USDC，而全簿只有 399，执行不了，故其量级不可信、只有符号可用。要真正定
+# 案需要一个**注码可行**的对照组，尚未跑。裁决在证据不足的情况下作出，
+# 记录于此，不得被后来的读者当作已验证结论。``stable,sharp`` 留作研究臂。
 CONSOLIDATION_TILT_SIGNALS = tuple(
     name.strip()
     for name in (
-        os.environ.get("PM_CONSOLIDATION_TILT_SIGNALS", "stable,sharp")
+        os.environ.get("PM_CONSOLIDATION_TILT_SIGNALS", "stable")
         or "stable,sharp"
     ).split(",")
     if name.strip() in ("stable", "sharp")
@@ -1220,6 +1232,11 @@ MARKET_LEAN_MIN_BUCKETS = float(
 # A book too empty to state a mean states nothing: quoted buckets must
 # carry at least this much summed mid-price mass before a lean is read.
 MARKET_LEAN_MIN_QUOTED_MASS = 0.2
+# How many refused windows a single enumeration writes down.  The count is
+# exact either way; this bounds the plan, not the arithmetic.
+MARKET_LEAN_REFUSAL_RECORD_MAX = int(
+    os.environ.get("PM_MARKET_LEAN_REFUSAL_RECORD_MAX", "") or 32
+)
 
 
 def market_lean_ordinal(
@@ -1798,6 +1815,16 @@ def _support_windows(
     short_refused = 0
     skew_refused = 0
     market_lean_refused = 0
+    # What the gate refused, not just how many (user ruling 2026-09-08,
+    # "market_lean 加上：在拒绝时把窗口的桶记下来").  It was promoted on
+    # 09-05 and refused 60 windows in its first four days; every one of them
+    # was a counter increment and nothing else, so which windows they were --
+    # and whether the truth landed inside them -- is not recoverable.  A gate
+    # whose refusals are not written down cannot be priced after the fact,
+    # and this one was promoted on a replay rather than on its own record.
+    # Bounded because a wide day enumerates thousands of windows; the count
+    # beside it stays exact, so a truncated list never reads as the whole.
+    market_lean_refused_windows: list[dict[str, Any]] = []
     market_lean_shadow_refused = 0
     # Computed once per solve, not per window: the book and the model do
     # not change inside the enumeration.
@@ -2232,6 +2259,14 @@ def _support_windows(
                     window_mid_ordinal=window_mid,
                     model_mean_ordinal=model_mean_ordinal_value,
                 ):
+                    if len(market_lean_refused_windows) < MARKET_LEAN_REFUSAL_RECORD_MAX:
+                        market_lean_refused_windows.append({
+                            "buckets": list(window),
+                            "window_mid_ordinal": window_mid,
+                            "model_mean_ordinal": model_mean_ordinal_value,
+                            "lean": market_lean_value,
+                            "enforced": MARKET_LEAN_GATE_MODE == "on",
+                        })
                     if MARKET_LEAN_GATE_MODE == "on":
                         market_lean_refused += 1
                         continue
@@ -2819,6 +2854,9 @@ def _support_windows(
         "claim_edge_thin_band_max": CLAIM_EDGE_THIN_BAND_MAX,
         "effective_edge_gate_refused_window_count": lambda_refused,
         "unpriced_refused_window_count": unpriced_refused,
+        # The refusals themselves, so this gate can be priced on its own
+        # record instead of on the replay that promoted it.
+        "market_lean_refused_windows": market_lean_refused_windows,
         # The friction the edge gate measured against is not repeated here:
         # ``_solve_over_support_windows`` already publishes it into the same
         # receipt as ``edge_friction_ticks_per_leg``, and two names for one
