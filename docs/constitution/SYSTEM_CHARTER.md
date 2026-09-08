@@ -442,7 +442,11 @@ MSM 四站**全部**改善：RCSS −1.283、RJTT −0.658、RKPK −0.452、RKS
      * **`target_plan_state_not_executable`／`no_positive_increment`／`cash_phase_no_positive_order_candidate` 三码同频 423，且 423 条决策中三者全部同现、无一例外**——**一件事三个名字**。
      * **`regime_direction_recorded_not_enforced` 出现 4662 次，是第二高频的阻断码，而它名字里就写着"记录但不执行"**——一个不执行的闸占据了阻断码榜第二。它与 `regime_direction_not_allowed`(998)、`regime_direction_mismatch`(289) 互斥出现，是**一道闸的三种结果**，不是三道闸。
      * **阻断码总数 298 个，其中 116 个是 `missing_leg_candidate:<桶>`／`missing_maker_candidate:<桶>` 的参数化实例**——那不是 116 道闸，是 **2 道闸 × 58 个桶名**；把参数嵌进码里使基数虚高约 39%。两者从不同现（709/1999/0），是挂单与吃单两条互斥路径，不重复。
-     * **按类分：交易决策 130 码（69.8% 次数）、证据/血统 98 码、新鲜度/时钟 5 码、资源/存储 10 码（含 `database is locked` 1179 次）、常驻/编排 3 码、未分类 52 码。** 去掉参数化实例后，**真正的交易闸只有 14 个**。
+     * **按类分：交易决策 130 码（69.8% 次数）、证据/血统 98 码、新鲜度/时钟 5 码、资源/存储 10 码（含 `database is locked` 1179 次）、常驻/编排 3 码、未分类 52 码。**
+
+     * **交易闸的准确计数（本条首版写「14 个」，算错，以此为准）**：交易类 130 码 = 115 个参数化实例 + 15 个非参数化；参数化归并为 2 个族，故 reason-code 层面共 **17 个**。**其中 7 个是已退役的闸——全名在现行代码里一处也搜不到，只存在于历史决策行**：`cash_phase_no_positive_order_candidate`／`target_plan_state_not_executable`／`strict_delta_not_authorized`／`strict_delta_policy_missing`／`no_positive_increment`（末次 2026-07-28）、`regime_direction_mismatch`（末次 2026-08-31）、`missing_maker_candidate:<桶>`（末次 2026-08-30）。**故 reason-code 层面活着的交易闸是 9 个**。上文「423 三码同频」的判定仍然成立，但那三个码同属这批已退役者（末次全在 2026-07-28），是史料而非待清理项。
+     * **加上不进 reason code 的两类**：窗口漏斗 8 道（`unpriced` 零触发，实活 7 道）与 `REQUIRED_HARD_GATES` 12 项中属于交易判据的 4 项（`positive_inventory_gap`／`budget_ok`／`profit_floor_ok`／`reservation_price_ok`；其余 8 项是数据前置条件，非交易闸）。**决策路径上活着的交易闸合计 20 道，分四层。**
+     * **`regime_direction_*` 的补正**：`recorded_not_enforced` 不是疏漏，是**有意为之且已写明理由**——第 43 条禁止策略层再投一次方向票，而 regime 层读的又是它随后要否决的那份计划，故该闸被摘除执行力、只留回执。但 `regime_direction_not_allowed`（998 次，`delta_v2_runtime` 内直接返回 `authorized: False`）**仍在执行**。**同一个判据在两个模块里，一个执行一个只记录**——这才是该条真正的待办。
      * **96% 的决策是 HOLD**（17685/18425），其中 **74% 是 `target_inventory_satisfied`——不是闸拒绝，是压根没有候选**；真正被授权闸拒掉的是 22%（`complete_gap_bundle_not_authorized`）。
 
      **（三）裁定**：本条只**记录**，不改任何闸。四项待办按优先级：①退役 `unpriced`（零触发）；②三码合一（423 同频）；③`regime_direction_*` 三码归一为一道闸的三个结果，并对 `recorded_not_enforced` 表态——执行或删除，不留第三态；④阻断码里禁止嵌入参数（桶名移入结构化字段），否则任何"闸有多少"的统计都不可信。**在此之前，任何"闸太多"的判断都应先减去参数化实例与非交易类码——真实数字是 14，不是 298。**
