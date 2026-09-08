@@ -305,6 +305,18 @@ def test_reconciliation_leaves_a_resting_order_alone(
                     "shares_matched": "0",
                     "exchange_response": {"status": "live"}}
 
+        # Charter 110's two facts, which the lane now asks whenever the
+        # point lookup has not produced a verdict (2026-09-08).  Here they
+        # agree with it: the order is live on the token, so a balance
+        # cannot say what it did and nothing may be concluded.
+        def lookup_open_orders(self, request):
+            return {"ok": True, "complete": True,
+                    "open_orders": [{"id": "0xfill"}], "total_open_orders": 1}
+
+        def lookup_position(self, request):
+            return {"ok": True, "shares": 0.0, "balance_raw": "0",
+                    "decimals": 6}
+
     monkeypatch.setattr(clob_order_service_client, "ClobOrderServiceClient", _Client)
     worker = production_worker.TargetProductionWorker.__new__(
         production_worker.TargetProductionWorker

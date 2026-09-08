@@ -97,6 +97,7 @@ from .production import (
     commit_production_stage_zero_execution_atomic,
 )
 from .execution_reconciliation import (
+    VENUE_SHARE_QUANTUM,
     fill_is_complete,
     record_order_event,
     resolve_reconciliation,
@@ -7838,26 +7839,52 @@ class TargetProductionWorker:
             recorded = {}
         previous_turn = bool(recorded.get("listing_turn", False))
         last_served = str(recorded.get("listing_served_at_utc") or "")
-        starved = True
-        if last_served:
+        last_current = str(recorded.get("current_served_at_utc") or "")
+
+        def _starved_since(stamp: str) -> bool:
+            if not stamp:
+                return True
             try:
                 age = (
                     datetime.fromisoformat(now_text.replace("Z", "+00:00"))
-                    - datetime.fromisoformat(
-                        last_served.replace("Z", "+00:00")
-                    )
+                    - datetime.fromisoformat(stamp.replace("Z", "+00:00"))
                 ).total_seconds()
-                starved = age >= LISTING_SCOPE_TURN_STARVATION_SEC
             except ValueError:
-                starved = True
-        serve = (not previous_turn) or starved
+                return True
+            return age >= LISTING_SCOPE_TURN_STARVATION_SEC
+
+        starved = _starved_since(last_served)
+        # The override has to be symmetric, or it inverts (measured
+        # 2026-09-08).  ``listing_served_at_utc`` only advances on a listing
+        # cycle, so once a cycle takes longer than the starvation bound the
+        # listed days are starved at EVERY decision and take every cycle
+        # forever: the current day's last decision on 2026-09-08 was
+        # 10:32:15Z and it had not been served since, while the listed days
+        # were served at 11:28.  Its serve interval had been widening all
+        # day -- 31, 37, 52, 40 minutes -- as cycles grew past 900s.
+        #
+        # That is the opposite of what this guard is for.  A listed day is
+        # entered on a window measured in days and serving it late "costs it
+        # about seven minutes of freshness and nothing else"; the current
+        # day carries P1 and the live book, and a completion leg it does not
+        # get to judge is a naked position held to settlement.  So the
+        # listed days' override yields when the current day is itself
+        # starved, and the two fall back to strict alternation -- which is
+        # what the alternation was always meant to guarantee.
+        current_starved = _starved_since(last_current)
+        serve = (not previous_turn) or (starved and not current_starved)
         record = {
             "schema": "bayes_basket_target_listing_scope_turn_v1",
             "listing_turn": bool(serve),
             "listing_served_at_utc": now_text if serve else last_served,
+            # Recorded for the same reason the listing stamp is: the
+            # override cannot know the current day is starving unless
+            # somebody writes down when it last ran.
+            "current_served_at_utc": last_current if serve else now_text,
             "decided_at_utc": now_text,
             "starvation_seconds": LISTING_SCOPE_TURN_STARVATION_SEC,
             "starved": bool(starved),
+            "current_starved": bool(current_starved),
         }
         try:
             write_bounded_json_if_changed(path, record)
@@ -8165,6 +8192,159 @@ class TargetProductionWorker:
         _publish_resting_reprice_receipt(receipt, as_of_utc=as_of_utc)
         return receipt
 
+    def _book_verdict_for_intent(
+        self,
+        *,
+        client: Any,
+        intent_id: str,
+        token_id: str,
+        requested_size: float,
+        limit_price: float,
+        order_action: str,
+        idempotency_key: str,
+        as_of_utc: str,
+    ) -> dict[str, Any]:
+        """What the exchange's own books say about one unresolved intent.
+
+        Charter 110's two facts, asked only after the point lookup has
+        declined to answer.  Neither depends on the gateway remembering the
+        submission, and neither expires:
+
+        * the OPEN-ORDER ENUMERATION for the token, which is an answer only
+          when the gateway completed it (``complete``).  An order missing
+          from a completed enumeration is positively not live; an
+          enumeration that ran out of pages is silence and is treated as
+          such.
+        * the POSITION on that token, which is what a departed order
+          actually did.
+
+        Attribution is the delicate part, because a position is per token
+        and cumulative over every order this book ever sent to it.  What can
+        be attributed here is only the REMAINDER -- the shares held beyond
+        what the ledger already records against that token -- and only when
+        this intent is the single unresolved claimant on it.  Two unresolved
+        intents on one token cannot be told apart by a balance, so both are
+        left alone and reported; that is a smaller failure than crediting
+        the wrong one.
+
+        Never records more than the intent asked for.  Reads two GETs and
+        writes nothing: the caller owns the transaction.
+        """
+
+        if not token_id:
+            return {"event": None}
+        try:
+            enumeration = client.lookup_open_orders({"token_id": token_id})
+        except Exception as exc:  # noqa: BLE001 -- one scope's problem
+            return {"failure": f"{type(exc).__name__}:{exc}"}
+        if enumeration.get("complete") is not True:
+            # An enumeration the gateway could not finish is silence.
+            return {"event": None}
+        open_orders = enumeration.get("open_orders")
+        if not isinstance(open_orders, list):
+            return {"event": None}
+        if open_orders:
+            # Something of ours is still live on this token.  Whether it is
+            # this intent cannot be settled from a balance, and a live order
+            # is the resting lane's business rather than this one's.
+            return {"event": None}
+        try:
+            position = client.lookup_position({"token_id": token_id})
+        except Exception as exc:  # noqa: BLE001
+            return {"failure": f"{type(exc).__name__}:{exc}"}
+        if position.get("ok") is not True:
+            return {"event": None}
+        try:
+            held = float(position.get("shares") or 0.0)
+        except (TypeError, ValueError):
+            return {"event": None}
+        # ``getattr`` rather than an attribute read: a worker built through
+        # __new__ (which several tests and one rotation helper do) has no
+        # ``commit_conn`` at all, and an AttributeError here would be an
+        # exception escaping an observational lane.
+        commit_conn = getattr(self, "commit_conn", None)
+        if commit_conn is None:
+            return {"event": None}
+        try:
+            recorded = float(commit_conn.execute(
+                "SELECT COALESCE(SUM(r.filled_size),0)"
+                " FROM basket_target_order_reconciliations r"
+                " JOIN basket_target_order_intents i"
+                "   ON i.order_intent_id=r.order_intent_id"
+                " WHERE i.token_id=?",
+                (token_id,),
+            ).fetchone()[0] or 0.0)
+            rival = int(commit_conn.execute(
+                "SELECT COUNT(*) FROM basket_target_order_intents"
+                " WHERE token_id=? AND state='reconcile_required'"
+                "   AND order_intent_id<>?",
+                (token_id, intent_id),
+            ).fetchone()[0] or 0)
+        except sqlite3.Error as exc:
+            return {"failure": f"{type(exc).__name__}:{exc}"}
+        unrecorded = held - recorded
+        if unrecorded > VENUE_SHARE_QUANTUM:
+            if rival:
+                # Ambiguous by construction; say so rather than guess.
+                return {"event": None}
+            matched = min(unrecorded, float(requested_size or 0.0))
+            if matched <= VENUE_SHARE_QUANTUM:
+                return {"event": None}
+            return {"event": {
+                "event_type": "FILL",
+                "exchange_order_id": "",
+                "observed_at": as_of_utc,
+                "matched_size": matched,
+                "matched_notional_usdc": matched * float(limit_price or 0.0),
+                "event_payload": {
+                    "idempotency_key": idempotency_key,
+                    "exchange_status": "position_confirmed",
+                    "recovered_by": "intent_reconcile_book_facts",
+                    "token_position_shares": held,
+                    "ledger_recorded_shares": recorded,
+                    "open_order_enumeration_complete": True,
+                },
+            }}
+        if unrecorded < -VENUE_SHARE_QUANTUM:
+            # The ledger claims more than the account holds.  Not this
+            # lane's to correct, and certainly not by writing another fill.
+            return {"event": None}
+        # Nothing live, and the position holds nothing this intent has not
+        # already been credited with.  If the ledger never credited it at
+        # all, the order never reached the exchange.
+        try:
+            prior = float(commit_conn.execute(
+                "SELECT COALESCE(filled_size,0)"
+                " FROM basket_target_order_reconciliations"
+                " WHERE order_intent_id=?",
+                (intent_id,),
+            ).fetchone()[0] or 0.0)
+        except sqlite3.Error as exc:
+            return {"failure": f"{type(exc).__name__}:{exc}"}
+        if prior > VENUE_SHARE_QUANTUM:
+            # An order that departed with a fill the ledger already holds.
+            # It will never reach its requested size -- the order is gone --
+            # so the state that stands is the fill it got.  Nothing retired
+            # these: ZSQD 23C matched 24.969975 of 25 and sat unresolved
+            # because the shortfall exceeds one venue quantum, which
+            # ``fill_is_complete`` reads as "not done yet" for an order that
+            # cannot trade again.
+            return {"event": None, "resolve_partial": prior}
+        return {"event": {
+            "event_type": "NEVER_REACHED_EXCHANGE",
+            "exchange_order_id": None,
+            "observed_at": as_of_utc,
+            "matched_size": 0.0,
+            "matched_notional_usdc": 0.0,
+            "event_payload": {
+                "idempotency_key": idempotency_key,
+                "exchange_status": "absent_from_completed_enumeration",
+                "recovered_by": "intent_reconcile_book_facts",
+                "token_position_shares": held,
+                "ledger_recorded_shares": recorded,
+            },
+        }}
+
     def _reconcile_unresolved_intents(
         self,
         *,
@@ -8207,7 +8387,7 @@ class TargetProductionWorker:
         try:
             rows = self.commit_conn.execute(
                 "SELECT order_intent_id, idempotency_key,"
-                " order_action, limit_price"
+                " order_action, limit_price, token_id, requested_size"
                 " FROM basket_target_order_intents"
                 " WHERE state='reconcile_required'"
                 " ORDER BY created_at LIMIT ?",
@@ -8232,7 +8412,11 @@ class TargetProductionWorker:
         receipt["examined"] = len(rows)
         receipt["filled"] = 0
         receipt["already_recorded"] = 0
-        for intent_id, idempotency_key, order_action, limit_price in rows:
+        receipt["closed_by_book"] = 0
+        for (
+            intent_id, idempotency_key, order_action, limit_price,
+            token_id, requested_size,
+        ) in rows:
             try:
                 answer = client._post(
                     "/reconcile-order",
@@ -8361,8 +8545,79 @@ class TargetProductionWorker:
                         },
                     }
             if event is None:
-                receipt["still_unresolved"] += 1
-                continue
+                # Charter 110's two facts, because the point lookup above
+                # has just told us nothing and that is not an answer.
+                #
+                # The gateway can only run its authoritative lookup while it
+                # still remembers the key: ``unresolved`` is in-memory, so a
+                # gateway restart turns every outstanding intent into
+                # ``{ok: false, found: false}`` -- "I do not know this key",
+                # which this lane rightly refuses to read as "the exchange
+                # does not have it".  The result was a class of intent that
+                # could never be resolved by anybody: ZSQD 23C sat in
+                # reconcile_required from 2026-09-07T18:59Z across every
+                # restart since, and ZGSZ 32C and 33C joined it on 09-08
+                # when the gateway restarted five minutes after their POST
+                # timed out.
+                #
+                # These two questions do not depend on gateway memory and do
+                # not expire.  The enumeration says whether the order is
+                # still live; the position says what a departed one did.
+                # Measured on those three intents: 33C was reported "live"
+                # by the point lookup (a cached reply from POST time) while
+                # the enumeration held zero open orders and the position
+                # held 7 shares -- the order had filled and the ledger
+                # carried nothing.
+                verdict = self._book_verdict_for_intent(
+                    client=client,
+                    intent_id=str(intent_id),
+                    token_id=str(token_id or ""),
+                    requested_size=float(requested_size or 0.0),
+                    limit_price=float(limit_price or 0.0),
+                    order_action=str(order_action or ""),
+                    idempotency_key=str(idempotency_key or ""),
+                    as_of_utc=as_of_utc,
+                )
+                if verdict.get("failure"):
+                    receipt["failures"].append({
+                        "order_intent_id": str(intent_id),
+                        "reason": str(verdict["failure"])[:120],
+                    })
+                    continue
+                event = verdict.get("event")
+                if event is None:
+                    partial = verdict.get("resolve_partial")
+                    if partial is None:
+                        receipt["still_unresolved"] += 1
+                        continue
+                    # A departed order whose fill the ledger already holds.
+                    # It cannot trade again, so the fill it got is the state
+                    # that stands; leaving it "not yet complete" is what kept
+                    # ZSQD 23C unresolved for sixteen hours over 0.03 of a
+                    # share the venue was never going to send.
+                    try:
+                        with _writer_transaction(
+                            self.commit_conn,
+                            savepoint="basket_target_intent_reconcile",
+                        ):
+                            resolve_reconciliation(
+                                self.commit_conn,
+                                order_intent_id=str(intent_id),
+                                authoritative_state="partial",
+                                filled_size=float(partial),
+                                filled_notional_usdc=float(partial)
+                                * float(limit_price or 0.0),
+                                resolved_at_utc=as_of_utc,
+                            )
+                        receipt["closed"] += 1
+                        receipt["closed_by_book"] += 1
+                    except Exception as exc:  # noqa: BLE001
+                        receipt["failures"].append({
+                            "order_intent_id": str(intent_id),
+                            "reason": f"{type(exc).__name__}:{exc}"[:120],
+                        })
+                    continue
+                receipt["closed_by_book"] += 1
             try:
                 with _writer_transaction(
                     self.commit_conn,

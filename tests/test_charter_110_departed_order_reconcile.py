@@ -290,3 +290,166 @@ def test_an_unavailable_position_concludes_nothing():
     assert out["state"] == "unknown"
     assert out["reason"] == "position_unavailable"
     assert _state(conn, "int-a")[1] == "pending"
+
+
+# --------------------------------------------------------------------------
+# The same two facts, one lane further in: an intent whose POST never got an
+# answer at all.  Charter 110 settled the RESTING rung, which has an exchange
+# order id because POST_ACK wrote one.  A submission that timed out has no id
+# and no gateway memory of it once the gateway restarts, and until 2026-09-08
+# nothing could ever resolve one.
+# --------------------------------------------------------------------------
+
+
+def _unresolved_ledger(*, token=TOKEN, requested=7.0, price=0.25, prior=0.0):
+    """One intent stuck in reconcile_required with no exchange order id."""
+
+    conn = sqlite3.connect(":memory:")
+    apply_target_ledger_schema(conn)
+    conn.execute(
+        "INSERT INTO basket_target_execution_cycles(cycle_id,plan_id,station_id,"
+        "event_date,settlement_timezone,strategy_lane,plan_sha256,"
+        "requested_reserve_usdc,state,created_at,updated_at)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        ("cycle_u", "plan_u", "ZGSZ", "2026-09-09", "Asia/Shanghai", "basket",
+         "a" * 64, 5.0, "submitted", "2026-09-08T00:00:00Z",
+         "2026-09-08T00:00:00Z"),
+    )
+    conn.execute(
+        "INSERT INTO basket_target_order_intents(order_intent_id,decision_id,"
+        "cycle_id,bucket,token_id,side,order_action,limit_price,"
+        "requested_size,requested_notional_usdc,state,live_submit_authorized,"
+        "idempotency_key,intent_json,intent_sha256,created_at)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("intent_u", "decision_u", "cycle_u", "33C", token, "YES", "BUY",
+         price, requested, price * requested, "submitted", 1, "key_u",
+         json.dumps({"post_only": True}), "c" * 64, "2026-09-08T11:02:49Z"),
+    )
+    # The timeout: request left the process, no id came back.
+    record_order_event(conn, order_intent_id="intent_u", event={
+        "event_type": "UNKNOWN_POST", "exchange_order_id": "",
+        "observed_at": "2026-09-08T11:02:49Z", "matched_size": 0.0,
+        "matched_notional_usdc": 0.0,
+        "event_payload": {"reason": "gateway_transport:TimeoutError"},
+    })
+    if prior:
+        record_order_event(conn, order_intent_id="intent_u", event={
+            "event_type": "PARTIAL_FILL", "exchange_order_id": "0xdead",
+            "observed_at": "2026-09-08T11:03:00Z", "matched_size": prior,
+            "matched_notional_usdc": prior * price, "event_payload": {},
+        })
+    conn.commit()
+    return conn
+
+
+def _verdict(conn, client, **over):
+    from bayes_basket_target.production_worker import (  # noqa: PLC0415
+        TargetProductionWorker,
+    )
+
+    shim = type("Shim", (), {"commit_conn": conn})
+    kwargs = {
+        "client": client, "intent_id": "intent_u", "token_id": TOKEN,
+        "requested_size": 7.0, "limit_price": 0.25, "order_action": "BUY",
+        "idempotency_key": "key_u", "as_of_utc": "2026-09-08T12:00:00Z",
+    }
+    kwargs.update(over)
+    return TargetProductionWorker._book_verdict_for_intent(shim, **kwargs)
+
+
+def test_a_timed_out_post_that_actually_filled_is_credited() -> None:
+    """ZGSZ 33C, 2026-09-08: seven shares owned, ledger recording zero.
+
+    The POST timed out at 11:02:49Z and the gateway restarted five minutes
+    later, losing the only memory that could have answered for the key --
+    ``/reconcile-order`` then replayed a cached "live" from POST time while
+    the enumeration held no open orders and the account held 7 shares.  The
+    point lookup was not merely silent here, it was WRONG; the two facts
+    were right.
+    """
+
+    conn = _unresolved_ledger()
+    client = _Client(live_ids=(), shares=7.0)
+    verdict = _verdict(conn, client)
+    event = verdict["event"]
+    assert event["event_type"] == "FILL"
+    assert event["matched_size"] == pytest.approx(7.0)
+    assert event["event_payload"]["recovered_by"] == "intent_reconcile_book_facts"
+    # Both facts were asked for; neither is optional.
+    assert client.calls == ["open_orders", "position"]
+
+
+def test_a_timed_out_post_that_never_arrived_is_closed() -> None:
+    """ZGSZ 32C the same minute: nothing live, nothing held, nothing owed."""
+
+    conn = _unresolved_ledger()
+    verdict = _verdict(conn, _Client(live_ids=(), shares=0.0))
+    assert verdict["event"]["event_type"] == "NEVER_REACHED_EXCHANGE"
+    assert verdict["event"]["matched_size"] == 0.0
+
+
+def test_a_departed_order_keeps_the_fill_it_got() -> None:
+    """ZSQD 23C: matched 24.969975 of 25 and expired, then sat sixteen hours.
+
+    ``fill_is_complete`` allows one venue quantum and the shortfall was
+    three, so an order that could never trade again was read as "not done
+    yet" and nothing retired it.  The order is gone; the fill it got is the
+    state that stands.
+    """
+
+    conn = _unresolved_ledger(requested=25.0, price=0.04, prior=24.969975)
+    verdict = _verdict(conn, _Client(live_ids=(), shares=24.969975),
+                       requested_size=25.0, limit_price=0.04)
+    assert verdict["event"] is None
+    assert verdict["resolve_partial"] == pytest.approx(24.969975)
+
+
+def test_an_incomplete_enumeration_concludes_nothing() -> None:
+    """Silence stays silence: an enumeration that ran out of pages is not
+    evidence that an order is absent from it."""
+
+    conn = _unresolved_ledger()
+    assert _verdict(conn, _Client(live_ids=(), shares=7.0, complete=False)) == {
+        "event": None
+    }
+    # ...and neither is a live order on the token: that is the resting
+    # lane's business, and a balance cannot say which order earned it.
+    assert _verdict(conn, _Client(live_ids=("0xlive",), shares=7.0)) == {
+        "event": None
+    }
+
+
+def test_two_unresolved_intents_on_one_token_are_both_left_alone() -> None:
+    """A position is per token and cumulative; two claimants cannot be told
+    apart by a balance, so neither is credited."""
+
+    conn = _unresolved_ledger()
+    conn.execute(
+        "INSERT INTO basket_target_order_intents(order_intent_id,decision_id,"
+        "cycle_id,bucket,token_id,side,order_action,limit_price,"
+        "requested_size,requested_notional_usdc,state,live_submit_authorized,"
+        "idempotency_key,intent_json,intent_sha256,created_at)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("intent_v", "decision_u", "cycle_u", "33C", TOKEN, "YES", "BUY",
+         0.25, 7.0, 1.75, "reconcile_required", 1, "key_v",
+         json.dumps({"post_only": True}), "d" * 64, "2026-09-08T11:02:49Z"),
+    )
+    conn.commit()
+    assert _verdict(conn, _Client(live_ids=(), shares=7.0)) == {"event": None}
+
+
+def test_the_ledger_is_never_credited_beyond_what_was_asked_for() -> None:
+    """A token carrying more than this intent requested credits the request,
+    not the balance."""
+
+    conn = _unresolved_ledger()
+    event = _verdict(conn, _Client(live_ids=(), shares=40.0))["event"]
+    assert event["matched_size"] == pytest.approx(7.0)
+
+
+def test_a_ledger_claiming_more_than_the_account_holds_is_not_papered_over() -> None:
+    """The overclaim direction is somebody else's problem, and writing
+    another fill would be the wrong way to notice it."""
+
+    conn = _unresolved_ledger(prior=7.0)
+    assert _verdict(conn, _Client(live_ids=(), shares=1.0)) == {"event": None}
