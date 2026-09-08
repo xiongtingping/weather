@@ -26,6 +26,7 @@ import hashlib
 import importlib
 import inspect
 import sqlite3
+import textwrap
 from datetime import datetime, timezone
 from typing import Callable, Any, Mapping, Sequence
 
@@ -35,15 +36,31 @@ SCHEMA = "serving_arithmetic_fingerprint_v1"
 # than modules keeps one stage's edits from resetting another's evidence:
 # materialization.py holds all three stages, and hashing the file would make
 # any P1 change cost P0 its accumulated days.
+# Each root is expanded to its call closure inside this package before it is
+# hashed (``_closure``).  Measured 2026-09-08: charter 86 halved P0's served
+# width by changing ``native_ensemble_oos._fit_parameters`` -- a function no
+# root here named and none of them calls at serving time, because its output
+# reaches serving baked into fitted artifacts -- and the fingerprint did not
+# move.  Two consequences, both fixed here.  A serving root's callees are
+# part of its arithmetic (``compile_native_ensemble_p0`` imports
+# ``_resolved_bias_c`` from the OOS module and that function decides the
+# served centre), so the closure is hashed, not the root's own body.  And
+# the training entry whose artifacts a stage serves is a root in its own
+# right: what P0 serves is decided as much when the artifact is fitted as
+# when it is compiled.  P0-M is built on P0's root and moves with it.
 STAGE_SOURCES: Mapping[str, Sequence[tuple[str, str]]] = {
     "P0": (
         ("bayes_basket_target.native_ensemble_p0", "compile_native_ensemble_p0"),
+        ("bayes_basket_target.native_ensemble_oos", "build_native_ensemble_oos"),
+        ("bayes_basket_target.native_ensemble_oos", "_fit_parameters"),
         ("bayes_basket_target.center_width_calibration",
          "apply_center_width_calibration"),
     ),
     "P0-M": (
         ("bayes_basket_target.materialization", "materialize_p0m"),
         ("bayes_basket_target.materialization", "materialize_p0m_observed"),
+        ("bayes_basket_target.native_ensemble_oos", "build_native_ensemble_oos"),
+        ("bayes_basket_target.native_ensemble_oos", "_fit_parameters"),
         ("bayes_basket_target.center_width_calibration",
          "apply_center_width_calibration"),
     ),
@@ -80,19 +97,106 @@ def _strip_docstrings(tree: ast.AST) -> ast.AST:
     return tree
 
 
-def fingerprint(stage: str) -> str | None:
-    """One hash over the arithmetic this stage serves, or None if unreadable."""
+PACKAGE = "bayes_basket_target"
+
+
+def _function_source_tree(target: Any) -> ast.AST:
+    source = textwrap.dedent(inspect.getsource(target))
+    return _strip_docstrings(ast.parse(ast.unparse(ast.parse(source))))
+
+
+def _direct_callees(module: Any, target: Any) -> list[tuple[str, str]]:
+    """Module-level functions of this package that ``target`` calls by name.
+
+    ``f(...)`` resolves through the module's own globals, which is where an
+    imported helper lands (``from .native_ensemble_oos import _resolved_bias_c``
+    puts it in ``native_ensemble_p0``'s namespace with ``__module__`` still
+    naming its home).  ``mod.f(...)`` resolves when ``mod`` is a package
+    module.  Methods, closures and dynamic dispatch are not followed: the
+    hash is a watchdog, and a watchdog that could not be computed is worse
+    than one with a named blind spot.
+    """
+
+    tree = _function_source_tree(target)
+    names: set[str] = set()
+    attrs: set[tuple[str, str]] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        callee = node.func
+        if isinstance(callee, ast.Name):
+            names.add(callee.id)
+        elif isinstance(callee, ast.Attribute) and isinstance(
+            callee.value, ast.Name
+        ):
+            attrs.add((callee.value.id, callee.attr))
+    found: list[tuple[str, str]] = []
+    for name in sorted(names):
+        obj = getattr(module, name, None)
+        if inspect.isfunction(obj) and str(obj.__module__ or "").startswith(
+            PACKAGE
+        ):
+            found.append((str(obj.__module__), str(obj.__name__)))
+    for holder_name, attr in sorted(attrs):
+        holder = getattr(module, holder_name, None)
+        if inspect.ismodule(holder) and str(holder.__name__).startswith(PACKAGE):
+            obj = getattr(holder, attr, None)
+            if inspect.isfunction(obj):
+                found.append((str(obj.__module__), str(obj.__name__)))
+    return found
+
+
+def _closure(entries: Sequence[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Every package function reachable by name from ``entries``, sorted.
+
+    Sorted so the hash does not depend on traversal order; a function
+    reached from two roots is hashed once.  A root that cannot be resolved
+    raises, and the caller turns that into "no fingerprint" -- the same
+    contract the single-function hash had.
+    """
+
+    seen: set[tuple[str, str]] = set()
+    queue = list(entries)
+    while queue:
+        module_name, function_name = queue.pop()
+        key = (module_name, function_name)
+        if key in seen:
+            continue
+        module = importlib.import_module(module_name)
+        target = getattr(module, function_name)
+        if not inspect.isfunction(target):
+            raise TypeError(f"not a function: {module_name}.{function_name}")
+        seen.add(key)
+        home = importlib.import_module(str(target.__module__))
+        for callee in _direct_callees(home, target):
+            if callee not in seen:
+                queue.append(callee)
+    return sorted(seen)
+
+
+def closure(stage: str) -> list[tuple[str, str]] | None:
+    """The functions a stage's fingerprint covers, for an audit to read."""
 
     entries = STAGE_SOURCES.get(str(stage))
     if not entries:
         return None
+    try:
+        return _closure(entries)
+    except (ImportError, AttributeError, OSError, SyntaxError, TypeError):
+        return None
+
+
+def fingerprint(stage: str) -> str | None:
+    """One hash over the arithmetic this stage serves, or None if unreadable."""
+
+    members = closure(stage)
+    if members is None:
+        return None
     digest = hashlib.sha256()
-    for module_name, function_name in entries:
+    for module_name, function_name in members:
         try:
             module = importlib.import_module(module_name)
-            target = getattr(module, function_name)
-            source = inspect.getsource(target)
-            tree = _strip_docstrings(ast.parse(ast.unparse(ast.parse(source))))
+            tree = _function_source_tree(getattr(module, function_name))
         except (ImportError, AttributeError, OSError, SyntaxError, TypeError):
             # A source we cannot read yields no fingerprint at all rather than
             # a partial one: a partial hash would move on unrelated packaging
@@ -112,6 +216,77 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         " first_seen_utc TEXT NOT NULL,"
         " PRIMARY KEY(stage, fingerprint_sha256))"
     )
+    # The other half of the watchdog's sentence.  A fingerprint later than
+    # the served version "means one of two things, and only whoever wrote
+    # the commit can say which" -- and until 2026-09-08 there was no place to
+    # say it, so the discrepancy had been true for every stage on every day
+    # since the mechanism landed (P0: seventeen fingerprints, one version).
+    # A lamp that cannot go out is not read.  An acknowledgement says the
+    # shape served under this fingerprint is the version's shape; a real
+    # change is answered by a version bump, never by a row here.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS calibration_serving_arithmetic_ack("
+        " stage TEXT NOT NULL,"
+        " fingerprint_sha256 TEXT NOT NULL,"
+        " acknowledged_at_utc TEXT NOT NULL,"
+        " reason TEXT NOT NULL,"
+        " PRIMARY KEY(stage, fingerprint_sha256))"
+    )
+
+
+def acknowledge(
+    conn: sqlite3.Connection,
+    *,
+    stage: str,
+    reason: str,
+    fingerprint_sha256: str | None = None,
+    now_utc: str | None = None,
+) -> dict[str, Any]:
+    """Record that the current (or named) fingerprint is inert.
+
+    Inert means: the arithmetic moved, the served shape did not, and the
+    version it carries still describes it.  The reason is required and is
+    the audit's only record of who judged that and on what grounds.
+    """
+
+    if not str(reason or "").strip():
+        raise ValueError("serving_arithmetic_ack_reason_required")
+    target = fingerprint_sha256 or fingerprint(stage)
+    if not target:
+        raise ValueError("serving_arithmetic_ack_fingerprint_unreadable")
+    ensure_schema(conn)
+    stamp = now_utc or datetime.now(timezone.utc).isoformat(
+        timespec="milliseconds"
+    ).replace("+00:00", "Z")
+    conn.execute(
+        "INSERT OR REPLACE INTO calibration_serving_arithmetic_ack"
+        "(stage, fingerprint_sha256, acknowledged_at_utc, reason)"
+        " VALUES(?,?,?,?)",
+        (str(stage), str(target), stamp, str(reason).strip()),
+    )
+    return {
+        "stage": str(stage),
+        "fingerprint": str(target),
+        "acknowledged_at_utc": stamp,
+        "reason": str(reason).strip(),
+    }
+
+
+def acknowledged(
+    conn: sqlite3.Connection, *, stage: str, fingerprint_sha256: str
+) -> dict[str, Any] | None:
+    try:
+        row = conn.execute(
+            "SELECT acknowledged_at_utc, reason"
+            " FROM calibration_serving_arithmetic_ack"
+            " WHERE stage=? AND fingerprint_sha256=?",
+            (str(stage), str(fingerprint_sha256)),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if not row:
+        return None
+    return {"acknowledged_at_utc": str(row[0]), "reason": str(row[1])}
 
 
 def record(
@@ -214,12 +389,19 @@ def watchdog(conn: sqlite3.Connection, *, stage: str) -> dict[str, Any]:
         "fingerprint_since_utc": None,
         "served_version": None,
         "discrepancy": False,
+        "acknowledged": None,
     }
     if current is None:
         return out
     since = anchor(conn, stage=stage)
     out["fingerprint_since_utc"] = since
     if not since:
+        return out
+    ack = acknowledged(conn, stage=stage, fingerprint_sha256=current)
+    out["acknowledged"] = ack
+    if ack is not None:
+        # Judged inert by whoever could judge it.  The lamp goes out for
+        # this fingerprint only; the next arithmetic change lights it again.
         return out
     try:
         latest = conn.execute(

@@ -3171,6 +3171,111 @@ def test_clause_79_symmetric_day_seat_is_the_mean_bucket_plus_minus_one(monkeypa
     assert '"symmetric_seat": SYMMETRIC_SEAT_MODE,' in ledger_source
 
 
+def test_clause_122_symmetric_seat_is_confined_to_the_width_band_it_was_measured_on(monkeypatch) -> None:
+    """Charter 122: outside the served-width band, charter 79 does not seat; the width is written down."""
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
+    from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
+    from bayes_basket_target.basket_kernel.support import served_sigma_buckets_v1
+    from bayes_basket_target.delta_v2_runtime import _support_windows
+
+    monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_MODE", "center_pm1_p0")
+    labels = ["29°C", "30°C", "31°C", "32°C", "33°C", "34°C"]
+    probs = [0.06, 0.20, 0.40, 0.20, 0.10, 0.04]
+    asks = [0.05, 0.15, 0.30, 0.15, 0.08, 0.03]
+    rows = [
+        {
+            "bucket": b, "ordinal": i + 2, "probability": p,
+            "bid_price": max(0.0, a - 0.01),
+            "bid_levels": [{"price": max(0.001, a - 0.01), "shares": 50.0}],
+            "ask_levels": [{"price": a, "shares": 100.0}],
+            "price_tick_size": 0.01,
+            "maker_queue_ahead_shares": 0.0, "maker_queue_known": True,
+        }
+        for i, (b, p, a) in enumerate(zip(labels, probs, asks))
+    ]
+    snapshot = TargetBasketSnapshot.from_mapping({
+        "schema": "target_basket_snapshot_v6", "snapshot_id": "c122", "sequence": 1,
+        "observed_at": "2026-09-08T00:00:00Z", "market_id": "m", "station_id": "X",
+        "event_date": "2026-09-09", "quote_version": "q",
+        "quote_observed_at": "2026-09-08T00:00:00Z", "quote_source": "OFFICIAL_CLOB_WS",
+        "inventory_version": "i", "order_state_version": "o",
+        "evidence": {"probability_stage": "P0", "posterior_version": "p", "posterior_sha256": "a" * 64},
+        "buckets": rows, "checkpoint_changed": True, "quote_changed": True,
+        "fill_changed": True, "time_gate_changed": True, "evidence_fresh": True,
+        "contract_matches": True, "order_state_known": True, "risk_inputs_complete": True,
+        "time_left_minutes": 600.0,
+    })
+    prob = dict(zip(labels, probs))
+    sigma = served_sigma_buckets_v1(prob, {b: i + 2 for i, b in enumerate(labels)})
+    assert sigma is not None and 1.0 < sigma < 1.5, sigma
+
+    def seat(band):
+        monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_WIDTH_BAND", band)
+        return _support_windows(
+            snapshot=snapshot, desired={"30°C", "31°C", "32°C", "33°C"},
+            probabilities=prob, fee_rate=0.0, maximum_support_buckets=4,
+            minimum_support_buckets=3, center_bucket="31°C", probability_stage="P0",
+        )
+
+    # Identity band: charter 79 as it stood.
+    windows, audit = seat((0.0, float("inf")))
+    assert audit["symmetric_seat_forced"] is True
+    assert audit["symmetric_seat_width_in_band"] is True
+    assert audit["symmetric_seat_sigma_buckets"] == sigma
+    assert audit["symmetric_seat_width_band"] == [0.0, None]
+    assert [tuple(w["buckets"]) for w in windows if w["admissible"]] == [("30°C", "31°C", "32°C")]
+    # A band this day's width falls outside: seated by the ordinary
+    # enumeration, and the audit says so rather than saying "not symmetric".
+    windows, audit = seat((1.5, float("inf")))
+    assert audit["symmetric_seat_forced"] is False
+    assert audit["symmetric_seat_width_in_band"] is False
+    assert audit["symmetric_seat_sigma_buckets"] == sigma
+    assert audit["symmetric_seat_width_band"] == [1.5, None]
+    assert len([w for w in windows if w["admissible"]]) > 1
+    # A band it falls inside seats exactly as the identity band does.
+    windows, audit = seat((1.0, 1.5))
+    assert audit["symmetric_seat_forced"] is True
+    assert audit["symmetric_seat_width_band"] == [1.0, 1.5]
+    # The ledger hashes the band whenever it is not the identity.
+    from pathlib import Path as _Path
+    ledger_source = (_Path(__file__).resolve().parents[1] / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
+    assert '"symmetric_seat_width_band": [' in ledger_source
+    assert "if SYMMETRIC_SEAT_WIDTH_BAND != (0.0, float(\"inf\")) else {}" in ledger_source
+
+
+def test_clause_122_width_band_switch_parses_and_refuses_nonsense() -> None:
+    parse = delta_v2_runtime._parse_width_band
+    assert parse("") == (0.0, float("inf"))
+    assert parse("off") == (0.0, float("inf"))
+    assert parse("1.0,inf") == (1.0, float("inf"))
+    assert parse("1.0,1.5") == (1.0, 1.5)
+    for bad in ("1.5,1.0", "-1,2", "1", "a,b"):
+        try:
+            parse(bad)
+        except (RuntimeError, ValueError):
+            continue
+        raise AssertionError(f"accepted {bad!r}")
+
+
+def test_shape_reading_carries_the_served_width_in_bucket_steps() -> None:
+    """One implementation: the width a gate acts on is the width the reader is shown."""
+    from bayes_basket_target.basket_kernel import support as kernel_support
+
+    probs = {"20": 0.1, "21": 0.4, "22": 0.4, "23": 0.1}
+    ordinals = {"20": 0, "21": 1, "22": 2, "23": 3}
+    reading = kernel_support.mean_mode_skew_reading_v1(probs, ordinals)
+    assert reading["readable"] is True
+    assert reading["sigma_buckets"] == kernel_support.served_sigma_buckets_v1(probs, ordinals)
+    assert abs(reading["sigma_buckets"] - 0.806226) < 1e-6
+    # Two-degree stations read on the same scale: the step divides it out.
+    wide = {"20": 0.1, "22": 0.4, "24": 0.4, "26": 0.1}
+    wide_ordinals = {"20": 0, "22": 2, "24": 4, "26": 6}
+    assert abs(kernel_support.mean_mode_skew_reading_v1(wide, wide_ordinals)["sigma_buckets"] - 0.806226) < 1e-6
+    empty = kernel_support.mean_mode_skew_reading_v1({}, ordinals)
+    assert empty["readable"] is False and empty["sigma_buckets"] is None
+    assert kernel_support.served_sigma_buckets_v1({}, ordinals) is None
+
+
 def test_symmetric_pair_arm_seats_the_mean_bucket_and_the_leaning_neighbour(monkeypatch) -> None:
     """Research arm (2026-09-05): symmetric day -> two rungs, centre plus the side the mean leans to."""
     from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot

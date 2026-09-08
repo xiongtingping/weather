@@ -110,6 +110,7 @@ from .basket_kernel.support import (
     mean_center_bucket_v1,
     mean_mode_skew_reading_v1,
     mean_mode_skew_sign_v1,
+    served_sigma_buckets_v1,
     _choose_support,
     _derive_dual_risk_scope,
     probability_center_diagnostics,
@@ -1137,6 +1138,38 @@ if SYMMETRIC_SEAT_MODE not in {
     "off", "center_pm1", "center_pm1_p0", "mean_mode_pair_p0", "mode_only_p0",
 }:
     raise RuntimeError(f"unknown symmetric seat mode: {SYMMETRIC_SEAT_MODE}")
+# Charter 122 (user ruling, 2026-09-08): the symmetric seat applies only
+# inside the served-width band it was adjudicated on.  Charter 79's reading
+# (-2.8% -> +0.5%, 08-15..09-03) was taken on a P0 vector whose sigma ran
+# 1.5-2.1 bucket steps and read SYMMETRIC on about half of station-days.
+# Between 09-03 and 09-07 three width changes -- the P0 centre/width layer
+# wired at lambda 0.75, charter 86 retiring the climate blend, the station
+# width table at 0.5 on 32 of 45 stations -- took the served sigma to 0.70,
+# and the "symmetric" reading is a monotone function of that number alone
+# (19% of days at sigma >= 2.25, 84% under 1.0; holds within a single
+# decision day).  So the rule went from binding half the days to 95.8% of P0
+# seats with no re-measurement, and nothing in the shape layer read the
+# width that moved it.  ``lo,hi`` in bucket steps, half-open; a day outside
+# the band is seated by the ordinary enumeration, with the width and the
+# band written to the audit so the board can say which rule seated it.
+# ``off`` (or unset) is the identity band, i.e. charter 79 as it stood.
+def _parse_width_band(raw: str) -> tuple[float, float]:
+    text = str(raw or "").strip().lower()
+    if not text or text == "off":
+        return (0.0, float("inf"))
+    parts = [part.strip() for part in text.split(",")]
+    if len(parts) != 2:
+        raise RuntimeError(f"symmetric seat width band wants lo,hi: {raw!r}")
+    low = float(parts[0])
+    high = float("inf") if parts[1] in {"", "inf"} else float(parts[1])
+    if not (0.0 <= low < high):
+        raise RuntimeError(f"symmetric seat width band out of order: {raw!r}")
+    return (low, high)
+
+
+SYMMETRIC_SEAT_WIDTH_BAND = _parse_width_band(
+    os.environ.get("PM_SYMMETRIC_SEAT_WIDTH_BAND", "")
+)
 # Research arms (2026-09-04, user): (1) P0 seat by skew -- symmetric day
 # centre+-1; right-skewed day the 3-4 rungs from the mean bucket toward the
 # hot tail; left-skewed the mirror.  (2) P0-M and the TAF TX: ``tx_anchor``
@@ -2656,6 +2689,17 @@ def _support_windows(
     # so the solver holds when the sanctioned window is not on offer.
     symmetric_seat_forced = False
     symmetric_seat_pair: tuple[str, ...] | None = None
+    # Charter 122: the width the seat rule is judged against, read off the
+    # same served vector the shape is read off, in the same bucket steps.
+    seat_sigma_buckets = served_sigma_buckets_v1(
+        probabilities,
+        {bucket: int(row.ordinal) for bucket, row in by_bucket.items()},
+    )
+    seat_width_in_band = seat_sigma_buckets is None or (
+        SYMMETRIC_SEAT_WIDTH_BAND[0]
+        <= seat_sigma_buckets
+        < SYMMETRIC_SEAT_WIDTH_BAND[1]
+    )
     symmetric_arm_applies = (
         SYMMETRIC_SEAT_MODE == "center_pm1"
         or (
@@ -2664,7 +2708,7 @@ def _support_windows(
             }
             and str(probability_stage or "") != "P1"
         )
-    ) and not taf_entry_required
+    ) and not taf_entry_required and seat_width_in_band
     if symmetric_arm_applies and ladder_center in by_bucket:
         raw_skew = _skew_extension_sign(
             probabilities,
@@ -2827,6 +2871,18 @@ def _support_windows(
         "symmetric_seat_forced": symmetric_seat_forced,
         "symmetric_seat_mode": SYMMETRIC_SEAT_MODE,
         "symmetric_seat_pair": symmetric_seat_pair,
+        # Charter 122: the width the day was seated at, and the band the
+        # symmetric seat is confined to.  ``in_band`` false means the day
+        # was seated by the ordinary enumeration whatever its shape read.
+        "symmetric_seat_sigma_buckets": seat_sigma_buckets,
+        "symmetric_seat_width_band": [
+            SYMMETRIC_SEAT_WIDTH_BAND[0],
+            (
+                None if SYMMETRIC_SEAT_WIDTH_BAND[1] == float("inf")
+                else SYMMETRIC_SEAT_WIDTH_BAND[1]
+            ),
+        ],
+        "symmetric_seat_width_in_band": seat_width_in_band,
         "skew_seat_forced": skew_seat_forced,
         "p0m_taf": p0m_taf_audit,
         "probability_core": sorted(

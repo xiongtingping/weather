@@ -710,6 +710,69 @@ def test_a_code_change_alone_does_not_spend_the_evidence() -> None:
         conn.close()
 
 
+def test_fingerprint_covers_the_training_arithmetic_a_stage_serves_from() -> None:
+    """Charter 86 moved P0's served width by editing ``_fit_parameters`` --
+    a function no fingerprint root named and none calls at serving time,
+    because its output reaches serving baked into artifacts -- and the
+    fingerprint did not move.  The closure names it now, for both stages
+    built on P0's root; P1 serves from another lane and stays out."""
+
+    from bayes_basket_target import serving_arithmetic
+
+    for stage in ("P0", "P0-M"):
+        members = serving_arithmetic.closure(stage)
+        assert members is not None
+        names = {function for _module, function in members}
+        assert "_fit_parameters" in names, stage
+        assert "_resolved_bias_c" in names, stage
+        assert "apply_center_width_calibration" in names, stage
+        # Sorted and duplicate-free, so the hash cannot depend on traversal.
+        assert members == sorted(set(members))
+    p1 = {function for _m, function in serving_arithmetic.closure("P1")}
+    assert "_fit_parameters" not in p1
+    assert serving_arithmetic.fingerprint("P0") != serving_arithmetic.fingerprint("P1")
+
+
+def test_an_acknowledged_fingerprint_puts_the_lamp_out_until_the_code_moves_again() -> None:
+    """The watchdog's sentence has two halves and only had one place to say
+    the first.  Measured 2026-09-08: discrepancy true for every stage on
+    every day since the mechanism landed (P0: 17 fingerprints, 1 version).
+    An acknowledgement quiets exactly the fingerprint it names."""
+
+    from bayes_basket_target import serving_arithmetic
+
+    conn = _anchor_fixture()
+    try:
+        original = serving_arithmetic.anchor
+        original_fingerprint = serving_arithmetic.fingerprint
+        serving_arithmetic.fingerprint = lambda stage: "deadbeef"  # noqa: ARG005
+        try:
+            _add_decision(conn, at="2026-08-26T00:00:00Z", version="v_now")
+            serving_arithmetic.anchor = lambda conn, *, stage: (  # noqa: ARG005
+                "2026-08-27T12:00:00Z"
+            )
+            assert serving_arithmetic.watchdog(conn, stage="P1")["discrepancy"] is True
+            # No reason, no acknowledgement: the audit's record is the point.
+            with pytest.raises(ValueError):
+                serving_arithmetic.acknowledge(conn, stage="P1", reason="  ")
+            receipt = serving_arithmetic.acknowledge(
+                conn, stage="P1", reason="receipt-only refactor",
+                now_utc="2026-08-28T00:00:00Z",
+            )
+            assert receipt["fingerprint"] == "deadbeef"
+            after = serving_arithmetic.watchdog(conn, stage="P1")
+            assert after["discrepancy"] is False
+            assert after["acknowledged"]["reason"] == "receipt-only refactor"
+            # The code moves again: a new fingerprint, and the lamp is back.
+            serving_arithmetic.fingerprint = lambda stage: "cafebabe"  # noqa: ARG005
+            assert serving_arithmetic.watchdog(conn, stage="P1")["discrepancy"] is True
+        finally:
+            serving_arithmetic.anchor = original
+            serving_arithmetic.fingerprint = original_fingerprint
+    finally:
+        conn.close()
+
+
 def test_arithmetic_moving_after_its_version_raises_a_discrepancy() -> None:
     """What the demoted bound still owes: naming the skipped version bump."""
 

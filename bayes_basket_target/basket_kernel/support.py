@@ -162,6 +162,7 @@ def mean_mode_skew_reading_v1(
         "mean_ordinal": None,
         "mode_ordinal": None,
         "bucket_step": None,
+        "sigma_buckets": None,
         "threshold_buckets": float(threshold_buckets),
         "readable": False,
     }
@@ -186,6 +187,15 @@ def mean_mode_skew_reading_v1(
     sign = 0 if abs(gap) < float(threshold_buckets) * step else (
         1 if gap > 0 else -1
     )
+    # The served width, in the same bucket steps as the gap.  Measured
+    # 2026-09-08 on every P0 envelope since 08-25: the share of days this
+    # reading calls SYMMETRIC is a monotone function of this number alone
+    # (19% at sigma >= 2.25 steps, 84% under 1.0) and holds within a single
+    # decision day, so a shape reading that did not carry its width could
+    # not be told apart from a width reading.  Charter 122 gates the
+    # symmetric seat on it.
+    variance = sum(mass * (o - mean_ordinal) ** 2 for mass, o in weighted) / total
+    sigma_buckets = math.sqrt(max(0.0, variance)) / step
     return {
         "schema": "mean_mode_skew_reading_v1",
         "signal": str(signal),
@@ -197,9 +207,25 @@ def mean_mode_skew_reading_v1(
         "mean_ordinal": round(mean_ordinal, 6),
         "mode_ordinal": int(mode_ordinal),
         "bucket_step": int(step),
+        "sigma_buckets": round(sigma_buckets, 6),
         "threshold_buckets": float(threshold_buckets),
         "readable": True,
     }
+
+
+def served_sigma_buckets_v1(
+    probabilities: Mapping[str, Any],
+    ordinals: Mapping[str, Any],
+) -> float | None:
+    """The served distribution's standard deviation in bucket steps.
+
+    One implementation, in ``mean_mode_skew_reading_v1``: the width a gate
+    acts on and the width a reader is shown are the same number.  None on
+    empty mass.
+    """
+
+    reading = mean_mode_skew_reading_v1(probabilities, ordinals)
+    return None if not reading["readable"] else float(reading["sigma_buckets"])
 
 
 def mean_mode_skew_sign_v1(

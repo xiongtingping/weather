@@ -47,8 +47,21 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] center_width refit"
 # this moment on only a version bump moves the floor.  This constant is
 # deliberately not maintained: it stops mattering as soon as each stage's
 # posterior_version moves past it.
+# Charter 86 (2026-09-06 04:18Z, f5f659cb) changed what P0 serves -- the
+# climate blend came out of every fitted artifact -- and did not bump
+# posterior_version, so the version anchor above still says 2026-08-27 and
+# the width fit kept training on the blended shape: three refits
+# (09-06T15:48Z, 09-06T23:00Z, 09-08T11:35Z) proposed byte-identical
+# per-station scales and the last two were refused forward.  The bound
+# below is the moment the shape actually changed, which is earlier than any
+# bump made today could say (a bump anchors at its own first serving), so
+# the de-blended days already served are kept rather than re-earned.
+# P0-M inherits P0's root and moves with it.  Retire this flag when P0's
+# posterior_version moves past 2026-09-06.
 "$PY" scripts/refit_center_width.py --commit --summary \
-  --since "2026-08-27T09:20:00Z" || RC=$?
+  --since "2026-08-27T09:20:00Z" \
+  --since-stage "P0=2026-09-06T04:18:00Z" \
+  --since-stage "P0-M=2026-09-06T04:18:00Z" || RC=$?
 
 # Shadow only: station x bucket-position band factors, fitted on the same
 # serving lane as the pooled table above and served by nothing.  It rides
