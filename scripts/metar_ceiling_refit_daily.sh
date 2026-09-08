@@ -9,19 +9,22 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
-# The interpreter the rest of the repo runs on, chosen the same way the
-# resident chooses it.  Bare ``python3`` is not that interpreter under
-# launchd: this job's PATH puts /opt/homebrew/bin first, and the Homebrew
-# 3.13 there has never had httpx, which ``bayes_basket_target`` imports at
-# package import time.  So every scheduled run since 2026-08-26 echoed its
-# start line and then died on ModuleNotFoundError -- thirteen days in which
-# the only refit that happened was one somebody ran by hand on 09-06.  The
-# failure is silent by construction: the artifact does not expire, it just
-# keeps serving the curve it was last fitted with.
-PY="${PYTHON:-$ROOT/.venv/bin/python}"
-if [ ! -x "$PY" ]; then
-  PY="$(command -v python3)"
-fi
+# The project interpreter, through the resolver every other scheduled
+# script here uses.  Bare ``python3`` is not it under launchd: this job's
+# PATH puts /opt/homebrew/bin first, and the Homebrew 3.13 there has never
+# had httpx, which ``bayes_basket_target`` imports at package import time.
+# So every scheduled run since 2026-08-26 echoed its start line and then
+# died on ModuleNotFoundError -- thirteen days in which the only refit
+# that happened was one somebody ran by hand on 09-06.  The failure is
+# silent by construction: the artifact does not expire, it just keeps
+# serving the curve it was last fitted with.  Falling back to whatever
+# PATH offers would reintroduce exactly that; the resolver's second
+# choice is the Framework build, which carries the dependencies.
+. "$ROOT/scripts/lib/resolve_project_python.sh"
+PY="${PYTHON:-$(resolve_project_python "$ROOT")}" || {
+  echo "no project python (.venv or Framework 3.13)" >&2
+  exit 1
+}
 OUT="$ROOT/data/runtime/bayes_basket_target_nwp"
 STAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 

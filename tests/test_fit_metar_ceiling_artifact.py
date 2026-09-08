@@ -89,5 +89,16 @@ def test_the_daily_job_runs_on_the_interpreter_the_package_imports_under() -> No
         Path(__file__).resolve().parents[1]
         / "scripts" / "metar_ceiling_refit_daily.sh"
     ).read_text(encoding="utf-8")
-    assert 'PY="${PYTHON:-$ROOT/.venv/bin/python}"' in script
-    assert 'PY="$(command -v python3)"' in script, "fallback for no venv"
+    assert "resolve_project_python" in script, (
+        "the resolver every other scheduled script here uses"
+    )
+    assert "command -v python3" not in script, (
+        "that fallback is the bug: it resolves to Homebrew's under launchd"
+    )
+    # And the resolver's own fallback is the Framework build, not PATH.
+    resolver = (
+        Path(__file__).resolve().parents[1]
+        / "scripts" / "lib" / "resolve_project_python.sh"
+    ).read_text(encoding="utf-8")
+    assert "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3" in resolver
+    assert "command -v" not in resolver
