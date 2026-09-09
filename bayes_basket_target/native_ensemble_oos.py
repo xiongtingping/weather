@@ -5207,8 +5207,28 @@ def _system_artifact_identity(
             "formal_promotion_min_train_days": scope["formal_promotion_min_train_days"],
             "formal_promotion_min_holdout_days": scope["formal_promotion_min_holdout_days"],
             "formal_p0_eligible": False,
-            "fit_through_date": parameters.get("fit_through_date"),
-            "fit_case_count": parameters.get("fit_case_count"),
+            # Subscripted, like every other fitted key in these three
+            # columns.  ``.get`` was the odd one out and it cost the pair
+            # register its voice: ``test_paired_contracts`` reads this
+            # writer's SOURCE for the keys it persists -- deliberately, so
+            # the register cannot drift the way the thing it guards did --
+            # and its pattern only sees ``parameters["..."]``.  So the one
+            # contract written to catch a fitted key nobody persists sat red
+            # from 2026-09-02 over two keys that were persisted all along,
+            # and a red contract is one nobody reads when it goes red for a
+            # real reason.
+            #
+            # The stronger form is also the correct one here.  These two are
+            # produced unconditionally by ``_fit_parameters`` and both
+            # ``parameters`` and ``serving_parameters`` carry them (pinned in
+            # test_native_ensemble_serving_refit).  Measured on the store:
+            # every one of the 21,000+ artifacts written since 2026-09-03
+            # carries both, across both writer paths, so a missing key here
+            # is not a case that happens -- it is a fit that changed shape
+            # without this column being told, and that should raise rather
+            # than write a silent null the OOS gate would score.
+            "fit_through_date": parameters["fit_through_date"],
+            "fit_case_count": parameters["fit_case_count"],
         }),
         "member_qc_contract_sha256": content_sha256({
             "expected_complete_member_set": True,
