@@ -56,8 +56,11 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] center_width refit"
 # below is the moment the shape actually changed, which is earlier than any
 # bump made today could say (a bump anchors at its own first serving), so
 # the de-blended days already served are kept rather than re-earned.
-# P0-M inherits P0's root and moves with it.  Retire this flag when P0's
-# posterior_version moves past 2026-09-06.
+# P0-M inherits P0's root and moves with it.  Nobody has to retire this: the
+# evidence floor is the LATER of the caller's bound and the version anchor, so
+# the moment a bump moves P0's anchor past 2026-09-06 this flag stops being
+# the maximum and becomes a no-op.  It is a floor under a shape whose version
+# never moved, not a date anyone has to maintain.
 "$PY" scripts/refit_center_width.py --commit --summary \
   --since "2026-08-27T09:20:00Z" \
   --since-stage "P0=2026-09-06T04:18:00Z" \
@@ -74,6 +77,17 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] center_width refit"
 # nothing.
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] symmetric seat band refit"
 "$PY" scripts/refit_symmetric_seat_band.py --commit --summary || RC=$?
+
+# Whether any stage owes the version bump the width lanes above key their
+# evidence off.  Read-only and deliberately NOT part of RC, for the reason
+# the watchdog itself is reported and never enforced (2026-08-27): a check
+# that closed the sweep would be the demoted boundary again, and the layer
+# it protects would never activate.  It is here so the question is asked
+# once a day instead of when somebody goes looking -- which is how charter 86
+# changed P0's served width on 2026-09-06 and left its version behind.
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] serving arithmetic watchdog"
+"$PY" scripts/acknowledge_serving_arithmetic.py --audit \
+  || echo "watchdog audit failed; refits above still committed" >&2
 
 # Shadow only: station x bucket-position band factors, fitted on the same
 # serving lane as the pooled table above and served by nothing.  It rides

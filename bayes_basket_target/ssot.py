@@ -1777,6 +1777,14 @@ CREATE TABLE IF NOT EXISTS basket_p0_preselection_plan (
 
 CREATE INDEX IF NOT EXISTS basket_p0_preselection_scope_idx
 ON basket_p0_preselection_plan(station_id,event_date,decision_at_utc,quote_observed_at_utc);
+-- Every scope query above seeks on station_id first, so a reader asking
+-- "what was compiled in this time window", across stations, had nothing to
+-- seek on and read the whole table -- and the rows are plan bodies, so that
+-- is 68,933 large blobs off disk for a COUNT: measured 38 seconds on
+-- 2026-09-09 for a one-day window.  The serving-arithmetic audit asks
+-- exactly that question once a day, and the seat-band lane asks it too.
+CREATE INDEX IF NOT EXISTS basket_p0_preselection_created_idx
+ON basket_p0_preselection_plan(created_at);
 
 CREATE TRIGGER IF NOT EXISTS basket_probability_envelope_no_update BEFORE UPDATE ON basket_probability_envelope BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS basket_probability_envelope_no_delete BEFORE DELETE ON basket_probability_envelope BEGIN SELECT RAISE(ABORT,'append_only'); END;
