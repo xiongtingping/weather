@@ -547,6 +547,7 @@ def seed_hosted_sweep_clock(
     completed_at_utc: str | None,
     interval_sec: float,
     stagger_sec: float,
+    attempted_at_utc: str | None = None,
 ) -> float:
     """One member's boot due-time, honouring its persisted last completion.
 
@@ -555,13 +556,30 @@ def seed_hosted_sweep_clock(
     -- in the past by the true overdue amount when the member is starved
     (a small boot grace keeps the first slots from racing startup), in the
     future by the genuine remainder when it is not.
+
+    ``attempted_at_utc`` is the fix for what that reasoning missed
+    (2026-09-09): a member that FAILS never advances its completion, so on
+    every restart it is maximally overdue, ranks first, and takes its slot
+    again.  ``capture_noaa_conus_forward`` had been in that loop for 72
+    hours -- 1,800 seconds of the exclusive SSOT write domain per attempt,
+    then ``timeout_killed``, then first in line again at the next restart --
+    and it was starving six other SSOT members behind it (settlement truth,
+    the paper ledger and the maker shadow probe among them, all 12+ hours
+    late on a 3-hour interval).
+
+    So the retry cadence reads the later of the two stamps while the
+    COMPLETION stamp still says, truthfully, that this member has not
+    succeeded since.  A failing member retries on its own interval instead
+    of on every restart; nothing pretends it worked.
     """
 
-    if not completed_at_utc:
+    stamps = [value for value in (completed_at_utc, attempted_at_utc) if value]
+    if not stamps:
         return now_mono + stagger_sec
     try:
-        completed = datetime.fromisoformat(
-            str(completed_at_utc).replace("Z", "+00:00")
+        completed = max(
+            datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            for value in stamps
         )
         now_wall = datetime.fromisoformat(
             str(now_wall_utc).replace("Z", "+00:00")
@@ -3899,6 +3917,10 @@ def main() -> int:
                     (_sweep_clocks.get(name) or {}).get("completed_at_utc")
                     if isinstance(_sweep_clocks.get(name), dict) else None
                 ),
+                attempted_at_utc=(
+                    (_sweep_clocks.get(name) or {}).get("attempted_at_utc")
+                    if isinstance(_sweep_clocks.get(name), dict) else None
+                ),
                 interval_sec=interval_sec,
                 stagger_sec=60.0 + 90.0 * index,
             )
@@ -4564,25 +4586,36 @@ def main() -> int:
                         next_hosted_sweep[name] = (
                             time.monotonic() + interval_sec
                         )
-                # Only a completed attempt advances the persisted clock: a
-                # member whose run was killed or failed stays overdue across
-                # a restart, which is the point of persisting at all.
-                if str(sweep_result.get("state") or "") == "ok":
-                    try:
-                        _clocks = json.loads(
-                            HOSTED_SWEEP_CLOCKS_PATH.read_text()
-                        )
-                        if not isinstance(_clocks, dict):
-                            _clocks = {}
-                    except (OSError, ValueError):
+                # Only a completed attempt advances the COMPLETION stamp: a
+                # member whose run was killed or failed has not succeeded,
+                # and the record must keep saying so.  But every attempt --
+                # including a killed one -- advances the ATTEMPT stamp, and
+                # the boot seed reads the later of the two.  Without that a
+                # repeatedly-failing member is maximally overdue at every
+                # restart, ranks first, and takes the exclusive write domain
+                # again; see ``seed_hosted_sweep_clock`` for the 72-hour
+                # instance of exactly that.
+                try:
+                    _clocks = json.loads(
+                        HOSTED_SWEEP_CLOCKS_PATH.read_text()
+                    )
+                    if not isinstance(_clocks, dict):
                         _clocks = {}
-                    _clocks[done_name] = {
-                        "completed_at_utc": utc_now(),
-                    }
-                    try:
-                        _atomic_json(HOSTED_SWEEP_CLOCKS_PATH, _clocks)
-                    except OSError:
-                        pass
+                except (OSError, ValueError):
+                    _clocks = {}
+                _entry = _clocks.get(done_name)
+                if not isinstance(_entry, dict):
+                    _entry = {}
+                _sweep_state = str(sweep_result.get("state") or "")
+                _entry["attempted_at_utc"] = utc_now()
+                _entry["last_state"] = _sweep_state
+                if _sweep_state == "ok":
+                    _entry["completed_at_utc"] = utc_now()
+                _clocks[done_name] = _entry
+                try:
+                    _atomic_json(HOSTED_SWEEP_CLOCKS_PATH, _clocks)
+                except OSError:
+                    pass
                 del hosted_sweep_futures[done_name]
                 # Served when a sweep FINISHES, as before: the rotation ranks
                 # lanes by how long ago each last completed, so stamping this

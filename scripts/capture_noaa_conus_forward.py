@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import re
 import sqlite3
+import time
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -60,6 +61,18 @@ LOOKAHEAD_DAYS = 2
 # 30 MB; six runs keeps a pass under a few minutes of serialized writer
 # time while still outrunning the ~30 new runs a day the fleet produces.
 MAX_RUNS_PER_PASS = 6
+# ...and a wall-clock bound beside the run count, because the run count alone
+# does not bound the pass (2026-09-09).  Six ranged S3 reads at 30-50 MB each
+# take as long as the archive takes; the hosted budget is 1,800s and this pass
+# had been consuming all of it and being ``timeout_killed`` since 2026-09-06.
+# A killed pass never advances its completion clock, so it was maximally
+# overdue at every restart, took the exclusive SSOT write domain again, and
+# starved six other SSOT members 12+ hours behind it on a 3-hour interval.
+#
+# A sharded lane's contract is "do a bounded amount and RETURN"; a lane that
+# does an unbounded amount and gets killed is not sharded, it is a hostage.
+# 900s leaves the P1 lane's 480s and a margin under the 1,800s budget.
+BUDGET_SEC_PER_PASS = 900.0
 # Seconds of writer occupancy this lane may spend on the P1 pass, per
 # product.  The sweep's subprocess timeout is 1800s and the resident admits
 # one writer at a time, so every second here is a second the production
@@ -269,11 +282,16 @@ def main() -> int:
 
     try:
         plan, skipped = _plan(conn, now)
+        deadline = time.monotonic() + BUDGET_SEC_PER_PASS
+        budget_exhausted = False
         for item in plan:
             product = item["product"]
             if product in blocked and not args.dry_run:
                 continue
             if attempted >= MAX_RUNS_PER_PASS:
+                break
+            if time.monotonic() >= deadline:
+                budget_exhausted = True
                 break
             attempted += 1
             station, target = item["station"], item["target"]
@@ -363,6 +381,11 @@ def main() -> int:
     )
     if attempted >= MAX_RUNS_PER_PASS:
         print("  达到本轮上限，剩余的下一轮继续")
+    elif budget_exhausted:
+        print(
+            f"  本轮 {BUDGET_SEC_PER_PASS:.0f}s 时间预算用尽，剩余的下一轮继续"
+            "（正常返回，不占用托管写域直到被杀）"
+        )
     for line in failed[:8]:
         print(f"  {line}")
     return 0

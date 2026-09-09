@@ -421,3 +421,72 @@ def test_the_cycle_declares_a_target_and_not_only_a_failure_line(
     )
     # And the warn line must still leave the queue solvent at all.
     assert 3600.0 / daemon.PRODUCTION_CYCLE_WARN_SEC >= ssot_demand_per_hour
+
+
+def test_a_failing_member_retries_on_its_interval_not_on_every_restart(
+    daemon,
+) -> None:
+    """The 72-hour instance this argument came from (2026-09-09).
+
+    ``capture_noaa_conus_forward`` had not completed since 2026-09-06: every
+    attempt ran the full 1,800-second budget, was ``timeout_killed``, and so
+    never advanced its completion stamp.  On each restart it was therefore
+    maximally overdue, ranked first, and took the exclusive SSOT write domain
+    for another half hour -- while six other SSOT members sat 12 to 13 hours
+    late on a 3-hour interval (settlement truth, the paper ledger, the maker
+    shadow probe among them).
+
+    The completion stamp still tells the truth: it has not succeeded.  The
+    ATTEMPT stamp is what the retry cadence reads.
+    """
+    now = 1000.0
+    stale_completion = "2026-09-06T08:12:07Z"
+    wall = "2026-09-09T08:30:00Z"
+
+    starved = daemon.seed_hosted_sweep_clock(
+        now_mono=now, now_wall_utc=wall,
+        completed_at_utc=stale_completion, attempted_at_utc=None,
+        interval_sec=10_800.0, stagger_sec=60.0,
+    )
+    paced = daemon.seed_hosted_sweep_clock(
+        now_mono=now, now_wall_utc=wall,
+        completed_at_utc=stale_completion,
+        attempted_at_utc="2026-09-09T08:28:00Z",
+        interval_sec=10_800.0, stagger_sec=60.0,
+    )
+    # Without the attempt stamp it is due in the past by a full day of
+    # overdue credit; with it, it waits out its interval like anyone else.
+    assert starved < now
+    assert paced > now + 10_000.0
+
+    # A member that genuinely succeeded an interval ago is still due now --
+    # the fix must not slow down the healthy case.
+    healthy = daemon.seed_hosted_sweep_clock(
+        now_mono=now, now_wall_utc=wall,
+        completed_at_utc="2026-09-09T05:00:00Z",
+        attempted_at_utc="2026-09-09T05:00:00Z",
+        interval_sec=10_800.0, stagger_sec=60.0,
+    )
+    assert healthy < now
+
+    # And a record with no stamps at all keeps the boot stagger.
+    assert daemon.seed_hosted_sweep_clock(
+        now_mono=now, now_wall_utc=wall, completed_at_utc=None,
+        attempted_at_utc=None, interval_sec=10_800.0, stagger_sec=60.0,
+    ) == now + 60.0
+
+
+def test_every_attempt_advances_the_attempt_stamp_and_only_success_the_other(
+    daemon,
+) -> None:
+    """Asserted on the source, because the write sits inside the daemon's
+    main loop and has no seam."""
+    import inspect
+
+    source = inspect.getsource(daemon)
+    assert '_entry["attempted_at_utc"] = utc_now()' in source
+    assert '_entry["last_state"] = _sweep_state' in source
+    at = source.index('_entry["attempted_at_utc"] = utc_now()')
+    after = source[at:at + 400]
+    assert 'if _sweep_state == "ok":' in after
+    assert '_entry["completed_at_utc"] = utc_now()' in after
