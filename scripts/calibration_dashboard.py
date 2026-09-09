@@ -7296,7 +7296,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     }
 
 
-HTML_TEMPLATE = r"""<!doctype html>
+HTML_TEMPLATE = r"""<!doctype html><!--render-start:__RENDER_STARTED__-->
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>气温篮子全链看板</title>
@@ -12478,10 +12478,70 @@ document.querySelectorAll(".why,.sub").forEach(node=>{
 </script></body></html>"""
 
 
-def render_html(payload: dict[str, Any]) -> str:
+#: The build's own start time, written into the first line of the document.
+#: The guard below compares these rather than file mtimes; see it for why.
+RENDER_STAMP_RE = re.compile(r"<!--render-start:([0-9.]+)-->")
+
+
+def render_html(payload: dict[str, Any], started_at: float | None = None) -> str:
     return HTML_TEMPLATE.replace(
         "__PAYLOAD__", json.dumps(payload, ensure_ascii=False)
+    ).replace(
+        "__RENDER_STARTED__",
+        f"{time.time() if started_at is None else started_at:.3f}",
     )
+
+
+def _render_started_at(target: Path) -> float | None:
+    """When the build that wrote this file began, if the file says.
+
+    Only the first line is read: the stamp sits before anything else in the
+    document precisely so this check never touches the seven megabytes
+    behind it.
+    """
+
+    try:
+        with target.open("r", encoding="utf-8") as handle:
+            head = handle.read(200)
+    except OSError:
+        return None
+    match = RENDER_STAMP_RE.search(head)
+    if match is None:
+        return None
+    try:
+        return float(match.group(1))
+    except ValueError:
+        return None
+
+
+def _newer_render_landed(target: Path, started_at: float) -> bool:
+    """Whether the file on disk came from a build newer than this one.
+
+    The old test was ``mtime > started_at`` -- did anyone WRITE after I
+    started -- and the comment beside it claimed that compared code
+    vintages.  It did not, and the difference bit on 2026-09-09: a sweep
+    that began at 14:34 finished at 15:15, a hand render that began at
+    15:14 with the edit in it finished at 15:28, and the guard threw away
+    the newer code because the older process had touched the file more
+    recently.  That is the exact failure the guard exists to prevent, run
+    backwards.
+
+    A process runs whatever was on disk when it imported, so START time is
+    the code vintage.  Compare those: a build that began later has code at
+    least as new, and it wins; a build that began earlier loses no matter
+    when it happened to finish writing.  Files with no stamp predate this
+    and fall back to the mtime test, which is right for them -- an unstamped
+    file is older code by construction.
+    """
+
+    try:
+        existing_mtime = target.stat().st_mtime
+    except OSError:
+        return False
+    landed = _render_started_at(target)
+    if landed is None:
+        return existing_mtime > started_at
+    return landed > started_at
 
 
 def serve(db: Path, port: int) -> None:
@@ -12533,23 +12593,20 @@ def main() -> int:
         ))
         return 0
     if args.html_out:
-        # Render first, write once, and never replace a file that a newer
-        # build already wrote.  A full render takes minutes, and the hosted
-        # sweep renders on its own timer: a sweep that started before an
-        # edit finishes after it and puts pre-edit HTML back on the page,
-        # which is indistinguishable from the edit never having landed.
-        # Measured repeatedly on 2026-08-26 -- three separate sections
-        # "disappeared" from the page this way.  The started-at stamp is
-        # taken before the payload is built, so the comparison is between
-        # code vintages rather than write moments.
+        # Render first, write once, and never replace a file that a NEWER
+        # BUILD wrote -- newer build, not later write.  A full render takes
+        # minutes and the hosted sweep renders on its own timer, so a sweep
+        # that started before an edit finishes after it and puts pre-edit
+        # HTML back on the page, indistinguishable from the edit never
+        # having landed (measured repeatedly on 2026-08-26; three sections
+        # "disappeared" this way).  The start stamp now travels IN the file
+        # so the comparison is actually between code vintages -- reading it
+        # off the mtime compared write moments and let the older process
+        # win whenever it happened to finish last.
         started_at = time.time()
-        rendered = render_html(build_payload(database))
+        rendered = render_html(build_payload(database), started_at=started_at)
         target = args.html_out
-        try:
-            existing_mtime = target.stat().st_mtime
-        except OSError:
-            existing_mtime = None
-        if existing_mtime is not None and existing_mtime > started_at:
+        if _newer_render_landed(target, started_at):
             print(
                 f"{target}: skipped, a newer render landed while this one "
                 "was building"
