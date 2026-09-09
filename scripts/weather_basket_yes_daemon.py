@@ -3722,17 +3722,6 @@ def main() -> int:
             max_workers=1,
             thread_name_prefix="reported-trajectory-asos-argmax",
         )
-        # The dashboard render is a READER on its own clock (2026-08-29).
-        # It lived inside the hosted paper-ledger sweep from 2026-08-16 and
-        # had grown to twenty minutes of read-only work holding a WRITER
-        # slot; with ten-plus hosted members the queue starved production
-        # for two hours on 2026-08-28.  Its own single-worker pool keeps it
-        # off the writer rotation entirely, and the three-services charter
-        # is preserved by hosting it here rather than as a fourth agent.
-        render_executor = ThreadPoolExecutor(
-            max_workers=1,
-            thread_name_prefix="reported-trajectory-dashboard-render",
-        )
         # Hosted sweeps get their own pool now that several run at once.  The
         # shared executor above is sized for the source lanes and the
         # production cycle -- four workers with one lane enabled -- so putting
@@ -3835,8 +3824,6 @@ def main() -> int:
         next_materialized_registry_read = now_mono
         next_registry_refresh = now_mono
         next_argmax_refresh = now_mono
-        next_render_refresh = now_mono + 120.0
-        render_future = None
         # A MADIS HF-METAR slot lands every five minutes and an exact ASOS
         # minute observation can land at any time.  Poll the lane far more often
         # than either cadence so a new station-day high reaches the gateway well
@@ -4193,15 +4180,6 @@ def main() -> int:
                     }
                     next_registry_refresh = time.monotonic() + registry_retry_sec
                 registry_future = None
-            if render_future is not None and render_future.done():
-                try:
-                    state["dashboard_render"] = render_future.result()
-                except Exception as exc:
-                    state["dashboard_render"] = {
-                        "state": "failed",
-                        "reason": f"{type(exc).__name__}:{exc}",
-                    }
-                render_future = None
             if argmax_future is not None and argmax_future.done():
                 try:
                     argmax_result = argmax_future.result()
@@ -4554,17 +4532,24 @@ def main() -> int:
             ):
                 argmax_future = argmax_executor.submit(argmax_worker.run)
                 next_argmax_refresh = time.monotonic() + 300.0
-            if (
-                storage_ok
-                and now_mono >= next_render_refresh
-                and render_future is None
-            ):
-                render_future = render_executor.submit(
-                    run_hosted_sweep,
-                    str(ROOT / "scripts/dashboard_render_sweep.sh"),
-                    2400.0,
-                )
-                next_render_refresh = time.monotonic() + 1800.0
+            # The dashboard render moved to launchd on 2026-09-09
+            # (com.weather.dashboard_render, the same 1800s interval).
+            #
+            # It was submitted here with a 2400s timeout, and the timeout was
+            # the reason the page went stale rather than a guard against it: a
+            # render that needs longer is SIGTERMed before it writes, so it
+            # writes nothing at all.  Measured that day, a run started
+            # 09:24:29Z was killed at 2408s having produced no file, while the
+            # page still carried a build from 07:52Z.  It is self-reinforcing
+            # too -- a killed render refreshes no cached section, so the next
+            # one starts colder and is killed sooner in its own work.
+            #
+            # A render is a reader.  It holds no write lock, nothing in this
+            # loop waits on it, and there is no deadline it can miss that
+            # killing it does not miss worse.  Hosting it here bought the
+            # three-services charter a fourth timer it did not need; launchd
+            # imposes no timeout and the script's own single_instance guard
+            # is what keeps a slow render from stacking.
             if (
                 storage_ok
                 and now_mono >= next_argmax_entry
@@ -4863,7 +4848,6 @@ def main() -> int:
             "forecast_executor",
             "registry_executor",
             "argmax_executor",
-            "render_executor",
             "sweep_executor",
             "argmax_entry_executor",
         ):

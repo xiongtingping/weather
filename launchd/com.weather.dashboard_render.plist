@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.weather.dashboard_render</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/xiong/weather/scripts/dashboard_render_sweep.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/xiong/weather</string>
+  <!-- Thirty minutes, which is the cadence the section cache was written
+       against: its nine lifetimes run 150 to 270 minutes and are staggered
+       so that no single render expires the whole set.
+
+       The render used to be scheduled inside the resident, on its own
+       executor, with a 2400s timeout attached.  That timeout was the reason
+       the page went stale: a render that needs longer is SIGTERMed before it
+       writes, and it writes nothing at all -- measured 2026-09-09, a run
+       that started 09:24:29Z was killed at 2408s having produced no file,
+       and the page still carried a build from 07:52Z.  It is also self-
+       reinforcing: a killed render refreshes no cached section, so the next
+       one starts colder and is killed sooner in its own work.  The last
+       render that completed reused nine of twenty-one sections and took
+       678s; the ones being killed were computing all of them.
+
+       A render is a reader.  It takes no write lock, nothing waits on it,
+       and there is no deadline it can miss that killing it does not miss
+       worse.  launchd imposes no timeout, and the script's own
+       single_instance guard is what keeps a slow render from stacking:
+       a start that arrives while one is running exits 0 having skipped. -->
+  <key>StartInterval</key>
+  <integer>1800</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <!-- The kill left no trace anywhere on 2026-09-09: the resident recorded
+       timeout_killed in a status field nothing on the page reads, and the
+       render itself had no log of its own. -->
+  <key>StandardOutPath</key>
+  <string>/Users/xiong/weather/data/logs/dashboard_render.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/xiong/weather/data/logs/dashboard_render.err.log</string>
+</dict>
+</plist>
