@@ -415,9 +415,24 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     # on a handful of indexed reads.  The timeout is generous because a
     # station-day is 86 seconds against a mirror that sometimes times out.
     (
+    # Aligned to its own upstream cadence (2026-09-09).  These lanes ran
+    # hourly against models that publish far less often, and the surplus
+    # passes were not free: every one took the exclusive SSOT write domain
+    # for a turn to discover there was no new run.  Demand on that one
+    # writer was 7.75/h against a drain of 6.00 -- a 29% oversubscription
+    # that ``test_the_ssot_sweep_queue_fits_its_drain_rate`` had been red
+    # about -- and it was the standing overdraft that turned one stuck
+    # member into a 72-hour outage on 2026-09-06..09.
+    #
+    # Freshness is unchanged: the interval still covers the run cycle in
+    # ``regional_point_lane.RUN_CYCLE_HOURS``, and every cycle publishes
+    # hours after its nominal time anyway (PUBLICATION_LAG_HOURS).  What
+    # was cut is the empty passes.  NOAA keeps its hour: HRRR and NBM
+    # really do issue every hour, and it is the only one of the four that
+    # was named honestly.
         "capture_jma_msm_forward",
         "scripts/capture_jma_msm_forward_sweep.sh",
-        3600.0,
+        10800.0,
         1800.0,
     ),
     # The CONUS pair from the same 46-pair sweep that widened the MSM lane:
@@ -456,7 +471,7 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     (
         "capture_cma_grapes_forward",
         "scripts/capture_cma_grapes_forward_sweep.sh",
-        3600.0,
+        21600.0,
         900.0,
     ),
     # ICON-EU deterministic, run-scoped: one whole-domain download serves
@@ -466,7 +481,7 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     (
         "capture_dwd_icon_eu_forward",
         "scripts/capture_dwd_icon_eu_forward_sweep.sh",
-        3600.0,
+        10800.0,
         1800.0,
     ),
 )

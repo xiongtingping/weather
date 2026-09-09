@@ -490,3 +490,58 @@ def test_every_attempt_advances_the_attempt_stamp_and_only_success_the_other(
     after = source[at:at + 400]
     assert 'if _sweep_state == "ok":' in after
     assert '_entry["completed_at_utc"] = utc_now()' in after
+
+
+# Which upstream products each capture lane is responsible for.  Named here
+# rather than derived, because the mapping is the claim: a lane's interval is
+# honest only against the cadence of the models it actually fetches.
+CAPTURE_LANE_PRODUCTS = {
+    "capture_noaa_conus_forward": ("HRRR", "NBM"),
+    "capture_jma_msm_forward": ("MSM",),
+    "capture_dwd_icon_eu_forward": ("ICON_EU",),
+    "capture_cma_grapes_forward": ("CMA",),
+}
+
+
+def test_a_capture_interval_is_never_shorter_than_its_upstream_cadence(
+    daemon,
+) -> None:
+    """A pass that runs more often than its model publishes is empty by
+    construction, and an empty pass is not free.
+
+    Each one takes the exclusive SSOT write domain for a turn to discover
+    there is no new run.  Measured 2026-09-09: MSM and ICON_EU publish eight
+    runs a day and GRAPES four, while all three were swept hourly -- 67%,
+    67% and 83% of their passes could not have found anything.  Demand on the
+    one SSOT writer was 7.75/h against a drain of 6.00, and that standing
+    overdraft is what turned one stuck member into a 72-hour outage.
+
+    The bound is the model's own cycle, not a guess: an interval at or under
+    it still visits every run, and publication lag (hours, on every product)
+    means nothing is missed by arriving late within the cycle.
+    """
+    from bayes_basket_target.regional_point_lane import RUN_CYCLE_HOURS
+
+    intervals = {
+        name: interval for name, _script, interval, _timeout in daemon.HOSTED_SWEEPS
+    }
+    for lane, products in CAPTURE_LANE_PRODUCTS.items():
+        assert lane in intervals, f"{lane} is not a hosted sweep any more"
+        # The fastest product decides: the lane has to keep up with whichever
+        # of its models issues most often.
+        cadence_sec = min(
+            (24 / len(RUN_CYCLE_HOURS[product])) * 3600.0
+            for product in products
+        )
+        assert intervals[lane] <= cadence_sec + 1.0, (
+            f"{lane} sweeps every {intervals[lane]:.0f}s but its fastest"
+            f" product issues every {cadence_sec:.0f}s -- runs would be missed"
+        )
+        # ...and no faster than it, or the surplus passes are empty and still
+        # cost a turn of the exclusive writer.
+        assert intervals[lane] >= cadence_sec - 1.0, (
+            f"{lane} sweeps every {intervals[lane]:.0f}s against a"
+            f" {cadence_sec:.0f}s cadence -- "
+            f"{(1 - intervals[lane] / cadence_sec) * 100:.0f}% of its passes"
+            " can find nothing and each one takes the SSOT write domain"
+        )
