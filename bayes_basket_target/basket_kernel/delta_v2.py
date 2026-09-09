@@ -2753,6 +2753,71 @@ def floor_first_edge_weights_v1(
     bedded = sum(share[b] for b in window)
     return weights if tilted + EPS >= bedded else equal
 
+ROBUST_CLAIM_RULE_VERSION = "kl_ball_worst_case_window_claim_v1"
+
+
+def robust_window_claim_v1(
+    claim: float,
+    *,
+    divergence_budget: float,
+) -> tuple[float, float]:
+    """The worst window claim inside a relative-entropy ball, and its factor.
+
+    Every number this system sizes and gates on is monotone increasing in the
+    mass the served partition puts inside the seated window: the charter-87
+    admission test, charter 72's Kelly stake, charter 73/92's increment edge
+    and the log-wealth curve all get better as that mass rises.  So the
+    robust reading ``min over P`` of any of them is the same object -- the
+    smallest inside-mass the ambiguity set allows -- and one scalar answers
+    for all of them.
+
+    ``P`` is the set of partitions within ``divergence_budget`` nats of the
+    served one in KL.  Holding the shape inside the window fixed (the
+    conditional ``r_i`` the proposal keeps), the problem collapses to one
+    dimension -- the in/out split -- and the answer is the smaller root of
+
+        q ln(q/p) + (1-q) ln((1-q)/(1-p)) = eta
+
+    which is monotone on ``(0, p]`` and solved by bisection.  Returning the
+    factor as well as the level is deliberate: the factor is what
+    ``deflate_window_partition_v1`` takes, so the robust belief reaches the
+    solver as a renormalised partition rather than as a set of separately
+    shrunken buckets that no longer sum to anything.
+
+    ``eta = 0`` is the identity, which is what makes the off arm exact.
+    """
+
+    p = float(claim)
+    eta = float(divergence_budget)
+    if not math.isfinite(p) or not math.isfinite(eta):
+        raise ContractError("delta_v2_robust_claim_invalid")
+    if eta < 0.0:
+        raise ContractError("delta_v2_robust_divergence_budget_invalid")
+    if eta <= 0.0 or p <= EPS:
+        return max(0.0, p), 1.0
+    p = min(p, 1.0 - EPS)
+
+    def divergence(q: float) -> float:
+        if q <= 0.0:
+            return math.log(1.0 / (1.0 - p))
+        return q * math.log(q / p) + (1.0 - q) * math.log((1.0 - q) / (1.0 - p))
+
+    # The whole ball may reach zero, in which case the robust claim is zero
+    # and the window is unbuyable under this budget -- a real answer, not a
+    # failure to converge.
+    if divergence(0.0) <= eta:
+        return 0.0, 0.0
+    low, high = 0.0, p
+    for _ in range(80):
+        mid = 0.5 * (low + high)
+        if divergence(mid) > eta:
+            low = mid
+        else:
+            high = mid
+    worst = 0.5 * (low + high)
+    return worst, worst / p
+
+
 def whole_basket_edge_delta_v1(
     *,
     edge_probabilities: Mapping[str, Any],

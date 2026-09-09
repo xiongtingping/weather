@@ -170,6 +170,9 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     # window and sizes it in one pass, and the tilt floor it spends under.
     _solve_over_support_windows,
     CHARTER_121_POST_LIFT_RERANK,
+    CHARTER_123_POST_LIFT_EDGE,
+    CHARTER_124_ROBUST_CLAIM,
+    ROBUST_CLAIM_DIVERGENCE_BUDGET_NATS,
     CHARTER_121_POST_LIFT_ATTEMPTS,
     CONSOLIDATION_TILT_FLOOR_LEGS,
     # The P0-M TAF TX bucket the enumerator's TAF arms read: one function,
@@ -2547,6 +2550,31 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     # the book as of 2026-09-08 -- so rows either side of it describe
     # different strategies and must not share a fingerprint.
     "post_lift_rerank": CHARTER_121_POST_LIFT_RERANK,
+    # Charter 123 (2026-09-09): production re-reads the whole-basket edge on
+    # the lifted targets.  This walk already applied that test at its own
+    # execution layer, so the book does not move -- but the seat production
+    # hands back can, because the refusal feeds charter 121's re-solve.
+    # Hashed away from ``on`` only, so the standing digest is unchanged.
+    **(
+        {"post_lift_edge": CHARTER_123_POST_LIFT_EDGE}
+        if CHARTER_123_POST_LIFT_EDGE != "on" else {}
+    ),
+    # Charter 124 (2026-09-09): the robust claim.  ``shadow`` is the default
+    # and decides nothing, so it hashes away; ``on`` deflates the belief every
+    # window is gated and sized on and is a different strategy, and ``off``
+    # stops recording the reading.  Hashing the budget with the mode matters
+    # as much as hashing the mode: two ``on`` arms at different ball radii are
+    # two strategies, and a fingerprint that moved on the switch but not on
+    # its number would repeat the defect of 2026-09-09 exactly.
+    **(
+        {
+            "robust_claim": CHARTER_124_ROBUST_CLAIM,
+            "robust_claim_divergence_nats": (
+                ROBUST_CLAIM_DIVERGENCE_BUDGET_NATS
+            ),
+        }
+        if CHARTER_124_ROBUST_CLAIM != "shadow" else {}
+    ),
 }
 SELECTION_RULE_SHA256 = content_sha256(_SELECTION_RULE_IDENTITY)
 # Why a station-day has no seat, in the ledger's own words.  The page used to

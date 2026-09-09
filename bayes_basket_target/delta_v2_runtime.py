@@ -72,6 +72,8 @@ from .basket_kernel.delta_v2 import (
     SUPPORT_SCENARIO_FLOOR_RULE_VERSION,
     support_scenario_floor_v1,
     whole_basket_edge_delta_v1,
+    ROBUST_CLAIM_RULE_VERSION,
+    robust_window_claim_v1,
     CANDIDATE_KIND_BASELINE,
     CANDIDATE_KIND_COMPLETE,
     CANDIDATE_KINDS,
@@ -1568,6 +1570,48 @@ if CHARTER_123_POST_LIFT_EDGE not in {"on", "off"}:
         f"unknown charter 123 post-lift edge mode: {CHARTER_123_POST_LIFT_EDGE}"
     )
 POST_LIFT_EDGE_RULE_VERSION = "whole_basket_edge_after_lift_v1"
+# Charter 124 (user ruling, 2026-09-09): the belief the gate reads is the
+# worst one inside a relative-entropy ball around the served partition, not
+# the served partition itself.
+#
+# The proposal this answers asked for ``min over p in P`` of the objective.
+# Because every quantity here is monotone increasing in the seated window's
+# mass (see ``robust_window_claim_v1``), that minimisation is one scalar and
+# it can only ever LOWER a claim -- so as a gate it can only refuse, and the
+# expected effect is buying less.  That is the same shape as the only value
+# charter 68's lambda gate was ever measured to have.
+#
+# ``shadow`` is the default and the whole point of landing it this way: the
+# reading is computed and recorded on every enumerated window, and nothing
+# reads it back.  What accumulates is "which seats would this have refused,
+# and what did those seats settle at", which is the evidence a promotion has
+# to be argued from.  ``on`` deflates the served claim through
+# ``deflate_window_partition_v1``, so the robust belief reaches the gate, the
+# stake and the curve as a renormalised partition and not as a set of
+# separately shrunken rungs.  ``off`` computes nothing.
+#
+# The budget is NOT fitted yet and is deliberately not defaulted to a number
+# anyone could mistake for one: 0.02 nats is a placeholder chosen to be small
+# enough to be uninteresting on a well-priced window and large enough to bite
+# on a thin one, and the shadow lane exists to replace it with a measurement.
+# Naming it in nats keeps it on the same scale as the model-versus-market log
+# score, which is where the honest number will come from.
+CHARTER_124_ROBUST_CLAIM_MODES = ("off", "shadow", "on")
+CHARTER_124_ROBUST_CLAIM = (
+    os.environ.get("PM_CHARTER_124_ROBUST_CLAIM", "").strip().lower() or "shadow"
+)
+if CHARTER_124_ROBUST_CLAIM not in CHARTER_124_ROBUST_CLAIM_MODES:
+    raise RuntimeError(
+        f"unknown charter 124 robust claim mode: {CHARTER_124_ROBUST_CLAIM}"
+    )
+ROBUST_CLAIM_DIVERGENCE_BUDGET_NATS = float(
+    os.environ.get("PM_ROBUST_CLAIM_DIVERGENCE_NATS", "").strip() or 0.02
+)
+if not (0.0 <= ROBUST_CLAIM_DIVERGENCE_BUDGET_NATS < 10.0):
+    raise RuntimeError(
+        "robust claim divergence budget out of range: "
+        f"{ROBUST_CLAIM_DIVERGENCE_BUDGET_NATS}"
+    )
 # Charter 87 (user ruling, 2026-09-06: "落正确形态是一个信念"): the
 # whole-basket positive-EV gate reads the belief the solver sizes on -- the
 # lifted claim (charter 81) times charter 68's lambda(a) at the window's
@@ -2281,6 +2325,33 @@ def _support_windows(
                 min(1.0 - EPS, raw_win * claim_factor * gate_lambda)
                 if gate_lambda is not None else win
             )
+            # Charter 124: the worst claim inside the ambiguity ball, and what
+            # the gate would read on it.  Computed on ``effective_win`` -- the
+            # belief the gate actually reads -- so the shadow answers the
+            # question a promotion would be argued on ("would this seat still
+            # have cleared") rather than a question about an intermediate
+            # number nothing gates on.
+            robust_claim = None
+            robust_factor = None
+            robust_edge = None
+            if CHARTER_124_ROBUST_CLAIM != "off" and priced and effective_win > EPS:
+                robust_claim, robust_factor = robust_window_claim_v1(
+                    effective_win,
+                    divergence_budget=ROBUST_CLAIM_DIVERGENCE_BUDGET_NATS,
+                )
+                robust_edge = robust_claim - price
+                if CHARTER_124_ROBUST_CLAIM == "on":
+                    # The factor, not the level: it rides through the same
+                    # partition deflation as charters 81 and 68, so the whole
+                    # chain -- gate, stake, curve, growth -- reads one
+                    # renormalised belief instead of a window whose rungs no
+                    # longer sum with the rest of the day.
+                    claim_factor *= float(robust_factor)
+                    win = min(1.0 - EPS, raw_win * claim_factor)
+                    effective_win = (
+                        min(1.0 - EPS, raw_win * claim_factor * gate_lambda)
+                        if gate_lambda is not None else win
+                    )
             edge = effective_win - price if priced else None
             is_incumbent = window == incumbent
             # The incumbent has no exemption left.  It used to be waived past
@@ -2601,6 +2672,15 @@ def _support_windows(
                 "effective_edge_lambda": gate_lambda,
                 "effective_edge_agreement": gate_agreement,
                 "effective_edge_lambda_source": gate_lambda_source,
+                # Charter 124: the worst claim in the ambiguity ball and the
+                # edge the gate would read on it.  ``None`` when the reading
+                # could not be taken (arm off, unpriced, no claim), which a
+                # reader must be able to tell from "it passed".  Under
+                # ``shadow`` these three decide nothing; under ``on`` the
+                # deflation is already inside the numbers above.
+                "robust_claim": robust_claim,
+                "robust_claim_factor": robust_factor,
+                "robust_edge": robust_edge,
                 "raw_win_probability": raw_win,
                 "off_center_claim_factor": claim_factor,
                 # Charter 81's own component of the line above, kept apart so
@@ -3787,6 +3867,12 @@ def _solve_over_support_windows(
             max(item["score"] for item in scored)
         ),
         "edge_friction_ticks_per_leg": SUPPORT_EDGE_FRICTION_TICKS_PER_LEG,
+        # Charter 124: which arm and which ball this round was read at, so a
+        # shadow row can never be mistaken for a served one and a promotion
+        # argument can name the budget its evidence was gathered under.
+        "robust_claim_rule": ROBUST_CLAIM_RULE_VERSION,
+        "robust_claim_mode": CHARTER_124_ROBUST_CLAIM,
+        "robust_claim_divergence_nats": ROBUST_CLAIM_DIVERGENCE_BUDGET_NATS,
         "admissible_window_count": len(windows),
         "solved_window_count": len(scored),
         **dict(window_audit),
