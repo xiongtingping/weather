@@ -3578,20 +3578,42 @@ def collect_live_readiness(
         gap_floor = (
             _dt.date.today() - _dt.timedelta(days=14)
         ).isoformat()
-        latest: dict[tuple[str, str], tuple[str, int]] = {}
-        for sid, day, created, rowid in conn.execute(
-            "SELECT station_id, event_date, created_at, rowid"
-            " FROM basket_probability_envelope"
-            " WHERE stage='P0' AND event_date >= ?",
-            (gap_floor,),
-        ):
-            key = (str(sid), str(day))
-            if key not in latest or created > latest[key][0]:
-                latest[key] = (str(created), int(rowid))
+        # The last P0 of each station-day, chosen in SQL.
+        #
+        # Third of this shape in this function -- the timezone map and the
+        # first-claim lookup were the other two -- and the only one that had
+        # no index to fall back on at all.  Measured 2026-09-09 against the
+        # live store: ``SCAN basket_probability_envelope``, 44,392 rows read
+        # off a 38 GB file to return 720 station-days, 134.8s, with every
+        # row's 8.6 KB lineage_json turned over to reach four small columns.
+        # That was half of this section's 272s, and this section is 40% of
+        # the render.
+        #
+        # Two things make it seekable.  ``state='COMMITTED'`` is the leading
+        # column of basket_probability_envelope_publisher_scope_idx, and it
+        # is the filter every other reader of this table already applies --
+        # an audit column counting uncommitted envelopes was the defect, not
+        # the feature.  And "latest" moves from created_at, which no index
+        # carries, to decision_at_utc, which is the instant the stage
+        # selector and the P0-M lane already mean by it.
+        #
+        # Verified equivalent before the switch, on the live store: 720
+        # station-days both ways, all 720 rowids identical, none only-old,
+        # none only-new.  2.36s, covering index, no table visits.
+        latest = {
+            (str(sid), str(day)): int(rowid)
+            for sid, day, _decided, rowid in conn.execute(
+                "SELECT station_id, event_date, MAX(decision_at_utc), rowid"
+                " FROM basket_probability_envelope"
+                " WHERE state='COMMITTED' AND event_date >= ? AND stage='P0'"
+                " GROUP BY station_id, event_date",
+                (gap_floor,),
+            )
+        }
         import re as _re
         gaps: dict[str, list[float]] = collections.defaultdict(list)
-        rowids = [v[1] for v in latest.values()]
-        rid_station = {v[1]: k[0] for k, v in latest.items()}
+        rowids = list(latest.values())
+        rid_station = {rowid: key[0] for key, rowid in latest.items()}
         for i in range(0, len(rowids), 500):
             part = rowids[i:i + 500]
             for rowid, pj in conn.execute(

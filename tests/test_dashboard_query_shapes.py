@@ -61,6 +61,11 @@ def _schema(conn: sqlite3.Connection) -> None:
         " decision_at_utc, stage)"
     )
     conn.execute(
+        "CREATE INDEX basket_probability_envelope_publisher_scope_idx"
+        " ON basket_probability_envelope(state, event_date, station_id,"
+        " decision_at_utc, stage)"
+    )
+    conn.execute(
         "CREATE TABLE calibration_station_market_timezone_binding("
         " binding_id TEXT PRIMARY KEY, station_id TEXT NOT NULL UNIQUE,"
         " settlement_timezone TEXT NOT NULL,"
@@ -226,3 +231,101 @@ def test_the_last_bid_wins_whatever_order_the_rows_arrive_in():
     # the later zero -- the old loop behaved the same way, because a zero
     # never entered the dict at all.
     assert last_bid["b2"] == 0.30
+
+
+def test_the_shape_gap_lookup_does_not_scan_the_envelope_table():
+    """The third lookup of this shape, and the only one with no index at all.
+
+    Measured 2026-09-09 against the live store: ``SCAN
+    basket_probability_envelope``, 44,392 rows read off a 38 GB file to
+    return 720 station-days, 134.8s -- half of the live_readiness section,
+    which is 40% of the render.  Every one of the table's three indexes
+    leads with station_id or state, and the query knew only stage and
+    event_date, so there was no seekable prefix and the planner took the
+    table.
+
+    ``state='COMMITTED'`` supplies that prefix and is the filter every other
+    reader of this table already applies.  2.36s after, covering, no table
+    visits, and verified equivalent on the live store first: 720 station-days
+    both ways, all 720 rowids identical.
+    """
+
+    # The scan must not come back, in the spelling it had.
+    assert (
+        '"SELECT station_id, event_date, created_at, rowid"' not in SOURCE
+    ), "the created_at/rowid scan is back"
+
+    conn = sqlite3.connect(":memory:")
+    _schema(conn)
+    plan = _plan(
+        conn,
+        "SELECT station_id, event_date, MAX(decision_at_utc), rowid"
+        " FROM basket_probability_envelope"
+        " WHERE state='COMMITTED' AND event_date >= ? AND stage='P0'"
+        " GROUP BY station_id, event_date",
+        "2026-08-15",
+    )
+    assert "SCAN basket_probability_envelope" not in plan, plan
+    assert "basket_probability_envelope_publisher_scope_idx" in plan, plan
+
+
+def test_max_picks_the_last_decision_of_the_station_day():
+    """Same bare-column rule as the MIN lookup, in the other direction.
+
+    The shape gap reads the claim of the LAST P0 of the day; if the bare
+    rowid came from an arbitrary row of the group it would read some earlier
+    decision's vector instead, and the card would be quietly wrong rather
+    than slow.
+    """
+
+    conn = sqlite3.connect(":memory:")
+    _schema(conn)
+    conn.executemany(
+        "INSERT INTO basket_probability_envelope VALUES (?,?,?,?,?,?,?,?)",
+        [
+            ("e1", "P0", "KLGA", "2026-09-01", "America/New_York",
+             "2026-09-01T06:00:00Z", "COMMITTED", '{"b": 0.1}'),
+            ("e3", "P0", "KLGA", "2026-09-01", "America/New_York",
+             "2026-09-01T18:00:00Z", "COMMITTED", '{"b": 0.3}'),
+            ("e2", "P0", "KLGA", "2026-09-01", "America/New_York",
+             "2026-09-01T12:00:00Z", "COMMITTED", '{"b": 0.2}'),
+        ],
+    )
+    row = conn.execute(
+        "SELECT station_id, event_date, MAX(decision_at_utc), rowid"
+        " FROM basket_probability_envelope"
+        " WHERE state='COMMITTED' AND event_date >= ? AND stage='P0'"
+        " GROUP BY station_id, event_date",
+        ("2026-08-15",),
+    ).fetchone()
+    assert row[2] == "2026-09-01T18:00:00Z"
+    claim = conn.execute(
+        "SELECT probabilities_json FROM basket_probability_envelope"
+        " WHERE rowid=?",
+        (row[3],),
+    ).fetchone()[0]
+    assert claim == '{"b": 0.3}', "the rowid must be the 18:00 row's"
+
+
+def test_an_uncommitted_envelope_is_not_counted_by_the_shape_gap():
+    """The filter that makes it seekable also fixes what it was counting."""
+
+    conn = sqlite3.connect(":memory:")
+    _schema(conn)
+    conn.executemany(
+        "INSERT INTO basket_probability_envelope VALUES (?,?,?,?,?,?,?,?)",
+        [
+            ("e1", "P0", "KLGA", "2026-09-01", "America/New_York",
+             "2026-09-01T06:00:00Z", "COMMITTED", '{"b": 0.1}'),
+            ("e2", "P0", "KLGA", "2026-09-01", "America/New_York",
+             "2026-09-01T23:00:00Z", "PREPARED", '{"b": 0.9}'),
+        ],
+    )
+    row = conn.execute(
+        "SELECT station_id, event_date, MAX(decision_at_utc), rowid"
+        " FROM basket_probability_envelope"
+        " WHERE state='COMMITTED' AND event_date >= ? AND stage='P0'"
+        " GROUP BY station_id, event_date",
+        ("2026-08-15",),
+    ).fetchone()
+    assert row[2] == "2026-09-01T06:00:00Z", "the uncommitted 23:00 row must not win"
