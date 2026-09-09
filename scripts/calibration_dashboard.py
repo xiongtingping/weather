@@ -689,20 +689,14 @@ def collect_band_stages(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     # Charter 105: a table carries the axis its cells are keyed on, and a
     # reader that cannot answer which one must not render it -- the two
     # partitions take the same shape ([lo, hi) pairs) and both "work".
-    # The column is absent on a database written before 2026-09-07, where
-    # every table was fitted on the claim.
-    has_axis = any(
-        str(col[1]) == "axis"
-        for col in conn.execute(
-            "PRAGMA table_info(calibration_band_reliability_table)"
-        )
-    )
-    axis_column = "COALESCE(axis, 'claim')" if has_axis else "'claim'"
+    # Read through the one helper, so the knob panel and the audit panel
+    # below it cannot end up on different axes for the same stage.
+    axis_by_stage = _band_axis_by_stage(conn)
     stages = []
     for stage in BAND_STAGES:
         row = conn.execute(
             "SELECT band_table_sha256, factors_json, evidence_json,"
-            " fitted_at_utc, serving_day_count, " + axis_column +
+            " fitted_at_utc, serving_day_count"
             " FROM calibration_band_reliability_table"
             " WHERE activated=1 AND stage=?",
             (stage,),
@@ -732,7 +726,7 @@ def collect_band_stages(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         evidence = json.loads(row[2])
         fitted_at = row[3]
         days = int(row[4])
-        axis = str(row[5] or "claim")
+        axis = axis_by_stage.get(stage, "claim")
         station_days = evidence.get("serving_station_day_count")
         # The active row is content-addressed by its factors and is only
         # rewritten when they change, so a stage that keeps re-fitting to
@@ -2269,6 +2263,42 @@ def collect_serving_weights(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def _band_axis_by_stage(conn: sqlite3.Connection) -> dict[str, str]:
+    """Which quantity each activated band table's cells are keyed on.
+
+    Charter 105 put the axis on the table, and the two partitions take the
+    same shape -- a reader that guesses would render one table through the
+    other's grid and be wrong in a way that still looks like a table.  The
+    store owns ``band_table_axis``, but it calls ``ensure_band_table_schema``
+    first and this page holds a read-only connection, so the column is read
+    here and the *rule* (which cells, which key) still comes from the store.
+    One helper rather than one per panel: a retired axis with two readers is
+    how half the page keeps rendering the old one.
+    """
+
+    from bayes_basket_target.band_reliability_store import BAND_AXIS_CLAIM
+
+    if not _table_exists(conn, "calibration_band_reliability_table"):
+        return {}
+    # The column is absent on a database written before 2026-09-07, where
+    # every table was fitted on the claim.
+    has_axis = any(
+        str(col[1]) == "axis"
+        for col in conn.execute(
+            "PRAGMA table_info(calibration_band_reliability_table)"
+        )
+    )
+    if not has_axis:
+        return {}
+    return {
+        str(stage): str(axis or BAND_AXIS_CLAIM)
+        for stage, axis in conn.execute(
+            "SELECT stage, axis FROM calibration_band_reliability_table"
+            " WHERE activated=1"
+        )
+    }
+
+
 def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:
     """Post-correction residuals per stage, on the band table's own ruler.
 
@@ -2287,16 +2317,35 @@ def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:
     """
 
     from bayes_basket_target.band_reliability_store import (
-        BAND_TABLE_CELLS,
+        BAND_AXIS_CENTRE_DISTANCE,
+        BAND_AXIS_CLAIM,
+        _record_keys,
+        cells_for_axis,
         serving_lane_by_station_day,
     )
     from bayes_basket_target.center_width_store import _truth
 
     truth = _truth(conn)
-    labels = [
-        "\u226550%" if low >= 0.5 else f"{low * 100:g}-{high * 100:g}%"
-        for low, high in BAND_TABLE_CELLS
-    ]
+    axis_by_stage = _band_axis_by_stage(conn)
+
+    def cell_labels(axis: str, cells) -> list[str]:
+        """Row names for a partition, worded as the knob table words them."""
+
+        if axis == BAND_AXIS_CENTRE_DISTANCE:
+            out = []
+            for low, high in cells:
+                step = int(round(low))
+                out.append(
+                    "\u5cf0\u503c\u6876" if step == 0
+                    else (f"\u79bb\u5cf0 \u2265{step} \u683c" if high >= 90
+                          else f"\u79bb\u5cf0 {step} \u683c")
+                )
+            return out
+        return [
+            "\u226550%" if low >= 0.5 else f"{low * 100:g}-{high * 100:g}%"
+            for low, high in cells
+        ]
+
     stages_out = []
     # Per station, pooled across the three stages: claimed centre+-1 mass
     # against whether truth landed there, the promise-conservation ruler.
@@ -2305,29 +2354,61 @@ def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:
     # significantly off 1 after them is upstream evidence, not band's.
     station_cells: dict[str, list[float]] = {}
     for stage in ("P0", "P0-M", "P1"):
+        axis = axis_by_stage.get(stage, BAND_AXIS_CLAIM)
+        partition = cells_for_axis(axis)
+        labels = cell_labels(axis, partition)
         try:
-            by_station_day = serving_lane_by_station_day(
+            # Two readings of one population.  The keys come from the
+            # PRE-band vector because that is the vector production had
+            # when it chose which cell's factor to apply; the claim and the
+            # hit come from the served vector, factor included, which is
+            # what "what is left after the correction" means.  Reading the
+            # cell off the served claim instead moved 7.1% of P0's rungs
+            # into a neighbour's row (measured 2026-09-09) -- an audit that
+            # scores a rung under a factor it never received.
+            scored_lane = serving_lane_by_station_day(
+                conn, truth, stage=stage, pre_band=True,
+            )
+            served_lane = serving_lane_by_station_day(
                 conn, truth, stage=stage, pre_band=False,
             )
         except Exception:  # noqa: BLE001 -- an audit must not blank the page
             continue
-        cells = {index: [0, 0.0, 0] for index in range(len(BAND_TABLE_CELLS))}
+        cells = {index: [0, 0.0, 0] for index in range(len(partition))}
         days = set()
-        for (station, event), day_rows in by_station_day.items():
+        for (station, event), day_rows in served_lane.items():
             days.add(event)
-            for entries in day_rows:
-                for claim, hit, _lower in entries:
-                    for index, (low, high) in enumerate(BAND_TABLE_CELLS):
-                        if low <= claim < high:
+            scored_rows = scored_lane.get((station, event)) or []
+            for position, entries in enumerate(day_rows):
+                scored = (
+                    scored_rows[position]
+                    if position < len(scored_rows)
+                    and len(scored_rows[position]) == len(entries)
+                    else entries
+                )
+                # The store owns the mapping from a station-day's rungs to
+                # their cell key on either axis; copying it here is how an
+                # audit invents findings the layer it audits never made.  It
+                # takes (claim, hit) pairs -- the same projection
+                # ``serving_lane_by_day`` makes -- and the order is the
+                # ordinal the distance axis is read from, so it is kept.
+                keys = _record_keys(
+                    [(claim, hit) for claim, hit, _low in scored], axis
+                )
+                for (claim, hit, _lower), value in zip(entries, keys):
+                    for index, (low, high) in enumerate(partition):
+                        if low <= value < high:
                             slot = cells[index]
                             slot[0] += 1
                             slot[1] += float(claim)
                             slot[2] += int(hit)
                             break
                 if entries:
-                    centre = max(
-                        range(len(entries)), key=lambda i: entries[i][0]
+                    distances = _record_keys(
+                        [(claim, hit) for claim, hit, _low in entries],
+                        BAND_AXIS_CENTRE_DISTANCE,
                     )
+                    centre = distances.index(0.0)
                     window = entries[max(0, centre - 1):centre + 2]
                     slot = station_cells.setdefault(station, [0, 0.0, 0])
                     slot[0] += 1
@@ -2349,6 +2430,7 @@ def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:
         stages_out.append({
             "stage": stage,
             "since": None,
+            "axis": axis,
             "day_count": len(days),
             "rows": rows,
         })
@@ -2375,7 +2457,7 @@ def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:
             "significant": abs(ratio - 1.0) > 2.0 * sigma,
         })
     stations.sort(key=lambda row: row["ratio"])
-    return {"labels": labels, "stages": stages_out, "stations": stations}
+    return {"stages": stages_out, "stations": stations}
 
 
 def collect_band_shadow(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -7897,7 +7979,6 @@ function stages(){
   const axisNote = D.stages.map(s => `${s.stage}＝${
     (s.axis || "claim") === "centre_distance" ? "离峰距离" : "声称概率"}`)
     .join("、");
-  const anyDistance = D.stages.some(s => s.axis === "centre_distance");
   return `<h2>band 表：分档校准（三阶段各自的账）</h2>
   <p class="sub">系统会记录"凡是说过 X% 的地方，后来实际发生了多少次"。
   如果长期说 6% 只发生 4%，就把这一档的数字乘一个小于 1 的系数压回去。</p>
@@ -7918,10 +7999,10 @@ function stages(){
   ③ <b>体检</b>——下面「说了多少 vs 真发生了多少」量的是系数生效<b>之后</b>的
   剩余偏差，<b>分 stage、与上表同一取样车道、同一证据起点</b>
   （2026-08-25 起；此前它读的是训练端 OOS 预测，人群不同曾与上表互相矛盾）。
-  它只诊断、不回写。${anyDistance ? `体检永远按<b>声称概率</b>的 5% 尺分档
-  ——问的是"报出去的数准不准"；上表按离峰距离分档的那一阶段，
-  和这张表<b>不能逐行对照</b>，只能看总体残差有没有变小。` :
-  "它与上表同一把 5% 尺，可以逐行对照。"}
+  它只诊断、不回写。<b>体检跟着上表那根轴走</b>（2026-09-09）：
+  上表按离峰距离分档的 stage，体检也按离峰距离分档，三张卡都能逐行对照。
+  在此之前体检恒按声称概率的 5% 尺分档，于是 P0 与 P1 这两个已换轴的 stage
+  被摊在一张它们从没被评分过的网格上，看不出任何一档的系数有没有起作用。
   若某档残差持续变大，说明对应旋钮方向或粒度不对——回到 ②。</div>
   <div class="grid g3" style="margin-top:8px">${cards}</div>
   ${reliabilityAudit()}`;
@@ -8081,11 +8162,14 @@ function reliabilityAudit(){
         </tr>`;
       }).join("");
     if(!rows) return "";
+    const distance = s.axis === "centre_distance";
     return `<div style="margin-top:10px">
       <div class="muted"><b>${h(s.stage)}</b> · ${s.day_count} 天 ·
-        每站日首个决策 · 与上表同窗</div>
+        每站日首个决策 · 与上表同窗同轴（${
+          distance ? "按离峰距离分档" : "按声称概率分档"}）</div>
       <table style="margin-top:6px"><thead><tr>
-        <th>声称档</th><th>样本</th><th>平均声称</th><th>实际发生</th><th>差</th>
+        <th>${distance ? "桶离峰距离" : "声称档"}</th>
+        <th>样本</th><th>平均声称</th><th>实际发生</th><th>差</th>
       </tr></thead><tbody>${rows}</tbody></table></div>`;
   }).join("");
   if(!stageBlocks) return "";
@@ -8110,15 +8194,15 @@ function reliabilityAudit(){
     </tr></thead><tbody>${stationRows}</tbody></table></div></div>`;
   return `<div class="card" style="margin-top:12px">
   <div class="muted"><b>③ 体检：说了多少 vs 真发生了多少</b>（band 店同一车道 ·
-  每站日首个决策 · 同窗同 stage · 本表恒按<b>声称概率</b>的 5% 尺分档，
-  与上表逐行对照仅在该 stage 也按声称概率分档时成立 · 唯一差别：上表读系数前的
-  原始声称，本表读系数后的实际服务值 · 只诊断，无下游消费）</div>
+  每站日首个决策 · 同窗同 stage · <b>每张表按该 stage 自己那根轴分档</b>，
+  和上表逐行对齐 · 唯一差别：上表读系数前的原始声称，本表读系数后的实际服务值 ·
+  只诊断，无下游消费）</div>
   ${stageBlocks}
   <div class="muted" style="margin-top:6px">
     「差」为正＝实际比声称更常发生（修完还保守）；为负＝修完仍吹头。
-    与上表逐行对照（仅限同按声称概率分档的 stage）：某档上表刚给了压缩系数、
-    本表仍显著为负，说明系数还没压够；本表转正说明压过了头。
-    按离峰距离分档的 stage 看整列残差是否整体收窄，不做逐行对照。
+    与上表逐行对照：某档上表刚给了压缩系数、本表仍显著为负，说明系数还没压够；
+    本表转正说明压过了头。行归哪一档由<b>系数生效前</b>的那份分布决定——
+    production 当时就是照它挑的格子；档里的声称与命中读的是系数生效后的服务值。
     只显示样本 ≥30 的档。</div>
   ${stationBlock}</div>`;
 }

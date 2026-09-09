@@ -24,6 +24,7 @@ first cell eleven times.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -163,6 +164,27 @@ def test_a_database_without_the_column_reads_as_claim() -> None:
     assert _stage(stages, "P0")["axis"] == "claim"
 
 
+def _extract(name: str) -> str:
+    """One renderer's source, lifted out of the shipped template.
+
+    Brace matching rather than copying: the bug these tests exist for was in
+    what a function produced, and a source grep would have passed on code
+    that still printed the wrong grid.
+    """
+
+    source = C.HTML_TEMPLATE
+    start = source.index(f"function {name}(){{")
+    depth = 0
+    for index in range(source.index("{", start), len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start:index + 1]
+    raise AssertionError(f"{name}() has unbalanced braces")
+
+
 def _render(stages: list[dict]) -> str:
     """Run the board's own ``stages()`` over a payload.
 
@@ -173,19 +195,6 @@ def _render(stages: list[dict]) -> str:
     node = shutil.which("node")
     if node is None:  # pragma: no cover - CI images all carry node
         pytest.skip("node is required to run the board's renderer")
-    source = C.HTML_TEMPLATE
-    start = source.index("function stages(){")
-    depth = 0
-    end = None
-    for index in range(source.index("{", start), len(source)):
-        if source[index] == "{":
-            depth += 1
-        elif source[index] == "}":
-            depth -= 1
-            if depth == 0:
-                end = index + 1
-                break
-    assert end is not None, "stages() has unbalanced braces"
     script = (
         "const D = "
         + json.dumps({"stages": stages}, ensure_ascii=False)
@@ -193,7 +202,7 @@ def _render(stages: list[dict]) -> str:
         "const h = (s) => String(s == null ? '' : s);\n"
         "const hours = (v) => v == null ? '-' : String(v);\n"
         "function reliabilityAudit(){ return ''; }\n"
-        + source[start:end]
+        + _extract("stages")
         + "\nconsole.log(stages());\n"
     )
     result = subprocess.run(
@@ -272,6 +281,88 @@ def test_the_section_names_the_axis_each_stage_is_on(conn) -> None:
     html = _render(stages)
     assert "P0＝离峰距离" in html
     assert "P1＝声称概率" in html
-    # The residual audit below is always on the claim ruler, so the claim
-    # of a shared 5% ruler cannot stand once any stage has moved.
-    assert "不能逐行对照" in html
+    # The residual audit below used to be pinned to the claim ruler, and the
+    # section said so by telling the reader the two tables could not be
+    # compared row by row.  User ruling 2026-09-09 moved the audit onto each
+    # stage's own axis instead, so the excuse must be gone and the promise of
+    # a row-by-row read must be the thing on the page.
+    assert "不能逐行对照" not in html
+    assert "体检跟着上表那根轴走" in html
+
+
+def _render_audit(audit: dict) -> str:
+    """Run the board's own ``reliabilityAudit()`` over a payload."""
+
+    node = shutil.which("node")
+    if node is None:  # pragma: no cover - CI images all carry node
+        pytest.skip("node is required to run the board's renderer")
+    script = (
+        "const D = "
+        + json.dumps({"band_residual_audit": audit}, ensure_ascii=False)
+        + ";\n"
+        "const h = (s) => String(s == null ? '' : s);\n"
+        + _extract("reliabilityAudit")
+        + "\nconsole.log(reliabilityAudit());\n"
+    )
+    result = subprocess.run(
+        [node, "-e", script], capture_output=True, text=True, timeout=60
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def _audit_stage(stage: str, axis: str, bins: list[str]) -> dict:
+    return {
+        "stage": stage,
+        "axis": axis,
+        "day_count": 40,
+        "rows": [
+            {"bin": name, "n": 500, "promised": 0.20, "happened": 0.22}
+            for name in bins
+        ],
+    }
+
+
+def test_the_audit_bins_each_stage_on_the_axis_it_serves() -> None:
+    """The reader half of charter 105 (user ruling, 2026-09-09).
+
+    The knob table was taught to follow the table's axis; the residual audit
+    under it was not, and went on pouring every stage into the 5% claim grid.
+    For P0 and P1 -- both on ``centre_distance`` since 2026-09-07 -- that put
+    the whole ladder on a grid they had never been scored against, so no row
+    of the audit could be read against the factor above it.  Each block now
+    names, and is keyed on, its own stage's axis.
+    """
+
+    html = _render_audit({
+        "stages": [
+            _audit_stage("P0", "centre_distance",
+                         ["峰值桶", "离峰 1 格", "离峰 ≥4 格"]),
+            _audit_stage("P0-M", "claim", ["0-5%", "20-25%", "≥50%"]),
+        ],
+        "stations": [],
+    })
+    headers = re.findall(r"<th>([^<]+)</th>", html)
+    assert headers[0].strip() == "桶离峰距离"
+    assert "声称档" in [text.strip() for text in headers]
+    assert "峰值桶" in html and "离峰 ≥4 格" in html
+    assert "按离峰距离分档" in html and "按声称概率分档" in html
+    # The line that excused a mismatched ruler has to be gone with it.
+    assert "本表恒按" not in html
+
+
+def test_the_audit_falls_back_to_the_claim_grid_without_an_axis() -> None:
+    """A payload from a build before the axis rode along still renders, on
+    the ruler every table was fitted on before 2026-09-07."""
+
+    html = _render_audit({
+        "stages": [{
+            "stage": "P0",
+            "day_count": 12,
+            "rows": [{"bin": "0-5%", "n": 90,
+                      "promised": 0.02, "happened": 0.02}],
+        }],
+        "stations": [],
+    })
+    assert re.search(r"<th>([^<]+)</th>", html).group(1).strip() == "声称档"
+    assert "按声称概率分档" in html
