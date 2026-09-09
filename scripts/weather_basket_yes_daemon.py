@@ -871,32 +871,96 @@ TARGET_NWP_SCOPES_PER_POLL = 3
 # the constant above assumed 77.  A fixed three per poll then stretches the
 # sweep past the TTL and every scope expires before its turn comes round again.
 #
-# Raising it without a ceiling is equally wrong, but for the opposite reason.
-# The rotation itself no longer blocks on capture -- that was the original
-# stall, fixed by moving capture to a subprocess pool -- yet the pool is still
-# bounded at OFFICIAL_NATIVE_CAPTURE_MAX_CONCURRENCY.  Advancing the cursor
-# faster than the pool drains just skips scopes into their 30-minute retry
-# floor, which makes coverage slower rather than faster.
 # Budgeting four hours was too slow for a catalog this size, so the sweep is
-# given one.  What the budget must not assume is that most scopes are cheap:
-# retained archives key on the exact station set, and this rotation dispatches
-# one station at a time, so no scope is ever served from another scope's
-# archive.  Every scope pays for its own download of the same global fields --
-# ~340MiB at the time of writing -- and a "twelve real downloads per ninety
-# scopes" estimate is off by the station count.
+# given one.
 #
-# The ceiling exists for that reason.  Captures go through a pool bounded at
-# OFFICIAL_NATIVE_CAPTURE_MAX_CONCURRENCY; overshooting it does not stall the
-# rotation -- capture runs off-thread -- but it pushes unserved scopes into
-# their 30-minute retry floor, so coverage gets slower, not faster.
+# The ceiling that used to hold this to 20 was written when advancing cost
+# downloads: retained archives keyed on the exact station set, so no scope was
+# ever served from another scope's archive and every one of them paid for the
+# same ~340MiB of global fields again.  That keying was the bug and is gone --
+# the capture keys on the event date alone, and one capture writes every
+# station of that day (45 packets, one arrival stamp).  A poll that advances
+# further therefore buys no extra fetches at all: with three open event dates a
+# whole sweep can spend at most three captures however many scopes it steps
+# through.
+#
+# Holding the ceiling anyway bought nothing and cost the sweep its budget.  At
+# 381 scopes the budget asks for 64 a poll; 20 stretched the sweep to 3.2h
+# nominal, and the forecast lane only polls when it wins the writer turn
+# against the production cycle, which put the observed sweep near 5.5h against
+# a 6h P0 freshness TTL.  On 2026-09-09 that margin ran out: 2026-09-10's
+# packets were captured at 02:42Z, expired at 08:42Z, and their scopes' next
+# turn in the rotation was still an hour away at 12:20Z -- 45 stations
+# fail-closed on native_ensemble_snapshot_stale for the whole morning while
+# every lane reported itself healthy.  The wall-clock advance budget below is
+# what actually bounds a poll, and it always was.
 TARGET_NWP_SWEEP_BUDGET_SEC = 1.0 * 3600.0
-TARGET_NWP_MAX_SCOPES_PER_POLL = 20
+TARGET_NWP_MAX_SCOPES_PER_POLL = 64
 # Wall clock, not a blocker count, is what the advance loop actually has to
 # respect: a poll that overruns its interval delays the next one and the sweep
 # falls behind the P0 TTL.  Guarding the clock directly lets the loop step over
 # a scope whose own source is down instead of treating "blocked" as a proxy for
 # "expensive" -- most blocked scopes fail on a single fast HTTP response.
 TARGET_NWP_ADVANCE_BUDGET_SEC = TARGET_NWP_POLL_INTERVAL_SEC * 0.5
+# How many poll gaps the achieved-cadence reading is taken over.  The median
+# of these, not the declared interval, is what the sweep is judged against --
+# a single gap is whichever turn the lane happened to win.
+NWP_POLL_INTERVAL_SAMPLES = 12
+
+
+def nwp_sweep_health(
+    *,
+    catalog_scope_count: int,
+    poll_intervals_sec: Sequence[float],
+    freshness_sec: float,
+) -> dict[str, Any]:
+    """Whether the rotation returns to an event date before its packets expire.
+
+    Measured, not declared.  A date's official-native packets are re-captured
+    only when the cursor lands on one of that date's scopes, so the sweep
+    period IS the re-capture period -- and the sweep period is the number of
+    polls in a lap times the interval the lane actually achieves, which is
+    not the interval it asks for.  On 2026-09-09 the declaration was 600s,
+    the achieved gap was 27 minutes, and 2026-09-10 went dark for a morning:
+    captured 02:42Z, expired 08:42Z, next turn still not reached at 12:20Z,
+    45 stations fail-closed on native_ensemble_snapshot_stale while every
+    constant in the file read as correct.
+
+    Reported rather than enforced.  The lane cannot make itself win turns,
+    so the honest thing is to say how long its lap has actually become and
+    let that be visible before a date goes dark, not after.
+    """
+
+    scopes = max(0, int(catalog_scope_count or 0))
+    per_poll = _nwp_scopes_per_poll(scopes)
+    polls = -(-scopes // per_poll) if scopes else 0
+    observed = sorted(
+        float(v) for v in poll_intervals_sec or () if float(v) > 0.0
+    )
+    achieved_interval = (
+        observed[len(observed) // 2] if observed
+        else float(TARGET_NWP_POLL_INTERVAL_SEC)
+    )
+    nominal_sweep = polls * float(TARGET_NWP_POLL_INTERVAL_SEC)
+    achieved_sweep = polls * achieved_interval
+    return {
+        "schema": "bayes_basket_target_nwp_sweep_health_v1",
+        "catalog_scope_count": scopes,
+        "scopes_per_poll": per_poll,
+        "polls_per_sweep": polls,
+        "poll_interval_nominal_sec": float(TARGET_NWP_POLL_INTERVAL_SEC),
+        "poll_interval_achieved_sec": round(achieved_interval, 1),
+        "poll_interval_sample_count": len(observed),
+        "sweep_nominal_hours": round(nominal_sweep / 3600.0, 2),
+        "sweep_achieved_hours": round(achieved_sweep / 3600.0, 2),
+        "p0_freshness_hours": round(float(freshness_sec) / 3600.0, 2),
+        # Half the window, so a lap the lane loses a turn in still leaves a
+        # whole re-capture opportunity inside the TTL.
+        "fits_freshness_window": achieved_sweep <= float(freshness_sec) / 2.0,
+        "contention_factor": round(
+            achieved_interval / float(TARGET_NWP_POLL_INTERVAL_SEC), 2
+        ),
+    }
 
 
 def _nwp_scopes_per_poll(catalog_scope_count: int) -> int:
@@ -1797,6 +1861,27 @@ def run_target_forecast_refresh_cycle(
         "calls_order_gateway": False,
         "places_orders": False,
     }
+    # Published on every pass, due or not: the reading that matters is how
+    # long the lap has become, and a lane that has stopped winning turns is
+    # exactly the one whose polls are not due.
+    try:
+        from bayes_basket_target.production_worker import (  # noqa: PLC0415
+            NATIVE_P0_COMPILE_FRESH_SECONDS,
+        )
+
+        nwp_state["sweep_health"] = nwp_sweep_health(
+            catalog_scope_count=len(
+                (getattr(worker, "_nwp_rotation_state", None) or {}).get(
+                    "catalog_scope_keys"
+                ) or ()
+            ),
+            poll_intervals_sec=getattr(
+                worker, "_official_nwp_poll_intervals", ()
+            ),
+            freshness_sec=NATIVE_P0_COMPILE_FRESH_SECONDS,
+        )
+    except Exception:  # noqa: BLE001 -- telemetry, never a blocker
+        pass
     previous_nwp = getattr(worker, "_last_official_nwp_state", None)
     if isinstance(previous_nwp, Mapping):
         nwp_state["last_attempt"] = dict(previous_nwp)
@@ -1813,6 +1898,29 @@ def run_target_forecast_refresh_cycle(
             "orders_submitted": 0,
         }
     elif now_mono >= next_nwp:
+        # What the interval turned out to be, not what it was set to.
+        #
+        # The 2026-09-09 outage was diagnosed off the declared 600s and the
+        # guard written against it, and the declared number is not the one
+        # that failed: this branch is reached only when the forecast lane
+        # wins its turn against the production cycle and the hosted sweeps,
+        # and the observed gap between two polls that day was 27 minutes --
+        # 2.7x the declaration.  A sweep sized against 600s therefore passes
+        # every test and still misses the freshness window on the machine.
+        last_poll_mono = getattr(worker, "_last_official_nwp_poll_mono", None)
+        if isinstance(last_poll_mono, (int, float)):
+            observed = float(now_mono) - float(last_poll_mono)
+            if 0.0 < observed < 6.0 * 3600.0:
+                history = list(
+                    getattr(worker, "_official_nwp_poll_intervals", ())
+                )
+                history.append(round(observed, 1))
+                setattr(
+                    worker,
+                    "_official_nwp_poll_intervals",
+                    history[-NWP_POLL_INTERVAL_SAMPLES:],
+                )
+        setattr(worker, "_last_official_nwp_poll_mono", now_mono)
         setattr(
             worker,
             "_next_official_nwp_poll_mono",
