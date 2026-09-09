@@ -60,6 +60,16 @@ LOOKAHEAD_DAYS = 2
 # 30 MB; six runs keeps a pass under a few minutes of serialized writer
 # time while still outrunning the ~30 new runs a day the fleet produces.
 MAX_RUNS_PER_PASS = 6
+# Seconds of writer occupancy this lane may spend on the P1 pass, per
+# product.  The sweep's subprocess timeout is 1800s and the resident admits
+# one writer at a time, so every second here is a second the production
+# cycle cannot start.  Measured 2026-09-09: the P1 pass reached its
+# 1800s timeout inside NBM and was killed -- the third consecutive day
+# without a completed run (last clock 2026-09-06T08:12Z) -- and the
+# production cycle went 35 to 53 minutes between rounds against a 300s
+# target.  240s a product leaves the P0 pass, which is bounded by attempts
+# rather than by productive runs, the rest of the timeout.
+P1_BUDGET_SEC_PER_PRODUCT = 240.0
 
 
 def _transport_is_writable(
@@ -232,11 +242,14 @@ def main() -> int:
         _receipt = capture_p1(
             conn, product=_product, now=now,
             stations=STATIONS[_product], max_runs=P1_MAX_RUNS_PER_PASS,
+            budget_sec=P1_BUDGET_SEC_PER_PRODUCT,
             dry_run=args.dry_run,
         )
         print(
-            f"P1 {_product}: 计划 {_receipt['runs_planned']} run，写入 {_receipt['written']}，"
+            f"P1 {_product}: 计划 {_receipt['runs_planned']} run，"
+            f"取 {_receipt['runs_attempted']} run，写入 {_receipt['written']}，"
             f"已有 {_receipt['existed']}，空 {_receipt['empty']}，失败 {len(_receipt['failed'])}"
+            + ("，预算用尽" if _receipt["budget_exhausted"] else "")
         )
         for _line in _receipt["failed"][:4]:
             print(f"  {_line}")

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
@@ -455,6 +456,7 @@ def capture_p1(
     stations: Sequence[tuple[str, float, float, str]],
     day_offsets: Sequence[int] = (-1, 0, 1),
     max_runs: int = 4,
+    budget_sec: float | None = None,
     dry_run: bool = False,
     backfill: bool = False,
 ) -> dict[str, Any]:
@@ -463,6 +465,20 @@ def capture_p1(
     ``backfill`` stamps each row knowable at its run's publication time
     rather than at this pass's clock, which is what a pass reaching weeks
     back is actually asserting.
+
+    ``budget_sec`` bounds the pass in seconds as well as in runs.  The run
+    cap counts productive runs only -- deliberately, so a newest run the
+    archive has not published cannot starve the older ones -- and that was
+    written for a miss that costs one 404 on the ``.idx``.  An NBM run whose
+    index exists but whose ranged reads are slow is a miss that costs forty
+    hours of ranged reads instead, and ``plan_p1`` hands the loop four times
+    the cap to work through.  Measured 2026-09-09: the CONUS sweep spent its
+    whole 1800s subprocess timeout inside this loop and was killed, for the
+    third day running -- and because the resident admits one writer at a
+    time, those thirty minutes are thirty minutes in which the production
+    cycle cannot start.  The seconds are the resource the writer lane
+    actually rations, so bound them here rather than guessing a run count
+    that makes them fit.
     """
 
     if backfill and product == "CMA":
@@ -476,11 +492,24 @@ def capture_p1(
     existed = 0
     empty = 0
     productive = 0
+    attempted = 0
+    budget_exhausted = False
+    deadline = (
+        None if budget_sec is None else time.monotonic() + float(budget_sec)
+    )
     unpublished: list[str] = []
     failed: list[str] = []
     for item in plan:
         if productive >= max(0, int(max_runs)):
             break
+        # Checked before the fetch, never during: a run that has started is
+        # allowed to finish, so the budget can never leave a run half
+        # written.  What is left unfetched is simply still unstored, and
+        # ``plan_p1`` plans it again on the next pass.
+        if deadline is not None and time.monotonic() >= deadline:
+            budget_exhausted = True
+            break
+        attempted += 1
         run_init = item["run_init"]
         try:
             if product in ("HRRR", "NBM"):
@@ -558,6 +587,7 @@ def capture_p1(
             conn.commit()
     return {
         "product": product, "runs_planned": len(plan), "runs_with_data": productive,
+        "runs_attempted": attempted, "budget_exhausted": budget_exhausted,
         "written": written, "existed": existed, "empty": empty,
         "unpublished": unpublished, "failed": failed,
     }

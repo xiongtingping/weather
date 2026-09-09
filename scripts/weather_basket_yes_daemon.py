@@ -3672,6 +3672,13 @@ def main() -> int:
         # read them on the very first pass.
         production_submitted_mono: float = time.monotonic()
         production_submitted_at: str = ""
+        # The wait BEFORE a cycle, which nothing measured until 2026-09-09.
+        # Stage timings answer "where did the 533 seconds go"; they cannot
+        # answer "why were the cycles 40 minutes apart", and that is the
+        # larger number.  ``None`` means production is not waiting: either it
+        # is running, or it is not due yet.
+        production_due_since_mono: float | None = None
+        production_wait_blockers: list[str] = []
         forecast_future: Any = None
         registry_future: Any = None
         argmax_future: Any = None
@@ -4140,6 +4147,18 @@ def main() -> int:
                         }
             elif production_future is None:
                 state.pop("production_inflight", None)
+                # Not running is not the same as nothing to report.  A cycle
+                # that cannot start is invisible on a card that only times
+                # the cycles that did.
+                if production_due_since_mono is not None:
+                    state["production_waiting"] = {
+                        "waiting_sec": round(
+                            time.monotonic() - production_due_since_mono, 1
+                        ),
+                        "blocked_by": list(production_wait_blockers),
+                    }
+                else:
+                    state.pop("production_waiting", None)
             # The P0-M training lane's verdict, which is the only thing that
             # can end that stage's silence.  It runs every cycle for one due
             # station and says exactly what it is short of; without this it
@@ -4551,6 +4570,37 @@ def main() -> int:
                     state["hosted_sweeps"]["running"] = sorted(
                         hosted_sweep_futures
                     )
+            # Who is holding the writer, named while it is still holding it.
+            # The board's cycle card reports latency inside the cycle and
+            # says nothing about being blocked from starting one, so a lane
+            # that took the writer for its whole 1800s subprocess timeout
+            # showed up only as a staleness note that named nobody.
+            # Measured 2026-09-09: ``capture_noaa_conus_forward`` was killed
+            # at 1800s for the third consecutive day and production ran 35 to
+            # 53 minutes apart against a 300s target.
+            production_ready = (
+                storage_ok
+                and now_mono >= next_production
+                and production_future is None
+            )
+            production_blockers: list[str] = []
+            if production_ready:
+                production_blockers.extend(
+                    f"sweep:{name}" for name in sorted(hosted_sweep_futures)
+                )
+                if forecast_future is not None:
+                    production_blockers.append("forecast_prefetch")
+                if not production_blockers and writer_turn != "production":
+                    production_blockers.append(
+                        f"writer_turn:{writer_turn or 'none'}"
+                    )
+            if production_ready and production_blockers:
+                if production_due_since_mono is None:
+                    production_due_since_mono = now_mono
+                production_wait_blockers = production_blockers
+            elif not production_ready:
+                production_due_since_mono = None
+                production_wait_blockers = []
             if (
                 storage_ok
                 and now_mono >= next_production
@@ -4572,6 +4622,21 @@ def main() -> int:
                 )
                 production_submitted_mono = time.monotonic()
                 production_submitted_at = utc_now()
+                state["production_wait"] = {
+                    "waited_sec": (
+                        0.0
+                        if production_due_since_mono is None
+                        else round(now_mono - production_due_since_mono, 1)
+                    ),
+                    "blocked_by": list(production_wait_blockers),
+                    "cycle_started_at_utc": production_submitted_at,
+                }
+                production_due_since_mono = None
+                production_wait_blockers = []
+                # A cycle that has started is not waiting.  Leaving the live
+                # marker behind would have the card report a stall over a
+                # round that is running.
+                state.pop("production_waiting", None)
                 next_production = time.monotonic() + 15.0
             if (
                 storage_ok

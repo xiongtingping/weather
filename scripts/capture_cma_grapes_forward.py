@@ -39,6 +39,12 @@ STATIONS = CAPTURE_STATIONS
 # requests.  Two runs a pass keeps an hourly sweep inside its own hour even
 # when the aggregator is slow.
 P1_MAX_RUNS_PER_PASS = 2
+# Seconds of writer occupancy this lane's P1 pass may spend.  The resident
+# admits one writer at a time, so a capture that runs to its subprocess
+# timeout is a production cycle that cannot start for that long.  The run
+# cap counts productive runs only, so an unpublished-but-slow run is
+# unbounded work; see the budget note in regional_point_lane.capture_p1.
+P1_BUDGET_SEC = 240.0
 
 
 def main() -> int:
@@ -63,7 +69,8 @@ def main() -> int:
         conn.execute("PRAGMA busy_timeout=60000")
         receipt = capture_p1(
             conn, product="CMA", now=now, stations=STATIONS,
-            max_runs=int(args.max_runs), dry_run=args.dry_run,
+            max_runs=int(args.max_runs), budget_sec=P1_BUDGET_SEC,
+            dry_run=args.dry_run,
         )
         print(
             f"P1 CMA: 计划 {receipt['runs_planned']} run，"

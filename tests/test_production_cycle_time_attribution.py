@@ -149,3 +149,116 @@ def test_an_overrun_names_where_the_seconds_went() -> None:
     assert "单轮 4285 秒" in note, note
     assert "decision_loop 2516s" in note, note
     assert "probability_p0m 830s" in note, note
+
+
+def _now() -> str:
+    from datetime import datetime, timezone
+
+    return (
+        datetime.now(timezone.utc)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z")
+    )
+
+
+def _healthy_receipt() -> dict:
+    """A cycle that ran fine.  The fault under test is not inside it."""
+
+    return {
+        "state": "cycle_committed_partial",
+        "ok": True,
+        "committed_scope_count": 17,
+        "blocked_scope_count": 45,
+        "blocked_scope_reasons": {"p1_entry_window_not_open": 20},
+        "worker_checked_at": _now(),
+        "stage_timings_ms": {"cycle_total": 532_600.0, "decision_loop": 240_200.0},
+        "target_cycle_runtime": {
+            "target_seconds": 300.0,
+            "warn_seconds": 450.0,
+            "overdue_seconds": 720.0,
+        },
+    }
+
+
+def test_a_cycle_that_cannot_start_is_named_with_what_is_holding_the_writer() -> None:
+    """Latency and blocking are different faults with the same symptom.
+
+    Measured 2026-09-09: rounds of 533s against a 300s target, and 35 to 53
+    minutes between those rounds.  The card reported the 533 and said nothing
+    about the gaps -- ``capture_noaa_conus_forward`` held the single writer
+    for its full 1800s subprocess timeout, three days running, and the only
+    trace was a staleness note that named nobody.
+    """
+
+    dash = _dashboard()
+    health = dash._production_health({
+        "production": _healthy_receipt(),
+        "production_waiting": {
+            "waiting_sec": 1420.0,
+            "blocked_by": ["sweep:capture_noaa_conus_forward"],
+        },
+    })
+    note = health["production_note"]
+    assert "正在等写入轮次 1420 秒" in note, note
+    assert "capture_noaa_conus_forward" in note, note
+    assert health["production_health"] == "red", "past the overdue bound is not amber"
+    assert health["production_wait_seconds"] == 1420.0
+
+
+def test_the_wait_before_the_last_cycle_is_reported_when_nothing_waits_now() -> None:
+    """A cycle running now still owes the answer to why it started so late."""
+
+    dash = _dashboard()
+    health = dash._production_health({
+        "production": _healthy_receipt(),
+        "production_wait": {
+            "waited_sec": 480.0,
+            "blocked_by": ["sweep:capture_jma_msm_forward", "forecast_prefetch"],
+            "cycle_started_at_utc": _now(),
+        },
+    })
+    note = health["production_note"]
+    assert "上轮开始前等了 480 秒" in note, note
+    assert "capture_jma_msm_forward" in note, note
+    assert health["production_health"] == "amber", "over target, under the overdue bound"
+
+
+def test_an_ordinary_handover_is_not_news() -> None:
+    """The lanes alternate by design; only a wait past the cycle's own target
+    is worth a line, or the alarm is on at all times and read at none."""
+
+    dash = _dashboard()
+    health = dash._production_health({
+        "production": _healthy_receipt(),
+        "production_wait": {"waited_sec": 12.0, "blocked_by": ["sweep:auto_station_exclusions"]},
+    })
+    assert "等" not in health["production_note"], health["production_note"]
+
+
+def test_the_resident_publishes_the_wait_it_measures() -> None:
+    """The board can only report a blocked cycle if the daemon records one.
+
+    Guarded at the source because the wait is measured inside the writer-turn
+    loop -- there is no seam to call -- and a card reading a key nothing
+    writes is exactly the failure this file exists for.
+    """
+
+    source = (ROOT / "scripts" / "weather_basket_yes_daemon.py").read_text()
+    assert 'state["production_wait"]' in source, "the completed wait"
+    assert 'state["production_waiting"]' in source, "the wait in progress"
+    assert "production_due_since_mono" in source, "the clock the wait is measured from"
+    assert 'f"sweep:{name}"' in source, "the wait must name the lane, not just its length"
+
+
+def test_a_running_cycle_is_not_reported_as_waiting() -> None:
+    """The live marker is cleared at submission, not left for the next pass.
+
+    A stale ``production_waiting`` would print a stall over a round that is
+    running -- the same class of error as the card that read only the
+    completed receipt and said "未发布" through every mid-cycle render.
+    """
+
+    source = (ROOT / "scripts" / "weather_basket_yes_daemon.py").read_text()
+    submit = source[source.index('production_submitted_at = utc_now()'):]
+    submit = submit[: submit.index("next_production = time.monotonic() + 15.0")]
+    assert 'state.pop("production_waiting", None)' in submit, submit

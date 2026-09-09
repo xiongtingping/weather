@@ -71,6 +71,12 @@ LOOKAHEAD_DAYS = 2
 # several of them instead, which the idempotence already supports: whatever
 # is not reached this time is simply still missing next time.
 MAX_RUNS_PER_PASS = 4
+# Seconds of writer occupancy this lane's P1 pass may spend.  The resident
+# admits one writer at a time, so a capture that runs to its subprocess
+# timeout is a production cycle that cannot start for that long.  The run
+# cap counts productive runs only, so an unpublished-but-slow run is
+# unbounded work; see the budget note in regional_point_lane.capture_p1.
+P1_BUDGET_SEC = 240.0
 
 
 def _transport_is_writable(conn: sqlite3.Connection) -> tuple[bool, str]:
@@ -173,10 +179,14 @@ def main() -> int:
     ensure_schema(conn)
     _receipt = capture_p1(
         conn, product="MSM", now=now, stations=STATIONS,
-        max_runs=P1_MAX_RUNS_PER_PASS, dry_run=args.dry_run,
+        max_runs=P1_MAX_RUNS_PER_PASS, budget_sec=P1_BUDGET_SEC,
+        dry_run=args.dry_run,
     )
     print(
-        f"P1 MSM: 计划 {_receipt['runs_planned']} run，写入 {_receipt['written']}，"
+        f"P1 MSM: 计划 {_receipt['runs_planned']} run，"
+        f"取 {_receipt['runs_attempted']} run"
+        + ("（预算用尽）" if _receipt["budget_exhausted"] else "")
+        + f"，写入 {_receipt['written']}，"
         f"已有 {_receipt['existed']}，空 {_receipt['empty']}，失败 {len(_receipt['failed'])}"
     )
     for _line in _receipt["failed"][:4]:

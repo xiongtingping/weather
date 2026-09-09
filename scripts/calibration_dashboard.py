@@ -346,6 +346,56 @@ def _production_health(status: Mapping[str, Any]) -> dict[str, Any]:
         elif health == "green":
             health = "amber"
         notes.append("阻断车道：" + "、".join(blocked[:4]))
+    # Blocking, beside latency.  The card below names where the seconds
+    # inside a cycle went; until 2026-09-09 nothing on this page said a word
+    # about the cycles that could not start.  The two are different faults
+    # with the same symptom: a round of 533s against a 300s target is worth
+    # one line, and the 35-to-53 minute gaps between those rounds -- one
+    # capture sweep holding the single writer for its whole 1800s subprocess
+    # timeout -- were worth rather more, and got a staleness note that named
+    # nobody.  Waiting is judged against the same declared numbers as
+    # running: a lane made to wait longer than the whole cycle is meant to
+    # take is late by definition.
+    overdue_sec = float(
+        (
+            production.get("target_cycle_runtime")
+            if isinstance(production.get("target_cycle_runtime"), Mapping)
+            else {}
+        ).get("overdue_seconds") or 720.0
+    )
+    target_for_wait = float(
+        (
+            production.get("target_cycle_runtime")
+            if isinstance(production.get("target_cycle_runtime"), Mapping)
+            else {}
+        ).get("target_seconds") or 300.0
+    )
+    waiting = status.get("production_waiting")
+    waited = status.get("production_wait")
+    wait_sec = None
+    wait_by: list[str] = []
+    wait_word = ""
+    if isinstance(waiting, Mapping) and isinstance(
+        waiting.get("waiting_sec"), (int, float)
+    ):
+        wait_sec = float(waiting["waiting_sec"])
+        wait_by = [str(x) for x in (waiting.get("blocked_by") or [])]
+        wait_word = "正在等写入轮次"
+    elif isinstance(waited, Mapping) and isinstance(
+        waited.get("waited_sec"), (int, float)
+    ):
+        wait_sec = float(waited["waited_sec"])
+        wait_by = [str(x) for x in (waited.get("blocked_by") or [])]
+        wait_word = "上轮开始前等了"
+    if wait_sec is not None and wait_sec > target_for_wait:
+        if wait_sec > overdue_sec:
+            health = "red"
+        elif health == "green":
+            health = "amber"
+        notes.append(
+            f"{wait_word} {wait_sec:.0f} 秒"
+            + (f"（被 {'、'.join(wait_by[:3])} 占住）" if wait_by else "")
+        )
     cycle_ms = (production.get("stage_timings_ms") or {}).get("cycle_total")
     # From the receipt, so the board judges against what the running daemon
     # targets rather than a number typed here.  The fallbacks are the values
@@ -402,6 +452,8 @@ def _production_health(status: Mapping[str, Any]) -> dict[str, Any]:
             if isinstance(cycle_ms, (int, float)) else None
         ),
         "production_blocked_lanes": blocked,
+        "production_wait_seconds": wait_sec,
+        "production_wait_blocked_by": wait_by,
     }
 
 

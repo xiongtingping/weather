@@ -177,3 +177,96 @@ def test_the_repair_reads_how_far_behind_the_fetch_was() -> None:
     ).fetchall())
     assert rows["NCEP_HRRR_POINT"] == "2026-08-25T19:00:00Z", "fetched an hour later: a live sweep"
     assert rows["NCEP_NBM_POINT"] == "2026-09-06T12:00:00Z", "six hours behind is still a live sweep, so the fetch is the answer"
+
+
+def test_a_slow_unproductive_run_cannot_spend_the_whole_pass(monkeypatch) -> None:
+    """The run cap counts productive runs; the budget counts seconds.
+
+    ``plan_p1`` hands the loop four times the cap so an unpublished newest
+    run cannot starve the older ones, and that is right when a miss costs
+    one 404.  Measured 2026-09-09: an NBM miss costs forty hours of ranged
+    reads instead, the CONUS sweep spent its whole 1800s subprocess timeout
+    inside this loop for the third day running, and because the resident
+    admits one writer at a time the production cycle could not start for
+    thirty minutes at a stretch.  So the pass is bounded in seconds too.
+    """
+    conn = _conn()
+    now = datetime(2026, 9, 6, 23, tzinfo=timezone.utc)
+    stations = [("KATL", 33.63, -84.44, "America/New_York")]
+    clock = [1000.0]
+    seen: list[int] = []
+
+    def slow_empty_fetch(*, product, run_init, targets):
+        seen.append(run_init.hour)
+        clock[0] += 100.0  # every run is a slow miss
+        return {
+            (t["station_id"], t["event_date"].isoformat()):
+            {"hourly_c": {}, "hours_wanted": 4, "source_url": "s3"}
+            for t in targets
+        }
+
+    monkeypatch.setattr(L, "fetch_noaa_run_for_targets", slow_empty_fetch)
+    monkeypatch.setattr(L.time, "monotonic", lambda: clock[0])
+    receipt = L.capture_p1(
+        conn, product="HRRR", now=now, stations=stations, day_offsets=(0,),
+        max_runs=2, budget_sec=250.0,
+    )
+    assert receipt["budget_exhausted"] is True, "the pass stopped on seconds, not on runs"
+    assert receipt["runs_with_data"] == 0, "nothing was productive, so the run cap never fired"
+    assert receipt["runs_attempted"] == 3, "three fetches fit in 250s at 100s each"
+    assert len(seen) == 3, "the fourth planned run was left for the next pass"
+
+
+def test_the_budget_is_checked_before_a_fetch_and_never_during(monkeypatch) -> None:
+    """A run that has started finishes, so no run is ever half written.
+
+    What the budget leaves unfetched is simply still unstored, and the next
+    pass plans it again -- the lane loses a round, not a row.
+    """
+    conn = _conn()
+    now = datetime(2026, 9, 6, 23, tzinfo=timezone.utc)
+    stations = [("KATL", 33.63, -84.44, "America/New_York")]
+    clock = [0.0]
+
+    def one_very_slow_productive_run(*, product, run_init, targets):
+        clock[0] += 10_000.0  # blows the budget inside the first fetch
+        return {
+            (t["station_id"], t["event_date"].isoformat()):
+            {"hourly_c": {0: 25.0, 1: 26.0}, "hours_wanted": 2, "source_url": "s3"}
+            for t in targets
+        }
+
+    monkeypatch.setattr(L, "fetch_noaa_run_for_targets", one_very_slow_productive_run)
+    monkeypatch.setattr(L.time, "monotonic", lambda: clock[0])
+    receipt = L.capture_p1(
+        conn, product="HRRR", now=now, stations=stations, day_offsets=(0,),
+        max_runs=4, budget_sec=1.0,
+    )
+    assert receipt["written"] == 1, "the run that started was written in full"
+    assert receipt["budget_exhausted"] is True
+    assert receipt["runs_attempted"] == 1
+
+
+def test_no_budget_leaves_the_pass_exactly_as_it_was(monkeypatch) -> None:
+    """The healthy lanes must not change shape because a sick one was bounded."""
+    conn = _conn()
+    now = datetime(2026, 9, 6, 23, tzinfo=timezone.utc)
+    stations = [("KATL", 33.63, -84.44, "America/New_York")]
+    seen: list[int] = []
+
+    def fake_fetch(*, product, run_init, targets):
+        seen.append(run_init.hour)
+        hourly = {} if run_init.hour >= 20 else {0: 25.0, 1: 26.0}
+        return {
+            (t["station_id"], t["event_date"].isoformat()):
+            {"hourly_c": hourly, "hours_wanted": 2, "source_url": "s3"}
+            for t in targets
+        }
+
+    monkeypatch.setattr(L, "fetch_noaa_run_for_targets", fake_fetch)
+    receipt = L.capture_p1(
+        conn, product="HRRR", now=now, stations=stations, day_offsets=(0,), max_runs=2,
+    )
+    assert receipt["budget_exhausted"] is False
+    assert receipt["runs_with_data"] == 2 and receipt["written"] == 2
+    assert seen == [21, 20, 19, 18], "two misses, then two productive runs, then stop"
