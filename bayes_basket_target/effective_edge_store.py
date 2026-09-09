@@ -532,6 +532,137 @@ def _band_index(agreement: float, bands: Sequence[tuple[float, float]]) -> int:
     return len(bands) - 1
 
 
+def _candidate_population(
+    conn: sqlite3.Connection,
+    stages: Sequence[str],
+    floor_day: str,
+    *,
+    include_replayed: bool,
+) -> dict[str, Any]:
+    """The rows a fit reads, and -- since 2026-09-09 -- the rows that judge it.
+
+    One implementation because the two must not drift.  ``admitted_return``
+    used to read the served table unconditionally, on the reasoning that
+    whether a table earns its seat is a question about the book that was
+    really bought.  That reasoning survives a band-axis change badly: the
+    served rows are all on the OLD axis (P0's 957 of them, every one
+    excluded from the fit for exactly that reason), so the guard was scoring
+    a distance-axis table against claim-axis claims -- an input it will
+    never see again.  Measured 2026-09-09 on P0: the same challenger reads
+    -2.33% on served rows and +0.30% on the current-generation replay rows,
+    and the refusal reverses.
+
+    The narrowing (user ruling, 2026-09-09): the guard still admits only
+    REAL prices and REAL settlements -- the replay changes neither -- but
+    the claim beside them must be the one the served axis now computes.  The
+    cost is stated rather than hidden: a table can now earn its seat on a
+    claim nobody ever actually traded against.
+
+    What does NOT change: a replay row is a re-statement of a settled
+    window, never an additional trade.  One band generation only, and a
+    served row always wins over its own replay.
+    """
+
+    placeholders = ",".join("?" for _ in stages)
+    axis = _fit_axis(conn, stages)
+    # A candidate table without the column cannot be partitioned on it, and
+    # that is an ordinary state rather than an error: a replay extract, a
+    # fixture, any database whose ledger has not run the migration yet.  It
+    # fits on everything, exactly as it did before charter 110.
+    if axis is not None and not _has_band_axis_column(conn):
+        axis = None
+    axis_clause = "" if axis is None else " AND band_axis IS ?"
+    axis_args: tuple[Any, ...] = () if axis is None else (axis,)
+    # Charter 110 extended (2026-09-08): the same rule, one layer out.  The
+    # band table moves the claim; charter 81's lift, the off-centre
+    # deflation and the convergence lift move it again afterwards, and
+    # ``a = price / claim`` is keyed on what comes out.  A row written under
+    # a different version of those tables carries a claim this code would
+    # no longer compute, so it is not evidence about today's ``a``.
+    # Two fingerprints, one per path: a row is current if the tables ITS
+    # claim went through are the ones this code now serves.
+    claim_vintages: tuple[str, ...] | None = (
+        claim_transform_fingerprint(holds_centre=True),
+        claim_transform_fingerprint(holds_centre=False),
+    )
+    if not _has_candidate_column(conn, "claim_transform_sha256"):
+        claim_vintages = None
+    claim_clause = (
+        ""
+        if claim_vintages is None
+        else " AND claim_transform_sha256 IN (?,?)"
+    )
+    claim_args: tuple[Any, ...] = (
+        () if claim_vintages is None else claim_vintages
+    )
+    rows = conn.execute(
+        "SELECT win_probability, all_in_price, hit, station_id, event_date,"
+        " stage, decision_at_utc"
+        " FROM paper_trade_candidate_window"
+        f" WHERE stage IN ({placeholders}) AND event_date >= ?"
+        "   AND hit IS NOT NULL" + axis_clause + claim_clause,
+        (*stages, floor_day, *axis_args, *claim_args),
+    ).fetchall()
+    served_row_count = len(rows)
+    excluded_axis = 0 if axis is None else conn.execute(
+        "SELECT COUNT(*) FROM paper_trade_candidate_window"
+        f" WHERE stage IN ({placeholders}) AND event_date >= ?"
+        "   AND hit IS NOT NULL AND band_axis IS NOT ?",
+        (*stages, floor_day, axis),
+    ).fetchone()[0]
+    excluded_claim = 0 if claim_vintages is None else conn.execute(
+        "SELECT COUNT(*) FROM paper_trade_candidate_window"
+        f" WHERE stage IN ({placeholders}) AND event_date >= ?"
+        "   AND hit IS NOT NULL"
+        "   AND (claim_transform_sha256 IS NULL"
+        "        OR claim_transform_sha256 NOT IN (?,?))",
+        (*stages, floor_day, *claim_vintages),
+    ).fetchone()[0]
+    replayed_row_count = 0
+    replay_sha = None
+    if include_replayed:
+        # One generation only.  The lane keeps a row per (source window, band
+        # table), so without this the same settled window is counted once for
+        # every table it has ever been re-derived onto.
+        replay_sha = _fit_band_sha(conn, stages)
+        sha_clause = "" if replay_sha is None else " AND band_table_sha256 IS ?"
+        sha_args: tuple[Any, ...] = () if replay_sha is None else (replay_sha,)
+        try:
+            replayed = conn.execute(
+                "SELECT win_probability, all_in_price, hit, station_id,"
+                " event_date, stage, decision_at_utc"
+                " FROM paper_trade_candidate_window_replay"
+                f" WHERE stage IN ({placeholders}) AND event_date >= ?"
+                "   AND hit IS NOT NULL" + axis_clause + claim_clause
+                + sha_clause,
+                (*stages, floor_day, *axis_args, *claim_args, *sha_args),
+            ).fetchall()
+        except sqlite3.Error:
+            # No replay lane in this database: a fixture, an extract.
+            replayed = []
+        # A source row that is already current under this axis needs no
+        # stand-in; the replay carries its own key and the served row wins.
+        seen = {
+            (str(r[3]), str(r[4]), str(r[5]), str(r[6])) for r in rows
+        }
+        replayed = [
+            r for r in replayed
+            if (str(r[3]), str(r[4]), str(r[5]), str(r[6])) not in seen
+        ]
+        replayed_row_count = len(replayed)
+        rows = list(rows) + replayed
+    return {
+        "rows": rows,
+        "band_axis": axis,
+        "claim_vintages": claim_vintages,
+        "excluded_other_band_axis": int(excluded_axis),
+        "excluded_other_claim_transform": int(excluded_claim),
+        "served_row_count": int(served_row_count),
+        "replayed_row_count": int(replayed_row_count),
+        "replay_band_table_sha256": replay_sha,
+    }
+
+
 def fit_lambda_table(
     conn: sqlite3.Connection,
     *,
@@ -607,108 +738,16 @@ def fit_lambda_table(
     # envelopes no longer say; treating them as "probably the current axis"
     # is the silent borrowing charter 104 forbids for a claim, and a
     # partition key deserves the same rule.  They are counted, not hidden.
-    axis = _fit_axis(conn, stages)
-    # A candidate table without the column cannot be partitioned on it, and
-    # that is an ordinary state rather than an error: a replay extract, a
-    # fixture, any database whose ledger has not run the migration yet.  It
-    # fits on everything, exactly as it did before charter 110.
-    if axis is not None and not _has_band_axis_column(conn):
-        axis = None
-    axis_clause = "" if axis is None else " AND band_axis IS ?"
-    axis_args: tuple[Any, ...] = () if axis is None else (axis,)
-    # Charter 110 extended (2026-09-08): the same rule, one layer out.  The
-    # band table moves the claim; charter 81's lift, the off-centre
-    # deflation and the convergence lift move it again afterwards, and
-    # ``a = price / claim`` is keyed on what comes out.  A row written under
-    # a different version of those tables carries a claim this code would
-    # no longer compute, so it is not evidence about today's ``a``.
-    # Two fingerprints, one per path: a row is current if the tables ITS
-    # claim went through are the ones this code now serves.  Hashing both
-    # into one key would retire every centre-holding row whenever the
-    # off-centre table moved, and those rows never read it.
-    claim_vintages: tuple[str, ...] | None = (
-        claim_transform_fingerprint(holds_centre=True),
-        claim_transform_fingerprint(holds_centre=False),
+    population = _candidate_population(
+        conn, stages, floor_day, include_replayed=include_replayed
     )
-    if not _has_candidate_column(conn, "claim_transform_sha256"):
-        # A database whose ledger has not run the migration cannot be
-        # partitioned on a column it does not have, and that is ordinary --
-        # a fixture, a replay extract.  It fits on everything, as before.
-        claim_vintages = None
-    claim_clause = (
-        ""
-        if claim_vintages is None
-        else " AND claim_transform_sha256 IN (?,?)"
-    )
-    claim_args: tuple[Any, ...] = (
-        () if claim_vintages is None else claim_vintages
-    )
-    rows = conn.execute(
-        "SELECT win_probability, all_in_price, hit, station_id, event_date,"
-        " stage, decision_at_utc"
-        " FROM paper_trade_candidate_window"
-        f" WHERE stage IN ({placeholders}) AND event_date >= ?"
-        "   AND hit IS NOT NULL" + axis_clause + claim_clause,
-        (*stages, floor_day, *axis_args, *claim_args),
-    ).fetchall()
-    served_row_count = len(rows)
-    # A band axis change does not kill a settled window, it mis-keys it.  The
-    # price the book quoted and the outcome the day settled to do not depend
-    # on our probabilities at all; only the claim does.  So the replay lane
-    # recomputes the claim on the table that serves today and files the row
-    # under the axis it now belongs to, and the fit may read those -- how
-    # honest a claim is, is a property of the claim.  The ACTIVATION guard
-    # may not: whether a table earns its seat is a question about the book
-    # that was really bought, and ``admitted_return`` stays on the served
-    # table alone.  Off unless asked for.
-    replayed_row_count = 0
-    if include_replayed:
-        # One generation only.  The lane keeps a row per (source window, band
-        # table), so without this the same settled window is counted once for
-        # every table it has ever been re-derived onto.
-        replay_sha = _fit_band_sha(conn, stages)
-        sha_clause = "" if replay_sha is None else " AND band_table_sha256 IS ?"
-        sha_args: tuple[Any, ...] = () if replay_sha is None else (replay_sha,)
-        try:
-            replayed = conn.execute(
-                "SELECT win_probability, all_in_price, hit, station_id,"
-                " event_date, stage, decision_at_utc"
-                " FROM paper_trade_candidate_window_replay"
-                f" WHERE stage IN ({placeholders}) AND event_date >= ?"
-                "   AND hit IS NOT NULL" + axis_clause + claim_clause
-                + sha_clause,
-                (*stages, floor_day, *axis_args, *claim_args, *sha_args),
-            ).fetchall()
-        except sqlite3.Error:
-            # No replay lane in this database: a fixture, an extract.  Not
-            # an error, and not silently the same as an empty one -- the
-            # receipt reports zero either way and the caller asked.
-            replayed = []
-        # A source row that is already current under this axis needs no
-        # stand-in; the replay carries its own key and the served row wins.
-        seen = {
-            (str(r[3]), str(r[4]), str(r[5]), str(r[6])) for r in rows
-        }
-        replayed = [
-            r for r in replayed
-            if (str(r[3]), str(r[4]), str(r[5]), str(r[6])) not in seen
-        ]
-        replayed_row_count = len(replayed)
-        rows = list(rows) + replayed
-    excluded_axis = 0 if axis is None else conn.execute(
-        "SELECT COUNT(*) FROM paper_trade_candidate_window"
-        f" WHERE stage IN ({placeholders}) AND event_date >= ?"
-        "   AND hit IS NOT NULL AND band_axis IS NOT ?",
-        (*stages, floor_day, axis),
-    ).fetchone()[0]
-    excluded_claim = 0 if claim_vintages is None else conn.execute(
-        "SELECT COUNT(*) FROM paper_trade_candidate_window"
-        f" WHERE stage IN ({placeholders}) AND event_date >= ?"
-        "   AND hit IS NOT NULL"
-        "   AND (claim_transform_sha256 IS NULL"
-        "        OR claim_transform_sha256 NOT IN (?,?))",
-        (*stages, floor_day, *claim_vintages),
-    ).fetchone()[0]
+    rows = population["rows"]
+    axis = population["band_axis"]
+    claim_vintages = population["claim_vintages"]
+    excluded_axis = population["excluded_other_band_axis"]
+    excluded_claim = population["excluded_other_claim_transform"]
+    served_row_count = population["served_row_count"]
+    replayed_row_count = population["replayed_row_count"]
     # A band this fit cannot measure keeps the incumbent -- but only while
     # the incumbent describes the same claim.  When the transform has MOVED,
     # the served number was fitted on a quantity that no longer exists, and
@@ -867,6 +906,8 @@ def admitted_return(
     bands: Sequence[tuple[float, float]],
     stages: Sequence[str],
     floor_day: str,
+    *,
+    include_replayed: bool = False,
 ) -> dict[str, Any]:
     """What a table admits, and what that admission set is worth.
 
@@ -892,20 +933,19 @@ def admitted_return(
     is asked.
     """
 
-    placeholders = ",".join("?" for _ in stages)
+    # The same population the fit read (user ruling, 2026-09-09).  It used to
+    # be the served table unconditionally, which scored a distance-axis table
+    # against claim-axis claims the day a stage moved axis -- an input it
+    # will never see again.  See ``_candidate_population``.
     try:
-        rows = conn.execute(
-            "SELECT win_probability, all_in_price, hit"
-            " FROM paper_trade_candidate_window"
-            f" WHERE stage IN ({placeholders}) AND event_date >= ?"
-            "   AND hit IS NOT NULL",
-            (*stages, floor_day),
-        ).fetchall()
+        rows = _candidate_population(
+            conn, stages, floor_day, include_replayed=include_replayed
+        )["rows"]
     except sqlite3.Error:
         return {"available": False, "windows": 0}
     cost = payout = 0.0
     admitted = 0
-    for claim, price, hit in rows:
+    for claim, price, hit, *_rest in rows:
         claim = float(claim or 0.0)
         price = float(price or 0.0)
         if claim <= 0.0 or price <= 0.0:
@@ -977,10 +1017,20 @@ def persist_and_activate(
         (float(bound), float(lam)) for bound, lam in fit["bands"]
     ]
     incumbent_bands = _incumbent_bands(conn, scope)
-    proposed = admitted_return(conn, candidate_bands, stages, floor_day)
-    standing = admitted_return(conn, incumbent_bands, stages, floor_day)
+    # Judge both tables on the population the fit was drawn from, or the
+    # guard re-runs the axis mismatch this ruling removed.
+    scored_on_replay = bool(fit.get("include_replayed"))
+    proposed = admitted_return(
+        conn, candidate_bands, stages, floor_day,
+        include_replayed=scored_on_replay,
+    )
+    standing = admitted_return(
+        conn, incumbent_bands, stages, floor_day,
+        include_replayed=scored_on_replay,
+    )
     guard = {
         "mode": ACTIVATION_RETURN_GUARD,
+        "scored_on_replayed_population": scored_on_replay,
         "proposed": proposed,
         "incumbent": standing,
         "bands_unchanged": candidate_bands == incumbent_bands,

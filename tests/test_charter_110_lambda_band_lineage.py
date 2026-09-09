@@ -96,11 +96,17 @@ def test_the_fit_reads_one_axis_and_counts_what_it_left_out():
 
     from bayes_basket_target import effective_edge_store as store
 
-    source = inspect.getsource(store.fit_lambda_table)
+    # The selection moved into ``_candidate_population`` on 2026-09-09 so
+    # the fit and the activation guard read one implementation; the tallies
+    # still surface on the fit's own receipt.
+    source = inspect.getsource(store._candidate_population)
     assert "band_axis IS ?" in source
     assert "band_axis IS NOT ?" in source
     assert '"excluded_other_band_axis"' in source
     assert '"band_axis": axis' in source
+    fit_source = inspect.getsource(store.fit_lambda_table)
+    assert "_candidate_population(" in fit_source
+    assert 'population["excluded_other_band_axis"]' in fit_source
 
 
 def test_an_unknown_vintage_is_excluded_rather_than_assumed_current():
@@ -371,19 +377,67 @@ def test_a_served_row_beats_its_own_replay() -> None:
     conn.close()
 
 
-def test_the_activation_guard_never_reads_the_replay_lane() -> None:
-    """Fitting may use a claim that was never served; earning a seat may not.
+def test_the_activation_guard_is_judged_on_the_population_it_was_fitted_on(
+) -> None:
+    """Narrowed by user ruling, 2026-09-09.
 
-    ``admitted_return`` answers "what would this table have bought", and the
-    only honest population for that is the book that really existed.
+    This test used to assert the opposite -- that ``admitted_return`` reads
+    the served table and nothing else, because whether a table earns its seat
+    is a question about the book that was really bought.  That survives a
+    band-axis change badly.  P0's served rows are all on the old axis (957 of
+    them, every one excluded from the fit for that reason), so the guard was
+    scoring a distance-axis table against claim-axis claims: an input it will
+    never see again.  Measured that day, the same challenger reads -2.33% on
+    served rows and +0.30% on the current replay generation, and the refusal
+    reverses.
+
+    What the ruling kept: the guard admits only REAL prices and REAL
+    settlements, which the replay changes neither of.  What it gave up, said
+    out loud: a table can now earn its seat on a claim nobody traded against.
     """
     import inspect
 
-    from bayes_basket_target.effective_edge_store import admitted_return
+    from bayes_basket_target import effective_edge_store as store
 
-    source = inspect.getsource(admitted_return)
-    assert "paper_trade_candidate_window_replay" not in source
-    assert "FROM paper_trade_candidate_window" in source
+    source = inspect.getsource(store.admitted_return)
+    # One implementation with the fit, so the two populations cannot drift.
+    assert "_candidate_population(" in source
+    assert "include_replayed=include_replayed" in source
+    # And the flag is the fit's own, not a default the guard picks.
+    activate = inspect.getsource(store.persist_and_activate)
+    assert 'scored_on_replay = bool(fit.get("include_replayed"))' in activate
+    assert activate.count("include_replayed=scored_on_replay") == 2
+
+
+def test_the_guard_and_the_fit_read_the_same_rows() -> None:
+    """The narrowing, as behaviour rather than as source text."""
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        claim_transform_fingerprint,
+    )
+    from bayes_basket_target.effective_edge_store import (
+        _candidate_population, fit_lambda_table,
+    )
+
+    conn = _db()
+    _one_settlement(conn)
+    current = claim_transform_fingerprint(holds_centre=True)
+    _activate_band_table(conn, "c" * 64)
+    for index in range(4):
+        _replay_row(conn, f"r-{index}", source=f"src-{index}",
+                    bucket=f"3{index}°C", claim_sha=current, band_sha="c" * 64)
+    fit = fit_lambda_table(conn, stage_scope="P0", include_replayed=True)
+    judged = _candidate_population(
+        conn, fit["table"]["stages"], fit["table"]["fit_floor_event_date"],
+        include_replayed=True,
+    )
+    assert len(judged["rows"]) == fit["seat_count"] == 4
+    # Off by default: a caller that does not ask still gets served rows only.
+    plain = _candidate_population(
+        conn, fit["table"]["stages"], fit["table"]["fit_floor_event_date"],
+        include_replayed=False,
+    )
+    assert plain["replayed_row_count"] == 0
+    conn.close()
 
 
 def test_the_replay_lane_is_actually_asked_for_by_the_sweep() -> None:

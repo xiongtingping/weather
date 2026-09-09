@@ -237,10 +237,11 @@ def test_no_claims_layer_query_reads_the_post_execution_columns():
     # rather than counted in: six reads of the served table, one of its
     # replay sibling, and that one is in the fit -- never in the guard.
     assert edge.count("FROM paper_trade_candidate_window_replay") == 1
-    assert edge.count("FROM paper_trade_candidate_window") - 1 == 6, (
-        "band-partition lookup, served fit, the fit's excluded-axis tally,"
-        " its excluded-claim-vintage tally (charter 110 extended,"
-        " 2026-09-08), activation guard, shadow fit"
+    assert edge.count("FROM paper_trade_candidate_window") - 1 == 5, (
+        "band-partition lookup, the shared population read, its"
+        " excluded-axis tally, its excluded-claim-vintage tally, shadow fit"
+        " -- the activation guard stopped issuing its own query on"
+        " 2026-09-09 and reads the fit's population instead"
     )
     # The thermometer's unit is the posted leg, with the fill an
     # observation about it -- not a precondition for counting it.
