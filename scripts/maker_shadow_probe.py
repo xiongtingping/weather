@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sqlite3
 import sys
 from collections import defaultdict
@@ -36,7 +37,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
+    effective_edge_lambda_from_tables,
+)
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
+from bayes_basket_target.effective_edge_store import (  # noqa: E402
+    load_effective_edge_tables,
+)
 from bayes_basket_target.probability_bridge import (  # noqa: E402
     history_envelope_payload,
 )
@@ -49,7 +56,35 @@ DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 PRICE_RULES = (
     "bid", "bid+1t", "bid+2t", "mid", "ask",
     "bid+1t@chase", "bid+1t@then_take",
+    "claim_cap", "claim_cap@0.8",
 )
+# The arms that price off the claim instead of off the book (2026-09-09).
+#
+# Every rule above answers "where is the other side resting?".  None answers
+# "what is this bucket worth?", and production does not either: the gate
+# knows a ceiling -- charter 68's ``claim x lambda(a)``, which is the claim
+# after the fraction history says actually arrives -- and that ceiling has
+# never reached the price.  ``delta_v2_runtime`` says so in as many words at
+# the maker branch: "the rung is the price.  The reservation solve rides
+# along for the audit."  So the book decides what we pay and the ceiling
+# only checks afterwards that we did not overpay.
+#
+# The floor under that check is zero: ``minimum_expected_edge_per_share`` is
+# 0.0, so a leg priced one thousandth under its own ceiling passes.  Lambda
+# is fitted on tens to hundreds of seats per band, so a thousandth is inside
+# its own error bar.
+#
+# These two arms invert the order: take the ceiling first, and rest at
+# whichever is cheaper, it or the ladder rung.  ``claim_cap`` is the bare
+# ceiling; ``claim_cap@0.8`` keeps a fifth of it as margin.  When the rung
+# is already under the ceiling the arm posts the rung and is its own
+# control -- the difference only appears on the legs production would have
+# bought at a price its own gate can barely justify.
+CLAIM_CAP_MARGIN = {"claim_cap": 0.0, "claim_cap@0.8": 0.2}
+# Which stage's lambda table prices the ceiling.  P0 is the opening stage and
+# the one this lane has always been about; a shadow order carries no stage of
+# its own, so pinning it is a statement rather than an inference.
+CLAIM_CAP_STAGE = "P0"
 # The arm charter 108 asked for.  Every rule above rests at the price it was
 # written at; charter 94(六) does not -- production cancels a rung that has
 # fallen out of the bid-anchored ladder and re-mints it at the current bid,
@@ -268,11 +303,43 @@ def _model_probabilities(
     }
 
 
-def _limit_price(rule: str, quote: dict[str, Any]) -> float | None:
+def _floor_to_tick(price: float, tick: float) -> float:
+    if tick <= 0.0:
+        return price
+    return math.floor(price / tick + 1e-9) * tick
+
+
+def _limit_price(
+    rule: str,
+    quote: dict[str, Any],
+    *,
+    probability: float | None = None,
+    lambda_tables: Any = None,
+) -> float | None:
     rule = BASE_RULE.get(rule, rule)
     bid, ask, tick = quote["bid"], quote["ask"], quote["tick"]
     if ask <= 0.0 or ask >= 1.0:
         return None
+    if rule in CLAIM_CAP_MARGIN:
+        # The ladder rung this arm is measured against, then the ceiling.
+        if bid <= 0.0 or probability is None or probability <= 0.0:
+            return None
+        rung = min(bid + tick, ask)
+        if rung <= 0.0:
+            return None
+        # ``a`` is read at the rung: what the market's agreement would be if
+        # this leg were posted the way production posts it.  Lambda is a
+        # step function of a, so reading it at the price we would otherwise
+        # pay is the honest lookup -- and it makes the ceiling a property of
+        # this book rather than of the price we are about to choose.
+        lam = float(effective_edge_lambda_from_tables(
+            CLAIM_CAP_STAGE, rung / float(probability), lambda_tables
+        ))
+        ceiling = float(probability) * lam * (1.0 - CLAIM_CAP_MARGIN[rule])
+        price = min(rung, _floor_to_tick(ceiling, tick))
+        if price <= 0.0:
+            return None
+        return round(price, 6)
     if rule == "ask":
         return ask
     if bid <= 0.0:
@@ -301,6 +368,11 @@ def place(conn: sqlite3.Connection) -> dict[str, int]:
     if not books:
         return {"scopes_with_fresh_book": 0}
     now = _now()
+    # One load per round: the served tables, exactly as the gate reads them.
+    try:
+        lambda_tables = load_effective_edge_tables(conn)
+    except Exception:  # noqa: BLE001 -- no store, no ceiling, other arms run
+        lambda_tables = None
     widest = _stamp(now - timedelta(minutes=PLACEMENT_INTERVAL_MINUTES))
     last_placed: dict[tuple[str, str], str] = {}
     for station, day, when in conn.execute(
@@ -345,7 +417,11 @@ def place(conn: sqlite3.Connection) -> dict[str, int]:
             if bucket not in probabilities:
                 continue
             for rule in PRICE_RULES:
-                price = _limit_price(rule, quote)
+                price = _limit_price(
+                    rule, quote,
+                    probability=float(probabilities[bucket]),
+                    lambda_tables=lambda_tables,
+                )
                 if price is None or price < MINIMUM_LIMIT_PRICE:
                     counts["leg_below_floor_or_one_sided"] += 1
                     continue
@@ -480,6 +556,10 @@ def resolve(conn: sqlite3.Connection) -> dict[str, int]:
                         # price is live at that price from the moment it is
                         # moved, and testing the old one first would credit
                         # a fill to a price already cancelled.
+                        # Only the ladder rules chase, and BASE_RULE maps
+                        # them to a book-priced rule, so no claim is needed
+                        # here.  A claim-capped rule never enters this path
+                        # (it is not in CHASING_RULES).
                         repriced = _limit_price(str(rule), quote)
                         if (
                             repriced is not None
