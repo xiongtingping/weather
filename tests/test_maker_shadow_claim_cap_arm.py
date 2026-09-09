@@ -102,3 +102,76 @@ def test_the_chasing_lane_never_reprices_a_claim_capped_order() -> None:
     deliberately not anchored to."""
     assert not (set(probe.CHASING_RULES) & set(probe.CLAIM_CAP_MARGIN))
     assert not (set(probe.BASE_RULE) & set(probe.CLAIM_CAP_MARGIN))
+
+
+def _shadow_db():
+    import sqlite3
+    conn = sqlite3.connect(":memory:")
+    probe.ensure_schema(conn)
+    return conn
+
+
+def _order(conn, rule, price, *, bucket="30°C", state="OPEN", oid=None):
+    conn.execute(
+        "INSERT INTO maker_shadow_order("
+        " order_id, station_id, event_date, bucket, price_rule,"
+        " horizon_minutes, placed_at_utc, book_observed_at_utc,"
+        " expires_at_utc, lead_hours, limit_price, reference_bid,"
+        " reference_ask, reference_tick, queue_ahead_shares, queue_known,"
+        " model_probability, state, content_sha256)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (oid or f"o-{rule}-{bucket}", "ZSQD", "2026-09-09", bucket, rule, 60,
+         "2026-09-09T00:00:00Z", "2026-09-09T00:00:00Z",
+         "2026-09-09T01:00:00Z", 24.0, price, 0.30, 0.40, 0.01, None, 0,
+         0.55, state, "d" * 64),
+    )
+    return oid or f"o-{rule}-{bucket}"
+
+
+def test_the_reading_pairs_leg_by_leg_and_never_pools() -> None:
+    """The arm drops legs whose ceiling falls under the one-cent floor, so
+    its surviving population runs at a higher claim than bid+1t's; comparing
+    the two means would read that selection as a result."""
+    conn = _shadow_db()
+    _order(conn, "claim_cap", 0.22, bucket="30°C")
+    _order(conn, "bid+1t", 0.31, bucket="30°C")
+    # An unpaired bid+1t leg: the arm refused this one, and it must not
+    # enter the comparison on either side.
+    _order(conn, "bid+1t", 0.05, bucket="31°C")
+    line = probe.claim_cap_reading(conn)
+    assert "paired 1," in line
+    assert "ceiling bound 1 (100%)" in line
+    assert "+0.0900" in line
+    conn.close()
+
+
+def test_the_reading_says_so_when_nothing_has_settled() -> None:
+    conn = _shadow_db()
+    assert "no paired legs yet" in probe.claim_cap_reading(conn)
+    _order(conn, "claim_cap", 0.22)
+    _order(conn, "bid+1t", 0.31)
+    assert "no leg settled on both rules yet" in probe.claim_cap_reading(conn)
+    conn.close()
+
+
+def test_the_reading_carries_both_numbers_that_decide_the_arm() -> None:
+    """Fill rate says whether the ceiling priced us out; pnl per filled share
+    says whether the legs it did buy were worth more.  One without the other
+    cannot judge this arm."""
+    conn = _shadow_db()
+    cap = _order(conn, "claim_cap", 0.22, state="FILLED")
+    rung = _order(conn, "bid+1t", 0.31, state="FILLED")
+    for oid, price, pnl in ((cap, 0.22, 0.78), (rung, 0.31, 0.69)):
+        conn.execute(
+            "INSERT INTO maker_shadow_settlement("
+            " order_id, station_id, event_date, settled_bucket, hit,"
+            " limit_price, pnl_per_share, settled_at_utc)"
+            " VALUES(?,?,?,?,?,?,?,?)",
+            (oid, "ZSQD", "2026-09-09", "30°C", 1, price, pnl,
+             "2026-09-09T12:00:00Z"),
+        )
+    line = probe.claim_cap_reading(conn)
+    assert "filled 1 vs 1" in line
+    assert "settled both 1" in line
+    assert "+0.7800 vs +0.6900" in line
+    conn.close()

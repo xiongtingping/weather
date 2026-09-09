@@ -761,6 +761,78 @@ def report(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def claim_cap_reading(conn: sqlite3.Connection) -> str:
+    """One paired line: what pricing off the claim did to fills and to pnl.
+
+    Paired, never pooled.  The arm drops a leg whose ceiling falls under the
+    one-cent floor, so its surviving population runs at a higher claim than
+    bid+1t's (0.258 against 0.195 on the first round) -- comparing the two
+    means would read that selection as a result.  The five columns the two
+    rules share (station, date, bucket, horizon, placed_at) are a unique key
+    by construction, so the join is the comparison.
+
+    Two numbers decide this arm and they have to be read together: the fill
+    rate says whether the ceiling priced us out of the market, and the pnl
+    per filled share says whether the legs it did buy were worth more.  A
+    fill rate that halves while pnl stands still is a dead arm; a fill rate
+    that gives up a fifth while pnl doubles is the point.
+    """
+
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*),"
+            " SUM(CASE WHEN cap.limit_price < rung.limit_price THEN 1 ELSE 0 END),"
+            " AVG(rung.limit_price - cap.limit_price),"
+            " SUM(CASE WHEN cap.state='FILLED' THEN 1 ELSE 0 END),"
+            " SUM(CASE WHEN rung.state='FILLED' THEN 1 ELSE 0 END)"
+            " FROM maker_shadow_order cap"
+            " JOIN maker_shadow_order rung"
+            "   ON rung.station_id=cap.station_id"
+            "  AND rung.event_date=cap.event_date"
+            "  AND rung.bucket=cap.bucket"
+            "  AND rung.horizon_minutes=cap.horizon_minutes"
+            "  AND rung.placed_at_utc=cap.placed_at_utc"
+            "  AND rung.price_rule='bid+1t'"
+            " WHERE cap.price_rule='claim_cap'"
+        ).fetchone()
+        scored = conn.execute(
+            "SELECT COUNT(*), AVG(scap.pnl_per_share), AVG(srung.pnl_per_share)"
+            " FROM maker_shadow_order cap"
+            " JOIN maker_shadow_order rung"
+            "   ON rung.station_id=cap.station_id"
+            "  AND rung.event_date=cap.event_date"
+            "  AND rung.bucket=cap.bucket"
+            "  AND rung.horizon_minutes=cap.horizon_minutes"
+            "  AND rung.placed_at_utc=cap.placed_at_utc"
+            "  AND rung.price_rule='bid+1t'"
+            " JOIN maker_shadow_settlement scap ON scap.order_id=cap.order_id"
+            " JOIN maker_shadow_settlement srung ON srung.order_id=rung.order_id"
+            " WHERE cap.price_rule='claim_cap'"
+        ).fetchone()
+    except sqlite3.Error:
+        return "  claim_cap: lane not present"
+    paired = int(row[0] or 0)
+    if not paired:
+        return "  claim_cap: no paired legs yet"
+    capped = int(row[1] or 0)
+    cut = float(row[2] or 0.0)
+    cap_filled, rung_filled = int(row[3] or 0), int(row[4] or 0)
+    line = (
+        f"  claim_cap vs bid+1t: paired {paired}, ceiling bound {capped}"
+        f" ({capped / paired * 100:.0f}%), mean cut {cut:+.4f}"
+        f"  |  filled {cap_filled} vs {rung_filled}"
+    )
+    both = int(scored[0] or 0)
+    if both:
+        line += (
+            f"  |  settled both {both}: pnl/share"
+            f" {float(scored[1] or 0.0):+.4f} vs {float(scored[2] or 0.0):+.4f}"
+        )
+    else:
+        line += "  |  no leg settled on both rules yet"
+    return line
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
@@ -778,12 +850,15 @@ def main() -> int:
     # autocheckpoint threshold, and folding it while the resident writes is
     # how a maintenance pass takes production down.
     conn.execute("PRAGMA wal_autocheckpoint=0")
-    print(json.dumps({
+    passes = {
         "schema": "maker_shadow_pass_v1",
         "place": place(conn),
         "resolve": resolve(conn),
         "settle": settle(conn),
-    }, ensure_ascii=False, sort_keys=True))
+    }
+    # The daily line a person reads, ahead of the JSON.
+    print(claim_cap_reading(conn))
+    print(json.dumps(passes, ensure_ascii=False, sort_keys=True))
     return 0
 
 
