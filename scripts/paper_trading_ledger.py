@@ -2881,6 +2881,7 @@ CREATE TABLE IF NOT EXISTS paper_trade_position (
   resting_fill_json TEXT NOT NULL DEFAULT '',
   posted_buckets_json TEXT NOT NULL DEFAULT '',
   intended_legs_json TEXT NOT NULL DEFAULT '',
+  marginal_coverage_json TEXT NOT NULL DEFAULT '',
   intended_stake_usdc REAL,
   -- The two numbers the entry gate actually judged, recorded before the
   -- book narrowed the seat.  ``win_probability``/``all_in_cost`` above are
@@ -3280,6 +3281,17 @@ def ensure_schema(conn: sqlite3.Connection) -> bool:
         conn.execute(
             "ALTER TABLE paper_trade_position"
             " ADD COLUMN resting_fill_json TEXT NOT NULL DEFAULT ''"
+        )
+    if "marginal_coverage_json" not in columns:
+        # Audit only.  Recorded so "did the coverage this seat added pay for
+        # the cost it added" is answerable from a row rather than from a join
+        # written by hand -- and, more usefully, so a widening and a top-up
+        # that only adds shares stop looking alike: 29 of 33 settled top-ups
+        # measured on 2026-09-09 were shares-only, which the criterion has
+        # nothing to say about and which no column could previously separate.
+        conn.execute(
+            "ALTER TABLE paper_trade_position"
+            " ADD COLUMN marginal_coverage_json TEXT NOT NULL DEFAULT ''"
         )
     if "intended_legs_json" not in columns:
         # The order as it was posted, per leg, before the book answered.
@@ -5023,6 +5035,14 @@ def _production_judge(
         "edge_probabilities": dict(
             (selection.get("seated") or {}).get("window_probabilities")
             or {}
+        ),
+        # Audit only (user ruling, 2026-09-09).  h/K for the seated window
+        # and the marginal Δh/ΔK of what it adds over what the seat holds,
+        # from production's own reading -- not recomputed here, because a
+        # ledger column that restates the rule is a column that can drift
+        # from it.
+        "marginal_coverage": (
+            (selection.get("seated") or {}).get("marginal_coverage")
         ),
         "edge_epsilon": float(
             delta_policy.execution_weights.epsilon_score
@@ -10417,6 +10437,13 @@ def backfill(
                             json.dumps(resting_fills, sort_keys=True),
                             json.dumps(posted_buckets, ensure_ascii=False),
                             json.dumps(intended_legs, sort_keys=True),
+                            # Audit only: production's own reading, stored
+                            # verbatim rather than recomputed here.
+                            json.dumps(
+                                production_verdict.get("marginal_coverage")
+                                or {},
+                                sort_keys=True, ensure_ascii=False,
+                            ) if production_verdict else "",
                             intended_stake,
                             intended_win_probability,
                             intended_all_in_cost,
@@ -10708,13 +10735,14 @@ def backfill(
             " probabilities_json, prices_json, center_c,"
             " refused_window_count, content_sha256, selection_rule_sha256,"
             " selection_rule_label, leg_shares_json, resting_fill_json,"
-            " posted_buckets_json, intended_legs_json, intended_stake_usdc,"
+            " posted_buckets_json, intended_legs_json, marginal_coverage_json,"
+            " intended_stake_usdc,"
             " intended_win_probability, intended_all_in_cost,"
             " intended_leg_stake_json, leg_stake_json,"
             " held_before_json, chain_shares_json, chain_stake_usdc,"
             " consolidation_json"
             ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
-            "?,?,?,?,?,?,?,?,?,?)",
+            "?,?,?,?,?,?,?,?,?,?,?)",
             pending_positions,
         )
     if pending_candidates:
