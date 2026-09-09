@@ -142,6 +142,48 @@ _PRODUCTION_LANES = (
 )
 
 
+# A TAF round lands every 19 to 33 minutes when the lane is healthy -- the
+# rotation module's own measurement, after the writers were serialised.  Two
+# missed rounds is a lane worth naming; four is a lane that has stopped.
+TAF_ROUND_OVERDUE_SEC = 66.0 * 60.0
+TAF_ROUND_STOPPED_SEC = 132.0 * 60.0
+TAF_ROTATION_STATE = (
+    ROOT / "data" / "runtime" / "bayes_basket_target_nwp"
+    / "taf_rotation_state.json"
+)
+
+
+def _taf_rotation_staleness() -> dict[str, Any]:
+    """When the TAF poll last completed a round, from the file that outlives it."""
+
+    try:
+        rotation = json.loads(TAF_ROTATION_STATE.read_text())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(rotation, Mapping):
+        return {}
+    updated = str(rotation.get("updated_at_utc") or "")
+    age_hours = _age_hours(updated)
+    if age_hours is None:
+        return {}
+    age_sec = age_hours * 3600.0
+    if age_sec < TAF_ROUND_OVERDUE_SEC:
+        return {
+            "taf_capture_health": "green",
+            "taf_capture_note": f"上一轮 {age_hours:.1f} 小时前（回执待发布）",
+        }
+    return {
+        "taf_capture_health": (
+            "red" if age_sec >= TAF_ROUND_STOPPED_SEC else "amber"
+        ),
+        "taf_capture_note": (
+            f"轮询已 {age_hours:.1f} 小时没有完成一轮"
+            f"（健康时 19-33 分钟一轮）；常驻回执未发布，"
+            f"读的是轮转状态文件"
+        ),
+    }
+
+
 def _taf_capture_health(status: Mapping[str, Any]) -> dict[str, Any]:
     """Whether forecaster bulletins are still arriving, per station-day.
 
@@ -165,7 +207,18 @@ def _taf_capture_health(status: Mapping[str, Any]) -> dict[str, Any]:
     capture = capture if isinstance(capture, Mapping) else {}
     freshness = capture.get("capture_freshness")
     if not isinstance(freshness, Mapping) or not freshness.get("scope_count"):
-        return {}
+        # The receipt lives in the resident's process and is gone the moment
+        # it restarts, so keying the card on it means the card DISAPPEARS --
+        # not goes green, disappears -- for as long as the first round after
+        # a restart takes.  Measured 2026-09-09 09:12Z, the day this card was
+        # added: the lane had not completed a round since 07:34Z, two
+        # restarts had happened in between, and the page rendered at 07:52Z
+        # said green with no alerts at all.
+        #
+        # The rotation state file outlives the process and stamps every
+        # completed round, so it answers the one question the receipt cannot
+        # after a restart: when did this lane last run.
+        return _taf_rotation_staleness()
     scopes = int(freshness.get("scope_count") or 0)
     stale = int(freshness.get("stale_scope_count") or 0)
     after = float(freshness.get("stale_after_hours") or 3.0)
