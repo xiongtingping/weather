@@ -221,6 +221,15 @@ class MaterializedEvidence:
     reported_high_observation_id: str | None = None
     hard_bound_id: str | None = None
     reported_high_advanced: bool | None = None
+    # Charter 125.  The day's observed high and the buckets it has already
+    # ruled out, carried at EVERY stage -- unlike the reported-high risk
+    # lineage above, which is P1's alone because it is P1's chain root.
+    # This pair is not a chain root and claims no stage authority: it is the
+    # arithmetic fact that a settled maximum of X cannot land in a bucket
+    # ending at or below X, which is true of a P0 basket exactly as it is
+    # true of a P1 one.
+    observed_running_high_c: float | None = None
+    observed_dead_buckets: tuple[str, ...] = ()
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "MaterializedEvidence":
@@ -241,9 +250,37 @@ class MaterializedEvidence:
             "reported_high_observation_id",
             "hard_bound_id",
             "reported_high_advanced",
+            "observed_running_high_c",
+            "observed_dead_buckets",
         }
         if set(raw) - allowed_fields:
             raise ContractError("materialized_evidence_unknown_fields")
+        raw_running_high = raw.get("observed_running_high_c")
+        if isinstance(raw_running_high, bool):
+            raise ContractError("observed_running_high_c_invalid")
+        try:
+            observed_running_high_c = (
+                None
+                if raw_running_high in (None, "")
+                else _finite("observed_running_high_c", raw_running_high)
+            )
+        except ContractError:
+            raise
+        raw_dead = raw.get("observed_dead_buckets") or ()
+        if isinstance(raw_dead, (str, bytes, bytearray)) or not isinstance(
+            raw_dead, Sequence
+        ):
+            raise ContractError("observed_dead_buckets_invalid")
+        observed_dead_buckets = tuple(
+            _required_text("observed_dead_bucket", item) for item in raw_dead
+        )
+        if len(set(observed_dead_buckets)) != len(observed_dead_buckets):
+            raise ContractError("observed_dead_buckets_duplicated")
+        if observed_dead_buckets and observed_running_high_c is None:
+            # A dead set without the number it was derived from is a claim
+            # with no evidence behind it.  Fail closed rather than let a
+            # caller hand the selection layer an arbitrary exclusion list.
+            raise ContractError("observed_dead_buckets_without_running_high")
         raw_rung_width = raw.get("bucket_rung_width_c")
         rung_width = (
             None
@@ -352,6 +389,8 @@ class MaterializedEvidence:
                     raw.get("reported_high_advanced"),
                 )
             ),
+            observed_running_high_c=observed_running_high_c,
+            observed_dead_buckets=observed_dead_buckets,
         )
         if value.probability_stage not in {"P0", "P0-M", "P1"}:
             raise ContractError("probability_stage_invalid")
@@ -1046,6 +1085,20 @@ class TargetBasketSnapshot:
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
         value["schema"] = TARGET_BASKET_SNAPSHOT_SCHEMA
+        # Charter 125: a snapshot with no observed high is byte-identical to
+        # the ones written before the ruling.  ``asdict`` cannot know that --
+        # it emits every field of the dataclass, so the two new keys would
+        # arrive as null/[] on every pre-day compile and churn
+        # ``content_sha256``, which is a leg of the plan identity.  The
+        # fields are dropped when they carry nothing, and present exactly
+        # when the day has reported something, which is when the identity
+        # SHOULD move.
+        evidence = value.get("evidence")
+        if isinstance(evidence, dict) and evidence.get(
+            "observed_running_high_c"
+        ) is None:
+            evidence.pop("observed_running_high_c", None)
+            evidence.pop("observed_dead_buckets", None)
         return value
 
     @property

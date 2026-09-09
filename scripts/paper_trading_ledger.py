@@ -180,6 +180,13 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     # handed to ``_support_windows`` by both compiles (2026-09-04).
     taf_tx_bucket_for as _taf_tx_bucket,
 )
+from bayes_basket_target.observed_high_floor import (  # noqa: E402
+    # Charter 125: the day's observed high as a floor on what may be bought,
+    # at every stage.  Production and this ledger read the same predicate.
+    CHARTER_125_OBSERVED_HIGH_FLOOR,
+    dead_buckets_for_upper_bounds,
+    observed_high_floor_enabled,
+)
 from bayes_basket_target.resting_ladder_lifecycle import (  # noqa: E402
     # Charter 94: the cadence production re-anchors resting rungs on.
     RESTING_REPRICE_DWELL_SECONDS,
@@ -2593,6 +2600,14 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
         }
         if CHARTER_124_ROBUST_CLAIM != "shadow" else {}
     ),
+    # Charter 125 (2026-09-09): a bucket the day's observed high has already
+    # passed leaves the domain at every stage, not only at P1.  Recorded
+    # unconditionally, unlike 123/124 above: this one moves the book -- a
+    # P0/P0-M replay on any station-day whose local midnight falls inside the
+    # checkpoint's own window can no longer seat the rungs the thermometer
+    # killed -- so every row written before it describes a strategy that no
+    # longer runs and must be repushed rather than compared against.
+    "observed_high_floor": CHARTER_125_OBSERVED_HIGH_FLOOR,
 }
 SELECTION_RULE_SHA256 = content_sha256(_SELECTION_RULE_IDENTITY)
 # Why a station-day has no seat, in the ledger's own words.  The page used to
@@ -4257,6 +4272,7 @@ def _paper_snapshot_mapping(
     held: Mapping[str, float] | None = None,
     held_cost: Mapping[str, float] | None = None,
     reported_high: tuple[str, int] | None = None,
+    observed_running_high_c: float | None = None,
 ) -> tuple[
     Any, dict[str, float], dict[str, float],
     dict[str, list[dict[str, float]]]
@@ -4372,6 +4388,38 @@ def _paper_snapshot_mapping(
             ),
             "posterior_version": "paper",
             "posterior_sha256": "a" * 64,
+            # Charter 125: the floor every stage is judged against, derived
+            # from this book's own bucket edges with production's predicate.
+            # Omitted, not nulled, when the day has reported nothing yet, so
+            # a pre-day replay hashes exactly as it did before the ruling.
+            **(
+                {
+                    "observed_running_high_c": float(
+                        observed_running_high_c
+                    ),
+                    "observed_dead_buckets": list(
+                        dead_buckets_for_upper_bounds(
+                            ordered_buckets=[
+                                str(bucket)
+                                for bucket, _o, _l, _u, _p in sorted(
+                                    buckets, key=lambda row: int(row[1])
+                                )
+                            ],
+                            upper_bounds={
+                                str(bucket): (
+                                    float("inf") if upper is None
+                                    else float(upper)
+                                )
+                                for bucket, _o, _l, upper, _p in buckets
+                            },
+                            running_high_c=float(observed_running_high_c),
+                        )
+                    ),
+                }
+                if observed_running_high_c is not None
+                and observed_high_floor_enabled()
+                else {}
+            ),
         },
         "buckets": rows,
         "checkpoint_changed": True,
@@ -4531,6 +4579,60 @@ def _production_hold_refusal(
         "生产裁判：可入座窗 %s 但开仓门票没成 · %s · 本链已投 %.2f"
         % (buckets, why, chain_stake),
     )
+
+
+_OBSERVED_RUNNING_HIGH_CACHE: dict[tuple[str, str], list[tuple[str, float]]] = {}
+
+
+def _observed_running_high_at(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    at_utc: str,
+) -> float | None:
+    """Charter 125: the day's observed high as of one book clock.
+
+    Production reads this off the canonical observation lane.  This lane has
+    no such connection, so it reads the same number where production already
+    wrote it down: every committed P1 checkpoint carries the running high it
+    was built on, and P1 mints within minutes of each report.  Taking the
+    maximum over the checkpoints at or before the clock is as-of by
+    construction and never sees a report the decision could not have.
+
+    A day whose P1 lane never minted returns None -- no floor, exactly as
+    before the ruling -- which is honest rather than convenient: this lane
+    cannot invent an observation production did not record.
+    """
+
+    key = (str(station_id), str(event_date))
+    series = _OBSERVED_RUNNING_HIGH_CACHE.get(key)
+    if series is None:
+        series = []
+        for decision_at, envelope_json in conn.execute(
+            "SELECT decision_at_utc, envelope_json"
+            " FROM basket_probability_bridge_history"
+            " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+            "   AND stage='P1'"
+            " ORDER BY decision_at_utc ASC",
+            (station_id, event_date),
+        ):
+            try:
+                lineage = (
+                    json.loads(str(envelope_json)).get("lineage") or {}
+                )
+                value = lineage.get("metar_trajectory_running_high_c")
+            except (TypeError, ValueError, AttributeError):
+                continue
+            if value in (None, ""):
+                continue
+            try:
+                series.append((str(decision_at), float(value)))
+            except (TypeError, ValueError):
+                continue
+        _OBSERVED_RUNNING_HIGH_CACHE[key] = series
+    highs = [value for decision_at, value in series if decision_at <= at_utc]
+    return max(highs) if highs else None
 
 
 def _production_judge(
@@ -4705,6 +4807,16 @@ def _production_judge(
         held=held,
         held_cost=held_cost,
         reported_high=reported_high,
+        # Charter 125: at every stage, not only the one whose posterior
+        # already carries it.  ``reported_high`` above stays P1's own risk
+        # lineage; this is the arithmetic floor, and a P0 checkpoint
+        # compiled after the local midnight is subject to it too.
+        observed_running_high_c=_observed_running_high_at(
+            conn,
+            station_id=station_id,
+            event_date=event_date,
+            at_utc=str(payload["observed_at"]),
+        ),
     )
     if built is None:
         return {

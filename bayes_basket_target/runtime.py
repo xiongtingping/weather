@@ -63,6 +63,10 @@ from .settlement_time import assert_probability_timezone_matches_market
 from .regime_artifact import RegimeArtifact, resolve_regime_artifact
 from .regime_materialization import evaluate_regime_gate
 from .metar_trajectory import assert_p1_execution_evidence
+from .observed_high_floor import (
+    dead_buckets_for_running_high,
+    running_high_from_market_snapshot,
+)
 from .delta_v2_artifact import DeltaV2PolicyArtifact
 from .delta_v2_runtime import (
     CHARTER_83_MIN_NOTIONAL,
@@ -515,6 +519,19 @@ def snapshot_from_probability_envelope(
             raise ContractError("p1_reported_high_advanced_invalid")
     elif present_risk_keys:
         raise ContractError("p0_reported_high_risk_lineage_forbidden")
+    observed_running_high_c = running_high_from_market_snapshot(
+        market_snapshot
+    )
+    observed_dead_buckets = dead_buckets_for_running_high(
+        ordered_buckets=sorted(
+            envelope.probabilities,
+            key=lambda bucket: envelope.bucket_ordinals.get(bucket, 0),
+        ),
+        bucket_intervals_c_json=envelope.lineage.get(
+            "bucket_intervals_c_json"
+        ),
+        running_high_c=observed_running_high_c,
+    )
     raw_buckets = market_snapshot.get("buckets")
     if not isinstance(raw_buckets, Sequence) or isinstance(raw_buckets, (str, bytes, bytearray)) or not raw_buckets:
         raise ContractError("market_snapshot_buckets_missing")
@@ -588,6 +605,28 @@ def snapshot_from_probability_envelope(
             ),
             "hard_bound_id": hard_bound_id,
             "reported_high_advanced": reported_high_advanced,
+            # Charter 125: the observed-high floor, at every stage.
+            #
+            # Deliberately not part of the risk lineage above.  That block is
+            # P1's chain root -- which observation the posterior was built on
+            # -- and is forbidden elsewhere precisely so a forecast cannot
+            # pose as a settled fact.  This pair claims nothing about how the
+            # posterior was built; it is the arithmetic bound the day's own
+            # thermometer puts under the ladder, and a P0 basket is as
+            # subject to it as a P1 one.  ``observed_running_high_c`` is
+            # absent for a pre-day compile, which is most P0 decisions, and
+            # the two keys are then omitted entirely rather than written as
+            # null -- an absent floor must leave every downstream dict, and
+            # therefore every content hash, byte-identical to the pre-ruling
+            # one.
+            **(
+                {
+                    "observed_running_high_c": observed_running_high_c,
+                    "observed_dead_buckets": observed_dead_buckets,
+                }
+                if observed_running_high_c is not None
+                else {}
+            ),
         },
         "buckets": buckets,
         "checkpoint_changed": bool(

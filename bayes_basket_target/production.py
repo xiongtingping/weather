@@ -40,6 +40,10 @@ from .policy import (
 from .contracts import ProbabilityEnvelope, ContractError, content_sha256
 from .delta_v2_artifact import DeltaV2PolicyArtifact
 from .order_submission import submit_prepared_intents
+from .observed_high_floor import (
+    dead_buckets_for_running_high,
+    running_high_from_market_snapshot,
+)
 from .stage_evidence import (
     assert_intent_buckets_within_bound,
     build_model_envelope_soft_bound,
@@ -558,6 +562,80 @@ def _load_staged_revision_fact(
     if len(rows) != 1:
         raise ContractError("target_atomic_revision_fact_not_staged")
     return json.loads(str(rows[0][0]))
+
+
+def assert_intents_above_observed_high(
+    intents: Sequence[Mapping[str, Any]],
+    *,
+    market_snapshot: Mapping[str, Any] | None,
+    probability_envelope: Any,
+) -> tuple[str, ...]:
+    """Charter 125's fail-closed half at the writer boundary.
+
+    The selection layer routes around a rung the day has already settled
+    against; this refuses one that reached the writer anyway.  The dead set
+    is recomputed here from the running high on the same market snapshot the
+    plan was priced on and the envelope's own bucket ladder -- never read
+    back off the optimizer's audit, because a boundary that trusts the gate
+    it is checking is not a boundary.
+
+    Loud rather than a silent drop.  A BUY on an arithmetically dead bucket
+    means the gate did not run on the book this plan was priced on, and a
+    plan that cannot say which rungs are still alive must not be committed
+    at all -- dropping the offending leg would commit the rest of a basket
+    whose shape was chosen on a distribution that is now known to be wrong.
+
+    Returns the dead set it checked against, so a caller can record what the
+    boundary saw on the plans it lets through.
+    """
+
+    running_high_c = running_high_from_market_snapshot(market_snapshot)
+    if running_high_c is None:
+        return ()
+    probabilities = (
+        probability_envelope.get("probabilities")
+        if isinstance(probability_envelope, Mapping)
+        else None
+    )
+    lineage = (
+        probability_envelope.get("lineage")
+        if isinstance(probability_envelope, Mapping)
+        else None
+    )
+    if not isinstance(probabilities, Mapping) or not isinstance(
+        lineage, Mapping
+    ):
+        return ()
+    raw_ordinals = (
+        probability_envelope.get("bucket_ordinals")
+        if isinstance(probability_envelope, Mapping)
+        else None
+    )
+    ordinals = raw_ordinals if isinstance(raw_ordinals, Mapping) else {}
+    observed_dead = set(
+        dead_buckets_for_running_high(
+            ordered_buckets=sorted(
+                probabilities,
+                key=lambda bucket: ordinals.get(bucket, 0),
+            ),
+            bucket_intervals_c_json=lineage.get("bucket_intervals_c_json"),
+            running_high_c=running_high_c,
+        )
+    )
+    offending = sorted(
+        {
+            str(item.get("bucket") or "").strip()
+            for item in intents or ()
+            if str(item.get("order_action") or "").upper() == "BUY"
+            and str(item.get("bucket") or "").strip() in observed_dead
+        }
+    )
+    if offending:
+        raise ContractError(
+            "production_candidate_intent_below_observed_high:"
+            + ",".join(offending)
+        )
+    return tuple(sorted(observed_dead))
 
 
 def commit_production_candidate_atomic(
@@ -1106,6 +1184,11 @@ def commit_production_candidate_atomic(
         raise ContractError(
             "production_candidate_complete_basket_intents_incomplete"
         )
+    assert_intents_above_observed_high(
+        intents,
+        market_snapshot=market_snapshot,
+        probability_envelope=candidate_probability_envelope,
+    )
     if vector_blockers:
         intents = []
         execution_version_vectors = []

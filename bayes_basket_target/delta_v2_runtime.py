@@ -24,6 +24,10 @@ from .basket_kernel.contracts import (
     content_sha256,
 )
 from .basket_kernel import delta_v2 as _kernel_delta_v2
+from .observed_high_floor import (
+    CHARTER_125_OBSERVED_HIGH_FLOOR,
+    observed_high_floor_enabled,
+)
 from .basket_kernel.delta_v2 import (
     CONSOLIDATION_TILT_FLOOR_VERSION,
     CURVE_BANKROLL_CONVENTION,
@@ -1761,6 +1765,29 @@ def _support_windows(
     """
 
     by_bucket = {row.bucket: row for row in snapshot.buckets}
+    # Charter 125: the day's own thermometer, before any price or belief.
+    #
+    # A bucket whose upper edge the running high has already reached cannot
+    # hold the daily maximum -- it is not a bad bet, it is a settled loss --
+    # so it leaves the domain here rather than being trusted to hold zero
+    # probability.  Until this ruling that trust was the whole mechanism:
+    # the comment below still says "a bucket the hard lower bound has
+    # excluded holds zero probability", which is true of a P1 posterior and
+    # false of a P0 one, because P0 never reads an observation at all.
+    #
+    # The incumbent is exempt from the *domain* rule below but not from
+    # this one: a leg the day has killed may be held, and may not be bought
+    # again.  Empty whenever the snapshot carries no running high, which is
+    # every pre-day compile.
+    observed_dead = (
+        frozenset(snapshot.evidence.observed_dead_buckets)
+        if observed_high_floor_enabled()
+        else frozenset()
+    )
+    observed_dead_admitted = sorted(
+        (bucket for bucket in observed_dead if bucket in by_bucket),
+        key=lambda bucket: (by_bucket[bucket].ordinal, bucket),
+    )
     incumbent_buckets = sorted(
         (bucket for bucket in desired if bucket in by_bucket),
         key=lambda bucket: (by_bucket[bucket].ordinal, bucket),
@@ -1815,7 +1842,9 @@ def _support_windows(
         (
             row.bucket
             for row in snapshot.buckets
-            if float(row.probability) > EPS and not _priced_above_floor(row)
+            if float(row.probability) > EPS
+            and row.bucket not in observed_dead
+            and not _priced_above_floor(row)
         ),
         key=lambda bucket: (by_bucket[bucket].ordinal, bucket),
     )
@@ -1823,12 +1852,22 @@ def _support_windows(
         (
             row.bucket
             for row in snapshot.buckets
-            if float(row.probability) > EPS and _priced_above_floor(row)
+            if float(row.probability) > EPS
+            # Charter 125.  Ahead of the price filter, because this is not a
+            # judgement about price: the outcome is already decided against
+            # this rung and no quote can make it a bet again.
+            and row.bucket not in observed_dead
+            and _priced_above_floor(row)
         ),
         key=lambda bucket: (by_bucket[bucket].ordinal, bucket),
     )
     for bucket in incumbent:
-        if bucket not in admitted:
+        # Charter 125: the incumbent's unconditional re-entry is what keeps
+        # a held basket representable, and it stops at a rung the day has
+        # already settled against.  Holding such a leg is a fact; putting it
+        # back in the domain would let the same dead rung be seated and
+        # bought again, which is the one thing this ruling forbids.
+        if bucket not in admitted and bucket not in observed_dead:
             admitted.append(bucket)
     admitted.sort(key=lambda bucket: (by_bucket[bucket].ordinal, bucket))
 
@@ -1890,11 +1929,17 @@ def _support_windows(
         missing = [bucket for bucket in window if bucket not in held]
         dead = [
             bucket for bucket in missing
-            if quote_by_bucket.get(bucket) is not None
-            and _leg_below_floor(
-                by_bucket[bucket],
-                probabilities.get(bucket),
-                fee_rate=float(fee_rate),
+            # Charter 125 first: a rung the observations killed is missing
+            # for a reason no quote can undo, so it joins the market-dead
+            # set whether or not it carries an offer at all.
+            if bucket in observed_dead
+            or (
+                quote_by_bucket.get(bucket) is not None
+                and _leg_below_floor(
+                    by_bucket[bucket],
+                    probabilities.get(bucket),
+                    fee_rate=float(fee_rate),
+                )
             )
         ]
         buyable = [bucket for bucket in missing if bucket not in dead]
@@ -3198,6 +3243,13 @@ def _support_windows(
         "skew_extension_sign": skew_sign,
         "leg_floor_refused_window_count": leg_floor_refused,
         "leg_floor_excluded_buckets": leg_floor_excluded,
+        # Charter 125: which rungs the day's observed high removed from the
+        # domain, and the number it was read against.  A gate whose refusals
+        # are not written down cannot be priced afterwards -- the same
+        # lesson the market-lean list above was added for.
+        "observed_high_floor_mode": CHARTER_125_OBSERVED_HIGH_FLOOR,
+        "observed_high_running_c": snapshot.evidence.observed_running_high_c,
+        "observed_high_dead_buckets": observed_dead_admitted,
         "gapped_window_refused_count": gapped_refused,
         # The one gate here that is actually the market's doing: the window
         # was whole, every leg carried a real quote, and the model's own edge

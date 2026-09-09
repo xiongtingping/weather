@@ -21,6 +21,9 @@ from .market_ingress import (
     load_official_ws_quotes,
 )
 from .market_registry import load_market_registry_snapshot
+from .observed_high_floor import (
+    MARKET_SNAPSHOT_KEY as OBSERVED_HIGH_MARKET_SNAPSHOT_KEY,
+)
 from .effective_edge_store import load_effective_edge_tables
 from .off_centre_claim_store import load_off_centre_tables
 from .symmetric_seat_band_store import load_symmetric_seat_bands
@@ -931,6 +934,7 @@ def compile_p0_preselection(
     planning_budget_usdc: float,
     cash_phase_authority_manifest: CashPhaseAuthorityManifest | Mapping[str, Any] | None = None,
     book_equity_usdc: float | None = None,
+    observed_running_high_c: float | None = None,
 ) -> dict[str, Any]:
     expected_source_lane = target_registry_source_lane(
         conn,
@@ -1047,7 +1051,18 @@ def compile_p0_preselection(
             stage="P0",
         ),
         probability_envelopes=envelopes,
-        market_snapshot=market,
+        # Charter 125: the day's observed high rides on the book the plan is
+        # priced against, so the floor and the quotes are the same snapshot.
+        market_snapshot=(
+            market
+            if observed_running_high_c is None
+            else {
+                **market,
+                OBSERVED_HIGH_MARKET_SNAPSHOT_KEY: float(
+                    observed_running_high_c
+                ),
+            }
+        ),
         policy_activations=artifacts.policy_activations,
         global_priors=artifacts.global_priors,
         policy_artifacts=artifacts.policy_artifacts,

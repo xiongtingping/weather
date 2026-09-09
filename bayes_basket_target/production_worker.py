@@ -137,8 +137,8 @@ from .metar_trajectory import (
     SOFT_LIKELIHOOD_POLICY,
     METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
     MetarTrajectoryLikelihoodArtifact,
-    hard_bound_excluded_buckets,
 )
+from .observed_high_floor import dead_buckets_for_running_high
 from .p1_compiler import (
     compile_station_p1_packets,
     p1_trajectory_mode as p1_trajectory_mode_for_artifact,
@@ -10551,6 +10551,14 @@ class TargetProductionWorker:
                         if isinstance(scope_config.get("base_policy"), Mapping)
                         else None
                     ),
+                    # Charter 125: the day's own thermometer, read here
+                    # because this process is the one holding the canonical
+                    # observation connection.
+                    observed_running_high_c=self._observed_running_high_c(
+                        station_id=station,
+                        event_date=day,
+                        as_of_utc=as_of_utc,
+                    ),
                 )
                 self._assert_post_fill_candidate_projection(
                     candidate=candidate,
@@ -12607,27 +12615,25 @@ class TargetProductionWorker:
             receipt["dropped_pre_root_captures"] = dropped_pre_root
         return receipt
 
-    def _p0m_observed_hard_bound(
+    def _observed_running_high_c(
         self,
         *,
         station_id: str,
         event_date: str,
         as_of_utc: str,
-        root: Any,
-    ) -> tuple[tuple[str, ...], float | None]:
-        """Charter 61: the observed-high fact for one P0-M decision.
+    ) -> float | None:
+        """The day's observed running high, or None when it has none yet.
 
-        Promoted from P1: the settlement rule defines truth as the day's
-        maximum, so a reported high of X makes every bucket ending at or
-        below X arithmetically dead whatever any model claims.  The read
-        goes through the same strict canonical loader P1 uses -- route
-        gates, as-of, corrections -- never a hand-written MAX(); the
-        predicate is the shared one with the boundary and unit lessons in
-        it.  Returns ((), None) whenever the day has no formal
-        observations yet (a pre-day TAF confirmation), and refuses to
-        exhaust the support from here -- the materializer would raise, and
-        a bound that deletes the whole distribution is evidence of a
-        vocabulary problem, not a fact to apply.
+        Charter 61's fact, read once for every stage that needs it rather
+        than per stage: the read goes through the same strict canonical
+        loader P1 uses -- route gates, as-of, corrections -- never a
+        hand-written MAX(), and only FORMAL rows count, because the bound
+        is a claim about the METAR series settlement follows.
+
+        Charter 125 gives this a second consumer.  It used to exist only
+        inside the P0-M bound below, which is reached only when a TAF
+        revision arrives; the selection floor needs the same number on
+        every cycle, including the ones where no forecast moved.
         """
 
         registry_rows = [
@@ -12646,7 +12652,9 @@ class TargetProductionWorker:
             ).fetchall()
         ]
         if not registry_rows:
-            return (), None
+            return None
+        if self.canonical_source_conn is None:
+            return None
         try:
             observations = load_resident_formal_observations(
                 self.canonical_source_conn,
@@ -12656,7 +12664,7 @@ class TargetProductionWorker:
                 as_of_utc=as_of_utc,
             )
         except ContractError:
-            return (), None
+            return None
         highs = [
             float(item["reported_temperature_c"])
             for item in observations
@@ -12666,31 +12674,46 @@ class TargetProductionWorker:
             and str(item.get("evidence_role") or "").upper() == "FORMAL"
         ]
         if not highs:
-            return (), None
-        running_high = max(highs)
-        try:
-            intervals = json.loads(
-                str(root.lineage.get("bucket_intervals_c_json") or "{}")
-            )
-        except (TypeError, ValueError):
-            return (), running_high
-        ordered = sorted(
-            root.probabilities,
-            key=lambda bucket: root.bucket_ordinals.get(bucket, 0),
+            return None
+        return max(highs)
+
+    def _p0m_observed_hard_bound(
+        self,
+        *,
+        station_id: str,
+        event_date: str,
+        as_of_utc: str,
+        root: Any,
+    ) -> tuple[tuple[str, ...], float | None]:
+        """Charter 61: the observed-high fact for one P0-M decision.
+
+        Promoted from P1: the settlement rule defines truth as the day's
+        maximum, so a reported high of X makes every bucket ending at or
+        below X arithmetically dead whatever any model claims.  Returns
+        ((), None) whenever the day has no formal observations yet (a
+        pre-day TAF confirmation), and refuses to exhaust the support from
+        here -- the materializer would raise, and a bound that deletes the
+        whole distribution is evidence of a vocabulary problem, not a fact
+        to apply.
+        """
+
+        running_high = self._observed_running_high_c(
+            station_id=station_id,
+            event_date=event_date,
+            as_of_utc=as_of_utc,
         )
-        if not ordered or set(ordered) - set(intervals):
-            return (), running_high
-        uppers = {
-            bucket: (
-                float("inf")
-                if intervals[bucket][1] is None
-                else float(intervals[bucket][1])
-            )
-            for bucket in ordered
-        }
-        excluded = hard_bound_excluded_buckets(ordered, uppers, running_high)
-        if len(excluded) >= len(ordered):
-            return (), running_high
+        if running_high is None:
+            return (), None
+        excluded = dead_buckets_for_running_high(
+            ordered_buckets=sorted(
+                root.probabilities,
+                key=lambda bucket: root.bucket_ordinals.get(bucket, 0),
+            ),
+            bucket_intervals_c_json=root.lineage.get(
+                "bucket_intervals_c_json"
+            ),
+            running_high_c=running_high,
+        )
         return excluded, running_high
 
     @staticmethod
@@ -15307,6 +15330,18 @@ class TargetProductionWorker:
                         strategy_version=str(scope["strategy_version"]),
                         planning_budget_usdc=max(0.0, station_budget),
                         book_equity_usdc=book_equity_usdc,
+                        # Charter 125.  This lane plans forward days, whose
+                        # thermometer has usually said nothing yet -- but a
+                        # listing window can straddle the local midnight, and
+                        # a preliminary plan that shows dead rungs on the
+                        # board is the same error as buying them.
+                        observed_running_high_c=(
+                            self._observed_running_high_c(
+                                station_id=station_id,
+                                event_date=event_date,
+                                as_of_utc=evaluation_at_utc,
+                            )
+                        ),
                     ))
             except ResourceBoundError:
                 # A process at its resource ceiling must not be asked to do
@@ -18054,6 +18089,15 @@ class TargetProductionWorker:
                         strategy_version=str(scope["strategy_version"]),
                         policy_authority_scope=str(activation["policy_authority_scope"]),
                         base_policy=scope.get("base_policy") if isinstance(scope.get("base_policy"), Mapping) else None,
+                        # Charter 125: the day's own thermometer, read here
+                        # because this process is the one holding the
+                        # canonical observation connection.  None before the
+                        # day reports anything, which is every pre-day P0.
+                        observed_running_high_c=self._observed_running_high_c(
+                            station_id=station,
+                            event_date=day,
+                            as_of_utc=now,
+                        ),
                     )
                     self._add_span(
                         "decision_loop_compile",

@@ -52,6 +52,9 @@ from .contracts import (
     timestamp_lte,
 )
 from .execution_deadline import derive_target_execution_hard_deadline
+from .observed_high_floor import (
+    MARKET_SNAPSHOT_KEY as OBSERVED_HIGH_MARKET_SNAPSHOT_KEY,
+)
 from .market_registry import load_active_registry_rows
 from .materialization import rehydrate_lineage_documents
 from .policy import (
@@ -2111,8 +2114,17 @@ def compile_production_cycle_from_ssot(
     policy_authority_scope: str,
     cash_phase_authority_manifest: CashPhaseAuthorityManifest | Mapping[str, Any] | None = None,
     base_policy: Mapping[str, Any] | None = None,
+    observed_running_high_c: float | None = None,
 ) -> dict[str, Any]:
-    """Compile one real-SSOT candidate while preserving the no-live boundary."""
+    """Compile one real-SSOT candidate while preserving the no-live boundary.
+
+    ``observed_running_high_c`` is charter 125's fact: the day's observed
+    high, or None when the day has not reported one yet.  It is a parameter
+    rather than a read because the observations live behind the canonical
+    connection and this compiler holds only the target SSOT one; the caller
+    that owns both produces it.  Absent, no bucket is floored and every
+    downstream hash is what it was before the ruling.
+    """
 
     evaluation_at_utc, _evaluation_at = _normalized_utc(
         "production_evaluation_at_utc",
@@ -2177,6 +2189,14 @@ def compile_production_cycle_from_ssot(
     market_snapshot = load_production_market_snapshot(
         conn, station_id=station_id, event_date=event_date, evaluation_at_utc=evaluation_at_utc
     )
+    # Charter 125: the observed-high floor travels with the book it is going
+    # to be applied against, so the snapshot the writer boundary receives is
+    # the same one the optimizer read the floor from.
+    if observed_running_high_c is not None:
+        market_snapshot = {
+            **market_snapshot,
+            OBSERVED_HIGH_MARKET_SNAPSHOT_KEY: float(observed_running_high_c),
+        }
     bundle = load_production_artifacts(
         conn, station_id=station_id, evaluation_at_utc=evaluation_at_utc, require_calibration=False
     )
