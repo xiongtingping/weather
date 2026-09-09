@@ -142,6 +142,63 @@ _PRODUCTION_LANES = (
 )
 
 
+def _taf_capture_health(status: Mapping[str, Any]) -> dict[str, Any]:
+    """Whether forecaster bulletins are still arriving, per station-day.
+
+    The board reported the TAF poll -- how many scopes it selected, how it
+    classed them, whether the round failed -- and never reported arrivals.
+    Those are different questions and they disagreed for three days: the
+    rotation selected twelve scopes a round and reported no failures while
+    sixteen of forty-three stations received one bulletin a day instead of
+    eight to eleven.  The consequence surfaced two layers downstream, as
+    ``resident_p0m_replay_required`` on scopes whose newest TAF predated the
+    model run their P0 root was built on, and nothing on this page connected
+    the two.
+
+    Reads the daemon's own receipt rather than the capture table: the age is
+    measured at the poll, against the catalogue the poll actually held.
+    """
+
+    prefetch = status.get("forecast_prefetch")
+    prefetch = prefetch if isinstance(prefetch, Mapping) else {}
+    capture = prefetch.get("forward_taf_capture")
+    capture = capture if isinstance(capture, Mapping) else {}
+    freshness = capture.get("capture_freshness")
+    if not isinstance(freshness, Mapping) or not freshness.get("scope_count"):
+        return {}
+    scopes = int(freshness.get("scope_count") or 0)
+    stale = int(freshness.get("stale_scope_count") or 0)
+    after = float(freshness.get("stale_after_hours") or 3.0)
+    worst = [
+        item for item in (freshness.get("worst_scopes") or [])
+        if isinstance(item, Mapping)
+    ]
+    share = stale / scopes if scopes else 0.0
+    # A third of the fleet quiet past an issuing cycle is a supply problem,
+    # not a slow lap.  Two thirds is the lane having stopped.
+    health = "red" if share >= 0.66 else "amber" if share >= 0.34 else "green"
+    note = f"{stale}/{scopes} 个 scope 超过 {after:.0f} 小时没有新报文"
+    if freshness.get("median_age_hours") is not None:
+        note += f"（中位 {float(freshness['median_age_hours']):.1f}h"
+        if freshness.get("max_age_hours") is not None:
+            note += f"，最久 {float(freshness['max_age_hours']):.1f}h"
+        note += "）"
+    if worst:
+        note += "：" + "、".join(
+            f"{item.get('scope')} {float(item.get('age_hours') or 0):.1f}h"
+            for item in worst[:3]
+        )
+    never = int(freshness.get("never_captured_count") or 0)
+    if never:
+        note += f"；{never} 个从未收到过"
+    return {
+        "taf_capture_health": health,
+        "taf_capture_note": note,
+        "taf_capture_stale_scope_count": stale,
+        "taf_capture_scope_count": scopes,
+    }
+
+
 def _production_health(status: Mapping[str, Any]) -> dict[str, Any]:
     """Whether the pipeline is producing, not merely whether it is alive.
 
@@ -2376,9 +2433,36 @@ def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:
             continue
         cells = {index: [0, 0.0, 0] for index in range(len(partition))}
         days = set()
+        seen_station_days = 0
+        corrected_station_days = 0
         for (station, event), day_rows in served_lane.items():
-            days.add(event)
             scored_rows = scored_lane.get((station, event)) or []
+            # A residual "after the correction" may only count rows the
+            # correction reached.  Two thirds of P0's window predate the band
+            # receipt entirely (the earliest 14 days are 100% uncorrected,
+            # the most recent 14 are 100% corrected), and P0-M still skips a
+            # sixth of its station-days because the support set holds no
+            # band-eligible bucket.  Pooling those in damps every reading
+            # toward zero: P1's peak showed +3.6 points mixed and +4.4 on the
+            # days the layer actually ran (measured 2026-09-09).
+            #
+            # The test is the two lanes themselves, not a re-read of the
+            # receipt: ``serving_lane_by_station_day`` inverts if and only if
+            # a receipt said APPLIED, so a station-day whose served vector
+            # equals its pre-band vector is one no factor moved.  Checked
+            # against the receipts on 3,729 station-days: 3,728 agree, and
+            # the one that does not is an APPLIED table that was identity on
+            # that support set -- a row with nothing to audit either way.
+            seen_station_days += 1
+            moved = any(
+                abs(before[0] - after[0]) > 1e-12
+                for scored_row, served_row in zip(scored_rows, day_rows)
+                for before, after in zip(scored_row, served_row)
+            )
+            if not moved:
+                continue
+            corrected_station_days += 1
+            days.add(event)
             for position, entries in enumerate(day_rows):
                 scored = (
                     scored_rows[position]
@@ -2432,6 +2516,8 @@ def collect_band_residual_audit(conn: sqlite3.Connection) -> dict[str, Any]:
             "since": None,
             "axis": axis,
             "day_count": len(days),
+            "station_days": corrected_station_days,
+            "skipped_station_days": seen_station_days - corrected_station_days,
             "rows": rows,
         })
     stations = []
@@ -7081,6 +7167,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
                     "live_submit_authorized"
                 ),
                 **_production_health(status),
+                **_taf_capture_health(status),
             }
         except (ValueError, OSError):
             worker = {}
@@ -7122,6 +7209,16 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
               "label": "生产周期",
               "note": worker.get("production_note") or ""}]
             if worker.get("production_health") not in (None, "green") else []
+        )
+        # Supply, beside production.  A stalled TAF lane does not stop the
+        # cycle -- it makes the cycle refuse scopes for a reason that names
+        # the probability stage, so it has to be reported where the refusal
+        # is read rather than left to be inferred from it.
+        + (
+            [{"health": worker["taf_capture_health"],
+              "label": "TAF 采集",
+              "note": worker.get("taf_capture_note") or ""}]
+            if worker.get("taf_capture_health") not in (None, "green") else []
         )
     )
     overall = (
@@ -8163,10 +8260,13 @@ function reliabilityAudit(){
       }).join("");
     if(!rows) return "";
     const distance = s.axis === "centre_distance";
+    const skipped = s.skipped_station_days || 0;
     return `<div style="margin-top:10px">
       <div class="muted"><b>${h(s.stage)}</b> · ${s.day_count} 天 ·
-        每站日首个决策 · 与上表同窗同轴（${
-          distance ? "按离峰距离分档" : "按声称概率分档"}）</div>
+        ${s.station_days || 0} 个站日 · 每站日首个决策 · 与上表同窗同轴（${
+          distance ? "按离峰距离分档" : "按声称概率分档"}）${
+        skipped ? ` · <span title="band 层没碰过的站日：早于该层上线，或支持集里没有可修的桶。它们不是「修完还剩多少」的证据。">另有 ${
+          skipped} 个站日 band 未生效，不计入</span>` : ""}</div>
       <table style="margin-top:6px"><thead><tr>
         <th>${distance ? "桶离峰距离" : "声称档"}</th>
         <th>样本</th><th>平均声称</th><th>实际发生</th><th>差</th>
@@ -8196,6 +8296,8 @@ function reliabilityAudit(){
   <div class="muted"><b>③ 体检：说了多少 vs 真发生了多少</b>（band 店同一车道 ·
   每站日首个决策 · 同窗同 stage · <b>每张表按该 stage 自己那根轴分档</b>，
   和上表逐行对齐 · 唯一差别：上表读系数前的原始声称，本表读系数后的实际服务值 ·
+  <b>只计 band 真的动过的站日</b>——没动过的行不是"修完还剩多少"的证据，
+  混进来只会把每一格都往零拉（P1 峰值桶混着读 +3.6 点，只算生效日是 +4.4）·
   只诊断，无下游消费）</div>
   ${stageBlocks}
   <div class="muted" style="margin-top:6px">

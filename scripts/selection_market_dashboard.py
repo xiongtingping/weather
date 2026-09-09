@@ -530,14 +530,6 @@ def _consolidation_lights(conn: sqlite3.Connection) -> dict[str, Any]:
             "SELECT station_id, event_date, hit, stake_usdc, pnl_usdc"
             " FROM paper_trade_settlement"
         ).fetchall()
-        open_rows = conn.execute(
-            "SELECT p.station_id, p.event_date, SUM(p.stake_usdc)"
-            " FROM paper_trade_position p"
-            " WHERE NOT EXISTS (SELECT 1 FROM paper_trade_settlement s"
-            "  WHERE s.station_id=p.station_id"
-            "    AND s.event_date=p.event_date)"
-            " GROUP BY p.station_id, p.event_date"
-        ).fetchall()
     except sqlite3.OperationalError:
         return {"available": False}
 
@@ -618,28 +610,18 @@ def _consolidation_lights(conn: sqlite3.Connection) -> dict[str, Any]:
             group = [c for c in flagged if c["flags"][name] is lit]
             singles.append({"signal": name, "lit": lit, **stats(group)})
 
-    open_chains = sorted(
-        (
-            {
-                "station": str(sid), "event_date": str(day),
-                "stake": float(stake or 0.0),
-                "flags": lights.get((str(sid), str(day))),
-            }
-            for sid, day, stake in open_rows
-        ),
-        key=lambda c: (c["event_date"], c["station"]),
-        reverse=True,
-    )
-
+    # The in-flight chains' lamps left the board on 2026-09-09 (user ruling),
+    # and with them the only reader of ``open_chains``.  Availability now
+    # rests on the settled chains alone, which is what every table here is
+    # built from: a panel with no flagged chain has nothing but headers.
     return {
-        "available": bool(flagged or open_chains),
+        "available": bool(flagged),
         "rule": _tilt_rule(),
         "combos": combos,
         "counts": counts,
         "singles": singles,
         "settled_chains": len(chains),
         "flagged_chains": len(flagged),
-        "open_chains": open_chains,
     }
 
 
@@ -1543,26 +1525,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
                 for side in ("above", "below", "aligned", "unknown")
             },
         }
-    # Quotes that are not really prices, listed so they can be chased rather
-    # than quietly carried in the headline.
-    anomalies = [
-        {
-            "station_id": r["station_id"],
-            "event_date": r["event_date"],
-            "stage": r["stage"],
-            "window": r["window"],
-            "all_in_cost": r["all_in_cost"],
-            "win_probability": r["win_probability"],
-            "kind": (
-                "basket_under_one_cent"
-                if r["dust_offer"]
-                else "claim_over_market_by_10x"
-            ),
-        }
-        for r in rows
-        if r["dust_offer"]
-        or (r["all_in_cost"] > 0 and r["win_probability"] / r["all_in_cost"] > 10.0)
-    ]
     # Every registered station on every event day it has evidence for, not
     # just the latest.  A station missing from the ledger on a day is the
     # more interesting row -- the objective looked and did not sit, or never
@@ -2056,7 +2018,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "latest_day": days[0] if days else None,
         "sides": dict(by_side),
         "stages": stages,
-        "anomalies": anomalies[:40],
         "coverage_stats": coverage_stats,
         "station_stats": station_stats,
         "station_failure_matrix": _station_failure_matrix(

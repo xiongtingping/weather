@@ -311,16 +311,20 @@ def _render_audit(audit: dict) -> str:
     return result.stdout
 
 
-def _audit_stage(stage: str, axis: str, bins: list[str]) -> dict:
-    return {
+def _audit_stage(stage: str, axis: str, bins: list[str], **extra) -> dict:
+    payload = {
         "stage": stage,
         "axis": axis,
         "day_count": 40,
+        "station_days": 900,
+        "skipped_station_days": 0,
         "rows": [
             {"bin": name, "n": 500, "promised": 0.20, "happened": 0.22}
             for name in bins
         ],
     }
+    payload.update(extra)
+    return payload
 
 
 def test_the_audit_bins_each_stage_on_the_axis_it_serves() -> None:
@@ -366,3 +370,38 @@ def test_the_audit_falls_back_to_the_claim_grid_without_an_axis() -> None:
     })
     assert re.search(r"<th>([^<]+)</th>", html).group(1).strip() == "声称档"
     assert "按声称概率分档" in html
+
+
+def test_the_audit_says_how_many_station_days_the_band_never_touched() -> None:
+    """A residual "after the correction" that silently pools uncorrected rows
+    is a damped residual (user ruling, 2026-09-09).
+
+    Two thirds of P0's window predates the band receipt and P0-M still skips
+    a sixth of its station-days for want of a band-eligible bucket.  Those
+    rows are dropped, so the count that was dropped has to be on the page --
+    a filter nobody can see reads as "this is everything".
+    """
+
+    html = _render_audit({
+        "stages": [_audit_stage("P0", "centre_distance", ["峰值桶"],
+                                station_days=946, skipped_station_days=512)],
+        "stations": [],
+    })
+    assert "946 个站日" in html
+    assert "512 个站日 band 未生效" in html
+    # And an attribute the browser can actually parse: the explanation lives
+    # in a title, so it must not carry a bare double quote.
+    title = re.search(r'title="([^"]*)"', html)
+    assert title is not None and "修完还剩多少" in title.group(1)
+
+
+def test_a_stage_the_band_always_touched_says_nothing_about_skipping() -> None:
+    """The line is a caveat, not furniture: with nothing dropped it is a
+    sentence the reader has to rule out for no reason."""
+
+    html = _render_audit({
+        "stages": [_audit_stage("P0", "centre_distance", ["峰值桶"],
+                                station_days=946, skipped_station_days=0)],
+        "stations": [],
+    })
+    assert "band 未生效" not in html
