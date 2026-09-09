@@ -4843,7 +4843,15 @@ def _production_judge(
             # kernel bootstrap until 2026-09-06, which is a belief
             # production stopped serving on 2026-09-05.
             effective_edge_tables=_effective_edge_tables_as_of(decision_at_utc),
-            symmetric_seat_bands=_symmetric_seat_bands(),
+            # Charter 122's band is NOT passed here.  It shapes which windows
+            # exist, and ``_support_windows`` above -- the one call that
+            # enumerates them -- already read it; the solver is handed the
+            # windows themselves and re-declaring the band to it would be a
+            # parameter nothing downstream reads.  It was declared here when
+            # charter 122 (five) landed (c032ea92), and since the runtime's
+            # solver never grew the keyword, every production-judge replay
+            # from that commit onward died on ``TypeError`` before its first
+            # station -- the whole ledger arm, not one lane of it.
         )
     except (ContractError, _KernelContractError) as exc:
         if holds_anything and str(exc) == (
