@@ -291,3 +291,84 @@ def test_no_live_order_state_rejects_nonterminal_target_reconciliation(tmp_path,
                 activation_path=path,
                 observed_at_utc="2026-07-23T04:00:00Z",
             )
+
+
+# The reconciliation ledger's ``resolved_partial`` is written by two paths
+# that mean opposite things, and the quiescence guard used to refuse both.
+# These two tests are the distinction, so a future reader restoring the
+# state to the blocking set has to say which of them they mean to break.
+def _seed_partial(conn, activation, *, intent_state: str, blocking_reason: str | None) -> None:
+    conn.execute(
+        "INSERT INTO basket_strategy_activation_state "
+        "(singleton,generation,state,strategy_id,activation_sha256,activation_json,updated_at) VALUES(?,?,?,?,?,?,?)",
+        (1, 1, "enabled", "bayes_basket_target_v1", activation["activation_contract_sha256"],
+         json.dumps(activation), "2026-07-23T00:00:00Z"),
+    )
+    conn.execute(
+        "INSERT INTO basket_target_order_intents "
+        "(order_intent_id,decision_id,cycle_id,bucket,token_id,side,order_action,limit_price,requested_size,"
+        "requested_notional_usdc,state,live_submit_authorized,idempotency_key,intent_json,intent_sha256,created_at) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("intent-1", "decision-1", "cycle-1", "38°C", "yes-38", "YES", "BUY", 0.4, 5.0, 2.0,
+         intent_state, 0, "idem-1", "{}", HASH, "2026-07-23T00:00:00Z"),
+    )
+    conn.execute(
+        "INSERT INTO basket_target_order_reconciliations "
+        "(order_intent_id,exchange_order_id,state,filled_size,filled_notional_usdc,last_event_id,blocking_reason,updated_at) "
+        "VALUES(?,?,?,?,?,?,?,?)",
+        ("intent-1", "exchange-1", "resolved_partial", 2.0, 0.8, None, blocking_reason,
+         "2026-07-23T00:00:00Z"),
+    )
+
+
+def test_a_rung_cancelled_after_a_partial_fill_leaves_its_scope_quiescent(
+    tmp_path, execution_mode
+) -> None:
+    """Charter 94's ordinary outcome is a finished order, not a pending one.
+
+    A rung that filled two of its five shares and was then cancelled holds
+    nothing at the gateway: ``resolve_cancelled_after_partial_fill`` ends
+    the intent on ``cancelled`` precisely so the bucket is freed.  Counting
+    it as pending cost the station-day its book for the rest of the event
+    day -- the evidence pass skipped it, the WS snapshot stopped renewing,
+    and every scope compiled against it died on ``production_quote_expired``
+    (six station-days, 2026-09-09 04:24Z).
+    """
+
+    path, activation = _activation(tmp_path, mode=execution_mode)
+    with _db(active_cycle=True, active_cycle_state="settled") as conn:
+        _seed_partial(conn, activation, intent_state="cancelled", blocking_reason=None)
+        packet = build_no_live_order_state_ingress(
+            conn,
+            activation_path=path,
+            observed_at_utc="2026-07-23T04:00:00Z",
+        )
+    assert packet["known"] is True
+
+
+def test_an_authoritative_partial_still_refuses_through_its_intent(
+    tmp_path, execution_mode
+) -> None:
+    """The other writer of the same state still blocks, one probe over.
+
+    ``resolve_authoritative_state("partial")`` is the exchange disagreeing
+    about an order we still hold: it leaves the intent on
+    ``reconcile_required`` and asks for a manual close.  Dropping
+    ``resolved_partial`` from the reconciliation set must not free that
+    scope -- the intent probe is what refuses it.
+    """
+
+    path, activation = _activation(tmp_path, mode=execution_mode)
+    with _db(active_cycle=True, active_cycle_state="settled") as conn:
+        _seed_partial(
+            conn,
+            activation,
+            intent_state="reconcile_required",
+            blocking_reason="authoritative_partial_requires_manual_close",
+        )
+        with pytest.raises(ContractError, match="order_intents_not_quiescent"):
+            build_no_live_order_state_ingress(
+                conn,
+                activation_path=path,
+                observed_at_utc="2026-07-23T04:00:00Z",
+            )

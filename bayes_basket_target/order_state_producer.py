@@ -32,7 +32,32 @@ INGRESS_SCHEMA = "bayes_basket_order_state_ingress_v1"
 # reconciliation that is not terminal yet.
 TARGET_CYCLE_BLOCKING_STATES = frozenset({"submitting", "submitted", "reconcile_required"})
 TARGET_INTENT_BLOCKING_STATES = frozenset({"submitting", "submitted", "reconcile_required"})
-TARGET_RECONCILIATION_BLOCKING_STATES = frozenset({"pending", "unknown", "resolved_partial"})
+# ``resolved_partial`` is not one of them, and used to be.
+#
+# Two writers produce that reconciliation state and they mean opposite
+# things.  ``resolve_authoritative_state("partial")`` is the exchange
+# disagreeing with us about an order we still hold: it leaves the intent on
+# ``reconcile_required`` and stamps ``authoritative_partial_requires_manual_
+# close``, and the intent probe one line up already refuses that scope.
+# ``resolve_cancelled_after_partial_fill`` is charter 94's ordinary
+# outcome -- a rung cancelled after part of it filled, nothing resting, the
+# cumulative fill reported -- and it ends the intent on ``cancelled``.  The
+# order is over.
+#
+# Reading only the reconciliation column could not tell them apart, so the
+# ordinary outcome was called a pending order for the rest of the event day.
+# The station-day then never renews its book: the evidence pass skips it on
+# ``target_basket_target_order_reconciliations_not_quiescent``, its
+# ``basket_official_ws_snapshot`` stays on whatever generation it last had,
+# and every scope compiled against it dies on ``production_quote_expired``.
+# Measured 2026-09-09 04:24Z: six station-days skipped by the evidence pass
+# -- EDDM, LFPB, SAEZ, ZSPD, ZSQD, ZUUU -- and the same six, exactly, on
+# production_quote_expired in that cycle's decision loop.  All eleven
+# resolved_partial rows in the ledger carried a ``cancelled`` intent; not
+# one was the manual-close shape this state was in the set for.  EDDM's
+# began 2026-09-08T19:35Z, fourteen minutes after its last prepared
+# decision for 09-09 and before the Munich day had started.
+TARGET_RECONCILIATION_BLOCKING_STATES = frozenset({"pending", "unknown"})
 TARGET_DECISION_BLOCKING_STATES = frozenset({"submitting", "submitted", "reconcile_required"})
 
 

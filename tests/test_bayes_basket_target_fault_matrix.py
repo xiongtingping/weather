@@ -128,7 +128,20 @@ def _bundle(index: int = 0, *, amount: float = 4.0) -> dict[str, object]:
             "decided_state": "prepared",
             "will_order": False,
             "reason_codes": [],
-            "details": {"candidate_will_order": True, "no_live": True},
+            # ``production_plan_sha256`` is what makes two indices two
+            # decisions.  Since the economic identity ruling (2026-09-02)
+            # the decision id is the four economic legs and what was
+            # decided -- token ids, price ids and checkpoint ids are audit
+            # metadata and are not in it -- so bundles that differed only
+            # in those were one decision, and the second commit returned
+            # ``already_committed_decision`` with ``intent_count`` 0.  The
+            # test that needs two live orders at once then reconciled an
+            # intent that had never been written.
+            "details": {
+                "candidate_will_order": True,
+                "no_live": True,
+                "production_plan_sha256": f"{index:064x}",
+            },
         },
         intents=[{
             "bucket": "38",
