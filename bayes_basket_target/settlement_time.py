@@ -113,6 +113,44 @@ def settlement_day_window(event_date: str, settlement_timezone: str) -> dict[str
     }
 
 
+def hours_to_settlement(
+    event_date: str,
+    *,
+    as_of_utc: str | datetime,
+    settlement_timezone: str,
+) -> float:
+    """Charter 110's tau: hours from now until this market day settles.
+
+    Settlement is the end of the event day on the station's own settlement
+    timezone -- the same instant ``settlement_day_window`` names, so the
+    completion cutoff and every other reader of that boundary cannot drift
+    apart.  Negative once the day has closed.
+
+    One implementation on purpose (charter 110(六) sets the cutoff at 3h and
+    both production and the ledger have to answer it the same way).  Note it
+    is NOT the ledger's ``_resting_deadline``: that one also folds in the
+    station's peak cutoff and a configured resting horizon, which are
+    reasons an ORDER stops, not the moment the market settles.
+    """
+
+    raw = as_of_utc if isinstance(as_of_utc, datetime) else str(as_of_utc or "")
+    if isinstance(raw, datetime):
+        moment = raw
+    else:
+        try:
+            moment = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ContractError("settlement_as_of_invalid") from exc
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    end = datetime.fromisoformat(
+        settlement_day_window(event_date, settlement_timezone)[
+            "target_day_end_utc"
+        ].replace("Z", "+00:00")
+    )
+    return (end - moment).total_seconds() / 3600.0
+
+
 def settlement_day_state(
     event_date: str,
     *,

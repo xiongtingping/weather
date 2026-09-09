@@ -103,6 +103,8 @@ from .basket_kernel.delta_v2 import (
     LADDER_BALANCE_LEVEL_RULE_VERSION,
     ask_depth_cost_v1,
     ladder_balance_targets_v1,
+    COMPLETION_CUTOFF_HOURS,
+    completion_conditioned_claim_v1,
     completion_floor_delta_v1,
     completion_repair_exemption_v1,
     evaluate_action_v2,
@@ -480,6 +482,22 @@ MAKER_LADDER_ANCHOR_OFFSETS = (
 # to the policy's own grid rather than failing the compile.
 MAKER_RESTING_TIMEOUT_SECONDS = float(
     os.environ.get("PM_MAKER_RESTING_TIMEOUT_SECONDS", "") or 3600.0
+)
+
+
+# Charter 110(四)'s partition, on the completion candidate.  ``off`` is the
+# pre-110 arm -- every short rung the leg floor allows is completed, which is
+# what charter 84 shipped and what its tests were written against.  The
+# measured difference is large: 1,971 of 2,575 short legs (77%) sit on the
+# side this refuses, so the arm exists to price that refusal on the book
+# rather than to leave it as an argument.
+# Default ``off`` until the book prices it (user ruling 2026-09-09: "先看这
+# 77% 落到钱上是多少").  Charter 110(四) is the ruling and wants this on; what
+# is not yet known is what refusing three quarters of all completions does to
+# the money, and the ledger can answer that offline without the live lane
+# spending anything.  Flip the default, not the callers, when it answers.
+COMPLETION_CLAIM_PARTITION = (
+    os.environ.get("PM_COMPLETION_CLAIM_PARTITION", "").strip().lower() or "off"
 )
 
 
@@ -3420,6 +3438,7 @@ def _support_window_error(
 
 def _solve_over_support_windows(
     *,
+    hours_to_cutoff: float | None = None,
     windows: Sequence[Mapping[str, Any]],
     window_audit: Mapping[str, Any],
     live_buckets: Sequence[str],
@@ -3649,6 +3668,7 @@ def _solve_over_support_windows(
                     # the next line scores.
                     probabilities_by_bucket=window_probabilities,
                     sizing_probabilities_by_bucket=sizing_probabilities,
+                    hours_to_cutoff=hours_to_cutoff,
                     centre_bucket=str(
                         window_audit.get("ladder_center_bucket") or ""
                     ),
@@ -3987,6 +4007,7 @@ def _target_candidates(
     bankroll_usdc: float,
     probabilities_by_bucket: Mapping[str, float],
     sizing_probabilities_by_bucket: Mapping[str, float] | None = None,
+    hours_to_cutoff: float | None = None,
     centre_bucket: str = "",
     book_equity_usdc: float | None = None,
     decision_moment: bool = True,
@@ -4219,8 +4240,11 @@ def _target_candidates(
             ),
             quote_version=str(snapshot.quote_version),
             unbuyable=market_dead,
-            # For the recorded floor-delta reading only; no gate reads it.
+            # Charter 110(四)(五)(六): the completion's own three gates read
+            # this claim -- it is the seated charter-68 partition
+            # (``window_probabilities``), which is what the kernel requires.
             probabilities_by_bucket=probabilities_by_bucket,
+            hours_to_cutoff=hours_to_cutoff,
         )
         if balance_candidate is not None:
             candidates.append(balance_candidate)
@@ -4507,6 +4531,7 @@ def _ladder_balance_candidate(
     quote_version: str,
     unbuyable: Collection[str] = (),
     probabilities_by_bucket: Mapping[str, float] | None = None,
+    hours_to_cutoff: float | None = None,
 ) -> dict[str, Any] | None:
     """Charter 84's candidate: the seat's short rungs raised to its held level.
 
@@ -4530,10 +4555,54 @@ def _ladder_balance_candidate(
     failed the floor, and the plan read ``target_inventory_satisfied``.
     """
 
+    # Charter 110(六): past the cutoff there is no completion.  Three hours
+    # out the measured completion edge is -0.026, and inside the last hour
+    # -0.075: what trades then is the outcome being priced in, and we are on
+    # the wrong side of it.  The residual is carried, not handed back -- so
+    # this refuses the BUY and says nothing about the legs already held.
+    # ``None`` is a caller with no clock, which is every caller that has not
+    # been taught tau yet; those keep the pre-110 behaviour rather than
+    # silently completing at any hour.
+    if (
+        hours_to_cutoff is not None
+        and float(hours_to_cutoff) <= COMPLETION_CUTOFF_HOURS
+    ):
+        return None
+
     held = {
         bucket: float(current_shares[bucket]) + float(pending_shares[bucket])
         for bucket in ordered
     }
+    # Charter 110(四): the completion ceiling is inverted, so the legs worth
+    # buying are the ones the market took AWAY from us, not the ones it hands
+    # us cheap.  Measured 2026-09-07 on 2,575 short legs: where the ask sits
+    # at or under our claim the market is selling us its own discount and
+    # those legs realise 0.28 of what we claim (-0.0383 a share, interval
+    # [-0.053, -0.021], clear of zero); where the ask is above our claim they
+    # realise 1.60.  The kernel owns the partition -- this only asks it and
+    # widens the dead-rung set the search and the build already share, so a
+    # leg refused here is not charged for either.
+    #
+    # The claim is the seated charter-68 partition (``window_probabilities``
+    # at the call site), which is what ``completion_conditioned_claim_v1``
+    # requires; a raw served vector here would price the refusal on a belief
+    # the seat was never judged on.
+    discounted: list[str] = []
+    if COMPLETION_CLAIM_PARTITION == "on" and probabilities_by_bucket is not None:
+        for bucket in ordered:
+            if held.get(bucket, 0.0) > EPS:
+                continue
+            ask = float(lane_prices.get(bucket, 0.0) or 0.0)
+            if ask <= 0.0:
+                continue
+            verdict = completion_conditioned_claim_v1(
+                claim=float(probabilities_by_bucket.get(bucket, 0.0) or 0.0),
+                ask=ask,
+            )
+            if not verdict["buys"]:
+                discounted.append(bucket)
+    if discounted:
+        unbuyable = tuple(set(unbuyable) | set(discounted))
     # User ruling 2026-09-08: the level is the cheapest held rung size the
     # completed basket is still floor-legal at, not the tallest rung -- the
     # tallest is usually the one charter 70/83 lifted to a lot or a dollar,
@@ -5237,6 +5306,7 @@ def compile_delta_v2_runtime_plan(
     off_centre_claim_bands: Mapping[str, Any] | None = None,
     symmetric_seat_bands: Mapping[str, Any] | None = None,
     convergence_evidence: Mapping[str, Any] | None = None,
+    hours_to_cutoff: float | None = None,
 ) -> dict[str, Any]:
     """Compile the single-event q* and best no-live action under v2.
 
@@ -5545,6 +5615,7 @@ def compile_delta_v2_runtime_plan(
                 # Charter 121: rows this seat has already had refused by the
                 # post-lift floor, so the winner chain picks among the rest.
                 excluded_candidate_ids=excluded_candidate_ids,
+                hours_to_cutoff=hours_to_cutoff,
             )
         )
         # Charter 84 (八): the consolidation tilt cut this seat once, when it
