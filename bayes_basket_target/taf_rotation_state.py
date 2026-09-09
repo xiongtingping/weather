@@ -60,6 +60,27 @@ STALE_CONFIRMATION_SLOTS_PER_LAP = 3
 # off the capture table rather than hard-coded so it follows the bulletins.
 TX_COHORT_LOOKBACK_DAYS = 30
 PRIORITY_HELD = 0
+# A scope whose station should have issued again by its own rhythm, and whose
+# newest bulletin is still the one before that.
+#
+# A TAF is not published continuously; it is published on a schedule, and the
+# schedule is the station's, not ours.  Measured over 2026-08-20..09-09, 1,108
+# issuances across 45 stations: 36 of them run a strict six-hourly cadence --
+# OEJN, OPKC, RCSS, RJTT, RPLL, SAEZ, WSSS and LTAC have a median gap of 6.00h
+# with a 10th percentile of 6.00h, meaning every gap is six hours -- while
+# eight amend on a two-to-three hour rhythm (the US majors, EFHK) and MMMX
+# amends hourly.  The fleet publishes about 185 bulletins a day.
+#
+# The rotation was polling ~576 scope-turns a day and spreading them evenly,
+# so it fired about three times per bulletin that existed and gave MMMX (8.5
+# issuances a day) the same share as WSSS (1.9).  Asking a six-hourly station
+# four times inside one of its cycles returns the bulletin we already hold,
+# three times.
+#
+# This class is the difference between "we have not heard in a while", which
+# may be correct because nothing was published, and "something was published
+# and we do not have it".  Only the second is worth a priority slot.
+PRIORITY_DUE_ISSUANCE = 1
 # A tradeable scope whose newest bulletin is older than the issuing cadence.
 #
 # Charter 85 (b) ranked by what a scope is -- held, or tomorrow at a TX
@@ -79,9 +100,9 @@ PRIORITY_HELD = 0
 # the sixty station-days carrying a P0-M were in that state, and their TAFs
 # were not missing at the source: KMIA issues one about every three hours
 # and we hold exactly one for 2026-09-09, received 2026-09-08T20:03Z.
-PRIORITY_STALE_CONFIRMATION = 1
-PRIORITY_D1_TX = 2
-PRIORITY_GENERAL = 3
+PRIORITY_STALE_CONFIRMATION = 2
+PRIORITY_D1_TX = 3
+PRIORITY_GENERAL = 4
 # How long a scope's newest bulletin must have been in hand before a
 # priority slot is spent on it again.
 #
@@ -265,6 +286,139 @@ def tx_bearing_station_ids(conn: Any, *, as_of_utc: str) -> frozenset[str]:
     )
 
 
+# How far back the cadence is learned from, and the least evidence that will
+# be trusted.  A station is asked about a handful of times a day, so a short
+# window is a small sample of a rhythm that only repeats four times daily.
+ISSUANCE_CADENCE_LOOKBACK_DAYS = 20
+MIN_ISSUANCES_FOR_CADENCE = 8
+# What a station with too little history is treated as.  Six hours is the
+# scheduled TAF cycle and the fleet median; assuming it means an unknown
+# station is asked on the ordinary schedule rather than constantly or never.
+DEFAULT_ISSUANCE_CADENCE_SEC = 6.0 * 3600.0
+# How early a scope may claim the slot before its next issuance is due.  The
+# bulletin is written and filed a few minutes before it is fetchable, and a
+# poll that arrives exactly on the boundary usually gets the previous one.
+ISSUANCE_DUE_LEAD_SEC = 5.0 * 60.0
+
+
+def station_issuance_cadence_sec(
+    conn: Any, *, as_of_utc: str | None = None
+) -> dict[str, float]:
+    """Each station's own publishing rhythm, in seconds, from its own history.
+
+    The median gap between consecutive issuances, not a constant: measured
+    2026-08-20..09-09 the fleet splits into a strict six-hourly majority and
+    a handful that amend every two to three hours, with MMMX at one.  A
+    rotation that does not know the difference spends the same number of
+    turns on a station that publishes twice a day as on one that publishes
+    eight times.
+
+    Median rather than mean, because an amendment lands between two
+    scheduled issuances and shortens exactly one gap; the median keeps the
+    scheduled rhythm and the mean does not.
+
+    Empty on any failure, which reads as "cadence unknown" everywhere and
+    leaves the rotation exactly as it was.
+    """
+
+    try:
+        since = (
+            datetime.fromisoformat(str(as_of_utc).replace("Z", "+00:00"))
+            - timedelta(days=ISSUANCE_CADENCE_LOOKBACK_DAYS)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ") if as_of_utc else "0000"
+        rows = conn.execute(
+            "SELECT station_id, issued_at_utc"
+            " FROM calibration_forward_taf_capture"
+            " WHERE issued_at_utc>=?",
+            (since,),
+        ).fetchall()
+    except Exception:  # noqa: BLE001 - a scheduling hint, never a blocker
+        return {}
+    seen: dict[str, set[str]] = {}
+    for station, issued in rows:
+        key = str(station or "").strip().upper()
+        text = str(issued or "").strip()
+        if key and text:
+            seen.setdefault(key, set()).add(text)
+    cadence: dict[str, float] = {}
+    for station, stamps in seen.items():
+        moments = []
+        for text in sorted(stamps):
+            try:
+                moments.append(
+                    datetime.fromisoformat(text.replace("Z", "+00:00"))
+                )
+            except ValueError:
+                continue
+        if len(moments) < MIN_ISSUANCES_FOR_CADENCE:
+            continue
+        gaps = sorted(
+            (later - earlier).total_seconds()
+            for earlier, later in zip(moments, moments[1:])
+            # A day-long gap is an outage of ours, not a rhythm of theirs.
+            if 0.0 < (later - earlier).total_seconds() < 24.0 * 3600.0
+        )
+        if gaps:
+            cadence[station] = gaps[len(gaps) // 2]
+    return cadence
+
+
+def latest_issued_at_by_scope(conn: Any) -> dict[str, str]:
+    """``STATION|EVENT_DATE`` -> the newest bulletin we hold, by ISSUE time.
+
+    Issue time, not receipt: whether a newer bulletin exists is a question
+    about the forecaster's clock, and receipt is ours.  The same distinction
+    the 2026-09-03 seatability ruling turned on one layer down.
+    """
+
+    try:
+        rows = conn.execute(
+            "SELECT station_id, event_date, MAX(issued_at_utc)"
+            " FROM calibration_forward_taf_capture"
+            " GROUP BY station_id, event_date"
+        ).fetchall()
+    except Exception:  # noqa: BLE001 - a scheduling hint, never a blocker
+        return {}
+    return {
+        f"{str(station).strip().upper()}|{str(day).strip()}": str(issued)
+        for station, day, issued in rows
+        if str(station or "").strip() and str(issued or "").strip()
+    }
+
+
+def issuance_is_due(
+    *,
+    station_id: str,
+    event_date: str,
+    latest_issued_at: Mapping[str, str],
+    cadence_sec: Mapping[str, float],
+    as_of_utc: str | None,
+) -> bool:
+    """Whether this station should have published again since what we hold."""
+
+    if not as_of_utc:
+        return False
+    station = str(station_id).strip().upper()
+    held = latest_issued_at.get(f"{station}|{str(event_date).strip()}")
+    if not held:
+        # Nothing held for this scope is not evidence that something new
+        # exists; the general queue reaches a never-captured scope on its
+        # own turn without spending a priority slot on it.
+        return False
+    try:
+        as_of = datetime.fromisoformat(str(as_of_utc).replace("Z", "+00:00"))
+        issued = datetime.fromisoformat(str(held).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if as_of.tzinfo is None or issued.tzinfo is None:
+        return False
+    cadence = float(
+        cadence_sec.get(station, DEFAULT_ISSUANCE_CADENCE_SEC)
+    )
+    due_at = issued + timedelta(seconds=cadence - ISSUANCE_DUE_LEAD_SEC)
+    return as_of >= due_at
+
+
 def _finite_or_none(value: float) -> float | None:
     """``inf`` is not JSON, and "never" is the thing worth recording."""
 
@@ -346,6 +500,8 @@ def scope_priority_class(
     tx_station_ids: Collection[str] = (),
     as_of_utc: str | None = None,
     newest_capture_at: Mapping[str, str] | None = None,
+    latest_issued_at: Mapping[str, str] | None = None,
+    issuance_cadence_sec: Mapping[str, float] | None = None,
 ) -> int:
     """0 held, 1 nothing arrived in hours, 2 tomorrow at a TX station, 3 rest.
 
@@ -372,6 +528,17 @@ def scope_priority_class(
         return PRIORITY_GENERAL
     if f"{station}|{event_date}" in set(held_prefixes):
         return PRIORITY_HELD
+    # Something was published and we do not have it -- the only case where a
+    # turn is certain to return something, and the reason a six-hourly
+    # station does not need asking four times inside one of its cycles.
+    if latest_issued_at is not None and issuance_is_due(
+        station_id=station,
+        event_date=event_date,
+        latest_issued_at=latest_issued_at,
+        cadence_sec=issuance_cadence_sec or {},
+        as_of_utc=as_of_utc,
+    ):
+        return PRIORITY_DUE_ISSUANCE
     if (
         newest_capture_at is not None
         and age != float("inf")
@@ -493,6 +660,8 @@ def select_scopes(
     priority_slots: int = PRIORITY_SLOTS_PER_LAP,
     newest_capture_at: Mapping[str, str] | None = None,
     stale_slots: int = STALE_CONFIRMATION_SLOTS_PER_LAP,
+    latest_issued_at: Mapping[str, str] | None = None,
+    issuance_cadence_sec: Mapping[str, float] | None = None,
 ) -> tuple[list[dict[str, Any]], int, str]:
     keys = [scope_key(scope) for scope in catalog]
     catalog_sha = content_sha256(keys)
@@ -509,6 +678,8 @@ def select_scopes(
             tx_station_ids=tx_station_ids,
             as_of_utc=as_of_utc,
             newest_capture_at=newest_capture_at,
+            latest_issued_at=latest_issued_at,
+            issuance_cadence_sec=issuance_cadence_sec,
         )
         for scope in catalog
     ]
@@ -525,7 +696,9 @@ def select_scopes(
     # hour old outranked a station that had gone ten hours without a
     # bulletin.
     def _within_class(index: int) -> float:
-        if classes[index] != PRIORITY_STALE_CONFIRMATION:
+        if classes[index] not in (
+            PRIORITY_DUE_ISSUANCE, PRIORITY_STALE_CONFIRMATION
+        ):
             return float(served.get(keys[index], 0))
         return -capture_age_seconds(
             newest_capture_at or {},
@@ -535,13 +708,27 @@ def select_scopes(
         )
 
     priority_budget = max(0, min(int(priority_slots), count))
+    # The reservation covers both supply classes, not just the older one.
+    #
+    # It was written for PRIORITY_STALE_CONFIRMATION alone, and inserting
+    # PRIORITY_DUE_ISSUANCE above it would have handed the new class nothing:
+    # the held pool is thirteen scopes against eight priority slots, so
+    # anything outside the reservation is filled by held and never reaches a
+    # class ranked below it.  That is the same trap the reservation was
+    # created to escape, one class along.
+    #
+    # Due-issuance takes the reserved slots first -- "something was published
+    # and we do not have it" is strictly better information than "we have not
+    # heard in a while" -- and silence takes what it leaves.
     stale_budget = max(0, min(int(stale_slots), priority_budget))
     stale_order = sorted(
         (
             index for index in range(len(keys))
-            if classes[index] == PRIORITY_STALE_CONFIRMATION
+            if classes[index] in (
+                PRIORITY_DUE_ISSUANCE, PRIORITY_STALE_CONFIRMATION
+            )
         ),
-        key=lambda index: (_within_class(index), index),
+        key=lambda index: (classes[index], _within_class(index), index),
     )[:stale_budget]
     # The reservation is a floor, not a ceiling: whatever the stale class
     # does not use is filled from the rest of the pool, and whatever the
@@ -701,5 +888,9 @@ __all__ = [
     "newest_capture_at_by_scope",
     "capture_age_seconds",
     "PRIORITY_STALE_CONFIRMATION",
+    "PRIORITY_DUE_ISSUANCE",
+    "station_issuance_cadence_sec",
+    "latest_issued_at_by_scope",
+    "issuance_is_due",
     "STALE_CONFIRMATION_SLOTS_PER_LAP",
 ]

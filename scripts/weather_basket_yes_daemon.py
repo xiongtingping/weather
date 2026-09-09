@@ -132,7 +132,9 @@ from bayes_basket_target.taf_rotation_state import (
     PRIORITY_GENERAL as TAF_PRIORITY_GENERAL,
     STALE_CONFIRMATION_AGE_SEC as TAF_STALE_CONFIRMATION_AGE_SEC,
     capture_age_seconds as taf_rotation_capture_age_seconds,
+    latest_issued_at_by_scope as taf_rotation_latest_issued_at,
     newest_capture_at_by_scope as taf_rotation_newest_capture_at,
+    station_issuance_cadence_sec as taf_rotation_issuance_cadence,
     tx_bearing_station_ids as taf_rotation_tx_station_ids,
     persist_rotation_state as persist_taf_rotation_state,
     scope_key as taf_rotation_scope_key,
@@ -2123,6 +2125,18 @@ def run_target_forecast_refresh_cycle(
                 rotation_arrivals = taf_rotation_newest_capture_at(
                     taf_scope_conn
                 )
+                # A TAF is published on the station's schedule, not ours.
+                # Measured 2026-08-20..09-09 over 1,108 issuances: 36 of the
+                # 45 run a strict six-hourly cadence and eight amend every
+                # two to three hours, so a rotation that spreads its turns
+                # evenly asks a six-hourly station four times inside one of
+                # its cycles and gets the bulletin it already holds three of
+                # those times.  Each station's own median gap decides when it
+                # is worth asking again.
+                rotation_issued = taf_rotation_latest_issued_at(taf_scope_conn)
+                rotation_cadence = taf_rotation_issuance_cadence(
+                    taf_scope_conn, as_of_utc=now
+                )
                 selected, next_cursor, catalog_sha = (
                     select_taf_rotation_scopes(
                         catalog,
@@ -2132,6 +2146,8 @@ def run_target_forecast_refresh_cycle(
                         tx_station_ids=rotation_tx_stations,
                         as_of_utc=now,
                         newest_capture_at=rotation_arrivals,
+                        latest_issued_at=rotation_issued,
+                        issuance_cadence_sec=rotation_cadence,
                     )
                 )
                 captures: list[dict[str, Any]] = []

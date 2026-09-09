@@ -1,5 +1,9 @@
 from bayes_basket_target.taf_rotation_state import (
     PRIORITY_D1_TX,
+    PRIORITY_DUE_ISSUANCE,
+    issuance_is_due,
+    latest_issued_at_by_scope,
+    station_issuance_cadence_sec,
     PRIORITY_GENERAL,
     PRIORITY_HELD,
     PRIORITY_REPOLL_MIN_AGE_SEC,
@@ -578,3 +582,135 @@ def test_the_arrival_map_is_read_from_the_capture_table() -> None:
     assert arrivals["ZUUU|2026-09-09"] == "2026-09-09T04:15:33Z"
     # A missing table is a scheduling hint that failed, never a blocker.
     assert newest_capture_at_by_scope(sqlite3.connect(":memory:")) == {}
+
+
+# ------------------------------------------------------- published on a clock
+# A TAF is not published continuously.  Measured 2026-08-20..09-09 over 1,108
+# issuances: 36 of 45 stations run a strict six-hourly cadence -- OEJN, OPKC,
+# RCSS, RJTT, RPLL, SAEZ, WSSS and LTAC have a median gap of 6.00h AND a 10th
+# percentile of 6.00h, so every gap is six hours -- while eight amend every
+# two to three hours and MMMX amends hourly.  Asking a six-hourly station four
+# times inside one of its cycles returns what we already hold, three times.
+
+SIX_HOURLY = {"WSSS": 6.0 * 3600.0}
+AMENDING = {"KMIA": 2.93 * 3600.0}
+
+
+def test_a_six_hourly_station_is_not_due_three_hours_in() -> None:
+    held = {"WSSS|2026-09-09": "2026-09-06T03:00:00Z"}
+    assert issuance_is_due(
+        station_id="WSSS", event_date="2026-09-09",
+        latest_issued_at=held, cadence_sec=SIX_HOURLY,
+        as_of_utc="2026-09-06T06:00:00Z",
+    ) is False, "three hours into a six-hour cycle there is nothing new to get"
+    assert issuance_is_due(
+        station_id="WSSS", event_date="2026-09-09",
+        latest_issued_at=held, cadence_sec=SIX_HOURLY,
+        as_of_utc="2026-09-06T09:00:00Z",
+    ) is True, "one cycle on, the next bulletin exists"
+
+
+def test_an_amending_station_is_due_on_its_own_shorter_rhythm() -> None:
+    """The same three hours, the opposite answer, from the station's history."""
+
+    held = {"KMIA|2026-09-09": "2026-09-06T03:00:00Z"}
+    assert issuance_is_due(
+        station_id="KMIA", event_date="2026-09-09",
+        latest_issued_at=held, cadence_sec=AMENDING,
+        as_of_utc="2026-09-06T06:00:00Z",
+    ) is True
+
+
+def test_a_scope_we_hold_nothing_for_is_not_claimed_as_due() -> None:
+    """Holding nothing is not evidence that something new was published.
+
+    The general queue sorts never-served first and reaches it on its own
+    turn; spending a supply slot on it is the mistake this class was written
+    after -- the first version of the stale class put four D+2 scopes at the
+    head of the round and all four failed, their bulletins not yet written.
+    """
+
+    assert issuance_is_due(
+        station_id="WSSS", event_date="2026-09-09",
+        latest_issued_at={}, cadence_sec=SIX_HOURLY,
+        as_of_utc="2026-09-06T09:00:00Z",
+    ) is False
+
+
+def test_due_issuance_outranks_silence_and_takes_a_reserved_slot() -> None:
+    """Both are supply classes; only one knows a bulletin exists.
+
+    And the reservation has to cover it: the held pool is larger than the
+    priority cap, so a class outside the reservation is filled over by held
+    and never gets a turn -- the trap the reservation was created to escape,
+    which inserting a class above the reserved one walks straight back into.
+    """
+
+    catalog = [_scope(f"HH0{i}", "2026-09-07", "UTC") for i in range(8)]
+    catalog += [_scope("DUE", "2026-09-07", "UTC")]
+    held = {f"HH0{i}|2026-09-07" for i in range(8)}
+    arrivals = _aged({
+        **{f"HH0{i}|2026-09-07": 4.0 * 3600.0 for i in range(8)},
+        "DUE|2026-09-07": 4.0 * 3600.0,
+    })
+    selected, _, _ = select_scopes(
+        catalog, previous=None, limit=4, priority_slots=4, stale_slots=1,
+        held_scope_prefixes=held, as_of_utc=AS_OF,
+        newest_capture_at=arrivals,
+        latest_issued_at={"DUE|2026-09-07": "2026-09-06T00:00:00Z"},
+        issuance_cadence_sec={"DUE": 3600.0},
+    )
+    classes = {s["station_id"]: s["rotation_priority_class"] for s in selected}
+    assert classes.get("DUE") == PRIORITY_DUE_ISSUANCE, classes
+    assert PRIORITY_DUE_ISSUANCE < PRIORITY_STALE_CONFIRMATION
+
+
+def test_the_cadence_is_the_median_gap_of_the_station_itself() -> None:
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE calibration_forward_taf_capture("
+        " station_id TEXT, event_date TEXT, issued_at_utc TEXT)"
+    )
+    # Eight issuances six hours apart, and one amendment between two of them.
+    stamps = [f"2026-09-0{1 + (h // 24)}T{h % 24:02d}:00:00Z" for h in range(0, 48, 6)]
+    stamps.append("2026-09-01T09:00:00Z")
+    conn.executemany(
+        "INSERT INTO calibration_forward_taf_capture VALUES(?,?,?)",
+        [("WSSS", "2026-09-09", s) for s in stamps],
+    )
+    cadence = station_issuance_cadence_sec(conn, as_of_utc="2026-09-09T00:00:00Z")
+    # The median keeps the schedule; a mean would be dragged by the amendment.
+    assert cadence["WSSS"] == 6.0 * 3600.0, cadence
+    # Too little history is no cadence at all, not a guessed one.
+    thin = sqlite3.connect(":memory:")
+    thin.execute(
+        "CREATE TABLE calibration_forward_taf_capture("
+        " station_id TEXT, event_date TEXT, issued_at_utc TEXT)"
+    )
+    thin.execute(
+        "INSERT INTO calibration_forward_taf_capture VALUES('X','2026-09-09',"
+        "'2026-09-01T00:00:00Z')"
+    )
+    assert station_issuance_cadence_sec(
+        thin, as_of_utc="2026-09-09T00:00:00Z"
+    ) == {}
+
+
+def test_issue_time_is_read_not_receipt_time() -> None:
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE calibration_forward_taf_capture("
+        " station_id TEXT, event_date TEXT, issued_at_utc TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO calibration_forward_taf_capture VALUES(?,?,?)",
+        [("KMIA", "2026-09-09", "2026-09-08T17:20:00Z"),
+         ("KMIA", "2026-09-09", "2026-09-08T11:20:00Z")],
+    )
+    assert latest_issued_at_by_scope(conn) == {
+        "KMIA|2026-09-09": "2026-09-08T17:20:00Z"
+    }
