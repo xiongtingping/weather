@@ -59,10 +59,19 @@ def test_resident_forecast_prefetch_has_no_second_target_writer() -> None:
 
 
 def test_forecast_cycle_keeps_optional_taf_capture_inside_existing_service(
-    tmp_path,
+    tmp_path, monkeypatch,
 ) -> None:
     import sqlite3
     from pathlib import Path
+
+    # The poll gate is stamped from the clock read at *entry*, so a cycle that
+    # itself takes longer than the interval is due again the moment it
+    # returns.  With the shipped 60s that made the "second cycle stays
+    # not-due" assertion a claim about how fast the machine is: measured
+    # 2026-09-09 under load 22, the first call took 134 seconds and the
+    # second was legitimately due.  Widening the window keeps the assertion
+    # on the gate, which is what it was written to check.
+    monkeypatch.setattr(daemon, "TARGET_TAF_POLL_INTERVAL_SEC", 3600.0)
 
     conn = sqlite3.connect(":memory:")
     conn.execute(
@@ -409,11 +418,16 @@ def test_resident_nwp_in_flight_receipt_reuses_validated_canonical_rotation() ->
     stations = tuple(
         coordinate_registry_manifest()["station_ids"]
     )
+    # ``lead_days`` is part of the scope key (a station-day is captured once
+    # per lead, from a different run each time).  It has been required since
+    # 2026-08-09; this fixture predates that and was building scopes the
+    # canonical key refuses.
     scopes = [
         {
             "station_ids": [station],
             "event_date": "2026-07-30",
             "settlement_timezone": "UTC",
+            "lead_days": 1,
         }
         for station in stations
     ]
@@ -425,7 +439,7 @@ def test_resident_nwp_in_flight_receipt_reuses_validated_canonical_rotation() ->
         outcomes=[
             {
                 "scope_key": (
-                    f"{row['station_ids'][0]}|2026-07-30|UTC"
+                    f"{row['station_ids'][0]}|2026-07-30|UTC|d1"
                 ),
                 "state": (
                     "CAPTURED_CANDIDATE"
