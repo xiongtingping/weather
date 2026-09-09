@@ -7119,7 +7119,7 @@ footer{margin-top:34px;color:var(--muted);font-size:12.5px;text-align:center}
 /* The group switcher.  Sticky, because it is the only way back to the
    other two thirds of the page once a long section has been scrolled
    into. */
-.topnav{position:sticky;top:0;z-index:8;margin:14px 0 16px;padding:9px 0 0;
+.topnav{position:sticky;top:0;z-index:8;margin:0 0 16px;padding:9px 0 0;
 background:var(--bg);border-bottom:1px solid var(--line)}
 /* Five areas, not one flat row (user ruling, 2026-08-29).  Each group
    carries its own hue -- set per button as --tone -- so the bar reads as
@@ -8875,7 +8875,7 @@ function windowDivergence(){
   const W=D.window_divergence||{};
   const rows=W.flagged||[];
   const ths=W.thresholds||[];
-  if(!rows.length&&!ths.length)
+  if(!ths.length)
     return `<h2>分布与持仓分家</h2>
     <div class="card"><span class="dot green"></span> 没有可评估的站日。</div>`;
   const pct=v=>v==null?"—":(v*100).toFixed(0)+"%";
@@ -8885,26 +8885,11 @@ function windowDivergence(){
     <td class="${t.hot_pnl>=0?"up":"down"}">${t.hot_pnl>=0?"+":""}${t.hot_pnl.toFixed(1)}</td>
     <td>${t.cold_n}</td><td>${pct(t.cold_hit_rate)}</td>
     <td class="${t.cold_pnl>=0?"up":"down"}">${t.cold_pnl>=0?"+":""}${t.cold_pnl.toFixed(1)}</td></tr>`).join("");
-  const short=b=>String(b).replace(/°[CF]| or below| or higher/g,"");
-  const line=r=>{
-    // Which way the mass leaked tells the reader which archetype this is
-    // likely to be before the settled column confirms it.
-    const dir=r.out_above>=r.out_below
-      ?`上方 ${pct(r.out_above)}`
-      :`下方 ${pct(r.out_below)}`;
-    return `<tr>
-    <td class="mono">${h(r.station_id)}</td><td class="mono">${h(r.event_date)}</td>
-    <td class="mono">${r.held_buckets.map(short).join("+")}</td>
-    <td><b>${pct(r.late_out)}</b> <span class="muted">${dir}</span></td>
-    <td class="mono muted">${h((r.measured_at_utc||"").slice(5,16))}</td>
-    <td class="mono">${short(r.truth_bucket)}</td>
-    <td>${r.hit?'<span class="up">中</span>':'<span class="down">未中</span>'}</td>
-    <td class="${r.pnl>=0?"up":"down"}">${r.pnl>=0?"+":""}${r.pnl.toFixed(2)}</td></tr>`;
-  };
   return `<h2>分布与持仓分家</h2>
   <p class="sub">每个已结算的持仓站日，取<b>持仓桶还活着的最后一次概率重算</b>
   （持仓桶质量仍高于 5%，即加仓还来得及的最后时刻），量它有多少后验质量落在持仓窗之外。
-  共评估 ${W.evaluated_station_days||0} 个站日，下表列出末态窗外质量超过 40% 的。</p>
+  共评估 ${W.evaluated_station_days||0} 个站日，其中末态窗外质量超过 40% 的
+  ${rows.length} 个——逐站日明细不在此列出，只按阈值切分看总账。</p>
   <div class="why"><b>这是分歧探测器，不是判决书——两边谁错它都会亮。</b>
   两种原型都真实存在：RKPK 2026-08-21 持 29-32，后验（正确地）压向 33-34，实测 34，
   该加仓没加，是<b>选桶层</b>的均值锚拖不过右尾；KSEA 2026-08-17 持 78-79，
@@ -8916,11 +8901,7 @@ function windowDivergence(){
   <table style="margin-top:8px"><thead><tr><th>末态窗外</th>
     <th>站日</th><th>命中</th><th>盈亏 u</th>
     <th>其余</th><th>命中</th><th>盈亏 u</th></tr></thead>
-  <tbody>${thRows}</tbody></table></div>
-  <div class="scroll" style="margin-top:10px"><table>
-    <thead><tr><th>站</th><th>事件日</th><th>持仓窗</th><th>末态窗外·方向</th>
-    <th>时刻(UTC)</th><th>真值</th><th>结果</th><th>盈亏 u</th></tr></thead>
-    <tbody>${rows.map(line).join("")}</tbody></table></div>`;
+  <tbody>${thRows}</tbody></table></div>`;
 }
 
 
@@ -8961,13 +8942,6 @@ function consolidation(){
       <td class="mono ${r.lit?"down":"up"}">${r.lit?"亮":"灭"}</td>
       ${statTds(r)}
     </tr>`).join("");
-  const openChips=(cons.open_chains||[]).map(c=>{
-    const f=c.flags;
-    return `<span class="mono" style="white-space:nowrap">${
-      h(c.event_date)} ${h(c.station)} ${f
-        ?lamp(f.stable)+lamp(f.sharp)
-        :'<span class="muted">无灯</span>'} ${c.stake.toFixed(0)}u</span>`;
-  }).join("");
   const consHead=`<tr><th></th><th>注码</th><th>链</th><th>命中链</th>
       <th>投入</th><th>pnl</th><th>ROI</th><th>去最大赢</th><th>去前两赢</th></tr>`;
   return `<h2>固化减仓：两盏灯的账</h2>
@@ -8996,10 +8970,6 @@ function consolidation(){
       <th>链</th><th>命中链</th><th>投入</th><th>pnl</th>
       <th>ROI</th><th>去最大赢</th><th>去前两赢</th></tr></thead>
     <tbody>${singleRows}</tbody></table>
-    ${openChips?`<div class="muted" style="margin-top:10px">
-      在场链的灯（未结算，稳·尖）</div>
-    <div style="margin-top:4px;display:flex;flex-wrap:wrap;
-      gap:4px 14px;line-height:1.9">${openChips}</div>`:""}
   </div>`;
 }
 
@@ -9723,8 +9693,7 @@ function stationSummary(){
     <th>命中率</th><th>声称</th><th>实现/声称</th>
     <th>投入</th><th>实得</th><th>兑现比</th><th title="该站真值的日际跳变均值(°C)：>1.76 的站在真边际枯竭期实测 −43% vs 留存 +23% (p=0.023)">跳变/日</th><th title="近14天模型分布的均值−众数距离(桶)，跳变的模型层影子(r=+0.32)">形状gap</th>
     <th title="该站全部实盘意向（live_submit_authorized=1）跨日合计，与左侧纸面各列是两套账，不可相加">实盘<br><span class="muted">腿 · 名义</span></th>
-  </tr></thead><tbody>${rows}</tbody></table></div>${barNote}${note}</div>
-  ${stationFailureMatrix()}`;
+  </tr></thead><tbody>${rows}</tbody></table></div>${barNote}${note}</div>`;
 }
 
 
@@ -10144,27 +10113,6 @@ function roster(){
   是挂单车道的账，那条车道已经不在跑。</div>
   <div class="why">${legend}</div>
   <div data-daytabs="roster">${dayNav}${blocks.map(b=>b.pane).join("")}</div>`;
-}
-
-
-function anomalies(){
-  const S=D.selection||{};const an=S.anomalies||[];
-  if(!an.length) return `<h2>异常盘口</h2>
-    <div class="card"><span class="dot green"></span> 未发现异常。</div>`;
-  const rows=an.map(a=>`<tr>
-    <td class="mono">${h(a.station_id)}</td><td class="mono">${h(a.event_date)}</td>
-    <td>${h(a.stage)}</td>
-    <td class="mono">${a.window.join(" + ")}</td>
-    <td class="mono">${a.all_in_cost.toFixed(3)}</td>
-    <td>${(a.win_probability*100).toFixed(1)}%</td>
-    <td><span class="pill red">${a.kind==="basket_under_one_cent"?"虚价（整篮不足1分）":"声称超市场10倍"}</span></td>
-  </tr>`).join("");
-  return `<h2>异常盘口</h2>
-  <p class="sub">这些不是机会，是信号：整篮报价不足一分（虚价）、或声称概率超市场定价十倍，
-  几乎总是无人出价那侧的单边报价，真下单填不满。</p>
-  <div class="card scroll"><table><thead><tr>
-    <th>站点</th><th>事件日</th><th>阶段</th><th>窗口</th><th>成本</th><th>声称</th><th>类型</th>
-  </tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 
@@ -11033,9 +10981,7 @@ function liveOrderCard(L){
        这一行问的是交易所，读不到就不是零。</span></div>`
     : O2.count === 0
       ? `<div class="muted" style="font-size:12px;margin-top:9px">✅ 交易所侧
-         <b>账户零挂单</b>（问于 <span class="mono">${h(O2.asked_at||"?")}</span>）——
-         这一行不查我们自己的表，直接问交易所，所以本机不知道其存在的孤儿单
-         也会出现在这里。板是静态渲染的，这个零是渲染那一刻的读数，不是实时的。</div>`
+         <b>账户零挂单</b>（问于 <span class="mono">${h(O2.asked_at||"?")}</span>）</div>`
       : `<div style="margin-top:9px"><b class="mono" style="color:var(--red)">
          交易所侧：账户 ${O2.count} 笔挂单</b>
          <span class="muted mono" style="font-size:11px">问于 ${h(O2.asked_at||"?")}</span>
@@ -11069,10 +11015,6 @@ function liveOrderCard(L){
         !P.available?"muted":((P.roi||0)>=0?"up":"down"))}
     </div>
     ${openCard}
-    <div class="muted" style="font-size:12px;margin-top:9px">
-      判据唯一：<span class="mono">live_submit_authorized=1</span> 的意向才是实盘——
-      该列只有 go-live 迁移之后铸造的行才可能为 1，历史 1406 行全部为 0。
-      纸面账本（paper_trade_*）与实盘账本是两套表，互不混计。</div>
     <details class="note"><summary>实盘 ROI / PnL 是怎么算的 · 为什么现在是「—」而不是 0%</summary>
       <div class="muted">钱<b>全部来自实盘成交列</b>：成本＝对账表报回来的成交名义
       <span class="mono">filled_notional_usdc</span>，赔付＝真值落在该腿桶里时每股 1 USDC、
@@ -11089,25 +11031,7 @@ function liveOrderCard(L){
       读自 <span class="mono">${h(C.runtime_config||"—")}</span>。
       <b>两个都为真才可能铸出实盘行</b>，都是每次渲染现读，不是写死的句子。</div>
     </details>
-    ${rows?`<div class="muted" style="font-size:12px;margin-top:11px">
-      <b>按篮子分组</b>，不是按腿。求解器把整个支持集当一件事定规模，选桶层
-      <span class="mono">select_complete_maker_bundle_v2</span> 拒绝它的任何真子集——
-      差一条腿整篮子 HOLD。逐腿下单是交易所那一侧的形状：每个温度桶是独立
-      token、独立订单簿，没有「篮子」这个下单原语。同一行标题下的腿是同一个
-      决策的腿，同生共死。<br>
-      <b style="color:var(--up)">绿框</b>标出的是该篮的<b>均值中心桶</b>——
-      按 <span class="mono">production_plan_sha256</span> 回到该决策自己编出的
-      计划，读它记下的 <span class="mono">center_bucket</span>，<b>不在这里重推</b>：
-      重推等于把各站自己的档位规则和偏斜规则手抄一遍。中心桶不一定是窗口的正中
-      （宪章 55 允许顺/逆偏斜扩边），所以「中间那格」不能当中心看。
-      计划已不在库里的旧篮子不画框，宁可不标也不猜。<br>
-      篮子旁的<b>形态标签</b>（对称日 / 右偏·暖尾 / 左偏·冷尾）同样读自该计划：
-      均值与众数差不到半格算对称日，宪章 79 把这种日子的 P0 席位定为均值桶±1；
-      差得更多就按尾巴的方向偏。带 <b>*</b> 的是旧计划，只留了方向没留形态读数
-      （宪章 75 下方向就是偏态符号，但证据不新鲜的那天一律记对称），鼠标悬停有说明。<br>
-      <b>被站级禁入挡下的篮子不列出</b>——它们没到过交易所，没有成交也没有花钱，
-      六条这样的行会把当天真正买了东西的四条挤没。数目记在日期行上，不是悄悄少几行。</div>
-      <div style="margin-top:4px">${rows}</div>${moreGroups}`
+    ${rows?`<div style="margin-top:11px">${rows}</div>${moreGroups}`
       :`<div class="muted" style="margin-top:9px">尚无实盘意向。第一条出现时此表自动列出。</div>`}
     ${(X.blocking||[]).length?`<div class="muted" style="margin-top:8px;font-size:11.5px">
       对账阻断：${(X.blocking||[]).map(b=>h(b.reason)+" ×"+b.count).join(" · ")}</div>`:""}
@@ -11344,6 +11268,7 @@ function liveReadiness(){
     <div class="scroll" style="max-height:360px;margin-top:6px">
     <table><thead><tr><th>站</th><th title="三个开关都是人工裁定，点击即开启关闭，改动立刻写盘并记审计。禁入=不下单（记账照旧）；豁免=证据不够也上线；待观察=够格也先不下单。三者互斥。">闸门（人工）</th><th>过闸</th><th>实现/声称</th><th>中心偏差</th>
       <th>链</th><th>ROI</th><th title="最近 5 个结算日">近5日</th><th title="该站真值的日际跳变均值(°C)：天气性格，>1.76 的站在真边际枯竭期实测 −43%（留存组 +23%，p=0.023）。外生、慢变、先于账本。">跳变/日</th><th title="近14天池子里模型分布的均值−众数距离(桶)：跳变在模型层的影子(r=+0.32)，>0.93 为高。">形状gap</th><th>未过项</th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${safe(stationFailureMatrix, "哪些站是系统性地不行")}
   </div>`;
 }
 
@@ -11867,16 +11792,19 @@ const tabs = `<nav class="tabs" id="tabs">${
 // to land.  The label the bar shows is read back out of the section's own
 // <h2> rather than restated here: a chip that disagrees with the heading it
 // scrolls to is worse than no chip.
-// The homepage board is one section, not three (user ruling, 2026-08-31):
-// the tile strip, the three-state comparison of what the bars cost, and
-// the portfolio ratios all read the same account.  Splitting them behind
-// two more headings and two more jump chips made a reader navigate between
-// halves of one question.  Each part still renders under its own guard, so
-// a broken risk payload cannot take the strip down with it.
+// The homepage board is one section, not two (user ruling, 2026-08-31):
+// the tile strip and the three-state comparison of what the bars cost read
+// the same account, and splitting them behind another heading and another
+// jump chip made a reader navigate between halves of one question.  Each
+// part still renders under its own guard.
+//
+// The portfolio ratios left this board on 2026-09-09 (user ruling) for the
+// head status bar: "is the machine turning" and "what is the book worth"
+// are the two things read on arrival, and the ratios sat five thousand
+// pixels below the bar that answers the first.
 function overviewBoard(){
   return safe(overview, "总览")
-    + safe(barSplit, "三态对比")
-    + safe(riskMetrics, "组合风险指标");
+    + safe(barSplit, "三态对比");
 }
 
 const sec = (fn, name, id) =>
@@ -11888,10 +11816,11 @@ const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}"
   ${g.sections.map(([fn, name], i) =>
     sec(fn, name, `sec-${g.id}-${i}`)).join("")}</section>`).join("");
 
-// The bar sits directly under the banner rather than below the four
-// ungrouped sections where the group switcher used to live.  Sticky from
-// two thousand pixels down is not a top navigation -- it only appears once
-// the reader has already scrolled past everything it could have saved them.
+// The bar is the first thing on the page (user ruling, 2026-09-09).  It was
+// already sticky, but sitting under the banner and the live-readiness
+// section meant it only became a navigation after the reader had scrolled
+// past the two longest blocks on the page -- which is the scroll it exists
+// to save.  First element, stuck at zero, visible from the first pixel.
 // Live readiness is no longer one of the sections below the bar: it is
 // rendered in the head area, directly under the banner that carries the
 // LIVE switch (user ruling, 2026-08-31).  The switch and the gates that
@@ -11913,7 +11842,7 @@ const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}"
 // answer what the detail raises.
 const TOP = [[overviewBoard, "总览"],
   [daily, "每日统计"], [roster, "逐站逐日明细"],
-  [stationSummary, "逐站汇总（跨日）"], [anomalies, "异常盘口"],
+  [stationSummary, "逐站汇总（跨日）"],
   [refusalStats, "没建仓是因为什么"]];
 
 // Which sections on this page were reused from the previous build, and how
@@ -11939,9 +11868,10 @@ function sectionCacheNote(){
 }
 
 document.getElementById("app").innerHTML =
-  safe(head, "页头") +
-  sec(liveReadiness, "Live 上线准备", "sec-live") +
   `<div class="topnav" id="topnav">${tabs}<nav class="jump" id="jump"></nav></div>` +
+  safe(head, "页头") +
+  sec(riskMetrics, "组合风险指标", "sec-risk") +
+  sec(liveReadiness, "Live 上线准备", "sec-live") +
   TOP.map(([fn, name], i) => sec(fn, name, `sec-top-${i}`)).join("") +
   groupHtml +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据 ·
