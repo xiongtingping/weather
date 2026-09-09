@@ -28,6 +28,7 @@ from bayes_basket_target.canonical_ingress import (  # noqa: E402
     ingest_canonical_contract,
 )
 from bayes_basket_target.canonical_ssot_schema import (  # noqa: E402
+    canonical_state_at_least,
     inspect_canonical_ssot_schema,
 )
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
@@ -178,7 +179,17 @@ def ingest_retained_packets(
         if not apply:
             conn.execute("PRAGMA query_only=ON")
         schema_status = inspect_canonical_ssot_schema(conn)
-        if schema_status["state"] not in {"V8", "V9", "V10"} or schema_status["errors"]:
+        # A floor, not a closed set -- the same defect as in
+        # ``native_ensemble_single_system_oos_artifact``, in the second of
+        # the two places that spelled it by hand.  {V8, V9, V10} against a
+        # store that reached V17 refuses every call it can receive.  The
+        # columns are unchanged since V10 and no fact_type has ever been
+        # withdrawn, so the bound that was meant is a minimum.  The error
+        # name is kept: callers and tests match on it.
+        if (
+            not canonical_state_at_least(str(schema_status["state"]), "V8")
+            or schema_status["errors"]
+        ):
             raise ContractError("retained_member_canonical_ssot_v7_required")
         counts_before = _canonical_counts(conn)
         validated_quiescence: Mapping[str, Any] | None = None

@@ -16,15 +16,35 @@ from bayes_basket_target.native_ensemble_single_system_oos_artifact import (
     EXPECTED_ELIGIBILITY_COUNT,
     build_single_system_oos_artifacts,
 )
-from scripts.apply_canonical_contract_schema import migrate as apply_contract_schema
+from bayes_basket_target.canonical_ssot_v17_migration import (
+    TARGET_TABLE_DDL as CANONICAL_TABLE_DDL,
+    TARGET_TRIGGER_DDL as CANONICAL_TRIGGER_DDL,
+)
 
 
 AS_OF = "2026-08-04T00:00:00Z"
 
 
 def _database(path: Path) -> Path:
-    path.touch()
-    assert apply_contract_schema(path, apply=True)["state"] == "APPLIED"
+    """A canonical fact store at the shape production actually runs.
+
+    This used to call ``scripts/apply_canonical_contract_schema``, which was
+    retired to a fail-closed tombstone precisely because it could create a
+    V10 fact table outside the receipted migration -- so every test that
+    used it as a fixture builder has been red since.  The store is on V17;
+    building the fixture from V17's own DDL keeps the test on the schema
+    ``ingest_canonical_contract`` is written against, and moves it forward
+    automatically the next time that DDL does.
+    """
+
+    conn = sqlite3.connect(path)
+    try:
+        conn.executescript(CANONICAL_TABLE_DDL)
+        for trigger in CANONICAL_TRIGGER_DDL:
+            conn.execute(trigger)
+        conn.commit()
+    finally:
+        conn.close()
     return path
 
 

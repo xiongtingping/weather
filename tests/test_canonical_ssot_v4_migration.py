@@ -21,7 +21,6 @@ from bayes_basket_target.migration_quiescence import (
     synthetic_writer_quiescence_receipt,
 )
 from bayes_basket_target.ssot import apply_production_ssot_schema
-from scripts.apply_canonical_contract_schema import migrate as apply_contract_schema
 
 
 V3_DDL = """
@@ -207,7 +206,7 @@ def test_second_apply_and_preview_are_idempotent_no_write(tmp_path: Path) -> Non
     assert preview["confirmation_required"] is False
 
 
-def test_v4_requires_v5_for_standard_schema_apply_and_empty_install_is_v10(
+def test_v4_requires_v5_for_standard_schema_apply(
     tmp_path: Path,
 ) -> None:
     path = _db(tmp_path)
@@ -219,14 +218,15 @@ def test_v4_requires_v5_for_standard_schema_apply_and_empty_install_is_v10(
             apply_production_ssot_schema(conn)
         assert inspect_canonical_ssot_schema(conn)["state"] == "V4"
 
-    empty = tmp_path / "empty-v4.db"
-    empty.touch()
-    assert apply_contract_schema(empty, apply=False)["state"] == "MIGRATION_REQUIRED"
-    assert apply_contract_schema(empty, apply=True)["state"] == "APPLIED"
-    current = apply_contract_schema(empty, apply=False)
-    assert current["state"] == "CURRENT_NO_WRITE"
-    with sqlite3.connect(empty) as conn:
-        assert inspect_canonical_ssot_schema(conn)["state"] == "V10"
+    # The second half of this test asserted that the legacy installer turned
+    # an empty file into a V10 store -- MIGRATION_REQUIRED, APPLIED,
+    # CURRENT_NO_WRITE, state V10.  That is exactly the capability
+    # ``scripts/apply_canonical_contract_schema`` was retired to remove: it
+    # could create a fact table outside the receipted migration, which is an
+    # ingress by another name.  A test asserting a retired capability still
+    # works is not a guard, so it is gone rather than adapted; the tombstone
+    # itself is covered by ``test_ssot_v14_schema_gate`` and by the
+    # ``pytest.raises`` checks in the v3 and v6 migration suites.
 
 
 @pytest.mark.parametrize(

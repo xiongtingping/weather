@@ -21,7 +21,10 @@ from bayes_basket_target.republisher_oos_artifact import (
     build_republisher_oos_artifact_contract,
 )
 from bayes_basket_target.settlement_time import settlement_day_window
-from scripts.apply_canonical_contract_schema import migrate as apply_contract_schema
+from bayes_basket_target.canonical_ssot_v17_migration import (
+    TARGET_TABLE_DDL as CANONICAL_TABLE_DDL,
+    TARGET_TRIGGER_DDL as CANONICAL_TRIGGER_DDL,
+)
 
 
 AS_OF = "2026-08-04T05:16:39Z"
@@ -51,6 +54,26 @@ PRODUCTS = (
         "DWD",
     ),
 )
+
+
+def _install_canonical_schema(path) -> None:
+    """Build the fixture from the schema production runs.
+
+    ``scripts/apply_canonical_contract_schema`` was retired to a fail-closed
+    tombstone -- it could create a V10 fact table outside the receipted
+    migration -- so every test using it as a fixture builder went red.  V17's
+    own DDL keeps the fixture on the schema the ingress is written against,
+    and follows it forward without another edit here.
+    """
+
+    conn = sqlite3.connect(path)
+    try:
+        conn.executescript(CANONICAL_TABLE_DDL)
+        for trigger in CANONICAL_TRIGGER_DDL:
+            conn.execute(trigger)
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _date_range(start: str, end: str) -> list[str]:
@@ -178,7 +201,7 @@ def _insert_truth(
 def _temporary_v7_ssot(tmp_path: Path) -> sqlite3.Connection:
     database = tmp_path / "republisher_oos_artifact_v7.db"
     database.touch()
-    assert apply_contract_schema(database, apply=True)["state"] == "APPLIED"
+    _install_canonical_schema(database)
     conn = sqlite3.connect(database)
     conn.create_function("canonical_ingress_authorized", 0, lambda: 1)
     conn.execute(

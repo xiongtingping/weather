@@ -20,7 +20,10 @@ from bayes_basket_target.retained_native_ensemble_canonical_adapter import (
     SOURCE_SPECS,
     adapt_retained_packet_to_canonical_candidates,
 )
-from scripts.apply_canonical_contract_schema import migrate as apply_contract_schema
+from bayes_basket_target.canonical_ssot_v17_migration import (
+    TARGET_TABLE_DDL as CANONICAL_TABLE_DDL,
+    TARGET_TRIGGER_DDL as CANONICAL_TRIGGER_DDL,
+)
 from scripts import ingest_retained_native_ensemble_members as ingest_module
 from scripts.ingest_retained_native_ensemble_members import (
     CONFIRMATION,
@@ -30,6 +33,26 @@ from scripts.ingest_retained_native_ensemble_members import (
 
 SCHEMA = "eccc_geps_official_historical_multistation_members_v1"
 SPEC = SOURCE_SPECS[SCHEMA]
+
+
+def _install_canonical_schema(path) -> None:
+    """Build the fixture from the schema production runs.
+
+    ``scripts/apply_canonical_contract_schema`` was retired to a fail-closed
+    tombstone -- it could create a V10 fact table outside the receipted
+    migration -- so every test using it as a fixture builder went red.  V17's
+    own DDL keeps the fixture on the schema the ingress is written against,
+    and follows it forward without another edit here.
+    """
+
+    conn = sqlite3.connect(path)
+    try:
+        conn.executescript(CANONICAL_TABLE_DDL)
+        for trigger in CANONICAL_TRIGGER_DDL:
+            conn.execute(trigger)
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _packet() -> tuple[dict[str, object], dict[tuple[str, str, str, str, str, str], dict[str, object]]]:
@@ -168,7 +191,7 @@ def _v4_database(
     legacy: dict[tuple[str, str, str, str, str, str], dict[str, object]],
 ) -> Path:
     path.touch()
-    assert apply_contract_schema(path, apply=True)["state"] == "APPLIED"
+    _install_canonical_schema(path)
     columns = (*LEGACY_IDENTITY_FIELDS, "content_sha256")
     with sqlite3.connect(path) as conn:
         conn.execute(

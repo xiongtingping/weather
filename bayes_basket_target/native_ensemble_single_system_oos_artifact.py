@@ -25,7 +25,10 @@ from .canonical_contract import (
     CanonicalNativeArrivalFact,
     CanonicalTruthFact,
 )
-from .canonical_ssot_schema import inspect_canonical_ssot_schema
+from .canonical_ssot_schema import (
+    canonical_state_at_least,
+    inspect_canonical_ssot_schema,
+)
 from .contracts import ContractError, content_sha256
 from .model_system_coverage import canonical_station_ids
 
@@ -138,7 +141,20 @@ def _canonical_catalog(
     conn: sqlite3.Connection, *, compiled_at: datetime
 ) -> dict[str, Any]:
     inspection = inspect_canonical_ssot_schema(conn)
-    if inspection["state"] not in {"V8", "V9", "V10"} or inspection["errors"]:
+    # A floor, not a closed set.  The set said {V8, V9, V10} and the store
+    # reached V17, so this builder raised on every call it could receive --
+    # including the four tests that exist to check it.  The columns have not
+    # moved since V10 (identical seven, verified 2026-09-09) and no fact_type
+    # has ever been withdrawn: V17 adds twelve to V10's fourteen and removes
+    # none, and the four this builder reads are V6-era types that survive in
+    # all of them.  So the bound that was meant is a minimum, and there is a
+    # function for exactly that sitting one import away.  The error name is
+    # kept -- it is what the callers and tests match on -- even though the
+    # floor it now states is V8, which is the floor the closed set stated too.
+    if (
+        not canonical_state_at_least(str(inspection["state"]), "V8")
+        or inspection["errors"]
+    ):
         raise ContractError("native_system_artifact_canonical_ssot_v7_required")
 
     members: dict[tuple[str, str, str], list[CanonicalEnsembleMemberFact]] = defaultdict(list)
