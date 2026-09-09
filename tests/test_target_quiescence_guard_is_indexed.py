@@ -384,3 +384,54 @@ def test_the_scope_sequence_index_is_declared_in_the_schema(
         "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
         ("basket_official_ws_snapshot_scope_sequence_idx",),
     ).fetchone() is not None
+
+
+# The tenth instance, 2026-09-09.  The regime companion pass read every
+# committed artifact in the table to answer whether the envelopes it just
+# loaded already had one.
+def _regime_prior_scan_sql() -> str:
+    import re
+
+    body = (ROOT / "bayes_basket_target" / "production_worker.py").read_text()
+    start = body.index(
+        "SELECT station_id,event_date,stage,checkpoint_id,"
+    )
+    match = re.search(
+        r"self\.conn\.execute\(\s*(\"(?:[^\"]|\"\s*\n\s*\")*\")",
+        body[start - 400:start + 1200],
+        re.S,
+    )
+    assert match, "the regime prior read moved; this test has to follow it"
+    return "".join(re.findall(r'"([^"]*)"', match.group(1)))
+
+
+def test_the_regime_prior_read_asks_for_the_scopes_it_will_look_up(
+    conn: sqlite3.Connection,
+) -> None:
+    """416,210 rows read to answer 947 questions, once per cycle.
+
+    ``basket_regime_artifact`` is append-only beside the envelope table it
+    companions, so a read of the whole thing grows without bound while the
+    questions asked of it stay the size of one cycle's fresh scopes.
+    Measured warm against the 38GB production file on 2026-09-09: 31.8 to
+    38.1 seconds, inside a regime stage of 363.5s, in a 1,493-second cycle.
+
+    Every key looked up in that map is built from an envelope the pass just
+    loaded, so the station-days of those envelopes are the only rows it can
+    ever be asked for -- 0.9s for the same answer over the unique committed
+    index.  The predicate is what makes that true, so the predicate is what
+    is asserted, by the planner rather than by a clock.
+    """
+
+    sql = _regime_prior_scan_sql()
+    assert "station_id=?" in sql and "event_date=?" in sql, sql
+    steps = _plan(conn, sql, ("KMIA", "2026-09-08"))
+    assert steps, "the planner returned no steps"
+    assert not any(
+        step.startswith("SCAN") and "USING" not in step for step in steps
+    ), steps
+    assert any(
+        "basket_regime_artifact_one_committed_idx" in step
+        or "basket_regime_artifact_scope_idx" in step
+        for step in steps
+    ), steps

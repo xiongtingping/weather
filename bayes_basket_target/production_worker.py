@@ -8717,6 +8717,7 @@ class TargetProductionWorker:
         every downstream gate the current day passes still applies unchanged.
         """
 
+        _listing_started = time.perf_counter()
         allow = {str(item).upper() for item in (station_allowlist or ())}
         listing: list[tuple[str, str]] = []
         for station, day in self._decision_scopes(
@@ -8736,6 +8737,16 @@ class TargetProductionWorker:
                 # same-day path owns it and must not be duplicated here.
                 continue
             listing.append((str(station), str(day)))
+        # Called three times inside the market-ingress window and once more
+        # in the sweep, each time re-running ``_decision_scopes`` and one
+        # timezone read per scope.  The window measured 472.1s on
+        # 2026-09-09 with 101s of it inside the evidence passes; this is
+        # one of the candidates for the rest, so it says so itself.
+        self._add_span(
+            "listing_entry_scopes",
+            (time.perf_counter() - _listing_started) * 1000.0,
+            label=f"{len(listing)} scopes",
+        )
         return sorted(set(listing))
 
     def _scope_settlement_timezone(self, station_id: str, event_date: str) -> str:
@@ -10816,12 +10827,23 @@ class TargetProductionWorker:
                 "reason": "target_atomic_writer_not_injected",
                 "writes_target_ssot": False,
             }
+        _manifest_read_started = time.perf_counter()
         remaining_budget = _resolve_target_remaining_budget()
         manifest_path = Path(manifest_path).expanduser().resolve()
         manifest_root, _manifest_quotes = load_official_ws_quotes(
             manifest_path
         )
         station_allowlist = _manifest_station_allowlist(manifest_root)
+        # The pass's own head, before either sub-pass.  The market-ingress
+        # window measured 472.1s on 2026-09-09 while the two spans inside it
+        # -- cache and snapshot -- accounted for 100.7s, so the rest was
+        # attributed to nothing.  Name the head and the whole pass, and what
+        # is left over is the call site's, not this function's.
+        self._add_span(
+            "market_evidence_manifest_read",
+            (time.perf_counter() - _manifest_read_started) * 1000.0,
+            label=f"{len(station_allowlist)} stations",
+        )
         manifest_event_date = (
             str(manifest_root.get("target_local_date") or "").strip()
             if station_allowlist
@@ -11661,6 +11683,7 @@ class TargetProductionWorker:
         its stage and freshness to decide how much to materialize.
         """
 
+        _sweep_started = time.perf_counter()
         ordered = [dict(selected)]
         seen = {str(selected.get("scope_key") or "")}
         quotas = (
@@ -11739,13 +11762,19 @@ class TargetProductionWorker:
                     fresh_manifests[scope_key] = manifest
         except ContractError:
             fresh_manifests = {}
-        return [
+        swept = [
             fresh_manifests.get(
                 str(item.get("scope_key") or ""), item["manifest"]
             )
             for item in ordered
             if isinstance(item.get("manifest"), Mapping)
         ]
+        self._add_span(
+            "sweep_scope_manifests",
+            (time.perf_counter() - _sweep_started) * 1000.0,
+            label=f"{len(swept)} scopes",
+        )
+        return swept
 
     def _select_resident_open_ws_scope(
         self,
@@ -11853,7 +11882,18 @@ class TargetProductionWorker:
             prefix="bayes-target-ws-scope-",
         ) as temporary_root:
             path = Path(temporary_root) / "manifest.json"
+            _write_started = time.perf_counter()
             write_bounded_json(path, dict(value))
+            # A merged day of inline books, copied to disk once per pass and
+            # read back once per station by each sub-pass.  Named for the
+            # same reason the pass head is: the market-ingress window's
+            # 472.1s on 2026-09-09 was 100.7s of measured sub-passes and
+            # 371.4s of nothing in particular.
+            self._add_span(
+                "scope_manifest_write",
+                (time.perf_counter() - _write_started) * 1000.0,
+                label=str(value.get("target_local_date") or ""),
+            )
             try:
                 yield path
             finally:
@@ -14415,6 +14455,7 @@ class TargetProductionWorker:
         # and the basket compile -- evaluating moments later with a fresher
         # clock -- died on ``regime_ssot_not_unique`` for whichever station
         # had just minted one (20 stations in one 2026-08-20 snapshot).
+        _regime_probe_started = time.perf_counter()
         scopes = self.conn.execute(
             "SELECT DISTINCT station_id,event_date "
             "FROM basket_probability_envelope "
@@ -14425,8 +14466,19 @@ class TargetProductionWorker:
             # PAST_CADENCE) and its companion must exist for that long.
             (shift_timestamp_utc(as_of_utc, -PROBABILITY_MAX_STALE_SECONDS),),
         ).fetchall()
+        # ``state`` seeks and ``fresh_until_utc`` does not: it is the ninth
+        # column of the publisher index, so this walks every COMMITTED
+        # envelope to keep the fresh ones.  Measured warm 2026-09-09: 5.7s
+        # for 119 scopes out of 416,610 rows.  Named here rather than
+        # guessed at from the stage total.
+        self._add_span(
+            "regime_scope_probe",
+            (time.perf_counter() - _regime_probe_started) * 1000.0,
+            label=f"{len(scopes)} scopes",
+        )
         envelopes: list[ProbabilityEnvelope] = []
         blockers: list[dict[str, str]] = []
+        _regime_load_started = time.perf_counter()
         for station_id, event_date in scopes:
             try:
                 expected_source_lane = target_registry_source_lane(
@@ -14477,6 +14529,11 @@ class TargetProductionWorker:
                     "event_date": str(event_date),
                     "reason": f"{type(exc).__name__}:{exc}",
                 })
+        self._add_span(
+            "regime_envelope_load",
+            (time.perf_counter() - _regime_load_started) * 1000.0,
+            label=f"{len(envelopes)} envelopes",
+        )
         receipts: list[dict[str, Any]] = []
         # Envelopes are append-only and immutable, so a companion built for
         # one is final -- yet every cycle rebuilt and re-probed all of them.
@@ -14492,25 +14549,50 @@ class TargetProductionWorker:
         # function returns ``wrote=False`` for.  Every other shape (absent,
         # duplicated, drifted) still goes through it, so the uniqueness and
         # content-drift contracts remain where they were written.
+        #
+        # Read for the station-days in hand, not for the whole table.  "Take
+        # it once" was right and the scope was not: the artifact table is
+        # append-only beside the envelope table it companions, so by
+        # 2026-09-09 one read of it was 416,210 rows to answer 947
+        # questions -- 31.8 to 38.1 seconds warm against the live SSOT,
+        # every cycle, inside a stage that measured 363.5s.  Every lookup
+        # key below is built from an envelope in ``envelopes``, so the
+        # station-days of those envelopes are exactly the rows this map can
+        # ever be asked for: 0.9s for the same answer, over the unique
+        # committed index.  Tenth of this repo's read-the-whole-ledger bug.
         committed_regime: dict[
             tuple[str, str, str, str], list[tuple[str, str, str]]
         ] = {}
-        for prior_row in self.conn.execute(
-            "SELECT station_id,event_date,stage,checkpoint_id,"
-            "probability_sha256,content_sha256,artifact_id "
-            "FROM basket_regime_artifact WHERE state='COMMITTED'"
-        ):
-            committed_regime.setdefault(
-                (
-                    str(prior_row[0]),
-                    str(prior_row[1]),
-                    str(prior_row[2]),
-                    str(prior_row[3]),
-                ),
-                [],
-            ).append(
-                (str(prior_row[4]), str(prior_row[5]), str(prior_row[6]))
-            )
+        _regime_prior_started = time.perf_counter()
+        prior_scopes = sorted({
+            (str(envelope.station_id), str(envelope.event_date))
+            for envelope in envelopes
+        })
+        for prior_station, prior_day in prior_scopes:
+            for prior_row in self.conn.execute(
+                "SELECT station_id,event_date,stage,checkpoint_id,"
+                "probability_sha256,content_sha256,artifact_id "
+                "FROM basket_regime_artifact WHERE state='COMMITTED'"
+                " AND station_id=? AND event_date=?",
+                (prior_station, prior_day),
+            ):
+                committed_regime.setdefault(
+                    (
+                        str(prior_row[0]),
+                        str(prior_row[1]),
+                        str(prior_row[2]),
+                        str(prior_row[3]),
+                    ),
+                    [],
+                ).append(
+                    (str(prior_row[4]), str(prior_row[5]), str(prior_row[6]))
+                )
+        self._add_span(
+            "regime_prior_scan",
+            (time.perf_counter() - _regime_prior_started) * 1000.0,
+            label=f"{len(prior_scopes)} scopes",
+        )
+        _regime_build_started = time.perf_counter()
         # Keep the resident pass resource-bounded without turning a healthy
         # multi-stage 45-station SSOT into a global blocker once the number
         # of committed envelopes exceeds the per-batch guard.  Each chunk is
@@ -14572,6 +14654,11 @@ class TargetProductionWorker:
                         "checkpoint_id": envelope.checkpoint_id,
                         "reason": f"{type(exc).__name__}:{exc}",
                     })
+        self._add_span(
+            "regime_artifact_build",
+            (time.perf_counter() - _regime_build_started) * 1000.0,
+            label=f"{len(envelopes)} envelopes",
+        )
         return {
             "schema": "bayes_basket_target_regime_batch_v1",
             "state": "BLOCKED_FAIL_CLOSED" if blockers else "COMMITTED",
