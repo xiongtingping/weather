@@ -203,12 +203,26 @@ def _nwp_rotation_health(status: Mapping[str, Any]) -> dict[str, Any]:
     capture = capture if isinstance(capture, Mapping) else {}
     sweep = capture.get("sweep_health")
     if isinstance(sweep, Mapping) and sweep.get("sweep_achieved_hours"):
+        # Measured or declared, said in the word.  With no interval samples
+        # the reading falls back to the nominal 600s, and calling that "一圈
+        # 实测" would present the declaration as the measurement -- which is
+        # the exact substitution this whole card was built after.  Samples
+        # need two polls inside one process, so every restart starts here.
+        measured = int(sweep.get("poll_interval_sample_count") or 0) > 0
         note += (
-            f"；一圈实测 {float(sweep['sweep_achieved_hours']):.1f}h"
-            f"（新鲜期 {float(sweep.get('p0_freshness_hours') or 0):.0f}h，"
-            f"争用 {float(sweep.get('contention_factor') or 0):.1f}×）"
+            f"；一圈{'实测' if measured else '按名义推算'}"
+            f" {float(sweep['sweep_achieved_hours']):.1f}h"
+            f"（新鲜期 {float(sweep.get('p0_freshness_hours') or 0):.0f}h"
         )
-        if sweep.get("fits_freshness_window") is False and health == "green":
+        note += (
+            f"，争用 {float(sweep.get('contention_factor') or 0):.1f}×）"
+            if measured else "，尚无实测轮次间隔）"
+        )
+        if (
+            measured
+            and sweep.get("fits_freshness_window") is False
+            and health == "green"
+        ):
             health = "amber"
     return {
         "nwp_rotation_health": health,
