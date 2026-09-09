@@ -122,27 +122,64 @@ def test_the_served_table_reaches_the_enumeration() -> None:
     assert "bands=off_centre_bands" in helper
 
 
-def test_the_claim_fingerprint_still_hashes_only_the_kernel_constant() -> None:
-    """A known gap, asserted so it cannot be forgotten.
+def test_the_fingerprint_carries_the_served_table_not_just_the_constant() -> None:
+    """The gap this lane opened, and closed the same day.
 
+    The off-centre table moved into the database while
     ``claim_transform_fingerprint`` -- charter 110's partition key for the
-    lambda fit -- hashes the KERNEL constant, and the off-centre table now
-    lives in the database.  Moving the served table therefore does not retire
-    the candidate rows fitted under the old one.
+    lambda fit -- still hashed the kernel constant, so the served table could
+    move under lambda's own sample unseen.  It was left as a sentinel on the
+    reasoning that charter 49's ladder floor keeps off-centre windows out of
+    the candidate population entirely.
 
-    Harmless today and only today: charter 49's ladder floor has left the
-    candidate population with zero off-centre rows (1,695 of 1,695 verify
-    against the centre-holding path, 2026-09-09), so no lambda seat reads
-    this table at all.  The sentinel below is that fact.  When it fails, the
-    fingerprint has to take the served table's sha, not the constant.
+    The sentinel fired on its first run: 84 replay rows were already on the
+    off-centre path, because re-deriving a claim on the distance axis can
+    move the peak and take a window off centre.  The floor governs what
+    PRODUCTION enumerates; it does not govern what a replay recomputes.
     """
-    import inspect
-
     from bayes_basket_target.basket_kernel.delta_v2 import (
         claim_transform_fingerprint,
     )
 
-    source = inspect.getsource(claim_transform_fingerprint)
-    assert "OFF_CENTER_CLAIM_BANDS" in source, (
-        "if this moved to the store's table, delete this test"
+    bare = claim_transform_fingerprint(holds_centre=False)
+    served = claim_transform_fingerprint(
+        holds_centre=False, off_centre_table_sha="a" * 64
     )
+    other = claim_transform_fingerprint(
+        holds_centre=False, off_centre_table_sha="b" * 64
+    )
+    assert bare != served != other and bare != other
+    # A centre-holding window never reads the off-centre table, so its
+    # fingerprint must not move when that table does -- otherwise every
+    # centre-holding row in the sample retires on a nightly refit.
+    assert claim_transform_fingerprint(
+        holds_centre=True
+    ) == claim_transform_fingerprint(
+        holds_centre=True, off_centre_table_sha="a" * 64
+    )
+
+
+def test_the_fit_partitions_and_counts_the_off_centre_rows() -> None:
+    """Both halves: the key that excludes them, and the number that says how
+    many there were.  The count has been zero and non-zero inside one day."""
+    import inspect
+
+    from bayes_basket_target import effective_edge_store as store
+
+    source = inspect.getsource(store._candidate_population)
+    assert "off_centre_table_sha=off_centre_sha" in source
+    assert '"off_centre_row_count": off_centre_rows,' in source
+    fit_source = inspect.getsource(store.fit_lambda_table)
+    assert 'population["off_centre_row_count"]' in fit_source
+
+
+def test_the_replay_lane_prices_on_the_served_table() -> None:
+    """Before 2026-09-09 it used the kernel bootstrap while production read
+    the store, so a replayed claim could differ from the served one by the
+    very table this lane exists to keep current."""
+    source = (
+        ROOT / "scripts" / "replay_candidate_windows_on_current_band.py"
+    ).read_text(encoding="utf-8")
+    assert "load_off_centre_bands" in source
+    assert "off_centre_bands=off_centre_bands" in source
+    assert "off_centre_table_sha=off_centre_sha" in source

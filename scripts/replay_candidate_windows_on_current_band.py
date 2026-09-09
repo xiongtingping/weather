@@ -63,6 +63,9 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
 from bayes_basket_target.cross_consensus import (  # noqa: E402
     apply_band_reliability,
 )
+from bayes_basket_target.off_centre_claim_store import (  # noqa: E402
+    load_off_centre_bands,
+)
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 EPS = 1e-9
@@ -180,6 +183,13 @@ def replay_stage(conn, *, stage: str, args, reports: list | None) -> int:
         return 1
     factors, band_sha = loaded
     axis = band_table_axis(conn, stage=stage)
+    # The off-centre correction the enumeration would apply today.  Before
+    # 2026-09-09 this script used the kernel bootstrap while production read
+    # the store, so a replayed claim could differ from the served one by the
+    # very table this lane exists to keep current.
+    off_centre = load_off_centre_bands(conn, stage=stage)
+    off_centre_bands = off_centre[0] if off_centre else None
+    off_centre_sha = off_centre[1] if off_centre else None
     if axis != "centre_distance":
         emit({
             "stage": stage, "axis": axis,
@@ -242,7 +252,7 @@ def replay_stage(conn, *, stage: str, args, reports: list | None) -> int:
         else:
             gap = 1.0
         claim = min(1.0 - EPS, raw_win * window_claim_factor(
-            raw_win, center_gap=gap
+            raw_win, center_gap=gap, off_centre_bands=off_centre_bands
         ))
         if raw_win <= 0.0 or claim <= 0.0 or float(price) <= 0.0:
             counted["degenerate"] += 1
@@ -253,7 +263,10 @@ def replay_stage(conn, *, stage: str, args, reports: list | None) -> int:
             claim, raw_win, float(price),
             None if hit is None else int(hit),
             axis, band_sha,
-            claim_transform_fingerprint(holds_centre=(gap <= 0.0)),
+            claim_transform_fingerprint(
+                holds_centre=(gap <= 0.0),
+                off_centre_table_sha=off_centre_sha,
+            ),
             src_axis, str(args.as_of or ""),
         ))
         counted["replayed"] += 1

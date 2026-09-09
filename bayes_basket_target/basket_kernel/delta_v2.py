@@ -3403,7 +3403,9 @@ def window_claim_factor(
 
 
 
-def claim_transform_fingerprint(*, holds_centre: bool) -> str:
+def claim_transform_fingerprint(
+    *, holds_centre: bool, off_centre_table_sha: str | None = None
+) -> str:
     """Content hash of the claim tables THIS window's claim actually went
     through.
 
@@ -3440,6 +3442,14 @@ def claim_transform_fingerprint(*, holds_centre: bool) -> str:
                 for bound, factor in CENTER_WINDOW_CLAIM_BANDS
             ],
         })
+    # The off-centre table moved into the database on 2026-09-09 and refits
+    # nightly, so the constant below is only the bootstrap.  A caller that
+    # served a fitted table names it here; None means "the bootstrap", which
+    # is what every row written before the store existed carries.  Without
+    # this the served table could move under lambda's own sample and the
+    # partition key -- the thing that exists to notice exactly that -- would
+    # not see it.  Measured the day it landed: 84 replay rows were on this
+    # path already.
     return content_sha256({
         **common,
         "path": "off_centre",
@@ -3448,6 +3458,9 @@ def claim_transform_fingerprint(*, holds_centre: bool) -> str:
             for bound, factor in OFF_CENTER_CLAIM_BANDS
         ],
         "off_center_ramp_buckets": float(OFF_CENTER_CLAIM_RAMP_BUCKETS),
+        "off_centre_table_sha256": (
+            str(off_centre_table_sha) if off_centre_table_sha else None
+        ),
     })
 
 

@@ -581,9 +581,28 @@ def _candidate_population(
     # no longer compute, so it is not evidence about today's ``a``.
     # Two fingerprints, one per path: a row is current if the tables ITS
     # claim went through are the ones this code now serves.
+    # The off-centre half carries the served table's sha (2026-09-09): that
+    # table is DB-resident and refits nightly, so a row computed under a
+    # previous one is a row about a claim this code no longer computes --
+    # exactly what this key exists to notice.  The centre-holding half does
+    # not, because a centre-holding window never reads the off-centre table.
+    off_centre_sha = None
+    try:
+        from .off_centre_claim_store import (  # noqa: PLC0415
+            load_off_centre_bands,
+        )
+        for stage in stages:
+            loaded = load_off_centre_bands(conn, stage=str(stage))
+            if loaded is not None:
+                off_centre_sha = loaded[1]
+                break
+    except Exception:  # noqa: BLE001 -- no store, bootstrap, same as before
+        off_centre_sha = None
     claim_vintages: tuple[str, ...] | None = (
         claim_transform_fingerprint(holds_centre=True),
-        claim_transform_fingerprint(holds_centre=False),
+        claim_transform_fingerprint(
+            holds_centre=False, off_centre_table_sha=off_centre_sha
+        ),
     )
     if not _has_candidate_column(conn, "claim_transform_sha256"):
         claim_vintages = None
@@ -651,8 +670,38 @@ def _candidate_population(
         ]
         replayed_row_count = len(replayed)
         rows = list(rows) + replayed
+    # How many rows in this fit's own sample read the off-centre table.
+    #
+    # This started as a sentinel for a gap: the table moved into the database
+    # and the fingerprint still hashed the kernel constant, so the served
+    # table could move under lambda's sample unseen.  It fired on the first
+    # run -- 84 replay rows were already on that path, because re-deriving a
+    # claim on the distance axis can move the peak and take a window off
+    # centre -- and the fingerprint now carries the served table's sha, which
+    # closes it.  The count stays because it is the number that says whether
+    # the off-centre lane touches lambda at all, and it has now been both
+    # zero and not zero within one day.
+    off_centre_rows = 0
+    if claim_vintages is not None:
+        try:
+            off_centre_rows = int(conn.execute(
+                "SELECT COUNT(*) FROM paper_trade_candidate_window"
+                f" WHERE stage IN ({placeholders}) AND event_date >= ?"
+                "   AND hit IS NOT NULL AND claim_transform_sha256 IS ?",
+                (*stages, floor_day, claim_vintages[1]),
+            ).fetchone()[0] or 0)
+            if include_replayed:
+                off_centre_rows += int(conn.execute(
+                    "SELECT COUNT(*) FROM paper_trade_candidate_window_replay"
+                    f" WHERE stage IN ({placeholders}) AND event_date >= ?"
+                    "   AND hit IS NOT NULL AND claim_transform_sha256 IS ?",
+                    (*stages, floor_day, claim_vintages[1]),
+                ).fetchone()[0] or 0)
+        except sqlite3.Error:
+            off_centre_rows = 0
     return {
         "rows": rows,
+        "off_centre_row_count": off_centre_rows,
         "band_axis": axis,
         "claim_vintages": claim_vintages,
         "excluded_other_band_axis": int(excluded_axis),
@@ -748,6 +797,7 @@ def fit_lambda_table(
     excluded_claim = population["excluded_other_claim_transform"]
     served_row_count = population["served_row_count"]
     replayed_row_count = population["replayed_row_count"]
+    off_centre_row_count = population["off_centre_row_count"]
     # A band this fit cannot measure keeps the incumbent -- but only while
     # the incumbent describes the same claim.  When the transform has MOVED,
     # the served number was fitted on a quantity that no longer exists, and
@@ -883,6 +933,12 @@ def fit_lambda_table(
         "incumbent_basis": tally_incumbent_note,
         "served_row_count": int(served_row_count),
         "replayed_row_count": int(replayed_row_count),
+        # Zero while charter 49 keeps off-centre windows out of the pool.
+        # Not zero means the off-centre claim table now moves lambda's own
+        # sample while ``claim_transform_fingerprint`` cannot see it --
+        # see ``_candidate_population``.  Counted every fit, not asserted
+        # once, because it is a data fact and stops being true on its own.
+        "off_centre_row_count": int(off_centre_row_count),
         "replay_band_table_sha256": (
             _fit_band_sha(conn, stages) if include_replayed else None
         ),
