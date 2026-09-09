@@ -71,6 +71,7 @@ from .basket_kernel.delta_v2 import (
     CHARTER_93_SUPPORT_FLOOR,
     SUPPORT_SCENARIO_FLOOR_RULE_VERSION,
     support_scenario_floor_v1,
+    whole_basket_edge_delta_v1,
     CANDIDATE_KIND_BASELINE,
     CANDIDATE_KIND_COMPLETE,
     CANDIDATE_KINDS,
@@ -1545,6 +1546,28 @@ if CHARTER_121_POST_LIFT_RERANK not in {"on", "off"}:
         f"unknown charter 121 post-lift rerank mode: {CHARTER_121_POST_LIFT_RERANK}"
     )
 CHARTER_121_POST_LIFT_ATTEMPTS = 4
+# Charter 123 (user ruling, 2026-09-09: "抬手数后重新打分"): the whole-basket
+# edge gate is re-read on the lifted targets, the way charter 93 re-reads the
+# floor there.
+#
+# Relation to the clauses it touches, stated rather than left to be inferred:
+# it does not restate 78/87/92, it RE-APPLIES them at a second point -- the
+# belief, the arithmetic and the threshold are theirs, unchanged, and the
+# function is literally the same one.  It narrows nothing about which windows
+# are admissible; it only refuses a basket the lot and dollar lifts have moved
+# off the shape those clauses cleared.  Charter 93 stays exactly as it is and
+# answers a different question (worst in-support settlement, not expectation);
+# a basket can hold a legal floor and still expect to lose.  Charter 121's
+# exclude-and-retry carries both refusals, so a seat whose winner is refused
+# here falls to the next candidate rather than collapsing to a hold.
+CHARTER_123_POST_LIFT_EDGE = (
+    os.environ.get("PM_CHARTER_123_POST_LIFT_EDGE", "").strip().lower() or "on"
+)
+if CHARTER_123_POST_LIFT_EDGE not in {"on", "off"}:
+    raise RuntimeError(
+        f"unknown charter 123 post-lift edge mode: {CHARTER_123_POST_LIFT_EDGE}"
+    )
+POST_LIFT_EDGE_RULE_VERSION = "whole_basket_edge_after_lift_v1"
 # Charter 87 (user ruling, 2026-09-06: "落正确形态是一个信念"): the
 # whole-basket positive-EV gate reads the belief the solver sizes on -- the
 # lifted claim (charter 81) times charter 68's lambda(a) at the window's
@@ -5478,6 +5501,27 @@ def compile_delta_v2_runtime_plan(
         # name rather than buying a shape no gate has seen.
         solved_targets = dict(target_solution["target_shares_by_bucket"])
         lifted_cost = dict(target_solution.get("target_cost_by_bucket") or {})
+        # The lifted cost is what both post-lift readings charge, so it is
+        # derived once here rather than inside either of them.  It used to
+        # live inside the charter-93 branch, which meant the edge reading
+        # below could not exist without either duplicating the arithmetic or
+        # depending on the floor being switched on.
+        for bucket in seated_support:
+            extra = max(
+                0.0,
+                float(target_shares[bucket])
+                - float(solved_targets.get(bucket, 0.0)),
+            )
+            if extra <= EPS:
+                continue
+            ask = (
+                by_bucket[bucket].ask_price
+                if by_bucket[bucket].ask_available else 0.0
+            )
+            lifted_cost[bucket] = (
+                float(lifted_cost.get(bucket, 0.0))
+                + extra * float(ask) * (1.0 + float(basket_policy.fee_rate))
+            )
         support_floor_after_lift = None
         # Charter 84 (八): a rung the market prices under the leg floor is dead
         # -- unbought and outside the floor's protected set, exactly as the
@@ -5490,22 +5534,6 @@ def compile_delta_v2_runtime_plan(
             )
         )
         if CHARTER_93_SUPPORT_FLOOR == "on" and floor_support:
-            for bucket in seated_support:
-                extra = max(
-                    0.0,
-                    float(target_shares[bucket])
-                    - float(solved_targets.get(bucket, 0.0)),
-                )
-                if extra <= EPS:
-                    continue
-                ask = (
-                    by_bucket[bucket].ask_price
-                    if by_bucket[bucket].ask_available else 0.0
-                )
-                lifted_cost[bucket] = (
-                    float(lifted_cost.get(bucket, 0.0))
-                    + extra * float(ask) * (1.0 + float(basket_policy.fee_rate))
-                )
             support_floor_after_lift = support_scenario_floor_v1(
                 shares_by_bucket={
                     bucket: float(target_shares[bucket]) for bucket in floor_support
@@ -5513,12 +5541,84 @@ def compile_delta_v2_runtime_plan(
                 cost_by_bucket=lifted_cost,
                 support=floor_support,
             )
+        # Charter 123: the gate that authorized the basket is re-read on the
+        # basket that will actually be sent.
+        #
+        # Charters 78/87/92 clear a window on the whole-basket edge -- the
+        # increment's expected payout on the seated lambda*p partition, less
+        # the cash it spends -- and they read the SOLVER's shape.  Charters
+        # 70/83 then raise rungs to the venue's lot and its dollar minimum,
+        # so the basket that goes out is not the basket that was judged.
+        #
+        # The lift is not one-directional and this clause does not assume it
+        # is: it adds shares as well as cost, so raising a rung whose
+        # realisable claim beats its ask IMPROVES the edge (measured on the
+        # charter-84 fixture: 0.190 solved against 0.265 lifted, raising one
+        # rung from five shares to seven).  What the re-read guarantees is
+        # only that the number the gate judges is the number the book will be
+        # charged for -- which is exactly what charter 93 already guarantees
+        # for the floor, and a floor says nothing about the expectation: a
+        # basket can keep a legal floor and still expect to lose.
+        #
+        # This is the same repair charter 121 made on the floor and the maker
+        # bundle re-score made on execution sizing: the number that authorizes
+        # has to be computed on the number that is sent.  Reusing
+        # ``whole_basket_edge_delta_v1`` rather than restating the arithmetic
+        # is the point -- an audit that reimplements the rule invents its own
+        # findings, and the gate and this re-read must be the same function or
+        # they will drift.
+        post_lift_edge = None
+        # The threshold is the policy's authorization epsilon, not a bare
+        # zero, because that is the number the execution layer already
+        # refuses below -- one rule, one constant.  Reading it from the same
+        # artifact is what keeps this from becoming a second, slightly
+        # different edge gate.
+        post_lift_edge_epsilon = float(
+            delta_policy.execution_weights.epsilon_score
+        )
+        edge_belief = dict(
+            (support_selection.get("seated") or {}).get(
+                "window_probabilities"
+            ) or {}
+        )
+        if CHARTER_123_POST_LIFT_EDGE == "on" and edge_belief and floor_support:
+            held_now = {
+                bucket: (
+                    float(by_bucket[bucket].filled_shares)
+                    + float(by_bucket[bucket].pending_shares)
+                )
+                for bucket in seated_support
+            }
+            held_cost_now = {
+                bucket: (
+                    float(by_bucket[bucket].filled_cost_usdc)
+                    + float(by_bucket[bucket].pending_notional_usdc)
+                )
+                for bucket in seated_support
+            }
+            post_lift_edge = whole_basket_edge_delta_v1(
+                edge_probabilities=edge_belief,
+                current_shares=held_now,
+                current_cost=held_cost_now,
+                resulting_shares={
+                    bucket: float(target_shares[bucket])
+                    for bucket in seated_support
+                },
+                resulting_cost={
+                    bucket: float(lifted_cost.get(bucket, 0.0))
+                    for bucket in seated_support
+                },
+            )
         basket_target_activated = (
             target_solution.get("winner_candidate_kind")
             == "COMPLETE_BASKET_TARGET"
             and (
                 support_floor_after_lift is None
                 or bool(support_floor_after_lift["legal"])
+            )
+            and (
+                post_lift_edge is None
+                or post_lift_edge > post_lift_edge_epsilon + EPS
             )
         )
         if basket_target_activated or CHARTER_121_POST_LIFT_RERANK != "on":
@@ -5532,9 +5632,21 @@ def compile_delta_v2_runtime_plan(
             # charter 93's held-inventory exemption forbids.
             target_solution.get("winner_candidate_kind")
             == "COMPLETE_BASKET_TARGET"
-            # This clause answers the floor and nothing else.
-            and support_floor_after_lift is not None
-            and not bool(support_floor_after_lift["legal"])
+            # The two post-lift readings, either of which is a refusal this
+            # retry exists to route around.  Charter 121 was written when the
+            # floor was the only one; charter 123 adds the edge, and a seat
+            # refused on either should fall to the next candidate rather than
+            # collapse to a hold -- the whole argument for the retry.
+            and (
+                (
+                    support_floor_after_lift is not None
+                    and not bool(support_floor_after_lift["legal"])
+                )
+                or (
+                    post_lift_edge is not None
+                    and not post_lift_edge > post_lift_edge_epsilon + EPS
+                )
+            )
             and refused_id
             and refused_id not in excluded_candidate_ids
             and _post_lift_attempt + 1 < CHARTER_121_POST_LIFT_ATTEMPTS
@@ -6164,6 +6276,17 @@ def compile_delta_v2_runtime_plan(
         # Charter 93: the lifted basket would lose inside its own window.
         reason_codes.append("support_floor_after_lift")
     if (
+        post_lift_edge is not None
+        and not post_lift_edge > post_lift_edge_epsilon + EPS
+    ):
+        # Charter 123: the lot and dollar lifts moved the basket off the
+        # shape charters 78/87/92 cleared, and at the size that would go out
+        # the increment no longer pays.  Named apart from the floor: they
+        # refuse different baskets and the repairs are different (this one is
+        # answered by a cheaper rung or a narrower window, the floor by a
+        # different shape).
+        reason_codes.append("support_edge_after_lift")
+    if (
         objective_form == KELLY_OBJECTIVE_FORM
         and chain_empty
         and str(snapshot.evidence.probability_stage or "") not in CHAIN_OPENING_STAGES
@@ -6447,6 +6570,15 @@ def compile_delta_v2_runtime_plan(
         # verdict that held the plan when it failed.
         "support_scenario_floor_rule": SUPPORT_SCENARIO_FLOOR_RULE_VERSION,
         "support_scenario_floor_after_lift": support_floor_after_lift,
+        # Charter 123: the whole-basket edge read again on the same lifted
+        # targets.  Recorded whether it passed or failed, so "how much did the
+        # lift cost this basket" is answerable from a plan -- ``None`` means
+        # the reading could not be taken (no seated belief, or the switch is
+        # off), which a reader must be able to tell from a pass.
+        "post_lift_edge_rule": POST_LIFT_EDGE_RULE_VERSION,
+        "post_lift_edge_mode": CHARTER_123_POST_LIFT_EDGE,
+        "whole_basket_edge_after_lift": post_lift_edge,
+        "post_lift_edge_epsilon": post_lift_edge_epsilon,
         # Charter 83: the dollar floor the lift read, and which rungs it
         # (rather than the lot) lifted.
         "exchange_minimum_order_notional_usdc": float(
