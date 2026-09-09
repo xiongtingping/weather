@@ -2495,7 +2495,7 @@ def ladder_balance_targets_v1(
     ask_by_bucket: Mapping[str, Any] | None = None,
     depth_by_bucket: Mapping[str, Sequence[Any]] | None = None,
     capital_available_usdc: float | None = None,
-    unbuyable_buckets: Sequence[str] = (),
+    below_leg_floor_buckets: Sequence[str] = (),
     fee_rate: float = 0.0,
 ) -> dict[str, float]:
     """Charter 84's shape: every short rung of the seat raised to a held level.
@@ -2543,12 +2543,26 @@ def ladder_balance_targets_v1(
     a level the cash cannot buy whole would be bought in part, and a part is
     the under-completed basket again.  Charter 84 (八) is all-or-none.
 
-    ``unbuyable_buckets`` are charter 84 (八)'s dead rungs -- priced under the
-    leg floor, "not bought, and not a reason to leave its neighbours short".
-    The caller will not buy them, so the search must not charge for them:
-    once the cash bound existed, pricing a rung nobody buys could refuse a
-    level the seat could afford.  Their target still rises with the level,
-    because the shape the floor judges is the ladder, not the purchase.
+    ``below_leg_floor_buckets`` are charter 84 (八)'s dead rungs -- rungs the
+    MARKET prices under the leg floor, "not bought, and not a reason to leave
+    its neighbours short".  Nobody can buy them at a price we may pay, so the
+    search must not charge for them: once the cash bound existed, pricing a
+    rung nobody can buy could refuse a level the seat could afford.  Their
+    target still rises with the level, because the shape the floor judges is
+    the ladder, not the purchase.
+
+    NAMED AFTER ITS CRITERION, and renamed to it on 2026-09-09.  It was
+    ``unbuyable_buckets``, one word away from "the ones we are not buying",
+    and that is exactly how it was read: charter 110(四)'s refusal -- legs the
+    market offers cheap and we DECLINE -- was routed here, which excused
+    those legs from the cash bound and from the floor's cost at once.  Three
+    quarters of short legs were refused and the book's total stake barely
+    moved (865 to 857) because the level rose on the money the refusal had
+    notionally freed; twelve station-days were staked higher and carried
+    -21.70 of a -39.65 swing.  A leg we decline is buyable and must keep
+    paying for itself in both bounds, so it does not belong in this set --
+    and under a name that states the market's verdict rather than ours, it
+    cannot be put here by mistake.
 
     Pricing the search needs ``held_cost_by_bucket`` and one of
     ``depth_by_bucket`` / ``ask_by_bucket``; without them the level is the
@@ -2590,7 +2604,7 @@ def ladder_balance_targets_v1(
     }
     dead = {
         _text("delta_v2_balance_unbuyable", bucket)
-        for bucket in unbuyable_buckets
+        for bucket in below_leg_floor_buckets
     }
     budget = (
         None if capital_available_usdc is None
@@ -3911,7 +3925,7 @@ def solve_target_inventory_v2(
     objective_form: str = VALUE_OBJECTIVE_FORM,
     bankroll_usdc: float | None = None,
     kelly_fraction: float = DEFAULT_KELLY_FRACTION,
-    unbuyable_buckets: Sequence[str] = (),
+    below_leg_floor_buckets: Sequence[str] = (),
     excluded_candidate_ids: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Return the exact argmax over a caller-provided bounded feasible set.
@@ -3925,11 +3939,13 @@ def solve_target_inventory_v2(
     hold.  A baseline is never excluded: buying nothing is the fallback every
     round must keep, and dropping it would make the solve unable to answer.
 
-    ``unbuyable_buckets`` (charter 84 八, 2026-09-05): rungs of the support
-    the market prices under the leg floor.  The ruling that forbids buying
-    them forbids the scenario floor from demanding they be covered, so they
-    are left out of the protected set here; everything else about them --
-    their probability, their place in the ladder -- is untouched.
+    ``below_leg_floor_buckets`` (charter 84 八, 2026-09-05): rungs of the
+    support the MARKET prices under the leg floor.  The ruling that forbids
+    buying them forbids the scenario floor from demanding they be covered, so
+    they are left out of the protected set here; everything else about them
+    -- their probability, their place in the ladder -- is untouched.  A leg
+    we merely decline to buy is not one of these and must stay protected;
+    see ``ladder_balance_targets_v1`` for the judgement that renamed this.
 
     ``objective_form`` selects what the argmax reads.  ``value_v2`` is the
     original weighted value function.  ``mean_variance_curve_v1`` ranks by
@@ -3957,7 +3973,7 @@ def solve_target_inventory_v2(
         raise ContractError("delta_v2_target_candidate_bound_invalid")
     if len(feasible_inventory_candidates) > maximum_candidates:
         raise ContractError("delta_v2_target_candidate_bound_exceeded")
-    unbuyable = {_text("delta_v2_unbuyable_bucket", b) for b in unbuyable_buckets}
+    unbuyable = {_text("delta_v2_unbuyable_bucket", b) for b in below_leg_floor_buckets}
     protected_buckets = tuple(
         bucket for bucket in protected_buckets if str(bucket) not in unbuyable
     )

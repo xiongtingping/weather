@@ -59,7 +59,10 @@ from .policy import (
     resolve_station_policy,
 )
 from .stages import select_current_stage
-from .settlement_time import assert_probability_timezone_matches_market
+from .settlement_time import (
+    assert_probability_timezone_matches_market,
+    hours_to_settlement_if_known,
+)
 from .regime_artifact import RegimeArtifact, resolve_regime_artifact
 from .regime_materialization import evaluate_regime_gate
 from .metar_trajectory import assert_p1_execution_evidence
@@ -1317,6 +1320,14 @@ def _compile_target_plan(
 
     try:
         delta_plan = compile_delta_v2_runtime_plan(
+            # Charter 110(六)'s tau, from the one clock both lanes read.
+            # Settlement is the end of the event day on the station's own
+            # timezone; the completion cutoff is three hours before it.
+            hours_to_cutoff=hours_to_settlement_if_known(
+                snapshot.event_date,
+                as_of_utc=snapshot.quote_observed_at or snapshot.observed_at,
+                settlement_timezone=envelope.settlement_timezone,
+            ),
             snapshot=snapshot,
             basket_policy=policy,
             delta_policy=resolved_delta_policy,

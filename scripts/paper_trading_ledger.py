@@ -98,6 +98,7 @@ from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
 )
 from bayes_basket_target.contracts import content_sha256  # noqa: E402
 from bayes_basket_target.settlement_time import (  # noqa: E402
+    hours_to_settlement_if_known,
     settlement_day_window,
 )
 from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
@@ -5042,6 +5043,17 @@ def _production_judge(
     )
     try:
         seated, solution, selection = _solve_over_support_windows(
+            # Charter 110(六)'s tau, from the same clock production reads.
+            # NOT ``_resting_deadline`` below: that one folds in the peak
+            # cutoff and the resting horizon, which are reasons an order
+            # stops rather than the moment the market settles.
+            hours_to_cutoff=hours_to_settlement_if_known(
+                event_date,
+                as_of_utc=decision_at_utc,
+                settlement_timezone=_settlement_timezone(
+                    conn, station_id, event_date
+                ),
+            ),
             windows=windows,
             window_audit=audit,
             live_buckets=live_buckets,

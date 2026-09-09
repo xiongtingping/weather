@@ -1723,3 +1723,57 @@ def test_the_return_structure_survives_into_the_training_fact() -> None:
     assert '"basket_return_structure": basket_return_structure,' in runtime
     # ...and carried into the fact the fit and the audit read.
     assert '"basket_return_structure": compiled_plan.get(' in assembly
+
+
+def test_the_below_floor_set_excuses_a_rung_from_both_bounds() -> None:
+    """The set's two effects, pinned so the next caller sees what it costs.
+
+    ``below_leg_floor_buckets`` does not merely skip a rung in the build.  It
+    also stops the search charging for it -- in the cash bound AND in the cost
+    the scenario floor reads -- because a rung the MARKET cannot supply must
+    not refuse a level the seat could otherwise afford.
+
+    That second effect is the trap this test exists for.  On 2026-09-09
+    charter 110(四)'s refusal -- legs the market offers cheap and we DECLINE --
+    was routed through this parameter while it was still called
+    ``unbuyable_buckets``.  Declining a leg then excused it from both bounds,
+    so the completion level rose on money the refusal had notionally freed:
+    three quarters of short legs were refused and total stake barely moved
+    (865 to 857), twelve station-days were staked HIGHER, and those twelve
+    carried -21.70 of a -39.65 swing over ten days.
+
+    A leg we decline is buyable and must keep paying for itself.  If a future
+    ruling needs "buyable but not bought", it needs its own set, and this
+    test is the reason why.
+    """
+
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        ladder_balance_targets_v1,
+    )
+
+    common = {
+        "held_by_bucket": {"30": 5.0, "31": 0.0},
+        "support": ("30", "31"),
+        "held_cost_by_bucket": {"30": 2.00, "31": 0.0},
+        "ask_by_bucket": {"30": 0.40, "31": 0.40},
+        "depth_by_bucket": {
+            "30": ({"price": 0.40, "shares": 50.0},),
+            "31": ({"price": 0.40, "shares": 50.0},),
+        },
+        # Enough to hold what is held, nowhere near enough to buy five shares
+        # of the short rung at 0.40.
+        "capital_available_usdc": 0.50,
+    }
+
+    # Charged: the short rung costs 2.00, the bound is 0.50, no level fits.
+    assert ladder_balance_targets_v1(**common) == {}
+
+    # Excused: the same rung, declared below the leg floor, is not priced --
+    # so the level the seat already holds is affordable and legal.
+    excused = ladder_balance_targets_v1(
+        **common, below_leg_floor_buckets=("31",)
+    )
+    assert excused == {"30": 5.0, "31": 5.0}
+    # And note what it did NOT do: the target still rises to the level, so
+    # the floor judges the ladder rather than the purchase.  A caller reading
+    # this as "we will not buy 31" gets a basket it never paid for.

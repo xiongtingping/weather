@@ -151,6 +151,39 @@ def hours_to_settlement(
     return (end - moment).total_seconds() / 3600.0
 
 
+def hours_to_settlement_if_known(
+    event_date: str,
+    *,
+    as_of_utc: str | datetime | None,
+    settlement_timezone: str | None,
+) -> float | None:
+    """``hours_to_settlement`` for a caller that may not hold all three.
+
+    Charter 110's cutoff is optional by construction: the kernel treats
+    ``None`` as "no cutoff" and keeps the pre-110 behaviour, because a lane
+    that cannot say what time it is should not thereby start completing at
+    any hour -- nor stop compiling.  Routing the strict function straight
+    into the compile made a missing timezone raise inside the try that wraps
+    it, and three end-to-end decisions turned from ``hold`` into ``blocked``
+    (2026-09-09): a diagnostic became an outage.
+
+    So the strict function stays strict for everyone who has the inputs, and
+    this is the entry for the compile path.  It swallows only the contract
+    errors that mean "not enough to answer" -- never an arithmetic one.
+    """
+
+    if not event_date or not settlement_timezone or as_of_utc in (None, ""):
+        return None
+    try:
+        return hours_to_settlement(
+            event_date,
+            as_of_utc=as_of_utc,
+            settlement_timezone=settlement_timezone,
+        )
+    except ContractError:
+        return None
+
+
 def settlement_day_state(
     event_date: str,
     *,

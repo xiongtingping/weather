@@ -490,7 +490,9 @@ MAKER_RESTING_TIMEOUT_SECONDS = float(
 )
 
 
-# Charter 110(四)'s partition, on the completion candidate.  ``off`` is the
+# Charter 110's completion rules, as one switch: the (四) partition and the
+# (六) cutoff.  Two gates, one ruling, so they are armed together -- half of
+# 110 running is a rule nobody wrote.  ``off`` is the
 # pre-110 arm -- every short rung the leg floor allows is completed, which is
 # what charter 84 shipped and what its tests were written against.  The
 # measured difference is large: 1,971 of 2,575 short legs (77%) sit on the
@@ -501,8 +503,8 @@ MAKER_RESTING_TIMEOUT_SECONDS = float(
 # is not yet known is what refusing three quarters of all completions does to
 # the money, and the ledger can answer that offline without the live lane
 # spending anything.  Flip the default, not the callers, when it answers.
-COMPLETION_CLAIM_PARTITION = (
-    os.environ.get("PM_COMPLETION_CLAIM_PARTITION", "").strip().lower() or "off"
+CHARTER_110_COMPLETION = (
+    os.environ.get("PM_CHARTER_110_COMPLETION", "").strip().lower() or "off"
 )
 
 
@@ -3784,7 +3786,7 @@ def _solve_over_support_windows(
                 # Charter 84 (八): a rung the market prices under the leg
                 # floor cannot be bought, so the floor cannot demand it be
                 # covered; the ruling that forbids the leg forbids the demand.
-                unbuyable_buckets=tuple(
+                below_leg_floor_buckets=tuple(
                     (row.get("completion") or {}).get("market_dead_buckets")
                     or ()
                 ),
@@ -4640,7 +4642,8 @@ def _ladder_balance_candidate(
     # been taught tau yet; those keep the pre-110 behaviour rather than
     # silently completing at any hour.
     if (
-        hours_to_cutoff is not None
+        CHARTER_110_COMPLETION == "on"
+        and hours_to_cutoff is not None
         and float(hours_to_cutoff) <= COMPLETION_CUTOFF_HOURS
     ):
         return None
@@ -4663,22 +4666,37 @@ def _ladder_balance_candidate(
     # at the call site), which is what ``completion_conditioned_claim_v1``
     # requires; a raw served vector here would price the refusal on a belief
     # the seat was never judged on.
-    discounted: list[str] = []
-    if COMPLETION_CLAIM_PARTITION == "on" and probabilities_by_bucket is not None:
+    # The refusal is of the WHOLE completion, not of a leg, and that is the
+    # correction the book made on 2026-09-09.  Routing it through
+    # ``unbuyable`` -- charter 84 (八)'s dead-rung set -- inherited that
+    # set's second meaning: a dead rung is not charged into ``spend`` OR
+    # into the cost the floor verdict reads, because a rung the market
+    # genuinely cannot supply must not refuse a level the seat can afford.
+    # A leg we are DECLINING to buy is not that: it is buyable, and
+    # excusing it from both bounds let the level rise on money the refusal
+    # had notionally freed.  Measured over ten days: total stake barely
+    # moved (865 -> 857) though three quarters of short legs were refused,
+    # twelve station-days were staked HIGHER, and those twelve carried
+    # -21.70 of a -39.65 swing.
+    #
+    # A completion is all-or-none by construction -- "a ladder completed on
+    # one rung and not the other is still broken" -- so the honest reading
+    # of charter 110(四) here is that a completion needing a leg the market
+    # is handing us cheap is a completion not worth making.  Refusing the
+    # candidate outright relaxes nothing.
+    if CHARTER_110_COMPLETION == "on" and probabilities_by_bucket is not None:
+        dead = {str(bucket) for bucket in unbuyable}
         for bucket in ordered:
-            if held.get(bucket, 0.0) > EPS:
+            if held.get(bucket, 0.0) > EPS or bucket in dead:
                 continue
             ask = float(lane_prices.get(bucket, 0.0) or 0.0)
             if ask <= 0.0:
                 continue
-            verdict = completion_conditioned_claim_v1(
+            if not completion_conditioned_claim_v1(
                 claim=float(probabilities_by_bucket.get(bucket, 0.0) or 0.0),
                 ask=ask,
-            )
-            if not verdict["buys"]:
-                discounted.append(bucket)
-    if discounted:
-        unbuyable = tuple(set(unbuyable) | set(discounted))
+            )["buys"]:
+                return None
     # User ruling 2026-09-08: the level is the cheapest held rung size the
     # completed basket is still floor-legal at, not the tallest rung -- the
     # tallest is usually the one charter 70/83 lifted to a lot or a dollar,
@@ -4718,7 +4736,7 @@ def _ladder_balance_candidate(
         # Charter 84 (八)'s dead rungs: the build skips them, so the search
         # must not charge for them either -- once the cash bound existed, a
         # rung nobody buys could refuse a level the seat could afford.
-        unbuyable_buckets=tuple(str(bucket) for bucket in unbuyable),
+        below_leg_floor_buckets=tuple(str(bucket) for bucket in unbuyable),
         # Zero, and deliberately: the increments below are priced by the same
         # walk with no fee added.  A search that charged one would judge a
         # level illegal that the candidate it sizes then builds as legal, and
