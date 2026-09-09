@@ -80,6 +80,8 @@ from .band_reliability_store import BAND_TABLE_CELLS
 from .basket_kernel.delta_v2 import (
     center_window_claim_factor,
     claim_transform_fingerprint,
+    BUCKET_TABLE_KEY,
+    EFFECTIVE_EDGE_BUCKET_LAMBDA,
     EFFECTIVE_EDGE_LAMBDA,
     EFFECTIVE_EDGE_P0M_LAMBDA,
     EFFECTIVE_EDGE_P1_LAMBDA,
@@ -212,23 +214,52 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
                 f"ALTER TABLE {table}"
                 " ADD COLUMN stage_scope TEXT NOT NULL DEFAULT 'P0'"
             )
+        # The second scope (2026-09-09).  ``window`` deflates a seat by the
+        # agreement of the whole window; ``bucket`` deflates each rung by
+        # its own.  Every row written before this column is a window fit and
+        # the default says so, the same migration ``stage_scope`` used when
+        # P1 got its own table.
+        if "claim_scope" not in columns:
+            conn.execute(
+                f"ALTER TABLE {table}"
+                " ADD COLUMN claim_scope TEXT NOT NULL DEFAULT 'window'"
+            )
 
 
 EFFECTIVE_EDGE_SCOPES_SERVED = ("P0", "P0-M", "P1")
 
 
-def _bootstrap_bands(stage_scope: str = "P0") -> list[tuple[float, float]]:
-    """The kernel constant a scope starts from before any fit is activated."""
+CLAIM_SCOPES = ("window", "bucket")
 
-    source = {
-        "P1": EFFECTIVE_EDGE_P1_LAMBDA,
-        "P0-M": EFFECTIVE_EDGE_P0M_LAMBDA,
-    }.get(stage_scope, EFFECTIVE_EDGE_LAMBDA)
+
+def _bootstrap_bands(
+    stage_scope: str = "P0", claim_scope: str = "window"
+) -> list[tuple[float, float]]:
+    """The kernel constant a scope starts from before any fit is activated.
+
+    The bucket table is one table across P0 and P0-M, which is what the
+    kernel's own dispatch does: it was fitted on the two pooled and no
+    per-stage bucket fit has ever existed.  P1 keeps its identity table on
+    both axes, because its edge is the observation rather than the shape.
+    """
+
+    if claim_scope == "bucket":
+        source = (
+            EFFECTIVE_EDGE_P1_LAMBDA if stage_scope == "P1"
+            else EFFECTIVE_EDGE_BUCKET_LAMBDA
+        )
+    else:
+        source = {
+            "P1": EFFECTIVE_EDGE_P1_LAMBDA,
+            "P0-M": EFFECTIVE_EDGE_P0M_LAMBDA,
+        }.get(stage_scope, EFFECTIVE_EDGE_LAMBDA)
     return [(float(bound), float(lam)) for bound, lam in source]
 
 
 def _incumbent_bands(
-    conn: sqlite3.Connection | None = None, stage_scope: str = "P0"
+    conn: sqlite3.Connection | None = None,
+    stage_scope: str = "P0",
+    claim_scope: str = "window",
 ) -> list[tuple[float, float]]:
     """What a band keeps when this fit cannot measure it.
 
@@ -241,13 +272,15 @@ def _incumbent_bands(
     """
 
     if conn is not None:
-        active = load_active_lambda(conn, stage_scope=stage_scope)
+        active = load_active_lambda(
+            conn, stage_scope=stage_scope, claim_scope=claim_scope
+        )
         if active:
             return _project_onto_partition(
                 [(float(bound), float(lam)) for bound, lam in active],
-                _bootstrap_bands(stage_scope),
+                _bootstrap_bands(stage_scope, claim_scope),
             )
-    return _bootstrap_bands(stage_scope)
+    return _bootstrap_bands(stage_scope, claim_scope)
 
 
 def _project_onto_partition(
@@ -699,8 +732,62 @@ def _candidate_population(
                 ).fetchone()[0] or 0)
         except sqlite3.Error:
             off_centre_rows = 0
+    # The same population, seen as legs (2026-09-09).  One query, one set of
+    # provenance clauses, two views: a bucket fit that filtered its own rows
+    # would be a second implementation of the rule that decides which claims
+    # are current, and those two would drift.
+    #
+    # Deduped on (scope, decision, bucket) rather than per window: the same
+    # rung appears in every window that spans it, with the same claim and the
+    # same ask, so counting it once per window would weight a rung by how
+    # many windows the enumeration happened to draw around it.
+    leg_rows: list[tuple[Any, ...]] = []
+    legs_seen: set[tuple[str, str, str, str, str]] = set()
+    if _has_candidate_column(conn, "leg_claim_cost_json"):
+        leg_sources = [("paper_trade_candidate_window", "")]
+        if include_replayed:
+            leg_sources.append(("paper_trade_candidate_window_replay", ""))
+        for table, _extra in leg_sources:
+            try:
+                raw = conn.execute(
+                    "SELECT leg_claim_cost_json, settled_bucket, station_id,"
+                    " event_date, stage, decision_at_utc"
+                    f" FROM {table}"
+                    f" WHERE stage IN ({placeholders}) AND event_date >= ?"
+                    "   AND hit IS NOT NULL AND settled_bucket IS NOT NULL"
+                    "   AND leg_claim_cost_json IS NOT NULL"
+                    + axis_clause + claim_clause,
+                    (*stages, floor_day, *axis_args, *claim_args),
+                ).fetchall()
+            except sqlite3.Error:
+                continue
+            for payload, settled, station_id, event_date, stage, decided in raw:
+                try:
+                    legs = json.loads(str(payload)) or {}
+                except (TypeError, ValueError):
+                    continue
+                for bucket, pair in legs.items():
+                    try:
+                        claim = float(pair[0])
+                        cost = float(pair[1])
+                    except (TypeError, ValueError, IndexError):
+                        continue
+                    key = (
+                        str(station_id), str(event_date), str(stage),
+                        str(decided), str(bucket),
+                    )
+                    if key in legs_seen:
+                        continue
+                    legs_seen.add(key)
+                    leg_rows.append((
+                        claim, cost,
+                        1 if str(bucket) == str(settled) else 0,
+                        str(station_id), str(event_date), str(stage),
+                        str(decided),
+                    ))
     return {
         "rows": rows,
+        "leg_rows": leg_rows,
         "off_centre_row_count": off_centre_rows,
         "band_axis": axis,
         "claim_vintages": claim_vintages,
@@ -718,9 +805,26 @@ def fit_lambda_table(
     window_days: int = WINDOW_DAYS,
     as_of: str | None = None,
     stage_scope: str = "P0",
+    claim_scope: str = "window",
     include_replayed: bool = False,
 ) -> dict[str, Any]:
     """Fit one lambda per agreement band from the rolling settled window.
+
+    ``claim_scope`` picks what a row IS.  ``window`` -- the shipped lane --
+    fits seats: one row per enumerated window, ``a`` read off the window's
+    claim against its all-in cost, and a hit when the truth landed anywhere
+    inside it.  ``bucket`` fits RUNGS: one row per rung the enumeration
+    priced, ``a`` read off that rung's own claim against its own ask, and a
+    hit only when the truth landed in that rung.  The estimator, the
+    hurdles, the clamps and the promotion path are the same on both -- the
+    only thing that changes is what a row counts.
+
+    The bucket lane exists because the constant it replaces was never
+    fitted: measured 2026-09-09, the store carried window tables for three
+    stages (P0 on 1225 seats) and no bucket fit at all, so the bucket arm
+    read four numbers hand-set on 2026-09-03 while the window arm read a
+    nightly refit.  That arm lost 6.6 points, and 68% of the rungs in the
+    seats it wrongly opened sat in its un-split top band.
 
     Returns the table plus the evidence for every band, including the ones
     that could not be fitted.  A band short of evidence keeps the incumbent
@@ -731,9 +835,11 @@ def fit_lambda_table(
 
     if stage_scope not in STAGE_SCOPES:
         raise ValueError(f"effective_edge_fit_scope_invalid:{stage_scope}")
+    if claim_scope not in CLAIM_SCOPES:
+        raise ValueError(f"effective_edge_claim_scope_invalid:{claim_scope}")
     stages = STAGE_SCOPES[stage_scope]
     ceiling = P1_LAMBDA_CEILING if stage_scope == "P1" else LAMBDA_CEILING
-    incumbent = _incumbent_bands(conn, stage_scope)
+    incumbent = _incumbent_bands(conn, stage_scope, claim_scope)
     newest = conn.execute(
         "SELECT MAX(event_date) FROM paper_trade_settlement"
     ).fetchone()
@@ -790,7 +896,10 @@ def fit_lambda_table(
     population = _candidate_population(
         conn, stages, floor_day, include_replayed=include_replayed
     )
-    rows = population["rows"]
+    rows = (
+        population["leg_rows"] if claim_scope == "bucket"
+        else population["rows"]
+    )
     axis = population["band_axis"]
     claim_vintages = population["claim_vintages"]
     excluded_axis = population["excluded_other_band_axis"]
@@ -899,6 +1008,11 @@ def fit_lambda_table(
     payload = {
         "schema": "effective_edge_lambda_table_v1",
         "stage_scope": stage_scope,
+        # What a row was.  On the payload as well as the column because the
+        # payload is what a reader gets back from the journal, and a table of
+        # per-rung numbers that cannot say so reads exactly like a table of
+        # per-seat ones.
+        "claim_scope": claim_scope,
         "stages": list(stages),
         "bands": [
             {"upper_bound": None if b == float("inf") else b, "lambda": lam}
@@ -919,6 +1033,7 @@ def fit_lambda_table(
         "table": payload,
         "band_filter": band_filter,
         "stage_scope": stage_scope,
+        "claim_scope": claim_scope,
         # Charter 110: which band vintage this fit is for, and how much of
         # the sample the partition left out.  Displayed rather than
         # swallowed -- a fit that quietly halved its own evidence looks
@@ -964,6 +1079,7 @@ def admitted_return(
     floor_day: str,
     *,
     include_replayed: bool = False,
+    claim_scope: str = "window",
 ) -> dict[str, Any]:
     """What a table admits, and what that admission set is worth.
 
@@ -994,9 +1110,17 @@ def admitted_return(
     # against claim-axis claims the day a stage moved axis -- an input it
     # will never see again.  See ``_candidate_population``.
     try:
-        rows = _candidate_population(
+        population = _candidate_population(
             conn, stages, floor_day, include_replayed=include_replayed
-        )["rows"]
+        )
+        # A bucket table admits RUNGS, so the counterfactual it is scored on
+        # has to be one share of each rung it admits.  Scoring it on windows
+        # would ask what a per-rung table would have bought if it were used
+        # per window, which is not a question anyone is proposing.
+        rows = (
+            population["leg_rows"] if claim_scope == "bucket"
+            else population["rows"]
+        )
     except sqlite3.Error:
         return {"available": False, "windows": 0}
     cost = payout = 0.0
@@ -1084,6 +1208,13 @@ def persist_and_activate(
     """
 
     ensure_schema(conn)
+    # Which lane this fit belongs to.  Absent on a fit built before
+    # the scope existed, which is a window fit and says so.
+    claim_scope = str(fit.get("claim_scope") or "window")
+    if claim_scope not in CLAIM_SCOPES:
+        raise ValueError(
+            f"effective_edge_claim_scope_invalid:{claim_scope}"
+        )
     now = datetime.now(UTC).isoformat(timespec="seconds")
     sha = str(fit["content_sha256"])
     scope = str(fit.get("stage_scope") or "P0")
@@ -1092,20 +1223,21 @@ def persist_and_activate(
     candidate_bands = [
         (float(bound), float(lam)) for bound, lam in fit["bands"]
     ]
-    incumbent_bands = _incumbent_bands(conn, scope)
+    incumbent_bands = _incumbent_bands(conn, scope, claim_scope)
     # Judge both tables on the population the fit was drawn from, or the
     # guard re-runs the axis mismatch this ruling removed.
     scored_on_replay = bool(fit.get("include_replayed"))
     proposed = admitted_return(
         conn, candidate_bands, stages, floor_day,
-        include_replayed=scored_on_replay,
+        include_replayed=scored_on_replay, claim_scope=claim_scope,
     )
     standing = admitted_return(
         conn, incumbent_bands, stages, floor_day,
-        include_replayed=scored_on_replay,
+        include_replayed=scored_on_replay, claim_scope=claim_scope,
     )
     guard = {
         "mode": ACTIVATION_RETURN_GUARD,
+        "claim_scope": claim_scope,
         "scored_on_replayed_population": scored_on_replay,
         "proposed": proposed,
         "incumbent": standing,
@@ -1150,8 +1282,13 @@ def persist_and_activate(
         # P0's.
         conn.execute(
             "UPDATE calibration_effective_edge_lambda SET activated=0"
-            " WHERE activated=1 AND stage_scope=?",
-            (scope,),
+            " WHERE activated=1 AND stage_scope=?"
+            # Within this claim scope only: a bucket table taking its seat
+            # must not stand the window table down, and the reverse.  They
+            # are two tables serving two different questions and one of them
+            # is the shipped lane.
+            " AND COALESCE(claim_scope,'window')=?",
+            (scope, claim_scope),
         )
         # Close the outgoing table's serving interval and open this one's.
         #
@@ -1189,8 +1326,9 @@ def persist_and_activate(
     conn.execute(
         "INSERT INTO calibration_effective_edge_lambda("
         " lambda_table_sha256, bands_json, evidence_json, fitted_at_utc,"
-        " window_days, seat_count, activated, activated_at_utc, stage_scope)"
-        " VALUES(?,?,?,?,?,?,?,?,?)"
+        " window_days, seat_count, activated, activated_at_utc, stage_scope,"
+        " claim_scope)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?)"
         " ON CONFLICT(lambda_table_sha256) DO UPDATE SET"
         "  activated=excluded.activated,"
         "  activated_at_utc=excluded.activated_at_utc,"
@@ -1208,6 +1346,7 @@ def persist_and_activate(
             0 if blocked else 1,
             None if blocked else now,
             scope,
+            claim_scope,
         ),
     )
     conn.execute(
@@ -1249,10 +1388,23 @@ def persist_and_activate(
 # reviewable edit to that constant, informed by exactly the evidence this
 # module journals -- the same shape as the station exclusion list, where the
 # machine computes candidates and a person promotes them.
+def _has_claim_scope_column(conn: sqlite3.Connection) -> bool:
+    try:
+        return any(
+            str(row[1]) == "claim_scope"
+            for row in conn.execute(
+                "PRAGMA table_info(calibration_effective_edge_lambda)"
+            )
+        )
+    except sqlite3.Error:
+        return False
+
+
 def load_active_lambda(
     conn: sqlite3.Connection,
     *,
     stage_scope: str = "P0",
+    claim_scope: str = "window",
 ) -> tuple[tuple[float, float], ...] | None:
     """The served table, or None when nothing has been fitted yet.
 
@@ -1265,8 +1417,21 @@ def load_active_lambda(
         row = conn.execute(
             "SELECT bands_json FROM calibration_effective_edge_lambda"
             " WHERE activated=1 AND stage_scope=?"
-            " ORDER BY fitted_at_utc DESC LIMIT 1",
-            (str(stage_scope),),
+            # A database whose migration has not run has no column and one
+            # meaning: every row in it is a window fit.  ``COALESCE`` on a
+            # missing column is a syntax error, so the clause is added only
+            # when the column is there -- and a bucket read on such a
+            # database correctly finds nothing rather than a window table
+            # wearing the wrong scope.
+            + (
+                " AND COALESCE(claim_scope,'window')=?"
+                if _has_claim_scope_column(conn) else
+                ("" if claim_scope == "window" else " AND 0")
+            )
+            + " ORDER BY fitted_at_utc DESC LIMIT 1",
+            (str(stage_scope), *(
+                (str(claim_scope),) if _has_claim_scope_column(conn) else ()
+            )),
         ).fetchone()
     except sqlite3.Error:
         return None
@@ -1593,6 +1758,7 @@ def load_lambda_as_of(
     *,
     stage_scope: str = "P0",
     as_of_utc: str | None = None,
+    claim_scope: str = "window",
 ) -> tuple[tuple[float, float], ...] | None:
     """The table this scope was serving at ``as_of_utc``; the active one when
     None.
@@ -1610,7 +1776,9 @@ def load_lambda_as_of(
     """
 
     if as_of_utc is None:
-        return load_active_lambda(conn, stage_scope=stage_scope)
+        return load_active_lambda(
+            conn, stage_scope=stage_scope, claim_scope=claim_scope
+        )
     try:
         row = conn.execute(
             "SELECT t.bands_json"
@@ -1618,8 +1786,23 @@ def load_lambda_as_of(
             " JOIN calibration_effective_edge_lambda t"
             "   ON t.lambda_table_sha256 = j.lambda_table_sha256"
             " WHERE j.stage_scope=? AND j.fitted_at_utc<=?"
-            " ORDER BY j.fitted_at_utc DESC, j.fit_id DESC LIMIT 1",
-            (str(stage_scope), str(as_of_utc)),
+            # The journal predates the second scope, so a row without the
+            # column is a window fit; a bucket read on such a database finds
+            # nothing rather than a window table wearing the wrong scope.
+            + (
+                " AND COALESCE(t.claim_scope,'window')=?"
+                if _has_claim_scope_column(conn) else
+                ("" if claim_scope == "window" else " AND 0")
+            )
+            + " ORDER BY j.fitted_at_utc DESC, j.fit_id DESC LIMIT 1",
+            (
+                str(stage_scope),
+                str(as_of_utc),
+                *(
+                    (str(claim_scope),)
+                    if _has_claim_scope_column(conn) else ()
+                ),
+            ),
         ).fetchone()
     except sqlite3.Error:
         return None
@@ -1654,7 +1837,16 @@ def load_effective_edge_tables(
     bootstrap and nothing more.
     """
 
-    return {
+    tables: dict[str, tuple[tuple[float, float], ...] | None] = {
         scope: load_lambda_as_of(conn, stage_scope=scope, as_of_utc=as_of_utc)
         for scope in EFFECTIVE_EDGE_SCOPES_SERVED
     }
+    # The bucket lane, under a key no stage can collide with.  One table
+    # across P0 and P0-M, because that is what the kernel's dispatch reads
+    # and no per-stage bucket fit has ever existed; None until its first
+    # activation, which is the kernel constant in the dispatch exactly as a
+    # stage without a window fit is.
+    tables[BUCKET_TABLE_KEY] = load_lambda_as_of(
+        conn, stage_scope="P0", as_of_utc=as_of_utc, claim_scope="bucket"
+    )
+    return tables

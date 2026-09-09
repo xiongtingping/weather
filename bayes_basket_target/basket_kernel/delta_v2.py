@@ -1758,13 +1758,42 @@ EFFECTIVE_EDGE_P1_STAGES = frozenset({"P1"})
 # staked 917 against window's 800 and returned +263 against +355, ROI
 # +28.7% against +44.4%, and no single station's excision flips the
 # order.  Window stays the rule; this table is the research arm.
+# The open top band, split (2026-09-09).  Charter 96 split the WINDOW table
+# here at 0.95/1.00/1.10 because an open band above 0.85 is internally
+# heterogeneous in exactly the way that makes its average unusable as a
+# threshold: lambda tracks ``a`` almost one for one inside it, so a pooled
+# value admits the slice where ``lambda - a`` has already gone negative.  The
+# bucket table was left un-split and its pooled value is 1.38 -- the only
+# band in it above one, and therefore the only one that INFLATES a claim.
+#
+# Measured 2026-09-09 on the 2026-08-28..09-08 replay, running the bucket arm
+# against the shipped window arm: it opened 33 station-days the window scope
+# refused, and those 33 returned -19.77% while the 57 it refused in exchange
+# returned +5.69%.  68.1% of the rungs in the newly-opened losers sit in this
+# top band, against 50.4% in the ones it turned down.  The whole -59.44 USDC
+# of the arm is that swap; on the 112 seats both books take it is a wash and
+# slightly favours the arm.
+#
+# Splitting moves nothing on its own -- ``_project_onto_partition`` gives
+# every new band the stored value of the old band that contained it, so all
+# four of these read 1.38 until each fits itself from its own legs.  What it
+# buys is that they CAN: an open band cannot be told apart from its own tail.
 EFFECTIVE_EDGE_BUCKET_LAMBDA = (
     (0.50, 0.22),
     (0.70, 0.43),
     (0.85, 0.80),
+    (0.95, 1.38),
+    (1.00, 1.38),
+    (1.10, 1.38),
     (float("inf"), 1.38),
 )
 EFFECTIVE_EDGE_SCOPES = ("window", "bucket")
+# Where the bucket lane's fitted table travels in the served-tables
+# mapping.  Not a stage, so a reader iterating stages cannot pick it up
+# by accident; here in the kernel because both the store that writes it
+# and the runtime that reads it must name the same string, and the
+# runtime must not import the store.
+BUCKET_TABLE_KEY = "bucket"
 
 
 def effective_edge_lambda(
@@ -1935,6 +1964,7 @@ def effective_edge_bucket_lambda_for_stage(
     agreement: float,
     *,
     p1_table: Sequence[tuple[float, float]] | None = None,
+    bucket_table: Sequence[tuple[float, float]] | None = None,
 ) -> float:
     """The per-leg realized fraction, for the bucket-scope arm of charter 68.
 
@@ -1948,7 +1978,17 @@ def effective_edge_bucket_lambda_for_stage(
     # The bucket arm's table was fitted on P0 and P0-M pooled and is a
     # research arm; both keep reading it until a per-stage bucket fit exists.
     if name in EFFECTIVE_EDGE_STAGES or name in EFFECTIVE_EDGE_P0M_STAGES:
-        return effective_edge_lambda(agreement, EFFECTIVE_EDGE_BUCKET_LAMBDA)
+        # The store's fitted table when one has been activated, the kernel
+        # constant before that -- the same relationship the window path has
+        # had since charter 68(c).  Until 2026-09-09 there was no bucket lane
+        # at all, so this read a constant hand-set on 2026-09-03 while the
+        # window path read a nightly refit, and the two arms were never
+        # comparable in the way "same rule, different scope" implies.
+        return effective_edge_lambda(
+            agreement,
+            tuple(bucket_table) if bucket_table
+            else EFFECTIVE_EDGE_BUCKET_LAMBDA,
+        )
     if name in EFFECTIVE_EDGE_P1_STAGES:
         return effective_edge_lambda(
             agreement, tuple(p1_table) if p1_table else EFFECTIVE_EDGE_P1_LAMBDA

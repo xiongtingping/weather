@@ -76,6 +76,7 @@ from .basket_kernel.delta_v2 import (
     SUPPORT_SCENARIO_FLOOR_RULE_VERSION,
     support_scenario_floor_v1,
     whole_basket_edge_delta_v1,
+    BUCKET_TABLE_KEY,
     MARGINAL_COVERAGE_RULE_VERSION,
     marginal_coverage_reading_v1,
     ROBUST_CLAIM_RULE_VERSION,
@@ -2779,6 +2780,22 @@ def _support_windows(
                 # only adds shares -- the last of which the criterion is
                 # silent about, and which was 29 of 33 settled top-ups.
                 "marginal_coverage": coverage,
+                # Per-rung claim and all-in cost, for the bucket-scope
+                # lambda fit (2026-09-09).  The window row already carries
+                # the settled bucket downstream, so exploding this map is
+                # the whole evidence a per-leg fit needs and it costs one
+                # column rather than a second table and a second sweep.
+                # Raw claim, matching ``win_probability`` beside it: the
+                # deflations are what the fit is measuring, so a row that
+                # arrived pre-deflated could only measure itself.
+                "leg_claim_cost": {
+                    str(bucket): [
+                        float(probabilities.get(bucket, 0.0) or 0.0),
+                        float(quote),
+                    ]
+                    for bucket, quote in zip(window, quotes)
+                    if quote is not None
+                },
                 "raw_win_probability": raw_win,
                 "off_center_claim_factor": claim_factor,
                 # Charter 81's own component of the line above, kept apart so
@@ -3625,6 +3642,13 @@ def _solve_over_support_windows(
                     factor *= effective_edge_bucket_lambda_for_stage(
                         stage,
                         float(leg_row.ask_price) * (1.0 + fee) / claimed_leg,
+                        # The store's bucket fit as of this decision, when one
+                        # has been activated; None falls to the kernel
+                        # constant, which is what every day before the lane
+                        # existed reads.
+                        bucket_table=(effective_edge_tables or {}).get(
+                            BUCKET_TABLE_KEY
+                        ),
                     )
                 bucket_factors[str(bucket)] = factor
         # Charter 68: the same deflation machinery, carrying a second and

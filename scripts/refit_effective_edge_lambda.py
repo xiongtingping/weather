@@ -131,14 +131,26 @@ def main() -> int:
         # other.
         receipts = []
         blind = False
-        for scope in ("P0", "P0-M", "P1"):
+        # Three window scopes and one bucket scope (2026-09-09).  The bucket
+        # lane is a single table across P0 and P0-M -- what the kernel's
+        # per-rung dispatch reads -- and it is the ONLY lane whose numbers
+        # were never fitted: until today it served four constants hand-set on
+        # 2026-09-03 while these three refit nightly.  It journals and
+        # activates on its own row, so it can neither retire nor be retired
+        # by a window table.
+        for scope, claim_scope in (
+            ("P0", "window"), ("P0-M", "window"), ("P1", "window"),
+            ("P0", "bucket"),
+        ):
             fit = fit_lambda_table(
                 conn, window_days=args.window_days, stage_scope=scope,
+                claim_scope=claim_scope,
                 include_replayed=args.include_replayed,
             )
             receipt = {
                 "schema": "effective_edge_refit_v2",
                 "stage_scope": scope,
+                "claim_scope": claim_scope,
                 "content_sha256": fit["content_sha256"],
                 "seat_count": fit["seat_count"],
                 "evidence": fit["evidence"],
@@ -151,7 +163,7 @@ def main() -> int:
                 receipt["committed"] = True
             # The market-move axis rides the same fit, in shadow: journaled
             # next to the served table, read by nobody who sizes a seat.
-            if DQ_SHADOW_MODE != "off":
+            if DQ_SHADOW_MODE != "off" and claim_scope == "window":
                 shadow = fit_lambda_table_dq_shadow(
                     conn, window_days=args.window_days, stage_scope=scope
                 )

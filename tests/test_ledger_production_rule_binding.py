@@ -835,13 +835,35 @@ def test_charter_68_scope_and_the_taker_leg_veto_move_together() -> None:
         K.EFFECTIVE_EDGE_P1_LAMBDA,
     ):
         assert tuple(b for b, _ in _table) == K.EFFECTIVE_EDGE_BAND_BOUNDS
+    # The bucket table's open top band, split 2026-09-09 the way charter 96
+    # split the window table's, and for the reason that ruling gave: an open
+    # band above 0.85 is heterogeneous in exactly the way that makes its
+    # average unusable as a threshold, and this one pools to 1.38 -- the only
+    # band in the table above one, so the only one that inflates a claim.
+    # Measured the same day, running the bucket arm against the shipped one:
+    # 68.1% of the rungs in the 33 station-days it wrongly opened sat in this
+    # band, against 50.4% in the 57 profitable ones it refused in exchange.
+    #
+    # Splitting alone moves nothing -- every new band inherits 1.38, which is
+    # what ``_project_onto_partition`` does with a stored table on the day a
+    # boundary is added -- and the bounds now match the window table's, which
+    # is what lets the two be compared band for band.
     assert K.EFFECTIVE_EDGE_BUCKET_LAMBDA == (
         (0.50, 0.22),
         (0.70, 0.43),
         (0.85, 0.80),
+        (0.95, 1.38),
+        (1.00, 1.38),
+        (1.10, 1.38),
         (float("inf"), 1.38),
     )
     assert K.effective_edge_bucket_lambda_for_stage("P0", 1.27) == 1.38
+    # And the dispatch prefers a fitted table over the constant, which is the
+    # whole point of the lane added the same day: this arm read a hand-set
+    # 2026-09-03 constant while the window arm read a nightly refit.
+    assert K.effective_edge_bucket_lambda_for_stage(
+        "P0", 1.27, bucket_table=((0.5, 0.10), (float("inf"), 0.90))
+    ) == 0.90
     assert K.effective_edge_bucket_lambda_for_stage("P1", 1.27) == 1.0
 
 

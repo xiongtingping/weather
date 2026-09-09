@@ -401,8 +401,17 @@ def test_as_of_reads_the_journal_so_a_reactivated_sha_keeps_its_history() -> Non
     assert [l for _, l in as_of("2026-09-04T00:00:00")] == [0.5, 0.6, 0.7, 0.8]
     assert [l for _, l in as_of("2026-09-06T00:00:00")] == [0.1, 0.2, 0.3, 0.4]
     # The mapping the dispatch reads, per scope; P1 has no fit here.
+    #
+    # Four keys since 2026-09-09, and the fourth is deliberately not a stage:
+    # the bucket lane fits one table across P0 and P0-M -- what the kernel's
+    # own per-rung dispatch reads -- so it travels beside the per-stage window
+    # tables rather than inside them.  A reader iterating stages cannot pick
+    # it up by accident, and one that wants it has to name it.
     tables = store.load_effective_edge_tables(conn, as_of_utc="2026-09-04T00:00:00")
-    assert set(tables) == {"P0", "P0-M", "P1"}
+    assert set(tables) == {"P0", "P0-M", "P1", store.BUCKET_TABLE_KEY}
+    # No bucket fit in this fixture, so the dispatch falls to the kernel
+    # constant exactly as a stage without a window fit does.
+    assert tables[store.BUCKET_TABLE_KEY] is None
     assert tables["P1"] is None and tables["P0-M"] is None
 
 

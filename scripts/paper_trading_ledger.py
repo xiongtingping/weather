@@ -3011,6 +3011,12 @@ CREATE TABLE IF NOT EXISTS paper_trade_candidate_window (
   -- "written before the column existed", which is not the current vintage
   -- and is excluded exactly as a NULL band_axis is.
   claim_transform_sha256 TEXT,
+  -- Per-rung claim and all-in cost at this decision, as
+  -- {bucket: [claim, cost]}.  The bucket-scope lambda fit explodes
+  -- this into legs and dedupes on (scope, decision, bucket); the
+  -- settled bucket is already on the row, so a per-leg fit needs
+  -- no second table and no second scoring sweep.
+  leg_claim_cost_json TEXT,
   -- The agreement the gate itself computed, when it computed one.  Not the
   -- fit's input -- price over claim above is -- but the cheapest possible
   -- check that the two agree.
@@ -3231,6 +3237,7 @@ def ensure_schema(conn: sqlite3.Connection) -> bool:
     }
     for _name in (
         "band_axis", "band_table_sha256", "claim_transform_sha256",
+        "leg_claim_cost_json",
     ):
         if _name not in _candidate_cols:
             conn.execute(
@@ -10713,6 +10720,17 @@ def backfill(
                                 ) <= 0.0
                                 else CLAIM_TRANSFORM_SHA256_OFF_CENTRE
                             ),
+                            # Per-rung claim and cost, for the bucket-scope
+                            # fit.  Absent on a runtime that predates the
+                            # field, which the fit reads as "no legs here"
+                            # rather than as zero legs priced at zero.
+                            (
+                                json.dumps(
+                                    row["leg_claim_cost"],
+                                    sort_keys=True, ensure_ascii=False,
+                                )
+                                if row.get("leg_claim_cost") else None
+                            ),
                         ))
             # The chain is done adding.  One position, one settlement: the
             # truth lands once, and scoring each stage against it separately
@@ -10889,8 +10907,9 @@ def backfill(
             " buckets_json, window_size, win_probability,"
             " raw_win_probability, all_in_price, gate_agreement,"
             " admissible, seated, selection_rule_sha256,"
-            " band_axis, band_table_sha256, claim_transform_sha256"
-            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            " band_axis, band_table_sha256, claim_transform_sha256,"
+            " leg_claim_cost_json"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT(station_id, event_date, stage, decision_at_utc,"
             "             buckets_json) DO UPDATE SET"
             "  win_probability=excluded.win_probability,"
@@ -10902,7 +10921,8 @@ def backfill(
             "  selection_rule_sha256=excluded.selection_rule_sha256,"
             "  band_axis=excluded.band_axis,"
             "  band_table_sha256=excluded.band_table_sha256,"
-            "  claim_transform_sha256=excluded.claim_transform_sha256",
+            "  claim_transform_sha256=excluded.claim_transform_sha256,"
+            "  leg_claim_cost_json=excluded.leg_claim_cost_json",
             pending_candidates,
         )
     if pending_settlements:
