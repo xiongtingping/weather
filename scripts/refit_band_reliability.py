@@ -30,6 +30,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.band_reliability_store import (  # noqa: E402
+    BAND_STAGES,
     MIN_QUALIFYING_DAYS,
     refit_all_stages,
 )
@@ -50,6 +51,21 @@ def main() -> int:
             " defaulting."
         ),
     )
+    parser.add_argument(
+        "--stage-axis",
+        action="append",
+        default=[],
+        metavar="STAGE=AXIS",
+        help=(
+            "move ONE stage's axis, e.g. --stage-axis P1=centre_distance."
+            "  The evidence for the move is per stage -- on 2026-09-09 P1"
+            " cleared all five distance cells on the forward window while"
+            " P0-M tied at two either way -- so a global --axis would have"
+            " moved P0-M on P1's evidence.  Repeatable; unlisted stages keep"
+            " the axis they serve.  Takes precedence over --axis for the"
+            " stages it names."
+        ),
+    )
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument("--bootstrap-samples", type=int, default=1000)
     parser.add_argument(
@@ -63,6 +79,19 @@ def main() -> int:
         help="also print one plain-language SUMMARY line per stage",
     )
     args = parser.parse_args()
+    axis: "str | dict[str, str] | None" = args.axis
+    if args.stage_axis:
+        per_stage = {} if args.axis is None else {
+            stage: args.axis for stage in BAND_STAGES
+        }
+        for item in args.stage_axis:
+            stage, _, value = str(item).partition("=")
+            if stage not in BAND_STAGES or value not in (
+                "claim", "centre_distance"
+            ):
+                parser.error(f"bad --stage-axis {item!r}")
+            per_stage[stage] = value
+        axis = per_stage
     database = args.db.expanduser().resolve(strict=True)
     if args.commit:
         conn = sqlite3.connect(str(database), timeout=60.0)
@@ -75,7 +104,7 @@ def main() -> int:
         conn,
         bootstrap_samples=args.bootstrap_samples,
         commit=args.commit,
-        axis=args.axis,
+        axis=axis,
     )
     activated = [
         stage

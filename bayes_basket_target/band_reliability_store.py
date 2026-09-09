@@ -1130,7 +1130,7 @@ def refit_all_stages(
     *,
     bootstrap_samples: int = 1000,
     commit: bool = False,
-    axis: str | None = None,
+    axis: str | Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Fit every stage, journal every fit, activate when committing.
 
@@ -1140,8 +1140,17 @@ def refit_all_stages(
     sweep -- charter 105's switch landed at 2026-09-08T00:44Z and this sweep
     runs every 24 hours, so it had about seven hours to live.  The axis is a
     property of the table, and moving it is a decision somebody makes on
-    purpose; an explicit ``axis`` here is that decision, applied to every
-    stage.
+    purpose; an explicit ``axis`` here is that decision.
+
+    That decision is PER STAGE, because the evidence for it is.  Measured
+    2026-09-09 on the live store, fitting each stage on both axes: P1 puts
+    all five distance cells through the forward window on a monotone curve
+    (1.089, 1.056, 0.960, 0.876, 0.672) where the claim axis leaves seven of
+    eleven at identity and one refused forward, while P0-M ties at two live
+    cells either way on the thinnest sample of the three.  A single global
+    axis would have made moving P1 mean moving P0-M on no evidence.  Pass a
+    mapping (``{"P1": "centre_distance"}``) to move one; a bare string still
+    means every stage, and an unlisted stage keeps the axis it serves.
 
     The stages are isolated from one another.  They share nothing but the
     connection: three distributions, three tables, three journal rows, and
@@ -1163,8 +1172,12 @@ def refit_all_stages(
         entry: dict[str, Any] = {"stage": stage}
         results[stage] = entry
         try:
+            if isinstance(axis, Mapping):
+                requested = axis.get(stage)
+            else:
+                requested = axis
             stage_axis = (
-                str(axis) if axis is not None
+                str(requested) if requested is not None
                 else band_table_axis(conn, stage=stage)
             )
             entry["axis"] = stage_axis

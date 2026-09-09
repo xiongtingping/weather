@@ -138,8 +138,15 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] band_shadow refit (shadow, unserved)"
 #
 # Never fatal: a replay that cannot run leaves the fit on served rows, which
 # is exactly where it was before this lane existed.
+#
+# ``--stage all``, not P0.  This call was hard-coded to P0 because P0 was the
+# only stage on the distance axis, and the day P1 moved (2026-09-09) that
+# implicit coupling would have left P1's lambda reading claim-axis rows for
+# a distance-axis table -- the same silence P0 spent two days in.  A
+# claim-axis stage is a no-op inside the script, so 'all' costs nothing and
+# stops the sweep from needing an edit the next time a stage moves.
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] candidate window replay on the current band"
-"$PY" scripts/replay_candidate_windows_on_current_band.py \
+"$PY" scripts/replay_candidate_windows_on_current_band.py --stage all \
   --commit --as-of "$(date -u +%Y-%m-%dT%H:%M:%SZ)" || {
   echo "candidate window replay: skipped, fit falls back to served rows" >&2
 }

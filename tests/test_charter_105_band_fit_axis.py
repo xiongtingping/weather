@@ -437,3 +437,83 @@ def test_the_journal_files_a_fit_under_the_sha_the_served_table_carries():
         " WHERE fit_id=?",
         (fit_id_default,),
     ).fetchone()[0] == receipt["band_table_sha256"]
+
+
+def test_the_axis_decision_is_per_stage_because_the_evidence_is():
+    """Moving one stage's axis must not move another's.
+
+    Fitting each stage on both axes on 2026-09-09 gave three different
+    answers: P1 put all five distance cells through the forward window on a
+    monotone curve where its claim axis left seven of eleven at identity,
+    P0 was already there, and P0-M tied at two live cells either way on the
+    thinnest sample of the three.  A single global ``axis`` would have made
+    "move P1" mean "move P0-M on P1's evidence", which is the decision
+    charter 105 says a person makes on purpose.
+    """
+
+    from bayes_basket_target.band_reliability_store import refit_all_stages
+
+    conn = sqlite3.connect(":memory:")
+    ensure_band_table_schema(conn)
+    for stage in ("P0", "P0-M", "P1"):
+        persist_and_activate_band_table(
+            conn, stage=stage,
+            factors=[(cell, 1.0) for cell in BAND_TABLE_CELLS],
+            evidence={"schema": "test"}, serving_day_count=1,
+        )
+    report = refit_all_stages(
+        conn, bootstrap_samples=1, commit=False,
+        axis={"P1": BAND_AXIS_CENTRE_DISTANCE},
+    )
+    assert report["P1"]["axis"] == BAND_AXIS_CENTRE_DISTANCE
+    # The two the caller did not name keep the axis they SERVE, rather than
+    # falling back to the shipped one -- the default that would have quietly
+    # reverted P0 on the next nightly sweep.
+    assert report["P0"]["axis"] == BAND_AXIS_CLAIM
+    assert report["P0-M"]["axis"] == BAND_AXIS_CLAIM
+    persist_and_activate_band_table(
+        conn, stage="P0",
+        factors=[(cell, 1.0) for cell in BAND_DISTANCE_CELLS],
+        evidence={"schema": "test"}, serving_day_count=1,
+        axis=BAND_AXIS_CENTRE_DISTANCE,
+    )
+    unnamed = refit_all_stages(
+        conn, bootstrap_samples=1, commit=False,
+        axis={"P1": BAND_AXIS_CENTRE_DISTANCE},
+    )
+    assert unnamed["P0"]["axis"] == BAND_AXIS_CENTRE_DISTANCE
+    # A bare string still means every stage: the old contract is intact.
+    everywhere = refit_all_stages(
+        conn, bootstrap_samples=1, commit=False,
+        axis=BAND_AXIS_CENTRE_DISTANCE,
+    )
+    assert {e["axis"] for e in everywhere.values()} == {
+        BAND_AXIS_CENTRE_DISTANCE
+    }
+
+
+def test_the_replay_lane_is_not_coupled_to_whichever_stage_moved_first():
+    """The sweep replays every stage, not the one that happened to move.
+
+    The call was hard-coded to P0 for as long as P0 was the only stage on
+    the distance axis.  When P1 moved on 2026-09-09 that coupling would have
+    left P1's lambda fitted on claim-axis rows under a distance-axis table --
+    the same silence P0 spent 2026-09-07..09 in, arrived at from the other
+    direction.  A claim-axis stage is a no-op in the script, so 'all' costs
+    nothing and removes the coupling instead of re-pointing it.
+    """
+
+    sweep = (ROOT / "scripts" / "calibration_refit_sweep.sh").read_text()
+    assert "replay_candidate_windows_on_current_band.py --stage all" in sweep
+
+    replay = (
+        ROOT / "scripts" / "replay_candidate_windows_on_current_band.py"
+    ).read_text()
+    # Every stage the store admits is reachable, so a stage that moves later
+    # needs no edit here either.
+    assert 'if str(args.stage) == "all":' in replay
+    for stage in ("P0", "P0-M", "P1"):
+        assert f'"{stage}"' in replay
+    # A claim-axis stage returns 0 rather than replaying: the served rows
+    # already carry the axis, so replaying them would file a second copy.
+    assert 'axis != "centre_distance"' in replay

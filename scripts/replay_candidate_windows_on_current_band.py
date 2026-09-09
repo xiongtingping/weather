@@ -128,7 +128,18 @@ def _pre_band_vector(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
-    parser.add_argument("--stage", default="P0")
+    parser.add_argument(
+        "--stage",
+        default="P0",
+        help=(
+            "stage to replay, or 'all' for every stage.  'all' is what the"
+            " sweep passes: a claim-axis stage is a no-op here (its served"
+            " rows already carry the axis), so the sweep does not have to be"
+            " edited again the next time a stage moves -- which is exactly"
+            " what was missed when P1 moved on 2026-09-09 and this call was"
+            " still hard-coded to P0 alone."
+        ),
+    )
     parser.add_argument("--commit", action="store_true")
     parser.add_argument("--as-of", default=None, help="stamp; required to commit")
     args = parser.parse_args()
@@ -142,18 +153,38 @@ def main() -> int:
         else sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=180.0)
     )
     conn.execute("PRAGMA busy_timeout=180000")
-    stage = str(args.stage)
+    if str(args.stage) == "all":
+        reports = []
+        worst = 0
+        for stage in ("P0", "P0-M", "P1"):
+            code = replay_stage(conn, stage=stage, args=args, reports=reports)
+            worst = max(worst, code)
+        print(json.dumps({"stage": "all", "stages": reports}, indent=1))
+        conn.close()
+        return worst
+    code = replay_stage(conn, stage=str(args.stage), args=args, reports=None)
+    conn.close()
+    return code
+
+
+def replay_stage(conn, *, stage: str, args, reports: list | None) -> int:
+    def emit(payload: dict) -> None:
+        if reports is None:
+            print(json.dumps(payload, sort_keys=True))
+        else:
+            reports.append(payload)
+
     loaded = load_band_table(conn, stage=stage)
     if loaded is None:
-        print(json.dumps({"stage": stage, "error": "no_activated_band_table"}))
+        emit({"stage": stage, "error": "no_activated_band_table"})
         return 1
     factors, band_sha = loaded
     axis = band_table_axis(conn, stage=stage)
     if axis != "centre_distance":
-        print(json.dumps({
+        emit({
             "stage": stage, "axis": axis,
             "note": "claim-axis table: the served rows already carry it",
-        }))
+        })
         return 0
 
     rows = conn.execute(
@@ -245,12 +276,11 @@ def main() -> int:
             pending,
         )
         conn.commit()
-    print(json.dumps({
+    emit({
         "schema": "candidate_window_band_replay_v1",
         "stage": stage, "band_axis": axis, "band_table_sha256": band_sha,
         "committed": bool(args.commit), **counted,
-    }, indent=1))
-    conn.close()
+    })
     return 0
 
 
