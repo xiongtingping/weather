@@ -170,6 +170,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     # window and sizes it in one pass, and the tilt floor it spends under.
     _solve_over_support_windows,
     CHARTER_121_POST_LIFT_RERANK,
+    EFFECTIVE_EDGE_SCOPE as _PRODUCTION_EDGE_SCOPE,
     CHARTER_123_POST_LIFT_EDGE,
     CHARTER_124_ROBUST_CLAIM,
     ROBUST_CLAIM_DIVERGENCE_BUDGET_NATS,
@@ -2132,6 +2133,23 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     **(
         {"effective_edge_scope": EFFECTIVE_EDGE_SCOPE}
         if EFFECTIVE_EDGE_SCOPE != "window" else {}
+    ),
+    # The same arm on the OTHER side of the fence, and the reason it needs
+    # its own key.  Charter 68's scope is two constants with two environment
+    # names -- ``DELTA_V2_EFFECTIVE_EDGE_SCOPE`` in the runtime and
+    # ``PAPER_LEDGER_EFFECTIVE_EDGE_SCOPE`` here -- and the runtime's comment
+    # says "the ledger carries the same switch and the two must move
+    # together" while nothing made them.  Under the default production judge
+    # it is the RUNTIME's constant that deflates the seat, so setting only
+    # that one changed every book and moved no digest; setting only this one
+    # moved the digest and left the production judge deflating by window.
+    # Both directions produce an arm that cannot be told from the baseline,
+    # which is the defect this file already carries a scar from (charter 72,
+    # 2026-09-09).  Hashing what actually decides makes the mismatch visible
+    # instead of silent.
+    **(
+        {"production_effective_edge_scope": _PRODUCTION_EDGE_SCOPE}
+        if _PRODUCTION_EDGE_SCOPE != "window" else {}
     ),
     **({"leg_veto": LEG_VETO} if LEG_VETO != "off" else {}),
     # The judge and the top-up shape are the book's identity now, not arms:
