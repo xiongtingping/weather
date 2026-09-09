@@ -299,6 +299,24 @@ DEFAULT_ISSUANCE_CADENCE_SEC = 6.0 * 3600.0
 # bulletin is written and filed a few minutes before it is fetchable, and a
 # poll that arrives exactly on the boundary usually gets the previous one.
 ISSUANCE_DUE_LEAD_SEC = 5.0 * 60.0
+# The one failure that means "not yet", rather than "not working".
+#
+# ``awc_taf_peak_window_features_missing`` says the bulletin we can fetch does
+# not reach that event day's local warming window.  For a day two out that is
+# ordinary and temporary: TAFs span 24 to 30 hours, and the bulletin that will
+# reach it has not been written.  Retrying before the station issues again
+# cannot succeed, and the served ledger stamps a failed slot exactly like a
+# successful one, so the scope returns on the next lap and fails again.
+#
+# Measured 2026-09-09 14:48Z: six of a twelve-scope round, every one a D+2
+# scope -- KDAL, EDDM, LIMC, LTAC, MMMX, MPMG, all for 09-11 -- half the lap
+# spent on bulletins that did not exist.  A static horizon cannot fix it: 20%
+# of all successful captures came from more than 30 hours out and the furthest
+# was 38.5, so whether a far scope is fetchable depends on when the current
+# bulletin was issued, not on how far away the day is.  The failure itself is
+# the only reliable evidence, and it is worth exactly one issuance cycle.
+WINDOW_MISSING_REASON = "awc_taf_peak_window_features_missing"
+MAX_WINDOW_MISSING_LEDGER_SCOPES = MAX_CATALOG_SCOPES * 2
 
 
 def station_issuance_cadence_sec(
@@ -417,6 +435,57 @@ def issuance_is_due(
     )
     due_at = issued + timedelta(seconds=cadence - ISSUANCE_DUE_LEAD_SEC)
     return as_of >= due_at
+
+
+def _window_missing_at_by_scope_key(
+    previous: Mapping[str, Any] | None,
+) -> dict[str, str]:
+    value = (previous or {}).get("window_missing_at_by_scope_key")
+    if not isinstance(value, Mapping):
+        return {}
+    return {
+        str(key): str(stamp)
+        for key, stamp in value.items()
+        if str(key) and str(stamp)
+    }
+
+
+def window_missing_backoff_keys(
+    catalog: Sequence[Mapping[str, Any]],
+    *,
+    window_missing_at: Mapping[str, str],
+    issuance_cadence_sec: Mapping[str, float],
+    as_of_utc: str | None,
+) -> set[str]:
+    """Scopes whose bulletin cannot have been written since they last said so."""
+
+    if not as_of_utc or not window_missing_at:
+        return set()
+    try:
+        as_of = datetime.fromisoformat(str(as_of_utc).replace("Z", "+00:00"))
+    except ValueError:
+        return set()
+    if as_of.tzinfo is None:
+        return set()
+    holding: set[str] = set()
+    for scope in catalog:
+        key = scope_key(scope)
+        stamp = window_missing_at.get(key)
+        if not stamp:
+            continue
+        try:
+            failed_at = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if failed_at.tzinfo is None:
+            continue
+        station = str(scope.get("station_id") or "").strip().upper()
+        cadence = float(
+            issuance_cadence_sec.get(station, DEFAULT_ISSUANCE_CADENCE_SEC)
+        )
+        if as_of < failed_at + timedelta(seconds=cadence):
+            holding.add(key)
+    return holding
 
 
 def _finite_or_none(value: float) -> float | None:
@@ -667,6 +736,23 @@ def select_scopes(
     catalog_sha = content_sha256(keys)
     if not keys:
         return [], 0, catalog_sha
+    # A scope that said "the bulletin does not reach that day yet" keeps its
+    # place in the queue and gives up its turn until its station issues again.
+    # It is held back rather than dropped: the served ledger is untouched, so
+    # it returns at the front once the hold expires, and if holding back would
+    # empty the round the hold is ignored -- a lane that fetches nothing
+    # learns nothing.
+    holding = window_missing_backoff_keys(
+        catalog,
+        window_missing_at=_window_missing_at_by_scope_key(previous),
+        issuance_cadence_sec=issuance_cadence_sec or {},
+        as_of_utc=as_of_utc,
+    )
+    if holding and len(holding) < len(keys):
+        catalog = [
+            scope for scope in catalog if scope_key(scope) not in holding
+        ]
+        keys = [scope_key(scope) for scope in catalog]
     if limit < 1 or limit > MAX_SELECTED_SCOPES:
         raise ContractError("taf_rotation_selection_limit_invalid")
     served = _served_sequence_by_scope_key(previous)
@@ -828,6 +914,24 @@ def build_rotation_state(
                 key=lambda item: (-item[1], item[0]),
             )[:MAX_SERVED_LEDGER_SCOPES]
         )
+    # When each scope last reported that the bulletin does not reach its day.
+    # Carried across rounds, because the fact it records outlives the round
+    # that learned it; cleared the moment the scope captures, because that is
+    # the bulletin having arrived.
+    window_missing = dict(_window_missing_at_by_scope_key(previous))
+    for row in outcome_rows:
+        if WINDOW_MISSING_REASON in row["reason"]:
+            window_missing[row["scope_key"]] = str(updated_at_utc)
+        elif row["state"] == "captured":
+            window_missing.pop(row["scope_key"], None)
+    if len(window_missing) > MAX_WINDOW_MISSING_LEDGER_SCOPES:
+        window_missing = dict(
+            sorted(
+                window_missing.items(),
+                key=lambda item: (item[1], item[0]),
+                reverse=True,
+            )[:MAX_WINDOW_MISSING_LEDGER_SCOPES]
+        )
     identity = {
         "schema": SCHEMA,
         "generation": int((previous or {}).get("generation") or 0) + 1,
@@ -837,6 +941,7 @@ def build_rotation_state(
         "catalog_scope_count": len(catalog),
         "cursor": int(next_cursor),
         "served_sequence_by_scope_key": served,
+        "window_missing_at_by_scope_key": window_missing,
         "latest_selected_scope_keys": selected_keys,
         # Charter 85 (b): which priority class each selected scope came in
         # under -- telemetry, so a lap can be read as "held / d1 TX / general".
@@ -892,5 +997,7 @@ __all__ = [
     "station_issuance_cadence_sec",
     "latest_issued_at_by_scope",
     "issuance_is_due",
+    "window_missing_backoff_keys",
+    "WINDOW_MISSING_REASON",
     "STALE_CONFIRMATION_SLOTS_PER_LAP",
 ]

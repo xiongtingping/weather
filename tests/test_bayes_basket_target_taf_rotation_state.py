@@ -1,6 +1,8 @@
 from bayes_basket_target.taf_rotation_state import (
     PRIORITY_D1_TX,
     PRIORITY_DUE_ISSUANCE,
+    WINDOW_MISSING_REASON,
+    window_missing_backoff_keys,
     issuance_is_due,
     latest_issued_at_by_scope,
     station_issuance_cadence_sec,
@@ -714,3 +716,118 @@ def test_issue_time_is_read_not_receipt_time() -> None:
     assert latest_issued_at_by_scope(conn) == {
         "KMIA|2026-09-09": "2026-09-08T17:20:00Z"
     }
+
+
+# --------------------------------------------- the bulletin is not written yet
+# ``awc_taf_peak_window_features_missing`` says the bulletin we can fetch does
+# not reach that event day's warming window.  For a day two out that is
+# ordinary and temporary, and retrying before the station issues again cannot
+# succeed -- but a failed slot is stamped exactly like a captured one, so the
+# scope comes back on the next lap and fails again.  Measured 2026-09-09
+# 14:48Z: six of a twelve-scope round, every one a D+2 scope for 09-11.
+
+
+def _outcome(scope, state, reason=""):
+    return {"scope_key": scope_key(scope), "state": state, "reason": reason}
+
+
+def test_a_scope_whose_bulletin_is_not_written_yet_gives_up_its_turn() -> None:
+    far = _scope("KDAL", "2026-09-11", "America/Chicago")
+    near = _scope("KLGA", "2026-09-09", "America/New_York")
+    state = build_rotation_state(
+        catalog=[far, near], selected=[far], next_cursor=1,
+        catalog_sha256="x" * 64,
+        outcomes=[_outcome(far, "failed_isolated",
+                           "ContractError:" + WINDOW_MISSING_REASON)],
+        previous=None, updated_at_utc="2026-09-09T15:00:00Z",
+    )
+    assert state["window_missing_at_by_scope_key"] == {
+        scope_key(far): "2026-09-09T15:00:00Z"
+    }
+    selected, _, _ = select_scopes(
+        [far, near], previous=state, limit=2,
+        as_of_utc="2026-09-09T16:00:00Z",
+        issuance_cadence_sec={"KDAL": 6.0 * 3600.0},
+    )
+    assert [s["station_id"] for s in selected] == ["KLGA"], (
+        "an hour into a six-hour cycle the bulletin still cannot exist"
+    )
+
+
+def test_the_hold_expires_after_one_issuance_cycle() -> None:
+    far = _scope("KDAL", "2026-09-11", "America/Chicago")
+    state = build_rotation_state(
+        catalog=[far], selected=[far], next_cursor=1, catalog_sha256="x" * 64,
+        outcomes=[_outcome(far, "failed_isolated",
+                           "ContractError:" + WINDOW_MISSING_REASON)],
+        previous=None, updated_at_utc="2026-09-09T15:00:00Z",
+    )
+    held = window_missing_backoff_keys(
+        [far], window_missing_at=state["window_missing_at_by_scope_key"],
+        issuance_cadence_sec={"KDAL": 6.0 * 3600.0},
+        as_of_utc="2026-09-09T20:00:00Z",
+    )
+    assert held == {scope_key(far)}, "five hours in, still nothing to fetch"
+    released = window_missing_backoff_keys(
+        [far], window_missing_at=state["window_missing_at_by_scope_key"],
+        issuance_cadence_sec={"KDAL": 6.0 * 3600.0},
+        as_of_utc="2026-09-09T21:30:00Z",
+    )
+    assert released == set(), "one cycle on, the station has issued again"
+
+
+def test_a_capture_clears_the_hold_immediately() -> None:
+    """The bulletin arrived; nothing is being waited for."""
+
+    far = _scope("KDAL", "2026-09-11", "America/Chicago")
+    first = build_rotation_state(
+        catalog=[far], selected=[far], next_cursor=1, catalog_sha256="x" * 64,
+        outcomes=[_outcome(far, "failed_isolated",
+                           "ContractError:" + WINDOW_MISSING_REASON)],
+        previous=None, updated_at_utc="2026-09-09T15:00:00Z",
+    )
+    second = build_rotation_state(
+        catalog=[far], selected=[far], next_cursor=1, catalog_sha256="x" * 64,
+        outcomes=[_outcome(far, "captured")],
+        previous=first, updated_at_utc="2026-09-09T21:30:00Z",
+    )
+    assert second["window_missing_at_by_scope_key"] == {}
+
+
+def test_holding_back_never_empties_the_round() -> None:
+    """A lane that fetches nothing learns nothing.
+
+    If every catalogued scope is inside its hold the hold is ignored, so the
+    rotation keeps making the one kind of progress that can end it.
+    """
+
+    far = [_scope(f"K0{i}", "2026-09-11", "America/Chicago") for i in range(2)]
+    state = build_rotation_state(
+        catalog=far, selected=far, next_cursor=1, catalog_sha256="x" * 64,
+        outcomes=[_outcome(s, "failed_isolated",
+                           "ContractError:" + WINDOW_MISSING_REASON) for s in far],
+        previous=None, updated_at_utc="2026-09-09T15:00:00Z",
+    )
+    selected, _, _ = select_scopes(
+        far, previous=state, limit=2, as_of_utc="2026-09-09T16:00:00Z",
+        issuance_cadence_sec={f"K0{i}": 6.0 * 3600.0 for i in range(2)},
+    )
+    assert len(selected) == 2, selected
+
+
+def test_another_failure_is_not_a_hold() -> None:
+    """Only "not yet" earns a wait; "not working" keeps its turn.
+
+    EGLC has answered awc_taf_history_row_missing on every attempt for days,
+    and that is a scope to keep asking, not one to stand down.
+    """
+
+    broken = _scope("EGLC", "2026-09-09", "Europe/London")
+    state = build_rotation_state(
+        catalog=[broken], selected=[broken], next_cursor=1,
+        catalog_sha256="x" * 64,
+        outcomes=[_outcome(broken, "failed_isolated",
+                           "ContractError:awc_taf_history_row_missing")],
+        previous=None, updated_at_utc="2026-09-09T15:00:00Z",
+    )
+    assert state["window_missing_at_by_scope_key"] == {}
