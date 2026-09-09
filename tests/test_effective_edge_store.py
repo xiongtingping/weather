@@ -10,6 +10,7 @@ needs to keep measuring.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -199,3 +200,64 @@ def test_the_bootstrap_is_the_fallback_when_nothing_is_fitted(tmp_path) -> None:
     finally:
         conn.close()
     assert effective_edge_lambda(0.3, None) == EFFECTIVE_EDGE_LAMBDA[0][1]
+
+
+def test_the_serving_reading_names_the_number_to_watch() -> None:
+    """The daily line the sweep receipt carries (2026-09-09).
+
+    The activation verdict says whether a challenger won.  This says how the
+    table that is actually serving is doing on today's population, and what
+    that was last time -- because after charter 68's lambda widens, the
+    number that tells you whether the widening was earned is the admitted
+    COUNT beside its return, not the return alone.
+    """
+    import importlib.util
+    import sqlite3
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "refit_ee", root / "scripts" / "refit_effective_edge_lambda.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE calibration_effective_edge_fit_journal("
+        " fit_id INTEGER PRIMARY KEY AUTOINCREMENT, evidence_json TEXT,"
+        " stage_scope TEXT)"
+    )
+    for admitted, roi in ((160, -0.0176), (316, 0.003)):
+        conn.execute(
+            "INSERT INTO calibration_effective_edge_fit_journal("
+            " evidence_json, stage_scope) VALUES(?, 'P0')",
+            (json.dumps({"activation_guard": {"incumbent": {
+                "available": True, "windows": 898,
+                "admitted": admitted, "roi": roi}}}),),
+        )
+    receipt = {
+        "stage_scope": "P0",
+        "committed": True,
+        "activation_guard": {
+            "blocked": False,
+            "bands_unchanged": False,
+            "incumbent": {"available": True, "windows": 898,
+                          "admitted": 316, "roi": 0.003},
+        },
+    }
+    line = module._serving_reading(conn, receipt)
+    assert "admitted 316/898" in line
+    assert "+0.30%" in line
+    assert "last fit 160 at -1.76%" in line
+    assert "NEW TABLE ACTIVATED" in line
+
+    # A refresh of unchanged bands is not a promotion and must not read as one.
+    receipt["activation_guard"]["bands_unchanged"] = True
+    assert "NEW TABLE ACTIVATED" not in module._serving_reading(conn, receipt)
+
+    # A dry run has no verdict, and says so rather than showing an empty one.
+    assert "dry run" in module._serving_reading(
+        conn, {"stage_scope": "P0", "committed": False}
+    )
+    conn.close()

@@ -36,6 +36,67 @@ from bayes_basket_target.effective_edge_store import (  # noqa: E402
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 
 
+def _serving_reading(conn, receipt: dict) -> str:
+    """One line per scope: what the table production serves buys today.
+
+    The activation verdict already says whether a challenger won.  This says
+    something the verdict cannot: how the INCUMBENT -- the table actually
+    serving -- is doing on today's population, and whether that has moved
+    since the last fit.  Charter 68's lambda widens and narrows what the book
+    may buy, so the number to watch after a table changes is the admitted
+    COUNT, not its ROI: a gate that doubles its admissions and holds its
+    return earned the widening; one that doubles them while the return falls
+    simply bought more of the same losing windows.  P0 went from 160 to 316
+    on 2026-09-09, which is what this line exists to follow.
+
+    Read out of the journal, which has carried the guard since it existed, so
+    this adds a line of output and no new state.
+    """
+
+    scope = str(receipt.get("stage_scope") or "")
+    guard = receipt.get("activation_guard") or {}
+    now = guard.get("incumbent") or {}
+    if not guard:
+        # The guard is part of the commit path, so a dry run has no verdict
+        # and no reading.  Said plainly rather than shown as an empty one.
+        return f"  {scope:5s} serving reading: dry run, guard not evaluated"
+    if not now.get("available"):
+        return f"  {scope:5s} serving reading: no scored population"
+    prev = None
+    try:
+        row = conn.execute(
+            "SELECT evidence_json FROM calibration_effective_edge_fit_journal"
+            " WHERE stage_scope=? ORDER BY fit_id DESC LIMIT 1 OFFSET 1",
+            (scope,),
+        ).fetchone()
+        if row:
+            prev = ((json.loads(row[0]) or {}).get("activation_guard")
+                    or {}).get("incumbent")
+    except Exception:  # noqa: BLE001 -- a missing history is not an error
+        prev = None
+    windows = int(now.get("windows") or 0)
+    admitted = int(now.get("admitted") or 0)
+    share = (admitted / windows * 100.0) if windows else 0.0
+    line = (f"  {scope:5s} serving reading: admitted {admitted}/{windows}"
+            f" ({share:.1f}%)  roi {float(now.get('roi') or 0.0) * 100:+.2f}%")
+    if prev and prev.get("available"):
+        pa = int(prev.get("admitted") or 0)
+        pr = float(prev.get("roi") or 0.0) * 100
+        line += f"  |  last fit {pa} at {pr:+.2f}%"
+        if pa and admitted >= 2 * pa:
+            line += "  <-- admissions doubled, watch the return"
+    if (
+        receipt.get("committed")
+        and not guard.get("blocked")
+        and not guard.get("bands_unchanged")
+    ):
+        # An unchanged table activates too -- that is a refresh of the
+        # evidence, not a promotion, and calling it one would train the eye
+        # to skip the word on the day it means something.
+        line += "  |  NEW TABLE ACTIVATED"
+    return line
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
@@ -106,6 +167,9 @@ def main() -> int:
                     receipt["dq_shadow"]["committed"] = True
             receipts.append(receipt)
             blind = blind or bool(fit["blind_bands"])
+        # The daily line a person actually reads, ahead of the JSON.
+        for receipt in receipts:
+            print(_serving_reading(conn, receipt))
         print(json.dumps(receipts, ensure_ascii=False, indent=1))
         # A blind band is the one condition a human has to see: the number
         # governing it is frozen and nothing on the book can refresh it.
