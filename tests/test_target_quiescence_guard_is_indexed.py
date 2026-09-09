@@ -298,3 +298,89 @@ def test_the_truth_increment_probe_seeks_the_day_it_asks_about(
         "basket_target_market_registry_eligible_day_idx" in step
         for step in registry_steps
     ), registry_steps
+
+
+# The ninth instance, 2026-09-09.  Both reads ask one station-day for its
+# newest snapshot; both were answered by sorting every snapshot that
+# station-day has ever had.  Lifted from their call sites rather than
+# retyped, for the reason ``_settle_live_cycles_sql`` is.
+def _sql_literal_at(path: Path, anchor: str) -> str:
+    import re
+
+    body = path.read_text()
+    start = body.index(anchor)
+    match = re.search(
+        r"conn\.execute\(\s*(\"(?:[^\"]|\"\s*\n\s*\")*\")",
+        body[start - 400:start + 1200],
+        re.S,
+    )
+    assert match, f"the statement at {anchor!r} moved; this test has to follow it"
+    return "".join(re.findall(r'"([^"]*)"', match.group(1)))
+
+
+def _newest_snapshot_sql() -> str:
+    return _sql_literal_at(
+        ROOT / "bayes_basket_target" / "market_materialization.py",
+        "SELECT sequence,quote_observed_at,buckets_json",
+    )
+
+
+def _previous_cash_phase_sql() -> str:
+    return _sql_literal_at(
+        ROOT / "bayes_basket_target" / "resident_market_ingress.py",
+        "SELECT cash_phase_input_json FROM basket_official_ws_snapshot",
+    )
+
+
+@pytest.mark.parametrize(
+    "sql_source",
+    [_newest_snapshot_sql, _previous_cash_phase_sql],
+    ids=["insert_market_evidence_bundle", "previous_cash_phase"],
+)
+def test_the_newest_snapshot_reads_seek_instead_of_sorting_the_day(
+    conn: sqlite3.Connection, sql_source
+) -> None:
+    """One row wanted, the whole station-day sorted to get it.
+
+    ``basket_official_ws_snapshot_asof_idx`` seeks (station_id,event_date)
+    but carries ``sequence`` behind ``state`` and ``observed_at``, so
+    ``ORDER BY sequence DESC LIMIT 1`` fell to a temp b-tree over every
+    snapshot that station-day has ever held -- ~440 rows by mid-afternoon,
+    1,637 at its worst, each carrying a ``buckets_json`` blob.  Measured
+    warm against the 38GB production file on 2026-09-09: 428ms and 717ms
+    for the sequence read, 364ms for the cash-phase read, per station, per
+    evidence pass -- and the statement probe caught one mid-flight at
+    6,697ms inside a 1,493-second cycle whose overdue bound is 720.
+
+    The cash-phase read carries a ``rowid DESC`` tiebreak, so its plan may
+    still sort the LAST term of the ORDER BY; that buffers only rows tied
+    on one sequence, not the day.  What must not survive is a temp b-tree
+    for the whole ordering.
+
+    Asserted on the planner's answer, not a clock, for the reason every
+    other test in this file is.
+    """
+
+    steps = _plan(conn, sql_source(), ("KMIA", "2026-09-08"))
+    assert steps, "the planner returned no steps"
+    assert any(
+        "basket_official_ws_snapshot_scope_sequence_idx" in step
+        for step in steps
+    ), steps
+    assert not any(
+        step.strip() == "USE TEMP B-TREE FOR ORDER BY" for step in steps
+    ), steps
+    assert not any(
+        step.startswith("SCAN") and "USING" not in step for step in steps
+    ), steps
+
+
+def test_the_scope_sequence_index_is_declared_in_the_schema(
+    conn: sqlite3.Connection,
+) -> None:
+    """A fresh deployment must not be slow until someone measures it."""
+
+    assert conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
+        ("basket_official_ws_snapshot_scope_sequence_idx",),
+    ).fetchone() is not None

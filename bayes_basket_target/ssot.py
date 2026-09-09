@@ -1509,6 +1509,28 @@ ON basket_official_ws_snapshot(station_id,event_date,state,observed_at,sequence)
 CREATE INDEX IF NOT EXISTS basket_official_ws_snapshot_day_expiry_idx
 ON basket_official_ws_snapshot(event_date,quote_expires_at);
 
+-- And the two reads that ask a station-day for its newest row.  Both lead
+-- on (station_id,event_date), which the as-of index does seek -- but that
+-- index carries ``sequence`` behind ``state`` and ``observed_at``, so
+-- ``ORDER BY sequence DESC LIMIT 1`` cannot be answered from it and the
+-- planner sorted the whole group to keep one row.  The group is every
+-- snapshot ever written for that station-day, ~440 rows by mid-afternoon
+-- and 1,637 at its worst, each carrying a ``buckets_json`` blob: measured
+-- warm against production 2026-09-09, 428ms and 717ms for the sequence
+-- read and 364ms for the cash-phase read, per station, per pass.  The
+-- statement probe caught the first of them mid-flight at 6,697ms.
+--
+-- Called once per station by ``insert_market_evidence_bundle`` and once by
+-- the cash-phase ingress, so a 16-station evidence pass pays it 32 times
+-- and the cycle pays it once per pass: eight passes in the 1,493-second
+-- cycle of 2026-09-09T00:45Z, whose overdue bound is 720.  Leading on the
+-- sequence makes it a seek to the first index entry.
+--
+-- Ninth of the bug class this file's tests exist for; the plan is asserted
+-- in ``test_target_quiescence_guard_is_indexed``.
+CREATE INDEX IF NOT EXISTS basket_official_ws_snapshot_scope_sequence_idx
+ON basket_official_ws_snapshot(station_id,event_date,sequence DESC);
+
 -- The calibration and weight tables are read the same way on the same path,
 -- and were scanned the same way.  The member archive is the expensive one:
 -- 818k rows, read per station-day, 1,170ms a scope -- one station cost more
@@ -6412,7 +6434,17 @@ def _upgrade_quote_freshness_columns(
     row_count = int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
     conn.execute("DROP TRIGGER IF EXISTS basket_official_ws_snapshot_no_update")
     conn.execute("DROP TRIGGER IF EXISTS basket_official_ws_snapshot_no_delete")
-    conn.execute("DROP INDEX IF EXISTS basket_official_ws_snapshot_asof_idx")
+    # Every index on the table, not only the first one it ever had.  A
+    # RENAME carries indexes to the archive under their own names, so one
+    # left behind makes the ``CREATE INDEX IF NOT EXISTS`` in the DDL below
+    # fail on a name that exists -- on the archive.  ``day_expiry_idx`` was
+    # already in that position when it was added.
+    for _index in (
+        "basket_official_ws_snapshot_asof_idx",
+        "basket_official_ws_snapshot_day_expiry_idx",
+        "basket_official_ws_snapshot_scope_sequence_idx",
+    ):
+        conn.execute(f"DROP INDEX IF EXISTS {_index}")
     if row_count:
         conn.execute(f"ALTER TABLE {table} RENAME TO {archive}")
         state = "retired_populated_legacy"
@@ -6452,7 +6484,11 @@ def _upgrade_settlement_timezone_columns(
         },
         "basket_official_ws_snapshot": {
             "archive": "basket_official_ws_snapshot_legacy_no_settlement_timezone_v1",
-            "indexes": ("basket_official_ws_snapshot_asof_idx",),
+            "indexes": (
+                "basket_official_ws_snapshot_asof_idx",
+                "basket_official_ws_snapshot_day_expiry_idx",
+                "basket_official_ws_snapshot_scope_sequence_idx",
+            ),
             "triggers": (
                 "basket_official_ws_snapshot_no_update",
                 "basket_official_ws_snapshot_no_delete",
