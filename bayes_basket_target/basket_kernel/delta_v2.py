@@ -2753,6 +2753,88 @@ def floor_first_edge_weights_v1(
     bedded = sum(share[b] for b in window)
     return weights if tilted + EPS >= bedded else equal
 
+MARGINAL_COVERAGE_RULE_VERSION = "marginal_coverage_reading_v1"
+
+
+def marginal_coverage_reading_v1(
+    *,
+    claim_by_bucket: Mapping[str, Any],
+    cost_by_bucket: Mapping[str, Any],
+    window: Sequence[str],
+    held_buckets: Sequence[str] = (),
+) -> dict[str, Any]:
+    """What a window claims per unit of cost, and what widening it adds.
+
+    Audit only.  Nothing reads this back; it exists so the question "did the
+    coverage this decision added pay for the cost it added" is answerable
+    from a row instead of from a join written by hand.
+
+    An equal-share basket settling one share a rung pays 1 inside its window
+    against an all-in cost ``K``, so its return per share is ``h/K - 1`` and
+    adding rungs raises it exactly while ``dh/dK > h/K``.  Both ratios are
+    reported; the comparison is deliberately NOT turned into a verdict the
+    caller can act on, because acting on it was measured to lose money
+    (2026-09-09, 118 opening seats: building the window outward under this
+    rule takes -10.34% to -19.12% on the served claim, -12.65% on the
+    per-rung lambda-deflated one).
+
+    ``kind`` is the part worth having.  The criterion speaks only about
+    adding BUCKETS: scaling an equal-share basket by n leaves ``h/K``
+    identically unchanged, so a top-up that only adds shares to rungs the
+    seat already covers has no marginal ratio at all and the rule is silent
+    about it.  Measured on the same book, 29 of 33 settled top-ups were
+    exactly that -- which is invisible unless the two are recorded apart.
+    """
+
+    seat = tuple(_text("delta_v2_coverage_bucket", b) for b in window)
+    if len(set(seat)) != len(seat):
+        raise ContractError("delta_v2_coverage_bucket_duplicate")
+    held = {_text("delta_v2_coverage_held_bucket", b) for b in held_buckets}
+
+    def ratio(scope: Sequence[str]) -> tuple[float, float, float | None]:
+        claim = sum(
+            float(claim_by_bucket.get(bucket, 0.0) or 0.0) for bucket in scope
+        )
+        cost = sum(
+            float(cost_by_bucket.get(bucket, 0.0) or 0.0) for bucket in scope
+        )
+        return claim, cost, (claim / cost if cost > EPS else None)
+
+    claim, cost, window_ratio = ratio(seat)
+    added = tuple(bucket for bucket in seat if bucket not in held)
+    held_in_window = tuple(bucket for bucket in seat if bucket in held)
+    _, _, held_ratio = ratio(held_in_window)
+    added_claim, added_cost, added_ratio = ratio(added)
+
+    if not held:
+        kind = "open"
+    elif added:
+        kind = "widen"
+    else:
+        kind = "shares_only"
+
+    pays: bool | None = None
+    if kind == "widen" and added_ratio is not None and held_ratio is not None:
+        pays = added_ratio > held_ratio
+
+    return {
+        "rule": MARGINAL_COVERAGE_RULE_VERSION,
+        "kind": kind,
+        "window_claim": claim,
+        "window_cost": cost,
+        "claim_cost_ratio": window_ratio,
+        "held_claim_cost_ratio": held_ratio,
+        "added_buckets": list(added),
+        "added_claim": added_claim,
+        "added_cost": added_cost,
+        "marginal_claim_cost_ratio": added_ratio,
+        # ``None`` on an opening (nothing to widen from) and on a shares-only
+        # top-up (the criterion has nothing to say), which a reader must be
+        # able to tell apart from "it was judged and refused".
+        "marginal_pays_its_way": pays,
+    }
+
+
 ROBUST_CLAIM_RULE_VERSION = "kl_ball_worst_case_window_claim_v1"
 
 
@@ -3122,7 +3204,10 @@ OFF_CENTER_CLAIM_RAMP_BUCKETS = float(
 
 
 def off_center_claim_factor(
-    claimed_mass: float, *, gap_buckets: float = 1.0
+    claimed_mass: float,
+    *,
+    gap_buckets: float = 1.0,
+    bands: "Sequence[tuple[float, float]] | None" = None,
 ) -> float:
     """Deflation for a window that does not contain the model centre.
 
@@ -3133,8 +3218,13 @@ def off_center_claim_factor(
     """
 
     mass = float(claimed_mass)
-    full = OFF_CENTER_CLAIM_BANDS[-1][1]
-    for bound, factor in OFF_CENTER_CLAIM_BANDS:
+    # ``bands`` is the DB-resident table for the stage's current band axis
+    # (``off_centre_claim_store``); the constant is the bootstrap a stage
+    # serves before one has been fitted on the axis it serves today.  The
+    # kernel stays pure: the caller reads the store, this only applies it.
+    table = tuple(bands) if bands else OFF_CENTER_CLAIM_BANDS
+    full = table[-1][1]
+    for bound, factor in table:
         if mass < bound:
             full = factor
             break
@@ -3284,7 +3374,12 @@ CONVERGENCE_CLAIM_RULE_VERSION = "convergence_claim_v1"
 CLAIM_TRANSFORM_RULE_VERSION = "claim_transform_v2"
 
 
-def window_claim_factor(raw_win: float, *, center_gap: float) -> float:
+def window_claim_factor(
+    raw_win: float,
+    *,
+    center_gap: float,
+    off_centre_bands: "Sequence[tuple[float, float]] | None" = None,
+) -> float:
     """The claim multiplier a window earns from its position alone.
 
     The off-centre deflation with charter 81's centre lift on top, in that
@@ -3299,7 +3394,9 @@ def window_claim_factor(raw_win: float, *, center_gap: float) -> float:
     function has no business holding.
     """
 
-    factor = off_center_claim_factor(float(raw_win), gap_buckets=center_gap)
+    factor = off_center_claim_factor(
+        float(raw_win), gap_buckets=center_gap, bands=off_centre_bands
+    )
     if float(center_gap) <= 0.0:
         factor *= center_window_claim_factor(float(raw_win))
     return factor

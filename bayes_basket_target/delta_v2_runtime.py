@@ -72,6 +72,8 @@ from .basket_kernel.delta_v2 import (
     SUPPORT_SCENARIO_FLOOR_RULE_VERSION,
     support_scenario_floor_v1,
     whole_basket_edge_delta_v1,
+    MARGINAL_COVERAGE_RULE_VERSION,
+    marginal_coverage_reading_v1,
     ROBUST_CLAIM_RULE_VERSION,
     robust_window_claim_v1,
     CANDIDATE_KIND_BASELINE,
@@ -1720,6 +1722,7 @@ def _support_windows(
     probability_stage: str = "",
     convergence_evidence: Mapping[str, Any] | None = None,
     effective_edge_tables: Mapping[str, Any] | None = None,
+    off_centre_claim_bands: Mapping[str, Any] | None = None,
     symmetric_seat_bands: Mapping[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Contiguous windows admissible as a support, ranked by belief divergence.
@@ -2240,7 +2243,12 @@ def _support_windows(
             )
             # One implementation, read here and by the band-axis replay:
             # the off-centre deflation with charter 81's centre lift on top.
-            claim_factor = window_claim_factor(raw_win, center_gap=center_gap)
+            claim_factor = window_claim_factor(
+                raw_win, center_gap=center_gap,
+                off_centre_bands=(off_centre_claim_bands or {}).get(
+                    str(probability_stage or "")
+                ),
+            )
             center_lift = 1.0
             if holds_center:
                 # Research arm (2026-09-05): the centre-holding mirror of
@@ -2250,6 +2258,27 @@ def _support_windows(
             quotes = [_all_in(bucket) for bucket in window]
             priced = all(quote is not None for quote in quotes)
             price = sum(quote for quote in quotes if quote is not None)
+            # Audit only (user ruling, 2026-09-09: "记成审计列，不当闸").  What
+            # this window claims per unit of cost, and -- when the seat
+            # already holds something -- what the rungs it ADDS claim per
+            # unit of what they add.  Priced on the same all-in ask the gate
+            # and the Kelly stake read, and on the raw claim, so the row can
+            # be re-deflated afterwards by whichever lambda a reader wants to
+            # test rather than being frozen at the one served today.
+            coverage = marginal_coverage_reading_v1(
+                claim_by_bucket=probabilities,
+                cost_by_bucket={
+                    bucket: quote
+                    for bucket, quote in zip(window, quotes)
+                    if quote is not None
+                },
+                window=window,
+                held_buckets=[
+                    bucket for bucket in window
+                    if float(by_bucket[bucket].filled_shares)
+                    + float(by_bucket[bucket].pending_shares) > EPS
+                ],
+            ) if priced else None
             # Arm B (2026-09-06): the convergence claim lift.  The state is
             # read off the served mass before any lift and the best-ask sum
             # at both ends; in shadow it is journaled and the factor stays
@@ -2681,6 +2710,12 @@ def _support_windows(
                 "robust_claim": robust_claim,
                 "robust_claim_factor": robust_factor,
                 "robust_edge": robust_edge,
+                # Audit only: h/K, and the marginal Δh/ΔK of what this
+                # window adds over what the seat already holds.  ``kind``
+                # separates an opening from a widening from a top-up that
+                # only adds shares -- the last of which the criterion is
+                # silent about, and which was 29 of 33 settled top-ups.
+                "marginal_coverage": coverage,
                 "raw_win_probability": raw_win,
                 "off_center_claim_factor": claim_factor,
                 # Charter 81's own component of the line above, kept apart so
@@ -3275,6 +3310,7 @@ def _support_windows(
             probability_stage=probability_stage,
             convergence_evidence=convergence_evidence,
             effective_edge_tables=effective_edge_tables,
+            off_centre_claim_bands=off_centre_claim_bands,
             symmetric_seat_bands=symmetric_seat_bands,
         )
         if fallback_windows:
@@ -3403,6 +3439,7 @@ def _solve_over_support_windows(
     last_decision_signature: Mapping[str, Any] | None = None,
     completion_capital_usdc: float | None = None,
     effective_edge_tables: Mapping[str, Any] | None = None,
+    off_centre_claim_bands: Mapping[str, Any] | None = None,
     excluded_candidate_ids: Sequence[str] = (),
 ) -> tuple[tuple[str, ...], dict[str, Any], dict[str, Any]]:
     """Run the objective on each shortlisted window; the head one is seated.
@@ -3898,6 +3935,12 @@ def _solve_over_support_windows(
             ),
             "all_in_price": best["window"]["all_in_price"],
             "edge": best["window"]["edge"],
+            # Audit only.  This projection is a key-by-key whitelist, so a
+            # field added to the window row and not added here is dropped on
+            # the way out -- the same way charter 97's lambda source was, and
+            # for the same reason its retirement condition could never have
+            # accumulated a seat.
+            "marginal_coverage": best["window"].get("marginal_coverage"),
             "curve_score": best["score"],
             "is_incumbent": best["window"]["is_incumbent"],
             # Charter 78: whether the seated window cleared the positive-EV
@@ -5191,6 +5234,7 @@ def compile_delta_v2_runtime_plan(
     last_decision_signature: Mapping[str, Any] | None = None,
     taf_tx_bucket: str | None = None,
     effective_edge_tables: Mapping[str, Any] | None = None,
+    off_centre_claim_bands: Mapping[str, Any] | None = None,
     symmetric_seat_bands: Mapping[str, Any] | None = None,
     convergence_evidence: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -5433,6 +5477,7 @@ def compile_delta_v2_runtime_plan(
         # Charter 87: the gate reads lambda off the same served tables the
         # solver used to read it off, as of the same moment.
         effective_edge_tables=effective_edge_tables,
+        off_centre_claim_bands=off_centre_claim_bands,
         # Charter 122 (五): and the seat band off the table the lane fitted,
         # read the same way.
         symmetric_seat_bands=symmetric_seat_bands,
@@ -5493,6 +5538,7 @@ def compile_delta_v2_runtime_plan(
                 book_equity_usdc=book_equity_usdc,
                 last_decision_signature=last_decision_signature,
                 effective_edge_tables=effective_edge_tables,
+                off_centre_claim_bands=off_centre_claim_bands,
                 # Charter 84 (八): a completion is sized against the capital the
                 # seat was opened with, before the consolidation tilt.
                 completion_capital_usdc=capital_before_tilt_usdc,

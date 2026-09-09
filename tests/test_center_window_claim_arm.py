@@ -50,7 +50,7 @@ def test_the_arm_multiplies_only_centre_holding_windows() -> None:
     import bayes_basket_target.delta_v2_runtime as R
 
     source = inspect.getsource(R._support_windows)
-    at = source.index("claim_factor = window_claim_factor(raw_win, center_gap=center_gap)")
+    at = source.index("claim_factor = window_claim_factor(")
     after = source[at:at + 700]
     assert "if holds_center:" in after
     # Charter 81's factor is still computed on its own line, so the sizing
@@ -67,7 +67,7 @@ def test_the_arm_multiplies_only_centre_holding_windows() -> None:
     import bayes_basket_target.basket_kernel.delta_v2 as K
 
     helper = _inspect.getsource(K.window_claim_factor)
-    assert "off_center_claim_factor(float(raw_win), gap_buckets=center_gap)" in helper
+    assert "gap_buckets=center_gap, bands=off_centre_bands" in helper
     assert "if float(center_gap) <= 0.0:" in helper
     assert "factor *= center_window_claim_factor(float(raw_win))" in helper
     assert K.window_claim_factor(0.45, center_gap=0) == (

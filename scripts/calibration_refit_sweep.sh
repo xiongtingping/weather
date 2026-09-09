@@ -37,6 +37,29 @@ RC=0
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] band_reliability refit"
 "$PY" scripts/refit_band_reliability.py --commit --summary || RC=$?
 
+# The off-centre claim correction, which until 2026-09-09 was a kernel
+# constant fitted by hand twice -- once by code that was never written down
+# (2026-08-14: no script, no n on the off-centre cells, and taken the day
+# before charter 49 removed the population it scored), once on claim-axis
+# samples days after P0 had moved to the distance axis.  A constant only a
+# person can move does not follow the layer underneath it, and that layer
+# refits nightly, right above this line.
+#
+# It rides HERE, between the band refit and the lambda refit, because that
+# is the order the dependency runs in: the band table moves every claim, the
+# off-centre correction is measured on claims, and lambda is keyed on
+# ``price / claim``.  Fitting it before the band table would measure the
+# previous axis; fitting it after lambda would leave lambda keyed on a claim
+# the correction has since moved.
+#
+# Never fatal: a stage with no activated band table, or with too few
+# off-centre windows on the current axis, keeps the value it serves and says
+# so in its receipt.
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] off-centre claim refit"
+"$PY" scripts/refit_off_centre_claim.py --commit \
+  --as-of "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  || echo "off-centre claim refit failed; the served table stands" >&2
+
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] center_width refit"
 # The transition floor for the 2026-08-27 ruling that made posterior_version
 # the evidence boundary and the AST fingerprint a watchdog.  It has to be

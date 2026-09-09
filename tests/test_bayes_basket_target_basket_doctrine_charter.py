@@ -1893,7 +1893,12 @@ def test_off_centre_windows_are_deflated_not_forbidden() -> None:
     # one kernel helper so the band-axis replay computes the same number from
     # the same implementation; the assertion is about which mass it corrects,
     # which is still the window's own raw claim.
-    assert "window_claim_factor(raw_win, center_gap=center_gap)" in source
+    assert "claim_factor = window_claim_factor(" in source
+    # Since 2026-09-09 the off-centre table is DB-resident and refits on the
+    # band axis that serves today (``off_centre_claim_store``); the kernel
+    # constant is the bootstrap.  The call therefore carries the stage's
+    # served table, and the assertion is still about which mass it corrects.
+    assert "off_centre_bands=(off_centre_claim_bands or {}).get(" in source
     # Containment is the zero of that distance, so the two-value rule is the
     # ramp's own default rather than a separate branch.
     assert "center_gap = (" in source
