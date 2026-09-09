@@ -15759,14 +15759,33 @@ class TargetProductionWorker:
             }
         page_results: list[dict[str, Any]] = []
         try:
-            with _writer_transaction(
-                self.commit_conn,
-                savepoint="delta_v2_settlement_labels",
+            # One transaction per page, not one around all eight.  Paging
+            # exists to bound the work; wrapping the loop in a single writer
+            # transaction gave that bound away, because the lock is held for
+            # the sum of the pages rather than for one of them.  Measured
+            # 2026-09-09: this savepoint held the writer for 561.6 seconds in
+            # a single call -- 9.4 minutes of a cycle whose target is 300
+            # seconds, and 59% of every millisecond the writer lock was held
+            # that cycle.  Eight pages now take eight locks and release seven
+            # of them early.
+            #
+            # The failure semantics improve with it.  A page that comes back
+            # ``blocked_fail_closed`` already broke the loop and kept its
+            # predecessors -- that path is unchanged.  What changes is a page
+            # that RAISES: it used to roll back the seven good pages with it
+            # and leave the cursor where the pass began, so the next cycle
+            # redid all of them.  Now the completed pages stand, and because
+            # the cursor advances with each commit rather than after the
+            # loop, the next pass resumes at the first page that did not
+            # land instead of repeating the ones that did.
+            for _page_number in range(
+                MAX_DELTA_V2_LABEL_PAGES_PER_PASS
             ):
-                for _page_number in range(
-                    MAX_DELTA_V2_LABEL_PAGES_PER_PASS
+                assert_process_memory_budget()
+                with _writer_transaction(
+                    self.commit_conn,
+                    savepoint="delta_v2_settlement_labels",
                 ):
-                    assert_process_memory_budget()
                     page = materialize_delta_v2_settled_training_labels(
                         self.commit_conn,
                         as_of_utc=as_of_utc,
@@ -15774,30 +15793,32 @@ class TargetProductionWorker:
                         cursor_state=committed_cursor_state,
                         max_facts=MAX_LABEL_BATCH,
                     )
-                    page_results.append(dict(page))
-                    committed_cursor = int(
-                        page.get("source_cursor_after")
-                        or committed_cursor
-                    )
-                    next_cursor_state = page.get("cursor_state_after")
-                    if isinstance(next_cursor_state, Mapping):
-                        committed_cursor_state = dict(next_cursor_state)
-                    else:
-                        committed_cursor_state = {
-                            "schema": "delta_v2_label_cursor_v2",
-                            "scan_after_rowid": committed_cursor,
-                            "retry_after_rowid": 0,
-                            "next_lane": "retry",
-                        }
-                    if (
-                        page.get("state") == "blocked_fail_closed"
-                        or int(page.get("candidate_count") or 0) == 0
-                        or not bool(page.get("has_more"))
-                    ):
-                        break
-            self._delta_v2_label_fact_cursor = committed_cursor
-            self._delta_v2_label_cursor_state = committed_cursor_state
-            self._delta_v2_label_cursor_initialized = True
+                page_results.append(dict(page))
+                committed_cursor = int(
+                    page.get("source_cursor_after")
+                    or committed_cursor
+                )
+                next_cursor_state = page.get("cursor_state_after")
+                if isinstance(next_cursor_state, Mapping):
+                    committed_cursor_state = dict(next_cursor_state)
+                else:
+                    committed_cursor_state = {
+                        "schema": "delta_v2_label_cursor_v2",
+                        "scan_after_rowid": committed_cursor,
+                        "retry_after_rowid": 0,
+                        "next_lane": "retry",
+                    }
+                # Advanced per committed page, so a later raise cannot cost
+                # the pages that are already durable.
+                self._delta_v2_label_fact_cursor = committed_cursor
+                self._delta_v2_label_cursor_state = committed_cursor_state
+                self._delta_v2_label_cursor_initialized = True
+                if (
+                    page.get("state") == "blocked_fail_closed"
+                    or int(page.get("candidate_count") or 0) == 0
+                    or not bool(page.get("has_more"))
+                ):
+                    break
         except Exception as exc:
             return {
                 "schema": LABEL_BATCH_SCHEMA,
