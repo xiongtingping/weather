@@ -120,16 +120,26 @@ def test_inventory_is_the_initial_condition_not_an_afterthought() -> None:
 
 
 def test_solver_at_effective_bankroll_is_the_curve_score_optimum() -> None:
-    # The generator hands the solver the ranking's effective bankroll W/f and
+    # The generator hands the solver the ranking's own effective bankroll and
     # asks for fraction one, so its first candidate is not an approximation
     # of what curve_score wants -- it is that argmax.  Pin the equivalence on
     # a position with inventory, where the two formulations would otherwise
     # be free to disagree.
+    #
+    # The bankroll comes from ``curve_effective_bankroll_v1`` rather than
+    # being spelled out again here.  Restating it as ``bankroll / f`` -- what
+    # this test did until 2026-09-09 -- survived the correction of that
+    # direction while no longer testing it: the solver kept being handed
+    # ``W/f`` while the score moved to ``W*f``, the two stopped being the
+    # same problem, and the perturbation search below happened not to catch
+    # it.  A test that writes the rule down a second time is a test that can
+    # go quietly stale.
     import random
 
     from bayes_basket_target.basket_kernel.delta_v2 import (
         DEFAULT_KELLY_FRACTION,
         ValueWeightsV2,
+        curve_effective_bankroll_v1,
         curve_score,
         evaluate_basket_value_v2,
     )
@@ -176,7 +186,10 @@ def test_solver_at_effective_bankroll_is_the_curve_score_optimum() -> None:
 
     optimum = solve_fractional_kelly(
         probabilities=probabilities, prices=prices, depth_caps=[cap] * 4,
-        budget_usdc=1e7, bankroll_usdc=bankroll / DEFAULT_KELLY_FRACTION,
+        budget_usdc=1e7,
+        bankroll_usdc=curve_effective_bankroll_v1(
+            bankroll, DEFAULT_KELLY_FRACTION
+        ),
         kelly_fraction=1.0, held_shares=held, sunk_cost_usdc=sunk,
     )
     best = score(optimum)
@@ -298,3 +311,63 @@ def test_the_budget_face_is_split_by_equal_marginal_growth() -> None:
             prices[index] * (reserve + held[index])
         )
         assert pinned <= common * (1.0 + 1e-6)
+
+
+def test_fractional_kelly_enters_as_w_times_f_not_w_over_f() -> None:
+    # The direction, pinned as a number rather than as a comment.  Fractional
+    # Kelly is ``f*q*(W)``, and the log-optimal stake is linear in the
+    # bankroll, so the risk capital is ``W*f``.  Shipped as ``W/f`` this
+    # asked for ``q*(W)/f`` -- four times full Kelly at f=0.25, sixteen times
+    # the intended stake -- and turning f down made it bolder, not safer.
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        DEFAULT_KELLY_FRACTION,
+        curve_effective_bankroll_v1,
+    )
+
+    probabilities = [0.30, 0.20, 0.10]
+    prices = [0.22, 0.15, 0.08]
+    bankroll = 30.0
+    fraction = DEFAULT_KELLY_FRACTION
+
+    def stake(bankroll_usdc: float, kelly_fraction: float) -> float:
+        quantities = solve_fractional_kelly(
+            probabilities=probabilities, prices=prices,
+            depth_caps=[1e9] * 3, budget_usdc=1e9,
+            bankroll_usdc=bankroll_usdc, kelly_fraction=kelly_fraction,
+        )
+        return sum(q * c for q, c in zip(quantities, prices))
+
+    full = stake(bankroll, 1.0)
+    intended = stake(bankroll, fraction)
+    assert intended == pytest.approx(fraction * full, rel=1e-6)
+
+    # What the generator asks for.  The convention is named explicitly on
+    # both sides so this test states the arithmetic rather than whichever
+    # arm happens to be set in the environment -- a direction test that
+    # flips with the dial it is testing proves nothing and goes red on
+    # whoever runs the research arm.
+    served = stake(
+        curve_effective_bankroll_v1(
+            bankroll, fraction, convention="w_times_f"
+        ),
+        1.0,
+    )
+    assert served == pytest.approx(intended, rel=1e-6)
+    assert served == pytest.approx(0.25 * full, rel=1e-6)
+
+    # And what it asked for before the correction: four times full Kelly,
+    # sixteen times the intended bet.
+    shipped = stake(
+        curve_effective_bankroll_v1(
+            bankroll, fraction, convention="w_over_f"
+        ),
+        1.0,
+    )
+    assert shipped == pytest.approx(4.0 * full, rel=1e-6)
+    assert shipped == pytest.approx(16.0 * served, rel=1e-6)
+
+    # Lowering the dial must lower the bet.  Under ``W/f`` it raised it.
+    assert stake(
+        curve_effective_bankroll_v1(bankroll, 0.10, convention="w_times_f"),
+        1.0,
+    ) < served

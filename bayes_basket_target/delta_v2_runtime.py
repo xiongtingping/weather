@@ -26,6 +26,8 @@ from .basket_kernel.contracts import (
 from .basket_kernel import delta_v2 as _kernel_delta_v2
 from .basket_kernel.delta_v2 import (
     CONSOLIDATION_TILT_FLOOR_VERSION,
+    CURVE_BANKROLL_CONVENTION,
+    curve_effective_bankroll_v1,
     LEG_FLOOR_BELIEF_ANCHOR,
     LEG_FLOOR_PRICE_BASIS,
     LEG_FLOOR_RULE_VERSION,
@@ -4822,7 +4824,14 @@ def _continuous_optimum_candidates(
             ))
     sunk_cost_usdc = sum(current_cost.values()) + sum(pending_cost.values())
 
-    effective_bankroll_usdc = float(bankroll_usdc) / DEFAULT_KELLY_FRACTION
+    # The ranking's own risk capital, from the one function that defines it,
+    # so the generator cannot drift from the score that judges it.  This read
+    # ``bankroll / DEFAULT_KELLY_FRACTION`` until 2026-09-09 and therefore
+    # asked the solver for four times full Kelly; see
+    # ``curve_effective_bankroll_v1``.
+    effective_bankroll_usdc = curve_effective_bankroll_v1(
+        float(bankroll_usdc), DEFAULT_KELLY_FRACTION
+    )
     free_budget_usdc = max(0.0, capital_available_usdc - seat_cost_usdc)
 
     results: list[dict[str, Any]] = []

@@ -539,6 +539,74 @@ OBJECTIVE_FORMS = frozenset({
     VALUE_OBJECTIVE_FORM, CURVE_OBJECTIVE_FORM, KELLY_OBJECTIVE_FORM,
 })
 DEFAULT_KELLY_FRACTION = 0.25
+# Which way the Kelly fraction enters the curve's bankroll (2026-09-09).
+#
+# Fractional Kelly is ``f * q*(W)``, and the log-optimal stake is linear in
+# the bankroll, so ``f * q*(W) == q*(f * W)``: the risk capital a fractional
+# bet is shaped against is ``W * f``.  This module shipped ``W / f``, which
+# is the same algebra read backwards -- ``q*(W/f) == q*(W)/f`` -- so at
+# f=0.25 the curve asked for FOUR TIMES full Kelly where a quarter was
+# intended, sixteen times the stake, and turning the dial "down" made the
+# ranking flatter and therefore bolder.  Verified against this package's own
+# solver (three rungs, claims 0.30/0.20/0.10 at 0.22/0.15/0.08, W=30, depth
+# and budget unbound): full Kelly 8.182 USDC, the intended quarter 2.045,
+# what shipped 32.727.
+#
+# Consequences of the correction, both deliberate:
+#
+# * the ruin guard below now bites at ``W * f`` rather than ``W / f``.  A
+#   station-day that has committed more than its own risk capital scores
+#   minus infinity on every candidate INCLUDING the baseline, which is the
+#   wall ``runtime._station_capital_usdc`` was built to keep unreachable --
+#   and it sized that cap against ``W / f``.  Making the wall unreachable
+#   again is a decision about the station cap, not about this function, and
+#   is deliberately NOT taken here.
+# * ``curve_score`` is audit-only on every served path (charter 72 makes the
+#   Kelly law the winner chain, and the seat is the probability-mass
+#   shortlist head, not the curve's argmax), so nothing production decides
+#   moves.  What moves is the recorded score and therefore the solution's
+#   content hash, once.
+#
+# ``w_over_f`` reproduces the shipped arithmetic byte for byte, so the books
+# taken under it stay reproducible.
+CURVE_BANKROLL_CONVENTIONS = ("w_times_f", "w_over_f")
+CURVE_BANKROLL_CONVENTION = (
+    os.environ.get("PM_CURVE_BANKROLL_CONVENTION", "").strip().lower()
+    or "w_times_f"
+)
+if CURVE_BANKROLL_CONVENTION not in CURVE_BANKROLL_CONVENTIONS:
+    raise RuntimeError(
+        f"unknown curve bankroll convention: {CURVE_BANKROLL_CONVENTION}"
+    )
+
+
+def curve_effective_bankroll_v1(
+    bankroll_usdc: float,
+    kelly_fraction: float = DEFAULT_KELLY_FRACTION,
+    *,
+    convention: str | None = None,
+) -> float:
+    """The risk capital the log-wealth curve is shaped against.
+
+    One function so the ranking and the generator that feeds it cannot drift:
+    ``curve_score`` divides the settled PnL by this, and
+    ``_continuous_optimum_candidates`` hands the same number to the solver
+    with fraction one, which is what makes its first candidate the ranking's
+    own argmax rather than an approximation of it.
+    """
+
+    bankroll = float(bankroll_usdc)
+    fraction = float(kelly_fraction)
+    if not (bankroll > 0.0) or not math.isfinite(bankroll):
+        raise ContractError("delta_v2_curve_bankroll_invalid")
+    if not (0.0 < fraction <= 1.0):
+        raise ContractError("delta_v2_curve_kelly_fraction_invalid")
+    mode = convention or CURVE_BANKROLL_CONVENTION
+    if mode not in CURVE_BANKROLL_CONVENTIONS:
+        raise ContractError("delta_v2_curve_bankroll_convention_invalid")
+    return bankroll * fraction if mode == "w_times_f" else bankroll / fraction
+
+
 # How much of the whole book one station-day may put at risk, and how much of
 # that allowance each stage of its chain may reach.
 #
@@ -3458,19 +3526,15 @@ def curve_score(
     cannot hurt the book is never refused for being too good.
 
     ``f`` is the variance dial and the model-error hedge.  Betting a
-    fraction of the log-optimal stake is equivalent to betting the full
-    stake against a larger book, so it enters here as an effective bankroll
-    ``W/f`` -- one number, and the same one whether it sizes a basket or
-    ranks two.
+    fraction of the log-optimal stake is the same problem as betting the
+    full stake against a SMALLER book -- ``f*q*(W) == q*(f*W)`` -- so it
+    enters as the effective bankroll ``W*f``: one number, and the same one
+    whether it sizes a basket or ranks two.  See
+    ``curve_effective_bankroll_v1`` for the direction this had backwards
+    until 2026-09-09 and for what turning it round costs.
     """
 
-    bankroll = float(bankroll_usdc)
-    fraction = float(kelly_fraction)
-    if not (bankroll > 0.0) or not math.isfinite(bankroll):
-        raise ContractError("delta_v2_curve_bankroll_invalid")
-    if not (0.0 < fraction <= 1.0):
-        raise ContractError("delta_v2_curve_kelly_fraction_invalid")
-    effective = bankroll / fraction
+    effective = curve_effective_bankroll_v1(bankroll_usdc, kelly_fraction)
     total = 0.0
     for bucket, pnl in audit["scenario_pnl"].items():
         probability = float(audit["probabilities"][bucket])

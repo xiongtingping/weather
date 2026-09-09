@@ -221,6 +221,7 @@ from bayes_basket_target.basket_kernel.contracts import (  # noqa: E402
     TargetBasketPolicy,
 )
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
+    CURVE_BANKROLL_CONVENTION as _CURVE_BANKROLL_CONVENTION,
     CURVE_OBJECTIVE_FORM as _CURVE_OBJECTIVE_FORM,
     KELLY_OBJECTIVE_FORM as _KELLY_OBJECTIVE_FORM,
     VALUE_OBJECTIVE_FORM as _VALUE_OBJECTIVE_FORM,
@@ -2218,6 +2219,16 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
         CLAIM_EDGE_THIN_BAND_MAX, CLAIM_EDGE_THIN_BAND_LAMBDA
     ),
     "p0_opening_sizing": "kelly",
+    # 2026-09-09: which way the Kelly fraction enters the curve's bankroll.
+    # Hashed only away from the corrected ``w_times_f``, so the standing book
+    # keeps its digest: under charter 72 the curve decides nothing, so the
+    # correction moves recorded scores and not a single seat.  An arm that
+    # reproduces the shipped ``W/f`` arithmetic -- and any curve-form arm run
+    # under it -- must not share a book with one that does not.
+    **(
+        {"curve_bankroll_convention": _CURVE_BANKROLL_CONVENTION}
+        if _CURVE_BANKROLL_CONVENTION != "w_times_f" else {}
+    ),
     "effective_edge_band_bounds": "|".join(
         "%g" % bound for bound in EFFECTIVE_EDGE_BAND_BOUNDS
     ),
