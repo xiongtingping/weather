@@ -1694,3 +1694,32 @@ def test_only_an_equal_basket_reduces_to_p_minus_q() -> None:
     assert flat["net_roi"] == pytest.approx(
         flat["coverage"] / flat["equal_basket"]["all_in_cost"] - 1.0
     )
+
+
+def test_the_return_structure_survives_into_the_training_fact() -> None:
+    """A gate that reads a number nobody records is not auditable.
+
+    The compiled plan carried ``basket_return_structure`` from the day the
+    5% target landed and the training fact recorded nothing, because
+    ``feature_json`` is assembled key by key rather than inherited.  Thirty-
+    four decisions went by on 2026-09-09 before anyone checked, and the
+    commit that shipped it claimed "recorded whether it passed or not".
+
+    Asserted on the assembly, because the shape is a name in a dict literal
+    and nothing else would notice the next one going missing.
+    """
+
+    from pathlib import Path as _Path  # noqa: PLC0415
+
+    root = _Path(__file__).resolve().parents[1]
+    assembly = (
+        root / "bayes_basket_target" / "forward_training_validation.py"
+    ).read_text(encoding="utf-8")
+    runtime = (
+        root / "bayes_basket_target" / "runtime.py"
+    ).read_text(encoding="utf-8")
+
+    # Produced by the compile...
+    assert '"basket_return_structure": basket_return_structure,' in runtime
+    # ...and carried into the fact the fit and the audit read.
+    assert '"basket_return_structure": compiled_plan.get(' in assembly

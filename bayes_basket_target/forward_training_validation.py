@@ -897,6 +897,20 @@ def build_validated_forward_fact_delta_v2(
         "order_sizing_decisions": list(
             compiled_plan.get("order_sizing_decisions") or []
         ),
+        # The odds structure of the basket that would actually go out, on
+        # the final share vector: coverage, net EV, the chance of ending
+        # ahead, and the per-scenario multiple.  Carried whether the 5%
+        # target passed or not -- a refusal that does not say what it read
+        # is not auditable, and the coverage/net-profit gap is the number
+        # this exists to surface.
+        #
+        # Assembled by name here rather than inherited, which is why it had
+        # to be added: the compiled plan carried it from the day the gate
+        # landed and the training fact recorded nothing, so thirty-four
+        # decisions went by with the claim "recorded either way" false.
+        "basket_return_structure": compiled_plan.get(
+            "basket_return_structure"
+        ),
         # This is the same exact execution-vector contract persisted by the
         # atomic ledger.  Forward/OOS evidence must never resurrect the
         # retired posterior/quote/inventory/order version tuple.
