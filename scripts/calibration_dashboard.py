@@ -2645,14 +2645,21 @@ def _live_basket_plan_state(
                 " json_extract(plan_json,"
                 "'$.compiled_plan.plan.skew_reading.threshold_buckets'),"
                 " json_extract(plan_json,"
-                "'$.compiled_plan.plan.skew_reading.sigma_buckets')"
+                "'$.compiled_plan.plan.skew_reading.sigma_buckets'),"
+                " json_extract(plan_json,'$.compiled_plan.plan"
+                ".basket_support_selection.symmetric_seat_width_in_band'),"
+                " json_extract(plan_json,'$.compiled_plan.plan"
+                ".basket_support_selection.symmetric_seat_forced'),"
+                " json_extract(plan_json,'$.compiled_plan.plan"
+                ".basket_support_selection.symmetric_seat_width_band')"
                 " FROM basket_p0_preselection_plan"
                 " WHERE station_id=? AND event_date=?",
                 (station, day),
             ).fetchall()
         except sqlite3.Error:
             continue
-        for plan_sha, center, direction, skew, gap, threshold, sigma in plans:
+        for (plan_sha, center, direction, skew, gap, threshold, sigma,
+             in_band, forced, band_json) in plans:
             targets = by_plan.get(str(plan_sha or ""), ())
             if not targets:
                 continue
@@ -2673,6 +2680,14 @@ def _live_basket_plan_state(
                 # the same bucket steps.  Written from 2026-09-08; older
                 # plans carry no width and the chip says nothing about it.
                 "sigma_buckets": sigma,
+                # Charter 122: whether the day's width let the symmetric
+                # seat rule fire, and whether it actually did.  A reader
+                # seeing only "SYMMETRIC" cannot tell a seat the rule fixed
+                # from one the enumeration chose, and since 2026-09-09 most
+                # symmetric days are the second kind.
+                "seat_width_in_band": in_band,
+                "seat_forced": forced,
+                "seat_width_band": band_json,
             }
             for decision_id in targets:
                 state[decision_id] = reading
@@ -8259,6 +8274,250 @@ function effectiveEdgeLambda(){
     <div class="card"><span class="dot green"></span> 无结算数据。</div>`;
   const num=(v,d)=>v==null?"—":v.toFixed(d==null?2:d);
   const pct=v=>v==null?"—":(v*100).toFixed(0)+"%";
+  const bl=s=>String(s).replace(/</g,"&lt;");
+
+  // ------------------------------------------------------------------
+  // Charter 96, drawn instead of described.  The rule is one inequality --
+  // the gate admits a window when lambda(a) > a -- and lambda is a
+  // staircase, so a band buys exactly the sliver where its own step stands
+  // above the diagonal.  Written out that took a paragraph and still left
+  // the reader unable to say which bands were blind; drawn, a blind band is
+  // one with no green under its step, and the promotion backlog is the
+  // distance from the solid line up to the dotted one.  The three panels
+  // share their scales on purpose: the claim being made is that P0 is an
+  // inverted U and P1 is monotone, and that only reads on common axes.
+  const XMAX=1.25, YMAX=1.30;
+  const curve=sc=>{
+    const W=340,H=204,PL=28,PR=8,PT=20,PB=44;
+    const IW=W-PL-PR, IH=H-PT-PB, BASE=PT+IH;
+    const X=a=>PL+IW*Math.max(0,Math.min(a,XMAX))/XMAX;
+    const Y=l=>PT+IH*(1-Math.max(0,Math.min(l,YMAX))/YMAX);
+    const bands=(sc.bands||[]).filter(b=>b.lower<XMAX);
+    const hiSeats=Math.max(1,...bands.map(b=>b.seats||0));
+    let seatBars="",grid="",stair="",rawline="",green="",ribbon="",hover="";
+    let prevY=null;
+    bands.forEach(b=>{
+      const lo=b.lower, up=(b.upper==null?XMAX:Math.min(b.upper,XMAX));
+      const xa=X(lo), xb=X(up), w=Math.max(1,xb-xa), y=Y(b.served);
+      // Seat mass behind everything, so "this band is blind" can be read
+      // together with "and it is where the book actually sat".
+      const hgt=(b.seats||0)/hiSeats*(IH*0.36);
+      if(hgt>0.5) seatBars+=`<rect x="${(xa+1).toFixed(1)}" y="${(BASE-hgt).toFixed(1)}"
+        width="${Math.max(1,w-2).toFixed(1)}" height="${hgt.toFixed(1)}"
+        fill="var(--bar-bg)" fill-opacity=".75"></rect>`;
+      if(lo>0) grid+=`<line x1="${xa.toFixed(1)}" y1="${PT}" x2="${xa.toFixed(1)}"
+        y2="${BASE}" stroke="var(--line)" stroke-width="1"></line>`;
+      if(prevY!=null) stair+=`<line x1="${xa.toFixed(1)}" y1="${prevY.toFixed(1)}"
+        x2="${xa.toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--accent)"
+        stroke-width="1.4" stroke-opacity=".5"></line>`;
+      stair+=`<line x1="${xa.toFixed(1)}" y1="${y.toFixed(1)}" x2="${xb.toFixed(1)}"
+        y2="${y.toFixed(1)}" stroke="var(--accent)" stroke-width="2.4"></line>`;
+      prevY=y;
+      if(b.raw_lambda!=null){
+        const yr=Y(b.raw_lambda);
+        rawline+=`<line x1="${xa.toFixed(1)}" y1="${yr.toFixed(1)}" x2="${xb.toFixed(1)}"
+          y2="${yr.toFixed(1)}" stroke="var(--violet)" stroke-width="1.5"
+          stroke-dasharray="3 3"></line>`;
+      }
+      ribbon+=`<rect x="${xa.toFixed(1)}" y="${(BASE+8).toFixed(1)}"
+        width="${w.toFixed(1)}" height="5" rx="2" fill="var(--line)"></rect>`;
+      if(b.admits){
+        const e=Math.min(b.admits[1],XMAX), xe=X(e);
+        // The sliver: bounded below by the gate line, above by the step,
+        // left by the band floor, right by the band's own lambda.
+        green+=`<path d="M${xa.toFixed(1)},${Y(lo).toFixed(1)}
+          L${xa.toFixed(1)},${y.toFixed(1)} L${xe.toFixed(1)},${y.toFixed(1)}
+          L${xe.toFixed(1)},${Y(e).toFixed(1)} Z" fill="var(--green)"
+          fill-opacity=".30" stroke="var(--green)" stroke-width="1.2"></path>`;
+        ribbon+=`<rect x="${xa.toFixed(1)}" y="${(BASE+8).toFixed(1)}"
+          width="${Math.max(2,xe-xa).toFixed(1)}" height="5" rx="2"
+          fill="var(--green)"></rect>`;
+      }
+      hover+=`<rect x="${xa.toFixed(1)}" y="${PT}" width="${w.toFixed(1)}"
+        height="${IH}" fill="transparent"><title>${sc.scope} ${bl(b.band)} 档 · ${b.seats} 座
+服务 λ ${num(b.served)}　本账本 raw ${num(b.raw_lambda)}
+${b.admits?"可买 ["+b.admits[0].toFixed(3)+", "+b.admits[1].toFixed(3)+")"
+  :"空窗：λ "+num(b.served)+" ≤ 档下界 "+b.lower.toFixed(2)}</title></rect>`;
+    });
+    const yticks=[0.5,1.0].map(v=>`
+      <line x1="${PL}" y1="${Y(v).toFixed(1)}" x2="${(W-PR).toFixed(1)}"
+        y2="${Y(v).toFixed(1)}" stroke="var(--line)" stroke-width="1"
+        stroke-dasharray="2 4"></line>
+      <text x="${(PL-4).toFixed(1)}" y="${(Y(v)+3.5).toFixed(1)}" text-anchor="end"
+        fill="var(--muted)" font-size="9.5">${v.toFixed(1)}</text>`).join("")
+      +`<text x="2" y="${(PT-8).toFixed(1)}" fill="var(--muted)" font-size="9.5">λ</text>`;
+    const xticks=[0.5,0.7,0.85,1.0].map(v=>`
+      <text x="${X(v).toFixed(1)}" y="${(BASE+27).toFixed(1)}" text-anchor="middle"
+        fill="var(--muted)" font-size="9.5">${v}</text>`).join("")
+      +`<text x="${X(1.175).toFixed(1)}" y="${(BASE+27).toFixed(1)}"
+        text-anchor="middle" fill="var(--muted)" font-size="9.5">≥1.1</text>
+       <text x="${(W-PR).toFixed(1)}" y="${(BASE+39).toFixed(1)}" text-anchor="end"
+        fill="var(--muted)" font-size="9.5">a = 篮子价 / 声称胜率 →</text>`;
+    const diag=`<line x1="${X(0).toFixed(1)}" y1="${Y(0).toFixed(1)}"
+      x2="${X(XMAX).toFixed(1)}" y2="${Y(XMAX).toFixed(1)}" stroke="var(--muted)"
+      stroke-width="1.3" stroke-dasharray="5 4"></line>
+      <text x="${(W-PR).toFixed(1)}" y="${(Y(XMAX)-5).toFixed(1)}"
+        text-anchor="end" fill="var(--muted)" font-size="9.5">闸线 λ=a</text>`;
+    const admitTxt=(sc.bands||[]).filter(b=>b.admits)
+      .map(b=>`[${b.admits[0].toFixed(2)}, ${b.admits[1].toFixed(2)})`)
+      .join(" ∪ ")||"整段空窗";
+    const seatSum=(sc.bands||[]).reduce((a,b)=>a+(b.seats||0),0);
+    const blindSeats=(sc.bands||[]).filter(b=>!b.admits)
+      .reduce((a,b)=>a+(b.seats||0),0);
+    return `<div class="card" style="margin-bottom:0">
+      <div style="display:flex;align-items:baseline;gap:7px;flex-wrap:wrap">
+        <b>${sc.scope}</b>
+        <span class="muted" style="font-size:11.5px">阶段 ${sc.stages.join("/")}
+          · 封顶 ${sc.ceiling.toFixed(2)} · ${seatSum} 座</span></div>
+      <svg viewBox="0 0 ${W} ${H}" width="100%"
+        style="height:auto;display:block;margin-top:2px" role="img"
+        aria-label="${sc.scope} 的 λ 阶梯与闸线 λ=a，绿色是可买窗口">
+        ${seatBars}${grid}${yticks}${green}${diag}${rawline}${stair}
+        <line x1="${PL}" y1="${BASE}" x2="${(W-PR).toFixed(1)}" y2="${BASE}"
+          stroke="var(--line)" stroke-width="1"></line>
+        ${ribbon}${xticks}${hover}
+      </svg>
+      <div style="font-size:11.5px;margin-top:1px">可买
+        <span class="mono up">${admitTxt}</span></div>
+      <div class="muted" style="font-size:11.5px">空窗档坐过
+        <b>${blindSeats}</b> 座（占 ${seatSum?pct(blindSeats/seatSum):"—"}）——
+        这些席位往后一个也接不到。</div>
+    </div>`;
+  };
+  const sw=(css,txt)=>`<span style="display:inline-flex;align-items:center;gap:5px">
+    <i style="display:inline-block;width:17px;${css}"></i>${txt}</span>`;
+  const legend=`<div class="muted" style="font-size:11.5px;display:flex;gap:6px 16px;
+    flex-wrap:wrap;margin-top:7px">
+    ${sw("height:0;border-top:2.4px solid var(--accent)","当前服务 λ（阶梯）")}
+    ${sw("height:0;border-top:1.5px dashed var(--violet)","本账本 raw λ")}
+    ${sw("height:0;border-top:1.3px dashed var(--muted)","闸线 λ=a")}
+    ${sw("height:9px;border-radius:2px;background:var(--pill-green-bg);border:1px solid var(--green)","可买窗口＝阶梯高过闸线的那一段")}
+    ${sw("height:9px;border-radius:2px;background:var(--bar-bg);border:1px solid var(--line)","席位分布（这档历史上坐过多少）")}
+  </div>`;
+
+  // The worked example is picked off the book rather than written down, so
+  // it cannot go stale the way a hardcoded band label does: the blind band
+  // with the most seats is the one a reader is most likely to be looking
+  // for, and the widest raw-over-floor gap is the promotion backlog's own
+  // best case.
+  const all=[];
+  scopes.forEach(sc=>(sc.bands||[]).forEach(b=>all.push({scope:sc.scope,b:b})));
+  const blind=all.filter(x=>!x.b.admits&&x.b.seats>0)
+    .sort((p,q)=>q.b.seats-p.b.seats)[0];
+  const backlog=all.filter(x=>!x.b.admits&&x.b.raw_lambda!=null
+      &&x.b.raw_lambda>x.b.lower)
+    .sort((p,q)=>(q.b.raw_lambda-q.b.served)-(p.b.raw_lambda-p.b.served))[0];
+  const plain=(()=>{
+    if(!blind) return "";
+    const b=blind.b;
+    let s=`<b>白话版</b>：λ 读作「这一档的声称，历史上真到账几成」。
+      买得下手的条件只有一句 —— <b>到账的比例，要高过要价的比例</b>，
+      也就是这一档的 λ 得高过它自己的<b>起点</b>。看图：蓝阶梯掉到斜虚线以下的档，
+      绿色就没了，模型再准也一张票发不出。眼下最典型的是
+      <b>${blind.scope} 的 ${bl(b.band)} 档</b>：服务 λ <span class="mono">${num(b.served)}</span>
+      看着不低，可这档从 <span class="mono">${b.lower.toFixed(2)}</span> 起步，
+      ${num(b.served)} &lt; ${b.lower.toFixed(2)}，整档空窗 ——
+      它历史上坐过 ${b.seats} 个席位。`;
+    if(backlog){
+      const q=backlog.b;
+      s+=(backlog.scope===blind.scope&&q.band===b.band)
+        ? `而同一档的 raw（紫点线）已经是 <span class="mono">${num(q.raw_lambda)}</span>，
+           高过 ${q.lower.toFixed(2)} 了 —— <b>差的不是模型准不准，是这张表还没晋级</b>。`
+        : `另一处：<b>${backlog.scope} 的 ${bl(q.band)} 档</b>服务
+           <span class="mono">${num(q.served)}</span> 空窗，raw 却已到
+           <span class="mono">${num(q.raw_lambda)}</span>（＞下界 ${q.lower.toFixed(2)}）——
+           紫点线抬过了斜虚线、蓝实线没跟上的地方，就是待晋级的量。`;
+    }
+    return s;
+  })();
+
+  const bounds=(E.band_bounds||[]).map(b=>b==null?"∞":b).join(" / ");
+  const chips=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">
+    <span class="pill ${E.mode==="on"?"green":"amber"}">开关 ${E.mode||"?"}</span>
+    <span class="pill">入选门槛 ${E.minimum_seats_per_band} 座</span>
+    <span class="pill">前后半以 ${E.split_at_event_date||"—"} 为界</span>
+    <span class="pill">分档边界 <span class="mono">${bounds}</span></span>
+  </div>`;
+
+  // The second axis is a partition of one number, so it draws as one bar.
+  // Widths are the real widths on e in [-0.05, 0.20]: the band that serves
+  // 1.00 is a sliver, and a legend that made it look like a third of the
+  // line would be arguing the opposite of what the clause says.
+  // Only the interval goes inside the segment; the meaning goes underneath.
+  // Labelling in place looked tidier at 1180px and clipped its own words at
+  // 620 -- the thin band is a twentieth of the line, and no phrase fits in
+  // a twentieth of anything.
+  const seg=(flex,bg,fg,txt,tip)=>`<div title="${tip}" style="flex:${flex};
+    background:${bg};color:${fg};display:flex;align-items:center;
+    justify-content:center;padding:0 3px;white-space:nowrap;overflow:hidden">${txt}</div>`;
+  const key=(bg,bd,txt)=>`<span style="display:inline-flex;align-items:center;gap:5px">
+    <i style="width:9px;height:9px;border-radius:2px;background:${bg};
+      border:1px solid ${bd};display:inline-block"></i>${txt}</span>`;
+  const thermo=E.claim_edge_thermometer==="on"?`<div style="margin-top:12px">
+    <div style="font-size:12.5px"><b>λ 有第二根轴</b>（宪章 97，2026-09-06 起服务）：按<b>绝对</b>声称边际
+      <span class="mono">e = 抬后声称 − 全含价</span> 分段，<b>只准抬不准压</b> ——
+      一致度轴已更信任的档不被它压低。</div>
+    <div style="display:flex;height:26px;margin-top:5px;border:1px solid var(--line);
+      border-radius:7px;overflow:hidden;font-size:11.5px;font-weight:600">
+      ${seg(20,"var(--pill-red-bg)","var(--pill-red-fg)","e ≤ 0","声称还不如价格贵，闸不放行")}
+      ${seg(20,"var(--pill-green-bg)","var(--pill-green-fg)",
+        "0–"+E.claim_edge_thin_band_max,
+        "体温计薄档轴：该档实测兑现 1.036，封顶 "+E.claim_edge_thin_band_lambda.toFixed(2))}
+      ${seg(60,"var(--bar-bg)","var(--muted)","&gt; "+E.claim_edge_thin_band_max,
+        "厚边际窗口仍由一致度轴定 λ")}
+    </div>
+    <div class="muted" style="font-size:11.5px;margin-top:4px;display:flex;
+      gap:5px 15px;flex-wrap:wrap">
+      ${key("var(--pill-red-bg)","var(--red)","不放行（声称还不如价格贵）")}
+      ${key("var(--pill-green-bg)","var(--green)","λ 直接服务 <b>"+E.claim_edge_thin_band_lambda.toFixed(2)+"</b>（体温计薄档轴）")}
+      ${key("var(--bar-bg)","var(--line)","回一致度轴（上面的阶梯）")}
+    </div>
+    <div class="muted" style="font-size:11.5px;margin-top:3px">
+      封顶 ${E.claim_edge_thin_band_lambda.toFixed(2)} —— 信它，但不比它信自己更多。
+      行上记 <span class="mono">effective_edge_lambda_source</span> 说明是哪根轴买的这一单。
+      注意 <span class="mono">1−a</span> 是<b>相对</b>边际、是上面那根轴的补，
+      <b>不是</b>这里的 e，两者不可混引。</div></div>`:"";
+
+  // Charter 97's own instrument.  The clause retires itself when the seats
+  // this axis opened clear the hurdle and realise under one; that can only
+  // be judged if the seats are attributable, so the gate stamps the source
+  // and this counts it.  Empty means not yet measured, never "bought none".
+  const axisUsage=()=>{
+    const U=D.lambda_axis_usage||{};
+    if(!U.available) return "";
+    const seated=U.seated_by_source||{};
+    const considered=U.considered_by_source||{};
+    const total=Object.values(seated).reduce((a,b)=>a+b,0);
+    const label={agreement_band:"一致度轴（上面的阶梯）",
+      claim_edge_thin_band:"体温计薄档轴"};
+    const tone={agreement_band:"var(--accent)",
+      claim_edge_thin_band:"var(--violet)"};
+    if(!total) return `<p class="muted" style="margin-top:11px;font-size:12.5px">
+      <b>λ 来源分布</b>（宪章 97 回收条件的仪表）：${U.since} 起扫到
+      ${U.scanned_decisions} 份带来源字段的计划，<b>尚无入座记录</b>。
+      来源字段 2026-09-06 才加，此前的计划不带；空＝还没量到，<b>不是</b>该轴没买到东西。</p>`;
+    const items=Object.entries(seated).sort((a,b)=>b[1]-a[1]);
+    const bar=items.map(([k,v])=>`<div title="${label[k]||k} 入座 ${v} 次"
+      style="flex:${v};background:${tone[k]||"var(--muted)"};display:flex;
+      align-items:center;justify-content:center;color:var(--bg);font-size:11.5px;
+      font-weight:700">${(v/total*100).toFixed(0)}%</div>`).join("");
+    const rows=items.map(([k,v])=>`<span style="display:inline-flex;align-items:center;gap:5px">
+      <i style="width:9px;height:9px;border-radius:2px;display:inline-block;
+        background:${tone[k]||"var(--muted)"}"></i>${label[k]||k}
+      <b>${v}</b> 次入座${considered[k]?`（考虑 ${considered[k]} 次 · ${
+        (v/considered[k]*100).toFixed(0)}% 落座）`:""}</span>`).join("");
+    return `<div style="margin-top:12px">
+      <div style="font-size:12.5px"><b>λ 来源分布</b>（宪章 97 回收条件的仪表，${
+        U.since} 起 ${U.scanned_decisions} 份计划，${total} 次入座）</div>
+      <div style="display:flex;height:22px;margin-top:5px;border-radius:6px;
+        overflow:hidden;border:1px solid var(--line)">${bar}</div>
+      <div class="muted" style="font-size:11.5px;margin-top:4px;display:flex;
+        gap:6px 16px;flex-wrap:wrap">${rows}</div>
+      <div class="muted" style="font-size:11.5px;margin-top:3px">
+        体温计轴的席位攒够 ${E.minimum_seats_per_band} 座后若兑现跌破 1.0，
+        按宪章 97 应收回该轴。</div></div>`;
+  };
+
   const block=sc=>{
     const isP1=sc.scope==="P1";
     const rows=(sc.bands||[]).map(b=>{
@@ -8288,10 +8547,7 @@ function effectiveEdgeLambda(){
       ? `P1 的形状是 P0 的镜像：市场越不同意，兑现越超过声称、回报越高，因为 P1 的边际是<b>观测</b>不是形状。
          服务值封顶 1.00 —— 豁免的意思是「信它」，不是「比它自己还信它」。`
       : `P0 / P0-M 是倒 U：市场最不同意的那一带，五分之四的声称从未到账。
-         <b>能买的不是"λ 高的档"，是"λ 高过自己下界的档"</b> —— 见可买区间列，
-         本档实际放行的是 ${(sc.bands||[]).filter(b=>b.admits).map(
-           b=>`<span class="mono">[${b.admits[0].toFixed(3)},${b.admits[1].toFixed(3)})</span>`
-         ).join(" ∪ ")||"（无）"}。`;
+         <b>能买的不是"λ 高的档"，是"λ 高过自己下界的档"</b> —— 上图绿色的那几段。`;
     return `<h3 style="margin-top:16px">${sc.scope} 档（阶段 ${sc.stages.join(" / ")}，封顶 ${sc.ceiling.toFixed(2)}）</h3>
       <div class="card" style="margin-bottom:6px">${note}</div>
       <table><thead><tr>
@@ -8328,50 +8584,34 @@ function effectiveEdgeLambda(){
     return `<div class="muted" style="margin-top:10px">Δq 影子轴（视野 ${E.dq_shadow_horizon_hours}h，同一带按席位前市场对该窗口的移动分格；只记账不服务；拟合 ${sh.fitted_at_utc} · ${sh.seat_count} 座）</div>
       <table><thead><tr><th>一致度带</th><th>服务 λ</th>${tiers.map(([,l])=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`;
   };
-  // Charter 97's own instrument.  The clause retires itself when the seats
-  // this axis opened clear the hurdle and realise under one; that can only
-  // be judged if the seats are attributable, so the gate stamps the source
-  // and this counts it.  Empty means not yet measured, never "bought none".
-  const axisUsage=()=>{
-    const U=D.lambda_axis_usage||{};
-    if(!U.available) return "";
-    const seated=U.seated_by_source||{};
-    const total=Object.values(seated).reduce((a,b)=>a+b,0);
-    const label={agreement_band:"一致度轴", claim_edge_thin_band:"体温计薄档轴"};
-    if(!total) return `<p class="note" style="margin-top:10px">
-      <b>λ 来源分布</b>（宪章 97 回收条件的仪表）：${U.since} 起扫到
-      ${U.scanned_decisions} 份带来源字段的计划，<b>尚无入座记录</b>。
-      来源字段 2026-09-06 才加，此前的计划不带；空＝还没量到，<b>不是</b>该轴没买到东西。</p>`;
-    const rows=Object.entries(seated).sort((a,b)=>b[1]-a[1]).map(
-      ([k,v])=>`<li><b>${label[k]||k}</b> 入座 ${v} 次（${(v/total*100).toFixed(0)}%）</li>`
-    ).join("");
-    return `<p class="note" style="margin-top:10px"><b>λ 来源分布</b>（宪章 97 回收条件的仪表，
-      ${U.since} 起 ${U.scanned_decisions} 份计划）：<ul style="margin:4px 0 0 18px">${rows}</ul>
-      体温计轴的席位攒够 ${E.minimum_seats_per_band} 座后若兑现跌破 1.0，按宪章 97 应收回该轴。</p>`;
-  };
+
   return `<h2 style="margin-top:30px">有效边际 λ 表（按阶段）</h2>
     <div class="card">
-      目标函数读的是 <span class="mono">λ(a)·p</span> 而不是 p（宪章 68）。a = 篮子价格 / 声称胜率，
-      λ = 历史上这声称真正到账的比例。<b>服务列＝库里此刻激活的那张表</b>（宪章 68(c) 起机器自晋级，
-      内核常量只在某 scope 从未激活过时兜底）；raw 列是本账本说它该是多少，两者的差就是待晋级的量，
-      能不能晋级由前半/后半那一列决定 —— 两半不一致的带还没挣到一个常量。
-      <p class="note" style="margin-top:10px"><b>为什么"λ 不低"的档也可能一张票都发不出</b>（宪章 96）：
-      闸判的是折后声称减价格为正，化简后就是 <span class="mono">λ(a) &gt; a</span>。λ 是阶梯函数，
-      所以<b>每一档只放行 <span class="mono">[档下界, 该档自己的 λ)</span></b> —— 服务值就是自己的切点。
-      λ 落在本档下界以下的档整段空窗，模型再准也买不到。2026-09-06 按这条在
-      <span class="mono">0.80</span> 与 <span class="mono">0.95</span> 两处拆档，救回被平均掉的半档，
-      并把顶档那把"用自己平均值切自己"的刀换成常量边界。当前分档边界
-      <span class="mono">${(E.band_bounds||[]).map(b=>b==null?"∞":b).join(" / ")}</span>。</p>
-      ${E.claim_edge_thermometer==="on"?`<p class="note"><b>λ 有第二根轴</b>（宪章 97，2026-09-06 起服务）：
-      当<b>绝对</b>声称边际 <span class="mono">e = 抬后声称 − 全含价</span> 落在
-      <span class="mono">(0, ${E.claim_edge_thin_band_max}]</span> 时，λ 直接服务
-      <span class="mono">${E.claim_edge_thin_band_lambda.toFixed(2)}</span>（体温计在该档实测兑现 1.036，
-      封顶 1.00 —— 信它，但不比它信自己更多），<b>只准抬不准压</b>：一致度轴已更信任的档不被它压低。
-      行上记 <span class="mono">effective_edge_lambda_source</span> 说明是哪根轴买的这一单。
-      注意 <span class="mono">1−a</span> 是<b>相对</b>边际、是本表这根轴的补，<b>不是</b>体温计那根轴，两者不可混引。</p>`:""}
-      开关 <span class="mono">${E.mode||"?"}</span>，入选门槛 ${E.minimum_seats_per_band} 座，
-      前后半以 ${E.split_at_event_date||"—"} 为界。
+      <div class="why"><b>一句话</b>：定注读的是
+        <span class="mono">λ(a)·p</span> 而不是 p（宪章 68），闸只放行
+        <span class="mono">λ(a) &gt; a</span> 的窗口（宪章 96）。λ 是<b>阶梯</b>，
+        所以每一档只买得到 <span class="mono">[档下界, 该档自己的 λ)</span> 这一小段 ——
+        <b>服务值就是自己的切点</b>；λ 掉到本档下界以下的档整段空窗。</div>
+      <div class="grid g3" style="margin-top:10px">${scopes.map(curve).join("")}</div>
+      ${legend}
+      <div class="why" style="margin-top:10px">${plain}</div>
+      ${chips}
+      ${thermo}
       ${axisUsage()}
+      <details class="note" style="margin-top:10px">
+        <summary>展开条文原文 · 三列分别在答什么 · 2026-09-06 为什么拆档</summary>
+        <div style="font-size:13.4px">
+          <p style="margin:0 0 8px">a = 篮子价格 / 声称胜率，λ = 历史上这声称真正到账的比例。
+          <b>服务列＝库里此刻激活的那张表</b>（宪章 68(c) 起机器自晋级，
+          内核常量只在某 scope 从未激活过时兜底）；raw 列是本账本说它该是多少，
+          两者的差就是待晋级的量，能不能晋级由前半/后半那一列决定 ——
+          两半不一致的带还没挣到一个常量。</p>
+          <p style="margin:0">宪章 96（2026-09-06）：闸判的是折后声称减价格为正，化简后就是
+          <span class="mono">λ(a) &gt; a</span>。按这条在 <span class="mono">0.80</span> 与
+          <span class="mono">0.95</span> 两处拆档，救回被平均掉的半档，
+          并把顶档那把"用自己平均值切自己"的刀换成常量边界。</p>
+        </div>
+      </details>
     </div>
     ${scopes.map(block).join("")}`;
 }
@@ -10645,6 +10885,14 @@ function liveOrderCard(L){
     RIGHT_SKEWED: ["右偏 · 暖尾", "均值在众数之上超过半格：尾巴拖向偏热的一侧"],
     LEFT_SKEWED: ["左偏 · 冷尾", "均值在众数之下超过半格：尾巴拖向偏冷的一侧"],
   };
+  // Charter 122's band, as the plan recorded it: [lo, hi) in bucket steps,
+  // hi null meaning no upper bound.
+  const bandText = (plan)=>{
+    let b = plan.seat_width_band;
+    if(typeof b === "string"){ try { b = JSON.parse(b); } catch(e) { b = null; } }
+    if(!Array.isArray(b) || b.length !== 2) return "";
+    return ` [${Number(b[0]).toFixed(2)}, ${b[1]==null?"∞":Number(b[1]).toFixed(2)}) 格`;
+  };
   const skewChip = (g)=>{
     const plan = planOf(g);
     if(!plan || !plan.skew) return "";
@@ -10655,7 +10903,13 @@ function liveOrderCard(L){
     const detail = read
       ? `均值−众数 = ${gap==null?"—":(gap>0?"+":"")+Number(gap).toFixed(2)} 格`
         + `（判定阈 ±${plan.threshold_buckets==null?"0.50":Number(plan.threshold_buckets).toFixed(2)} 格）`
-        + (plan.sigma_buckets==null ? "" : ` · 服务宽度 σ ${Number(plan.sigma_buckets).toFixed(2)} 格（宪章 122：对称席位只在裁决时的宽度档内适用；σ<1 格时几乎每天都读成对称）`)
+        + (plan.sigma_buckets==null ? "" : ` · 服务宽度 σ ${Number(plan.sigma_buckets).toFixed(2)} 格`)
+        + (plan.seat_width_in_band==null ? "" :
+            (plan.seat_forced
+              ? ` · 宽度在档内${bandText(plan)}，席位由第 79 条固定为中心±1`
+              : (plan.seat_width_in_band
+                  ? ` · 宽度在档内${bandText(plan)}，但当天不是对称日，席位由枚举自选`
+                  : ` · 宽度在档外${bandText(plan)}，席位由枚举自选（第 79 条只在它被实测过的宽度上生效）`)))
         + " · 取自该决策自己的计划所记形态读数"
       : "取自该计划记下的方向（宪章 75 下方向就是偏态符号）。"
         + "证据不新鲜的那天一律记 NEUTRAL，所以这一路读数可能把当天读成对称——"

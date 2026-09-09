@@ -2723,7 +2723,14 @@ def _support_windows(
         <= seat_sigma_buckets
         < SYMMETRIC_SEAT_WIDTH_BAND[1]
     )
-    symmetric_arm_applies = (
+    # Split deliberately: the SHAPE question (is this a symmetric day at a
+    # stage the rule covers) is answered for every such day, and the BAND
+    # question only decides whether the filter fires.  The counterfactual
+    # below is recorded on both sides of the band -- a lane that only saw
+    # in-band days could confirm the incumbent band and never learn that it
+    # should widen, which is the failure mode of every gate that measures
+    # only what it already admits.
+    symmetric_shape_applies = (
         SYMMETRIC_SEAT_MODE == "center_pm1"
         or (
             SYMMETRIC_SEAT_MODE in {
@@ -2731,7 +2738,72 @@ def _support_windows(
             }
             and str(probability_stage or "") != "P1"
         )
-    ) and not taf_entry_required and seat_width_in_band
+    ) and not taf_entry_required
+    symmetric_arm_applies = symmetric_shape_applies and seat_width_in_band
+    # Charter 122 (五): the paired counterfactual this rule is fitted on.
+    # Both arms are priced off the same book at the same instant, so the
+    # comparison carries none of the chain-and-capital interference that put
+    # a +-15 floor under the replay sweep: a settled day says directly
+    # whether forcing centre+-1 beat letting the enumeration choose.  It
+    # measures the SEAT only -- an effect that exists solely through sizing
+    # or chain composition is invisible here, and the replay is still the
+    # instrument for those.
+    symmetric_seat_counterfactual: dict[str, Any] | None = None
+    if symmetric_shape_applies and ladder_center in by_bucket:
+        if _skew_extension_sign(
+            probabilities,
+            {bucket: int(row.ordinal) for bucket, row in by_bucket.items()},
+        ) == 0:
+            centre = int(by_bucket[ladder_center].ordinal)
+            forced_set = {centre - 1, centre, centre + 1}
+
+            def _row_note(row: Mapping[str, Any]) -> dict[str, Any]:
+                return {
+                    "buckets": list(row["buckets"]),
+                    "all_in_price": row.get("all_in_price"),
+                    "win_probability": row.get("win_probability"),
+                    "edge": row.get("edge"),
+                }
+
+            live = [
+                row for row in windows if row.get("admissible", True)
+            ]
+            forced_rows = [
+                row for row in live
+                if {int(by_bucket[b].ordinal) for b in row["buckets"]}
+                == forced_set
+            ]
+            # The free arm is the admissible window with the largest edge,
+            # which is a quantity already on the row rather than a ranking
+            # invented here; ties go to the narrower window and then to the
+            # lower rung, so the record is reproducible.
+            def _edge_key(row: Mapping[str, Any]) -> tuple[float, int, int]:
+                return (
+                    -float(row.get("edge") or 0.0),
+                    len(row["buckets"]),
+                    min(int(by_bucket[b].ordinal) for b in row["buckets"]),
+                )
+
+            free_rows = sorted(live, key=_edge_key)
+            symmetric_seat_counterfactual = {
+                "schema": "symmetric_seat_counterfactual_v1",
+                "sigma_buckets": seat_sigma_buckets,
+                "width_in_band": seat_width_in_band,
+                "band": [
+                    SYMMETRIC_SEAT_WIDTH_BAND[0],
+                    (
+                        None if SYMMETRIC_SEAT_WIDTH_BAND[1] == float("inf")
+                        else SYMMETRIC_SEAT_WIDTH_BAND[1]
+                    ),
+                ],
+                "stage": str(probability_stage or ""),
+                "centre_bucket": ladder_center,
+                "forced": (
+                    _row_note(forced_rows[0]) if forced_rows else None
+                ),
+                "free": _row_note(free_rows[0]) if free_rows else None,
+                "admissible_window_count": len(live),
+            }
     if symmetric_arm_applies and ladder_center in by_bucket:
         raw_skew = _skew_extension_sign(
             probabilities,
@@ -2906,6 +2978,7 @@ def _support_windows(
             ),
         ],
         "symmetric_seat_width_in_band": seat_width_in_band,
+        "symmetric_seat_counterfactual": symmetric_seat_counterfactual,
         "skew_seat_forced": skew_seat_forced,
         "p0m_taf": p0m_taf_audit,
         "probability_core": sorted(

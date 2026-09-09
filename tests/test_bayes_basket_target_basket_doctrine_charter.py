@@ -3243,6 +3243,126 @@ def test_clause_122_symmetric_seat_is_confined_to_the_width_band_it_was_measured
     assert "if SYMMETRIC_SEAT_WIDTH_BAND != (0.0, float(\"inf\")) else {}" in ledger_source
 
 
+def test_clause_122_seat_counterfactual_is_recorded_on_both_sides_of_the_band(monkeypatch) -> None:
+    """The pair the band is fitted on, recorded whether or not the rule fired.
+
+    A lane that only saw in-band days could confirm the incumbent band and
+    never learn it should widen, so the record is band-independent: only the
+    seating changes with the band, never the measurement.
+    """
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
+    monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_MODE", "center_pm1_p0")
+    from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
+    from bayes_basket_target.delta_v2_runtime import _support_windows
+
+    labels = ["29°C", "30°C", "31°C", "32°C", "33°C", "34°C"]
+    probs = [0.06, 0.20, 0.40, 0.20, 0.10, 0.04]
+    asks = [0.05, 0.15, 0.30, 0.15, 0.08, 0.03]
+    rows = [
+        {
+            "bucket": b, "ordinal": i + 2, "probability": pr,
+            "bid_price": max(0.0, a - 0.01),
+            "bid_levels": [{"price": max(0.001, a - 0.01), "shares": 50.0}],
+            "ask_levels": [{"price": a, "shares": 100.0}],
+            "price_tick_size": 0.01,
+            "maker_queue_ahead_shares": 0.0, "maker_queue_known": True,
+        }
+        for i, (b, pr, a) in enumerate(zip(labels, probs, asks))
+    ]
+    snapshot = TargetBasketSnapshot.from_mapping({
+        "schema": "target_basket_snapshot_v6", "snapshot_id": "cf", "sequence": 1,
+        "observed_at": "2026-09-09T00:00:00Z", "market_id": "m", "station_id": "X",
+        "event_date": "2026-09-10", "quote_version": "q",
+        "quote_observed_at": "2026-09-09T00:00:00Z", "quote_source": "OFFICIAL_CLOB_WS",
+        "inventory_version": "i", "order_state_version": "o",
+        "evidence": {"probability_stage": "P0", "posterior_version": "p",
+                     "posterior_sha256": "a" * 64},
+        "buckets": rows, "checkpoint_changed": True, "quote_changed": True,
+        "fill_changed": True, "time_gate_changed": True, "evidence_fresh": True,
+        "contract_matches": True, "order_state_known": True,
+        "risk_inputs_complete": True, "time_left_minutes": 600.0,
+    })
+    prob = dict(zip(labels, probs))
+
+    def run(band):
+        monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_WIDTH_BAND", band)
+        return _support_windows(
+            snapshot=snapshot, desired={"30°C", "31°C", "32°C", "33°C"},
+            probabilities=prob, fee_rate=0.0, maximum_support_buckets=4,
+            minimum_support_buckets=3, center_bucket="31°C", probability_stage="P0",
+        )
+
+    inside_w, inside = run((1.0, float("inf")))
+    outside_w, outside = run((1.5, float("inf")))
+    # The seating differs across the band...
+    assert inside["symmetric_seat_forced"] is True
+    assert outside["symmetric_seat_forced"] is False
+    assert len([w for w in inside_w if w["admissible"]]) == 1
+    assert len([w for w in outside_w if w["admissible"]]) > 1
+    # ...and the measurement does not.
+    a, b = (inside["symmetric_seat_counterfactual"],
+            outside["symmetric_seat_counterfactual"])
+    for key in ("forced", "free", "sigma_buckets", "centre_bucket",
+                "admissible_window_count"):
+        assert a[key] == b[key], key
+    # Both arms present and distinct: the forced one is centre+-1, the free
+    # one is whatever carried the most edge, and each carries the price it
+    # would have been bought at on this same book.
+    assert a["forced"]["buckets"] == ["30°C", "31°C", "32°C"]
+    assert a["free"]["buckets"] != a["forced"]["buckets"]
+    for arm in ("forced", "free"):
+        assert a[arm]["all_in_price"] > 0
+        assert a[arm]["win_probability"] is not None
+    assert a["width_in_band"] is True and b["width_in_band"] is False
+    assert a["band"] == [1.0, None] and b["band"] == [1.5, None]
+
+
+def test_clause_122_counterfactual_is_absent_off_the_shape_it_measures(monkeypatch) -> None:
+    """No symmetric day, no pair: P1 is out of the rule, and so is the record."""
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
+    monkeypatch.setattr(delta_v2_runtime, "SYMMETRIC_SEAT_MODE", "center_pm1_p0")
+    from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
+    from bayes_basket_target.delta_v2_runtime import _support_windows
+
+    labels = ["29°C", "30°C", "31°C", "32°C", "33°C", "34°C"]
+    probs = [0.06, 0.20, 0.40, 0.20, 0.10, 0.04]
+    asks = [0.05, 0.15, 0.30, 0.15, 0.08, 0.03]
+    rows = [
+        {
+            "bucket": b, "ordinal": i + 2, "probability": pr,
+            "bid_price": max(0.0, a - 0.01),
+            "bid_levels": [{"price": max(0.001, a - 0.01), "shares": 50.0}],
+            "ask_levels": [{"price": a, "shares": 100.0}],
+            "price_tick_size": 0.01,
+            "maker_queue_ahead_shares": 0.0, "maker_queue_known": True,
+        }
+        for i, (b, pr, a) in enumerate(zip(labels, probs, asks))
+    ]
+    snapshot = TargetBasketSnapshot.from_mapping({
+        "schema": "target_basket_snapshot_v6", "snapshot_id": "cf2", "sequence": 1,
+        "observed_at": "2026-09-09T00:00:00Z", "market_id": "m", "station_id": "X",
+        "event_date": "2026-09-10", "quote_version": "q",
+        "quote_observed_at": "2026-09-09T00:00:00Z", "quote_source": "OFFICIAL_CLOB_WS",
+        "inventory_version": "i", "order_state_version": "o",
+        "evidence": {"probability_stage": "P1", "posterior_version": "p",
+                     "posterior_sha256": "a" * 64,
+                     "reported_high_bucket": "30°C", "reported_high_ordinal": 3,
+                     "reported_high_observation_id": "obs", "hard_bound_id": "hb"},
+        "buckets": rows, "checkpoint_changed": True, "quote_changed": True,
+        "fill_changed": True, "time_gate_changed": True, "evidence_fresh": True,
+        "contract_matches": True, "order_state_known": True,
+        "risk_inputs_complete": True, "time_left_minutes": 600.0,
+    })
+    _windows, audit = _support_windows(
+        snapshot=snapshot, desired={"30°C", "31°C", "32°C", "33°C"},
+        probabilities=dict(zip(labels, probs)), fee_rate=0.0,
+        maximum_support_buckets=4, minimum_support_buckets=3,
+        center_bucket="31°C", probability_stage="P1",
+    )
+    assert audit["symmetric_seat_counterfactual"] is None
+    assert audit["symmetric_seat_forced"] is False
+
+
 def test_clause_122_width_band_switch_parses_and_refuses_nonsense() -> None:
     parse = delta_v2_runtime._parse_width_band
     # Unset is the ruled default; ``off`` is the identity band, which is
