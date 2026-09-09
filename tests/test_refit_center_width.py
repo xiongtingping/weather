@@ -392,6 +392,122 @@ class StageIsolationTest(unittest.TestCase):
         self.assertIn("SUMMARY P1: ACCUMULATING", text)
 
 
+class BlockSamplingTest(unittest.TestCase):
+    """One decision per three-hour block, chosen without reading the rest.
+
+    ``serving_cells_by_day`` used to build a cell for every history row and
+    then keep the median of each block.  Since 2026-08-26 no history row
+    carries its body inline, so building a cell is a per-row query into
+    ``basket_probability_envelope`` plus a rebuild and a full re-hash --
+    profiled 2026-09-09 at 154,723 calls and 115.7s inside one render, which
+    is 77% of the largest section on the board and one the cache may not
+    hold.  The block a row belongs to is a function of three of its own
+    columns, so the sampling now happens before any body is read.
+
+    Equivalence rests on one measured fact: on the live store all 157,132
+    rows that pass the truth/timezone filter produce a cell, none fail.  With
+    no failures the walk stops on its first index, and that index is the
+    median -- the same row the old loop kept.  These tests pin both halves:
+    the first index IS the old median, and the walk only moves off it when a
+    row genuinely yields nothing.
+    """
+
+    def test_the_first_index_tried_is_the_median_the_old_loop_kept(self):
+        from bayes_basket_target.center_width_store import (
+            _outward_from_middle,
+        )
+
+        for count in range(1, 40):
+            order = _outward_from_middle(count)
+            self.assertEqual(
+                order[0], count // 2,
+                f"{count} rows: first try must be the old median index",
+            )
+            self.assertEqual(
+                sorted(order), list(range(count)),
+                f"{count} rows: every index reachable, none twice",
+            )
+
+    def test_a_block_keeps_its_median_decision(self):
+        conn = _connection()
+        rows = [
+            ("P1", "KLGA", "2026-08-10", f"2026-08-10T{stamp}Z",
+             _envelope(), "America/New_York")
+            # 08:00, 08:20 and 08:40 local -- one three-hour block.
+            for stamp in ("12:00:00", "12:20:00", "12:40:00")
+        ]
+        conn.executemany(
+            "INSERT INTO basket_probability_bridge_history VALUES"
+            " (?,?,?,?,?,?,'','')",
+            rows,
+        )
+        cells = serving_cells_by_day(
+            conn, {("KLGA", "2026-08-10"): 20.0}, stage="P1"
+        )
+        self.assertEqual(len(cells["2026-08-10"]), 1, "one cell per block")
+        self.assertEqual(
+            cells["2026-08-10"][0]["decision_at_utc"],
+            "2026-08-10T12:20:00Z",
+        )
+
+    def test_blocks_are_split_by_the_local_clock_not_the_utc_one(self):
+        """Two rows three hours apart in UTC can share a local block or not;
+        the boundary the sampler uses is the station's own midnight."""
+
+        conn = _connection()
+        conn.executemany(
+            "INSERT INTO basket_probability_bridge_history VALUES"
+            " (?,?,?,?,?,?,'','')",
+            [
+                # 08:00 and 11:00 local: blocks 2 and 3, so two cells.
+                ("P1", "KLGA", "2026-08-10", "2026-08-10T12:00:00Z",
+                 _envelope(), "America/New_York"),
+                ("P1", "KLGA", "2026-08-10", "2026-08-10T15:00:00Z",
+                 _envelope(), "America/New_York"),
+            ],
+        )
+        cells = serving_cells_by_day(
+            conn, {("KLGA", "2026-08-10"): 20.0}, stage="P1"
+        )
+        self.assertEqual(len(cells["2026-08-10"]), 2)
+        self.assertEqual(
+            sorted(c["decision_at_utc"] for c in cells["2026-08-10"]),
+            ["2026-08-10T12:00:00Z", "2026-08-10T15:00:00Z"],
+        )
+
+    def test_a_block_whose_median_row_is_unusable_is_not_dropped(self):
+        """The walk exists for this case.
+
+        Returning only the median row would lose the whole block when that
+        one row cannot be rebuilt; the old loop would have kept a neighbour,
+        because its median was taken over the rows that produced cells.
+        """
+
+        conn = _connection()
+        conn.executemany(
+            "INSERT INTO basket_probability_bridge_history VALUES"
+            " (?,?,?,?,?,?,'','')",
+            [
+                ("P1", "KLGA", "2026-08-10", "2026-08-10T12:00:00Z",
+                 _envelope(), "America/New_York"),
+                # The median by time, and unreadable.
+                ("P1", "KLGA", "2026-08-10", "2026-08-10T12:20:00Z",
+                 "{ not json", "America/New_York"),
+                ("P1", "KLGA", "2026-08-10", "2026-08-10T12:40:00Z",
+                 _envelope(), "America/New_York"),
+            ],
+        )
+        cells = serving_cells_by_day(
+            conn, {("KLGA", "2026-08-10"): 20.0}, stage="P1"
+        )
+        self.assertEqual(len(cells["2026-08-10"]), 1)
+        self.assertEqual(
+            cells["2026-08-10"][0]["decision_at_utc"],
+            "2026-08-10T12:00:00Z",
+            "ties go to the lower index, as they did before",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
 

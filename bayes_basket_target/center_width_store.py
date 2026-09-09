@@ -988,13 +988,11 @@ def serving_cells_by_day(
     retired arithmetic vote on the very fit meant to exclude it.
     """
 
-    from .probability_bridge import history_envelope_payload
-
     stage_id = _check_stage(stage)
     query = (
         "SELECT station_id, event_date, decision_at_utc,"
-        " envelope_json, settlement_timezone,"
-        " checkpoint_id, envelope_content_sha256"
+        " settlement_timezone, checkpoint_id, envelope_content_sha256,"
+        " envelope_json"
         " FROM basket_probability_bridge_history"
         " WHERE stage=?"
     )
@@ -1002,66 +1000,34 @@ def serving_cells_by_day(
     if min_decision_at_utc:
         query += " AND decision_at_utc>=?"
         parameters.append(str(min_decision_at_utc))
-    grouped: dict[tuple[str, str, int], list[tuple[float, dict[str, Any]]]] = {}
-    for station, day, decided, envelope_json, tz_name, checkpoint, sha in conn.execute(
-        query, parameters
-    ):
+    # Two passes, because the sampling rule reads the row and the cell reads
+    # the body, and only the row decides which cell survives.
+    #
+    # One pass built every cell and then kept the median of each three-hour
+    # block.  Since 2026-08-26 a history row carries no inline body -- all
+    # 158,784 P0 rows have ``envelope_json`` empty -- so building a cell is a
+    # single-row query into ``basket_probability_envelope``, a rebuild, and a
+    # full re-hash against the sha the history row carries.  Profiled
+    # 2026-09-09 that ran 154,723 times inside one render and cost 115.7s of
+    # the 146.5s this function spends, which is 77% of the ``selection``
+    # section -- the largest section on the page and one the cache is
+    # forbidden to hold, so it is paid every thirty minutes.
+    #
+    # The block a decision belongs to is a function of decision_at_utc, the
+    # event date and the timezone: all three are columns on the row.  So the
+    # first pass groups on those alone, and only the sampled row is rebuilt.
+    # ``envelope_json`` rides along because rows written before 2026-08-26
+    # carry their body there and rebuilding is not an option for them; on the
+    # lane this was measured against it is NULL on every row, and the cost
+    # being removed was never that column -- it was the per-row query,
+    # rebuild and re-hash behind it.
+    candidates: dict[tuple[str, str, int], list[tuple[float, tuple]]] = {}
+    for (
+        station, day, decided, tz_name, checkpoint, sha, stored
+    ) in conn.execute(query, parameters):
         actual = truth.get((str(station), str(day)))
         if actual is None or not tz_name:
             continue
-        try:
-            envelope = history_envelope_payload(
-                conn,
-                checkpoint_id=str(checkpoint),
-                envelope_content_sha256=str(sha),
-                stored=str(envelope_json) if envelope_json else None,
-            )
-            lineage = envelope.get("lineage") or {}
-            probabilities = envelope.get("probabilities") or {}
-            ordinals = envelope.get("bucket_ordinals") or {}
-            intervals = json.loads(
-                str(lineage.get("bucket_intervals_c_json") or "{}")
-            )
-        except (TypeError, ValueError, json.JSONDecodeError):
-            continue
-        if not probabilities or set(intervals) != set(probabilities):
-            continue
-        # This layer runs before the band table, so the claim it will actually
-        # be handed in production is the one that exists before banding -- the
-        # served claim has the band factors on top of it.  The receipt records
-        # both the factors and the pre-normalisation mass, so the band step is
-        # undone exactly rather than estimated.  Fitting on the served claim
-        # would search the shift and width against a distribution this layer
-        # never sees.
-        # ``pre_band=False`` keeps the claim exactly as it was served --
-        # band factors included -- which is what a residual audit of the
-        # correction wants to see; the fit itself keeps inverting.
-        if pre_band:
-            probabilities = _pre_band_claim(probabilities, lineage)
-        keys = sorted(probabilities, key=lambda key: ordinals.get(key, 0))
-        try:
-            centers = bucket_centers_from_intervals(
-                intervals, ordered_keys=keys, edge_width_c=EDGE_WIDTH_C
-            )
-        except ValueError:
-            continue
-        landed = None
-        for key in keys:
-            bounds = intervals[key]
-            lower, upper = bounds[0], bounds[1]
-            if (lower is None or actual >= float(lower)) and (
-                upper is None or actual < float(upper)
-            ):
-                landed = key
-                break
-        if landed is None:
-            continue
-        excluded_raw = str(lineage.get("hard_excluded_buckets") or "")
-        excluded = tuple(
-            name
-            for name in excluded_raw.split(",")
-            if name.strip() and name != "NONE" and name in probabilities
-        )
         try:
             zone = ZoneInfo(str(tz_name))
             decided_at = datetime.fromisoformat(
@@ -1073,31 +1039,125 @@ def serving_cells_by_day(
             hours = (decided_at - midnight).total_seconds() / 3600.0
         except (TypeError, ValueError, KeyError):
             continue
-        block = int(hours // 3)
-        cell = {
-            "station_id": str(station),
-            "event_date": str(day),
-            # The TAF-conditional lane needs to know which forecast the
-            # decision could have seen and where the model centre stood;
-            # both are properties of this decision, not of the day.
-            "decision_at_utc": str(decided),
-            "model_center_c": lineage.get("model_center_c"),
-            "probabilities": {
-                str(key): float(value) for key, value in probabilities.items()
-            },
-            "ordered_keys": keys,
-            "key_centers_c": centers,
-            "settled_bucket": landed,
-            "excluded_buckets": excluded,
-        }
-        grouped.setdefault((str(station), str(day), block), []).append(
-            (hours, cell)
-        )
+        candidates.setdefault((str(station), str(day), int(hours // 3)), [])\
+            .append((
+                hours,
+                (str(station), str(day), str(decided), str(checkpoint),
+                 str(sha), str(stored) if stored else None, float(actual)),
+            ))
     by_day: dict[str, list[dict[str, Any]]] = {}
-    for (_station, day, _block), entries in grouped.items():
+    for (_station, day, _block), entries in candidates.items():
         entries.sort(key=lambda item: item[0])
-        by_day.setdefault(day, []).append(entries[len(entries) // 2][1])
+        # The old code took the median of the rows whose CELL was built; this
+        # takes the median row and walks outward until one yields a cell.
+        # They agree whenever every row in the block yields one, which is the
+        # ordinary case -- a row that does not is a body that fails its own
+        # sha or an event that landed in no bucket.  Walking outward keeps
+        # the sample near the middle of the block rather than dropping the
+        # block, which is what returning only the median row would do.
+        for index in _outward_from_middle(len(entries)):
+            cell = _serving_cell(
+                conn, entries[index][1], pre_band=pre_band
+            )
+            if cell is not None:
+                by_day.setdefault(day, []).append(cell)
+                break
     return by_day
+
+
+def _outward_from_middle(count: int) -> list[int]:
+    """Indices from the middle outward: 2 3 1 4 0 for five.
+
+    Ties go to the LOWER index, matching ``entries[len(entries) // 2]`` on an
+    even-length list, so a block whose rows all yield cells picks exactly the
+    row the single-pass version picked.
+    """
+
+    if count <= 0:
+        return []
+    middle = count // 2
+    order = [middle]
+    for step in range(1, count):
+        for index in (middle - step, middle + step):
+            if 0 <= index < count and index not in order:
+                order.append(index)
+        if len(order) >= count:
+            break
+    return order
+
+
+def _serving_cell(
+    conn: sqlite3.Connection,
+    row: tuple,
+    *,
+    pre_band: bool,
+) -> dict[str, Any] | None:
+    """One scoreable cell, or None if this row cannot produce one.
+
+    Every rejection here was a ``continue`` in the single-pass loop and keeps
+    the same reason; the difference is only that it is now reached for the
+    sampled row rather than for all 154,723 of them.
+    """
+
+    from .probability_bridge import history_envelope_payload
+
+    station, day, decided, checkpoint, sha, stored, actual = row
+    try:
+        envelope = history_envelope_payload(
+            conn,
+            checkpoint_id=checkpoint,
+            envelope_content_sha256=sha,
+            stored=stored,
+        )
+        lineage = envelope.get("lineage") or {}
+        probabilities = envelope.get("probabilities") or {}
+        ordinals = envelope.get("bucket_ordinals") or {}
+        intervals = json.loads(
+            str(lineage.get("bucket_intervals_c_json") or "{}")
+        )
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not probabilities or set(intervals) != set(probabilities):
+        return None
+    if pre_band:
+        probabilities = _pre_band_claim(probabilities, lineage)
+    keys = sorted(probabilities, key=lambda key: ordinals.get(key, 0))
+    try:
+        centers = bucket_centers_from_intervals(
+            intervals, ordered_keys=keys, edge_width_c=EDGE_WIDTH_C
+        )
+    except ValueError:
+        return None
+    landed = None
+    for key in keys:
+        bounds = intervals[key]
+        lower, upper = bounds[0], bounds[1]
+        if (lower is None or actual >= float(lower)) and (
+            upper is None or actual < float(upper)
+        ):
+            landed = key
+            break
+    if landed is None:
+        return None
+    excluded_raw = str(lineage.get("hard_excluded_buckets") or "")
+    excluded = tuple(
+        name
+        for name in excluded_raw.split(",")
+        if name.strip() and name != "NONE" and name in probabilities
+    )
+    return {
+        "station_id": station,
+        "event_date": day,
+        "decision_at_utc": decided,
+        "model_center_c": lineage.get("model_center_c"),
+        "probabilities": {
+            str(key): float(value) for key, value in probabilities.items()
+        },
+        "ordered_keys": keys,
+        "key_centers_c": centers,
+        "settled_bucket": landed,
+        "excluded_buckets": excluded,
+    }
 
 
 def _cell_nll(
