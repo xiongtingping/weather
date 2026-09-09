@@ -3245,7 +3245,10 @@ def test_clause_122_symmetric_seat_is_confined_to_the_width_band_it_was_measured
 
 def test_clause_122_width_band_switch_parses_and_refuses_nonsense() -> None:
     parse = delta_v2_runtime._parse_width_band
-    assert parse("") == (0.0, float("inf"))
+    # Unset is the ruled default; ``off`` is the identity band, which is
+    # charter 79 as it stood and the arm the sweep measured against.
+    assert parse("") == (1.0, float("inf"))
+    assert delta_v2_runtime.SYMMETRIC_SEAT_WIDTH_BAND_DEFAULT == "1.0,inf"
     assert parse("off") == (0.0, float("inf"))
     assert parse("1.0,inf") == (1.0, float("inf"))
     assert parse("1.0,1.5") == (1.0, 1.5)

@@ -1152,10 +1152,33 @@ if SYMMETRIC_SEAT_MODE not in {
 # width that moved it.  ``lo,hi`` in bucket steps, half-open; a day outside
 # the band is seated by the ordinary enumeration, with the width and the
 # band written to the audit so the board can say which rule seated it.
-# ``off`` (or unset) is the identity band, i.e. charter 79 as it stood.
+# ``off`` is the identity band, i.e. charter 79 as it stood; unset is the
+# ruled default below.
+#
+# Default [1.0, inf) (user ruling 2026-09-09, from the sweep charter 122
+# part (four) names: five arms over one two-week replay, 08-25..09-08,
+# seats binned by the served sigma at seat time).  Charter 79 earns in the
+# band it was measured on and nowhere else.  P0 [1.0,1.5): +59.5 on 54
+# seats against +7.6 on 62 with the rule off -- +51.9, the largest single
+# reading in the sweep.  P0 [0,1.0): +23.2 on 17 against +25.4 on 15, so
+# -2.2 and two seats; under one bucket step the enumeration's own positive
+# EV window already IS centre+-1, and forcing it changes nothing.  P0
+# [1.5,inf): -55.7 on 52 against -58.7 on 75 -- +3.0 for twenty-three fewer
+# seats, no edge either way.  The composite arm (this band exactly) reads
+# P0 +33.4 against base +27.0 and the whole book +66.1 against +71.4, both
+# inside noise -- the book gap is two P0-M seats.  So the band costs
+# nothing measurable and stops the rule binding 95.8% of P0 seats on days
+# it was never judged on.  No upper bound: wide days show no difference
+# with the rule on or off, and a bound there would be a second claim the
+# sweep cannot support.
+SYMMETRIC_SEAT_WIDTH_BAND_DEFAULT = "1.0,inf"
+
+
 def _parse_width_band(raw: str) -> tuple[float, float]:
     text = str(raw or "").strip().lower()
-    if not text or text == "off":
+    if not text:
+        text = SYMMETRIC_SEAT_WIDTH_BAND_DEFAULT
+    if text == "off":
         return (0.0, float("inf"))
     parts = [part.strip() for part in text.split(",")]
     if len(parts) != 2:
