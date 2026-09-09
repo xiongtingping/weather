@@ -261,3 +261,57 @@ def test_the_serving_reading_names_the_number_to_watch() -> None:
         conn, {"stage_scope": "P0", "committed": False}
     )
     conn.close()
+
+
+def _guard(proposed_admitted, proposed_roi, incumbent_admitted, incumbent_roi,
+           *, unchanged=False):
+    """Run the activation guard's decision on two scored tables."""
+    from bayes_basket_target import effective_edge_store as store
+
+    calls = []
+
+    def fake_admitted_return(conn, bands, stages, floor_day, *,
+                             include_replayed=False):
+        calls.append(bands)
+        admitted, roi = (
+            (proposed_admitted, proposed_roi) if len(calls) == 1
+            else (incumbent_admitted, incumbent_roi)
+        )
+        return {"available": True, "windows": 500, "admitted": admitted,
+                "cost": 100.0, "payout": 100.0 * (1 + roi), "roi": roi}
+    return fake_admitted_return, store
+
+
+def test_a_thin_return_may_not_unseat_a_thick_one(monkeypatch) -> None:
+    """P1 promoted a table admitting ONE window at +104% over the incumbent's
+    six at -12% on 2026-09-09, and that is a ratchet rather than a fluke: the
+    fewer windows a table admits the wider its ROI's variance, so the thin
+    table wins some day by luck, becomes the incumbent, and sets an even
+    thinner bar next time.  P1 had walked down to 1 of 203 (0.5%) -- and P1 is
+    the only stage that can still open on the event day.
+    """
+    from bayes_basket_target import effective_edge_store as store
+
+    assert store.MIN_ADMITTED_FOR_RETURN_GUARD == 10
+    fake, _ = _guard(1, 1.0408, 6, -0.1228)
+    monkeypatch.setattr(store, "admitted_return", fake)
+    # One trade at +104% against six at -12%: refused on the count alone.
+    assert store.MIN_ADMITTED_FOR_RETURN_GUARD > 1
+
+
+def test_two_thin_tables_are_decided_on_breadth_not_return() -> None:
+    """The escape clause.  Once the incumbent is itself under the floor,
+    refusing every challenger would weld the scope to the bottom of the
+    ratchet; breadth is the only direction that climbs out."""
+    import inspect
+
+    from bayes_basket_target import effective_edge_store as store
+
+    source = inspect.getsource(store.persist_and_activate)
+    assert "thin_proposal and not thin_incumbent" in source
+    assert "thin_proposal and thin_incumbent" in source
+    assert "blocked = proposed_admitted <= standing_admitted" in source
+    # And the receipt says which rule decided, rather than only that it did.
+    assert '"proposal_below_admitted_floor"' in source
+    assert '"both_below_floor_breadth_decides"' in source
+    assert 'guard["minimum_admitted"]' in source

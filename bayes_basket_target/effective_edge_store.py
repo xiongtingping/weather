@@ -1030,6 +1030,26 @@ def admitted_return(
 ACTIVATION_RETURN_GUARD = str(
     os.environ.get("PM_EFFECTIVE_EDGE_ACTIVATION_GUARD", "on") or "on"
 ).strip().lower()
+# How many admitted windows a return has to stand on before it may decide an
+# activation (user ruling, 2026-09-09: 10).
+#
+# The guard compares two ROIs and never asked how many trades each was.  On
+# 2026-09-09 P1 promoted a table admitting ONE window at +104.08% over the
+# incumbent's six at -12.28%: a single trade beat six.  That is not a rare
+# alignment, it is a ratchet -- the fewer windows a table admits the wider
+# its ROI's variance, so the thinner table wins some day by luck, becomes the
+# incumbent, and sets an even thinner bar for the next comparison.  P1 had
+# walked it down to 1 of 203 candidate windows (0.5%), and P1 is the only
+# stage that can still open on the event day.
+#
+# The escape clause matters as much as the floor: when the INCUMBENT is also
+# under the floor the scope is already down the ratchet, and refusing every
+# challenger would weld it there.  In that state the comparison is on breadth
+# instead of return -- more admitted windows wins -- which is the only move
+# that climbs back out.
+MIN_ADMITTED_FOR_RETURN_GUARD = int(
+    os.environ.get("PM_EFFECTIVE_EDGE_MIN_ADMITTED", "") or 10
+)
 
 
 def persist_and_activate(
@@ -1094,13 +1114,36 @@ def persist_and_activate(
     # An unchanged table is a refresh of the evidence, not a promotion, and
     # nothing it could buy differs -- it activates so the journal keeps
     # moving.  A changed one has to earn it.
-    blocked = bool(
+    proposed_admitted = int(proposed.get("admitted") or 0)
+    standing_admitted = int(standing.get("admitted") or 0)
+    thin_proposal = proposed_admitted < MIN_ADMITTED_FOR_RETURN_GUARD
+    thin_incumbent = standing_admitted < MIN_ADMITTED_FOR_RETURN_GUARD
+    comparable = (
         ACTIVATION_RETURN_GUARD == "on"
         and not guard["bands_unchanged"]
-        and proposed.get("available")
-        and standing.get("available")
-        and float(proposed["roi"]) < float(standing["roi"]) - 1e-9
+        and bool(proposed.get("available"))
+        and bool(standing.get("available"))
     )
+    if comparable and thin_proposal and not thin_incumbent:
+        # A return standing on fewer than the floor's worth of trades may not
+        # unseat one that stands on more, however large the number is.
+        blocked = True
+        guard["refusal"] = "proposal_below_admitted_floor"
+    elif comparable and thin_proposal and thin_incumbent:
+        # Both are down the ratchet: decide on breadth, which is the only
+        # direction that climbs back out.
+        blocked = proposed_admitted <= standing_admitted
+        guard["refusal"] = (
+            "both_below_floor_breadth_decides" if blocked else ""
+        )
+    else:
+        blocked = bool(
+            comparable
+            and float(proposed["roi"]) < float(standing["roi"]) - 1e-9
+        )
+    guard["minimum_admitted"] = MIN_ADMITTED_FOR_RETURN_GUARD
+    guard["proposed_admitted"] = proposed_admitted
+    guard["incumbent_admitted"] = standing_admitted
     guard["blocked"] = blocked
     if not blocked:
         # Deactivation is per scope: activating P1's table must not retire
