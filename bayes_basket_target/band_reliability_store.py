@@ -1130,6 +1130,24 @@ def fit_band_reliability_table(
             str(list(band)): dict(cell) for band, cell in report.items()
         }
 
+    # What this whole table is worth on the forward window, against serving
+    # nothing at all.  The per-cell gate above already asks this question for
+    # the stages that require it, one cell at a time -- but P0 is exempt from
+    # that gate (``requires_forward_check``), so for the one stage whose
+    # table moves the most there was no forward number anywhere.  Reported,
+    # never gating: it changes no admission, and it is deliberately kept out
+    # of ``evidence`` so a table's sha does not churn on a new diagnostic.
+    identity_factors = {band: 1.0 for band in cells}
+    forward_nll_delta_vs_identity = (
+        _forward_nll_delta(
+            serving,
+            base_factors=identity_factors,
+            candidate_factors=factors,
+            axis=axis_id,
+        )
+        if serving
+        else 0.0
+    )
     return {
         "stage": stage_id,
         # The partition follows the axis.  This read ``BAND_TABLE_CELLS``
@@ -1137,6 +1155,8 @@ def fit_band_reliability_table(
         # keyed on the five distance cells and not the eleven claim ones.
         "factors": tuple((band, factors[band]) for band in cells),
         "axis": axis_id,
+        "interval_alpha": float(interval_alpha),
+        "forward_nll_delta_vs_identity": forward_nll_delta_vs_identity,
         "evidence": {
             "schema": "band_reliability_fit_evidence_v2",
             "stage": stage_id,
@@ -1163,6 +1183,7 @@ def refit_all_stages(
     bootstrap_samples: int = 1000,
     commit: bool = False,
     axis: str | Mapping[str, str] | None = None,
+    interval_alpha: float = DEFAULT_INTERVAL_ALPHA,
 ) -> dict[str, Any]:
     """Fit every stage, journal every fit, activate when committing.
 
@@ -1197,7 +1218,27 @@ def refit_all_stages(
     A partial refit is still a failed refit; what a caller does about it is
     the caller's call.  The CLI exits non-zero on any ``error``, so the
     cron reports ✗ without discarding the stages that did land.
+
+    ``interval_alpha`` is the counterfactual the fit's own comment promised:
+    the served factor is the end of this interval nearest one, so the width
+    IS how hard a table is allowed to pull, and measuring a different width
+    was always meant to happen through this code path rather than a second
+    copy of it.  Measured 2026-09-09 on P0's serving lane, the shipped 95%
+    end bought +0.0155 nat out of sample where the point estimate on the
+    same axis bought +0.0497 -- so the width is worth asking about, and the
+    only honest way to ask is with production's own distance coordinate,
+    which a hand-rolled replay does not have.
+
+    It cannot be committed.  A non-default width is a measurement, and the
+    fit's constants are a ruling; letting a flag activate a table nobody
+    ruled on is exactly the drift the default exists to prevent.
     """
+
+    if (
+        commit
+        and abs(float(interval_alpha) - DEFAULT_INTERVAL_ALPHA) > 1e-12
+    ):
+        raise ContractError("band_interval_alpha_counterfactual_not_committable")
 
     results: dict[str, Any] = {}
     for stage in BAND_STAGES:
@@ -1215,7 +1256,7 @@ def refit_all_stages(
             entry["axis"] = stage_axis
             fitted = fit_band_reliability_table(
                 conn, stage=stage, bootstrap_samples=bootstrap_samples,
-                axis=stage_axis,
+                axis=stage_axis, interval_alpha=interval_alpha,
             )
             active = load_band_table(conn, stage=stage)
             entry.update({
@@ -1235,6 +1276,10 @@ def refit_all_stages(
                 ],
                 "accumulating": fitted["accumulating"],
                 "basis": fitted["evidence"]["basis"],
+                "interval_alpha": fitted["interval_alpha"],
+                "forward_nll_delta_vs_identity": fitted[
+                    "forward_nll_delta_vs_identity"
+                ],
             })
             if commit:
                 try:

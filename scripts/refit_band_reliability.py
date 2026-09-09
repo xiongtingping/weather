@@ -31,6 +31,7 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target.band_reliability_store import (  # noqa: E402
     BAND_STAGES,
+    DEFAULT_INTERVAL_ALPHA,
     MIN_QUALIFYING_DAYS,
     refit_all_stages,
 )
@@ -69,6 +70,20 @@ def main() -> int:
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument("--bootstrap-samples", type=int, default=1000)
     parser.add_argument(
+        "--interval-alpha",
+        type=float,
+        default=DEFAULT_INTERVAL_ALPHA,
+        help=(
+            "counterfactual width of the by-day bootstrap interval whose end"
+            " nearest one is served.  The default is the shipped 95%% and is"
+            " the only value that can be committed; a wider alpha pulls the"
+            " served factor toward the point estimate, which is the question"
+            " 'is the table too conservative' asked through production's own"
+            " coordinate instead of a replay's.  Report-only by construction:"
+            " passing it with --commit is refused."
+        ),
+    )
+    parser.add_argument(
         "--commit",
         action="store_true",
         help="activate each stage's fitted table (default: report only)",
@@ -105,6 +120,7 @@ def main() -> int:
         bootstrap_samples=args.bootstrap_samples,
         commit=args.commit,
         axis=axis,
+        interval_alpha=args.interval_alpha,
     )
     activated = [
         stage
@@ -123,6 +139,13 @@ def main() -> int:
         "activated_stages": activated,
         "failed_stages": failed,
         "committed": bool(args.commit),
+        "interval_alpha": float(args.interval_alpha),
+        # Loud in the receipt, because a counterfactual report and a real one
+        # are otherwise the same shape: a reader who does not look at this
+        # would take a wider-alpha table for the one being served.
+        "counterfactual": bool(
+            abs(float(args.interval_alpha) - DEFAULT_INTERVAL_ALPHA) > 1e-12
+        ),
     }, ensure_ascii=False, sort_keys=True))
     if args.summary:
         for stage, entry in sorted(stages.items()):
