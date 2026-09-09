@@ -6485,10 +6485,45 @@ def build_payload(db: Path) -> dict[str, Any]:
     # at which point every writer's transaction slowed enough that ordinary
     # lock contention compounded into 45-minute P1 outages (2026-08-24).
     conn = _connect(db)
+    started = time.perf_counter()
     try:
-        return _build_payload(conn, db)
+        payload = _build_payload(conn, db)
     finally:
         conn.close()
+    # The render's own cost, on the page.  Reported because the page is a
+    # file on a thirty-minute timer, not a live query: a reader who
+    # refreshes right after a change sees the PREVIOUS build until the next
+    # one lands, and without these two numbers there is no way to tell that
+    # from a broken section.  2026-09-09 is the case -- P1's band table
+    # moved at 03:23Z, the page on screen was built at 03:07Z, and the
+    # build that would have shown the move was twenty-four minutes in.
+    elapsed = time.perf_counter() - started
+    slowest = sorted(
+        (
+            {
+                "section": name,
+                "build_sec": float(entry["build_sec"]),
+                "cached": bool(entry.get("cached")),
+            }
+            for name, entry in _SECTION_CACHE_LOG.items()
+            if entry.get("build_sec") is not None
+        ),
+        key=lambda row: -row["build_sec"],
+    )
+    payload["render"] = {
+        "generated_at_utc": payload.get("generated_at_utc"),
+        "build_sec": round(elapsed, 1),
+        # What was actually computed this round.  A cached section that was
+        # reused contributes nothing here, which is the point: the sum is
+        # what THIS build paid, not what a cold build would.
+        "computed_sec": round(sum(r["build_sec"] for r in slowest), 1),
+        "computed_sections": len(slowest),
+        "reused_sections": sum(
+            1 for e in _SECTION_CACHE_LOG.values() if e.get("reused")
+        ),
+        "slowest": slowest[:12],
+    }
+    return payload
 
 
 REGIONAL_SWEEP_JSON = (
@@ -6754,7 +6789,20 @@ def _cached_section(name: str, collector: Any, *args: Any, **kwargs: Any) -> Any
 
     ttl = SECTION_CACHE_TTL_SEC.get(name)
     if not ttl or not SECTION_CACHE_ENABLED:
-        return collector(*args, **kwargs)
+        # Still timed.  Only the nine sections with a TTL passed through
+        # here, so the nine that were already the known-slow ones were the
+        # only ones anybody could see the cost of -- and the render was 24
+        # minutes on 2026-09-09 with no record of where the other minutes
+        # went.  A section without a lifetime is not a section without a
+        # price.
+        started = time.perf_counter()
+        value = collector(*args, **kwargs)
+        _SECTION_CACHE_LOG[name] = {
+            "build_sec": round(time.perf_counter() - started, 1),
+            "reused": False,
+            "cached": False,
+        }
+        return value
     fingerprint = _section_fingerprint(collector)
     path = SECTION_CACHE_DIR / f"{name}.json"
     now = _now()
@@ -6770,6 +6818,7 @@ def _cached_section(name: str, collector: Any, *args: Any, **kwargs: Any) -> Any
                 "age_sec": round(age),
                 "ttl_sec": ttl,
                 "reused": True,
+                "cached": True,
             }
             return blob["value"]
     except (OSError, ValueError, KeyError, TypeError):
@@ -6783,6 +6832,7 @@ def _cached_section(name: str, collector: Any, *args: Any, **kwargs: Any) -> Any
         "age_sec": 0,
         "ttl_sec": ttl,
         "reused": False,
+        "cached": True,
         "build_sec": round(elapsed, 1),
     }
     try:
@@ -6831,18 +6881,31 @@ def _cached_section(name: str, collector: Any, *args: Any, **kwargs: Any) -> Any
 
 def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     _SECTION_CACHE_LOG.clear()
-    members = collect_members(conn, collect_run_cadence(conn))
-    tables = collect_correction_and_weights(conn)
-    stages = collect_band_stages(conn)
-    band_shadow = collect_band_shadow(conn)
-    chain = collect_chain(conn)
-    gaps = collect_gaps(conn, members, stages, tables)
-    p0m = collect_p0m_progress(conn)
+    cadence = _cached_section("run_cadence", collect_run_cadence, conn)
+    members = _cached_section("members", collect_members, conn, cadence)
+    tables = _cached_section(
+        "correction_and_weights", collect_correction_and_weights, conn
+    )
+    stages = _cached_section("band_stages", collect_band_stages, conn)
+    band_shadow = _cached_section(
+        "band_shadow", collect_band_shadow, conn
+    )
+    chain = _cached_section("chain", collect_chain, conn)
+    gaps = _cached_section(
+        "gaps", collect_gaps, conn, members, stages, tables
+    )
+    p0m = _cached_section("p0m", collect_p0m_progress, conn)
     skill = _cached_section("skill", collect_model_skill, conn)
-    truth = collect_truth_materialization(conn)
-    scores = collect_oos_scores(conn)
-    serving_weights = collect_serving_weights(conn)
-    center_width = collect_center_width(conn)
+    truth = _cached_section(
+        "truth_materialization", collect_truth_materialization, conn
+    )
+    scores = _cached_section("oos_scores", collect_oos_scores, conn)
+    serving_weights = _cached_section(
+        "serving_weights", collect_serving_weights, conn
+    )
+    center_width = _cached_section(
+        "center_width", collect_center_width, conn
+    )
     center_landing = _cached_section(
         "center_landing", collect_center_landing, conn
     )
@@ -6913,8 +6976,11 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "red" if any(a["health"] == "red" for a in alerts)
         else ("amber" if alerts else "green")
     )
-    selection = build_selection_payload(db)
-    daily = _daily_table(selection, _intended_cover_by_day(conn))
+    selection = _cached_section("selection", build_selection_payload, db)
+    daily = _cached_section(
+        "daily", _daily_table, selection,
+        _cached_section("intended_cover", _intended_cover_by_day, conn),
+    )
     # Aggregate first, then trim.  The rows ship as a hand-audit sample --
     # no section reads them -- and they arrive newest first, so trimming
     # before the daily table is built deletes whole event days off the
@@ -6933,7 +6999,8 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "band_residual_audit": (band_audit := _cached_section(
             "band_residual_audit", collect_band_residual_audit, conn,
         )),
-        "live_readiness": collect_live_readiness(
+        "live_readiness": _cached_section(
+            "live_readiness", collect_live_readiness,
             conn, band_audit.get("stations") or [],
         ),
         "stages": stages,
@@ -6957,14 +7024,24 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "window_divergence": _cached_section(
             "window_divergence", collect_window_divergence, conn
         ),
-        "edge_band_health": collect_edge_band_health(conn),
-        "effective_edge_lambda": collect_effective_edge_lambda(conn),
-        "lambda_axis_usage": collect_lambda_axis_usage(conn),
+        "edge_band_health": _cached_section(
+            "edge_band_health", collect_edge_band_health, conn
+        ),
+        "effective_edge_lambda": _cached_section(
+            "effective_edge_lambda", collect_effective_edge_lambda, conn
+        ),
+        "lambda_axis_usage": _cached_section(
+            "lambda_axis_usage", collect_lambda_axis_usage, conn
+        ),
         "convergence_claim": _cached_section(
             "convergence_claim", collect_convergence_claim, conn
         ),
-        "risk_metrics": collect_risk_metrics(conn),
-        "regional": collect_regional_lanes(conn),
+        "risk_metrics": _cached_section(
+            "risk_metrics", collect_risk_metrics, conn
+        ),
+        "regional": _cached_section(
+            "regional", collect_regional_lanes, conn
+        ),
         "worker": worker,
         "section_cache": dict(_SECTION_CACHE_LOG),
     }
@@ -7307,8 +7384,56 @@ function head(){
       w.production_cycle_seconds+" 秒"} ·
       ${hours(D.worker&&D.worker.production_checked_at?
         (Date.now()-Date.parse(D.worker.production_checked_at))/3600000:null)}</span>
-  </div>${chips ? `<div style="display:flex;gap:8px;flex-wrap:wrap;
+  </div>
+  ${renderStamp()}${chips ? `<div style="display:flex;gap:8px;flex-wrap:wrap;
     align-items:center;margin-top:9px">${chips}${more}</div>` : ""}</div>`;
+}
+
+// When this page was built, and how old that makes it.
+//
+// The page is a FILE on a thirty-minute timer, not a live query, and it
+// takes minutes to build -- so a reader who changes something and refreshes
+// gets the previous build back.  On 2026-09-09 that read as a bug: P1's
+// band table moved at 03:23Z, the page on screen was built at 03:07Z, and
+// the build that would have shown it was twenty-four minutes into its own
+// run.  Nothing on the page said so; the only timestamp was in the footer,
+// in UTC, seven thousand lines down.
+//
+// So: local time, an age in minutes, and the build's own cost -- amber once
+// the age passes a full cycle, because past that the reader is looking at
+// something a render should already have replaced.
+function renderStamp(){
+  const R = D.render || {};
+  const stamp = R.generated_at_utc || D.generated_at_utc;
+  if(!stamp) return "";
+  const at = Date.parse(stamp);
+  if(!isFinite(at)) return "";
+  const ageMin = Math.max(0, Math.round((Date.now() - at) / 60000));
+  const local = new Date(at).toLocaleString(undefined, {
+    month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  });
+  const stale = ageMin >= 30;
+  const build = R.build_sec == null ? null
+    : (R.build_sec >= 90 ? (R.build_sec/60).toFixed(1) + " 分钟"
+                         : Math.round(R.build_sec) + " 秒");
+  const reused = R.reused_sections
+    ? ` · 沿用 ${R.reused_sections} 区块` : "";
+  return `<div style="display:flex;gap:10px;align-items:center;
+    flex-wrap:wrap;margin-top:9px;padding-top:9px;
+    border-top:1px solid var(--line)">
+    <span class="dot ${stale ? "amber" : "green"}"></span>
+    <b>本页渲染</b>
+    <span class="${stale ? "pill amber" : "muted"}">${h(local)}
+      · ${ageMin} 分钟前</span>
+    <span class="muted">${stale
+      ? "已超过一轮重建周期，页面上的数字可能落后于库里的"
+      : "页面每 30 分钟重建一次，刷新浏览器不会重算"}</span>
+    <span style="flex:1"></span>
+    <span class="muted">${build ? "构建耗时 " + h(build) : ""}${
+      R.computed_sections ? ` · 现算 ${R.computed_sections} 区块` : ""
+    }${reused}</span>
+  </div>`;
 }
 
 // The top strip: one number per question the page spends a section

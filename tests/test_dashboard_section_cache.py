@@ -111,12 +111,51 @@ def test_the_switch_off_recomputes_everything(cache_dir, monkeypatch) -> None:
 
 
 def test_a_section_with_no_lifetime_is_never_cached(cache_dir) -> None:
+    """No lifetime means recomputed every time -- but still MEASURED.
+
+    This used to assert the section was absent from ``_SECTION_CACHE_LOG``,
+    using "no record" to stand for "no cache".  That conflated the two, and
+    the cost was paid on 2026-09-09: only the nine sections with a lifetime
+    were ever timed, so a 24-minute render had a breakdown for the parts
+    already known to be slow and silence for the rest.  A section without a
+    lifetime is not a section without a price.  The rule it was really
+    pinning -- recompute every call, write nothing to disk -- is asserted
+    directly below.
+    """
+
     calls: list[str] = []
     collector = _probe(calls)
     C._cached_section("not_listed", collector, None, "first")
     C._cached_section("not_listed", collector, None, "second")
     assert calls == ["first", "second"]
-    assert "not_listed" not in C._SECTION_CACHE_LOG
+    entry = C._SECTION_CACHE_LOG["not_listed"]
+    assert entry["cached"] is False
+    assert entry["reused"] is False
+    assert entry["build_sec"] >= 0.0
+    assert not (cache_dir / "not_listed.json").exists()
+
+
+def test_every_timed_section_is_comparable_to_every_other(cache_dir) -> None:
+    """One field answers "what did this build pay for this section?".
+
+    A breakdown is only sortable if the cached and uncached rows carry the
+    same key, and a reused row must carry no cost at all -- charging a build
+    for a section it did not compute would send the next fix at the wrong
+    one.
+    """
+
+    calls: list[str] = []
+    collector = _probe(calls)
+    C._cached_section("not_listed", collector, None, "a")
+    C._cached_section("probe", collector, None, "b")     # has a TTL: miss
+    C._cached_section("probe", collector, None, "c")     # ... then a hit
+    uncached = C._SECTION_CACHE_LOG["not_listed"]
+    cached = C._SECTION_CACHE_LOG["probe"]
+    assert uncached["build_sec"] >= 0.0 and cached["reused"] is True
+    # The hit replaced the miss's record and carries no build_sec, so a sum
+    # over the log is what THIS build spent, not what a cold one would.
+    assert "build_sec" not in cached
+    assert cached["cached"] is True
 
 
 # --------------------------------------------------------------------------
