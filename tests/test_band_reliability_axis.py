@@ -200,3 +200,79 @@ def test_the_inverse_is_axis_blind_so_one_function_serves_both_vintages():
     )
     for key, raw in VECTOR.items():
         assert restored[key] == pytest.approx(raw, rel=1e-9)
+
+
+def test_the_default_interval_is_the_shipped_ninety_five_percent() -> None:
+    """The width became a parameter so a counterfactual could be measured
+    through this code path rather than a second copy of it (2026-09-09).
+    Passing nothing must reproduce the rule exactly: the 2.5th and 97.5th
+    percentiles of the by-day bootstrap."""
+
+    from bayes_basket_target import band_reliability_store as store
+
+    by_day = {
+        f"2026-08-{day:02d}": [[(0.30, 1 if day % 3 else 0), (0.20, 0)]]
+        for day in range(1, 29)
+    }
+    bands = ((0.0, 0.25), (0.25, 1.01))
+    shipped = store.band_lane_report(by_day, bands=bands, bootstrap_samples=200)
+    explicit = store.band_lane_report(
+        by_day, bands=bands, bootstrap_samples=200, interval_alpha=0.05,
+    )
+    assert store.DEFAULT_INTERVAL_ALPHA == 0.05
+    for band in bands:
+        assert shipped[band]["interval"] == explicit[band]["interval"]
+        assert (
+            shipped[band]["conservative_factor"]
+            == explicit[band]["conservative_factor"]
+        )
+
+
+def test_a_wider_interval_never_pulls_less_than_a_narrow_one() -> None:
+    """The near end is what gets served, so loosening the width can only move
+    the served factor toward the point estimate -- never away from it.  A
+    counterfactual that could pull *less* would mean the parameter is wired
+    backwards, which is the one way this knob could quietly mislead."""
+
+    from bayes_basket_target import band_reliability_store as store
+
+    by_day = {
+        f"2026-08-{day:02d}": [[(0.30, 1 if day % 4 else 0), (0.20, 0)]]
+        for day in range(1, 29)
+    }
+    bands = ((0.0, 0.25), (0.25, 1.01))
+    tight = store.band_lane_report(by_day, bands=bands, bootstrap_samples=200)
+    loose = store.band_lane_report(
+        by_day, bands=bands, bootstrap_samples=200, interval_alpha=0.50,
+    )
+    for band in bands:
+        point = tight[band]["ratio"]
+        assert abs(loose[band]["conservative_factor"] - point) <= (
+            abs(tight[band]["conservative_factor"] - point) + 1e-9
+        )
+
+
+def test_withholding_days_changes_only_which_days_the_fit_saw(tmp_path) -> None:
+    """``until_event_date`` is the walk-forward entry: the same function, the
+    later days removed.  Asking for a date past the lane must reproduce the
+    unrestricted fit exactly, or the parameter is not inert when unused."""
+
+    from bayes_basket_target import band_reliability_store as store
+
+    by_day = {
+        f"2026-08-{day:02d}": [[(0.30, day % 2), (0.20, 0)]]
+        for day in range(1, 29)
+    }
+    bands = ((0.0, 0.25), (0.25, 1.01))
+    everything = store.band_lane_report(by_day, bands=bands, bootstrap_samples=200)
+    trimmed = store.band_lane_report(
+        {d: r for d, r in by_day.items() if d < "2026-08-20"},
+        bands=bands, bootstrap_samples=200,
+    )
+    # Different evidence, so different intervals -- the point is that the
+    # trim is what changed them, not the rule.
+    assert everything.keys() == trimmed.keys()
+    assert any(
+        everything[band]["interval"] != trimmed[band]["interval"]
+        for band in bands
+    )

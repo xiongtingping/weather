@@ -120,6 +120,9 @@ FINE_BANDS = BAND_TABLE_CELLS
 # extreme factor without anyone in the loop.
 FACTOR_FLOOR = 0.5
 FACTOR_CEILING = 2.0
+# Two-sided width of the by-day bootstrap interval whose near end a
+# qualified cell serves.  0.05 is 95%, the rule as shipped.
+DEFAULT_INTERVAL_ALPHA = 0.05
 FORWARD_WINDOW_FRACTION = 0.4
 # Below this a stage is fitted and journalled but serves identity: ten
 # days is where the by-day bootstrap stops being a re-description of two
@@ -855,6 +858,7 @@ def band_lane_report(
     bootstrap_samples: int = 1000,
     seed: int = 17,
     axis: str = BAND_AXIS_CLAIM,
+    interval_alpha: float = DEFAULT_INTERVAL_ALPHA,
 ) -> dict[tuple[float, float], dict[str, Any]]:
     days = sorted(by_day)
     if not days:
@@ -889,8 +893,18 @@ def band_lane_report(
         ordered = sorted(bootstrap[band])
         if not ordered or point[band] is None:
             continue
-        low = ordered[int(0.025 * len(ordered))]
-        high = ordered[int(0.975 * len(ordered))]
+        # This width IS how hard the table is allowed to pull: the rule
+        # serves the interval end nearest one, so the served factor sits a
+        # half-interval short of the point estimate, and a cell whose
+        # interval straddles one is refused outright.  It is a parameter so
+        # a counterfactual can be measured through this code path instead of
+        # through a second copy of it; the default is the shipped 95%, and
+        # nothing passes anything else unless a ruling says so.
+        last = len(ordered) - 1
+        low = ordered[min(last, int(0.5 * interval_alpha * len(ordered)))]
+        high = ordered[
+            min(last, int((1.0 - 0.5 * interval_alpha) * len(ordered)))
+        ]
         interval_excludes_one = not (low <= 1.0 <= high)
         sign_stable = (
             first[band] is not None
@@ -985,6 +999,8 @@ def fit_band_reliability_table(
     stage: str = "P0",
     bootstrap_samples: int = 1000,
     axis: str = BAND_AXIS_CLAIM,
+    interval_alpha: float = DEFAULT_INTERVAL_ALPHA,
+    until_event_date: str | None = None,
 ) -> dict[str, Any]:
     """Fit one stage's table under the fixed admission rule.
 
@@ -1002,6 +1018,15 @@ def fit_band_reliability_table(
     cells = cells_for_axis(axis_id)
     truth = _truth(conn)
     serving = serving_lane_by_day(conn, truth, stage=stage_id)
+    # A walk-forward over this layer has to ask what the fit would have
+    # served knowing only the days before some date, and the only honest way
+    # to answer is to run this function with the later days withheld.  None
+    # is production: every day the lane has.
+    if until_event_date is not None:
+        serving = {
+            day: rows for day, rows in serving.items()
+            if day < str(until_event_date)
+        }
     station_days = sum(len(rows) for rows in serving.values())
     # Only P0 has a second geometry to transfer from: the OOS prediction
     # archive is the cross-ensemble blend, which is exactly P0's root and
@@ -1009,6 +1034,11 @@ def fit_band_reliability_table(
     gate = (
         gate_lane_by_day(conn, truth) if stage_id == "P0" else {}
     )
+    if until_event_date is not None:
+        gate = {
+            day: rows for day, rows in gate.items()
+            if day < str(until_event_date)
+        }
     # A stage whose distribution no gate re-scores has to earn every cell
     # on the forward window here instead.
     requires_forward_check = stage_id != "P0"
@@ -1021,6 +1051,7 @@ def fit_band_reliability_table(
             bands=cells,
             bootstrap_samples=bootstrap_samples,
             axis=axis_id,
+            interval_alpha=interval_alpha,
         )
     )
     gate_report = (
@@ -1029,6 +1060,7 @@ def fit_band_reliability_table(
             bands=cells,
             bootstrap_samples=bootstrap_samples,
             axis=axis_id,
+            interval_alpha=interval_alpha,
         )
         if gate
         else {}
