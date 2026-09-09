@@ -142,6 +142,81 @@ _PRODUCTION_LANES = (
 )
 
 
+# The NWP rotation advances only when the forecast lane wins a writer turn,
+# and a lane that has stopped winning them is the failure this reads for.
+# Three consecutive turns missed is not a slow lane, it is a stopped one; six
+# is a whole lap's worth of turns lost, and the lap is what has to fit inside
+# the P0 freshness window.
+NWP_POLL_NOMINAL_SEC = 600.0
+NWP_ROTATION_STALLED_SEC = 3.0 * NWP_POLL_NOMINAL_SEC
+NWP_ROTATION_STOPPED_SEC = 6.0 * NWP_POLL_NOMINAL_SEC
+NWP_ROTATION_STATE = (
+    ROOT / "data" / "runtime" / "bayes_basket_target_nwp" / "rotation_state.json"
+)
+
+
+def _nwp_rotation_health(status: Mapping[str, Any]) -> dict[str, Any]:
+    """Whether the official-native rotation is still advancing at all.
+
+    Read from the rotation state file, not from the lane's own receipt.  The
+    receipt is published inside ``run_target_forecast_refresh_cycle``, which
+    is reached only when the forecast lane wins a writer turn against the
+    production cycle and the hosted sweeps -- so the one state it cannot
+    report is the one that matters, and it reports it by being absent.
+    Measured 2026-09-09: the resident restarted 12:35:22Z and eighteen
+    minutes later the lane had taken no turn at all, sweep_health unpublished
+    and the cursor unset, while 2026-09-10's 45 packets stayed expired.  The
+    same shape as the TAF card two hours earlier, and the same remedy: read
+    the file that outlives the process.
+
+    This is the direct measure of the thing that went wrong.  A date's
+    packets are re-captured only when the cursor reaches one of its scopes,
+    so how long the cursor has been still IS how long re-capture has been
+    impossible -- no samples, no median, no contention factor required.
+    """
+
+    try:
+        rotation = json.loads(NWP_ROTATION_STATE.read_text())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(rotation, Mapping):
+        return {}
+    age_hours = _age_hours(str(rotation.get("updated_at_utc") or ""))
+    if age_hours is None:
+        return {}
+    age_sec = age_hours * 3600.0
+    health = (
+        "red" if age_sec >= NWP_ROTATION_STOPPED_SEC
+        else "amber" if age_sec >= NWP_ROTATION_STALLED_SEC
+        else "green"
+    )
+    note = (
+        f"轮转已 {age_sec / 60:.0f} 分钟没有推进"
+        f"（名义 {NWP_POLL_NOMINAL_SEC / 60:.0f} 分钟一轮，"
+        f"{int(rotation.get('catalog_scope_count') or 0)} 个 scope）"
+    )
+    # The lane's own reading when it has one: the lap it actually achieves,
+    # which the file cannot say because the file only records advances.
+    prefetch = status.get("forecast_prefetch")
+    prefetch = prefetch if isinstance(prefetch, Mapping) else {}
+    capture = prefetch.get("resident_nwp_capture")
+    capture = capture if isinstance(capture, Mapping) else {}
+    sweep = capture.get("sweep_health")
+    if isinstance(sweep, Mapping) and sweep.get("sweep_achieved_hours"):
+        note += (
+            f"；一圈实测 {float(sweep['sweep_achieved_hours']):.1f}h"
+            f"（新鲜期 {float(sweep.get('p0_freshness_hours') or 0):.0f}h，"
+            f"争用 {float(sweep.get('contention_factor') or 0):.1f}×）"
+        )
+        if sweep.get("fits_freshness_window") is False and health == "green":
+            health = "amber"
+    return {
+        "nwp_rotation_health": health,
+        "nwp_rotation_note": note,
+        "nwp_rotation_age_minutes": round(age_sec / 60.0, 1),
+    }
+
+
 # A TAF round lands every 19 to 33 minutes when the lane is healthy -- the
 # rotation module's own measurement, after the writers were serialised.  Two
 # missed rounds is a lane worth naming; four is a lane that has stopped.
@@ -7243,6 +7318,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
                 ),
                 **_production_health(status),
                 **_taf_capture_health(status),
+                **_nwp_rotation_health(status),
             }
         except (ValueError, OSError):
             worker = {}
@@ -7294,6 +7370,16 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
               "label": "TAF 采集",
               "note": worker.get("taf_capture_note") or ""}]
             if worker.get("taf_capture_health") not in (None, "green") else []
+        )
+        # The other supply lane, and the one whose stall has no other
+        # symptom on this page: a stopped NWP rotation surfaces three layers
+        # downstream as latest_stage_stale_fail_closed, which names a stage
+        # selector and says nothing about a capture that never happened.
+        + (
+            [{"health": worker["nwp_rotation_health"],
+              "label": "NWP 轮转",
+              "note": worker.get("nwp_rotation_note") or ""}]
+            if worker.get("nwp_rotation_health") not in (None, "green") else []
         )
     )
     overall = (
