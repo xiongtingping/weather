@@ -1775,10 +1775,24 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
 
     entry_asks: dict[tuple[str, str, str], list[float]] = defaultdict(list)
     last_bid: dict[tuple[str, str], dict[str, float]] = defaultdict(dict)
+    # Which observation each surviving bid came from, so the ORDER BY can
+    # go.  Sorting was doing one job -- letting the assignment below
+    # overwrite in time order so the LAST non-zero bid wins -- and it was
+    # charging the whole result set for it: ``ORDER BY observed_at`` has no
+    # index to ride, so SQLite built a temp B-tree over every row, and the
+    # row it has to carry through that sort is ``buckets_json`` -- 2.05 GB
+    # of it across ~105k snapshots as of 2026-09-02.  The order was never
+    # needed globally either; only within a station-day-bucket.  Taking the
+    # max explicitly keeps the same winner, drops the sort, and lets the
+    # scan stay on ``day_expiry_idx`` where ``event_date >=`` can seek.
+    #
+    # The comparison is on the ISO-8601 string, which is what the freshness
+    # test four lines down already does; both are UTC with a trailing Z, so
+    # lexical order is time order.
+    last_bid_at: dict[tuple[str, str], dict[str, str]] = defaultdict(dict)
     for station, event, observed, buckets_json in conn.execute(
         "SELECT station_id, event_date, observed_at, buckets_json"
-        " FROM basket_official_ws_snapshot WHERE event_date >= ?"
-        " ORDER BY observed_at",
+        " FROM basket_official_ws_snapshot WHERE event_date >= ?",
         (TRUTH_LANDING_SINCE,),
     ):
         key = (str(station), str(event))
@@ -1814,9 +1828,13 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
             if not bid and bid_levels:
                 bid = bid_levels[0].get("price") or 0
             if in_entry and ask and float(ask) > 0:
+                # Order-independent: these are collected to take a median.
                 entry_asks[(key[0], key[1], bucket)].append(float(ask))
             if bid and float(bid) > 0:
-                last_bid[key][bucket] = float(bid)
+                seen_at = str(observed)
+                if seen_at >= last_bid_at[key].get(bucket, ""):
+                    last_bid[key][bucket] = float(bid)
+                    last_bid_at[key][bucket] = seen_at
 
     winners: dict[tuple[str, str], str] = {}
     for key, bids in last_bid.items():

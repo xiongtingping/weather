@@ -158,3 +158,71 @@ def test_min_and_its_bare_columns_pick_the_same_row():
     assert row[3] == "2026-09-01T06:00:00Z"
     # The claim must be the 06:00 row's, not the 18:00 one inserted first.
     assert row[2] == '{"b": 0.1}'
+
+
+def test_the_snapshot_sweep_does_not_sort_two_gigabytes_to_find_a_maximum():
+    """The last non-zero bid per bucket, without a global sort.
+
+    ``ORDER BY observed_at`` existed so the assignment could overwrite in
+    time order and leave the LAST bid standing.  There is no index for that
+    order, so SQLite built a temp B-tree over every matching row -- and the
+    column it had to carry through the sort is ``buckets_json``, 2.05 GB
+    across ~105k snapshots (2026-09-02).  The order was only ever needed
+    within a station-day-bucket, so the maximum is taken explicitly and the
+    scan stays on ``day_expiry_idx``, where ``event_date >=`` can seek.
+    """
+
+    assert 'FROM basket_official_ws_snapshot WHERE event_date >= ?"' in SOURCE
+    assert '" ORDER BY observed_at",' not in SOURCE
+    assert "last_bid_at" in SOURCE
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE basket_official_ws_snapshot ("
+        " snapshot_id TEXT PRIMARY KEY, station_id TEXT NOT NULL,"
+        " event_date TEXT NOT NULL, observed_at TEXT NOT NULL,"
+        " quote_expires_at TEXT, buckets_json TEXT NOT NULL)"
+    )
+    conn.execute(
+        "CREATE INDEX basket_official_ws_snapshot_day_expiry_idx"
+        " ON basket_official_ws_snapshot(event_date, quote_expires_at)"
+    )
+    plan = _plan(
+        conn,
+        "SELECT station_id, event_date, observed_at, buckets_json"
+        " FROM basket_official_ws_snapshot WHERE event_date >= ?",
+        "2026-08-15",
+    )
+    assert "TEMP B-TREE" not in plan.upper(), plan
+    assert "day_expiry_idx" in plan, plan
+
+
+def test_the_last_bid_wins_whatever_order_the_rows_arrive_in():
+    """The property the dropped ORDER BY was providing, stated directly.
+
+    Rows now arrive in index order, which is not time order, so the winner
+    must be chosen by comparing timestamps rather than by arriving last.
+    A bucket that goes quiet keeps its own last non-zero bid -- it does not
+    inherit the final snapshot's silence -- which is why this cannot be
+    rewritten as "read the newest snapshot per station-day".
+    """
+
+    rows = [
+        ("KLGA", "2026-09-01", "2026-09-01T18:00:00Z", {"b1": 0.55, "b2": 0.0}),
+        ("KLGA", "2026-09-01", "2026-09-01T06:00:00Z", {"b1": 0.20, "b2": 0.30}),
+        ("KLGA", "2026-09-01", "2026-09-01T12:00:00Z", {"b1": 0.40, "b2": 0.0}),
+    ]
+    last_bid: dict[str, float] = {}
+    last_bid_at: dict[str, str] = {}
+    for _station, _event, observed, buckets in rows:
+        for bucket, bid in buckets.items():
+            if bid and float(bid) > 0:
+                if observed >= last_bid_at.get(bucket, ""):
+                    last_bid[bucket] = float(bid)
+                    last_bid_at[bucket] = observed
+    # b1 last traded at 18:00 even though that row was read first.
+    assert last_bid["b1"] == 0.55
+    # b2 went quiet after 06:00 and keeps that bid rather than losing it to
+    # the later zero -- the old loop behaved the same way, because a zero
+    # never entered the dict at all.
+    assert last_bid["b2"] == 0.30
