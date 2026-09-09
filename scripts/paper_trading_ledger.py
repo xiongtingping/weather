@@ -65,6 +65,9 @@ from bayes_basket_target.center_width_store import EDGE_WIDTH_C  # noqa: E402
 from bayes_basket_target.convergence_evidence import (  # noqa: E402
     load_convergence_evidence,
 )
+from bayes_basket_target.off_centre_claim_store import (  # noqa: E402
+    load_off_centre_tables,
+)
 from bayes_basket_target.symmetric_seat_band_store import (  # noqa: E402
     load_symmetric_seat_bands,
 )
@@ -1064,6 +1067,7 @@ _FR_REPLAY: dict[str, Any] | None = None
 _EE_CONN: sqlite3.Connection | None = None
 _EE_AS_OF_CACHE: dict[str, dict[str, Any]] = {}
 _SEAT_BAND_CACHE: dict[str, dict[str, Any]] = {}
+_OFF_CENTRE_CACHE: dict[str, dict[str, Any]] = {}
 
 
 # Research arm: ``off`` reads the kernel constants for every decision, which
@@ -1077,6 +1081,31 @@ if EFFECTIVE_EDGE_TABLES_MODE not in {"as_of", "off"}:
     raise SystemExit(
         f"paper_ledger_effective_edge_tables_mode_invalid: {EFFECTIVE_EDGE_TABLES_MODE}"
     )
+
+
+def _off_centre_claim_bands() -> dict[str, Any]:
+    """The off-centre claim table production compiles against.
+
+    Standing ruling: a selection or sizing input moves on both sides or on
+    neither.  This one arrived on production's side alone -- the callers and
+    the kernel took it on 2026-09-09 and the two functions between them did
+    not, so production raised TypeError on every scope until the chain was
+    completed, and the ledger was never given it at all.  A replay judging a
+    book production assembled under a claim correction it did not apply is
+    the divergence that ruling exists to prevent.
+
+    Read once and cached, for the same reason the seat band above is: it is
+    the RULE the whole replay is judged under, not a per-decision quantity.
+    """
+
+    if _EE_CONN is None:
+        return {}
+    if "bands" not in _OFF_CENTRE_CACHE:
+        try:
+            _OFF_CENTRE_CACHE["bands"] = load_off_centre_tables(_EE_CONN)
+        except Exception:  # noqa: BLE001
+            _OFF_CENTRE_CACHE["bands"] = {}
+    return _OFF_CENTRE_CACHE["bands"]
 
 
 def _symmetric_seat_bands() -> dict[str, Any]:
@@ -4889,6 +4918,7 @@ def _production_judge(
             # Charter 87: the gate reads lambda off the tables served as of
             # this decision, the same ones the solver below is handed.
             effective_edge_tables=_effective_edge_tables_as_of(decision_at_utc),
+            off_centre_claim_bands=_off_centre_claim_bands(),
             symmetric_seat_bands=_symmetric_seat_bands(),
         )
     except Exception as exc:  # noqa: BLE001
@@ -8651,6 +8681,7 @@ def backfill(
                             effective_edge_tables=_effective_edge_tables_as_of(
                                 payload["decision_at_utc"]
                             ),
+                            off_centre_claim_bands=_off_centre_claim_bands(),
                             symmetric_seat_bands=_symmetric_seat_bands(),
                         )
                     except Exception as exc:  # noqa: BLE001 -- scope skipped
