@@ -4799,9 +4799,24 @@ def _production_judge(
         bankroll = max(float(equity), 1e-6)
     # Charter 72: production sizes by the whole-basket Kelly stake off the
     # book; the curve keeps its floor.  The judge arm passes what the
-    # runtime passes.
+    # runtime passes -- including the switch, which is the half that was
+    # missing.  This read the Kelly form unconditionally until 2026-09-09
+    # while the ledger's fingerprint hashed ``charter_72_kelly_sizing``
+    # away from ``on``, so an arm run with ``PM_CHARTER_72_KELLY=off``
+    # rehashed its book and then judged it under the Kelly law anyway.  Two
+    # arms, two digests, one strategy: the arm looked like a measurement
+    # and was the baseline wearing a different name (measured 2026-09-09 --
+    # 278 positions, 151 settled, 873.212 staked, +31.788 pnl, identical to
+    # the last decimal across both digests).
+    #
+    # The default is unchanged, so the standing book does not move: the
+    # switch is ``on`` unless an arm sets it, and ``on`` is the Kelly form
+    # this line already returned.
     objective_form = (
-        _KELLY_OBJECTIVE_FORM if bankroll > 0.0 else _VALUE_OBJECTIVE_FORM
+        _KELLY_OBJECTIVE_FORM
+        if CHARTER_72_KELLY_SIZING == "on" and bankroll > 0.0 and equity > 0.0
+        else _CURVE_OBJECTIVE_FORM if bankroll > 0.0
+        else _VALUE_OBJECTIVE_FORM
     )
     live_buckets = tuple(
         row.bucket for row in snapshot.buckets
