@@ -435,3 +435,51 @@ def test_the_regime_prior_read_asks_for_the_scopes_it_will_look_up(
         or "basket_regime_artifact_scope_idx" in step
         for step in steps
     ), steps
+
+
+# The eleventh, same day, same table, one question over: not an unindexed
+# predicate this time but an unfolded one -- every row read so a dict could
+# throw the duplicates away.
+def _decision_scope_probability_sql() -> str:
+    import re
+
+    body = (ROOT / "bayes_basket_target" / "production_worker.py").read_text()
+    start = body.index('"SELECT DISTINCT station_id,event_date,settlement_timezone,"')
+    match = re.search(
+        r"probability_rows = self\.conn\.execute\(\s*(.*?)\n\s*\)\.fetchall\(\)",
+        body[start - 400:start + 1200],
+        re.S,
+    )
+    assert match, "the decision-scope probability read moved; follow it"
+    return "".join(
+        re.findall(r'"([^"]*)"', match.group(1))
+    ).replace("+ stage_projection +", "").replace(
+        "SELECT DISTINCT station_id,event_date,settlement_timezone,",
+        "SELECT DISTINCT station_id,event_date,settlement_timezone,stage",
+    )
+
+
+def test_the_decision_scope_read_folds_before_it_fetches(
+    conn: sqlite3.Connection,
+) -> None:
+    """416,855 rows fetched for 3,935 distinct answers, several times a cycle.
+
+    The rows go straight into a dict keyed on (station, day, timezone) with
+    a set of stages, so every duplicate was built only to be discarded --
+    and the WS-cache read a few lines below, asking the same question of its
+    own table, already said DISTINCT.
+
+    The cost of that is not the query.  A 15-second ``sample`` of the
+    resident mid-cycle on 2026-09-09 put about 77% of the worker thread's
+    time in ``tupledealloc``: it was not waiting on SQLite, it was freeing
+    the rows SQLite had handed it.  So what is asserted here is the fold,
+    plus the planner still answering from the index rather than the table.
+    """
+
+    sql = _decision_scope_probability_sql()
+    assert sql.startswith("SELECT DISTINCT"), sql
+    steps = _plan(conn, sql, ())
+    assert steps, "the planner returned no steps"
+    assert not any(
+        step.startswith("SCAN") and "USING" not in step for step in steps
+    ), steps

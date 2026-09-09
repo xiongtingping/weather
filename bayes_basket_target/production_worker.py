@@ -8817,8 +8817,19 @@ class TargetProductionWorker:
             stage_projection = (
                 "stage" if "stage" in probability_columns else "'' AS stage"
             )
+            # DISTINCT, like the WS-cache read forty lines below that asks
+            # the same question of its own table.  The loop under this fold
+            # the rows into ``probability_scopes`` -- a dict keyed on the
+            # scope with a set of stages -- so duplicates were only ever
+            # built to be discarded, and by 2026-09-09 that was 416,855
+            # rows for 3,935 distinct answers, per call, several calls a
+            # cycle.  The cost is not the query: a 15-second sample of the
+            # resident mid-cycle put ~77% of the worker thread's time in
+            # ``tupledealloc``, freeing fetched rows.  Measured warm
+            # against the live SSOT: 5.15s to 3.9s for the read, and 413k
+            # tuples a call that are never allocated.
             probability_rows = self.conn.execute(
-                "SELECT station_id,event_date,settlement_timezone,"
+                "SELECT DISTINCT station_id,event_date,settlement_timezone,"
                 + stage_projection
                 + " FROM basket_probability_envelope "
                 "WHERE station_id<>'' AND event_date<>'' "
