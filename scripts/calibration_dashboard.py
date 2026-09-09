@@ -8069,64 +8069,26 @@ function fleetRegime(){
 // of them lost for a reason.  Ranking by P&L alone cannot tell a broken
 // station from an unlucky one on five settled chains; failing several
 // dimensions that do not share a mechanism can.
-function stationFailureMatrix(){
+// The five-dimension failure read, folded into the gate table rather than
+// standing beside it (user ruling, 2026-09-09).  Both are per-station
+// verdicts, and an operator flipping a switch needs the case for it on the
+// same row -- two tables one under the other made them line up by eye.
+//
+// It stays a separate measurement, not a merged one: the gate's ratio and
+// the matrix's calibration_ratio are different windows over different
+// populations (CYYZ reads 1.04 and 0.66 on the same day), and so are the
+// gate's bias against the matrix's centre residual, and the gate's chains
+// against the settled count.  Collapsing either pair into one column would
+// be inventing a number neither layer computed.
+function stationFailureIndex(){
   const M=(D.selection||{}).station_failure_matrix;
-  if(!M||!M.available) return "";
-  const t=M.thresholds||{};
-  const NAMES={realization:"实现", claim:"声称", centre:"中心",
-    coverage:"覆盖", persistence:"持续"};
-  const rows=(M.stations||[]).filter(s=>s.flag_count>0).map(s=>{
-    const bad=Object.keys(NAMES).filter(k=>(s.flags||{})[k]);
-    // Thin stations are not good stations, they are unjudged ones, so the
-    // count is muted rather than hidden and the row says so in place.
-    const thin=s.settled_count<6;
-    const num=(v,d,suffix="")=>v==null?"—":
-      (v>=0&&suffix==="C"?"+":"")+Number(v).toFixed(d)+suffix;
-    return `<tr>
-      <td><span class="mono">${h(s.station_id)}</span>
-        <span class="muted">${h(s.station_label)}</span></td>
-      <td class="mono${thin?" muted":""}">${s.settled_count}${
-        thin?" 薄":""}</td>
-      <td class="mono">${s.basket_coverage==null?"—":
-        (100*s.basket_coverage).toFixed(0)+"%"}</td>
-      <td class="mono">${num(s.realization_ratio,2)}</td>
-      <td class="mono">${num(s.calibration_ratio,2)}</td>
-      <td class="mono">${num(s.centre_residual_c,2,"C")}</td>
-      <td class="mono">${s.early_pnl_usdc>=0?"+":""}${
-        s.early_pnl_usdc.toFixed(1)}<span class="muted">(${
-        s.early_chains})</span></td>
-      <td class="mono">${s.late_pnl_usdc>=0?"+":""}${
-        s.late_pnl_usdc.toFixed(1)}<span class="muted">(${
-        s.late_chains})</span></td>
-      <td>${bad.map(k=>`<span class="pill amber">${NAMES[k]}</span>`)
-        .join(" ")}</td>
-      <td class="mono"><b>${s.flag_count}</b>/5</td>
-    </tr>`;
-  }).join("");
-  const worst=(M.stations||[]).filter(s=>s.flag_count>=4)
-    .map(s=>h(s.station_id)).join("、")||"无";
-  const clean=(M.stations||[]).filter(s=>s.flag_count===0).length;
-  return `<h3 style="margin-top:18px">哪些站是系统性地不行</h3>
-  <p class="sub">五个维度，各指向不同的层。分割点 ${
-    h(M.split_event_date)}；只列出至少一项不行的站。</p>
-  <div class="why"><b>为什么不能只看亏多少：</b>一个站只有五到十条已结算链，
-  单靠运气就能亏得很难看，所以"亏损前十"里永远混着运气差的。能分开的是
-  <b>同时在互不重复的维度上不行</b>——每一项指认不同的一层：
-  <b>实现</b>（实现/期望 &lt;0，模型想去的日子反而亏，病在声称或执行）、
-  <b>声称</b>（命中/声称 &lt;${t.claim_floor}，声称虚高，病在校准层）、
-  <b>中心</b>（残差 &gt;${t.centre_limit_c}°C，中心就是错的，病在偏差层，最上游）、
-  <b>覆盖</b>（选桶盖住真值 &lt;${(100*(t.coverage_floor||0)).toFixed(0)}%，病在选桶层）、
-  <b>持续</b>（前后半段都亏，是站的性格不是那两周）。
-  <b>旗标只列不求和：</b>它们会互相打架且那正是信息——EHAM 赚得远超模型期望
-  却另外三项不行，加总成一个分数恰好会把这件事抹掉。
-  <b>薄样本标"薄"不剔除：</b>两条链的站不是好站，是没被判过的站。
-  <b>这是诊断不是处方：</b>前瞻检验实测，按前半段排名剔掉最差十站，
-  后半段只从 −55.7 改善到 −20.4，仍是亏的——剔站买不来一本赚钱的账。
-  当前 ${worst} 至少四项不行，另有 ${clean} 站一项都不占。</div>
-  <table><thead><tr><th>站</th><th>已结算</th><th>覆盖率</th>
-    <th>实现/期望</th><th>命中/声称</th><th>中心残差</th>
-    <th>前半段</th><th>后半段</th><th>不行的维度</th><th>计</th>
-    </tr></thead><tbody>${rows}</tbody></table>`;
+  if(!M||!M.available) return null;
+  const by={};
+  (M.stations||[]).forEach(s=>{by[s.station_id]=s;});
+  return {by:by, thresholds:M.thresholds||{},
+    split:M.split_event_date,
+    worst:(M.stations||[]).filter(s=>s.flag_count>=4).map(s=>s.station_id),
+    clean:(M.stations||[]).filter(s=>s.flag_count===0).length};
 }
 
 function refusalStats(){
@@ -11175,20 +11137,62 @@ function liveReadiness(){
   // days is recorded in the file as a same-day round trip -- while probation
   // had no control at all: an operator who wanted a station recorded but not
   // traded had the bar as the only tool, and the bar is a verdict.
+  // The five-dimension read shares this row (user ruling, 2026-09-09).
+  // Every gated station gets a line whether or not it is flagged: the old
+  // separate table listed only stations with at least one flag, which meant
+  // a clean station's evidence simply was not on the page.
+  const FX = stationFailureIndex();
+  const FLAG = {realization:"实现", claim:"声称", centre:"中心",
+    coverage:"覆盖", persistence:"持续"};
+  const fnum = (v,d,suffix="") => v==null ? "—"
+    : ((v>=0&&suffix==="C")?"+":"") + Number(v).toFixed(d) + suffix;
+  const EDGE = 'style="border-left:1px solid var(--line)"';
+  const fverdict = (station) => {
+    if(!FX) return "";
+    const s = FX.by[station];
+    if(!s) return `<td class="mono muted" ${EDGE}>—</td><td class="muted">—</td>`;
+    const bad = Object.keys(FLAG).filter(k=>(s.flags||{})[k]);
+    return `<td class="mono ${s.flag_count>=4?"down":""}" ${EDGE}><b>${
+        s.flag_count}</b>/5</td>
+      <td>${bad.map(k=>`<span class="pill amber">${FLAG[k]}</span>`).join(" ")
+        || '<span class="muted">✓</span>'}</td>`;
+  };
+  const fcells = (station) => {
+    if(!FX) return "";
+    const s = FX.by[station];
+    if(!s) return `<td class="mono muted" ${EDGE}>—</td>`
+      + '<td class="mono muted">—</td>'.repeat(6);
+    // Thin stations are not good stations, they are unjudged ones, so the
+    // count is muted rather than hidden and the cell says so in place.
+    const thin = s.settled_count < 6;
+    return `<td class="mono${thin?" muted":""}" ${EDGE}>${s.settled_count}${
+        thin?" 薄":""}</td>
+      <td class="mono">${s.basket_coverage==null?"—":
+        (100*s.basket_coverage).toFixed(0)+"%"}</td>
+      <td class="mono">${fnum(s.realization_ratio,2)}</td>
+      <td class="mono">${fnum(s.calibration_ratio,2)}</td>
+      <td class="mono">${fnum(s.centre_residual_c,2,"C")}</td>
+      <td class="mono">${s.early_pnl_usdc>=0?"+":""}${
+        s.early_pnl_usdc.toFixed(1)}<span class="muted">(${s.early_chains})</span></td>
+      <td class="mono">${s.late_pnl_usdc>=0?"+":""}${
+        s.late_pnl_usdc.toFixed(1)}<span class="muted">(${s.late_chains})</span></td>`;
+  };
   const rows = (L.stations||[]).map(r=>`<tr class="${barred.has(r.station)?"muted":""}">
-    <td class="mono"><span data-lc-state="${h(r.station)}">${allow.has(r.station)?"✔ ":(barred.has(r.station)?"⛔ ":(waiting.has(r.station)?"⏳ ":""))}</span>${h(r.station)}${r.station_label?` <span class="muted">${h(r.station_label)}</span>`:""}</td>
-    <td>${lcGateButtons(r.station, barred.has(r.station),
+    <td class="mono" style="white-space:nowrap"><span data-lc-state="${h(r.station)}">${allow.has(r.station)?"✔ ":(barred.has(r.station)?"⛔ ":(waiting.has(r.station)?"⏳ ":""))}</span>${h(r.station)}${r.station_label?` <span class="muted">${h(r.station_label)}</span>`:""}</td>
+    <td style="white-space:nowrap">${lcGateButtons(r.station, barred.has(r.station),
       waived.has(r.station), heldSet.has(r.station),
       autoBar.has(r.station))}</td>
     <td class="mono ${r.score>=5?"up":(r.score>=4?"":"down")}">${r.score}/5</td>
-    <td class="mono">${r.ratio==null?"—":r.ratio.toFixed(2)}</td>
+    <td class="muted">${r.add_candidate?"☆建议加入 ":""}${r.release_candidate?"★建议放出 ":""}${Object.entries(r.gates).filter(([k,v])=>!v).map(([k])=>GATE[k]).join("、")||"✓"}</td>
+    ${fverdict(r.station)}
+    <td class="mono" ${EDGE}>${r.ratio==null?"—":r.ratio.toFixed(2)}</td>
     <td class="mono">${r.bias_c==null?"—":(r.bias_c>0?"+":"")+r.bias_c.toFixed(2)}</td>
     <td class="mono">${r.chains}</td>
     <td class="mono ${r.roi==null?"":(r.roi>=0?"up":"down")}">${r.roi==null?"—":((r.roi>=0?"+":"")+(100*r.roi).toFixed(1)+"%")}</td>
     <td class="mono ${r.recent_roi==null?"":(r.recent_roi>=0?"up":"down")}">${r.recent_roi==null?"—":((r.recent_roi>=0?"+":"")+(100*r.recent_roi).toFixed(1)+"%")}</td>
     <td class="mono ${r.climate_jump_c==null?"":(r.climate_jump_c>1.76?"down":"up")}">${r.climate_jump_c==null?"—":r.climate_jump_c.toFixed(2)}</td>
     <td class="mono ${r.shape_gap_buckets==null?"":(r.shape_gap_buckets>0.93?"down":"")}">${r.shape_gap_buckets==null?"—":r.shape_gap_buckets.toFixed(2)}</td>
-    <td class="muted">${r.add_candidate?"☆建议加入 ":""}${r.release_candidate?"★建议放出 ":""}${Object.entries(r.gates).filter(([k,v])=>!v).map(([k])=>GATE[k]).join("、")||"✓"}</td>
+    ${fcells(r.station)}
   </tr>`).join("");
   const CT = L.contracts || {};
   const authorised = CT.live_submit_authorized === true;
@@ -11265,10 +11269,34 @@ function liveReadiness(){
       同一份手挑名单固定不动反而 +17.0 点（p=0.002）。所以<b>操作者裁定的行永远不由机器改</b>；自动层只管操作者没裁定过的站，判据＝第一看兑现比（实得÷期望；期望＜3U 时读不出，改看第二项）、第二看实得差，进出用滞回避免来回摆；<b>不再设站数上限</b>（2026-09-02 解除）：判据说禁就禁，名单即判决，人工新禁也不再挤掉任何人。<br>
       候选判据：加入＝全样本 ROI≤−25% 且链≥5；放出＝已禁且最近 5 个结算日 ROI＞0（≥3 笔）<b>且中心偏差与声称诚实两闸都过</b>——只看 ROI 会把靠盘后 P1 铁板捞回来的站放出去（EPWA 判例）。</div>
     </details>
-    <div class="scroll" style="max-height:360px;margin-top:6px">
-    <table><thead><tr><th>站</th><th title="三个开关都是人工裁定，点击即开启关闭，改动立刻写盘并记审计。禁入=不下单（记账照旧）；豁免=证据不够也上线；待观察=够格也先不下单。三者互斥。">闸门（人工）</th><th>过闸</th><th>实现/声称</th><th>中心偏差</th>
-      <th>链</th><th>ROI</th><th title="最近 5 个结算日">近5日</th><th title="该站真值的日际跳变均值(°C)：天气性格，>1.76 的站在真边际枯竭期实测 −43%（留存组 +23%，p=0.023）。外生、慢变、先于账本。">跳变/日</th><th title="近14天池子里模型分布的均值−众数距离(桶)：跳变在模型层的影子(r=+0.32)，>0.93 为高。">形状gap</th><th>未过项</th></tr></thead><tbody>${rows}</tbody></table></div>
-    ${safe(stationFailureMatrix, "哪些站是系统性地不行")}
+    ${FX?`<details class="note" style="margin-top:6px"><summary>「不行」的五个维度分别指认哪一层</summary>
+      <div class="muted"><b>为什么不能只看亏多少：</b>一个站只有五到十条已结算链，
+      单靠运气就能亏得很难看，所以"亏损前十"里永远混着运气差的。能分开的是
+      <b>同时在互不重复的维度上不行</b>——每一项指认不同的一层：
+      <b>实现</b>（实现/期望 &lt;0，模型想去的日子反而亏，病在声称或执行）、
+      <b>声称</b>（命中/声称 &lt;${FX.thresholds.claim_floor}，声称虚高，病在校准层）、
+      <b>中心</b>（残差 &gt;${FX.thresholds.centre_limit_c}°C，中心就是错的，病在偏差层，最上游）、
+      <b>覆盖</b>（选桶盖住真值 &lt;${(100*(FX.thresholds.coverage_floor||0)).toFixed(0)}%，病在选桶层）、
+      <b>持续</b>（前后半段都亏，是站的性格不是那两周）。前后半段分割点 ${h(FX.split)}。<br>
+      <b>旗标只列不求和：</b>它们会互相打架且那正是信息——EHAM 赚得远超模型期望
+      却另外三项不行，加总成一个分数恰好会把这件事抹掉。
+      <b>薄样本标"薄"不剔除：</b>两条链的站不是好站，是没被判过的站。
+      <b>这是诊断不是处方：</b>前瞻检验实测，按前半段排名剔掉最差十站，
+      后半段只从 −55.7 改善到 −20.4，仍是亏的——剔站买不来一本赚钱的账。<br>
+      <b>这五维与左边的五闸是两套测量，不可互相代入</b>：窗口和人口都不同——
+      同一天 CYYZ 的闸读 1.04、五维的命中/声称读 0.66，中心偏差与中心残差、
+      链与已结算同理。合成一列等于编一个哪一层都没算过的数。</div>
+    </details>`:""}
+    <div class="scroll" style="max-height:420px;margin-top:6px">
+    <table style="white-space:nowrap"><thead><tr><th>站</th><th title="三个开关都是人工裁定，点击即开启关闭，改动立刻写盘并记审计。禁入=不下单（记账照旧）；豁免=证据不够也上线；待观察=够格也先不下单。三者互斥。">闸门（人工）</th><th>过闸</th><th>未过项</th>${
+      FX?`<th title="五个维度各指认不同的一层，见上方折叠说明；与左边的五闸是两套测量" style="border-left:1px solid var(--line)">不行</th><th>不行的维度</th>`:""}
+      <th style="border-left:1px solid var(--line)">实现/声称</th><th>中心偏差</th>
+      <th>链</th><th>ROI</th><th title="最近 5 个结算日">近5日</th><th title="该站真值的日际跳变均值(°C)：天气性格，>1.76 的站在真边际枯竭期实测 −43%（留存组 +23%，p=0.023）。外生、慢变、先于账本。">跳变/日</th><th title="近14天池子里模型分布的均值−众数距离(桶)：跳变在模型层的影子(r=+0.32)，>0.93 为高。">形状gap</th>${
+      FX?`<th title="以下七列属五维诊断，窗口与左侧五闸不同" style="border-left:1px solid var(--line)">已结算</th><th>覆盖率</th><th>实现/期望</th><th>命中/声称</th><th>中心残差</th><th>前半段</th><th>后半段</th>`:""}
+      </tr></thead><tbody>${rows}</tbody></table></div>
+    ${FX?`<div class="muted" style="margin-top:4px;font-size:11.5px">
+      五维诊断：${FX.worst.length?h(FX.worst.join("、"))+" 至少四项不行":"没有站四项以上不行"}，
+      另有 ${FX.clean} 站一项都不占。</div>`:""}
   </div>`;
 }
 
