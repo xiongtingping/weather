@@ -282,3 +282,113 @@ def test_the_table_is_bounded_by_the_scope_count_not_the_cycle_rate() -> None:
     assert conn.execute(
         "SELECT COUNT(*) FROM basket_target_ws_scope_serving_state"
     ).fetchone()[0] == 45
+
+
+# ---------------------------------------------- charter 126: record vs decide
+
+
+def _catalog_scope(station, *, day="2026-09-10", fresh=True, blocker="",
+                   state="not_started", stage="P0"):
+    return {
+        "scope_key": f"{station}|{day}",
+        "station_id": station,
+        "event_date": day,
+        "event_day_state": state,
+        "probability_stage": stage,
+        "probability_evidence_fresh": fresh,
+        "scope_blocker": blocker,
+    }
+
+
+def _capture_worker():
+    worker = object.__new__(TargetProductionWorker)
+    worker._evidence_only_last_captured = {}
+    return worker
+
+
+def test_a_scope_the_decision_rule_drops_is_still_recorded() -> None:
+    worker = _capture_worker()
+    stale = _catalog_scope("ZUUU", fresh=False)
+    blocked = _catalog_scope(
+        "ZSPD", blocker="resident_target_ws_future_probability_stale"
+    )
+    rootless = _catalog_scope("ZSQD", stage="", blocker="resident_target_ws_future_scope_rootless")
+    healthy = _catalog_scope("ZGSZ")
+
+    evidence = worker._evidence_only_capture_scopes(
+        [stale, blocked, rootless, healthy], decidable=[healthy]
+    )
+
+    assert {row["station_id"] for row in evidence} == {"ZUUU", "ZSPD", "ZSQD"}
+    # ...and a scope the cycle CAN act on is never duplicated into it.
+    assert "ZGSZ" not in {row["station_id"] for row in evidence}
+
+
+def test_the_floor_interval_holds_between_captures() -> None:
+    worker = _capture_worker()
+    scopes = [_catalog_scope("ZUUU", fresh=False)]
+    manifest = [{"scope_key": "ZUUU|2026-09-10"}]
+
+    first = worker._evidence_only_capture_scopes(scopes, decidable=[])
+    assert len(first) == 1
+    worker._mark_evidence_only_captured(
+        first, swept=manifest, as_of_utc="2026-09-09T12:00:00Z"
+    )
+
+    # Immediately after, it is not due again.
+    assert worker._evidence_only_capture_scopes(scopes, decidable=[]) == []
+
+    # Past the floor, it is.
+    worker._evidence_only_last_captured["ZUUU|2026-09-10"] -= (
+        TargetProductionWorker.EVIDENCE_ONLY_CAPTURE_MIN_INTERVAL_SECONDS + 1
+    )
+    assert len(worker._evidence_only_capture_scopes(scopes, decidable=[])) == 1
+
+
+def test_a_scope_the_sweep_did_not_carry_is_not_marked_captured() -> None:
+    # Marking it would push its next attempt out by a whole interval for a
+    # book that was never written -- the defect in miniature.
+    worker = _capture_worker()
+    scopes = [_catalog_scope("ZUUU", fresh=False), _catalog_scope("ZSPD", fresh=False)]
+    offered = worker._evidence_only_capture_scopes(scopes, decidable=[])
+    worker._mark_evidence_only_captured(
+        offered,
+        swept=[{"scope_key": "ZUUU|2026-09-10"}],
+        as_of_utc="2026-09-09T12:00:00Z",
+    )
+
+    assert set(worker._evidence_only_last_captured) == {"ZUUU|2026-09-10"}
+    still_due = worker._evidence_only_capture_scopes(scopes, decidable=[])
+    assert [row["station_id"] for row in still_due] == ["ZSPD"]
+
+
+def test_the_per_cycle_bound_never_drops_the_same_tail() -> None:
+    worker = _capture_worker()
+    scopes = [
+        _catalog_scope(f"Z{index:03d}", fresh=False) for index in range(40)
+    ]
+    cap = TargetProductionWorker.MAX_EVIDENCE_ONLY_SCOPES_PER_CYCLE
+
+    first = worker._evidence_only_capture_scopes(scopes, decidable=[])
+    assert len(first) == cap
+    worker._mark_evidence_only_captured(
+        first,
+        swept=[{"scope_key": row["scope_key"]} for row in first],
+        as_of_utc="2026-09-09T12:00:00Z",
+    )
+    second = worker._evidence_only_capture_scopes(scopes, decidable=[])
+
+    # The ones just taken are inside their interval; the next cycle serves
+    # the ones that have never been taken.
+    assert len(second) == cap
+    assert not {row["scope_key"] for row in first} & {
+        row["scope_key"] for row in second
+    }
+
+
+def test_the_widening_is_switchable_off_to_exactly_the_old_behaviour() -> None:
+    worker = _capture_worker()
+    worker.EVIDENCE_ONLY_CAPTURE_MIN_INTERVAL_SECONDS = 0.0
+    assert worker._evidence_only_capture_scopes(
+        [_catalog_scope("ZUUU", fresh=False)], decidable=[]
+    ) == []

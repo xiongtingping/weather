@@ -554,3 +554,26 @@ MSM 四站**全部**改善：RCSS −1.283、RJTT −0.658、RKPK −0.452、RKS
 （十）**无观测即恒等**：日前编译（绝大多数 P0 决策）不带该数，两个键**整键缺席**而非写 null，因此每一处 dict 与内容哈希与裁决前逐字节相同。
 
 **本条不做的事（明确留白）**：它不卖出、不减仓、不给已死的腿定价。09-08/09-09 两天 25 条已成交腿里有 **10 条（成本 15.74 USDC）**在当日温度计下已经归零（LFPB 21/22°C、OEJN 35/37°C、SAEZ 18°C、ZGGG 34°C、ZGSZ 31°C、ZSQD 24/25°C、ZUUU 24°C），全部是日前 P0 合法买入、日内无人复核。"死腿的退出与登记"是另一条要单独裁决的规则，本条只保证**不再往里加钱**。
+
+
+126. **记盘口与做决策是两件事：被裁决挡下的 scope 仍然要留下盘口（2026-09-09 裁决：「修」）**
+
+**规则**：一个 (站, 事件日) scope 能不能被**决策**，和它的盘口该不该被**记录**，是两个问题。catalog 给出的每一种 blocker 都只回答第一个。自本条起，落在本周期所服务日窗内的 scope，即使概率过期或带 blocker，其盘口照样入库——只是不按决策频率，而按**地板间隔**取样。决策准入一字未改。
+
+**缺陷**：`open_ws_scopes` 这一个列表同时喂了两件事——`_select_resident_open_ws_scope`（决策）和 `_sweep_scope_manifests`（写 `basket_official_ws_snapshot`）。于是决策规则丢掉的 scope 连盘口一起丢。而 catalog 自己的注释早就把这几个 blocker 的语义写清楚了：`future_probability_stale` 是「observational only」，`open_scope_rootless` 是「keep recording its book, block decisions on it alone」，`pre_p1_probability_stale` 是「excluded from the actionable scope set while allowing other fresh scopes to proceed」。**没有一条说不要记账**，代码却都当成了不要记账。
+
+**同一教训的前两次**：（一）forward 编译路径 2026-08-16 已经学过——`_record_refused_compile_market_evidence` 的注释记着「一次 43-scope 扫描里 24 个 scope 抛错，每一个都完全没有记下盘口，因为这条路上 `basket_official_ws_snapshot` 的唯一写者坐在 compile 下游；报价是易逝的，前瞻那一本漏了就永远补不回来」。（二）发布器一侧 2026-09-06 已按裁决改过——「未开始的日子在它的 P0 过期时保留自己的盘口……在那之前任一时刻只有 P0 在六小时窗口内刷新过的站被订阅，2026-09-06 那天是 45 站里的 20 站」。**发布器改了，worker 这一侧没改**，本条是第三次、也是最后一处。
+
+**实测**：（一）**ZUUU|2026-09-09**——2026-09-08T07:36Z→09-09T05:12Z 共 **21.6 小时零盘口**，盖住其事件日前 13.2 小时；洞前最后一本 27°C 卖 **0.30**，洞后第一本 **0.998**，而 P1 在本地 00:06 就已经知道 27°C 已达成。同日 ZSPD/ZSQD 同型 +13.2h、EDDM/LFPB +7.2h，另外 39 站从本地 0 点起正常。（二）**常态而非偶发**——第 125 条那张新表首次落库（2026-09-09T11:52Z）即读出 127 个 scope 里 **47 个未被服务**，其中 41 个是「明天」这一档卡在 `future_probability_stale`；重启前的快照同样是 41 个，不是重启假象。（三）**代价已经在账上**——`production_quote_expired` 是全库阻断原因第一名（09-01 起 348 次），而一个从未被取过盘口的 scope，决策时读到的正是这个。
+
+**落地**：`day_window_scopes`（本周期日窗内的全部 scope）→ `open_ws_scopes`（可决策，判据一字未改）+ `_evidence_only_capture_scopes`（仅证据）。两者一并进 `_sweep_scope_manifests`，因此继承它的轮转序、"一次 ingress 只服务一个事件日"与它的上限；`selected_open_scope` 仍只从 `open_ws_scopes` 里选，`full_materialization` 仍读被选中那一个的新鲜度。两个常量：`EVIDENCE_ONLY_CAPTURE_MIN_INTERVAL_SECONDS=600`（`PM_EVIDENCE_ONLY_CAPTURE_MIN_INTERVAL_SECONDS`，设 0 即裁决前行为）与 `MAX_EVIDENCE_ONLY_SCOPES_PER_CYCLE=16`（`PM_MAX_EVIDENCE_ONLY_SCOPES_PER_CYCLE`）。取样序为「从未取过 → 最久未取」，被 sweep 实际带上的才记时钟（没带上就记，等于为一本没写的盘口把下次推迟一整个间隔——正是本条要修的缺陷的缩影）。时钟在内存里：重启只会多取一轮、不会漏取，与轮转游标的方向相反，而这正是"漏掉的报价补不回来"这条规则唯一安全的方向。
+
+**与既有条款的关系（按"新条款先查冲突"规矩列出）**：
+（一）**承 2026-09-06 那条发布器裁决**，把它的语义补到消费侧；不改它的任何判据。
+（二）**承第 48 条**（挂牌即订阅、盘口从第一笔报价起记录）：`open_scope_rootless` / `future_scope_rootless` 这两类 scope 本来就是为此存在的，本条让它们的盘口真的落库。
+（三）**不放松任何决策门**：`open_ws_scopes` 的判据逐字未动，`_decision_scopes` 由 registry 派生、与本条无关，"仅证据"集合永不进 `selected_open_scope`。本条只可能让**更多**决策拿到不过期的盘口，不可能让更多 scope 变得可决策。
+（四）**与 SSOT 容量的关系**（第 80 条⑧ 同理：每条条款有开关）：一本盘口约 17.6 KB，全队约 19k 本/天。本条不按决策频率放宽——600 秒地板加每周期 16 个上限，把增量摊到周期上而不是一次写爆。
+（五）**与第 85 条（轮转先服务持仓站日）不冲突**：仅证据 scope 走的是 `_sweep_scope_manifests` 同一个 `_scope_rotation_key`，且数量受（四）的上限约束，因此不能挤占可决策 scope 的席位；sweep 自身的上限（180）对 127 个 scope 的目录本就不会触顶，该上限是为它日后变动而设的保险。
+（六）**与第 125 条相邻但不同**：第 125 条记的是"为什么不服务"，本条改的是"不服务时也要留下盘口"。一个是账，一个是行为；本条的实测立论正是由第 125 条那张表读出来的。
+
+**本条不做的事**：一个周期若**没有任何**可决策 scope，`resident_target_ws_actionable_scope_missing` 那条早退仍在 sweep 之前，因此那一轮谁的盘口都不记。那是同一缺陷的最后一处残留，需要一个能在没有 `selected` 的情况下定义日窗与物化深度的路径，留待单独裁决。

@@ -11274,6 +11274,106 @@ class TargetProductionWorker:
             "evidence_cache": evidence_cache,
         }
 
+    #: Charter 126.  How stale an evidence-only scope's last capture may be
+    #: before this cycle takes another.  Not the decision cadence: a scope
+    #: nobody may act on still has to leave a legible price series, and a
+    #: 17KB book every cycle for every blocked scope is the SSOT growth this
+    #: floor exists to avoid.  Ten minutes catches a repricing -- ZUUU
+    #: 2026-09-09 moved 27C from 0.30 to 0.998 inside a 21.6-hour silence --
+    #: at roughly a sixth of the rows an actionable scope writes.
+    EVIDENCE_ONLY_CAPTURE_MIN_INTERVAL_SECONDS = float(
+        os.environ.get(
+            "PM_EVIDENCE_ONLY_CAPTURE_MIN_INTERVAL_SECONDS", ""
+        ).strip() or 600.0
+    )
+
+    #: And how many of them one cycle takes.  The sweep's own cap is 180
+    #: against a catalog of 127, so it cannot bind today -- this bound is
+    #: what keeps that true if either number moves, and it spreads the extra
+    #: writes over cycles instead of taking them in one burst.  Sixteen a
+    #: cycle clears forty-odd stale scopes well inside the interval above.
+    MAX_EVIDENCE_ONLY_SCOPES_PER_CYCLE = int(
+        os.environ.get("PM_MAX_EVIDENCE_ONLY_SCOPES_PER_CYCLE", "").strip()
+        or 16
+    )
+
+    def _evidence_only_capture_scopes(
+        self,
+        day_window_scopes: Sequence[Mapping[str, Any]],
+        *,
+        decidable: Sequence[Mapping[str, Any]],
+    ) -> list[Mapping[str, Any]]:
+        """Scopes this cycle may not act on but must still record.
+
+        The interval is held in memory on purpose.  A restart resets it,
+        which costs one extra capture per scope and never a missed one --
+        the opposite direction from the rotation cursors, where a reset
+        starves the tail, and the only direction that is safe for a rule
+        whose whole point is that a missed quote cannot be refetched.
+        """
+
+        if self.EVIDENCE_ONLY_CAPTURE_MIN_INTERVAL_SECONDS <= 0.0:
+            return []
+        decidable_keys = {
+            str(item.get("scope_key") or "") for item in decidable
+        }
+        captured = getattr(self, "_evidence_only_last_captured", None)
+        if captured is None:
+            captured = {}
+            self._evidence_only_last_captured = captured
+        elapsed_floor = float(
+            self.EVIDENCE_ONLY_CAPTURE_MIN_INTERVAL_SECONDS
+        )
+        clock = time.monotonic()
+        due: list[tuple[float, str, Mapping[str, Any]]] = []
+        for item in day_window_scopes:
+            key = str(item.get("scope_key") or "")
+            if not key or key in decidable_keys:
+                continue
+            last = captured.get(key)
+            if last is not None and (clock - float(last)) < elapsed_floor:
+                continue
+            # Never captured sorts first, then longest since.  A bound that
+            # dropped the same tail every cycle would be the starvation this
+            # whole change exists to remove.
+            due.append((float(last) if last is not None else -1.0, key, item))
+        due.sort(key=lambda row: (row[0], row[1]))
+        return [
+            item for _last, _key, item
+            in due[: self.MAX_EVIDENCE_ONLY_SCOPES_PER_CYCLE]
+        ]
+
+    def _mark_evidence_only_captured(
+        self,
+        evidence_only: Sequence[Mapping[str, Any]],
+        *,
+        swept: Sequence[Mapping[str, Any]],
+        as_of_utc: str,
+    ) -> None:
+        """Stamp only the evidence-only scopes the sweep actually carried.
+
+        The sweep drops scopes of an unrelated event day and stops at its
+        own cap, so a scope offered here and not taken must not be marked as
+        captured -- that would push its next attempt out by the whole
+        interval for a book that was never written.
+        """
+
+        del as_of_utc
+        captured = getattr(self, "_evidence_only_last_captured", None)
+        if captured is None:
+            captured = {}
+            self._evidence_only_last_captured = captured
+        taken = {
+            str(manifest.get("scope_key") or "")
+            for manifest in swept
+            if isinstance(manifest, Mapping)
+        }
+        clock = time.monotonic()
+        for item in evidence_only:
+            key = str(item.get("scope_key") or "")
+            if key and key in taken:
+                captured[key] = clock
+
     #: How many recent verdict changes one scope row keeps.  A ring, not a
     #: log: the table must answer "since when, and what stopped it" without
     #: growing with the cycle rate.
@@ -17747,19 +17847,58 @@ class TargetProductionWorker:
                     as_of_utc=utc_now()
                 )
             }
-            open_ws_scopes = [
+            # Charter 126: what this cycle may DECIDE on, and what it must
+            # RECORD, are two questions, and this filter answered only the
+            # first.
+            #
+            # Every blocker the catalog attaches is documented, in the
+            # catalog itself, as a reason not to act -- "observational, not
+            # fatal", "keep recording its book, block decisions on it
+            # alone", "excluded from the actionable scope set while allowing
+            # other fresh scopes to proceed".  None of them is a reason not
+            # to write down what the market said.  But the sweep below drew
+            # its scopes from this one list, so a scope the decision rule
+            # dropped lost its book too -- and a quote is ephemeral: a
+            # forward one missed cannot be refetched.  That is the same
+            # lesson ``_record_refused_compile_market_evidence`` learned for
+            # the forward compile, and the 2026-09-06 ruling learned for the
+            # publisher (a not-started day keeps its book while its P0 is
+            # stale); the publisher was changed and this half was not.
+            #
+            # Measured 2026-09-09 11:52Z, the first reading of the serving
+            # state table: 41 of 45 stations' D+1 scope was unserved on
+            # ``future_probability_stale`` -- the standing condition, not a
+            # restart artifact -- and ZUUU|2026-09-09 recorded no book at
+            # all for 21.6 hours across the first 13.2 hours of its own
+            # event day, over which 27C went from 0.30 to 0.998 with nothing
+            # written down.  ``production_quote_expired`` is the top blocked
+            # reason in the store (348 since 09-01) and is what a scope
+            # decides on when its book was never taken.
+            #
+            # The cost is rows, so the widening is not at the decision
+            # cadence: an evidence-only scope is captured on a floor
+            # interval, which keeps a repricing visible without writing a
+            # 17KB book every cycle for a scope nobody may act on.
+            day_window_scopes = [
                 item
                 for item in ws_scope_catalog
                 if (
-                    (
-                        item["event_day_state"] == "open"
-                        or str(item.get("scope_key") or "")
-                        in listing_scope_keys
-                    )
-                    and item["probability_evidence_fresh"] is True
+                    item["event_day_state"] == "open"
+                    or str(item.get("scope_key") or "") in listing_scope_keys
+                )
+            ]
+            open_ws_scopes = [
+                item
+                for item in day_window_scopes
+                if (
+                    item["probability_evidence_fresh"] is True
                     and not item.get("scope_blocker")
                 )
             ]
+            evidence_only_ws_scopes = self._evidence_only_capture_scopes(
+                day_window_scopes,
+                decidable=open_ws_scopes,
+            )
             # The verdict above is the one field that decides whether a
             # scope's book is recorded at all, and until now it lived only
             # in a status file the next cycle overwrote.  Persist it before
@@ -17858,8 +17997,18 @@ class TargetProductionWorker:
                 # station list.  The single-scope bridge was the only thing
                 # making it one at a time.
                 sweep_scopes = self._sweep_scope_manifests(
-                    open_ws_scopes,
+                    # Charter 126: the evidence-only scopes join the same
+                    # sweep, so they inherit its rotation order, its
+                    # one-event-day rule and its cap.  The selected scope
+                    # still leads; the count admitted here is bounded above
+                    # so the cap cannot be reached by them.
+                    [*open_ws_scopes, *evidence_only_ws_scopes],
                     selected=selected_open_scope,
+                    as_of_utc=now,
+                )
+                self._mark_evidence_only_captured(
+                    evidence_only_ws_scopes,
+                    swept=sweep_scopes,
                     as_of_utc=now,
                 )
                 current_day = str(selected_open_scope.get("event_date") or "")
