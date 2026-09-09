@@ -236,12 +236,15 @@ def test_no_claims_layer_query_reads_the_post_execution_columns():
     # The replay lane (2026-09-08) shares the prefix, so it is counted out
     # rather than counted in: six reads of the served table, one of its
     # replay sibling, and that one is in the fit -- never in the guard.
-    assert edge.count("FROM paper_trade_candidate_window_replay") == 1
-    assert edge.count("FROM paper_trade_candidate_window") - 1 == 5, (
+    # Two replay reads since 2026-09-09: the fit's own population, and the
+    # off-centre row count that rides beside it.
+    assert edge.count("FROM paper_trade_candidate_window_replay") == 2
+    assert edge.count("FROM paper_trade_candidate_window") - 2 == 6, (
         "band-partition lookup, the shared population read, its"
-        " excluded-axis tally, its excluded-claim-vintage tally, shadow fit"
-        " -- the activation guard stopped issuing its own query on"
-        " 2026-09-09 and reads the fit's population instead"
+        " excluded-axis tally, its excluded-claim-vintage tally, its"
+        " off-centre row count, shadow fit -- the activation guard stopped"
+        " issuing its own query on 2026-09-09 and reads the fit's"
+        " population instead"
     )
     # The thermometer's unit is the posted leg, with the fill an
     # observation about it -- not a precondition for counting it.
