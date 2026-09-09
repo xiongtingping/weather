@@ -280,7 +280,7 @@ def test_the_fit_excludes_rows_from_another_claim_vintage() -> None:
 
 
 def _replay_row(conn, cid, *, source, axis="centre_distance", stage="P0",
-                bucket="30°C", claim_sha="x" * 64):
+                bucket="30°C", claim_sha="x" * 64, band_sha="b" * 64):
     conn.execute(
         "CREATE TABLE IF NOT EXISTS paper_trade_candidate_window_replay ("
         " replay_id TEXT PRIMARY KEY, source_candidate_id TEXT NOT NULL,"
@@ -297,7 +297,7 @@ def _replay_row(conn, cid, *, source, axis="centre_distance", stage="P0",
         "INSERT INTO paper_trade_candidate_window_replay VALUES"
         "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (cid, source, "ZSQD", "2026-09-05", stage, "2026-09-05T00:00:00Z",
-         json.dumps([bucket]), 1, 0.4, 0.42, 0.3, 1, axis, "b" * 64,
+         json.dumps([bucket]), 1, 0.4, 0.42, 0.3, 1, axis, band_sha,
          claim_sha, "claim", "2026-09-08T00:00:00Z"),
     )
 
@@ -570,3 +570,49 @@ def test_activation_closes_the_outgoing_interval_and_opens_one() -> None:
         ("P0", "new", None),
         ("P1", "p1a", None),
     ]
+
+
+def _activate_band_table(conn, sha, *, stage="P0", axis="centre_distance"):
+    from bayes_basket_target.band_reliability_store import (
+        ensure_band_table_schema,
+    )
+    ensure_band_table_schema(conn)
+    conn.execute(
+        "INSERT INTO calibration_band_reliability_table("
+        " band_table_sha256, factors_json, evidence_json, fitted_at_utc,"
+        " serving_day_count, activated, activated_at_utc, stage, axis)"
+        " VALUES(?,?,?,?,?,?,?,?,?)",
+        (sha, json.dumps([[[0.0, 1.0], 1.0]]), "{}",
+         "2026-09-09T00:00:00Z", 30, 1, "2026-09-09T00:00:00Z", stage, axis),
+    )
+
+
+def test_the_replay_read_takes_one_band_generation() -> None:
+    """A settled window re-derived onto three tables is still one window.
+
+    The lane is keyed (source window, band table), so it grows a row every
+    time the band table is refitted -- daily.  Measured 2026-09-09, the day
+    after it shipped: 841 of P0's source windows carried three rows each and
+    57 carried two, and the fit read all 2,637 of them, which is the same
+    window voting three times with three different claims.
+    """
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        claim_transform_fingerprint,
+    )
+    from bayes_basket_target.effective_edge_store import fit_lambda_table
+
+    conn = _db()
+    _one_settlement(conn)
+    current = claim_transform_fingerprint(holds_centre=True)
+    _activate_band_table(conn, "c" * 64)
+    for index in range(4):
+        for generation in ("a" * 64, "b" * 64, "c" * 64):
+            _replay_row(
+                conn, f"r-{generation[0]}-{index}", source=f"src-{index}",
+                bucket=f"3{index}°C", claim_sha=current, band_sha=generation,
+            )
+    fit = fit_lambda_table(conn, stage_scope="P0", include_replayed=True)
+    assert fit["replay_band_table_sha256"] == "c" * 64
+    assert fit["replayed_row_count"] == 4, "one generation, not three"
+    assert fit["seat_count"] == 4
+    conn.close()

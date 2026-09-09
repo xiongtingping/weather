@@ -428,6 +428,40 @@ def _fit_axis(
     return distinct[0] if len(distinct) == 1 else None
 
 
+def _fit_band_sha(conn: sqlite3.Connection, stages: Sequence[str]) -> str | None:
+    """The activated band table's own hash, for the replay lane only.
+
+    The AXIS is the fit's partition key and the sha deliberately is not --
+    band tables are refitted daily and the sha moves whenever a factor
+    shifts in its third decimal, so partitioning the served rows on it would
+    end the fit rather than purify it (charter 110, and the schema comment
+    on ``band_table_sha256`` says so).
+
+    The replay lane is the one place that has to read it anyway, because it
+    is keyed ``(source_candidate_id, band_table_sha256)``: one settled
+    window gets a fresh row every time it is re-derived onto a newer table.
+    Measured 2026-09-09, the day after the lane shipped: 841 of P0's source
+    windows carried three rows each and 57 carried two, and the fit read all
+    2,637 -- the same window voting three times with three different claims.
+    So the replay read takes the current generation and only that one.
+    """
+
+    try:
+        from .band_reliability_store import load_band_table  # noqa: PLC0415
+    except Exception:  # noqa: BLE001 -- a lane without the store has no replay
+        return None
+    seen = []
+    for stage in stages:
+        try:
+            loaded = load_band_table(conn, stage=str(stage))
+        except Exception:  # noqa: BLE001 -- an absent table is not an error
+            continue
+        if loaded is not None:
+            seen.append(str(loaded[1]))
+    distinct = sorted(set(seen))
+    return distinct[0] if len(distinct) == 1 else None
+
+
 def _band_partition_by_decision(
     conn: sqlite3.Connection,
     stages: Sequence[str],
@@ -629,14 +663,21 @@ def fit_lambda_table(
     # table alone.  Off unless asked for.
     replayed_row_count = 0
     if include_replayed:
+        # One generation only.  The lane keeps a row per (source window, band
+        # table), so without this the same settled window is counted once for
+        # every table it has ever been re-derived onto.
+        replay_sha = _fit_band_sha(conn, stages)
+        sha_clause = "" if replay_sha is None else " AND band_table_sha256 IS ?"
+        sha_args: tuple[Any, ...] = () if replay_sha is None else (replay_sha,)
         try:
             replayed = conn.execute(
                 "SELECT win_probability, all_in_price, hit, station_id,"
                 " event_date, stage, decision_at_utc"
                 " FROM paper_trade_candidate_window_replay"
                 f" WHERE stage IN ({placeholders}) AND event_date >= ?"
-                "   AND hit IS NOT NULL" + axis_clause + claim_clause,
-                (*stages, floor_day, *axis_args, *claim_args),
+                "   AND hit IS NOT NULL" + axis_clause + claim_clause
+                + sha_clause,
+                (*stages, floor_day, *axis_args, *claim_args, *sha_args),
             ).fetchall()
         except sqlite3.Error:
             # No replay lane in this database: a fixture, an extract.  Not
@@ -803,6 +844,9 @@ def fit_lambda_table(
         "incumbent_basis": tally_incumbent_note,
         "served_row_count": int(served_row_count),
         "replayed_row_count": int(replayed_row_count),
+        "replay_band_table_sha256": (
+            _fit_band_sha(conn, stages) if include_replayed else None
+        ),
         "include_replayed": bool(include_replayed),
         "content_sha256": content_sha256(payload),
         "bands": bands,
