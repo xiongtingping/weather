@@ -8587,12 +8587,12 @@ ${b.admits?"可买 ["+b.admits[0].toFixed(3)+", "+b.admits[1].toFixed(3)+")"
 
   return `<h2 style="margin-top:30px">有效边际 λ 表（按阶段）</h2>
     <div class="card">
-      <div class="why"><b>一句话</b>：定注读的是
-        <span class="mono">λ(a)·p</span> 而不是 p（宪章 68），闸只放行
-        <span class="mono">λ(a) &gt; a</span> 的窗口（宪章 96）。λ 是<b>阶梯</b>，
-        所以每一档只买得到 <span class="mono">[档下界, 该档自己的 λ)</span> 这一小段 ——
-        <b>服务值就是自己的切点</b>；λ 掉到本档下界以下的档整段空窗。</div>
-      <div class="grid g3" style="margin-top:10px">${scopes.map(curve).join("")}</div>
+      <div class="muted" style="font-size:12.5px;margin-bottom:9px">
+        定注读的是 <span class="mono">λ(a)·p</span> 而不是 p（宪章 68），闸只放行
+        <b><span class="mono">λ(a) &gt; a</span></b> 的窗口（宪章 96）—— λ 是<b>阶梯</b>，
+        所以每一档只买得到 <span class="mono">[档下界, 该档自己的 λ)</span>，
+        <b>下图绿色的就是它</b>；λ 掉到本档下界以下的档整段空窗。</div>
+      <div class="grid g3">${scopes.map(curve).join("")}</div>
       ${legend}
       <div class="why" style="margin-top:10px">${plain}</div>
       ${chips}
