@@ -679,6 +679,11 @@ STAGE_TIER: dict[str, int] = {
     "probability_p1": STAGE_TIER_R0_DECISION,
     "regime": STAGE_TIER_R0_DECISION,
     "ws_scope_catalog": STAGE_TIER_R0_DECISION,
+    # Bookkeeping, but on the decision path by necessity: it records the
+    # verdict that decides whether this cycle serves a scope at all, and a
+    # verdict recorded a tier later is a verdict recorded after the cycle
+    # that acted on it.
+    "ws_scope_serving_state": STAGE_TIER_R0_DECISION,
     "market_ingress": STAGE_TIER_R0_DECISION,
     "post_fill_recompute": STAGE_TIER_R0_DECISION,
     "committed_scope_sweep": STAGE_TIER_R0_DECISION,
@@ -738,6 +743,74 @@ MULTI_SCOPE_WS_MANIFEST_SCHEMA = (
 # 45x3 for the same reason; a reader stricter than the writer turns a bigger
 # catalog into a global WS-path outage.
 MAX_RESIDENT_WS_SCOPES = expected_station_count() * 3
+
+
+def _blocked_plan_error(
+    reason: str, *, candidate: Mapping[str, Any] | None
+) -> ContractError:
+    """The blocked plan's reason, carrying the funnel the plan already holds.
+
+    ``_support_window_error`` puts the window funnel on the solver's own
+    exception; the runtime absorbs that exception into a blocked plan and
+    moves the funnel to ``delta_v2_audit``.  Anything that re-raises from
+    the plan has to move it back, or the recorder downstream -- which reads
+    it off the exception -- records a refusal that cannot say what refused
+    it.
+    """
+
+    error = ContractError(reason)
+    audit = (
+        candidate.get("delta_v2_audit")
+        if isinstance(candidate, Mapping) else None
+    )
+    if isinstance(audit, Mapping):
+        counts = audit.get("window_gate_counts")
+        if isinstance(counts, Mapping):
+            error.window_gate_counts = dict(counts)
+        failures = audit.get("window_failures")
+        if isinstance(failures, Sequence) and not isinstance(
+            failures, (str, bytes, bytearray)
+        ):
+            error.window_failures = [
+                dict(row) for row in failures if isinstance(row, Mapping)
+            ]
+    return error
+
+
+def _window_funnel_from(
+    exc: BaseException, *, candidate: Mapping[str, Any] | None
+) -> tuple[Any, Any]:
+    """The funnel for one blocked-scope record, exception first, plan second.
+
+    Belt and braces for the hop above: an exception that carries the funnel
+    is authoritative, and a plan that carries one is read when the
+    exception does not -- so a future re-raise that forgets to move it
+    costs a hop's worth of provenance rather than the whole diagnosis.
+    """
+
+    counts = getattr(exc, "window_gate_counts", None)
+    failures = getattr(exc, "window_failures", None)
+    if counts is None or failures is None:
+        audit = (
+            candidate.get("delta_v2_audit")
+            if isinstance(candidate, Mapping) else None
+        )
+        if isinstance(audit, Mapping):
+            if counts is None and isinstance(
+                audit.get("window_gate_counts"), Mapping
+            ):
+                counts = dict(audit["window_gate_counts"])
+            if failures is None and isinstance(
+                audit.get("window_failures"), Sequence
+            ) and not isinstance(
+                audit.get("window_failures"), (str, bytes, bytearray)
+            ):
+                failures = [
+                    dict(row)
+                    for row in audit["window_failures"]
+                    if isinstance(row, Mapping)
+                ]
+    return counts, failures
 
 
 def insert_probability_envelope(
@@ -9455,7 +9528,23 @@ class TargetProductionWorker:
                 for code in (candidate.get("reason_codes") or ())
                 if str(code).strip()
             ]
-            raise ContractError(codes[0] if codes else "compiled_plan_blocked")
+            # ...and it carries the compile's funnel with it.  The solver
+            # attaches ``window_gate_counts`` to its own error, but that
+            # error never leaves ``_compile_target_plan``: the runtime
+            # absorbs ``delta_v2_support_empty`` into a blocked plan and
+            # files the funnel under ``delta_v2_audit``, and this line then
+            # minted a *fresh* ContractError from the reason code alone.
+            # The blocked-scope recorder reads the funnel off the exception
+            # with ``getattr``, so it found nothing: measured 2026-09-09,
+            # 0 of 1,808 blocked-scope rows since 09-01 carried a funnel,
+            # including all 254 ``delta_v2_support_empty`` ones.  The two
+            # tests that guard this checked the source text of the raise
+            # and the recorder, which were both correct; the loss was the
+            # hop between them.
+            raise _blocked_plan_error(
+                codes[0] if codes else "compiled_plan_blocked",
+                candidate=candidate,
+            )
         # Stage-zero is intentionally limited to pre-final P0/P0-M.  Once
         # official METAR/SPECI materializes P1, the final-authority path must
         # atomically persist the canonical observation/bound together with
@@ -11183,6 +11272,218 @@ class TargetProductionWorker:
             "snapshot_skipped_scopes": snapshot_failures[:10],
             "market_evidence": result,
             "evidence_cache": evidence_cache,
+        }
+
+    #: How many recent verdict changes one scope row keeps.  A ring, not a
+    #: log: the table must answer "since when, and what stopped it" without
+    #: growing with the cycle rate.
+    WS_SCOPE_SERVING_TRANSITIONS_KEPT = 8
+
+    def _record_ws_scope_serving_state(
+        self,
+        catalog: Sequence[Mapping[str, Any]],
+        *,
+        as_of_utc: str,
+    ) -> dict[str, Any]:
+        """Persist each scope's serving verdict, on change only.
+
+        The actionable filter is silent by construction: a scope it drops
+        simply is not swept, so no book is written and no decision row is
+        raised, and the station looks identical to one nobody published.
+        ``_ws_scope_catalog_summary`` names the drops, but only into
+        status.json, which the next cycle overwrites -- so on 2026-09-09,
+        when ZUUU|2026-09-09 went 21.6 hours without a book across the first
+        13.2 hours of its own event day, the verdict that would have said
+        why no longer existed anywhere.
+
+        One row per (station, event_date), rewritten only when the verdict
+        changes.  ``state_since_utc`` and ``last_actionable_at_utc`` are the
+        answer to an outage; the ring beside them says what the last few
+        changes were.  Never fatal: a diagnostic that can stop a decision
+        cycle is worse than the blindness it removes.
+        """
+
+        if self.commit_conn is None or not catalog:
+            return {"state": "not_attempted", "written": 0}
+        rows = {}
+        for item in catalog:
+            station_id = str(item.get("station_id") or "")
+            event_date = str(item.get("event_date") or "")
+            if not station_id or not event_date:
+                continue
+            blocker = str(item.get("scope_blocker") or "")
+            fresh = item.get("probability_evidence_fresh") is True
+            rows[(station_id, event_date)] = {
+                "event_day_state": str(item.get("event_day_state") or ""),
+                "probability_stage": str(item.get("probability_stage") or ""),
+                "probability_evidence_fresh": 1 if fresh else 0,
+                "scope_blocker": blocker,
+                "actionable": 1 if (fresh and not blocker) else 0,
+            }
+        if not rows:
+            return {"state": "empty_catalog", "written": 0}
+        written = 0
+        unserved: list[dict[str, Any]] = []
+        try:
+            existing = {
+                (str(row[0]), str(row[1])): row
+                for row in self.commit_conn.execute(
+                    "SELECT station_id,event_date,event_day_state,"
+                    "probability_stage,probability_evidence_fresh,"
+                    "scope_blocker,actionable,state_since_utc,"
+                    "last_actionable_at_utc,transition_count,"
+                    "recent_transitions_json"
+                    " FROM basket_target_ws_scope_serving_state"
+                )
+            }
+            changes: list[tuple] = []
+            for (station_id, event_date), verdict in sorted(rows.items()):
+                previous = existing.get((station_id, event_date))
+                unchanged = previous is not None and (
+                    str(previous[2]) == verdict["event_day_state"]
+                    and str(previous[3]) == verdict["probability_stage"]
+                    and int(previous[4]) == verdict[
+                        "probability_evidence_fresh"
+                    ]
+                    and str(previous[5]) == verdict["scope_blocker"]
+                    and int(previous[6]) == verdict["actionable"]
+                )
+                last_actionable = (
+                    as_of_utc if verdict["actionable"]
+                    else (str(previous[8]) if previous and previous[8] else None)
+                )
+                if unchanged:
+                    if verdict["actionable"]:
+                        # Only the "still being served" stamp moves, and it
+                        # is the one field an outage is measured against.
+                        changes.append((
+                            station_id, event_date, verdict, previous,
+                            as_of_utc, str(previous[7]), False,
+                        ))
+                    else:
+                        unserved.append({
+                            "scope_key": f"{station_id}|{event_date}",
+                            "since": str(previous[7]),
+                            "blocker": verdict["scope_blocker"]
+                            or "resident_target_ws_probability_stale",
+                        })
+                    continue
+                changes.append((
+                    station_id, event_date, verdict, previous,
+                    last_actionable, as_of_utc, True,
+                ))
+                if not verdict["actionable"]:
+                    unserved.append({
+                        "scope_key": f"{station_id}|{event_date}",
+                        "since": as_of_utc,
+                        "blocker": verdict["scope_blocker"]
+                        or "resident_target_ws_probability_stale",
+                    })
+            if changes:
+                with _writer_transaction(
+                    self.commit_conn,
+                    savepoint="ws_scope_serving_state",
+                ):
+                    for (
+                        station_id, event_date, verdict, previous,
+                        last_actionable, state_since, is_change,
+                    ) in changes:
+                        ring = []
+                        if previous is not None and previous[10]:
+                            try:
+                                loaded = json.loads(str(previous[10]))
+                                if isinstance(loaded, list):
+                                    ring = [
+                                        row for row in loaded
+                                        if isinstance(row, Mapping)
+                                    ]
+                            except (TypeError, ValueError):
+                                ring = []
+                        if is_change:
+                            ring.append({
+                                "at": as_of_utc,
+                                "actionable": bool(verdict["actionable"]),
+                                "blocker": verdict["scope_blocker"],
+                                "fresh": bool(
+                                    verdict["probability_evidence_fresh"]
+                                ),
+                                "stage": verdict["probability_stage"],
+                                "day_state": verdict["event_day_state"],
+                            })
+                            ring = ring[
+                                -self.WS_SCOPE_SERVING_TRANSITIONS_KEPT:
+                            ]
+                        transition_count = (
+                            (int(previous[9]) + 1)
+                            if previous is not None and is_change
+                            else (int(previous[9]) if previous is not None else 1)
+                        )
+                        payload = {
+                            "station_id": station_id,
+                            "event_date": event_date,
+                            **verdict,
+                            "state_since_utc": state_since,
+                            "last_actionable_at_utc": last_actionable,
+                            "transition_count": transition_count,
+                            "recent_transitions_json": json.dumps(
+                                ring, sort_keys=True, ensure_ascii=False
+                            ),
+                        }
+                        self.commit_conn.execute(
+                            "INSERT INTO basket_target_ws_scope_serving_state("
+                            "station_id,event_date,event_day_state,"
+                            "probability_stage,probability_evidence_fresh,"
+                            "scope_blocker,actionable,state_since_utc,"
+                            "last_actionable_at_utc,transition_count,"
+                            "recent_transitions_json,updated_at,"
+                            "content_sha256) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                            " ON CONFLICT(station_id,event_date) DO UPDATE SET"
+                            " event_day_state=excluded.event_day_state,"
+                            " probability_stage=excluded.probability_stage,"
+                            " probability_evidence_fresh="
+                            "excluded.probability_evidence_fresh,"
+                            " scope_blocker=excluded.scope_blocker,"
+                            " actionable=excluded.actionable,"
+                            " state_since_utc=excluded.state_since_utc,"
+                            " last_actionable_at_utc="
+                            "excluded.last_actionable_at_utc,"
+                            " transition_count=excluded.transition_count,"
+                            " recent_transitions_json="
+                            "excluded.recent_transitions_json,"
+                            " updated_at=excluded.updated_at,"
+                            " content_sha256=excluded.content_sha256",
+                            (
+                                station_id,
+                                event_date,
+                                verdict["event_day_state"],
+                                verdict["probability_stage"],
+                                verdict["probability_evidence_fresh"],
+                                verdict["scope_blocker"],
+                                verdict["actionable"],
+                                state_since,
+                                last_actionable,
+                                transition_count,
+                                payload["recent_transitions_json"],
+                                as_of_utc,
+                                content_sha256(payload),
+                            ),
+                        )
+                        written += 1
+        except Exception as exc:  # noqa: BLE001
+            # A cycle must not fail because its own bookkeeping failed.
+            return {
+                "state": "error",
+                "reason": f"{type(exc).__name__}:{exc}"[:200],
+                "written": written,
+            }
+        unserved.sort(key=lambda row: str(row["since"]))
+        return {
+            "state": "recorded",
+            "scope_count": len(rows),
+            "written": written,
+            "unserved_scope_count": len(unserved),
+            # Longest first: the one an operator should look at.
+            "longest_unserved": unserved[:5],
         }
 
     @staticmethod
@@ -17459,6 +17760,16 @@ class TargetProductionWorker:
                     and not item.get("scope_blocker")
                 )
             ]
+            # The verdict above is the one field that decides whether a
+            # scope's book is recorded at all, and until now it lived only
+            # in a status file the next cycle overwrote.  Persist it before
+            # anything can return, so an outage is measurable while it is
+            # happening rather than reconstructed afterwards -- which, for
+            # ZUUU 2026-09-09, it could not be.
+            ws_scope_serving = self._record_ws_scope_serving_state(
+                ws_scope_catalog, as_of_utc=now
+            )
+            self._mark("ws_scope_serving_state")
             if ws_scope_catalog and not open_ws_scopes:
                 if not forward_p0_preselections:
                     raise ContractError(
@@ -17485,6 +17796,7 @@ class TargetProductionWorker:
                     "ws_scope_catalog": self._ws_scope_catalog_summary(
                         ws_scope_catalog
                     ),
+                    "ws_scope_serving": ws_scope_serving,
                     "places_orders": False,
                     "calls_order_gateway": False,
                     "live_submit_authorized": False,
@@ -18140,6 +18452,9 @@ class TargetProductionWorker:
                     results.append(candidate)
                 except Exception as exc:
                     reason = f"{type(exc).__name__}:{exc}"
+                    _blocked_funnel = _window_funnel_from(
+                        exc, candidate=candidate
+                    )
                     _blocked_started = time.perf_counter()
                     blocked_commit = self._commit_blocked_scope(
                         station_id=station,
@@ -18154,12 +18469,8 @@ class TargetProductionWorker:
                             # funnel the solver attached to its error,
                             # and the per-window solve failures when the
                             # list was not empty but nothing on it solved.
-                            "window_gate_counts": getattr(
-                                exc, "window_gate_counts", None
-                            ),
-                            "window_failures": getattr(
-                                exc, "window_failures", None
-                            ),
+                            "window_gate_counts": _blocked_funnel[0],
+                            "window_failures": _blocked_funnel[1],
                             "no_market_snapshot_written": True,
                             "no_intents_written": True,
                             "no_capital_reserved": True,
@@ -18348,6 +18659,7 @@ class TargetProductionWorker:
                     "failures": quote_refresh_failures[:10],
                     "failure_count": len(quote_refresh_failures),
                 },
+                "ws_scope_serving": ws_scope_serving,
                 "ws_scope_catalog": self._ws_scope_catalog_summary(
                     ws_scope_catalog
                 ),

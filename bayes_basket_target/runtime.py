@@ -953,6 +953,7 @@ def _compile_target_plan(
         remaining_budget_before: float,
         extra_plan: Mapping[str, Any] | None = None,
         window_gate_counts: Mapping[str, Any] | None = None,
+        window_failures: Sequence[Mapping[str, Any]] | None = None,
     ) -> dict[str, Any]:
         delta_audit = {
             "schema": "delta_basket_score_authorization_v2",
@@ -970,6 +971,16 @@ def _compile_target_plan(
         # 03:46Z batch blocked this way with nothing recorded about why.
         if window_gate_counts is not None:
             delta_audit["window_gate_counts"] = dict(window_gate_counts)
+        # The per-window solve failures ride with the counts, not apart from
+        # them: ``delta_v2_no_solvable_support_window`` is the one refusal
+        # whose counts say nothing (every window was admissible), so a plan
+        # that carried only the counts described that case as an empty
+        # funnel and left the actual reason -- one row per window that threw
+        # -- on the exception this branch has just absorbed.
+        if window_failures is not None:
+            delta_audit["window_failures"] = [
+                dict(row) for row in window_failures
+            ]
         return {
             "schema": "bayes_basket_target_plan_v1",
             "status": "blocked",
@@ -1398,6 +1409,7 @@ def _compile_target_plan(
             remaining_budget_before=remaining_budget_before,
             station_policy=resolved.to_dict(),
             window_gate_counts=getattr(exc, "window_gate_counts", None),
+            window_failures=getattr(exc, "window_failures", None),
             extra_plan={
                 "hold": {
                     "reason": str(exc),

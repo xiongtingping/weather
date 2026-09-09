@@ -2578,6 +2578,53 @@ CREATE TABLE IF NOT EXISTS basket_target_order_reconciliations (
   FOREIGN KEY(order_intent_id) REFERENCES basket_target_order_intents(order_intent_id)
 );
 
+-- Why a station-day is, or is not, being served a book this cycle.
+--
+-- The publisher decides this per scope and writes it to a manifest it
+-- rewrites every couple of seconds; the worker re-derives it into
+-- ``ws_scope_catalog`` and puts it in status.json, which is overwritten
+-- every cycle.  So the one field that decides whether a scope's book is
+-- recorded at all has never been written down anywhere durable.
+--
+-- Measured 2026-09-09: ZUUU|2026-09-09 recorded no book for 21.6 hours
+-- (2026-09-08T07:36Z -> 2026-09-09T05:12Z), covering the first 13.2 hours
+-- of its own event day, and ZSPD, ZSQD, EDDM and LFPB lost 7-22 hours the
+-- same day while 39 other stations were served from local midnight.  Every
+-- other candidate was eliminated from the store -- the registry carried
+-- the scope in all 57 snapshots of the window, the sweep's day grouping
+-- served ZGSZ|2026-09-09 throughout, its cap (180) and the catalog cap
+-- (135 against 127) never bound, and the committed envelopes show the
+-- probability continuously fresh but for 37 minutes -- which leaves the
+-- publisher's own per-scope reading, and that is the reading nobody kept.
+--
+-- Bounded by construction: one row per (station, event_date), written only
+-- when the verdict changes, carrying a short ring of its recent
+-- transitions.  Same doctrine as the writer telemetry below -- diagnostics
+-- must not be able to consume the target disk -- and enough to answer "is
+-- this scope being served, since when, and what stopped it" without a
+-- journal that grows with the cycle rate.
+CREATE TABLE IF NOT EXISTS basket_target_ws_scope_serving_state (
+  station_id TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  event_day_state TEXT NOT NULL,
+  probability_stage TEXT NOT NULL,
+  probability_evidence_fresh INTEGER NOT NULL
+    CHECK(probability_evidence_fresh IN (0,1)),
+  scope_blocker TEXT NOT NULL,
+  actionable INTEGER NOT NULL CHECK(actionable IN (0,1)),
+  -- When the current verdict began, and when the scope was last actionable
+  -- at all.  The pair is the whole diagnosis for an outage: a scope that is
+  -- not actionable and whose last actionable stamp is thirteen hours old
+  -- has been silently unserved for thirteen hours.
+  state_since_utc TEXT NOT NULL,
+  last_actionable_at_utc TEXT,
+  transition_count INTEGER NOT NULL CHECK(transition_count>=1),
+  recent_transitions_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  content_sha256 TEXT NOT NULL CHECK(length(content_sha256)=64),
+  PRIMARY KEY (station_id, event_date)
+);
+
 -- Bounded target-owned writer telemetry.  Keep one aggregate row instead of
 -- an append-only event log so diagnostics cannot consume the target disk.
 CREATE TABLE IF NOT EXISTS basket_target_writer_lock_wait_telemetry (
@@ -2682,6 +2729,10 @@ CREATE INDEX IF NOT EXISTS basket_target_reconciliation_state_idx
 ON basket_target_order_reconciliations(state,updated_at);
 CREATE INDEX IF NOT EXISTS basket_target_writer_lock_wait_updated_idx
 ON basket_target_writer_lock_wait_telemetry(updated_at);
+-- The only question this table is asked: which scopes are not being served,
+-- longest first.  A seek on the flag, ordered by when it went that way.
+CREATE INDEX IF NOT EXISTS basket_target_ws_scope_serving_unserved_idx
+ON basket_target_ws_scope_serving_state(actionable,state_since_utc);
 CREATE TRIGGER IF NOT EXISTS basket_target_observation_no_update
 BEFORE UPDATE ON basket_target_observation_facts BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS basket_target_observation_no_delete

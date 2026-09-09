@@ -116,11 +116,21 @@ def test_both_recorders_write_the_funnel() -> None:
     assert '_window_refusal_detail(audit)' in ledger[blocked:blocked + 1500]
     assert 'getattr(exc, "window_failures", None)' in ledger[blocked:blocked + 1500]
 
+    # The worker used to read the funnel straight off the exception here.
+    # That line was correct and the funnel still never arrived: the blocked
+    # plan is re-raised as a fresh ContractError one hop earlier, so there
+    # was nothing on the exception to read (2026-09-09: 0 of 1,808
+    # blocked-scope rows carried a funnel).  Asserting the source text of
+    # this end is what let that stand for four days, so the guarantee is
+    # now asserted where it can actually fail -- across the hop, in
+    # ``tests/test_scope_serving_and_blocked_funnel.py`` -- and this only
+    # pins that the recorder still reads through the resolver.
     worker = (ROOT / "bayes_basket_target" / "production_worker.py").read_text(
         encoding="utf-8"
     )
-    assert '"window_gate_counts": getattr(' in worker
-    assert '"window_failures": getattr(' in worker
+    assert '"window_gate_counts": _blocked_funnel[0],' in worker
+    assert '"window_failures": _blocked_funnel[1],' in worker
+    assert "_window_funnel_from(\n                        exc, candidate=candidate\n                    )" in worker
 
     runtime = (ROOT / "bayes_basket_target" / "delta_v2_runtime.py").read_text(
         encoding="utf-8"
