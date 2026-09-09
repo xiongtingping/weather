@@ -21,8 +21,18 @@ from scripts.weather_basket_yes_daemon import (
     nwp_sweep_health,
 )
 
-# 45 stations x 3 open event dates x 3 lead labels, the resident's own shape.
-LIVE_CATALOG_SCOPE_COUNT = 381
+# The resident's own shape, read off rotation_state.json: 381 on 2026-09-09
+# morning, 402 by that afternoon.  It grows -- with the fleet, with the open
+# days, with the lead labels -- and the growth is the thing this bound has to
+# survive, so the number here is the live one and not the arithmetic that
+# happened to produce it once.
+#
+# At 402 the nominal lap is 1.17h, comfortably inside the bound; at the
+# achieved cadence measured that day (27 minutes a poll) it is 3.15h, which
+# is NOT, and the runtime reading says so -- nwp_sweep_health reports
+# fits_freshness_window false and the board raises it.  That split is
+# deliberate: this test guards the declaration, the receipt guards the day.
+LIVE_CATALOG_SCOPE_COUNT = 402
 
 
 def _sweep_seconds(scope_count: int) -> float:
@@ -99,12 +109,19 @@ def test_a_lane_that_stops_winning_its_turn_stops_fitting() -> None:
         freshness_sec=NATIVE_P0_COMPILE_FRESH_SECONDS,
     )
     assert stretched["fits_freshness_window"] is False, stretched
+    # At the live catalogue it fits, and the reading is what proved it had
+    # stopped.  402 scopes under a per-poll ceiling of 64 need seven polls,
+    # which at the observed cadence is 3.15h against a 3.0h bound -- the
+    # ceiling raised that morning for a 381-scope catalogue was capping the
+    # budget again by the afternoon.  With the budget governing it is 67 a
+    # poll, six polls, 2.70h.
     at_observed = nwp_sweep_health(
         catalog_scope_count=LIVE_CATALOG_SCOPE_COUNT,
         poll_intervals_sec=[OBSERVED_GAP_SEC] * 5,
         freshness_sec=NATIVE_P0_COMPILE_FRESH_SECONDS,
     )
     assert at_observed["fits_freshness_window"] is True, at_observed
+    assert at_observed["polls_per_sweep"] == 6, at_observed
 
 
 def test_the_median_is_read_not_the_luckiest_gap() -> None:

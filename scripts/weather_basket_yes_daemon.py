@@ -897,7 +897,20 @@ TARGET_NWP_SCOPES_PER_POLL = 3
 # every lane reported itself healthy.  The wall-clock advance budget below is
 # what actually bounds a poll, and it always was.
 TARGET_NWP_SWEEP_BUDGET_SEC = 1.0 * 3600.0
-TARGET_NWP_MAX_SCOPES_PER_POLL = 64
+# A sanity bound, not the governor.  What actually bounds a poll is
+# TARGET_NWP_ADVANCE_BUDGET_SEC below -- wall clock, checked between scopes --
+# and the comment there has said so since it was written.
+#
+# This constant was 20, sized when capture paid one download per scope, and
+# capping TARGET_NWP_SWEEP_BUDGET_SEC 3.2x long after capture became keyed by
+# event day.  Raised to 64 on 2026-09-09 for a 381-scope catalogue, and the
+# catalogue was 402 by that afternoon: 402 needs 67 a poll to finish inside
+# the hour budget, so the ceiling was capping the budget again within hours of
+# being raised to match it.  A ceiling that has to be re-derived every time
+# the fleet grows is a ceiling that will be wrong again, so it is now set
+# clear of any near-term catalogue and the budget governs, which is what the
+# budget is for.
+TARGET_NWP_MAX_SCOPES_PER_POLL = 256
 # Wall clock, not a blocker count, is what the advance loop actually has to
 # respect: a poll that overruns its interval delays the next one and the sweep
 # falls behind the P0 TTL.  Guarding the clock directly lets the loop step over
@@ -908,6 +921,45 @@ TARGET_NWP_ADVANCE_BUDGET_SEC = TARGET_NWP_POLL_INTERVAL_SEC * 0.5
 # of these, not the declared interval, is what the sweep is judged against --
 # a single gap is whichever turn the lane happened to win.
 NWP_POLL_INTERVAL_SAMPLES = 12
+
+
+def nwp_sweep_health_for(worker: Any) -> dict[str, Any]:
+    """The sweep reading for whichever receipt is being written.
+
+    It has to be attached on every path, not just the one that runs a poll.
+    Added on 2026-09-09 to ``run_target_forecast_refresh_cycle`` only, it was
+    absent from the in-flight receipt at the other call site -- and a peer
+    session reading the status file saw the missing key, concluded the
+    forecast lane had taken no writer turn for fifty-five minutes, and
+    reported the starvation as getting worse.  The rotation state file said
+    otherwise the whole time: generation 36 at 14:05Z, 64 at 14:45Z, advancing
+    throughout.
+
+    Third instance of one shape today: a reading published on some paths and
+    not others is read as bad news rather than as no news.
+    """
+
+    try:
+        from bayes_basket_target.production_worker import (  # noqa: PLC0415
+            NATIVE_P0_COMPILE_FRESH_SECONDS,
+        )
+
+        return nwp_sweep_health(
+            catalog_scope_count=len(
+                (getattr(worker, "_nwp_rotation_state", None) or {}).get(
+                    "catalog_scope_keys"
+                ) or ()
+            ),
+            poll_intervals_sec=getattr(
+                worker, "_official_nwp_poll_intervals", ()
+            ),
+            freshness_sec=NATIVE_P0_COMPILE_FRESH_SECONDS,
+        )
+    except Exception as exc:  # noqa: BLE001 -- telemetry, never a blocker
+        # Named, not swallowed.  The first version of this was a bare
+        # ``except: pass`` and an empty reading is exactly what got
+        # misdiagnosed as a stalled lane.
+        return {"state": "unavailable", "reason": f"{type(exc).__name__}:{exc}"}
 
 
 def nwp_sweep_health(
@@ -1866,24 +1918,7 @@ def run_target_forecast_refresh_cycle(
     # Published on every pass, due or not: the reading that matters is how
     # long the lap has become, and a lane that has stopped winning turns is
     # exactly the one whose polls are not due.
-    try:
-        from bayes_basket_target.production_worker import (  # noqa: PLC0415
-            NATIVE_P0_COMPILE_FRESH_SECONDS,
-        )
-
-        nwp_state["sweep_health"] = nwp_sweep_health(
-            catalog_scope_count=len(
-                (getattr(worker, "_nwp_rotation_state", None) or {}).get(
-                    "catalog_scope_keys"
-                ) or ()
-            ),
-            poll_intervals_sec=getattr(
-                worker, "_official_nwp_poll_intervals", ()
-            ),
-            freshness_sec=NATIVE_P0_COMPILE_FRESH_SECONDS,
-        )
-    except Exception:  # noqa: BLE001 -- telemetry, never a blocker
-        pass
+    nwp_state["sweep_health"] = nwp_sweep_health_for(worker)
     previous_nwp = getattr(worker, "_last_official_nwp_state", None)
     if isinstance(previous_nwp, Mapping):
         nwp_state["last_attempt"] = dict(previous_nwp)
@@ -2349,6 +2384,7 @@ def resident_nwp_in_flight_receipt(
     if not isinstance(rotation, Mapping):
         return {
             "state": "in_flight_no_prior_rotation",
+            "sweep_health": nwp_sweep_health_for(worker),
             "scheduled_at_utc": scheduled_at_utc,
             "station_scope_mode": "canonical_allowlist",
             "configured_station_ids": configured,
@@ -2388,6 +2424,7 @@ def resident_nwp_in_flight_receipt(
     )
     return {
         "state": "in_flight_previous_rotation",
+        "sweep_health": nwp_sweep_health_for(worker),
         "scheduled_at_utc": scheduled_at_utc,
         "completion_claimed": False,
         "station_scope_mode": "canonical_allowlist",
