@@ -516,8 +516,21 @@ def journal_band_fit(
     fitted: Mapping[str, Any],
     outcome: str,
     fitted_at_utc: str | None = None,
+    axis: str | None = None,
 ) -> str:
-    """Record one fit -- what was measured, what it produced, what happened."""
+    """Record one fit -- what was measured, what it produced, what happened.
+
+    The axis is part of the table's identity for every axis but the shipped
+    one, so a journal that omits it files a distance fit under the sha a
+    claim fit with the same factors would carry -- a sha that names no row
+    in the served table at all.  Measured 2026-09-07..09: every P0 entry
+    since the axis moved pointed at nothing, and the dashboard's
+    "is this journal row about the serving table?" join silently answered
+    no on every one of them, freezing P0's evidence panel on whatever the
+    last factor CHANGE saw.  Default ``None`` reads the axis the stage is
+    actually serving rather than assuming claim, so a caller that does not
+    know the axis still files under the right one.
+    """
 
     ensure_band_table_schema(conn)
     stage_id = _check_stage(stage)
@@ -525,7 +538,13 @@ def journal_band_fit(
         datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     )
     factors = tuple(fitted["factors"])
-    sha = band_table_sha256(factors, stage=stage_id)
+    axis_id = (
+        str(axis) if axis is not None
+        else str(fitted.get("axis") or band_table_axis(conn, stage=stage_id))
+    )
+    if axis_id not in BAND_AXES:
+        raise ValueError(f"unknown band axis: {axis_id}")
+    sha = band_table_sha256(factors, stage=stage_id, axis=axis_id)
     evidence = dict(fitted["evidence"])
     fit_id = "band-fit-" + content_sha256({
         "stage": stage_id,
@@ -1201,6 +1220,7 @@ def refit_all_stages(
                             stage=stage,
                             fitted=fitted,
                             outcome="FIT_NOT_ACTIVATED",
+                            axis=stage_axis,
                         )
                     except Exception as journal_exc:  # noqa: BLE001
                         try:
@@ -1221,6 +1241,7 @@ def refit_all_stages(
                         if fitted["accumulating"]
                         else str(outcome["state"])
                     ),
+                    axis=stage_axis,
                 )
         except Exception as exc:  # noqa: BLE001 -- isolation is the point
             # Whatever the stage was in the middle of, the next stage must

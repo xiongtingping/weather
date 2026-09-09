@@ -359,3 +359,65 @@ def test_the_forward_check_can_actually_separate_distance_cells():
     assert on_claim == pytest.approx(0.0), (
         "keyed on the claim the far cell is unreachable and the check is blind"
     )
+
+
+def test_the_journal_files_a_fit_under_the_sha_the_served_table_carries():
+    """The trail has to point at the row it is the trail of.
+
+    ``journal_band_fit`` computed the sha without the axis, so from
+    2026-09-07 -- the day P0's table moved to the centre-distance axis --
+    every P0 journal entry named a sha no row in
+    ``calibration_band_reliability_table`` held.  The dashboard joins the
+    two on exactly that sha to decide whether a journal row describes the
+    serving table, so P0's evidence panel fell back to the active row's own
+    frozen counts on every fit.  Both writers see the same axis or the
+    journal is not a trail.
+    """
+
+    from bayes_basket_target.band_reliability_store import journal_band_fit
+
+    conn = sqlite3.connect(":memory:")
+    ensure_band_table_schema(conn)
+    factors = [
+        ((0.0, 1.0), 1.02), ((1.0, 2.0), 1.05), ((2.0, 3.0), 1.0),
+        ((3.0, 4.0), 0.96), ((4.0, 99.0), 0.68),
+    ]
+    receipt = persist_and_activate_band_table(
+        conn, stage="P0", factors=factors, evidence={"schema": "test"},
+        serving_day_count=40, axis=BAND_AXIS_CENTRE_DISTANCE,
+    )
+    fit_id = journal_band_fit(
+        conn,
+        stage="P0",
+        fitted={
+            "factors": factors,
+            "evidence": {"serving_station_day_count": 1445},
+            "serving_day_count": 40,
+        },
+        outcome="ACTIVATED",
+        axis=BAND_AXIS_CENTRE_DISTANCE,
+    )
+    journalled = conn.execute(
+        "SELECT band_table_sha256 FROM calibration_band_reliability_fit_journal"
+        " WHERE fit_id=?",
+        (fit_id,),
+    ).fetchone()[0]
+    assert journalled == receipt["band_table_sha256"]
+
+    # A caller that does not pass the axis reads the one the stage serves
+    # rather than assuming the shipped one -- the same failure by omission.
+    fit_id_default = journal_band_fit(
+        conn,
+        stage="P0",
+        fitted={
+            "factors": factors,
+            "evidence": {"serving_station_day_count": 1445},
+            "serving_day_count": 40,
+        },
+        outcome="UNCHANGED",
+    )
+    assert conn.execute(
+        "SELECT band_table_sha256 FROM calibration_band_reliability_fit_journal"
+        " WHERE fit_id=?",
+        (fit_id_default,),
+    ).fetchone()[0] == receipt["band_table_sha256"]
