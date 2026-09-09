@@ -3236,11 +3236,17 @@ def test_clause_122_symmetric_seat_is_confined_to_the_width_band_it_was_measured
     windows, audit = seat((1.0, 1.5))
     assert audit["symmetric_seat_forced"] is True
     assert audit["symmetric_seat_width_band"] == [1.0, 1.5]
-    # The ledger hashes the band whenever it is not the identity.
+    # Charter 122 (五): the ledger hashes which SOURCE decides the band, not
+    # the value a scheduled refit currently holds -- the same treatment the
+    # lambda tables get, so a lane refitting on its own clock does not
+    # re-address the whole book.  A pinned research arm is still hashed by
+    # value, because holding the band still is the arm.
     from pathlib import Path as _Path
     ledger_source = (_Path(__file__).resolve().parents[1] / "scripts" / "paper_trading_ledger.py").read_text(encoding="utf-8")
-    assert '"symmetric_seat_width_band": [' in ledger_source
-    assert "if SYMMETRIC_SEAT_WIDTH_BAND != (0.0, float(\"inf\")) else {}" in ledger_source
+    assert '"symmetric_seat_width_band": (' in ledger_source
+    assert '"source": "override"' in ledger_source
+    assert '"source": "fitted_or_charter"' in ledger_source
+    assert "if SYMMETRIC_SEAT_WIDTH_BAND_PINNED" in ledger_source
 
 
 def test_clause_122_seat_counterfactual_is_recorded_on_both_sides_of_the_band(monkeypatch) -> None:

@@ -23,6 +23,7 @@ from .cash_phase import (
     BasketCashPhaseInput,
 )
 from .effective_edge_store import load_effective_edge_tables
+from .symmetric_seat_band_store import load_symmetric_seat_bands
 from .convergence_evidence import load_convergence_evidence
 from .cash_phase_authority import (
     CashPhaseAuthorityManifest,
@@ -2262,6 +2263,7 @@ def compile_production_cycle_from_ssot(
         # Charter 68(c): the lambda tables the store activated, one per
         # stage, as of now.  None per scope until its first activation.
         effective_edge_tables=load_effective_edge_tables(conn),
+        symmetric_seat_bands=load_symmetric_seat_bands(conn),
         # Arm B (2026-09-06): the belief and book H hours before this
         # compile, for the convergence claim lift (shadow by default).
         convergence_evidence=load_convergence_evidence(

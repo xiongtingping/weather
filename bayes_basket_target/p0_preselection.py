@@ -22,6 +22,7 @@ from .market_ingress import (
 )
 from .market_registry import load_market_registry_snapshot
 from .effective_edge_store import load_effective_edge_tables
+from .symmetric_seat_band_store import load_symmetric_seat_bands
 from .convergence_evidence import load_convergence_evidence
 from .inventory_producer import ledger_holdings_by_token
 from .consolidation_chain import load_last_acted_probability_identity
@@ -1020,6 +1021,7 @@ def compile_p0_preselection(
         # decisions after the store went live carried an empty receipt
         # from exactly this omission.
         effective_edge_tables=load_effective_edge_tables(conn),
+        symmetric_seat_bands=load_symmetric_seat_bands(conn),
         # Arm B (2026-09-06): the belief and book H hours before this
         # compile, for the convergence claim lift (shadow by default).
         convergence_evidence=load_convergence_evidence(

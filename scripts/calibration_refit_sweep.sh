@@ -63,6 +63,18 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] center_width refit"
   --since-stage "P0=2026-09-06T04:18:00Z" \
   --since-stage "P0-M=2026-09-06T04:18:00Z" || RC=$?
 
+# Charter 122 (五): the width band charter 79's symmetric seat is confined
+# to.  It rides here rather than being hand-set because the sweep that set
+# its first value had to rebuild the whole book per arm -- 28 minutes each,
+# and a +-15 USDC interference floor under a +-2 effect.  This lane reads
+# the pair the runtime records on every symmetric day instead, so its cost
+# is one indexed scan and its noise is the day's own.  Admission-gated on a
+# forward window like the layers above; it holds the ruled default until it
+# has eight days and sixty pairs, so the first weeks after it lands change
+# nothing.
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] symmetric seat band refit"
+"$PY" scripts/refit_symmetric_seat_band.py --commit --summary || RC=$?
+
 # Shadow only: station x bucket-position band factors, fitted on the same
 # serving lane as the pooled table above and served by nothing.  It rides
 # this sweep so its evidence clock advances on the same cadence as the

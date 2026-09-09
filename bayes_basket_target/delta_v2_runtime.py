@@ -1174,6 +1174,30 @@ if SYMMETRIC_SEAT_MODE not in {
 SYMMETRIC_SEAT_WIDTH_BAND_DEFAULT = "1.0,inf"
 
 
+def _resolve_seat_band(
+    stage: str, bands: "Mapping[str, Any] | None"
+) -> tuple[float, float]:
+    """The band this stage serves: research arm, then fit, then the ruling.
+
+    ``bands`` is the fitted table as the loader returns it, stage-keyed, and
+    is None on every path that has no database to read one from -- the paper
+    ledger before its first as-of read, a test, a replay of a day older than
+    the lane.  Those keep charter 122's ruled default, which is what was
+    serving before the lane existed.
+    """
+
+    if SYMMETRIC_SEAT_WIDTH_BAND_PINNED or not bands:
+        return SYMMETRIC_SEAT_WIDTH_BAND
+    found = bands.get(str(stage))
+    if not found:
+        return SYMMETRIC_SEAT_WIDTH_BAND
+    lower = float(found[0])
+    upper = float(found[1]) if len(found) > 1 and found[1] is not None else float("inf")
+    if not (0.0 <= lower < upper):
+        return SYMMETRIC_SEAT_WIDTH_BAND
+    return (lower, upper)
+
+
 def _parse_width_band(raw: str) -> tuple[float, float]:
     text = str(raw or "").strip().lower()
     if not text:
@@ -1190,6 +1214,13 @@ def _parse_width_band(raw: str) -> tuple[float, float]:
     return (low, high)
 
 
+# An explicitly set environment value is a research arm and outranks the
+# fitted table: the whole point of the arm is to hold the band still while
+# something else is measured.  Unset means "serve whatever the lane fitted",
+# and the constant below is then only the floor under an empty lane.
+SYMMETRIC_SEAT_WIDTH_BAND_PINNED = bool(
+    os.environ.get("PM_SYMMETRIC_SEAT_WIDTH_BAND", "").strip()
+)
 SYMMETRIC_SEAT_WIDTH_BAND = _parse_width_band(
     os.environ.get("PM_SYMMETRIC_SEAT_WIDTH_BAND", "")
 )
@@ -1620,6 +1651,7 @@ def _support_windows(
     probability_stage: str = "",
     convergence_evidence: Mapping[str, Any] | None = None,
     effective_edge_tables: Mapping[str, Any] | None = None,
+    symmetric_seat_bands: Mapping[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Contiguous windows admissible as a support, ranked by belief divergence.
 
@@ -2718,10 +2750,11 @@ def _support_windows(
         probabilities,
         {bucket: int(row.ordinal) for bucket, row in by_bucket.items()},
     )
+    seat_band = _resolve_seat_band(
+        str(probability_stage or ""), symmetric_seat_bands
+    )
     seat_width_in_band = seat_sigma_buckets is None or (
-        SYMMETRIC_SEAT_WIDTH_BAND[0]
-        <= seat_sigma_buckets
-        < SYMMETRIC_SEAT_WIDTH_BAND[1]
+        seat_band[0] <= seat_sigma_buckets < seat_band[1]
     )
     # Split deliberately: the SHAPE question (is this a symmetric day at a
     # stage the rule covers) is answered for every such day, and the BAND
@@ -2790,11 +2823,8 @@ def _support_windows(
                 "sigma_buckets": seat_sigma_buckets,
                 "width_in_band": seat_width_in_band,
                 "band": [
-                    SYMMETRIC_SEAT_WIDTH_BAND[0],
-                    (
-                        None if SYMMETRIC_SEAT_WIDTH_BAND[1] == float("inf")
-                        else SYMMETRIC_SEAT_WIDTH_BAND[1]
-                    ),
+                    seat_band[0],
+                    None if seat_band[1] == float("inf") else seat_band[1],
                 ],
                 "stage": str(probability_stage or ""),
                 "centre_bucket": ladder_center,
@@ -2971,12 +3001,19 @@ def _support_windows(
         # was seated by the ordinary enumeration whatever its shape read.
         "symmetric_seat_sigma_buckets": seat_sigma_buckets,
         "symmetric_seat_width_band": [
-            SYMMETRIC_SEAT_WIDTH_BAND[0],
-            (
-                None if SYMMETRIC_SEAT_WIDTH_BAND[1] == float("inf")
-                else SYMMETRIC_SEAT_WIDTH_BAND[1]
-            ),
+            seat_band[0],
+            None if seat_band[1] == float("inf") else seat_band[1],
         ],
+        # Which of the three sources decided it, so a board showing a band
+        # can say whether a person pinned it, the lane fitted it, or it is
+        # still the ruled default under an empty lane.
+        "symmetric_seat_width_band_source": (
+            "override" if SYMMETRIC_SEAT_WIDTH_BAND_PINNED
+            else ("fitted" if (
+                symmetric_seat_bands
+                and symmetric_seat_bands.get(str(probability_stage or ""))
+            ) else "charter")
+        ),
         "symmetric_seat_width_in_band": seat_width_in_band,
         "symmetric_seat_counterfactual": symmetric_seat_counterfactual,
         "skew_seat_forced": skew_seat_forced,
@@ -3133,6 +3170,7 @@ def _support_windows(
             probability_stage=probability_stage,
             convergence_evidence=convergence_evidence,
             effective_edge_tables=effective_edge_tables,
+            symmetric_seat_bands=symmetric_seat_bands,
         )
         if fallback_windows:
             fallback_audit["opening_width_fallback"] = True
@@ -5035,6 +5073,7 @@ def compile_delta_v2_runtime_plan(
     last_decision_signature: Mapping[str, Any] | None = None,
     taf_tx_bucket: str | None = None,
     effective_edge_tables: Mapping[str, Any] | None = None,
+    symmetric_seat_bands: Mapping[str, Any] | None = None,
     convergence_evidence: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compile the single-event q* and best no-live action under v2.
@@ -5276,6 +5315,9 @@ def compile_delta_v2_runtime_plan(
         # Charter 87: the gate reads lambda off the same served tables the
         # solver used to read it off, as of the same moment.
         effective_edge_tables=effective_edge_tables,
+        # Charter 122 (五): and the seat band off the table the lane fitted,
+        # read the same way.
+        symmetric_seat_bands=symmetric_seat_bands,
     )
     # The floor's live set is the evidence's, not the candidate support's.
     # ``ordered_support`` here is the continuous-core candidate boundary --

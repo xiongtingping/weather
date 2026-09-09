@@ -65,6 +65,9 @@ from bayes_basket_target.center_width_store import EDGE_WIDTH_C  # noqa: E402
 from bayes_basket_target.convergence_evidence import (  # noqa: E402
     load_convergence_evidence,
 )
+from bayes_basket_target.symmetric_seat_band_store import (  # noqa: E402
+    load_symmetric_seat_bands,
+)
 from bayes_basket_target.effective_edge_store import (  # noqa: E402
     load_effective_edge_tables,
 )
@@ -123,6 +126,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     KELLY_SHAPE_TOPUP,
     SYMMETRIC_SEAT_MODE,
     SYMMETRIC_SEAT_WIDTH_BAND,
+    SYMMETRIC_SEAT_WIDTH_BAND_PINNED,
     SKEW_SEAT_MODE,
     P0M_TAF_ENVELOPE_RULE_VERSION,
     P0M_TAF_MODE,
@@ -1047,6 +1051,7 @@ _FR_REPLAY: dict[str, Any] | None = None
 # the same fallback production has.
 _EE_CONN: sqlite3.Connection | None = None
 _EE_AS_OF_CACHE: dict[str, dict[str, Any]] = {}
+_SEAT_BAND_CACHE: dict[str, dict[str, Any]] = {}
 
 
 # Research arm: ``off`` reads the kernel constants for every decision, which
@@ -1060,6 +1065,27 @@ if EFFECTIVE_EDGE_TABLES_MODE not in {"as_of", "off"}:
     raise SystemExit(
         f"paper_ledger_effective_edge_tables_mode_invalid: {EFFECTIVE_EDGE_TABLES_MODE}"
     )
+
+
+def _symmetric_seat_bands() -> dict[str, Any]:
+    """Charter 122 (五): the seat band the book is scored under.
+
+    Read once, not as-of.  The lambda tables above are read as-of because
+    they are a per-decision quantity the solver consults; a seat band is the
+    RULE the whole book was assembled by, and a replay that switched bands
+    part-way would be two books summed -- the thing the ledger's fingerprint
+    exists to prevent.  So the band serving now is the band the whole replay
+    is judged under, and the fingerprint records which source it came from.
+    """
+
+    if _EE_CONN is None:
+        return {}
+    if "bands" not in _SEAT_BAND_CACHE:
+        try:
+            _SEAT_BAND_CACHE["bands"] = load_symmetric_seat_bands(_EE_CONN)
+        except Exception:  # noqa: BLE001
+            _SEAT_BAND_CACHE["bands"] = {}
+    return _SEAT_BAND_CACHE["bands"]
 
 
 def _effective_edge_tables_as_of(as_of_utc: str | None) -> dict[str, Any]:
@@ -2028,15 +2054,29 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     # not the identity band, because a band that excludes a day changes who
     # seats it; the identity band is charter 79 as it stood and must not
     # re-address the book.
-    **(
-        {"symmetric_seat_width_band": [
+    # Charter 122: which SOURCE decides the seat band, not the value it
+    # currently holds.  A pinned research arm is hashed by value, because
+    # holding the band still is the whole arm.  A fitted band is hashed as
+    # ``fitted`` -- the same treatment charter 68's lambda tables get, where
+    # a served table refitted on its own schedule does not re-address the
+    # book -- and the ruled default is hashed by value so a book run before
+    # this lane existed and one run after it stay distinguishable.
+    "symmetric_seat_width_band": (
+        {"source": "override", "band": [
             SYMMETRIC_SEAT_WIDTH_BAND[0],
             (
                 None if SYMMETRIC_SEAT_WIDTH_BAND[1] == float("inf")
                 else SYMMETRIC_SEAT_WIDTH_BAND[1]
             ),
         ]}
-        if SYMMETRIC_SEAT_WIDTH_BAND != (0.0, float("inf")) else {}
+        if SYMMETRIC_SEAT_WIDTH_BAND_PINNED
+        else {"source": "fitted_or_charter", "charter_default": [
+            SYMMETRIC_SEAT_WIDTH_BAND[0],
+            (
+                None if SYMMETRIC_SEAT_WIDTH_BAND[1] == float("inf")
+                else SYMMETRIC_SEAT_WIDTH_BAND[1]
+            ),
+        ]}
     ),
     **({"skew_seat": SKEW_SEAT_MODE} if SKEW_SEAT_MODE != "off" else {}),
     # Charter 81: the centre-holding claim lift, hashed unconditionally --
@@ -4661,6 +4701,7 @@ def _production_judge(
             # Charter 87: the gate reads lambda off the tables served as of
             # this decision, the same ones the solver below is handed.
             effective_edge_tables=_effective_edge_tables_as_of(decision_at_utc),
+            symmetric_seat_bands=_symmetric_seat_bands(),
         )
     except Exception as exc:  # noqa: BLE001
         return {
@@ -4802,6 +4843,7 @@ def _production_judge(
             # kernel bootstrap until 2026-09-06, which is a belief
             # production stopped serving on 2026-09-05.
             effective_edge_tables=_effective_edge_tables_as_of(decision_at_utc),
+            symmetric_seat_bands=_symmetric_seat_bands(),
         )
     except (ContractError, _KernelContractError) as exc:
         if holds_anything and str(exc) == (
@@ -8390,6 +8432,7 @@ def backfill(
                             effective_edge_tables=_effective_edge_tables_as_of(
                                 payload["decision_at_utc"]
                             ),
+                            symmetric_seat_bands=_symmetric_seat_bands(),
                         )
                     except Exception as exc:  # noqa: BLE001 -- scope skipped
                         refusal = _deeper_refusal(refusal, (
