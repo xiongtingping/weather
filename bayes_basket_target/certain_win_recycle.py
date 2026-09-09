@@ -78,18 +78,40 @@ def plan_certain_win_recycles(
     """
 
     plans: list[dict[str, Any]] = []
+    # The newest complete inventory of each station-day, in one pass.
+    #
+    # This ran as a self-join against a MAX() sub-select, which materialised
+    # a co-routine over the whole table and then seeked back into it once per
+    # group.  The table is 271,747 snapshots over 1,579 station-days -- 172
+    # versions each -- and none of it is narrowed by event date, so the whole
+    # cost was paid on every production cycle.  Measured 2026-09-09 against
+    # the live store: 154.7s returning 1,579 rows, on the writer connection,
+    # after the main cycle.  While it ran the forecast lane could not take a
+    # writer turn at all: from the 12:35Z restart to 13:05Z it took none,
+    # 2026-09-10's packets stayed expired past their 6h TTL, and 45 stations
+    # fail-closed on native_ensemble_snapshot_stale with the decision loop
+    # losing 41 scopes a cycle to latest_stage_stale_fail_closed three layers
+    # downstream.
+    #
+    # The rewrite rests on SQLite's min/max bare-column rule: the columns
+    # beside MAX() come from the row that produced it.  Verified equivalent
+    # on the live store before the switch -- 1,579 scopes both ways, the same
+    # scope set, every row the group-by picks is one the self-join returned,
+    # and no scope had two rows tied on observed_at.
+    #
+    # The rewrite is not itself the speed: measured back to back the two
+    # forms are 93.0s and 82.4s, and the 3.2x an earlier isolated run showed
+    # was a warm cache.  What makes it fast is that this form can be served
+    # by an index, and basket_confirmed_inventory_snapshot_recycle_idx exists
+    # for it: with that index the plan is a SEARCH on complete=? instead of a
+    # scan of every row.
     inventories = target_conn.execute(
-        "SELECT i.station_id, i.event_date, i.inventory_json"
-        " FROM basket_confirmed_inventory_snapshot i"
-        " JOIN (SELECT station_id, event_date, MAX(observed_at) AS latest"
-        "         FROM basket_confirmed_inventory_snapshot"
-        "        WHERE complete=1 GROUP BY station_id, event_date) latest"
-        "   ON latest.station_id=i.station_id"
-        "  AND latest.event_date=i.event_date"
-        "  AND latest.latest=i.observed_at"
-        " WHERE i.complete=1"
+        "SELECT station_id, event_date, inventory_json, MAX(observed_at)"
+        " FROM basket_confirmed_inventory_snapshot"
+        " WHERE complete=1"
+        " GROUP BY station_id, event_date"
     ).fetchall()
-    for station_id, event_date, inventory_json in inventories:
+    for station_id, event_date, inventory_json, _observed_at in inventories:
         try:
             inventory = json.loads(inventory_json or "{}")
         except ValueError:

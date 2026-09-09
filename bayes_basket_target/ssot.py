@@ -1625,6 +1625,14 @@ CREATE TABLE IF NOT EXISTS basket_confirmed_inventory_snapshot (
 
 CREATE INDEX IF NOT EXISTS basket_inventory_snapshot_asof_idx
 ON basket_confirmed_inventory_snapshot(station_id,event_date,state,observed_at);
+-- The certain-win recycle lane reads the newest complete inventory of every
+-- station-day once per production cycle, and no index covered that: the asof
+-- index above leads with the station, and that read knows only ``complete``.
+-- So it scanned all 271,747 snapshots across 1,579 station-days -- 172
+-- versions each -- on the writer connection, 154.7s measured 2026-09-09, and
+-- the forecast lane took no writer turn for the half hour it ran.
+CREATE INDEX IF NOT EXISTS basket_confirmed_inventory_snapshot_recycle_idx
+ON basket_confirmed_inventory_snapshot(complete,station_id,event_date,observed_at);
 
 -- The reader resolves an inventory by (station, day, version) and treats two
 -- matches as unresolvable -- delta_v2_inventory_snapshot_ambiguous, which
