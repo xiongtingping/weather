@@ -1648,14 +1648,30 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
     if not _table_exists(conn, "basket_official_ws_snapshot"):
         return {}
     now = datetime.now(timezone.utc)
-    zones: dict[str, str] = {
-        str(station): str(zone)
-        for station, zone in conn.execute(
-            "SELECT DISTINCT station_id, settlement_timezone"
-            " FROM basket_probability_envelope"
-            " WHERE settlement_timezone IS NOT NULL"
-        )
-    }
+    # 48 rows, not 148,000.  This map is station -> timezone and nothing
+    # else, and it was being built by DISTINCT over every envelope ever
+    # written: the predicate is on a NOT NULL column so it never excludes a
+    # row, no index carries both columns in a shape the planner will pick,
+    # and the chosen index does not cover settlement_timezone -- so it read
+    # 147,971 rows off a 38 GB store to return 45.  Measured 2026-09-09:
+    # 127.6 seconds, inside a render whose whole budget is 30 minutes.
+    # ``calibration_station_market_timezone_binding`` is the authority for
+    # exactly this question -- station_id is UNIQUE there and a CHECK holds
+    # market_registry_timezone_count to 1 -- and on the day this changed its
+    # 48 rows covered all 45 stations the envelopes name, with no timezone
+    # disagreeing.  The fallback is deliberately NOT the old scan: a station
+    # missing from the binding gets no zone, day_closed answers False, and
+    # the day is excluded -- the same answer the old query gave for a
+    # station whose envelopes carried no timezone.
+    zones: dict[str, str] = {}
+    if _table_exists(conn, "calibration_station_market_timezone_binding"):
+        zones = {
+            str(station): str(zone)
+            for station, zone in conn.execute(
+                "SELECT station_id, settlement_timezone"
+                " FROM calibration_station_market_timezone_binding"
+            )
+        }
 
     def day_closed(station: str, event_date: str) -> bool:
         zone = zones.get(station)
@@ -1671,15 +1687,30 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
 
     first_decision: dict[tuple[str, str], str] = {}
     claims: dict[tuple[str, str], dict[str, float]] = {}
+    # One row per station-day, chosen in SQL, instead of 147,971 sorted in a
+    # temp B-tree and all but 1,215 thrown away in Python.
+    # ``MIN(decision_at_utc)`` with bare columns beside it is SQLite's
+    # documented min/max behaviour: the bare columns come from the row the
+    # minimum was found on, which is precisely the first decision.
+    #
+    # Worth 69.1s -> 47.5s measured 2026-09-09, and the modest size is the
+    # point: the scan was never the cost.  Broken down, the covering index
+    # scan is 2.2s and the 1,215 overflow-page reads of probabilities_json
+    # are 45.3s -- so the 122:1 row ratio buys 31%, not an order of
+    # magnitude, and an index here would have targeted the 2.2s.  What is
+    # left is the irreducible cost of reading 1,215 claims.
     for station, event, probabilities_json, decided in conn.execute(
-        "SELECT station_id, event_date, probabilities_json, decision_at_utc"
+        "SELECT station_id, event_date, probabilities_json,"
+        " MIN(decision_at_utc)"
         " FROM basket_probability_envelope"
         " WHERE event_date >= ? AND stage='P0'"
-        " ORDER BY decision_at_utc",
+        " GROUP BY station_id, event_date",
         (TRUTH_LANDING_SINCE,),
     ):
         key = (str(station), str(event))
-        if key in first_decision or not day_closed(*key):
+        # The GROUP BY already made the key unique, so the only test left is
+        # whether the local day has finished.
+        if not day_closed(*key):
             continue
         first_decision[key] = str(decided)
         try:
