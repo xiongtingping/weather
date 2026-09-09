@@ -24,6 +24,18 @@
 #   scripts/restart_resident.sh "why" --queue-only   record it, never restart
 #   scripts/restart_resident.sh --pending            what is queued, when due
 #   scripts/restart_resident.sh "why" --force        restart now, records why
+#   scripts/restart_resident.sh "why" --record-only  a restart already taken
+#
+# ``--record-only`` is for the one case this file could not express: a
+# migration that requires the writer *stopped* rather than restarted.  The
+# index migrations take BEGIN IMMEDIATE on a 38GB database and refuse to run
+# while the resident is up, so the sequence is bootout, migrate, bootstrap --
+# three commands that are a restart in every way that matters to this file
+# and in none that it could see.  Taken on 2026-09-09 without it, the
+# cooldown clock still read 04:59 afterwards, so the next session to ask
+# would have found it long elapsed and restarted again on a cursor that had
+# been reset fifteen minutes earlier: the starvation this file exists to
+# prevent, walked around rather than through.
 #
 # ``--queue-only`` exists because the cooldown cannot express "this is not
 # urgent".  The clock starts empty -- no restart has ever been taken through
@@ -67,11 +79,13 @@ now_utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 epoch()   { date -u +%s; }
 
 REASON=""; WHO="${PM_SESSION_NAME:-unknown}"; FORCE=0; PENDING_ONLY=0; QUEUE_ONLY=0
+RECORD_ONLY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --pending)    PENDING_ONLY=1; shift ;;
     --force)      FORCE=1; shift ;;
     --queue-only) QUEUE_ONLY=1; shift ;;
+    --record-only) RECORD_ONLY=1; shift ;;
     --who)        WHO="${2:-unknown}"; shift 2 ;;
     --only)       LABELS=("com.weather.${2#com.weather.}"); shift 2 ;;
     *)            REASON="$1"; shift ;;
@@ -79,6 +93,10 @@ while [ $# -gt 0 ]; do
 done
 if [ "$FORCE" = "1" ] && [ "$QUEUE_ONLY" = "1" ]; then
   echo "restart_resident: --force and --queue-only contradict each other" >&2
+  exit 2
+fi
+if [ "$RECORD_ONLY" = "1" ] && { [ "$FORCE" = "1" ] || [ "$QUEUE_ONLY" = "1" ]; }; then
+  echo "restart_resident: --record-only is neither a request nor a restart" >&2
   exit 2
 fi
 
@@ -135,6 +153,25 @@ REQ_AT="$(now_utc)"
 printf '{"requested_at_utc": "%s", "who": "%s", "reason": %s, "served_at_utc": null}\n' \
   "$REQ_AT" "$WHO" "$(printf '%s' "$REASON" | python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))')" \
   >> "$JOURNAL"
+
+if [ "$RECORD_ONLY" = "1" ]; then
+  # The restart already happened outside this script.  Stamp the clock and
+  # serve the queue exactly as a restart taken here would, and do not touch
+  # launchd: a second kickstart is the cursor reset this is recording.
+  epoch > "$LAST"; now_utc > "$LAST.iso"
+  python3 - "$JOURNAL" "$(now_utc)" <<'PYREC'
+import json,sys
+path,served=sys.argv[1],sys.argv[2]
+rows=[json.loads(l) for l in open(path) if l.strip()]
+n=0
+for r in rows:
+    if r.get("served_at_utc") is None: r["served_at_utc"]=served; n+=1
+open(path,"w").write("".join(json.dumps(r,ensure_ascii=False)+"\n" for r in rows))
+print("recorded a restart taken outside this script; served %d queued request(s)" % n)
+PYREC
+  report_pause_flag
+  exit 0
+fi
 
 if [ "$QUEUE_ONLY" = "1" ]; then
   echo "queued (not urgent): recorded without restarting."

@@ -82,6 +82,60 @@ STATEMENTS = (
 )
 
 
+# The counts each new index has to reproduce, and the table each is read
+# from with the index suppressed.  Unary ``+`` on the indexed column is
+# SQLite's documented no-op that makes the planner ignore an index for one
+# query, so the two sides are the same question asked two ways.
+#
+# It has to be the unary operator and nothing cleverer: ``state+0=state``
+# looks like the same trick and is not one -- ``+`` is arithmetic on a TEXT
+# column, so it coerces every non-numeric state to 0 and the predicate is
+# false for every row.  Written that way this check failed its own probe
+# database on the first run, which is the only reason it is documented here
+# rather than repeated in the next migration.
+_INDEX_AGREEMENT_CHECKS = (
+    (
+        "basket_target_reconciliation_state_idx",
+        "SELECT COUNT(*) FROM basket_target_order_reconciliations"
+        " WHERE state IN ('pending','unknown')",
+        "SELECT COUNT(*) FROM basket_target_order_reconciliations"
+        " WHERE +state IN ('pending','unknown')",
+    ),
+    (
+        "basket_target_order_event_intent_idx",
+        "SELECT COUNT(*) FROM basket_target_order_events"
+        " WHERE order_intent_id IS NOT NULL",
+        "SELECT COUNT(*) FROM basket_target_order_events"
+        " WHERE +order_intent_id IS NOT NULL",
+    ),
+)
+
+
+def _verify_indexes_agree_with_their_tables(
+    conn: sqlite3.Connection,
+) -> list[dict[str, object]]:
+    """Each new index answers what its table answers, or the write rolls back."""
+
+    receipts: list[dict[str, object]] = []
+    for name, indexed_sql, table_sql in _INDEX_AGREEMENT_CHECKS:
+        plan = [
+            str(row[3]) for row in conn.execute("EXPLAIN QUERY PLAN " + indexed_sql)
+        ]
+        through_index = int(conn.execute(indexed_sql).fetchone()[0])
+        through_table = int(conn.execute(table_sql).fetchone()[0])
+        if through_index != through_table:
+            raise ContractError(
+                "order_ledger_index_migration_index_disagrees_with_table:" + name
+            )
+        receipts.append({
+            "index": name,
+            "rows": through_index,
+            "planner_used_index": any(name in step for step in plan),
+            "plan": plan,
+        })
+    return receipts
+
+
 def _service_running() -> bool:
     result = subprocess.run(
         ["/bin/launchctl", "print", SERVICE_LABEL],
@@ -130,14 +184,27 @@ def migrate(*, db_path: Path, confirmed_writer_stopped: bool) -> dict[str, objec
                 "SELECT name FROM sqlite_master WHERE type='index'"
             )
         }
-        quick_check = str(conn.execute("PRAGMA quick_check").fetchone()[0])
-        if quick_check != "ok":
-            raise ContractError("order_ledger_index_migration_quick_check_failed")
         missing = [name for name, _ in STATEMENTS if name not in after]
         if missing:
             raise ContractError(
                 "order_ledger_index_migration_index_absent:" + ",".join(missing)
             )
+        # Verified against the tables these indexes serve, not against the
+        # database.
+        #
+        # ``PRAGMA quick_check`` is what the registry index migration runs,
+        # and on this file it is the whole cost of the migration: measured
+        # 2026-09-09, still scanning 38GB after twelve minutes inside the
+        # BEGIN IMMEDIATE, with the resident stopped for the duration.  It
+        # also answers a question this change cannot raise -- building two
+        # indexes over 1,834 rows does not reach the pages it would inspect.
+        #
+        # What can go wrong here is an index that answers differently from
+        # the table it indexes, so that is what is checked: each new index is
+        # read through, and its count is compared with the same count taken
+        # off the table with the index suppressed.  A mismatch fails the
+        # transaction, and the whole thing takes milliseconds.
+        verification = _verify_indexes_agree_with_their_tables(conn)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -153,7 +220,7 @@ def migrate(*, db_path: Path, confirmed_writer_stopped: bool) -> dict[str, objec
         "indexes_already_present": sorted(
             {name for name, _ in STATEMENTS} & before
         ),
-        "quick_check": quick_check,
+        "index_verification": verification,
         "elapsed_seconds": round(elapsed, 3),
         "wal_bytes_before": wal_bytes,
         "free_bytes_before": free_bytes,
