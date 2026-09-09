@@ -129,6 +129,10 @@ from bayes_basket_target.taf_rotation_state import (
     build_rotation_state as build_taf_rotation_state,
     held_scope_prefixes as taf_rotation_held_scope_prefixes,
     load_rotation_state as load_taf_rotation_state,
+    PRIORITY_GENERAL as TAF_PRIORITY_GENERAL,
+    STALE_CONFIRMATION_AGE_SEC as TAF_STALE_CONFIRMATION_AGE_SEC,
+    capture_age_seconds as taf_rotation_capture_age_seconds,
+    newest_capture_at_by_scope as taf_rotation_newest_capture_at,
     tx_bearing_station_ids as taf_rotation_tx_station_ids,
     persist_rotation_state as persist_taf_rotation_state,
     scope_key as taf_rotation_scope_key,
@@ -1968,6 +1972,16 @@ def run_target_forecast_refresh_cycle(
                 rotation_tx_stations = taf_rotation_tx_station_ids(
                     taf_scope_conn, as_of_utc=now
                 )
+                # When a bulletin last ARRIVED for each scope, which is a
+                # different question from when the scope was last handed a
+                # slot.  The served ledger answers the second and reported
+                # perfect rotation while the first was hours stale: on
+                # 2026-09-09 the held pool filled all eight priority slots
+                # every round, and the stations outside the classes fell from
+                # ten bulletins a day to one.
+                rotation_arrivals = taf_rotation_newest_capture_at(
+                    taf_scope_conn
+                )
                 selected, next_cursor, catalog_sha = (
                     select_taf_rotation_scopes(
                         catalog,
@@ -1976,6 +1990,7 @@ def run_target_forecast_refresh_cycle(
                         held_scope_prefixes=rotation_held,
                         tx_station_ids=rotation_tx_stations,
                         as_of_utc=now,
+                        newest_capture_at=rotation_arrivals,
                     )
                 )
                 captures: list[dict[str, Any]] = []
@@ -2075,10 +2090,25 @@ def run_target_forecast_refresh_cycle(
                     # Charter 85 (b): how this lap was filled.
                     "priority_classes": {
                         taf_rotation_scope_key(scope): int(
-                            scope.get("rotation_priority_class", 2)
+                            scope.get(
+                                "rotation_priority_class",
+                                TAF_PRIORITY_GENERAL,
+                            )
                         )
                         for scope in attempted
                     },
+                    # How long each catalogued scope has gone without a
+                    # bulletin.  Nothing measured this until 2026-09-09, and
+                    # the absence is why a lane that had stopped delivering
+                    # for sixteen of forty-three stations -- KLGA ten hours
+                    # silent, KMIA nine and a half against its own roughly
+                    # three-hourly issuance -- showed up nowhere except as a
+                    # probability-stage refusal two layers downstream.
+                    "capture_freshness": _taf_capture_freshness(
+                        catalog,
+                        newest_capture_at=rotation_arrivals,
+                        as_of_utc=now,
+                    ),
                     "held_scope_count": len(rotation_held),
                     "tx_station_count": len(rotation_tx_stations),
                     "round_budget_sec": TARGET_TAF_ROUND_BUDGET_SEC,
@@ -3423,6 +3453,73 @@ def _execution_mode_status() -> dict[str, Any]:
         "execution_mode": PRODUCTION_EXECUTION_MODE,
         "live_submit_authorized": submit,
         "calls_order_gateway": gateway,
+    }
+
+
+def _taf_capture_freshness(
+    catalog: Sequence[Mapping[str, Any]],
+    *,
+    newest_capture_at: Mapping[str, str],
+    as_of_utc: str,
+) -> dict[str, Any]:
+    """Per-scope bulletin age, and the worst of it named.
+
+    The rotation already reports which scopes it selected and how it classed
+    them, which describes the poll rather than the supply.  A lane can select
+    perfectly and still be delivering nothing -- that is exactly what happened
+    on 2026-09-09 -- so this reports arrivals: how many tradeable scopes have
+    heard nothing for longer than an issuing cycle, and which ones are worst.
+    """
+
+    ages: list[tuple[str, float]] = []
+    for scope in catalog:
+        key = (
+            f"{str(scope.get('station_id') or '').strip().upper()}"
+            f"|{str(scope.get('event_date') or '').strip()}"
+        )
+        ages.append((
+            key,
+            taf_rotation_capture_age_seconds(
+                newest_capture_at,
+                station_id=str(scope.get("station_id") or ""),
+                event_date=str(scope.get("event_date") or ""),
+                as_of_utc=as_of_utc,
+            ),
+        ))
+    finite = sorted(age for _key, age in ages if age != float("inf"))
+    stale = [item for item in ages if item[1] >= TAF_STALE_CONFIRMATION_AGE_SEC]
+    return {
+        "schema": "bayes_basket_target_taf_capture_freshness_v1",
+        "scope_count": len(ages),
+        "never_captured_count": sum(
+            1 for _key, age in ages if age == float("inf")
+        ),
+        "stale_scope_count": len(stale),
+        "stale_after_hours": round(TAF_STALE_CONFIRMATION_AGE_SEC / 3600.0, 2),
+        "median_age_hours": (
+            round(finite[len(finite) // 2] / 3600.0, 2) if finite else None
+        ),
+        "max_age_hours": (
+            round(finite[-1] / 3600.0, 2) if finite else None
+        ),
+        # Named, not counted: "sixteen scopes are stale" sends the reader to
+        # a table, and the station is the thing that gets fixed.
+        #
+        # Never-captured scopes are listed apart rather than sorted to the
+        # top.  A day entering the catalogue has never been captured by
+        # definition -- 36 of 95 scopes on 2026-09-09, all of them tomorrow --
+        # and an infinite age at the head of the worst list buries the thing
+        # this is for: a scope that used to arrive and stopped.
+        "worst_scopes": [
+            {"scope": key, "age_hours": round(age / 3600.0, 2)}
+            for key, age in sorted(
+                (item for item in ages if item[1] != float("inf")),
+                key=lambda item: -item[1],
+            )[:8]
+        ],
+        "never_captured_scopes": [
+            key for key, age in sorted(ages) if age == float("inf")
+        ][:8],
     }
 
 

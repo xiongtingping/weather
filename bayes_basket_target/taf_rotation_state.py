@@ -45,8 +45,45 @@ PRIORITY_SLOTS_PER_LAP = 8
 # off the capture table rather than hard-coded so it follows the bulletins.
 TX_COHORT_LOOKBACK_DAYS = 30
 PRIORITY_HELD = 0
-PRIORITY_D1_TX = 1
-PRIORITY_GENERAL = 2
+# A tradeable scope whose newest bulletin is older than the issuing cadence.
+#
+# Charter 85 (b) ranked by what a scope is -- held, or tomorrow at a TX
+# station -- and never by what it has.  Measured 2026-09-09 04:15Z, that is
+# the whole starvation: the round selected twelve scopes and eight of them
+# were class 0, so the held pool took every priority slot it had, and the
+# general queue moved four scopes a round against a ninety-scope catalogue.
+# The stations outside both classes went from eight to eleven bulletins a
+# day (09-03) to one (09-08): KLGA 10 -> 10 -> 6 -> 3 -> 1 -> 1, KORD
+# 9 -> 10 -> 10 -> 8 -> 4 -> 2, while ZUUU and ZGSZ, inside the classes,
+# held at five to eight.
+#
+# The cost of that lands two layers down.  A station-day whose newest TAF
+# predates the run its P0 root is built on cannot re-seat its P0-M -- the
+# 2026-09-03 seatability ruling forbids it -- and the stale P0-M then
+# refuses the whole scope on ``resident_p0m_replay_required``.  Nineteen of
+# the sixty station-days carrying a P0-M were in that state, and their TAFs
+# were not missing at the source: KMIA issues one about every three hours
+# and we hold exactly one for 2026-09-09, received 2026-09-08T20:03Z.
+PRIORITY_STALE_CONFIRMATION = 1
+PRIORITY_D1_TX = 2
+PRIORITY_GENERAL = 3
+# How long a scope's newest bulletin must have been in hand before a
+# priority slot is spent on it again.
+#
+# Not a cadence for the poll -- it is what makes a class a claim on a slot
+# rather than a standing reservation.  A held station-day that received a
+# bulletin twenty minutes ago has nothing to gain from this round, and the
+# starved tail has everything; the same eight scopes taking the same eight
+# slots every round is the shape the class cap was meant to prevent and
+# could not, because the cap bounds the pool and not its turnover.
+PRIORITY_REPOLL_MIN_AGE_SEC = 3600.0
+# When a tradeable scope's silence stops being ordinary.
+#
+# TAFs are issued about every three to six hours and amended between, so a
+# scope with nothing new in three hours is either being starved by us or is
+# genuinely quiet at the source -- and the two are told apart by fetching,
+# which is what this class buys it.
+STALE_CONFIRMATION_AGE_SEC = 3.0 * 3600.0
 # The served ledger outlives the catalogue on purpose (see build_rotation_state),
 # so it is bounded on its own terms rather than by today's scope count.
 MAX_SERVED_LEDGER_SCOPES = MAX_CATALOG_SCOPES * 2
@@ -202,6 +239,69 @@ def tx_bearing_station_ids(conn: Any, *, as_of_utc: str) -> frozenset[str]:
     )
 
 
+def _finite_or_none(value: float) -> float | None:
+    """``inf`` is not JSON, and "never" is the thing worth recording."""
+
+    return None if value == float("inf") else round(float(value), 1)
+
+
+def newest_capture_at_by_scope(conn: Any) -> dict[str, str]:
+    """``STATION|EVENT_DATE`` -> the newest bulletin we hold for it.
+
+    Arrival, not attempt.  The served ledger already answers "when did this
+    scope last get a slot", and that is the question that let the lane
+    starve while looking fair: a slot spent on a scope that had nothing new
+    to give counts the same as one that returned a bulletin, so eight held
+    station-days could take eight slots a round forever and the ledger would
+    report perfect rotation.  What a scheduler needs is when something last
+    arrived.
+
+    Empty when the table is absent or the read fails, and every scope then
+    reads as never-captured -- which is the safe direction: it makes the
+    lane poll more, not less.
+    """
+
+    try:
+        rows = conn.execute(
+            "SELECT station_id, event_date, MAX(received_at_utc)"
+            " FROM calibration_forward_taf_capture"
+            " GROUP BY station_id, event_date"
+        ).fetchall()
+    except Exception:  # noqa: BLE001 - a scheduling hint, never a blocker
+        return {}
+    return {
+        f"{str(station).strip().upper()}|{str(day).strip()}": str(received)
+        for station, day, received in rows
+        if str(station or "").strip() and str(received or "").strip()
+    }
+
+
+def capture_age_seconds(
+    newest_capture_at: Mapping[str, str],
+    *,
+    station_id: str,
+    event_date: str,
+    as_of_utc: str | None,
+) -> float:
+    """Seconds since this scope's newest bulletin; ``inf`` when it has none."""
+
+    if not as_of_utc:
+        return float("inf")
+    received = newest_capture_at.get(
+        f"{str(station_id).strip().upper()}|{str(event_date).strip()}"
+    )
+    if not received:
+        return float("inf")
+    try:
+        as_of = datetime.fromisoformat(str(as_of_utc).replace("Z", "+00:00"))
+        arrived = datetime.fromisoformat(str(received).replace("Z", "+00:00"))
+    except Exception:  # noqa: BLE001 - unreadable reads as never-captured
+        return float("inf")
+    if as_of.tzinfo is None or arrived.tzinfo is None:
+        return float("inf")
+    return max(0.0, (as_of - arrived).total_seconds())
+
+
 def _local_date_after(as_of_utc: str, timezone_name: str, days: int) -> str | None:
     try:
         as_of = datetime.fromisoformat(str(as_of_utc).replace("Z", "+00:00"))
@@ -219,13 +319,35 @@ def scope_priority_class(
     held_prefixes: Collection[str] = (),
     tx_station_ids: Collection[str] = (),
     as_of_utc: str | None = None,
+    newest_capture_at: Mapping[str, str] | None = None,
 ) -> int:
-    """0 = the book holds this station-day; 1 = tomorrow at a TX station; 2 = rest."""
+    """0 held, 1 nothing arrived in hours, 2 tomorrow at a TX station, 3 rest.
+
+    A class is a claim on this round's slot, not a standing reservation.  A
+    scope whose bulletin arrived inside the last hour is asking for a slot it
+    cannot use, so it steps back into the general queue however it is
+    classed -- which is the only reason the priority pool can be smaller than
+    its membership and the tail can move at all.
+
+    ``newest_capture_at`` absent keeps the pre-2026-09-09 behaviour exactly:
+    every scope reads as never-captured, no scope is held back for freshness,
+    and the stale class then covers everything the two old classes did not.
+    """
 
     station = str(scope.get("station_id") or "").strip().upper()
     event_date = str(scope.get("event_date") or "").strip()
+    age = capture_age_seconds(
+        newest_capture_at or {},
+        station_id=station,
+        event_date=event_date,
+        as_of_utc=as_of_utc,
+    )
+    if newest_capture_at is not None and age < PRIORITY_REPOLL_MIN_AGE_SEC:
+        return PRIORITY_GENERAL
     if f"{station}|{event_date}" in set(held_prefixes):
         return PRIORITY_HELD
+    if newest_capture_at is not None and age >= STALE_CONFIRMATION_AGE_SEC:
+        return PRIORITY_STALE_CONFIRMATION
     if station in {str(v).strip().upper() for v in tx_station_ids} and as_of_utc:
         tomorrow = _local_date_after(
             as_of_utc, str(scope.get("settlement_timezone") or ""), 1
@@ -339,6 +461,7 @@ def select_scopes(
     tx_station_ids: Collection[str] = (),
     as_of_utc: str | None = None,
     priority_slots: int = PRIORITY_SLOTS_PER_LAP,
+    newest_capture_at: Mapping[str, str] | None = None,
 ) -> tuple[list[dict[str, Any]], int, str]:
     keys = [scope_key(scope) for scope in catalog]
     catalog_sha = content_sha256(keys)
@@ -354,6 +477,7 @@ def select_scopes(
             held_prefixes=held_scope_prefixes,
             tx_station_ids=tx_station_ids,
             as_of_utc=as_of_utc,
+            newest_capture_at=newest_capture_at,
         )
         for scope in catalog
     ]
@@ -383,7 +507,23 @@ def select_scopes(
     ][:count - len(priority_order)]
     order = priority_order + general_order
     selected = [
-        dict(catalog[index], rotation_priority_class=classes[index])
+        dict(
+            catalog[index],
+            rotation_priority_class=classes[index],
+            # What the class was decided on, carried beside it: a round that
+            # picks a scope for its silence should say how long the silence
+            # was, or the next reader has to re-derive it from a table.
+            capture_age_seconds=(
+                None if newest_capture_at is None else _finite_or_none(
+                    capture_age_seconds(
+                        newest_capture_at,
+                        station_id=str(catalog[index].get("station_id") or ""),
+                        event_date=str(catalog[index].get("event_date") or ""),
+                        as_of_utc=as_of_utc,
+                    )
+                )
+            ),
+        )
         for index in order
     ]
     # Retained as telemetry only: where in the catalogue this round's last
@@ -496,4 +636,7 @@ __all__ = [
     "persist_rotation_state",
     "scope_key",
     "select_scopes",
+    "newest_capture_at_by_scope",
+    "capture_age_seconds",
+    "PRIORITY_STALE_CONFIRMATION",
 ]

@@ -2,6 +2,11 @@ from bayes_basket_target.taf_rotation_state import (
     PRIORITY_D1_TX,
     PRIORITY_GENERAL,
     PRIORITY_HELD,
+    PRIORITY_REPOLL_MIN_AGE_SEC,
+    PRIORITY_STALE_CONFIRMATION,
+    STALE_CONFIRMATION_AGE_SEC,
+    capture_age_seconds,
+    newest_capture_at_by_scope,
     build_catalog,
     build_rotation_state,
     held_scope_prefixes,
@@ -353,7 +358,13 @@ def test_held_then_d1_tx_then_general_and_the_general_queue_still_moves() -> Non
     assert keys[3:] == ["AA00|2026-09-07|UTC", "AA01|2026-09-07|UTC", "AA02|2026-09-07|UTC"], (
         "the remaining slots walk the general queue"
     )
-    assert [s["rotation_priority_class"] for s in selected] == [0, 1, 1, 2, 2, 2]
+    # By name, not by number: the classes were renumbered on 2026-09-09 when
+    # the stale-confirmation class was inserted, and a literal here says
+    # nothing about which class it meant.
+    assert [s["rotation_priority_class"] for s in selected] == [
+        PRIORITY_HELD, PRIORITY_D1_TX, PRIORITY_D1_TX,
+        PRIORITY_GENERAL, PRIORITY_GENERAL, PRIORITY_GENERAL,
+    ]
 
 
 def test_priority_scopes_rotate_among_themselves_and_never_freeze_the_tail(tmp_path) -> None:
@@ -380,8 +391,10 @@ def test_priority_scopes_rotate_among_themselves_and_never_freeze_the_tail(tmp_p
     assert laps[2] == ["HH00", "HH01", "AA00", "AA01"]
     assert laps[3] == ["HH02", "HH03", "AA02", "AA03"]
     assert previous["latest_selected_priority_classes"] == {
-        "HH02|2026-09-07|UTC": 0, "HH03|2026-09-07|UTC": 0,
-        "AA02|2026-09-07|UTC": 2, "AA03|2026-09-07|UTC": 2,
+        "HH02|2026-09-07|UTC": PRIORITY_HELD,
+        "HH03|2026-09-07|UTC": PRIORITY_HELD,
+        "AA02|2026-09-07|UTC": PRIORITY_GENERAL,
+        "AA03|2026-09-07|UTC": PRIORITY_GENERAL,
     }
     assert load_rotation_state is not None
 
@@ -417,3 +430,113 @@ def test_the_ledger_and_capture_reads_behind_the_priority() -> None:
     assert held_scope_prefixes(sqlite3.connect(":memory:")) == frozenset()
     assert tx_bearing_station_ids(sqlite3.connect(":memory:"), as_of_utc=AS_OF) == frozenset()
 
+
+# ---------------------------------------------------------------- 2026-09-09
+# The priority pool took every slot it had, every round, and the tail stopped.
+
+
+def _aged(scopes_ages: dict[str, float], as_of: str = "2026-09-06T06:00:00Z") -> dict[str, str]:
+    """``{scope prefix: age seconds}`` as the arrival map select_scopes reads."""
+
+    from datetime import datetime, timedelta
+
+    base = datetime.fromisoformat(as_of.replace("Z", "+00:00"))
+    return {
+        prefix: (base - timedelta(seconds=age)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        for prefix, age in scopes_ages.items()
+    }
+
+
+def test_a_scope_that_just_received_a_bulletin_does_not_take_a_priority_slot() -> None:
+    """Measured 2026-09-09 04:15Z: eight of twelve slots went to class 0.
+
+    The held pool is larger than the priority cap, so it filled the cap on
+    every round and the general queue moved four scopes against a
+    ninety-scope catalogue.  A class has to be a claim on this round, and a
+    scope holding a twenty-minute-old bulletin has no claim.
+    """
+
+    catalog = [_scope(f"AA0{i}", "2026-09-07", "UTC") for i in range(4)]
+    catalog += [_scope(f"HH0{i}", "2026-09-07", "UTC") for i in range(2)]
+    held = {f"HH0{i}|2026-09-07" for i in range(2)}
+    fresh = _aged({
+        "HH00|2026-09-07": 60.0,                              # just arrived
+        "HH01|2026-09-07": PRIORITY_REPOLL_MIN_AGE_SEC + 60,  # stale enough
+        **{f"AA0{i}|2026-09-07": 120.0 for i in range(4)},
+    })
+    selected, _, _ = select_scopes(
+        catalog, previous=None, limit=3, priority_slots=2,
+        held_scope_prefixes=held, as_of_utc=AS_OF, newest_capture_at=fresh,
+    )
+    classes = {s["station_id"]: s["rotation_priority_class"] for s in selected}
+    assert classes.get("HH01") == PRIORITY_HELD, "the held scope with nothing new keeps its slot"
+    assert classes.get("HH00") != PRIORITY_HELD, "the one that just received steps back"
+
+
+def test_a_tradeable_scope_gone_quiet_for_hours_outranks_tomorrow_at_a_tx_station() -> None:
+    """The starved case, ranked.
+
+    KLGA went from ten bulletins a day to one while ZUUU, inside the classes,
+    held at five to eight; the stale scope's newest TAF then predated the run
+    its P0 root was built on, and the P0-M it could no longer re-seat refused
+    the whole station-day on resident_p0m_replay_required.
+    """
+
+    quiet = _scope("KLGA", "2026-09-07", "America/New_York")
+    d1_tx = _scope("ZGSZ", "2026-09-07")
+    arrivals = _aged({
+        "KLGA|2026-09-07": STALE_CONFIRMATION_AGE_SEC + 3600.0,
+        "ZGSZ|2026-09-07": PRIORITY_REPOLL_MIN_AGE_SEC + 60.0,
+    })
+    assert scope_priority_class(
+        quiet, tx_station_ids={"ZGSZ"}, as_of_utc=AS_OF, newest_capture_at=arrivals,
+    ) == PRIORITY_STALE_CONFIRMATION
+    assert scope_priority_class(
+        d1_tx, tx_station_ids={"ZGSZ"}, as_of_utc=AS_OF, newest_capture_at=arrivals,
+    ) == PRIORITY_D1_TX
+    assert PRIORITY_STALE_CONFIRMATION < PRIORITY_D1_TX
+
+
+def test_a_scope_we_have_never_captured_reads_as_stale_not_as_fresh() -> None:
+    """The safe direction: an unknown arrival makes the lane poll, not skip."""
+
+    assert capture_age_seconds(
+        {}, station_id="KMIA", event_date="2026-09-07", as_of_utc=AS_OF,
+    ) == float("inf")
+    assert scope_priority_class(
+        _scope("KMIA", "2026-09-07", "America/New_York"),
+        as_of_utc=AS_OF, newest_capture_at={},
+    ) == PRIORITY_STALE_CONFIRMATION
+
+
+def test_omitting_the_arrival_map_leaves_the_old_classes_exactly() -> None:
+    """No arrival map, no new behaviour -- for every caller not passing one."""
+
+    quiet = _scope("KLGA", "2026-09-07", "America/New_York")
+    assert scope_priority_class(quiet, as_of_utc=AS_OF) == PRIORITY_GENERAL
+    assert scope_priority_class(
+        _scope("ZGSZ", "2026-09-07"), tx_station_ids={"ZGSZ"}, as_of_utc=AS_OF,
+    ) == PRIORITY_D1_TX
+
+
+def test_the_arrival_map_is_read_from_the_capture_table() -> None:
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(
+        "CREATE TABLE calibration_forward_taf_capture("
+        " station_id TEXT, event_date TEXT, received_at_utc TEXT);"
+    )
+    conn.executemany(
+        "INSERT INTO calibration_forward_taf_capture VALUES(?,?,?)",
+        [
+            ("KLGA", "2026-09-09", "2026-09-08T19:43:38Z"),
+            ("KLGA", "2026-09-09", "2026-09-08T17:00:00Z"),
+            ("ZUUU", "2026-09-09", "2026-09-09T04:15:33Z"),
+        ],
+    )
+    arrivals = newest_capture_at_by_scope(conn)
+    assert arrivals["KLGA|2026-09-09"] == "2026-09-08T19:43:38Z", "newest, not first"
+    assert arrivals["ZUUU|2026-09-09"] == "2026-09-09T04:15:33Z"
+    # A missing table is a scheduling hint that failed, never a blocker.
+    assert newest_capture_at_by_scope(sqlite3.connect(":memory:")) == {}

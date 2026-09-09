@@ -1294,9 +1294,21 @@ def _probe_slot() -> dict[str, Any]:
     ident = threading.get_ident()
     slot = _STATEMENT_PROBE.get(ident)
     if slot is None:
-        slot = {"statement_count": 0, "sql": None, "started_ns": None}
+        slot = {
+            "statement_count": 0, "sql": None, "started_ns": None,
+            "drain_sql": None, "drain_started_ns": None, "drain_rows": 0,
+        }
         _STATEMENT_PROBE[ident] = slot
     return slot
+
+
+def _clear_drain() -> None:
+    """A cursor that ran out of rows is no longer being drained."""
+
+    slot = _probe_slot()
+    slot["drain_sql"] = None
+    slot["drain_started_ns"] = None
+    slot["drain_rows"] = 0
 
 
 RESTING_REPRICE_RECEIPT_PATH = Path(
@@ -1356,11 +1368,54 @@ class _ProbedCursor(sqlite3.Cursor):
             raise
         finally:
             # Cleared on return, so an idle thread never reads as a stalled
-            # one.  Rows fetched later from the returned cursor are not
-            # covered, which is the honest boundary: this names the statement
-            # that is executing, not one being drained.
+            # one.  The statement moves to the drain slot instead of
+            # vanishing: rows pulled from the returned cursor were the honest
+            # boundary of v2, and on 2026-09-09 the cycle spent an hour on
+            # the far side of it -- 196,202 statements all returned,
+            # ``in_flight`` empty, the process in uninterruptible IO, and the
+            # last statement already blanked here.  A query that returns
+            # instantly and is then dragged row by row is exactly the shape
+            # this codebase keeps finding, so it has to be nameable too.
             slot["sql"] = None
             slot["started_ns"] = None
+            slot["drain_sql"] = sql[:_STATEMENT_PROBE_SQL_CHARS]
+            slot["drain_started_ns"] = time.perf_counter_ns()
+            slot["drain_rows"] = 0
+
+    def _drained(self, rows: int) -> None:
+        slot = _probe_slot()
+        if slot.get("drain_started_ns") is not None:
+            slot["drain_rows"] = int(slot.get("drain_rows") or 0) + rows
+
+    def __next__(self):  # type: ignore[override]
+        try:
+            row = super().__next__()
+        except StopIteration:
+            _clear_drain()
+            raise
+        self._drained(1)
+        return row
+
+    def fetchone(self):  # type: ignore[override]
+        row = super().fetchone()
+        if row is None:
+            _clear_drain()
+        else:
+            self._drained(1)
+        return row
+
+    def fetchmany(self, size=None):  # type: ignore[override]
+        rows = super().fetchmany() if size is None else super().fetchmany(size)
+        self._drained(len(rows))
+        if not rows:
+            _clear_drain()
+        return rows
+
+    def fetchall(self):  # type: ignore[override]
+        rows = super().fetchall()
+        self._drained(len(rows))
+        _clear_drain()
+        return rows
 
 
 class _ProbedConnection(sqlite3.Connection):
@@ -1390,27 +1445,43 @@ def statement_probe_snapshot(*, min_elapsed_ms: float = 1000.0) -> dict[str, Any
 
     now_ns = time.perf_counter_ns()
     running: list[dict[str, Any]] = []
+    draining: list[dict[str, Any]] = []
     total = 0
     for thread_ident, slot in list(_STATEMENT_PROBE.items()):
         total += int(slot.get("statement_count") or 0)
         started = slot.get("started_ns")
-        if started is None:
+        if started is not None:
+            elapsed_ms = (now_ns - int(started)) / 1_000_000.0
+            if elapsed_ms >= min_elapsed_ms:
+                running.append({
+                    "thread_ident": thread_ident,
+                    "elapsed_ms": round(elapsed_ms, 1),
+                    "sql": slot.get("sql"),
+                })
+        # A statement that returned and is still handing back rows.  Reported
+        # separately because it is a different fault with the same symptom:
+        # ``in_flight`` empty while the cycle does not return.
+        drain_started = slot.get("drain_started_ns")
+        if drain_started is None:
             continue
-        elapsed_ms = (now_ns - int(started)) / 1_000_000.0
-        if elapsed_ms < min_elapsed_ms:
+        drain_ms = (now_ns - int(drain_started)) / 1_000_000.0
+        if drain_ms < min_elapsed_ms:
             continue
-        running.append({
+        draining.append({
             "thread_ident": thread_ident,
-            "elapsed_ms": round(elapsed_ms, 1),
-            "sql": slot.get("sql"),
+            "elapsed_ms": round(drain_ms, 1),
+            "rows": int(slot.get("drain_rows") or 0),
+            "sql": slot.get("drain_sql"),
         })
     running.sort(key=lambda item: -float(item["elapsed_ms"]))
+    draining.sort(key=lambda item: -float(item["elapsed_ms"]))
     return {
-        "schema": "basket_target_statement_probe_v2",
+        "schema": "basket_target_statement_probe_v3",
         "statement_count": total,
         "threads_traced": len(_STATEMENT_PROBE),
         "min_elapsed_ms": min_elapsed_ms,
         "in_flight": running[:4],
+        "draining": draining[:4],
     }
 
 
@@ -3537,6 +3608,11 @@ class TargetProductionWorker:
         self.nwp_rotation_state_path = (
             self.nwp_runtime_root / "rotation_state.json"
         )
+        # Set here as well as per cycle: a caller that drives one stage
+        # directly (every test of this lane does) must not meet an
+        # AttributeError inside a try that would file it as a scope blocker.
+        self._p0m_replay_blocked_scopes: frozenset[tuple[str, str]] = frozenset()
+        self._p0m_replay_blocked_next: set[tuple[str, str]] = set()
         self.taf_rotation_state_path = (
             self.nwp_runtime_root / "taf_rotation_state.json"
         )
@@ -13040,9 +13116,19 @@ class TargetProductionWorker:
         # last, which is also where it belongs: those are skipped above
         # before anything is read.
         _p0m_loop_started = time.perf_counter()
+        _replay_blocked = getattr(
+            self, "_p0m_replay_blocked_scopes", frozenset()
+        )
         for (station, day), captures in sorted(
             captures_by_scope.items(),
             key=lambda item: (
+                # A scope whose decision was refused last round for want of
+                # this replay comes first, whatever day it is.  The day order
+                # below is the stage-governs-its-own-day rule and stays the
+                # rule; this is the case that rule cannot see, because a
+                # forward day that is being served fine and an open day that
+                # is refusing every cycle look identical to a date.
+                0 if item[0] in _replay_blocked else 1,
                 _p0m_scope_day_order(item[0][1]),
                 item[0][0],
             ),
@@ -16279,6 +16365,22 @@ class TargetProductionWorker:
         self._maintenance_spent_sec = 0.0
         self._maintenance_admissions = {}
         self._quote_lease_seconds = None
+        # Which scopes the last decision loop refused for want of a P0-M
+        # replay.  Carried across the cycle boundary on purpose: the P0-M
+        # lane runs before the decision loop, so the only refusals it can
+        # order itself by are the previous round's -- and a scope stays in
+        # the set until a replay clears it, which is exactly the condition
+        # for wanting the budget.
+        #
+        # It reads the guard's answer rather than recomputing it.  Deciding
+        # "is this scope blocked" up front would mean loading every
+        # station-day's envelopes before the loop that exists to avoid
+        # exactly that, and an ordering hint that re-derives the rule is how
+        # an ordering hint comes to disagree with it.
+        self._p0m_replay_blocked_scopes = frozenset(
+            getattr(self, "_p0m_replay_blocked_next", frozenset())
+        )
+        self._p0m_replay_blocked_next = set()
         started = time.perf_counter()
         reset_writer_lock_profile()
         reset_ledger_spans()
@@ -17908,6 +18010,16 @@ class TargetProductionWorker:
                         as_of_utc=now,
                     )
                     if replay_blocker is not None:
+                        if replay_blocker == "resident_p0m_replay_required":
+                            # Next cycle's P0-M lane spends its replay budget
+                            # here first.  Measured 2026-09-09 04:24Z: the
+                            # budget of four was spent on the furthest event
+                            # day -- correct by the stage-governs-its-day
+                            # rule, and none of those scopes was blocked --
+                            # while nineteen waited and KLGA and KMIA, whose
+                            # decisions this refusal was actually stopping,
+                            # were among them.
+                            self._p0m_replay_blocked_next.add((station, day))
                         raise ContractError(replay_blocker)
                     _compile_started = time.perf_counter()
                     candidate = compile_production_cycle_from_ssot(
