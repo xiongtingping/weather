@@ -392,3 +392,164 @@ def test_the_widening_is_switchable_off_to_exactly_the_old_behaviour() -> None:
     assert worker._evidence_only_capture_scopes(
         [_catalog_scope("ZUUU", fresh=False)], decidable=[]
     ) == []
+
+
+# ------------------------------------------- a rule refusing vs a bug refusing
+
+
+def _blocked_result(reason, *, ok=False):
+    return {"ok": ok, "reason": reason, "atomic_commit": {"state": "BLOCKED"}}
+
+
+def _committed_result():
+    return {"ok": True, "atomic_commit": {"state": "COMMITTED"}}
+
+
+def test_a_contract_refusal_is_a_rule_and_is_not_a_defect() -> None:
+    from bayes_basket_target.production_worker import _scope_defect_tally
+
+    tally = _scope_defect_tally([
+        _blocked_result("ContractError:delta_v2_support_empty"),
+        _blocked_result("ContractError:p1_entry_window_not_open"),
+        _blocked_result("AtomicLedgerError:prepared_supersession_intent_not_quiescent"),
+        _blocked_result("ResourceBoundError:target_database_min_free_space_guard"),
+        _committed_result(),
+    ])
+
+    assert tally["defect_scope_count"] == 0
+    assert tally["infrastructure_scope_count"] == 0
+    assert tally["fleet_wide_defect"] is False
+
+
+def test_the_signature_mismatch_that_took_the_fleet_is_named_a_defect() -> None:
+    # 2026-09-09T09:03-10:40Z: all 45 stations, one hour thirty-eight
+    # minutes, 65 decision rows and not one prepared.  Nothing said so.
+    from bayes_basket_target.production_worker import _scope_defect_tally
+
+    reason = (
+        "TypeError:compile_production_plan() got an unexpected keyword "
+        "argument 'off_centre_claim_bands'"
+    )
+    tally = _scope_defect_tally([_blocked_result(reason) for _ in range(45)])
+
+    assert tally["defect_scope_count"] == 45
+    assert tally["fleet_wide_defect"] is True
+    assert len(tally["defect_reasons"]) == 1
+    assert next(iter(tally["defect_reasons"])).startswith("TypeError:")
+
+
+def test_a_busy_database_is_infrastructure_and_neither_of_the_two() -> None:
+    from bayes_basket_target.production_worker import _scope_defect_tally
+
+    tally = _scope_defect_tally([
+        _blocked_result("OperationalError:database is locked") for _ in range(9)
+    ])
+
+    assert tally["infrastructure_scope_count"] == 9
+    assert tally["defect_scope_count"] == 0
+    assert tally["fleet_wide_defect"] is False
+
+
+def test_one_station_failing_alone_is_not_called_fleet_wide() -> None:
+    from bayes_basket_target.production_worker import _scope_defect_tally
+
+    tally = _scope_defect_tally([
+        _blocked_result("TypeError:one station's own data"),
+        _committed_result(),
+        _committed_result(),
+    ])
+
+    assert tally["defect_scope_count"] == 1
+    assert tally["fleet_wide_defect"] is False
+
+
+def test_two_different_defects_are_not_one_deploy() -> None:
+    from bayes_basket_target.production_worker import _scope_defect_tally
+
+    tally = _scope_defect_tally([
+        _blocked_result("TypeError:a"),
+        _blocked_result("TypeError:a"),
+        _blocked_result("AttributeError:b"),
+    ])
+
+    assert tally["defect_scope_count"] == 3
+    # Three scopes, two shapes, neither shape reaching three: that is not
+    # one signature mismatch.  The floor is on the dominant shape, not on
+    # the total, so a couple of unrelated bugs never read as a deploy.
+    assert tally["fleet_wide_defect"] is False
+
+
+def test_the_defect_is_named_even_while_rules_refuse_beside_it() -> None:
+    """Unanimity would have missed both real episodes.
+
+    Replayed from the store: 2026-09-09 blocked 65 scopes of which 45 were
+    the signature mismatch, and 2026-09-03 blocked 29 of which 28 were.  A
+    rule that demanded every blocked scope share the shape would have
+    called neither.
+    """
+    from bayes_basket_target.production_worker import _scope_defect_tally
+
+    results = [
+        _blocked_result("TypeError:compile_production_plan() got an unexpected")
+        for _ in range(45)
+    ] + [
+        _blocked_result("ContractError:p1_entry_window_not_open")
+        for _ in range(20)
+    ]
+    tally = _scope_defect_tally(results)
+
+    assert tally["defect_scope_count"] == 45
+    assert tally["fleet_wide_defect"] is True
+
+
+def test_a_minority_defect_beside_a_majority_of_rules_is_not_fleet_wide() -> None:
+    from bayes_basket_target.production_worker import _scope_defect_tally
+
+    tally = _scope_defect_tally(
+        [_blocked_result("TypeError:a") for _ in range(4)]
+        + [_blocked_result("ContractError:p1_entry_window_not_open")
+           for _ in range(40)]
+    )
+
+    assert tally["defect_scope_count"] == 4
+    assert tally["fleet_wide_defect"] is False
+
+
+def test_an_unclassified_class_counts_as_a_defect() -> None:
+    # The default is loud on purpose: a class nobody has classified is far
+    # likelier to be a new bug than a new rule.
+    from bayes_basket_target.production_worker import _scope_defect_tally
+
+    tally = _scope_defect_tally([
+        _blocked_result("SomeBrandNewError:who knows") for _ in range(4)
+    ])
+
+    assert tally["defect_scope_count"] == 4
+    assert tally["fleet_wide_defect"] is True
+
+
+def test_a_worker_named_refusal_without_a_class_is_a_rule() -> None:
+    from bayes_basket_target.production_worker import _scope_defect_tally
+
+    tally = _scope_defect_tally([
+        _blocked_result("target_prepared_cycle_retention_violation"),
+        _blocked_result("resident_p0m_replay_required"),
+    ])
+
+    assert tally["defect_scope_count"] == 0
+
+
+def test_a_commit_that_failed_counts_even_when_the_compile_said_ok() -> None:
+    from bayes_basket_target.production_worker import _scope_defect_tally
+
+    tally = _scope_defect_tally([
+        {
+            "ok": True,
+            "atomic_commit": {
+                "state": "blocked_fail_closed",
+                "reason": "TypeError:signature moved under the commit",
+            },
+        }
+    ])
+
+    assert tally["defect_scope_count"] == 1

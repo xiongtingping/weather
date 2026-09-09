@@ -388,6 +388,108 @@ def split_refusals_by_capability(
     }
 
 
+#: Exception classes that mean a RULE refused this scope.  A contract, a
+#: ledger invariant, a designed resource guard: the system working.
+SCOPE_RULE_REFUSAL_CLASSES = frozenset({
+    "ContractError",
+    "AtomicLedgerError",
+    "ResourceBoundError",
+    "ExecutionVersionVectorError",
+})
+#: Classes that mean the machine underneath was busy or full, which is
+#: neither a rule nor a defect and wants its own line.
+SCOPE_INFRASTRUCTURE_REFUSAL_CLASSES = frozenset({
+    "OperationalError",
+    "DatabaseError",
+    "InterfaceError",
+    "TimeoutError",
+    "OSError",
+})
+
+
+def _scope_defect_tally(
+    results: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Separate the scopes a rule refused from the ones a bug refused.
+
+    ``_scope_verdict_tally`` below deliberately drops the exception class
+    from its key -- reasons are colon chains and tallying on the tail split
+    one family into eight keys of one -- so a Python-level failure and a
+    charter refusal reach the board looking alike, and the fleet-wide ones
+    look like a busy afternoon.
+
+    They are not alike.  Measured 2026-09-09 over every blocked-scope row
+    since 09-01: 1,529 ContractError, 45 ResourceBoundError and 13
+    AtomicLedgerError -- rules and guards speaking -- against 161
+    OperationalError (all "database is locked") and 73 TypeError.  Every
+    one of the 73 was the same shape, a caller passing a keyword the callee
+    did not yet accept, and it happened twice in one week: 28 scopes on
+    2026-09-03 (``last_acted_probability_identity``) and 45 on 2026-09-09
+    09:03-10:40Z (``off_centre_claim_bands``).  The second took every one
+    of the 45 stations on the live event day for an hour and thirty-eight
+    minutes -- 65 decision rows in that window, every one blocked, not one
+    prepared -- and nothing anywhere said so.
+
+    An unknown class counts as a defect on purpose.  A class nobody has
+    classified is far likelier to be a new bug than a new rule, and the
+    cost of being wrong is one loud line against another silent outage.
+    """
+
+    defect: dict[str, int] = {}
+    infrastructure: dict[str, int] = {}
+    blocked = 0
+    for item in results:
+        commit = item.get("atomic_commit")
+        commit_map = commit if isinstance(commit, Mapping) else {}
+        state_word = str(commit_map.get("state") or "").upper()
+        commit_failed = (
+            "BLOCK" in state_word
+            or "FAIL" in state_word
+            or commit_map.get("ok") is False
+        )
+        if item.get("ok") is not False and not commit_failed:
+            continue
+        blocked += 1
+        reason = str(
+            item.get("reason") or commit_map.get("reason") or ""
+        ).strip()
+        # The decision loop writes ``f"{type(exc).__name__}:{exc}"``, so the
+        # class is the leading segment when there is one at all.
+        head, _, tail = reason.partition(":")
+        if not tail or not head.endswith("Error"):
+            # No class in front: these are the worker's own named refusals
+            # (a blocker string chosen by this file), which are rules.
+            continue
+        if head in SCOPE_RULE_REFUSAL_CLASSES:
+            continue
+        bucket = (
+            infrastructure
+            if head in SCOPE_INFRASTRUCTURE_REFUSAL_CLASSES
+            else defect
+        )
+        key = f"{head}:{tail.strip()[:70]}"
+        bucket[key] = bucket.get(key, 0) + 1
+    defect_count = sum(defect.values())
+    return {
+        "defect_scope_count": defect_count,
+        "defect_reasons": defect,
+        "infrastructure_scope_count": sum(infrastructure.values()),
+        "infrastructure_reasons": infrastructure,
+        # One shape took most of the scopes that refused.  Not *every*
+        # one: replaying both real episodes through this function showed
+        # ordinary rules still refusing beside the defect -- 45 of 65
+        # blocked on 2026-09-09, 28 of 29 on 09-03 -- so a rule that
+        # demanded unanimity would have called neither of them, which is
+        # the whole failure it exists to catch.  Three of one shape is the
+        # floor, because one or two is a station's own data.
+        "fleet_wide_defect": bool(
+            defect
+            and max(defect.values()) >= 3
+            and max(defect.values()) * 2 >= blocked
+        ),
+    }
+
+
 def _scope_verdict_tally(
     results: Sequence[Mapping[str, Any]],
 ) -> tuple[int, dict[str, int]]:
@@ -18723,6 +18825,7 @@ class TargetProductionWorker:
                 results
             )
             blocked_scopes = sum(blocked_scope_reasons.values())
+            scope_defects = _scope_defect_tally(results)
             # A cycle that committed nothing says why on its own receipt.
             # The board's fail-closed branch reads ``reason`` and nothing
             # else, and a listing turn that served only tomorrow's stations
@@ -18731,7 +18834,15 @@ class TargetProductionWorker:
             # 16:56Z, 16 of 16).  A worker-level failure keeps its own
             # reason from the except arm below; this names the refusals.
             summary_reason = (
-                None
+                # A fleet-wide code defect is named ahead of the refusal
+                # tally, and ahead of "committed something", because it can
+                # take most of the fleet while a handful of scopes still
+                # commit -- and the board reads ``reason`` and nothing else.
+                "fleet_wide_scope_defect:" + next(
+                    iter(scope_defects["defect_reasons"])
+                )
+                if scope_defects["fleet_wide_defect"]
+                else None
                 if committed_scopes > 0 or not results
                 else "all_scopes_refused:" + ",".join(
                     f"{key}x{count}"
@@ -18757,6 +18868,10 @@ class TargetProductionWorker:
                 "committed_scope_count": committed_scopes,
                 "blocked_scope_count": blocked_scopes,
                 "blocked_scope_reasons": blocked_scope_reasons,
+                # Which of those refusals were a rule speaking and which
+                # were a bug.  The tally above cannot tell them apart by
+                # construction; this is the line that can.
+                "scope_defect_blockers": scope_defects,
                 "refusal_split": split_refusals_by_capability(
                     blocked_scope_reasons
                 ),
