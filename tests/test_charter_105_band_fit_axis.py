@@ -260,25 +260,41 @@ def test_the_nightly_refit_keeps_each_stage_on_its_own_axis():
     assert '"axis": stage_axis' in source or 'entry["axis"] = stage_axis' in source
 
 
-def test_the_shadow_lane_refuses_a_pooled_table_it_cannot_read():
-    """The shadow lane's cells are (position, claim band), so its base has to
-    be a claim-band table.  A distance table's bounds are distances; read as
-    claims every bucket falls in the first cell and the other four are never
-    reached -- 0.00929 per bucket on a real vector, quietly wrong.  It stops
-    by name instead."""
+def test_the_shadow_lane_follows_the_pooled_table_it_is_scored_against():
+    """SUPERSEDES ``..._refuses_a_pooled_table_it_cannot_read`` (2026-09-09).
+
+    The refusal was right for as long as the lane could only key on claims:
+    a distance table read as claims puts every bucket in the first cell,
+    0.00929 per bucket on a real vector, quietly wrong.  Stopping was better
+    than that.  But it is not better than keying correctly, and it stalled
+    P0's candidate layer for two days -- the lane FOLLOWS the pooled axis
+    now, and the sample it collects is keyed on the same axis.
+
+    The old assertion (``pooled_table_axis_not_claim`` appears before
+    ``base_table``) is deliberately gone rather than inverted: the refusal
+    branch does not exist, so there is nothing left to order.
+    """
 
     import inspect
 
-    from bayes_basket_target.band_shadow_store import fit_band_shadow_table
+    from bayes_basket_target.band_shadow_store import (
+        collect_shadow_sample,
+        fit_band_shadow_table,
+    )
 
     source = inspect.getsource(fit_band_shadow_table)
     assert "load_band_table_with_axis" in source
-    assert "pooled_table_axis_not_claim" in source
-    # The refusal comes before the base is built, or it would be built from
-    # the table it just refused.
-    assert source.index("pooled_table_axis_not_claim") < source.index(
-        "base_table"
-    )
+    assert "pooled_table_axis_not_claim" not in source
+    # The axis read off the pooled table is the axis the sample is keyed on,
+    # and it is read before the base is built.
+    assert "axis=pooled_axis" in source
+    assert source.index("pooled_axis") < source.index("base_table")
+    # And the fallback partition follows it too: a stage with no pooled table
+    # yet must not fall back to eleven claim cells on a distance lane.
+    assert "cells_for_axis(pooled_axis)" in source
+    collected = inspect.getsource(collect_shadow_sample)
+    assert "BAND_AXIS_CENTRE_DISTANCE" in collected
+    assert "abs(offset)" in collected
 
 
 def test_every_lookup_in_the_module_follows_the_axis():

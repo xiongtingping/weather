@@ -109,10 +109,13 @@ from typing import Any
 import numpy as np
 
 from .band_reliability_store import (
+    BAND_AXES,
+    BAND_AXIS_CENTRE_DISTANCE,
     BAND_AXIS_CLAIM,
     load_band_table_with_axis,
     BAND_STAGES,
     BAND_TABLE_CELLS,
+    cells_for_axis,
     FACTOR_CEILING,
     FACTOR_FLOOR,
     FORWARD_WINDOW_FRACTION,
@@ -231,9 +234,19 @@ def position_group(offset: int) -> str:
     return "warm_far"
 
 
-def _band_of(probability: float) -> tuple[float, float] | None:
-    for cell in BAND_TABLE_CELLS:
-        if cell[0] <= probability < cell[1]:
+def _band_of(
+    value: float, cells: Sequence[tuple[float, float]] = BAND_TABLE_CELLS
+) -> tuple[float, float] | None:
+    """Which cell of ``cells`` a record's keying quantity falls in.
+
+    The quantity is the claim on the claim axis and the bucket's distance
+    from the day's argmax on the distance axis; the partition follows the
+    axis, exactly as ``band_reliability_store.cells_for_axis`` does it for
+    the pooled table this lane is scored against.
+    """
+
+    for cell in cells:
+        if cell[0] <= value < cell[1]:
             return cell
     return None
 
@@ -243,6 +256,7 @@ def collect_shadow_sample(
     truth: Mapping[tuple[str, str], float],
     *,
     stage: str = "P0",
+    axis: str = BAND_AXIS_CLAIM,
 ) -> dict[str, Any]:
     """Per (day, station, position, band) claimed mass and hits.
 
@@ -251,8 +265,21 @@ def collect_shadow_sample(
     shadow and the served table are fitted on byte-identical evidence and
     a difference between them is a difference of geometry, never of
     sample.
+
+    The band is read on ``axis``, which is the axis the stage's pooled
+    table serves.  The position group is NOT folded into it: the distance
+    axis is unsigned, and the 2026-08-28 probe measured P0's deep tail
+    realising 0.48 on the cool side against 1.47 on the warm side.  On the
+    claim axis the group carried both the sign and the size; on the
+    distance axis the size has moved into the band and the sign is what is
+    left -- which is precisely the split the pooled table cannot express,
+    and therefore the one this lane exists to measure.
     """
 
+    axis_id = str(axis)
+    if axis_id not in BAND_AXES:
+        raise ValueError(f"unknown band axis: {axis_id}")
+    cells_of_axis = cells_for_axis(axis_id)
     lane = serving_lane_by_station_day(conn, truth, stage=_check_stage(stage))
     cells: dict[
         tuple[str, str, tuple[float, float]], dict[str, Any]
@@ -273,8 +300,14 @@ def collect_shadow_sample(
             )
             records = []
             for index, (claim, hit, _lower) in enumerate(entries):
-                group = position_group(index - argmax_index)
-                band = _band_of(float(claim))
+                offset = index - argmax_index
+                group = position_group(offset)
+                keyed = (
+                    float(abs(offset))
+                    if axis_id == BAND_AXIS_CENTRE_DISTANCE
+                    else float(claim)
+                )
+                band = _band_of(keyed, cells_of_axis)
                 records.append({
                     "claim": float(claim),
                     "hit": int(hit),
@@ -294,6 +327,7 @@ def collect_shadow_sample(
                 "records": records,
             })
     return {
+        "axis": axis_id,
         "cells": {
             key: {
                 "by_day": {
@@ -585,56 +619,35 @@ def fit_band_shadow_table(
 
     stage_id = _check_stage(stage)
     truth = _truth(conn)
-    sample = collect_shadow_sample(conn, truth, stage=stage_id)
-    days = sample["days"]
-    finest = sample["cells"]
-    # Charter 105: the pooled table is this lane's BASE, and this lane's
-    # cells are (position, claim band) -- so it can only read a pooled table
-    # whose own cells are claim bands.  A distance-axis table's bounds are
-    # distances; read as claims they all fall in the first cell, which would
-    # hand every bucket that cell's factor and never reach the other four.
-    # Measured on a real serving vector the day P0 moved: 0.00929 per bucket,
-    # quietly wrong rather than loudly.  So the axis is checked, and a
-    # mismatch stops the fit by name instead of scoring against a base the
-    # lane misread.
+    # Charter 105: the pooled table is this lane's BASE, so this lane's
+    # cells have to be keyed on the axis that table is keyed on.  Reading a
+    # distance table as claims puts every bucket in the first cell -- 0.00929
+    # per bucket on a real serving vector the day P0 moved, quietly wrong
+    # rather than loudly -- so the lane FOLLOWS the pooled axis rather than
+    # asserting one.  It refused instead between 2026-09-07 and 09-09, which
+    # was right while it could only key on claims and stalled P0's candidate
+    # layer for two days once it could not.
+    #
+    # What moves with the axis is the band; what does not is the position
+    # group.  On the distance axis the group's magnitude is in the band and
+    # its SIGN is not -- the distance axis is unsigned -- so the group stops
+    # being a coarsened offset and becomes, in effect, the cool/warm side.
+    # That is the split the pooled table provably cannot express: P0's deep
+    # tail realised 0.48 cool against 1.47 warm on 2026-08-28, and one
+    # shared distance factor is wrong for both.
     pooled_loaded = load_band_table_with_axis(conn, stage=stage_id)
     pooled_axis = (
         BAND_AXIS_CLAIM if pooled_loaded is None else pooled_loaded[2]
     )
-    if pooled_axis != BAND_AXIS_CLAIM:
-        return {
-            "stage": stage_id,
-            "cells": [],
-            "evidence": {
-                "schema": "band_shadow_fit_evidence_v1",
-                "stage": stage_id,
-                "serving_day_count": 0,
-                "serving_station_day_count": 0,
-                "accumulating": True,
-                "blocked_by": "pooled_table_axis_not_claim",
-                "pooled_table_axis": pooled_axis,
-                "pooled_table_sha256": (
-                    None if pooled_loaded is None else pooled_loaded[1]
-                ),
-                "levels": {},
-            },
-            # The same four keys every other return carries.  Without them
-            # the caller that reads this result raises KeyError and the
-            # stage is journalled as a crash, which is how a guard doing
-            # exactly its job read as a broken lane: P0's pooled table moved
-            # to the centre-distance axis on 2026-09-07 and this branch has
-            # fired -- correctly -- on every sweep since, each one exiting
-            # non-zero on an error whose text named a dictionary key rather
-            # than the axis mismatch the branch had already diagnosed.
-            "serving_day_count": 0,
-            "serving_station_day_count": 0,
-            "accumulating": True,
-            "forward_nll_gain": 0.0,
-        }
+    sample = collect_shadow_sample(
+        conn, truth, stage=stage_id, axis=pooled_axis
+    )
+    days = sample["days"]
+    finest = sample["cells"]
     pooled = (
         {band: float(factor) for band, factor in pooled_loaded[0]}
         if pooled_loaded is not None
-        else {band: 1.0 for band in BAND_TABLE_CELLS}
+        else {band: 1.0 for band in cells_for_axis(pooled_axis)}
     )
     pooled_sha = None if pooled_loaded is None else pooled_loaded[1]
     # The base every candidate is scored against: what the shadow would
@@ -653,6 +666,7 @@ def fit_band_shadow_table(
             "evidence": {
                 "schema": "band_shadow_fit_evidence_v1",
                 "stage": stage_id,
+                "axis": pooled_axis,
                 "serving_day_count": 0,
                 "serving_station_day_count": 0,
                 "accumulating": True,
@@ -815,6 +829,7 @@ def fit_band_shadow_table(
         "evidence": {
             "schema": "band_shadow_fit_evidence_v1",
             "stage": stage_id,
+            "axis": pooled_axis,
             "serving_day_count": len(days),
             "serving_station_day_count": station_days,
             "station_count": len(sample["stations"]),
@@ -839,8 +854,26 @@ def fit_band_shadow_table(
     }
 
 
-def shadow_sha256(cells: Sequence[Mapping[str, Any]], *, stage: str) -> str:
-    return content_sha256({
+def shadow_sha256(
+    cells: Sequence[Mapping[str, Any]],
+    *,
+    stage: str,
+    axis: str = BAND_AXIS_CLAIM,
+) -> str:
+    """Identity of a shadow table, including the axis its bands are read on.
+
+    A distance cell and a claim cell can carry the same bounds -- (0.0, 1.0)
+    is a band on both axes -- so without the axis two tables measured on
+    different geometries collide under one sha and the retention prune
+    would treat them as one fit.  The shipped axis stays out of the identity
+    so the 45,015 cells already on the book keep the sha they were written
+    under, which is the same rule ``band_table_sha256`` follows.
+    """
+
+    axis_id = str(axis)
+    if axis_id not in BAND_AXES:
+        raise ValueError(f"unknown band axis: {axis_id}")
+    identity: dict[str, Any] = {
         "schema": "band_shadow_table_v1",
         "stage": _check_stage(stage),
         "cells": [
@@ -860,7 +893,10 @@ def shadow_sha256(cells: Sequence[Mapping[str, Any]], *, stage: str) -> str:
                 ),
             )
         ],
-    })
+    }
+    if axis_id != BAND_AXIS_CLAIM:
+        identity["axis"] = axis_id
+    return content_sha256(identity)
 
 
 def persist_shadow_fit(
@@ -883,7 +919,9 @@ def persist_shadow_fit(
 
     stage_id = _check_stage(stage)
     ensure_shadow_schema(conn)
-    sha = shadow_sha256(cells, stage=stage_id)
+    sha = shadow_sha256(
+        cells, stage=stage_id, axis=str(evidence.get("axis") or BAND_AXIS_CLAIM)
+    )
     fitted_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     promoted_count = sum(
         1 for cell in cells if cell["served_by_level"] != "pooled"
@@ -1024,8 +1062,12 @@ def refit_shadow_all_stages(
             ]
             entry.update({
                 "shadow_sha256": shadow_sha256(
-                    fitted["cells"], stage=stage
+                    fitted["cells"], stage=stage,
+                    axis=str(
+                        fitted["evidence"].get("axis") or BAND_AXIS_CLAIM
+                    ),
                 ),
+                "axis": fitted["evidence"].get("axis"),
                 "cell_count": len(fitted["cells"]),
                 "promoted_cell_count": len(promoted),
                 # Carried up so an empty fit can say why it is empty.  A

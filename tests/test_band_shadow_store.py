@@ -10,6 +10,7 @@ import sqlite3
 
 import pytest
 
+from bayes_basket_target import band_reliability_store
 from bayes_basket_target import band_shadow_store
 from bayes_basket_target.band_shadow_store import (
     BACKOFF_LEVELS,
@@ -565,35 +566,46 @@ def test_empty_lane_is_an_accumulating_state_not_an_error() -> None:
     assert fitted["forward_nll_gain"] == 0.0
 
 
-def test_axis_block_is_reported_by_name_not_as_a_crash() -> None:
-    """A guard doing its job must not read as a broken lane.
+def test_a_distance_stage_fits_on_distance_bands_beside_a_claim_stage() -> None:
+    """SUPERSEDES ``test_axis_block_is_reported_by_name_not_as_a_crash``.
 
-    P0's pooled table moved to the centre-distance axis on 2026-09-07 and
-    this branch has fired -- correctly -- on every sweep since.  It
-    returned a dict without the four top-level keys its own caller reads,
-    so ``refit_shadow_all_stages`` raised ``KeyError:
-    'serving_day_count'``, journalled the stage as an error and failed the
-    sweep the other refits ride on: the axis mismatch the branch had
-    already diagnosed never reached the receipt.  The block is a state,
-    and a state has to be nameable.
+    That test pinned the refusal: P0's pooled table moved to the
+    centre-distance axis on 2026-09-07 and the lane stopped by name rather
+    than misreading distances as claims.  Stopping was right while the lane
+    could only key on claims; it is not right now that it can key on
+    either, and it cost P0's candidate layer two days of evidence
+    (2026-09-07..09).  The lane follows the pooled axis instead.
+
+    Both stages are fitted in the same call on different axes, because the
+    thing that would break silently is a module-level partition leaking
+    from one stage to the next.
     """
 
     conn = sqlite3.connect(":memory:")
     _synthetic_lane(conn, days=24, stations=6)
-    pooled = tuple(
-        (band, 1.0) for band in band_shadow_store.BAND_TABLE_CELLS
+    persist_and_activate_band_table(
+        conn, stage="P0",
+        factors=tuple(
+            (band, 1.0)
+            for band in band_reliability_store.BAND_DISTANCE_CELLS
+        ),
+        evidence={}, serving_day_count=24, axis=BAND_AXIS_CENTRE_DISTANCE,
     )
     persist_and_activate_band_table(
-        conn, stage="P0", factors=pooled, evidence={},
-        serving_day_count=24, axis=BAND_AXIS_CENTRE_DISTANCE,
-    )
-    persist_and_activate_band_table(
-        conn, stage="P1", factors=pooled, evidence={}, serving_day_count=24
+        conn, stage="P1",
+        factors=tuple(
+            (band, 1.0) for band in band_shadow_store.BAND_TABLE_CELLS
+        ),
+        evidence={}, serving_day_count=24,
     )
     fitted = fit_band_shadow_table(conn, stage="P0")
-    assert fitted["evidence"]["blocked_by"] == "pooled_table_axis_not_claim"
-    # The shape contract with the caller, key by key: this is what was
-    # missing, so name each one rather than asserting the call survived.
+    assert fitted["evidence"].get("blocked_by") is None
+    assert fitted["evidence"]["axis"] == BAND_AXIS_CENTRE_DISTANCE
+    assert fitted["cells"], "a distance stage must produce cells"
+    # Every band the fit emitted is a distance cell, never a claim cell.
+    distance_bands = set(band_reliability_store.BAND_DISTANCE_CELLS)
+    assert {tuple(cell["band"]) for cell in fitted["cells"]} <= distance_bands
+    # The shape contract with the caller, key by key.
     for key in (
         "serving_day_count",
         "serving_station_day_count",
@@ -604,12 +616,27 @@ def test_axis_block_is_reported_by_name_not_as_a_crash() -> None:
 
     report = refit_shadow_all_stages(conn, commit=True)
     assert "error" not in report["P0"], report["P0"].get("error")
-    assert report["P0"]["blocked_by"] == "pooled_table_axis_not_claim"
-    assert report["P0"]["cell_count"] == 0
-    # The stage next to it still fits, and carries no blocker: a named
-    # block must not spread to a lane whose own axis is fine.
+    assert report["P0"]["cell_count"] > 0
+    assert report["P0"]["axis"] == BAND_AXIS_CENTRE_DISTANCE
+    # The claim stage beside it is untouched, on its own partition.
     assert report["P1"].get("blocked_by") is None
     assert report["P1"]["cell_count"] > 0
+    assert report["P1"]["axis"] == band_reliability_store.BAND_AXIS_CLAIM
+    claim_cells = conn.execute(
+        "SELECT DISTINCT band_lower FROM calibration_band_shadow_cell"
+        " WHERE stage='P1'"
+    ).fetchall()
+    assert {row[0] for row in claim_cells} <= {
+        cell[0] for cell in band_shadow_store.BAND_TABLE_CELLS
+    }
+    # The two fits are distinct tables, not one sha wearing two geometries:
+    # (0.0, 1.0) is a legal band on both axes, so the axis has to be in the
+    # identity or the retention prune would treat them as the same fit.
+    assert band_shadow_store.shadow_sha256(
+        fitted["cells"], stage="P0", axis=BAND_AXIS_CENTRE_DISTANCE
+    ) != band_shadow_store.shadow_sha256(
+        fitted["cells"], stage="P0",
+    )
 
 
 def test_shadow_is_not_reachable_from_any_serving_path() -> None:
