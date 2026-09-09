@@ -497,8 +497,20 @@ def test_a_tradeable_scope_gone_quiet_for_hours_outranks_tomorrow_at_a_tx_statio
     assert PRIORITY_STALE_CONFIRMATION < PRIORITY_D1_TX
 
 
-def test_a_scope_we_have_never_captured_reads_as_stale_not_as_fresh() -> None:
-    """The safe direction: an unknown arrival makes the lane poll, not skip."""
+def test_a_scope_we_have_never_captured_is_not_the_extreme_of_gone_quiet() -> None:
+    """Measured on this rule's first live round, 2026-09-09 06:53Z.
+
+    All four of its non-held slots went to D+2 scopes that had entered the
+    catalogue minutes earlier, and all four failed
+    ``awc_taf_peak_window_features_missing``: a TAF spans 24 to 30 hours, so
+    the bulletin covering the day after tomorrow's local peak does not exist
+    yet.  Never-captured is unknown, not silent; the class is for a scope
+    that was getting bulletins and stopped.
+
+    The age is still infinite -- that part is the safe direction, it makes
+    the lane poll rather than skip -- and the general queue already sorts
+    never-served first, so nothing is stranded by this.
+    """
 
     assert capture_age_seconds(
         {}, station_id="KMIA", event_date="2026-09-07", as_of_utc=AS_OF,
@@ -506,7 +518,33 @@ def test_a_scope_we_have_never_captured_reads_as_stale_not_as_fresh() -> None:
     assert scope_priority_class(
         _scope("KMIA", "2026-09-07", "America/New_York"),
         as_of_utc=AS_OF, newest_capture_at={},
-    ) == PRIORITY_STALE_CONFIRMATION
+    ) == PRIORITY_GENERAL
+
+
+def test_the_stale_class_serves_the_longest_silence_not_the_longest_wait() -> None:
+    """Ordered by what put them in the class, not by the served ledger.
+
+    Served sequence is the wrong question for this class twice over: it is
+    the measure that reported perfect rotation all through the starvation,
+    and a scope never served sorts first under it -- which is how a
+    catalogue entry an hour old outranked a station ten hours without a
+    bulletin on the first live round.
+    """
+
+    catalog = [
+        _scope("QUIET3H", "2026-09-07", "UTC"),
+        _scope("QUIET10H", "2026-09-07", "UTC"),
+    ]
+    arrivals = _aged({
+        "QUIET3H|2026-09-07": STALE_CONFIRMATION_AGE_SEC + 60.0,
+        "QUIET10H|2026-09-07": 10.0 * 3600.0,
+    })
+    selected, _, _ = select_scopes(
+        catalog, previous=None, limit=1, priority_slots=1,
+        as_of_utc=AS_OF, newest_capture_at=arrivals,
+    )
+    assert [s["station_id"] for s in selected] == ["QUIET10H"]
+    assert selected[0]["rotation_priority_class"] == PRIORITY_STALE_CONFIRMATION
 
 
 def test_omitting_the_arrival_map_leaves_the_old_classes_exactly() -> None:

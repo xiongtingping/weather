@@ -40,6 +40,21 @@ MAX_SELECTED_SCOPES = 12
 # TX stations the priority pool alone is larger than a lap, and a queue that
 # never reaches the general block is the ZUUU starvation with a new head.
 PRIORITY_SLOTS_PER_LAP = 8
+# Of those, how many are reserved for the stale class.
+#
+# The cap above bounds the priority pool against the general queue and says
+# nothing about the pool's own composition, which is the whole of the second
+# failure: the book holds eight to fourteen station-days, so the held class
+# alone fills eight slots on every round, and a class ranked below it never
+# receives one however long its silence.  Measured on the first two live
+# rounds of the stale class -- zero slots, while KLGA and KMIA sat ten hours
+# without a bulletin and refused every cycle on
+# resident_p0m_replay_required.
+#
+# Three of eight, so the held majority survives and the starved scopes get a
+# guaranteed share rather than a rank.  Unused reserved slots fall back to
+# the rest of the pool, so a fleet with nothing stale loses nothing.
+STALE_CONFIRMATION_SLOTS_PER_LAP = 3
 # A station is in the TX cohort while one of its captured TAFs in this many
 # trailing days carried a TX group; US TAFs never do, and the cohort is read
 # off the capture table rather than hard-coded so it follows the bulletins.
@@ -83,6 +98,17 @@ PRIORITY_REPOLL_MIN_AGE_SEC = 3600.0
 # scope with nothing new in three hours is either being starved by us or is
 # genuinely quiet at the source -- and the two are told apart by fetching,
 # which is what this class buys it.
+#
+# It takes a scope that HAS a bulletin and stopped getting them.  A scope
+# with none at all is not the same thing and was briefly treated as the
+# extreme of it, which put every never-captured scope at the head of the
+# class: measured on this rule's first live round, all four of its
+# non-held slots went to D+2 scopes that had just entered the catalogue,
+# and all four failed ``awc_taf_peak_window_features_missing`` -- a TAF
+# spans 24 to 30 hours, so the bulletin covering a day after tomorrow's
+# local peak does not exist yet.  Those belong in the general queue, which
+# already sorts never-served first and reaches them without spending a
+# priority slot on a fetch that cannot succeed.
 STALE_CONFIRMATION_AGE_SEC = 3.0 * 3600.0
 # The served ledger outlives the catalogue on purpose (see build_rotation_state),
 # so it is bounded on its own terms rather than by today's scope count.
@@ -346,7 +372,11 @@ def scope_priority_class(
         return PRIORITY_GENERAL
     if f"{station}|{event_date}" in set(held_prefixes):
         return PRIORITY_HELD
-    if newest_capture_at is not None and age >= STALE_CONFIRMATION_AGE_SEC:
+    if (
+        newest_capture_at is not None
+        and age != float("inf")
+        and age >= STALE_CONFIRMATION_AGE_SEC
+    ):
         return PRIORITY_STALE_CONFIRMATION
     if station in {str(v).strip().upper() for v in tx_station_ids} and as_of_utc:
         tomorrow = _local_date_after(
@@ -462,6 +492,7 @@ def select_scopes(
     as_of_utc: str | None = None,
     priority_slots: int = PRIORITY_SLOTS_PER_LAP,
     newest_capture_at: Mapping[str, str] | None = None,
+    stale_slots: int = STALE_CONFIRMATION_SLOTS_PER_LAP,
 ) -> tuple[list[dict[str, Any]], int, str]:
     keys = [scope_key(scope) for scope in catalog]
     catalog_sha = content_sha256(keys)
@@ -486,13 +517,44 @@ def select_scopes(
     # least-recently-served within itself.  The remaining slots come from the
     # general least-recently-served queue over the whole catalogue, so the
     # priority pool can never freeze the tail the way the old head did.
-    priority_order = sorted(
+    # Within a class, least-recently-served -- except the stale class, which
+    # is ordered by the silence that put it there.  Served sequence is the
+    # wrong question for it twice over: it is the measure that reported
+    # perfect rotation through the starvation, and a scope that has never
+    # been served sorts first under it, which is how a catalogue entry an
+    # hour old outranked a station that had gone ten hours without a
+    # bulletin.
+    def _within_class(index: int) -> float:
+        if classes[index] != PRIORITY_STALE_CONFIRMATION:
+            return float(served.get(keys[index], 0))
+        return -capture_age_seconds(
+            newest_capture_at or {},
+            station_id=str(catalog[index].get("station_id") or ""),
+            event_date=str(catalog[index].get("event_date") or ""),
+            as_of_utc=as_of_utc,
+        )
+
+    priority_budget = max(0, min(int(priority_slots), count))
+    stale_budget = max(0, min(int(stale_slots), priority_budget))
+    stale_order = sorted(
+        (
+            index for index in range(len(keys))
+            if classes[index] == PRIORITY_STALE_CONFIRMATION
+        ),
+        key=lambda index: (_within_class(index), index),
+    )[:stale_budget]
+    # The reservation is a floor, not a ceiling: whatever the stale class
+    # does not use is filled from the rest of the pool, and whatever the
+    # rest does not use is left to the general queue below.
+    rest_order = sorted(
         (
             index for index in range(len(keys))
             if classes[index] != PRIORITY_GENERAL
+            and index not in set(stale_order)
         ),
-        key=lambda index: (classes[index], served.get(keys[index], 0), index),
-    )[:max(0, min(int(priority_slots), count))]
+        key=lambda index: (classes[index], _within_class(index), index),
+    )[:priority_budget - len(stale_order)]
+    priority_order = stale_order + rest_order
     taken = set(priority_order)
     # Never-served scopes sort first (sequence 0), then the longest-waiting.
     # Catalogue position only breaks ties, which is what keeps the declared
@@ -639,4 +701,5 @@ __all__ = [
     "newest_capture_at_by_scope",
     "capture_age_seconds",
     "PRIORITY_STALE_CONFIRMATION",
+    "STALE_CONFIRMATION_SLOTS_PER_LAP",
 ]
