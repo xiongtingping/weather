@@ -1015,14 +1015,62 @@ def _checkpoint(conn: sqlite3.Connection) -> None:
     print(f"wal_checkpoint_truncate={tuple(row) if row is not None else 'ok'}")
 
 
-def _vacuum(conn: sqlite3.Connection, db: Path) -> None:
+#: Slack over the computed peak.  VACUUM is not the only writer on this
+#: machine -- the resident's WAL, the render, and the NWP lanes all take
+#: bytes while it runs -- and running the volume to zero costs far more
+#: than refusing a compaction that could have just fit.
+VACUUM_HEADROOM_BYTES = 2 * 1024 ** 3
+
+
+def _vacuum_space(conn: sqlite3.Connection, db: Path) -> dict[str, int]:
+    """What a plain VACUUM of this database will actually need on disk.
+
+    Not a multiple of the file.  ``VACUUM`` builds the compacted database
+    beside the original and only replaces it at the end, so the peak is
+    ``current + compacted`` -- and ``compacted`` is knowable exactly, from
+    the pages that are not on the freelist.
+
+    The rule this replaces was ``file * 1.25``, which is below the peak for
+    any database whose freelist is under 20% and was therefore not a
+    safety margin at all but a coin flip.  Measured on this archive
+    2026-09-11: 19.54 GiB on disk, 28.4% freelist, so the compacted copy is
+    14.00 GiB and the peak is 33.54 GiB -- 1.72x, while the old guard
+    would have admitted it at 24.42 GiB free and run the volume out
+    somewhere past the halfway mark.  That admission became reachable for
+    the first time the same day, when free space crossed 24.42 GiB.
+    """
+
+    page_size = int(conn.execute("PRAGMA page_size").fetchone()[0])
+    page_count = int(conn.execute("PRAGMA page_count").fetchone()[0])
+    freelist = int(conn.execute("PRAGMA freelist_count").fetchone()[0])
     db_size = db.stat().st_size
-    free = shutil.disk_usage(db.parent).free
-    required = int(db_size * 1.25)
-    if free < required:
+    compacted = max(0, page_count - freelist) * page_size
+    return {
+        "db_size": db_size,
+        "compacted": compacted,
+        "reclaims": max(0, db_size - compacted),
+        "required": db_size + compacted + VACUUM_HEADROOM_BYTES,
+        "free": shutil.disk_usage(db.parent).free,
+    }
+
+
+def _vacuum(conn: sqlite3.Connection, db: Path) -> None:
+    space = _vacuum_space(conn, db)
+    print(
+        "vacuum_plan"
+        f" db={_fmt_bytes(space['db_size'])}"
+        f" compacted={_fmt_bytes(space['compacted'])}"
+        f" reclaims={_fmt_bytes(space['reclaims'])}"
+        f" peak_required={_fmt_bytes(space['required'])}"
+        f" free={_fmt_bytes(space['free'])}"
+    )
+    if space["free"] < space["required"]:
         raise SystemExit(
             "refuse_vacuum_insufficient_free_space "
-            f"db={_fmt_bytes(db_size)} free={_fmt_bytes(free)} required={_fmt_bytes(required)}"
+            f"db={_fmt_bytes(space['db_size'])}"
+            f" free={_fmt_bytes(space['free'])}"
+            f" required={_fmt_bytes(space['required'])}"
+            f" short={_fmt_bytes(space['required'] - space['free'])}"
         )
     print("vacuum_start")
     conn.execute("VACUUM")

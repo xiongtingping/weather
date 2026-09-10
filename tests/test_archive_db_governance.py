@@ -165,3 +165,121 @@ def test_chengdu_tick_retention_rolls_up_non_chengdu_and_keeps_active_chengdu() 
     assert seattle_rollup["tick_count"] == 2
     assert seattle_rollup["first_best_bid"] == 0.10
     assert seattle_rollup["last_best_bid"] == 0.12
+
+
+def _db_with_freelist(path: Path, *, rows: int, delete: int) -> None:
+    """A database with real free pages: fill it, delete most of it.
+
+    Deleting rows does not shrink a SQLite file -- the pages go on the
+    freelist and wait to be reused -- which is the entire reason VACUUM
+    exists and the entire reason its cost has to be computed rather than
+    guessed at.
+    """
+
+    conn = sqlite3.connect(str(path))
+    conn.execute("PRAGMA journal_mode=DELETE")
+    conn.execute("CREATE TABLE bulk (id INTEGER PRIMARY KEY, body BLOB)")
+    conn.executemany(
+        "INSERT INTO bulk (id, body) VALUES (?, ?)",
+        [(i, b"x" * 4000) for i in range(rows)],
+    )
+    conn.commit()
+    conn.execute("DELETE FROM bulk WHERE id < ?", (delete,))
+    conn.commit()
+    conn.close()
+
+
+def test_vacuum_space_is_the_peak_not_a_multiple_of_the_file(tmp_path) -> None:
+    """``current + compacted``, because VACUUM builds one beside the other.
+
+    The rule this replaced was ``file * 1.25``, which is under the true
+    peak for any database whose freelist is below 20% -- so it was not a
+    margin, it was a coin flip that happened to land right while the disk
+    was too full to reach it at all.  Measured on the live archive
+    2026-09-11: 19.54 GiB on disk, 28.4% freelist, compacted 13.99 GiB,
+    peak 33.53 GiB.  The old guard admitted that at 24.42 GiB free.
+    """
+
+    from scripts.archive_db_governance import (
+        VACUUM_HEADROOM_BYTES,
+        _vacuum_space,
+    )
+
+    db = tmp_path / "archive.db"
+    _db_with_freelist(db, rows=2000, delete=1500)
+    conn = sqlite3.connect(str(db))
+    space = _vacuum_space(conn, db)
+    conn.close()
+
+    assert space["compacted"] < space["db_size"], (
+        "the fixture must actually carry free pages"
+    )
+    assert space["reclaims"] == space["db_size"] - space["compacted"]
+    assert space["required"] == (
+        space["db_size"] + space["compacted"] + VACUUM_HEADROOM_BYTES
+    )
+    # And the old rule is genuinely below it -- this is the regression.
+    assert int(space["db_size"] * 1.25) < space["required"]
+
+
+def test_vacuum_refuses_at_the_peak_and_says_how_short_it_is(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    from scripts import archive_db_governance as governance
+
+    db = tmp_path / "archive.db"
+    _db_with_freelist(db, rows=2000, delete=1500)
+    conn = sqlite3.connect(str(db))
+    space = governance._vacuum_space(conn, db)
+
+    class _Usage:
+        def __init__(self, free):
+            self.free = free
+            self.total = free * 10
+            self.used = free * 9
+
+    # Enough for the retired rule, short of the real peak: the exact state
+    # the live volume was in on 2026-09-11.
+    between = int(space["db_size"] * 1.3)
+    assert between < space["required"]
+    monkeypatch.setattr(
+        governance.shutil, "disk_usage", lambda _p: _Usage(between)
+    )
+    try:
+        governance._vacuum(conn, db)
+    except SystemExit as exit_error:
+        message = str(exit_error)
+    else:  # pragma: no cover - the guard must fire
+        raise AssertionError("vacuum ran on a volume that cannot hold it")
+    finally:
+        conn.close()
+    assert "refuse_vacuum_insufficient_free_space" in message
+    assert "short=" in message
+    # The plan is printed before the refusal, so an operator sees what it
+    # would have reclaimed and what it would have needed.
+    assert "vacuum_plan" in capsys.readouterr().out
+
+
+def test_vacuum_runs_and_reclaims_when_the_peak_fits(tmp_path, monkeypatch):
+    from scripts import archive_db_governance as governance
+
+    db = tmp_path / "archive.db"
+    _db_with_freelist(db, rows=2000, delete=1500)
+    conn = sqlite3.connect(str(db))
+    space = governance._vacuum_space(conn, db)
+    before = db.stat().st_size
+
+    class _Usage:
+        def __init__(self, free):
+            self.free = free
+            self.total = free * 10
+            self.used = free * 9
+
+    monkeypatch.setattr(
+        governance.shutil,
+        "disk_usage",
+        lambda _p: _Usage(space["required"] + 1),
+    )
+    governance._vacuum(conn, db)
+    conn.close()
+    assert db.stat().st_size < before
