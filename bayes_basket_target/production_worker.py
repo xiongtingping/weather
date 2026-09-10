@@ -39,8 +39,12 @@ from .activation import (
     load_target_activation,
 )
 from .atomic_ledger import (
+    DECISION_SCHEMA_V2,
     AtomicLedgerError,
+    _content_hash as ledger_content_hash,
+    _derive_id as ledger_derive_id,
     commit_blocked_scope_decision,
+    economic_decision_identity,
     commit_preliminary_scope_decision,
     ledger_span,
     ledger_span_profile,
@@ -10037,7 +10041,8 @@ class TargetProductionWorker:
             "f.ws_snapshot_id,f.quote_version,"
             "f.inventory_snapshot_id,f.inventory_version,"
             "f.order_state_snapshot_id,f.order_state_version,"
-            "f.fact_id,f.content_sha256,f.authority_scope,d.rowid "
+            "f.fact_id,f.content_sha256,f.authority_scope,d.rowid,"
+            "d.decision_scope_key "
             "FROM auto_trade_decisions d "
             "JOIN basket_target_execution_cycles c ON c.cycle_id=d.cycle_id "
             "LEFT JOIN basket_policy_training_fact f "
@@ -10091,12 +10096,35 @@ class TargetProductionWorker:
                 binding.get("probability_stage") or ""
             ).strip().upper()
             stage_zero_pre_final = probability_stage in {"P0", "P0-M"}
+            # Two writers stamp a forward-eligible decision, and each stamps
+            # its own mode: the stage-zero pre-final fact says
+            # ``production_no_live`` with submission never authorized
+            # (``atomic_ledger.commit_stage_zero_execution_scope_decision``),
+            # and the live-lane commit says the lane's mode with the lane's
+            # authorization (``production.py``).  Before go-live the two
+            # coincided, so the check read one mode and one flag.  Since
+            # 2026-08-31 the lane's mode is ``production_live`` and every
+            # ELIGIBLE row failed here on one clause or the other -- 838
+            # quarantined 2026-09-02..09-10, nothing materialized after
+            # 08-30.  The boundary is still "this decision placed no order"
+            # (``will_order`` 0, a prepared or blocked state); the mode and
+            # flag must only agree with the writer that stamped them.
+            decision_mode = details.get("execution_mode")
+            submit_authorized = details.get("live_submit_authorized")
+            boundary_stamp_consistent = (
+                decision_mode == NO_LIVE_EXECUTION_MODE
+                and submit_authorized is False
+            ) or (
+                decision_mode == PRODUCTION_EXECUTION_MODE
+                and submit_authorized is (
+                    PRODUCTION_EXECUTION_MODE == "production_live"
+                )
+            )
             if (
                 str(row[6]) != "basket"
                 or int(row[8]) != 0
                 or str(row[7]) not in {"prepared", "blocked"}
-                or details.get("execution_mode") != PRODUCTION_EXECUTION_MODE
-                or details.get("live_submit_authorized") is not False
+                or not boundary_stamp_consistent
                 or details.get("delta_v2_authorized") is not True
             ):
                 raise ContractError(
@@ -10125,28 +10153,31 @@ class TargetProductionWorker:
                     raise ContractError(
                         "cash_phase_forward_stage_zero_receipt_invalid"
                     )
-            decision_identity = {
-                "cycle_id": str(row[0]),
-                "plan_id": str(row[2]),
-                "station_id": str(row[3]),
-                "event_date": str(row[4]),
-                "settlement_timezone": str(row[5]),
-                "strategy_lane": str(row[6]),
-                "decided_state": str(row[7]),
-                "will_order": int(row[8]),
-                "reason_codes": reasons,
-                "details": dict(details),
-            }
-            if not stage_zero_pre_final:
-                decision_identity["target_execution_hard_deadline_at"] = row[9]
-            expected_decision_sha = content_sha256(
-                {
-                    "schema": "basket_target_decision_fact_v1",
-                    **decision_identity,
-                }
+            # The decision's content address is the ledger's to define, and
+            # this reader asks the ledger rather than keeping a copy of the
+            # rule.  The copy it kept was the v1 identity (cycle, plan, the
+            # commit clock); charter 69 (2026-09-02) made the decision its
+            # economic content under ``DECISION_SCHEMA_V2``, and from that day
+            # every row the copy re-derived mismatched.  The scope key is the
+            # one the ledger stored beside the row, which is the one it hashed:
+            # a training-fact decision carries its fact's key, a stage-zero
+            # fact carries none.
+            decision_identity = economic_decision_identity(
+                station_id=str(row[3]),
+                event_date=str(row[4]),
+                settlement_timezone=str(row[5]),
+                strategy_lane=str(row[6]),
+                decided_state=str(row[7]),
+                will_order=int(row[8]),
+                reason_codes=reasons,
+                details=details,
+                decision_scope_key=str(row[44] or "") or None,
             )
-            expected_decision_id = (
-                "decision_" + content_sha256(decision_identity)[:40]
+            expected_decision_sha = ledger_content_hash(
+                DECISION_SCHEMA_V2, decision_identity
+            )
+            expected_decision_id = ledger_derive_id(
+                "decision", decision_identity
             )
             if (
                 str(row[12]) != expected_decision_sha
@@ -10407,7 +10438,12 @@ class TargetProductionWorker:
                 "decision_sha256": str(row[12]),
                 "decision_at_utc": str(row[13]),
                 "forward_evidence_binding": dict(binding),
-                "execution_mode": PRODUCTION_EXECUTION_MODE,
+                # The receipt's own mode, not the lane's: this receipt places
+                # no order whatever the lane is armed to do (every flag below
+                # says so), and the forward store admits only no-live
+                # evidence.  Stamping the lane's mode after go-live made every
+                # receipt inadmissible (``cycle_execution_mode_must_be_...``).
+                "execution_mode": NO_LIVE_EXECUTION_MODE,
                 "writes_target_ledger": True,
                 "orders_submitted": 0,
                 "places_orders": False,

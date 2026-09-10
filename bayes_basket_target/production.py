@@ -1601,7 +1601,10 @@ def commit_production_candidate_atomic(
             "decision_sha256": str(bundle["decision"]["decision_sha256"]),
             "decision_at_utc": forward_evidence_binding["decision_at_utc"],
             "forward_evidence_binding": forward_evidence_binding,
-            "execution_mode": PRODUCTION_EXECUTION_MODE,
+            # The receipt's own mode, not the lane's: an evidence-only receipt
+            # that places no order is what the forward store admits, and the
+            # worker's flush stamps the same (``NO_LIVE_EXECUTION_MODE``).
+            "execution_mode": "production_no_live",
             "writes_target_ledger": True,
             "orders_submitted": 0,
             "places_orders": False,

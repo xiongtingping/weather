@@ -8,7 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from bayes_basket_target import ContractError, content_sha256
+from bayes_basket_target import (
+    PRODUCTION_EXECUTION_MODE,
+    ContractError,
+    content_sha256,
+    delta_v2_runtime,
+)
 from bayes_basket_target.production_io import (
     assert_p1_execution_evidence,
     STAGE_ZERO_EXECUTION_ANCHOR_SCHEMA,
@@ -51,6 +56,7 @@ from bayes_basket_target.forward_observation_store import (
 
 sys.path.insert(0, str(Path(__file__).parent))
 from test_bayes_basket_target import _cash_phase_inputs, _envelope, _policy_inputs
+from pr12_atomic_test_support import awc_contract
 
 
 def _record_sha(schema: str, values: dict[str, object]) -> str:
@@ -226,7 +232,9 @@ def _seed_delta_v2(
             "station_id": "ZUUU",
             "stage": stage,
             "season_bin": "summer",
-            "maturity_bin": "d1",
+            # d0: the evaluation clock is the event's own local day; see
+            # ``_policy_inputs`` in test_bayes_basket_target.
+            "maturity_bin": "d0",
             "liquidity_bin": "liquid",
             "bucket": bucket,
             "price": float((price_by_bucket or {}).get(bucket, 0.21)),
@@ -310,7 +318,7 @@ def _seed_delta_v2(
         "station_id": "ZUUU",
         "stage": stage,
         "season_bin": "summer",
-        "maturity_bin": "d1",
+        "maturity_bin": "d0",
         "liquidity_bin": "liquid",
         "strategy_version": "target-v1",
         "value_weights": {
@@ -483,13 +491,13 @@ def _seed(
     )
     envelope = _envelope()
     e = envelope.to_dict()
+    # The XSB bridge requires the ladder's end buckets to be open-tailed, so
+    # this three-bucket ladder has exactly one finite rung and no measurable
+    # rung width; charter 53 refuses a Celsius dispersion without one.  The
+    # fixture therefore keeps the base envelope's zero span rather than
+    # publishing a dispersion it cannot spend.
     e["lineage"] = {
         **e["lineage"],
-        "model_envelope_lower_bucket": "37",
-        "model_envelope_upper_bucket": "39",
-        "model_envelope_lower_ordinal": "37",
-        "model_envelope_upper_ordinal": "39",
-        "model_envelope_span_c": "2",
         "bucket_intervals_c_json": json.dumps(
             {
                 "37": [None, 37.5],
@@ -516,6 +524,7 @@ def _seed(
         {
             "bucket": bucket,
             "ordinal": ordinal,
+            "token_id": f"token-{bucket}",
             "probability": envelope.probabilities[bucket],
             "bid_price": 0.20,
             "bid_levels": [{"price": 0.20, "shares": 100.0}],
@@ -542,7 +551,10 @@ def _seed(
         "quote_freshness_policy_sha256": "f" * 64,
         "quote_source": "OFFICIAL_CLOB_WS",
         "inventory_version": "inv-1", "order_state_version": "ord-1",
-        "remaining_budget_usdc": 12.0, "buckets_json": buckets,
+        # The book, not the station's allowance: the stake cap is 2% of it and
+        # P0 reaches 60% of that (``scope_stake_cap_usdc``, 2026-08-26), so a
+        # 1000 USDC book gives this scope the 12 USDC the fixture always meant.
+        "remaining_budget_usdc": 1000.0, "buckets_json": buckets,
         "cash_phase_input_json": cash_input, "state": "COMMITTED",
         "created_at": "2026-07-23T05:00:00Z",
     }
@@ -651,12 +663,24 @@ def _stage_zero_cycle_for_stage(
         "p0_root_checkpoint_id": p0_probability.checkpoint_id,
         "p0_root_content_sha256": p0_probability.content_sha256,
     }
+    awc_observation_contract = None
     if stage == "P1":
+        # P1 roots on an observed METAR: the commit stages the revision fact
+        # the contract carries and the lineage names that fact by content.
+        awc_observation_contract, revision_sha = awc_contract(
+            station_id="ZUUU",
+            observation_id="obs-stage-zero-p1",
+            event_date="2026-07-23",
+            settlement_timezone=str(p0_probability.settlement_timezone),
+            observed_at_utc="2026-07-23T05:00:01Z",
+            raw_object_sha256="a" * 64,
+        )
         lineage.update(
             {
                 "canonical_observation_event_id": "obs-stage-zero-p1",
                 "canonical_observation_sha256": "1" * 64,
                 "canonical_observation_committed_at": "2026-07-23T05:00:01Z",
+                "truth_observation_revision_content_sha256": revision_sha,
                 "hard_bound_id": "bound-stage-zero-p1",
                 "hard_excluded_buckets": "NONE",
                 "source_lane": "AWC",
@@ -694,6 +718,8 @@ def _stage_zero_cycle_for_stage(
     )
     compiled["probability_envelope"] = probability.to_dict()
     compiled["stage"] = stage
+    if awc_observation_contract is not None:
+        compiled["awc_observation_contract"] = awc_observation_contract
     compiled["plan"]["lineage"].update(
         {
             "probability_stage": stage,
@@ -706,6 +732,7 @@ def _stage_zero_cycle_for_stage(
                         "canonical_observation_event_id",
                         "canonical_observation_sha256",
                         "canonical_observation_committed_at",
+                        "truth_observation_revision_content_sha256",
                         "hard_bound_id",
                         "source_lane",
                         "report_type",
@@ -714,6 +741,17 @@ def _stage_zero_cycle_for_stage(
                 if stage == "P1"
                 else {}
             ),
+        }
+    )
+    # A later stage is its own compile and carries its own plan address; the
+    # copied P0 plan re-stamped for the stage must say so, because the
+    # decision is keyed on what it decides (charter 69) and two stages that
+    # present one plan address are one decision.
+    compiled["plan"]["production_plan_sha256"] = content_sha256(
+        {
+            key: value
+            for key, value in compiled["plan"].items()
+            if key != "production_plan_sha256"
         }
     )
     compiled["production_inputs"].update(
@@ -732,7 +770,12 @@ def _stage_zero_cycle_for_stage(
     return compiled
 
 
-def test_production_io_compiles_read_only_candidate_and_rejects_hash_drift() -> None:
+def test_production_io_compiles_read_only_candidate_and_rejects_hash_drift(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Charter 87 (2026-09-06): this fixture's book prices the seat where
+    # charter 68's lambda(a) says most of the claim never arrives, so the
+    # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
+    # The gate itself is pinned in test_clause_87_*.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     with sqlite3.connect(":memory:") as conn:
         _seed(conn, cash_promoted=False)
         _seed_delta_v2(conn)
@@ -760,18 +803,28 @@ def test_production_io_compiles_read_only_candidate_and_rejects_hash_drift() -> 
                 authority_scope="PRODUCTION_NO_LIVE_CANDIDATE",
             ),
         )
-        assert plan["execution_mode"] == "production_no_live"
-        assert plan["boundary"]["calls_order_gateway"] is False
+        # The lane's mode is stamped on every plan since go-live (2026-08-31),
+        # and the boundary's gateway flags are the lane's too; what stays
+        # read-only about a compile is that it writes nothing and submits
+        # nothing, and that the no-live candidate scope is carried as such.
+        assert plan["execution_mode"] == PRODUCTION_EXECUTION_MODE
+        assert plan["policy_authority_scope"] == "PRODUCTION_NO_LIVE_CANDIDATE"
+        assert plan["boundary"]["writes_production_db"] is False
         assert plan["boundary"]["orders_submitted"] == 0
         assert plan["delta_v2_audit"]["authorized"] is True
-        assert plan["production_inputs"]["probability_maturity_bin"] == "d1"
+        assert plan["production_inputs"]["probability_maturity_bin"] == "d0"
         assert (
             plan["production_inputs"]["configured_maturity_bin"]
             == "static-config-must-not-override-probability"
         )
 
 
-def test_stage_zero_anchor_binds_complete_stage_cycles() -> None:
+def test_stage_zero_anchor_binds_complete_stage_cycles(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Charter 87 (2026-09-06): this fixture's book prices the seat where
+    # charter 68's lambda(a) says most of the claim never arrives, so the
+    # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
+    # The gate itself is pinned in test_clause_87_*.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     with sqlite3.connect(":memory:") as conn:
         compiled = _stage_zero_compiled_cycle(conn)
 
@@ -810,7 +863,12 @@ def test_stage_zero_anchor_binds_complete_stage_cycles() -> None:
                     )
 
 
-def test_stage_zero_anchor_fails_closed_on_stage_clock_and_cycle_drift() -> None:
+def test_stage_zero_anchor_fails_closed_on_stage_clock_and_cycle_drift(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Charter 87 (2026-09-06): this fixture's book prices the seat where
+    # charter 68's lambda(a) says most of the claim never arrives, so the
+    # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
+    # The gate itself is pinned in test_clause_87_*.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     with sqlite3.connect(":memory:") as conn:
         compiled = _stage_zero_compiled_cycle(conn)
 
@@ -860,7 +918,13 @@ def test_stage_zero_anchor_fails_closed_on_stage_clock_and_cycle_drift() -> None
 def test_stage_zero_anchor_rejects_p1_without_formal_strong_likelihood(
     lineage_update: dict[str, str],
     lineage_remove: str | None,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Charter 87 (2026-09-06): this fixture's book prices the seat where
+    # charter 68's lambda(a) says most of the claim never arrives, so the
+    # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
+    # The gate itself is pinned in test_clause_87_*.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     with sqlite3.connect(":memory:") as conn:
         p1_cycle = _stage_zero_cycle_for_stage(conn, stage="P1")
         lineage = p1_cycle["probability_envelope"]["lineage"]
@@ -874,10 +938,19 @@ def test_stage_zero_anchor_rejects_p1_without_formal_strong_likelihood(
             target_stage_zero_execution_anchor_from_cycle(p1_cycle)
 
 
-@pytest.mark.parametrize("stage", ["P0", "P0-M", "P1"])
+# Stage-zero is the pre-final P0/P0-M path.  A P1 candidate is routed to the
+# final-authority commit, which since go-live (2026-08-31) prepares the lane's
+# intents; its rows are pinned by the atomic-ledger tests, not here.
+@pytest.mark.parametrize("stage", ["P0", "P0-M"])
 def test_resident_stage_zero_commits_only_no_execution_target_rows(
     stage: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Charter 87 (2026-09-06): this fixture's book prices the seat where
+    # charter 68's lambda(a) says most of the claim never arrives, so the
+    # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
+    # The gate itself is pinned in test_clause_87_*.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     with sqlite3.connect(":memory:") as conn:
         conn.row_factory = sqlite3.Row
         candidate = _stage_zero_cycle_for_stage(conn, stage=stage)
@@ -886,14 +959,6 @@ def test_resident_stage_zero_commits_only_no_execution_target_rows(
         # production target must already have; do not mask a missing-registry
         # contract with a test-only fallback.
         _seed_target_registry_lane(conn, source_lane="amsc")
-        if stage == "P1":
-            initialize_capital_pool(
-                conn,
-                balance_usdc=100.0,
-                capital_epoch_id="stage-zero-p1-fixture",
-                updated_at_utc="2026-07-23T05:00:04Z",
-                commit=False,
-            )
         worker = object.__new__(TargetProductionWorker)
         worker.commit_conn = conn
         protected_tables = (
@@ -922,61 +987,41 @@ def test_resident_stage_zero_commits_only_no_execution_target_rows(
             table: conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
             for table in protected_tables
         }
-        if stage in {"P0", "P0-M"}:
-            # Pre-final facts bind only P0/P0-M, official WS, complete
-            # inventory/order-state and the NO_EXECUTION policy.  They must
-            # never manufacture a P1 observation/bound or reserve capital.
-            assert after == {
-                **before,
-                "basket_policy_training_fact": (
-                    before["basket_policy_training_fact"] + 1
-                ),
-            }
-            assert result["training_facts_written"] == 1
-            assert result["forward_observation_status"] == "ELIGIBLE"
-            fact = conn.execute(
-                "SELECT f.stage,f.feature_json,v.training_fact_id "
-                "FROM basket_policy_training_fact f "
-                "JOIN basket_target_execution_version_vectors v "
-                "ON v.training_fact_id=f.fact_id"
-            ).fetchone()
-            assert fact is not None
-            assert fact[0] == stage
-            assert fact[2]
-            feature = json.loads(str(fact[1]))
-            assert feature["no_execution_policy"]["policy"] == "NO_EXECUTION"
-            assert feature["execution_version_vectors"] == []
-            assert "canonical_observation_event_id" not in feature["plan"]["lineage"]
-            replay = worker._commit_current_stage_no_execution_candidate(
-                candidate,
-                station_id="ZUUU",
-                event_date="2026-07-23",
-                created_at_utc="2026-07-23T05:00:04Z",
-            )
-            assert replay["state"] == "already_committed"
-            assert replay["training_facts_written"] == 1
-            assert conn.execute(
-                "SELECT COUNT(*) FROM basket_policy_training_fact"
-            ).fetchone()[0] == after["basket_policy_training_fact"]
-        else:
-            # P1 is final authority: its canonical observation/bound and
-            # no-live zero reservation must be atomically bound to the
-            # blocked decision.  It still creates no executable intent.
-            assert after == {
-                **before,
-                "basket_target_observation_facts": (
-                    before["basket_target_observation_facts"] + 1
-                ),
-                "basket_target_bound_facts": (
-                    before["basket_target_bound_facts"] + 1
-                ),
-                "basket_target_capital_reservations": (
-                    before["basket_target_capital_reservations"] + 1
-                ),
-                "basket_policy_training_fact": (
-                    before["basket_policy_training_fact"] + 1
-                ),
-            }
+        # Pre-final facts bind only P0/P0-M, official WS, complete
+        # inventory/order-state and the NO_EXECUTION policy.  They must
+        # never manufacture a P1 observation/bound or reserve capital.
+        assert after == {
+            **before,
+            "basket_policy_training_fact": (
+                before["basket_policy_training_fact"] + 1
+            ),
+        }
+        assert result["training_facts_written"] == 1
+        assert result["forward_observation_status"] == "ELIGIBLE"
+        fact = conn.execute(
+            "SELECT f.stage,f.feature_json,v.training_fact_id "
+            "FROM basket_policy_training_fact f "
+            "JOIN basket_target_execution_version_vectors v "
+            "ON v.training_fact_id=f.fact_id"
+        ).fetchone()
+        assert fact is not None
+        assert fact[0] == stage
+        assert fact[2]
+        feature = json.loads(str(fact[1]))
+        assert feature["no_execution_policy"]["policy"] == "NO_EXECUTION"
+        assert feature["execution_version_vectors"] == []
+        assert "canonical_observation_event_id" not in feature["plan"]["lineage"]
+        replay = worker._commit_current_stage_no_execution_candidate(
+            candidate,
+            station_id="ZUUU",
+            event_date="2026-07-23",
+            created_at_utc="2026-07-23T05:00:04Z",
+        )
+        assert replay["state"] == "already_committed"
+        assert replay["training_facts_written"] == 1
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_policy_training_fact"
+        ).fetchone()[0] == after["basket_policy_training_fact"]
         decision = conn.execute(
             "SELECT d.will_order,d.decided_state,d.reason_codes_json,"
             "v.vector_policy "
@@ -989,14 +1034,19 @@ def test_resident_stage_zero_commits_only_no_execution_target_rows(
         assert decision[3] == "NO_EXECUTION"
         reason_codes = json.loads(str(decision[2]))
         assert isinstance(reason_codes, list) and reason_codes
-        if stage in {"P0", "P0-M"}:
-            assert reason_codes == ["p1_final_authority_pending"]
+        assert reason_codes == ["p1_final_authority_pending"]
 
 
 def test_stage_zero_p0_and_p0m_flush_as_distinct_exact_stage_oos_records(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The next forward flush preserves both same-clock pre-final facts."""
+    # Charter 87 (2026-09-06): this fixture's book prices the seat where
+    # charter 68's lambda(a) says most of the claim never arrives, so the
+    # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
+    # The gate itself is pinned in test_clause_87_*.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
 
     with sqlite3.connect(":memory:") as conn:
         conn.row_factory = sqlite3.Row
@@ -1314,7 +1364,12 @@ def test_production_io_has_no_inline_v1_optimizer_arguments() -> None:
             )
 
 
-def test_production_io_resolves_delta_v2_policy_and_fill_from_ssot() -> None:
+def test_production_io_resolves_delta_v2_policy_and_fill_from_ssot(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Charter 87 (2026-09-06): this fixture's book prices the seat where
+    # charter 68's lambda(a) says most of the claim never arrives, so the
+    # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
+    # The gate itself is pinned in test_clause_87_*.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     with sqlite3.connect(":memory:") as conn:
         _seed(conn, cash_promoted=False)
         _seed_delta_v2(conn)
@@ -1342,7 +1397,12 @@ def test_production_io_resolves_delta_v2_policy_and_fill_from_ssot() -> None:
         assert plan["delta_v2_audit"]["authorized"] is True
 
 
-def test_production_io_missing_delta_v2_authority_fails_closed() -> None:
+def test_production_io_missing_delta_v2_authority_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Charter 87 (2026-09-06): this fixture's book prices the seat where
+    # charter 68's lambda(a) says most of the claim never arrives, so the
+    # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
+    # The gate itself is pinned in test_clause_87_*.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     with sqlite3.connect(":memory:") as conn:
         _seed(conn, cash_promoted=False)
         plan = compile_production_cycle_from_ssot(

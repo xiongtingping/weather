@@ -40,8 +40,10 @@ from bayes_basket_target.ssot import (
     NATIVE_ENSEMBLE_SCHEMA_TABLES,
     POLICY_TABLES,
     PROBABILITY_EVIDENCE_TABLES,
+    REPUBLISHER_ENSEMBLE_TABLES,
     apply_target_ssot_schema,
 )
+from bayes_basket_target import delta_v2_runtime
 from bayes_basket_target.regime_materialization import build_regime_artifact
 from bayes_basket_target.runtime import snapshot_from_probability_envelope
 from bayes_basket_target.delta_v2_artifact import ARTIFACT_SCHEMA
@@ -375,9 +377,17 @@ def _envelope() -> ProbabilityEnvelope:
     })
 
 
-def _policy_inputs():
+def _policy_inputs(stage: str = "P0"):
+    # ``maturity_bin`` is ``d0``: ``DECISION`` falls on the event day in
+    # ``SETTLEMENT_TIMEZONE``, and production derives the policy maturity from
+    # the decision's own clock (``derive_policy_maturity_bin``), never from
+    # the envelope's ``lead_bucket`` label.  A ``d1`` scope here is a policy
+    # for a different day and fails closed.
     default_policy = {
-        "total_budget_usdc": 12.0,
+        # The book, not the station's allowance: the stake cap is 2% of it and
+        # P0 reaches 60% of that (``scope_stake_cap_usdc``, 2026-08-26), so a
+        # 1000 USDC book gives this scope the 12 USDC the fixtures always meant.
+        "total_budget_usdc": 1000.0,
         "base_coverage": 0.5,
         "maximum_coverage": 0.7,
         "entropy_coverage_gain": 0.0,
@@ -403,9 +413,9 @@ def _policy_inputs():
             "artifact_id": f"policy-{family}",
             "family": family,
             "station_id": "ZUUU",
-            "stage": "P0",
+            "stage": stage,
             "season_bin": "summer",
-            "maturity_bin": "d1",
+            "maturity_bin": "d0",
             "liquidity_bin": "liquid",
             "strategy_version": "target-v1",
             "theta_local": {"price_margin": 0.0} if family == "reserve" else {},
@@ -420,9 +430,9 @@ def _policy_inputs():
     activation = StationBasketPolicyActivation.create(**{
         "activation_id": "policy-activation-1",
         "station_id": "ZUUU",
-        "stage": "P0",
+        "stage": stage,
         "season_bin": "summer",
-        "maturity_bin": "d1",
+        "maturity_bin": "d0",
         "liquidity_bin": "liquid",
         "strategy_version": "target-v1",
         "global_prior_id": "prior-1",
@@ -469,7 +479,7 @@ def _delta_v2_policy() -> dict[str, object]:
         "station_id": "ZUUU",
         "stage": "P0",
         "season_bin": "summer",
-        "maturity_bin": "d1",
+        "maturity_bin": "d0",
         "liquidity_bin": "liquid",
         "strategy_version": "target-v1",
         "value_weights": {
@@ -559,15 +569,24 @@ def test_target_ssot_is_unified_and_append_only() -> None:
             + POLICY_TABLES
             + MAKER_GRID_OOS_AUTHORITY_TABLES
             + PROBABILITY_EVIDENCE_TABLES
+            + REPUBLISHER_ENSEMBLE_TABLES
         )
-        triggers = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='trigger'").fetchone()[0]
-        assert triggers == (
-            len(CALIBRATION_TABLES)
-            + len(NATIVE_ENSEMBLE_SCHEMA_TABLES)
-            + len(POLICY_TABLES)
-            + len(MAKER_GRID_OOS_AUTHORITY_TABLES)
-            + len(PROBABILITY_EVIDENCE_TABLES)
-        ) * 2
+        # Append-only means every unified table refuses UPDATE and DELETE.
+        # Counting two triggers per table was the same claim written as a
+        # number, and it stopped being true the day a table gained a third
+        # guard (the OOS-contract and ingress guards); read the guards.
+        guards: dict[str, set[str]] = {}
+        for table, sql in conn.execute(
+            "SELECT tbl_name, sql FROM sqlite_master WHERE type='trigger'"
+        ):
+            for verb in ("UPDATE", "DELETE"):
+                if f"BEFORE {verb}" in sql.upper():
+                    guards.setdefault(table, set()).add(verb)
+        unguarded = [
+            table for table in result["tables"]
+            if guards.get(table) != {"UPDATE", "DELETE"}
+        ]
+        assert unguarded == []
 
 
 def test_p0m_compiler_applies_bias_and_requires_exact_active_masks() -> None:
@@ -1122,7 +1141,7 @@ def test_policy_resolution_shrinks_and_fails_closed_without_activation() -> None
         station_id="ZUUU",
         stage="P0",
         season_bin="summer",
-        maturity_bin="d1",
+        maturity_bin="d0",
         liquidity_bin="liquid",
         strategy_version="target-v1",
         decision_at_utc=DECISION,
@@ -1137,15 +1156,35 @@ def test_policy_resolution_shrinks_and_fails_closed_without_activation() -> None
             station_id="ZUUU",
             stage="P0",
             season_bin="summer",
-            maturity_bin="d1",
+            maturity_bin="d0",
             liquidity_bin="liquid",
             strategy_version="target-v1",
             decision_at_utc=DECISION,
         )
 
 
-def test_p0m_reuses_the_single_pre_event_policy_family() -> None:
+def test_p0m_reads_its_own_exact_stage_policy_family() -> None:
+    """P0 and P0-M are distinct exact policy stages.
+
+    The ``_scope_match`` fold that let P0-M borrow the pre-event P0 family
+    was retired on 2026-08-04; every stage resolves only against an
+    activation scoped to itself, the same way P1 already did.
+    """
     prior, artifacts, activations = _policy_inputs()
+    with pytest.raises(ContractError, match="FAIL_CLOSED_NO_STATION_POLICY"):
+        resolve_station_policy(
+            activations=activations,
+            global_priors={prior.global_prior_id: prior},
+            artifacts=artifacts,
+            station_id="ZUUU",
+            stage="P0-M",
+            season_bin="summer",
+            maturity_bin="d0",
+            liquidity_bin="liquid",
+            strategy_version="target-v1",
+            decision_at_utc=DECISION,
+        )
+    prior, artifacts, activations = _policy_inputs(stage="P0-M")
     resolved = resolve_station_policy(
         activations=activations,
         global_priors={prior.global_prior_id: prior},
@@ -1153,7 +1192,7 @@ def test_p0m_reuses_the_single_pre_event_policy_family() -> None:
         station_id="ZUUU",
         stage="P0-M",
         season_bin="summer",
-        maturity_bin="d1",
+        maturity_bin="d0",
         liquidity_bin="liquid",
         strategy_version="target-v1",
         decision_at_utc=DECISION,
@@ -1172,7 +1211,7 @@ def test_p1_does_not_reuse_the_pre_event_p0_policy_family() -> None:
             station_id="ZUUU",
             stage="P1",
             season_bin="summer",
-            maturity_bin="d1",
+            maturity_bin="d0",
             liquidity_bin="liquid",
             strategy_version="target-v1",
             decision_at_utc=DECISION,
@@ -1347,7 +1386,12 @@ def test_direction_probability_entry_rejects_non_finite_negative_or_unscaled(
         )
 
 
-def test_target_compiler_direction_ignores_quote_anchor() -> None:
+def test_target_compiler_direction_ignores_quote_anchor(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Charter 87 (2026-09-06): this fixture's book prices the seat where
+    # charter 68's lambda(a) says most of the claim never arrives, so the
+    # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
+    # The gate itself is pinned in test_clause_87_*.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     prior, artifacts, activations = _policy_inputs()
     cash_policy, cash_input = _cash_phase_inputs()
     envelope = ProbabilityEnvelope.from_mapping({
@@ -1369,7 +1413,7 @@ def test_target_compiler_direction_ignores_quote_anchor() -> None:
             "quote_source": "OFFICIAL_CLOB_WS",
             "inventory_version": "inventory-1",
             "order_state_version": "orders-1",
-            "remaining_budget_usdc": 12.0,
+            "remaining_budget_usdc": 1000.0,
             "buckets": [
                 {
                     "bucket": bucket,
@@ -1395,7 +1439,7 @@ def test_target_compiler_direction_ignores_quote_anchor() -> None:
         policy_artifacts=artifacts,
         evaluation_at_utc="2026-07-23T04:30:00Z",
         season_bin="summer",
-        maturity_bin="d1",
+        maturity_bin="d0",
         liquidity_bin="liquid",
         strategy_version="target-v1",
         base_policy={"clip_max_notional_usdc": 3.0},
@@ -1411,14 +1455,18 @@ def test_target_compiler_direction_ignores_quote_anchor() -> None:
         market_snapshot=market_snapshot(
             snapshot_id="quote-anchor-b",
             quote_version="quote-b",
-            prices=((0.40, 0.45), (0.05, 0.06), (0.60, 0.65)),
+            # A different anchor -- 38 is the cheap rung here, the wings dear
+            # -- on a ladder that is still buyable whole: with three buckets the
+            # length floor leaves only the full window, so its asks must sum
+            # under par or there is no plan to compare.
+            prices=((0.30, 0.32), (0.05, 0.06), (0.40, 0.42)),
         ),
         policy_activations=activations,
         global_priors={prior.global_prior_id: prior},
         policy_artifacts=artifacts,
         evaluation_at_utc="2026-07-23T04:30:00Z",
         season_bin="summer",
-        maturity_bin="d1",
+        maturity_bin="d0",
         liquidity_bin="liquid",
         strategy_version="target-v1",
         base_policy={"clip_max_notional_usdc": 3.0},
@@ -1433,7 +1481,12 @@ def test_target_compiler_direction_ignores_quote_anchor() -> None:
     assert first["plan"]["direction"] == second["plan"]["direction"] == Direction.UP.value
 
 
-def test_unobserved_cash_phase_preserves_preselection_but_blocks_execution() -> None:
+def test_unobserved_cash_phase_preserves_preselection_but_blocks_execution(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Charter 87 (2026-09-06): this fixture's book prices the seat where
+    # charter 68's lambda(a) says most of the claim never arrives, so the
+    # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
+    # The gate itself is pinned in test_clause_87_*.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     prior, artifacts, activations = _policy_inputs()
     observed_only_policy = BasketCashPhasePolicyArtifact.create(
         policy_version="production-no-live-missing-tail-v1",
@@ -1470,7 +1523,7 @@ def test_unobserved_cash_phase_preserves_preselection_but_blocks_execution() -> 
             "quote_source": "OFFICIAL_CLOB_WS",
             "inventory_version": "inventory-1",
             "order_state_version": "orders-1",
-            "remaining_budget_usdc": 12.0,
+            "remaining_budget_usdc": 1000.0,
             "buckets": [
                 {
                     "bucket": bucket,
@@ -1487,7 +1540,7 @@ def test_unobserved_cash_phase_preserves_preselection_but_blocks_execution() -> 
         policy_artifacts=artifacts,
         evaluation_at_utc="2026-07-23T04:30:00Z",
         season_bin="summer",
-        maturity_bin="d1",
+        maturity_bin="d0",
         liquidity_bin="liquid",
         strategy_version="target-v1",
         base_policy={"clip_max_notional_usdc": 3.0},
@@ -1596,7 +1649,7 @@ def test_global_policy_fallback_requires_explicit_family_mask() -> None:
         "station_id": "ZUUU",
         "stage": "P0",
         "season_bin": "summer",
-        "maturity_bin": "d1",
+        "maturity_bin": "d0",
         "liquidity_bin": "liquid",
         "strategy_version": "target-v1",
         "global_prior_id": "prior-1",
@@ -1616,7 +1669,7 @@ def test_global_policy_fallback_requires_explicit_family_mask() -> None:
         station_id="ZUUU",
         stage="P0",
         season_bin="summer",
-        maturity_bin="d1",
+        maturity_bin="d0",
         liquidity_bin="liquid",
         strategy_version="target-v1",
         decision_at_utc=DECISION,
@@ -1624,7 +1677,12 @@ def test_global_policy_fallback_requires_explicit_family_mask() -> None:
     assert resolved.fallback_reason == "target;reserve;cadence"
 
 
-def test_station_reserve_does_not_rewrite_probability_or_bypass_v2() -> None:
+def test_station_reserve_does_not_rewrite_probability_or_bypass_v2(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Charter 87 (2026-09-06): this fixture's book prices the seat where
+    # charter 68's lambda(a) says most of the claim never arrives, so the
+    # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
+    # The gate itself is pinned in test_clause_87_*.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     prior, artifacts, activations = _policy_inputs()
     cash_policy, cash_input = _cash_phase_inputs()
     reserve = next(item for item in artifacts if item.family == "reserve")
@@ -1650,7 +1708,7 @@ def test_station_reserve_does_not_rewrite_probability_or_bypass_v2() -> None:
             "quote_source": "OFFICIAL_CLOB_WS",
             "inventory_version": "inventory-1",
             "order_state_version": "orders-1",
-            "remaining_budget_usdc": 12.0,
+            "remaining_budget_usdc": 1000.0,
             "buckets": [
                 {"bucket": "37", "bid_price": 0.10, "ask_levels": [{"price": 0.12, "shares": 100.0}], "maker_queue_ahead_shares": 1.0, "maker_queue_known": True},
                 {"bucket": "38", "bid_price": 0.20, "ask_levels": [{"price": 0.22, "shares": 100.0}], "maker_queue_ahead_shares": 1.0, "maker_queue_known": True},
@@ -1662,7 +1720,7 @@ def test_station_reserve_does_not_rewrite_probability_or_bypass_v2() -> None:
         policy_artifacts=artifacts,
         evaluation_at_utc="2026-07-23T04:30:00Z",
         season_bin="summer",
-        maturity_bin="d1",
+        maturity_bin="d0",
         liquidity_bin="liquid",
         strategy_version="target-v1",
         base_policy={"clip_max_notional_usdc": 3.0},
@@ -1683,7 +1741,12 @@ def test_station_reserve_does_not_rewrite_probability_or_bypass_v2() -> None:
     assert result["boundary"]["calls_order_gateway"] is False
 
 
-def test_full_bridge_reaches_target_plan_without_orders() -> None:
+def test_full_bridge_reaches_target_plan_without_orders(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Charter 87 (2026-09-06): this fixture's book prices the seat where
+    # charter 68's lambda(a) says most of the claim never arrives, so the
+    # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
+    # The gate itself is pinned in test_clause_87_*.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     prior, artifacts, activations = _policy_inputs()
     cash_policy, cash_input = _cash_phase_inputs()
     market_snapshot = {
@@ -1699,7 +1762,7 @@ def test_full_bridge_reaches_target_plan_without_orders() -> None:
         "quote_source": "OFFICIAL_CLOB_WS",
         "inventory_version": "inventory-1",
         "order_state_version": "orders-1",
-        "remaining_budget_usdc": 12.0,
+        "remaining_budget_usdc": 1000.0,
         "buckets": [
             {"bucket": "37", "bid_price": 0.10, "ask_levels": [{"price": 0.12, "shares": 100.0}], "maker_queue_ahead_shares": 1.0, "maker_queue_known": True},
             {"bucket": "38", "bid_price": 0.20, "ask_levels": [{"price": 0.22, "shares": 100.0}], "maker_queue_ahead_shares": 1.0, "maker_queue_known": True},
@@ -1715,7 +1778,7 @@ def test_full_bridge_reaches_target_plan_without_orders() -> None:
         policy_artifacts=artifacts,
         evaluation_at_utc="2026-07-23T04:30:00Z",
         season_bin="summer",
-        maturity_bin="d1",
+        maturity_bin="d0",
         liquidity_bin="liquid",
         strategy_version="target-v1",
         base_policy={"clip_max_notional_usdc": 3.0},
@@ -1765,7 +1828,7 @@ def test_full_bridge_reaches_target_plan_without_orders() -> None:
         policy_artifacts=artifacts,
         evaluation_at_utc="2026-07-23T04:30:00Z",
         season_bin="summer",
-        maturity_bin="d1",
+        maturity_bin="d0",
         liquidity_bin="liquid",
         strategy_version="target-v1",
         base_policy={"clip_max_notional_usdc": 3.0},
@@ -1797,7 +1860,12 @@ def test_full_bridge_reaches_target_plan_without_orders() -> None:
     )
 
 
-def test_model_disagreement_expands_candidate_boundary_while_extrema_remain_diagnostic() -> None:
+def test_model_disagreement_expands_candidate_boundary_while_extrema_remain_diagnostic(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Charter 87 (2026-09-06): this fixture's book prices the seat where
+    # charter 68's lambda(a) says most of the claim never arrives, so the
+    # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
+    # The gate itself is pinned in test_clause_87_*.
+    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     prior, artifacts, activations = _policy_inputs()
     cash_policy, cash_input = _cash_phase_inputs()
     base = _envelope()
@@ -1848,7 +1916,7 @@ def test_model_disagreement_expands_candidate_boundary_while_extrema_remain_diag
         "quote_source": "OFFICIAL_CLOB_WS",
         "inventory_version": "inventory-envelope-boundary",
         "order_state_version": "orders-envelope-boundary",
-        "remaining_budget_usdc": 12.0,
+        "remaining_budget_usdc": 1000.0,
         "buckets": [
             {"bucket": bucket, "bid_price": 0.10, "ask_levels": [{"price": 0.12, "shares": 100.0}], "maker_queue_ahead_shares": 1.0, "maker_queue_known": True}
             for bucket in ("37", "38", "39")
@@ -1865,7 +1933,7 @@ def test_model_disagreement_expands_candidate_boundary_while_extrema_remain_diag
             policy_artifacts=artifacts,
             evaluation_at_utc="2026-07-23T04:30:00Z",
             season_bin="summer",
-            maturity_bin="d1",
+            maturity_bin="d0",
             liquidity_bin="liquid",
             strategy_version="target-v1",
             base_policy={"clip_max_notional_usdc": 3.0},
@@ -1947,7 +2015,7 @@ def test_naming_envelope_buckets_without_ordinals_derives_them() -> None:
             "quote_observed_at": DECISION,
             "inventory_version": "inventory-derived-boundary",
             "order_state_version": "orders-derived-boundary",
-            "remaining_budget_usdc": 12.0,
+            "remaining_budget_usdc": 1000.0,
             "buckets": [
                 {
                     "bucket": bucket,

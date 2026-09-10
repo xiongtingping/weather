@@ -3054,9 +3054,34 @@ def commit_blocked_scope_decision(
         "strategy_lane": lane,
     }
     cycle_id = _derive_id("cycle", cycle_identity)
-    # A stage-zero block carries no training fact, so it is addressed by
-    # the economic subset of its details and its reasons -- the same reading
-    # the migration gives every historical blocked row.
+    # Charter 69's two readings, applied to a stage-zero block.  One whose
+    # training fact is authorized *does* store that fact, so it carries the
+    # fact's scope key -- the four legs, used whole -- exactly as the live
+    # path does at commit.  Keying it on the economic subset instead (which
+    # was the rule here until 2026-09-11) collapsed every pre-final fact of a
+    # station-day into the first one written: the subset's keys are the live
+    # commit's, none of which a stage-zero payload carries, so a P0-M fact
+    # and every later P0 recompile came back ``already_committed_decision``
+    # -- since 2026-09-03 the store held exactly one stage-zero row per
+    # station-day.  A block that stores no fact keeps the economic reading.
+    stage_zero_scope_key: str | None = None
+    if stage_zero_anchor is not None and stage_zero_training_authorized:
+        from .delta_v2_training import delta_v2_decision_scope_key
+
+        scope_plan = _mapping(
+            "stage_zero_training_compiled_plan",
+            stage_zero_anchor.get("compiled_plan"),
+        )
+        try:
+            stage_zero_scope_key = delta_v2_decision_scope_key(
+                compiled_plan=scope_plan,
+                market_snapshot=_mapping(
+                    "stage_zero_training_market_snapshot",
+                    scope_plan.get("production_market_snapshot"),
+                ),
+            )
+        except ContractError:
+            stage_zero_scope_key = None
     decision_identity = economic_decision_identity(
         station_id=station,
         event_date=day,
@@ -3066,7 +3091,7 @@ def commit_blocked_scope_decision(
         will_order=0,
         reason_codes=reasons,
         details=payload_details,
-        decision_scope_key=None,
+        decision_scope_key=stage_zero_scope_key,
     )
     decision_sha = _content_hash(DECISION_SCHEMA_V2, decision_identity)
     decision_id = _derive_id("decision", decision_identity)
@@ -3351,7 +3376,7 @@ def commit_blocked_scope_decision(
             (
                 decision_id, cycle_id, plan_id, station, day, timezone_name, lane, "blocked", 0,
                 None, canonical_json(reasons), canonical_json(payload_details), decision_sha, created_at,
-                None,
+                stage_zero_scope_key,
             ),
         )
         conn.execute(
