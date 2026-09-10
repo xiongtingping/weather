@@ -1325,6 +1325,246 @@ TAF_TRAINING_ROOT = (
 )
 
 
+#: Where the resident records what each hosted sweep last did.  This file is
+#: the ONLY record that survives a restart: ``status.json``'s own
+#: ``hosted_sweeps.results`` is cleared every generation and the launchd logs
+#: for the resident are always empty, so a lane that has not run since the
+#: last deploy leaves no trace anywhere else.
+HOSTED_SWEEP_CLOCKS = ROOT / "data" / "hosted_sweep_clocks.json"
+#: The cycle time the sweep contracts are sized against, from the test that
+#: guards them (``test_the_ssot_sweep_queue_fits_its_drain_rate``).  Shown
+#: beside the measured cadence so a reader can see which side of it the
+#: resident is running on today.
+SSOT_QUEUE_REFERENCE_CYCLE_SEC = 600.0
+
+
+def _hosted_sweep_contracts() -> tuple[list[dict[str, Any]], str]:
+    """The sweep table and its write-domain map, from the daemon itself.
+
+    Imported lazily and defensively: this module is read by tooling that has
+    no business importing a service, and a board that cannot answer this
+    question must still render the other nineteen sections.
+    """
+
+    import sys as _sys  # noqa: PLC0415
+
+    scripts_dir = str(ROOT / "scripts")
+    if scripts_dir not in _sys.path:
+        _sys.path.insert(0, scripts_dir)
+    try:
+        import weather_basket_yes_daemon as daemon  # noqa: PLC0415
+    except Exception as exc:  # noqa: BLE001 - a board never fails closed
+        return [], f"读不出常驻的扫描表：{exc}"
+    rows = []
+    for name, script, interval, timeout in daemon.HOSTED_SWEEPS:
+        rows.append({
+            "name": str(name),
+            "script": str(script),
+            "interval_sec": float(interval),
+            "timeout_sec": float(timeout),
+            "domain": daemon.hosted_sweep_write_domain(str(name)),
+        })
+    return rows, ""
+
+
+def collect_hosted_sweeps(conn: sqlite3.Connection) -> dict[str, Any]:
+    """The resident's maintenance lanes: who is due, who is late, who is stuck.
+
+    Nothing on this page showed these lanes until 2026-09-10, and the day
+    that changed three of them were sitting at 2.3x to 2.5x their own
+    interval with ``last_state: "ok"`` beside every one.  The clock file is
+    not lying -- it has no state for "starved", only for "failed" -- so a
+    lane that simply never got a turn is indistinguishable from a healthy
+    one unless somebody divides two numbers by hand.  That is what this
+    section does.
+
+    Lateness is measured in the lane's OWN intervals, never in hours: the
+    contracts here run from ten minutes to a day, so ``calibration_refit``
+    nine hours behind is a quarter of the way through its window and
+    ``settlement_truth`` nine hours behind has missed three turns.  Reading
+    them on one clock is how a normal lane gets reported as a stall.
+
+    Two failure shapes are called apart because they need opposite
+    responses.  A lane that has not been ATTEMPTED is starved -- it is
+    losing the queue to somebody, usually because a deploy storm keeps
+    resetting the generation before its turn comes round.  A lane attempted
+    far more recently than it completed is stuck: it is taking the slot and
+    failing, and under an exclusive write domain it takes everyone behind
+    it down too (2026-09-09: one capture lane held the SSOT domain for 72
+    hours this way).
+    """
+
+    contracts, error = _hosted_sweep_contracts()
+    if error:
+        return {"available": False, "reason": error, "lanes": []}
+    try:
+        clocks = json.loads(HOSTED_SWEEP_CLOCKS.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return {
+            "available": False,
+            "reason": f"读不出 {HOSTED_SWEEP_CLOCKS.name}：{exc}",
+            "lanes": [],
+        }
+    status: dict[str, Any] = {}
+    if STATUS_JSON.is_file():
+        try:
+            status = json.loads(STATUS_JSON.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            status = {}
+    hosted = status.get("hosted_sweeps") or {}
+    running = {str(name) for name in (hosted.get("running") or [])}
+    results = hosted.get("results") or {}
+
+    def _age(stamp: Any) -> float | None:
+        hours = _age_hours(stamp)
+        return None if hours is None else hours * 3600.0
+
+    lanes: list[dict[str, Any]] = []
+    for contract in contracts:
+        clock = clocks.get(contract["name"]) or {}
+        completed = clock.get("completed_at_utc")
+        attempted = clock.get("attempted_at_utc")
+        since_completed = _age(completed)
+        since_attempted = _age(attempted)
+        interval = contract["interval_sec"]
+        overdue = (
+            None if since_completed is None or interval <= 0
+            else since_completed / interval
+        )
+        # Attempted much more recently than completed: the lane is getting
+        # its turn and failing to finish it.  Half an interval of slack, so
+        # a lane that merely started its current round does not read as
+        # stuck.
+        stuck = (
+            since_attempted is not None
+            and since_completed is not None
+            and since_completed - since_attempted > interval * 0.5
+        )
+        state = str(clock.get("last_state") or "")
+        health = "green"
+        note = ""
+        # Judged on the number the page PRINTS, not on the one behind it.
+        # A lane at 1.995 renders as "2.00x" and would otherwise sit there
+        # green beside its own amber threshold, which reads as a bug in the
+        # section rather than as a rounding boundary.
+        shown = None if overdue is None else round(overdue, 2)
+        if state and state != "ok":
+            health, note = "red", f"上次尝试 {state}"
+        elif stuck:
+            health, note = "red", "在轮到自己的回合里失败——占着写域"
+        elif shown is not None and shown >= 3.0:
+            health, note = "red", "已错过三个回合"
+        elif shown is not None and shown >= 2.0:
+            health, note = "amber", "已错过两个回合"
+        this_round = results.get(contract["name"]) or {}
+        lanes.append({
+            **contract,
+            "completed_at_utc": completed,
+            "attempted_at_utc": attempted,
+            "since_completed_sec": since_completed,
+            "since_attempted_sec": since_attempted,
+            "overdue_intervals": overdue,
+            "last_state": state,
+            "stuck": bool(stuck),
+            "running_now": contract["name"] in running,
+            "this_generation": (
+                {
+                    "state": str(this_round.get("state") or ""),
+                    "duration_sec": this_round.get("duration_sec"),
+                    "returncode": this_round.get("returncode"),
+                }
+                if this_round else None
+            ),
+            "health": health,
+            "note": note,
+        })
+    lanes.sort(key=lambda row: -(row["overdue_intervals"] or 0.0))
+
+    # The queue's arithmetic, in the same place as its symptoms.  Supply is
+    # one exclusive writer per production cycle, so it is the cycle cadence
+    # -- start to start, not the compute time -- that sets it.  Demand is
+    # what the contracts add up to.  A queue over capacity makes EVERY
+    # member permanently late and the ordering only decides who, which is a
+    # different repair from waiting out a deploy storm.
+    demand = sum(
+        3600.0 / row["interval_sec"]
+        for row in lanes
+        if row["domain"] == "ssot" and row["interval_sec"] > 0
+    )
+    production = status.get("production") or {}
+    runtime = production.get("target_cycle_runtime") or {}
+    inflight = status.get("production_inflight") or {}
+    # Start to start, because that is what one turn of the queue costs.
+    # Between cycles ``production_inflight`` is empty, so the fallback adds
+    # the wait the finished cycle sat through to its own elapsed time --
+    # the same span, reconstructed.  Either way it is ONE observation, and
+    # the section says so: the wait alone was 210s on one round measured
+    # 2026-09-10 and 6s on the next.
+    wait_block = status.get("production_wait") or {}
+    cadence = None
+    cadence_basis = ""
+    try:
+        previous = datetime.fromisoformat(
+            str(runtime["started_at_utc"]).replace("Z", "+00:00")
+        )
+        current = datetime.fromisoformat(
+            str(inflight["submitted_at_utc"]).replace("Z", "+00:00")
+        )
+        span = (current - previous).total_seconds()
+        if span > 0:
+            cadence, cadence_basis = span, "本轮起点减上轮起点"
+    except (KeyError, TypeError, ValueError):
+        cadence = None
+    if cadence is None:
+        try:
+            elapsed = float(runtime["elapsed_ms"]) / 1000.0
+            waited = float(wait_block["waited_sec"])
+            if elapsed > 0:
+                cadence = elapsed + max(0.0, waited)
+                cadence_basis = "上一轮：等待 + 自身用时"
+        except (KeyError, TypeError, ValueError):
+            cadence = None
+    supply = None if not cadence else 3600.0 / cadence
+    started = status.get("started_at")
+    return {
+        "available": True,
+        "lanes": lanes,
+        "ssot_demand_per_hour": demand,
+        "ssot_supply_per_hour": supply,
+        "cycle_cadence_sec": cadence,
+        "cycle_cadence_basis": cadence_basis,
+        "cycle_elapsed_sec": (
+            float(runtime["elapsed_ms"]) / 1000.0
+            if runtime.get("elapsed_ms") is not None else None
+        ),
+        "reference_cycle_sec": SSOT_QUEUE_REFERENCE_CYCLE_SEC,
+        "reference_supply_per_hour": (
+            3600.0 / SSOT_QUEUE_REFERENCE_CYCLE_SEC
+        ),
+        "waiting_on": list(wait_block.get("blocked_by") or []),
+        "waited_sec": wait_block.get("waited_sec"),
+        # How old this generation is.  Every lane's turn is drawn from it,
+        # so "nothing has run" one minute after a restart means nothing at
+        # all, and the same reading two hours in is the finding.
+        "generation_started_at": started,
+        "generation_age_sec": _age(started),
+        "running_now": sorted(running),
+        "red_count": sum(1 for row in lanes if row["health"] == "red"),
+        "amber_count": sum(1 for row in lanes if row["health"] == "amber"),
+        # The longest contract among the lanes currently reading late.  A
+        # generation younger than this cannot have owed any of them a turn,
+        # so the page says which number the reader should hold the age
+        # against rather than a constant that happens to be an hour.
+        "slowest_late_interval_sec": max(
+            (
+                row["interval_sec"] for row in lanes
+                if row["health"] in ("amber", "red") and not row["stuck"]
+            ),
+            default=None,
+        ),
+    }
+
+
 def collect_p0m_progress(conn: sqlite3.Connection) -> dict[str, Any]:
     """How far each station is from a P0-M artifact, and what is missing.
 
@@ -7826,6 +8066,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "band_shadow", collect_band_shadow, conn
     )
     chain = _cached_section("chain", collect_chain, conn)
+    hosted_sweeps = _cached_section(
+        "hosted_sweeps", collect_hosted_sweeps, conn
+    )
     gaps = _cached_section(
         "gaps", collect_gaps, conn, members, stages, tables
     )
@@ -7919,6 +8162,24 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
               "note": worker.get("taf_capture_note") or ""}]
             if worker.get("taf_capture_health") not in (None, "green") else []
         )
+        # The resident's maintenance lanes.  A lane that is taking its turn
+        # and failing takes everyone behind it down with it under an
+        # exclusive write domain, and it had no symptom anywhere on this
+        # page until 2026-09-10.  Only the red ones, and a merely starved
+        # lane only once the generation has lived an hour: every lane looks
+        # starved a minute after a restart, and saying so would train the
+        # banner to be ignored on exactly the days it matters.
+        + [
+            {"health": "red", "label": f"扫描车道·{lane['name']}",
+             "note": lane.get("note") or ""}
+            for lane in (hosted_sweeps.get("lanes") or [])
+            if lane.get("health") == "red"
+            and (
+                lane.get("stuck")
+                or (lane.get("last_state") or "ok") != "ok"
+                or (hosted_sweeps.get("generation_age_sec") or 0.0) >= 3600.0
+            )
+        ]
         # The other supply lane, and the one whose stall has no other
         # symptom on this page: a stopped NWP rotation surfaces three layers
         # downstream as latest_stage_stale_fail_closed, which names a stage
@@ -7983,6 +8244,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "stages": stages,
         "band_shadow": band_shadow,
         "chain": chain,
+        "hosted_sweeps": hosted_sweeps,
         "gaps": gaps,
         "p0m": p0m,
         "skill": skill,
@@ -10549,6 +10811,121 @@ function riskMetrics(){
   ${cvar}
   ${chart}
   ${claimChart}`;
+}
+
+
+// The resident's maintenance lanes (user ruling, 2026-09-10).  Until this
+// section existed the board showed them nowhere, and the day it was asked
+// for, three lanes were sitting at 2.3x to 2.5x their own interval with
+// `last_state: "ok"` beside each one -- the clock file has no state for
+// "starved", only for "failed", so a lane that never got a turn reads
+// exactly like a healthy one.  Finding that out took reading a JSON file
+// by hand and dividing two numbers.
+function hostedSweeps(){
+  const H = D.hosted_sweeps || {};
+  if(!H.available) return `<h2>托管扫描车道</h2>
+    <div class="card"><span class="dot amber"></span>
+    ${h(H.reason||"读不出扫描时钟")}。</div>`;
+  const lanes = H.lanes || [];
+  const num=(v,d=2)=>v==null?"—":v.toFixed(d);
+  const dur=(sec)=>{
+    if(sec==null) return "—";
+    if(sec < 90) return sec.toFixed(0)+" 秒";
+    if(sec < 5400) return (sec/60).toFixed(0)+" 分钟";
+    return (sec/3600).toFixed(1)+" 小时";
+  };
+  const ivl=(sec)=>sec>=3600?(sec/3600).toFixed(sec%3600?1:0)+" 小时"
+    :(sec/60).toFixed(0)+" 分钟";
+  const DOMAIN={ssot:["独占 SSOT","pill"],archive:["独占 archive","pill"],
+    none:["不写库","pill green"]};
+  const gen = H.generation_age_sec;
+  // A lane cannot have had a turn the generation has not lived long
+  // enough to give it.  Held against the slowest contract that is
+  // actually reading late, not against a constant: with a day-long lane
+  // in the table an hour would be the wrong bar, and with only
+  // ten-minute lanes late it would be far too generous.
+  const bar = H.slowest_late_interval_sec;
+  const young = gen!=null && bar!=null && gen < bar;
+  const body = lanes.map(l=>{
+    const dm = DOMAIN[l.domain] || [l.domain,"pill"];
+    const late = l.overdue_intervals;
+    const cls = l.health==="red"?"down":(l.health==="amber"?"":"");
+    const round = l.this_generation;
+    return `<tr>
+      <td><span class="dot ${l.health==="red"?"red":(l.health==="amber"?"amber":"green")}"></span>
+        <span class="mono">${h(l.name)}</span>
+        ${l.running_now?'<span class="pill amber">正在跑</span>':""}
+        ${l.note?`<div class="muted" style="font-size:11px">${h(l.note)}</div>`:""}</td>
+      <td><span class="${dm[1]}">${dm[0]}</span></td>
+      <td class="mono">${ivl(l.interval_sec)}</td>
+      <td class="mono ${cls}">${late==null?"—":num(late,2)+"×"}</td>
+      <td class="mono">${dur(l.since_completed_sec)}</td>
+      <td class="mono ${l.stuck?"down":""}">${dur(l.since_attempted_sec)}</td>
+      <td>${l.last_state
+        ? `<span class="pill ${l.last_state==="ok"?"green":"red"}">${h(l.last_state)}</span>`
+        : "—"}</td>
+      <td class="muted mono" style="font-size:11.5px">${
+        round ? `${h(round.state)} · ${num(round.duration_sec,1)}s` : "本代未轮到"}</td>
+    </tr>`;
+  }).join("");
+
+  const demand = H.ssot_demand_per_hour, supply = H.ssot_supply_per_hour;
+  const tight = supply!=null && supply < demand;
+  const tile=(label,value,note,klass)=>`<div class="card">
+    <div class="muted">${label}</div>
+    <div class="big ${klass||""}">${value}</div>
+    <div class="muted" style="font-size:11.5px">${note}</div></div>`;
+
+  return `<h2>托管扫描车道</h2>
+  <p class="sub">常驻把维护工作分给这些车道，SSOT 域<b>一次只准一个写者</b>，
+  而且生产周期每转一圈才放行一个。所以「落后」要用<b>车道自己的间隔</b>量，
+  不能用小时——这里的合同从 10 分钟到 1 天不等。</p>
+  <div class="why"><b>先看这一代活了多久。</b>
+  常驻 ${H.generation_started_at?h(H.generation_started_at):"—"} 启动，
+  到现在 <b>${dur(gen)}</b>。${young
+    ? `每次重启都把队列的代数切断，一代只排得掉几个槽，
+       <b>还不够长到欠下面最慢那条落后车道（合同 ${dur(bar)}）一个回合</b>——
+       它们没轮到还不能算故障。`
+    : (bar==null
+      ? `目前没有车道落后到需要按这个判。`
+      : `<b>已经长过下面最慢那条落后车道的合同（${dur(bar)}）</b>——
+         还没轮到的就是真饿着了。`)}
+  ${H.waiting_on && H.waiting_on.length
+    ? `本轮生产在等 <span class="mono">${H.waiting_on.map(h).join("、")}</span>
+       ${H.waited_sec!=null?`（${num(H.waited_sec,1)} 秒）`:""}——等待直接吃掉排水率。`
+    : ""}</div>
+  <div class="grid g3" style="margin-top:10px">
+    ${tile("SSOT 队列 · 需求", num(demand,2)+" 次/小时",
+      "各成员 3600÷间隔 之和")}
+    ${tile("SSOT 队列 · 供给", supply==null?"—":num(supply,2)+" 次/小时",
+      "一个周期放行一个 · 上一轮周期 "+dur(H.cycle_cadence_sec)+
+      "（"+h(H.cycle_cadence_basis||"")+"） · 合同按 "+
+      dur(H.reference_cycle_sec)+" 尺寸，即 "+num(H.reference_supply_per_hour,2)+" 次/小时",
+      tight?"down":"up")}
+    ${tile("落后 ≥2 个回合", (H.red_count+H.amber_count)+" 条",
+      H.red_count+" 条红（≥3 回合或上次没跑成）· "+H.amber_count+" 条黄",
+      H.red_count?"down":"")}
+  </div>
+  <div class="scroll" style="margin-top:12px"><table><thead><tr>
+    <th>车道</th><th>写域</th><th>间隔</th><th>落后</th>
+    <th>上次成功</th><th>上次尝试</th><th>上次状态</th><th>本代</th>
+  </tr></thead><tbody>${body}</tbody></table></div>
+  <div class="why" style="margin-top:12px"><b>两种红要分开读，处置相反。</b>
+  <b>饿着</b>＝「上次尝试」和「上次成功」一样旧：它根本没轮到，是别人在占队列，
+  多半是当天提交太密、常驻反复重启把代数切碎了。等一代常驻活久一点自己就排干。
+  <b>卡住</b>＝「上次尝试」比「上次成功」新得多：它<b>轮到了却没跑完</b>，
+  而在独占写域下它会连带堵住排在后面的所有人——2026-09-09 有一条采集车道
+  就这样占了 SSOT 域 <b>72 小时</b>。这一类要去看它自己为什么跑不完，
+  等是等不好的。</div>
+  <div class="why" style="margin-top:10px"><b>为什么「落后」不看小时。</b>
+  <span class="mono">calibration_refit</span> 的合同是 1 天，落后 9 小时是
+  0.4 个回合，正常；<span class="mono">settlement_truth</span> 的合同是 3 小时，
+  同样落后 9 小时是错过了 3 个回合。用同一把小时尺子量，
+  前者会被报成停摆，后者会被漏掉。<br>
+  另外<b>「上次成功」只在真的成功时才前进</b>（rc=0），
+  失败和超时只推进「上次尝试」——这是设计，失败不能假装成成功；
+  代价是一条一直失败的车道会显示成「很久没成功」，
+  要靠旁边那一列才分得出它是没轮到还是没跑完。</div>`;
 }
 
 
@@ -13191,8 +13568,9 @@ const GROUPS = [
    sections:[[coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"],
      [truthLanding,"真值落位"]]},
   {id:"health", label:"系统健康", tone:"#f85149",
-   note:"机器在不在转：整条链路每一环、真值物化",
-   sections:[[chain,"链路"],[materialization,"真值物化"]]},
+   note:"机器在不在转：整条链路每一环、常驻的维护车道、真值物化",
+   sections:[[chain,"链路"],[hostedSweeps,"托管扫描车道"],
+     [materialization,"真值物化"]]},
 ];
 const tabs = `<nav class="tabs" id="tabs">${
   GROUPS.map(g => `<button type="button" data-tab="${g.id}"
