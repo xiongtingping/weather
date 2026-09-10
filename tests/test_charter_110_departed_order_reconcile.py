@@ -447,11 +447,19 @@ def test_an_incomplete_enumeration_concludes_nothing() -> None:
     assert _verdict(conn, _Client(live_ids=(), shares=7.0, complete=False)) == {
         "event": None
     }
-    # ...and neither is a live order on the token: that is the resting
-    # lane's business, and a balance cannot say which order earned it.
-    assert _verdict(conn, _Client(live_ids=("0xlive",), shares=7.0)) == {
-        "event": None
-    }
+    # ...and neither is a live order that cannot be shown to be this
+    # intent's.  Until 2026-09-10 ANY live order ended this lane outright,
+    # on the grounds that it was the resting lane's business; but that lane
+    # reaches an intent through its exchange order id, and a POST that
+    # timed out never got one -- so "the resting lane's business" was
+    # nobody's, and one such order rested seventeen hours.  The handle is
+    # adopted now, but only from an order whose side, price and original
+    # size say it can be no other.  This one says nothing at all, and a
+    # balance still cannot say which order earned it.
+    # (The adoption itself: tests/test_charter_110_lost_handle_recovery.py.)
+    verdict = _verdict(conn, _Client(live_ids=("0xlive",), shares=7.0))
+    assert verdict["event"] is None
+    assert "mismatch" in verdict["reason"], verdict
 
 
 def test_two_unresolved_intents_on_one_token_are_both_left_alone() -> None:

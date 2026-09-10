@@ -3573,6 +3573,169 @@ def _p0m_scope_day_order(event_date: Any) -> str:
     return "".join(chr(0x10FFFD - ord(char)) for char in text)
 
 
+def _live_order_number(value: Any) -> float | None:
+    """The venue sends sizes and prices as strings; unreadable is None."""
+
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _recovered_post_ack_for_intent(
+    conn: sqlite3.Connection,
+    *,
+    open_orders: list[Any],
+    rival: int,
+    intent_id: str,
+    token_id: str,
+    requested_size: float,
+    limit_price: float,
+    order_action: str,
+    idempotency_key: str,
+    as_of_utc: str,
+) -> dict[str, Any]:
+    """The handle an UNKNOWN_POST never got, when one order is the only one.
+
+    An intent whose POST timed out carries no exchange order id, and
+    the id is the handle both the lookup and the cancel need.  Without
+    it the order is live on the exchange and invisible to every lane
+    here -- it is not the resting lane's business (that lane selects on
+    a non-empty id), and it was not this one's either.
+
+    This is not a guess and must not become one.  The id is adopted
+    only when nothing else on the books could account for the order:
+
+    * the enumeration for this token, already known COMPLETE, holds
+      exactly ONE live order.  Two live orders and a matching price no
+      longer names which;
+    * this intent is the only unresolved claimant on the token
+      (``rival`` is zero), the same test the position branch applies;
+    * this intent has no exchange order id yet, so nothing is being
+      overwritten -- an intent that has one is already the resting
+      lane's and is left alone;
+    * no reconciliation row anywhere already carries that id, so the
+      order is not another intent's, resolved or not; and
+    * side, limit price and ORIGINAL size all match the intent.
+      Original size, not remaining: a partly filled order still asked
+      for what the intent asked for.
+
+    Any one of those failing returns no event and says which, because
+    an intent left unresolved with a reason is a smaller failure than
+    an order credited to the wrong intent.
+
+    The event written is POST_ACK and nothing more.  It claims only that
+    the order was posted and is the exchange's, which is what the
+    enumeration says; it claims no fill, and the ledger does not let it
+    pretend otherwise -- ``record_order_event`` deliberately leaves a
+    reconciliation that was ``unknown`` still ``unknown``, because an ack
+    says nothing about what the order did.  What lands is the handle.
+
+    That is enough: ``load_resting_maker_intents`` selects on the handle
+    and admits ``unknown`` alongside ``pending``, so the order becomes the
+    resting lane's business in the sense that lane can act on -- ask the
+    exchange about it, record the fill, or cancel it.  The ambiguity is
+    cleared by the answer, which is the only thing that can clear it.
+    """
+
+    out: dict[str, Any] = {"event": None}
+    if len(open_orders) != 1:
+        return {**out, "reason": f"live_orders_on_token:{len(open_orders)}"}
+    if rival:
+        return {**out, "reason": f"rival_unresolved_intents:{rival}"}
+    row = open_orders[0]
+    if not isinstance(row, Mapping):
+        return {**out, "reason": "live_order_unreadable"}
+    order_id = str(row.get("id") or row.get("orderID") or "").strip()
+    if not order_id:
+        return {**out, "reason": "live_order_without_id"}
+    try:
+        mine = conn.execute(
+            "SELECT COALESCE(exchange_order_id,'')"
+            " FROM basket_target_order_reconciliations"
+            " WHERE order_intent_id=?",
+            (intent_id,),
+        ).fetchone()
+        claimed = int(conn.execute(
+            "SELECT COUNT(*) FROM basket_target_order_reconciliations"
+            " WHERE exchange_order_id=?",
+            (order_id,),
+        ).fetchone()[0] or 0)
+    except sqlite3.Error as exc:
+        return {"failure": f"{type(exc).__name__}:{exc}"}
+    if mine is not None and str(mine[0] or "").strip():
+        return {**out, "reason": "intent_already_has_an_id"}
+    if claimed:
+        return {**out, "reason": "order_id_already_claimed"}
+    if str(row.get("side") or "").strip().upper() != str(
+        order_action or ""
+    ).strip().upper():
+        return {**out, "reason": f"side_mismatch:{row.get('side')!r}"}
+    price = _live_order_number(row.get("price"))
+    size = _live_order_number(row.get("original_size"))
+    if price is None or size is None:
+        return {**out, "reason": "live_order_price_or_size_unreadable"}
+    if abs(price - float(limit_price or 0.0)) > 1e-6:
+        return {**out, "reason": f"price_mismatch:{price}"}
+    if abs(size - float(requested_size or 0.0)) > VENUE_SHARE_QUANTUM:
+        return {**out, "reason": f"size_mismatch:{size}"}
+    # Stamped with the VENUE's creation time, not this pass's clock.  The
+    # next reader of a POST_ACK is the reprice rule, which measures how
+    # long the rung has been sitting from exactly this field; stamping it
+    # "now" would tell that rule an order resting since yesterday had just
+    # been posted, and the rule would give it a full dwell all over again.
+    # The exchange is the authority on when it created the order.
+    created = _live_order_number(row.get("created_at"))
+    posted_at = as_of_utc
+    if created and created > 0:
+        # A stamp after this pass is not a creation time -- it is a unit
+        # error (milliseconds read as seconds lands tens of millennia out,
+        # far enough that ``fromtimestamp`` itself refuses) or a skewed
+        # clock.  Taking it would make dwell negative, which clamps to
+        # zero, which reads as "just posted" on every pass forever.  Fall
+        # back to this pass's clock and say in the payload which was used.
+        try:
+            stamp = datetime.fromtimestamp(created, timezone.utc)
+            asked = datetime.fromisoformat(
+                str(as_of_utc).replace("Z", "+00:00")
+            )
+        except (OSError, OverflowError, ValueError):
+            stamp = asked = None
+        if stamp is not None and asked is not None and stamp <= asked:
+            posted_at = stamp.isoformat(
+                timespec="seconds",
+            ).replace("+00:00", "Z")
+    return {"event": {
+        "event_type": "POST_ACK",
+        "exchange_order_id": order_id,
+        "observed_at": posted_at,
+        "matched_size": 0.0,
+        "matched_notional_usdc": 0.0,
+        "event_payload": {
+            "idempotency_key": idempotency_key,
+            "exchange_status": str(row.get("status") or ""),
+            "recovered_by": "intent_reconcile_sole_live_order",
+            "token_id": token_id,
+            "live_orders_on_token": 1,
+            "rival_unresolved_intents": 0,
+            "open_order_enumeration_complete": True,
+            "matched_side": str(row.get("side") or ""),
+            "matched_price": price,
+            "matched_original_size": size,
+            # What the venue says is already filled.  Not recorded as a
+            # fill here -- POST_ACK carries none -- but written down so
+            # the resting lane's first sync can be checked against what
+            # was true when the handle was adopted.
+            "venue_size_matched": row.get("size_matched"),
+            "venue_created_at": row.get("created_at"),
+            "observed_at_source": (
+                "venue_created_at" if posted_at != as_of_utc else "as_of_utc"
+            ),
+            "recovered_at": as_of_utc,
+        },
+    }}
+
+
 class TargetProductionWorker:
     """Resident target compiler and target-local no-live ledger writer."""
 
@@ -8517,11 +8680,33 @@ class TargetProductionWorker:
         left alone and reported; that is a smaller failure than crediting
         the wrong one.
 
+        A live order on the token used to end this lane outright, on the
+        grounds that a live order is the resting lane's business.  It is --
+        but only once that lane can see it, and it sees an intent by the
+        exchange order id the POST_ACK wrote.  A submission that timed out
+        never wrote one, so ``load_resting_maker_intents`` skips it twice
+        over (``r.state='pending'`` and a non-empty id) and this lane handed
+        it to nobody.  Measured 2026-09-10: ZSQD 27C, event date 09-11,
+        BUY 7 @ 0.16 accepted by the exchange at 2026-09-09T13:38:19Z and
+        still resting seventeen hours later, unseen by every automatic path
+        and holding its bucket shut the whole time -- while this function
+        bailed out holding the enumeration that named it.
+
+        So the handle is recovered here when the books can only mean one
+        order; see ``_recovered_post_ack_for_intent`` for what "only" means.
+
         Never records more than the intent asked for.  Reads two GETs and
         writes nothing: the caller owns the transaction.
         """
 
         if not token_id:
+            return {"event": None}
+        # ``getattr`` rather than an attribute read: a worker built through
+        # __new__ (which several tests and one rotation helper do) has no
+        # ``commit_conn`` at all, and an AttributeError here would be an
+        # exception escaping an observational lane.
+        commit_conn = getattr(self, "commit_conn", None)
+        if commit_conn is None:
             return {"event": None}
         try:
             enumeration = client.lookup_open_orders({"token_id": token_id})
@@ -8533,11 +8718,31 @@ class TargetProductionWorker:
         open_orders = enumeration.get("open_orders")
         if not isinstance(open_orders, list):
             return {"event": None}
+        # The single-claimant test, which both branches below need: neither
+        # a balance nor a live order's price and size can tell two
+        # unresolved intents on one token apart.
+        try:
+            rival = int(commit_conn.execute(
+                "SELECT COUNT(*) FROM basket_target_order_intents"
+                " WHERE token_id=? AND state='reconcile_required'"
+                "   AND order_intent_id<>?",
+                (token_id, intent_id),
+            ).fetchone()[0] or 0)
+        except sqlite3.Error as exc:
+            return {"failure": f"{type(exc).__name__}:{exc}"}
         if open_orders:
-            # Something of ours is still live on this token.  Whether it is
-            # this intent cannot be settled from a balance, and a live order
-            # is the resting lane's business rather than this one's.
-            return {"event": None}
+            return _recovered_post_ack_for_intent(
+                commit_conn,
+                open_orders=open_orders,
+                rival=rival,
+                intent_id=intent_id,
+                token_id=token_id,
+                requested_size=requested_size,
+                limit_price=limit_price,
+                order_action=order_action,
+                idempotency_key=idempotency_key,
+                as_of_utc=as_of_utc,
+            )
         try:
             position = client.lookup_position({"token_id": token_id})
         except Exception as exc:  # noqa: BLE001
@@ -8548,13 +8753,6 @@ class TargetProductionWorker:
             held = float(position.get("shares") or 0.0)
         except (TypeError, ValueError):
             return {"event": None}
-        # ``getattr`` rather than an attribute read: a worker built through
-        # __new__ (which several tests and one rotation helper do) has no
-        # ``commit_conn`` at all, and an AttributeError here would be an
-        # exception escaping an observational lane.
-        commit_conn = getattr(self, "commit_conn", None)
-        if commit_conn is None:
-            return {"event": None}
         try:
             recorded = float(commit_conn.execute(
                 "SELECT COALESCE(SUM(r.filled_size),0)"
@@ -8564,12 +8762,6 @@ class TargetProductionWorker:
                 " WHERE i.token_id=?",
                 (token_id,),
             ).fetchone()[0] or 0.0)
-            rival = int(commit_conn.execute(
-                "SELECT COUNT(*) FROM basket_target_order_intents"
-                " WHERE token_id=? AND state='reconcile_required'"
-                "   AND order_intent_id<>?",
-                (token_id, intent_id),
-            ).fetchone()[0] or 0)
         except sqlite3.Error as exc:
             return {"failure": f"{type(exc).__name__}:{exc}"}
         unrecorded = held - recorded
@@ -8655,9 +8847,14 @@ class TargetProductionWorker:
         Reads the exchange, writes only this ledger. It never places or
         cancels: the gateway path used here is a GET on one order id.
 
-        Only "not found" is acted on. An order the exchange does have is
-        left alone -- a resting or filled order is a fact for the fill lane,
-        not something to close from here.
+        Nothing here closes an order the exchange still holds.  A resting
+        order is the fill lane's fact, not something to settle from here --
+        but the fill lane reaches an intent through its exchange order id,
+        and a submission that timed out has none.  So the one thing this
+        lane does with a live order is give the intent back its handle,
+        under the conditions in ``_recovered_post_ack_for_intent``, which
+        moves it to the lane that owns it.  It still never places or
+        cancels anything.
         """
 
         receipt: dict[str, Any] = {
@@ -8703,6 +8900,10 @@ class TargetProductionWorker:
         receipt["filled"] = 0
         receipt["already_recorded"] = 0
         receipt["closed_by_book"] = 0
+        # Not closed: handed over.  An intent that just got its exchange
+        # order id back is now something the resting lane can act on, and
+        # counting it as closed would report a live order as settled.
+        receipt["handle_recovered"] = 0
         for (
             intent_id, idempotency_key, order_action, limit_price,
             token_id, requested_size,
@@ -8920,7 +9121,8 @@ class TargetProductionWorker:
                             "reason": f"{type(exc).__name__}:{exc}"[:120],
                         })
                     continue
-                receipt["closed_by_book"] += 1
+                if event["event_type"] != "POST_ACK":
+                    receipt["closed_by_book"] += 1
             try:
                 with _writer_transaction(
                     self.commit_conn,
@@ -8931,16 +9133,21 @@ class TargetProductionWorker:
                         order_intent_id=str(intent_id),
                         event=event,
                     )
-                receipt["closed"] += 1
-                if event["event_type"] == "FILL":
-                    receipt["filled"] += 1
+                if event["event_type"] == "POST_ACK":
+                    receipt["handle_recovered"] += 1
+                else:
+                    receipt["closed"] += 1
+                    if event["event_type"] == "FILL":
+                        receipt["filled"] += 1
             except Exception as exc:  # noqa: BLE001 -- one scope's problem
                 receipt["failures"].append({
                     "order_intent_id": str(intent_id),
                     "reason": f"{type(exc).__name__}:{exc}"[:120],
                 })
         receipt["state"] = (
-            "committed" if receipt["closed"] else "no_change"
+            "committed"
+            if (receipt["closed"] or receipt["handle_recovered"])
+            else "no_change"
         )
         return receipt
 

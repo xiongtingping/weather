@@ -914,8 +914,27 @@ export class ClobOrderService {
     );
     this.idemStore = null;
     this.lastIdempotencyPersistenceError = "";
-    this.idemTtlMs = positiveNumber(env("PM_CLOB_ORDER_SERVICE_IDEMPOTENCY_TTL_SEC", "7200"), 7200) * 1000;
-    this.maxIdem = Math.max(32, Math.floor(positiveNumber(env("PM_CLOB_ORDER_SERVICE_IDEMPOTENCY_MAX", "512"), 512)));
+    // How long the gateway remembers a submission -- which is how long a
+    // lost order stays findable.  A POST that times out leaves the ledger
+    // at reconcile_required with no exchange order id, and the ONLY place
+    // that id exists is this store: /reconcile-order asks the exchange
+    // using the deterministic id the signer computed before the POST, and
+    // it can only do that while the row is here.
+    //
+    // The TTL was two hours, and the backlog it serves has no bound.
+    // Measured 2026-09-10: an order accepted at 2026-09-09T13:38:19Z was
+    // unrecoverable by 15:38 and still resting seventeen hours later --
+    // /order-status and /reconcile-order both answered {found: false} for
+    // a key whose order was live on the account, and the table held zero
+    // rows.  Seventy-two hours covers a weekend of restarts; the row cap
+    // is raised with it, because at ~230 submissions a day the old 512
+    // pruned by count long before the TTL ever came due, which is how a
+    // longer TTL alone would have changed nothing.
+    //
+    // Retention here is also the duplicate-submission guard: a key the
+    // store has forgotten looks new, so shorter is not the safer default.
+    this.idemTtlMs = positiveNumber(env("PM_CLOB_ORDER_SERVICE_IDEMPOTENCY_TTL_SEC", "259200"), 259200) * 1000;
+    this.maxIdem = Math.max(32, Math.floor(positiveNumber(env("PM_CLOB_ORDER_SERVICE_IDEMPOTENCY_MAX", "4096"), 4096)));
     this.lastHeartbeat = null;
     this.lastHeartbeatError = "";
     this.metadataPrewarmInFlight = false;

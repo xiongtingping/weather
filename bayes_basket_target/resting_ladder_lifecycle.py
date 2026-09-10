@@ -161,8 +161,20 @@ def load_resting_maker_intents(
 
     ``submitted`` with a pending reconciliation is a resting order;
     ``reconcile_required`` with a pending reconciliation is one that has
-    filled in part and still rests.  Both carry the exchange order id the
-    POST_ACK wrote, which is the handle the lookup and the cancel need.
+    filled in part and still rests.  What actually decides membership is
+    the EXCHANGE ORDER ID: it is the handle both the lookup and the cancel
+    need, and an intent without one cannot be acted on here at all.
+
+    ``unknown`` is admitted alongside ``pending`` once that handle exists.
+    A reconciliation is ``unknown`` when nobody knows whether money moved,
+    and the ledger will not let a POST_ACK clear that -- rightly, since an
+    ack says nothing about fills.  What clears it is asking the exchange,
+    which is precisely what this lane does; excluding ``unknown`` meant the
+    one state that most needs the question asked was the one state never
+    admitted to ask it.  Before 2026-09-10 the exclusion was invisible
+    because nothing ever wrote a handle onto an ``unknown`` row; the
+    reconcile lane now does, for a submission whose POST timed out while
+    the order was accepted, and this is where that order is picked up.
     """
 
     rows = conn.execute(
@@ -175,7 +187,7 @@ def load_resting_maker_intents(
         " JOIN basket_target_order_reconciliations r"
         "   ON r.order_intent_id=i.order_intent_id"
         " WHERE i.state IN ('submitted','reconcile_required')"
-        "   AND r.state='pending'"
+        "   AND r.state IN ('pending','unknown')"
         "   AND r.exchange_order_id IS NOT NULL AND r.exchange_order_id<>''"
         " ORDER BY i.created_at LIMIT ?",
         (int(limit),),
