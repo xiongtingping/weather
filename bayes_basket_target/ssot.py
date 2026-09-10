@@ -5663,6 +5663,75 @@ def _assert_target_decision_table_compatible(conn: sqlite3.Connection) -> None:
         )
 
 
+def declared_index_names() -> dict[str, str]:
+    """Every index this module's DDL declares, mapped to its table.
+
+    Read off the DDL itself rather than restated in a list, because a list
+    beside the DDL is a list that goes stale the first time someone adds an
+    index without noticing there was a list.
+
+    The table comes back with the name because not every block of DDL in
+    this module is applied by every apply function: the republisher schema
+    declares eleven indexes that ``apply_production_ssot_schema``
+    deliberately does not create, and an index for a table this database
+    does not have is not missing, it is not applicable.
+    """
+
+    import re as _re  # noqa: PLC0415
+
+    pattern = _re.compile(
+        r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\s+"
+        r"([A-Za-z0-9_]+)\s*\n?\s*ON\s+([A-Za-z0-9_]+)",
+        _re.IGNORECASE,
+    )
+    declared: dict[str, str] = {}
+    for value in tuple(globals().values()):
+        if isinstance(value, str) and "CREATE" in value:
+            for name, table in pattern.findall(value):
+                declared[name] = table
+    return declared
+
+
+def missing_declared_indexes(conn: sqlite3.Connection) -> list[str]:
+    """Declared here, absent from this database.
+
+    Nothing checked this, and the answer was not zero.  Measured 2026-09-11
+    on the live SSOT: 89 indexes declared, 87 present, and one of the two
+    missing -- ``basket_probability_envelope_committed_scope_idx`` -- had
+    been declared since 2026-08-16 carrying its own measurement (13.0-15.6s
+    per cycle, "also retires the temp b-tree") and had never existed in
+    production for a single cycle.  The schema status reported ``ok`` the
+    whole time, because it compares tables and columns and had never looked
+    at indexes.
+
+    The resident does not apply this schema; only the controlled migration
+    does.  So a declared index reaches production when that migration runs,
+    and until someone can see which ones have not, "declared" and "applied"
+    are indistinguishable from here.
+    """
+
+    try:
+        live_indexes = {
+            str(row[0])
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'"
+            )
+        }
+        live_tables = {
+            str(row[0])
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+    except sqlite3.Error:
+        return []
+    return sorted(
+        name
+        for name, table in declared_index_names().items()
+        if name not in live_indexes and table in live_tables
+    )
+
+
 def production_ssot_schema_status(conn: sqlite3.Connection) -> dict[str, object]:
     """Read-only status used by the daemon and acceptance scripts."""
 
@@ -5910,6 +5979,12 @@ def production_ssot_schema_status(conn: sqlite3.Connection) -> dict[str, object]
             and strict_delta_candidate_contract_ok
         ),
         "missing_tables": missing,
+        # Reported, deliberately NOT folded into ``ok``.  Two indexes are
+        # missing from the live database as this is written, and the daemon
+        # reads this status: making a missing index fatal here would refuse
+        # to start the resident over a performance index.  The migration
+        # plan is where this belongs, and it now prints it.
+        "missing_indexes": missing_declared_indexes(conn),
         "canonical_contract_schema_ok": canonical_contract_schema_ok,
         "canonical_contract_schema_errors": canonical_inspection["errors"],
         "canonical_release_state": CANONICAL_V14_RELEASE_STATE,

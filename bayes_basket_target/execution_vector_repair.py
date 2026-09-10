@@ -74,7 +74,81 @@ def _table_names(conn: sqlite3.Connection) -> set[str]:
     }
 
 
+# Everything SQL can say about a blocked cycle already carrying its
+# NO_EXECUTION vector.  A row this matches needs no repair; a row it does not
+# match is work, and work is what the bound below is for.
+#
+# Kept as strict as the Python check it stands in for, so a malformed vector
+# falls OUT of coverage and INTO the bounded candidate set rather than being
+# waved through: one vector for the cycle, one decision for the cycle, the
+# vector naming this decision under NO_EXECUTION, every nullable evidence
+# column null, and the decision's lineage matching its cycle's.
+_COVERED_PREDICATE = """
+EXISTS (
+  SELECT 1 FROM basket_target_execution_version_vectors v
+  WHERE v.cycle_id = d.cycle_id
+    AND v.decision_id = d.decision_id
+    AND v.vector_policy = 'NO_EXECUTION'
+    AND v.order_intent_id IS NULL AND v.target_price_id IS NULL
+    AND v.quote_observed_at IS NULL AND v.quote_expires_at IS NULL
+    AND v.probability_sha256 IS NULL AND v.official_ws_quote_sha256 IS NULL
+    AND v.inventory_sha256 IS NULL AND v.order_state_sha256 IS NULL
+    AND v.station_policy_sha256 IS NULL
+    AND v.cash_policy_decision_sha256 IS NULL
+    AND v.strict_delta_artifact_sha256 IS NULL
+)
+AND (SELECT COUNT(*) FROM basket_target_execution_version_vectors v2
+     WHERE v2.cycle_id = d.cycle_id) = 1
+AND (SELECT COUNT(*) FROM auto_trade_decisions d2
+     WHERE d2.cycle_id = d.cycle_id) = 1
+AND COALESCE(d.plan_id,'') = COALESCE(c.plan_id,'')
+AND COALESCE(d.station_id,'') = COALESCE(c.station_id,'')
+AND COALESCE(d.event_date,'') = COALESCE(c.event_date,'')
+AND COALESCE(d.settlement_timezone,'') = COALESCE(c.settlement_timezone,'')
+AND COALESCE(d.strategy_lane,'') = COALESCE(c.strategy_lane,'')
+AND ABS(COALESCE(c.requested_reserve_usdc,0.0)) <= 1e-9
+"""
+
+_BLOCKED_FROM = (
+    " FROM auto_trade_decisions d"
+    " JOIN basket_target_execution_cycles c ON c.cycle_id=d.cycle_id"
+    " WHERE d.decided_state='blocked' AND d.will_order=0"
+)
+
+
+def _covered_blocked_count(conn: sqlite3.Connection) -> int:
+    """How many blocked decisions are already proven, counted not listed."""
+
+    return int(
+        conn.execute(
+            "SELECT COUNT(*)" + _BLOCKED_FROM + " AND " + _COVERED_PREDICATE
+        ).fetchone()[0]
+    )
+
+
 def _blocked_rows(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """The blocked decisions that still owe a NO_EXECUTION vector.
+
+    Every blocked decision ever written used to come back here, and the
+    bound below then refused the whole check.  The bound is a resource
+    guard on WORK, and a decision whose vector is already in the table is
+    not work: it is the finished part of the job being re-fetched to prove
+    it is finished.
+
+    Measured 2026-09-11 on the live SSOT: 36,499 blocked decisions, of
+    which 36,499 already carry a conforming vector and 0 need repair.  The
+    scan crossed 1,024 in July, so from then on this returned
+    ``resource_bound_exceeded`` -- validating nothing, reporting
+    ``covered_count: 0``, and failing the migration postcheck that reads
+    it.  Two months of schema changes had nowhere to land behind it.
+
+    The trade, said out loud: a covered row's reason codes, details and
+    content address are no longer re-derived on every run -- SQL cannot
+    parse JSON or recompute a sha.  It buys back a check that has been
+    running on zero rows since July, and anything SQL cannot vouch for
+    lands in the candidate set where the full validation still runs.
+    """
+
     previous = conn.row_factory
     conn.row_factory = sqlite3.Row
     try:
@@ -87,11 +161,10 @@ def _blocked_rows(conn: sqlite3.Connection) -> list[sqlite3.Row]:
             "c.event_date AS cycle_event_date,"
             "c.settlement_timezone AS cycle_settlement_timezone,"
             "c.strategy_lane AS cycle_strategy_lane,"
-            "c.requested_reserve_usdc "
-            "FROM auto_trade_decisions d "
-            "JOIN basket_target_execution_cycles c ON c.cycle_id=d.cycle_id "
-            "WHERE d.decided_state='blocked' AND d.will_order=0 "
-            "ORDER BY d.created_at,d.decision_id LIMIT ?",
+            "c.requested_reserve_usdc"
+            + _BLOCKED_FROM
+            + " AND NOT (" + _COVERED_PREDICATE + ")"
+            " ORDER BY d.created_at,d.decision_id LIMIT ?",
             (MAX_BLOCKED_ROWS + 1,),
         ).fetchall()
     finally:
@@ -168,6 +241,7 @@ def inspect_legacy_blocked_execution_vector_repair(
             "state": "schema_incomplete",
             "missing_tables": missing_tables,
             "blocked_decision_count": 0,
+            "unrepaired_count": 0,
             "covered_count": 0,
             "repair_candidate_count": 0,
             "invalid_count": 0,
@@ -184,6 +258,7 @@ def inspect_legacy_blocked_execution_vector_repair(
             "state": "resource_bound_exceeded",
             "missing_tables": [],
             "blocked_decision_count": len(rows),
+            "unrepaired_count": len(rows),
             "covered_count": 0,
             "repair_candidate_count": 0,
             "invalid_count": 0,
@@ -193,7 +268,10 @@ def inspect_legacy_blocked_execution_vector_repair(
         }
 
     candidates: list[dict[str, Any]] = []
-    covered = 0
+    # Seeded from SQL, not counted in the loop.  The loop now only sees rows
+    # that still owe a vector, so a count built there would report zero
+    # coverage on a book that is entirely covered.
+    covered = _covered_blocked_count(conn)
     invalid: list[dict[str, str]] = []
     for row in rows:
         decision_id = str(row["decision_id"])
@@ -339,7 +417,10 @@ def inspect_legacy_blocked_execution_vector_repair(
         "ok": not blockers,
         "state": "complete" if not blockers else "repair_required",
         "missing_tables": [],
-        "blocked_decision_count": len(rows),
+        # Both halves, because they answer different questions: how much
+        # work is left, and how much of the book stands proven behind it.
+        "blocked_decision_count": len(rows) + covered,
+        "unrepaired_count": len(rows),
         "covered_count": covered,
         "repair_candidate_count": len(candidates),
         "invalid_count": len(invalid),
