@@ -664,6 +664,13 @@ def test_strategy_batch_enqueues_blocked_ssot_main_candidate_for_diagnostic(tmp_
 
 
 def test_strategy_batch_prefers_executable_ssot_capital_plan_leg(tmp_path: Path) -> None:
+    """An executable plan leg takes the event slot ahead of a blocked main candidate.
+
+    Leg roles are the v5/v6 three: ``remote_no`` was deleted by
+    TARGET_REALIZATION_V3 and may not come back even as an alias, so a plan
+    that still named it would be dropped by the batch, not admitted.
+    """
+
     db_path = tmp_path / "archive.db"
     _init_db(db_path)
     conn = sqlite3.connect(str(db_path))
@@ -708,7 +715,7 @@ def test_strategy_batch_prefers_executable_ssot_capital_plan_leg(tmp_path: Path)
             },
             "target_realization_capital_plan": {
                 "ok": True,
-                "version": "target_realization_capital_plan_v2",
+                "version": "strong_posterior_three_leg_strategy_v2",
                 "target_bucket": "31°C",
                 "target_posterior": 0.6291010079885099,
                 "second_target_bucket": "32°C",
@@ -717,7 +724,7 @@ def test_strategy_batch_prefers_executable_ssot_capital_plan_leg(tmp_path: Path)
                 "temperature_path_trade_follow_reason": "blocked_path_reliability_low",
                 "legs": [
                     {
-                        "role": "target_yes",
+                        "role": "top_yes_wave",
                         "bucket": "31°C",
                         "side": "YES",
                         "posterior": 0.6291010079885099,
@@ -729,7 +736,7 @@ def test_strategy_batch_prefers_executable_ssot_capital_plan_leg(tmp_path: Path)
                         "temperature_path_trade_follow_reason": "blocked_path_reliability_low",
                     },
                     {
-                        "role": "remote_no",
+                        "role": "strongly_excluded_no",
                         "bucket": "34°C",
                         "side": "NO",
                         "posterior": 0.000003315561843732211,
@@ -784,10 +791,10 @@ def test_strategy_batch_prefers_executable_ssot_capital_plan_leg(tmp_path: Path)
     assert selected["side"] == "NO"
     assert selected["entry_ok"] is True
     assert selected["target_realization_batch_reason"] == "target_realization_capital_plan_leg"
-    assert selected["target_realization_leg_role"] == "remote_no"
-    assert selected["target_realization_position_effect"] == "open_or_add_remote_no_side"
+    assert selected["target_realization_leg_role"] == "strongly_excluded_no"
+    assert selected["target_realization_position_effect"] == "open_or_add_strongly_excluded_no"
     assert selected["target_bucket"] == "31°C"
-    assert selected["remote_no_bucket"] == "34°C"
+    assert selected["leg_bucket"] == "34°C"
     assert selected["target_realization_plan_notional"] == 170.32839526379937
     assert selected["kelly_sizing_source"] == "ui_snapshot_ssot_capital_plan"
 
@@ -799,9 +806,9 @@ def test_strategy_batch_prefers_executable_ssot_capital_plan_leg(tmp_path: Path)
     assert targets[0]["side"] == "NO"
     assert targets[0]["strategy_family"] == "posterior_settlement"
     assert targets[0]["target_realization_plan_notional"] == 170.32839526379937
-    assert targets[0]["target_realization_leg_role"] == "remote_no"
-    assert targets[0]["target_realization_position_effect"] == "open_or_add_remote_no_side"
-    assert targets[0]["remote_bucket_realization_prob"] == 0.000003315561843732211
+    assert targets[0]["target_realization_leg_role"] == "strongly_excluded_no"
+    assert targets[0]["target_realization_position_effect"] == "open_or_add_strongly_excluded_no"
+    assert targets[0]["posterior_settlement_candidate_bucket_prob"] == 0.000003315561843732211
 
 
 def test_strategy_batch_enqueues_allowed_ssot_main_candidate(tmp_path: Path) -> None:
@@ -925,6 +932,7 @@ def test_strategy_batch_expected_targets_preserve_reverse_edge_side(tmp_path: Pa
             "outcome": "104°F or higher",
             "side": "NO",
             "strategy": "main",
+            "strategy_family": "main",
             "entry_ok": True,
             "entry_reasons": ["priority_tail_no_reverse_edge"],
             "edge_score": None,
