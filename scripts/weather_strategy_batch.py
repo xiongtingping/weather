@@ -1290,6 +1290,14 @@ def _ssot_blocked_main_candidate_rows(
                 "posterior_settlement_target_bucket": target_bucket or None,
                 "target_posterior": cand.get("target_posterior") or ssot.get("target_posterior"),
                 "posterior_settlement_target_posterior": cand.get("target_posterior") or ssot.get("target_posterior"),
+                # Read with an explicit None test, not ``or``: a remote bucket
+                # the fact scored at 0.0 is the most interesting case there is,
+                # and it is exactly the one ``or`` would drop.
+                "remote_bucket_realization_prob": (
+                    cand.get("remote_bucket_realization_prob")
+                    if cand.get("remote_bucket_realization_prob") is not None
+                    else ssot.get("remote_bucket_realization_prob")
+                ),
                 "second_target_bucket": cand.get("second_target_bucket") or ssot.get("second_target_bucket"),
                 "second_target_posterior": cand.get("second_target_posterior") or ssot.get("second_target_posterior"),
                 "q_bayes_physical_likelihood_enabled": True,
@@ -2487,6 +2495,7 @@ def _entry_expected_targets_from_selected_rows(
 	            "posterior_settlement_target_bucket",
 	            "target_posterior",
 	            "posterior_settlement_target_posterior",
+	            "remote_bucket_realization_prob",
                     "current_top_bucket",
                     "posterior_settlement_current_top_bucket",
                     "current_top_posterior",
