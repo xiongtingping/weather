@@ -260,7 +260,37 @@ MAX_JSON_NODES = 500_000
 # 40 GiB permits ~3.9 GB of growth against 11.5 GB of free disk on the same
 # volume, leaving ~7.6 GB; MIN_TARGET_FREE_BYTES below is still the hard
 # floor the guard enforces on the volume itself.
-MAX_TARGET_DB_BYTES = 40960 * MIB
+#
+# 2026-09-11, fourth raise, operator ruling "c".  The store is 38.18 GB
+# against 42.95 GB -- 4.76 GB, and the free pages that had been absorbing
+# the growth are spent (1.57 GB on 09-09, 77 MB now), so from here every
+# new byte extends the file.  At the measured rate that is about six days.
+# 48 GiB permits 13.35 GB of growth against 44.78 GB of free disk, leaving
+# 31.4 GB even if every byte is taken: about nineteen days.  Disk is not
+# the binding constraint it was at the last three raises -- today's
+# archive.db compaction returned 5.56 GB and the retention lanes another
+# 7.4 -- so this one is sized on time to act rather than on what the
+# volume can spare.
+#
+# What the rate is made of, measured the same day over 24 hours: 239 MB of
+# net table payload, of which basket_official_ws_snapshot is 72% (171.6
+# MB).  It tripled from 56 MB/day on 09-01 and the cause is not that
+# table: the three per-scope-per-cycle snapshots all rose together
+# (ws/inventory/order_state 5,200 -> 28,127/26,212/26,212) while stations
+# held at 45 and scopes moved 125 -> 151.  What changed is the production
+# cycle, from 34.4 minutes to 7.7.  Every speed-up buys decisions and pays
+# for them here, and nobody had costed that.
+#
+# The lever this raise is buying time for is the row width, not retention:
+# 94.7% of a ws snapshot row is buckets_json and 59% of the row is
+# ask_levels, whose depth runs to a median of 5 levels and a mean of 25.3.
+# Measured against 745 real legs -- median 11 shares, p90 17, max 46 --
+# no bucket of 3,274 needed more than 5 levels to fill, and only 0.3%
+# would at the largest leg this book has ever taken.  Keeping five levels
+# forward-only halves that table and takes 35% off the whole burn.  It is
+# an append-only table with a dozen production readers, so it is a ruling,
+# and it is the one that stops the next raise being needed.
+MAX_TARGET_DB_BYTES = 49152 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.
