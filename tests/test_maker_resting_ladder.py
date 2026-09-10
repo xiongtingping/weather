@@ -154,12 +154,21 @@ def _book(rows: tuple[tuple[str, str, float], ...]) -> sqlite3.Connection:
 
 
 def test_only_the_rungs_the_book_traded_through_are_filled() -> None:
-    """A ladder is a set of independent orders, decided one at a time."""
+    """A ladder is a set of independent orders, decided one at a time.
+
+    Priced for the fill model production has run since 2026-08-23
+    (``b6bfb09c``): a resting bid fills when the ask drops STRICTLY BELOW
+    it, not when an ask arrives at it.  Measured then, the difference was
+    most of the paper return -- touch +36.6% against through +20.2% -- and
+    this file kept asking for touch for eighteen days after, which is what
+    made three of its cases red.  The name of this one always said
+    "traded through"; only the numbers disagreed.
+    """
 
     conn = _book((
-        ("2026-08-17T01:00:00Z", "32C", 0.29),   # dearest rung only
-        ("2026-08-17T02:00:00Z", "32C", 0.25),   # all three
-        ("2026-08-17T01:00:00Z", "33C", 0.29),
+        ("2026-08-17T01:00:00Z", "32C", 0.28),   # under 0.29: dearest only
+        ("2026-08-17T02:00:00Z", "32C", 0.24),   # under 0.25: all three
+        ("2026-08-17T01:00:00Z", "33C", 0.28),
     ))
     got, missing, _withdrew = _resting_ladder_fill(
         conn,
@@ -200,7 +209,9 @@ def test_the_ladder_average_beats_the_dearest_rung_it_needed() -> None:
     the whole clip; the ladder pays it for one third.
     """
 
-    conn = _book((("2026-08-17T01:00:00Z", "32C", 0.25),))
+    # One tick under the cheapest rung, so the book trades through all
+    # three -- see the note on the fill model above.
+    conn = _book((("2026-08-17T01:00:00Z", "32C", 0.24),))
     got, _, _withdrew = _resting_ladder_fill(
         conn,
         station_id="ZUUU",
@@ -209,6 +220,7 @@ def test_the_ladder_average_beats_the_dearest_rung_it_needed() -> None:
         ladders=([0.25, 0.27, 0.29],),
         placed_at_utc="2026-08-17T00:00:00Z",
     )
+    assert sorted(got["32C"]) == [0.25, 0.27, 0.29]
     average = sum(got["32C"]) / len(got["32C"])
     assert average == 0.27
     assert average < 0.29
@@ -493,9 +505,11 @@ def test_value_headroom_escalates_without_waiting_for_the_clock(
     # First reprice round: value 0.60 far above the band; the re-post
     # should stand a tick under the ask rather than fish the bottom.
     snap("2026-08-17T01:30:00Z", {"32C": (0.30, 0.20)})
-    # One tick down fills the entire remainder in one stroke -- before the
-    # next re-pricing round, which would move the band under the new ask.
-    snap("2026-08-17T01:45:00Z", {"32C": (0.29, 0.20)})
+    # Down through the re-posted rungs, which stand at 0.29, in one stroke
+    # -- before the next re-pricing round, which would move the band under
+    # the new ask.  0.28 rather than 0.29 because the book has to trade
+    # THROUGH a resting bid to fill it (see the note on the fill model).
+    snap("2026-08-17T01:45:00Z", {"32C": (0.28, 0.20)})
     got, missing, _withdrew = _resting_ladder_fill(
         conn,
         station_id="ZUUU",
@@ -621,3 +635,60 @@ def test_crossing_never_reaches_for_a_collapsed_ask() -> None:
     # standing order fills where it stands -- but no crossing tops it up
     # at the phantom price.
     assert got["32C"] == [0.25]
+
+def test_the_fill_model_these_cases_are_priced_for_is_still_the_default(
+) -> None:
+    """Which fill model is live decides every number in this file.
+
+    ``through`` since 2026-08-23 (``b6bfb09c``), measured against the
+    alternatives on the same book: touch +36.6%, through +20.2%, queue
+    +20.1% -- about 45% of the paper return was the touch assumption
+    rather than the strategy.  ``queue`` adds almost nothing on top
+    because these books are thin: only 42% of quoted buckets report a
+    queue at all and 59% of those report none.
+
+    Pinned here because the flip is invisible from inside a case: the
+    cases above went red on data assertions that read as broken ladder
+    mechanics, and stayed that way for eighteen days.  A future flip
+    should fail HERE, with the reason, and only then everywhere else.
+    """
+
+    import scripts.paper_trading_ledger as ledger
+
+    assert ledger.MAKER_FILL_MODEL == "through"
+
+
+def test_a_bid_at_the_traded_price_is_not_a_fill() -> None:
+    """The one-line statement of what ``through`` means.
+
+    An ask arriving AT our price says someone is offering there, not that
+    our bid was the one lifted -- and on a thin book we are behind
+    whatever is already resting.  This is the whole difference between the
+    two models, so it is asserted directly rather than left implicit in
+    the ladders above.
+    """
+
+    conn = _book((("2026-08-17T01:00:00Z", "32C", 0.27),))
+    got, missing, _withdrew = _resting_ladder_fill(
+        conn,
+        station_id="ZUUU",
+        event_date="2026-08-17",
+        buckets=("32C",),
+        ladders=([0.27],),
+        placed_at_utc="2026-08-17T00:00:00Z",
+    )
+    assert got["32C"] == []
+    assert missing == "32C"
+
+    # One tick lower and the same rung fills.
+    conn = _book((("2026-08-17T01:00:00Z", "32C", 0.26),))
+    got, missing, _withdrew = _resting_ladder_fill(
+        conn,
+        station_id="ZUUU",
+        event_date="2026-08-17",
+        buckets=("32C",),
+        ladders=([0.27],),
+        placed_at_utc="2026-08-17T00:00:00Z",
+    )
+    assert got["32C"] == [0.27]
+    assert missing is None

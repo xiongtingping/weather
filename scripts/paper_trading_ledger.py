@@ -7945,6 +7945,42 @@ def _score_candidate_windows(
     return dict(counts)
 
 
+def _settlement_identity_id(
+    *,
+    station_id: str,
+    event_date: str,
+    chain_opened_at: str,
+    window: Sequence[str],
+    stake_usdc: float,
+    truth_c: float,
+) -> str:
+    """The settlement's id, from the one place that decides its shape.
+
+    Two writers put rows in ``paper_trade_settlement`` -- the entry walk
+    when the day resolves, and the re-score when a truth revision moves it
+    -- and they hashed different dictionaries.  The walk keyed the CHAIN
+    (``chain_opened_at`` and the accumulated window, no stage); the
+    re-score keyed a STAGE (``stage`` and its own ``decision_at_utc``).
+    So a corrected settlement got an id the walk would never produce, and
+    re-scoring was not idempotent on identity even when it re-derived the
+    same numbers.  Measured on the live book 2026-09-10: 237 of 249 ids
+    carried the walk's shape and 7 the re-score's.
+
+    A settlement is one station-day -- the chain settles once, whichever
+    stage last topped it up -- so the chain's shape is the right one and
+    the stage is deliberately not in it.
+    """
+
+    return "paper-set-" + content_sha256({
+        "station_id": str(station_id),
+        "event_date": str(event_date),
+        "chain_opened_at": str(chain_opened_at),
+        "window": list(window),
+        "stake_usdc": round(float(stake_usdc), 6),
+        "truth": truth_c,
+    })[:24]
+
+
 def _rescore_settlements(
     conn: sqlite3.Connection, truth: dict[tuple[str, str], _Truth]
 ) -> dict[str, int]:
@@ -7999,7 +8035,11 @@ def _rescore_settlements(
         " p.decision_at_utc, p.chain_shares_json, p.leg_shares_json,"
         " p.chain_stake_usdc, p.stake_usdc, p.shares, p.probabilities_json,"
         " p.win_probability, p.center_c, p.intended_legs_json,"
-        " s.settlement_id, s.truth_content_sha256, s.settled_tmax_c"
+        " s.settlement_id, s.truth_content_sha256, s.settled_tmax_c,"
+        # The chain's first decision, which is what its identity is keyed
+        # on.  The walk carries it in hand; this pass has to read it, and
+        # it is the same MIN the walk's own accumulation arrives at.
+        " t.chain_opened_at"
         " FROM paper_trade_position p"
         # The terminal row is the last row the chain ACCUMULATED, which is
         # insert order, not wall-clock decision order.  A P1 entry compiled
@@ -8008,7 +8048,8 @@ def _rescore_settlements(
         # off a row missing the later stage's fills -- ZHHH 2026-08-21 lost
         # a 2/2-filled winning leg to exactly this (nine chains measured,
         # the fourth site of the parallel-stage wall-clock family).
-        " JOIN (SELECT station_id, event_date, MAX(rowid) AS last_rowid"
+        " JOIN (SELECT station_id, event_date, MAX(rowid) AS last_rowid,"
+        "        MIN(decision_at_utc) AS chain_opened_at"
         "       FROM paper_trade_position GROUP BY station_id, event_date) t"
         "   ON t.station_id = p.station_id AND t.event_date = p.event_date"
         "  AND t.last_rowid = p.rowid"
@@ -8024,7 +8065,7 @@ def _rescore_settlements(
             chain_shares_json, leg_shares_json, chain_stake, stage_stake,
             stage_shares, probabilities_json, stage_win_probability,
             center_c, intended_legs_json,
-            settlement_id, bound_sha, settled_tmax_c,
+            settlement_id, bound_sha, settled_tmax_c, chain_opened_at,
         ) = row
         standing = truth.get((str(station_id), str(event_date)))
         if standing is None:
@@ -8032,26 +8073,23 @@ def _rescore_settlements(
             # truth is never deleted, so a settled row cannot lose its truth.
             counts["open_unsettled"] += 1
             continue
-        if settlement_id is not None:
-            if str(bound_sha or "") == standing.content_sha256:
-                counts["settlement_current"] += 1
-                continue
-            if settled_tmax_c is not None and (
-                float(settled_tmax_c) == standing.tmax_c
-            ):
-                # The revision moved but the value did not, so every number
-                # derived from it is unchanged by construction.  Re-binding
-                # rather than re-writing is what keeps a revision that only
-                # restates the day from touching the page -- and it is how
-                # the rows written before this column existed, which carry
-                # the empty sha, settle down after one pass instead of
-                # looking stale forever.
-                rebind.append(
-                    (standing.revision_no, standing.content_sha256,
-                     position_id)
-                )
-                counts["settlement_rebound"] += 1
-                continue
+        # Both short-circuits below used to fire here, before the window
+        # was known.  They cannot any more: whether a recorded row may be
+        # left alone now also depends on whether its ID is the one this
+        # ledger writes, and the id is keyed on the chain's window -- so
+        # the decision moves under the scoring, which is where the window
+        # exists.  The extra cost is one indexed ladder lookup and a few
+        # buckets of arithmetic per settled chain per sweep, on a table of
+        # a few hundred rows.
+        truth_is_current = (
+            settlement_id is not None
+            and str(bound_sha or "") == standing.content_sha256
+        )
+        value_is_unchanged = (
+            settlement_id is not None
+            and settled_tmax_c is not None
+            and float(settled_tmax_c) == standing.tmax_c
+        )
         ladder = _settlement_ladder(
             conn, str(station_id), str(event_date), str(stage),
             str(decision_at_utc),
@@ -8120,18 +8158,43 @@ def _rescore_settlements(
                 drop.append((station_id, event_date))
                 counts["settlement_dropped"] += 1
             continue
-        identity = {
-            "station_id": str(station_id),
-            "event_date": str(event_date),
-            "stage": str(stage),
-            "decision_at_utc": str(decision_at_utc),
-            "window": window,
-            "stake_usdc": round(float(stake), 6),
-        }
+        rebuilt_id = _settlement_identity_id(
+            station_id=str(station_id),
+            event_date=str(event_date),
+            chain_opened_at=str(chain_opened_at or decision_at_utc),
+            window=window,
+            stake_usdc=float(stake),
+            truth_c=standing.tmax_c,
+        )
+        if settlement_id is not None and str(settlement_id) == rebuilt_id:
+            # The row this ledger would write is the row that is there.
+            if truth_is_current:
+                counts["settlement_current"] += 1
+                continue
+            if value_is_unchanged:
+                # The revision moved but the value did not, so every
+                # number derived from it is unchanged by construction.
+                # Re-binding rather than re-writing is what keeps a
+                # revision that only restates the day from touching the
+                # page -- and it is how the rows written before this
+                # column existed, which carry the empty sha, settle down
+                # after one pass instead of looking stale forever.
+                rebind.append(
+                    (standing.revision_no, standing.content_sha256,
+                     position_id)
+                )
+                counts["settlement_rebound"] += 1
+                continue
+        elif settlement_id is not None and truth_is_current:
+            # Right numbers, wrong key: written by the shape the re-score
+            # used before 2026-09-10, which no writer produces now.  Seven
+            # rows of the live book were in this state, and while they
+            # were, "a settlement's id is what the entry walk would write"
+            # was not something the book could be held to.  Rewritten
+            # once, then never again.
+            counts["settlement_rekeyed"] += 1
         write.append((
-            "paper-set-" + content_sha256(
-                {**identity, "truth": standing.tmax_c}
-            )[:24],
+            rebuilt_id,
             position_id, station_id, event_date, stage,
             standing.tmax_c, scored.settled_bucket, scored.hit,
             scored.intended_hit,
@@ -10821,14 +10884,14 @@ def backfill(
                 continue
             pending_settlements.append(
                 (
-                    "paper-set-" + content_sha256({
-                        "station_id": station_id,
-                        "event_date": event_date,
-                        "chain_opened_at": chain_opened_at,
-                        "window": chain_window,
-                        "stake_usdc": round(chain_stake, 6),
-                        "truth": standing.tmax_c,
-                    })[:24],
+                    _settlement_identity_id(
+                        station_id=station_id,
+                        event_date=event_date,
+                        chain_opened_at=chain_opened_at,
+                        window=chain_window,
+                        stake_usdc=chain_stake,
+                        truth_c=standing.tmax_c,
+                    ),
                     chain_position_id, station_id, event_date,
                     # The stage that last added to the position.  A chain is
                     # one bet, so this says how far it had been adjusted when

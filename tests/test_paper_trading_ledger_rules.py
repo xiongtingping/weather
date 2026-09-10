@@ -87,6 +87,48 @@ def test_the_ledger_carries_productions_structural_rules() -> None:
     )
 
 
+def _entry_book(conn, station: str, day: str, stage: str, at: str):
+    """The book the entry cycle actually saw, keyed by bucket.
+
+    Returns ``{bucket: (probability, ask, bid)}`` or None when the cycle
+    cannot be replayed.  The recorded position carries ``prices_json``,
+    and that column holds the best ASK only -- so the row cannot answer
+    the leg-floor rule, which charter 103 measures on the MID.  Reading
+    the ask as if it were the reference is how KDAL 2026-09-09 came to
+    read as a violation: 102-103F asked 0.03 against a 0.03 floor, and
+    the mid it is actually judged on was 0.025 (bid 0.02).
+
+    Replay is cheap here because only the seats narrower than the floor
+    need it -- eleven rows of a hundred and sixty-two on 2026-09-10.
+    """
+
+    from paper_trading_ledger import (  # noqa: PLC0415
+        _build_snapshot,
+        _stage_entry_candidates,
+    )
+
+    for payload in _stage_entry_candidates(conn, str(station), str(day),
+                                           str(stage)):
+        if str(payload["decision_at_utc"]) != str(at):
+            continue
+        built = _build_snapshot(
+            station_id=str(station), event_date=str(day),
+            observed_at=payload["observed_at"],
+            buckets=payload["buckets"], quotes=payload["quotes"],
+        )
+        if built is None:
+            return None
+        snapshot = built[0]
+        book = {}
+        for row in snapshot.buckets:
+            levels = list(row.ask_levels or ())
+            ask = float(levels[0].price) if levels else None
+            bid = None if row.bid_price is None else float(row.bid_price)
+            book[str(row.bucket)] = (float(row.probability), ask, bid)
+        return book
+    return None
+
+
 def test_recorded_seats_obey_the_ladder_bounds() -> None:
     """Whatever is in the book now must satisfy the rules now.
 
@@ -110,7 +152,12 @@ def test_recorded_seats_obey_the_ladder_bounds() -> None:
     from bayes_basket_target.delta_v2_runtime import (  # noqa: PLC0415
         MINIMUM_LEG_ALL_IN_ASK,
     )
-    from paper_trading_ledger import FEE_RATE  # noqa: PLC0415
+    # Charter 103's shared read point, never the bare constant.  The floor
+    # has not been a flat 0.03 since charter 91 (2026-09-06) -- it scales
+    # with our belief in the rung -- and it is measured on the mid, not the
+    # ask.  This test compared the recorded ask to the flat constant and
+    # therefore audited a rule that had been retired for three days.
+    from paper_trading_ledger import leg_below_floor  # noqa: PLC0415
 
     db = (
         Path(__file__).resolve().parents[1]
@@ -136,7 +183,7 @@ def test_recorded_seats_obey_the_ladder_bounds() -> None:
             "SELECT station_id, event_date, stage,"
             " CASE WHEN posted_buckets_json IN ('', NULL)"
             "  THEN window_buckets_json ELSE posted_buckets_json END,"
-            " probabilities_json, prices_json"
+            " probabilities_json, prices_json, decision_at_utc"
             " FROM paper_trade_position"
             " WHERE selection_rule_sha256 = ("
             "  SELECT selection_rule_sha256 FROM paper_trade_position"
@@ -146,9 +193,8 @@ def test_recorded_seats_obey_the_ladder_bounds() -> None:
             "   THEN window_buckets_json ELSE posted_buckets_json END) < 3"
         ).fetchall()
     except sqlite3.DatabaseError:
-        return
-    finally:
         conn.close()
+        return
     # P1 converges: the ladder walks down to two rungs as the day resolves,
     # and further still once the hard bound leaves one live outcome (user
     # ruling, 2026-08-16).  The opening stages keep the three-rung floor.
@@ -170,31 +216,47 @@ def test_recorded_seats_obey_the_ladder_bounds() -> None:
         # cannot ask for more rungs than the day still has
         # (``policy_min = max(1, min(stage_min, max_size, len(admitted)))``
         # in ``_support_windows``).  Every bucket outside such a seat must
-        # be dead -- zero recorded probability, or quoted under the leg
-        # floor (KLAX 2026-08-23: one live outcome at 0.997, the rest
-        # offered at 0.001-0.008 under the 0.03 floor).
+        # be dead -- zero recorded probability, or under its own leg floor
+        # (KLAX 2026-08-23: one live outcome at 0.997, the rest offered at
+        # 0.001-0.008).
+        #
+        # "Under its floor" is the kernel's question, asked of the kernel.
+        # It needs the book: the floor scales with the belief in the rung
+        # and is read off the mid, and the recorded row keeps only the ask.
+        # So the cycle is replayed for these rows -- eleven of a hundred
+        # and sixty-two -- rather than judged on a column that cannot
+        # answer.  A row whose cycle no longer replays is counted, not
+        # assumed either way.
         checked = 0
-        for st, day, row_stage, posted_js, probs_js, prices_js in narrow:
+        unreplayable = []
+        for (st, day, row_stage, posted_js, probs_js, _prices_js,
+             at) in narrow:
             if str(row_stage) != str(stage):
                 continue
-            checked += 1
             posted = set(json.loads(posted_js))
             probs = json.loads(probs_js or "{}")
-            prices = json.loads(prices_js or "{}")
+            book = _entry_book(conn, st, day, row_stage, at)
+            if book is None:
+                unreplayable.append(f"{st} {day} {row_stage}")
+                continue
+            checked += 1
             for bucket, prob in probs.items():
                 if bucket in posted or float(prob) <= 1e-6:
                     continue
-                quote = prices.get(bucket)
-                assert quote is not None and (
-                    float(quote) * (1.0 + FEE_RATE)
-                    < MINIMUM_LEG_ALL_IN_ASK
+                quoted = book.get(str(bucket))
+                ask, bid = (None, None) if quoted is None else quoted[1:]
+                assert leg_below_floor(
+                    ask, float(prob), MINIMUM_LEG_ALL_IN_ASK, bid=bid
                 ), (
                     f"{st} {day} {row_stage}: seat narrower than the floor"
-                    f" while {bucket} was live at p={prob} quote={quote}"
+                    f" while {bucket} was live at p={prob}"
+                    f" ask={ask} bid={bid}"
                 )
-        assert checked, (
+        assert checked or not unreplayable, (
             f"{count} {stage} seats at {size} buckets, none re-checkable"
+            f" ({', '.join(unreplayable)} would not replay)"
         )
+    conn.close()
 
 
 def test_only_credible_fills_bankroll_the_book() -> None:
@@ -1055,6 +1117,7 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
         _build_snapshot,
         _entry_support_core,
         _stage_entry_candidates,
+        leg_below_floor,
     )
 
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
@@ -1117,26 +1180,54 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
                 # Legal only under the floor's own clamp: the floor cannot
                 # ask for more rungs than the day still has.  Every bucket
                 # outside the seat must be dead -- no recorded probability,
-                # or quoted under the leg floor.
+                # or under its own leg floor.
+                #
+                # Asked of the kernel, off the book the cycle saw.  The
+                # floor scales with the belief in the rung (charter 91) and
+                # is measured on the mid (charter 103); ``prices_json``
+                # keeps the ask alone, so the row cannot answer and the
+                # cycle is replayed.  Comparing that ask to the flat
+                # constant is what made KDAL 2026-09-09 read as a
+                # violation -- 102-103F asked exactly the 0.03 the retired
+                # rule wanted, on a mid of 0.025 that the live rule
+                # correctly refused.
+                book = _entry_book(conn, st, day, stage, at)
                 for bucket, prob in probs.items():
                     if str(bucket) in {str(b) for b in posted}:
                         continue
                     if float(prob) <= 1e-6:
                         continue
-                    quote = prices.get(str(bucket))
-                    assert quote is not None and (
-                        float(quote) * (1.0 + FEE_RATE)
-                        < MINIMUM_LEG_ALL_IN_ASK
+                    if book is None:
+                        # No replayable cycle: not judgeable, and guessing
+                        # from the ask alone is the defect above.
+                        continue
+                    quoted = book.get(str(bucket))
+                    ask, bid = (None, None) if quoted is None else quoted[1:]
+                    assert leg_below_floor(
+                        ask, float(prob), MINIMUM_LEG_ALL_IN_ASK, bid=bid
                     ), (
                         f"{scope}: width {len(posted)} under the floor while"
-                        f" {bucket} was live at p={prob} quote={quote}"
+                        f" {bucket} was live at p={prob}"
+                        f" ask={ask} bid={bid}"
                     )
+            # And the seated legs, from the ask alone -- deliberately.
+            # The mid is at most the ask, so a rung whose ASK is already
+            # under its floor is under it on any basis: this catches every
+            # real violation and cannot invent one, which is what a
+            # ``>= 0.03`` comparison would do the first time charter 91
+            # relaxes the floor for a high-belief rung (ZGSZ 2026-09-06:
+            # 2.3 cents admitted against a 61.5% claim).
             for bucket in posted:
                 quote = prices.get(str(bucket))
-                if quote is not None:
-                    assert float(quote) >= MINIMUM_LEG_ALL_IN_ASK - 1e-9, (
-                        f"{scope}: leg {bucket} quoted {quote} under floor"
-                    )
+                if quote is None:
+                    continue
+                claim = float(probs.get(str(bucket)) or 0.0)
+                assert not leg_below_floor(
+                    float(quote), claim, MINIMUM_LEG_ALL_IN_ASK
+                ), (
+                    f"{scope}: leg {bucket} asked {quote} under its own"
+                    f" floor at p={claim}"
+                )
             # Opening means the chain was empty, not that this window's
             # own rungs were.  ``held_before_json`` records only the legs
             # of THIS seat that the chain already held, so a later stage

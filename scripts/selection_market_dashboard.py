@@ -432,6 +432,22 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             "chain_all_in_cost": (
                 float(r[28]) if r[28] is not None else cost
             ),
+            # The dust rule at the grain a POSITION is held at.  Chains are
+            # topped up, so the last stage that touched one can be a
+            # third-of-a-cent add-on to a basket that cost thirty-five
+            # cents -- and the flag above, which is that stage's own price,
+            # then drops the whole chain from every chain-level total.
+            # Measured 2026-09-10: three such chains (VILK 08-25, VILK
+            # 09-08, ZSQD 09-08) carried 15.07 USDC of stake and -10.06 of
+            # P&L, so the daily table and the coverage strip reported the
+            # book at -84.77 while the portfolio card, which reads the
+            # settlement table directly, reported -95.08.  Same floor, same
+            # intent -- the ledger's own ``chain_credible`` -- read off the
+            # chain's price instead of the last leg's.
+            "chain_dust_offer": (
+                (float(r[28]) if r[28] is not None else cost)
+                < DUST_COST_FLOOR
+            ),
             "chain_shares": {
                 str(bucket): float(value)
                 for bucket, value in (
@@ -462,6 +478,23 @@ def _rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
 
 
 
+def _odds_from_mean_cost(costs: Sequence[float | None]) -> float | None:
+    """Net odds implied by an average ticket price, never the mean of odds.
+
+    ``(1-c)/c`` is convex: the mean of it is set by whichever basket was
+    cheapest, not by the money at stake.  Measured over this book on
+    2026-09-10 the per-row mean was 14.7x while the money actually bought
+    1.53x, and a single day's row printed 32.8x.  Average the price, then
+    invert once.
+    """
+
+    priced = [float(c) for c in costs if c is not None and float(c) > 0]
+    if not priced:
+        return None
+    mean = sum(priced) / len(priced)
+    return (1.0 - mean) / mean if mean > 0 else None
+
+
 def _basket_hit_by_size(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     """Did the truth land inside the basket, by how many rungs it had.
 
@@ -477,7 +510,13 @@ def _basket_hit_by_size(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         " SUM(s.pnl_usdc)"
         " FROM paper_trade_settlement s"
         " JOIN paper_trade_position p USING(position_id)"
-        " WHERE p.all_in_cost>=?"
+        # The chain's price gates the row, not the tail stage's.  The
+        # width still comes from the stage -- that is what this table
+        # groups by, on purpose -- but the floor is about whether the
+        # basket was buyable, and the basket is the chain: three chains
+        # topped up by a third-of-a-cent leg were being dropped here for
+        # baskets that cost 24, 35 and 46 cents (2026-09-10).
+        " WHERE COALESCE(s.basket_all_in_cost, p.all_in_cost)>=?"
         " GROUP BY p.window_size ORDER BY p.window_size",
         (DUST_COST_FLOOR,),
     ):
@@ -1495,7 +1534,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         staked = sum(r["chain_stake_usdc"] for r in settled)
         pnl = sum(float(r["pnl_usdc"] or 0.0) for r in settled)
         claimed = sum(r["win_probability"] for r in settled) / len(settled)
-        odds = [r["odds"] for r in settled if r["odds"] is not None]
         return {
             "position_count": len(subset),
             "settled_count": len(settled),
@@ -1505,7 +1543,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
             "calibration_ratio": (
                 (hits / len(settled)) / claimed if claimed > 0 else None
             ),
-            "odds_mean": sum(odds) / len(odds) if odds else None,
+            "odds_mean": _odds_from_mean_cost(
+                [r["all_in_cost"] for r in settled]
+            ),
             "staked_usdc": staked,
             "pnl_usdc": pnl,
             "return_on_stake": pnl / staked if staked > 0 else None,
@@ -1866,8 +1906,15 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         clean = [v for v in values if v is not None]
         return sum(clean) / len(clean) if clean else None
 
+    # Stage-grained means keep the stage rule above -- a third-of-a-cent
+    # leg really does have an EV per USDC in the hundreds and would set
+    # every average by itself.  The chain-grained account does not: what
+    # was held, staked and settled is the chain, so it follows the chain's
+    # own price.  Reading both off the stage flag is what made the two P&L
+    # totals on this page disagree by 10.06 USDC.
     settled_credible = [
-        r for r in credible_rows if r["settled"] and r["chain_tail"]
+        r for r in rows
+        if r["settled"] and r["chain_tail"] and not r["chain_dust_offer"]
     ]
     expected_usdc = sum(
         float(r["ev_usdc"] or 0.0) for r in settled_credible
@@ -1952,7 +1999,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
                 [r["seat_ask_total"] for r in subset]
             ),
             "ev_per_usdc_mean": _mean([r["ev_per_usdc"] for r in subset]),
-            "odds_mean": _mean([r["odds"] for r in subset]),
+            "odds_mean": _odds_from_mean_cost(
+                [r["all_in_cost"] for r in subset]
+            ),
             "sides": {
                 side: sum(1 for r in subset if r["side"] == side)
                 for side in ("above", "aligned", "below")

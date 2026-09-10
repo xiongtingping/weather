@@ -45,7 +45,10 @@ if str(ROOT) not in sys.path:
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from paper_trading_ledger import INITIAL_CAPITAL_USDC  # noqa: E402
+from paper_trading_ledger import (  # noqa: E402
+    DUST_COST_FLOOR,
+    INITIAL_CAPITAL_USDC,
+)
 from selection_market_dashboard import (  # noqa: E402
     STATION_LABELS,
     STATS_START_EVENT_DATE,
@@ -101,6 +104,24 @@ LEAD_LABELS = (
     ("h24_48", "24–48 小时"),
     ("h48_plus", "48 小时以上"),
 )
+
+
+def _odds_from_mean_cost(costs: list[float]) -> float | None:
+    """Net odds implied by an average ticket price.
+
+    Never the average of each ticket's own ``(1-c)/c``.  That function is
+    convex, so the mean of it is dominated by whichever basket was
+    cheapest rather than by the money at stake: over this book on
+    2026-09-10 the per-row mean was 14.7x and the money bought 1.53x, and
+    one day's row printed 32.8x.  Averaging the price first and inverting
+    once gives the odds a reader can multiply their stake by.
+    """
+
+    priced = [c for c in costs if c and c > 0]
+    if not priced:
+        return None
+    mean = sum(priced) / len(priced)
+    return (1.0 - mean) / mean if mean > 0 else None
 
 
 def _connect(db: Path) -> sqlite3.Connection:
@@ -231,11 +252,164 @@ def _nwp_rotation_health(status: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+# A capture lane that has produced NOTHING is a different failure from a
+# family that is behind, and until 2026-09-10 the page could only show the
+# second.  Measured that day: ECCC's newest run read 32.6h old and the card
+# said "one family is late" -- but the lane had written no archive for ANY
+# family between 09-09T15:23Z and 09-10T02:09Z, ten hours and forty-six
+# minutes in which nothing was asked.  Family age cannot say that: each
+# family's own cadence absorbs it (ECMWF looked fine at 8.6h because its
+# next run had since landed), and the one number that says it out loud is
+# how long since the lane last landed ANYTHING.
+#
+# Against the P0 freshness window, not an invented threshold: a lane idle
+# for longer than that window has, by then, let every packet it holds
+# expire.  Half the window is the point where the next lap has to start.
+NATIVE_CAPTURE_IDLE_STALLED_HOURS = 3.0
+NATIVE_CAPTURE_IDLE_STOPPED_HOURS = 6.0
+
+
+def _official_native_family_coverage(
+    status: Mapping[str, Any],
+) -> dict[str, Any]:
+    """How many of the four families each serving packet actually carries.
+
+    Counted off the inbox the compiler reads, not off the member ledger and
+    not off the worker's receipt.  The ledger answers a different question
+    (when did this family last land anything, anywhere) and absorbs a
+    shortfall inside each family's own cadence; the receipt is published
+    from inside a poll whose shape varies -- ``official_native_capture``
+    is present on a per-scope poll and absent on a rotation-level one -- so
+    a page rendered on the wrong poll would show nothing and read as fine.
+    The inbox is a file, it outlives every process, and it is the thing P0
+    is actually served from.
+
+    This is the number that was missing on 2026-09-10.  The strip said
+    "3/4 families arriving, oldest ECCC 32.6h" while the 2026-09-12 packets
+    -- 37 of them, the ones a D+2 decision would read -- carried exactly
+    two families, and nothing on the page said so.  The worker had recorded
+    who held on every pass since ``families_held_on_earlier_run`` was
+    written; no consumer had ever read it.
+
+    Reported, not judged.  A family whose own run for a lead has not been
+    issued yet is holding for the right reason -- 2026-09-10T08:41Z, ECCC
+    held ``eccc_geps_archive_scope_invalid`` on a 12Z run the clock had not
+    reached -- and a D+2 date legitimately runs short of families for most
+    of the day.  Colouring the strip on that would light it every morning,
+    and a light that is always on is not a light.
+    """
+
+    try:
+        inbox = json.loads(NATIVE_FORWARD_INBOX.read_text())
+    except (OSError, ValueError):
+        return {}
+    packets = inbox.get("packets") if isinstance(inbox, Mapping) else None
+    if not isinstance(packets, list) or not packets:
+        return {}
+    by_system = {
+        system_id: label for system_id, label, _t, _b in MEMBER_FAMILIES
+    }
+    per_date: dict[str, dict[str, Any]] = {}
+    for packet in packets:
+        if not isinstance(packet, Mapping):
+            continue
+        event_date = str(packet.get("event_date") or "")
+        if not event_date:
+            continue
+        row = per_date.setdefault(event_date, {
+            "event_date": event_date,
+            "packets": 0,
+            "families": set(),
+            "newest_received_utc": "",
+        })
+        row["packets"] += 1
+        for system in packet.get("systems") or []:
+            system_id = str(
+                system.get("ensemble_system_id")
+                if isinstance(system, Mapping) else system
+            )
+            # The four ensemble families only.  TAF rides the same packet
+            # and is a different kind of evidence; counting it would make
+            # a two-family packet read as three.
+            if system_id in by_system:
+                row["families"].add(by_system[system_id])
+        received = str(packet.get("received_at_utc") or "")
+        if received > row["newest_received_utc"]:
+            row["newest_received_utc"] = received
+    expected = [label for _s, label, _t, _b in MEMBER_FAMILIES]
+    rows = []
+    for event_date in sorted(per_date):
+        row = per_date[event_date]
+        present = row["families"]
+        rows.append({
+            "event_date": event_date,
+            "packets": row["packets"],
+            "family_count": len(present),
+            "expected_family_count": len(expected),
+            "families": [label for label in expected if label in present],
+            "absent": [label for label in expected if label not in present],
+            "newest_received_utc": row["newest_received_utc"],
+            "received_age_hours": _age_hours(row["newest_received_utc"]),
+        })
+    # Why the shortest packet is short, when the worker's receipt happens to
+    # be the shape that carries it.  Enrichment only: the counts above stand
+    # without it, which is the point of counting them off the file.
+    prefetch = status.get("forecast_prefetch")
+    prefetch = prefetch if isinstance(prefetch, Mapping) else {}
+    capture = prefetch.get("resident_nwp_capture")
+    capture = capture if isinstance(capture, Mapping) else {}
+    official = capture.get("official_native_capture")
+    official = official if isinstance(official, Mapping) else {}
+    last = official.get("last_completed")
+    last = last if isinstance(last, Mapping) else {}
+    held_raw = last.get("families_held_on_earlier_run")
+    held_raw = held_raw if isinstance(held_raw, Mapping) else {}
+    by_transport = {
+        transport: label for _s, label, transport, _b in MEMBER_FAMILIES
+    }
+    held = [
+        {
+            "label": by_transport.get(str(name), str(name)),
+            # The first line is the exception class and its message; the
+            # rest is a stack of URL.  The class is what separates "not
+            # issued yet" from "the fetch failed", which is the question.
+            "reason": str(value).split("\n", 1)[0][:120],
+        }
+        for name, value in sorted(held_raw.items())
+    ]
+    # The light, and the one rule it follows.  A D+2 date legitimately runs
+    # short for most of its first day -- ECCC's 12Z and ICON's own run land
+    # in the evening -- so lighting on the farthest date would light every
+    # morning.  A date at D+1 or nearer is past every family's publication
+    # hour, and short there means short.  Every date's count is printed
+    # either way; only the colour is restricted.
+    near_floor = (_now() + timedelta(days=1)).strftime("%Y-%m-%d")
+    near_short = [
+        row for row in rows
+        if row["event_date"] <= near_floor
+        and row["family_count"] < row["expected_family_count"]
+    ]
+    return {
+        "native_inbox_coverage": rows,
+        "native_inbox_health": "amber" if near_short else "green",
+        "native_inbox_short_near_dates": [
+            row["event_date"] for row in near_short
+        ],
+        "native_inbox_near_floor": near_floor,
+        "native_inbox_held_event_date": str(last.get("event_date") or ""),
+        "native_inbox_held_families": held,
+    }
+
+
 # A TAF round lands every 19 to 33 minutes when the lane is healthy -- the
 # rotation module's own measurement, after the writers were serialised.  Two
 # missed rounds is a lane worth naming; four is a lane that has stopped.
 TAF_ROUND_OVERDUE_SEC = 66.0 * 60.0
 TAF_ROUND_STOPPED_SEC = 132.0 * 60.0
+NATIVE_FORWARD_INBOX = (
+    ROOT / "data" / "runtime" / "bayes_basket_target_nwp"
+    / "official_native_ensemble_forward_inbox.json"
+)
 TAF_ROTATION_STATE = (
     ROOT / "data" / "runtime" / "bayes_basket_target_nwp"
     / "taf_rotation_state.json"
@@ -310,33 +484,68 @@ def _taf_capture_health(status: Mapping[str, Any]) -> dict[str, Any]:
         return _taf_rotation_staleness()
     scopes = int(freshness.get("scope_count") or 0)
     stale = int(freshness.get("stale_scope_count") or 0)
+    never = int(freshness.get("never_captured_count") or 0)
     after = float(freshness.get("stale_after_hours") or 3.0)
     worst = [
         item for item in (freshness.get("worst_scopes") or [])
         if isinstance(item, Mapping)
     ]
-    share = stale / scopes if scopes else 0.0
-    # A third of the fleet quiet past an issuing cycle is a supply problem,
-    # not a slow lap.  Two thirds is the lane having stopped.
+    # Two populations, and the card used to merge them into one sentence.
+    # "Stale" is a scope that had bulletins and stopped getting them.
+    # "Never captured" is a scope with no age at all -- and most of those
+    # are simply a future day that has entered the catalogue, which has
+    # never been captured by definition.  Merged, the line said
+    # "88/111 個 scope 超過 3 小時沒有新報文（中位 0.5h，最久 1.1h）" on
+    # 2026-09-10: a sentence contradicted by its own parentheses, red at
+    # 88/111, while the number of scopes that had actually gone three hours
+    # without a bulletin was zero.
+    measured = freshness.get("measured_scope_count")
+    measured = (
+        int(measured) if measured is not None else max(0, scopes - never)
+    )
+    never_by_date = freshness.get("never_captured_by_event_date")
+    never_by_date = never_by_date if isinstance(never_by_date, Mapping) else {}
+    scopes_by_date = freshness.get("scope_count_by_event_date")
+    scopes_by_date = (
+        scopes_by_date if isinstance(scopes_by_date, Mapping) else {}
+    )
+    # The nearest event date in the catalogue is the day being traded now.
+    # Its scopes having no bulletin at all is a supply fact; a later day's
+    # is a day that has only just entered.
+    nearest = min(scopes_by_date) if scopes_by_date else ""
+    blind_near = int(never_by_date.get(nearest) or 0)
+    near_total = int(scopes_by_date.get(nearest) or 0)
+    stale_share = stale / measured if measured else 0.0
+    blind_share = blind_near / near_total if near_total else 0.0
+    # A third of the population quiet past an issuing cycle is a supply
+    # problem, not a slow lap.  Two thirds is the lane having stopped.
+    share = max(stale_share, blind_share)
     health = "red" if share >= 0.66 else "amber" if share >= 0.34 else "green"
-    note = f"{stale}/{scopes} 个 scope 超过 {after:.0f} 小时没有新报文"
+    note = f"{measured} 个 scope 有过报文，其中 {stale} 个超过 {after:.0f} 小时没有新的"
     if freshness.get("median_age_hours") is not None:
         note += f"（中位 {float(freshness['median_age_hours']):.1f}h"
         if freshness.get("max_age_hours") is not None:
             note += f"，最久 {float(freshness['max_age_hours']):.1f}h"
         note += "）"
-    if worst:
+    if stale and worst:
         note += "：" + "、".join(
             f"{item.get('scope')} {float(item.get('age_hours') or 0):.1f}h"
             for item in worst[:3]
         )
-    never = int(freshness.get("never_captured_count") or 0)
-    if never:
-        note += f"；{never} 个从未收到过"
+    if near_total:
+        note += (
+            f"；{nearest} 这一天 {near_total} 个 scope 里 "
+            f"{blind_near} 个从未收到过报文"
+        )
+    later_blind = never - blind_near
+    if later_blind > 0:
+        note += f"；另有 {later_blind} 个未来日期的 scope 从未收到过（新入目录）"
     return {
         "taf_capture_health": health,
         "taf_capture_note": note,
         "taf_capture_stale_scope_count": stale,
+        "taf_capture_measured_scope_count": measured,
+        "taf_capture_never_captured_count": never,
         "taf_capture_scope_count": scopes,
     }
 
@@ -5427,7 +5636,14 @@ def _daily_table(
     )
     by_day: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in selection.get("rows") or []:
-        if row.get("dust_offer"):
+        # The chain's price, not the last stage's.  This table is
+        # chain-grained -- one settlement, one stake, one P&L per
+        # station-day -- and a chain topped up by a third-of-a-cent leg is
+        # not a third-of-a-cent basket.  Filtering on the stage flag
+        # dropped three credible chains carrying 15.07 USDC and -10.06 of
+        # P&L, which is why this table totalled -84.77 while the portfolio
+        # card totalled -95.08 off the same book (2026-09-10).
+        if row.get("chain_dust_offer", row.get("dust_offer")):
             continue
         by_day[str(row["event_date"])].append(row)
     table = []
@@ -5457,7 +5673,23 @@ def _daily_table(
         # forms from these two columns is only meaningful once the day has
         # settled; the settled-only stake is kept for that.
         settled_staked = sum(float(r["chain_stake_usdc"]) for r in settled)
-        odds = [r["odds"] for r in settled if r.get("odds") is not None]
+        # Odds from the day's average ticket price, not the average of
+        # each ticket's own odds.  (1-c)/c is convex, so averaging it
+        # rewards the cheapest basket of the day out of all proportion to
+        # the money in it: measured 2026-09-10 the per-row mean over the
+        # whole book was 14.7x -- one day printed 32.8x -- against a book
+        # whose money actually bought 1.53x.  Same set of rows, same cost
+        # column; only the order of the average and the inversion changed.
+        # And the price the odds come from is the chain's too: the tail
+        # row is whichever stage last topped the position up, so reading
+        # its own ``all_in_cost`` priced 2026-08-25 at 3.5 cents -- one
+        # 0.3-cent P1 add-on beside one real basket -- and printed 27.17x
+        # for a day that bought 0.35-cent-dollar baskets.
+        costs = [
+            float(r["chain_all_in_cost"]) for r in settled
+            if r.get("chain_all_in_cost") is not None
+            and float(r["chain_all_in_cost"]) > 0
+        ]
         claimed = (
             sum(float(r["win_probability"]) for r in settled) / len(settled)
             if settled else None
@@ -5600,7 +5832,7 @@ def _daily_table(
                 (hits / len(settled)) / claimed
                 if settled and claimed else None
             ),
-            "odds_mean": sum(odds) / len(odds) if odds else None,
+            "odds_mean": _odds_from_mean_cost(costs),
             "staked_usdc": staked,
             "settled_staked_usdc": settled_staked,
             "pnl_usdc": pnl,
@@ -6022,6 +6254,262 @@ def collect_risk_metrics(conn: sqlite3.Connection) -> dict[str, Any]:
             None if total_ss <= 0 else max(0.0, 1.0 - residual / total_ss)
         ),
         "series": series,
+    }
+
+
+# The three ways to average the same nine numbers.  Published together
+# because they are three different questions and the book answers them
+# differently enough that any one alone reads as the finding: on 2026-09-10
+# the claim was 50.5% per chain, 63.5% per USDC and 49.8% per share.
+#
+# The share column is the one that closes.  Weighting each chain by the
+# basket shares it bought makes cost-per-share equal total-money over
+# total-shares and realised-EV-per-share equal total-PnL over total-shares,
+# so their ratio IS the book's realised return -- the column cannot drift
+# from the equity curve without one of them being wrong.
+_ENTRY_WEIGHTINGS = (
+    ("chain", "逐链等权",
+     "每条已结算的链一票 · 「平均一条链长什么样」"),
+    ("stake", "按投入加权",
+     "每条链按当天投进去的钱加权 · 「钱身上发生了什么」"),
+    ("share", "按股 · 整本账",
+     "每条链按买到的篮子股数加权 · 这一列自洽："
+     "每股期望 ÷ 每股成本 就是整本账的收益率"),
+)
+
+
+def _entry_economics_block(
+    rows: list[tuple[Any, ...]],
+) -> dict[str, Any] | None:
+    """The nine numbers under all three weightings, for one set of chains.
+
+    ``rows`` are settlement rows: stage, claim, hit, intended_hit, cost,
+    stake, pnl, event_date.  A row with no recorded basket cost has no
+    per-share anything, so it is dropped here and counted by the caller --
+    counted rather than silently skipped, because a cost column that
+    stopped being written would otherwise read as a smaller book.
+    """
+
+    # The same floor the rest of the board reads, from the module that
+    # owns it.  A basket costing under a cent is a minimum-tick offer with
+    # nothing bid against it -- the ledger itself calls those chains not
+    # credible (``chain_credible = chain_cost >= DUST_COST_FLOOR``) and
+    # every other section on the page drops them.  Keeping them here made
+    # this section the only one counting 249 chains where the daily table
+    # counts 239, and seven sub-cent misses moved the per-chain averages
+    # more than their 0.25 USDC of stake could ever justify: cost 0.428 ->
+    # 0.416, odds 1.34x -> 1.40x, and the plain per-chain odds mean from
+    # 5.9x to 14.7x.
+    priced = [
+        row for row in rows
+        if row[4] is not None and float(row[4]) >= DUST_COST_FLOOR
+    ]
+    if not priced:
+        return None
+    claim = [float(r[1]) for r in priced]
+    hit = [float(r[2]) for r in priced]
+    cost = [float(r[4]) for r in priced]
+    stake = [float(r[5]) for r in priced]
+    pnl = [float(r[6]) for r in priced]
+    # The share unit is the basket share the ledger itself prices against:
+    # stake / all-in cost, which is expected payout over claimed win
+    # probability.  For a basket whose legs hold equal quantity it is the
+    # contract count and a hit pays exactly 1.00 of it; for an uneven
+    # basket it is a normalised unit and a hit pays a little less, which
+    # the section states rather than rounding away.
+    shares = [s / c for s, c in zip(stake, cost)]
+    profit = [1.0 if p > 0 else 0.0 for p in pnl]
+    per_share_pnl = [p / q for p, q in zip(pnl, shares)]
+    claimed_edge = [q - c for q, c in zip(claim, cost)]
+
+    def under(weights: list[float]) -> dict[str, Any] | None:
+        total = sum(weights)
+        if total <= 0:
+            return None
+
+        def w(values: list[float]) -> float:
+            return sum(a * b for a, b in zip(weights, values)) / total
+
+        def w_over(keep: list[bool], values: list[float]) -> float | None:
+            picked = [
+                (a, b) for a, b, k in zip(weights, values, keep) if k
+            ]
+            mass = sum(a for a, _ in picked)
+            return (
+                sum(a * b for a, b in picked) / mass if mass > 0 else None
+            )
+
+        cost_mean = w(cost)
+        won = [p > 0 for p in pnl]
+        lost = [p < 0 for p in pnl]
+        return {
+            "claimed_coverage": w(claim),
+            "realised_coverage": w(hit),
+            "profitable_rate": w(profit),
+            # Payout is 1.00 a share, so the win rate that just pays for
+            # the basket IS the price of the basket.  Same number as the
+            # cost row below, deliberately: two labels, one quantity, and
+            # the page says so instead of letting a reader wonder whether
+            # they were computed apart and happen to agree.
+            "breakeven_hit_rate": cost_mean,
+            "cost_per_share": cost_mean,
+            "net_odds": (
+                (1.0 - cost_mean) / cost_mean if cost_mean > 0 else None
+            ),
+            "mean_win_per_share": w_over(won, per_share_pnl),
+            "mean_loss_per_share": w_over(lost, per_share_pnl),
+            "ev_per_share_claimed": w(claimed_edge),
+            "ev_per_share_realised": w(per_share_pnl),
+            "margin_over_breakeven": w(hit) - cost_mean,
+            "realisation_ratio": (
+                w(hit) / w(claim) if w(claim) > 0 else None
+            ),
+        }
+
+    ones = [1.0] * len(priced)
+    blocks = {
+        "chain": under(ones),
+        "stake": under(stake),
+        "share": under(shares),
+    }
+    wins = [p for p in pnl if p > 0]
+    losses = [p for p in pnl if p < 0]
+    naive_odds = [(1.0 - c) / c for c in cost]
+    stake_total = sum(stake)
+    hit_payout = sum(
+        p + s for p, s, won in zip(pnl, stake, hit) if won > 0
+    )
+    hit_shares = sum(q for q, won in zip(shares, hit) if won > 0)
+    return {
+        "chains": len(priced),
+        "weightings": blocks,
+        # The per-chain money figures.  "平均盈利" in USDC is what a
+        # winning chain returned, not a rate, so it has no weighted form
+        # worth printing -- the weighted table carries the per-share
+        # version of the same pair instead.
+        "mean_win_usdc": (sum(wins) / len(wins)) if wins else None,
+        "mean_loss_usdc": (sum(losses) / len(losses)) if losses else None,
+        "win_count": len(wins),
+        "loss_count": len(losses),
+        "flat_count": sum(1 for p in pnl if p == 0),
+        # A hit that did not pay, and a payer that did not hit.  Both are
+        # zero today and the section prints the pair rather than asserting
+        # "命中率就是盈利率": they come apart the moment a basket costs
+        # more than the 1.00 it can win, and a reader who has been told
+        # they are the same number would not look again.
+        "hit_not_profitable": sum(
+            1 for r, p in zip(priced, pnl) if float(r[2]) > 0 and p <= 0
+        ),
+        "profitable_not_hit": sum(
+            1 for r, p in zip(priced, pnl) if float(r[2]) <= 0 and p > 0
+        ),
+        "intended_coverage": (
+            sum(float(r[3]) for r in priced if r[3] is not None)
+            / sum(1 for r in priced if r[3] is not None)
+            if any(r[3] is not None for r in priced) else None
+        ),
+        # The average a reader would compute by hand, and why it is not on
+        # a tile: (1-c)/c is convex, and 27 chains priced under five cents
+        # drag the plain per-chain mean to 14.7x against a book whose
+        # money actually bought 1.5x.  Published WITH its own maximum so
+        # the number is visibly an artefact rather than a disagreement.
+        "net_odds_chain_naive": (
+            sum(naive_odds) / len(naive_odds) if naive_odds else None
+        ),
+        "net_odds_max": max(naive_odds) if naive_odds else None,
+        "cheap_chains": sum(1 for c in cost if c < 0.05),
+        "stake_usdc": stake_total,
+        "shares": sum(shares),
+        "pnl_usdc": sum(pnl),
+        "roi": (sum(pnl) / stake_total) if stake_total > 0 else None,
+        # What a hit actually pays for one of those shares.  Exactly 1.00
+        # when the basket's legs hold equal quantity; a little under when
+        # they do not, because the share is normalised on EXPECTED payout
+        # and the winning leg may be the smaller one.  Printed so the
+        # "每股" unit is not read as a contract it is not.
+        "hit_pays_per_share": (
+            hit_payout / hit_shares if hit_shares > 0 else None
+        ),
+    }
+
+
+def collect_entry_economics(conn: sqlite3.Connection) -> dict[str, Any]:
+    """The nine numbers one entry is made of, off the settled book.
+
+    The board already carries most of these one at a time, scattered: the
+    claim lives in the coverage section, the hit rate in the basket
+    section, the odds and the break-even rate in the portfolio tiles.
+    Read apart they answer nothing -- a 41% hit rate is a disaster against
+    a 30-cent basket and a gift against a 50-cent one -- so this section
+    puts the whole bet in one place: what the model said it covered, what
+    it actually covered, what the coverage had to be to pay for itself,
+    and what a share cost and returned.
+
+    Every number here is per SETTLED CHAIN, one chain per station-day, and
+    the coverage pair is the HELD basket both times: ``claimed_win_
+    probability`` is the served probability summed over the buckets the
+    chain ended up holding, and ``hit`` is whether the truth landed in one
+    of those.  The chosen-basket hit rate is a different set and is
+    published beside it, never in its place -- 2026-09-08 measured 60.7%
+    chosen against 39.8% held, and the twenty-point gap is legs the
+    ladder posted and the market never sold.
+    """
+
+    if not _table_exists(conn, "paper_trade_settlement"):
+        return {"available": False, "reason": "账本表还没建", "chains": 0}
+    rows = conn.execute(
+        "SELECT stage, claimed_win_probability, hit, intended_hit,"
+        " basket_all_in_cost, stake_usdc, pnl_usdc, event_date"
+        " FROM paper_trade_settlement"
+    ).fetchall()
+    if not rows:
+        # Distinguishable from a book that lost everything: the ledger is
+        # rebuilt in place (clear, then forty minutes of re-walk), and a
+        # render landing in that window used to publish a page of zeroes.
+        return {"available": False, "reason": "账本是空的（可能正在重建）",
+                "chains": 0}
+    overall = _entry_economics_block(rows)
+    if overall is None:
+        return {"available": False, "reason": "结算行里没有篮子成本",
+                "chains": len(rows)}
+    stages: list[dict[str, Any]] = []
+    for stage in ("P0", "P0-M", "P1"):
+        block = _entry_economics_block(
+            [r for r in rows if str(r[0]) == stage]
+        )
+        if block is not None:
+            stages.append({"stage": stage, **block})
+    days = sorted(str(r[7]) for r in rows)
+    return {
+        "available": True,
+        "first_day": days[0],
+        "last_day": days[-1],
+        "settled_rows": len(rows),
+        "dust_cost_floor": DUST_COST_FLOOR,
+        "cost_missing": sum(1 for r in rows if r[4] is None),
+        "dust_excluded": sum(
+            1 for r in rows
+            if r[4] is not None and float(r[4]) < DUST_COST_FLOOR
+        ),
+        "dust_excluded_stake_usdc": sum(
+            float(r[5]) for r in rows
+            if r[4] is not None and float(r[4]) < DUST_COST_FLOOR
+        ),
+        # Published so the two totals on this page can be added back
+        # together instead of read as a contradiction: the equity curve is
+        # the whole account, every USDC that moved, and this section --
+        # like the daily table and the coverage strip -- is the measurable
+        # book.  The difference is exactly this.
+        "dust_excluded_pnl_usdc": sum(
+            float(r[6]) for r in rows
+            if r[4] is not None and float(r[4]) < DUST_COST_FLOOR
+        ),
+        "weighting_labels": [
+            {"key": key, "label": label, "note": note}
+            for key, label, note in _ENTRY_WEIGHTINGS
+        ],
+        **overall,
+        "by_stage": stages,
     }
 
 
@@ -7378,6 +7866,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
                 **_production_health(status),
                 **_taf_capture_health(status),
                 **_nwp_rotation_health(status),
+                **_official_native_family_coverage(status),
             }
         except (ValueError, OSError):
             worker = {}
@@ -7439,6 +7928,25 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
               "label": "NWP 轮转",
               "note": worker.get("nwp_rotation_note") or ""}]
             if worker.get("nwp_rotation_health") not in (None, "green") else []
+        )
+        # A packet that shipped short of families.  Distinct from every row
+        # above: the rotation advanced, the lane is alive, each family is
+        # inside its own cadence, and the packets a decision reads still
+        # carry two of four.  On 2026-09-10 that was true of all 37 of the
+        # D+2 packets while this banner stayed silent.
+        + (
+            [{"health": worker["native_inbox_health"],
+              "label": "包里的家族数",
+              "note": "；".join(
+                  f"{row['event_date']} 只有 {row['family_count']}"
+                  f"/{row['expected_family_count']} 家"
+                  + (f"（缺 {'、'.join(row['absent'])}）"
+                     if row["absent"] else "")
+                  for row in (worker.get("native_inbox_coverage") or [])
+                  if row["event_date"]
+                  in (worker.get("native_inbox_short_near_dates") or [])
+              )}]
+            if worker.get("native_inbox_health") not in (None, "green") else []
         )
     )
     overall = (
@@ -7507,6 +8015,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         ),
         "risk_metrics": _cached_section(
             "risk_metrics", collect_risk_metrics, conn
+        ),
+        "entry_economics": _cached_section(
+            "entry_economics", collect_entry_economics, conn
         ),
         "regional": _cached_section(
             "regional", collect_regional_lanes, conn
@@ -7983,11 +8494,50 @@ function overview(){
   const laggard=(D.members||[]).slice().sort((a,b)=>
     (b.run_age_hours==null?1e9:b.run_age_hours)
     -(a.run_age_hours==null?1e9:a.run_age_hours))[0];
+  // How long since the lane last landed ANY family.  Each family's own age
+  // is measured against its own cadence and absorbs an idle lane -- on
+  // 2026-09-09 nothing was captured for any family between 15:23Z and
+  // 02:09Z, ten hours and forty-six minutes, and ECMWF still read healthy
+  // at 8.6h afterwards because its next run had since arrived.  The
+  // shortest capture age across the four is the one number that says the
+  // lane itself stopped asking, and it cannot be absorbed by anything.
+  const capAges=(D.members||[]).map(m=>m.latest_capture_age_hours)
+    .filter(v=>v!=null);
+  const idle=capAges.length?Math.min(...capAges):null;
   push(fresh>=total?"green":fresh>=total-1?"amber":"red",
     "模型在进来", `${fresh}/${total}`,
-    laggard?`最旧一家 ${h(laggard.label)} · ${
-      hours(laggard.run_age_hours)}的 run`:"没有成员族",
-    "「模型数据到货」：四家集合预报的到货情况");
+    (laggard?`最旧一家 ${h(laggard.label)} · ${
+      hours(laggard.run_age_hours)}的 run`:"没有成员族")
+      +(idle==null?"":` · 车道 ${hours(idle)}前最后落一家`),
+    "「模型数据到货」：四家集合预报的到货情况。"
+    +"「车道…前最后落一家」是采集器上一次成功落任何一家的时间 —— "
+    +"每家自己的年龄按各自节奏算，会把「整条车道停了」这件事吸收掉，这个数不会");
+
+  // 1b. What the packets a decision actually reads are carrying.  The card
+  // above counts each family against its OWN cadence, which absorbs a
+  // shortfall: on 2026-09-10 it read 3/4 with ECCC 32.6h late, while the
+  // 2026-09-12 packets -- the 37 a D+2 decision reads -- carried exactly two
+  // families, and nothing on this page said so.  Counted off the serving
+  // inbox, so it is what P0 gets rather than what any lane reports.
+  const COV=(W.native_inbox_coverage||[]);
+  const near=COV[0];
+  const held=(W.native_inbox_held_families||[]);
+  push(W.native_inbox_health||"muted",
+    "包里有几家",
+    near?`${near.family_count}/${near.expected_family_count}`:"—",
+    COV.length
+      ? COV.map(c=>`${h(c.event_date.slice(5))} ${c.family_count}/${
+          c.expected_family_count}`+(c.absent.length
+            ? `（缺 ${c.absent.map(h).join("、")}）` : "")).join(" · ")
+      : "服务清单读不到",
+    "「服务清单」里每个事件日的包实际带了几家模型 —— 决策真正读到的那份。"
+    +"上面那张按各家自己的节奏算到货，一份只有两家的包在那里看不出来。"
+    +"最远那天（D+2）白天本来就会短（ECCC 的 12Z、ICON 的自有轮次都在傍晚才发），"
+    +"所以只有 D+1 及更近的日子短了才点黄。"
+    +(held.length
+      ? "　上一轮采集有家没跟上：" + held.map(x=>
+          `${h(x.label)}（${h(x.reason)}）`).join("；")
+      : ""));
 
   // 2. Is anything blocking the chain right now.
   const blocking=(D.gaps||[]).filter(g=>g.severity==="high").length;
@@ -9568,6 +10118,203 @@ function consolidation(){
 }
 
 
+// The whole bet, in one place (user ruling, 2026-09-10).  Every one of
+// these nine numbers was already on the page and none of them was next to
+// the number that gives it a meaning: the claim sat in the coverage
+// section, the hit rate in the basket section, the odds and the break-even
+// rate five thousand pixels down in the portfolio tiles, and cost per
+// share was nowhere at all.  "41% 命中" is a disaster against a 30-cent
+// basket and a gift against a 50-cent one, and the page could not say
+// which without three scrolls.
+function entryEconomics(){
+  const E = D.entry_economics || {};
+  if(!E.available) return `<h2>入场的九个数：这一注长什么样</h2>
+    <div class="card"><span class="dot amber"></span>
+    ${h(E.reason||"账本还读不出来")}。</div>`;
+  const W = E.weightings || {};
+  const C = W.chain||{}, K = W.stake||{}, S = W.share||{};
+  const mag=(v,d=1)=>v==null?"—":(100*v).toFixed(d)+"%";
+  const sig=(v,d=1)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(d)+"%");
+  // The gap between two rates is measured in POINTS, not per cent.  Both
+  // are printed on this page and they differ by two orders of magnitude:
+  // 41.4% realised against a 41.6% break-even is a gap of 0.3 points, and
+  // "-0.3%" reads as a gap of one part in three hundred.
+  const pp=(v,d=1)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(d)+" 个百分点");
+  // The same unit without a sign, for the sentences that already carry
+  // the direction in words -- "比保本线还低 +0.3 个百分点" says it twice
+  // and disagrees with itself the second time.
+  const ppm=(v,d=1)=>v==null?"—":Math.abs(100*v).toFixed(d)+" 个百分点";
+  // Cents of a one-dollar payout.  Per-share money on this book runs from
+  // three cents to ninety-nine, and printing it as "0.089" put the two
+  // numbers a reader most needs to compare -- claimed edge and realised
+  // edge -- three decimal places apart from everything else on the page.
+  const cent=(v,d=1)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(d)+"¢");
+  const num=(v,d=2)=>v==null?"—":v.toFixed(d);
+  const usd=(v,d=2)=>v==null?"—":((v>=0?"+":"")+v.toFixed(d)+" U");
+  const tile=(label,value,note,klass)=>`<div class="card">
+    <div class="muted">${label}</div>
+    <div class="big ${klass||""}">${value}</div>
+    <div class="muted" style="font-size:11.5px">${note}</div></div>`;
+  const paysOne = E.hit_pays_per_share;
+  const covered = C.realised_coverage!=null && C.breakeven_hit_rate!=null
+    ? (C.realised_coverage>=C.breakeven_hit_rate?"up":"down") : "";
+  const tiles = `<div class="grid g3">
+    ${tile("① 入场服务概率 · 平均声称覆盖率", mag(C.claimed_coverage),
+      "下单那一刻，服务分布落在<b>买到的那几个桶</b>上的概率之和 · "+
+      "按投入加权 "+mag(K.claimed_coverage))}
+    ${tile("② 实际覆盖率", mag(C.realised_coverage),
+      "真值落进<b>同一批桶</b>的比例 · 实际÷声称 "+
+      num(C.realisation_ratio,2)+"× · 若按<b>选中</b>（含挂了没买到的腿）"+
+      "则是 "+mag(E.intended_coverage), covered)}
+    ${tile("③ 整篮真正盈利率", mag(C.profitable_rate),
+      E.win_count+" 条赚 / "+E.loss_count+" 条亏"+
+      (E.flat_count?" / "+E.flat_count+" 条打平":"")+
+      " · 命中却没赚 "+E.hit_not_profitable+" 条、没命中却赚了 "+
+      E.profitable_not_hit+" 条",
+      C.profitable_rate>=C.breakeven_hit_rate?"up":"down")}
+  </div>
+  <div class="grid g3" style="margin-top:10px">
+    ${tile("④ 盈亏平衡命中率", mag(C.breakeven_hit_rate),
+      "满赔是 1.00，所以保本线<b>就等于每股成本</b>（第 ⑧ 格同一个数） · "+
+      "实际覆盖率减保本线 "+pp(C.margin_over_breakeven),
+      C.margin_over_breakeven>=0?"up":"down")}
+    ${tile("⑤ 净赔率", num(C.net_odds,2)+"x",
+      "(1−成本)÷成本：赢一次，每股净赚这么多 · "+
+      "按股·整本账口径 "+num(S.net_odds,2)+"x")}
+    ${tile("⑥ 平均盈利", usd(E.mean_win_usdc),
+      "每条<b>赚钱</b>的链 · 折每股 "+cent(C.mean_win_per_share),"up")}
+  </div>
+  <div class="grid g3" style="margin-top:10px">
+    ${tile("⑦ 平均亏损", usd(E.mean_loss_usdc),
+      "每条<b>亏钱</b>的链 · 折每股 "+cent(C.mean_loss_per_share),"down")}
+    ${tile("⑧ 每股平均成本", num(C.cost_per_share,3),
+      "整本账 Σ投入÷Σ股 = "+num(S.cost_per_share,3)+" · "+
+      "命中时一股实收 "+num(paysOne,3))}
+    ${tile("⑨ 每股平均期望", cent(C.ev_per_share_claimed),
+      "声称口径＝覆盖率−成本 · <b>实际每股 "+
+      cent(S.ev_per_share_realised)+"</b>",
+      C.ev_per_share_claimed>=0?"up":"down")}
+  </div>`;
+
+  const LAB = E.weighting_labels||[];
+  const cols = LAB.map(l => W[l.key]).filter(Boolean);
+  const heads = LAB.filter(l => W[l.key]);
+  const row = (name, fn, hint) => `<tr><td>${name}
+    ${hint?`<div class="muted" style="font-size:11px">${hint}</div>`:""}</td>
+    ${cols.map(b => `<td class="mono">${fn(b)}</td>`).join("")}</tr>`;
+  const table = !cols.length ? "" : `<div class="scroll" style="margin-top:12px">
+  <table><thead><tr><th>九个数</th>
+    ${heads.map(l => `<th>${h(l.label)}</th>`).join("")}</tr></thead>
+  <tbody>
+    ${row("① 声称覆盖率", b=>mag(b.claimed_coverage))}
+    ${row("② 实际覆盖率", b=>mag(b.realised_coverage))}
+    ${row("③ 整篮真正盈利率", b=>mag(b.profitable_rate))}
+    ${row("④ 盈亏平衡命中率", b=>mag(b.breakeven_hit_rate))}
+    ${row("⑤ 净赔率", b=>num(b.net_odds,2)+"x")}
+    ${row("⑥ 平均盈利 · 每股", b=>cent(b.mean_win_per_share),
+      "USDC 口径没有加权版本，见上面的格子")}
+    ${row("⑦ 平均亏损 · 每股", b=>cent(b.mean_loss_per_share),
+      "USDC 口径没有加权版本，见上面的格子")}
+    ${row("⑧ 每股平均成本", b=>num(b.cost_per_share,3))}
+    ${row("⑨ 每股平均期望 · 声称", b=>cent(b.ev_per_share_claimed))}
+    ${row("　 每股实际兑现", b=>cent(b.ev_per_share_realised),
+      "同一个单位下真正拿回来的")}
+    ${row("　 实际减保本", b=>pp(b.margin_over_breakeven))}
+  </tbody></table></div>
+  <div class="muted" style="font-size:11.5px;margin-top:6px">
+    ${heads.map(l=>`<b>${h(l.label)}</b>：${h(l.note)}`).join("；<br>")}。</div>`;
+
+  const st = (E.by_stage||[]);
+  const stageTable = !st.length ? "" : `<div class="scroll" style="margin-top:12px">
+  <table><thead><tr><th>阶段</th><th>链数</th><th>声称</th><th>实际</th>
+    <th>盈利率</th><th>保本线</th><th>赔率</th><th>每股成本</th>
+    <th>每股期望</th><th>每股兑现</th><th>投入</th><th>盈亏</th><th>收益率</th>
+  </tr></thead><tbody>${st.map(s=>{
+    const b=(s.weightings||{}).chain||{}, sh=(s.weightings||{}).share||{};
+    return `<tr><td>${h(s.stage)}</td><td class="mono">${s.chains}</td>
+    <td class="mono">${mag(b.claimed_coverage)}</td>
+    <td class="mono">${mag(b.realised_coverage)}</td>
+    <td class="mono">${mag(b.profitable_rate)}</td>
+    <td class="mono">${mag(b.breakeven_hit_rate)}</td>
+    <td class="mono">${num(b.net_odds,2)}x</td>
+    <td class="mono">${num(b.cost_per_share,3)}</td>
+    <td class="mono">${cent(b.ev_per_share_claimed)}</td>
+    <td class="mono ${sh.ev_per_share_realised>=0?"up":"down"}">
+      ${cent(sh.ev_per_share_realised)}</td>
+    <td class="mono">${num(s.stake_usdc,1)}</td>
+    <td class="mono ${s.pnl_usdc>=0?"up":"down"}">${usd(s.pnl_usdc,1)}</td>
+    <td class="mono ${s.roi>=0?"up":"down"}">${sig(s.roi)}</td></tr>`;
+  }).join("")}</tbody></table></div>`;
+
+  return `<h2>入场的九个数：这一注长什么样</h2>
+  <p class="sub">${E.chains} 条已结算的链（一条链＝一个站日，
+  ${h(E.first_day)} → ${h(E.last_day)}），格子里是<b>逐链等权</b>口径。
+  共 ${E.settled_rows} 行结算，按账本自己的 <span class="mono">chain_credible</span>
+  规则排除整篮成本不足 ${(100*(E.dust_cost_floor||0.01)).toFixed(0)} 分的
+  ${E.dust_excluded} 条（合计只投入 ${num(E.dust_excluded_stake_usdc,2)} U，
+  留着会把逐链平均票价从 0.428 拉到 0.416）——<b>与「每日统计」「篮子命中率」同一条底线</b>。
+  ${E.cost_missing?`另有 ${E.cost_missing} 行没记篮子成本，也已排除。`:""}</p>
+  <div class="why"><b>①②必须成对读，而且量的是同一批桶。</b>
+  「声称覆盖率」是服务分布在<b>最终持有的那几个桶</b>上的概率之和，
+  「实际覆盖率」就是真值有没有落进这同一批桶——所以两者可以直接相除，
+  ${mag(C.realised_coverage)} ÷ ${mag(C.claimed_coverage)} =
+  <b>${num(C.realisation_ratio,2)}×</b>。
+  旁边那个 ${mag(E.intended_coverage)} 是<b>另一个集合</b>：目标函数选中的腿，
+  包括挂了单市场没卖给我们的。两者差 ${
+  E.intended_coverage!=null&&C.realised_coverage!=null
+  ?pp(E.intended_coverage-C.realised_coverage):"—"}，
+  差的全是成交，不是模型——别拿它跟声称覆盖率相除。</div>
+  ${tiles}
+  ${table}
+  <div class="why" style="margin-top:12px"><b>白话版。</b>
+  平均一条链花 <b>${num(C.cost_per_share,3)}</b> 买一份「猜中就赔 1.00」的票，
+  所以不赚不亏得猜中 <b>${mag(C.breakeven_hit_rate)}</b>，
+  猜中一次净赚 ${num(C.net_odds,2)} 倍。
+  模型下单时说自己能猜中 <b>${mag(C.claimed_coverage)}</b>，
+  真猜中了 <b>${mag(C.realised_coverage)}</b>——
+  ${C.margin_over_breakeven>=0
+    ?`比保本线高 ${ppm(C.margin_over_breakeven)}`
+    :`<b>比保本线还低 ${ppm(C.margin_over_breakeven)}</b>`}。
+  换成一股的账：声称每股赚 <b>${cent(C.ev_per_share_claimed)}</b>，
+  整本账实际每股 <b>${cent(S.ev_per_share_realised)}</b>，
+  差 <b>${cent((C.ev_per_share_claimed||0)-(S.ev_per_share_realised||0))}</b>。
+  这一笔差价乘上 ${num(E.shares,0)} 股，就是账面上的
+  ${usd(E.pnl_usdc,1)}（投入 ${num(E.stake_usdc,1)} U，收益率
+  <b class="${E.roi>=0?"up":"down"}">${sig(E.roi)}</b>）。
+  ${E.dust_excluded?`<br><span class="muted">「组合风险指标」的权益曲线印的是
+  ${usd(E.pnl_usdc+E.dust_excluded_pnl_usdc,2)}，不是这个数：那条曲线是
+  <b>整个账户</b>，含上面排除的 ${E.dust_excluded} 条虚价链
+  （它们合计 ${usd(E.dust_excluded_pnl_usdc,2)}）——
+  ${num(E.pnl_usdc,2)} 加 ${num(E.dust_excluded_pnl_usdc,2)} 就是
+  ${num(E.pnl_usdc+E.dust_excluded_pnl_usdc,2)}。本节与「每日统计」
+  「覆盖 · 价格 · EV」「篮子命中率」同口径。</span>`:""}</div>
+  ${stageTable}
+  <div class="why" style="margin-top:12px"><b>三个口径为什么都要印。</b>
+  同一批链，声称覆盖率按链数是 ${mag(C.claimed_coverage)}、
+  按投入是 ${mag(K.claimed_coverage)}、按股是 ${mag(S.claimed_coverage)}——
+  最宽的两个差 ${ppm(Math.max(C.claimed_coverage,K.claimed_coverage,S.claimed_coverage)
+      -Math.min(C.claimed_coverage,K.claimed_coverage,S.claimed_coverage))}，
+  任何一个单独拿出来都会被当成结论。<b>「按股·整本账」那一列是闭合的</b>：
+  每股实际兑现 ${cent(S.ev_per_share_realised)} ÷ 每股成本
+  ${num(S.cost_per_share,3)} = ${sig(E.roi)}，正好是整本账的收益率，
+  所以这一列跟权益曲线不可能对不上。</div>
+  <div class="why" style="margin-top:10px"><b>两个容易读错的地方。</b>
+  ㈠ <b>逐链平均赔率是个假数</b>：(1−c)/c 是凸的，这本账里有
+  ${E.cheap_chains} 条链的篮子便宜过 5 分（最贵的一条赔率
+  ${num(E.net_odds_max,0)}x），直接对每条链的赔率取平均会得到
+  <b>${num(E.net_odds_chain_naive,1)}x</b>——而这本账的钱实际只买到
+  ${num(S.net_odds,2)}x。上面第 ⑤ 格印的是<b>由平均成本反推</b>的赔率，
+  不是逐链赔率的平均。
+  ㈡ <b>「每股」是按声称赔付归一的篮子股</b>（＝投入 ÷ 全篮成本），
+  腿的份额一样时它就是合约张数、命中赔满 1.00；腿不一样时命中只赔
+  ${num(paysOne,3)}，所以第 ⑨ 格的实际值天生比"覆盖率−成本"略低一点。
+  ${E.hit_not_profitable===0&&E.profitable_not_hit===0
+    ?`㈢ 目前 <b>②实际覆盖率和③盈利率是同一个数</b>——因为每一篮都比 1.00 便宜，
+       命中必赚、没中必亏。这两格分开印是为了那一天它们分家时看得见：
+       篮子成本一旦 ≥1.00，命中也是亏。`:""}</div>`;
+}
+
+
 function riskMetrics(){
   const R = D.risk_metrics || {};
   if(!R.available) return `<h3 style="margin-top:22px;font-size:15px">组合风险指标</h3>
@@ -9767,26 +10514,6 @@ function riskMetrics(){
       "跑赢自己声称的日子 "+R.days_beating_claim+" / "+R.days,
       R.ev_realisation_daily_median>=0.8?"up":"")}
   </div>
-  <div class="grid g3" style="margin-top:10px">
-    ${tile("平均赔率 <span class='muted'>按投入加权</span>",
-      num(R.odds_mean,2)+"x",
-      "赢一次，每 USDC 净赚这么多 · 平均成本 "+num(R.cost_mean,3))}
-    ${tile("保本胜率", mag(R.breakeven_win_rate),
-      "这个价钱下，不赚不亏需要的胜率（＝平均成本）")}
-    ${tile("实际胜率", mag(R.realised_win_rate_weighted),
-      "按投入加权 · 按链数是 "+mag(R.realised_win_rate)+
-      "（"+R.chain_count+" 条链）",
-      R.realised_win_rate_weighted>R.breakeven_win_rate?"up":"down")}
-  </div>
-  <div class="why" style="margin-top:10px"><b>赔率这一组读法：</b>
-  平均花 ${num(R.cost_mean,3)} 买一份满赔 1.00 的赔付，所以赔率
-  ${num(R.odds_mean,2)}x，<b>不赚不亏就要赢
-  ${mag(R.breakeven_win_rate)}</b>。按投入加权实际赢了
-  ${mag(R.realised_win_rate_weighted)}——只高出
-  ${mag(R.realised_win_rate_weighted - R.breakeven_win_rate)}；
-  按链数则是 ${mag(R.realised_win_rate)}，<b>反而低于保本线</b>。
-  两个口径分居保本线两侧，正是"钱赚在少数大仓、链数上是亏的"的另一种说法，
-  也解释了为什么上面的 EV 兑现比按钱算和按天算差六倍。</div>
   <div class="why" style="margin-top:10px"><b>这三块是全页最重的一组，
   但两个兑现比必须一起读。</b>
   EV 不是事后打分，它是<b>给每一笔定规模的输入</b>——Kelly 用它决定下多少。
@@ -9803,6 +10530,22 @@ function riskMetrics(){
   同样分不开噪声。能确定的只有方向：三个口径全部远低于 1.0，
   说明<b>定规模用的那个数偏高</b>，而这个偏差每天都在重复，
   不像夏普要等 ${R.days_to_separate_from_zero} 天才能判。</div>
+  <div class="why" style="margin-top:10px"><b>赔率、保本胜率、平均票价
+  搬去「入场的九个数」了（2026-09-10）。</b>
+  这里曾经有三块印同名的数，和那一节对不上，而且<b>对不上的一半是这里错的</b>：
+  这张卡片写过"平均花 ${num(R.cost_mean,3)} 买一份满赔 1.00 的赔付，所以赔率
+  ${num(R.odds_mean,2)}x"——(1−${num(R.cost_mean,3)})/${num(R.cost_mean,3)} =
+  <b>${num((1-R.cost_mean)/R.cost_mean,2)}</b>，不是 ${num(R.odds_mean,2)}。
+  两个数各自没算错，是<b>两种加权</b>：${num(R.cost_mean,3)} 是按投入加权的票价，
+  而 ${num(R.odds_mean,2)}x 恒等于 Σ投入÷Σ股 那个票价反推出来的赔率。
+  同名数只留一处，就在<a href="#sec-entry">上面那一节</a>，三个口径并排印。
+  <br><b>还有一件这里读不出来的事</b>：保本 ${mag(R.breakeven_win_rate)}
+  对实际 ${mag(R.realised_win_rate_weighted)}，按这一对推出来的收益率是
+  ${pct(R.realised_win_rate_weighted/R.breakeven_win_rate-1,1)}，
+  可这本账实际是
+  ${R.total_staked_usdc>0?pct(R.realised_pnl_usdc/R.total_staked_usdc,1):"—"}。
+  <b>按投入加权的这一对本来就不闭合</b>——闭合的是按股那一对
+  （每股回收 ÷ 每股票价 ＝ 收益率），在那一节里。</div>
   ${cvar}
   ${chart}
   ${claimChart}`;
@@ -12540,6 +13283,7 @@ function sectionCacheNote(){
 document.getElementById("app").innerHTML =
   `<div class="topnav" id="topnav">${tabs}<nav class="jump" id="jump"></nav></div>` +
   safe(head, "页头") +
+  sec(entryEconomics, "入场的九个数", "sec-entry") +
   sec(riskMetrics, "组合风险指标", "sec-risk") +
   sec(liveReadiness, "Live 上线准备", "sec-live") +
   TOP.map(([fn, name], i) => sec(fn, name, `sec-top-${i}`)).join("") +
