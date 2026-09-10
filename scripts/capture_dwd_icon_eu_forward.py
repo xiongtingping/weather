@@ -20,6 +20,7 @@ import argparse
 import re
 import sqlite3
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -48,6 +49,16 @@ P1_MAX_RUNS_PER_PASS = 2
 # Runs per pass.  Two is every run the archive can currently hold for the
 # captured cycles.
 MAX_RUNS_PER_PASS = 2
+# ...and a wall-clock bound beside it, the one this lane's P1 pass has had
+# since 2026-09-09 and its own loop had not.  Two runs is a count, not a
+# duration: what a run costs is whatever the DWD mirror takes, and this
+# lane's clock read ``timeout_killed`` at 2026-09-10T06:19Z with its last
+# success four hours earlier -- thirty minutes of the exclusive SSOT write
+# domain spent and nothing written.  A pass by hand the same afternoon took
+# 2m53s, so the budget is not the usual case; it is the bound on the bad
+# one.  900s leaves the P1 pass's 240s and a wide margin under the 1,800s
+# subprocess timeout.
+BUDGET_SEC_PER_PASS = 900.0
 # Seconds of writer occupancy this lane's P1 pass may spend.  The resident
 # admits one writer at a time, so a capture that runs to its subprocess
 # timeout is a production cycle that cannot start for that long.  The run
@@ -148,6 +159,8 @@ def main() -> int:
     skipped = 0
     runs_fetched = 0
     failed: list[str] = []
+    deadline = time.monotonic() + BUDGET_SEC_PER_PASS
+    budget_exhausted = False
 
     try:
         for hour in RUN_CYCLES:
@@ -201,6 +214,11 @@ def main() -> int:
             if not targets:
                 continue
             if runs_fetched >= MAX_RUNS_PER_PASS:
+                continue
+            # Before the fetch, never during: a run that has started
+            # finishes, so the budget cannot leave one half written.
+            if time.monotonic() >= deadline:
+                budget_exhausted = True
                 continue
             runs_fetched += 1
             try:
@@ -282,6 +300,11 @@ def main() -> int:
         f"本轮取 run {runs_fetched}/{MAX_RUNS_PER_PASS}，"
         f"失败/不全 {len(failed)}"
     )
+    if budget_exhausted:
+        print(
+            f"  本轮用尽 {BUDGET_SEC_PER_PASS:.0f} 秒预算，"
+            "剩余的下一轮继续"
+        )
     for line in failed[:10]:
         print(f"  {line}")
     return 0

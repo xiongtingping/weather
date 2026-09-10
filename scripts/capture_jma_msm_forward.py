@@ -32,6 +32,7 @@ import json
 import re
 import sqlite3
 import sys
+import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -71,6 +72,21 @@ LOOKAHEAD_DAYS = 2
 # several of them instead, which the idempotence already supports: whatever
 # is not reached this time is simply still missing next time.
 MAX_RUNS_PER_PASS = 4
+# ...and a wall-clock bound beside the run count, for the reason its sibling
+# lane already carries: the run count alone does not bound the pass.  Four
+# attempts at "about 86 seconds" reads as six minutes; measured 2026-09-10 a
+# successful pass took 17m00s wall at 0% CPU -- entirely ranged reads off a
+# mirror the source comment already calls one that "sometimes times out" --
+# against a 1,800s subprocess budget.  A mirror half that speed spends the
+# whole budget, is killed, writes nothing, and has held the exclusive SSOT
+# write domain for thirty minutes in which the production cycle cannot start.
+#
+# ``capture_noaa_conus_forward`` was given exactly this on 2026-09-09 after
+# three days of being killed; ``regional_point_lane.capture_p1`` was bounded
+# in the same pass.  This lane got the P1 budget and not the loop one, so it
+# was the sibling still holding a run count where the seconds are what the
+# writer domain rations.  900s leaves the P1 pass's 240s and a wide margin.
+BUDGET_SEC_PER_PASS = 900.0
 # Seconds of writer occupancy this lane's P1 pass may spend.  The resident
 # admits one writer at a time, so a capture that runs to its subprocess
 # timeout is a production cycle that cannot start for that long.  The run
@@ -204,6 +220,8 @@ def main() -> int:
     skipped = 0
     attempted = 0
     failed: list[str] = []
+    deadline = time.monotonic() + BUDGET_SEC_PER_PASS
+    budget_exhausted = False
 
     try:
         for station, latitude, longitude, zone_name in STATIONS:
@@ -256,6 +274,13 @@ def main() -> int:
                             skipped += 1
                             continue
                         if attempted >= MAX_RUNS_PER_PASS:
+                            continue
+                        # Before the fetch, never during: a run that
+                        # has started finishes, so the budget cannot
+                        # leave one half written.  What is unreached
+                        # is simply still missing next pass.
+                        if time.monotonic() >= deadline:
+                            budget_exhausted = True
                             continue
                         attempted += 1
                         try:
@@ -357,6 +382,11 @@ def main() -> int:
     )
     if attempted >= MAX_RUNS_PER_PASS:
         print("  达到本轮上限，剩余的下一轮继续")
+    elif budget_exhausted:
+        print(
+            f"  本轮用尽 {BUDGET_SEC_PER_PASS:.0f} 秒预算，"
+            "剩余的下一轮继续"
+        )
     for line in failed[:8]:
         print(f"  {line}")
     return 0
