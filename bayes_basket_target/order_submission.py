@@ -22,6 +22,11 @@ from pathlib import Path
 import sqlite3
 from typing import Any
 
+from .basket_kernel.contracts import ContractError as KernelContractError
+from .basket_kernel.delta_v2 import (
+    ORDER_TYPE_FOK,
+    execution_order_binding_v1,
+)
 from .contracts import ContractError, content_sha256
 from .execution_reconciliation import (
     can_submit_next_order,
@@ -53,6 +58,12 @@ _UNKNOWN_EVENT = "UNKNOWN_POST"
 # Two of the five live intents ever minted ended that way and their reason
 # is now unrecoverable: the gateway logs that held it were rotated away.
 _REFUSED_EVENT = "SUBMIT_REFUSED"
+# An order that existed at the exchange and stopped existing without filling.
+# The vocabulary and the state machine have carried it since the ledger was
+# written and nothing ever produced one: there was no order type that could
+# expire and no order type that could be killed.  Both arrive together --
+# GTD's expiry and FOK's kill are the same fact about an order's end.
+_EXPIRED_EVENT = "EXPIRED"
 
 Transport = Callable[[str, Mapping[str, Any]], Mapping[str, Any]]
 
@@ -88,6 +99,38 @@ def _positive(field: str, value: Any) -> float:
 _CROSSING_ORDER_TYPES = frozenset({"FOK", "FAK"})
 
 
+def _boolean_flag(field: str, value: Any) -> bool:
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"1", "true", "yes", "on"}:
+            return True
+        if text in {"0", "false", "no", "off"}:
+            return False
+        raise OrderSubmissionError(f"order_submission_{field}_invalid")
+    return bool(value)
+
+
+def _expiration_unix_seconds(field: str, value: Any) -> int:
+    """A venue expiry, in whole unix seconds, or a refusal by name.
+
+    Whole seconds because that is the unit the order's signature commits to:
+    the expiry is a field of the EIP-712 struct the client signs, so a value
+    this side rounds differently from the signer is a different order.
+    """
+
+    if isinstance(value, bool):
+        raise OrderSubmissionError(f"order_submission_{field}_invalid")
+    try:
+        seconds = int(value)
+    except (TypeError, ValueError) as exc:
+        raise OrderSubmissionError(
+            f"order_submission_{field}_invalid"
+        ) from exc
+    if seconds <= 0:
+        raise OrderSubmissionError(f"order_submission_{field}_invalid")
+    return seconds
+
+
 def _post_only(intent: Mapping[str, Any]) -> bool:
     """Whether this order may only rest, read off the intent that minted it.
 
@@ -112,20 +155,45 @@ def _post_only(intent: Mapping[str, Any]) -> bool:
 
     value = intent.get("post_only")
     if value is not None:
-        if isinstance(value, str):
-            text = value.strip().lower()
-            if text in {"1", "true", "yes", "on"}:
-                return True
-            if text in {"0", "false", "no", "off"}:
-                return False
-            raise OrderSubmissionError("order_submission_post_only_invalid")
-        return bool(value)
+        return _boolean_flag("post_only", value)
     family = str(intent.get("execution_candidate") or "").strip().upper()
     if family == "MAKER":
         return True
     if family:
         return False
     raise OrderSubmissionError("order_submission_post_only_missing")
+
+
+def _execution_binding(intent: Mapping[str, Any]) -> dict[str, Any]:
+    """The venue fields this intent's execution family is bound to.
+
+    The binding lives in the kernel so the compile that mints an intent and
+    the submission that sends it cannot hold different opinions about which
+    of the two things this lane does is happening.  The intent's own
+    ``post_only`` is then checked against it rather than obeyed blindly: a
+    row that says MAKER and post-only false is not a payload with an unusual
+    flag, it is a resting rung that would cross, and the family it claims is
+    the one the seat was priced under.
+    """
+
+    family = str(intent.get("execution_candidate") or "").strip().upper()
+    if not family:
+        # Legacy rows and direct callers: the flag alone still names the
+        # family, because the two families disagree about exactly it.
+        family = "MAKER" if _post_only(intent) else "TAKER_FOK"
+    try:
+        binding = execution_order_binding_v1(family)
+    except KernelContractError as exc:
+        raise OrderSubmissionError(
+            "order_submission_execution_family_unknown"
+        ) from exc
+    if intent.get("post_only") is not None and _boolean_flag(
+        "post_only", intent.get("post_only")
+    ) is not bool(binding["post_only"]):
+        raise OrderSubmissionError(
+            "order_submission_post_only_contradicts_execution_intent"
+        )
+    return binding
 
 
 def build_place_order_payload(
@@ -148,10 +216,19 @@ def build_place_order_payload(
     direction = _text("order_action", intent.get("order_action")).upper()
     if direction not in {"BUY", "SELL"}:
         raise OrderSubmissionError("order_submission_order_action_invalid")
+    binding = _execution_binding(intent)
+    post_only = bool(binding["post_only"])
     order_type = _text(
-        "order_type", intent.get("order_type") or "GTC"
+        "order_type", intent.get("order_type") or binding["order_type"]
     ).upper()
-    post_only = _post_only(intent)
+    if order_type != str(binding["order_type"]):
+        # The intent may state the type, and it may not state a different one
+        # than the family it declares.  A GTC written on a MAKER row is the
+        # shape this lane sent for its whole life: an order asked to rest,
+        # with no expiry and nothing stopping it from crossing.
+        raise OrderSubmissionError(
+            "order_submission_order_type_contradicts_execution_intent"
+        )
     if post_only and order_type in _CROSSING_ORDER_TYPES:
         # A crossing family carrying the resting flag is not a payload with a
         # debatable field; it is two contradictory instructions about what to
@@ -159,7 +236,7 @@ def build_place_order_payload(
         raise OrderSubmissionError(
             "order_submission_post_only_contradicts_order_type"
         )
-    return {
+    payload = {
         "strategy_id": _text("strategy_id", strategy_id),
         "order_intent_id": _text("order_intent_id", intent.get("order_intent_id")),
         "idempotency_key": _text(
@@ -173,6 +250,30 @@ def build_place_order_payload(
         "order_type": order_type,
         "post_only": post_only,
     }
+    if binding["requires_expiration"]:
+        # GTD is a promise the venue keeps for us: an order this lane loses
+        # track of stops existing on its own.  The expiry is signed into the
+        # order, so it has to travel with the payload rather than be applied
+        # to it -- a gateway that supplied its own would be signing a
+        # different order than the one the compile authorized.
+        payload["expiration"] = _expiration_unix_seconds(
+            "expiration", intent.get("expiration")
+        )
+    if binding["requires_price_cap"]:
+        # An immediate take states the worst price it is allowed to pay, and
+        # states it separately from the limit it is sending.  The two are
+        # usually the same number; requiring both means a completion whose
+        # walked price has drifted past what authorized it is refused here
+        # rather than discovered in the fill.
+        cap = _positive("fok_price_cap", intent.get("fok_price_cap"))
+        if cap >= 1.0:
+            raise OrderSubmissionError("order_submission_fok_price_cap_invalid")
+        if price > cap + 1e-12:
+            raise OrderSubmissionError(
+                "order_submission_limit_price_exceeds_fok_price_cap"
+            )
+        payload["fok_price_cap"] = cap
+    return payload
 
 
 def _number_or_zero(*values: Any) -> float:
@@ -257,6 +358,8 @@ def fill_quantities(
 
 def classify_submission_response(
     response: Mapping[str, Any],
+    *,
+    order_type: str = "",
 ) -> dict[str, Any]:
     """Decide which ledger event one service reply is.
 
@@ -295,6 +398,21 @@ def classify_submission_response(
     error = str(response.get("error") or "").strip()
     if accepted:
         matched = fill["status"] == "matched" and fill["shares_matched"] > 0.0
+        if not matched and str(order_type or "").upper() == ORDER_TYPE_FOK:
+            # A fill-or-kill the exchange took and did not match is killed,
+            # and killed is the end of it.  Read as a POST_ACK -- which is
+            # what every reply without a match was until 2026-09-11 -- the
+            # intent waits at ``pending`` for a fill this order type cannot
+            # produce, and the sequential gate holds that bucket shut behind
+            # it.  The ledger already had a terminal state for an order that
+            # existed and stopped existing without filling; this is the first
+            # thing that writes one.
+            return {
+                "event_type": _EXPIRED_EVENT,
+                "submitted": True,
+                "reason": "fok_killed",
+                "fill": fill,
+            }
         return {
             "event_type": _FILL_EVENT if matched else _ACCEPTED_EVENT,
             "submitted": True,
@@ -336,7 +454,13 @@ def _intent_body(raw: Any) -> dict[str, Any]:
             return {}
         body = parsed
     carried: dict[str, Any] = {}
-    for field in ("post_only", "execution_candidate"):
+    for field in (
+        "post_only",
+        "execution_candidate",
+        "order_type",
+        "expiration",
+        "fok_price_cap",
+    ):
         if body.get(field) is not None:
             carried[field] = body[field]
     return carried
@@ -575,7 +699,9 @@ def submit_prepared_intents(
             submissions.append(entry)
             continue
         response = transport(PLACE_ORDER_PATH, payload)
-        outcome = classify_submission_response(response)
+        outcome = classify_submission_response(
+            response, order_type=str(payload.get("order_type") or ""),
+        )
         if not outcome["submitted"]:
             # A refusal is an outcome, so it is recorded like one.  Writing
             # the event moves the intent to ``failed`` and frees its bucket

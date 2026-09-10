@@ -414,6 +414,12 @@ function env(name, fallback = "") {
   return value === undefined || value === null || value === "" ? fallback : String(value);
 }
 
+// The matching engine removes an expiring order a minute after its stamp, so
+// an expiry inside that window is one it may never act on.  The floor is that
+// grace, not a policy: policy is the caller's horizon, which arrives on the
+// payload.
+const GTD_MINIMUM_HORIZON_SECONDS = 60;
+
 function truthy(value, fallback = false) {
   if (value === undefined || value === null || value === "") return Boolean(fallback);
   const text = String(value).trim().toLowerCase();
@@ -3181,6 +3187,18 @@ export class ClobOrderService {
     const postOnly = truthy(
       rawPayload.post_only ?? rawPayload.postOnly ?? env("PM_CLOB_POST_ONLY", "0")
     );
+    // The expiry the caller signed up for, in unix seconds.  It is a field of
+    // the EIP-712 struct the client signs, so it has to be supplied here and
+    // cannot be applied afterwards: an expiry this service chose would be a
+    // different order than the one the caller authorized.  Zero means no
+    // expiry, which is what every order before 2026-09-11 carried.
+    const expirationRaw = rawPayload.expiration ?? rawPayload.expires_at_unix;
+    const expiration = expirationRaw === undefined || expirationRaw === null || expirationRaw === ""
+      ? 0
+      : Number(expirationRaw);
+    if (!Number.isFinite(expiration) || expiration < 0 || !Number.isInteger(expiration)) {
+      throw errorWithMeta(`expiration_invalid:${String(expirationRaw)}`);
+    }
     const allowMarket = Boolean(rawPayload.allow_market) || truthy(env("PM_ALLOW_MARKET_ORDERS", "0"));
     const deferExec = Boolean(rawPayload.defer_exec) || truthy(env("PM_CLOB_DEFER_EXEC", "0"));
     if (!tokenID || (!Number.isFinite(price) && !isMarket) || (!Number.isFinite(size) && !Number.isFinite(amount))) {
@@ -3195,6 +3213,25 @@ export class ClobOrderService {
     }
     if (isMarket && !allowMarket && !controlledRebalanceSellFak) {
       throw errorWithMeta(`limit_only_order_type:${orderTypeRaw}`);
+    }
+    // GTD without an expiry is a GTC wearing the wrong name, and the venue
+    // would accept it as one: the order type travels in the POST while the
+    // expiry travels in the signature, so nothing downstream can notice that
+    // the two disagree.  The buffer is the matching engine's own grace --
+    // it removes an expiring order a minute after the stamp -- so an expiry
+    // inside that window is one the exchange may never act on.
+    if (orderTypeRaw === "GTD") {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      if (expiration <= 0) {
+        throw errorWithMeta("gtd_requires_expiration");
+      }
+      if (expiration < nowSeconds + GTD_MINIMUM_HORIZON_SECONDS) {
+        throw errorWithMeta(
+          `gtd_expiration_too_soon:${expiration - nowSeconds}s`
+        );
+      }
+    } else if (expiration > 0) {
+      throw errorWithMeta(`expiration_requires_gtd:${orderTypeRaw}`);
     }
     if (postOnly && isMarket) {
       throw errorWithMeta(`post_only_market_order_forbidden:${orderTypeRaw}`);
@@ -3316,6 +3353,7 @@ export class ClobOrderService {
           price,
           size,
           side,
+          ...(expiration > 0 ? { expiration } : {}),
           ...(builderCode ? { builderCode } : {}),
         }, { tickSize, negRisk });
         orderBuildMs = Date.now() - buildStarted;
@@ -3402,6 +3440,12 @@ export class ClobOrderService {
       order_submitted_at: exchangePostStartedAt,
       post_only: postOnly,
       maker_only: postOnly,
+      // What the venue was actually told, echoed so the ledger records the
+      // order it got rather than the order it asked for.  Two fields that
+      // were decided here and never reported: the type fell back to GTC and
+      // the expiry did not exist.
+      order_type: orderTypeRaw,
+      expiration: expiration || 0,
       clob_timeout_ms: Number(axios.defaults.timeout || 0) || null,
       order_lane: lane,
       queue_wait_ms: queueWaitMs,

@@ -2466,10 +2466,38 @@ def ask_depth_cost_v1(
     on depth, not a reason to buy what it can.
     """
 
+    walk = ask_depth_walk_v1(levels=levels, shares=shares)
+    return None if walk is None else float(walk["cash"])
+
+
+ASK_DEPTH_WALK_SCHEMA = "ask_depth_walk_v1"
+
+
+def ask_depth_walk_v1(
+    *,
+    levels: Sequence[Any],
+    shares: float,
+) -> dict[str, float] | None:
+    """The same walk, reporting the price the last share had to reach.
+
+    ``ask_depth_cost_v1`` answers "what does this cost"; a fill-or-kill order
+    also has to state a limit, and the limit that fills is the price of the
+    DEEPEST level the quantity consumes, not the top of book.  A take priced
+    at the best offer for a quantity the best offer cannot supply is killed
+    by construction -- the venue would have to trade through the limit to
+    fill it -- so the two numbers come out of one walk rather than one being
+    guessed from the other.
+
+    ``None`` where the ladder cannot supply the quantity at all, which is
+    charter 84 (八)'s all-or-none read on depth.
+    """
+
     want = _nonnegative("delta_v2_depth_shares", shares)
     if want <= EPS:
-        return 0.0
+        return {"cash": 0.0, "marginal_price": 0.0, "levels_consumed": 0.0}
     cash = 0.0
+    marginal = 0.0
+    consumed = 0
     for level in levels:
         price = float(
             level["price"] if isinstance(level, Mapping) else level.price
@@ -2481,9 +2509,15 @@ def ask_depth_cost_v1(
             continue
         take = min(want, available)
         cash += take * price
+        marginal = price
+        consumed += 1
         want -= take
         if want <= EPS:
-            return cash
+            return {
+                "cash": cash,
+                "marginal_price": marginal,
+                "levels_consumed": float(consumed),
+            }
     return None
 
 
@@ -4224,10 +4258,26 @@ def _fill_distribution(
             raise ContractError("delta_v2_maker_partial_fill_support_required")
         if not any(value <= EPS for value in fractions):
             raise ContractError("delta_v2_maker_zero_fill_support_required")
-    if mode == "FOK" and any(
-        value < 1.0 - EPS for value in fractions
-    ):
-        raise ContractError("delta_v2_fok_distribution_must_be_full_fill")
+    if mode == "FOK":
+        # Fill-or-kill has exactly two outcomes and this contract used to
+        # admit only one of them: any fraction under one was refused, so the
+        # only distribution a FOK could carry was "fills, with certainty".
+        # That is not a model of a fill-or-kill order, it is the assumption
+        # that the book cannot move between the quote we priced and the
+        # order's arrival -- the same assumption charter 120 removed from the
+        # completion search when it made "the ladder cannot supply this" an
+        # answer rather than a shortfall nobody looked at.  A killed FOK buys
+        # nothing and costs nothing, and the objective can only weigh that
+        # against what the fill buys if the outcome is expressible.
+        #
+        # Partial stays forbidden, because that is what the order type means:
+        # a fraction strictly between zero and one is a fill this venue will
+        # not produce for this family, and admitting it would let a FOK be
+        # scored as the maker it is not.
+        if any(EPS < value < 1.0 - EPS for value in fractions):
+            raise ContractError("delta_v2_fok_distribution_partial_forbidden")
+        if not any(value >= 1.0 - EPS for value in fractions):
+            raise ContractError("delta_v2_fok_distribution_must_be_full_fill")
     return tuple(sorted(outcomes, key=lambda row: row["fill_fraction"]))
 
 
@@ -5162,6 +5212,63 @@ def rescore_maker_bundle_v2(
 # The caller decides which family to enumerate (``delta_v2_runtime`` has one
 # mode at a time); this only stops an unknown mode from entering a bundle.
 EXECUTION_FAMILIES = frozenset({"MAKER", "FOK"})
+
+# What each execution intent asks the venue for, in the venue's own words
+# (user ruling, 2026-09-11).
+#
+# The order type, the resting flag and the expiry were three fields nobody
+# owned: the payload builder defaulted the type to GTC for both families, the
+# flag was written on the intent and never sent, and no expiry existed at
+# all.  So the venue was told the same thing for a rung meant to rest an hour
+# and for a completion meant to fill now or not at all, and the difference
+# between them lived only in this package's own vocabulary.
+#
+# One table, both sides read it:
+#
+# * ``MAKER`` -- an entry rung, or a rung continuing to rest.  GTD with an
+#   expiry and post-only true.  Post-only is what makes the price the plan
+#   judged the price the book pays; the expiry is what makes an order we
+#   lose track of die on its own.  A resting order with neither is a
+#   standing instruction with no end and no guarantee, which is what every
+#   order this lane ever placed was.
+# * ``TAKER_FOK`` -- an explicitly authorized immediate take, which today is
+#   the designated completion of a broken ladder.  FOK with post-only false
+#   and a price cap that must be stated: crossing without a cap is the one
+#   shape this lane must never send, because the walked price is the whole
+#   basis on which the completion was authorized.
+ORDER_TYPE_GTD = "GTD"
+ORDER_TYPE_GTC = "GTC"
+ORDER_TYPE_FOK = "FOK"
+EXECUTION_ORDER_BINDING_RULE = "execution_order_binding_v1"
+_EXECUTION_ORDER_BINDING = {
+    "MAKER": {
+        "order_type": ORDER_TYPE_GTD,
+        "post_only": True,
+        "requires_expiration": True,
+        "requires_price_cap": False,
+    },
+    "TAKER_FOK": {
+        "order_type": ORDER_TYPE_FOK,
+        "post_only": False,
+        "requires_expiration": False,
+        "requires_price_cap": True,
+    },
+}
+
+
+def execution_order_binding_v1(execution_candidate: Any) -> dict[str, Any]:
+    """The venue fields one execution intent is bound to.
+
+    Read, never inferred, and there is exactly one of these: a second copy
+    would let the intent that was minted and the order that was sent disagree
+    about which of the two things this lane does it is doing.
+    """
+
+    family = str(execution_candidate or "").strip().upper()
+    binding = _EXECUTION_ORDER_BINDING.get(family)
+    if binding is None:
+        raise ContractError("delta_v2_execution_order_binding_unknown_family")
+    return {"rule": EXECUTION_ORDER_BINDING_RULE, "family": family, **binding}
 
 
 def select_complete_maker_bundle_v2(

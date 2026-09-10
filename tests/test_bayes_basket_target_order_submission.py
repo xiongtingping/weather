@@ -79,9 +79,13 @@ def _intent(**overrides) -> dict:
         "idempotency_key": "idem-a",
         # What the compile records about the family it chose.  Charter 94
         # makes every entry a resting rung, and the payload has to carry
-        # that or the exchange is free to fill it by crossing.
+        # that or the exchange is free to fill it by crossing.  Since
+        # 2026-09-11 the family also fixes the order type and the expiry: an
+        # entry is GTD, post-only, and dies at its own horizon.
         "execution_candidate": "MAKER",
         "post_only": True,
+        "order_type": "GTD",
+        "expiration": 1789088400,
         **overrides,
     }
 
@@ -94,6 +98,9 @@ def _intent_json(intent: dict) -> str:
         "candidate_will_order": True,
         "execution_candidate": intent.get("execution_candidate", "MAKER"),
         "post_only": intent.get("post_only", True),
+        "order_type": intent.get("order_type", "GTD"),
+        "expiration": intent.get("expiration", 1789088400),
+        "fok_price_cap": intent.get("fok_price_cap"),
     }
     return json.dumps(
         {key: value for key, value in body.items() if value is not None}
@@ -152,8 +159,9 @@ def test_payload_matches_the_order_service_request_contract() -> None:
         "side": "BUY",
         "price": 0.12,
         "size": 40.0,
-        "order_type": "GTC",
+        "order_type": "GTD",
         "post_only": True,
+        "expiration": 1789088400,
     }
 
 
@@ -172,23 +180,37 @@ def test_the_maker_family_is_sent_as_an_order_that_may_only_rest() -> None:
     payload = build_place_order_payload(_intent())
 
     assert payload["post_only"] is True
-    assert payload["order_type"] == "GTC"
+    assert payload["order_type"] == "GTD"
+    assert payload["expiration"] == 1789088400
+
+
+def _taker(**overrides) -> dict:
+    """An authorized immediate take: FOK, crossing, with a stated cap."""
+
+    fields = {
+        "execution_candidate": "TAKER_FOK",
+        "post_only": False,
+        "order_type": "FOK",
+        "expiration": None,
+        "fok_price_cap": 0.15,
+    }
+    fields.update(overrides)
+    return _intent(**fields)
 
 
 def test_the_taker_family_is_sent_as_an_order_that_may_cross() -> None:
-    """The flag is read, not assumed: the FOK arm says the opposite."""
+    """The binding is read, not assumed: the FOK arm says the opposite."""
 
-    payload = build_place_order_payload(
-        _intent(execution_candidate="TAKER_FOK", post_only=False)
-    )
+    payload = build_place_order_payload(_taker())
 
     assert payload["post_only"] is False
+    assert payload["order_type"] == "FOK"
+    assert payload["fok_price_cap"] == 0.15
+    assert "expiration" not in payload
 
 
 def test_a_family_without_the_flag_falls_back_to_what_it_says_it_is() -> None:
-    payload = build_place_order_payload(
-        _intent(execution_candidate="TAKER_FOK", post_only=None)
-    )
+    payload = build_place_order_payload(_taker(post_only=None))
 
     assert payload["post_only"] is False
 
@@ -198,17 +220,49 @@ def test_an_intent_that_states_no_family_at_all_is_refused() -> None:
 
     with pytest.raises(OrderSubmissionError, match="post_only_missing"):
         build_place_order_payload(
-            _intent(execution_candidate=None, post_only=None)
+            _intent(execution_candidate=None, post_only=None, order_type=None)
         )
 
 
-def test_resting_and_crossing_cannot_be_asked_for_at_once() -> None:
-    """The gateway refuses this pair; refuse it while the intent is in hand."""
+def test_a_resting_entry_without_an_expiry_is_refused() -> None:
+    """GTD without an expiry is a GTC wearing the wrong name.
+
+    Nothing downstream can catch it: the type travels in the POST and the
+    expiry in the signature, so an order missing one is accepted by both
+    sides and simply never expires.
+    """
+
+    with pytest.raises(OrderSubmissionError, match="expiration_invalid"):
+        build_place_order_payload(_intent(expiration=None))
+
+
+def test_a_take_that_drifted_past_its_authorization_is_refused() -> None:
+    """The cap is what authorized the take; the limit may not exceed it."""
 
     with pytest.raises(
-        OrderSubmissionError, match="post_only_contradicts_order_type"
+        OrderSubmissionError, match="limit_price_exceeds_fok_price_cap"
     ):
-        build_place_order_payload(_intent(order_type="FOK", post_only=True))
+        build_place_order_payload(_taker(fok_price_cap=0.10))
+
+
+def test_an_order_type_that_contradicts_the_family_is_refused() -> None:
+    """A GTC on a MAKER row is what this lane sent for its whole life."""
+
+    with pytest.raises(
+        OrderSubmissionError,
+        match="order_type_contradicts_execution_intent",
+    ):
+        build_place_order_payload(_intent(order_type="GTC"))
+
+
+def test_a_resting_family_that_asks_to_cross_is_refused() -> None:
+    """The flag and the family disagreeing is not a flag question."""
+
+    with pytest.raises(
+        OrderSubmissionError,
+        match="post_only_contradicts_execution_intent",
+    ):
+        build_place_order_payload(_intent(post_only=False))
 
 
 @pytest.mark.parametrize("price", [0.0, 1.0, 1.5, -0.1])
@@ -222,6 +276,32 @@ def test_an_accepted_reply_is_a_post_ack() -> None:
 
     assert outcome["event_type"] == "POST_ACK"
     assert outcome["submitted"] is True
+
+
+def test_a_fill_or_kill_the_exchange_did_not_match_is_over() -> None:
+    """A killed FOK is terminal, and read as a POST_ACK it was immortal.
+
+    The reply is identical to a resting order's: taken, with an id, nothing
+    matched.  For a family that cannot rest there is no fill still to come,
+    so the intent waited at ``pending`` and the sequential gate held that
+    bucket shut behind it until a sweep retired the intent.
+    """
+
+    outcome = classify_submission_response(
+        _accepted(None, None), order_type="FOK",
+    )
+
+    assert outcome["event_type"] == "EXPIRED"
+    assert outcome["reason"] == "fok_killed"
+    assert outcome["submitted"] is True
+
+
+def test_the_same_reply_on_a_resting_order_is_still_a_post_ack() -> None:
+    outcome = classify_submission_response(
+        _accepted(None, None), order_type="GTD",
+    )
+
+    assert outcome["event_type"] == "POST_ACK"
 
 
 def _matched(_path=None, _payload=None) -> dict:

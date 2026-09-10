@@ -55,14 +55,62 @@ from .delta_v2_training import build_delta_v2_training_fact
 from .delta_v2_training import committed_scope_fact_id
 from .regime_artifact import RegimeArtifact
 from .runtime import DeltaBasketScoreV2Optimizer
-from .basket_kernel.delta_v2 import floor_to_order_share_grid_v1
+from .basket_kernel.delta_v2 import (
+    execution_order_binding_v1,
+    floor_to_order_share_grid_v1,
+)
 from .delta_v2_runtime import (
     CHARTER_83_MIN_NOTIONAL,
     EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
+    MAKER_GTD_HORIZON_SECONDS,
     MAKER_LADDER_SHAPE,
     bid_anchored_ladder,
     bid_anchored_rungs_for_gap,
 )
+
+
+def _venue_order_fields(
+    execution_candidate: str,
+    *,
+    created_at_utc: str,
+    limit_price: float,
+) -> dict[str, Any]:
+    """The order type, resting flag, expiry and cap this intent is minted with.
+
+    All four were decided somewhere else or not at all: the type defaulted to
+    GTC in the payload builder for both families, the flag was written here
+    and never sent, the expiry did not exist, and the cap was whatever price
+    happened to be on the row.  They belong on the intent, once, beside the
+    family that determines them -- the submission then sends what the compile
+    authorized instead of reconstructing it.
+
+    The expiry is stamped from the compile's own clock rather than read at
+    submit time, because it is signed into the order: an expiry computed
+    later would be a different order than this intent describes.
+    """
+
+    binding = execution_order_binding_v1(execution_candidate)
+    fields: dict[str, Any] = {
+        "order_type": binding["order_type"],
+        "post_only": bool(binding["post_only"]),
+    }
+    if binding["requires_expiration"]:
+        stamped = datetime.fromisoformat(
+            str(created_at_utc).replace("Z", "+00:00")
+        )
+        if stamped.tzinfo is None:
+            stamped = stamped.replace(tzinfo=timezone.utc)
+        fields["expiration"] = int(
+            stamped.timestamp() + MAKER_GTD_HORIZON_SECONDS
+        )
+    if binding["requires_price_cap"]:
+        # The worst price this take is authorized to pay, stated rather than
+        # implied by the limit it happens to carry.  They are the same number
+        # today; naming both is what lets the submission refuse a take whose
+        # price has drifted past its authorization instead of discovering it
+        # in the fill.
+        fields["fok_price_cap"] = float(limit_price)
+    return fields
 
 # Charter 94 (一)(二): each leg posts one order per rung of the bid-anchored
 # ladder, as many rungs as the gap holds whole venue lots for, each an equal
@@ -1151,7 +1199,17 @@ def commit_production_candidate_atomic(
                     # quote rows carry market evidence only and must never own or
                     # override the Maker/FOK strategy choice.
                     "execution_candidate": execution_candidate,
-                    "post_only": execution_candidate == "MAKER",
+                    # What that family asks the venue for, from the kernel's
+                    # one table (2026-09-11).  Post-only is no longer a
+                    # comparison written here: an entry rung is GTD and
+                    # post-only, an authorized immediate take is FOK with a
+                    # stated cap, and the intent carries all three so the
+                    # submission has nothing left to decide.
+                    **_venue_order_fields(
+                        execution_candidate,
+                        created_at_utc=created_at_utc,
+                        limit_price=rung_price,
+                    ),
                     "cancel_acknowledged": bool(
                         target.get("cancel_acknowledged", False)
                     ),

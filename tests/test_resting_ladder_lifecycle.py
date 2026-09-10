@@ -233,6 +233,53 @@ def test_inferred_cancel_from_not_found_is_declined_not_written(tmp_path) -> Non
     assert written == [], "declining must not open a write transaction"
 
 
+def test_a_rung_the_venue_expired_ends_as_an_expiry_and_not_a_cancel(
+    monkeypatch,
+) -> None:
+    """GTD's own ending, which had no reader.
+
+    ``expired`` was in neither the filled set nor the cancelled set, and it
+    could not be: nothing this lane placed had an expiry, so the status was
+    unreachable.  Reachable now, a status in neither set falls through to
+    ``unknown`` -- which leaves the rung live in the ledger and holds its
+    bucket shut behind the sequential gate for as long as the book keeps
+    answering.  Recorded as EXPIRED rather than CANCEL_ACK because nobody
+    asked for it, and telling the two apart is the whole reason to send GTD.
+    """
+
+    events: list[dict] = []
+    monkeypatch.setattr(
+        lane, "record_order_event",
+        lambda conn, *, order_intent_id, event: events.append(event),
+    )
+    out = lane.sync_resting_intent(
+        None,
+        intent={
+            "order_intent_id": "intent_gtd",
+            "requested_size": 8.0,
+            "filled_size": 0.0,
+            "filled_notional_usdc": 0.0,
+            "limit_price": 0.131,
+            "exchange_order_id": "0xfeed",
+        },
+        view=lane._exchange_view({"ok": True, "status": "expired"}),
+        as_of_utc="2026-09-11T02:00:00Z",
+        write=lambda: _NullContext(),
+    )
+
+    assert out["state"] == "expired"
+    assert [event["event_type"] for event in events] == ["EXPIRED"]
+    assert events[0]["event_payload"]["exchange_status"] == "expired"
+
+
+class _NullContext:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        return False
+
+
 def test_exchange_reported_cancel_is_still_recorded() -> None:
     """Only the inference is refused.  A status the exchange actually said is
     evidence and is still written, or the lane could never close a rung."""

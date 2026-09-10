@@ -11,6 +11,7 @@ lift as any other candidate.
 """
 from __future__ import annotations
 
+from dataclasses import replace
 import inspect as _inspect
 import pytest
 
@@ -500,6 +501,131 @@ def test_the_support_contract_is_atomic_at_the_result() -> None:
                 [baseline, {**completion, "shares_by_bucket": shares}],
                 ordered_support=("30", "31", "32"),
             )
+
+
+def test_charter_127_the_designated_completion_crosses_as_a_limit_fok(
+    monkeypatch,
+) -> None:
+    """The completion is the one action that takes, and it takes or it does not.
+
+    A completion exists because the ladder is already broken: the seat holds
+    some legs and not the short one, and until that leg is bought the basket
+    loses on the outcome it was built to cover.  Posting it to rest answers
+    that with "perhaps, eventually", and eventually is measured: of the legs
+    a seat wanted, truth landed inside the intended basket 60.7% of the time
+    against 39.8% inside the basket that actually filled.
+
+    The price it may pay is the one its own authorization was struck on --
+    the lifted cost charter 123 re-read the edge on -- and the limit it sends
+    is the deepest level that quantity consumes, because a take priced at the
+    top of book for a quantity the top of book cannot supply is killed by
+    construction.
+    """
+
+    monkeypatch.setattr(
+        delta_v2_runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
+    )
+    result = compile_delta_v2_runtime_plan(
+        snapshot=_held_snapshot(),
+        basket_policy=_basket_policy(),
+        delta_policy=_delta_policy(),
+        fill_resolver=_fill_resolver,
+        capital_available_usdc=10.0,
+        minimum_profit_floor=-5.0,
+        resource_probe_ok=True,
+        book_equity_usdc=514.29,
+    )
+
+    assert result["target_solution"]["winner_candidate_origin"] == (
+        LADDER_BALANCE_CANDIDATE_ORIGIN
+    )
+    short = [
+        row for row in result["targets"]
+        if float(row.get("delta_shares") or 0.0) > 0.0
+    ]
+    assert [row["bucket"] for row in short] == ["32"]
+    assert short[0]["execution_candidate"] == "TAKER_FOK"
+    assert short[0]["post_only"] is False
+
+
+def test_charter_127_off_leaves_the_completion_resting(monkeypatch) -> None:
+    """The arm that restores what every completion was posted as."""
+
+    monkeypatch.setattr(
+        delta_v2_runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
+    )
+    monkeypatch.setattr(
+        delta_v2_runtime, "CHARTER_127_COMPLETION_TAKE", "off"
+    )
+    result = compile_delta_v2_runtime_plan(
+        snapshot=_held_snapshot(),
+        basket_policy=_basket_policy(),
+        delta_policy=_delta_policy(),
+        fill_resolver=_fill_resolver,
+        capital_available_usdc=10.0,
+        minimum_profit_floor=-5.0,
+        resource_probe_ok=True,
+        book_equity_usdc=514.29,
+    )
+
+    short = [
+        row for row in result["targets"]
+        if float(row.get("delta_shares") or 0.0) > 0.0
+    ]
+    assert [row["execution_candidate"] for row in short] == ["MAKER"]
+    assert short[0]["post_only"] is True
+
+
+def test_a_completion_that_would_walk_past_its_authorization_is_killed(
+    monkeypatch,
+) -> None:
+    """Above its authorization the completion buys nothing, by name.
+
+    The gates price the lot raise at the top of book (charter 93's lifted
+    cost, which charter 123 then re-reads the edge on); a take has to walk
+    the ladder for the whole quantity.  A book offering one share at the
+    quoted price and the rest far dearer is the case where those two numbers
+    part company, and it is the case charter 120 named on the other side of
+    the same lane: the certified five-share completion that bought 1.7.
+
+    Resting, the leg would post at the anchor and wait.  Taking, it either
+    gets the whole quantity inside what authorized it or it gets nothing --
+    and nothing is the right answer, because the basket the deeper walk would
+    buy is not the basket any gate saw.
+    """
+
+    monkeypatch.setattr(
+        delta_v2_runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
+    )
+    snapshot = _held_snapshot()
+    thin = type(snapshot.buckets[0].ask_levels[0])
+    dearer = []
+    for row in snapshot.buckets:
+        if row.bucket == "32":
+            row = replace(
+                row,
+                ask_levels=(
+                    thin(price=0.15, shares=1.0),
+                    thin(price=0.90, shares=100.0),
+                ),
+            )
+        dearer.append(row)
+    result = compile_delta_v2_runtime_plan(
+        snapshot=replace(snapshot, buckets=tuple(dearer)),
+        basket_policy=_basket_policy(),
+        delta_policy=_delta_policy(),
+        fill_resolver=_fill_resolver,
+        capital_available_usdc=10.0,
+        minimum_profit_floor=-5.0,
+        resource_probe_ok=True,
+        book_equity_usdc=514.29,
+    )
+
+    assert not [
+        row for row in result["targets"]
+        if float(row.get("delta_shares") or 0.0) > 0.0
+        and str(row.get("execution_candidate") or "") != "NONE"
+    ]
 
 
 def test_the_half_basket_compiles_to_its_missing_rung_at_the_seats_capital(

@@ -449,12 +449,20 @@ def _distribution_with_mode(mode: str, raw: Mapping[str, Any]) -> dict[str, floa
     if late > pp + pf + DEFAULT_EPS:
       raise ContractError("delta_v2_fill_distribution_late_fill_probability_exceeds_active_fill")
   else:
+    # Fill-or-kill: full or nothing, and until 2026-09-11 this contract
+    # refused the "nothing" (``fok_zero_forbidden``, ``mass_must_be_full``).
+    # An artifact could therefore only ever state that a FOK fills with
+    # certainty, which is a claim about the book at the moment the order
+    # arrives that nothing here observes.  The kill is now expressible and
+    # the two must still sum to one; a fitted lane for that probability does
+    # not exist yet, so an artifact that says nothing about it says one and
+    # reproduces every reading taken under the old contract exactly.
     if pp > DEFAULT_EPS:
       raise ContractError("delta_v2_fill_distribution_fok_partial_forbidden")
-    if p0 > DEFAULT_EPS:
-      raise ContractError("delta_v2_fill_distribution_fok_zero_forbidden")
-    if abs(pf - 1.0) > 1e-10:
+    if abs((p0 + pf) - 1.0) > 1e-10:
       raise ContractError("delta_v2_fill_distribution_fok_mass_must_be_full")
+    if pf <= DEFAULT_EPS:
+      raise ContractError("delta_v2_fill_distribution_fok_full_fill_support_required")
     if late > DEFAULT_EPS:
       raise ContractError("delta_v2_fill_distribution_fok_late_fill_forbidden")
     if partial_fraction > DEFAULT_EPS:

@@ -87,7 +87,7 @@ def _book(path: Path) -> sqlite3.Connection:
         # What production mints beside the columns.  The execution family
         # lives here and nowhere else, and the submit walk reads it to decide
         # whether the order may cross; a row without it is refused by name.
-        ('{"execution_candidate": "MAKER", "post_only": true}', "a" * 64),
+        ('{"execution_candidate": "MAKER", "post_only": true, "order_type": "GTD", "expiration": 1789088400}', "a" * 64),
     )
     return conn
 

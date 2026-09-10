@@ -227,16 +227,26 @@ def test_bootstrap_failure_rolls_back_schema_and_authority_rows(
     db = tmp_path / "target.db"
     _empty_db(db)
     manifest = json.loads(DEFAULT_MANIFEST.read_text(encoding="utf-8"))
+    # A partial fill, which is the outcome this order type does not have.
+    # Until 2026-09-11 the refusal pinned here was a KILLED fok
+    # (``fok_zero_forbidden``): the contract admitted only "fills, with
+    # certainty", which is not a model of a fill-or-kill order but the
+    # assumption that the book cannot move between the quote and the order's
+    # arrival.  The kill is expressible now; the partial still is not, and it
+    # is the one that would let a FOK be scored as the maker it is not.
     manifest["fill_prior"]["fok_distribution"][
-        "fill_probability_zero"
+        "fill_probability_partial"
     ] = 0.5
     manifest["fill_prior"]["fok_distribution"][
         "fill_probability_full"
     ] = 0.5
+    manifest["fill_prior"]["fok_distribution"][
+        "partial_fill_fraction"
+    ] = 0.5
     candidate = tmp_path / "bad-fill-manifest.json"
     candidate.write_text(json.dumps(manifest), encoding="utf-8")
 
-    with pytest.raises(ContractError, match="fok_zero_forbidden"):
+    with pytest.raises(ContractError, match="fok_partial_forbidden"):
         apply_bootstrap(
             db_path=db,
             manifest_path=candidate,

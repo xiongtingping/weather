@@ -418,14 +418,48 @@ def test_fok_is_full_or_zero_contract() -> None:
         )
     )
     assert good["fill_outcomes"][0]["filled_shares"] == pytest.approx(10.0)
+
+    # The kill.  Refused here until 2026-09-11, which made the only
+    # distribution a fill-or-kill could carry "fills, with certainty" -- not a
+    # model of this order type but the assumption that the book cannot move
+    # between the quote that priced it and the order's arrival.
+    killable = evaluate_action_v2(
+        **_action_kwargs(
+            order_mode="FOK",
+            timeout_seconds=0.0,
+            fill_distribution=[
+                {"fill_fraction": 0.0, "probability": 0.5},
+                {"fill_fraction": 1.0, "probability": 0.5},
+            ],
+        )
+    )
+    assert [
+        row["filled_shares"] for row in killable["fill_outcomes"]
+    ] == pytest.approx([0.0, 10.0])
+
+    # A fraction between the two is the outcome this order type does not
+    # have, and admitting it would let a FOK be scored as the maker it is not.
+    with pytest.raises(ContractError, match="fok_distribution_partial_forbidden"):
+        evaluate_action_v2(
+            **_action_kwargs(
+                order_mode="FOK",
+                timeout_seconds=0.0,
+                fill_distribution=[
+                    {"fill_fraction": 0.4, "probability": 0.5},
+                    {"fill_fraction": 1.0, "probability": 0.5},
+                ],
+            )
+        )
+
+    # And a distribution with no full fill at all describes an order that
+    # cannot do the one thing it is for.
     with pytest.raises(ContractError, match="must_be_full_fill"):
         evaluate_action_v2(
             **_action_kwargs(
                 order_mode="FOK",
                 timeout_seconds=0.0,
                 fill_distribution=[
-                    {"fill_fraction": 0.0, "probability": 0.5},
-                    {"fill_fraction": 1.0, "probability": 0.5},
+                    {"fill_fraction": 0.0, "probability": 1.0},
                 ],
             )
         )

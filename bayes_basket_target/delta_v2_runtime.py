@@ -107,6 +107,7 @@ from .basket_kernel.delta_v2 import (
     whole_basket_kelly_stake_v1,
     LADDER_BALANCE_LEVEL_RULE_VERSION,
     ask_depth_cost_v1,
+    ask_depth_walk_v1,
     ladder_balance_targets_v1,
     COMPLETION_CUTOFF_HOURS,
     completion_conditioned_claim_v1,
@@ -488,6 +489,43 @@ MAKER_LADDER_ANCHOR_OFFSETS = (
 MAKER_RESTING_TIMEOUT_SECONDS = float(
     os.environ.get("PM_MAKER_RESTING_TIMEOUT_SECONDS", "") or 3600.0
 )
+# How long a rung is allowed to stand at the venue before the venue itself
+# removes it (user ruling, 2026-09-11: entries go out GTD).
+#
+# Set to the horizon the rung's own fill probability was priced at, and for
+# that reason rather than for a round number: the artifact prices this rung
+# at ``MAKER_RESTING_TIMEOUT_SECONDS``, so an order living past it is one
+# whose chance of filling nothing in the plan ever estimated.  A rung still
+# wanted at the horizon is re-minted by the next compile, at the anchor that
+# stands then rather than the one that stood an hour ago -- and the measured
+# shape says that is no loss: fills arriving after fifteen minutes were worse
+# than fills arriving before them (0-5 min -0.0188 a share, 15-30 -0.0247,
+# 30-60 -0.0251), so the value of standing still was already negative.
+#
+# What it buys is the case nothing else covers: a rung this lane loses track
+# of.  LFPB 21C rested 18.8 hours on 2026-09-07 at 0.061 with no bid left and
+# the ask down at 0.020, because the only thing that could end it was a
+# cancel from a lane that had stopped seeing it.
+# Charter 127 (user ruling, 2026-09-11): the designated completion crosses as
+# a limit fill-or-kill instead of resting.  ``off`` restores the resting rung,
+# which is what every completion has been posted as.
+CHARTER_127_COMPLETION_TAKE = (
+    os.environ.get("PM_CHARTER_127_COMPLETION_TAKE", "").strip().lower() or "on"
+)
+if CHARTER_127_COMPLETION_TAKE not in {"on", "off"}:
+    raise ValueError(
+        f"unknown charter 127 completion take mode: {CHARTER_127_COMPLETION_TAKE}"
+    )
+MAKER_GTD_HORIZON_SECONDS = float(
+    os.environ.get("PM_MAKER_GTD_HORIZON_SECONDS", "")
+    or MAKER_RESTING_TIMEOUT_SECONDS
+)
+if MAKER_GTD_HORIZON_SECONDS < 60.0:
+    # The matching engine's own grace: an order expiring inside a minute is
+    # one the venue may never act on.
+    raise ValueError(
+        f"maker GTD horizon below the venue grace: {MAKER_GTD_HORIZON_SECONDS}"
+    )
 
 
 # Charter 110's completion rules, as one switch: the (四) partition and the
@@ -6048,6 +6086,36 @@ def compile_delta_v2_runtime_plan(
         for bucket in ordered_support
         if not by_bucket[bucket].ask_available
     }
+    # Charter 127 (user ruling, 2026-09-11): the designated completion is the
+    # one action that crosses, and it crosses as a limit fill-or-kill.
+    #
+    # A completion exists because the ladder is already broken: the seat holds
+    # some legs and not others, and until the short one is bought the basket
+    # loses on the very outcome it was built to cover.  A resting rung answers
+    # that with "perhaps, eventually", and the measured shape of perhaps is
+    # brutal -- of the legs a seat wanted, 60.7% of settled truth landed
+    # inside the intended basket against 39.8% inside the one that actually
+    # filled, and the whole 20.9 point gap is legs that never came.  So the
+    # completion asks for the whole quantity now or not at all.
+    #
+    # The price it may pay is the price its own authorization was struck on:
+    # ``_ladder_balance_candidate`` walked this ladder for exactly this
+    # quantity and the solver judged the resulting shape on exactly that
+    # cost.  Paying more is buying a basket no gate saw, which is what
+    # charters 120 and 123 exist to stop; so a book that has moved against us
+    # since the solve does not get a worse fill, it gets no fill.
+    completion_take = (
+        CHARTER_127_COMPLETION_TAKE == "on"
+        and str(target_solution.get("winner_candidate_origin") or "")
+        == LADDER_BALANCE_CANDIDATE_ORIGIN
+    )
+    # The cash each leg is authorized to spend is the LIFTED cost, not the
+    # solved one: charters 70/83 raise rungs to the venue's lot after the
+    # solve, and charter 123 re-reads the whole-basket edge on the raised
+    # shape, so the lifted number is the last one a gate judged and the gap
+    # below is the lifted gap.  Capping on the solved cost would refuse every
+    # completion the lot raised, which is most of them.
+    authorized_cost = dict(lifted_cost)
     for bucket in execution_gap_support:
         row = by_bucket[bucket]
         if not row.ask_available:
@@ -6057,6 +6125,38 @@ def compile_delta_v2_runtime_plan(
             continue
         gap = gap_by_bucket[bucket]
         if gap <= EPS:
+            continue
+        if completion_take:
+            # The cash this leg's completion was authorized to spend, and the
+            # walk the venue would charge for it now.
+            authorized = (
+                float(authorized_cost.get(bucket, 0.0) or 0.0)
+                - float(row.filled_cost_usdc or 0.0)
+                - float(row.pending_notional_usdc or 0.0)
+            )
+            walk = ask_depth_walk_v1(levels=row.ask_levels, shares=gap)
+            if walk is None:
+                maker_candidate_diagnostics[bucket] = (
+                    "completion_take_depth_short_of_gap"
+                )
+                continue
+            if authorized <= EPS or float(walk["cash"]) > authorized + 1e-9:
+                # Above what authorized it.  Refused by name rather than
+                # bought at the new price: this is the whole point of asking
+                # for a kill.
+                maker_candidate_diagnostics[bucket] = (
+                    "completion_take_above_authorized_cost"
+                )
+                continue
+            limit = float(walk["marginal_price"])
+            if limit <= EPS or limit >= 1.0:
+                maker_candidate_diagnostics[bucket] = (
+                    "completion_take_limit_invalid"
+                )
+                continue
+            candidate_descriptors.append(
+                (bucket, float(walk["cash"]), limit, "FOK:0")
+            )
             continue
         reservation_grid = _reservation_grid(row=row, artifact=delta_policy)
         maker_rungs = _maker_ladder(

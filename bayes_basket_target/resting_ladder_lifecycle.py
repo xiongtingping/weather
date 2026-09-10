@@ -56,6 +56,16 @@ RESTING_REPRICE_FAR_TICKS = float(
 EPS = 1e-9
 _CANCELLED = frozenset({"cancelled", "canceled"})
 _FILLED = frozenset({"matched", "filled"})
+# The venue's own word for an order whose GTD expiry has passed.  It was in
+# neither set until 2026-09-11 and could not be: nothing this lane placed had
+# an expiry, so the status was unreachable.  Under GTD it is reachable on
+# every rung that outlives its horizon, and a status in neither set falls
+# through to ``unknown``, which leaves the rung live in the ledger and its
+# bucket shut behind the sequential gate for as long as the book keeps
+# answering.  Kept separate from ``_CANCELLED`` rather than folded into it,
+# because an expiry is not a cancel: nobody asked for it, and the difference
+# is the whole reason to send GTD.
+_EXPIRED = frozenset({"expired"})
 _RESTING = frozenset({"live", "open", "delayed", "unmatched", ""})
 
 
@@ -316,6 +326,40 @@ def sync_resting_intent(
             "state": "unknown",
             "reason": "cancel_inferred_from_not_found_declined",
         }
+    if status in _EXPIRED:
+        # The order reached its own horizon and the venue removed it.  Same
+        # accounting as a cancel -- nothing rests, a partial is closed out --
+        # and a different name, because the ledger has to be able to say
+        # whether an order ended because we asked or because its clock ran
+        # out.  ``EXPIRED`` has been in the event vocabulary and the state
+        # machine since the ledger was written; this is its first producer.
+        with write():
+            record_order_event(conn, order_intent_id=intent_id, event={
+                "event_type": "EXPIRED",
+                "exchange_order_id": intent["exchange_order_id"],
+                "observed_at": as_of_utc,
+                "matched_size": increment,
+                "matched_notional_usdc": increment * price,
+                "event_payload": {
+                    "recovered_by": "resting_ladder_lifecycle",
+                    "cumulative_size_matched": cumulative,
+                    "exchange_status": status,
+                },
+            })
+            if cumulative > EPS and not fill_is_complete(cumulative, requested):
+                resolve_cancelled_after_partial_fill(
+                    conn,
+                    order_intent_id=intent_id,
+                    filled_size=cumulative,
+                    filled_notional_usdc=(
+                        float(intent["filled_notional_usdc"])
+                        + increment * price
+                    ),
+                    resolved_at_utc=as_of_utc,
+                )
+        return {
+            "state": "expired", "increment": increment, "cumulative": cumulative,
+        }
     if status in _CANCELLED:
         with write():
             record_order_event(conn, order_intent_id=intent_id, event={
@@ -537,6 +581,11 @@ def reprice_resting_rungs(
         "synced_filled": 0,
         "synced_partial": 0,
         "synced_cancelled": 0,
+        # Rungs the venue removed at their own GTD horizon.  Counted apart
+        # from cancels so the horizon can be read against the fills: a lane
+        # whose rungs mostly expire is one whose horizon is shorter than the
+        # market it is waiting for.
+        "synced_expired": 0,
         "kept": 0,
         "departed_filled": 0,
         "departed_partial": 0,
@@ -586,8 +635,15 @@ def reprice_resting_rungs(
             receipt["synced_filled"] += 1
             receipt["rungs"].append(entry)
             continue
-        if synced["state"] == "cancelled":
-            receipt["synced_cancelled"] += 1
+        if synced["state"] in {"cancelled", "expired"}:
+            # An expiry ends the rung exactly as a cancel does, and is
+            # counted apart from it: the two answer different questions
+            # about the lane, one about our own decisions and one about
+            # whether the horizon is set where the fills are.
+            receipt[
+                "synced_expired" if synced["state"] == "expired"
+                else "synced_cancelled"
+            ] += 1
             receipt["rungs"].append(entry)
             continue
         if synced["state"] == "resting_partial":
@@ -674,6 +730,11 @@ def reprice_resting_rungs(
             entry["after_cancel"] = after
             if after["state"] == "cancelled":
                 receipt["cancel_confirmed"] += 1
+            elif after["state"] == "expired":
+                # The cancel and the expiry raced and the clock won.  The
+                # rung is gone either way; recording which one ended it is
+                # what keeps the horizon measurable.
+                receipt["synced_expired"] += 1
             elif after["state"] == "filled":
                 receipt["synced_filled"] += 1
         except Exception as exc:  # noqa: BLE001 -- next pass looks again

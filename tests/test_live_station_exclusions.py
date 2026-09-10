@@ -955,7 +955,7 @@ def _submission_conn(station: str) -> "sqlite3.Connection":  # noqa: F821
         " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         ("intent-a", "decision-1", "cycle-1", "35", "token-35", "YES", "BUY",
          0.12, 40.0, 4.8, "prepared", 1, "idem-a",
-         '{"execution_candidate": "MAKER", "post_only": true}', f"{1:064d}",
+         '{"execution_candidate": "MAKER", "post_only": true, "order_type": "GTD", "expiration": 1789088400}', f"{1:064d}",
          "2026-08-30T09:00:00Z"),
     )
     return conn
