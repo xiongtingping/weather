@@ -164,12 +164,17 @@ def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
     import inspect
 
     assert sa.version_effective_from("P0", POSTERIOR_VERSION) == (
-        "2026-09-06T04:18:00Z"
+        "2026-09-10T15:27:09Z"
     )
     p0m = inspect.signature(
         materialize_p0m_observed
     ).parameters["posterior_version"].default
-    assert sa.version_effective_from("P0-M", p0m) == "2026-09-06T04:18:00Z"
+    assert sa.version_effective_from("P0-M", p0m) == "2026-09-10T15:27:11Z"
+    # The superseded declarations stay: inert for the versions nobody
+    # serves, and the record of when v3's arithmetic began.
+    assert sa.version_effective_from(
+        "P0", "calibrated_native_cross_ensemble_p0_v3"
+    ) == "2026-09-06T04:18:00Z"
 
 
 def test_p1_declares_nothing_because_p1_bumps_on_time() -> None:

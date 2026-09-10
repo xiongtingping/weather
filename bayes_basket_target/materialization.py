@@ -1142,7 +1142,9 @@ def materialize_p0m_observed(
     # v3: P0-M is built on P0's root and moves with it, so the width changes
     # that owed P0 a bump owe this one too -- same three changes, same moment,
     # same declared start in ``serving_arithmetic.STAGE_VERSION_EFFECTIVE_FROM``.
-    posterior_version: str = "p0m_taf_observed_v3",
+    # v4: the station width table retired 2026-09-10T15:27Z (see the P0 v4
+    # note); same moment, same declared start.
+    posterior_version: str = "p0m_taf_observed_v4",
     observed_hard_excluded_buckets: Sequence[str] = (),
     observed_running_high_c: float | None = None,
     band_table: tuple[

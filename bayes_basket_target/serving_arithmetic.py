@@ -228,9 +228,20 @@ def _closure(entries: Sequence[tuple[str, str]]) -> list[tuple[str, str]]:
 # steps and left both versions behind.  It is the same moment the refit sweep
 # has been passing by hand as ``--since-stage`` since 2026-09-08; the flag is
 # now a fallback for the version's first hours rather than the only carrier.
+#
+# v4 (both stages): the per-station width tables were retired by the lane's
+# incumbent veto -- P0 at 2026-09-10T15:27:09Z, P0-M at 15:27:11Z.  Cells
+# served under the 0.5 scale would read to the next width fit as "widen",
+# which the retirement already did; the clock starts at the retirement.
 STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
-    "P0": {"calibrated_native_cross_ensemble_p0_v3": "2026-09-06T04:18:00Z"},
-    "P0-M": {"p0m_taf_observed_v3": "2026-09-06T04:18:00Z"},
+    "P0": {
+        "calibrated_native_cross_ensemble_p0_v3": "2026-09-06T04:18:00Z",
+        "calibrated_native_cross_ensemble_p0_v4": "2026-09-10T15:27:09Z",
+    },
+    "P0-M": {
+        "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",
+        "p0m_taf_observed_v4": "2026-09-10T15:27:11Z",
+    },
 }
 
 

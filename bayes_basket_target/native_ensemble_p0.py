@@ -106,7 +106,13 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # because it would have anchored the evidence clock at the day it was typed;
 # it says 2026-09-06T04:18Z in ``serving_arithmetic.STAGE_VERSION_EFFECTIVE_FROM``
 # instead, which is the moment the last of the three actually reached serving.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v3"
+# v4: the station width table retired (2026-09-10T15:27Z).  On every cell
+# served after it went live the served distribution lost to a bounded 1.5x
+# widening (+0.19 nat, sd(z) 1.40/1.85 on the two normal days), so the lane's
+# new incumbent veto took it out; served sigma goes back from 0.70 to about
+# 1.2 bucket steps.  Cells served under the 0.5 scale must not train the next
+# width fit, hence the bump, with its start declared at the deactivation.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v4"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
