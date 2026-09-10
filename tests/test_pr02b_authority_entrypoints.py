@@ -104,9 +104,9 @@ def test_only_three_user_domain_services_and_targetctl_remain() -> None:
     # The guard this test exists for is the installer's own list: it manages
     # three user-domain services and no more.  The repository's launchd
     # directory has grown past that, and the growth is accounted for --
-    # four of the five extras were folded into the resident daemon's hosted
-    # sweeps on 2026-08-24 and are installed disabled, and the fifth,
-    # official_nwp_raw_retention, runs on its own clock.  Pinning the
+    # four of the seven extras were folded into the resident daemon's
+    # hosted sweeps on 2026-08-24 and are installed disabled, and three run
+    # on their own clocks for reasons recorded below.  Pinning the
     # directory to the known set keeps a new one from arriving unnoticed
     # without pretending the four superseded definitions are not on disk.
     installer_managed = [
@@ -120,7 +120,22 @@ def test_only_three_user_domain_services_and_targetctl_remain() -> None:
         "com.weather.pr12_awc_observation_sweep.plist",
         "com.weather.settlement_truth_sweep.plist",
     ]
-    own_clock = ["com.weather.official_nwp_raw_retention.plist"]
+    # On their own timers because a resident that hosts them is the wrong
+    # owner, each for its own recorded reason.
+    own_clock = [
+        "com.weather.official_nwp_raw_retention.plist",
+        # 2026-09-09: the render was a hosted sweep with a 2400s timeout,
+        # and a render that needs longer is SIGTERMed before it writes --
+        # so it wrote nothing, refreshed no cached section, and the next
+        # one started colder and was killed sooner in its own work.  A
+        # render is a reader: nothing waits on it and no deadline it can
+        # miss is worth killing it over, so it left the resident for
+        # launchd, which imposes no timeout.
+        "com.weather.dashboard_render.plist",
+        # The regional admission check asks whether a lane has come due,
+        # which is not on the decision cycle's critical path.
+        "com.weather.regional_admission_due_check.plist",
+    ]
     launchd = sorted(path.name for path in (ROOT / "launchd").glob("*.plist"))
     assert launchd == sorted(
         installer_managed + superseded_by_hosted_sweeps + own_clock
