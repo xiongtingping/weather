@@ -10127,7 +10127,7 @@ def test_ui_snapshot_soft_forecast_channels_prefers_ctp_components_over_legacy_s
     assert "wu_forecast_peak" not in channels["captured_not_included_channels"]
 
 
-def test_ui_snapshot_soft_forecast_legacy_fallback_is_retired_compat() -> None:
+def test_ui_snapshot_soft_forecast_channels_are_not_rebuilt_from_legacy_row_fields() -> None:
     payload = {}
     distribution = [
         {
@@ -10146,14 +10146,16 @@ def test_ui_snapshot_soft_forecast_legacy_fallback_is_retired_compat() -> None:
 
     channels = server._ui_snapshot_soft_forecast_channels(payload, distribution)
 
-    assert channels["legacy_evidence_boundary"]["schema"] == "legacy_evidence_boundary_v1"
-    assert channels["legacy_evidence_boundary"]["role"] == "retired_compat"
-    assert channels["legacy_evidence_boundary"]["ui_primary_allowed"] is False
-    assert channels["legacy_evidence_boundary"]["production_probability_allowed"] is False
-    assert channels["legacy_evidence_boundary"]["replacement"] == "layer_contributions.forecast_weak_likelihood"
+    # The fallback that rebuilt channels from these row fields is gone, and so
+    # is the legacy_evidence_boundary marker it used to stamp them with --
+    # test_ui_bucket_label_static asserts the UI helper must not carry that
+    # schema either.  Channels come from the committed
+    # soft_forecast_posterior_channels block or not at all; the test above
+    # covers the committed case.
+    assert channels == {}
 
 
-def test_ui_temperature_trajectory_status_marks_legacy_evidence_boundary() -> None:
+def test_ui_temperature_trajectory_status_suppresses_an_unstable_rise_rate() -> None:
     payload = {
         "weather_likelihood_features": {
             "observed_temp_c": 31.0,
@@ -10173,10 +10175,16 @@ def test_ui_temperature_trajectory_status_marks_legacy_evidence_boundary() -> No
 
     status = server._ui_temperature_trajectory_status_from_payload(payload, distribution)
 
-    assert status["temperature_trajectory_overlay_strength"] == 4.0
-    assert status["legacy_evidence_boundary"]["schema"] == "legacy_evidence_boundary_v1"
-    assert status["legacy_evidence_boundary"]["role"] == "retired_compat"
-    assert status["legacy_evidence_boundary"]["replacement"] == "layer_contributions.metar_strong_likelihood.state_evidence_trace"
+    # The overlay strength and the legacy_evidence_boundary marker both left
+    # this block; the overlay is a retired diagnostic replaced by
+    # layer_contributions.metar_strong_likelihood.  What the block does now is
+    # refuse a rise rate it cannot trust and say which check refused it.
+    assert status["temperature_trajectory_overlay_strength"] is None
+    assert "legacy_evidence_boundary" not in status
+    assert status["temperature_rise_rate_c_per_hour"] is None
+    assert status["temperature_rise_rate_trusted"] is False
+    assert status["temperature_rise_rate_na_reason"] == "unstable_temperature_rise_rate_suppressed"
+    assert "unstable_temperature_rise_rate_suppressed" in status["missing_fields"]
 
 
 def test_ui_fast_fallback_attaches_temperature_trajectory_status_from_existing_payload() -> None:
