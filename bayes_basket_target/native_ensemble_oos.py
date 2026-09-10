@@ -269,6 +269,14 @@ NO_LIVE_BOOTSTRAP_THRESHOLD_PROFILE = (
 HISTORICAL_REPUBLISHER_RECEIPT = "HISTORICAL_ASOF_REPUBLISHER_RECEIPT"
 HISTORICAL_OOS_TEMPORAL_SCOPE = "CLOSED_HISTORICAL_AWC_TRUTH"
 DEFAULT_VALID_DAYS = 30
+# Extra settled days each system exposes, beyond its own holdout, so the
+# cross cohort can find ``min_holdout_days`` common to every member when their
+# latest windows are shifted against each other by a missing capture.  Three
+# on a three-day window doubles the reach; measured 2026-09-10 it recovers 88
+# of the 88 four-system groups the exact rule was refusing.  The extra days
+# are predicted from a fit trained before all of them, never from the gate's
+# own fit, which has seen them.
+CROSS_HOLDOUT_SLACK_DAYS = 3
 # Family weights come from measured skill: each family's share is its summed
 # system score over the total, and a cap only ever binds when that share would
 # otherwise exceed it.  The cap therefore exists to preserve ensemble diversity
@@ -3371,11 +3379,13 @@ def _evaluate_system(
         key=lambda case: str(case["event_date"]),
     )
     serving_parameters = _fit_parameters(serving_cases)
-    predictions = []
-    for case in holdout:
-        probability = _apply_parameters(case["values"], parameters)
+
+    def _prediction_row(
+        case: Mapping[str, Any], fitted: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        probability = _apply_parameters(case["values"], fitted)
         day_values = [float(value) for value in case["values"]]
-        predictions.append({
+        return {
             "event_date": case["event_date"],
             "decision_at_utc": case["aggregator_snapshot_at_utc"],
             "member_set_sha256": case["member_set_sha256"],
@@ -3391,14 +3401,66 @@ def _evaluate_system(
             # weighted cross center, so it needs the center the histogram was
             # actually built around, not a train-window average.
             "calibrated_center_c": _corrected_center(
-                sum(day_values) / len(day_values), parameters
+                sum(day_values) / len(day_values), fitted
             ),
             "actual_tmax_c": float(case["actual_tmax_c"]),
             "metrics": _metrics(
                 probability,
                 float(case["actual_tmax_c"]),
             ),
-        })
+        }
+
+    predictions = [_prediction_row(case, parameters) for case in holdout]
+    # A second, longer walk-forward exposure for the cross cohort only.
+    # The cross contest can only seat systems on days every one of them
+    # holds out, and each system's own holdout is its latest few settled
+    # days.  A single missing day in one archive shifts that set by one, so
+    # with a three-day window four systems seldom hold out the same three
+    # days at once: measured 2026-09-10 across 45 stations, 88 of 118
+    # four-system groups could not form a cohort while sharing four or five
+    # settled days inside their latest six.  These extra days are predicted
+    # from a fit whose training window ends before ALL of them, so a day is
+    # out of sample for this system whether it is scored from ``predictions``
+    # or from here.  The gate's own fit and window above are untouched.
+    cross_predictions: list[dict[str, Any]] | None = None
+    cross_parameters: Mapping[str, Any] | None = None
+    cross_train_end: str | None = None
+    cross_train_n = 0
+    cross_exposure = min_holdout_days + CROSS_HOLDOUT_SLACK_DAYS
+    chronological_holdout = sorted(
+        holdout_cases, key=lambda case: str(case["event_date"])
+    )
+    if len(chronological_holdout) >= cross_exposure:
+        cross_holdout = chronological_holdout[-cross_exposure:]
+        cross_holdout_start = str(cross_holdout[0]["event_date"])
+        cross_first_decision = min(
+            str(case["aggregator_snapshot_at_utc"]) for case in cross_holdout
+        )
+        cross_window_start = (
+            date.fromisoformat(cross_holdout_start[:10])
+            - timedelta(days=ROLLING_TRAIN_WINDOW_DAYS)
+        ).isoformat()
+        cross_train = sorted(
+            (
+                case for case in cases
+                if cross_window_start <= str(case["event_date"])
+                < cross_holdout_start
+                and (
+                    transport_provider_id == "OPEN_METEO"
+                    or str(case["aggregator_snapshot_at_utc"])
+                    < cross_first_decision
+                )
+            ),
+            key=lambda case: str(case["event_date"]),
+        )
+        if len(cross_train) >= min_train_days:
+            cross_parameters = _fit_parameters(cross_train)
+            cross_predictions = [
+                _prediction_row(case, cross_parameters)
+                for case in cross_holdout
+            ]
+            cross_train_end = str(cross_train[-1]["event_date"])
+            cross_train_n = len(cross_train)
     return {
         "state": "OOS_READY",
         "system_id": system_id,
@@ -3462,10 +3524,61 @@ def _evaluate_system(
         "serving_fit_through_date": serving_cases[-1]["event_date"],
         "serving_n": len(serving_cases),
         "predictions": predictions,
+        # The cross cohort's longer exposure (see above).  Absent when the
+        # archive is too short to train a fit that predates all of it; the
+        # cohort then has only ``predictions`` to match on, as before.
+        "cross_predictions": cross_predictions,
+        "cross_parameters": cross_parameters,
+        "cross_train_end_date": cross_train_end,
+        "cross_train_n": cross_train_n,
         "oos_metrics": _mean_metrics([
             row["metrics"] for row in predictions
         ]),
     }
+
+
+# A window cohort pool wider than this is a registry bug, not a fleet: four
+# native families at two cycles each is eight rows, and the subset walk is
+# 2^n.  Ten keeps it under a thousand and leaves headroom for one more
+# family; past that the pass declines rather than stalling the build.
+MAX_WINDOW_COHORT_SYSTEMS = 10
+
+
+def _cohort_view(
+    evaluation: Mapping[str, Any],
+    common_holdout: Sequence[str],
+) -> Mapping[str, Any]:
+    """The member as this cohort may score it: a fit that predates its holdout.
+
+    The gate's own ``predictions`` cover the member's latest holdout days
+    and were made by a fit trained before them.  A cohort formed on the
+    shared window may hold out a day older than that, which the gate's fit
+    trained on; scoring it there would be in sample.  Such a member is scored
+    from ``cross_predictions`` instead, whose fit predates every exposed day,
+    and its train-window numbers -- the error scale the seat weights read,
+    the train count the maturity ramp reads, the train end the residual
+    series is cut at -- come from that same fit.  A member whose own window
+    already covers the holdout is returned as it is, so an exact cohort
+    scores exactly as it did.
+    """
+
+    own = {
+        str(prediction["event_date"])
+        for prediction in evaluation["predictions"]
+    }
+    if all(str(day) in own for day in common_holdout):
+        return evaluation
+    cross = evaluation.get("cross_predictions") or []
+    exposed = {str(prediction["event_date"]) for prediction in cross}
+    if not all(str(day) in exposed for day in common_holdout):
+        raise ContractError("native_ensemble_oos_cohort_day_not_exposed")
+    view = dict(evaluation)
+    view["predictions"] = list(cross)
+    view["parameters"] = evaluation["cross_parameters"]
+    view["train_end_date"] = evaluation["cross_train_end_date"]
+    view["train_n"] = int(evaluation.get("cross_train_n") or 0)
+    view["cohort_fit_basis"] = "walk_forward_window"
+    return view
 
 
 def _eligible_exact_shared_holdout_cohorts(
@@ -3474,11 +3587,47 @@ def _eligible_exact_shared_holdout_cohorts(
     systems: Mapping[str, Mapping[str, Any]],
     min_holdout_days: int,
     allowed_system_ids: Sequence[str] | None = None,
-) -> tuple[
+) -> list[tuple[
     tuple[str, ...],
     list[tuple[str, str, Mapping[str, Any]]],
-] | None:
-    """Every bounded availability-only cross-system OOS cohort, widest first."""
+]]:
+    """Every bounded availability-only cross-system OOS cohort, widest first.
+
+    Exact-window cohorts first, then shared-window ones; see
+    ``_shared_holdout_cohorts`` for the two passes and why the order matters.
+    """
+
+    exact, window = _shared_holdout_cohorts(
+        ready_rows=ready_rows,
+        systems=systems,
+        min_holdout_days=min_holdout_days,
+        allowed_system_ids=allowed_system_ids,
+    )
+    return exact + window
+
+
+def _shared_holdout_cohorts(
+    *,
+    ready_rows: Sequence[tuple[str, str, Mapping[str, Any]]],
+    systems: Mapping[str, Mapping[str, Any]],
+    min_holdout_days: int,
+    allowed_system_ids: Sequence[str] | None = None,
+) -> tuple[
+    list[tuple[tuple[str, ...], list[tuple[str, str, Mapping[str, Any]]]]],
+    list[tuple[tuple[str, ...], list[tuple[str, str, Mapping[str, Any]]]]],
+]:
+    """The exact-window cohorts and the shared-window cohorts, separately.
+
+    Separately because the caller has to emit every exact cohort of every
+    cycle variant before any shared-window cohort of any variant.  The
+    activation key downstream is (season, lead, run_cycle, system set) and
+    does not carry the per-system cycle map, so a shared-window cohort in
+    one variant can pre-empt the exact cohort of another variant that reduces
+    to the same key -- measured 2026-09-10 on 18 stations, 7 of 271 existing
+    candidates changed or vanished that way when the two kinds were merely
+    ordered within a variant.  Emitted exact-first globally, the old build's
+    candidates come out first and identically, and the window pass only adds.
+    """
 
     # Do not let the forward packet's two-anchor transport requirement leak
     # into calibration selection.  Every ready official system is eligible;
@@ -3531,9 +3680,9 @@ def _eligible_exact_shared_holdout_cohorts(
                 row for row in holdout_rows if str(row[1]) == cycle
             ]
         ready_by_group[(holdout_days, "*")] = list(holdout_rows)
-    eligible_cohorts = []
-    seen_cohort_shapes: set[tuple[tuple[str, str], ...]] = set()
-    for (holdout_days, _cycle_key), cohort in ready_by_group.items():
+    def _reduce(
+        cohort: Sequence[tuple[str, str, Mapping[str, Any]]],
+    ) -> list[tuple[str, str, Mapping[str, Any]]] | None:
         # Transport tie-break only.  A system can have both an official
         # native row and an Open-Meteo republisher row inside one group;
         # keep the official one.  Cycles are no longer a tie to break here
@@ -3578,21 +3727,31 @@ def _eligible_exact_shared_holdout_cohorts(
             systems[system_id]["independence_family_id"]
             for system_id, _run_cycle, _evaluation in candidate
         }
-        if len(cohort_families) >= 2:
-            shape = tuple(sorted(
-                (str(row[0]), str(row[1])) for row in candidate
-            ))
-            if shape in seen_cohort_shapes:
-                continue
-            seen_cohort_shapes.add(shape)
-            eligible_cohorts.append((holdout_days, candidate))
+        return candidate if len(cohort_families) >= 2 else None
+
+    def _shape(
+        candidate: Sequence[tuple[str, str, Mapping[str, Any]]],
+    ) -> tuple[tuple[str, str], ...]:
+        return tuple(sorted((str(row[0]), str(row[1])) for row in candidate))
+
+    eligible_cohorts = []
+    seen_cohort_shapes: set[tuple[tuple[str, str], ...]] = set()
+    for (holdout_days, _cycle_key), cohort in ready_by_group.items():
+        candidate = _reduce(cohort)
+        if candidate is None:
+            continue
+        shape = _shape(candidate)
+        if shape in seen_cohort_shapes:
+            continue
+        seen_cohort_shapes.add(shape)
+        eligible_cohorts.append((holdout_days, candidate))
     # Widest first, then deterministic.  Every cohort is returned rather
     # than only the widest: cohorts differ by cycle pairing now, so a
     # narrower one is a different combination and not a worse version of
     # the wide one.  Downstream already dedupes on (season, lead,
     # run_cycle, system-set) and ranks the survivors, so offering more
     # costs a candidate row, never a wrong seat.
-    return sorted(
+    exact_cohorts = sorted(
         eligible_cohorts,
         key=lambda item: (
             -len(item[1]),
@@ -3600,6 +3759,79 @@ def _eligible_exact_shared_holdout_cohorts(
             item[0],
         ),
     )
+    # The second pass: cohorts on a shared window rather than an identical
+    # one.  The exact rule above requires every member's latest
+    # ``min_holdout_days`` to be the same days, and a single missing capture
+    # in one archive shifts that set by one.  Measured 2026-09-10 across 45
+    # stations, 88 of 118 four-system groups failed it while sharing four
+    # or five settled days inside their latest six -- which is why the
+    # contest seats a pair 92-97% of the time and why 41% of the sets in
+    # service were rows from the last day their four systems happened to
+    # line up.  Here a group forms when the members' exposed days (their
+    # holdout plus the longer walk-forward window ``_evaluate_system`` adds)
+    # share at least ``min_holdout_days``; its holdout is the newest such
+    # days, so the window length the contest scores on is unchanged.
+    #
+    # Strictly additive.  Every exact cohort is returned first, byte for
+    # byte as before, and a window cohort whose shape an exact cohort
+    # already has is not offered again; an exact cohort's newest common days
+    # ARE its shared holdout, so nothing scored today is scored differently.
+    # Only maximal groups are offered: the contest inside a cohort already
+    # enumerates its subsets, and a smaller group would be that same
+    # enumeration under a different holdout.
+    window_cohorts: list[tuple[
+        tuple[str, ...], list[tuple[str, str, Mapping[str, Any]]]
+    ]] = []
+    for cycle_key in sorted({str(row[1]) for row in candidate_rows} | {"*"}):
+        pool = _reduce([
+            row for row in candidate_rows
+            if cycle_key == "*" or str(row[1]) == cycle_key
+        ])
+        if pool is None or len(pool) < 2:
+            continue
+        if len(pool) > MAX_WINDOW_COHORT_SYSTEMS:
+            continue
+        exposed = [
+            frozenset(
+                str(prediction["event_date"])
+                for prediction in (
+                    row[2].get("cross_predictions") or row[2]["predictions"]
+                )
+            )
+            for row in pool
+        ]
+        qualifying: list[tuple[int, frozenset[str]]] = []
+        for mask in range(1, 1 << len(pool)):
+            members = [index for index in range(len(pool)) if mask & (1 << index)]
+            if len(members) < 2:
+                continue
+            common = frozenset.intersection(*(exposed[i] for i in members))
+            if len(common) >= min_holdout_days:
+                qualifying.append((mask, common))
+        for mask, common in qualifying:
+            if any(
+                other != mask and other & mask == mask
+                for other, _common in qualifying
+            ):
+                continue
+            group = [pool[i] for i in range(len(pool)) if mask & (1 << i)]
+            candidate = _reduce(group)
+            if candidate is None:
+                continue
+            shape = _shape(candidate)
+            if shape in seen_cohort_shapes:
+                continue
+            seen_cohort_shapes.add(shape)
+            holdout_days = tuple(sorted(common)[-min_holdout_days:])
+            window_cohorts.append((holdout_days, candidate))
+    window_cohorts.sort(
+        key=lambda item: (
+            -len(item[1]),
+            tuple(sorted(row[0] for row in item[1])),
+            item[0],
+        ),
+    )
+    return exact_cohorts, window_cohorts
 
 
 def build_native_ensemble_oos(
@@ -3932,6 +4164,7 @@ def build_native_ensemble_oos(
         else {}
     )
     cohort_tasks: list[tuple[str, str, Any, Any, Any, Any]] = []
+    window_tasks: list[tuple[str, str, Any, Any, Any, Any]] = []
     served_set_tasks: list[tuple[str, str, Any, Any, Any, Any]] = []
     for (
         season_bin,
@@ -3960,16 +4193,23 @@ def build_native_ensemble_oos(
         # way to enumerate every exact common-OOS cohort.  This selection
         # uses availability/timing only--never OOS scores--and consequently
         # cannot tune the model on its holdout result.
-        for cohort in _eligible_exact_shared_holdout_cohorts(
+        exact_cohorts, window_cohorts = _shared_holdout_cohorts(
             ready_rows=ready_rows,
             systems=systems,
             min_holdout_days=min_holdout_days,
             allowed_system_ids=system_mask,
-        ):
+        )
+        for cohort in exact_cohorts:
             cohort_tasks.append(
                 (season_bin, lead_bucket, system_rows, ready_rows, cohort,
                  None)
             )
+        for cohort in window_cohorts:
+            window_tasks.append(
+                (season_bin, lead_bucket, system_rows, ready_rows, cohort,
+                 None)
+            )
+        for cohort in exact_cohorts + window_cohorts:
             # The served identity rides this cohort only if the cohort can
             # actually produce it: every served system ready here, at the
             # cycle it was fitted under, and inside any mask the caller set.
@@ -3998,8 +4238,11 @@ def build_native_ensemble_oos(
                     (season_bin, lead_bucket, system_rows, ready_rows,
                      cohort, served_ids)
                 )
-    # Served-set refits run after the contest so a refit whose set the
-    # contest already chose can be skipped before any of the work below.
+    # Every exact cohort of every variant first, byte for byte the old
+    # build; then the shared-window cohorts, which only add; then the
+    # served-set refits, so a refit whose set the contest already chose can
+    # be skipped before any of the work below.
+    cohort_tasks.extend(window_tasks)
     cohort_tasks.extend(served_set_tasks)
     contest_pick_by_cohort: dict[tuple[Any, ...], tuple[str, ...]] = {}
     # One candidate attempt per cohort.  Flattened into a task list rather
@@ -4033,10 +4276,26 @@ def build_native_ensemble_oos(
         cycle_by_system, cycle_mapping_sha, run_cycle, run_cycle_scope = (
             _cycle_mapping_for_rows(selected_ready_rows)
         )
+        # Two views of each member.  The contest scores the view whose fit
+        # predates every day in this cohort's holdout -- the gate's own fit
+        # where the holdout is inside the member's own window, the longer
+        # walk-forward fit otherwise -- so a day is never scored by a fit
+        # that trained on it, and the weights are derived from the same fit
+        # for the same reason.  What persists for a winner is the original
+        # evaluation: serving reads its serving refit regardless, and its
+        # gate fit stays the row the system artifact was already keyed on.
+        original_by_system = {
+            system_id: evaluation
+            for system_id, _run_cycle, evaluation in selected_ready_rows
+        }
         rows = [
-            (system_id, evaluation)
+            (system_id, _cohort_view(evaluation, common_holdout))
             for system_id, _run_cycle, evaluation in selected_ready_rows
         ]
+        cohort_fit_basis_by_system = {
+            system_id: str(evaluation.get("cohort_fit_basis") or "gate")
+            for system_id, evaluation in rows
+        }
         family_by_system = {
             system_id: systems[system_id]["independence_family_id"]
             for system_id, _evaluation in rows
@@ -4828,9 +5087,17 @@ def build_native_ensemble_oos(
             "climatology_baseline_metrics": climate_metrics,
             "cross_system_residual_correlation": correlations,
             "predictions": cross_predictions,
+            # Which fit each seated member was scored with in this cohort.
+            # Informational: outside every identity, so an artifact whose
+            # cohort formed on the shared window is addressed exactly as one
+            # that formed on the identical one.
+            "cohort_fit_basis_by_system": {
+                system_id: cohort_fit_basis_by_system[system_id]
+                for system_id in sorted(weights)
+            },
             "system_evaluations": {
-                system_id: evaluation
-                for system_id, evaluation in rows
+                system_id: original_by_system[system_id]
+                for system_id, _evaluation in rows
                 if system_id in weights
             },
             "threshold_profile": threshold_profile,
