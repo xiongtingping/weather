@@ -413,3 +413,78 @@ def test_an_old_station_journal_is_widened_for_the_veto_outcome() -> None:
     assert conn.execute(
         "SELECT count(*) FROM sqlite_master WHERE name LIKE '%superseded'"
     ).fetchone()[0] == 0
+
+
+def test_a_retired_pinned_version_serves_identity_but_a_superseded_one_does_not() -> None:
+    """Artifacts pin the table version their holdout was scored against.
+    Superseded by a better table, the pin is honoured -- that is the
+    contract.  Retired by the veto, the pin is the one thing that would keep
+    a table the truth rejected in service for as long as the oldest artifact
+    lives, so a pinned read of a retired version is identity."""
+
+    conn = sqlite3.connect(":memory:")
+    ensure_center_width_schema(conn)
+    first = persist_and_activate_station_width(
+        conn, stage="P0", scales={"AAA0": 0.5, "AAA1": 0.8}, per_station={},
+        fitted_at_utc="2026-09-06T15:48:00Z",
+    )
+    old_sha = first["station_width_sha256"]
+    # Superseded by a second fit: the old version still reads as fitted.
+    second = persist_and_activate_station_width(
+        conn, stage="P0", scales={"AAA0": 0.6, "AAA1": 0.9}, per_station={},
+        fitted_at_utc="2026-09-07T15:48:00Z",
+    )
+    assert second["state"] == "ACTIVATED"
+    assert load_station_width(conn, stage="P0", table_sha256=old_sha) == (
+        {"AAA0": 0.5, "AAA1": 0.8}, old_sha
+    )
+    # Retired by the veto: the pinned read of the retired version is
+    # identity, with the sha kept for the receipt; the superseded-but-not-
+    # retired old version is untouched.
+    retired = persist_and_activate_station_width(
+        conn, stage="P0", scales={}, per_station={},
+        fitted_at_utc="2026-09-10T15:27:09Z",
+    )
+    assert retired["state"] == "DEACTIVATED"
+    new_sha = second["station_width_sha256"]
+    assert load_station_width(conn, stage="P0", table_sha256=new_sha) == (
+        {}, new_sha
+    )
+    assert load_station_width(conn, stage="P0", table_sha256=old_sha) == (
+        {"AAA0": 0.5, "AAA1": 0.8}, old_sha
+    )
+    assert load_station_width(conn, stage="P0") is None
+    rows = conn.execute(
+        "SELECT station_width_sha256, retired_at_utc FROM"
+        " calibration_center_width_station ORDER BY station_id, fitted_at_utc"
+    ).fetchall()
+    assert {r[0]: r[1] for r in rows} == {
+        old_sha: None, new_sha: "2026-09-10T15:27:09Z",
+    }
+    # A pinned version that never existed still fails closed.
+    with pytest.raises(ContractError):
+        load_station_width(conn, stage="P0", table_sha256="0" * 64)
+
+
+def test_the_retired_column_is_added_to_an_existing_table() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE calibration_center_width_station ("
+        " station_width_sha256 TEXT NOT NULL, stage TEXT NOT NULL,"
+        " station_id TEXT NOT NULL, width_scale REAL NOT NULL,"
+        " raw_z_sd REAL, sample_n INTEGER NOT NULL, fitted_at_utc TEXT NOT NULL,"
+        " activated INTEGER NOT NULL, activated_at_utc TEXT NOT NULL,"
+        " PRIMARY KEY (station_width_sha256, station_id))"
+    )
+    conn.execute(
+        "INSERT INTO calibration_center_width_station VALUES"
+        " (?,'P0','AAA0',0.5,0.6,62,'2026-09-06T15:48:00Z',0,"
+        " '2026-09-06T15:48:00Z')",
+        ("a" * 64,),
+    )
+    conn.commit()
+    ensure_center_width_schema(conn)
+    # Pre-existing rows read as never retired: the pin is honoured.
+    assert load_station_width(conn, stage="P0", table_sha256="a" * 64) == (
+        {"AAA0": 0.5}, "a" * 64
+    )

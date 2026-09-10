@@ -2963,6 +2963,7 @@ def compile_native_ensemble_p0(
     # on a pinned-but-missing table rather than serving an approximation.
     station_scale = 1.0
     pinned_station_width = None
+    pinned_station_width_retired = False
     if STATION_WIDTH_METHOD_TAG in artifact_combination_method:
         pinned_station_width = pinned_station_width_sha(
             artifact_combination_method
@@ -2975,6 +2976,9 @@ def compile_native_ensemble_p0(
                 station_scale = float(
                     station_table[0].get(station_id, 1.0)
                 )
+                # An empty table under a pinned sha is the loader saying the
+                # version was retired by the lane's veto; the receipt says so.
+                pinned_station_width_retired = not station_table[0]
     # The next-day fleet regime shift, which is deliberately *not* pinned to
     # the artifact the way the scalars above are.  The pin exists because a
     # fitted scalar must be served at the version its holdout was scored
@@ -3025,6 +3029,10 @@ def compile_native_ensemble_p0(
             center_width_receipt["station_width_sha256"] = (
                 pinned_station_width
             )
+            if pinned_station_width_retired:
+                center_width_receipt["station_width_state"] = (
+                    "PINNED_VERSION_RETIRED"
+                )
     # Outermost, after every shape layer, which as of 2026-08-23 finally
     # includes the centre/width scalars above.  This layer rescales a claim,
     # and a claim rescaled here stops being the claim the moment anything

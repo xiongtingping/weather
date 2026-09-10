@@ -306,6 +306,19 @@ def ensure_center_width_schema(conn: sqlite3.Connection) -> None:
     conn.execute(_JOURNAL_DDL)
     conn.execute(_STATION_TABLE_DDL)
     conn.execute(_STATION_JOURNAL_DDL)
+    # A table version the lane retired by veto, as opposed to one merely
+    # superseded by a better table.  Artifacts pin the version their holdout
+    # was scored against and serve exactly that version; a retired version
+    # is the one case where the pin must not be honoured, because the veto
+    # is the settled truth saying that width was wrong.  Nullable: every row
+    # written before this existed reads as never retired.
+    try:
+        conn.execute(
+            "ALTER TABLE calibration_center_width_station"
+            " ADD COLUMN retired_at_utc TEXT"
+        )
+    except sqlite3.OperationalError:
+        pass
     # The TAF-conditional cells (charter 57) ride on the same row as the
     # pooled scalars they refine; nullable so every pre-lane row keeps
     # reading as pooled-only.
@@ -685,14 +698,15 @@ def load_station_width(
     try:
         if table_sha256 is None:
             rows = conn.execute(
-                "SELECT station_id, width_scale, station_width_sha256"
+                "SELECT station_id, width_scale, station_width_sha256, NULL"
                 " FROM calibration_center_width_station"
                 " WHERE activated=1 AND stage=?",
                 (stage_id,),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT station_id, width_scale, station_width_sha256"
+                "SELECT station_id, width_scale, station_width_sha256,"
+                " retired_at_utc"
                 " FROM calibration_center_width_station"
                 " WHERE station_width_sha256=?",
                 (str(table_sha256),),
@@ -707,6 +721,14 @@ def load_station_width(
         if table_sha256 is not None:
             raise ContractError("station_width_pinned_table_missing")
         return None
+    if table_sha256 is not None and all(row[3] for row in rows):
+        # Pinned to a version the lane retired by veto.  The pin exists so
+        # that serving reproduces the width the gate scored; the veto is
+        # the settled truth saying that width was wrong, and every artifact
+        # minted before the retirement pins it -- honouring the pin would
+        # keep a retired table in service for as long as the oldest artifact
+        # lives.  Identity, with the sha kept so the receipt can say why.
+        return ({}, str(rows[0][2]))
     return (
         {str(row[0]): float(row[1]) for row in rows},
         str(rows[0][2]),
@@ -1028,11 +1050,21 @@ def persist_and_activate_station_width(
     )
     _begin_immediate(conn)
     try:
-        conn.execute(
-            "UPDATE calibration_center_width_station SET activated=0"
-            " WHERE stage=? AND activated=1",
-            (stage_id,),
-        )
+        if scales:
+            conn.execute(
+                "UPDATE calibration_center_width_station SET activated=0"
+                " WHERE stage=? AND activated=1",
+                (stage_id,),
+            )
+        else:
+            # Retired, not superseded: the pinned reads of this version
+            # serve identity from here on.
+            conn.execute(
+                "UPDATE calibration_center_width_station"
+                " SET activated=0, retired_at_utc=?"
+                " WHERE stage=? AND activated=1",
+                (now, stage_id),
+            )
         for station, scale in sorted(scales.items()):
             detail = per_station.get(station, {})
             conn.execute(
