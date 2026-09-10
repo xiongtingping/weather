@@ -57,6 +57,7 @@ from chengdu_intraday_summary import (
     build_chengdu_intraday_summary_from_payload,
     _apply_d0_observed_feasibility_guard,
     _legacy_additive_bayes_chain_for_distribution_row,
+    _persisted_bayes_chain_for_distribution_row,
     _sync_target_bucket_outlook_with_temperature_path_distribution,
     _target_bucket_outlook,
 )
@@ -13715,7 +13716,13 @@ def _bayes_chain_for_distribution_row(row: Any) -> Dict[str, Any]:
     # chain, which says outright that it is retired and not UI-primary; this
     # copy had lost the second tier, so the same row showed a chain there and
     # none here.  ui/index.html builds the same compat shape client-side.
-    return _legacy_additive_bayes_chain_for_distribution_row(row)
+    legacy = _legacy_additive_bayes_chain_for_distribution_row(row)
+    if legacy:
+        return legacy
+    # Last: a chain the row already carries.  The compact chain is what gets
+    # persisted, so a row read back can hold one and no raw fields to rebuild
+    # it from.
+    return _persisted_bayes_chain_for_distribution_row(row)
 
 
 def _compact_bayes_chain_for_bucket_series(row: Any) -> Dict[str, Any]:
