@@ -183,3 +183,38 @@ def test_the_replay_lane_prices_on_the_served_table() -> None:
     assert "load_off_centre_bands" in source
     assert "off_centre_bands=off_centre_bands" in source
     assert "off_centre_table_sha=off_centre_sha" in source
+
+
+def test_the_sample_is_bounded_below_at_the_serving_arithmetic_anchor(
+    monkeypatch,
+) -> None:
+    """The lane reads the band store's sample with the stage's anchor as
+    its floor by default, and a caller may pass its own bound.  Short of
+    evidence the cells hold their incumbent, as they always have."""
+
+    from bayes_basket_target import center_width_store
+
+    conn = _db()
+    _band_table(conn)
+    seen: list[str | None] = []
+
+    def sample(conn_, truth, *, stage, pre_band, min_decision_at_utc=None):
+        seen.append(min_decision_at_utc)
+        return {}
+
+    monkeypatch.setattr(store, "serving_lane_by_station_day", sample)
+    monkeypatch.setattr(store, "_truth", lambda conn_: {})
+    monkeypatch.setattr(
+        center_width_store, "served_arithmetic_anchor",
+        lambda conn_, *, stage: "2026-09-10T15:27:09Z",
+    )
+    fitted = store.fit_off_centre_claim_table(conn, stage="P0")
+    assert seen == ["2026-09-10T15:27:09Z"]
+    assert fitted["min_decision_at_utc"] == "2026-09-10T15:27:09Z"
+    assert fitted["serving_day_count"] == 0
+    assert all(cell["reason"] == "insufficient_evidence" for cell in fitted["evidence"])
+    explicit = store.fit_off_centre_claim_table(
+        conn, stage="P0", min_decision_at_utc="2026-09-01T00:00:00Z",
+    )
+    assert seen[-1] == "2026-09-01T00:00:00Z"
+    assert explicit["min_decision_at_utc"] == "2026-09-01T00:00:00Z"

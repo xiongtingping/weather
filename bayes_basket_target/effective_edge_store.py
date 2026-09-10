@@ -571,6 +571,7 @@ def _candidate_population(
     floor_day: str,
     *,
     include_replayed: bool,
+    floor_decision_at_utc: str | None = None,
 ) -> dict[str, Any]:
     """The rows a fit reads, and -- since 2026-09-09 -- the rows that judge it.
 
@@ -597,6 +598,17 @@ def _candidate_population(
     """
 
     placeholders = ",".join("?" for _ in stages)
+    # The serving-arithmetic floor (2026-09-11): a candidate window decided
+    # before the stage's declared version start carries a claim from a
+    # distribution nobody serves any more -- the 0.5 station scale retired
+    # that afternoon narrowed every claim it touched.  Bound at the decision
+    # instant, not the day, because the retirement landed mid-day.
+    decision_clause = (
+        "" if floor_decision_at_utc is None else " AND decision_at_utc >= ?"
+    )
+    decision_args: tuple[Any, ...] = (
+        () if floor_decision_at_utc is None else (str(floor_decision_at_utc),)
+    )
     axis = _fit_axis(conn, stages)
     # A candidate table without the column cannot be partitioned on it, and
     # that is an ordinary state rather than an error: a replay extract, a
@@ -651,24 +663,24 @@ def _candidate_population(
         "SELECT win_probability, all_in_price, hit, station_id, event_date,"
         " stage, decision_at_utc"
         " FROM paper_trade_candidate_window"
-        f" WHERE stage IN ({placeholders}) AND event_date >= ?"
+        f" WHERE stage IN ({placeholders}) AND event_date >= ?" f"{decision_clause}"
         "   AND hit IS NOT NULL" + axis_clause + claim_clause,
-        (*stages, floor_day, *axis_args, *claim_args),
+        (*stages, floor_day, *decision_args, *axis_args, *claim_args),
     ).fetchall()
     served_row_count = len(rows)
     excluded_axis = 0 if axis is None else conn.execute(
         "SELECT COUNT(*) FROM paper_trade_candidate_window"
-        f" WHERE stage IN ({placeholders}) AND event_date >= ?"
+        f" WHERE stage IN ({placeholders}) AND event_date >= ?" f"{decision_clause}"
         "   AND hit IS NOT NULL AND band_axis IS NOT ?",
-        (*stages, floor_day, axis),
+        (*stages, floor_day, *decision_args, axis),
     ).fetchone()[0]
     excluded_claim = 0 if claim_vintages is None else conn.execute(
         "SELECT COUNT(*) FROM paper_trade_candidate_window"
-        f" WHERE stage IN ({placeholders}) AND event_date >= ?"
+        f" WHERE stage IN ({placeholders}) AND event_date >= ?" f"{decision_clause}"
         "   AND hit IS NOT NULL"
         "   AND (claim_transform_sha256 IS NULL"
         "        OR claim_transform_sha256 NOT IN (?,?))",
-        (*stages, floor_day, *claim_vintages),
+        (*stages, floor_day, *decision_args, *claim_vintages),
     ).fetchone()[0]
     replayed_row_count = 0
     replay_sha = None
@@ -684,10 +696,10 @@ def _candidate_population(
                 "SELECT win_probability, all_in_price, hit, station_id,"
                 " event_date, stage, decision_at_utc"
                 " FROM paper_trade_candidate_window_replay"
-                f" WHERE stage IN ({placeholders}) AND event_date >= ?"
+                f" WHERE stage IN ({placeholders}) AND event_date >= ?" f"{decision_clause}"
                 "   AND hit IS NOT NULL" + axis_clause + claim_clause
                 + sha_clause,
-                (*stages, floor_day, *axis_args, *claim_args, *sha_args),
+                (*stages, floor_day, *decision_args, *axis_args, *claim_args, *sha_args),
             ).fetchall()
         except sqlite3.Error:
             # No replay lane in this database: a fixture, an extract.
@@ -719,16 +731,16 @@ def _candidate_population(
         try:
             off_centre_rows = int(conn.execute(
                 "SELECT COUNT(*) FROM paper_trade_candidate_window"
-                f" WHERE stage IN ({placeholders}) AND event_date >= ?"
+                f" WHERE stage IN ({placeholders}) AND event_date >= ?" f"{decision_clause}"
                 "   AND hit IS NOT NULL AND claim_transform_sha256 IS ?",
-                (*stages, floor_day, claim_vintages[1]),
+                (*stages, floor_day, *decision_args, claim_vintages[1]),
             ).fetchone()[0] or 0)
             if include_replayed:
                 off_centre_rows += int(conn.execute(
                     "SELECT COUNT(*) FROM paper_trade_candidate_window_replay"
-                    f" WHERE stage IN ({placeholders}) AND event_date >= ?"
+                    f" WHERE stage IN ({placeholders}) AND event_date >= ?" f"{decision_clause}"
                     "   AND hit IS NOT NULL AND claim_transform_sha256 IS ?",
-                    (*stages, floor_day, claim_vintages[1]),
+                    (*stages, floor_day, *decision_args, claim_vintages[1]),
                 ).fetchone()[0] or 0)
         except sqlite3.Error:
             off_centre_rows = 0
@@ -753,11 +765,11 @@ def _candidate_population(
                     "SELECT leg_claim_cost_json, settled_bucket, station_id,"
                     " event_date, stage, decision_at_utc"
                     f" FROM {table}"
-                    f" WHERE stage IN ({placeholders}) AND event_date >= ?"
+                    f" WHERE stage IN ({placeholders}) AND event_date >= ?" f"{decision_clause}"
                     "   AND hit IS NOT NULL AND settled_bucket IS NOT NULL"
                     "   AND leg_claim_cost_json IS NOT NULL"
                     + axis_clause + claim_clause,
-                    (*stages, floor_day, *axis_args, *claim_args),
+                    (*stages, floor_day, *decision_args, *axis_args, *claim_args),
                 ).fetchall()
             except sqlite3.Error:
                 continue
@@ -850,6 +862,20 @@ def fit_lambda_table(
         datetime.fromisoformat(latest).date()
         - __import__("datetime").timedelta(days=int(window_days))
     ).isoformat()
+    # The rolling window never reaches below the stage's serving-arithmetic
+    # anchor (the declared start of the served version, or the first
+    # decision under it): the latest anchor over the scope's stages, at the
+    # decision instant.  Same bound the band and centre/width lanes carry.
+    from .center_width_store import served_arithmetic_anchor  # noqa: PLC0415
+
+    anchors = [
+        a for a in (
+            served_arithmetic_anchor(conn, stage=stage) for stage in stages
+        ) if a
+    ]
+    min_decision_at_utc = max(anchors) if anchors else None
+    if min_decision_at_utc is not None:
+        floor_day = max(floor_day, str(min_decision_at_utc)[:10])
 
     placeholders = ",".join("?" for _ in stages)
     # EVERY window the enumeration offered, not the one the walk seated.
@@ -894,7 +920,8 @@ def fit_lambda_table(
     # is the silent borrowing charter 104 forbids for a claim, and a
     # partition key deserves the same rule.  They are counted, not hidden.
     population = _candidate_population(
-        conn, stages, floor_day, include_replayed=include_replayed
+        conn, stages, floor_day, include_replayed=include_replayed,
+        floor_decision_at_utc=min_decision_at_utc,
     )
     rows = (
         population["leg_rows"] if claim_scope == "bucket"
@@ -1047,6 +1074,7 @@ def fit_lambda_table(
         "claim_transform_changed": claim_vintage_changed,
         "incumbent_basis": tally_incumbent_note,
         "served_row_count": int(served_row_count),
+        "min_decision_at_utc": min_decision_at_utc,
         "replayed_row_count": int(replayed_row_count),
         # Zero while charter 49 keeps off-centre windows out of the pool.
         # Not zero means the off-centre claim table now moves lambda's own

@@ -315,3 +315,41 @@ def test_two_thin_tables_are_decided_on_breadth_not_return() -> None:
     assert '"proposal_below_admitted_floor"' in source
     assert '"both_below_floor_breadth_decides"' in source
     assert 'guard["minimum_admitted"]' in source
+
+
+def test_the_window_never_reaches_below_the_serving_arithmetic_anchor(
+    tmp_path, monkeypatch,
+) -> None:
+    """A candidate window decided before the stage's declared version start
+    carries a claim from a distribution nobody serves any more.  The rolling
+    window is bounded below at that instant, the same bound the band and
+    centre/width lanes carry, and the fit says which bound it read."""
+
+    from bayes_basket_target import center_width_store
+
+    before = [("P0", "2026-09-01", 0.60, 0.18, 1) for _ in range(30)]
+    after = [("P0", "2026-09-05", 0.60, 0.18, 0) for _ in range(30)]
+    conn = _book(tmp_path / "f.db", before + after)
+    try:
+        unbounded = store.fit_lambda_table(conn, window_days=28)
+        assert unbounded["evidence"][0]["seats"] == 60
+        assert unbounded["min_decision_at_utc"] is None
+        monkeypatch.setattr(
+            center_width_store, "served_arithmetic_anchor",
+            lambda conn, *, stage: "2026-09-03T15:27:09Z",
+        )
+        bounded = store.fit_lambda_table(conn, window_days=28)
+        assert bounded["min_decision_at_utc"] == "2026-09-03T15:27:09Z"
+        assert bounded["evidence"][0]["seats"] == 30
+        assert bounded["evidence"][0]["raw_lambda"] == 0.0
+        # The bound is at the instant, not the day: a window decided at
+        # 00:00Z on the anchor's own day, before the anchor, is out.
+        monkeypatch.setattr(
+            center_width_store, "served_arithmetic_anchor",
+            lambda conn, *, stage: "2026-09-05T12:00:00Z",
+        )
+        assert store.fit_lambda_table(conn, window_days=28)["evidence"][0][
+            "seats"
+        ] == 0
+    finally:
+        conn.close()

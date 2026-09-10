@@ -182,7 +182,10 @@ def _bootstrap(
 
 
 def fit_off_centre_claim_table(
-    conn: sqlite3.Connection, *, stage: str = "P0"
+    conn: sqlite3.Connection,
+    *,
+    stage: str = "P0",
+    min_decision_at_utc: str | None = None,
 ) -> dict[str, Any]:
     """Measure realized containment over claimed mass, off-centre windows.
 
@@ -205,8 +208,19 @@ def fit_off_centre_claim_table(
     axis = band_table_axis(conn, stage=stage)
     if axis not in BAND_AXES:
         return {"stage": stage, "error": f"unknown_band_axis:{axis}"}
+    # The serving-arithmetic floor (2026-09-11): the same bound the band
+    # lane carries.  This table measures how much of a served claim is
+    # realised, and a claim served before the stage's declared version start
+    # -- under the 0.5 station scale retired that afternoon, say -- is a
+    # claim nobody serves any more.  Short of evidence the cells hold their
+    # incumbent, as they always have.
+    if min_decision_at_utc is None:
+        from .center_width_store import served_arithmetic_anchor  # noqa: PLC0415
+
+        min_decision_at_utc = served_arithmetic_anchor(conn, stage=stage)
     sample = serving_lane_by_station_day(
-        conn, _truth(conn), stage=stage, pre_band=False
+        conn, _truth(conn), stage=stage, pre_band=False,
+        min_decision_at_utc=min_decision_at_utc,
     )
     cells: dict[tuple[float, float], dict[str, list[tuple[float, float]]]] = {}
     days: set[str] = set()
@@ -299,6 +313,7 @@ def fit_off_centre_claim_table(
         ),
         "content_sha256": content_sha256(payload),
         "payload": payload,
+        "min_decision_at_utc": min_decision_at_utc,
     }
 
 
