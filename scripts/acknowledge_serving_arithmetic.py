@@ -15,6 +15,17 @@ never by acknowledging here: an acknowledgement asserts the version still
 describes what is served, and a wrong one lets the calibration lanes keep
 training on a shape nobody serves -- the exact failure the watchdog exists to
 name.  The reason is required and is the audit's record.
+
+``--audit`` judges on what was SERVED, and since 2026-09-10 it looks in both
+places a fingerprint can move it.  A change on the serving path steps the
+shape where the code lands.  A change inside a fitting lane steps nothing
+there -- it steps a number when that lane next activates what it fitted, a day
+later on the daily sweep -- so every such activation is judged too, and a lane
+that has not refitted since the change yields no verdict at all rather than a
+verdict of inert.  That state is why ``--withdraw`` exists: the first row this
+table ever held was an acknowledgement of a two-lane change measured only
+where the code landed, and a judgement made on a partial reading has to be
+retractable by something that leaves a record of who retracted it.
 """
 from __future__ import annotations
 
@@ -99,6 +110,69 @@ def _served_shape(
     }
 
 
+# The tables a stage serves that are decided by a fitting lane, each with the
+# journal that records every attempt to fit it.  A change inside one of these
+# lanes does not move a served number when the code lands: it moves one when
+# the lane next runs and activates what it fitted, which is a day later on the
+# daily sweep.  The fingerprint sees the first moment and the shape moves at
+# the second, so a judge that only looks where the code changed calls every
+# lane change inert -- and, since 2026-09-10, the lanes are fingerprint roots,
+# so that is now the common case rather than an edge one.
+LANE_TABLES: dict[str, tuple[str, str]] = {
+    "centre/width scalars": (
+        "calibration_center_width_table",
+        "calibration_center_width_fit_journal",
+    ),
+    "station width": (
+        "calibration_center_width_station",
+        "calibration_center_width_station_journal",
+    ),
+    "band reliability": (
+        "calibration_band_reliability_table",
+        "calibration_band_reliability_fit_journal",
+    ),
+}
+
+
+def _lane_steps(
+    conn: sqlite3.Connection, *, stage: str, since: str
+) -> dict[str, Any]:
+    """Where each lane's own step is, or that it has not taken one yet.
+
+    Three states per lane, and the third is why this exists: activated since
+    the change (its step is that moment), fitted since and refused (it took no
+    step, so there is nothing to judge), or not fitted since at all -- in
+    which case the change has not reached serving and no verdict is available
+    yet.  Acknowledging in that state would clear the lamp before the thing it
+    warns about has happened.
+    """
+
+    activations: list[tuple[str, str]] = []
+    unfitted: list[str] = []
+    for lane, (table, journal) in LANE_TABLES.items():
+        try:
+            fitted = conn.execute(
+                f"SELECT 1 FROM {journal} WHERE stage=? AND fitted_at_utc>=?"
+                " LIMIT 1",
+                (str(stage), str(since)),
+            ).fetchone()
+            activated = conn.execute(
+                f"SELECT MIN(activated_at_utc) FROM {table}"
+                " WHERE stage=? AND activated=1 AND activated_at_utc>=?",
+                (str(stage), str(since)),
+            ).fetchone()
+        except sqlite3.Error:
+            # A store without the lane -- a fixture, a replay -- is not a lane
+            # that owes a step.
+            continue
+        if activated and activated[0]:
+            activations.append((lane, str(activated[0])))
+        elif not fitted:
+            unfitted.append(lane)
+    return {"activations": sorted(activations, key=lambda item: item[1]),
+            "unfitted": sorted(unfitted)}
+
+
 def _shape_shift(
     conn: sqlite3.Connection, *, stage: str, since: str
 ) -> dict[str, Any] | None:
@@ -143,6 +217,57 @@ def _shape_shift(
     }
 
 
+def _shape_verdict(
+    conn: sqlite3.Connection, *, stage: str, since: str
+) -> dict[str, Any]:
+    """The judgement, made where the shape could actually have stepped.
+
+    Two kinds of moment, because a fingerprint covers two kinds of code.  A
+    change on the serving path moves the shape when it lands, so the code
+    moment is one candidate.  A change inside a fitting lane moves it when
+    that lane next activates what it fitted, so every such activation is
+    another.  The verdict is the largest movement any of them shows: a
+    fingerprint that bundles an inert refactor with a real lane change is one
+    fingerprint and owes one bump.
+
+    A lane that has not fitted since the change yields no verdict at all.
+    That state used to be invisible and read as "inert", which is how a lamp
+    could go out on the strength of a step that had not been taken.
+    """
+
+    steps = _lane_steps(conn, stage=stage, since=since)
+    moments: list[tuple[str, str]] = [("代码落地", str(since))]
+    moments.extend(steps["activations"])
+    judged: list[tuple[str, str, dict[str, Any]]] = []
+    for label, moment in moments:
+        shift = _shape_shift(conn, stage=stage, since=moment)
+        if shift is not None:
+            judged.append((label, moment, shift))
+    if steps["unfitted"]:
+        return {
+            "state": "pending",
+            "unfitted": steps["unfitted"],
+            "judged": judged,
+        }
+    if not judged:
+        return {"state": "no_sample", "judged": []}
+    label, moment, shift = max(
+        judged,
+        key=lambda item: (
+            item[2]["moved"],
+            item[2]["sigma_fraction"],
+            item[2]["centre_shift"],
+        ),
+    )
+    return {
+        "state": "moved" if shift["moved"] else "inert",
+        "at": moment,
+        "label": label,
+        "shift": shift,
+        "judged": judged,
+    }
+
+
 def _audit(db: Path) -> int:
     """One line per stage: is a version bump owed, and since when.
 
@@ -175,30 +300,40 @@ def _audit(db: Path) -> int:
                     f"，理由「{ack['reason']}」（{ack['acknowledged_at_utc']}）"
                 )
             elif reading.get("discrepancy"):
-                shift = _shape_shift(
-                    conn, stage=stage,
-                    since=str(reading.get("fingerprint_since_utc") or ""),
-                )
-                if shift is None:
+                since = str(reading.get("fingerprint_since_utc") or "")
+                verdict = _shape_verdict(conn, stage=stage, since=since)
+                state = verdict["state"]
+                if state == "pending":
+                    lanes = "、".join(verdict["unfitted"])
+                    print(
+                        f"SUMMARY {stage}: 指纹 {fingerprint} 动了，但 {lanes} "
+                        "还没重拟过，改动尚未到服务面 — 等它跑完再判"
+                    )
+                elif state == "no_sample":
                     print(
                         f"SUMMARY {stage}: 指纹 {fingerprint} 晚于它带的 "
                         f"{reading.get('served_version')}，但两侧样本不足，"
                         "判不了是不是惰性 — 人来看"
                     )
-                elif shift["moved"]:
+                elif state == "moved":
                     print(
                         f"SUMMARY {stage}: **欠一次版本 bump** — 指纹 "
-                        f"{fingerprint} 自 "
-                        f"{reading.get('fingerprint_since_utc')} 起服务，"
-                        f"而 {reading.get('served_version')} 在那之前就在服务；"
-                        f"跨这一刻 {shift['text']}，形状确实动了。"
+                        f"{fingerprint} 自 {since} 起服务，而 "
+                        f"{reading.get('served_version')} 在那之前就在服务；"
+                        f"形状在{verdict['label']}（{verdict['at']}）动了："
+                        f"{verdict['shift']['text']}。"
                     )
                 else:
+                    text = (
+                        f"{verdict['shift']['text']}"
+                        f"（判于{verdict['label']} {verdict['at']}，"
+                        f"共 {len(verdict['judged'])} 个时刻）"
+                    )
                     print(
                         f"SUMMARY {stage}: 指纹 {fingerprint} 变了但形状没动"
-                        f"（{shift['text']}）— 自动记为惰性"
+                        f"（{text}）— 自动记为惰性"
                     )
-                    pending.append((stage, fingerprint, shift["text"]))
+                    pending.append((stage, fingerprint, text))
             else:
                 print(
                     f"SUMMARY {stage}: 版本与服务算术一致 — 指纹 {fingerprint}"
@@ -240,6 +375,16 @@ def main() -> int:
     parser.add_argument("--show", action="store_true",
                         help="print the watchdog reading and exit")
     parser.add_argument(
+        "--withdraw", action="store_true",
+        help=(
+            "take back this stage's acknowledgement and relight the lamp."
+            "  A judgement made on a reading that could not see everything"
+            " has to be retractable, and editing the table by hand leaves no"
+            " trace of who decided what.  --reason is required and is that"
+            " trace."
+        ),
+    )
+    parser.add_argument(
         "--audit", action="store_true",
         help=(
             "report every stage and exit 0.  Reported, never enforced: the"
@@ -255,17 +400,27 @@ def main() -> int:
     if not args.stage:
         parser.error("--stage is required unless --audit")
     if not args.show and not args.reason:
-        parser.error("--reason is required to acknowledge")
+        parser.error(
+            "--reason is required to withdraw" if args.withdraw
+            else "--reason is required to acknowledge"
+        )
     conn = sqlite3.connect(str(args.db), timeout=120.0)
     try:
         before = serving_arithmetic.watchdog(conn, stage=args.stage)
         if args.show:
             print(json.dumps(before, ensure_ascii=False, indent=1))
             return 0
-        receipt = serving_arithmetic.acknowledge(
-            conn, stage=args.stage, reason=args.reason,
-            fingerprint_sha256=args.fingerprint,
-        )
+        if args.withdraw:
+            receipt = serving_arithmetic.withdraw(
+                conn, stage=args.stage,
+                fingerprint_sha256=args.fingerprint,
+            )
+            receipt["reason"] = args.reason
+        else:
+            receipt = serving_arithmetic.acknowledge(
+                conn, stage=args.stage, reason=args.reason,
+                fingerprint_sha256=args.fingerprint,
+            )
         conn.commit()
         after = serving_arithmetic.watchdog(conn, stage=args.stage)
     finally:

@@ -340,6 +340,40 @@ def acknowledge(
     }
 
 
+def withdraw(
+    conn: sqlite3.Connection,
+    *,
+    stage: str,
+    fingerprint_sha256: str | None = None,
+) -> dict[str, Any]:
+    """Take back an acknowledgement, relighting the lamp for that fingerprint.
+
+    An acknowledgement is a judgement, and a judgement made on a reading that
+    could not see everything has to be retractable -- otherwise the only way
+    back is editing the table by hand, which leaves no trace of who decided
+    what.  The first row this table ever held, 2026-09-10T09:22Z, was exactly
+    that case: the judge measured the served shape across the moment the code
+    landed, and the change it was judging was a change to two FITTING lanes
+    whose numbers do not reach serving until those lanes next activate.  It
+    read inert because the step had not been taken yet.
+    """
+
+    target = fingerprint_sha256 or fingerprint(stage)
+    if not target:
+        raise ValueError("serving_arithmetic_ack_fingerprint_unreadable")
+    ensure_schema(conn)
+    cursor = conn.execute(
+        "DELETE FROM calibration_serving_arithmetic_ack"
+        " WHERE stage=? AND fingerprint_sha256=?",
+        (str(stage), str(target)),
+    )
+    return {
+        "stage": str(stage),
+        "fingerprint": str(target),
+        "withdrawn": int(cursor.rowcount or 0),
+    }
+
+
 def acknowledged(
     conn: sqlite3.Connection, *, stage: str, fingerprint_sha256: str
 ) -> dict[str, Any] | None:
