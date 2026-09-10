@@ -48,6 +48,15 @@ SCHEMA = "serving_arithmetic_fingerprint_v1"
 # the training entry whose artifacts a stage serves is a root in its own
 # right: what P0 serves is decided as much when the artifact is fitted as
 # when it is compiled.  P0-M is built on P0's root and moves with it.
+# The three table lanes are roots for the reason ``_fit_parameters`` is one:
+# what a stage serves is decided as much where the number is fitted as where
+# it is applied, and both reach serving baked into a row rather than through a
+# call.  They were left out when the training entry became a root, and the gap
+# is not theoretical -- two commits on 2026-09-10 changed what both lanes will
+# store (the width lane was composing its answer into the wrong space; the
+# band lane was pooling evidence across a retired shape) and moved no
+# stage's fingerprint at all, because only the LOADERS of those tables were
+# reachable from the serving roots.
 STAGE_SOURCES: Mapping[str, Sequence[tuple[str, str]]] = {
     "P0": (
         ("bayes_basket_target.native_ensemble_p0", "compile_native_ensemble_p0"),
@@ -55,6 +64,10 @@ STAGE_SOURCES: Mapping[str, Sequence[tuple[str, str]]] = {
         ("bayes_basket_target.native_ensemble_oos", "_fit_parameters"),
         ("bayes_basket_target.center_width_calibration",
          "apply_center_width_calibration"),
+        ("bayes_basket_target.center_width_store", "fit_center_width"),
+        ("bayes_basket_target.center_width_store", "fit_station_width"),
+        ("bayes_basket_target.band_reliability_store",
+         "fit_band_reliability_table"),
     ),
     "P0-M": (
         ("bayes_basket_target.materialization", "materialize_p0m"),
@@ -63,6 +76,10 @@ STAGE_SOURCES: Mapping[str, Sequence[tuple[str, str]]] = {
         ("bayes_basket_target.native_ensemble_oos", "_fit_parameters"),
         ("bayes_basket_target.center_width_calibration",
          "apply_center_width_calibration"),
+        ("bayes_basket_target.center_width_store", "fit_center_width"),
+        ("bayes_basket_target.center_width_store", "fit_station_width"),
+        ("bayes_basket_target.band_reliability_store",
+         "fit_band_reliability_table"),
     ),
     "P1": (
         ("bayes_basket_target.materialization", "materialize_p1"),
@@ -73,6 +90,10 @@ STAGE_SOURCES: Mapping[str, Sequence[tuple[str, str]]] = {
         ("bayes_basket_target.p1_compiler", "_hard_exclusion_threshold_c"),
         ("bayes_basket_target.center_width_calibration",
          "apply_center_width_calibration"),
+        ("bayes_basket_target.center_width_store", "fit_center_width"),
+        ("bayes_basket_target.center_width_store", "fit_station_width"),
+        ("bayes_basket_target.band_reliability_store",
+         "fit_band_reliability_table"),
     ),
 }
 
@@ -98,6 +119,12 @@ def _strip_docstrings(tree: ast.AST) -> ast.AST:
 
 
 PACKAGE = "bayes_basket_target"
+# This module is the instrument, not the arithmetic.  The fitting lanes below
+# call ``served_arithmetic_anchor``, which calls back in here, so without the
+# carve-out every edit to the watchdog lights the watchdog -- and a lamp that
+# reports its own maintenance is a lamp nobody reads.  Roots are explicit and
+# are never excluded; this only stops the expansion walking back into here.
+EXCLUDED_MODULES = frozenset({f"{PACKAGE}.serving_arithmetic"})
 
 
 def _function_source_tree(target: Any) -> ast.AST:
@@ -169,9 +196,39 @@ def _closure(entries: Sequence[tuple[str, str]]) -> list[tuple[str, str]]:
         seen.add(key)
         home = importlib.import_module(str(target.__module__))
         for callee in _direct_callees(home, target):
+            if callee[0] in EXCLUDED_MODULES:
+                continue
             if callee not in seen:
                 queue.append(callee)
     return sorted(seen)
+
+
+# When a served version's arithmetic actually started, for versions whose
+# bump was typed later than the change it names.
+#
+# The anchor a calibration lane keys its evidence off is otherwise inferred:
+# the earliest decision still carrying the version being served now.  That
+# inference makes a bump cost a lane every day it has accumulated, because a
+# version bumped today first appears today -- so the bump never gets made, the
+# watchdog's lamp stays on, and the boundary is carried by a hand-set flag in
+# the sweep instead.  Charter 122 wrote the trap down on 2026-09-08 and chose
+# the flag: "A version bump today would anchor at today and throw away the
+# de-blended days already served."
+#
+# A version may therefore say when its arithmetic began.  The claim has the
+# same standing as the version string beside it -- both are somebody's
+# assertion about what is served -- and the fingerprint watchdog still checks
+# the code side independently.  An entry for a version nobody serves is inert;
+# a version with no entry behaves exactly as it did before this existed.
+STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {}
+
+
+def version_effective_from(stage: str, version: str) -> str | None:
+    """When ``version``'s arithmetic began, if the bump said so."""
+
+    declared = STAGE_VERSION_EFFECTIVE_FROM.get(str(stage)) or {}
+    value = declared.get(str(version))
+    return str(value) if value else None
 
 
 def closure(stage: str) -> list[tuple[str, str]] | None:
