@@ -8816,7 +8816,17 @@ function renderStamp(){
     month: "2-digit", day: "2-digit",
     hour: "2-digit", minute: "2-digit", hour12: false,
   });
-  const stale = ageMin >= 30;
+  // Thirty minutes is when the next render is DUE, not when this one is
+  // late: launchd counts the interval from the previous START, and a build
+  // that takes ten minutes pushes the next completion out to forty.  At a
+  // flat 30 the banner said "the numbers may be behind" on every ordinary
+  // afternoon, which is how a freshness light stops being read.  The bar
+  // is the cycle plus what this build actually cost, floored at five
+  // minutes so a fast build does not make the light hair-trigger.
+  const cycleMin = 30;
+  const buildMin = Math.max(5, Math.ceil((R.build_sec || 0) / 60));
+  const staleAfter = cycleMin + buildMin;
+  const stale = ageMin >= staleAfter;
   const build = R.build_sec == null ? null
     : (R.build_sec >= 90 ? (R.build_sec/60).toFixed(1) + " 分钟"
                          : Math.round(R.build_sec) + " 秒");
@@ -8830,8 +8840,8 @@ function renderStamp(){
     <span class="${stale ? "pill amber" : "muted"}">${h(local)}
       · ${ageMin} 分钟前</span>
     <span class="muted">${stale
-      ? "已超过一轮重建周期，页面上的数字可能落后于库里的"
-      : "页面每 30 分钟重建一次，刷新浏览器不会重算"}</span>
+      ? `已超过一轮重建周期＋本轮构建耗时（${staleAfter} 分钟），页面上的数字可能落后于库里的`
+      : `页面每 ${cycleMin} 分钟起一轮、本轮构建 ${buildMin} 分钟，刷新浏览器不会重算`}</span>
     <span style="flex:1"></span>
     <span class="muted">${build ? "构建耗时 " + h(build) : ""}${
       R.computed_sections ? ` · 现算 ${R.computed_sections} 区块` : ""
