@@ -43981,6 +43981,25 @@ def _materialize_d0_observed_feasibility_guard(
     return True
 
 
+def _align_fact_row_posterior_aliases(item: Dict[str, Any], *, source: str) -> None:
+    """Make a row's probability aliases agree with its temperature posterior.
+
+    q_bayes_posterior, q_contract_payout_posterior and q_entry are all meant to
+    be the same number as q_temperature_bucket_posterior, and this is where a
+    fact write says so and stamps posterior_ssot_write_aligned.  It runs on
+    every write, canonical projection included -- alias consistency is not
+    conditional on which path produced the posterior.
+    """
+
+    for rows_obj in (item.get("distribution"), item.get("rows")):
+        if isinstance(rows_obj, list):
+            _normalize_fact_distribution_posterior_ssot_fields(
+                item,
+                rows_obj,
+                source=str(source or "fact_write"),
+            )
+
+
 def _sync_posterior_ssot_fact_from_observed_feasibility_rows(
     item: Dict[str, Any],
     rows_obj: Any,
@@ -44121,6 +44140,7 @@ def _materialize_observed_feasibility_and_hard_source_override_for_fact_write(
             "source": "fact_write_materialized",
         }
         item["fact_provenance"] = provenance
+        _align_fact_row_posterior_aliases(item, source="canonical_projection")
         return
 
     hard_source_ignore_window = True
@@ -44220,7 +44240,6 @@ def _materialize_observed_feasibility_and_hard_source_override_for_fact_write(
             "final_bucket_lock": bool(hard_source_override_meta.get("final_bucket_lock")),
         }
         item["fact_provenance"] = provenance
-        _refresh_fact_trade_derivatives_after_target_update(item, distribution)
 
     d0_guard_applied = False
     for rows_obj in (distribution, rows_payload):
@@ -44242,13 +44261,6 @@ def _materialize_observed_feasibility_and_hard_source_override_for_fact_write(
                 reason="d0_observed_feasibility_guard",
             ):
                 break
-        for rows_obj in (distribution, rows_payload):
-            if isinstance(rows_obj, list):
-                _normalize_fact_distribution_posterior_ssot_fields(
-                    item,
-                    rows_obj,
-                    source="d0_observed_feasibility_guard",
-                )
         target_bucket = top_label_from_rows(item.get("distribution")) or top_label_from_rows(
             item.get("rows")
         )
@@ -44257,7 +44269,15 @@ def _materialize_observed_feasibility_and_hard_source_override_for_fact_write(
             item["single_temperature_top_label"] = target_bucket
             item["atomic_temperature_top_label"] = target_bucket
             item["contract_payout_top_label"] = target_bucket
-        _refresh_fact_trade_derivatives_after_target_update(item, distribution)
+    _align_fact_row_posterior_aliases(
+        item,
+        source="d0_observed_feasibility_guard" if d0_guard_applied else "fact_write",
+    )
+    # Once, at the end.  The override can move the target and then the guard can
+    # move it again, so refreshing inside each branch rebuilt the derivatives
+    # off a target that was about to change.  Every write settles a target, so
+    # the derived fields follow it on every write.
+    _refresh_fact_trade_derivatives_after_target_update(item, distribution)
 
 
 def _d0_observed_max_not_final_materialization_block_reason(
@@ -50575,12 +50595,53 @@ def _build_target_realization_capital_plan(
         # UI is a reader: strategy plans are committed by the posterior
         # transaction, never recomputed from rows or environment here.
         return dict(existing)
-    return {
+    # Name the target the refusal is about.  A bare {ok: False, reason} tells a
+    # reader that there is no plan but not which bucket has none, and the
+    # target is the item's own -- read from the SSOT, not derived here, so this
+    # stays a reader.
+    def _declared(key: str) -> Mapping[str, Any]:
+        value = item.get(key) if isinstance(item, Mapping) else None
+        return value if isinstance(value, Mapping) else {}
+
+    ssot = _declared("posterior_ssot_fact")
+    selection = _declared("target_bucket_selection")
+    outlook = _declared("target_bucket_outlook")
+    path = _declared("temperature_path_distribution")
+    # Every one of these is a target the item declares somewhere; none is
+    # computed here, which is what keeps this a reader.  The order is the
+    # canonical chain first and the hard-source-constrained outlook last.
+    target_bucket = ""
+    for candidate in (
+        ssot.get("target_bucket"),
+        item.get("target_bucket") if isinstance(item, Mapping) else "",
+        selection.get("target_bucket"),
+        outlook.get("target_bucket"),
+        path.get("target_bucket"),
+    ):
+        target_bucket = str(candidate or "").strip()
+        if target_bucket:
+            break
+    target_posterior = None
+    for candidate in (
+        ssot.get("target_probability"),
+        item.get("target_bucket_probability") if isinstance(item, Mapping) else None,
+        selection.get("target_probability"),
+        path.get("target_bucket_posterior"),
+    ):
+        target_posterior = to_float(candidate)
+        if target_posterior is not None:
+            break
+    missing: Dict[str, Any] = {
         "ok": False,
         "version": "strong_posterior_three_leg_strategy_v2",
         "reason": "committed_dynamic_three_leg_plan_missing",
         "ui_probability_recomputed": False,
     }
+    if target_bucket:
+        missing["target_bucket"] = target_bucket
+    if target_posterior is not None and math.isfinite(float(target_posterior)):
+        missing["target_posterior"] = float(target_posterior)
+    return missing
 
 def _attach_target_realization_capital_plan(
     item: Dict[str, Any],

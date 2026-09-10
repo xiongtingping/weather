@@ -11894,14 +11894,18 @@ def test_temperature_path_and_capital_plan_posterior_align_to_current_distributi
     assert path["target"]["path_probability"] == 0.245
     assert out["chengdu_intraday_summary"]["temperature_path_distribution"]["target_bucket_posterior_pct"] == 36.46
 
+    # The plan half of this test asked the UI to build legs from these rows,
+    # which is the derivation _build_target_realization_capital_plan gave up
+    # when it became a reader -- see
+    # test_target_realization_plan_is_read_not_recomputed_from_rows.  What is
+    # still owed here is that the refusal names the target it has no plan for,
+    # read from the SSOT rather than derived.
     plan = out["target_realization_capital_plan"]
+    assert plan["ok"] is False
+    assert plan["reason"] == "committed_dynamic_three_leg_plan_missing"
     assert plan["target_bucket"] == "30°C"
     assert plan["target_posterior"] == 0.3645925961706722
-    assert plan["second_target_bucket"] == "31°C"
-    assert plan["second_target_posterior"] == 0.2703085257485856
-    legs = {(leg["role"], leg["bucket"], leg["side"]): leg for leg in plan["legs"]}
-    assert legs[("target_yes", "30°C", "YES")]["posterior"] == 0.3645925961706722
-    assert legs[("target_yes", "30°C", "YES")]["target_realization_path_probability"] == 0.245
+    assert "legs" not in plan
 
 
 def test_temperature_path_posterior_sync_uses_hard_source_constrained_outlook_rows() -> None:
@@ -12025,8 +12029,14 @@ def test_temperature_path_posterior_sync_uses_hard_source_constrained_outlook_ro
     assert buckets["30°C"]["posterior"] == 0.0
     assert buckets["33°C"]["posterior"] == 0.657155398570265
     assert out["chengdu_intraday_summary"]["temperature_path_distribution"]["target_bucket_posterior_pct"] == 65.72
-    assert out["target_realization_capital_plan"]["target_bucket"] == "33°C"
-    assert out["target_realization_capital_plan"]["target_posterior"] == 0.657155398570265
+    # As above: the plan is a reader, so what it owes here is the target it has
+    # no committed plan for -- read off the hard-source-constrained outlook the
+    # sync just settled, not derived.
+    plan = out["target_realization_capital_plan"]
+    assert plan["ok"] is False
+    assert plan["target_bucket"] == "33°C"
+    assert plan["target_posterior"] == 0.657155398570265
+    assert "legs" not in plan
 
 
 def test_ui_snapshot_summary_slim_keeps_target_realization_risk_explanation() -> None:
