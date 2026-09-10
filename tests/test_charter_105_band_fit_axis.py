@@ -331,10 +331,30 @@ def test_every_lookup_in_the_module_follows_the_axis():
         assert "<= probability <" not in source, name
 
     # And every caller inside the fit hands its own axis down; a default
-    # would silently reinstate the claim lookup for a distance table.
+    # would silently reinstate the claim lookup for a distance table.  The
+    # property is "every call site", not "two call sites": a count went stale
+    # the moment a third caller landed (the reported-only delta against
+    # identity, 2026-09), and a stale count fails on the arrival of correct
+    # code, which is the one thing a guard must never do.
     fit = inspect.getsource(store.fit_band_reliability_table)
-    assert fit.count("_forward_nll_delta(") == 2
-    assert fit.count("axis=axis_id,") >= 4
+    calls = 0
+    cursor = 0
+    while True:
+        start = fit.find("_forward_nll_delta(", cursor)
+        if start < 0:
+            break
+        cursor = start + len("_forward_nll_delta(")
+        depth = 1
+        index = cursor
+        while depth and index < len(fit):
+            if fit[index] == "(":
+                depth += 1
+            elif fit[index] == ")":
+                depth -= 1
+            index += 1
+        assert "axis=" in fit[cursor:index], fit[start:index]
+        calls += 1
+    assert calls >= 2
 
 
 def test_the_forward_check_can_actually_separate_distance_cells():

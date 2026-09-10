@@ -654,8 +654,24 @@ def serving_lane_by_station_day(
     *,
     stage: str = "P0",
     pre_band: bool = True,
+    min_decision_at_utc: str | None = None,
 ) -> dict[tuple[str, str], list[list[tuple[float, int, float]]]]:
     """First decision per station-day for one stage, as pre-band claims.
+
+    ``min_decision_at_utc`` bounds the evidence below, the same bound and for
+    the same reason the centre/width lane has carried since 2026-08-27: this
+    table measures how wrong the *served* claim is, so a decision taken before
+    the serving arithmetic changed describes a distribution nobody serves any
+    more.  Unbounded, P0 was fitting 41 days reaching back to 2026-07-28 --
+    across the width layer reaching the fleet on 2026-09-04 -- and the two
+    cells that only clear their interval on that pooled sample cost 0.85 of a
+    peak-hit point on the days after the change while buying 0.0020 nat.
+    Measured 2026-09-10 at three walk-forward cuts; a fourteen-day bounded
+    window scored at least as well as the unbounded one at every cut.
+
+    The bound is applied to the inner MIN() as well, so the "first decision"
+    is the first one this arithmetic made rather than a retired one that
+    happens to sort earlier.
 
     First, not last (user ruling, 2026-08-24).  The last recompute of a
     station-day is written at a median of 23:00 local while the daily high
@@ -686,6 +702,15 @@ def serving_lane_by_station_day(
     by_station_day: dict[
         tuple[str, str], list[list[tuple[float, int, float]]]
     ] = defaultdict(list)
+    bound = str(min_decision_at_utc) if min_decision_at_utc else None
+    inner_bound = " AND decision_at_utc>=?" if bound else ""
+    outer_bound = " AND h.decision_at_utc>=?" if bound else ""
+    parameters: list[Any] = [_check_stage(stage)]
+    if bound:
+        parameters.append(bound)
+    parameters.append(_check_stage(stage))
+    if bound:
+        parameters.append(bound)
     rows = conn.execute(
         "SELECT h.station_id, h.event_date, h.history_id,"
         " h.envelope_json, h.checkpoint_id, h.envelope_content_sha256,"
@@ -694,12 +719,12 @@ def serving_lane_by_station_day(
         " JOIN (SELECT station_id, event_date,"
         "         MIN(decision_at_utc) AS first_decision_at"
         "       FROM basket_probability_bridge_history"
-        "       WHERE stage=? GROUP BY station_id, event_date) f"
+        f"       WHERE stage=?{inner_bound} GROUP BY station_id, event_date) f"
         "   ON f.station_id = h.station_id AND f.event_date = h.event_date"
         "  AND h.decision_at_utc = f.first_decision_at"
-        " WHERE h.stage=?"
+        f" WHERE h.stage=?{outer_bound}"
         " GROUP BY h.station_id, h.event_date",
-        (_check_stage(stage), _check_stage(stage)),
+        tuple(parameters),
     ).fetchall()
     for station, event, history_id, stored, checkpoint, sha, _last_row in rows:
         actual = truth.get((str(station), str(event)))
@@ -754,12 +779,14 @@ def serving_lane_by_day(
     *,
     stage: str = "P0",
     pre_band: bool = True,
+    min_decision_at_utc: str | None = None,
 ) -> dict[str, list[list[tuple[float, int]]]]:
     """The fit's day-keyed view of ``serving_lane_by_station_day``."""
 
     by_day: dict[str, list[list[tuple[float, int]]]] = defaultdict(list)
     for (_station, event), day_rows in serving_lane_by_station_day(
         conn, truth, stage=stage, pre_band=pre_band,
+        min_decision_at_utc=min_decision_at_utc,
     ).items():
         for entries in day_rows:
             by_day[str(event)].append([
@@ -1001,12 +1028,21 @@ def fit_band_reliability_table(
     axis: str = BAND_AXIS_CLAIM,
     interval_alpha: float = DEFAULT_INTERVAL_ALPHA,
     until_event_date: str | None = None,
+    min_decision_at_utc: str | None = None,
 ) -> dict[str, Any]:
     """Fit one stage's table under the fixed admission rule.
 
-    A stage with too little settled history is not an error: it fits to
-    identity, records why, and promotes itself the day the evidence
-    clears the hurdles.
+    A stage with too little settled history is not an error: it holds
+    whatever it is already serving, records why, and promotes itself the day
+    the evidence clears the hurdles.  It used to fit to identity there, which
+    is not the same thing -- committing that answer throws a fitted table away
+    because a bound moved, and the bound below can move by several weeks in
+    one step when a stage's arithmetic changes.
+
+    ``min_decision_at_utc`` defaults to the stage's own served-arithmetic
+    anchor, the bound the centre/width lane has used since 2026-08-27 and for
+    the identical reason; pass a value to override it, or the empty string to
+    fit unbounded the way this lane did until 2026-09-10.
     """
 
     stage_id = _check_stage(stage)
@@ -1017,7 +1053,16 @@ def fit_band_reliability_table(
     # be scored on claim cells or the other way round.
     cells = cells_for_axis(axis_id)
     truth = _truth(conn)
-    serving = serving_lane_by_day(conn, truth, stage=stage_id)
+    if min_decision_at_utc is None:
+        # Imported here: center_width_store imports this module for the band
+        # inverse, so a module-level import would close the cycle.
+        from .center_width_store import served_arithmetic_anchor
+        evidence_floor = served_arithmetic_anchor(conn, stage=stage_id)
+    else:
+        evidence_floor = str(min_decision_at_utc) or None
+    serving = serving_lane_by_day(
+        conn, truth, stage=stage_id, min_decision_at_utc=evidence_floor
+    )
     # A walk-forward over this layer has to ask what the fit would have
     # served knowing only the days before some date, and the only honest way
     # to answer is to run this function with the later days withheld.  None
@@ -1068,11 +1113,29 @@ def fit_band_reliability_table(
     factors: dict[tuple[float, float], float] = {
         band: 1.0 for band in cells
     }
+    if accumulating:
+        # Hold, do not blank.  refit_all_stages activates whatever this
+        # returns, so answering identity here retires a fitted table for the
+        # sole reason that the lane cannot see enough days -- and with the
+        # evidence bound above, a stage's window can shorten by weeks in one
+        # step the moment its arithmetic changes.  The incumbent is only kept
+        # when it is keyed on the axis being fitted; an axis move is a
+        # decision somebody made on purpose and identity is the honest start
+        # for it.
+        _incumbent = load_band_table_with_axis(conn, stage=stage_id)
+        if _incumbent is not None and str(_incumbent[2]) == axis_id:
+            held = dict(_incumbent[0])
+            for band in cells:
+                if band in held:
+                    factors[band] = float(held[band])
     basis: dict[str, str] = {}
     for band in cells:
         key = str(list(band))
         if accumulating:
-            basis[key] = "accumulating_evidence"
+            basis[key] = (
+                "accumulating_evidence:held_incumbent"
+                if factors[band] != 1.0 else "accumulating_evidence"
+            )
             continue
         cell = serving_report.get(band)
         if cell is None:
