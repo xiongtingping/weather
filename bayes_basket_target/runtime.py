@@ -752,6 +752,32 @@ RESHAPED_BUNDLE_REFUSED_REASON = "reshaped_bundle_rescore_refused"
 BASKET_NET_ROI_REFUSED_REASON = "basket_net_roi_below_target"
 
 
+def roi_gate_admission_price_v1(
+    *,
+    execution_candidate: Any,
+    limit_price: float,
+    ask_price: float | None,
+) -> float:
+    """The price the net-ROI target judges one leg on.
+
+    A resting leg is judged at the offer, like every other gate in the chain:
+    what the market will sell for now is the admission test, and the rung is
+    only what we pay if the market comes to us.  A crossing leg is judged at
+    its own limit, which under charter 127 IS the walked offer -- for a take
+    the admission price and the payment price are the same number, and
+    substituting anything else would be inventing one.
+
+    Falls back to the limit when the book has no offer at all: a basket
+    priced against nothing is not a stricter test, it is an unanswerable one.
+    """
+
+    if str(execution_candidate or "").strip().upper() == "TAKER_FOK":
+        return float(limit_price)
+    if ask_price is None or float(ask_price) <= 0.0:
+        return float(limit_price)
+    return float(ask_price)
+
+
 def _station_capital_usdc(
     *,
     station_bankroll_usdc: float,
@@ -1535,6 +1561,18 @@ def _compile_target_plan(
         )
 
     row_by_bucket = {row.bucket: row for row in snapshot.buckets}
+    # Which family each leg goes out as, read off the plan the optimizer
+    # wrote.  Charter 127 lets one basket carry both -- a held ladder whose
+    # short rung is completed crosses while an ordinary entry rests -- so
+    # "what does this leg pay" is a per-leg question now, not a per-run one.
+    execution_candidate_by_bucket = {
+        str(row.get("bucket", "")): str(row.get("execution_candidate", "NONE"))
+        for row in (
+            delta_plan.get("targets", [])
+            if isinstance(delta_plan, Mapping) else []
+        )
+        if isinstance(row, Mapping)
+    }
 
     def _size_every_leg(
         *,
@@ -1697,6 +1735,47 @@ def _compile_target_plan(
     edge_belief = (
         (delta_plan.get("basket_support_selection") or {}).get("seated") or {}
     ).get("window_probabilities") if isinstance(delta_plan, Mapping) else None
+    # Which price this test judges on (2026-09-11).
+    #
+    # It read ``r_limit`` -- the price the order is SENT at -- and for a
+    # resting rung that is bid+1t, the price this lane hopes to fill at.
+    # Every other gate in the chain judges on the offer: the seat's edge
+    # gate, charter 68's lambda, charter 72's Kelly stake and charters
+    # 93/123's post-lift re-reads all price the basket at what the market
+    # will sell it for right now.  That is the 2026-08-27 ruling and it has
+    # three same-entry rebuilds behind it (+50.7 / +55.5 / +62.8 USDC), whose
+    # decomposition is the reason: half the maker losses were bets the lane
+    # price flattered into passing, and the fills that do arrive at the
+    # hoped-for price arrive because the market knew better -- of legs that
+    # settled winners 18% filled, of legs that settled losers 88% did.
+    #
+    # So this gate was the one place the retired basis survived.  Measured on
+    # the 134 seats of the 08-28..09-08 book that carry a two-sided quote:
+    # the rung costs 0.933 of the offer at the median, the target admits
+    # 51.5% of seats priced at the rung against 35.1% priced at the offer,
+    # and the 22 baskets (one in six) the two answers disagree about read
+    # -4.0% at the offer and +11.7% at the rung.  Those 22 are the class the
+    # ruling names outright.
+    #
+    # A crossing leg is not affected and must not be: charter 127 makes the
+    # designated completion take, so its ``r_limit`` IS the offer it walks --
+    # the admission price and the payment price are one number by
+    # construction, which is what the whole basis argument is trying to buy.
+    admission_price_by_bucket = {
+        str(item.bucket): roi_gate_admission_price_v1(
+            execution_candidate=execution_candidate_by_bucket.get(
+                str(item.bucket)
+            ),
+            limit_price=item.r_limit,
+            ask_price=(
+                float(row_by_bucket[str(item.bucket)].ask_price)
+                if str(item.bucket) in row_by_bucket
+                and row_by_bucket[str(item.bucket)].ask_available
+                else None
+            ),
+        )
+        for item in priced_legs
+    }
     if priced_legs and isinstance(edge_belief, Mapping):
         support = tuple(str(item.bucket) for item in priced_legs)
         try:
@@ -1705,7 +1784,8 @@ def _compile_target_plan(
                     str(item.bucket): item.q_order for item in priced_legs
                 },
                 price_by_bucket={
-                    str(item.bucket): item.r_limit for item in priced_legs
+                    str(item.bucket): admission_price_by_bucket[str(item.bucket)]
+                    for item in priced_legs
                 },
                 claim_by_bucket={
                     bucket: float(edge_belief.get(bucket, 0.0) or 0.0)

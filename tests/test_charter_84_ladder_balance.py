@@ -1752,6 +1752,65 @@ def test_the_scenario_multiple_belongs_to_the_basket_not_the_leg() -> None:
     assert r["net_expected_value_usdc"] == pytest.approx(5.865, abs=1e-3)
 
 
+def test_the_net_roi_target_judges_a_resting_leg_at_the_offer() -> None:
+    """The one gate the 2026-08-27 basis ruling had not reached.
+
+    Every other gate prices the basket at what the market will sell it for
+    now -- the seat's edge gate, charter 68's lambda, charter 72's stake,
+    charters 93/123's post-lift re-reads.  This one read ``r_limit``, the
+    price a resting rung is SENT at, which is the price this lane hopes to
+    fill at.  Measured on the 134 seats of the 08-28..09-08 book carrying a
+    two-sided quote: the target admits 51.5% priced at the rung against
+    35.1% priced at the offer, and the 22 baskets the two answers disagree
+    about read -4.0% at the offer and +11.7% at the rung.
+
+    A crossing leg keeps its own limit, because charter 127 makes that limit
+    the offer it walks: for a take the two prices are one number.
+    """
+
+    from bayes_basket_target.runtime import roi_gate_admission_price_v1
+
+    assert roi_gate_admission_price_v1(
+        execution_candidate="MAKER", limit_price=0.28, ask_price=0.30,
+    ) == pytest.approx(0.30)
+    assert roi_gate_admission_price_v1(
+        execution_candidate="TAKER_FOK", limit_price=0.30, ask_price=0.30,
+    ) == pytest.approx(0.30)
+    # No offer at all is an unanswerable test, not a stricter one.
+    assert roi_gate_admission_price_v1(
+        execution_candidate="MAKER", limit_price=0.28, ask_price=None,
+    ) == pytest.approx(0.28)
+
+
+def test_the_basis_moves_the_target_and_the_direction_is_refuse() -> None:
+    """Same claim, same shares, two prices: the offer refuses what the rung
+    admits.  The gate only ever gets tighter, which is the direction the
+    single measured value of a gate on this book points -- it is worth money
+    by buying less."""
+
+    from bayes_basket_target.basket_kernel.delta_v2 import (
+        basket_return_structure_v1,
+    )
+
+    shares = {"31C": 10.0, "32C": 10.0}
+    claim = {"31C": 0.55, "32C": 0.45}
+    at_rung = basket_return_structure_v1(
+        shares_by_bucket=shares,
+        price_by_bucket={"31C": 0.42, "32C": 0.42},
+        claim_by_bucket=claim,
+        support=("31C", "32C"),
+    )
+    at_offer = basket_return_structure_v1(
+        shares_by_bucket=shares,
+        price_by_bucket={"31C": 0.48, "32C": 0.48},
+        claim_by_bucket=claim,
+        support=("31C", "32C"),
+    )
+
+    assert at_rung["meets_target"] is True
+    assert at_offer["meets_target"] is False
+
+
 def test_coverage_and_the_chance_of_ending_ahead_are_two_numbers() -> None:
     """A rung with ``n_k <= C`` loses on the day it wins.
 
