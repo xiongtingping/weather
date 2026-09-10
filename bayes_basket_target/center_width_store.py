@@ -93,6 +93,20 @@ MIN_QUALIFYING_DAYS = 8
 MIN_QUALIFYING_CELLS = 120
 # The fraction of the history held out of the fit and used to admit it.
 FORWARD_WINDOW_FRACTION = 0.35
+# The admission gate walks the origin instead of cutting once.  A single
+# trailing window makes the verdict a property of which days happen to land
+# in it, and this layer's own gain changes sign by day: measured 2026-09-10
+# on P0's served cells, narrowing a further 10% bought 0.032 nat on 09-03 and
+# 09-04 and cost 0.027 on 09-09, and the two days the lane's window happened
+# to hold were the two costly ones.  On the same cells the training half's
+# best lambda was 1.05 and the forward half's was 0.85 -- opposite
+# directions, one coin toss apart.  Under a rolling origin each held-out day
+# is scored by a fit that saw only the days before it, so the estimate
+# averages several independent fit-and-test events rather than one window's
+# luck.  A fold needs a few days to fit at all, and the folds are capped so
+# the nightly cost stays bounded as history grows.
+ROLLING_ORIGIN_MIN_FOLD_TRAIN_DAYS = 3
+ROLLING_ORIGIN_MAX_FOLDS = 5
 # A candidate must beat the incumbent by more than this on the forward
 # window.  Anything smaller is inside the noise of a window this size, and
 # activating on it would churn the served artifact every refit.
@@ -1714,6 +1728,100 @@ def _forward_lift_census(
     }
 
 
+def _rolling_origin_admission(
+    by_day: Mapping[str, Sequence[Mapping[str, Any]]],
+    days: Sequence[str],
+    *,
+    sigma_floor_rungs: float = 0.0,
+) -> dict[str, Any]:
+    """Walk the origin: fit on the days before each held-out day, score on it.
+
+    The gain returned is the cell-weighted mean over folds of what the search
+    bought against identity -- identity being what the stage serves today,
+    since the cells already carry it.  Cell-weighted rather than fold-weighted
+    so a thin day cannot outvote a full one.
+
+    What this validates is the search *procedure*, not one pair: each fold
+    picks its own pair from its own prefix.  That is what licenses the served
+    pair being refitted on every day afterwards, which is where the newest
+    evidence is.
+    """
+
+    ordered = list(days)
+    first = max(
+        ROLLING_ORIGIN_MIN_FOLD_TRAIN_DAYS,
+        len(ordered) - ROLLING_ORIGIN_MAX_FOLDS,
+    )
+    folds: list[dict[str, Any]] = []
+    total_gain = 0.0
+    total_cells = 0
+    for index in range(first, len(ordered)):
+        train = [
+            cell for day in ordered[:index] for cell in by_day[day]
+        ]
+        test = list(by_day[ordered[index]])
+        if not train or not test:
+            continue
+        delta, lam, _train_nll = _search(
+            train, sigma_floor_rungs=sigma_floor_rungs
+        )
+        identity_nll = _mean_nll(
+            test,
+            delta_c=RESIDUAL_IDENTITY[0],
+            width_lambda=RESIDUAL_IDENTITY[1],
+            sigma_floor_rungs=0.0,
+        )
+        candidate_nll = _mean_nll(
+            test,
+            delta_c=delta,
+            width_lambda=lam,
+            sigma_floor_rungs=sigma_floor_rungs,
+        )
+        gain = identity_nll - candidate_nll
+        folds.append({
+            "scored_day": ordered[index],
+            "train_day_count": index,
+            "train_end_day": ordered[index - 1],
+            "cell_count": len(test),
+            "delta_c": delta,
+            "width_lambda": lam,
+            "identity_nll": identity_nll,
+            "candidate_nll": candidate_nll,
+            "gain": gain,
+        })
+        total_gain += gain * len(test)
+        total_cells += len(test)
+    return {
+        "schema": "center_width_rolling_origin_v1",
+        "min_fold_train_days": ROLLING_ORIGIN_MIN_FOLD_TRAIN_DAYS,
+        "max_folds": ROLLING_ORIGIN_MAX_FOLDS,
+        "fold_count": len(folds),
+        "scored_cell_count": total_cells,
+        "gain": (total_gain / total_cells) if total_cells else 0.0,
+        "folds_positive": sum(1 for fold in folds if fold["gain"] > 0.0),
+        # A mean is not enough, and the first live run says why: on P0's ten
+        # days to 2026-09-09 the folds picked four different pairs, two of
+        # five gained, and the mean came out at +0.0066 -- over the hurdle --
+        # because one hard day (09-09, identity NLL 2.02) swung +0.0987 and
+        # carried three losing folds.  Admitting there would have swapped one
+        # window's luck for one fold's.  So a majority of folds must gain as
+        # well, which no single day can supply.
+        "majority_positive": (
+            sum(1 for fold in folds if fold["gain"] > 0.0) * 2 > len(folds)
+            if folds else False
+        ),
+        # Whether the folds agreed on where to go, which a single number
+        # cannot say: a mean gain assembled from opposite picks is a
+        # procedure nobody should promote on.  Reported, not gated -- the
+        # majority rule above already refuses the case this diagnoses, and a
+        # second hurdle on it would be two names for one judgement.
+        "distinct_picks": len({
+            (fold["delta_c"], fold["width_lambda"]) for fold in folds
+        }),
+        "folds": folds,
+    }
+
+
 def _sigma_floor_lane(
     *,
     forward: Sequence[Mapping[str, Any]],
@@ -1879,6 +1987,11 @@ def fit_center_width(
     train_days, forward_days = days[:cut], days[cut:] or days[-1:]
     train = [cell for day in train_days for cell in by_day[day]]
     forward = [cell for day in forward_days for cell in by_day[day]]
+    # Which pair is stored does not change here: it is still the one the
+    # training prefix picks.  Only the gate moves, and the two sub-lanes keep
+    # the single window -- each compares one candidate against another on the
+    # same days, so which days those are matters far less than it does for a
+    # candidate facing identity.
     pooled_delta, pooled_lam, pooled_train_nll = _search(train)
     floor_delta, floor_lam, floor_train_nll = _search(
         train, sigma_floor_rungs=SIGMA_FLOOR_RUNGS
@@ -1946,9 +2059,18 @@ def fit_center_width(
         }
         delta = tier_delta
         forward_candidate = width_tier_lane["forward_tier_candidate"]["bucket"]
-    gain = forward_base - forward_candidate
+    # The admission number.  A sub-lane that took the pair off the plain
+    # scalar search keeps its own single-window verdict below; the question
+    # here is whether the search beats what is served at all, and that is the
+    # one the single window was deciding by coin toss.
+    rolling = _rolling_origin_admission(
+        by_day, days, sigma_floor_rungs=candidate_floor
+    )
+    evidence["rolling_origin"] = rolling
+    single_window_gain = forward_base - forward_candidate
+    gain = float(rolling["gain"])
     evidence.update({
-        "basis": "FORWARD_WINDOW",
+        "basis": "ROLLING_ORIGIN",
         "train_day_count": len(train_days),
         "forward_day_count": len(forward_days),
         "train_cell_count": len(train),
@@ -1959,6 +2081,9 @@ def fit_center_width(
         "forward_nll_incumbent": forward_base,
         "forward_nll_candidate": forward_candidate,
         "forward_nll_gain": gain,
+        # What the single trailing window would have said, kept because the
+        # two disagreeing is the reading a reviewer wants, not a detail.
+        "single_window_nll_gain": single_window_gain,
         "min_forward_nll_gain": MIN_FORWARD_NLL_GAIN,
         "identity_nll_all": _mean_nll(cells, delta_c=0.0, width_lambda=1.0),
         "candidate_nll_all": _mean_nll(
@@ -1968,11 +2093,20 @@ def fit_center_width(
             sigma_floor_rungs=candidate_floor,
         ),
     })
-    admitted = gain > MIN_FORWARD_NLL_GAIN
+    # Both halves of the rolling verdict: the mean clears the hurdle and a
+    # majority of folds gained.  The second is not a refinement -- without it
+    # one hard day can carry three losing folds over the line, which is the
+    # first live run's reading exactly.
+    admitted = (
+        gain > MIN_FORWARD_NLL_GAIN
+        and bool(rolling["majority_positive"])
+    )
     if candidate_tiers is not None:
         # The tier lane's own gate already held the bucket NLL to within
         # a noise margin of the pooled candidate; what it must beat at this
-        # rung is the incumbent on the objective it was fitted on.
+        # rung is the incumbent on the objective it was fitted on.  Its own
+        # window is the single one, so the fold majority does not speak to
+        # it; the pair it rides on has already passed the gate above.
         admitted = (
             width_tier_lane["forward_objective_gain_vs_incumbent"]
             > MIN_FORWARD_NLL_GAIN

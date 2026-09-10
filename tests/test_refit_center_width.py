@@ -992,7 +992,10 @@ class ResidualAndAbsoluteSpaceTest(unittest.TestCase):
     def test_the_incumbent_is_scored_as_the_cells_already_carry_it(self) -> None:
         conn = self._stocked("P1", incumbent=(0.0, 0.75))
         fitted = fit_center_width(conn, stage="P1")
-        self.assertEqual(fitted["evidence"]["basis"], "FORWARD_WINDOW")
+        # The label moved when the gate did (2026-09-10, rolling origin);
+        # what this test pins is the baseline the incumbent is scored at,
+        # which is identity either way because the cells already carry it.
+        self.assertEqual(fitted["evidence"]["basis"], "ROLLING_ORIGIN")
         truth = _truth(conn)
         by_day = serving_cells_by_day(conn, truth, stage="P1")
         days = sorted(by_day)
@@ -1016,7 +1019,7 @@ class ResidualAndAbsoluteSpaceTest(unittest.TestCase):
         conn = self._stocked("P1", incumbent=(0.1, 0.75))
         fitted = fit_center_width(conn, stage="P1")
         evidence = fitted["evidence"]
-        self.assertEqual(evidence["basis"], "FORWARD_WINDOW")
+        self.assertEqual(evidence["basis"], "ROLLING_ORIGIN")
         self.assertAlmostEqual(
             evidence["absolute_width_lambda"],
             round(0.75 * evidence["residual_width_lambda"], 4),
