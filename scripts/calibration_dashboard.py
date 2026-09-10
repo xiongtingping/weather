@@ -2909,6 +2909,23 @@ def _read_open_orders() -> dict[str, Any]:
     The gateway is the only thing allowed to ask, and it is a local
     read-only call; a failure is reported rather than raised, because a
     board that cannot reach the gateway should say so, not vanish.
+
+    A read can fail three ways and the board must not print them alike.
+    UNREACHABLE is nothing answering.  REFUSED is the gateway answering
+    with ``ok`` false and its own account of why.  INCOMPLETE is an
+    enumeration that stopped paging -- absence from a truncated list is
+    nothing, so its total is a floor and not a count of the account.
+
+    Measured 2026-09-10: two consecutive renders carried
+    ``{"available": false, "count": 0}`` and the card read "gateway did
+    not answer: unknown" for a gateway that had answered -- this function
+    kept ``bool(ok)`` and dropped the reply's ``error``, so the one thing
+    that said what went wrong never left this frame.  The account held a
+    live order the whole time.
+
+    Only a complete, ok enumeration yields ``count``.  A payload carrying
+    a zero next to a failed read is how a reader learns to believe an
+    unread account is empty.
     """
 
     import datetime as _dt  # noqa: PLC0415
@@ -2921,18 +2938,46 @@ def _read_open_orders() -> dict[str, Any]:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
+    # The board is a static render; this row is a reading taken once, at
+    # render time.  Without the stamp a stale page asserts a live zero --
+    # and a failed read gets the stamp too, so "when did we last fail to
+    # ask" is answerable from the page.
+    asked_at = _dt.datetime.now(_dt.UTC).isoformat(timespec="seconds")
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
             raw = json.loads(response.read().decode("utf-8"))
     except Exception as exc:
-        return {"available": False, "error": f"{type(exc).__name__}"}
+        return {
+            "available": False,
+            "reason": "unreachable",
+            "error": f"{type(exc).__name__}: {exc}"[:200],
+            "asked_at": asked_at,
+        }
+    if not raw.get("ok"):
+        return {
+            "available": False,
+            "reason": "refused",
+            "error": str(
+                raw.get("error") or raw.get("status") or "ok_false_without_error"
+            )[:200],
+            "asked_at": asked_at,
+        }
+    if raw.get("complete") is not True:
+        return {
+            "available": False,
+            "reason": "incomplete",
+            "error": (
+                f"enumeration stopped after {raw.get('pages_checked')} pages;"
+                f" {raw.get('total_open_orders')} seen so far is a floor"
+            )[:200],
+            "asked_at": asked_at,
+        }
     orders = raw.get("open_orders") or []
     return {
-        "available": bool(raw.get("ok")),
+        "available": True,
+        "reason": "ok",
         "count": int(raw.get("total_open_orders") or 0),
-        # The board is a static render; this row is a reading taken once, at
-        # render time.  Without the stamp a stale page asserts a live zero.
-        "asked_at": _dt.datetime.now(_dt.UTC).isoformat(timespec="seconds"),
+        "asked_at": asked_at,
         "orders": [
             {
                 "id": str(o.get("id") or ""),
@@ -11524,9 +11569,19 @@ function liveOrderCard(L){
       +"/"+(o.original_size==null?"?":shares(o.original_size))}</td>
     <td class="mono" title="${o.id}">${String(o.id||"").slice(0,14)}…</td>
     <td class="mono">${o.created_at??""}</td></tr>`).join("");
+  // Three ways the read fails, and they are three different sentences.
+  // "Nothing answered" and "the gateway answered and said no" send an
+  // operator to different places; printing both as 网关无响应 sent them to
+  // the wrong one twice on 2026-09-10, while a live order rested.
+  const O2WHY = {
+    unreachable: "网关无响应",
+    refused: "网关答了，但这次查询失败",
+    incomplete: "清单没枚举完，不是账户的全部",
+  }[O2.reason] || "读取失败";
   const openCard = !O2.available
     ? `<div class="note" style="margin-top:9px">⚠️ <b>账户挂单读不到</b>
-       <span class="muted">（网关无响应：<span class="mono">${h(O2.error||"unknown")}</span>）——
+       <span class="muted">（${h(O2WHY)}：<span class="mono">${h(O2.error||"unknown")}</span>
+       ，问于 <span class="mono">${h(O2.asked_at||"?")}</span>）——
        这一行问的是交易所，读不到就不是零。</span></div>`
     : O2.count === 0
       ? `<div class="muted" style="font-size:12px;margin-top:9px">✅ 交易所侧
