@@ -1272,6 +1272,20 @@ TARGET_SSOT_GROWTH_PATH = ROOT / "data" / "runtime" / "target_ssot_growth.json"
 #: Where the writer lanes' turn is kept, so a restart does not hand every
 #: lane back its tie.  See the seeding comment in the run loop.
 WRITER_TURN_PATH = ROOT / "data" / "runtime" / "writer_turn.json"
+#: When this generation of the process began.  Stamped at import because
+#: that IS the generation: the daemon is a fresh interpreter on every
+#: restart, and the growth estimator needs to know whether the window it
+#: is about to measure has a restart inside it.
+_PROCESS_STARTED_AT_UTC = (
+    datetime.now(timezone.utc).isoformat(timespec="seconds")
+    .replace("+00:00", "Z")
+)
+
+
+def _resident_started_at_utc() -> str:
+    """The start of this generation, for windows that must not span one."""
+
+    return _PROCESS_STARTED_AT_UTC
 
 
 def _target_ssot_live_bytes(database: Path) -> tuple[int | None, int]:
@@ -1311,6 +1325,7 @@ def _target_ssot_growth(
     *,
     live_bytes: int | None = None,
     free_page_bytes: int = 0,
+    generation_started_at: str | None = None,
 ) -> dict[str, Any]:
     """Bytes per day, and the days that leaves, from two readings.
 
@@ -1338,6 +1353,15 @@ def _target_ssot_growth(
     Headroom counts the free pages, because new rows land there before the
     file has to grow.  The ceiling itself stays on the file size: that is
     what ``MAX_TARGET_DB_BYTES`` gates and what fail-closes every writer.
+
+    A window that spans a restart yields no rate.  Coming up costs a burst
+    -- replays, re-ingest, whatever queued while the process was down --
+    and this process restarts several times an hour on a deploy day, so
+    that burst would be most of what the estimator ever sees.  Measured
+    2026-09-10: the first window after two restarts read 2,393 MB/day and
+    put the store 5.6 days from its ceiling, while 25 clean minutes on the
+    same afternoon read 829 MB/day and 16 days.  A gauge that triples
+    after every deploy is one nobody believes on the day it is right.
     """
 
     now = datetime.now(timezone.utc)
@@ -1371,12 +1395,25 @@ def _target_ssot_growth(
         else:
             grew = measure_now - int(measure_then)
         # Under an hour is not a measurement, it is rounding; a shrinking
-        # database is a retention pass, not a rate to extrapolate from.
-        if baseline_is_old and grew > 0:
+        # database is a retention pass, not a rate to extrapolate from;
+        # and a window the process restarted inside is a catch-up burst.
+        # Compared by identity, not by clock: the baseline records which
+        # generation wrote it, so a mismatch IS a restart.  A baseline from
+        # before this field existed says nothing about generations and must
+        # not be read as claiming one -- unknown is not a restart.
+        previous_generation = previous.get("generation_started_at")
+        spans_restart = bool(
+            generation_started_at
+            and previous_generation
+            and str(previous_generation) != str(generation_started_at)
+        )
+        if baseline_is_old and grew > 0 and not spans_restart:
             bytes_per_day = grew / elapsed_days
+        restart_in_window = spans_restart
     except (KeyError, TypeError, ValueError):
         bytes_per_day = None
         baseline_is_old = not previous
+        restart_in_window = False
     fresh_rate = bytes_per_day
     # Free pages are headroom: new rows land there before the file has to
     # grow.  The ceiling stays on the file, which is what fail-closes the
@@ -1420,6 +1457,10 @@ def _target_ssot_growth(
                     timespec="seconds"
                 ).replace("+00:00", "Z"),
                 "database_bytes": int(db_bytes),
+                "generation_started_at": (
+                    str(generation_started_at)
+                    if generation_started_at else None
+                ),
                 "live_bytes": (
                     int(live_bytes) if live_bytes is not None else None
                 ),
@@ -1446,6 +1487,9 @@ def _target_ssot_growth(
         "live_bytes": live_bytes,
         "free_page_bytes": int(max(0, free_page_bytes)),
         "growth_axis": measure_key,
+        # Named, because "no rate" and "no rate yet, the process restarted"
+        # are different states and only one of them clears on its own.
+        "growth_window_spans_restart": bool(restart_in_window),
     }
 
 
@@ -1488,7 +1532,10 @@ def target_ssot_capacity_guard(db_path: Path) -> dict[str, Any]:
     elif remaining < TARGET_SSOT_WARN_REMAINING_BYTES:
         warnings.append("target_database_headroom_low")
     growth = _target_ssot_growth(
-        db_bytes, live_bytes=live_bytes, free_page_bytes=free_page_bytes
+        db_bytes,
+        live_bytes=live_bytes,
+        free_page_bytes=free_page_bytes,
+        generation_started_at=_resident_started_at_utc(),
     )
     days_left = growth["days_to_ceiling"]
     if (

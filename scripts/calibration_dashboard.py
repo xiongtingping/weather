@@ -11164,7 +11164,9 @@ function ssotCapacity(){
       S.remaining_bytes<S.warn_remaining_bytes?"down":"")}
     ${tile("剩余天数", days==null?"还在测":num(days,1)+" 天",
       rate==null
-        ? "速率要两个相隔一小时的读数才算得出来；重启后第一轮只写基线"
+        ? (S.growth_window_spans_restart
+          ? "上一段窗口里常驻重启过——起来时的追赶写入不是稳态速率，这一段作废，等下一段干净的"
+          : "速率要两个相隔一小时的读数才算得出来；重启后第一轮只写基线")
         : "按实测 "+mb(rate)+"/天 · 低于 "+num(warnDays,0)+" 天报警",
       daysCls)}
     ${tile("最大单表", h(S.largest_table||"—"),

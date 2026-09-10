@@ -258,3 +258,63 @@ def test_the_baseline_moves_even_when_it_produced_no_rate(
         "reading that only gets older"
     )
     assert written["live_bytes"] == live_now
+
+
+def test_a_window_the_process_restarted_inside_yields_no_rate(
+    daemon, tmp_path: Path
+) -> None:
+    """Coming up costs a burst, and this process comes up several times an hour.
+
+    Measured 2026-09-10: the first window after two restarts read 2,393
+    MB/day and put the store 5.6 days from its ceiling, while 25 clean
+    minutes the same afternoon read 829 MB/day and 16 days.  Nearly three
+    times, and it is the restart's catch-up -- replays, re-ingest, whatever
+    queued while the process was down -- not the store's rate.  A gauge
+    that triples after every deploy is one nobody believes on the day it is
+    right.
+
+    Compared by identity rather than by clock: the baseline records which
+    generation wrote it, and a mismatch IS a restart.  A baseline from
+    before the field existed claims nothing, because unknown is not a
+    restart.
+    """
+
+    database = _sqlite_with_free_pages(tmp_path, rows=400, delete=300)
+    live_now, free_now = daemon._target_ssot_live_bytes(database)
+    stamp = (
+        datetime.now(timezone.utc) - timedelta(hours=24.0)
+    ).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+    def seed(generation: str | None) -> None:
+        blob = {
+            "schema": "target_ssot_growth_v2",
+            "observed_at_utc": stamp,
+            "database_bytes": database.stat().st_size,
+            "live_bytes": live_now - 100_000,
+            "free_page_bytes": free_now,
+        }
+        if generation is not None:
+            blob["generation_started_at"] = generation
+        daemon.TARGET_SSOT_GROWTH_PATH.write_text(json.dumps(blob))
+
+    # Same generation wrote the baseline: an ordinary window, a real rate.
+    seed(daemon._resident_started_at_utc())
+    same = daemon.target_ssot_capacity_guard(database)
+    assert same["growth_bytes_per_day"] == pytest.approx(100_000, rel=0.05)
+    assert same["growth_window_spans_restart"] is False
+
+    # A different generation wrote it: the process restarted in between.
+    seed("2000-01-01T00:00:00Z")
+    across = daemon.target_ssot_capacity_guard(database)
+    assert across["growth_bytes_per_day"] is None
+    assert across["growth_window_spans_restart"] is True
+    # And the baseline still moves, so the next clean window can measure.
+    written = json.loads(daemon.TARGET_SSOT_GROWTH_PATH.read_text())
+    assert written["observed_at_utc"] != stamp
+    assert written["generation_started_at"] == daemon._resident_started_at_utc()
+
+    # A baseline predating the field claims nothing either way.
+    seed(None)
+    unknown = daemon.target_ssot_capacity_guard(database)
+    assert unknown["growth_window_spans_restart"] is False
+    assert unknown["growth_bytes_per_day"] == pytest.approx(100_000, rel=0.05)
