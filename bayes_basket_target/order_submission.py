@@ -80,6 +80,54 @@ def _positive(field: str, value: Any) -> float:
     return result
 
 
+# Order types the exchange fills by crossing.  Post-only contradicts them by
+# construction and the gateway refuses the pair outright
+# (``post_only_market_order_forbidden``); naming them here refuses it one
+# process earlier, where the intent that carries the contradiction is still
+# in hand.
+_CROSSING_ORDER_TYPES = frozenset({"FOK", "FAK"})
+
+
+def _post_only(intent: Mapping[str, Any]) -> bool:
+    """Whether this order may only rest, read off the intent that minted it.
+
+    Charter 94 makes every entry a resting rung one tick inside the bid, and
+    the compile records that as ``post_only`` on the intent
+    (``production.py``: ``execution_candidate == "MAKER"``).  The payload
+    this module builds never carried the flag, so the gateway fell through to
+    ``PM_CLOB_POST_ONLY`` -- unset, therefore ``0`` -- and every one of the
+    2,336 maker intents minted to 2026-09-10 went to the exchange as an
+    ordinary limit order.  The rung is priced under the ask, so it rested in
+    almost every case; what was missing is the guarantee.  Between the
+    compile and the post there is a three-second deadline window, and an ask
+    that falls onto the rung inside it turns a decision that was judged,
+    sized and floor-checked at the resting price into a crossing buy at a
+    price nothing in the chain ever priced.
+
+    Read, never inferred.  The family is a decision the optimizer makes and
+    writes down; an intent that states neither the flag nor the family is
+    refused rather than guessed at, because the two guesses are opposite
+    orders and the wrong one spends money at a price no gate saw.
+    """
+
+    value = intent.get("post_only")
+    if value is not None:
+        if isinstance(value, str):
+            text = value.strip().lower()
+            if text in {"1", "true", "yes", "on"}:
+                return True
+            if text in {"0", "false", "no", "off"}:
+                return False
+            raise OrderSubmissionError("order_submission_post_only_invalid")
+        return bool(value)
+    family = str(intent.get("execution_candidate") or "").strip().upper()
+    if family == "MAKER":
+        return True
+    if family:
+        return False
+    raise OrderSubmissionError("order_submission_post_only_missing")
+
+
 def build_place_order_payload(
     intent: Mapping[str, Any],
     *,
@@ -100,6 +148,17 @@ def build_place_order_payload(
     direction = _text("order_action", intent.get("order_action")).upper()
     if direction not in {"BUY", "SELL"}:
         raise OrderSubmissionError("order_submission_order_action_invalid")
+    order_type = _text(
+        "order_type", intent.get("order_type") or "GTC"
+    ).upper()
+    post_only = _post_only(intent)
+    if post_only and order_type in _CROSSING_ORDER_TYPES:
+        # A crossing family carrying the resting flag is not a payload with a
+        # debatable field; it is two contradictory instructions about what to
+        # do with the money, and neither one of them can be picked here.
+        raise OrderSubmissionError(
+            "order_submission_post_only_contradicts_order_type"
+        )
     return {
         "strategy_id": _text("strategy_id", strategy_id),
         "order_intent_id": _text("order_intent_id", intent.get("order_intent_id")),
@@ -111,9 +170,8 @@ def build_place_order_payload(
         "side": direction,
         "price": price,
         "size": _positive("requested_size", intent.get("requested_size")),
-        "order_type": _text(
-            "order_type", intent.get("order_type") or "GTC"
-        ).upper(),
+        "order_type": order_type,
+        "post_only": post_only,
     }
 
 
@@ -256,6 +314,34 @@ def classify_submission_response(
     }
 
 
+def _intent_body(raw: Any) -> dict[str, Any]:
+    """The two execution fields the intent's own JSON carries, if it parses.
+
+    Only these two: everything else on that document belongs to the compile
+    that wrote it, and a submission path that helped itself to the rest would
+    become a second reader of a decision it does not make.  Unparseable JSON
+    yields nothing and ``_post_only`` refuses the intent by name, which is
+    the honest outcome -- a row whose family cannot be read is a row whose
+    order type cannot be chosen.
+    """
+
+    if isinstance(raw, Mapping):
+        body: Mapping[str, Any] = raw
+    else:
+        try:
+            parsed = json.loads(str(raw or "") or "{}")
+        except (TypeError, ValueError):
+            return {}
+        if not isinstance(parsed, Mapping):
+            return {}
+        body = parsed
+    carried: dict[str, Any] = {}
+    for field in ("post_only", "execution_candidate"):
+        if body.get(field) is not None:
+            carried[field] = body[field]
+    return carried
+
+
 def _submittable_intents(
     conn: sqlite3.Connection,
     *,
@@ -263,7 +349,7 @@ def _submittable_intents(
 ) -> list[dict[str, Any]]:
     rows = conn.execute(
         "SELECT order_intent_id,bucket,token_id,side,order_action,"
-        "limit_price,requested_size,idempotency_key,state "
+        "limit_price,requested_size,idempotency_key,state,intent_json "
         "FROM basket_target_order_intents WHERE cycle_id=? "
         "ORDER BY order_intent_id",
         (_text("cycle_id", cycle_id),),
@@ -279,6 +365,12 @@ def _submittable_intents(
             "requested_size": row[6],
             "idempotency_key": row[7],
             "state": row[8],
+            # The execution family the compile chose, carried on the row's
+            # own JSON.  The columns above are the exchange's vocabulary and
+            # have never had a place for it, which is why the payload could
+            # be built without ever seeing ``post_only``: the flag was
+            # written at mint time and then read by nobody.
+            **_intent_body(row[9]),
         }
         for row in rows
         if str(row[8]) == SUBMITTABLE_INTENT_STATE
@@ -391,7 +483,23 @@ def submit_prepared_intents(
                 "exchange_post_started": False,
             })
             continue
-        payload = build_place_order_payload(intent, strategy_id=strategy_id)
+        try:
+            payload = build_place_order_payload(intent, strategy_id=strategy_id)
+        except OrderSubmissionError as exc:
+            # A malformed intent is one leg's problem, and this function's
+            # own contract is that no single refusal abandons the rest of a
+            # basket that is still fillable.  It escaped anyway, because the
+            # build sat outside every guard on the walk: a row that could not
+            # state its execution family would have taken its whole cycle
+            # down with it and named the reason nowhere the ledger keeps.
+            submissions.append({
+                "order_intent_id": intent_id,
+                "state": "blocked",
+                "reason": str(exc),
+                "blockers": [str(exc)],
+                "exchange_post_started": False,
+            })
+            continue
         # Entries only.  The bar refuses admissions -- it says do not put
         # money on this station -- and reading it as "touch nothing here"
         # would strand whatever is already open: a station barred while

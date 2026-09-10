@@ -83,8 +83,11 @@ def _book(path: Path) -> sqlite3.Connection:
         " requested_notional_usdc, state, live_submit_authorized,"
         " idempotency_key, intent_json, intent_sha256, created_at)"
         " VALUES('i1','d1','c1','31°C','tok','YES','BUY',0.02,25.0,0.5,"
-        " 'prepared',0,'k1','{}',?,'2026-09-01T00:00:00Z')",
-        ("a" * 64,),
+        " 'prepared',0,'k1',?,?,'2026-09-01T00:00:00Z')",
+        # What production mints beside the columns.  The execution family
+        # lives here and nowhere else, and the submit walk reads it to decide
+        # whether the order may cross; a row without it is refused by name.
+        ('{"execution_candidate": "MAKER", "post_only": true}', "a" * 64),
     )
     return conn
 

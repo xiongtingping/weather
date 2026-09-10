@@ -8,6 +8,7 @@ looks like afterwards.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 
 import pytest
@@ -76,8 +77,27 @@ def _intent(**overrides) -> dict:
         "limit_price": 0.12,
         "requested_size": 40.0,
         "idempotency_key": "idem-a",
+        # What the compile records about the family it chose.  Charter 94
+        # makes every entry a resting rung, and the payload has to carry
+        # that or the exchange is free to fill it by crossing.
+        "execution_candidate": "MAKER",
+        "post_only": True,
         **overrides,
     }
+
+
+def _intent_json(intent: dict) -> str:
+    """The document production mints beside the columns, for this intent."""
+
+    body = {
+        "schema": "bayes_basket_production_candidate_intent_v1",
+        "candidate_will_order": True,
+        "execution_candidate": intent.get("execution_candidate", "MAKER"),
+        "post_only": intent.get("post_only", True),
+    }
+    return json.dumps(
+        {key: value for key, value in body.items() if value is not None}
+    )
 
 
 def _conn(intents: list[dict]) -> sqlite3.Connection:
@@ -98,7 +118,7 @@ def _conn(intents: list[dict]) -> sqlite3.Connection:
                 intent["requested_size"],
                 float(intent["limit_price"]) * float(intent["requested_size"]),
                 intent.get("state", "prepared"), 0, intent["idempotency_key"],
-                "{}", f"{index:064d}", OBSERVED,
+                _intent_json(intent), f"{index:064d}", OBSERVED,
             ),
         )
     return conn
@@ -133,7 +153,62 @@ def test_payload_matches_the_order_service_request_contract() -> None:
         "price": 0.12,
         "size": 40.0,
         "order_type": "GTC",
+        "post_only": True,
     }
+
+
+def test_the_maker_family_is_sent_as_an_order_that_may_only_rest() -> None:
+    """Charter 94's rung is a promise about how the order may fill.
+
+    The compile wrote ``post_only`` on every maker intent from the day the
+    lane was minted and the payload dropped it, so the gateway read its own
+    default -- unset, therefore off -- and 2,336 intents went out as
+    ordinary limit orders.  The rung is priced under the ask so it rested
+    almost every time; between the compile and the post there is a
+    three-second window in which a falling ask can reach it, and a fill
+    there is a crossing buy at a price the seat was never sized on.
+    """
+
+    payload = build_place_order_payload(_intent())
+
+    assert payload["post_only"] is True
+    assert payload["order_type"] == "GTC"
+
+
+def test_the_taker_family_is_sent_as_an_order_that_may_cross() -> None:
+    """The flag is read, not assumed: the FOK arm says the opposite."""
+
+    payload = build_place_order_payload(
+        _intent(execution_candidate="TAKER_FOK", post_only=False)
+    )
+
+    assert payload["post_only"] is False
+
+
+def test_a_family_without_the_flag_falls_back_to_what_it_says_it_is() -> None:
+    payload = build_place_order_payload(
+        _intent(execution_candidate="TAKER_FOK", post_only=None)
+    )
+
+    assert payload["post_only"] is False
+
+
+def test_an_intent_that_states_no_family_at_all_is_refused() -> None:
+    """Two guesses, opposite orders: refuse rather than pick one."""
+
+    with pytest.raises(OrderSubmissionError, match="post_only_missing"):
+        build_place_order_payload(
+            _intent(execution_candidate=None, post_only=None)
+        )
+
+
+def test_resting_and_crossing_cannot_be_asked_for_at_once() -> None:
+    """The gateway refuses this pair; refuse it while the intent is in hand."""
+
+    with pytest.raises(
+        OrderSubmissionError, match="post_only_contradicts_order_type"
+    ):
+        build_place_order_payload(_intent(order_type="FOK", post_only=True))
 
 
 @pytest.mark.parametrize("price", [0.0, 1.0, 1.5, -0.1])
@@ -435,6 +510,34 @@ def test_an_authorized_submission_closes_the_chain_to_reconciliation() -> None:
         "SELECT state FROM basket_target_order_intents "
         "WHERE order_intent_id='intent-a'"
     ).fetchone()[0] == "submitted"
+
+
+def test_the_flag_travels_from_the_stored_row_to_the_wire() -> None:
+    """End to end, because the break was in the seam and not in either end.
+
+    ``production`` wrote ``post_only`` onto the intent's JSON; the submit
+    walk selected the exchange's own columns and never that document, so the
+    flag existed in the database and could not reach the payload.  A unit
+    test on the builder alone would have passed throughout.
+    """
+
+    sent: list[dict] = []
+
+    def _capture(path, payload):
+        sent.append(dict(payload))
+        return _accepted(path, payload)
+
+    conn = _conn([_intent()])
+    with conn:
+        submit_prepared_intents(
+            conn,
+            cycle_id="cycle-1",
+            transport=_capture,
+            live_submit_authorized=True,
+            observed_at_utc=OBSERVED,
+        )
+
+    assert [item["post_only"] for item in sent] == [True]
 
 
 def test_an_unauthorized_run_walks_the_path_without_sending() -> None:

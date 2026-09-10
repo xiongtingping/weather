@@ -954,7 +954,8 @@ def _submission_conn(station: str) -> "sqlite3.Connection":  # noqa: F821
         "idempotency_key,intent_json,intent_sha256,created_at)"
         " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         ("intent-a", "decision-1", "cycle-1", "35", "token-35", "YES", "BUY",
-         0.12, 40.0, 4.8, "prepared", 1, "idem-a", "{}", f"{1:064d}",
+         0.12, 40.0, 4.8, "prepared", 1, "idem-a",
+         '{"execution_candidate": "MAKER", "post_only": true}', f"{1:064d}",
          "2026-08-30T09:00:00Z"),
     )
     return conn
