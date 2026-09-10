@@ -11756,131 +11756,55 @@ def test_ui_snapshot_summary_rebuilds_capital_plan_after_chengdu_overlay(tmp_pat
     assert "temperature_path_trade_follow_not_allowed" in item["target_switch_context"]["no_add_reasons"]
 
 
-def test_target_realization_plan_ignores_stale_single_bucket_selection() -> None:
+def test_target_realization_plan_is_read_not_recomputed_from_rows() -> None:
+    """The UI reads a committed plan; it does not build one.
+
+    This replaces three tests that asserted the opposite -- that the plan's
+    legs were derived here from the temperature-path distribution, from the
+    posterior SSOT target, or from a single-bucket selection.  That derivation
+    is gone and the reader says why in its own comment: strategy plans are
+    committed by the posterior transaction, never recomputed from rows or
+    environment here.  A UI that rebuilt legs from whatever rows it happened to
+    hold is exactly what decision_recompute_allowed: False forbids, so the
+    thing worth testing is the refusal and the pass-through.
+    """
+
+    committed = {
+        "version": "strong_posterior_three_leg_strategy_v2",
+        "ok": True,
+        "legs": [
+            {"role": "target", "bucket": "26°C", "side": "yes", "stake_usd": 12.0},
+        ],
+    }
     item = {
         "slug": "highest-temperature-in-chengdu-on-june-21-2026",
         "event_date": "2026-06-21",
-        "run_date": "2026-06-20",
-        "rounding_rule": "whole_degrees",
+        "target_realization_capital_plan": dict(committed),
         "distribution": [
-            {
-                "outcome": "25°C or below",
-                "q_temperature_bucket_posterior": 0.26122337983261507,
-                "best_bid": 0.52,
-                "best_ask": 0.53,
-            },
-            {
-                "outcome": "26°C",
-                "q_temperature_bucket_posterior": 0.2017124436814672,
-                "best_bid": 0.28,
-                "best_ask": 0.29,
-            },
-            {
-                "outcome": "28°C",
-                "q_temperature_bucket_posterior": 0.19966992988052046,
-                "best_bid": 0.04,
-                "best_ask": 0.05,
-                "best_bid_no": 0.94,
-                "best_ask_no": 0.95,
-            },
+            {"outcome": "25°C or below", "q_temperature_bucket_posterior": 0.3},
+            {"outcome": "26°C", "q_temperature_bucket_posterior": 0.7},
         ],
-        "target_bucket_outlook": {
-            "available": True,
-            "target_bucket": "26°C",
-            "second_target_bucket": "28°C",
-        },
     }
-
     plan = server._build_target_realization_capital_plan(item)
-    item["target_realization_capital_plan"] = plan
-    context = server.build_target_switch_context(item)
+    assert plan["legs"] == committed["legs"]
+    assert plan["ok"] is True
 
-    assert plan["ok"] is False
-    assert plan["reason"] == "posterior_ssot_fact_target_missing"
-    assert plan["target_bucket_selection_source"] == "posterior_ssot_fact_missing"
-    assert context["target_bucket"] == ""
-    assert context["candidate_bucket"] == ""
+    # A plan committed under any other version is not this contract, so it is
+    # refused rather than adapted.
+    stale = dict(item)
+    stale["target_realization_capital_plan"] = {"version": "legacy_v1", "legs": [{"role": "target"}]}
+    refused = server._build_target_realization_capital_plan(stale)
+    assert refused["ok"] is False
+    assert refused["reason"] == "committed_dynamic_three_leg_plan_missing"
+    assert refused["ui_probability_recomputed"] is False
+    assert "legs" not in refused
 
-
-def test_target_realization_plan_prefers_temperature_path_distribution_probabilities() -> None:
-    item = {
-        "slug": "highest-temperature-in-chengdu-on-june-21-2026",
-        "event_date": "2026-06-21",
-        "run_date": "2026-06-21",
-        "rounding_rule": "whole_degrees",
-        "distribution": [
-            {
-                "outcome": "25°C or below",
-                "q_temperature_bucket_posterior": 0.26122337983261507,
-                "best_bid": 0.52,
-                "best_ask": 0.53,
-            },
-            {
-                "outcome": "26°C",
-                "q_temperature_bucket_posterior": 0.2017124436814672,
-                "best_bid": 0.28,
-                "best_ask": 0.29,
-            },
-            {
-                "outcome": "28°C",
-                "q_temperature_bucket_posterior": 0.19966992988052046,
-                "best_bid": 0.04,
-                "best_ask": 0.05,
-                "best_bid_no": 0.94,
-                "best_ask_no": 0.95,
-            },
-        ],
-        "temperature_path_distribution": {
-            "available": True,
-            "target_bucket": "25°C or below",
-            "target_bucket_posterior": 0.42016291281991425,
-            "target_bucket_path_probability": 0.5,
-            "second_target_bucket": "26°C",
-            "second_target_bucket_posterior": 0.2817846528381569,
-            "second_target_bucket_path_probability": 0.2119,
-            "target": {
-                "bucket": "25°C or below",
-                "posterior": 0.42016291281991425,
-                "path_probability": 0.5,
-                "path_probability_source": "temperature_path_distribution",
-            },
-            "second_target": {
-                "bucket": "26°C",
-                "posterior": 0.2817846528381569,
-                "path_probability": 0.2119,
-                "path_probability_source": "temperature_path_distribution",
-            },
-            "freshness": {"source_stale": False, "observation_age_minutes": 29.2},
-            "reliability": {"state": "high", "label": "High", "score": 0.8115},
-            "trade_follow": {
-                "allowed": True,
-                "reason": "posterior_path_reliability_and_freshness_pass",
-            },
-            "risk_explanation": (
-                "目标 25°C or below posterior 42.02%，路径可兑现 50.0%。"
-                " 第二目标 26°C posterior 28.18%，路径可兑现 21.19%。"
-            ),
-        },
-    }
-    attach_unit_posterior_ssot_fact(
-        item,
-        target_bucket="25°C or below",
-        target_probability=0.26122337983261507,
-    )
-
-    plan = server._build_target_realization_capital_plan(item)
-    legs = {(leg["role"], leg["bucket"], leg["side"]): leg for leg in plan["legs"]}
-
-    assert plan["target_bucket"] == "25°C or below"
-    assert plan["target_posterior"] == 0.26122337983261507
-    assert plan["second_target_bucket"] == "26°C"
-    assert plan["second_target_posterior"] == 0.2017124436814672
-    assert plan["ui_risk_explanation"]["target_posterior"] == 0.26122337983261507
-    assert plan["ui_risk_explanation"]["second_target_posterior"] == 0.2017124436814672
-    assert plan["ui_risk_explanation"]["target_realization_probability"] == 0.5
-    assert plan["ui_risk_explanation"]["second_target_realization_probability"] == 0.2119
-    assert legs[("target_yes", "25°C or below", "YES")]["target_realization_path_probability"] == 0.5
-    assert legs[("second_target_yes", "26°C", "YES")]["target_realization_path_probability"] == 0.2119
+    # And with nothing committed, a full distribution buys no legs at all.
+    bare = {k: v for k, v in item.items() if k != "target_realization_capital_plan"}
+    missing = server._build_target_realization_capital_plan(bare)
+    assert missing["ok"] is False
+    assert missing["reason"] == "committed_dynamic_three_leg_plan_missing"
+    assert "legs" not in missing
 
 
 def test_temperature_path_and_capital_plan_posterior_align_to_current_distribution() -> None:
@@ -12095,64 +12019,6 @@ def test_temperature_path_posterior_sync_uses_hard_source_constrained_outlook_ro
     assert out["chengdu_intraday_summary"]["temperature_path_distribution"]["target_bucket_posterior_pct"] == 65.72
     assert out["target_realization_capital_plan"]["target_bucket"] == "33°C"
     assert out["target_realization_capital_plan"]["target_posterior"] == 0.657155398570265
-
-
-def test_target_realization_plan_does_not_fallback_when_path_distribution_probability_missing() -> None:
-    item = {
-        "slug": "highest-temperature-in-chengdu-on-june-22-2026",
-        "event_date": "2026-06-22",
-        "run_date": "2026-06-21",
-        "distribution": [
-            {
-                "outcome": "30°C",
-                "q_temperature_bucket_posterior": 0.20,
-                "peak_estimator_mu_c": 28.9,
-                "peak_estimator_sigma_c": 1.25,
-                "best_bid": 0.20,
-                "best_ask": 0.21,
-            },
-            {
-                "outcome": "31°C",
-                "q_temperature_bucket_posterior": 0.18,
-                "peak_estimator_mu_c": 28.9,
-                "peak_estimator_sigma_c": 1.25,
-                "best_bid": 0.18,
-                "best_ask": 0.19,
-            },
-        ],
-        "temperature_path_distribution": {
-            "available": True,
-            "target_bucket": "30°C",
-            "target_bucket_posterior": 0.24598122644339906,
-            "target_bucket_path_probability": None,
-            "second_target_bucket": "31°C",
-            "second_target_bucket_posterior": 0.19461077408328195,
-            "second_target_bucket_path_probability": None,
-            "freshness": {"source_stale": False, "observation_age_minutes": None},
-            "reliability": {"state": "low", "label": "Low", "score": 0.3146},
-            "error_band": {"sigma_c": 1.25, "source": "default_error_band"},
-            "trade_follow": {"allowed": False, "reason": "blocked_path_reliability_low"},
-            "risk_explanation": "路径可兑现缺失，禁止跟随。",
-        },
-    }
-    attach_unit_posterior_ssot_fact(item, target_bucket="30°C", target_probability=0.20)
-
-    plan = server._build_target_realization_capital_plan(item)
-    legs = {(leg["role"], leg["bucket"], leg["side"]): leg for leg in plan["legs"]}
-    target_leg = legs[("target_yes", "30°C", "YES")]
-    second_leg = legs[("second_target_yes", "31°C", "YES")]
-
-    assert plan["target_posterior"] == 0.20
-    assert plan["second_target_posterior"] == 0.18
-    assert target_leg["target_realization_path_probability"] is None
-    assert second_leg["target_realization_path_probability"] is None
-    assert target_leg["target_realization_reliability"] == 0.0
-    assert second_leg["target_realization_reliability"] == 0.0
-    assert target_leg["target_realization_reliability_source"] == "temperature_path_distribution_path_probability_missing"
-    assert second_leg["target_realization_reliability_source"] == "temperature_path_distribution_path_probability_missing"
-    assert plan["ui_risk_explanation"]["target_realization_probability"] is None
-    assert plan["ui_risk_explanation"]["second_target_realization_probability"] is None
-    assert plan["temperature_path_trade_follow_block_yes"] is True
 
 
 def test_ui_snapshot_summary_slim_keeps_target_realization_risk_explanation() -> None:
