@@ -25,9 +25,13 @@ if str(ROOT) not in sys.path:
 from bayes_basket_target.center_width_store import (  # noqa: E402
     CENTER_WIDTH_SERVED_STAGES,
     CENTER_WIDTH_STAGES,
+    FORWARD_WINDOW_FRACTION,
+    _mean_nll,
+    _truth,
     ensure_center_width_schema,
     fit_center_width,
     load_center_width,
+    persist_and_activate_center_width,
     refit_all_center_width,
     serving_cells_by_day,
 )
@@ -922,3 +926,142 @@ def test_arithmetic_moving_after_its_version_raises_a_discrepancy() -> None:
             serving_arithmetic.fingerprint = original_fingerprint
     finally:
         conn.close()
+
+
+class ResidualAndAbsoluteSpaceTest(unittest.TestCase):
+    """The fit reads served cells; the server writes to uncorrected ones.
+
+    ``serving_cells_by_day`` returns what production committed, so whatever
+    the incumbent pair did is already inside every cell.  Two consequences the
+    lane got wrong until 2026-09-10, in opposite directions:
+
+    * scoring the incumbent by applying it a second time reads 0.75 as
+      0.5625, so the incumbent looks worse than the distribution actually
+      served and hands that margin to every candidate as free gain;
+    * the grid's answer is a *residual* on top of that width, and storing it
+      as the absolute the server applies is a different number entirely.
+
+    On P0's own cells for 2026-09-03..09-09 the residual was exactly 1.000 --
+    "today's width is right" -- and storing it would have widened every served
+    P0 distribution by 33%, undoing the narrowing that took served sigma from
+    1.36x the realised error to 1.16x.
+    """
+
+    @staticmethod
+    def _stocked(stage: str, *, incumbent: tuple[float, float]) -> sqlite3.Connection:
+        conn = _connection()
+        conn.execute(
+            "CREATE TABLE calibration_forward_taf_capture ("
+            " station_id TEXT, event_date TEXT, tx_c REAL,"
+            " tx_available INTEGER, issued_at_utc TEXT)"
+        )
+        stations = [f"ST{index:02d}" for index in range(15)]
+        days = [f"2026-08-{day:02d}" for day in range(10, 22)]
+        truth: dict[tuple[str, str], float] = {}
+        rows = []
+        for offset, day in enumerate(days):
+            for index, station in enumerate(stations):
+                rows.append((
+                    stage, station, day, f"{day}T12:00:00Z",
+                    _envelope(), "America/New_York",
+                ))
+                truth[(station, day)] = 20.0 + ((offset + index) % 3)
+        conn.executemany(
+            "INSERT INTO basket_probability_bridge_history VALUES"
+            " (?,?,?,?,?,?,'','')",
+            rows,
+        )
+        conn.executemany(
+            "INSERT INTO calibration_station_daily_high_truth"
+            " (station_id, local_date, official_tmax_c, revision_no, qc_status)"
+            " VALUES (?,?,?,1,'PASS')",
+            [(station, day, value) for (station, day), value in truth.items()],
+        )
+        conn.commit()
+        persist_and_activate_center_width(
+            conn,
+            stage=stage,
+            delta_c=incumbent[0],
+            width_lambda=incumbent[1],
+            evidence={"schema": "center_width_evidence_v1", "basis": "TEST"},
+            serving_day_count=len(days),
+        )
+        assert load_center_width(conn, stage=stage) is not None
+        return conn
+
+    def test_the_incumbent_is_scored_as_the_cells_already_carry_it(self) -> None:
+        conn = self._stocked("P1", incumbent=(0.0, 0.75))
+        fitted = fit_center_width(conn, stage="P1")
+        self.assertEqual(fitted["evidence"]["basis"], "FORWARD_WINDOW")
+        truth = _truth(conn)
+        by_day = serving_cells_by_day(conn, truth, stage="P1")
+        days = sorted(by_day)
+        cut = max(1, int(len(days) * (1.0 - FORWARD_WINDOW_FRACTION)))
+        forward = [
+            cell for day in (days[cut:] or days[-1:]) for cell in by_day[day]
+        ]
+        untransformed = _mean_nll(forward, delta_c=0.0, width_lambda=1.0)
+        self.assertAlmostEqual(
+            fitted["evidence"]["forward_nll_incumbent"], untransformed, places=9,
+        )
+        # And the reading the bug produced is a different number, so this
+        # assertion cannot pass by both arms agreeing.
+        self.assertNotAlmostEqual(
+            untransformed,
+            _mean_nll(forward, delta_c=0.0, width_lambda=0.75),
+            places=6,
+        )
+
+    def test_what_is_stored_is_the_residual_composed_onto_the_incumbent(self) -> None:
+        conn = self._stocked("P1", incumbent=(0.1, 0.75))
+        fitted = fit_center_width(conn, stage="P1")
+        evidence = fitted["evidence"]
+        self.assertEqual(evidence["basis"], "FORWARD_WINDOW")
+        self.assertAlmostEqual(
+            evidence["absolute_width_lambda"],
+            round(0.75 * evidence["residual_width_lambda"], 4),
+            places=9,
+        )
+        self.assertAlmostEqual(
+            evidence["absolute_delta_c"],
+            round(0.1 + evidence["residual_delta_c"], 4),
+            places=9,
+        )
+        if fitted["admitted"]:
+            self.assertEqual(
+                fitted["width_lambda"], evidence["absolute_width_lambda"]
+            )
+            self.assertEqual(fitted["delta_c"], evidence["absolute_delta_c"])
+        else:
+            self.assertEqual(fitted["width_lambda"], 0.75)
+            self.assertEqual(fitted["delta_c"], 0.1)
+
+    def test_a_width_that_is_already_right_leaves_the_incumbent_alone(self) -> None:
+        """The regression this class exists for, stated as behaviour.
+
+        A residual of identity means the served width needs no further
+        change.  Storing it as the absolute would throw the incumbent away.
+        """
+
+        conn = self._stocked("P1", incumbent=(0.0, 0.75))
+        fitted = fit_center_width(conn, stage="P1")
+        if fitted["evidence"]["residual_width_lambda"] == 1.0:
+            self.assertNotEqual(fitted["width_lambda"], 1.0)
+        self.assertGreaterEqual(fitted["width_lambda"], 0.5)
+        self.assertLessEqual(fitted["width_lambda"], 0.75 * 1.5 + 1e-9)
+
+    def test_an_incumbent_floor_refuses_rather_than_composing(self) -> None:
+        """No composition rule exists for a floor, so none is invented."""
+
+        conn = self._stocked("P1", incumbent=(0.0, 0.75))
+        conn.execute(
+            "UPDATE calibration_center_width_table SET sigma_floor_rungs=0.5"
+            " WHERE stage='P1' AND activated=1"
+        )
+        fitted = fit_center_width(conn, stage="P1")
+        self.assertEqual(
+            fitted["evidence"]["basis"],
+            "COMPOSITION_UNDEFINED_UNDER_FLOOR_OR_TIERS",
+        )
+        self.assertFalse(fitted["admitted"])
+        self.assertEqual(fitted["width_lambda"], 0.75)

@@ -65,6 +65,16 @@ CENTER_WIDTH_METHOD_TAG = "center_width_scalars_v1"
 # finer grid would only be fitting the sampling noise of a two-week window.
 SHIFT_GRID_C = tuple(round(-0.8 + 0.05 * step, 2) for step in range(33))
 LAMBDA_GRID = tuple(round(0.55 + 0.025 * step, 3) for step in range(19))
+# The fit reads served distributions, so whatever is being served is already
+# inside every cell.  Everything the grid measures is therefore a *residual*
+# on top of the incumbent, and identity means "keep serving today's width".
+# Serving applies one absolute pair to the uncorrected distribution, so the
+# residual has to be composed onto the incumbent before it is stored.  The
+# two spaces were conflated until 2026-09-10: the grid's best residual on
+# P0's own cells was 1.000 -- today's width is right -- and storing that as
+# the absolute would have widened every served P0 distribution by 33%, undoing
+# the narrowing that landed 2026-09-04 and took sigma/RMSE from 1.36 to 1.16.
+RESIDUAL_IDENTITY = (0.0, 1.0)
 # A width that leans on the day's brightness was fitted here as a shadow and
 # has been withdrawn: radiation moves the centre, not the width, and four
 # independent measurements agree.  Signed residual correlates +0.237 with the
@@ -1205,6 +1215,31 @@ def _mean_nll(
     ) / len(cells)
 
 
+def _compose_absolute(
+    incumbent: tuple[float, float],
+    residual: tuple[float, float],
+) -> tuple[float, float]:
+    """The absolute pair that serves what ``residual`` did to served cells.
+
+    Serving is ``x -> mu + d + lam * (x - mu)`` about the input's own mean.
+    Applying (d1, lam1) then (d2, lam2) leaves the mean at mu + d1 + d2 and
+    every deviation scaled by lam1 * lam2, so the composition is exact on a
+    density and monotone on the histogram the layer actually transforms --
+    which is all the grid needs, and the same standing the docstring of
+    ``apply_center_width_calibration`` already claims for its own arithmetic.
+
+    Clamped to the serving bounds: a composition outside them is a pair the
+    server would refuse, and storing it would fail closed at serve time
+    rather than here.
+    """
+
+    delta = float(incumbent[0]) + float(residual[0])
+    lam = float(incumbent[1]) * float(residual[1])
+    delta = max(-MAX_ABS_SHIFT_C, min(MAX_ABS_SHIFT_C, delta))
+    lam = max(MIN_WIDTH_LAMBDA, min(MAX_WIDTH_LAMBDA, lam))
+    return (round(delta, 4), round(lam, 4))
+
+
 def _search(
     cells: Sequence[Mapping[str, Any]],
     *,
@@ -1804,6 +1839,27 @@ def fit_center_width(
             "serving_cell_count": len(cells),
             "evidence": evidence,
         }
+    # A scalar pair composes onto a scalar pair.  A floor and a tier table do
+    # not: the floor is read off the input distribution and the tier a cell
+    # falls in is read off its served sigma, so both mean something different
+    # once the incumbent has already narrowed that cell.  Neither has ever been
+    # admitted at any stage, so this refuses nothing today; it fails closed the
+    # day one is, instead of storing a composition nobody defined.
+    if base_floor or base_tiers:
+        evidence["basis"] = "COMPOSITION_UNDEFINED_UNDER_FLOOR_OR_TIERS"
+        return {
+            "stage": stage_id,
+            "delta_c": base[0],
+            "width_lambda": base[1],
+            "sigma_floor_rungs": base_floor,
+            "width_tiers": base_tiers,
+            "forward_nll_gain": 0.0,
+            "accumulating": False,
+            "admitted": False,
+            "serving_day_count": len(days),
+            "serving_cell_count": len(cells),
+            "evidence": evidence,
+        }
     cut = max(1, int(len(days) * (1.0 - FORWARD_WINDOW_FRACTION)))
     train_days, forward_days = days[:cut], days[cut:] or days[-1:]
     train = [cell for day in train_days for cell in by_day[day]]
@@ -1812,14 +1868,18 @@ def fit_center_width(
     floor_delta, floor_lam, floor_train_nll = _search(
         train, sigma_floor_rungs=SIGMA_FLOOR_RUNGS
     )
-    # The incumbent is scored under its own floor.  Scored without it, an
-    # already-floored stage would be compared against arithmetic nobody
-    # serves and would churn its artifact every refit.
+    # The incumbent is identity here, and that is not a simplification: the
+    # cells are read from what was served, so the incumbent pair is already
+    # inside them.  Applying it again scored a stage against its own scalars
+    # squared -- 0.75 read as 0.5625 -- which made the incumbent look 0.0296
+    # nat worse than the distribution production actually served, and handed
+    # that margin to every candidate as free gain.  Measured on P0's own
+    # cells for 2026-09-03..09-09 on 2026-09-10.
     forward_base = _mean_nll(
         forward,
-        delta_c=base[0],
-        width_lambda=base[1],
-        sigma_floor_rungs=base_floor,
+        delta_c=RESIDUAL_IDENTITY[0],
+        width_lambda=RESIDUAL_IDENTITY[1],
+        sigma_floor_rungs=0.0,
     )
     forward_pooled = _mean_nll(
         forward, delta_c=pooled_delta, width_lambda=pooled_lam
@@ -1855,9 +1915,9 @@ def fit_center_width(
     )
     width_tier_lane = _width_tier_lane(
         forward=forward,
-        incumbent=base,
-        incumbent_floor=base_floor,
-        incumbent_tiers=base_tiers,
+        incumbent=RESIDUAL_IDENTITY,
+        incumbent_floor=0.0,
+        incumbent_tiers=None,
         pooled=(delta, lam),
         pooled_floor=candidate_floor,
         tiered=(tier_delta, tier_lambdas),
@@ -1911,8 +1971,11 @@ def fit_center_width(
     # nothing is a constant, and the report shows each cell accumulate
     # until it promotes itself.
     _annotate_taf_directions(conn, cells)
-    served_delta = delta if admitted else base[0]
-    served_lambda = lam if admitted else base[1]
+    # Residual space, because these two are applied to cells: what serves if
+    # the candidate is refused is the incumbent, and the incumbent is already
+    # in the cell, so its residual is identity rather than its own pair.
+    served_delta = delta if admitted else RESIDUAL_IDENTITY[0]
+    served_lambda = lam if admitted else RESIDUAL_IDENTITY[1]
     # The cells refine the pair that would serve, so they are fitted and
     # scored under the floor that would serve with it.  A cell searched
     # without the floor and then served under one would be a scalar chosen
@@ -1966,10 +2029,27 @@ def fit_center_width(
         else:
             entry["state"] = "REFUSED_FORWARD"
     evidence["taf_cells"] = taf_evidence
+    # Leaving residual space.  Everything above measured a correction on top
+    # of what is served; everything below stores a pair the server applies to
+    # the uncorrected distribution, so the two are composed exactly here and
+    # nowhere else.  The evidence carries both numbers because a reader who
+    # sees only one cannot tell which space it is in -- which is the confusion
+    # this boundary exists to end.
+    absolute_delta, absolute_lambda = _compose_absolute(base, (delta, lam))
+    evidence.update({
+        "residual_delta_c": delta,
+        "residual_width_lambda": lam,
+        "absolute_delta_c": absolute_delta,
+        "absolute_width_lambda": absolute_lambda,
+    })
+    taf_cells = {
+        name: list(_compose_absolute(base, (pair[0], pair[1])))
+        for name, pair in taf_cells.items()
+    }
     return {
         "stage": stage_id,
-        "delta_c": delta if admitted else base[0],
-        "width_lambda": lam if admitted else base[1],
+        "delta_c": absolute_delta if admitted else base[0],
+        "width_lambda": absolute_lambda if admitted else base[1],
         # The floor travels with the pair it qualifies.  A refused candidate
         # leaves the incumbent's floor in place for the same reason it leaves
         # the incumbent's scalars: nothing was shown to be better.
@@ -1979,8 +2059,12 @@ def fit_center_width(
             "boundaries_rungs": list(WIDTH_TIER_BOUNDARIES_RUNGS),
             "lambdas": list(tier_lambdas),
         },
-        "candidate_delta_c": delta,
-        "candidate_width_lambda": lam,
+        # Absolute, because the reader compares these with ``width_lambda``
+        # above and with what the table serves, and both of those are
+        # absolute.  The residual the grid actually returned is in the
+        # evidence under ``residual_width_lambda``.
+        "candidate_delta_c": absolute_delta,
+        "candidate_width_lambda": absolute_lambda,
         "candidate_sigma_floor_rungs": candidate_floor,
         "forward_nll_gain": gain,
         "admitted": admitted,
