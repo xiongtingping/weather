@@ -86,8 +86,22 @@ MAX_RUNS_PER_PASS = 4
 # three days of being killed; ``regional_point_lane.capture_p1`` was bounded
 # in the same pass.  This lane got the P1 budget and not the loop one, so it
 # was the sibling still holding a run count where the seconds are what the
-# writer domain rations.  900s leaves the P1 pass's 240s and a wide margin.
-BUDGET_SEC_PER_PASS = 900.0
+# writer domain rations.
+#
+# One clock, not two.  Since 2026-09-11 the P1 pass and the loop share this
+# budget and so do the fetches themselves (``jma_msm_archive.pass_deadline``),
+# so the old arithmetic of "900 for the loop plus 240 for P1" no longer
+# describes anything.
+#
+# 900 was too tight once they shared it.  Measured 2026-09-11 at about
+# 36 KB/s: a 900-second pass stopped on time (15m00.66s, clean exit) and
+# wrote ZERO rows -- P1 spent the whole clock on two runs and the loop got no
+# turn at all.  A lane that never makes progress is not cheaper than a slow
+# one, it is just quieter.  1200 buys a third more working time and still
+# leaves ten minutes under the 1,800-second subprocess timeout, which is far
+# more than the one in-flight range that can still be running when the
+# deadline fires (measured overshoot: 0.66s).
+BUDGET_SEC_PER_PASS = 1200.0
 # Seconds of writer occupancy this lane's P1 pass may spend.  The resident
 # admits one writer at a time, so a capture that runs to its subprocess
 # timeout is a production cycle that cannot start for that long.  The run

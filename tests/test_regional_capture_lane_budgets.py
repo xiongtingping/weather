@@ -84,17 +84,29 @@ def test_a_run_cap_is_accompanied_by_a_seconds_cap(lane):
     assert budget > 0
 
 
+# What the gap between a lane's budget and its subprocess timeout has to
+# cover: whatever can still be RUNNING when the deadline fires.  The deadline
+# is checked before work is started, never mid-work, so something is always
+# in flight at that moment.
+#
+# How much depends on how deep the deadline reaches.  ``capture_jma_msm_forward``
+# carries it into the fetch itself (``jma_msm_archive.pass_deadline``), so the
+# remainder is ONE ranged request -- measured overshoot 2026-09-11: 0.66s on a
+# 900-second budget.  The other lanes check only between runs, so their
+# remainder is a whole run, and their margin is a bet on a run finishing
+# rather than a proof that it will.  Ten minutes is stated here as the floor
+# under both, and named as the bet it is for the lanes without the deeper
+# check.
+MIN_TIMEOUT_MARGIN_SEC = 600.0
+
+
 @pytest.mark.parametrize("lane", CAPTURE_LANES)
 def test_the_loop_budget_leaves_room_under_the_timeout(lane):
-    """The loop is not the whole pass.
+    """The loop is not the whole pass, and the deadline is not instantaneous.
 
-    Each of these lanes also runs a P1 capture before its own loop, under
-    its own budget -- and those are named differently per lane (the CONUS
-    one is per PRODUCT and spends twice), so this does not try to sum them.
-    What it pins is the part that can be pinned uniformly: the loop's own
-    budget has to leave real room, or the two together reach the timeout
-    the scheduler kills the pass at, and a killed pass writes nothing while
-    having held the exclusive writer domain for the whole of it.
+    A budget that reaches the timeout is a budget that gets the pass killed
+    on the last thing it started -- killed, which writes nothing at all and
+    holds the exclusive writer slot for the full timeout.
     """
 
     module = _lane_module(lane)
@@ -102,20 +114,39 @@ def test_the_loop_budget_leaves_room_under_the_timeout(lane):
     if budget is None:
         pytest.skip(f"{lane} has no loop of its own to bound")
     timeout = _sweep_timeouts()[lane]
+    margin = timeout - float(budget)
 
-    assert float(budget) <= timeout * 0.6, (
-        f"{lane}: loop budget {float(budget):.0f}s against a "
-        f"{timeout:.0f}s subprocess timeout leaves nothing for the rest "
-        "of the pass"
+    assert margin >= MIN_TIMEOUT_MARGIN_SEC, (
+        f"{lane}: budget {float(budget):.0f}s under a {timeout:.0f}s timeout "
+        f"leaves {margin:.0f}s for whatever is still in flight"
     )
 
 
 def test_the_msm_lane_specifically_carries_one():
-    """Named, because this is the one that did not and the measurement is
-    what put it here: 17m00s wall for a successful pass, at 0% CPU."""
+    """Named, because this is the one that did not and the measurements are
+    what put it here: 17m00s wall for a successful pass at 0% CPU, then a
+    900-second pass that stopped on time and wrote nothing."""
 
     module = _lane_module("capture_jma_msm_forward")
     timeout = _sweep_timeouts()["capture_jma_msm_forward"]
 
-    assert module.BUDGET_SEC_PER_PASS >= 300.0
-    assert module.BUDGET_SEC_PER_PASS <= timeout * 0.6
+    assert module.BUDGET_SEC_PER_PASS >= 1200.0
+    assert timeout - module.BUDGET_SEC_PER_PASS >= MIN_TIMEOUT_MARGIN_SEC
+
+
+def test_the_msm_fetches_carry_the_deadline_the_others_only_bound_runs():
+    """The distinction the margin rule rests on, pinned so it stays true.
+
+    If the MSM lane ever stops carrying the deadline into its fetches, its
+    remainder goes back to being a whole station-day and ten minutes stops
+    being a floor anyone measured.
+    """
+
+    from bayes_basket_target import jma_msm_archive
+
+    assert hasattr(jma_msm_archive, "pass_deadline")
+    assert hasattr(jma_msm_archive, "set_pass_deadline")
+    source = (
+        ROOT / "scripts" / "capture_jma_msm_forward.py"
+    ).read_text(encoding="utf-8")
+    assert "set_pass_deadline(BUDGET_SEC_PER_PASS)" in source
