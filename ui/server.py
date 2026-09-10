@@ -56,6 +56,7 @@ from chengdu_intraday_summary import (
     build_chengdu_intraday_summary,
     build_chengdu_intraday_summary_from_payload,
     _apply_d0_observed_feasibility_guard,
+    _legacy_additive_bayes_chain_for_distribution_row,
     _sync_target_bucket_outlook_with_temperature_path_distribution,
     _target_bucket_outlook,
 )
@@ -13705,7 +13706,16 @@ def _hierarchical_bayes_chain_for_distribution_row(row: Mapping[str, Any]) -> Di
 def _bayes_chain_for_distribution_row(row: Any) -> Dict[str, Any]:
     if not isinstance(row, Mapping):
         return {}
-    return _hierarchical_bayes_chain_for_distribution_row(row)
+    hierarchical = _hierarchical_bayes_chain_for_distribution_row(row)
+    if hierarchical:
+        return hierarchical
+    # A row written before the hierarchical composer has no layer_contributions
+    # to build from, and dropping the chain entirely tells the reader nothing.
+    # chengdu_intraday_summary keeps the same two-tier rule and owns the compat
+    # chain, which says outright that it is retired and not UI-primary; this
+    # copy had lost the second tier, so the same row showed a chain there and
+    # none here.  ui/index.html builds the same compat shape client-side.
+    return _legacy_additive_bayes_chain_for_distribution_row(row)
 
 
 def _compact_bayes_chain_for_bucket_series(row: Any) -> Dict[str, Any]:
