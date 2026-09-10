@@ -463,33 +463,68 @@ def _taf_capture_health(status: Mapping[str, Any]) -> dict[str, Any]:
         return _taf_rotation_staleness()
     scopes = int(freshness.get("scope_count") or 0)
     stale = int(freshness.get("stale_scope_count") or 0)
+    never = int(freshness.get("never_captured_count") or 0)
     after = float(freshness.get("stale_after_hours") or 3.0)
     worst = [
         item for item in (freshness.get("worst_scopes") or [])
         if isinstance(item, Mapping)
     ]
-    share = stale / scopes if scopes else 0.0
-    # A third of the fleet quiet past an issuing cycle is a supply problem,
-    # not a slow lap.  Two thirds is the lane having stopped.
+    # Two populations, and the card used to merge them into one sentence.
+    # "Stale" is a scope that had bulletins and stopped getting them.
+    # "Never captured" is a scope with no age at all -- and most of those
+    # are simply a future day that has entered the catalogue, which has
+    # never been captured by definition.  Merged, the line said
+    # "88/111 個 scope 超過 3 小時沒有新報文（中位 0.5h，最久 1.1h）" on
+    # 2026-09-10: a sentence contradicted by its own parentheses, red at
+    # 88/111, while the number of scopes that had actually gone three hours
+    # without a bulletin was zero.
+    measured = freshness.get("measured_scope_count")
+    measured = (
+        int(measured) if measured is not None else max(0, scopes - never)
+    )
+    never_by_date = freshness.get("never_captured_by_event_date")
+    never_by_date = never_by_date if isinstance(never_by_date, Mapping) else {}
+    scopes_by_date = freshness.get("scope_count_by_event_date")
+    scopes_by_date = (
+        scopes_by_date if isinstance(scopes_by_date, Mapping) else {}
+    )
+    # The nearest event date in the catalogue is the day being traded now.
+    # Its scopes having no bulletin at all is a supply fact; a later day's
+    # is a day that has only just entered.
+    nearest = min(scopes_by_date) if scopes_by_date else ""
+    blind_near = int(never_by_date.get(nearest) or 0)
+    near_total = int(scopes_by_date.get(nearest) or 0)
+    stale_share = stale / measured if measured else 0.0
+    blind_share = blind_near / near_total if near_total else 0.0
+    # A third of the population quiet past an issuing cycle is a supply
+    # problem, not a slow lap.  Two thirds is the lane having stopped.
+    share = max(stale_share, blind_share)
     health = "red" if share >= 0.66 else "amber" if share >= 0.34 else "green"
-    note = f"{stale}/{scopes} 个 scope 超过 {after:.0f} 小时没有新报文"
+    note = f"{measured} 个 scope 有过报文，其中 {stale} 个超过 {after:.0f} 小时没有新的"
     if freshness.get("median_age_hours") is not None:
         note += f"（中位 {float(freshness['median_age_hours']):.1f}h"
         if freshness.get("max_age_hours") is not None:
             note += f"，最久 {float(freshness['max_age_hours']):.1f}h"
         note += "）"
-    if worst:
+    if stale and worst:
         note += "：" + "、".join(
             f"{item.get('scope')} {float(item.get('age_hours') or 0):.1f}h"
             for item in worst[:3]
         )
-    never = int(freshness.get("never_captured_count") or 0)
-    if never:
-        note += f"；{never} 个从未收到过"
+    if near_total:
+        note += (
+            f"；{nearest} 这一天 {near_total} 个 scope 里 "
+            f"{blind_near} 个从未收到过报文"
+        )
+    later_blind = never - blind_near
+    if later_blind > 0:
+        note += f"；另有 {later_blind} 个未来日期的 scope 从未收到过（新入目录）"
     return {
         "taf_capture_health": health,
         "taf_capture_note": note,
         "taf_capture_stale_scope_count": stale,
+        "taf_capture_measured_scope_count": measured,
+        "taf_capture_never_captured_count": never,
         "taf_capture_scope_count": scopes,
     }
 

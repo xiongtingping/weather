@@ -3681,13 +3681,48 @@ def _taf_capture_freshness(
             ),
         ))
     finite = sorted(age for _key, age in ages if age != float("inf"))
-    stale = [item for item in ages if item[1] >= TAF_STALE_CONFIRMATION_AGE_SEC]
+    # Stale means "had bulletins and stopped getting them".  A scope with no
+    # age at all is a different fact and gets its own count below.
+    #
+    # ``capture_age_seconds`` returns ``inf`` for never-captured, which every
+    # threshold comparison reads as stale -- correct for the SCHEDULER, which
+    # wants those polled first, and wrong for a report, which was then
+    # printing them as "gone more than three hours without a bulletin".
+    # Measured 2026-09-10: the card read "88/111 个 scope 超过 3 小时没有新
+    # 报文（中位 0.5h，最久 1.1h）；88 个从未收到过" -- a sentence that
+    # contradicts itself in its own parentheses, and turned the lane red at
+    # 88/111 while the true count of scopes that had gone three hours without
+    # a bulletin was ZERO.  Seventy of the eighty-eight were tomorrow and the
+    # day after, which have never been captured by definition.
+    stale = [
+        item for item in ages
+        if item[1] != float("inf")
+        and item[1] >= TAF_STALE_CONFIRMATION_AGE_SEC
+    ]
+    never_by_date: dict[str, int] = {}
+    scopes_by_date: dict[str, int] = {}
+    for key, age in ages:
+        event_date = key.split("|", 1)[1] if "|" in key else ""
+        scopes_by_date[event_date] = scopes_by_date.get(event_date, 0) + 1
+        if age == float("inf"):
+            never_by_date[event_date] = never_by_date.get(event_date, 0) + 1
     return {
         "schema": "bayes_basket_target_taf_capture_freshness_v1",
         "scope_count": len(ages),
         "never_captured_count": sum(
             1 for _key, age in ages if age == float("inf")
         ),
+        # Which days those are.  A day entering the catalogue is entirely
+        # never-captured and says nothing about supply; the day being traded
+        # having none is the thing worth a light.
+        "never_captured_by_event_date": dict(sorted(never_by_date.items())),
+        # The denominator that goes with it, so a reader can say "14 of 29"
+        # rather than "14 of something".
+        "scope_count_by_event_date": dict(sorted(scopes_by_date.items())),
+        # The denominator the stale share belongs over: scopes that have an
+        # age at all.  Sharing a denominator with the never-captured made
+        # the share track how many future days the catalogue held.
+        "measured_scope_count": len(finite),
         "stale_scope_count": len(stale),
         "stale_after_hours": round(TAF_STALE_CONFIRMATION_AGE_SEC / 3600.0, 2),
         "median_age_hours": (
