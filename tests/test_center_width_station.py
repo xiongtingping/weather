@@ -21,6 +21,7 @@ from bayes_basket_target.center_width_calibration import (
     apply_center_width_calibration,
 )
 from bayes_basket_target.center_width_store import (
+    MIN_FORWARD_NLL_GAIN,
     MIN_QUALIFYING_CELLS,
     MIN_QUALIFYING_DAYS,
     STATION_WIDTH_METHOD_TAG,
@@ -30,6 +31,7 @@ from bayes_basket_target.center_width_store import (
     load_station_width,
     persist_and_activate_station_width,
     pinned_station_width_sha,
+    refit_all_center_width,
     station_width_sha256,
 )
 from bayes_basket_target.contracts import ContractError
@@ -248,3 +250,166 @@ def test_too_little_evidence_accumulates_instead_of_fitting() -> None:
     assert fitted["accumulating"]
     assert fitted["scales"] == {}
     assert MIN_QUALIFYING_CELLS > 0
+
+
+def test_an_incumbent_that_loses_after_activation_is_vetoed() -> None:
+    """A table held while the lane accumulates must still be earning its
+    place.  Truth spread twice the served width: whatever narrowed this
+    serving was wrong, undoing it wins on every cell served after the
+    activation, and the lane retires the table instead of holding it."""
+
+    conn = sqlite3.connect(":memory:")
+    ensure_center_width_schema(conn)
+    stations = {f"AAA{i}": 2.0 for i in range(20)}
+    _seed_history(conn, stations=stations, day_count=MIN_QUALIFYING_DAYS - 1)
+    persist_and_activate_station_width(
+        conn, stage="P0", scales={s: 0.5 for s in stations},
+        per_station={}, fitted_at_utc="2026-06-30T00:00:00Z",
+    )
+    fitted = fit_station_width(conn, stage="P0")
+    assert fitted["vetoed"]
+    assert fitted["scales"] == {}
+    assert fitted["station_count"] == 0
+    assert fitted["evidence"]["basis"] == "INCUMBENT_VETOED"
+    veto = fitted["evidence"]["incumbent_veto"]
+    assert veto["enough_evidence"]
+    assert veto["undo_gain"] > MIN_FORWARD_NLL_GAIN
+    assert veto["nll_undone"] < veto["nll_kept"]
+    assert veto["activated_at_utc"] == "2026-06-30T00:00:00Z"
+    # Committing the verdict deactivates the table; the read path is back
+    # to the ordinary None case.
+    committed = persist_and_activate_station_width(
+        conn, stage="P0", scales={}, per_station={},
+    )
+    assert committed["state"] == "DEACTIVATED"
+    assert load_station_width(conn, stage="P0") is None
+    again = persist_and_activate_station_width(
+        conn, stage="P0", scales={}, per_station={},
+    )
+    assert again["state"] == "UNCHANGED"
+
+
+def test_an_incumbent_that_still_wins_is_held_while_accumulating() -> None:
+    """The mirror: truth spread half the served width, so undoing the
+    contraction (widening) loses.  The table is held, and the evidence says
+    why in numbers."""
+
+    conn = sqlite3.connect(":memory:")
+    ensure_center_width_schema(conn)
+    stations = {f"AAA{i}": 0.5 for i in range(20)}
+    _seed_history(conn, stations=stations, day_count=MIN_QUALIFYING_DAYS - 1)
+    scales = {s: 0.7 for s in stations}
+    persist_and_activate_station_width(
+        conn, stage="P0", scales=scales,
+        per_station={}, fitted_at_utc="2026-06-30T00:00:00Z",
+    )
+    fitted = fit_station_width(conn, stage="P0")
+    assert not fitted["vetoed"]
+    assert fitted["accumulating"]
+    assert fitted["scales"] == scales
+    veto = fitted["evidence"]["incumbent_veto"]
+    assert veto["enough_evidence"]
+    assert veto["undo_gain"] < 0.0
+
+
+def test_the_veto_reads_only_cells_served_after_the_activation() -> None:
+    """Cells served before the table went live say nothing about it.  Six
+    losing days, activation after the fourth: two days and forty cells are
+    in the window, under the veto floor, so the table is held for now."""
+
+    conn = sqlite3.connect(":memory:")
+    ensure_center_width_schema(conn)
+    stations = {f"AAA{i}": 2.0 for i in range(20)}
+    _seed_history(conn, stations=stations, day_count=6)
+    persist_and_activate_station_width(
+        conn, stage="P0", scales={s: 0.5 for s in stations},
+        per_station={}, fitted_at_utc="2026-07-04T12:00:00Z",
+    )
+    fitted = fit_station_width(conn, stage="P0")
+    veto = fitted["evidence"]["incumbent_veto"]
+    assert veto["day_count"] == 2
+    assert veto["cell_count"] == 40
+    assert veto["undo_gain"] > MIN_FORWARD_NLL_GAIN
+    assert not veto["enough_evidence"]
+    assert not fitted["vetoed"]
+    assert fitted["scales"] == {s: 0.5 for s in stations}
+
+
+def test_a_table_with_no_incumbent_records_no_veto() -> None:
+    conn = sqlite3.connect(":memory:")
+    ensure_center_width_schema(conn)
+    _seed_history(
+        conn, stations={f"AAA{i}": 1.0 for i in range(20)},
+        day_count=MIN_QUALIFYING_DAYS - 1,
+    )
+    fitted = fit_station_width(conn, stage="P0")
+    assert not fitted["vetoed"]
+    assert "incumbent_veto" not in fitted["evidence"]
+
+
+def test_the_sweep_retires_a_vetoed_table() -> None:
+    """The sweep is the only writer.  A veto must reach the table through
+    it, ahead of the accumulating hold that used to keep every incumbent."""
+
+    conn = sqlite3.connect(":memory:")
+    ensure_center_width_schema(conn)
+    stations = {f"AAA{i}": 2.0 for i in range(20)}
+    _seed_history(conn, stations=stations, day_count=MIN_QUALIFYING_DAYS - 1)
+    persist_and_activate_station_width(
+        conn, stage="P0", scales={s: 0.5 for s in stations},
+        per_station={}, fitted_at_utc="2026-06-30T00:00:00Z",
+    )
+    stages = refit_all_center_width(conn, commit=True)
+    entry = stages["P0"]["station_width"]
+    assert "error" not in entry, entry
+    assert entry["vetoed"]
+    assert entry["outcome"] == "INCUMBENT_VETOED"
+    assert entry["commit"]["state"] == "DEACTIVATED"
+    assert load_station_width(conn, stage="P0") is None
+    # The verdict is journaled with its evidence.
+    row = conn.execute(
+        "SELECT outcome, evidence_json FROM"
+        " calibration_center_width_station_journal WHERE stage='P0'"
+        " ORDER BY fitted_at_utc DESC LIMIT 1"
+    ).fetchone()
+    assert row[0] == "INCUMBENT_VETOED"
+    assert json.loads(row[1])["basis"] == "INCUMBENT_VETOED"
+
+
+def test_an_old_station_journal_is_widened_for_the_veto_outcome() -> None:
+    """The live journal predates the veto; CREATE IF NOT EXISTS would leave
+    its CHECK as it was and the verdict would fail at insert."""
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE calibration_center_width_station_journal ("
+        " fit_id TEXT PRIMARY KEY, stage TEXT NOT NULL,"
+        " fitted_at_utc TEXT NOT NULL, station_width_sha256 TEXT NOT NULL,"
+        " station_count INTEGER NOT NULL, serving_day_count INTEGER NOT NULL,"
+        " serving_cell_count INTEGER NOT NULL, forward_nll_gain REAL NOT NULL,"
+        " outcome TEXT NOT NULL CHECK(outcome IN"
+        "  ('ACTIVATED','UNCHANGED','ACCUMULATING','REFUSED_FORWARD',"
+        "   'NOT_WIRED')),"
+        " evidence_json TEXT NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO calibration_center_width_station_journal VALUES"
+        " ('old','P0','2026-09-06T15:48:00Z',?,45,7,62,0.077,'ACTIVATED','{}')",
+        ("a" * 64,),
+    )
+    conn.commit()
+    ensure_center_width_schema(conn)
+    conn.execute(
+        "INSERT INTO calibration_center_width_station_journal VALUES"
+        " ('new','P0','2026-09-11T00:00:00Z',?,0,4,1686,-0.19,"
+        " 'INCUMBENT_VETOED','{}')",
+        ("b" * 64,),
+    )
+    rows = conn.execute(
+        "SELECT fit_id, outcome FROM calibration_center_width_station_journal"
+        " ORDER BY fit_id"
+    ).fetchall()
+    assert rows == [("new", "INCUMBENT_VETOED"), ("old", "ACTIVATED")]
+    assert conn.execute(
+        "SELECT count(*) FROM sqlite_master WHERE name LIKE '%superseded'"
+    ).fetchone()[0] == 0

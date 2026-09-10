@@ -290,9 +290,14 @@ _STATION_JOURNAL_DDL = (
     " serving_cell_count INTEGER NOT NULL,"
     " forward_nll_gain REAL NOT NULL,"
     " outcome TEXT NOT NULL CHECK(outcome IN"
-    "  ('ACTIVATED','UNCHANGED','ACCUMULATING','REFUSED_FORWARD','NOT_WIRED')),"
+    "  ('ACTIVATED','UNCHANGED','ACCUMULATING','REFUSED_FORWARD','NOT_WIRED',"
+    "   'INCUMBENT_VETOED')),"
     " evidence_json TEXT NOT NULL"
     ")"
+)
+_STATION_JOURNAL_OUTCOMES = (
+    "ACTIVATED", "UNCHANGED", "ACCUMULATING", "REFUSED_FORWARD", "NOT_WIRED",
+    "INCUMBENT_VETOED",
 )
 
 
@@ -359,6 +364,29 @@ def ensure_center_width_schema(conn: sqlite3.Connection) -> None:
         )
         conn.commit()
     conn.execute(_JOURNAL_INDEX)
+    # Same widening for the station journal: the veto outcome was added
+    # after the live table was created.
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table'"
+        " AND name='calibration_center_width_station_journal'"
+    ).fetchone()
+    live = str((row or [""])[0] or "")
+    if live and any(
+        f"'{outcome}'" not in live for outcome in _STATION_JOURNAL_OUTCOMES
+    ):
+        conn.execute(
+            "ALTER TABLE calibration_center_width_station_journal"
+            " RENAME TO calibration_center_width_station_journal_superseded"
+        )
+        conn.execute(_STATION_JOURNAL_DDL)
+        conn.execute(
+            "INSERT OR IGNORE INTO calibration_center_width_station_journal"
+            " SELECT * FROM calibration_center_width_station_journal_superseded"
+        )
+        conn.execute(
+            "DROP TABLE calibration_center_width_station_journal_superseded"
+        )
+        conn.commit()
 
 
 def _check_stage(stage: str) -> str:
@@ -601,6 +629,20 @@ STATION_WIDTH_SHRINK_N0 = 5.0
 STATION_WIDTH_MIN_SAMPLES = 3
 MIN_STATION_WIDTH_SCALE = 0.5
 MAX_STATION_WIDTH_SCALE = 1.5
+# An active table is held while the lane accumulates, and held again when a
+# candidate is refused.  Holding is only safe if the incumbent is still
+# earning its place: the P0-M table fitted 2026-09-06 on pre-anchor cells
+# cost +0.12 nat on every cell served after it (+0.16/+0.17 on 09-08/09)
+# and nothing could retire it, because the only path to identity was a fit
+# that never runs while accumulating.  So before anything else the lane
+# scores the incumbent on the cells served AFTER its own activation -- out
+# of sample by construction -- against the same cells with the incumbent
+# undone.  Losing by more than the admission hurdle retires the table.  The
+# window opens at three days / sixty cells, half the qualifying floor: the
+# question "is this table hurting" needs less evidence than "which table
+# is best", and a day earlier here was one fewer day served too narrow.
+STATION_WIDTH_VETO_MIN_DAYS = 3
+STATION_WIDTH_VETO_MIN_CELLS = 60
 
 
 def station_width_sha256(
@@ -671,6 +713,104 @@ def load_station_width(
     )
 
 
+def _active_station_width_activated_at(
+    conn: sqlite3.Connection, *, stage: str
+) -> str | None:
+    try:
+        row = conn.execute(
+            "SELECT MAX(activated_at_utc) FROM calibration_center_width_station"
+            " WHERE activated=1 AND stage=?",
+            (stage,),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    return None if row is None or row[0] is None else str(row[0])
+
+
+def _undo_station_scale_nll(
+    cell: Mapping[str, Any], *, scale: float
+) -> float:
+    """The cell's NLL with the station contraction it was served under
+    widened back out, as far as the kernel's own lambda bound allows.
+
+    A full undo of a 0.5 scale is a lambda of 2.0, and the kernel's linear
+    split at exactly two rungs lands every bucket's mass on every other
+    bucket -- a comb with zeros in it, not a distribution anything is
+    scored against.  So the probe widens by ``min(1/scale, 1.5)``: if even
+    that beats the served cell, the contraction was too much, which is the
+    only question the veto asks."""
+
+    total = 1.0 / float(scale)
+    lam = min(MAX_WIDTH_LAMBDA, max(MIN_WIDTH_LAMBDA, total))
+    adjusted, _ = apply_center_width_calibration(
+        cell["probabilities"],
+        delta_c=0.0,
+        width_lambda=lam,
+        ordered_keys=cell["ordered_keys"],
+        key_centers_c=cell["key_centers_c"],
+        excluded_buckets=cell["excluded_buckets"],
+    )
+    total_mass = sum(adjusted.values())
+    if total_mass <= 0.0:
+        return -math.log(1e-6)
+    return -math.log(max(adjusted[cell["settled_bucket"]] / total_mass, 1e-6))
+
+
+def _station_width_veto(
+    by_day: Mapping[str, Sequence[Mapping[str, Any]]],
+    *,
+    scales: Mapping[str, float],
+    activated_at_utc: str | None,
+) -> dict[str, Any]:
+    """Score the active table on the cells served after it went live: kept
+    (served as-is) against undone.  ``vetoed`` when undoing wins by more
+    than the admission hurdle on at least the veto window."""
+
+    since = activated_at_utc or ""
+    kept_total = undone_total = 0.0
+    count = 0
+    per_day: dict[str, dict[str, float]] = {}
+    for day in sorted(by_day):
+        day_kept = day_undone = 0.0
+        day_count = 0
+        for cell in by_day[day]:
+            if str(cell.get("decision_at_utc") or "") < since:
+                continue
+            scale = float(scales.get(cell["station_id"], 1.0))
+            if scale == 1.0:
+                continue
+            kept = _cell_nll(cell, delta_c=0.0, width_lambda=1.0)
+            undone = _undo_station_scale_nll(cell, scale=scale)
+            day_kept += kept
+            day_undone += undone
+            day_count += 1
+        if day_count:
+            per_day[day] = {
+                "cells": day_count,
+                "kept_minus_undone": (day_kept - day_undone) / day_count,
+            }
+            kept_total += day_kept
+            undone_total += day_undone
+            count += day_count
+    enough = (
+        len(per_day) >= STATION_WIDTH_VETO_MIN_DAYS
+        and count >= STATION_WIDTH_VETO_MIN_CELLS
+    )
+    gain = 0.0 if count == 0 else (kept_total - undone_total) / count
+    return {
+        "activated_at_utc": activated_at_utc,
+        "day_count": len(per_day),
+        "cell_count": count,
+        "nll_kept": None if count == 0 else kept_total / count,
+        "nll_undone": None if count == 0 else undone_total / count,
+        "undo_gain": gain,
+        "hurdle": MIN_FORWARD_NLL_GAIN,
+        "enough_evidence": enough,
+        "vetoed": bool(enough and gain > MIN_FORWARD_NLL_GAIN),
+        "per_day": per_day,
+    }
+
+
 def _station_cell_z(
     cell: Mapping[str, Any], truth_c: float
 ) -> float | None:
@@ -736,6 +876,28 @@ def fit_station_width(
     accumulating = (
         len(days) < MIN_QUALIFYING_DAYS or len(cells) < MIN_QUALIFYING_CELLS
     )
+    if incumbent_scales:
+        veto = _station_width_veto(
+            by_day,
+            scales=incumbent_scales,
+            activated_at_utc=_active_station_width_activated_at(
+                conn, stage=stage_id
+            ),
+        )
+        evidence["incumbent_veto"] = veto
+        if veto["vetoed"]:
+            evidence["basis"] = "INCUMBENT_VETOED"
+            return {
+                "stage": stage_id,
+                "scales": {},
+                "station_count": 0,
+                "forward_nll_gain": -float(veto["undo_gain"]),
+                "accumulating": accumulating,
+                "vetoed": True,
+                "serving_day_count": len(days),
+                "serving_cell_count": len(cells),
+                "evidence": evidence,
+            }
     if accumulating:
         evidence["basis"] = "ACCUMULATING"
         return {
@@ -744,6 +906,7 @@ def fit_station_width(
             "station_count": len(incumbent_scales),
             "forward_nll_gain": 0.0,
             "accumulating": True,
+            "vetoed": False,
             "serving_day_count": len(days),
             "serving_cell_count": len(cells),
             "evidence": evidence,
@@ -837,6 +1000,7 @@ def fit_station_width(
         "forward_nll_gain": gain,
         "admitted": admitted,
         "accumulating": False,
+        "vetoed": False,
         "serving_day_count": len(days),
         "serving_cell_count": len(cells),
         "evidence": evidence,
@@ -856,6 +1020,8 @@ def persist_and_activate_station_width(
     digest = station_width_sha256(stage=stage_id, scales=scales)
     active = load_station_width(conn, stage=stage_id)
     if active is not None and active[1] == digest:
+        return {"state": "UNCHANGED", "station_width_sha256": digest}
+    if not scales and active is None:
         return {"state": "UNCHANGED", "station_width_sha256": digest}
     now = fitted_at_utc or datetime.now(timezone.utc).isoformat().replace(
         "+00:00", "Z"
@@ -886,7 +1052,10 @@ def persist_and_activate_station_width(
     except Exception:
         conn.rollback()
         raise
-    return {"state": "ACTIVATED", "station_width_sha256": digest}
+    return {
+        "state": "DEACTIVATED" if not scales else "ACTIVATED",
+        "station_width_sha256": digest,
+    }
 
 
 def journal_station_width_fit(
@@ -2569,6 +2738,7 @@ def _refit_stages(
                 "station_count": station_fitted["station_count"],
                 "forward_nll_gain": station_fitted["forward_nll_gain"],
                 "accumulating": station_fitted["accumulating"],
+                "vetoed": station_fitted.get("vetoed", False),
                 "admitted": station_fitted.get("admitted", False),
                 "active_sha256": (
                     None if station_active is None else station_active[1]
@@ -2577,6 +2747,12 @@ def _refit_stages(
             if commit:
                 if stage not in CENTER_WIDTH_SERVED_STAGES:
                     station_outcome = "NOT_WIRED"
+                elif station_fitted.get("vetoed", False):
+                    station_committed = persist_and_activate_station_width(
+                        conn, stage=stage, scales={}, per_station={},
+                    )
+                    station_entry["commit"] = station_committed
+                    station_outcome = "INCUMBENT_VETOED"
                 elif station_fitted["accumulating"]:
                     station_outcome = "ACCUMULATING"
                 elif not station_fitted.get("admitted", False):
