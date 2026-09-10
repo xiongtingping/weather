@@ -84,6 +84,16 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] center_width refit"
 # the moment a bump moves P0's anchor past 2026-09-06 this flag stops being
 # the maximum and becomes a no-op.  It is a floor under a shape whose version
 # never moved, not a date anyone has to maintain.
+#
+# 2026-09-10: that bump was made.  What made it affordable is that a version
+# may now say when its arithmetic began rather than having it inferred from
+# the day its string first appears, which is the whole reason the bump had
+# been deferred -- see serving_arithmetic.STAGE_VERSION_EFFECTIVE_FROM, where
+# P0 v3 and P0-M v3 both name this exact moment.  The two flags below are
+# therefore already the no-op the paragraph above predicted, and they stay as
+# the fallback for the hours between a deploy and the first envelope that
+# carries the new version.  Delete them once that transition is not in living
+# memory; the pairing is pinned by tests/test_serving_arithmetic_version_start.
 "$PY" scripts/refit_center_width.py --commit --summary \
   --since "2026-08-27T09:20:00Z" \
   --since-stage "P0=2026-09-06T04:18:00Z" \

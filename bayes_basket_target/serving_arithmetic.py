@@ -220,7 +220,18 @@ def _closure(entries: Sequence[tuple[str, str]]) -> list[tuple[str, str]]:
 # assertion about what is served -- and the fingerprint watchdog still checks
 # the code side independently.  An entry for a version nobody serves is inert;
 # a version with no entry behaves exactly as it did before this existed.
-STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {}
+#
+# 2026-09-06T04:18:00Z is the moment the last of three width changes reached
+# serving -- the centre/width layer wired at lambda 0.75 (09-03), charter 86
+# retiring the climate blend, and the station width table at 0.5 on 32 of 45
+# stations -- which together took P0's served sigma from 1.6 to 0.70 bucket
+# steps and left both versions behind.  It is the same moment the refit sweep
+# has been passing by hand as ``--since-stage`` since 2026-09-08; the flag is
+# now a fallback for the version's first hours rather than the only carrier.
+STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
+    "P0": {"calibrated_native_cross_ensemble_p0_v3": "2026-09-06T04:18:00Z"},
+    "P0-M": {"p0m_taf_observed_v3": "2026-09-06T04:18:00Z"},
+}
 
 
 def version_effective_from(stage: str, version: str) -> str | None:
@@ -473,6 +484,16 @@ def watchdog(conn: sqlite3.Connection, *, stage: str) -> dict[str, Any]:
         if not latest or not latest[0]:
             return out
         out["served_version"] = str(latest[0])
+        declared = version_effective_from(str(stage), out["served_version"])
+        if declared:
+            # A version that says when it began is compared against that,
+            # never against when its string first appeared.  Otherwise every
+            # bump clears this lamp on its own -- a brand new string has no
+            # decision older than anything -- and making bumps cheap, which
+            # the declaration does, would have made clearing it cheap too.
+            out["version_effective_from_utc"] = declared
+            out["discrepancy"] = str(since) > str(declared)
+            return out
         older = conn.execute(
             "SELECT 1"
             " FROM basket_probability_bridge_history h"

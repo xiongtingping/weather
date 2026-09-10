@@ -1139,7 +1139,10 @@ def materialize_p0m_observed(
     # v2: the settlement-fact hard bound (charter 61) joined the stage's
     # arithmetic -- buckets the day's observed high has already ruled out
     # are excluded before normalisation, exactly as P1 has always done.
-    posterior_version: str = "p0m_taf_observed_v2",
+    # v3: P0-M is built on P0's root and moves with it, so the width changes
+    # that owed P0 a bump owe this one too -- same three changes, same moment,
+    # same declared start in ``serving_arithmetic.STAGE_VERSION_EFFECTIVE_FROM``.
+    posterior_version: str = "p0m_taf_observed_v3",
     observed_hard_excluded_buckets: Sequence[str] = (),
     observed_running_high_c: float | None = None,
     band_table: tuple[

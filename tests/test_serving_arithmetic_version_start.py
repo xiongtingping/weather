@@ -149,3 +149,96 @@ def test_every_stage_still_has_a_fingerprint() -> None:
     assert all(value for value in seen.values())
     # Three stages, three different closures, three different hashes.
     assert len(set(seen.values())) == 3
+
+
+def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
+    """A declaration for a version nobody serves is inert and silently so.
+
+    So the pairing is asserted here instead: the two stages that owe the
+    2026-09-06 width backlog declare it, and they declare it for the exact
+    string their own module emits.
+    """
+
+    from bayes_basket_target.materialization import materialize_p0m_observed
+    from bayes_basket_target.native_ensemble_p0 import POSTERIOR_VERSION
+    import inspect
+
+    assert sa.version_effective_from("P0", POSTERIOR_VERSION) == (
+        "2026-09-06T04:18:00Z"
+    )
+    p0m = inspect.signature(
+        materialize_p0m_observed
+    ).parameters["posterior_version"].default
+    assert sa.version_effective_from("P0-M", p0m) == "2026-09-06T04:18:00Z"
+
+
+def test_p1_declares_nothing_because_p1_bumps_on_time() -> None:
+    """P1 went v2 to v9 while P0 sat on v2; its anchor is already honest."""
+
+    from bayes_basket_target.materialization import materialize_p1
+    import inspect
+
+    p1 = inspect.signature(
+        materialize_p1
+    ).parameters["posterior_version"].default
+    assert sa.version_effective_from("P1", p1) is None
+
+
+def _watchdog_conn(version: str, *, first_decision: str) -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(
+        "CREATE TABLE basket_probability_bridge_history ("
+        " stage TEXT, state TEXT, decision_at_utc TEXT, checkpoint_id TEXT);"
+        "CREATE TABLE basket_probability_envelope ("
+        " envelope_id TEXT, posterior_version TEXT);"
+    )
+    conn.execute(
+        "INSERT INTO basket_probability_bridge_history VALUES (?,?,?,?)",
+        ("P0", "COMMITTED", first_decision, "env0"),
+    )
+    conn.execute(
+        "INSERT INTO basket_probability_envelope VALUES (?,?)",
+        ("env0", version),
+    )
+    sa.ensure_schema(conn)
+    conn.commit()
+    return conn
+
+
+def test_a_bump_does_not_clear_the_lamp_by_being_new(monkeypatch) -> None:
+    """The hole the declaration would otherwise open.
+
+    A brand new version string has no decision older than anything, so the
+    inference answers "no discrepancy" for every bump, on merit or not.  Now
+    that a bump is cheap the clearing must not be: a declared version is
+    judged against the moment it says it began.
+    """
+
+    monkeypatch.setattr(
+        sa, "STAGE_VERSION_EFFECTIVE_FROM",
+        {"P0": {"declared_v3": "2026-09-06T04:18:00Z"}},
+    )
+    monkeypatch.setattr(sa, "fingerprint", lambda stage: "f" * 64)
+    conn = _watchdog_conn("declared_v3", first_decision="2026-09-10T12:00:00Z")
+    conn.execute(
+        "INSERT INTO calibration_serving_arithmetic VALUES (?,?,?)",
+        ("P0", "f" * 64, "2026-09-10T09:00:00Z"),
+    )
+    reading = sa.watchdog(conn, stage="P0")
+    assert reading["version_effective_from_utc"] == "2026-09-06T04:18:00Z"
+    # Code moved on the 10th, the version says it began on the 6th: owed.
+    assert reading["discrepancy"] is True
+
+
+def test_a_declared_version_whose_code_predates_it_is_clear(monkeypatch) -> None:
+    monkeypatch.setattr(
+        sa, "STAGE_VERSION_EFFECTIVE_FROM",
+        {"P0": {"declared_v3": "2026-09-06T04:18:00Z"}},
+    )
+    monkeypatch.setattr(sa, "fingerprint", lambda stage: "e" * 64)
+    conn = _watchdog_conn("declared_v3", first_decision="2026-09-10T12:00:00Z")
+    conn.execute(
+        "INSERT INTO calibration_serving_arithmetic VALUES (?,?,?)",
+        ("P0", "e" * 64, "2026-09-02T09:00:00Z"),
+    )
+    assert sa.watchdog(conn, stage="P0")["discrepancy"] is False

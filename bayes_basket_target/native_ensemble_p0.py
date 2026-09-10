@@ -98,7 +98,15 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # not a formality -- posterior_version now bounds the centre/width evidence
 # clock (the AST fingerprint only watches), so a serving change that keeps
 # its version steals evidence from a fit describing a shape nobody serves.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v2"
+# v3: the width the stage serves, which three changes moved between 09-03 and
+# 09-07 without anyone bumping this string -- the centre/width layer wired at
+# lambda 0.75, charter 86 retiring the climate blend, and the station width
+# table at 0.5 on 32 of 45 stations.  Together they took P0's served sigma from
+# 1.6 to 0.70 bucket steps.  The bump was owed on 09-06 and was not made
+# because it would have anchored the evidence clock at the day it was typed;
+# it says 2026-09-06T04:18Z in ``serving_arithmetic.STAGE_VERSION_EFFECTIVE_FROM``
+# instead, which is the moment the last of the three actually reached serving.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v3"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
