@@ -59,6 +59,20 @@ from .basket_kernel.delta_v2 import (
     execution_order_binding_v1,
     floor_to_order_share_grid_v1,
 )
+def _aware(value: Any) -> datetime:
+    """One UTC parse for the stamps this module compares against each other."""
+
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+# The matching engine removes an expiring order a minute after its stamp, so
+# an expiry inside that window is one it may never act on.  The gateway
+# enforces the same floor; naming it here keeps a belief with seconds left
+# from minting an order the venue would refuse.
+VENUE_GTD_MINIMUM_HORIZON_SECONDS = 60.0
+
+
 from .delta_v2_runtime import (
     CHARTER_83_MIN_NOTIONAL,
     EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
@@ -74,6 +88,7 @@ def _venue_order_fields(
     *,
     created_at_utc: str,
     limit_price: float,
+    belief_fresh_until_utc: Any = None,
 ) -> dict[str, Any]:
     """The order type, resting flag, expiry and cap this intent is minted with.
 
@@ -95,14 +110,42 @@ def _venue_order_fields(
         "post_only": bool(binding["post_only"]),
     }
     if binding["requires_expiration"]:
-        stamped = datetime.fromisoformat(
-            str(created_at_utc).replace("Z", "+00:00")
-        )
-        if stamped.tzinfo is None:
-            stamped = stamped.replace(tzinfo=timezone.utc)
-        fields["expiration"] = int(
-            stamped.timestamp() + MAKER_GTD_HORIZON_SECONDS
-        )
+        stamped = _aware(created_at_utc)
+        # Charter 127 (二), as ruled 2026-09-11: the rung lives as long as the
+        # belief that authorized it, and dies when a new run supersedes it.
+        #
+        # A wall-clock horizon was the first attempt and it was wrong on this
+        # book's own numbers.  An hour cuts 30% of the rungs that actually
+        # filled (measured over the 122 fills since go-live: median time to
+        # fill 19 minutes, p90 201), and an expiry is NOT a decision moment --
+        # ``is_decision_moment_v1`` reads the model identity, the day's
+        # admissibility and what the chain HOLDS, and an expiry moves none of
+        # them -- so an expired rung is not re-posted until the model moves
+        # anyway.  A horizon shorter than the belief therefore buys nothing
+        # and costs fills.
+        #
+        # The served belief already carries its own end: ``fresh_until_utc``,
+        # which is the run cycle for P0 and P0-M (median 5.5h, capped at the
+        # six-hour cycle) and the observation window for P1 (exactly 60
+        # minutes).  Expiring there makes the two events coincide by
+        # construction: the belief lapses, a new one is served, that IS a
+        # decision moment, the plan recomputes and re-posts what it still
+        # wants at the anchor that stands then.
+        fresh = _aware(belief_fresh_until_utc) if belief_fresh_until_utc else None
+        floor = stamped.timestamp() + VENUE_GTD_MINIMUM_HORIZON_SECONDS
+        if fresh is not None:
+            expiry = max(fresh.timestamp(), floor)
+            fields["expiration_basis"] = (
+                "belief_fresh_until"
+                if fresh.timestamp() >= floor
+                else "venue_minimum_horizon"
+            )
+        else:
+            # No served freshness reaches this call.  The fallback horizon is
+            # a horizon, not a rule, and it says so on the intent.
+            expiry = stamped.timestamp() + MAKER_GTD_HORIZON_SECONDS
+            fields["expiration_basis"] = "fallback_horizon"
+        fields["expiration"] = int(expiry)
     if binding["requires_price_cap"]:
         # The worst price this take is authorized to pay, stated rather than
         # implied by the limit it happens to carry.  They are the same number
@@ -1209,6 +1252,14 @@ def commit_production_candidate_atomic(
                         execution_candidate,
                         created_at_utc=created_at_utc,
                         limit_price=rung_price,
+                        belief_fresh_until_utc=(
+                            candidate_probability_envelope.get(
+                                "fresh_until_utc"
+                            )
+                            if isinstance(
+                                candidate_probability_envelope, Mapping
+                            ) else None
+                        ),
                     ),
                     "cancel_acknowledged": bool(
                         target.get("cancel_acknowledged", False)

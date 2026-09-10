@@ -459,6 +459,7 @@ def _intent_body(raw: Any) -> dict[str, Any]:
         "execution_candidate",
         "order_type",
         "expiration",
+        "expiration_basis",
         "fok_price_cap",
     ):
         if body.get(field) is not None:

@@ -224,6 +224,49 @@ def test_an_intent_that_states_no_family_at_all_is_refused() -> None:
         )
 
 
+def test_the_expiry_is_the_belief_s_own_end_not_a_wall_clock_horizon() -> None:
+    """Charter 127(二) as ruled 2026-09-11: tie it to the model's run.
+
+    A wall-clock hour was the first attempt and this book's own numbers
+    refuse it: of the 122 rungs that filled since go-live, 30% took longer
+    than an hour, and an expiry is not a decision moment -- the signature
+    reads the model identity, the day's admissibility and what the chain
+    HOLDS -- so an expired rung is not re-posted until the model moves
+    anyway.  The served belief already carries its end: the run cycle for
+    P0 and P0-M, the observation window for P1.  Expiring there makes the
+    lapse and the recompute one event.
+    """
+
+    from bayes_basket_target.production import _venue_order_fields
+
+    fields = _venue_order_fields(
+        "MAKER",
+        created_at_utc="2026-09-11T00:00:00Z",
+        limit_price=0.12,
+        belief_fresh_until_utc="2026-09-11T05:30:00Z",
+    )
+
+    assert fields["order_type"] == "GTD"
+    assert fields["expiration_basis"] == "belief_fresh_until"
+    assert fields["expiration"] == 1789104600
+
+    # A belief with seconds left would mint an order the venue refuses, so
+    # the floor is the matching engine's own grace and it says which it used.
+    expiring = _venue_order_fields(
+        "MAKER",
+        created_at_utc="2026-09-11T00:00:00Z",
+        limit_price=0.12,
+        belief_fresh_until_utc="2026-09-11T00:00:20Z",
+    )
+    assert expiring["expiration_basis"] == "venue_minimum_horizon"
+
+    # And a call with no served freshness says the horizon is a fallback
+    # rather than the rule.
+    assert _venue_order_fields(
+        "MAKER", created_at_utc="2026-09-11T00:00:00Z", limit_price=0.12,
+    )["expiration_basis"] == "fallback_horizon"
+
+
 def test_a_resting_entry_without_an_expiry_is_refused() -> None:
     """GTD without an expiry is a GTC wearing the wrong name.
 

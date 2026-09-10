@@ -5205,6 +5205,17 @@ def _production_judge(
         "winner_candidate_kind": str(
             solution.get("winner_candidate_kind") or ""
         ),
+        # Charter 127 (五): which rule took the seat, because the answer now
+        # changes how the order is EXECUTED and not only how it is sized.
+        # Production crosses a designated completion as a limit FOK and rests
+        # everything else; this lane rests both, so the two are measuring
+        # different execution from the day that clause shipped.  Carried here
+        # first so the divergence can be counted before it is mirrored -- a
+        # fill model written for a case this book never reaches would be a
+        # second unmeasured difference, not a fix for the first.
+        "winner_candidate_origin": str(
+            solution.get("winner_candidate_origin") or ""
+        ),
         "target_shares": target,
         "delta_cost_usdc": delta_cost,
         "capital_usdc": capital,
@@ -9167,6 +9178,14 @@ def backfill(
                             ))
                             continue
                         counts["production_judge_cycles_seated"] += 1
+                        _origin = str(
+                            (_row or {}).get("winner_candidate_origin")
+                            or verdict.get("winner_candidate_origin")
+                            or "UNSPECIFIED"
+                        )
+                        counts["seated_origin_" + _origin] = counts.get(
+                            "seated_origin_" + _origin, 0
+                        ) + 1
                         seat = _row
                         seat_crossing_cost = float(seat["all_in_price"])
                         seat_cost = _seat_execution_price(
