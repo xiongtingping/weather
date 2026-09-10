@@ -1075,12 +1075,16 @@ def persist_and_activate_station_width(
                 (stage_id,),
             )
         else:
-            # Retired, not superseded: the pinned reads of this version
-            # serve identity from here on.
+            # Retired, not superseded: the pinned reads serve identity from
+            # here on.  Every earlier version of the stage goes with it --
+            # the veto is a verdict on the contraction as served, and an
+            # older version still pinned by a live artifact (the 09:32
+            # fit of 2026-09-06 under the 15:48 one that was vetoed) carried
+            # the same contraction from the same evidence.
             conn.execute(
                 "UPDATE calibration_center_width_station"
                 " SET activated=0, retired_at_utc=?"
-                " WHERE stage=? AND activated=1",
+                " WHERE stage=? AND retired_at_utc IS NULL",
                 (now, stage_id),
             )
         for station, scale in sorted(scales.items()):

@@ -439,8 +439,14 @@ def test_a_retired_pinned_version_serves_identity_but_a_superseded_one_does_not(
         {"AAA0": 0.5, "AAA1": 0.8}, old_sha
     )
     # Retired by the veto: the pinned read of the retired version is
-    # identity, with the sha kept for the receipt; the superseded-but-not-
-    # retired old version is untouched.
+    # identity, with the sha kept for the receipt -- and so is the pinned
+    # read of the superseded older version, which carried the same
+    # contraction from the same evidence and is still pinned by artifacts
+    # minted under it.  Another stage's table is untouched.
+    other = persist_and_activate_station_width(
+        conn, stage="P0-M", scales={"AAA0": 0.7}, per_station={},
+        fitted_at_utc="2026-09-06T23:01:00Z",
+    )
     retired = persist_and_activate_station_width(
         conn, stage="P0", scales={}, per_station={},
         fitted_at_utc="2026-09-10T15:27:09Z",
@@ -451,15 +457,19 @@ def test_a_retired_pinned_version_serves_identity_but_a_superseded_one_does_not(
         {}, new_sha
     )
     assert load_station_width(conn, stage="P0", table_sha256=old_sha) == (
-        {"AAA0": 0.5, "AAA1": 0.8}, old_sha
+        {}, old_sha
     )
     assert load_station_width(conn, stage="P0") is None
+    assert load_station_width(
+        conn, stage="P0-M", table_sha256=other["station_width_sha256"]
+    ) == ({"AAA0": 0.7}, other["station_width_sha256"])
     rows = conn.execute(
         "SELECT station_width_sha256, retired_at_utc FROM"
-        " calibration_center_width_station ORDER BY station_id, fitted_at_utc"
+        " calibration_center_width_station WHERE stage='P0'"
+        " ORDER BY station_id, fitted_at_utc"
     ).fetchall()
     assert {r[0]: r[1] for r in rows} == {
-        old_sha: None, new_sha: "2026-09-10T15:27:09Z",
+        old_sha: "2026-09-10T15:27:09Z", new_sha: "2026-09-10T15:27:09Z",
     }
     # A pinned version that never existed still fails closed.
     with pytest.raises(ContractError):
