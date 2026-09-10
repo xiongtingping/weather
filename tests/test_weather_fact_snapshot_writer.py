@@ -1367,10 +1367,10 @@ def test_generic_fact_writer_materializes_posterior_ssot_fact_from_existing_dist
     ssot = payload["posterior_ssot_fact"]
     assert ssot["schema"] == "bayes_posterior_ssot_fact_v1"
     assert ssot["state"] == "available"
-    assert ssot["production_model_family"] == "v3.1"
-    assert ssot["production_model_version"] == "v3.1_unavailable"
+    assert ssot["production_model_family"] == "joint_weak_physical_strong"
+    assert ssot["production_model_version"] == "joint_weak_physical_strong_unavailable"
     assert ssot["production_model_ready"] is False
-    assert ssot["production_probability_policy"] == "v3.1_only_fail_closed"
+    assert ssot["production_probability_policy"] == "unique_joint_weak_physical_strong_only_fail_closed"
     assert ssot["legacy_model_fallback_allowed"] is False
     assert ssot["fact_snapshot_id"] == plan["fact_snapshot_id"]
     assert ssot["posterior_run_id"] == plan["posterior_run_id"]
@@ -1917,21 +1917,27 @@ def test_diagnostic_current_observed_max_cannot_repoint_over_existing_hard_fact(
     assert plan["effective_payload"]["hard_mask_reason"] == "none"
 
 
-def _mark_v31_ready(pipeline):
+def _mark_production_model_ready(pipeline):
+    """Mark the pipeline the way the live composer does.
+
+    v3.1 was the retired predecessor; sequential_remaining_warming_bayes_runtime
+    emits joint_weak_physical_strong_composer_v1 and carries the v3.1 block only
+    as a retired-not-consumed marker, which is what the writer keys off.
+    """
     pipeline["ok"] = True
     pipeline["production_model_ready"] = True
-    pipeline["production_model_version"] = "v3.1_multimodel_allday"
+    pipeline["production_model_version"] = "joint_weak_physical_strong_composer_v1"
     pipeline["production_block_reason"] = ""
     pipeline["v31_multimodel_posterior"] = {
-        "schema": "ncei_zuuu_multimodel_allday_v31_runtime_v1",
-        "state": "available",
-        "model_version": "v3.1_multimodel_allday",
+        "state": "retired_not_consumed",
+        "state_reason": "unique_joint_weak_and_physical_strong_composer_replaces_v31_probability_model",
+        "applied_to_metar_strong_likelihood": False,
     }
     posterior = pipeline.get("runtime_outputs", {}).get("sequential_remaining_warming_bayes", {})
     if isinstance(posterior, dict):
         posterior["ok"] = True
         posterior["production_model_ready"] = True
-        posterior["production_model_version"] = "v3.1_multimodel_allday"
+        posterior["production_model_version"] = "joint_weak_physical_strong_composer_v1"
         posterior["production_block_reason"] = ""
         posterior["v31_multimodel_posterior"] = dict(pipeline["v31_multimodel_posterior"])
     return pipeline
@@ -1974,7 +1980,7 @@ def _posterior_pipeline_output(*, hard_source=True):
                 },
             }
         )
-    return _mark_v31_ready(build_hierarchical_posterior_pipeline(
+    return _mark_production_model_ready(build_hierarchical_posterior_pipeline(
         buckets=buckets,
         prior_distribution={"29": 0.10, "30": 0.20, "31": 0.30, "32": 0.25, "33": 0.15},
         event_date="2026-07-03",
@@ -2034,10 +2040,10 @@ def test_hierarchical_posterior_fact_plan_materializes_no_apply_payload_and_line
     posterior_ssot_fact = payload["posterior_ssot_fact"]
     assert posterior_ssot_fact["schema"] == "bayes_posterior_ssot_fact_v1"
     assert posterior_ssot_fact["state"] == "available"
-    assert posterior_ssot_fact["production_model_family"] == "v3.1"
-    assert posterior_ssot_fact["production_model_version"] == "v3.1_multimodel_allday"
+    assert posterior_ssot_fact["production_model_family"] == "joint_weak_physical_strong"
+    assert posterior_ssot_fact["production_model_version"] == "joint_weak_physical_strong_composer_v1"
     assert posterior_ssot_fact["production_model_ready"] is True
-    assert posterior_ssot_fact["production_probability_policy"] == "v3.1_only_fail_closed"
+    assert posterior_ssot_fact["production_probability_policy"] == "unique_joint_weak_physical_strong_only_fail_closed"
     assert posterior_ssot_fact["legacy_model_fallback_allowed"] is False
     assert posterior_ssot_fact["fact_snapshot_id"] == plan["fact_snapshot_id"]
     assert posterior_ssot_fact["posterior_run_id"] == plan["posterior_run_id"]
@@ -2125,7 +2131,7 @@ def test_posterior_ssot_fact_persists_joint_weak_expert_attribution():
             },
         ],
     )
-    pipeline = _mark_v31_ready(pipeline)
+    pipeline = _mark_production_model_ready(pipeline)
     weak_runtime = pipeline["runtime_outputs"]["forecast_weak_likelihood"]
     weak_runtime["forecast_weak_likelihood_map"] = dict(
         pipeline["layer_contributions"]["forecast_weak_likelihood"]["distribution"]
@@ -2320,7 +2326,7 @@ def test_hierarchical_posterior_fact_payload_preserves_midday_recent_confirmatio
             }
         ],
     )
-    pipeline = _mark_v31_ready(pipeline)
+    pipeline = _mark_production_model_ready(pipeline)
     payload = build_hierarchical_posterior_fact_payload(
         pipeline_output=pipeline,
         fact_snapshot_id="fact_midday_recent_gate",
@@ -2384,7 +2390,7 @@ def test_fact_payload_persists_compact_daily_high_shadow_candidate_without_chang
         as_of="2026-07-05T03:05:00Z",
         source_observations=sources,
     )
-    pipeline = _mark_v31_ready(pipeline)
+    pipeline = _mark_production_model_ready(pipeline)
     production_map = dict(pipeline["runtime_outputs"]["metar_strong_likelihood"]["metar_strong_likelihood_map"])
     payload = build_hierarchical_posterior_fact_payload(pipeline_output=pipeline)
 

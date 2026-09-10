@@ -27,6 +27,12 @@ if str(ROOT) not in sys.path:
 DEFAULT_DB = ROOT / "data" / "archive.db"
 POSTERIOR_SSOT_FACT_SCHEMA = "bayes_posterior_ssot_fact_v1"
 POSTERIOR_SSOT_FACT_PLACEHOLDER_SCHEMA = "bayes_posterior_ssot_fact_placeholder_v1"
+# The single live production probability identity.  v3.1 is the retired
+# predecessor: no runtime emits it any more, weather_fact_snapshot_writer and
+# ui/server both key off the names below, and scripts/document_authority_audit.py
+# already declares joint_weak_physical_strong_composer_v1 the only one.
+PRODUCTION_MODEL_FAMILY = "joint_weak_physical_strong"
+PRODUCTION_PROBABILITY_POLICY = "unique_joint_weak_physical_strong_only_fail_closed"
 SUMMARY_SCHEMA = "posterior_ssot_fact_coverage_audit_v1_summary"
 
 
@@ -552,11 +558,13 @@ def audit_fact_payload(payload: Mapping[str, Any], *, meta: Mapping[str, Any] | 
         ssot_bucket = _first_text(ssot.get("target_bucket"), ssot.get("ssot_target_bucket"))
         ssot_probability = _prob01(ssot.get("target_probability"))
         if ssot_state == "available":
-            if _first_text(ssot.get("production_model_family")) != "v3.1":
-                issues.append("posterior_ssot_fact_production_model_family_not_v31")
-            if not _first_text(ssot.get("production_model_version")).lower().startswith("v3.1"):
-                issues.append("posterior_ssot_fact_production_model_version_not_v31")
-            if _first_text(ssot.get("production_probability_policy")) != "v3.1_only_fail_closed":
+            if _first_text(ssot.get("production_model_family")) != PRODUCTION_MODEL_FAMILY:
+                issues.append("posterior_ssot_fact_production_model_family_not_production")
+            if not _first_text(ssot.get("production_model_version")).lower().startswith(
+                PRODUCTION_MODEL_FAMILY
+            ):
+                issues.append("posterior_ssot_fact_production_model_version_not_production")
+            if _first_text(ssot.get("production_probability_policy")) != PRODUCTION_PROBABILITY_POLICY:
                 issues.append("posterior_ssot_fact_production_probability_policy_invalid")
             if ssot.get("legacy_model_fallback_allowed") is not False:
                 issues.append("posterior_ssot_fact_legacy_model_fallback_not_false")

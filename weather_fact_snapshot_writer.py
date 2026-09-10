@@ -23,6 +23,13 @@ PARSER_VERSION = "weather_fact_snapshot_writer_v1"
 WRITE_OWNER = "weather_fact_snapshot_writer"
 POSTERIOR_FACT_PAYLOAD_SCHEMA = "hierarchical_posterior_fact_payload_v1"
 POSTERIOR_SSOT_FACT_SCHEMA = "bayes_posterior_ssot_fact_v1"
+POSTERIOR_SSOT_PRODUCTION_IDENTITY_KEYS = (
+    "production_model_family",
+    "production_model_version",
+    "production_model_ready",
+    "production_probability_policy",
+    "legacy_model_fallback_allowed",
+)
 POSTERIOR_SSOT_FACT_PLACEHOLDER_SCHEMA = "bayes_posterior_ssot_fact_placeholder_v1"
 POSTERIOR_PIPELINE_SOURCE_TRACE_SCHEMA = "posterior_pipeline_source_lineage_trace_v1"
 FORECAST_WEAK_ATTRIBUTION_TRACE_SCHEMA = "forecast_weak_attribution_trace_v1"
@@ -1545,6 +1552,72 @@ def _posterior_ssot_fact_matches_canonical(
     return True
 
 
+def _hard_mask_existing_posterior_ssot_fact(
+    existing: Mapping[str, Any] | None,
+    *,
+    hard_temperature_floor_c: float | None,
+) -> tuple[dict[str, Any], bool]:
+    """Re-apply the observed hard floor to a posterior SSOT block we did not compose.
+
+    build_posterior_ssot_fact masks only the blocks it builds itself, and it
+    builds none unless the payload carries joint_weak_physical_strong evidence.
+    The floor is a constraint on the surface we publish, not an output of the
+    model, so it has to hold on the pass-through path too.  Masking removes
+    impossible mass; it never invents any, so it stays inside fail-closed.
+    """
+    ssot = _as_mapping(existing)
+    if not ssot or hard_temperature_floor_c is None:
+        return dict(ssot), False
+    rows = _posterior_bucket_probability_rows(ssot.get("bucket_probabilities"))
+    if not rows:
+        return dict(ssot), False
+    if not any(
+        _posterior_bucket_below_hard_temperature_floor(
+            str(row.get("bucket") or row.get("outcome") or row.get("label") or ""),
+            hard_temperature_floor_c,
+        )
+        and float(_prob01(row.get("probability")) or 0.0) > 0.0
+        for row in rows
+    ):
+        return dict(ssot), False
+    masked_rows, normalization = _posterior_ssot_bucket_probability_rows(
+        rows,
+        hard_temperature_floor_c=hard_temperature_floor_c,
+    )
+    masked = dict(ssot)
+    masked["bucket_probabilities"] = masked_rows
+    masked["bucket_count"] = len(masked_rows)
+    masked["hard_temperature_floor_c"] = float(hard_temperature_floor_c)
+    masked["hard_mask_normalization"] = normalization
+    if isinstance(ssot.get("ranked_bucket_probabilities"), list):
+        masked["ranked_bucket_probabilities"] = sorted(
+            copy.deepcopy(masked_rows),
+            key=lambda row: float(_prob01(_as_mapping(row).get("probability")) or 0.0),
+            reverse=True,
+        )
+    target_bucket, target_probability = _top_target_from_probability_rows(
+        masked_rows,
+        hard_temperature_floor_c=hard_temperature_floor_c,
+    )
+    if target_bucket and target_probability is not None:
+        masked["target_bucket"] = target_bucket
+        masked["target_probability"] = float(target_probability)
+        masked["target_probability_pct"] = float(target_probability) * 100.0
+        target_row = next(
+            (
+                _as_mapping(row)
+                for row in masked_rows
+                if str(row.get("bucket") or row.get("outcome") or row.get("label") or "").strip()
+                == target_bucket
+            ),
+            {},
+        )
+        pre_mask = _prob01(target_row.get("probability_pre_hard_mask"))
+        if pre_mask is not None:
+            masked["target_probability_pre_hard_mask"] = float(pre_mask)
+    return masked, True
+
+
 def _materialize_posterior_ssot_fact_from_existing_payload(
     effective: dict[str, Any],
     *,
@@ -1581,6 +1654,18 @@ def _materialize_posterior_ssot_fact_from_existing_payload(
         effective,
         source_acquisition_trace=source_acquisition_trace,
     )
+    existing_ssot, existing_hard_masked = _hard_mask_existing_posterior_ssot_fact(
+        existing_ssot,
+        hard_temperature_floor_c=hard_floor_c,
+    )
+    if existing_hard_masked:
+        effective["posterior_ssot_fact"] = existing_ssot
+        operations.append(
+            {
+                "path": "posterior_ssot_fact.bucket_probabilities",
+                "action": "hard_masked_existing_posterior_ssot_fact_below_observed_floor",
+            }
+        )
     canonical_posterior_ssot_fact = build_posterior_ssot_fact(
         effective,
         source_acquisition_trace=source_acquisition_trace,
@@ -1639,6 +1724,24 @@ def _materialize_posterior_ssot_fact_from_existing_payload(
         posterior_ssot_fact["posterior_run_id"] = ssot_posterior_run_id
         ssot_contract_changed = True
         operations.append({"path": "posterior_ssot_fact.posterior_run_id", "action": "filled_writer_lineage"})
+    for identity_key in POSTERIOR_SSOT_PRODUCTION_IDENTITY_KEYS:
+        if identity_key in posterior_ssot_fact:
+            continue
+        if identity_key not in canonical_posterior_ssot_fact:
+            continue
+        # An available SSOT must name the model that produced it.  A block we
+        # did not compose can arrive without one, and the honest value is the
+        # identity the canonical build derived from this same payload -- which
+        # says joint_weak_physical_strong_unavailable when there was no
+        # evidence, rather than claiming a composer that never ran.
+        posterior_ssot_fact[identity_key] = canonical_posterior_ssot_fact[identity_key]
+        ssot_contract_changed = True
+        operations.append(
+            {
+                "path": f"posterior_ssot_fact.{identity_key}",
+                "action": "filled_writer_production_identity",
+            }
+        )
     boundaries = dict(_as_mapping(posterior_ssot_fact.get("boundaries")))
     boundary_defaults = {
         "old_additive_evidence_pool_used": False,
