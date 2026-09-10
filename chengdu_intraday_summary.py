@@ -654,11 +654,37 @@ def _legacy_additive_bayes_chain_for_distribution_row(row: Mapping[str, Any]) ->
     }
 
 
+def _persisted_bayes_chain_for_distribution_row(row: Mapping[str, Any]) -> Dict[str, Any]:
+    """A chain the row already carries, when nothing can be rebuilt from it.
+
+    The compact chain is what gets persisted -- the fast-trade write stores it
+    and drops the raw q_bayes_* fields it was derived from -- so a row read back
+    can hold a perfectly good chain and no way to recompute one.  Returning {}
+    there loses it on the read side, which is the one side that still needs it.
+    """
+
+    chain = row.get("bayes_chain")
+    if not isinstance(chain, Mapping):
+        chain = row.get("chain")
+    if not isinstance(chain, Mapping) or not chain:
+        return {}
+    out = dict(chain)
+    out.setdefault("schema", "legacy_bayes_chain_retired_compat_v1")
+    out.setdefault("role", "retired_compat")
+    out.setdefault("ui_primary_allowed", False)
+    out.setdefault("production_probability_allowed", False)
+    out.setdefault("source", "persisted_bayes_chain")
+    return out
+
+
 def _bayes_chain_for_distribution_row(row: Mapping[str, Any]) -> Dict[str, Any]:
     hierarchical = _hierarchical_bayes_chain_for_distribution_row(row)
     if hierarchical:
         return hierarchical
-    return _legacy_additive_bayes_chain_for_distribution_row(row)
+    legacy = _legacy_additive_bayes_chain_for_distribution_row(row)
+    if legacy:
+        return legacy
+    return _persisted_bayes_chain_for_distribution_row(row)
 
 
 def _round(value: Any, decimals: int = 2) -> Optional[float]:

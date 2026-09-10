@@ -23,6 +23,13 @@ PARSER_VERSION = "weather_fact_snapshot_writer_v1"
 WRITE_OWNER = "weather_fact_snapshot_writer"
 POSTERIOR_FACT_PAYLOAD_SCHEMA = "hierarchical_posterior_fact_payload_v1"
 POSTERIOR_SSOT_FACT_SCHEMA = "bayes_posterior_ssot_fact_v1"
+POSTERIOR_SSOT_PRODUCTION_IDENTITY_KEYS = (
+    "production_model_family",
+    "production_model_version",
+    "production_model_ready",
+    "production_probability_policy",
+    "legacy_model_fallback_allowed",
+)
 POSTERIOR_SSOT_FACT_PLACEHOLDER_SCHEMA = "bayes_posterior_ssot_fact_placeholder_v1"
 POSTERIOR_PIPELINE_SOURCE_TRACE_SCHEMA = "posterior_pipeline_source_lineage_trace_v1"
 FORECAST_WEAK_ATTRIBUTION_TRACE_SCHEMA = "forecast_weak_attribution_trace_v1"
@@ -1545,6 +1552,124 @@ def _posterior_ssot_fact_matches_canonical(
     return True
 
 
+def _posterior_ssot_lineage_block(
+    trace: Mapping[str, Any] | None,
+    *,
+    source_event_ids: Sequence[str],
+    source_observation_ids: Sequence[str],
+) -> dict[str, Any]:
+    """The lineage the writer owns: which acquired sources fed this block."""
+
+    trace_map = _as_mapping(trace)
+    return {
+        "schema": "bayes_posterior_ssot_fact_lineage_v1",
+        "source_event_ids": [str(value) for value in source_event_ids],
+        "source_observation_ids": [str(value) for value in source_observation_ids],
+        "hard_observation_candidate_ids": [
+            str(value)
+            for value in (trace_map.get("hard_observation_candidate_ids") or [])
+            if str(value or "").strip()
+        ],
+        "forecast_weak_ids": [
+            str(value)
+            for value in (trace_map.get("forecast_weak_ids") or [])
+            if str(value or "").strip()
+        ],
+        "source_trace_schema": str(trace_map.get("schema") or ""),
+    }
+
+
+def _hard_mask_existing_posterior_ssot_fact(
+    existing: Mapping[str, Any] | None,
+    *,
+    hard_temperature_floor_c: float | None,
+    fallback_rows: Sequence[Mapping[str, Any]] = (),
+) -> tuple[dict[str, Any], bool]:
+    """Re-apply the hard mask to a posterior SSOT block we did not compose.
+
+    build_posterior_ssot_fact masks only the blocks it builds itself, and it
+    builds none unless the payload carries joint_weak_physical_strong evidence.
+    The mask -- per-row hard zeros and the observed temperature floor alike --
+    is a constraint on the surface we publish, not an output of the model, so
+    it has to hold on the pass-through path too.  Masking removes impossible
+    mass and never invents any, which is what keeps it inside fail-closed.
+
+    A block that states only a target and no distribution of its own is masked
+    against ``fallback_rows``, the payload's own posterior rows.  Those are the
+    blocks that carried an infeasible target all the way to persistence,
+    because the check that caught them handed the repair to a canonical
+    rebuild that had no evidence to make.
+    """
+    ssot = _as_mapping(existing)
+    if not ssot:
+        return {}, False
+    rows = _posterior_bucket_probability_rows(ssot.get("bucket_probabilities"))
+    rows_from_payload = False
+    if not rows:
+        rows = _posterior_bucket_probability_rows(list(fallback_rows))
+        rows_from_payload = bool(rows)
+    if not rows:
+        return dict(ssot), False
+    masked_rows, normalization = _posterior_ssot_bucket_probability_rows(
+        rows,
+        hard_temperature_floor_c=hard_temperature_floor_c,
+    )
+    if not masked_rows:
+        return dict(ssot), False
+    target_bucket, target_probability = _top_target_from_probability_rows(
+        masked_rows,
+        hard_temperature_floor_c=hard_temperature_floor_c,
+    )
+    declared_bucket = str(ssot.get("target_bucket") or ssot.get("ssot_target_bucket") or "").strip()
+    declared_probability = _prob01(ssot.get("target_probability"))
+    # Only an actual exclusion or a moved target counts.  Rows that merely do
+    # not sum to one are malformed rather than infeasible, and rescaling them
+    # here would change published probabilities on no evidence at all -- the
+    # apply contract already refuses those, and saying so is the right answer.
+    changed = bool(int(normalization.get("excluded_bucket_count") or 0) > 0)
+    if target_bucket and declared_bucket and target_bucket != declared_bucket:
+        changed = True
+    if (
+        target_probability is not None
+        and declared_probability is not None
+        and abs(float(target_probability) - float(declared_probability)) > 1e-9
+    ):
+        changed = True
+    if not changed:
+        return dict(ssot), False
+    masked = dict(ssot)
+    masked["bucket_probabilities"] = masked_rows
+    masked["bucket_count"] = len(masked_rows)
+    masked["hard_mask_normalization"] = normalization
+    if hard_temperature_floor_c is not None:
+        masked["hard_temperature_floor_c"] = float(hard_temperature_floor_c)
+    if rows_from_payload:
+        masked["bucket_probabilities_source"] = "posterior_temperature_distribution"
+    if isinstance(ssot.get("ranked_bucket_probabilities"), list):
+        masked["ranked_bucket_probabilities"] = sorted(
+            copy.deepcopy(masked_rows),
+            key=lambda row: float(_prob01(_as_mapping(row).get("probability")) or 0.0),
+            reverse=True,
+        )
+    if target_bucket and target_probability is not None:
+        masked["target_bucket"] = target_bucket
+        masked["target_probability"] = float(target_probability)
+        masked["target_probability_pct"] = float(target_probability) * 100.0
+        target_row = next(
+            (
+                _as_mapping(row)
+                for row in masked_rows
+                if str(row.get("bucket") or row.get("outcome") or row.get("label") or "").strip()
+                == target_bucket
+            ),
+            {},
+        )
+        pre_mask = _prob01(target_row.get("probability_pre_hard_mask"))
+        if pre_mask is not None:
+            masked["target_probability_pre_hard_mask"] = float(pre_mask)
+    return masked, True
+
+
 def _materialize_posterior_ssot_fact_from_existing_payload(
     effective: dict[str, Any],
     *,
@@ -1581,6 +1706,21 @@ def _materialize_posterior_ssot_fact_from_existing_payload(
         effective,
         source_acquisition_trace=source_acquisition_trace,
     )
+    existing_ssot, existing_hard_masked = _hard_mask_existing_posterior_ssot_fact(
+        existing_ssot,
+        hard_temperature_floor_c=hard_floor_c,
+        fallback_rows=rows,
+    )
+    if existing_hard_masked:
+        effective["posterior_ssot_fact"] = existing_ssot
+        operations.append(
+            {
+                # The whole block is rewritten, not just the rows: the mask can
+                # move the target, which is the part downstream reads.
+                "path": "posterior_ssot_fact",
+                "action": "hard_masked_existing_posterior_ssot_fact",
+            }
+        )
     canonical_posterior_ssot_fact = build_posterior_ssot_fact(
         effective,
         source_acquisition_trace=source_acquisition_trace,
@@ -1639,6 +1779,40 @@ def _materialize_posterior_ssot_fact_from_existing_payload(
         posterior_ssot_fact["posterior_run_id"] = ssot_posterior_run_id
         ssot_contract_changed = True
         operations.append({"path": "posterior_ssot_fact.posterior_run_id", "action": "filled_writer_lineage"})
+    for identity_key in POSTERIOR_SSOT_PRODUCTION_IDENTITY_KEYS:
+        if identity_key in posterior_ssot_fact:
+            continue
+        if identity_key not in canonical_posterior_ssot_fact:
+            continue
+        # An available SSOT must name the model that produced it.  A block we
+        # did not compose can arrive without one, and the honest value is the
+        # identity the canonical build derived from this same payload -- which
+        # says joint_weak_physical_strong_unavailable when there was no
+        # evidence, rather than claiming a composer that never ran.
+        posterior_ssot_fact[identity_key] = canonical_posterior_ssot_fact[identity_key]
+        ssot_contract_changed = True
+        operations.append(
+            {
+                "path": f"posterior_ssot_fact.{identity_key}",
+                "action": "filled_writer_production_identity",
+            }
+        )
+    if not _as_mapping(posterior_ssot_fact.get("lineage")):
+        # Which acquired sources fed this block is the writer's to state, and
+        # it states it on the path it composes.  A block handed to us does not
+        # carry one, and the sync below only rewrites a lineage that is already
+        # there, so without this the persisted block had none at all.
+        posterior_ssot_fact["lineage"] = _posterior_ssot_lineage_block(
+            source_acquisition_trace or effective.get("source_acquisition_trace"),
+            source_event_ids=[
+                str(value) for value in (effective.get("source_event_ids") or []) if str(value or "").strip()
+            ],
+            source_observation_ids=[
+                str(value) for value in (effective.get("source_observation_ids") or []) if str(value or "").strip()
+            ],
+        )
+        ssot_contract_changed = True
+        operations.append({"path": "posterior_ssot_fact.lineage", "action": "filled_writer_lineage"})
     boundaries = dict(_as_mapping(posterior_ssot_fact.get("boundaries")))
     boundary_defaults = {
         "old_additive_evidence_pool_used": False,
@@ -3954,22 +4128,11 @@ def build_posterior_ssot_fact(payload: Mapping[str, Any], *, source_acquisition_
             "observation_information_gate_present": bool(item.get("observation_information_gate")),
             "dedupe_policy": "metar_cloud_visibility_dewpoint_precip_temperature_trajectory_counted_once_in_strong_likelihood",
         },
-        "lineage": {
-            "schema": "bayes_posterior_ssot_fact_lineage_v1",
-            "source_event_ids": source_event_ids,
-            "source_observation_ids": source_observation_ids,
-            "hard_observation_candidate_ids": [
-                str(value)
-                for value in (trace.get("hard_observation_candidate_ids") or [])
-                if str(value or "").strip()
-            ],
-            "forecast_weak_ids": [
-                str(value)
-                for value in (trace.get("forecast_weak_ids") or [])
-                if str(value or "").strip()
-            ],
-            "source_trace_schema": str(trace.get("schema") or ""),
-        },
+        "lineage": _posterior_ssot_lineage_block(
+            trace,
+            source_event_ids=source_event_ids,
+            source_observation_ids=source_observation_ids,
+        ),
         "boundaries": {
             "old_additive_evidence_pool_used": False,
             "legacy_bucket_product_posterior_used": False,

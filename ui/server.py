@@ -56,6 +56,8 @@ from chengdu_intraday_summary import (
     build_chengdu_intraday_summary,
     build_chengdu_intraday_summary_from_payload,
     _apply_d0_observed_feasibility_guard,
+    _legacy_additive_bayes_chain_for_distribution_row,
+    _persisted_bayes_chain_for_distribution_row,
     _sync_target_bucket_outlook_with_temperature_path_distribution,
     _target_bucket_outlook,
 )
@@ -13705,7 +13707,22 @@ def _hierarchical_bayes_chain_for_distribution_row(row: Mapping[str, Any]) -> Di
 def _bayes_chain_for_distribution_row(row: Any) -> Dict[str, Any]:
     if not isinstance(row, Mapping):
         return {}
-    return _hierarchical_bayes_chain_for_distribution_row(row)
+    hierarchical = _hierarchical_bayes_chain_for_distribution_row(row)
+    if hierarchical:
+        return hierarchical
+    # A row written before the hierarchical composer has no layer_contributions
+    # to build from, and dropping the chain entirely tells the reader nothing.
+    # chengdu_intraday_summary keeps the same two-tier rule and owns the compat
+    # chain, which says outright that it is retired and not UI-primary; this
+    # copy had lost the second tier, so the same row showed a chain there and
+    # none here.  ui/index.html builds the same compat shape client-side.
+    legacy = _legacy_additive_bayes_chain_for_distribution_row(row)
+    if legacy:
+        return legacy
+    # Last: a chain the row already carries.  The compact chain is what gets
+    # persisted, so a row read back can hold one and no raw fields to rebuild
+    # it from.
+    return _persisted_bayes_chain_for_distribution_row(row)
 
 
 def _compact_bayes_chain_for_bucket_series(row: Any) -> Dict[str, Any]:
@@ -42672,6 +42689,46 @@ def _is_chengdu_zuuu_fact_payload(slug: str, item: Optional[Mapping[str, Any]] =
     return bool(lat is not None and lon is not None and 30.0 <= lat <= 31.0 and 103.0 <= lon <= 105.0)
 
 
+# The Phase-0 lineage identity, which weather_fact_snapshot_writer reads back
+# by name.  Its INSERTs intersect with PRAGMA table_info and silently drop what
+# is missing, but its latest-repoint SELECT does not: on a database without
+# these columns every repoint dies on "no such column: fact_snapshot_id" and
+# reports itself as sqlite_read_error.  A live archive.db got them from the
+# fact-write migration, which is why only a freshly created one showed it.
+FACT_LINEAGE_COLUMNS: Dict[str, Tuple[str, ...]] = {
+    "event_fact_history": (
+        "correlation_id",
+        "source_event_id",
+        "fact_snapshot_id",
+        "posterior_run_id",
+        "signal_id",
+        "review_id",
+    ),
+    "event_fact_latest": ("fact_snapshot_id", "correlation_id"),
+}
+
+
+def _ensure_fact_lineage_columns(cur: sqlite3.Cursor) -> None:
+    """Add the lineage columns to tables that predate them."""
+
+    for table, columns in FACT_LINEAGE_COLUMNS.items():
+        try:
+            present = {str(row[1]) for row in cur.execute(f"PRAGMA table_info({table})").fetchall()}
+        except sqlite3.Error:
+            continue
+        if not present:
+            continue
+        for column in columns:
+            if column in present:
+                continue
+            try:
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
+            except sqlite3.Error:
+                # A concurrent writer got there first, or the column exists
+                # under a different declared type.  Either way it is present.
+                pass
+
+
 def ensure_fact_tables(conn: sqlite3.Connection) -> None:
     cur = conn.cursor()
     cur.execute(
@@ -42693,6 +42750,12 @@ def ensure_fact_tables(conn: sqlite3.Connection) -> None:
             best_outcome TEXT,
             best_edge_score REAL,
             best_signal_edge_entry REAL,
+            correlation_id TEXT,
+            source_event_id TEXT,
+            fact_snapshot_id TEXT,
+            posterior_run_id TEXT,
+            signal_id TEXT,
+            review_id TEXT,
             fact_json TEXT NOT NULL,
             created_at TEXT NOT NULL
         )
@@ -42728,11 +42791,14 @@ def ensure_fact_tables(conn: sqlite3.Connection) -> None:
             slug TEXT NOT NULL,
             event_date TEXT NOT NULL,
             fact_id INTEGER NOT NULL,
+            fact_snapshot_id TEXT,
+            correlation_id TEXT,
             updated_at TEXT NOT NULL,
             PRIMARY KEY (slug, event_date)
         )
         """
     )
+    _ensure_fact_lineage_columns(cur)
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS event_fact_summary_cache (

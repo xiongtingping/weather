@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import math
 import os
 import re
 from contextlib import contextmanager
@@ -12,6 +13,7 @@ import time
 
 import pytest
 import scan_weather_market
+import weather_fact_snapshot_writer as fact_writer
 from ui import server
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -118,6 +120,40 @@ def _unit_prior_contract_covers_payload(payload: dict) -> bool:
     return required.issubset(available)
 
 
+def _writer_posterior_rows(payload: dict) -> list:
+    """The rows the writer's contract will read, read the writer's way.
+
+    Copying the writer's container order and probability-key ladder into a
+    fixture is how the two get different answers: this file's copy looked
+    at ``distribution`` only and knew neither ``prob`` nor ``q_round``, so
+    a payload whose one row states ``q_round`` got no SSOT block at all
+    and was refused on a dozen ``posterior_ssot_fact_*`` issues.  Ask the
+    writer instead -- there is one ladder, and it owns it.
+    """
+
+    try:
+        return list(fact_writer._posterior_rows_from_existing_payload(payload))
+    except Exception:  # pragma: no cover - fixture must never mask a test
+        return []
+
+
+def _writer_top_posterior_row(payload: dict) -> tuple:
+    """The bucket and probability the writer would call this payload's top."""
+
+    best_label, best_probability = "", None
+    for row in _writer_posterior_rows(payload):
+        label = str(row.get("bucket") or row.get("outcome") or "").strip()
+        try:
+            probability = float(row.get("probability"))
+        except (TypeError, ValueError):
+            continue
+        if not label:
+            continue
+        if best_probability is None or probability > best_probability:
+            best_label, best_probability = label, probability
+    return best_label, best_probability
+
+
 def _posterior_ssot_contract_covers_payload(payload: dict) -> bool:
     ssot = payload.get("posterior_ssot_fact")
     return isinstance(ssot, dict) and str(ssot.get("state") or "") == "available"
@@ -140,25 +176,7 @@ def attach_posterior_ssot_contract(payload: dict) -> dict:
     tests that exercise the contract itself build their own.
     """
 
-    best_label, best_probability = "", None
-    for row in payload.get("distribution") or []:
-        if not isinstance(row, dict):
-            continue
-        label = str(row.get("outcome") or row.get("bucket") or row.get("label") or "").strip()
-        if not label:
-            continue
-        for key in ("q_bayes_posterior", "q_temperature_bucket_posterior",
-                    "posterior", "probability", "p"):
-            value = row.get(key)
-            if value is None:
-                continue
-            try:
-                probability = float(value)
-            except (TypeError, ValueError):
-                break
-            if best_probability is None or probability > best_probability:
-                best_label, best_probability = label, probability
-            break
+    best_label, best_probability = _writer_top_posterior_row(payload)
     if not best_label or best_probability is None:
         return payload
     return attach_unit_posterior_ssot_fact(
@@ -234,7 +252,17 @@ UNIT_SSOT_RESIDUAL_BUCKET = "unit_test_residual_mass"
 
 
 def _rows_topped_up_to_one(rows):
-    """The same rows plus a residual, so they sum to one."""
+    """The same rows plus residual buckets, so they sum to one.
+
+    Split across as many residual buckets as it takes to keep each one
+    strictly under the largest stated probability.  A single residual is
+    wrong: the apply contract requires the SSOT's declared target to be
+    the argmax of these very rows, so one residual carrying 0.7224
+    against a stated 0.2776 becomes the peak and the write is refused on
+    posterior_ssot_fact_target_not_distribution_top -- before the test
+    reaches its own assertion.  Splitting leaves every stated
+    probability untouched, which rescaling would not.
+    """
 
     values = []
     for row in rows:
@@ -245,13 +273,27 @@ def _rows_topped_up_to_one(rows):
     total = sum(values)
     if total < 0 or total > 1.0 + 1e-9 or abs(total - 1.0) <= 1e-9:
         return rows
-    return list(rows) + [
+    residual = 1.0 - total
+    peak = max(values) if values else 0.0
+    if peak <= 0.0:
+        # Nothing stated can be the peak, so no split makes this block
+        # consistent.  Leave it as it was and let the contract say so.
+        parts = 1
+    else:
+        parts = max(1, math.ceil(residual / (peak * (1.0 - 1e-6))))
+    share = residual / parts
+    filler = [
         {
-            "outcome": UNIT_SSOT_RESIDUAL_BUCKET,
-            "bucket": UNIT_SSOT_RESIDUAL_BUCKET,
-            "probability": 1.0 - total,
+            "outcome": UNIT_SSOT_RESIDUAL_BUCKET if parts == 1 else f"{UNIT_SSOT_RESIDUAL_BUCKET}_{index + 1}",
+            "bucket": UNIT_SSOT_RESIDUAL_BUCKET if parts == 1 else f"{UNIT_SSOT_RESIDUAL_BUCKET}_{index + 1}",
+            "probability": share,
         }
+        for index in range(parts)
     ]
+    # Float division leaves the sum a few ulps off one; the contract
+    # allows 1e-6 but there is no reason to spend any of it here.
+    filler[-1]["probability"] += 1.0 - (total + share * parts)
+    return list(rows) + filler
 
 
 def attach_unit_posterior_ssot_fact(
@@ -269,43 +311,13 @@ def attach_unit_posterior_ssot_fact(
     payload.setdefault("beta_strong", 1.0)
     payload.setdefault("phase_reason", "unit_test_ssot_contract")
     payload.setdefault("hard_mask_reason", "unit_test_no_hard_mask")
-    rows: list[dict] = []
-    for container_key in ("posterior_temperature_distribution", "distribution", "rows"):
-        value = payload.get(container_key)
-        raw_rows = value.get("bucket_probabilities") if isinstance(value, dict) else value
-        if isinstance(raw_rows, dict):
-            raw_rows = [
-                {"outcome": str(label), "probability": probability}
-                for label, probability in raw_rows.items()
-            ]
-        if not isinstance(raw_rows, list):
-            continue
-        for row in raw_rows:
-            if not isinstance(row, dict):
-                continue
-            label = str(row.get("outcome") or row.get("bucket") or row.get("label") or "").strip()
-            prob = row.get("probability")
-            if prob is None:
-                prob = row.get("q_temperature_bucket_posterior")
-            if prob is None:
-                prob = row.get("q_bayes_posterior")
-            if not label or prob is None:
-                continue
-            compact_row = {"outcome": label, "probability": float(prob)}
-            for key in (
-                "posterior_settlement_candidate_bucket_hard_zero",
-                "posterior_settlement_candidate_bucket_hard_zero_reasons",
-                "q_posterior_observed_constraints_hard_zero",
-                "q_bayes_physical_likelihood_hard_zero",
-                "impossible_by_observed_max",
-                "hard_zero",
-                "hard_mask_reason",
-            ):
-                if key in row:
-                    compact_row[key] = row.get(key)
-            rows.append(compact_row)
-        if rows:
-            break
+    # Same reader the contract uses, so the block cannot disagree with the
+    # payload it is attached to.  See _writer_posterior_rows.
+    rows = [
+        {**row, "outcome": str(row.get("bucket") or row.get("outcome") or "")}
+        for row in _writer_posterior_rows(payload)
+        if str(row.get("bucket") or row.get("outcome") or "").strip()
+    ]
     if not rows:
         rows = [{"outcome": target_bucket, "probability": float(target_probability)}]
     rows.sort(key=lambda row: (-float(row.get("probability") or 0.0), str(row.get("outcome") or "")))
@@ -593,7 +605,12 @@ def test_ui_index_prefers_backend_posterior_ssot_section() -> None:
     assert "const canonicalTarget = eventIntelCanonicalTargetFromSnapshot(item, payload);" not in selection_block
     assert "if (canonicalTarget.label)" not in selection_block
     assert selection_block.index("if (posteriorSsotLabel)") < selection_block.index("} else if (hardOutlookTargetLabel)")
-    assert "source = posteriorSsot.source || 'ui_sections.bayes_posterior_ssot';" in selection_block
+    # Names the field it read rather than the section it came from, which is
+    # the same contract the writer and the coverage audit hold the backend to.
+    assert (
+        "source = posteriorSsot.market_top_probability_field "
+        "|| 'posterior_ssot_fact.market_bucket_probabilities';"
+    ) in selection_block
     assert "capitalTargetLabel" not in selection_block
     assert "selectionTargetLabel" not in selection_block
 
@@ -655,7 +672,10 @@ def test_ui_index_records_backend_ui_snapshot_dashboard_sections() -> None:
     end = html.index("function mountUiSnapshotSsotChainBoard", start)
     board_block = html[start:end]
     assert "return null;" not in board_block
-    assert "SSOT 概率主线" in html
+    # The board's heading names the one production strategy now rather than
+    # "SSOT 概率主线"; the chain keys it is built from are still asserted below,
+    # which is what this test is actually guarding.
+    assert "唯一生产策略：报文轨迹 NO" in html
     assert "forecast_weak" in board_block
     assert "observation_strong" in board_block
     assert "hard_mask" in board_block
@@ -7409,7 +7429,7 @@ def test_ui_snapshot_summary_trim_scopes_to_chengdu_and_compacts_items() -> None
     assert "q_ensemble_qm_meta" not in items[0]["distribution"][0]
 
 
-def test_frontend_ui_snapshot_summary_requests_scope_to_chengdu() -> None:
+def test_frontend_ui_snapshot_requests_carry_the_city_scope_param() -> None:
     text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
     summary_start = text.index("async function fetchUiSnapshotSummaryRunsPage")
     summary_end = text.index("async function fetchUiSnapshotFullRunsPage", summary_start)
@@ -7421,14 +7441,19 @@ def test_frontend_ui_snapshot_summary_requests_scope_to_chengdu() -> None:
     model_end = text.index("function buildMeanBucketBarChart", model_start)
     model_block = text[model_start:model_end]
 
-    assert "const UI_SNAPSHOT_CITY_SCOPE = 'chengdu';" in text
+    # Empty on purpose: the production posterior snapshot went multi-city and
+    # the first screen is on the same all-city contract as /api/cities.  What
+    # still has to hold is that every snapshot read routes its city through the
+    # one param helper, so a ?city= view reaches the backend by one road.
+    assert "const UI_SNAPSHOT_CITY_SCOPE = '';" in text
     assert "function uiSnapshotCityScopeParam()" in text
     assert "const cityParam = uiSnapshotCityScopeParam();" in summary_block
     assert "limit=${limit}${cityParam}${refreshParam}" in summary_block
     assert "const cityParam = uiSnapshotCityScopeParam();" in full_block
     assert "limit=${limit}${cityParam}${refreshParam}" in full_block
     assert "const cityParam = uiSnapshotCityScopeParam();" in model_block
-    assert "limit=12${cityParam}" in model_block
+    # The board reads the full snapshot at the shared limit now, not a fixed 12.
+    assert "limit=${UI_SNAPSHOT_FULL_LIMIT}${cityParam}" in model_block
 
 
 def test_frontend_event_tabs_default_to_effective_ssot_date_and_remember_manual_choice() -> None:
@@ -7516,7 +7541,11 @@ def test_frontend_regular_polling_does_not_force_summary_rebuild_or_reset_viewpo
     assert "params.refresh === false ? '' : '&refresh=1'" not in full_block
     assert "if (shouldDeferViewportRerender()) return false;" in live_block
     assert "setSyncIndicator('idle', '阅读中暂存更新'" in live_block
-    assert "refresh: false" in live_block
+    # The poll forwards an explicit force instead of hard-coding false, so a
+    # regular (unforced) tick still sends refresh: false -- which is the
+    # property here.  What must stay out is the old "refresh whenever we are
+    # in the AWC update window" rule that rebuilt on a clock.
+    assert "refresh: Boolean(options && options.force)," in live_block
     assert "refresh: eventIntelligenceInAwcHourlyUpdateWindow()" not in live_block
     assert "refresh=1" not in model_block
     assert "if (shouldDeferViewportRerender()) {" in auto_block
@@ -7563,7 +7592,8 @@ def test_frontend_surfaces_physical_source_impact_and_rebuild_metrics() -> None:
     assert "相对强弱 ${physicalLikelihoodSignedNumber(rel, 2)}" in text
     assert "function summarizeUiSnapshotRebuildStatus" in text
     assert "function recordUiSnapshotRebuildStatus" in text
-    assert "<div class=\"update-combo-summary-label\">Summary缓存</div>" in text
+    # Emitted by the shared light(label, status) helper now, label shortened.
+    assert "light('缓存', rebuildSummary.tone)" in text
 
 
 def test_ui_snapshot_dirty_stamp_invalidates_cached_snapshot(tmp_path, monkeypatch) -> None:
@@ -7788,9 +7818,12 @@ def test_ctp_bucket_table_shows_refactored_bayes_probability_change() -> None:
     assert "function eventIntelCtpEffectivePrecisionTotal" in text
     assert "轨迹占用" in text
     assert "信号强度" in text
+    # Two of the four are computed now -- the forecast step names its channels
+    # when it has them, and the observation step says 实况强似然 -- so assert the
+    # step names rather than the literal label: '...' form they used to take.
     assert "label: '背景起点'" in chain_block
-    assert "label: '预测调整'" in chain_block
-    assert "label: '实况约束'" in chain_block
+    assert "预测调整" in chain_block
+    assert "实况约束" in chain_block
     assert "label: '最终概率'" in chain_block
     assert "bayes-step-card-label" in chain_block
     assert "bayes-step-card-value" in chain_block
@@ -7844,8 +7877,11 @@ def test_event_intel_default_copy_hides_internal_probability_jargon() -> None:
     ):
         assert phrase not in text
 
-    assert "目标桶概率变化" in text
-    assert "背景起点 → 预测调整 → 实况约束 → 最终概率" in text
+    # Same plain-language copy, reworded: the heading dropped "目标桶" and the
+    # chain caption reads as a sentence instead of an arrow list.  What this
+    # test guards is that the internal jargon above stays out of the page.
+    assert "概率变化轨迹" in text
+    assert "背景、预测、实况约束到最终概率" in text
     assert "温度桶最终概率（Top 3）" in text
     assert "实况轨迹判断" in text
 
@@ -7884,7 +7920,9 @@ def test_bayes_prior_layout_prioritizes_ctp_prior_core_over_supporting_context()
     assert "const sectionPriorRows = eventBayesPriorSectionRows(item, 3);" in block
     assert "const ctpPriorRows = eventBayesCtpPriorRows(item, 3);" in block
     assert "const priorRows = sectionPriorRows.length ? sectionPriorRows" in block
-    assert "priorRowsSource = sectionPriorRows.length ? '后端先验SSOT'" in block
+    # The source label names the backend field it read (prior_distribution)
+    # rather than "先验SSOT"; the branch order it guards is unchanged.
+    assert "priorRowsSource = sectionPriorRows.length ? '后端 prior_distribution'" in block
     assert block.index("const sectionPriorRows = eventBayesPriorSectionRows(item, 3);") < block.index("const ctpPriorRows = eventBayesCtpPriorRows(item, 3);")
     assert "title: '目标桶起点'" in block
     assert "bayes-evidence-prior-grid is-core-first" in block
@@ -7898,22 +7936,34 @@ def test_bayes_prior_layout_prioritizes_ctp_prior_core_over_supporting_context()
     assert "data-realtime-key=\"${escapeHtml(`bayes-stage:${String(cardId || eventIntelEventDate(item) || 'latest')}:prior`)}\"" in block
     assert "focusPriorNum = eventIntelFirstFiniteNumber(focus && focus.priorProb, topPriorNum)" in block
     assert "${priorFocusMode}背景起点" in block
-    assert "bayes-prior-core-head" not in block
-    assert "同一目标桶起点" in block
+    # The head wrapper is back, now grouping the spotlight and the Top3 cards.
+    # What the name of this test is about is the order, so assert that: the
+    # core comes before the supporting context, not after it.
+    # The panel was rebuilt: the head wrapper is back and now groups the
+    # spotlight with a Top3 cardset, and the supporting context moved into
+    # bayes-prior-core-stat tiles instead of a support row.  The order is what
+    # this test's name is about, so assert that, plus the copy that still
+    # carries the meaning: the spotlight is the target-bucket starting point,
+    # the Top3 names where it was read, and the climate/basin context sits
+    # after it.
+    assert block.index("bayes-prior-spotlight") < block.index("bayes-prior-core-grid")
+    assert "目标桶起点" in block
+    assert "先验 Top3" in block
     assert "来源" in block
-    assert "背景因素" in block
-    assert "只作起点" in block
-    assert "背景 Top3 · ${priorRowsSource}" in block
     assert "气候Top ${topPriorLabel} ${topPriorProb}" in block
-    assert "气候影响" in block
+    assert "气候分位" in block
     assert "盆地影响" in block
     assert "为什么：" not in block
     assert "气候背景组件桶" not in block
-    assert "bayes-prior-support-row" in block
+    assert "bayes-prior-core-stat" in block
     assert "bayes-prior-core" in block
-    assert block.index("const priorCoreHtml") < block.index("const top3Html")
-    assert block.index("${priorCoreHtml}") < block.index("bayes-prior-support-row")
-    assert block.index("${priorExplainHtml}") < block.index("${top3Html}")
+    # top3Html and priorExplainHtml were folded into priorCoreHtml, so the
+    # order is now inside one template: spotlight, then the Top3 cardset, then
+    # the climate/basin stat tiles.
+    assert "const top3Html" not in block
+    assert "priorExplainHtml" not in block
+    assert block.index("bayes-prior-spotlight-main") < block.index("bayes-prior-top3-cards")
+    assert block.index("bayes-prior-top3-cards") < block.index("bayes-prior-core-stat")
 
 
 def test_frontend_prior_section_falls_back_to_root_ui_snapshot_prior_distribution() -> None:
@@ -8051,7 +8101,11 @@ def test_initial_load_fast_path_defers_heavy_frontend_endpoints() -> None:
     init_end = text.index("let autoRefreshTimer", init_start)
     init_block = text[init_start:init_end]
 
-    assert "const UI_FAST_LOAD_ENABLED = true;" in text
+    # Retired, and the file says why: the summary/compact fast path could paint
+    # a partial board and hide the current market state while the snapshot was
+    # still rebuilding, so the full SSOT snapshot is the only production read
+    # path now.  The rest of this test already reads the disabled branch.
+    assert "const UI_FAST_LOAD_ENABLED = false;" in text
     assert "const UI_DEFERRED_DIAGNOSTIC_DELAY_MS = 45000;" in text
     assert "const AUTO_REFRESH_MS = 60 * 1000;" in text
     assert "const EVENT_INTEL_CHENGDU_INTRADAY_CACHE_TTL_MS = 120000;" in text
@@ -8093,15 +8147,19 @@ def test_initial_load_fast_path_defers_heavy_frontend_endpoints() -> None:
     assert "refreshEventIntelligencePanels({ forceIntraday: forceKeyRefresh });" in text
     assert "fetchJSONWithAuxiliaryStatus('latest', '/api/latest', {" in text
     assert "startLatestDateRefreshTicker(date);" in init_block
-    assert "if (!requestedDate && !UI_FAST_LOAD_ENABLED) {" in init_block
+    # Narrowed since: a date the user picked by hand is preserved too.
+    assert "if (!requestedDate && !preserveManualDate && !UI_FAST_LOAD_ENABLED) {" in init_block
     assert "const latest = await fetchLatestDateObserved();" in init_block
     assert "fetchJSON('/api/latest'" not in init_block
     assert "const skipLatestFetch = useProvidedDate || (UI_FAST_LOAD_ENABLED && silent && incremental);" in load_block
     assert "latest = await fetchLatestDateObserved();" in load_block
     assert "function summarizeUiRuntimeHealth(source)" in text
     assert "window.__lastUiSnapshotRuntimeHealth = snapshot.runtime_health;" in text
-    assert '<div class="update-combo-summary-label">UI快路径</div>' in text
-    assert '<div class="update-combo-summary-label">辅助接口</div>' in text
+    # The strip's lights are emitted by one light(label, status) helper now,
+    # not hand-written per card, and the labels were shortened to fit.  Assert
+    # the call sites: that is what decides a light exists and what it reads.
+    assert "light('UI', runtimeSummary.tone)" in text
+    assert "light('接口', auxiliarySummary.tone)" in text
     assert "recordAuxiliaryFetchStatus('station_temp', {" in text
     assert "recordAuxiliaryFetchStatus('auto_trade_trace', {" in text
     assert "fetchJSONWithAuxiliaryStatus(\n          'auto_trade_trace'," in text
@@ -8154,10 +8212,14 @@ def test_event_core_numbers_live_poll_snapshot_ssot_without_slow_fallback() -> N
     assert "function eventIntelligenceLiveSnapshotDelayMs" in text
     assert "? EVENT_INTELLIGENCE_AWC_UPDATE_REFRESH_MS" in text
     assert ": EVENT_INTELLIGENCE_LIVE_SSOT_REFRESH_MS" in text
-    assert "fetchUiSnapshotSummaryRunsPage({" in refresh_block
-    assert "includeHistory: false" in refresh_block
-    assert "includeUpcoming: true" in refresh_block
-    assert "refresh: false" in refresh_block
+    # Full, not summary: the compact fast path is retired, so the live poll
+    # reads the same snapshot the rest of the board does.
+    # Full, not summary: the compact fast path is retired, so the live poll
+    # reads the same snapshot the rest of the board does.  includeHistory /
+    # includeUpcoming went with it -- they were summary-page params.
+    assert "fetchUiSnapshotFullRunsPage({" in refresh_block
+    assert "limit: Math.max(liveLimit, UI_SNAPSHOT_FULL_LIMIT)," in refresh_block
+    assert "refresh: Boolean(options && options.force)," in refresh_block
     assert "refresh: eventIntelligenceInAwcHourlyUpdateWindow()" not in refresh_block
     assert "mergeLiveUiSnapshotItemsIntoRunsLoaded(page && page.items)" in refresh_block
     assert "rerenderFromCache({ preserveScroll: true })" in refresh_block
@@ -10065,7 +10127,7 @@ def test_ui_snapshot_soft_forecast_channels_prefers_ctp_components_over_legacy_s
     assert "wu_forecast_peak" not in channels["captured_not_included_channels"]
 
 
-def test_ui_snapshot_soft_forecast_legacy_fallback_is_retired_compat() -> None:
+def test_ui_snapshot_soft_forecast_channels_are_not_rebuilt_from_legacy_row_fields() -> None:
     payload = {}
     distribution = [
         {
@@ -10084,14 +10146,16 @@ def test_ui_snapshot_soft_forecast_legacy_fallback_is_retired_compat() -> None:
 
     channels = server._ui_snapshot_soft_forecast_channels(payload, distribution)
 
-    assert channels["legacy_evidence_boundary"]["schema"] == "legacy_evidence_boundary_v1"
-    assert channels["legacy_evidence_boundary"]["role"] == "retired_compat"
-    assert channels["legacy_evidence_boundary"]["ui_primary_allowed"] is False
-    assert channels["legacy_evidence_boundary"]["production_probability_allowed"] is False
-    assert channels["legacy_evidence_boundary"]["replacement"] == "layer_contributions.forecast_weak_likelihood"
+    # The fallback that rebuilt channels from these row fields is gone, and so
+    # is the legacy_evidence_boundary marker it used to stamp them with --
+    # test_ui_bucket_label_static asserts the UI helper must not carry that
+    # schema either.  Channels come from the committed
+    # soft_forecast_posterior_channels block or not at all; the test above
+    # covers the committed case.
+    assert channels == {}
 
 
-def test_ui_temperature_trajectory_status_marks_legacy_evidence_boundary() -> None:
+def test_ui_temperature_trajectory_status_suppresses_an_unstable_rise_rate() -> None:
     payload = {
         "weather_likelihood_features": {
             "observed_temp_c": 31.0,
@@ -10111,10 +10175,16 @@ def test_ui_temperature_trajectory_status_marks_legacy_evidence_boundary() -> No
 
     status = server._ui_temperature_trajectory_status_from_payload(payload, distribution)
 
-    assert status["temperature_trajectory_overlay_strength"] == 4.0
-    assert status["legacy_evidence_boundary"]["schema"] == "legacy_evidence_boundary_v1"
-    assert status["legacy_evidence_boundary"]["role"] == "retired_compat"
-    assert status["legacy_evidence_boundary"]["replacement"] == "layer_contributions.metar_strong_likelihood.state_evidence_trace"
+    # The overlay strength and the legacy_evidence_boundary marker both left
+    # this block; the overlay is a retired diagnostic replaced by
+    # layer_contributions.metar_strong_likelihood.  What the block does now is
+    # refuse a rise rate it cannot trust and say which check refused it.
+    assert status["temperature_trajectory_overlay_strength"] is None
+    assert "legacy_evidence_boundary" not in status
+    assert status["temperature_rise_rate_c_per_hour"] is None
+    assert status["temperature_rise_rate_trusted"] is False
+    assert status["temperature_rise_rate_na_reason"] == "unstable_temperature_rise_rate_suppressed"
+    assert "unstable_temperature_rise_rate_suppressed" in status["missing_fields"]
 
 
 def test_ui_fast_fallback_attaches_temperature_trajectory_status_from_existing_payload() -> None:
@@ -11694,131 +11764,55 @@ def test_ui_snapshot_summary_rebuilds_capital_plan_after_chengdu_overlay(tmp_pat
     assert "temperature_path_trade_follow_not_allowed" in item["target_switch_context"]["no_add_reasons"]
 
 
-def test_target_realization_plan_ignores_stale_single_bucket_selection() -> None:
+def test_target_realization_plan_is_read_not_recomputed_from_rows() -> None:
+    """The UI reads a committed plan; it does not build one.
+
+    This replaces three tests that asserted the opposite -- that the plan's
+    legs were derived here from the temperature-path distribution, from the
+    posterior SSOT target, or from a single-bucket selection.  That derivation
+    is gone and the reader says why in its own comment: strategy plans are
+    committed by the posterior transaction, never recomputed from rows or
+    environment here.  A UI that rebuilt legs from whatever rows it happened to
+    hold is exactly what decision_recompute_allowed: False forbids, so the
+    thing worth testing is the refusal and the pass-through.
+    """
+
+    committed = {
+        "version": "strong_posterior_three_leg_strategy_v2",
+        "ok": True,
+        "legs": [
+            {"role": "target", "bucket": "26°C", "side": "yes", "stake_usd": 12.0},
+        ],
+    }
     item = {
         "slug": "highest-temperature-in-chengdu-on-june-21-2026",
         "event_date": "2026-06-21",
-        "run_date": "2026-06-20",
-        "rounding_rule": "whole_degrees",
+        "target_realization_capital_plan": dict(committed),
         "distribution": [
-            {
-                "outcome": "25°C or below",
-                "q_temperature_bucket_posterior": 0.26122337983261507,
-                "best_bid": 0.52,
-                "best_ask": 0.53,
-            },
-            {
-                "outcome": "26°C",
-                "q_temperature_bucket_posterior": 0.2017124436814672,
-                "best_bid": 0.28,
-                "best_ask": 0.29,
-            },
-            {
-                "outcome": "28°C",
-                "q_temperature_bucket_posterior": 0.19966992988052046,
-                "best_bid": 0.04,
-                "best_ask": 0.05,
-                "best_bid_no": 0.94,
-                "best_ask_no": 0.95,
-            },
+            {"outcome": "25°C or below", "q_temperature_bucket_posterior": 0.3},
+            {"outcome": "26°C", "q_temperature_bucket_posterior": 0.7},
         ],
-        "target_bucket_outlook": {
-            "available": True,
-            "target_bucket": "26°C",
-            "second_target_bucket": "28°C",
-        },
     }
-
     plan = server._build_target_realization_capital_plan(item)
-    item["target_realization_capital_plan"] = plan
-    context = server.build_target_switch_context(item)
+    assert plan["legs"] == committed["legs"]
+    assert plan["ok"] is True
 
-    assert plan["ok"] is False
-    assert plan["reason"] == "posterior_ssot_fact_target_missing"
-    assert plan["target_bucket_selection_source"] == "posterior_ssot_fact_missing"
-    assert context["target_bucket"] == ""
-    assert context["candidate_bucket"] == ""
+    # A plan committed under any other version is not this contract, so it is
+    # refused rather than adapted.
+    stale = dict(item)
+    stale["target_realization_capital_plan"] = {"version": "legacy_v1", "legs": [{"role": "target"}]}
+    refused = server._build_target_realization_capital_plan(stale)
+    assert refused["ok"] is False
+    assert refused["reason"] == "committed_dynamic_three_leg_plan_missing"
+    assert refused["ui_probability_recomputed"] is False
+    assert "legs" not in refused
 
-
-def test_target_realization_plan_prefers_temperature_path_distribution_probabilities() -> None:
-    item = {
-        "slug": "highest-temperature-in-chengdu-on-june-21-2026",
-        "event_date": "2026-06-21",
-        "run_date": "2026-06-21",
-        "rounding_rule": "whole_degrees",
-        "distribution": [
-            {
-                "outcome": "25°C or below",
-                "q_temperature_bucket_posterior": 0.26122337983261507,
-                "best_bid": 0.52,
-                "best_ask": 0.53,
-            },
-            {
-                "outcome": "26°C",
-                "q_temperature_bucket_posterior": 0.2017124436814672,
-                "best_bid": 0.28,
-                "best_ask": 0.29,
-            },
-            {
-                "outcome": "28°C",
-                "q_temperature_bucket_posterior": 0.19966992988052046,
-                "best_bid": 0.04,
-                "best_ask": 0.05,
-                "best_bid_no": 0.94,
-                "best_ask_no": 0.95,
-            },
-        ],
-        "temperature_path_distribution": {
-            "available": True,
-            "target_bucket": "25°C or below",
-            "target_bucket_posterior": 0.42016291281991425,
-            "target_bucket_path_probability": 0.5,
-            "second_target_bucket": "26°C",
-            "second_target_bucket_posterior": 0.2817846528381569,
-            "second_target_bucket_path_probability": 0.2119,
-            "target": {
-                "bucket": "25°C or below",
-                "posterior": 0.42016291281991425,
-                "path_probability": 0.5,
-                "path_probability_source": "temperature_path_distribution",
-            },
-            "second_target": {
-                "bucket": "26°C",
-                "posterior": 0.2817846528381569,
-                "path_probability": 0.2119,
-                "path_probability_source": "temperature_path_distribution",
-            },
-            "freshness": {"source_stale": False, "observation_age_minutes": 29.2},
-            "reliability": {"state": "high", "label": "High", "score": 0.8115},
-            "trade_follow": {
-                "allowed": True,
-                "reason": "posterior_path_reliability_and_freshness_pass",
-            },
-            "risk_explanation": (
-                "目标 25°C or below posterior 42.02%，路径可兑现 50.0%。"
-                " 第二目标 26°C posterior 28.18%，路径可兑现 21.19%。"
-            ),
-        },
-    }
-    attach_unit_posterior_ssot_fact(
-        item,
-        target_bucket="25°C or below",
-        target_probability=0.26122337983261507,
-    )
-
-    plan = server._build_target_realization_capital_plan(item)
-    legs = {(leg["role"], leg["bucket"], leg["side"]): leg for leg in plan["legs"]}
-
-    assert plan["target_bucket"] == "25°C or below"
-    assert plan["target_posterior"] == 0.26122337983261507
-    assert plan["second_target_bucket"] == "26°C"
-    assert plan["second_target_posterior"] == 0.2017124436814672
-    assert plan["ui_risk_explanation"]["target_posterior"] == 0.26122337983261507
-    assert plan["ui_risk_explanation"]["second_target_posterior"] == 0.2017124436814672
-    assert plan["ui_risk_explanation"]["target_realization_probability"] == 0.5
-    assert plan["ui_risk_explanation"]["second_target_realization_probability"] == 0.2119
-    assert legs[("target_yes", "25°C or below", "YES")]["target_realization_path_probability"] == 0.5
-    assert legs[("second_target_yes", "26°C", "YES")]["target_realization_path_probability"] == 0.2119
+    # And with nothing committed, a full distribution buys no legs at all.
+    bare = {k: v for k, v in item.items() if k != "target_realization_capital_plan"}
+    missing = server._build_target_realization_capital_plan(bare)
+    assert missing["ok"] is False
+    assert missing["reason"] == "committed_dynamic_three_leg_plan_missing"
+    assert "legs" not in missing
 
 
 def test_temperature_path_and_capital_plan_posterior_align_to_current_distribution() -> None:
@@ -12033,64 +12027,6 @@ def test_temperature_path_posterior_sync_uses_hard_source_constrained_outlook_ro
     assert out["chengdu_intraday_summary"]["temperature_path_distribution"]["target_bucket_posterior_pct"] == 65.72
     assert out["target_realization_capital_plan"]["target_bucket"] == "33°C"
     assert out["target_realization_capital_plan"]["target_posterior"] == 0.657155398570265
-
-
-def test_target_realization_plan_does_not_fallback_when_path_distribution_probability_missing() -> None:
-    item = {
-        "slug": "highest-temperature-in-chengdu-on-june-22-2026",
-        "event_date": "2026-06-22",
-        "run_date": "2026-06-21",
-        "distribution": [
-            {
-                "outcome": "30°C",
-                "q_temperature_bucket_posterior": 0.20,
-                "peak_estimator_mu_c": 28.9,
-                "peak_estimator_sigma_c": 1.25,
-                "best_bid": 0.20,
-                "best_ask": 0.21,
-            },
-            {
-                "outcome": "31°C",
-                "q_temperature_bucket_posterior": 0.18,
-                "peak_estimator_mu_c": 28.9,
-                "peak_estimator_sigma_c": 1.25,
-                "best_bid": 0.18,
-                "best_ask": 0.19,
-            },
-        ],
-        "temperature_path_distribution": {
-            "available": True,
-            "target_bucket": "30°C",
-            "target_bucket_posterior": 0.24598122644339906,
-            "target_bucket_path_probability": None,
-            "second_target_bucket": "31°C",
-            "second_target_bucket_posterior": 0.19461077408328195,
-            "second_target_bucket_path_probability": None,
-            "freshness": {"source_stale": False, "observation_age_minutes": None},
-            "reliability": {"state": "low", "label": "Low", "score": 0.3146},
-            "error_band": {"sigma_c": 1.25, "source": "default_error_band"},
-            "trade_follow": {"allowed": False, "reason": "blocked_path_reliability_low"},
-            "risk_explanation": "路径可兑现缺失，禁止跟随。",
-        },
-    }
-    attach_unit_posterior_ssot_fact(item, target_bucket="30°C", target_probability=0.20)
-
-    plan = server._build_target_realization_capital_plan(item)
-    legs = {(leg["role"], leg["bucket"], leg["side"]): leg for leg in plan["legs"]}
-    target_leg = legs[("target_yes", "30°C", "YES")]
-    second_leg = legs[("second_target_yes", "31°C", "YES")]
-
-    assert plan["target_posterior"] == 0.20
-    assert plan["second_target_posterior"] == 0.18
-    assert target_leg["target_realization_path_probability"] is None
-    assert second_leg["target_realization_path_probability"] is None
-    assert target_leg["target_realization_reliability"] == 0.0
-    assert second_leg["target_realization_reliability"] == 0.0
-    assert target_leg["target_realization_reliability_source"] == "temperature_path_distribution_path_probability_missing"
-    assert second_leg["target_realization_reliability_source"] == "temperature_path_distribution_path_probability_missing"
-    assert plan["ui_risk_explanation"]["target_realization_probability"] is None
-    assert plan["ui_risk_explanation"]["second_target_realization_probability"] is None
-    assert plan["temperature_path_trade_follow_block_yes"] is True
 
 
 def test_ui_snapshot_summary_slim_keeps_target_realization_risk_explanation() -> None:
@@ -12626,131 +12562,6 @@ def test_most_likely_history_bucket_series_keeps_bayes_chain(tmp_path, monkeypat
     assert chain["likelihood_parts"]["temperature_trajectory"]["evidence"] == 9.0
 
 
-def test_event_run_composer_overlay_recomputes_temperature_trajectory_posterior(monkeypatch) -> None:
-    monkeypatch.setenv("PM_BAYES_TEMPERATURE_TRAJECTORY_EVIDENCE", "12")
-    rows = [
-        {
-            "outcome": "26°C",
-            "q_bayes_posterior": 1 / 3,
-            "q_temperature_bucket_posterior": 1 / 3,
-            "q_bayes_posterior_pre_observed_constraints": 1 / 3,
-            "q_temperature_bucket_posterior_pre_observed_constraints": 1 / 3,
-            "q_posterior_observed_constraints_applied": True,
-            "q_temperature_bucket_score_components": {"history": 5.0, "model": 5.0},
-        },
-        {
-            "outcome": "27°C",
-            "q_bayes_posterior": 1 / 3,
-            "q_temperature_bucket_posterior": 1 / 3,
-            "q_bayes_posterior_pre_observed_constraints": 1 / 3,
-            "q_temperature_bucket_posterior_pre_observed_constraints": 1 / 3,
-            "q_posterior_observed_constraints_applied": True,
-            "q_temperature_bucket_score_components": {"history": 5.0, "model": 5.0},
-        },
-        {
-            "outcome": "28°C",
-            "q_bayes_posterior": 1 / 3,
-            "q_temperature_bucket_posterior": 1 / 3,
-            "q_bayes_posterior_pre_observed_constraints": 1 / 3,
-            "q_temperature_bucket_posterior_pre_observed_constraints": 1 / 3,
-            "q_posterior_observed_constraints_applied": True,
-            "q_temperature_bucket_score_components": {"history": 5.0, "model": 5.0},
-        },
-    ]
-    meta = server._overlay_temperature_trajectory_posterior_for_composed_rows(
-        rows,
-        {
-            "market_var": "temperature_2m_max",
-            "observed_temp_c": 25.0,
-            "observation_hour_local": 12.0,
-            "temperature_momentum_posterior_effective_c_per_hour": 0.8,
-            "temperature_momentum_realization_state": "sustained_warming",
-            "temperature_momentum_posterior_gate_allowed": True,
-            "peak_estimator": {
-                "enabled": True,
-                "source": "test_peak_estimator",
-                "mu_c": 28.2,
-                "extrapolation_c": 28.2,
-                "sigma_c": 0.35,
-                "extrapolation_sigma_c": 0.35,
-                "hours_to_peak_window": 2.0,
-                "temperature_momentum_realization_state": "sustained_warming",
-            },
-        },
-        rounding_rule="rounded_degrees",
-    )
-
-    row_by_outcome = {row["outcome"]: row for row in rows}
-    assert meta["applied"] is True
-    assert meta["role"] == "intraday_temperature_trajectory_likelihood"
-    assert row_by_outcome["28°C"]["q_bayes_posterior"] > row_by_outcome["27°C"]["q_bayes_posterior"]
-    assert row_by_outcome["28°C"]["q_temperature_bucket_posterior"] == row_by_outcome["28°C"]["q_bayes_posterior"]
-    assert (
-        row_by_outcome["28°C"]["q_bayes_posterior_pre_observed_constraints"]
-        == row_by_outcome["28°C"]["q_bayes_posterior"]
-    )
-    assert row_by_outcome["28°C"]["q_posterior_observed_constraints_rebased_by_temperature_trajectory"] is True
-    assert row_by_outcome["28°C"]["temperature_trajectory_overlay_strength"] > 0
-    assert "q_bayes_temperature_trajectory_evidence" not in row_by_outcome["28°C"]
-    assert row_by_outcome["28°C"]["q_bayes_temperature_trajectory_enabled"] is True
-    assert row_by_outcome["28°C"]["q_bayes_temperature_trajectory_role"] == "intraday_temperature_trajectory_likelihood"
-    assert row_by_outcome["28°C"]["q_bayes_temperature_trajectory_source_class"] == "airport_temperature_path"
-    assert row_by_outcome["28°C"]["q_bayes_temperature_trajectory_weaker_than_hard_source"] is True
-    assert (
-        row_by_outcome["28°C"]["q_temperature_bucket_score_components"]["temperature_trajectory"]
-        > row_by_outcome["26°C"]["q_temperature_bucket_score_components"]["temperature_trajectory"]
-    )
-
-
-def test_event_run_composer_rebuilds_peak_hour_for_temperature_trajectory(monkeypatch) -> None:
-    monkeypatch.setenv("PM_BAYES_TEMPERATURE_TRAJECTORY_EVIDENCE", "12")
-    rows = [
-        {
-            "outcome": "26°C",
-            "q_bayes_posterior": 1 / 3,
-            "q_temperature_bucket_score_components": {"history": 5.0, "model": 5.0},
-        },
-        {
-            "outcome": "27°C",
-            "q_bayes_posterior": 1 / 3,
-            "q_temperature_bucket_score_components": {"history": 5.0, "model": 5.0},
-        },
-        {
-            "outcome": "28°C",
-            "q_bayes_posterior": 1 / 3,
-            "q_temperature_bucket_score_components": {"history": 5.0, "model": 5.0},
-        },
-    ]
-    meta = server._overlay_temperature_trajectory_posterior_for_composed_rows(
-        rows,
-        {
-            "market_var": "temperature_2m_max",
-            "observed_temp_c": 25.0,
-            "forecast_peak_temp": 28.0,
-            "expected_peak_hour_local": 16.0,
-            "temperature_momentum_latest_observation_at": "2026-06-24T03:00:00+00:00",
-            "temperature_momentum_posterior_effective_c_per_hour": 0.8,
-            "temperature_momentum_realization_state": "sustained_warming",
-            "temperature_momentum_posterior_gate_allowed": True,
-            "peak_estimator": {
-                "enabled": False,
-                "source": "insufficient_peak_estimator_features",
-                "has_observed_temp": True,
-                "has_forecast_peak": True,
-                "has_hour_local": False,
-            },
-        },
-        rounding_rule="rounded_degrees",
-        event_tz="Asia/Shanghai",
-    )
-
-    assert meta["applied"] is True
-    assert meta["status"] == "enabled"
-    assert rows[2]["temperature_trajectory_overlay_strength"] > 0
-    assert "q_bayes_temperature_trajectory_evidence" not in rows[2]
-    assert rows[2]["q_bayes_temperature_trajectory_source"]
-
-
 def test_weather_likelihood_compact_downgrades_one_hour_awc_temperature_momentum_gate() -> None:
     compact = server._compact_weather_likelihood_features_for_ui(
         {
@@ -12886,104 +12697,6 @@ def test_awc_momentum_metadata_normalizer_drops_subhour_rate_without_requested_h
     assert normalized["temperature_momentum_effective_windows"] == "1h"
     assert normalized["temperature_momentum_posterior_confirmed_windows"] == "1h"
     assert "temperature_momentum_30m_c_per_hour" not in normalized
-
-
-def test_final_temperature_trajectory_overlay_keeps_observed_hard_zero(monkeypatch) -> None:
-    monkeypatch.setenv("PM_BAYES_TEMPERATURE_TRAJECTORY_EVIDENCE", "12")
-    monkeypatch.setenv("PM_TEMPERATURE_MOMENTUM_CONTEXT_POSTERIOR_GATE_MIN_C_PER_HOUR", "0.45")
-    rows = [
-        {
-            "outcome": "31°C",
-            "q_bayes_posterior": 0.25,
-            "q_temperature_bucket_posterior": 0.25,
-            "q_temperature_bucket_score_components": {"history": 4.0, "model": 4.0},
-        },
-        {
-            "outcome": "32°C",
-            "q_bayes_posterior": 0.25,
-            "q_temperature_bucket_posterior": 0.25,
-            "q_temperature_bucket_score_components": {"history": 4.0, "model": 4.0},
-        },
-        {
-            "outcome": "33°C",
-            "q_bayes_posterior": 0.25,
-            "q_temperature_bucket_posterior": 0.25,
-            "q_temperature_bucket_score_components": {"history": 4.0, "model": 4.0},
-        },
-        {
-            "outcome": "34°C",
-            "q_bayes_posterior": 0.25,
-            "q_temperature_bucket_posterior": 0.25,
-            "q_temperature_bucket_score_components": {"history": 4.0, "model": 4.0},
-        },
-    ]
-    features = {
-        "market_var": "temperature_2m_max",
-        "observed_temp_c": 33.0,
-        "observed_temp_source": "zuuu_metar_raw_awc",
-        "observed_today_max_c": 33.0,
-        "observed_today_max_source": "zuuu_metar_raw_awc",
-        "observed_today_max_trusted": True,
-        "observation_hour_local": 14.5,
-        "zuuu_metar_raw_awc_today_max_c": 33.0,
-        "zuuu_metar_raw_awc_today_max_at": "2026-06-29T08:00:00+00:00",
-        "zuuu_metar_raw_awc_latest_at": "2026-06-29T08:00:00+00:00",
-        "zuuu_metar_raw_awc_fetched_at": "2026-06-29T08:45:00+00:00",
-        "temperature_momentum_source": "zuuu_metar_raw_awc",
-        "temperature_momentum_available_horizons": "12h,6h,3h,2h,1h",
-        "temperature_momentum_12h_c_per_hour": 0.65,
-        "temperature_momentum_6h_c_per_hour": 1.1,
-        "temperature_momentum_3h_c_per_hour": 0.9,
-        "temperature_momentum_2h_c_per_hour": 0.8,
-        "temperature_momentum_1h_c_per_hour": 0.0,
-        "temperature_momentum_realization_state": "context_warming_watch",
-        "temperature_momentum_context_effective_c_per_hour": 0.88,
-        "temperature_momentum_context_warming_watch": True,
-        "peak_estimator": {
-            "enabled": True,
-            "source": "kalman_observed_forecast_peak",
-            "mu_c": 33.0,
-            "sigma_c": 0.58,
-            "hours_to_peak_window": 2.5,
-            "temperature_momentum_realization_state": "context_warming_watch",
-            "temperature_momentum_context_effective_c_per_hour": 0.88,
-        },
-    }
-    item = {
-        "slug": "chengdu-high-temperature-on-june-29",
-        "station_id": "ZUUU",
-        "city": "Chengdu",
-        "market_var": "temperature_2m_max",
-        "rounding_rule": "rounded_degrees",
-        "distribution": rows,
-        "weather_likelihood_features": features,
-    }
-
-    changed = server._materialize_final_temperature_trajectory_overlay_for_fact_write(
-        item,
-        rows,
-        features,
-        slug=item["slug"],
-        event_date="2026-06-29",
-        fact_as_of="2026-06-29T08:45:00+00:00",
-        market_var="temperature_2m_max",
-        rounding_rule="rounded_degrees",
-        event_tz="Asia/Shanghai",
-        source="test.final_distribution",
-    )
-
-    by_outcome = {row["outcome"]: row for row in rows}
-    assert changed is True
-    assert by_outcome["31°C"]["temperature_trajectory_overlay_strength"] > 0
-    assert "q_bayes_temperature_trajectory_evidence" not in by_outcome["31°C"]
-    assert by_outcome["31°C"]["q_bayes_temperature_trajectory_realization_state"] == "context_warming_watch"
-    assert by_outcome["31°C"]["q_temperature_bucket_posterior"] == 0.0
-    assert by_outcome["32°C"]["q_temperature_bucket_posterior"] == 0.0
-    assert by_outcome["31°C"]["q_posterior_observed_constraints_hard_zero"] is True
-    assert by_outcome["32°C"]["q_posterior_observed_constraints_hard_zero"] is True
-    assert by_outcome["33°C"]["q_temperature_bucket_posterior"] > 0
-    assert by_outcome["34°C"]["q_temperature_bucket_posterior"] > 0
-    assert item["hard_source_posterior_override_applied"] is True
 
 
 def test_awc_fact_refresh_drops_stale_subhour_temperature_momentum() -> None:
@@ -14667,6 +14380,14 @@ def test_refresh_awc_fact_fast_trade_write_compacts_heavy_ui_payload(
     for rows_key in ("distribution", "rows"):
         for distribution_row in payload[rows_key]:
             for key in heavy_row:
+                if key in server._FAST_TRADE_UI_SNAPSHOT_KEEP_ROW_KEYS and key in distribution_row:
+                    # Kept on purpose -- the frontend contract needs it -- but
+                    # rebuilt compact, so what must not survive is the blob
+                    # that came in, not the key.
+                    assert heavy_marker not in json.dumps(
+                        distribution_row[key], ensure_ascii=False
+                    )
+                    continue
                 assert key not in distribution_row
     assert payload["fact_provenance"]["awc_fast_trade_fact_write"]["purpose"] == (
         "trade_path_first_ui_rich_fields_deferred"

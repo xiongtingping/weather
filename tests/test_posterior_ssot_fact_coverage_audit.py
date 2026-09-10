@@ -31,10 +31,10 @@ def _available_ssot_payload(target_bucket: str = "29°C or below") -> dict:
             "state": "available",
             "fact_snapshot_id": "fact_abc",
             "posterior_run_id": "post_abc",
-            "production_model_family": "v3.1",
-            "production_model_version": "v3.1_multimodel_allday",
+            "production_model_family": "joint_weak_physical_strong",
+            "production_model_version": "joint_weak_physical_strong_composer_v1",
             "production_model_ready": True,
-            "production_probability_policy": "v3.1_only_fail_closed",
+            "production_probability_policy": "unique_joint_weak_physical_strong_only_fail_closed",
             "legacy_model_fallback_allowed": False,
             "target_bucket": target_bucket,
             "target_probability": 0.6,
@@ -151,7 +151,7 @@ def test_coverage_audit_accepts_posterior_ssot_target_at_or_above_hard_floor() -
     assert result["issues"] == []
 
 
-def test_coverage_audit_rejects_available_fact_without_v31_identity() -> None:
+def test_coverage_audit_rejects_available_fact_without_production_identity() -> None:
     payload = _available_ssot_payload(target_bucket="33°C")
     for key in (
         "production_model_family",
@@ -165,8 +165,8 @@ def test_coverage_audit_rejects_available_fact_without_v31_identity() -> None:
     result = audit.audit_fact_payload(payload)
 
     assert result["ok"] is False
-    assert "posterior_ssot_fact_production_model_family_not_v31" in result["issues"]
-    assert "posterior_ssot_fact_production_model_version_not_v31" in result["issues"]
+    assert "posterior_ssot_fact_production_model_family_not_production" in result["issues"]
+    assert "posterior_ssot_fact_production_model_version_not_production" in result["issues"]
     assert "posterior_ssot_fact_production_probability_policy_invalid" in result["issues"]
     assert "posterior_ssot_fact_legacy_model_fallback_not_false" in result["issues"]
 

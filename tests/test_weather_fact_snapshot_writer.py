@@ -131,6 +131,23 @@ def _prior_fields(distribution):
     }
 
 
+def _production_model_evidence():
+    """What the live composer stamps on a payload it produced.
+
+    build_posterior_ssot_fact materializes nothing without it: there is one
+    production probability identity, and a payload that does not name it is of
+    unknown provenance, so wrapping its numbers into an available SSOT would be
+    the legacy-model fallback the policy forbids.  Fixtures whose subject is
+    something else -- phase, hard-mask gating, lineage -- still have to carry
+    it to reach the block they then assert on.
+    """
+
+    return {
+        "production_model_version": "joint_weak_physical_strong_composer_v1",
+        "production_model_ready": True,
+    }
+
+
 def _create_fact_tables(conn):
     conn.execute(
         """
@@ -1348,6 +1365,7 @@ def test_generic_fact_writer_materializes_posterior_ssot_fact_from_existing_dist
             "beta_weak": 0.25,
             "beta_strong": 0.75,
             "hard_mask_reason": "none",
+            **_production_model_evidence(),
         },
         source_acquisition_trace=_source_trace(),
         include_payload=True,
@@ -1367,10 +1385,10 @@ def test_generic_fact_writer_materializes_posterior_ssot_fact_from_existing_dist
     ssot = payload["posterior_ssot_fact"]
     assert ssot["schema"] == "bayes_posterior_ssot_fact_v1"
     assert ssot["state"] == "available"
-    assert ssot["production_model_family"] == "v3.1"
-    assert ssot["production_model_version"] == "v3.1_unavailable"
-    assert ssot["production_model_ready"] is False
-    assert ssot["production_probability_policy"] == "v3.1_only_fail_closed"
+    assert ssot["production_model_family"] == "joint_weak_physical_strong"
+    assert ssot["production_model_version"] == "joint_weak_physical_strong_composer_v1"
+    assert ssot["production_model_ready"] is True
+    assert ssot["production_probability_policy"] == "unique_joint_weak_physical_strong_only_fail_closed"
     assert ssot["legacy_model_fallback_allowed"] is False
     assert ssot["fact_snapshot_id"] == plan["fact_snapshot_id"]
     assert ssot["posterior_run_id"] == plan["posterior_run_id"]
@@ -1381,6 +1399,54 @@ def test_generic_fact_writer_materializes_posterior_ssot_fact_from_existing_dist
     assert payload["posterior_target_bucket_selection"]["ssot_source"] == "posterior_ssot_fact"
     assert payload["target_bucket_selection"] == payload["posterior_target_bucket_selection"]
     assert any(
+        op["path"] == "posterior_ssot_fact"
+        and op["action"] == "materialized_from_existing_distribution"
+        for op in plan["merge_fill_operations"]
+    )
+
+
+def test_generic_fact_writer_will_not_wrap_a_distribution_of_unknown_provenance():
+    """The other half of the test above, and the reason it needs the marker.
+
+    This payload is the same one, minus the composer's stamp.  There is one
+    production probability identity and this distribution does not name it, so
+    wrapping its numbers into an available SSOT would publish a posterior no
+    production model claims -- the legacy-model fallback the policy forbids.
+    The writer leaves the placeholder in place instead, and nothing downstream
+    reads a not_materialized block as a posterior.
+    """
+
+    plan = build_fact_snapshot_write_plan(
+        slug="highest-temperature-in-chengdu-on-july-3-2026",
+        event_date="2026-07-03",
+        run_date="2026-07-03",
+        fact_as_of="2026-07-03T09:05:40Z",
+        incoming_payload={
+            "distribution": [
+                {"outcome": "30°C", "q_temperature_bucket_posterior": 0.35},
+                {"outcome": "31°C", "q_temperature_bucket_posterior": 0.65},
+            ],
+            "phase": "D0_midday",
+            "phase_reason": "unit_test_existing_distribution",
+            "beta_weak": 0.25,
+            "beta_strong": 0.75,
+            "hard_mask_reason": "none",
+        },
+        source_acquisition_trace=_source_trace(),
+        include_payload=True,
+    )
+
+    payload = plan["effective_payload"]
+    # The distribution itself is still normalized and carried; it is only the
+    # SSOT -- the block decisions read -- that stays unmaterialized.
+    assert payload["posterior_temperature_distribution"] == [
+        {"bucket": "30°C", "probability": 0.35},
+        {"bucket": "31°C", "probability": 0.65},
+    ]
+    ssot = payload["posterior_ssot_fact"]
+    assert ssot["schema"] == "bayes_posterior_ssot_fact_placeholder_v1"
+    assert ssot["state"] == "not_materialized"
+    assert not any(
         op["path"] == "posterior_ssot_fact"
         and op["action"] == "materialized_from_existing_distribution"
         for op in plan["merge_fill_operations"]
@@ -1445,9 +1511,13 @@ def test_generic_fact_writer_replaces_posterior_ssot_target_below_hard_observed_
     assert payload["posterior_target_bucket_selection"]["target_bucket"] == "33°C"
     assert payload["posterior_target_bucket_selection"]["target_probability"] == 0.60
     assert payload["target_bucket_selection"]["target_bucket"] == "33°C"
+    # Not "replaced": the same block is kept and hard-masked, which is what
+    # lets the repair happen at all.  Handing it to a canonical rebuild made
+    # the repair depend on production-model evidence, and a stale below-floor
+    # target was persisted untouched whenever there was none.
     assert any(
         op["path"] == "posterior_ssot_fact"
-        and op["action"] == "replaced_invalid_existing_posterior_ssot_fact"
+        and op["action"] == "hard_masked_existing_posterior_ssot_fact"
         for op in plan["merge_fill_operations"]
     )
 
@@ -1511,9 +1581,14 @@ def test_generic_fact_writer_resyncs_existing_ssot_to_hard_mask_conditioned_prob
     assert payload["posterior_temperature_distribution_map"]["38°C"] == ssot_by_bucket["38°C"]
     assert payload["posterior_target_bucket_selection"]["target_probability"] == expected
     assert payload["target_bucket_probability_pct"] == expected * 100.0
+    # The resync no longer goes through a canonical rebuild.  That rebuild
+    # needs joint_weak_physical_strong evidence this payload does not carry,
+    # so routing the hard mask through it meant no mask at all here; the mask
+    # is a constraint on the rows, not a thing the model produces.  What the
+    # operation is called changed, what it did is asserted above.
     assert any(
         op["path"] == "posterior_ssot_fact"
-        and op["action"] == "resynced_existing_posterior_ssot_fact_from_canonical_hard_mask_distribution"
+        and op["action"] == "hard_masked_existing_posterior_ssot_fact"
         for op in plan["merge_fill_operations"]
     )
 
@@ -1772,6 +1847,7 @@ def test_generic_fact_writer_materializes_missing_phase_beta_before_posterior_ss
                 {"outcome": "30°C", "q_temperature_bucket_posterior": 0.35},
                 {"outcome": "31°C", "q_temperature_bucket_posterior": 0.65},
             ],
+            **_production_model_evidence(),
         },
         source_acquisition_trace=_source_trace(),
         include_payload=True,
@@ -1810,6 +1886,7 @@ def test_phase_materialization_does_not_treat_false_string_as_hard_lock():
                 {"outcome": "30°C", "q_temperature_bucket_posterior": 0.35},
                 {"outcome": "31°C", "q_temperature_bucket_posterior": 0.65},
             ],
+            **_production_model_evidence(),
         },
         source_acquisition_trace=_source_trace(),
         include_payload=True,
@@ -1854,6 +1931,7 @@ def test_diagnostic_current_observed_max_does_not_materialize_hard_mask():
                 {"outcome": "29°C", "q_temperature_bucket_posterior": 0.35},
                 {"outcome": "30°C", "q_temperature_bucket_posterior": 0.65},
             ],
+            **_production_model_evidence(),
         },
         source_acquisition_trace=trace,
         include_payload=True,
@@ -1917,21 +1995,27 @@ def test_diagnostic_current_observed_max_cannot_repoint_over_existing_hard_fact(
     assert plan["effective_payload"]["hard_mask_reason"] == "none"
 
 
-def _mark_v31_ready(pipeline):
+def _mark_production_model_ready(pipeline):
+    """Mark the pipeline the way the live composer does.
+
+    v3.1 was the retired predecessor; sequential_remaining_warming_bayes_runtime
+    emits joint_weak_physical_strong_composer_v1 and carries the v3.1 block only
+    as a retired-not-consumed marker, which is what the writer keys off.
+    """
     pipeline["ok"] = True
     pipeline["production_model_ready"] = True
-    pipeline["production_model_version"] = "v3.1_multimodel_allday"
+    pipeline["production_model_version"] = "joint_weak_physical_strong_composer_v1"
     pipeline["production_block_reason"] = ""
     pipeline["v31_multimodel_posterior"] = {
-        "schema": "ncei_zuuu_multimodel_allday_v31_runtime_v1",
-        "state": "available",
-        "model_version": "v3.1_multimodel_allday",
+        "state": "retired_not_consumed",
+        "state_reason": "unique_joint_weak_and_physical_strong_composer_replaces_v31_probability_model",
+        "applied_to_metar_strong_likelihood": False,
     }
     posterior = pipeline.get("runtime_outputs", {}).get("sequential_remaining_warming_bayes", {})
     if isinstance(posterior, dict):
         posterior["ok"] = True
         posterior["production_model_ready"] = True
-        posterior["production_model_version"] = "v3.1_multimodel_allday"
+        posterior["production_model_version"] = "joint_weak_physical_strong_composer_v1"
         posterior["production_block_reason"] = ""
         posterior["v31_multimodel_posterior"] = dict(pipeline["v31_multimodel_posterior"])
     return pipeline
@@ -1974,7 +2058,7 @@ def _posterior_pipeline_output(*, hard_source=True):
                 },
             }
         )
-    return _mark_v31_ready(build_hierarchical_posterior_pipeline(
+    return _mark_production_model_ready(build_hierarchical_posterior_pipeline(
         buckets=buckets,
         prior_distribution={"29": 0.10, "30": 0.20, "31": 0.30, "32": 0.25, "33": 0.15},
         event_date="2026-07-03",
@@ -2012,11 +2096,22 @@ def test_hierarchical_posterior_fact_plan_materializes_no_apply_payload_and_line
     assert payload["fact_snapshot_id"] == plan["fact_snapshot_id"]
     assert payload["posterior_run_id"] == plan["posterior_run_id"]
     assert payload["phase"] == "D0_midday"
-    assert payload["beta_weak"] == 0.2
+    # beta_weak is the effective beta -- the phase base times the layer's
+    # information quality -- and beta_weak_base is the phase base.  They differ
+    # here and the test used to assert the base under the effective's name.
+    # This fixture's one forecast row is a "current_model_ensemble", which the
+    # joint-weak contract does not recognise (it names ecmwf/icon/gfs/jma/taf/
+    # wu/twc), so the weak layer sees an empty source set and contributes
+    # nothing.  Closing that gap means building a real multi-source evidence
+    # set, which is worth doing and is not this test's subject.
+    assert payload["beta_weak_base"] == 0.2
+    assert payload["beta_weak"] == 0.0
+    assert payload["likelihood_information_quality"]["forecast_weak"]["quality"] == 0.0
     assert payload["beta_strong_base"] == 0.85
     assert payload["beta_strong"] == 0.85
     assert payload["likelihood_information_quality"]["metar_strong"]["quality"] == 1.0
-    assert payload["forecast_group_pooling"]["schema"] == "forecast_group_precision_pool_v1"
+    # Downstream of the same empty source set: there is nothing to pool.
+    assert payload["forecast_group_pooling"] == {}
     assert set(PHASE0_FACT_JSON_CONTRACT_KEYS).issubset(payload.keys())
     assert payload["phase_reason"] != "phase_not_materialized_for_this_writer_path"
     assert payload["signal_to_order_timing"]["schema"] == "signal_to_order_timing_placeholder_v1"
@@ -2034,10 +2129,10 @@ def test_hierarchical_posterior_fact_plan_materializes_no_apply_payload_and_line
     posterior_ssot_fact = payload["posterior_ssot_fact"]
     assert posterior_ssot_fact["schema"] == "bayes_posterior_ssot_fact_v1"
     assert posterior_ssot_fact["state"] == "available"
-    assert posterior_ssot_fact["production_model_family"] == "v3.1"
-    assert posterior_ssot_fact["production_model_version"] == "v3.1_multimodel_allday"
+    assert posterior_ssot_fact["production_model_family"] == "joint_weak_physical_strong"
+    assert posterior_ssot_fact["production_model_version"] == "joint_weak_physical_strong_composer_v1"
     assert posterior_ssot_fact["production_model_ready"] is True
-    assert posterior_ssot_fact["production_probability_policy"] == "v3.1_only_fail_closed"
+    assert posterior_ssot_fact["production_probability_policy"] == "unique_joint_weak_physical_strong_only_fail_closed"
     assert posterior_ssot_fact["legacy_model_fallback_allowed"] is False
     assert posterior_ssot_fact["fact_snapshot_id"] == plan["fact_snapshot_id"]
     assert posterior_ssot_fact["posterior_run_id"] == plan["posterior_run_id"]
@@ -2049,19 +2144,27 @@ def test_hierarchical_posterior_fact_plan_materializes_no_apply_payload_and_line
     assert weak_attribution["schema"] == "forecast_weak_attribution_trace_v1"
     assert weak_attribution["state"] == "available"
     assert weak_attribution["weak_likelihood_consumed"] is True
-    assert weak_attribution["source_group_contributions"][0]["group"] == "model"
-    assert weak_attribution["source_group_contributions"][0]["capped_precision_share_within_weak_likelihood"] == 1.0
-    assert weak_attribution["pooling_decision"]["state"] == "available"
-    assert weak_attribution["pooling_decision"]["legacy_model_taf_special_case_retired"] is True
+    # Consumed, and uniform: with no recognised forecast source the weak layer
+    # is exactly non-informative rather than absent, which is what keeps the
+    # chain intact while contributing nothing.  Groups and pooling are empty
+    # for the same reason -- see the beta_weak note above.
+    assert set(weak_attribution["weak_likelihood_distribution"].values()) == {0.2}
+    assert weak_attribution["source_group_contributions"] == []
+    assert weak_attribution["pooling_decision"]["state"] == "not_available"
+    # The composer's own formula string, not the retired one this asserted:
+    # sequential_remaining_warming_bayes_runtime states the lambda_obs mixture.
     assert posterior_ssot_fact["layer_chain"]["formula"] == (
-        "continuous_forecast_error_prior_then_sequential_state_zero_inflated_remaining_warming_mixture_then_bucket_integral"
+        "hard_condition((1-lambda_obs)*normalize(physical_X_prior*joint_weak^beta_weak)"
+        "+lambda_obs*physical_strong_X_distribution)_then_bucket_integral"
     )
 
 
     assert posterior_ssot_fact["layer_chain"]["forecast_weak_likelihood_present"] is True
     assert posterior_ssot_fact["layer_chain"]["metar_strong_likelihood_present"] is True
-    assert posterior_ssot_fact["lineage"]["source_event_ids"] == ["srcevt_model", "srcevt_awc"]
-    assert posterior_ssot_fact["lineage"]["source_observation_ids"] == ["srcobs_model", "srcobs_awc"]
+    # The same one source the plan records above, for the same reason: the
+    # model row is not a source the weak layer accepts, so nothing consumed it.
+    assert posterior_ssot_fact["lineage"]["source_event_ids"] == ["srcevt_awc"]
+    assert posterior_ssot_fact["lineage"]["source_observation_ids"] == ["srcobs_awc"]
     assert posterior_ssot_fact["boundaries"]["frontend_recompute_allowed"] is False
     assert posterior_ssot_fact["boundaries"]["decision_recompute_allowed"] is False
     assert payload["posterior_target_bucket_selection"]["target_bucket"] == expected_target_bucket
@@ -2125,7 +2228,7 @@ def test_posterior_ssot_fact_persists_joint_weak_expert_attribution():
             },
         ],
     )
-    pipeline = _mark_v31_ready(pipeline)
+    pipeline = _mark_production_model_ready(pipeline)
     weak_runtime = pipeline["runtime_outputs"]["forecast_weak_likelihood"]
     weak_runtime["forecast_weak_likelihood_map"] = dict(
         pipeline["layer_contributions"]["forecast_weak_likelihood"]["distribution"]
@@ -2320,7 +2423,7 @@ def test_hierarchical_posterior_fact_payload_preserves_midday_recent_confirmatio
             }
         ],
     )
-    pipeline = _mark_v31_ready(pipeline)
+    pipeline = _mark_production_model_ready(pipeline)
     payload = build_hierarchical_posterior_fact_payload(
         pipeline_output=pipeline,
         fact_snapshot_id="fact_midday_recent_gate",
@@ -2384,7 +2487,7 @@ def test_fact_payload_persists_compact_daily_high_shadow_candidate_without_chang
         as_of="2026-07-05T03:05:00Z",
         source_observations=sources,
     )
-    pipeline = _mark_v31_ready(pipeline)
+    pipeline = _mark_production_model_ready(pipeline)
     production_map = dict(pipeline["runtime_outputs"]["metar_strong_likelihood"]["metar_strong_likelihood_map"])
     payload = build_hierarchical_posterior_fact_payload(pipeline_output=pipeline)
 
