@@ -1642,6 +1642,11 @@ def _select_minimum_crps_subset(
     # a distance-fitted table through the claim lookup gates it on math
     # production will not serve.
     band_axis: str = BAND_AXIS_CLAIM,
+    # Score exactly this subset and no other.  The contest still runs the
+    # same holdout through the same served blend; only the enumeration is
+    # narrowed, so a pinned subset is gated on precisely the math a contested
+    # one is.  See ``_served_cross_identities`` for why a caller pins.
+    pinned_subset: Sequence[str] | None = None,
 ) -> tuple[dict[str, float], dict[str, Any]]:
     """Choose the subset of ready systems whose blend scores best out of sample.
 
@@ -1665,12 +1670,22 @@ def _select_minimum_crps_subset(
     ordered = sorted(ready_system_ids)
     if len(ordered) > 8:
         raise ContractError("cross_native_ensemble_subset_space_too_large")
+    if pinned_subset is not None:
+        pinned = sorted(str(value) for value in pinned_subset)
+        if not pinned or not set(pinned).issubset(ordered):
+            raise ContractError("cross_native_ensemble_pinned_subset_not_ready")
+        masks: Sequence[int] = [
+            sum(1 << index for index, system_id in enumerate(ordered)
+                if system_id in set(pinned))
+        ]
+    else:
+        masks = range(1, 1 << len(ordered))
     scored: list[dict[str, Any]] = []
     best: tuple[Any, ...] | None = None
     best_weights: dict[str, float] | None = None
     best_weight_rule = SEAT_WEIGHT_RULE_INVERSE_RMSE
     best_entry: dict[str, Any] | None = None
-    for mask in range(1, 1 << len(ordered)):
+    for mask in masks:
         subset = [
             ordered[index]
             for index in range(len(ordered))
@@ -1804,7 +1819,10 @@ def _select_minimum_crps_subset(
         len(row["system_ids"]),
     ))
     receipt = {
-        "rule": "MIN_CRPS_EXACT_SHARED_HOLDOUT_SUBSET_V1",
+        "rule": (
+            "SERVED_SET_REFIT_V1" if pinned_subset is not None
+            else "MIN_CRPS_EXACT_SHARED_HOLDOUT_SUBSET_V1"
+        ),
         # Which rule divided the winner's weight.  A scope that fell back to
         # inverse RMSE looks identical in the weights alone, and the reason it
         # fell back -- too few shared days for a covariance -- is exactly what
@@ -2323,6 +2341,107 @@ def _cycle_variant_groups(
                 },
             ))
     return expanded
+
+
+# How far back a scope's last committed decision may sit and still name the
+# set this build refits.  A served scope decides many times a day; one that
+# has not decided in three days is not being served, and its set is not owed
+# a twin.  The bound is what lets the lookup seek the recency index instead of
+# walking a station's whole history (0.7 ms against 110 ms, measured
+# 2026-09-10 on KAUS).
+SERVED_SET_LOOKBACK_DAYS = 3
+
+
+def _served_cross_identities(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    as_of_utc: str,
+) -> dict[tuple[str, str], tuple[tuple[str, ...], dict[str, str]]]:
+    """The exact (system set, fitted cycle map) each scope is serving now.
+
+    Why the build refits these beside the contest's own pick.  The serving
+    sort prefers, before anything else, an activation whose system set equals
+    the packet's and whose fitted cycles need no rider -- and a new fit can
+    only satisfy both by being fitted on exactly today's packet.  The contest
+    fits what it chooses, which is a pair 92-97% of the time (2026-08-24 to
+    09-10, every day), under the cycles it saw.  So whenever an older row
+    happens to match today's packet exactly it outranks every newer fit for
+    its whole thirty-day window, and anything only newer fits carry -- the
+    centre/width pin that reached the fleet on 2026-09-04, the band axis on
+    09-07 -- never reaches that scope.  Measured 2026-09-10: 21 of 142 P0
+    scopes were serving 08-25..09-03 rows without the width layer while
+    tagged successors were minted for them daily; 15 because the contest had
+    not chosen that set since, 6 because the tagged fit of that set carried
+    riders.  The same mechanism held the band axis at 70% of the fleet.
+
+    Refitting the served identity gives it a tagged twin.  The twin ties the
+    old row on set and riders and beats it on freshness, so the pin arrives
+    the next day without the sort, the contest or any membership changing.
+
+    Keyed by the scope the compile actually served under -- ``season_bin``
+    and ``training_lead_bucket`` from the lineage -- and read from the
+    artifact the decision pinned, not the packet: the packet's cycles are
+    today's capture, the artifact's are the pairing the calibration was
+    fitted under, and it is the latter the sort compares.  Fails soft to
+    empty on any store without the tables: a replay or a fixture is not a
+    station with a served set.
+    """
+
+    try:
+        since = (
+            datetime.fromisoformat(as_of_utc.replace("Z", "+00:00"))
+            - timedelta(days=SERVED_SET_LOOKBACK_DAYS)
+        ).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        rows = conn.execute(
+            "SELECT lineage_json FROM basket_probability_envelope"
+            " WHERE station_id=? AND stage='P0' AND state='COMMITTED'"
+            " AND decision_at_utc>=?"
+            " ORDER BY decision_at_utc DESC",
+            (str(station_id).strip().upper(), since),
+        ).fetchall()
+    except sqlite3.Error:
+        return {}
+    served: dict[tuple[str, str], tuple[tuple[str, ...], dict[str, str]]] = {}
+    seen_scopes: set[tuple[str, str]] = set()
+    for (lineage_json,) in rows:
+        try:
+            lineage = json.loads(str(lineage_json or "{}"))
+        except ValueError:
+            continue
+        scope = (
+            str(lineage.get("season_bin") or ""),
+            str(lineage.get("training_lead_bucket") or ""),
+        )
+        if not all(scope) or scope in seen_scopes:
+            continue
+        seen_scopes.add(scope)
+        artifact_sha = str(
+            lineage.get("native_cross_ensemble_artifact_sha256") or ""
+        )
+        if not artifact_sha:
+            continue
+        try:
+            artifact = conn.execute(
+                "SELECT ensemble_system_ids_json, run_cycle_by_system_json"
+                " FROM calibration_cross_native_ensemble_artifact"
+                " WHERE content_sha256=?",
+                (artifact_sha,),
+            ).fetchone()
+            if artifact is None:
+                continue
+            system_ids = tuple(sorted(
+                str(value) for value in json.loads(str(artifact[0]))
+            ))
+            cycles = {
+                str(key): str(value)
+                for key, value in json.loads(str(artifact[1] or "{}")).items()
+            }
+        except (sqlite3.Error, ValueError, TypeError):
+            continue
+        if len(system_ids) >= 2 and set(cycles) == set(system_ids):
+            served[scope] = (system_ids, cycles)
+    return served
 
 
 def _historical_transport_scope_allowed(
@@ -3802,7 +3921,18 @@ def build_native_ensemble_oos(
         **DEFAULT_FAMILY_WEIGHT_CAPS,
         **dict(family_weight_caps or {}),
     }
-    cohort_tasks: list[tuple[str, str, Any, Any, Any]] = []
+    # What each scope is serving right now, so the identity the sort keeps
+    # choosing gets refitted beside the contest's pick.  A pinned historical
+    # replay has no "now" and asks for none.
+    served_identities = (
+        _served_cross_identities(
+            conn, station_id=station, as_of_utc=as_of_utc
+        )
+        if historical_event_date_cutoff is None
+        else {}
+    )
+    cohort_tasks: list[tuple[str, str, Any, Any, Any, Any]] = []
+    served_set_tasks: list[tuple[str, str, Any, Any, Any, Any]] = []
     for (
         season_bin,
         lead_bucket,
@@ -3837,8 +3967,41 @@ def build_native_ensemble_oos(
             allowed_system_ids=system_mask,
         ):
             cohort_tasks.append(
-                (season_bin, lead_bucket, system_rows, ready_rows, cohort)
+                (season_bin, lead_bucket, system_rows, ready_rows, cohort,
+                 None)
             )
+            # The served identity rides this cohort only if the cohort can
+            # actually produce it: every served system ready here, at the
+            # cycle it was fitted under, and inside any mask the caller set.
+            served = served_identities.get((season_bin, lead_bucket))
+            if served is None:
+                continue
+            served_ids, served_cycles = served
+            cohort_cycles = {
+                system_id: run_cycle
+                for system_id, run_cycle, _evaluation in cohort[1]
+            }
+            if (
+                set(served_ids).issubset(cohort_cycles)
+                and all(
+                    cohort_cycles[system_id] == served_cycles[system_id]
+                    for system_id in served_ids
+                )
+                and (
+                    system_mask is None
+                    or set(served_ids).issubset(
+                        {str(value) for value in system_mask}
+                    )
+                )
+            ):
+                served_set_tasks.append(
+                    (season_bin, lead_bucket, system_rows, ready_rows,
+                     cohort, served_ids)
+                )
+    # Served-set refits run after the contest so a refit whose set the
+    # contest already chose can be skipped before any of the work below.
+    cohort_tasks.extend(served_set_tasks)
+    contest_pick_by_cohort: dict[tuple[Any, ...], tuple[str, ...]] = {}
     # One candidate attempt per cohort.  Flattened into a task list rather
     # than nested inside the scope loop so the body below reads the same as
     # it did when a scope produced exactly one cohort.
@@ -3848,8 +4011,25 @@ def build_native_ensemble_oos(
         system_rows,
         ready_rows,
         selected_cohort,
+        pinned_subset,
     ) in cohort_tasks:
         common_holdout, selected_ready_rows = selected_cohort
+        cohort_key = (
+            season_bin,
+            lead_bucket,
+            tuple(common_holdout),
+            tuple(sorted(
+                (system_id, run_cycle)
+                for system_id, run_cycle, _evaluation in selected_ready_rows
+            )),
+        )
+        if (
+            pinned_subset is not None
+            and contest_pick_by_cohort.get(cohort_key) == tuple(pinned_subset)
+        ):
+            # The contest chose the served set itself; the twin already
+            # exists one task up and the activation key would collide.
+            continue
         cycle_by_system, cycle_mapping_sha, run_cycle, run_cycle_scope = (
             _cycle_mapping_for_rows(selected_ready_rows)
         )
@@ -3974,7 +4154,10 @@ def build_native_ensemble_oos(
                 system_id: int(evaluation.get("train_n") or 0)
                 for system_id, evaluation in rows
             },
+            pinned_subset=pinned_subset,
         )
+        if pinned_subset is None:
+            contest_pick_by_cohort[cohort_key] = tuple(sorted(weights))
         family_by_system = {
             system_id: family_by_system[system_id]
             for system_id in weights
@@ -4556,7 +4739,10 @@ def build_native_ensemble_oos(
                 + ("ALL_READY_OFFICIAL" if system_mask is None else
                    _json(sorted(str(value) for value in system_mask)))
                 + "::MAX_EXACT_SHARED_STRICT_HOLDOUT"
-                "::MIN_CRPS_SUBSET"
+                + (
+                    "::SERVED_SET_REFIT" if pinned_subset is not None
+                    else "::MIN_CRPS_SUBSET"
+                )
             ),
             "subset_selection": subset_selection,
             "system_transport_provider_ids": {
