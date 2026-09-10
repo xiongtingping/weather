@@ -2318,9 +2318,10 @@ def completion_floor_delta_v1(
 
 BASKET_RETURN_STRUCTURE_SCHEMA = "basket_return_structure_v1"
 # The net return a basket is bought FOR (user ruling, 2026-09-09: "目标设置
-# 为5%").  Recorded, not gated: what a target admits on this book is a
-# measurement nobody has, and a threshold turned on before that reading is
-# a number chosen by whoever typed it.
+# 为5%", then "把闸也上了").  Gated at the execution layer since 2026-09-09
+# (``runtime.py``, blocker ``basket_net_roi_below_target``): read on the
+# FINAL share vector at each leg's resting limit, charter-116 repairs exempt.
+# This constant is the target; the kernel function below only reports it.
 BASKET_TARGET_NET_ROI = 0.05
 
 

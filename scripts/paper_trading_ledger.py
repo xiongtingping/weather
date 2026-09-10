@@ -102,6 +102,8 @@ from bayes_basket_target.settlement_time import (  # noqa: E402
     settlement_day_window,
 )
 from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
+    TARGET_PRICING_BASIS as _TARGET_PRICING_BASIS,
+    TARGET_PRICING_LANE_STAGES as _TARGET_PRICING_LANE_STAGES,
     CENTRE_ANCHOR_DISTANCE_DECAY,
     CENTRE_ANCHOR_EDGE_TILT,
     CENTRE_ANCHOR_MIN_RUNG_SHARE,
@@ -2286,6 +2288,20 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     **(
         {"curve_bankroll_convention": _CURVE_BANKROLL_CONVENTION}
         if _CURVE_BANKROLL_CONVENTION != "w_times_f" else {}
+    ),
+    # Charter 94 (五): the price the target inventory is chosen against.
+    # Production reads it and the production judge sizes under it, so it
+    # decides what this book records -- and it was never hashed: a replay
+    # under ``lane`` (2026-09-10) produced a book whose fingerprint was byte
+    # for byte the standard one.  Off-default only, so the standard book
+    # keeps its sha; the lane-stage exemption travels with it.
+    **(
+        {"target_pricing_basis": _TARGET_PRICING_BASIS}
+        if _TARGET_PRICING_BASIS != "ask_depth" else {}
+    ),
+    **(
+        {"target_pricing_lane_stages": "|".join(_TARGET_PRICING_LANE_STAGES)}
+        if tuple(_TARGET_PRICING_LANE_STAGES) != ("P0-M",) else {}
     ),
     "effective_edge_band_bounds": "|".join(
         "%g" % bound for bound in EFFECTIVE_EDGE_BAND_BOUNDS
