@@ -704,13 +704,31 @@ def load_station_width(
                 (stage_id,),
             ).fetchall()
         else:
-            rows = conn.execute(
-                "SELECT station_id, width_scale, station_width_sha256,"
-                " retired_at_utc"
-                " FROM calibration_center_width_station"
-                " WHERE station_width_sha256=?",
-                (str(table_sha256),),
-            ).fetchall()
+            try:
+                rows = conn.execute(
+                    "SELECT station_id, width_scale, station_width_sha256,"
+                    " retired_at_utc"
+                    " FROM calibration_center_width_station"
+                    " WHERE station_width_sha256=?",
+                    (str(table_sha256),),
+                ).fetchall()
+            except sqlite3.OperationalError as exc:
+                if "retired_at_utc" not in str(exc):
+                    raise
+                # A store the migration has not reached yet: the resident
+                # serves without running the schema, so between a deploy
+                # and the next sweep the column is absent.  That is not a
+                # missing table -- read it exactly as before the column
+                # existed, never retired, rather than failing closed on
+                # every artifact that pins a version.
+                rows = [
+                    (*row, None) for row in conn.execute(
+                        "SELECT station_id, width_scale, station_width_sha256"
+                        " FROM calibration_center_width_station"
+                        " WHERE station_width_sha256=?",
+                        (str(table_sha256),),
+                    ).fetchall()
+                ]
     except sqlite3.OperationalError:
         if table_sha256 is not None:
             raise ContractError(

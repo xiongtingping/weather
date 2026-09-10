@@ -488,3 +488,32 @@ def test_the_retired_column_is_added_to_an_existing_table() -> None:
     assert load_station_width(conn, stage="P0", table_sha256="a" * 64) == (
         {"AAA0": 0.5}, "a" * 64
     )
+
+
+def test_a_pinned_read_on_a_store_without_the_retired_column_is_not_a_missing_table() -> None:
+    """The resident serves without running the schema; between a deploy
+    and the next sweep the column is absent.  A pinned read must then be
+    the pre-column read -- never retired -- not a fail-closed refusal on
+    every artifact that pins a version."""
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE calibration_center_width_station ("
+        " station_width_sha256 TEXT NOT NULL, stage TEXT NOT NULL,"
+        " station_id TEXT NOT NULL, width_scale REAL NOT NULL,"
+        " raw_z_sd REAL, sample_n INTEGER NOT NULL, fitted_at_utc TEXT NOT NULL,"
+        " activated INTEGER NOT NULL, activated_at_utc TEXT NOT NULL,"
+        " PRIMARY KEY (station_width_sha256, station_id))"
+    )
+    conn.execute(
+        "INSERT INTO calibration_center_width_station VALUES"
+        " (?,'P0','AAA0',0.5,0.6,62,'2026-09-06T15:48:00Z',0,"
+        " '2026-09-06T15:48:00Z')",
+        ("a" * 64,),
+    )
+    conn.commit()
+    assert load_station_width(conn, stage="P0", table_sha256="a" * 64) == (
+        {"AAA0": 0.5}, "a" * 64
+    )
+    with pytest.raises(ContractError):
+        load_station_width(conn, stage="P0", table_sha256="b" * 64)
