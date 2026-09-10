@@ -44,6 +44,11 @@ if str(ROOT_DIR) not in sys.path:
 from archive_db_write_queue import archive_db_write_gate
 from target_realization_schema import apply_target_realization_aliases
 from posterior_settlement_runtime import apply_posterior_observed_constraints_to_distribution
+# Lived in bayesian_probability_runtime until the 7.16 refactor renamed that
+# module to posterior_pipeline_entry_runtime.  The import was dropped rather
+# than repointed, which is how _insert_event_fact_history lost the whole
+# hard-source override block along with it.
+from posterior_pipeline_entry_runtime import apply_hard_source_posterior_override_to_distribution
 from hierarchical_posterior_pipeline_runtime import build_hierarchical_posterior_pipeline
 from source_observation_runtime import build_source_observation
 from temperature_prior_runtime import build_temperature_prior_distribution
@@ -43976,6 +43981,285 @@ def _materialize_d0_observed_feasibility_guard(
     return True
 
 
+def _sync_posterior_ssot_fact_from_observed_feasibility_rows(
+    item: Dict[str, Any],
+    rows_obj: Any,
+    *,
+    reason: str,
+) -> bool:
+    """Move the SSOT block onto rows the observation just reweighted.
+
+    posterior_ssot_fact is the posterior of record and the writer syncs every
+    other copy of the distribution from it, so a guard that rewrites the rows
+    and not the block has its work undone at apply time: the rows went into the
+    writer at 0.278/0.667/0.056 and came back out at 0.5/0.3/0.2, which is the
+    writer being right about who owns the numbers.
+
+    Rewriting the block here stays inside fail-closed for the same reason the
+    writer's hard mask does -- an observation is a constraint on the surface,
+    not an output of a model.  No new probability is computed; mass moves off
+    temperatures the day has already ruled out.  The sync is skipped outright
+    when the block and the rows do not cover the same buckets, because a
+    partial rewrite would leave the block unnormalized and the apply contract
+    would refuse it.
+    """
+
+    ssot = item.get("posterior_ssot_fact")
+    if not isinstance(ssot, Mapping) or str(ssot.get("state") or "") != "available":
+        return False
+    if not isinstance(rows_obj, list):
+        return False
+    by_label: Dict[str, float] = {}
+    for raw in rows_obj:
+        if not isinstance(raw, Mapping):
+            continue
+        label = str(raw.get("outcome") or raw.get("bucket") or raw.get("label") or "").strip()
+        probability = to_float(raw.get("q_temperature_bucket_posterior"))
+        if probability is None:
+            probability = to_float(raw.get("q_bayes_posterior"))
+        if label and probability is not None and math.isfinite(float(probability)):
+            by_label[label] = float(probability)
+    ssot_rows = ssot.get("bucket_probabilities")
+    if not by_label or not isinstance(ssot_rows, list) or not ssot_rows:
+        return False
+    ssot_labels = [
+        str(_row.get("bucket") or _row.get("outcome") or _row.get("label") or "").strip()
+        for _row in ssot_rows
+        if isinstance(_row, Mapping)
+    ]
+    if set(ssot_labels) != set(by_label) or len(ssot_labels) != len(ssot_rows):
+        return False
+
+    next_rows: List[Dict[str, Any]] = []
+    changed = False
+    for raw, label in zip(ssot_rows, ssot_labels):
+        row = dict(raw)
+        old = to_float(row.get("probability"))
+        new = by_label[label]
+        if old is None or abs(float(old) - new) > 1e-12:
+            changed = True
+            if old is not None and "probability_pre_observed_feasibility" not in row:
+                row["probability_pre_observed_feasibility"] = float(old)
+        row["probability"] = new
+        next_rows.append(row)
+    if not changed:
+        return False
+
+    target_label, target_probability = "", None
+    for label, probability in by_label.items():
+        if target_probability is None or probability > target_probability:
+            target_label, target_probability = label, probability
+
+    next_ssot = dict(ssot)
+    next_ssot["bucket_probabilities"] = next_rows
+    if isinstance(next_ssot.get("ranked_bucket_probabilities"), list):
+        next_ssot["ranked_bucket_probabilities"] = sorted(
+            (dict(row) for row in next_rows),
+            key=lambda row: float(to_float(row.get("probability")) or 0.0),
+            reverse=True,
+        )
+    if target_label and target_probability is not None:
+        old_target = str(next_ssot.get("target_bucket") or "").strip()
+        old_probability = to_float(next_ssot.get("target_probability"))
+        if old_target and old_target != target_label:
+            next_ssot["target_bucket_pre_observed_feasibility"] = old_target
+        if old_probability is not None:
+            next_ssot["target_probability_pre_observed_feasibility"] = float(old_probability)
+        next_ssot["target_bucket"] = target_label
+        next_ssot["target_probability"] = float(target_probability)
+        next_ssot["target_probability_pct"] = float(target_probability) * 100.0
+    next_ssot["observed_feasibility_alignment"] = {
+        "applied": True,
+        "reason": str(reason or ""),
+        "boundary": "observation_is_a_constraint_not_a_model_output",
+    }
+    item["posterior_ssot_fact"] = next_ssot
+    return True
+
+
+def _materialize_observed_feasibility_and_hard_source_override_for_fact_write(
+    item: Dict[str, Any],
+    *,
+    features: Mapping[str, Any],
+    market_var: str,
+    rounding_rule: str,
+    event_tz: str,
+    event_date: str,
+    fact_as_of: str,
+    fast_trade_write_requested: bool,
+    canonical_projection_applied: bool,
+    posterior_base_probs: Callable[[Any], List[float]],
+    top_label_from_rows: Callable[[Any], str],
+    fast_trade_hard_source_meta: Callable[[Any], Dict[str, Any]],
+    apply_fast_trade_hard_source_lower_bound: Callable[[Any], bool],
+) -> None:
+    """Apply the observation to a payload no composer conditioned on it.
+
+    Restored 2026-09-10.  This block had three call sites in
+    _insert_event_fact_history until the 7.16 refactor, and none afterwards --
+    the module it imported from was renamed and the import went with it rather
+    than being repointed.  For two months every fact written through this path
+    was persisted with the observation unapplied: a payload whose observed max
+    was 28.0 and not yet final kept 28°C at 0.50 as its target, where the guard
+    puts 29°C at 0.667, because an intraday maximum is a lower bound on the day
+    and not the day's answer.
+
+    It does NOT run when the canonical projection ran. That path rebuilds the
+    posterior through the composer, whose physical_strong_X_distribution is a
+    remaining-warming model over the same observation and whose hard_condition
+    already cuts what the observation excludes.  Applying this on top would
+    count one observation twice, which is the thing the composer's
+    "strong information enters once through lambda_obs" rule exists to prevent.
+    """
+
+    if canonical_projection_applied:
+        provenance = dict(item.get("fact_provenance") or {})
+        provenance["d0_observed_feasibility_guard"] = {
+            "applied": False,
+            "skipped_reason": "canonical_projection_already_conditioned_on_observation",
+            "event_date": str(event_date or ""),
+            "source": "fact_write_materialized",
+        }
+        item["fact_provenance"] = provenance
+        return
+
+    hard_source_ignore_window = True
+    hard_source_window_enabled_for_fast_write = _env_bool(
+        "PM_BAYES_HARD_SOURCE_POSTERIOR_OVERRIDE_WINDOW_ENABLED",
+        True,
+    )
+    hard_source_override_allowed = True
+    if fast_trade_write_requested and not hard_source_window_enabled_for_fast_write:
+        hard_source_ignore_window = False
+        hard_source_override_allowed = False
+
+    hard_source_override_meta: Dict[str, Any] = {}
+    hard_source_override_applied = False
+
+    distribution = item.get("distribution")
+    if isinstance(distribution, list):
+        base_probs = posterior_base_probs(distribution)
+        apply_posterior_observed_constraints_to_distribution(distribution)
+        if hard_source_override_allowed:
+            hard_source_override_meta = apply_hard_source_posterior_override_to_distribution(
+                distribution,
+                features,
+                base_probs=base_probs,
+                market_var=market_var,
+                rounding_rule=rounding_rule,
+                event_tz=event_tz,
+                event_date=event_date,
+                ignore_window=hard_source_ignore_window,
+            )
+            hard_source_override_applied = bool(hard_source_override_meta.get("applied"))
+        else:
+            apply_fast_trade_hard_source_lower_bound(distribution)
+            hard_source_override_meta = fast_trade_hard_source_meta(distribution)
+
+    rows_payload = item.get("rows")
+    if isinstance(rows_payload, list):
+        rows_base_probs = posterior_base_probs(rows_payload)
+        apply_posterior_observed_constraints_to_distribution(rows_payload)
+        rows_override_meta = (
+            apply_hard_source_posterior_override_to_distribution(
+                rows_payload,
+                features,
+                base_probs=rows_base_probs,
+                market_var=market_var,
+                rounding_rule=rounding_rule,
+                event_tz=event_tz,
+                event_date=event_date,
+                ignore_window=hard_source_ignore_window,
+            )
+            if hard_source_override_allowed
+            else fast_trade_hard_source_meta(rows_payload)
+        )
+        if not hard_source_override_allowed:
+            apply_fast_trade_hard_source_lower_bound(rows_payload)
+        if bool(rows_override_meta.get("applied")) and not hard_source_override_applied:
+            hard_source_override_meta = rows_override_meta
+            hard_source_override_applied = True
+
+    if not hard_source_override_allowed:
+        item["hard_source_posterior_override"] = dict(hard_source_override_meta)
+        item["hard_source_posterior_override_meta"] = dict(hard_source_override_meta)
+        item["hard_source_posterior_override_applied"] = False
+        item["hard_source_posterior_override_constraint_mode"] = str(
+            hard_source_override_meta.get("decision_basis") or ""
+        )
+    if hard_source_override_applied:
+        item["hard_source_posterior_override"] = dict(hard_source_override_meta)
+        item["hard_source_posterior_override_applied"] = True
+        target_bucket = (
+            top_label_from_rows(item.get("distribution"))
+            or top_label_from_rows(item.get("rows"))
+            or str(hard_source_override_meta.get("target_bucket") or "").strip()
+        )
+        if target_bucket:
+            item["model_top_label"] = target_bucket
+            item["single_temperature_top_label"] = target_bucket
+            item["atomic_temperature_top_label"] = target_bucket
+            item["contract_payout_top_label"] = target_bucket
+            item["hard_source_posterior_override_target_bucket"] = target_bucket
+        item["hard_source_posterior_override_constraint_mode"] = str(
+            hard_source_override_meta.get("constraint_mode") or ""
+        )
+        _promote_hard_source_final_lock_fields(
+            item,
+            hard_source_override_meta,
+            target_bucket=target_bucket,
+            features=features,
+        )
+        provenance = dict(item.get("fact_provenance") or {})
+        provenance["hard_source_posterior_override"] = {
+            "source": hard_source_override_meta.get("source"),
+            "value_c": hard_source_override_meta.get("value_c"),
+            "target_bucket": hard_source_override_meta.get("target_bucket"),
+            "window": hard_source_override_meta.get("window"),
+            "decision_basis": hard_source_override_meta.get("decision_basis"),
+            "final_bucket_lock": bool(hard_source_override_meta.get("final_bucket_lock")),
+        }
+        item["fact_provenance"] = provenance
+        _refresh_fact_trade_derivatives_after_target_update(item, distribution)
+
+    d0_guard_applied = False
+    for rows_obj in (distribution, rows_payload):
+        if not isinstance(rows_obj, list):
+            continue
+        d0_guard_applied = _materialize_d0_observed_feasibility_guard(
+            item,
+            rows_obj,
+            features,
+            event_date=event_date,
+            fact_as_of=fact_as_of,
+            event_tz=event_tz,
+        ) or d0_guard_applied
+    if d0_guard_applied:
+        for rows_obj in (distribution, rows_payload):
+            if _sync_posterior_ssot_fact_from_observed_feasibility_rows(
+                item,
+                rows_obj,
+                reason="d0_observed_feasibility_guard",
+            ):
+                break
+        for rows_obj in (distribution, rows_payload):
+            if isinstance(rows_obj, list):
+                _normalize_fact_distribution_posterior_ssot_fields(
+                    item,
+                    rows_obj,
+                    source="d0_observed_feasibility_guard",
+                )
+        target_bucket = top_label_from_rows(item.get("distribution")) or top_label_from_rows(
+            item.get("rows")
+        )
+        if target_bucket:
+            item["model_top_label"] = target_bucket
+            item["single_temperature_top_label"] = target_bucket
+            item["atomic_temperature_top_label"] = target_bucket
+            item["contract_payout_top_label"] = target_bucket
+        _refresh_fact_trade_derivatives_after_target_update(item, distribution)
+
+
 def _d0_observed_max_not_final_materialization_block_reason(
     item: Mapping[str, Any],
     *,
@@ -46910,6 +47194,7 @@ def _insert_event_fact_history(
         isinstance(source_trace_for_projection, Mapping)
         and source_trace_for_projection.get("source_observations")
     )
+    canonical_projection_applied = False
     if _is_chengdu_zuuu_fact_payload(slug, item) and has_canonical_source_observations:
         from posterior_ssot_projection_runtime import build_fact_projection_no_apply
 
@@ -46957,6 +47242,22 @@ def _insert_event_fact_history(
             "legacy_probability_payload_persisted": False,
         }
         item["fact_provenance"] = provenance
+        canonical_projection_applied = True
+    _materialize_observed_feasibility_and_hard_source_override_for_fact_write(
+        item,
+        features=features,
+        market_var=market_var,
+        rounding_rule=rounding_rule,
+        event_tz=event_tz,
+        event_date=event_date,
+        fact_as_of=fact_as_of,
+        fast_trade_write_requested=fast_trade_write_requested,
+        canonical_projection_applied=canonical_projection_applied,
+        posterior_base_probs=_posterior_base_probs,
+        top_label_from_rows=_top_label_from_rows,
+        fast_trade_hard_source_meta=_fast_trade_hard_source_meta,
+        apply_fast_trade_hard_source_lower_bound=_apply_fast_trade_hard_source_lower_bound,
+    )
     materialized = _finalize_event_fact_history_materialized_payload_for_storage(
         item=item,
         fact_as_of=fact_as_of,
@@ -61938,6 +62239,17 @@ def _ssot_candidate_rank(candidate: Dict[str, Any]) -> float:
     edge_min = to_float(candidate.get("edge_min"))
     if edge_min is not None and math.isfinite(edge_min):
         return float(edge_min) * 100.0
+    # Last rung: probability.  Read the posterior of record, not q_round.
+    # q_round is the rounded market-facing q and no part of the posterior chain
+    # updates it -- the observed-feasibility guard rewrites q_bayes_posterior
+    # and q_temperature_bucket_posterior and leaves q_round where it was, so a
+    # ranking that reads q_round ranks on a probability the observation has
+    # already refuted.  It picked 28°C at a stale 0.5 over 29°C at 0.667 on the
+    # very payload where the day had ruled 28°C out.  q_round stays as the
+    # fallback for rows that carry no posterior at all.
+    posterior = to_float(candidate.get("q_bayes_posterior"))
+    if posterior is not None and math.isfinite(posterior):
+        return float(posterior) * 10.0
     q_round = to_float(candidate.get("q_round"))
     if q_round is not None and math.isfinite(q_round):
         return float(q_round) * 10.0
