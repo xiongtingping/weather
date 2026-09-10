@@ -14506,6 +14506,14 @@ def test_refresh_awc_fact_fast_trade_write_compacts_heavy_ui_payload(
     for rows_key in ("distribution", "rows"):
         for distribution_row in payload[rows_key]:
             for key in heavy_row:
+                if key in server._FAST_TRADE_UI_SNAPSHOT_KEEP_ROW_KEYS and key in distribution_row:
+                    # Kept on purpose -- the frontend contract needs it -- but
+                    # rebuilt compact, so what must not survive is the blob
+                    # that came in, not the key.
+                    assert heavy_marker not in json.dumps(
+                        distribution_row[key], ensure_ascii=False
+                    )
+                    continue
                 assert key not in distribution_row
     assert payload["fact_provenance"]["awc_fast_trade_fact_write"]["purpose"] == (
         "trade_path_first_ui_rich_fields_deferred"
