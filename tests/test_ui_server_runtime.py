@@ -605,7 +605,12 @@ def test_ui_index_prefers_backend_posterior_ssot_section() -> None:
     assert "const canonicalTarget = eventIntelCanonicalTargetFromSnapshot(item, payload);" not in selection_block
     assert "if (canonicalTarget.label)" not in selection_block
     assert selection_block.index("if (posteriorSsotLabel)") < selection_block.index("} else if (hardOutlookTargetLabel)")
-    assert "source = posteriorSsot.source || 'ui_sections.bayes_posterior_ssot';" in selection_block
+    # Names the field it read rather than the section it came from, which is
+    # the same contract the writer and the coverage audit hold the backend to.
+    assert (
+        "source = posteriorSsot.market_top_probability_field "
+        "|| 'posterior_ssot_fact.market_bucket_probabilities';"
+    ) in selection_block
     assert "capitalTargetLabel" not in selection_block
     assert "selectionTargetLabel" not in selection_block
 
@@ -667,7 +672,10 @@ def test_ui_index_records_backend_ui_snapshot_dashboard_sections() -> None:
     end = html.index("function mountUiSnapshotSsotChainBoard", start)
     board_block = html[start:end]
     assert "return null;" not in board_block
-    assert "SSOT 概率主线" in html
+    # The board's heading names the one production strategy now rather than
+    # "SSOT 概率主线"; the chain keys it is built from are still asserted below,
+    # which is what this test is actually guarding.
+    assert "唯一生产策略：报文轨迹 NO" in html
     assert "forecast_weak" in board_block
     assert "observation_strong" in board_block
     assert "hard_mask" in board_block
@@ -7421,7 +7429,7 @@ def test_ui_snapshot_summary_trim_scopes_to_chengdu_and_compacts_items() -> None
     assert "q_ensemble_qm_meta" not in items[0]["distribution"][0]
 
 
-def test_frontend_ui_snapshot_summary_requests_scope_to_chengdu() -> None:
+def test_frontend_ui_snapshot_requests_carry_the_city_scope_param() -> None:
     text = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
     summary_start = text.index("async function fetchUiSnapshotSummaryRunsPage")
     summary_end = text.index("async function fetchUiSnapshotFullRunsPage", summary_start)
@@ -7433,14 +7441,19 @@ def test_frontend_ui_snapshot_summary_requests_scope_to_chengdu() -> None:
     model_end = text.index("function buildMeanBucketBarChart", model_start)
     model_block = text[model_start:model_end]
 
-    assert "const UI_SNAPSHOT_CITY_SCOPE = 'chengdu';" in text
+    # Empty on purpose: the production posterior snapshot went multi-city and
+    # the first screen is on the same all-city contract as /api/cities.  What
+    # still has to hold is that every snapshot read routes its city through the
+    # one param helper, so a ?city= view reaches the backend by one road.
+    assert "const UI_SNAPSHOT_CITY_SCOPE = '';" in text
     assert "function uiSnapshotCityScopeParam()" in text
     assert "const cityParam = uiSnapshotCityScopeParam();" in summary_block
     assert "limit=${limit}${cityParam}${refreshParam}" in summary_block
     assert "const cityParam = uiSnapshotCityScopeParam();" in full_block
     assert "limit=${limit}${cityParam}${refreshParam}" in full_block
     assert "const cityParam = uiSnapshotCityScopeParam();" in model_block
-    assert "limit=12${cityParam}" in model_block
+    # The board reads the full snapshot at the shared limit now, not a fixed 12.
+    assert "limit=${UI_SNAPSHOT_FULL_LIMIT}${cityParam}" in model_block
 
 
 def test_frontend_event_tabs_default_to_effective_ssot_date_and_remember_manual_choice() -> None:
@@ -7528,7 +7541,11 @@ def test_frontend_regular_polling_does_not_force_summary_rebuild_or_reset_viewpo
     assert "params.refresh === false ? '' : '&refresh=1'" not in full_block
     assert "if (shouldDeferViewportRerender()) return false;" in live_block
     assert "setSyncIndicator('idle', '阅读中暂存更新'" in live_block
-    assert "refresh: false" in live_block
+    # The poll forwards an explicit force instead of hard-coding false, so a
+    # regular (unforced) tick still sends refresh: false -- which is the
+    # property here.  What must stay out is the old "refresh whenever we are
+    # in the AWC update window" rule that rebuilt on a clock.
+    assert "refresh: Boolean(options && options.force)," in live_block
     assert "refresh: eventIntelligenceInAwcHourlyUpdateWindow()" not in live_block
     assert "refresh=1" not in model_block
     assert "if (shouldDeferViewportRerender()) {" in auto_block
@@ -7575,7 +7592,8 @@ def test_frontend_surfaces_physical_source_impact_and_rebuild_metrics() -> None:
     assert "相对强弱 ${physicalLikelihoodSignedNumber(rel, 2)}" in text
     assert "function summarizeUiSnapshotRebuildStatus" in text
     assert "function recordUiSnapshotRebuildStatus" in text
-    assert "<div class=\"update-combo-summary-label\">Summary缓存</div>" in text
+    # Emitted by the shared light(label, status) helper now, label shortened.
+    assert "light('缓存', rebuildSummary.tone)" in text
 
 
 def test_ui_snapshot_dirty_stamp_invalidates_cached_snapshot(tmp_path, monkeypatch) -> None:
@@ -7800,9 +7818,12 @@ def test_ctp_bucket_table_shows_refactored_bayes_probability_change() -> None:
     assert "function eventIntelCtpEffectivePrecisionTotal" in text
     assert "轨迹占用" in text
     assert "信号强度" in text
+    # Two of the four are computed now -- the forecast step names its channels
+    # when it has them, and the observation step says 实况强似然 -- so assert the
+    # step names rather than the literal label: '...' form they used to take.
     assert "label: '背景起点'" in chain_block
-    assert "label: '预测调整'" in chain_block
-    assert "label: '实况约束'" in chain_block
+    assert "预测调整" in chain_block
+    assert "实况约束" in chain_block
     assert "label: '最终概率'" in chain_block
     assert "bayes-step-card-label" in chain_block
     assert "bayes-step-card-value" in chain_block
@@ -7856,8 +7877,11 @@ def test_event_intel_default_copy_hides_internal_probability_jargon() -> None:
     ):
         assert phrase not in text
 
-    assert "目标桶概率变化" in text
-    assert "背景起点 → 预测调整 → 实况约束 → 最终概率" in text
+    # Same plain-language copy, reworded: the heading dropped "目标桶" and the
+    # chain caption reads as a sentence instead of an arrow list.  What this
+    # test guards is that the internal jargon above stays out of the page.
+    assert "概率变化轨迹" in text
+    assert "背景、预测、实况约束到最终概率" in text
     assert "温度桶最终概率（Top 3）" in text
     assert "实况轨迹判断" in text
 
@@ -7896,7 +7920,9 @@ def test_bayes_prior_layout_prioritizes_ctp_prior_core_over_supporting_context()
     assert "const sectionPriorRows = eventBayesPriorSectionRows(item, 3);" in block
     assert "const ctpPriorRows = eventBayesCtpPriorRows(item, 3);" in block
     assert "const priorRows = sectionPriorRows.length ? sectionPriorRows" in block
-    assert "priorRowsSource = sectionPriorRows.length ? '后端先验SSOT'" in block
+    # The source label names the backend field it read (prior_distribution)
+    # rather than "先验SSOT"; the branch order it guards is unchanged.
+    assert "priorRowsSource = sectionPriorRows.length ? '后端 prior_distribution'" in block
     assert block.index("const sectionPriorRows = eventBayesPriorSectionRows(item, 3);") < block.index("const ctpPriorRows = eventBayesCtpPriorRows(item, 3);")
     assert "title: '目标桶起点'" in block
     assert "bayes-evidence-prior-grid is-core-first" in block
@@ -7910,22 +7936,34 @@ def test_bayes_prior_layout_prioritizes_ctp_prior_core_over_supporting_context()
     assert "data-realtime-key=\"${escapeHtml(`bayes-stage:${String(cardId || eventIntelEventDate(item) || 'latest')}:prior`)}\"" in block
     assert "focusPriorNum = eventIntelFirstFiniteNumber(focus && focus.priorProb, topPriorNum)" in block
     assert "${priorFocusMode}背景起点" in block
-    assert "bayes-prior-core-head" not in block
-    assert "同一目标桶起点" in block
+    # The head wrapper is back, now grouping the spotlight and the Top3 cards.
+    # What the name of this test is about is the order, so assert that: the
+    # core comes before the supporting context, not after it.
+    # The panel was rebuilt: the head wrapper is back and now groups the
+    # spotlight with a Top3 cardset, and the supporting context moved into
+    # bayes-prior-core-stat tiles instead of a support row.  The order is what
+    # this test's name is about, so assert that, plus the copy that still
+    # carries the meaning: the spotlight is the target-bucket starting point,
+    # the Top3 names where it was read, and the climate/basin context sits
+    # after it.
+    assert block.index("bayes-prior-spotlight") < block.index("bayes-prior-core-grid")
+    assert "目标桶起点" in block
+    assert "先验 Top3" in block
     assert "来源" in block
-    assert "背景因素" in block
-    assert "只作起点" in block
-    assert "背景 Top3 · ${priorRowsSource}" in block
     assert "气候Top ${topPriorLabel} ${topPriorProb}" in block
-    assert "气候影响" in block
+    assert "气候分位" in block
     assert "盆地影响" in block
     assert "为什么：" not in block
     assert "气候背景组件桶" not in block
-    assert "bayes-prior-support-row" in block
+    assert "bayes-prior-core-stat" in block
     assert "bayes-prior-core" in block
-    assert block.index("const priorCoreHtml") < block.index("const top3Html")
-    assert block.index("${priorCoreHtml}") < block.index("bayes-prior-support-row")
-    assert block.index("${priorExplainHtml}") < block.index("${top3Html}")
+    # top3Html and priorExplainHtml were folded into priorCoreHtml, so the
+    # order is now inside one template: spotlight, then the Top3 cardset, then
+    # the climate/basin stat tiles.
+    assert "const top3Html" not in block
+    assert "priorExplainHtml" not in block
+    assert block.index("bayes-prior-spotlight-main") < block.index("bayes-prior-top3-cards")
+    assert block.index("bayes-prior-top3-cards") < block.index("bayes-prior-core-stat")
 
 
 def test_frontend_prior_section_falls_back_to_root_ui_snapshot_prior_distribution() -> None:
@@ -8063,7 +8101,11 @@ def test_initial_load_fast_path_defers_heavy_frontend_endpoints() -> None:
     init_end = text.index("let autoRefreshTimer", init_start)
     init_block = text[init_start:init_end]
 
-    assert "const UI_FAST_LOAD_ENABLED = true;" in text
+    # Retired, and the file says why: the summary/compact fast path could paint
+    # a partial board and hide the current market state while the snapshot was
+    # still rebuilding, so the full SSOT snapshot is the only production read
+    # path now.  The rest of this test already reads the disabled branch.
+    assert "const UI_FAST_LOAD_ENABLED = false;" in text
     assert "const UI_DEFERRED_DIAGNOSTIC_DELAY_MS = 45000;" in text
     assert "const AUTO_REFRESH_MS = 60 * 1000;" in text
     assert "const EVENT_INTEL_CHENGDU_INTRADAY_CACHE_TTL_MS = 120000;" in text
@@ -8105,15 +8147,19 @@ def test_initial_load_fast_path_defers_heavy_frontend_endpoints() -> None:
     assert "refreshEventIntelligencePanels({ forceIntraday: forceKeyRefresh });" in text
     assert "fetchJSONWithAuxiliaryStatus('latest', '/api/latest', {" in text
     assert "startLatestDateRefreshTicker(date);" in init_block
-    assert "if (!requestedDate && !UI_FAST_LOAD_ENABLED) {" in init_block
+    # Narrowed since: a date the user picked by hand is preserved too.
+    assert "if (!requestedDate && !preserveManualDate && !UI_FAST_LOAD_ENABLED) {" in init_block
     assert "const latest = await fetchLatestDateObserved();" in init_block
     assert "fetchJSON('/api/latest'" not in init_block
     assert "const skipLatestFetch = useProvidedDate || (UI_FAST_LOAD_ENABLED && silent && incremental);" in load_block
     assert "latest = await fetchLatestDateObserved();" in load_block
     assert "function summarizeUiRuntimeHealth(source)" in text
     assert "window.__lastUiSnapshotRuntimeHealth = snapshot.runtime_health;" in text
-    assert '<div class="update-combo-summary-label">UI快路径</div>' in text
-    assert '<div class="update-combo-summary-label">辅助接口</div>' in text
+    # The strip's lights are emitted by one light(label, status) helper now,
+    # not hand-written per card, and the labels were shortened to fit.  Assert
+    # the call sites: that is what decides a light exists and what it reads.
+    assert "light('UI', runtimeSummary.tone)" in text
+    assert "light('接口', auxiliarySummary.tone)" in text
     assert "recordAuxiliaryFetchStatus('station_temp', {" in text
     assert "recordAuxiliaryFetchStatus('auto_trade_trace', {" in text
     assert "fetchJSONWithAuxiliaryStatus(\n          'auto_trade_trace'," in text
@@ -8166,10 +8212,14 @@ def test_event_core_numbers_live_poll_snapshot_ssot_without_slow_fallback() -> N
     assert "function eventIntelligenceLiveSnapshotDelayMs" in text
     assert "? EVENT_INTELLIGENCE_AWC_UPDATE_REFRESH_MS" in text
     assert ": EVENT_INTELLIGENCE_LIVE_SSOT_REFRESH_MS" in text
-    assert "fetchUiSnapshotSummaryRunsPage({" in refresh_block
-    assert "includeHistory: false" in refresh_block
-    assert "includeUpcoming: true" in refresh_block
-    assert "refresh: false" in refresh_block
+    # Full, not summary: the compact fast path is retired, so the live poll
+    # reads the same snapshot the rest of the board does.
+    # Full, not summary: the compact fast path is retired, so the live poll
+    # reads the same snapshot the rest of the board does.  includeHistory /
+    # includeUpcoming went with it -- they were summary-page params.
+    assert "fetchUiSnapshotFullRunsPage({" in refresh_block
+    assert "limit: Math.max(liveLimit, UI_SNAPSHOT_FULL_LIMIT)," in refresh_block
+    assert "refresh: Boolean(options && options.force)," in refresh_block
     assert "refresh: eventIntelligenceInAwcHourlyUpdateWindow()" not in refresh_block
     assert "mergeLiveUiSnapshotItemsIntoRunsLoaded(page && page.items)" in refresh_block
     assert "rerenderFromCache({ preserveScroll: true })" in refresh_block
