@@ -1535,6 +1535,14 @@ def served_arithmetic_anchor(
     remembered: the earliest decision still carrying the version being served
     now.  A stage with nothing committed returns None, which the caller reads
     as "no bound", the same as before.
+
+    Inferring it that way makes a bump expensive, and the expense is why the
+    bumps stop being made: a version bumped today first appears today, so the
+    bump costs the lane every day it had accumulated.  Charter 122 wrote the
+    trap down and paid a hand-set flag in the sweep rather than the evidence.
+    So a bump may instead SAY when its arithmetic began -- see
+    ``serving_arithmetic.STAGE_VERSION_EFFECTIVE_FROM`` -- and the declaration
+    is preferred over the inference for exactly the versions that carry one.
     """
 
     # A store that cannot answer the question yields no bound rather than an
@@ -1558,6 +1566,13 @@ def served_arithmetic_anchor(
         version = str(current[0] or "")
         if not version:
             return None
+        declared = serving_arithmetic.version_effective_from(
+            _check_stage(stage), version
+        )
+        if declared:
+            # Said, not inferred.  Nothing below runs: the seek and the scan
+            # both exist only to reconstruct a moment the bump has now stated.
+            return declared
         if known_floor:
             # The caller already holds a bound and takes the maximum, so this
             # anchor only matters if it lands strictly above it.  One
