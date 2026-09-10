@@ -37,16 +37,32 @@ TARGET_REALIZATION_ORDER_INTENT_RECOMMENDATION = "target_realization_order_inten
 TARGET_REALIZATION_STRATEGY = "target_realization_binary_settlement"
 DRY_RUN_ORDER_INTENT_RECOMMENDATION = "dry_run_order_intent"
 
+#: The recommendations this lane will look at, worst rank last.
+#:
+#: ``scripts/auto_trade_entry_1m.sh`` passes exactly these on
+#: ``--recommendation``; the tuple is the default for callers that come in
+#: through Python instead, and its order is the sort rank.
 DEFAULT_RECOMMENDATIONS = (
     TARGET_REALIZATION_ORDER_INTENT_RECOMMENDATION,
     DRY_RUN_ORDER_INTENT_RECOMMENDATION,
+    "priority_tail_no_reverse_edge",
+    "paper_trade_candidate",
+    "strict_edge_candidate_review",
+    "probe_candidate",
     "settlement_hold_review",
 )
 DEFAULT_FOCUS_LANES = (
+    "tail_no_reverse_edge",
+    "secondary_edge",
     "d0_physical_or_settlement",
     "major_settlement",
 )
+#: The structural-edge lanes, i.e. everything that is not major settlement.
+#: Mirrors ``STRUCTURAL_EDGE_FOCUS_LANES`` in ``weather_strategy_plan``, which
+#: is what ``DEFAULT_PROTECTED_FOCUS_MIN_SHARE`` below is a share *of*.
 PROTECTED_FOCUS_LANES = {
+    "tail_no_reverse_edge",
+    "secondary_edge",
     "d0_physical_or_settlement",
 }
 MAJOR_SETTLEMENT_FOCUS_LANE = "major_settlement"
@@ -60,9 +76,18 @@ RESOURCE_FOCUS_POLICIES = {"off", "warn", "enforce"}
 RECOMMENDATION_RANK = {name: idx for idx, name in enumerate(DEFAULT_RECOMMENDATIONS)}
 RECOMMENDATION_RANK[TARGET_REALIZATION_SWITCH_RECOMMENDATION] = -1
 FOCUS_RANK = {name: idx for idx, name in enumerate(DEFAULT_FOCUS_LANES)}
+#: Which of the above may become an entry, before any edge floor is read.
+#:
+#: Every recommendation this lane looks at except ``settlement_hold_review``,
+#: which is carried through the batch so it can be reported on but is never
+#: itself a new entry.  Narrowing this set to the two order intents is not the
+#: same as tightening the lane: the order intents return before the strict
+#: ``min_entry_edge`` floor is read, so dropping the four edge recommendations
+#: from here does not hold them to the floor, it stops the floor from ever
+#: being reached and excludes them one step earlier as
+#: ``not_entry_candidate_recommendation``.
 ENTRY_CANDIDATE_RECOMMENDATIONS = {
-    TARGET_REALIZATION_ORDER_INTENT_RECOMMENDATION,
-    DRY_RUN_ORDER_INTENT_RECOMMENDATION,
+    name for name in DEFAULT_RECOMMENDATIONS if name != "settlement_hold_review"
 }
 
 
