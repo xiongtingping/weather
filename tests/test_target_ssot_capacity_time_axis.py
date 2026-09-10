@@ -144,3 +144,117 @@ def test_the_last_rate_stands_until_a_newer_one_replaces_it(
     assert second["growth_measured_from_utc"], (
         "a carried rate has to say when it was measured"
     )
+
+
+def _sqlite_with_free_pages(
+    tmp_path: Path, *, rows: int, delete: int
+) -> Path:
+    """A real SQLite file carrying free pages, like the live one does.
+
+    The retention contracts delete rows every day and SQLite keeps the
+    pages, so new writes land in the freelist and the FILE does not move.
+    That is the state this whole axis has to survive.
+    """
+
+    import sqlite3
+
+    path = tmp_path / "ssot.db"
+    conn = sqlite3.connect(str(path))
+    conn.execute("PRAGMA journal_mode=DELETE")
+    conn.execute("CREATE TABLE bulk (id INTEGER PRIMARY KEY, body BLOB)")
+    conn.executemany(
+        "INSERT INTO bulk (id, body) VALUES (?, ?)",
+        [(i, b"x" * 3500) for i in range(rows)],
+    )
+    conn.commit()
+    conn.execute("DELETE FROM bulk WHERE id < ?", (delete,))
+    conn.commit()
+    conn.close()
+    return path
+
+
+def test_a_flat_file_over_a_growing_database_still_reports_a_rate(
+    daemon, tmp_path: Path
+) -> None:
+    """The defect this axis was blind to for three days.
+
+    Between 2026-09-08 and 2026-09-11 the live SSOT sat at exactly
+    38,184,861,696 bytes while 1.4 GB of new rows went into free pages the
+    retention contracts had left behind.  Growth measured on the FILE was
+    zero the whole time, so no rate was computed, ``days_to_ceiling``
+    stayed ``None``, and the two-day warning cannot fire on a ``None`` --
+    the gauge was blank for exactly the stretch it exists for.
+
+    Measured on live bytes, the same file reports the rate that will
+    consume the headroom the moment the free pages run out.
+    """
+
+    database = _sqlite_with_free_pages(tmp_path, rows=400, delete=300)
+    live_now, free_now = daemon._target_ssot_live_bytes(database)
+    assert live_now is not None and free_now > 0, (
+        "the fixture must actually carry free pages"
+    )
+
+    stamp = (
+        datetime.now(timezone.utc) - timedelta(hours=24.0)
+    ).isoformat(timespec="seconds").replace("+00:00", "Z")
+    daemon.TARGET_SSOT_GROWTH_PATH.write_text(json.dumps({
+        "schema": "target_ssot_growth_v2",
+        "observed_at_utc": stamp,
+        # The file has not moved; the data inside it has.
+        "database_bytes": database.stat().st_size,
+        "live_bytes": live_now - 100_000,
+        "free_page_bytes": free_now + 100_000,
+    }))
+
+    guard = daemon.target_ssot_capacity_guard(database)
+    assert guard["growth_axis"] == "live_bytes"
+    assert guard["growth_bytes_per_day"] == pytest.approx(100_000, rel=0.05)
+    assert guard["days_to_ceiling"] is not None
+    # Free pages are headroom -- rows land there before the file grows --
+    # while the ceiling itself stays on the file, which is what the
+    # writers fail closed against.
+    assert guard["free_page_bytes"] == free_now
+    assert guard["remaining_bytes"] == (
+        daemon.MAX_TARGET_DB_BYTES - database.stat().st_size
+    )
+    expected_days = (
+        daemon.MAX_TARGET_DB_BYTES - database.stat().st_size + free_now
+    ) / 100_000
+    assert guard["days_to_ceiling"] == pytest.approx(expected_days, rel=0.05)
+
+
+def test_the_baseline_moves_even_when_it_produced_no_rate(
+    daemon, tmp_path: Path
+) -> None:
+    """A flat reading must not freeze the clock it is measured against.
+
+    The baseline was only rewritten when a rate came out of it, so three
+    days of flat readings kept comparing against 2026-09-08 -- and the
+    first real measurement after that would have been an average over the
+    whole flat stretch, understating the rate that mattered by however
+    long the freeze had lasted.
+    """
+
+    database = _sqlite_with_free_pages(tmp_path, rows=200, delete=150)
+    live_now, _free = daemon._target_ssot_live_bytes(database)
+    stamp = (
+        datetime.now(timezone.utc) - timedelta(hours=6.0)
+    ).isoformat(timespec="seconds").replace("+00:00", "Z")
+    daemon.TARGET_SSOT_GROWTH_PATH.write_text(json.dumps({
+        "schema": "target_ssot_growth_v2",
+        "observed_at_utc": stamp,
+        "database_bytes": database.stat().st_size,
+        # Shrunk since: a retention pass, which yields no rate.
+        "live_bytes": live_now + 500_000,
+        "free_page_bytes": 0,
+    }))
+
+    guard = daemon.target_ssot_capacity_guard(database)
+    assert guard["growth_bytes_per_day"] is None, "a shrink is not a rate"
+    written = json.loads(daemon.TARGET_SSOT_GROWTH_PATH.read_text())
+    assert written["observed_at_utc"] != stamp, (
+        "the baseline has to move, or the next pass measures against a "
+        "reading that only gets older"
+    )
+    assert written["live_bytes"] == live_now

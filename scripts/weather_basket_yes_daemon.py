@@ -1274,7 +1274,44 @@ TARGET_SSOT_GROWTH_PATH = ROOT / "data" / "runtime" / "target_ssot_growth.json"
 WRITER_TURN_PATH = ROOT / "data" / "runtime" / "writer_turn.json"
 
 
-def _target_ssot_growth(db_bytes: int) -> dict[str, Any]:
+def _target_ssot_live_bytes(database: Path) -> tuple[int | None, int]:
+    """The bytes this database is actually carrying, and its free pages.
+
+    A SQLite file does not shrink when rows are deleted and does not grow
+    while free pages are left to reuse, so its SIZE is a step function
+    over the thing that matters.  ``(page_count - freelist_count) *
+    page_size`` is the thing that matters: it rises with every row written
+    whether or not the file moves, and it is what will consume the
+    remaining headroom once the free pages are gone.
+
+    Read-only, with a short timeout, and every failure returns "unknown"
+    rather than raising: this is a gauge on the resident's hot path.
+    """
+
+    try:
+        conn = sqlite3.connect(
+            f"file:{database}?mode=ro", uri=True, timeout=2.0
+        )
+    except sqlite3.Error:
+        return None, 0
+    try:
+        conn.execute("PRAGMA busy_timeout=2000")
+        page_size = int(conn.execute("PRAGMA page_size").fetchone()[0])
+        page_count = int(conn.execute("PRAGMA page_count").fetchone()[0])
+        freelist = int(conn.execute("PRAGMA freelist_count").fetchone()[0])
+    except (sqlite3.Error, TypeError, ValueError):
+        return None, 0
+    finally:
+        conn.close()
+    return max(0, page_count - freelist) * page_size, freelist * page_size
+
+
+def _target_ssot_growth(
+    db_bytes: int,
+    *,
+    live_bytes: int | None = None,
+    free_page_bytes: int = 0,
+) -> dict[str, Any]:
     """Bytes per day, and the days that leaves, from two readings.
 
     Deliberately the crudest possible estimator: this reading against the
@@ -1282,6 +1319,25 @@ def _target_ssot_growth(db_bytes: int) -> dict[str, Any]:
     have hidden 2026-09-07, when the growth was ordinary for weeks and the
     headroom was not -- what matters is the answer being present at all,
     not its third digit.
+
+    Measured on the LIVE bytes, not on the file.  The first version watched
+    the file, and the file is a step function: between 2026-09-08 and
+    2026-09-11 it sat at exactly 38,184,861,696 bytes for three days while
+    1.4 GB of new rows went into free pages left behind by the retention
+    contracts.  ``grew > 0`` was therefore never true, the rate was never
+    computed, ``days_to_ceiling`` stayed null for three days -- and the
+    two-day warning this function exists to raise cannot fire on a null.
+    The gauge was blank for exactly the stretch it was built for.
+
+    It was also frozen: the baseline is only rewritten when a rate is
+    computed, so a flat file kept a three-day-old reading forever and the
+    first real measurement would have been an average over all of it.  The
+    baseline now moves on every reading an hour apart, whether or not it
+    produced a rate.
+
+    Headroom counts the free pages, because new rows land there before the
+    file has to grow.  The ceiling itself stays on the file size: that is
+    what ``MAX_TARGET_DB_BYTES`` gates and what fail-closes every writer.
     """
 
     now = datetime.now(timezone.utc)
@@ -1292,21 +1348,40 @@ def _target_ssot_growth(db_bytes: int) -> dict[str, Any]:
             previous = {}
     except (OSError, ValueError):
         previous = {}
+    # The axis to measure on.  Live bytes when the database could be read,
+    # the file when it could not -- an unreadable database still gets the
+    # old behaviour rather than no gauge at all.
+    measure_now = live_bytes if live_bytes is not None else db_bytes
+    measure_key = "live_bytes" if live_bytes is not None else "database_bytes"
     bytes_per_day: float | None = None
+    baseline_is_old = False
     try:
         then = datetime.fromisoformat(
             str(previous["observed_at_utc"]).replace("Z", "+00:00")
         )
         elapsed_days = (now - then).total_seconds() / 86400.0
-        grew = db_bytes - int(previous["database_bytes"])
+        baseline_is_old = elapsed_days >= 1.0 / 24.0
+        # A baseline written before this function measured live bytes has
+        # only the file size in it; fall back to that axis for the one
+        # comparison rather than reading a missing key as zero growth.
+        measure_then = previous.get(measure_key)
+        if measure_then is None:
+            measure_then = previous.get("database_bytes")
+            grew = db_bytes - int(measure_then)
+        else:
+            grew = measure_now - int(measure_then)
         # Under an hour is not a measurement, it is rounding; a shrinking
-        # file is a retention pass, not a rate to extrapolate from.
-        if elapsed_days >= 1.0 / 24.0 and grew > 0:
+        # database is a retention pass, not a rate to extrapolate from.
+        if baseline_is_old and grew > 0:
             bytes_per_day = grew / elapsed_days
     except (KeyError, TypeError, ValueError):
         bytes_per_day = None
+        baseline_is_old = not previous
     fresh_rate = bytes_per_day
-    remaining = MAX_TARGET_DB_BYTES - db_bytes
+    # Free pages are headroom: new rows land there before the file has to
+    # grow.  The ceiling stays on the file, which is what fail-closes the
+    # writers, so this only ever adds the slack that genuinely exists.
+    remaining = MAX_TARGET_DB_BYTES - db_bytes + max(0, int(free_page_bytes))
     days_to_ceiling = (
         round(remaining / bytes_per_day, 2)
         if bytes_per_day and bytes_per_day > 0 and remaining > 0
@@ -1326,20 +1401,29 @@ def _target_ssot_growth(db_bytes: int) -> dict[str, Any]:
         if isinstance(carried, (int, float)) and carried > 0:
             bytes_per_day = float(carried)
             measured_from = previous.get("last_growth_measured_at_utc")
-            remaining_now = MAX_TARGET_DB_BYTES - db_bytes
+            remaining_now = remaining
             days_to_ceiling = (
                 round(remaining_now / bytes_per_day, 2)
                 if remaining_now > 0 else None
             )
-    if fresh_rate is not None or not previous:
+    # Move the baseline on any reading an hour apart, not only on one that
+    # produced a rate.  Rewriting it only on success is what froze the
+    # 2026-09-08 reading in place for three days: a flat file yields no
+    # rate, no rate meant no write, and no write meant the next comparison
+    # was against a baseline that kept getting older.
+    if fresh_rate is not None or baseline_is_old or not previous:
         try:
             TARGET_SSOT_GROWTH_PATH.parent.mkdir(parents=True, exist_ok=True)
             TARGET_SSOT_GROWTH_PATH.write_text(json.dumps({
-                "schema": "target_ssot_growth_v1",
+                "schema": "target_ssot_growth_v2",
                 "observed_at_utc": now.isoformat(
                     timespec="seconds"
                 ).replace("+00:00", "Z"),
                 "database_bytes": int(db_bytes),
+                "live_bytes": (
+                    int(live_bytes) if live_bytes is not None else None
+                ),
+                "free_page_bytes": int(max(0, free_page_bytes)),
                 "last_growth_bytes_per_day": (
                     round(fresh_rate, 1) if fresh_rate is not None
                     else previous.get("last_growth_bytes_per_day")
@@ -1358,6 +1442,10 @@ def _target_ssot_growth(db_bytes: int) -> dict[str, Any]:
         ),
         "days_to_ceiling": days_to_ceiling,
         "growth_measured_from_utc": measured_from,
+        # Published so a reader can tell a flat file from a flat database.
+        "live_bytes": live_bytes,
+        "free_page_bytes": int(max(0, free_page_bytes)),
+        "growth_axis": measure_key,
     }
 
 
@@ -1388,6 +1476,10 @@ def target_ssot_capacity_guard(db_path: Path) -> dict[str, Any]:
     db_bytes = int(database.stat().st_size) if database.is_file() else 0
     wal = Path(str(database) + "-wal")
     wal_bytes = int(wal.stat().st_size) if wal.exists() else 0
+    live_bytes, free_page_bytes = _target_ssot_live_bytes(database)
+    # The violation stays on the file: ``MAX_TARGET_DB_BYTES`` is what the
+    # writers fail closed against, and free pages inside the file do not
+    # move it.  Only the time axis below counts them.
     remaining = MAX_TARGET_DB_BYTES - db_bytes
     violations: list[str] = []
     warnings: list[str] = []
@@ -1395,7 +1487,9 @@ def target_ssot_capacity_guard(db_path: Path) -> dict[str, Any]:
         violations.append("target_database_bytes_exceeded")
     elif remaining < TARGET_SSOT_WARN_REMAINING_BYTES:
         warnings.append("target_database_headroom_low")
-    growth = _target_ssot_growth(db_bytes)
+    growth = _target_ssot_growth(
+        db_bytes, live_bytes=live_bytes, free_page_bytes=free_page_bytes
+    )
     days_left = growth["days_to_ceiling"]
     if (
         days_left is not None
