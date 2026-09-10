@@ -1586,6 +1586,129 @@ def collect_hosted_sweeps(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+#: Tables worth naming when the store is filling, and the column that says
+#: when each row arrived.  Not every table -- the point is which handful is
+#: burning the headroom, and a list of 138 answers nothing.
+SSOT_GROWTH_TABLES: tuple[tuple[str, str], ...] = (
+    ("basket_official_ws_snapshot", "observed_at"),
+    ("basket_target_market_registry", "refreshed_at"),
+    ("basket_probability_envelope", "decision_at_utc"),
+    ("basket_confirmed_inventory_snapshot", "observed_at"),
+    ("basket_order_state_snapshot", "observed_at"),
+    ("basket_probability_update_proof", "created_at_utc"),
+    ("maker_shadow_order", "placed_at_utc"),
+    ("basket_probability_bridge_history", "decision_at_utc"),
+    ("basket_regime_artifact", "created_at_utc"),
+    ("maker_shadow_settlement", "settled_at_utc"),
+)
+#: Tables the retention lanes delete from again.  Their write rate is churn,
+#: not growth, and reporting it beside the append-only tables is how a lane
+#: that is doing its job reads as the problem: the market registry writes
+#: 46 MB a day and has held flat -- it went from 1.47M rows to 261k when its
+#: retention shipped on 2026-09-07.
+SSOT_RETAINED_TABLES = frozenset({"basket_target_market_registry"})
+
+
+def collect_ssot_capacity(conn: sqlite3.Connection) -> dict[str, Any]:
+    """The store against its own ceiling, and which tables are eating it.
+
+    The ceiling is the one limit that stops the whole pipeline: every writer
+    fail-closes on ``target_database_bytes_exceeded`` and every model run
+    then reads stale.  It has been raised four times (29, 33, 35, 40, 48
+    GiB) and each raise bought days, so the number that matters is not the
+    remaining bytes but the days they represent -- and under them, which
+    tables are spending them.
+
+    The gauge itself is read from the resident's own status file rather
+    than recomputed here.  It is a live number with a warning bound
+    attached; a second implementation on this page would eventually
+    disagree with the one that actually fail-closes the writers, and the
+    board would then be arguing with the guard instead of showing it.
+
+    What this page adds is the composition, which the guard does not carry:
+    per-table rows and bytes over the last day, split by whether a
+    retention lane deletes them again.  Measured 2026-09-11, that split is
+    the whole story -- 72% of the net burn is one append-only table, and
+    the single biggest write rate after it belongs to a table that is not
+    growing at all.
+    """
+
+    status: dict[str, Any] = {}
+    if STATUS_JSON.is_file():
+        try:
+            status = json.loads(STATUS_JSON.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            status = {}
+    guard = dict(status.get("target_ssot_capacity") or {})
+    if not guard:
+        return {"available": False, "reason": "常驻还没发布容量读数", "tables": []}
+
+    since = (_now() - timedelta(days=1)).isoformat().replace("+00:00", "Z")
+    tables: list[dict[str, Any]] = []
+    for name, column in SSOT_GROWTH_TABLES:
+        if not _table_exists(conn, name):
+            continue
+        try:
+            info = conn.execute(f'PRAGMA table_info("{name}")').fetchall()
+            columns = {str(row[1]) for row in info}
+            if column not in columns:
+                continue
+            rows = conn.execute(
+                f'SELECT COUNT(*) FROM "{name}" WHERE "{column}" >= ?',
+                (since,),
+            ).fetchone()[0]
+            total = conn.execute(
+                f'SELECT COUNT(*) FROM "{name}"'
+            ).fetchone()[0]
+            # Row width from the newest rows, which is what the next day
+            # will be written at.  Older rows are a different size on
+            # several of these -- the ws snapshot's grew from 8.9 KB to
+            # 20.3 KB as the books deepened -- so an average over the whole
+            # table would describe a day that is not coming back.
+            width_expr = " + ".join(
+                f'COALESCE(LENGTH(CAST("{row[1]}" AS BLOB)),0)'
+                for row in info
+            )
+            width = conn.execute(
+                f"SELECT AVG(width) FROM (SELECT ({width_expr}) AS width"
+                f' FROM "{name}" ORDER BY rowid DESC LIMIT 200)'
+            ).fetchone()[0] or 0.0
+        except sqlite3.Error:
+            continue
+        retained = name in SSOT_RETAINED_TABLES
+        tables.append({
+            "table": name,
+            "rows_total": int(total),
+            "rows_per_day": int(rows),
+            "row_bytes": float(width),
+            "bytes_per_day": float(rows) * float(width),
+            "retained": retained,
+        })
+    tables.sort(key=lambda row: -row["bytes_per_day"])
+    appending = [row for row in tables if not row["retained"]]
+    net = sum(row["bytes_per_day"] for row in appending)
+    churn = sum(
+        row["bytes_per_day"] for row in tables if row["retained"]
+    )
+    largest = appending[0] if appending else None
+    return {
+        "available": True,
+        **guard,
+        "measured_tables": len(tables),
+        "tables": tables,
+        # The payload the append-only tables added in a day.  Always under
+        # the guard's own rate, which counts indexes as well -- named apart
+        # rather than reconciled, because one is what the rows carry and
+        # the other is what the file does.
+        "net_payload_bytes_per_day": net,
+        "churn_payload_bytes_per_day": churn,
+        "largest_table": largest["table"] if largest else "",
+        "largest_share": (
+            largest["bytes_per_day"] / net if largest and net > 0 else None
+        ),
+    }
+
+
 def collect_p0m_progress(conn: sqlite3.Connection) -> dict[str, Any]:
     """How far each station is from a P0-M artifact, and what is missing.
 
@@ -7964,6 +8087,12 @@ SECTION_CACHE_TTL_SEC = {
     "band_residual_audit": 240 * 60,
     "center_landing": 255 * 60,
     "convergence_claim": 270 * 60,
+    # The per-table growth walk counts rows over a day on ten tables, two
+    # of which have no index on their time column.  The gauge above it is
+    # read from status.json every build and is never cached; only the
+    # composition is, and a composition that is half an hour old still
+    # names the same tables.
+    "ssot_capacity": 45 * 60,
 }
 # Set by ``--no-section-cache`` so a reader who needs every number computed
 # against this instant can have it, at the price of the long build.
@@ -8096,6 +8225,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     chain = _cached_section("chain", collect_chain, conn)
     hosted_sweeps = _cached_section(
         "hosted_sweeps", collect_hosted_sweeps, conn
+    )
+    ssot_capacity = _cached_section(
+        "ssot_capacity", collect_ssot_capacity, conn
     )
     gaps = _cached_section(
         "gaps", collect_gaps, conn, members, stages, tables
@@ -8273,6 +8405,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "band_shadow": band_shadow,
         "chain": chain,
         "hosted_sweeps": hosted_sweeps,
+        "ssot_capacity": ssot_capacity,
         "gaps": gaps,
         "p0m": p0m,
         "skill": skill,
@@ -10957,6 +11090,111 @@ function hostedSweeps(){
 }
 
 
+// The one limit that stops everything (user ruling, 2026-09-11).  When the
+// target store passes its ceiling every writer fail-closes on
+// ``target_database_bytes_exceeded`` and every model run reads stale from
+// that moment; it has been raised four times and each raise bought days.
+// The board showed none of it -- the number lived in status.json, and the
+// time axis that makes it actionable was reporting null for three days
+// because it measured the file while free pages absorbed the growth.
+function ssotCapacity(){
+  const S = D.ssot_capacity || {};
+  if(!S.available) return `<h2>SSOT 容量与增速</h2>
+    <div class="card"><span class="dot amber"></span>
+    ${h(S.reason||"读不出容量读数")}。</div>`;
+  const GB = 1e9, MB = 1e6;
+  const gb=(v,d=2)=>v==null?"—":(v/GB).toFixed(d)+" GB";
+  const mb=(v,d=1)=>v==null?"—":(v/MB).toFixed(d)+" MB";
+  const pct=(v,d=1)=>v==null?"—":(100*v).toFixed(d)+"%";
+  const num=(v,d=1)=>v==null?"—":v.toFixed(d);
+  const tile=(label,value,note,klass)=>`<div class="card">
+    <div class="muted">${label}</div>
+    <div class="big ${klass||""}">${value}</div>
+    <div class="muted" style="font-size:11.5px">${note}</div></div>`;
+
+  const used = S.database_bytes, cap = S.max_database_bytes;
+  const frac = cap>0 ? used/cap : 0;
+  const days = S.days_to_ceiling, rate = S.growth_bytes_per_day;
+  const warnDays = S.warn_days_to_ceiling;
+  const daysCls = days==null ? "muted" : (days<=warnDays ? "down" : "up");
+  // A bar, because "38.18 of 51.54" is a subtraction the eye should not
+  // have to do.  The warning line is drawn on it: the point of the gauge
+  // is where the needle is against the mark, not the reading alone.
+  const warnFrac = cap>0 ? (cap - S.warn_remaining_bytes)/cap : 1;
+  const bar = `<div class="card" style="margin-top:10px">
+    <div class="muted" style="font-size:11.5px">文件 ${gb(used)} / 上限 ${gb(cap)}
+      · 空闲页 ${mb(S.free_page_bytes)}（这部分新行会先用掉，之后才顶文件）</div>
+    <div style="position:relative;height:16px;border-radius:8px;
+      background:var(--bar-bg);margin-top:8px;overflow:hidden">
+      <div style="position:absolute;left:0;top:0;bottom:0;
+        width:${(100*Math.min(1,frac)).toFixed(1)}%;
+        background:${frac>=warnFrac?"var(--red)":"var(--accent)"}"></div>
+      <div style="position:absolute;top:-2px;bottom:-2px;
+        left:${(100*warnFrac).toFixed(1)}%;width:2px;background:var(--amber)"></div>
+    </div>
+    <div class="muted" style="font-size:11px;margin-top:4px">
+      已用 ${pct(frac)} · 黄线是告警位（剩 ${gb(S.warn_remaining_bytes)}）</div></div>`;
+
+  const rows = (S.tables||[]).map(t=>`<tr class="${t.retained?"muted":""}">
+    <td class="mono">${h(t.table)}
+      ${t.retained?'<span class="pill green">有保留 · 周转</span>':""}</td>
+    <td class="mono ${t.retained?"":(t.table===S.largest_table?"down":"")}">${mb(t.bytes_per_day)}/天</td>
+    <td class="mono">${t.rows_per_day.toLocaleString()} 行/天</td>
+    <td class="mono">${(t.row_bytes/1024).toFixed(1)} KB/行</td>
+    <td class="mono">${t.rows_total.toLocaleString()}</td></tr>`).join("");
+
+  return `<h2>SSOT 容量与增速</h2>
+  <p class="sub">这是<b>唯一一条撞上就停整条链路</b>的界限：文件越过上限，
+  每个写者都 <span class="mono">target_database_bytes_exceeded</span> fail-close，
+  从那一刻起每次模型运行读到的都是陈旧值。已经抬过四次顶（29 / 33 / 35 / 40 / 48 GiB），
+  每次买到的都是天数。</p>
+  <div class="grid g3">
+    ${tile("剩余空间", gb(S.remaining_bytes),
+      "上限 "+gb(cap)+" · 已用 "+pct(frac)+" · 告警位 "+gb(S.warn_remaining_bytes),
+      S.remaining_bytes<S.warn_remaining_bytes?"down":"")}
+    ${tile("剩余天数", days==null?"还在测":num(days,1)+" 天",
+      rate==null
+        ? "速率要两个相隔一小时的读数才算得出来；重启后第一轮只写基线"
+        : "按实测 "+mb(rate)+"/天 · 低于 "+num(warnDays,0)+" 天报警",
+      daysCls)}
+    ${tile("最大单表", h(S.largest_table||"—"),
+      S.largest_share==null?"—":"占净增的 "+pct(S.largest_share,0)
+        +" · 净增 payload "+mb(S.net_payload_bytes_per_day)+"/天",
+      S.largest_share>0.5?"down":"")}
+  </div>
+  ${bar}
+  <div class="why" style="margin-top:12px"><b>「写得多」不等于「在长」。</b>
+  下表把两种表分开：<b>append-only</b> 的表写进去就永远在里面，是净增；
+  <b>有保留</b>的表被保留车道再删掉，稳态下不长——它的写入量是<b>周转</b>。
+  ${S.churn_payload_bytes_per_day>0?`本页此刻的周转是
+   ${mb(S.churn_payload_bytes_per_day)}/天，把它算进增速会得出一个
+   永远不会兑现的撞顶日期。`:""}
+  <span class="mono">basket_target_market_registry</span> 就是判例：
+  它每天写 ${mb((S.tables||[]).filter(t=>t.retained)
+    .reduce((a,t)=>a+t.bytes_per_day,0))}，而它的保留车道 2026-09-07 上线时
+  把它从 147 万行砍到 26 万行，此后一直是平的。</div>
+  <div class="scroll" style="margin-top:12px"><table><thead><tr>
+    <th>表</th><th>字节/天</th><th>行/天</th><th>行宽</th><th>总行数</th>
+  </tr></thead><tbody>${rows}</tbody></table></div>
+  <div class="why" style="margin-top:12px"><b>这个速率是怎么来的。</b>
+  2026-09-11 查明：三张「每 scope 每周期各写一行」的表
+  （ws 快照 / 持仓确认 / 订单状态）在 09-01 到 09-08 之间<b>同步涨了四倍多</b>
+  （5,200 → 28,127 / 26,212 / 26,212），而站数一直是 45、scope 只从 125 到 151。
+  变的不是这些表，是<b>生产周期从 34.4 分钟缩到 7.7 分钟</b>——
+  每提速一次就多写一倍的每周期快照。<b>周期提速的账，记在这里。</b>
+  同期 <span class="mono">basket_probability_envelope</span> 反向从 15,458 行/天
+  降到 4,096，那是「90% 是重述」那条修复落的地。</div>
+  <div class="why" style="margin-top:10px"><b>下一个杠杆是行宽，不是保留。</b>
+  ws 快照单行 94.7% 是 <span class="mono">buckets_json</span>，整行 59% 是
+  <span class="mono">ask_levels</span>——挂单簿深度，档数中位只有 5、均值却有 25.3，
+  长尾吃掉了大部分字节。按 745 条真实买腿量过（中位 11 股、九成分位 17 股、
+  最大 46 股）：3,274 个桶里<b>没有一个需要吃到 5 档以外</b>，
+  按史上最大那条腿算也只有 0.3% 会碰到。
+  只存前 5 档（只影响以后写的，老行不动）能把这张表砍一半、全库净增降约 35%。
+  它是 append-only 表、十二个以上生产模块在读，所以这是一条<b>待裁决</b>的动作。</div>`;
+}
+
+
 function gaps(){
   if(!D.gaps.length) return `<h2>数据缺口</h2>
     <div class="card"><span class="dot green"></span> 当前没有发现缺口。</div>`;
@@ -13596,9 +13834,9 @@ const GROUPS = [
    sections:[[coverage,"覆盖 · 价格 · EV"],[basketHit,"篮子命中率"],
      [truthLanding,"真值落位"]]},
   {id:"health", label:"系统健康", tone:"#f85149",
-   note:"机器在不在转：整条链路每一环、常驻的维护车道、真值物化",
-   sections:[[chain,"链路"],[hostedSweeps,"托管扫描车道"],
-     [materialization,"真值物化"]]},
+   note:"机器在不在转：整条链路每一环、库还剩多少、常驻的维护车道、真值物化",
+   sections:[[chain,"链路"],[ssotCapacity,"SSOT 容量与增速"],
+     [hostedSweeps,"托管扫描车道"],[materialization,"真值物化"]]},
 ];
 const tabs = `<nav class="tabs" id="tabs">${
   GROUPS.map(g => `<button type="button" data-tab="${g.id}"
