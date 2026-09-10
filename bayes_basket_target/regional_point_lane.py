@@ -557,6 +557,18 @@ def capture_p1(
             else:
                 raise ContractError("regional_point_product_unknown")
         except Exception as exc:  # noqa: BLE001 -- one run's failure is a line, not a stop
+            # A pass that ran out of clock INSIDE a fetch is the bound doing
+            # its job, not a fault, and it means the same thing the
+            # deadline check above means: stop.  Reported beside network
+            # faults it would make a healthy lane read as a failing one --
+            # and continuing would hand the next run a clock already spent.
+            from .jma_msm_archive import (  # noqa: PLC0415
+                JmaMsmPassDeadlineExceeded,
+            )
+
+            if isinstance(exc, JmaMsmPassDeadlineExceeded):
+                budget_exhausted = True
+                break
             failed.append(f"{product} {run_init:%Y-%m-%dT%HZ} {type(exc).__name__}: {str(exc)[:80]}")
             continue
         if not any((results.get((str(t["station_id"]), t["event_date"].isoformat())) or {}).get("hourly_c") for t in item["targets"]):

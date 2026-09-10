@@ -44,7 +44,8 @@ if str(ROOT) not in sys.path:
 from bayes_basket_target.contracts import ContractError, content_sha256
 from bayes_basket_target.jma_msm_archive import (
     CAPTURE_STATIONS, PROVIDER_ID, SYSTEM_ID, TRANSPORT_PROVIDER_ID,
-    close_client, fetch_day_maximum, file_url,
+    JmaMsmPassDeadlineExceeded,
+    close_client, fetch_day_maximum, file_url, set_pass_deadline,
 )
 from bayes_basket_target.native_archive_lead import capture_lead_bucket
 
@@ -181,6 +182,12 @@ def main() -> int:
     args = parser.parse_args()
 
     now = datetime.now(timezone.utc)
+    # One wall clock for the whole pass -- the P1 capture below and the loop
+    # after it -- and the same clock the fetches themselves check.  Bounding
+    # only the gaps between fetches left a single station-day free to outlast
+    # the subprocess budget; see ``jma_msm_archive.pass_deadline``.
+    pass_deadline_mono = time.monotonic() + BUDGET_SEC_PER_PASS
+    set_pass_deadline(BUDGET_SEC_PER_PASS)
     conn = sqlite3.connect(str(DB), timeout=120.0)
     # Charter 95: the registry row the compiler resolves this system from.
     from bayes_basket_target.native_ensemble_training_facts import (  # noqa: PLC0415
@@ -220,7 +227,7 @@ def main() -> int:
     skipped = 0
     attempted = 0
     failed: list[str] = []
-    deadline = time.monotonic() + BUDGET_SEC_PER_PASS
+    deadline = pass_deadline_mono
     budget_exhausted = False
 
     try:
@@ -275,10 +282,13 @@ def main() -> int:
                             continue
                         if attempted >= MAX_RUNS_PER_PASS:
                             continue
-                        # Before the fetch, never during: a run that
-                        # has started finishes, so the budget cannot
-                        # leave one half written.  What is unreached
-                        # is simply still missing next pass.
+                        # The cheap check, before a fetch is started at
+                        # all.  The fetch carries the same deadline and
+                        # stops between ranges if it runs out mid-run --
+                        # either way the write happens only after a whole
+                        # station-day is in hand, so nothing is left half
+                        # written and what is unreached is still missing
+                        # next pass.
                         if time.monotonic() >= deadline:
                             budget_exhausted = True
                             continue
@@ -289,6 +299,13 @@ def main() -> int:
                                 utc_offset_hours=offset_hours,
                                 latitude=latitude, longitude=longitude,
                             )
+                        except JmaMsmPassDeadlineExceeded:
+                            # Not a fault.  The pass ran out of clock inside
+                            # the fetch, which is the bound doing its job;
+                            # reporting it beside network faults would make a
+                            # healthy lane read as a failing one.
+                            budget_exhausted = True
+                            break
                         except Exception as exc:  # noqa: BLE001
                             # Network faults and archive gaps both land here
                             # and both mean the same thing to this pass: try
