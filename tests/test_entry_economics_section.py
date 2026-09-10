@@ -202,6 +202,91 @@ def test_rows_without_a_basket_cost_are_counted_not_dropped_silently():
     assert got["cost_missing"] == 1
 
 
+def test_sub_cent_baskets_are_excluded_on_the_ledgers_own_rule():
+    """The floor is the board's, and it is imported, not restated.
+
+    A basket costing under a cent is a minimum-tick offer with nothing
+    bid against it; the ledger calls such a chain not credible and every
+    other section on the page drops it.  This section shipped without the
+    floor on 2026-09-10 and was the only one counting 249 chains while
+    the daily table counted 239 -- and seven sub-cent misses worth 0.25
+    USDC of stake moved the per-chain averages further than any of the
+    real chains did (cost 0.428 -> 0.416, odds 1.34x -> 1.40x, plain
+    per-chain odds mean 5.9x -> 14.7x).
+    """
+
+    conn = _book([
+        ("P0", 0.42, 1, 1, 0.40, 10.0),
+        ("P0", 0.42, 0, 0, 0.40, 10.0),
+        ("P0", 0.21, 0, 0, 0.003, 5.0),   # dust: 332x odds, 1.5 cents at risk
+        ("P0", 0.19, 0, 0, 0.004, 5.0),
+    ])
+    got = C.collect_entry_economics(conn)
+    assert got["settled_rows"] == 4
+    assert got["chains"] == 2
+    assert got["dust_excluded"] == 2
+    assert got["dust_excluded_stake_usdc"] == pytest.approx(0.035)
+    # Without the floor these two would drag the mean price from 0.40 to
+    # about 0.20 and double the odds.
+    assert got["weightings"]["chain"]["cost_per_share"] == pytest.approx(0.40)
+    assert got["weightings"]["chain"]["net_odds"] == pytest.approx(1.5)
+
+
+def test_dust_floor_is_the_ledgers_and_not_a_local_copy():
+    from paper_trading_ledger import DUST_COST_FLOOR as LEDGER_FLOOR
+
+    assert C.DUST_COST_FLOOR is LEDGER_FLOOR
+    conn = _book([("P0", 0.5, 1, 1, 0.4, 10.0)])
+    assert C.collect_entry_economics(conn)["dust_cost_floor"] == LEDGER_FLOOR
+
+
+def test_odds_never_come_from_averaging_per_row_odds():
+    """Convexity, pinned in both modules that aggregate odds.
+
+    ``(1-c)/c`` is convex, so the mean of it is set by whichever basket
+    was cheapest rather than by the money at stake.  On this book the
+    per-row mean was 14.7x against a book whose money bought 1.53x, and
+    one day of the daily table printed 32.8x.
+    """
+
+    import selection_market_dashboard as SM
+
+    costs = [0.02, 0.60, 0.60, 0.60]
+    naive = sum((1 - c) / c for c in costs) / len(costs)
+    for helper in (C._odds_from_mean_cost, SM._odds_from_mean_cost):
+        got = helper(costs)
+        mean_cost = sum(costs) / len(costs)
+        assert got == pytest.approx((1 - mean_cost) / mean_cost)
+        assert got < naive / 4
+    assert C._odds_from_mean_cost([]) is None
+    assert C._odds_from_mean_cost([0.0, None]) is None
+
+    source = (ROOT / "scripts" / "selection_market_dashboard.py").read_text()
+    page = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
+    for text in (source, page):
+        assert 'sum(odds) / len(odds)' not in text
+        assert '_mean([r["odds"]' not in text
+
+
+def test_the_portfolio_card_no_longer_prints_the_same_numbers():
+    """One quantity, one place on the page.
+
+    The portfolio card carried its own 平均赔率 / 保本胜率 / 平均成本
+    tiles, and they disagreed with this section on screen (1.53x against
+    1.40x, 0.592 against 0.416) because they were a different weighting
+    wearing the same label.  Worse, the card's own arithmetic did not
+    close: it asserted that a 0.592 ticket gives 1.53x odds, and
+    (1-0.592)/0.592 is 0.69.
+    """
+
+    page = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
+    assert '${tile("保本胜率"' not in page
+    assert '${tile("平均赔率' not in page
+    assert '<b>赔率这一组读法：</b>' not in page
+    # The correction stays on the page where the wrong number was.
+    assert 'href="#sec-entry"' in page
+
+
 def test_empty_book_says_so_instead_of_publishing_zeroes():
     # The ledger is rebuilt in place -- cleared, then re-walked for about
     # forty minutes -- and a render landing inside that window used to

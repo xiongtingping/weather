@@ -45,7 +45,10 @@ if str(ROOT) not in sys.path:
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from paper_trading_ledger import INITIAL_CAPITAL_USDC  # noqa: E402
+from paper_trading_ledger import (  # noqa: E402
+    DUST_COST_FLOOR,
+    INITIAL_CAPITAL_USDC,
+)
 from selection_market_dashboard import (  # noqa: E402
     STATION_LABELS,
     STATS_START_EVENT_DATE,
@@ -101,6 +104,24 @@ LEAD_LABELS = (
     ("h24_48", "24–48 小时"),
     ("h48_plus", "48 小时以上"),
 )
+
+
+def _odds_from_mean_cost(costs: list[float]) -> float | None:
+    """Net odds implied by an average ticket price.
+
+    Never the average of each ticket's own ``(1-c)/c``.  That function is
+    convex, so the mean of it is dominated by whichever basket was
+    cheapest rather than by the money at stake: over this book on
+    2026-09-10 the per-row mean was 14.7x and the money bought 1.53x, and
+    one day's row printed 32.8x.  Averaging the price first and inverting
+    once gives the odds a reader can multiply their stake by.
+    """
+
+    priced = [c for c in costs if c and c > 0]
+    if not priced:
+        return None
+    mean = sum(priced) / len(priced)
+    return (1.0 - mean) / mean if mean > 0 else None
 
 
 def _connect(db: Path) -> sqlite3.Connection:
@@ -5615,7 +5636,14 @@ def _daily_table(
     )
     by_day: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in selection.get("rows") or []:
-        if row.get("dust_offer"):
+        # The chain's price, not the last stage's.  This table is
+        # chain-grained -- one settlement, one stake, one P&L per
+        # station-day -- and a chain topped up by a third-of-a-cent leg is
+        # not a third-of-a-cent basket.  Filtering on the stage flag
+        # dropped three credible chains carrying 15.07 USDC and -10.06 of
+        # P&L, which is why this table totalled -84.77 while the portfolio
+        # card totalled -95.08 off the same book (2026-09-10).
+        if row.get("chain_dust_offer", row.get("dust_offer")):
             continue
         by_day[str(row["event_date"])].append(row)
     table = []
@@ -5645,7 +5673,23 @@ def _daily_table(
         # forms from these two columns is only meaningful once the day has
         # settled; the settled-only stake is kept for that.
         settled_staked = sum(float(r["chain_stake_usdc"]) for r in settled)
-        odds = [r["odds"] for r in settled if r.get("odds") is not None]
+        # Odds from the day's average ticket price, not the average of
+        # each ticket's own odds.  (1-c)/c is convex, so averaging it
+        # rewards the cheapest basket of the day out of all proportion to
+        # the money in it: measured 2026-09-10 the per-row mean over the
+        # whole book was 14.7x -- one day printed 32.8x -- against a book
+        # whose money actually bought 1.53x.  Same set of rows, same cost
+        # column; only the order of the average and the inversion changed.
+        # And the price the odds come from is the chain's too: the tail
+        # row is whichever stage last topped the position up, so reading
+        # its own ``all_in_cost`` priced 2026-08-25 at 3.5 cents -- one
+        # 0.3-cent P1 add-on beside one real basket -- and printed 27.17x
+        # for a day that bought 0.35-cent-dollar baskets.
+        costs = [
+            float(r["chain_all_in_cost"]) for r in settled
+            if r.get("chain_all_in_cost") is not None
+            and float(r["chain_all_in_cost"]) > 0
+        ]
         claimed = (
             sum(float(r["win_probability"]) for r in settled) / len(settled)
             if settled else None
@@ -5788,7 +5832,7 @@ def _daily_table(
                 (hits / len(settled)) / claimed
                 if settled and claimed else None
             ),
-            "odds_mean": sum(odds) / len(odds) if odds else None,
+            "odds_mean": _odds_from_mean_cost(costs),
             "staked_usdc": staked,
             "settled_staked_usdc": settled_staked,
             "pnl_usdc": pnl,
@@ -6246,9 +6290,19 @@ def _entry_economics_block(
     stopped being written would otherwise read as a smaller book.
     """
 
+    # The same floor the rest of the board reads, from the module that
+    # owns it.  A basket costing under a cent is a minimum-tick offer with
+    # nothing bid against it -- the ledger itself calls those chains not
+    # credible (``chain_credible = chain_cost >= DUST_COST_FLOOR``) and
+    # every other section on the page drops them.  Keeping them here made
+    # this section the only one counting 249 chains where the daily table
+    # counts 239, and seven sub-cent misses moved the per-chain averages
+    # more than their 0.25 USDC of stake could ever justify: cost 0.428 ->
+    # 0.416, odds 1.34x -> 1.40x, and the plain per-chain odds mean from
+    # 5.9x to 14.7x.
     priced = [
         row for row in rows
-        if row[4] is not None and float(row[4]) > 0
+        if row[4] is not None and float(row[4]) >= DUST_COST_FLOOR
     ]
     if not priced:
         return None
@@ -6431,8 +6485,24 @@ def collect_entry_economics(conn: sqlite3.Connection) -> dict[str, Any]:
         "first_day": days[0],
         "last_day": days[-1],
         "settled_rows": len(rows),
-        "cost_missing": sum(
-            1 for r in rows if r[4] is None or float(r[4]) <= 0
+        "dust_cost_floor": DUST_COST_FLOOR,
+        "cost_missing": sum(1 for r in rows if r[4] is None),
+        "dust_excluded": sum(
+            1 for r in rows
+            if r[4] is not None and float(r[4]) < DUST_COST_FLOOR
+        ),
+        "dust_excluded_stake_usdc": sum(
+            float(r[5]) for r in rows
+            if r[4] is not None and float(r[4]) < DUST_COST_FLOOR
+        ),
+        # Published so the two totals on this page can be added back
+        # together instead of read as a contradiction: the equity curve is
+        # the whole account, every USDC that moved, and this section --
+        # like the daily table and the coverage strip -- is the measurable
+        # book.  The difference is exactly this.
+        "dust_excluded_pnl_usdc": sum(
+            float(r[6]) for r in rows
+            if r[4] is not None and float(r[4]) < DUST_COST_FLOOR
         ),
         "weighting_labels": [
             {"key": key, "label": label, "note": note}
@@ -10179,7 +10249,11 @@ function entryEconomics(){
   return `<h2>入场的九个数：这一注长什么样</h2>
   <p class="sub">${E.chains} 条已结算的链（一条链＝一个站日，
   ${h(E.first_day)} → ${h(E.last_day)}），格子里是<b>逐链等权</b>口径。
-  ${E.cost_missing?`另有 ${E.cost_missing} 行没记篮子成本，已排除。`:""}</p>
+  共 ${E.settled_rows} 行结算，按账本自己的 <span class="mono">chain_credible</span>
+  规则排除整篮成本不足 ${(100*(E.dust_cost_floor||0.01)).toFixed(0)} 分的
+  ${E.dust_excluded} 条（合计只投入 ${num(E.dust_excluded_stake_usdc,2)} U，
+  留着会把逐链平均票价从 0.428 拉到 0.416）——<b>与「每日统计」「篮子命中率」同一条底线</b>。
+  ${E.cost_missing?`另有 ${E.cost_missing} 行没记篮子成本，也已排除。`:""}</p>
   <div class="why"><b>①②必须成对读，而且量的是同一批桶。</b>
   「声称覆盖率」是服务分布在<b>最终持有的那几个桶</b>上的概率之和，
   「实际覆盖率」就是真值有没有落进这同一批桶——所以两者可以直接相除，
@@ -10206,7 +10280,14 @@ function entryEconomics(){
   差 <b>${cent((C.ev_per_share_claimed||0)-(S.ev_per_share_realised||0))}</b>。
   这一笔差价乘上 ${num(E.shares,0)} 股，就是账面上的
   ${usd(E.pnl_usdc,1)}（投入 ${num(E.stake_usdc,1)} U，收益率
-  <b class="${E.roi>=0?"up":"down"}">${sig(E.roi)}</b>）。</div>
+  <b class="${E.roi>=0?"up":"down"}">${sig(E.roi)}</b>）。
+  ${E.dust_excluded?`<br><span class="muted">「组合风险指标」的权益曲线印的是
+  ${usd(E.pnl_usdc+E.dust_excluded_pnl_usdc,2)}，不是这个数：那条曲线是
+  <b>整个账户</b>，含上面排除的 ${E.dust_excluded} 条虚价链
+  （它们合计 ${usd(E.dust_excluded_pnl_usdc,2)}）——
+  ${num(E.pnl_usdc,2)} 加 ${num(E.dust_excluded_pnl_usdc,2)} 就是
+  ${num(E.pnl_usdc+E.dust_excluded_pnl_usdc,2)}。本节与「每日统计」
+  「覆盖 · 价格 · EV」「篮子命中率」同口径。</span>`:""}</div>
   ${stageTable}
   <div class="why" style="margin-top:12px"><b>三个口径为什么都要印。</b>
   同一批链，声称覆盖率按链数是 ${mag(C.claimed_coverage)}、
@@ -10433,26 +10514,6 @@ function riskMetrics(){
       "跑赢自己声称的日子 "+R.days_beating_claim+" / "+R.days,
       R.ev_realisation_daily_median>=0.8?"up":"")}
   </div>
-  <div class="grid g3" style="margin-top:10px">
-    ${tile("平均赔率 <span class='muted'>按投入加权</span>",
-      num(R.odds_mean,2)+"x",
-      "赢一次，每 USDC 净赚这么多 · 平均成本 "+num(R.cost_mean,3))}
-    ${tile("保本胜率", mag(R.breakeven_win_rate),
-      "这个价钱下，不赚不亏需要的胜率（＝平均成本）")}
-    ${tile("实际胜率", mag(R.realised_win_rate_weighted),
-      "按投入加权 · 按链数是 "+mag(R.realised_win_rate)+
-      "（"+R.chain_count+" 条链）",
-      R.realised_win_rate_weighted>R.breakeven_win_rate?"up":"down")}
-  </div>
-  <div class="why" style="margin-top:10px"><b>赔率这一组读法：</b>
-  平均花 ${num(R.cost_mean,3)} 买一份满赔 1.00 的赔付，所以赔率
-  ${num(R.odds_mean,2)}x，<b>不赚不亏就要赢
-  ${mag(R.breakeven_win_rate)}</b>。按投入加权实际赢了
-  ${mag(R.realised_win_rate_weighted)}——只高出
-  ${mag(R.realised_win_rate_weighted - R.breakeven_win_rate)}；
-  按链数则是 ${mag(R.realised_win_rate)}，<b>反而低于保本线</b>。
-  两个口径分居保本线两侧，正是"钱赚在少数大仓、链数上是亏的"的另一种说法，
-  也解释了为什么上面的 EV 兑现比按钱算和按天算差六倍。</div>
   <div class="why" style="margin-top:10px"><b>这三块是全页最重的一组，
   但两个兑现比必须一起读。</b>
   EV 不是事后打分，它是<b>给每一笔定规模的输入</b>——Kelly 用它决定下多少。
@@ -10469,6 +10530,22 @@ function riskMetrics(){
   同样分不开噪声。能确定的只有方向：三个口径全部远低于 1.0，
   说明<b>定规模用的那个数偏高</b>，而这个偏差每天都在重复，
   不像夏普要等 ${R.days_to_separate_from_zero} 天才能判。</div>
+  <div class="why" style="margin-top:10px"><b>赔率、保本胜率、平均票价
+  搬去「入场的九个数」了（2026-09-10）。</b>
+  这里曾经有三块印同名的数，和那一节对不上，而且<b>对不上的一半是这里错的</b>：
+  这张卡片写过"平均花 ${num(R.cost_mean,3)} 买一份满赔 1.00 的赔付，所以赔率
+  ${num(R.odds_mean,2)}x"——(1−${num(R.cost_mean,3)})/${num(R.cost_mean,3)} =
+  <b>${num((1-R.cost_mean)/R.cost_mean,2)}</b>，不是 ${num(R.odds_mean,2)}。
+  两个数各自没算错，是<b>两种加权</b>：${num(R.cost_mean,3)} 是按投入加权的票价，
+  而 ${num(R.odds_mean,2)}x 恒等于 Σ投入÷Σ股 那个票价反推出来的赔率。
+  同名数只留一处，就在<a href="#sec-entry">上面那一节</a>，三个口径并排印。
+  <br><b>还有一件这里读不出来的事</b>：保本 ${mag(R.breakeven_win_rate)}
+  对实际 ${mag(R.realised_win_rate_weighted)}，按这一对推出来的收益率是
+  ${pct(R.realised_win_rate_weighted/R.breakeven_win_rate-1,1)}，
+  可这本账实际是
+  ${R.total_staked_usdc>0?pct(R.realised_pnl_usdc/R.total_staked_usdc,1):"—"}。
+  <b>按投入加权的这一对本来就不闭合</b>——闭合的是按股那一对
+  （每股回收 ÷ 每股票价 ＝ 收益率），在那一节里。</div>
   ${cvar}
   ${chart}
   ${claimChart}`;
