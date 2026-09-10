@@ -26,6 +26,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from bayes_basket_target import ssot  # noqa: E402
 
 
 def _ledger():
@@ -41,13 +45,19 @@ def _ledger():
     return module
 
 
-# Five one-degree rungs.  The seat takes the middle two.
+# Five one-degree rungs, closed at both ends.  The seat takes the middle
+# two.  The ends used to be open (``None``) and one test closed them with
+# an UPDATE when it needed a value outside the book -- which the real
+# schema forbids: ``basket_probability_bridge_bucket_no_update`` makes
+# these rows append-only, and the fixture only got away with it while it
+# hand-rolled a table without the trigger.  A ladder that is bounded from
+# the start needs no mutation to have an outside.
 _LADDER = [
-    ("B0", 0, None, 20.0),
+    ("B0", 0, 19.0, 20.0),
     ("B1", 1, 20.0, 21.0),
     ("B2", 2, 21.0, 22.0),
     ("B3", 3, 22.0, 23.0),
-    ("B4", 4, 23.0, None),
+    ("B4", 4, 23.0, 24.0),
 ]
 _WINDOW = ["B2", "B3"]
 _STAKE = 12.0
@@ -64,27 +74,33 @@ def _seed(path: Path, ledger) -> sqlite3.Connection:
         " revision_no INTEGER NOT NULL, content_sha256 TEXT NOT NULL,"
         " UNIQUE(station_id, local_date, revision_no))"
     )
-    conn.execute(
-        "CREATE TABLE basket_probability_bridge_history ("
-        " history_id TEXT PRIMARY KEY, station_id TEXT NOT NULL,"
-        " event_date TEXT NOT NULL, stage TEXT NOT NULL,"
-        " decision_at_utc TEXT NOT NULL)"
-    )
-    conn.execute(
-        "CREATE TABLE basket_probability_bridge_bucket_probability ("
-        " history_id TEXT NOT NULL, bucket TEXT NOT NULL,"
-        " ordinal INTEGER NOT NULL, lower_c REAL, upper_c REAL,"
-        " probability REAL NOT NULL, PRIMARY KEY(history_id, bucket))"
-    )
+    # The bridge tables come from the module that owns them, never a
+    # hand-rolled subset.  This fixture used to declare five of the
+    # eighteen columns, and the ledger's re-score reads a sixth: charter
+    # bookkeeping added ``state`` to the history table and the copy here
+    # did not follow, so every test in this file died on "no such column:
+    # h.state" -- a stale fixture reading as a broken ledger.  Taking the
+    # production DDL means the next column arrives for free, and the
+    # append-only triggers and the CHECK constraints come with it.
+    conn.executescript(ssot.PROBABILITY_BRIDGE_DDL)
     ledger.ensure_schema(conn)
     conn.execute(
-        "INSERT INTO basket_probability_bridge_history VALUES"
-        " ('h1','KTST','2026-08-10','P0','2026-08-10T12:00:00Z')"
+        "INSERT INTO basket_probability_bridge_history ("
+        " history_id, station_id, event_date, settlement_timezone, stage,"
+        " checkpoint_id, decision_at_utc, fresh_until_utc,"
+        " envelope_content_sha256, bridge_sha256, bucket_map_sha256,"
+        " bucket_intervals_json, projection_sha256, envelope_json, state,"
+        " created_at_utc, content_sha256"
+        ") VALUES ('h1','KTST','2026-08-10','UTC','P0','chk-1',"
+        " '2026-08-10T12:00:00Z','2026-08-10T18:00:00Z',"
+        " ?,?,?,'[]',?,'{}','COMMITTED','2026-08-10T12:00:00Z',?)",
+        ("e" * 64, "b" * 64, "m" * 64, "p" * 64, "c" * 64),
     )
     conn.executemany(
-        "INSERT INTO basket_probability_bridge_bucket_probability VALUES"
-        " (?,?,?,?,?,?)",
-        [("h1", b, o, lo, hi, 0.2) for b, o, lo, hi in _LADDER],
+        "INSERT INTO basket_probability_bridge_bucket_probability ("
+        " history_id, bucket, ordinal, lower_c, upper_c, probability,"
+        " content_sha256) VALUES (?,?,?,?,?,?,?)",
+        [("h1", b, o, lo, hi, 0.2, f"{o:064d}") for b, o, lo, hi in _LADDER],
     )
     conn.execute(
         "INSERT INTO paper_trade_position ("
@@ -254,17 +270,9 @@ def test_a_correction_off_the_ladder_retires_the_settlement(tmp_path) -> None:
         ledger._rescore_settlements(conn, ledger._truth(conn))
         assert _settlement(conn)["hit"] == 1
 
-        # Outside every rung: the open-ended ends of the ladder are the only
-        # reason this needs an explicit sentinel value at all.
-        conn.execute(
-            "UPDATE basket_probability_bridge_bucket_probability"
-            " SET lower_c=20.0 WHERE bucket='B0'"
-        )
-        conn.execute(
-            "UPDATE basket_probability_bridge_bucket_probability"
-            " SET upper_c=24.0 WHERE bucket='B4'"
-        )
-        conn.commit()
+        # Outside every rung.  The ladder is bounded 19-24 by construction
+        # (see ``_LADDER``), so nothing here has to reach into a table the
+        # production schema holds append-only.
         _append_truth(conn, 1, 31.0)
         counts = ledger._rescore_settlements(conn, ledger._truth(conn))
         assert counts.get("settlement_dropped") == 1
@@ -338,14 +346,16 @@ def test_recorded_settlements_say_which_truth_they_read() -> None:
         conn.close()
 
 
-def test_a_rescore_rebuilds_the_id_the_entry_walk_would_have_written() -> None:
-    """Both paths must agree on identity, or a re-score forks the row.
+def test_the_live_books_ids_are_the_ones_this_ledger_writes() -> None:
+    """Every settled row on disk carries the id the shape produces now.
 
-    ``_rescore_settlements`` reconstructs the seat's identity from the
-    recorded columns; the entry walk builds it from the seat it just chose and
-    stores its hash in ``paper_trade_position.content_sha256``.  If those ever
-    drift, a corrected settlement gets an id the walk would never produce and
-    the two paths stop being the same ledger.
+    This is the check that would have caught the split, and it is the one
+    that goes loud if a third shape ever appears.  What it supplies by
+    hand is only the INPUTS the recorded row holds -- the chain's window
+    ordered by the ladder's own ordinals, the chain stake, the chain's
+    first decision -- while the shape itself comes from the ledger's
+    function.  Eight rows failed this the day it was written; the
+    re-score re-keys them on its next pass and they stay put after that.
     """
 
     ledger = _ledger()
@@ -355,23 +365,141 @@ def test_a_rescore_rebuilds_the_id_the_entry_walk_would_have_written() -> None:
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
     try:
         rows = conn.execute(
-            "SELECT station_id, event_date, stage, decision_at_utc,"
-            " window_buckets_json, stake_usdc, content_sha256"
-            " FROM paper_trade_position"
+            "SELECT s.settlement_id, s.station_id, s.event_date,"
+            " s.settled_tmax_c, p.chain_shares_json, p.leg_shares_json,"
+            " p.chain_stake_usdc, p.stake_usdc, p.stage, p.decision_at_utc,"
+            " t.opened"
+            " FROM paper_trade_settlement s"
+            " JOIN paper_trade_position p ON p.position_id = s.position_id"
+            " JOIN (SELECT station_id, event_date,"
+            "         MIN(decision_at_utc) AS opened"
+            "       FROM paper_trade_position GROUP BY 1, 2) t"
+            "   ON t.station_id = s.station_id"
+            "  AND t.event_date = s.event_date"
         ).fetchall()
     except sqlite3.DatabaseError:
+        conn.close()
         return
+    drifted = []
+    for (sid, station, day, truth, chain_js, leg_js, chain_stake,
+         stage_stake, stage, decided, opened) in rows:
+        ladder = ledger._settlement_ladder(
+            conn, str(station), str(day), str(stage), str(decided)
+        )
+        ordinals = {str(b): int(o) for b, o, _lo, _hi, _p in ladder}
+        per_leg = json.loads(chain_js or leg_js or "{}") or {}
+        if not per_leg:
+            continue
+        want = ledger._settlement_identity_id(
+            station_id=str(station),
+            event_date=str(day),
+            chain_opened_at=str(opened),
+            window=sorted(per_leg, key=lambda b: ordinals.get(b, 0)),
+            stake_usdc=float(
+                chain_stake if chain_stake is not None else stage_stake
+            ),
+            truth_c=truth,
+        )
+        if str(sid) != want:
+            drifted.append(f"{station} {day}")
+    conn.close()
+    assert not drifted, (
+        "%d settlements carry an id this ledger would not write: %s"
+        % (len(drifted), ", ".join(drifted[:6]))
+    )
+
+
+def test_both_writers_build_the_settlement_id_the_same_way() -> None:
+    """Two writers, one identity, and it is a function they both call.
+
+    ``paper_trade_settlement`` is written from two places -- the entry walk
+    when a day resolves, and the re-score when a truth revision moves it --
+    and they hashed different dictionaries for three weeks.  The walk keyed
+    the CHAIN (``chain_opened_at``, the accumulated window, no stage); the
+    re-score keyed a STAGE (``stage`` and its own ``decision_at_utc``).  So
+    a corrected settlement got an id the walk would never produce.
+
+    This test used to try to catch that and could not: it rebuilt the
+    re-score's dictionary by hand and compared it to
+    ``paper_trade_position.content_sha256`` -- a THIRD hash, the economic
+    decision id (``paper_trade_economic_decision_v2``), which has neither
+    shape.  A hand-copied rule audits the copy.  Measured on the live book
+    2026-09-10 the real split was 237 ids from the walk against 7 from the
+    re-score, and this test was red on none of them and red on all 162
+    positions instead.
+
+    So the shape lives in one function and this asks the source whether
+    both writers call it.
+    """
+
+    source = (ROOT / "scripts" / "paper_trading_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    # Exactly one place decides the shape.
+    assert source.count('"paper-set-" + content_sha256(') == 1
+    assert source.count("def _settlement_identity_id(") == 1
+    # And both writers reach it through that function.
+    assert source.count("_settlement_identity_id(\n") == 3, (
+        "expected the definition plus one call per writer"
+    )
+    # The stage is deliberately not part of it: a chain settles once.
+    body = source.split("def _settlement_identity_id(")[1].split(
+        "\ndef "
+    )[0]
+    assert '"chain_opened_at"' in body
+    assert '"stage"' not in body
+
+
+def test_a_rescore_writes_the_id_the_entry_walk_would_have_written(
+    tmp_path,
+) -> None:
+    """The same chain, the same truth, the same id -- whoever wrote it.
+
+    Seeds a settlement under the retired stage-keyed shape, lets the
+    re-score run with the truth unchanged, and requires the row to come
+    back under the chain-keyed id.  Before the fix the re-score left it
+    alone (its truth was current) and the book kept an id no writer
+    produces; now it is re-keyed once and is stable from then on.
+    """
+
+    ledger = _ledger()
+    conn = _seed(tmp_path / "ledger.db", ledger)
+    try:
+        _append_truth(conn, 0, 22.4)
+        ledger._rescore_settlements(conn, ledger._truth(conn))
+        settled = _settlement(conn)
+        expected = ledger._settlement_identity_id(
+            station_id="KTST",
+            event_date="2026-08-10",
+            chain_opened_at="2026-08-10T12:00:00Z",
+            window=_WINDOW,
+            stake_usdc=_STAKE,
+            truth_c=22.4,
+        )
+        assert settled["settlement_id"] == expected
+
+        # Now put the retired shape back under it and re-score again.  The
+        # truth has not moved, so the only thing that can bring the row
+        # back is the identity check.
+        stale = "paper-set-" + ledger.content_sha256({
+            "station_id": "KTST", "event_date": "2026-08-10",
+            "stage": "P0", "decision_at_utc": "2026-08-10T12:00:00Z",
+            "window": list(_WINDOW), "stake_usdc": round(_STAKE, 6),
+            "truth": 22.4,
+        })[:24]
+        assert stale != expected, "the two shapes must actually differ"
+        conn.execute(
+            "UPDATE paper_trade_settlement SET settlement_id=?"
+            " WHERE settlement_id=?",
+            (stale, expected),
+        )
+        conn.commit()
+        counts = ledger._rescore_settlements(conn, ledger._truth(conn))
+        assert counts.get("settlement_rekeyed") == 1
+        assert _settlement(conn)["settlement_id"] == expected
+        # And it is idempotent: a second pass finds nothing to do.
+        counts = ledger._rescore_settlements(conn, ledger._truth(conn))
+        assert counts.get("settlement_rekeyed") is None
+        assert counts.get("settlement_current") == 1
     finally:
         conn.close()
-    for station, day, stage, decided, window_json, stake, recorded in rows:
-        rebuilt = ledger.content_sha256({
-            "station_id": str(station),
-            "event_date": str(day),
-            "stage": str(stage),
-            "decision_at_utc": str(decided),
-            "window": list(json.loads(window_json)),
-            "stake_usdc": round(float(stake), 6),
-        })
-        assert rebuilt == str(recorded), (
-            "identity drift on %s %s %s" % (station, day, stage)
-        )
