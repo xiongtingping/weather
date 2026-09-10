@@ -124,7 +124,7 @@ from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     P1_MINIMUM_SUPPORT_BUCKETS,
     SKEW_EXTENSION_DIRECTION,
     SKEW_EXTENSION_RULE,
-    SKEW_GAP_THRESHOLD_BUCKETS,
+    SKEW_GAP_THRESHOLD_SIGMA,
     SKEW_PLACEMENT_MODE,
     SKEW_SIGNAL_DEFINITION,
     SUPPORT_EDGE_MARGIN,
@@ -2404,9 +2404,14 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
         {"skew_placement_mode": SKEW_PLACEMENT_MODE}
         if SKEW_PLACEMENT_MODE != "free" else {}
     ),
+    # The skew gate's unit changed on 2026-09-11 from half a bucket to 0.35
+    # of the served sigma; rows written under the bucket gate describe a
+    # different rule at the default, so the basis is hashed always and the
+    # value only away from its charter default.
+    "skew_gap_threshold_basis": "sigma",
     **(
-        {"skew_gap_threshold_buckets": SKEW_GAP_THRESHOLD_BUCKETS}
-        if SKEW_GAP_THRESHOLD_BUCKETS != 0.5 else {}
+        {"skew_gap_threshold_sigma": SKEW_GAP_THRESHOLD_SIGMA}
+        if SKEW_GAP_THRESHOLD_SIGMA != 0.35 else {}
     ),
     # Research arm (2026-08-26): which way the skew gate points.  The
     # charter-55 default extends with the tail; ``toward_mode`` extends

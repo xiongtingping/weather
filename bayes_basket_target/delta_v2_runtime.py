@@ -1346,14 +1346,23 @@ SKEW_PLACEMENT_MODE = (
     os.environ.get("DELTA_V2_SKEW_PLACEMENT", "").strip().lower()
     or "free"
 )
-# The gap below which a day reads as symmetric, in bucket steps.  Half a
-# bucket is the charter-55 ruling.  Zero makes the reading binary -- every
-# day leans whichever side its mean sits from its mode, however slightly
-# -- which is the user's anchored-window concept (2026-08-25): no
-# symmetric third state, the mean bucket always the anchor, the window
-# always extended toward the day's own lean.
-SKEW_GAP_THRESHOLD_BUCKETS = float(
-    os.environ.get("DELTA_V2_SKEW_GAP_THRESHOLD", "") or 0.5
+# The gap below which a day reads as symmetric, in units of the served
+# sigma (user ruling, 2026-09-11; the charter-55 half bucket was an absolute
+# gate that turned into a width reading as serving narrowed -- see the
+# kernel constant).  Zero makes the reading binary -- every day leans
+# whichever side its mean sits from its mode, however slightly -- which is
+# the user's anchored-window concept (2026-08-25): no symmetric third state,
+# the mean bucket always the anchor, the window always extended toward the
+# day's own lean.  The old bucket-unit variable is refused rather than read
+# in the wrong unit: a research arm set for half a bucket would silently
+# become half a sigma.
+if os.environ.get("DELTA_V2_SKEW_GAP_THRESHOLD", "").strip():
+    raise RuntimeError(
+        "DELTA_V2_SKEW_GAP_THRESHOLD is in bucket steps and retired;"
+        " set DELTA_V2_SKEW_GAP_THRESHOLD_SIGMA (units of the served sigma)"
+    )
+SKEW_GAP_THRESHOLD_SIGMA = float(
+    os.environ.get("DELTA_V2_SKEW_GAP_THRESHOLD_SIGMA", "") or 0.35
 )
 # The market-lean gate (user ruling, 2026-08-28): the book is information,
 # and a window may not lean AGAINST it.  Measured before wiring, on 481
@@ -1485,7 +1494,7 @@ def _skew_extension_sign(
         probabilities,
         ordinals,
         signal=SKEW_SIGNAL_DEFINITION,
-        threshold_buckets=SKEW_GAP_THRESHOLD_BUCKETS,
+        threshold_sigma=SKEW_GAP_THRESHOLD_SIGMA,
     )
 
 
@@ -6852,7 +6861,7 @@ def compile_delta_v2_runtime_plan(
             probabilities,
             {row.bucket: int(row.ordinal) for row in snapshot.buckets},
             signal=SKEW_SIGNAL_DEFINITION,
-            threshold_buckets=SKEW_GAP_THRESHOLD_BUCKETS,
+            threshold_sigma=SKEW_GAP_THRESHOLD_SIGMA,
         ),
         "diagnostic_lower_ordinal": snapshot.evidence.model_envelope_lower_ordinal,
         "diagnostic_upper_ordinal": snapshot.evidence.model_envelope_upper_ordinal,

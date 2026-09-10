@@ -67,7 +67,19 @@ def _validated_probability_vector(
 # One definition for the seed (``_choose_support``), the ladder centre
 # (charter 54) and the skew extension sign (charter 55), and the paper ledger
 # imports the same two functions.
-MEAN_MODE_SKEW_THRESHOLD_BUCKETS = 0.5
+#
+# The gate is in units of the served sigma, not buckets (user ruling,
+# 2026-09-11).  Half a bucket was an absolute gate: as the served width fell
+# from 1.7 to 0.65 bucket steps between 08-25 and 09-10 the mean could no
+# longer leave the mode's bucket and 89% of station-days read SYMMETRIC --
+# the reading had become a width reading.  Measured on 719 station-days
+# (08-25..09-09, P0, last served vector, settled truth): whenever a lean is
+# read the truth lands on the lean side 83-85% of the time against a 46/54
+# base rate, under every definition tried; the absolute gate simply read a
+# lean on 11 of 162 narrow days where 0.35 sigma reads 80 at 80% accuracy.
+# 0.35 is a charter default, not a fitted value: accuracy is flat across
+# 0.25-0.35 sigma, so only the ledger's extension arm can price it.
+MEAN_MODE_SKEW_THRESHOLD_SIGMA = 0.35
 
 
 def mean_center_bucket_v1(
@@ -129,14 +141,16 @@ def mean_mode_skew_reading_v1(
     ordinals: Mapping[str, Any],
     *,
     signal: str = "mean_mode",
-    threshold_buckets: float = MEAN_MODE_SKEW_THRESHOLD_BUCKETS,
+    threshold_sigma: float = MEAN_MODE_SKEW_THRESHOLD_SIGMA,
 ) -> dict[str, Any]:
     """The whole shape reading, not just the sign it reduces to.
 
     The gap is the weighted mean ordinal minus the heaviest bucket's ordinal
-    (``mean_median``: minus the median's), gated at ``threshold_buckets``
-    times the vocabulary's own bucket step so a Fahrenheit station is not
-    read as twice as skewed as a Celsius one.  Lifted from charter 55's
+    (``mean_median``: minus the median's), gated at ``threshold_sigma``
+    times the served distribution's own standard deviation -- so the same
+    offset reads as a lean on a narrow day and as nothing on a wide one, and
+    a Fahrenheit station is not read as twice as skewed as a Celsius one
+    (gap and sigma are both in bucket steps).  Lifted from charter 55's
     ``_skew_extension_sign`` so the seed's direction reads the same number.
 
     ``mean_mode_skew_sign_v1`` is this function's sign and nothing else, so
@@ -163,7 +177,9 @@ def mean_mode_skew_reading_v1(
         "mode_ordinal": None,
         "bucket_step": None,
         "sigma_buckets": None,
-        "threshold_buckets": float(threshold_buckets),
+        "threshold_sigma": float(threshold_sigma),
+        "threshold_buckets": None,
+        "threshold_basis": "sigma",
         "readable": False,
     }
     if not weighted or total <= 0.0:
@@ -184,18 +200,21 @@ def mean_mode_skew_reading_v1(
     diffs = [b - a for a, b in zip(steps, steps[1:]) if b > a]
     step = min(diffs) if diffs else 1
     gap = mean_ordinal - mode_ordinal
-    sign = 0 if abs(gap) < float(threshold_buckets) * step else (
-        1 if gap > 0 else -1
-    )
     # The served width, in the same bucket steps as the gap.  Measured
-    # 2026-09-08 on every P0 envelope since 08-25: the share of days this
-    # reading calls SYMMETRIC is a monotone function of this number alone
-    # (19% at sigma >= 2.25 steps, 84% under 1.0) and holds within a single
-    # decision day, so a shape reading that did not carry its width could
-    # not be told apart from a width reading.  Charter 122 gates the
-    # symmetric seat on it.
+    # 2026-09-08 on every P0 envelope since 08-25: under the old absolute
+    # gate the share of days this reading called SYMMETRIC was a monotone
+    # function of this number alone (19% at sigma >= 2.25 steps, 84% under
+    # 1.0), so a shape reading that did not carry its width could not be
+    # told apart from a width reading.  Charter 122 gates the symmetric seat
+    # on it; since 2026-09-11 the gate itself is in units of it.
     variance = sum(mass * (o - mean_ordinal) ** 2 for mass, o in weighted) / total
     sigma_buckets = math.sqrt(max(0.0, variance)) / step
+    threshold_buckets = float(threshold_sigma) * sigma_buckets
+    # A one-bucket distribution has no width and no gap: symmetric, rather
+    # than "not below a zero gate" and therefore leaning.
+    sign = 0 if (
+        sigma_buckets <= 0.0 or abs(gap) / step < threshold_buckets
+    ) else (1 if gap > 0 else -1)
     return {
         "schema": "mean_mode_skew_reading_v1",
         "signal": str(signal),
@@ -208,7 +227,12 @@ def mean_mode_skew_reading_v1(
         "mode_ordinal": int(mode_ordinal),
         "bucket_step": int(step),
         "sigma_buckets": round(sigma_buckets, 6),
-        "threshold_buckets": float(threshold_buckets),
+        "threshold_sigma": float(threshold_sigma),
+        # The gate this day was read at, in bucket steps: threshold_sigma
+        # times this day's sigma.  Kept under the old name so every reader
+        # of the reading still finds the number the sign was judged by.
+        "threshold_buckets": round(threshold_buckets, 6),
+        "threshold_basis": "sigma",
         "readable": True,
     }
 
@@ -233,7 +257,7 @@ def mean_mode_skew_sign_v1(
     ordinals: Mapping[str, Any],
     *,
     signal: str = "mean_mode",
-    threshold_buckets: float = MEAN_MODE_SKEW_THRESHOLD_BUCKETS,
+    threshold_sigma: float = MEAN_MODE_SKEW_THRESHOLD_SIGMA,
 ) -> int:
     """The distribution's skew: +1 mean above the mode, -1 below, 0 within.
 
@@ -244,7 +268,7 @@ def mean_mode_skew_sign_v1(
         probabilities,
         ordinals,
         signal=signal,
-        threshold_buckets=threshold_buckets,
+        threshold_sigma=threshold_sigma,
     )["sign"])
 
 
@@ -257,12 +281,12 @@ def expected_direction_from_probability_vector(
 ) -> Direction:
     """Charter 75: the direction bias is the distribution's skew.
 
-    Mean below the mode by at least half a bucket is left-skewed and leans
-    DOWN; mean above the mode leans UP; within half a bucket the shape is
+    Mean below the mode by at least 0.35 of the served sigma is left-skewed
+    and leans DOWN; mean above the mode leans UP; within that the shape is
     symmetric and there is no lean.  The market is intentionally absent
     here, as before, and a stale stage yields no direction.  ``policy`` is
     kept on the signature for the callers that pass it; the deadband and
-    entropy dials it carried are superseded by the half-bucket gate.
+    entropy dials it carried are superseded by the sigma gate.
     """
 
     del policy

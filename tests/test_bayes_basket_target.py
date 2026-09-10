@@ -1258,11 +1258,17 @@ def test_b06_direction_gate_uses_probability_only_and_fails_closed() -> None:
         "direction_min_side_mass": 0.10,
     })
     ordinals = {"37": 37, "38": 38, "39": 39}
-    # Charter 75: the lean is the skew, mean against mode at half a bucket.
-    # 0.10/0.50/0.40 puts the mean at 38.3 against a mode of 38 -- inside the
-    # half-bucket band, so symmetric -- where the old side-mass rule read UP.
+    # Charter 75: the lean is the skew, mean against mode, gated since
+    # 2026-09-11 at 0.35 of the served sigma (user ruling; the half-bucket
+    # gate read every narrow day as symmetric).  0.10/0.50/0.40 puts the
+    # mean at 38.3 against a mode of 38 on a 0.64-sigma day: 0.47 sigma,
+    # a lean UP -- which the half-bucket gate had called symmetric.
     assert expected_direction_from_probability_vector(
         {"37": 0.10, "38": 0.50, "39": 0.40}, ordinals, policy
+    ) is Direction.UP
+    # The same width with no lean is symmetric.
+    assert expected_direction_from_probability_vector(
+        {"37": 0.25, "38": 0.50, "39": 0.25}, ordinals, policy
     ) is Direction.NEUTRAL
     wide = {"37": 37, "38": 38, "39": 39, "40": 40}
     # Mode 38, mean 38.75: right-skewed by three quarters of a bucket.

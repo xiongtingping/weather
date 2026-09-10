@@ -3571,6 +3571,8 @@ def _live_basket_plan_state(
                 " json_extract(plan_json,"
                 "'$.compiled_plan.plan.skew_reading.threshold_buckets'),"
                 " json_extract(plan_json,"
+                "'$.compiled_plan.plan.skew_reading.threshold_sigma'),"
+                " json_extract(plan_json,"
                 "'$.compiled_plan.plan.skew_reading.sigma_buckets'),"
                 " json_extract(plan_json,'$.compiled_plan.plan"
                 ".basket_support_selection.symmetric_seat_width_in_band'),"
@@ -3584,8 +3586,8 @@ def _live_basket_plan_state(
             ).fetchall()
         except sqlite3.Error:
             continue
-        for (plan_sha, center, direction, skew, gap, threshold, sigma,
-             in_band, forced, band_json) in plans:
+        for (plan_sha, center, direction, skew, gap, threshold,
+             threshold_sigma, sigma, in_band, forced, band_json) in plans:
             targets = by_plan.get(str(plan_sha or ""), ())
             if not targets:
                 continue
@@ -3601,7 +3603,12 @@ def _live_basket_plan_state(
                     "direction" if direction else ""
                 ),
                 "gap_buckets": gap,
+                # The gate the sign was judged by, in bucket steps.  Since
+                # 2026-09-11 it is 0.35 of the served sigma, so it differs
+                # day to day; ``threshold_sigma`` says so and is None on
+                # plans written under the old half-bucket gate.
                 "threshold_buckets": threshold,
+                "threshold_sigma": threshold_sigma,
                 # Charter 122: the served width the shape was read at, in
                 # the same bucket steps.  Written from 2026-09-08; older
                 # plans carry no width and the chip says nothing about it.
@@ -12585,7 +12592,7 @@ function liveOrderCard(L){
     const read = plan.skew_source === "reading";
     const detail = read
       ? `均值−众数 = ${gap==null?"—":(gap>0?"+":"")+Number(gap).toFixed(2)} 格`
-        + `（判定阈 ±${plan.threshold_buckets==null?"0.50":Number(plan.threshold_buckets).toFixed(2)} 格）`
+        + `（判定阈 ±${plan.threshold_buckets==null?"0.50":Number(plan.threshold_buckets).toFixed(2)} 格${plan.threshold_sigma==null?"":" = "+Number(plan.threshold_sigma).toFixed(2)+" σ"}）`
         + (plan.sigma_buckets==null ? "" : ` · 服务宽度 σ ${Number(plan.sigma_buckets).toFixed(2)} 格`)
         + (plan.seat_width_in_band==null ? "" :
             (plan.seat_forced

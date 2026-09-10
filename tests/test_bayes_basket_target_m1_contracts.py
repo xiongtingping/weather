@@ -281,11 +281,15 @@ def test_stage_probability_bias_has_one_probability_only_direction_and_replays()
             "NEUTRAL",
         ),
         (
+            # Mean 0.45 buckets above the mode on a 1.09-sigma day: under
+            # the half-bucket gate this read NEUTRAL, under the sigma gate
+            # (user ruling 2026-09-11) 0.41 sigma is a lean.  The entropy
+            # dial the case was written for is superseded by the skew gate.
             "high_entropy",
             {"28": 0.25, "29": 0.27, "30": 0.26, "31": 0.22},
             {"direction_entropy_max": 0.90},
             "2026-07-26T00:00:00Z",
-            "NEUTRAL",
+            "UP",
         ),
         (
             "low_direction_mass",
