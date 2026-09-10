@@ -19091,11 +19091,33 @@ class TargetProductionWorker:
                 "intent_retire": intent_retire,
                 "live_cycle_settle": live_cycle_settle,
                 "quote_evidence_refresh": {
-                    "interval_seconds": QUOTE_EVIDENCE_REFRESH_SECONDS,
+                    # Lease HEADROOM, not a cadence -- the constant's own
+                    # comment has to open with "Not a cadence" to fight its
+                    # name, and this receipt was printing that name.  A
+                    # refresh fires when a day's books have less than this
+                    # much lease left, so the number does not bound how
+                    # often anything happens; on a 595-second cycle with a
+                    # 60-second lease, several renewals a day is the lease
+                    # working, not a loop spinning.  Read as an interval it
+                    # says the opposite: 2026-09-10, eight committed
+                    # refreshes were read off this field as "a 12-second
+                    # cadence inside a ten-minute cycle" and proposed for
+                    # widening -- which is the change that killed 43 of 44
+                    # scopes on production_quote_expired on 2026-09-08.
+                    "lease_headroom_seconds": QUOTE_EVIDENCE_REFRESH_SECONDS,
                     # Counted, not inferred.  A refresh loop reports how many
                     # times it fired and for which day, because "zero
                     # failures" reads the same whether it ran twice or never.
                     "attempts": len(quote_refresh_attempts),
+                    # And how many of those did what they are for.  The cap
+                    # counts only the unproductive ones, so a reader who
+                    # sees "attempts: 8" and wants to know whether that is
+                    # eight renewals or eight wasted reads had to subtract
+                    # two other fields to find out.
+                    "productive_attempts": (
+                        len(quote_refresh_attempts)
+                        - sum(day_unproductive_refreshes.values())
+                    ),
                     "attempts_by_day": {
                         day: quote_refresh_attempts.count(day)
                         for day in sorted(set(quote_refresh_attempts))

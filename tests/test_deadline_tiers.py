@@ -338,3 +338,36 @@ def test_a_lease_with_life_left_is_not_renewed() -> None:
         day_is_ineffective=False,
         unproductive_attempts=0,
     )
+
+
+def test_the_receipt_calls_the_lease_threshold_a_lease_threshold() -> None:
+    """A field named for a cadence gets read as one.
+
+    ``QUOTE_EVIDENCE_REFRESH_SECONDS`` is lease HEADROOM -- a refresh fires
+    when a day's books have less than this much left -- and its own comment
+    has to open with "Not a cadence" to fight its name.  The cycle receipt
+    published it as ``interval_seconds``.
+
+    Measured 2026-09-10: eight committed refreshes over a 595-second cycle
+    were read off that field as "a 12-second cadence inside a ten-minute
+    cycle", concluded to be repeated work, and proposed for widening.
+    Widening it is the change that killed 43 of 44 scopes on
+    ``production_quote_expired`` on 2026-09-08, which is why the cap counts
+    only refreshes that renewed NOTHING.  The name is the whole distance
+    between those two readings, so it is pinned.
+    """
+
+    from pathlib import Path as _Path
+
+    source = _Path("bayes_basket_target/production_worker.py").read_text(
+        encoding="utf-8"
+    )
+    receipt = source.split('"quote_evidence_refresh": {', 1)[1].split(
+        '"receipts":', 1
+    )[0]
+
+    assert '"lease_headroom_seconds": QUOTE_EVIDENCE_REFRESH_SECONDS' in receipt
+    assert '"interval_seconds"' not in receipt
+    # And the count that says whether those attempts did their job, so
+    # "attempts: 8" does not have to be read against two other fields.
+    assert '"productive_attempts"' in receipt
