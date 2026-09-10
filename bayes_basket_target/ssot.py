@@ -1949,6 +1949,32 @@ ON basket_probability_envelope(
   state,event_date,station_id,decision_at_utc,stage,envelope_id,
   settlement_timezone,checkpoint_id,fresh_until_utc
 );
+-- Scope discovery asks a different question of the same table, and the index
+-- above answers it the expensive way.  ``_decision_scopes`` runs
+--
+--   SELECT DISTINCT station_id,event_date,settlement_timezone,stage
+--     FROM basket_probability_envelope WHERE state='COMMITTED'
+--
+-- and every row in this table is COMMITTED, so the leading column selects
+-- everything: the plan reads 422,464 covering-index entries and then builds
+-- a TEMP B-TREE to reduce them to 4,136 distinct answers.  Measured warm
+-- against the live SSOT on 2026-09-11: 4.1-4.5s per call, twelve calls in
+-- one 595-second cycle, roughly 49s of it inside this one query.
+--
+-- Leading with the DISTINCT key in the SELECT's own order lets the scan emit
+-- distinct rows in index order, and the temp B-tree disappears from the plan.
+-- Measured on a copy of the table (422,483 rows): the plan loses
+-- ``USE TEMP B-TREE FOR DISTINCT`` and the query goes 0.14s to 0.06s.  The
+-- absolute numbers are a hot 25MB copy rather than a cold 38GB file; the
+-- plan is what transfers.
+--
+-- DISTINCT was already narrowed here on 2026-09-09 -- 416,855 rows folded to
+-- 3,935 answers, per call -- which cut the rows returned.  This cuts what is
+-- done with them.
+CREATE INDEX IF NOT EXISTS basket_probability_envelope_scope_distinct_idx
+ON basket_probability_envelope(
+  state,station_id,event_date,settlement_timezone,stage
+);
 """
 
 
