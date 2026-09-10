@@ -629,15 +629,36 @@ def _production_health(status: Mapping[str, Any]) -> dict[str, Any]:
             str(production.get("state") or "未命名状态")
         )
         if reason:
-            # Head and tail, not the first eighty characters.  These reasons
-            # are colon-chains whose informative end is last -- truncating
-            # from the front kept "target_ssot_read_only_open_failed:
-            # ResourceBoundError" and dropped the part that names what to
-            # fix (``target_database_wal_checkpoint_busy``).
-            parts = [seg for seg in reason.split(":") if seg]
+            # A colon chain, and a reader needs three things out of it: the
+            # condition, the SUBJECT it happened to, and the innermost
+            # cause.  Head-and-tail kept the first segment and the last and
+            # dropped everything between -- which is exactly where the
+            # subject lives.  Measured 2026-09-10, the card read
+            #
+            #   生产回执 fail-closed：blocked_fail_closed·
+            #   official_ws_evidence_complete_scope_missing…no_registry_scope
+            #
+            # off a reason that ran
+            # ``…scope_missing:1 skipped:<station>:ContractError:
+            # …scope_missing:no_registry_scope``.  Head and tail were the
+            # SAME phrase, so the line spent both its slots saying one
+            # thing twice and dropped the only datum naming what to fix.
+            #
+            # So: drop a segment that merely repeats an earlier one, drop a
+            # bare exception class sitting between two conditions, and
+            # print what is left.  Head-and-tail survives as the last
+            # resort for a chain still too long to show.
+            parts = [seg.strip() for seg in reason.split(":") if seg.strip()]
+            seen: set[str] = set()
+            kept = [
+                seg for seg in parts
+                if not (seg in seen or seen.add(seg))
+            ]
+            lean = [seg for seg in kept if not seg.endswith("Error")] or kept
+            joined = ":".join(lean)
             note += "·" + (
-                f"{parts[0][:40]}…{parts[-1][:60]}"
-                if len(parts) > 1 else reason[:80]
+                joined if len(joined) <= 120
+                else f"{lean[0][:40]}…{':'.join(lean[-2:])[:70]}"
             )
         return {
             "production_health": "red",
