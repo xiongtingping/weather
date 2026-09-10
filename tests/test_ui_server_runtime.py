@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import math
 import os
 import re
 from contextlib import contextmanager
@@ -12,6 +13,7 @@ import time
 
 import pytest
 import scan_weather_market
+import weather_fact_snapshot_writer as fact_writer
 from ui import server
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -118,6 +120,40 @@ def _unit_prior_contract_covers_payload(payload: dict) -> bool:
     return required.issubset(available)
 
 
+def _writer_posterior_rows(payload: dict) -> list:
+    """The rows the writer's contract will read, read the writer's way.
+
+    Copying the writer's container order and probability-key ladder into a
+    fixture is how the two get different answers: this file's copy looked
+    at ``distribution`` only and knew neither ``prob`` nor ``q_round``, so
+    a payload whose one row states ``q_round`` got no SSOT block at all
+    and was refused on a dozen ``posterior_ssot_fact_*`` issues.  Ask the
+    writer instead -- there is one ladder, and it owns it.
+    """
+
+    try:
+        return list(fact_writer._posterior_rows_from_existing_payload(payload))
+    except Exception:  # pragma: no cover - fixture must never mask a test
+        return []
+
+
+def _writer_top_posterior_row(payload: dict) -> tuple:
+    """The bucket and probability the writer would call this payload's top."""
+
+    best_label, best_probability = "", None
+    for row in _writer_posterior_rows(payload):
+        label = str(row.get("bucket") or row.get("outcome") or "").strip()
+        try:
+            probability = float(row.get("probability"))
+        except (TypeError, ValueError):
+            continue
+        if not label:
+            continue
+        if best_probability is None or probability > best_probability:
+            best_label, best_probability = label, probability
+    return best_label, best_probability
+
+
 def _posterior_ssot_contract_covers_payload(payload: dict) -> bool:
     ssot = payload.get("posterior_ssot_fact")
     return isinstance(ssot, dict) and str(ssot.get("state") or "") == "available"
@@ -140,25 +176,7 @@ def attach_posterior_ssot_contract(payload: dict) -> dict:
     tests that exercise the contract itself build their own.
     """
 
-    best_label, best_probability = "", None
-    for row in payload.get("distribution") or []:
-        if not isinstance(row, dict):
-            continue
-        label = str(row.get("outcome") or row.get("bucket") or row.get("label") or "").strip()
-        if not label:
-            continue
-        for key in ("q_bayes_posterior", "q_temperature_bucket_posterior",
-                    "posterior", "probability", "p"):
-            value = row.get(key)
-            if value is None:
-                continue
-            try:
-                probability = float(value)
-            except (TypeError, ValueError):
-                break
-            if best_probability is None or probability > best_probability:
-                best_label, best_probability = label, probability
-            break
+    best_label, best_probability = _writer_top_posterior_row(payload)
     if not best_label or best_probability is None:
         return payload
     return attach_unit_posterior_ssot_fact(
@@ -234,7 +252,17 @@ UNIT_SSOT_RESIDUAL_BUCKET = "unit_test_residual_mass"
 
 
 def _rows_topped_up_to_one(rows):
-    """The same rows plus a residual, so they sum to one."""
+    """The same rows plus residual buckets, so they sum to one.
+
+    Split across as many residual buckets as it takes to keep each one
+    strictly under the largest stated probability.  A single residual is
+    wrong: the apply contract requires the SSOT's declared target to be
+    the argmax of these very rows, so one residual carrying 0.7224
+    against a stated 0.2776 becomes the peak and the write is refused on
+    posterior_ssot_fact_target_not_distribution_top -- before the test
+    reaches its own assertion.  Splitting leaves every stated
+    probability untouched, which rescaling would not.
+    """
 
     values = []
     for row in rows:
@@ -245,13 +273,27 @@ def _rows_topped_up_to_one(rows):
     total = sum(values)
     if total < 0 or total > 1.0 + 1e-9 or abs(total - 1.0) <= 1e-9:
         return rows
-    return list(rows) + [
+    residual = 1.0 - total
+    peak = max(values) if values else 0.0
+    if peak <= 0.0:
+        # Nothing stated can be the peak, so no split makes this block
+        # consistent.  Leave it as it was and let the contract say so.
+        parts = 1
+    else:
+        parts = max(1, math.ceil(residual / (peak * (1.0 - 1e-6))))
+    share = residual / parts
+    filler = [
         {
-            "outcome": UNIT_SSOT_RESIDUAL_BUCKET,
-            "bucket": UNIT_SSOT_RESIDUAL_BUCKET,
-            "probability": 1.0 - total,
+            "outcome": UNIT_SSOT_RESIDUAL_BUCKET if parts == 1 else f"{UNIT_SSOT_RESIDUAL_BUCKET}_{index + 1}",
+            "bucket": UNIT_SSOT_RESIDUAL_BUCKET if parts == 1 else f"{UNIT_SSOT_RESIDUAL_BUCKET}_{index + 1}",
+            "probability": share,
         }
+        for index in range(parts)
     ]
+    # Float division leaves the sum a few ulps off one; the contract
+    # allows 1e-6 but there is no reason to spend any of it here.
+    filler[-1]["probability"] += 1.0 - (total + share * parts)
+    return list(rows) + filler
 
 
 def attach_unit_posterior_ssot_fact(
@@ -269,43 +311,13 @@ def attach_unit_posterior_ssot_fact(
     payload.setdefault("beta_strong", 1.0)
     payload.setdefault("phase_reason", "unit_test_ssot_contract")
     payload.setdefault("hard_mask_reason", "unit_test_no_hard_mask")
-    rows: list[dict] = []
-    for container_key in ("posterior_temperature_distribution", "distribution", "rows"):
-        value = payload.get(container_key)
-        raw_rows = value.get("bucket_probabilities") if isinstance(value, dict) else value
-        if isinstance(raw_rows, dict):
-            raw_rows = [
-                {"outcome": str(label), "probability": probability}
-                for label, probability in raw_rows.items()
-            ]
-        if not isinstance(raw_rows, list):
-            continue
-        for row in raw_rows:
-            if not isinstance(row, dict):
-                continue
-            label = str(row.get("outcome") or row.get("bucket") or row.get("label") or "").strip()
-            prob = row.get("probability")
-            if prob is None:
-                prob = row.get("q_temperature_bucket_posterior")
-            if prob is None:
-                prob = row.get("q_bayes_posterior")
-            if not label or prob is None:
-                continue
-            compact_row = {"outcome": label, "probability": float(prob)}
-            for key in (
-                "posterior_settlement_candidate_bucket_hard_zero",
-                "posterior_settlement_candidate_bucket_hard_zero_reasons",
-                "q_posterior_observed_constraints_hard_zero",
-                "q_bayes_physical_likelihood_hard_zero",
-                "impossible_by_observed_max",
-                "hard_zero",
-                "hard_mask_reason",
-            ):
-                if key in row:
-                    compact_row[key] = row.get(key)
-            rows.append(compact_row)
-        if rows:
-            break
+    # Same reader the contract uses, so the block cannot disagree with the
+    # payload it is attached to.  See _writer_posterior_rows.
+    rows = [
+        {**row, "outcome": str(row.get("bucket") or row.get("outcome") or "")}
+        for row in _writer_posterior_rows(payload)
+        if str(row.get("bucket") or row.get("outcome") or "").strip()
+    ]
     if not rows:
         rows = [{"outcome": target_bucket, "probability": float(target_probability)}]
     rows.sort(key=lambda row: (-float(row.get("probability") or 0.0), str(row.get("outcome") or "")))
