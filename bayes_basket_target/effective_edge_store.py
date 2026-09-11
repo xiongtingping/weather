@@ -416,12 +416,7 @@ def _active_claim_vintage(
 
     try:
         row = conn.execute(
-            "SELECT bands_json"
-            + (
-                ", band_axis" if _has_lambda_band_axis_column(conn)
-                else ", NULL"
-            )
-            + " FROM calibration_effective_edge_lambda"
+            "SELECT bands_json FROM calibration_effective_edge_lambda"
             " WHERE activated=1 AND stage_scope=?",
             (stage_scope,),
         ).fetchone()
@@ -1511,7 +1506,13 @@ def load_active_lambda(
 
     try:
         row = conn.execute(
-            "SELECT bands_json FROM calibration_effective_edge_lambda"
+            "SELECT bands_json"
+            # The axis the claims were computed on, when the row carries it.
+            + (
+                ", band_axis" if _has_lambda_band_axis_column(conn)
+                else ", NULL"
+            )
+            + " FROM calibration_effective_edge_lambda"
             " WHERE activated=1 AND stage_scope=?"
             # A database whose migration has not run has no column and one
             # meaning: every row in it is a window fit.  ``COALESCE`` on a

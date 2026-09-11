@@ -823,3 +823,68 @@ def test_the_axis_column_is_read_not_the_candidate_tables_column() -> None:
         )
     }
     assert "band_axis" not in journal
+
+
+def test_the_axis_is_read_from_the_column_when_the_payload_has_none() -> None:
+    """Every row that existed before 2026-09-11 records its axis ONLY in the
+    column: ``lambda_table_sha256`` is ``content_sha256(payload)``, so the
+    backfill could not touch the payload without breaking each row against
+    its own hash.  A guard that reads only the payload therefore passes
+    every one of them -- which is how the first version of this check
+    shipped reading a different function's query and looked fine.
+    """
+
+    import json
+    import sqlite3
+
+    from bayes_basket_target import effective_edge_store as store
+    from bayes_basket_target.band_reliability_store import (
+        ensure_band_table_schema,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    store.ensure_schema(conn)
+    ensure_band_table_schema(conn)
+    conn.execute(
+        "INSERT INTO calibration_band_reliability_table("
+        " band_table_sha256, factors_json, evidence_json, fitted_at_utc,"
+        " serving_day_count, activated, activated_at_utc, stage, axis)"
+        " VALUES(?,?,?,?,?,1,?,?,?)",
+        ("b" * 64, json.dumps([[[0.0, 1.0], 1.0]]), "{}",
+         "2026-09-11T00:00:00Z", 30, "2026-09-11T00:00:00Z", "P0-M",
+         "centre_distance"),
+    )
+    payload = {
+        "schema": "effective_edge_lambda_table_v1",
+        "stage_scope": "P0-M", "claim_scope": "window", "stages": ["P0-M"],
+        "bands": [{"upper_bound": None, "lambda": 0.31}],
+        "window_days": 28, "as_of_event_date": "2026-09-10",
+        "fit_floor_event_date": "2026-08-13",
+        "band_partition_cells": store.BAND_PARTITION_CELLS,
+        "claim_transform_sha256": None,
+    }
+    assert "band_axis" not in payload
+    conn.execute(
+        "INSERT INTO calibration_effective_edge_lambda("
+        " lambda_table_sha256, bands_json, evidence_json, fitted_at_utc,"
+        " window_days, seat_count, activated, activated_at_utc, stage_scope,"
+        " claim_scope, band_axis) VALUES(?,?,?,?,?,?,1,?,?,?,?)",
+        ("a" * 64, json.dumps(payload), "{}", "2026-09-10T00:00:00Z", 28, 50,
+         "2026-09-10T00:00:00Z", "P0-M", "window", "claim"),
+    )
+    conn.commit()
+    # The column says claim, the stage serves centre_distance: no table.
+    assert store.load_active_lambda(conn, stage_scope="P0-M") is None
+    assert store._incumbent_bands(conn, "P0-M", "window") == list(
+        store._bootstrap_bands("P0-M", "window")
+    )
+    # Same row, column agreeing with the served axis: served.
+    conn.execute(
+        "UPDATE calibration_effective_edge_lambda"
+        " SET band_axis='centre_distance' WHERE lambda_table_sha256=?",
+        ("a" * 64,),
+    )
+    conn.commit()
+    assert store.load_active_lambda(conn, stage_scope="P0-M") == (
+        (float("inf"), 0.31),
+    )
