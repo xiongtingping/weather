@@ -37,6 +37,7 @@ large bite of the book.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -46,7 +47,7 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, Callable, NamedTuple
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1072,6 +1073,45 @@ MAKER_RESTING_ESCALATE_SHARE = float(
 MAKER_FILL_MODEL = (
     os.environ.get("PAPER_LEDGER_FILL_MODEL", "through").strip() or "through"
 )
+if MAKER_FILL_MODEL not in {"touch", "through", "queue", "adverse"}:
+    raise SystemExit(f"unknown maker fill model: {MAKER_FILL_MODEL}")
+# ``adverse``: a rung the book crossed fills only some of the time, and how
+# often depends on whether this leg is the one that wins.
+#
+# The other three models all answer the same question -- did the PRINTED
+# price reach my rung -- and the venue answers a different one: did anybody
+# choose to sell to me here.  Those come apart systematically, because the
+# people willing to sell are the ones who think we are wrong.  Measured on
+# the live maker book from 2026-09-05, per leg: the leg that turned out to
+# win filled 12 of 32 times, the legs that lost 58 of 101.  Nineteen points
+# (z = -2.02).  This book's own crossing rates over 2026-08-28..09-10 are
+# 106/153 and 371/517, and it fills on every crossing, so its conditioning
+# is -2.5 points and its maker family reads about six points better than
+# the venue's.
+#
+# So the served numbers are CONDITIONAL on a crossing:
+#
+#     p(fill | crossed, wins)  = 0.3750 / 0.6928 = 0.5413
+#     p(fill | crossed, loses) = 0.5743 / 0.7176 = 0.8002
+#
+# Two windows are being divided here -- the live rates start 09-05 and the
+# crossing rates start 08-28 -- so these are a first calibration and the
+# arm's own win/lose rates are the check on them, not a formality.
+#
+# ``PAPER_LEDGER_ADVERSE_P_WIN`` / ``_P_LOSE`` move them for a sensitivity
+# arm.  Both enter the fingerprint whenever this model is selected.
+ADVERSE_FILL_P_WIN = float(
+    os.environ.get("PAPER_LEDGER_ADVERSE_P_WIN", "") or 0.5413
+)
+ADVERSE_FILL_P_LOSE = float(
+    os.environ.get("PAPER_LEDGER_ADVERSE_P_LOSE", "") or 0.8002
+)
+for _name, _value in (
+    ("PAPER_LEDGER_ADVERSE_P_WIN", ADVERSE_FILL_P_WIN),
+    ("PAPER_LEDGER_ADVERSE_P_LOSE", ADVERSE_FILL_P_LOSE),
+):
+    if not 0.0 <= _value <= 1.0:
+        raise SystemExit(f"{_name} out of range: {_value}")
 
 _CW_RAW = os.environ.get("PAPER_LEDGER_CENTER_WIDTH", "0").strip()
 PAPER_LEDGER_CENTER_WIDTH = _CW_RAW not in {"0", "false", "FALSE", "no", ""}
@@ -2523,6 +2563,15 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     # What counts as a fill.  Rows recorded under a different answer to
     # that describe a different strategy, not a differently-priced one.
     "maker_fill_model": MAKER_FILL_MODEL,
+    # The two fitted numbers, recorded only when the model that reads them
+    # is the one running -- a calibration that moves is a different book.
+    **(
+        {
+            "adverse_fill_p_win": ADVERSE_FILL_P_WIN,
+            "adverse_fill_p_lose": ADVERSE_FILL_P_LOSE,
+        }
+        if MAKER_FILL_MODEL == "adverse" else {}
+    ),
     # The model's part in the price and in the withdrawal.  All of these
     # change which rungs stand where, so rows written under other values
     # describe an execution that no longer runs.  The per-station cutoff
@@ -7045,6 +7094,57 @@ def _queue_worked_off(
     return cell["remaining"] <= 0.0
 
 
+def adverse_fill_predicate(
+    *,
+    station_id: str,
+    event_date: str,
+    settled_bucket: str | None,
+    p_win: float = ADVERSE_FILL_P_WIN,
+    p_lose: float = ADVERSE_FILL_P_LOSE,
+) -> Callable[[str, float], bool]:
+    """Will the other side sell us this rung?  Built here, answered inside.
+
+    The firewall is the shape of this function, not a rule about using it.
+    Modelling an informed counterparty REQUIRES the simulator to know the
+    outcome -- adverse selection is the statement that the fill probability
+    depends on it -- and a strategy that knows the outcome is worthless.
+    So the settled bucket is closed over HERE, and what the walk receives is
+    a function of ``(bucket, rung)``.  There is no truth in the walk's scope
+    to leak into a price, a claim, a cap or a seat, and no discipline needed
+    to keep it out.
+
+    Deterministic: the draw is a hash of the leg and its price, so a replay
+    is byte-identical and a rung refused at one price stays refused at that
+    price for the order's whole life.  A reprice is a new price and so a new
+    question, which is the right reading -- a new order is a new ask of the
+    market.
+
+    ``settled_bucket`` of ``None`` -- an open day, or a value outside the
+    ladder -- admits every crossing, which is the unconditioned model.  Such
+    a day has no settlement and therefore enters no return figure.
+    """
+
+    def admits(bucket: str, rung: float) -> bool:
+        if settled_bucket is None:
+            return True
+        threshold = p_win if str(bucket) == str(settled_bucket) else p_lose
+        if threshold >= 1.0:
+            return True
+        if threshold <= 0.0:
+            return False
+        digest = hashlib.sha256(
+            "|".join((
+                "adverse_fill_v1", str(station_id), str(event_date),
+                str(bucket), "%.6f" % float(rung),
+            )).encode("utf-8")
+        ).digest()
+        # The first eight bytes as a uniform draw on [0, 1).
+        draw = int.from_bytes(digest[:8], "big") / float(1 << 64)
+        return draw < threshold
+
+    return admits
+
+
 def _resting_ladder_fill(
     conn: sqlite3.Connection,
     *,
@@ -7052,6 +7152,7 @@ def _resting_ladder_fill(
     event_date: str,
     buckets: Sequence[str],
     ladders: Sequence[Sequence[float]],
+    fill_admits: Callable[[str, float], bool] | None = None,
     placed_at_utc: str,
     settlement_timezone: str = "UTC",
     probabilities: Mapping[str, float] | None = None,
@@ -7555,8 +7656,18 @@ def _resting_ladder_fill(
                     continue
             # Every rung the book reached -- what "reached" means is the
             # fill model's whole question.
+            # A crossing is a necessary condition, never a sufficient one
+            # under ``adverse``: the printed price reaching our rung says
+            # the market traded there, and the question the venue answers
+            # is whether anybody chose to trade there WITH US.  See
+            # ``adverse_fill_predicate``.
+            def _admitted(rung: float) -> bool:
+                return fill_admits is None or fill_admits(bucket, rung)
+
             if MAKER_FILL_MODEL == "touch":
                 while rungs and price <= rungs[0] + 1e-9:
+                    if not _admitted(rungs[0]):
+                        break
                     filled[bucket].append(rungs.pop(0))
             else:
                 worked = _queue_worked_off(
@@ -7564,6 +7675,8 @@ def _resting_ladder_fill(
                     require_queue=MAKER_FILL_MODEL == "queue",
                 )
                 while rungs and worked and price < rungs[0] - 1e-9:
+                    if not _admitted(rungs[0]):
+                        break
                     filled[bucket].append(rungs.pop(0))
     missing = next(
         (bucket for bucket, prices in filled.items() if not prices), None
@@ -9860,8 +9973,30 @@ def backfill(
                                 if take >= MINIMUM_LEG_ALL_IN_ASK:
                                     rungs = [take] * len(rungs)
                             ladders.append(rungs)
+                        # Built here, where the truth already is, so the
+                        # walk below receives a function and never the
+                        # outcome itself.  ``None`` under every other fill
+                        # model, which leaves that walk byte-identical.
+                        _fill_admits = None
+                        if MAKER_FILL_MODEL == "adverse":
+                            _standing = truth.get(
+                                (station_id, event_date)
+                            )
+                            _landed = None
+                            if _standing is not None:
+                                _hit = _settled_bucket(
+                                    list(payload["buckets"]),
+                                    _standing.tmax_c,
+                                )
+                                _landed = None if _hit is None else _hit[0]
+                            _fill_admits = adverse_fill_predicate(
+                                station_id=station_id,
+                                event_date=event_date,
+                                settled_bucket=_landed,
+                            )
                         got, missing, withdrawn = _resting_ladder_fill(
                             conn,
+                            fill_admits=_fill_admits,
                             settlement_timezone=timezones.get(
                                 station_id, "UTC"
                             ),

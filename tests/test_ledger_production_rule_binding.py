@@ -241,6 +241,20 @@ SHARED_WITH_PRODUCTION = {
 
 # This lane's own, with the reason it has no production counterpart.
 LEDGER_ONLY = {
+    # The simulator's adverse-selection calibration, and it must NEVER have
+    # a counterpart in production.  Production's fill artifact
+    # (``delta_v2_fill_artifact``, fitted by
+    # ``fit_delta_v2_fill_from_maker_shadow.py``) is a DECISION-TIME
+    # probability per station, price band and horizon: no outcome in it,
+    # because the optimizer reads it before the day has happened.  These
+    # two are conditioned on how the day settled, which is the only way to
+    # model a counterparty better informed than we are -- and a strategy
+    # holding that number would be betting on the future.  Their firewall
+    # is structural (``adverse_fill_predicate`` closes over the truth so
+    # the walk never receives it) and is asserted in
+    # tests/test_adverse_fill_model_firewall.py.
+    "ADVERSE_FILL_P_WIN": "simulator only: p(fill | crossed, leg wins)",
+    "ADVERSE_FILL_P_LOSE": "simulator only: p(fill | crossed, leg loses)",
     # Charter 127 (七)(甲) replay arm: which resting lifecycle this book
     # simulates.  Production has no switch -- it IS charter 127's GTD, whose
     # expiry is the served belief's freshness -- so the arm is this lane's
