@@ -284,3 +284,35 @@ def test_every_arm_runner_starts_its_walk_from_nothing() -> None:
         if isinstance(node, ast.FunctionDef) and node.name == "_rebuild"
     )
     assert "--reset-paper-tables" in ast.unparse(rebuild)
+
+
+def test_the_report_reads_the_book_without_the_write_lock() -> None:
+    """``--report`` exists to be usable while a sweep holds the lock.
+
+    It called ``ensure_schema`` so that a database without the tables would
+    not raise, and that function writes -- DDL plus the label backfill -- so
+    the read-only path died on "attempt to write a readonly database".  The
+    path that exists to avoid the lock cannot be the path that needs it.
+    """
+
+    import tempfile  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "book.db"
+        writable = sqlite3.connect(str(path))
+        ledger.ensure_schema(writable)
+        writable.commit()
+        writable.close()
+
+        readonly = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        readonly.execute("PRAGMA query_only=ON")
+        # Raises if anything on this path writes.
+        assert ledger.report(readonly)["schema"]
+
+    # And a database with none of the tables answers rather than raising,
+    # which is what the ensure_schema call was there for.
+    empty = sqlite3.connect(":memory:")
+    assert ledger.report(empty) == {
+        "schema": "paper_trading_report_v1",
+        "settled_count": 0, "open_positions": 0, "stages": {},
+    }

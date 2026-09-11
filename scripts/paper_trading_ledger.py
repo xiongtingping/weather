@@ -11606,7 +11606,20 @@ def _fill_slice(rows: list) -> dict[str, Any]:
 
 
 def report(conn: sqlite3.Connection) -> dict[str, Any]:
-    ensure_schema(conn)
+    # A report is a read.  This called ``ensure_schema`` so a database
+    # without the tables would not raise, and ``ensure_schema`` writes --
+    # DDL plus the label backfill -- so ``--report`` on its own opened the
+    # book read-only and then died on "attempt to write a readonly
+    # database".  The whole point of the read-only path is to read the book
+    # while a sweep holds the write lock, so it cannot be the path that
+    # needs the lock.  Missing tables are handled where they surface, below.
+    try:
+        conn.execute("SELECT 1 FROM paper_trade_settlement LIMIT 1")
+    except sqlite3.DatabaseError:
+        return {
+            "schema": "paper_trading_report_v1",
+            "settled_count": 0, "open_positions": 0, "stages": {},
+        }
     stages: dict[str, Any] = {}
     # Grouped by the stage that last topped the position up, which is not the
     # same question the three-book ledger answered.  These slices partition
