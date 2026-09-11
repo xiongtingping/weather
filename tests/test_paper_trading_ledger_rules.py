@@ -87,6 +87,24 @@ def test_the_ledger_carries_productions_structural_rules() -> None:
     )
 
 
+def _wider_admissible_windows(posted, windows):
+    """Windows this cycle admitted that strictly contain the seat.
+
+    The narrow-seat rule, as one function, because the caller that applies
+    it is skipped under the production judge and a rule that only exists
+    inside a dormant branch is a rule nobody tests.  ``admissible`` is the
+    enumeration's own verdict; nothing here re-derives the gate.
+    """
+
+    seat = {str(bucket) for bucket in posted}
+    return [
+        sorted(str(bucket) for bucket in row["buckets"])
+        for row in windows
+        if row.get("admissible")
+        and seat < {str(bucket) for bucket in row["buckets"]}
+    ]
+
+
 def _entry_book(conn, station: str, day: str, stage: str, at: str):
     """The book the entry cycle actually saw, keyed by bucket.
 
@@ -1069,7 +1087,10 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
 
       - the posted window is priced_windows[0] of that cycle (D-质量),
       - it contains the ladder centre (中心底仓, charter 49),
-      - width within the stage's charter bounds (50/50a),
+      - width within the stage's charter bounds (50/50a) -- the upper
+        bound off the row, the lower one against the enumeration below,
+        because a narrow seat is legal exactly when no wider window was
+        admitted and only the enumeration knows that,
       - every quoted posted leg >= 0.02 (腿>=0.02),
       - EV>0 at entry for fully-filled rows (整篮EV) -- partially filled
         rows carry the post-fill pair, which can legitimately be negative:
@@ -1176,40 +1197,6 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
             assert len(posted) <= 4, (
                 f"{scope}: posted width {len(posted)} over the cap"
             )
-            if len(posted) < low:
-                # Legal only under the floor's own clamp: the floor cannot
-                # ask for more rungs than the day still has.  Every bucket
-                # outside the seat must be dead -- no recorded probability,
-                # or under its own leg floor.
-                #
-                # Asked of the kernel, off the book the cycle saw.  The
-                # floor scales with the belief in the rung (charter 91) and
-                # is measured on the mid (charter 103); ``prices_json``
-                # keeps the ask alone, so the row cannot answer and the
-                # cycle is replayed.  Comparing that ask to the flat
-                # constant is what made KDAL 2026-09-09 read as a
-                # violation -- 102-103F asked exactly the 0.03 the retired
-                # rule wanted, on a mid of 0.025 that the live rule
-                # correctly refused.
-                book = _entry_book(conn, st, day, stage, at)
-                for bucket, prob in probs.items():
-                    if str(bucket) in {str(b) for b in posted}:
-                        continue
-                    if float(prob) <= 1e-6:
-                        continue
-                    if book is None:
-                        # No replayable cycle: not judgeable, and guessing
-                        # from the ask alone is the defect above.
-                        continue
-                    quoted = book.get(str(bucket))
-                    ask, bid = (None, None) if quoted is None else quoted[1:]
-                    assert leg_below_floor(
-                        ask, float(prob), MINIMUM_LEG_ALL_IN_ASK, bid=bid
-                    ), (
-                        f"{scope}: width {len(posted)} under the floor while"
-                        f" {bucket} was live at p={prob}"
-                        f" ask={ask} bid={bid}"
-                    )
             # And the seated legs, from the ask alone -- deliberately.
             # The mid is at most the ask, so a rung whose ASK is already
             # under its floor is under it on any basis: this catches every
@@ -1296,6 +1283,33 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
             # above stay: they are charter clauses, not one judge's.
             if JUDGE != "ledger":
                 continue
+            # Below this line, one judge's rule against that judge's rows.
+            #
+            # A seat narrower than the stage minimum used to be judged here
+            # by a proxy: every live bucket outside it had to be under its
+            # own leg floor.  That is one of the two reasons a narrow seat
+            # is legal and not the other -- the charter's rule is that no
+            # contiguous widening was both buyable AND admissible, and the
+            # widening a late-day seat declines is normally refused by the
+            # positive-EV gate rather than by the leg floor.  Measured on
+            # the books those two cycles saw: KORD 2026-09-10 P1 sat on
+            # {76-77F} at edge +0.0113 and the only contiguous widening,
+            # 78-79F at ask 0.07 against a claim of 0.0298, takes the
+            # window to -0.0289; LFPB 2026-09-10 P1 sat on {21C} at +0.0107
+            # and 22C takes it to -0.0521.  Both were correct, and the
+            # proxy called both violations.
+            #
+            # It cannot be repaired above this line.  The gate's verdict on
+            # the wider window is not in the row, and it is not in
+            # ``paper_trade_candidate_window`` either: a seated cycle
+            # records the seated window alone, so "no wider admissible
+            # window existed" reads true by construction.  Re-deriving the
+            # verdict is what this test's three previous vintages did --
+            # ``claim > cost`` is not the rule, ``lambda(a) * claim > cost
+            # + friction`` is.  So the narrow seat is held to the
+            # enumeration below, which is this lane's own; under the
+            # production judge that enumeration returns nothing at all at
+            # these cycles, which is the honest answer and not a pass.
             replayed = None
             for payload in _stage_entry_candidates(
                 conn, str(st), str(day), str(stage)
@@ -1339,6 +1353,18 @@ def test_every_seat_follows_the_d_rule_at_its_own_entry_cycle() -> None:
                 ]
                 if pw:
                     replayed = {str(b) for b in pw[0]["buckets"]}
+                # The narrow-seat rule, asked of the same enumeration: a
+                # seat under the stage minimum is legal unless this cycle
+                # admitted a wider window that contains it.  ``admissible``
+                # is the gate's own verdict on that window, so this neither
+                # re-derives it nor accepts the seat for lack of evidence.
+                if len(posted) < low:
+                    wider = _wider_admissible_windows(posted, windows)
+                    assert not wider, (
+                        f"{scope}: width {len(posted)} under the stage "
+                        f"minimum {low} while this cycle admitted the wider "
+                        f"{wider[0]}"
+                    )
                 break
             if replayed is not None:
                 assert replayed == {str(b) for b in posted}, (
@@ -2732,3 +2758,41 @@ def test_the_page_counts_one_settled_chain_per_settlement() -> None:
     )
     keys = {(r["station_id"], r["event_date"]) for r in tails}
     assert len(keys) == len(tails), "a station-day was counted twice"
+
+
+def test_the_narrow_seat_rule_reads_the_gates_verdict_not_the_leg_floor() -> None:
+    """Covered here because its caller is dormant under the production judge.
+
+    The rule it replaces asked whether every live bucket outside a narrow
+    seat was under its own leg floor, and that is one of two reasons such a
+    seat is legal.  KORD 2026-09-10 P1 and LFPB 2026-09-10 P1 were both
+    correct and both called violations: the widening each declined was
+    refused by the positive-EV gate, not by the floor (+0.0113 -> -0.0289
+    and +0.0107 -> -0.0521 on the books those cycles saw).
+    """
+
+    seat = ["76-77°F"]
+    refused_widening = [
+        {"buckets": ["76-77°F"], "admissible": True},
+        {"buckets": ["76-77°F", "78-79°F"], "admissible": False},
+    ]
+    assert _wider_admissible_windows(seat, refused_widening) == []
+
+    admitted_widening = [
+        {"buckets": ["76-77°F"], "admissible": True},
+        {"buckets": ["76-77°F", "78-79°F"], "admissible": True},
+    ]
+    assert _wider_admissible_windows(seat, admitted_widening) == [
+        ["76-77°F", "78-79°F"]
+    ]
+
+    # A wider admissible window that does not contain the seat is a
+    # different seat, not a wider one -- the seat was not narrowed, it was
+    # placed elsewhere, which the D-rule replay judges on its own.
+    elsewhere = [{"buckets": ["80-81°F", "82-83°F"], "admissible": True}]
+    assert _wider_admissible_windows(seat, elsewhere) == []
+
+    # And an equal-width window is not wider.
+    assert _wider_admissible_windows(
+        seat, [{"buckets": ["76-77°F"], "admissible": True}]
+    ) == []

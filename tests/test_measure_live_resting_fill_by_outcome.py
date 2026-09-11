@@ -223,8 +223,18 @@ def test_the_since_floor_is_applied_to_the_intent_not_the_event() -> None:
 
 
 def test_the_settled_bucket_rule_is_productions_not_a_second_copy() -> None:
-    """Imported, so a change to the interval rule reaches this lane."""
+    """Imported, so a change to the interval rule reaches this lane.
 
-    import paper_trading_ledger as ledger  # noqa: PLC0415
+    Asserted by where the function comes from, not by object identity: a
+    sibling test that puts the repository root on the path first imports
+    the ledger under a second module name, and then two names for one
+    function read as two functions.
+    """
 
-    assert lane._settled_bucket is ledger._settled_bucket
+    assert lane._settled_bucket.__module__.endswith("paper_trading_ledger")
+    assert lane._settled_bucket.__qualname__ == "_settled_bucket"
+    # And the lane does not define its own.
+    source = (
+        ROOT / "scripts" / "measure_live_resting_fill_by_outcome.py"
+    ).read_text(encoding="utf-8")
+    assert "def _settled_bucket" not in source
