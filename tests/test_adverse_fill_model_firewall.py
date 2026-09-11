@@ -198,9 +198,11 @@ def test_the_calibration_enters_the_fingerprint_only_when_it_runs() -> None:
                 os.environ["PAPER_LEDGER_FILL_MODEL"] = previous
             importlib.reload(ledger)
 
+    # ``adverse`` is the served model since 2026-09-11, so the default
+    # carries the calibration and the legacy arm does not.
     default = _sha(None)
-    adverse = _sha("adverse")
-    assert default != adverse
+    assert default == _sha("adverse")
+    assert default != _sha("through")
     assert _sha(None) == default
 
 

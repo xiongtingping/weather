@@ -655,7 +655,10 @@ def test_the_fill_model_these_cases_are_priced_for_is_still_the_default(
 
     import scripts.paper_trading_ledger as ledger
 
-    assert ledger.MAKER_FILL_MODEL == "through"
+    # Served model since 2026-09-11: a crossing is necessary and not
+    # sufficient, at the rate the venue actually filled at.  ``through`` is
+    # the arm that reproduces every reading taken before that date.
+    assert ledger.MAKER_FILL_MODEL == "adverse"
 
 
 def test_a_bid_at_the_traded_price_is_not_a_fill() -> None:

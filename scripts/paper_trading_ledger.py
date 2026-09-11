@@ -1070,8 +1070,19 @@ MAKER_RESTING_ESCALATE_SHARE = float(
 # books are thin: only 42% of quoted buckets report a queue at all and 59%
 # of those report none, so the binding question was never queue depth, it
 # was whether an ask arriving at our price means our bid was the one filled.
+# Served since 2026-09-11 (user ruling, "升"): ``adverse``.  What the other
+# three answer is whether the PRINTED price reached our rung, and that read
+# this book's maker family about twenty points better than the venue reads
+# it -- measured, on the arms in
+# docs/research/ADVERSE_FILL_AND_FLOOR_ARMS_2026-09-11.md: the same window
+# and judge returns -5.70% when a crossing always fills and -26.34% when it
+# fills at the rate the exchange actually filled at, against -18.9% live.
+#
+# Every maker figure taken before this date is on the old model and reads
+# high.  ``through`` reproduces it byte for byte for a rebuild of a historic
+# reading.
 MAKER_FILL_MODEL = (
-    os.environ.get("PAPER_LEDGER_FILL_MODEL", "through").strip() or "through"
+    os.environ.get("PAPER_LEDGER_FILL_MODEL", "adverse").strip() or "adverse"
 )
 if MAKER_FILL_MODEL not in {"touch", "through", "queue", "adverse"}:
     raise SystemExit(f"unknown maker fill model: {MAKER_FILL_MODEL}")
