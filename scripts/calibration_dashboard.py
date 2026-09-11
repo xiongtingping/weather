@@ -8847,6 +8847,10 @@ white-space:nowrap}
 padding-top:6px;border-top:1px solid var(--line);font-size:11.5px}
 .wts+.wts{border-top:none;padding-top:0;margin-top:3px}
 .wts span{white-space:nowrap;font-variant-numeric:tabular-nums}
+/* A band that can buy something, marked on the row rather than left to be
+   inferred from one cell of nine. */
+tr.buyable td:first-child{box-shadow:inset 3px 0 0 var(--green)}
+tr.buyable td{background:rgba(63,185,80,.07)}
 /* The starred chips.  Filled rather than merely coloured: the bar already
    spends colour on the group tone, and a chip that differs only in hue is
    found no faster than one that does not. */
@@ -10365,10 +10369,15 @@ ${b.admits?"可买 ["+b.admits[0].toFixed(3)+", "+b.admits[1].toFixed(3)+")"
       const mark=!b.candidate?["—",""]
         :b.stable?["可晋级","up"]
         :["证据不稳",""];
+      // Which rows can buy anything is the question this table is opened
+      // with, and it was answered only by reading the 可买区间 cell of every
+      // row (user report, 2026-09-11: 看不懂).  Mark the row itself.
       const win=b.admits
-        ? `<span class="mono">[${b.admits[0].toFixed(3)}, ${b.admits[1].toFixed(3)})</span>`
+        ? `<span class="mono">[${b.admits[0].toFixed(3)}, ${
+            b.admits[1].toFixed(3)})</span> <span class="muted">宽 ${
+            (b.admits[1]-b.admits[0]).toFixed(3)}</span>`
         : `<span class="down">空窗</span>`;
-      return `<tr>
+      return `<tr class="${b.admits?"buyable":""}">
         <td class="mono">${b.band}</td>
         <td class="mono">${num(b.served)}</td>
         <td>${win}</td>
@@ -10385,10 +10394,19 @@ ${b.admits?"可买 ["+b.admits[0].toFixed(3)+", "+b.admits[1].toFixed(3)+")"
          服务值封顶 1.00 —— 豁免的意思是「信它」，不是「比它自己还信它」。`
       : `P0 / P0-M 是倒 U：市场最不同意的那一带，五分之四的声称从未到账。
          <b>能买的不是"λ 高的档"，是"λ 高过自己下界的档"</b> —— 上图绿色的那几段。`;
+    // What "a" is, said in the table rather than in the chart's caption:
+    // every other column is read through it and it was defined nowhere on
+    // the row a reader is looking at.
+    const aNote=`<div class="muted" style="font-size:11.5px;margin:6px 0 4px">
+      <b>a ＝ 市场价 ÷ 模型声称</b>。a 小＝模型自认占大便宜，a &gt; 1＝市场要价比模型声称还高。
+      闸的判据化简后是 <b>λ &gt; a</b>，所以<b>每一档只能买它最下面那一条缝
+      [档下界, 本档 λ)</b>；λ 掉到本档下界以下，整档一个窗口都买不到。
+      <b>绿边的行是能买的档。</b></div>`;
     return `<h3 style="margin-top:16px">${sc.scope} 档（阶段 ${sc.stages.join(" / ")}，封顶 ${sc.ceiling.toFixed(2)}）</h3>
       <div class="card" style="margin-bottom:6px">${note}</div>
+      ${aNote}
       <table><thead><tr>
-        <th>一致度带 a=价/声称</th><th>当前服务 λ</th>
+        <th title="a ＝ 市场价 ÷ 模型声称">一致度带 a=价/声称</th><th>当前服务 λ</th>
         <th title="闸的判据化简后是 λ(a)>a，所以这一档只放行 [档下界, 该档自己的 λ)">可买区间</th>
         <th>本账本 raw λ</th>
         <th>封顶后</th><th>座位</th><th>前半 / 后半</th><th>该带回报</th><th>状态</th>
