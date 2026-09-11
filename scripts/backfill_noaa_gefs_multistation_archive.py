@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 from collections import defaultdict
@@ -184,10 +185,13 @@ def main() -> int:
         output_wrote = write_bounded_json_if_changed(output, archive)
     ingress = None
     if args.commit:
-        # The resident cycle can hold the SSOT write lock for minutes; a
-        # historical ingest has nothing to lose by waiting for it.
-        with sqlite3.connect(database, timeout=300.0) as conn:
-            conn.execute("PRAGMA busy_timeout=300000")
+        # The resident cycle and the ledger sweep can hold the SSOT write
+        # lock for minutes.  A historical ingest has nothing to lose by
+        # waiting, but a queue of packets is better served by short waits and
+        # many attempts, so the driver sets the wait per attempt.
+        lock_wait = float(os.environ.get("NATIVE_HISTORY_LOCK_WAIT_SECONDS", "300"))
+        with sqlite3.connect(database, timeout=lock_wait) as conn:
+            conn.execute(f"PRAGMA busy_timeout={int(lock_wait * 1000)}")
             assert_connection_target_capacity(
                 conn,
                 recover_oversized_wal=True,
