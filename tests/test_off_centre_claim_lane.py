@@ -12,6 +12,8 @@ from __future__ import annotations
 import json
 import sqlite3
 import sys
+
+import pytest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -218,3 +220,155 @@ def test_the_sample_is_bounded_below_at_the_serving_arithmetic_anchor(
     )
     assert seen[-1] == "2026-09-01T00:00:00Z"
     assert explicit["min_decision_at_utc"] == "2026-09-01T00:00:00Z"
+
+
+def test_an_incumbent_that_hurts_after_its_activation_is_vetoed() -> None:
+    """A table held because the evidence is thin is held unconditionally,
+    and the only route back to identity was a fit that cannot run while the
+    evidence is thin.  So the lane scores the served factors on the windows
+    decided AFTER the incumbent went live -- out of sample by construction
+    -- against the same windows undone."""
+
+    band = (0.2, 0.35)
+    # Windows claiming 0.30 that land seven times in ten: the served 0.5
+    # deflation moves the claim away from what they realise.
+    rows = [
+        (f"S{i}", f"2026-09-{5 + i % 4:02d}", band, 0.30, 1.0 if i % 10 < 7 else 0.0)
+        for i in range(80)
+    ]
+    decisions = {(r[0], r[1]): "2026-09-06T00:00:00Z" for r in rows}
+    veto = store._off_centre_incumbent_veto(
+        rows, factors={0.35: 0.5},
+        activated_at_utc="2026-09-05T00:00:00Z", decisions=decisions,
+    )
+    assert veto["vetoed"]
+    assert veto["undo_gain"] > store.OFF_CENTRE_VETO_MIN_GAIN
+    assert veto["nll_undone"] < veto["nll_kept"]
+    assert veto["row_count"] == 80 and veto["day_count"] == 4
+    # The mirror: windows claiming 0.30 that land only 15% of the time, so
+    # the served halving is right.  Held, and the evidence says why in
+    # numbers.
+    kind = [
+        (f"S{i}", f"2026-09-{5 + i % 4:02d}", band, 0.30,
+         1.0 if i % 20 < 3 else 0.0)
+        for i in range(80)
+    ]
+    held = store._off_centre_incumbent_veto(
+        kind, factors={0.35: 0.5},
+        activated_at_utc="2026-09-05T00:00:00Z",
+        decisions={(r[0], r[1]): "2026-09-06T00:00:00Z" for r in kind},
+    )
+    assert not held["vetoed"]
+    assert held["undo_gain"] < 0.0
+
+
+def test_the_veto_reads_only_windows_served_after_the_activation() -> None:
+    band = (0.2, 0.35)
+    rows = [
+        (f"S{i}", f"2026-09-{5 + i % 4:02d}", band, 0.30, 1.0)
+        for i in range(80)
+    ]
+    # Every window predates the activation: nothing in the window at all.
+    veto = store._off_centre_incumbent_veto(
+        rows, factors={0.35: 0.5}, activated_at_utc="2026-09-20T00:00:00Z",
+        decisions={(r[0], r[1]): "2026-09-06T00:00:00Z" for r in rows},
+    )
+    assert veto["row_count"] == 0 and veto["day_count"] == 0
+    assert not veto["vetoed"]
+    # Enough rows but on too few days: still under the floor.
+    one_day = [(f"S{i}", "2026-09-09", band, 0.30, 1.0) for i in range(80)]
+    veto = store._off_centre_incumbent_veto(
+        one_day, factors={0.35: 0.5}, activated_at_utc="2026-09-05T00:00:00Z",
+        decisions={(r[0], r[1]): "2026-09-06T00:00:00Z" for r in one_day},
+    )
+    assert veto["row_count"] == 80 and veto["day_count"] == 1
+    assert not veto["vetoed"]
+    # An all-identity incumbent has nothing to retire.
+    veto = store._off_centre_incumbent_veto(
+        rows, factors={0.35: 1.0}, activated_at_utc="2026-09-05T00:00:00Z",
+        decisions={(r[0], r[1]): "2026-09-06T00:00:00Z" for r in rows},
+    )
+    assert not veto["vetoed"] and veto["row_count"] == 0
+
+
+def test_the_lane_journals_every_fit_and_can_retire_its_table() -> None:
+    """The band and centre/width lanes have journalled since they were
+    built; this one stored only its latest table, so a day on which it
+    refused, held or retired left no trace."""
+
+    conn = _db()
+    _band_table(conn)
+    _activate(conn, [[0.05, 1.0], [0.2, 0.89], [1.01, 1.0]])
+    assert store.load_off_centre_bands(conn, stage="P0") is not None
+    fit = {
+        "stage": "P0", "band_axis": "centre_distance",
+        "content_sha256": "f" * 64, "serving_day_count": 12,
+        "station_day_count": 400, "fitted_cell_count": 1,
+        "factors": [(0.2, 0.89)], "evidence": [{"band": [0.1, 0.2]}],
+    }
+    fit_id = store.journal_off_centre_fit(
+        conn, fit=fit, outcome="ACTIVATED", fitted_at_utc="2026-09-11T00:00:00Z"
+    )
+    row = conn.execute(
+        "SELECT stage, band_axis, outcome, fitted_cell_count FROM"
+        " calibration_off_centre_claim_journal WHERE fit_id=?", (fit_id,)
+    ).fetchone()
+    assert row == ("P0", "centre_distance", "ACTIVATED", 1)
+    with pytest.raises(ValueError):
+        store.journal_off_centre_fit(conn, fit=fit, outcome="PROMOTED")
+    # Retiring stops the only reader this lane has, and stamps why.
+    out = store.retire_off_centre_table(
+        conn, stage="P0", retired_at_utc="2026-09-11T01:00:00Z"
+    )
+    assert out["state"] == "RETIRED"
+    assert store.load_off_centre_bands(conn, stage="P0") is None
+    stamped = conn.execute(
+        "SELECT activated, retired_at_utc FROM"
+        " calibration_off_centre_claim_table WHERE stage='P0'"
+    ).fetchone()
+    assert stamped == (0, "2026-09-11T01:00:00Z")
+    store.journal_off_centre_fit(
+        conn, fit=fit, outcome="INCUMBENT_VETOED",
+        fitted_at_utc="2026-09-11T01:00:00Z",
+    )
+    outcomes = {
+        r[0] for r in conn.execute(
+            "SELECT outcome FROM calibration_off_centre_claim_journal"
+        )
+    }
+    assert outcomes == {"ACTIVATED", "INCUMBENT_VETOED"}
+
+
+def test_an_old_journal_is_widened_for_a_new_outcome() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE calibration_off_centre_claim_journal ("
+        " fit_id TEXT PRIMARY KEY, stage TEXT NOT NULL, band_axis TEXT NOT NULL,"
+        " fitted_at_utc TEXT NOT NULL, table_sha256 TEXT NOT NULL,"
+        " serving_day_count INTEGER NOT NULL, station_day_count INTEGER NOT NULL,"
+        " fitted_cell_count INTEGER NOT NULL,"
+        " outcome TEXT NOT NULL CHECK(outcome IN ('ACTIVATED','UNCHANGED')),"
+        " factors_json TEXT NOT NULL, evidence_json TEXT NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO calibration_off_centre_claim_journal VALUES"
+        " ('old','P0','claim','2026-09-01T00:00:00Z',?,10,300,2,'ACTIVATED','[]','[]')",
+        ("a" * 64,),
+    )
+    conn.commit()
+    store.ensure_schema(conn)
+    conn.execute(
+        "INSERT INTO calibration_off_centre_claim_journal VALUES"
+        " ('new','P0','centre_distance','2026-09-11T00:00:00Z',?,1,31,0,"
+        " 'INCUMBENT_VETOED','[]','[]')",
+        ("b" * 64,),
+    )
+    rows = {
+        r[0]: r[1] for r in conn.execute(
+            "SELECT fit_id, outcome FROM calibration_off_centre_claim_journal"
+        )
+    }
+    assert rows == {"old": "ACTIVATED", "new": "INCUMBENT_VETOED"}
+    assert conn.execute(
+        "SELECT count(*) FROM sqlite_master WHERE name LIKE '%superseded'"
+    ).fetchone()[0] == 0

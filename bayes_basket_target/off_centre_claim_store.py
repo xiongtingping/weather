@@ -34,7 +34,7 @@ import math
 import random
 import sqlite3
 from datetime import UTC, datetime
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from .band_reliability_store import (
     BAND_AXIS_CLAIM,
@@ -42,6 +42,7 @@ from .band_reliability_store import (
     band_table_axis,
     load_band_table,
     serving_lane_by_station_day,
+    _first_decision_by_station_day,
     _truth,
 )
 from .basket_kernel.delta_v2 import OFF_CENTER_CLAIM_BANDS
@@ -74,6 +75,20 @@ BOOTSTRAP_SEED = 20260909
 # wrong; the hand tables never left it either.
 FACTOR_FLOOR = 0.50
 FACTOR_CEILING = 1.50
+# The veto window, in days and off-centre windows of evidence served AFTER
+# the incumbent's own activation.  Same shape, same constants and the same
+# reason as the band lane's and the station-width lane's (2026-09-10/11): a
+# table held because the evidence is thin is held unconditionally, and the
+# only route back to identity was a fit that cannot run while the evidence
+# is thin.  A layer that can activate but never retire is a layer where one
+# bad fit is permanent.  Out of sample by construction: the rows postdate
+# the activation.
+OFF_CENTRE_VETO_MIN_DAYS = 3
+OFF_CENTRE_VETO_MIN_ROWS = 60
+# Per off-centre window, the same hurdle the other two lanes retire on.  A
+# table has to be measurably hurting, not merely not helping -- not helping
+# is what every identity cell already is.
+OFF_CENTRE_VETO_MIN_GAIN = 0.005
 
 _TABLE_DDL = """
 CREATE TABLE IF NOT EXISTS calibration_off_centre_claim_table (
@@ -94,9 +109,77 @@ _ACTIVE_INDEX = (
 )
 
 
+_JOURNAL_DDL = (
+    "CREATE TABLE IF NOT EXISTS calibration_off_centre_claim_journal ("
+    " fit_id TEXT PRIMARY KEY,"
+    " stage TEXT NOT NULL CHECK(stage IN ('P0','P0-M','P1')),"
+    " band_axis TEXT NOT NULL,"
+    " fitted_at_utc TEXT NOT NULL,"
+    " table_sha256 TEXT NOT NULL CHECK(length(table_sha256)=64),"
+    " serving_day_count INTEGER NOT NULL,"
+    " station_day_count INTEGER NOT NULL,"
+    " fitted_cell_count INTEGER NOT NULL,"
+    # Same vocabulary as the band lane's journal, for the same reasons.
+    # NO_BAND_TABLE is this lane's own: it reads the band store's sample and
+    # has nothing to fit when the stage serves no band table.
+    " outcome TEXT NOT NULL CHECK(outcome IN"
+    "  ('ACTIVATED','UNCHANGED','NO_BAND_TABLE','FIT_NOT_ACTIVATED',"
+    "   'INCUMBENT_VETOED')),"
+    " factors_json TEXT NOT NULL,"
+    " evidence_json TEXT NOT NULL"
+    ")"
+)
+_JOURNAL_INDEX = (
+    "CREATE INDEX IF NOT EXISTS idx_off_centre_journal_stage_time"
+    " ON calibration_off_centre_claim_journal(stage, fitted_at_utc)"
+)
+_JOURNAL_OUTCOMES = (
+    "ACTIVATED", "UNCHANGED", "NO_BAND_TABLE", "FIT_NOT_ACTIVATED",
+    "INCUMBENT_VETOED",
+)
+
+
 def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.execute(_TABLE_DDL)
     conn.execute(_ACTIVE_INDEX)
+    conn.execute(_JOURNAL_DDL)
+    conn.execute(_JOURNAL_INDEX)
+    # When a version stopped serving, as opposed to merely being superseded.
+    # Nullable: every row written before this existed reads as never retired.
+    columns = {
+        str(row[1]) for row in conn.execute(
+            "PRAGMA table_info(calibration_off_centre_claim_table)"
+        )
+    }
+    if "retired_at_utc" not in columns:
+        conn.execute(
+            "ALTER TABLE calibration_off_centre_claim_table"
+            " ADD COLUMN retired_at_utc TEXT"
+        )
+    # ``CREATE TABLE IF NOT EXISTS`` will not widen a CHECK on a journal that
+    # already exists, so a new outcome would fail at insert rather than be
+    # recorded.  Rebuild in place; the journal is append-only evidence, so it
+    # is copied across rather than dropped.  Same migration the band and
+    # centre/width journals carry.
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table'"
+        " AND name='calibration_off_centre_claim_journal'"
+    ).fetchone()
+    live = str((row or [""])[0] or "")
+    if live and any(f"'{o}'" not in live for o in _JOURNAL_OUTCOMES):
+        conn.execute(
+            "ALTER TABLE calibration_off_centre_claim_journal"
+            " RENAME TO calibration_off_centre_claim_journal_superseded"
+        )
+        conn.execute(_JOURNAL_DDL)
+        conn.execute(
+            "INSERT OR IGNORE INTO calibration_off_centre_claim_journal"
+            " SELECT * FROM calibration_off_centre_claim_journal_superseded"
+        )
+        conn.execute(
+            "DROP TABLE calibration_off_centre_claim_journal_superseded"
+        )
+        conn.commit()
 
 
 def bootstrap_bands() -> tuple[tuple[float, float], ...]:
@@ -181,6 +264,140 @@ def _bootstrap(
     return (lo, hi)
 
 
+def _window_nll(claim: float, hit: float) -> float:
+    """One off-centre window's negative log likelihood under its own claim.
+
+    The proper scoring rule the band lane's veto uses, on this lane's own
+    unit: a window claimed ``claim`` and either contained the truth or did
+    not.  A factor that moves the claim toward what the window realised
+    lowers this; one that moves it away raises it.
+    """
+
+    q = min(1.0 - 1e-6, max(1e-6, float(claim)))
+    return -math.log(q) if float(hit) > 0.0 else -math.log(1.0 - q)
+
+
+def _off_centre_incumbent_veto(
+    rows: Sequence[tuple[str, str, tuple[float, float], float, float]],
+    *,
+    factors: Mapping[float, float],
+    activated_at_utc: str | None,
+    decisions: Mapping[tuple[str, str], str],
+) -> dict[str, Any]:
+    """Is the served table still earning its place?
+
+    Scored on the off-centre windows decided AFTER the incumbent's own
+    activation -- out of sample by construction -- against the same windows
+    with the table undone.  Losing by more than the hurdle retires it.
+    """
+
+    verdict: dict[str, Any] = {
+        "vetoed": False,
+        "activated_at_utc": activated_at_utc,
+        "day_count": 0,
+        "row_count": 0,
+        "undo_gain": 0.0,
+        "min_days": OFF_CENTRE_VETO_MIN_DAYS,
+        "min_rows": OFF_CENTRE_VETO_MIN_ROWS,
+        "hurdle": OFF_CENTRE_VETO_MIN_GAIN,
+    }
+    if not activated_at_utc or all(
+        abs(float(v) - 1.0) < 1e-12 for v in factors.values()
+    ):
+        return verdict
+    after = [
+        row for row in rows
+        if str(decisions.get((str(row[0]), str(row[1])), "")) >= str(
+            activated_at_utc
+        )
+    ]
+    days = {str(row[1]) for row in after}
+    verdict["day_count"] = len(days)
+    verdict["row_count"] = len(after)
+    if (
+        len(days) < OFF_CENTRE_VETO_MIN_DAYS
+        or len(after) < OFF_CENTRE_VETO_MIN_ROWS
+    ):
+        return verdict
+    kept = undone = 0.0
+    for _station, _day, band, claim, hit in after:
+        factor = float(factors.get(float(band[1]), 1.0))
+        kept += _window_nll(claim * factor, hit)
+        undone += _window_nll(claim, hit)
+    # Positive when UNDOING beats the incumbent, which is the direction this
+    # question is asked in.
+    verdict["nll_kept"] = kept / len(after)
+    verdict["nll_undone"] = undone / len(after)
+    verdict["undo_gain"] = (kept - undone) / len(after)
+    verdict["vetoed"] = verdict["undo_gain"] > OFF_CENTRE_VETO_MIN_GAIN
+    return verdict
+
+
+def retire_off_centre_table(
+    conn: sqlite3.Connection, *, stage: str, retired_at_utc: str | None = None
+) -> dict[str, Any]:
+    """Stop serving this stage's table on the axis it serves.
+
+    Retired, not superseded: the unpinned read is the only reader this lane
+    has, so deactivating is enough to stop it, and the stamp is the record
+    of why the row is not active.
+    """
+
+    ensure_schema(conn)
+    now = retired_at_utc or datetime.now(UTC).isoformat(timespec="seconds")
+    axis = band_table_axis(conn, stage=stage)
+    conn.execute(
+        "UPDATE calibration_off_centre_claim_table"
+        " SET activated=0, retired_at_utc=COALESCE(retired_at_utc, ?)"
+        " WHERE activated=1 AND stage=? AND band_axis=?",
+        (now, str(stage), str(axis)),
+    )
+    conn.commit()
+    return {"state": "RETIRED", "retired_at_utc": now, "band_axis": axis}
+
+
+def journal_off_centre_fit(
+    conn: sqlite3.Connection,
+    *,
+    fit: Mapping[str, Any],
+    outcome: str,
+    fitted_at_utc: str | None = None,
+) -> str:
+    """One row per fit, whatever it decided.
+
+    The band and centre/width lanes have journalled since they were built;
+    this one stored only its latest table, so a day on which it refused, held
+    or retired left no trace at all.
+    """
+
+    ensure_schema(conn)
+    if str(outcome) not in _JOURNAL_OUTCOMES:
+        raise ValueError(f"off_centre_journal_outcome_invalid:{outcome}")
+    now = fitted_at_utc or datetime.now(UTC).isoformat(timespec="seconds")
+    sha = str(fit["content_sha256"])
+    fit_id = "ocfit-" + content_sha256({
+        "stage": str(fit["stage"]), "sha": sha, "at": now,
+        "outcome": str(outcome),
+    })[:24]
+    conn.execute(
+        "INSERT OR REPLACE INTO calibration_off_centre_claim_journal("
+        " fit_id, stage, band_axis, fitted_at_utc, table_sha256,"
+        " serving_day_count, station_day_count, fitted_cell_count, outcome,"
+        " factors_json, evidence_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            fit_id, str(fit["stage"]), str(fit["band_axis"]), now, sha,
+            int(fit.get("serving_day_count") or 0),
+            int(fit.get("station_day_count") or 0),
+            int(fit.get("fitted_cell_count") or 0),
+            str(outcome),
+            json.dumps(fit.get("factors") or [], ensure_ascii=False),
+            json.dumps(fit.get("evidence") or [], ensure_ascii=False),
+        ),
+    )
+    conn.commit()
+    return fit_id
+
+
 def fit_off_centre_claim_table(
     conn: sqlite3.Connection,
     *,
@@ -223,8 +440,9 @@ def fit_off_centre_claim_table(
         min_decision_at_utc=min_decision_at_utc,
     )
     cells: dict[tuple[float, float], dict[str, list[tuple[float, float]]]] = {}
+    window_rows: list[tuple[str, str, tuple[float, float], float, float]] = []
     days: set[str] = set()
-    for (_station, event), snaps in sample.items():
+    for (_station, event), snaps in sample.items():  # noqa: B007
         entries = snaps[0]
         claims = [c for c, _h, _l in entries]
         hits = [h for _c, h, _l in entries]
@@ -245,9 +463,58 @@ def fit_off_centre_claim_table(
             cells.setdefault(band, {}).setdefault(str(event), []).append(
                 (claim, hit)
             )
-    incumbent = dict(
-        (load_off_centre_bands(conn, stage=stage) or (bootstrap_bands(), ""))[0]
+            # The same windows, keyed so the veto below can ask which of
+            # them were served after the incumbent went live.
+            window_rows.append((str(_station), str(event), band, claim, hit))
+    loaded = load_off_centre_bands(conn, stage=stage)
+    incumbent = dict((loaded or (bootstrap_bands(), ""))[0])
+    # The decision times are only needed to date the veto's window, so they
+    # are read only when there is something to veto: a stage serving the
+    # bootstrap, or an all-identity table, has no incumbent to retire and
+    # the query would be work -- and, on a fixture that stubs the sample,
+    # a table that need not exist.
+    veto_factors = incumbent if loaded is not None else {}
+    activated_at = (
+        None if loaded is None
+        else _active_off_centre_activated_at(conn, stage=stage)
     )
+    votable = bool(activated_at) and any(
+        abs(float(v) - 1.0) > 1e-12 for v in veto_factors.values()
+    )
+    veto = _off_centre_incumbent_veto(
+        window_rows,
+        factors=veto_factors,
+        activated_at_utc=activated_at,
+        decisions=(
+            _first_decision_by_station_day(
+                conn, stage=stage, min_decision_at_utc=min_decision_at_utc
+            ) if votable else {}
+        ),
+    )
+    if veto["vetoed"]:
+        identity = [(float(CLAIM_BANDS[0][0]), 1.0)] + [
+            (float(hi), 1.0) for _lo, hi in CLAIM_BANDS
+        ]
+        payload = {
+            "schema": SCHEMA, "stage": str(stage), "band_axis": str(axis),
+            "centre_definition": CENTRE_DEFINITION,
+            "window_width": WINDOW_WIDTH,
+            "shrink_toward_one": SHRINK_TOWARD_ONE,
+            "factors": [[b, f] for b, f in identity],
+        }
+        return {
+            "stage": str(stage), "band_axis": str(axis),
+            "factors": identity,
+            "evidence": [{"reason": "incumbent_vetoed", "veto": veto}],
+            "serving_day_count": len(days),
+            "station_day_count": len(sample),
+            "fitted_cell_count": 0,
+            "vetoed": True,
+            "incumbent_veto": veto,
+            "content_sha256": content_sha256(payload),
+            "payload": payload,
+            "min_decision_at_utc": min_decision_at_utc,
+        }
     # Windows under the lowest measured band get no correction.  The hand
     # table served 1.15 there -- a LIFT, on a cell the measurement script has
     # never reported because its own bands start at 0.05 -- so the number had
@@ -314,7 +581,23 @@ def fit_off_centre_claim_table(
         "content_sha256": content_sha256(payload),
         "payload": payload,
         "min_decision_at_utc": min_decision_at_utc,
+        "vetoed": False,
+        "incumbent_veto": veto,
     }
+
+
+def _active_off_centre_activated_at(
+    conn: sqlite3.Connection, *, stage: str
+) -> str | None:
+    try:
+        row = conn.execute(
+            "SELECT activated_at_utc FROM calibration_off_centre_claim_table"
+            " WHERE activated=1 AND stage=? AND band_axis=?",
+            (str(stage), band_table_axis(conn, stage=stage)),
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    return None if row is None or row[0] is None else str(row[0])
 
 
 def persist_and_activate(

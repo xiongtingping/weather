@@ -24,7 +24,10 @@ if str(ROOT) not in sys.path:
 from bayes_basket_target.off_centre_claim_store import (  # noqa: E402
     SERVED_STAGES,
     fit_off_centre_claim_table,
+    journal_off_centre_fit,
+    load_off_centre_bands,
     persist_and_activate,
+    retire_off_centre_table,
 )
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
@@ -33,6 +36,15 @@ DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 def _line(fit: dict) -> str:
     if "error" in fit:
         return f"  {fit['stage']:5s} off-centre claim: {fit['error']}"
+    if fit.get("vetoed"):
+        veto = fit.get("incumbent_veto") or {}
+        return (
+            f"  {fit['stage']:5s} off-centre claim on {fit['band_axis']}:"
+            f" INCUMBENT_VETOED -- undoing it scored"
+            f" {veto.get('undo_gain', 0.0):+.4f} nat per window over"
+            f" {veto.get('row_count', 0)} windows on"
+            f" {veto.get('day_count', 0)} days served after it went live"
+        )
     cells = ", ".join(
         f"{cell['band'][1]:.2f}:{cell['served']:.3f}" for cell in fit["evidence"]
     )
@@ -65,9 +77,35 @@ def main() -> int:
     try:
         for stage in SERVED_STAGES:
             fit = fit_off_centre_claim_table(conn, stage=stage)
+            outcome = "NO_BAND_TABLE" if "error" in fit else None
             if args.commit and "error" not in fit:
-                fit.update(persist_and_activate(conn, fit, now=str(args.as_of)))
+                if fit.get("vetoed"):
+                    # Retire, do not replace: activating an identity table
+                    # would leave the vetoed version on record as serving.
+                    fit.update(
+                        retire_off_centre_table(
+                            conn, stage=stage, retired_at_utc=str(args.as_of)
+                        )
+                    )
+                    outcome = "INCUMBENT_VETOED"
+                else:
+                    before = load_off_centre_bands(conn, stage=stage)
+                    fit.update(
+                        persist_and_activate(conn, fit, now=str(args.as_of))
+                    )
+                    outcome = (
+                        "UNCHANGED"
+                        if before is not None
+                        and before[1] == fit["content_sha256"]
+                        else "ACTIVATED"
+                    )
                 fit["committed"] = True
+            if args.commit and outcome is not None and "error" not in fit:
+                fit["fit_id"] = journal_off_centre_fit(
+                    conn, fit=fit, outcome=outcome,
+                    fitted_at_utc=str(args.as_of),
+                )
+                fit["outcome"] = outcome
             print(_line(fit))
             receipts.append({
                 key: value for key, value in fit.items() if key != "payload"
