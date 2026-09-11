@@ -102,6 +102,7 @@ from bayes_basket_target.settlement_time import (  # noqa: E402
     settlement_day_window,
 )
 from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
+    CHARTER_127_COMPLETION_TAKE as _CHARTER_127_COMPLETION_TAKE,
     TARGET_PRICING_BASIS as _TARGET_PRICING_BASIS,
     TARGET_PRICING_LANE_STAGES as _TARGET_PRICING_LANE_STAGES,
     CENTRE_ANCHOR_DISTANCE_DECAY,
@@ -239,6 +240,7 @@ from bayes_basket_target.basket_kernel.contracts import (  # noqa: E402
 )
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     CURVE_BANKROLL_CONVENTION as _CURVE_BANKROLL_CONVENTION,
+    LADDER_BALANCE_CANDIDATE_ORIGIN as _LADDER_BALANCE_ORIGIN,
     CURVE_OBJECTIVE_FORM as _CURVE_OBJECTIVE_FORM,
     KELLY_OBJECTIVE_FORM as _KELLY_OBJECTIVE_FORM,
     VALUE_OBJECTIVE_FORM as _VALUE_OBJECTIVE_FORM,
@@ -757,6 +759,10 @@ REFUSAL_DEPTH = {
     # chain does not already hold.  The objective's own layer.
     "production_judge_hold": 6,
     "no_depth": 7,
+    # Charter 127 (五): the take walked past the cash the gates authorized.
+    # Same layer as ``no_depth`` -- the basket was assembled, priced and
+    # sized, and what refused it is the book, not the model.
+    "completion_take_above_authorized_cost": 7,
     "no_top_up_needed": 7,
     # The atomic top-up arm: the chain is short of some legs but not all.
     "topup_not_complete_basket": 7,
@@ -2299,6 +2305,21 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
         {"target_pricing_basis": _TARGET_PRICING_BASIS}
         if _TARGET_PRICING_BASIS != "ask_depth" else {}
     ),
+    # Charter 127 (五): how a designated completion is executed.  Hashed
+    # unconditionally, because this book now SIMULATES the difference -- a
+    # crossing completion and a resting one are two strategies, and 392 of
+    # the 924 seats in the 08-28..09-08 window are completions.  A rule this
+    # lane reads and does not hash is how an arm comes to be indistinguish-
+    # able from its own baseline.
+    # Charter 84: a designated completion buys only the short rungs, and
+    # this lane's atomic top-up arm no longer refuses it for that.  Recorded
+    # unconditionally because it changes what the book BUYS in every arm --
+    # the 392 completions the judge seats over 08-28..09-08 were all refused
+    # 整篮不动 before it.
+    "completion_topup_rule": "short_legs_only",
+    "completion_execution": (
+        "limit_fok" if _CHARTER_127_COMPLETION_TAKE == "on" else "resting"
+    ),
     **(
         {"target_pricing_lane_stages": "|".join(_TARGET_PRICING_LANE_STAGES)}
         if tuple(_TARGET_PRICING_LANE_STAGES) != ("P0-M",) else {}
@@ -2666,6 +2687,7 @@ SELECTION_RULE_SHA256 = content_sha256(_SELECTION_RULE_IDENTITY)
 # looked and did not sit" -- true of one of these and wrong about the other
 # four, which are four different problems with four different owners.
 REFUSAL_REASONS = (
+    "completion_take_above_authorized_cost",
     "no_book_at_decision",
     "incomplete_book",
     "selection_failed",
@@ -9072,6 +9094,10 @@ def backfill(
                     # lane's and is replaced by production's, priced the
                     # same way so every later number reads unchanged.
                     production_verdict = None
+                    # Reset per seat beside the verdict it is read from: a
+                    # flag left standing from the previous cycle would make
+                    # one seat's execution family another seat's.
+                    seat_completion_take = False
                     if JUDGE in ("production", "production_seat"):
                         verdict = _production_judge(
                             conn,
@@ -9187,6 +9213,18 @@ def backfill(
                             "seated_origin_" + _origin, 0
                         ) + 1
                         seat = _row
+                        # Charter 127 (五): a designated completion crosses.
+                        # Production sends the short rung as a limit
+                        # fill-or-kill; this book rested it like any other
+                        # leg, so from the day that clause shipped the two
+                        # sides were simulating different execution on 392 of
+                        # 924 seats (measured 2026-09-11 over 08-28..09-08).
+                        # The flag is per SEAT, not per run: one basket may
+                        # carry both families now.
+                        seat_completion_take = (
+                            _CHARTER_127_COMPLETION_TAKE == "on"
+                            and _origin == _LADDER_BALANCE_ORIGIN
+                        )
                         seat_crossing_cost = float(seat["all_in_price"])
                         seat_cost = _seat_execution_price(
                             seat,
@@ -9465,7 +9503,7 @@ def backfill(
                     legs = [
                         depth.get(bucket) or [] for bucket in seat["buckets"]
                     ]
-                    if EXECUTION_MODE != "taker":
+                    if EXECUTION_MODE != "taker" and not seat_completion_take:
                         # A resting order fills at its own price, not by
                         # walking the offer ladder, so the ladder is replaced
                         # by a single level at the assumed maker price.  Its
@@ -9544,7 +9582,7 @@ def backfill(
                             },
                         )
                     resting_fills: dict[str, str] = {}
-                    if EXECUTION_MODE == "maker_resting":
+                    if EXECUTION_MODE == "maker_resting" and not seat_completion_take:
                         by_row = {r.bucket: r for r in snapshot.buckets}
                         seat_centre = seat_center
                         ladders = []
@@ -9740,6 +9778,29 @@ def backfill(
                             ))
                             continue
                         leg_shares, stake, leg_cash = sized
+                        if (
+                            seat_completion_take
+                            and float(stake)
+                            > float(production_verdict["delta_cost_usdc"]) + 1e-9
+                        ):
+                            # Charter 127 (五)'s cap, on this side too: a take
+                            # may not pay more than the cash the gates
+                            # authorized.  Production refuses the candidate by
+                            # name (``completion_take_above_authorized_cost``);
+                            # the book has to refuse it too, or it scores a
+                            # completion at a price production would never
+                            # have sent -- which is the divergence this
+                            # mirror exists to close, pointing the other way.
+                            refusal = _deeper_refusal(refusal, (
+                                "completion_take_above_authorized_cost",
+                                "补齐越价走深度 %.4f 高于授权 %.4f"
+                                % (
+                                    float(stake),
+                                    float(production_verdict["delta_cost_usdc"]),
+                                ),
+                                cycles, payload["decision_at_utc"],
+                            ))
+                            continue
                     elif weights is None:
                         filled = _fillable_size(
                             legs=legs,
@@ -9919,6 +9980,21 @@ def backfill(
                             spend += paid
                         if (
                             TOPUP_ATOMIC == "on"
+                            # Charter 84: a designated completion buys the
+                            # SHORT rungs and nothing else -- that is what it
+                            # is for.  The atomic arm is this lane's own rule
+                            # about ordinary top-ups ("整篮加仓"), and applied
+                            # to a completion it refuses the one action
+                            # production seats.  Measured 2026-09-11 on the
+                            # 08-28..09-08 book: the judge seats 392
+                            # completions and this gate turned every one that
+                            # reached it into 整篮不动, which is why mirroring
+                            # the CROSSING alone moved not a single settled
+                            # chain -- the seats it freed were refused one
+                            # gate later.  The divergence was never the fill
+                            # model; it was that this book could not buy a
+                            # completion at all.
+                            and _origin != _LADDER_BALANCE_ORIGIN
                             and sum(topped) > 0.0
                             and any(q <= 0.0 for q in topped)
                         ):
@@ -10493,7 +10569,7 @@ def backfill(
                     # that bought.  EFHK 2026-08-16 seated twice and left no
                     # candidate row at all that way.
                     stage_candidates_seated = stage_candidates
-                    if EXECUTION_MODE == "maker_resting":
+                    if EXECUTION_MODE == "maker_resting" and not seat_completion_take:
                         # The sizing above is the order that was posted.
                         # This is the position that came back.
                         entered = _progressive_entry(
