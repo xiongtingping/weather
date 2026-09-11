@@ -65,6 +65,16 @@ def main() -> int:
             " moved P0-M on P1's evidence.  Repeatable; unlisted stages keep"
             " the axis they serve.  Takes precedence over --axis for the"
             " stages it names."
+            "  P0-M moved on 2026-09-11 (user ruling), which retires the"
+            " 2026-09-09 tie and leaves no stage on the claim axis.  The tie"
+            " was read off this module's own forward diagnostic, whose"
+            " window overlaps the days the factors were fitted on, and the"
+            " claim axis has eleven cells against the distance axis's five:"
+            " re-measured through ``until_event_date`` -- the fit blind to"
+            " the days it is scored on -- the distance axis won four of six"
+            " cuts and the claim axis scored WORSE THAN IDENTITY on four of"
+            " them (-0.43, -1.10, -0.75, -0.25 against +3.43, +2.00, +1.91,"
+            " -0.02).  A tie on an in-sample number is not a tie."
         ),
     )
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
