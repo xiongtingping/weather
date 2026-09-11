@@ -104,6 +104,8 @@ from bayes_basket_target.settlement_time import (  # noqa: E402
 )
 from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
     CENTRE_CONTAIN_GATE as _CENTRE_CONTAIN_GATE,
+    SUPPORT_WIDTH_MAX_OVERRIDE as _SUPPORT_WIDTH_MAX_OVERRIDE,
+    SUPPORT_WIDTH_MIN_OVERRIDE as _SUPPORT_WIDTH_MIN_OVERRIDE,
     CHARTER_127_COMPLETION_TAKE as _CHARTER_127_COMPLETION_TAKE,
     TARGET_PRICING_BASIS as _TARGET_PRICING_BASIS,
     TARGET_PRICING_LANE_STAGES as _TARGET_PRICING_LANE_STAGES,
@@ -2427,6 +2429,17 @@ _SELECTION_RULE_IDENTITY: dict[str, Any] = {
     # not share a book with these.
     "ticket_authorization": (
         "whole_basket_edge_v1"
+    ),
+    # Charter 50's width bounds as an arm.  Recorded only when an arm has
+    # replaced the station policy's own pair, so the standing book keeps its
+    # sha; the bounds themselves are the policy's and travel with it.
+    **(
+        {"support_width_min_override": _SUPPORT_WIDTH_MIN_OVERRIDE}
+        if _SUPPORT_WIDTH_MIN_OVERRIDE is not None else {}
+    ),
+    **(
+        {"support_width_max_override": _SUPPORT_WIDTH_MAX_OVERRIDE}
+        if _SUPPORT_WIDTH_MAX_OVERRIDE is not None else {}
     ),
     # Charter 49's centre gate as an arm: refusing versus pricing.  Hashed
     # away from the default only, so the standing book keeps its sha.

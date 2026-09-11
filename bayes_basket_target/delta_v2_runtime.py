@@ -1196,6 +1196,69 @@ SKEW_SIGNAL_DEFINITION = (
 # mean" is read as the pair the fractional mean sits between; an exact tie
 # takes the heavier neighbour).  The width floor drops to two for that seat
 # only; skewed days and P1 are untouched.
+# Charter 50's width bounds, as research arms.
+#
+# Measured 2026-09-11: an enumeration produces a median of ONE priced window
+# and touches a median of three buckets, with widths almost entirely three or
+# four against bounds of three and four.  So the bounds are not a filter on a
+# wide domain, they ARE most of the domain: from an admitted run of three
+# buckets, "at least three and at most four" cuts exactly one window.  The
+# centre gate, ablated the same day, moved five seats of 256 -- it had
+# nothing left to refuse.
+#
+# Unset means the station policy's own value, which is what production
+# serves.  Set, they replace it at the one call that hands the enumerator its
+# bounds, so an arm can ask what a narrower floor or a wider ceiling is
+# worth without a policy rebuild.  The paper ledger hashes either when set.
+def _optional_width(name: str) -> int | None:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return None
+    value = int(raw)
+    if not 1 <= value <= 8:
+        raise RuntimeError(f"{name} out of range: {value}")
+    return value
+
+
+SUPPORT_WIDTH_MIN_OVERRIDE = _optional_width("PM_SUPPORT_WIDTH_MIN")
+SUPPORT_WIDTH_MAX_OVERRIDE = _optional_width("PM_SUPPORT_WIDTH_MAX")
+if (
+    SUPPORT_WIDTH_MIN_OVERRIDE is not None
+    and SUPPORT_WIDTH_MAX_OVERRIDE is not None
+    and SUPPORT_WIDTH_MIN_OVERRIDE > SUPPORT_WIDTH_MAX_OVERRIDE
+):
+    raise RuntimeError(
+        "support width override inverted: %d > %d"
+        % (SUPPORT_WIDTH_MIN_OVERRIDE, SUPPORT_WIDTH_MAX_OVERRIDE)
+    )
+
+
+def support_width_bounds_v1(
+    *, policy_minimum: int, policy_maximum: int
+) -> tuple[int, int]:
+    """The bounds the enumerator is handed, policy unless an arm says else.
+
+    One function, so the production judge and the paper ledger cannot be
+    running two different pairs -- which is the failure the binding test
+    exists to catch.
+    """
+
+    minimum = (
+        policy_minimum if SUPPORT_WIDTH_MIN_OVERRIDE is None
+        else SUPPORT_WIDTH_MIN_OVERRIDE
+    )
+    maximum = (
+        policy_maximum if SUPPORT_WIDTH_MAX_OVERRIDE is None
+        else SUPPORT_WIDTH_MAX_OVERRIDE
+    )
+    if minimum > maximum:
+        raise RuntimeError(
+            "support width bounds inverted after override: %d > %d"
+            % (minimum, maximum)
+        )
+    return minimum, maximum
+
+
 # The centre-contain gate (charter 49), as a research arm.
 #
 # ``on``: the window must contain the ladder centre or it is not admissible.
@@ -5702,8 +5765,13 @@ def compile_delta_v2_runtime_plan(
         desired=desired,
         probabilities=probabilities,
         fee_rate=basket_policy.fee_rate,
-        maximum_support_buckets=basket_policy.maximum_support_buckets,
-        minimum_support_buckets=basket_policy.minimum_support_buckets,
+        **dict(zip(
+            ("minimum_support_buckets", "maximum_support_buckets"),
+            support_width_bounds_v1(
+                policy_minimum=basket_policy.minimum_support_buckets,
+                policy_maximum=basket_policy.maximum_support_buckets,
+            ),
+        )),
         center_bucket=center.bucket,
         probability_stage=str(snapshot.evidence.probability_stage or ""),
         # The P0-M TAF TX bucket, for the enumerator's TAF arms.  Handed in
