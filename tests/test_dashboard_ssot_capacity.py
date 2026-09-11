@@ -165,8 +165,8 @@ def test_the_reading_reaches_the_head_lamp():
     """
 
     page = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
-    assert 'lampRowSafe(upstreamLights, "上游")' in page
-    assert 'lampRowSafe(healthLights, "机器")' in page
+    assert "healthLamps()" in page
+    assert "upstreamLamps()" in page
     assert "D.ssot_capacity" in page
     assert '"ssot_capacity": ssot_capacity,' in page
     # The composition walk counts rows over a day on ten tables; it is the

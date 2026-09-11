@@ -4794,14 +4794,67 @@ SCORECARD_THRESHOLDS = {
 # above says what the layer *does*; this says whether what it serves is
 # where the day actually went, which is the question the seat rule and the
 # positive-EV gate both read through the mean+-1 window.
-CENTER_LANDING_TIERS = (
-    (0.0, 1.44, "narrow", "尖 <1.44"),
-    (1.44, 2.0, "mid", "中 1.44-2.0"),
-    (2.0, 2.5, "wide", "宽 2.0-2.5"),
-    (2.5, 3.0, "flat", "平 2.5-3.0"),
-    (3.0, 99.0, "flattest", "最平 ≥3.0"),
-)
+# The cuts ABOVE production's last width-tier boundary are the page's own:
+# the serving path has one tier up there, and splitting it is a reading
+# choice about where flat days land, not a claim about the axis.
+CENTER_LANDING_DISPLAY_CUTS = (2.5, 3.0)
 CENTER_LANDING_FLAT_RUNGS = 2.5
+_CENTER_LANDING_WORDS = ("尖", "中", "宽", "平", "最平")
+
+
+def _rungs(value: float) -> str:
+    """1.44 and 2.0, not 1.44 and 2 -- these are read side by side."""
+
+    return f"{value:.1f}" if float(value).is_integer() else f"{value:g}"
+
+
+def _center_landing_tiers() -> tuple[tuple[float, float, str, str], ...]:
+    """The sigma tiers this page slices on, read off the serving path.
+
+    The lower cuts are NOT the page's to choose.  They are
+    ``WIDTH_TIER_BOUNDARIES_RUNGS`` -- the boundaries the width fit and the
+    serving transform share, whose first value is also ``SIGMA_FLOOR_RUNGS``
+    (1.44 rungs: below it the served claim's standardised error has sd
+    0.95, above it 0.67, measured 2026-09-05).  They were copied here as
+    literals when this table was added, and a copied boundary is how a page
+    ends up slicing on an axis production has moved off: the boundaries are
+    a research switch (``PM_CENTER_WIDTH_TIER_BOUNDARIES``), so they can
+    change without anyone opening this file.  Read them instead, and fall
+    back to the measured pair only if the package cannot be imported --
+    with the fallback stated as one number in one place.
+    """
+
+    try:                                             # noqa: PLC0415
+        from bayes_basket_target.center_width_calibration import (
+            WIDTH_TIER_BOUNDARIES_RUNGS as served,
+        )
+        bounds = tuple(sorted(float(value) for value in served))
+    except Exception:                                # pragma: no cover
+        bounds = (1.44, 2.0)
+    cuts = list(bounds) + [
+        cut for cut in CENTER_LANDING_DISPLAY_CUTS if cut > bounds[-1]
+    ]
+    edges = [0.0] + cuts + [99.0]
+    tiers = []
+    for index, (low, high) in enumerate(zip(edges, edges[1:])):
+        word = (
+            _CENTER_LANDING_WORDS[index]
+            if index < len(_CENTER_LANDING_WORDS)
+            else f"第{index + 1}档"
+        )
+        if index == 0:
+            label = f"{word} <{_rungs(high)}"
+        elif high >= 99.0:
+            label = f"{word} ≥{_rungs(low)}"
+        else:
+            label = f"{word} {_rungs(low)}-{_rungs(high)}"
+        key = ("narrow", "mid", "wide", "flat", "flattest")[index] \
+            if index < 5 else f"tier{index}"
+        tiers.append((low, high, key, label))
+    return tuple(tiers)
+
+
+CENTER_LANDING_TIERS = _center_landing_tiers()
 CENTER_LANDING_STAGE_MEANING = {
     "P0": "开仓：模型融合出的第一版概率",
     "P0-M": "确认：早上的 TAF 对 P0 的修正",
@@ -8741,6 +8794,30 @@ padding:3px 9px;font-family:inherit;font-size:12.5px;line-height:1.35}
 .jump button:hover{color:var(--text);border-color:var(--line);
 background:var(--card)}
 .jump .sep{flex:none;width:1px;height:14px;background:var(--line);margin:0 4px}
+/* The live knobs, top right of the bar.  Small, because they are three
+   numbers and six steppers; never hidden, because they are the controls
+   that change what production does on its next round. */
+.navtop{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.navtop .tabs{flex:1;min-width:240px}
+.navctl{display:flex;align-items:center;gap:9px;flex-wrap:wrap;
+margin-left:auto;font-size:12px;color:var(--text)}
+.navctl-i{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.navctl-i b{font-variant-numeric:tabular-nums}
+.navctl .lc-w{cursor:pointer;background:var(--card);color:var(--muted);
+border:1px solid var(--line);border-radius:6px;padding:1px 6px;
+font-family:inherit;font-size:11.5px;line-height:1.45}
+.navctl .lc-w:disabled{opacity:.45;cursor:not-allowed}
+.navctl .lc-w:not(:disabled):hover{color:var(--text);border-color:var(--accent)}
+.navctl-s{font-size:11px;max-width:210px;overflow:hidden;text-overflow:ellipsis;
+white-space:nowrap}
+/* The starred chips.  Filled rather than merely coloured: the bar already
+   spends colour on the group tone, and a chip that differs only in hue is
+   found no faster than one that does not. */
+.jump button.star{color:var(--text);border-color:var(--accent);
+background:var(--why-bg);font-weight:620}
+.jump button.star::before{content:"★";margin-right:4px;font-size:10.5px;
+color:var(--accent);vertical-align:1px}
+.jump button.star:hover{background:var(--card);border-color:var(--accent)}
 /* Only once there is something to come back from. */
 #totop{position:fixed;right:16px;bottom:18px;z-index:9;cursor:pointer;
 background:var(--card);color:var(--muted);border:1px solid var(--line);
@@ -8789,7 +8866,7 @@ const shares = (v) => {
 };
 const OVERALL = {green:["运转正常","所有环节都在按预期更新"],
   amber:["有需要留意的地方","不影响出数，但有环节慢了或在攒数据"],
-  red:["有环节断了","看这张卡下面两排灯，红的那盏就是断的那一环"]};
+  red:["有环节断了","看下面四排灯，红的那盏就是断的那一环"]};
 
 function head(){
   const [t, s] = OVERALL[D.overall_health] || OVERALL.amber;
@@ -8804,37 +8881,50 @@ function head(){
     `<span class="pill ${a.health}" style="font-size:13px">${h(a.label)}
       <span style="opacity:.78">｜${h(a.note)}</span></span>`).join("");
   const more = named.length > 6
-    ? `<span class="muted">…等 ${named.length} 处，其余见下面两排灯里标${
+    ? `<span class="muted">…等 ${named.length} 处，其余见下面四排灯里标${
         D.overall_health === "red" ? "红" : "黄"}的那几盏</span>` : "";
   return `<h1>气温篮子全链看板</h1>
-  <p class="sub">从模型到下单的一整条链。<b>页头先回答"有没有东西坏了"</b>：
-  总灯、生产周期，以及上游与机器两排状态灯——它们在选标签页之前就该看见，
-  所以放在标签栏上面而不是某个分组里面。往下是看板加逐站账：
-  组合风险指标与图表、每日统计、逐站逐日明细与三张跟进表；
-  再往下按三个<b>区域</b>分组，每区一个颜色，标签栏与区标题同色。
-  板块不再编号——它们会随分组移动，编号只会指错地方。</p>
+  <p class="sub">从模型到下单的一整条链。<b>页头就是整块看板</b>：总灯，
+  然后四排状态灯——<b>机器</b>在不在转、<b>上游</b>的数据到没到、
+  <b>选桶</b>挑得准不准、这本<b>账</b>值多少。四个问题按人实际发问的顺序排，
+  都在选标签页之前就该看见，所以放在标签栏上面而不是某个分组里面。
+  往下是逐站账：每日统计、逐站逐日明细与三张跟进表；
+  再往下按三个<b>区域</b>分组，每区一个颜色，标签栏与区标题同色。</p>
   <div class="card"><div style="display:flex;gap:14px;align-items:center;
     flex-wrap:wrap">
     <span class="dot ${D.overall_health}" style="width:13px;height:13px"></span>
     <span class="big">${t}</span>
     <span class="muted">${s}</span>
     <span style="flex:1"></span>
-    <span class="muted">常驻进程心跳 ${hours(w.heartbeat_age_hours)}
-      ${w.pid ? "· pid " + w.pid : ""}</span>
     ${liveSwitch()}
   </div>
-  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;
-    margin-top:9px;padding-top:9px;border-top:1px solid var(--line)">
-    <span class="dot ${h(w.production_health||"muted")}"></span>
-    <b>生产周期</b>
-    <span class="muted">${h(w.production_note||"—")}</span>
-    <span style="flex:1"></span>
-    <span class="muted">上轮 ${w.production_cycle_seconds==null?"—":
-      w.production_cycle_seconds+" 秒"} ·
-      ${hours(D.worker&&D.worker.production_checked_at?
-        (Date.now()-Date.parse(D.worker.production_checked_at))/3600000:null)}</span>
-  </div>
-  ${lampRowSafe(upstreamLights, "上游")}${lampRowSafe(healthLights, "机器")}
+  ${(()=>{
+    // One dashboard, four rows, in the order the questions get asked (user
+    // ruling, 2026-09-11).  The strip of fourteen tiles and the three-state
+    // cards used to live below the tab bar as their own sections; they are
+    // readings about the same four things the lamps answer, so they are
+    // lamps in the same rows rather than a second layout for the same job.
+    let O;
+    try { O = overviewLamps(); }
+    catch (err) {
+      O = {banner:"", machine:[lamp("red","总览出错",String(err))],
+           upstream:[], selection:[], money:[]};
+    }
+    const rows=[
+      ["机器 · 在不在转：常驻、周期、授权，然后是数据从头到尾的每一环"
+        + "（上面停了，下面迟早跟着停）、库容量、维护车道、真值物化",
+        () => O.machine.concat(healthLamps())],
+      ["上游 · 喂进来的东西到没到：四家全球模型、三条区域采集道、区域赛道、"
+        + "缺口检查，以及决策真正读到的那份包里有几家",
+        () => upstreamLamps().concat(O.upstream)],
+      ["选桶 · 挑得准不准：建仓率、声称兑现、各宽度篮子的选中命中",
+        () => O.selection],
+      ["钱 · 这本账值多少：权益与回报率，以及上线／待观察／禁入三边对照",
+        () => O.money],
+    ];
+    return O.banner + rows.map(([cap,build])=>
+      lampRowSafe(()=>lampRow(cap,build()), cap.split(" ")[0])).join("");
+  })()}
   ${renderStamp()}${chips ? `<div style="display:flex;gap:8px;flex-wrap:wrap;
     align-items:center;margin-top:9px">${chips}${more}</div>` : ""}</div>`;
 }
@@ -8904,7 +8994,7 @@ function renderStamp(){
 // Every number here is read from the same payload the sections below use.
 // Restating a figure would let the strip and the section it summarises
 // disagree, which is worse than not having the strip.
-function overview(){
+function overviewLamps(){
   const S=D.selection||{};
   // A ledger that is not there must not be read as a ledger that found
   // nothing.  A rebuild wipes the three tables and commits before its
@@ -8913,22 +9003,27 @@ function overview(){
   // zero with nothing saying why (2026-09-08 10:20).  One banner, ahead of
   // the strip, and the strip is suppressed rather than shown as zeros.
   if(S.ledger_absent){
-    return `<div class="card red" style="margin:10px 0 4px">
+    return {banner:`<div class="card red" style="margin:10px 0 4px">
       <b>纸面账本此刻是空的——下面的仓位/命中率/回报率一律不要读。</b>
       <div class="muted" style="margin-top:6px">
         账本有历史可走却一条仓位都没有，这是「账本不在」而不是「一天都没入座」。
         最常见的原因是 <span class="mono">paper_trading_ledger.py --rebuild</span>
         正在跑：它先清空三张表并提交，再花约 40 分钟重走，这段时间任何读者
-        看到的都是零。等重建结束后本页会自行恢复，无需处理。</div></div>`;
+        看到的都是零。等重建结束后本页会自行恢复，无需处理。</div></div>`,
+      machine:[], upstream:[], selection:[], money:[]};
   }
   const pct0=(v)=>v==null?"—":(v*100).toFixed(0)+"%";
   const band=(v,good,ok)=>v==null?"muted"
     :(v>=good?"green":v>=ok?"amber":"red");
-  const cards=[];
-  const push=(cls,lab,val,sub2,title)=>cards.push(
-    `<div class="k ${cls}" title="${h(title||"")}">
-      <div class="lab">${lab}</div><div class="val">${val}</div>
-      <div class="sub2">${sub2}</div></div>`);
+  // Four buckets, because the strip used to be one queue of fourteen tiles
+  // in the order they were added and a reader triaged it by reading all
+  // fourteen (user ruling, 2026-09-11: classify them, and put them in the
+  // head with the lamps).  Four readings, asked in the order anyone asks
+  // them: is the machine turning, did the data arrive, did we pick well,
+  // what is it worth.
+  const G={machine:[],upstream:[],selection:[],money:[]};
+  const push=(group,cls,lab,val,sub2,title)=>G[group].push(
+    lamp(cls, lab, val, [sub2, title].filter(Boolean).join(" · ")));
 
   // 0. The resident itself, first: everything below this strip is read out
   // of a database the resident fills, so a reader who does not know the
@@ -8938,32 +9033,27 @@ function overview(){
   // 2026-08-26 they had different answers for eleven hours.
   const W=D.worker||{};
   const beat=W.heartbeat_age_hours;
-  push(beat==null?"muted":beat<0.25?"green":beat<1?"amber":"red",
+  push("machine", beat==null?"muted":beat<0.25?"green":beat<1?"amber":"red",
     "常驻心跳", beat==null?"—":hours(beat),
     W.pid?`pid ${W.pid}`:"进程未发布 pid",
     "常驻进程最后一次写状态的时刻。它只说进程活着，不说流水线在出货——看右边那张");
-  push(W.production_health||"muted",
+  push("machine", W.production_health||"muted",
     "生产周期", W.production_cycle_seconds==null?"—"
       :W.production_cycle_seconds.toFixed(0)+" 秒",
     h(W.production_note||"—"),
     `常驻自己的生产回执：${h(W.production_state||"未发布")}。`+
     `绿=正常产出，黄=单条车道阻断，红=多车道断/被写锁挡住/超一小时没完成一轮。`+
     `逐候选的日常拒绝不计入——那是目标函数在正常挑站日，见「没建仓是因为什么」`);
-  push(W.live_submit_authorized?"amber":"green",
+  push("machine", W.live_submit_authorized?"amber":"green",
     "下单授权", W.live_submit_authorized?"已授权":"未授权（纸面）",
     W.live_submit_authorized?"真实下单已开启":"全链纸面运行，网关不发单",
     "是否允许向交易网关发真实订单。纸面态是设计常态：绿灯代表没有真钱在跑");
-  // The other end of the same chain: without settled truth nothing below
-  // this strip can be scored, so a stalled sweep silently freezes every
-  // hit rate and calibration number on the page at its last good day.
-  const T=D.truth||{};
-  push(T.health||"muted",
-    "真值物化", T.outstanding==null?"—"
-      :(T.outstanding===0?"无欠账":T.outstanding+" 站日欠账"),
-    T.sweep_age_hours==null?h(T.note||"—")
-      :`上次清扫 ${hours(T.sweep_age_hours)}`+
-       (T.refused?` · ${T.refused} 站日被证据挡住`:""),
-    h(T.note||"")+"。真值是所有命中率与校准数字的分母，停了这页所有成绩都会冻在最后一个好日子上");
+  // Truth materialisation and the gap check are NOT pushed here: each
+  // already has a lamp of its own in the machine or upstream row, and two
+  // tiles for one reading is how the head ends up disagreeing with itself
+  // when only one of them is updated.  "模型在进来" stays, because it is
+  // not the four model lamps summarised -- it carries the lane's own idle
+  // time, which per-family ages absorb by construction.
 
   // 1. Are the four model families still arriving.
   const fresh=(D.members||[]).filter(m=>m.health==="green").length;
@@ -8984,7 +9074,7 @@ function overview(){
   const capAges=(D.members||[]).map(m=>m.latest_capture_age_hours)
     .filter(v=>v!=null);
   const idle=capAges.length?Math.min(...capAges):null;
-  push(fresh>=total?"green":fresh>=total-1?"amber":"red",
+  push("upstream", fresh>=total?"green":fresh>=total-1?"amber":"red",
     "模型在进来", `${fresh}/${total}`,
     (laggard?`最旧一家 ${h(laggard.label)} · ${
       hours(laggard.run_age_hours)}的 run`:"没有成员族")
@@ -9002,7 +9092,7 @@ function overview(){
   const COV=(W.native_inbox_coverage||[]);
   const near=COV[0];
   const held=(W.native_inbox_held_families||[]);
-  push(W.native_inbox_health||"muted",
+  push("upstream", W.native_inbox_health||"muted",
     "包里有几家",
     near?`${near.family_count}/${near.expected_family_count}`:"—",
     COV.length
@@ -9019,30 +9109,12 @@ function overview(){
           `${h(x.label)}（${h(x.reason)}）`).join("；")
       : ""));
 
-  // 2. Is anything blocking the chain right now.
-  const blocking=(D.gaps||[]).filter(g=>g.severity==="high").length;
-  const waiting=(D.gaps||[]).filter(g=>g.severity!=="high").length;
-  // Only a blocking gap is a problem.  Colouring the strip amber because
-  // some scope is still accumulating samples makes the strip amber almost
-  // always, and a light that is always on is not a light.
-  push(blocking?"red":"green",
-    "要处理的缺口", String(blocking),
-    waiting?`另有 ${waiting} 条在正常等待`:"没有待处理项",
-    "页头「上游」灯排最后一盏「缺口检查」：缺了什么、会不会自己好");
-
-  // 3. Did the truth for settled days actually land.
-  const outstanding=(D.truth||{}).outstanding;
-  push(outstanding==null?"muted":outstanding===0?"green"
-      :outstanding<=5?"amber":"red",
-    "真值待物化", outstanding==null?"—":String(outstanding),
-    "结算真值还没落库的站日", "页头「机器」灯排里的「真值物化」灯");
-
   // 4. How much of the fleet actually opened a position on the newest day.
   const day=S.latest_day||(S.roster_event_dates||[])[0];
   const roster=(S.station_roster||[]).filter(e=>e.event_date===day);
   const opened=roster.filter(e=>e.stages&&e.stages.P0).length;
   const rate=roster.length?opened/roster.length:null;
-  push(band(rate,0.5,0.25), "建仓率",
+  push("selection", band(rate,0.5,0.25), "建仓率",
     `${opened}/${roster.length||"—"}`,
     `${h(day||"")} · ${pct0(rate)} 的站建了仓`,
     "「逐站逐日明细」（每日统计下方）：没建仓的站，格子里写着原因");
@@ -9051,7 +9123,7 @@ function overview(){
   const cs=S.coverage_stats||{};
   const stagesAll=S.stages||{};
   const cal=((stagesAll.P0||{}).credible||{}).calibration_ratio;
-  push(cal==null?"muted":(cal>=0.85&&cal<=1.15)?"green"
+  push("selection", cal==null?"muted":(cal>=0.85&&cal<=1.15)?"green"
       :(cal>=0.6&&cal<=1.4)?"amber":"red",
     "说得准不准", cal==null?"—":cal.toFixed(2)+"×",
     "命中率 ÷ 声称胜率，1.00× 是说得准",
@@ -9081,7 +9153,7 @@ function overview(){
           (2*row.delta_stderr*100).toFixed(0)}）`
       :`${row.settled_count} 链 · 后半 ${
         (row.delta*100>=0?"+":"")+(row.delta*100).toFixed(0)} 点`;
-    push(hitv==null?"muted":band(hitv,0.5,0.33),
+    push("selection", hitv==null?"muted":band(hitv,0.5,0.33),
       `${row.chosen_size} 桶选中命中 ${arrow}`,
       pct0(hitv), move,
       `目标函数选中的腿集合（含护栏腿，跨阶段并集）盖住结算真值的比率。` +
@@ -9095,7 +9167,7 @@ function overview(){
   // 7. What the one book is worth now.
   const capital=S.initial_capital_usdc||1000;
   const equity=capital+(cs.realized_usdc||0);
-  push(equity>=capital?"green":equity>=capital*0.85?"amber":"red",
+  push("money", equity>=capital?"green":equity>=capital*0.85?"amber":"red",
     "纸面权益", equity.toFixed(0),
     `本金 ${capital} · ${h(S.stats_start_event_date||"")} 起 ${
       cs.settled_count||0} 条链`,
@@ -9103,14 +9175,38 @@ function overview(){
 
   // 8. Per USDC put at risk, what came back.
   const roi=cs.staked_usdc>0?(cs.realized_usdc||0)/cs.staked_usdc:null;
-  push(roi==null?"muted":roi>=0?"green":roi>=-0.15?"amber":"red",
+  push("money", roi==null?"muted":roi>=0?"green":roi>=-0.15?"amber":"red",
     "回报率", roi==null?"—":(roi*100).toFixed(1)+"%",
     `${h(S.stats_start_event_date||"")} 起 · 投入 ${
       (cs.staked_usdc||0).toFixed(0)} · 实得 ${
       (cs.realized_usdc||0).toFixed(0)}`,
     "「覆盖 · 价格 · EV」：覆盖 · 价格 · EV");
 
-  return `<div class="kpi" style="margin:10px 0 4px">${cards.join("")}</div>`;
+  // The three-state comparison joins the money row (user ruling,
+  // 2026-09-11).  It is four readings of the same book under three gates
+  // plus the ungated control, and a section of four cards two scrolls down
+  // made it a separate topic; beside the equity and the return it is what
+  // it always was -- what the bars cost.
+  const SP=(D.live_readiness||{}).bar_split||{};
+  if(SP.barred){
+    const pctS=(v)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(1)+"%");
+    const money=(v)=>v==null?"—":((v>=0?"+":"")+v.toFixed(2));
+    [["live","上线","已判且过关 —— 真上线只有这一组会下单"],
+     ["probation","待观察","证据不足 —— 够 "
+       +((D.live_readiness||{}).minimum_settlements_to_qualify||5)
+       +" 笔结算才判，判过了自动上线；它不是禁入"],
+     ["barred","禁入","已判且不合格 —— 这些钱本来会亏/赚在这里"],
+     ["fleet","全舰队","不设任何闸的对照"]].forEach(([key,label,note])=>{
+      const r=SP[key]||{};
+      push("money", r.roi==null?"muted":(r.roi>=0?"green":"red"),
+        label, pctS(r.roi),
+        `${money(r.pnl_usdc)} U · 投入 ${money(r.staked_usdc)} U · ${
+          r.stations||0} 站 · ${r.settled_days||0} 个结算站日`,
+        note+"。同一窗口、同一规则指纹，纸面账本对三边一视同仁地建仓结算——"
+        +"禁的是下单，不是记账；它衡量这些闸拦掉了什么，不是对未来的预测");
+    });
+  }
+  return {banner:"", ...G};
 }
 
 
@@ -9155,7 +9251,7 @@ const lampRowSafe = (fn, caption) => {
   }
 };
 
-function upstreamLights(){
+function upstreamLamps(){
   const L = [];
   (D.members || []).forEach(m => {
     // Late by a whole cycle is late enough to say out loud; publication
@@ -9200,12 +9296,10 @@ function upstreamLights(){
       ? g.slice(0, 8).map(x => x.what).join("；")
         + (manual ? ` · 其中 ${manual} 条不会自己好` : " · 都会自行恢复")
       : "每一项检查都通过了"));
-  return lampRow("上游 · 喂进来的东西到没到（四家全球模型 · 三条区域采集道 · "
-    + "区域赛道 · 缺口检查）。灯上是最新一轮和多久前落库，悬停看站数与存档深度",
-    L);
+  return L;
 }
 
-function healthLights(){
+function healthLamps(){
   // The chain first, one lamp per link, in flow order: whichever one
   // stopped, everything under it stops next.
   const L = (D.chain || []).map(c => lamp(c.health, c.name, c.volume,
@@ -9253,9 +9347,7 @@ function healthLights(){
       + " · 「落后」不为零才是真的落后；「挡住」是证据不全或互相矛盾，"
       + "错过的日子没有任何东西会重试"));
   }
-  return lampRow("机器 · 在不在转。前六盏是数据从头到尾的每一环（上面停了，"
-    + "下面迟早跟着停），后三盏是库容量、常驻的维护车道、真值物化",
-    L);
+  return L;
 }
 
 function tables(){
@@ -9421,12 +9513,16 @@ function stages(){
 // the table above be split finer", and answering it two headings away made
 // readers compare a pooled row with a split row by scrolling.
 function bandTable(){
-  // The edge thermometer lives here rather than under the market tab
-  // (user ruling, 2026-09-01): the band table audits claimed probability,
-  // the thermometer audits claimed edge, and they are one reading.
-  return stages() + bandShadow() + edgeBandHealth()
-    + effectiveEdgeLambda()
-    + convergenceClaim();
+  // The edge thermometer and the lambda table used to render here (user
+  // ruling, 2026-09-01: the band table audits claimed probability, the
+  // thermometer audits claimed edge, and they are one reading).  They are
+  // their own sections again as of 2026-09-11 -- not because that reading
+  // was wrong, but because a section is also an entry in the jump bar, and
+  // folded in here neither table had one: a reader who wanted the lambda
+  // table had to know it was inside "band 表" and scroll.  The reading is
+  // preserved by adjacency instead: all three sit together, in order, in
+  // this group, and all three are starred in the bar.
+  return stages() + bandShadow() + convergenceClaim();
 }
 
 
@@ -9717,14 +9813,24 @@ function basketHit(){
     <th>声称</th><th>实现/声称</th><th>均成本</th><th>每元回报</th></tr></thead>
     <tbody>${rows}</tbody></table>
   ${chosenBlock}
-  ${offBlock}
-  ${fleetRegime()}`;
+  ${offBlock}`;
 }
 
-// Sits under the miss distribution because it is that distribution's
-// diagnosed cause: the +1 misses were the served centre running cold while
-// the fitted layers, which need days of held-out evidence before they may
-// move, had not moved.  This is what reacts the next morning instead.
+// Both halves of "did a correction land closer to truth" in one section
+// (user ruling, 2026-09-11).  One measures a parameter of the fitted bias
+// layer -- the half-life -- against held-out truth; the other is the
+// unfitted layer that reacts to yesterday's fleet-wide miss the next
+// morning.  They are the same question asked of a slow correction and a
+// fast one, and until now the fast one hung off the bottom of the basket
+// hit-rate section, where it was read as a footnote to a different table.
+function correctionAccuracy(){
+  return h5BiasAccuracy() + fleetRegime();
+}
+
+// Written as the diagnosed cause of the +1 misses: the served centre was
+// running cold while the fitted layers, which need days of held-out
+// evidence before they may move, had not moved.  This is what reacts the
+// next morning instead.
 function fleetRegime(){
   const R=(D.selection||{}).fleet_regime;
   if(!R||!R.available) return "";
@@ -9761,9 +9867,10 @@ function fleetRegime(){
     </tr>`;
   }).join("");
   const [banner,word]=LIGHT[R.alert]||LIGHT.GREEN;
-  return `<h3 style="margin-top:18px">舰队隔日政权偏移
+  return `<h2 style="margin-top:26px">舰队隔日政权偏移
     <span class="pill" style="background:${banner}22;color:${banner}">${
-      word}</span></h3>
+      word}</span></h2>
+  <div class="card">
   <p class="sub">昨天全舰队结算下来，服务出去的分布中心差了多少度；
   今天按这个差额把中心挪回来。</p>
   <div class="why"><b>这一层目前只测不修，三个阶段全暗。</b>
@@ -9780,7 +9887,7 @@ function fleetRegime(){
   版本。</div>
   <table><thead><tr><th>阶段</th><th>灯</th><th>昨日差额°C</th><th>连续</th>
     <th>档位</th><th>今日修正°C</th><th>站数</th><th>近七日</th><th>状态</th>
-    </tr></thead><tbody>${rows}</tbody></table>`;
+    </tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 // Sits after the per-station summary because it is that table's follow-up
@@ -9963,7 +10070,7 @@ function effectiveEdgeLambda(){
   const E=D.effective_edge_lambda||{};
   const scopes=E.scopes||[];
   if(!scopes.length)
-    return `<h2 style="margin-top:30px">有效边际 λ 表（按阶段）</h2>
+    return `<h2>有效边际 λ 表（按阶段）</h2>
     <div class="card"><span class="dot green"></span> 无结算数据。</div>`;
   const num=(v,d)=>v==null?"—":v.toFixed(d==null?2:d);
   const pct=v=>v==null?"—":(v*100).toFixed(0)+"%";
@@ -10278,7 +10385,7 @@ ${b.admits?"可买 ["+b.admits[0].toFixed(3)+", "+b.admits[1].toFixed(3)+")"
       <table><thead><tr><th>一致度带</th><th>服务 λ</th>${tiers.map(([,l])=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`;
   };
 
-  return `<h2 style="margin-top:30px">有效边际 λ 表（按阶段）</h2>
+  return `<h2>有效边际 λ 表（按阶段）</h2>
     <div class="card">
       <div class="muted" style="font-size:12.5px;margin-bottom:9px">
         定注读的是 <span class="mono">λ(a)·p</span> 而不是 p（宪章 68），闸只放行
@@ -10358,7 +10465,7 @@ function edgeBandHealth(){
   const E=D.edge_band_health||{};
   const rows=E.bands||[];
   if(!rows.length)
-    return `<h2 style="margin-top:30px">声称边际体温计（edge 带 × 兑现）</h2>
+    return `<h2>声称边际体温计（edge 带 × 兑现）</h2>
     <div class="card"><span class="dot green"></span> 无腿级数据。</div>`;
   const pct=v=>v==null?"—":(v*100).toFixed(0)+"%";
   const mult=v=>v==null?"—":"×"+v.toFixed(2);
@@ -10528,16 +10635,22 @@ function edgeBandHealth(){
     <span style="color:#e8590c">橙＝发烧</span> ·
     <span style="color:#e03131">红＝重烧</span>。
     ${feverShare>0?`当前 <b>${pct(feverShare)}</b> 的腿压在发烧及以上（×&lt;0.5）的档里。`:""}</div>`;
-  return `<h2 style="margin-top:30px">声称边际体温计（edge 带 × 兑现）</h2>
+  return `<h2>声称边际体温计（edge 带 × 兑现）</h2>
   <div class="card">
   ${arc}
   <p class="note" style="margin-top:12px"><b>这张表回答一个问题：模型觉得"捡到的便宜"是真是假。</b>
-  每条腿有两个数——模型信它多少（声称）、市场卖它多少（卖价），差值＝模型自认占的便宜，
-  按大小分七档。"兑现"列＝买到后真值实际落桶的比例是声称的几成：×1.0 说得准，
-  ×0.45 自估打了四五折，×0.07 声称基本是错的。规律从上往下一眼可见：
-  <b>自认便宜越大，市场越乐意卖，兑现越崩——"太好的价格"本身是警报</b>。
-  <b>2026-09-06 起这张表不再只是体温计</b>（宪章 97）：最薄那一档
-  <span class="mono">e ≤ 0.05</span>（实测兑现 ×1.036）已<b>转正服务</b>，
+  每条腿两个数——模型信它多少（声称）、市场卖它多少（卖价），差值＝自认占的便宜，
+  按大小分七档。<b>兑现</b>＝买到后真值落桶的比例是声称的几成：×1.0 说得准、
+  ×0.45 打了四五折、×0.07 基本是错的。
+  <b>自认便宜越大，兑现越崩——"太好的价格"本身就是警报。</b><br>
+  <b>按阶段分开读</b>：同一个"占 30% 便宜"，P0 只有模型，P1 已经看过当天几小时实测，
+  合并起来的 ×0.25 哪个阶段都不成立（P0 ×0.07、P1 ×0.35）。
+  近7天窗起点 ${E.recent_floor||"—"}，腿数 ${E.totals&&E.totals.recent_legs||0}/${E.totals&&E.totals.legs||0}
+  （${(E.stages||[]).map(st=>`${st} ${(E.stage_totals||{})[st]||0}`).join(" · ")}）。</p>
+  <div class="card" style="margin-top:10px">
+  <div class="muted">最薄那一档已经转正服务 —— 它做了什么、代价是什么、什么时候收回</div>
+  <p class="note" style="margin-top:8px"><b>2026-09-06 起这张表不再只是体温计</b>（宪章 97）：
+  最薄那一档 <span class="mono">e ≤ 0.05</span>（实测兑现 ×1.036）已<b>转正服务</b>，
   作有效边际 λ 的<b>第二根轴</b> —— 落在该档的窗口 λ 直接服务 1.00（封顶，不用实测的 1.036），
   且<b>只准抬不准压</b>。它不是第二道闸：闸仍只有"折后声称 &gt; 价格"一个判据，
   变的是薄档窗口的 λ 由这根轴给出。<b>其余各档仍只是仪表</b>，
@@ -10546,15 +10659,10 @@ function edgeBandHealth(){
   ②回测增量只 2 席、优势基本由 08-27 SBGR 单张票决定，对 9/8 在盘口移动前增量为零；
   ③回测人口是删失的 —— 那 20 席全是被一致度轴放进来才结算的，
   上线后会放行历史上从没开过的窗口，影响面大于 +2 席、方向未知。
-  回收条件：该轴自己的席位攒够 12 席后若兑现跌破 1.0 即收回（尚未自动化，需人工复核）。
-  "近7天"两列仍是宪章62校准修复的疗效仪表，起效的样子＝发烧行（黄）占比缩小、兑现回升。样本&lt;10 显 —。
-  <b>按阶段分开看</b>（用户裁定 2026-09-02）：同一个"声称占 30% 便宜"，
-  P0 只有模型，P1 已经看过当天几小时实测气温——不是同一种声称。
-  合并后 ≥30% 档兑现 ×0.25，拆开是 P0 ×0.07 与 P1 ×0.35，
-  差五倍，那个 ×0.25 哪个阶段都不成立。P0-M 每档只有几条腿，
-  多数格子按十条门槛留空，这就是"这条车道太薄读不出来"的诚实写法。
-  近7天窗起点 ${E.recent_floor||"—"}，腿数 ${E.totals&&E.totals.recent_legs||0}/${E.totals&&E.totals.legs||0}
-  （${(E.stages||[]).map(st=>`${st} ${(E.stage_totals||{})[st]||0}`).join(" · ")}）。</p>
+  回收条件：该轴自己的席位攒够 12 席后若兑现跌破 1.0 即收回（尚未自动化，需人工复核）。<br>
+  "近7天"两列仍是宪章 62 校准修复的疗效仪表，起效的样子＝发烧行（黄）占比缩小、兑现回升；
+  样本 &lt;10 显 —。按阶段拆开是 2026-09-02 的用户裁定；P0-M 每档只有几条腿，
+  多数格子按十条门槛留空，那是"这条车道太薄读不出来"的诚实写法。</p></div>
   <table><thead><tr><th>自认便宜多少</th><th>状态</th><th>腿数</th><th>占比</th>
   <th>市场肯卖率</th><th>模型声称</th><th>买到后兑现<br><span class="muted">全部阶段</span></th>
   ${(E.stages||[]).map(st=>`<th title="${st} 阶段单独看；括号里是该档该阶段的腿数">${
@@ -11228,7 +11336,13 @@ function daily(){
   if(!D.daily || !D.daily.length) return "";
   const STAGES=["P0","P0-M","P1"];
   const pct=v=>v==null?"—":(v*100).toFixed(0)+"%";
-  const rows=D.daily.map(r=>{
+  // Newest five open, the rest folded (user ruling, 2026-09-11).  The table
+  // arrives newest-first and runs to fourteen rows; what gets read on
+  // arrival is this week, and the older rows were costing two thirds of the
+  // section's height to be scrolled past.  Folded rather than dropped: the
+  // day a number went wrong is usually not one of the five.
+  const OPEN_DAYS=5;
+  const rowHtml=r=>{
     const s=r.sides||{};
     const cal=r.calibration_ratio;
     const calCls=cal==null?"":(cal>=0.9&&cal<=1.15?"up":"down");
@@ -11285,7 +11399,9 @@ function daily(){
       <td class="mono ${r.pnl_usdc>=0?"up":"down"}">${(r.pnl_usdc>=0?"+":"")+r.pnl_usdc.toFixed(2)}</td>
       <td>${liveCell(liveAgg((st,day)=>day===r.event_date))}</td>
     </tr>`;
-  }).join("");
+  };
+  const recent=D.daily.slice(0,OPEN_DAYS).map(rowHtml).join("");
+  const older=D.daily.slice(OPEN_DAYS);
   return `<h2>每日统计</h2>
   <p class="sub">按事件日汇总，只算可成交的（整篮成本 ≥1 分）——不足一分的多是无人出价那侧的
   单边报价，名义上有价、实际买不到，混进来会让当天的盈亏读不出意思。</p>
@@ -11311,7 +11427,7 @@ function daily(){
   所以未结算日的这两列不能相除；
   「实现/声称」是命中率÷声称胜率，1.00× 表示概率说得准；
   「赔率」是 (1−成本)/成本。</div>
-  <div class="card"><table><thead><tr>
+  <div class="card">${(()=>{const head=`<thead><tr>
     <th>事件日</th><th>站数<br><span class="muted">建仓/舰队</span></th><th>仓位</th>
     <th>位置<br><span class="muted">均值桶 上/平/下</span></th>
     <th>意向窗盖住率<br><span class="muted">选桶概率和</span></th>
@@ -11321,7 +11437,14 @@ function daily(){
     <th>实现/声称</th>
     <th>赔率</th><th>投入</th><th>盈亏</th>
     <th title="实盘意向（live_submit_authorized=1），与左侧纸面各列是两套账，不可相加">实盘<br><span class="muted">腿 · 名义</span></th>
-  </tr></thead><tbody>${rows}</tbody></table></div>`;
+  </tr></thead>`;
+  return `<table>${head}<tbody>${recent}</tbody></table>`
+    + (older.length ? `<details style="margin-top:10px">
+      <summary class="muted" style="cursor:pointer">更早的 ${older.length} 天
+        （${h(older[older.length-1].event_date)} 到 ${h(older[0].event_date)}）</summary>
+      <table style="margin-top:8px">${head}
+        <tbody>${older.map(rowHtml).join("")}</tbody></table></details>` : "");
+  })()}</div>`;
 }
 
 function coverage(){
@@ -11886,7 +12009,7 @@ function roster(){
     <th title="均值−众数">偏斜</th><th>实测</th><th>实得</th>
     <th title="这一站这一天的实盘意向（live_submit_authorized=1）。左边各列是纸面账本，两套账不可相加">实盘</th></tr>`;
   const dates=S.roster_event_dates||[];
-  const block=(day,index)=>{
+  const block=(day)=>{
     const rows=rs.filter(e=>e.event_date===day);
     const seated=rows.filter(e=>e.seated_stage_count>0).length;
     // P0 counted on its own: it is the opening stage, so "how many stations
@@ -11918,7 +12041,7 @@ function roster(){
     const fill=seats.length?` · 实投 ${usd2(got)}${
         short3?`<span class="pill red">桶数低于本阶段下界 ${short3}</span>`:""}`:"";
     return {day:day, count:rows.length, p0:p0, seated:seated,
-      pane:`<div data-daypane="${h(day)}"${index?" hidden":""}>
+      pane:`<div data-daypane="${h(day)}" hidden>
       <div class="card">
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:baseline">
           <b class="mono">${h(day)}</b>
@@ -11936,9 +12059,13 @@ function roster(){
   // The pill carries the P0 seat count, not the station count: every day
   // has all forty-five stations by construction, so that number describes
   // the registry rather than the day and reads as noise on thirteen pills.
-  const blocks=dates.map((day,index)=>block(day,index));
+  const blocks=dates.map(day=>block(day));
+  // Nothing open until a date is clicked (user ruling, 2026-09-11).  Even
+  // one day of this is forty-five stations wide; it is a table you arrive
+  // at with a question, and opening the newest one by default spent the
+  // height whether or not anyone had that question.
   const dayNav=`<nav class="daytabs">${blocks.map((b,i)=>
-    `<button type="button" data-day="${h(b.day)}"${i?"":' data-active="1"'}
+    `<button type="button" data-day="${h(b.day)}"
       title="${b.count} 站 · P0 建仓 ${b.p0} · 任一阶段有座位 ${b.seated}">${h(b.day)}
       <span class="muted">建仓 ${b.p0}</span></button>`).join("")
     }<button type="button" data-day="all">全部 <span class="muted">${
@@ -11957,8 +12084,9 @@ function roster(){
   P1 格里的「预测最高」是当天<b>最后一次重算</b>的点预测（后验加权中心，随盘口单位显示），
   旁边注明它出自哪个条件化器：<b>物理路径</b>是只看观测的 v5 预测器（带生效强度），
   「仅硬下界」表示该次重算没有任何软证据参与——那不是预测，只是排除。
-  每行只讲这一天：跨日均值在「市场与执行」的「逐站汇总（跨日）」逐站汇总。日期在下面的页签里选，默认最新一天；
-  「全部」是原来的通栏视图，也是浏览器自带查找唯一能搜到所有日期的那一档。</p>
+  每行只讲这一天：跨日均值在「市场与执行」的「逐站汇总（跨日）」逐站汇总。
+  <b>默认一天都不展开</b>——点下面的日期展开那一天，
+  「全部」是通栏视图，也是浏览器自带查找唯一能搜到所有日期的那一档。</p>
   <div class="why"><b>站点格的底色＝这个站日最后怎么了：</b>
   <span class="pill green">命中</span>真值落在最终持仓里 ·
   <span class="pill red">未命中</span>落在持仓外 ·
@@ -12134,7 +12262,8 @@ function h5BiasAccuracy(){
     <td>${s.system}</td><td class="num">${s.cells}</td>
     <td class="num">${s.mean_delta_c>0?"+":""}${s.mean_delta_c.toFixed(4)}</td>
     <td class="num">${s.h5_better}:${s.h5_worse}</td></tr>`).join("");
-  return `<h2 style="margin-top:28px">H5 vs H15 订正准度（校准口径） ${verdict}</h2>
+  return `<h2>H5 vs H15 订正准度（校准口径） ${verdict}</h2>
+  <div class="card">
   <p class="sub">同一批已结算站日、同一批原始预报，分别用两代偏差值订正，比订正后
   离真值有多远。Δ = H5 误差 − H15 误差，<b>负数代表 H5 更准</b>。这是纯算术反事实，
   不需要重放，所以每多一个结算日样本就自动变厚。</p>
@@ -12161,7 +12290,7 @@ function h5BiasAccuracy(){
   <h3 style="margin-top:16px">按系统拆</h3>
   <table><thead><tr>
     <th>系统</th><th>单元</th><th>平均 Δ°C</th><th>更准:更差</th>
-  </tr></thead><tbody>${sysRows}</tbody></table>`;
+  </tr></thead><tbody>${sysRows}</tbody></table></div>`;
 }
 
 
@@ -12643,9 +12772,26 @@ function liveOrderCard(L){
         ? `<span class="muted mono" style="font-size:11px">投入 ${gCost.toFixed(2)} U</span>`
         : `<span class="mono ${gPay-gCost>=0?"up":"down"}" style="font-size:11px">${(gPay-gCost>=0?"+":"")+(gPay-gCost).toFixed(2)} U</span>
            <span class="muted mono" style="font-size:11px">投入 ${gCost.toFixed(2)} · 赔付 ${gPay.toFixed(2)} · 落在 ${h(truth)}</span>`;
+      // The station wears the day's verdict (user ruling, 2026-09-11), in
+      // the same three colours the per-station roster uses: green held the
+      // settled bucket, red did not, amber has no truth yet.  A settled
+      // basket that filled nothing is red with the reason in its tooltip --
+      // it did not hold the bucket, and calling it anything else would need
+      // a fourth colour for a state nobody acts on differently.
+      const verdict = !truth
+        ? ["amber", "未结算：这个站日的真值还没到"]
+        : (gPay > 0
+          ? ["green", "命中：成交腿里有落在结算桶 " + truth + " 的"]
+          : [
+            "red",
+            gFilled.length
+              ? "未命中：成交的腿都不在结算桶 " + truth
+              : "未命中：整篮一条腿都没成交，结算落在 " + truth,
+          ]);
       return `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:5px 0;border-top:1px dashed var(--line,#eee)">
         <span class="pill red" style="font-size:10px">LIVE</span>
-        <b class="mono" title="${h(g.decision_id)}">${h(g.station_id||"?")}</b>
+        <b class="mono pill ${verdict[0]}" title="${h(verdict[1])} · ${
+          h(g.decision_id)}">${h(g.station_id||"?")}</b>
         <span class="muted" style="font-size:11px">${g.legs.length} 腿 · ${gFilled.length} 成交</span>
         ${skewChip(g)}
         <span>${g.legs.map(l=>legChip(l, truth, mid)).join("")}</span>
@@ -12840,37 +12986,35 @@ function orderBookCard(B){
 // the account doing", not "may this book go live".  The prose that
 // justifies the split folds: it is read once, and it was pushing the four
 // numbers it explains below the fold.
-function barSplit(){
+// The three live knobs (user ruling, 2026-09-11: top right of the nav, not
+// in the page).  They are a CONTROL, not a reading -- the one thing on this
+// page that changes what production does next -- and a control belongs
+// where it is always reachable rather than five thousand pixels down inside
+// the section that explains it.  Same ids as before, because the control
+// server's own script paints into them and enables the buttons; only the
+// layout moved.
+function liveControlStrip(){
   const L = D.live_readiness || {};
-  const SP = L.bar_split || {};
-  if(!SP.barred) return "";
-  const money=(v)=>v==null?"—":((v>=0?"+":"")+v.toFixed(2));
-  const pct=(v)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(1)+"%");
-  const cell=(k,label,note)=>{const r=SP[k]||{};return `<div class="card">
-    <div class="muted">${label}</div>
-    <div class="big ${r.roi==null?"":(r.roi>=0?"up":"down")}">${pct(r.roi)}</div>
-    <div class="mono ${(r.pnl_usdc||0)>=0?"up":"down"}">${money(r.pnl_usdc)} U</div>
-    <div class="muted" style="font-size:11.5px">投入 ${money(r.staked_usdc)} U ·
-      ${r.stations||0} 站 · ${r.settled_days||0} 个结算站日<br>${note}</div></div>`;};
-  return `<h3 style="margin-top:22px;font-size:15px">三态对比：上线 / 待观察 / 禁入</h3>
-  <div class="card">
-    <div class="muted">同一窗口、同一规则指纹，纸面账本对三边一视同仁地建仓结算——
-      <b>禁的是下单，不是记账</b>。它衡量的是这些闸拦掉了什么，<b>不是对未来的预测</b>。</div>
-    <div class="grid g2" style="margin-top:8px">
-      ${cell("live","上线（已判且过关）","真上线只有这一组会下单")}
-      ${cell("probation","待观察（证据不足）","够 "+(L.minimum_settlements_to_qualify||5)+" 笔结算才判，判过了自动上线")}
-      ${cell("barred","禁入（已判且不合格）","这些钱本来会亏/赚在这里")}
-      ${cell("fleet","全舰队","不设任何闸的对照")}
-    </div>
-    <details class="note"><summary>三态是怎么分的 · 为什么「待观察」不是「禁入」</summary>
-      <div class="muted">待观察的站正是靠继续记账攒够证据毕业的。
-      <b>默认禁止</b>（2026-08-31 裁定）：新站不上线，攒够
-      ${L.minimum_settlements_to_qualify||5} 笔结算被判过且没被禁，才自动上线。
-      <b>「待观察」不是「禁入」</b>——只有 2 笔的站不是坏站，把它塞进禁入表还会占掉 15 个名额之一。</div>
-    </details>
+  if(!L.available) return "";
+  const b=(knob,delta,text)=>`<button type="button" disabled class="lc-w"
+    onclick="lcAdjust('${knob}',${delta})">${text}</button>`;
+  return `<div class="navctl" title="凯利系数 portfolio_risk_fraction ·
+预算 target_remaining_budget_usdc · 单站上限 station_cap_usdc（默认 15，范围 1-30；
+三个本金型边界同步派生）。控制服务只监听 127.0.0.1:8788，每次改动写审计日志。">
+    <span class="navctl-i"><span class="muted">凯利</span>
+      <b id="lc-kelly">${L.kelly==null?"—":L.kelly}</b>
+      ${b("kelly",-0.05,"−")}${b("kelly",0.05,"＋")}</span>
+    <span class="navctl-i"><span class="muted">预算</span>
+      <b id="lc-budget">${L.budget_usdc==null?"—":L.budget_usdc}</b>
+      ${b("budget",-50,"−")}${b("budget",50,"＋")}</span>
+    <span class="navctl-i"><span class="muted">单站</span>
+      <b id="lc-cap">—</b>
+      ${b("cap",-1,"−")}${b("cap",1,"＋")}${b("cap",-5,"−5")}${b("cap",5,"＋5")}</span>
+    <span class="muted navctl-s" id="lc-status"
+      title="控制服务未连接——启动 .venv/bin/python scripts/live_control_server.py"
+      >控制服务未连接</span>
   </div>`;
 }
-
 
 function liveReadiness(){
   const L = D.live_readiness || {};
@@ -12975,29 +13119,6 @@ function liveReadiness(){
   ${L.submission_paused
     ? `<b style="color:var(--red)">暂停旗在位</b>——它是被手动放上去的（或某次举旗撤旗失败），网关不发单`
     : "暂停旗不在位"}。</p>
-  <div class="card">
-    <div class="grid g2">
-      <div><div class="muted">凯利系数 portfolio_risk_fraction</div>
-        <div class="big" id="lc-kelly">${L.kelly==null?"—":L.kelly}</div>
-        <button type="button" disabled class="lc-w" onclick="lcAdjust('kelly',-0.05)">−0.05</button>
-        <button type="button" disabled class="lc-w" onclick="lcAdjust('kelly',0.05)">＋0.05</button></div>
-      <div><div class="muted">预算 target_remaining_budget_usdc</div>
-        <div class="big" id="lc-budget">${L.budget_usdc==null?"—":L.budget_usdc}</div>
-        <button type="button" disabled class="lc-w" onclick="lcAdjust('budget',-50)">−50</button>
-        <button type="button" disabled class="lc-w" onclick="lcAdjust('budget',50)">＋50</button></div>
-      <div><div class="muted">单站上限 station_cap_usdc
-          <span style="font-size:11px">（默认 15，范围 1–30；三个本金型边界同步派生）</span></div>
-        <div class="big"><span id="lc-cap">—</span><span
-          style="font-size:13px;font-weight:400"> u</span></div>
-        <button type="button" disabled class="lc-w" onclick="lcAdjust('cap',-1)">−1</button>
-        <button type="button" disabled class="lc-w" onclick="lcAdjust('cap',1)">＋1</button>
-        <button type="button" disabled class="lc-w" onclick="lcAdjust('cap',-5)">−5</button>
-        <button type="button" disabled class="lc-w" onclick="lcAdjust('cap',5)">＋5</button></div>
-    </div>
-    <div class="muted" style="margin-top:8px" id="lc-status">控制服务未连接——启动：
-      <span class="mono">.venv/bin/python scripts/live_control_server.py</span>
-      （只监听 127.0.0.1:8788，每次改动写审计日志）</div>
-  </div>
   ${liveOrderCard(L)}
   <div class="card" style="margin-top:12px">
     <div class="muted">首批站点闸门 · <b>三个开关全是人工的，点击即开启关闭</b>——
@@ -13554,10 +13675,14 @@ const GROUPS = [
      [dispersion,"模型离散度"],[hitRate,"模型命中率"],
      [oosScores,"OOS 打分"],[centerWidth,"中心/宽度"],
      [centreLanding,"真值离均值多远"],
-     [scorecard,"模型校准总检"],[h5Readiness,"H5 换代进度"],[h5BiasAccuracy,"H5 订正准度"]]},
+     [scorecard,"模型校准总检"],[h5Readiness,"H5 换代进度"],
+     [correctionAccuracy,"订正准度与政权偏移"]]},
   {id:"shape", label:"概率与持仓形状", tone:"#7ee787",
    note:"概率怎么被分档修正、声称的便宜兑不兑现、注码怎么被固化减仓、分布和实际持仓差在哪",
-   sections:[[bandTable,"band 表"],[consolidation,"固化减仓"],
+   sections:[[bandTable,"band 表"],
+     [edgeBandHealth,"声称边际体温计"],
+     [effectiveEdgeLambda,"有效边际 λ 表"],
+     [consolidation,"固化减仓"],
      [windowDivergence,"分布与持仓分家"]]},
   {id:"market", label:"市场与执行门槛", tone:"#e3b341",
    note:"市场肯不肯让这套东西赚钱：覆盖与 EV、篮子命中率、真值落位",
@@ -13585,13 +13710,18 @@ const tabs = `<nav class="tabs" id="tabs">${
 // head status bar: "is the machine turning" and "what is the book worth"
 // are the two things read on arrival, and the ratios sat five thousand
 // pixels below the bar that answers the first.
-function overviewBoard(){
-  return safe(overview, "总览")
-    + safe(barSplit, "三态对比");
-}
-
+// Three chips are starred (user ruling, 2026-09-11).  The bar gives every
+// section the same chip, which is right when the sections are peers and
+// wrong here: these three are how the objective is read -- what a claimed
+// probability is worth, what a claimed edge is worth, and how much of a
+// claim the sizing may believe -- and in a row of twenty equal chips they
+// were found by reading every label.  Keyed on the registry's name rather
+// than the heading, so a heading may be reworded without silently losing
+// its star.
+const STARRED = new Set(["band 表", "声称边际体温计", "有效边际 λ 表"]);
 const sec = (fn, name, id) =>
-  `<section class="sec" id="${id}" data-name="${name}">${safe(fn, name)}</section>`;
+  `<section class="sec" id="${id}" data-name="${name}"${
+    STARRED.has(name) ? ` data-star="1"` : ""}>${safe(fn, name)}</section>`;
 
 const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}"
   style="--tone:${g.tone}">
@@ -13623,8 +13753,7 @@ const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}"
 // not scan them -- so they move into their own area together, keeping the
 // order the reader asked for: detail first, then the three tables that
 // answer what the detail raises.
-const TOP = [[overviewBoard, "总览"],
-  [daily, "每日统计"], [roster, "逐站逐日明细"],
+const TOP = [[daily, "每日统计"], [roster, "逐站逐日明细"],
   [stationSummary, "逐站汇总（跨日）"],
   [refusalStats, "没建仓是因为什么"]];
 
@@ -13651,7 +13780,9 @@ function sectionCacheNote(){
 }
 
 document.getElementById("app").innerHTML =
-  `<div class="topnav" id="topnav">${tabs}<nav class="jump" id="jump"></nav></div>` +
+  `<div class="topnav" id="topnav">
+    <div class="navtop">${tabs}${safe(liveControlStrip, "实盘控制")}</div>
+    <nav class="jump" id="jump"></nav></div>` +
   safe(head, "页头") +
   sec(entryEconomics, "入场的九个数", "sec-entry") +
   sec(riskMetrics, "组合风险指标", "sec-risk") +
@@ -13688,8 +13819,8 @@ document.getElementById("app").innerHTML =
       : (node.dataset.name || "");
     if(!full) return "";
     const short2 = full.split(/[：（(·]/)[0].trim() || full;
-    return `<button type="button" data-goto="${node.id}" title="${esc(full)}"
-      >${esc(short2)}</button>`;
+    return `<button type="button" data-goto="${node.id}" title="${esc(full)}"${
+      node.dataset.star ? ` class="star"` : ""}>${esc(short2)}</button>`;
   };
   const paintJump = () => {
     if(!jump) return;

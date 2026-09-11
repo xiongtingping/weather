@@ -210,8 +210,8 @@ def test_the_lanes_reach_the_head_lamp_and_can_say_they_cannot_read(
     """
 
     page = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
-    assert 'lampRowSafe(upstreamLights, "上游")' in page
-    assert 'lampRowSafe(healthLights, "机器")' in page
+    assert "healthLamps()" in page
+    assert "upstreamLamps()" in page
     assert "D.hosted_sweeps" in page
     assert '"hosted_sweeps": hosted_sweeps,' in page
     # A board never fails closed on one section.
