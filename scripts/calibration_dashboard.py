@@ -3780,6 +3780,13 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
     }
     if not _table_exists(conn, "basket_target_order_intents"):
         return out
+    # Newest two hundred, PLUS every basket that actually bought something.
+    # The cap alone was hiding exactly the days worth looking at: on
+    # 2026-09-11 the newest two hundred were all disarmed intents dated
+    # 09-10 to 09-13, while every filled leg on the book -- 107 of them,
+    # 09-06 through 09-11 -- fell outside the window.  A listing that
+    # cannot contain a fill cannot show whether a basket won, which is
+    # what the reader opens it for.
     try:
         rows = conn.execute(
             "SELECT i.order_intent_id, i.decision_id, i.bucket, i.side,"
@@ -3788,12 +3795,36 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
             " i.target_execution_hard_deadline_at"
             " FROM basket_target_order_intents i"
             " LEFT JOIN auto_trade_decisions d ON d.decision_id=i.decision_id"
-            " WHERE i.live_submit_authorized=1"
-            " ORDER BY i.created_at DESC LIMIT 200"
+            " WHERE i.live_submit_authorized=1 AND ("
+            "   i.order_intent_id IN ("
+            "     SELECT order_intent_id FROM basket_target_order_intents"
+            "     WHERE live_submit_authorized=1"
+            "     ORDER BY created_at DESC LIMIT 200)"
+            "   OR i.decision_id IN ("
+            "     SELECT decision_id FROM basket_target_order_intents"
+            "     WHERE live_submit_authorized=1 AND state='filled')"
+            " )"
+            " ORDER BY i.created_at DESC"
         ).fetchall()
     except sqlite3.Error:
         return out
-    out["intent_count"] = len(rows)
+    # The count of intents, not the count of rows this listing kept.  It
+    # used to be ``len(rows)``, so the tile read "200 笔" for as long as
+    # there were at least two hundred -- a number that describes the LIMIT
+    # above and nothing about the book.
+    # Count AND notional off the whole book, for the same reason: a total
+    # summed over the listed rows describes the window, and printing it
+    # beside a whole-book count makes the tile two different populations.
+    try:
+        total, notional = conn.execute(
+            "SELECT COUNT(*), COALESCE(SUM(requested_notional_usdc),0)"
+            " FROM basket_target_order_intents WHERE live_submit_authorized=1"
+        ).fetchone()
+        out["intent_count"] = int(total)
+        out["notional_usdc"] = float(notional or 0.0)
+    except sqlite3.Error:
+        out["intent_count"] = len(rows)
+    out["listed_count"] = len(rows)
     # Why a leg ended the way it did, from its latest event: the venue's
     # refusal text, the gateway's, or the submission gate's (held, barred,
     # disarmed).  A state alone -- failed, cancelled -- was the whole story
@@ -3834,7 +3865,6 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
         except sqlite3.Error:
             settled_bucket = {}
     for row in rows:
-        out["notional_usdc"] += float(row[6] or 0.0)
         station = str(row[9] or "")
         day = str(row[10] or "")
         event_type, reason = latest_event.get(str(row[0]), ("", ""))
@@ -8810,6 +8840,13 @@ font-family:inherit;font-size:11.5px;line-height:1.45}
 .navctl .lc-w:not(:disabled):hover{color:var(--text);border-color:var(--accent)}
 .navctl-s{font-size:11px;max-width:210px;overflow:hidden;text-overflow:ellipsis;
 white-space:nowrap}
+/* The same number under all three weightings, inside the tile that owns it.
+   A row rather than a table: three values is not a table, and the table it
+   replaced printed every figure on the section twice. */
+.wts{display:flex;gap:9px;flex-wrap:wrap;align-items:baseline;margin-top:6px;
+padding-top:6px;border-top:1px solid var(--line);font-size:11.5px}
+.wts+.wts{border-top:none;padding-top:0;margin-top:3px}
+.wts span{white-space:nowrap;font-variant-numeric:tabular-nums}
 /* The starred chips.  Filled rather than merely coloured: the bar already
    spends colour on the group tone, and a chip that differs only in hue is
    found no faster than one that does not. */
@@ -10808,78 +10845,79 @@ function entryEconomics(){
   const cent=(v,d=1)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(d)+"¢");
   const num=(v,d=2)=>v==null?"—":v.toFixed(d);
   const usd=(v,d=2)=>v==null?"—":((v>=0?"+":"")+v.toFixed(d)+" U");
-  const tile=(label,value,note,klass)=>`<div class="card">
+  // The three weightings ride in the tile they belong to (user ruling,
+  // 2026-09-11).  They used to be a nine-row table under the tiles, which
+  // meant every number on this section was printed twice and a reader
+  // comparing "how does ① move with the weighting" scrolled between two
+  // layouts of the same nine numbers.  One layout: the tile carries the
+  // per-chain figure large, and the same figure under all three weightings
+  // small beneath it.
+  const LAB = E.weighting_labels||[];
+  const cols = LAB.map(l => [l, W[l.key]]).filter(pair => pair[1]);
+  const SHORT = {chain:"链", stake:"投入", share:"按股"};
+  const wts = (fn, prefix) => !cols.length ? "" :
+    `<div class="wts">${prefix?`<span class="muted">${prefix}</span>`:""}${
+      cols.map(pair => `<span title="${attr(pair[0].label+"："+(pair[0].note||""))
+        }"><span class="muted">${SHORT[pair[0].key]||h(pair[0].label)}</span> ${
+        fn(pair[1])}</span>`).join("")}</div>`;
+  const tile=(label,value,note,klass,wt)=>`<div class="card">
     <div class="muted">${label}</div>
     <div class="big ${klass||""}">${value}</div>
-    <div class="muted" style="font-size:11.5px">${note}</div></div>`;
+    <div class="muted" style="font-size:11.5px">${note}</div>${wt||""}</div>`;
   const paysOne = E.hit_pays_per_share;
   const covered = C.realised_coverage!=null && C.breakeven_hit_rate!=null
     ? (C.realised_coverage>=C.breakeven_hit_rate?"up":"down") : "";
   const tiles = `<div class="grid g3">
     ${tile("① 入场服务概率 · 平均声称覆盖率", mag(C.claimed_coverage),
-      "下单那一刻，服务分布落在<b>买到的那几个桶</b>上的概率之和 · "+
-      "按投入加权 "+mag(K.claimed_coverage))}
+      "下单那一刻，服务分布落在<b>买到的那几个桶</b>上的概率之和",
+      "", wts(b=>mag(b.claimed_coverage)))}
     ${tile("② 实际覆盖率", mag(C.realised_coverage),
       "真值落进<b>同一批桶</b>的比例 · 实际÷声称 "+
       num(C.realisation_ratio,2)+"× · 若按<b>选中</b>（含挂了没买到的腿）"+
-      "则是 "+mag(E.intended_coverage), covered)}
+      "则是 "+mag(E.intended_coverage), covered,
+      wts(b=>mag(b.realised_coverage)))}
     ${tile("③ 整篮真正盈利率", mag(C.profitable_rate),
       E.win_count+" 条赚 / "+E.loss_count+" 条亏"+
       (E.flat_count?" / "+E.flat_count+" 条打平":"")+
       " · 命中却没赚 "+E.hit_not_profitable+" 条、没命中却赚了 "+
       E.profitable_not_hit+" 条",
-      C.profitable_rate>=C.breakeven_hit_rate?"up":"down")}
+      C.profitable_rate>=C.breakeven_hit_rate?"up":"down",
+      wts(b=>mag(b.profitable_rate)))}
   </div>
   <div class="grid g3" style="margin-top:10px">
     ${tile("④ 盈亏平衡命中率", mag(C.breakeven_hit_rate),
       "满赔是 1.00，所以保本线<b>就等于每股成本</b>（第 ⑧ 格同一个数） · "+
       "实际覆盖率减保本线 "+pp(C.margin_over_breakeven),
-      C.margin_over_breakeven>=0?"up":"down")}
+      C.margin_over_breakeven>=0?"up":"down",
+      wts(b=>mag(b.breakeven_hit_rate))+wts(b=>pp(b.margin_over_breakeven),"实际减保本"))}
     ${tile("⑤ 净赔率", num(C.net_odds,2)+"x",
-      "(1−成本)÷成本：赢一次，每股净赚这么多 · "+
-      "按股·整本账口径 "+num(S.net_odds,2)+"x")}
+      "(1−成本)÷成本：赢一次，每股净赚这么多",
+      "", wts(b=>num(b.net_odds,2)+"x"))}
     ${tile("⑥ 平均盈利", usd(E.mean_win_usdc),
-      "每条<b>赚钱</b>的链 · 折每股 "+cent(C.mean_win_per_share),"up")}
+      "每条<b>赚钱</b>的链。USDC 口径没有加权版本，加权只在每股口径上成立",
+      "up", wts(b=>cent(b.mean_win_per_share),"每股"))}
   </div>
   <div class="grid g3" style="margin-top:10px">
     ${tile("⑦ 平均亏损", usd(E.mean_loss_usdc),
-      "每条<b>亏钱</b>的链 · 折每股 "+cent(C.mean_loss_per_share),"down")}
+      "每条<b>亏钱</b>的链。USDC 口径没有加权版本，加权只在每股口径上成立",
+      "down", wts(b=>cent(b.mean_loss_per_share),"每股"))}
     ${tile("⑧ 每股平均成本", num(C.cost_per_share,3),
-      "整本账 Σ投入÷Σ股 = "+num(S.cost_per_share,3)+" · "+
-      "命中时一股实收 "+num(paysOne,3))}
+      "命中时一股实收 "+num(paysOne,3)+"（保本线就是这个数）",
+      "", wts(b=>num(b.cost_per_share,3)))}
     ${tile("⑨ 每股平均期望", cent(C.ev_per_share_claimed),
-      "声称口径＝覆盖率−成本 · <b>实际每股 "+
+      "声称口径＝覆盖率−成本 · <b>整本账实际每股 "+
       cent(S.ev_per_share_realised)+"</b>",
-      C.ev_per_share_claimed>=0?"up":"down")}
+      C.ev_per_share_claimed>=0?"up":"down",
+      wts(b=>cent(b.ev_per_share_claimed),"声称")
+      +wts(b=>cent(b.ev_per_share_realised),"实际兑现"))}
   </div>`;
 
-  const LAB = E.weighting_labels||[];
-  const cols = LAB.map(l => W[l.key]).filter(Boolean);
-  const heads = LAB.filter(l => W[l.key]);
-  const row = (name, fn, hint) => `<tr><td>${name}
-    ${hint?`<div class="muted" style="font-size:11px">${hint}</div>`:""}</td>
-    ${cols.map(b => `<td class="mono">${fn(b)}</td>`).join("")}</tr>`;
-  const table = !cols.length ? "" : `<div class="scroll" style="margin-top:12px">
-  <table><thead><tr><th>九个数</th>
-    ${heads.map(l => `<th>${h(l.label)}</th>`).join("")}</tr></thead>
-  <tbody>
-    ${row("① 声称覆盖率", b=>mag(b.claimed_coverage))}
-    ${row("② 实际覆盖率", b=>mag(b.realised_coverage))}
-    ${row("③ 整篮真正盈利率", b=>mag(b.profitable_rate))}
-    ${row("④ 盈亏平衡命中率", b=>mag(b.breakeven_hit_rate))}
-    ${row("⑤ 净赔率", b=>num(b.net_odds,2)+"x")}
-    ${row("⑥ 平均盈利 · 每股", b=>cent(b.mean_win_per_share),
-      "USDC 口径没有加权版本，见上面的格子")}
-    ${row("⑦ 平均亏损 · 每股", b=>cent(b.mean_loss_per_share),
-      "USDC 口径没有加权版本，见上面的格子")}
-    ${row("⑧ 每股平均成本", b=>num(b.cost_per_share,3))}
-    ${row("⑨ 每股平均期望 · 声称", b=>cent(b.ev_per_share_claimed))}
-    ${row("　 每股实际兑现", b=>cent(b.ev_per_share_realised),
-      "同一个单位下真正拿回来的")}
-    ${row("　 实际减保本", b=>pp(b.margin_over_breakeven))}
-  </tbody></table></div>
-  <div class="muted" style="font-size:11.5px;margin-top:6px">
-    ${heads.map(l=>`<b>${h(l.label)}</b>：${h(l.note)}`).join("；<br>")}。</div>`;
+  // What the three short words under each tile mean, said once.
+  const table = !cols.length ? "" :
+    `<div class="muted" style="font-size:11.5px;margin-top:8px">
+    每个格子下面那行是同一个数的三种口径：${cols.map(pair =>
+      `<b>${h(SHORT[pair[0].key]||pair[0].label)}</b>＝${h(pair[0].label)}（${
+        h(pair[0].note)}）`).join("；")}。</div>`;
 
   const st = (E.by_stage||[]);
   const stageTable = !st.length ? "" : `<div class="scroll" style="margin-top:12px">
@@ -12774,24 +12812,29 @@ function liveOrderCard(L){
            <span class="muted mono" style="font-size:11px">投入 ${gCost.toFixed(2)} · 赔付 ${gPay.toFixed(2)} · 落在 ${h(truth)}</span>`;
       // The station wears the day's verdict (user ruling, 2026-09-11), in
       // the same three colours the per-station roster uses: green held the
-      // settled bucket, red did not, amber has no truth yet.  A settled
-      // basket that filled nothing is red with the reason in its tooltip --
-      // it did not hold the bucket, and calling it anything else would need
-      // a fourth colour for a state nobody acts on differently.
+      // settled bucket, red did not, amber has no truth yet.  The word is
+      // printed beside the colour rather than left in a tooltip (same
+      // ruling, revised the same day): a colour alone tells a reader that
+      // these three lines differ, not what any of them is, and on a book
+      // where every basket is currently unsettled the whole column is one
+      // shade and says nothing at all without a hover.  A settled basket
+      // that filled nothing is red -- it did not hold the bucket -- with
+      // that distinction in the tooltip, which is the only part a reader
+      // can afford to go looking for.
       const verdict = !truth
-        ? ["amber", "未结算：这个站日的真值还没到"]
+        ? ["amber", "未结算", "这个站日的真值还没到"]
         : (gPay > 0
-          ? ["green", "命中：成交腿里有落在结算桶 " + truth + " 的"]
+          ? ["green", "命中", "成交腿里有落在结算桶 " + truth + " 的"]
           : [
-            "red",
+            "red", "未命中",
             gFilled.length
-              ? "未命中：成交的腿都不在结算桶 " + truth
-              : "未命中：整篮一条腿都没成交，结算落在 " + truth,
+              ? "成交的腿都不在结算桶 " + truth
+              : "整篮一条腿都没成交，结算落在 " + truth,
           ]);
       return `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:5px 0;border-top:1px dashed var(--line,#eee)">
         <span class="pill red" style="font-size:10px">LIVE</span>
-        <b class="mono pill ${verdict[0]}" title="${h(verdict[1])} · ${
-          h(g.decision_id)}">${h(g.station_id||"?")}</b>
+        <b class="mono pill ${verdict[0]}" title="${h(verdict[2])} · ${
+          h(g.decision_id)}">${h(g.station_id||"?")} ${verdict[1]}</b>
         <span class="muted" style="font-size:11px">${g.legs.length} 腿 · ${gFilled.length} 成交</span>
         ${skewChip(g)}
         <span>${g.legs.map(l=>legChip(l, truth, mid)).join("")}</span>
@@ -12863,7 +12906,9 @@ function liveOrderCard(L){
   <div class="card">
     <div class="grid g4">
       ${tile("实盘意向", (O.intent_count||0)+" 笔",
-        "计划名义 "+u(O.notional_usdc), O.intent_count?"":"muted")}
+        "计划名义 "+u(O.notional_usdc)+(O.listed_count&&O.listed_count<O.intent_count
+          ? " · 下面按篮列出最近 "+O.listed_count+" 笔（新的 200 笔，外加每个成交过的篮子）"
+          : ""), O.intent_count?"":"muted")}
       ${tile("走到交易所", (X.events||0)+" 回执",
         "已提交 "+(O.submitted_count||0)+" · 受理 "+(O.accepted_count||0)+
         " · 对账 "+(X.reconciliations||0)+" 行", (X.events||0)?"":"muted")}
