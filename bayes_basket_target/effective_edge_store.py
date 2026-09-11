@@ -1100,6 +1100,23 @@ def fit_lambda_table(
     }
 
 
+def admits_v1(
+    bands: Sequence[tuple[float, float]], agreement: float
+) -> bool:
+    """The gate's own admission test: ``lambda(a) > a``.
+
+    One implementation, so a counterfactual that asks "which windows would
+    this table have bought" reads the same line the gate reads.  It was
+    inline in ``admitted_return`` and therefore unavailable per window,
+    which left every comparison of two tables to the two aggregate ratios
+    that function returns -- each over its own admitted set, so a table
+    admitting five windows and one admitting fifty were compared on
+    denominators that differed tenfold.
+    """
+
+    return bands[_band_index(agreement, bands)][1] > float(agreement)
+
+
 def admitted_return(
     conn: sqlite3.Connection,
     bands: Sequence[tuple[float, float]],
@@ -1159,7 +1176,7 @@ def admitted_return(
         if claim <= 0.0 or price <= 0.0:
             continue
         agreement = price / claim
-        if bands[_band_index(agreement, bands)][1] <= agreement:
+        if not admits_v1(bands, agreement):
             continue
         admitted += 1
         cost += price
