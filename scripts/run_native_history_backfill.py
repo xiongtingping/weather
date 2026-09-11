@@ -256,7 +256,10 @@ def main() -> int:
         help="lock wait for the last drain before this invocation exits",
     )
     parser.add_argument("--scratch", type=Path, default=DEFAULT_SCRATCH)
-    parser.add_argument("--raw-keep-hours", type=float, default=3.0)
+    # Reuse only ever reaches back one event date (about 40 minutes at the
+    # measured pace); three hours kept ~5 GB of fields on a disk with 23 GiB
+    # free.
+    parser.add_argument("--raw-keep-hours", type=float, default=1.5)
     parser.add_argument("--ecmwf-workers", type=int, default=24)
     parser.add_argument("--ecmwf-base-url", default=GCS_REPLICA)
     parser.add_argument(
