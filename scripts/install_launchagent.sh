@@ -21,7 +21,19 @@ DEFAULT_PLISTS=(
   com.weather.market_ws.plist
   com.weather.clob_order_service.plist
 )
-SUPPORTED_PLISTS=("${DEFAULT_PLISTS[@]}")
+# Installable but not installed by default.  The paper ledger sweep is the
+# one plist in launchd/ that was never loaded on this machine -- nine of ten
+# were, it has no installer of its own, and the two log files its plist names
+# do not exist -- so the standing book moved only when somebody ran it by
+# hand.  Not in DEFAULT_PLISTS because it re-derives a book rather than
+# serving anything, and an operator should choose to put that on a clock:
+#
+#   PM_LAUNCHD_ONLY=com.weather.paper_trading_ledger_sweep \
+#     scripts/install_launchagent.sh
+OPTIONAL_PLISTS=(
+  com.weather.paper_trading_ledger_sweep.plist
+)
+SUPPORTED_PLISTS=("${DEFAULT_PLISTS[@]}" "${OPTIONAL_PLISTS[@]}")
 PLISTS=("${DEFAULT_PLISTS[@]}")
 if [ -n "${PM_LAUNCHD_ONLY:-}" ]; then
   IFS=',' read -r -a requested_plists <<< "${PM_LAUNCHD_ONLY}"
